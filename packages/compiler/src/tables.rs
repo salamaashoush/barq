@@ -298,7 +298,27 @@ mod tests {
     use crate::dom_ts::INTERCEPTED;
 
     fn read(path: &str) -> String {
-        std::fs::read_to_string(path).unwrap_or_else(|error| panic!("{path}: {error}"))
+        dom_ts::source_text(
+            std::fs::read_to_string(path).unwrap_or_else(|error| panic!("{path}: {error}")),
+        )
+    }
+
+    /// A Windows checkout has `\r\n` endings, and the release builds a
+    /// binding there: the tables must come out the same.
+    #[test]
+    fn the_generator_reads_a_windows_checkout_the_same() {
+        let dom = read(DOM_TS_PATH);
+        let ssr = read(SSR_TS_PATH);
+        let render = |dom: &str, ssr: &str| {
+            dom_ts::render(&dom_ts::Sources {
+                dom,
+                dom_path: DOM_TS_PATH,
+                ssr,
+                ssr_path: SSR_TS_PATH,
+            })
+        };
+        let crlf = |text: &str| dom_ts::source_text(text.replace('\n', "\r\n"));
+        assert_eq!(render(&crlf(&dom), &crlf(&ssr)), render(&dom, &ssr));
     }
 
     /// `include_str!` ties this file's compilation to `OUT_DIR`, and

@@ -28,8 +28,8 @@ fn main() {
     println!("cargo:rerun-if-changed={}", ssr_ts.display());
     println!("cargo:rerun-if-changed=src/dom_ts.rs");
 
-    let dom = std::fs::read_to_string(&dom_ts).expect("read dom.ts");
-    let ssr = std::fs::read_to_string(&ssr_ts).expect("read ssr.ts");
+    let dom = dom_ts::source_text(std::fs::read_to_string(&dom_ts).expect("read dom.ts"));
+    let ssr = dom_ts::source_text(std::fs::read_to_string(&ssr_ts).expect("read ssr.ts"));
     let generated = dom_ts::render(&dom_ts::Sources {
         dom: &dom,
         dom_path: &dom_ts.to_string_lossy(),

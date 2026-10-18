@@ -155,6 +155,12 @@ fn split_entries(body: &str) -> Vec<String> {
 
 /// The runtime sources a table can be read out of, with the absolute path each
 /// was loaded from so the drift test can re-derive them.
+/// A runtime file's text with `\r\n` as `\n`: a Windows checkout converts line
+/// endings, and the scanners below match on `\n`.
+pub fn source_text(raw: String) -> String {
+    if raw.contains('\r') { raw.replace("\r\n", "\n") } else { raw }
+}
+
 pub struct Sources<'a> {
     pub dom: &'a str,
     pub dom_path: &'a str,
