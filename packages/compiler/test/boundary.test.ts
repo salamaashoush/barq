@@ -138,6 +138,46 @@ describe("renderer boundaries", () => {
     expect(code).toContain("Canvas({})");
     for (const absent of ["box", "leaf", "Html(", RENDERER]) expect(code).not.toContain(absent);
   });
+
+  test("a component declared beside the page builds on the host its tags are claimed by", async () => {
+    const web = await import("@barqjs/web");
+    const components = (await import(COMPONENTS)) as Components;
+    const source = `
+import { createSignal } from "@barqjs/core";
+import { Canvas } from ${JSON.stringify(COMPONENTS)};
+export const [size, setSize] = createSignal(1);
+function Box() {
+  return <box size={size()}><leaf /></box>;
+}
+export function App() {
+  return <main><h1>{size()}</h1><Canvas><Box /></Canvas></main>;
+}
+`;
+    const { code } = compileSourceRaw(source, "scene.tsx", {
+      boundaries: BOUNDARIES,
+      intrinsics: [{ tags: ["box", "leaf"], target: "universal", moduleSource: RENDERER }],
+    });
+    expect(code).not.toContain("<box");
+    const module = (await loadModule(code, "boundary-intrinsics")) as unknown as {
+      App: () => unknown;
+      setSize: (value: number) => void;
+    };
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const dispose = web.render(() => module.App() as never, container);
+    await settle();
+    const scene = components.scenes.at(-1)!;
+    expect(container.querySelector("h1")!.textContent).toBe("1");
+    expect(scene.children.map(shape).join("")).toBe("<box size=1><leaf></leaf></box>");
+
+    module.setSize(2);
+    await settle();
+    expect(container.querySelector("h1")!.textContent).toBe("2");
+    expect(scene.children.map(shape).join("")).toBe("<box size=2><leaf></leaf></box>");
+    dispose();
+    container.remove();
+  });
 });
 
 /**
