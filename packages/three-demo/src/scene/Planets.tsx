@@ -1,4 +1,4 @@
-import { For } from "@barqjs/core";
+import { For, Loading } from "@barqjs/core";
 
 import { useOrrery } from "./orrery.ts";
 import { Planet } from "./Planet.tsx";
@@ -9,5 +9,13 @@ import { Planet } from "./Planet.tsx";
  */
 export function Planets() {
   const orrery = useOrrery();
-  return <For each={orrery.planets()}>{(planet) => <Planet planet={planet} />}</For>;
+  return (
+    <For each={orrery.planets()}>
+      {(planet) => (
+        <Loading fallback={null}>
+          <Planet planet={planet} />
+        </Loading>
+      )}
+    </For>
+  );
 }

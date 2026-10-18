@@ -1,4 +1,4 @@
-import { Loading, type Incoming } from "@barqjs/core";
+import type { Incoming } from "@barqjs/core";
 import { useLoader, type ThreeEvent } from "@barqjs/three";
 import { AdditiveBlending, TextureLoader } from "three";
 
@@ -26,17 +26,15 @@ export function Sun(props: Incoming<{ color: string; radius: number }>) {
         <sphereGeometry args={[props.radius(), 64, 48]} />
         <meshBasicMaterial color={props.color()} />
       </mesh>
-      <Loading fallback={null}>
-        <sprite scale={props.radius() * (lit() ? 6.2 : 5.4)}>
-          <spriteMaterial
-            map={glow()}
-            color={props.color()}
-            transparent
-            depthWrite={false}
-            blending={AdditiveBlending}
-          />
-        </sprite>
-      </Loading>
+      <sprite scale={props.radius() * (lit() ? 6.2 : 5.4)}>
+        <spriteMaterial
+          map={glow()}
+          color={props.color()}
+          transparent
+          depthWrite={false}
+          blending={AdditiveBlending}
+        />
+      </sprite>
       <pointLight color="#fff1d6" intensity={2.6} decay={0} />
     </group>
   );

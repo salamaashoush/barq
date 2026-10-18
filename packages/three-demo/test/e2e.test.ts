@@ -217,15 +217,14 @@ test("hydrates without a mismatch, draws, selects on click, and remounts after n
 
       expectScene(await page.evaluate<Lit>(LIT));
 
-      // A click on Jupiter selects it in the panel. The point is a little up and
-      // left of its centre: the label's anchor element covers the lower right.
+      // A click on Jupiter's centre, where its label is anchored, selects it.
       const jupiter = await page.evaluate<{ x: number; y: number }>(`(() => {
         const anchor = document.querySelector('span[data-planet="jupiter"]').parentElement.parentElement;
         const [, x, y] = /translate3d\\(([-\\d.]+)px, ([-\\d.]+)px/.exec(anchor.style.transform);
         const host = anchor.parentElement.getBoundingClientRect();
         return { x: host.left + Number(x), y: host.top + Number(y) };
       })()`);
-      await click(page, jupiter.x - 5, jupiter.y - 5);
+      await click(page, jupiter.x, jupiter.y);
       await until(
         page,
         "document.querySelector('#selected h3')?.textContent === 'Jupiter'",
@@ -306,10 +305,8 @@ test("hydrates without a mismatch, draws, selects on click, and remounts after n
       await sleep(300);
       expectScene(await page.evaluate<Lit>(LIT));
 
-      // three's own deprecation notices are not this application's; anything
-      // barq or the page reports is.
       const logs = await page.evaluate<string[]>("window.__logs");
-      expect(logs.filter((line) => !line.startsWith("warn: THREE."))).toEqual([]);
+      expect(logs).toEqual([]);
     },
     { flags: WEBGL },
   );

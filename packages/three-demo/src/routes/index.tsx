@@ -289,10 +289,10 @@ function Orrery() {
                 depthWrite={false}
               />
             </mesh>
-            <Show when={system()}>
-              {(loaded) => <Sun color={loaded().star.color} radius={loaded().star.radius} />}
-            </Show>
             <Loading fallback={null}>
+              <Show when={system()}>
+                {(loaded) => <Sun color={loaded().star.color} radius={loaded().star.radius} />}
+              </Show>
               <Stars />
             </Loading>
             <Planets />
