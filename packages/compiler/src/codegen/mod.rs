@@ -65,7 +65,7 @@ impl Target {
     }
 }
 
-pub const HELPER_COUNT: usize = 65;
+pub const HELPER_COUNT: usize = 67;
 
 /// The module a helper is imported from.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -108,6 +108,8 @@ pub fn home(helper: Helper, target: Target) -> Home {
         | H::GetOwner
         | H::Untrack
         | H::CreateComponent
+        | H::BindSlot
+        | H::BindPlain
         | H::BindEffect => Home::Core,
         H::Branch | H::Each | H::Boundary | H::Portal | H::Island | H::Reveal | H::Dynamic => {
             match target {
@@ -384,6 +386,16 @@ pub enum Helper {
     CreateTextNode = 63,
     /// `_$insertNode(parent, node)` — a static child, put in place once.
     InsertNode = 64,
+    /// `_$bindSlot(node, _$setProp, "name", value)` — an opaque prop of a custom
+    /// host whose value is a bare name: written once when it is not a function,
+    /// followed by an effect when it is a Cell. The name is read outside any
+    /// effect, which a bare name cannot make reactive.
+    BindSlot = 65,
+    /// `_$bindPlain(compute, apply, ["x", "y"], p)` — a custom host's bindings
+    /// whose reads are literals and the fields of one object (`[p.x, p.y, 0]`).
+    /// Applied once when that object is plain data, whose fields no read can
+    /// follow; an effect, as `bindEffect` makes, when it is anything else.
+    BindPlain = 66,
 }
 
 /// Every helper with the name it is imported under, in `Helper` order.
@@ -453,6 +465,8 @@ const IMPORTED: [(Helper, &str); HELPER_COUNT] = [
     (Helper::CreateElement, "createElement"),
     (Helper::CreateTextNode, "createTextNode"),
     (Helper::InsertNode, "insertNode"),
+    (Helper::BindSlot, "bindSlot"),
+    (Helper::BindPlain, "bindPlain"),
 ];
 
 /// The name a helper is imported under, for a test that has to check the table

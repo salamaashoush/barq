@@ -285,8 +285,6 @@ impl<'a> Universal<'a, '_, '_, '_> {
     /// ```
     fn effect(&mut self, members: &[Patch], header: Patch) -> Statement<'a> {
         let span = header.span;
-        let value = self.ctx.module.uids.temp();
-        let prev = self.ctx.module.uids.prev();
         let rows: Vec<(Patch, NameId, ExprId, Diff, bool)> = members
             .iter()
             .filter_map(|patch| match patch.op {
@@ -298,8 +296,63 @@ impl<'a> Universal<'a, '_, '_, '_> {
             })
             .collect();
 
-        if let [(patch, name, one, _, opaque)] = rows[..] {
+        // The bindings whose reads cannot change once the fields of one plain
+        // object are known are written once, apart from those that can, so the
+        // effect that remains computes no record for what never moves.
+        let mut base: Option<&'a str> = None;
+        let mut keys: Vec<&'a str> = Vec::new();
+        let mut once = Vec::new();
+        let mut live = Vec::new();
+        for (patch, name, one, diff, opaque) in rows {
             let read = self.read(name, one, opaque, patch.span);
+            let mut plain = Some((None, Vec::new()));
+            self.plain_read(&read, &mut plain);
+            match plain {
+                Some((own, read_keys)) if own.is_none() || base.is_none() || own == base => {
+                    if own.is_some() {
+                        base = own;
+                    }
+                    for key in read_keys {
+                        if !keys.contains(&key) {
+                            keys.push(key);
+                        }
+                    }
+                    once.push((patch, name, diff, read));
+                }
+                _ => live.push((patch, name, diff, read)),
+            }
+        }
+        let mut statements = Vec::with_capacity(2);
+        if !once.is_empty() {
+            statements.push(self.group(once, Some((base, keys)), span));
+        }
+        if !live.is_empty() {
+            statements.push(self.group(live, None, span));
+        }
+        if statements.len() == 1 {
+            return statements.pop().unwrap_or_else(|| unreachable!());
+        }
+        Statement::new_block_statement(
+            span,
+            ArenaVec::from_iter_in(statements, &self.ctx.allocator),
+            &self.ctx.ast,
+        )
+    }
+
+    /// One binding of some of a unit's props: a scalar compute and write for
+    /// one, a record compared field by field for several.
+    fn group(
+        &mut self,
+        rows: Vec<(Patch, NameId, Diff, Expression<'a>)>,
+        plain: Option<(Option<&'a str>, Vec<&'a str>)>,
+        span: Span,
+    ) -> Statement<'a> {
+        let value = self.ctx.module.uids.temp();
+        let prev = self.ctx.module.uids.prev();
+        if rows.len() == 1 {
+            let Some((patch, name, _, read)) = rows.into_iter().next() else {
+                unreachable!();
+            };
             let compute = self.ctx.thunk(read, span);
             let node = self.node(patch.target, patch.span);
             let held = self.ctx.ident(value, patch.span);
@@ -319,14 +372,13 @@ impl<'a> Universal<'a, '_, '_, '_> {
             let write = Statement::new_expression_statement(patch.span, write, &self.ctx.ast);
             let params = dom::apply_params(self.ctx, value, Some((prev, false)), span);
             let apply = dom::arrow(self.ctx, params, dom::block(self.ctx, vec![write], span), span);
-            return dom::effect_call(self.ctx, compute, apply, span);
+            return self.bind(compute, apply, plain, span);
         }
 
         let mut properties = Vec::with_capacity(rows.len());
         let mut body = Vec::with_capacity(rows.len());
-        for (index, (patch, name, one, diff, opaque)) in rows.iter().copied().enumerate() {
+        for (index, (patch, name, diff, read)) in rows.into_iter().enumerate() {
             let key = dom::slot_key(index, self.ctx.allocator);
-            let read = self.read(name, one, opaque, patch.span);
             properties.push(dom::property(self.ctx, key, read, patch.span));
 
             let field = |ctx: &Emit<'a, '_>, of: &'a str| {
@@ -368,7 +420,144 @@ impl<'a> Universal<'a, '_, '_, '_> {
         let compute = self.ctx.thunk(record, span);
         let params = dom::apply_params(self.ctx, value, Some((prev, true)), span);
         let apply = dom::arrow(self.ctx, params, dom::block(self.ctx, body, span), span);
-        dom::effect_call(self.ctx, compute, apply, span)
+        self.bind(compute, apply, plain, span)
+    }
+
+    /// Narrow `plain` by one emitted read: it stays `Some` while every read is
+    /// a literal, a name, or a field of one object (`[p.x, p.y, 0]`), with
+    /// that object and the fields read. Such a read changes only if the object
+    /// is reactive (a store, a getter, a field holding a Cell), which
+    /// `bindPlain` asks at run time; a call, a deeper path or anything else
+    /// keeps the effect.
+    fn plain_read(
+        &self,
+        read: &Expression<'a>,
+        plain: &mut Option<(Option<&'a str>, Vec<&'a str>)>,
+    ) {
+        let Some((base, keys)) = plain else {
+            return;
+        };
+        let read_slot = self.ctx.local[Helper::ReadSlot as usize];
+        if !inert(read, read_slot, base, keys) {
+            *plain = None;
+        }
+    }
+    fn bind(
+        &mut self,
+        compute: Expression<'a>,
+        apply: Expression<'a>,
+        plain: Option<(Option<&'a str>, Vec<&'a str>)>,
+        span: Span,
+    ) -> Statement<'a> {
+        let Some((base, keys)) = plain else {
+            return dom::effect_call(self.ctx, compute, apply, span);
+        };
+        let keys = keys
+            .into_iter()
+            .map(|key| ArrayExpressionElement::from(self.ctx.string(key, span)))
+            .collect::<Vec<_>>();
+        let keys = Expression::new_array_expression(
+            span,
+            ArenaVec::from_iter_in(keys, &self.ctx.allocator),
+            &self.ctx.ast,
+        );
+        let base = match base {
+            Some(name) => self.ctx.ident(name, span),
+            None => Expression::new_void_0(span, &self.ctx.ast),
+        };
+        let callee = self.ctx.helper(Helper::BindPlain, span);
+        let call = self.ctx.call(
+            callee,
+            vec![
+                Argument::from(compute),
+                Argument::from(apply),
+                Argument::from(keys),
+                Argument::from(base),
+            ],
+            span,
+        );
+        Statement::new_expression_statement(span, call, &self.ctx.ast)
+    }
+}
+
+/// A read that changes only through the fields of its one object: literals,
+/// names, `base.field`, and arrays, objects and operators over them.
+fn inert<'a>(
+    expression: &Expression<'a>,
+    read_slot: &str,
+    base: &mut Option<&'a str>,
+    keys: &mut Vec<&'a str>,
+) -> bool {
+    let inert =
+        |expression: &Expression<'a>, base: &mut Option<&'a str>, keys: &mut Vec<&'a str>| {
+            inert(expression, read_slot, base, keys)
+        };
+    match expression {
+        // `readSlot(p.x, "...")`, the Cell-slot read of an opaque field: it
+        // calls the field only when it holds a function, which `bindPlain`
+        // refuses at run time.
+        Expression::CallExpression(call) => {
+            matches!(&call.callee, Expression::Identifier(callee) if callee.name.as_str() == read_slot)
+                && call.arguments.len() == 2
+                && call.arguments[0].as_expression().is_some_and(|inner| inert(inner, base, keys))
+        }
+        Expression::NumericLiteral(_)
+        | Expression::StringLiteral(_)
+        | Expression::BooleanLiteral(_)
+        | Expression::NullLiteral(_)
+        | Expression::BigIntLiteral(_)
+        | Expression::Identifier(_) => true,
+        Expression::StaticMemberExpression(member) => {
+            let Expression::Identifier(object) = &member.object else {
+                return false;
+            };
+            let name = object.name.as_str();
+            if base.is_some_and(|known| known != name) {
+                return false;
+            }
+            *base = Some(name);
+            let key = member.property.name.as_str();
+            if !keys.contains(&key) {
+                keys.push(key);
+            }
+            true
+        }
+        Expression::ArrayExpression(array) => array.elements.iter().all(|element| match element {
+            ArrayExpressionElement::SpreadElement(_) => false,
+            ArrayExpressionElement::Elision(_) => true,
+            other => other.as_expression().is_some_and(|inner| inert(inner, base, keys)),
+        }),
+        Expression::ObjectExpression(object) => {
+            object.properties.iter().all(|property| match property {
+                oxc::ast::ast::ObjectPropertyKind::ObjectProperty(property) => {
+                    !property.computed
+                        && !property.method
+                        && property.kind == oxc::ast::ast::PropertyKind::Init
+                        && inert(&property.value, base, keys)
+                }
+                oxc::ast::ast::ObjectPropertyKind::SpreadProperty(_) => false,
+            })
+        }
+        Expression::UnaryExpression(unary) => {
+            unary.operator != oxc::syntax::operator::UnaryOperator::Delete
+                && inert(&unary.argument, base, keys)
+        }
+        Expression::BinaryExpression(binary) => {
+            inert(&binary.left, base, keys) && inert(&binary.right, base, keys)
+        }
+        Expression::LogicalExpression(logical) => {
+            inert(&logical.left, base, keys) && inert(&logical.right, base, keys)
+        }
+        Expression::ConditionalExpression(conditional) => {
+            inert(&conditional.test, base, keys)
+                && inert(&conditional.consequent, base, keys)
+                && inert(&conditional.alternate, base, keys)
+        }
+        Expression::TemplateLiteral(template) => {
+            template.expressions.iter().all(|inner| inert(inner, base, keys))
+        }
+        Expression::ParenthesizedExpression(inner) => inert(&inner.expression, base, keys),
+        _ => false,
     }
 }
 
@@ -400,6 +589,32 @@ impl<'a> Backend<'a> for Universal<'a, '_, '_, '_> {
         if rx.thunk != Thunk::Arrow && !rx.shape.may_be_callable() {
             let value = dom::take(self.ctx, self.unit, value, at.span());
             return self.write(at, self.name(name), value);
+        }
+        // A bare name reads nothing reactive by being named, so whether it is
+        // a Cell is asked at run time, as `bindProp` asks it in the document:
+        // a value that is not one costs a write and no effect.
+        let bare = matches!(
+            self.unit.exprs.entry_mut(value).src.expression(),
+            Some(Expression::Identifier(_))
+        );
+        if bare {
+            let span = at.span();
+            let node = self.node(at.target(), span);
+            let write = self.ctx.helper(Helper::SetProp, span);
+            let key = self.ctx.string(self.name(name), span);
+            let value = dom::take(self.ctx, self.unit, value, span);
+            let callee = self.ctx.helper(Helper::BindSlot, span);
+            let call = self.ctx.call(
+                callee,
+                vec![
+                    Argument::from(node),
+                    Argument::from(write),
+                    Argument::from(key),
+                    Argument::from(value),
+                ],
+                span,
+            );
+            return Some(Statement::new_expression_statement(span, call, &self.ctx.ast));
         }
         Some(self.effect(&[at.patch], at.patch))
     }
@@ -589,6 +804,35 @@ mod tests {
         for document in ["_$setClass", "_$setStyle", "_$setAttr", "__bq_", "_$listen", "_$ref("] {
             assert!(!code.contains(document), "{document} in\n{code}");
         }
+    }
+
+    #[test]
+    fn a_bare_name_asks_at_run_time_whether_it_is_a_cell_and_a_member_read_is_followed() {
+        let code = universal(
+            "import { shared } from \"./shared\";\n\
+             export const V = (p) => <box geometry={shared} position={p.at} />;\n",
+        )
+        .code;
+        assert!(code.contains("_$bindSlot(_el$1, _$setProp, \"geometry\", shared);"), "{code}");
+        assert_eq!(code.matches("_$bindEffect(").count(), 1, "{code}");
+        assert!(code.contains("p.at"), "{code}");
+    }
+
+    #[test]
+    fn fields_of_one_object_are_bound_plain_and_a_call_keeps_its_effect() {
+        let code = universal(
+            "import { For } from \"@barqjs/core\";\n\
+             export const V = (p) => <For each={p.rows()}>{(row) => \
+             <box position={[row.x, row.y, 0]} label={`#${row.id}`} spin={row.speed * 2} />}</For>;\n\
+             export const W = (p) => <For each={p.rows()}>{(row) => <box spin={row.speed()} />}</For>;\n",
+        )
+        .code;
+        assert_eq!(code.matches("_$bindPlain(").count(), 1, "{code}");
+        assert!(code.contains("], row);"), "{code}");
+        for key in ["\"x\"", "\"y\"", "\"id\"", "\"speed\""] {
+            assert!(code.contains(key), "{key} in {code}");
+        }
+        assert_eq!(code.matches("_$bindEffect(").count(), 1, "{code}");
     }
 
     #[test]

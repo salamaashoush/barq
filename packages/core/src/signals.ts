@@ -12,6 +12,7 @@
  */
 
 import {
+  $PROXY as STORE_PROXY,
   type Owner as EngineOwner,
   type Context as EngineContext,
   type MemoOptions,
@@ -34,6 +35,7 @@ import {
   onCleanup,
   runWithOwner,
   setContext as engineSetContext,
+  untrack,
   DEV as ENGINE_DEV,
   OBSERVE,
   type Dev as EngineDev,
@@ -1143,6 +1145,74 @@ export function bindEffect<T>(
   apply: (value: T, prev: T | undefined) => void | (() => void),
 ): void {
   effectUnder(getOwner(), "bindEffect", compute, apply);
+}
+
+/**
+ * One opaque prop of a custom host whose value is a bare name, as the
+ * universal target emits it. A value that is not a function is written once
+ * and costs no effect; a function is a Cell and is followed, read through
+ * `readSlot` so a Block there is refused with the prop's name.
+ */
+export function bindSlot<N>(
+  node: N,
+  write: (node: N, name: string, value: unknown, prev: unknown) => unknown,
+  name: string,
+  value: unknown,
+): void {
+  if (typeof value !== "function") {
+    write(node, name, value, undefined);
+    return;
+  }
+  const origin = `The \`${name}\` prop`;
+  effectUnder(
+    getOwner(),
+    "bindSlot",
+    () => readSlot(value, origin),
+    (next, prev) => {
+      write(node, name, next, prev);
+    },
+  );
+}
+
+/**
+ * A custom host's bindings whose reads are literals and fields `keys` of one
+ * object `base`, as the universal target emits them for `position={[p.x,
+ * p.y, 0]}`. When `base` is plain data (no store, no getter on those fields,
+ * no Cell in them) nothing the compute reads can change, so it runs once,
+ * untracked, and the apply writes it: no effect is made. Anything else gets
+ * the effect `bindEffect` would.
+ */
+export function bindPlain<T>(
+  compute: (prev: T | undefined) => T,
+  apply: (value: T, prev: T | undefined) => void,
+  keys: readonly string[],
+  base: unknown,
+): void {
+  if (!plainFields(base, keys)) {
+    bindEffect(compute, apply);
+    return;
+  }
+  apply(
+    untrack(() => compute(undefined)),
+    undefined,
+  );
+}
+
+function plainFields(base: unknown, keys: readonly string[]): boolean {
+  if (base === null || base === undefined) return true;
+  if (typeof base !== "object") return typeof base !== "function";
+  if ((base as Record<symbol, unknown>)[STORE_PROXY] !== undefined) return false;
+  const proto = Object.getPrototypeOf(base) as object | null;
+  if (proto !== Object.prototype && proto !== null && !Array.isArray(base)) return false;
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    const field = Object.getOwnPropertyDescriptor(base, key);
+    if (field !== undefined && field.get !== undefined) return false;
+    // Read rather than described: a props view answers its fields through a
+    // trap, and what it answers with is a Cell.
+    if (typeof (base as Record<string, unknown>)[key] === "function") return false;
+  }
+  return true;
 }
 
 /**
