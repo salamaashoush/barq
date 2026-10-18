@@ -162,6 +162,8 @@ there. The event carries the intersection (`object`, `point`, `distance`,
   three object, under a state whose `scene` is that object and which may give
   it its own camera or event layer.
 - `<Html position={[0, 1, 0]} center>` pins document content to a point of the
-  scene.
+  scene. Only the content's own box takes pointer events; `pointerEvents="none"`
+  lets them through to the canvas, and `wrapperClass` styles the element that
+  moves.
 - `applyProps(object, props)` writes props onto any object with the rules
   above.
