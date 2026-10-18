@@ -23,7 +23,7 @@ export {
   disposeScope,
   effectUnder,
   emitDiagnostic,
-  flushMount,
+  mountTree,
   getHydrationData,
   installClaimEffect,
   internalMemo,

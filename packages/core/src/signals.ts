@@ -793,15 +793,23 @@ export function rootScope(owner: Scope | null = null, renderId = ""): Scope {
   return root;
 }
 
+let mounting = 0;
+
 /**
- * The flush a renderer's `render` ends with, given the scope current where it
- * was called. From no scope, as a page's own mount is, it runs what the mount
- * queued. From inside one, as a component mounting its children into another
- * renderer's tree is, a pass is building that component and runs it at its
- * end: a flush there commits boundaries that pass has only half built.
+ * A renderer's `render`: build the tree, then flush. A tree mounted while
+ * another is being built, as a component mounting its children into another
+ * renderer does in its body, is that build's: its flush runs when the
+ * outermost mount's does, because a flush in the middle commits boundaries
+ * the outer build has only half made.
  */
-export function flushMount(caller: Scope | null): void {
-  if (caller === null) flush();
+export function mountTree(build: () => void): void {
+  mounting++;
+  try {
+    build();
+  } finally {
+    mounting--;
+  }
+  if (mounting === 0) flush();
 }
 
 // ============================================================================

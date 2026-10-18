@@ -37,7 +37,7 @@ import {
   wireIsMarked,
   withoutClaim,
   provideDefaultHost,
-  flushMount,
+  mountTree,
   type HydrationReport,
 } from "@barqjs/core/internal";
 import {
@@ -2754,7 +2754,6 @@ export function render(
         "`render(() => <App />, host)`.",
     });
   }
-  const caller = getOwner();
   const root = rootScope(options?.owner ?? null, options?.renderId);
   provideDefaultHost(root);
   ownRange(root, () => {
@@ -2766,10 +2765,11 @@ export function render(
     // A render called while a page hydrates, as a component mounting an
     // overlay does, builds here and claims nothing from the page's cursor.
     withoutClaim(() => {
-      runWithOwner(root, () => {
-        insertRendered(root, typeof block === "function" ? block() : block, container);
+      mountTree(() => {
+        runWithOwner(root, () => {
+          insertRendered(root, typeof block === "function" ? block() : block, container);
+        });
       });
-      flushMount(caller);
     });
   } catch (error) {
     unregisterDelegatedRoot(container);

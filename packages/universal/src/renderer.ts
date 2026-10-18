@@ -38,7 +38,7 @@ import {
   disposeScope,
   eachIn,
   effectUnder,
-  flushMount,
+  mountTree,
   internalMemo,
   isNodes,
   islandIn,
@@ -1004,7 +1004,6 @@ export function createRenderer<N extends object>(ops: HostOps<N>): Renderer<N> {
     root: N,
     options?: RenderOptions,
   ): () => void {
-    const caller = getOwner();
     const scope = rootScope(options?.owner ?? null, options?.renderId);
     // Provided on the root, so a component called inside this tree renders
     // through this host whatever the default is: an app that renders into the
@@ -1021,10 +1020,11 @@ export function createRenderer<N extends object>(ops: HostOps<N>): Renderer<N> {
     // A host has no server markup, so a tree mounted while a page hydrates,
     // as a canvas component mounting its scene does, claims nothing.
     withoutClaim(() => {
-      runWithOwner(scope, () => {
-        insert(root, typeof code === "function" ? code() : code);
+      mountTree(() => {
+        runWithOwner(scope, () => {
+          insert(root, typeof code === "function" ? code() : code);
+        });
       });
-      flushMount(caller);
     });
     return () => {
       disposeScope(scope);
