@@ -28,8 +28,11 @@ async function snapshot(page: Page): Promise<Map<string, { size: number; count: 
   await page.send("HeapProfiler.takeHeapSnapshot", { reportProgress: false })
   off()
   const data = JSON.parse(chunks.join("")) as {
-    snapshot: { meta: { node_fields: string[]; node_types: [string[]] } }
+    snapshot: {
+      meta: { node_fields: string[]; node_types: [string[]]; edge_fields: string[]; edge_types: [string[]] }
+    }
     nodes: number[]
+    edges: number[]
     strings: string[]
   }
   const fields = data.snapshot.meta.node_fields
@@ -39,10 +42,26 @@ async function snapshot(page: Page): Promise<Map<string, { size: number; count: 
   const sizeAt = fields.indexOf("self_size")
   const types = data.snapshot.meta.node_types[0]
   const out = new Map<string, { size: number; count: number }>()
+  const edgeWidth = data.snapshot.meta.edge_fields.length
+  const edgeTypes = data.snapshot.meta.edge_types[0]
+  const countAt = fields.indexOf("edge_count")
+  let edge = 0
   for (let i = 0; i < data.nodes.length; i += width) {
     const type = types[data.nodes[i + typeAt]]
     const name = type === "object" || type === "closure" ? data.strings[data.nodes[i + nameAt]] : `(${type})`
-    const key = `${type}:${name}`
+    const edges = data.nodes[i + countAt]
+    let shape = ""
+    if (name === "Object" || name === "system / Context") {
+      const names: string[] = []
+      for (let e = 0; e < edges && names.length < 6; e++) {
+        const at = edge + e * edgeWidth
+        const kind = edgeTypes[data.edges[at]]
+        if (kind === "property" || kind === "context") names.push(data.strings[data.edges[at + 1]])
+      }
+      shape = `{${names.join(",")}}`
+    }
+    edge += edges * edgeWidth
+    const key = `${type}:${name}${shape}`
     const entry = out.get(key) ?? { size: 0, count: 0 }
     entry.size += data.nodes[i + sizeAt]
     entry.count++

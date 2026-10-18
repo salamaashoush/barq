@@ -1,4 +1,3 @@
-/** @jsxImportSource @barqjs/three */
 import { For, Show, createSignal } from "@barqjs/core"
 import { useFrame } from "@barqjs/three"
 import * as THREE from "three"

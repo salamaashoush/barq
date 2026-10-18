@@ -45,11 +45,15 @@ export function afterRender(ready: () => boolean): Promise<number> {
  */
 export function task(work: () => void): Promise<number> {
   return new Promise((resolve) => {
-    setTimeout(() => {
-      const start = performance.now()
-      work()
-      resolve(start)
-    }, 0)
+    // Just after a frame, so both libraries start at the same point of the
+    // display's cycle and a wall time is not a reading of where it fell.
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        const start = performance.now()
+        work()
+        resolve(start)
+      }, 0)
+    })
   })
 }
 

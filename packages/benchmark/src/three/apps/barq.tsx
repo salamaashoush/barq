@@ -10,7 +10,7 @@ import {
   setInteractive,
   setMode,
   setStatics,
-} from "./barq.scene.tsx"
+} from "./barq-scene.tsx"
 import { afterRender, frames, items, renders, sweep, task, watch } from "./probe.ts"
 
 let state: RootState | null = null
