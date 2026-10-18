@@ -67,6 +67,7 @@ export const DOM_HOST: RangeHost<Node> = {
   toNodes: childToNodes,
   insertRange,
   removeRange: removeNodes,
+  owns: (node) => node instanceof Node,
 };
 
 function rowFirst(row: Row): Node | undefined {

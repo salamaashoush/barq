@@ -29,7 +29,6 @@ import {
 import type { Block, Cell } from "@barqjs/core";
 import {
   CONTEXT_MISS,
-  HOST,
   LIVE_EDGES,
   LIVE_ROWS,
   NOTHING,
@@ -48,12 +47,14 @@ import {
   lookupContext,
   nextActivation,
   offerDefaultHost,
+  provideHost,
   provideOn,
   revealIn,
   standingRow,
   standingRows,
   teardown,
   underScope,
+  withoutClaim,
   type RangeHost,
   type Row,
   type Site,
@@ -956,17 +957,23 @@ export function createRenderer<N extends object>(ops: HostOps<N>): Renderer<N> {
     // Provided on the root, so a component called inside this tree renders
     // through this host whatever the default is: an app that renders into the
     // document as well has two hosts, and only the root knows which is whose.
-    provideOn(scope, HOST, { host, sync: syncRows });
+    // A document renderer's control flow reads it too, for a component that
+    // compiled for the document and is rendered here.
+    provideHost(scope, { host, sync: syncRows });
     provideOn(scope, RENDER_ROOT, root);
     ownRange(scope, () => {
       for (let child = firstOf(root); child !== null; child = firstOf(root)) {
         removeNode(root, child);
       }
     });
-    runWithOwner(scope, () => {
-      insert(root, typeof code === "function" ? code() : code);
+    // A host has no server markup, so a tree mounted while a page hydrates,
+    // as a canvas component mounting its scene does, claims nothing.
+    withoutClaim(() => {
+      runWithOwner(scope, () => {
+        insert(root, typeof code === "function" ? code() : code);
+      });
+      flush();
     });
-    flush();
     return () => {
       disposeScope(scope);
     };

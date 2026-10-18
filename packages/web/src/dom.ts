@@ -36,6 +36,7 @@ import {
   inDocumentOrder,
   wireIsMarked,
   withoutClaim,
+  provideDefaultHost,
   type HydrationReport,
 } from "@barqjs/core/internal";
 import {
@@ -2753,6 +2754,7 @@ export function render(
     });
   }
   const root = rootScope(options?.owner ?? null, options?.renderId);
+  provideDefaultHost(root);
   ownRange(root, () => {
     container.textContent = "";
   });
@@ -3243,6 +3245,7 @@ function mount(
 ): () => void {
   if (!claiming) clearContainer(container);
   const root = rootScope(options?.owner ?? null, options?.renderId);
+  provideDefaultHost(root);
   ownRange(root, () => {
     clearContainer(container);
   });
