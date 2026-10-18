@@ -7,13 +7,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { Show } from "./components.ts";
-import {
-  HOST,
-  type RangeHost,
-  type SyncRows,
-  offerDefaultHost,
-  setDefaultHost,
-} from "./flow.ts";
+import { HOST, type RangeHost, type SyncRows, offerDefaultHost, setDefaultHost } from "./flow.ts";
 import { createRoot, getOwner, provideOn, runWithOwner } from "./signals.ts";
 import type { Scope } from "./scope.ts";
 
