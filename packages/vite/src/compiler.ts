@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
@@ -70,6 +70,18 @@ export interface BarqRenderer {
   moduleSource?: string;
 }
 
+/** One entry of `boundaries`. */
+export interface BarqBoundary {
+  /** The module the component is imported from. */
+  source: string;
+  /** The name it is exported under. */
+  name: string;
+  /** What its children compile for. */
+  target: "dom" | "universal";
+  /** The module its children import the renderer's helpers from. */
+  moduleSource: string;
+}
+
 export interface BarqCompilerOptions {
   /**
    * The renderer compiled code builds through. Under `target: "universal"`
@@ -100,6 +112,24 @@ export interface BarqCompilerOptions {
    * ```
    */
   renderers?: readonly BarqRenderer[];
+
+  /**
+   * Components whose JSX children compile for another renderer than the JSX
+   * around them, so one file can hold a document page and a scene graph. An
+   * element whose tag is the import `name` from `source` compiles for the
+   * file's own renderer, and its children for the entry's `target` and
+   * `moduleSource`. Boundaries nest.
+   *
+   * A dependency declares its own under `"barq": { "boundaries": [...] }` in
+   * its `package.json`, and the plugin adds those with `source` set to the
+   * package's name. An entry here wins over a declared one for the same
+   * `source` and `name`.
+   *
+   * ```ts
+   * boundaries: [{ source: "@acme/scene", name: "Canvas", target: "universal", moduleSource: "@acme/scene/renderer" }]
+   * ```
+   */
+  boundaries?: readonly BarqBoundary[];
 
   /**
    * Where the renderer-neutral half of the ABI and the components an author
@@ -377,6 +407,7 @@ interface NativeTransformOptions {
   moduleSource?: string;
   target?: string;
   renderers?: { include: string[]; target?: string; moduleSource?: string }[];
+  boundaries?: { source: string; name: string; target: string; moduleSource: string }[];
   coreSource?: string;
   serverSource?: string;
   startSource?: string;
@@ -643,6 +674,122 @@ export function packageDir(root: string, name: string): string | null {
   }
 }
 
+interface BoundaryManifest {
+  name?: unknown;
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
+  workspaces?: unknown;
+  barq?: { boundaries?: unknown };
+}
+
+function readManifest(file: string): BoundaryManifest | null {
+  try {
+    return JSON.parse(readFileSync(file, "utf8")) as BoundaryManifest;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The directories a `workspaces` field names: a plain path, or a path ending
+ * in `/*` for every directory under it.
+ */
+function workspaceDirs(root: string, workspaces: unknown): string[] {
+  const patterns = Array.isArray(workspaces)
+    ? workspaces
+    : workspaces !== null && typeof workspaces === "object"
+      ? (workspaces as { packages?: unknown }).packages
+      : undefined;
+  if (!Array.isArray(patterns)) return [];
+  const dirs: string[] = [];
+  for (const pattern of patterns) {
+    if (typeof pattern !== "string" || pattern.startsWith("!")) continue;
+    if (!pattern.endsWith("/*")) {
+      dirs.push(join(root, pattern));
+      continue;
+    }
+    const parent = join(root, pattern.slice(0, -2));
+    try {
+      for (const entry of readdirSync(parent, { withFileTypes: true })) {
+        if (entry.isDirectory()) dirs.push(join(parent, entry.name));
+      }
+    } catch {
+      // A pattern naming no directory names no package.
+    }
+  }
+  return dirs;
+}
+
+/** The entries one package declares under `barq.boundaries`, with itself as the source. */
+function declaredBoundaries(manifest: BoundaryManifest): BarqBoundary[] {
+  const declared = manifest.barq?.boundaries;
+  if (typeof manifest.name !== "string" || !Array.isArray(declared)) return [];
+  const source = manifest.name;
+  const found: BarqBoundary[] = [];
+  for (const entry of declared as unknown[]) {
+    if (entry === null || typeof entry !== "object") continue;
+    const { name, target, moduleSource } = entry as Record<string, unknown>;
+    if (
+      typeof name === "string" &&
+      (target === "dom" || target === "universal") &&
+      typeof moduleSource === "string"
+    ) {
+      found.push({ source, name, target, moduleSource });
+    }
+  }
+  return found;
+}
+
+/**
+ * Every boundary the project's dependencies and workspace packages declare in
+ * their `package.json`, under `"barq": { "boundaries": [...] }`. A package
+ * that ships a renderer knows which of its components host it, so an
+ * application that installs it compiles those components' children for it
+ * with no configuration.
+ */
+export function discoverBoundaries(root: string): BarqBoundary[] {
+  const manifest = readManifest(join(root, "package.json"));
+  if (manifest === null) return [];
+  const names = new Set([
+    ...Object.keys(manifest.dependencies ?? {}),
+    ...Object.keys(manifest.devDependencies ?? {}),
+    ...Object.keys(manifest.peerDependencies ?? {}),
+    ...Object.keys(manifest.optionalDependencies ?? {}),
+  ]);
+  const dirs = [
+    ...[...names].flatMap((name) => packageDir(root, name) ?? []),
+    ...workspaceDirs(root, manifest.workspaces),
+  ];
+  const found: BarqBoundary[] = [];
+  for (const dir of new Set(dirs)) {
+    const theirs = readManifest(join(dir, "package.json"));
+    if (theirs !== null) found.push(...declaredBoundaries(theirs));
+  }
+  return mergeBoundaries([], found);
+}
+
+/**
+ * The configured boundaries, then every discovered one the configuration does
+ * not already name: an entry for the same `source` and `name` is the
+ * application's decision, and it wins.
+ */
+export function mergeBoundaries(
+  configured: readonly BarqBoundary[],
+  discovered: readonly BarqBoundary[],
+): BarqBoundary[] {
+  const key = (entry: BarqBoundary): string => `${entry.source}\0${entry.name}`;
+  const taken = new Set<string>();
+  const merged: BarqBoundary[] = [];
+  for (const entry of [...configured, ...discovered]) {
+    if (taken.has(key(entry))) continue;
+    taken.add(key(entry));
+    merged.push(entry);
+  }
+  return merged;
+}
+
 /**
  * The nearest `package.json` above a file, and whether it is a barq package.
  *
@@ -708,6 +855,8 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
   let server: ViteDevServer | undefined;
   let serving = false;
   let root = process.cwd();
+  // The configured entries until `config` knows the root to discover from.
+  let boundaries = mergeBoundaries(compilerOptions.boundaries ?? [], []);
 
   // Per module, so a file that stops reporting clears its own rows. A terminal
   // warning fires once per transform and is gone after a reload; this is the
@@ -758,6 +907,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
       if (dev === undefined) dev = env.command === "serve" || env.mode !== "production";
       serving = env.command === "serve";
       root = resolve(config.root ?? process.cwd());
+      boundaries = mergeBoundaries(compilerOptions.boundaries ?? [], discoverBoundaries(root));
 
       // A barq package ships SOURCE, so Vite must not externalise it: node
       // would be handed the `.ts` the condition resolved to and refuse it.
@@ -1086,6 +1236,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
           moduleSource: compilerOptions.moduleSource,
           target: compilerOptions.target,
           renderers: rendererEntries(compilerOptions.renderers),
+          boundaries: boundaries.length > 0 ? boundaries : undefined,
           coreSource: compilerOptions.coreSource,
           serverSource: compilerOptions.serverSource,
           startSource: compilerOptions.startSource,

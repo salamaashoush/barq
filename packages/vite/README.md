@@ -93,6 +93,36 @@ the same here.
   });
   ```
 
+- `compiler.boundaries`: components whose JSX children compile for another
+  renderer, so one file can hold a page and a scene graph. A list of
+  `{ source, name, target, moduleSource }`: an element whose tag is the import
+  `name` from `source` (named, renamed, or a member of a namespace import)
+  compiles for the file's renderer, and its children for `target` and
+  `moduleSource`. Boundaries nest, so a document overlay inside a scene
+  switches back. The server renders the boundary component itself and none of
+  a universal boundary's children.
+
+  A package needs no entry here: the plugin reads every dependency's and
+  workspace package's `package.json` and adds what it declares, with `source`
+  set to the package's name. An entry in `compiler.boundaries` for the same
+  `source` and `name` wins.
+
+  ```json
+  {
+    "name": "@acme/scene",
+    "barq": {
+      "boundaries": [
+        { "name": "Canvas", "target": "universal", "moduleSource": "@acme/scene/renderer" },
+        { "name": "Html", "target": "dom", "moduleSource": "@barqjs/web" }
+      ]
+    }
+  }
+  ```
+
+  The component receives its children lazily, as it receives any children:
+  they are created where it reads `props.children`, so it renders them inside
+  a root of its own renderer.
+
 Where it differs from Solid's plugin: barq has one native compiler, so there is
 no `compiler: "babel"` switch and `compiler` holds what Solid calls `solid`.
 Server functions are `createServerFn` and live in `start`, which is what serves
