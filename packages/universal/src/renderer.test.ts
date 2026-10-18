@@ -86,7 +86,7 @@ describe("the node operations compiled code calls", () => {
   test("a host's attachRef hands a ref what it delivers, each time, and stops when the owner goes", () => {
     const deliveries = new Set<(value: unknown) => void>();
     let stopped = 0;
-    const host = createRenderer({
+    const custom = createRenderer({
       ...createTestHost().ops,
       attachRef(_node, deliver) {
         deliveries.add(deliver);
@@ -96,16 +96,16 @@ describe("the node operations compiled code calls", () => {
         };
       },
     });
-    const node = host.createElement("box");
+    const node = custom.createElement("box");
     const seen: unknown[] = [];
     const released: unknown[] = [];
     const holder: { current: unknown } = { current: null };
     createRoot((dispose) => {
-      host.setProp(node, "ref", (value: unknown) => {
+      custom.setProp(node, "ref", (value: unknown) => {
         seen.push(value);
         return () => released.push(value);
       });
-      host.setProp(node, "ref", holder);
+      custom.setProp(node, "ref", holder);
       expect(seen).toEqual([]);
       expect(holder.current).toBe(null);
       for (const deliver of deliveries.values()) deliver("first");

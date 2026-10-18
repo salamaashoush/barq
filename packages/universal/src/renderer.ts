@@ -206,6 +206,10 @@ export function createRenderer<N extends object>(ops: HostOps<N>): Renderer<N> {
     ops.createContainer === undefined
       ? () => ops.createElement("#container")
       : () => ops.createContainer!();
+  const attachRef =
+    ops.attachRef === undefined
+      ? undefined
+      : (node: N, deliver: (value: unknown) => void) => ops.attachRef!(node, deliver);
 
   // The text each text node was created with or last set to. The host has no
   // operation to read it back, and a hole that rewrites the same string keeps
@@ -769,7 +773,6 @@ export function createRenderer<N extends object>(ops: HostOps<N>): Renderer<N> {
   function ref(node: N, value: unknown): void {
     const owner = getOwner();
     const undo: (() => void)[] = [];
-    const attachRef = ops.attachRef;
     const one = (target: unknown): void => {
       refuseBlock(target, "A `ref`");
       if (typeof target === "function") {
