@@ -1124,6 +1124,76 @@ the reference backend from `<moduleSource>/interp`.
 
 ---
 
+## 8. Renderer boundaries
+
+A `boundaries` entry `{ source, name, target, moduleSource }` names a component whose children
+build through another renderer than the JSX around it. The element itself is an ordinary component
+call for the enclosing renderer; its JSX children and its `children` prop are compiled for the
+entry's.
+
+**Resolution.** `analysis/boundary.rs` runs inside P0, after the symbol table exists. A tag is a
+boundary when it resolves by `SymbolId` to a value import of `name` from `source`, under any local
+name, or when it is `ns.name` with `ns` a namespace import of `source`. A local binding of the same
+name, a parameter that shadows the import, and an import of the same name from another module are
+ordinary components. The scan records, per boundary, the source the children occupy (from the end
+of the opening tag to the start of the closing one, and the value of a `children` attribute) as
+`(start, end, renderer)` in `Module::boundaries`, outer ranges before the inner ones they hold.
+`Module::renderer_at(offset)` is the innermost range holding an offset, or `0`.
+
+**Renderers.** Renderer `0` is the module's own. Every other is a `(target, moduleSource)` pair,
+numbered from `1` in `Module::renderers` in the order the scan first meets it, so two boundaries
+into the same renderer share one. A document boundary whose `moduleSource` is the module's own maps
+to `0`, which is what lets `<Canvas><Html>…</Html></Canvas>` return to the module's document
+renderer. A module that writes no boundary has an empty table, and its emission is byte-identical
+to a compile without the option; `boundary.rs`'s corpus test compiles every fixture both ways under
+the client, hydratable and server settings and compares them.
+
+**Lowering and the passes.** A unit's elements are all intrinsic and a boundary is a component, so
+a whole unit sits on one side of every boundary: P1 stamps `Unit::renderer` from the unit's root
+span and applies the universal lowering rules (§7) to the units whose renderer is universal. P3
+Fold skips those units, P7 and P6 run only for units whose renderer walks the document, and P7's
+dedup keys a template by its renderer as well as its bytes, because the clone comes from that
+renderer's `template`. BARQ027 is raised for a universal unit wherever it sits, and BARQ026 is not
+raised inside a universal boundary's children, which no HTML parser reads.
+
+**Helpers.** `home(helper, target)` decides the home as before. A helper whose home is the
+renderer, emitted for renderer `n > 0`, is imported from that renderer's `moduleSource` under the
+module's local name with `$n` after it (`_$insert$1`), so the document's `insert` and a custom
+host's `insert` coexist in one module. `free_sigil` already guarantees the source spells no
+`<sigil><helper>` prefix, which covers the suffixed names. P4 asks the same question by span for
+the helpers it emits (`reveal`). Core's helpers are shared. `install` emits one import per source:
+the four groups it always had, then each renderer's group, merged with a group of the same source
+and attached to an import of that source the module already writes.
+
+**Codegen.** `Emit::enter(renderer)` switches `target`, `hydratable` and `detect` to the
+renderer's and `Emit::leave` restores them. Every place a unit, a free region or refused JSX is
+expanded enters the renderer that owns it: `unit` and `parts` by `Unit::renderer`, `region` and
+`jsx` by `renderer_at` on the span. A universal renderer is entered with `hydratable` and
+`detect` off, because a custom host claims nothing: no `HYDRATE` flag, no `child`/`sib` walk and
+no `hole` inside it. A document renderer entered inside one is emitted as the module's other
+document code is. Splicing asks the unit's own renderer. Templates are declared through their
+renderer's `template`, and the module's `delegateEvents` call goes through the module's renderer
+when it walks the document, else through the first document renderer a boundary entered.
+
+**Host imports.** A module that still calls one of core's host components (`calls_a_component`)
+loads the host of every renderer it holds: `<moduleSource>/host` for a document renderer and the
+module itself for a universal one, skipping a module a helper import already loads and a source
+the module already imports.
+
+**The server.** The string backend enters no renderer. Before harvest,
+`boundary::drop_server_children` removes a universal boundary's children and its `children`
+attribute from the program, so the server module calls the boundary with the props it was written
+with and none of the subtree (it never runs on the server, and the string backend has no lowering
+for a host it does not have). A document boundary's children render to the string like any other
+component's. On the hydrating client the boundary is a component call at a hole like any other,
+`_$hole(parent, anchor, () => Canvas({ … }))`, so the node it returns claims the server's markup
+in place, and its universal children are created only when it reads `props.children`. A document
+boundary inside them mounts with `@barqjs/web`'s `render` into a container of its own, often while
+the page is still hydrating; `render` builds under `withoutClaim`, so that subtree takes nothing
+from the page's cursor.
+
+---
+
 ## 9. Table generation, not transcription
 
 `classToString`, `diffStyleObjects`' kebab + px rules, `CSS_NUMBER_PROPS`, `DOM_PROPS`,

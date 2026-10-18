@@ -129,6 +129,19 @@ const { code, map, warnings, diagnostics } = transform(source, {
   default) and `moduleSource`, and the first entry that matches wins. A file
   an entry gives to the universal target is compiled without `ssr` and
   `hydratable`, which keep describing the build's document files.
+- `boundaries`: components whose children compile for another renderer than
+  the JSX around them, a list of `{ source, name, target, moduleSource }`. An
+  element whose tag resolves to the import `name` from `source` (a named
+  import, a renamed one, or a member of a namespace import, and never a local
+  binding of the same name) compiles for the module's renderer, and its JSX
+  children and `children` prop compile for the entry's `target` and
+  `moduleSource`. Boundaries nest. The children stay lazy, so the component
+  creates them where it reads `props.children`, inside its own renderer's
+  root. A module that writes no boundary compiles exactly as it would without
+  the option. Under `ssr` the boundary renders and a universal boundary's
+  children are left out of the server module; `@barqjs/vite` also reads
+  `"barq": { "boundaries": [...] }` from a dependency's `package.json`.
+  [DESIGN.md](./DESIGN.md#8-renderer-boundaries) has the emission.
 - `templates`: `false` emits `element()` calls instead of cloned templates.
 - `optimize`: `0` turns every optimisation off. The output is larger and slower
   and never behaves differently.
