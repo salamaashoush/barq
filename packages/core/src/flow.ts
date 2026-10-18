@@ -53,6 +53,7 @@ import {
   isBlock,
   onCleanup,
   ownRange,
+  bindOn,
   provideOn,
   readSlot,
   renderEffect,
@@ -148,6 +149,11 @@ export interface RangeHost<N extends object = object> {
   /** Put `nodes` in order before `before`, leaving any already in place where it is. */
   insertRange(parent: N, nodes: readonly N[], before: N | null): void;
   removeRange(nodes: readonly N[]): void;
+  /**
+   * Whether `node` is one this host makes. A region compiled for this host
+   * that builds through another renderer's refuses such a node.
+   */
+  owns?(node: object): boolean;
 }
 
 /**
@@ -207,6 +213,62 @@ export function setDefaultHost<N extends object>(host: RangeHost<N>, sync: SyncR
  */
 export function offerDefaultHost<N extends object>(host: RangeHost<N>, sync: SyncRows<N>): void {
   if (installed === null) setDefaultHost(host, sync);
+}
+
+/**
+ * The region redirect, installed the first time a root provides a renderer.
+ * Until then every region's check is one read of `null`, and a bundle whose
+ * renderer never provides one does not carry `elsewhere` at all.
+ */
+let redirect: ((own: RangeHost, construct: string) => Renderer | null) | null = null;
+
+/** Provides `renderer` to every construct under `scope`. */
+export function provideHost<N extends object>(scope: Scope, renderer: Renderer<N>): void {
+  redirect = elsewhere;
+  bindOn(scope, HOST, renderer);
+}
+
+/**
+ * Says that the tree under `scope` renders through the default host whatever
+ * an owner above it provides: a document overlay mounted from inside a custom
+ * renderer's tree is the document's again. It binds the value a lookup finds
+ * where nothing is bound, and only once some root has provided a renderer.
+ */
+export function provideDefaultHost(scope: Scope): void {
+  if (redirect !== null) bindOn(scope, HOST, CONTEXT_MISS);
+}
+
+/**
+ * The renderer a region compiled for `own` builds through instead: the one the
+ * root it renders under provides, when that is another.
+ *
+ * A component whose JSX holds no intrinsic element compiles for its module's
+ * renderer, yet it can be rendered inside another renderer's root, and its
+ * `branch` and `each` then build there. The host it returns refuses a node
+ * `own` makes, which is JSX in the region's body that compiled for `own` and
+ * that the other host could not hold. The region's wire flags need no
+ * clearing: a renderer's `render` builds under `withoutClaim`, where nothing
+ * reads them.
+ */
+function elsewhere(own: RangeHost, construct: string): Renderer | null {
+  // `construct` is a key of `WRITTEN_AS`, or the words for a construct that
+  // has no entry there.
+  const provided = lookupContext(getOwner(), HOST);
+  if (provided === CONTEXT_MISS) return null;
+  const { host, sync } = provided as Renderer;
+  if (host === own) return null;
+  const refuse = (nodes: object[]): object[] => {
+    for (const node of nodes) {
+      if (own.owns?.(node) === true) {
+        throw new Error(
+          `${WRITTEN_AS[construct] ?? construct} in another renderer's tree built a node that tree cannot ` +
+            "hold: claim its tags in that renderer's `intrinsics`.",
+        );
+      }
+    }
+    return nodes;
+  };
+  return { host: { ...host, toNodes: (child, scope) => refuse(host.toNodes(child, scope)) }, sync };
 }
 
 /** The renderer a component called here renders through. */
@@ -871,6 +933,10 @@ export function branchIn<K, N extends object>(
   flags = 0,
 ): N | N[] | null {
   const given = getOwner();
+  const there = redirect === null ? null : redirect(host, "branch");
+  if (there !== null) {
+    host = there.host as unknown as RangeHost<N>;
+  }
   // The key ACCESSOR, not the key's value.
   //
   // A Block here is a mistimed construction and the guard is right. The VALUE
@@ -955,6 +1021,11 @@ export function eachIn<T, N extends object>(
   fallback?: Block<unknown> | null,
 ): N | N[] | null {
   const given = getOwner();
+  const there = redirect === null ? null : redirect(host, "each");
+  if (there !== null) {
+    host = there.host;
+    sync = there.sync;
+  }
   const keyOf = keyMode<T>(carrier);
   // The branded case is refused here. The laundered one, `() => aBlock`, is
   // only visible in what the source YIELDS, so the read is wrapped: one closure
@@ -1294,6 +1365,10 @@ export function boundaryIn<N extends object>(
   on?: Cell<unknown>,
 ): N | N[] | null {
   const given = getOwner();
+  const there = redirect === null ? null : redirect(host, "boundary");
+  if (there !== null) {
+    host = there.host as unknown as RangeHost<N>;
+  }
   if (on !== undefined) cellSlot(on, "Loading.on");
   const { site, out } = siteFor(host, parent, anchor);
   claimSite(site, parent, anchor, flags, "boundary");
@@ -1645,6 +1720,10 @@ export function islandIn<N extends object>(
   block: Block<unknown>,
   flags = 0,
 ): N | null {
+  const there = redirect === null ? null : redirect(host, "a `<NoHydration>`");
+  if (there !== null) {
+    host = there.host as unknown as RangeHost<N>;
+  }
   const site: Site = { host, parent, anchor };
   if (hydrating()) {
     // BY ADDRESS, exactly as `hole` claims: inside a compiled template this
@@ -1692,6 +1771,10 @@ export function revealIn<N extends object>(
   block: Block<unknown>,
 ): N[] {
   const given = getOwner();
+  const there = redirect === null ? null : redirect(host, "a `<Reveal>`");
+  if (there !== null) {
+    host = there.host as unknown as RangeHost<N>;
+  }
   return createRevealOrder(
     () => {
       // The group's scope is the engine's; say so to the ownership trace.

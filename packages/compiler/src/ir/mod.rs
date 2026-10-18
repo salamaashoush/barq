@@ -12,7 +12,8 @@ pub use address::{Address, Position, PositionKind, RefDef, RefPlan, Step};
 pub use expr::{ExprEntry, ExprSrc, ExprTable};
 pub use intern::{Interner, NameFlags, NameRow, TagFlags, TagRow, event_name_of, tag_flags};
 pub use module::{
-    Hoisted, LineIndex, Mappings, Module, Root, Site, TemplateMeta, TemplateRow, Uids, Unit,
+    Hoisted, LineIndex, Mappings, Module, Renderer, Root, Site, TemplateMeta, TemplateRow, Uids,
+    Unit, renderer_in,
 };
 pub use patch::{Anchor, Chan, Diff, HandlerRef, InsertPlan, Op, Patch};
 pub use react::{BIT_OVERFLOW, Const, DepSet, FreeVars, React, Rx, Shape, Thunk};

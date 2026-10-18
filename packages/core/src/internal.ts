@@ -61,6 +61,8 @@ export {
   longestIncreasingSubsequence,
   nextActivation,
   offerDefaultHost,
+  provideDefaultHost,
+  provideHost,
   revealIn,
   setDefaultHost,
   standingRow,

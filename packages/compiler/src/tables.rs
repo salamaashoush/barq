@@ -48,6 +48,167 @@ pub fn is_math_tag(tag: &str) -> bool {
     MATH_TAGS.binary_search(&tag).is_ok()
 }
 
+/// Every element name the HTML Standard defines, from its element index, and
+/// the obsolete ones its parser still knows by name (§16.2, "Non-conforming
+/// features"): a page may write either, and the parser gives both meaning.
+const HTML_TAGS: [&str; 143] = [
+    "a",
+    "abbr",
+    "acronym",
+    "address",
+    "applet",
+    "area",
+    "article",
+    "aside",
+    "audio",
+    "b",
+    "base",
+    "basefont",
+    "bdi",
+    "bdo",
+    "bgsound",
+    "big",
+    "blink",
+    "blockquote",
+    "body",
+    "br",
+    "button",
+    "canvas",
+    "caption",
+    "center",
+    "cite",
+    "code",
+    "col",
+    "colgroup",
+    "data",
+    "datalist",
+    "dd",
+    "del",
+    "details",
+    "dfn",
+    "dialog",
+    "dir",
+    "div",
+    "dl",
+    "dt",
+    "em",
+    "embed",
+    "fieldset",
+    "figcaption",
+    "figure",
+    "font",
+    "footer",
+    "form",
+    "frame",
+    "frameset",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "head",
+    "header",
+    "hgroup",
+    "hr",
+    "html",
+    "i",
+    "iframe",
+    "image",
+    "img",
+    "input",
+    "ins",
+    "isindex",
+    "kbd",
+    "keygen",
+    "label",
+    "legend",
+    "li",
+    "link",
+    "listing",
+    "main",
+    "map",
+    "mark",
+    "marquee",
+    "menu",
+    "menuitem",
+    "meta",
+    "meter",
+    "multicol",
+    "nav",
+    "nextid",
+    "nobr",
+    "noembed",
+    "noframes",
+    "noscript",
+    "object",
+    "ol",
+    "optgroup",
+    "option",
+    "output",
+    "p",
+    "param",
+    "picture",
+    "plaintext",
+    "pre",
+    "progress",
+    "q",
+    "rb",
+    "rp",
+    "rt",
+    "rtc",
+    "ruby",
+    "s",
+    "samp",
+    "script",
+    "search",
+    "section",
+    "select",
+    "selectedcontent",
+    "slot",
+    "small",
+    "source",
+    "spacer",
+    "span",
+    "strike",
+    "strong",
+    "style",
+    "sub",
+    "summary",
+    "sup",
+    "table",
+    "tbody",
+    "td",
+    "template",
+    "textarea",
+    "tfoot",
+    "th",
+    "thead",
+    "time",
+    "title",
+    "tr",
+    "track",
+    "tt",
+    "u",
+    "ul",
+    "var",
+    "video",
+    "wbr",
+    "xmp",
+];
+
+#[inline]
+pub fn is_html_tag(tag: &str) -> bool {
+    HTML_TAGS.binary_search(&tag).is_ok()
+}
+
+/// An element name the document gives meaning to, in any of its three
+/// namespaces. SVG's `a`, `script`, `style` and `title` are HTML's names too.
+#[inline]
+pub fn is_document_tag(tag: &str) -> bool {
+    is_html_tag(tag) || is_svg_tag(tag) || is_math_tag(tag)
+}
+
 /// Written as a PROPERTY by `setElementAttr`, so a literal value may never be
 /// folded into the template HTML: that would set only the default attribute and
 /// diverge on a dirty form field.
@@ -286,6 +447,67 @@ mod tests {
         }
         assert_eq!(delegated_index("beforeinput"), Some(0));
         assert_eq!(delegated_index("mouseenter"), None);
+    }
+
+    #[test]
+    fn the_document_element_names_are_sorted_and_cover_each_namespace() {
+        for table in [&HTML_TAGS[..], &MATH_TAGS[..]] {
+            assert!(table.windows(2).all(|pair| pair[0] < pair[1]), "{table:?}");
+        }
+        for tag in ["div", "search", "selectedcontent", "xmp", "image", "clipPath", "mfrac"] {
+            assert!(is_document_tag(tag), "{tag}");
+        }
+        for tag in ["mesh", "boxGeometry", "clippath", "my-element"] {
+            assert!(!is_document_tag(tag), "{tag}");
+        }
+    }
+
+    /// The names a three.js renderer exposes, lowercased the way its JSX
+    /// spells a class (`BoxGeometry` is `<boxGeometry>`), that the document
+    /// also has. A tree rooted at one of these is the document's unless
+    /// something under it is the renderer's alone.
+    #[test]
+    fn the_scene_graph_names_the_document_also_has() {
+        const THREE: [&str; 36] = [
+            "ambientLight",
+            "audio",
+            "audioListener",
+            "bone",
+            "boxGeometry",
+            "bufferGeometry",
+            "camera",
+            "color",
+            "directionalLight",
+            "fog",
+            "group",
+            "instancedMesh",
+            "light",
+            "line",
+            "lineBasicMaterial",
+            "lineLoop",
+            "lineSegments",
+            "mesh",
+            "meshBasicMaterial",
+            "meshStandardMaterial",
+            "object3D",
+            "orthographicCamera",
+            "path",
+            "perspectiveCamera",
+            "pointLight",
+            "points",
+            "positionalAudio",
+            "scene",
+            "shape",
+            "skinnedMesh",
+            "source",
+            "sphereGeometry",
+            "spotLight",
+            "sprite",
+            "texture",
+            "videoTexture",
+        ];
+        let shared: Vec<&str> = THREE.into_iter().filter(|tag| is_document_tag(tag)).collect();
+        assert_eq!(shared, vec!["audio", "line", "path", "source"]);
     }
 
     #[test]

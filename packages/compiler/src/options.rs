@@ -265,6 +265,56 @@ pub struct RendererEntry {
     pub module_source: Option<String>,
 }
 
+/// One entry of `boundaries`: a component whose JSX children render through
+/// another renderer than the JSX around it, the way a canvas component hosts a
+/// scene graph inside a document.
+#[napi(object)]
+#[derive(Debug, Clone, Default)]
+pub struct BoundaryEntry {
+    /// The module the component is imported from.
+    pub source: String,
+    /// The name it is exported under.
+    pub name: String,
+    /// `"dom"` or `"universal"`: what its children compile for.
+    pub target: String,
+    /// The module its children import the renderer's helpers from.
+    pub module_source: String,
+}
+
+/// A resolved `boundaries` entry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Boundary {
+    pub source: String,
+    pub name: String,
+    pub target: RenderTarget,
+    pub module_source: String,
+}
+
+/// One entry of `intrinsics`: lowercase tags a renderer claims, so a JSX tree
+/// rooted at one of them builds through that renderer wherever it is written.
+#[napi(object)]
+#[derive(Debug, Clone, Default)]
+pub struct IntrinsicEntry {
+    pub tags: Vec<String>,
+    /// Also claim a lowercase tag without a hyphen that no renderer names and
+    /// the document does not have.
+    /// @default false
+    pub claim_unknown: Option<bool>,
+    /// `"dom"` or `"universal"`.
+    pub target: String,
+    /// The module the claimed elements import the renderer's helpers from.
+    pub module_source: String,
+}
+
+/// A resolved `intrinsics` entry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Intrinsic {
+    pub tags: Vec<String>,
+    pub claim_unknown: bool,
+    pub target: RenderTarget,
+    pub module_source: String,
+}
+
 /// `autoComputed` and the three component NAME LISTS the deleted Babel plugin
 /// took are not here and will not be. Nothing in this compiler could read them —
 /// every component and every reactive read resolves by `SymbolId` in P0,
@@ -291,6 +341,15 @@ pub struct TransformOptions {
     /// `moduleSource`, `ssr` and `hydratable` say for the rest of the build.
     /// The first entry that matches wins.
     pub renderers: Option<Vec<RendererEntry>>,
+    /// Components whose children compile for another renderer. A JSX element
+    /// whose tag is the import `name` from `source` compiles for the module's
+    /// own target, and its children for the entry's `target` and
+    /// `moduleSource`. Boundaries nest.
+    pub boundaries: Option<Vec<BoundaryEntry>>,
+    /// Intrinsic tags a renderer claims. A tree of intrinsic elements outside
+    /// every boundary whose root tag one entry claims, and the document does
+    /// not have, compiles for that entry's `target` and `moduleSource`.
+    pub intrinsics: Option<Vec<IntrinsicEntry>>,
     /// Module source for the helpers every target shares and for the
     /// components and primitives an author imports.
     /// @default `@barqjs/core`
@@ -433,6 +492,8 @@ pub const OPTION_KEYS: &[&str] = &[
     "moduleSource",
     "target",
     "renderers",
+    "boundaries",
+    "intrinsics",
     "coreSource",
     "serverSource",
     "startSource",
@@ -489,6 +550,17 @@ pub struct ResolvedOptions {
     pub universal_conflicts: Vec<&'static str>,
     /// A `target` this compiler does not have, reported and treated as `dom`.
     pub unknown_target: Option<String>,
+    /// The `boundaries` entries whose target this compiler has.
+    pub boundaries: Vec<Boundary>,
+    /// The `name` of every `boundaries` entry whose target this compiler does
+    /// not have. Each is reported, and its children compile for the target
+    /// around them.
+    pub unknown_boundary_targets: Vec<String>,
+    /// The `intrinsics` entries whose target this compiler has.
+    pub intrinsics: Vec<Intrinsic>,
+    /// The `target` of every `intrinsics` entry this compiler does not have.
+    /// Each is reported, and its tags are claimed by no renderer.
+    pub unknown_intrinsic_targets: Vec<String>,
     pub core_source: String,
     pub server_source: String,
     pub start_source: String,
@@ -531,6 +603,10 @@ impl Default for ResolvedOptions {
             target: RenderTarget::Dom,
             universal_conflicts: Vec::new(),
             unknown_target: None,
+            boundaries: Vec::new(),
+            unknown_boundary_targets: Vec::new(),
+            intrinsics: Vec::new(),
+            unknown_intrinsic_targets: Vec::new(),
             core_source: DEFAULT_CORE_SOURCE.to_string(),
             server_source: DEFAULT_SERVER_SOURCE.to_string(),
             start_source: DEFAULT_START_SOURCE.to_string(),
@@ -637,6 +713,32 @@ impl TransformOptions {
                 }
             }
         }
+        let mut boundaries = Vec::new();
+        let mut unknown_boundary_targets = Vec::new();
+        for entry in self.boundaries.unwrap_or_default() {
+            match RenderTarget::parse(&entry.target) {
+                Some(target) => boundaries.push(Boundary {
+                    source: entry.source,
+                    name: entry.name,
+                    target,
+                    module_source: entry.module_source,
+                }),
+                None => unknown_boundary_targets.push(entry.name),
+            }
+        }
+        let mut intrinsics = Vec::new();
+        let mut unknown_intrinsic_targets = Vec::new();
+        for entry in self.intrinsics.unwrap_or_default() {
+            match RenderTarget::parse(&entry.target) {
+                Some(target) => intrinsics.push(Intrinsic {
+                    tags: entry.tags,
+                    claim_unknown: entry.claim_unknown.unwrap_or(false),
+                    target,
+                    module_source: entry.module_source,
+                }),
+                None => unknown_intrinsic_targets.push(entry.target),
+            }
+        }
         ResolvedOptions {
             filename: self.filename,
             sourcemap: self.sourcemap.unwrap_or(false),
@@ -644,6 +746,10 @@ impl TransformOptions {
             target,
             universal_conflicts,
             unknown_target,
+            boundaries,
+            unknown_boundary_targets,
+            intrinsics,
+            unknown_intrinsic_targets,
             core_source: self.core_source.unwrap_or_else(|| DEFAULT_CORE_SOURCE.to_string()),
             server_source: self.server_source.unwrap_or_else(|| DEFAULT_SERVER_SOURCE.to_string()),
             start_source: self.start_source.unwrap_or_else(|| DEFAULT_START_SOURCE.to_string()),
@@ -904,6 +1010,32 @@ mod tests {
         assert_eq!(unmatched.target, RenderTarget::Dom);
         assert_eq!(unmatched.module_source, "@barqjs/web");
         assert!(unmatched.ssr && unmatched.hydratable);
+    }
+
+    #[test]
+    fn a_boundary_entry_resolves_and_an_unknown_target_is_named() {
+        let entry = |name: &str, target: &str| BoundaryEntry {
+            source: "@barqjs/three".into(),
+            name: name.into(),
+            target: target.into(),
+            module_source: "@barqjs/three/renderer".into(),
+        };
+        let resolved = TransformOptions {
+            boundaries: Some(vec![entry("Canvas", "universal"), entry("Html", "canvas")]),
+            ..TransformOptions::default()
+        }
+        .resolve();
+        assert_eq!(
+            resolved.boundaries,
+            vec![Boundary {
+                source: "@barqjs/three".into(),
+                name: "Canvas".into(),
+                target: RenderTarget::Universal,
+                module_source: "@barqjs/three/renderer".into(),
+            }]
+        );
+        assert_eq!(resolved.unknown_boundary_targets, vec!["Html".to_string()]);
+        assert_eq!(resolved.target, RenderTarget::Dom);
     }
 
     #[test]

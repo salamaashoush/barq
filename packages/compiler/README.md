@@ -129,6 +129,32 @@ const { code, map, warnings, diagnostics } = transform(source, {
   default) and `moduleSource`, and the first entry that matches wins. A file
   an entry gives to the universal target is compiled without `ssr` and
   `hydratable`, which keep describing the build's document files.
+- `boundaries`: components whose children compile for another renderer than
+  the JSX around them, a list of `{ source, name, target, moduleSource }`. An
+  element whose tag resolves to the import `name` from `source` (a named
+  import, a renamed one, or a member of a namespace import, and never a local
+  binding of the same name) compiles for the module's renderer, and its JSX
+  children and `children` prop compile for the entry's `target` and
+  `moduleSource`. Boundaries nest. The children stay lazy, so the component
+  creates them where it reads `props.children`, inside its own renderer's
+  root. A module that writes no boundary compiles exactly as it would without
+  the option. Under `ssr` the boundary renders and a universal boundary's
+  children are left out of the server module; `@barqjs/vite` also reads
+  `"barq": { "boundaries": [...] }` from a dependency's `package.json`.
+  [DESIGN.md](./DESIGN.md#8-renderer-boundaries-and-claimed-intrinsics) has the emission.
+- `intrinsics`: tags a renderer claims, a list of
+  `{ tags, claimUnknown, target, moduleSource }`. Outside every boundary, a
+  tree of intrinsic elements whose root tag one entry claims, and the
+  document does not have, compiles for that entry's renderer wherever it is
+  written, so `function Box() { return <mesh /> }` is a scene object in a page
+  file. A tag the document also has (`line`, `audio`, `path`, `source`) is the
+  renderer's only when the tree under it holds a tag that renderer alone
+  claims, and never under an `<svg>`. With `claimUnknown`, an entry also takes
+  any lowercase tag without a hyphen that no entry names and the document does
+  not have. A tag with a hyphen is always the document's. JSX written inside a
+  claimed tree follows it, and so does a component such as `<Show>` whose JSX
+  all went to one renderer. Two entries claiming one tag is
+  [BARQ029](./docs/BARQ029.md), and the tree stays the document's.
 - `templates`: `false` emits `element()` calls instead of cloned templates.
 - `optimize`: `0` turns every optimisation off. The output is larger and slower
   and never behaves differently.

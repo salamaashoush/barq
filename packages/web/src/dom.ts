@@ -36,6 +36,7 @@ import {
   inDocumentOrder,
   wireIsMarked,
   withoutClaim,
+  provideDefaultHost,
   type HydrationReport,
 } from "@barqjs/core/internal";
 import {
@@ -2753,15 +2754,21 @@ export function render(
     });
   }
   const root = rootScope(options?.owner ?? null, options?.renderId);
+  provideDefaultHost(root);
   ownRange(root, () => {
     container.textContent = "";
   });
   registerDelegatedRoot(container);
   try {
-    runWithOwner(root, () => {
-      insertRendered(root, typeof block === "function" ? block() : block, container);
+    // The container was just emptied, so nothing in it came from the server.
+    // A render called while a page hydrates, as a component mounting an
+    // overlay does, builds here and claims nothing from the page's cursor.
+    withoutClaim(() => {
+      runWithOwner(root, () => {
+        insertRendered(root, typeof block === "function" ? block() : block, container);
+      });
+      flush();
     });
-    flush();
   } catch (error) {
     unregisterDelegatedRoot(container);
     throw error;
@@ -3238,6 +3245,7 @@ function mount(
 ): () => void {
   if (!claiming) clearContainer(container);
   const root = rootScope(options?.owner ?? null, options?.renderId);
+  provideDefaultHost(root);
   ownRange(root, () => {
     clearContainer(container);
   });

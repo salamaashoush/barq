@@ -1,11 +1,11 @@
-# BARQ027: A `bind:` or a form `action` is written in a module compiled for a custom renderer
+# BARQ027: A `bind:` or a form `action` is written for a custom renderer
 
 **Level:** error · [all codes](README.md)
 
 ## Message
 
-> `bind:` is a two-way binding to a document form control, and this module is compiled for
-> a custom renderer, which has none. Pass the value as a prop and write it back from the
+> `bind:` is a two-way binding to a document form control, and this element is built by a
+> custom renderer, which has none. Pass the value as a prop and write it back from the
 > host's own event: `value={text()}` with `onChange={(next) => setText(next)}`.
 
 For `action` on a `<form>`, the message says that the action is a document form's submit
@@ -30,9 +30,10 @@ export const Field = (props) => (
 
 ## Why this rule exists
 
-A module compiled for a custom renderer (`target: "universal"`, or a file a `renderers`
-entry gives to one) writes every attribute and event as one `setProp` call on the host's
-node, and the host decides what a name means. `bind:` needs two facts only a document form
+An element a custom renderer builds (in a module compiled with `target: "universal"`, a
+file a `renderers` entry gives to one, or the children of a `boundaries` component whose
+target is `universal`) has every attribute and event written as one `setProp` call on the
+host's node, and the host decides what a name means. `bind:` needs two facts only a document form
 control has: the property a user edits (`value`, `checked`, `valueAsNumber`) and the event
 that reports the edit (`input`, `change`). A form `action` is the document's submit,
 which a scene graph or a terminal does not have. Neither has a meaning the compiler could

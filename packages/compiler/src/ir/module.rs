@@ -36,6 +36,9 @@ pub struct Unit<'a> {
     /// assigned by P7; `NONE` until then
     pub template: TemplateId,
     pub site: Site,
+    /// The renderer this unit builds through: `0` is the module's own, and
+    /// any other is [`Module::renderer`]'s, entered at a boundary.
+    pub renderer: u8,
 }
 
 impl<'a> Unit<'a> {
@@ -51,6 +54,7 @@ impl<'a> Unit<'a> {
             spread_later: AVec::new_in(&allocator),
             template: NONE,
             site,
+            renderer: 0,
         }
     }
 
@@ -180,6 +184,37 @@ pub struct Module<'a> {
     /// the import would not match the call.
     pub helpers: [&'a str; crate::codegen::HELPER_COUNT],
     pub used_helpers: [bool; crate::codegen::HELPER_COUNT],
+    /// What renderer `0`, the module's own, compiles for.
+    pub target: crate::codegen::Target,
+    /// Every other renderer a boundary or a claimed intrinsic tree in this
+    /// module enters, as renderer `index + 1`. Empty for a module that enters
+    /// none, which is what keeps its emission exactly what it was without the
+    /// options.
+    pub renderers: Vec<Renderer<'a>>,
+    /// `(start, end, renderer)`: the source that builds through a renderer
+    /// other than the one around it. Ranges nest; the innermost holding an
+    /// offset decides.
+    pub renderer_ranges: Vec<(u32, u32, u8)>,
+}
+
+/// [`Module::renderer_at`] over a borrowed table, for a pass that holds the
+/// module's fields apart.
+pub fn renderer_in(ranges: &[(u32, u32, u8)], offset: u32) -> u8 {
+    ranges
+        .iter()
+        .filter(|(start, end, _)| *start <= offset && offset < *end)
+        .min_by_key(|(start, end, _)| end - start)
+        .map_or(0, |(_, _, renderer)| *renderer)
+}
+
+/// A renderer a boundary enters. Its helpers that live in the renderer's own
+/// module get local names of their own, because the module's renderer may
+/// import the same helper under the same name.
+pub struct Renderer<'a> {
+    pub target: crate::codegen::Target,
+    pub source: &'a str,
+    pub helpers: [&'a str; crate::codegen::HELPER_COUNT],
+    pub used: [bool; crate::codegen::HELPER_COUNT],
 }
 
 pub struct TemplateRow {
@@ -194,6 +229,8 @@ pub struct TemplateMeta {
     /// `<svg xmlns>` and returns its first child
     pub wrapped: bool,
     pub span: Span,
+    /// The renderer whose `template` parses it.
+    pub renderer: u8,
 }
 
 /// Names the compiler may emit without colliding with a user binding, and the
@@ -661,6 +698,22 @@ impl<'a> Module<'a> {
             detached_roots: false,
             helpers: crate::codegen::helper_names(&crate::codegen::free_sigil(source), allocator),
             used_helpers: [false; crate::codegen::HELPER_COUNT],
+            target: crate::codegen::Target::Dom,
+            renderers: Vec::new(),
+            renderer_ranges: Vec::new(),
+        }
+    }
+
+    /// The renderer the source at `offset` builds through: the innermost
+    /// boundary whose children hold it, or the module's own.
+    pub fn renderer_at(&self, offset: u32) -> u8 {
+        renderer_in(&self.renderer_ranges, offset)
+    }
+
+    pub fn target_of(&self, renderer: u8) -> crate::codegen::Target {
+        match renderer {
+            0 => self.target,
+            other => self.renderers[other as usize - 1].target,
         }
     }
 

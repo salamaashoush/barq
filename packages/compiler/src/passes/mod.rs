@@ -34,11 +34,9 @@ pub fn run<'a>(
     target: Target,
 ) {
     let opt = options.opt;
+    module.target = target;
     classify::run(allocator, module);
-    // Folding writes a constant into the template's bytes, as text. A custom
-    // host has no template and is owed the value itself: `width={3}` is the
-    // number 3 there, not the string the attribute would hold.
-    if opt.fold && target != Target::Universal {
+    if opt.fold {
         fold::run(allocator, module);
     }
     // After P3, because target #8 asks whether a unit still has a patch — which
@@ -89,8 +87,9 @@ pub fn run<'a>(
     // The two guarded passes are artefacts of the DOM backend and nothing else
     // reads them: a `template()` is a parse and an address is a sibling walk.
     // P8b concatenates bytes and has neither. The DOM order is left
-    // exactly as it was.
-    if target.walks_the_dom() {
+    // exactly as it was. A boundary may enter the document from a custom
+    // renderer's module, and then its units are the ones that walk.
+    if target.walks_the_dom() || module.renderers.iter().any(|it| it.target.walks_the_dom()) {
         serialize::run(module, opt.dedup);
         address::run(allocator, module, opt.walk);
     }

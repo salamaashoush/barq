@@ -11,6 +11,13 @@ import {
 
 const PACKAGE_ROOT = join(import.meta.dir, "..");
 
+/** Two renderers that both claim `<mesh>`, which is what BARQ029 reports. */
+const CONTESTED_MESH = ["@acme/scene/renderer", "@acme/other/renderer"].map((moduleSource) => ({
+  tags: ["mesh"],
+  target: "universal",
+  moduleSource,
+}));
+
 interface Diagnostic {
   code?: string;
   severity: "note" | "warning" | "error";
@@ -333,6 +340,10 @@ describe("the diagnostic engine", () => {
         source: "export const V = () => <p>salama</p>;\n",
         options: { target: "universal", moduleSource: "./renderer.ts", ssr: true },
       },
+      BARQ029: {
+        source: "export const V = () => <mesh />;\n",
+        options: { intrinsics: CONTESTED_MESH },
+      },
     };
 
     const advertised = native
@@ -475,6 +486,7 @@ describe("the docs pages", () => {
     BARQ013: { routes: ["/", "/users", "/users/$id"] },
     BARQ027: { target: "universal", moduleSource: "./renderer.ts" },
     BARQ028: { target: "universal", moduleSource: "./renderer.ts", ssr: true },
+    BARQ029: { intrinsics: CONTESTED_MESH },
   };
 
   /**
@@ -483,6 +495,7 @@ describe("the docs pages", () => {
    */
   const FIXED_OPTIONS: Record<string, Record<string, unknown>> = {
     BARQ028: { target: "universal", moduleSource: "./renderer.ts" },
+    BARQ029: { intrinsics: CONTESTED_MESH.slice(0, 1) },
   };
 
   function section(page: string, heading: string): string | undefined {

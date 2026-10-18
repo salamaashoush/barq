@@ -1,4 +1,5 @@
 mod bind;
+pub mod boundary;
 pub mod link;
 pub mod migration;
 mod nesting;
@@ -71,6 +72,8 @@ pub fn bind<'a>(
     scope_ranges(&scoping, module);
     module.scoping = scoping;
     bind::classify(allocator, program, module, options);
+    module.target = crate::codegen::Target::of(options);
+    let custom = boundary::scan(allocator, program, module, options);
     // Not gated on `diagnostics`: markup the parser reshapes breaks every
     // server-rendered page that holds it, so a production build is where it
     // has to fail.
@@ -78,7 +81,7 @@ pub fn bind<'a>(
     // A custom renderer's tree is built by its host, which no HTML parser
     // stands in front of.
     if options.target != crate::options::RenderTarget::Universal {
-        let reshaped = nesting::check(allocator, program);
+        let reshaped = nesting::check(allocator, program, &custom);
         module.env.diagnostics.extend(reshaped);
     }
     if options.diagnostics {

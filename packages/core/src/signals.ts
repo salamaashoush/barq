@@ -824,6 +824,11 @@ export function provideOn(scope: Scope, key: string | symbol, value: unknown): v
   engineSetContext(channel(key), value, scope);
 }
 
+/** `provideOn` for a value the runtime binds itself, which is never a Block. */
+export function bindOn(scope: Scope, key: string | symbol, value: unknown): void {
+  engineSetContext(channel(key), value, scope);
+}
+
 export function lookupContext(scope: Scope | null, key: string | symbol): unknown {
   return scope === null ? CONTEXT_MISS : engineGetContext(channel(key), scope);
 }

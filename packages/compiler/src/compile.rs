@@ -470,6 +470,9 @@ fn compile_on_this_stack(
     // deferred body here. Ownership is ambient now — the runtime enters the
     // scope a body belongs to before invoking it — so a component is a function
     // of its props and nothing has to be threaded.
+    if module.target == codegen::Target::Ssr {
+        analysis::boundary::drop_server_children(&mut program, &module.scoping, options);
+    }
     harvest::run(&allocator, &mut program, &mut module);
     lower::lower(&allocator, source_text, options, &mut module);
 
@@ -589,11 +592,31 @@ fn compile_on_this_stack(
     // import cost 41.88x on the 100-row page.
     let target = codegen::Target::of(options);
 
+    for name in &options.unknown_boundary_targets {
+        warnings.push(Diagnostic::at(
+            Severity::Warning,
+            format!(
+                "The `boundaries` entry for `{name}` names a target this compiler does not \
+                 have, so its children compile for the target around them. The targets are: \
+                 dom, universal."
+            ),
+            filename,
+        ));
+    }
+    for target in &options.unknown_intrinsic_targets {
+        warnings.push(Diagnostic::at(
+            Severity::Warning,
+            format!(
+                "An `intrinsics` entry names `{target}`, which is not a compile target, so no \
+                 renderer claims its tags. The targets are: dom, universal."
+            ),
+            filename,
+        ));
+    }
+
     passes::run(&allocator, &mut module, options, target);
     warnings.extend(analysis_diagnostics(&module, filename, &mut lines));
-    if target == codegen::Target::Universal {
-        warnings.extend(document_only(&module, filename, &mut lines));
-    }
+    warnings.extend(document_only(&module, filename, &mut lines));
     let labels = template_labels(&module, &mut lines, options);
     // Templates are numbered by P7, so the position table is filled here —
     // still before codegen, which is the last stage that may touch a unit.
@@ -1117,15 +1140,18 @@ fn located(
 fn document_only(module: &Module<'_>, filename: &str, lines: &mut Lines<'_>) -> Vec<Diagnostic> {
     let mut found = Vec::new();
     for unit in &module.units {
+        if module.target_of(unit.renderer) != codegen::Target::Universal {
+            continue;
+        }
         for patch in &unit.patch {
             let message = match patch.op {
                 Op::Bind { .. } => "`bind:` is a two-way binding to a document form control, \
-                     and this module is compiled for a custom renderer, which has none. Pass the \
+                     and this element is built by a custom renderer, which has none. Pass the \
                      value as a prop and write it back from the host's own event: `value={text()}` \
                      with `onChange={(next) => setText(next)}`."
                     .to_string(),
                 Op::FormAction { .. } => "`action` on a `<form>` is a document form's submit \
-                     handler or URL, and this module is compiled for a custom renderer, which \
+                     handler or URL, and this element is built by a custom renderer, which \
                      submits nothing. Call the action from the host's own event instead: \
                      `onSubmit={() => save()}`."
                     .to_string(),
