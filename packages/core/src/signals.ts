@@ -793,6 +793,17 @@ export function rootScope(owner: Scope | null = null, renderId = ""): Scope {
   return root;
 }
 
+/**
+ * The flush a renderer's `render` ends with, given the scope current where it
+ * was called. From no scope, as a page's own mount is, it runs what the mount
+ * queued. From inside one, as a component mounting its children into another
+ * renderer's tree is, a pass is building that component and runs it at its
+ * end: a flush there commits boundaries that pass has only half built.
+ */
+export function flushMount(caller: Scope | null): void {
+  if (caller === null) flush();
+}
+
 // ============================================================================
 // Context
 // ============================================================================

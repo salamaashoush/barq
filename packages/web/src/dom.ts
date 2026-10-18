@@ -37,6 +37,7 @@ import {
   wireIsMarked,
   withoutClaim,
   provideDefaultHost,
+  flushMount,
   type HydrationReport,
 } from "@barqjs/core/internal";
 import {
@@ -2753,6 +2754,7 @@ export function render(
         "`render(() => <App />, host)`.",
     });
   }
+  const caller = getOwner();
   const root = rootScope(options?.owner ?? null, options?.renderId);
   provideDefaultHost(root);
   ownRange(root, () => {
@@ -2767,7 +2769,7 @@ export function render(
       runWithOwner(root, () => {
         insertRendered(root, typeof block === "function" ? block() : block, container);
       });
-      flush();
+      flushMount(caller);
     });
   } catch (error) {
     unregisterDelegatedRoot(container);
