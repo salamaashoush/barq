@@ -1232,3 +1232,13 @@ callback through because the two cases were indistinguishable.
 - `vite/test/compiler.test.ts`: the interp source is `@barqjs/web/interp`.
 - `core/src/dist-entries.test.ts` lists four entries: `./interp`, `./jsx-runtime` and
   `./jsx-dev-runtime` moved to web.
+
+## Universal target
+
+- `compiler/src/options.rs` `unknown_option_names_the_nearest_key`: the name with no near key is
+  `backend` where it was `target`, because `target` is now an option. Same assertion, same message
+  shape.
+- `compiler/test/diagnostics.test.ts`: `reachable` gains BARQ027 and BARQ028 inputs. The docs-page
+  test gains `PAGE_OPTIONS` for both and a `FIXED_OPTIONS` table holding BARQ028's corrected
+  options, since that code is about options and its fix is an option change. Every other page's
+  fixed examples still compile under that page's own options.
