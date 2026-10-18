@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Show, block, createSignal, flush, type JSXElement } from "@barqjs/core";
 import type * as THREE from "three";
 
-import { Ordered, Reader, Spinner, seen, setSpin } from "./fixtures/loop.scene.tsx";
+import { Ordered, Reader, Spinner, seen, setSpin } from "./fixtures/loop.tsx";
 import type { Instance } from "./instance.ts";
 import { advance, invalidate } from "./loop.ts";
 import { createElement, setProp } from "./renderer.ts";

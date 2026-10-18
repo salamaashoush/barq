@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createSignal, flush } from "@barqjs/core";
 import * as THREE from "three";
 
-import { FakeLoader, Graphed, Model, Suspended } from "./fixtures/loader.scene.tsx";
+import { FakeLoader, Graphed, Model, Suspended } from "./fixtures/loader.tsx";
 import { buildGraph, useLoader, useThree } from "./hooks.ts";
 import { manualFrames, mount, unmountAll, type Frames } from "./test-utils.ts";
 

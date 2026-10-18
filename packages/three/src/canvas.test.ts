@@ -2,8 +2,10 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createSignal, flush } from "@barqjs/core";
 import { render } from "@barqjs/web";
 
-import { App, renderers } from "./fixtures/app.tsx";
-import { labelX, setLabelText, setLabelX } from "./fixtures/overlay.scene.tsx";
+import * as THREE from "three";
+
+import { App, renderers, setInline } from "./fixtures/app.tsx";
+import { labelX, setLabelText, setLabelX } from "./fixtures/overlay.tsx";
 import type { RootState } from "./store.ts";
 import { manualFrames, type Frames } from "./test-utils.ts";
 
@@ -50,6 +52,23 @@ describe("<Canvas>", () => {
     expect(state().events.connected).toBe(wrapper);
     dispose();
     expect(state().scene.children).toHaveLength(0);
+  });
+
+  test("children written inline in the page compile for the scene and follow their signals", () => {
+    const { dispose, state } = mountApp();
+    const names = (): string[] =>
+      state()
+        .scene.children.filter((child) => child.name.startsWith("inline-"))
+        .map((child) => child.name);
+    expect(state().scene.children[0]).toBeInstanceOf(THREE.AmbientLight);
+    expect(names()).toEqual(["inline-a", "inline-b"]);
+    setInline(["b", "c"]);
+    flush();
+    frames.step();
+    expect(names()).toEqual(["inline-b", "inline-c"]);
+    dispose();
+    setInline(["a", "b"]);
+    flush();
   });
 
   test("a prop change configures the root again", () => {

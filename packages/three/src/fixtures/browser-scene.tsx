@@ -1,4 +1,3 @@
-/** @jsxImportSource @barqjs/three */
 import { createSignal } from "@barqjs/core";
 
 export const [color, setColor] = createSignal("#ff0000");

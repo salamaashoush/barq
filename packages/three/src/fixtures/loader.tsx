@@ -1,4 +1,3 @@
-/** @jsxImportSource @barqjs/three */
 import { Errored, Loading, type Accessor } from "@barqjs/core";
 import * as THREE from "three";
 

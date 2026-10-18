@@ -3,7 +3,7 @@ import { render } from "@barqjs/web";
 import { Canvas } from "../canvas.tsx";
 import { addAfterEffect } from "../loop.ts";
 import type { RootState } from "../store.ts";
-import { Fill, setColor } from "./browser.scene.tsx";
+import { Fill, setColor } from "./browser-scene.tsx";
 
 interface Probe {
   renders: number;

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { createSignal, flush } from "@barqjs/core";
 
-import { WithPortal, target } from "./fixtures/portal.scene.tsx";
+import { WithPortal, target } from "./fixtures/portal.tsx";
 import { manualFrames, mount, unmountAll, type Frames } from "./test-utils.ts";
 
 let frames: Frames;

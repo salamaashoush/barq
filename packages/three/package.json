@@ -79,7 +79,8 @@
     "@types/bun": "^1.4.3",
     "@types/three": "^0.186.0",
     "three": "^0.186.1",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4"
   },
   "peerDependencies": {
     "@barqjs/core": ">=0.1.0",

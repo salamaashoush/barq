@@ -1,4 +1,3 @@
-/** @jsxImportSource @barqjs/three */
 import { Show, type Accessor } from "@barqjs/core";
 import * as THREE from "three";
 

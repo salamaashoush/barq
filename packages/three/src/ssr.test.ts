@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { block, flush, type JSXElement } from "@barqjs/core";
 import { renderAndHydrate } from "@barqjs/testing";
 
-import { Box } from "./fixtures/basic.scene.tsx";
+import { Overlay } from "./fixtures/overlay.tsx";
 import type { RootState } from "./store.ts";
 import { fakeRenderer, manualFrames } from "./test-utils.ts";
 
@@ -67,7 +67,7 @@ test("the server writes the canvas's markup, and the client claims it and mounts
         onCreated: () => (created: RootState) => {
           state = created;
         },
-        children: block(() => Box()),
+        children: block(() => Overlay()),
       }),
   });
   flush();
@@ -81,6 +81,10 @@ test("the server writes the canvas's markup, and the client claims it and mounts
   expect(state).not.toBe(null);
   expect(state!.gl.domElement).toBe(canvas);
   expect(state!.scene.getObjectByName("box")).toBeDefined();
+  // Html places its content over the canvas once the scene has drawn.
+  await Promise.resolve();
+  frames.step();
+  expect(result.container.querySelector("span.label")?.textContent).toBe("salama");
   result.unmount();
   frames.restore();
 });
