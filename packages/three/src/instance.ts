@@ -17,6 +17,7 @@ import * as THREE from "three";
 
 import { type ConstructorRepresentation } from "./catalogue.ts";
 import type { EventHandlers } from "./events.ts";
+import { sortChildren } from "./loop.ts";
 import { applyProp, defaultOf, pathOf, resolve } from "./props.ts";
 import type { RootState } from "./store.ts";
 
@@ -242,7 +243,11 @@ function unordered(parent: Instance): void {
   }
   if (parent.queued) return;
   parent.queued = true;
-  root.internal.unordered.push(parent);
+  const list = root.internal.unordered;
+  list.push(parent);
+  // Restored once the current batch of inserts is over, as well as before a
+  // frame or a raycast, so code that reads `children` later sees them in order.
+  if (list.length === 1) queueMicrotask(() => sortChildren(root));
 }
 
 // ---------------------------------------------------------------------------
