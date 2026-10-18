@@ -1163,6 +1163,25 @@ is what makes `<Show when={on()}><mesh /></Show>` call the scene renderer's `bra
 the document's. Each tree is decided by its root alone, so `<><mesh /><div /></>` builds the two
 through two renderers.
 
+**Control flow that names no element.** `function Scene() { return <For each={xs()}>{(x) => <Box
+x={x} />}</For> }` holds no intrinsic tag, so nothing at compile time says which renderer it is
+for: it compiles for the module's own, and the emission is the same with or without the options.
+Core's region entry points settle it at run time. A universal `render` provides its renderer
+under `HOST` with `provideHost`, which the first time also installs a module-level redirect.
+`branchIn`, `eachIn`, `boundaryIn`, `islandIn` and `revealIn` read that redirect first: until
+a root has provided a renderer it is `null`, a document app pays that one read per region and
+nothing else, and a bundle with no custom renderer does not carry the redirect's body. Once
+installed, it looks `HOST` up on the current owner, and when that renderer is not the one the
+region was compiled for, the region builds through the found host (and, for `eachIn`, its list
+reorder) with the same arguments. The compiled call is unchanged, so the emission stays
+byte-identical. A host has no server markup, so a universal `render` builds under `withoutClaim`
+as `@barqjs/web`'s does, and a region's `HYDRATE` and `WHOLE` flags are inert there.
+`@barqjs/web`'s `render` and `hydrate` bind the default back on their own roots with
+`provideDefaultHost`, so a document overlay mounted inside a scene is the document's again. A body
+that still builds one of the compiled-for host's nodes there (`RangeHost::owns`, which the document
+host answers with `instanceof Node`) is refused at that node with an error naming the construct,
+rather than handed to the other host's node operations.
+
 **Renderers.** Renderer `0` is the module's own. Every other is a `(target, moduleSource)` pair,
 numbered from `1` in `Module::renderers` in the order the scan first meets it, so two boundaries
 into the same renderer share one. A document boundary whose `moduleSource` is the module's own maps

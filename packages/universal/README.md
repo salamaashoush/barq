@@ -126,6 +126,10 @@ written:
 }
 ```
 
+A component that only arranges others, such as a `<For>` over `<Box>` or a
+`<Show>` choosing between two of them, names no tag and needs no claim: its
+control flow builds on the host of the root it is rendered in.
+
 ## Rendering
 
 ```tsx
