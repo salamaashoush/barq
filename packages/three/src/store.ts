@@ -86,6 +86,8 @@ export interface InternalState {
   unordered: Instance[];
   /** `linear`, read untracked by every texture write. */
   linear: boolean;
+  /** True while this root's frame runs: a write then is drawn in it. */
+  drawing: boolean;
   /** A member's value without subscribing to it, for the loop and the root's own bookkeeping. */
   peek: <K extends keyof SettableState>(key: K) => RootState[K];
   subscribe: (
@@ -330,6 +332,7 @@ export function createStore(hooks: StoreHooks, initial: Partial<SettableState> =
     active: false,
     unordered: [],
     linear: values.linear === true,
+    drawing: false,
     peek: <K extends keyof SettableState>(key: K): RootState[K] =>
       (key in values
         ? values[key as Reactive]

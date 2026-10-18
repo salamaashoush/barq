@@ -10,7 +10,6 @@ import {
   getContext,
   getOwner,
   isBlock,
-  onCleanup,
   runWithOwner,
   setContext,
   type JSXElement,
@@ -46,7 +45,7 @@ import {
   SENTINEL,
   TEXT,
   attachRef,
-  destroy,
+  element,
   insertNode as insertInstance,
   placed,
   removeNode as removeInstance,
@@ -74,28 +73,20 @@ function pascal(tag: string): string {
 }
 
 function createElement(tag: string): Instance {
-  let node: Instance;
-  if (tag === "primitive") {
-    node = new Instance(tag, PRIMITIVE, null);
-  } else {
-    const ctor = resolveConstructor(tag);
-    if (ctor === null) {
-      throw new Error(
-        `\`<${tag}>\` is not a class of three or of anything given to \`extend\`. ` +
-          `Register it first: \`extend({ ${pascal(tag)} })\`.`,
-      );
-    }
-    node = new Instance(tag, ELEMENT, ctor);
+  if (tag === "primitive") return element(PRIMITIVE, null, getOwner());
+  const ctor = resolveConstructor(tag);
+  if (ctor === null) {
+    throw new Error(
+      `\`<${tag}>\` is not a class of three or of anything given to \`extend\`. ` +
+        `Register it first: \`extend({ ${pascal(tag)} })\`.`,
+    );
   }
-  // The node ends with the scope that built it: its object leaves its parent
-  // and is disposed then, not when the renderer moves it.
-  if (getOwner() !== null) onCleanup(() => destroy(node));
-  return node;
+  return element(ELEMENT, ctor, getOwner());
 }
 
 const renderer: Host = createRenderer<Instance>({
   createElement,
-  createTextNode: () => new Instance("#text", TEXT, null),
+  createTextNode: () => new Instance(TEXT, null),
   replaceText: () => {},
   isTextNode: (node) => node.kind === TEXT,
   setProperty,
@@ -104,8 +95,8 @@ const renderer: Host = createRenderer<Instance>({
   getParentNode: (node) => node.parent,
   getFirstChild: (node) => node.first,
   getNextSibling: (node) => node.next,
-  createSentinel: () => new Instance("#sentinel", SENTINEL, null),
-  createContainer: () => new Instance("#container", CONTAINER, null),
+  createSentinel: () => new Instance(SENTINEL, null),
+  createContainer: () => new Instance(CONTAINER, null),
   attachRef,
   placed,
 });
@@ -138,7 +129,7 @@ export function render(
 ): () => void {
   const state = isRootState(target) ? target : null;
   const object = state === null ? (target as THREE.Object3D) : state.scene;
-  const root = new Instance("#root", ROOT, null);
+  const root = new Instance(ROOT, null);
   root.object = object;
   root.root = state ?? standaloneState(object);
   const build = typeof code === "function" && !isBlock(code) ? code : () => code;
@@ -652,7 +643,7 @@ export function createPortal(
 ): JSXElement {
   const parent = getContext(ThreeContext);
   const layer = createLayer(parent, container, state);
-  const target = new Instance("#portal", ROOT, null);
+  const target = new Instance(ROOT, null);
   target.object = container;
   target.root = layer;
   const scope = createOwner();
