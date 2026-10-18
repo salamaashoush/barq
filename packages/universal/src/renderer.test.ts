@@ -333,6 +333,22 @@ describe("components that need the host", () => {
     expect(inner(root)).toBe("");
   });
 
+  test("Portal refuses a selector, which only the document can look up", () => {
+    expect(() =>
+      mount(() => {
+        const holder = el("main");
+        r.insert(
+          holder,
+          r.portal(
+            () => "#target" as never,
+            block(() => el("modal")),
+          ),
+        );
+        return holder;
+      }),
+    ).toThrow('`<Portal mount>` was given "#target"');
+  });
+
   test("dynamic builds a tag with its props or calls a component, and moves when its source does", () => {
     const [tag, setTag] = createSignal<string | ((props: Record<string, unknown>) => unknown)>(
       "box",

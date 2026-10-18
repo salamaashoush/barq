@@ -109,27 +109,31 @@ export type DynamicTag = string | ((props: never) => unknown);
 
 export type Spreadable = Record<string, unknown> | (() => Record<string, unknown>);
 
+/**
+ * What `createRenderer` returns. Every member is a function of its arguments
+ * alone, so a renderer module destructures them into its exports.
+ */
 export interface Renderer<N extends object> {
   /**
    * Build `code` under a new root and put what it renders into `root`. The
    * returned function disposes the root and removes what it placed.
    */
-  render(code: (() => JSXElement) | JSXElement, root: N, options?: RenderOptions): () => void;
-  createElement(tag: string): N;
-  createTextNode(value: string): N;
-  insertNode(parent: N, node: N, anchor?: N | null): void;
+  render: (code: (() => JSXElement) | JSXElement, root: N, options?: RenderOptions) => () => void;
+  createElement: (tag: string) => N;
+  createTextNode: (value: string) => N;
+  insertNode: (parent: N, node: N, anchor?: N | null) => void;
   /** Writes one property and returns `value`, so a binding can keep it as its previous value. */
-  setProp<T>(node: N, name: string, value: T, prev?: unknown): T;
-  insert(parent: N, value: unknown, anchor?: N | null): void;
-  spread(node: N, props: Spreadable, later?: readonly string[]): void;
-  branch<K>(
+  setProp: <T>(node: N, name: string, value: T, prev?: unknown) => T;
+  insert: (parent: N, value: unknown, anchor?: N | null) => void;
+  spread: (node: N, props: Spreadable, later?: readonly string[]) => void;
+  branch: <K>(
     parent: N | null,
     anchor: N | null,
     key: Cell<K>,
     bodies: Block<unknown> | readonly (Block<unknown> | null | undefined)[],
     flags?: number,
-  ): N | N[] | null;
-  each<T>(
+  ) => N | N[] | null;
+  each: <T>(
     parent: N | null,
     anchor: N | null,
     src: Cell<Maybe<readonly T[]>> | Cell<number>,
@@ -137,8 +141,8 @@ export interface Renderer<N extends object> {
     row: Block<unknown, never[]>,
     flags?: number,
     fallback?: Block<unknown> | null,
-  ): N | N[] | null;
-  boundary(
+  ) => N | N[] | null;
+  boundary: (
     parent: N | null,
     anchor: N | null,
     kind: BoundaryKind,
@@ -146,19 +150,19 @@ export interface Renderer<N extends object> {
     body: Block<unknown>,
     flags?: number,
     on?: Cell<unknown>,
-  ): N | N[] | null;
-  island(parent: N | null, anchor: N | null, block: Block<unknown>, flags?: number): N | null;
-  reveal(
+  ) => N | N[] | null;
+  island: (parent: N | null, anchor: N | null, block: Block<unknown>, flags?: number) => N | null;
+  reveal: (
     order: Cell<RevealOrder | undefined>,
     collapsed: Cell<boolean | undefined>,
     block: Block<unknown>,
-  ): N[];
-  portal(target: Cell<N | null | undefined>, block: Block<unknown>, flags?: number): N;
+  ) => N[];
+  portal: (target: Cell<N | null | undefined>, block: Block<unknown>, flags?: number) => N;
   /** Solid 2.0's factory for a component chosen at run time: a tag name or a component. */
-  dynamic(
+  dynamic: (
     source: () => DynamicTag | null | undefined | false,
-  ): (props: Record<string, unknown>) => JSXElement;
-  Portal(props: PortalProps<N>): JSXElement;
+  ) => (props: Record<string, unknown>) => JSXElement;
+  Portal: (props: PortalProps<N>) => JSXElement;
   /** The host control flow writes through, for a construct written by hand. */
   host: RangeHost<N>;
   /** The list reorder `each` hands control flow, over the same operations. */
@@ -875,6 +879,13 @@ export function createRenderer<N extends object>(ops: HostOps<N>): Renderer<N> {
           const mine = ++request;
           const mount = (): void => {
             if (mine !== request) return;
+            if (requested !== null && requested !== undefined && typeof requested !== "object") {
+              throw new TypeError(
+                `\`<Portal mount>\` was given ${JSON.stringify(requested)}, and on a custom host it ` +
+                  "takes a node of that host. A selector is something only the document can look " +
+                  "up: pass the node itself, or leave `mount` out to mount into the render root.",
+              );
+            }
             const into = requested ?? renderRootOf(given);
             if (into === null) return;
             site.parent = into;
