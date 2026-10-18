@@ -8,7 +8,7 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { hydrate, isHydrating, onHydrationEnd } from "./index.ts";
+import { hydrate, isHydrating, onHydrationEnd, render } from "./index.ts";
 
 const microtask = (): Promise<void> => Promise.resolve();
 
@@ -37,6 +37,23 @@ describe("hydration state", () => {
     expect(order).toEqual(["returned", "end"]);
     await microtask();
     expect(order).toEqual(["returned", "end"]);
+    dispose();
+  });
+
+  test("a render called while hydrating builds without claiming", () => {
+    const overlay = document.createElement("div");
+    let claiming = true;
+    let stop = (): void => {};
+    const dispose = hydrate(() => {
+      stop = render(() => {
+        claiming = isHydrating();
+        return document.createTextNode("overlay");
+      }, overlay);
+      return document.createTextNode("claimed");
+    }, document.createElement("div"));
+    expect(claiming).toBe(false);
+    expect(overlay.textContent).toBe("overlay");
+    stop();
     dispose();
   });
 
