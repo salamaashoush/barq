@@ -1,30 +1,26 @@
 # @barqjs/ui
 
-Styled, accessible components for barq, with twenty-four colour themes and
-styles compiled to a stylesheet at build time. Import them from the package, or
-copy their source into your project with [`barq-ui add`](../ui-cli#readme).
-Behaviour comes from [`@barqjs/aria`](../aria#readme), styling from
-[`@barqjs/css`](../css#readme), and icons from
-[`@barqjs/lucide`](../lucide#readme). The designs and themes are shadcn/ui's,
-with none of React, Radix or Tailwind underneath.
+The source of barq's styled, accessible components, with twenty-four colour
+themes and styles compiled to a stylesheet at build time. Behaviour comes from
+[`@barqjs/aria`](../aria#readme), styling from [`@barqjs/css`](../css#readme),
+and icons from [`@barqjs/lucide`](../lucide#readme). The designs and themes are
+shadcn/ui's, with none of React, Radix or Tailwind underneath.
 
-## Install
+This package is not published. As with shadcn, an app gets components by
+copying their source with [`barq-ui`](../ui-cli#readme), and from then on they
+are its own code.
+
+## Use
 
 ```bash
-bun add @barqjs/ui @barqjs/aria @barqjs/core @barqjs/css @barqjs/lucide @barqjs/primitives @barqjs/server @barqjs/web
-bun add -d @barqjs/vite
+bunx @barqjs/ui-cli init
+bunx @barqjs/ui-cli add button card
 ```
 
-Like every barq component library, the package ships its TypeScript source
-under the `barq` export condition, and `@barqjs/vite` compiles it in your build.
-
-## Example
-
 ```tsx
-import { Button, Card, CardContent, CardHeader, CardTitle } from "@barqjs/ui";
-import { installTheme } from "@barqjs/ui/theme";
-
-installTheme({ base: "neutral", accent: "blue" });
+import "./components/theme/theme.ts";
+import { Button } from "./components/ui/button.tsx";
+import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card.tsx";
 
 <Card>
   <CardHeader>
@@ -36,20 +32,14 @@ installTheme({ base: "neutral", accent: "blue" });
 </Card>;
 ```
 
-Importing `@barqjs/ui/theme` declares the layer order and the scale every
-component reads; `installTheme` puts one colour theme on the page.
+## The registry
 
-Or copy the components into your own repository, which is what shadcn is for,
-with [`@barqjs/ui-cli`](../ui-cli#readme):
-
-```bash
-bunx @barqjs/ui-cli init
-bunx @barqjs/ui-cli add button card
-```
-
-Both halves are the same files. `registry/button.json` holds
-`src/ui/button.tsx` verbatim, so the suite that tests the library is testing
-what `add` writes.
+`bun run registry` builds `registry/` from `src`: one JSON file per item,
+`index.json` listing them, `themes.json`, and the eight component styles
+(`styles.json` and one `style-<name>.json` each). `barq-ui` reads these files
+from this repository at the tag the CLI was released under, and CI fails when
+they no longer match `src`. `registry/button.json` holds `src/ui/button.tsx`
+verbatim, so the suite that tests `src` is testing what `add` writes.
 
 ## The look is transcribed, not guessed
 
@@ -128,7 +118,7 @@ The layers are declared once, in order:
 
 **The one trap.** An application whose own reset is unlayered beats these
 components, because that is what an unlayered rule does. Put your reset in a
-layer, or import ours (`@barqjs/ui/theme/reset`), which is Tailwind's preflight
+layer, or keep the one `barq-ui init` installs, which is Tailwind's preflight
 and is what shadcn's components are written against.
 
 ## Styles
@@ -173,12 +163,10 @@ over one of them: `amber`, `blue`, `cyan`, `emerald`, `fuchsia`, `green`,
 `indigo`, `lime`, `orange`, `pink`, `purple`, `red`, `rose`, `sky`, `teal`,
 `violet`, `yellow`.
 
-```ts
-import { installTheme, THEMES } from "@barqjs/ui/theme";
-
-installTheme({ base: "stone", accent: "emerald", radius: "0.5rem" });
-installTheme({ base: "zinc", scope: ".promo" }); // a subtree, in its own theme
-installTheme({ base: "neutral", dark: "media" }); // follow the operating system
+```bash
+bunx @barqjs/ui-cli init --theme stone --accent emerald --radius 0.5rem
+bunx @barqjs/ui-cli init --theme neutral --dark media   # follow the operating system
+bunx @barqjs/ui-cli theme zinc                          # change it later
 ```
 
 The token names are shadcn's own (`--background`, `--primary`, `--radius`)
@@ -186,11 +174,9 @@ rather than a hashed group from `defineVars`, and that is deliberate: a theme
 copied out of tweakcn, or a `:root { --primary: … }` an application already has,
 lands on these components without being rewritten.
 
-An application that picks its theme once should not carry the other
-twenty-three, so `barq-ui init` writes the chosen one into a `globalCss` block
-the compiler folds into a stylesheet at build time. `installTheme` is for the
-application that switches theme while it is running. It also takes `chart` (a
-chart ramp from another theme) and `fonts` (`sans`, `mono`, `heading`).
+An application should not carry the twenty-three themes it did not pick, so
+`barq-ui init` writes the chosen one into a `globalCss` block the compiler folds
+into a stylesheet at build time.
 
 ## What is different from shadcn
 
@@ -279,7 +265,8 @@ what a stylesheet of your own selects:
 - Chat: `Message`, `Bubble`, `Marker`, `Attachment`, `MessageScroller`.
 - `DirectionProvider`, for right-to-left.
 
-Each one is also its own entry point: `@barqjs/ui/button`, `@barqjs/ui/dialog`.
+Each one is its own registry item, so `barq-ui add dialog` writes `dialog.tsx` and
+what it imports.
 
 `DatePicker` is a composition rather than a transcription, because upstream
 ships no `date-picker.tsx`: shadcn documents a `<Popover>` around a `<Calendar>`

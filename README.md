@@ -44,7 +44,7 @@ changes only the DOM nodes that read it update.
 Reactivity is Solid's engine, `@solidjs/signals`, exported under its own names
 (`createSignal`, `createMemo`, `createEffect`, `createStore`). The router and
 server functions follow the API design of TanStack Router and TanStack Start,
-and `@barqjs/ui` is built from shadcn/ui's designs.
+and the components barq-ui copies are built from shadcn/ui's designs.
 
 ## Quick start
 
@@ -102,8 +102,9 @@ The framework:
 
 Components and libraries:
 
-- [`@barqjs/ui`](./packages/ui#readme): styled, accessible components and 24 colour themes.
-- [`@barqjs/ui-cli`](./packages/ui-cli#readme): `barq-ui add`, which copies components into your project.
+- [`@barqjs/ui-cli`](./packages/ui-cli#readme): `barq-ui add`, which copies styled, accessible
+  components and 24 colour themes into your project, from the source in
+  [`packages/ui`](./packages/ui#readme).
 - [`@barqjs/aria`](./packages/aria#readme): accessible interactions and headless components.
 - [`@barqjs/primitives`](./packages/primitives#readme): scheduling, events, observers, browser APIs and motion.
 - [`@barqjs/lucide`](./packages/lucide#readme): every lucide icon as a component.
@@ -123,7 +124,7 @@ Each package README is the reference for that package. Beyond them:
 - [Benchmarks](./packages/benchmark/SOLID2-RESULTS.md): rendering, server
   rendering, hydration and bundle size, with the machine and the method behind
   each number.
-- [`packages/site`](./packages/site): the docs site for `@barqjs/ui`, with every
+- [`packages/site`](./packages/site): the docs site for the components, with every
   component's examples and the theme builder. Run it with
   `bun run --cwd packages/site dev` after a root `bun run build`.
 - [`packages/kitchen-sink`](./packages/kitchen-sink): one application that uses

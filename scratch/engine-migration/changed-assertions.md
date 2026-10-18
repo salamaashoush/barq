@@ -1242,3 +1242,18 @@ callback through because the two cases were indistinguishable.
   test gains `PAGE_OPTIONS` for both and a `FIXED_OPTIONS` table holding BARQ028's corrected
   options, since that code is about options and its fix is an option change. Every other page's
   fixed examples still compile under that page's own options.
+
+## Components follow the shadcn model (user decision: @barqjs/ui is not published)
+
+- `ui-cli/test/cli.test.ts` "init writes the config": `components.json` has no `registry` key
+  (was `"node_modules"`); without one the CLI reads its own release's registry. The suite points
+  that default at the repository's `packages/ui/registry` through `BARQ_UI_REGISTRY` instead of
+  symlinking the package into `node_modules`.
+- `ui-cli/test/cli.test.ts` info: `registry` is the default pattern (the variable's value), and a
+  new check pins the unset default to the GitHub tag of the CLI's own version.
+- `ui-cli/test/schema.test.ts`: an empty config has no `registry` (was `"node_modules"`); a new
+  test requires `{name}` in a configured one.
+- `site/src/docs/guides/guides.test.tsx`: the components.json sample has no `registry`; "every
+  package the installation page names is in the workspace" became "every command the
+  installation page runs is one the CLI has", because the page no longer lists packages to
+  install.

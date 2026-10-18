@@ -1,5 +1,6 @@
 {
   "name": "@barqjs/ui",
+  "private": true,
   "version": "0.1.0",
   "description": "Styled, accessible components and twenty-four themes for barq, compiled to a stylesheet, from shadcn/ui's designs",
   "keywords": [
@@ -20,20 +21,6 @@
     "url": "git+https://github.com/salamaashoush/barq.git",
     "directory": "packages/ui"
   },
-  "files": [
-    "registry",
-    "src",
-    "styles",
-    "!src/**/*.test.ts",
-    "!src/**/*.test.tsx",
-    "!src/**/test-*.ts",
-    "!src/**/*-harness.ts",
-    "!src/**/*-probe.ts",
-    "!src/**/fixtures",
-    "!src/**/fixtures.ts",
-    "!src/**/ssr-fixtures.ts",
-    "!src/compile-setup.ts"
-  ],
   "type": "module",
   "sideEffects": [
     "./dist/theme/*.js",
@@ -501,9 +488,5 @@
   "peerDependenciesMeta": {},
   "engines": {
     "bun": ">=1.1.0"
-  },
-  "publishConfig": {
-    "access": "public",
-    "provenance": true
   }
 }
