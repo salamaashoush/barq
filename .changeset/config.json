@@ -26,6 +26,7 @@
       "@barqjs/testing",
       "@barqjs/ui",
       "@barqjs/ui-cli",
+      "@barqjs/universal",
       "@barqjs/virtual",
       "@barqjs/vite",
       "@barqjs/web",
