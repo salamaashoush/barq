@@ -115,6 +115,8 @@ codes! {
     Barq027 = "BARQ027", Error, "A `bind:` or a form `action` is written for a custom renderer";
     Barq028 = "BARQ028", Error, "A module compiled for a custom renderer is also asked for `ssr`, `hydratable` or `interp`";
     Barq029 = "BARQ029", Warning, "Two renderers claim the same intrinsic tag";
+    Barq030 = "BARQ030", Error, "A prop is assigned, and props are read-only";
+    Barq031 = "BARQ031", Error, "A props pattern binds a name that cannot be kept reactive";
 }
 
 /// Where the pages live. A consumer gets this string verbatim — the Vite panel

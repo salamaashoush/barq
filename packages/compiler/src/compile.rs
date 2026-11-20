@@ -453,11 +453,31 @@ fn compile_on_this_stack(
         || options.css_exports)
         .then(|| crate::css::run(&allocator, &mut program, options));
 
+    // Before `bind`, which reads the program this leaves: props written as
+    // values become the Cell reads every later stage knows.
+    let refused = if source_type.is_jsx() {
+        crate::props_sugar::run(&allocator, &mut program, options)
+    } else {
+        Vec::new()
+    };
+
     let mut module = Module::for_source(&allocator, source_text);
     // A dialect that cannot express JSX compiles to no units at all, so there is
     // nothing for P0 to classify and the symbol table is pure cost.
     if source_type.is_jsx() {
         analysis::bind(&allocator, &program, &mut module, options);
+        for refusal in refused {
+            let code = if refusal.message == crate::props_sugar::ASSIGNED {
+                Code::Barq030
+            } else {
+                Code::Barq031
+            };
+            module.env.diagnostics.push(crate::ir::Diag {
+                code,
+                span: refusal.span,
+                message: refusal.message,
+            });
+        }
     } else if let Some(sheet) = stylesheet.as_mut() {
         // With no `bind` to restamp them, the ids the css pass left on the
         // program index its table and no other, and ownership reads them.

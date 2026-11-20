@@ -15,6 +15,7 @@ pub mod middleware_split;
 pub mod options;
 pub mod ownership;
 pub mod passes;
+pub mod props_sugar;
 pub mod route_source;
 pub mod route_split;
 pub mod routes;

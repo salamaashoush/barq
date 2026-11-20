@@ -167,7 +167,20 @@ export type { Block, Cell, Scope, Slot } from "./scope.ts";
 // The props model. `props` and `cell` are the two
 // carriers the compiler emits; `merge` and `omit` are views over the same
 // source list and copy nothing.
-export { props, cell, block, isBlock, BLOCK, merge, omit, SOURCES } from "./props.ts";
+export {
+  props,
+  cell,
+  cells,
+  block,
+  isBlock,
+  BLOCK,
+  merge,
+  omit,
+  readProp,
+  SOURCES,
+  values,
+  withDefault,
+} from "./props.ts";
 export type { Merge, Source } from "./props.ts";
 
 // What a JSX call site writes, and what a component body reads.

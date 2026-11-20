@@ -1,4 +1,5 @@
 mod bind;
+pub(crate) use bind::is_component_tag;
 pub mod boundary;
 pub mod link;
 pub mod migration;

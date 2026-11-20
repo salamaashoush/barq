@@ -12,7 +12,10 @@
  * evaluates nothing. `props.test.ts` is the falsification procedure.
  */
 
+import type { Incoming } from "./config.ts";
 import type { Cell } from "./scope.ts";
+
+import { BLOCK } from "./signals.ts";
 
 export { BLOCK, block, isBlock } from "./signals.ts";
 
@@ -382,4 +385,84 @@ export function omit<T extends Record<string, unknown>, K extends keyof T & stri
   ...keys: K[]
 ): Omit<T, K> {
   return view([source], { keys: new Set(keys), carriers: false }) as Omit<T, K>;
+}
+
+/**
+ * What a prop holds, read from the carrier it crossed as. A prop the caller
+ * left out has no carrier and reads `undefined`. A Block is JSX the caller
+ * passed, and it is the value: calling it here would build it at every read,
+ * where the component means to place it once.
+ */
+export function readProp(carrier: unknown): unknown {
+  if (typeof carrier !== "function") return carrier;
+  return (carrier as unknown as Record<symbol, unknown>)[BLOCK] === true
+    ? carrier
+    : (carrier as () => unknown)();
+}
+
+/**
+ * The Cell of a prop that has a default. The default is made once, the first
+ * time the prop reads `undefined`, so a default that builds an array or an
+ * object is the same one at every read.
+ */
+export function withDefault<T>(
+  record: Record<string, unknown>,
+  key: string,
+  fallback: () => T,
+): Cell<T> {
+  let made = false;
+  let kept: T;
+  return (): T => {
+    const value = readProp(record[key]);
+    if (value !== undefined) return value as T;
+    if (!made) {
+      kept = fallback();
+      made = true;
+    }
+    return kept;
+  };
+}
+
+/** The key a values view answers its record under, for {@link cells}. */
+const RECORD = Symbol.for("barq.props.record");
+
+/**
+ * A props record as the values it carries: each read calls the prop's Cell,
+ * so a read inside an effect follows the prop. This is what a component's
+ * `props` is wherever it leaves the component whole, passed to a function or
+ * read by a computed key.
+ */
+export function values<P>(record: Incoming<P>): P {
+  const held = record as Record<string, unknown>;
+  return new Proxy(held, {
+    get(target, key: string | symbol): unknown {
+      if (key === RECORD) return target;
+      if (typeof key === "symbol" || key === "children") return Reflect.get(target, key);
+      return readProp(target[key]);
+    },
+    getOwnPropertyDescriptor(target, key: string | symbol): PropertyDescriptor | undefined {
+      const descriptor = Reflect.getOwnPropertyDescriptor(target, key);
+      if (descriptor === undefined || typeof key === "symbol" || key === "children") {
+        return descriptor;
+      }
+      return { ...descriptor, value: readProp(target[key]) };
+    },
+    set(): boolean {
+      return false;
+    },
+    deleteProperty(): boolean {
+      return false;
+    },
+  }) as P;
+}
+
+/**
+ * The record under a component's props, each prop as the Cell it crossed as.
+ * For code that takes Cells: a hook that forwards them, or one that reads a
+ * prop many times and wants no view between. In a compiled component
+ * `cells(props)` is the record itself and costs nothing.
+ */
+export function cells<P>(props: P): Incoming<P> {
+  const record = (props as Record<symbol, unknown> | null | undefined)?.[RECORD];
+  return (record ?? props) as Incoming<P>;
 }
