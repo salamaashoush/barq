@@ -808,8 +808,7 @@
         "layers",
         "shared-box",
         "shared-ring-slot",
-        "shared-when",
-        "slot"
+        "shared-when"
       ],
       "files": [
         "ui/checkbox.tsx"
@@ -959,8 +958,7 @@
       "type": "registry:ui",
       "title": "Context Menu",
       "dependencies": [
-        "@barqjs/aria",
-        "@barqjs/core"
+        "@barqjs/aria"
       ],
       "registryDependencies": [
         "dropdown-menu",
@@ -1867,8 +1865,7 @@
         "layers",
         "shared-box",
         "shared-ring-slot",
-        "shared-when",
-        "slot"
+        "shared-when"
       ],
       "files": [
         "ui/radio-group.tsx"
@@ -2018,7 +2015,6 @@
       "title": "Separator",
       "dependencies": [
         "@barqjs/aria",
-        "@barqjs/core",
         "@barqjs/css"
       ],
       "registryDependencies": [
@@ -2198,8 +2194,7 @@
       "registryDependencies": [
         "layers",
         "shared-box",
-        "shared-when",
-        "slot"
+        "shared-when"
       ],
       "files": [
         "ui/slider.tsx"
@@ -2299,8 +2294,7 @@
         "layers",
         "shared-box",
         "shared-ring-slot",
-        "shared-when",
-        "slot"
+        "shared-when"
       ],
       "files": [
         "ui/switch.tsx"
@@ -2357,7 +2351,8 @@
         "shared-box",
         "shared-icon",
         "shared-text",
-        "shared-when"
+        "shared-when",
+        "slot"
       ],
       "files": [
         "ui/tabs.tsx"
@@ -2484,8 +2479,7 @@
         "shared-icon",
         "shared-ring",
         "shared-ring-slot",
-        "shared-text",
-        "slot"
+        "shared-text"
       ],
       "files": [
         "ui/toggle.tsx"
