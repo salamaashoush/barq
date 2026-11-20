@@ -98,7 +98,7 @@ afterEach(async () => {
   document.body.innerHTML = "";
 });
 
-async function setup(name: string) {
+async function setup(name: string, broadcast = false) {
   const both = await compileText(SOURCE, name, true, false);
   const ssr = both.ssr as unknown as Module;
   const dom = both.dom as unknown as Module;
@@ -107,7 +107,7 @@ async function setup(name: string) {
   const startClient = await import("@barqjs/start/client");
   const feed = channel({ title: "board one", items: [{ id: 1, label: "first" }] });
   const getBoard = start
-    .createServerFn({ method: "GET" })
+    .createServerFn({ method: "GET", broadcast })
     .handler(() => ssr.boardFor(feed.subscribe()));
   const id = `${name}#getBoard`;
   startServer.mount(id, getBoard as never);
@@ -208,6 +208,35 @@ test("a live frame is applied in place for each value its source yields, over on
   expect(connections).toHaveLength(1);
   dispose();
   container.remove();
+});
+
+test("a broadcast frame is rendered once for every page reading it", async () => {
+  const { dom, feed, stub, connections, startClient } = await setup("frames-live-broadcast", true);
+  const core = await import("@barqjs/core");
+  const web = await import("@barqjs/web");
+  const pages = [host(""), host("")].map((container) => {
+    const board = startClient.live(stub)();
+    const dispose = web.render(() => {
+      const current = core.createMemo(() => board as never);
+      return dom.Page({ view: () => current() }) as never;
+    }, container);
+    return { container, dispose };
+  });
+  const headings = () => pages.map((page) => page.container.querySelector("h1")?.textContent);
+  await until(() => headings().every((text) => text === "board one"));
+
+  expect(connections).toHaveLength(2);
+  expect(feed.readers()).toBe(1);
+
+  feed.publish({ title: "board two", items: [{ id: 1, label: "first" }] });
+  await until(() => headings().every((text) => text === "board two"));
+  expect(feed.readers()).toBe(1);
+
+  for (const page of pages) {
+    page.dispose();
+    page.container.remove();
+  }
+  await until(() => feed.readers() === 0);
 });
 
 test("a connection that dies is reconnected from the event it last applied, and nothing remounts", async () => {

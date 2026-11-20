@@ -107,6 +107,7 @@ export {
   type ServerFnMeta,
   type ServerFnMethod,
   type Streamed,
+  BUILD_HEADER,
   DATA_SUFFIX,
   LIVE_SUFFIX,
   NOT_FOUND,
@@ -122,6 +123,7 @@ export {
   SERVER_FN,
   STATIC_PREFIX,
   ServerFnError,
+  UNKNOWN_HEADER,
   clientRpc,
   isServerFn,
   staticFunctionMiddleware,
@@ -325,6 +327,7 @@ interface Staged {
   readonly validator: Validator<unknown> | null;
   readonly middleware: readonly Middleware[];
   readonly method: ServerFnMethod;
+  readonly broadcast: boolean;
 }
 
 /**
@@ -488,6 +491,15 @@ export interface ServerFnOptions<
    * `createSerializationAdapter` carries.
    */
   readonly strict?: Strict;
+  /**
+   * The answer is the same for every caller with the same arguments, so a
+   * `live` call shares one rendering with every other connection asking the
+   * same thing: Solid 2.0's `broadcast`. The handler still runs per call, as the
+   * gate it is (an auth check, a redirect), and a joiner's own answer is closed
+   * unread. The shared rendering belongs to no request: it reads no cookie,
+   * header or session, and it stops when its last connection goes.
+   */
+  readonly broadcast?: boolean;
 }
 
 /**
@@ -508,7 +520,12 @@ export function createServerFn<
         "Use a route's `server.handlers` for any other method.",
     );
   }
-  return builderAt<FreshServerFn<Method, Strict>>({ validator: null, middleware: [], method });
+  return builderAt<FreshServerFn<Method, Strict>>({
+    validator: null,
+    middleware: [],
+    method,
+    broadcast: options.broadcast === true,
+  });
 }
 
 /**
@@ -554,11 +571,18 @@ function builderAt<State extends ServerFnState>(staged: Staged): ServerFnBuilder
         HandlerData<State>,
         HandlerContextOf<State>,
         State["method"]
-      >(staged.method === "GET" ? { id: "", method: "GET" } : { id: "" }, {
-        validator: staged.validator,
-        middleware: staged.middleware,
-        handler: fn,
-      }),
+      >(
+        {
+          id: "",
+          ...(staged.method === "GET" ? { method: "GET" as const } : {}),
+          ...(staged.broadcast ? { broadcast: true as const } : {}),
+        },
+        {
+          validator: staged.validator,
+          middleware: staged.middleware,
+          handler: fn,
+        },
+      ),
   };
 }
 

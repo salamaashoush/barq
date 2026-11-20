@@ -18,6 +18,14 @@ export interface ServerFnIssue {
   readonly path?: readonly (string | number)[];
 }
 
+/**
+ * The label on an answer from a deployment that does not know the call: an
+ * unknown id (a tab holding the previous build's ids across a deploy, or a
+ * removed function), or a call from another build. A CDN 404 and a skew 404
+ * look alike without it.
+ */
+export const UNKNOWN_HEADER = "x-barq-fn-unknown";
+
 /** What a failed call's JSON body may carry. */
 export interface FailedAnswer {
   readonly message?: string;
@@ -59,14 +67,30 @@ export class ServerFnError extends Error {
    * for the reason above.
    */
   readonly response?: Response;
+  /**
+   * The deployment that answered does not know this call: the page came from
+   * another build, or the function was removed. Retrying cannot help; reloading
+   * the document onto the current build can.
+   */
+  readonly unknownFunction?: true;
   constructor(id: string, status: number, response?: Response, answer?: FailedAnswer) {
-    super(failureMessage(id, status, answer));
+    const unknown = (response?.headers.get(UNKNOWN_HEADER) ?? null) !== null;
+    super(unknown ? skewMessage(id, status) : failureMessage(id, status, answer));
     this.name = "ServerFnError";
     this.status = status;
     this.response = response;
+    if (unknown) this.unknownFunction = true;
     if (answer?.issues !== undefined) this.issues = answer.issues;
     if (answer?.thrown !== undefined) this.thrown = answer.thrown;
   }
+}
+
+function skewMessage(id: string, status: number): string {
+  return (
+    `The server function \`${id}\` is not part of the deployment that answered (${status}): this ` +
+    "page came from another build, or the function was removed. Reload the page to run the " +
+    "current build; `error.unknownFunction` is set for exactly this case."
+  );
 }
 
 function failureMessage(id: string, status: number, answer: FailedAnswer | undefined): string {

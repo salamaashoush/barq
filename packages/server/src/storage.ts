@@ -34,3 +34,14 @@ export function provideRequestEvent<T>(event: RequestEvent, cb: () => T): T {
   }
   return holder[REQUEST_EVENT].run(event, cb);
 }
+
+/**
+ * Run `cb` outside every request, across its `await`s: work shared by many
+ * requests, which must not read one of them as its own.
+ */
+export function withoutRequestEvent<T>(cb: () => T): T {
+  const storage = (globalThis as { [REQUEST_EVENT]?: AsyncLocalStorage<RequestEvent> })[
+    REQUEST_EVENT
+  ];
+  return storage === undefined ? cb() : storage.exit(cb);
+}

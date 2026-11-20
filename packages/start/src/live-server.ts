@@ -15,6 +15,7 @@
 
 import { SharedSources, shareSources, unshareSources } from "@barqjs/core/internal";
 import { encodeWire } from "@barqjs/server/codec";
+import { withoutRequestEvent } from "@barqjs/server/storage";
 
 import { type ServerFrame, frameMarkup } from "./frames-server.ts";
 import { isFrame } from "./frames.ts";
@@ -50,54 +51,21 @@ function event(kind: "frame" | "message", id: string, data: string): string {
   return `${kind === "frame" ? "event: frame\n" : ""}id: ${id}\ndata: ${data}\n\n`;
 }
 
-/** The answer to a call at the live address. */
-export function liveResponse(result: unknown, request: Request): Response {
-  const encoder = new TextEncoder();
-  const last = request.headers.get("last-event-id");
-  let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
+type Emit = (data: string, kind: "frame" | "message") => void;
+
+/**
+ * Drive a live answer: each rendering of a frame, or each value of an
+ * iterable, through `emit` until it ends, then `finish(complete)`. Returns
+ * what stops it early.
+ */
+function produce(result: unknown, emit: Emit, finish: (complete: boolean) => void): () => void {
   let ended = false;
   const stops: (() => void)[] = [];
   const end = (complete: boolean): void => {
     if (ended) return;
     ended = true;
     for (const stop of stops) stop();
-    if (controller === null) return;
-    try {
-      if (complete) controller.enqueue(encoder.encode("event: complete\ndata: \n\n"));
-      controller.close();
-    } catch {
-      // The reader has gone.
-    }
-  };
-  const send = (text: string): void => {
-    if (ended || controller === null) return;
-    try {
-      controller.enqueue(encoder.encode(text));
-    } catch {
-      end(false);
-    }
-  };
-  let sentId = last;
-  const emit = (data: string, kind: "frame" | "message" = "message"): void => {
-    const id = digest(data);
-    if (id === sentId) return;
-    sentId = id;
-    send(event(kind, id, data));
-  };
-
-  const start = (): void => {
-    const heartbeat = setInterval(() => send(": still here\n\n"), HEARTBEAT_MS);
-    (heartbeat as { unref?: () => void }).unref?.();
-    stops.push(() => clearInterval(heartbeat));
-    const abort = (): void => end(false);
-    request.signal.addEventListener("abort", abort, { once: true });
-    stops.push(() => request.signal.removeEventListener("abort", abort));
-    if (isFrame(result)) void frames(result as ServerFrame);
-    else if (isIterable(result)) void values(result);
-    else {
-      emit(JSON.stringify(encodeWire(result)));
-      end(true);
-    }
+    finish(complete);
   };
 
   const frames = async (frame: ServerFrame): Promise<void> => {
@@ -152,7 +120,7 @@ export function liveResponse(result: unknown, request: Request): Response {
         const step = await iterator.next();
         if (ended) return;
         if (step.done === true) break;
-        emit(JSON.stringify(encodeWire(step.value)));
+        emit(JSON.stringify(encodeWire(step.value)), "message");
       }
       end(true);
     } catch (error) {
@@ -164,10 +132,71 @@ export function liveResponse(result: unknown, request: Request): Response {
     }
   };
 
+  if (isFrame(result)) void frames(result as ServerFrame);
+  else if (isIterable(result)) void values(result);
+  else {
+    emit(JSON.stringify(encodeWire(result)), "message");
+    end(true);
+  }
+  return () => {
+    if (ended) return;
+    ended = true;
+    for (const stop of stops) stop();
+  };
+}
+
+interface Connection {
+  readonly emit: Emit;
+  readonly end: (complete: boolean) => void;
+}
+
+/**
+ * One server-sent event stream. `attach` is handed the connection when the
+ * stream starts and answers with what to run when it ends, either way.
+ */
+function connection(request: Request, attach: (connection: Connection) => () => void): Response {
+  const encoder = new TextEncoder();
+  let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
+  let ended = false;
+  const stops: (() => void)[] = [];
+  const end = (complete: boolean): void => {
+    if (ended) return;
+    ended = true;
+    for (const stop of stops) stop();
+    if (controller === null) return;
+    try {
+      if (complete) controller.enqueue(encoder.encode("event: complete\ndata: \n\n"));
+      controller.close();
+    } catch {
+      // The reader has gone.
+    }
+  };
+  const send = (text: string): void => {
+    if (ended || controller === null) return;
+    try {
+      controller.enqueue(encoder.encode(text));
+    } catch {
+      end(false);
+    }
+  };
+  let sentId = request.headers.get("last-event-id");
+  const emit: Emit = (data, kind) => {
+    const id = digest(data);
+    if (id === sentId) return;
+    sentId = id;
+    send(event(kind, id, data));
+  };
+
   const body = new ReadableStream<Uint8Array>({
     start(given) {
       controller = given;
-      start();
+      const heartbeat = setInterval(() => send(": still here\n\n"), HEARTBEAT_MS);
+      (heartbeat as { unref?: () => void }).unref?.();
+      stops.push(() => clearInterval(heartbeat));
+      const abort = (): void => end(false);
+      request.signal.addEventListener("abort", abort, { once: true });
+      stops.push(() => request.signal.removeEventListener("abort", abort));
+      stops.push(attach({ emit, end }));
     },
     cancel() {
       end(false);
@@ -179,4 +208,85 @@ export function liveResponse(result: unknown, request: Request): Response {
   answer.headers.set("x-accel-buffering", "no");
   answer.headers.set("x-barq-rpc", RPC_LIVE);
   return answer;
+}
+
+/** The answer to a call at the live address. */
+export function liveResponse(result: unknown, request: Request): Response {
+  return connection(request, (to) => produce(result, to.emit, to.end));
+}
+
+interface Broadcast {
+  readonly connections: Set<Connection>;
+  latest: { readonly data: string; readonly kind: "frame" | "message" } | null;
+  ended: boolean;
+  stop: () => void;
+}
+
+/** The running shared answers, by function and arguments. */
+const BROADCASTS = new Map<string, Broadcast>();
+
+/**
+ * A joiner's own answer, closed without reading it. Only an answer that is
+ * already an iterator, a generator object, holds anything: an iterable nobody
+ * has asked for an iterator has started nothing, and asking would start it.
+ */
+function closeUnread(result: unknown): void {
+  const iterator = result as { return?: () => unknown } | null;
+  if (typeof iterator?.return !== "function") return;
+  try {
+    const closing = iterator.return();
+    if (closing instanceof Promise) void closing.catch(() => {});
+  } catch {
+    // Nothing read it, and nothing will.
+  }
+}
+
+/**
+ * The answer to a live call to a `broadcast` function: one rendering per
+ * `key`, every connection asking the same thing a reader of it. The first call
+ * starts it, outside its own request, and each later one joins it with the
+ * latest event and closes its own answer unread. It stops when its last
+ * connection goes.
+ */
+export function broadcastResponse(key: string, result: unknown, request: Request): Response {
+  let shared = BROADCASTS.get(key);
+  if (shared !== undefined && !shared.ended) {
+    closeUnread(result);
+  } else {
+    const started: Broadcast = {
+      connections: new Set(),
+      latest: null,
+      ended: false,
+      stop: () => {},
+    };
+    BROADCASTS.set(key, started);
+    started.stop = withoutRequestEvent(() =>
+      produce(
+        result,
+        (data, kind) => {
+          started.latest = { data, kind };
+          for (const each of started.connections) each.emit(data, kind);
+        },
+        (complete) => {
+          started.ended = true;
+          if (BROADCASTS.get(key) === started) BROADCASTS.delete(key);
+          for (const each of started.connections) each.end(complete);
+        },
+      ),
+    );
+    shared = started;
+  }
+  const joined = shared;
+  return connection(request, (to) => {
+    joined.connections.add(to);
+    if (joined.latest !== null) to.emit(joined.latest.data, joined.latest.kind);
+    if (joined.ended) to.end(true);
+    return () => {
+      joined.connections.delete(to);
+      if (joined.connections.size > 0 || joined.ended) return;
+      joined.ended = true;
+      if (BROADCASTS.get(key) === joined) BROADCASTS.delete(key);
+      joined.stop();
+    };
+  });
 }

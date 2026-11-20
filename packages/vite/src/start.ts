@@ -17,6 +17,7 @@
  * through `environment.runner.import` rather than the legacy `ssrLoadModule`.
  */
 
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
@@ -848,6 +849,15 @@ export interface BarqStartOptions {
    * never checked.
    */
   importProtection?: boolean;
+  /**
+   * The build both halves are stamped with, such as a commit hash. A server
+   * function called from a page of another build is answered `409`, and the
+   * call rejects with `error.unknownFunction` set, so the page can reload onto
+   * the current build instead of sending arguments the function may no longer
+   * take. A fresh id per `vite build` when omitted; `false` turns the check off.
+   * A dev server is not stamped.
+   */
+  buildId?: string | false;
   /** `dist/client` and `dist/server` under it. */
   outputDirectory?: string;
   /**
@@ -1348,7 +1358,11 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
     // `config` rather than `configResolved`: the environments have to exist
     // before Vite resolves them, and `consumer` is what decides whether a
     // module graph is a browser one.
-    config(user) {
+    config(user, env) {
+      const buildId =
+        env.command !== "build" || options.buildId === false
+          ? undefined
+          : (options.buildId ?? randomUUID());
       // `configResolved` is too late — the environments have to exist by the
       // end of this hook — so the root is resolved the way Vite resolves it.
       const projectRoot = resolve(user.root ?? process.cwd());
@@ -1393,6 +1407,7 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
         // `--app` is not needed. With none declared, `buildApp` still fires but
         // `builder.environments.ssr` is undefined and the build dies.
         builder: {},
+        ...(buildId === undefined ? {} : { define: { __BARQ_BUILD__: JSON.stringify(buildId) } }),
         ...(lateImports.length > 0 ? { optimizeDeps: { include: lateImports } } : {}),
         environments: {
           [ENVIRONMENTS.client]: {
@@ -1591,9 +1606,10 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
           try {
             // Through the module runner, so a server function edited on disk is
             // the one that answers the next call.
-            const start = (await environment.runner.import(
-              "@barqjs/start/server",
-            )) as typeof import("@barqjs/start/server");
+            const start =
+              await environment.runner.import<typeof import("@barqjs/start/server")>(
+                "@barqjs/start/server",
+              );
             await environment.runner.import(MANIFEST_ID);
             // What registers the application's global middleware. A call can
             // arrive before any page has imported it.
@@ -1650,7 +1666,7 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
       // the second copy `protocol.ts`'s own header warns about — it went stale
       // the moment the contract moved onto `default` and `tsc` caught it.
       const pageFetch = async (): Promise<(request: Request) => Promise<Response>> => {
-        const entry = (await environment.runner.import(SERVER_ENTRY_ID)) as ServerEntryModule;
+        const entry = await environment.runner.import<ServerEntryModule>(SERVER_ENTRY_ID);
         if (built !== null && built.from === entry) return built.fetch;
         // `createFetch` is how the dev server gets `/@vite/client` and every
         // `transformIndexHtml` plugin into a document Vite has no file for.

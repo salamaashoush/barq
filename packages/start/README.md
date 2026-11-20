@@ -139,6 +139,13 @@ else, so a thrown `Error`'s message never leaves the server. A development
 server also sends `thrown`, the error's name, message and stack; production
 leaves it `undefined`.
 
+A page that outlived a deploy can call a function the new server does not have,
+or one whose arguments changed under the same id. `@barqjs/vite` stamps each
+build with an id (`barqStart({ buildId })` names it, such as a commit hash), a
+call from another build is answered `409` without running, and an unknown id is
+answered `404`. Both reject with `error.unknownFunction` set, so the page can
+reload onto the current build: `if (error.unknownFunction) location.reload()`.
+
 `throw redirect({ to, params, search, hash, replace, reloadDocument, href })`
 and `throw notFound({ data, routeId })` from a handler reach the caller with
 everything they said, and their `headers` leave on the response. `useServerFn`
@@ -362,6 +369,25 @@ and `"closed"`. A frame the document was served through `live` connects once
 the page is claimed, and closes when the last place it is mounted goes. A
 `live` call to a function that answers with values rather than a frame reads
 one value per event.
+
+A `live` answer is rendered once per connection, because it may depend on who
+is asking. When it does not, `broadcast` renders it once for everyone asking
+with the same arguments:
+
+```ts
+export const getTicker = createServerFn({ method: "GET", broadcast: true })
+  .validator((input: { symbol: string }) => input)
+  .handler(async ({ data }) => {
+    if (!(await canSee(data.symbol))) throw new Response("forbidden", { status: 403 });
+    return tickerFor(data.symbol);
+  });
+```
+
+The handler still runs for every caller, so it is where a check belongs, and a
+later caller's own answer is closed unread. A connection that joins is handed
+the latest event at once. The shared rendering runs outside every request, so
+it reads no cookie, header or session, and it stops when its last connection
+goes.
 
 ### With JavaScript off
 

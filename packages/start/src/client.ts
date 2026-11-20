@@ -42,7 +42,12 @@ import { startOptions } from "./start-instance.ts";
 
 export { STATIC_PREFIX, staticFunctionMiddleware, staticUrl } from "./static-fn.ts";
 export { NOT_FOUND, REDIRECT } from "./middleware.ts";
-export { ServerFnError, type ServerFnIssue, type ServerFnThrown } from "./fn-error.ts";
+export {
+  ServerFnError,
+  UNKNOWN_HEADER,
+  type ServerFnIssue,
+  type ServerFnThrown,
+} from "./fn-error.ts";
 export { LIVE_CALL, type LiveRequest, clientStub } from "./stubs.ts";
 export { type FrameComponent, applyFrameResponse, frameAdapter } from "./frames-client.ts";
 export { type LiveIterable, type LiveStatus, live } from "./live-client.ts";
@@ -242,6 +247,8 @@ export interface ServerFnMeta {
   id: string;
   /** Absent for `POST`, which is every function that did not ask for `GET`. */
   readonly method?: ServerFnMethod;
+  /** Declared `createServerFn({ broadcast: true })`; the server half alone knows it. */
+  readonly broadcast?: true;
 }
 
 /**
@@ -256,6 +263,20 @@ export interface ServerFnMeta {
  * one-click CSRF carrying `SameSite=Lax` cookies.
  */
 export const RPC_CALLER = "x-barq-fn";
+
+/**
+ * The build a call was bundled with. A server stamped with another build
+ * answers it with a 409 rather than running a function whose arguments or
+ * result may have changed shape under the same id. A GET read does not send
+ * it: its url is its identity to every cache in between.
+ */
+export const BUILD_HEADER = "x-barq-build";
+
+declare const __BARQ_BUILD__: string | undefined;
+
+/** The build `@barqjs/vite` stamped this bundle with, or none outside a build. */
+export const BUNDLED_BUILD: string | undefined =
+  typeof __BARQ_BUILD__ === "string" ? __BARQ_BUILD__ : undefined;
 
 /** Where a GET call's payload rides, since a GET has no body. */
 export const PAYLOAD_PARAM = "payload";
@@ -467,6 +488,11 @@ export function clientRpc<In, Out, Method extends ServerFnMethod = "POST">(
       const withPosition = new Headers(headers);
       if (live.lastEventId !== null) withPosition.set("last-event-id", live.lastEventId);
       headers = withPosition;
+    }
+    if (BUNDLED_BUILD !== undefined && method !== "GET") {
+      const withBuild = new Headers(headers);
+      withBuild.set(BUILD_HEADER, BUNDLED_BUILD);
+      headers = withBuild;
     }
     const endpoint =
       RPC_PREFIX + encodeURIComponent(id) + (live === undefined ? DATA_SUFFIX : LIVE_SUFFIX);

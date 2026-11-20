@@ -29,6 +29,8 @@ import {
   setRequestMiddlewareContext,
 } from "./context.ts";
 import {
+  BUILD_HEADER,
+  BUNDLED_BUILD,
   NOT_FOUND,
   PAYLOAD_PARAM,
   REDIRECT,
@@ -43,6 +45,7 @@ import {
   type ServerFnInputAnswer,
   type ServerFnIssue,
   type ServerFnThrown,
+  UNKNOWN_HEADER,
 } from "./client.ts";
 import {
   type AnyServerFn,
@@ -66,7 +69,7 @@ import {
   serverFrame,
 } from "./frames-server.ts";
 import { FRAMES_HEADER, installFrames, isFrame } from "./frames.ts";
-import { liveResponse } from "./live-server.ts";
+import { broadcastResponse, liveResponse } from "./live-server.ts";
 
 installFrames(serverFrame as never);
 
@@ -218,6 +221,16 @@ export interface HandlerOptions {
    */
   revealError?: (error: unknown) => ServerFnThrown;
   /**
+   * The build this server is, such as a commit hash. A call whose
+   * `x-barq-build` header names another build is answered `409` and its
+   * function does not run, which catches the skew an unknown id cannot: a
+   * function whose id survived a deploy while its arguments or result changed
+   * shape. The build `@barqjs/vite` stamped the bundle with when omitted, so
+   * a built application needs nothing here; a call with no header is not
+   * checked.
+   */
+  buildId?: string;
+  /**
    * Whether some route in this application can reach this id.
    *
    * The narrow half of the route-action manifest. Export-ness already decides
@@ -306,6 +319,11 @@ export function crossOriginRefused(request: Request, allowedOrigins?: readonly s
   return site !== "same-origin" && site !== "none";
 }
 
+/** The labelled 404: the client reports it as skew rather than as a failed call. */
+function unknownFunction(): Response {
+  return new Response("not found", { status: 404, headers: { [UNKNOWN_HEADER]: "true" } });
+}
+
 /**
  * Handle one server-function request, or return null if the URL is not one.
  *
@@ -355,10 +373,18 @@ export async function handleServerFn(
     await MOUNTED.manifest();
     fn = REGISTRY.get(id);
   }
-  if (fn === undefined) return new Response("not found", { status: 404 });
+  if (fn === undefined) return unknownFunction();
   // Same answer as an unknown id, so a caller cannot tell a function that
   // exists but is unrouted from one that does not exist.
-  if (options?.reachable?.(id) === false) return new Response("not found", { status: 404 });
+  if (options?.reachable?.(id) === false) return unknownFunction();
+  const build = options?.buildId ?? BUNDLED_BUILD;
+  const callerBuild = request.headers.get(BUILD_HEADER);
+  if (build !== undefined && callerBuild !== null && callerBuild !== build) {
+    return new Response(`call from build ${JSON.stringify(callerBuild)} refused`, {
+      status: 409,
+      headers: { [UNKNOWN_HEADER]: "true", [BUILD_HEADER]: build, "cache-control": "no-store" },
+    });
+  }
   // The function's own method, and only on the channel that can carry it: a
   // form is a POST, so a GET function has the data channel alone.
   const expected = fn.meta.method ?? "POST";
@@ -384,11 +410,15 @@ export async function handleServerFn(
   const respond = async (): Promise<Response> => {
     let input: unknown;
     let clientContext: Record<string, unknown> | undefined;
+    // The arguments as they arrived: a broadcast's share key. Encoded rather
+    // than decoded, because two values the codec tells apart can decode to the
+    // same JSON; encodings that differ for equal values only cost sharing.
+    let encoded: string | undefined;
     if (isData && (method === "GET" || !isFormBody(request))) {
       try {
-        const body = (
-          method === "GET" ? queryPayload(url, bodyLimit) : await capped(request, bodyLimit).json()
-        ) as {
+        if (method === "POST") encoded = await capped(request, bodyLimit).text();
+        else encoded = url.searchParams.get(PAYLOAD_PARAM) ?? "";
+        const body = (method === "GET" ? queryPayload(url, bodyLimit) : JSON.parse(encoded)) as {
           input?: unknown;
           context?: unknown;
         };
@@ -399,7 +429,7 @@ export async function handleServerFn(
         // what merging it would let through. Spread, so a body that put a string
         // or a list here still hands the chain an object.
         clientContext =
-          body?.context === undefined ? undefined : { ...(decodeWire(body.context) as object) };
+          body?.context === undefined ? undefined : { ...decodeWire<object>(body.context) };
       } catch (error) {
         return unreadable(error);
       }
@@ -427,6 +457,12 @@ export async function handleServerFn(
       const sendContext = takeSendContext();
       if (isLive) {
         if (result instanceof Response) return applyResponseDraft(result, draft);
+        if (target.meta.broadcast === true && encoded !== undefined) {
+          return applyResponseDraft(
+            broadcastResponse(`${id}\0${method}\0${encoded}`, result, request),
+            draft,
+          );
+        }
         return applyResponseDraft(liveResponse(result, request), draft);
       }
       // A RETURNED RESPONSE IS HONOURED ON BOTH CHANNELS, and it did not used to

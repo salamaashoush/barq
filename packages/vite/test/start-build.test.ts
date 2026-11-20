@@ -63,6 +63,7 @@ beforeAll(async () => {
     },
     plugins: barqStart({
       pages: false,
+      buildId: "build-under-test",
       // `/` only: everything else has to be found by CRAWLING it.
       prerender: { routes: ["/"], onPages: (written) => (pages = written) },
     }),
@@ -135,6 +136,13 @@ describe("a production build", () => {
       "guard-module-reached-the-client",
     );
     expect(client).not.toMatch(/new\s+[\w.$]*AsyncLocalStorage/);
+  });
+
+  test("stamps both halves with the one build id", () => {
+    expect(client).toContain("build-under-test");
+    expect(server).toContain("build-under-test");
+    expect(client).not.toContain("__BARQ_BUILD__");
+    expect(server).not.toContain("__BARQ_BUILD__");
   });
 
   test("carries the client's own emitted chunk name into the server half", () => {
