@@ -6,7 +6,11 @@
  * of the runtime, and `@barqjs/start`'s request handlers, share one.
  */
 
-import { AsyncLocalStorage } from "node:async_hooks";
+// The namespace, and no name off it until a request is entered: a development
+// server answers `node:async_hooks` in the browser with an object that throws
+// when a property of it is read, and binding `AsyncLocalStorage` here reads
+// one as this module loads.
+import * as hooks from "node:async_hooks";
 
 import type { RequestEvent } from "@barqjs/web";
 
@@ -22,8 +26,9 @@ const REQUEST_EVENT = Symbol.for("barq.request-event");
  * evaluate there.
  */
 export function provideRequestEvent<T>(event: RequestEvent, cb: () => T): T {
-  const holder = globalThis as { [REQUEST_EVENT]?: AsyncLocalStorage<RequestEvent> };
+  const holder = globalThis as { [REQUEST_EVENT]?: hooks.AsyncLocalStorage<RequestEvent> };
   if (holder[REQUEST_EVENT] === undefined) {
+    const AsyncLocalStorage = hooks.AsyncLocalStorage;
     if (typeof AsyncLocalStorage !== "function") {
       throw new Error(
         "[barq] A request was entered where `AsyncLocalStorage` from `node:async_hooks` does not exist, so the request cannot be made available to the code it runs. " +
@@ -40,7 +45,7 @@ export function provideRequestEvent<T>(event: RequestEvent, cb: () => T): T {
  * requests, which must not read one of them as its own.
  */
 export function withoutRequestEvent<T>(cb: () => T): T {
-  const storage = (globalThis as { [REQUEST_EVENT]?: AsyncLocalStorage<RequestEvent> })[
+  const storage = (globalThis as { [REQUEST_EVENT]?: hooks.AsyncLocalStorage<RequestEvent> })[
     REQUEST_EVENT
   ];
   return storage === undefined ? cb() : storage.exit(cb);
