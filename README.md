@@ -15,7 +15,7 @@ changes only the DOM nodes that read it update.
   lists, icons and test utilities are barq packages that share its conventions.
 - A compiler that reports mistakes. The Rust compiler turns JSX into cloned
   templates and direct DOM writes, with no virtual DOM, or into calls on a
-  renderer of your own for a host that is not a document. It reports 26
+  renderer of your own for a host that is not a document. It reports 28
   diagnostics, each with a stable `BARQ` code and a page that shows the fix: an
   accessor used without being called, a store destructured into snapshots, a
   `<Link to>` that no route matches, markup the HTML parser would build
@@ -82,6 +82,23 @@ render(() => <Counter />, document.getElementById("app")!);
 `Counter` runs once. `{count}` is a tracked read rather than a snapshot, so a
 click updates that one text node and nothing else. There are no rules of hooks
 and no dependency arrays.
+
+Props are read as values, and they may be destructured:
+
+```tsx
+function Greeting({ name, tone = "warm", ...rest }: GreetingProps) {
+  return (
+    <p class={tone} {...rest}>
+      hello {name.toUpperCase()}
+    </p>
+  );
+}
+```
+
+Each name stays live: when the caller's `name` changes, that text updates and
+`Greeting` does not run again. The compiler turns each use into a read of the
+prop, so a default applies whenever the prop is `undefined` and the rest
+carries whatever the pattern did not name.
 
 ## Packages
 
