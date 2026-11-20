@@ -101,7 +101,7 @@
   },
   "overrides": [
     {
-      "files": ["**/*.test.ts", "**/*.test.tsx", "**/profile-hot.ts"],
+      "files": ["**/*.test.ts", "**/*.test.tsx"],
       "rules": {
         "@typescript-eslint/await-thenable": "off",
         "@typescript-eslint/unbound-method": "off",
