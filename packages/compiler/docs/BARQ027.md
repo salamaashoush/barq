@@ -24,7 +24,7 @@ export const Field = (props) => <input bind:value={props.text} />;
 ```tsx
 // compiled with target: "universal"
 export const Field = (props) => (
-  <input value={props.text()} onChange={(next: string) => props.setText(next)} />
+  <input value={props.text} onChange={(next: string) => props.setText(next)} />
 );
 ```
 

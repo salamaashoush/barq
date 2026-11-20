@@ -202,7 +202,7 @@ exports[`effect counts, graded absolutely props-destructured-param 1`] = `"  { f
 
 exports[`effect counts, graded absolutely props-raw-forward 1`] = `"  { fixture: "props-raw-forward", created: 2, runs: 4, busiest: 2, frames: 2 },"`;
 
-exports[`effect counts, graded absolutely props-renamed-and-defaulted 1`] = `"  { fixture: "props-renamed-and-defaulted", created: 3, runs: 4, busiest: 2, frames: 2 },"`;
+exports[`effect counts, graded absolutely props-renamed-and-defaulted 1`] = `"  { fixture: "props-renamed-and-defaulted", created: 4, runs: 5, busiest: 2, frames: 2 },"`;
 
 exports[`effect counts, graded absolutely props-rest-spread 1`] = `"  { fixture: "props-rest-spread", created: 2, runs: 3, busiest: 2, frames: 2 },"`;
 

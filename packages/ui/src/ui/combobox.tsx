@@ -32,7 +32,6 @@ import {
   Show,
   createSignal,
   type Child,
-  type Incoming,
   type JSXElement,
 } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
@@ -696,7 +695,10 @@ const triggerIcon = ui({
  * Children arrive as a Block either way. Written parts take nothing; a
  * callback that renders one item takes the item.
  */
-function isWritten(children: unknown): boolean {
+function isWritten<T>(
+  props: ComboboxProps<T> | ComboboxRootProps<T>,
+): props is ComboboxRootProps<T> {
+  const children: unknown = props.children;
   return typeof children === "function" && isBlock(children) && children.length === 0;
 }
 
@@ -718,15 +720,15 @@ function isWritten(children: unknown): boolean {
  * (or nothing) it is the whole control: a button that opens a searchable list,
  * which is what this component was before the parts existed.
  */
-export function Combobox<T>(props: Incoming<ComboboxProps<T>>): JSXElement;
-export function Combobox<V>(props: Incoming<ComboboxRootProps<V>>): JSXElement;
+export function Combobox<T>(props: ComboboxProps<T>): JSXElement;
+export function Combobox<V>(props: ComboboxRootProps<V>): JSXElement;
 export function Combobox(
-  props: Incoming<ComboboxProps<unknown>> | Incoming<ComboboxRootProps<unknown>>,
+  props: ComboboxProps<unknown> | ComboboxRootProps<unknown>,
 ): JSXElement {
-  if (isWritten(props.children)) {
+  if (isWritten(props)) {
     return <AriaComboboxRoot {...props} />;
   }
-  return <ComboboxPicker {...(cells(props) as Incoming<ComboboxProps<unknown>>)} />;
+  return <ComboboxPicker {...props} />;
 }
 
 /** What is chosen: its label, or whatever a callback makes of it. */

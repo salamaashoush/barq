@@ -609,7 +609,7 @@ describe("text beside an element is the string's, not a mismatch", () => {
       export default function Page() { return <div><Badge><i>x</i> Label</Badge></div>; }
     `,
     "text then a component, as a component's children": `
-      function Icon(props) { return <svg width={props.size()}><path d="M0 0" /></svg>; }
+      function Icon(props) { return <svg width={props.size}><path d="M0 0" /></svg>; }
       function Badge(props) { return <span class="b">{props.children}</span>; }
       export default function Page() { return <div><Badge>Label <Icon size={12} /></Badge></div>; }
     `,
@@ -617,13 +617,13 @@ describe("text beside an element is the string's, not a mismatch", () => {
       import { Show } from "@barqjs/core";
       function Badge(props) {
         return (
-          <Show when={props.href?.() !== undefined} fallback={<span class="b">{props.children}</span>}>
-            <a href={props.href?.()}>{props.children}</a>
+          <Show when={props.href !== undefined} fallback={<span class="b">{props.children}</span>}>
+            <a href={props.href}>{props.children}</a>
           </Show>
         );
       }
       function Trigger(props) { return <button type="button">{props.children}</button>; }
-      function List(props) { return <div role="tablist">{props.children(props.tab())}</div>; }
+      function List(props) { return <div role="tablist">{props.children(props.tab)}</div>; }
       const TAB = { name: "Members", count: 2 };
       export default function Page() {
         return (

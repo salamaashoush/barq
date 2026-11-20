@@ -69,10 +69,10 @@ describe("children hydrate in the order they are written", () => {
     function Nav(props) {
       return (
         <Group>
-          {props.label?.() === undefined ? null : <Label>{props.label()}</Label>}
+          {props.label === undefined ? null : <Label>{props.label}</Label>}
           <Content>
             <Menu>
-              <For each={() => props.items()}>
+              <For each={() => props.items}>
                 {(entry) => (<Item><span>{entry.name}</span></Item>)}
               </For>
             </Menu>

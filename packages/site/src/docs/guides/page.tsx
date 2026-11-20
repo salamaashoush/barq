@@ -44,8 +44,8 @@ export function GuidePage(): Child {
           <DocsPage
             title="No such page"
             lede="Nothing in the documentation answers to that name."
-            rail={components}
-            sections={() => []}
+            rail={components()}
+            sections={[]}
           >
             <Empty>
               <Link to="/docs/components" class={plain}>
@@ -55,11 +55,11 @@ export function GuidePage(): Child {
           </DocsPage>
         ) : (
           <DocsPage
-            title={() => guide()?.title ?? ""}
-            lede={() => guide()?.description}
-            rail={components}
-            guide={() => guide()?.slug}
-            sections={() => guide()?.sections ?? []}
+            title={guide()?.title ?? ""}
+            lede={guide()?.description}
+            rail={components()}
+            guide={guide()?.slug}
+            sections={guide()?.sections ?? []}
           >
             <div class={`${typeset} ${prose}`} data-slot="guide">
               <Body />

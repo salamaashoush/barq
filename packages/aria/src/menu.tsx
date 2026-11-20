@@ -2273,7 +2273,7 @@ export function MenuSection<T>(props: MenuSectionComponentProps<T>) {
     "aria-label": () => props["aria-label"],
   });
 
-  const render = props.children;
+  const render = cells(props).children;
 
   return (
     <li {...itemProps}>

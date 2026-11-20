@@ -312,7 +312,7 @@ export function errorFallbackFor(
         // before invoking this.
         return (component as unknown as (p: unknown) => unknown)({
           error,
-          reset,
+          reset: () => reset,
           params,
           data: () => data,
         });
@@ -324,7 +324,7 @@ export function errorFallbackFor(
     if (last !== undefined) {
       return (last as unknown as (p: unknown) => unknown)({
         error,
-        reset,
+        reset: () => reset,
         params,
         data: () => data,
       });

@@ -1,4 +1,4 @@
-import { For, createSignal, type Accessor } from "@barqjs/core";
+import { For, createSignal } from "@barqjs/core";
 
 import { Canvas, type RootState } from "@barqjs/three";
 
@@ -14,8 +14,8 @@ export const [inline, setInline] = createSignal(["a", "b"]);
  * file of its own.
  */
 export function App(props: {
-  onCreated: Accessor<(state: RootState) => void>;
-  dpr?: Accessor<number>;
+  onCreated: (state: RootState) => void;
+  dpr?: number;
 }) {
   return (
     <main>

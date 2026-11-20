@@ -277,7 +277,9 @@ export function TabsList<T>(props: TabsListProps<T>) {
         data-slot={props["data-slot"] ?? "tabs-list"}
         data-variant={props.variant ?? "default"}
         class={className()}
-      />
+      >
+        {props.children as Child}
+      </AriaValueTabList>
     );
   }
 
@@ -285,15 +287,16 @@ export function TabsList<T>(props: TabsListProps<T>) {
   if (children === undefined) {
     throw new Error("A <TabsList> under `items` takes a function of the item.");
   }
-  const collection = { ...cells(props), children };
 
   return (
     <AriaTabList
-      {...collection}
+      {...props}
       data-slot={props["data-slot"] ?? "tabs-list"}
       data-variant={props.variant ?? "default"}
       class={className()}
-    />
+    >
+      {props.children as (item: T) => Child}
+    </AriaTabList>
   );
 }
 
@@ -342,7 +345,9 @@ export function TabsContent<T>(props: TabsContentProps<T>) {
         value={value() ?? ""}
         data-slot={props["data-slot"] ?? "tabs-content"}
         class={ui(content, props.class, props.className)}
-      />
+      >
+        {props.children as Child}
+      </AriaValueTabPanel>
     );
   }
 
@@ -350,13 +355,14 @@ export function TabsContent<T>(props: TabsContentProps<T>) {
   if (children === undefined) {
     throw new Error("A <TabsContent> under `items` takes a function of the item.");
   }
-  const collection = { ...cells(props), children };
 
   return (
     <AriaTabPanel
-      {...collection}
+      {...props}
       data-slot={props["data-slot"] ?? "tabs-content"}
       class={ui(content, props.class, props.className)}
-    />
+    >
+      {props.children}
+    </AriaTabPanel>
   );
 }

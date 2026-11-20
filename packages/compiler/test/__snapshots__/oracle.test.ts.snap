@@ -1326,12 +1326,12 @@ attrs 0: 0/0 button: type"
 
 exports[`rendered DOM golden ref-on-component: rendered DOM 1`] = `
 "initial: <div class="refs"><span class="boxed">component</span><b class="direct">element</b></div>
-step 0: <div class="refs"><span class="boxed">component</span><b class="direct" data-element-ref="direct">element</b></div>
+step 0: <div class="refs"><span class="boxed" data-component-ref="boxed">component</span><b class="direct" data-element-ref="direct">element</b></div>
 attrs 0: 0 div: class
 attrs 0: 0/0 span: class
 attrs 0: 0/1 b: class
 attrs 1: 0 div: class
-attrs 1: 0/0 span: class
+attrs 1: 0/0 span: class,data-component-ref
 attrs 1: 0/1 b: class,data-element-ref"
 `;
 

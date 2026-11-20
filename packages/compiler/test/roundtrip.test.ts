@@ -128,7 +128,7 @@ describe("emitted code snapshots", () => {
    */
   it("a component named only as an object property is compiled as one", () => {
     const registered =
-      'function Layout(props) { return <div class="l">{props.x()}</div>; }\n' +
+      'function Layout(props) { return <div class="l">{props.x}</div>; }\n' +
       "export const Route = createRootRoute({ component: Layout });\n";
     const code = compileSource(
       'import { createRootRoute } from "@barqjs/router";\n' + registered,
@@ -141,7 +141,7 @@ describe("emitted code snapshots", () => {
     // And the same declaration with nothing naming it as a component: the read
     // is a call the compiler wraps, which is the shape that renders once.
     const loose = compileSource(
-      'function Layout(props) { return <div class="l">{props.x()}</div>; }\n' +
+      'function Layout(props) { return <div class="l">{props.x}</div>; }\n' +
         "export const other = 1;\n",
       "__root.tsx",
     );

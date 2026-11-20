@@ -30,7 +30,7 @@ export default function LateRows() {
 const TOP = `
 import { Loading, createMemo } from "@barqjs/core"
 function Rows(props) {
-  const list = props.rows()
+  const list = props.rows
   return <ul>{list.map((row) => <li>{row}</li>)}</ul>
 }
 export default function LateRows() {

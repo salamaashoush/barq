@@ -29,7 +29,7 @@ export function storyFor(id) {
 function Comment(props) {
   const [open, setOpen] = createSignal(true)
   return (
-    <section data-cid={props.cid()}>
+    <section data-cid={props.cid}>
       <button onClick={() => setOpen((was) => !was)}>{open() ? "open" : "closed"}</button>
       {props.children}
     </section>
@@ -37,7 +37,7 @@ function Comment(props) {
 }
 export function StoryRoute(props) {
   counts.routes++
-  const View = dynamic(() => props.data())
+  const View = dynamic(() => props.data)
   return <main><View comment={(p) => <Comment cid={p.cid()}>{p.children}</Comment>} /></main>
 }
 `;

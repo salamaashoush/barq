@@ -36,6 +36,9 @@ function recordOf(source: Source): Held {
   return typeof source === "function" ? source() : source;
 }
 
+/** What a view answers `true` under, so it is known for the record it already is. */
+const VIEW = Symbol.for("barq.props.view");
+
 /** The key a source list is published under, so a merge over a merge stays flat. */
 export const SOURCES = "$";
 
@@ -194,6 +197,7 @@ function view(sources: readonly Source[], filter: Filter): Record<string, unknow
   const target: Record<string, unknown> = {};
   return new Proxy(target, {
     get(_target, key: string | symbol): unknown {
+      if (key === VIEW) return true;
       if (typeof key === "symbol") return undefined;
       if (key === SOURCES) return filter.keys === null ? list : undefined;
       return carrier(list, filter, key, minted);
@@ -380,11 +384,14 @@ export function merge<T extends unknown[]>(...sources: T): Merge<T> {
 }
 
 /** The props without `keys`. What a rest destructure would do, without copying. */
-export function omit<T extends Record<string, unknown>, K extends keyof T & string>(
+export function omit<T extends object, K extends keyof T & string>(
   source: T,
   ...keys: K[]
 ): Omit<T, K> {
-  return view([source], { keys: new Set(keys), carriers: false }) as Omit<T, K>;
+  return view([source as Record<string, unknown>], {
+    keys: new Set(keys),
+    carriers: false,
+  }) as Omit<T, K>;
 }
 
 /**
@@ -465,4 +472,44 @@ export function values<P>(record: Incoming<P>): P {
 export function cells<P>(props: P): Incoming<P> {
   const record = (props as Record<symbol, unknown> | null | undefined)?.[RECORD];
   return (record ?? props) as Incoming<P>;
+}
+
+/**
+ * A component written without the compiler, which holds the record and calls
+ * each prop: `fromCells((props) => text(props.title()))`. It is the function it
+ * was given, typed as the component its callers see.
+ */
+export function fromCells<P, R>(component: (props: Incoming<P>) => R): (props: P) => R {
+  return component as unknown as (props: P) => R;
+}
+
+const carried = new WeakMap<object, Record<string, unknown>>();
+
+/**
+ * An object of values as a props record: each key as the Cell that reads it.
+ * This is what the compiler makes of `<Card {...options} />`, where `options`
+ * is an object the author built. A function in it is a value like any other,
+ * a handler, and is not taken for a Cell.
+ *
+ * A record is answered as it is: a view from `omit` or `merge`, and the record
+ * under a values view. A function is a source that answers with the object,
+ * such as a signal holding one, and is asked at every read. One object is carried once, so a Cell keeps its
+ * identity across reads.
+ */
+export function carry(source: unknown): unknown {
+  if (typeof source === "function") return (): unknown => carry((source as () => unknown)());
+  if (typeof source !== "object" || source === null) return source;
+  const held = source as Record<string | symbol, unknown>;
+  if (held[VIEW] === true) return source;
+  const record = held[RECORD];
+  if (record !== undefined) return record;
+  let made = carried.get(source);
+  if (made === undefined) {
+    made = {};
+    for (const key of Object.keys(source)) {
+      made[key] = key === "children" ? held[key] : (): unknown => held[key];
+    }
+    carried.set(source, made);
+  }
+  return made;
 }

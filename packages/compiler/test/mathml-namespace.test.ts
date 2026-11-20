@@ -11,7 +11,7 @@ import { compileSource, loadModule } from "./harness.ts";
 const SOURCE = `
 import { For, createSignal } from "@barqjs/core";
 export const [names, setNames] = createSignal(["x", "y"]);
-function Variable(props) { return <mi mathvariant="bold">{props.name()}</mi>; }
+function Variable(props) { return <mi mathvariant="bold">{props.name}</mi>; }
 export function Rows() {
   return <math display="block"><mrow><For each={names()}>{(name) => <mi>{name}</mi>}</For><Variable name="z" /><mspace width="1em" /></mrow></math>;
 }

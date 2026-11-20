@@ -20,7 +20,7 @@ import { Errored, For, Loading, Match, Repeat, Show, Switch, createContext, crea
 import { Portal, dynamic } from "@barqjs/web"
 export const counts = { fetches: 0 }
 function Read(props) {
-  const tag = props.tag()
+  const tag = props.tag
   const value = createMemo(async () => {
     counts.fetches++
     return "value-" + tag

@@ -716,6 +716,17 @@ impl<'a> Lift<'a, '_> {
             return Rx { react: React::Reactive, deps, ..Rx::OPAQUE };
         }
 
+        // `_$readProp(props.x)` is the same read, written by the props pass for
+        // a prop the author wrote as a value.
+        if let Some(cell) = crate::analysis::prop_read(call)
+            && let Expression::StaticMemberExpression(member) =
+                crate::analysis::without_type_wrappers(cell)
+            && let Some(symbol) = symbol_of(self.scoping, &member.object)
+            && self.env.kind_of(symbol) == SourceKind::PropsParam
+        {
+            return Rx { react: React::Reactive, deps: self.dep(symbol), ..Rx::OPAQUE };
+        }
+
         // The settled spelling: `props.x()` is how a Cell is READ,
         // so it is the tracked read the consumer's effect subscribes to. Without
         // this arm the call is `Opaque`, which `react.rs` emits UNWRAPPED, and

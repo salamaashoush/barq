@@ -489,7 +489,7 @@ function NavProjects() {
                 <DropdownMenuContent
                   aria-label="Project actions"
                   class={projectMenu}
-                  placement={() => (sidebar.isMobile() ? "bottom end" : "right top")}
+                  placement={sidebar.isMobile() ? "bottom end" : "right top"}
                 >
                   <DropdownMenuItem>
                     <Folder class={mutedIcon} />
@@ -563,7 +563,7 @@ function NavUser() {
           <DropdownMenuContent
             aria-label="Account"
             class={userMenu}
-            placement={() => (sidebar.isMobile() ? "bottom" : "right bottom")}
+            placement={sidebar.isMobile() ? "bottom" : "right bottom"}
             offset={4}
           >
             <DropdownMenuLabel class={userLabel}>

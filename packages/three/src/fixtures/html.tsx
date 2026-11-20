@@ -1,11 +1,11 @@
-import { cells, Errored, Loading, type Accessor } from "@barqjs/core";
+import { cells, Errored, Loading } from "@barqjs/core";
 import type * as THREE from "three";
 
 import { Html, useLoader } from "@barqjs/three";
 
 import { FakeLoader } from "./loader.tsx";
 
-function Labelled(props: { url: Accessor<string> }) {
+function Labelled(props: { url: string }) {
   const texture = useLoader(FakeLoader, cells(props).url) as () => THREE.Texture;
   return (
     <group name="labelled">

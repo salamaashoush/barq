@@ -14,9 +14,9 @@
  * The hole is the whole symptom now. Ownership is ambient, so a detected
  * component gains no scope parameter and no `block()` wrapper to tell it apart
  * from an undetected one. What still separates them is what the compiler KNOWS
- * about `props.label()`: in a component it is a Cell being read, so the Cell
- * itself is handed over; anywhere else it is a call nothing is known about, and
- * is wrapped so that running it stays the hole's business.
+ * about `props.label`: in a component it is a Cell being read, so the Cell
+ * itself is handed over; anywhere else it is a value nothing is known about,
+ * and is wrapped so that reading it stays the hole's business.
  */
 
 import { describe, expect, it } from "bun:test";
@@ -25,7 +25,7 @@ import { compileSource } from "./harness.ts";
 
 // `(props)`, which is both the authored form and the emitted one: ownership is
 // ambient, so the parameter list a component declares is the one it keeps.
-const component = `function Home(props) { return <h1>{props.data()?.title}{props.label()}</h1>; }`;
+const component = `function Home(props) { return <h1>{props.data?.title}{props.label}</h1>; }`;
 
 const shapes = {
   "a bare reference": `${component}\nexport const tree = [{ component: Home }];`,
@@ -47,7 +47,7 @@ describe("a component referenced through a type cast", () => {
       // Eagerly evaluated, it reads the loader's pending value once and never
       // runs again, which is the failure that has no error attached to it.
       expect(out).toMatch(/_\$insert\([^,]+, \(\) =>/);
-      expect(out).not.toMatch(/_\$insert\([^,]+, props\.data\(\)/);
+      expect(out).not.toMatch(/_\$insert\([^,]+, _\$readProp\(props\.data\)/);
       // And the prop read on its own is the Cell, forwarded by identity.
       expect(out).toMatch(/_\$insert\([^,]+, props\.label[,)]/);
     });

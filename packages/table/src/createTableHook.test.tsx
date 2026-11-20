@@ -26,7 +26,7 @@ function RowCount() {
   return <output data-testid="count">{table.getRowModel().rows.length}</output>;
 }
 
-function Shout(props: { mark?: () => string }) {
+function Shout(props: { mark?: string }) {
   const cell = useCellContext<string>();
   return <strong>{cell.getValue().toUpperCase() + (props.mark ?? "")}</strong>;
 }
@@ -70,7 +70,7 @@ const columns = helper.columns([
   helper.display({ id: "team", cell: ({ row }) => row.original.team }),
 ]);
 
-function App(props: { rows?: () => Person[] }) {
+function App(props: { rows?: Person[] }) {
   const table = createAppTable<Person>(() => ({ columns, data: props.rows ?? people }));
   return (
     <table.AppTable>

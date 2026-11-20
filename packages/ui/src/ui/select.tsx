@@ -351,9 +351,7 @@ export interface SelectProps<T> extends Omit<SelectComponentProps<T>, "items" | 
   dir?: "ltr" | "rtl";
 }
 
-function hasItems<T>(
-  props: Incoming<SelectProps<T>>,
-): props is Incoming<SelectProps<T> & SelectComponentProps<T>> {
+function hasItems<T>(props: SelectProps<T>): props is SelectProps<T> & SelectComponentProps<T> {
   return props.items !== undefined;
 }
 
@@ -389,7 +387,7 @@ function hasItems<T>(
  * under shadcn's names as well as this package's.
  */
 export function Select<T>(props: SelectProps<T>) {
-  if (hasItems(cells(props))) {
+  if (hasItems(props)) {
     return (
       <AriaSelect
         {...props}
@@ -423,7 +421,7 @@ export function Select<T>(props: SelectProps<T>) {
       onSelectionChange={(key) => chose(cells(props), key)}
       onOpenChange={props.onOpenChange}
     >
-      {props.children}
+      {props.children as Child}
     </SelectRoot>
   );
 }

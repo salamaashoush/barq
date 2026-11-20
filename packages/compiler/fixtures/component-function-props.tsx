@@ -1,4 +1,4 @@
-import { createSignal, untrack } from "@barqjs/core"
+import { cells, createSignal, untrack } from "@barqjs/core"
 
 export const [n, setN] = createSignal(0)
 
@@ -25,8 +25,8 @@ function Chip(props: {
   legacy: () => string
 }) {
   return (
-    <button type="button" class="chip" data-same={String(props.cb === props.cb)} onClick={props.cb()}>
-      {props.legacy()}
+    <button type="button" class="chip" data-same={String(cells(props).cb === cells(props).cb)} onClick={props.cb}>
+      {props.legacy}
     </button>
   )
 }

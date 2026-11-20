@@ -46,12 +46,12 @@ describe("NoHydration and Hydration", () => {
 import { Hydration, Loading, NoHydration, createMemo, createSignal, isHydratable } from "@barqjs/core"
 ${COUNTS}
 function Read(props) {
-  note(props.name())
+  note(props.name)
   const value = createMemo(async () => {
     counts.fetches++
-    return "value-" + props.name()
+    return "value-" + props.name
   })
-  return <b class={props.name()}>{value()}</b>
+  return <b class={props.name}>{value()}</b>
 }
 export function Widget() {
   note("widget")
@@ -163,7 +163,7 @@ import { Loading, createMemo, createSignal, isHydratable } from "@barqjs/core"
 import { clientOnly } from "@barqjs/web"
 ${COUNTS}
 function Chart(props) {
-  return <canvas data-name={props.name()} data-fallback={String("fallback" in props)} />
+  return <canvas data-name={props.name} data-fallback={String("fallback" in props)} />
 }
 const ChartOnly = clientOnly(() => {
   counts.imports++
@@ -179,7 +179,7 @@ const Legend = clientOnly(
 function Read(props) {
   const value = createMemo(async () => {
     counts.fetches++
-    return "value-" + props.name()
+    return "value-" + props.name
   })
   return <b>{value()}</b>
 }

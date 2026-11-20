@@ -5,7 +5,7 @@ export const [name, setName] = createSignal("world")
 function Greeting(props: { name: () => string; punctuation: string }) {
   return (
     <p class="greeting">
-      Hello, {() => props.name()}
+      Hello, {() => props.name}
       {props.punctuation}
     </p>
   )
@@ -29,6 +29,6 @@ export const optimality = {
   // reads inside the callee — including `punctuation`, which the caller passed
   // as a literal. The compiler cannot know the caller, and a component that is
   // reactive only for some of its callers is not reactive.
-  emits: ["Greeting(", "() => props.name()", "punctuation: "],
+  emits: ["Greeting(", "readProp(props.name)", "punctuation: "],
   absent: ["(Greeting, {"],
 }

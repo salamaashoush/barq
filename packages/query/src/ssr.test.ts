@@ -42,7 +42,7 @@ const cached = queryOptions({ queryKey: ["cached"], queryFn: fetched(1, "from-a-
 export const before = (client) => client.prefetchQuery(cached)
 
 function Plain(props) {
-  const query = useQuery(() => ({ queryKey: ["user", props.who()], queryFn: fetched(2, { name: props.who() }) }))
+  const query = useQuery(() => ({ queryKey: ["user", props.who], queryFn: fetched(2, { name: props.who }) }))
   return <b class="plain">{query.data?.name}:{query.isPending ? "pending" : "ready"}</b>
 }
 function Parked() {

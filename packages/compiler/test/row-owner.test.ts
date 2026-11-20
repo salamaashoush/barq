@@ -79,7 +79,7 @@ export default function Page() {
 const ROW_ERRORED = `
 import { Errored, For, markSafeError } from "@barqjs/core"
 function Cell(props) {
-  const name = props.name()
+  const name = props.name
   if (name === "broken") throw markSafeError(new Error("row " + name))
   return <b>{name}</b>
 }

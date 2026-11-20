@@ -365,7 +365,7 @@ export function Command<T>(props: CommandProps<T>) {
         data-slot={props["data-slot"] ?? "command"}
         class={ui(root, props.class, props.className)}
       >
-        <Mode isWritten>{props.children}</Mode>
+        <Mode isWritten>{props.children as Child}</Mode>
       </WrittenCommand>
     );
   }

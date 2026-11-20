@@ -344,6 +344,8 @@ describe("the diagnostic engine", () => {
         source: "export const V = () => <mesh />;\n",
         options: { intrinsics: CONTESTED_MESH },
       },
+      BARQ030: "export const V = (props) => {\n  props.count = 1;\n  return <p>{props.count}</p>;\n};\n",
+      BARQ031: 'export const V = ({ user: { name = "guest" } }) => <p>{name}</p>;\n',
     };
 
     const advertised = native

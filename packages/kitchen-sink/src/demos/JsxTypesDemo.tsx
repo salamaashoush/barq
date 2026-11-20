@@ -400,11 +400,11 @@ function HelperTypesDemo() {
       {/* Accessor and FunctionMaybe */}
       <div class={rowStyle}>
         <Button onClick={() => setCount((c) => c + 1)}>Increment</Button>
-        <ReactiveDisplay value="Static string" count={count} />
+        <ReactiveDisplay value="Static string" count={count()} />
       </div>
 
       <div class={rowStyle}>
-        <ReactiveDisplay value={() => `Dynamic: ${count()}`} count={count} />
+        <ReactiveDisplay value={`Dynamic: ${count()}`} count={count()} />
       </div>
 
       <p class={noteStyle}>

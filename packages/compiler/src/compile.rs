@@ -455,18 +455,16 @@ fn compile_on_this_stack(
 
     // Before `bind`, which reads the program this leaves: props written as
     // values become the Cell reads every later stage knows.
-    let refused = if source_type.is_jsx() {
-        crate::props_sugar::run(&allocator, &mut program, options)
-    } else {
-        Vec::new()
-    };
+    let sugar =
+        source_type.is_jsx().then(|| crate::props_sugar::run(&allocator, &mut program, options));
 
     let mut module = Module::for_source(&allocator, source_text);
     // A dialect that cannot express JSX compiles to no units at all, so there is
     // nothing for P0 to classify and the symbol table is pure cost.
-    if source_type.is_jsx() {
+    if let Some(sugar) = sugar {
+        module.props_params = Some(sugar.params);
         analysis::bind(&allocator, &program, &mut module, options);
-        for refusal in refused {
+        for refusal in sugar.refusals {
             let code = if refusal.message == crate::props_sugar::ASSIGNED {
                 Code::Barq030
             } else {
@@ -1639,8 +1637,8 @@ mod tests {
     fn the_dynamic_component_is_reported_with_the_factory_spelling() {
         let found = codes_of(
             "import { Dynamic } from \"@barqjs/web\";\n\
-             const Card = (p) => <b>{p.label()}</b>;\n\
-             export const App = (p) => <Dynamic component={p.on() ? Card : \"i\"} label=\"x\" />;\n",
+             const Card = (p) => <b>{p.label}</b>;\n\
+             export const App = (p) => <Dynamic component={p.on ? Card : \"i\"} label=\"x\" />;\n",
         );
         assert_eq!(found.len(), 1, "{found:?}");
         assert_eq!(found[0].0, Code::Barq025);
@@ -1710,8 +1708,8 @@ mod tests {
     #[test]
     fn class_list_on_an_element_names_the_class_spelling() {
         let found = codes_of(
-            "export const A = (p) => <div classList={{ active: p.on() }} />;\n\
-             export const B = (p) => <Card classList={{ active: p.on() }} />;\n",
+            "export const A = (p) => <div classList={{ active: p.on }} />;\n\
+             export const B = (p) => <Card classList={{ active: p.on }} />;\n",
         );
         assert_eq!(found.len(), 1, "a component's own prop is not reported: {found:?}");
         assert_eq!(found[0].0, Code::Barq023);
@@ -1723,7 +1721,7 @@ mod tests {
         let found = codes_of(
             "export const A = (p) => (\n\
                <div on:click={p.go} on:my-beep={p.go} capture:focus={p.go} attr:title=\"t\" \
-                    bool:hidden={p.on()} style:color=\"red\" class:active={p.on()} use:tip={1} \
+                    bool:hidden={p.on} style:color=\"red\" class:active={p.on} use:tip={1} \
                     prop:value={1} xlink:href=\"#a\" />\n\
              );\n",
         );
@@ -2013,8 +2011,15 @@ mod tests {
             format!("const a = {}1{};\n", "z(".repeat(60_000), ")".repeat(60_000)),
             format!("const a = {}1{};\n", "f(()=>".repeat(30_000), ")".repeat(30_000)),
         ];
-        for source in cases {
-            let output = compile_ok(&source, "deep.tsx");
+        for source in &cases {
+            let output = compile_ok(source, "deep.tsx");
+            assert!(!output.code.is_empty());
+        }
+        // Inside a component, so the props pass walks the same depth.
+        for source in &cases {
+            let inside =
+                format!("export function Deep(props) {{\n{source}return <b>{{props.x}}</b>;\n}}\n");
+            let output = compile_ok(&inside, "deep.tsx");
             assert!(!output.code.is_empty());
         }
     }
@@ -2105,24 +2110,24 @@ mod tests {
 
     /// A component written INLINE in a route's options object is compiled where
     /// it stands, in both function spellings: its unit is spliced into the body
-    /// and its parameter list stays the props the author wrote, with nothing
-    /// put in front of them.
+    /// and its parameter list is the one props record its pattern became, with
+    /// nothing put in front of it.
     #[test]
     fn a_route_option_written_inline_is_compiled_as_a_component() {
         let source = r#"import { createFileRoute } from "@barqjs/router";
 export const Route = createFileRoute("/x")({
-  notFoundComponent: ({ error }) => <p>{error().message}</p>,
-  errorComponent: function Boom({ error }) { return <p>{error().message}</p>; },
+  notFoundComponent: ({ error }) => <p>{error.message}</p>,
+  errorComponent: function Boom({ error }) { return <p>{error.message}</p>; },
 });
 "#;
         let output = compile_ok(source, "a.tsx");
         assert!(
-            output.code.contains("notFoundComponent: ({ error }) => {"),
+            output.code.contains("notFoundComponent: (_props$1) => {"),
             "the inline arrow does not take its props alone:\n{}",
             output.code
         );
         assert!(
-            output.code.contains("errorComponent: function Boom({ error }) {"),
+            output.code.contains("errorComponent: function Boom(_props$2) {"),
             "the inline function expression does not take its props alone:\n{}",
             output.code
         );
@@ -2175,7 +2180,16 @@ export const Route = createFileRoute("/x")({
 }
 "#;
         let output = compile_ok(source, "a.tsx");
-        assert!(output.code.contains("__bq_click"), "{}", output.code);
+        assert!(
+            output.code.contains("_$bindEvent(_el$1, \"click\", _$readProp(props.onClick));"),
+            "{}",
+            output.code
+        );
+        assert!(
+            output.code.contains("_$bindEvent(_el$1, \"focus\", _$readProp(props.onFocus));"),
+            "{}",
+            output.code
+        );
         assert!(!output.code.contains(", true)"), "a bubble binding grew a flag:\n{}", output.code);
     }
 
@@ -2190,7 +2204,7 @@ export const Route = createFileRoute("/x")({
     fn a_flow_row_that_builds_no_jsx_is_a_block_taking_only_its_row() {
         let source = r#"import { For } from "@barqjs/core";
 export function List(props) {
-  return <ul><For each={() => props.rows()}>{(row) => render(row)}</For></ul>;
+  return <ul><For each={() => props.rows}>{(row) => render(row)}</For></ul>;
 }
 "#;
         let output = compile_ok(source, "a.tsx");
@@ -2207,7 +2221,7 @@ export function List(props) {
     fn a_key_function_does_not_take_a_scope() {
         let source = r#"import { For } from "@barqjs/core";
 export function List(props) {
-  return <For each={() => props.rows()} keyed={(row) => row.id}>{(row) => <li>{row.id}</li>}</For>;
+  return <For each={() => props.rows} keyed={(row) => row.id}>{(row) => <li>{row.id}</li>}</For>;
 }
 "#;
         let output = compile_ok(source, "a.tsx");
@@ -2344,7 +2358,7 @@ export const Route = createFileRoute("/x")({ component: Page });
         // C1/C9. A component is called with its props alone, and a spread is a
         // SOURCE LIST rather than a JavaScript spread — there is no object to
         // copy, so there is no getter for a copy to read.
-        assert!(output.code.contains("_$props([rest, {"), "{}", output.code);
+        assert!(output.code.contains("_$props([_$carry(rest), {"), "{}", output.code);
         assert!(!output.code.contains("...rest"), "{}", output.code);
         assert!(output.code.contains("x: _k$1"), "{}", output.code);
         assert!(output.code.contains("const _k$1 = () => 1"), "{}", output.code);
@@ -2352,7 +2366,7 @@ export const Route = createFileRoute("/x")({ component: Page });
         assert!(!output.code.contains("_$createElement(A"), "{}", output.code);
         // `createElement` calls `tag(finalProps)` with no receiver, so a member
         // tag must not pick up a `this` the un-compiled path never had.
-        assert!(output.code.contains("(0, Foo.Bar)(_$props([rest, {"), "{}", output.code);
+        assert!(output.code.contains("(0, Foo.Bar)(_$props([_$carry(rest), {"), "{}", output.code);
         // The component identifier is the binding, not a name-matched string.
         assert!(!output.code.contains("\"Foo.Bar\""), "{}", output.code);
     }
@@ -2394,7 +2408,7 @@ export const Route = createFileRoute("/x")({ component: Page });
         const HOST: &str = "import \"@barqjs/web/host\";";
         let lowered = compile_ok(
             "import { Show } from \"@barqjs/core\";\n\
-             export const V = (p) => <Show when={p.on()}><b>x</b></Show>;\n",
+             export const V = (p) => <Show when={p.on}><b>x</b></Show>;\n",
             "V.tsx",
         );
         assert!(!lowered.code.contains(HOST), "{}", lowered.code);
@@ -4231,7 +4245,7 @@ export const Route = createFileRoute("/x")({ component: Page });
 
         let source = "const V = (n) => <b onClick={() => bump(n)}>x</b>;\n";
         let output = compile_ok(source, "V.tsx");
-        let handler = output.code.find("bump(n)").expect("the handler");
+        let handler = output.code.find("bump(_$values(n))").expect("the handler");
         let component = output.code.find("const V =").expect("the component");
         assert!(handler > component, "a captured local pins the handler: {}", output.code);
     }
@@ -4246,7 +4260,11 @@ export const Route = createFileRoute("/x")({ component: Page });
         // the delegated/direct choice it implies. What the runtime is left with
         // is `isEventHandlerValue`, which is the oracle's own test on a value
         // neither side can see.
-        assert!(output.code.contains("_$bindEvent(_el$1, \"click\", p.h)"), "{}", output.code);
+        assert!(
+            output.code.contains("_$bindEvent(_el$1, \"click\", _$readProp(p.h))"),
+            "{}",
+            output.code
+        );
         assert!(!output.code.contains("__bq_click ="), "{}", output.code);
         assert!(output.code.contains("_$delegateEvents([\"click\"])"), "{}", output.code);
     }
@@ -4257,7 +4275,11 @@ export const Route = createFileRoute("/x")({ component: Page });
     fn a_bound_handler_tuple_is_written_whole_into_the_expando() {
         let output =
             compile_ok("const V = (item) => <b onClick={[remove, item]}>x</b>;\n", "V.tsx");
-        assert!(output.code.contains("_el$1.__bq_click = [remove, item]"), "{}", output.code);
+        assert!(
+            output.code.contains("_el$1.__bq_click = [remove, _$values(item)]"),
+            "{}",
+            output.code
+        );
         assert!(!output.code.contains("Data"), "{}", output.code);
     }
 

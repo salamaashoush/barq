@@ -28,10 +28,10 @@ export function boardFor(feed) {
 }
 function Item(props) {
   const [done, setDone] = createSignal(false)
-  return <p class="item"><button onClick={() => setDone((was) => !was)}>{done() ? "done" : "todo"}</button>{props.label()}</p>
+  return <p class="item"><button onClick={() => setDone((was) => !was)}>{done() ? "done" : "todo"}</button>{props.label}</p>
 }
 export function Page(props) {
-  const View = dynamic(() => props.view())
+  const View = dynamic(() => props.view)
   return <main><View item={(slot) => <Item label={slot.label()} />} /></main>
 }
 `;

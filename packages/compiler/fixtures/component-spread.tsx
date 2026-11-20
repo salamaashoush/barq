@@ -4,8 +4,8 @@ export const [label, setLabel] = createSignal("first")
 
 function Chip(props: { label: () => string; tone: string; id: string }) {
   return (
-    <span class="chip" data-tone={props.tone()} id={props.id()}>
-      {() => props.label()}
+    <span class="chip" data-tone={props.tone} id={props.id}>
+      {() => props.label}
     </span>
   )
 }
@@ -13,7 +13,8 @@ function Chip(props: { label: () => string; tone: string; id: string }) {
 export default function ComponentSpread() {
   // C3 law 1 is TOTAL, and a spread source is spliced into the source list
   // verbatim — so its own properties have to be Cells like every other prop.
-  // A raw value here is a prop the consumer cannot read: `props.tone()` throws.
+  // A raw value here is handed to the consumer as its carrier, and a raw
+  // function among them is called as a Cell.
   const shared = { tone: () => "warm", id: () => "chip-1" }
   return (
     <div>

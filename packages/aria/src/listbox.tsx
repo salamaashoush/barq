@@ -580,7 +580,7 @@ export function ListBox<T>(props: ListBoxComponentProps<T>) {
     },
   );
 
-  const render = props.children;
+  const render = cells(props).children;
 
   /** The whole collection, or the window of it the virtualiser says is on screen. */
   const rows = (): Node<T>[] => {

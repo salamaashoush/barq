@@ -160,7 +160,7 @@ export function BreadcrumbSeparator(props: BreadcrumbSeparatorProps) {
       role="presentation"
       aria-hidden="true"
     >
-      {() => props.children?.() ?? <ChevronRight />}
+      {() => cells(props).children?.() ?? <ChevronRight />}
     </li>
   );
 }

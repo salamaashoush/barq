@@ -1,9 +1,9 @@
 /**
  * A component's props, on both sides of the call.
  *
- * The body reads every prop by calling it, `children` that declares parameters
- * is called with them, and the helper types say the same thing whichever one a
- * component is annotated with. `attribute-types.test.ts` typechecks this
+ * A component declares `props: P` and its body reads every prop as the value,
+ * `children` that declares parameters is called with them, and `cells(props)`
+ * is the record of Cells for code that takes `Incoming<P>`. `attribute-types.test.ts` typechecks this
  * directory: every positive compiles and every `@ts-expect-error` fires.
  */
 
@@ -50,7 +50,7 @@ export const listInfersItsItem = (
 /** Content or a callback: the callback keeps its parameter, the content is read like any prop. */
 function Slot(props: { value: Row; children: Child | ((row: Row) => Child) }) {
   const children = props.children;
-  assertType<Equal<typeof children, Accessor<Child> | ((row: Row) => Child)>>();
+  assertType<Equal<typeof children, Child | ((row: Row) => Child)>>();
   return <div>{typeof children === "function" ? null : children}</div>;
 }
 
@@ -98,11 +98,33 @@ function Button(props: { variant?: "primary" | "danger"; children?: Child }) {
 
 /** `ComponentProps` is what the body receives, for a component and for a tag. */
 export function Fancy(props: ComponentProps<typeof Button>) {
-  assertType<Equal<typeof props.variant, Accessor<"primary" | "danger" | undefined> | undefined>>();
+  assertType<Equal<typeof props.variant, "primary" | "danger" | undefined>>();
   return <Button {...props} />;
 }
 
 assertType<Equal<ComponentProps<"a">, JSX.IntrinsicElements["a"]>>();
+
+function useTone(props: Incoming<{ text: string; tone?: "info" | "warn" }>): Accessor<string> {
+  return () => `${props.tone?.() ?? "info"}:${props.text()}`;
+}
+
+/** Declared props are values in the body, and `cells` is the record a hook that takes Cells reads. */
+export function Tag(props: { text: string; tone?: "info" | "warn" }) {
+  assertType<Equal<typeof props.text, string>>();
+  assertType<Equal<typeof props.tone, "info" | "warn" | undefined>>();
+  const record = cells(props);
+  assertType<Equal<typeof record.text, Accessor<string>>>();
+  assertType<Equal<typeof record.tone, Accessor<"info" | "warn" | undefined> | undefined>>();
+  // @ts-expect-error a value is not called
+  props.text();
+  // @ts-expect-error a Cell is not its value
+  const wrong: string = record.text;
+  void wrong;
+  // @ts-expect-error a hook that takes Cells is given `cells(props)`
+  useTone(props);
+  const label = useTone(record);
+  return <span class={props.tone}>{label()}</span>;
+}
 
 /** `Component<P>` hands the body Cells; the call site writes values. */
 const Label: Component<{ text: string; tone?: "info" | "warn" }> = (props) => {

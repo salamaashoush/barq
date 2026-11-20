@@ -1618,27 +1618,27 @@ interface NavigationOptions {
  * Hidden rather than removed, so the row of actions keeps its columns and a
  * layout does not jump when the last question swaps Next for Submit.
  */
-function NavigationButton(
-  props: QuestionnaireButtonProps,
+function navigationButton(
+  props: Incoming<QuestionnaireButtonProps>,
   navigation: NavigationOptions,
 ) {
   const root = useRoot();
-  const options = fromProps(cells(props));
-  const disabled = (): boolean => props.disabled ?? false;
+  const options = fromProps(props);
+  const disabled = (): boolean => props.disabled?.() ?? false;
   const shortcut = (): "Enter" | null =>
     navigation.confirms && navigation.visible() && !disabled() ? "Enter" : null;
 
   const buttonProps = mergeProps(
     filterDOMProps(options, { global: true, labelable: true, propNames: BUTTON_PROPS }),
-    styleProps(cells(props)),
+    styleProps(props),
     {
-      type: () => props.type ?? navigation.type,
+      type: () => props.type?.() ?? navigation.type,
       disabled,
       hidden: () => !navigation.visible(),
       inert: () => !navigation.visible(),
       "aria-hidden": () => (navigation.visible() ? undefined : true),
       "aria-keyshortcuts": () => shortcut() ?? undefined,
-      tabIndex: () => (navigation.visible() ? props.tabIndex : -1),
+      tabIndex: () => (navigation.visible() ? props.tabIndex?.() : -1),
       "data-visible": () => present(navigation.visible()),
       "data-hidden": () => present(!navigation.visible()),
       "data-disabled": () => present(disabled()),
@@ -1651,7 +1651,7 @@ function NavigationButton(
     },
   );
 
-  const render = props.render;
+  const render = props.render?.();
   if (render !== undefined) {
     const state: QuestionnaireNavigationState = {
       disabled,
@@ -1659,11 +1659,11 @@ function NavigationButton(
       status: root.activeStatus,
       visible: navigation.visible,
     };
-    return render(partRender({ ...buttonProps, ref: props.ref }), state) as JSXElement;
+    return render(partRender({ ...buttonProps, ref: props.ref?.() }), state) as JSXElement;
   }
 
   return (
-    <button {...buttonProps} ref={mergeRefs(props.ref)}>
+    <button {...buttonProps} ref={mergeRefs(props.ref?.())}>
       {props.children === undefined ? navigation.label : props.children}
     </button>
   );
@@ -1671,7 +1671,7 @@ function NavigationButton(
 
 export function QuestionnairePrevious(props: Incoming<QuestionnaireButtonProps>) {
   const root = useRoot();
-  return NavigationButton(props, {
+  return navigationButton(props, {
     visible: () => root.total() > 1 && !root.first(),
     label: "Previous",
     type: "button",
@@ -1682,7 +1682,7 @@ export function QuestionnairePrevious(props: Incoming<QuestionnaireButtonProps>)
 
 export function QuestionnaireSkip(props: Incoming<QuestionnaireButtonProps>) {
   const root = useRoot();
-  return NavigationButton(props, {
+  return navigationButton(props, {
     visible: () => root.activeRequired() === false,
     label: "Skip",
     type: "button",
@@ -1693,7 +1693,7 @@ export function QuestionnaireSkip(props: Incoming<QuestionnaireButtonProps>) {
 
 export function QuestionnaireNext(props: Incoming<QuestionnaireButtonProps>) {
   const root = useRoot();
-  return NavigationButton(props, {
+  return navigationButton(props, {
     visible: () => root.total() > 1 && !root.last(),
     label: "Next",
     type: "button",
@@ -1704,7 +1704,7 @@ export function QuestionnaireNext(props: Incoming<QuestionnaireButtonProps>) {
 
 export function QuestionnaireSubmit(props: Incoming<QuestionnaireButtonProps>) {
   const root = useRoot();
-  return NavigationButton(props, {
+  return navigationButton(props, {
     visible: () => root.total() > 0 && root.last(),
     label: "Submit",
     type: "submit",

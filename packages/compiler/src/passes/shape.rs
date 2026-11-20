@@ -612,7 +612,20 @@ impl<'a> Shaper<'a, '_> {
         if matches!(strip_wrappers(&value), Expression::Identifier(_)) {
             return value;
         }
-        let rx = self.lift.rx(&value);
+        // `_$carry(object)` moves when the object it carries does, and a bare
+        // name does not.
+        let carried = match &value {
+            Expression::CallExpression(call) => crate::props_sugar::carried(call),
+            _ => None,
+        };
+        if carried.is_some_and(|object| matches!(strip_wrappers(object), Expression::Identifier(_)))
+        {
+            return value;
+        }
+        let rx = match carried {
+            Some(object) => self.lift.rx(object),
+            None => self.lift.rx(&value),
+        };
         if rx.react != React::Reactive && rx.thunk != Thunk::Arrow {
             return value;
         }
@@ -2059,9 +2072,9 @@ mod tests {
              );\n",
         )
         .code;
-        assert!(code.contains("_$props([rest])"), "{code}");
-        assert!(code.contains("_$props([() => wide() ? bag : null])"), "{code}");
-        assert!(code.contains("_$props([bag, props])"), "{code}");
+        assert!(code.contains("_$props([() => _$carry(rest())])"), "{code}");
+        assert!(code.contains("_$props([() => _$carry(wide() ? bag : null)])"), "{code}");
+        assert!(code.contains("_$props([_$carry(bag), props])"), "{code}");
     }
 
     /// A member read off the same call, bare and inside a template literal.
@@ -2279,7 +2292,7 @@ mod tests {
             "export const V = (props) => <Button onClick={(e) => go(e, props.id)} rows={[1, 2]} />;\n",
         )
         .code;
-        assert!(code.contains("onClick: _$cell((e) => go(e, props.id))"), "{code}");
+        assert!(code.contains("onClick: _$cell((e) => go(e, _$readProp(props.id)))"), "{code}");
         assert!(code.contains("rows: _$cell([1, 2])"), "{code}");
     }
 
@@ -2290,7 +2303,7 @@ mod tests {
     fn a_spread_becomes_a_source_list_in_written_order() {
         let code = emit("const V = () => <Foo {...a} b={x()} {...c} />;\n").code;
         let list = code.replace(char::is_whitespace, "");
-        assert!(list.contains("_$props([a,{b:()=>x()},c])"), "{code}");
+        assert!(list.contains("_$props([_$carry(a),{b:()=>x()},_$carry(c)])"), "{code}");
         assert!(!code.contains("...a"), "{code}");
 
         // One plain record is returned unchanged: the overwhelming case pays
@@ -2402,17 +2415,16 @@ mod tests {
     /// halves are pinned here, because the second is what C5 costs if the first
     /// is wrong.
     ///
-    /// C4 settled the read spelling as `props.total()`, and the two spellings
-    /// converge on ONE emission: the reference is Accessor-shaped so it is
-    /// emitted unwrapped, and `() => props.total()` η-reduces to the same Cell.
-    /// That convergence is the point — `insert` unwraps exactly one level, and
-    /// `() => props.total` would hand it two.
+    /// The read is spelled `props.total`, a value, and as a child it is handed
+    /// on as the Cell: the reference is Accessor-shaped so it is emitted
+    /// unwrapped. `insert` unwraps exactly one level, and `() => props.total`
+    /// would hand it two.
     #[test]
     fn a_props_read_is_live_inside_and_forwards_by_identity_out() {
         let code = emit(
             "import { createSignal } from \"@barqjs/core\";\n\
              const [n] = createSignal(0);\n\
-             function Badge(props) { return <span>{props.total()}</span>; }\n\
+             function Badge(props) { return <span>{props.total}</span>; }\n\
              function Outer(props) { return <Chip tone={props.tone} />; }\n\
              export default function App() { return <div><Badge total={n()} /><Outer tone=\"w\" /></div>; }\n",
         )
@@ -2502,15 +2514,16 @@ mod tests {
             assert!(at_cell.contains(cell), "{cell} not in:\n{at_cell}");
         }
 
-        // C3.10 rule 4 — kind travels with the VALUE. A prop read is already a
-        // Cell, so the handler channel must not re-wrap it; doing so would make
-        // the child's `props.onClick()` yield the parent's Cell instead of the
-        // function, which is the same defect one level down.
+        // C3.10 rule 4 — kind travels with the VALUE. A prop on the handler
+        // channel is read, not forwarded, so what crosses is a Cell of that
+        // read and the child's `props.onClick` yields the function. Wrapping
+        // the parent's Cell itself would yield the Cell instead, which is the
+        // same defect one level down.
         let forwarded = emit(&format!(
             "{prelude}export const V = (props) => <Button onClick={{props.onClick}}/>;\n"
         ))
         .code;
-        assert!(forwarded.contains("onClick: props.onClick"), "{forwarded}");
+        assert!(forwarded.contains("onClick: () => _$readProp(props.onClick)"), "{forwarded}");
 
         // The channel is `on` + an UPPERCASE letter. `once` is an ordinary prop
         // and a nullary binding still crosses it by identity (C5).

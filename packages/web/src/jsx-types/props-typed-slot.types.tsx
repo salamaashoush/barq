@@ -1,5 +1,5 @@
 /**
- * Props are read by CALLING, and the type says so.
+ * A props RECORD is read by CALLING, and the type says so.
  *
  * The rule is checkable only in the type channel: both of its falsification
  * procedures are "MUST be a type error", and a type error is invisible to every
@@ -40,11 +40,11 @@ export function ReadByCalling(): string {
  * C4's first falsification procedure: `props.x` in VALUE position, where
  * `x: string`, must be a type error rather than a silent `() => string`.
  *
- * This is the whole argument against a compiler rewrite of `props.x` to
- * `props.x()`: a transform is legitimate only when the untransformed code has
- * the same semantics, and here it does not — the untransformed read yields a
- * FUNCTION, and every consumer that stringifies it gets `"() => …"` rather than
- * the value. The type is what stops it at the source.
+ * The compiler rewrites `props.x` to the call inside a component and nowhere
+ * else, so code that holds the record, a hook given `cells(props)` or a
+ * function in a `.ts` file, is not rewritten: the read yields a FUNCTION, and
+ * every consumer that stringifies it gets `"() => …"` rather than the value.
+ * The type is what stops it at the source.
  */
 export function ValuePositionIsRefused(): void {
   // @ts-expect-error a Cell is not its value: `props.label` is `() => string`

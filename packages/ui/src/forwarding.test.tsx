@@ -142,9 +142,9 @@ import { Tooltip, TooltipContent } from "./ui/tooltip.tsx";
 /**
  * What the caller writes on the part under test.
  *
- * Spread onto a component, a value arrives as the Cell a written prop would
- * be, and a function is taken for one already. The `ref` is therefore a Cell
- * that yields the callback, which is what `ref={callback}` compiles to.
+ * Spread onto a component, each value arrives as the Cell a written prop would
+ * be, a function included. The `ref` is therefore the callback itself, as in
+ * `ref={callback}`.
  */
 interface Given {
   class: string;
@@ -152,7 +152,7 @@ interface Given {
   id: string;
   "data-caller": string;
   "aria-describedby": string;
-  ref: () => (element: Element | null) => void;
+  ref: (element: Element | null) => void;
 }
 
 let handed: (Element | null)[] = [];
@@ -167,7 +167,7 @@ const given = (): Given => ({
   id: "caller-id",
   "data-caller": "yes",
   "aria-describedby": "caller-note",
-  ref: () => record,
+  ref: record,
 });
 
 afterEach(() => {

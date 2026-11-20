@@ -31,7 +31,7 @@ const panel = css`
 `;
 
 export function Panel(props) {
-  return <div class={panel} style={{ "--panel-bg": props.background() }} />;
+  return <div class={panel} style={{ "--panel-bg": props.background }} />;
 }
 ```
 

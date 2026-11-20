@@ -16,14 +16,14 @@ The same message names `hydratable` (hydration claims the document's server mark
 
 ```tsx
 // compiled with { target: "universal", ssr: true }
-export const Scene = (props) => <box>{props.label()}</box>;
+export const Scene = (props) => <box>{props.label}</box>;
 ```
 
 ## Fixed example
 
 ```tsx
 // compiled with { target: "universal" }
-export const Scene = (props) => <box>{props.label()}</box>;
+export const Scene = (props) => <box>{props.label}</box>;
 ```
 
 ## Why this rule exists

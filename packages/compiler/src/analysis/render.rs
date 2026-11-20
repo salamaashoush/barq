@@ -682,6 +682,14 @@ struct Reads<'s, 'a> {
 
 impl<'a> Reads<'_, 'a> {
     fn called(&self, call: &CallExpression<'a>) -> Option<Source<'a>> {
+        if let Some(cell) = super::prop_read(call)
+            && let Expression::StaticMemberExpression(member) = without_type_wrappers(cell)
+        {
+            let object = symbol_of(self.scoping, &member.object)?;
+            let prop = member.property.name.as_str();
+            return (self.env.kind_of(object) == SourceKind::PropsParam && prop != "children")
+                .then_some(Source::Prop(object, prop));
+        }
         if !call.arguments.is_empty() {
             return None;
         }

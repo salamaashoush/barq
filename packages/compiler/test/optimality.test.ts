@@ -453,6 +453,19 @@ describe("target 1 — semantic reactivity (never name regexes)", () => {
     );
   });
 
+  it("component-boundary-props: a prop read in a hole is a thunk around the read", () => {
+    // A uid shape, so it is asserted here rather than as a needle in the
+    // fixture's declaration, where naming `_$readProp` would shift every
+    // emitted uid.
+    const code = compileFixtureBody("component-boundary-props");
+    expect(code).toContain("() => _$readProp(props.name)");
+  });
+
+  it("component-forwarded-handler-tuple: an array prop is one Cell over both reads", () => {
+    const code = compileFixtureBody("component-forwarded-handler-tuple");
+    expect(code).toContain("cb: () => [_$readProp(props.handler), _$readProp(props.label)]");
+  });
+
   it("handler-no-closure: a handler closing over nothing is not re-created per instance", () => {
     const code = compileFixtureBody("handler-no-closure");
     // Hoisted to module scope: the arrow appears above the component, not inside

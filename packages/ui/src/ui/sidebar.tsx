@@ -982,7 +982,7 @@ export function Sidebar(props: SidebarProps) {
           <SheetContent
             data-slot="sidebar"
             data-mobile="true"
-            side={() => side()}
+            side={side()}
             class={mobile}
             style={{ "--sidebar-width": WIDTH_MOBILE }}
           >
@@ -1292,22 +1292,22 @@ export function SidebarMenuButton(props: SidebarMenuButtonProps) {
       {tip() === undefined ? (
         <SidebarMenuControl {...props} />
       ) : (
-        <Tooltip delay={0} isDisabled={() => sidebar.state() !== "collapsed" || sidebar.isMobile()}>
+        <Tooltip delay={0} isDisabled={sidebar.state() !== "collapsed" || sidebar.isMobile()}>
           <SidebarMenuControl {...props} />
           <TooltipContent
-            side={() => tip()?.side ?? "right"}
-            align={() => tip()?.align ?? "center"}
-            sideOffset={() => tip()?.sideOffset}
-            alignOffset={() => tip()?.alignOffset}
-            placement={() => tip()?.placement}
-            offset={() => tip()?.offset}
-            crossOffset={() => tip()?.crossOffset}
-            shouldFlip={() => tip()?.shouldFlip}
-            containerPadding={() => tip()?.containerPadding}
-            arrow={() => tip()?.arrow}
-            class={() => tip()?.class}
-            className={() => tip()?.className}
-            id={() => tip()?.id}
+            side={tip()?.side ?? "right"}
+            align={tip()?.align ?? "center"}
+            sideOffset={tip()?.sideOffset}
+            alignOffset={tip()?.alignOffset}
+            placement={tip()?.placement}
+            offset={tip()?.offset}
+            crossOffset={tip()?.crossOffset}
+            shouldFlip={tip()?.shouldFlip}
+            containerPadding={tip()?.containerPadding}
+            arrow={tip()?.arrow}
+            class={tip()?.class}
+            className={tip()?.className}
+            id={tip()?.id}
           >
             {tip()?.children}
           </TooltipContent>

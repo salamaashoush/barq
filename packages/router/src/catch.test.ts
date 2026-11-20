@@ -125,7 +125,7 @@ describe("<CatchBoundary>", () => {
       call(CatchBoundary, {
         getResetKey: () => () => "k",
         errorComponent: () => (props: ErrorProps) => {
-          reset = props.reset;
+          reset = props.reset();
           return document.createTextNode("failed");
         },
         children: () => {

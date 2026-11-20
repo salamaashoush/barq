@@ -2,7 +2,6 @@
  * The types a component is written against, none of which names a platform.
  */
 
-import type { Incoming } from "./config.ts";
 import type { Child, JSXElement } from "./types.ts";
 
 /**
@@ -30,18 +29,14 @@ export type FunctionMaybe<T> = T | Accessor<T>;
 export type MaybeAccessor<T> = FunctionMaybe<T>;
 
 /**
- * The four shapes a component declares, as its BODY receives them.
+ * The four shapes a component declares, as its body reads them: values. The
+ * compiler writes the call that reads each prop's Cell, so `props.title` is a
+ * `string` where the declaration says `string`.
  *
- * Every one of these is `Incoming`, and that is not decoration: a prop that is
- * present is a Cell and is called at the use site, so `P & { children?: Child }`
- * described a shape no barq component has ever been handed. A component
- * annotated with the old definition read `props.title()` and was told `string`
- * is not callable — which was 21 of `kitchen-sink`'s errors, in the demo whose
- * whole subject is these types.
- *
- * The call site is unaffected: `LibraryManagedAttributes` widens back to values.
+ * Code the compiler does not rewrite, a hook in a `.ts` file or a helper with
+ * a lowercase name, holds the record itself and declares `Incoming<P>`.
  */
-export type PropsWithChildren<P = NoProps> = Incoming<P & { children?: Child }>;
+export type PropsWithChildren<P = NoProps> = P & { children?: Child };
 
 /**
  * ParentProps - alias for PropsWithChildren (SolidJS naming)
@@ -51,21 +46,18 @@ export type ParentProps<P = NoProps> = PropsWithChildren<P>;
 /**
  * VoidProps - props for components that don't accept children
  */
-export type VoidProps<P = NoProps> = Incoming<P> & { children?: never };
+export type VoidProps<P = NoProps> = P & { children?: never };
 
 /**
  * FlowProps - props for components that must have children
  */
-export type FlowProps<P = NoProps, C = Child> = Incoming<P & { children: C }>;
+export type FlowProps<P = NoProps, C = Child> = P & { children: C };
 
 /** A props declaration with nothing in it, which intersects cleanly with `children`. */
 type NoProps = object;
 
-/**
- * A component, given the props its CALLER declares: the body receives each one
- * as a Cell, so `props.title()` and not `props.title`.
- */
-export type Component<P = NoProps> = (props: Incoming<P>) => JSXElement;
+/** A component, given the props its caller writes and its body reads. */
+export type Component<P = NoProps> = (props: P) => JSXElement;
 
 /** A component that takes no children. */
 export type VoidComponent<P = NoProps> = (props: VoidProps<P>) => JSXElement;

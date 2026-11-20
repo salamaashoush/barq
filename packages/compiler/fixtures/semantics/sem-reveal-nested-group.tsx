@@ -36,7 +36,7 @@ const answers = new Map<string, (value: string) => void>()
  * slot with something to coordinate.
  */
 function Leaf(props: { name: string }) {
-  const name = props.name()
+  const name = props.name
   const data = createMemo(
     () =>
       new Promise<string>((resolve) => {

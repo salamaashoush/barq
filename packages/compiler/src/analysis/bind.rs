@@ -124,6 +124,7 @@ pub fn classify<'a>(
         allocator,
         source: module.source,
         scoping: &module.scoping,
+        sugared: module.props_params.as_deref(),
         env: &mut module.env,
         namespaces: Vec::new(),
         decls: Vec::new(),
@@ -194,6 +195,8 @@ struct Binder<'p, 'a> {
     allocator: &'a Allocator,
     source: &'a str,
     scoping: &'p Scoping,
+    /// The props parameters the props pass declared, when it ran.
+    sugared: Option<&'p [Span]>,
     env: &'p mut ReactiveEnv<'a>,
     /// `import * as core from "@barqjs/core"` — `core.createSignal(0)` still resolves.
     namespaces: Vec<SymbolId>,
@@ -538,6 +541,16 @@ impl<'a> Binder<'_, 'a> {
     /// Applied after the walk, and only to a symbol nothing else classified, so
     /// a row attribution always wins.
     fn props_params(&mut self) {
+        if let Some(declared) = self.sugared {
+            for symbol in self.scoping.symbol_ids() {
+                if self.env.kind[symbol] == SourceKind::Opaque
+                    && declared.contains(&self.scoping.symbol_span(symbol))
+                {
+                    self.env.kind[symbol] = SourceKind::PropsParam;
+                }
+            }
+            return;
+        }
         for index in 0..self.candidates.len() {
             let (owner, props) = self.candidates[index];
             let known = match owner {
@@ -1379,6 +1392,7 @@ impl<'a> Binder<'_, 'a> {
                 let symbol = symbol_of(self.scoping, &member.object)?;
                 Some((symbol, self.allocator.alloc_str(member.property.name.as_str())))
             }
+            Expression::CallExpression(call) => self.props_member(super::prop_read(call)?),
             _ => None,
         }
     }

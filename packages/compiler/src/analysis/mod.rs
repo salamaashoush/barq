@@ -52,6 +52,21 @@ pub fn symbol_of(scoping: &Scoping, expression: &Expression<'_>) -> Option<Symbo
     scoping.get_reference(identifier.reference_id.get()?).symbol_id()
 }
 
+/// The Cell under `_$readProp(cell)`, the read the props pass writes for a
+/// prop written as a value.
+pub(crate) fn prop_read<'e, 'a>(
+    call: &'e oxc::ast::ast::CallExpression<'a>,
+) -> Option<&'e Expression<'a>> {
+    let Expression::Identifier(callee) = &call.callee else { return None };
+    if callee.name != crate::props_sugar::READ {
+        return None;
+    }
+    match call.arguments.as_slice() {
+        [argument] => argument.as_expression(),
+        _ => None,
+    }
+}
+
 /// Stage 2 of the pipeline. Runs against the program the parser produced and
 /// nothing else — every later stage works from the IR, so the symbol table can
 /// never be invalidated by a rewrite.

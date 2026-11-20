@@ -43,7 +43,7 @@ function Pending(): unknown {
  * `(scope, props)` because those components are hand-built DOM that the
  * compiler never lowers; a JSX one is not the same thing.
  */
-function Post(props: { data: () => { title: string } | undefined }): unknown {
+function Post(props: { data: { title: string } | undefined }): unknown {
   return <h1>{props.data?.title ?? "loading"}</h1>;
 }
 

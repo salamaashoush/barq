@@ -306,7 +306,7 @@ function NavUser() {
           <DropdownMenuContent
             aria-label="Account"
             class={userMenu}
-            placement={() => (sidebar.isMobile() ? "bottom" : "right top")}
+            placement={sidebar.isMobile() ? "bottom" : "right top"}
             offset={4}
           >
             <DropdownMenuLabel class={userLabel}>

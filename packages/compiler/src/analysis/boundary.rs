@@ -527,9 +527,9 @@ mod tests {
     fn a_tree_rooted_at_a_claimed_tag_builds_through_its_renderer_anywhere_in_the_file() {
         let code = claimed(
             "export function Box(p) {\n\
-               return <mesh position={p.at()}><boxGeometry args={[1, 1, 1]} /></mesh>;\n\
+               return <mesh position={p.at}><boxGeometry args={[1, 1, 1]} /></mesh>;\n\
              }\n\
-             export const App = (p) => <main><h1>{p.title()}</h1><Box at={p.at} /></main>;\n",
+             export const App = (p) => <main><h1>{p.title}</h1><Box at={p.at} /></main>;\n",
         );
         assert!(scene(&code, "mesh") && scene(&code, "boxGeometry"), "{code}");
         assert!(document(&code, "main"), "{code}");
@@ -597,8 +597,8 @@ mod tests {
     fn what_is_written_inside_a_tree_or_a_boundary_follows_it() {
         let code = claimed(
             "import { Canvas } from \"@barqjs/three\";\n\
-             export const A = (p) => <group>{p.on() && <div class=\"tip\" />}</group>;\n\
-             export const B = (p) => <div>{p.on() && <mesh />}</div>;\n\
+             export const A = (p) => <group>{p.on && <div class=\"tip\" />}</group>;\n\
+             export const B = (p) => <div>{p.on && <mesh />}</div>;\n\
              export const C = () => <section><Canvas><div class=\"in\" /></Canvas></section>;\n",
         );
         assert!(scene(&code, "group") && scene(&code, "div"), "{code}");
@@ -611,9 +611,9 @@ mod tests {
     fn control_flow_around_claimed_trees_is_the_renderers() {
         let code = claimed(
             "import { For, Show } from \"@barqjs/core\";\n\
-             export const S = (p) => <Show when={p.on()}><mesh /></Show>;\n\
-             export const F = (p) => <For each={p.rows()}>{(row) => <group name={row} />}</For>;\n\
-             export const D = (p) => <Show when={p.on()}><div /></Show>;\n",
+             export const S = (p) => <Show when={p.on}><mesh /></Show>;\n\
+             export const F = (p) => <For each={p.rows}>{(row) => <group name={row} />}</For>;\n\
+             export const D = (p) => <Show when={p.on}><div /></Show>;\n",
         );
         assert!(code.contains("_$branch$1("), "{code}");
         assert!(code.contains("_$each$1("), "{code}");
@@ -656,9 +656,9 @@ mod tests {
         out.warnings.iter().filter_map(|warning| warning.code).collect()
     }
 
-    const SCENE: &str = "export const App = (p) => <main><h1>{p.title()}</h1>\
-         <Canvas camera={p.cam}><mesh position={p.at()}>{p.label()}</mesh>\
-         <Show when={p.on()}><group /></Show></Canvas></main>;\n";
+    const SCENE: &str = "export const App = (p) => <main><h1>{p.title}</h1>\
+         <Canvas camera={p.cam}><mesh position={p.at}>{p.label}</mesh>\
+         <Show when={p.on}><group /></Show></Canvas></main>;\n";
 
     #[test]
     fn a_named_import_is_a_boundary_and_its_children_build_through_its_renderer() {
@@ -673,7 +673,7 @@ mod tests {
             "_$createElement$1(\"mesh\")",
             "_$setProp$1(_el$3, \"position\", _v$, _p$);",
             "_$insert$1(_el$3, p.label);",
-            "_$branch$1(null, null, () => p.on() ? 1 : 0",
+            "_$branch$1(null, null, () => _$readProp(p.on) ? 1 : 0",
             "_$createElement$1(\"group\")",
             "_$insert(_el$2, p.title);",
         ] {
@@ -752,7 +752,7 @@ mod tests {
         let code = mixed(
             "import { Canvas, Html } from \"@barqjs/three\";\n\
              export const App = (p) => <div><Canvas><group>\
-             <Html><section onClick={p.go}>{p.label()}\
+             <Html><section onClick={p.go}>{p.label}\
              <Canvas><mesh /></Canvas></section></Html></group></Canvas></div>;\n",
         );
         assert!(code.contains("_$createElement$1(\"group\")"), "{code}");
@@ -782,7 +782,7 @@ mod tests {
     fn a_universal_module_enters_the_document_at_a_dom_boundary() {
         let code = compiled(
             "import { Html } from \"@barqjs/three\";\n\
-             export const Label = (p) => <group><Html><p onClick={p.go}>{p.text()}</p></Html></group>;\n",
+             export const Label = (p) => <group><Html><p onClick={p.go}>{p.text}</p></Html></group>;\n",
             &ResolvedOptions {
                 target: RenderTarget::Universal,
                 module_source: RENDERER.into(),
@@ -873,8 +873,8 @@ mod tests {
     fn a_mixed_module_compiles_with_a_map_in_development() {
         let source = "import { Canvas, Html } from \"@barqjs/three\";\n\
              import { Show } from \"@barqjs/core\";\n\
-             export const App = (p) => <main><h1>{p.title()}</h1><Canvas>\
-             <Show when={p.on()}><mesh /></Show><Html><p>{p.title()}</p></Html>\
+             export const App = (p) => <main><h1>{p.title}</h1><Canvas>\
+             <Show when={p.on}><mesh /></Show><Html><p>{p.title}</p></Html>\
              </Canvas></main>;\n";
         let out = compiled(
             source,

@@ -40,14 +40,14 @@ export function Story(props) {
 function Comment(props) {
   const [open, setOpen] = createSignal(true)
   return (
-    <section class="comment" data-cid={props.cid()}>
+    <section class="comment" data-cid={props.cid}>
       <button onClick={() => setOpen((was) => !was)}>{open() ? "open" : "closed"}</button>
       {props.children}
     </section>
   )
 }
 export default function Page(props) {
-  const View = dynamic(() => props.view())
+  const View = dynamic(() => props.view)
   return (
     <main>
       <View comment={(p) => <Comment cid={p.cid()}>{p.children}</Comment>}>

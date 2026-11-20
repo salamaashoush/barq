@@ -20,7 +20,7 @@
  *
  * C1, C2, C3.
  */
-import { merge, omit } from "@barqjs/core"
+import { cells, merge, omit } from "@barqjs/core"
 import { render } from "@barqjs/web"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
@@ -37,46 +37,46 @@ function counting(): string {
 }
 
 /** C2's second direction: a component whose body returns no JSX at all. */
-function Label(props: { text: () => string }) {
-  return props.text()
+function Label(props: { text: string }) {
+  return props.text
 }
 
 /** C2's first direction: a `.map` callback keeps the arity `map` calls it with. */
-function Rows(props: { items: () => number[] }) {
-  return <ul class="rows">{props.items().map((row) => <li class="row">{row}</li>)}</ul>
+function Rows(props: { items: number[] }) {
+  return <ul class="rows">{props.items.map((row) => <li class="row">{row}</li>)}</ul>
 }
 
 interface Carried extends Record<string, unknown> {
-  carrier: () => string
-  keep: () => string
+  carrier: string
+  keep: string
 }
 
 /** Three wrappers, each mangling the props record a different legal way. */
 function Inner(props: Carried) {
   return (
     <b class="inner">
-      {props.keep()}:{props.carrier === undefined ? "LOST" : "held"}
+      {props.keep}:{cells(props).carrier === undefined ? "LOST" : "held"}
     </b>
   )
 }
 
-function Middle(props: Carried & { drop?: () => string }) {
+function Middle(props: Carried & { drop?: string }) {
   const rest = omit(props, "drop") as unknown as Carried
   return <Inner {...rest} />
 }
 
 function Outer(props: Carried) {
   const others = omit(props, "keep")
-  const merged = merge(others, { keep: props.keep }) as unknown as Carried
-  return <Middle {...merged} drop={() => "dropped"} />
+  const merged = merge(cells(others), { keep: cells(props).keep }) as unknown as Carried
+  return <Middle {...merged} drop="dropped" />
 }
 
 function Tree() {
   return (
     <div class="host">
-      <Label text={() => "label"} />
-      <Rows items={() => [1, 2]} />
-      <Outer carrier={counting} keep={() => "kept"} />
+      <Label text="label" />
+      <Rows items={[1, 2]} />
+      <Outer carrier={counting()} keep="kept" />
     </div>
   )
 }
@@ -129,7 +129,7 @@ export const claims: Claim[] = [
       if (!run.text.includes("label")) {
         kit.fail(
           `<Label text={…}/> rendered ${JSON.stringify(run.text)}, expected it to contain "label" ` +
-            `(${run.thrown}). \`function Label(props) { return props.text() }\` contains no JSX, so ` +
+            `(${run.thrown}). \`function Label(props) { return props.text }\` contains no JSX, so ` +
             `the declaration half of C2 never gave it a scope parameter while every tag site passed ` +
             `one — which binds \`props\` to the Scope, in-module, with no diagnostic`,
         )

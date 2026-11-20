@@ -87,7 +87,7 @@ import { publicHref } from "./rewrite.ts";
 import { wrapWith } from "./ssr.ts";
 
 /** The real ABI. `RouteComponent` is declared props-first for TypeScript's sake. */
-type Invoked = (props: RouteProps) => unknown;
+type Invoked = (props: Incoming<RouteProps>) => unknown;
 
 const RouterContext: Context<RouterState> = createContext<RouterState>(undefined, "barq-router");
 
@@ -964,7 +964,7 @@ export function routePropsFor(
   children: Block<unknown>,
   /** The string backend passes `true` — see `RouterState.dataFor`. */
   blocking = false,
-): RouteProps {
+): Incoming<RouteProps> {
   return sources([
     {
       params: () => state.params(),
@@ -972,7 +972,7 @@ export function routePropsFor(
       context: () => state.contexts()[depth] ?? state.config.context ?? {},
       children,
     },
-  ]) as unknown as RouteProps;
+  ]) as unknown as Incoming<RouteProps>;
 }
 
 /** The `children` of a depth that has none: a Block that places nothing. */
@@ -984,7 +984,7 @@ function routeProps(
   depth: number,
   route: Route | null,
   children: Block<unknown>,
-): RouteProps {
+): Incoming<RouteProps> {
   return routePropsFor(state, depth, route, children);
 }
 

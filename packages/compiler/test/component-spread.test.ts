@@ -15,8 +15,8 @@ export const [wide, setWide] = createSignal(false);
 const narrow = { lang: "en" };
 const broad = { lang: "fr", id: "broad" };
 
-function Row(props: { title?: () => string; lang?: () => string; id?: () => string }) {
-  return <p title={props.title?.()} lang={props.lang?.()} id={props.id?.()} />;
+function Row(props: { title?: string; lang?: string; id?: string }) {
+  return <p title={props.title} lang={props.lang} id={props.id} />;
 }
 function Passes(props: Record<string, unknown>) {
   return <p {...props} />;

@@ -484,9 +484,9 @@ export interface RangeCalendarProps extends CalendarBaseProps {
 }
 
 type ModeProps =
-  | Incoming<CalendarProps>
-  | Incoming<MultipleCalendarProps & { mode: "multiple" }>
-  | Incoming<RangeCalendarProps & { mode: "range" }>;
+  | CalendarProps
+  | (MultipleCalendarProps & { mode: "multiple" })
+  | (RangeCalendarProps & { mode: "range" });
 
 /**
  * A matcher as the caller wrote it.
@@ -576,15 +576,13 @@ function sharedOptions(
  * Days are {@link CalendarDate}s rather than `Date`s, and a range is
  * `{ start, end }`.
  */
-export function Calendar(props: Incoming<CalendarProps>): JSXElement;
-export function Calendar(props: Incoming<MultipleCalendarProps & { mode: "multiple" }>): JSXElement;
-export function Calendar(props: Incoming<RangeCalendarProps & { mode: "range" }>): JSXElement;
+export function Calendar(props: CalendarProps): JSXElement;
+export function Calendar(props: MultipleCalendarProps & { mode: "multiple" }): JSXElement;
+export function Calendar(props: RangeCalendarProps & { mode: "range" }): JSXElement;
 export function Calendar(props: ModeProps): JSXElement {
-  const mode: CalendarMode = props.mode ?? "single";
-  if (mode === "multiple")
-    return <MultipleCalendar {...(cells(props) as Incoming<MultipleCalendarProps>)} />;
-  if (mode === "range") return <RangeCalendar {...(cells(props) as Incoming<RangeCalendarProps>)} />;
-  return <SingleCalendar {...(cells(props) as Incoming<CalendarProps>)} />;
+  if (props.mode === "multiple") return <MultipleCalendar {...props} />;
+  if (props.mode === "range") return <RangeCalendar {...props} />;
+  return <SingleCalendar {...props} />;
 }
 
 function SingleCalendar(props: CalendarProps) {

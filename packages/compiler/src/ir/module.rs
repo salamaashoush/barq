@@ -108,6 +108,10 @@ pub enum Root<'a> {
 }
 
 pub struct Module<'a> {
+    /// Where each component's props parameter is declared, as the props pass
+    /// decided. `None` when that pass did not run, and analysis falls back on
+    /// its own evidence.
+    pub props_params: Option<Vec<oxc::span::Span>>,
     /// The text every `Span` in the IR indexes into. P4 reads it for JSX text
     /// children, which become JS string literals rather than template bytes.
     pub source: &'a str,
@@ -676,6 +680,7 @@ impl<'a> Module<'a> {
 
     pub fn for_source(allocator: &'a Allocator, source: &'a str) -> Self {
         Self {
+            props_params: None,
             source,
             units: AVec::new_in(&allocator),
             roots: AVec::new_in(&allocator),

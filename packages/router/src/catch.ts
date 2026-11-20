@@ -60,7 +60,7 @@ function caughtRegion(
     if (component === undefined) return null;
     return component({
       error,
-      reset,
+      reset: () => reset,
       params: EMPTY_PARAMS,
       data: (): unknown => (isNotFound(thrown) ? thrown.data : undefined),
     });

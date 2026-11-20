@@ -1578,26 +1578,28 @@ mod tests {
     /// function keeps `attrLit`, which decides those.
     #[test]
     fn a_proven_string_writes_its_attribute_name_into_the_template() {
-        let code =
-            ssr("export const V = (p) => <a href={`/u/${p.id()}`} data-id={String(p.id())} \
-             title={\"#\" + p.n()} data-k={p.on() ? \"yes\" : `no`} />;\n")
-            .code;
-        assert!(code.contains("<a href=\"${_$escAttr(`/u/${p.id()}`)}\""), "{code}");
-        assert!(code.contains(" data-id=\"${_$escAttr(String(p.id()))}\""), "{code}");
-        assert!(code.contains(" title=\"${_$escAttr(\"#\" + p.n())}\""), "{code}");
-        assert!(code.contains(" data-k=\"${_$escAttr(p.on() ? \"yes\" : `no`)}\""), "{code}");
+        let code = ssr("export const V = (p) => <a href={`/u/${p.id}`} data-id={String(p.id)} \
+             title={\"#\" + p.n} data-k={p.on ? \"yes\" : `no`} />;\n")
+        .code;
+        assert!(code.contains("<a href=\"${_$escAttr(`/u/${_$readProp(p.id)}`)}\""), "{code}");
+        assert!(code.contains(" data-id=\"${_$escAttr(String(_$readProp(p.id)))}\""), "{code}");
+        assert!(code.contains(" title=\"${_$escAttr(\"#\" + _$readProp(p.n))}\""), "{code}");
+        assert!(
+            code.contains(" data-k=\"${_$escAttr(_$readProp(p.on) ? \"yes\" : `no`)}\""),
+            "{code}"
+        );
         assert!(!code.contains("_$attrLit"), "{code}");
 
         let kept = ssr("const String = (x) => x;\n\
-             export const V = (p) => <a data-a={String(p.a())} data-b={tag`x`} \
-             data-c={p.c() ?? \"\"} data-d={p.d() ? \"x\" : null} data-e={p.e() + 1} />;\n")
+             export const V = (p) => <a data-a={String(p.a)} data-b={tag`x`} \
+             data-c={p.c ?? \"\"} data-d={p.d ? \"x\" : null} data-e={p.e + 1} />;\n")
         .code;
         for name in ["data-a", "data-b", "data-c", "data-d", "data-e"] {
             assert!(kept.contains(&format!("_$attrLit(\"{name}\"")), "{name}: {kept}");
         }
 
         // A name `attr` decides about keeps `attr` whatever the value.
-        let dirty = ssr("export const V = (p) => <input value={`${p.v()}`} />;\n").code;
+        let dirty = ssr("export const V = (p) => <input value={`${p.v}`} />;\n").code;
         assert!(dirty.contains("_$attr(\"value\""), "{dirty}");
     }
 

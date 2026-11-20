@@ -28,7 +28,7 @@ import { createSignal } from "@barqjs/core";
 const [online] = createSignal(true);
 
 function Status(props) {
-  return props.online() ? <b>online</b> : <i>offline</i>;
+  return props.online ? <b>online</b> : <i>offline</i>;
 }
 
 export const Bar = () => <Status online={online()} />;
@@ -56,7 +56,7 @@ import { createSignal } from "@barqjs/core";
 const [online] = createSignal(true);
 
 function Status(props) {
-  return <>{props.online() ? <b>online</b> : <i>offline</i>}</>;
+  return <>{props.online ? <b>online</b> : <i>offline</i>}</>;
 }
 
 export const Bar = () => <Status online={online()} />;

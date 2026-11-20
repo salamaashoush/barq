@@ -3,8 +3,9 @@
   "include": ["**/*.tsx"],
   "exclude": [
     // Props declared as the compiler's lowered calling convention rather than as
-    // anything an author writes: `props.tone()` on a prop typed `string`, and
-    // handler tuples called as cells. The shapes are what these fixtures test.
+    // anything an author writes: a prop typed as the thunk its caller passes, a
+    // spread source that is a record of Cells, and a handler tuple passed as a
+    // prop. The shapes are what these fixtures test.
     "component-forwarded-handler-tuple.tsx",
     "component-function-props.tsx",
     "component-spread.tsx",

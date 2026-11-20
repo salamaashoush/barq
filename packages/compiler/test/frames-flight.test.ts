@@ -23,14 +23,14 @@ export function storyFor(id) {
 function Comment(props) {
   const [open, setOpen] = createSignal(true)
   return (
-    <section data-cid={props.cid()}>
+    <section data-cid={props.cid}>
       <button onClick={() => setOpen((was) => !was)}>{open() ? "open" : "closed"}</button>
       {props.children}
     </section>
   )
 }
 export function Page(props) {
-  const View = dynamic(() => props.view())
+  const View = dynamic(() => props.view)
   return <main><View comment={(p) => <Comment cid={p.cid()}>{p.children}</Comment>} /></main>
 }
 `;

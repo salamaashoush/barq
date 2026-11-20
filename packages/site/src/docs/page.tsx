@@ -7,7 +7,7 @@
  * variants come after `## Usage` with one card each.
  */
 
-import { For, type Child, type Incoming } from "@barqjs/core";
+import { For, type Child } from "@barqjs/core";
 import { dynamic } from "@barqjs/web";
 import { css } from "@barqjs/css";
 import { ArrowLeft } from "@barqjs/lucide/icons/arrow-left";
@@ -111,7 +111,7 @@ function DemoSection(props: { demo: Demo }) {
       )}
       {props.demo.note === undefined ? null : (
         <p>
-          <Prose text={() => props.demo.note ?? ""} />
+          <Prose text={props.demo.note ?? ""} />
         </p>
       )}
       <ComponentPreview
@@ -191,20 +191,20 @@ function Found(props: { entry: ComponentDoc }) {
 
   return (
     <DocsPage
-      title={() => entry().title}
-      lede={() => entry().description}
-      rail={() => railFor(entry().slug)}
-      sections={() => sectionsFor(entry())}
-      actions={<Actions slug={() => entry().slug} />}
+      title={entry().title}
+      lede={entry().description}
+      rail={railFor(entry().slug)}
+      sections={sectionsFor(entry())}
+      actions={<Actions slug={entry().slug} />}
     >
       <div class={`${typeset} ${prose}`}>
         {() =>
           hero() === undefined ? null : (
             <ComponentPreview
-              code={() => asCopied(hero()?.code ?? "")}
-              align={() => hero()?.align}
-              size={() => hero()?.size}
-              rtl={() => hero()?.rtl}
+              code={asCopied(hero()?.code ?? "")}
+              align={hero()?.align}
+              size={hero()?.size}
+              rtl={hero()?.rtl}
             >
               <Hero />
             </ComponentPreview>
@@ -217,7 +217,7 @@ function Found(props: { entry: ComponentDoc }) {
               <h2 class={anchor} id="installation">
                 Installation
               </h2>
-              <CommandTabs command={() => `@barqjs/ui-cli add ${addName(entry()) ?? ""}`} />
+              <CommandTabs command={`@barqjs/ui-cli add ${addName(entry()) ?? ""}`} />
             </>
           )
         }
@@ -225,9 +225,9 @@ function Found(props: { entry: ComponentDoc }) {
         <h2 class={anchor} id="usage">
           Usage
         </h2>
-        <CodeBlock code={() => asCopied(entry().usage)} />
+        <CodeBlock code={asCopied(entry().usage)} />
 
-        <For each={rest}>{(demo: Demo) => <DemoSection demo={() => demo} />}</For>
+        <For each={rest}>{(demo: Demo) => <DemoSection demo={demo} />}</For>
       </div>
 
       <div class={footNav}>
@@ -268,8 +268,8 @@ export function ComponentDocPage(): Child {
           <DocsPage
             title="No such component"
             lede="Nothing in this package answers to that name."
-            rail={() => railFor("")}
-            sections={() => []}
+            rail={railFor("")}
+            sections={[]}
           >
             <Empty>
               <Link to="/docs/components" class={plain}>
@@ -278,7 +278,7 @@ export function ComponentDocPage(): Child {
             </Empty>
           </DocsPage>
         ) : (
-          <Found entry={() => entry() as ComponentDoc} />
+          <Found entry={entry() as ComponentDoc} />
         )
       }
     </>

@@ -16,7 +16,6 @@ import {
   getOwner,
   onCleanup,
   untrack,
-  type Incoming,
   type JSXElement,
 } from "@barqjs/core";
 import type { JSX } from "@barqjs/web/jsx-runtime";

@@ -13,7 +13,7 @@ export const [names] = createSignal(["ada", "grace"]);
 export const [extra, setExtra] = createSignal(false);
 function Field(props) {
   const id = createUniqueId();
-  return <p><label for={id}>{props.label()}</label><input id={id} /></p>;
+  return <p><label for={id}>{props.label}</label><input id={id} /></p>;
 }
 export default function Page() {
   const [open] = createSignal(true);

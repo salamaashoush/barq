@@ -479,13 +479,18 @@ export function errorOwnerPath(error: unknown): string[] | undefined {
  * here would be one nothing ever disposes, and would hide the engine's own
  * report about the missing owner.
  */
-export function createComponent<P, R>(component: (props: P) => R, props: P, name?: string): R {
+export function createComponent<P, R>(
+  component: (props: P) => R,
+  props: P | Incoming<P>,
+  name?: string,
+): R {
+  const record = props as P;
   const parent = getOwner();
-  if (parent === null) return component(props);
+  if (parent === null) return component(record);
   const owner = runWithOwner(parent, openTransparent);
   owner._name = `<${name || component.name || "Anonymous"}>`;
   try {
-    return runWithOwner(owner, () => component(props));
+    return runWithOwner(owner, () => component(record));
   } catch (error) {
     if (typeof error === "object" && error !== null && !(OWNER_PATH in error)) {
       const path = ownerPathOf(owner);

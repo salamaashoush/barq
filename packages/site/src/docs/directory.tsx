@@ -63,8 +63,8 @@ export function ComponentsDirectory() {
     <DocsPage
       title="Components"
       lede="Every component this package ships, transcribed from shadcn/ui's own class lists. One page each."
-      rail={rail}
-      sections={() => [{ id: "all-components", label: "All components" }]}
+      rail={rail()}
+      sections={[{ id: "all-components", label: "All components" }]}
     >
       <div class={`${typeset} ${prose}`}>
         <h2 id="all-components">All components</h2>

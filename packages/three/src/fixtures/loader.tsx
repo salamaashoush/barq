@@ -34,7 +34,7 @@ export class FakeLoader extends THREE.Loader {
   }
 }
 
-export function Textured(props: { url: Accessor<string> }) {
+export function Textured(props: { url: string }) {
   const texture = useLoader(FakeLoader, cells(props).url) as Accessor<THREE.Texture>;
   return (
     <mesh name={`textured-${props.url}`}>
@@ -43,7 +43,7 @@ export function Textured(props: { url: Accessor<string> }) {
   );
 }
 
-export function Suspended(props: { url: Accessor<string> }) {
+export function Suspended(props: { url: string }) {
   return (
     <Loading fallback={<group name="fallback" />}>
       <Errored fallback={(error) => <group name={`failed: ${error().message}`} />}>
@@ -66,7 +66,7 @@ export function Model() {
   );
 }
 
-export function Graphed(props: { object: Accessor<THREE.Object3D> }) {
+export function Graphed(props: { object: THREE.Object3D }) {
   const graph = useGraph(cells(props).object);
   return <group name={Object.keys(graph().meshes).join(",")} />;
 }

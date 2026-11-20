@@ -1,4 +1,4 @@
-import { Show, type Accessor } from "@barqjs/core";
+import { Show } from "@barqjs/core";
 import * as THREE from "three";
 
 import { createPortal, useThree } from "@barqjs/three";
@@ -18,7 +18,7 @@ function Inner() {
   );
 }
 
-export function WithPortal(props: { shown: Accessor<boolean> }) {
+export function WithPortal(props: { shown: boolean }) {
   return (
     <group name="main">
       <Show when={props.shown}>

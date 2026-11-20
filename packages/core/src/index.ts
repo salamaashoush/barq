@@ -172,6 +172,8 @@ export {
   cell,
   cells,
   block,
+  carry,
+  fromCells,
   isBlock,
   BLOCK,
   merge,

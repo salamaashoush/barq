@@ -100,7 +100,7 @@ export function CodeBlock(props: { code: string; title?: string }) {
       </Button>
       <pre class={() => `${body} ${highlighted}`}>
         <code>
-          <Highlighted tokens={() => codeTokens(props.code)} />
+          <Highlighted tokens={codeTokens(props.code)} />
         </code>
       </pre>
     </figure>
@@ -114,7 +114,7 @@ export function CodeBlock(props: { code: string; title?: string }) {
  * so a panel that wants a different one only redeclares the properties.
  */
 export function CodeTokens(props: { code: string }) {
-  return <Highlighted tokens={() => codeTokens(props.code)} />;
+  return <Highlighted tokens={codeTokens(props.code)} />;
 }
 
 /**
@@ -211,7 +211,7 @@ export function CommandTabs(props: { command: string }) {
       </Button>
       <pre class={() => `${body} ${highlighted}`}>
         <code>
-          <Highlighted tokens={() => shellTokens(line())} />
+          <Highlighted tokens={shellTokens(line())} />
         </code>
       </pre>
     </figure>

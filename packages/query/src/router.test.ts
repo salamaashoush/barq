@@ -62,8 +62,8 @@ function Root(props) {
 }
 
 function User(props) {
-  const query = useQuery(() => user(props.params().id))
-  return <b class="user">{query.data?.name}|{props.data()?.name}</b>
+  const query = useQuery(() => user(props.params.id))
+  return <b class="user">{query.data?.name}|{props.data?.name}</b>
 }
 
 export const routes = [
@@ -264,16 +264,16 @@ function Root(props) {
 }
 
 function Slow(props) {
-  const query = useSuspenseQuery(() => slow(props.id()))
+  const query = useSuspenseQuery(() => slow(props.id))
   return <i class="slow">{query.data}</i>
 }
 
 function User(props) {
-  const query = useSuspenseQuery(() => user(props.params().id))
+  const query = useSuspenseQuery(() => user(props.params.id))
   return (
     <b class="user">
       {query.data.name}
-      <Loading fallback={<u>waiting</u>}><Slow id={props.params().id} /></Loading>
+      <Loading fallback={<u>waiting</u>}><Slow id={props.params.id} /></Loading>
     </b>
   )
 }

@@ -794,10 +794,10 @@ mod tests {
         for expected in [
             "\"className\"",
             "_$setProp(_el$1, \"style\", { color: \"red\" });",
-            "_$setProp(_el$1, \"onClick\", p.go);",
-            "_$setProp(_el$1, \"onKeyDownCapture\", p.key);",
+            "_$setProp(_el$1, \"onClick\", _$readProp(p.go));",
+            "_$setProp(_el$1, \"onKeyDownCapture\", _$readProp(p.key));",
             "_$setProp(_el$1, \"strokeWidth\", 2);",
-            "_$setProp(_el$1, \"ref\", p.r);",
+            "_$setProp(_el$1, \"ref\", _$readProp(p.r));",
         ] {
             assert!(code.contains(expected), "{expected} missing from\n{code}");
         }
@@ -822,9 +822,9 @@ mod tests {
     fn fields_of_one_object_are_bound_plain_and_a_call_keeps_its_effect() {
         let code = universal(
             "import { For } from \"@barqjs/core\";\n\
-             export const V = (p) => <For each={p.rows()}>{(row) => \
+             export const V = (p) => <For each={p.rows}>{(row) => \
              <box position={[row.x, row.y, 0]} label={`#${row.id}`} spin={row.speed * 2} />}</For>;\n\
-             export const W = (p) => <For each={p.rows()}>{(row) => <box spin={row.speed()} />}</For>;\n",
+             export const W = (p) => <For each={p.rows}>{(row) => <box spin={row.speed()} />}</For>;\n",
         )
         .code;
         assert_eq!(code.matches("_$bindPlain(").count(), 1, "{code}");
@@ -847,7 +847,7 @@ mod tests {
 
     #[test]
     fn a_units_live_bindings_share_one_effect() {
-        let code = universal("export const V = (p) => <box a={p.a()} b={p.b()} />;\n").code;
+        let code = universal("export const V = (p) => <box a={p.a} b={p.b} />;\n").code;
         assert_eq!(code.matches("_$bindEffect(").count(), 1, "{code}");
         assert!(
             code.contains("if (_v$.a !== _p$.a) _$setProp(_el$1, \"a\", _v$.a, _p$.a);"),

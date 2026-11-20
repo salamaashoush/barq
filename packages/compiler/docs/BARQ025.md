@@ -16,7 +16,7 @@ import { Dynamic } from "@barqjs/web";
 import { Editor, Viewer } from "./fields";
 
 export const Field = (props) => (
-  <Dynamic component={props.editing() ? Editor : Viewer} value={props.value()} />
+  <Dynamic component={props.editing ? Editor : Viewer} value={props.value} />
 );
 ```
 
@@ -27,8 +27,8 @@ import { dynamic } from "@barqjs/web";
 import { Editor, Viewer } from "./fields";
 
 export const Field = (props) => {
-  const Chosen = dynamic(() => (props.editing() ? Editor : Viewer));
-  return <Chosen value={props.value()} />;
+  const Chosen = dynamic(() => (props.editing ? Editor : Viewer));
+  return <Chosen value={props.value} />;
 };
 ```
 
@@ -39,7 +39,7 @@ A source may answer with a tag name as well as a component, or with `null`, `und
 import { dynamic } from "@barqjs/web";
 
 export const Heading = (props) => {
-  const Tag = dynamic(() => `h${props.level()}`);
+  const Tag = dynamic(() => `h${props.level}`);
   return <Tag class="title">{props.children}</Tag>;
 };
 ```

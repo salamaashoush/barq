@@ -57,6 +57,58 @@ node updates and nothing else does.
 
 `render` returns a disposer. Calling it runs every `onCleanup` in the tree.
 
+## Props
+
+A component reads its props as values, and each read follows the signal behind it:
+
+```tsx
+function Card(props: { title: string; tone?: string }) {
+  return <h2 class={props.tone ?? "warm"}>{props.title.toUpperCase()}</h2>;
+}
+```
+
+Destructuring keeps them live, which is the part other fine-grained frameworks ask you
+not to do. A name from the pattern is a read where it is used, a default applies whenever
+the prop is `undefined`, and the rest carries the props the pattern did not name:
+
+```tsx
+function Card({ title, tone = "warm", ...rest }: CardProps) {
+  return (
+    <h2 class={tone} {...rest}>
+      {title.toUpperCase()}
+    </h2>
+  );
+}
+```
+
+`const { title, ...rest } = props` in the body works the same way, and so does a nested
+pattern, `{ user: { name }, items: [first] }`. A default is made once per component, so
+`items = []` is the same array at every read.
+
+The compiler does this, in a `.jsx` or `.tsx` file, for a function with a capitalised name
+that renders JSX, for a default export that does, and for a function written inline at a
+route's `component` option. What a component receives is a record with one function per
+prop, a Cell, and the compiler writes the call at each read. That is why passing a prop on
+costs nothing, `<Title text={props.title} />` hands over the same function, and why
+`{...props}` copies nothing it would have to evaluate.
+
+Two places show the record:
+
+- A function that is not a component, in a `.ts` file or with a lowercase name, is not
+  rewritten. Handed `props`, it receives a view that reads each Cell on access, so
+  `function useLabel(props: { title: string })` reads `props.title` as a value and follows
+  it inside an effect or a memo.
+- `cells(props)` is the record itself, typed `Incoming<P>`: each prop as the function to
+  call, `props.title()`. Use it for a hook that forwards props or reads one many times. In
+  a component it compiles to the record and costs nothing.
+
+`omit(props, "title")` answers with the props without those names. Nothing is copied, so
+every prop stays live, and what it answers with is read as values like `props` itself.
+
+Props are read-only. Assigning to one is [BARQ030](../compiler/docs/BARQ030.md), and a
+pattern the compiler cannot keep live, such as a default inside a nested pattern, is
+[BARQ031](../compiler/docs/BARQ031.md).
+
 ## Signals, memos and effects
 
 The reactive primitives come from `@solidjs/signals` and keep its names.

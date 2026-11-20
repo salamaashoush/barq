@@ -9,16 +9,25 @@ is not here is a bug.
 
 ## Deliberate differences
 
-**Props are Cells.** Every prop arrives as a function you call: `props.title()`, not
-`props.title`. The compiler wraps each attribute in a Cell at the call site and a spread is
-an ordered list of sources read on demand, so there are no getters to flatten and
-`{...props}`, `merge`, `omit` and a destructured parameter all copy the
-functions rather than reading them (`src/props.ts`). The price is the call at every read,
-which the compiler's diagnostics BARQ001, BARQ002, BARQ003 and BARQ005 catch when it is
-forgotten.
-`merge` and `omit` are barq's own views over that model, not the engine's functions of the
-same name, and the engine's `isStatic` is not exported because it describes the engine's
-sources and not barq's.
+**Props may be destructured.** A component reads `props.title` as in Solid, and it may also
+take `{ title, tone = "warm", ...rest }` as its parameter or from `props` in its body: each
+name is a read where it is used, a default applies whenever the prop is `undefined`, and
+the rest carries the props the pattern did not name. Solid 2.0 warns about the same code,
+because there a destructure reads each getter once.
+
+**Props are carried as Cells.** Solid passes a getter per prop. barq passes a function per
+prop, a Cell, and the compiler writes the call at each read, so the source says
+`props.title` and the emitted module says `readProp(props.title)`. A Cell handed on is the
+same function, where a getter is a new one at every component it passes through, and
+copying a record of Cells evaluates nothing, so `{...props}`, `omit` and a rest element
+need no proxy to stay live.
+
+The record shows in two places. A function that is not a component (a `.ts` file, or a
+lowercase name) is not rewritten, and handed `props` it receives a view that reads each
+Cell on access. `cells(props)` is the record itself, typed `Incoming<P>`, for a hook that
+calls `props.title()`. `merge` and `omit` are barq's own views over that model, not the
+engine's functions of the same name, and the engine's `isStatic` is not exported because
+it describes the engine's sources and not barq's.
 
 **`useContext` returns an accessor.** `useContext(Theme)()` reads the value. A provided
 value is stored as a Cell for the same reason a prop is, so a provider whose `value`
@@ -260,7 +269,6 @@ compiler, before anything runs, with a code, a span and a docs page
 - A read after the first `await` of an async computation, Solid's
   `UNTRACKED_READ_AFTER_AWAIT`: [BARQ021](../../compiler/docs/BARQ021.md).
 
-Destructured props are not on this list. A destructured name holds the prop's function,
-which stays live, so it is a mistake only where the name is used as a value.
-[BARQ005](../../compiler/docs/BARQ005.md) reports a destructured name used as a value,
-and BARQ001 to BARQ003 report `props.name` used the same way.
+Destructured props are not on this list, because destructuring them is supported. What the
+compiler reports instead is a prop that is assigned, [BARQ030](../../compiler/docs/BARQ030.md),
+and a pattern it cannot keep live, [BARQ031](../../compiler/docs/BARQ031.md).

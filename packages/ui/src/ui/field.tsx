@@ -402,7 +402,7 @@ export interface FieldSeparatorProps extends UiProps {}
 
 /** A rule across a `<FieldGroup>`, with an optional word sitting on it. */
 export function FieldSeparator(props: FieldSeparatorProps) {
-  const hasContent = (): boolean => props.children?.() !== undefined;
+  const hasContent = (): boolean => cells(props).children?.() !== undefined;
   return (
     <div
       {...uiProps("field-separator", fieldSeparator, cells(props))}
@@ -439,7 +439,7 @@ export function FieldError(props: FieldErrorProps) {
     }
     return [...unique];
   };
-  const hasChildren = (): boolean => props.children?.() !== undefined;
+  const hasChildren = (): boolean => cells(props).children?.() !== undefined;
   const isEmpty = (): boolean => !hasChildren() && messages().length === 0;
 
   return (

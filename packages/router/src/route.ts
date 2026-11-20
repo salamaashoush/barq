@@ -23,10 +23,10 @@ export interface RouteProps<
   Params = Record<string, string>,
   Context = Record<string, unknown>,
 > {
-  readonly params: () => Params;
-  readonly data: () => Data;
+  readonly params: Params;
+  readonly data: Data;
   /** Everything this route's ancestors and its own `beforeLoad` contributed. */
-  readonly context: () => Context;
+  readonly context: Context;
   /**
    * The next route down, as a BLOCK — so a layout constructs it inside its own
    * scope, and a provider or boundary the layout installs is visible to the
@@ -65,24 +65,18 @@ export type RouteComponent<Data = unknown, Params = Record<string, string>> = (
  * in-place retry, and a loader that failed is asked again.
  */
 export interface ErrorProps<Params = Record<string, string>> {
-  readonly error: () => Error;
+  readonly error: Error;
   readonly reset: () => void;
-  readonly params: () => Params;
+  readonly params: Params;
   /** What `notFound({ data })` carried. `undefined` for anything else. */
-  readonly data: () => unknown;
+  readonly data: unknown;
 }
 
 export type ErrorComponent<Params = Record<string, string>> = (
   props: ErrorProps<Params>,
 ) => unknown;
 
-/**
- * The invoked form: what the router actually calls.
- *
- * `RouteProps` already declares each prop as the Cell the router passes, so the
- * component takes it as it stands. Core's `Component<P>` is given the props a
- * CALLER declares and wraps each one itself, which would say `props.data()()`.
- */
+/** The invoked form: what the router calls, with a record of Cells. */
 export type InvokedRouteComponent<Data = unknown, Params = Record<string, string>> = (
   props: RouteProps<Data, Params>,
 ) => JSXElement;

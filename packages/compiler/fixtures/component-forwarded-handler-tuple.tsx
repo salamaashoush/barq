@@ -1,4 +1,4 @@
-import { createSignal } from "@barqjs/core"
+import { cells, createSignal } from "@barqjs/core"
 
 export const [picked, setPicked] = createSignal("none")
 
@@ -12,7 +12,7 @@ function pick(label: unknown, _event: MouseEvent): void {
  *
  * Both reachable forms are here:
  *
- *  - `cb={[props.handler(), props.label()]}` — an array, so `identity_matters`
+ *  - `cb={[props.handler, props.label]}` — an array, so `identity_matters`
  *  evaluates it ONCE into a cell. The runtime installs that array as
  *  the `__bq_click` expando, so a carrier that rebuilt it per read would install
  *  a different listener on every frame.
@@ -38,12 +38,12 @@ function Chip(props: {
     <button
       type="button"
       class="chip"
-      data-tone={props.tone()}
-      data-same={String(props.cb === props.cb)}
-      data-render-same={String(props.render === props.render)}
-      onClick={props.cb()}
+      data-tone={props.tone}
+      data-same={String(cells(props).cb === cells(props).cb)}
+      data-render-same={String(cells(props).render === cells(props).render)}
+      onClick={props.cb}
     >
-      {props.render()}
+      {props.render}
     </button>
   )
 }
@@ -57,8 +57,8 @@ function Row(props: {
 }) {
   return (
     <Chip
-      cb={[props.handler(), props.label()]}
-      render={() => (props.on() ? props.long() : props.short())}
+      cb={[props.handler, props.label]}
+      render={() => (props.on ? props.long : props.short)}
       tone={props.label}
     />
   )
@@ -88,7 +88,8 @@ export const optimality = {
   // already, so C5 forwards it by NAME and no closure is allocated at all.
   emits: [
     "Chip(",
-    "cb: () => [props.handler(), props.label()]",
+    "readProp(props.handler)",
+    "readProp(props.label)",
     "tone: props.label",
   ],
   absent: ["get cb()", "get render()", "get tone()", "(Chip, {"],

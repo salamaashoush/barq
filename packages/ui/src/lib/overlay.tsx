@@ -30,7 +30,6 @@ import {
   provide,
   type Accessor,
   type Child,
-  type Incoming,
   type JSXElement,
 } from "@barqjs/core";
 import { ref as makeRef } from "@barqjs/primitives/refs";
@@ -97,8 +96,8 @@ export interface OverlayRootProps {
 }
 
 export interface OverlayFamily {
-  Root: (props: Incoming<OverlayRootProps>) => JSXElement;
-  Trigger: (props: Incoming<TriggerPartProps>) => JSXElement;
+  Root: (props: OverlayRootProps) => JSXElement;
+  Trigger: (props: TriggerPartProps) => JSXElement;
   use: () => OverlayValue;
 }
 

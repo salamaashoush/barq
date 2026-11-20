@@ -18,7 +18,7 @@ const FIXTURE = `import { For, createSignal, flush } from "@barqjs/core"
 import { render } from "@barqjs/web"
 
 const [names, setNames] = createSignal(["x", "y"])
-function Variable(props) { return <mi mathvariant="bold">{props.name()}</mi> }
+function Variable(props) { return <mi mathvariant="bold">{props.name}</mi> }
 
 function Formula() {
   return (

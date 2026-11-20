@@ -44,7 +44,7 @@ const columns: Array<ColumnDef<Features, Person>> = [
 
 let table: BarqTable<Features, Person>;
 
-function Grid(props: { options?: () => Partial<TableOptions<Features, Person>> }) {
+function Grid(props: { options?: Partial<TableOptions<Features, Person>> }) {
   table = createTable(() => ({
     features,
     columns,

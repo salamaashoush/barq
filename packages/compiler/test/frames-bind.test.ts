@@ -12,19 +12,19 @@ import { afterEach, expect, test } from "bun:test";
 import { census, compileText, host, reuse } from "./hydration.ts";
 
 const SOURCE = `
-import { createSignal } from "@barqjs/core"
+import { cells, createSignal } from "@barqjs/core"
 import { dynamic } from "@barqjs/web"
 export const todos = {
   list: [{ id: 1, title: "first", done: false }, { id: 2, title: "second", done: true }],
 }
 export const counts = { fills: 0, refs: [] }
 export function Todos(props) {
-  const filters = props.filters()
+  const filters = props.filters
   return (
     <section>
       <ul>
         {todos.list.map((todo) => {
-          const row = props.row({ $key: todo.id, done: todo.done })
+          const row = cells(props).row({ $key: todo.id, done: todo.done })
           return (
             <li data-id={todo.id} class={{ todo: true, completed: row.completed }} style={{ opacity: row.fade }} title={row.label}>
               <button onClick={row.toggle}>toggle</button>
@@ -38,7 +38,7 @@ export function Todos(props) {
   )
 }
 export default function Page(props) {
-  const View = dynamic(() => props.view())
+  const View = dynamic(() => props.view)
   const [filter, setFilter] = createSignal("active")
   return (
     <main>

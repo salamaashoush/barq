@@ -226,7 +226,7 @@ export function ComponentPreview(props: PreviewProps) {
           </Button>
           <pre class={() => `${pre} ${highlighted} ${open() ? "" : collapsed}`}>
             <code>
-              <CodeTokens code={() => props.code ?? ""} />
+              <CodeTokens code={props.code ?? ""} />
             </code>
           </pre>
           {() =>
