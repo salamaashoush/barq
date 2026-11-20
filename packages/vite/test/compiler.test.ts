@@ -8,9 +8,10 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { TransformResult } from "vite";
+import { type TransformResult, parseAst } from "vite";
 
 import {
+  barqStylesheets,
   barqVitePlugin,
   DIAGNOSTICS_EVENT,
   discoverBoundaries,
@@ -781,6 +782,48 @@ export const card = css\`color: red\`;
  * before `barq.reset`, and Tailwind's preflight — a later layer — beat every
  * one of them. Buttons lost their padding and their background.
  */
+/**
+ * vitest serves with `server.hmr: false`, and the `import.meta.hot` its module
+ * runner hands a module has no `data`: every component module the refresh wrap
+ * reached failed to load reading `barq:components` off it.
+ */
+describe("a server with HMR off", () => {
+  async function served(hmr: unknown): Promise<string> {
+    const plugin = barqVitePlugin();
+    configure(plugin, { command: "serve", mode: "development" });
+    const resolved = plugin.configResolved as unknown as (config: unknown) => void;
+    resolved.call(plugin, { root: process.cwd(), server: { hmr } });
+    const transform = plugin.transform as unknown as (
+      this: unknown,
+      code: string,
+      id: string,
+    ) => Promise<TransformResult | null>;
+    const context = {
+      environment: { name: "client", config: { consumer: "client" } },
+      warn() {},
+      error(message: string): never {
+        throw new Error(message);
+      },
+      parse: (code: string) => parseAst(code, { lang: "ts" }),
+    };
+    const id = join(process.cwd(), "src", "Card.tsx");
+    const result = await transform.call(
+      context,
+      "export const Card = () => <div>salama</div>;\n",
+      id,
+    );
+    return result?.code ?? "";
+  }
+
+  test("gets no refresh wrap, which reads the hot context's `data`", async () => {
+    expect(await served(false)).not.toContain("__barq_hot");
+  });
+
+  test("and a server with it on still does", async () => {
+    expect(await served(undefined)).toContain("__barq_hot(import.meta.hot");
+  });
+});
+
 describe("one stylesheet for a build's atoms", () => {
   const ATOMS = `import { atoms } from "@barqjs/css";
 export const box = atoms({ display: "none" });
@@ -788,21 +831,50 @@ export const box = atoms({ display: "none" });
   const MARKER = ".__barq_atoms__{--barq-atoms:0}";
   const BASE = ".a-display_1aweqsj{display:none}";
   const WIDE = "@media (width>=48rem){.a-display-17pnonp_1mc215m{display:block}}";
+  const EMITTED = "assets/barq-atoms-x.css";
+
+  type Output = {
+    type: "asset" | "chunk";
+    fileName: string;
+    names?: string[];
+    source?: string;
+    isEntry?: boolean;
+    viteMetadata?: { importedCss: Set<string> };
+  };
+
+  /** The hook as Vite calls it, with an `emitFile` that lands where Rollup's does. */
+  function finish(
+    plugin: { generateBundle?: unknown },
+    output: Record<string, Output>,
+    cssCodeSplit = true,
+  ): void {
+    const context = {
+      environment: { config: { build: { cssCodeSplit } } },
+      emitFile(file: { name: string; source: string }) {
+        output[EMITTED] = {
+          type: "asset",
+          fileName: EMITTED,
+          names: [file.name],
+          source: file.source,
+        };
+        return "atoms";
+      },
+      getFileName: () => EMITTED,
+    };
+    const hook = (plugin.generateBundle as { handler: (options: unknown, bundle: unknown) => void })
+      .handler;
+    hook.call(context, {}, output);
+  }
 
   function bundle(plugin: ReturnType<typeof barqVitePlugin>, assets: Record<string, string>) {
-    const chunks = Object.fromEntries(
+    const output: Record<string, Output> = Object.fromEntries(
       Object.entries(assets).map(([fileName, source]) => [
         fileName,
         { type: "asset" as const, fileName, source },
       ]),
     );
-    const hook = (
-      plugin.generateBundle as unknown as {
-        handler: (options: unknown, bundle: unknown) => void;
-      }
-    ).handler;
-    hook.call(plugin, {}, chunks);
-    return Object.fromEntries(Object.entries(chunks).map(([name, asset]) => [name, asset.source]));
+    finish(plugin, output);
+    return Object.fromEntries(Object.entries(output).map(([name, asset]) => [name, asset.source]));
   }
 
   test("a module holding an atom imports the shared sheet in a build", async () => {
@@ -833,34 +905,57 @@ export const box = atoms({ display: "none" });
    * again after the first chunk's `@media` rule, and the sidebar computed
    * `display: none` at 1280px.
    */
-  test("an atom two chunks hold is written once, in the shared sheet, in tier order", () => {
+  test("an atom two chunks hold is written once, in a sheet of its own, in tier order", () => {
     const plugin = barqVitePlugin({ dev: false });
     const out = bundle(plugin, {
       "shared.css": `.plain{gap:0}${MARKER}`,
       "sidebar.css": `${BASE}${WIDE}.b1n4k2p0{color:red}`,
       "later.css": BASE,
     });
-    expect(out["shared.css"]).toBe(`.plain{gap:0}${BASE}${WIDE}`);
+    expect(out["shared.css"]).toBe(".plain{gap:0}");
     expect(out["sidebar.css"]).toBe(".b1n4k2p0{color:red}");
+    expect(out[EMITTED]).toBe(`${BASE}${WIDE}`);
     // Emptied, so it is gone, and no chunk still lists it.
     expect("later.css" in out).toBe(false);
+  });
+
+  /**
+   * An atom and a `css` block class are both 0-1-0, so the later stylesheet
+   * wins the property. The atoms used to fill the marker's place inside one
+   * chunk's sheet, with that chunk's blocks after them.
+   */
+  test("every entry links the atoms, after every stylesheet it already linked", () => {
+    const plugin = barqVitePlugin({ dev: false });
+    const entry = new Set(["shared.css", "entry.css"]);
+    const lazy = new Set(["lazy.css"]);
+    const output: Record<string, Output> = {
+      "shared.css": { type: "asset", fileName: "shared.css", source: `.plain{gap:0}${MARKER}` },
+      "entry.css": { type: "asset", fileName: "entry.css", source: `.b1n4k2p0{color:red}${BASE}` },
+      "lazy.css": { type: "asset", fileName: "lazy.css", source: ".b2{color:blue}" },
+      "entry.js": {
+        type: "chunk",
+        fileName: "entry.js",
+        isEntry: true,
+        viteMetadata: { importedCss: entry },
+      },
+      "lazy.js": { type: "chunk", fileName: "lazy.js", viteMetadata: { importedCss: lazy } },
+    };
+    finish(plugin, output);
+    expect([...entry]).toEqual(["shared.css", "entry.css", EMITTED]);
+    expect([...lazy]).toEqual(["lazy.css"]);
+    expect(output["entry.css"]?.source).toBe(".b1n4k2p0{color:red}");
   });
 
   test("a stylesheet the gathering emptied leaves every chunk's list of links", () => {
     const plugin = barqVitePlugin({ dev: false });
     const linked = new Set(["shared.css", "later.css"]);
-    const chunks: Record<string, unknown> = {
-      "shared.css": { type: "asset", fileName: "shared.css", source: MARKER },
+    const output: Record<string, Output> = {
+      "shared.css": { type: "asset", fileName: "shared.css", source: `.plain{gap:0}${MARKER}` },
       "later.css": { type: "asset", fileName: "later.css", source: `${BASE}\n/*$vite$:1*/` },
       "route.js": { type: "chunk", fileName: "route.js", viteMetadata: { importedCss: linked } },
     };
-    const hook = (
-      plugin.generateBundle as unknown as {
-        handler: (options: unknown, bundle: unknown) => void;
-      }
-    ).handler;
-    hook.call(plugin, {}, chunks);
-    expect(Object.keys(chunks).toSorted()).toEqual(["route.js", "shared.css"]);
+    finish(plugin, output);
+    expect(Object.keys(output).toSorted()).toEqual([EMITTED, "route.js", "shared.css"]);
     expect([...linked]).toEqual(["shared.css"]);
   });
 
@@ -869,6 +964,86 @@ export const box = atoms({ display: "none" });
     const out = bundle(plugin, { "one.css": `${WIDE}${BASE}`, "two.css": BASE });
     expect(out["one.css"]).toBe(`${BASE}${WIDE}`);
     expect(out["two.css"]).toBe(BASE);
+  });
+
+  /**
+   * `build.cssCodeSplit: false`: Vite writes its one stylesheet in its own
+   * `generateBundle`, after the compiler's, so the compiler's has nothing to
+   * gather and the sheet is finished by `barqStylesheets` once it exists.
+   */
+  test("unsplit, the one sheet keeps its blocks first and its atoms after, written once", () => {
+    const compiler = barqVitePlugin({ dev: false });
+    const sheet = `.b1n4k2p0{color:red}${MARKER}${WIDE}${BASE}.b2{color:blue}${BASE}`;
+    const early: Record<string, Output> = {};
+    finish(compiler, early, false);
+    expect(Object.keys(early)).toEqual([]);
+
+    const output: Record<string, Output> = {
+      "assets/style-x.css": {
+        type: "asset",
+        fileName: "assets/style-x.css",
+        names: ["style.css"],
+        source: sheet,
+      },
+    };
+    finish(barqStylesheets(), output, false);
+    expect(output["assets/style-x.css"]?.source).toBe(
+      `.b1n4k2p0{color:red}.b2{color:blue}${BASE}${WIDE}`,
+    );
+    expect(Object.keys(output)).toEqual(["assets/style-x.css"]);
+  });
+
+  test("a split build is left to the compiler's own hook", () => {
+    const output: Record<string, Output> = {
+      "a.css": { type: "asset", fileName: "a.css", names: ["style.css"], source: `${WIDE}${BASE}` },
+    };
+    finish(barqStylesheets(), output, true);
+    expect(output["a.css"]?.source).toBe(`${WIDE}${BASE}`);
+  });
+
+  test("the document a build writes marks the atoms' link", () => {
+    const hook = (
+      barqStylesheets().transformIndexHtml as {
+        handler: (html: string, context: { bundle?: Record<string, Output> }) => string;
+      }
+    ).handler;
+    const html =
+      '<head><link rel="stylesheet" crossorigin href="/assets/index-a.css">' +
+      '<link rel="stylesheet" crossorigin href="/assets/barq-atoms-x.css"></head>';
+    const out = hook(html, {
+      bundle: { [EMITTED]: { type: "asset", fileName: EMITTED, names: ["barq-atoms.css"] } },
+    });
+    expect(out).toBe(
+      '<head><link rel="stylesheet" crossorigin href="/assets/index-a.css">' +
+        '<link rel="stylesheet" crossorigin href="/assets/barq-atoms-x.css" data-barq-atoms></head>',
+    );
+  });
+
+  /**
+   * The one place a build links a stylesheet after the first paint. Appended
+   * to `<head>`, a chunk's blocks would land after the atoms and win.
+   */
+  test("Vite's preload helper links a stylesheet in front of the atoms", async () => {
+    const plugin = barqVitePlugin({ dev: false });
+    const helper =
+      'function preload(){const link=document.createElement("link");document.head.appendChild(link);}';
+    const { result } = await run(plugin, helper, "\0vite/preload-helper.js");
+    expect(result?.code).not.toContain("document.head.appendChild(link)");
+    expect(result?.code).toContain("[data-barq-atoms]");
+    await expect(run(plugin, "function preload(){}", "\0vite/preload-helper.js")).rejects.toThrow(
+      "preload helper",
+    );
+  });
+
+  test("a helper this version does not know warns instead, when the build says so", async () => {
+    const plugin = barqVitePlugin({ dev: false, preloadHelper: "warn" });
+    const { result, warnings } = await run(
+      plugin,
+      "function preload(){}",
+      "\0vite/preload-helper.js",
+    );
+    expect(result).toBe(null);
+    expect(warnings.join("\n")).toContain("preload helper");
   });
 });
 

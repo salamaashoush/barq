@@ -63,6 +63,7 @@ export interface PageAssets {
   readonly clientAssets?: {
     readonly scripts?: readonly string[];
     readonly css?: readonly string[];
+    readonly atoms?: string;
     readonly preload?: readonly string[];
   };
   readonly routeAssets?: Readonly<Record<string, readonly string[]>>;
@@ -166,9 +167,10 @@ async function rewrite(
   };
 
   const client = assets.clientAssets;
-  const [scripts, css, preload, routeAssets, routeCss] = await Promise.all([
+  const [scripts, css, atoms, preload, routeAssets, routeCss] = await Promise.all([
     list(client?.scripts, "script"),
     list(client?.css, "stylesheet"),
+    list(client?.atoms === undefined ? undefined : [client.atoms], "stylesheet"),
     list(client?.preload, "script"),
     table(assets.routeAssets, "script"),
     table(assets.routeCss, "stylesheet"),
@@ -221,7 +223,8 @@ async function rewrite(
     );
   }
   return {
-    clientAssets: client === undefined ? undefined : { ...client, scripts, css, preload },
+    clientAssets:
+      client === undefined ? undefined : { ...client, scripts, css, atoms: atoms?.[0], preload },
     routeAssets,
     routeCss,
     moduleAssets,

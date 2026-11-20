@@ -13,6 +13,7 @@ import { boundaryModules } from "./boundary.ts";
 import {
   BARQ_CONDITION,
   type BarqVitePluginOptions,
+  barqStylesheets,
   barqVitePlugin,
   packageDir,
 } from "./compiler.ts";
@@ -331,7 +332,10 @@ export default async function barq(options: BarqOptions = {}): Promise<Plugin[]>
       }),
     );
   } else {
-    plugins.push({ ...barqVitePlugin(compiler), sharedDuringBuild: true });
+    plugins.push(
+      { ...barqVitePlugin(compiler), sharedDuringBuild: true },
+      { ...barqStylesheets(), sharedDuringBuild: true },
+    );
   }
 
   return plugins;

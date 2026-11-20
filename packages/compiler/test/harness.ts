@@ -23,7 +23,7 @@ import {
 
 const require_ = createRequire(import.meta.url);
 
-export const FIXTURE_DIR = join(import.meta.dir, "..", "fixtures");
+export const FIXTURE_DIR: string = join(import.meta.dir, "..", "fixtures");
 const RUN = process.pid;
 /**
  * One generated-module directory PER PROCESS, and generated names carry the pid
@@ -42,7 +42,7 @@ const RUN = process.pid;
  * `TMP_DIR` stays ONE level under `test/`, because the semantics fixtures reach their
  * support module by relative path from where the generated file lands.
  */
-export const TMP_DIR = join(import.meta.dir, `.tmp-${RUN}`);
+export const TMP_DIR: string = join(import.meta.dir, `.tmp-${RUN}`);
 
 /**
  * The oracle path never reaches the compiler, so the JSX it contains has to be
@@ -59,6 +59,8 @@ export interface NativeTransformResult {
   ownership?: string | null;
   /** the address table's compile-time address table, under `addresses: true` only. */
   addresses?: string | null;
+  /** the module's compiled stylesheet, when it has one. */
+  css?: string | null;
 }
 
 interface NativeCompiler {
@@ -213,7 +215,7 @@ export function fixtureSource(name: string): string {
   return readFileSync(join(FIXTURE_DIR, `${name}.tsx`), "utf8");
 }
 
-export const BROWSER_ONLY_DIR = join(FIXTURE_DIR, "browser-only");
+export const BROWSER_ONLY_DIR: string = join(FIXTURE_DIR, "browser-only");
 
 /**
  * Fixtures a FAKE DOM is structurally unable to judge, and which therefore
@@ -1175,11 +1177,11 @@ function reportedAs(name: string): string {
  * contains `_$` makes the compiler shift every emitted uid to `_$$`, and a
  * scanner pinned to one prefix would silently see no writes at all.
  */
-export const CHANNEL_CALL =
+export const CHANNEL_CALL: RegExp =
   /_\$+(setAttr|setDomProp|setLive|setClass|setStyle|setHtml)\(\s*(_el\$+\d+)\s*,\s*"([^"]+)"/g;
 
 /** `_$bindProp(el, _$setAttr, "id", v)` — the channel is the second argument. */
-export const BIND_PROP_CALL = /_\$+bindProp\(\s*(_el\$+\d+)\s*,[^,]+,\s*"([^"]+)"/g;
+export const BIND_PROP_CALL: RegExp = /_\$+bindProp\(\s*(_el\$+\d+)\s*,[^,]+,\s*"([^"]+)"/g;
 
 /**
  * The props the emitted module applies AFTER the clone, by attribute name.

@@ -161,6 +161,31 @@ export function collectRequestCss(): string {
   return store?.css === undefined ? "" : [...store.css.values()].join("");
 }
 
+const DEV_STYLESHEETS = Symbol.for("barq.dev.stylesheets");
+
+/**
+ * The compiled module stylesheets a page made of `routes` reaches, in the order
+ * the page's modules run, when a dev server answered that, and `undefined`
+ * where none did: a build links its stylesheets instead of inlining them.
+ *
+ * A dev server imports the application once and renders every page from the
+ * one registry, so without this a page's head carried the rules of every module
+ * any earlier request had reached. `@barqjs/vite` installs the answer, read off
+ * its module graph in the order a build links the same modules' stylesheets.
+ */
+export function devStylesheets(routes: readonly string[]): DevStylesheets | undefined {
+  const answer = (
+    globalThis as { [DEV_STYLESHEETS]?: (routes: readonly string[]) => DevStylesheets }
+  )[DEV_STYLESHEETS];
+  return answer?.(routes);
+}
+
+/** `@barqjs/css`'s `CssScope`, restated so this package does not import that one. */
+export interface DevStylesheets {
+  readonly keys: readonly string[];
+  readonly modules: ReadonlySet<string>;
+}
+
 /** `@barqjs/css`'s `CssSink`, restated so this package does not import that one. */
 interface CssSink {
   (key: string, rules: string): boolean;

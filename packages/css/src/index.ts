@@ -79,7 +79,14 @@ export type {
 } from "./variants.ts";
 
 // The one registry, and how a server render reads it.
-export { collectCss, registerCss, setCssSink } from "./sheet.ts";
+export {
+  collectCss,
+  collectCssParts,
+  registerCss,
+  setCssSink,
+  type CssScope,
+  type SheetParts,
+} from "./sheet.ts";
 export type { CssSink } from "./sheet.ts";
 
 export type CssValue = string | number | false | null | undefined;

@@ -20,7 +20,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readFile, readdir, writeFile } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { RPC_PREFIX } from "@barqjs/start";
@@ -36,7 +36,15 @@ import { ASSET_MANIFEST_FILE, type AssetManifest } from "@barqjs/start/serve";
 import { NodeRequest, sendNodeResponse } from "srvx/node";
 import type { Plugin, RunnableDevEnvironment, ViteBuilder, ViteDevServer } from "vite";
 
-import { type BarqCompilerOptions, barqVitePlugin, optimizable } from "./compiler.ts";
+import {
+  type BarqCompilerOptions,
+  type CompilerApi,
+  atomsAsset,
+  barqStylesheets,
+  barqVitePlugin,
+  optimizable,
+  unsplitAsset,
+} from "./compiler.ts";
 import { serverDiagnostics } from "./dev-diagnostics.ts";
 
 /**
@@ -140,6 +148,69 @@ export const ROUTER_ENTRY_ID = "#barq-router-entry";
  * nothing outside this module names it.
  */
 const RESOLVED_ROUTER_ENTRY_ID = "\0barq-router-entry";
+
+const DEV_STYLESHEETS = Symbol.for("barq.dev.stylesheets");
+
+/**
+ * The registry keys of the compiled stylesheets a page of `routes` reaches, in
+ * the order a build links them: the router entry's static imports, then each
+ * route's file, both halves, each module's static imports depth first and in
+ * the order it imports them before its own.
+ *
+ * The answer `devStylesheets` in `@barqjs/start` reads, so the head of one dev
+ * page holds that page's rules rather than every rule the process has seen,
+ * with every module stylesheet there is beside it: an entry under any other
+ * key, a theme `installTheme` wrote, is every page's.
+ * Dynamic imports are not followed: a lazily loaded module is in a build's
+ * stylesheets only once it loads, and here it is in the late sheet.
+ */
+function pageStylesheets(
+  server: ViteDevServer,
+  routes: readonly string[],
+  routerEntry: string | null,
+): { readonly keys: readonly string[]; readonly modules: ReadonlySet<string> } {
+  const plugins = server.config.plugins;
+  const router = plugins.find((plugin) => plugin.name === "barq-router")?.api as
+    | { entries(): readonly { readonly id: string; readonly file: string }[] }
+    | undefined;
+  const compiler = plugins.find((plugin) => plugin.name === "barq-compiler")?.api as
+    | CompilerApi
+    | undefined;
+  const graph = server.environments[ENVIRONMENTS.server]?.moduleGraph;
+  if (compiler === undefined || graph === undefined) return { keys: [], modules: new Set() };
+  const order: string[] = [];
+  const walked = new Set<unknown>();
+  type Node = NonNullable<ReturnType<typeof graph.getModuleById>>;
+  const visit = (module: Node): void => {
+    if (walked.has(module)) return;
+    walked.add(module);
+    const imported = [...module.importedModules];
+    for (const url of (module.transformResult as { deps?: readonly string[] } | null)?.deps ?? []) {
+      const found = graph.urlToModuleMap.get(url) ?? imported.find((each) => each.url === url);
+      if (found !== undefined) visit(found);
+    }
+    if (module.id !== null) order.push(...compiler.stylesheetsOf(module.id));
+  };
+  const file = (path: string): void => {
+    const modules = [...(graph.getModulesByFile(path) ?? [])];
+    // The route's own half first and its split component after, as they run.
+    modules.sort((a, b) => Number(isSplit(a.id)) - Number(isSplit(b.id)));
+    for (const module of modules) visit(module);
+  };
+  if (routerEntry !== null) file(routerEntry);
+  const entries = router?.entries() ?? [];
+  for (const route of routes) {
+    for (const entry of entries) {
+      if (entry.id !== route) continue;
+      file(isAbsolute(entry.file) ? entry.file : join(server.config.root, entry.file));
+    }
+  }
+  return { keys: order, modules: compiler.stylesheets() };
+}
+
+function isSplit(id: string | null): boolean {
+  return id?.includes("?barq-split") === true;
+}
 
 function findRouterEntry(root: string, srcDir: string): string | null {
   return findSource(root, srcDir, "router");
@@ -345,12 +416,13 @@ function defaultServerEntry(pages: boolean): string {
   // `requestCss` is what one render registered, which only that request needs —
   // without the split, `/about` inlined the rules a request for `/css` had
   // produced.
-  const shared = "inlineCss: collectCss, requestCss: collectRequestCss";
+  const shared =
+    "inlineCss: (routes) => collectCssParts(devStylesheets(routes)), requestCss: collectRequestCss";
   const options = pages ? `{ ${shared} }` : `{ pages: false, ${shared} }`;
   return [
     `import { createStartHandler } from "@barqjs/router/server";`,
-    `import { collectCss, setCssSink } from "@barqjs/css";`,
-    `import { collectRequestCss, installCssSink } from "@barqjs/start";`,
+    `import { collectCssParts, setCssSink } from "@barqjs/css";`,
+    `import { collectRequestCss, devStylesheets, installCssSink } from "@barqjs/start";`,
     ``,
     `installCssSink(setCssSink);`,
     ``,
@@ -497,6 +569,8 @@ const RESOLVED_CLIENT_ASSETS_ID = `\0${CLIENT_ASSETS_ID}`;
 interface ClientAssets {
   scripts: string[];
   css: string[];
+  /** The build's atoms, linked after every other stylesheet. */
+  atoms?: string;
   preload?: string[];
 }
 
@@ -1097,48 +1171,59 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
      * identity check, which throws when another framework in the same Vite app
      * owns an environment called `client`.
      */
-    generateBundle(_output, bundle) {
-      const environment = (this as { environment?: { name?: string } }).environment?.name;
-      if (environment === ENVIRONMENTS.server) {
-        // RECORDED, not reconstructed: rebuilding this name from the input path
-        // dies on any `entryFileNames`, and the build already knows what it
-        // wrote.
-        for (const chunk of Object.values(bundle)) {
-          if (chunk.type === "chunk" && chunk.isEntry && chunk.name === "server") {
-            serverFile = chunk.fileName;
+    generateBundle: {
+      // After Vite's own: unsplit, the one stylesheet is written there.
+      order: "post",
+      handler(_output, bundle) {
+        const environment = (this as { environment?: { name?: string } }).environment?.name;
+        if (environment === ENVIRONMENTS.server) {
+          // RECORDED, not reconstructed: rebuilding this name from the input path
+          // dies on any `entryFileNames`, and the build already knows what it
+          // wrote.
+          for (const chunk of Object.values(bundle)) {
+            if (chunk.type === "chunk" && chunk.isEntry && chunk.name === "server") {
+              serverFile = chunk.fileName;
+            }
           }
+          return;
         }
-        return;
-      }
-      if (environment !== ENVIRONMENTS.client) return;
-      const assetsDir =
-        (this as { environment?: { config?: { build?: { assetsDir?: string } } } }).environment
-          ?.config?.build?.assetsDir ?? "assets";
-      for (const file of Object.keys(bundle)) {
-        if (file.startsWith(`${assetsDir}/`)) hashedAssets.add(file);
-      }
-      for (const chunk of Object.values(bundle)) {
-        if (chunk.type !== "chunk" || !chunk.isEntry || chunk.name !== "index") continue;
-        const css = [...(chunk.viteMetadata?.importedCss ?? [])];
-        // What the entry imports before it can hydrate: its static imports,
-        // which the browser otherwise finds only once the entry has been
-        // parsed, and the two entries the boot imports at once. An `async`
-        // entry runs as soon as these are in, so each one not preloaded is a
-        // round trip on the way to an interactive page.
-        const boot = chunk.dynamicImports.filter((file) => {
-          const imported = bundle[file];
-          return (
-            imported?.type === "chunk" &&
-            (imported.name.includes("barq-start-entry") ||
-              imported.name.includes("barq-router-entry"))
-          );
-        });
-        clientAssets = {
-          scripts: [`${base}${chunk.fileName}`],
-          css: css.map((file) => `${base}${file}`),
-          preload: [...chunk.imports, ...boot].map((file) => `${base}${file}`),
-        };
-      }
+        if (environment !== ENVIRONMENTS.client) return;
+        const assetsDir =
+          (this as { environment?: { config?: { build?: { assetsDir?: string } } } }).environment
+            ?.config?.build?.assetsDir ?? "assets";
+        for (const file of Object.keys(bundle)) {
+          if (file.startsWith(`${assetsDir}/`)) hashedAssets.add(file);
+        }
+        const atoms = atomsAsset(bundle);
+        const unsplit = unsplitAsset(bundle);
+        for (const chunk of Object.values(bundle)) {
+          if (chunk.type !== "chunk" || !chunk.isEntry || chunk.name !== "index") continue;
+          // Unsplit, no chunk lists a stylesheet and every page needs the one.
+          const css =
+            unsplit === undefined
+              ? [...(chunk.viteMetadata?.importedCss ?? [])].filter((file) => file !== atoms)
+              : [unsplit];
+          // What the entry imports before it can hydrate: its static imports,
+          // which the browser otherwise finds only once the entry has been
+          // parsed, and the two entries the boot imports at once. An `async`
+          // entry runs as soon as these are in, so each one not preloaded is a
+          // round trip on the way to an interactive page.
+          const boot = chunk.dynamicImports.filter((file) => {
+            const imported = bundle[file];
+            return (
+              imported?.type === "chunk" &&
+              (imported.name.includes("barq-start-entry") ||
+                imported.name.includes("barq-router-entry"))
+            );
+          });
+          clientAssets = {
+            scripts: [`${base}${chunk.fileName}`],
+            css: css.map((file) => `${base}${file}`),
+            ...(atoms === undefined ? {} : { atoms: `${base}${atoms}` }),
+            preload: [...chunk.imports, ...boot].map((file) => `${base}${file}`),
+          };
+        }
+      },
     },
   };
 
@@ -1562,6 +1647,9 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
       const diagnostics = serverDiagnostics(viteServer, (specifier) =>
         environment.runner.import(specifier),
       );
+      (globalThis as { [DEV_STYLESHEETS]?: unknown })[DEV_STYLESHEETS] = (
+        routes: readonly string[],
+      ) => pageStylesheets(viteServer, routes, findRouterEntry(root, srcDirectory));
 
       const report = (error: unknown): void => {
         try {
@@ -1736,6 +1824,7 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
         onServerFns: record,
       }),
     },
+    { ...barqStylesheets(), sharedDuringBuild: true },
     srvxTarget(options.server?.target),
     entries,
     manifest,

@@ -38,6 +38,8 @@ interface Part {
   readonly tier: number;
   /** Where the rule sorts inside the media tier, and `null` in every other. */
   readonly media: MediaRank | null;
+  /** The hash of the condition an atom was declared under, read off its class. */
+  readonly condition: string;
   /** The class of the atom this rule IS, where that is checked: see {@link atomOf}. */
   readonly atom: string | null;
   /**
@@ -79,6 +81,7 @@ let served: Set<string> | null = null;
 
 /** The elements {@link adopted} and the late half of {@link served} were read from. */
 let owned: Element | null = null;
+let ownedAtoms: Element | null = null;
 let late: Element | null = null;
 
 /**
@@ -86,6 +89,22 @@ let late: Element | null = null;
  * whole sheet once a request, and most requests register nothing.
  */
 let serialised: string | null = null;
+let split: SheetParts | null = null;
+
+/**
+ * A sheet as the two places it goes in a document: every rule that is not an
+ * atom, and then the atoms.
+ *
+ * Two, because a build links its compiled atoms between them. An atom and a
+ * `css` block class are both 0-1-0 and the later rule wins, so what the runtime
+ * registers has to stay on the right side of that link: its blocks in front of
+ * the build's atoms, and its atoms after the build's blocks. One `<style>`
+ * after the link let a block the runtime evaluated beat every compiled atom.
+ */
+export interface SheetParts {
+  readonly blocks: string;
+  readonly atoms: string;
+}
 
 const resets: (() => void)[] = [];
 
@@ -103,12 +122,22 @@ export function onReset(hook: () => void): void {
 export function resetCss(): void {
   registered.clear();
   serialised = null;
+  split = null;
   adopted = null;
   served = null;
   owned = null;
+  ownedAtoms = null;
   late = null;
   for (const hook of resets) hook();
-  if (typeof document !== "undefined") document.getElementById(SHEET_ID)?.remove();
+  if (typeof document === "undefined") return;
+  document.getElementById(SHEET_ID)?.remove();
+  document.getElementById(ATOMS_SHEET_ID)?.remove();
+  if (constructed !== null) {
+    const dropped = constructed;
+    document.adoptedStyleSheets = document.adoptedStyleSheets.filter((each) => each !== dropped);
+    constructed = null;
+    constructedText = "";
+  }
 }
 
 /**
@@ -128,6 +157,12 @@ export function hash(text: string): string {
 }
 
 const SHEET_ID = "barq-css";
+
+/** The `<style>` that holds the registry's atoms, after {@link SHEET_ID}'s. */
+const ATOMS_SHEET_ID = "barq-css-atoms";
+
+/** What marks the `<link>` of a build's compiled atoms. */
+const ATOMS_LINK = "link[data-barq-atoms]";
 
 /** The sheet a server writes at the end of `<body>`, for what its render registered. */
 const LATE_ID = "barq-css-late";
@@ -249,6 +284,7 @@ export function register(key: string, rules: string, tier = 0): string {
     held.mark = mark;
   }
   serialised = null;
+  split = null;
   if (holding > 0) painting = true;
   else paint();
   return key;
@@ -302,13 +338,10 @@ function collision(name: string, first: string, second: string): Error {
 
 function paint(): void {
   if (typeof document === "undefined") return;
-  const element = document.getElementById(SHEET_ID) as HTMLStyleElement | null;
-  if (element !== null) {
-    adopt(element);
-    const text = sheet();
-    if (element.textContent !== text) element.textContent = text;
-    return;
-  }
+  const blocks = document.getElementById(SHEET_ID);
+  const atoms = document.getElementById(ATOMS_SHEET_ID);
+  if (blocks !== owned || (atoms !== null && atoms !== ownedAtoms)) adopt(blocks, atoms);
+  else adoptLate();
   // `document.head` is NULL for part of a hydration: the client render rebuilds
   // the document, and a module registering a rule in that window crashed the
   // whole page with `Cannot read properties of null (reading 'appendChild')`.
@@ -320,12 +353,80 @@ function paint(): void {
   // that list did not produce, so the next reconcile would take it away again.
   const host = document.head ?? document.body;
   if (host === null) return;
-  const created = document.createElement("style");
-  created.id = SHEET_ID;
-  owned = created;
-  adoptLate();
-  created.textContent = sheet();
-  host.appendChild(created);
+  const text = sheetParts();
+  const link = document.head?.querySelector(ATOMS_LINK) ?? null;
+  const ownBlocks = blocks ?? created(SHEET_ID);
+  if (!ownBlocks.isConnected) {
+    if (link === null) host.appendChild(ownBlocks);
+    else link.before(ownBlocks);
+  }
+  owned = ownBlocks;
+  if (ownBlocks.textContent !== text.blocks) ownBlocks.textContent = text.blocks;
+  if (link === null && constructible()) {
+    // Emptied rather than removed: it is `<HeadContent />`'s, which reads
+    // what it holds when it renders and then leaves out an empty one.
+    if (atoms !== null && atoms.textContent !== "") atoms.textContent = "";
+    ownedAtoms = atoms;
+    adoptConstructed(text.atoms);
+    return;
+  }
+  const ownAtoms = atoms ?? created(ATOMS_SHEET_ID);
+  if (!ownAtoms.isConnected) {
+    if (link === null) ownBlocks.after(ownAtoms);
+    else link.after(ownAtoms);
+  }
+  ownedAtoms = ownAtoms;
+  if (ownAtoms.textContent !== text.atoms) ownAtoms.textContent = text.atoms;
+}
+
+function created(id: string): HTMLStyleElement {
+  const element = document.createElement("style");
+  element.id = id;
+  return element;
+}
+
+/** The atoms, in dev, where no stylesheet in the document can come after them. */
+let constructed: CSSStyleSheet | null = null;
+let constructedText = "";
+
+/**
+ * Whether the atoms can go in an adopted stylesheet, which the cascade puts
+ * after every stylesheet the document holds, in dev.
+ *
+ * Vite's dev client appends a `<style>` for each plain `.css` file a module
+ * imports to the end of `<head>`, after every atom, so a 0-1-0 rule in one beat
+ * an atom in dev and lost to it in the build, where that file's rules are in a
+ * chunk linked before the atoms. Moving those elements instead does not hold:
+ * `<HeadContent />` claims `<head>` by tag, and a foreign `<style>` between two
+ * of its own took the place of the second. A build has its atoms' `<link>`, and
+ * every stylesheet it links later goes in front of that, so a build keeps two
+ * elements either side of it.
+ */
+function constructible(): boolean {
+  return (
+    STRICT &&
+    typeof CSSStyleSheet !== "undefined" &&
+    "replaceSync" in CSSStyleSheet.prototype &&
+    Array.isArray(document.adoptedStyleSheets)
+  );
+}
+
+function adoptConstructed(text: string): void {
+  if (constructed === null) {
+    constructed = new CSSStyleSheet();
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, constructed];
+  }
+  if (constructedText === text) return;
+  constructedText = text;
+  constructed.replaceSync(text);
+}
+
+/** What the registry last wrote for its atoms, wherever they went. */
+export function paintedAtoms(): string {
+  if (constructed !== null) return constructedText;
+  return typeof document === "undefined"
+    ? ""
+    : (document.getElementById(ATOMS_SHEET_ID)?.textContent ?? "");
 }
 
 /**
@@ -336,16 +437,18 @@ function paint(): void {
  * arranged it. Read back into the same parts, it is what this side's rules are
  * merged INTO: none of it is dropped and none of it changes place.
  */
-function adopt(element: Element): void {
-  if (element !== owned) {
-    owned = element;
-    const text = element.textContent ?? "";
+function adopt(blocks: Element | null, atoms: Element | null): void {
+  if (blocks !== owned || atoms !== ownedAtoms) {
+    owned = blocks;
+    ownedAtoms = atoms;
+    const text = (blocks?.textContent ?? "") + (atoms?.textContent ?? "");
     adopted = arrange(partsOf({ rules: text, tier: 0, parts: null, mark: 0 }), null, false);
     served = new Set();
     for (const part of adopted.top) if (part.text !== "") served.add(part.id);
     for (const held of adopted.layers.values()) for (const part of held) served.add(part.id);
     late = null;
     serialised = null;
+    split = null;
   }
   adoptLate();
 }
@@ -361,6 +464,7 @@ function adoptLate(): void {
     served.add(part.id);
   }
   serialised = null;
+  split = null;
 }
 
 /**
@@ -409,6 +513,17 @@ export function registerCss(key: string, rules: string): void {
 }
 
 /**
+ * One page's share of the registry: the compiled module stylesheets it reaches,
+ * in the order its modules run, out of every module stylesheet there is. An
+ * entry under any other key, a theme `installTheme` wrote or a rule the runtime
+ * evaluated, belongs to every page.
+ */
+export interface CssScope {
+  readonly keys: readonly string[];
+  readonly modules: ReadonlySet<string>;
+}
+
+/**
  * Every rule registered so far, for a server render to inline.
  *
  * In a production build that is only what the compiler declined, because a
@@ -416,26 +531,72 @@ export function registerCss(key: string, rules: string): void {
  * `bun test` it is the whole sheet, which is what makes a server-rendered dev
  * page arrive styled — it used to arrive with 23 classes in its markup and no
  * stylesheet of any kind.
+ *
+ * `scope` is the compiled module stylesheets one page reaches, in the order the
+ * page's modules run, and the sheet then holds those and every entry that is
+ * not a module's stylesheet at all. A server imports an application once and
+ * renders many pages, so its registry holds every module any request has
+ * reached: without a scope, `/` rendered after `/create` carried `/create`'s
+ * `#app` rules, and the order of two modules' blocks was whichever page the
+ * process happened to render first.
  */
+export function collectCss(scope?: CssScope): string {
+  const text =
+    scope === undefined ? wholeSheet() : print(arrange(everyPart(entriesIn(scope)), null, true));
+  headRead();
+  return text;
+}
+
+/** The same sheet as the two places it goes: see {@link SheetParts}. */
+export function collectCssParts(scope?: CssScope): SheetParts {
+  const text =
+    scope === undefined
+      ? sheetParts()
+      : printParts(arrange(everyPart(entriesIn(scope)), null, true));
+  headRead();
+  return text;
+}
+
 /**
  * Every rule that belongs to EVERY request: the module-scope ones, registered
  * when the application was imported. A render's own rules are the host's, and
  * it collects them from the sink it installed.
  */
-export function collectCss(): string {
-  const text = sheet();
+function headRead(): void {
   if (sink?.head !== undefined) {
     const read = clock;
     sink.head(() => since(read));
   }
-  return text;
 }
 
-function sheet(): string {
-  if (serialised !== null) return serialised;
-  const own = arrange(everyPart(registered.values()), served, true);
-  serialised = print(adopted === null ? own : joined(adopted, own));
+function entriesIn(scope: CssScope): Entry[] {
+  const out: Entry[] = [];
+  const taken = new Set<string>();
+  for (const key of scope.keys) {
+    const entry = registered.get(key);
+    if (entry === undefined || taken.has(key)) continue;
+    taken.add(key);
+    out.push(entry);
+  }
+  for (const [key, entry] of registered) {
+    if (!taken.has(key) && !scope.modules.has(key)) out.push(entry);
+  }
+  return out;
+}
+
+function ownArranged(): Arranged {
+  const mine = arrange(everyPart(registered.values()), served, true);
+  return adopted === null ? mine : joined(adopted, mine);
+}
+
+function wholeSheet(): string {
+  serialised ??= print(ownArranged());
   return serialised;
+}
+
+function sheetParts(): SheetParts {
+  split ??= printParts(ownArranged());
+  return split;
 }
 
 /**
@@ -444,6 +605,10 @@ function sheet(): string {
  * Less whatever the sheet held at `mark` under another key, so a page is not
  * sent one rule in both of its sheets: an atom two modules share is in the
  * head if either module was registered by then.
+ *
+ * This goes at the end of `<body>`, after the head's atoms, so when it holds a
+ * rule that is not an atom it ends with EVERY atom again: a block a module
+ * brought during the render would otherwise beat an atom already in the head.
  */
 function since(mark: number): string {
   const fresh: Entry[] = [];
@@ -452,7 +617,11 @@ function since(mark: number): string {
     if (entry.mark > mark) fresh.push(entry);
     else for (const part of partsOf(entry)) held.add(part.id);
   }
-  return fresh.length === 0 ? "" : print(arrange(everyPart(fresh), held, true));
+  if (fresh.length === 0) return "";
+  const arranged = arrange(everyPart(fresh), held, true);
+  const blocks = printParts(arranged).blocks;
+  if (blocks.replace(/@layer [\w.-]+\{\}/g, "") === "") return print(arranged);
+  return blocks + printParts(arrange(everyPart(registered.values()), null, true)).atoms;
 }
 
 function* everyPart(entries: Iterable<Entry>): Generator<Part> {
@@ -486,7 +655,15 @@ function arrange(parts: Iterable<Part>, skip: Set<string> | null, order: boolean
     const held = layers.get(part.layer);
     if (held === undefined) {
       layers.set(part.layer, [part]);
-      top.push({ layer: part.layer, text: "", tier: PINNED, media: null, atom: null, id: "" });
+      top.push({
+        layer: part.layer,
+        text: "",
+        tier: PINNED,
+        media: null,
+        condition: "",
+        atom: null,
+        id: "",
+      });
     } else {
       held.push(part);
     }
@@ -510,7 +687,8 @@ function arrange(parts: Iterable<Part>, skip: Set<string> | null, order: boolean
  * atoms hold, which carries one across a rule that is not an atom whenever the
  * count before it changes — and the server's rules are exactly what must not
  * change place. An atom goes after the last rule that sorts no later than it
- * does; anything else goes at the end, where a registration puts it.
+ * does; anything else goes in front of the first atom, as {@link orderAtoms}
+ * would have put it.
  */
 function joined(server: Arranged, own: Arranged): Arranged {
   const top = [...server.top];
@@ -535,7 +713,9 @@ function joined(server: Arranged, own: Arranged): Arranged {
 
 function insert(list: Part[], part: Part): void {
   if (part.tier === PINNED) {
-    list.push(part);
+    const atom = list.findIndex((held) => held.tier !== PINNED);
+    if (atom < 0) list.push(part);
+    else list.splice(atom, 0, part);
     return;
   }
   let after = -1;
@@ -583,6 +763,48 @@ function print(arranged: Arranged): string {
 }
 
 /**
+ * {@link print}, as every rule that is not an atom and then every atom. A layer
+ * is opened in the first half wherever it was first named, so the layer order
+ * that half declares holds, and in the second half wherever it has an atom.
+ */
+function printParts(arranged: Arranged): SheetParts {
+  let blocks = "";
+  let atoms = "";
+  let layered = "";
+  const seen = new Set<string>();
+  const classes = STRICT ? new Map<string, string>() : null;
+  for (const part of arranged.top) {
+    if (part.layer === "") {
+      if (part.tier === PINNED) {
+        blocks += part.text;
+        continue;
+      }
+      if (seen.has(part.text)) continue;
+      seen.add(part.text);
+      if (classes !== null) distinct(classes, part);
+      atoms += part.text;
+      continue;
+    }
+    const within = new Set<string>();
+    let pinned = "";
+    let moved = "";
+    for (const inner of arranged.layers.get(part.layer) ?? []) {
+      if (within.has(inner.text)) continue;
+      within.add(inner.text);
+      if (inner.tier === PINNED) {
+        pinned += inner.text;
+        continue;
+      }
+      if (classes !== null) distinct(classes, inner);
+      moved += inner.text;
+    }
+    blocks += `@layer ${part.layer}{${pinned}}`;
+    if (moved !== "") layered += `@layer ${part.layer}{${moved}}`;
+  }
+  return { blocks, atoms: layered + atoms };
+}
+
+/**
  * The same check {@link registerAtom} makes, for atoms that arrive as text.
  *
  * A compiled module's sheet is one registration under the module's id, so two
@@ -611,11 +833,13 @@ function partsOf(entry: Entry): Part[] {
   const add = (layer: string, text: string, closed: boolean): void => {
     // The runtime knows an atom's tier from its condition. A compiled
     // stylesheet is text, so the tier is read back off each rule.
-    const name = closed ? atomClass(text) : null;
+    const named = closed ? atomNamed(text) : null;
+    const name = named?.name ?? null;
     const tier = entry.tier !== 0 ? entry.tier : name === null ? PINNED : tierOfRule(text, name);
     const media = tier === MEDIA ? mediaRank(text) : null;
+    const condition = named?.condition ?? "";
     const atom = STRICT && name !== null ? atomOf(layer, text, name) : null;
-    parts.push({ layer, text, tier, media, atom, id: `${layer}\u0000${text}` });
+    parts.push({ layer, text, tier, media, condition, atom, id: `${layer}\u0000${text}` });
   };
   const outer = statements(entry.rules);
   for (const statement of outer.closed) {
@@ -627,7 +851,9 @@ function partsOf(entry: Entry): Part[] {
     const layer = statement.slice("@layer ".length, open - 1);
     const inner = statements(statement.slice(open, -1));
     for (const rule of inner.closed) add(layer, rule, true);
-    if (inner.tail !== "") add(layer, inner.tail, false);
+    // An empty block still names its layer where it stands, which is the
+    // layer's place in the order when nothing declares one.
+    if (inner.tail !== "" || inner.closed.length === 0) add(layer, inner.tail, false);
   }
   if (outer.tail !== "") add("", outer.tail, false);
   entry.parts = parts;
@@ -728,18 +954,27 @@ function pixels(text: string, from: number): number | null {
   return unit === "em" || unit === "rem" ? value * 16 : null;
 }
 
-/** Negative when `a` sorts first, zero when only arrival separates them. */
+/**
+ * Negative when `a` sorts first, zero when only arrival separates them.
+ *
+ * Last, in every tier, the hash of the condition an atom was declared under.
+ * Two atoms of one tier whose conditions both match one element are two rules
+ * of one specificity with no passing order between them, and arrival is a
+ * different thing in dev, a split build and an unsplit one. `order.rs` sorts a
+ * built asset by the same key.
+ */
 function precedes(a: Part, b: Part): number {
   if (a.tier !== b.tier) return a.tier - b.tier;
   const x = a.media;
   const y = b.media;
-  if (x === null || y === null) return 0;
-  return (
-    compare(x.group, y.group) ||
-    compare(x.first, y.first) ||
-    compare(x.second, y.second) ||
-    compare(x.prelude, y.prelude)
-  );
+  const media =
+    x === null || y === null
+      ? 0
+      : compare(x.group, y.group) ||
+        compare(x.first, y.first) ||
+        compare(x.second, y.second) ||
+        compare(x.prelude, y.prelude);
+  return media || compare(a.condition, b.condition);
 }
 
 function compare<T extends number | string>(a: T, b: T): number {
@@ -747,28 +982,29 @@ function compare<T extends number | string>(a: T, b: T): number {
 }
 
 /**
- * The atoms of one list, sorted by tier into the places atoms already held.
+ * One list as every rule that is not an atom, in arrival order, and then its
+ * atoms sorted by tier.
  *
- * A rule that is not an atom does not move: a hand-written block carries its
- * author's intent about where it sits. Stable, so two atoms of one tier keep
- * the order they arrived in, which is what decides between them.
+ * A `css` block class and an atom are both 0-1-0, so for one property on one
+ * element the sheet's order is all that decides between them, and the atom is
+ * the one a caller passed to override. Left in arrival order, the pair went to
+ * whichever module registered last. `orderCss` puts a built asset in the same
+ * order, and `gatherAtoms` links a build's atoms after its blocks.
+ *
+ * Stable, so two atoms of one tier keep the order they arrived in, which is
+ * what decides between them, and two blocks keep theirs.
  */
 function orderAtoms(list: Part[]): void {
-  const slots: number[] = [];
   let sorted = true;
   let last: Part | null = null;
-  for (let index = 0; index < list.length; index++) {
-    const part = list[index];
-    if (part.tier === PINNED) continue;
-    slots.push(index);
+  for (const part of list) {
     if (last !== null && precedes(last, part) > 0) sorted = false;
     last = part;
   }
   if (sorted) return;
-  const atoms = slots.map((slot) => list[slot]).toSorted(precedes);
-  for (let index = 0; index < slots.length; index++) {
-    list[slots[index]] = atoms[index];
-  }
+  const blocks = list.filter((part) => part.tier === PINNED);
+  const atoms = list.filter((part) => part.tier !== PINNED).toSorted(precedes);
+  list.splice(0, list.length, ...blocks, ...atoms);
 }
 
 /**
@@ -833,12 +1069,150 @@ function layerOpen(statement: string): number {
   return match === null ? 0 : match[0].length;
 }
 
-/** `a-<property>_<hash>`, the first class a rule names, or `null`. */
-function atomClass(rule: string): string | null {
-  const at = rule.indexOf(".a-");
-  if (at < 0) return null;
-  const name = /^[\w-]+/.exec(rule.slice(at + 1))?.[0] ?? "";
-  return name.includes("_") ? name : null;
+interface Named {
+  readonly name: string;
+  /** The condition's hash, and empty for the default. */
+  readonly condition: string;
+}
+
+/**
+ * The atom a rule is, read off the rule itself: a class in the SELECTOR of the
+ * exact shape `atom` names one, whose property the body declares.
+ *
+ * `a-<property>[-<condition hash>]_<value hash>`, each hash one to seven
+ * characters of base 36, and `var-<name>` for a custom property. Anything
+ * looser took `.a-button__icon{…}`, somebody's BEM, and
+ * `background:url(./x.a-b_c.png)`, a declaration, for atoms, and moved them
+ * past every block. `atom_named` in `order.rs` reads the same shape.
+ */
+function atomNamed(rule: string): Named | null {
+  let at = pastComments(rule, 0);
+  while (rule[at] === "@") {
+    const brace = rule.indexOf("{", at);
+    if (brace < 0) return null;
+    at = pastComments(rule, brace + 1);
+  }
+  const open = rule.indexOf("{", at);
+  if (open < 0) return null;
+  const close = closingBrace(rule, open + 1);
+  if (close < 0) return null;
+  const declarations = declared(rule.slice(open + 1, close));
+  let found: Named | null = null;
+  for (const branch of branches(rule.slice(at, open))) {
+    const named = classIn(branch, declarations);
+    if (named === null || (found !== null && found.name !== named.name)) return null;
+    found = named;
+  }
+  return found;
+}
+
+function pastComments(text: string, from: number): number {
+  let at = from;
+  for (;;) {
+    while (at < text.length && SPACE.includes(text[at])) at++;
+    if (!text.startsWith("/*", at)) return at;
+    const end = text.indexOf("*/", at + 2);
+    at = end < 0 ? text.length : end + 2;
+  }
+}
+
+/** Where the block opened just before `from` closes, or -1. */
+function closingBrace(text: string, from: number): number {
+  let depth = 1;
+  for (let index = from; index < text.length; index++) {
+    const character = text[index];
+    if (character === "\\") index++;
+    else if (character === '"' || character === "'") index = stringEnd(text, index);
+    else if (character === "/" && text[index + 1] === "*") {
+      const end = text.indexOf("*/", index + 2);
+      index = end < 0 ? text.length : end + 1;
+    } else if (character === "{") depth++;
+    else if (character === "}" && --depth === 0) return index;
+  }
+  return -1;
+}
+
+/** A selector list's branches, split at the commas outside brackets, parentheses and strings. */
+function branches(selector: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let index = 0; index < selector.length; index++) {
+    const character = selector[index];
+    if (character === "\\") index++;
+    else if (character === '"' || character === "'") index = stringEnd(selector, index);
+    else if (character === "(" || character === "[") depth++;
+    else if (character === ")" || character === "]") depth--;
+    else if (character === "," && depth === 0) {
+      out.push(selector.slice(start, index));
+      start = index + 1;
+    }
+  }
+  out.push(selector.slice(start));
+  return out;
+}
+
+/** The properties a rule body declares, lower-cased. */
+function declared(body: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let start = 0;
+  const take = (to: number): void => {
+    const colon = body.indexOf(":", start);
+    if (colon >= 0 && colon < to) out.push(body.slice(start, colon).trim().toLowerCase());
+  };
+  for (let index = 0; index < body.length; index++) {
+    const character = body[index];
+    if (character === "\\") index++;
+    else if (character === '"' || character === "'") index = stringEnd(body, index);
+    else if (character === "(") depth++;
+    else if (character === ")") depth--;
+    else if (character === ";" && depth === 0) {
+      take(index);
+      start = index + 1;
+    }
+  }
+  take(body.length);
+  return out;
+}
+
+/** The first class in one selector branch that is an atom declaring one of `declarations`. */
+function classIn(branch: string, declarations: readonly string[]): Named | null {
+  for (let at = branch.indexOf(".a-"); at >= 0; at = branch.indexOf(".a-", at + 1)) {
+    const name = /^[\w-]+/.exec(branch.slice(at + 1))?.[0] ?? "";
+    const condition = atomCondition(name, declarations);
+    if (condition !== null) return { name, condition };
+  }
+  return null;
+}
+
+const HASH = /^[0-9a-z]{1,7}$/;
+const PREFIXES = ["-webkit-", "-moz-", "-ms-", "-o-"];
+
+function unprefixed(property: string): string {
+  const prefix = PREFIXES.find((each) => property.startsWith(each));
+  return prefix === undefined ? property : property.slice(prefix.length);
+}
+
+/** The condition hash of `name`, when it is an atom's class for a property `declarations` sets. */
+function atomCondition(name: string, declarations: readonly string[]): string | null {
+  if (!name.startsWith("a-")) return null;
+  const rest = name.slice(2);
+  const underscore = rest.lastIndexOf("_");
+  if (underscore < 0 || !HASH.test(rest.slice(underscore + 1))) return null;
+  const key = rest.slice(0, underscore);
+  const sets = (property: string): boolean => {
+    const declaredAs = property.startsWith("var-") ? `--${property.slice(4)}` : property;
+    return (
+      property !== "" && declarations.some((held) => unprefixed(held) === unprefixed(declaredAs))
+    );
+  };
+  if (!key.includes("_") && sets(key)) return "";
+  const dash = key.lastIndexOf("-");
+  if (dash < 0) return null;
+  const property = key.slice(0, dash);
+  const condition = key.slice(dash + 1);
+  return HASH.test(condition) && !property.includes("_") && sets(property) ? condition : null;
 }
 
 /**

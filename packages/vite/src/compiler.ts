@@ -497,14 +497,92 @@ interface NativeResult {
 const CSS_QUERY = ".barq.css";
 
 /**
- * Where a build's atoms go: one stylesheet that every module holding an atom
- * imports, so the bundler puts it in a chunk each of them loads. It is served
- * as the marker rule below and filled in `generateBundle`, once every module's
- * atoms are known. A real `.css` path, for the reason `CSS_QUERY` is one.
+ * What every module holding an atom imports in a build, served as the marker
+ * rule below. A sheet carrying the marker is how `generateBundle` knows the
+ * build asked for its atoms to be gathered; they are written to a file of
+ * their own there, once every module's atoms are known, and the marker is
+ * taken out. A real `.css` path, for the reason `CSS_QUERY` is one.
  */
 const ATOMS_ID = "/__barq_atoms.css";
 const ATOMS_MARKER = ".__barq_atoms__{--barq-atoms:0}";
 const ATOMS_MARKER_RULE = /\.__barq_atoms__\{[^}]*\}/;
+
+/**
+ * The name the atoms' own asset is emitted under, which is how the router and
+ * Start find it in a bundle to link it after every other stylesheet.
+ */
+export const ATOMS_ASSET = "barq-atoms.css";
+
+/**
+ * The attribute the atoms' `<link>` carries in a document, so a stylesheet
+ * inserted at run time can be put in front of it.
+ */
+export const ATOMS_ATTRIBUTE = "data-barq-atoms";
+
+/**
+ * What Vite records as the source of the one stylesheet a
+ * `build.cssCodeSplit: false` build writes. Its NAME follows `build.lib`
+ * (`cssFileName`, or the package's name), and this does not.
+ */
+const UNSPLIT_SOURCE = "style.css";
+
+/** The slice of a Rollup plugin context `generateBundle` uses here. */
+interface BundleContext {
+  environment?: {
+    config?: {
+      build?: { cssCodeSplit?: boolean };
+      plugins?: readonly { name: string; api?: unknown }[];
+    };
+  };
+  emitFile(file: { type: "asset"; name: string; source: string }): string;
+  getFileName(reference: string): string;
+}
+
+/** Whether this build writes a stylesheet per chunk, which is Vite's default. */
+function cssCodeSplit(context: Pick<BundleContext, "environment"> | undefined): boolean {
+  return context?.environment?.config?.build?.cssCodeSplit !== false;
+}
+
+function sourceText(asset: { source: string | Uint8Array }): string {
+  return typeof asset.source === "string" ? asset.source : Buffer.from(asset.source).toString();
+}
+
+interface BundledAsset {
+  type: string;
+  fileName: string;
+  names?: readonly string[];
+  originalFileNames?: readonly string[];
+  source?: string | Uint8Array;
+}
+
+/** The file a bundle's atoms were written to, when they have one. */
+export function atomsAsset(bundle: Record<string, BundledAsset>): string | undefined {
+  return Object.values(bundle).find(
+    (asset) => asset.type === "asset" && asset.names?.includes(ATOMS_ASSET) === true,
+  )?.fileName;
+}
+
+/** The one stylesheet of a `build.cssCodeSplit: false` build, once Vite has written it. */
+export function unsplitAsset(bundle: Record<string, BundledAsset>): string | undefined {
+  return Object.values(bundle).find(
+    (asset) => asset.type === "asset" && asset.originalFileNames?.includes(UNSPLIT_SOURCE) === true,
+  )?.fileName;
+}
+
+/**
+ * Where a stylesheet the page inserts at run time goes: in front of the atoms'
+ * `<link>`, so a chunk's `css` blocks loaded after the first paint cannot start
+ * beating an atom at the same specificity. Self-contained, because it is
+ * spliced into Vite's preload helper as text.
+ */
+const PLACE_STYLESHEET =
+  `(function (link) { var atoms = link.rel === "stylesheet" && ` +
+  `document.querySelector('link[rel="stylesheet"][${ATOMS_ATTRIBUTE}]'); ` +
+  `if (atoms) atoms.parentNode.insertBefore(link, atoms); else document.head.append(link); })`;
+
+/** Vite's preload helper, which links the stylesheets of a dynamically imported chunk. */
+const PRELOAD_HELPER = "\0vite/preload-helper.js";
+const PRELOAD_INSERT = /\bdocument\.head\.appendChild\(([A-Za-z_$][\w$]*)\)/g;
 
 interface NativeCompiler {
   transform(code: string, options?: NativeTransformOptions): NativeResult;
@@ -586,6 +664,16 @@ export interface BarqVitePluginOptions extends BarqCompilerOptions {
    * @default "error"
    */
   overlay?: boolean | "warning" | "error";
+
+  /**
+   * What a build does when Vite's preload helper is not the one this version
+   * knows how to place a stylesheet with. A dynamic import's stylesheets are
+   * then appended after the atoms' link and can beat an atom at the same
+   * specificity, so the build fails. `"warn"` builds anyway and says so, which
+   * is the way through a Vite release this version predates.
+   * @default "error"
+   */
+  preloadHelper?: "error" | "warn";
 }
 
 function checkPairs(checks: BarqCompilerOptions["checks"]): string[][] | undefined {
@@ -956,6 +1044,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
     cssMode,
     resolveImports = true,
     compilePackages = true,
+    preloadHelper = "error",
     ...compilerOptions
   } = options;
 
@@ -997,6 +1086,9 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
    */
   const inlined = new Set<string>();
 
+  /** The stylesheet keys each module registers in `"inline"` mode, in the order it does. */
+  const sheetsByModule = new Map<string, string[]>();
+
   function publish(): void {
     if (!server) return;
     server.hot.send({
@@ -1013,6 +1105,15 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
   return {
     name: "barq-compiler",
     enforce: "pre",
+
+    api: {
+      /** The cascade layer order every module stylesheet so far declares between them. */
+      layerOrder: (): string[] => loadNativeCompiler()?.layerOrder([...cssByModule.values()]) ?? [],
+      /** The registry keys a module's own code registers its rules under, in dev. */
+      stylesheetsOf: (id: string): readonly string[] => sheetsByModule.get(id) ?? [],
+      /** Every registry key a module registers its rules under, in dev. */
+      stylesheets: (): ReadonlySet<string> => new Set([...sheetsByModule.values()].flat()),
+    } satisfies CompilerApi,
 
     config(
       config: {
@@ -1088,8 +1189,13 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
     // A server-function id is derived relative to the project root, so an id
     // carries no absolute path into a client bundle. Vite knows the root; a
     // caller that passes one explicitly means something else by it and wins.
-    configResolved(config: { root?: string }) {
+    configResolved(config: { root?: string; server?: { hmr?: unknown } }) {
       if (compilerOptions.root === undefined) compilerOptions.root = config.root;
+      // A server with HMR off has no update to refresh a component with, and
+      // the `import.meta.hot` such a server's module runner hands a module has
+      // no `data` for the wrap to keep its components in: under vitest every
+      // component module failed to load reading `barq:components` off it.
+      if (config.server?.hmr === false) compilerOptions.hmr = false;
     },
 
     configureServer(devServer) {
@@ -1173,29 +1279,50 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
       // list of stylesheets in this hook to write what a route links, and this
       // is what takes the emptied ones off it.
       order: "pre",
-      handler(_options, bundle) {
+      handler(this: BundleContext, _options, bundle) {
         const compiler = loadNativeCompiler();
         if (!compiler) return;
+        // Unsplit, the one stylesheet is written by Vite's own `generateBundle`,
+        // after this one; `barqStylesheets` finishes it once it exists.
+        if (!cssCodeSplit(this)) return;
         const layers = compiler.layerOrder([...cssByModule.values()]);
         const assets = Object.values(bundle).filter(
           (asset) => asset.type === "asset" && asset.fileName.endsWith(".css"),
         ) as { source: string | Uint8Array }[];
-        let sources = assets.map((asset) =>
-          typeof asset.source === "string" ? asset.source : Buffer.from(asset.source).toString(),
-        );
-        // One sheet for every atom, where the marker stands: a chunk loaded later
-        // then cannot write a base rule after another chunk's `@media` rule for
-        // the same property. A build with no marker has no module that asked for
-        // the shared sheet, and each asset keeps its own atoms.
+        let sources = assets.map(sourceText);
+        // One sheet for every atom: a chunk loaded later then cannot write a
+        // base rule after another chunk's `@media` rule for the same property.
+        // A build with no marker has no module that asked for the shared sheet,
+        // and each asset keeps its own atoms.
+        let atoms = "";
         if (sources.some((source) => ATOMS_MARKER_RULE.test(source))) {
           const gathered = compiler.gatherAtoms(sources);
-          sources = gathered.sheets.map((source) =>
-            source.replace(ATOMS_MARKER_RULE, () => gathered.atoms),
-          );
+          sources = gathered.sheets.map((source) => source.replace(ATOMS_MARKER_RULE, ""));
+          atoms = gathered.atoms;
         }
         assets.forEach((asset, index) => {
           asset.source = compiler.orderCss(sources[index] ?? "", layers);
         });
+        // Its own file, linked after every chunk's, because an atom and a `css`
+        // block class are both 0-1-0 and the later rule wins the property. Left
+        // where the marker stood, the atoms sat inside one chunk's sheet with
+        // that chunk's blocks after them, and every chunk linked later followed
+        // too. Every entry links it, last, so a page has it from its first
+        // paint and no dynamic import is what brings it.
+        if (atoms !== "") {
+          const reference = this.emitFile({
+            type: "asset",
+            name: ATOMS_ASSET,
+            source: compiler.orderCss(atoms, layers),
+          });
+          const fileName = this.getFileName(reference);
+          for (const chunk of Object.values(bundle)) {
+            if (chunk.type !== "chunk" || !chunk.isEntry) continue;
+            const linked = chunk.viteMetadata?.importedCss;
+            linked?.delete(fileName);
+            linked?.add(fileName);
+          }
+        }
         // A chunk whose stylesheet was atoms and nothing else now has an empty
         // one. It leaves the bundle and every chunk's list of what to link, which
         // the manifest and the preload lists are written from after this, so no
@@ -1276,6 +1403,30 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
       // contains `.tsx`, and a `path.endsWith` list is not what tells them
       // apart.
       if (id.includes(CSS_QUERY)) return null;
+
+      // The one place a build links a chunk's stylesheet after the first paint.
+      // Vite appends it to `<head>`, after the atoms; it goes in front of them
+      // instead. A helper that no longer appends this way fails the build rather
+      // than linking stylesheets that beat every atom.
+      if (id === PRELOAD_HELPER) {
+        const inserts = [...code.matchAll(PRELOAD_INSERT)];
+        if (inserts.length !== 1) {
+          const message =
+            "[barq] Vite's preload helper no longer links a stylesheet with one " +
+            "`document.head.appendChild(…)`, so a stylesheet a dynamic import brings would " +
+            "land after the atoms and could beat them. Update @barqjs/vite, or set " +
+            '`compiler: { preloadHelper: "warn" }` to build anyway.';
+          if (preloadHelper === "warn") {
+            this.warn(message);
+            return null;
+          }
+          this.error(message);
+        }
+        return {
+          code: code.replace(PRELOAD_INSERT, (_, link: string) => `${PLACE_STYLESHEET}(${link})`),
+          map: null,
+        };
+      }
 
       const path = id.split("?", 1)[0] ?? id;
       const query = id.slice(path.length);
@@ -1577,6 +1728,12 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
         emitted += `\nimport ${JSON.stringify(ATOMS_ID)};\n`;
       }
 
+      if (inline.length === 0) sheetsByModule.delete(id);
+      else
+        sheetsByModule.set(
+          id,
+          inline.map(([key]) => key),
+        );
       emitted += cssRegistrations(inline, cssSource);
 
       // The client half of an application's own module, while serving. A
@@ -1618,6 +1775,69 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
         code: emitted,
         map: result.map ? (JSON.parse(result.map) as TransformResult["map"]) : null,
       };
+    },
+  };
+}
+
+/** What `barq-compiler` offers the plugins beside it. */
+export interface CompilerApi {
+  layerOrder(): string[];
+  stylesheetsOf(id: string): readonly string[];
+  stylesheets(): ReadonlySet<string>;
+}
+
+/**
+ * The stylesheet work that has to wait for Vite's own.
+ *
+ * `build.cssCodeSplit: false` writes ONE stylesheet, and Vite writes it in its
+ * own `generateBundle`, which runs after `barq-compiler`'s: that one is first
+ * because the router and Start read each chunk's list of stylesheets in the
+ * same hook. Unsplit, there was then nothing to gather when the gathering ran,
+ * the marker rule stayed in the sheet and the atoms stayed in module order.
+ * Here the sheet exists, and its atoms are taken out, written once and put
+ * after its blocks, which is where a split build's own file of atoms is linked.
+ *
+ * And the document a client-rendered build writes: Vite links the entry's
+ * stylesheets there, the atoms' last, and the attribute is what lets the
+ * preload helper put a later stylesheet in front of them.
+ */
+export function barqStylesheets(): Plugin {
+  return {
+    name: "barq-compiler:stylesheets",
+    apply: "build",
+    generateBundle: {
+      order: "post",
+      handler(this: BundleContext, _options, bundle) {
+        if (cssCodeSplit(this)) return;
+        const compiler = loadNativeCompiler();
+        if (compiler === undefined) return;
+        const api = this.environment?.config?.plugins?.find(
+          (plugin) => plugin.name === "barq-compiler",
+        )?.api as CompilerApi | undefined;
+        // By what it holds rather than by its name: the marker every module
+        // holding an atom imports reaches only the one sheet an unsplit build
+        // writes, whatever `build.lib` called it.
+        for (const asset of Object.values(bundle)) {
+          if (asset.type !== "asset" || !asset.fileName.endsWith(".css")) continue;
+          const source = sourceText(asset);
+          if (!ATOMS_MARKER_RULE.test(source)) continue;
+          const gathered = compiler.gatherAtoms([source]);
+          const blocks = (gathered.sheets[0] ?? "").replace(ATOMS_MARKER_RULE, "");
+          asset.source = compiler.orderCss(blocks + gathered.atoms, api?.layerOrder() ?? []);
+        }
+      },
+    },
+    transformIndexHtml: {
+      order: "post",
+      handler(html, context) {
+        const atoms = context.bundle === undefined ? undefined : atomsAsset(context.bundle);
+        if (atoms === undefined) return html;
+        const href = atoms.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        return html.replace(
+          new RegExp(`<link\\b([^>]*\\shref="[^"]*${href}"[^>]*?)\\s*/?>`),
+          `<link$1 ${ATOMS_ATTRIBUTE}>`,
+        );
+      },
     },
   };
 }

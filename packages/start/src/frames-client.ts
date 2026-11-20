@@ -948,7 +948,11 @@ async function loadStylesheets(head: readonly HeadTag[]): Promise<void> {
         link.addEventListener("error", () => resolve(), { once: true });
       }),
     );
-    document.head.appendChild(link);
+    // In front of the build's atoms, which win a property against a `css`
+    // block of the same specificity by being linked after it.
+    const atoms = document.head.querySelector('link[rel="stylesheet"][data-barq-atoms]');
+    if (atoms === null) document.head.appendChild(link);
+    else atoms.before(link);
   }
   await Promise.all(loading);
 }

@@ -1,7 +1,16 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 
-import { atoms, atomsIn, collectCss, css, globalCss, registerCss, setCssSink } from "./index.ts";
-import { resetCss } from "./internal.ts";
+import {
+  atoms,
+  atomsIn,
+  collectCss,
+  collectCssParts,
+  css,
+  globalCss,
+  registerCss,
+  setCssSink,
+} from "./index.ts";
+import { paintedAtoms, resetCss } from "./internal.ts";
 
 /** A sheet as its statements, each `@layer` block as the rules it holds. */
 function rules(sheet: string): string[] {
@@ -166,14 +175,20 @@ describe("the sheet > two renders at once", () => {
   });
 });
 
-/** A server's two sheets, written into the document the client then loads. */
+/** What the document's two head sheets hold, in order. */
+function painted(): string {
+  return (document.getElementById("barq-css")?.textContent ?? "") + paintedAtoms();
+}
+
+/** A server's sheets, written into the document the client then loads. */
 function serve(render: () => void, body: () => void): { head: string; late: string } {
   resetCss();
   const requests = host();
   const page: Render = { head: false, late: undefined };
   render();
   requests.enter(page);
-  const head = collectCss();
+  const parts = collectCssParts();
+  const head = parts.blocks + parts.atoms;
   body();
   const late = page.late?.() ?? "";
   requests.enter(null);
@@ -182,8 +197,12 @@ function serve(render: () => void, body: () => void): { head: string; late: stri
 
   const headSheet = document.createElement("style");
   headSheet.id = "barq-css";
-  headSheet.textContent = head;
+  headSheet.textContent = parts.blocks;
   document.head.appendChild(headSheet);
+  const atomSheet = document.createElement("style");
+  atomSheet.id = "barq-css-atoms";
+  atomSheet.textContent = parts.atoms;
+  document.head.appendChild(atomSheet);
   const lateSheet = document.createElement("style");
   lateSheet.id = "barq-css-late";
   lateSheet.textContent = late;
@@ -215,7 +234,7 @@ describe("the sheet > hydration", () => {
     atoms({ height: 5 });
 
     expect(document.getElementById("barq-css")).toBe(element);
-    expect(element?.textContent).toBe(head);
+    expect(painted()).toBe(head);
     expect(document.getElementById("barq-css-late")?.textContent).toBe(late);
   });
 
@@ -223,7 +242,6 @@ describe("the sheet > hydration", () => {
     const { head, late } = serve(application, () => {
       atoms({ height: 5 });
     });
-    const element = document.getElementById("barq-css");
     const served = rules(head);
 
     atoms({ color: "red" });
@@ -233,7 +251,7 @@ describe("the sheet > hydration", () => {
       color: teal;
     `;
 
-    const text = element?.textContent ?? "";
+    const text = painted();
     const now = rules(text);
     expect(now.filter((rule) => served.includes(rule))).toEqual(served);
     expect(text.startsWith("body{margin: 0}")).toBe(true);
@@ -248,9 +266,15 @@ describe("the sheet > hydration", () => {
     const inLayer = now.indexOf(`.${layered}{order:2}`);
     expect(inLayer).toBeGreaterThan(now.findIndex((rule) => rule.endsWith("{display:flex}")));
     expect(inLayer).toBeLessThan(now.findIndex((rule) => rule.startsWith("@media print")));
-    expect(count(text, "@layer barq.adopt{")).toBe(1);
+    // Once among the blocks, where the layer is first named, and once among the
+    // atoms.
+    expect(count(text, "@layer barq.adopt{")).toBe(2);
 
-    expect(now.at(-1)).toBe(`.${block}{color: teal}`);
+    // A block arriving after hydration goes in front of every atom, which is
+    // where `orderAtoms` puts one in a sheet written whole.
+    const teal = now.indexOf(`.${block}{color: teal}`);
+    expect(teal).toBeGreaterThan(now.indexOf(".bcard{color:red}"));
+    expect(teal).toBeLessThan(now.findIndex((rule) => rule.startsWith(".a-color_")));
     expect(document.getElementById("barq-css-late")?.textContent).toBe(late);
   });
 
@@ -260,17 +284,53 @@ describe("the sheet > hydration", () => {
     });
     const tall = atoms({ height: 5 });
     atoms({ zIndex: 4 });
-    expect(document.getElementById("barq-css")?.textContent).not.toContain(tall);
+    expect(painted()).not.toContain(tall);
   });
 
   test("a module replaced after hydration loses the rules only it had", () => {
     serve(application, () => {});
     registerCss("/m/card.tsx", ".bcard{color:red}@layer barq.adopt{.a-top_z{top:0}}");
     registerCss("/m/card.tsx", ".bcard2{color:blue}@layer barq.adopt{.a-top_z{top:0}}");
-    const text = document.getElementById("barq-css")?.textContent ?? "";
+    const text = painted();
     expect(text).not.toContain(".bcard{color:red}");
     expect(text).toContain(".bcard2{color:blue}");
     expect(count(text, ".a-top_z{top:0}")).toBe(1);
+  });
+});
+
+/**
+ * A `css` block class and an atom are both 0-1-0, so for one property on one
+ * element the sheet's order decides, and the atom is the override.
+ */
+describe("the sheet > a block and an atom for one property", () => {
+  const block = ".b1n4k2p0{color:blue}";
+  const atom = ".a-color_1n4k2p0{color:red}";
+
+  test("the atom is written after the block, whichever module registered first", () => {
+    registerCss("/m/atom.tsx", atom);
+    registerCss("/m/block.tsx", block);
+    expect(rules(collectCss())).toEqual([block, atom]);
+    resetCss();
+    registerCss("/m/block.tsx", block);
+    registerCss("/m/atom.tsx", atom);
+    expect(rules(collectCss())).toEqual([block, atom]);
+  });
+
+  test("inside a cascade layer too", () => {
+    registerCss("/m/atom.tsx", `@layer barq.ui{${atom}}`);
+    registerCss("/m/block.tsx", `@layer barq.ui{${block}}`);
+    expect(collectCss()).toBe(`@layer barq.ui{${block}${atom}}`);
+  });
+
+  test("and for the runtime's own, where an `atoms` call comes before a `css` block", () => {
+    const red = atoms({ color: "red" });
+    const blue = css`
+      color: blue;
+    `;
+    const sheet = rules(collectCss());
+    expect(sheet.findIndex((rule) => rule.startsWith(`.${blue}`))).toBeLessThan(
+      sheet.findIndex((rule) => rule.startsWith(`.${red}`)),
+    );
   });
 });
 
@@ -299,41 +359,35 @@ describe("the sheet > two declarations under one class", () => {
 });
 
 describe("the sheet > a call that registers several rules", () => {
-  /** Every write to the `<style>`, counted by the text it was set to. */
+  /**
+   * Every write of the atoms, counted by the text written. In dev they are an
+   * adopted stylesheet, which the cascade puts after every stylesheet the
+   * document holds.
+   */
   function writes(run: () => void): string[] {
     atoms({ order: 1 });
-    const element = document.getElementById("barq-css") as HTMLStyleElement;
     const seen: string[] = [];
-    let owner: object | null = Object.getPrototypeOf(element) as object;
-    while (owner !== null && !Object.hasOwn(owner, "textContent")) {
-      owner = Object.getPrototypeOf(owner) as object | null;
-    }
-    const descriptor =
-      owner === null ? undefined : Object.getOwnPropertyDescriptor(owner, "textContent");
-    Object.defineProperty(element, "textContent", {
-      configurable: true,
-      get: () => descriptor?.get?.call(element) as string,
-      set: (text: string) => {
-        seen.push(text);
-        descriptor?.set?.call(element, text);
-      },
-    });
+    const original = CSSStyleSheet.prototype.replaceSync;
+    CSSStyleSheet.prototype.replaceSync = function (this: CSSStyleSheet, text: string): void {
+      seen.push(text);
+      original.call(this, text);
+    };
     try {
       run();
     } finally {
-      delete (element as { textContent?: unknown }).textContent;
+      CSSStyleSheet.prototype.replaceSync = original;
     }
     return seen;
   }
 
-  test("rewrites the element once, and holds every rule when it returns", () => {
+  test("rewrites the sheet once, and holds every rule when it returns", () => {
     let classes = "";
     const seen = writes(() => {
       classes = atoms({ color: "salmon", margin: "1px 2px", display: "grid" });
     });
     expect(seen).toHaveLength(1);
     for (const name of classes.split(" ")) expect(seen[0]).toContain(`.${name}{`);
-    expect(document.getElementById("barq-css")?.textContent).toBe(collectCss());
+    expect(painted()).toBe(collectCssParts().blocks + collectCssParts().atoms);
   });
 
   test("and still paints after a call that threw", () => {
@@ -350,5 +404,81 @@ describe("the sheet > a call that registers several rules", () => {
     const seen = writes(() => atoms({ color: "plum" }));
     expect(seen).toHaveLength(1);
     expect(seen[0]).toContain("color:plum");
+  });
+});
+
+/**
+ * A build links its compiled atoms with `data-barq-atoms`, and what the runtime
+ * registers goes either side of that link: its blocks in front, so a compiled
+ * atom beats them, and its atoms after, so they beat a compiled block.
+ */
+describe("the sheet > beside a build's atoms", () => {
+  test("its blocks go in front of the atoms' link and its atoms after it", () => {
+    document.head.innerHTML =
+      '<link rel="stylesheet" href="/chunk.css"><link rel="stylesheet" href="/atoms.css" data-barq-atoms>';
+    css`
+      color: teal;
+    `;
+    atoms({ color: "red" });
+    const order = [...document.head.children].map(
+      (element) => element.getAttribute("href") ?? element.id,
+    );
+    expect(order).toEqual(["/chunk.css", "barq-css", "/atoms.css", "barq-css-atoms"]);
+    expect(document.getElementById("barq-css")?.textContent).toContain("color: teal");
+    expect(document.getElementById("barq-css-atoms")?.textContent).toContain("color:red");
+    document.head.innerHTML = "";
+  });
+
+  /**
+   * Vite's dev client appends a `<style>` for an imported `.css` file to the
+   * end of `<head>`. With no build's link to stand beside, the atoms are an
+   * adopted stylesheet, which comes after every one the document holds.
+   */
+  test("with no build's atoms, its atoms come after every stylesheet in the document", () => {
+    const red = atoms({ color: "red" });
+    const style = document.createElement("style");
+    style.setAttribute("data-vite-dev-id", "/src/plain.css");
+    document.head.appendChild(style);
+    expect(document.getElementById("barq-css-atoms")).toBe(null);
+    const adopted = document.adoptedStyleSheets.flatMap((sheet) =>
+      [...sheet.cssRules].map((rule) => rule.cssText),
+    );
+    expect(adopted.some((rule) => rule.includes(red))).toBe(true);
+    style.remove();
+  });
+});
+
+describe("the sheet > scoped to one page", () => {
+  test("holds the module stylesheets it names, in that order, and every other entry", () => {
+    registerCss("/m/create.tsx", "#app{display:flex}");
+    registerCss("/m/home.tsx", ".bhome{color:red}");
+    registerCss("/m/shared.tsx", ".bshared{color:blue}");
+    const own = atoms({ color: "green" });
+    registerCss("barq-ui:theme", ":root{--chart-1:grey}");
+    const modules = new Set(["/m/create.tsx", "/m/home.tsx", "/m/shared.tsx"]);
+    const sheet = collectCss({ keys: ["/m/shared.tsx", "/m/home.tsx"], modules });
+    expect(sheet).not.toContain("#app");
+    expect(sheet.indexOf(".bshared")).toBeLessThan(sheet.indexOf(".bhome"));
+    expect(sheet).toContain(`.${own}{color:green}`);
+    expect(sheet).toContain("--chart-1:grey");
+    expect(collectCssParts({ keys: ["/m/home.tsx"], modules }).blocks).toBe(
+      ".bhome{color:red}:root{--chart-1:grey}",
+    );
+  });
+});
+
+describe("the sheet > a late sheet with a block in it", () => {
+  test("ends with every atom, so none loses to a block the render brought", () => {
+    resetCss();
+    const requests = host();
+    const page: Render = { head: false, late: undefined };
+    const early = atoms({ color: "red" });
+    requests.enter(page);
+    collectCssParts();
+    registerCss("/m/late.tsx", ".blate{color:blue}");
+    const late = page.late?.() ?? "";
+    requests.enter(null);
+    setCssSink(null);
+    expect(late.indexOf(".blate{color:blue}")).toBeLessThan(late.indexOf(`.${early}{color:red}`));
   });
 });

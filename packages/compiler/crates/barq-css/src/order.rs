@@ -23,16 +23,18 @@ use std::cmp::Ordering;
 
 use crate::atoms::{Atom, Tier};
 
-/// Every atom in `css`, ordered by tier within the layer it sits in.
+/// Every atom in `css`, ordered by tier within the layer it sits in, after
+/// every rule of that layer that is not an atom.
 ///
 /// A stable sort, so two atoms of one tier keep the order they were written in
 /// — which is what decides between them, and what
 /// `sorting rules within a tier` was measured and rejected for changing.
 ///
-/// Rules that are not atoms do not move. A hand-written `@layer barq.ui { … }`
-/// block carries an author's own selector and an author's own intent about
-/// where it sits, and `@barqjs/ui`'s `srOnly` is exactly that. They keep their
-/// index and the atoms are ordered into the indices that are left.
+/// Rules that are not atoms keep their order among themselves. A hand-written
+/// `@layer barq.ui { … }` block carries an author's own selector and an
+/// author's own intent about where it sits against its neighbours, and
+/// `@barqjs/ui`'s `srOnly` is exactly that; what it does not get is a place
+/// after an atom, which would let it beat one at the same specificity.
 pub fn order_atoms(css: &str) -> String {
     let mut out = String::with_capacity(css.len());
     for statement in statements(css) {
@@ -157,6 +159,15 @@ pub fn with_layer_order(css: &str, order: &[String]) -> String {
 /// Ties, and the whole of the third group, go by the at-rule text itself, which
 /// is arbitrary and the same on every page. `sheet.ts` in `@barqjs/css` sorts
 /// what the runtime registers by this rule, read off the same text.
+///
+/// Last, in every tier, the hash of the condition the atom was declared under,
+/// which its class carries. Two atoms of one tier with different conditions
+/// that both match one element are two rules of one specificity, and there is
+/// no passing order between two calls. Left to arrival, the pair went to
+/// whichever chunk or module came first, which a split build and an unsplit one
+/// decide differently: `@barqjs/ui`'s button icons were 12px in one and 16px in
+/// the other. The hash is the condition as written, so a minifier cannot change
+/// it, and dev and every build shape read the same one.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Rank<'a> {
     tier: Tier,
@@ -164,6 +175,7 @@ pub struct Rank<'a> {
     first: f64,
     second: f64,
     prelude: &'a str,
+    condition: &'a str,
 }
 
 impl Eq for Rank<'_> {}
@@ -183,12 +195,14 @@ impl Ord for Rank<'_> {
             .then(self.second.total_cmp(&other.second))
             // By UTF-16 code unit, which is how the runtime's `<` compares.
             .then_with(|| self.prelude.encode_utf16().cmp(other.prelude.encode_utf16()))
+            .then_with(|| self.condition.cmp(other.condition))
     }
 }
 
 /// The [`Rank`] of a rule already known to sit in `tier`.
 pub fn rank(tier: Tier, rule: &str) -> Rank<'_> {
-    let plain = Rank { tier, group: 0, first: 0.0, second: 0.0, prelude: "" };
+    let condition = atom_named(rule).map_or("", |named| named.condition);
+    let plain = Rank { tier, group: 0, first: 0.0, second: 0.0, prelude: "", condition };
     if tier != Tier::Media {
         return plain;
     }
@@ -305,51 +319,55 @@ pub fn arranged(atoms: &[Atom]) -> Vec<&Atom> {
 ///
 /// An atom is filed under the layer it was written in and printed once. Rules
 /// that are not atoms stay where they were: a `css` block belongs to its
-/// module's chunk. A minifier merges neighbouring rules under one at-rule, so a
-/// block of several is taken apart first and neighbours are joined again after
-/// the sort.
+/// module's chunk. A minifier merges neighbouring rules under one at-rule, and
+/// rules with one body under one selector list, and it does so across a block
+/// and an atom as readily as across two atoms; every statement is taken apart
+/// into [`units`] first, so an atom leaves and the block's rule stays where it
+/// was, under its own copy of the at-rule.
 pub fn gather_atoms(sheets: &[&str]) -> (String, Vec<String>) {
     let mut layers: Vec<(String, Vec<String>)> = Vec::new();
     let mut seen: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
-    let mut file = |layer: &str, rule: &str| {
-        for unit in exploded(rule) {
-            if !seen.insert((layer.to_string(), unit.clone())) {
-                continue;
-            }
-            match layers.iter_mut().find(|(name, _)| name == layer) {
-                Some((_, rules)) => rules.push(unit),
-                None => layers.push((layer.to_string(), vec![unit])),
+    let mut file = |layer: &str, unit: String| {
+        if !seen.insert((layer.to_string(), unit.clone())) {
+            return;
+        }
+        match layers.iter_mut().find(|(name, _)| name == layer) {
+            Some((_, rules)) => rules.push(unit),
+            None => layers.push((layer.to_string(), vec![unit])),
+        }
+    };
+    // What is left of one statement once its atoms are filed.
+    let mut sort = |layer: &str, statement: &str| -> String {
+        if is_declaration(statement) {
+            return statement.to_string();
+        }
+        let (lead, rule) = leading_comments(statement);
+        let mut kept = String::new();
+        for (unit, atom) in units(rule) {
+            if atom {
+                file(layer, unit);
+            } else {
+                kept.push_str(&unit);
             }
         }
+        format!("{lead}{}", regrouped(&kept))
     };
 
     let mut rest: Vec<String> = Vec::with_capacity(sheets.len());
     for sheet in sheets {
         let mut kept = String::with_capacity(sheet.len());
         for statement in statements(sheet) {
-            let (declared, statement) = leading_declarations(statement);
-            kept.push_str(declared);
             if let Some((head, body)) = layer_body(statement) {
                 let name = layer_name(head);
-                let mut inner = String::new();
-                for rule in statements(body) {
-                    if holds_only_atoms(rule) {
-                        file(name, rule);
-                    } else {
-                        inner.push_str(rule);
-                    }
-                }
-                let opening = head.rfind("@layer ").unwrap_or(0);
-                kept.push_str(&head[..opening]);
+                let inner: String =
+                    statements(body).into_iter().map(|rule| sort(name, rule)).collect();
                 if !inner.trim().is_empty() {
-                    kept.push_str(&head[opening..]);
+                    kept.push_str(head);
                     kept.push_str(&inner);
                     kept.push('}');
                 }
-            } else if holds_only_atoms(statement) {
-                file("", statement);
             } else {
-                kept.push_str(statement);
+                kept.push_str(&sort("", statement));
             }
         }
         rest.push(kept);
@@ -371,25 +389,32 @@ pub fn gather_atoms(sheets: &[&str]) -> (String, Vec<String>) {
     (atoms, rest)
 }
 
-/// The `@layer a, b;` and `@import …;` statements in front of a rule, and the
-/// rule. Brace counting ends a statement at `}`, so a declaration with no block
-/// of its own arrives attached to whatever follows it.
-fn leading_declarations(statement: &str) -> (&str, &str) {
+/// A statement with no block of its own: `@charset`, `@import`, `@namespace`
+/// and a `@layer a, b;` order statement. Each has to stay in front of every rule
+/// it was in front of, or a browser ignores it or the layer order changes, so
+/// none of them is ever moved.
+fn is_declaration(statement: &str) -> bool {
+    let rule = leading_comments(statement).1.trim();
+    rule.starts_with('@') && rule.ends_with(';')
+}
+
+/// The comments and white space in front of a statement, and the statement.
+fn leading_comments(statement: &str) -> (&str, &str) {
     let mut at = 0;
     loop {
         let rest = &statement[at..];
         let trimmed = rest.trim_start();
-        if !trimmed.starts_with('@') {
-            break;
-        }
-        match trimmed.find(['{', ';']) {
-            Some(end) if trimmed.as_bytes()[end] == b';' => {
-                at += rest.len() - trimmed.len() + end + 1;
+        at += rest.len() - trimmed.len();
+        match trimmed.strip_prefix("/*") {
+            Some(comment) => {
+                at += comment.find("*/").map_or(rest.len(), |end| 2 + end + 2);
+                if at >= statement.len() {
+                    return (statement, "");
+                }
             }
-            _ => break,
+            None => return statement.split_at(at),
         }
     }
-    statement.split_at(at)
 }
 
 /// The name in the `@layer NAME{` a [`layer_body`] head ends with.
@@ -398,76 +423,242 @@ fn layer_name(head: &str) -> &str {
     head[opening..].trim_end_matches('{').trim()
 }
 
-/// Whether `rule` is an atom, or an at-rule block every rule of which is one.
-fn holds_only_atoms(rule: &str) -> bool {
-    let units = exploded(rule);
-    !units.is_empty() && units.iter().all(|unit| tier_of_rule(unit).is_some())
-}
-
-/// `@media x{a b}` as `@media x{a}` and `@media x{b}`, to any depth. A rule with
-/// nothing to take apart is itself.
-fn exploded(rule: &str) -> Vec<String> {
-    let trimmed = rule.trim();
+/// A statement as the rules it is made of, each paired with whether it is an
+/// atom's, in order.
+///
+/// `@media x{a b}` is `@media x{a}` and `@media x{b}`, to any depth, and a rule
+/// whose selector list names several atoms, or atoms and something else, is
+/// one rule per atom and one for the rest. A rule is then an atom's by itself
+/// alone, never by a neighbour a minifier put it with: read whole,
+/// `@media (width>=48rem){.b1{padding:0}.a-padding-top-x_1{…}}` was a media
+/// atom, and the block's rule moved behind every other block with it.
+fn units(statement: &str) -> Vec<(String, bool)> {
+    let trimmed = statement.trim();
     if trimmed.is_empty() {
         return Vec::new();
     }
     let conditional =
         ["@media", "@supports", "@container"].iter().any(|at| trimmed.starts_with(at));
-    let (Some(open), true) = (trimmed.find('{'), conditional && trimmed.ends_with('}')) else {
-        return by_atom(trimmed);
-    };
-    let prelude = &trimmed[..open];
-    let body = &trimmed[open + 1..trimmed.len() - 1];
-    statements(body)
-        .into_iter()
-        .flat_map(exploded)
-        .map(|inner| format!("{prelude}{{{inner}}}"))
-        .collect()
+    let open = trimmed.find('{');
+    match open {
+        Some(open)
+            if conditional && matching_brace(trimmed, open + 1) == Some(trimmed.len() - 1) =>
+        {
+            let prelude = &trimmed[..open];
+            statements(&trimmed[open + 1..trimmed.len() - 1])
+                .into_iter()
+                .flat_map(|inner| {
+                    let (lead, rule) = leading_comments(inner);
+                    let mut found = units(rule);
+                    if let Some(first) = found.first_mut() {
+                        first.0.insert_str(0, lead);
+                    }
+                    found
+                })
+                .map(|(inner, atom)| (format!("{prelude}{{{inner}}}"), atom))
+                .collect()
+        }
+        _ => by_atom(trimmed),
+    }
 }
 
-/// A rule whose selector list names several atoms, as one rule an atom.
+/// A rule as one rule per atom its selector list names and one for every other
+/// branch, each with the rule's body.
 ///
-/// A minifier joins rules that hold the same declaration, so two atoms that
+/// A minifier joins rules that hold the same declarations, so two atoms that
 /// set `display:none` under different conditions come back as
-/// `[data-open] .a-display-x_1,.a-display_1{display:none}`. Read whole, that is
-/// neither atom: it would be filed once under the first class and the second
-/// atom would stay a duplicate wherever another chunk wrote it alone. Branches
-/// are grouped by the class they name, since one atom's own condition can be a
-/// list too.
-fn by_atom(rule: &str) -> Vec<String> {
-    let whole = || vec![rule.to_string()];
+/// `[data-open] .a-display-x_1,.a-display_1{display:none}`, and a block that
+/// happens to say what an atom says comes back joined to it. Branches are
+/// grouped by the class they name, since one atom's own condition can be a list
+/// too.
+fn by_atom(rule: &str) -> Vec<(String, bool)> {
+    let whole = |atom: bool| vec![(rule.to_string(), atom)];
     if rule.starts_with('@') || !rule.ends_with('}') {
-        return whole();
+        return whole(false);
     }
-    let Some(open) = rule.find('{') else { return whole() };
+    let Some(open) = rule.find('{') else { return whole(false) };
     let (selector, body) = (&rule[..open], &rule[open..]);
-    let mut groups: Vec<(&str, Vec<&str>)> = Vec::new();
-    let mut depth = 0i32;
-    let mut start = 0usize;
-    let mut branches: Vec<&str> = Vec::new();
-    for (index, character) in selector.char_indices() {
-        match character {
-            '(' | '[' => depth += 1,
-            ')' | ']' => depth -= 1,
-            ',' if depth == 0 => {
-                branches.push(&selector[start..index]);
-                start = index + 1;
-            }
-            _ => {}
-        }
-    }
-    branches.push(&selector[start..]);
-    for branch in branches {
-        let Some(class) = atom_class(branch) else { return whole() };
+    let declarations = declared(&body[1..body.len() - 1]);
+    let mut groups: Vec<(Option<&str>, Vec<&str>)> = Vec::new();
+    for branch in branches(selector) {
+        let class = class_in(branch, &declarations).map(|named| named.class);
         match groups.iter_mut().find(|(name, _)| *name == class) {
             Some((_, list)) => list.push(branch.trim()),
             None => groups.push((class, vec![branch.trim()])),
         }
     }
     if groups.len() < 2 {
-        return whole();
+        return whole(groups.first().is_some_and(|(class, _)| class.is_some()));
     }
-    groups.into_iter().map(|(_, list)| format!("{}{body}", list.join(","))).collect()
+    groups
+        .into_iter()
+        .map(|(class, list)| (format!("{}{body}", list.join(",")), class.is_some()))
+        .collect()
+}
+
+/// A selector list's branches, split at the commas outside brackets, parentheses
+/// and strings.
+fn branches(selector: &str) -> Vec<&str> {
+    let bytes = selector.as_bytes();
+    let mut out = Vec::new();
+    let (mut depth, mut start, mut at) = (0i32, 0usize, 0usize);
+    while at < bytes.len() {
+        match bytes[at] {
+            b'"' | b'\'' => at = string_end(bytes, at),
+            b'\\' => at += 1,
+            b'(' | b'[' => depth += 1,
+            b')' | b']' => depth -= 1,
+            b',' if depth == 0 => {
+                out.push(&selector[start..at]);
+                start = at + 1;
+            }
+            _ => {}
+        }
+        at += 1;
+    }
+    out.push(&selector[start..]);
+    out
+}
+
+/// The properties a rule body declares, lower-cased.
+fn declared(body: &str) -> Vec<String> {
+    let bytes = body.as_bytes();
+    let mut out = Vec::new();
+    let (mut depth, mut start, mut at) = (0i32, 0usize, 0usize);
+    let mut take = |from: usize, to: usize| {
+        if let Some(colon) = body[from..to].find(':') {
+            out.push(body[from..from + colon].trim().to_ascii_lowercase());
+        }
+    };
+    while at < bytes.len() {
+        match bytes[at] {
+            b'"' | b'\'' => at = string_end(bytes, at),
+            b'\\' => at += 1,
+            b'(' => depth += 1,
+            b')' => depth -= 1,
+            b';' if depth == 0 => {
+                take(start, at);
+                start = at + 1;
+            }
+            _ => {}
+        }
+        at += 1;
+    }
+    take(start, bytes.len().max(start));
+    out
+}
+
+/// What an atom's class says about it.
+#[derive(Debug, Clone, Copy)]
+struct Named<'a> {
+    class: &'a str,
+    /// The hash of the condition it was declared under, empty for the default.
+    condition: &'a str,
+}
+
+/// The atom a rule is, read off the rule itself: a class in the SELECTOR of the
+/// exact shape `atom_in` names one, whose property the body declares.
+///
+/// `a-<property>[-<condition hash>]_<value hash>`, each hash one to seven
+/// characters of base 36, and `var-<name>` for a custom property. Anything
+/// looser took `.a-button__icon{…}`, somebody's BEM, and
+/// `background:url(./x.a-b_c.png)`, a declaration, for atoms, and moved them
+/// past every block. `atomClass` in `@barqjs/css` reads the same shape.
+fn atom_named(rule: &str) -> Option<Named<'_>> {
+    let rule = without_layer(rule);
+    let (_, rule) = leading_comments(rule);
+    let mut at = 0;
+    while rule[at..].starts_with('@') {
+        let brace = rule[at..].find('{')?;
+        at += brace + 1;
+        at += rule[at..].len() - rule[at..].trim_start().len();
+    }
+    let open = at + rule[at..].find('{')?;
+    let close = matching_brace(rule, open + 1)?;
+    let declarations = declared(&rule[open + 1..close]);
+    let mut found: Option<Named<'_>> = None;
+    for branch in branches(&rule[at..open]) {
+        let named = class_in(branch, &declarations)?;
+        if found.is_some_and(|held| held.class != named.class) {
+            return None;
+        }
+        found = Some(named);
+    }
+    found
+}
+
+/// The first class in one selector branch that is an atom declaring one of
+/// `declarations`.
+fn class_in<'a>(branch: &'a str, declarations: &[String]) -> Option<Named<'a>> {
+    let mut from = 0;
+    while let Some(found) = branch[from..].find(".a-") {
+        let start = from + found + 1;
+        let end = branch[start..]
+            .find(|c: char| !(c.is_ascii_alphanumeric() || c == '-' || c == '_'))
+            .map_or(branch.len(), |end| start + end);
+        if let Some(condition) = atom_condition(&branch[start..end], declarations) {
+            return Some(Named { class: &branch[start..end], condition });
+        }
+        from = end;
+    }
+    None
+}
+
+/// The condition hash of `class`, when it is an atom's name for a property one
+/// of `declarations` sets.
+fn atom_condition<'a>(class: &'a str, declarations: &[String]) -> Option<&'a str> {
+    let rest = class.strip_prefix("a-")?;
+    let underscore = rest.rfind('_')?;
+    let (key, value) = (&rest[..underscore], &rest[underscore + 1..]);
+    if !is_hash(value) {
+        return None;
+    }
+    let sets = |name: &str| {
+        let property = match name.strip_prefix("var-") {
+            Some(custom) => format!("--{custom}"),
+            None => name.to_string(),
+        };
+        !name.is_empty()
+            && declarations.iter().any(|held| unprefixed(held) == unprefixed(&property))
+    };
+    if !key.contains('_') && sets(key) {
+        return Some("");
+    }
+    let dash = key.rfind('-')?;
+    let (name, condition) = (&key[..dash], &key[dash + 1..]);
+    (is_hash(condition) && !name.contains('_') && sets(name)).then_some(condition)
+}
+
+/// One to seven base-36 digits, which is what `hash32` writes.
+fn is_hash(text: &str) -> bool {
+    (1..=7).contains(&text.len())
+        && text.bytes().all(|b| b.is_ascii_digit() || b.is_ascii_lowercase())
+}
+
+/// A property without its vendor prefix, so a prefixed copy a minifier added
+/// beside the declaration still names it.
+fn unprefixed(property: &str) -> &str {
+    ["-webkit-", "-moz-", "-ms-", "-o-"]
+        .iter()
+        .find_map(|prefix| property.strip_prefix(prefix))
+        .unwrap_or(property)
+}
+
+/// Where the string opening at `open` closes; an unescaped newline ends one
+/// that never did, which is CSS's own recovery.
+fn string_end(bytes: &[u8], open: usize) -> usize {
+    let quote = bytes[open];
+    let mut at = open + 1;
+    while at < bytes.len() {
+        match bytes[at] {
+            b'\\' => at += 1,
+            b'\n' => return at,
+            byte if byte == quote => return at,
+            _ => {}
+        }
+        at += 1;
+    }
+    bytes.len().saturating_sub(1)
 }
 
 /// Neighbouring rules under one at-rule prelude, written under it once.
@@ -506,27 +697,61 @@ fn regrouped(css: &str) -> String {
     out
 }
 
-/// One layer's contents, with its atoms tier-ordered and everything else fixed.
+/// One layer's contents: every rule that is not an atom, in the order it was
+/// written, and then every atom in tier order.
+///
+/// An atom and a `css` block class are both 0-1-0, so for one property on one
+/// element order alone decides between them, and the atom is the one that is
+/// meant to win: it is what a caller passes to override. Before this the pair
+/// went by where each rule happened to sit, which in a build was module order
+/// and in dev was registration order.
+///
+/// Text after the last rule, which is a bundler's comment, stays last.
 fn order_rules(body: &str) -> String {
     let rules: Vec<&str> = statements(body);
-    let mut movable: Vec<(Rank<'_>, usize, &str)> = Vec::new();
-    let mut slots: Vec<usize> = Vec::new();
-    for (index, rule) in rules.iter().enumerate() {
-        if let Some(tier) = tier_of_rule(rule) {
-            movable.push((rank(tier, rule), index, rule));
-            slots.push(index);
+    let mut pinned = String::with_capacity(body.len());
+    let mut atoms: Vec<(String, Tier)> = Vec::new();
+    let mut tail = "";
+    for (index, statement) in rules.iter().enumerate() {
+        if index + 1 == rules.len()
+            && !statement.trim_end().ends_with('}')
+            && !is_declaration(statement)
+        {
+            tail = statement;
+            continue;
         }
+        // A whole layer block is where its layer is first named, and that
+        // position is the layer's order when nothing declares one.
+        if is_declaration(statement) || layer_body(statement).is_some() {
+            pinned.push_str(statement);
+            continue;
+        }
+        let (lead, rule) = leading_comments(statement);
+        let mut kept = String::new();
+        for (unit, atom) in units(rule) {
+            match atom.then(|| tier_of_rule(&unit)).flatten() {
+                Some(tier) => atoms.push((unit, tier)),
+                None => kept.push_str(&unit),
+            }
+        }
+        pinned.push_str(lead);
+        pinned.push_str(&regrouped(&kept));
     }
-    if movable.len() < 2 {
+    if atoms.is_empty() {
         return body.to_string();
     }
-    movable.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
-
-    let mut placed: Vec<&str> = rules.clone();
-    for (slot, (.., rule)) in slots.iter().zip(movable.iter()) {
-        placed[*slot] = rule;
+    let mut ranked: Vec<(Rank<'_>, usize, &str)> = atoms
+        .iter()
+        .enumerate()
+        .map(|(index, (unit, tier))| (rank(*tier, unit), index, unit.as_str()))
+        .collect();
+    ranked.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+    let mut out = pinned;
+    for (.., rule) in &ranked {
+        out.push_str(rule);
     }
-    placed.concat()
+    out.push_str(tail);
+    out
 }
 
 /// `@layer NAME{` and what it holds, for a statement that is exactly one layer.
@@ -563,39 +788,62 @@ fn layer_body(statement: &str) -> Option<(&str, &str)> {
 
 /// Where the block opened at `from` closes.
 pub fn matching_brace(text: &str, from: usize) -> Option<usize> {
+    let bytes = text.as_bytes();
     let mut depth = 1i32;
-    for (offset, character) in text[from..].char_indices() {
-        match character {
-            '{' => depth += 1,
-            '}' => {
+    let mut at = from;
+    while at < bytes.len() {
+        match bytes[at] {
+            b'/' if bytes.get(at + 1) == Some(&b'*') => {
+                at = text[at + 2..].find("*/").map_or(bytes.len(), |end| at + 2 + end + 1);
+            }
+            b'"' | b'\'' => at = string_end(bytes, at),
+            b'\\' => at += 1,
+            b'{' => depth += 1,
+            b'}' => {
                 depth -= 1;
                 if depth == 0 {
-                    return Some(from + offset);
+                    return Some(at);
                 }
             }
             _ => {}
         }
+        at += 1;
     }
     None
 }
 
-/// Top-level statements, brace-counted.
+/// Top-level statements. A block closes one at its `}`; a statement with no
+/// block, `@layer a, b;` or `@import url(…);`, closes at its `;`. Comments and
+/// strings are passed over, and a `;` inside parentheses ends nothing: a data
+/// URL in an `@import` is full of them.
 fn statements(css: &str) -> Vec<&str> {
+    let bytes = css.as_bytes();
     let mut out = Vec::new();
-    let mut depth = 0i32;
-    let mut start = 0usize;
-    for (index, character) in css.char_indices() {
-        match character {
-            '{' => depth += 1,
-            '}' => {
+    let (mut depth, mut parens, mut start, mut at) = (0i32, 0i32, 0usize, 0usize);
+    while at < bytes.len() {
+        match bytes[at] {
+            b'/' if bytes.get(at + 1) == Some(&b'*') => {
+                at = css[at + 2..].find("*/").map_or(bytes.len(), |end| at + 2 + end + 1);
+            }
+            b'"' | b'\'' => at = string_end(bytes, at),
+            b'\\' => at += 1,
+            b'(' => parens += 1,
+            b')' => parens -= 1,
+            b'{' => depth += 1,
+            b'}' => {
                 depth -= 1;
                 if depth == 0 {
-                    out.push(&css[start..index + 1]);
-                    start = index + 1;
+                    out.push(&css[start..=at]);
+                    start = at + 1;
                 }
+            }
+            b';' if depth == 0 && parens <= 0 => {
+                out.push(&css[start..=at]);
+                start = at + 1;
             }
             _ => {}
         }
+        at += 1;
     }
     if start < css.len() {
         out.push(&css[start..]);
@@ -612,7 +860,7 @@ fn statements(css: &str) -> Vec<&str> {
 /// wrong. `the two ways of deciding a tier agree` is what says they do, over
 /// every condition shape the pass can produce.
 pub fn tier_of_rule(rule: &str) -> Option<Tier> {
-    let class = atom_class(rule)?;
+    let class = atom_named(rule)?.class;
     // ONE rule, or this is a block holding several and moving it would move
     // every rule in it — a whole `@layer barq.ui{ … }` looks like an atom
     // otherwise, because the first thing inside it is one.
@@ -649,18 +897,6 @@ fn without_layer(rule: &str) -> &str {
         Some(_) => &rest[brace + 1..rest.len() - 1],
         None => rule,
     }
-}
-
-/// The class an atom's rule names, or `None` when the rule is not an atom's.
-fn atom_class(rule: &str) -> Option<&str> {
-    let at = rule.find(".a-")?;
-    let rest = &rule[at + 1..];
-    let end = rest
-        .find(|c: char| !(c.is_ascii_alphanumeric() || c == '-' || c == '_'))
-        .unwrap_or(rest.len());
-    let class = &rest[..end];
-    // `a-<property>_<hash>`, and the property never carries an underscore.
-    class.contains('_').then_some(class)
 }
 
 /// The selector, with any at-rule preludes taken off the front.
@@ -748,16 +984,146 @@ mod tests {
     }
 
     #[test]
-    fn atoms_are_ordered_by_tier_inside_the_layer_and_nothing_else_moves() {
+    fn atoms_are_ordered_by_tier_inside_the_layer_after_every_other_rule() {
         let media = atom_in("barq.ui", "color", "@media print", "green");
         let base = atom_in("barq.ui", "color", "default", "red");
         let hand = ".mine{color:blue}";
-        let css = format!("@layer barq.ui{{{}{hand}{}}}", media.rule_body(), base.rule_body());
+        let other = ".theirs{color:teal}";
+        let css =
+            format!("@layer barq.ui{{{}{hand}{}{other}}}", media.rule_body(), base.rule_body());
         let ordered = order_atoms(&css);
         let at = |needle: &str| ordered.find(needle).expect(needle);
         assert!(at(&base.class) < at(&media.class), "{ordered}");
-        // The hand-written rule kept its index, which is between them.
-        assert!(at("mine") > at(&base.class) && at("mine") < at(&media.class), "{ordered}");
+        // In front of both atoms, and in the order they were written.
+        assert!(at("mine") < at("theirs") && at("theirs") < at(&base.class), "{ordered}");
+    }
+
+    /// A `css` block class and an atom are both 0-1-0, so the sheet's order is
+    /// all that decides between them, whichever was written first.
+    #[test]
+    fn a_block_goes_in_front_of_every_atom_whichever_was_written_first() {
+        let atom = atom_in("", "color", "default", "red");
+        let block = ".b1n4k2p0{color:blue}";
+        for css in [format!("{}{block}", atom.rule), format!("{block}{}", atom.rule)] {
+            let ordered = order_atoms(&css);
+            assert_eq!(ordered, format!("{block}{}", atom.rule), "{css}");
+        }
+    }
+
+    /// The inner rule of an atom's `@media` wrapper, which is what a minifier
+    /// writes beside a neighbour under one shared query.
+    fn inner(atom: &Atom) -> String {
+        let open = atom.rule.find('{').expect("a block") + 1;
+        atom.rule[open..atom.rule.len() - 1].to_string()
+    }
+
+    /// Three modules in this order: a block with `padding:2rem` under a query,
+    /// an atom under the same query, and a block with `padding:0` under it. The
+    /// minifier put the first block and the atom in one `@media` block, and
+    /// read whole that block was an atom and moved behind the third module's
+    /// rule, which then lost the property it wins in dev.
+    #[test]
+    fn a_block_sharing_an_at_rule_with_an_atom_keeps_its_place() {
+        let atom = atom_in("", "padding-top", "@media (width>=48rem)", "1px");
+        let merged = format!("@media (width>=48rem){{.b1{{padding:2rem}}{}}}", inner(&atom));
+        let later = "@media (width>=48rem){.b2{padding:0}}";
+        let css = format!("{merged}{later}");
+        assert_eq!(
+            order_atoms(&css),
+            format!("@media (width>=48rem){{.b1{{padding:2rem}}}}{later}{}", atom.rule)
+        );
+
+        let (atoms, rest) = gather_atoms(&[&css]);
+        assert_eq!(atoms, atom.rule);
+        assert_eq!(rest, [format!("@media (width>=48rem){{.b1{{padding:2rem}}}}{later}")]);
+    }
+
+    /// The same, for a block a minifier joined to an atom by selector because
+    /// the two say the same thing.
+    #[test]
+    fn a_block_sharing_a_selector_list_with_an_atom_keeps_its_place() {
+        let atom = atom_in("", "color", "default", "red");
+        let css = format!(".b1,.{}{{color:red}}.b2{{color:blue}}", atom.class);
+        assert_eq!(order_atoms(&css), format!(".b1{{color:red}}.b2{{color:blue}}{}", atom.rule));
+        let (atoms, rest) = gather_atoms(&[&css]);
+        assert_eq!(atoms, atom.rule);
+        assert_eq!(rest, [".b1{color:red}.b2{color:blue}"]);
+    }
+
+    /// A browser ignores an `@import` after a rule and an order statement
+    /// after a layer block changes nothing, so neither is ever moved, comment
+    /// in front or not.
+    #[test]
+    fn a_declaration_never_goes_behind_a_rule() {
+        let atom = atom_in("", "color", "default", "red");
+        let import = "/*! licence */@import url(a.css);";
+        let css = format!("{import}{}.b{{color:blue}}", atom.rule);
+        assert_eq!(order_atoms(&css), format!("{import}.b{{color:blue}}{}", atom.rule));
+
+        let layers = "@layer reset;/*x*/@layer theme;";
+        let css = format!("{layers}{}.b{{color:blue}}", atom.rule);
+        assert_eq!(order_atoms(&css), format!("{layers}.b{{color:blue}}{}", atom.rule));
+        let (_, rest) = gather_atoms(&[&css]);
+        assert_eq!(rest, [format!("{layers}.b{{color:blue}}")]);
+    }
+
+    /// A `;` inside parentheses or a string ends no statement.
+    #[test]
+    fn a_data_url_import_is_one_statement() {
+        let atom = atom_in("", "color", "default", "red");
+        let import = "@import url(data:text/css;base64,LmF7fQ==);@import \"x;y.css\";";
+        let block = ".b{content:\"};{\"}";
+        let css = format!("{import}{}{block}", atom.rule);
+        assert_eq!(order_atoms(&css), format!("{import}{block}{}", atom.rule));
+    }
+
+    /// Only a class of the exact shape `atom_in` writes, in a selector, for the
+    /// property the rule declares.
+    #[test]
+    fn something_shaped_a_little_like_an_atom_is_not_one() {
+        for css in [
+            ".a-button__icon{color:red}.b{color:blue}",
+            ".b{background:url(./x.a-b_c.png)}.c{color:blue}",
+            ".a-card_title{color:red}.b{color:blue}",
+            ".a-color_UPPER{color:red}.b{color:blue}",
+            ".a-color_12345678{color:red}.b{color:blue}",
+        ] {
+            assert_eq!(order_atoms(css), css, "{css}");
+        }
+        let custom = atom_in("", "--brand-x", "default", "red");
+        let prefixed = format!(".{}{{-webkit-user-select:none;user-select:none}}", {
+            atom_in("", "user-select", "default", "none").class
+        });
+        for rule in [custom.rule, prefixed] {
+            let css = format!("{rule}.b{{color:blue}}");
+            assert_eq!(order_atoms(&css), format!(".b{{color:blue}}{rule}"), "{rule}");
+        }
+    }
+
+    /// Two atoms of one tier, for one property, under conditions that both
+    /// match, come out in one order whichever came first.
+    #[test]
+    fn two_atoms_of_one_tier_have_one_order_whatever_they_arrived_in() {
+        let a = atom_in("", "width", "& svg:not([class*='size-'])", "3px");
+        let b = atom_in("", "width", "& svg:not([class*=\"size-\"])", "4px");
+        let one = order_atoms(&format!("{}{}", a.rule, b.rule));
+        let two = order_atoms(&format!("{}{}", b.rule, a.rule));
+        assert_eq!(one, two);
+        let (gathered, _) = gather_atoms(&[&b.rule, &a.rule]);
+        assert_eq!(gathered, one);
+    }
+
+    /// An order statement or an import arrives joined to the rule after it, and
+    /// it does not travel with an atom.
+    #[test]
+    fn a_declaration_in_front_of_an_atom_stays_in_front() {
+        let atom = atom_in("", "color", "default", "red");
+        let css = format!("@layer a, b;{}.b1n4k2p0{{color:blue}}/*$vite$:1*/", atom.rule);
+        let ordered = order_atoms(&css);
+        assert_eq!(
+            ordered,
+            format!("@layer a, b;.b1n4k2p0{{color:blue}}{}/*$vite$:1*/", atom.rule)
+        );
     }
 
     #[test]

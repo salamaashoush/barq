@@ -21,6 +21,8 @@ export {
   clearResponseHeaders,
   collectRequestCss,
   createResponseDraft,
+  devStylesheets,
+  type DevStylesheets,
   deleteCookie,
   draftedStatus,
   getCookie,

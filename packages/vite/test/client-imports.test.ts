@@ -21,19 +21,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type ViteDevServer, createServer } from "vite";
 
+import { type Page, withChrome } from "../../compiler/test/chrome.ts";
 import barq from "../src/index.ts";
-
-interface Page {
-  evaluate<T>(expression: string): Promise<T>;
-  send(method: string, params: unknown): Promise<unknown>;
-}
-
-// The compiler suite's Chrome driver, loaded by URL: a static import puts its
-// harness, which is written without the declaration annotations this package's
-// typecheck requires of every file it reaches, into that typecheck.
-const { withChrome } = (await import(
-  new URL("../../compiler/test/chrome.ts", import.meta.url).href
-)) as { withChrome<T>(body: (page: Page) => Promise<T>): Promise<T> };
 
 const PACKAGES = fileURLToPath(new URL("../..", import.meta.url));
 

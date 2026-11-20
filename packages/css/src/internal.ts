@@ -12,6 +12,6 @@
  */
 
 export { NEST, UNITLESS, kebab, tierOf } from "./atoms.ts";
-export { TIERS, hash, register, resetCss } from "./sheet.ts";
+export { TIERS, hash, paintedAtoms, register, resetCss } from "./sheet.ts";
 export { SHORTHANDS, UNEXPANDABLE, expand } from "./shorthands.ts";
 export { dynamicVar } from "./atoms.ts";

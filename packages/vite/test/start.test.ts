@@ -245,7 +245,7 @@ describe("the entries an application does not write", () => {
 
     expect(code).toContain('import { createStartHandler } from "@barqjs/router/server"');
     expect(code).toContain(
-      "export default createStartHandler({ inlineCss: collectCss, requestCss: collectRequestCss })",
+      "export default createStartHandler({ inlineCss: (routes) => collectCssParts(devStylesheets(routes)), requestCss: collectRequestCss })",
     );
     // TWO channels, because they have different lifetimes. `inlineCss` is what
     // the application registered when it was IMPORTED, which every request
@@ -253,8 +253,10 @@ describe("the entries an application does not write", () => {
     // request needs. Without the split a server process imported the app once
     // and served forever, so `/about` inlined the rules a request for `/css`
     // had produced.
-    expect(code).toContain('import { collectCss, setCssSink } from "@barqjs/css"');
-    expect(code).toContain('import { collectRequestCss, installCssSink } from "@barqjs/start"');
+    expect(code).toContain('import { collectCssParts, setCssSink } from "@barqjs/css"');
+    expect(code).toContain(
+      'import { collectRequestCss, devStylesheets, installCssSink } from "@barqjs/start"',
+    );
     expect(code).toContain("installCssSink(setCssSink);");
     // IT STARTS NOTHING, and that is the property. `vite build` imports this
     // module to prerender and to run the chain check, so a `serve()` here would

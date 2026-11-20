@@ -57,6 +57,8 @@ import {
 import { serverRendering } from "@barqjs/core/internal";
 
 import {
+  ATOMS_ATTRIBUTE,
+  type InlineCss,
   type ManagedTag,
   projectHead,
   renderTags,
@@ -182,6 +184,8 @@ export interface HeadAssets {
   readonly clientAssets?: {
     readonly scripts?: readonly string[];
     readonly css?: readonly string[];
+    /** The build's atoms, linked after every stylesheet in {@link css}. */
+    readonly atoms?: string;
   };
   /** The `crossorigin` an asset is fetched with, by href, as `transformAssets` decided. */
   readonly crossOrigin?: (href: string) => string | undefined;
@@ -199,7 +203,7 @@ export interface HeadAssets {
    * module's CSS to a registry rather than to an asset, because neither has a
    * bundle to emit one from; this is that registry, drained per request.
    */
-  readonly inlineCss?: string;
+  readonly inlineCss?: InlineCss;
   /**
    * Rules that registered AFTER the head was taken, read at `<Scripts />`.
    *
@@ -288,6 +292,7 @@ export function HeadContent(_props?: Record<string, never>): JSXElement {
       nonce: assets.nonce,
       preloads: assets.preloads,
       css: assets.clientAssets?.css,
+      atoms: assets.clientAssets?.atoms,
       crossOrigin: assets.crossOrigin,
       inlineCss: assets.inlineCss,
     });
@@ -315,8 +320,16 @@ export function Scripts(): JSXElement {
   if (assets === null) return null;
   const nonce = assets.nonce === undefined ? "" : ` nonce="${escapeHeadAttribute(assets.nonce)}"`;
   const late = assets.lateCss?.() ?? "";
+  // The build's atoms once more after rules a render registered late, which
+  // are past the head's link to them and would beat them at one specificity.
+  const atoms = assets.clientAssets?.atoms;
+  const relinked =
+    late === "" || atoms === undefined
+      ? ""
+      : `<link rel="stylesheet" href="${escapeHeadAttribute(atoms)}"${nonce}>`;
   return assets.raw(
     (late === "" ? "" : `<style id="barq-css-late"${nonce}>${styleText(late)}</style>`) +
+      relinked +
       renderTags(resolveScripts(assets.matches, { nonce: assets.nonce })) +
       (assets.entryAfterShell === true
         ? ""
@@ -391,17 +404,19 @@ function escapeHeadAttribute(value: string): string {
 function assetsFromDocument(): {
   preloads: string[];
   css: string[];
-  inlineCss: string;
+  atoms: string | undefined;
+  inlineCss: InlineCss;
   lateCss: string;
 } {
   const preloads: string[] = [];
   const css: string[] = [];
+  let atoms: string | undefined;
   // The framework's own sheet, read back for the same reason the links are:
   // `<HeadContent />` is a KEYED list and the claim takes `<head>`'s children
   // whole, so a tag the server wrote and the client does not produce is
   // reconciled away. A server-only `<style>` there took the whole document with
   // it — `document.head` was null by the time this ran.
-  const inlineCss = document.getElementById("barq-css")?.textContent ?? "";
+  const inlineCss = inlineFromDocument();
   // `<Scripts />` writes the same shape at the end of `<body>`, and the same
   // rule applies: the client has to produce the tag the server did.
   const lateCss = document.getElementById("barq-css-late")?.textContent ?? "";
@@ -424,16 +439,17 @@ function assetsFromDocument(): {
    * and an empty list is what "no server markup to read" means.
    */
   const head = document.head;
-  if (head === null) return { preloads, css, inlineCss, lateCss };
+  if (head === null) return { preloads, css, atoms, inlineCss, lateCss };
 
   for (const link of head.querySelectorAll("link[rel]")) {
     const href = link.getAttribute("href");
     if (href === null) continue;
     const rel = link.getAttribute("rel");
     if (rel === "modulepreload") preloads.push(href);
+    else if (rel === "stylesheet" && link.hasAttribute(ATOMS_ATTRIBUTE)) atoms = href;
     else if (rel === "stylesheet") css.push(href);
   }
-  return { preloads, css, inlineCss, lateCss };
+  return { preloads, css, atoms, inlineCss, lateCss };
 }
 
 /**
@@ -467,6 +483,17 @@ function headOf(
   );
 }
 
+const NO_CSS: InlineCss = { blocks: "", atoms: "" };
+
+/** The framework's two sheets as the document holds them now. */
+function inlineFromDocument(): InlineCss {
+  if (typeof document === "undefined") return NO_CSS;
+  return {
+    blocks: document.getElementById("barq-css")?.textContent ?? "",
+    atoms: document.getElementById("barq-css-atoms")?.textContent ?? "",
+  };
+}
+
 /**
  * What the SERVER wrote, captured at import.
  *
@@ -479,7 +506,7 @@ function headOf(
  */
 const served =
   typeof document === "undefined"
-    ? { preloads: [], css: [], inlineCss: "", lateCss: "" }
+    ? { preloads: [], css: [], atoms: undefined, inlineCss: NO_CSS, lateCss: "" }
     : assetsFromDocument();
 
 export function clientHeadAssets(
@@ -494,7 +521,7 @@ export function clientHeadAssets(
      * `<head>`'s children whole, so a tag the server produced and the client
      * does not is reconciled away, and that one took the document with it.
      */
-    readonly inlineCss?: string;
+    readonly inlineCss?: InlineCss;
     /** What the boot already resolved, so the first render claims. */
     readonly initial?: readonly import("./head.ts").MatchAssets[];
   } = {},
@@ -560,15 +587,14 @@ export function clientHeadAssets(
     clientAssets: {
       ...options.clientAssets,
       css: [...new Set([...(options.clientAssets?.css ?? []), ...served.css])],
+      atoms: options.clientAssets?.atoms ?? served.atoms,
     },
     // Read when `<HeadContent />` renders, not at import. A module evaluated
     // between the two (a route chunk with compiled CSS, in dev) has already
     // painted its rules into this element, and claiming the element with the
     // import-time text wrote them back out of the document.
     get inlineCss() {
-      return (
-        options.inlineCss ?? document.getElementById("barq-css")?.textContent ?? served.inlineCss
-      );
+      return options.inlineCss ?? inlineFromDocument();
     },
     lateCss: () => served.lateCss,
     preloads: options.preloads ?? served.preloads,
@@ -613,7 +639,19 @@ export function clientHeadAssets(
         return node;
       });
       held = kept;
-      return nodes;
+      // Vite's dev client puts a stylesheet a module imports into `<head>` when
+      // the module runs, which for every module the page imports statically is
+      // before this list claims `<head>`. The claim takes the element's children
+      // whole, so each one was reconciled away with no error: measured on
+      // `@barqjs/site`'s `/create`, the two `@fontsource` sheets were removed
+      // at hydration and every text box laid out in the fallback font.
+      //
+      // After every tag of this list's own: the claim takes the next node of a
+      // tag, and a foreign `<style>` in front of one of ours would be claimed
+      // in its place. The registry keeps its dev atoms where these cannot
+      // follow them.
+      const injected = document.head?.querySelectorAll("style[data-vite-dev-id]") ?? [];
+      return [...nodes, ...injected];
     },
   };
 }

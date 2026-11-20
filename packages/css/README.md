@@ -278,11 +278,79 @@ chunks use was written in both, so a chunk loaded later put a base rule after an
 earlier chunk's `@media` rule for the same property and won a pair it should
 lose. Measured on `@barqjs/ui`'s site: the docs sidebar computed `display: none`
 at 1280px. Each module holding an atom now imports one shared sheet,
-`@barqjs/vite` gathers every chunk's atoms into it once the bundle is known, and
-a chunk's own sheet keeps only its `css` blocks. On that site this took 8,882
-computed values that differed from the dev server down to 1,437 across ten
-pages, and the stylesheets from 224 KB to 204 KB gzip, since 1,179 rules had
-been written more than once.
+`@barqjs/vite` gathers every chunk's atoms into a file of their own once the
+bundle is known, and a chunk's own sheet keeps only its `css` blocks. On that
+site this took 8,882 computed values that differed from the dev server down to
+1,437 across ten pages, and the stylesheets from 224 KB to 204 KB gzip, since
+1,179 rules had been written more than once. With `build.cssCodeSplit: false`
+there is one stylesheet, and its atoms are gathered inside it; it is found by
+what it holds, so a library build, which names it after `cssFileName`, is
+finished the same way.
+
+**An atom beats a `css` block on the same element.** A block class and an atom
+are both 0-1-0, so for one property on one element the later rule wins, and the
+atom is the one a caller passed to override. So every atom comes after every
+block, in every shape a page gets its CSS in:
+
+- Inside one sheet, `orderCss` and the registry write every rule that is not an
+  atom first, in the order it was written, and then the atoms in tier order.
+  That covers the dev sheet, an unsplit build's one stylesheet and the atoms'
+  own file. A rule is an atom's by itself alone: a minifier writes a block and
+  an atom under one shared `@media`, or under one selector list when they say
+  the same thing, and such a statement is taken apart first, the block's rule
+  staying where it was under its own copy of the at-rule. `@charset`, `@import`
+  and `@layer` statements never move. And a class only counts as an atom's in
+  a selector, in the exact shape the compiler names one, for the property the
+  rule declares: `.a-button__icon` and `url(./x.a-b_c.png)` are not atoms.
+- A split build links the atoms' file after every other stylesheet. Every entry
+  lists it last, `<HeadContent />` writes it after the route's sheets with a
+  `data-barq-atoms` attribute, and an `index.html` the build writes carries the
+  same attribute on the link Vite puts last.
+- A stylesheet linked after the first paint goes in front of that link: a
+  dynamic import's (Vite's preload helper), a frame's (`@barqjs/start`), one
+  `useHead` adds and one a streamed boundary's head patch adds.
+- What the runtime registers is written in two `<style>` elements either side
+  of that link: `#barq-css` with every rule that is not an atom in front of it,
+  so a compiled atom beats a block the runtime evaluated, and `#barq-css-atoms`
+  after it, so a runtime atom beats a compiled block. In dev there is no link and
+  the two stand next to each other, and a `<style>` Vite's dev client appends
+  for an imported `.css` file is moved in front of the atoms one, where a build
+  puts that file's rules. A sheet a render writes at the end of `<body>`, after
+  the head, ends with every atom again when it holds a block, and a build links
+  its atoms once more after it.
+
+Before this the pair went by where each rule happened to land: module order in
+a build, registration order in dev, and a route's chunk loaded after the first
+paint beat every atom on its elements. It is order and nothing else, for the
+reasons the rest of this section gives against a layer, and `!important` would
+also beat the application's own rules.
+
+**How a later stylesheet is put in front.** Vite's preload helper appends a
+dynamic import's stylesheets to `<head>` with one `document.head.appendChild`,
+and `@barqjs/vite` rewrites that call to insert in front of the atoms' link.
+Two ways that leave Vite's code alone were weighed and rejected. Moving the
+atoms' link back to the end each time something is appended after it takes the
+sheet out of the document and puts it back, and the atoms stop applying until it
+loads again. Moving the appended link in front from a `MutationObserver`
+happens after the helper has inserted it, so its fetch starts, stops and starts
+again, the observer runs on every page for the life of the page, and it would
+also move stylesheets nothing of barq's put there. The rewrite costs nothing at
+run time and the link is in its place before it is fetched. Its weakness is a
+future helper written differently, and that fails the build by default, naming
+the option: `compiler: { preloadHelper: "warn" }` builds anyway and says what
+it could not do.
+
+**Two atoms of one tier have one order.** When two atoms of one tier set one
+property under different conditions that can both match one element, specificity
+and tier tie, and there is no passing order between two calls. Arrival decided,
+and arrival is a different thing in dev, a split build and an unsplit one:
+`@barqjs/ui`'s button icons came out 12px in one shape and 16px in another,
+because a base call wrote `'& svg:not([class*="size-"])'` and a size variant
+the same condition with single quotes, which is two conditions. Within a tier,
+atoms are ordered by the hash of their condition, which their class carries:
+written by the author, the same in every shape, untouched by a minifier. Two
+atoms under one condition, which only meet where class strings are joined by
+hand rather than merged, keep the order they arrived in.
 
 **Dev orders the same way.** `registerCss` files a compiled module's
 stylesheet under the module's id, and the registry splits it back into rules,
@@ -584,13 +652,23 @@ painting after each rule, and 0.72 ms painting once.
 ### Server rendering
 
 ```ts
-import { collectCss, setCssSink } from "@barqjs/css";
+import { collectCss, collectCssParts, setCssSink } from "@barqjs/css";
 ```
 
 `collectCss()` returns the shared sheet: every rule registered so far, ordered.
 A production build registers only what the compiler declined, because a
 compiled block's CSS is an asset the document links. Dev registers everything,
-which is what makes a server-rendered dev page arrive styled.
+which is what makes a server-rendered dev page arrive styled. `collectCssParts()`
+is the same sheet as `{ blocks, atoms }`, the two `<style>` elements a head
+writes either side of a build's atoms.
+
+Both take a scope: the registry keys of the compiled module stylesheets one page
+reaches, in the order its modules run. A server imports the application once,
+so its registry holds every module any request has reached, and an unscoped
+dev page carried them all: `/` rendered after `/create` had `/create`'s `#app`
+rules. `@barqjs/vite`'s dev server answers the scope off its module graph, in
+the order a build links the same stylesheets, and Start's server entry passes
+it through `devStylesheets(routes)` from `@barqjs/start`.
 
 A server imports the application once and renders many requests, so a host
 also needs to know which rules arrived during one render. `setCssSink` installs

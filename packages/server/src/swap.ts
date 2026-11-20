@@ -126,7 +126,13 @@ export function applyHeadPatch(
     }
     if (!element) {
       element = document.createElement(tag.t);
-      document.head.appendChild(element);
+      // A stylesheet goes in front of the build's atoms, which win a property
+      // against a rule of the same specificity by coming after it.
+      const sheet =
+        tag.t === "style" || (tag.t === "link" && (" " + tag.a.rel + " ").includes(" stylesheet "));
+      const atoms = sheet ? document.head.querySelector("link[data-barq-atoms]") : null;
+      if (atoms) atoms.before(element);
+      else document.head.appendChild(element);
     }
     for (const name of Object.keys(tag.a)) element.setAttribute(name, tag.a[name] ?? "");
     element.setAttribute("data-bh", tag.k);

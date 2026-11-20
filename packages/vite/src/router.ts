@@ -25,6 +25,7 @@ import { dirname, isAbsolute, join, relative } from "node:path";
 
 import type { Plugin } from "vite";
 
+import { atomsAsset } from "./compiler.ts";
 import { type Reachability, idsInStub, reachabilityFrom } from "./reachability.ts";
 
 /** Where the generated tree is written when nothing says otherwise. */
@@ -89,42 +90,45 @@ export interface ChunkAssets {
  * Both are safe to be generous about here and would not be in the preload list:
  * a `modulepreload` that arrives late costs a round trip, and a stylesheet that
  * arrives late costs a visible flash.
+ *
+ * In the order the modules run: a chunk's imports, depth first and in the
+ * order it imports them, and then the chunk's own. Two `css` blocks of one
+ * specificity are decided by which comes later, and in dev that is the module
+ * that registered later, which is the one that ran later. Popped off a stack
+ * the order was reversed: a docs heading took `scroll-margin-top` from the
+ * page's typeset rules in dev and from its own anchor rule once built.
+ *
+ * `skip` is the build's atoms, which every entry links after everything else.
  */
 export function routeStylesheets(
   entries: readonly { readonly id: string; readonly file: string }[],
   chunks: readonly ChunkAssets[],
   base: string,
+  skip?: string,
 ): Record<string, string[]> {
-  const cssOf = new Map<string, readonly string[]>();
-  const importsOf = new Map<string, readonly string[]>();
-  const byFile = new Map<string, string[]>();
-  for (const chunk of chunks) {
-    cssOf.set(chunk.fileName, chunk.css);
-    importsOf.set(chunk.fileName, chunk.imports);
-    for (const moduleId of chunk.modules) {
-      byFile.set(moduleId, [chunk.fileName, ...chunk.imports]);
-    }
-  }
-
+  const byName = new Map(chunks.map((chunk) => [chunk.fileName, chunk]));
   const out: Record<string, string[]> = {};
   for (const entry of entries) {
-    const seen = new Set<string>();
+    const linked = new Set<string>();
     const walked = new Set<string>();
-    const queue: string[] = [];
-    for (const [moduleId, assets] of byFile) {
-      const file = moduleId.endsWith(`?${SPLIT_QUERY}`)
-        ? moduleId.slice(0, -(SPLIT_QUERY.length + 1))
-        : moduleId;
-      if (file.endsWith(entry.file)) queue.push(...assets);
-    }
-    while (queue.length > 0) {
-      const file = queue.pop() as string;
-      if (walked.has(file)) continue;
+    const visit = (file: string): void => {
+      if (walked.has(file)) return;
       walked.add(file);
-      for (const css of cssOf.get(file) ?? []) seen.add(`${base}${css}`);
-      queue.push(...(importsOf.get(file) ?? []));
+      const chunk = byName.get(file);
+      if (chunk === undefined) return;
+      for (const imported of chunk.imports) visit(imported);
+      for (const css of chunk.css) if (css !== skip) linked.add(`${base}${css}`);
+    };
+    for (const chunk of chunks) {
+      const holds = chunk.modules.some((moduleId) => {
+        const file = moduleId.endsWith(`?${SPLIT_QUERY}`)
+          ? moduleId.slice(0, -(SPLIT_QUERY.length + 1))
+          : moduleId;
+        return file.endsWith(entry.file);
+      });
+      if (holds) visit(chunk.fileName);
     }
-    out[entry.id] = [...seen];
+    out[entry.id] = [...linked];
   }
   return out;
 }
@@ -179,13 +183,16 @@ export function lazyModuleAssets(
   chunks: readonly { fileName: string; css: readonly string[] }[],
   root: string,
   base: string,
+  skip?: string,
 ): Record<string, { js: string[]; css: string[] }> {
   const cssOf = new Map(chunks.map((chunk) => [chunk.fileName, chunk.css]));
   const out: Record<string, { js: string[]; css: string[] }> = {};
   for (const entry of entries) {
     const files = [entry.fileName, ...entry.imports];
     const css = new Set<string>();
-    for (const file of files) for (const sheet of cssOf.get(file) ?? []) css.add(`${base}${sheet}`);
+    for (const file of files) {
+      for (const sheet of cssOf.get(file) ?? []) if (sheet !== skip) css.add(`${base}${sheet}`);
+    }
     out[moduleUrlOf(entry.module, root)] = {
       js: files.map((file) => `${base}${file}`),
       css: [...css],
@@ -598,6 +605,10 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
 
   return {
     name: "barq-router",
+    api: {
+      /** Route id to source file, as the table generated from the routes says. */
+      entries: (): readonly { readonly id: string; readonly file: string }[] => tree.entries,
+    },
     /**
      * SHARED, like every plugin `barqStart()` returns, and for a reason that was
      * measured rather than assumed.
@@ -716,6 +727,7 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
       // `viteMetadata.importedCss` is per CHUNK, so a route's stylesheets are
       // its own chunk's plus every chunk it statically imports — the same
       // closure the preloads use, read off the same `chunk.imports`.
+      const atoms = atomsAsset(bundle);
       const next = routeChunks(
         tree.entries,
         Object.values(bundle).flatMap((chunk) =>
@@ -751,6 +763,7 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
         ),
         root,
         base,
+        atoms,
       );
       routeCss = routeStylesheets(
         tree.entries,
@@ -767,6 +780,7 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
             : [],
         ),
         base,
+        atoms,
       );
     },
 

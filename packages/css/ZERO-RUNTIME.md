@@ -422,8 +422,11 @@ Carried forward, so a later session does not re-derive them:
 
 1. A four-character condition hash. 0.4 KB brotli, against a silent collision
    across 257 conditions.
-2. Sorting rules within a tier. 0.3 KB brotli, and it changes which of two
-   same-tier atoms wins.
+2. Sorting rules within a tier, for bytes. 0.3 KB brotli, and it changes which
+   of two same-tier atoms wins. Atoms of one tier are now ordered by their
+   condition's hash, for a different reason: arrival order was a different
+   thing in dev, a split build and an unsplit one (see the README's
+   "Ordering").
 3. Emitting atoms into a cascade layer unconditionally. Measured in a browser:
    every `margin` and `padding` computed to `0px`, because a layered rule loses
    to an unlayered one whatever its specificity.

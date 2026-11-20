@@ -344,7 +344,10 @@ describe("the inline stylesheet", () => {
   const matches: readonly MatchAssets[] = [{ meta: [{ title: "Page" }] }];
 
   test("renders as one style element after the linked ones", () => {
-    const tags = resolveHead(matches, { css: ["/s.css"], inlineCss: ".b1{color:red}" });
+    const tags = resolveHead(matches, {
+      css: ["/s.css"],
+      inlineCss: { blocks: ".b1{color:red}", atoms: "" },
+    });
     const order = tags.map((tag) => `${tag.tag}:${String(tag.attrs?.rel ?? "")}`);
     expect(order).toEqual(["title:", "link:stylesheet", "style:"]);
     const style = tags.find((tag) => tag.tag === "style");
@@ -353,7 +356,11 @@ describe("the inline stylesheet", () => {
   });
 
   test("an empty sheet renders no element at all", () => {
-    expect(resolveHead(matches, { inlineCss: "" }).some((tag) => tag.tag === "style")).toBe(false);
+    expect(
+      resolveHead(matches, { inlineCss: { blocks: "", atoms: "" } }).some(
+        (tag) => tag.tag === "style",
+      ),
+    ).toBe(false);
     expect(resolveHead(matches, {}).some((tag) => tag.tag === "style")).toBe(false);
   });
 
@@ -363,14 +370,32 @@ describe("the inline stylesheet", () => {
    */
   test("a `</` in the CSS cannot close the element", () => {
     const css = `.b1::after{content:"</style><script>alert(1)</script>"}`;
-    const markup = renderTags(resolveHead(matches, { inlineCss: css }));
+    const markup = renderTags(resolveHead(matches, { inlineCss: { blocks: css, atoms: "" } }));
     expect(markup).not.toContain("</style><script>");
     expect(markup).toContain("<\\/style>");
     expect(styleText(css)).toBe(css.replaceAll("</", "<\\/"));
   });
 
   test("it carries the nonce, like every other tag the framework places", () => {
-    const tags = resolveHead(matches, { inlineCss: ".b1{color:red}", nonce: "n1" });
+    const tags = resolveHead(matches, {
+      inlineCss: { blocks: ".b1{color:red}", atoms: "" },
+      nonce: "n1",
+    });
     expect(tags.find((tag) => tag.tag === "style")?.attrs?.nonce).toBe("n1");
+  });
+
+  /**
+   * A build's compiled atoms beat a block at one specificity by being linked
+   * after it, so the runtime's blocks go in front of that link and its atoms
+   * after it.
+   */
+  test("its blocks go in front of the build's atoms and its atoms after them", () => {
+    const tags = resolveHead(matches, {
+      css: ["/s.css"],
+      atoms: "/atoms.css",
+      inlineCss: { blocks: ".b1{color:red}", atoms: ".a-color_1{color:blue}" },
+    });
+    const order = tags.map((tag) => String(tag.attrs?.id ?? tag.attrs?.href ?? tag.tag));
+    expect(order).toEqual(["title", "/s.css", "barq-css", "/atoms.css", "barq-css-atoms"]);
   });
 });

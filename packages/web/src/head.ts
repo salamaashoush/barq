@@ -121,7 +121,17 @@ function applyTag(tag: HeadTag): Element {
   }
   if (element === null || element.localName !== tag.tag) {
     element = document.createElement(tag.tag);
-    document.head.appendChild(element);
+    // A stylesheet goes in front of the build's atoms, which win a property
+    // against a rule of the same specificity by coming after it.
+    const sheet =
+      tag.tag === "style" ||
+      (tag.tag === "link" &&
+        String(tag.props?.rel ?? "")
+          .split(/\s+/)
+          .includes("stylesheet"));
+    const atoms = sheet ? document.head.querySelector("link[data-barq-atoms]") : null;
+    if (atoms === null) document.head.appendChild(element);
+    else atoms.before(element);
   }
   for (const name of element.getAttributeNames()) {
     if (name !== "data-bh") element.removeAttribute(name);

@@ -827,6 +827,69 @@ describe("routeStylesheets", () => {
     ]);
   });
 
+  /**
+   * Two `css` blocks of one specificity go to the later stylesheet, and in dev
+   * the later one is the module that ran later. A docs heading took its
+   * `scroll-margin-top` from different rules served and built until the build
+   * linked in the same order.
+   */
+  test("links a chunk's imports before it, depth first and in the order it imports them", () => {
+    const map = routeStylesheets(
+      entries,
+      [
+        {
+          fileName: "assets/posts.js",
+          modules: [`/p/src/routes/posts.tsx?${SPLIT_QUERY}`],
+          imports: ["assets/docs.js", "assets/typeset.js"],
+          css: ["assets/posts.css"],
+        },
+        {
+          fileName: "assets/docs.js",
+          modules: ["/p/src/docs.tsx"],
+          imports: ["assets/site.js"],
+          css: ["assets/docs.css"],
+        },
+        { fileName: "assets/site.js", modules: [], imports: [], css: ["assets/site.css"] },
+        {
+          fileName: "assets/typeset.js",
+          modules: ["/p/src/typeset.ts"],
+          imports: ["assets/site.js"],
+          css: ["assets/typeset.css"],
+        },
+      ],
+      "/",
+    );
+    expect(map["/posts"]).toEqual([
+      "/assets/site.css",
+      "/assets/docs.css",
+      "/assets/typeset.css",
+      "/assets/posts.css",
+    ]);
+  });
+
+  test("leaves out the atoms, which every entry links after the rest", () => {
+    const map = routeStylesheets(
+      entries,
+      [
+        {
+          fileName: "assets/posts.js",
+          modules: [`/p/src/routes/posts.tsx?${SPLIT_QUERY}`],
+          imports: ["assets/index.js"],
+          css: ["assets/posts.css"],
+        },
+        {
+          fileName: "assets/index.js",
+          modules: [],
+          imports: [],
+          css: ["assets/index.css", "assets/barq-atoms.css"],
+        },
+      ],
+      "/",
+      "assets/barq-atoms.css",
+    );
+    expect(map["/posts"]).toEqual(["/assets/index.css", "/assets/posts.css"]);
+  });
+
   test("a cycle in the chunk graph terminates", () => {
     const map = routeStylesheets(
       entries,

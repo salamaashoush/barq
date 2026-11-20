@@ -638,3 +638,46 @@ describe("css parity > the merge a compiled props call becomes", () => {
     }
   });
 });
+
+/**
+ * Which rule is an atom's, and where atoms of one tier go against each other,
+ * are decided twice: by `orderCss` over a built asset and by the registry over
+ * what dev registers. The two agree on every shape here, or a page orders one
+ * way served and another way built.
+ */
+describe("css parity > what an atom is and where it sorts", () => {
+  const BLOCK = ".b1n4k2p0{color:blue}";
+  const CANDIDATES = [
+    ".a-color_1n4k2p0{color:red}",
+    ".a-var-brand-x_1n4k2p0{--brand-x:red}",
+    ".a-user-select_1aweqsj{-webkit-user-select:none;user-select:none}",
+    ".a-width-439xd0_v0r42a svg:not([class*=size-]){width:4px}",
+    "@media (width>=48rem){.a-padding-top-17pnonp_1mc215m{padding-top:1px}}",
+    ".a-button__icon{color:red}",
+    ".x{background:url(./x.a-b_c.png)}",
+    ".a-card_title{color:red}",
+    ".a-color_UPPER{color:red}",
+    ".a-color_12345678{color:red}",
+  ];
+
+  test("each shape is an atom on both sides or on neither", () => {
+    for (const candidate of CANDIDATES) {
+      resetCss();
+      runtime.registerCss("parity.css", candidate + BLOCK);
+      expect(runtime.collectCss(), candidate).toBe(native.orderCss(candidate + BLOCK));
+    }
+  });
+
+  test("two atoms of one tier come out in one order on both sides, whichever arrived first", () => {
+    const a = ".a-width-nmnvg4_4djsz1 svg:not([class*=size-]){width:3px}";
+    const b = ".a-width-439xd0_v0r42a svg:not([class*=size-]){width:4px}";
+    const sheets = [a + b, b + a].map((css) => {
+      resetCss();
+      runtime.registerCss("parity.css", css);
+      const registry = runtime.collectCss();
+      expect(registry).toBe(native.orderCss(css));
+      return registry;
+    });
+    expect(sheets[0]).toBe(sheets[1]);
+  });
+});

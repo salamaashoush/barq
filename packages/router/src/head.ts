@@ -31,6 +31,23 @@
  *    `tags.length === 1`.
  */
 
+/**
+ * What marks the `<link>` of a build's atoms. `@barqjs/vite` writes the same
+ * name into the preload helper, which puts a stylesheet a dynamic import brings
+ * in front of the element carrying it.
+ */
+export const ATOMS_ATTRIBUTE = "data-barq-atoms";
+
+/**
+ * The framework's own stylesheet as text, in the two places it goes: every rule
+ * that is not an atom, and the atoms. `collectCssParts` in `@barqjs/css` is
+ * what writes it.
+ */
+export interface InlineCss {
+  readonly blocks: string;
+  readonly atoms: string;
+}
+
 /** One managed tag, as `HeadContent` and `Scripts` render it. */
 export interface ManagedTag {
   readonly tag: "title" | "meta" | "link" | "style" | "script";
@@ -228,6 +245,13 @@ export function resolveHead(
      */
     readonly preloads?: readonly string[];
     readonly css?: readonly string[];
+    /**
+     * The build's atoms, linked after {@link css}. An atom and a `css` block
+     * class are both 0-1-0, so the later stylesheet wins the property, and the
+     * atom is the one a caller passed to override. Marked, so a stylesheet a
+     * chunk links after the first paint goes in front of it.
+     */
+    readonly atoms?: string;
     /** The `crossorigin` a preload or stylesheet is fetched with, by href. */
     readonly crossOrigin?: (href: string) => string | undefined;
     /**
@@ -241,10 +265,13 @@ export function resolveHead(
      * remove — measured at 23 classes and zero stylesheets on the reference
      * application.
      *
-     * Last of the head's style tags, so a route's own `styles` can still say
-     * something about a rule this sheet defines.
+     * In two halves around {@link atoms}: the rules that are not atoms in
+     * front of the build's compiled atoms, so those beat them, and the atoms
+     * after, so they beat the build's blocks. Both before a route's own
+     * `styles`, so a route can still say something about a rule this sheet
+     * defines.
      */
-    readonly inlineCss?: string;
+    readonly inlineCss?: InlineCss;
   },
 ): ManagedTag[] {
   const nonce = options?.nonce;
@@ -331,15 +358,39 @@ export function resolveHead(
     attrs: { rel: "stylesheet", href, nonce, crossorigin: options?.crossOrigin?.(href) },
     identity: `stylesheet:${href}`,
   }));
+  const blocks = options?.inlineCss?.blocks ?? "";
+  if (blocks !== "") {
+    css.push({
+      tag: "style",
+      attrs: { id: "barq-css", nonce },
+      children: styleText(blocks),
+      identity: "style:barq-css",
+    });
+  }
+  const atoms = options?.atoms;
+  if (atoms !== undefined) {
+    css.push({
+      tag: "link",
+      attrs: {
+        rel: "stylesheet",
+        href: atoms,
+        nonce,
+        crossorigin: options?.crossOrigin?.(atoms),
+        [ATOMS_ATTRIBUTE]: "",
+      },
+      identity: `stylesheet:${atoms}`,
+    });
+  }
+  const inlineAtoms = options?.inlineCss?.atoms ?? "";
   const inline: ManagedTag[] =
-    options?.inlineCss === undefined || options.inlineCss === ""
+    inlineAtoms === ""
       ? []
       : [
           {
             tag: "style",
-            attrs: { id: "barq-css", nonce },
-            children: styleText(options.inlineCss),
-            identity: "style:barq-css",
+            attrs: { id: "barq-css-atoms", nonce },
+            children: styleText(inlineAtoms),
+            identity: "style:barq-css-atoms",
           },
         ];
   return [

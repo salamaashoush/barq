@@ -312,14 +312,14 @@ describe("the sheet > tier order across modules", () => {
     expect(sheet.indexOf(".a-height_b{")).toBeLessThan(sheet.indexOf(".a-height-1x_m{"));
   });
 
-  test("a rule that is not an atom keeps its place among them", () => {
+  test("a rule that is not an atom goes in front of them", () => {
     registerCss(
       "/a/pinned.tsx",
       "@layer barq.pinned{@media print{.a-color-p_1{color:red}}" +
         ".sr-only{position:absolute}.a-color_2{color:blue}}",
     );
     expect(collectCss()).toContain(
-      "@layer barq.pinned{.a-color_2{color:blue}.sr-only{position:absolute}" +
+      "@layer barq.pinned{.sr-only{position:absolute}.a-color_2{color:blue}" +
         "@media print{.a-color-p_1{color:red}}}",
     );
   });
@@ -337,7 +337,9 @@ describe("the sheet > tier order across modules", () => {
         "@media print{.a-color-n_1 svg{color:red}}}",
     );
     const sheet = collectCss();
-    const names = ["d_1 > *", "n_1 svg", "color_1{", "s_1:hover", "a_1{", "e_1::before", "m_1{"];
+    // Within the select tier by the condition's hash, `a` before `s`, whatever
+    // order they arrived in.
+    const names = ["d_1 > *", "n_1 svg", "color_1{", "a_1{", "s_1:hover", "e_1::before", "m_1{"];
     const found = names.map((name) => sheet.indexOf(name));
     expect(found).toEqual(found.toSorted((a, b) => a - b));
     expect(found.every((at) => at >= 0)).toBe(true);

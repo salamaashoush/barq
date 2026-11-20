@@ -66,7 +66,14 @@ import { type Redirect, NotFound, errorFallbackFor, isNotFound, isRedirect } fro
 import { type LocationRewrite, rewriteHref } from "./rewrite.ts";
 import { withRouterOverrides, wrapWith } from "./ssr.ts";
 import { type RenderChannel, createRenderChannel } from "./ssr-server.ts";
-import { type ManagedTag, projectHead, resolveHead, tagKey, tagProps } from "./head.ts";
+import {
+  type InlineCss,
+  type ManagedTag,
+  projectHead,
+  resolveHead,
+  tagKey,
+  tagProps,
+} from "./head.ts";
 import {
   type Reachability,
   describe as describeViolations,
@@ -592,6 +599,8 @@ export interface PageHandlerOptions extends SharedRouterOptions {
   readonly clientAssets?: {
     readonly scripts?: readonly string[];
     readonly css?: readonly string[];
+    /** The build's atoms, linked after every other stylesheet. */
+    readonly atoms?: string;
     /** What the entry imports on its way to hydrating, preloaded beside the route chain. */
     readonly preload?: readonly string[];
   };
@@ -687,7 +696,7 @@ export interface PageHandlerOptions extends SharedRouterOptions {
    * dependency on `@barqjs/css`. A production build leaves it unset and links
    * assets instead.
    */
-  readonly inlineCss?: () => string;
+  readonly inlineCss?: (routes: readonly string[]) => InlineCss;
 
   /**
    * The rules THIS request's render registered, read at `<Scripts />`.
@@ -1194,7 +1203,11 @@ export function createPageHandler(
             "static",
             staticHints(
               [...(options.clientAssets?.scripts ?? []), ...preloads],
-              [...(options.clientAssets?.css ?? []), ...chainFiles(rendered, options.routeCss)],
+              [
+                ...(options.clientAssets?.css ?? []),
+                ...chainFiles(rendered, options.routeCss),
+                ...(options.clientAssets?.atoms === undefined ? [] : [options.clientAssets.atoms]),
+              ],
               crossOrigin,
             ),
           );
@@ -1300,7 +1313,10 @@ export function createPageHandler(
                 ...chainFiles(rendered, options.routeCss),
               ],
             },
-            inlineCss: options.inlineCss?.(),
+            // Given the matched routes, so a dev server can hand back the
+            // rules of the modules this page reaches rather than of every
+            // module any request has reached.
+            inlineCss: options.inlineCss?.(rendered.map((route) => route.id)),
             // This request's own rules, and no other request's. Read at
             // `<Scripts />`, after the body — the only moment it is complete.
             lateCss: () => options.requestCss?.() ?? "",

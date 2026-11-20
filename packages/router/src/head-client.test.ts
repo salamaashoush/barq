@@ -35,7 +35,10 @@ test("is the text the document holds when the head renders, not when the router 
   createRoot((dispose) => {
     const assets = clientHeadAssets(state);
     style.textContent += ".label_b2{color:red}";
-    expect(assets.inlineCss).toBe(".page_a1{display:grid}.label_b2{color:red}");
+    expect(assets.inlineCss).toEqual({
+      blocks: ".page_a1{display:grid}.label_b2{color:red}",
+      atoms: "",
+    });
     dispose();
   });
 });
@@ -46,9 +49,8 @@ test("an explicit sheet still wins over the document's", () => {
   style.textContent = ".page_a1{display:grid}";
   document.head.append(style);
   createRoot((dispose) => {
-    expect(clientHeadAssets(state, { inlineCss: ".given{color:blue}" }).inlineCss).toBe(
-      ".given{color:blue}",
-    );
+    const given = { blocks: ".given{color:blue}", atoms: "" };
+    expect(clientHeadAssets(state, { inlineCss: given }).inlineCss).toBe(given);
     dispose();
   });
 });

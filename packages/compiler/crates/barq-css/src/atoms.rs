@@ -1036,7 +1036,7 @@ mod tests {
     #[test]
     fn every_shorthand_kept_whole_names_what_it_sets() {
         for shorthand in UNEXPANDABLE {
-            let listed = LONGHANDS.iter().any(|(name, _)| name == shorthand);
+            let listed = LONGHANDS.iter().any(|(name, _)| *name == shorthand);
             let sided = sets(shorthand, &format!("{shorthand}-color"));
             assert!(listed || sided, "{shorthand}");
         }
