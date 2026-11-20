@@ -56,7 +56,7 @@ describe("Radio", () => {
 });
 
 describe("Radio, with nothing of its own to say", () => {
-  const radios = (): HTMLInputElement[] => screen.getAllByRole("radio") as HTMLInputElement[];
+  const radios = (): HTMLInputElement[] => screen.getAllByRole<HTMLInputElement>("radio");
 
   test("with label content it is the label, and without any it renders none", () => {
     render(() => (

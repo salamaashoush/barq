@@ -103,10 +103,10 @@ impl<'a> Visit<'a> for LinkVisitor<'_> {
 
 fn literal_of(value: Option<&JSXAttributeValue<'_>>) -> Option<String> {
     match value? {
-        JSXAttributeValue::StringLiteral(string) => Some(string.value.to_string()),
+        JSXAttributeValue::StringLiteral(string) => string.value.as_str().map(str::to_string),
         JSXAttributeValue::ExpressionContainer(container) => {
             match container.expression.as_expression()? {
-                Expression::StringLiteral(string) => Some(string.value.to_string()),
+                Expression::StringLiteral(string) => string.value.as_str().map(str::to_string),
                 _ => None,
             }
         }
@@ -119,7 +119,7 @@ fn imported_links(program: &Program<'_>, router_source: &str) -> Vec<SymbolId> {
     let mut out = Vec::new();
     for statement in &program.body {
         let Statement::ImportDeclaration(declaration) = statement else { continue };
-        if declaration.source.value.as_str() != router_source {
+        if declaration.source.value.as_str() != Some(router_source) {
             continue;
         }
         let Some(specifiers) = declaration.specifiers.as_ref() else { continue };

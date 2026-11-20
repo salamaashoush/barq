@@ -45,7 +45,7 @@ describe("Input, as a native input", () => {
         onPaste={() => seen.push("paste")}
       />
     ));
-    const field = screen.getByLabelText("Code") as HTMLInputElement;
+    const field = screen.getByLabelText<HTMLInputElement>("Code");
     expect(field.getAttribute("enterkeyhint")).toBe("done");
     expect(field.getAttribute("autocapitalize")).toBe("characters");
     expect(field.getAttribute("spellcheck")).toBe("false");

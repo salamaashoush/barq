@@ -814,7 +814,7 @@ describe("Sidebar props that reach the element", () => {
         </Sidebar>
       </SidebarProvider>
     ));
-    const input = screen.getByRole("searchbox", { name: "Search" }) as HTMLInputElement;
+    const input = screen.getByRole<HTMLInputElement>("searchbox", { name: "Search" });
     expect(input.getAttribute("placeholder")).toBe("Search the docs");
     expect(input.getAttribute("type")).toBe("search");
     expect(input.getAttribute("name")).toBe("q");

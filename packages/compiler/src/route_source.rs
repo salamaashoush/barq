@@ -165,7 +165,7 @@ fn declared_id(argument: &Argument, source: &str) -> Option<DeclaredId> {
     // The quote as WRITTEN, not as the AST would re-print it. A rename must not
     // reformat a file that uses single quotes.
     let quote = source[start as usize..].chars().next().unwrap_or('"');
-    Some(DeclaredId { value: literal.value.to_string(), start, end, quote })
+    Some(DeclaredId { value: literal.value.as_str()?.to_string(), start, end, quote })
 }
 
 /// `ssr` and `prerender` out of the options object, and only as literals.
@@ -180,7 +180,10 @@ fn read_config(options: &oxc::ast::ast::ObjectExpression) -> RouteConfig {
         }
         let name = match &property.key {
             PropertyKey::StaticIdentifier(key) => key.name.as_str(),
-            PropertyKey::StringLiteral(key) => key.value.as_str(),
+            PropertyKey::StringLiteral(key) => match key.value.as_str() {
+                Some(name) => name,
+                None => continue,
+            },
             _ => continue,
         };
         match name {
@@ -215,7 +218,7 @@ fn declared_props(options: &oxc::ast::ast::ObjectExpression) -> Vec<String> {
         }
         match &property.key {
             PropertyKey::StaticIdentifier(key) => out.push(key.name.to_string()),
-            PropertyKey::StringLiteral(key) => out.push(key.value.to_string()),
+            PropertyKey::StringLiteral(key) => out.extend(key.value.as_str().map(str::to_string)),
             _ => {}
         }
     }

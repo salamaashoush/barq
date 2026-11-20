@@ -25,7 +25,7 @@ describe("the input examples", () => {
 
   test("the label names the input, and typing reaches its value", async () => {
     render(() => <InputDemo />);
-    const input = screen.getByLabelText("API Key") as HTMLInputElement;
+    const input = screen.getByLabelText<HTMLInputElement>("API Key");
     expect(input.type).toBe("password");
 
     await user.type(input, "sk-123");
@@ -35,7 +35,7 @@ describe("the input examples", () => {
 
   test("a disabled input is disabled and its field says so", () => {
     render(() => <InputDisabled />);
-    const input = screen.getByLabelText("Email") as HTMLInputElement;
+    const input = screen.getByLabelText<HTMLInputElement>("Email");
     expect(input.disabled).toBe(true);
     expect(input.closest('[data-slot="field"]')?.hasAttribute("data-disabled")).toBe(true);
   });
@@ -49,7 +49,7 @@ describe("the input examples", () => {
 
   test("a read-only input keeps its value against typing", async () => {
     render(() => <InputReadOnly />);
-    const input = screen.getByLabelText("Invite link") as HTMLInputElement;
+    const input = screen.getByLabelText<HTMLInputElement>("Invite link");
     expect(input.readOnly).toBe(true);
     expect(input.value).toBe("https://example.com/invite/salama");
   });

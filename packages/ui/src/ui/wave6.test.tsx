@@ -83,7 +83,7 @@ describe("Table", () => {
 describe("Slider", () => {
   test("one value is one range input", () => {
     render(() => <Slider aria-label="Volume" defaultValue={30} />);
-    const inputs = screen.getAllByRole("slider") as HTMLInputElement[];
+    const inputs = screen.getAllByRole<HTMLInputElement>("slider");
     expect(inputs).toHaveLength(1);
     expect(inputs[0]!.value).toBe("30");
   });
@@ -148,7 +148,7 @@ describe("Slider", () => {
 
     // happy-dom does not implement a range input's own arrow-key handling, so
     // the value is set the way the browser would set it.
-    const input = screen.getByRole("slider") as HTMLInputElement;
+    const input = screen.getByRole<HTMLInputElement>("slider");
     input.value = "55";
     input.dispatchEvent(new Event("input", { bubbles: true }));
     flush();

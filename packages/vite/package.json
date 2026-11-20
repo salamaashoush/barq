@@ -58,7 +58,7 @@
   },
   "dependencies": {
     "@barqjs/compiler": "workspace:*",
-    "srvx": "^1.0.5"
+    "srvx": "^1.0.8"
   },
   "devDependencies": {
     "@barqjs/core": "workspace:*",
@@ -67,10 +67,10 @@
     "@barqjs/server": "workspace:*",
     "@barqjs/start": "workspace:*",
     "@barqjs/web": "workspace:*",
-    "@happy-dom/global-registrator": "^21.0.1",
-    "@types/bun": "^1.4.3",
+    "@happy-dom/global-registrator": "^21.0.4",
+    "@types/bun": "^1.4.4",
     "typescript": "^7.0.2",
-    "vite": "^8.3.4"
+    "vite": "^8.3.8"
   },
   "peerDependencies": {
     "@barqjs/router": ">=0.2.0-next.0",

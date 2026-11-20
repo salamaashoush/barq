@@ -10,7 +10,7 @@ afterEach(cleanup);
 
 const slot = (name: string): HTMLElement =>
   document.querySelector(`[data-slot="${name}"]`) as HTMLElement;
-const thumbs = (): HTMLInputElement[] => screen.getAllByRole("slider") as HTMLInputElement[];
+const thumbs = (): HTMLInputElement[] => screen.getAllByRole<HTMLInputElement>("slider");
 const custom = (element: HTMLElement, name: string): string => element.style.getPropertyValue(name);
 
 function Mirrored(props: Incoming<{ children?: Child }>) {
@@ -132,7 +132,7 @@ describe("Slider, named by a label elsewhere", () => {
         <Slider id="volume" defaultValue={[40]} />
       </div>
     ));
-    const thumb = screen.getByRole("slider", { name: "Volume" }) as HTMLInputElement;
+    const thumb = screen.getByRole<HTMLInputElement>("slider", { name: "Volume" });
     expect(thumb.id).toBe("volume");
     expect(container.querySelectorAll("#volume")).toHaveLength(1);
 
@@ -167,7 +167,7 @@ describe("Slider, named by a label elsewhere", () => {
     render(() => (
       <Slider id="year" aria-label="Year" defaultValue={[2000]} min={1990} max={2030} />
     ));
-    const thumb = screen.getByRole("slider", { name: "Year" }) as HTMLInputElement;
+    const thumb = screen.getByRole<HTMLInputElement>("slider", { name: "Year" });
     expect(thumb.id).toBe("year");
   });
 });

@@ -36,7 +36,7 @@ describe("Switch", () => {
     render(() => (
       <Switch aria-label="Wi-Fi" defaultChecked onCheckedChange={(on) => seen.push(on)} />
     ));
-    const control = screen.getByRole("switch") as HTMLInputElement;
+    const control = screen.getByRole<HTMLInputElement>("switch");
     expect(control.checked).toBe(true);
     await user.click(control);
     flush();
@@ -50,7 +50,7 @@ describe("Switch", () => {
     render(() => (
       <Switch aria-label="Wi-Fi" checked={on()} onCheckedChange={(next) => asked.push(next)} />
     ));
-    const control = screen.getByRole("switch") as HTMLInputElement;
+    const control = screen.getByRole<HTMLInputElement>("switch");
     await user.click(control);
     flush();
     expect(asked).toEqual([true]);
@@ -62,7 +62,7 @@ describe("Switch", () => {
 
   test("disabled reaches the input and marks the track and the thumb", () => {
     render(() => <Switch aria-label="Wi-Fi" disabled />);
-    const input = screen.getByRole("switch") as HTMLInputElement;
+    const input = screen.getByRole<HTMLInputElement>("switch");
     expect(input.disabled).toBe(true);
     expect(slot("switch").getAttribute("data-disabled")).toBe("");
     expect(slot("switch-thumb").getAttribute("data-disabled")).toBe("");
@@ -82,7 +82,7 @@ describe("Switch", () => {
 });
 
 describe("Switch, inside a label that is not its own", () => {
-  const control = (): HTMLInputElement => screen.getByRole("switch") as HTMLInputElement;
+  const control = (): HTMLInputElement => screen.getByRole<HTMLInputElement>("switch");
 
   test("it renders no label, so the caller's is the only one", () => {
     render(() => (

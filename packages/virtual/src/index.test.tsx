@@ -33,6 +33,8 @@ const settle = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms));
 const LAYOUT = {
   offsetHeight: (el: HTMLElement) => Number(el.getAttribute("data-height") ?? 0),
   offsetWidth: (el: HTMLElement) => Number(el.getAttribute("data-width") ?? 0),
+  clientHeight: (el: HTMLElement) => Number(el.getAttribute("data-height") ?? 0),
+  clientWidth: (el: HTMLElement) => Number(el.getAttribute("data-width") ?? 0),
   scrollHeight: () => Number.MAX_SAFE_INTEGER,
   scrollWidth: () => Number.MAX_SAFE_INTEGER,
 };
@@ -60,6 +62,8 @@ class FakeResizeObserver {
   }
 
   static resize(target: Element, size: { width: number; height: number }): void {
+    target.setAttribute("data-width", String(size.width));
+    target.setAttribute("data-height", String(size.height));
     for (const observer of FakeResizeObserver.instances) {
       if (!observer.targets.has(target)) continue;
       const entry = {

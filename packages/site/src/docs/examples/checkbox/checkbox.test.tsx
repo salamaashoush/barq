@@ -11,7 +11,7 @@ import CheckboxStates from "./checkbox-states.tsx";
 import CheckboxTable from "./checkbox-table.tsx";
 
 const box = (id: string): HTMLInputElement => document.getElementById(id) as HTMLInputElement;
-const boxes = (): HTMLInputElement[] => screen.getAllByRole("checkbox") as HTMLInputElement[];
+const boxes = (): HTMLInputElement[] => screen.getAllByRole<HTMLInputElement>("checkbox");
 
 describe("the checkbox examples", () => {
   test("every example is claimed from the server's markup", async () => {

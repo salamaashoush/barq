@@ -404,7 +404,7 @@ impl<'a> Binder<'_, 'a> {
     fn imports(&mut self, program: &Program<'a>, runtime: &[&str], server_source: &str) {
         for statement in &program.body {
             let Statement::ImportDeclaration(declaration) = statement else { continue };
-            let source = declaration.source.value.as_str();
+            let Some(source) = declaration.source.value.as_str() else { continue };
             let is_runtime = runtime.contains(&source);
             let is_server = source == server_source;
             let mounts_from_here = is_runtime || is_server || mounts_roots(source);
@@ -736,7 +736,7 @@ impl<'a> Binder<'_, 'a> {
             let key = match &property.key {
                 _ if property.computed => None,
                 PropertyKey::StaticIdentifier(key) => Some(key.name.as_str()),
-                PropertyKey::StringLiteral(key) => Some(key.value.as_str()),
+                PropertyKey::StringLiteral(key) => key.value.as_str(),
                 _ => None,
             };
             let (binding, default) = match &property.value {
@@ -1126,22 +1126,21 @@ impl<'a> Binder<'_, 'a> {
             Expression::TSAsExpression(inner) => self.init_of(&inner.expression),
             Expression::TSNonNullExpression(inner) => self.init_of(&inner.expression),
             Expression::TSSatisfiesExpression(inner) => self.init_of(&inner.expression),
-            // A lone-surrogate literal's `value` is an escaped encoding, not
-            // the string itself (see P2). Reading the binding still tracks
-            // nothing; it simply carries no constant the folder may bake.
-            Expression::StringLiteral(literal) if literal.lone_surrogates => InitOf::Inert,
-            Expression::StringLiteral(literal) => {
-                InitOf::Literal(Const::Str(literal.value.as_str()))
-            }
+            // A lone-surrogate literal has no `&str` (see P2). Reading the
+            // binding still tracks nothing; it simply carries no constant the
+            // folder may bake.
+            Expression::StringLiteral(literal) => literal
+                .value
+                .as_str()
+                .map_or(InitOf::Inert, |text| InitOf::Literal(Const::Str(text))),
             Expression::NumericLiteral(literal) => InitOf::Literal(Const::Num(literal.value)),
             Expression::BooleanLiteral(literal) => InitOf::Literal(Const::Bool(literal.value)),
             Expression::NullLiteral(_) => InitOf::Literal(Const::Null),
             Expression::TemplateLiteral(literal) if literal.expressions.is_empty() => literal
                 .quasis
                 .first()
-                .filter(|quasi| !quasi.lone_surrogates)
-                .and_then(|quasi| quasi.value.cooked.as_ref())
-                .map_or(InitOf::Inert, |cooked| InitOf::Literal(Const::Str(cooked.as_str()))),
+                .and_then(|quasi| quasi.value.cooked.and_then(|cooked| cooked.as_str()))
+                .map_or(InitOf::Inert, |cooked| InitOf::Literal(Const::Str(cooked))),
             Expression::Identifier(_) => {
                 symbol_of(self.scoping, expression).map_or(InitOf::Unknown, InitOf::Alias)
             }

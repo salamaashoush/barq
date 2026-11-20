@@ -62,7 +62,7 @@
     "test": "bun test --timeout 10000 && bun test --timeout 10000 --conditions=development"
   },
   "dependencies": {
-    "isbot": "^5.2.2"
+    "isbot": "^5.2.3"
   },
   "devDependencies": {
     "@barqjs/compiler": "workspace:*",
@@ -71,8 +71,8 @@
     "@barqjs/start": "workspace:*",
     "@barqjs/vite": "workspace:*",
     "@barqjs/web": "workspace:*",
-    "@happy-dom/global-registrator": "^21.0.1",
-    "@types/bun": "^1.4.3",
+    "@happy-dom/global-registrator": "^21.0.4",
+    "@types/bun": "^1.4.4",
     "typescript": "^7.0.2"
   },
   "peerDependencies": {

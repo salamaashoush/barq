@@ -48,10 +48,9 @@ pub fn attribute_expression<'a>(
 ) -> Expression<'a> {
     match value {
         JSXAttributeValue::StringLiteral(literal) => {
-            let raw = literal.value.as_str();
-            if !raw.contains('&') {
+            let Some(raw) = literal.value.as_str().filter(|raw| raw.contains('&')) else {
                 return Expression::StringLiteral(literal);
-            }
+            };
             match entity::decode(raw) {
                 Some(Cow::Borrowed(_)) | None => Expression::StringLiteral(literal),
                 Some(Cow::Owned(decoded)) => Expression::new_string_literal(

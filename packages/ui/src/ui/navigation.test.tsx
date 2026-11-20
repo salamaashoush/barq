@@ -167,7 +167,7 @@ describe("NativeSelect", () => {
         <NativeSelectOption value="apple">Apple</NativeSelectOption>
       </NativeSelect>
     ));
-    const control = screen.getByRole("combobox") as HTMLSelectElement;
+    const control = screen.getByRole<HTMLSelectElement>("combobox");
     expect(control.tagName.toLowerCase()).toBe("select");
     expect(control.name).toBe("fruit");
     expect(rulesFor(control.className)).toContain("appearance: none");

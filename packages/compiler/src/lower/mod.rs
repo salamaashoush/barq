@@ -753,12 +753,13 @@ impl<'a> Lower<'a, '_> {
                 // nothing would, so the reference is resolved here and the
                 // decoded text is what the channel is handed — which is what the
                 // un-compiled path passes.
-                Some(JSXAttributeValue::StringLiteral(literal)) if literal.value.contains('&') => {
+                Some(JSXAttributeValue::StringLiteral(literal))
+                    if literal.value.as_str().is_some_and(|raw| raw.contains('&')) =>
+                {
                     let span = literal.span;
-                    let text = entity::decode(literal.value.as_str())
-                        .map_or(literal.value.as_str(), |decoded| {
-                            self.allocator.alloc_str(&decoded)
-                        });
+                    let raw = literal.value.as_str().unwrap_or_default();
+                    let text = entity::decode(raw)
+                        .map_or(raw, |decoded| self.allocator.alloc_str(&decoded) as &str);
                     let value = Expression::new_string_literal(span, text, None, &self.ast);
                     TmpAttr { key, kind, value: TmpAttrValue::Dynamic(value), span, written }
                 }

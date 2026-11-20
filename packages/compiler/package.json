@@ -52,9 +52,9 @@
     "@barqjs/start": "workspace:*",
     "@barqjs/universal": "workspace:*",
     "@barqjs/web": "workspace:*",
-    "@happy-dom/global-registrator": "^21.0.1",
-    "@napi-rs/cli": "^3.10.8",
-    "@types/bun": "^1.4.3"
+    "@happy-dom/global-registrator": "^21.0.4",
+    "@napi-rs/cli": "^3.10.12",
+    "@types/bun": "^1.4.4"
   },
   "optionalDependencies": {
     "@barqjs/compiler-darwin-arm64": "workspace:*",

@@ -26,7 +26,7 @@ describe("Switch", () => {
   test("toggles on a press of its label", () => {
     const changes: boolean[] = [];
     render(() => <Switch onChange={(on) => changes.push(on)}>Wi-Fi</Switch>);
-    const control = screen.getByRole("switch") as HTMLInputElement;
+    const control = screen.getByRole<HTMLInputElement>("switch");
 
     user.click(control.parentElement as HTMLElement);
     expect(changes).toEqual([true]);
@@ -50,7 +50,7 @@ describe("RadioGroup", () => {
     const group = screen.getByRole("radiogroup");
     expect(accessibleName(group)).toBe("Size");
 
-    const radios = screen.getAllByRole("radio") as HTMLInputElement[];
+    const radios = screen.getAllByRole<HTMLInputElement>("radio");
     expect(radios).toHaveLength(3);
     // One shared `name` is what makes the platform treat them as a group.
     expect(new Set(radios.map((r) => r.name)).size).toBe(1);
@@ -58,7 +58,7 @@ describe("RadioGroup", () => {
 
   test("is one Tab stop", () => {
     render(() => <Sizes />);
-    const radios = screen.getAllByRole("radio") as HTMLInputElement[];
+    const radios = screen.getAllByRole<HTMLInputElement>("radio");
 
     // With nothing selected the platform's own grouping decides, and it stops
     // at the first radio of a `name`; the roving index only has to avoid
@@ -77,7 +77,7 @@ describe("RadioGroup", () => {
         <Radio value="l">Large</Radio>
       </RadioGroup>
     ));
-    const radios = screen.getAllByRole("radio") as HTMLInputElement[];
+    const radios = screen.getAllByRole<HTMLInputElement>("radio");
 
     radios[0]?.focus();
     user.keyDown("ArrowDown");
@@ -100,7 +100,7 @@ describe("RadioGroup", () => {
       </RadioGroup>
     ));
 
-    const radios = screen.getAllByRole("radio") as HTMLInputElement[];
+    const radios = screen.getAllByRole<HTMLInputElement>("radio");
     // Once there is a selection, IT is the stop, so returning to the group
     // lands on what is chosen rather than at the top.
     expect(radios.map((r) => r.getAttribute("tabindex"))).toEqual(["-1", "0"]);
@@ -109,7 +109,7 @@ describe("RadioGroup", () => {
 
   test("clicking a label selects that radio and only that one", () => {
     render(() => <Sizes />);
-    const radios = screen.getAllByRole("radio") as HTMLInputElement[];
+    const radios = screen.getAllByRole<HTMLInputElement>("radio");
 
     user.click(radios[1]?.parentElement as HTMLElement);
 
@@ -280,7 +280,7 @@ describe("TextField", () => {
   test("controlled: the prop owns the value", () => {
     const [value, setValue] = createSignal("start");
     render(() => <TextField label="Name" value={value()} />);
-    const input = screen.getByRole("textbox") as HTMLInputElement;
+    const input = screen.getByRole<HTMLInputElement>("textbox");
 
     expect(input.value).toBe("start");
 
@@ -294,7 +294,7 @@ describe("TextField", () => {
 
   test("read-only keeps the value but refuses edits", () => {
     render(() => <TextField label="Name" defaultValue="fixed" isReadOnly />);
-    const input = screen.getByRole("textbox") as HTMLInputElement;
+    const input = screen.getByRole<HTMLInputElement>("textbox");
 
     expect(input.readOnly).toBe(true);
     expect(input.value).toBe("fixed");
@@ -322,7 +322,7 @@ describe("SearchField", () => {
     render(() => (
       <SearchField label="Search" defaultValue="cat" onSubmit={(q) => submits.push(q)} />
     ));
-    const input = screen.getByRole("searchbox") as HTMLInputElement;
+    const input = screen.getByRole<HTMLInputElement>("searchbox");
     input.focus();
 
     user.keyDown("Enter");
@@ -341,7 +341,7 @@ describe("SearchField", () => {
 
   test("the clear button empties the field", () => {
     render(() => <SearchField label="Search" defaultValue="cat" />);
-    const input = screen.getByRole("searchbox") as HTMLInputElement;
+    const input = screen.getByRole<HTMLInputElement>("searchbox");
 
     user.click(screen.getByText("Clear search"));
 

@@ -94,14 +94,14 @@
     "test": "bun test --timeout 10000 && bun test --timeout 10000 --conditions=development"
   },
   "dependencies": {
-    "csstype": "^3.2.3"
+    "csstype": "^3.2.4"
   },
   "devDependencies": {
     "@barqjs/compiler": "workspace:*",
     "@barqjs/core": "workspace:*",
-    "@happy-dom/global-registrator": "^21.0.1",
-    "@solidjs/signals": "2.0.0-rc.15",
-    "@types/bun": "^1.4.3",
+    "@happy-dom/global-registrator": "^21.0.4",
+    "@solidjs/signals": "2.0.3",
+    "@types/bun": "^1.4.4",
     "typescript": "^7.0.2"
   },
   "peerDependencies": {

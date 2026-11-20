@@ -149,7 +149,7 @@ fn keyframes(source: &str, options: &Options<'_>) -> Result<Compiled, Error> {
         hash::name(options.prefix, options.debug_name, &text::canonical(source, options.holes));
     // Emitted whole rather than walked: a keyframe selector is a percentage, not
     // something a parent class may be crossed into.
-    let body = &wrapped[block.span.start..block.span.end];
+    let body = &wrapped[block.span.start as usize..block.span.end as usize];
     Ok(Compiled { css: format!("@keyframes {name}{}", text::canonical(body, options.holes)), name })
 }
 
@@ -208,7 +208,7 @@ fn unopened_brace(source: &str) -> Option<usize> {
 }
 
 fn from_parser(error: &oxc_css_parser::error::Error, offset: usize, source: &str) -> Error {
-    let start = error.span.start.saturating_sub(offset).min(source.len());
-    let end = error.span.end.saturating_sub(offset).min(source.len());
+    let start = (error.span.start as usize).saturating_sub(offset).min(source.len());
+    let end = (error.span.end as usize).saturating_sub(offset).min(source.len());
     Error { message: format!("The CSS parser reports: {}.", error.kind), start, end }
 }

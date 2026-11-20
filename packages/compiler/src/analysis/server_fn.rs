@@ -115,7 +115,7 @@ pub fn scan(program: &Program<'_>, start_source: &str, client_source: &str) -> S
     let mut scan = Scan::default();
     for statement in &program.body {
         if let Statement::ImportDeclaration(import) = statement {
-            let specifier = import.source.value.as_str();
+            let Some(specifier) = import.source.value.as_str() else { continue };
             // The client subpath as well: the stub already imports `clientRpc`
             // from it, so it is client-safe by definition, and it is where a
             // middleware the package ships for the client half lives.
@@ -273,7 +273,7 @@ fn imported_factory(program: &Program<'_>, start_source: &str) -> Option<Factory
     let mut factory = Factory { named: None, namespace: None };
     for statement in &program.body {
         let Statement::ImportDeclaration(declaration) = statement else { continue };
-        if declaration.source.value.as_str() != start_source {
+        if declaration.source.value.as_str() != Some(start_source) {
             continue;
         }
         let Some(specifiers) = declaration.specifiers.as_ref() else { continue };
@@ -459,7 +459,10 @@ fn declared_method(
                                     return false;
                                 };
                                 !property.computed
-                                    && property.key.static_name().as_deref() == Some("method")
+                                    && property
+                                        .key
+                                        .static_name()
+                                        .is_some_and(|name| name.as_str() == Some("method"))
                                     && matches!(
                                         unwrapped(&property.value),
                                         Expression::StringLiteral(value) if value.value == "POST"

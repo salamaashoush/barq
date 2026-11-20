@@ -131,32 +131,38 @@ pub fn source_type_for(filename: Option<&str>) -> SourceType {
     }
 }
 
-// Measured on this crate's oxc version by bisecting the thread stack a single
-// nesting shape survives, at depth 2000, debug profile. The figure is the sum
-// over every recursive phase, and the staged pipeline runs four of them where
-// an unstaged one runs two — oxc_semantic and the harvest walk are the extra ones:
+// Measured on oxc 0.159 by bisecting the thread stack a single nesting shape
+// survives at depth 2000, debug profile, summed over every recursive phase of
+// the staged pipeline (parse, oxc_semantic, the harvest walk, codegen):
 //
-//   shape                      unstaged   staged debug
-//   (((1)))  /  z(((...)))     2833 B     2816 B    <- worst, and always bracketed
-//   `${ `${ 1 }` }`            2637 B     2620 B
-//   [[[1]]]                    2506 B     2489 B
-//   <b><b>x</b></b>            1129 B     1080 B
-//   !!!z  /  z=z=1  /  z?1:0    933 B     1179 B    <- no bracket, >=1 byte/level
+//   shape                   per level   source bytes per level
+//   f(()=>f(()=>…))          11138 B    6    <- worst bracketed
+//   z(z(…))                   6943 B    2    <- worst per byte, 3472 B
+//   new z(new z(…))           6175 B    6
+//   <b>{<b>{x}</b>}</b>       5839 B    9
+//   {a:{a:…}}                 4782 B    4
+//   [[[1]]]                   4290 B    2
+//   ()=>()=>1                 4209 B    4    <- brackets close at once
+//   z[z[…]]                   4111 B    3
+//   `${ `${ 1 }` }`           3807 B    5
+//   (((1)))                   3504 B    2
+//   z=z=1                     2816 B    2    <- worst bracket-free, 1408 B per byte
+//   z?1:0                     2399 B    4
+//   <b><b>x</b></b>           2227 B    7
+//   !!!z                      1195 B    1
 //
-// Every shape that costs more than ~1 KiB per level opens a bracket, so a byte
-// scan for bracket depth bounds it. The bracket-free shapes are cheap and spend
-// at least one source byte per level, so source length bounds those instead.
-//
-// The bracketed budget is unchanged. The per-source-byte budget was 1024, which
-// only ever cleared the old 933 by 10%; the two extra walks pushed that shape to
-// 1179 and `!`×120 000 aborted. 2048 restores a real margin, and the guard
-// ceiling moves with it so a 1 MiB source can still be granted the full budget.
-const STACK_BYTES_PER_LEVEL: usize = 4096;
+// A bracketed shape is bounded by the scan's bracket depth, at a budget per
+// level 47% over the worst. A shape whose brackets close at once, or that has
+// none, spends source bytes per level, and source length bounds it at a budget
+// per byte 45% over the worst; the ceiling lets a 1 MiB source have all of it.
+// The inline limits keep a compile on the caller's stack only where the same
+// table puts its worst case near 1.5 MiB bracketed and 6 MiB bracket-free.
+const STACK_BYTES_PER_LEVEL: usize = 16 * 1024;
 const STACK_BYTES_PER_SOURCE_BYTE: usize = 2048;
 /// Skips the scan entirely: at the worst measured cost this cannot exceed 1.5 MiB.
-const SCAN_FREE_LIMIT: usize = 512;
-const INLINE_DEPTH_LIMIT: usize = 512;
-const INLINE_SOURCE_LIMIT: usize = 8 * 1024;
+const SCAN_FREE_LIMIT: usize = 384;
+const INLINE_DEPTH_LIMIT: usize = 128;
+const INLINE_SOURCE_LIMIT: usize = 4 * 1024;
 const MIN_GUARD_STACK: usize = 32 * 1024 * 1024;
 const MAX_GUARD_STACK: usize = 2 * 1024 * 1024 * 1024;
 const MAX_NESTING_DEPTH: usize = MAX_GUARD_STACK / STACK_BYTES_PER_LEVEL;
@@ -1984,6 +1990,8 @@ mod tests {
             format!("const a = {}0;\n", "z?1:".repeat(120_000)),
             format!("const a = {}z;\n", "!".repeat(120_000)),
             format!("const a = {}x{};\n", "<b>".repeat(60_000), "</b>".repeat(60_000)),
+            format!("const a = {}1{};\n", "z(".repeat(60_000), ")".repeat(60_000)),
+            format!("const a = {}1{};\n", "f(()=>".repeat(30_000), ")".repeat(30_000)),
         ];
         for source in cases {
             let output = compile_ok(&source, "deep.tsx");
@@ -3694,7 +3702,7 @@ export const Route = createFileRoute("/x")({ component: Page });
                     }
                     let named = match &property.key {
                         PropertyKey::StaticIdentifier(key) => key.name.as_str() == "children",
-                        PropertyKey::StringLiteral(key) => key.value.as_str() == "children",
+                        PropertyKey::StringLiteral(key) => key.value.as_str() == Some("children"),
                         _ => false,
                     };
                     // C6. A Block, a Cell, or a name that carries one. A call, a
@@ -3714,7 +3722,7 @@ export const Route = createFileRoute("/x")({ component: Page });
                     if !named && builds_dom_eagerly(&property.value) {
                         let key = match &property.key {
                             PropertyKey::StaticIdentifier(key) => key.name.to_string(),
-                            PropertyKey::StringLiteral(key) => key.value.to_string(),
+                            PropertyKey::StringLiteral(key) => key.value.display().to_string(),
                             _ => "<computed>".to_string(),
                         };
                         self.eager_slots.push(key);

@@ -660,7 +660,7 @@ describe("Questionnaire state", () => {
       );
     }
     render(() => <Defaults />);
-    const seats = screen.getByLabelText("Seats") as HTMLInputElement;
+    const seats = screen.getByLabelText<HTMLInputElement>("Seats");
     expect(choice("plus").checked).toBe(true);
     expect(active().getAttribute("data-status")).toBe("answered");
     expect(seats.value).toBe("5");
@@ -853,7 +853,7 @@ describe("Questionnaire state", () => {
       );
     }
     render(() => <Email />);
-    const email = screen.getByLabelText("Email") as HTMLInputElement;
+    const email = screen.getByLabelText<HTMLInputElement>("Email");
     user.type(email, "salama");
     user.click(button("Next"));
     expect(activeTitle()).toBe("Where do we write?");
@@ -1015,7 +1015,7 @@ describe("Questionnaire render", () => {
 
     const plus = choice("plus");
     const plusState = screen.getByTestId("plus-state");
-    const typed = screen.getByLabelText("Another plan") as HTMLInputElement;
+    const typed = screen.getByLabelText<HTMLInputElement>("Another plan");
     expect(plusState.textContent).toBe("false false false A radio");
     expect(plus.getAttribute("data-seen")).toBe("false");
     expect(screen.getByText("key A").tagName).toBe("KBD");

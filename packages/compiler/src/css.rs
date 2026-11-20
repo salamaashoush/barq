@@ -15,8 +15,8 @@
 use oxc::allocator::{Allocator, Vec as ArenaVec};
 use oxc::ast::ast::{
     Expression, ImportDeclarationSpecifier, LogicalOperator, ModuleExportName, ObjectProperty,
-    ObjectPropertyKind, Program, PropertyKey, PropertyKind, Statement, TemplateLiteral,
-    UnaryOperator,
+    ObjectPropertyKind, Program, PropertyKey, PropertyKind, Statement, TemplateElement,
+    TemplateLiteral, UnaryOperator,
 };
 use oxc::ast::builder::AstBuilder;
 use oxc::ast_visit::VisitMut;
@@ -319,19 +319,16 @@ impl<'a> VisitMut<'a> for Css<'a, '_> {
         };
         match declarator.init.as_ref() {
             Some(Expression::StringLiteral(literal)) => {
-                self.folded.insert(symbol, literal.value.to_string());
+                if let Some(text) = literal.value.as_str() {
+                    self.folded.insert(symbol, text.to_string());
+                }
             }
             // `` const W = `2px` ``. `text_of` already reads such a template
             // where it stands, and a `const` holding one is the same value by
             // another spelling — a formatter is what turns one into the other.
             Some(Expression::TemplateLiteral(template)) if template.expressions.is_empty() => {
-                if let Some(quasi) = template.quasis.first() {
-                    let text = quasi
-                        .value
-                        .cooked
-                        .as_ref()
-                        .map_or_else(|| quasi.value.raw.to_string(), |cooked| cooked.to_string());
-                    self.folded.insert(symbol, text);
+                if let Some(text) = template.quasis.first().and_then(quasi_text) {
+                    self.folded.insert(symbol, text.to_string());
                 }
             }
             Some(Expression::ObjectExpression(object)) => {
@@ -343,7 +340,9 @@ impl<'a> VisitMut<'a> for Css<'a, '_> {
                     else {
                         continue;
                     };
-                    group.insert(name.name.to_string(), value.value.to_string());
+                    if let Some(value) = value.value.as_str() {
+                        group.insert(name.name.to_string(), value.to_string());
+                    }
                 }
                 // Added to what the seed read rather than put in its place: a
                 // `defineConditions` call is this object by the time the walk
@@ -904,7 +903,10 @@ impl<'a> Css<'a, '_> {
                         };
                         let name = match &specifier.exported {
                             ModuleExportName::IdentifierName(name) => name.name.to_string(),
-                            ModuleExportName::StringLiteral(literal) => literal.value.to_string(),
+                            ModuleExportName::StringLiteral(literal) => {
+                                let Some(name) = literal.value.as_str() else { continue };
+                                name.to_string()
+                            }
                             ModuleExportName::IdentifierReference(reference) => {
                                 reference.name.to_string()
                             }
@@ -1865,7 +1867,7 @@ impl<'a> Css<'a, '_> {
     /// in the name, which is the whole reason the key lives there.
     fn known(&self, expression: &Expression<'_>) -> Option<Vec<barq_css::atoms::Atom>> {
         let classes = match crate::analysis::without_type_wrappers(expression) {
-            Expression::StringLiteral(literal) => literal.value.to_string(),
+            Expression::StringLiteral(literal) => literal.value.as_str()?.to_string(),
             Expression::StaticMemberExpression(member) => {
                 let symbol = crate::analysis::symbol_of(self.scoping, &member.object)?;
                 match self.groups.get(&symbol) {
@@ -2166,11 +2168,16 @@ impl<'a> Css<'a, '_> {
     fn interpolate(&mut self, quasi: &TemplateLiteral<'_>, span: Span) -> Option<String> {
         let mut source = String::new();
         for (index, element) in quasi.quasis.iter().enumerate() {
-            let text = element
-                .value
-                .cooked
-                .as_ref()
-                .map_or_else(|| element.value.raw.as_str(), |cooked| cooked.as_str());
+            let Some(text) = quasi_text(element) else {
+                self.reports.push(Report {
+                    code: Code::Barq014,
+                    message: "This CSS could not be compiled. It holds an unpaired UTF-16 \
+                              surrogate, which CSS text cannot carry."
+                        .to_string(),
+                    span,
+                });
+                return None;
+            };
             source.push_str(text);
             let Some(expression) = quasi.expressions.get(index) else { continue };
             match self.text_of(expression) {
@@ -2357,18 +2364,12 @@ impl<'a> Css<'a, '_> {
 
     fn text_of(&self, expression: &Expression<'_>) -> Option<String> {
         match without_type_wrappers(expression) {
-            Expression::StringLiteral(literal) => Some(literal.value.to_string()),
+            Expression::StringLiteral(literal) => literal.value.as_str().map(str::to_string),
             other if number_of(other).is_some() => {
                 number_of(other).map(barq_css::atoms::number_text)
             }
             Expression::TemplateLiteral(template) if template.expressions.is_empty() => {
-                template.quasis.first().map(|quasi| {
-                    quasi
-                        .value
-                        .cooked
-                        .as_ref()
-                        .map_or_else(|| quasi.value.raw.to_string(), |cooked| cooked.to_string())
-                })
+                template.quasis.first().and_then(quasi_text).map(str::to_string)
             }
             Expression::Identifier(identifier) => {
                 let symbol =
@@ -2429,7 +2430,7 @@ fn import_merge_styles<'a>(allocator: &'a Allocator, program: &mut Program<'a>, 
     let ast = AstBuilder::new(allocator);
     for statement in program.body.iter_mut() {
         let Statement::ImportDeclaration(declaration) = statement else { continue };
-        if declaration.source.value.as_str() != css_source
+        if declaration.source.value.as_str() != Some(css_source)
             || declaration.import_kind != oxc::ast::ast::ImportOrExportKind::Value
         {
             continue;
@@ -2526,21 +2527,12 @@ fn array_of<'a, 'b>(
 /// it is being built.
 fn literal_text(expression: &Expression<'_>) -> Option<(String, bool)> {
     match without_type_wrappers(expression) {
-        Expression::StringLiteral(literal) => Some((literal.value.to_string(), false)),
+        Expression::StringLiteral(literal) => Some((literal.value.as_str()?.to_string(), false)),
         other if number_of(other).is_some() => {
             number_of(other).map(|value| (barq_css::atoms::number_text(value), true))
         }
         Expression::TemplateLiteral(template) if template.expressions.is_empty() => {
-            template.quasis.first().map(|quasi| {
-                (
-                    quasi
-                        .value
-                        .cooked
-                        .as_ref()
-                        .map_or_else(|| quasi.value.raw.to_string(), |cooked| cooked.to_string()),
-                    false,
-                )
-            })
+            template.quasis.first().and_then(quasi_text).map(|text| (text.to_string(), false))
         }
         _ => None,
     }
@@ -2552,6 +2544,16 @@ fn literal_text(expression: &Expression<'_>) -> Option<(String, bool)> {
 /// and prints it: `1.50` and `0x10` are `1.5` and `16` there. `-4` is a unary
 /// expression over a literal rather than a literal, and it is the commonest
 /// number a margin takes.
+/// A template element's text: the cooked value, or the raw text where an
+/// escape left nothing to cook. `None` for an unpaired surrogate, which a Rust
+/// `str` cannot hold.
+fn quasi_text<'a>(quasi: &TemplateElement<'a>) -> Option<&'a str> {
+    match quasi.value.cooked {
+        Some(cooked) => cooked.as_str(),
+        None => Some(quasi.value.raw.as_str()),
+    }
+}
+
 fn number_of(expression: &Expression<'_>) -> Option<f64> {
     match without_type_wrappers(expression) {
         Expression::NumericLiteral(literal) => Some(literal.value),
@@ -2567,7 +2569,7 @@ fn number_of(expression: &Expression<'_>) -> Option<f64> {
 fn key_name(key: &PropertyKey<'_>) -> Option<String> {
     match key {
         PropertyKey::StaticIdentifier(identifier) => Some(identifier.name.to_string()),
-        PropertyKey::StringLiteral(literal) => Some(literal.value.to_string()),
+        PropertyKey::StringLiteral(literal) => literal.value.as_str().map(str::to_string),
         // `{ 50: "#f8fafc" }`, which is how a colour scale is written. The key
         // is the number's text, as `String(50)` is.
         PropertyKey::NumericLiteral(literal) => Some(barq_css::atoms::number_text(literal.value)),
@@ -2578,7 +2580,7 @@ fn key_name(key: &PropertyKey<'_>) -> Option<String> {
 /// The name a computed member reads: `scale["2xl"]` or `scale[50]`.
 fn member_name(expression: &Expression<'_>) -> Option<String> {
     match without_type_wrappers(expression) {
-        Expression::StringLiteral(name) => Some(name.value.to_string()),
+        Expression::StringLiteral(name) => name.value.as_str().map(str::to_string),
         Expression::NumericLiteral(number) => Some(barq_css::atoms::number_text(number.value)),
         _ => None,
     }
@@ -2750,7 +2752,7 @@ fn imported_bindings(
     let mut out = FxHashMap::default();
     for statement in &program.body {
         let Statement::ImportDeclaration(declaration) = statement else { continue };
-        let specifier = declaration.source.value.as_str();
+        let Some(specifier) = declaration.source.value.as_str() else { continue };
         if specifier == css_source {
             continue;
         }
@@ -2760,7 +2762,10 @@ fn imported_bindings(
                 ImportDeclarationSpecifier::ImportSpecifier(imported) => {
                     let name = match &imported.imported {
                         ModuleExportName::IdentifierName(name) => name.name.to_string(),
-                        ModuleExportName::StringLiteral(literal) => literal.value.to_string(),
+                        ModuleExportName::StringLiteral(literal) => {
+                            let Some(name) = literal.value.as_str() else { continue };
+                            name.to_string()
+                        }
                         ModuleExportName::IdentifierReference(reference) => {
                             reference.name.to_string()
                         }
@@ -2787,7 +2792,7 @@ fn imported_tags(program: &Program<'_>, css_source: &str) -> FxHashMap<SymbolId,
     let mut out = FxHashMap::default();
     for statement in &program.body {
         let Statement::ImportDeclaration(declaration) = statement else { continue };
-        if declaration.source.value.as_str() != css_source {
+        if declaration.source.value.as_str() != Some(css_source) {
             continue;
         }
         let Some(specifiers) = declaration.specifiers.as_ref() else { continue };

@@ -77,7 +77,7 @@ describe("the button group examples", () => {
 
   test("an input in a group takes what is typed", async () => {
     render(() => <ButtonGroupInput />);
-    const input = screen.getByRole("textbox", { name: "Search query" }) as HTMLInputElement;
+    const input = screen.getByRole<HTMLInputElement>("textbox", { name: "Search query" });
     await user.type(input, "barq");
     expect(input.value).toBe("barq");
     expect(input.parentElement?.getAttribute("data-slot")).toBe("button-group");
@@ -102,7 +102,7 @@ describe("the button group examples", () => {
   test("voice mode is a pressed button that disables the message", async () => {
     render(() => <ButtonGroupInputGroup />);
     const voice = screen.getByRole("button", { name: "Voice Mode" });
-    const message = screen.getByRole("textbox", { name: "Message" }) as HTMLInputElement;
+    const message = screen.getByRole<HTMLInputElement>("textbox", { name: "Message" });
     expect(voice.getAttribute("aria-pressed")).toBe("false");
     expect(message.placeholder).toBe("Send a message...");
 

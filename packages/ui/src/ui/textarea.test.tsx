@@ -26,7 +26,7 @@ describe("Textarea", () => {
         aria-invalid="true"
       />
     ));
-    const field = screen.getByLabelText("Notes") as HTMLTextAreaElement;
+    const field = screen.getByLabelText<HTMLTextAreaElement>("Notes");
     expect(field.name).toBe("notes");
     expect(field.placeholder).toBe("Anything else?");
     expect(field.getAttribute("rows")).toBe("4");
@@ -50,7 +50,7 @@ describe("Textarea", () => {
   test("disabled is the element's own state, not a look", async () => {
     const seen: string[] = [];
     render(() => <Textarea aria-label="Notes" disabled onInput={() => seen.push("input")} />);
-    const field = screen.getByLabelText("Notes") as HTMLTextAreaElement;
+    const field = screen.getByLabelText<HTMLTextAreaElement>("Notes");
     expect(field.disabled).toBe(true);
     await user.type(field, "x");
     expect(seen).toEqual([]);

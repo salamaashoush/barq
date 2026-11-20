@@ -122,7 +122,7 @@ mod tests {
         let Some(Expression::StringLiteral(stored)) = table.entry(id).src.expression() else {
             panic!("the node changed shape on the way in")
         };
-        assert_eq!(stored.value.as_str(), "lg");
+        assert_eq!(stored.value.as_str(), Some("lg"));
         assert_eq!(stored.span, Span::new(0, 3));
         assert_eq!(table.rx(id).react, React::Opaque);
 

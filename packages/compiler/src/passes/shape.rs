@@ -1653,7 +1653,7 @@ fn identity_matters(value: &Expression<'_>) -> bool {
 fn literal_key(value: &Expression<'_>) -> Option<String> {
     match value {
         Expression::ParenthesizedExpression(inner) => literal_key(&inner.expression),
-        Expression::StringLiteral(it) => Some(format!("s{}", it.value)),
+        Expression::StringLiteral(it) => it.value.as_str().map(|text| format!("s{text}")),
         Expression::NumericLiteral(it) => Some(format!("n{}", it.value)),
         Expression::BooleanLiteral(it) => Some(format!("b{}", it.value)),
         Expression::NullLiteral(_) => Some("null".to_string()),

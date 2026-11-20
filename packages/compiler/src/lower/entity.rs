@@ -230,7 +230,7 @@ mod tests {
         let Some(JSXAttributeValue::StringLiteral(literal)) = &attribute.value else {
             panic!("expected a string literal")
         };
-        assert_eq!(literal.value.as_str(), "a &amp; b");
+        assert_eq!(literal.value.as_str(), Some("a &amp; b"));
 
         let JSXChild::Text(text) = &element.children[0] else { panic!("expected text") };
         assert_eq!(text.value.as_str(), "x &lt; y &copy;");

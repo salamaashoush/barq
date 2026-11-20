@@ -21,7 +21,7 @@ const slots = (name: string): HTMLElement[] => [
     `label[data-slot="${name}"], span[data-slot="${name}"]`,
   ),
 ];
-const radios = (): HTMLInputElement[] => screen.getAllByRole("radio") as HTMLInputElement[];
+const radios = (): HTMLInputElement[] => screen.getAllByRole<HTMLInputElement>("radio");
 
 function Sizes(props: {
   onValueChange?: (value: string) => void;

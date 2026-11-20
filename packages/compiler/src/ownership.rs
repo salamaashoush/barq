@@ -833,7 +833,8 @@ fn slot_frame(def: Def<'_, '_>) -> SlotFrame {
         }
         Some(BindingPattern::ObjectPattern(object)) => {
             for property in &object.properties {
-                if property.key.static_name().as_deref() != Some("children") {
+                if !property.key.static_name().is_some_and(|name| name.as_str() == Some("children"))
+                {
                     continue;
                 }
                 if let BindingPattern::BindingIdentifier(identifier) = &property.value {

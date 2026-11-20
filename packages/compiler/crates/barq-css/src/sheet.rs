@@ -2,7 +2,7 @@ use oxc_css_parser::ast::{
     AtRule, ComplexSelector, ComplexSelectorChild, CompoundSelector, PseudoClassSelectorArgKind,
     PseudoElementSelectorArgKind, SelectorList, SimpleSelector, Statement,
 };
-use oxc_css_parser::pos::Span;
+use oxc_css_parser::pos::Span as ParserSpan;
 
 use crate::text::{canonical, canonical_into};
 use crate::{Error, Kind};
@@ -22,6 +22,24 @@ fn is_conditional_group(name: &str) -> bool {
 /// and cannot be emitted where they were written.
 fn is_prologue(name: &str) -> bool {
     ["import", "charset", "namespace"].iter().any(|rule| name.eq_ignore_ascii_case(rule))
+}
+
+#[derive(Clone, Copy)]
+struct Span {
+    start: usize,
+    end: usize,
+}
+
+impl Span {
+    fn between(start: u32, end: u32) -> Self {
+        Span { start: start as usize, end: end as usize }
+    }
+}
+
+impl From<ParserSpan> for Span {
+    fn from(span: ParserSpan) -> Self {
+        Span::between(span.start, span.end)
+    }
 }
 
 pub(crate) struct Sheet<'a> {
@@ -58,11 +76,13 @@ impl<'a> Sheet<'a> {
         self.head
     }
 
-    fn error(&self, message: impl Into<String>, span: Span) -> Error {
+    fn error(&self, message: impl Into<String>, span: impl Into<Span>) -> Error {
+        let span = span.into();
         Error { message: message.into(), start: span.start, end: span.end }
     }
 
-    fn slice(&self, span: Span) -> &'a str {
+    fn slice(&self, span: impl Into<Span>) -> &'a str {
+        let span = span.into();
         &self.source[span.start.min(self.source.len())..span.end.min(self.source.len())]
     }
 
@@ -134,7 +154,7 @@ impl<'a> Sheet<'a> {
             return Ok(());
         }
 
-        let prelude = Span { start: at_rule.span.start, end: block.span.start };
+        let prelude = Span::between(at_rule.span.start, block.span.start);
         self.conditions.push(canonical(self.slice(prelude), self.holes));
         let result = self.statements(&block.statements, scope);
         self.conditions.pop();
@@ -145,7 +165,7 @@ impl<'a> Sheet<'a> {
     /// keyframe block — reaches the output as written, still inside whatever
     /// conditions enclose it, because `@media (print) { @page { … } }` means
     /// something and `@media (print) { .b1 { @page { … } } }` does not.
-    fn emit_verbatim(&mut self, span: Span) {
+    fn emit_verbatim(&mut self, span: impl Into<Span>) {
         self.open_conditions();
         canonical_into(self.slice(span), self.holes, &mut self.out);
         self.close_conditions();
@@ -214,8 +234,9 @@ impl<'a> Sheet<'a> {
                     ));
                     continue;
                 }
-                let mut spliced = String::with_capacity(selector.span.end - selector.span.start);
-                let mut cursor = selector.span.start;
+                let selector_span = Span::from(selector.span);
+                let mut spliced = String::with_capacity(selector_span.end - selector_span.start);
+                let mut cursor = selector_span.start;
                 for &at in &ampersands {
                     spliced.push_str(self.slice(Span { start: cursor, end: at }));
                     spliced.push_str(parent);
@@ -223,7 +244,7 @@ impl<'a> Sheet<'a> {
                     // glued suffix too — `&__label` has to keep its `__label`.
                     cursor = at + 1;
                 }
-                spliced.push_str(self.slice(Span { start: cursor, end: selector.span.end }));
+                spliced.push_str(self.slice(Span { start: cursor, end: selector_span.end }));
                 out.push(canonical(&spliced, self.holes));
             }
         }
@@ -242,7 +263,7 @@ fn collect_nesting(selector: &ComplexSelector<'_>, out: &mut Vec<usize>) {
 fn collect_compound(compound: &CompoundSelector<'_>, out: &mut Vec<usize>) {
     for simple in &compound.children {
         match simple {
-            SimpleSelector::Nesting(nesting) => out.push(nesting.span.start),
+            SimpleSelector::Nesting(nesting) => out.push(nesting.span.start as usize),
             // `:is(&, .a)`, `:not(&)`, `:has(& > .b)` — a nesting selector is
             // legal inside a functional pseudo-class and has to be substituted
             // there too.
@@ -311,8 +332,7 @@ pub(crate) fn vet(
     for statement in statements {
         match statement {
             Statement::Declaration(declaration) => {
-                let name =
-                    Span { start: declaration.span.start, end: declaration.colon_span.start };
+                let name = Span::between(declaration.span.start, declaration.colon_span.start);
                 if let Some(at) = placeholders(source, name).next() {
                     return Err(refuse(
                         "This interpolation is part of a property name. It becomes `var(--…)`, \
@@ -323,7 +343,7 @@ pub(crate) fn vet(
                         at,
                     ));
                 }
-                let value = Span { start: declaration.colon_span.end, end: declaration.span.end };
+                let value = Span::between(declaration.colon_span.end, declaration.span.end);
                 if let Some(at) = placeholders(source, value).find(|at| glued(source, at.start)) {
                     return Err(refuse(
                         "This interpolation is joined to the text before it, so it is part of \
@@ -337,7 +357,7 @@ pub(crate) fn vet(
                 }
             }
             Statement::QualifiedRule(rule) => {
-                let prelude = Span { start: rule.span.start, end: rule.block.span.start };
+                let prelude = Span::between(rule.span.start, rule.block.span.start);
                 if let Some(at) = placeholders(source, prelude).next() {
                     let message = if steps {
                         step
@@ -352,7 +372,7 @@ pub(crate) fn vet(
                 vet(source, &rule.block.statements, offset, false)?;
             }
             Statement::KeyframeBlock(keyframe) => {
-                let prelude = Span { start: keyframe.span.start, end: keyframe.block.span.start };
+                let prelude = Span::between(keyframe.span.start, keyframe.block.span.start);
                 if let Some(at) = placeholders(source, prelude).next() {
                     return Err(refuse(step.to_string(), at));
                 }
@@ -361,7 +381,7 @@ pub(crate) fn vet(
             Statement::AtRule(at_rule) => {
                 let name = at_rule.name.name;
                 let end = at_rule.block.as_ref().map_or(at_rule.span.end, |block| block.span.start);
-                let prelude = Span { start: at_rule.span.start, end };
+                let prelude = Span::between(at_rule.span.start, end);
                 if let Some(at) = placeholders(source, prelude).next() {
                     return Err(refuse(
                         format!(
@@ -379,7 +399,7 @@ pub(crate) fn vet(
                 }
             }
             Statement::Placeholder(placeholder) => {
-                return Err(refuse(not_css(statement), placeholder.span));
+                return Err(refuse(not_css(statement), placeholder.span.into()));
             }
             _ => {}
         }
@@ -467,7 +487,7 @@ fn not_css(statement: &Statement<'_>) -> String {
     )
 }
 
-fn statement_span(statement: &Statement<'_>) -> Span {
+fn statement_span(statement: &Statement<'_>) -> ParserSpan {
     match statement {
         Statement::AtRule(rule) => rule.span,
         Statement::Declaration(declaration) => declaration.span,

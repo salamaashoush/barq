@@ -16,7 +16,7 @@ describe("the textarea examples", () => {
 
   test("the label names the textarea, and typing reaches its value", async () => {
     render(() => <TextareaField />);
-    const textarea = screen.getByLabelText("Message") as HTMLTextAreaElement;
+    const textarea = screen.getByLabelText<HTMLTextAreaElement>("Message");
     expect(textarea.tagName).toBe("TEXTAREA");
 
     await user.type(textarea, "Hello there");
@@ -26,7 +26,7 @@ describe("the textarea examples", () => {
 
   test("a disabled textarea is disabled and its field says so", () => {
     render(() => <TextareaDisabled />);
-    const textarea = screen.getByLabelText("Message") as HTMLTextAreaElement;
+    const textarea = screen.getByLabelText<HTMLTextAreaElement>("Message");
     expect(textarea.disabled).toBe(true);
     expect(textarea.closest('[data-slot="field"]')?.hasAttribute("data-disabled")).toBe(true);
   });
@@ -47,7 +47,7 @@ describe("the textarea examples", () => {
 
   test("the right-to-left example names its direction on an element", () => {
     render(() => <TextareaRtl />);
-    const textarea = screen.getByLabelText("التعليقات") as HTMLTextAreaElement;
+    const textarea = screen.getByLabelText<HTMLTextAreaElement>("التعليقات");
     expect(textarea.closest('[dir="rtl"]')).not.toBeNull();
     expect(textarea.getAttribute("rows")).toBe("4");
   });

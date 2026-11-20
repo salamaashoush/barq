@@ -29,7 +29,7 @@ function Quantity(
 }
 
 function field(): HTMLInputElement {
-  return screen.getByRole("textbox") as HTMLInputElement;
+  return screen.getByRole<HTMLInputElement>("textbox");
 }
 
 /** Type into the field the way a browser does: focus it, then the value. */

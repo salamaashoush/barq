@@ -515,7 +515,10 @@ fn find_route(program: &Program<'_>) -> Option<RouteDeclaration> {
                 // them too (`transform.ts:324`).
                 let key = match &property.key {
                     PropertyKey::StaticIdentifier(id) => id.name.to_string(),
-                    PropertyKey::StringLiteral(literal) => literal.value.to_string(),
+                    PropertyKey::StringLiteral(literal) => match literal.value.as_str() {
+                        Some(name) => name.to_string(),
+                        None => continue,
+                    },
                     _ => continue,
                 };
                 properties.push(Property {

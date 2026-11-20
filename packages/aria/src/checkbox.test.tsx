@@ -7,7 +7,7 @@ import { getInteractionModality, isFocusVisible } from "./interactions/modality.
 describe("Checkbox", () => {
   test("is a real checkbox with a name from its label", () => {
     render(() => <Checkbox>I agree</Checkbox>);
-    const box = screen.getByRole("checkbox") as HTMLInputElement;
+    const box = screen.getByRole<HTMLInputElement>("checkbox");
 
     expect(box.tagName).toBe("INPUT");
     expect(box.type).toBe("checkbox");
@@ -32,7 +32,7 @@ describe("Checkbox", () => {
         <Checkbox id="terms" />
       </>
     ));
-    const box = screen.getByRole("checkbox") as HTMLInputElement;
+    const box = screen.getByRole<HTMLInputElement>("checkbox");
     expect(box.id).toBe("terms");
     expect(document.querySelectorAll("#terms")).toHaveLength(1);
     expect((document.querySelector("label[for=terms]") as HTMLLabelElement).control).toBe(box);
@@ -53,7 +53,7 @@ describe("Checkbox", () => {
   test("a click on the label toggles it", () => {
     const changes: boolean[] = [];
     render(() => <Checkbox onChange={(on) => changes.push(on)}>I agree</Checkbox>);
-    const box = screen.getByRole("checkbox") as HTMLInputElement;
+    const box = screen.getByRole<HTMLInputElement>("checkbox");
 
     user.click(box.parentElement as HTMLElement);
 
@@ -63,7 +63,7 @@ describe("Checkbox", () => {
 
   test("Space toggles it from the keyboard", () => {
     render(() => <Checkbox>I agree</Checkbox>);
-    const box = screen.getByRole("checkbox") as HTMLInputElement;
+    const box = screen.getByRole<HTMLInputElement>("checkbox");
 
     box.focus();
     // The platform's own activation fires `change`, which is what a real
@@ -76,7 +76,7 @@ describe("Checkbox", () => {
 
   test("indeterminate is a property and announces as mixed", () => {
     render(() => <Checkbox isIndeterminate>Some</Checkbox>);
-    const box = screen.getByRole("checkbox") as HTMLInputElement;
+    const box = screen.getByRole<HTMLInputElement>("checkbox");
 
     expect(box.indeterminate).toBe(true);
     expect(box.getAttribute("aria-checked")).toBe("mixed");
@@ -90,7 +90,7 @@ describe("Checkbox", () => {
         I agree
       </Checkbox>
     ));
-    const box = screen.getByRole("checkbox") as HTMLInputElement;
+    const box = screen.getByRole<HTMLInputElement>("checkbox");
 
     expect(box.disabled).toBe(true);
     user.click(box.parentElement as HTMLElement);
@@ -103,7 +103,7 @@ describe("Checkbox", () => {
         I agree
       </Checkbox>
     ));
-    const box = screen.getByRole("checkbox") as HTMLInputElement;
+    const box = screen.getByRole<HTMLInputElement>("checkbox");
 
     expect(box.getAttribute("aria-readonly")).toBe("true");
     user.click(box.parentElement as HTMLElement);
@@ -113,7 +113,7 @@ describe("Checkbox", () => {
   test("controlled: the prop owns the value", () => {
     const [selected, setSelected] = createSignal(false);
     render(() => <Checkbox isSelected={selected()}>I agree</Checkbox>);
-    const box = screen.getByRole("checkbox") as HTMLInputElement;
+    const box = screen.getByRole<HTMLInputElement>("checkbox");
 
     user.click(box.parentElement as HTMLElement);
     expect(box.checked).toBe(false);
@@ -132,7 +132,7 @@ describe("Checkbox", () => {
       </form>
     ));
 
-    const form = screen.getByTestId("form") as HTMLFormElement;
+    const form = screen.getByTestId<HTMLFormElement>("form");
     expect(new FormData(form).get("agree")).toBe("yes");
   });
 
@@ -145,7 +145,7 @@ describe("Checkbox", () => {
       </form>
     ));
 
-    const box = screen.getByRole("checkbox") as HTMLInputElement;
+    const box = screen.getByRole<HTMLInputElement>("checkbox");
     user.click(box.parentElement as HTMLElement);
     expect(box.checked).toBe(false);
 
@@ -183,7 +183,7 @@ describe("CheckboxGroup", () => {
       </CheckboxGroup>
     ));
 
-    const [cheese, olives] = screen.getAllByRole("checkbox") as HTMLInputElement[];
+    const [cheese, olives] = screen.getAllByRole<HTMLInputElement>("checkbox");
 
     user.click((cheese as HTMLInputElement).parentElement as HTMLElement);
     user.click((olives as HTMLInputElement).parentElement as HTMLElement);
@@ -268,7 +268,7 @@ describe("Checkbox, as an attribute a stylesheet reads", () => {
 });
 
 describe("Checkbox, with nothing of its own to say", () => {
-  const box = (): HTMLInputElement => screen.getByRole("checkbox") as HTMLInputElement;
+  const box = (): HTMLInputElement => screen.getByRole<HTMLInputElement>("checkbox");
 
   test("with label content it is the label", () => {
     render(() => <Checkbox>I agree</Checkbox>);
@@ -378,7 +378,7 @@ describe("Checkbox, with nothing of its own to say", () => {
         <GroupCheckbox value="capers" aria-label="Capers" />
       </CheckboxGroup>
     ));
-    const [olives, capers] = screen.getAllByRole("checkbox") as HTMLInputElement[];
+    const [olives, capers] = screen.getAllByRole<HTMLInputElement>("checkbox");
     expect(olives?.parentElement?.tagName).toBe("LABEL");
     expect(capers?.parentElement?.tagName).toBe("SPAN");
 

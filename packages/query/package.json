@@ -69,7 +69,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@tanstack/query-core": "^5.104.3"
+    "@tanstack/query-core": "^5.108.1"
   },
   "devDependencies": {
     "@barqjs/compiler": "workspace:*",
@@ -78,10 +78,10 @@
     "@barqjs/server": "workspace:*",
     "@barqjs/vite": "workspace:*",
     "@barqjs/web": "workspace:*",
-    "@happy-dom/global-registrator": "^21.0.1",
-    "@tanstack/query-devtools": "5.104.3",
-    "@tanstack/query-persist-client-core": "5.104.3",
-    "@types/bun": "^1.4.3",
+    "@happy-dom/global-registrator": "^21.0.4",
+    "@tanstack/query-devtools": "5.108.1",
+    "@tanstack/query-persist-client-core": "5.108.1",
+    "@types/bun": "^1.4.4",
     "typescript": "^7.0.2"
   },
   "peerDependencies": {

@@ -94,7 +94,7 @@ describe("the field examples", () => {
     expect(screen.getAllByRole("checkbox")).toHaveLength(5);
     expect(checkbox("field-checkbox-sync-folders").checked).toBe(true);
 
-    const disks = screen.getByLabelText("Hard disks") as HTMLInputElement;
+    const disks = screen.getByLabelText<HTMLInputElement>("Hard disks");
     expect(disks.checked).toBe(false);
     await user.click(disks);
     flush();
@@ -103,7 +103,7 @@ describe("the field examples", () => {
 
   test("choosing a plan takes the choice off the one before", async () => {
     render(() => <FieldRadio />);
-    const radios = screen.getAllByRole("radio") as HTMLInputElement[];
+    const radios = screen.getAllByRole<HTMLInputElement>("radio");
     expect(radios.map((radio) => radio.checked)).toEqual([true, false, false]);
 
     await user.click(radios[1] as HTMLElement);
@@ -113,9 +113,9 @@ describe("the field examples", () => {
 
   test("the switch is named by its label and turns on", async () => {
     render(() => <FieldSwitch />);
-    const control = screen.getByRole("switch", {
+    const control = screen.getByRole<HTMLInputElement>("switch", {
       name: "Multi-factor authentication",
-    }) as HTMLInputElement;
+    });
     expect(control.checked).toBe(false);
     await user.click(control);
     flush();
@@ -124,7 +124,7 @@ describe("the field examples", () => {
 
   test("a choice card is a label around its field, and choosing the radio inside selects it", async () => {
     render(() => <FieldChoiceCard />);
-    const radios = screen.getAllByRole("radio") as HTMLInputElement[];
+    const radios = screen.getAllByRole<HTMLInputElement>("radio");
     expect(radios.map((radio) => radio.checked)).toEqual([true, false]);
     for (const radio of radios) {
       expect(radio.closest('[data-slot="field-label"]')?.tagName.toLowerCase()).toBe("label");

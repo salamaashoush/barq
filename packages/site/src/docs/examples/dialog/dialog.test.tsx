@@ -52,7 +52,7 @@ describe("the dialog examples", () => {
   test("a DialogClose of your own closes the dialog beside the corner one", async () => {
     render(() => <DialogCloseButton />);
     await press("Share");
-    const link = screen.getByLabelText("Link") as HTMLInputElement;
+    const link = screen.getByLabelText<HTMLInputElement>("Link");
     expect(link.value).toBe("https://example.com/docs/installation");
     expect(link.readOnly).toBe(true);
 

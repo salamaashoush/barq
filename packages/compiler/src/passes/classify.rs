@@ -237,17 +237,12 @@ impl<'a> Lift<'a, '_> {
             Expression::TSTypeAssertion(inner) => self.rx(&inner.expression),
             Expression::TSInstantiationExpression(inner) => self.rx(&inner.expression),
 
-            // `lone_surrogates` means `value` is not the string the program
-            // holds but an escaped ENCODING of it (`\u{FFFD}XXXX` per code
-            // unit), because a Rust `str` cannot carry an unpaired surrogate.
-            // Folding it would bake five characters where the runtime writes
-            // one, so the literal stays Static and un-folded.
-            Expression::StringLiteral(literal) if !literal.lone_surrogates => {
-                konst(Const::Str(literal.value.as_str()), Shape::Str)
-            }
-            Expression::StringLiteral(_) => {
-                Rx { react: React::Static, shape: Shape::Str, ..Rx::OPAQUE }
-            }
+            // A Rust `str` cannot carry an unpaired surrogate, so a literal
+            // holding one has no `as_str()` and stays Static and un-folded.
+            Expression::StringLiteral(literal) => match literal.value.as_str() {
+                Some(text) => konst(Const::Str(text), Shape::Str),
+                None => Rx { react: React::Static, shape: Shape::Str, ..Rx::OPAQUE },
+            },
             Expression::NumericLiteral(literal) => konst(Const::Num(literal.value), Shape::Num),
             Expression::BooleanLiteral(literal) => konst(Const::Bool(literal.value), Shape::Bool),
             Expression::NullLiteral(_) => konst(Const::Null, Shape::Nullish),
@@ -261,9 +256,9 @@ impl<'a> Lift<'a, '_> {
                 let mut text = String::new();
                 let mut foldable = literal.quasis.len() == literal.expressions.len() + 1;
                 for (index, quasi) in literal.quasis.iter().enumerate() {
-                    match quasi.value.cooked.as_ref() {
-                        Some(cooked) if !quasi.lone_surrogates => text.push_str(cooked.as_str()),
-                        _ => foldable = false,
+                    match quasi.value.cooked.and_then(|cooked| cooked.as_str()) {
+                        Some(cooked) => text.push_str(cooked),
+                        None => foldable = false,
                     }
                     let Some(expression) = literal.expressions.get(index) else { continue };
                     let part = self.rx(expression);

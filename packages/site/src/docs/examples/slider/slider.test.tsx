@@ -11,7 +11,7 @@ import SliderRange from "./slider-range.tsx";
 import SliderRtl from "./slider-rtl.tsx";
 import SliderVertical from "./slider-vertical.tsx";
 
-const thumbs = (): HTMLInputElement[] => screen.getAllByRole("slider") as HTMLInputElement[];
+const thumbs = (): HTMLInputElement[] => screen.getAllByRole<HTMLInputElement>("slider");
 const values = (): string[] => thumbs().map((thumb) => thumb.value);
 const track = (): HTMLElement =>
   document.querySelector('[data-slot="slider-track"]') as HTMLElement;

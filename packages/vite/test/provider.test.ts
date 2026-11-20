@@ -57,9 +57,9 @@ function stubHost(answered: string[]): Plugin {
         server.middlewares.use((req, res, next) => {
           void (async () => {
             try {
-              const service = (await runner.import(input.index)) as {
+              const service = await runner.import<{
                 default: { fetch(request: Request): Promise<Response> };
-              };
+              }>(input.index);
               answered.push(req.url ?? "");
               await sendNodeResponse(
                 res,

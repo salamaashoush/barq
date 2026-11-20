@@ -36,7 +36,7 @@ impl<'o> Resolver<'o> {
             if declaration.import_kind.is_type() {
                 continue;
             }
-            let source = declaration.source.value.as_str();
+            let Some(source) = declaration.source.value.as_str() else { continue };
             let Some(from) = boundaries.iter().find(|it| it.source == source) else { continue };
             for specifier in declaration.specifiers.iter().flatten() {
                 match specifier {

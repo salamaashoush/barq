@@ -62,7 +62,7 @@ describe("the toggle examples", () => {
 
   test("a disabled toggle does not turn on", async () => {
     render(() => <ToggleDisabled />);
-    const toggle = screen.getByRole("button", { name: "Toggle disabled" }) as HTMLButtonElement;
+    const toggle = screen.getByRole<HTMLButtonElement>("button", { name: "Toggle disabled" });
     expect(toggle.disabled).toBe(true);
     await user.click(toggle);
     flush();

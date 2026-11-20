@@ -923,7 +923,7 @@ fn fold_style(value: &Expression<'_>) -> Option<String> {
         }
         let prop = match &property.key {
             PropertyKey::StaticIdentifier(name) => name.name.as_str(),
-            PropertyKey::StringLiteral(literal) => literal.value.as_str(),
+            PropertyKey::StringLiteral(literal) => literal.value.as_str()?,
             _ => return None,
         };
         kebab.clear();
@@ -947,7 +947,7 @@ fn fold_style(value: &Expression<'_>) -> Option<String> {
         // `false`, `null` and `undefined` are skipped by `styleToString`; a `0`
         // never takes a unit however the table classes it.
         let rendered = match &property.value {
-            Expression::StringLiteral(literal) => literal.value.to_string(),
+            Expression::StringLiteral(literal) => literal.value.as_str()?.to_string(),
             Expression::NumericLiteral(literal) => {
                 let raw = literal.raw_str();
                 if literal.value == 0.0 || custom || crate::tables::css_number_prop(&kebab) {

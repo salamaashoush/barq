@@ -25,7 +25,7 @@ describe("ColorSlider", () => {
   test("is a range input named for its channel", () => {
     render(() => <Hue />);
 
-    const input = screen.getByRole("slider") as HTMLInputElement;
+    const input = screen.getByRole<HTMLInputElement>("slider");
     expect(input.type).toBe("range");
     expect(accessibleName(input)).toBe("Hue");
   });
@@ -33,7 +33,7 @@ describe("ColorSlider", () => {
   test("the channel's own range is what it moves in", () => {
     render(() => <Hue />);
 
-    const input = screen.getByRole("slider") as HTMLInputElement;
+    const input = screen.getByRole<HTMLInputElement>("slider");
     expect(input.min).toBe("0");
     expect(input.max).toBe("360");
     expect(input.value).toBe("180");
@@ -49,7 +49,7 @@ describe("ColorSlider", () => {
     const changes: Color[] = [];
     render(() => <Hue onChange={(value) => changes.push(value)} />);
 
-    const input = screen.getByRole("slider") as HTMLInputElement;
+    const input = screen.getByRole<HTMLInputElement>("slider");
     input.value = "240";
     input.dispatchEvent(new Event("input", { bubbles: true }));
     flush();
@@ -72,7 +72,7 @@ describe("ColorSlider", () => {
   test("an alpha slider counts in percent", () => {
     render(() => <ColorSlider channel="alpha" defaultValue="rgba(255, 0, 0, 0.5)" />);
 
-    const input = screen.getByRole("slider") as HTMLInputElement;
+    const input = screen.getByRole<HTMLInputElement>("slider");
     expect(input.max).toBe("1");
     expect(input.getAttribute("aria-valuetext")).toBe("Alpha 50%");
   });
@@ -88,7 +88,7 @@ describe("ColorSlider", () => {
       />
     ));
 
-    const input = screen.getByRole("slider") as HTMLInputElement;
+    const input = screen.getByRole<HTMLInputElement>("slider");
     expect(input.disabled).toBe(true);
 
     input.value = "240";
@@ -134,7 +134,7 @@ describe("ColorArea", () => {
       <ColorArea defaultValue="hsb(180, 50%, 60%)" onChange={(value) => changes.push(value)} />
     ));
 
-    const [x, y] = screen.getAllByRole("slider") as HTMLInputElement[];
+    const [x, y] = screen.getAllByRole<HTMLInputElement>("slider");
     (x as HTMLInputElement).value = "80";
     (x as HTMLInputElement).dispatchEvent(new Event("input", { bubbles: true }));
     flush();
@@ -165,7 +165,7 @@ describe("ColorField", () => {
       <ColorField label="Hex" defaultValue="#7f00ff" onChange={(value) => changes.push(value)} />
     ));
 
-    const input = screen.getByRole("textbox") as HTMLInputElement;
+    const input = screen.getByRole<HTMLInputElement>("textbox");
     user.focus(input);
     input.value = "#00ff00";
     input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -185,7 +185,7 @@ describe("ColorField", () => {
       <ColorField label="Hex" defaultValue="#7f00ff" onChange={(value) => changes.push(value)} />
     ));
 
-    const input = screen.getByRole("textbox") as HTMLInputElement;
+    const input = screen.getByRole<HTMLInputElement>("textbox");
     user.focus(input);
     input.value = "#0000ff";
     input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -201,7 +201,7 @@ describe("ColorField", () => {
       <ColorField label="Hex" defaultValue="#7f00ff" onChange={(value) => changes.push(value)} />
     ));
 
-    const input = screen.getByRole("textbox") as HTMLInputElement;
+    const input = screen.getByRole<HTMLInputElement>("textbox");
     user.focus(input);
     input.value = "not a colour";
     input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -239,7 +239,7 @@ describe("ColorPicker", () => {
       </ColorPicker>
     ));
 
-    const hue = screen.getByRole("slider", { name: "Hue" }) as HTMLInputElement;
+    const hue = screen.getByRole<HTMLInputElement>("slider", { name: "Hue" });
     expect(hue.value).toBe("180");
 
     hue.value = "300";
@@ -248,7 +248,7 @@ describe("ColorPicker", () => {
 
     expect(changes.at(-1)?.getChannelValue("hue")).toBe(300);
     // The area followed: it is the same colour.
-    const area = screen.getByRole("slider", { name: "Saturation" }) as HTMLInputElement;
+    const area = screen.getByRole<HTMLInputElement>("slider", { name: "Saturation" });
     expect(area.value).toBe("50");
   });
 
@@ -267,7 +267,7 @@ describe("ColorPicker", () => {
 
 describe("ColorWheel", () => {
   function wheel(): HTMLInputElement {
-    return screen.getByRole("slider") as HTMLInputElement;
+    return screen.getByRole<HTMLInputElement>("slider");
   }
 
   test("is a hue slider, named and spoken as one", () => {

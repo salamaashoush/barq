@@ -61,7 +61,7 @@ describe("Button", () => {
         Save
       </Button>
     ));
-    const button = screen.getByRole("button") as HTMLButtonElement;
+    const button = screen.getByRole<HTMLButtonElement>("button");
     expect(button.disabled).toBe(true);
     await user.click(button);
     expect(presses).toEqual([]);
@@ -116,7 +116,7 @@ describe("Button, as upstream writes it", () => {
         Save
       </Button>
     ));
-    const button = screen.getByRole("button") as HTMLButtonElement;
+    const button = screen.getByRole<HTMLButtonElement>("button");
     expect(button.disabled).toBe(true);
     expect(button.hasAttribute("data-disabled")).toBe(true);
     await user.click(button);
@@ -137,7 +137,7 @@ describe("Button, as upstream writes it", () => {
         Pricing
       </Button>
     ));
-    const link = screen.getByRole("link", { name: "Pricing" }) as HTMLAnchorElement;
+    const link = screen.getByRole<HTMLAnchorElement>("link", { name: "Pricing" });
     expect(link.tagName).toBe("A");
     expect(link.getAttribute("href")).toBe("https://example.com/pricing");
     expect(link.getAttribute("target")).toBe("_blank");

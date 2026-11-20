@@ -257,7 +257,7 @@ fn imports(body: &[Statement<'_>], source: &str) -> bool {
     body.iter().any(|statement| {
         matches!(statement, Statement::ImportDeclaration(declaration)
             if declaration.import_kind == ImportOrExportKind::Value
-                && declaration.source.value.as_str() == source)
+                && declaration.source.value.as_str() == Some(source))
     })
 }
 
@@ -268,7 +268,7 @@ fn calls_a_component<'a>(emit: &Emit<'a, '_>, body: &[Statement<'a>]) -> bool {
         if declaration.import_kind != ImportOrExportKind::Value {
             continue;
         }
-        let source = declaration.source.value.as_str();
+        let Some(source) = declaration.source.value.as_str() else { continue };
         if source != emit.core_source {
             continue;
         }
@@ -346,7 +346,7 @@ fn attach<'a>(
 ) -> bool {
     for statement in body.iter_mut() {
         let Statement::ImportDeclaration(declaration) = statement else { continue };
-        if declaration.source.value.as_str() != source
+        if declaration.source.value.as_str() != Some(source)
             || declaration.import_kind != ImportOrExportKind::Value
         {
             continue;

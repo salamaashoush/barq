@@ -36,7 +36,7 @@ describe("the empty examples", () => {
 
   test("the search inside the empty state takes what is typed", async () => {
     render(() => <EmptyInputGroup />);
-    const input = screen.getByRole("textbox", { name: "Search pages" }) as HTMLInputElement;
+    const input = screen.getByRole<HTMLInputElement>("textbox", { name: "Search pages" });
     await user.type(input, "pricing");
     expect(input.value).toBe("pricing");
     expect(input.closest('[data-slot="empty-content"]')).not.toBeNull();

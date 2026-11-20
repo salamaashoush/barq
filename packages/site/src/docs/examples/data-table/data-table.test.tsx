@@ -58,8 +58,8 @@ describe("the data table examples", () => {
 
   test("the demo pages forward and back", async () => {
     render(() => <DataTableDemo />);
-    const previous = screen.getByRole("button", { name: "Previous" }) as HTMLButtonElement;
-    const next = screen.getByRole("button", { name: "Next" }) as HTMLButtonElement;
+    const previous = screen.getByRole<HTMLButtonElement>("button", { name: "Previous" });
+    const next = screen.getByRole<HTMLButtonElement>("button", { name: "Next" });
     expect(previous.disabled).toBe(true);
 
     await user.click(next);

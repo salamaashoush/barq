@@ -361,7 +361,7 @@ async function opened(): Promise<void> {
 }
 
 function field(): HTMLInputElement {
-  return screen.getByRole("combobox") as HTMLInputElement;
+  return screen.getByRole<HTMLInputElement>("combobox");
 }
 
 interface PartsProps {

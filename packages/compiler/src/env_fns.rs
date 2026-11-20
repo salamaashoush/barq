@@ -200,7 +200,7 @@ fn drop_unused(
         if !named.is_empty() {
             clauses.push(format!("{{ {} }}", named.join(", ")));
         }
-        format!("import {} from {:?};", clauses.join(", "), import.source.value.as_str())
+        format!("import {} from {:?};", clauses.join(", "), import.source.value.as_str()?)
     };
     Some(Edit { keeps: None, span: import.span, text })
 }
@@ -218,7 +218,7 @@ fn imported_names(program: &Program<'_>, start_source: &str, _scoping: &Scoping)
     let mut out = Imported::default();
     for statement in &program.body {
         let Statement::ImportDeclaration(import) = statement else { continue };
-        let specifier = import.source.value.as_str();
+        let Some(specifier) = import.source.value.as_str() else { continue };
         // The package, or the subpath the client build rewrites imports to.
         if specifier != start_source && specifier != format!("{start_source}/env") {
             continue;

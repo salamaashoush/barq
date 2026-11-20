@@ -34,7 +34,7 @@ describe("Checkbox", () => {
     render(() => (
       <Checkbox aria-label="Accept" defaultChecked onCheckedChange={(on) => seen.push(on)} />
     ));
-    const box = screen.getByRole("checkbox") as HTMLInputElement;
+    const box = screen.getByRole<HTMLInputElement>("checkbox");
     expect(box.checked).toBe(true);
     await user.click(box);
     flush();
@@ -47,7 +47,7 @@ describe("Checkbox", () => {
     render(() => (
       <Checkbox aria-label="All" checked={value()} onCheckedChange={(next) => asked.push(next)} />
     ));
-    const box = screen.getByRole("checkbox") as HTMLInputElement;
+    const box = screen.getByRole<HTMLInputElement>("checkbox");
     expect(slot("checkbox").getAttribute("data-state")).toBe("indeterminate");
     expect(slot("checkbox-indicator").getAttribute("data-state")).toBe("indeterminate");
     expect(box.indeterminate).toBe(true);
@@ -67,7 +67,7 @@ describe("Checkbox", () => {
 
   test("disabled reaches the input and marks the box and its indicator", () => {
     render(() => <Checkbox aria-label="Accept" disabled />);
-    const box = screen.getByRole("checkbox") as HTMLInputElement;
+    const box = screen.getByRole<HTMLInputElement>("checkbox");
     expect(box.disabled).toBe(true);
     expect(slot("checkbox").getAttribute("data-disabled")).toBe("");
     expect(slot("checkbox-indicator").getAttribute("data-disabled")).toBe("");
@@ -75,13 +75,13 @@ describe("Checkbox", () => {
 
   test("required reaches the input", () => {
     render(() => <Checkbox aria-label="Terms" required />);
-    const box = screen.getByRole("checkbox") as HTMLInputElement;
+    const box = screen.getByRole<HTMLInputElement>("checkbox");
     expect(box.required).toBe(true);
   });
 });
 
 describe("Checkbox, as the bare control upstream renders", () => {
-  const box = (): HTMLInputElement => screen.getByRole("checkbox") as HTMLInputElement;
+  const box = (): HTMLInputElement => screen.getByRole<HTMLInputElement>("checkbox");
 
   test("it renders no label of its own", () => {
     render(() => <Checkbox aria-label="Accept" />);

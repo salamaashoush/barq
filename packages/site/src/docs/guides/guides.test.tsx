@@ -137,8 +137,8 @@ describe("the live examples", () => {
 
   test("the bug report shows its errors when submitted empty, and its values when it is fine", async () => {
     render(() => <BugReport />);
-    const title = screen.getByLabelText("Bug Title") as HTMLInputElement;
-    const description = screen.getByLabelText("Description") as HTMLTextAreaElement;
+    const title = screen.getByLabelText<HTMLInputElement>("Bug Title");
+    const description = screen.getByLabelText<HTMLTextAreaElement>("Description");
     const sent = document.querySelector('[data-slot="submitted"]') as HTMLElement;
 
     await user.click(screen.getByRole("button", { name: "Submit" }));

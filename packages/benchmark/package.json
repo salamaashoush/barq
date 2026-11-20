@@ -25,10 +25,10 @@
     "bench:three": "bun run src/three/run.ts"
   },
   "dependencies": {
-    "solid-js": "^1.9.17"
+    "solid-js": "^1.9.20"
   },
   "devDependencies": {
-    "@babel/core": "^8.0.7",
+    "@babel/core": "^8.1.2",
     "@barqjs/compiler": "workspace:*",
     "@barqjs/core": "workspace:*",
     "@barqjs/server": "workspace:*",
@@ -36,17 +36,17 @@
     "@barqjs/three": "workspace:*",
     "@barqjs/universal": "workspace:*",
     "@barqjs/web": "workspace:*",
-    "@happy-dom/global-registrator": "^21.0.1",
+    "@happy-dom/global-registrator": "^21.0.4",
     "@react-three/fiber": "9.8.2",
-    "@solidjs/signals": "2.0.0-rc.15",
+    "@solidjs/signals": "2.0.3",
     "@types/babel__core": "^7.20.5",
-    "@types/bun": "^1.4.3",
+    "@types/bun": "^1.4.4",
     "@types/react": "^19",
-    "@types/three": "^0.186.0",
-    "babel-preset-solid": "^1.9.16",
+    "@types/three": "^0.187.0",
+    "babel-preset-solid": "^1.9.19",
     "react": "19.3.1",
     "react-dom": "19.3.1",
-    "three": "^0.186.1",
+    "three": "^0.187.0",
     "typescript": "^7.0.2"
   }
 }

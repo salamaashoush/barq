@@ -75,9 +75,8 @@ export type WireProblem<Value, Path extends string = "the value", Left extends n
               ? Value extends Promise<infer Settled>
                 ? WireProblem<Settled, Path, Depth[Left]>
                 : Value extends ReadonlyMap<infer Key, infer Item>
-                  ?
-                      | WireProblem<Key, `${Path}'s keys`, Depth[Left]>
-                      | WireProblem<Item, `${Path}'s values`, Depth[Left]>
+                  ? | WireProblem<Key, `${Path}'s keys`, Depth[Left]>
+                    | WireProblem<Item, `${Path}'s values`, Depth[Left]>
                   : Value extends ReadonlySet<infer Item>
                     ? WireProblem<Item, `${Path}'s members`, Depth[Left]>
                     : Value extends readonly unknown[]

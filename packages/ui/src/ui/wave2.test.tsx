@@ -34,7 +34,7 @@ describe("Label and Input", () => {
         <Input id="email" type="email" placeholder="you@example.com" />
       </>
     ));
-    const field = screen.getByRole("textbox", { name: "Email" }) as HTMLInputElement;
+    const field = screen.getByRole<HTMLInputElement>("textbox", { name: "Email" });
     expect(field.type).toBe("email");
     expect(field.placeholder).toBe("you@example.com");
     expect(field.getAttribute("data-slot")).toBe("input");
@@ -67,7 +67,7 @@ describe("Checkbox", () => {
   test("is a real checkbox, and the box is its label", async () => {
     const changes: boolean[] = [];
     render(() => <Checkbox aria-label="Accept" onChange={(on) => changes.push(on)} />);
-    const box = screen.getByRole("checkbox") as HTMLInputElement;
+    const box = screen.getByRole<HTMLInputElement>("checkbox");
     expect(box.type).toBe("checkbox");
     await user.click(box);
     expect(changes).toEqual([true]);
@@ -126,7 +126,7 @@ describe("RadioGroup", () => {
         <RadioGroupItem value="m" aria-label="Medium" />
       </RadioGroup>
     ));
-    const [small, medium] = screen.getAllByRole("radio") as HTMLInputElement[];
+    const [small, medium] = screen.getAllByRole<HTMLInputElement>("radio");
     await user.click(medium!);
     expect(picked).toEqual(["m"]);
     expect(small!.checked).toBe(false);

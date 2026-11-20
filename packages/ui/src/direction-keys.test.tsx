@@ -135,7 +135,7 @@ describe("right to left, the left arrow is the next item", () => {
         <Slider aria-label="Volume" defaultValue={[50]} />
       </Rtl>
     ));
-    const thumb = screen.getByRole("slider", { name: "Volume" }) as HTMLInputElement;
+    const thumb = screen.getByRole<HTMLInputElement>("slider", { name: "Volume" });
     await user.tab();
     expect(document.activeElement).toBe(thumb);
     await user.keyboard("{ArrowLeft}");

@@ -18,12 +18,12 @@
     "@barqjs/server": "workspace:*",
     "@barqjs/start": "workspace:*",
     "@barqjs/web": "workspace:*",
-    "@tanstack/query-core": "^5.104.3"
+    "@tanstack/query-core": "^5.108.1"
   },
   "devDependencies": {
     "@barqjs/vite": "workspace:*",
-    "@types/bun": "^1.4.3",
+    "@types/bun": "^1.4.4",
     "typescript": "^7.0.2",
-    "vite": "^8.3.4"
+    "vite": "^8.3.8"
   }
 }

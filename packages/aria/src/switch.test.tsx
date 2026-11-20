@@ -56,7 +56,7 @@ describe("Switch", () => {
 });
 
 describe("Switch, with nothing of its own to say", () => {
-  const control = (): HTMLInputElement => screen.getByRole("switch") as HTMLInputElement;
+  const control = (): HTMLInputElement => screen.getByRole<HTMLInputElement>("switch");
 
   test("with label content it is the label", () => {
     render(() => <Switch>Wi-Fi</Switch>);

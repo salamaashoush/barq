@@ -219,7 +219,8 @@ fn import_edit(
     // useSession } from "@barqjs/start"` loses `useSession` here, and what is
     // left must not keep reaching the index — that is where `node:async_hooks`
     // is, and the whole strip would have been for nothing.
-    let specifier = if import.source.value.as_str() == start_source
+    let source = import.source.value.as_str()?;
+    let specifier = if source == start_source
         // A TYPE is erased and cannot pull anything into the bundle, so it does
         // not decide where the runtime import points.
         && kept.iter().filter(|(_, is_type)| !is_type).all(|(name, _)| {
@@ -227,7 +228,7 @@ fn import_edit(
         }) {
         format!("{start_source}/middleware")
     } else {
-        import.source.value.to_string()
+        source.to_string()
     };
     let names = kept.iter().map(|(text, _)| text.as_str()).collect::<Vec<_>>().join(", ");
     Some((import.span, Some(format!("import {{ {names} }} from {specifier:?};"))))
@@ -240,7 +241,7 @@ fn imported_factory(program: &Program<'_>, start_source: &str) -> Option<SymbolI
     use oxc::ast::ast::ImportDeclarationSpecifier;
     for statement in &program.body {
         let Statement::ImportDeclaration(import) = statement else { continue };
-        if import.source.value.as_str() != start_source {
+        if import.source.value.as_str() != Some(start_source) {
             continue;
         }
         for specifier in import.specifiers.iter().flatten() {

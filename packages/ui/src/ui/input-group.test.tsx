@@ -78,7 +78,7 @@ describe("InputGroup", () => {
         />
       </InputGroup>
     ));
-    const control = screen.getByRole("textbox", { name: "Handle" }) as HTMLInputElement;
+    const control = screen.getByRole<HTMLInputElement>("textbox", { name: "Handle" });
     expect(control.placeholder).toBe("you");
     await user.type(control, "ab");
     expect(typed.at(-1)).toBe("ab");

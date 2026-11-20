@@ -70,7 +70,7 @@ function Picker(
 }
 
 function input(): HTMLInputElement {
-  return screen.getByRole("combobox") as HTMLInputElement;
+  return screen.getByRole<HTMLInputElement>("combobox");
 }
 
 /** Type into the field the way a browser does: the value first, then the event. */
@@ -335,7 +335,7 @@ function frame(): Promise<void> {
 }
 
 function field(): HTMLInputElement {
-  return screen.getByRole("combobox") as HTMLInputElement;
+  return screen.getByRole<HTMLInputElement>("combobox");
 }
 
 function optionTexts(): (string | null)[] {

@@ -801,6 +801,7 @@ describe("prefetching", () => {
         queryKey: ["prefetched-pages"],
         queryFn: async ({ pageParam }) => `page-${pageParam}`,
         initialPageParam: 0,
+        getNextPageParam: () => undefined,
         gcTime: 60_000,
       }));
       return <p>route</p>;

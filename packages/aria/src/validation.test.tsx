@@ -25,7 +25,7 @@ import { TextField } from "./textfield.tsx";
 import type { ValidationErrors } from "./validation.ts";
 
 function field(): HTMLInputElement {
-  return screen.getByRole("textbox") as HTMLInputElement;
+  return screen.getByRole<HTMLInputElement>("textbox");
 }
 
 function type(text: string): void {
@@ -151,7 +151,7 @@ describe("native validation", () => {
 
     // What a submit does first: the browser checks every control, and each
     // invalid one gets an `invalid` event, which is what commits the message.
-    const form = screen.getByRole("form", { name: "Account" }) as HTMLFormElement;
+    const form = screen.getByRole<HTMLFormElement>("form", { name: "Account" });
     form.checkValidity();
     flush();
 
@@ -276,7 +276,7 @@ describe("Form", () => {
       </Form>
     ));
 
-    const form = screen.getByRole("form", { name: "Account" }) as HTMLFormElement;
+    const form = screen.getByRole<HTMLFormElement>("form", { name: "Account" });
     const event = new Event("submit", { bubbles: true, cancelable: true });
     form.dispatchEvent(event);
     flush();
@@ -314,7 +314,7 @@ describe("Form", () => {
       </Form>
     ));
 
-    const form = screen.getByRole("form", { name: "Account" }) as HTMLFormElement;
+    const form = screen.getByRole<HTMLFormElement>("form", { name: "Account" });
     form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     flush();
 

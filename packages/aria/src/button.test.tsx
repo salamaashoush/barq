@@ -57,7 +57,7 @@ describe("Button", () => {
         Save
       </Button>
     ));
-    const button = screen.getByRole("button") as HTMLButtonElement;
+    const button = screen.getByRole<HTMLButtonElement>("button");
 
     expect(button.disabled).toBe(true);
     expect(button.hasAttribute("data-disabled")).toBe(true);
