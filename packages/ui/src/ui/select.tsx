@@ -144,15 +144,19 @@ const list = ui(box.shadow, {
   "--ui-enter-opacity": firstThatWorks("0", "calc(0/100)"),
   "--ui-enter-scale": firstThatWorks("0.95", "calc(95*1%)"),
   '[data-placement="bottom"] &': {
+    transformOrigin: "top",
     "--ui-enter-translate-y": "calc(2*var(--spacing)*-1)",
   },
   '[data-placement="left"] &': {
+    transformOrigin: "100%",
     "--ui-enter-translate-x": "calc(2*var(--spacing))",
   },
   '[data-placement="right"] &': {
+    transformOrigin: "0",
     "--ui-enter-translate-x": "calc(2*var(--spacing)*-1)",
   },
   '[data-placement="top"] &': {
+    transformOrigin: "bottom",
     "--ui-enter-translate-y": "calc(2*var(--spacing))",
   },
   '[data-closed] &:not([data-align-trigger="true"])': {
@@ -161,18 +165,6 @@ const list = ui(box.shadow, {
     "--ui-animation-fill-mode": "forwards",
     "--ui-exit-opacity": firstThatWorks("0", "calc(0/100)"),
     "--ui-exit-scale": firstThatWorks("0.95", "calc(95*1%)"),
-  },
-  '[data-closed][data-placement="bottom"] &': {
-    "--ui-exit-translate-y": "calc(2 * var(--spacing) * -1)",
-  },
-  '[data-closed][data-placement="left"] &': {
-    "--ui-exit-translate-x": "calc(2 * var(--spacing))",
-  },
-  '[data-closed][data-placement="right"] &': {
-    "--ui-exit-translate-x": "calc(2 * var(--spacing) * -1)",
-  },
-  '[data-closed][data-placement="top"] &': {
-    "--ui-exit-translate-y": "calc(2 * var(--spacing))",
   },
 });
 
@@ -185,7 +177,6 @@ const item = ui(
   when.disabled,
   icon.plain,
   icon.sized,
-  icon.muted,
   {
     position: "relative",
     display: "flex",

@@ -51,16 +51,23 @@ const circle = ui(
       insetInline: "calc(var(--spacing) * -3)",
       insetBlock: "calc(var(--spacing) * -2)",
     },
-    ":is(:where(.group\\/field-label):has(:is(:focus-visible)) *)": {
-      "--ui-ring-shadow":
-        "var(--ui-ring-inset,) 0 0 0 calc(0px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
-    },
-    ":is(:where(.group\\/field-label):has(:is(:focus-visible)) *):not([data-selected])": {
-      borderColor: "var(--input)",
-    },
-    ":is(:where(.group\\/field-label):has(:is(:focus-visible)) *)[data-selected]": {
-      borderColor: "var(--primary)",
-    },
+    // The row's ring stands for the control's own focus and invalid rings, so
+    // inside a focused field label neither is drawn on the control.
+    ":is(:where(.group\\/field-label):has(:is(:focus-visible)) *):is([data-focus-visible], [data-invalid])":
+      {
+        "--ui-ring-shadow":
+          "var(--ui-ring-inset,) 0 0 0 calc(0px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+      },
+    // Its border is not the focus colour either, but an invalid one still is.
+    ":is(:where(.group\\/field-label):has(:is(:focus-visible)) *):not([data-selected], [data-invalid])":
+      {
+        borderColor: "var(--input)",
+      },
+    // Chosen, it stays primary, except where the dark invalid border wins.
+    ":is(:where(.group\\/field-label):has(:is(:focus-visible)) *)[data-selected]:not(:is(.dark *)[data-invalid])":
+      {
+        borderColor: "var(--primary)",
+      },
     // A chosen invalid item keeps the primary border, except in the dark,
     // where upstream's `dark:aria-invalid:` border wins.
     "[data-invalid][data-selected]:not(:is(.dark *))": {

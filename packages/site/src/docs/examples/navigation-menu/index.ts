@@ -1,6 +1,8 @@
 import type { Demo } from "../../registry.ts";
 import NavigationMenuDemo from "./navigation-menu-demo.tsx";
 import navigationMenuDemo from "./navigation-menu-demo.tsx?raw";
+import NavigationMenuNoViewport from "./navigation-menu-no-viewport.tsx";
+import navigationMenuNoViewport from "./navigation-menu-no-viewport.tsx?raw";
 import NavigationMenuRtl from "./navigation-menu-rtl.tsx";
 import navigationMenuRtl from "./navigation-menu-rtl.tsx?raw";
 
@@ -10,6 +12,14 @@ export const demos: readonly Demo[] = [
     size: "auto",
     code: navigationMenuDemo,
     component: NavigationMenuDemo,
+  },
+  {
+    title: "Without Viewport",
+    note: "With `viewport={false}` each panel opens under its own trigger and carries the popover surface itself.",
+    align: "start",
+    size: "auto",
+    code: navigationMenuNoViewport,
+    component: NavigationMenuNoViewport,
   },
   {
     title: "RTL",

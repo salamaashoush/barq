@@ -57,18 +57,6 @@ const content = ui(box.shadow, box.outline, box.forcedColors, text.sm, when.clos
     transformOrigin: "bottom",
     "--ui-enter-translate-y": "calc(2*var(--spacing))",
   },
-  '[data-closed][data-placement="bottom"]': {
-    "--ui-exit-translate-y": "calc(2 * var(--spacing) * -1)",
-  },
-  '[data-closed][data-placement="left"]': {
-    "--ui-exit-translate-x": "calc(2 * var(--spacing))",
-  },
-  '[data-closed][data-placement="right"]': {
-    "--ui-exit-translate-x": "calc(2 * var(--spacing) * -1)",
-  },
-  '[data-closed][data-placement="top"]': {
-    "--ui-exit-translate-y": "calc(2 * var(--spacing))",
-  },
 });
 
 const header = ui(text.sm, {

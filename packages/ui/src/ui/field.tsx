@@ -93,9 +93,7 @@ export const fieldVariants = variants({
       }),
       responsive: ui({
         flexDirection: "column",
-        // Weightless, so the wide group's `auto` below beats it: two rules on a
-        // child otherwise go by hash, whatever at-rule wraps one of them.
-        ":where(&) > *": {
+        "& > *": {
           width: "100%",
         },
         "@container field-group (width >= 28rem)": {

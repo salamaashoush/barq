@@ -1213,7 +1213,13 @@ export function CalendarDayButton(props: CalendarDayButtonProps) {
       data-day={() => props.date.toString()}
       class={() =>
         ui(
-          buttonVariants({ variant: props.variant ?? "ghost", size: "icon" }),
+          // A selected day wears the ghost button upstream's selected day
+          // wears, whatever the variant, so no variant's fill competes with
+          // the selection's in either mode.
+          buttonVariants({
+            variant: cell.isSelected() ? "ghost" : (props.variant ?? "ghost"),
+            size: "icon",
+          }),
           dayButton,
           props.isHidden === true ? hidden : undefined,
           props.class,

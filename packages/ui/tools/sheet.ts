@@ -212,7 +212,12 @@ export function byCall(): Map<string, Set<string>> {
       }
       const call = source.slice(from, to + 1);
       const held = declarationsIn(call);
-      const bare = call.replace(/"(?:[^"\\]|\\.)*"/g, '""');
+      // Strings first, so a `//` inside one is not read as a comment, then the
+      // comments: a word in one is not an argument, and a comment naming a
+      // local gave the call that local's declarations.
+      const bare = call
+        .replace(/"(?:[^"\\]|\\.)*"/g, '""')
+        .replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, "");
       for (const [local, own] of locals) {
         if (!namesAsArgument(bare, local)) continue;
         for (const declaration of own) held.add(declaration);

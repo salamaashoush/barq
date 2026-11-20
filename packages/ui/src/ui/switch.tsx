@@ -38,11 +38,15 @@ const track = ui(
       insetBlock: "calc(var(--spacing) * -2)",
     },
     // A field label draws the focus ring around the whole row, so the switch
-    // inside it draws none of its own.
-    ":is(:where(.group\\/field-label):has(:focus-visible) *)": {
+    // inside it draws no ring of its own, focused or invalid, and no focus
+    // border; an invalid border still shows.
+    ":is(:where(.group\\/field-label):has(:focus-visible) *):is([data-focus-visible], [data-invalid])":
+      {
+        "--ui-ring-shadow":
+          "var(--ui-ring-inset,) 0 0 0 calc(0px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+      },
+    ":is(:where(.group\\/field-label):has(:focus-visible) *):not([data-invalid])": {
       borderColor: "transparent",
-      "--ui-ring-shadow":
-        "var(--ui-ring-inset,) 0 0 0 calc(0px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
     },
     '[data-size="default"]': {
       height: "18.4px",

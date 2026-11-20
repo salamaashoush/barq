@@ -207,13 +207,15 @@ const content = ui({
   // `data-state` and `data-motion` have already changed by then on every close
   // and switch observed, in the same task; declaring the exit here as well
   // keeps the measurement from depending on that order.
+  // In the viewport a panel closing with the menu changes nothing of its own,
+  // as upstream's has no motion then: the viewport's zoom carries it out.
   "[data-closed]": {
     animation:
       "exit var(--ui-animation-duration,var(--ui-duration,.15s))var(--ui-ease,ease)var(--ui-animation-delay,0s)var(--ui-animation-iteration-count,1)var(--ui-animation-direction,normal)var(--ui-animation-fill-mode,none)",
     "--ui-animation-fill-mode": "forwards",
-    "--ui-exit-opacity": "0",
   },
   '[data-slot="navigation-menu"][data-viewport="false"] &[data-closed]': {
+    "--ui-exit-opacity": firstThatWorks("0", "calc(0/100)"),
     "--ui-exit-scale": firstThatWorks(".95", "calc(95*1%)"),
   },
   // `start` and `end` are the bar's own ends, so the distance a panel slides
@@ -377,9 +379,6 @@ const link = ui({
   "& svg:not([class*='size-'])": {
     width: "calc(var(--spacing) * 4)",
     height: "calc(var(--spacing) * 4)",
-  },
-  "& svg:not([class*='text-'])": {
-    color: "var(--muted-foreground)",
   },
 });
 

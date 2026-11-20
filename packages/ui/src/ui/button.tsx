@@ -42,6 +42,7 @@ export const buttonVariants = variants({
     box.outline,
     ring.focus,
     ring.invalid,
+    ring.invalidRing,
     ring.invalidDark,
     ring.invalidBorderDark,
     icon.plain,
@@ -172,6 +173,11 @@ export const buttonVariants = variants({
             backgroundColor: "color-mix(in oklab, var(--input) 30%, transparent)",
           },
         },
+        // Focused in the dark, the border stays the input's, as upstream's
+        // `dark:border-input` follows `focus-visible:border-ring`.
+        ":is(.dark *):focus-visible": {
+          borderColor: "var(--input)",
+        },
       }),
       secondary: ui({
         backgroundColor: "var(--secondary)",
@@ -181,7 +187,9 @@ export const buttonVariants = variants({
             backgroundColor: "var(--secondary)",
           },
           "@supports (color: color-mix(in lab, red, red))": {
-            ":hover": {
+            // An open button keeps its open fill under the pointer, as
+            // upstream's `aria-expanded:` follows `hover:`.
+            ':not([aria-expanded="true"]):hover': {
               backgroundColor: "color-mix(in oklch,var(--secondary),var(--foreground) 5%)",
             },
           },

@@ -202,10 +202,6 @@ const item = ui(
     '[data-slot="dialog-content"] &': {
       borderRadius: "var(--radius) !important",
     },
-    // The focused row's icons take its colour rather than staying muted.
-    '&:where(:not([data-focused])) svg:not([class*="text-"])': {
-      color: "var(--muted-foreground)",
-    },
     "[data-focused]": {
       backgroundColor: "var(--muted)",
       color: "var(--foreground)",

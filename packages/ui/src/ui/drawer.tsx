@@ -479,8 +479,6 @@ function DrawerProvider(props: DrawerProps) {
   );
 }
 
-const TriggerScope = createContext<true | null>(null);
-
 export function DrawerTrigger(props: { children?: Child }) {
   return (
     <family.Trigger>
@@ -492,18 +490,12 @@ export function DrawerTrigger(props: { children?: Child }) {
 /**
  * Names the control `drawer-trigger`, as upstream's `asChild` does.
  *
- * Inside a `provide` of its own, so the name reaches the control below it and
- * nothing beside it.
+ * A component of its own, so the name is installed on this component's owner:
+ * it reaches the control below it and nothing beside it.
  */
 function DrawerTriggerSlot(props: { children?: Child }) {
-  return provide(
-    TriggerScope,
-    () => true as const,
-    () => {
-      provideTriggerSlot({ props: { "data-slot": "drawer-trigger" } });
-      return props.children;
-    },
-  );
+  provideTriggerSlot({ props: { "data-slot": "drawer-trigger" } });
+  return <>{props.children}</>;
 }
 
 /**

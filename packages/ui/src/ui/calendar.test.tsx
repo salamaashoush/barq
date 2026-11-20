@@ -638,6 +638,31 @@ describe("Calendar, the variants of its buttons", () => {
     expect(rules(day("Monday", 11))).toContain("background-color: var(--secondary)");
   });
 
+  test("a selected day's selection wins over dayButtonVariant in either mode", () => {
+    render(() => (
+      <Calendar
+        mode="range"
+        aria-label="Stay"
+        defaultFocusedValue={MARCH}
+        dayButtonVariant="outline"
+      />
+    ));
+    user.click(day("Monday", 11));
+    user.click(day("Wednesday", 13));
+    flush();
+    // Unselected, the day is the variant it was given, its dark fill included.
+    expect(rules(day("Thursday", 14))).toContain("background-color: var(--background)");
+    expect(rules(day("Thursday", 14))).toContain(":is(.dark *)");
+    for (const selected of [day("Monday", 11), day("Tuesday", 12), day("Wednesday", 13)]) {
+      const own = rules(selected);
+      expect(own).not.toContain("background-color: var(--background)");
+      expect(own).not.toContain("var(--input)");
+    }
+    expect(rules(day("Monday", 11))).toContain("background-color: var(--primary)");
+    expect(rules(day("Tuesday", 12))).toContain("background-color: var(--accent)");
+    expect(rules(day("Wednesday", 13))).toContain("background-color: var(--primary)");
+  });
+
   test("a day is a ghost button unless told otherwise", () => {
     render(() => (
       <Calendar aria-label="Departure" defaultFocusedValue={MARCH} buttonVariant="outline" />

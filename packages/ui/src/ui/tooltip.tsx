@@ -80,18 +80,6 @@ const content = ui(when.closing, {
   "[data-skip-animation]:not([data-closed])": {
     animation: "none",
   },
-  '[data-closed][data-placement="bottom"]': {
-    "--ui-exit-translate-y": "calc(2 * var(--spacing) * -1)",
-  },
-  '[data-closed][data-placement="left"]': {
-    "--ui-exit-translate-x": "calc(2 * var(--spacing))",
-  },
-  '[data-closed][data-placement="right"]': {
-    "--ui-exit-translate-x": "calc(2 * var(--spacing) * -1)",
-  },
-  '[data-closed][data-placement="top"]': {
-    "--ui-exit-translate-y": "calc(2 * var(--spacing))",
-  },
 });
 
 const arrow = ui({

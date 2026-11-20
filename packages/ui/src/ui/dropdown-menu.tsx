@@ -102,18 +102,6 @@ const content = ui(box.shadow, {
     "--ui-exit-opacity": firstThatWorks("0", "calc(0/100)"),
     "--ui-exit-scale": firstThatWorks("0.95", "calc(95*1%)"),
   },
-  '[data-closed][data-placement="bottom"] &': {
-    "--ui-exit-translate-y": "calc(2 * var(--spacing) * -1)",
-  },
-  '[data-closed][data-placement="left"] &': {
-    "--ui-exit-translate-x": "calc(2 * var(--spacing))",
-  },
-  '[data-closed][data-placement="right"] &': {
-    "--ui-exit-translate-x": "calc(2 * var(--spacing) * -1)",
-  },
-  '[data-closed][data-placement="top"] &': {
-    "--ui-exit-translate-y": "calc(2 * var(--spacing))",
-  },
 });
 
 /** A submenu is narrower and sits on a heavier shadow. */
@@ -172,18 +160,6 @@ const subContent = ui(box.shadow, {
     "--ui-exit-opacity": firstThatWorks("0", "calc(0/100)"),
     "--ui-exit-scale": firstThatWorks("0.95", "calc(95*1%)"),
   },
-  '[data-closed][data-placement="bottom"] &': {
-    "--ui-exit-translate-y": "calc(2 * var(--spacing) * -1)",
-  },
-  '[data-closed][data-placement="left"] &': {
-    "--ui-exit-translate-x": "calc(2 * var(--spacing))",
-  },
-  '[data-closed][data-placement="right"] &': {
-    "--ui-exit-translate-x": "calc(2 * var(--spacing) * -1)",
-  },
-  '[data-closed][data-placement="top"] &': {
-    "--ui-exit-translate-y": "calc(2 * var(--spacing))",
-  },
 });
 
 const item = ui(
@@ -230,10 +206,6 @@ const item = ui(
       "@supports (color: color-mix(in lab, red, red))": {
         backgroundColor: "color-mix(in oklab, var(--destructive) 20%, transparent)",
       },
-    },
-    // A destructive item's icons are destructive rather than muted.
-    '&:where(:not([data-variant="destructive"])) svg:not([class*="text-"])': {
-      color: "var(--muted-foreground)",
     },
     ':is(&[data-variant="destructive"] > *):is(svg)': {
       color: "var(--destructive)",
@@ -370,7 +342,6 @@ const subTrigger = ui(
   when.focused,
   icon.plain,
   icon.sized,
-  icon.muted,
   {
     display: "flex",
     cursor: "default",

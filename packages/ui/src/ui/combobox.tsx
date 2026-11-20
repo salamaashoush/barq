@@ -82,13 +82,9 @@ const content = ui("group/combobox-content", {
     margin: "var(--spacing)",
     marginBottom: "0px",
     height: "calc(var(--spacing) * 8)",
+    borderColor: "var(--input)",
+    backgroundColor: "var(--input)",
     "--ui-shadow": "0 0 #0000",
-    // The fallback only where the mix is unsupported: two rules on a child
-    // otherwise go by hash, whatever at-rule wraps one of them.
-    "@supports not (color: color-mix(in lab, red, red))": {
-      borderColor: "var(--input)",
-      backgroundColor: "var(--input)",
-    },
     "@supports (color: color-mix(in lab, red, red))": {
       borderColor: "color-mix(in oklab, var(--input) 30%, transparent)",
       backgroundColor: "color-mix(in oklab, var(--input) 30%, transparent)",
