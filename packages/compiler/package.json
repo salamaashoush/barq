@@ -24,7 +24,8 @@
   "files": [
     "index.js",
     "index.d.ts",
-    "docs"
+    "docs",
+    "skills"
   ],
   "type": "commonjs",
   "sideEffects": false,
