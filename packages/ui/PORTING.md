@@ -454,21 +454,14 @@ Recorded so nobody re-opens them:
 
 ## What is still open
 
-- The specs are this package's transcription INPUTS, and several were written
-  against an older shadcn: `tabs-list` without `bg-muted`, `native-select` with
-  `px-3` where upstream now has `pr-8`. `verify` cannot see it, since it asks
-  only that every spec declaration exists here and never the reverse. Reading
-  the class lists straight out of the pinned components is the fix.
 - `@barqjs/lucide`'s dist is 15 MB across 3,586 files. Nobody has measured what
   that does to an `npm install`.
-- `Disclosure` and `DisclosureGroupItem` in `@barqjs/aria` render no element.
-  A `class` handed to them used to vanish, which cost the accordion its
-  dividers; they no longer declare `StyleProps`.
-- The overlays, menus, select, combobox, command and navigation menu ported in
-  parts were driven through `@barqjs/testing` only. Nothing in step 8 was done
-  for them: exit animations, the navigation viewport's size, the indicator's
-  position, item-aligned select placement and where focus lands while a closing
-  menu is still animating are all unmeasured in a browser.
+- The select, popover, hover card, tooltip, dropdown menu and navigation menu
+  were compared with upstream in a browser for their enter and exit animations,
+  and the navigation menu for its open, close and keyboard sequences with and
+  without a viewport. Still driven through `@barqjs/testing` only: the
+  combobox and command, the navigation indicator's position, and where focus
+  lands while a closing menu is still animating.
 - The libraries shadcn wraps are read from their published sources, unpacked
   one directory each beside the shadcn checkout. `InputOTP` writes no `<noscript>`
   fallback, which a component that needs script to type into has no use for.
