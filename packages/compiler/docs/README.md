@@ -32,6 +32,7 @@ exists and how to silence it.
 - [BARQ029](BARQ029.md), warning: Two renderers claim the same intrinsic tag.
 - [BARQ030](BARQ030.md), error: A prop is assigned, and props are read-only.
 - [BARQ031](BARQ031.md), error: A props pattern binds a name that cannot be kept reactive.
+- [BARQ032](BARQ032.md), warning: A shorthand that cannot be split is merged with one of its longhands.
 
 When each code is reported:
 
@@ -39,7 +40,7 @@ When each code is reported:
   `diagnostics` option is on. It defaults to on in development builds, and
   `barq({ compiler: { diagnostics: true } })` runs them in a production build.
 - BARQ004 and BARQ010: in development builds only.
-- BARQ012 to BARQ017 and BARQ022 to BARQ031: in every build, so they can fail CI.
+- BARQ012 to BARQ017 and BARQ022 to BARQ032: in every build, so they can fail CI.
   BARQ013 also needs the route table, which file-based routing provides.
 - BARQ008 and BARQ009: in every build, about your own suppression comments.
 

@@ -116,6 +116,7 @@ codes! {
     Barq029 = "BARQ029", Warning, "Two renderers claim the same intrinsic tag";
     Barq030 = "BARQ030", Error, "A prop is assigned, and props are read-only";
     Barq031 = "BARQ031", Error, "A props pattern binds a name that cannot be kept reactive";
+    Barq032 = "BARQ032", Warning, "A shorthand that cannot be split is merged with one of its longhands";
 }
 
 /// Where the pages live. A consumer gets this string verbatim — the Vite panel

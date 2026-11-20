@@ -99,8 +99,8 @@ const description = ui(text.sm, {
 
 const action = ui({
   gridColumnStart: "2",
-  gridRow: "span 2 / span 2",
   gridRowStart: "1",
+  gridRowEnd: "span 2",
   alignSelf: "flex-start",
   justifySelf: "flex-end",
 });

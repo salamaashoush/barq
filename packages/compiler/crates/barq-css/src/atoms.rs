@@ -21,6 +21,143 @@ pub fn unexpandable(property: &str) -> bool {
     UNEXPANDABLE.binary_search(&property).is_ok()
 }
 
+/// What each shorthand [`unexpandable`] names sets, by the properties it
+/// resets. A name is not enough to tell: `flex-direction` is no part of `flex`
+/// and `outline-offset` none of `outline`.
+const LONGHANDS: &[(&str, &[&str])] = &[
+    (
+        "animation",
+        &[
+            "animation-delay",
+            "animation-direction",
+            "animation-duration",
+            "animation-fill-mode",
+            "animation-iteration-count",
+            "animation-name",
+            "animation-play-state",
+            "animation-timeline",
+            "animation-timing-function",
+        ],
+    ),
+    (
+        "background",
+        &[
+            "background-attachment",
+            "background-clip",
+            "background-color",
+            "background-image",
+            "background-origin",
+            "background-position",
+            "background-position-x",
+            "background-position-y",
+            "background-repeat",
+            "background-size",
+        ],
+    ),
+    (
+        "border-image",
+        &[
+            "border-image-outset",
+            "border-image-repeat",
+            "border-image-slice",
+            "border-image-source",
+            "border-image-width",
+        ],
+    ),
+    ("flex", &["flex-basis", "flex-grow", "flex-shrink"]),
+    ("flex-flow", &["flex-direction", "flex-wrap"]),
+    (
+        "font",
+        &[
+            "font-family",
+            "font-size",
+            "font-stretch",
+            "font-style",
+            "font-variant",
+            "font-weight",
+            "line-height",
+        ],
+    ),
+    (
+        "grid",
+        &[
+            "grid-auto-columns",
+            "grid-auto-flow",
+            "grid-auto-rows",
+            "grid-template-areas",
+            "grid-template-columns",
+            "grid-template-rows",
+        ],
+    ),
+    ("grid-area", &["grid-column-end", "grid-column-start", "grid-row-end", "grid-row-start"]),
+    ("grid-column", &["grid-column-end", "grid-column-start"]),
+    ("grid-row", &["grid-row-end", "grid-row-start"]),
+    ("grid-template", &["grid-template-areas", "grid-template-columns", "grid-template-rows"]),
+    ("list-style", &["list-style-image", "list-style-position", "list-style-type"]),
+    (
+        "mask",
+        &[
+            "mask-clip",
+            "mask-composite",
+            "mask-image",
+            "mask-mode",
+            "mask-origin",
+            "mask-position",
+            "mask-repeat",
+            "mask-size",
+        ],
+    ),
+    (
+        "offset",
+        &["offset-anchor", "offset-distance", "offset-path", "offset-position", "offset-rotate"],
+    ),
+    ("outline", &["outline-color", "outline-style", "outline-width"]),
+    (
+        "text-decoration",
+        &[
+            "text-decoration-color",
+            "text-decoration-line",
+            "text-decoration-style",
+            "text-decoration-thickness",
+        ],
+    ),
+    (
+        "transition",
+        &[
+            "transition-behavior",
+            "transition-delay",
+            "transition-duration",
+            "transition-property",
+            "transition-timing-function",
+        ],
+    ),
+];
+
+/// Whether `property` is one of the declarations the kept-whole `shorthand`
+/// sets, so that the two written together set one thing twice.
+///
+/// The `border` family is a pattern and not a list: `border` sets the width,
+/// style and colour of every side, physical and logical, and `border-top` or
+/// `border-inline` those of the sides it names. None of them sets a radius.
+pub fn sets(shorthand: &str, property: &str) -> bool {
+    if let Some((_, longhands)) = LONGHANDS.iter().find(|(name, _)| *name == shorthand) {
+        return longhands.contains(&property);
+    }
+    let sided = matches!(
+        shorthand,
+        "border"
+            | "border-block"
+            | "border-bottom"
+            | "border-inline"
+            | "border-left"
+            | "border-right"
+            | "border-top"
+    );
+    sided
+        && property.strip_prefix(shorthand).is_some_and(|rest| rest.starts_with('-'))
+        && ["-width", "-style", "-color"].iter().any(|part| property.ends_with(part))
+}
+
 pub fn is_unitless(property: &str) -> bool {
     UNITLESS.binary_search(&property).is_ok()
 }
@@ -892,6 +1029,22 @@ mod tests {
         }
         assert!(UNITLESS.is_sorted() && UNEXPANDABLE.is_sorted());
         assert!(DISPLACES.is_sorted_by_key(|(name, _)| *name));
+    }
+
+    /// Every shorthand kept whole says what it sets, or the report about one
+    /// beside its longhand could never fire for it.
+    #[test]
+    fn every_shorthand_kept_whole_names_what_it_sets() {
+        for shorthand in UNEXPANDABLE {
+            let listed = LONGHANDS.iter().any(|(name, _)| name == shorthand);
+            let sided = sets(shorthand, &format!("{shorthand}-color"));
+            assert!(listed || sided, "{shorthand}");
+        }
+        assert!(sets("border", "border-top-color") && sets("border", "border-inline-start-width"));
+        assert!(sets("border-top", "border-top-style") && !sets("border-top", "border-left-style"));
+        assert!(!sets("border", "border-top-left-radius") && !sets("border", "border-collapse"));
+        assert!(!sets("flex", "flex-direction") && sets("flex-flow", "flex-direction"));
+        assert!(!sets("outline", "outline-offset") && sets("font", "line-height"));
     }
 
     #[test]

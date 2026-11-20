@@ -1,6 +1,6 @@
 ---
 name: compiler-diagnostics
-description: Map a barq compiler diagnostic code (BARQ001 to BARQ031) to its repair. Load when a build, the Vite dev overlay, the terminal or a transform result reports BARQ0NN at a file, line and column. Runtime [CODE] findings are in the diagnostics skill of @barqjs/core.
+description: Map a barq compiler diagnostic code (BARQ001 to BARQ032) to its repair. Load when a build, the Vite dev overlay, the terminal or a transform result reports BARQ0NN at a file, line and column. Runtime [CODE] findings are in the diagnostics skill of @barqjs/core.
 ---
 
 # Repairing barq code from a compiler diagnostic code
@@ -57,7 +57,7 @@ Each code also has a page with the full message and more examples at
   `diagnostics` option is on. It is on in development builds, and
   `barq({ compiler: { diagnostics: true } })` runs them in a production build.
 - `BARQ004`, `BARQ010`: development builds only.
-- `BARQ012` to `BARQ017`, `BARQ022` to `BARQ031`: every build.
+- `BARQ012` to `BARQ017`, `BARQ022` to `BARQ032`: every build.
 - `BARQ008`, `BARQ009`: every build, about suppression comments.
 
 `BARQ005`, `BARQ006` and `BARQ007` are retired and never reported. A
@@ -615,6 +615,34 @@ const card = atoms({ color: theme.brand });
 const BRAND = "#3b82f6";
 const card = atoms({ color: BRAND });
 ```
+
+### BARQ032
+
+Default level: warning.
+
+One `atoms` call (or one `create` group) holds a shorthand barq keeps whole,
+such as `border`, `font`, `flex`, `background` or `transition`, together with
+one of its longhands under the same condition. The two are separate classes, so
+neither replaces the other, and which declaration wins depends on where each
+rule happens to sit in the stylesheet. It can change when another component
+uses either declaration first.
+
+Write the shorthand as its longhands, so the later argument replaces exactly
+what it names:
+
+```tsx
+// before
+atoms({ border: "1px solid gray" }, invalid && { borderColor: "red" });
+
+// after
+atoms(
+  { borderWidth: 1, borderStyle: "solid", borderColor: "gray" },
+  invalid && { borderColor: "red" },
+);
+```
+
+A shorthand that splits by counting (`margin`, `padding`, `inset`, `gap`,
+`borderRadius`) is not reported: a later `marginTop` replaces one side.
 
 ## Solid 1.x spellings
 

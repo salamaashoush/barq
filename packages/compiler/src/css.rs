@@ -1213,6 +1213,7 @@ impl<'a> Css<'a, '_> {
         for step in &steps {
             let Step::Fold { arguments, .. } = step else { continue };
             let with = Self::merge(arguments, true, layer);
+            self.report_whole_shorthand(&with, span);
             let without = arguments
                 .iter()
                 .any(|argument| argument.conditional)
@@ -1343,6 +1344,7 @@ impl<'a> Css<'a, '_> {
         layer: &str,
     ) -> Expression<'a> {
         let with = Self::merge(arguments, true, layer);
+        self.report_whole_shorthand(&with, span);
         let Some(conditional) = arguments.iter().find(|argument| argument.conditional) else {
             let all = self.emit_atoms(&with);
             return Expression::new_string_literal(
@@ -1826,6 +1828,55 @@ impl<'a> Css<'a, '_> {
             }
         }
         applied
+    }
+
+    /// One merge that holds a shorthand left whole beside one of its longhands.
+    ///
+    /// `border` is not split into sides, so it and `border-color` are two
+    /// classes for two keys and both stay on the element. Which declaration
+    /// wins is then the stylesheet's order, and an atom is written where the
+    /// first call to use it stood, so the order they were passed in decides
+    /// only until another call has used either one.
+    fn report_whole_shorthand(&mut self, atoms: &[barq_css::atoms::Atom], span: Span) {
+        let declared: Vec<(String, &str)> = atoms
+            .iter()
+            .filter_map(|atom| {
+                let open = atom.rule.rfind('{')?;
+                let colon = open + atom.rule[open..].find(':')?;
+                let property = &atom.rule[open + 1..colon];
+                // Where the rule applies: the rule with its own class and its
+                // declaration taken out.
+                let condition = atom.rule[..open].replace(atom.class.as_str(), "&");
+                Some((condition, property))
+            })
+            .collect();
+        for (condition, shorthand) in &declared {
+            if !barq_css::atoms::unexpandable(shorthand) {
+                continue;
+            }
+            let Some((_, longhand)) = declared.iter().find(|(other, property)| {
+                other == condition && barq_css::atoms::sets(shorthand, property)
+            }) else {
+                continue;
+            };
+            if self.reports.iter().any(|report| report.code == Code::Barq032 && report.span == span)
+            {
+                return;
+            }
+            self.reports.push(Report {
+                code: Code::Barq032,
+                message: format!(
+                    "`{shorthand}` and `{longhand}` are merged here, and `{shorthand}` is a \
+                     shorthand whose values are told apart by type, so it is kept whole and \
+                     does not give way to `{longhand}` or replace it. Both classes stay on the \
+                     element and the order of the stylesheet decides between them, which is \
+                     not the order they are passed in. Write `{shorthand}` as its longhands \
+                     instead, as `border` is `border-width`, `border-style` and `border-color`."
+                ),
+                span,
+            });
+            return;
+        }
     }
 
     fn emit_atoms(&mut self, atoms: &[barq_css::atoms::Atom]) -> String {
@@ -3277,6 +3328,52 @@ mod atom_tests {
         assert!(out.code.contains("on ? \"a-color_10cd4ul\" : \"a-color_i0tgik\""), "{}", out.code);
         let css = out.css.as_deref().expect("a stylesheet");
         assert!(css.contains("color:red") && css.contains("color:blue"), "{css}");
+    }
+
+    fn whole_shorthand(out: &crate::compile::CompileOutput) -> Vec<&str> {
+        out.warnings
+            .iter()
+            .filter(|w| w.code == Some(crate::diag::Code::Barq032))
+            .map(|w| w.message.as_str())
+            .collect()
+    }
+
+    #[test]
+    fn a_shorthand_kept_whole_beside_its_longhand_is_reported_either_way_round() {
+        for source in [
+            "export const c = atoms({ border: \"1px solid red\" }, { borderColor: \"blue\" });",
+            "export const c = atoms({ borderColor: \"blue\", border: \"1px solid red\" });",
+            "export const c = (on) => atoms({ transition: \"all 1s\" }, on && { transitionDuration: \"2s\" });",
+        ] {
+            let out = run(source);
+            let found = whole_shorthand(&out);
+            assert_eq!(found.len(), 1, "{source}: {:?}", out.warnings);
+        }
+        let out = run("export const c = atoms({ border: \"0\" }, { borderColor: \"blue\" });");
+        assert!(
+            whole_shorthand(&out)[0].starts_with("`border` and `border-top-color` are merged here"),
+            "{:?}",
+            out.warnings
+        );
+    }
+
+    #[test]
+    fn a_shorthand_that_expands_and_one_under_another_condition_are_not() {
+        for source in [
+            // `margin` is split by counting, so the longhand replaces a side.
+            "export const c = atoms({ margin: 4 }, { marginTop: 8 });",
+            // Hover has its own key and its own specificity.
+            "export const c = atoms({ border: \"0\", borderColor: { default: null, \":hover\": \"blue\" } });",
+            "export const c = atoms({ border: \"0\", color: \"blue\" });",
+            "export const c = atoms({ borderColor: \"blue\", borderWidth: 1 });",
+            // Named alike, and no part of the shorthand.
+            "export const c = atoms({ flex: 1, flexDirection: \"column\" });",
+            "export const c = atoms({ outline: \"1px solid red\", outlineOffset: 2 });",
+            "export const c = atoms({ border: \"0\", borderRadius: 4 });",
+        ] {
+            let out = run(source);
+            assert!(whole_shorthand(&out).is_empty(), "{source}: {:?}", out.warnings);
+        }
     }
 
     /// Two is four outcomes and three is eight; a nested ternary over eight

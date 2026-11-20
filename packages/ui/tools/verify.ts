@@ -26,6 +26,12 @@ import { createBuilder, parse, translate } from "./css.ts";
 
 /** Where this package deliberately differs, and why. */
 const ALLOWED: Record<string, string> = {
+  "card:card-action:grid-row":
+    "upstream writes `row-span-2 row-start-1`, a `grid-row` shorthand and then " +
+    "`grid-row-start`, and relies on Tailwind printing the first before the " +
+    "second. An atom is printed where its first use stands, so here that order " +
+    "is not fixed (BARQ032). The two longhands the pair computes to are written " +
+    "instead: `grid-row-start: 1` and `grid-row-end: span 2`",
   "slider:slider-track:overflow":
     "the thumb is a CHILD of the track here, so `overflow: hidden` clipped a " +
     "12px thumb down to the track's 4px. Upstream's thumb is a SIBLING and the " +

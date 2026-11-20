@@ -346,6 +346,8 @@ describe("the diagnostic engine", () => {
       BARQ030:
         "export const V = (props) => {\n  props.count = 1;\n  return <p>{props.count}</p>;\n};\n",
       BARQ031: 'export const V = ({ user: { name = "guest" } }) => <p>{name}</p>;\n',
+      BARQ032:
+        'import { atoms } from "@barqjs/css";\nexport const c = atoms({ border: "1px solid gray" }, { borderColor: "red" });\n',
     };
 
     const advertised = native
