@@ -10,11 +10,12 @@
  */
 
 import {
-  childScope,
+  componentFrame,
   createSignal,
   disposeScope,
   flush,
   getOwner,
+  handBack,
   onCleanup,
   runWithOwner,
 } from "./signals.ts";
@@ -74,13 +75,23 @@ export function hot<T extends Implementation>(
     // computation, which would put off the first run of every effect it makes
     // until the next flush. A hydrating page claims the server's nodes in the
     // order things are built, so a late effect claimed its neighbour's.
-    let scope = childScope(owner);
-    let built = runWithOwner(scope, () => current(...args));
+    //
+    // The scope is a component frame, so what the body installs on its owner
+    // reaches what the instance hands back exactly as it does without the
+    // proxy.
+    let scope = componentFrame(owner);
+    let built = handBack(
+      runWithOwner(scope, () => current(...args)),
+      scope,
+    );
     const [version, setVersion] = createSignal(0, { ownedWrite: true });
     const rebuild = (next: Implementation): void => {
       disposeScope(scope);
-      scope = childScope(owner);
-      built = runWithOwner(scope, () => next(...args));
+      scope = componentFrame(owner);
+      built = handBack(
+        runWithOwner(scope, () => next(...args)),
+        scope,
+      );
       setVersion((count) => count + 1);
     };
     instances.add(rebuild);

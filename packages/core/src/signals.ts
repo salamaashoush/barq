@@ -509,6 +509,10 @@ export function errorOwnerPath(error: unknown): string[] | undefined {
  * With no owner to attach to, the component is called as it is: an owner made
  * here would be one nothing ever disposes, and would hide the engine's own
  * report about the missing owner.
+ *
+ * The owner is the component's frame (see `componentFrame`), so a binding its
+ * body installs on `getOwner()` stays the component's: what it builds and what
+ * it hands back see it, and the siblings built after it do not.
  */
 export function createComponent<P, R>(
   component: (props: P) => R,
@@ -520,10 +524,14 @@ export function createComponent<P, R>(
   const parent = getOwner();
   if (parent === null) return component(record);
   const owner = runWithOwner(parent, openTransparent);
+  FRAMES.set(owner, null);
   owner._name = `<${name || component.name || "Anonymous"}>`;
   if (loc !== undefined) owner._loc = loc;
   try {
-    return runWithOwner(owner, () => component(record));
+    return handBack(
+      runWithOwner(owner, () => component(record)),
+      owner,
+    );
   } catch (error) {
     if (typeof error === "object" && error !== null && !(OWNER_PATH in error)) {
       const path = ownerPathOf(owner);
@@ -915,16 +923,90 @@ export function provideOn(scope: Scope, key: string | symbol, value: unknown): v
   // nobody reads until three components later reports the mistake three
   // components away from the site that made it.
   if (isBlock(value)) throw jsxAsValue("The `value` of a context provider");
-  engineSetContext(channel(key), value, scope);
+  bindOn(scope, key, value);
 }
 
 /** `provideOn` for a value the runtime binds itself, which is never a Block. */
 export function bindOn(scope: Scope, key: string | symbol, value: unknown): void {
   engineSetContext(channel(key), value, scope);
+  if (FRAMES.has(scope)) {
+    const bound = FRAMES.get(scope) ?? new Map<string | symbol, unknown>();
+    bound.set(key, value);
+    FRAMES.set(scope, bound);
+  }
 }
 
 export function lookupContext(scope: Scope | null, key: string | symbol): unknown {
   return scope === null ? CONTEXT_MISS : engineGetContext(channel(key), scope);
+}
+
+/**
+ * Each component frame, and what its body installed on it. `null` until the
+ * first install, so a component that installs nothing costs one entry.
+ */
+const FRAMES = new WeakMap<Scope, Map<string | symbol, unknown> | null>();
+
+/**
+ * Open the scope one instance of a component runs under: `createComponent`'s
+ * named owner, and the scope `hot` rebuilds an instance in.
+ *
+ * The rule a frame enforces, with `handBack`: a binding a component's body
+ * installs on `getOwner()` (`setContext`, `install`, `provideLocale`) belongs
+ * to that component. Everything the component builds sees it, including what
+ * it hands back unbuilt to be placed by whoever called it, and nothing built
+ * after the component returns does, its later siblings included.
+ */
+export function componentFrame(parent: Scope | null): Scope {
+  const scope = childScope(parent);
+  FRAMES.set(scope, null);
+  return scope;
+}
+
+/**
+ * What a component built, made to carry the bindings its body installed on
+ * `frame`, for the part of it that is still to be built.
+ *
+ * A component may hand back a Block, a Cell or an array of them rather than
+ * nodes: `<>{props.children}</>` returns its children unbuilt. The caller
+ * builds them where it places them, under its own owner, which is not under
+ * the frame, so without this a provider of that shape provided nothing. A
+ * Block is still built where it is placed and when, so it is disposed with
+ * that place and claims the server's nodes in the same order; it is built
+ * under a scope opened there that carries the frame's bindings. A Cell is read
+ * through a memo the frame owns, as `unwrapBlocks` does for a provider's.
+ */
+export function handBack<R>(built: R, frame: Scope): R {
+  const bindings = FRAMES.get(frame);
+  return bindings === null || bindings === undefined ? built : carry(built, frame, bindings);
+}
+
+function carry<R>(value: R, home: Scope, bindings: Map<string | symbol, unknown>): R {
+  if (isBlock(value)) {
+    const build = value as unknown as (...args: unknown[]) => unknown;
+    return block((...args: unknown[]): unknown => {
+      const at = getOwner();
+      if (at === null) return build(...args);
+      const scope = childScope(at);
+      for (const [key, held] of bindings) bindOn(scope, key, held);
+      return runWithOwner(scope, () => carry(build(...args), scope, bindings));
+    }) as unknown as R;
+  }
+  if (Array.isArray(value)) {
+    let changed = false;
+    const each = (value as unknown[]).map((item) => {
+      const carried = carry(item, home, bindings);
+      if (carried !== item) changed = true;
+      return carried;
+    });
+    return (changed ? each : value) as R;
+  }
+  // A function that takes something is a row callback in a children slot,
+  // handed on untouched as `unwrapBlocks` hands it on.
+  if (typeof value !== "function" || (value as { length: number }).length > 0) return value;
+  const cell = value as unknown as () => unknown;
+  return runWithOwner(home, () =>
+    internalMemo(() => carry(cell(), home, bindings), { transparent: true }),
+  ) as unknown as R;
 }
 
 /** Value can be static or a reactive accessor */
