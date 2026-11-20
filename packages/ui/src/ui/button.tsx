@@ -114,6 +114,9 @@ export const buttonVariants = variants({
           ":hover": {
             backgroundColor: "var(--destructive)",
           },
+          ":is(.dark *):hover": {
+            backgroundColor: "var(--destructive)",
+          },
           "@supports (color: color-mix(in lab, red, red))": {
             ":hover": {
               backgroundColor: "color-mix(in oklab, var(--destructive) 20%, transparent)",
@@ -121,9 +124,6 @@ export const buttonVariants = variants({
             ":is(.dark *):hover": {
               backgroundColor: "color-mix(in oklab, var(--destructive) 30%, transparent)",
             },
-          },
-          ":is(.dark *):hover": {
-            backgroundColor: "var(--destructive)",
           },
         },
         ":focus-visible": {

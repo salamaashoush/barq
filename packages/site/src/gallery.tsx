@@ -391,11 +391,15 @@ const panel = ui({
   boxShadow:
     "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
   "--ui-ring-color": "var(--foreground)",
-  "@supports (color: color-mix(in lab, red, red))": {
-    "--ui-ring-color": "color-mix(in oklab, var(--foreground) 10%, transparent)",
-  },
   "@media (width >= 48rem)": {
     "--ui-ring-color": "var(--muted)",
+  },
+  // Below the breakpoint only: `md:ring-muted` beats the translucent ring
+  // wherever both apply.
+  "@media (width < 48rem)": {
+    "@supports (color: color-mix(in lab, red, red))": {
+      "--ui-ring-color": "color-mix(in oklab, var(--foreground) 10%, transparent)",
+    },
   },
   "&.dark": {
     "--ui-ring-color": "var(--foreground)",

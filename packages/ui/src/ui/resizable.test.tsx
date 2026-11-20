@@ -568,7 +568,9 @@ describe("Resizable drag", () => {
     const rules = rulesFor(handle().className);
     expect(rules).toContain("touch-action: none");
     expect(rules).toContain("cursor: col-resize");
-    expect(rules).toContain('[aria-orientation="horizontal"]{cursor: row-resize');
+    expect(rules).toContain(
+      '[aria-orientation="horizontal"]:not([aria-disabled="true"]){cursor: row-resize',
+    );
     expect(rules).not.toContain("left:");
   });
 });

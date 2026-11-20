@@ -136,13 +136,15 @@ export const attachmentMediaVariants = variants({
       width: "calc(var(--spacing) * 4)",
       height: "calc(var(--spacing) * 4)",
     },
-    '[data-slot="attachment"][data-orientation="vertical"] &': {
+    // A smaller size keeps its own width and icon size in a column too.
+    '[data-slot="attachment"][data-orientation="vertical"][data-size="default"] &': {
       width: "100%",
     },
-    '[data-slot="attachment"][data-orientation="vertical"] & svg:not([class*="size-"])': {
-      width: "calc(var(--spacing) * 6)",
-      height: "calc(var(--spacing) * 6)",
-    },
+    '[data-slot="attachment"][data-orientation="vertical"]:not([data-size="xs"]) & svg:not([class*="size-"])':
+      {
+        width: "calc(var(--spacing) * 6)",
+        height: "calc(var(--spacing) * 6)",
+      },
     '[data-slot="attachment"][data-size="sm"] &': {
       width: "calc(var(--spacing) * 8)",
     },

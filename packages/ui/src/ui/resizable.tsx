@@ -83,6 +83,10 @@ const handle = ui({
   '[aria-orientation="horizontal"]': {
     height: "1px",
     width: "100%",
+  },
+  // A disabled handle offers no resize whichever way it runs, as
+  // react-resizable-panels' own separator does.
+  '[aria-orientation="horizontal"]:not([aria-disabled="true"])': {
     cursor: "row-resize",
   },
   '[aria-disabled="true"]': {

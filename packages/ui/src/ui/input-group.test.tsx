@@ -203,7 +203,7 @@ describe("InputGroup in a right-to-left page", () => {
       '[data-align="inline-end"]{padding-inline-end: calc(var(--spacing) * 2)',
     );
     expect(addon).toContain(
-      '[data-align="inline-start"]:has(> button){margin-inline-start: -0.3rem',
+      '[data-align="inline-start"]:has(> button):not(:has(> kbd)){margin-inline-start: -0.3rem',
     );
     expect(addon).toContain('[data-align="inline-end"]:has(> kbd){margin-inline-end: -0.15rem');
     for (const physical of ["padding-left", "padding-right", "margin-left", "margin-right"]) {

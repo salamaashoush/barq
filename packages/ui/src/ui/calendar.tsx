@@ -156,7 +156,8 @@ const day = ui(box.noSelect, {
     color: "var(--muted-foreground)",
     opacity: "50%",
   },
-  "[data-outside-month]": {
+  // Today shown in a neighbouring month keeps today's colour.
+  "[data-outside-month]:not([data-today])": {
     color: "var(--muted-foreground)",
   },
   '[data-outside-month][aria-selected="true"]': {
@@ -176,9 +177,12 @@ const day = ui(box.noSelect, {
     backgroundColor: "var(--accent)",
   },
   "[data-today]": {
-    borderRadius: "calc(var(--radius) * 0.8)",
     backgroundColor: "var(--accent)",
     color: "var(--accent-foreground)",
+  },
+  // A selected today is square: the selection's strip shapes it.
+  "[data-today]:not([data-selected])": {
+    borderRadius: "calc(var(--radius) * 0.8)",
   },
   "[data-today][data-selected]": {
     borderRadius: "0",
@@ -204,6 +208,7 @@ const dayAfterNumber = ui({
   },
 });
 
+// barq-ignore-next-line BARQ033 (CalendarDay writes data-range-middle only on a selected day that is neither the range's start nor its end, and data-selected-single only outside range mode, so the range states never meet; a :not() saying so would outweigh the ghost button's dark hover)
 const dayButton = ui({
   display: "flex",
   aspectRatio: "1 / 1",

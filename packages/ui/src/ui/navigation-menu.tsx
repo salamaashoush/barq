@@ -312,7 +312,9 @@ const viewport = ui({
     "--ui-animation-fill-mode": "forwards",
     "--ui-exit-scale": firstThatWorks(".9", "calc(90*1%)"),
   },
-  '[data-state="open"]': {
+  // Reopened mid-exit, the viewport gets `data-state="open"` before it loses
+  // `data-closed`, and the exit holds until it does.
+  '[data-state="open"]:not([data-closed])': {
     animation:
       "enter var(--ui-animation-duration,var(--ui-duration,.15s))var(--ui-ease,ease)var(--ui-animation-delay,0s)var(--ui-animation-iteration-count,1)var(--ui-animation-direction,normal)var(--ui-animation-fill-mode,none)",
     "--ui-enter-scale": firstThatWorks(".9", "calc(90*1%)"),

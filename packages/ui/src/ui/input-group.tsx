@@ -27,8 +27,10 @@ const root = ui(box.border, box.transition, box.outline, when.darkInput, "group/
   transitionProperty:
     "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --ui-gradient-from, --ui-gradient-via, --ui-gradient-to",
   // Inside a combobox panel the PANEL is the focus surface, so the search row
-  // keeps the border it inherits and draws no ring.
-  '[data-slot="combobox-content"] &:focus-within': {
+  // keeps the border it inherits and draws no ring. `:where` keeps this as weak
+  // as upstream's `in-data-[slot=combobox-content]:`, so a focus-visible or
+  // invalid control still draws its own.
+  ':where([data-slot="combobox-content"]) &:focus-within': {
     borderColor: "inherit",
     "--ui-ring-shadow":
       "var(--ui-ring-inset,) 0 0 0 calc(0px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
@@ -59,6 +61,10 @@ const root = ui(box.border, box.transition, box.outline, when.darkInput, "group/
   },
   ':has(:is([data-slot][aria-invalid="true"]))': {
     borderColor: "var(--destructive)",
+    "--ui-ring-shadow":
+      "var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+    boxShadow:
+      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
     "--ui-ring-color": "var(--destructive)",
     "@supports (color: color-mix(in lab, red, red))": {
       "--ui-ring-color": "color-mix(in oklab, var(--destructive) 20%, transparent)",
@@ -128,7 +134,8 @@ const addon = ui(text.sm, text.medium, box.noSelect, {
     order: "-9999",
     paddingInlineStart: "calc(var(--spacing) * 2)",
   },
-  '[data-align="inline-start"]:has(> button)': {
+  // With both, the key cap's pull-back wins, on either side.
+  '[data-align="inline-start"]:has(> button):not(:has(> kbd))': {
     marginInlineStart: "-0.3rem",
   },
   '[data-align="inline-start"]:has(> kbd)': {
@@ -138,7 +145,7 @@ const addon = ui(text.sm, text.medium, box.noSelect, {
     order: "9999",
     paddingInlineEnd: "calc(var(--spacing) * 2)",
   },
-  '[data-align="inline-end"]:has(> button)': {
+  '[data-align="inline-end"]:has(> button):not(:has(> kbd))': {
     marginInlineEnd: "-0.3rem",
   },
   '[data-align="inline-end"]:has(> kbd)': {

@@ -172,7 +172,9 @@ const chips = ui(text.sm, {
   '&:has([data-slot="combobox-chip"])': {
     paddingInline: "var(--spacing)",
   },
-  ":focus-within": {
+  // A box holding an invalid control keeps its destructive border and ring
+  // while focused.
+  ':focus-within:not(:has([aria-invalid="true"]))': {
     borderColor: "var(--ring)",
     "--ui-ring-shadow":
       "var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",

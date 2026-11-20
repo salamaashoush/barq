@@ -165,7 +165,9 @@ const choice = ui({
       backgroundColor: "color-mix(in oklab, var(--input) 20%, transparent)",
     },
   },
-  "[data-checked]": {
+  // As weak as upstream's `data-checked:`, so an invalid or focused choice's
+  // border and a hovered one's fill beat the checked ones.
+  ":where([data-checked])": {
     borderColor: "var(--primary)",
     backgroundColor: "var(--muted)",
     "@supports (color: color-mix(in lab, red, red))": {
@@ -237,11 +239,8 @@ const indicatorDot = ui({
   height: "calc(var(--spacing) * 2)",
   borderRadius: "calc(infinity * 1px)",
   backgroundColor: "var(--primary-foreground)",
-  ":is(:where(.group\\/questionnaire-choice)[data-checked] *)": {
+  ':is(:where(.group\\/questionnaire-choice)[data-checked]:not([data-type="checkbox"]) *)': {
     display: "block",
-  },
-  ':is(:where(.group\\/questionnaire-choice)[data-type="checkbox"] *)': {
-    display: "none",
   },
 });
 
@@ -249,11 +248,8 @@ const indicatorCheck = ui({
   display: "none",
   width: "calc(var(--spacing) * 3.5)",
   height: "calc(var(--spacing) * 3.5)",
-  ":is(:where(.group\\/questionnaire-choice)[data-checked] *)": {
+  ':is(:where(.group\\/questionnaire-choice)[data-checked]:not([data-type="radio"]) *)': {
     display: "block",
-  },
-  ':is(:where(.group\\/questionnaire-choice)[data-type="radio"] *)': {
-    display: "none",
   },
 });
 
@@ -342,7 +338,8 @@ const input = ui({
   "::placeholder": {
     color: "var(--muted-foreground)",
   },
-  ":focus-visible": {
+  // An invalid field keeps its destructive border and ring while focused.
+  ':focus-visible:not([aria-invalid="true"])': {
     borderColor: "var(--ring)",
     "--ui-ring-shadow":
       "var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
