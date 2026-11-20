@@ -68,12 +68,20 @@ const stop = DEV.diagnostics.subscribe((event) => {
 ### STRICT_READ_UNTRACKED
 
 A reactive value was read where nothing tracks it, so the read got the current
-value once and never updates. The message names the place, most often an
-effect's second function ("an effect callback"). A component body that picks
-its JSX from one read is reported at build time instead, as `BARQ018`.
+value once and never updates. `data.strictRead` names the place. barq raises it
+in one place of its own: an effect's second function, `"an effect callback"`,
+for `createEffect` and `createRenderEffect` alike and on the first run as well
+as later ones. A store property read there carries `data.source: "store"` and
+`data.property`. The engine also reports under a label you pass yourself: the
+second argument of `untrack(fn, label)`, or the `name` option of `mapArray` and
+`repeat`.
 
-Move the read to a tracking scope: JSX, a memo, or the first function of
-`createEffect`.
+A read in a component body, in a `<For>` or `<Show>` callback, in an event
+handler expression or in a `ref` callback is not reported at run time. A
+component body that picks what it returns from one read is reported at build
+time as `BARQ018`.
+
+Move the read to the effect's first function and hand the value to the second:
 
 ```tsx
 // before: the second function reads `label()` untracked
@@ -95,25 +103,12 @@ createEffect(
 
 Pick the repair by what the value is for:
 
-- Rendered: read it in JSX, `<h1>{title()}</h1>`.
+- Rendered: read it in JSX, `<h1>{title()}</h1>`, and drop the effect.
 - Derived: `createMemo(() => price() * quantity())`.
-- An input to async data: read it inside the memo, `createMemo(() => fetchUser(id()))`.
-- Passed to a hook in a `.ts` file: pass an accessor, `useThing(() => id())`,
-  and read it inside the hook's own memos and effects.
-- The seed of local editable state: `createSignal(() => saved())`, which
-  re-seeds when the source changes.
-- Needed by a side effect: `createEffect(() => id(), (value) => save(value))`.
+- Needed by the side effect: read it in the first function,
+  `createEffect(() => id(), (value) => save(value))`.
 - Needed when an event fires: read it inside the handler,
   `onClick={() => save(id())}`.
-- In a `<For>` or `<Show>` callback: read the item in the JSX the callback
-  returns, not in statements above it.
-
-When the message says "an event handler expression", the handler was chosen
-from a read: `onClick={selected() ? a : b}`. A handler is bound once. Decide
-inside one stable function: `onClick={() => (selected() ? a() : b())}`.
-
-Props are not the cause in barq. `props.title` and a destructured `{ title }`
-are both live reads wherever they are used, so keep them as written.
 
 Leave `untrack` alone here. Wrapping the read in `untrack(() => value())` keeps
 the stale value and only removes the report. It is for a snapshot a person has
@@ -121,29 +116,35 @@ decided must never update.
 
 ### PENDING_ASYNC_UNTRACKED_READ
 
-The same shape as `STRICT_READ_UNTRACKED`, and the value was an async memo that
-had not answered yet, so there was nothing to read. Read async values where a
-read can wait and resume: JSX under a `<Loading>`, a memo, or the first
-function of `createEffect`.
+The same place as `STRICT_READ_UNTRACKED` (in barq, an effect's second function
+or a label you passed to `untrack`), and the value was an async memo that had
+not answered yet, so there was nothing to read and the read threw. Read it in
+the effect's first function, which waits for the memo and runs the second
+function once it answers:
 
 ```tsx
 // before
-function Profile() {
-  const user = createMemo(() => fetchUser(id()));
-  const name = user().name;
-  return <h1>{name}</h1>;
-}
+const user = createMemo(() => fetchUser(id()));
+createEffect(
+  () => open(),
+  (isOpen) => {
+    if (isOpen) log(user().name);
+  },
+);
 
 // after
-function Profile() {
-  const user = createMemo(() => fetchUser(id()));
-  return (
-    <Loading fallback={<p>loading</p>}>
-      <h1>{user().name}</h1>
-    </Loading>
-  );
-}
+const user = createMemo(() => fetchUser(id()));
+createEffect(
+  () => (open() ? user().name : undefined),
+  (name) => {
+    if (name !== undefined) log(name);
+  },
+);
 ```
+
+A component body that reads a pending value is not this code: under a
+`<Loading>` the boundary shows its fallback, and with no boundary above it
+`render` throws.
 
 ### UNTRACKED_READ_AFTER_AWAIT
 
@@ -595,18 +596,26 @@ beside the held frame, read the key through `latest`:
 
 ### LOADING_ON_ACCESSOR
 
-A `<Loading>`'s `on` resolved to a function. `on` takes the value that
-changes, so call the accessor:
+A `<Loading>`'s `on` evaluated to a function, so the boundary read nothing
+through it and never re-arms. The compiler hands `on` to the boundary as the
+accessor to call, so an identifier (`on={route}`), an arrow that reads
+(`on={() => route()}`) and a call (`on={route()}`) all re-arm when `route`
+changes and are not reported. Any other expression whose value is an accessor
+is: a field holding one (`on={filters.page}`), or a conditional choosing
+between two (`on={sorted() ? byName : byDate}`). Call the accessor in the
+expression:
 
 ```tsx
 // before
-<Loading on={() => route()} fallback={<Spinner />}>
+<Loading on={filters.page} fallback={<p>loading</p>}>
 
 // after
-<Loading on={route()} fallback={<Spinner />}>
+<Loading on={filters.page()} fallback={<p>loading</p>}>
 ```
 
-For several dependencies pass a list: `on={[query(), page()]}`.
+For several dependencies pass a list of values: `on={[query(), page()]}`. A
+list of accessors (`on={[query, page]}`) reads nothing either, and is not
+reported.
 
 ## Hard failures
 
@@ -1256,101 +1265,173 @@ failure by `error.status`.
 
 ## Engine codes a renderer raises
 
-The engine's code list includes codes that a renderer raises, not the engine.
-barq's renderer and server do not raise the codes in this section. Where barq
-reports the same mistake under another code, the entry names it. If one of
-these codes does arrive on the channel (for example from a library that emits
-it), the repair given applies.
+These codes are in the engine's list, and only Solid's own renderer and server
+emit them. barq never raises them: the engine's development build has no emit
+site for any of them, and neither does barq's runtime. Each section says what
+barq does in the same situation, which barq code reports it when one does, and
+the repair.
 
 ### SSR_SUBTREE_ABANDONED
 
-A streamed part failed on the server while parts nested inside it were still
-pending, and their work was discarded. barq reports the failure itself as
-`SSR_RENDER_ERROR_CONTAINED`. Fix that error, and give the failing read its own
-`<Loading>` so its siblings ship independently.
+barq does not raise this code. When a streamed part throws after the shell, the
+nearest `<Errored>` the stream wrote shows its fallback in place of everything
+it wraps, and the parts still loading inside it are dropped without a report.
+On a `renderToStream` render the throw itself is reported as
+`SSR_RENDER_ERROR_CONTAINED`: fix that throw. To keep one failure from taking
+its neighbours with it, wrap the part that can fail in its own `<Errored>`:
+
+```tsx
+<Errored fallback={(error) => <p>{error().message}</p>}>
+  <Comments postId={id()} />
+</Errored>
+```
 
 ### SSR_STREAM_ABANDONED
 
-The client went away, or the request was aborted, while parts of a streamed
-page were still rendering. Not an application bug. At volume it is the cost of
-renders nobody waited for: make the pending data faster, or load it after
-navigation instead of in the document.
+barq does not raise this code. When the browser goes away or the request is
+aborted, `renderToStream` stops after its current round and disposes the
+render's scope, and nothing is reported: it is not an application bug. A server
+function's handler receives `signal`, which aborts with the request; hand it to
+the `fetch` calls the handler makes so their work stops too.
 
 ### SSR_CLIENT_CONTENT_MASKED
 
-A `<Loading>`'s content turned out to be client-only (a memo declared
-`{ ssrSource: "client" }`) only after the server had already waited on other
-async reads in the same boundary, so that server work was discarded. Give the
-client-only read its own `<Loading>`, or read it before the async data.
+barq does not raise this code. A memo declared `{ ssrSource: "client" }` never
+settles on the server, so the `<Loading>` around it ships its fallback even
+after its other reads have answered, and the browser renders that content. The
+values the server fetched are still seeded; the user just sees the fallback
+longer. Give the client-only read its own `<Loading>`, or give the memo a
+`loadingValue`, which the server renders in its place:
+
+```tsx
+const width = createMemo(() => measure(), { ssrSource: "client", loadingValue: 0 });
+```
 
 ### SERVER_ERROR_SANITIZED
 
-Production replaced a server error with a generic one before sending it to the
-browser. barq reports the failure as `SERVER_FUNCTION_FAILED` (a server
-function) or `SSR_RENDER_ERROR_CONTAINED` (a render): fix that. If the client
-is meant to see a specific error, mark it with `markSafeError` from
-`@barqjs/core`, or throw a `Response` from the server function.
+barq does not raise this code. A production build replaces an error it sends to
+the browser with a generic one, both in a server function's reply (a 500 with
+no text) and in a rendered error fallback, and records nothing. The failure
+itself is reported as `SERVER_FUNCTION_FAILED`, or on a streamed render as
+`SSR_RENDER_ERROR_CONTAINED`: fix that. If the user is meant to read the error,
+mark it with `markSafeError` from `@barqjs/core`; a server function's caller
+then gets its name and message on `ServerFnError.thrown`, and a render's
+fallback shows it. A server function can also throw a `Response`, and the call
+rejects with it.
+
+```ts
+throw markSafeError(new Error("That name is taken"));
+```
 
 ### SSR_BOUNDARY_WATERFALL
 
-One `<Loading>` needed several server passes, each waiting on a read that could
-only start after the previous one answered. The repair is `ASYNC_WATERFALL`'s:
-start both reads from the same inputs (read every async source before using
-any), or preload the dependent data in the route's loader.
+barq does not raise this code, and the cost is real: when a read inside a
+`<Loading>` can only start after another one answers, the server resumes that
+boundary once per link before its content can stream. The repair is
+`ASYNC_WATERFALL`'s. If the second read does not need the first answer, start
+both from the same inputs; if it does, load the dependent data in the route's
+`loader`.
+
+```tsx
+const user = createMemo(() => fetchUser(id()));
+const posts = createMemo(() => fetchPosts(id()));
+```
 
 ### SSR_UNDECLARED_LIVE_SOURCE
 
-A component rendered into a document read an async iterable that was still
-producing values seconds later, which holds the document open. Bound the
-source, or declare the server function live (`live` from `@barqjs/start`), so
-the document takes the first value and the browser connects for the rest.
+barq does not raise this code: a server render takes an async iterable's first
+value and does not wait for the rest, so it never holds the document open. The
+mistake barq allows is the opposite one. By default the browser adopts that
+first value and the stream stops there. To keep it going after hydration,
+declare the memo `{ ssrSource: "hybrid" }`, which runs it again in the browser
+and continues from the server's value:
+
+```tsx
+const prices = createMemo(() => watchPrices(), { ssrSource: "hybrid" });
+```
+
+`live` from `@barqjs/start` is a different thing: it wraps a server function so
+that calling it in the browser returns an iterable that stays connected.
 
 ### SSR_LIVE_HOLE_LATCHED
 
-A live region of a server-rendered frame stopped updating because re-running it
-created a scope still waiting on async work. Create the async source (a memo
-over a fetch or a stream) in the component body, not inside the markup that
-re-renders.
+barq does not raise this code and has no live holes. A frame read through
+`live` is rendered again whole each time a source it reads moves, and the new
+rendering replaces the old one in the browser, so no single part of it can stop
+updating on its own.
 
 ### SERVER_WRITE
 
-A signal or store setter ran during a server render. A server render is pure:
-state enters through async memos, not setters. Derive the value
-(`createMemo(() => load())`, or `createStore(fn, seed)`). If the write bridged
-a subscription, make the subscription the source: `createMemo(() => from(source))`.
+barq does not raise this code. A setter called while a component renders is
+reported at build time as `BARQ019`; in a development build it throws the
+engine's `REACTIVE_WRITE_IN_OWNED_SCOPE`, and in production the write does
+nothing and the render shows the old value. Derive the value instead:
+`createMemo(() => load())`, or `createStore(fn, seed)` for a store. If the write
+bridged a subscription, make the subscription the source:
+`createMemo(() => from(source))`.
 
 ### REVEAL_IN_RENDER_TO_STRING
 
-A nested `<Reveal>` with `collapsed` or `order="together"` needs a stream to
-coordinate on, and `renderToString` has none. Render with `renderToStream` from
-`@barqjs/server`, or drop the ordering.
+barq does not raise this code. `renderToString` renders every pending
+`<Loading>` as its fallback, so a `<Reveal>` has nothing to order there.
+`renderToStream` orders the boundaries directly inside one `<Reveal>` by its
+`order`, but it does not coordinate a nested `<Reveal>` with its parent, and the
+server ignores `collapsed`. Put the boundaries that must be ordered directly in
+one `<Reveal>` and render with `renderToStream` from `@barqjs/server`.
 
 ### LAZY_ASSET_UNMAPPED
 
-A `lazy()` component's client chunk could not be found for the page, so it is
-not preloaded and loads late during hydration. In barq the router's Vite plugin
-writes the module URL into a literal `lazy(() => import("./x"))` call. Write the
-import as a literal inside the `lazy` call, in a file the plugin compiles.
+barq does not raise this code. A `lazy()` component's chunk is preloaded only
+when the call carries its module URL and the render was given the build's asset
+manifest; otherwise the chunk loads late during hydration and nothing is
+reported. The router's Vite plugin, which `barq()` adds when `@barqjs/router` is
+installed, writes the URL in, but only into `lazy(() => import("./x"))` with a
+literal path, optionally followed by an options object. Name the export with
+`{ export: "Name" }`: the plugin leaves a call that picks it with a function
+alone.
+
+```tsx
+// before
+const Chart = lazy(
+  () => import("./Chart.tsx"),
+  (module) => module.Chart,
+);
+
+// after
+const Chart = lazy(() => import("./Chart.tsx"), { export: "Chart" });
+```
 
 ### PRELOAD_DESCRIPTOR_INVALID
 
-A preload link descriptor broke a field rule (`data.field`: a missing `as`, a
-non-string `href`) and was dropped. Fix the descriptor where it is declared. A
-preload link declared through `useHead` needs `rel`, `href` and `as`:
-`useHead({ tag: "link", props: { rel: "preload", href: "/hero.avif", as: "image" } })`.
+barq does not raise this code and does not check preload links. A preload is an
+ordinary head tag: `useHead` writes its props as attributes as given, and a
+route's `head().links` render the same way. One with no `as`, or an `as` the
+browser does not know, still ships and fetches nothing useful, and the router
+leaves it out of the 103 Early Hints and the `Link` header. Give every preload
+`rel`, `href` and `as`:
+
+```tsx
+useHead({ tag: "link", props: { rel: "preload", href: "/hero.avif", as: "image" } });
+```
 
 ### HEAD_TAG_INVALID
 
-A `useHead` call could not be honoured. Use head elements and their attributes
-only, call `useHead` from a component body, declare one `<title>`, and declare
-a tag above the `<Loading>` whose fallback ships with the shell when it must be
-in the first bytes.
+barq does not raise this code; `useHead` handles these cases without a report.
+A tag other than `title`, `meta`, `link`, `style`, `script` or `base` is
+dropped, a second declaration with the same identity (one title, one meta per
+name or property) replaces the first, and a call on the server outside a render
+does nothing. Attribute names are written as given, so an invalid one breaks
+the server's markup and throws in the browser. A tag declared inside a
+`<Loading>` that resolves after the shell arrives as a patch with that
+boundary, so declare a tag that must be in the first bytes outside any
+`<Loading>`, or in the route's `head`.
 
 ### UNRECOGNIZED_INSERT_VALUE
 
-A value the renderer cannot render (a plain object, a symbol) sat in a JSX
-child position. Usually a component function was inserted where its element was
-meant, or an object where one of its fields was:
+barq does not raise this code. A plain object in a JSX child position is written
+as its string, `[object Object]`, on the server and in the browser. A function
+there is not this mistake: barq calls it as a reactive hole. Render the field
+you meant:
 
 ```tsx
 // before
@@ -1362,53 +1443,57 @@ meant, or an object where one of its fields was:
 
 ### UNSCOPED_HOLE_ALLOCATED_IDS
 
-A JSX hole was handed a function that builds JSX when called, and server and
-browser evaluated it at different points, so hydration ids shifted. Call the
-function at the hole, or pass the JSX as a prop and render that:
-
-```tsx
-// before
-const renderHead = () => <Header />;
-<div>{renderHead}</div>;
-
-// after
-<div>{renderHead()}</div>;
-```
-
-In barq a shifted id shows up as `HYDRATION_MISMATCH`.
+barq does not raise this code. A function in a JSX hole is a valid child: the
+browser calls it as a reactive hole and the server calls it while writing the
+hole, and `createUniqueId` values and async seed keys are numbered by where
+they are declared rather than by how many effects ran. When the browser builds a
+different tree from the server, the async values it strands are reported as
+`HYDRATION_SEED_DRIFT` and a different element structure as
+`HYDRATION_MISMATCH`.
 
 ### LOWERCASE_EVENT_ATTRIBUTE
 
-A function was set on an attribute whose name starts with `on` and is not an
-event binding. barq binds both `onClick` and lowercase `onclick` as the `click`
-event, so the lowercase form is not a mistake here. A Solid 1.x `on:click` is
-reported by the compiler as `BARQ024`: write `onClick={handler}`.
+barq does not raise this code, because every prop whose name starts with `on`
+is an event: `onclick={handler}` and `onClick={handler}` both bind `click`, and
+no `on` attribute is written into server markup. A value that is not a
+function, such as `onclick="track()"`, binds nothing and is dropped without a
+report. A Solid 1.x `on:click` written in JSX is the compile error `BARQ024`:
+write `onClick={handler}`.
 
 ### UNCOMMITTED_INPUT_OVERWRITTEN
 
-A `value` or `checked` binding re-wrote its previous value over an edit the
-user had made and that no signal had received, so the typed text was lost. In
-barq use the two-way binding, which compares against the element before writing
-and preserves the caret:
+barq does not raise this code, and the overwrite happens without a report. A
+`value` or `checked` binding writes the bound value whenever it differs from
+what the element holds. The bindings of one element share one effect, so when
+another binding on it changes, `value` is written again, and text the user typed
+that never reached the signal is replaced. `onChange` fires on commit, not per
+keystroke, so it leaves that window open. Write the signal on every edit with
+`bind:value`, which listens to `input` on a text field, or with `onInput`:
 
 ```tsx
 // before
-<input value={name()} onChange={(event) => setName(event.currentTarget.value)} />
+<input
+  value={name()}
+  class={tone()}
+  onChange={(event) => setName(event.currentTarget.value)}
+/>
 
 // after
-<input type="text" bind:value={[name, setName]} />
+<input type="text" bind:value={[name, setName]} class={tone()} />
 ```
 
-For an element the program never controls, use `defaultValue`.
+For a field the program only seeds, use `defaultValue`.
 
 ### INVALID_HTML_NESTING
 
-Markup that the browser's HTML parser rebuilds (a `<div>` inside a `<p>`, a
-`<tr>` directly in a `<table>`, an `<a>` inside an `<a>`). barq reports it at
-build time as `BARQ026` when it is inside one component, and at run time as
-`HYDRATION_MISMATCH` (`structure`) when it spans components. Change the outer
-element (a `<div>` for a `<p>` that holds blocks), move the inner element out,
-or write the wrapper the parser expects:
+barq reports this at build time as `BARQ026`, an error in every build, when the
+outer and inner elements are in the same JSX tree. A component boundary starts
+the check over, and that includes the children of `<For>` and `<Show>`. Across
+that boundary the page fails its claim at hydration and is rendered again in
+the browser, reported as `HYDRATION_MISMATCH` (in a development build
+`data.kind` is `structure` or `range`). Change the outer element (a `<div>` for
+a `<p>` that holds blocks), move the inner element out, or write the wrapper the
+parser expects:
 
 ```tsx
 <table>
@@ -1420,35 +1505,40 @@ or write the wrapper the parser expects:
 
 ### FRAME_MARKER_CORRUPTED
 
-A server-rendered frame's start marker has no end marker in the browser:
-invalid nesting split the range when the browser parsed it, or a CDN or
-minifier stripped the comments. Fix the nesting in the component's markup (see
-`INVALID_HTML_NESTING`) and serve the response with
-`Cache-Control: no-transform`.
+barq does not raise this code. A barq frame is a `<barq-frame>` element, and
+only its slots are delimited by `<!--s:N-->` and `<!--/s:N-->` comments. A slot
+whose opening comment has no matching close among its siblings is left unfilled
+without a report. The causes are markup the HTML parser restructures (see
+`INVALID_HTML_NESTING` and `BARQ026`) or a layer between server and browser
+that strips HTML comments, which on a hydrated page also shows as
+`HYDRATION_MISMATCH` with kind `range`. Fix the nesting, and stop the CDN or
+minifier from rewriting the HTML.
 
 ### DYNAMIC_ASYNC_COMPONENT
 
-A `dynamic()` source answered asynchronously with a component function. In barq
-a `dynamic` source answers synchronously. Move the async part upstream and
-choose synchronously, or use `lazy` for code that loads later:
+barq does not raise this code. A `dynamic()` source is typed to return a tag or
+a component synchronously. If it returns a promise anyway, the server does not
+wait for it: the `<Loading>` around it ships its fallback and the browser
+renders the component. Do the async work upstream and choose synchronously,
+and for a component that loads later use `lazy`, which a `<Loading>` waits for
+on the server too:
 
 ```tsx
 // before
 const View = dynamic(async () => (await import("./Editor.tsx")).Editor);
 
 // after
-const Editor = lazy(
-  () => import("./Editor.tsx"),
-  (module) => module.Editor,
-);
+const Editor = lazy(() => import("./Editor.tsx"), { export: "Editor" });
 const View = dynamic(() => (editing() ? Editor : Viewer));
 ```
 
 ### ASYNC_MEMO_ELEMENT
 
-An async memo resolved, on the server, to rendered output (JSX). The server
-sends an async memo's value to the browser as data, and an element has no
-encoding. Return data from the async memo and render the JSX from it:
+barq does not raise this code. An async memo's value is seeded to the browser
+as data, and markup cannot be encoded, so a memo that resolves to JSX fails the
+seed with `Seroval Error (step: 1)`: `renderPage` rejects, and a stream reports
+`SSR_RENDER_ERROR_CONTAINED` and stops before its scripts, so the page never
+hydrates. Return data from the async memo and render the JSX from it:
 
 ```tsx
 // before

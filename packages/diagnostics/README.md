@@ -51,8 +51,10 @@ test("a click re-runs the memo once", async () => {
 });
 ```
 
-Run it with `bun test --conditions=development`. Mount before the capture when
-the budget is about an interaction, so the mount's own runs are not counted.
+Run it with `bun test --conditions=development`. Under vitest, `barq()` from
+`@barqjs/vite` in the vitest config resolves the condition, since vitest serves
+through a Vite dev server. Mount before the capture when the budget is about an
+interaction, so the mount's own runs are not counted.
 
 `captureArtifact(scenario, options)` returns `{ result, artifact }`. Options:
 

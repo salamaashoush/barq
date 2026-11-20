@@ -25,6 +25,8 @@
     "src",
     "!src/**/*.test.ts",
     "!src/**/*.test.tsx",
+    "!src/**/*.vitest.ts",
+    "!src/**/*.vitest.tsx",
     "!src/**/test-*.ts",
     "!src/**/*-harness.ts",
     "!src/**/*-probe.ts",
@@ -32,7 +34,8 @@
     "!src/**/fixtures.ts",
     "!src/**/ssr-fixtures.ts",
     "!src/preload.ts",
-    "!src/register-dom.ts"
+    "!src/register-dom.ts",
+    "!src/vitest-setup.ts"
   ],
   "type": "module",
   "sideEffects": false,
@@ -88,7 +91,7 @@
     "build": "tsdown",
     "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit",
-    "test": "bun test && bun test --conditions=development"
+    "test": "bun test && bun test --conditions=development && vitest run"
   },
   "dependencies": {
     "@solidjs/signals": "2.0.3"

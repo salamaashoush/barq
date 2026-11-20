@@ -4,7 +4,7 @@ import { artifact, finding, hold, messageOf, rerun } from "./fixtures.ts";
 import { install as installAnywhere } from "./matchers.ts";
 import type { DiagnosticsMatcherTable } from "./matchers.ts";
 import { install, matchers } from "./matchers-bun.ts";
-import { install as installVitest, matchers as vitestMatchers } from "./matchers-vitest.ts";
+import { matchers as vitestMatchers } from "./matchers-vitest.ts";
 
 install(expect);
 
@@ -79,13 +79,3 @@ describe("the matcher table", () => {
     expect(vitestMatchers).toBe(matchers);
   });
 });
-
-// Never called: vitest's `expect` only exists inside its runner. Compiling this
-// is the check that `install` accepts it and that the augmentation types it.
-function underVitest(vitestExpect: typeof import("vitest").expect): void {
-  installVitest(vitestExpect);
-  vitestExpect(quiet).toHaveNoDiagnostics();
-  vitestExpect(quiet).not.toStayWithinRerunBudget(0, { scope: /double/ });
-}
-
-void underVitest;
