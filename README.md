@@ -115,6 +115,7 @@ The framework:
 - [`@barqjs/server`](./packages/server#readme): `renderToString`, `renderToStream` and hydration.
 - [`@barqjs/css`](./packages/css#readme): nested and atomic CSS, compiled to a stylesheet.
 - [`@barqjs/testing`](./packages/testing#readme): render components, routes and server output in tests.
+- [`@barqjs/diagnostics`](./packages/diagnostics#readme): findings and attribution as one artifact, with assertions, budgets and a dev-server endpoint for agents.
 - [`create-barq`](./packages/create-barq#readme): the project scaffolder.
 
 Components and libraries:

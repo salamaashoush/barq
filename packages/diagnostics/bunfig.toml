@@ -1,0 +1,6 @@
+[install]
+peer = false
+
+[test]
+onlyFailures = true
+preload = ["./src/preload.ts"]

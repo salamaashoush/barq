@@ -15,6 +15,7 @@
       "@barqjs/compiler-win32-x64-msvc",
       "@barqjs/core",
       "@barqjs/css",
+      "@barqjs/diagnostics",
       "@barqjs/form",
       "@barqjs/lucide",
       "@barqjs/primitives",
