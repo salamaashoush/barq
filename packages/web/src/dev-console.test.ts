@@ -44,7 +44,7 @@ describe("the development console sink", () => {
       mountBuilt();
       expect(warn).toHaveBeenCalledTimes(1);
       const line = String(warn.mock.calls[0]?.[0]);
-      expect(line).toStartWith("[barq] RENDER_SUBTREE_NOT_OWNED: ");
+      expect(line).toStartWith("[RENDER_SUBTREE_NOT_OWNED] ");
     } finally {
       warn.mockRestore();
     }
@@ -62,12 +62,16 @@ describe("the development console sink", () => {
       expect(warn).not.toHaveBeenCalled();
       expect(error).toHaveBeenCalledTimes(1);
       expect(String(error.mock.calls[0]?.[0])).toBe(
-        "[barq] BIND_TARGET_NOT_WRITABLE: `bind:value` on `<input>` was given a value of type " +
+        "[BIND_TARGET_NOT_WRITABLE] `bind:value` on `<input>` was given a value of type " +
           "`function` instead of a signal, so the element does not follow the value and what " +
           "the user types is never written back. Pass the whole signal, the `[read, write]` " +
           'pair `createSignal` returns: `const text = createSignal("")` and then ' +
           "`bind:value={text}`.\n" +
-          "  docs: https://github.com/salamaashoush/barq/blob/main/packages/core/docs/diagnostics/BIND_TARGET_NOT_WRITABLE.md",
+          "[BIND_TARGET_NOT_WRITABLE] what it means and how to fix it: " +
+          "https://github.com/salamaashoush/barq/blob/main/packages/core/docs/diagnostics/BIND_TARGET_NOT_WRITABLE.md\n" +
+          "[BIND_TARGET_NOT_WRITABLE] agent repair guide: " +
+          "node_modules/@barqjs/core/skills/diagnostics/SKILL.md#bind_target_not_writable " +
+          "(https://github.com/salamaashoush/barq/blob/main/packages/core/skills/diagnostics/SKILL.md#bind_target_not_writable)",
       );
     } finally {
       error.mockRestore();
@@ -128,7 +132,7 @@ describe("the entry a condition resolves to", () => {
     const { isDev, lines } = await resolveAs(["--conditions=development"]);
     expect(isDev).toBe(true);
     expect(lines.length).toBe(1);
-    expect(lines[0]).toStartWith("[barq] RENDER_SUBTREE_NOT_OWNED: ");
+    expect(lines[0]).toStartWith("[RENDER_SUBTREE_NOT_OWNED] ");
   });
 
   test("the default entry is silent and reports no isDev", async () => {
@@ -154,7 +158,7 @@ function closure(entry: string): string[] {
   return [...seen];
 }
 
-const MARKER = "[barq] ";
+const MARKER = "agent repair guide";
 const built = ["index.js", "dev.js", "internal.js", "interp.js", "jsx-runtime.js"].every((entry) =>
   existsSync(join(DIST, entry)),
 );

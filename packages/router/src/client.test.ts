@@ -33,7 +33,7 @@ async function bootUnrendered(options: StartClientOptions): Promise<RouterState>
     warn.mockRestore();
     error.mockRestore();
     expect(capture.stop().map((event) => event.code)).toEqual(["HYDRATION_MISMATCH"]);
-    for (const line of printed) expect(line).toStartWith("[barq] HYDRATION_MISMATCH: ");
+    for (const line of printed) expect(line).toStartWith("[HYDRATION_MISMATCH] ");
   }
 }
 

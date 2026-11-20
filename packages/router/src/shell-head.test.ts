@@ -192,7 +192,7 @@ describe("a streamed page", () => {
     }
     const late = capture.stop().filter((event) => event.code === "LATE_HEADER_WRITE");
     // A development build prints the finding as well, once per distinct one.
-    for (const line of printed) expect(line).toStartWith("[barq] LATE_HEADER_WRITE: ");
+    for (const line of printed) expect(line).toStartWith("[LATE_HEADER_WRITE] ");
 
     expect(response.status).toBe(200);
     expect(body).toContain("<b>salama</b>");

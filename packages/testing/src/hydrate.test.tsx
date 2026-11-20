@@ -32,7 +32,7 @@ function rebuilt(
     warn.mockRestore();
     error.mockRestore();
   }
-  for (const line of printed) expect(line).toStartWith("[barq] HYDRATION_MISMATCH: ");
+  for (const line of printed) expect(line).toStartWith("[HYDRATION_MISMATCH] ");
   expect(result.mismatches.length).toBeGreaterThan(0);
   return result;
 }

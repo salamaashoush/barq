@@ -121,6 +121,7 @@ export {
   settle,
   DEV,
   createComponent,
+  labelled,
   errorOwnerPath,
   ownerPathOf,
   ScopeMissingError,

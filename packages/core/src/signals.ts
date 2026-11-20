@@ -367,7 +367,7 @@ function engineChannel(observe: Observe): HostChannel {
 let diagnosticSequence = 0;
 const localListeners = new Set<DiagnosticListener>();
 let listening = 0;
-let reporter: ((event: DiagnosticEvent) => void) | null = null;
+let reporter: DiagnosticListener | null = null;
 /** Mirrors "anything will hear it" as a single load for hot paths. */
 let diagnosticsOn = false;
 
@@ -403,7 +403,7 @@ function addDiagnosticListener(listener: DiagnosticListener): () => void {
  * The console face. The development entry installs one; anything else hears
  * findings by subscribing.
  */
-export function setDiagnosticReporter(report: ((event: DiagnosticEvent) => void) | null): void {
+export function setDiagnosticReporter(report: DiagnosticListener | null): void {
   reporter = report;
   refreshDiagnosticsOn();
 }
@@ -438,7 +438,7 @@ export function emitDiagnostic(
     event = { sequence: ++diagnosticSequence, ...report, docs };
     for (const listener of localListeners) listener(event, subject ?? undefined);
   }
-  reporter?.(event);
+  reporter?.(event, subject ?? undefined);
   return event;
 }
 
@@ -484,12 +484,14 @@ export function createComponent<P, R>(
   component: (props: P) => R,
   props: P | Incoming<P>,
   name?: string,
+  loc?: string,
 ): R {
   const record = props as P;
   const parent = getOwner();
   if (parent === null) return component(record);
   const owner = runWithOwner(parent, openTransparent);
   owner._name = `<${name || component.name || "Anonymous"}>`;
+  if (loc !== undefined) owner._loc = loc;
   try {
     return runWithOwner(owner, () => component(record));
   } catch (error) {
@@ -501,6 +503,48 @@ export function createComponent<P, R>(
     }
     throw error;
   }
+}
+
+/**
+ * Run `build`, a compiled binding, and give the first owner it makes the name
+ * of what it writes (`li.class`, `li.children`, `<Show>`), where the JSX is
+ * and the element, so a finding about that effect says all three. A
+ * development compile emits the call. Without the engine's development tier
+ * there is nothing to name and `build` runs as it is.
+ */
+export function labelled<T>(
+  name: string,
+  loc: string | undefined,
+  build: () => T,
+  element?: unknown,
+): T {
+  const hooks = ENGINE_DEV?.hooks;
+  if (hooks === undefined) return build();
+  const outer = hooks.onOwner;
+  let waiting = true;
+  hooks.onOwner = (owner) => {
+    if (waiting) {
+      waiting = false;
+      hooks.onOwner = outer;
+      const made = owner as Labelled;
+      made._name = name;
+      if (loc !== undefined) made._loc = loc;
+      if (element !== undefined) made._devElement = element;
+    }
+    outer?.(owner);
+  };
+  try {
+    return build();
+  } finally {
+    if (waiting) hooks.onOwner = outer;
+  }
+}
+
+interface Labelled {
+  _name?: string;
+  _loc?: string;
+  /** What the engine's console report prints beside the message. */
+  _devElement?: unknown;
 }
 
 /**

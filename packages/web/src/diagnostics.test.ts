@@ -16,8 +16,13 @@ import {
   createRoot,
   errorOwnerPath,
   getOwner,
+  labelled,
 } from "@barqjs/core";
-import { formatDiagnostic } from "../../core/src/dev-console.ts";
+import {
+  diagnosticFooter,
+  formatDiagnostic,
+  installDevConsole,
+} from "../../core/src/dev-console.ts";
 import { render } from "./dom.ts";
 
 const DOCS = "https://github.com/salamaashoush/barq/blob/main/packages/core/docs/diagnostics";
@@ -106,9 +111,15 @@ describe("createComponent", () => {
     const [event] = capture.stop();
     expect(event).toBeDefined();
     const text = event === undefined ? "" : formatDiagnostic(event);
-    expect(text).toStartWith("[barq] RENDER_SUBTREE_NOT_OWNED: `render` was given nodes");
-    expect(text.includes("\n  in <App> › <Row>\n")).toBe(named);
-    expect(text).toEndWith(`\n  docs: ${DOCS}/RENDER_SUBTREE_NOT_OWNED.md`);
+    expect(text).toStartWith("[RENDER_SUBTREE_NOT_OWNED] `render` was given nodes");
+    expect(text.endsWith("\n  in <App> › <Row>")).toBe(named);
+    const footer = event === undefined ? "" : diagnosticFooter(event);
+    expect(footer).toBe(
+      `[RENDER_SUBTREE_NOT_OWNED] what it means and how to fix it: ${DOCS}/RENDER_SUBTREE_NOT_OWNED.md\n` +
+        "[RENDER_SUBTREE_NOT_OWNED] agent repair guide: " +
+        "node_modules/@barqjs/core/skills/diagnostics/SKILL.md#render_subtree_not_owned " +
+        "(https://github.com/salamaashoush/barq/blob/main/packages/core/skills/diagnostics/SKILL.md#render_subtree_not_owned)",
+    );
   });
 
   test("an error thrown while a component builds names the component path", () => {
@@ -157,5 +168,135 @@ describe("createComponent", () => {
       "Row",
     );
     expect(owner).toBeNull();
+  });
+});
+
+describe("source positions", () => {
+  function Row(): void {
+    mountBuilt()();
+  }
+
+  test("a finding inside a component says where the component is written", () => {
+    const capture = DEV.diagnostics.capture();
+    createRoot((dispose) => {
+      createComponent(Row, {}, "Row", "src/list.tsx:9:5");
+      dispose();
+    });
+    const [event] = capture.stop();
+    expect(event?.loc).toBe(named ? "src/list.tsx:9:5" : undefined);
+    const text = event === undefined ? "" : formatDiagnostic(event);
+    expect(text.endsWith("\n  in <Row>\n  at src/list.tsx:9:5")).toBe(named);
+  });
+
+  test("a binding takes the name, the position and the element it was compiled with", () => {
+    const element = document.createElement("li");
+    let made: { _name?: string; _loc?: string; _devElement?: unknown } | null = null;
+    const capture = DEV.diagnostics.capture();
+    createRoot((dispose) => {
+      createComponent(
+        () =>
+          labelled(
+            "li.title",
+            "src/list.tsx:12:9",
+            () =>
+              createRenderEffect(
+                () => {
+                  made = getOwner();
+                  mountBuilt()();
+                  return 1;
+                },
+                () => {},
+              ),
+            element,
+          ),
+        {},
+        "Row",
+      );
+      dispose();
+    });
+    const [event] = capture.stop();
+    expect(event?.ownerPath).toEqual(named ? ["<Row>", "li.title"] : undefined);
+    expect(event?.loc).toBe(named ? "src/list.tsx:12:9" : undefined);
+    const tagged = made as { _name?: string; _devElement?: unknown } | null;
+    expect(tagged?._devElement).toBe(named ? element : undefined);
+  });
+
+  test("only the first owner a binding makes is named, and none after it", () => {
+    const names: (string | undefined)[] = [];
+    const read = (): void => {
+      names.push((getOwner() as { _name?: string } | null)?._name);
+    };
+    const effect = (): void =>
+      createRenderEffect(
+        () => {
+          read();
+          return 1;
+        },
+        () => {},
+      );
+    createRoot((dispose) => {
+      labelled("p.class", undefined, () => {
+        effect();
+        effect();
+      });
+      effect();
+      dispose();
+    });
+    expect(names[0]).toBe(named ? "p.class" : undefined);
+    expect(names[1]).not.toBe("p.class");
+    expect(names[2]).not.toBe("p.class");
+  });
+
+  test("a binding that makes nothing leaves no name behind for the next owner", () => {
+    let name: string | undefined;
+    createRoot((dispose) => {
+      labelled("p.id", undefined, () => {});
+      createRenderEffect(
+        () => {
+          name = (getOwner() as { _name?: string } | null)?._name;
+          return 1;
+        },
+        () => {},
+      );
+      dispose();
+    });
+    expect(name).not.toBe("p.id");
+  });
+
+  test("an engine finding ends with the page and the repair guide, once per code", () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    let printed: string[];
+    try {
+      const uninstall = installDevConsole();
+      for (let i = 0; i < 2; i++) {
+        createRenderEffect(
+          () => 1,
+          () => {},
+        );
+      }
+      uninstall();
+    } finally {
+      printed = warn.mock.calls.map((call) => String(call[0]));
+      warn.mockRestore();
+    }
+    const footed = printed.filter((line) =>
+      line.includes(
+        "[NO_OWNER_EFFECT] agent repair guide: node_modules/@barqjs/core/skills/diagnostics/SKILL.md#no_owner_effect",
+      ),
+    );
+    expect(footed.length).toBe(named ? 1 : 0);
+    if (named) expect(footed[0]).toContain("/diagnostics/no-owner-effect\n");
+  });
+
+  test("a finding about cost also says where its evidence is captured", () => {
+    const footer = diagnosticFooter({
+      sequence: 1,
+      code: "HOT_SCOPE_RERUNS",
+      kind: "perf",
+      severity: "warn",
+      message: "[HOT_SCOPE_RERUNS] a scope re-ran 40 times",
+    });
+    expect(footer).toContain('deeper evidence: captureArtifact() from "@barqjs/diagnostics"');
+    expect(footer).toContain("node_modules/@barqjs/diagnostics/skills/agent-loops/SKILL.md");
   });
 });
