@@ -7,8 +7,12 @@ import {
   Show,
   Switch,
   cell,
+  createContext,
   createRoot,
+  getContext,
   props,
+  scopeAllocations,
+  setContext,
   type Cell,
 } from "@barqjs/core";
 import { element, render } from "@barqjs/web";
@@ -893,5 +897,48 @@ describe("a form action", () => {
 
   test("a string action is still just an action", () => {
     expect(formAttr("/search")).toBe(' action="/search"');
+  });
+});
+
+/**
+ * A row's scope exists on this backend to keep a binding the row writes from
+ * the rows after it, so rows that write none are built under one scope, and a
+ * row that writes one ends the stretch.
+ */
+describe("the scopes of a list's rows", () => {
+  const Theme = createContext("none");
+  const scopesFor = (count: number): number => {
+    const before = scopeAllocations();
+    renderToString(() =>
+      ssrFor({
+        each: Array.from({ length: count }, (_, at) => at),
+        children: (item: number) => html(`<i>${esc(item)}</i>`),
+      }),
+    );
+    return scopeAllocations() - before;
+  };
+
+  test("rows that write no binding share one scope", () => {
+    expect(scopesFor(50)).toBe(scopesFor(1));
+  });
+
+  test("a binding one row writes does not reach the rows after it", () => {
+    const row = (item: string): SsrHtml => {
+      const found = getContext(Theme);
+      if (item !== "b") setContext(Theme, `by ${item}`);
+      return html(`<i>${item}:${found}:${getContext(Theme)}</i>`);
+    };
+    const out = renderToString(() => ssrFor({ each: ["a", "b", "c", "d"], children: row }));
+    expect(out).toBe("<i>a:none:by a</i><i>b:none:none</i><i>c:none:by c</i><i>d:none:by d</i>");
+  });
+
+  test("a row that throws takes down the stretch it was built in", () => {
+    const row = (item: number): SsrHtml => {
+      if (item === 2) throw new Error("row two");
+      return html(`<i>${esc(item)}</i>`);
+    };
+    expect(() => renderToString(() => ssrFor({ each: [0, 1, 2, 3], children: row }))).toThrow(
+      "row two",
+    );
   });
 });

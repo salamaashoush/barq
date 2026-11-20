@@ -4,14 +4,15 @@ import type { FixtureModule } from "./harness.ts";
 import { census, compileText, host, reuse, shape, wire } from "./hydration.ts";
 
 /**
- * A list row is an owner of its own on both backends.
+ * What a list row binds on its owner stays in the row, on both backends.
  *
  * The client's `each` builds every row under the owner `mapArray` opens for
- * it, so what a row binds on its owner stays in the row: a context it sets,
- * an error boundary it installs, a cleanup it registers. The server has to
- * open the same owner per row, or the string backend renders a row against
- * what the row before it left behind, writes markup the client does not
- * build, and hydration has to throw it away.
+ * it, so a context a row sets and an error boundary it installs stay in the
+ * row. The server has to keep the same promise, or the string backend renders
+ * a row against what the row before it left behind, writes markup the client
+ * does not build, and hydration has to throw it away. It keeps it by never
+ * building a row under an owner an earlier row wrote a binding on: rows that
+ * write none share one, and none of them is the list's own.
  */
 
 interface Rendered {
@@ -101,14 +102,18 @@ export default function Page() {
 `;
 
 const ROW_OWNERS = `
-import { For, getOwner } from "@barqjs/core"
+import { For, createContext, getOwner, setContext } from "@barqjs/core"
+const Row = createContext("none")
 export const owners = []
+export const outer = []
 export default function Page() {
+  outer.push(getOwner())
   return (
     <ul>
-      <For each={["salama", "example", "acme"]}>
+      <For each={["salama", "example", "acme", "umbrella"]}>
         {(name) => {
           owners.push(getOwner())
+          if (name === "example") setContext(Row, name)
           return <li>{name}</li>
         }}
       </For>
@@ -117,7 +122,7 @@ export default function Page() {
 }
 `;
 
-describe("a list row is an owner of its own on the server", () => {
+describe("what a list row binds stays in the row on the server", () => {
   for (const dev of [false, true]) {
     const build = dev ? "development" : "production";
 
@@ -152,12 +157,20 @@ describe("a list row is an owner of its own on the server", () => {
     });
   }
 
-  test("each row is built under an owner no other row shares", async () => {
+  test("no row is built under an owner an earlier row wrote a binding on", async () => {
     const compiled = await compileText(ROW_OWNERS, "row-owners", true, false);
     wire(compiled.ssr);
-    const served = (compiled.ssr as FixtureModule & Record<string, unknown>).owners as unknown[];
+    const module = compiled.ssr as FixtureModule & Record<string, unknown>;
+    const served = module.owners as unknown[];
+    const [page] = module.outer as unknown[];
 
-    expect(served).toHaveLength(3);
-    expect(new Set(served).size).toBe(3);
+    expect(served).toHaveLength(4);
+    const [first, writer, after, last] = served;
+    // Rows that write nothing share an owner, and it is not the list's.
+    expect(first).toBe(writer);
+    expect(after).toBe(last);
+    for (const owner of served) expect(owner).not.toBe(page);
+    // The row that set a context is the last one built under its owner.
+    expect(after).not.toBe(writer);
   });
 });

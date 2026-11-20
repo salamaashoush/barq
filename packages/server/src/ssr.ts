@@ -45,6 +45,8 @@ import {
 import { classToString, isSsrHtml } from "@barqjs/web";
 import {
   ERROR_BOUNDARY,
+  OWNERSHIP,
+  bindingsWritten,
   disposeScope,
   internalMemo,
   isObject,
@@ -194,6 +196,9 @@ export function esc(value: unknown): string {
   // A string is what a hole carries almost every time, and `typeof null` is
   // `"object"` — so testing for it first is both the fast order and a safe one.
   if (typeof value === "string") return escapeText(value);
+  // What a compiled row, component or branch body returns: the commonest value
+  // after a string, and the brand test below is seven tests further down.
+  if (value instanceof SsrHtml) return value.t;
   if (value === null || value === undefined || typeof value === "boolean") return "";
   if (typeof value === "number" || typeof value === "bigint") return String(value);
   // A Cell ignores the scope, a Block needs it, and one call serves both. On this backend the scope is only ever handed on.
@@ -1115,26 +1120,69 @@ export function each<T>(
       ? (inner: string): string => inner
       : (inner: string): string => range(inner, flags);
 
+  const body: (first: unknown, second?: unknown) => unknown =
+    typeof row === "function"
+      ? (row as unknown as (first: unknown, second?: unknown) => unknown)
+      : (): unknown => row;
   if (keyOf === COUNT) {
     const total = typeof value === "number" && value > 0 ? Math.floor(value) : 0;
     if (total === 0) return html(list(activate(given, fallback, NO_ARGS, 0, "each")));
-    let out = "";
-    for (let i = 0; i < total; i++) out += activate(given, row, [i], 0, "each");
-    return html(list(out));
+    return html(list(rowsUnder(given, total, (i) => body(i))));
   }
 
   const items = isArray<T>(value) ? value : [];
   if (items.length === 0) return html(list(activate(given, fallback, NO_ARGS, 0, "each")));
   const boxedItem = keyOf === false || typeof keyOf === "function";
   const boxedIndex = keyOf !== false;
+  return html(
+    list(
+      rowsUnder(given, items.length, (i) => {
+        const item = items[i];
+        return body(boxedItem ? (): T => item : item, boxedIndex ? (): number => i : i);
+      }),
+    ),
+  );
+}
+
+/**
+ * The rows of a list, each built under a child of the scope the list was
+ * handed, and a row that leaves its scope as it found it shares that scope
+ * with the next.
+ *
+ * A row's scope does one thing on this backend that the list's own could not:
+ * it keeps a binding the row writes on `getOwner()` from the rows after it.
+ * Disposal is not it, since a render disposes its root once, and neither is
+ * numbering, which a row never takes part in. So the scope is replaced only
+ * after a row during which a binding was written somewhere, which is every
+ * write there is: a component's frame, a provider's scope and a boundary's are
+ * each a child opened before the write and hold what the scope had then. On a
+ * page of plain rows this is one scope per list where there was one per row,
+ * and opening them was a fifth of the render.
+ *
+ * With an ownership trace installed every row keeps a scope of its own, since
+ * the trace reports rows by their scopes.
+ */
+function rowsUnder(given: Scope | null, total: number, build: (index: number) => unknown): string {
   let out = "";
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
-    const itemArg = boxedItem ? (): T => item : item;
-    const indexArg = boxedIndex ? (): number => i : i;
-    out += activate(given, row, [itemArg, indexArg], 0, "each");
+  const next = { row: 0 };
+  const stretch = (): string => {
+    const before = bindingsWritten();
+    let built = "";
+    do built += esc(build(next.row++));
+    while (next.row < total && bindingsWritten() === before && OWNERSHIP.sink === null);
+    return built;
+  };
+  while (next.row < total) {
+    const scope = childScope(given, "each");
+    let done = false;
+    try {
+      out += runWithOwner(scope, stretch);
+      done = true;
+    } finally {
+      if (!done) disposeScope(scope);
+    }
   }
-  return html(list(out));
+  return out;
 }
 
 export type BoundaryKind = "error" | "loading";

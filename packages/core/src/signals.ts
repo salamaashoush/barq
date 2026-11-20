@@ -978,7 +978,22 @@ export function provideOn(scope: Scope, key: string | symbol, value: unknown): v
 
 /** `provideOn` for a value the runtime binds itself, which is never a Block. */
 export function bindOn(scope: Scope, key: string | symbol, value: unknown): void {
+  bindingWrites++;
   engineSetContext(channel(key), value, scope);
+}
+
+let bindingWrites = 0;
+
+/**
+ * How many bindings have been written onto a scope, by `provideOn`, `install`,
+ * `setContext` and `setHydratable`: every way a scope that already exists comes
+ * to hold something the scopes opened under it afterwards inherit. A count that
+ * has not moved across a stretch of work says no scope gained a binding in it,
+ * which is what lets the string backend build the next list row under the
+ * scope the last one used.
+ */
+export function bindingsWritten(): number {
+  return bindingWrites;
 }
 
 /**
@@ -1852,6 +1867,7 @@ const NO_HYDRATE = engineCreateContext<boolean>(false);
 
 /** Mark whether what is declared under `scope` reaches a hydrating client. */
 export function setHydratable(scope: Scope, hydratable: boolean): void {
+  bindingWrites++;
   engineSetContext(NO_HYDRATE, !hydratable, scope);
 }
 
