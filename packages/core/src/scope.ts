@@ -10,7 +10,7 @@ import {
   CONTEXT_MISS,
   NoOwnerError,
   abortSignal,
-  cellOf,
+  providedCell,
   childScope,
   contextNotFound,
   disposeScope,
@@ -125,7 +125,7 @@ export function install<T>(scope: Scope, context: Context<T>, value: Cell<T>): v
 export function read<T>(context: Context<T>, scope: Scope | null = getOwner()): Cell<T> {
   if (scope !== null) {
     const stored = lookupContext(scope, context.id);
-    if (stored !== CONTEXT_MISS) return cellOf(stored) as Cell<T>;
+    if (stored !== CONTEXT_MISS) return providedCell(context, stored);
   }
   if (context.defaultValue !== undefined) {
     return (): T => context.defaultValue as T;

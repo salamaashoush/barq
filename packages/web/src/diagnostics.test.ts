@@ -73,7 +73,7 @@ describe("DEV.diagnostics", () => {
     }
     const engine = capture.stop().find((event) => event.code === "NO_OWNER_EFFECT");
     expect(engine !== undefined).toBe(named);
-    if (engine !== undefined) expect(engine.docs).toContain("#no_owner_effect");
+    if (engine !== undefined) expect(engine.docs).toEndWith("/diagnostics/no-owner-effect");
     expect(printed).toEqual(engine === undefined ? [] : [engine.message]);
   });
 });

@@ -188,6 +188,16 @@ property marks one position of the server's markup, which the page's fill owns f
 claim on. A mutation that calls `invalidateFrames` answers with the regions it changed beside
 its value, in one request, and a frame read through `live` is rendered again on the server
 each time a source it reads moves, each rendering applied in place over one connection.
+`broadcast` is an option, `createServerFn({ broadcast: true })`, rather than Solid's
+wrapper: barq's `live` is applied where a function is called, so the server learns the
+declaration from the function itself. One rendering serves every connection asking with
+the same arguments, the handler still runs per call as the gate, and a joiner is handed the
+latest event, which is the whole region rather than Solid's row edits.
+
+A page from another build is told so as in Solid: `@barqjs/vite` stamps each build with
+an id, and a call from another build is answered `409` and an unknown id `404`, both
+labelled, so the call rejects with `error.unknownFunction` set. The header names are
+barq's own (`x-barq-build`, `x-barq-fn-unknown`).
 
 ## Solid 1.x APIs barq does not have
 
@@ -215,8 +225,9 @@ listed with its 2.0 replacement, from Solid's `documentation/solid-2.0/MIGRATION
 - `mergeProps`, `splitProps`: `merge` (a later `undefined` overrides) and `omit` (read the
   props you keep straight off `props`).
 - `equalFn`, `getListener`: `isEqual`, `getObserver`.
-- `from`, `observable`: an async iterable in a computation; `createEffect` pushes values
-  outward.
+- `observable`: `createEffect` pushes values outward. `from` is still exported, with
+  Solid 2.0's meaning: it returns an async iterable for a memo,
+  `createMemo(() => from(source))`.
 - `Context.Provider`: the context is its own provider, `<Theme value="dark">`.
 - `<Dynamic component={…}>`, `createDynamic`: the `dynamic(source)` factory, hoisted and
   rendered as a component: `const Field = dynamic(() => (rich() ? Editor : "input"))`, then

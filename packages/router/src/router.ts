@@ -3069,10 +3069,14 @@ export function createRouter<Dehydrated = unknown>(
 
   /** The loaders of the chain on screen that are still running. */
   const settleChain = async (reloads: boolean): Promise<void> => {
-    const forRaw = untrack(rawParams);
-    const forSearch = untrack(search);
+    // A navigation's location write is held with the loaders it starts, so the
+    // committed chain is still the page being left until they land. `latest`
+    // reads the chain being loaded, which is the one to wait for.
+    const [loading, forRaw, forSearch] = untrack(() =>
+      latest(() => [chain(), rawParams(), search()] as const),
+    );
     const waits: Promise<void>[] = [];
-    for (const route of untrack(chain)) {
+    for (const route of loading) {
       const entry = entries.get(keyOf(route, forRaw, forSearch).seedKey);
       if (entry === undefined || entry.running === null || !entry.inFlight) continue;
       if (reloads || entry.settled === null) waits.push(entry.running);

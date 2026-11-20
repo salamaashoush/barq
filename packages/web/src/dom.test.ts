@@ -15,7 +15,7 @@ import {
   flush,
   createSignal,
 } from "@barqjs/core";
-import { disposeScope } from "@barqjs/core/internal";
+import { disposeScope, thrownBy } from "@barqjs/core/internal";
 
 // The container is a render root, as every element an application shows is
 // under one: a delegated handler outside a root has nothing listening for it.
@@ -1180,8 +1180,8 @@ describe("spread — B4 and E2.2 on the one channel the corpus cannot reach", ()
     const leaf = block(() => document.createTextNode("built"));
     const root = rootScope();
     runWithOwner(root, () => {
-      // The refusal is raised inside the binding's own computation, so it
-      // arrives as the engine's wrapper around it.
+      // The refusal is raised inside the binding's own computation, and reaches
+      // the caller as the engine delivers it, wrapped or not.
       // Nothing above it catches the throw, so the engine halts and says so.
       let thrown: unknown;
       const halt = spyOn(console, "error").mockImplementation(() => {});
@@ -1195,7 +1195,7 @@ describe("spread — B4 and E2.2 on the one channel the corpus cannot reach", ()
         printed = halt.mock.calls.map((call) => String(call[0]));
         halt.mockRestore();
       }
-      expect((thrown as Error | undefined)?.cause).toBeInstanceOf(ScopeMissingError);
+      expect(thrownBy(thrown)).toBeInstanceOf(ScopeMissingError);
       expect(printed).toHaveLength(1);
       expect(printed[0]).toStartWith("[REACTIVITY_HALTED]");
     });

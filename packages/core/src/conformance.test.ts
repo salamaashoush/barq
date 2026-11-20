@@ -12,7 +12,7 @@
  */
 
 import { afterAll, describe, expect, spyOn, test } from "bun:test";
-import { type ReactiveFramework, SkipTest, testSuite } from "reactive-framework-test-suite";
+import { type ReactiveFramework, SkipTest, correctness } from "reactive-framework-test-suite";
 // The suite's `effect` tracks and acts in one function. Only the engine's
 // deprecated `createTrackedEffect` does that, and barq does not export it.
 import { createTrackedEffect } from "@solidjs/signals";
@@ -39,8 +39,16 @@ let batching = 0;
 let made: (() => void)[] = [];
 let effects = 0;
 
+// The production engine leaves runaway detection to the development build, so
+// an effect that keeps re-triggering itself would hang the run. Past the suite's
+// own guard (1,100,000 runs) the case fails instead.
+const RUNAWAY = 2_000_000;
+let ran = 0;
+
 /** Run part of an effect, its body or its cleanup, counted as such. */
 function during<T>(part: () => T): T {
+  if (++ran > RUNAWAY)
+    throw new Error(`[conformance] more than ${RUNAWAY} effect runs in one case`);
   effects++;
   try {
     return part();
@@ -97,6 +105,7 @@ const barq: ReactiveFramework = {
   run: (fn) => {
     const outer = made;
     made = [];
+    ran = 0;
     const error = spyOn(console, "error").mockImplementation(() => {});
     let printed: string[];
     try {
@@ -120,6 +129,7 @@ const barq: ReactiveFramework = {
     }
   },
   untracked: (fn) => untrack(fn),
+  effectCleanup: true,
 };
 
 /**
@@ -133,23 +143,19 @@ function differs(reason: string, ids: number[]): void {
 }
 differs(
   "a derived value is computed where it is declared and again at each flush, whether or not anything reads it",
-  [128, 155, 183, 187, 188, 189, 193, 205],
+  [128, 187, 188, 193],
 );
 differs(
   "a write is published at the next flush, and effects run there: a read on the line after a write still sees the published value",
-  [67, 70, 133, 134, 179, 182, 200, 224, 233, 235],
+  [67, 70, 114, 182, 233, 235],
 );
 differs(
   "a dependency written away and back inside one batch still re-runs its dependents, since nothing compares against a value snapshot",
-  [123, 132, 147],
+  [132, 147],
 );
 differs(
   "a single-function effect's cleanup runs while the effect is still observing, so a read inside it subscribes",
-  [40, 178],
-);
-differs(
-  "what a derived value's previous run created is retired when the flush commits, after the new run, so the old children stay live until the new ones exist",
-  [242],
+  [40, 178, 230],
 );
 
 /**
@@ -175,24 +181,28 @@ if (STRICT) {
     "the development build refuses a node created inside an effect that takes no children",
     [43, 45, 48, 163, 164, 170, 209, 210, 214, 222, 226, 227, 228, 237, 238, 241, 243, 244],
   );
-  differs("the development build refuses a write made while a derived value is computing", [57]);
-  // The same refusal turns these two around: the write they expect to see
-  // published late is never made, so what they assert about it holds.
+  // The development build also refuses the write this one expects to see
+  // published late, so what it asserts about that write holds.
   delete MODEL["#182"];
-  delete MODEL["#183"];
+} else {
+  differs(
+    "the production build leaves runaway detection to the development build, so effects that write each other in a cycle run until the suite's guard stops them",
+    [61, 63, 64, 221, 223],
+  );
 }
 
 const tally = { pass: 0, fail: 0, skip: 0, differ: 0 };
 
-for (const section of testSuite) {
-  describe(`conformance: ${section.section}`, () => {
-    for (const [name, caseFn] of Object.entries(section.cases)) {
-      const reason = MODEL[name.slice(0, name.indexOf(" "))];
+for (const section of correctness) {
+  describe(`conformance: ${section.name}`, () => {
+    for (const { id, title, run } of section.cases) {
+      const name = `#${id} ${title}`;
+      const reason = MODEL[`#${id}`];
       if (reason !== undefined) {
         test.failing(`${name} (${reason})`, () => {
           tally.differ++;
           barq.run(() => {
-            caseFn(barq);
+            run(barq);
           });
         });
         continue;
@@ -200,7 +210,7 @@ for (const section of testSuite) {
       test(name, () => {
         try {
           barq.run(() => {
-            caseFn(barq);
+            run(barq);
           });
           tally.pass++;
         } catch (err) {

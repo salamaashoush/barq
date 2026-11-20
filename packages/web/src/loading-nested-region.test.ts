@@ -100,14 +100,15 @@ test(
     resolve("ok");
     await tick();
     flush();
-    // Asserted as it IS, not as it should be: the fragment drained when it was
-    // inserted, and a region places its arm once its pass has committed, which
-    // is after that. The arm is written somewhere detached, from the first one.
-    expect(container.textContent).toBe(":ok");
+    // Asserted as it IS, not as it should be. The first arm is placed while the
+    // fragment is still the region's parent, so it travels with the fragment.
+    // The fragment drained when it was inserted, though.
+    expect(container.textContent).toBe("A:ok");
 
     setWhich(1);
     flush();
-    // And every later arm with it. Nothing the compiler emits reaches here —
+    // So the next arm takes the first off the page and is written somewhere
+    // detached, and every later arm with it. Nothing the compiler emits reaches here —
     // `siteFor(null, null)` produces a marker and a real parent is a real element
     // — so this is a statement about a hand-written call, and it is the whole
     // reason the test above is worth having.

@@ -237,6 +237,42 @@ export default function Page() {
   reset();
 });
 
+test("a from() subscription renders its first value on the server and subscribes again in the browser", async () => {
+  reset();
+  const page = await compiled(`
+import { from } from "@barqjs/core"
+function Ticker() {
+  const tick = createMemo(() =>
+    from((next) => {
+      counts.fetches++
+      next("tick-" + counts.fetches)
+      const later = setTimeout(() => next("tick-later"), 0)
+      return () => clearTimeout(later)
+    }),
+  )
+  return <b>{tick()}</b>
+}
+export default function Page() {
+  return <main><Loading fallback={<i>wait</i>}><Ticker /></Loading></main>
+}`);
+  const { chunks } = await streamed(page.ssr);
+  const container = assembled(chunks);
+  expect(container.textContent).toBe("tick-1");
+
+  const { dispose, claimed, report } = await hydrated(page.dom, container);
+  expect(claimed).toBe("tick-1");
+  expect(page.dom.counts.fetches).toBe(0);
+  await quiet();
+
+  expect(report.recovered).toBe(false);
+  expect(report.mismatches).toEqual([]);
+  expect(page.dom.counts.fetches).toBe(1);
+  expect(container.textContent).toBe("tick-later");
+  dispose();
+  container.remove();
+  reset();
+});
+
 test('ssrSource "hybrid" over a promise adopts the server value and does not fetch again', async () => {
   reset();
   const page = await compiled(`

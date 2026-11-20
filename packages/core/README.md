@@ -261,6 +261,16 @@ arrives. `refresh(user)` runs the memo again with nothing changed.
 Read every dependency before the first `await`. A signal read after it is not
 tracked.
 
+`createDeferred` is the same memo with one difference: once it has answered, a
+run caused by a changed input holds nothing back. Readers keep the previous
+answer until the new one lands, and `isPending` is true meanwhile.
+
+`from(source)` turns a callback subscription, an Observable or an async
+iterable into something a memo returns: `createMemo(() => from(socket))`. A
+subscription keeps its latest value and closes when the memo runs again. A
+server render shows its first value, and the browser subscribes again once it
+has claimed the page.
+
 There is no separate resource primitive, and no `createResource`, `Await` or
 `Suspense`.
 
@@ -307,6 +317,13 @@ const current = untrack(count); // read without subscribing
 
 Writes are always batched. However many are made before a flush, an effect that
 depends on them runs once.
+
+Writes made together land together, so when one of them starts async work the
+others wait for it. `onFlush(fn)` runs `fn` right after the pending flush, and
+the writes it makes are an update of their own:
+`onFlush(() => setOpen(false))` closes a menu whatever the `onSelect` it calls
+goes on to load. Call it from an event handler or an effect, and `onSettled`
+from a component body.
 
 `Portal` places its children elsewhere in the document while keeping them in the
 LEXICAL scope chain, so a portalled modal reads the providers it is written
