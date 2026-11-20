@@ -183,6 +183,8 @@ export interface HeadAssets {
     readonly scripts?: readonly string[];
     readonly css?: readonly string[];
   };
+  /** The `crossorigin` an asset is fetched with, by href, as `transformAssets` decided. */
+  readonly crossOrigin?: (href: string) => string | undefined;
   /**
    * `<link rel="modulepreload">` for the matched chain, as HREFS.
    *
@@ -286,6 +288,7 @@ export function HeadContent(_props?: Record<string, never>): JSXElement {
       nonce: assets.nonce,
       preloads: assets.preloads,
       css: assets.clientAssets?.css,
+      crossOrigin: assets.crossOrigin,
       inlineCss: assets.inlineCss,
     });
   // A backend with no tree renderer gets the string it always got. That is the
@@ -317,7 +320,7 @@ export function Scripts(): JSXElement {
       renderTags(resolveScripts(assets.matches, { nonce: assets.nonce })) +
       (assets.entryAfterShell === true
         ? ""
-        : entryScripts(assets.clientAssets?.scripts, assets.nonce)),
+        : entryScripts(assets.clientAssets?.scripts, assets.nonce, false, assets.crossOrigin)),
   ) as JSXElement;
 }
 
@@ -329,11 +332,16 @@ export function entryScripts(
   scripts: readonly string[] | undefined,
   nonce: string | undefined,
   async = false,
+  crossOrigin?: (href: string) => string | undefined,
 ): string {
   const attrs =
     (nonce === undefined ? "" : ` nonce="${escapeHeadAttribute(nonce)}"`) + (async ? " async" : "");
   return (scripts ?? [])
-    .map((src) => `<script type="module"${attrs} src="${escapeHeadAttribute(src)}"></script>`)
+    .map((src) => {
+      const cross = crossOrigin?.(src);
+      const fetched = cross === undefined ? "" : ` crossorigin="${escapeHeadAttribute(cross)}"`;
+      return `<script type="module"${attrs}${fetched} src="${escapeHeadAttribute(src)}"></script>`;
+    })
     .join("");
 }
 

@@ -22,8 +22,8 @@ const assets = {
 };
 
 const EXPECTED = [
-  "</assets/entry.js>; rel=modulepreload",
-  "</assets/orders.js>; rel=modulepreload",
+  "</assets/entry.js>; rel=modulepreload; as=script",
+  "</assets/orders.js>; rel=modulepreload; as=script",
   "</assets/app.css>; rel=preload; as=style",
   "</assets/orders.css>; rel=preload; as=style",
 ];
@@ -65,4 +65,69 @@ test("a Node response over HTTP/2 is sent a 103 when the host gave no hook, and 
   }
 
   expect(sent).toEqual([{ version: 2, hints: { link: EXPECTED } }]);
+});
+
+const withHead = [
+  {
+    ...(routes[0] as object),
+    children: [
+      {
+        id: "/orders",
+        path: "orders",
+        head: {
+          links: [
+            { rel: "preconnect", href: "https://api.example.com", crossorigin: "anonymous" },
+            { rel: "preload", href: "/fonts/inter.woff2", as: "font", type: "font/woff2" },
+            { rel: "icon", href: "/favicon.ico" },
+            { rel: "stylesheet", href: "/assets/orders.css" },
+          ],
+        },
+        component: () => ssrHtml("<main>orders</main>"),
+      },
+    ],
+  },
+] as never as AnyRouteDefinition[];
+
+test("what the routes' head declared follows as the dynamic phase, each link once", async () => {
+  const phases: { phase: string; links: readonly string[] }[] = [];
+  const handler = createPageHandler({
+    routeTree: withHead,
+    app: (state) => renderRoutes(state),
+    ...assets,
+    onEarlyHints: (links, _request, event) => phases.push({ phase: event.phase, links }),
+  });
+  const response = await handler(new Request("https://example.com/orders"));
+
+  const dynamic = [
+    "<https://api.example.com>; rel=preconnect; crossorigin=anonymous",
+    '</fonts/inter.woff2>; rel=preload; as=font; type="font/woff2"',
+  ];
+  expect(phases).toEqual([
+    { phase: "static", links: EXPECTED },
+    { phase: "dynamic", links: dynamic },
+  ]);
+  expect(response.headers.get("link")).toBe([...EXPECTED, ...dynamic].join(", "));
+});
+
+test("the Link header can be filtered, or turned off, without touching the 103", async () => {
+  const sent: (readonly string[])[] = [];
+  const filtered = createPageHandler({
+    routeTree: withHead,
+    app: (state) => renderRoutes(state),
+    ...assets,
+    onEarlyHints: (links) => sent.push(links),
+    responseLinkHeader: { filter: (entry) => entry.phase === "static" },
+  });
+  expect((await filtered(new Request("https://example.com/orders"))).headers.get("link")).toBe(
+    EXPECTED.join(", "),
+  );
+  const off = createPageHandler({
+    routeTree: withHead,
+    app: (state) => renderRoutes(state),
+    ...assets,
+    onEarlyHints: (links) => sent.push(links),
+    responseLinkHeader: false,
+  });
+  expect((await off(new Request("https://example.com/orders"))).headers.get("link")).toBeNull();
+  expect(sent).toHaveLength(4);
 });

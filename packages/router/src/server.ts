@@ -80,6 +80,14 @@ import { settle } from "@barqjs/core";
 import { setAsyncSession } from "@barqjs/core/internal";
 
 import { isNavigable } from "./path.ts";
+import { type TransformAssets, createAssetTransform } from "./assets.ts";
+import {
+  type EarlyHintsEvent,
+  type ResponseLinkHeader,
+  createEarlyHints,
+  hintOfLink,
+  staticHints,
+} from "./early-hints.ts";
 import type { TrailingSlash } from "./path.ts";
 import {
   type AnyRouteDefinition,
@@ -627,20 +635,45 @@ export interface PageHandlerOptions extends SharedRouterOptions {
    */
   readonly routeCss?: Readonly<Record<string, readonly string[]>>;
   /**
-   * The `Link` values for what the matched page needs before its markup, the
-   * entry, the chain's modules and its stylesheets, as soon as they are known
-   * and before the render. The host answers with a `103 Early Hints` here. The
-   * default does so through Node's `writeEarlyHints` when the request carries a
-   * Node response over HTTP/2, as srvx's does; the same values go out as the
-   * page's `Link` header, which a CDN turns into a 103 of its own.
+   * The `Link` values for what the matched page needs before its markup, in two
+   * phases. `static`, before any loader runs: the entry, the chain's modules
+   * and its stylesheets. `dynamic`, once the routes' `head` has run: the
+   * preloads, preconnects and stylesheets it declared. Each call carries only
+   * links an earlier one did not, and `event` says which phase it is. A `head`
+   * written as a function joins the dynamic phase on a buffered page only: on a
+   * streamed one its tags follow the shell, too late for a hint.
+   *
+   * The host answers with a `103 Early Hints` here. The default does so once,
+   * on the first call, through Node's `writeEarlyHints` when the request
+   * carries a Node response over HTTP/2, as srvx's does; a browser acts on the
+   * first 103 alone.
    */
-  readonly onEarlyHints?: (links: readonly string[], request: Request) => void;
+  readonly onEarlyHints?: (
+    links: readonly string[],
+    request: Request,
+    event: EarlyHintsEvent,
+  ) => void;
+  /**
+   * Whether the page's response repeats the hints as its `Link` header, which
+   * a CDN turns into a 103 of its own. On by default; `{ filter }` keeps a link
+   * that is not public and cache-safe out of it.
+   */
+  readonly responseLinkHeader?: ResponseLinkHeader;
   /**
    * What each `lazy()` module needs, from `virtual:barq-route-assets`. A lazy
    * component that renders puts its chunks and stylesheets in the page's head,
    * and one that renders after the shell streams them.
    */
   readonly moduleAssets?: AssetManifest;
+  /**
+   * Rewrites the URLs of the assets above at run time, for a CDN whose origin
+   * is known only once the server starts or differs per request: a prefix, a
+   * function of `{ url, kind }` answering an href or `{ href, crossOrigin }`,
+   * `{ prefix, crossOrigin }`, or `{ transform | createTransform, cache, warmup }`.
+   * TanStack Start's `transformAssets`. A transform runs once and is reused
+   * unless `cache: false`; a link a route's `head` writes is left as written.
+   */
+  readonly transformAssets?: TransformAssets;
 
   /**
    * The framework's collected stylesheet, read PER REQUEST.
@@ -858,19 +891,20 @@ async function runRouteHandlers(
 }
 
 export function createPageHandler(
-  options: PageHandlerOptions,
+  configured: PageHandlerOptions,
 ): (request: Request) => Promise<Response> {
+  const assetsFor = createAssetTransform(configured.transformAssets, configured);
   // AT CONSTRUCTION, not per request: adapters are configuration and fixed for
   // the life of the process, and re-registering per request would rebuild the
   // plugin list on every page.
-  if (options.serializationAdapters !== undefined) {
-    registerSerializationAdapters(options.serializationAdapters);
+  if (configured.serializationAdapters !== undefined) {
+    registerSerializationAdapters(configured.serializationAdapters);
   }
-  const matcher = createMatcher(flattenRoutes(options.routeTree), {
-    caseSensitive: options.caseSensitive,
+  const matcher = createMatcher(flattenRoutes(configured.routeTree), {
+    caseSensitive: configured.caseSensitive,
   });
 
-  const base = options.basepath === undefined ? "" : normalizeBase(options.basepath);
+  const base = configured.basepath === undefined ? "" : normalizeBase(configured.basepath);
 
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
@@ -885,9 +919,9 @@ export function createPageHandler(
     const inside = base === "" || url.pathname === base || url.pathname.startsWith(`${base}/`);
     if (!inside) return new Response("not found", { status: 404 });
     if (base !== "") url.pathname = stripBase(url.pathname, base);
-    if (options.rewrite?.input !== undefined) {
+    if (configured.rewrite?.input !== undefined) {
       const rewritten = new URL(
-        rewriteHref(options.rewrite.input, url.pathname + url.search, url.origin),
+        rewriteHref(configured.rewrite.input, url.pathname + url.search, url.origin),
         url,
       );
       url.pathname = rewritten.pathname;
@@ -912,7 +946,12 @@ export function createPageHandler(
       // AFTER the handlers, so an API route still answers, and before the method
       // gate, so a POST to a path with no handler is a 404 rather than a 405 for
       // a page that does not exist here.
-      if (options.pages === false) return new Response("not found", { status: 404 });
+      if (configured.pages === false) return new Response("not found", { status: 404 });
+      const transformed = assetsFor === undefined ? undefined : await assetsFor(request);
+      const options: PageHandlerOptions =
+        transformed === undefined ? configured : { ...configured, ...transformed };
+      const crossOrigin = transformed?.crossOrigin;
+      if (crossOrigin !== undefined) ASSET_CROSS_ORIGIN.set(options, crossOrigin);
 
       // A page is a GET. Nothing upstream filters the method — Vite's dev
       // middlewares check none of them and `serveBarq` matches server functions
@@ -1133,6 +1172,32 @@ export function createPageHandler(
           // from that chain. Projecting the match instead wrote a 404 with no
           // `<title>` at all, which hydration then found a `<style>` in place of.
           const rendered = untrack(state.chain);
+          let wrote = false;
+          const hints = createEarlyHints({
+            responseLinkHeader: options.responseLinkHeader,
+            onEarlyHints: (event) => {
+              if (options.onEarlyHints !== undefined) {
+                options.onEarlyHints(event.links, request, event);
+              } else if (!wrote) {
+                wrote = true;
+                writeEarlyHints(event.links, request);
+              }
+            },
+          });
+          const preloads = [
+            ...new Set([
+              ...(options.clientAssets?.preload ?? []),
+              ...chainFiles(rendered, options.routeAssets),
+            ]),
+          ];
+          hints.collect(
+            "static",
+            staticHints(
+              [...(options.clientAssets?.scripts ?? []), ...preloads],
+              [...(options.clientAssets?.css ?? []), ...chainFiles(rendered, options.routeCss)],
+              crossOrigin,
+            ),
+          );
           await preloadMatched(rendered);
           // Decided BEFORE the head is projected, because it is what decides
           // whether `head` sees `loaderData` at all.
@@ -1212,24 +1277,19 @@ export function createPageHandler(
           );
           timing?.phase("barq-head", "head and the loaders it waits for");
           const context = contextScript(url, before.produced, options.nonce);
-          const preloads = [
-            ...new Set([
-              ...(options.clientAssets?.preload ?? []),
-              ...chainFiles(rendered, options.routeAssets),
-            ]),
-          ];
-          const preload = preloadTags(rendered, options.routeAssets);
-          const hints = earlyHints(
-            [...(options.clientAssets?.scripts ?? []), ...preloads],
-            [...(options.clientAssets?.css ?? []), ...chainFiles(rendered, options.routeCss)],
+          const preload = preloadTags(rendered, options.routeAssets, crossOrigin);
+          hints.collect(
+            "dynamic",
+            assets.flatMap((declared) =>
+              (declared.links ?? []).flatMap((link) => hintOfLink(link) ?? []),
+            ),
           );
-          if (hints.length > 0) {
-            (options.onEarlyHints ?? writeEarlyHints)(hints, request);
-            draft.headers.append("link", hints.join(", "));
-          }
+          const links = hints.headerLinks();
+          if (links.length > 0) draft.headers.append("link", links.join(", "));
           const headAssets: HeadAssets = {
             matches: assets,
             nonce: options.nonce,
+            crossOrigin,
             // The entry's stylesheets plus the matched chain's. The entry
             // carries only what its own static graph imports, which for a
             // route-split application is usually nothing at all.
@@ -1340,7 +1400,12 @@ export function createPageHandler(
           // the preloads and runs while the parser is still in the body, and
           // the boot waits for the shell's marker before it reads a seed, so a
           // shell with no head can carry it at its end.
-          const entry = entryScripts(options.clientAssets?.scripts, options.nonce, true);
+          const entry = entryScripts(
+            options.clientAssets?.scripts,
+            options.nonce,
+            true,
+            crossOrigin,
+          );
           const placeEntry = (document: string): string => {
             const at = document.indexOf("</head>");
             return at === -1
@@ -1423,7 +1488,10 @@ export function createPageHandler(
     // The PRERENDER REFUSAL reaches a handler too. A build mints the
     // `Request`, so `getRequest()` inside one would answer with the build
     // machine's headers and a cookie jar that is empty for everyone.
-    const event = createRequestEvent(request, { refuse: options.refuseRequest, response: draft });
+    const event = createRequestEvent(request, {
+      refuse: configured.refuseRequest,
+      response: draft,
+    });
     try {
       const response = await provideRequestEvent(event, () => {
         setRequestMiddlewareContext(context);
@@ -1555,20 +1623,6 @@ function redirectScript(answer: Response | null, nonce: string | undefined): str
   );
 }
 
-/** `Link` values: modules preloaded as modules, stylesheets as styles. */
-export function earlyHints(scripts: readonly string[], styles: readonly string[]): string[] {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  const add = (href: string, rel: string): void => {
-    if (seen.has(href) || /[\s<>,;]/.test(href)) return;
-    seen.add(href);
-    out.push(`<${href}>; ${rel}`);
-  };
-  for (const href of scripts) add(href, "rel=modulepreload");
-  for (const href of styles) add(href, "rel=preload; as=style");
-  return out;
-}
-
 /**
  * Node's 103, for a request that carries its Node response over HTTP/2 or
  * later; nothing elsewhere. Browsers act on a 103 only on those versions, and
@@ -1636,13 +1690,19 @@ export function chainFiles(
 export function preloadTags(
   chain: readonly Route[] | null,
   assets: Readonly<Record<string, readonly string[]>> | undefined,
+  crossOrigin?: (href: string) => string | undefined,
 ): string {
   let out = "";
   for (const file of chainFiles(chain, assets)) {
-    out += `<link rel="modulepreload" href="${escapeAttribute(file)}">`;
+    const cross = crossOrigin?.(file);
+    const fetched = cross === undefined ? "" : ` crossorigin="${escapeAttribute(cross)}"`;
+    out += `<link rel="modulepreload"${fetched} href="${escapeAttribute(file)}">`;
   }
   return out;
 }
+
+/** The `crossorigin` a request's rewritten assets carry, for the helpers handed its options. */
+const ASSET_CROSS_ORIGIN = new WeakMap<PageHandlerOptions, (href: string) => string | undefined>();
 
 /** Enough for a URL in an attribute: the four that can end it or open a tag. */
 function escapeAttribute(value: string): string {
@@ -1722,6 +1782,21 @@ export { PRERENDER_HEADER };
 
 /** Re-exported so a server entry need not reach into the isomorphic one. */
 export { HeadContent, Scripts } from "./components.ts";
+export {
+  type EarlyHint,
+  type EarlyHintsEvent,
+  type EarlyHintsPhase,
+  type LinkHeaderEntry,
+  type ResponseLinkHeader,
+  serializeEarlyHint,
+} from "./early-hints.ts";
+export type {
+  AssetCrossOrigin,
+  CreateTransformAssetsFn,
+  TransformAssets,
+  TransformAssetsContext,
+  TransformAssetsFn,
+} from "./assets.ts";
 
 /**
  * What a server entry is, once the build has supplied the parts.
@@ -2005,7 +2080,7 @@ function wrapStream(
     chain,
     // Before the shell flushes, which is the only moment it is worth anything:
     // the tags have to reach the browser ahead of the markup that needs them.
-    preload: preloadTags(chain, options.routeAssets),
+    preload: preloadTags(chain, options.routeAssets, ASSET_CROSS_ORIGIN.get(options)),
     context,
     url,
   });

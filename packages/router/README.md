@@ -294,6 +294,29 @@ export default createStartHandler({
 });
 ```
 
+The handler sends early hints in two phases. The entry and the matched routes'
+chunks and stylesheets go before any loader runs, and the preloads and
+preconnects a route's `head` declares follow it. Over HTTP/2 on Node it writes a
+`103 Early Hints` itself, and every hint also rides the page's `Link` header for
+a CDN to turn into one. `onEarlyHints(links, request, { phase })` hands them to a
+host with its own way to send a 103, and `responseLinkHeader: false` or
+`{ filter }` keeps the header to what is public and safe to cache.
+
+`transformAssets` rewrites the URLs of what the build emitted, for a CDN whose
+origin is known only when the server starts:
+
+```ts
+export default createStartHandler({
+  transformAssets: { prefix: process.env.CDN_ORIGIN ?? "", crossOrigin: "anonymous" },
+});
+```
+
+It reaches the entry script, the matched routes' preloads and stylesheets, a
+`lazy()` module's chunks and the early hints, and leaves a link a route's `head`
+writes as written. A function of `{ url, kind }` decides per asset, and
+`{ createTransform, cache: false }` per request, for a CDN chosen by region.
+Otherwise the transform runs once and is reused.
+
 ## API routes
 
 An API route is an ordinary route file that declares handlers instead of a

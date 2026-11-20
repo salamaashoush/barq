@@ -228,6 +228,8 @@ export function resolveHead(
      */
     readonly preloads?: readonly string[];
     readonly css?: readonly string[];
+    /** The `crossorigin` a preload or stylesheet is fetched with, by href. */
+    readonly crossOrigin?: (href: string) => string | undefined;
     /**
      * The framework's own stylesheet, as TEXT rather than as an href.
      *
@@ -321,12 +323,12 @@ export function resolveHead(
   // go after a route's `links` so a route can still say something about one.
   const preloads: ManagedTag[] = (options?.preloads ?? []).map((href) => ({
     tag: "link",
-    attrs: { rel: "modulepreload", href, nonce },
+    attrs: { rel: "modulepreload", href, nonce, crossorigin: options?.crossOrigin?.(href) },
     identity: `modulepreload:${href}`,
   }));
   const css: ManagedTag[] = (options?.css ?? []).map((href) => ({
     tag: "link",
-    attrs: { rel: "stylesheet", href, nonce },
+    attrs: { rel: "stylesheet", href, nonce, crossorigin: options?.crossOrigin?.(href) },
     identity: `stylesheet:${href}`,
   }));
   const inline: ManagedTag[] =

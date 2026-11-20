@@ -432,9 +432,11 @@ describe("the convention, from the other side", () => {
     // Checked in rather than inferred, so it goes red the moment a module is
     // added — which is the property the row this replaces had.
     const coveredBy: Record<string, string> = {
+      "assets.ts": "transform-assets.test.ts",
       "client.ts": "client.test.ts",
       "components.ts": "router.test.ts",
       "devtools.ts": "devtools.test.ts",
+      "early-hints.ts": "early-hints.test.ts",
       "errors.ts": "server.test.ts",
       "file-route.ts": "file-route.test.ts",
       "history.ts": "history.test.ts",

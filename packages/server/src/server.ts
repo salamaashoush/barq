@@ -351,6 +351,11 @@ export type AssetManifest =
 export interface ModuleAssets {
   readonly js?: readonly string[];
   readonly css?: readonly string[];
+  /** The `crossorigin` the module's preloads and stylesheets are fetched with. */
+  readonly crossOrigin?: {
+    readonly script?: "" | "anonymous" | "use-credentials";
+    readonly stylesheet?: "" | "anonymous" | "use-credentials";
+  };
 }
 
 /** One render's `useHead` declarations, and the assets its `lazy()` modules need. */
@@ -381,11 +386,25 @@ class HeadCollector {
       const assets = typeof manifest === "function" ? manifest(url) : manifest[url];
       if (assets === undefined) return;
       const tags: HeadTag[] = [];
+      const styles = assets.crossOrigin?.stylesheet;
+      const scripts = assets.crossOrigin?.script;
       for (const href of assets.css ?? []) {
-        tags.push({ tag: "link", props: { rel: "stylesheet", href } });
+        tags.push({
+          tag: "link",
+          props:
+            styles === undefined
+              ? { rel: "stylesheet", href }
+              : { rel: "stylesheet", href, crossorigin: styles },
+        });
       }
       for (const href of assets.js ?? []) {
-        tags.push({ tag: "link", props: { rel: "modulepreload", href } });
+        tags.push({
+          tag: "link",
+          props:
+            scripts === undefined
+              ? { rel: "modulepreload", href }
+              : { rel: "modulepreload", href, crossorigin: scripts },
+        });
       }
       // A module that rendered once has said everything it has to say.
       this.sink.add(tags.filter((tag) => !this.tags.has(headKey(tag))));
