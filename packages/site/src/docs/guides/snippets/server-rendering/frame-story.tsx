@@ -22,3 +22,5 @@ export const getStory = createServerFn({ method: "GET" })
       </article>
     );
   });
+
+export default getStory;
