@@ -391,6 +391,14 @@ pub struct TransformOptions {
     /// byte-identical either way.
     pub server_fns: Option<bool>,
     pub dev: Option<bool>,
+    /// Carry names and positions from the source into the output, for the
+    /// runtime's development findings: a signal, memo, effect or store is named
+    /// after the binding it is declared as, a binding effect after the element
+    /// and attribute it writes, and each of them and every component call
+    /// carries `file:line:col`, the file relative to `root`. Positions need a
+    /// `filename`.
+    /// @default the value of `dev`
+    pub source_names: Option<bool>,
     pub templates: Option<bool>,
     pub ssr: Option<bool>,
     /// Emit for the reference backend instead of the DOM
@@ -502,6 +510,7 @@ pub const OPTION_KEYS: &[&str] = &[
     "root",
     "serverFns",
     "dev",
+    "sourceNames",
     "templates",
     "ssr",
     "interp",
@@ -572,6 +581,7 @@ pub struct ResolvedOptions {
     pub root: Option<String>,
     pub server_fns: bool,
     pub dev: bool,
+    pub source_names: bool,
     pub templates: bool,
     pub ssr: bool,
     pub interp: bool,
@@ -618,6 +628,7 @@ impl Default for ResolvedOptions {
             root: None,
             server_fns: false,
             dev: false,
+            source_names: false,
             templates: true,
             ssr: false,
             interp: false,
@@ -761,6 +772,7 @@ impl TransformOptions {
             root: self.root,
             server_fns: self.server_fns.unwrap_or(false),
             dev,
+            source_names: self.source_names.unwrap_or(dev),
             templates: self.templates.unwrap_or(true),
             ssr,
             interp,

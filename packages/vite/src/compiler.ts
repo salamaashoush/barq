@@ -318,6 +318,15 @@ export interface BarqCompilerOptions {
   dev?: boolean;
 
   /**
+   * Carry names and positions from the source into the output, so a runtime
+   * finding says which signal, which attribute of which element, and where it
+   * is written (`at src/App.tsx:18:3`). A `.ts` module that imports the core is
+   * compiled too, since that is where shared signals and stores are declared.
+   * @default the value of `dev`
+   */
+  sourceNames?: boolean;
+
+  /**
    * Replace an edited component in place on the development server, keeping
    * the state of everything above it. On by default while serving; the server
    * half and a production build never get it.
@@ -443,6 +452,7 @@ interface NativeTransformOptions {
   env?: string;
   root?: string;
   dev?: boolean;
+  sourceNames?: boolean;
   templates?: boolean;
   diagnostics?: boolean;
   checks?: string[][];
@@ -1235,9 +1245,13 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
       // the cheap gate; the compiler then resolves the tag by symbol.
       // Only a script module: a `package.json` or a JSON data file that merely
       // NAMES the package is not a module to compile.
+      const coreSource = compilerOptions.coreSource ?? "@barqjs/core";
+      const named =
+        (compilerOptions.sourceNames ?? dev === true) &&
+        (code.includes(coreSource) || code.includes("@solidjs/signals"));
       const shouldTransform =
         include.some((ext) => path.endsWith(ext)) ||
-        (SCRIPT_MODULE.test(path) && code.includes(cssSource));
+        (SCRIPT_MODULE.test(path) && (named || code.includes(cssSource)));
       if (!shouldTransform) {
         // The package's name was the only reason this module was compiled, and
         // an edit that takes the last rule out usually takes the import too.
@@ -1377,6 +1391,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
           hydratable: compilerOptions.hydratable,
           interp: (compilerOptions.interp ?? false) && forClient,
           dev,
+          sourceNames: compilerOptions.sourceNames,
           filename: file,
           sourcemap: true,
           ssr: !forClient,

@@ -169,6 +169,46 @@ describe("barqVitePlugin", () => {
     expect((await run(plugin, SOURCE, "/node_modules/x/a.tsx")).result).toBe(null);
   });
 
+  describe("source names", () => {
+    const STORE =
+      'import { createSignal } from "@barqjs/core";\nexport const [count, setCount] = createSignal(0);\n';
+
+    test("a development server names a signal declared in a `.ts` module", async () => {
+      const plugin = barqVitePlugin({ root: "/a" });
+      configure(plugin, { command: "serve", mode: "development" });
+      const { result } = await run(plugin, STORE, "/a/src/store.ts");
+      expect(result?.code).toContain('name: "count"');
+      expect(result?.code).toContain('loc: "src/store.ts:2:34"');
+    });
+
+    test("a component call and a binding carry where they are written", async () => {
+      const plugin = barqVitePlugin({ root: "/a" });
+      configure(plugin, { command: "serve", mode: "development" });
+      const source =
+        'import { Row } from "./row";\nexport const V = (props: { on: boolean }) => <p class={props.on ? "a" : "b"}><Row /></p>;\n';
+      const { result } = await run(plugin, source, "/a/src/view.tsx");
+      expect(result?.code).toContain('"Row", "src/view.tsx:2:78")');
+      expect(result?.code).toContain('_$labelled("p.class", "src/view.tsx:2:55", ');
+    });
+
+    test("a production build compiles no `.ts` module for it and writes no name", async () => {
+      const plugin = barqVitePlugin({ root: "/a" });
+      configure(plugin, { command: "build", mode: "production" });
+      expect((await run(plugin, STORE, "/a/src/store.ts")).result).toBe(null);
+      const { result } = await run(plugin, STORE, "/a/src/store.tsx");
+      expect(result?.code).not.toContain("name:");
+      expect(result?.code).not.toContain("loc:");
+    });
+
+    test("`sourceNames: false` turns it off in development", async () => {
+      const plugin = barqVitePlugin({ root: "/a", sourceNames: false });
+      configure(plugin, { command: "serve", mode: "development" });
+      expect((await run(plugin, STORE, "/a/src/store.ts")).result).toBe(null);
+      const { result } = await run(plugin, STORE, "/a/src/store.tsx");
+      expect(result?.code).not.toContain("name:");
+    });
+  });
+
   test("a client module emits template clones, not createElement", async () => {
     const plugin = barqVitePlugin();
     const { result, warnings } = await run(plugin, SOURCE, "/a/app.tsx");

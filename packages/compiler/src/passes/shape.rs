@@ -58,6 +58,7 @@ pub fn run<'a>(
         flow_rewrites,
         renderers,
         renderer_ranges,
+        locator,
         ..
     } = module;
     let helpers = *helpers;
@@ -87,6 +88,7 @@ pub fn run<'a>(
             retarget: &mut retarget,
             diagnostics: &mut diagnostics,
             dev: options.dev,
+            locator: locator.as_ref(),
             hoist: options.opt.hoist,
             lower_flow,
             inert_roots,
@@ -160,6 +162,7 @@ pub(super) struct Shaper<'a, 'm> {
     retarget: &'m mut Vec<(u32, Span)>,
     diagnostics: &'m mut Vec<Diag<'a>>,
     dev: bool,
+    locator: Option<&'m crate::ir::Locator>,
     hoist: bool,
     /// `Opt::flow`, and off for the string backend: P8b rewrites a flow
     /// component to its own string implementation, so lowering it onto a DOM
@@ -445,10 +448,16 @@ impl<'a> Shaper<'a, '_> {
                 other => other,
             };
             let create = self.helper(Helper::CreateComponent, span);
-            let arguments = ArenaVec::from_iter_in(
+            let mut arguments = ArenaVec::from_iter_in(
                 [Argument::from(callee), Argument::from(props), Argument::from(name)],
                 &self.allocator,
             );
+            if let Some(locator) = self.locator {
+                let at = self.allocator.alloc_str(&locator.at(self.source, span.start));
+                arguments.push(Argument::from(Expression::new_string_literal(
+                    span, at, None, &self.ast,
+                )));
+            }
             return Expression::new_call_expression(
                 span, create, None, arguments, false, &self.ast,
             );

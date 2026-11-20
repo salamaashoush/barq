@@ -65,7 +65,7 @@ impl Target {
     }
 }
 
-pub const HELPER_COUNT: usize = 67;
+pub const HELPER_COUNT: usize = 68;
 
 /// The module a helper is imported from.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -108,6 +108,7 @@ pub fn home(helper: Helper, target: Target) -> Home {
         | H::GetOwner
         | H::Untrack
         | H::CreateComponent
+        | H::Labelled
         | H::BindSlot
         | H::BindPlain
         | H::BindEffect => Home::Core,
@@ -396,6 +397,38 @@ pub enum Helper {
     /// Applied once when that object is plain data, whose fields no read can
     /// follow; an effect, as `bindEffect` makes, when it is anything else.
     BindPlain = 66,
+    /// `_$labelled("li.class", "src/App.tsx:7:9", () => …, el)` — a binding
+    /// in a compile that carries source names: the effect made inside is named
+    /// for the element and attribute it writes, with its position and element.
+    Labelled = 67,
+}
+
+/// Whether evaluating `value` runs nothing that could make an owner: a name, a
+/// literal, a function not yet called, or the `cell`/`block` wrappers, which
+/// only mark what they are given.
+fn inert(value: &Expression<'_>, cell: &str, block: &str) -> bool {
+    match value {
+        Expression::Identifier(_)
+        | Expression::NullLiteral(_)
+        | Expression::BooleanLiteral(_)
+        | Expression::NumericLiteral(_)
+        | Expression::StringLiteral(_)
+        | Expression::ArrowFunctionExpression(_)
+        | Expression::FunctionExpression(_) => true,
+        Expression::UnaryExpression(unary) => inert(&unary.argument, cell, block),
+        Expression::StaticMemberExpression(member) => inert(&member.object, cell, block),
+        Expression::ArrayExpression(array) => array
+            .elements
+            .iter()
+            .all(|element| element.as_expression().is_some_and(|value| inert(value, cell, block))),
+        Expression::CallExpression(call) => {
+            matches!(&call.callee, Expression::Identifier(callee) if callee.name == cell || callee.name == block)
+                && call.arguments.iter().all(|argument| {
+                    argument.as_expression().is_some_and(|value| inert(value, cell, block))
+                })
+        }
+        _ => false,
+    }
 }
 
 /// Every helper with the name it is imported under, in `Helper` order.
@@ -467,6 +500,7 @@ const IMPORTED: [(Helper, &str); HELPER_COUNT] = [
     (Helper::InsertNode, "insertNode"),
     (Helper::BindSlot, "bindSlot"),
     (Helper::BindPlain, "bindPlain"),
+    (Helper::Labelled, "labelled"),
 ];
 
 /// The name a helper is imported under, for a test that has to check the table
@@ -603,6 +637,8 @@ pub struct Emit<'a, 'm> {
     /// The module's path, which a development build writes beside each
     /// template so a hydration mismatch can name the JSX it came from.
     pub filename: &'a str,
+    /// Whether a binding is emitted under the name of what it writes.
+    pub source_names: bool,
     pub used: [bool; HELPER_COUNT],
     pub local: [&'a str; HELPER_COUNT],
     /// The renderer the code being printed builds through, `0` being the
@@ -653,6 +689,7 @@ impl<'a, 'm> Emit<'a, 'm> {
                     name.split_once('?').map_or(name, |(path, _)| path)
                 }),
             ),
+            source_names: options.source_names,
             used,
             local,
             renderer: 0,
@@ -774,6 +811,107 @@ impl<'a, 'm> Emit<'a, 'm> {
     ) -> Expression<'a> {
         let arguments = ArenaVec::from_iter_in(arguments, &self.allocator);
         Expression::new_call_expression(span, callee, None, arguments, false, &self.ast)
+    }
+
+    /// `statement` as the binding `patch` lowered to, run under its source
+    /// name. Left as it is when the op makes no effect, and when an argument
+    /// would run code of its own inside the label: the first owner made there
+    /// would take a name that belongs to the binding.
+    pub fn labelled(
+        &mut self,
+        unit: &Unit<'a>,
+        patch: crate::ir::Patch,
+        members: &[crate::ir::Patch],
+        element: Option<Expression<'a>>,
+        statement: Statement<'a>,
+    ) -> Statement<'a> {
+        if !self.source_names {
+            return statement;
+        }
+        let Some(name) = self.binding_name(unit, patch, members) else { return statement };
+        let Statement::ExpressionStatement(holder) = &statement else { return statement };
+        let Expression::CallExpression(call) = &holder.expression else { return statement };
+        let cell = self.local[Helper::Cell as usize];
+        let block = self.local[Helper::Block as usize];
+        if !call
+            .arguments
+            .iter()
+            .all(|argument| argument.as_expression().is_some_and(|value| inert(value, cell, block)))
+        {
+            return statement;
+        }
+        let Statement::ExpressionStatement(holder) = statement else {
+            unreachable!("matched above")
+        };
+        let span = patch.span;
+        let build = self.thunk(holder.unbox().expression, span);
+        let name = self.string(self.allocator.alloc_str(&name), span);
+        let position = match &self.module.locator {
+            Some(locator) => {
+                self.string(self.allocator.alloc_str(&locator.at(self.source, span.start)), span)
+            }
+            None => Expression::new_void_0(span, &self.ast),
+        };
+        let callee = self.helper(Helper::Labelled, span);
+        let mut arguments =
+            vec![Argument::from(name), Argument::from(position), Argument::from(build)];
+        arguments.extend(element.map(Argument::from));
+        let call = self.call(callee, arguments, span);
+        Statement::new_expression_statement(span, call, &self.ast)
+    }
+
+    /// What a finding calls the effect `patch` makes: `li.class`,
+    /// `li.class, li.title` for one effect over several attributes,
+    /// `li.children` for a hole, `<Show>` for a construct.
+    fn binding_name(
+        &self,
+        unit: &Unit<'a>,
+        patch: crate::ir::Patch,
+        members: &[crate::ir::Patch],
+    ) -> Option<String> {
+        use crate::ir::{InsertPlan, Op};
+        let tag = |patch: crate::ir::Patch| {
+            unit.skeleton
+                .nodes
+                .get(patch.target as usize)
+                .and_then(|node| node.as_element())
+                .map_or("element", |element| self.module.interner.tag(element.tag).text)
+        };
+        let attribute = |patch: crate::ir::Patch| match patch.op {
+            Op::SetLive { name, .. } | Op::SetOpaque { name, .. } => {
+                Some(format!("{}.{}", tag(patch), self.module.interner.name(name).text))
+            }
+            _ => None,
+        };
+        match patch.op {
+            Op::SetLive { .. } | Op::SetOpaque { .. } => attribute(patch),
+            Op::EffectGroup { .. } => {
+                let names: Vec<String> =
+                    members.iter().filter_map(|member| attribute(*member)).collect();
+                (!names.is_empty()).then(|| names.join(", "))
+            }
+            Op::Bind { prop, .. } => {
+                Some(format!("{}.bind:{}", tag(patch), self.module.interner.name(prop).text))
+            }
+            Op::Spread { live: true, .. } => Some(format!("{}.spread", tag(patch))),
+            Op::Insert { plan: InsertPlan::Live | InsertPlan::Opaque, .. } => {
+                Some(format!("{}.children", tag(patch)))
+            }
+            Op::Region { .. } => {
+                let written = patch.span.source_text(self.source);
+                let construct = written.strip_prefix('<').map(|rest| {
+                    let end = rest
+                        .find(|c: char| !(c.is_alphanumeric() || matches!(c, '_' | '$' | '.')))
+                        .unwrap_or(rest.len());
+                    &rest[..end]
+                });
+                Some(match construct {
+                    Some(name) if !name.is_empty() => format!("<{name}>"),
+                    _ => format!("{}.children", tag(patch)),
+                })
+            }
+            _ => None,
+        }
     }
 
     pub fn binding(&self, name: &'a str, init: Expression<'a>, span: Span) -> Statement<'a> {

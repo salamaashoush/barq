@@ -69,7 +69,11 @@ pub fn emit_unit_parts<'a>(
         };
         let mut backend = Dom { ctx, unit, owned: &mut owned };
         if let Some(statement) = lower(&mut backend, At { patch, members: &members }) {
-            statements.push(statement);
+            let element = unit
+                .refs
+                .ref_of(patch.target)
+                .map(|_| ref_ident(ctx, unit, patch.target, patch.span));
+            statements.push(ctx.labelled(unit, patch, &members, element, statement));
         }
     }
 

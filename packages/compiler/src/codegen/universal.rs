@@ -74,7 +74,7 @@ pub fn emit_unit_parts<'a>(
         };
         let mut backend = Universal { ctx, unit, names: &build.names };
         if let Some(statement) = lower(&mut backend, At { patch, members: &members }) {
-            statements.push(statement);
+            statements.push(ctx.labelled(unit, patch, &members, None, statement));
         }
     }
 

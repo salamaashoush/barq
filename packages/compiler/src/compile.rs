@@ -453,12 +453,21 @@ fn compile_on_this_stack(
         || options.css_exports)
         .then(|| crate::css::run(&allocator, &mut program, options));
 
+    let locator =
+        options.source_names.then_some(options.filename.as_deref()).flatten().map(|filename| {
+            crate::ir::Locator::new(source_text, filename, options.root.as_deref())
+        });
+    if options.source_names && crate::source_names::mentions(source_text, options) {
+        crate::source_names::run(&allocator, &mut program, source_text, locator.as_ref(), options);
+    }
+
     // Before `bind`, which reads the program this leaves: props written as
     // values become the Cell reads every later stage knows.
     let sugar =
         source_type.is_jsx().then(|| crate::props_sugar::run(&allocator, &mut program, options));
 
     let mut module = Module::for_source(&allocator, source_text);
+    module.locator = locator;
     // A dialect that cannot express JSX compiles to no units at all, so there is
     // nothing for P0 to classify and the symbol table is pure cost.
     if let Some(sugar) = sugar {

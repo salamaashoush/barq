@@ -112,6 +112,8 @@ pub struct Module<'a> {
     /// decided. `None` when that pass did not run, and analysis falls back on
     /// its own evidence.
     pub props_params: Option<Vec<oxc::span::Span>>,
+    /// Present when the compile carries source positions into the output.
+    pub locator: Option<Locator>,
     /// The text every `Span` in the IR indexes into. P4 reads it for JSX text
     /// children, which become JS string literals rather than template bytes.
     pub source: &'a str,
@@ -596,6 +598,33 @@ impl Mappings {
     }
 }
 
+/// A span's start as the text a finding prints: `src/App.tsx:18:3`, the file
+/// relative to the project root with `/` separators, line and column 1-based
+/// as a stack trace and an editor count them.
+pub struct Locator {
+    index: LineIndex,
+    file: String,
+}
+
+impl Locator {
+    pub fn new(source: &str, filename: &str, root: Option<&str>) -> Self {
+        let path = filename.split_once('?').map_or(filename, |(path, _)| path).replace('\\', "/");
+        let file = root
+            .map(|root| root.replace('\\', "/"))
+            .and_then(|root| {
+                let rest = path.strip_prefix(root.trim_end_matches('/'))?;
+                rest.strip_prefix('/').map(str::to_string)
+            })
+            .unwrap_or(path);
+        Self { index: LineIndex::new(source), file }
+    }
+
+    pub fn at(&self, source: &str, offset: u32) -> String {
+        let (line, column) = self.index.locate(source, offset);
+        format!("{}:{}:{}", self.file, line + 1, column + 1)
+    }
+}
+
 /// The precomputed line-start table: byte offset → `(line, column)`, with
 /// columns in UTF-16 code units because that is what a source map v3 counts.
 ///
@@ -681,6 +710,7 @@ impl<'a> Module<'a> {
     pub fn for_source(allocator: &'a Allocator, source: &'a str) -> Self {
         Self {
             props_params: None,
+            locator: None,
             source,
             units: AVec::new_in(&allocator),
             roots: AVec::new_in(&allocator),

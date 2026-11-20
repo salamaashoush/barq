@@ -36,7 +36,7 @@ async function bundle(mode: "production" | "development", ssr?: string): Promise
 
 /** What only a development build has a reason to ship. */
 const MARKERS = {
-  "a component named for its owner path": '"Greeting")',
+  "a component named for its owner path, with where it is written": '"Greeting", "src/main.tsx:',
   "a template's source location": "src/main.tsx:",
   "the template-location report": "The template being hydrated is at",
   "the overlay's server channel": "barq:server-diagnostics",
@@ -57,6 +57,7 @@ describe("dev-only diagnostics in a client bundle", () => {
     }
     expect(code).not.toContain("createComponent");
     expect(code).not.toContain("[barq] ");
+    expect(code).not.toContain("agent repair guide");
   }, 60_000);
 });
 
