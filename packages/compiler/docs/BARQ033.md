@@ -50,7 +50,8 @@ stylesheet serves every call on the page, so it cannot follow each call's own or
 The order is fixed instead, within one tier: a condition with no interaction
 pseudo-class first, then `:link`, `:visited`, `:focus-within`, `:hover`, `:focus`,
 `:focus-visible`, `:active`, and `:disabled` last; two conditions of one place go by
-their hash. This note fires when one object writes such a pair the other way round,
+their hash. Among rules about something under the element, one under an at-rule comes
+after one under none. This note fires when one object writes such a pair the other way round,
 which is the one case where the order you wrote visibly loses.
 
 It does not fire when the pair cannot both apply as written: one attribute equal to two

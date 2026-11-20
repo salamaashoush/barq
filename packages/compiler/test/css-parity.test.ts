@@ -350,6 +350,42 @@ describe("css parity > the media tier", () => {
   });
 });
 
+describe("css parity > the descendant tier", () => {
+  test("puts a rule under an at-rule after the same rule under none", () => {
+    const { compiled } = agree(
+      `const wide = atoms({ "@container group (min-width: 448px)": { "& > *": { width: "auto" } } });
+       const grid = atoms({ "@supports (display: grid)": { "& > *": { width: "50%" } } });
+       const print = atoms({ "@media print": { "& > *": { width: "25%" } } });
+       const narrow = atoms({ "@media (min-width: 300px)": { "& > *": { width: "75%" } } });
+       const plain = atoms({ "& > *": { width: "100%" } });
+       const own = atoms({ width: "fit-content" });
+       const out = [wide, grid, print, narrow, plain, own];`,
+    );
+    const at = (needle: string): number => compiled.sheet.indexOf(needle);
+    const order = [
+      "{width:100%}",
+      "{width:75%}",
+      "{width:auto}",
+      "{width:25%}",
+      "{width:50%}",
+      "{width:fit-content}",
+    ];
+    expect(order.map(at).every((index) => index >= 0)).toBe(true);
+    expect(order.map(at)).toEqual(order.map(at).toSorted((a, b) => a - b));
+  });
+
+  test("and the same inside a layer", () => {
+    agree(
+      `const ui = layer("barq.parity");
+       const fallback = ui({ "@supports not (color: red)": { "& > *": { color: "red" } } });
+       const mixed = ui({ "@supports (color: red)": { "& > *": { color: "blue" } } });
+       const plain = ui({ "& svg": { color: "green" }, "& > *": { color: "black" } });
+       const out = [fallback, mixed, plain];`,
+      ["layer"],
+    );
+  });
+});
+
 describe("css parity > a logical property against a physical one", () => {
   test("the later key wins, whichever of the two it is", () => {
     const first = agreeOnWhatSurvives(`const out = atoms({ padding: 4, paddingInline: 8 });`);

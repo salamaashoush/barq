@@ -152,6 +152,14 @@ pub fn with_layer_order(css: &str, order: &[String]) -> String {
 /// Where a rule sorts against another: its tier, and inside the media tier
 /// the query it is under.
 ///
+/// The descendant tier holds rules under an at-rule too, `@media (…){.x > *{…}}`
+/// beside `.x > *{…}`, and the pair is the base against the media rule over
+/// again: one specificity, so order decides. Every descendant rule under an
+/// at-rule sorts after every one without, and those under one sort among
+/// themselves by the query, as the media tier does. The condition's hash is
+/// no order between a rule and its `@supports` or `@container` form: which of
+/// the two won would be fixed by what the conditions happen to hash to.
+///
 /// Two queries that both match are two rules of one specificity, so the later
 /// one wins, and without this "later" is whichever query a page happened to
 /// use first. Mobile-first is the order in which the more specific query is
@@ -182,6 +190,7 @@ pub fn with_layer_order(css: &str, order: &[String]) -> String {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Rank<'a> {
     tier: Tier,
+    wrapped: bool,
     group: u8,
     first: f64,
     second: f64,
@@ -239,6 +248,7 @@ impl Ord for Rank<'_> {
     fn cmp(&self, other: &Self) -> Ordering {
         self.tier
             .cmp(&other.tier)
+            .then(self.wrapped.cmp(&other.wrapped))
             .then(self.group.cmp(&other.group))
             .then(self.first.total_cmp(&other.first))
             .then(self.second.total_cmp(&other.second))
@@ -253,12 +263,25 @@ impl Ord for Rank<'_> {
 pub fn rank(tier: Tier, rule: &str) -> Rank<'_> {
     let condition = atom_named(rule).map_or("", |named| named.condition);
     let interaction = interaction(selector_of(without_layer(rule)));
-    let plain =
-        Rank { tier, group: 0, first: 0.0, second: 0.0, prelude: "", interaction, condition };
-    if tier != Tier::Media {
+    let rule = without_layer(rule).trim_start();
+    let wrapped = match tier {
+        Tier::Media => true,
+        Tier::Descendant => rule.starts_with('@'),
+        _ => false,
+    };
+    let plain = Rank {
+        tier,
+        wrapped,
+        group: 0,
+        first: 0.0,
+        second: 0.0,
+        prelude: "",
+        interaction,
+        condition,
+    };
+    if !wrapped {
         return plain;
     }
-    let rule = without_layer(rule).trim_start();
     let mut at = 0;
     while rule[at..].starts_with('@') {
         let Some(brace) = rule[at..].find('{') else { break };
@@ -1493,15 +1516,49 @@ mod tests {
         assert!(rank(Tier::Media, &narrow.rule) < rank(Tier::Media, &layered.rule));
     }
 
-    /// Only the media tier is ranked: a base rule's text is never read as a
-    /// query, and two base rules keep the order they were written in.
+    /// Only a rule under an at-rule is ranked by its query: a base rule's text
+    /// is never read as one, and two base rules keep the order they were
+    /// written in.
     #[test]
-    fn nothing_outside_the_media_tier_is_reordered() {
+    fn a_rule_under_no_at_rule_keeps_its_written_order() {
         let first = atom_in("", "width", "default", "2px");
         let second = atom_in("", "color", "default", "red");
         assert_eq!(rank(Tier::Base, &first.rule), rank(Tier::Base, &second.rule));
         let css = format!("{}{}", first.rule, second.rule);
         assert_eq!(order_atoms(&css), css);
+    }
+
+    /// A parent's rule about its children under an at-rule is the media pair
+    /// again, one tier down: the plain rule first, then each query in the media
+    /// tier's order, whatever the conditions hash to.
+    #[test]
+    fn a_descendant_rule_under_an_at_rule_follows_the_plain_one() {
+        let conditions = [
+            "& > *".to_string(),
+            format!("@media (min-width: 640px){NEST}& > *"),
+            format!("@media (min-width: 1024px){NEST}& > *"),
+            format!("@container (min-width: 10cqw){NEST}& > *"),
+            format!("@supports (display: grid){NEST}& > *"),
+        ];
+        let rules: Vec<String> = conditions
+            .iter()
+            .map(|condition| atom_in("", "width", condition, "auto").rule)
+            .collect();
+        for rule in &rules {
+            assert_eq!(tier_of_rule(rule), Some(Tier::Descendant), "{rule}");
+        }
+        for pair in rules.windows(2) {
+            assert!(
+                rank(Tier::Descendant, &pair[0]) < rank(Tier::Descendant, &pair[1]),
+                "{pair:?}"
+            );
+        }
+        let shuffled: String = rules.iter().rev().map(String::as_str).collect();
+        assert_eq!(order_atoms(&shuffled), rules.concat());
+        // Still the first tier: a child's own base rule follows all of them.
+        let own = atom_in("", "width", "default", "fit-content");
+        let sheet = format!("{}{}", own.rule, rules[4]);
+        assert_eq!(order_atoms(&sheet), format!("{}{}", rules[4], own.rule));
     }
 
     #[test]

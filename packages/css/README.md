@@ -116,7 +116,11 @@ page, so it cannot follow each call's writing order. The order is fixed instead.
 Within one tier, a condition without an interaction pseudo-class comes first,
 then `:link`, `:visited`, `:focus-within`, `:hover`, `:focus`, `:focus-visible`,
 `:active`, and `:disabled` last, so `:active` beats `:hover` and `:disabled`
-beats them all; two conditions of one place go by their hash. The compiler says
+beats them all; two conditions of one place go by their hash. A rule about
+something under the element, `& > *` or `& svg`, is in a tier of its own, and
+there a rule under an at-rule comes after every rule under none, so
+`"@supports (…)": { "& > *": … }` beats `"& > *"` as an element's own `@media`
+rule beats its base. The compiler says
 so (`BARQ033`) when one object writes such a pair the other way round. A
 condition is hashed in one spelling (attribute values in double quotes, one
 space around a combinator), so `[class*='x']` and `[class*="x"]` are one

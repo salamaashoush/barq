@@ -42,7 +42,7 @@ interface Part {
   readonly text: string;
   /** `PINNED` for a rule that is not an atom: it keeps the place it was given. */
   readonly tier: number;
-  /** Where the rule sorts inside the media tier, and `null` in every other. */
+  /** Where the rule sorts by the at-rule it is under, and `null` for a rule under none. */
   readonly media: MediaRank | null;
   /** The hash of the condition an atom was declared under, read off its class. */
   readonly condition: string;
@@ -879,7 +879,8 @@ function partsOf(entry: Entry): Part[] {
     const named = closed ? atomNamed(text) : null;
     const name = named?.name ?? null;
     const tier = entry.tier !== 0 ? entry.tier : name === null ? PINNED : tierOfRule(text, name);
-    const media = tier === MEDIA ? mediaRank(text) : null;
+    const media =
+      tier === MEDIA || (tier === DESCENDANT && text.startsWith("@")) ? mediaRank(text) : null;
     const condition = named?.condition ?? "";
     const interaction = tier === PINNED ? 0 : interactionOf(selectorOf(text));
     const atom = STRICT && name !== null ? atomOf(layer, text, name) : null;
@@ -1001,10 +1002,12 @@ function byAtom(rule: string): Unit[] {
   return groups.map((group) => ({ text: group.list.join(",") + body, atom: group.name !== null }));
 }
 
+const DESCENDANT = 0;
 const MEDIA = TIERS.length - 1;
 
 /**
- * Where a rule under an at-rule sorts against another in the media tier.
+ * Where a rule under an at-rule sorts against another in the media tier, and in
+ * the descendant tier against another rule under one.
  *
  * Two queries that both match are two rules of one specificity, so the later
  * one wins, and without this "later" is whichever query a page happened to use
@@ -1098,6 +1101,10 @@ function pixels(text: string, from: number): number | null {
 /**
  * Negative when `a` sorts first, zero when only arrival separates them.
  *
+ * In the descendant tier a rule under an at-rule follows every rule under none,
+ * and those under one go by {@link MediaRank}, so `.x > *` under `@supports` or
+ * `@media` beats the same rule without it, as an element's own rule does.
+ *
  * Then, in every tier, the interaction pseudo-class the rule's selector carries,
  * in {@link INTERACTIONS}' order, so `:active` beats `:hover` and `:disabled`
  * beats them all; a selector with none of them comes first.
@@ -1112,6 +1119,7 @@ function precedes(a: Part, b: Part): number {
   if (a.tier !== b.tier) return a.tier - b.tier;
   const x = a.media;
   const y = b.media;
+  if ((x === null) !== (y === null)) return x === null ? -1 : 1;
   const media =
     x === null || y === null
       ? 0
