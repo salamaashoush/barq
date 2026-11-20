@@ -50,7 +50,9 @@ export function describeTarget(target: unknown): string | undefined {
  */
 function dispatchedAt(event: Dispatched): number | undefined {
   const at = event.timeStamp;
-  return typeof at === "number" && at >= 0 && at <= performance.now() ? at : undefined;
+  const clock = (globalThis as { performance?: { now(): number } }).performance;
+  if (typeof at !== "number" || clock === undefined) return undefined;
+  return at >= 0 && at <= clock.now() ? at : undefined;
 }
 
 export function installInteractionFrames(): void {
