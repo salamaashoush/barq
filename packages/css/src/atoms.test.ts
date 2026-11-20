@@ -7,7 +7,7 @@ import {
   defineConditions,
   defineVars,
   dynamic,
-  dynamicIn,
+  layer,
   mergeStyles,
   props,
   variants,
@@ -121,7 +121,7 @@ describe("dynamic > a number", () => {
   });
 
   test("and a string is left as it is, in a layer as out of one", () => {
-    const sized = dynamicIn("barq.dynamic", (width: string | number) => ({ width }));
+    const sized = layer("barq.dynamic").dynamic((width: string | number) => ({ width }));
     expect(Object.values(props(sized("50%")).style ?? {})).toEqual(["50%"]);
     expect(Object.values(props(sized(12)).style ?? {})).toEqual(["12px"]);
   });

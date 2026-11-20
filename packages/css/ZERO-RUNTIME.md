@@ -79,12 +79,15 @@ Every other way the pass declines is silent. Compiled standalone, each of these
 produces no diagnostic and no CSS, and leaves the call for the runtime:
 
 ```ts
-atomsIn("barq.ui", { color: theme.brand }); // an unreadable value
-atomsIn(LAYER, { color: "red" }); // a layer that is not a literal
-atomsIn("barq.ui", { [MIX]: { color: "red" } }); // a computed key
-atomsIn("barq.ui", ...rest); // a spread
-atomsIn("barq.ui", { boxShadow: SHADOW }); // SHADOW declared below this line
-atomsIn("barq.ui", { borderWidth: W }); // W is a template literal, not a string
+const ui = layer("barq.ui");
+const named = layer(LAYER);
+
+ui({ color: theme.brand }); // an unreadable value
+named({ color: "red" }); // a layer that is not a literal
+ui({ [MIX]: { color: "red" } }); // a computed key
+ui(...rest); // a spread
+ui({ boxShadow: SHADOW }); // SHADOW declared below this line
+ui({ borderWidth: W }); // W is a template literal, not a string
 createTheme(theme, { brand: "#60a5fa" }); // never compiled at all
 ```
 
@@ -329,7 +332,7 @@ components importing both. Measured before the fix, on four files:
 
 | what `card.tsx` imports                | folded | what ran in the browser                   |
 | -------------------------------------- | ------ | ----------------------------------------- |
-| a `createIn` group                     | partly | a merge over class strings, 443 ns a call |
+| a `ui.create` group                    | partly | a merge over class strings, 443 ns a call |
 | a `defineVars` token                   | **no** | the whole call, object walk and all       |
 | a plain `const BRAND = "var(--brand)"` | **no** | the whole call                            |
 | a `layer("app")` binding               | **no** | the whole call                            |

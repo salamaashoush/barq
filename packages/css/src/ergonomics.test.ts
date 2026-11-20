@@ -1,10 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   atoms,
-  atomsIn,
   collectCss,
   create,
-  createIn,
   createTheme,
   css,
   defineVars,
@@ -13,8 +11,6 @@ import {
   globalCss,
   layer,
   props,
-  propsIn,
-  dynamicIn,
   variants,
   globalVars,
 } from "./index.ts";
@@ -294,23 +290,28 @@ describe("layer", () => {
     }
   });
 
-  test("and each is the `…In` form it stands for", () => {
+  test("and each writes the rule its unlayered helper writes, inside the layer", () => {
     const ui = layer("barq.probe2");
-    expect(ui.create({ a: { zIndex: 42 } })).toEqual(
-      createIn("barq.probe2", { a: { zIndex: 42 } }),
-    );
-    expect(ui.props({ zIndex: 43 })).toEqual(propsIn("barq.probe2", { zIndex: 43 }));
-    expect(ui.dynamic((c: string) => ({ color: c }))("x")).toEqual(
-      dynamicIn("barq.probe2", (c: string) => ({ color: c }))("x"),
-    );
-    expect(ui({ zIndex: 44 })).toBe(atomsIn("barq.probe2", { zIndex: 44 }));
+    const body = (): string => layerBody(collectCss(), "barq.probe2");
+    const group = ui.create({ a: { zIndex: 42 } }).a;
+    expect(body()).toContain(`.${group}{z-index:42}`);
+    expect(ruleFor(create({ a: { zIndex: 42 } }).a)).toContain("{z-index:42}");
+    const attrs = ui.props({ zIndex: 43 });
+    expect(body()).toContain(`.${attrs.class}{z-index:43}`);
+    const tint = ui.dynamic((c: string) => ({ color: c }))("x");
+    expect(tint.$vars).toEqual(dynamic((c: string) => ({ color: c }))("x").$vars);
+    expect(body()).toContain(`.${tint.$class}{color:var(`);
+    const bare = ui({ zIndex: 44 });
+    expect(body()).toContain(`.${bare}{z-index:44}`);
+    expect(bare).not.toBe(atoms({ zIndex: 44 }));
   });
 
   test("`props` and `dynamic` were the two helpers with no layered form", () => {
     // A design system could not use a dynamic style at all: the class it makes
     // is a rule like any other and there was no way to ask for it layered.
-    expect(propsIn("barq.probe3", { zIndex: 45 }).class).not.toBe(props({ zIndex: 45 }).class);
-    expect(dynamicIn("barq.probe3", (c: string) => ({ top: c }))("x").$class).not.toBe(
+    const ui = layer("barq.probe3");
+    expect(ui.props({ zIndex: 45 }).class).not.toBe(props({ zIndex: 45 }).class);
+    expect(ui.dynamic((c: string) => ({ top: c }))("x").$class).not.toBe(
       dynamic((c: string) => ({ top: c }))("x").$class,
     );
   });
@@ -429,9 +430,11 @@ describe("atoms > a rule about a child", () => {
   });
 });
 
-describe("atomsIn", () => {
+describe("a call through a layer", () => {
+  const ui = layer("barq.ui");
+
   test("puts every atom in the layer it is given", () => {
-    const classes = atomsIn("barq.ui", { color: "rebeccapurple", padding: { ":hover": 4 } });
+    const classes = ui({ color: "rebeccapurple", padding: { ":hover": 4 } });
     expect(classes).not.toBe("");
     const body = layerBody(collectCss(), "barq.ui");
     for (const cls of classes.split(" ")) expect(body).toContain(`.${cls}`);
@@ -450,8 +453,9 @@ describe("atomsIn", () => {
     // `[data-variant="destructive"] &` at 0-2-0 stopped beating the child's own
     // 0-1-0. `collectCss` carries the tier as order instead, which is a
     // tie-breaker and nothing more.
-    atomsIn("barq.probe", { color: { "@media print": "black" } });
-    atomsIn("barq.probe", { color: "white" });
+    const probe = layer("barq.probe");
+    probe({ color: { "@media print": "black" } });
+    probe({ color: "white" });
     const sheet = collectCss();
     for (const tier of TIERS) expect(sheet).not.toContain(`barq.probe.${tier}`);
     // Registered at-rule first, and the sort still puts the base rule before it.
@@ -463,33 +467,26 @@ describe("atomsIn", () => {
     // One class name cannot carry two different rules, and a layered rule and
     // an unlayered one are exactly that.
     const plain = atoms({ color: "papayawhip" });
-    const layered = atomsIn("barq.ui", { color: "papayawhip" });
+    const layered = ui({ color: "papayawhip" });
     expect(layered).not.toBe(plain);
     expect(layerBody(collectCss(), "barq.ui")).not.toContain(`.${plain}`);
     expect(layerBody(collectCss(), "barq.ui")).toContain(`.${layered}`);
   });
 
   test("and they still merge, because the key is the property", () => {
-    const merged = atoms(atomsIn("barq.ui", { color: "tomato" }), { color: "olive" }).split(" ");
+    const merged = atoms(ui({ color: "tomato" }), { color: "olive" }).split(" ");
     expect(merged).toHaveLength(1);
     expect(ruleFor(merged[0] ?? "")).toBe(`.${merged[0] ?? ""}{color:olive}`);
   });
 
   test("a condition inside a layer keeps both", () => {
-    const cls = atomsIn("barq.ui", { color: { "@media print": "black" } }).split(" ")[0] ?? "";
+    const cls = ui({ color: { "@media print": "black" } }).split(" ")[0] ?? "";
     expect(layerBody(collectCss(), "barq.ui")).toContain(`@media print{.${cls}{color:black}}`);
   });
 });
 
 describe("layer", () => {
-  test("binds the layer, and produces the classes `atomsIn` would", () => {
-    const ui = layer("barq.ui");
-    expect(ui({ color: "seagreen", paddingTop: 8 })).toBe(
-      atomsIn("barq.ui", { color: "seagreen", paddingTop: 8 }),
-    );
-  });
-
-  test("merges its arguments the way `atomsIn` does", () => {
+  test("merges its arguments, the last one winning per property", () => {
     const ui = layer("barq.ui");
     const merged = ui({ color: "peru" }, { color: "sienna" }).split(" ");
     expect(merged).toHaveLength(1);
@@ -497,15 +494,17 @@ describe("layer", () => {
   });
 });
 
-describe("createIn", () => {
+describe("a layer's create", () => {
+  const ui = layer("barq.ui");
+
   test("puts a group's atoms in the layer, and returns plain strings", () => {
-    const shared = createIn("barq.ui", {
+    const shared = ui.create({
       ring: { outlineWidth: "3px" },
       flat: { boxShadow: "none" },
     });
     expect(shared).toEqual({
-      ring: createIn("barq.ui", { ring: { outlineWidth: "3px" } }).ring,
-      flat: createIn("barq.ui", { flat: { boxShadow: "none" } }).flat,
+      ring: ui.create({ ring: { outlineWidth: "3px" } }).ring,
+      flat: ui.create({ flat: { boxShadow: "none" } }).flat,
     });
     const body = layerBody(collectCss(), "barq.ui");
     expect(body).toContain(`.${shared.ring}{outline-width:3px}`);
@@ -513,15 +512,16 @@ describe("createIn", () => {
   });
 
   test("a group composes into a later call, which is what it is for", () => {
-    const ui = layer("barq.ui");
-    const shared = createIn("barq.ui", { ring: { outlineWidth: "3px" } });
+    const shared = ui.create({ ring: { outlineWidth: "3px" } });
     const merged = ui(shared.ring, { outlineWidth: "1px" }).split(" ");
     expect(merged).toHaveLength(1);
     expect(ruleFor(merged[0] ?? "")).toBe(`.${merged[0] ?? ""}{outline-width:1px}`);
   });
 
   test("and `create` is the same groups unlayered", () => {
-    expect(create({ a: { color: "orchid" } }).a).toBe(createIn("", { a: { color: "orchid" } }).a);
+    const plain = create({ a: { color: "orchid" } }).a;
+    expect(plain).toBe(atoms({ color: "orchid" }));
+    expect(plain).not.toBe(ui.create({ a: { color: "orchid" } }).a);
   });
 });
 

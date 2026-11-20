@@ -27,21 +27,17 @@ import { hash, onReset, register } from "./sheet.ts";
  * `@barqjs/css/internal` now, and this list is what a consumer may rely on.
  */
 
-// Composing declarations. Each `…In` takes a cascade layer; `layer` binds one
-// for all of them at once, which is how a design system writes it.
+// Composing declarations. `layer` binds a cascade layer for all of them at
+// once, which is how a design system writes it.
 export {
   atoms,
-  atomsIn,
   create,
-  createIn,
   defineConditions,
   dynamic,
-  dynamicIn,
   firstThatWorks,
   layer,
   mergeStyles,
   props,
-  propsIn,
 } from "./atoms.ts";
 export type {
   AtomConditions,

@@ -822,36 +822,15 @@ export function atoms(...styles: (AtomInput | readonly AtomInput[])[]): string {
   return build("", styles);
 }
 
-/**
- * The same atoms, inside a cascade layer.
- *
- * For a component LIBRARY, whose rules are meant to lose. `atoms` is unlayered
- * on purpose — the reasoning is above `TIERS` — and that is right for an
- * application styling itself, where losing to a stray `* { margin: 0 }` is the
- * failure. A design system wants the opposite: whatever an application writes
- * should win without `!important` and without counting specificity, which is
- * what a layer gives and nothing else does.
- *
- * A module whose every rule is in one layer writes {@link layer} once instead
- * of naming it at each call.
- *
- * The layer is part of each atom's identity, so the same declaration layered
- * and not is two classes. Merging still works across them: the merge key is the
- * property, which both carry.
- */
-export function atomsIn(into: string, ...styles: (AtomInput | readonly AtomInput[])[]): string {
-  return build(into, styles);
-}
-
 /** Styles in, a class string out: what {@link atoms} and a {@link Layer} are. */
 export type AtomsFn = (...styles: (AtomInput | readonly AtomInput[])[]) => string;
 
 /**
  * A cascade layer, and every helper that writes into it.
  *
- * Calling it is {@link atomsIn}; the properties are the rest of the surface
- * with the same layer already bound, so the name is written once a module
- * rather than at every call.
+ * Calling it is {@link atoms} with every rule in the layer; the properties are
+ * {@link create}, {@link props} and {@link dynamic} the same way, so the name is
+ * written once a module rather than at every call.
  *
  * {@link variants} is deliberately NOT here. It writes no CSS — it composes
  * class strings that already carry the layer they were declared in — so there
@@ -860,23 +839,34 @@ export type AtomsFn = (...styles: (AtomInput | readonly AtomInput[])[]) => strin
 export interface Layer extends AtomsFn {
   /** The layer this writes into. */
   readonly layer: string;
-  /** {@link createIn}, in this layer. */
+  /** {@link create}, in this layer. */
   create<T extends Record<string, AtomStyles>>(styles: T): { readonly [K in keyof T]: string };
-  /** {@link propsIn}, in this layer. */
+  /** {@link props}, with this call's own declarations in this layer. */
   props(...styles: (PropInput | readonly PropInput[])[]): Props;
-  /** {@link dynamicIn}, in this layer. */
+  /** {@link dynamic}, in this layer. */
   dynamic<A extends unknown[]>(declare: (...args: A) => AtomStyles): (...args: A) => DynamicStyle;
 }
 
 /**
- * {@link atomsIn} with its layer bound, named once at the top of a module.
+ * The same atoms, inside a cascade layer, named once at the top of a module.
  *
  * ```ts
  * const ui = layer("barq.ui");
  * const card = ui({ display: "flex", padding: 8 });
  * ```
  *
- * The compiler folds a call through the binding exactly as it folds `atomsIn`,
+ * For a component LIBRARY, whose rules are meant to lose. `atoms` is unlayered
+ * on purpose — the reasoning is above `TIERS` — and that is right for an
+ * application styling itself, where losing to a stray `* { margin: 0 }` is the
+ * failure. A design system wants the opposite: whatever an application writes
+ * should win without `!important` and without counting specificity, which is
+ * what a layer gives and nothing else does.
+ *
+ * The layer is part of each atom's identity, so the same declaration layered
+ * and not is two classes. Merging still works across them: the merge key is the
+ * property, which both carry.
+ *
+ * The compiler folds a call through the binding exactly as it folds `atoms`,
  * which is the whole reason this exists rather than an arrow function of your
  * own: it reads `layer("barq.ui")` in THIS module, so the layer is still a
  * literal at the call site and the atoms still carry it in their names. A
@@ -894,9 +884,9 @@ export function layer(name: string): Layer {
   const bound = ((...styles: (AtomInput | readonly AtomInput[])[]) =>
     build(name, styles)) as AtomsFn & { -readonly [K in keyof Layer]: Layer[K] };
   bound.layer = name;
-  bound.create = (styles) => createIn(name, styles);
-  bound.props = (...styles) => propsIn(name, ...styles);
-  bound.dynamic = (declare) => dynamicIn(name, declare);
+  bound.create = (styles) => createInto(name, styles);
+  bound.props = (...styles) => propsInto(name, styles);
+  bound.dynamic = (declare) => dynamicInto(name, declare);
   return bound;
 }
 
@@ -1026,25 +1016,18 @@ function namesOf(classes: string): Resolved {
 export function create<T extends Record<string, AtomStyles>>(
   styles: T,
 ): { readonly [K in keyof T]: string } {
-  return createIn("", styles);
+  return createInto("", styles);
 }
 
 /**
- * The same groups, inside a cascade layer, for the same reason {@link atomsIn}
- * exists.
+ * {@link create} into the layer `into`, `""` for none: what `ui.create` is.
  *
  * A group is what a treatment shared across a package is written as once: the
  * ring, the shadow, the focus block. The object it returns is plain strings, so
  * it crosses a module boundary as DATA, and every module that composes it lands
  * on the classes this one registered.
- *
- * ```ts
- * export const shared = createIn("barq.ui", {
- *   shadow: { boxShadow: "var(--ui-inset-shadow), …" },
- * });
- * ```
  */
-export function createIn<T extends Record<string, AtomStyles>>(
+function createInto<T extends Record<string, AtomStyles>>(
   into: string,
   styles: T,
 ): { readonly [K in keyof T]: string } {
@@ -1104,12 +1087,12 @@ function isList(style: PropInput | readonly PropInput[]): style is readonly Prop
  * wants and what the compiler turns into a literal.
  */
 export function props(...styles: (PropInput | readonly PropInput[])[]): Props {
-  return propsIn("", ...styles);
+  return propsInto("", styles);
 }
 
 /**
- * The same two attributes, with this call's own declarations in a cascade
- * layer.
+ * {@link props} with this call's own declarations in the layer `into`, `""`
+ * for none: what `ui.props` is.
  *
  * `props` is unlayered for the reason {@link atoms} is. A design system wants
  * the opposite, and without this it had no way to ask for it — `props` was the
@@ -1119,7 +1102,7 @@ export function props(...styles: (PropInput | readonly PropInput[])[]): Props {
  * A {@link dynamic} group carries the layer it was declared in, so only the
  * style objects passed here take this one.
  */
-export function propsIn(into: string, ...styles: (PropInput | readonly PropInput[])[]): Props {
+function propsInto(into: string, styles: readonly (PropInput | readonly PropInput[])[]): Props {
   hold();
   try {
     return propsOf(styles, (applied, style) => feed(applied, into, style));
@@ -1293,17 +1276,18 @@ const variables = new Map<string, string>();
 export function dynamic<A extends unknown[]>(
   declare: (...args: A) => AtomStyles,
 ): (...args: A) => DynamicStyle {
-  return dynamicIn("", declare);
+  return dynamicInto("", declare);
 }
 
 /**
- * The same group, with its one rule in a cascade layer.
+ * {@link dynamic} with its one rule in the layer `into`, `""` for none: what
+ * `ui.dynamic` is.
  *
  * The class a dynamic group produces is a rule like any other — it reads
  * `var(--…)` rather than a literal — so a design system needs it layered for
  * the reason every other rule it writes is.
  */
-export function dynamicIn<A extends unknown[]>(
+function dynamicInto<A extends unknown[]>(
   into: string,
   declare: (...args: A) => AtomStyles,
 ): (...args: A) => DynamicStyle {

@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
   atoms,
-  atomsIn,
   collectCss,
   css,
   globalCss,
   keyframes,
+  layer,
   registerCss,
   setCssSink,
 } from "./index.ts";
@@ -174,10 +174,10 @@ describe("a cascade layer", () => {
     registerCss("one", "@layer barq.probe{.shared{color:red}.only-one{color:blue}}");
     registerCss("two", "@layer barq.probe{.shared{color:red}.only-two{color:green}}");
     const sheet = collectCss();
-    const layer = sheet.slice(sheet.indexOf("@layer barq.probe{"));
-    expect(layer.split(".shared{color:red}").length - 1).toBe(1);
-    expect(layer).toContain(".only-one{color:blue}");
-    expect(layer).toContain(".only-two{color:green}");
+    const block = sheet.slice(sheet.indexOf("@layer barq.probe{"));
+    expect(block.split(".shared{color:red}").length - 1).toBe(1);
+    expect(block).toContain(".only-one{color:blue}");
+    expect(block).toContain(".only-two{color:green}");
   });
 
   test("and is written once, not once per module", () => {
@@ -322,9 +322,10 @@ describe("registerCss", () => {
 
 describe("the sheet > a brace inside a string", () => {
   test("closes nothing, so a layer holds its own rules and nobody else's", () => {
-    const first = atomsIn("barq.quoted", { caretColor: "teal" });
+    const ui = layer("barq.quoted");
+    const first = ui({ caretColor: "teal" });
     const plain = atoms({ caretColor: "olive" });
-    const quoted = atomsIn("barq.quoted", { "::before": { content: '"}"' } });
+    const quoted = ui({ "::before": { content: '"}"' } });
     const sheet = collectCss();
     expect(sheet).toContain(
       `@layer barq.quoted{.${first}{caret-color:teal}.${quoted}::before{content:"}"}}`,

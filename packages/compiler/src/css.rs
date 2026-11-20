@@ -38,10 +38,8 @@ enum Tag {
     Keyframes,
     Global,
     Atoms,
-    AtomsIn,
     Layer,
     Create,
-    CreateIn,
     FirstThatWorks,
     Props,
     DefineConditions,
@@ -49,8 +47,6 @@ enum Tag {
     GlobalVars,
     CreateTheme,
     Dynamic,
-    DynamicIn,
-    PropsIn,
 }
 
 impl Tag {
@@ -60,19 +56,15 @@ impl Tag {
             "keyframes" => Tag::Keyframes,
             "globalCss" => Tag::Global,
             "atoms" => Tag::Atoms,
-            "atomsIn" => Tag::AtomsIn,
             "layer" => Tag::Layer,
             "create" => Tag::Create,
-            "createIn" => Tag::CreateIn,
             "firstThatWorks" => Tag::FirstThatWorks,
             "props" => Tag::Props,
-            "propsIn" => Tag::PropsIn,
             "defineConditions" => Tag::DefineConditions,
             "defineVars" => Tag::DefineVars,
             "globalVars" => Tag::GlobalVars,
             "createTheme" => Tag::CreateTheme,
             "dynamic" => Tag::Dynamic,
-            "dynamicIn" => Tag::DynamicIn,
             _ => return None,
         })
     }
@@ -169,6 +161,7 @@ pub fn run<'a>(
         numeric: FxHashSet::default(),
         groups: FxHashMap::default(),
         layers: FxHashMap::default(),
+        unread_layers: FxHashSet::default(),
         debug: options.dev,
         css: String::new(),
         emitted: FxHashSet::default(),
@@ -220,6 +213,10 @@ struct Css<'a, 'b> {
     /// that layer. The literal is read HERE, in the module that names it, which
     /// is what keeps the pass per-file.
     layers: FxHashMap<SymbolId, String>,
+    /// `const ui = layer(name)` with a name this pass cannot read. Every call
+    /// through such a binding goes to the runtime whole, objects and all, so
+    /// the call says so.
+    unread_layers: FxHashSet<SymbolId>,
     /// What each import binding names, so a value this module cannot see can be
     /// ASKED for by name. `[[specifier, exported name]]`, and the integration
     /// resolves them.
@@ -355,9 +352,7 @@ impl<'a> VisitMut<'a> for Css<'a, '_> {
             Some(Expression::CallExpression(call))
                 if self.tag_of(&call.callee) == Some(Tag::Layer) =>
             {
-                if let Some(name) = self.text_argument(call, 0) {
-                    self.layers.insert(symbol, name);
-                }
+                self.bind_layer(symbol, call);
             }
             _ => {}
         }
@@ -393,86 +388,10 @@ impl<'a> VisitMut<'a> for Css<'a, '_> {
                     }
                     return;
                 }
-                // `atomsIn("barq.ui", …)`: the layer is the first argument and
-                // has to be a literal, because it becomes part of every name.
-                Some(Tag::AtomsIn) => {
-                    if self.text_argument(call, 0).is_none() {
-                        // The layer joins every class name, so it cannot be
-                        // resolved later. `layer()` binds one per module for
-                        // exactly this reason.
-                        self.declined_layer(call, span);
-                        return;
-                    }
-                    if let Some(layer) = self.text_argument(call, 0) {
-                        call.arguments.remove(0);
-                        if let Some(replacement) = self.compile_atoms(call, span, &layer) {
-                            *expression = replacement;
-                            return;
-                        }
-                        // Put it back: the runtime is going to make this call.
-                        let text = self.allocator.alloc_str(&layer);
-                        let literal = Expression::new_string_literal(span, text, None, &self.ast);
-                        call.arguments.insert(0, oxc::ast::ast::Argument::from(literal));
-                    }
-                    return;
-                }
                 Some(Tag::Create) => {
                     match self.compile_create(call, span, "") {
                         Some(replacement) => *expression = replacement,
                         None => self.decline(span, GROUP_UNREADABLE),
-                    }
-                    return;
-                }
-                Some(Tag::CreateIn) => {
-                    if self.text_argument(call, 0).is_none() {
-                        self.declined_layer(call, span);
-                        return;
-                    }
-                    if let Some(layer) = self.text_argument(call, 0) {
-                        call.arguments.remove(0);
-                        if let Some(replacement) = self.compile_create(call, span, &layer) {
-                            *expression = replacement;
-                            return;
-                        }
-                        self.decline(span, GROUP_UNREADABLE);
-                        let text = self.allocator.alloc_str(&layer);
-                        let literal = Expression::new_string_literal(span, text, None, &self.ast);
-                        call.arguments.insert(0, oxc::ast::ast::Argument::from(literal));
-                    }
-                    return;
-                }
-                // `propsIn("barq.ui", …)` and `dynamicIn("barq.ui", …)`: the
-                // layer is the first argument for the reason it is in
-                // `atomsIn`, and it has to be readable here because it becomes
-                // part of every class name.
-                Some(tag @ (Tag::PropsIn | Tag::DynamicIn)) => {
-                    let Some(layer) = self.text_argument(call, 0) else {
-                        self.declined_layer(call, span);
-                        return;
-                    };
-                    call.arguments.remove(0);
-                    let folded = match tag {
-                        Tag::PropsIn => self
-                            .compile_atoms(call, span, &layer)
-                            .map(|classes| self.object(span, vec![("class", classes)])),
-                        _ => self.compile_dynamic(call, span, &layer),
-                    };
-                    // The layer is only ever a style object's, and every object
-                    // is folded by the time the call is a merge.
-                    if folded.is_none() && tag == Tag::PropsIn && self.merge_styles(call, span) {
-                        return;
-                    }
-                    match folded {
-                        Some(replacement) => *expression = replacement,
-                        None => {
-                            if tag == Tag::DynamicIn {
-                                self.decline(span, DYNAMIC_UNREADABLE);
-                            }
-                            let text = self.allocator.alloc_str(&layer);
-                            let literal =
-                                Expression::new_string_literal(span, text, None, &self.ast);
-                            call.arguments.insert(0, oxc::ast::ast::Argument::from(literal));
-                        }
                     }
                     return;
                 }
@@ -540,23 +459,29 @@ impl<'a> VisitMut<'a> for Css<'a, '_> {
                 _ => {}
             }
 
-            // A call through a binding `layer` produced, which folds exactly as
-            // the `atomsIn` it stands for: the layer was read as a literal in
-            // this module, so it is still one here.
+            // A call through a binding `layer` produced, which folds as `atoms`
+            // does with every rule in that layer: the layer was read as a
+            // literal in this module, so it is still one here.
             if let Some(layer) = self.layer_of(&call.callee) {
                 if let Some(replacement) = self.compile_atoms(call, span, &layer) {
                     *expression = replacement;
                 }
                 return;
             }
-            // `ui.create({…})`, `ui.props(…)`, `ui.dynamic(…)`: the same helper
-            // with the layer already bound, which is what `layer()` returns.
-            // Folded exactly as the `…In` form it stands for, because it IS
-            // that call — the binding was read in this module, so the layer is
+            // `ui.create({…})`, `ui.props(…)`, `ui.dynamic(…)`: `create`, `props`
+            // and `dynamic` with the layer already bound, which is what
+            // `layer()` returns. Each folds and declines as the unlayered
+            // helper does; the binding was read in this module, so the layer is
             // still a literal here.
             if let Some((layer, member)) = self.bound_layer(&call.callee) {
                 let folded = match member.as_str() {
-                    "create" => self.compile_create(call, span, &layer),
+                    "create" => {
+                        let folded = self.compile_create(call, span, &layer);
+                        if folded.is_none() {
+                            self.decline(span, GROUP_UNREADABLE);
+                        }
+                        folded
+                    }
                     "props" => {
                         let folded = self
                             .compile_atoms(call, span, &layer)
@@ -578,6 +503,10 @@ impl<'a> VisitMut<'a> for Css<'a, '_> {
                 if let Some(replacement) = folded {
                     *expression = replacement;
                 }
+                return;
+            }
+            if self.through_unread_layer(&call.callee) {
+                self.declined_layer(call, span);
                 return;
             }
         }
@@ -627,7 +556,7 @@ const LOCAL_VALUE: (&str, &str) = (
 
 /// What a group says when one of its style objects will not read.
 const GROUP_UNREADABLE: (&str, &str) = (
-    "A style in this `create` or `createIn` call has a value, a key or a nested object the \
+    "A style in this `create` call has a value, a key or a nested object the \
      compiler cannot read in this file, such as an imported value or a function call.",
     "Write literals, or name a `const` declared in this module.",
 );
@@ -762,36 +691,12 @@ impl<'a> Css<'a, '_> {
         // nowhere: seeding by emitting would put a group's rules ahead of rules
         // from calls written above it, and order is what decides between two
         // atoms of one tier.
+        let mut bound: Vec<(SymbolId, &oxc::ast::ast::CallExpression<'a>)> = Vec::new();
         for (symbol, init) in bindings {
             let Expression::CallExpression(call) = without_type_wrappers(init) else { continue };
             match self.tag_of(&call.callee) {
-                Some(Tag::Layer) => {
-                    if let Some(name) = self.text_argument(call, 0) {
-                        self.layers.insert(symbol, name);
-                    }
-                }
-                Some(tag @ (Tag::Create | Tag::CreateIn)) => {
-                    let at = usize::from(tag == Tag::CreateIn);
-                    let layer = if at == 1 {
-                        match self.text_argument(call, 0) {
-                            Some(layer) => layer,
-                            None => continue,
-                        }
-                    } else {
-                        String::new()
-                    };
-                    let Some(argument) = call.arguments.get(at).and_then(|a| a.as_expression())
-                    else {
-                        continue;
-                    };
-                    let Expression::ObjectExpression(object) = without_type_wrappers(argument)
-                    else {
-                        continue;
-                    };
-                    if let Some(groups) = self.group_classes(object, &layer, false) {
-                        self.groups.insert(symbol, groups.into_iter().collect());
-                    }
-                }
+                Some(Tag::Layer) => self.bind_layer(symbol, call),
+                Some(Tag::Create) => self.seed_group(symbol, call, ""),
                 Some(tag @ (Tag::DefineVars | Tag::GlobalVars)) => {
                     let Some(tokens) = self.token_values(call) else { continue };
                     let (entries, ..) = Self::token_entries(&tokens, tag == Tag::GlobalVars);
@@ -804,7 +709,57 @@ impl<'a> Css<'a, '_> {
                         self.groups.insert(symbol, conditions.into_iter().collect());
                     }
                 }
-                _ => {}
+                _ => bound.push((symbol, call)),
+            }
+        }
+
+        // `ui.create({ … })`, read once every binding `layer` made is known, so
+        // a group declared above the layer it is written into is one too.
+        for (symbol, call) in bound {
+            let Expression::StaticMemberExpression(member) = without_type_wrappers(&call.callee)
+            else {
+                continue;
+            };
+            if member.property.name != "create" {
+                continue;
+            }
+            let Some(layer) = crate::analysis::symbol_of(self.scoping, &member.object)
+                .and_then(|object| self.layers.get(&object))
+            else {
+                continue;
+            };
+            let layer = layer.clone();
+            self.seed_group(symbol, call, &layer);
+        }
+    }
+
+    /// A `create` group's names, known before the walk reaches the call.
+    fn seed_group(
+        &mut self,
+        symbol: SymbolId,
+        call: &oxc::ast::ast::CallExpression<'_>,
+        layer: &str,
+    ) {
+        let Some(argument) = call.arguments.first().and_then(|a| a.as_expression()) else {
+            return;
+        };
+        let Expression::ObjectExpression(object) = without_type_wrappers(argument) else {
+            return;
+        };
+        if let Some(groups) = self.group_classes(object, layer, false) {
+            self.groups.insert(symbol, groups.into_iter().collect());
+        }
+    }
+
+    /// `const ui = layer(…)`: the layer it binds, or that this pass cannot
+    /// read it.
+    fn bind_layer(&mut self, symbol: SymbolId, call: &oxc::ast::ast::CallExpression<'_>) {
+        match self.text_argument(call, 0) {
+            Some(name) => {
+                self.layers.insert(symbol, name);
+            }
+            None => {
+                self.unread_layers.insert(symbol);
             }
         }
     }
@@ -978,7 +933,7 @@ impl<'a> Css<'a, '_> {
         });
     }
 
-    /// `atomsIn` or `createIn` whose first argument is not a literal.
+    /// A call through a `layer` binding whose name this pass cannot read.
     ///
     /// Reported only when a style object is in the call, because a layer this
     /// pass cannot read takes the WHOLE call to the runtime — objects and all —
@@ -998,10 +953,11 @@ impl<'a> Css<'a, '_> {
             self.decline(
                 span,
                 (
-                    "The layer name passed here is not a string literal in this file, and it \
-                     becomes part of every class name.",
-                    "Bind it once in this module, `const ui = layer(\"app.ui\")`, then call \
-                     `ui(...)` or `ui.create(...)`.",
+                    "The layer this call writes into was given to `layer` as something other \
+                     than a string literal or a `const` in this file, and it becomes part of \
+                     every class name.",
+                    "Name it with a literal where it is bound, `const ui = layer(\"app.ui\")`, \
+                     or with a `const` declared in this module.",
                 ),
             );
         }
@@ -2234,6 +2190,17 @@ impl<'a> Css<'a, '_> {
         Some((layer, member.property.name.to_string()))
     }
 
+    /// Whether the callee is `ui` or `ui.member` for a `layer` binding this
+    /// pass could not read the name of.
+    fn through_unread_layer(&self, callee: &Expression<'_>) -> bool {
+        let object = match without_type_wrappers(callee) {
+            Expression::StaticMemberExpression(member) => &member.object,
+            other => other,
+        };
+        crate::analysis::symbol_of(self.scoping, object)
+            .is_some_and(|symbol| self.unread_layers.contains(&symbol))
+    }
+
     /// The layer a binding `layer` produced carries, if the callee is one.
     fn layer_of(&self, callee: &Expression<'_>) -> Option<String> {
         let Expression::Identifier(identifier) = without_type_wrappers(callee) else { return None };
@@ -2438,9 +2405,9 @@ impl<'a> Css<'a, '_> {
         }
     }
 
-    /// `dynamic`, `dynamicIn`, or `dynamic` through a binding `layer` made.
+    /// `dynamic`, or `dynamic` through a binding `layer` made.
     fn is_dynamic_callee(&self, callee: &Expression<'_>) -> bool {
-        if matches!(self.tag_of(callee), Some(Tag::Dynamic | Tag::DynamicIn)) {
+        if self.tag_of(callee) == Some(Tag::Dynamic) {
             return true;
         }
         let Expression::StaticMemberExpression(member) = without_type_wrappers(callee) else {
@@ -3362,8 +3329,7 @@ mod atom_tests {
     use crate::compile::{CompileOutput, compile};
     use crate::options::ResolvedOptions;
 
-    const IMPORT: &str =
-        "import { atoms, atomsIn, create, createIn, globalCss, layer } from \"@barqjs/css\";\n";
+    const IMPORT: &str = "import { atoms, create, globalCss, layer } from \"@barqjs/css\";\n";
 
     fn run(body: &str) -> CompileOutput {
         compile(&format!("{IMPORT}{body}"), &ResolvedOptions::with_filename("s.tsx"))
@@ -3387,26 +3353,11 @@ mod atom_tests {
     #[test]
     fn a_layer_declaration_is_passed_through_rather_than_gathered() {
         let out = run(
-            "globalCss`@layer barq.reset, barq.ui;`;\n             export const a = atomsIn(\"barq.ui\", { color: \"red\" });",
+            "globalCss`@layer barq.reset, barq.ui;`;\n             const ui = layer(\"barq.ui\");\n             export const a = ui({ color: \"red\" });",
         );
         let css = out.css.as_deref().unwrap_or_default();
         assert!(css.contains("@layer barq.reset, barq.ui;"), "{css}");
         assert!(css.contains("@layer barq.ui{"), "{css}");
-    }
-
-    /// `atomsIn` folds like `atoms`, and its rules land in the layer it names.
-    /// Without this the whole of `@barqjs/ui` stayed on the runtime and its CSS
-    /// travelled inside the JS bundle instead of in a stylesheet.
-    #[test]
-    fn a_layered_call_folds_and_its_rules_are_in_the_layer() {
-        let out = run("export const a = atomsIn(\"barq.ui\", { color: \"red\", paddingTop: 8 });");
-        assert!(!out.code.contains("atomsIn("), "the call survived: {}", out.code);
-        let css = out.css.as_deref().unwrap_or_default();
-        assert!(css.starts_with("@layer barq.ui{"), "{css}");
-        assert!(css.contains("color:red"), "{css}");
-        assert!(css.contains("padding-top:8px"), "{css}");
-        // One block, not one per atom.
-        assert_eq!(css.matches("@layer barq.ui{").count(), 1, "{css}");
     }
 
     /// A tier is NOT a cascade layer and must not become one. It is a
@@ -3418,10 +3369,9 @@ mod atom_tests {
     /// `barq_css::order` makes that order global over the bundle.
     #[test]
     fn a_tier_is_an_order_and_never_a_sub_layer() {
-        let out = run(
-            "export const a = atomsIn(\"barq.ui\", { color: { default: \"red\", \":hover\": \"blue\", \
-             \"@media print\": \"green\" }, \"& > *\": { color: \"grey\" } });",
-        );
+        let out = run("const ui = layer(\"barq.ui\");\n\
+             export const a = ui({ color: { default: \"red\", \":hover\": \"blue\", \
+             \"@media print\": \"green\" }, \"& > *\": { color: \"grey\" } });");
         let css = out.css.as_deref().unwrap_or_default();
         assert_eq!(css.matches("@layer ").count(), 1, "{css}");
         for tier in ["descendant", "base", "select", "element", "media"] {
@@ -3445,19 +3395,22 @@ mod atom_tests {
         assert!(!css.contains("@layer"), "{css}");
     }
 
-    /// `const ui = layer("barq.ui")` folds exactly as the `atomsIn` it stands
-    /// for. Naming the layer at all 192 call sites was the price of folding at
-    /// all; naming it once a module is the same fact in the place a reader
-    /// looks for it.
+    /// A call through `const ui = layer("barq.ui")` folds like `atoms`, and its
+    /// rules land in the layer the binding names. Without this the whole of
+    /// `@barqjs/ui` stayed on the runtime and its CSS travelled inside the JS
+    /// bundle instead of in a stylesheet.
     #[test]
     fn a_call_through_a_layer_binding_folds_into_that_layer() {
         let out = run(
             "const ui = layer(\"barq.ui\");\n             export const a = ui({ color: \"red\", paddingTop: 8 });",
         );
-        let plain =
-            run("export const a = atomsIn(\"barq.ui\", { color: \"red\", paddingTop: 8 });");
-        assert_eq!(out.css, plain.css);
         assert!(!out.code.contains("ui({"), "the call survived: {}", out.code);
+        let css = out.css.as_deref().unwrap_or_default();
+        assert!(css.starts_with("@layer barq.ui{"), "{css}");
+        assert!(css.contains("color:red"), "{css}");
+        assert!(css.contains("padding-top:8px"), "{css}");
+        // One block, not one per atom.
+        assert_eq!(css.matches("@layer barq.ui{").count(), 1, "{css}");
         // The binding stays: a sibling call this pass declines still makes it.
         assert!(out.code.contains("layer(\"barq.ui\")"), "{}", out.code);
     }
@@ -3473,18 +3426,17 @@ mod atom_tests {
         assert_eq!(out.css, None);
     }
 
-    /// `createIn` is `create` in a layer, so a treatment shared across a
+    /// `ui.create` is `create` in a layer, so a treatment shared across a
     /// package is written once and its rules land where the package's do.
     #[test]
-    fn create_in_puts_its_groups_in_the_layer() {
-        let out = run(
-            "export const shared = createIn(\"barq.ui\", { ring: { outlineWidth: \"3px\" } });",
-        );
+    fn a_layer_create_puts_its_groups_in_the_layer() {
+        let out = run("const ui = layer(\"barq.ui\");\n\
+             export const shared = ui.create({ ring: { outlineWidth: \"3px\" } });");
         let css = out.css.as_deref().unwrap_or_default();
         assert!(css.starts_with("@layer barq.ui{"), "{css}");
         assert!(css.contains("outline-width:3px"), "{css}");
         assert!(out.code.contains("ring:"), "{}", out.code);
-        assert!(!out.code.contains("createIn("), "the call survived: {}", out.code);
+        assert!(!out.code.contains("ui.create("), "the call survived: {}", out.code);
         // And the classes differ from the unlayered ones, because the layer is
         // part of an atom's identity.
         let plain = run("export const shared = create({ ring: { outlineWidth: \"3px\" } });");
@@ -3558,15 +3510,6 @@ mod atom_tests {
             "declare const a: boolean;\n             const base = atoms({ color: \"red\" });\n             const loud = atoms({ color: \"blue\" });\n             export const cls = atoms(base, a && loud);",
         );
         assert!(out.code.contains("a ? \"a-color_10cd4ul\" : \"a-color_i0tgik\""), "{}", out.code);
-    }
-
-    /// A layer that is not a literal cannot become part of a name, so the call
-    /// stays whole and the runtime computes it.
-    #[test]
-    fn a_layer_the_compiler_cannot_read_is_left_alone() {
-        let out =
-            run("declare const name: string;\nexport const a = atomsIn(name, { color: \"red\" });");
-        assert!(out.code.contains("atomsIn("), "{}", out.code);
     }
 
     /// A class that is not an atom is carried through, not dropped.
@@ -3786,9 +3729,8 @@ mod decline_tests {
     use crate::diag::{Code, Level};
     use crate::options::{ResolvedOptions, TransformOptions};
 
-    const IMPORT: &str = "import { atoms, atomsIn, create, createIn, createTheme, defineVars, \
-                          dynamic, dynamicIn, firstThatWorks, globalCss, layer, props } from \
-                          \"@barqjs/css\";\n";
+    const IMPORT: &str = "import { atoms, create, createTheme, defineVars, dynamic, \
+                          firstThatWorks, globalCss, layer, props } from \"@barqjs/css\";\n";
 
     fn run(body: &str) -> CompileOutput {
         compile(&format!("{IMPORT}{body}"), &ResolvedOptions::with_filename("s.tsx"))
@@ -3836,7 +3778,7 @@ mod decline_tests {
             "export const a = dynamic((c) => ({ color: c, ...rest }));",
             "export const a = dynamic((c) => ({ color: c, backgroundColor: { default: c, \":hover\": [c] } }));",
             "export const a = dynamic((c) => ({ color: c, width: firstThatWorks(c, \"1px\") }));",
-            "export const a = dynamicIn(\"ui\", (c, h) => ({ color: c, [h]: c }));",
+            "const ui = layer(\"ui\");\nexport const a = ui.dynamic((c, h) => ({ color: c, [h]: c }));",
             "const ui = layer(\"ui\");\nexport const a = ui.dynamic((c) => ({ color: c, \":hover\": { ...c } }));",
         ] {
             let out = run(body);
@@ -3874,7 +3816,15 @@ mod decline_tests {
             ("an unreadable value", "export const a = atoms({ color: theme.brand });"),
             (
                 "a layer that is not a literal",
-                "export const a = atomsIn(LAYER, { color: \"red\" });",
+                "const ui = layer(LAYER);\nexport const a = ui({ color: \"red\" });",
+            ),
+            (
+                "a layer group whose layer is not a literal",
+                "const ui = layer(LAYER);\nexport const a = ui.create({ x: { color: \"red\" } });",
+            ),
+            (
+                "a layer group that will not read",
+                "const ui = layer(\"ui\");\nexport const a = ui.create({ x: { color: theme.brand } });",
             ),
             ("a spread", "export const a = atoms(...rest);"),
             (
@@ -3956,6 +3906,23 @@ mod decline_tests {
         assert_eq!(rules(&below), rules(&above));
     }
 
+    /// And a group written through a layer binding, both declared below the
+    /// call that reads the group.
+    #[test]
+    fn a_layer_group_is_known_before_the_walk_reaches_it() {
+        let below =
+            run("export function Card() { return <div class={ui(g.r, { color: \"red\" })} />; }\n\
+             const ui = layer(\"ui\");\n\
+             const g = ui.create({ r: { padding: 8 } });");
+        assert!(!below.code.contains("ui(g.r"), "the call survived: {}", below.code);
+        assert!(codes(&below).is_empty(), "{:?}", codes(&below));
+        assert!(
+            below.css.as_deref().unwrap_or_default().starts_with("@layer ui{"),
+            "{:?}",
+            below.css
+        );
+    }
+
     /// And a theme over a token set declared below it.
     #[test]
     fn a_theme_reads_a_token_set_written_after_it() {
@@ -3979,9 +3946,10 @@ mod decline_tests {
         let named = run("const LAYER = \"barq.ui\";\n\
              const ui = layer(LAYER);\n\
              export const a = ui({ color: \"red\" });\n\
-             export const b = atomsIn(LAYER, { padding: 8 });");
-        let literal = run("export const a = atomsIn(\"barq.ui\", { color: \"red\" });\n\
-             export const b = atomsIn(\"barq.ui\", { padding: 8 });");
+             export const b = ui({ padding: 8 });");
+        let literal = run("const ui = layer(\"barq.ui\");\n\
+             export const a = ui({ color: \"red\" });\n\
+             export const b = ui({ padding: 8 });");
         assert_eq!(named.css, literal.css);
         assert!(codes(&named).is_empty(), "{:?}", codes(&named));
     }
@@ -4067,7 +4035,7 @@ mod decline_tests {
     #[test]
     fn an_opaque_class_string_is_a_merge_and_reports_nothing() {
         let out = run(
-            "import { shared } from \"./s.ts\";\nexport const a = atomsIn(\"barq.ui\", shared.ring, { color: \"red\" });",
+            "import { shared } from \"./s.ts\";\nconst ui = layer(\"barq.ui\");\nexport const a = ui(shared.ring, { color: \"red\" });",
         );
         assert!(out.code.contains("a-color_"), "the literal did not fold: {}", out.code);
         assert!(codes(&out).is_empty(), "{:?}", codes(&out));
@@ -4075,7 +4043,9 @@ mod decline_tests {
 
     #[test]
     fn a_call_that_folds_whole_reports_nothing() {
-        let out = run("export const a = atomsIn(\"barq.ui\", { color: \"red\", padding: 8 });");
+        let out = run(
+            "const ui = layer(\"barq.ui\");\nexport const a = ui({ color: \"red\", padding: 8 });",
+        );
         assert!(codes(&out).is_empty(), "{:?}", codes(&out));
     }
 
@@ -4129,7 +4099,7 @@ mod decline_tests {
     #[test]
     fn strict_css_costs_a_module_that_folds_nothing() {
         let out = strict(
-            "const ui = layer(\"barq.ui\");\nexport const a = ui({ color: \"red\" });\nexport const g = createIn(\"barq.ui\", { r: { padding: 8 } });",
+            "const ui = layer(\"barq.ui\");\nexport const a = ui({ color: \"red\" });\nexport const g = ui.create({ r: { padding: 8 } });",
         );
         assert!(out.warnings.iter().all(|warning| warning.code.is_none()), "{:?}", codes(&out));
     }
@@ -4140,8 +4110,8 @@ mod surface_tests {
     use crate::compile::{CompileOutput, compile};
     use crate::options::ResolvedOptions;
 
-    const IMPORT: &str = "import { atomsIn, createIn, dynamic, dynamicIn, defineVars, globalVars, \
-                          layer, props, propsIn } from \"@barqjs/css\";\n";
+    const IMPORT: &str =
+        "import { dynamic, defineVars, globalVars, layer, props } from \"@barqjs/css\";\n";
 
     fn run(body: &str) -> CompileOutput {
         compile(&format!("{IMPORT}{body}"), &ResolvedOptions::with_filename("s.tsx"))
@@ -4149,19 +4119,20 @@ mod surface_tests {
     }
 
     /// `layer()` binds the layer for every helper that writes a rule, so the
-    /// name is written once a module rather than at every call. Each folds
-    /// exactly as the `…In` form it stands for, because it IS that call.
+    /// name is written once a module rather than at every call. Each folds,
+    /// and every rule it writes is in the layer.
     #[test]
     fn a_bound_layer_folds_every_helper_it_carries() {
         let bound = run("const ui = layer(\"barq.ui\");\n\
              export const g = ui.create({ ring: { outlineWidth: \"3px\" } });\n\
              export const p = ui.props({ padding: 8 });\n\
              export const d = ui.dynamic((c) => ({ backgroundColor: c }));");
-        let spelled =
-            run("export const g = createIn(\"barq.ui\", { ring: { outlineWidth: \"3px\" } });\n\
-             export const p = propsIn(\"barq.ui\", { padding: 8 });\n\
-             export const d = dynamicIn(\"barq.ui\", (c) => ({ backgroundColor: c }));");
-        assert_eq!(bound.css, spelled.css);
+        let css = bound.css.as_deref().unwrap_or_default();
+        assert!(css.starts_with("@layer barq.ui{"), "{css}");
+        assert_eq!(css.matches("@layer ").count(), 1, "{css}");
+        assert!(css.contains("outline-width:3px"), "{css}");
+        assert!(css.contains("padding-top:8px"), "{css}");
+        assert!(css.contains("background-color:var(--"), "{css}");
         assert!(!bound.code.contains("ui.create("), "{}", bound.code);
         assert!(!bound.code.contains("ui.props("), "{}", bound.code);
         assert!(!bound.code.contains("ui.dynamic("), "{}", bound.code);
@@ -4172,8 +4143,8 @@ mod surface_tests {
     #[test]
     fn the_layered_forms_put_their_rules_in_the_layer() {
         for body in [
-            "export const p = propsIn(\"barq.ui\", { padding: 8 });",
-            "export const d = dynamicIn(\"barq.ui\", (c) => ({ color: c }));",
+            "const ui = layer(\"barq.ui\");\nexport const p = ui.props({ padding: 8 });",
+            "const ui = layer(\"barq.ui\");\nexport const d = ui.dynamic((c) => ({ color: c }));",
         ] {
             let css = run(body).css.unwrap_or_default();
             assert!(css.starts_with("@layer barq.ui{"), "{body}: {css}");
@@ -4207,10 +4178,10 @@ mod surface_tests {
     /// A layer this pass cannot read takes the whole call, and says so.
     #[test]
     fn a_layered_form_with_an_unreadable_layer_declines_and_reports() {
-        let out = run(
-            "import { LAYER } from \"./l.ts\";\nexport const p = propsIn(LAYER, { padding: 8 });",
-        );
-        assert!(out.code.contains("propsIn("), "{}", out.code);
+        let out = run("import { LAYER } from \"./l.ts\";\n\
+             const ui = layer(LAYER);\n\
+             export const p = ui.props({ padding: 8 });");
+        assert!(out.code.contains("ui.props("), "{}", out.code);
         assert!(
             out.warnings.iter().filter_map(|w| w.code).any(|c| c.as_str() == "BARQ017"),
             "{:?}",
@@ -4280,12 +4251,13 @@ mod cross_file_tests {
         rows
     }
 
-    const CARD: &str = "import { atomsIn } from \"@barqjs/css\";\n\
+    const CARD: &str = "import { layer } from \"@barqjs/css\";\n\
                         import { theme } from \"./theme.ts\";\n\
                         import { BRAND } from \"./tokens.ts\";\n\
                         import { shared, ui } from \"./shared.ts\";\n\
-                        export const a = atomsIn(\"app\", { color: theme.brand, borderColor: BRAND });\n\
-                        export const b = atomsIn(\"app\", shared.ring);\n\
+                        const app = layer(\"app\");\n\
+                        export const a = app({ color: theme.brand, borderColor: BRAND });\n\
+                        export const b = app(shared.ring);\n\
                         export const c = ui({ padding: 4 });";
 
     /// The pass reads no file. It says which one it would have to, and folds
@@ -4297,7 +4269,7 @@ mod cross_file_tests {
         assert!(out.css_wanted.contains(&("./theme.ts".to_string(), "theme".to_string())));
         assert!(out.css_wanted.contains(&("./shared.ts".to_string(), "shared".to_string())));
         assert!(out.css_wanted.contains(&("./shared.ts".to_string(), "ui".to_string())));
-        assert!(out.code.contains("atomsIn("), "it folded without an answer: {}", out.code);
+        assert!(out.code.contains("app({"), "it folded without an answer: {}", out.code);
     }
 
     /// A module that folds on its own asks for nothing, so an integration pays
@@ -4305,7 +4277,7 @@ mod cross_file_tests {
     #[test]
     fn a_module_that_folds_asks_for_nothing() {
         let out = run(
-            "import { atomsIn } from \"@barqjs/css\";\nexport const a = atomsIn(\"app\", { color: \"red\" });",
+            "import { layer } from \"@barqjs/css\";\nconst app = layer(\"app\");\nexport const a = app({ color: \"red\" });",
             Vec::new(),
             false,
         );
@@ -4386,15 +4358,15 @@ mod cross_file_tests {
         ));
         imports.extend(rows(
             &plain(
-                "import { createIn, layer } from \"@barqjs/css\";\n\
+                "import { layer } from \"@barqjs/css\";\n\
                  export const ui = layer(\"app\");\n\
-                 export const shared = createIn(\"app\", { ring: { outlineWidth: \"3px\" } });",
+                 export const shared = ui.create({ ring: { outlineWidth: \"3px\" } });",
             ),
             "./shared.ts",
         ));
 
         let out = run(CARD, imports, false);
-        assert!(!out.code.contains("atomsIn("), "a call survived: {}", out.code);
+        assert!(!out.code.contains("app("), "a call survived: {}", out.code);
         assert!(!out.code.contains("ui({"), "the layer binding survived: {}", out.code);
         assert!(out.css_wanted.is_empty(), "{:?}", out.css_wanted);
         let css = out.css.as_deref().unwrap_or_default();
@@ -4433,9 +4405,10 @@ mod cross_file_tests {
     #[test]
     fn a_row_of_an_unknown_kind_is_ignored() {
         let out = run(
-            "import { atomsIn } from \"@barqjs/css\";\n\
+            "import { layer } from \"@barqjs/css\";\n\
              import { BRAND } from \"./tokens.ts\";\n\
-             export const a = atomsIn(\"app\", { color: BRAND });",
+             const app = layer(\"app\");\n\
+             export const a = app({ color: BRAND });",
             vec![vec![
                 "./tokens.ts".to_string(),
                 "BRAND".to_string(),
@@ -4445,7 +4418,7 @@ mod cross_file_tests {
             ]],
             false,
         );
-        assert!(out.code.contains("atomsIn("), "{}", out.code);
+        assert!(out.code.contains("app({"), "{}", out.code);
     }
 
     /// `export { x as y }` is the other spelling, and an importer asks for `y`.

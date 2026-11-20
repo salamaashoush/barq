@@ -106,19 +106,17 @@ function sharedGroups(): Map<string, Set<string>> {
   for (const file of readdirSync(lib).toSorted()) {
     if (!/^shared-[\w-]+\.ts$/.test(file)) continue;
     const source = readFileSync(join(lib, file), "utf8");
-    // Either spelling of the same call: `createIn("barq.ui", …)` and the bound
+    // A group is written through the module's layer binding,
     // `layer("barq.ui").create(…)`.
-    const declared =
-      /export const ([A-Za-z_$][\w$]*) = (?:createIn\("barq\.ui",\s*|[A-Za-z_$][\w$]*\.create\()/.exec(
-        source,
-      );
+    const declared = /export const ([A-Za-z_$][\w$]*) = [A-Za-z_$][\w$]*\.create\(/.exec(source);
     // LOUD, not `continue`. A `shared-*.ts` this cannot read contributes no
     // declarations and every spec asking for them then reports as missing —
-    // 512 of them when `createIn` became `ui.create`, with nothing saying why.
+    // 512 of them when the groups last changed spelling, with nothing saying
+    // why.
     if (declared === null) {
       throw new Error(
         `[verify] ${file} declares no group this tool can read. It looks for ` +
-          `\`export const <name> = createIn("barq.ui", {\` or \`= <layer>.create({\`.`,
+          `\`export const <name> = <layer>.create({\`.`,
       );
     }
     const namespace = declared[1] ?? "";

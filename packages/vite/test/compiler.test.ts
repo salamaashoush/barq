@@ -588,12 +588,15 @@ describe("a value imported from another file", () => {
 
   beforeAll(() => {
     mkdirSync(DIR, { recursive: true });
-    writeFileSync(join(DIR, "tokens.ts"), `export const BRAND = "var(--brand)";\n`);
+    writeFileSync(
+      join(DIR, "tokens.ts"),
+      `export const BRAND = "var(--brand)";\nexport const LAYER = "app";\n`,
+    );
     writeFileSync(
       join(DIR, "shared.ts"),
-      `import { createIn, layer } from "@barqjs/css";
+      `import { layer } from "@barqjs/css";
 export const ui = layer("app");
-export const shared = createIn("app", { ring: { outlineWidth: "3px" } });
+export const shared = ui.create({ ring: { outlineWidth: "3px" } });
 `,
     );
   });
@@ -636,20 +639,35 @@ export const shared = createIn("app", { ring: { outlineWidth: "3px" } });
     return { code: (result as { code?: string } | null)?.code ?? "", watched: context.watched };
   }
 
-  const CARD = `import { atomsIn } from "@barqjs/css";
+  const CARD = `import { layer } from "@barqjs/css";
 import { BRAND } from "./tokens.ts";
 import { shared, ui } from "./shared.ts";
-export const a = atomsIn("app", { color: BRAND });
-export const b = atomsIn("app", shared.ring);
+const app = layer("app");
+export const a = app({ color: BRAND });
+export const b = app(shared.ring);
 export const c = ui({ padding: 4 });
 `;
 
   test("a token, a group and a layer binding all fold", async () => {
     const { code } = await transform(barqVitePlugin(), CARD);
-    expect(code).not.toContain("atomsIn(");
+    expect(code).not.toContain("app({");
+    expect(code).not.toContain("app(shared");
     expect(code).not.toContain("ui({");
     expect(code).toContain("a-color_");
     expect(code).toContain("a-outline-width_");
+  });
+
+  test("a layer named by an imported constant folds into that layer", async () => {
+    const { code } = await transform(
+      barqVitePlugin(),
+      `import { layer } from "@barqjs/css";
+import { LAYER } from "./tokens.ts";
+const ui = layer(LAYER);
+export const a = ui({ padding: 4 });
+`,
+    );
+    expect(code).not.toContain("ui({");
+    expect(code).toContain("a-padding-top_");
   });
 
   test("and the file each value came from is watched, so an edit retransforms this one", async () => {
@@ -684,7 +702,7 @@ export const c = ui({ padding: 4 });
 
   test("and with it off, the call is left for the runtime", async () => {
     const { code } = await transform(barqVitePlugin({ resolveImports: false }), CARD);
-    expect(code).toContain("atomsIn(");
+    expect(code).toContain("app({");
   });
 
   test("a plugin with no resolver still compiles, it just folds less", async () => {
@@ -701,7 +719,7 @@ export const c = ui({ padding: 4 });
       },
     };
     const result = await hook.call(bare, CARD, join(DIR, "card.tsx"));
-    expect((result as { code?: string } | null)?.code ?? "").toContain("atomsIn(");
+    expect((result as { code?: string } | null)?.code ?? "").toContain("app({");
   });
 });
 

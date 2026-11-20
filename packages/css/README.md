@@ -244,9 +244,9 @@ module composing it lands on the classes the group's own module registered.
 ### A layer, named once
 
 A design system's rules belong in a cascade layer, so an application's own rule
-wins without `!important`. `atomsIn("barq.ui", { … })` says so at every call, and
-the layer has to be a literal there because it becomes part of every class name.
-`layer` binds it once instead, **for every helper that writes a rule**:
+wins without `!important`. The layer becomes part of every class name, so the
+compiler has to be able to read it. `layer` names it once a module, **for every
+helper that writes a rule**:
 
 ```ts
 import { layer } from "@barqjs/css";
@@ -259,11 +259,13 @@ const bg = ui.dynamic((colour: string) => ({ backgroundColor: colour }));
 const attrs = ui.props(shared.ring, bg(theme()));
 ```
 
-`ui(…)` is `atomsIn`, `ui.create` is `createIn`, `ui.props` is `propsIn` and
-`ui.dynamic` is `dynamicIn`. Each folds exactly as the `…In` it stands for,
-because it is that call: the compiler read `layer("barq.ui")` in **this** module,
-so the layer is still a literal at the call site. `ui.layer` is the name, if you
-need it.
+`ui(…)` is `atoms`, `ui.create` is `create`, `ui.props` is `props` and
+`ui.dynamic` is `dynamic`, each with its rules in the layer. Each folds as the
+unlayered helper does, because the compiler read `layer("barq.ui")` in **this**
+module, so the layer is still a literal at the call site. The name may be a
+string literal or a `const` (one imported through `@barqjs/vite` included); a
+name the compiler cannot read leaves every call through the binding to the
+runtime, and `BARQ017` says so. `ui.layer` is the name, if you need it.
 
 `variants` is deliberately not on it. It writes no CSS (it composes classes
 that already carry the layer they were declared in), so there is nothing to
@@ -602,12 +604,11 @@ export const theme = defineVars({ brand: "#3b82f6" });
 
 // shared.ts
 export const ui = layer("app");
-export const shared = createIn("app", { ring: { outlineWidth: "3px" } });
+export const shared = ui.create({ ring: { outlineWidth: "3px" } });
 
 // card.tsx, where every one of these is a literal after the build
-const a = atomsIn("app", { color: theme.brand, borderColor: BRAND });
-const b = atomsIn("app", shared.ring, { padding: 12 });
-const c = ui({ padding: 4 });
+const a = ui({ color: theme.brand, borderColor: BRAND });
+const b = ui(shared.ring, { padding: 12 });
 ```
 
 **The compiler still reads no file.** It reports which binding a fold would have
@@ -743,21 +744,21 @@ shorthand map exist so the compiler and this package can be checked against each
 other, and none of them is stable.
 
 - `css`, `keyframes`, `globalCss`: a block, an animation, whole rules.
-- `atoms`, `atomsIn`: declarations as classes, merged.
-- `create`, `createIn`: a named set of those.
+- `atoms`: declarations as classes, merged.
+- `create`: a named set of those.
 - `defineConditions`: conditions named once, for use as keys.
-- `props`, `propsIn`: the `class` and `style` an element takes.
+- `props`: the `class` and `style` an element takes.
 - `mergeStyles`: what a compiled `props` call becomes.
-- `dynamic`, `dynamicIn`: a group whose values arrive at run time.
-- `layer`: `atomsIn`, `createIn`, `propsIn` and `dynamicIn` with one layer bound.
+- `dynamic`: a group whose values arrive at run time.
+- `layer`: `atoms`, `create`, `props` and `dynamic` with their rules in one
+  cascade layer.
 - `variants`: a class per combination, merged and memoised.
 - `defineVars`, `globalVars`, `createTheme`: tokens as custom properties.
 - `firstThatWorks`: a declaration repeated, best last.
 - `collectCss`, `registerCss`, `setCssSink`: the registry, for a server render.
 
-Every one of the pairs reads the same: the bare name is unlayered, the `…In`
-name takes a cascade layer as its first argument, and `layer(name)` binds that
-argument once for all of them.
+The bare helpers are unlayered, and `layer(name)` is the one way to write into
+a cascade layer.
 
 ## Grammar
 
@@ -791,9 +792,9 @@ what that is worth.
 
 ## What is compiled, and what is not
 
-Compiled away: `css`, `keyframes`, `globalCss`, `atoms`, `atomsIn`, `create`,
-`createIn`, `props`, `propsIn`, `dynamic` (its class half, conditions included),
-`dynamicIn`, every call through a `layer` binding, `firstThatWorks`,
+Compiled away: `css`, `keyframes`, `globalCss`, `atoms`, `create`, `props`,
+`dynamic` (its class half, conditions included), every call through a `layer`
+binding, `firstThatWorks`,
 `defineVars`, `globalVars` (nested to any depth, numbered keys included), and
 `createTheme` over a token set the same module declares.
 

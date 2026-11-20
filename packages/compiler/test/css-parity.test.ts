@@ -31,19 +31,15 @@ const native = createRequire(import.meta.url)("../index.js") as Native;
 
 const NAMES = [
   "atoms",
-  "atomsIn",
   "create",
-  "createIn",
   "createTheme",
   "defineConditions",
   "defineVars",
   "dynamic",
-  "dynamicIn",
   "firstThatWorks",
   "globalVars",
   "layer",
   "props",
-  "propsIn",
   "variants",
 ] as const;
 
@@ -152,7 +148,6 @@ describe("css parity > the shapes both already read", () => {
     agree(
       `const out = atoms({ color: { default: "red", ":hover": "blue" }, "::before": { content: '"x"' } });`,
     );
-    agree(`const out = atomsIn("barq.parity", { display: "flex", gap: 4 });`);
     agree(`const ui = layer("barq.parity");\nconst out = ui({ padding: "1px 2px" });`, ["layer"]);
     agree(
       `const out = create({ root: { width: "100%", maxWidth: 800 }, child: { marginBlock: "1rem" } });`,
@@ -344,11 +339,13 @@ describe("css parity > the media tier", () => {
 
   test("and the same across calls and layers", () => {
     agree(
-      `const wide = atoms({ width: { "@media (min-width: 900px)": 3 } });
+      `const ui = layer("barq.parity");
+       const wide = atoms({ width: { "@media (min-width: 900px)": 3 } });
        const narrow = atoms({ width: { "@media (min-width: 300px)": 1, default: 0 } });
-       const mid = atomsIn("barq.parity", { width: { "@media (min-width: 600px)": 2 } });
-       const low = atomsIn("barq.parity", { width: { "@media (min-width: 200px)": 2 } });
+       const mid = ui({ width: { "@media (min-width: 600px)": 2 } });
+       const low = ui({ width: { "@media (min-width: 200px)": 2 } });
        const out = [wide, narrow, mid, low];`,
+      ["layer"],
     );
   });
 });
@@ -577,12 +574,12 @@ describe("css parity > the merge a compiled props call becomes", () => {
          props(styles.root, on && styles.loud, tint("red", on ? "1px 2px" : undefined)),
          props({ margin: 1 }, on && { color: "blue" }, tint(undefined, null)),
          ui.props({ gap: 2 }, wide(on ? 3 : undefined), on && tint("x")),
-         propsIn("barq.parity", { gap: 2 }, wide("50%")),
+         ui.props({ gap: 2 }, wide("50%")),
        ]);`,
       ["layer"],
     );
     expect(compiled.code).toContain("_$mergeStyles(");
-    expect(compiled.code).not.toMatch(/\bprops(In)?\(|ui\.props\(/);
+    expect(compiled.code).not.toMatch(/\bprops\(|ui\.props\(/);
   });
 
   test("is not taken for an argument it cannot vouch for", () => {

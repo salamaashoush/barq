@@ -2,11 +2,11 @@ import { beforeEach, describe, expect, test } from "bun:test";
 
 import {
   atoms,
-  atomsIn,
   collectCss,
   collectCssParts,
   css,
   globalCss,
+  layer,
   registerCss,
   setCssSink,
 } from "./index.ts";
@@ -21,9 +21,9 @@ function rules(sheet: string): string[] {
     if (sheet[index] === "{") depth++;
     else if (sheet[index] === "}" && --depth === 0) {
       const statement = sheet.slice(from, index + 1);
-      const layer = /^@layer [\w.-]+\{/.exec(statement);
-      if (layer === null) out.push(statement);
-      else out.push(...rules(statement.slice(layer[0].length, -1)));
+      const opened = /^@layer [\w.-]+\{/.exec(statement);
+      if (opened === null) out.push(statement);
+      else out.push(...rules(statement.slice(opened[0].length, -1)));
       from = index + 1;
     }
   }
@@ -65,8 +65,9 @@ describe("the sheet > the media tier", () => {
   });
 
   test("inside a cascade layer too", () => {
-    const wide = atomsIn("barq.media", { width: { "@media (min-width: 60em)": 3 } });
-    const narrow = atomsIn("barq.media", { width: { "@media (min-width: 30em)": 2 } });
+    const ui = layer("barq.media");
+    const wide = ui({ width: { "@media (min-width: 60em)": 3 } });
+    const narrow = ui({ width: { "@media (min-width: 30em)": 2 } });
     const sheet = collectCss();
     expect(sheet.indexOf(narrow)).toBeLessThan(sheet.indexOf(wide));
   });
@@ -218,7 +219,7 @@ describe("the sheet > hydration", () => {
       }
     `;
     atoms({ color: "red", width: { "@media (min-width: 600px)": 2, ":hover": 3 } });
-    atomsIn("barq.adopt", { display: "flex", gap: { "@media print": 0 } });
+    layer("barq.adopt")({ display: "flex", gap: { "@media print": 0 } });
     registerCss("/m/card.tsx", ".bcard{color:red}@layer barq.adopt{.a-top_z{top:0}}");
   };
 
@@ -246,7 +247,7 @@ describe("the sheet > hydration", () => {
 
     atoms({ color: "red" });
     const fresh = atoms({ zIndex: 4 });
-    const layered = atomsIn("barq.adopt", { order: 2 });
+    const layered = layer("barq.adopt")({ order: 2 });
     const block = css`
       color: teal;
     `;
