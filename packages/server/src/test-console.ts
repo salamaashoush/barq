@@ -21,7 +21,7 @@ export async function printedBy(body: () => unknown): Promise<unknown[][]> {
  * distinct finding once per process, so a test cannot count on its own copy.
  */
 export function expectOnly(printed: unknown[][], code: string): void {
-  for (const [line] of printed) expect(String(line)).toStartWith(`[barq] ${code}: `);
+  for (const [line] of printed) expect(String(line)).toStartWith(`[${code}] `);
 }
 
 /**
@@ -45,5 +45,5 @@ export function holdReports(code: string): void {
 
 /** The lines that are not the development console's report of `code`. */
 export function besides(printed: unknown[][], code: string): unknown[][] {
-  return printed.filter(([line]) => !String(line).startsWith(`[barq] ${code}: `));
+  return printed.filter(([line]) => !String(line).startsWith(`[${code}] `));
 }

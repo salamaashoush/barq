@@ -1,3 +1,4 @@
+import { barqDiagnostics } from "@barqjs/diagnostics/vite";
 import barq from "@barqjs/vite";
 import { defineConfig, type Plugin } from "vite";
 
@@ -97,6 +98,7 @@ function sleep(ms: number) {
 
 export default defineConfig({
   plugins: [
+    barqDiagnostics(),
     barq({
       ssr: true,
       // In this workspace the `bun` condition takes `@barqjs/*` to `src`, and

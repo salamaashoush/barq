@@ -261,9 +261,13 @@ describe("barqDiagnostics", () => {
     const middlewares: ((req: unknown, res: unknown, next: () => void) => void)[] = [];
     const logged: string[] = [];
     const sent: unknown[][] = [];
+    // As Vite does: empty while the server starts, and a new set on each read.
+    const tabs: string[] = [];
     const server = {
       ws: {
-        clients: new Set(["tab"]),
+        get clients(): Set<string> {
+          return new Set(tabs);
+        },
         on() {},
         send: (...args: unknown[]) => void sent.push(args),
       },
@@ -277,6 +281,7 @@ describe("barqDiagnostics", () => {
     const configureServer = barqDiagnostics({ timeout: 10 }).configureServer as unknown;
     (configureServer as (dev: typeof server) => void)(server);
     expect(middlewares).toHaveLength(1);
+    tabs.push("tab");
 
     const res = recorder();
     middlewares[0](request("POST", DIAGNOSTICS_ENDPOINT, JSON.stringify(first)), res, () => {});

@@ -344,7 +344,11 @@ export function barqDiagnostics(options: DiagnosticsPluginOptions = {}): Plugin 
         {
           send: (event, request) => server.ws.send(event, request),
           on: (event, listener) => server.ws.on(event, listener),
-          clients: server.ws.clients,
+          // Vite answers `clients` with a new set on every read, so one taken
+          // here would stay the size it was before any page connected.
+          get clients() {
+            return server.ws.clients;
+          },
         },
         options,
       );

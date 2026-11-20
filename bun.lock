@@ -67,6 +67,20 @@
         "typescript": "^7.0.2",
       },
     },
+    "packages/cli": {
+      "name": "@barqjs/cli",
+      "version": "0.2.0-next.0",
+      "bin": {
+        "barq": "./dist/index.js",
+      },
+      "dependencies": {
+        "@barqjs/compiler": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.4.4",
+        "typescript": "^7.0.2",
+      },
+    },
     "packages/compiler": {
       "name": "@barqjs/compiler",
       "version": "0.2.0-next.0",
@@ -222,6 +236,8 @@
         "@tanstack/query-core": "^5.108.1",
       },
       "devDependencies": {
+        "@barqjs/cli": "workspace:*",
+        "@barqjs/diagnostics": "workspace:*",
         "@barqjs/vite": "workspace:*",
         "@types/bun": "^1.4.4",
         "typescript": "^7.0.2",
@@ -684,6 +700,8 @@
     "@barqjs/aria": ["@barqjs/aria@workspace:packages/aria"],
 
     "@barqjs/benchmark": ["@barqjs/benchmark@workspace:packages/benchmark"],
+
+    "@barqjs/cli": ["@barqjs/cli@workspace:packages/cli"],
 
     "@barqjs/compiler": ["@barqjs/compiler@workspace:packages/compiler"],
 

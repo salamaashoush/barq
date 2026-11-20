@@ -376,8 +376,44 @@ function ownerIn(state: DelegatedContainer, from: Node | null): Node | null {
 // listeners synchronously inside it, and the engine's dev build would blame
 // their reads on that callback. A handler is a scope of its own: it reads the
 // current value on purpose, so it runs untracked, with no owner.
-function asHandler(run: () => void): void {
+//
+// Where the engine keeps attribution, the handler also runs as the interaction
+// `e` is: a write it makes is recorded as caused by `click on button "Save"`,
+// and every listener of one dispatch joins one record.
+function asHandler(e: Event, run: () => void): void {
+  if (OBSERVE !== undefined && OBSERVE.attribution.installed !== null) {
+    OBSERVE.attribution.withInteraction(
+      { type: e.type, target: describeTarget(e.target), at: dispatchedAt(e), event: e },
+      () => runWithOwner(null, () => untrack(run)),
+    );
+    return;
+  }
   runWithOwner(null, () => untrack(run));
+}
+
+/** `button#next "Next"`, `input[name=q]`: the tag, its id or name, its text. */
+function describeTarget(target: EventTarget | null): string | undefined {
+  if (!(target instanceof Element)) return undefined;
+  const tag = target.tagName.toLowerCase();
+  let out = tag;
+  const name = target.getAttribute("name");
+  if (target.id !== "") out += `#${target.id}`;
+  else if (name !== null && name !== "") out += `[name=${name}]`;
+  if (tag !== "input" && tag !== "textarea" && tag !== "select") {
+    const text = (target.textContent ?? "").trim().replace(/\s+/g, " ");
+    if (text !== "") out += ` "${text.length > 30 ? `${text.slice(0, 29)}…` : text}"`;
+  }
+  return out;
+}
+
+/**
+ * When the browser made the event, on the `performance.now()` clock, which is
+ * where the user's wait began. An environment that stamps events on another
+ * clock answers a value past now, and that is left for the engine to default.
+ */
+function dispatchedAt(e: Event): number | undefined {
+  const at = e.timeStamp;
+  return at >= 0 && at <= performance.now() ? at : undefined;
 }
 
 function dispatchDelegated(e: Event, container: Node, state: DelegatedContainer): void {
@@ -425,7 +461,7 @@ function dispatchDelegated(e: Event, container: Node, state: DelegatedContainer)
           // an owner is a scope that is being built. It runs under none, as an
           // effect's callback does, and one that needs to own what it creates
           // names the owner itself.
-          asHandler(() => {
+          asHandler(e, () => {
             // The RETURN is tested for the same reason `applyRefs` tests one:
             // the LAUNDERED shape, `() => aBlock`, carries no brand for the
             // value test above to see, and a handler is invoked with the Event
@@ -1140,7 +1176,7 @@ function routedListener(
 ): EventListener {
   return function (this: unknown, e: Event): void {
     try {
-      asHandler(() => {
+      asHandler(e, () => {
         // C3.8's laundered shape, tested on the RETURN — the same move
         // `applyRefs` already makes for `ref`, and for the same reason: a
         // handler is invoked with the EVENT, so `block`'s entry guard can never

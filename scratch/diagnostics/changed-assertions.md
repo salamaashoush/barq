@@ -28,3 +28,12 @@ removed or skipped.
 
 - `packages/vite/test/dev-only.test.ts`: the development marker `"Greeting")`
   became `"Greeting", "src/main.tsx:`, since the call now has a fourth argument.
+- `packages/server/src/test-console.ts`: the two helpers every server suite
+  checks console lines with (`expectOnly` and the filter beside it) match
+  `[CODE] ` where they matched `[barq] CODE: `.
+
+## A click's origin
+
+- `packages/diagnostics/src/capture.test.tsx`: "attributes a click's re-runs to
+  the write that caused them" gained an expectation that the write's origin is
+  the click on the button. Added, not changed.

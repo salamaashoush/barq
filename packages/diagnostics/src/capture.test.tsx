@@ -159,6 +159,11 @@ describe.if(development)("captureArtifact", () => {
       "whole",
     ]);
     expect(reruns.find((rerun) => rerun.nodeName === "double")!.causes[0].name).toBe("count");
+    expect(reruns.find((rerun) => rerun.nodeName === "double")!.causes[0].origin).toMatchObject({
+      kind: "interaction",
+      name: "click",
+      target: 'button "0:true"',
+    });
     expect(artifact.attribution!.costs.writes.map((write) => write.name)).toEqual(["count"]);
 
     expectRerunBudget(artifact, 3);
