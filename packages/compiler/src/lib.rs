@@ -8,6 +8,8 @@ pub mod diag;
 #[cfg(test)]
 mod dom_ts;
 pub mod env_fns;
+#[cfg(test)]
+mod fixes;
 pub mod harvest;
 pub mod ir;
 pub mod lower;
@@ -52,6 +54,19 @@ pub struct JsDiagnostic {
     pub end: u32,
     /// path of the docs page for this code, relative to the package root
     pub docs: Option<String>,
+    /// The edits that repair it, when the repair is one spelling: apply every
+    /// one, last first, and the finding is gone.
+    pub fix: Option<Vec<JsEdit>>,
+}
+
+/// One replacement in the original source. `pos` and `end` are UTF-16 offsets,
+/// and equal for an insertion.
+#[napi(object)]
+#[derive(Debug, Clone)]
+pub struct JsEdit {
+    pub pos: u32,
+    pub end: u32,
+    pub text: String,
 }
 
 /// A dev-mode label: which JSX, in which component, produced a hoisted template.
@@ -153,6 +168,17 @@ fn js_diagnostic(diagnostic: &Diagnostic, source: &str, ascii: bool) -> JsDiagno
         pos: utf16(diagnostic.pos),
         end: utf16(diagnostic.end),
         docs: diagnostic.docs(),
+        fix: (!diagnostic.fix.is_empty()).then(|| {
+            diagnostic
+                .fix
+                .iter()
+                .map(|(span, text)| JsEdit {
+                    pos: utf16(span.start),
+                    end: utf16(span.end),
+                    text: text.clone(),
+                })
+                .collect()
+        }),
     }
 }
 

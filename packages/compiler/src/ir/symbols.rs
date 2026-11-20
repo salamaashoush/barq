@@ -286,6 +286,14 @@ pub struct Diag<'a> {
     pub message: &'a str,
 }
 
+/// The edit that repairs a finding, keyed by the finding it belongs to. Each
+/// part replaces a span of the source; an empty span is an insertion.
+pub struct Fix {
+    pub code: Code,
+    pub span: Span,
+    pub edits: Vec<(Span, String)>,
+}
+
 pub struct ReactiveEnv<'a> {
     pub kind: IndexVec<SymbolId, SourceKind>,
     /// The value behind a [`SourceKind::ConstLit`]. Parallel to `kind` so P3 can
@@ -300,6 +308,7 @@ pub struct ReactiveEnv<'a> {
     pub scope_lo: AVec<'a, u32>,
     pub scope_hi: AVec<'a, u32>,
     pub diagnostics: AVec<'a, Diag<'a>>,
+    pub fixes: Vec<Fix>,
     /// `import * as core from "@barqjs/core"`. A member of one of these resolves
     /// to no `SymbolId` of its own, so every question asked by `SymbolId` —
     /// which is every question this compiler asks — is blind to `core.For`
@@ -401,6 +410,7 @@ impl<'a> ReactiveEnv<'a> {
             scope_lo: AVec::new_in(&allocator),
             scope_hi: AVec::new_in(&allocator),
             diagnostics: AVec::new_in(&allocator),
+            fixes: Vec::new(),
             namespaces: Vec::new(),
             jsx_closings: Vec::new(),
             contexts: Vec::new(),

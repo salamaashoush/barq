@@ -34,6 +34,9 @@ pub struct Diagnostic {
     pub end_column: u32,
     pub pos: u32,
     pub end: u32,
+    /// The edits that repair it, as byte spans of the source and their
+    /// replacements. Empty when the repair is not one spelling.
+    pub fix: Vec<(Span, String)>,
 }
 
 impl Diagnostic {
@@ -49,6 +52,7 @@ impl Diagnostic {
             end_column: 1,
             pos: 0,
             end: 0,
+            fix: Vec::new(),
         }
     }
 
@@ -549,14 +553,16 @@ fn compile_on_this_stack(
         ));
     }
     for found in removed {
-        warnings.push(located(
+        let mut diagnostic = located(
             found.code.default_level(),
             found.code,
             found.message,
             found.span,
             filename,
             &mut lines,
-        ));
+        );
+        diagnostic.fix = found.fix;
+        warnings.push(diagnostic);
     }
     for unknown in &unknown_links {
         warnings.push(located(
@@ -1156,6 +1162,7 @@ fn located(
         end_column,
         pos: span.start,
         end: span.end,
+        fix: Vec::new(),
     }
 }
 
@@ -1213,14 +1220,20 @@ fn analysis_diagnostics(
         .diagnostics
         .iter()
         .map(|diag| {
-            located(
+            let mut diagnostic = located(
                 diag.code.default_level(),
                 diag.code,
                 diag.message.to_string(),
                 diag.span,
                 filename,
                 lines,
-            )
+            );
+            if let Some(fix) =
+                module.env.fixes.iter().find(|fix| fix.code == diag.code && fix.span == diag.span)
+            {
+                diagnostic.fix.clone_from(&fix.edits);
+            }
+            diagnostic
         })
         .collect()
 }
@@ -1275,6 +1288,7 @@ fn convert_diagnostic(diagnostic: &OxcDiagnostic, source: &str, filename: &str) 
         end_column,
         pos: start,
         end,
+        fix: Vec::new(),
     }
 }
 

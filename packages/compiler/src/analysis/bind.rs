@@ -563,6 +563,11 @@ impl<'a> Binder<'_, 'a> {
                 },
             };
             self.diagnose(code, span, &message);
+            self.env.fixes.push(crate::ir::Fix {
+                code,
+                span,
+                edits: vec![(Span::new(span.end, span.end), "()".to_string())],
+            });
         }
     }
 

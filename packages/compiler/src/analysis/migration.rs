@@ -9,12 +9,12 @@
 //! the 2.0 spelling.
 
 use oxc::ast::ast::{
-    JSXAttributeItem, JSXAttributeName, JSXElementName, JSXMemberExpressionObject,
+    JSXAttributeItem, JSXAttributeName, JSXElement, JSXElementName, JSXMemberExpressionObject,
     JSXOpeningElement, Program,
 };
 use oxc::ast_visit::{Visit, walk};
 use oxc::semantic::Scoping;
-use oxc::span::Span;
+use oxc::span::{GetSpan, Span};
 
 use crate::diag::Code;
 use crate::ir::{Module, Prim, SourceKind};
@@ -23,10 +23,12 @@ pub struct Removed {
     pub code: Code,
     pub span: Span,
     pub message: String,
+    /// The spans to replace and what with, when the repair is one spelling.
+    pub fix: Vec<(Span, String)>,
 }
 
 pub fn scan(program: &Program<'_>, module: &Module<'_>) -> Vec<Removed> {
-    let mut scan = Scan { scoping: &module.scoping, module, found: Vec::new() };
+    let mut scan = Scan { scoping: &module.scoping, module, found: Vec::new(), closing: None };
     scan.visit_program(program);
     scan.found
 }
@@ -35,10 +37,18 @@ struct Scan<'m, 'a> {
     scoping: &'m Scoping,
     module: &'m Module<'a>,
     found: Vec<Removed>,
+    /// The closing tag's name of the element whose opening tag is next.
+    closing: Option<Span>,
 }
 
 impl<'a> Visit<'a> for Scan<'_, 'a> {
+    fn visit_jsx_element(&mut self, it: &JSXElement<'a>) {
+        self.closing = it.closing_element.as_ref().map(|closing| closing.name.span());
+        walk::walk_jsx_element(self, it);
+    }
+
     fn visit_jsx_opening_element(&mut self, it: &JSXOpeningElement<'a>) {
+        let closing = self.closing.take();
         match &it.name {
             JSXElementName::Identifier(_) => self.intrinsic(it),
             JSXElementName::NamespacedName(_) => self.intrinsic(it),
@@ -78,7 +88,12 @@ impl<'a> Visit<'a> for Scan<'_, 'a> {
                     && self.module.env.contexts.contains(&symbol)
                 {
                     let name = object.name.as_str();
+                    let fix = std::iter::once(member.span)
+                        .chain(closing)
+                        .map(|span| (span, name.to_string()))
+                        .collect();
                     self.found.push(Removed {
+                        fix,
                         code: Code::Barq022,
                         span: member.span,
                         message: format!(
@@ -98,6 +113,7 @@ impl<'a> Visit<'a> for Scan<'_, 'a> {
 impl Scan<'_, '_> {
     fn dynamic(&mut self, span: Span) {
         self.found.push(Removed {
+            fix: Vec::new(),
             code: Code::Barq025,
             span,
             message: "`<Dynamic>` is not exported by barq: Solid 2.0 deprecates it in favour of \
@@ -115,6 +131,7 @@ impl Scan<'_, '_> {
             match &attribute.name {
                 JSXAttributeName::Identifier(name) if name.name == "classList" => {
                     self.found.push(Removed {
+                        fix: vec![(name.span, "class".to_string())],
                         code: Code::Barq023,
                         span: name.span,
                         message: "`classList` is an ordinary attribute name, so this object \
@@ -129,6 +146,10 @@ impl Scan<'_, '_> {
                     let local = name.name.name.as_str();
                     let Some(fix) = namespace_fix(prefix, local) else { continue };
                     self.found.push(Removed {
+                        fix: namespace_rename(prefix, local)
+                            .map(|renamed| (name.span, renamed))
+                            .into_iter()
+                            .collect(),
                         code: Code::Barq024,
                         span: name.span,
                         message: format!(
@@ -175,6 +196,19 @@ fn namespace_fix(prefix: &str, local: &str) -> Option<String> {
         ),
         _ => return None,
     })
+}
+
+/// The one name `prefix:local` becomes, for the namespaces whose repair is a
+/// rename. An event keeps to a single lowercase word, since a hyphenated or
+/// cased event name has no `on…` spelling.
+fn namespace_rename(prefix: &str, local: &str) -> Option<String> {
+    let word = !local.is_empty() && local.bytes().all(|byte| byte.is_ascii_lowercase());
+    match prefix {
+        "on" if word => Some(format!("on{}", camel_event(local))),
+        "capture" | "oncapture" if word => Some(format!("on{}Capture", camel_event(local))),
+        "attr" | "bool" => Some(local.to_string()),
+        _ => None,
+    }
 }
 
 fn camel_event(local: &str) -> String {

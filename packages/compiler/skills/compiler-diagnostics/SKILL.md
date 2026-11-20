@@ -21,9 +21,15 @@ see `node_modules/@barqjs/core/skills/diagnostics/SKILL.md`.
 - **Vite dev overlay**: a pill in the corner of the page that lists compiler
   findings with the source they are about. The `overlay` option of `barq()`
   chooses what opens it (`"error"` by default).
+- **`barq check`** from `@barqjs/cli`: every file of the project with no build.
+  `npx barq check --json` prints `{ summary, findings }`, each finding shaped as
+  below with `skill`, the section of this file for its code. `npx barq check
+  --fix` applies the repairs that are one spelling (BARQ001, BARQ002, BARQ003,
+  BARQ022, BARQ023 and the renames of BARQ024) and reports what is left.
 - **The compiler's `transform` result**: the `diagnostics` array, one object
   per finding, which serialises to JSON as below. `line` and `column` are
-  1-based. `docs` is the code's page.
+  1-based. `docs` is the code's page. `fix`, when present, is a list of
+  `{ pos, end, text }` edits over the source that repair the finding.
 
 ```json
 {

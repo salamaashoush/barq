@@ -111,6 +111,13 @@ const { code, map, warnings, diagnostics } = transform(source, {
   default, so a page that is never hydrated does not pay for them.
 - `dev`: the development build. Turns on the dev-only diagnostics, template
   labels and source locations.
+- `sourceNames`: carry names and positions into the output for the runtime's
+  findings. A signal, memo and store is named after the binding it is declared
+  as (`createSignal(0, { name: "count", loc: "src/App.tsx:3:29" })`), a binding
+  effect runs under the element and attribute it writes (`li.class`,
+  `li.children`, `<Show>`), and every component call carries where it is
+  written. Positions are relative to `root` and need a `filename`. Defaults to
+  `dev`.
 - `diagnostics`: run the source-level checks. Defaults to `dev`; set it in CI to
   run them on a production build.
 - `checks`, `defaultCategory`, `strictCss`: change the level of a code. See
@@ -178,7 +185,9 @@ The result:
 - `map`: the source map, when asked for.
 - `diagnostics`: structured records with `code`, `severity`, `message`, the
   span (`line`, `column`, `endLine`, `endColumn`, `pos`, `end`) and `docs`, a
-  link to the page for the code.
+  link to the page for the code. A finding whose repair is one spelling also
+  has `fix`: a list of `{ pos, end, text }` edits over the source, UTF-16
+  offsets, which `barq check --fix` from `@barqjs/cli` applies.
 - `warnings`: the same set as `file:line:col: CODE level: message` strings.
 - `labels`, `css` and the side outputs the options above ask for.
 
