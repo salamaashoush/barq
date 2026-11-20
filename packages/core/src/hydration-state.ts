@@ -33,7 +33,7 @@ export class HydrationMismatch extends Error {
   /** The component path the walk was in, where the engine keeps owner names. */
   declare readonly ownerPath: string[] | undefined;
   constructor(kind: MismatchKind, detail: string) {
-    super(`Hydration mismatch (${kind}): ${detail}. ${CAUSES[kind]}`);
+    super(`Hydration mismatch (${kind}): ${detail}. ${usualCauses(kind)}`);
     this.name = "HydrationMismatch";
     this.kind = kind;
     // The engine keeps a channel and owner names in its development and
@@ -73,8 +73,19 @@ const CAUSES: Record<MismatchKind, string> = {
     "browser build hydratable, and deploy the two together.",
 };
 
+/**
+ * The texts above, once `hydrate` has asked for them. Nothing else can raise a
+ * mismatch, so a page that never hydrates references them from nowhere and its
+ * bundle leaves them out.
+ */
+let causes: Record<MismatchKind, string> | null = null;
+
+export function installMismatchCauses(): void {
+  causes = CAUSES;
+}
+
 export function usualCauses(kind: MismatchKind): string {
-  return CAUSES[kind];
+  return causes === null ? "" : causes[kind];
 }
 
 /**

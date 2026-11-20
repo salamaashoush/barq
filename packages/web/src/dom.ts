@@ -10,6 +10,7 @@ import {
   ERROR_BOUNDARY,
   lookupContext,
   installClaimEffect,
+  installMismatchCauses,
   jsxAsValue,
   OWNERSHIP,
   INTERACTION,
@@ -3095,6 +3096,7 @@ function hydrateContainer(
   registerDelegatedRoot(container);
   insertClaims = INSERT_CLAIMS;
   installClaimEffect();
+  installMismatchCauses();
   beginHydration(container);
   const marked = wireIsMarked();
   // The server numbered every scope it opened, whether or not a value was

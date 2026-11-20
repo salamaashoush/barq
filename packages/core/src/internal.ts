@@ -84,6 +84,7 @@ export { callSlot } from "./components.ts";
 // control flow claims through them without knowing what a node is.
 export {
   HydrationMismatch,
+  installMismatchCauses,
   abandonedClaim,
   adopted,
   atCursor,

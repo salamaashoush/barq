@@ -560,29 +560,38 @@ interface Labelled {
  * The engine's development tier (devtools hooks, graph traversal, the console
  * face) with the channel both the engine's and barq's findings arrive on. The
  * engine's tier is empty in its production build; the channel is not.
+ *
+ * Built by a call marked pure: the spread makes the literal look as if it
+ * could have an effect, and a bundle that never reads `DEV` would then keep it
+ * and the whole channel behind it.
  */
-export const DEV: Partial<EngineDev> & { readonly diagnostics: DiagnosticsChannel } = {
-  ...ENGINE_DEV,
-  diagnostics: {
-    subscribe: addDiagnosticListener,
-    capture(): DiagnosticCapture {
-      const events: DiagnosticEvent[] = [];
-      const stop = addDiagnosticListener((event) => {
-        events.push(event);
-      });
-      return {
-        events,
-        clear() {
-          events.length = 0;
-        },
-        stop() {
-          stop();
-          return events;
-        },
-      };
+export const DEV: Partial<EngineDev> & { readonly diagnostics: DiagnosticsChannel } =
+  /* @__PURE__ */ devTier();
+
+function devTier(): Partial<EngineDev> & { readonly diagnostics: DiagnosticsChannel } {
+  return {
+    ...ENGINE_DEV,
+    diagnostics: {
+      subscribe: addDiagnosticListener,
+      capture(): DiagnosticCapture {
+        const events: DiagnosticEvent[] = [];
+        const stop = addDiagnosticListener((event) => {
+          events.push(event);
+        });
+        return {
+          events,
+          clear() {
+            events.length = 0;
+          },
+          stop() {
+            stop();
+            return events;
+          },
+        };
+      },
     },
-  },
-};
+  };
+}
 
 // ============================================================================
 // Scope — the unit of ownership and the unit of death
