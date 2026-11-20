@@ -23,12 +23,13 @@ use std::cmp::Ordering;
 
 use crate::atoms::{Atom, Tier};
 
-/// Every atom in `css`, ordered by tier within the layer it sits in, after
+/// Every atom in `css`, ordered by [`Rank`] within the layer it sits in, after
 /// every rule of that layer that is not an atom.
 ///
-/// A stable sort, so two atoms of one tier keep the order they were written in
-/// — which is what decides between them, and what
-/// `sorting rules within a tier` was measured and rejected for changing.
+/// A stable sort, so two atoms of one rank keep the order they were written in.
+/// Within a tier the rank reads the interaction pseudo-class and then the
+/// condition's hash, so two atoms of one tier under different conditions have
+/// one order in every build shape and in dev.
 ///
 /// Rules that are not atoms keep their order among themselves. A hand-written
 /// `@layer barq.ui { … }` block carries an author's own selector and an
@@ -36,6 +37,12 @@ use crate::atoms::{Atom, Tier};
 /// `@barqjs/ui`'s `srOnly` is exactly that; what it does not get is a place
 /// after an atom, which would let it beat one at the same specificity.
 pub fn order_atoms(css: &str) -> String {
+    // A byte order mark belongs to the front of the file. Left in the first
+    // statement it travelled with the first atom and sat inside a selector in
+    // the middle of the sheet, where that rule then matched nothing.
+    if let Some(rest) = css.strip_prefix('\u{feff}') {
+        return format!("\u{feff}{}", order_atoms(rest));
+    }
     let mut out = String::with_capacity(css.len());
     for statement in statements(css) {
         match layer_body(statement) {
@@ -160,14 +167,18 @@ pub fn with_layer_order(css: &str, order: &[String]) -> String {
 /// is arbitrary and the same on every page. `sheet.ts` in `@barqjs/css` sorts
 /// what the runtime registers by this rule, read off the same text.
 ///
-/// Last, in every tier, the hash of the condition the atom was declared under,
-/// which its class carries. Two atoms of one tier with different conditions
-/// that both match one element are two rules of one specificity, and there is
-/// no passing order between two calls. Left to arrival, the pair went to
+/// Then, in every tier, the interaction pseudo-class the rule's own selector
+/// carries, in the conventional order [`INTERACTIONS`] lists, so `:active`
+/// beats `:hover` and `:disabled` beats them all; a selector with none of them
+/// comes first. Read off the selector, which a minifier does not rewrite.
+///
+/// Last, the hash of the condition the atom was declared under, which its class
+/// carries. Two atoms of one tier with different conditions that both match one
+/// element are two rules of one specificity, and a sheet shared by every call
+/// cannot keep each call's own writing order. Left to arrival, the pair went to
 /// whichever chunk or module came first, which a split build and an unsplit one
 /// decide differently: `@barqjs/ui`'s button icons were 12px in one and 16px in
-/// the other. The hash is the condition as written, so a minifier cannot change
-/// it, and dev and every build shape read the same one.
+/// the other.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Rank<'a> {
     tier: Tier,
@@ -175,7 +186,45 @@ pub struct Rank<'a> {
     first: f64,
     second: f64,
     prelude: &'a str,
+    interaction: u8,
     condition: &'a str,
+}
+
+/// The interaction pseudo-classes in the order a later one wins: link,
+/// visited, focus-within, hover, focus, focus-visible, active, and disabled
+/// over all of them. `sheet.ts` in `@barqjs/css` holds the same list.
+pub const INTERACTIONS: [&str; 8] =
+    ["link", "visited", "focus-within", "hover", "focus", "focus-visible", "active", "disabled"];
+
+/// The latest of [`INTERACTIONS`] a selector carries at its top level, one-based,
+/// and 0 for none. One inside `:not(…)` or `:is(…)` is not the element's state.
+pub fn interaction(selector: &str) -> u8 {
+    let bytes = selector.as_bytes();
+    let (mut depth, mut at, mut found) = (0i32, 0usize, 0u8);
+    while at < bytes.len() {
+        match bytes[at] {
+            b'"' | b'\'' => at = string_end(bytes, at),
+            b'\\' => at += 1,
+            b'(' | b'[' => depth += 1,
+            b')' | b']' => depth -= 1,
+            b':' if depth == 0 && bytes.get(at + 1) != Some(&b':') => {
+                let start = at + 1;
+                let end = selector[start..]
+                    .find(|c: char| !(c.is_ascii_alphanumeric() || c == '-'))
+                    .map_or(selector.len(), |end| start + end);
+                let name = selector[start..end].to_ascii_lowercase();
+                if let Some(index) = INTERACTIONS.iter().position(|each| *each == name) {
+                    found = found.max(u8::try_from(index + 1).unwrap_or(u8::MAX));
+                }
+                at = end;
+                continue;
+            }
+            b':' => at += 1,
+            _ => {}
+        }
+        at += 1;
+    }
+    found
 }
 
 impl Eq for Rank<'_> {}
@@ -195,6 +244,7 @@ impl Ord for Rank<'_> {
             .then(self.second.total_cmp(&other.second))
             // By UTF-16 code unit, which is how the runtime's `<` compares.
             .then_with(|| self.prelude.encode_utf16().cmp(other.prelude.encode_utf16()))
+            .then(self.interaction.cmp(&other.interaction))
             .then_with(|| self.condition.cmp(other.condition))
     }
 }
@@ -202,7 +252,9 @@ impl Ord for Rank<'_> {
 /// The [`Rank`] of a rule already known to sit in `tier`.
 pub fn rank(tier: Tier, rule: &str) -> Rank<'_> {
     let condition = atom_named(rule).map_or("", |named| named.condition);
-    let plain = Rank { tier, group: 0, first: 0.0, second: 0.0, prelude: "", condition };
+    let interaction = interaction(selector_of(without_layer(rule)));
+    let plain =
+        Rank { tier, group: 0, first: 0.0, second: 0.0, prelude: "", interaction, condition };
     if tier != Tier::Media {
         return plain;
     }
@@ -299,8 +351,9 @@ fn pixels(text: &str, from: usize) -> Option<f64> {
     }
 }
 
-/// One call's atoms in the order their rules are written: by [`Rank`], and
-/// within one rank the order the author wrote them in.
+/// One call's atoms in the order their rules are written: by [`Rank`], which
+/// is the order the shared sheet gives them too, and within one rank (one
+/// property's one condition) the order the author wrote them in.
 pub fn arranged(atoms: &[Atom]) -> Vec<&Atom> {
     let mut sorted: Vec<&Atom> = atoms.iter().collect();
     sorted.sort_by(|a, b| rank(a.tier, &a.rule).cmp(&rank(b.tier, &b.rule)));
@@ -356,6 +409,13 @@ pub fn gather_atoms(sheets: &[&str]) -> (String, Vec<String>) {
     let mut rest: Vec<String> = Vec::with_capacity(sheets.len());
     for sheet in sheets {
         let mut kept = String::with_capacity(sheet.len());
+        let sheet = match sheet.strip_prefix('\u{feff}') {
+            Some(after) => {
+                kept.push('\u{feff}');
+                after
+            }
+            None => sheet,
+        };
         for statement in statements(sheet) {
             if let Some((head, body)) = layer_body(statement) {
                 let name = layer_name(head);
@@ -426,30 +486,37 @@ fn layer_name(head: &str) -> &str {
 /// A statement as the rules it is made of, each paired with whether it is an
 /// atom's, in order.
 ///
-/// `@media x{a b}` is `@media x{a}` and `@media x{b}`, to any depth, and a rule
-/// whose selector list names several atoms, or atoms and something else, is
-/// one rule per atom and one for the rest. A rule is then an atom's by itself
-/// alone, never by a neighbour a minifier put it with: read whole,
+/// `@media x{a b}` is `@media x{a}` and `@media x{b}`, to any depth, for every
+/// group rule an atom's condition can wrap it in, `@starting-style` and
+/// `@scope` as much as `@media`; and a rule whose selector list names several
+/// atoms, or atoms and something else, is one rule per atom and one for the
+/// rest. A rule is then an atom's by itself alone, never by a neighbour a
+/// minifier put it with: read whole,
 /// `@media (width>=48rem){.b1{padding:0}.a-padding-top-x_1{…}}` was a media
 /// atom, and the block's rule moved behind every other block with it.
+///
+/// A statement that holds no atom at all is itself, whole. `splitUnits` in
+/// `@barqjs/css` takes a statement apart by the same rule, so a merged
+/// statement registered in dev orders as it does built.
 fn units(statement: &str) -> Vec<(String, bool)> {
     let trimmed = statement.trim();
     if trimmed.is_empty() {
         return Vec::new();
     }
-    let conditional =
-        ["@media", "@supports", "@container"].iter().any(|at| trimmed.starts_with(at));
-    let open = trimmed.find('{');
+    let found = parts_of(trimmed);
+    if found.iter().any(|(_, atom)| *atom) { found } else { vec![(trimmed.to_string(), false)] }
+}
+
+fn parts_of(rule: &str) -> Vec<(String, bool)> {
+    let open = rule.find('{');
     match open {
-        Some(open)
-            if conditional && matching_brace(trimmed, open + 1) == Some(trimmed.len() - 1) =>
-        {
-            let prelude = &trimmed[..open];
-            statements(&trimmed[open + 1..trimmed.len() - 1])
+        Some(open) if is_group(rule) && matching_brace(rule, open + 1) == Some(rule.len() - 1) => {
+            let prelude = &rule[..open];
+            statements(&rule[open + 1..rule.len() - 1])
                 .into_iter()
                 .flat_map(|inner| {
-                    let (lead, rule) = leading_comments(inner);
-                    let mut found = units(rule);
+                    let (lead, inner) = leading_comments(inner);
+                    let mut found = parts_of(inner.trim());
                     if let Some(first) = found.first_mut() {
                         first.0.insert_str(0, lead);
                     }
@@ -458,8 +525,31 @@ fn units(statement: &str) -> Vec<(String, bool)> {
                 .map(|(inner, atom)| (format!("{prelude}{{{inner}}}"), atom))
                 .collect()
         }
-        _ => by_atom(trimmed),
+        _ => by_atom(rule),
     }
+}
+
+/// Whether an at-rule holds rules rather than declarations, the way the ones
+/// an atom's condition wraps it in do. Anything an author writes as `@name`
+/// becomes one, so this lists what is NOT a group instead.
+fn is_group(rule: &str) -> bool {
+    const NOT_GROUPS: [&str; 10] = [
+        "@keyframes",
+        "@-webkit-keyframes",
+        "@font-face",
+        "@property",
+        "@page",
+        "@counter-style",
+        "@font-palette-values",
+        "@font-feature-values",
+        "@view-transition",
+        "@position-try",
+    ];
+    rule.starts_with('@')
+        && !NOT_GROUPS.iter().any(|name| {
+            rule.get(..name.len()).is_some_and(|head| head.eq_ignore_ascii_case(name))
+                && !rule[name.len()..].starts_with(|c: char| c.is_ascii_alphanumeric() || c == '-')
+        })
 }
 
 /// A rule as one rule per atom its selector list names and one for every other
@@ -478,17 +568,17 @@ fn by_atom(rule: &str) -> Vec<(String, bool)> {
     }
     let Some(open) = rule.find('{') else { return whole(false) };
     let (selector, body) = (&rule[..open], &rule[open..]);
-    let declarations = declared(&body[1..body.len() - 1]);
     let mut groups: Vec<(Option<&str>, Vec<&str>)> = Vec::new();
     for branch in branches(selector) {
-        let class = class_in(branch, &declarations).map(|named| named.class);
+        let class = class_in(branch);
         match groups.iter_mut().find(|(name, _)| *name == class) {
             Some((_, list)) => list.push(branch.trim()),
             None => groups.push((class, vec![branch.trim()])),
         }
     }
     if groups.len() < 2 {
-        return whole(groups.first().is_some_and(|(class, _)| class.is_some()));
+        let atom = groups.first().is_some_and(|(class, _)| class.is_some());
+        return whole(atom && atom_named(rule).is_some());
     }
     groups
         .into_iter()
@@ -520,34 +610,6 @@ fn branches(selector: &str) -> Vec<&str> {
     out
 }
 
-/// The properties a rule body declares, lower-cased.
-fn declared(body: &str) -> Vec<String> {
-    let bytes = body.as_bytes();
-    let mut out = Vec::new();
-    let (mut depth, mut start, mut at) = (0i32, 0usize, 0usize);
-    let mut take = |from: usize, to: usize| {
-        if let Some(colon) = body[from..to].find(':') {
-            out.push(body[from..from + colon].trim().to_ascii_lowercase());
-        }
-    };
-    while at < bytes.len() {
-        match bytes[at] {
-            b'"' | b'\'' => at = string_end(bytes, at),
-            b'\\' => at += 1,
-            b'(' => depth += 1,
-            b')' => depth -= 1,
-            b';' if depth == 0 => {
-                take(start, at);
-                start = at + 1;
-            }
-            _ => {}
-        }
-        at += 1;
-    }
-    take(start, bytes.len().max(start));
-    out
-}
-
 /// What an atom's class says about it.
 #[derive(Debug, Clone, Copy)]
 struct Named<'a> {
@@ -556,92 +618,111 @@ struct Named<'a> {
     condition: &'a str,
 }
 
-/// The atom a rule is, read off the rule itself: a class in the SELECTOR of the
-/// exact shape `atom_in` names one, whose property the body declares.
+/// The atom a rule is, read off the rule's selector alone: exactly one class
+/// of the shape `atom_in` names one, in every branch.
 ///
 /// `a-<property>[-<condition hash>]_<value hash>`, each hash one to seven
-/// characters of base 36, and `var-<name>` for a custom property. Anything
-/// looser took `.a-button__icon{…}`, somebody's BEM, and
-/// `background:url(./x.a-b_c.png)`, a declaration, for atoms, and moved them
-/// past every block. `atomClass` in `@barqjs/css` reads the same shape.
+/// characters of base 36, a property in lower case, and `var-<name>` for a
+/// custom property, whose name keeps its case and may hold an underscore. The
+/// class alone and never the body, because a minifier rewrites bodies: below
+/// its logical-property support it writes `inset-inline-start` as `left` and
+/// `right` under `:lang()`. A class has a condition hash exactly when its rule
+/// is not the bare class, which is what tells `a-margin-top` from a margin under
+/// a condition whose hash happens to be `top`.
+///
+/// Rejected: `.a-button__icon{…}`, somebody's BEM, whose property part holds an
+/// underscore, and `background:url(./x.a-b_c.png)`, which is not in a selector.
+/// `atomNamed` in `@barqjs/css` reads the same shape.
 fn atom_named(rule: &str) -> Option<Named<'_>> {
     let rule = without_layer(rule);
     let (_, rule) = leading_comments(rule);
     let mut at = 0;
+    let mut wrapped = false;
     while rule[at..].starts_with('@') {
         let brace = rule[at..].find('{')?;
         at += brace + 1;
         at += rule[at..].len() - rule[at..].trim_start().len();
+        wrapped = true;
     }
     let open = at + rule[at..].find('{')?;
-    let close = matching_brace(rule, open + 1)?;
-    let declarations = declared(&rule[open + 1..close]);
-    let mut found: Option<Named<'_>> = None;
-    for branch in branches(&rule[at..open]) {
-        let named = class_in(branch, &declarations)?;
-        if found.is_some_and(|held| held.class != named.class) {
+    let selector = &rule[at..open];
+    let mut found: Option<&str> = None;
+    for branch in branches(selector) {
+        let class = class_in(branch)?;
+        if found.is_some_and(|held| held != class) {
             return None;
         }
-        found = Some(named);
+        found = Some(class);
+    }
+    let class = found?;
+    let bare = !wrapped && selector.trim().strip_prefix('.') == Some(class);
+    Some(Named { class, condition: atom_condition(class, bare)? })
+}
+
+/// The one class of an atom's shape a selector branch names, if it names one
+/// and no other.
+fn class_in(branch: &str) -> Option<&str> {
+    let mut found: Option<&str> = None;
+    let mut from = 0;
+    while let Some(dot) = branch[from..].find('.') {
+        let start = from + dot + 1;
+        let end = branch[start..]
+            .find(|c: char| !(c.is_ascii_alphanumeric() || c == '-' || c == '_'))
+            .map_or(branch.len(), |end| start + end);
+        let class = &branch[start..end];
+        if atom_condition(class, true).is_some() || atom_condition(class, false).is_some() {
+            if found.is_some_and(|held| held != class) {
+                return None;
+            }
+            found = Some(class);
+        }
+        from = end.max(start);
     }
     found
 }
 
-/// The first class in one selector branch that is an atom declaring one of
-/// `declarations`.
-fn class_in<'a>(branch: &'a str, declarations: &[String]) -> Option<Named<'a>> {
-    let mut from = 0;
-    while let Some(found) = branch[from..].find(".a-") {
-        let start = from + found + 1;
-        let end = branch[start..]
-            .find(|c: char| !(c.is_ascii_alphanumeric() || c == '-' || c == '_'))
-            .map_or(branch.len(), |end| start + end);
-        if let Some(condition) = atom_condition(&branch[start..end], declarations) {
-            return Some(Named { class: &branch[start..end], condition });
-        }
-        from = end;
-    }
-    None
-}
-
-/// The condition hash of `class`, when it is an atom's name for a property one
-/// of `declarations` sets.
-fn atom_condition<'a>(class: &'a str, declarations: &[String]) -> Option<&'a str> {
+/// The condition hash of `class`, read as a bare rule's (no hash) or as a
+/// conditioned one's (the last segment of the key), when it is an atom's name.
+fn atom_condition(class: &str, bare: bool) -> Option<&str> {
     let rest = class.strip_prefix("a-")?;
-    let underscore = rest.rfind('_')?;
+    let underscore = value_cut(rest)?;
     let (key, value) = (&rest[..underscore], &rest[underscore + 1..]);
     if !is_hash(value) {
         return None;
     }
-    let sets = |name: &str| {
-        let property = match name.strip_prefix("var-") {
-            Some(custom) => format!("--{custom}"),
-            None => name.to_string(),
-        };
-        !name.is_empty()
-            && declarations.iter().any(|held| unprefixed(held) == unprefixed(&property))
-    };
-    if !key.contains('_') && sets(key) {
-        return Some("");
+    if bare {
+        return is_property(key).then_some("");
     }
     let dash = key.rfind('-')?;
     let (name, condition) = (&key[..dash], &key[dash + 1..]);
-    (is_hash(condition) && !name.contains('_') && sets(name)).then_some(condition)
+    (is_hash(condition) && is_property(name)).then_some(condition)
+}
+
+/// Where the value hash starts: after the LAST underscore, since a custom
+/// property's name may hold one and a hash never does.
+fn value_cut(rest: &str) -> Option<usize> {
+    rest.rfind('_')
+}
+
+/// A property as an atom's class spells it: lower-case letters, digits and
+/// dashes, or `var-` and a custom property's name as written.
+fn is_property(name: &str) -> bool {
+    match name.strip_prefix("var-") {
+        Some(custom) => {
+            !custom.is_empty()
+                && custom.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        }
+        None => {
+            name.bytes().any(|b| b.is_ascii_lowercase())
+                && name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        }
+    }
 }
 
 /// One to seven base-36 digits, which is what `hash32` writes.
 fn is_hash(text: &str) -> bool {
     (1..=7).contains(&text.len())
         && text.bytes().all(|b| b.is_ascii_digit() || b.is_ascii_lowercase())
-}
-
-/// A property without its vendor prefix, so a prefixed copy a minifier added
-/// beside the declaration still names it.
-fn unprefixed(property: &str) -> &str {
-    ["-webkit-", "-moz-", "-ms-", "-o-"]
-        .iter()
-        .find_map(|prefix| property.strip_prefix(prefix))
-        .unwrap_or(property)
 }
 
 /// Where the string opening at `open` closes; an unescaped newline ends one
@@ -727,15 +808,13 @@ fn order_rules(body: &str) -> String {
             continue;
         }
         let (lead, rule) = leading_comments(statement);
-        let mut kept = String::new();
+        pinned.push_str(lead);
         for (unit, atom) in units(rule) {
             match atom.then(|| tier_of_rule(&unit)).flatten() {
                 Some(tier) => atoms.push((unit, tier)),
-                None => kept.push_str(&unit),
+                None => pinned.push_str(&unit),
             }
         }
-        pinned.push_str(lead);
-        pinned.push_str(&regrouped(&kept));
     }
     if atoms.is_empty() {
         return body.to_string();
@@ -1084,7 +1163,7 @@ mod tests {
         for css in [
             ".a-button__icon{color:red}.b{color:blue}",
             ".b{background:url(./x.a-b_c.png)}.c{color:blue}",
-            ".a-card_title{color:red}.b{color:blue}",
+            ".a-Color_1{color:red}.b{color:blue}",
             ".a-color_UPPER{color:red}.b{color:blue}",
             ".a-color_12345678{color:red}.b{color:blue}",
         ] {
@@ -1098,6 +1177,101 @@ mod tests {
             let css = format!("{rule}.b{{color:blue}}");
             assert_eq!(order_atoms(&css), format!(".b{{color:blue}}{rule}"), "{rule}");
         }
+    }
+
+    /// A custom property's name keeps its case and may hold an underscore, and
+    /// the class carries it as written.
+    #[test]
+    fn a_custom_property_atom_is_one_whatever_its_name_holds() {
+        for name in ["--brandColor", "--brand_x", "--Brand", "--brand_x_2"] {
+            let atom = atom_in("", name, "default", "red");
+            let css = format!("{}.b{{color:blue}}", atom.rule);
+            assert_eq!(order_atoms(&css), format!(".b{{color:blue}}{}", atom.rule), "{name}");
+            let (gathered, rest) = gather_atoms(&[&css]);
+            assert_eq!(gathered, atom.rule, "{name}");
+            assert_eq!(rest, [".b{color:blue}"], "{name}");
+        }
+    }
+
+    /// Every group rule a condition can wrap an atom in, not only `@media`:
+    /// read whole, `@starting-style{…}` stayed in front of the base rule, which
+    /// then beat it, and no entry transition ran.
+    #[test]
+    fn an_atom_under_any_group_rule_sorts_after_its_base() {
+        for condition in [
+            "@starting-style",
+            "@scope (.card)",
+            "@supports (display: grid)",
+            &format!("@media print{NEST}@starting-style"),
+        ] {
+            let base = atom_in("", "opacity", "default", "1");
+            let wrapped = atom_in("", "opacity", condition, "0");
+            let css = format!("{}.b{{opacity:.5}}{}", wrapped.rule, base.rule);
+            assert_eq!(
+                order_atoms(&css),
+                format!(".b{{opacity:.5}}{}{}", base.rule, wrapped.rule),
+                "{condition}"
+            );
+            let (gathered, rest) = gather_atoms(&[&css]);
+            assert_eq!(gathered, format!("{}{}", base.rule, wrapped.rule), "{condition}");
+            assert_eq!(rest, [".b{opacity:.5}"], "{condition}");
+        }
+        let layered = atom_in("barq.ui", "opacity", "@starting-style", "0");
+        let block = "@layer barq.ui{@starting-style{.b{opacity:.5}}}";
+        let css = format!("{}{block}", layered.rule);
+        let (gathered, _) = gather_atoms(&[&css]);
+        assert!(gathered.contains(&layered.class), "{gathered}");
+    }
+
+    /// Within a tier and a property, the interaction pseudo-class decides, in
+    /// the order every stylesheet that hand-writes them uses: `:active` beats
+    /// `:hover` and `:disabled` beats them all, whichever was written first.
+    #[test]
+    fn the_interaction_pseudo_classes_have_their_conventional_order() {
+        let order = [
+            atom_in("", "color", "[data-active]", "a"),
+            atom_in("", "color", ":hover", "b"),
+            atom_in("", "color", ":focus-visible", "c"),
+            atom_in("", "color", ":active", "d"),
+            atom_in("", "color", ":disabled", "e"),
+        ];
+        let written: String = order.iter().rev().map(|atom| atom.rule.as_str()).collect();
+        let ordered = order_atoms(&written);
+        let at = |atom: &Atom| ordered.find(&atom.class).expect("present");
+        for pair in order.windows(2) {
+            assert!(at(&pair[0]) < at(&pair[1]), "{ordered}");
+        }
+        assert_eq!(interaction(".a:not(:disabled):hover"), 4);
+        assert_eq!(interaction(".a:focus-within"), 3);
+        assert_eq!(interaction("[data-x]"), 0);
+    }
+
+    /// Below a minifier's logical-property support, `inset-inline-start` is
+    /// written as `left` and `right` under `:lang()`. The class still names the
+    /// atom.
+    #[test]
+    fn an_atom_a_minifier_rewrote_to_physical_properties_is_still_one() {
+        let class = atom_in("", "inset-inline-start", "default", "0").class;
+        let css = format!(
+            ".{class}:not(:lang(ar,he)){{left:0}}.{class}:is(:lang(ar,he)){{right:0}}.b{{left:5px}}"
+        );
+        assert_eq!(
+            order_atoms(&css),
+            format!(
+                ".b{{left:5px}}.{class}:not(:lang(ar,he)){{left:0}}.{class}:is(:lang(ar,he)){{right:0}}"
+            )
+        );
+    }
+
+    /// A byte order mark stays where it means something, in front of the file.
+    #[test]
+    fn a_byte_order_mark_stays_first() {
+        let atom = atom_in("", "color", "default", "red");
+        let css = format!("\u{feff}{}.b2{{color:blue}}", atom.rule);
+        assert_eq!(order_atoms(&css), format!("\u{feff}.b2{{color:blue}}{}", atom.rule));
+        let (gathered, rest) = gather_atoms(&[&css]);
+        assert_eq!(gathered, atom.rule);
+        assert_eq!(rest, ["\u{feff}.b2{color:blue}"]);
     }
 
     /// Two atoms of one tier, for one property, under conditions that both

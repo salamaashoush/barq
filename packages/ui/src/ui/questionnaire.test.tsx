@@ -177,7 +177,7 @@ describe("Questionnaire", () => {
     expect(row).toContain("[data-disabled]");
     expect(row).toContain("pointer-events: none");
     // Focus is on the input the label wraps, so the ring is drawn from there.
-    expect(row).toContain(":has( > input:focus-visible)");
+    expect(row).toContain(":has(> input:focus-visible)");
   });
 
   test("the input covers the whole row and is invisible, not hidden", () => {

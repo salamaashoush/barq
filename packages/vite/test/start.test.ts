@@ -245,7 +245,7 @@ describe("the entries an application does not write", () => {
 
     expect(code).toContain('import { createStartHandler } from "@barqjs/router/server"');
     expect(code).toContain(
-      "export default createStartHandler({ inlineCss: (routes) => collectCssParts(devStylesheets(routes)), requestCss: collectRequestCss })",
+      "export default createStartHandler({ inlineCss: async (routes) => collectCssParts(await devStylesheets(routes)), requestCss: collectRequestCss })",
     );
     // TWO channels, because they have different lifetimes. `inlineCss` is what
     // the application registered when it was IMPORTED, which every request

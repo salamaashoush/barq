@@ -839,8 +839,11 @@ export const box = atoms({ display: "none" });
     names?: string[];
     source?: string;
     isEntry?: boolean;
+    isDynamicEntry?: boolean;
     viteMetadata?: { importedCss: Set<string> };
   };
+
+  const warnings: string[] = [];
 
   /** The hook as Vite calls it, with an `emitFile` that lands where Rollup's does. */
   function finish(
@@ -860,6 +863,12 @@ export const box = atoms({ display: "none" });
         return "atoms";
       },
       getFileName: () => EMITTED,
+      error(message: string): never {
+        throw new Error(message);
+      },
+      warn(message: string): void {
+        warnings.push(message);
+      },
     };
     const hook = (plugin.generateBundle as { handler: (options: unknown, bundle: unknown) => void })
       .handler;
@@ -971,7 +980,12 @@ export const box = atoms({ display: "none" });
    * `generateBundle`, after the compiler's, so the compiler's has nothing to
    * gather and the sheet is finished by `barqStylesheets` once it exists.
    */
-  test("unsplit, the one sheet keeps its blocks first and its atoms after, written once", () => {
+  /**
+   * The atoms leave the one sheet for a file linked after it, as a split
+   * build's do: what the runtime registers, or `useHead` adds, then has a link
+   * to stand in front of.
+   */
+  test("unsplit, the atoms are written once in a file of their own, linked after the sheet", () => {
     const compiler = barqVitePlugin({ dev: false });
     const sheet = `.b1n4k2p0{color:red}${MARKER}${WIDE}${BASE}.b2{color:blue}${BASE}`;
     const early: Record<string, Output> = {};
@@ -985,12 +999,41 @@ export const box = atoms({ display: "none" });
         names: ["style.css"],
         source: sheet,
       },
+      "index.html": {
+        type: "asset",
+        fileName: "index.html",
+        source: '<head><link rel="stylesheet" crossorigin href="/assets/style-x.css"></head>',
+      },
     };
     finish(barqStylesheets(), output, false);
-    expect(output["assets/style-x.css"]?.source).toBe(
-      `.b1n4k2p0{color:red}.b2{color:blue}${BASE}${WIDE}`,
+    expect(output["assets/style-x.css"]?.source).toBe(".b1n4k2p0{color:red}.b2{color:blue}");
+    expect(output[EMITTED]?.source).toBe(`${BASE}${WIDE}`);
+    expect(output["index.html"]?.source).toBe(
+      '<head><link rel="stylesheet" crossorigin href="/assets/style-x.css">\n' +
+        `    <link rel="stylesheet" crossorigin href="/${EMITTED}" data-barq-atoms></head>`,
     );
-    expect(Object.keys(output)).toEqual(["assets/style-x.css"]);
+  });
+
+  test("a library keeps its atoms in its one sheet, after its blocks", () => {
+    const output: Record<string, Output> = {
+      "mylib.css": {
+        type: "asset",
+        fileName: "mylib.css",
+        source: `${WIDE}${MARKER}.b{color:red}${BASE}`,
+      },
+    };
+    const plugin = barqStylesheets();
+    const context = {
+      environment: { config: { build: { cssCodeSplit: false, lib: { entry: "x" } } } },
+      emitFile: () => {
+        throw new Error("a library emits no second sheet");
+      },
+      getFileName: () => "",
+    };
+    (
+      plugin.generateBundle as { handler: (options: unknown, bundle: unknown) => void }
+    ).handler.call(context, {}, output);
+    expect(output["mylib.css"]?.source).toBe(`.b{color:red}${BASE}${WIDE}`);
   });
 
   test("a split build is left to the compiler's own hook", () => {
@@ -1035,15 +1078,50 @@ export const box = atoms({ display: "none" });
     );
   });
 
+  /**
+   * A Vite that renames the helper, or stops passing it through `transform`,
+   * never reaches the rewrite, and a chunk's stylesheet would land after the
+   * atoms with nothing said. The bundle shows it: atoms, and a dynamic import
+   * that brings a stylesheet.
+   */
+  test("a build whose helper was never rewritten fails once it has atoms and a lazy stylesheet", () => {
+    const lazy = (): Record<string, Output> => ({
+      "shared.css": {
+        type: "asset",
+        fileName: "shared.css",
+        source: `.plain{gap:0}${MARKER}${BASE}`,
+      },
+      "lazy.css": { type: "asset", fileName: "lazy.css", source: ".b2{color:blue}" },
+      "lazy.js": {
+        type: "chunk",
+        fileName: "lazy.js",
+        isDynamicEntry: true,
+        viteMetadata: { importedCss: new Set(["lazy.css"]) },
+      },
+    });
+    expect(() => finish(barqVitePlugin({ dev: false }), lazy())).toThrow("preload helper");
+    warnings.length = 0;
+    finish(barqVitePlugin({ dev: false, preloadHelper: "warn" }), lazy());
+    expect(warnings.join("\n")).toContain("preload helper");
+  });
+
+  test("a build with no lazy stylesheet does not need the helper", () => {
+    expect(() =>
+      finish(barqVitePlugin({ dev: false }), {
+        "shared.css": { type: "asset", fileName: "shared.css", source: `${MARKER}${BASE}` },
+      }),
+    ).not.toThrow();
+  });
+
   test("a helper this version does not know warns instead, when the build says so", async () => {
     const plugin = barqVitePlugin({ dev: false, preloadHelper: "warn" });
-    const { result, warnings } = await run(
+    const { result, warnings: said } = await run(
       plugin,
       "function preload(){}",
       "\0vite/preload-helper.js",
     );
     expect(result).toBe(null);
-    expect(warnings.join("\n")).toContain("preload helper");
+    expect(said.join("\n")).toContain("preload helper");
   });
 });
 

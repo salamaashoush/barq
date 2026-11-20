@@ -998,9 +998,199 @@ pub fn atom_in(layer: &str, property: &str, condition: &str, value: &str) -> Ato
     Atom { class, key, rule: inner, tier }
 }
 
+/// A condition key in one spelling, so two ways of writing one condition hash
+/// to one key and one rule.
+///
+/// `& svg:not([class*="size-"])` and `& svg:not([class*='size-'])` were two
+/// conditions: `@barqjs/ui`'s button wrote its base icon size with one and a
+/// size variant with the other, the merge kept both classes and the order of
+/// two rules decided which size won. Attribute values go in double quotes,
+/// white space collapses to one space, a combinator stands between single
+/// spaces and a comma is followed by one, and an at-rule's name is lower case.
+/// String contents, identifiers and attribute values keep their case.
+/// `canonical` in `atoms.ts` is the same function.
+pub fn canonical_condition(condition: &str) -> String {
+    let trimmed = condition.trim();
+    if let Some(rest) = trimmed.strip_prefix('@') {
+        let end =
+            rest.find(|c: char| !(c.is_ascii_alphanumeric() || c == '-')).unwrap_or(rest.len());
+        let mut out = format!("@{}", rest[..end].to_ascii_lowercase());
+        out.push_str(&collapsed(&rest[end..]));
+        return out;
+    }
+    let chars: Vec<char> = trimmed.chars().collect();
+    let mut out = String::with_capacity(trimmed.len());
+    let mut depth = 0i32;
+    let mut space = false;
+    let mut at = 0;
+    while at < chars.len() {
+        let c = chars[at];
+        if c.is_whitespace() {
+            space = true;
+            at += 1;
+            continue;
+        }
+        match c {
+            '[' => {
+                let close = attribute_end(&chars, at);
+                if space && !out.is_empty() && !out.ends_with(['(', ' ']) {
+                    out.push(' ');
+                }
+                space = false;
+                out.push_str(&attribute(&chars[at..=close.min(chars.len() - 1)]));
+                at = close + 1;
+                continue;
+            }
+            '"' | '\'' => {
+                let close = quote_end(&chars, at);
+                if space && !out.is_empty() && !out.ends_with(['(', ' ']) {
+                    out.push(' ');
+                }
+                space = false;
+                out.extend(&chars[at..=close.min(chars.len() - 1)]);
+                at = close + 1;
+                continue;
+            }
+            '(' => depth += 1,
+            ')' => depth -= 1,
+            _ => {}
+        }
+        // `+` is also arithmetic inside `:nth-child(2n + 1)`, so only outside
+        // parentheses; `>` and `~` are combinators wherever they stand.
+        if matches!(c, '>' | '~' | ',') || (c == '+' && depth == 0) {
+            let trimmed_len = out.trim_end().len();
+            out.truncate(trimmed_len);
+            if c == ',' {
+                out.push_str(", ");
+            } else if out.is_empty() || out.ends_with('(') {
+                out.push(c);
+                out.push(' ');
+            } else {
+                out.push(' ');
+                out.push(c);
+                out.push(' ');
+            }
+            space = false;
+            at += 1;
+            continue;
+        }
+        if space && !out.is_empty() && !out.ends_with(['(', ' ']) && c != ')' {
+            out.push(' ');
+        }
+        space = false;
+        out.push(c);
+        at += 1;
+    }
+    out.trim_end().to_string()
+}
+
+/// White space as one space, and none at either end.
+fn collapsed(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let leading = text.starts_with(char::is_whitespace);
+    for (index, word) in text.split_whitespace().enumerate() {
+        if index > 0 || leading {
+            out.push(' ');
+        }
+        out.push_str(word);
+    }
+    out
+}
+
+/// Where the quoted string opening at `open` closes.
+fn quote_end(chars: &[char], open: usize) -> usize {
+    let quote = chars[open];
+    let mut at = open + 1;
+    while at < chars.len() {
+        match chars[at] {
+            '\\' => at += 1,
+            c if c == quote => return at,
+            _ => {}
+        }
+        at += 1;
+    }
+    chars.len().saturating_sub(1)
+}
+
+/// Where the attribute selector opening at `open` closes.
+fn attribute_end(chars: &[char], open: usize) -> usize {
+    let mut at = open + 1;
+    while at < chars.len() {
+        match chars[at] {
+            '"' | '\'' => at = quote_end(chars, at),
+            '\\' => at += 1,
+            ']' => return at,
+            _ => {}
+        }
+        at += 1;
+    }
+    chars.len().saturating_sub(1)
+}
+
+/// `[name op value flag]` with its value in double quotes and no other space
+/// than the one in front of a flag. Anything else is kept as it was written.
+fn attribute(chars: &[char]) -> String {
+    let raw: String = chars.iter().collect();
+    let Some(inner) = raw.strip_prefix('[').and_then(|rest| rest.strip_suffix(']')) else {
+        return raw;
+    };
+    let operator = ["~=", "|=", "^=", "$=", "*=", "="].iter().find_map(|op| {
+        let at = inner.find(op)?;
+        (!inner[..at].contains(['"', '\''])).then_some((at, *op))
+    });
+    let Some((at, op)) = operator else { return format!("[{}]", inner.trim()) };
+    let name = inner[..at].trim();
+    let rest = inner[at + op.len()..].trim();
+    let (value, flag) = match rest.chars().next() {
+        Some(quote @ ('"' | '\'')) => {
+            let body: Vec<char> = rest.chars().collect();
+            let close = quote_end(&body, 0);
+            let text: String = body[1..close.max(1)].iter().collect();
+            let flag: String = body[(close + 1).min(body.len())..].iter().collect();
+            let value = if quote == '\'' && text.contains('"') {
+                format!("'{text}'")
+            } else {
+                format!("\"{text}\"")
+            };
+            (value, flag.trim().to_string())
+        }
+        _ => {
+            let mut words = rest.split_whitespace();
+            let text = words.next().unwrap_or("");
+            (format!("\"{text}\""), words.collect::<Vec<_>>().join(" "))
+        }
+    };
+    if flag.is_empty() {
+        format!("[{name}{op}{value}]")
+    } else {
+        format!("[{name}{op}{value} {flag}]")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_condition_has_one_spelling() {
+        for (written, canonical) in [
+            ("& svg:not([class*='size-'])", "& svg:not([class*=\"size-\"])"),
+            ("&  svg:not([class*=\"size-\"])", "& svg:not([class*=\"size-\"])"),
+            ("&>svg", "& > svg"),
+            ("[data-size=sm] &", "[data-size=\"sm\"] &"),
+            ("[data-a],&[data-b]", "[data-a], &[data-b]"),
+            (":has(>[data-slot])", ":has(> [data-slot])"),
+            ("& ~ * + *", "& ~ * + *"),
+            (":nth-child(2n+1)", ":nth-child(2n+1)"),
+            ("[data-label='say \"hi\"'] &", "[data-label='say \"hi\"'] &"),
+            ("[lang = 'EN' i]", "[lang=\"EN\" i]"),
+            ("@MEDIA (min-width:  40rem)", "@media (min-width: 40rem)"),
+            ("default", "default"),
+        ] {
+            assert_eq!(canonical_condition(written), canonical, "{written}");
+            assert_eq!(canonical_condition(canonical), canonical, "{canonical}");
+        }
+    }
 
     #[test]
     fn kebab_leaves_a_custom_property_alone() {

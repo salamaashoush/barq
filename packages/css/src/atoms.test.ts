@@ -12,6 +12,7 @@ import {
   props,
   variants,
 } from "./index.ts";
+import { canonical } from "./atoms.ts";
 import type { Condition } from "./index.ts";
 import { resetCss } from "./internal.ts";
 
@@ -231,7 +232,7 @@ describe("defineConditions", () => {
     const sheet = collectCss();
     expect(sheet).toContain(`.${base}{color:red}`);
     expect(sheet).toContain(`@media (min-width: 768px){.${wide}{color:blue}}`);
-    expect(sheet).toContain(`[data-theme=dark] .${dark}{color:white}`);
+    expect(sheet).toContain(`[data-theme="dark"] .${dark}{color:white}`);
   });
 
   test("is the same class as the condition written out", () => {
@@ -305,5 +306,28 @@ describe("mergeStyles", () => {
 
   test("leaves a style object alone, which the compiler never hands it", () => {
     expect(mergeStyles("x", { color: "red" })).toEqual({ class: "x" });
+  });
+});
+
+/** `canonical_condition` in the compiler holds the same table. */
+describe("a condition's spelling", () => {
+  test("is one spelling, whichever the author wrote", () => {
+    for (const [written, spelled] of [
+      ["& svg:not([class*='size-'])", '& svg:not([class*="size-"])'],
+      ['&  svg:not([class*="size-"])', '& svg:not([class*="size-"])'],
+      ["&>svg", "& > svg"],
+      ["[data-size=sm] &", '[data-size="sm"] &'],
+      ["[data-a],&[data-b]", "[data-a], &[data-b]"],
+      [":has(>[data-slot])", ":has(> [data-slot])"],
+      ["& ~ * + *", "& ~ * + *"],
+      [":nth-child(2n+1)", ":nth-child(2n+1)"],
+      [`[data-label='say "hi"'] &`, `[data-label='say "hi"'] &`],
+      ["[lang = 'EN' i]", '[lang="EN" i]'],
+      ["@MEDIA (min-width:  40rem)", "@media (min-width: 40rem)"],
+      ["default", "default"],
+    ] as const) {
+      expect(canonical(written)).toBe(spelled);
+      expect(canonical(spelled)).toBe(spelled);
+    }
   });
 });

@@ -23,6 +23,12 @@ interface Entry {
   parts: Part[] | null;
   /** The {@link clock} when these rules were registered. */
   mark: number;
+  /**
+   * Registered by {@link registerCss} while a request was rendering, and not
+   * since outside one: the rules of whichever requests register them, rather
+   * than of every page the server renders after the first.
+   */
+  request?: boolean;
 }
 
 /**
@@ -40,6 +46,8 @@ interface Part {
   readonly media: MediaRank | null;
   /** The hash of the condition an atom was declared under, read off its class. */
   readonly condition: string;
+  /** One-based place in {@link INTERACTIONS} of the latest its selector carries, 0 for none. */
+  readonly interaction: number;
   /** The class of the atom this rule IS, where that is checked: see {@link atomOf}. */
   readonly atom: string | null;
   /**
@@ -258,6 +266,8 @@ export const TIERS = ["descendant", "base", "select", "element", "media"] as con
 export interface CssSink {
   (key: string, rules: string): boolean;
   head?(late: () => string): void;
+  /** Whether the request rendering now registered `key` itself. */
+  owns?(key: string): boolean;
 }
 
 let sink: CssSink | null = null;
@@ -267,16 +277,22 @@ export function setCssSink(next: CssSink | null): void {
   sink = next;
 }
 
-export function register(key: string, rules: string, tier = 0): string {
+export function register(key: string, rules: string, tier = 0, keyed = false): string {
   const held = registered.get(key);
   // Only what the shared sheet did NOT already have, so a rule the head was
-  // serialised with is not emitted a second time at the end of the body.
-  if (held !== undefined && held.rules === rules) return key;
-  sink?.(key, rules);
+  // serialised with is not emitted a second time at the end of the body. A
+  // keyed sheet registered again is still told to the request doing it, which
+  // is what makes it that request's.
+  if (held !== undefined && held.rules === rules) {
+    if (keyed && sink?.(key, rules) !== true) held.request = false;
+    return key;
+  }
+  const claimed = sink?.(key, rules) === true;
   const mark = ++clock;
   if (held === undefined) {
-    registered.set(key, { rules, tier, parts: null, mark });
+    registered.set(key, { rules, tier, parts: null, mark, request: keyed && claimed });
   } else {
+    held.request = keyed && claimed;
     if (served !== null) retire(held, rules, tier);
     held.rules = rules;
     held.tier = tier;
@@ -509,7 +525,7 @@ function retire(entry: Entry, rules: string, tier: number): void {
  * an asset, which is two systems with a hole between them.
  */
 export function registerCss(key: string, rules: string): void {
-  register(key, rules);
+  register(key, rules, 0, true);
 }
 
 /**
@@ -541,19 +557,23 @@ export interface CssScope {
  * process happened to render first.
  */
 export function collectCss(scope?: CssScope): string {
+  const entries = scope === undefined ? pageEntries() : entriesIn(scope);
   const text =
-    scope === undefined ? wholeSheet() : print(arrange(everyPart(entriesIn(scope)), null, true));
-  headRead();
+    scope === undefined && sink?.owns === undefined
+      ? wholeSheet()
+      : print(arrange(everyPart(entries), scope === undefined ? served : null, true));
+  headRead(entries);
   return text;
 }
 
 /** The same sheet as the two places it goes: see {@link SheetParts}. */
 export function collectCssParts(scope?: CssScope): SheetParts {
+  const entries = scope === undefined ? pageEntries() : entriesIn(scope);
   const text =
-    scope === undefined
+    scope === undefined && sink?.owns === undefined
       ? sheetParts()
-      : printParts(arrange(everyPart(entriesIn(scope)), null, true));
-  headRead();
+      : printParts(arrange(everyPart(entries), scope === undefined ? served : null, true));
+  headRead(entries);
   return text;
 }
 
@@ -562,11 +582,30 @@ export function collectCssParts(scope?: CssScope): SheetParts {
  * when the application was imported. A render's own rules are the host's, and
  * it collects them from the sink it installed.
  */
-function headRead(): void {
+function headRead(entries: Iterable<Entry>): void {
   if (sink?.head !== undefined) {
     const read = clock;
-    sink.head(() => since(read));
+    const held = new Set(entries);
+    sink.head(() => since(read, held));
   }
+}
+
+/**
+ * Whether an entry belongs on the page rendering now. A sheet a request
+ * registered through {@link registerCss}, a theme a component installs as it
+ * renders, belongs to the requests that register it: on a server that renders
+ * many pages from one registry, `/` after `/create` carried `/create`'s
+ * `:root` and `.dark` rules otherwise.
+ */
+function visible(key: string, entry: Entry): boolean {
+  return entry.request !== true || sink?.owns === undefined || sink.owns(key);
+}
+
+/** Every entry, less what another request registered, when a host can say. */
+function pageEntries(): Entry[] {
+  const out: Entry[] = [];
+  for (const [key, entry] of registered) if (visible(key, entry)) out.push(entry);
+  return out;
 }
 
 function entriesIn(scope: CssScope): Entry[] {
@@ -579,13 +618,13 @@ function entriesIn(scope: CssScope): Entry[] {
     out.push(entry);
   }
   for (const [key, entry] of registered) {
-    if (!taken.has(key) && !scope.modules.has(key)) out.push(entry);
+    if (!taken.has(key) && !scope.modules.has(key) && visible(key, entry)) out.push(entry);
   }
   return out;
 }
 
 function ownArranged(): Arranged {
-  const mine = arrange(everyPart(registered.values()), served, true);
+  const mine = arrange(everyPart(pageEntries()), served, true);
   return adopted === null ? mine : joined(adopted, mine);
 }
 
@@ -610,12 +649,15 @@ function sheetParts(): SheetParts {
  * rule that is not an atom it ends with EVERY atom again: a block a module
  * brought during the render would otherwise beat an atom already in the head.
  */
-function since(mark: number): string {
+function since(mark: number, head: ReadonlySet<Entry>): string {
   const fresh: Entry[] = [];
   const held = new Set<string>();
-  for (const entry of registered.values()) {
-    if (entry.mark > mark) fresh.push(entry);
-    else for (const part of partsOf(entry)) held.add(part.id);
+  for (const [key, entry] of registered) {
+    // A request's own keyed sheet it registered again after its head was
+    // read: unchanged, so its mark did not move, and not in that head.
+    const again = entry.request === true && !head.has(entry) && sink?.owns?.(key) === true;
+    if (entry.mark > mark || again) fresh.push(entry);
+    else if (head.has(entry)) for (const part of partsOf(entry)) held.add(part.id);
   }
   if (fresh.length === 0) return "";
   const arranged = arrange(everyPart(fresh), held, true);
@@ -661,6 +703,7 @@ function arrange(parts: Iterable<Part>, skip: Set<string> | null, order: boolean
         tier: PINNED,
         media: null,
         condition: "",
+        interaction: 0,
         atom: null,
         id: "",
       });
@@ -838,19 +881,35 @@ function partsOf(entry: Entry): Part[] {
     const tier = entry.tier !== 0 ? entry.tier : name === null ? PINNED : tierOfRule(text, name);
     const media = tier === MEDIA ? mediaRank(text) : null;
     const condition = named?.condition ?? "";
+    const interaction = tier === PINNED ? 0 : interactionOf(selectorOf(text));
     const atom = STRICT && name !== null ? atomOf(layer, text, name) : null;
-    parts.push({ layer, text, tier, media, condition, atom, id: `${layer}\u0000${text}` });
+    parts.push({
+      layer,
+      text,
+      tier,
+      media,
+      condition,
+      interaction,
+      atom,
+      id: `${layer}\u0000${text}`,
+    });
   };
-  const outer = statements(entry.rules);
+  const addUnits = (layer: string, statement: string): void => {
+    for (const unit of splitUnits(statement)) add(layer, unit.text, true);
+  };
+  // A byte order mark means nothing inside a `<style>`, and in front of the
+  // first rule it would travel with it.
+  const rules = entry.rules.startsWith("\uFEFF") ? entry.rules.slice(1) : entry.rules;
+  const outer = statements(rules);
   for (const statement of outer.closed) {
     const open = layerOpen(statement);
     if (open === 0) {
-      add("", statement, true);
+      addUnits("", statement);
       continue;
     }
     const layer = statement.slice("@layer ".length, open - 1);
     const inner = statements(statement.slice(open, -1));
-    for (const rule of inner.closed) add(layer, rule, true);
+    for (const rule of inner.closed) addUnits(layer, rule);
     // An empty block still names its layer where it stands, which is the
     // layer's place in the order when nothing declares one.
     if (inner.tail !== "" || inner.closed.length === 0) add(layer, inner.tail, false);
@@ -858,6 +917,88 @@ function partsOf(entry: Entry): Part[] {
   if (outer.tail !== "") add("", outer.tail, false);
   entry.parts = parts;
   return parts;
+}
+
+interface Unit {
+  text: string;
+  readonly atom: boolean;
+}
+
+/**
+ * A statement as the rules it is made of, each with whether it is an atom's.
+ *
+ * `@media x{a b}` is `@media x{a}` and `@media x{b}`, to any depth, for every
+ * group rule a condition can wrap an atom in, and a selector list naming
+ * several atoms, or atoms and something else, is one rule per atom and one for
+ * the rest. A statement holding no atom is itself, whole. A minifier writes
+ * such statements and a server's sheet read back can hold them; `units` in
+ * `order.rs` takes a built asset apart by the same rule, so the two agree.
+ */
+function splitUnits(statement: string): Unit[] {
+  const trimmed = statement.trim();
+  if (trimmed === "") return [];
+  const found = unitsOf(trimmed);
+  return found.some((unit) => unit.atom) ? found : [{ text: trimmed, atom: false }];
+}
+
+function unitsOf(rule: string): Unit[] {
+  const open = rule.indexOf("{");
+  if (open < 0 || !isGroup(rule) || closingBrace(rule, open + 1) !== rule.length - 1) {
+    return byAtom(rule);
+  }
+  const prelude = rule.slice(0, open);
+  const body = statements(rule.slice(open + 1, -1));
+  const out: Unit[] = [];
+  for (const inner of body.tail === "" ? body.closed : [...body.closed, body.tail]) {
+    const start = pastComments(inner, 0);
+    const found = unitsOf(inner.slice(start).trim());
+    if (found.length > 0) found[0].text = inner.slice(0, start) + found[0].text;
+    for (const unit of found) out.push({ text: `${prelude}{${unit.text}}`, atom: unit.atom });
+  }
+  return out;
+}
+
+const NOT_GROUPS = [
+  "@keyframes",
+  "@-webkit-keyframes",
+  "@font-face",
+  "@property",
+  "@page",
+  "@counter-style",
+  "@font-palette-values",
+  "@font-feature-values",
+  "@view-transition",
+  "@position-try",
+];
+
+/** Whether an at-rule holds rules rather than declarations. */
+function isGroup(rule: string): boolean {
+  if (rule[0] !== "@") return false;
+  return !NOT_GROUPS.some(
+    (name) =>
+      rule.slice(0, name.length).toLowerCase() === name &&
+      !/^[\w-]/.test(rule.slice(name.length, name.length + 1)),
+  );
+}
+
+/** A rule as one rule per atom its selector list names and one for every other branch. */
+function byAtom(rule: string): Unit[] {
+  if (rule[0] === "@" || !rule.endsWith("}")) return [{ text: rule, atom: false }];
+  const open = rule.indexOf("{");
+  if (open < 0) return [{ text: rule, atom: false }];
+  const body = rule.slice(open);
+  const groups: { name: string | null; list: string[] }[] = [];
+  for (const branch of branches(rule.slice(0, open))) {
+    const name = classIn(branch);
+    const held = groups.find((group) => group.name === name);
+    if (held === undefined) groups.push({ name, list: [branch.trim()] });
+    else held.list.push(branch.trim());
+  }
+  if (groups.length < 2) {
+    const name = groups[0]?.name ?? null;
+    return [{ text: rule, atom: name !== null && atomNamed(rule) !== null }];
+  }
+  return groups.map((group) => ({ text: group.list.join(",") + body, atom: group.name !== null }));
 }
 
 const MEDIA = TIERS.length - 1;
@@ -957,11 +1098,15 @@ function pixels(text: string, from: number): number | null {
 /**
  * Negative when `a` sorts first, zero when only arrival separates them.
  *
- * Last, in every tier, the hash of the condition an atom was declared under.
- * Two atoms of one tier whose conditions both match one element are two rules
- * of one specificity with no passing order between them, and arrival is a
- * different thing in dev, a split build and an unsplit one. `order.rs` sorts a
- * built asset by the same key.
+ * Then, in every tier, the interaction pseudo-class the rule's selector carries,
+ * in {@link INTERACTIONS}' order, so `:active` beats `:hover` and `:disabled`
+ * beats them all; a selector with none of them comes first.
+ *
+ * Last, the hash of the condition an atom was declared under. Two atoms of one
+ * tier whose conditions both match one element are two rules of one
+ * specificity, and a sheet every call shares cannot keep each call's writing
+ * order, where arrival is a different thing in dev, a split build and an
+ * unsplit one. `order.rs` sorts a built asset by the same keys.
  */
 function precedes(a: Part, b: Part): number {
   if (a.tier !== b.tier) return a.tier - b.tier;
@@ -974,7 +1119,55 @@ function precedes(a: Part, b: Part): number {
         compare(x.first, y.first) ||
         compare(x.second, y.second) ||
         compare(x.prelude, y.prelude);
-  return media || compare(a.condition, b.condition);
+  return media || compare(a.interaction, b.interaction) || compare(a.condition, b.condition);
+}
+
+/**
+ * The interaction pseudo-classes in the order a later one wins, the order a
+ * hand-written stylesheet uses. `INTERACTIONS` in `order.rs` is the same list.
+ */
+export const INTERACTIONS = [
+  "link",
+  "visited",
+  "focus-within",
+  "hover",
+  "focus",
+  "focus-visible",
+  "active",
+  "disabled",
+] as const;
+
+/** The latest of {@link INTERACTIONS} a selector carries outside any parentheses, one-based. */
+export function interactionOf(selector: string): number {
+  let depth = 0;
+  let found = 0;
+  for (let index = 0; index < selector.length; index++) {
+    const character = selector[index];
+    if (character === "\\") index++;
+    else if (character === '"' || character === "'") index = stringEnd(selector, index);
+    else if (character === "(" || character === "[") depth++;
+    else if (character === ")" || character === "]") depth--;
+    else if (character === ":" && selector[index + 1] === ":") index++;
+    else if (character === ":" && depth === 0) {
+      const name = /^[A-Za-z0-9-]*/.exec(selector.slice(index + 1))?.[0] ?? "";
+      const at = (INTERACTIONS as readonly string[]).indexOf(name.toLowerCase());
+      if (at >= 0) found = Math.max(found, at + 1);
+      index += name.length;
+    }
+  }
+  return found;
+}
+
+/** The selector of a rule, with any at-rule preludes taken off the front. */
+function selectorOf(rule: string): string {
+  let at = pastSpace(rule, 0);
+  while (rule[at] === "@") {
+    const brace = rule.indexOf("{", at);
+    if (brace < 0) return "";
+    at = pastSpace(rule, brace + 1);
+  }
+  const brace = rule.indexOf("{", at);
+  return brace < 0 ? "" : rule.slice(at, brace).trim();
 }
 
 function compare<T extends number | string>(a: T, b: T): number {
@@ -991,8 +1184,11 @@ function compare<T extends number | string>(a: T, b: T): number {
  * whichever module registered last. `orderCss` puts a built asset in the same
  * order, and `gatherAtoms` links a build's atoms after its blocks.
  *
- * Stable, so two atoms of one tier keep the order they arrived in, which is
- * what decides between them, and two blocks keep theirs.
+ * Stable, so two atoms of one rank keep the order they arrived in, and two
+ * blocks keep theirs. Two atoms of one tier under different conditions are not
+ * of one rank: {@link precedes} orders them by interaction pseudo-class and
+ * then by condition hash, so arrival decides only between two classes of one
+ * condition, which meet only where class strings are joined by hand.
  */
 function orderAtoms(list: Part[]): void {
   let sorted = true;
@@ -1076,34 +1272,43 @@ interface Named {
 }
 
 /**
- * The atom a rule is, read off the rule itself: a class in the SELECTOR of the
- * exact shape `atom` names one, whose property the body declares.
+ * The atom a rule is, read off its selector alone: exactly one class of the
+ * shape `atom` names one, in every branch.
  *
  * `a-<property>[-<condition hash>]_<value hash>`, each hash one to seven
- * characters of base 36, and `var-<name>` for a custom property. Anything
- * looser took `.a-button__icon{…}`, somebody's BEM, and
- * `background:url(./x.a-b_c.png)`, a declaration, for atoms, and moved them
- * past every block. `atom_named` in `order.rs` reads the same shape.
+ * characters of base 36, a property in lower case, and `var-<name>` for a
+ * custom property, whose name keeps its case and may hold an underscore. The
+ * class and never the body, because a minifier rewrites bodies: below its
+ * logical-property support it writes `inset-inline-start` as `left` and
+ * `right` under `:lang()`. A class has a condition hash exactly when its rule
+ * is not the bare class.
+ *
+ * Rejected: `.a-button__icon{…}`, somebody's BEM, and
+ * `background:url(./x.a-b_c.png)`, which is not in a selector. `atom_named` in
+ * `order.rs` reads the same shape.
  */
 function atomNamed(rule: string): Named | null {
   let at = pastComments(rule, 0);
+  let wrapped = false;
   while (rule[at] === "@") {
     const brace = rule.indexOf("{", at);
     if (brace < 0) return null;
-    at = pastComments(rule, brace + 1);
+    at = pastSpace(rule, brace + 1);
+    wrapped = true;
   }
   const open = rule.indexOf("{", at);
   if (open < 0) return null;
-  const close = closingBrace(rule, open + 1);
-  if (close < 0) return null;
-  const declarations = declared(rule.slice(open + 1, close));
-  let found: Named | null = null;
-  for (const branch of branches(rule.slice(at, open))) {
-    const named = classIn(branch, declarations);
-    if (named === null || (found !== null && found.name !== named.name)) return null;
-    found = named;
+  const selector = rule.slice(at, open);
+  let found: string | null = null;
+  for (const branch of branches(selector)) {
+    const name = classIn(branch);
+    if (name === null || (found !== null && found !== name)) return null;
+    found = name;
   }
-  return found;
+  if (found === null) return null;
+  const bare = !wrapped && selector.trim() === `.${found}`;
+  const condition = atomCondition(found, bare);
+  return condition === null ? null : { name: found, condition };
 }
 
 function pastComments(text: string, from: number): number {
@@ -1152,67 +1357,43 @@ function branches(selector: string): string[] {
   return out;
 }
 
-/** The properties a rule body declares, lower-cased. */
-function declared(body: string): string[] {
-  const out: string[] = [];
-  let depth = 0;
-  let start = 0;
-  const take = (to: number): void => {
-    const colon = body.indexOf(":", start);
-    if (colon >= 0 && colon < to) out.push(body.slice(start, colon).trim().toLowerCase());
-  };
-  for (let index = 0; index < body.length; index++) {
-    const character = body[index];
-    if (character === "\\") index++;
-    else if (character === '"' || character === "'") index = stringEnd(body, index);
-    else if (character === "(") depth++;
-    else if (character === ")") depth--;
-    else if (character === ";" && depth === 0) {
-      take(index);
-      start = index + 1;
-    }
+/** The one class of an atom's shape a selector branch names, if it names one and no other. */
+function classIn(branch: string): string | null {
+  let found: string | null = null;
+  for (let at = branch.indexOf("."); at >= 0; at = branch.indexOf(".", at + 1)) {
+    const name = /^[\w-]*/.exec(branch.slice(at + 1))?.[0] ?? "";
+    if (atomCondition(name, true) === null && atomCondition(name, false) === null) continue;
+    if (found !== null && found !== name) return null;
+    found = name;
   }
-  take(body.length);
-  return out;
-}
-
-/** The first class in one selector branch that is an atom declaring one of `declarations`. */
-function classIn(branch: string, declarations: readonly string[]): Named | null {
-  for (let at = branch.indexOf(".a-"); at >= 0; at = branch.indexOf(".a-", at + 1)) {
-    const name = /^[\w-]+/.exec(branch.slice(at + 1))?.[0] ?? "";
-    const condition = atomCondition(name, declarations);
-    if (condition !== null) return { name, condition };
-  }
-  return null;
+  return found;
 }
 
 const HASH = /^[0-9a-z]{1,7}$/;
-const PREFIXES = ["-webkit-", "-moz-", "-ms-", "-o-"];
 
-function unprefixed(property: string): string {
-  const prefix = PREFIXES.find((each) => property.startsWith(each));
-  return prefix === undefined ? property : property.slice(prefix.length);
+/** A property as an atom's class spells it. */
+function isProperty(name: string): boolean {
+  if (name.startsWith("var-")) return /^[\w-]+$/.test(name.slice(4));
+  return /[a-z]/.test(name) && /^[a-z0-9-]+$/.test(name);
 }
 
-/** The condition hash of `name`, when it is an atom's class for a property `declarations` sets. */
-function atomCondition(name: string, declarations: readonly string[]): string | null {
+/**
+ * The condition hash of `name`, read as a bare rule's (none) or as a
+ * conditioned one's (the last segment of the key), when it is an atom's class.
+ * The value hash starts after the LAST underscore: a custom property's name may
+ * hold one, and a hash never does.
+ */
+function atomCondition(name: string, bare: boolean): string | null {
   if (!name.startsWith("a-")) return null;
   const rest = name.slice(2);
   const underscore = rest.lastIndexOf("_");
   if (underscore < 0 || !HASH.test(rest.slice(underscore + 1))) return null;
   const key = rest.slice(0, underscore);
-  const sets = (property: string): boolean => {
-    const declaredAs = property.startsWith("var-") ? `--${property.slice(4)}` : property;
-    return (
-      property !== "" && declarations.some((held) => unprefixed(held) === unprefixed(declaredAs))
-    );
-  };
-  if (!key.includes("_") && sets(key)) return "";
+  if (bare) return isProperty(key) ? "" : null;
   const dash = key.lastIndexOf("-");
   if (dash < 0) return null;
-  const property = key.slice(0, dash);
   const condition = key.slice(dash + 1);
-  return HASH.test(condition) && !property.includes("_") && sets(property) ? condition : null;
+  return HASH.test(condition) && isProperty(key.slice(0, dash)) ? condition : null;
 }
 
 /**

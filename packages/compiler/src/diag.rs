@@ -117,6 +117,7 @@ codes! {
     Barq030 = "BARQ030", Error, "A prop is assigned, and props are read-only";
     Barq031 = "BARQ031", Error, "A props pattern binds a name that cannot be kept reactive";
     Barq032 = "BARQ032", Warning, "A shorthand that cannot be split is merged with one of its longhands";
+    Barq033 = "BARQ033", Note, "Two conditions on one property are written in the order the stylesheet reverses";
 }
 
 /// Where the pages live. A consumer gets this string verbatim — the Vite panel

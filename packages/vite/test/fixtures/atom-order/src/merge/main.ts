@@ -1,6 +1,7 @@
 import { wide } from "./wide.ts";
 import { tight } from "./atom.ts";
 import { flat } from "./flat.ts";
+import { shifted, start } from "./logical.ts";
 
 // A block, an atom under the same query, and a block after both: the minifier
 // writes the first two under one `@media`, and the third has to stay last.
@@ -12,3 +13,8 @@ const atom = document.createElement("p");
 atom.id = "atom";
 atom.className = `${wide} ${flat} ${tight}`;
 document.querySelector("#app")?.append(atom);
+
+const logical = document.createElement("p");
+logical.id = "logical";
+logical.className = `${shifted} ${start}`;
+document.querySelector("#app")?.append(logical);

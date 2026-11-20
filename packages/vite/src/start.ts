@@ -160,52 +160,80 @@ const DEV_STYLESHEETS = Symbol.for("barq.dev.stylesheets");
  * The answer `devStylesheets` in `@barqjs/start` reads, so the head of one dev
  * page holds that page's rules rather than every rule the process has seen,
  * with every module stylesheet there is beside it: an entry under any other
- * key, a theme `installTheme` wrote, is every page's.
- * Dynamic imports are not followed: a lazily loaded module is in a build's
- * stylesheets only once it loads, and here it is in the late sheet.
+ * key is not a module's, and the registry decides those.
+ *
+ * A route module's `lazy()` and `clientOnly()` targets are followed too: a
+ * build links a lazy module's stylesheet when the page renders it, and here
+ * the module is imported once per process, so only the first request saw its
+ * rules arrive, in its late sheet, and every later one rendered its markup with
+ * none. Other dynamic imports are not followed, and the router entry's lazy
+ * routes are not, which would pull every route in. A module the graph holds
+ * without a transform result is walked through what it imported.
  */
 function pageStylesheets(
   server: ViteDevServer,
   routes: readonly string[],
   routerEntry: string | null,
-): { readonly keys: readonly string[]; readonly modules: ReadonlySet<string> } {
+): {
+  readonly keys: readonly string[];
+  readonly modules: ReadonlySet<string>;
+  readonly lazy: readonly string[];
+} {
   const plugins = server.config.plugins;
   const router = plugins.find((plugin) => plugin.name === "barq-router")?.api as
-    | { entries(): readonly { readonly id: string; readonly file: string }[] }
+    | {
+        entries(): readonly { readonly id: string; readonly file: string }[];
+        lazyOf(id: string): readonly string[];
+      }
     | undefined;
   const compiler = plugins.find((plugin) => plugin.name === "barq-compiler")?.api as
     | CompilerApi
     | undefined;
   const graph = server.environments[ENVIRONMENTS.server]?.moduleGraph;
-  if (compiler === undefined || graph === undefined) return { keys: [], modules: new Set() };
+  if (compiler === undefined || graph === undefined) {
+    return { keys: [], modules: new Set(), lazy: [] };
+  }
   const order: string[] = [];
+  const lazies: string[] = [];
   const walked = new Set<unknown>();
   type Node = NonNullable<ReturnType<typeof graph.getModuleById>>;
-  const visit = (module: Node): void => {
+  const visit = (module: Node, lazy: boolean): void => {
     if (walked.has(module)) return;
     walked.add(module);
+    const deps = (module.transformResult as { deps?: readonly string[] } | null)?.deps;
     const imported = [...module.importedModules];
-    for (const url of (module.transformResult as { deps?: readonly string[] } | null)?.deps ?? []) {
-      const found = graph.urlToModuleMap.get(url) ?? imported.find((each) => each.url === url);
-      if (found !== undefined) visit(found);
+    if (deps === undefined) {
+      for (const each of imported) visit(each, lazy);
+    } else {
+      for (const url of deps) {
+        const found = graph.urlToModuleMap.get(url) ?? imported.find((each) => each.url === url);
+        if (found !== undefined) visit(found, lazy);
+      }
+    }
+    if (lazy && module.id !== null) {
+      for (const id of router?.lazyOf(module.id) ?? []) {
+        lazies.push(id);
+        const target = graph.getModuleById(id);
+        if (target !== undefined) visit(target, lazy);
+      }
     }
     if (module.id !== null) order.push(...compiler.stylesheetsOf(module.id));
   };
-  const file = (path: string): void => {
+  const file = (path: string, lazy: boolean): void => {
     const modules = [...(graph.getModulesByFile(path) ?? [])];
     // The route's own half first and its split component after, as they run.
     modules.sort((a, b) => Number(isSplit(a.id)) - Number(isSplit(b.id)));
-    for (const module of modules) visit(module);
+    for (const module of modules) visit(module, lazy);
   };
-  if (routerEntry !== null) file(routerEntry);
+  if (routerEntry !== null) file(routerEntry, false);
   const entries = router?.entries() ?? [];
   for (const route of routes) {
     for (const entry of entries) {
       if (entry.id !== route) continue;
-      file(isAbsolute(entry.file) ? entry.file : join(server.config.root, entry.file));
+      file(isAbsolute(entry.file) ? entry.file : join(server.config.root, entry.file), true);
     }
   }
-  return { keys: order, modules: compiler.stylesheets() };
+  return { keys: order, modules: compiler.stylesheets(), lazy: lazies };
 }
 
 function isSplit(id: string | null): boolean {
@@ -417,7 +445,7 @@ function defaultServerEntry(pages: boolean): string {
   // without the split, `/about` inlined the rules a request for `/css` had
   // produced.
   const shared =
-    "inlineCss: (routes) => collectCssParts(devStylesheets(routes)), requestCss: collectRequestCss";
+    "inlineCss: async (routes) => collectCssParts(await devStylesheets(routes)), requestCss: collectRequestCss";
   const options = pages ? `{ ${shared} }` : `{ pages: false, ${shared} }`;
   return [
     `import { createStartHandler } from "@barqjs/router/server";`,
@@ -1647,9 +1675,19 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
       const diagnostics = serverDiagnostics(viteServer, (specifier) =>
         environment.runner.import(specifier),
       );
-      (globalThis as { [DEV_STYLESHEETS]?: unknown })[DEV_STYLESHEETS] = (
+      (globalThis as { [DEV_STYLESHEETS]?: unknown })[DEV_STYLESHEETS] = async (
         routes: readonly string[],
-      ) => pageStylesheets(viteServer, routes, findRouterEntry(root, srcDirectory));
+      ) => {
+        const entry = findRouterEntry(root, srcDirectory);
+        // A lazy module is imported once per process, and only when it
+        // renders, which is after the head is written. Imported here first, it
+        // registers its rules in time for this page's head on the first
+        // request as on every later one.
+        for (const id of pageStylesheets(viteServer, routes, entry).lazy) {
+          await environment.runner.import(id);
+        }
+        return pageStylesheets(viteServer, routes, entry);
+      };
 
       const report = (error: unknown): void => {
         try {

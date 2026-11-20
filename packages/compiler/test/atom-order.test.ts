@@ -68,7 +68,7 @@ async function devPage(): Promise<string> {
   writeFileSync(
     join(out, "entry.ts"),
     [
-      `import { registerCss } from ${JSON.stringify(RUNTIME)};`,
+      `import { css, registerCss } from ${JSON.stringify(RUNTIME)};`,
       register("early.ts", early.css),
       register("card.ts", card.css),
       register("late.ts", late.css),
@@ -79,6 +79,10 @@ async function devPage(): Promise<string> {
       `  element.className = ${JSON.stringify(card.classes[0])} + " " + atom;`,
       `  app.append(element);`,
       `}`,
+      `const runtime = document.createElement("p");`,
+      `runtime.id = "runtime";`,
+      `runtime.className = css\`color: \${String(document.documentElement.dataset.tone ?? "purple")};\` + " " + ${JSON.stringify(early.classes[0])};`,
+      `app.append(runtime);`,
       `window.loadSecond = async () => {`,
       `  ${register("second.ts", second.css)}`,
       `  const element = document.createElement("p");`,
@@ -160,7 +164,11 @@ describe("an atom against a css block class for one property", () => {
     test(`the atom wins in ${shape === "dev" ? "the dev registry" : `a ${shape} build`}, declared before the block or after it, and after a chunk loads`, async () => {
       await withChrome(async (page) => {
         await page.open(`${origin}/${shape}/`);
-        expect(await colors(page, ["early", "late"])).toEqual({ early: RED, late: ORANGE });
+        expect(await colors(page, ["early", "late", "runtime"])).toEqual({
+          early: RED,
+          late: ORANGE,
+          runtime: RED,
+        });
 
         await page.evaluate("window.loadSecond()");
         expect(await colors(page, ["early", "late", "lazy"])).toEqual({

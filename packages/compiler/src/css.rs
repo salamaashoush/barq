@@ -1214,6 +1214,7 @@ impl<'a> Css<'a, '_> {
             let Step::Fold { arguments, .. } = step else { continue };
             let with = Self::merge(arguments, true, layer);
             self.report_whole_shorthand(&with, span);
+            self.report_condition_order(&with, span);
             let without = arguments
                 .iter()
                 .any(|argument| argument.conditional)
@@ -1345,6 +1346,7 @@ impl<'a> Css<'a, '_> {
     ) -> Expression<'a> {
         let with = Self::merge(arguments, true, layer);
         self.report_whole_shorthand(&with, span);
+        self.report_condition_order(&with, span);
         let Some(conditional) = arguments.iter().find(|argument| argument.conditional) else {
             let all = self.emit_atoms(&with);
             return Expression::new_string_literal(
@@ -1876,6 +1878,77 @@ impl<'a> Css<'a, '_> {
                 span,
             });
             return;
+        }
+    }
+
+    /// One merge that sets a property under two conditions of one tier that
+    /// can both match, written in the order the shared stylesheet reverses.
+    ///
+    /// Two such classes both stay on the element, and one stylesheet serves
+    /// every call, so it cannot follow this call's writing order: a fixed order
+    /// decides, interaction pseudo-classes in their conventional order and then
+    /// the condition's hash. The one case worth saying anything about is the
+    /// pair whose later condition loses although it is written later. Two
+    /// conditions that rule each other out cannot both match, and are left
+    /// alone: `[data-state="open"]` against `[data-state="closed"]`, or `X`
+    /// against `:not(X)`.
+    fn report_condition_order(&mut self, atoms: &[barq_css::atoms::Atom], span: Span) {
+        if self.reports.iter().any(|report| report.code == Code::Barq033 && report.span == span) {
+            return;
+        }
+        let read: Vec<(&str, String, &barq_css::atoms::Atom)> = atoms
+            .iter()
+            .filter(|atom| atom.tier != barq_css::atoms::Tier::Base)
+            .filter_map(|atom| {
+                let open = atom.rule.rfind('{')?;
+                let colon = open + atom.rule[open..].find(':')?;
+                let condition = atom.rule[..open].replace(atom.class.as_str(), "&");
+                Some((&atom.rule[open + 1..colon], condition, atom))
+            })
+            .collect();
+        for (index, (property, first, early)) in read.iter().enumerate() {
+            for (other, second, late) in &read[index + 1..] {
+                // The same value under both changes nothing, whichever wins.
+                let value = |atom: &barq_css::atoms::Atom| {
+                    atom.class.rsplit('_').next().map(str::to_string)
+                };
+                if other != property
+                    || first == second
+                    || early.tier != late.tier
+                    || value(early) == value(late)
+                {
+                    continue;
+                }
+                // Two selectors of different weight are decided by specificity,
+                // whatever the order; and two pseudo-elements are two subjects.
+                if exclusive(first, second)
+                    || specificity(subject(&early.rule)) != specificity(subject(&late.rule))
+                    || pseudo_element(subject(&early.rule)) != pseudo_element(subject(&late.rule))
+                {
+                    continue;
+                }
+                let order = barq_css::order::rank(late.tier, &late.rule)
+                    .cmp(&barq_css::order::rank(early.tier, &early.rule));
+                if order != std::cmp::Ordering::Less {
+                    continue;
+                }
+                self.reports.push(Report {
+                    code: Code::Barq033,
+                    message: format!(
+                        "`{property}` is set under `{}` and then under `{}`, and both can match \
+                         one element. One stylesheet serves every call, so it cannot keep this \
+                         call's order: it puts `{}` first, and where both match `{}` wins although \
+                         it is written earlier. Write them in that order, so the code reads the \
+                         way the page behaves, or make one rule the other out.",
+                        shown(first),
+                        shown(second),
+                        shown(second),
+                        shown(first),
+                    ),
+                    span,
+                });
+                return;
+            }
         }
     }
 
@@ -2547,11 +2620,226 @@ fn is_condition(key: &str) -> bool {
 }
 
 fn join(outer: &str, inner: &str) -> String {
-    if outer == "default" {
-        inner.to_string()
-    } else {
-        format!("{outer}{}{inner}", barq_css::atoms::NEST)
+    let inner = barq_css::atoms::canonical_condition(inner);
+    if outer == "default" { inner } else { format!("{outer}{}{inner}", barq_css::atoms::NEST) }
+}
+
+/// A condition as an author would recognise it: the rule's selector with its
+/// own class as `&`, under whatever at-rules wrap it.
+fn shown(condition: &str) -> String {
+    condition.replace('{', " ").split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// A rule's selector, with its layer and every other at-rule prelude off.
+fn subject(rule: &str) -> &str {
+    let mut at = 0;
+    while rule[at..].starts_with('@') {
+        let Some(brace) = rule[at..].find('{') else { return "" };
+        at += brace + 1;
     }
+    rule[at..].split('{').next().unwrap_or("").trim()
+}
+
+/// The pseudo-element a selector's subject is, if any.
+fn pseudo_element(selector: &str) -> Option<&str> {
+    let at = selector.rfind("::")?;
+    let end = selector[at + 2..]
+        .find(|c: char| !(c.is_ascii_alphanumeric() || c == '-'))
+        .map_or(selector.len(), |end| at + 2 + end);
+    Some(&selector[at..end])
+}
+
+/// A selector list's specificity, the most specific branch's: ids, then
+/// classes, attributes and pseudo-classes, then types and pseudo-elements.
+/// `:where()` counts nothing, and `:is()`, `:not()` and `:has()` count their
+/// most specific argument.
+fn specificity(selector: &str) -> (u32, u32, u32) {
+    split_top(selector, ',').into_iter().map(compound_weight).max().unwrap_or((0, 0, 0))
+}
+
+fn split_top(text: &str, separator: char) -> Vec<&str> {
+    let (mut depth, mut start, mut out) = (0i32, 0usize, Vec::new());
+    for (index, c) in text.char_indices() {
+        match c {
+            '(' | '[' => depth += 1,
+            ')' | ']' => depth -= 1,
+            _ if c == separator && depth == 0 => {
+                out.push(&text[start..index]);
+                start = index + c.len_utf8();
+            }
+            _ => {}
+        }
+    }
+    out.push(&text[start..]);
+    out
+}
+
+fn compound_weight(selector: &str) -> (u32, u32, u32) {
+    let chars: Vec<char> = selector.chars().collect();
+    let (mut a, mut b, mut c) = (0u32, 0u32, 0u32);
+    let mut at = 0;
+    let ident = |from: usize| {
+        let mut end = from;
+        while end < chars.len()
+            && (chars[end].is_alphanumeric() || matches!(chars[end], '-' | '_' | '\\'))
+        {
+            end += if chars[end] == '\\' { 2 } else { 1 };
+        }
+        end.min(chars.len())
+    };
+    while at < chars.len() {
+        match chars[at] {
+            '#' => {
+                a += 1;
+                at = ident(at + 1);
+            }
+            '.' => {
+                b += 1;
+                at = ident(at + 1);
+            }
+            '[' => {
+                b += 1;
+                while at < chars.len() && chars[at] != ']' {
+                    at += 1;
+                }
+                at += 1;
+            }
+            ':' if chars.get(at + 1) == Some(&':') => {
+                c += 1;
+                at = ident(at + 2);
+            }
+            ':' => {
+                let end = ident(at + 1);
+                let name: String =
+                    chars[at + 1..end].iter().collect::<String>().to_ascii_lowercase();
+                at = end;
+                if chars.get(at) == Some(&'(') {
+                    let mut depth = 0;
+                    let start = at + 1;
+                    while at < chars.len() {
+                        match chars[at] {
+                            '(' => depth += 1,
+                            ')' => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    break;
+                                }
+                            }
+                            _ => {}
+                        }
+                        at += 1;
+                    }
+                    let inner: String = chars[start..at.min(chars.len())].iter().collect();
+                    at += 1;
+                    match name.as_str() {
+                        "where" => {}
+                        "is" | "not" | "has" | "matches" => {
+                            let (x, y, z) = specificity(&inner);
+                            a += x;
+                            b += y;
+                            c += z;
+                        }
+                        _ => b += 1,
+                    }
+                } else {
+                    b += 1;
+                }
+            }
+            ch if ch.is_alphabetic() => {
+                c += 1;
+                at = ident(at);
+            }
+            _ => at += 1,
+        }
+    }
+    (a, b, c)
+}
+
+/// Whether two conditions rule each other out by how they are written: one
+/// attribute equal to two different values or starting with two that do not
+/// start each other, two different child positions, or a selector and its
+/// `:not()`.
+fn exclusive(first: &str, second: &str) -> bool {
+    let values = |condition: &str| -> Vec<(String, bool, String)> {
+        let mut out = Vec::new();
+        let mut rest = condition;
+        while let Some(open) = rest.find('[') {
+            let Some(close) = rest[open..].find(']') else { break };
+            let inner = &rest[open + 1..open + close];
+            if let Some((name, value)) = inner.split_once('=') {
+                let prefix = name.ends_with('^');
+                if prefix || !name.ends_with(['~', '|', '$', '*']) {
+                    out.push((
+                        name.trim_end_matches('^').trim().to_string(),
+                        prefix,
+                        value.trim().trim_matches(['"', '\'']).to_string(),
+                    ));
+                }
+            }
+            rest = &rest[open + close + 1..];
+        }
+        out
+    };
+    let apart = |(name, prefix, value): &(String, bool, String),
+                 (other, held_prefix, held): &(String, bool, String)| {
+        name == other
+            && match (prefix, held_prefix) {
+                (false, false) => value != held,
+                (true, false) => !held.starts_with(value.as_str()),
+                (false, true) => !value.starts_with(held.as_str()),
+                (true, true) => {
+                    !value.starts_with(held.as_str()) && !held.starts_with(value.as_str())
+                }
+            }
+    };
+    let (one, two) = (values(first), values(second));
+    if one.iter().any(|a| two.iter().any(|b| apart(a, b))) {
+        return true;
+    }
+    let position = |condition: &str| -> Option<(bool, String)> {
+        if condition.contains(":first-child") {
+            return Some((false, "1".to_string()));
+        }
+        if condition.contains(":last-child") {
+            return Some((true, "1".to_string()));
+        }
+        for (marker, last) in [(":nth-child(", false), (":nth-last-child(", true)] {
+            if let Some(at) = condition.find(marker) {
+                let rest = &condition[at + marker.len()..];
+                let argument = rest.split(')').next().unwrap_or("").trim();
+                if argument.bytes().all(|b| b.is_ascii_digit()) && !argument.is_empty() {
+                    return Some((last, argument.to_string()));
+                }
+            }
+        }
+        None
+    };
+    if let (Some((a_last, a)), Some((b_last, b))) = (position(first), position(second))
+        && a_last == b_last
+        && a != b
+    {
+        return true;
+    }
+    let negated = |a: &str, b: &str| {
+        let mut rest = a;
+        while let Some(at) = rest.find(":not(") {
+            let inner_start = at + ":not(".len();
+            let Some(close) = rest[inner_start..].find(')') else { break };
+            let inner = &rest[inner_start..inner_start + close];
+            if !inner.is_empty() && b.contains(inner) && !b.contains(&format!(":not({inner})")) {
+                return true;
+            }
+            // `:not(S *)`, outside S, against `S &`, inside it.
+            if let Some(ancestor) = inner.strip_suffix(" *")
+                && b.contains(&format!("{ancestor} "))
+            {
+                return true;
+            }
+            rest = &rest[inner_start + close..];
+        }
+        false
+    };
+    negated(first, second) || negated(second, first)
 }
 
 /// The array an expression is, through whatever type wrappers it wears.
@@ -3373,6 +3661,48 @@ mod atom_tests {
         ] {
             let out = run(source);
             assert!(whole_shorthand(&out).is_empty(), "{source}: {:?}", out.warnings);
+        }
+    }
+
+    fn condition_order(out: &crate::compile::CompileOutput) -> Vec<&str> {
+        out.warnings
+            .iter()
+            .filter(|w| w.code == Some(crate::diag::Code::Barq033))
+            .map(|w| w.message.as_str())
+            .collect()
+    }
+
+    #[test]
+    fn two_conditions_written_against_the_fixed_order_are_reported() {
+        for source in [
+            "export const c = atoms({ color: { \":active\": \"red\", \":hover\": \"blue\" } });",
+            "export const c = atoms({ color: { \":disabled\": \"grey\", \"[data-active]\": \"red\" } });",
+            "export const c = atoms({ color: { \":hover\": \"blue\", \"[data-active]\": \"red\" } });",
+        ] {
+            let out = run(source);
+            assert_eq!(condition_order(&out).len(), 1, "{source}: {:?}", out.warnings);
+        }
+    }
+
+    #[test]
+    fn two_conditions_that_cannot_reverse_are_not() {
+        for source in [
+            // In the fixed order already.
+            "export const c = atoms({ color: { \":hover\": \"blue\", \":active\": \"red\" } });",
+            // Ruled out by how they are written.
+            "export const c = atoms({ color: { \"[data-state='open']\": \"a\", \"[data-state=closed]\": \"b\" } });",
+            "export const c = atoms({ color: { \"[data-motion^='to-']\": \"a\", \"[data-motion^='from-']\": \"b\" } });",
+            "export const c = atoms({ color: { \":nth-child(2)\": \"a\", \":first-child\": \"b\" } });",
+            "export const c = atoms({ color: { \"[data-x]\": \"a\", \":not([data-x])\": \"b\" } });",
+            // Specificity decides, not order.
+            "export const c = atoms({ color: { \"[data-a][data-b]\": \"a\", \"[data-c]\": \"b\" } });",
+            // One value, so nothing changes whichever wins.
+            "export const c = atoms({ color: { \":hover\": \"red\", \"[data-active]\": \"red\" } });",
+            // Two pseudo-elements are two subjects.
+            "export const c = atoms({ \"::before\": { color: \"red\" }, \"::after\": { color: \"blue\" } });",
+        ] {
+            let out = run(source);
+            assert!(condition_order(&out).is_empty(), "{source}: {:?}", out.warnings);
         }
     }
 

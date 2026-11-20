@@ -530,11 +530,13 @@ const UNSPLIT_SOURCE = "style.css";
 interface BundleContext {
   environment?: {
     config?: {
-      build?: { cssCodeSplit?: boolean };
+      build?: { cssCodeSplit?: boolean; lib?: unknown };
       plugins?: readonly { name: string; api?: unknown }[];
     };
   };
   emitFile(file: { type: "asset"; name: string; source: string }): string;
+  error(message: string): never;
+  warn(message: string): void;
   getFileName(reference: string): string;
 }
 
@@ -579,6 +581,36 @@ const PLACE_STYLESHEET =
   `(function (link) { var atoms = link.rel === "stylesheet" && ` +
   `document.querySelector('link[rel="stylesheet"][${ATOMS_ATTRIBUTE}]'); ` +
   `if (atoms) atoms.parentNode.insertBefore(link, atoms); else document.head.append(link); })`;
+
+const PRELOAD_HELPER_UNKNOWN =
+  "[barq] Vite's preload helper was not one this version can make link a stylesheet in front " +
+  "of the atoms, so a stylesheet a dynamic import brings would land after them and could beat " +
+  'them. Update @barqjs/vite, or set `compiler: { preloadHelper: "warn" }` to build anyway.';
+
+/**
+ * Whether a dynamic import in this bundle brings a stylesheet: a dynamically
+ * imported chunk, or a chunk it imports, lists one.
+ */
+function lazilyLinked(bundle: Record<string, unknown>): boolean {
+  type Chunked = {
+    type: string;
+    isDynamicEntry?: boolean;
+    imports?: readonly string[];
+    viteMetadata?: { importedCss: Set<string> };
+  };
+  const chunks = bundle as Record<string, Chunked>;
+  const linked = (name: string, seen: Set<string>): boolean => {
+    const chunk = chunks[name];
+    if (chunk?.type !== "chunk" || seen.has(name)) return false;
+    seen.add(name);
+    if ((chunk.viteMetadata?.importedCss.size ?? 0) > 0) return true;
+    return (chunk.imports ?? []).some((each) => linked(each, seen));
+  };
+  return Object.entries(chunks).some(
+    ([name, chunk]) =>
+      chunk.type === "chunk" && chunk.isDynamicEntry === true && linked(name, new Set()),
+  );
+}
 
 /** Vite's preload helper, which links the stylesheets of a dynamically imported chunk. */
 const PRELOAD_HELPER = "\0vite/preload-helper.js";
@@ -1086,6 +1118,9 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
    */
   const inlined = new Set<string>();
 
+  /** Whether this build's preload helper was rewritten to link in front of the atoms. */
+  let helperPlaced = false;
+
   /** The stylesheet keys each module registers in `"inline"` mode, in the order it does. */
   const sheetsByModule = new Map<string, string[]>();
 
@@ -1310,6 +1345,14 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
         // too. Every entry links it, last, so a page has it from its first
         // paint and no dynamic import is what brings it.
         if (atoms !== "") {
+          // The helper is reached through `transform` under the id this
+          // version knows. A Vite that renames it, or loads it some other way,
+          // never got here, and its chunks' stylesheets would land after the
+          // atoms with nothing said about it.
+          if (!helperPlaced && lazilyLinked(bundle)) {
+            if (preloadHelper === "warn") this.warn(PRELOAD_HELPER_UNKNOWN);
+            else this.error(PRELOAD_HELPER_UNKNOWN);
+          }
           const reference = this.emitFile({
             type: "asset",
             name: ATOMS_ASSET,
@@ -1411,17 +1454,13 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
       if (id === PRELOAD_HELPER) {
         const inserts = [...code.matchAll(PRELOAD_INSERT)];
         if (inserts.length !== 1) {
-          const message =
-            "[barq] Vite's preload helper no longer links a stylesheet with one " +
-            "`document.head.appendChild(…)`, so a stylesheet a dynamic import brings would " +
-            "land after the atoms and could beat them. Update @barqjs/vite, or set " +
-            '`compiler: { preloadHelper: "warn" }` to build anyway.';
           if (preloadHelper === "warn") {
-            this.warn(message);
+            this.warn(PRELOAD_HELPER_UNKNOWN);
             return null;
           }
-          this.error(message);
+          this.error(PRELOAD_HELPER_UNKNOWN);
         }
+        helperPlaced = true;
         return {
           code: code.replace(PRELOAD_INSERT, (_, link: string) => `${PLACE_STYLESHEET}(${link})`),
           map: null,
@@ -1817,13 +1856,38 @@ export function barqStylesheets(): Plugin {
         // By what it holds rather than by its name: the marker every module
         // holding an atom imports reaches only the one sheet an unsplit build
         // writes, whatever `build.lib` called it.
+        const layers = api?.layerOrder() ?? [];
+        const library =
+          this.environment?.config?.build?.lib !== undefined &&
+          this.environment.config.build.lib !== false;
         for (const asset of Object.values(bundle)) {
           if (asset.type !== "asset" || !asset.fileName.endsWith(".css")) continue;
           const source = sourceText(asset);
           if (!ATOMS_MARKER_RULE.test(source)) continue;
           const gathered = compiler.gatherAtoms([source]);
           const blocks = (gathered.sheets[0] ?? "").replace(ATOMS_MARKER_RULE, "");
-          asset.source = compiler.orderCss(blocks + gathered.atoms, api?.layerOrder() ?? []);
+          // A library ships one stylesheet for its consumer to import, so its
+          // atoms stay in it, after its blocks.
+          if (library || gathered.atoms === "") {
+            asset.source = compiler.orderCss(blocks + gathered.atoms, layers);
+            continue;
+          }
+          // An application's atoms are a file of their own, linked after the
+          // sheet, as a split build's are: what the runtime registers and
+          // what `useHead` or a streamed head adds then has a link to stand in
+          // front of. Inside the one sheet they had none, and a block the
+          // runtime evaluated was written after every atom.
+          asset.source = compiler.orderCss(blocks, layers);
+          const reference = this.emitFile({
+            type: "asset",
+            name: ATOMS_ASSET,
+            source: compiler.orderCss(gathered.atoms, layers),
+          });
+          const atoms = this.getFileName(reference);
+          for (const page of Object.values(bundle)) {
+            if (page.type !== "asset" || !page.fileName.endsWith(".html")) continue;
+            page.source = linkedAfter(sourceText(page), asset.fileName, atoms);
+          }
         }
       },
     },
@@ -1840,6 +1904,20 @@ export function barqStylesheets(): Plugin {
       },
     },
   };
+}
+
+/**
+ * A document built for an unsplit sheet, with the atoms' link after the sheet's.
+ * Vite has written the document by the time the atoms exist, so the link goes
+ * in here rather than through `transformIndexHtml`.
+ */
+function linkedAfter(html: string, sheet: string, atoms: string): string {
+  const name = sheet.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return html.replace(
+    new RegExp(`<link\\b[^>]*\\shref="([^"]*)${name}"[^>]*>`),
+    (tag, prefix: string) =>
+      `${tag}\n    <link rel="stylesheet" crossorigin href="${prefix}${atoms}" ${ATOMS_ATTRIBUTE}>`,
+  );
 }
 
 interface HotNode {

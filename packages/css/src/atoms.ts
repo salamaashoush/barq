@@ -652,7 +652,136 @@ function walk(
 }
 
 function join(outer: string, inner: string): string {
-  return outer === "default" ? inner : `${outer}${NEST}${inner}`;
+  const own = canonical(inner);
+  return outer === "default" ? own : `${outer}${NEST}${own}`;
+}
+
+/**
+ * A condition key in one spelling, so two ways of writing one condition hash to
+ * one key and one rule.
+ *
+ * `& svg:not([class*="size-"])` and `& svg:not([class*='size-'])` were two
+ * conditions: `@barqjs/ui`'s button wrote its base icon size with one and a size
+ * variant with the other, the merge kept both classes and the order of two
+ * rules decided which size won. Attribute values go in double quotes, white
+ * space collapses to one space, a combinator stands between single spaces and a
+ * comma is followed by one, and an at-rule's name is lower case. String
+ * contents, identifiers and attribute values keep their case.
+ * `canonical_condition` in the compiler is the same function.
+ */
+export function canonical(condition: string): string {
+  const trimmed = condition.trim();
+  if (trimmed.startsWith("@")) {
+    const name = /^@[A-Za-z0-9-]*/.exec(trimmed)?.[0] ?? "@";
+    return name.toLowerCase() + collapsed(trimmed.slice(name.length));
+  }
+  const chars = Array.from(trimmed);
+  let out = "";
+  let depth = 0;
+  let space = false;
+  const gap = (): void => {
+    if (space && out !== "" && !out.endsWith("(") && !out.endsWith(" ")) out += " ";
+    space = false;
+  };
+  for (let at = 0; at < chars.length;) {
+    const c = chars[at] ?? "";
+    if (/\s/.test(c)) {
+      space = true;
+      at++;
+      continue;
+    }
+    if (c === "[") {
+      const close = attributeEnd(chars, at);
+      gap();
+      out += attribute(chars.slice(at, Math.min(close, chars.length - 1) + 1).join(""));
+      at = close + 1;
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      const close = quoteEnd(chars, at);
+      gap();
+      out += chars.slice(at, Math.min(close, chars.length - 1) + 1).join("");
+      at = close + 1;
+      continue;
+    }
+    if (c === "(") depth++;
+    else if (c === ")") depth--;
+    // `+` is also arithmetic inside `:nth-child(2n + 1)`, so only outside
+    // parentheses; `>` and `~` are combinators wherever they stand.
+    if (c === ">" || c === "~" || c === "," || (c === "+" && depth === 0)) {
+      out = out.trimEnd();
+      if (c === ",") out += ", ";
+      else if (out === "" || out.endsWith("(")) out += `${c} `;
+      else out += ` ${c} `;
+      space = false;
+      at++;
+      continue;
+    }
+    if (c !== ")") gap();
+    space = false;
+    out += c;
+    at++;
+  }
+  return out.trimEnd();
+}
+
+function collapsed(text: string): string {
+  const words = text.split(/\s+/).filter((word) => word !== "");
+  return (/^\s/.test(text) && words.length > 0 ? " " : "") + words.join(" ");
+}
+
+function quoteEnd(chars: readonly string[], open: number): number {
+  const quote = chars[open];
+  for (let at = open + 1; at < chars.length; at++) {
+    if (chars[at] === "\\") at++;
+    else if (chars[at] === quote) return at;
+  }
+  return Math.max(chars.length - 1, 0);
+}
+
+function attributeEnd(chars: readonly string[], open: number): number {
+  for (let at = open + 1; at < chars.length; at++) {
+    const c = chars[at];
+    if (c === '"' || c === "'") at = quoteEnd(chars, at);
+    else if (c === "\\") at++;
+    else if (c === "]") return at;
+  }
+  return Math.max(chars.length - 1, 0);
+}
+
+/** `[name op value flag]` with its value in double quotes. */
+function attribute(raw: string): string {
+  if (!raw.startsWith("[") || !raw.endsWith("]")) return raw;
+  const inner = raw.slice(1, -1);
+  let found: [number, string] | null = null;
+  for (const op of ["~=", "|=", "^=", "$=", "*=", "="]) {
+    const at = inner.indexOf(op);
+    if (at >= 0 && !/["']/.test(inner.slice(0, at))) {
+      found = [at, op];
+      break;
+    }
+  }
+  if (found === null) return `[${inner.trim()}]`;
+  const [at, op] = found;
+  const name = inner.slice(0, at).trim();
+  const rest = inner.slice(at + op.length).trim();
+  let value: string;
+  let flag: string;
+  if (rest[0] === '"' || rest[0] === "'") {
+    const body = Array.from(rest);
+    const close = quoteEnd(body, 0);
+    const text = body.slice(1, Math.max(close, 1)).join("");
+    flag = body
+      .slice(Math.min(close + 1, body.length))
+      .join("")
+      .trim();
+    value = rest[0] === "'" && text.includes('"') ? `'${text}'` : `"${text}"`;
+  } else {
+    const words = rest.split(/\s+/).filter((word) => word !== "");
+    value = `"${words[0] ?? ""}"`;
+    flag = words.slice(1).join(" ");
+  }
+  return flag === "" ? `[${name}${op}${value}]` : `[${name}${op}${value} ${flag}]`;
 }
 
 /** The declaration text for a value, or the repeated declarations of a fallback. */

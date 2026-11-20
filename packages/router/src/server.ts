@@ -696,7 +696,7 @@ export interface PageHandlerOptions extends SharedRouterOptions {
    * dependency on `@barqjs/css`. A production build leaves it unset and links
    * assets instead.
    */
-  readonly inlineCss?: (routes: readonly string[]) => InlineCss;
+  readonly inlineCss?: (routes: readonly string[]) => InlineCss | Promise<InlineCss>;
 
   /**
    * The rules THIS request's render registered, read at `<Scripts />`.
@@ -1289,6 +1289,11 @@ export function createPageHandler(
             { nonce: options.nonce, onError: (error) => console.error(error) },
           );
           timing?.phase("barq-head", "head and the loaders it waits for");
+          // Given the matched routes, so a dev server can hand back the rules
+          // of the modules this page reaches rather than of every module any
+          // request has reached, once it has loaded the ones the page loads
+          // lazily.
+          const inlineCss = await options.inlineCss?.(rendered.map((route) => route.id));
           const context = contextScript(url, before.produced, options.nonce);
           const preload = preloadTags(rendered, options.routeAssets, crossOrigin);
           hints.collect(
@@ -1313,10 +1318,7 @@ export function createPageHandler(
                 ...chainFiles(rendered, options.routeCss),
               ],
             },
-            // Given the matched routes, so a dev server can hand back the
-            // rules of the modules this page reaches rather than of every
-            // module any request has reached.
-            inlineCss: options.inlineCss?.(rendered.map((route) => route.id)),
+            inlineCss,
             // This request's own rules, and no other request's. Read at
             // `<Scripts />`, after the body — the only moment it is complete.
             lateCss: () => options.requestCss?.() ?? "",

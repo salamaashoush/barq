@@ -71,18 +71,25 @@ describe("a server-rendered page's stylesheets", () => {
     split = await prerendered(true);
   }, 180_000);
 
-  test("unsplit, the page links the one stylesheet", () => {
-    expect(unsplit.length).toBe(1);
-    const [sheet] = unsplit;
+  /**
+   * The atoms are a file of their own in an unsplit build too, linked after
+   * the one sheet: what the runtime registers, and a stylesheet linked later,
+   * then have a link to stand in front of.
+   */
+  test("unsplit, the page links the one stylesheet and the atoms after it", () => {
+    expect(unsplit.length).toBe(2);
+    const [sheet, atoms] = unsplit;
     expect(sheet?.css).toContain("max-width:48rem");
     expect(sheet?.css).toContain("system-ui");
+    expect(sheet?.tag).not.toContain("data-barq-atoms");
+    expect(atoms?.tag).toContain("data-barq-atoms");
   });
 
-  test("unsplit, its atoms come after its blocks, and the marker is gone", () => {
-    const css = unsplit[0]?.css ?? "";
-    expect(css).not.toContain("__barq_atoms__");
-    expect(css.match(/\.a-color_\w+\{color:red\}/g)?.length).toBe(1);
-    expect(css.indexOf(".a-color_")).toBeGreaterThan(css.indexOf("max-width:48rem"));
+  test("unsplit, its atoms are written once, none is left in the sheet, and the marker is gone", () => {
+    const [sheet, atoms] = unsplit;
+    for (const linked of unsplit) expect(linked.css).not.toContain("__barq_atoms__");
+    expect(sheet?.css).not.toContain(".a-");
+    expect(atoms?.css.match(/\.a-color_\w+\{color:red\}/g)?.length).toBe(1);
   });
 
   test("split, the atoms are a file of their own, linked last and marked", () => {
@@ -100,7 +107,9 @@ describe("a server-rendered page's stylesheets", () => {
 const FIXTURE = fileURLToPath(new URL("./fixtures/atom-order", import.meta.url));
 
 /** One build of the fixture in a process of its own, and its stylesheets by file. */
-async function fixture(shape: "split" | "unsplit" | "lib"): Promise<Record<string, string>> {
+async function fixture(
+  shape: "split" | "unsplit" | "lib" | "legacy",
+): Promise<Record<string, string>> {
   const out = mkdtempSync(join(tmpdir(), `barq-atom-order-${shape}-`));
   try {
     const child = Bun.spawn(["bun", join(FIXTURE, "build.ts"), shape, out], {
@@ -149,6 +158,20 @@ describe("a block a minifier put under one query with an atom", () => {
       }
     }, 60_000);
   }
+
+  /**
+   * Below its logical-property support a minifier writes `inset-inline-start`
+   * as `left` and `right` under `:lang()`, so the body no longer names the
+   * property the class does. The class alone is what makes the rule an atom's.
+   */
+  test("an atom a lowered `cssTarget` rewrote is still gathered and linked last", async () => {
+    const sheets = await fixture("legacy");
+    const css = Object.entries(sheets).filter(([file]) => file.endsWith(".css"));
+    const atoms = css.find(([file]) => file.includes("barq-atoms"))?.[1] ?? "";
+    expect(atoms).toMatch(/\.a-inset-inline-start_\w+:not\([^{]*:lang\([^{]*\{left:0\}/);
+    for (const [file, text] of css)
+      if (!file.includes("barq-atoms")) expect(text).not.toContain(".a-");
+  }, 60_000);
 
   test("a library names its one stylesheet after `cssFileName`, and it is finished too", async () => {
     const sheets = await fixture("lib");

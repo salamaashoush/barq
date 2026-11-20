@@ -509,6 +509,7 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
     rewritten: [],
   });
   let tree = empty();
+  const lazyByModule = new Map<string, string[]>();
 
   const treeFile = options.routeTree === false ? null : (options.routeTree ?? DEFAULT_ROUTE_TREE);
 
@@ -608,6 +609,8 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
     api: {
       /** Route id to source file, as the table generated from the routes says. */
       entries: (): readonly { readonly id: string; readonly file: string }[] => tree.entries,
+      /** The modules a module's literal `lazy()` and `clientOnly()` calls load. */
+      lazyOf: (id: string): readonly string[] => lazyByModule.get(id) ?? [],
     },
     /**
      * SHARED, like every plugin `barqStart()` returns, and for a reason that was
@@ -832,7 +835,14 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
       source,
       id,
     ) {
-      const code = await withModuleUrls(source, id, root, (spec) => this.resolve(spec, id));
+      const lazies: string[] = [];
+      const code = await withModuleUrls(source, id, root, async (spec) => {
+        const resolved = await this.resolve(spec, id);
+        if (resolved !== null) lazies.push(resolved.id);
+        return resolved;
+      });
+      if (lazies.length === 0) lazyByModule.delete(id);
+      else lazyByModule.set(id, lazies);
       const injected = code !== source;
       const wantsSplit = isSplitId(id);
       const file = wantsSplit ? fileOfSplitId(id) : (id.split("?", 1)[0] ?? id);

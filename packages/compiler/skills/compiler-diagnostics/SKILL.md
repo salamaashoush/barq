@@ -1,6 +1,6 @@
 ---
 name: compiler-diagnostics
-description: Map a barq compiler diagnostic code (BARQ001 to BARQ032) to its repair. Load when a build, the Vite dev overlay, the terminal or a transform result reports BARQ0NN at a file, line and column. Runtime [CODE] findings are in the diagnostics skill of @barqjs/core.
+description: Map a barq compiler diagnostic code (BARQ001 to BARQ033) to its repair. Load when a build, the Vite dev overlay, the terminal or a transform result reports BARQ0NN at a file, line and column. Runtime [CODE] findings are in the diagnostics skill of @barqjs/core.
 ---
 
 # Repairing barq code from a compiler diagnostic code
@@ -57,7 +57,7 @@ Each code also has a page with the full message and more examples at
   `diagnostics` option is on. It is on in development builds, and
   `barq({ compiler: { diagnostics: true } })` runs them in a production build.
 - `BARQ004`, `BARQ010`: development builds only.
-- `BARQ012` to `BARQ017`, `BARQ022` to `BARQ032`: every build.
+- `BARQ012` to `BARQ017`, `BARQ022` to `BARQ033`: every build.
 - `BARQ008`, `BARQ009`: every build, about suppression comments.
 
 `BARQ005`, `BARQ006` and `BARQ007` are retired and never reported. A
@@ -643,6 +643,34 @@ atoms(
 
 A shorthand that splits by counting (`margin`, `padding`, `inset`, `gap`,
 `borderRadius`) is not reported: a later `marginTop` replaces one side.
+
+### BARQ033
+
+Default level: note.
+
+One `atoms` call (or one `create` group) sets a property under two conditions
+of one tier that can both match one element, with selectors of one weight, and
+writes them in the order the shared stylesheet reverses. Both classes stay on
+the element and the fixed order decides: no interaction pseudo-class first,
+then `:link`, `:visited`, `:focus-within`, `:hover`, `:focus`, `:focus-visible`,
+`:active`, `:disabled`; ties by the condition's hash. The one written first wins
+where both match.
+
+Write the pair in the fixed order, or make one rule the other out:
+
+```tsx
+// before
+atoms({ color: { ":hover": "blue", "[data-active]": "red" } });
+
+// after
+atoms({ color: { "[data-active]": "red", ":hover": "blue" } });
+// or, so the active colour holds under the pointer
+atoms({ color: { "[data-active]": "red", ":not([data-active]):hover": "blue" } });
+```
+
+Not reported: an attribute equal to two values, two different child positions,
+a selector against its `:not()`, two selectors of different specificity, one
+value under both, or two pseudo-elements.
 
 ## Solid 1.x spellings
 

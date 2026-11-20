@@ -173,9 +173,13 @@ const DEV_STYLESHEETS = Symbol.for("barq.dev.stylesheets");
  * any earlier request had reached. `@barqjs/vite` installs the answer, read off
  * its module graph in the order a build links the same modules' stylesheets.
  */
-export function devStylesheets(routes: readonly string[]): DevStylesheets | undefined {
+export function devStylesheets(
+  routes: readonly string[],
+): Promise<DevStylesheets | undefined> | undefined {
   const answer = (
-    globalThis as { [DEV_STYLESHEETS]?: (routes: readonly string[]) => DevStylesheets }
+    globalThis as {
+      [DEV_STYLESHEETS]?: (routes: readonly string[]) => Promise<DevStylesheets>;
+    }
   )[DEV_STYLESHEETS];
   return answer?.(routes);
 }
@@ -190,6 +194,7 @@ export interface DevStylesheets {
 interface CssSink {
   (key: string, rules: string): boolean;
   head?(late: () => string): void;
+  owns?(key: string): boolean;
 }
 
 export function installCssSink(setSink: (sink: CssSink) => void): void {
@@ -208,6 +213,9 @@ export function installCssSink(setSink: (sink: CssSink) => void): void {
     const store = SHARED.storage?.getStore();
     if (store !== undefined) store.lateCss ??= late;
   };
+  // Outside a request every rule is every page's, so nothing is owned and the
+  // registry shows what no request registered.
+  sink.owns = (key) => SHARED.storage?.getStore()?.css?.has(key) === true;
   setSink(sink);
 }
 

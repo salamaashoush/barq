@@ -513,7 +513,7 @@ describe("css parity > a named condition", () => {
       `${define}const out = atoms({ color: { default: "red", [when.md]: "blue", [when.hover]: "teal" }, [when.dark]: { color: "white", [when.md]: { padding: 8 } } });`,
     );
     expect(compiled.sheet).toContain("@media (min-width: 768px){");
-    expect(compiled.sheet).toContain("[data-theme=dark] .a-");
+    expect(compiled.sheet).toContain(`[data-theme="dark"] .a-`);
   });
 
   test("and reads the same written below its use", () => {
@@ -645,6 +645,38 @@ describe("css parity > the merge a compiled props call becomes", () => {
  * what dev registers. The two agree on every shape here, or a page orders one
  * way served and another way built.
  */
+/**
+ * A condition is hashed and written in one spelling, on both sides, so two ways
+ * of writing one condition are one key, and a later call replaces the earlier
+ * one instead of both rules standing and their order deciding.
+ */
+describe("css parity > a condition's spelling", () => {
+  test("two spellings of one condition are one class on both sides", () => {
+    const pairs = [
+      [`"& svg:not([class*='size-'])"`, `'&  svg:not([class*="size-"])'`],
+      [`"&>svg"`, `"& > svg"`],
+      [`"[data-size=sm] &"`, `'[data-size="sm"]   &'`],
+      [`"[data-a],&[data-b]"`, `"[data-a], &[data-b]"`],
+      [`":has(>[data-slot])"`, `":has(> [data-slot])"`],
+      [`"@MEDIA (min-width:  40rem)"`, `"@media (min-width: 40rem)"`],
+    ];
+    for (const [one, two] of pairs) {
+      const a = agree(`const out = atoms({ width: { ${one}: "3px" } });`);
+      const b = agree(`const out = atoms({ width: { ${two}: "3px" } });`);
+      expect(a.runtime.value, one).toBe(b.runtime.value);
+      expect(a.runtime.sheet, one).toBe(b.runtime.sheet);
+    }
+  });
+
+  test("what must stay as written does", () => {
+    const sides = agree(
+      `const out = atoms({ color: { '[data-label="A b"] &': "red", ":nth-child(2n + 1)": "blue" } });`,
+    );
+    expect(sides.runtime.sheet).toContain('[data-label="A b"]');
+    expect(sides.runtime.sheet).toContain(":nth-child(2n + 1)");
+  });
+});
+
 describe("css parity > what an atom is and where it sorts", () => {
   const BLOCK = ".b1n4k2p0{color:blue}";
   const CANDIDATES = [
@@ -658,7 +690,47 @@ describe("css parity > what an atom is and where it sorts", () => {
     ".a-card_title{color:red}",
     ".a-color_UPPER{color:red}",
     ".a-color_12345678{color:red}",
+    ".a-Color_1{color:red}",
+    ".a-var-brandColor_i0tgik{--brandColor:red}",
+    ".a-var-brand_x_i0tgik{--brand_x:red}",
+    ".a-var-Brand_i0tgik{--Brand:red}",
+    "@starting-style{.a-opacity-5fz2k1_0{opacity:0}}",
+    "@scope (.card){.a-color-1q2w3e_1n4k2p0{color:red}}",
+    "@media print{@starting-style{.a-opacity-9x8y7z_0{opacity:0}}}",
+    "@layer barq.parity{@starting-style{.a-opacity-5fz2k1_0{opacity:0}}}",
+    ".a-inset-inline-start_1n4k2p0:not(:lang(ar)){left:0}",
+    // What a minifier writes: a block and an atom under one query, under one
+    // selector list, and two atoms joined by one body.
+    "@media (width>=48rem){.b1{padding:2rem}.a-padding-top-17pnonp_1mc215m{padding-top:1px}}",
+    ".b1,.a-color_1n4k2p0{color:red}",
+    "[data-open] .a-display-x_1,.a-display_1{display:none}",
+    "@media print{.a-color-m_1{color:red}.a-margin-top-m_0{margin-top:0}}",
   ];
+
+  /**
+   * A custom property's name is case-sensitive and may hold an underscore,
+   * and its class carries the name as written. The merge key ends at the LAST
+   * underscore, and a value hash holds none, so one name is one key.
+   */
+  test("a custom property named with capitals or an underscore compiles, merges and orders alike", () => {
+    const sides = agree(
+      `const out = atoms({ "--brandColor": "red", "--brand_x": "blue", "--Brand": "green" });`,
+    );
+    const classes = String(sides.runtime.value).split(" ");
+    const merged = runtime.atoms(
+      { "--brand_x": "blue", "--brand": "red" },
+      { "--brand_x": "teal" },
+    );
+    expect(merged.split(" ").filter((name) => name.startsWith("a-var-brand_x_"))).toHaveLength(1);
+    expect(merged.split(" ").filter((name) => name.startsWith("a-var-brand_"))).toHaveLength(2);
+    expect(classes.some((name) => name.startsWith("a-var-brandColor_"))).toBe(true);
+    expect(classes.some((name) => name.startsWith("a-var-Brand_"))).toBe(true);
+    const sheet = `${sides.runtime.sheet}${BLOCK}`;
+    resetCss();
+    runtime.registerCss("parity.css", sheet);
+    expect(runtime.collectCss()).toBe(native.orderCss(sheet));
+    expect(native.orderCss(sheet).startsWith(BLOCK)).toBe(true);
+  });
 
   test("each shape is an atom on both sides or on neither", () => {
     for (const candidate of CANDIDATES) {
@@ -679,5 +751,28 @@ describe("css parity > what an atom is and where it sorts", () => {
       return registry;
     });
     expect(sheets[0]).toBe(sheets[1]);
+  });
+
+  /**
+   * Within a tier, the interaction pseudo-class decides before the condition's
+   * hash: `:active` beats `:hover`, and `:disabled` beats them all.
+   */
+  test("the interaction pseudo-classes sort the same way on both sides", () => {
+    const rules = [
+      ".a-color-d1_1{color:red}".replace(".a-color-d1_1", ".a-color-d1_1[data-active]"),
+      ".a-color-h1_2:hover{color:blue}",
+      ".a-color-v1_3:focus-visible{color:green}",
+      ".a-color-a1_4:active{color:teal}",
+      ".a-color-x1_5:disabled{color:grey}",
+    ];
+    const sheets = [rules.join(""), rules.toReversed().join("")].map((css) => {
+      resetCss();
+      runtime.registerCss("parity.css", css);
+      const registry = runtime.collectCss();
+      expect(registry).toBe(native.orderCss(css));
+      return registry;
+    });
+    expect(sheets[0]).toBe(sheets[1]);
+    expect(sheets[0]).toBe(rules.join(""));
   });
 });

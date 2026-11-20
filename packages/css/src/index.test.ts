@@ -260,16 +260,63 @@ describe("registerCss", () => {
     expect(collectCss()).toContain(".blazy{color:blue}");
   });
 
-  test("a rule the sheet already holds is not offered to the sink again", () => {
+  /**
+   * A sheet registered again unchanged is told to the request doing it, which
+   * is what makes it that request's own, and is still written once: the head
+   * that holds it is not followed by a late sheet holding it again.
+   */
+  test("a rule the sheet already holds is the request's, and is written once", () => {
     registerCss("/a/known.tsx", ".bknown{color:teal}");
     const taken: string[] = [];
-    setCssSink((key) => {
-      taken.push(key);
-      return true;
-    });
+    let late: (() => string) | undefined;
+    setCssSink(
+      Object.assign(
+        (key: string): boolean => {
+          taken.push(key);
+          return true;
+        },
+        {
+          owns: (key: string): boolean => taken.includes(key),
+          head(read: () => string): void {
+            late = read;
+          },
+        },
+      ),
+    );
     registerCss("/a/known.tsx", ".bknown{color:teal}");
+    expect(taken).toEqual(["/a/known.tsx"]);
+    expect(collectCss()).toContain(".bknown{color:teal}");
+    expect(late?.() ?? "").not.toContain(".bknown");
     setCssSink(null);
-    expect(taken).toEqual([]);
+  });
+
+  /**
+   * A theme a component installs as it renders belongs to the requests that
+   * render it: on a server rendering many pages from one registry, the next
+   * page carried it otherwise.
+   */
+  test("a sheet one request registered is not another request's", () => {
+    let owner = "first";
+    const owned = new Map<string, Set<string>>([
+      ["first", new Set()],
+      ["second", new Set()],
+    ]);
+    setCssSink(
+      Object.assign(
+        (key: string): boolean => {
+          owned.get(owner)?.add(key);
+          return true;
+        },
+        { owns: (key: string): boolean => owned.get(owner)?.has(key) === true },
+      ),
+    );
+    registerCss("acme:theme", ":root{--acme:1}");
+    expect(collectCss()).toContain("--acme:1");
+    owner = "second";
+    expect(collectCss()).not.toContain("--acme:1");
+    registerCss("acme:theme", ":root{--acme:1}");
+    expect(collectCss()).toContain("--acme:1");
+    setCssSink(null);
   });
 });
 

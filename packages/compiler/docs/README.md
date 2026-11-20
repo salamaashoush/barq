@@ -33,6 +33,7 @@ exists and how to silence it.
 - [BARQ030](BARQ030.md), error: A prop is assigned, and props are read-only.
 - [BARQ031](BARQ031.md), error: A props pattern binds a name that cannot be kept reactive.
 - [BARQ032](BARQ032.md), warning: A shorthand that cannot be split is merged with one of its longhands.
+- [BARQ033](BARQ033.md), note: Two conditions on one property are written in the order the stylesheet reverses.
 
 When each code is reported:
 
@@ -40,7 +41,7 @@ When each code is reported:
   `diagnostics` option is on. It defaults to on in development builds, and
   `barq({ compiler: { diagnostics: true } })` runs them in a production build.
 - BARQ004 and BARQ010: in development builds only.
-- BARQ012 to BARQ017 and BARQ022 to BARQ032: in every build, so they can fail CI.
+- BARQ012 to BARQ017 and BARQ022 to BARQ033: in every build, so they can fail CI.
   BARQ013 also needs the route table, which file-based routing provides.
 - BARQ008 and BARQ009: in every build, about your own suppression comments.
 
