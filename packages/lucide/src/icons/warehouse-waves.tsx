@@ -1,0 +1,14 @@
+import type { Incoming } from "@barqjs/core";
+
+import { type IconProps, iconProps } from "../icon.ts";
+
+export function WarehouseWaves(props: Incoming<IconProps>) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="M2 11V8a2 2 0 0 1 1.132-1.803l7.95-3.974a2 2 0 0 1 1.837 0l7.948 3.974A2 2 0 0 1 22 8v3" />
+      <path d="M6 11v-1a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" />
+      <path d="M2 16q2.5 2 5 0t5 0 5 0 5 0" />
+      <path d="M2 21q2.5 2 5 0t5 0 5 0 5 0" />
+    </svg>
+  );
+}

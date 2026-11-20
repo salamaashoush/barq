@@ -62,9 +62,9 @@
     "@barqjs/testing": "workspace:*",
     "@barqjs/vite": "workspace:*",
     "@barqjs/web": "workspace:*",
-    "@happy-dom/global-registrator": "^21.0.1",
-    "@types/bun": "^1.4.3",
-    "lucide-static": "^1.57.0",
+    "@happy-dom/global-registrator": "^21.0.4",
+    "@types/bun": "^1.4.4",
+    "lucide-static": "^1.76.0",
     "typescript": "^7.0.2"
   },
   "peerDependencies": {

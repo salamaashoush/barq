@@ -1,0 +1,15 @@
+import type { Incoming } from "@barqjs/core";
+
+import { type IconProps, iconProps } from "../icon.ts";
+
+export function Moped(props: Incoming<IconProps>) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="m18.16 14.12-2.927-8.447A1 1 0 0 0 14.288 5H13" />
+      <path d="M19 10a7 7 0 0 0-6.928 6" />
+      <path d="M2 10h5.5a3 3 0 0 1 2.747 1.795l1.669 3.803A1 1 0 0 1 11.01 17H8" />
+      <circle cx="19" cy="17" r="3" />
+      <circle cx="5" cy="17" r="3" />
+    </svg>
+  );
+}

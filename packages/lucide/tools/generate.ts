@@ -18,8 +18,10 @@
  * `icons/*.svg` — 2,154 files, because lucide keeps a file per ALIAS too.
  * An alias is not a second icon: its file is byte-identical to its target's
  * once both are reduced to nodes, so this matches them that way and emits a
- * re-export. `MoreHorizontal` is `Ellipsis` for the same reason it is in
- * `lucide-react`, and it costs nothing.
+ * re-export, in the barrel and as a module of its own. `MoreHorizontal` is
+ * `Ellipsis` for the same reason it is in `lucide-react`, and it costs nothing.
+ * The module is what keeps `@barqjs/lucide/icons/triangle-alert` resolving
+ * once lucide renames the icon and the old name becomes an alias.
  *
  * ## Why a file each
  *
@@ -143,6 +145,12 @@ function main(): void {
     aliases.push([name, target]);
   }
   const ordered = aliases.toSorted(([a], [b]) => (a < b ? -1 : 1));
+  for (const [alias, target] of ordered) {
+    writeFileSync(
+      join(out, `${alias}.tsx`),
+      `export { ${pascal(target)} as ${pascal(alias)} } from "./${target}.tsx";\n`,
+    );
+  }
 
   const version = (
     JSON.parse(readFileSync(join(lucide, "package.json"), "utf8")) as { version: string }

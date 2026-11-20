@@ -148,6 +148,15 @@ describe("the set", () => {
     }
   });
 
+  test("an alias has a module of its own that is its target's component", async () => {
+    const barrel = (await import("./index.ts")) as Record<string, unknown>;
+    for (const [alias, target] of Object.entries(ICON_ALIASES)) {
+      const module_ = (await import(`./icons/${alias}.tsx`)) as Record<string, unknown>;
+      expect(Object.keys(module_)).toEqual([pascal(alias)]);
+      expect(module_[pascal(alias)]).toBe(barrel[pascal(target)]);
+    }
+  });
+
   test("the barrel exports one component per icon plus the aliases", async () => {
     const barrel = (await import("./index.ts")) as Record<string, unknown>;
     const components = Object.entries(barrel)

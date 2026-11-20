@@ -1,0 +1,13 @@
+import type { Incoming } from "@barqjs/core";
+
+import { type IconProps, iconProps } from "../icon.ts";
+
+export function Numbers(props: Incoming<IconProps>) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="m10 4 2.6-1.95a.25.25 0 01.4.2V10" />
+      <path d="M16 14.535A4 4 0 0118 14a2 2 0 010 4 2 2 0 010 4 4 4 0 01-2-.535" />
+      <path d="M8 22H4.5a.5.5 0 01-.5-.5c0-2.68 4-2.932 4-5.5a2 2 0 00-2-2 2.5 2.5 0 00-2 1" />
+    </svg>
+  );
+}

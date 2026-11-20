@@ -1,0 +1,17 @@
+import type { Incoming } from "@barqjs/core";
+
+import { type IconProps, iconProps } from "../icon.ts";
+
+export function BotX(props: Incoming<IconProps>) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="M12 8V4H8" />
+      <path d="M15 13v1.5" />
+      <path d="m18 17 4 4" />
+      <path d="M2 14h2" />
+      <path d="M20 13.5V10a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h8" />
+      <path d="m22 17-4 4" />
+      <path d="M9 13v2" />
+    </svg>
+  );
+}
