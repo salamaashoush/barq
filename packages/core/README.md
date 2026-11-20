@@ -438,7 +438,11 @@ value updates the consumers that read it.
 - `@barqjs/core`: the public surface. Under the `development` export condition,
   which Vite's dev server and Vitest set, it resolves the engine's development
   build, which throws on model violations, and installs the console reporter for
-  the [runtime diagnostics](docs/diagnostics).
+  the [runtime diagnostics](docs/diagnostics). A finding prints as its code and
+  message, then `in <App> › <Row> › li.title`, the component path down to the
+  binding or primitive, then `at src/Row.tsx:15:15`, where that is written. The
+  first report of a code ends with its page and the section of
+  [the repair guide](skills/diagnostics/SKILL.md) for it.
 - `@barqjs/core/hot`: component replacement for a development server, which
   `@barqjs/vite` wires up.
 - `@barqjs/core/internal`: the runtime surface a renderer and `@barqjs/server`

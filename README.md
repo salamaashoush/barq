@@ -116,6 +116,7 @@ The framework:
 - [`@barqjs/css`](./packages/css#readme): nested and atomic CSS, compiled to a stylesheet.
 - [`@barqjs/testing`](./packages/testing#readme): render components, routes and server output in tests.
 - [`@barqjs/diagnostics`](./packages/diagnostics#readme): findings and attribution as one artifact, with assertions, budgets and a dev-server endpoint for agents.
+- [`@barqjs/cli`](./packages/cli#readme): `barq check`, the compiler's findings for a whole project as text or JSON, with `--fix`.
 - [`create-barq`](./packages/create-barq#readme): the project scaffolder.
 
 Components and libraries:

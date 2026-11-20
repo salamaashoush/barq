@@ -61,7 +61,7 @@ Each console entry is followed by the component it happened in, as
 `in <App> › <Row>` (from a development compile, which names the components it
 calls), and by the address of this page.
 
-A development build prints `[barq] RENDER_SUBTREE_NOT_OWNED: ...` to the console
+A development build prints `[RENDER_SUBTREE_NOT_OWNED] ...` to the console
 once, and the dev overlay lists it. To collect it yourself, subscribe to the
 channel:
 

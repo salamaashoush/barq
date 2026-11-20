@@ -93,7 +93,7 @@ Each console entry is followed by the component it happened in, as
 `in <App> › <Row>` (from a development compile, which names the components it
 calls), and by the address of this page.
 
-A development build prints `[barq] HYDRATION_MISMATCH: ...` to the console, and
+A development build prints `[HYDRATION_MISMATCH] ...` to the console, and
 the dev overlay lists it. In a development compile the message also says where
 the template being hydrated was written (`The template being hydrated is at
 src/greeting.tsx:3:49.`), the event carries it as `event.data.template`, and the

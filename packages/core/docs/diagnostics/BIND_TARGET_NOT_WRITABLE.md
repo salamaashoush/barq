@@ -64,7 +64,7 @@ Each console entry is followed by the component it happened in, as
 `in <App> › <Row>` (from a development compile, which names the components it
 calls), and by the address of this page.
 
-A development build prints `[barq] BIND_TARGET_NOT_WRITABLE: ...` to the console
+A development build prints `[BIND_TARGET_NOT_WRITABLE] ...` to the console
 with `console.error`, and the dev overlay lists it. To collect it yourself,
 subscribe to the channel:
 

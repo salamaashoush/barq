@@ -83,7 +83,7 @@ Each console entry is followed by the component it happened in, as
 `in <App> › <Row>` (from a development compile, which names the components it
 calls), and by the address of this page.
 
-The server's terminal prints `[barq] LATE_HEADER_WRITE: ...`, and the overlay
+The server's terminal prints `[LATE_HEADER_WRITE] ...`, and the overlay
 lists it. The channel carries the call as `event.data.call`:
 
 ```ts

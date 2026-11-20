@@ -6,7 +6,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check": "barq check src"
   },
   "dependencies": {
     "@barqjs/core": "^0.2.0-next.0",
@@ -14,6 +15,7 @@
     "@barqjs/web": "^0.2.0-next.0"
   },
   "devDependencies": {
+    "@barqjs/cli": "^0.2.0-next.0",
     "@barqjs/vite": "^0.2.0-next.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.8"

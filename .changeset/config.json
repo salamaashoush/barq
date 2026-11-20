@@ -5,6 +5,7 @@
   "fixed": [
     [
       "@barqjs/aria",
+      "@barqjs/cli",
       "@barqjs/compiler",
       "@barqjs/compiler-darwin-arm64",
       "@barqjs/compiler-darwin-x64",

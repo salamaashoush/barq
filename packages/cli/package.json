@@ -1,0 +1,68 @@
+{
+  "name": "@barqjs/cli",
+  "version": "0.2.0-next.0",
+  "description": "The barq command: check a project against the compiler's diagnostics, as text or JSON, and apply the fixes it offers",
+  "keywords": [
+    "agents",
+    "barq",
+    "check",
+    "cli",
+    "diagnostics",
+    "lint"
+  ],
+  "homepage": "https://github.com/salamaashoush/barq#readme",
+  "bugs": {
+    "url": "https://github.com/salamaashoush/barq/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/salamaashoush/barq.git",
+    "directory": "packages/cli"
+  },
+  "files": [
+    "dist",
+    "src",
+    "!src/**/*.test.ts",
+    "!src/**/*.test.tsx",
+    "!src/**/test-*.ts",
+    "!src/**/*-harness.ts",
+    "!src/**/*-probe.ts",
+    "!src/**/fixtures",
+    "!src/**/fixtures.ts",
+    "!src/**/ssr-fixtures.ts"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "bin": {
+    "barq": "./dist/index.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test --timeout 60000"
+  },
+  "dependencies": {
+    "@barqjs/compiler": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.4",
+    "typescript": "^7.0.2"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

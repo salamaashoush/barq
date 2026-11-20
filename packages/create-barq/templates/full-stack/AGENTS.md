@@ -34,9 +34,12 @@ npm run build      # production build into dist/client and dist/server
 npm run preview    # the built server, through vite preview
 npm start          # bun dist/server/serve.js
 npm run typecheck  # tsc --noEmit
+npm run check      # barq check: the compiler's findings, no build needed
 ```
 
-Run `npm run typecheck` and `npm run build` after a change. Diagnostics print
+Run `npm run check` and `npm run typecheck` after a change, and `npm run build`
+before calling it done. `npx barq check --json` gives the findings as JSON, and
+`npx barq check --fix` applies the repairs that are one spelling. Diagnostics print
 in the browser console, and server-side ones in the terminal of `npm run dev`.
 
 ## Layout
