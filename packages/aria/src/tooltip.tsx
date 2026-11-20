@@ -82,7 +82,7 @@ const COOL_DOWN = 500;
  * Two tooltips on screen at once is always a bug: the pointer is over one
  * trigger, and the other is a leftover from the one it just left.
  */
-const openTooltips = new Map<number, (immediate?: boolean, instant?: boolean) => void>();
+const openTooltips = new Map<number, (immediate?: boolean) => void>();
 let nextTooltip = 0;
 let warm = false;
 let warmUpTimer: ReturnType<typeof setTimeout> | null = null;
@@ -125,10 +125,12 @@ export interface TooltipTriggerStateOptions extends OverlayTriggerStateOptions {
 
 export interface TooltipTriggerState extends Omit<OverlayTriggerState, "open" | "close"> {
   /**
-   * Whether this transition should skip its animation.
+   * Whether the tooltip showing now skipped its entrance animation.
    *
-   * True while the group is warm: swapping between two triggers is one
-   * tooltip moving, not one fading out and another fading in.
+   * True when it opened while the group was warm: swapping between two
+   * triggers is one tooltip moving, not one fading in after another. Never
+   * true once it is closing, since the exit plays either way, as Base UI's
+   * under shadcn's classes does.
    */
   shouldSkipAnimation: Accessor<boolean>;
   /**
@@ -155,7 +157,7 @@ export function tooltipTriggerState(options: TooltipTriggerStateOptions = {}): T
   const closeOthers = (): void => {
     for (const [other, hide] of openTooltips) {
       if (other === key) continue;
-      hide(true, true);
+      hide(true);
       openTooltips.delete(other);
     }
   };
@@ -171,9 +173,7 @@ export function tooltipTriggerState(options: TooltipTriggerStateOptions = {}): T
     coolDownTimer = clearTimer(coolDownTimer);
   };
 
-  const hide = (immediate?: boolean, instant?: boolean): void => {
-    setSkipAnimation(instant === true);
-
+  const hide = (immediate?: boolean): void => {
     if (immediate === true || closeDelay() <= 0) {
       closeTimer = clearTimer(closeTimer);
       overlay.close();
@@ -236,7 +236,7 @@ export function tooltipTriggerState(options: TooltipTriggerStateOptions = {}): T
     isOpen: overlay.isOpen,
     setOpen: overlay.setOpen,
     toggle: overlay.toggle,
-    shouldSkipAnimation: skipAnimation,
+    shouldSkipAnimation: () => overlay.isOpen() && skipAnimation(),
     isInstant,
     open(immediate?: boolean) {
       if (immediate !== true && delay() > 0 && closeTimer === null) {
@@ -606,9 +606,9 @@ export interface TooltipComponentProps extends StyleProps {
 /**
  * The tooltip, mounted only while it is showing.
  *
- * `data-skip-animation` marks the transition a warm group makes: moving
- * between two triggers is one tooltip changing place, and fading it out and
- * back in reads as a flicker.
+ * `data-skip-animation` marks the entrance a warm group makes: moving between
+ * two triggers is one tooltip changing place, and fading it in again reads as
+ * a flicker.
  */
 export function Tooltip(props: TooltipComponentProps) {
   const target = usePortalTarget();
