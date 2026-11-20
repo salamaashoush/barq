@@ -2154,6 +2154,11 @@ function insertClaimed(
   if (typeof value === "function") {
     let current: Node[] = claim.nodes;
     let first: Range | null = claim;
+    // A Cell over what the hole's own build already made: the development
+    // server hands every component out as one, built where it was called. Its
+    // first read goes on from what that build took, or a Block beside it in
+    // the array it yields claims from the top of the range again.
+    const before = takenAtHole(claim);
     // O4.5: the effect belongs to the scope this call was GIVEN, not to
     // whatever happened to be current at the call site. Without this the
     // argument is decoration — a hole inserted under scope A while B is ambient
@@ -2177,28 +2182,32 @@ function insertClaimed(
         if (claiming === null) {
           produced = yielded(buildChild(value as (s: unknown) => Child, owner), owner);
         } else {
-          const run = withRangeTaken(claiming, () => {
-            const built = yielded(buildChild(value as (s: unknown) => Child, owner), owner);
-            // RESOLVED INSIDE THE CURSOR. A thunk in the produced array is
-            // called on the way to the document, which is AFTER
-            // `withRangeTaken` has closed the cursor — so a `template()`
-            // inside one claimed from the position after this range instead
-            // of from it. Measured on a document-hydrated page as "the server
-            // wrote <body> where the client builds <meta>": `<head>`'s
-            // children were resolved once `<head>`'s range had already been
-            // left.
-            //
-            // Only on the CLAIMING run. Later runs re-call the thunks through
-            // the ordinary path, so nothing about reactivity changes.
-            //
-            // A bare thunk as much as an array of them: a hole that hands
-            // back `props.children` produces the Block itself. And an array
-            // of strings as much as either: its text is the server's, and
-            // only the cursor knows which text node each string is.
-            return holdsAFunction(built) || isArray(built)
-              ? inDocumentOrder(() => childToNodes(built, given))
-              : built;
-          });
+          const run = withRangeTaken(
+            claiming,
+            () => {
+              const built = yielded(buildChild(value as (s: unknown) => Child, owner), owner);
+              // RESOLVED INSIDE THE CURSOR. A thunk in the produced array is
+              // called on the way to the document, which is AFTER
+              // `withRangeTaken` has closed the cursor — so a `template()`
+              // inside one claimed from the position after this range instead
+              // of from it. Measured on a document-hydrated page as "the server
+              // wrote <body> where the client builds <meta>": `<head>`'s
+              // children were resolved once `<head>`'s range had already been
+              // left.
+              //
+              // Only on the CLAIMING run. Later runs re-call the thunks through
+              // the ordinary path, so nothing about reactivity changes.
+              //
+              // A bare thunk as much as an array of them: a hole that hands
+              // back `props.children` produces the Block itself. And an array
+              // of strings as much as either: its text is the server's, and
+              // only the cursor knows which text node each string is.
+              return holdsAFunction(built) || isArray(built)
+                ? inDocumentOrder(() => childToNodes(built, given))
+                : built;
+            },
+            before,
+          );
           produced = run.value;
           taken = run.taken;
         }

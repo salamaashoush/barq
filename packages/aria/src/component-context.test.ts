@@ -224,6 +224,10 @@ const SCOPES = `
   export function BesideHandedBack() {
     return <main><PassThrough><b /></PassThrough><Reads name="beside" /></main>;
   }
+
+  export function FragmentSiblings() {
+    return <><German /><Reads name="after" /></>;
+  }
 `;
 
 const SCOPE_COMPONENTS = [
@@ -239,6 +243,7 @@ const SCOPE_COMPONENTS = [
   "Provided",
   "Siblings",
   "BesideHandedBack",
+  "FragmentSiblings",
 ];
 
 const read = (container: Element): string[] =>
@@ -261,6 +266,7 @@ const SEEN: Record<string, string[]> = {
 const NOT_SEEN: Record<string, string[]> = {
   Siblings: ["inside:de-DE", "after:en-US"],
   BesideHandedBack: ["beside:en-US"],
+  FragmentSiblings: ["inside:de-DE", "after:en-US"],
 };
 
 async function check(mode: Mode, cases: Record<string, string[]>): Promise<void> {
