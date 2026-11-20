@@ -148,19 +148,6 @@ function propertyOf(token: string): string {
   return `--${token.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase()}`;
 }
 
-/**
- * The token's value on THIS page, resolved rather than read out of the theme.
- *
- * A theme is a pair of rule sets and the document has one of them installed, so
- * asking the DOM is the only answer that accounts for the base, the accent over
- * it and the mode. Reading the data instead would print the light value on a
- * dark page and be wrong every time.
- */
-function resolved(property: string): string {
-  if (typeof document === "undefined") return "";
-  return getComputedStyle(document.documentElement).getPropertyValue(property).trim();
-}
-
 const TOKENS = Object.keys(tokens).filter((token) => token !== "radius");
 
 function Swatch(props: { token: string; value: string; ink: string }) {
@@ -183,7 +170,7 @@ function Swatch(props: { token: string; value: string; ink: string }) {
       <div class={chip} />
       <span class={caption}>
         <span class={captionName}>{property}</span>
-        <span class={captionValue}>{() => resolved(property())}</span>
+        <span class={captionValue}>{() => props.value}</span>
       </span>
     </button>
   );

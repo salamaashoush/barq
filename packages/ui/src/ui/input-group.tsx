@@ -48,17 +48,20 @@ const root = ui(box.border, box.transition, box.outline, when.darkInput, "group/
       backgroundColor: "color-mix(in oklab, var(--input) 80%, transparent)",
     },
   },
-  ':has(:is([data-slot="input-group-control"]:focus-visible))': {
-    borderColor: "var(--ring)",
-    "--ui-ring-shadow":
-      "var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
-    boxShadow:
-      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
-    "--ui-ring-color": "var(--ring)",
-    "@supports (color: color-mix(in lab, red, red))": {
-      "--ui-ring-color": "color-mix(in oklab, var(--ring) 50%, transparent)",
+  // A group holding an invalid control keeps its destructive border and ring
+  // while focused.
+  ':has(:is([data-slot="input-group-control"]:focus-visible)):not(:has(:is([data-slot][aria-invalid="true"])))':
+    {
+      borderColor: "var(--ring)",
+      "--ui-ring-shadow":
+        "var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+      boxShadow:
+        "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+      "--ui-ring-color": "var(--ring)",
+      "@supports (color: color-mix(in lab, red, red))": {
+        "--ui-ring-color": "color-mix(in oklab, var(--ring) 50%, transparent)",
+      },
     },
-  },
   ':has(:is([data-slot][aria-invalid="true"]))': {
     borderColor: "var(--destructive)",
     "--ui-ring-shadow":
@@ -195,7 +198,9 @@ export const inputGroupButtonVariants = variants({
         gap: "var(--spacing)",
         borderRadius: "calc(var(--radius) - 3px)",
         paddingInline: "calc(var(--spacing) * 1.5)",
-        '& > svg:not([class*="size-"])': {
+        // The button's own icon size has this key, so this replaces it: upstream's
+        // `[&>svg]` beats it by order, which a second condition cannot.
+        '& svg:not([class*="size-"])': {
           width: "calc(var(--spacing) * 3.5)",
           height: "calc(var(--spacing) * 3.5)",
         },

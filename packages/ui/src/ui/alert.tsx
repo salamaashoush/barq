@@ -52,8 +52,12 @@ export const alertVariants = variants({
       destructive: ui({
         backgroundColor: "var(--card)",
         color: "var(--destructive)",
+        // The fallback only where the mix is unsupported: two rules on a child
+        // otherwise go by hash, whatever at-rule wraps one of them.
         ':is(& > *)[data-slot="alert-description"]': {
-          color: "var(--destructive)",
+          "@supports not (color: color-mix(in lab, red, red))": {
+            color: "var(--destructive)",
+          },
           "@supports (color: color-mix(in lab, red, red))": {
             color: "color-mix(in oklab, var(--destructive) 90%, transparent)",
           },

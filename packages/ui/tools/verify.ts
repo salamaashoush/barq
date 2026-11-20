@@ -26,6 +26,11 @@ import { createBuilder, parse, translate } from "./css.ts";
 
 /** Where this package deliberately differs, and why. */
 const ALLOWED: Record<string, string> = {
+  "resizable:resizable-handle:cursor":
+    "upstream's class list says `aria-disabled:cursor-default`, but " +
+    "react-resizable-panels 4.24.1 writes `cursor: not-allowed` inline on a " +
+    "disabled separator (unless its group sets `disableCursor`), and an inline " +
+    "style beats every class, so a disabled handle shows `not-allowed` there",
   "card:card-action:grid-row":
     "upstream writes `row-span-2 row-start-1`, a `grid-row` shorthand and then " +
     "`grid-row-start`, and relies on Tailwind printing the first before the " +

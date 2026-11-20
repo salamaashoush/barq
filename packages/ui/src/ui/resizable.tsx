@@ -89,8 +89,10 @@ const handle = ui({
   '[aria-orientation="horizontal"]:not([aria-disabled="true"])': {
     cursor: "row-resize",
   },
+  // react-resizable-panels writes `cursor: not-allowed` inline on a disabled
+  // separator, which outweighs upstream's `aria-disabled:cursor-default`.
   '[aria-disabled="true"]': {
-    cursor: "default",
+    cursor: "not-allowed",
   },
   '[aria-orientation="horizontal"]::after': {
     content: "var(--ui-content)",

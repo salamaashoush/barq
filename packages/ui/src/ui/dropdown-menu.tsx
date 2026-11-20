@@ -195,7 +195,6 @@ const item = ui(
   when.disabled,
   icon.plain,
   icon.sized,
-  icon.muted,
   // A marker: the shortcut reads the item's focus through
   // `.group\/dropdown-menu-item:focus`.
   "group/dropdown-menu-item",
@@ -231,6 +230,10 @@ const item = ui(
       "@supports (color: color-mix(in lab, red, red))": {
         backgroundColor: "color-mix(in oklab, var(--destructive) 20%, transparent)",
       },
+    },
+    // A destructive item's icons are destructive rather than muted.
+    '&:where(:not([data-variant="destructive"])) svg:not([class*="text-"])': {
+      color: "var(--muted-foreground)",
     },
     ':is(&[data-variant="destructive"] > *):is(svg)': {
       color: "var(--destructive)",

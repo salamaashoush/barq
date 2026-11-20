@@ -153,8 +153,11 @@ const day = ui(box.noSelect, {
   padding: "0px",
   textAlign: "center",
   "[data-disabled]": {
-    color: "var(--muted-foreground)",
     opacity: "50%",
+  },
+  // A disabled today keeps today's colour, as upstream's does.
+  "[data-disabled]:not([data-today])": {
+    color: "var(--muted-foreground)",
   },
   // Today shown in a neighbouring month keeps today's colour.
   "[data-outside-month]:not([data-today])": {

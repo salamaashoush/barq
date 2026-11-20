@@ -126,9 +126,10 @@ export function overlayFamily(name: string, kind: OverlayKind = "dialog"): Overl
     };
 
     const owner = getOwner();
-    // `provide`, not `install`: a component gets no scope of its own, so
-    // installing on the ambient owner writes where its SIBLINGS read, and two
-    // dialogs beside each other would share one open state.
+    // `provide` hands the value to this root's children and to nothing beside
+    // it, so two dialogs side by side keep separate open states. With no owner
+    // the scope it opens would be one nothing disposes, so the children render
+    // bare.
     if (owner === null) return <>{props.children}</>;
     return provide(
       Context,

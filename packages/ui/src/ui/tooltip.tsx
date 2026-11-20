@@ -75,7 +75,9 @@ const content = ui(when.closing, {
     transformOrigin: "bottom",
     "--ui-enter-translate-y": "calc(2*var(--spacing))",
   },
-  "[data-skip-animation]": {
+  // A tooltip closing as another opens still plays its exit, as upstream's
+  // does: only the entrance is skipped.
+  "[data-skip-animation]:not([data-closed])": {
     animation: "none",
   },
   '[data-closed][data-placement="bottom"]': {

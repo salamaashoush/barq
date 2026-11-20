@@ -90,6 +90,13 @@ const trigger = ui(
     '[aria-expanded="true"]': {
       backgroundColor: "var(--muted)",
     },
+    // Focused while its menu is open, a trigger keeps the open look rather
+    // than the focus one, as upstream's has no focus look to lose to.
+    '[data-focused]:is([data-expanded], [data-open], [data-state="open"], [aria-expanded="true"])':
+      {
+        backgroundColor: "var(--muted)",
+        color: "var(--foreground)",
+      },
   },
 );
 

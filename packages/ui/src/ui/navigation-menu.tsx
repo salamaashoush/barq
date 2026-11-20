@@ -203,10 +203,10 @@ const content = ui({
     "--ui-exit-opacity": firstThatWorks("0", "calc(0/100)"),
     "--ui-exit-scale": firstThatWorks(".95", "calc(95*1%)"),
   },
-  // `data-closed` is written the instant the panel starts to leave, and how
-  // long it stays is measured in that same tick, before `data-state` and
-  // `data-motion` have caught up. So the exit is declared here as well, or the
-  // measurement finds nothing to wait for and the panel is gone at once.
+  // How long the panel stays is measured in the tick `data-closed` is written.
+  // `data-state` and `data-motion` have already changed by then on every close
+  // and switch observed, in the same task; declaring the exit here as well
+  // keeps the measurement from depending on that order.
   "[data-closed]": {
     animation:
       "exit var(--ui-animation-duration,var(--ui-duration,.15s))var(--ui-ease,ease)var(--ui-animation-delay,0s)var(--ui-animation-iteration-count,1)var(--ui-animation-direction,normal)var(--ui-animation-fill-mode,none)",
@@ -242,7 +242,9 @@ const content = ui({
   ':dir(rtl)[data-motion="to-start"]': {
     "--ui-exit-translate-x": "calc(52*var(--spacing))",
   },
-  '[data-motion^="from-"]': {
+  // A panel leaving shows its exit even if it still carries the side it
+  // arrived from.
+  '[data-motion^="from-"]:not([data-closed])': {
     animation:
       "enter var(--ui-animation-duration,var(--ui-duration,.15s))var(--ui-ease,ease)var(--ui-animation-delay,0s)var(--ui-animation-iteration-count,1)var(--ui-animation-direction,normal)var(--ui-animation-fill-mode,none)",
     "--ui-enter-opacity": "0",
@@ -304,8 +306,10 @@ const viewport = ui({
     "--ui-animation-fill-mode": "forwards",
     "--ui-exit-scale": firstThatWorks(".9", "calc(90*1%)"),
   },
-  // What the exit is measured by: `data-closed` lands a tick before
-  // `data-state` does, and the viewport is hidden once this has played.
+  // What the exit is measured by. On every close observed (Escape, a press
+  // outside, the pointer leaving) `data-state` turns `closed` first and
+  // `data-closed` follows in the same task, before a frame is drawn; the
+  // viewport is hidden once this has played.
   "[data-closed]": {
     animation:
       "exit var(--ui-animation-duration,var(--ui-duration,.15s))var(--ui-ease,ease)var(--ui-animation-delay,0s)var(--ui-animation-iteration-count,1)var(--ui-animation-direction,normal)var(--ui-animation-fill-mode,none)",

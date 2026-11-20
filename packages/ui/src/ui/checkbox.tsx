@@ -65,11 +65,14 @@ const control = ui(
       borderColor: "var(--primary)",
     },
     // An invalid box that is nonetheless ticked keeps the primary border: the
-    // tick is not the thing that is wrong.
-    '[data-invalid][aria-checked="true"]': {
+    // tick is not the thing that is wrong. In the dark upstream's
+    // `dark:aria-invalid:` border wins instead.
+    "[data-invalid][data-selected]:not(:is(.dark *))": {
       borderColor: "var(--primary)",
     },
-    "[data-selected]": {
+    // As weak as upstream's `data-checked:`, so a focused or invalid box
+    // shows the focus or invalid border.
+    ":where([data-selected])": {
       borderColor: "var(--primary)",
       backgroundColor: "var(--primary)",
       color: "var(--primary-foreground)",
@@ -77,7 +80,10 @@ const control = ui(
     ":is(.dark *)[data-selected]": {
       backgroundColor: "var(--primary)",
     },
-    "[data-indeterminate]": {
+    ":is(.dark *)[data-indeterminate]": {
+      backgroundColor: "var(--primary)",
+    },
+    ":where([data-indeterminate])": {
       borderColor: "var(--primary)",
       backgroundColor: "var(--primary)",
       color: "var(--primary-foreground)",

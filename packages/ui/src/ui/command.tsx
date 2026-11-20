@@ -189,7 +189,6 @@ const item = ui(
   when.disabled,
   icon.plain,
   icon.sized,
-  icon.muted,
   {
     position: "relative",
     display: "flex",
@@ -202,6 +201,10 @@ const item = ui(
     // A palette inside a dialog opens its rows out to match the panel.
     '[data-slot="dialog-content"] &': {
       borderRadius: "var(--radius) !important",
+    },
+    // The focused row's icons take its colour rather than staying muted.
+    '&:where(:not([data-focused])) svg:not([class*="text-"])': {
+      color: "var(--muted-foreground)",
     },
     "[data-focused]": {
       backgroundColor: "var(--muted)",

@@ -43,6 +43,7 @@ export const buttonVariants = variants({
     ring.focus,
     ring.invalid,
     ring.invalidDark,
+    ring.invalidBorderDark,
     icon.plain,
     icon.sized,
     // `group/button` is a marker class, not a utility: upstream's styles compile
@@ -77,14 +78,6 @@ export const buttonVariants = variants({
       '[aria-disabled="true"]': {
         pointerEvents: "none",
         opacity: "50%",
-      },
-      // `ring.invalidDark` carries the ring colour and not the border, and
-      // upstream's button asks for both (`dark:aria-invalid:border-destructive/50`).
-      ':is(.dark *)[aria-invalid="true"]': {
-        borderColor: "var(--destructive)",
-        "@supports (color: color-mix(in lab, red, red))": {
-          borderColor: "color-mix(in oklab, var(--destructive) 50%, transparent)",
-        },
       },
     },
   ),
@@ -165,8 +158,12 @@ export const buttonVariants = variants({
           },
         },
         '[aria-expanded="true"]': {
-          backgroundColor: "var(--muted)",
           color: "var(--foreground)",
+        },
+        // In the dark an open button keeps the dark fill, as upstream's
+        // `dark:bg-input/30` follows `aria-expanded:bg-muted`.
+        ':not(:is(.dark *))[aria-expanded="true"]': {
+          backgroundColor: "var(--muted)",
         },
         ":is(.dark *)": {
           borderColor: "var(--input)",

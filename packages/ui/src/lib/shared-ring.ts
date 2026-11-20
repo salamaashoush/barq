@@ -36,6 +36,16 @@ export const ring = ui.create({
         "--ui-ring-color": "color-mix(in oklab, var(--destructive) 20%, transparent)",
       },
     },
+    // Focused, an invalid control keeps its destructive border and ring, as
+    // upstream's `aria-invalid:` follows `focus-visible:`. Either spelling of
+    // focus, since the toggle wears this beside `ringSlot.focus`.
+    '[aria-invalid="true"]:is(:focus-visible, [data-focus-visible])': {
+      borderColor: "var(--destructive)",
+      "--ui-ring-color": "var(--destructive)",
+      "@supports (color: color-mix(in lab, red, red))": {
+        "--ui-ring-color": "color-mix(in oklab, var(--destructive) 20%, transparent)",
+      },
+    },
   },
 
   /**
@@ -62,11 +72,23 @@ export const ring = ui.create({
         "--ui-ring-color": "color-mix(in oklab, var(--destructive) 40%, transparent)",
       },
     },
+    ':is(.dark *)[aria-invalid="true"]:is(:focus-visible, [data-focus-visible])': {
+      "--ui-ring-color": "var(--destructive)",
+      "@supports (color: color-mix(in lab, red, red))": {
+        "--ui-ring-color": "color-mix(in oklab, var(--destructive) 40%, transparent)",
+      },
+    },
   },
 
   /** `dark:aria-invalid:border-destructive/50`, which `invalidDark` is not. */
   invalidBorderDark: {
     ':is(.dark *)[aria-invalid="true"]': {
+      borderColor: "var(--destructive)",
+      "@supports (color: color-mix(in lab, red, red))": {
+        borderColor: "color-mix(in oklab, var(--destructive) 50%, transparent)",
+      },
+    },
+    ':is(.dark *)[aria-invalid="true"]:is(:focus-visible, [data-focus-visible])': {
       borderColor: "var(--destructive)",
       "@supports (color: color-mix(in lab, red, red))": {
         borderColor: "color-mix(in oklab, var(--destructive) 50%, transparent)",

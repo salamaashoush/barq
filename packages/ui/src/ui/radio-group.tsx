@@ -61,10 +61,14 @@ const circle = ui(
     ":is(:where(.group\\/field-label):has(:is(:focus-visible)) *)[data-selected]": {
       borderColor: "var(--primary)",
     },
-    '[data-invalid][aria-checked="true"]': {
+    // A chosen invalid item keeps the primary border, except in the dark,
+    // where upstream's `dark:aria-invalid:` border wins.
+    "[data-invalid][data-selected]:not(:is(.dark *))": {
       borderColor: "var(--primary)",
     },
-    "[data-selected]": {
+    // As weak as upstream's `data-checked:`, so a focused or invalid item
+    // shows the focus or invalid border.
+    ":where([data-selected])": {
       borderColor: "var(--primary)",
       backgroundColor: "var(--primary)",
       color: "var(--primary-foreground)",

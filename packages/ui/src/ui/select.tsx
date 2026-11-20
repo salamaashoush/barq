@@ -137,6 +137,7 @@ const list = ui(box.shadow, {
   },
   // A list pinned to its trigger does not zoom out of a corner: it is already
   // where it belongs, and the scale reads as a jolt rather than an entrance.
+  // Nor does it animate out, as upstream's `animate-none` outweighs its exit.
   '[data-align-trigger="true"]': {
     animation: "none",
   },
@@ -154,7 +155,7 @@ const list = ui(box.shadow, {
   '[data-placement="top"] &': {
     "--ui-enter-translate-y": "calc(2*var(--spacing))",
   },
-  "[data-closed] &": {
+  '[data-closed] &:not([data-align-trigger="true"])': {
     animation:
       "exit var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
     "--ui-animation-fill-mode": "forwards",

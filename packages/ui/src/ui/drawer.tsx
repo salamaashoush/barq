@@ -492,9 +492,8 @@ export function DrawerTrigger(props: { children?: Child }) {
 /**
  * Names the control `drawer-trigger`, as upstream's `asChild` does.
  *
- * Inside a `provide`, because that is the only scope of its own a component
- * has: installed on the ambient owner the name would land beside the control
- * rather than above it.
+ * Inside a `provide` of its own, so the name reaches the control below it and
+ * nothing beside it.
  */
 function DrawerTriggerSlot(props: { children?: Child }) {
   return provide(
