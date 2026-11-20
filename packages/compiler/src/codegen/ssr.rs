@@ -81,6 +81,8 @@ pub fn emit_verbatim_root<'a>(
 struct Chunks<'a> {
     quasis: Vec<String>,
     exprs: Vec<Expression<'a>>,
+    /// Per hole: its value is known `SsrHtml`, so the literal reads its string.
+    markup: Vec<bool>,
     /// Set while the stream is exactly one hole holding known `SsrHtml`, so a
     /// component that IS the whole root skips a wrap and an unwrap.
     passthrough: bool,
@@ -88,7 +90,12 @@ struct Chunks<'a> {
 
 impl<'a> Chunks<'a> {
     fn new() -> Self {
-        Self { quasis: vec![String::new()], exprs: Vec::new(), passthrough: false }
+        Self {
+            quasis: vec![String::new()],
+            exprs: Vec::new(),
+            markup: Vec::new(),
+            passthrough: false,
+        }
     }
 
     fn text(&mut self, text: &str) {
@@ -120,18 +127,21 @@ impl<'a> Chunks<'a> {
 
     fn hole(&mut self, expression: Expression<'a>) {
         self.passthrough = false;
-        self.push(expression);
+        self.push(expression, false);
     }
 
-    /// A hole whose value is already `SsrHtml`: interpolating it calls its
-    /// `toString`, so no `esc` is needed and none is emitted.
+    /// A hole whose value is already `SsrHtml`, so no `esc` is needed and none
+    /// is emitted. The literal interpolates its `t`, the string it wraps:
+    /// interpolating the object has the engine look up and call `toString`,
+    /// which measured twice the cost of the whole interpolation.
     fn markup(&mut self, expression: Expression<'a>) {
         self.passthrough = self.exprs.is_empty() && self.quasis.iter().all(|q| q.is_empty());
-        self.push(expression);
+        self.push(expression, true);
     }
 
-    fn push(&mut self, expression: Expression<'a>) {
+    fn push(&mut self, expression: Expression<'a>, markup: bool) {
         self.exprs.push(expression);
+        self.markup.push(markup);
         self.quasis.push(String::new());
     }
 
@@ -151,7 +161,12 @@ impl<'a> Chunks<'a> {
         Expression::TemplateLiteral(TemplateLiteral::boxed(
             span,
             ArenaVec::from_iter_in(quasis, &ctx.allocator),
-            ArenaVec::from_iter_in(self.exprs, &ctx.allocator),
+            ArenaVec::from_iter_in(
+                self.exprs.into_iter().zip(self.markup).map(|(expression, markup)| {
+                    if markup { ctx.member(expression, "t", span) } else { expression }
+                }),
+                &ctx.allocator,
+            ),
             &ctx.ast,
         ))
     }
@@ -1653,6 +1668,12 @@ mod tests {
             assert!(nodes.contains(helper), "{helper} missing from the DOM emission:\n{nodes}");
         }
         assert!(string.warnings.is_empty(), "{:?}", string.warnings);
+        // What a primitive returns is `SsrHtml`, and the literal reads the
+        // string out of it rather than interpolating the object.
+        let holes = string.code.matches("${_$").count();
+        let unwrapped = string.code.matches(").t}").count();
+        assert_eq!(unwrapped, 4, "{}", string.code);
+        assert!(holes >= unwrapped, "{}", string.code);
         // Not one `ssr*` component call between them: the pass took the
         // component away, on both targets.
         assert!(!string.code.contains("_$ssr"), "{}", string.code);
