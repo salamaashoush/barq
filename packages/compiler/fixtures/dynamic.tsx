@@ -21,7 +21,7 @@ export const optimality = {
   // ordinary component call whose props are Cells. The `branch` keyed on the
   // source, the swap and the teardown are the factory's at run time, and its
   // string arm builds through `spread` and `insert` like every other element.
-  emits: ["dynamic(() => tag())", "Tagged({", '() => "dyn"', '() => "inner"'],
+  emits: ["dynamic(() => tag())", "createComponent(Tagged, {", '() => "dyn"', '() => "inner"'],
   // `<Dynamic>`'s adapter frame, and the props record it read `component` out of.
-  absent: ["Dynamic(", "component: "],
+  absent: ["Dynamic(", "createComponent(Dynamic, ", "component: "],
 }

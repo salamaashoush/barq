@@ -258,9 +258,9 @@ describe("compiled render integrity", () => {
       // component AND bakes an anchor. Without both halves this is a list of
       // fixtures that were never degraded in the first place.
       expect(templateAnchors(result.code ?? ""), `${name} bakes no anchor`).toBeGreaterThan(0);
-      // C1's call shape: ownership is ambient, so the props object is the
-      // FIRST argument and there is nothing ahead of it.
-      const callsComponent = /\b[A-Z][\w$]*\(\s*(\{|_\$props\()|\)\s*\(\s*(\{|_\$props\()/;
+      // C1's call shape: ownership is ambient, so the component is handed its
+      // props object and no scope is threaded beside it.
+      const callsComponent = /_\$createComponent\(\s*[A-Z][\w$.]*,\s*(\{|_\$props\()/;
       expect(
         callsComponent.test(stripLiterals(result.code ?? "")),
         `${name} calls no component`,

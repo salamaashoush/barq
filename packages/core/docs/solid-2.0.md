@@ -38,12 +38,12 @@ is the owner-targeted read and answers with the value.
 beside Solid's `{ name }`. Either names the context in the error a missing provider
 throws.
 
-**`createComponent` is a development aid, not the call path.** A production compile calls a
-component directly, as `Card({ title, children })`, and children are deferred as Blocks the
-callee runs in its own scope. A development compile emits
-`createComponent(Card, props, "Card")` instead, which runs the component under an owner named
-for it so a diagnostic, an error or a hydration report says `in <App> › <Card>`. Nothing
-needs to call it by hand.
+**`createComponent` is the call path.** Every compile calls a component through it, as
+`createComponent(Card, { title, children })`, which runs the component under an owner of its
+own, so a context its body installs reaches what it builds and not the siblings built after
+it. Children are deferred as Blocks the callee runs in its own scope. A development compile
+also passes the tag's name, `createComponent(Card, props, "Card")`, so a diagnostic, an error
+or a hydration report says `in <App> › <Card>`. Nothing needs to call it by hand.
 
 **`dynamic(source)`** takes no options and its source answers synchronously. Solid's
 also takes `{ static, deferStream }` and a source that answers with a promise or an async

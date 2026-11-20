@@ -1,6 +1,7 @@
 /**
  * A context is its own provider component (Solid 2.0): `<Theme value="dark">`.
- * Compiled through the real compiler, which calls a tag as `Comp(props)`.
+ * Compiled through the real compiler, which calls a tag as `Comp(props)`
+ * through `createComponent`.
  */
 
 import { afterEach, describe, expect, test } from "bun:test";

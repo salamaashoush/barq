@@ -10,12 +10,12 @@
  */
 
 import {
-  componentFrame,
+  childScope,
   createSignal,
   disposeScope,
   flush,
   getOwner,
-  handBack,
+  inFrame,
   onCleanup,
   runWithOwner,
 } from "./signals.ts";
@@ -79,19 +79,13 @@ export function hot<T extends Implementation>(
     // The scope is a component frame, so what the body installs on its owner
     // reaches what the instance hands back exactly as it does without the
     // proxy.
-    let scope = componentFrame(owner);
-    let built = handBack(
-      runWithOwner(scope, () => current(...args)),
-      scope,
-    );
+    let scope = childScope(owner);
+    let built = inFrame(scope, () => current(...args));
     const [version, setVersion] = createSignal(0, { ownedWrite: true });
     const rebuild = (next: Implementation): void => {
       disposeScope(scope);
-      scope = componentFrame(owner);
-      built = handBack(
-        runWithOwner(scope, () => next(...args)),
-        scope,
-      );
+      scope = childScope(owner);
+      built = inFrame(scope, () => next(...args));
       setVersion((count) => count + 1);
     };
     instances.add(rebuild);

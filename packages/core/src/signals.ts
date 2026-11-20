@@ -500,19 +500,22 @@ export function errorOwnerPath(error: unknown): string[] | undefined {
 }
 
 /**
- * Call a component under an owner named for it, so a finding, an error and a
- * hydration report inside it say `in <App> › <Row>`.
+ * Call a component under an owner of its own, its frame (see `inFrame`), so a
+ * binding its body installs on `getOwner()` stays the component's: what it
+ * builds and what it hands back see it, and the siblings built after it do
+ * not.
  *
- * A development compile emits this in place of `Row(props)`. The owner is
- * transparent, so the engine numbers what is inside it exactly as it would
- * without it, and the body runs untracked, as the compiled call already does.
- * With no owner to attach to, the component is called as it is: an owner made
- * here would be one nothing ever disposes, and would hide the engine's own
- * report about the missing owner.
+ * Every compile emits this in place of `Row(props)`, so the rule holds in a
+ * production build exactly as in development. The owner is transparent, so
+ * the engine numbers what is inside it exactly as it would without it, and the
+ * body runs untracked, as the compiled call already does. With no owner to
+ * attach to, the component is called as it is: an owner made here would be one
+ * nothing ever disposes, and would hide the engine's own report about the
+ * missing owner.
  *
- * The owner is the component's frame (see `componentFrame`), so a binding its
- * body installs on `getOwner()` stays the component's: what it builds and what
- * it hands back see it, and the siblings built after it do not.
+ * A development compile passes the tag's name and where the JSX is, and the
+ * engine's development tier keeps them on the owner, so a finding, an error
+ * and a hydration report inside it say `in <App> › <Row>`.
  */
 export function createComponent<P, R>(
   component: (props: P) => R,
@@ -523,15 +526,24 @@ export function createComponent<P, R>(
   const record = props as P;
   const parent = getOwner();
   if (parent === null) return component(record);
-  const owner = runWithOwner(parent, openTransparent);
-  FRAMES.set(owner, null);
-  owner._name = `<${name || component.name || "Anonymous"}>`;
-  if (loc !== undefined) owner._loc = loc;
+  const owner = openTransparent();
+  if (OWNERSHIP.sink !== null) OWNERSHIP.sink.frame(owner, parent);
+  // Only the development tier's owner has slots for these; written on the
+  // production one they would give every frame a second shape.
+  if (OBSERVE !== undefined) {
+    owner._name = `<${name || component.name || "Anonymous"}>`;
+    if (loc !== undefined) owner._loc = loc;
+  }
+  // `inFrame`, written out: this is the call every component instance makes,
+  // and going through it cost Bun a third of the frame again.
+  const outerFrame = runningFrame;
+  const outerInstalls = frameInstalls;
+  runningFrame = owner;
+  frameInstalls = null;
   try {
-    return handBack(
-      runWithOwner(owner, () => component(record)),
-      owner,
-    );
+    const built = runWithOwner(owner, () => component(record));
+    const installed = frameInstalls as Map<string | symbol, unknown> | null;
+    return installed === null ? built : carry(built, owner, installed);
   } catch (error) {
     if (typeof error === "object" && error !== null && !(OWNER_PATH in error)) {
       const path = ownerPathOf(owner);
@@ -540,6 +552,9 @@ export function createComponent<P, R>(
       }
     }
     throw error;
+  } finally {
+    runningFrame = outerFrame;
+    frameInstalls = outerInstalls;
   }
 }
 
@@ -929,11 +944,7 @@ export function provideOn(scope: Scope, key: string | symbol, value: unknown): v
 /** `provideOn` for a value the runtime binds itself, which is never a Block. */
 export function bindOn(scope: Scope, key: string | symbol, value: unknown): void {
   engineSetContext(channel(key), value, scope);
-  if (FRAMES.has(scope)) {
-    const bound = FRAMES.get(scope) ?? new Map<string | symbol, unknown>();
-    bound.set(key, value);
-    FRAMES.set(scope, bound);
-  }
+  if (scope === runningFrame) (frameInstalls ??= new Map()).set(key, value);
 }
 
 export function lookupContext(scope: Scope | null, key: string | symbol): unknown {
@@ -941,30 +952,27 @@ export function lookupContext(scope: Scope | null, key: string | symbol): unknow
 }
 
 /**
- * Each component frame, and what its body installed on it. `null` until the
- * first install, so a component that installs nothing costs one entry.
+ * The frame whose component body is running, and what that body has installed
+ * on it so far. Module state rather than a table keyed by frame: a body is
+ * only ever running inside the call that opened it, and the call restores the
+ * outer body's pair when it returns, so a component that installs nothing
+ * costs two writes and no allocation.
  */
-const FRAMES = new WeakMap<Scope, Map<string | symbol, unknown> | null>();
+let runningFrame: Scope | null = null;
+let frameInstalls: Map<string | symbol, unknown> | null = null;
 
 /**
- * Open the scope one instance of a component runs under: `createComponent`'s
- * named owner, and the scope `hot` rebuilds an instance in.
+ * Run a component's `body` under `frame`, the owner of that one instance:
+ * `createComponent`'s, or the scope `hot` rebuilds an instance in.
  *
- * The rule a frame enforces, with `handBack`: a binding a component's body
- * installs on `getOwner()` (`setContext`, `install`, `provideLocale`) belongs
- * to that component. Everything the component builds sees it, including what
- * it hands back unbuilt to be placed by whoever called it, and nothing built
- * after the component returns does, its later siblings included.
- */
-export function componentFrame(parent: Scope | null): Scope {
-  const scope = childScope(parent);
-  FRAMES.set(scope, null);
-  return scope;
-}
-
-/**
- * What a component built, made to carry the bindings its body installed on
- * `frame`, for the part of it that is still to be built.
+ * The rule a frame enforces: a binding a component's body installs on
+ * `getOwner()` (`setContext`, `install`, `provideLocale`) belongs to that
+ * component. Everything the component builds sees it, including what it hands
+ * back unbuilt to be placed by whoever called it, and nothing built after the
+ * component returns does, its later siblings included.
+ *
+ * The engine copies a scope's bindings into the scopes made under it, so what
+ * the body builds sees them already. What it hands back is made to carry them.
  *
  * A component may hand back a Block, a Cell or an array of them rather than
  * nodes: `<>{props.children}</>` returns its children unbuilt. The caller
@@ -975,9 +983,19 @@ export function componentFrame(parent: Scope | null): Scope {
  * under a scope opened there that carries the frame's bindings. A Cell is read
  * through a memo the frame owns, as `unwrapBlocks` does for a provider's.
  */
-export function handBack<R>(built: R, frame: Scope): R {
-  const bindings = FRAMES.get(frame);
-  return bindings === null || bindings === undefined ? built : carry(built, frame, bindings);
+export function inFrame<R>(frame: Scope, body: () => R): R {
+  const outerFrame = runningFrame;
+  const outerInstalls = frameInstalls;
+  runningFrame = frame;
+  frameInstalls = null;
+  try {
+    const built = runWithOwner(frame, body);
+    const installed = frameInstalls as Map<string | symbol, unknown> | null;
+    return installed === null ? built : carry(built, frame, installed);
+  } finally {
+    runningFrame = outerFrame;
+    frameInstalls = outerInstalls;
+  }
 }
 
 function carry<R>(value: R, home: Scope, bindings: Map<string | symbol, unknown>): R {
@@ -1025,8 +1043,9 @@ export type ContextProviderComponent<T> = (props: ContextProviderProps<T>) => JS
 
 /**
  * A context is its own provider component, as in Solid 2.0: `<Theme
- * value="dark">`. The compiler calls a tag as `Comp(props)`, so the call
- * signature is the whole of what makes that spelling work.
+ * value="dark">`. A compiled tag is called as `Comp(props)`, through
+ * `createComponent`, so the call signature is the whole of what makes that
+ * spelling work.
  */
 export interface Context<T> extends ContextProviderComponent<T> {
   readonly id: symbol;

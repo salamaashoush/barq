@@ -26,6 +26,6 @@ export const optimality = {
   // The context is its own provider, called like any component. `useContext`
   // returns whatever was provided, so the read inside `Badge` stays Opaque and
   // is emitted exactly as written.
-  emits: ["Theme({", "value: theme"],
+  emits: ["createComponent(Theme, {", "value: theme"],
   absent: ["Theme.Provider", "get value()"],
 }

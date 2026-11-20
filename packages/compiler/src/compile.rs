@@ -2288,7 +2288,7 @@ render(() => <App />);
 "#;
         let output = compile_ok(source, "a.test.tsx");
         assert!(
-            output.code.contains("render(() => App({}))"),
+            output.code.contains("render(() => _$createComponent(App, {}))"),
             "the test's root arrow is not a bare thunk over a props-only call:\n{}",
             output.code
         );
@@ -2313,7 +2313,9 @@ export const page = () => renderToString(() => <App />);
         )
         .unwrap_or_else(|diagnostics| panic!("{}", format_diagnostics(&diagnostics)));
         assert!(
-            output.code.contains("renderToString(() => _$html(`${_$esc(App({}))}`))"),
+            output
+                .code
+                .contains("renderToString(() => _$html(`${_$esc(_$createComponent(App, {}))}`))"),
             "the server root arrow is not a bare thunk over a props-only call:\n{}",
             output.code
         );
@@ -2333,7 +2335,9 @@ export const page = () => renderToString(() => <App />);
             )
             .unwrap_or_else(|diagnostics| panic!("{}", format_diagnostics(&diagnostics)));
             assert!(
-                output.code.contains(&format!("{name}(() => _$html(`${{_$esc(App({{}}))}}`))")),
+                output.code.contains(&format!(
+                    "{name}(() => _$html(`${{_$esc(_$createComponent(App, {{}}))}}`))"
+                )),
                 "{name}'s root arrow is not a bare thunk over a props-only call:\n{}",
                 output.code
             );
@@ -2349,7 +2353,7 @@ render(() => <App />);
 "#;
         let output = compile_ok(source, "a.tsx");
         assert!(
-            output.code.contains("render(() => App({}))"),
+            output.code.contains("render(() => _$createComponent(App, {}))"),
             "a local function's callback was rewritten:\n{}",
             output.code
         );
@@ -2395,7 +2399,11 @@ export const Route = createFileRoute("/x")({ component: Page });
         // A fragment is the ARRAY of its parts. Every position that admits a
         // child admits an array of children, so there is nothing for a wrapper
         // component to do.
-        assert!(output.code.contains("const V = () => [(0, Foo.Bar)("), "{}", output.code);
+        assert!(
+            output.code.contains("const V = () => [_$createComponent(Foo.Bar, "),
+            "{}",
+            output.code
+        );
         assert!(!output.code.contains("createElement"), "{}", output.code);
         // C1/C9. A component is called with its props alone, and a spread is a
         // SOURCE LIST rather than a JavaScript spread — there is no object to
@@ -2404,11 +2412,17 @@ export const Route = createFileRoute("/x")({ component: Page });
         assert!(!output.code.contains("...rest"), "{}", output.code);
         assert!(output.code.contains("x: _k$1"), "{}", output.code);
         assert!(output.code.contains("const _k$1 = () => 1"), "{}", output.code);
-        assert!(output.code.contains("A({})"), "{}", output.code);
+        assert!(output.code.contains("_$createComponent(A, {})"), "{}", output.code);
         assert!(!output.code.contains("_$createElement(A"), "{}", output.code);
         // `createElement` calls `tag(finalProps)` with no receiver, so a member
-        // tag must not pick up a `this` the un-compiled path never had.
-        assert!(output.code.contains("(0, Foo.Bar)(_$props([_$carry(rest), {"), "{}", output.code);
+        // tag must not pick up a `this` the un-compiled path never had: it is
+        // handed over as a value, which drops the receiver.
+        assert!(
+            output.code.contains("_$createComponent(Foo.Bar, _$props([_$carry(rest), {"),
+            "{}",
+            output.code
+        );
+        assert!(!output.code.contains("Foo.Bar("), "{}", output.code);
         // The component identifier is the binding, not a name-matched string.
         assert!(!output.code.contains("\"Foo.Bar\""), "{}", output.code);
     }

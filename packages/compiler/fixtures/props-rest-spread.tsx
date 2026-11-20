@@ -34,6 +34,6 @@ export const optimality = {
   // `class="chip"` is applied in source order beside the spread rather than
   // baked, because a key inside `rest` may name it.
   templates: 2,
-  emits: ["Chip(", "spread(", "rest"],
-  absent: ["get text()", "(Chip, {", "createElement"],
+  emits: ["createComponent(Chip, ", "spread(", "rest"],
+  absent: ["get text()", "createElement"],
 }

@@ -98,10 +98,10 @@ export const claims: Claim[] = [
     says: "a JSX-valued children slot lowers to a Block, so nesting providers nests scopes rather than argument evaluation",
     check(kit) {
       kit.precondition(
-        /\bOuter\(\s*\{/.test(kit.emitted),
+        /_\$createComponent\(\s*Outer,\s*\{/.test(kit.emitted),
         "the emitted module contains no Provider call, so there is no children slot to inspect",
       )
-      const nested = /\bOuter\(\s*\{[\s\S]{0,200}?children:\s*Inner\(/.exec(
+      const nested = /_\$createComponent\(\s*Outer,\s*\{[\s\S]{0,200}?children:\s*_\$createComponent\(\s*Inner,/.exec(
         kit.emitted,
       )
       if (nested) {

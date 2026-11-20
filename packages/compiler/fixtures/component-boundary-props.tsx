@@ -29,6 +29,6 @@ export const optimality = {
   // reads inside the callee — including `punctuation`, which the caller passed
   // as a literal. The compiler cannot know the caller, and a component that is
   // reactive only for some of its callers is not reactive.
-  emits: ["Greeting(", "readProp(props.name)", "punctuation: "],
-  absent: ["(Greeting, {"],
+  emits: ["createComponent(Greeting, ", "readProp(props.name)", "punctuation: "],
+  absent: ["createElement(Greeting"],
 }

@@ -668,7 +668,7 @@ mod tests {
         ));
         for expected in [
             "_$template(`<main><h1></h1></main>`)",
-            "_$insert(_el$1, Canvas({",
+            "_$insert(_el$1, _$createComponent(Canvas, {",
             "camera: p.cam,",
             "_$createElement$1(\"mesh\")",
             "_$setProp$1(_el$3, \"position\", _v$, _p$);",
@@ -806,13 +806,16 @@ mod tests {
         );
         let server =
             compiled(&source, &ResolvedOptions { ssr: true, hydratable: true, ..options() }).code;
-        assert!(server.contains("_$esc(Canvas({ camera: p.cam }))"), "{server}");
+        assert!(server.contains("_$esc(_$createComponent(Canvas, { camera: p.cam }))"), "{server}");
         for absent in ["mesh", "group", "children", "createElement", RENDERER] {
             assert!(!server.contains(absent), "{absent} in\n{server}");
         }
         let client = compiled(&source, &ResolvedOptions { hydratable: true, ..options() }).code;
         // The boundary claims its range like any other component in a hole.
-        assert!(client.contains("_$hole(_el$1, null, () => Canvas({"), "{client}");
+        assert!(
+            client.contains("_$hole(_el$1, null, () => _$createComponent(Canvas, {"),
+            "{client}"
+        );
         // A custom host claims nothing, so nothing inside asks to hydrate.
         assert!(client.contains("_$insert$1(_el$3, p.label);"), "{client}");
         assert!(client.contains("[null, _$block(() => {"), "{client}");

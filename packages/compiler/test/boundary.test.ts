@@ -136,7 +136,7 @@ describe("renderer boundaries", () => {
 
   test("the server renders the boundary and none of a custom renderer's children", () => {
     const { code } = compile({ ssr: true, hydratable: true });
-    expect(code).toContain("Canvas({})");
+    expect(code).toContain("_$createComponent(Canvas, {})");
     for (const absent of ["box", "leaf", "Html(", RENDERER]) expect(code).not.toContain(absent);
   });
 

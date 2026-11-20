@@ -48,7 +48,7 @@ const frame = (items: string[]): string => \`<ul class="list">\${items.map((r) =
 
 exports[`emitted code snapshots arrow-body-component 1`] = `
 "import { template as _$template, insert as _$insert } from "@barqjs/web";
-import { createSignal } from "@barqjs/core";
+import { createSignal, createComponent as _$createComponent } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="c"></div>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<section class="host"></section>\`);
 export const [n, setN] = createSignal(1);
@@ -65,7 +65,7 @@ export const Value = () => {
 };
 export default function ArrowBodyComponent() {
   const _el$2 = _tmpl$2();
-  _$insert(_el$2, Value({}));
+  _$insert(_el$2, _$createComponent(Value, {}));
   return _el$2;
 }
 export const steps = [() => setN(2), () => setN(3)];
@@ -654,7 +654,7 @@ export const optimality = {
 
 exports[`emitted code snapshots component-boundary-props 1`] = `
 "import { template as _$template, insert as _$insert } from "@barqjs/web";
-import { createSignal, readProp as _$readProp } from "@barqjs/core";
+import { createSignal, readProp as _$readProp, createComponent as _$createComponent } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<p class="greeting">Hello, <!----></p>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<section><!----></section>\`);
 const _k$1 = () => "!";
@@ -673,11 +673,11 @@ function Greeting(props: {
 export default function ComponentBoundaryProps() {
   const _el$3 = _tmpl$2();
   const _el$4 = _el$3.firstChild;
-  _$insert(_el$3, Greeting({
+  _$insert(_el$3, _$createComponent(Greeting, {
     name,
     punctuation: _k$1
   }), _el$4);
-  _$insert(_el$3, Greeting({
+  _$insert(_el$3, _$createComponent(Greeting, {
     name: () => "static",
     punctuation: _k$2
   }));
@@ -692,11 +692,11 @@ export const optimality = {
   // as a literal. The compiler cannot know the caller, and a component that is
   // reactive only for some of its callers is not reactive.
   emits: [
-    "Greeting(",
+    "createComponent(Greeting, ",
     "readProp(props.name)",
     "punctuation: "
   ],
-  absent: ["(Greeting, {"]
+  absent: ["createElement(Greeting"]
 };
 "
 `;
@@ -741,7 +741,7 @@ export const optimality = {
 
 exports[`emitted code snapshots component-children-slot 1`] = `
 "import { template as _$template, insert as _$insert } from "@barqjs/web";
-import { createSignal, block as _$block } from "@barqjs/core";
+import { createSignal, block as _$block, createComponent as _$createComponent } from "@barqjs/core";
 import type { Child } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<section class="panel"><h2 class="panel__title"></h2><div class="panel__body"></div></section>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<main class="page"><p class="lead">before</p><p class="tail">after</p></main>\`);
@@ -781,7 +781,7 @@ function Panel(props: {
 export default function ComponentChildrenSlot() {
   const _el$4 = _tmpl$2();
   const _el$5 = _el$4.lastChild;
-  _$insert(_el$4, Panel({
+  _$insert(_el$4, _$createComponent(Panel, {
     title: _k$1,
     children: _$block(() => [
       _tmpl$3(),
@@ -805,7 +805,7 @@ export const optimality = {
   // order, and the statics either side of the component stay baked into the
   // caller's frame instead of becoming holes.
   emits: [
-    "Panel(",
+    "createComponent(Panel, ",
     "\\"Inbox\\"",
     "children: ",
     "<p class=\\"lead\\">before</p>",
@@ -813,14 +813,14 @@ export const optimality = {
   ],
   // A component call, never \`createElement\`; and \`title\` is a literal the
   // caller wrote, so nothing wraps it in a getter it does not need.
-  absent: ["(Panel, {", "get title()"]
+  absent: ["createElement(Panel", "get title()"]
 };
 "
 `;
 
 exports[`emitted code snapshots component-forwarded-handler-tuple 1`] = `
 "import { template as _$template, insert as _$insert, delegateEvents as _$delegateEvents, setAttr as _$setAttr, bindEvent as _$bindEvent } from "@barqjs/web";
-import { cells, createSignal, readProp as _$readProp, bindEffect as _$bindEffect } from "@barqjs/core";
+import { cells, createSignal, readProp as _$readProp, bindEffect as _$bindEffect, createComponent as _$createComponent } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<button type="button" class="chip"></button>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div class="wrap"><b class="picked"></b></div>\`);
 const _k$1 = () => true;
@@ -875,7 +875,7 @@ function Row(props: {
   long: () => string;
   short: () => string;
 }) {
-  return Chip({
+  return _$createComponent(Chip, {
     cb: () => [_$readProp(props.handler), _$readProp(props.label)],
     render: () => _$readProp(props.on) ? _$readProp(props.long) : _$readProp(props.short),
     tone: props.label
@@ -884,7 +884,7 @@ function Row(props: {
 export default function ComponentForwardedHandlerTuple() {
   const _el$2 = _tmpl$2();
   const _el$3 = _el$2.firstChild;
-  _$insert(_el$2, Row({
+  _$insert(_el$2, _$createComponent(Row, {
     on: _k$1,
     handler: () => pick,
     label: _k$2,
@@ -905,7 +905,7 @@ export const optimality = {
   // the author wrote, so the arity rule forwards it untouched; \`tone\` is a Cell
   // already, so C5 forwards it by NAME and no closure is allocated at all.
   emits: [
-    "Chip(",
+    "createComponent(Chip, ",
     "readProp(props.handler)",
     "readProp(props.label)",
     "tone: props.label"
@@ -914,7 +914,7 @@ export const optimality = {
     "get cb()",
     "get render()",
     "get tone()",
-    "(Chip, {"
+    "createElement(Chip"
   ]
 };
 "
@@ -922,7 +922,7 @@ export const optimality = {
 
 exports[`emitted code snapshots component-function-props 1`] = `
 "import { template as _$template, insert as _$insert, delegateEvents as _$delegateEvents, setAttr as _$setAttr, bindEvent as _$bindEvent } from "@barqjs/web";
-import { cells, createSignal, untrack, readProp as _$readProp, cell as _$cell } from "@barqjs/core";
+import { cells, createSignal, untrack, readProp as _$readProp, cell as _$cell, createComponent as _$createComponent } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<button type="button" class="chip"></button>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div class="wrap"><b class="count"></b></div>\`);
 _$delegateEvents(["click"]);
@@ -957,7 +957,7 @@ function Chip(props: {
 export default function ComponentFunctionProps() {
   const _el$2 = _tmpl$2();
   const _el$3 = _el$2.firstChild;
-  _$insert(_el$2, Chip({
+  _$insert(_el$2, _$createComponent(Chip, {
     cb: _$cell([bump, 2]),
     legacy: _$cell(function() {
       return "legacy";
@@ -982,7 +982,7 @@ export const optimality = {
 
 exports[`emitted code snapshots component-getter-props 1`] = `
 "import { template as _$template, insert as _$insert } from "@barqjs/web";
-import { createSignal } from "@barqjs/core";
+import { createSignal, createComponent as _$createComponent } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<b class="badge"></b>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div class="wrap"></div>\`);
 export const [total, setTotal] = createSignal(0);
@@ -992,9 +992,10 @@ export const [total, setTotal] = createSignal(0);
 *
 * \`createElement\` builds its own props object (\`{...props }\`, dom.ts:309), so
 * the un-compiled path hands \`Badge\` a SNAPSHOT of \`total()\` and the cell can
-* never change again. A compiled call site is a direct call whose reactive prop
-* is a GETTER, so the read inside \`Badge\` stays live and the cell updates. Same
-* initial DOM, and the oracle is the one that is wrong afterwards.
+* never change again. A compiled call site hands over the props object as it
+* is, whose reactive prop is a GETTER, so the read inside \`Badge\` stays live and
+* the cell updates. Same initial DOM, and the oracle is the one that is wrong
+* afterwards.
 *
 * Both halves are RAW on purpose. The prop is a bare \`total()\` at the call site
 * and a bare \`props.count\` at the read, with no author-written accessor
@@ -1012,31 +1013,32 @@ function Badge(props: {
 }
 export default function ComponentGetterProps() {
   const _el$2 = _tmpl$2();
-  _$insert(_el$2, Badge({ count: () => total() }));
+  _$insert(_el$2, _$createComponent(Badge, { count: () => total() }));
   return _el$2;
 }
 export const steps = [() => setTotal(7)];
 export const optimality = {
   target: 1,
   templates: 2,
-  // A direct call whose reactive prop is a getter. Both halves matter: the
-  // getter is what keeps the read live, and the direct call is what stops
-  // \`createElement\` copying it back into a value.
+  // A compiled call whose reactive prop is a getter. Both halves matter: the
+  // getter is what keeps the read live, and the compiled call, which hands the
+  // props object over as it is, is what stops \`createElement\` copying it back
+  // into a value.
   emits: [
     "count: () => total()",
     "props.count",
-    "Badge("
+    "createComponent(Badge, "
   ],
-  // The argument shape a \`createElement\` call would have. Naming the helper
-  // itself would be satisfied by the prose above, which explains what it does.
-  absent: ["(Badge, {"]
+  // The call \`createElement\` would be. Its bare name would be satisfied by the
+  // prose above, which explains what it does.
+  absent: ["createElement(Badge"]
 };
 "
 `;
 
 exports[`emitted code snapshots component-spread 1`] = `
 "import { template as _$template, insert as _$insert, setAttr as _$setAttr } from "@barqjs/web";
-import { createSignal, readProp as _$readProp, carry as _$carry, bindEffect as _$bindEffect, props as _$props } from "@barqjs/core";
+import { createSignal, readProp as _$readProp, carry as _$carry, bindEffect as _$bindEffect, props as _$props, createComponent as _$createComponent } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<span class="chip"></span>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div><!----></div>\`);
 const _k$1 = () => "chip-2";
@@ -1067,8 +1069,8 @@ export default function ComponentSpread() {
   };
   const _el$2 = _tmpl$2();
   const _el$3 = _el$2.firstChild;
-  _$insert(_el$2, Chip(_$props([{ label }, _$carry(shared)])), _el$3);
-  _$insert(_el$2, Chip(_$props([_$carry(shared), {
+  _$insert(_el$2, _$createComponent(Chip, _$props([{ label }, _$carry(shared)])), _el$3);
+  _$insert(_el$2, _$createComponent(Chip, _$props([_$carry(shared), {
     id: _k$1,
     label: () => "static"
   }])));
@@ -1083,14 +1085,14 @@ export const optimality = {
   // guards. A spread onto a COMPONENT is one more source in the props list,
   // carried as it stands: no DOM spread helper, no runtime prop resolution.
   emits: [
-    "Chip(",
+    "createComponent(Chip, ",
     "{ label }, ",
     "carry(shared)",
     "bindEffect(",
     "\\"data-tone\\"",
     "\\"id\\""
   ],
-  absent: ["(Chip, {", "spread("]
+  absent: ["createElement(Chip", "spread("]
 };
 "
 `;
@@ -1145,7 +1147,7 @@ export const steps = [
 
 exports[`emitted code snapshots context-provider 1`] = `
 "import { template as _$template, insert as _$insert } from "@barqjs/web";
-import { createContext, createSignal, useContext, block as _$block } from "@barqjs/core";
+import { createContext, createSignal, useContext, block as _$block, createComponent as _$createComponent } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<span class="badge"></span>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div><!----></div>\`);
 const Theme = createContext<() => string>(() => "light");
@@ -1159,11 +1161,11 @@ function Badge() {
 export default function ContextProvider() {
   const _el$2 = _tmpl$2();
   const _el$3 = _el$2.firstChild;
-  _$insert(_el$2, Theme({
+  _$insert(_el$2, _$createComponent(Theme, {
     value: theme,
-    children: _$block(() => Badge({}))
+    children: _$block(() => _$createComponent(Badge, {}))
   }), _el$3);
-  _$insert(_el$2, Badge({}));
+  _$insert(_el$2, _$createComponent(Badge, {}));
   return _el$2;
 }
 export const steps = [() => setTheme("sepia")];
@@ -1173,7 +1175,7 @@ export const optimality = {
   // The context is its own provider, called like any component. \`useContext\`
   // returns whatever was provided, so the read inside \`Badge\` stays Opaque and
   // is emitted exactly as written.
-  emits: ["Theme({", "value: theme"],
+  emits: ["createComponent(Theme, {", "value: theme"],
   absent: ["Theme.Provider", "get value()"]
 };
 "
@@ -1243,7 +1245,7 @@ export const optimality = {
 
 exports[`emitted code snapshots control-flow-error-boundary 1`] = `
 "import { template as _$template, insert as _$insert, delegateEvents as _$delegateEvents, boundary as _$boundary, bindEvent as _$bindEvent } from "@barqjs/web";
-import { createSignal, markSafeError, block as _$block } from "@barqjs/core";
+import { createSignal, markSafeError, block as _$block, createComponent as _$createComponent } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<p class="ok">recovered</p>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div></div>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<button type="button"></button>\`);
@@ -1260,7 +1262,7 @@ export default function ControlFlowErrorBoundary() {
     _$bindEvent(_el$2, "click", reset);
     _$insert(_el$2, () => error().message);
     return _el$2;
-  }), _$block(() => Fragile({})));
+  }), _$block(() => _$createComponent(Fragile, {})));
   return _el$1;
 }
 // The boundary only retries on reset, so clearing the signal and clicking is one event.
@@ -1295,7 +1297,7 @@ export const optimality = {
 
 exports[`emitted code snapshots control-flow-errored-loading 1`] = `
 "import { template as _$template, insert as _$insert, delegateEvents as _$delegateEvents, boundary as _$boundary, reveal as _$reveal, bindEvent as _$bindEvent } from "@barqjs/web";
-import { createSignal, markSafeError, block as _$block } from "@barqjs/core";
+import { createSignal, markSafeError, block as _$block, createComponent as _$createComponent } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<p class="fine">fine</p>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<span class="busy">busy</span>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<button type="button"></button>\`);
@@ -1312,7 +1314,7 @@ export default function ControlFlowErroredLoading() {
     _$bindEvent(_el$1, "click", reset);
     _$insert(_el$1, () => error().message);
     return _el$1;
-  }), _$block(() => Flaky({})))))));
+  }), _$block(() => _$createComponent(Flaky, {})))))));
 }
 export const events = [(root: HTMLElement) => {
   setFailing(false);
@@ -2922,7 +2924,8 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots dedup-identical-markup 1`] = `
-"import { template as _$template, insert as _$insert } from "@barqjs/web";
+"import { createComponent as _$createComponent } from "@barqjs/core";
+import { template as _$template, insert as _$insert } from "@barqjs/web";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="cell"><span>x</span></div>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div class="grid"><!----></div>\`);
 function Left() {
@@ -2934,8 +2937,8 @@ function Right() {
 export default function DedupIdenticalMarkup() {
   const _el$1 = _tmpl$2();
   const _el$2 = _el$1.firstChild;
-  _$insert(_el$1, Left({}), _el$2);
-  _$insert(_el$1, Right({}));
+  _$insert(_el$1, _$createComponent(Left, {}), _el$2);
+  _$insert(_el$1, _$createComponent(Right, {}));
   return _el$1;
 }
 export const optimality = {
@@ -3205,7 +3208,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots dynamic 1`] = `
-"import { createSignal } from "@barqjs/core";
+"import { createSignal, createComponent as _$createComponent } from "@barqjs/core";
 import { dynamic, template as _$template, insert as _$insert } from "@barqjs/web";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div></div>\`);
 const _k$1 = () => "dyn";
@@ -3214,7 +3217,7 @@ export const [tag, setTag] = createSignal<"span" | "b">("span");
 const Tagged = dynamic(() => tag());
 export default function DynamicFixture() {
   const _el$1 = _tmpl$1();
-  _$insert(_el$1, Tagged({
+  _$insert(_el$1, _$createComponent(Tagged, {
     class: _k$1,
     children: _k$2
   }));
@@ -3230,12 +3233,16 @@ export const optimality = {
   // string arm builds through \`spread\` and \`insert\` like every other element.
   emits: [
     "dynamic(() => tag())",
-    "Tagged({",
+    "createComponent(Tagged, {",
     "() => \\"dyn\\"",
     "() => \\"inner\\""
   ],
   // \`<Dynamic>\`'s adapter frame, and the props record it read \`component\` out of.
-  absent: ["Dynamic(", "component: "]
+  absent: [
+    "Dynamic(",
+    "createComponent(Dynamic, ",
+    "component: "
+  ]
 };
 "
 `;
@@ -3409,7 +3416,7 @@ export const optimality = {
 
 exports[`emitted code snapshots flow-prop-eta-boundary 1`] = `
 "import { template as _$template, insert as _$insert, branch as _$branch, each as _$each, boundary as _$boundary } from "@barqjs/web";
-import { createSignal, block as _$block } from "@barqjs/core";
+import { createSignal, block as _$block, createComponent as _$createComponent } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<p class="ok">ok</p>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div class="eta"><!----><!----></div>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<p class="body">shown</p>\`);
@@ -3456,7 +3463,7 @@ export default function FlowPropEtaBoundary() {
     _$insert(_el$4, item);
     return _el$4;
   }));
-  _$boundary(_el$1, null, "error", note, _$block(() => Flaky({})));
+  _$boundary(_el$1, null, "error", note, _$block(() => _$createComponent(Flaky, {})));
   return _el$1;
 }
 export const steps = [
@@ -4690,7 +4697,7 @@ export const steps = [() => setChecked(true), () => setText("edited")];
 
 exports[`emitted code snapshots props-destructured-body 1`] = `
 "import { template as _$template, insert as _$insert, setAttr as _$setAttr } from "@barqjs/web";
-import { createSignal, readProp as _$readProp, bindEffect as _$bindEffect } from "@barqjs/core";
+import { createSignal, readProp as _$readProp, bindEffect as _$bindEffect, createComponent as _$createComponent } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<span class="chip"></span>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div class="chips"></div>\`);
 const _k$1 = () => "warm";
@@ -4714,7 +4721,7 @@ function Chip(props: {
 }
 export default function PropsDestructuredBody() {
   const _el$2 = _tmpl$2();
-  _$insert(_el$2, Chip({
+  _$insert(_el$2, _$createComponent(Chip, {
     text: label,
     tone: _k$1
   }));
@@ -4728,14 +4735,14 @@ export const optimality = {
   // of \`text\` and \`tone\` reads \`props\`, live. The claim is that the call site
   // still hands over a real props object and not a copy of one.
   emits: [
-    "Chip(",
+    "createComponent(Chip, ",
     "() => \\"warm\\"",
     "text: label"
   ],
   absent: [
     "get text()",
     "get tone()",
-    "(Chip, {"
+    "createElement(Chip"
   ]
 };
 "
@@ -4743,7 +4750,7 @@ export const optimality = {
 
 exports[`emitted code snapshots props-destructured-param 1`] = `
 "import { template as _$template, insert as _$insert, setAttr as _$setAttr } from "@barqjs/web";
-import { createSignal, readProp as _$readProp, bindEffect as _$bindEffect } from "@barqjs/core";
+import { createSignal, readProp as _$readProp, bindEffect as _$bindEffect, createComponent as _$createComponent } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<span class="chip"></span>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div class="chips"><!----></div>\`);
 const _k$1 = () => "warm";
@@ -4769,11 +4776,11 @@ function Chip(_props$1: {
 export default function PropsDestructuredParam() {
   const _el$2 = _tmpl$2();
   const _el$3 = _el$2.firstChild;
-  _$insert(_el$2, Chip({
+  _$insert(_el$2, _$createComponent(Chip, {
     text: label,
     tone: _k$1
   }), _el$3);
-  _$insert(_el$2, Chip({
+  _$insert(_el$2, _$createComponent(Chip, {
     text: () => "static",
     tone: _k$2
   }));
@@ -4787,14 +4794,14 @@ export const optimality = {
   // one props record. The call site is what it is for a \`props\` parameter: a
   // real props object, with the author-written accessor passed through as one.
   emits: [
-    "Chip(",
+    "createComponent(Chip, ",
     "() => \\"warm\\"",
     "text: label"
   ],
   absent: [
     "get text()",
     "get tone()",
-    "(Chip, {"
+    "createElement(Chip"
   ]
 };
 "
@@ -4802,7 +4809,7 @@ export const optimality = {
 
 exports[`emitted code snapshots props-raw-forward 1`] = `
 "import { template as _$template, insert as _$insert, setAttr as _$setAttr } from "@barqjs/web";
-import { createSignal, readProp as _$readProp, bindEffect as _$bindEffect } from "@barqjs/core";
+import { createSignal, readProp as _$readProp, bindEffect as _$bindEffect, createComponent as _$createComponent } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<span class="chip"></span>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div class="wrap"></div>\`);
 export const [tone, setTone] = createSignal("warm");
@@ -4834,11 +4841,11 @@ function Chip(props: {
 function Outer(props: {
   tone: string;
 }) {
-  return Chip({ tone: props.tone });
+  return _$createComponent(Chip, { tone: props.tone });
 }
 export default function PropsRawForward() {
   const _el$2 = _tmpl$2();
-  _$insert(_el$2, Outer({ tone: () => tone() }));
+  _$insert(_el$2, _$createComponent(Outer, { tone: () => tone() }));
   return _el$2;
 }
 export const steps = [() => setTone("cool")];
@@ -4847,15 +4854,15 @@ export const optimality = {
   templates: 2,
   // The forward itself: the middle layer must hand ON a getter, not the value
   // its own read produced.
-  emits: ["tone: props.tone", "Chip("],
-  absent: ["(Chip, {"]
+  emits: ["tone: props.tone", "createComponent(Chip, "],
+  absent: ["createElement(Chip"]
 };
 "
 `;
 
 exports[`emitted code snapshots props-renamed-and-defaulted 1`] = `
 "import { template as _$template, insert as _$insert, setAttr as _$setAttr, bindProp as _$bindProp } from "@barqjs/web";
-import { createSignal, withDefault as _$withDefault } from "@barqjs/core";
+import { createSignal, withDefault as _$withDefault, createComponent as _$createComponent } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<span class="chip"></span>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div class="chips"><!----></div>\`);
 const _k$1 = () => "cool";
@@ -4881,8 +4888,8 @@ function Chip(props: {
 export default function PropsRenamedAndDefaulted() {
   const _el$2 = _tmpl$2();
   const _el$3 = _el$2.firstChild;
-  _$insert(_el$2, Chip({ text: label }), _el$3);
-  _$insert(_el$2, Chip({
+  _$insert(_el$2, _$createComponent(Chip, { text: label }), _el$3);
+  _$insert(_el$2, _$createComponent(Chip, {
     text: () => "static",
     tone: _k$1
   }));
@@ -4896,14 +4903,14 @@ export const optimality = {
   // the other two. The prop the caller OMITS must be omitted from the object
   // as well — emitting \`tone: undefined\` would defeat the default.
   emits: ["text: label", "() => \\"cool\\""],
-  absent: ["tone: undefined", "(Chip, {"]
+  absent: ["tone: undefined", "createElement(Chip"]
 };
 "
 `;
 
 exports[`emitted code snapshots props-rest-spread 1`] = `
 "import { template as _$template, insert as _$insert, spread as _$spread } from "@barqjs/web";
-import { createSignal, omit as _$omit } from "@barqjs/core";
+import { createSignal, omit as _$omit, createComponent as _$createComponent } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<span></span>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div class="chips"></div>\`);
 const _k$1 = () => "chip-1";
@@ -4931,7 +4938,7 @@ function Chip(props: {
 }
 export default function PropsRestSpread() {
   const _el$2 = _tmpl$2();
-  _$insert(_el$2, Chip({
+  _$insert(_el$2, _$createComponent(Chip, {
     text: label,
     id: _k$1,
     "data-tone": _k$2
@@ -4947,15 +4954,11 @@ export const optimality = {
   // baked, because a key inside \`rest\` may name it.
   templates: 2,
   emits: [
-    "Chip(",
+    "createComponent(Chip, ",
     "spread(",
     "rest"
   ],
-  absent: [
-    "get text()",
-    "(Chip, {",
-    "createElement"
-  ]
+  absent: ["get text()", "createElement"]
 };
 "
 `;
@@ -5206,7 +5209,7 @@ export const optimality = {
 
 exports[`emitted code snapshots ref-on-component 1`] = `
 "import { template as _$template, insert as _$insert, ref as _$ref } from "@barqjs/web";
-import { readProp as _$readProp } from "@barqjs/core";
+import { readProp as _$readProp, createComponent as _$createComponent } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<span class="boxed"></span>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div class="refs"><b class="direct">element</b></div>\`);
 const _k$1 = () => "component";
@@ -5239,7 +5242,7 @@ export default function RefOnComponent() {
   const _el$2 = _tmpl$2();
   const _el$3 = _el$2.firstChild;
   _$ref(_el$3, viaElement);
-  _$insert(_el$2, Boxed({
+  _$insert(_el$2, _$createComponent(Boxed, {
     ref: () => viaComponent,
     label: _k$1
   }), _el$3);
@@ -5258,11 +5261,11 @@ export const optimality = {
   // as a VALUE — a getter would hand the callee a fresh object per read and the
   // ref would resolve into something nobody holds.
   emits: [
-    "Boxed(",
+    "createComponent(Boxed, ",
     "ref: () => viaComponent",
     ", viaElement)"
   ],
-  absent: ["get ref()", "(Boxed, {"]
+  absent: ["get ref()", "createElement(Boxed"]
 };
 "
 `;
@@ -5826,7 +5829,7 @@ export const optimality = {
 
 exports[`emitted code snapshots switch-match-component-bodies 1`] = `
 "import { template as _$template, branch as _$branch } from "@barqjs/web";
-import { createSignal, block as _$block } from "@barqjs/core";
+import { createSignal, block as _$block, createComponent as _$createComponent } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<span class="spinner">…</span>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<p class="content">done</p>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<div class="switch"></div>\`);
@@ -5850,8 +5853,8 @@ export default function SwitchMatchComponentBodies() {
   const _el$1 = _tmpl$3();
   _$branch(_el$1, null, () => status() === "loading" ? 1 : status() === "ready" ? 2 : 0, [
     _$block(() => _tmpl$4()),
-    _$block(() => Spinner({})),
-    _$block(() => Content({}))
+    _$block(() => _$createComponent(Spinner, {})),
+    _$block(() => _$createComponent(Content, {}))
   ]);
   return _el$1;
 }
@@ -6168,7 +6171,8 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots two-components-two-templates 1`] = `
-"import { template as _$template, insert as _$insert } from "@barqjs/web";
+"import { createComponent as _$createComponent } from "@barqjs/core";
+import { template as _$template, insert as _$insert } from "@barqjs/web";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<p class="cell"><span>a</span></p>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<p class="cell"><span>b</span></p>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<div class="pair"><!----></div>\`);
@@ -6186,8 +6190,8 @@ function Beta() {
 export default function TwoComponentsTwoTemplates() {
   const _el$1 = _tmpl$3();
   const _el$2 = _el$1.firstChild;
-  _$insert(_el$1, Alpha({}), _el$2);
-  _$insert(_el$1, Beta({}));
+  _$insert(_el$1, _$createComponent(Alpha, {}), _el$2);
+  _$insert(_el$1, _$createComponent(Beta, {}));
   return _el$1;
 }
 export const optimality = {

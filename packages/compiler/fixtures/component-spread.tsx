@@ -32,6 +32,6 @@ export const optimality = {
   // reads on ONE element, so they share ONE renderEffect with per-key `!==`
   // guards. A spread onto a COMPONENT is one more source in the props list,
   // carried as it stands: no DOM spread helper, no runtime prop resolution.
-  emits: ["Chip(", "{ label }, ", "carry(shared)", "bindEffect(", '"data-tone"', '"id"'],
-  absent: ["(Chip, {", "spread("],
+  emits: ["createComponent(Chip, ", "{ label }, ", "carry(shared)", "bindEffect(", '"data-tone"', '"id"'],
+  absent: ["createElement(Chip", "spread("],
 }

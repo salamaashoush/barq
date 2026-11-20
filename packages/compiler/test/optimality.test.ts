@@ -233,9 +233,9 @@ describe("declared optimality", () => {
       // argument, a Block parameter, or a module-level `const _s$ = null`.
       const lost = [...code.matchAll(/[\w$]*\(?\s*(_s\$)[,)\s]/g)].map((m) => m[1]!);
       if (lost.length > 0) threaded.set(name, [...new Set(lost)]);
-      // The two shapes the compiler emits for a component call, and the props
-      // are the first argument of both.
-      calls += [...code.matchAll(/(?<![\w$.])[A-Z][\w$]*\(\s*(\{|_\$props\()/g)].length;
+      // The compiler hands a component to `createComponent` with its props, an
+      // object or a source list, and nothing beside them.
+      calls += [...code.matchAll(/createComponent\(\s*[A-Z][\w$.]*,\s*(\{|_\$props\()/g)].length;
       // A Block is BRANDED at its definition site. The brand is what lets a
       // consumer test kind instead of guessing it from arity — which matters
       // more now, not less, because a zero-arity Block and a Cell are the same
@@ -468,8 +468,8 @@ describe("target 1 — semantic reactivity (never name regexes)", () => {
 
   it("component-spread: a spread object is carried in place in the source list", () => {
     const code = compileFixtureBody("component-spread");
-    expect(code).toContain("Chip(_$props([{ label }, _$carry(shared)]))");
-    expect(code).toContain("Chip(_$props([_$carry(shared), {");
+    expect(code).toContain("_$createComponent(Chip, _$props([{ label }, _$carry(shared)]))");
+    expect(code).toContain("_$createComponent(Chip, _$props([_$carry(shared), {");
   });
 
   it("handler-no-closure: a handler closing over nothing is not re-created per instance", () => {

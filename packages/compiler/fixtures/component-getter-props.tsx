@@ -8,9 +8,10 @@ export const [total, setTotal] = createSignal(0)
  *
  * `createElement` builds its own props object (`{...props }`, dom.ts:309), so
  * the un-compiled path hands `Badge` a SNAPSHOT of `total()` and the cell can
- * never change again. A compiled call site is a direct call whose reactive prop
- * is a GETTER, so the read inside `Badge` stays live and the cell updates. Same
- * initial DOM, and the oracle is the one that is wrong afterwards.
+ * never change again. A compiled call site hands over the props object as it
+ * is, whose reactive prop is a GETTER, so the read inside `Badge` stays live and
+ * the cell updates. Same initial DOM, and the oracle is the one that is wrong
+ * afterwards.
  *
  * Both halves are RAW on purpose. The prop is a bare `total()` at the call site
  * and a bare `props.count` at the read, with no author-written accessor
@@ -36,11 +37,12 @@ export const steps = [() => setTotal(7)]
 export const optimality = {
   target: 1,
   templates: 2,
-  // A direct call whose reactive prop is a getter. Both halves matter: the
-  // getter is what keeps the read live, and the direct call is what stops
-  // `createElement` copying it back into a value.
-  emits: ["count: () => total()", "props.count", "Badge("],
-  // The argument shape a `createElement` call would have. Naming the helper
-  // itself would be satisfied by the prose above, which explains what it does.
-  absent: ["(Badge, {"],
+  // A compiled call whose reactive prop is a getter. Both halves matter: the
+  // getter is what keeps the read live, and the compiled call, which hands the
+  // props object over as it is, is what stops `createElement` copying it back
+  // into a value.
+  emits: ["count: () => total()", "props.count", "createComponent(Badge, "],
+  // The call `createElement` would be. Its bare name would be satisfied by the
+  // prose above, which explains what it does.
+  absent: ["createElement(Badge"],
 }

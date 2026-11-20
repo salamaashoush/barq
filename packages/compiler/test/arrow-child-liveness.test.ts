@@ -109,6 +109,6 @@ export default function Page() { return <Button>{() => <Check />}</Button>; }`,
       false,
       false,
     );
-    expect(dom).toContain("children: _$block(() => Check({}))");
+    expect(dom).toContain("children: _$block(() => _$createComponent(Check, {}))");
   });
 });

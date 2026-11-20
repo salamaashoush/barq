@@ -341,14 +341,18 @@ describe("self-check: the assertion would notice", () => {
     // decoration.
     //
     // So the defect is written where it can still be written, in the emitted
-    // text: turn `children: () => Label({})` back into an ARGUMENT.
+    // text: turn `children: () => _$createComponent(Label, {})` back into an
+    // ARGUMENT.
     const clean = ownershipSource("own-provider-thunked");
     let hit = 0;
     const corrupt = (code: string): string =>
-      code.replace(/children:\s*(?:[\w$]*block)?\(?\(\)\s*=>\s*(\w+)\(\{\}\)\)?/g, (_m, comp) => {
-        hit++;
-        return `children: ${comp}({})`;
-      });
+      code.replace(
+        /children:\s*(?:[\w$]*block)?\(?\(\)\s*=>\s*([\w$]+\(\w+, \{\}\))\)?/g,
+        (_m, call) => {
+          hit++;
+          return `children: ${call}`;
+        },
+      );
     const run = await checkOwnership(
       "mutant-provider",
       clean,

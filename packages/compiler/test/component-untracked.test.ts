@@ -108,8 +108,8 @@ describe("a component called inside a reactive expression", () => {
 
   test("is wrapped where it may run under a compute, and only there", () => {
     const code = compileSource(SOURCE, "component-untracked.tsx");
-    expect(code).toContain("vis() ? _$untrack(() => Gate({ on }))");
-    expect(code).toContain("_$untrack(() => Gate({}))");
+    expect(code).toContain("vis() ? _$untrack(() => _$createComponent(Gate, { on }))");
+    expect(code).toContain("_$untrack(() => _$createComponent(Gate, {}))");
     expect(code).toContain("_$insert(_el$");
     expect(code.match(/_\$untrack\(/g)?.length).toBe(3);
   });

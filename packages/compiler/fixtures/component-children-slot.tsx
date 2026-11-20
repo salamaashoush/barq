@@ -54,7 +54,7 @@ export const optimality = {
   // order, and the statics either side of the component stay baked into the
   // caller's frame instead of becoming holes.
   emits: [
-    "Panel(",
+    "createComponent(Panel, ",
     '"Inbox"',
     "children: ",
     '<p class="lead">before</p>',
@@ -62,5 +62,5 @@ export const optimality = {
   ],
   // A component call, never `createElement`; and `title` is a literal the
   // caller wrote, so nothing wraps it in a getter it does not need.
-  absent: ["(Panel, {", "get title()"],
+  absent: ["createElement(Panel", "get title()"],
 }

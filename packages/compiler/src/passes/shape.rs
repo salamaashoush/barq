@@ -280,7 +280,23 @@ impl<'a> Shaper<'a, '_> {
         symbol.and_then(|symbol| self.lift.env().kind_of(symbol).flow())
     }
 
-    /// `<Comp a={x}>{k}</Comp>` → `Comp(_s$, { a: () => x, children: _$block((_s$) => k })`.
+    /// `<core.For>` through `import * as core`: no symbol for the flow pass to
+    /// resolve, so it reaches the backends as a call, and they match it by the
+    /// namespace binding and the member name. It is a construct, not a
+    /// component, and must reach them as the call they match.
+    fn namespaced_flow(&self, callee: &Expression<'a>) -> bool {
+        let member = match callee {
+            Expression::SequenceExpression(sequence) => sequence.expressions.last(),
+            other => Some(other),
+        };
+        let Some(Expression::StaticMemberExpression(member)) = member else { return false };
+        crate::analysis::symbol_of(self.lift.scoping(), &member.object).is_some_and(|object| {
+            self.lift.env().namespace_flow(object, member.property.name.as_str()).is_some()
+        })
+    }
+
+    /// `<Comp a={x}>{k}</Comp>` →
+    /// `_$createComponent(Comp, { a: () => x, children: _$block(() => k) })`.
     ///
     /// C1: the scope the component must run under is its FIRST argument, so
     /// mistiming is a missing argument rather than a runtime surprise. C3: every
@@ -298,8 +314,10 @@ impl<'a> Shaper<'a, '_> {
         let JSXElement { span, opening_element, children, .. } = element.unbox();
         let opening = opening_element.unbox();
         // A flow component is matched by its callee after this pass, so only a
-        // user component is named.
-        let label = (self.dev && flow.is_none())
+        // user component is called through `createComponent`. Only a
+        // development compile names it.
+        let framed = flow.is_none() && !self.namespaced_flow(&callee);
+        let label = (self.dev && framed)
             .then(|| self.allocator.alloc_str(opening.name.span().source_text(self.source)));
 
         let mut sources: Vec<Source<'a>> = vec![Source::Record(Vec::new())];
@@ -437,33 +455,39 @@ impl<'a> Shaper<'a, '_> {
         // lie about the emitted module.
 
         let props = self.source_list(sources, span);
-        if let Some(label) = label {
-            let name = Expression::new_string_literal(span, label, None, &self.ast);
-            let callee = match callee {
-                // `(0, ns.Comp)` exists to call without a receiver, and so does
-                // passing the function as an argument.
-                Expression::SequenceExpression(mut sequence) if sequence.expressions.len() == 2 => {
-                    sequence.expressions.pop().unwrap_or_else(|| unreachable!("two expressions"))
-                }
-                other => other,
-            };
-            let create = self.helper(Helper::CreateComponent, span);
-            let mut arguments = ArenaVec::from_iter_in(
-                [Argument::from(callee), Argument::from(props), Argument::from(name)],
-                &self.allocator,
+        if !framed {
+            let arguments = ArenaVec::from_iter_in([Argument::from(props)], &self.allocator);
+            return Expression::new_call_expression(
+                span, callee, None, arguments, false, &self.ast,
             );
+        }
+        // Through `createComponent` in every compile: it gives the instance an
+        // owner of its own, which is what keeps a binding its body installs
+        // from reaching the siblings built after it.
+        let callee = match callee {
+            // `(0, ns.Comp)` exists to call without a receiver, and so does
+            // passing the function as an argument.
+            Expression::SequenceExpression(mut sequence) if sequence.expressions.len() == 2 => {
+                sequence.expressions.pop().unwrap_or_else(|| unreachable!("two expressions"))
+            }
+            other => other,
+        };
+        let create = self.helper(Helper::CreateComponent, span);
+        let mut arguments = ArenaVec::from_iter_in(
+            [Argument::from(callee), Argument::from(props)],
+            &self.allocator,
+        );
+        if let Some(label) = label {
+            arguments
+                .push(Argument::from(Expression::new_string_literal(span, label, None, &self.ast)));
             if let Some(locator) = self.locator {
                 let at = self.allocator.alloc_str(&locator.at(self.source, span.start));
                 arguments.push(Argument::from(Expression::new_string_literal(
                     span, at, None, &self.ast,
                 )));
             }
-            return Expression::new_call_expression(
-                span, create, None, arguments, false, &self.ast,
-            );
         }
-        let arguments = ArenaVec::from_iter_in([Argument::from(props)], &self.allocator);
-        Expression::new_call_expression(span, callee, None, arguments, false, &self.ast)
+        Expression::new_call_expression(span, create, None, arguments, false, &self.ast)
     }
 
     /// JSX children as the ONE value a construction slot carries, and whether
@@ -1816,9 +1840,9 @@ mod tests {
         )
         .code;
         assert!(code.contains("const Card = () =>"), "{code}");
-        assert!(code.contains("Card({})"), "{code}");
+        assert!(code.contains("_$createComponent(Card, {})"), "{code}");
         assert!(code.contains("function W(props)"), "{code}");
-        assert!(code.contains("Card({ tone: props.tone })"), "{code}");
+        assert!(code.contains("_$createComponent(Card, { tone: props.tone })"), "{code}");
         assert!(!code.contains("_s$"), "{code}");
     }
 
@@ -1835,8 +1859,13 @@ mod tests {
         assert!(code.contains("}, \"Card\")"), "{code}");
         assert!(code.contains("_$createComponent(ui.Badge, {}, \"ui.Badge\")"), "{code}");
         assert!(!code.contains("_$createComponent(Show"), "{code}");
+        // A production compile calls through it too, for the owner, and names
+        // nothing.
         let production = emit(source).code;
-        assert!(!production.contains("createComponent"), "{production}");
+        assert!(production.contains("_$createComponent(Card, { tone: _k$"), "{production}");
+        assert!(production.contains("_$createComponent(ui.Badge, {})"), "{production}");
+        assert!(!production.contains("\"Card\""), "{production}");
+        assert!(!production.contains("_$createComponent(Show"), "{production}");
     }
 
     /// The reason the whole redesign exists: the child may not be an ARGUMENT,
@@ -1853,10 +1882,10 @@ mod tests {
              export const App = () => <Ctx value={1}><Child /></Ctx>;\n",
         )
         .code;
-        assert!(code.contains("children: _$block(() => Child({})"), "{code}");
+        assert!(code.contains("children: _$block(() => _$createComponent(Child, {})"), "{code}");
         // O2's negation, written down: the child as a syntactic argument.
         assert!(!code.contains("children: Child("), "{code}");
-        assert!(code.contains("Ctx({"), "{code}");
+        assert!(code.contains("_$createComponent(Ctx, {"), "{code}");
         assert!(!code.contains("_s$"), "{code}");
     }
 
@@ -1881,7 +1910,7 @@ mod tests {
              export const V = () => <Badge total={n()} label=\"x\" fn={() => n()} />;\n",
         )
         .code;
-        assert!(code.contains("Badge({"), "{code}");
+        assert!(code.contains("_$createComponent(Badge, {"), "{code}");
         assert!(code.contains("total: () => n()"), "{code}");
         assert!(!code.contains("get total()"), "{code}");
         // A literal hoists (C3.1 + the constant-thunk graft); an author-written
@@ -2192,16 +2221,24 @@ mod tests {
         .code;
         // The read beside a construction is a live hole, and the construction
         // before it is untouched.
-        assert!(code.contains("[Icon({}), () => on() ? \"a\" : \"b\"]"), "{code}");
+        assert!(
+            code.contains("[_$createComponent(Icon, {}), () => on() ? \"a\" : \"b\"]"),
+            "{code}"
+        );
         // A lone CHOICE becomes an array of one, so `insert` sees a live hole.
         assert!(
-            code.contains("[() => on() ? _$untrack(() => A({})) : _$untrack(() => B({}))]"),
+            code.contains("[() => on() ? _$untrack(() => _$createComponent(A, {})) : _$untrack(() => _$createComponent(B, {}))]"),
             "{code}"
         );
         // Nothing moves here, and the first is built where it is written. The
         // second waits for it: what a component hands back may build only when
         // it is placed, and the one after it must not get there first.
-        assert!(code.contains("[Icon({}), _$block(() => Other({}))]"), "{code}");
+        assert!(
+            code.contains(
+                "[_$createComponent(Icon, {}), _$block(() => _$createComponent(Other, {}))]"
+            ),
+            "{code}"
+        );
     }
 
     /// A CHOICE that may build DOM is handed over as a choice.
@@ -2231,12 +2268,15 @@ mod tests {
         )
         .code;
         assert!(
-            code.contains("() => on() ? _$untrack(() => A({})) : _$untrack(() => B({}))"),
+            code.contains("() => on() ? _$untrack(() => _$createComponent(A, {})) : _$untrack(() => _$createComponent(B, {}))"),
             "{code}"
         );
-        assert!(code.contains("() => on() ? _$untrack(() => A({})) : null"), "{code}");
+        assert!(
+            code.contains("() => on() ? _$untrack(() => _$createComponent(A, {})) : null"),
+            "{code}"
+        );
         // A child written directly is still placed once, with no closure.
-        assert!(code.contains("_$insert(_el$3, A({}))"), "{code}");
+        assert!(code.contains("_$insert(_el$3, _$createComponent(A, {}))"), "{code}");
     }
 
     /// C3.2. An opaque expression still crosses as a Cell: the ABI is TOTAL, so
@@ -2246,7 +2286,7 @@ mod tests {
     #[test]
     fn an_unresolvable_prop_crosses_as_a_cell_like_every_other() {
         let code = emit("const V = () => <Badge total={compute()} />;\n").code;
-        assert!(code.contains("Badge({ total: () => compute() })"), "{code}");
+        assert!(code.contains("_$createComponent(Badge, { total: () => compute() })"), "{code}");
         assert!(!code.contains("get total()"), "{code}");
     }
 
@@ -2288,7 +2328,7 @@ mod tests {
         assert!(code.contains("y: props.y"), "{code}");
         assert!(!code.contains("() => props.x"), "{code}");
         // A signal getter IS a Cell (R6), so it forwards by name too.
-        assert!(code.contains("A({ x: n })"), "{code}");
+        assert!(code.contains("_$createComponent(A, { x: n })"), "{code}");
     }
 
     /// C3.1 reaches `onClick` like everything else, and C5's identity claim has
@@ -2440,7 +2480,7 @@ mod tests {
         .code;
         assert!(code.contains("_$insert(_el$1, props.total)"), "{code}");
         assert!(!code.contains("() => props.total"), "{code}");
-        assert!(code.contains("Chip({ tone: props.tone })"), "{code}");
+        assert!(code.contains("_$createComponent(Chip, { tone: props.tone })"), "{code}");
         assert!(!code.contains("get tone()"), "{code}");
 
         // The bare reference in the same slot is the same Cell, emitted the

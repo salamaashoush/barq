@@ -87,10 +87,10 @@ export const optimality = {
   // the author wrote, so the arity rule forwards it untouched; `tone` is a Cell
   // already, so C5 forwards it by NAME and no closure is allocated at all.
   emits: [
-    "Chip(",
+    "createComponent(Chip, ",
     "readProp(props.handler)",
     "readProp(props.label)",
     "tone: props.label",
   ],
-  absent: ["get cb()", "get render()", "get tone()", "(Chip, {"],
+  absent: ["get cb()", "get render()", "get tone()", "createElement(Chip"],
 }

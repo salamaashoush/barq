@@ -11,7 +11,8 @@ that question on this document's own terms, and doing so is its acceptance test.
 
 **Reading the rules against the code.** Two conventions reach many sections:
 
-- **The emitted convention carries no scope argument.** A component is `Comp(props)`, a Block is
+- **The emitted convention carries no scope argument.** A component is
+  `createComponent(Comp, props)`, which calls `Comp(props)` under a frame of its own, a Block is
   `block(() => …)`, and a construct makes the scope it opened the engine's current owner
   (`runWithOwner`) before it invokes a Block. Where a rule writes a scope as the first argument
   (`$s`, `_s$`, `block(c)`), read "made current by the construct". The ownership claims themselves
@@ -286,13 +287,17 @@ Inside `untrack`, read a signal; the enclosing effect MUST NOT re-run when it is
 
 ### C1 — one calling convention
 
-**Rule.** Every component is `Comp(props: Props) → Out`, called under the owner of the construct that
-invoked it. There is exactly one implementation of component invocation in the system. There is
-**no** un-compiled authoring path: a second, semantically-different implementation of component
-invocation is the root cause of the Provider bug and is not permitted to exist.
+**Rule.** Every component is `Comp(props: Props) → Out`, called through `createComponent` under a
+frame opened as a child of the owner of the construct that invoked it, so a binding its body
+installs reaches what it builds and not the siblings built after it. There is exactly one
+implementation of component invocation in the system. There is **no** un-compiled authoring path:
+a second, semantically-different implementation of component invocation is the root cause of the
+Provider bug and is not permitted to exist.
 
-**Falsified by.** Any emitted call to a user component in a shape other than `Comp(props)`; any
-runtime path that constructs an element from `(tag, props)` other than the compiled one.
+**Falsified by.** Any emitted call to a user component in a shape other than
+`createComponent(Comp, props)`, with the tag's name and location after them in a development
+compile; any runtime path that constructs an element from `(tag, props)` other than the compiled
+one.
 
 **Status.** `HOLDS` for the compiled path. `compile.rs`'s
 `the_whole_corpus_emits_one_calling_convention_at_both_levels` re-parses the emitted module for every

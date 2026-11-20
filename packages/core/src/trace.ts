@@ -79,6 +79,12 @@ export interface OwnershipSink {
    */
   own(node: object, owner: object | null, kind: "render" | "user" | "pure"): void;
   /**
+   * A component's frame, opened under `parent`. A frame is not a place the
+   * compiler addresses: what is built under it belongs to the scope that holds
+   * it, so the link is recorded and no event is.
+   */
+  frame(frame: object, parent: object): void;
+  /**
    * Opens a span over a construction the runtime was handed. `given` is the
    * scope the caller means it to run under; what it actually ran under is not
    * knowable at this instant — reading the ambient owner here would produce the
@@ -202,6 +208,9 @@ const SINK: OwnershipSink = {
   own(node, owner, kind) {
     parents.set(node, owner);
     push("own", scopeOf(owner), -1, kind, "scope");
+  },
+  frame(frame, parent) {
+    parents.set(frame, parent);
   },
   blockEnter(label, given) {
     push("block-enter", scopeOf(given), -1, label, "scope");

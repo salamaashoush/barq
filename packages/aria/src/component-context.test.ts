@@ -3,9 +3,10 @@
  * whichever way the module was compiled.
  *
  * The same source is compiled the three ways an application meets it: a
- * production build, which calls a component directly; a development build,
- * which calls it through `createComponent`; and the development server's
- * client, which also hands every component of the module out through `hot`.
+ * production build and a development build, which both call a component
+ * through `createComponent` and differ in what it is told about the call; and
+ * the development server's client, which also hands every component of the
+ * module out through `hot`.
  * The first fixture is the docs site's right-to-left calendar reduced to its
  * shape: a page declares a locale, renders a provider that hands its children
  * back unbuilt, and a grandchild placed through those children reads both. The
@@ -18,6 +19,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 
+import { flush } from "@barqjs/core";
 import { renderAndHydrate } from "@barqjs/testing";
 import { render } from "@barqjs/web";
 
@@ -41,7 +43,11 @@ let sequence = 0;
 type Mode = "production" | "development" | "hot";
 const MODES: Mode[] = ["production", "development", "hot"];
 
-type Module = Record<string, (props: Record<string, unknown>) => unknown>;
+type Module = Record<string, (props: Record<string, unknown>) => unknown> & {
+  captured?: unknown[];
+  localeAt?: (owner: unknown) => string;
+  reveal?: () => void;
+};
 
 /**
  * What the development server appends to each component declaration (see
@@ -157,7 +163,7 @@ describe("a locale declared in a page's body reaches a grandchild placed through
 });
 
 const SCOPES = `
-  import { createContext, useContext } from "@barqjs/core";
+  import { For, Show, createContext, createSignal, getOwner, runWithOwner, useContext } from "${CORE}";
   import { provideLocale, useLocale } from "${SRC}/i18n.ts";
 
   function Reads(props) {
@@ -228,6 +234,63 @@ const SCOPES = `
   export function FragmentSiblings() {
     return <><German /><Reads name="after" /></>;
   }
+
+  export function TextSiblings() {
+    return <main><German />between<Reads name="after" /></main>;
+  }
+
+  function Returned(props) {
+    provideLocale("de-DE");
+    return () => <Reads name="returned" />;
+  }
+
+  export function ReturnsCell() {
+    return <main><Returned /><Reads name="after" /></main>;
+  }
+
+  const [shown, setShown] = createSignal(true);
+  const [rows, setRows] = createSignal(["a"]);
+
+  /** Shows the branch and adds a row, after the page is built. */
+  export function reveal() {
+    setShown(true);
+    setRows(["a", "b"]);
+  }
+
+  function GermanLists() {
+    provideLocale("de-DE");
+    return (
+      <section>
+        <Show when={shown()}><Reads name="shown" /></Show>
+        <For each={rows()}>{(row) => <Reads name={row} />}</For>
+      </section>
+    );
+  }
+
+  export function Lists() {
+    return <main><GermanLists /><Reads name="after" /></main>;
+  }
+
+  /** Each owner a component body ran under, for what is built under it later. */
+  export const captured = [];
+
+  function Capture() {
+    captured.push(getOwner());
+    return null;
+  }
+
+  function GermanCapture() {
+    provideLocale("de-DE");
+    return <Capture />;
+  }
+
+  export function Captured() {
+    return <main><GermanCapture /><Capture /></main>;
+  }
+
+  export function localeAt(owner) {
+    return runWithOwner(owner, () => useLocale()().locale);
+  }
 `;
 
 const SCOPE_COMPONENTS = [
@@ -244,6 +307,14 @@ const SCOPE_COMPONENTS = [
   "Siblings",
   "BesideHandedBack",
   "FragmentSiblings",
+  "TextSiblings",
+  "Returned",
+  "ReturnsCell",
+  "GermanLists",
+  "Lists",
+  "Capture",
+  "GermanCapture",
+  "Captured",
 ];
 
 const read = (container: Element): string[] =>
@@ -260,6 +331,8 @@ const SEEN: Record<string, string[]> = {
   HandedBack: ["handed:de-DE"],
   Chosen: ["chosen:de-DE"],
   Provided: ["inside:dark", "after:plain"],
+  ReturnsCell: ["returned:de-DE", "after:en-US"],
+  Lists: ["shown:de-DE", "a:de-DE", "after:en-US"],
 };
 
 /** A binding a component installs is not its later siblings'. */
@@ -267,7 +340,15 @@ const NOT_SEEN: Record<string, string[]> = {
   Siblings: ["inside:de-DE", "after:en-US"],
   BesideHandedBack: ["beside:en-US"],
   FragmentSiblings: ["inside:de-DE", "after:en-US"],
+  TextSiblings: ["inside:de-DE", "after:en-US"],
 };
+
+/** The markup a server render wrote, read the way a client's is. */
+function served(html: string): string[] {
+  const holder = document.createElement("div");
+  holder.innerHTML = html;
+  return read(holder);
+}
 
 async function check(mode: Mode, cases: Record<string, string[]>): Promise<void> {
   const { client, server } = await compile(SCOPES, mode, SCOPE_COMPONENTS);
@@ -279,6 +360,7 @@ async function check(mode: Mode, cases: Record<string, string[]>): Promise<void>
       client: (() => client[name]!({})) as never,
     });
     unmounts.push(result.unmount);
+    expect(served(result.html), `${name}, served`).toEqual(expected);
     expect(read(result.container), `${name}, hydrated`).toEqual(expected);
     expect(result.mismatches, `${name}, hydrated`).toEqual([]);
   }
@@ -291,11 +373,27 @@ describe("a binding installed in a component's body is seen alike in every compi
     });
   }
 
-  // A production compile calls a component directly, with no frame of its
-  // own, so there its body installs on the caller's owner.
-  for (const mode of ["development", "hot"] as const) {
+  for (const mode of MODES) {
     test(`${mode}: not by what is built after it`, async () => {
       await check(mode, NOT_SEEN);
+    });
+
+    test(`${mode}: by a branch and a row built after the page`, async () => {
+      const { client } = await compile(SCOPES, mode, SCOPE_COMPONENTS);
+      const container = rendered(() => client.Lists!({}));
+      client.reveal!();
+      flush();
+      expect(read(container)).toEqual(["shown:de-DE", "a:de-DE", "b:de-DE", "after:en-US"]);
+    });
+
+    // An owner a body captured is where a renderer of its own, a canvas,
+    // builds what it is handed once it is ready, long after the call returned.
+    test(`${mode}: by what is built later under an owner its body ran under`, async () => {
+      const { client } = await compile(SCOPES, mode, SCOPE_COMPONENTS);
+      rendered(() => client.Captured!({}));
+      const [inside, after] = client.captured!;
+      expect(client.localeAt!(inside)).toBe("de-DE");
+      expect(client.localeAt!(after)).toBe("en-US");
     });
   }
 });

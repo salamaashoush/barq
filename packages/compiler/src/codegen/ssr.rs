@@ -1713,7 +1713,7 @@ mod tests {
         // By SymbolId and never by name.
         let local =
             ssr("const Show = (p) => p.when;\nexport const V = () => <Show when={1} />;\n").code;
-        assert!(local.contains("_$esc(Show({"), "{local}");
+        assert!(local.contains("_$esc(_$createComponent(Show, {"), "{local}");
         assert!(!local.contains("_$ssrShow"), "{local}");
     }
 

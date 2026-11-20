@@ -77,7 +77,7 @@ export const claims: Claim[] = [
     rule: "X2",
     says: "the provided value is a Cell, so a consumer sees a new provider value through its own read",
     async check(kit) {
-      kit.precondition(/\bLocale\(\s*\{/.test(kit.emitted), PROVIDER)
+      kit.precondition(/_\$createComponent\(\s*Locale,\s*\{/.test(kit.emitted), PROVIDER)
       const seen = await drive(kit, () => <Direct />)
       if (seen.first !== "fr" || seen.second !== "nl") {
         kit.fail(
@@ -93,7 +93,7 @@ export const claims: Claim[] = [
     rule: "X2",
     says: "a provider-value change must not re-render its children: every node in the consuming subtree survives",
     async check(kit) {
-      kit.precondition(/\bLocale\(\s*\{/.test(kit.emitted), PROVIDER)
+      kit.precondition(/_\$createComponent\(\s*Locale,\s*\{/.test(kit.emitted), PROVIDER)
       const seen = await drive(kit, () => <Direct />)
       if (!seen.sameNode) {
         kit.fail(

@@ -1282,7 +1282,10 @@ mod tests {
             "import { Chip } from \"./chip\";\n\
              export function Card(props) { return <Chip onPress={props.onPress} />; }\n",
         );
-        assert!(code.contains("Chip({ onPress: () => _$readProp(props.onPress) })"), "{code}");
+        assert!(
+            code.contains("_$createComponent(Chip, { onPress: () => _$readProp(props.onPress) })"),
+            "{code}"
+        );
     }
 
     #[test]
@@ -1435,8 +1438,14 @@ mod tests {
              export function Named() { return <Chip {...bag} />; }\n\
              export function Called() { return <Chip {...pick()} />; }\n",
         );
-        assert!(code.contains("return Chip(_$props([_$carry(bag)]));"), "{code}");
-        assert!(code.contains("return Chip(_$props([() => _$carry(pick())]));"), "{code}");
+        assert!(
+            code.contains("return _$createComponent(Chip, _$props([_$carry(bag)]));"),
+            "{code}"
+        );
+        assert!(
+            code.contains("return _$createComponent(Chip, _$props([() => _$carry(pick())]));"),
+            "{code}"
+        );
         assert!(code.contains("carry as _$carry"), "{code}");
     }
 
@@ -1452,25 +1461,27 @@ mod tests {
              export function Rest({ a, ...rest }) { return <Chip {...rest} />; }\n",
         );
         assert!(
-            code.contains("export function Whole(props) {\n  return Chip(_$props([props]));"),
+            code.contains("export function Whole(props) {\n  return _$createComponent(Chip, _$props([props]));"),
             "{code}"
         );
         assert!(
             code.contains(
-                "export function Cast(props: Q) {\n  return Chip(_$props([props as Q]));"
+                "export function Cast(props: Q) {\n  return _$createComponent(Chip, _$props([props as Q]));"
             ),
             "{code}"
         );
         assert!(
-            code.contains("export function Cells(props) {\n  return Chip(_$props([props]));"),
+            code.contains("export function Cells(props) {\n  return _$createComponent(Chip, _$props([props]));"),
             "{code}"
         );
         assert!(
-            code.contains("export function Values() {\n  return Chip(_$props([held]));"),
+            code.contains(
+                "export function Values() {\n  return _$createComponent(Chip, _$props([held]));"
+            ),
             "{code}"
         );
         assert!(code.contains("const rest = _$omit(_props$1, \"a\");"), "{code}");
-        assert!(code.contains("return Chip(_$props([rest]));"), "{code}");
+        assert!(code.contains("return _$createComponent(Chip, _$props([rest]));"), "{code}");
         assert!(!code.contains("_$carry"), "{code}");
     }
 
@@ -1498,7 +1509,7 @@ mod tests {
             code.contains("_$bindProp(_el$1, _$setAttr, \"title\", () => _$readProp(all.title));"),
             "{code}"
         );
-        assert!(code.contains("Chip(_$props([all]))"), "{code}");
+        assert!(code.contains("_$createComponent(Chip, _$props([all]))"), "{code}");
         assert!(!code.contains("_$values"), "{code}");
     }
 

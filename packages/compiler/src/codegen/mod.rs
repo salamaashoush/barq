@@ -363,11 +363,13 @@ pub enum Helper {
     /// form, computed in the READ half so the effect's own equality decides
     /// whether the write half runs at all.
     ClassToString = 57,
-    /// `_$untrack(() => Comp(props))` — a component called where a compute may
-    /// be running, so a signal its setup reads does not rebuild it.
+    /// `_$untrack(() => _$createComponent(Comp, props))` — a component called
+    /// where a compute may be running, so a signal its setup reads does not
+    /// rebuild it.
     Untrack = 58,
-    /// `_$createComponent(Comp, props, "Comp")` — a development compile's
-    /// component call, run under an owner named for the tag so a finding, an
+    /// `_$createComponent(Comp, props)` — a component call, run under an owner
+    /// of its own so a binding its body installs stays the component's. A
+    /// development compile adds the tag's name, `"Comp"`, so a finding, an
     /// error or a hydration report inside it carries the component path.
     CreateComponent = 59,
     /// `_$readOpaque(value, "title")` — `bindProp`'s read of an opaque call,
