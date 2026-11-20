@@ -13,6 +13,8 @@
  * trace is off.
  */
 
+import { getOwner, onCleanup, runWithOwner, type Owner } from "@solidjs/signals";
+
 import { OWNERSHIP } from "./signals.ts";
 
 /** O1's creation set, plus `scope` for a scope the runtime did not label. */
@@ -87,6 +89,20 @@ export interface OwnershipSink {
    */
   blockEnter(label: string, given: object | null): void;
   blockExit(label: string): void;
+  /**
+   * Declare a scope to the trace. `childScope` and `rootScope` do it for what
+   * they open; a scope the ENGINE opened, a list row, is declared by whoever
+   * builds under it.
+   */
+  scope(scope: object, parent: object | null, kind: ScopeKind, attached: boolean): void;
+  /** A scope disposed by hand, said before the cascade it starts. */
+  disposing(scope: object): void;
+  /**
+   * `compute`, telling the trace which owner its reactive node was created
+   * under. The node is only nameable from inside its own compute, where it is
+   * the ambient owner, so the first run reports it.
+   */
+  traced<V>(compute: (prev: V) => V, kind: "render" | "pure"): (prev: V) => V;
 }
 
 let events: OwnershipEvent[] = [];
@@ -145,6 +161,16 @@ function push(
   events.push({ seq: seq++, kind, scope, parent, label, scopeKind, owned });
 }
 
+/** Scopes whose disposal the trace has been told about, while one is open. */
+const disposalsReported = new WeakSet<object>();
+
+function reportDisposal(scope: object): void {
+  const sink = OWNERSHIP.sink;
+  if (sink === null || disposalsReported.has(scope)) return;
+  disposalsReported.add(scope);
+  sink.dispose(scope);
+}
+
 const SINK: OwnershipSink = {
   enter(scope, parent, kind, attached) {
     parents.set(scope, parent);
@@ -182,6 +208,25 @@ const SINK: OwnershipSink = {
   },
   blockExit(label) {
     push("block-exit", -1, -1, label, "scope");
+  },
+  scope(scope, parent, kind, attached) {
+    SINK.enter(scope, parent, kind, attached);
+    // The engine runs a scope's cleanups after it has disposed what the scope
+    // owns, so a scope reached by a cascade reports here, on its way out.
+    runWithOwner(scope as Owner, () => onCleanup(() => reportDisposal(scope)));
+  },
+  disposing: reportDisposal,
+  traced(compute, kind) {
+    const creator = getOwner();
+    let reported = false;
+    return (prev) => {
+      if (!reported) {
+        reported = true;
+        const node = getOwner();
+        if (node !== null) OWNERSHIP.sink?.own(node, creator, kind);
+      }
+      return compute(prev);
+    };
   },
 };
 

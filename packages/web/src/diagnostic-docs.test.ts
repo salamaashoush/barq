@@ -38,8 +38,11 @@ function emittedCodes(): string[] {
   for (const file of EMITTERS.flatMap((dir) => readdirSync(dir).map((name) => join(dir, name)))) {
     if (!file.endsWith(".ts") || file.endsWith(".test.ts")) continue;
     const source = readFileSync(file, "utf8");
-    for (const match of source.matchAll(/emitDiagnostic\(\s*\{\s*code: "([A-Z_]+)"/g)) {
-      codes.add(match[1]);
+    // A finding whose words `findings.ts` holds is raised by its code alone.
+    for (const match of source.matchAll(
+      /emitDiagnostic\(\s*\{\s*code: "([A-Z_]+)"|diagnose\(\s*"([A-Z_]+)"/g,
+    )) {
+      codes.add(match[1] ?? match[2]);
     }
   }
   return [...codes].toSorted();

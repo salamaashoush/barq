@@ -20,6 +20,7 @@ export {
   INTERACTION,
   clearHydrationData,
   currentRenderSession,
+  diagnose,
   diagnosticsEnabled,
   disposeScope,
   effectUnder,
@@ -76,6 +77,9 @@ export {
   type Site,
   type SyncRows,
 } from "./flow.ts";
+
+// What control flow does with the server's nodes, installed by `hydrate`.
+export { installFlowClaims } from "./flow-claims.ts";
 
 export { callSlot } from "./components.ts";
 

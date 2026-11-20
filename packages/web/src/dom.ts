@@ -5,11 +5,13 @@
 
 import {
   CONTEXT_MISS,
+  diagnose,
   disposeScope,
   emitDiagnostic,
   ERROR_BOUNDARY,
   lookupContext,
   installClaimEffect,
+  installFlowClaims,
   installMismatchCauses,
   jsxAsValue,
   OWNERSHIP,
@@ -596,15 +598,7 @@ export function delegateEvents(types: string[]): void {
     const type = types[i];
     if (NON_BUBBLING_EVENTS.has(type) && !warnedNonBubbling.has(type)) {
       warnedNonBubbling.add(type);
-      emitDiagnostic({
-        code: "DELEGATED_EVENT_DOES_NOT_BUBBLE",
-        kind: "render",
-        severity: "warn",
-        message:
-          `\`delegateEvents(["${type}"])\` asks for a listener on each render root, but ` +
-          `the \`${type}\` event does not bubble, so a handler registered this way never runs. ` +
-          `Attach it to the element itself: \`listen(element, "${type}", handler)\`.`,
-      });
+      diagnose("DELEGATED_EVENT_DOES_NOT_BUBBLE", type);
     }
     declareDelegated(type);
   }
@@ -781,15 +775,7 @@ export function setAttr(element: Element, name: string, value: unknown, prev?: u
   // `title={on() ? label : "x"}` picks the function, and its source text is
   // what the page shows.
   if (typeof value === "function") {
-    emitDiagnostic({
-      code: "FUNCTION_AS_ATTRIBUTE",
-      kind: "render",
-      severity: "warn",
-      message:
-        `The \`${name}\` attribute on \`<${element.localName}>\` was given a function, so the ` +
-        "function's source text is written to the page instead of its value. Call the accessor " +
-        `where the value is chosen: \`${name}={open() ? label() : "closed"}\`.`,
-    });
+    diagnose("FUNCTION_AS_ATTRIBUTE", name, element.localName);
   }
   if (isBoolean(value)) {
     if (isEnumeratedAttr(name)) {
@@ -1306,17 +1292,7 @@ export function bindValue(element: Element, name: string, type: string, value: u
   const set =
     pair !== null && typeof pair[1] === "function" ? (pair[1] as (next: unknown) => unknown) : null;
   if (read === null || set === null) {
-    emitDiagnostic({
-      code: "BIND_TARGET_NOT_WRITABLE",
-      kind: "render",
-      severity: "error",
-      message:
-        `\`bind:${name}\` on \`<${element.localName}>\` was given a value of type ` +
-        `\`${typeof value}\` instead of a signal, so the element does not follow the value and ` +
-        "what the user types is never written back. Pass the whole signal, the `[read, write]` " +
-        `pair \`createSignal\` returns: \`const text = createSignal("")\` and then ` +
-        `\`bind:${name}={text}\`.`,
-    });
+    diagnose("BIND_TARGET_NOT_WRITABLE", name, element.localName, typeof value);
   }
   const write = (next: unknown): void => {
     if (name === "group") {
@@ -2059,9 +2035,83 @@ export function insert(
   marker?: Node | null,
   mode?: number,
 ): void {
+  // A claim is only ever live under `hydrate`, which installs the half of this
+  // that claims. A position the server did not write is built below, as it is
+  // on a page that only renders.
+  // `claims` is this copy's and the session is core's, shared: a page holding
+  // two copies of the renderer hydrates through one, and the other builds what
+  // it is asked for without claiming.
+  if (claims !== null && hydrating() && claims.insertClaimed(parent, value, marker ?? null, mode)) {
+    return;
+  }
   const given = getOwner();
-  let anchor = marker ?? null;
+  const anchor = marker ?? null;
 
+  // A Block is a construction, so it is run ONCE and what it built is placed
+  // like any other value. Nothing here follows a signal: the parts of it that
+  // move are holes of their own, each with its own effect, and a hole wrapped
+  // around the whole of it re-ran the construction for every one of them.
+  if (typeof value === "function" && isBlock(value)) {
+    const build = value as (s: unknown) => Child;
+    if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockEnter("insert", given);
+    try {
+      value = buildChild(build, given);
+    } finally {
+      if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockExit("insert");
+    }
+    if (typeof value === "function") {
+      insert(parent, value, marker, mode);
+      return;
+    }
+  }
+
+  if (typeof value === "function") {
+    insertLive(parent, value as (s: unknown) => Child, anchor, given);
+    return;
+  }
+
+  if (value === null || value === undefined || value === true || value === false) {
+    // A static hole whose value renders nothing still owns a range on the wire,
+    // and the server wrote it empty. Nothing to claim and nothing to remove.
+    return;
+  }
+
+  if (value instanceof Node) {
+    parent.insertBefore(value, anchor);
+  } else if (isSsrHtml(value)) {
+    for (const node of ssrHtmlNodes(value)) {
+      parent.insertBefore(node, anchor);
+    }
+  } else if (Array.isArray(value)) {
+    const nodes = childToNodes(value, given);
+    for (let i = 0; i < nodes.length; i++) parent.insertBefore(nodes[i], anchor);
+  } else {
+    // `applyInsert`'s sole-occupant fast path, which the static branch never
+    // had: the element IS the range, so the text needs no node of its own to
+    // track. `textContent = ""` creates NO text node where `appendChild`
+    // creates an empty one, so the empty string keeps the old path.
+    // Any object that is not a node is written as its string, which is what
+    // `createTextNode` makes of it.
+    const text = value as TextValue;
+    if (anchor === null && text !== "" && parent.firstChild === null) {
+      fillText(parent, text);
+      return;
+    }
+    parent.insertBefore(textNode(text), anchor);
+  }
+}
+
+/**
+ * `insert` at a position a hydration found the server's range for, building
+ * the value over the server's nodes. `false` when the server wrote nothing
+ * here, for `insert` to build the value as it would anywhere else.
+ */
+function insertClaimed(
+  parent: Node,
+  value: Child | (() => Child),
+  marker: Node | null,
+  mode: number | undefined,
+): boolean {
   // H1 plus the single-hole blocker, in one line.
   //
   // `<span>{x}</span>` compiles to `<span></span>` and an `insert` with no
@@ -2077,7 +2127,9 @@ export function insert(
   // adopts whatever children it finds — needs no marker but cannot tell an
   // adjacent static text run from the dynamic one beside it, because the parser
   // fuses them into a single node before the client ever sees them.
-  const claim: Range | null = hydrating() ? claimRange(parent, anchor, mode) : null;
+  const claim: Range | null = claimRange(parent, marker, mode);
+  if (claim === null) return false;
+  const given = getOwner();
   // From here on this position IS the range. Every later update writes before
   // the close comment, so the boundary stays well formed for the life of the
   // page rather than only for the first paint — and a hole whose neighbour is
@@ -2086,40 +2138,22 @@ export function insert(
   //
   // A `WHOLE` claim has no close comment and needs none: it owns the element,
   // so appending is already writing at the end of the position.
-  if (claim !== null && claim.close !== null) anchor = claim.close;
+  const anchor = claim.close !== null ? claim.close : marker;
 
-  // A Block is a construction, so it is run ONCE and what it built is placed
-  // like any other value. Nothing here follows a signal: the parts of it that
-  // move are holes of their own, each with its own effect, and a hole wrapped
-  // around the whole of it re-ran the construction for every one of them.
   if (typeof value === "function" && isBlock(value)) {
     const build = value as (s: unknown) => Child;
     if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockEnter("insert", given);
     try {
-      if (claim !== null) {
-        claims().placeClaimed(parent, claim, anchor, () =>
-          childToNodes(buildChild(build, given), given),
-        );
-        return;
-      }
-      value = buildChild(build, given);
+      placeClaimed(parent, claim, anchor, () => childToNodes(buildChild(build, given), given));
     } finally {
       if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockExit("insert");
     }
-    if (typeof value === "function") {
-      insert(parent, value, marker, mode);
-      return;
-    }
-  }
-
-  if (typeof value === "function" && claim === null) {
-    insertLive(parent, value as (s: unknown) => Child, anchor, given);
-    return;
+    return true;
   }
 
   if (typeof value === "function") {
-    let current: Node[] = claim === null ? EMPTY_NODES : claim.nodes;
-    let first = claim;
+    let current: Node[] = claim.nodes;
+    let first: Range | null = claim;
     // O4.5: the effect belongs to the scope this call was GIVEN, not to
     // whatever happened to be current at the call site. Without this the
     // argument is decoration — a hole inserted under scope A while B is ambient
@@ -2174,13 +2208,13 @@ export function insert(
         // synthesised anchor to insert. Reconciling `null` against the claim
         // would remove the whole subtree the region just adopted; measured on
         // a router page as a `<div>shell:` with its route emptied out of it.
-        if (taken !== null && taken.length > 0 && claims().claimedItAll(produced, taken)) {
+        if (taken !== null && taken.length > 0 && claimedItAll(produced, taken)) {
           current = taken;
           return CLAIMED;
         }
         if (claiming !== null) {
-          claims().detectTextDrift(current, produced);
-          claims().adoptText(current, produced);
+          detectTextDrift(current, produced);
+          adoptText(current, produced);
         }
         return resolveInsert(produced, current, given);
       },
@@ -2188,64 +2222,34 @@ export function insert(
         if (resolved !== CLAIMED) current = placeInsert(parent, resolved, current, anchor);
       },
     );
-    return;
+    return true;
   }
 
-  if (value === null || value === undefined || value === true || value === false) {
-    // A static hole whose value renders nothing still owns a range on the wire,
-    // and the server wrote it empty. Nothing to claim and nothing to remove.
-    return;
-  }
+  if (value === null || value === undefined || value === true || value === false) return true;
 
   // A static hole under a claim: the same reconcile, seeded with the server's
   // nodes, so a value that matches costs no write at all.
-  if (claim !== null) {
-    const taken = takenAtHole(claim);
-    if (holdsAFunction(value)) {
-      claims().placeClaimed(parent, claim, anchor, () => childToNodes(value, given), taken);
-      return;
-    }
-    // The same question the live path asks its cursor: a value that is all
-    // nodes the build took in place, or nothing at all beside them, was
-    // adopted where it stands. Reconciled, the range comments a region inside
-    // it anchors on would be removed, and the region would then insert beside
-    // a node that is no longer in the document.
-    if (taken.taken.length > 0 && claims().claimedItAll(value, taken.taken)) return;
-    // An array's strings are made into nodes against the cursor, which is the
-    // only thing that knows which of the server's text nodes each one is.
-    if (isArray(value)) {
-      claims().placeClaimed(parent, claim, anchor, () => childToNodes(value, given), taken);
-      return;
-    }
-    claims().detectTextDrift(claim.nodes, value);
-    claims().adoptText(claim.nodes, value);
-    applyInsert(parent, value, claim.nodes, anchor, given);
-    return;
+  const taken = takenAtHole(claim);
+  if (holdsAFunction(value)) {
+    placeClaimed(parent, claim, anchor, () => childToNodes(value, given), taken);
+    return true;
   }
-
-  if (value instanceof Node) {
-    parent.insertBefore(value, anchor);
-  } else if (isSsrHtml(value)) {
-    for (const node of ssrHtmlNodes(value)) {
-      parent.insertBefore(node, anchor);
-    }
-  } else if (Array.isArray(value)) {
-    const nodes = childToNodes(value, given);
-    for (let i = 0; i < nodes.length; i++) parent.insertBefore(nodes[i], anchor);
-  } else {
-    // `applyInsert`'s sole-occupant fast path, which the static branch never
-    // had: the element IS the range, so the text needs no node of its own to
-    // track. `textContent = ""` creates NO text node where `appendChild`
-    // creates an empty one, so the empty string keeps the old path.
-    // Any object that is not a node is written as its string, which is what
-    // `createTextNode` makes of it.
-    const text = value as TextValue;
-    if (anchor === null && text !== "" && parent.firstChild === null) {
-      fillText(parent, text);
-      return;
-    }
-    parent.insertBefore(textNode(text), anchor);
+  // The same question the live path asks its cursor: a value that is all
+  // nodes the build took in place, or nothing at all beside them, was
+  // adopted where it stands. Reconciled, the range comments a region inside
+  // it anchors on would be removed, and the region would then insert beside
+  // a node that is no longer in the document.
+  if (taken.taken.length > 0 && claimedItAll(value, taken.taken)) return true;
+  // An array's strings are made into nodes against the cursor, which is the
+  // only thing that knows which of the server's text nodes each one is.
+  if (isArray(value)) {
+    placeClaimed(parent, claim, anchor, () => childToNodes(value, given), taken);
+    return true;
   }
+  detectTextDrift(claim.nodes, value);
+  adoptText(claim.nodes, value);
+  applyInsert(parent, value, claim.nodes, anchor, given);
+  return true;
 }
 
 /**
@@ -2270,19 +2274,37 @@ function placeClaimed(
 }
 
 /**
- * The halves of `insert` that only a claim reaches, installed by `hydrate` for
- * the reason `hydration.ts` installs its walk: reached directly from `insert`,
- * a page that never hydrates shipped them.
+ * The server's node for a template's root, or `null` where the client builds
+ * its own.
  */
-const INSERT_CLAIMS = { placeClaimed, adoptText, detectTextDrift, claimedItAll };
-let insertClaims: typeof INSERT_CLAIMS | null = null;
-
-function claims(): typeof INSERT_CLAIMS {
-  if (insertClaims === null) {
-    throw new Error("barq: a server range was claimed while no `hydrate` call was running");
+function claimTemplate(cached: Node, detect: boolean | string): Node | null {
+  // `detect` is the detection axis, threaded from the compiler to the one
+  // call that holds both trees at once. A production build passes nothing
+  // and the subtree comparison never runs. A development compile passes
+  // the JSX's `file:line:column` in its place, for the report of a
+  // mismatch; only a development engine has `OBSERVE`.
+  if (OBSERVE !== undefined && typeof detect === "string") {
+    try {
+      const claimed = claimNode(cached, detect);
+      claimingTemplate(detect);
+      return claimed;
+    } catch (error) {
+      if (error instanceof HydrationMismatch) error.template = detect;
+      throw error;
+    }
   }
-  return insertClaims;
+  return claimNode(cached, detect);
 }
+
+/**
+ * The halves of `insert` and `template` that only a claim reaches, installed
+ * by `hydrate` for the reason `hydration.ts` installs its walk: reached
+ * directly, a page that never hydrates shipped them. `OBSERVE` is a constant
+ * of another module, which no bundler folds, so the development arm of
+ * `claimTemplate` shipped too.
+ */
+const CLAIMS = { insertClaimed, claimTemplate };
+let claims: typeof CLAIMS | null = null;
 
 /** Text written through the one text node the server sent is that node, reused. */
 function adoptText(claimed: readonly Node[], produced: Child): void {
@@ -2752,16 +2774,7 @@ export function render(
   container.textContent = ""; // Faster than innerHTML = ""
 
   if (typeof block !== "function") {
-    emitDiagnostic({
-      code: "RENDER_SUBTREE_NOT_OWNED",
-      kind: "owner",
-      severity: "warn",
-      message:
-        "`render` was given nodes that were built before the call, as in `const view = <App />` " +
-        "followed by `render(view, host)`, so the function it returns removes the nodes but " +
-        "cannot dispose their effects and listeners. Pass a function instead: " +
-        "`render(() => <App />, host)`.",
-    });
+    diagnose("RENDER_SUBTREE_NOT_OWNED");
   }
   const root = rootScope(options?.owner ?? null, options?.renderId);
   provideDefaultHost(root);
@@ -3094,8 +3107,9 @@ function hydrateContainer(
   // id epoch is the other half of that.
   const seeds = { ...(globalThis as { __BARQ_DATA__?: Record<string, unknown> }).__BARQ_DATA__ };
   registerDelegatedRoot(container);
-  insertClaims = INSERT_CLAIMS;
+  claims = CLAIMS;
   installClaimEffect();
+  installFlowClaims();
   installMismatchCauses();
   beginHydration(container);
   const marked = wireIsMarked();
@@ -3344,26 +3358,9 @@ export function template(
     // returned, which is now the SERVER's node. A clone is what happens when
     // nothing is being hydrated, and `claimNode` throws rather than returning
     // one when the server's tree is not the client's.
-    if (hydrating()) {
-      // `detect` is the detection axis, threaded from the compiler to the one
-      // call that holds both trees at once. A production build passes nothing
-      // and the subtree comparison never runs. A development compile passes
-      // the JSX's `file:line:column` in its place, for the report of a
-      // mismatch; only a development engine has `OBSERVE`, so a production
-      // bundle drops this arm whole.
-      if (OBSERVE !== undefined && typeof detect === "string") {
-        try {
-          const claimed = claimNode(cached, detect);
-          claimingTemplate(detect);
-          if (claimed !== null) return claimed;
-        } catch (error) {
-          if (error instanceof HydrationMismatch) error.template = detect;
-          throw error;
-        }
-      } else {
-        const claimed = claimNode(cached, detect);
-        if (claimed !== null) return claimed;
-      }
+    if (claims !== null && hydrating()) {
+      const claimed = claims.claimTemplate(cached, detect);
+      if (claimed !== null) return claimed;
     }
     builtNode();
     return cached.cloneNode(true);

@@ -48,6 +48,11 @@ const WALK = [
   "function placeClaimed(",
   "function detectTextDrift(",
   "function claimEffect(",
+  "function insertClaimed(",
+  "function claimTemplate(",
+  "function claimSite(",
+  "function evictUnclaimed(",
+  "function inRow(",
 ];
 
 const PAGE = `

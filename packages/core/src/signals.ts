@@ -54,6 +54,7 @@ import { abandonClaim, hydrating, mismatchIn } from "./hydration-state.ts";
 import type { Incoming } from "./config.ts";
 import { sharedSourcesOf } from "./shared-sources.ts";
 import type { OwnershipSink, ScopeKind } from "./trace.ts";
+import { FINDINGS, type FindingCode, type Finding, type Findings } from "./findings.ts";
 
 export {
   $PROXY,
@@ -397,6 +398,7 @@ function addDiagnosticListener(listener: DiagnosticListener): () => void {
     release = () => localListeners.delete(listener);
   }
   listening++;
+  finding = emitFinding;
   refreshDiagnosticsOn();
   let live = true;
   return () => {
@@ -414,6 +416,7 @@ function addDiagnosticListener(listener: DiagnosticListener): () => void {
  */
 export function setDiagnosticReporter(report: DiagnosticListener | null): void {
   reporter = report;
+  finding = emitFinding;
   refreshDiagnosticsOn();
 }
 
@@ -449,6 +452,24 @@ export function emitDiagnostic(
   }
   reporter?.(event, subject ?? undefined);
   return event;
+}
+
+/**
+ * How `diagnose` words a finding, installed with the first subscriber or
+ * reporter: the only two ways anything hears one. A page with neither
+ * references `findings.ts` from nowhere, and its bundle carries no finding's
+ * prose and none of the channel.
+ */
+let finding: ((code: FindingCode, args: readonly unknown[]) => void) | null = null;
+
+function emitFinding(code: FindingCode, args: readonly unknown[]): void {
+  const worded = (FINDINGS[code] as (...given: readonly unknown[]) => Finding)(...args);
+  emitDiagnostic({ code, ...worded });
+}
+
+/** Report one of the findings `findings.ts` words, by its code. */
+export function diagnose<C extends FindingCode>(code: C, ...args: Parameters<Findings[C]>): void {
+  if (diagnosticsOn && finding !== null) finding(code, args);
 }
 
 /**
@@ -725,36 +746,8 @@ export function childScope(
     if (counted !== undefined) counted.id = id;
     engineSetContext(NUMBERING, numberingAt(id), scope);
   }
-  if (OWNERSHIP.sink !== null) traceScope(scope, parent, kind, parent !== null);
+  if (OWNERSHIP.sink !== null) OWNERSHIP.sink.scope(scope, parent, kind, parent !== null);
   return scope;
-}
-
-/**
- * Declare a scope to the ownership trace. `childScope` and `rootScope` do it
- * for what they open; a scope the ENGINE opened, a list row, is declared by
- * whoever builds under it. Call only while a trace is installed.
- */
-export function traceScope(
-  scope: Scope,
-  parent: Scope | null,
-  kind: ScopeKind,
-  attached: boolean,
-): void {
-  const sink = OWNERSHIP.sink!;
-  sink.enter(scope, parent, kind, attached);
-  // The engine runs a scope's cleanups after it has disposed what the scope
-  // owns, so a scope reached by a cascade reports here, on its way out.
-  runWithOwner(scope, () => onCleanup(() => reportDisposal(scope)));
-}
-
-/** Scopes whose disposal the trace has been told about, while one is open. */
-const disposalsReported = new WeakSet<Scope>();
-
-function reportDisposal(scope: Scope): void {
-  const sink = OWNERSHIP.sink;
-  if (sink === null || disposalsReported.has(scope)) return;
-  disposalsReported.add(scope);
-  sink.dispose(scope);
 }
 
 /**
@@ -775,7 +768,7 @@ export function underScope<T>(
 export function disposeScope(scope: Scope): void {
   // Said BEFORE the cascade, so the trace sees a scope disposed by hand begin
   // to unwind ahead of the kids that unwinding takes with it.
-  if (OWNERSHIP.sink !== null) reportDisposal(scope);
+  if (OWNERSHIP.sink !== null) OWNERSHIP.sink.disposing(scope);
   (scope as unknown as Disposable).dispose();
 }
 
@@ -867,7 +860,7 @@ export function rootScope(owner: Scope | null = null, renderId = ""): Scope {
     recordsOf(activeAsyncSession);
     engineSetContext(RENDER_SESSION, activeAsyncSession, root);
   }
-  if (OWNERSHIP.sink !== null) traceScope(root, null, "root", false);
+  if (OWNERSHIP.sink !== null) OWNERSHIP.sink.scope(root, null, "root", false);
   return root;
 }
 
@@ -1184,24 +1177,6 @@ export function thrownBy(error: unknown): unknown {
 }
 
 /**
- * Tell the ownership trace which owner a reactive node was created under. The
- * node is only nameable from inside its own compute, where it is the ambient
- * owner, so the first run reports it.
- */
-function traced<V>(compute: (prev: V) => V, kind: "render" | "pure"): (prev: V) => V {
-  const creator = getOwner();
-  let reported = false;
-  return (prev) => {
-    if (!reported) {
-      reported = true;
-      const node = getOwner();
-      if (node !== null) OWNERSHIP.sink?.own(node, creator, kind);
-    }
-    return compute(prev);
-  };
-}
-
-/**
  * The render effect every binding and every region is built on: `compute`
  * reads, `apply` writes the DOM once the pass has committed. It is the engine's
  * `createRenderEffect` plus the two counters the renderer is measured by.
@@ -1211,7 +1186,9 @@ export function renderEffect<T>(
   apply: (value: T, prev: T | undefined) => void | (() => void),
 ): void {
   effectsAllocated++;
-  const run = (OWNERSHIP.sink !== null ? traced(compute, "render") : compute) as typeof compute;
+  const run = (
+    OWNERSHIP.sink !== null ? OWNERSHIP.sink.traced(compute, "render") : compute
+  ) as typeof compute;
   if (hydrating() && claiming !== null) {
     claiming(run, apply);
     return;
@@ -1378,7 +1355,7 @@ export function internalMemo<T>(
   options?: MemoOptions<T>,
 ): SourceAccessor<T> {
   return engineCreateMemo<T>(
-    (OWNERSHIP.sink !== null ? traced(compute as never, "pure") : compute) as never,
+    (OWNERSHIP.sink !== null ? OWNERSHIP.sink.traced(compute as never, "pure") : compute) as never,
     options,
   );
 }
@@ -1434,7 +1411,7 @@ function hydrationAware<T>(
   if (seeding() || (source !== undefined && source !== "server" && hydrating())) {
     fn = asyncAware(fn, options);
   }
-  if (OWNERSHIP.sink !== null) fn = traced(fn as never, "pure") as typeof fn;
+  if (OWNERSHIP.sink !== null) fn = OWNERSHIP.sink.traced(fn as never, "pure") as typeof fn;
   return fn;
 }
 

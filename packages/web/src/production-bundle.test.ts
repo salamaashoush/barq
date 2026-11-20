@@ -3,8 +3,10 @@
  *
  * Each of these was once kept in every production bundle by a guard no
  * minifier folds, so the bundle is built here and searched: the cause texts of
- * a hydration mismatch, the frame around an event handler, and the diagnostics
- * channel behind `DEV`.
+ * a hydration mismatch, what control flow and `insert` do with the server's
+ * nodes and the reports they write about them, the frame around an event
+ * handler, the diagnostics channel behind `DEV`, and the words of the findings
+ * a page raises while nothing can hear them.
  */
 
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -48,31 +50,67 @@ async function bundle(source: string): Promise<string> {
   }
 }
 
+const WEB = JSON.stringify(join(HERE, "index.ts"));
+// The entry `index.ts` resolves `@barqjs/core` to under the build's conditions,
+// so the page and the renderer share one copy of core.
+const CORE = JSON.stringify(join(HERE, "../../core/dist/index.js"));
+
 const RENDERS = `
-  import { render, template, insert, delegateEvents } from ${JSON.stringify(join(HERE, "index.ts"))};
-  import { createSignal } from ${JSON.stringify(join(HERE, "../../core/src/index.ts"))};
+  import { render, template, insert, delegateEvents, each, branch, boundary } from ${WEB};
+  import { block, createSignal } from ${CORE};
   const [count, setCount] = createSignal(0);
   const view = template("<button> </button>");
-  delegateEvents(["click"]);
+  const list = template("<ul></ul>");
+  delegateEvents(["click", "focus"]);
   render(() => {
     const button = view();
     button.__bq_click = () => setCount(count() + 1);
     insert(button, count);
-    return button;
+    const ul = list();
+    each(ul, null, () => [1, 2], null, block((n) => String(n)));
+    branch(ul, null, () => count() % 2, [null, block(() => "odd")]);
+    boundary(ul, null, "loading", null, block(() => "ready"));
+    return [button, ul];
   }, document.body);
 `;
+
+/** Prose only a claim writes: the reports of what did not match, and their causes. */
+const CLAIM_PROSE = [
+  "This usually means",
+  "the rest of the server's markup was reused",
+  "hydratable: true",
+];
+
+/** The words of findings `render`, `delegateEvents` and `each` can raise. */
+const FINDING_PROSE = [
+  "were built before the call",
+  "event does not bubble",
+  "was built twice for a single render",
+];
 
 test("a page that renders carries none of what only hydration or development reads", async () => {
   const code = await bundle(RENDERS);
   expect(code).toContain("__bq_click");
-  expect(code).not.toContain("This usually means");
+  for (const text of CLAIM_PROSE) expect(code).not.toContain(text);
+  expect(code).not.toContain("HydrationMismatch");
   expect(code).not.toContain("withInteraction");
   expect(code).not.toContain("subscribe");
+  expect(code).not.toContain("/packages/core/docs/diagnostics");
+  for (const text of FINDING_PROSE) expect(code).not.toContain(text);
 });
 
-test("a page that hydrates carries the cause texts", async () => {
+test("a page that hydrates carries the claims and their reports", async () => {
   const code = await bundle(
-    `import { hydrate } from ${JSON.stringify(join(HERE, "index.ts"))};\nhydrate(() => document.createElement("p"), document.body);\n`,
+    `import { hydrate } from ${WEB};\nhydrate(() => document.createElement("p"), document.body);\n`,
   );
-  expect(code).toContain("This usually means");
+  for (const text of CLAIM_PROSE) expect(code).toContain(text);
+  expect(code).toContain("HydrationMismatch");
+});
+
+test("a page that subscribes to diagnostics carries the findings' words", async () => {
+  const code = await bundle(`${RENDERS}
+    import { DEV } from ${CORE};
+    DEV.diagnostics.subscribe((event) => console.log(event.message));
+  `);
+  for (const text of FINDING_PROSE) expect(code).toContain(text);
 });
