@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Donut(props: Incoming<IconProps>) {
+export function Donut(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M20.5 10a2.5 2.5 0 0 1-2.4-3H18a2.95 2.95 0 0 1-2.6-4.4 10 10 0 1 0 6.3 7.1c-.3.2-.8.3-1.2.3" />
       <circle cx="12" cy="12" r="3" />
     </svg>

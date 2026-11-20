@@ -36,22 +36,22 @@ const FRUITS: Fruit[] = [
 ];
 
 function Picker(
-  props: Incoming<{
+  props: {
     defaultSelectedKey?: Key | null;
     name?: string;
     isDisabled?: boolean;
     onSelectionChange?: (key: Key | null) => void;
-  }>,
+  },
 ) {
   return (
     <Select
       label="Fruit"
       items={FRUITS}
       placeholder="Pick one"
-      name={props.name?.()}
-      isDisabled={props.isDisabled?.()}
-      defaultSelectedKey={props.defaultSelectedKey?.()}
-      onSelectionChange={props.onSelectionChange?.()}
+      name={props.name}
+      isDisabled={props.isDisabled}
+      defaultSelectedKey={props.defaultSelectedKey}
+      onSelectionChange={props.onSelectionChange}
       getTextValue={(fruit: Fruit) => fruit.name}
     >
       {(fruit: Fruit) => <Option>{fruit.name}</Option>}
@@ -315,7 +315,7 @@ describe("a select written as parts", () => {
   }
 
   function Parts(
-    props: Incoming<{
+    props: {
       selectedKey?: Key | null;
       defaultSelectedKey?: Key | null;
       name?: string;
@@ -326,25 +326,25 @@ describe("a select written as parts", () => {
       "aria-label"?: string;
       onSelectionChange?: (key: Key | null) => void;
       onOpenChange?: (isOpen: boolean) => void;
-    }>,
+    },
   ) {
     return (
       <>
         <label for="fruit">Fruit</label>
         <SelectRoot
-          selectedKey={props.selectedKey?.()}
-          defaultSelectedKey={props.defaultSelectedKey?.()}
-          name={props.name?.()}
-          isDisabled={props.isDisabled?.()}
-          isRequired={props.isRequired?.()}
-          dir={props.dir?.()}
-          onSelectionChange={props.onSelectionChange?.()}
-          onOpenChange={props.onOpenChange?.()}
+          selectedKey={props.selectedKey}
+          defaultSelectedKey={props.defaultSelectedKey}
+          name={props.name}
+          isDisabled={props.isDisabled}
+          isRequired={props.isRequired}
+          dir={props.dir}
+          onSelectionChange={props.onSelectionChange}
+          onOpenChange={props.onOpenChange}
         >
-          <SelectTrigger id="fruit" aria-label={props["aria-label"]?.()}>
+          <SelectTrigger id="fruit" aria-label={props["aria-label"]}>
             <SelectValue placeholder="Pick one" />
           </SelectTrigger>
-          <SelectContent position={props.position?.()} data-testid="content">
+          <SelectContent position={props.position} data-testid="content">
             <SelectScrollButton direction="up" data-testid="up" />
             <SelectViewport>
               <Option value="apple">

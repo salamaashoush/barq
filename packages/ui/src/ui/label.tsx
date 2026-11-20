@@ -1,3 +1,4 @@
+import { cells } from "@barqjs/core";
 import type { Incoming } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
 
@@ -47,9 +48,9 @@ export interface LabelProps extends UiProps {
  * off Tailwind's `peer` and `group` marker classes; there are none here, so the
  * state the controls already publish does the job.
  */
-export function Label(props: Incoming<LabelProps>) {
+export function Label(props: LabelProps) {
   return (
-    <label {...uiProps("label", label, props)} for={props.for?.() ?? props.htmlFor?.()}>
+    <label {...uiProps("label", label, cells(props))} for={props.for ?? props.htmlFor}>
       {props.children}
     </label>
   );

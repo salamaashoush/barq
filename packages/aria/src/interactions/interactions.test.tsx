@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush, type Incoming, createSignal } from "@barqjs/core";
+import { cells, flush, type Incoming, createSignal } from "@barqjs/core";
 import { render, screen, user } from "@barqjs/testing";
 import { focused, focusWithin } from "./focus-events.ts";
 import { hover } from "./hover.ts";
@@ -10,12 +10,12 @@ import { interactOutside } from "./interact-outside.ts";
 import { description } from "./description.ts";
 
 describe("hover", () => {
-  function Hoverable(props: Incoming<{ log: string[]; isDisabled?: boolean }>) {
+  function Hoverable(props: { log: string[]; isDisabled?: boolean }) {
     const { hoverProps, isHovered } = hover({
-      isDisabled: props.isDisabled,
-      onHoverStart: (e) => props.log().push(`start:${e.pointerType}`),
-      onHoverEnd: (e) => props.log().push(`end:${e.pointerType}`),
-      onHoverChange: (over) => props.log().push(`change:${over}`),
+      isDisabled: cells(props).isDisabled,
+      onHoverStart: (e) => props.log.push(`start:${e.pointerType}`),
+      onHoverEnd: (e) => props.log.push(`end:${e.pointerType}`),
+      onHoverChange: (over) => props.log.push(`change:${over}`),
     });
     return (
       <button type="button" {...hoverProps} data-hovered={isHovered}>
@@ -72,11 +72,11 @@ describe("hover", () => {
 });
 
 describe("focused", () => {
-  function Field(props: Incoming<{ log: string[] }>) {
+  function Field(props: { log: string[] }) {
     const { focusProps, isFocused } = focused({
-      onFocus: () => props.log().push("focus"),
-      onBlur: () => props.log().push("blur"),
-      onFocusChange: (on) => props.log().push(`change:${on}`),
+      onFocus: () => props.log.push("focus"),
+      onBlur: () => props.log.push("blur"),
+      onFocusChange: (on) => props.log.push(`change:${on}`),
     });
     return (
       <>
@@ -231,11 +231,11 @@ describe("keyboard", () => {
 });
 
 describe("move", () => {
-  function Slider(props: Incoming<{ log: string[] }>) {
+  function Slider(props: { log: string[] }) {
     const { moveProps } = move({
-      onMoveStart: () => props.log().push("start"),
-      onMove: (e) => props.log().push(`move:${e.deltaX},${e.deltaY}`),
-      onMoveEnd: () => props.log().push("end"),
+      onMoveStart: () => props.log.push("start"),
+      onMove: (e) => props.log.push(`move:${e.deltaX},${e.deltaY}`),
+      onMoveEnd: () => props.log.push("end"),
     });
     return <div {...moveProps} role="slider" tabIndex={0} aria-label="value" aria-valuenow={0} />;
   }

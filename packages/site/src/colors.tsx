@@ -163,15 +163,15 @@ function resolved(property: string): string {
 
 const TOKENS = Object.keys(tokens).filter((token) => token !== "radius");
 
-function Swatch(props: Incoming<{ token: string; value: string; ink: string }>) {
+function Swatch(props: { token: string; value: string; ink: string }) {
   const [copied, setCopied] = createSignal(false);
-  const property = (): string => propertyOf(props.token());
+  const property = (): string => propertyOf(props.token);
 
   return (
     <button
       type="button"
       class={swatch}
-      style={() => ({ "--swatch": props.value(), "--swatch-ink": props.ink() })}
+      style={() => ({ "--swatch": props.value, "--swatch-ink": props.ink })}
       aria-label={() => `Copy ${property()}`}
       onClick={() => {
         void navigator.clipboard?.writeText(property());
@@ -196,15 +196,15 @@ function Swatch(props: Incoming<{ token: string; value: string; ink: string }>) 
  * definition — otherwise all eight sections would print the same colours and
  * the page would say nothing.
  */
-function Family(props: Incoming<{ theme: ThemeDefinition }>) {
+function Family(props: { theme: ThemeDefinition }) {
   const shown = (): readonly string[] =>
-    TOKENS.filter((token) => props.theme().light[propertyOf(token).slice(2)] !== undefined);
+    TOKENS.filter((token) => props.theme.light[propertyOf(token).slice(2)] !== undefined);
 
   return (
     <div class={section}>
       <div class={head}>
         <div class={name}>
-          <h2>{() => props.theme().title}</h2>
+          <h2>{() => props.theme.title}</h2>
         </div>
         <span class={count}>{() => `${String(shown().length)} tokens`}</span>
       </div>
@@ -213,8 +213,8 @@ function Family(props: Incoming<{ theme: ThemeDefinition }>) {
           {(token: string) => (
             <Swatch
               token={token}
-              value={props.theme().light[propertyOf(token).slice(2)] ?? "transparent"}
-              ink={props.theme().light["foreground"] ?? "currentColor"}
+              value={props.theme.light[propertyOf(token).slice(2)] ?? "transparent"}
+              ink={props.theme.light["foreground"] ?? "currentColor"}
             />
           )}
         </For>

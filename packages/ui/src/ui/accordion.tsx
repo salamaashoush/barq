@@ -1,3 +1,4 @@
+import { cells } from "@barqjs/core";
 import type { Key } from "@barqjs/aria/collections";
 import {
   DisclosureButton,
@@ -192,26 +193,26 @@ function keysOf(value: string | string[] | undefined): Key[] | undefined {
  * </Accordion>
  * ```
  */
-export function Accordion<T>(props: Incoming<AccordionProps<T>>) {
-  const multiple = (): boolean => props.allowsMultiple?.() ?? props.type?.() === "multiple";
+export function Accordion<T>(props: AccordionProps<T>) {
+  const multiple = (): boolean => props.allowsMultiple ?? props.type === "multiple";
   const report = (keys: Set<Key>): void => {
-    props.onExpandedChange?.()?.(keys);
+    props.onExpandedChange?.(keys);
     const values = [...keys].map(String);
-    props.onValueChange?.()?.(multiple() ? values : (values[0] ?? ""));
+    props.onValueChange?.(multiple() ? values : (values[0] ?? ""));
   };
 
   return (
     <DisclosureGroup
-      {...omit(props, UPSTREAM)}
+      {...omit(cells(props), UPSTREAM)}
       data-slot="accordion"
       allowsMultiple={multiple()}
       isCollapsible={
-        props.isCollapsible?.() ??
-        (props.type === undefined ? undefined : (props.collapsible?.() ?? false))
+        props.isCollapsible ??
+        (props.type === undefined ? undefined : (props.collapsible ?? false))
       }
-      isDisabled={props.isDisabled?.() ?? props.disabled?.()}
-      expandedKeys={props.expandedKeys?.() ?? keysOf(props.value?.())}
-      defaultExpandedKeys={props.defaultExpandedKeys?.() ?? keysOf(props.defaultValue?.())}
+      isDisabled={props.isDisabled ?? props.disabled}
+      expandedKeys={props.expandedKeys ?? keysOf(props.value)}
+      defaultExpandedKeys={props.defaultExpandedKeys ?? keysOf(props.defaultValue)}
       onExpandedChange={report}
     />
   );
@@ -233,11 +234,11 @@ export interface AccordionItemProps extends UiProps {
  * like every other grouping component here — so a `class` handed to it landed
  * nowhere and the accordion had no dividers at all.
  */
-export function AccordionItem(props: Incoming<AccordionItemProps>) {
+export function AccordionItem(props: AccordionItemProps) {
   return (
     <DisclosureGroupItem
-      id={props.value?.()}
-      isDisabled={props.isDisabled?.() ?? props.disabled?.()}
+      id={props.value}
+      isDisabled={props.isDisabled ?? props.disabled}
     >
       <AccordionSection {...props}>{props.children}</AccordionSection>
     </DisclosureGroupItem>
@@ -248,11 +249,11 @@ export function AccordionItem(props: Incoming<AccordionItemProps>) {
  * The element, INSIDE the provider rather than around it, so it can say whether
  * its own section is open. Around it, the state is one scope too far down.
  */
-function AccordionSection(props: Incoming<AccordionItemProps>) {
+function AccordionSection(props: AccordionItemProps) {
   const section = useDisclosure();
   return (
     <div
-      {...uiProps("accordion-item", item, props)}
+      {...uiProps("accordion-item", item, cells(props))}
       data-state={() => (section.state.isExpanded() ? "open" : "closed")}
       data-orientation={() => section.group?.orientation()}
       data-disabled={() => (section.isDisabled() ? "" : undefined)}
@@ -265,7 +266,7 @@ function AccordionSection(props: Incoming<AccordionItemProps>) {
 export interface AccordionTriggerProps extends DisclosureButtonComponentProps {}
 
 /** The header row. The chevron swaps on `data-expanded`, which the button writes. */
-export function AccordionTrigger(props: Incoming<AccordionTriggerProps>) {
+export function AccordionTrigger(props: AccordionTriggerProps) {
   const section = useDisclosure();
   return (
     <h3
@@ -277,8 +278,8 @@ export function AccordionTrigger(props: Incoming<AccordionTriggerProps>) {
     >
       <DisclosureButton
         {...props}
-        data-slot={props["data-slot"]?.() ?? "accordion-trigger"}
-        class={ui(trigger, props.class?.(), props.className?.())}
+        data-slot={props["data-slot"] ?? "accordion-trigger"}
+        class={ui(trigger, props.class, props.className)}
       >
         {props.children}
         <ChevronDown data-slot="accordion-trigger-icon" class={chevronDown} />
@@ -290,10 +291,10 @@ export function AccordionTrigger(props: Incoming<AccordionTriggerProps>) {
 
 export interface AccordionContentProps extends DisclosurePanelComponentProps {}
 
-export function AccordionContent(props: Incoming<AccordionContentProps>) {
+export function AccordionContent(props: AccordionContentProps) {
   return (
     <DisclosurePanel {...props} data-slot="accordion-content" class={panel}>
-      <div data-slot="accordion-body" class={ui(body, props.class?.(), props.className?.())}>
+      <div data-slot="accordion-body" class={ui(body, props.class, props.className)}>
         {props.children}
       </div>
     </DisclosurePanel>

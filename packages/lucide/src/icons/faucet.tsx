@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Faucet(props: Incoming<IconProps>) {
+export function Faucet(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M10.083 5.428 5.57 4.083a2 2 0 10.001 3.834l4.512-1.345" />
       <path d="M12 8v3" />
       <path d="m13.917 5.428 4.511-1.345a2 2 0 110 3.834l-4.51-1.345" />

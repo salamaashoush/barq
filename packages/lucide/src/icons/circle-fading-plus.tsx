@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function CircleFadingPlus(props: Incoming<IconProps>) {
+export function CircleFadingPlus(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M12 2a10 10 0 0 1 7.38 16.75" />
       <path d="M12 8v8" />
       <path d="M16 12H8" />

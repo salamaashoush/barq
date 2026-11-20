@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function SquaresIntersect(props: Incoming<IconProps>) {
+export function SquaresIntersect(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M10 22a2 2 0 0 1-2-2" />
       <path d="M14 2a2 2 0 0 1 2 2" />
       <path d="M16 22h-2" />

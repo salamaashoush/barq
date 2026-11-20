@@ -19,6 +19,7 @@
  */
 
 import {
+  cells,
   type Accessor,
   type Child,
   For,
@@ -341,19 +342,19 @@ export interface DisclosureButtonComponentProps extends StyleProps {
   ref?: RefTarget<HTMLButtonElement>;
 }
 
-export function DisclosureButton(props: Incoming<DisclosureButtonComponentProps>) {
+export function DisclosureButton(props: DisclosureButtonComponentProps) {
   const domRef = makeRef<HTMLButtonElement>();
   const value = useDisclosure();
 
   const { buttonProps, isPressed } = button(
-    { ...(fromProps(props) as ButtonOptions), ...value.buttonProps },
+    { ...(fromProps(cells(props)) as ButtonOptions), ...value.buttonProps },
     domRef,
   );
-  const { hoverProps, isHovered } = hover({ isDisabled: () => props.isDisabled?.() });
+  const { hoverProps, isHovered } = hover({ isDisabled: () => props.isDisabled });
   const { focusProps, isFocusVisible } = focusRing();
   // `button()` delivers `onClick` itself; bound on the element as well, a
   // caller's handler runs twice for every mouse click.
-  const { onClick: _, ...forwarded } = filterDOMProps(fromProps(props), { global: true });
+  const { onClick: _, ...forwarded } = filterDOMProps(fromProps(cells(props)), { global: true });
 
   const elementProps = mergeProps(
     buttonProps,
@@ -361,7 +362,7 @@ export function DisclosureButton(props: Incoming<DisclosureButtonComponentProps>
     hoverProps,
     focusProps,
     forwarded,
-    styleProps(props),
+    styleProps(cells(props)),
     {
       "aria-disabled": () => value.isLocked?.() === true || undefined,
       "data-expanded": value.state.isExpanded,
@@ -370,8 +371,8 @@ export function DisclosureButton(props: Incoming<DisclosureButtonComponentProps>
       "data-pressed": isPressed,
       "data-hovered": isHovered,
       "data-focus-visible": isFocusVisible,
-      "data-disabled": () => props.isDisabled?.() === true || value.isDisabled(),
-      "data-testid": () => props["data-testid"]?.(),
+      "data-disabled": () => props.isDisabled === true || value.isDisabled(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
@@ -381,7 +382,7 @@ export function DisclosureButton(props: Incoming<DisclosureButtonComponentProps>
   };
 
   return (
-    <button {...elementProps} ref={mergeRefs(domRef.set, enlist, props.ref?.())}>
+    <button {...elementProps} ref={mergeRefs(domRef.set, enlist, props.ref)}>
       {props.children}
     </button>
   );
@@ -396,24 +397,24 @@ export interface DisclosurePanelComponentProps extends StyleProps {
  * The panel. Still in the document while collapsed, so find-in-page can reach
  * it and open the disclosure it belongs to.
  */
-export function DisclosurePanel(props: Incoming<DisclosurePanelComponentProps>) {
+export function DisclosurePanel(props: DisclosurePanelComponentProps) {
   const value = useDisclosure();
 
   const elementProps = mergeProps(
     value.panelProps,
-    filterDOMProps(fromProps(props), { global: true, labelable: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true, labelable: true }),
+    styleProps(cells(props)),
     {
       "data-expanded": value.state.isExpanded,
       "data-state": () => (value.state.isExpanded() ? "open" : "closed"),
       "data-orientation": () => value.group?.orientation(),
       "data-disabled": value.isDisabled,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
   return (
-    <div {...elementProps} ref={mergeRefs(value.panelRef.set, props.ref?.())}>
+    <div {...elementProps} ref={mergeRefs(value.panelRef.set, props.ref)}>
       {props.children}
     </div>
   );
@@ -507,19 +508,19 @@ export interface DisclosureGroupComponentProps<T> extends StyleProps, ItemAccess
  * practices call that optional; it is here because a long accordion is
  * otherwise a Tab stop per section with nothing faster.
  */
-export function DisclosureGroup<T>(props: Incoming<DisclosureGroupComponentProps<T>>) {
-  const options = fromProps(props as unknown as Incoming<Record<string, unknown>>);
+export function DisclosureGroup<T>(props: DisclosureGroupComponentProps<T>) {
+  const options = fromProps(cells(props) as unknown as Incoming<Record<string, unknown>>);
   const state = disclosureGroupState({
     ...(options as DisclosureGroupStateOptions),
-    onExpandedChange: (keys) => props.onExpandedChange?.()?.(keys),
+    onExpandedChange: (keys) => props.onExpandedChange?.(keys),
   });
 
-  const items = props.items;
+  const items = cells(props).items;
   const collection = (): ListCollection<T> =>
-    buildCollection(items?.() ?? [], props as unknown as ItemAccessors<T>);
+    buildCollection(items?.() ?? [], cells(props) as unknown as ItemAccessors<T>);
 
   const locale = useLocale();
-  const orientation = (): "vertical" | "horizontal" => props.orientation?.() ?? "vertical";
+  const orientation = (): "vertical" | "horizontal" => props.orientation ?? "vertical";
   const group: DisclosureGroupContextValue = { state, orientation };
 
   const owner = getOwner();
@@ -530,7 +531,7 @@ export function DisclosureGroup<T>(props: Incoming<DisclosureGroupComponentProps
     const from = (event.target as Element | null)?.closest("button") ?? null;
     if (root === null || from === null || headerGroups.get(from) !== group) return;
 
-    const rtl = (props.dir?.() ?? locale().direction) === "rtl";
+    const rtl = (props.dir ?? locale().direction) === "rtl";
     const horizontal = orientation() === "horizontal";
     const forward = horizontal ? (rtl ? "ArrowLeft" : "ArrowRight") : "ArrowDown";
     const back = horizontal ? (rtl ? "ArrowRight" : "ArrowLeft") : "ArrowUp";
@@ -560,13 +561,13 @@ export function DisclosureGroup<T>(props: Incoming<DisclosureGroupComponentProps
   };
 
   const elementProps = mergeProps(
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
       onKeyDown,
       "data-orientation": orientation,
       "data-disabled": state.isDisabled,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
@@ -575,7 +576,7 @@ export function DisclosureGroup<T>(props: Incoming<DisclosureGroupComponentProps
     // key its sections by the outer section's node.
     if (owner !== null) install(owner, DisclosureNodeContext, () => null);
     return (
-      <div {...elementProps} ref={mergeRefs(props.ref?.())}>
+      <div {...elementProps} ref={mergeRefs(props.ref)}>
         {props.children}
       </div>
     );
@@ -584,7 +585,7 @@ export function DisclosureGroup<T>(props: Incoming<DisclosureGroupComponentProps
   const render = props.children as unknown as (item: T) => Child;
 
   return (
-    <div {...elementProps} ref={mergeRefs(props.ref?.())}>
+    <div {...elementProps} ref={mergeRefs(props.ref)}>
       <For each={() => [...collection()]}>
         {(node: Node<T>) => {
           const rowOwner = getOwner();

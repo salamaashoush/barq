@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function WholeWord(props: Incoming<IconProps>) {
+export function WholeWord(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <circle cx="7" cy="12" r="3" />
       <path d="M10 9v6" />
       <circle cx="17" cy="12" r="3" />

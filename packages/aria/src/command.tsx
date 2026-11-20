@@ -39,6 +39,7 @@
  */
 
 import {
+  cells,
   type Accessor,
   type Child,
   createContext,
@@ -897,10 +898,10 @@ export function useCommand(): CommandContextValue {
   return value;
 }
 
-function CommandProvider(props: Incoming<{ value: CommandContextValue; children?: Child }>) {
+function CommandProvider(props: { value: CommandContextValue; children?: Child }) {
   return provide(
     CommandContext,
-    () => props.value(),
+    () => props.value,
     () => props.children as unknown,
   );
 }
@@ -926,9 +927,9 @@ export interface CommandComponentProps extends StyleProps {
   onValueChange?: (value: string) => void;
 }
 
-export function Command(props: Incoming<CommandComponentProps>) {
+export function Command(props: CommandComponentProps) {
   const listRef = makeRef<HTMLDivElement>();
-  const options = fromProps(props);
+  const options = fromProps(cells(props));
   const state = commandState(options);
   const { commandProps, labelProps, inputProps, listProps, label, itemId } = command(
     { label: options.label, "aria-label": options["aria-label"], listRef },
@@ -939,13 +940,13 @@ export function Command(props: Incoming<CommandComponentProps>) {
   const elementProps = mergeProps(
     commandProps,
     filterDOMProps(options, { global: true }),
-    styleProps(props),
-    { "data-testid": () => props["data-testid"]?.() },
+    styleProps(cells(props)),
+    { "data-testid": () => props["data-testid"] },
   );
 
   return (
-    <div {...elementProps} ref={mergeRefs(props.ref?.())}>
-      <Show when={props.label?.() !== undefined}>
+    <div {...elementProps} ref={mergeRefs(props.ref)}>
+      <Show when={props.label !== undefined}>
         <label {...labelProps}>{label()}</label>
       </Show>
       <CommandProvider value={value}>{props.children}</CommandProvider>
@@ -964,24 +965,24 @@ export interface CommandInputComponentProps extends StyleProps {
   onValueChange?: (search: string) => void;
 }
 
-export function CommandInput(props: Incoming<CommandInputComponentProps>) {
+export function CommandInput(props: CommandInputComponentProps) {
   const held = useCommand();
-  const options = fromProps(props);
+  const options = fromProps(cells(props));
   const { inputProps } = commandInput(options, held.state, held.inputProps);
 
   const elementProps = mergeProps(
     inputProps,
     filterDOMProps(options, { global: true, propNames: INPUT_PROPS }),
-    styleProps(props),
+    styleProps(cells(props)),
     {
       "aria-label": () =>
-        props["aria-label"]?.() ??
+        props["aria-label"] ??
         access(held.inputProps["aria-label"] as MaybeAccessor<string | undefined>),
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
-  return <input {...elementProps} ref={mergeRefs(props.ref?.())} />;
+  return <input {...elementProps} ref={mergeRefs(props.ref)} />;
 }
 
 const INPUT_PROPS = new Set(["placeholder", "disabled", "autoFocus", "onKeyDown", "onKeyUp"]);
@@ -992,22 +993,22 @@ export interface CommandListComponentProps extends StyleProps {
   ref?: RefTarget<HTMLDivElement>;
 }
 
-export function CommandList(props: Incoming<CommandListComponentProps>) {
+export function CommandList(props: CommandListComponentProps) {
   const held = useCommand();
   const elementProps = mergeProps(
     held.listProps,
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
       "aria-label": () =>
-        props["aria-label"]?.() ??
+        props["aria-label"] ??
         access(held.listProps["aria-label"] as MaybeAccessor<string | undefined>),
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
   return (
-    <div {...elementProps} ref={mergeRefs(held.listRef.set, props.ref?.())}>
+    <div {...elementProps} ref={mergeRefs(held.listRef.set, props.ref)}>
       {/* Presentational, or it would stand between the listbox and its options. */}
       <div cmdk-list-sizer="" role="presentation" style={COLUMN}>
         {props.children}
@@ -1021,15 +1022,15 @@ export interface CommandEmptyComponentProps extends StyleProps {
 }
 
 /** Rendered while the search matches nothing, and not otherwise. */
-export function CommandEmpty(props: Incoming<CommandEmptyComponentProps>) {
+export function CommandEmpty(props: CommandEmptyComponentProps) {
   const held = useCommand();
   return (
     <Show when={held.state.isEmpty()}>
       <div
         cmdk-empty=""
         role="presentation"
-        {...filterDOMProps(fromProps(props), { global: true })}
-        {...styleProps(props)}
+        {...filterDOMProps(fromProps(cells(props)), { global: true })}
+        {...styleProps(cells(props))}
       >
         {props.children}
       </div>
@@ -1049,38 +1050,38 @@ export interface CommandGroupComponentProps extends StyleProps {
   ref?: RefTarget<HTMLDivElement>;
 }
 
-export function CommandGroup(props: Incoming<CommandGroupComponentProps>) {
+export function CommandGroup(props: CommandGroupComponentProps) {
   const held = useCommand();
   const group = commandGroup(
     {
-      heading: () => props.heading?.(),
-      "aria-label": () => props["aria-label"]?.(),
-      forceMount: () => props.forceMount?.(),
+      heading: () => props.heading,
+      "aria-label": () => props["aria-label"],
+      forceMount: () => props.forceMount,
     },
     held.state,
   );
 
   const elementProps = mergeProps(
     group.groupProps,
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
       // The order comes last, so a caller's own `style` does not drop it.
       style: () => ({
-        ...props.style?.(),
+        ...props.style,
         ...access(group.groupProps.style as MaybeAccessor<Record<string, number> | undefined>),
       }),
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
   return (
-    <div {...elementProps} ref={mergeRefs(group.ref, props.ref?.())}>
-      <Show when={props.heading?.() !== undefined}>
+    <div {...elementProps} ref={mergeRefs(group.ref, props.ref)}>
+      <Show when={props.heading !== undefined}>
         <div
           {...group.headingProps}
-          class={props.headingClass?.()}
-          data-slot={props.headingSlot?.()}
+          class={props.headingClass}
+          data-slot={props.headingSlot}
         >
           {props.heading}
         </div>
@@ -1101,9 +1102,9 @@ export interface CommandItemComponentProps extends StyleProps {
   onSelect?: (value: string) => void;
 }
 
-export function CommandItem(props: Incoming<CommandItemComponentProps>) {
+export function CommandItem(props: CommandItemComponentProps) {
   const held = useCommand();
-  const options = fromProps(props);
+  const options = fromProps(cells(props));
   const item = commandItem(
     {
       value: options.value,
@@ -1119,20 +1120,20 @@ export function CommandItem(props: Incoming<CommandItemComponentProps>) {
   const elementProps = mergeProps(
     item.itemProps,
     filterDOMProps(options, { global: true, labelable: true }),
-    styleProps(props),
+    styleProps(cells(props)),
     {
       // The order comes last, so a caller's own `style` does not drop it.
       style: () => ({
-        ...props.style?.(),
+        ...props.style,
         ...access(item.itemProps.style as MaybeAccessor<Record<string, number> | undefined>),
       }),
       "data-focused": item.isHighlighted,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
   return (
-    <div {...elementProps} ref={mergeRefs(item.ref, props.ref?.())}>
+    <div {...elementProps} ref={mergeRefs(item.ref, props.ref)}>
       {props.children}
     </div>
   );
@@ -1143,15 +1144,15 @@ export interface CommandSeparatorComponentProps extends StyleProps {
   alwaysRender?: boolean;
 }
 
-export function CommandSeparator(props: Incoming<CommandSeparatorComponentProps>) {
+export function CommandSeparator(props: CommandSeparatorComponentProps) {
   const held = useCommand();
   return (
-    <Show when={props.alwaysRender?.() === true || held.state.search() === ""}>
+    <Show when={props.alwaysRender === true || held.state.search() === ""}>
       <div
         cmdk-separator=""
         role="separator"
-        {...filterDOMProps(fromProps(props), { global: true })}
-        {...styleProps(props)}
+        {...filterDOMProps(fromProps(cells(props)), { global: true })}
+        {...styleProps(cells(props))}
       />
     </Show>
   );
@@ -1166,17 +1167,17 @@ export interface CommandLoadingComponentProps extends StyleProps {
 }
 
 /** Shown, by the caller's own condition, while the items are being fetched. */
-export function CommandLoading(props: Incoming<CommandLoadingComponentProps>) {
+export function CommandLoading(props: CommandLoadingComponentProps) {
   return (
     <div
       cmdk-loading=""
       role="progressbar"
-      aria-valuenow={props.progress?.()}
+      aria-valuenow={props.progress}
       aria-valuemin={0}
       aria-valuemax={100}
-      aria-label={props.label?.() ?? "Loading..."}
-      {...filterDOMProps(fromProps(props), { global: true })}
-      {...styleProps(props)}
+      aria-label={props.label ?? "Loading..."}
+      {...filterDOMProps(fromProps(cells(props)), { global: true })}
+      {...styleProps(cells(props))}
     >
       <div aria-hidden="true">{props.children}</div>
     </div>

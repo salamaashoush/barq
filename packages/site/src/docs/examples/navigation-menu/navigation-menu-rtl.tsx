@@ -93,12 +93,12 @@ const summary = css`
   color: var(--muted-foreground);
 `;
 
-function ListItem(props: Incoming<{ title: string; href: string; children?: Child }>) {
+function ListItem(props: { title: string; href: string; children?: Child }) {
   return (
     <li>
-      <NavigationMenuLink href={props.href()}>
+      <NavigationMenuLink href={props.href}>
         <div class={body}>
-          <div class={heading}>{props.title()}</div>
+          <div class={heading}>{props.title}</div>
           <div class={summary}>{props.children}</div>
         </div>
       </NavigationMenuLink>

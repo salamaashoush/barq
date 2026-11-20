@@ -13,7 +13,7 @@ const slot = (name: string): HTMLElement =>
 const thumbs = (): HTMLInputElement[] => screen.getAllByRole<HTMLInputElement>("slider");
 const custom = (element: HTMLElement, name: string): string => element.style.getPropertyValue(name);
 
-function Mirrored(props: Incoming<{ children?: Child }>) {
+function Mirrored(props: { children?: Child }) {
   provideDirection("rtl");
   return <div>{props.children}</div>;
 }

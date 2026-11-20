@@ -11,7 +11,7 @@
  * VoiceOver and NVDA still do not announce the latter.
  */
 
-import { type Accessor, type Child, type Incoming } from "@barqjs/core";
+import { cells, type Accessor, type Child, type Incoming } from "@barqjs/core";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { focusRing } from "./focus.ts";
 import { focusable, type FocusableOptions } from "./interactions/focusable.ts";
@@ -295,16 +295,16 @@ export interface TextFieldComponentProps extends StyleProps {
  * <TextField label="Name" onChange={(v) => name.set(v)} />
  * ```
  */
-export function TextField(props: Incoming<TextFieldComponentProps>) {
+export function TextField(props: TextFieldComponentProps) {
   const inputRef = makeRef<HTMLInputElement>();
-  const options = fromProps(props);
+  const options = fromProps(cells(props));
 
   const { labelProps, inputProps, descriptionProps, errorMessageProps, errors, isInvalid } =
     textField(
       {
         ...(options as TextFieldOptions),
-        validate: callback(props.validate),
-        validationBehavior: () => props.validationBehavior?.(),
+        validate: callback(cells(props).validate),
+        validationBehavior: () => props.validationBehavior,
       },
       inputRef,
     );
@@ -315,27 +315,27 @@ export function TextField(props: Incoming<TextFieldComponentProps>) {
     "data-hovered": isHovered,
     "data-focused": isFocused,
     "data-focus-visible": isFocusVisible,
-    "data-disabled": () => props.isDisabled?.() === true,
+    "data-disabled": () => props.isDisabled === true,
     "data-invalid": isInvalid,
   });
 
   return (
     <div
-      {...mergeProps(styleProps(props), {
-        "data-testid": () => props["data-testid"]?.(),
+      {...mergeProps(styleProps(cells(props)), {
+        "data-testid": () => props["data-testid"],
       })}
     >
       <label {...labelProps}>{props.label}</label>
       {() =>
-        props.isMultiLine?.() === true ? (
+        props.isMultiLine === true ? (
           <textarea
             {...controlProps}
             ref={
-              mergeRefs(inputRef.set, props.ref?.()) as unknown as (el: HTMLTextAreaElement) => void
+              mergeRefs(inputRef.set, props.ref) as unknown as (el: HTMLTextAreaElement) => void
             }
           />
         ) : (
-          <input {...controlProps} ref={mergeRefs(inputRef.set, props.ref?.())} />
+          <input {...controlProps} ref={mergeRefs(inputRef.set, props.ref)} />
         )
       }
       <span {...descriptionProps}>{props.description}</span>
@@ -344,7 +344,7 @@ export function TextField(props: Incoming<TextFieldComponentProps>) {
       <span {...errorMessageProps}>
         {() => {
           if (!isInvalid()) return null;
-          const given = props.errorMessage?.();
+          const given = props.errorMessage;
           if (given !== undefined && given !== null) return given;
           return errors().join(" ");
         }}
@@ -365,9 +365,9 @@ export interface SearchFieldComponentProps extends TextFieldComponentProps {
  * <SearchField label="Search" onSubmit={(q) => search(q)} />
  * ```
  */
-export function SearchField(props: Incoming<SearchFieldComponentProps>) {
+export function SearchField(props: SearchFieldComponentProps) {
   const inputRef = makeRef<HTMLInputElement>();
-  const options = fromProps(props);
+  const options = fromProps(cells(props));
 
   const {
     labelProps,
@@ -386,20 +386,20 @@ export function SearchField(props: Incoming<SearchFieldComponentProps>) {
     "data-hovered": isHovered,
     "data-focused": isFocused,
     "data-focus-visible": isFocusVisible,
-    "data-disabled": () => props.isDisabled?.() === true,
+    "data-disabled": () => props.isDisabled === true,
   });
 
   return (
     <div
-      {...mergeProps(styleProps(props), {
-        "data-testid": () => props["data-testid"]?.(),
+      {...mergeProps(styleProps(cells(props)), {
+        "data-testid": () => props["data-testid"],
         "data-empty": () => value() === "",
       })}
     >
       <label {...labelProps}>{props.label}</label>
-      <input {...controlProps} ref={mergeRefs(inputRef.set, props.ref?.())} />
+      <input {...controlProps} ref={mergeRefs(inputRef.set, props.ref)} />
       <button type="button" {...clearButtonProps}>
-        {() => props.clearLabel?.() ?? "Clear search"}
+        {() => props.clearLabel ?? "Clear search"}
       </button>
       <span {...descriptionProps}>{props.description}</span>
       {/* The caller's message when it gave one, and otherwise whatever found
@@ -407,7 +407,7 @@ export function SearchField(props: Incoming<SearchFieldComponentProps>) {
       <span {...errorMessageProps}>
         {() => {
           if (!isInvalid()) return null;
-          const given = props.errorMessage?.();
+          const given = props.errorMessage;
           if (given !== undefined && given !== null) return given;
           return errors().join(" ");
         }}

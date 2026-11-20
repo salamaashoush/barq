@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function ReplaceAll(props: Incoming<IconProps>) {
+export function ReplaceAll(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M14 14a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1" />
       <path d="M14 4a1 1 0 0 1 1-1" />
       <path d="M15 10a1 1 0 0 1-1-1" />

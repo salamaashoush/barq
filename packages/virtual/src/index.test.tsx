@@ -134,7 +134,7 @@ export function List(props: { options: () => ListOptions }): JSXElement {
     count: 100,
     getScrollElement: () => scroller,
     estimateSize: () => 50,
-    ...props.options(),
+    ...props.options,
   }));
   current = virtualizer;
   const measure = measured ? virtualizer.measureElement : undefined;
@@ -757,7 +757,7 @@ export function LateList(props: { open: () => boolean }): JSXElement {
   });
   late = virtualizer;
   return (
-    <Show when={props.open()}>
+    <Show when={props.open}>
       <div ref={setScroller} class="scroller" data-height="200" data-width="300">
         <For each={virtualizer.getVirtualItems()} keyed={(item: VirtualItem) => item.key}>
           {(item: () => VirtualItem) => (
@@ -854,7 +854,7 @@ export function Page(props: {
   const virtualizer = createWindowVirtualizer<HTMLLIElement>(() => ({
     count: 1000,
     estimateSize: () => 100,
-    ...props.options(),
+    ...props.options,
   }));
   page = virtualizer;
   return (

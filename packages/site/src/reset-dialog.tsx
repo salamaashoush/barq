@@ -28,9 +28,9 @@ export interface ResetDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-export function ResetDialog(props: Incoming<ResetDialogProps>) {
+export function ResetDialog(props: ResetDialogProps) {
   return (
-    <AlertDialog isOpen={props.isOpen()} onOpenChange={props.onOpenChange()}>
+    <AlertDialog isOpen={props.isOpen} onOpenChange={props.onOpenChange}>
       <AlertDialogContent size="sm">
         <AlertDialogHeader>
           <AlertDialogTitle>Reset to defaults?</AlertDialogTitle>
@@ -40,7 +40,7 @@ export function ResetDialog(props: Incoming<ResetDialogProps>) {
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction onPress={() => props.design().reset()}>Reset</AlertDialogAction>
+          <AlertDialogAction onPress={() => props.design.reset()}>Reset</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

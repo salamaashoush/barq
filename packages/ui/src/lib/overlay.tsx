@@ -21,6 +21,7 @@ import {
 import { PortalProvider } from "@barqjs/aria/dialog";
 import { fromProps, type DOMProps } from "@barqjs/aria/utils";
 import {
+  cells,
   createContext,
   createSignal,
   getContext,
@@ -79,10 +80,10 @@ export interface OverlayPortalProps {
  * container other than the body. Without one it changes nothing, and in
  * particular does not undo a container set further up.
  */
-export function OverlayPortal(props: Incoming<OverlayPortalProps>) {
+export function OverlayPortal(props: OverlayPortalProps) {
   if (props.container === undefined) return <>{props.children}</>;
   return (
-    <PortalProvider getContainer={() => props.container?.() ?? null}>
+    <PortalProvider getContainer={() => props.container ?? null}>
       {props.children}
     </PortalProvider>
   );
@@ -116,8 +117,8 @@ export function overlayFamily(name: string, kind: OverlayKind = "dialog"): Overl
     return value;
   };
 
-  function Root(props: Incoming<OverlayRootProps>) {
-    const state = overlayTriggerState(fromProps(props));
+  function Root(props: OverlayRootProps) {
+    const state = overlayTriggerState(fromProps(cells(props)));
     const [underlay, setUnderlay] = createSignal<DOMProps | null>(null, { ownedWrite: true });
     const value: OverlayValue = {
       state,
@@ -139,7 +140,7 @@ export function overlayFamily(name: string, kind: OverlayKind = "dialog"): Overl
     );
   }
 
-  function Trigger(props: Incoming<TriggerPartProps>) {
+  function Trigger(props: TriggerPartProps) {
     const value = use();
     const { triggerProps } = overlayTrigger({ type: kind }, value.state);
 
@@ -152,7 +153,7 @@ export function overlayFamily(name: string, kind: OverlayKind = "dialog"): Overl
           },
           ref: value.triggerRef.set,
         }}
-        render={props.render?.()}
+        render={props.render}
         name={`${slotName}-trigger`}
       >
         {props.children}

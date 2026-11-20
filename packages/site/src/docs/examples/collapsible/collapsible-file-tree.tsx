@@ -118,8 +118,8 @@ const file = css`
   color: var(--foreground);
 `;
 
-function TreeItem(props: Incoming<{ item: FileTreeItem }>) {
-  const item = props.item();
+function TreeItem(props: { item: FileTreeItem }) {
+  const item = props.item;
   if ("items" in item) {
     return (
       <Collapsible>

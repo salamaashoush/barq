@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function FlaskConicalOff(props: Incoming<IconProps>) {
+export function FlaskConicalOff(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M10 2v2.343" />
       <path d="M14 2v6.343" />
       <path d="m2 2 20 20" />

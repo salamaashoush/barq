@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function GapVertical(props: Incoming<IconProps>) {
+export function GapVertical(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M2 12h2" />
       <path d="M8 12h2" />
       <path d="M14 12h2" />

@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function ChartScatter(props: Incoming<IconProps>) {
+export function ChartScatter(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <circle cx="7.5" cy="7.5" r=".5" fill="currentColor" />
       <circle cx="18.5" cy="5.5" r=".5" fill="currentColor" />
       <circle cx="11.5" cy="11.5" r=".5" fill="currentColor" />

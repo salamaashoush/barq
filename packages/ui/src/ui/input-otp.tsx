@@ -6,6 +6,7 @@ import {
 } from "@barqjs/aria/otp";
 import { mergeProps, type DOMProps } from "@barqjs/aria/utils";
 import {
+  cells,
   createContext,
   createMemo,
   getContext,
@@ -306,20 +307,20 @@ const OWN = ["value", "defaultValue", "pattern", "onChange", "style"] as const;
  * Name the field: `aria-label`, or a `<Label>` pointing at its `id`. Both reach
  * the real control, which is the only thing a screen reader meets.
  */
-export function InputOTP(props: Incoming<InputOTPProps>) {
+export function InputOTP(props: InputOTPProps) {
   const inputRef = makeRef<HTMLInputElement>();
   const rootRef = makeRef<HTMLDivElement>();
 
-  const length = (): number => props.maxLength?.() ?? 6;
-  const inputMode = (): NonNullable<InputOTPProps["inputMode"]> => props.inputMode?.() ?? "numeric";
-  const isDisabled = (): boolean => props.isDisabled?.() === true || props.disabled?.() === true;
+  const length = (): number => props.maxLength ?? 6;
+  const inputMode = (): NonNullable<InputOTPProps["inputMode"]> => props.inputMode ?? "numeric";
+  const isDisabled = (): boolean => props.isDisabled === true || props.disabled === true;
   const isInvalid = (): boolean => {
-    const attribute = props["aria-invalid"]?.();
-    return props.isInvalid?.() === true || attribute === true || attribute === "true";
+    const attribute = props["aria-invalid"];
+    return props.isInvalid === true || attribute === true || attribute === "true";
   };
 
   const strip = (raw: string): string => {
-    const pattern = props.pattern?.();
+    const pattern = props.pattern;
     // `lastIndex` is state on a global regex, so a fresh one per call: reusing
     // the caller's would skip characters on every other keystroke.
     if (pattern instanceof RegExp)
@@ -329,22 +330,22 @@ export function InputOTP(props: Incoming<InputOTPProps>) {
   };
 
   const test = (): string | undefined => {
-    const pattern = props.pattern?.();
+    const pattern = props.pattern;
     return typeof pattern === "string" ? pattern : undefined;
   };
 
   const otp = otpField(
     {
       maxLength: length,
-      value: () => props.value?.(),
-      defaultValue: () => props.defaultValue?.(),
-      onChange: (next) => props.onChange?.()?.(next),
-      onComplete: (next) => props.onComplete?.()?.(next),
+      value: () => props.value,
+      defaultValue: () => props.defaultValue,
+      onChange: (next) => props.onChange?.(next),
+      onComplete: (next) => props.onComplete?.(next),
       pattern: test,
       sanitize: strip,
-      pasteTransformer: () => props.pasteTransformer?.(),
-      placeholder: () => props.placeholder?.(),
-      pushPasswordManagerStrategy: () => props.pushPasswordManagerStrategy?.(),
+      pasteTransformer: () => props.pasteTransformer,
+      placeholder: () => props.placeholder,
+      pushPasswordManagerStrategy: () => props.pushPasswordManagerStrategy,
     },
     inputRef,
     rootRef,
@@ -368,7 +369,7 @@ export function InputOTP(props: Incoming<InputOTPProps>) {
   onCleanup(() => observer?.disconnect());
 
   const controlStyle = (): Record<string, string> => {
-    const style: Record<string, string> = { "text-align": props.textAlign?.() ?? "left" };
+    const style: Record<string, string> = { "text-align": props.textAlign ?? "left" };
     if (otp.willPushPasswordManagerBadge()) {
       style.width = `calc(100% + ${OTP_BADGE_SPACE})`;
       style["clip-path"] = `inset(0 ${OTP_BADGE_SPACE} 0 0)`;
@@ -380,18 +381,18 @@ export function InputOTP(props: Incoming<InputOTPProps>) {
     class: () =>
       ui(
         container,
-        props.class?.(),
-        props.className?.(),
-        props.containerClass?.(),
-        props.containerClassName?.(),
+        props.class,
+        props.className,
+        props.containerClass,
+        props.containerClassName,
       ),
-    hidden: () => props.hidden?.(),
+    hidden: () => props.hidden,
     "data-disabled": () => (isDisabled() ? "true" : undefined),
   };
-  if (props.style !== undefined) containerProps.style = () => props.style?.();
+  if (props.style !== undefined) containerProps.style = () => props.style;
 
   const controlAttributes = mergeProps(
-    controlProps("input-otp", control, omit(props, OWN)),
+    controlProps("input-otp", control, omit(cells(props), OWN)),
     otp.inputProps,
     { style: controlStyle },
   );
@@ -406,7 +407,7 @@ export function InputOTP(props: Incoming<InputOTPProps>) {
           data-input-otp
           inputMode={inputMode()}
           pattern={test()}
-          autocomplete={props.autoComplete?.() ?? "one-time-code"}
+          autocomplete={props.autoComplete ?? "one-time-code"}
           spellcheck={false}
           maxLength={length()}
           value={otp.value()}
@@ -429,16 +430,16 @@ export function InputOTP(props: Incoming<InputOTPProps>) {
  * rather than the one `provide` created, so the children go up beside the
  * context instead of under it and every slot fails to find it.
  */
-function Provider(props: Incoming<{ value: OtpValue; children?: Child }>) {
+function Provider(props: { value: OtpValue; children?: Child }) {
   return provide(
     OtpContext,
-    () => props.value(),
+    () => props.value,
     () => props.children,
   );
 }
 
-export function InputOTPGroup(props: Incoming<UiProps>) {
-  return <div {...uiProps("input-otp-group", group, props)}>{props.children}</div>;
+export function InputOTPGroup(props: UiProps) {
+  return <div {...uiProps("input-otp-group", group, cells(props))}>{props.children}</div>;
 }
 
 export interface InputOTPSlotProps extends UiProps {
@@ -452,13 +453,13 @@ export interface InputOTPSlotProps extends UiProps {
  * the whole row is `aria-hidden`, because the field a screen reader should meet
  * is the one real input behind it.
  */
-export function InputOTPSlot(props: Incoming<InputOTPSlotProps>) {
+export function InputOTPSlot(props: InputOTPSlotProps) {
   const otp = useOtp();
-  const slot = (): OtpSlot => otp.slot(props.index());
+  const slot = (): OtpSlot => otp.slot(props.index);
 
   return (
     <div
-      {...uiProps("input-otp-slot", slotBox, props)}
+      {...uiProps("input-otp-slot", slotBox, cells(props))}
       data-active={() => (slot().isActive ? "true" : "false")}
       aria-invalid={() => (otp.isInvalid() ? "true" : undefined)}
     >
@@ -472,9 +473,9 @@ export function InputOTPSlot(props: Incoming<InputOTPSlotProps>) {
   );
 }
 
-export function InputOTPSeparator(props: Incoming<UiProps>) {
+export function InputOTPSeparator(props: UiProps) {
   return (
-    <div {...uiProps("input-otp-separator", separator, props)} role="separator">
+    <div {...uiProps("input-otp-separator", separator, cells(props))} role="separator">
       <Minus />
     </div>
   );

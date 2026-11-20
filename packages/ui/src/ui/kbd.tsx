@@ -1,3 +1,4 @@
+import { cells } from "@barqjs/core";
 import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
@@ -58,10 +59,10 @@ const group = ui({
  * </KbdGroup>
  * ```
  */
-export function Kbd(props: Incoming<UiProps>) {
-  return <kbd {...uiProps("kbd", kbd, props)}>{props.children}</kbd>;
+export function Kbd(props: UiProps) {
+  return <kbd {...uiProps("kbd", kbd, cells(props))}>{props.children}</kbd>;
 }
 
-export function KbdGroup(props: Incoming<UiProps>) {
-  return <kbd {...uiProps("kbd-group", group, props)}>{props.children}</kbd>;
+export function KbdGroup(props: UiProps) {
+  return <kbd {...uiProps("kbd-group", group, cells(props))}>{props.children}</kbd>;
 }

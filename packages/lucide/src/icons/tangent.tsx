@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Tangent(props: Incoming<IconProps>) {
+export function Tangent(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <circle cx="17" cy="4" r="2" />
       <path d="M15.59 5.41 5.41 15.59" />
       <circle cx="4" cy="17" r="2" />

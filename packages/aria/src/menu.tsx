@@ -22,6 +22,7 @@
  */
 
 import {
+  cells,
   type Accessor,
   type Child,
   For,
@@ -1494,9 +1495,9 @@ export interface MenuTriggerComponentProps {
  * The `<Menu>` inside puts itself in a popover anchored to the button and
  * renders only while open, so neither has to be told about the other.
  */
-export function MenuTrigger(props: Incoming<MenuTriggerComponentProps>) {
+export function MenuTrigger(props: MenuTriggerComponentProps) {
   const triggerRef = makeRef<HTMLElement>();
-  const options = fromProps(props);
+  const options = fromProps(cells(props));
   const state = menuTriggerState(options);
 
   const { menuTriggerProps, menuProps } = menuTrigger(options, state);
@@ -1532,13 +1533,13 @@ export interface MenuButtonComponentProps extends StyleProps {
 }
 
 /** The button an enclosing {@link MenuTrigger} opens its menu from. */
-export function MenuButton(props: Incoming<MenuButtonComponentProps>) {
+export function MenuButton(props: MenuButtonComponentProps) {
   const menuTriggerValue = useMenuTrigger();
   if (menuTriggerValue === null) {
     throw new Error("A MenuButton must be rendered inside a MenuTrigger.");
   }
 
-  const options = fromProps(props);
+  const options = fromProps(cells(props));
   const { buttonProps, isPressed } = button(
     { ...(options as ButtonOptions), ...menuTriggerValue.menuTriggerProps },
     menuTriggerValue.triggerRef,
@@ -1553,20 +1554,20 @@ export function MenuButton(props: Incoming<MenuButtonComponentProps>) {
     hoverProps,
     focusProps,
     filterDOMProps(options, { global: true }),
-    styleProps(props),
+    styleProps(cells(props)),
     {
       "data-pressed": isPressed,
       "data-hovered": isHovered,
       "data-focused": isFocused,
       "data-focus-visible": showsRing,
-      "data-disabled": () => props.isDisabled?.() === true,
+      "data-disabled": () => props.isDisabled === true,
       "data-state": () => (menuTriggerValue.state.isOpen() ? "open" : "closed"),
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
   return (
-    <button {...elementProps} ref={mergeRefs(menuTriggerValue.triggerRef.set, props.ref?.())}>
+    <button {...elementProps} ref={mergeRefs(menuTriggerValue.triggerRef.set, props.ref)}>
       {props.children}
     </button>
   );
@@ -1642,22 +1643,22 @@ export interface ContextMenuTriggerComponentProps extends StyleProps {
  * inside the region, so a region whose content is not focusable needs a
  * `tabIndex` of its own or there is no keyboard route to the menu at all.
  */
-export function ContextMenuTrigger(props: Incoming<ContextMenuTriggerComponentProps>) {
+export function ContextMenuTrigger(props: ContextMenuTriggerComponentProps) {
   const trigger = useMenuTrigger();
   if (trigger === null) {
     throw new Error("A ContextMenuTrigger must be rendered inside a ContextMenu.");
   }
 
-  const options = fromProps(props);
+  const options = fromProps(cells(props));
   const elementProps = mergeProps(
     trigger.menuTriggerProps,
     filterDOMProps(options, { global: true, labelable: true }),
-    styleProps(props),
-    { "data-testid": () => props["data-testid"]?.() },
+    styleProps(cells(props)),
+    { "data-testid": () => props["data-testid"] },
   );
 
   return (
-    <div {...elementProps} ref={mergeRefs(trigger.triggerRef.set, props.ref?.())}>
+    <div {...elementProps} ref={mergeRefs(trigger.triggerRef.set, props.ref)}>
       {props.children}
     </div>
   );
@@ -1706,7 +1707,7 @@ export interface MenuComponentProps<T> extends StyleProps, ItemAccessors<T> {
  * once has no reason to render them twice, once to discover them and once to
  * show them.
  */
-export function Menu<T>(props: Incoming<MenuComponentProps<T>>) {
+export function Menu<T>(props: MenuComponentProps<T>) {
   const enclosing = useSubmenuTrigger();
   const parent = useEnclosingMenu();
   // The submenu of the trigger this menu sits in, rather than of a trigger
@@ -1728,20 +1729,20 @@ export function Menu<T>(props: Incoming<MenuComponentProps<T>>) {
           if (!isOpen) submenu.state.close();
         }}
         placement={
-          props.placement?.() ?? access(submenu.popoverProps.placement as MaybeAccessor<Placement>)
+          props.placement ?? access(submenu.popoverProps.placement as MaybeAccessor<Placement>)
         }
-        offset={props.offset?.() ?? 0}
-        crossOffset={props.crossOffset?.()}
+        offset={props.offset ?? 0}
+        crossOffset={props.crossOffset}
         isNested
       >
-        <MenuList of={props} trigger={null} />
+        <MenuList of={cells(props)} trigger={null} />
       </Popover>
     );
   }
 
   const trigger = useMenuTrigger();
 
-  if (trigger === null) return <MenuList of={props} trigger={null} />;
+  if (trigger === null) return <MenuList of={cells(props)} trigger={null} />;
 
   // The list is written inside the popover rather than built and handed to it,
   // so it is a Block: nothing is constructed until the menu opens, and the
@@ -1752,11 +1753,11 @@ export function Menu<T>(props: Incoming<MenuComponentProps<T>>) {
       triggerRect={trigger.anchorRect()}
       isOpen={trigger.state.isOpen()}
       onOpenChange={trigger.state.setOpen}
-      placement={props.placement?.() ?? trigger.placement}
-      offset={props.offset?.() ?? trigger.offset}
-      crossOffset={props.crossOffset?.()}
+      placement={props.placement ?? trigger.placement}
+      offset={props.offset ?? trigger.offset}
+      crossOffset={props.crossOffset}
     >
-      <MenuList of={props} trigger={trigger} />
+      <MenuList of={cells(props)} trigger={trigger} />
     </Popover>
   );
 }
@@ -1767,11 +1768,11 @@ interface MenuListProps<T> {
   trigger: MenuTriggerValue | null;
 }
 
-function MenuList<T>(listProps: Incoming<MenuListProps<T>>) {
+function MenuList<T>(listProps: MenuListProps<T>) {
   const domRef = makeRef<HTMLUListElement>();
-  const props = listProps.of();
+  const props = listProps.of;
   const options = fromProps(props as unknown as Incoming<Record<string, unknown>>);
-  const trigger = listProps.trigger();
+  const trigger = listProps.trigger;
   const enclosing = useEnclosingMenu();
   const trigger_ = useSubmenuTrigger();
   // The same guard `<Menu>` applies: a menu nested inside a submenu's items is
@@ -1947,7 +1948,7 @@ export interface MenuItemComponentProps extends StyleProps {
  * modifiers the press carried, which is what keeps a Control-click a new tab
  * and lets the menu close in the same gesture. A disabled one has no `href`.
  */
-export function MenuItem(props: Incoming<MenuItemComponentProps>) {
+export function MenuItem(props: MenuItemComponentProps) {
   const domRef = makeRef<HTMLElement>();
   const list = useMenu();
   const enclosing = useSubmenuTrigger();
@@ -1961,7 +1962,7 @@ export function MenuItem(props: Incoming<MenuItemComponentProps>) {
   const group = registry === undefined ? null : (getContext(MenuRadioGroupContext) ?? null);
   const ownType = (): MenuItemType | undefined => {
     if (registry === undefined) return undefined;
-    const declared = props.type?.();
+    const declared = props.type;
     if (declared !== undefined) return declared;
     if (group !== null && props.value !== undefined) return "radio";
     return props.isSelected !== undefined ||
@@ -1974,24 +1975,24 @@ export function MenuItem(props: Incoming<MenuItemComponentProps>) {
     registry === undefined
       ? null
       : toggleState({
-          isSelected: () => props.isSelected?.(),
-          defaultSelected: () => props.defaultSelected?.(),
-          onChange: (isSelected) => props.onChange?.()?.(isSelected),
+          isSelected: () => props.isSelected,
+          defaultSelected: () => props.defaultSelected,
+          onChange: (isSelected) => props.onChange?.(isSelected),
         });
 
   const written =
     registry === undefined
       ? null
       : staticItem(registry, {
-          key: opensWritten?.triggerKey ?? props.id?.(),
-          textValue: () => props.textValue?.(),
+          key: opensWritten?.triggerKey ?? props.id,
+          textValue: () => props.textValue,
           props: () => ({
-            isDisabled: props.isDisabled?.() === true,
-            href: props.href?.(),
-            target: props.target?.(),
-            rel: props.rel?.(),
-            download: props.download?.(),
-            onAction: props.onAction?.(),
+            isDisabled: props.isDisabled === true,
+            href: props.href,
+            target: props.target,
+            rel: props.rel,
+            download: props.download,
+            onAction: props.onAction,
           }),
         });
   const node: Pick<Node<unknown>, "key" | "props"> = written === null
@@ -2013,20 +2014,20 @@ export function MenuItem(props: Incoming<MenuItemComponentProps>) {
       key: node.key,
       ref: domRef,
       baseId: list.baseId,
-      "aria-label": () => props["aria-label"]?.(),
-      isDisabled: () => props.isDisabled?.() === true || node.props?.isDisabled === true,
-      shouldCloseOnSelect: () => props.shouldCloseOnSelect?.(),
+      "aria-label": () => props["aria-label"],
+      isDisabled: () => props.isDisabled === true || node.props?.isDisabled === true,
+      shouldCloseOnSelect: () => props.shouldCloseOnSelect,
       shouldUseVirtualFocus: list.shouldUseVirtualFocus,
       type: ownType,
       isSelected: () =>
-        ownType() === "radio" ? group?.value() === props.value?.() : ticked?.isSelected(),
+        ownType() === "radio" ? group?.value() === props.value : ticked?.isSelected(),
       onToggle: () => {
-        const value = props.value?.();
+        const value = props.value;
         if (ownType() === "radio") {
           if (value !== undefined) group?.setValue(value);
         } else ticked?.toggle();
       },
-      onSelect: (event) => props.onSelect?.()?.(event),
+      onSelect: (event) => props.onSelect?.(event),
       onAction: (key) => list.onAction()?.(key),
       onClose: () => list.onClose()?.(),
       ...(opens as unknown as Record<string, never>),
@@ -2039,7 +2040,7 @@ export function MenuItem(props: Incoming<MenuItemComponentProps>) {
 
   const toHref = router().href;
   const linked = (name: "href" | "target" | "rel" | "download"): unknown =>
-    props[name]?.() ?? node.props?.[name];
+    cells(props)[name]?.() ?? node.props?.[name];
   const href = (): string | undefined => {
     const to = linked("href");
     return typeof to === "string" ? to : undefined;
@@ -2055,8 +2056,8 @@ export function MenuItem(props: Incoming<MenuItemComponentProps>) {
     hoverProps,
     focusProps,
     // A written item's `id` is its key; the element's id is derived from it.
-    filterDOMProps(fromProps(props), { global: true, labelable: true, id: written === null }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true, labelable: true, id: written === null }),
+    styleProps(cells(props)),
     {
       "data-selected": isSelected,
       "data-focused": isFocused,
@@ -2071,7 +2072,7 @@ export function MenuItem(props: Incoming<MenuItemComponentProps>) {
         if (!checks()) return undefined;
         return isSelected() ? "checked" : "unchecked";
       },
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
@@ -2108,7 +2109,7 @@ export function MenuItem(props: Incoming<MenuItemComponentProps>) {
   return (
     <li
       {...elementProps}
-      ref={mergeRefs(domRef.set, submenu?.triggerRef.set, written?.ref, props.ref?.())}
+      ref={mergeRefs(domRef.set, submenu?.triggerRef.set, written?.ref, props.ref)}
     >
       {props.children}
     </li>
@@ -2157,8 +2158,8 @@ interface WrittenGroupProps extends StyleProps {
  * It registers nothing: the items inside are the menu's own, in document
  * order, so the arrows cross the boundary without the group taking part.
  */
-function WrittenGroup(groupProps: Incoming<{ of: Incoming<WrittenGroupProps> }>) {
-  const props = groupProps.of();
+function WrittenGroup(groupProps: { of: Incoming<WrittenGroupProps> }) {
+  const props = groupProps.of;
   const headingId = id();
   const [isNamed, setNamed] = createSignal(false, { ownedWrite: true });
   const hasHeading = (): boolean => props.heading?.() !== undefined;
@@ -2217,12 +2218,12 @@ export interface MenuRadioGroupComponentProps extends StyleProps {
  * The group owns the value rather than the menu, because a written menu can
  * hold two of these beside a checkbox and a plain item.
  */
-export function MenuRadioGroup(props: Incoming<MenuRadioGroupComponentProps>) {
+export function MenuRadioGroup(props: MenuRadioGroupComponentProps) {
   const [value, setValue] = controllable<string | undefined>(
-    () => props.value?.(),
-    () => props.defaultValue?.(),
+    () => props.value,
+    () => props.defaultValue,
     (next) => {
-      if (next !== undefined) props.onValueChange?.()?.(next);
+      if (next !== undefined) props.onValueChange?.(next);
     },
   );
   const group: MenuRadioGroupValue = { value, setValue };
@@ -2230,7 +2231,7 @@ export function MenuRadioGroup(props: Incoming<MenuRadioGroupComponentProps>) {
   return provide(
     MenuRadioGroupContext,
     () => group,
-    () => <WrittenGroup of={props} />,
+    () => <WrittenGroup of={cells(props)} />,
   );
 }
 
@@ -2260,16 +2261,16 @@ export interface MenuSectionComponentProps<T> extends StyleProps {
  * </Menu>
  * ```
  */
-export function MenuSection<T>(props: Incoming<MenuSectionComponentProps<T>>) {
+export function MenuSection<T>(props: MenuSectionComponentProps<T>) {
   if (useMenu().staticItems !== undefined) {
-    return <WrittenGroup of={props} />;
+    return <WrittenGroup of={cells(props)} />;
   }
 
   const node = useMenuNode();
 
   const { itemProps, headingProps, groupProps } = menuSection({
-    heading: () => props.heading?.(),
-    "aria-label": () => props["aria-label"]?.(),
+    heading: () => props.heading,
+    "aria-label": () => props["aria-label"],
   });
 
   const render = props.children;
@@ -2277,7 +2278,7 @@ export function MenuSection<T>(props: Incoming<MenuSectionComponentProps<T>>) {
   return (
     <li {...itemProps}>
       <span {...headingProps}>{props.heading}</span>
-      <ul {...mergeProps(groupProps, styleProps(props))}>
+      <ul {...mergeProps(groupProps, styleProps(cells(props)))}>
         <For each={() => [...node.childNodes]}>
           {(child: Node<unknown>) => {
             provideMenuNode(child);

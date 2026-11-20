@@ -33,8 +33,8 @@ interface CardProps {
 
 function Card(props: PropsWithChildren<CardProps>) {
   return (
-    <div class={() => atoms(cardStyle, props.variant?.() === "highlight" && highlightStyle)}>
-      <h4>{props.title()}</h4>
+    <div class={() => atoms(cardStyle, props.variant === "highlight" && highlightStyle)}>
+      <h4>{props.title}</h4>
       <div>{props.children}</div>
     </div>
   );
@@ -48,7 +48,7 @@ interface PanelProps {
 function Panel(props: ParentProps<PanelProps>) {
   return (
     <div class={panelStyle}>
-      <div class={panelHeaderStyle}>{props.header()}</div>
+      <div class={panelHeaderStyle}>{props.header}</div>
       {props.children}
     </div>
   );
@@ -61,10 +61,10 @@ interface IconProps {
 }
 
 function Icon(props: VoidProps<IconProps>) {
-  const size = () => props.size?.() ?? 16;
+  const size = () => props.size ?? 16;
   return (
     <span class={iconStyle} style={{ fontSize: `${size()}px` }}>
-      [{props.name()}]
+      [{props.name}]
     </span>
   );
 }
@@ -75,7 +75,7 @@ interface WrapperProps {
 }
 
 function Wrapper(props: FlowProps<WrapperProps>) {
-  return <div style={{ padding: `${props.padding?.() ?? 10}px` }}>{props.children}</div>;
+  return <div style={{ padding: `${props.padding ?? 10}px` }}>{props.children}</div>;
 }
 
 // Test Accessor and FunctionMaybe types
@@ -84,13 +84,13 @@ interface ReactiveDisplayProps {
   count: number;
 }
 
-function ReactiveDisplay(props: Incoming<ReactiveDisplayProps>) {
+function ReactiveDisplay(props: ReactiveDisplayProps) {
   // No `FunctionMaybe` resolution: every prop is a Cell, so there is one shape
   // to read and nothing to discriminate.
   return (
     <div class={displayStyle}>
-      <span>Value: {props.value()}</span>
-      <span>Count: {props.count()}</span>
+      <span>Value: {props.value}</span>
+      <span>Count: {props.count}</span>
     </div>
   );
 }
@@ -100,9 +100,9 @@ interface RefDemoProps {
   inputRef?: Ref<HTMLInputElement>;
 }
 
-function RefInput(props: Incoming<RefDemoProps>) {
+function RefInput(props: RefDemoProps) {
   return (
-    <input type="text" ref={props.inputRef?.()} class={inputStyle} placeholder="Type here..." />
+    <input type="text" ref={props.inputRef} class={inputStyle} placeholder="Type here..." />
   );
 }
 

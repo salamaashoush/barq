@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function TramFront(props: Incoming<IconProps>) {
+export function TramFront(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <rect width="16" height="16" x="4" y="3" rx="2" />
       <path d="M4 11h16" />
       <path d="M12 3v8" />

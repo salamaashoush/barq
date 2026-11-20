@@ -41,14 +41,14 @@ const ACTIONS = [
   { id: "save", name: "Save as" },
 ];
 
-function Fixture(props: Incoming<{ onAction?: (key: string) => void }>) {
+function Fixture(props: { onAction?: (key: string) => void }) {
   return (
     <ContextMenu>
       <ContextMenuTrigger>Right-click here</ContextMenuTrigger>
       <ContextMenuContent
         items={ACTIONS}
         aria-label="Page"
-        onAction={(key) => props.onAction?.()?.(String(key))}
+        onAction={(key) => props.onAction?.(String(key))}
       >
         {(action: (typeof ACTIONS)[number]) => <ContextMenuItem>{action.name}</ContextMenuItem>}
       </ContextMenuContent>
@@ -135,11 +135,11 @@ describe("ContextMenu", () => {
 /** The menu as shadcn's own demo writes it. */
 describe("a ContextMenu written as children", () => {
   function Page(
-    props: Incoming<{
+    props: {
       onReload?: () => void;
       onBookmarks?: (checked: boolean) => void;
       onPerson?: (value: string) => void;
-    }>,
+    },
   ) {
     const [person, setPerson] = createSignal("salama");
     return (
@@ -154,7 +154,7 @@ describe("a ContextMenu written as children", () => {
             <ContextMenuItem inset disabled>
               Forward
             </ContextMenuItem>
-            <ContextMenuItem inset onSelect={() => props.onReload?.()?.()}>
+            <ContextMenuItem inset onSelect={() => props.onReload?.()}>
               Reload
             </ContextMenuItem>
           </ContextMenuGroup>
@@ -169,7 +169,7 @@ describe("a ContextMenu written as children", () => {
           <ContextMenuSeparator />
           <ContextMenuCheckboxItem
             defaultChecked
-            onCheckedChange={(checked) => props.onBookmarks?.()?.(checked)}
+            onCheckedChange={(checked) => props.onBookmarks?.(checked)}
           >
             Show bookmarks
           </ContextMenuCheckboxItem>
@@ -178,7 +178,7 @@ describe("a ContextMenu written as children", () => {
             value={person()}
             onValueChange={(value) => {
               setPerson(value);
-              props.onPerson?.()?.(value);
+              props.onPerson?.(value);
             }}
           >
             <ContextMenuLabel inset>People</ContextMenuLabel>

@@ -17,11 +17,11 @@ afterEach(() => {
 
 const { fieldContext, formContext, useFieldContext, useFormContext } = createFormHookContexts();
 
-function TextField(props: Incoming<{ label: string }>) {
+function TextField(props: { label: string }) {
   const field = useFieldContext<string>();
   return (
     <label>
-      <span>{props.label()}</span>
+      <span>{props.label}</span>
       <input
         data-field={field().name}
         value={field().state.value}
@@ -31,11 +31,11 @@ function TextField(props: Incoming<{ label: string }>) {
   );
 }
 
-function NumberField(props: Incoming<{ label: string }>) {
+function NumberField(props: { label: string }) {
   const field = useFieldContext<number>();
   return (
     <label>
-      <span>{props.label()}</span>
+      <span>{props.label}</span>
       <input
         data-field={field().name}
         value={`${field().state.value}`}
@@ -45,7 +45,7 @@ function NumberField(props: Incoming<{ label: string }>) {
   );
 }
 
-function SubmitButton(props: Incoming<{ label: string }>) {
+function SubmitButton(props: { label: string }) {
   const form = useFormContext();
   return (
     <form.Subscribe selector={(state) => state.isSubmitting}>
@@ -58,7 +58,7 @@ function SubmitButton(props: Incoming<{ label: string }>) {
             void form.handleSubmit();
           }}
         >
-          {props.label()}
+          {props.label}
         </button>
       )}
     </form.Subscribe>

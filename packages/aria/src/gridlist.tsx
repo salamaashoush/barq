@@ -23,6 +23,7 @@
  */
 
 import {
+  cells,
   type Accessor,
   type Child,
   For,
@@ -374,11 +375,11 @@ export function useRowNode(): Node<unknown> {
 
 /** Make `<GridListItem>` usable inside something that is not a `<GridList>`. */
 export function GridListProvider(
-  props: Incoming<{ value: GridListContextValue; children?: Child }>,
+  props: { value: GridListContextValue; children?: Child },
 ) {
   return provide(
     GridListContext,
-    () => props.value(),
+    () => props.value,
     () => props.children as unknown,
   );
 }
@@ -424,13 +425,13 @@ export interface GridListComponentProps<T> extends StyleProps, ItemAccessors<T> 
  * </GridList>
  * ```
  */
-export function GridList<T>(props: Incoming<GridListComponentProps<T>>) {
+export function GridList<T>(props: GridListComponentProps<T>) {
   const domRef = makeRef<HTMLDivElement>();
-  const options = fromProps(props as unknown as Incoming<Record<string, unknown>>);
+  const options = fromProps(cells(props) as unknown as Incoming<Record<string, unknown>>);
 
   const state = listState<T>({
     ...(options as ListStateOptions<T>),
-    onSelectionChange: (keys) => props.onSelectionChange?.()?.(keys),
+    onSelectionChange: (keys) => props.onSelectionChange?.(keys),
   });
 
   // Inside a `<Virtualizer>` the list renders a WINDOW of its collection, and
@@ -451,19 +452,19 @@ export function GridList<T>(props: Incoming<GridListComponentProps<T>>) {
   const value: GridListContextValue = {
     state: state,
     baseId,
-    keyboardNavigationBehavior: () => props.keyboardNavigationBehavior?.() ?? "arrow",
-    onAction: () => props.onAction?.(),
+    keyboardNavigationBehavior: () => props.keyboardNavigationBehavior ?? "arrow",
+    onAction: () => props.onAction,
   };
 
   const elementProps = mergeProps(
     gridProps,
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
       "data-empty": () => state.collection().size === 0,
       "data-virtualized": () => virtual !== null,
-      "data-testid": () => props["data-testid"]?.(),
-      style: () => (virtual === null ? props.style?.() : contentStyle(virtual.contentSize())),
+      "data-testid": () => props["data-testid"],
+      style: () => (virtual === null ? props.style : contentStyle(virtual.contentSize())),
     },
   );
 
@@ -481,7 +482,7 @@ export function GridList<T>(props: Incoming<GridListComponentProps<T>>) {
 
   return (
     <GridListProvider value={value}>
-      <div {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
+      <div {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
         <For each={rows}>
           {(node: Node<T>) => {
             provideRowNode(node);
@@ -505,7 +506,7 @@ export interface GridListItemComponentProps extends StyleProps {
  * The cell is what the row's content goes in: a row may not contain content
  * directly, and a screen reader reports "row 2 of 7" from the pair.
  */
-export function GridListItem(props: Incoming<GridListItemComponentProps>) {
+export function GridListItem(props: GridListItemComponentProps) {
   const domRef = makeRef<HTMLDivElement>();
   const virtual = useVirtualizer();
   const list = useGridList();
@@ -519,7 +520,7 @@ export function GridListItem(props: Incoming<GridListItemComponentProps>) {
       ref: domRef,
       baseId: list.baseId,
       isVirtualized: () => virtual !== null,
-      "aria-label": () => props["aria-label"]?.(),
+      "aria-label": () => props["aria-label"],
       isDisabled: () => node.props?.isDisabled === true,
       keyboardNavigationBehavior: list.keyboardNavigationBehavior,
       hasAction: () => list.onAction() !== undefined || node.props?.onAction !== undefined,
@@ -535,8 +536,8 @@ export function GridListItem(props: Incoming<GridListItemComponentProps>) {
     rowProps,
     hoverProps,
     focusProps,
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
       "data-selected": isSelected,
       "data-focused": isFocused,
@@ -544,19 +545,19 @@ export function GridListItem(props: Incoming<GridListItemComponentProps>) {
       "data-pressed": isPressed,
       "data-hovered": isHovered,
       "data-disabled": isDisabled,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
       // Positioned by the LAYOUT: the rows above it are not rendered, so
       // document flow has nothing to place it against.
       style: () => {
-        if (virtual === null) return props.style?.();
+        if (virtual === null) return props.style;
         const info = virtual.layout.getLayoutInfo(node.key);
-        return info === null ? props.style?.() : rowStyle(info);
+        return info === null ? props.style : rowStyle(info);
       },
     },
   );
 
   return (
-    <div {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
+    <div {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
       <div {...gridCellProps}>{props.children}</div>
     </div>
   );

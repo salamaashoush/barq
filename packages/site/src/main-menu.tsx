@@ -83,7 +83,7 @@ export interface MainMenuProps {
   onReset: () => void;
 }
 
-export function MainMenu(props: Incoming<MainMenuProps>) {
+export function MainMenu(props: MainMenuProps) {
   // `navigator.platform` is only readable in a browser, and the menu renders
   // once — so the symbol is decided at first paint rather than per render.
   const mac =
@@ -100,15 +100,15 @@ export function MainMenu(props: Incoming<MainMenuProps>) {
   ];
 
   const run = (key: Key): void => {
-    if (key === "shuffle") props.onShuffle()();
-    else if (key === "dark") props.onToggleDark()();
-    else if (key === "rtl") props.onToggleRtl()();
-    else if (key === "search") props.onSearch()();
-    else if (key === "reset") props.onReset()();
+    if (key === "shuffle") props.onShuffle();
+    else if (key === "dark") props.onToggleDark();
+    else if (key === "rtl") props.onToggleRtl();
+    else if (key === "search") props.onSearch();
+    else if (key === "reset") props.onReset();
     else if (key === "copy") {
       void import("./params.ts").then(async ({ selectionOf }) => {
         const { themeCss } = await import("@barqjs/ui");
-        await navigator.clipboard.writeText(themeCss(selectionOf(props.design().params())));
+        await navigator.clipboard.writeText(themeCss(selectionOf(props.design.params())));
       });
     }
   };

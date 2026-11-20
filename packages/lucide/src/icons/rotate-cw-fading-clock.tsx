@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function RotateCwFadingClock(props: Incoming<IconProps>) {
+export function RotateCwFadingClock(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M12 3a9.75 9.75 0 0 1 6.74 2.74" />
       <path d="M18.74 5.74 21 8" />
       <path d="M21 8V3" />

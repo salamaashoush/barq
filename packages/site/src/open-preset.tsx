@@ -62,7 +62,7 @@ export function parsePreset(input: string): Params | null {
   return write(params) === "" ? null : params;
 }
 
-export function OpenPreset(props: Incoming<{ design: Design; class?: string }>) {
+export function OpenPreset(props: { design: Design; class?: string }) {
   const [open, setOpen] = createSignal(false);
   const [input, setInput] = createSignal("");
 
@@ -72,7 +72,7 @@ export function OpenPreset(props: Incoming<{ design: Design; class?: string }>) 
   const submit = (): void => {
     const next = parsed();
     if (next === null) return;
-    props.design().set(next);
+    props.design.set(next);
     setInput("");
     setOpen(false);
   };
@@ -86,7 +86,7 @@ export function OpenPreset(props: Incoming<{ design: Design; class?: string }>) 
       }}
     >
       <DialogTrigger>
-        <Button variant="outline" class={ui(footerButton, props.class?.())} data-slot="open-preset">
+        <Button variant="outline" class={ui(footerButton, props.class)} data-slot="open-preset">
           Open Preset
         </Button>
       </DialogTrigger>

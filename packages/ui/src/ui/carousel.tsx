@@ -1,5 +1,6 @@
 import { useDirection } from "@barqjs/aria/i18n";
 import {
+  cells,
   createContext,
   createEffect,
   getContext,
@@ -186,12 +187,12 @@ export interface CarouselProps extends UiProps {
  * </Carousel>
  * ```
  */
-export function Carousel(props: Incoming<CarouselProps>) {
-  const orientation = (): CarouselOrientation => props.orientation?.() ?? "horizontal";
+export function Carousel(props: CarouselProps) {
+  const orientation = (): CarouselOrientation => props.orientation ?? "horizontal";
   const direction = useDirection();
   const options = (): EmblaOptionsType => ({
     direction: direction(),
-    ...props.opts?.(),
+    ...props.opts,
     axis: orientation() === "horizontal" ? "x" : "y",
   });
   // `ownedWrite`: a track that arrives after the first build rebuilds from its
@@ -244,7 +245,7 @@ export function Carousel(props: Incoming<CarouselProps>) {
     }
     retried = false;
 
-    const made = EmblaCarousel(node, options(), props.plugins?.());
+    const made = EmblaCarousel(node, options(), props.plugins);
     const update = (): void => {
       setCanScrollPrev(made.canScrollPrev());
       setCanScrollNext(made.canScrollNext());
@@ -257,7 +258,7 @@ export function Carousel(props: Incoming<CarouselProps>) {
 
     instance = made;
     writeApi(made);
-    props.setApi?.()?.(made);
+    props.setApi?.(made);
   };
 
   /**
@@ -298,7 +299,7 @@ export function Carousel(props: Incoming<CarouselProps>) {
 
   const value: CarouselValue = {
     orientation,
-    opts: () => props.opts?.(),
+    opts: () => props.opts,
     api,
     canScrollPrev,
     canScrollNext,
@@ -309,8 +310,8 @@ export function Carousel(props: Incoming<CarouselProps>) {
 
   return (
     <div
-      {...uiProps("carousel", root, props)}
-      role={props.role?.() ?? "region"}
+      {...uiProps("carousel", root, cells(props))}
+      role={props.role ?? "region"}
       aria-roledescription="carousel"
       data-orientation={orientation()}
       onKeyDown={(event: KeyboardEvent) => {
@@ -338,10 +339,10 @@ export function Carousel(props: Incoming<CarouselProps>) {
  * Its own component, because a `provide` callback that BUILDS the children is
  * the only place the scope exists.
  */
-function CarouselProvider(props: Incoming<{ value: CarouselValue; children?: Child }>) {
+function CarouselProvider(props: { value: CarouselValue; children?: Child }) {
   return provide(
     CarouselContext,
-    () => props.value(),
+    () => props.value,
     () => props.children,
   );
 }
@@ -354,7 +355,7 @@ function CarouselProvider(props: Incoming<{ value: CarouselValue; children?: Chi
  * to be different. Giving it the flex row directly makes the row its own
  * viewport and nothing ever moves.
  */
-export function CarouselContent(props: Incoming<UiProps>) {
+export function CarouselContent(props: UiProps) {
   const carousel = useCarousel();
 
   return (
@@ -363,7 +364,7 @@ export function CarouselContent(props: Incoming<UiProps>) {
         {...uiProps(
           "carousel-content",
           () => ui(content, carousel.orientation() === "vertical" ? contentVertical : ""),
-          props,
+          cells(props),
         )}
         data-orientation={carousel.orientation()}
       >
@@ -373,7 +374,7 @@ export function CarouselContent(props: Incoming<UiProps>) {
   );
 }
 
-export function CarouselItem(props: Incoming<UiProps>) {
+export function CarouselItem(props: UiProps) {
   const carousel = useCarousel();
 
   return (
@@ -381,9 +382,9 @@ export function CarouselItem(props: Incoming<UiProps>) {
       {...uiProps(
         "carousel-item",
         () => ui(item, carousel.orientation() === "vertical" ? itemVertical : ""),
-        props,
+        cells(props),
       )}
-      role={props.role?.() ?? "group"}
+      role={props.role ?? "group"}
       aria-roledescription="slide"
     >
       {props.children}
@@ -396,50 +397,50 @@ export interface CarouselButtonProps extends ButtonProps {
   label?: string;
 }
 
-export function CarouselPrevious(props: Incoming<CarouselButtonProps>) {
+export function CarouselPrevious(props: CarouselButtonProps) {
   const carousel = useCarousel();
 
   return (
     <Button
       {...props}
-      data-slot={props["data-slot"]?.() ?? "carousel-previous"}
-      variant={props.variant?.() ?? "outline"}
-      size={props.size?.() ?? "icon"}
+      data-slot={props["data-slot"] ?? "carousel-previous"}
+      variant={props.variant ?? "outline"}
+      size={props.size ?? "icon"}
       class={ui(
         button,
         carousel.orientation() === "horizontal" ? previousHorizontal : previousVertical,
-        props.class?.(),
-        props.className?.(),
+        props.class,
+        props.className,
       )}
-      isDisabled={props.isDisabled?.() ?? !carousel.canScrollPrev()}
+      isDisabled={props.isDisabled ?? !carousel.canScrollPrev()}
       onPress={() => carousel.scrollPrev()}
     >
       <ArrowLeft />
-      <span class={srOnly}>{props.label?.() ?? "Previous slide"}</span>
+      <span class={srOnly}>{props.label ?? "Previous slide"}</span>
     </Button>
   );
 }
 
-export function CarouselNext(props: Incoming<CarouselButtonProps>) {
+export function CarouselNext(props: CarouselButtonProps) {
   const carousel = useCarousel();
 
   return (
     <Button
       {...props}
-      data-slot={props["data-slot"]?.() ?? "carousel-next"}
-      variant={props.variant?.() ?? "outline"}
-      size={props.size?.() ?? "icon"}
+      data-slot={props["data-slot"] ?? "carousel-next"}
+      variant={props.variant ?? "outline"}
+      size={props.size ?? "icon"}
       class={ui(
         button,
         carousel.orientation() === "horizontal" ? nextHorizontal : nextVertical,
-        props.class?.(),
-        props.className?.(),
+        props.class,
+        props.className,
       )}
-      isDisabled={props.isDisabled?.() ?? !carousel.canScrollNext()}
+      isDisabled={props.isDisabled ?? !carousel.canScrollNext()}
       onPress={() => carousel.scrollNext()}
     >
       <ArrowRight />
-      <span class={srOnly}>{props.label?.() ?? "Next slide"}</span>
+      <span class={srOnly}>{props.label ?? "Next slide"}</span>
     </Button>
   );
 }

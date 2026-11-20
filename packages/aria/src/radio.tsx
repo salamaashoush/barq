@@ -14,6 +14,7 @@
  */
 
 import {
+  cells,
   type Accessor,
   type Child,
   type Incoming,
@@ -427,12 +428,12 @@ export interface RadioGroupComponentProps extends StyleProps {
  * </RadioGroup>
  * ```
  */
-export function RadioGroup(props: Incoming<RadioGroupComponentProps>) {
-  const options = fromProps(props);
+export function RadioGroup(props: RadioGroupComponentProps) {
+  const options = fromProps(cells(props));
   const state = radioGroupState({
     ...(options as RadioGroupStateOptions),
-    validate: callback(props.validate),
-    validationBehavior: () => props.validationBehavior?.(),
+    validate: callback(cells(props).validate),
+    validationBehavior: () => props.validationBehavior,
   });
   const { radioGroupProps, labelProps, descriptionProps, errorMessageProps, name } = radioGroup(
     options,
@@ -448,14 +449,14 @@ export function RadioGroup(props: Incoming<RadioGroupComponentProps>) {
   const outerProps = mergeProps(
     radioGroupProps,
     filterDOMProps(options, { global: true }),
-    styleProps(props),
+    styleProps(cells(props)),
     {
       "data-disabled": state.isDisabled,
       "data-readonly": state.isReadOnly,
       "data-invalid": state.isInvalid,
       "data-required": state.isRequired,
-      "data-orientation": () => props.orientation?.() ?? "vertical",
-      "data-testid": () => props["data-testid"]?.(),
+      "data-orientation": () => props.orientation ?? "vertical",
+      "data-testid": () => props["data-testid"],
     },
   );
 

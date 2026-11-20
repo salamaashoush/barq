@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function TableCellsMerge(props: Incoming<IconProps>) {
+export function TableCellsMerge(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M12 21v-6" />
       <path d="M12 9V3" />
       <path d="M3 15h18" />

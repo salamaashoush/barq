@@ -19,11 +19,11 @@ async function settle(): Promise<void> {
   await tick();
 }
 
-function Confirm(props: Incoming<{ isOpen: boolean; onOpenChange?: (open: boolean) => void }>) {
+function Confirm(props: { isOpen: boolean; onOpenChange?: (open: boolean) => void }) {
   return (
     <>
       <button type="button">before</button>
-      <Modal isOpen={props.isOpen()} onOpenChange={props.onOpenChange?.()}>
+      <Modal isOpen={props.isOpen} onOpenChange={props.onOpenChange}>
         <Dialog>
           <Heading slot="title">Delete this?</Heading>
           <Button>Cancel</Button>
@@ -220,7 +220,7 @@ describe("Dialog", () => {
 });
 
 /** What a design system's `<DialogDescription>` is, minus the styling. */
-function Description(props: Incoming<{ children?: unknown }>) {
+function Description(props: { children?: unknown }) {
   const described = useDialogDescription();
   return <p id={described?.id()}>{props.children as never}</p>;
 }
@@ -394,15 +394,15 @@ describe("what a design system puts on the underlay", () => {
 });
 
 describe("PortalProvider", () => {
-  function Anchored(props: Incoming<{ label: string }>) {
+  function Anchored(props: { label: string }) {
     const triggerRef = ref<HTMLElement>();
     return (
       <>
         <button type="button" ref={triggerRef.set}>
-          {props.label()}
+          {props.label}
         </button>
         <Popover triggerRef={triggerRef} isOpen>
-          <Dialog aria-label={props.label()}>
+          <Dialog aria-label={props.label}>
             <Button>Done</Button>
           </Dialog>
         </Popover>
@@ -430,7 +430,7 @@ describe("PortalProvider", () => {
 });
 
 describe("a popover that leaves focus alone", () => {
-  function Card(props: Incoming<{ shouldContainFocus?: boolean }>) {
+  function Card(props: { shouldContainFocus?: boolean }) {
     const triggerRef = ref<HTMLElement>();
     const [open, setOpen] = createSignal(false);
     return (
@@ -442,7 +442,7 @@ describe("a popover that leaves focus alone", () => {
           triggerRef={triggerRef}
           isOpen={open()}
           onOpenChange={setOpen}
-          shouldContainFocus={props.shouldContainFocus?.()}
+          shouldContainFocus={props.shouldContainFocus}
         >
           <a href="https://example.com">Profile</a>
         </Popover>
@@ -527,12 +527,12 @@ describe("an overlay opened as soon as the page settles", () => {
 });
 
 describe("a Modal that is not modal", () => {
-  function Panel(props: Incoming<{ autoFocus?: boolean }>) {
+  function Panel(props: { autoFocus?: boolean }) {
     const [open, setOpen] = createSignal(true);
     return (
       <>
         <button type="button">before</button>
-        <Modal isOpen={open()} onOpenChange={setOpen} isNonModal autoFocus={props.autoFocus?.()}>
+        <Modal isOpen={open()} onOpenChange={setOpen} isNonModal autoFocus={props.autoFocus}>
           <Dialog>
             <Heading slot="title">Filters</Heading>
             <Button>Apply</Button>

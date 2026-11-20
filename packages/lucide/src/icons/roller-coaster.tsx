@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function RollerCoaster(props: Incoming<IconProps>) {
+export function RollerCoaster(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M6 19V5" />
       <path d="M10 19V6.8" />
       <path d="M14 19v-7.8" />

@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function QrCode(props: Incoming<IconProps>) {
+export function QrCode(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <rect width="5" height="5" x="3" y="3" rx="1" />
       <rect width="5" height="5" x="16" y="3" rx="1" />
       <rect width="5" height="5" x="3" y="16" rx="1" />

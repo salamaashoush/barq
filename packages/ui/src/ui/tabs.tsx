@@ -1,3 +1,4 @@
+import { cells } from "@barqjs/core";
 import {
   Tab as AriaTab,
   TabList as AriaTabList,
@@ -237,22 +238,22 @@ export interface TabsProps<T> extends Omit<TabsComponentProps<T>, "items">, Valu
  * `items` decides which, once, and every part below follows the root it finds
  * itself in.
  */
-export function Tabs<T>(props: Incoming<TabsProps<T>>) {
-  const items = props.items;
+export function Tabs<T>(props: TabsProps<T>) {
+  const items = cells(props).items;
   const { items: _, ...written } = props;
 
   return items === undefined ? (
     <AriaValueTabs
       {...written}
-      data-slot={props["data-slot"]?.() ?? "tabs"}
-      class={ui(root, props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "tabs"}
+      class={ui(root, props.class, props.className)}
     />
   ) : (
     <AriaTabs
       {...props}
       items={items() ?? []}
-      data-slot={props["data-slot"]?.() ?? "tabs"}
-      class={ui(root, props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "tabs"}
+      class={ui(root, props.class, props.className)}
     />
   );
 }
@@ -265,16 +266,16 @@ export interface TabsListProps<T> extends Omit<TabListComponentProps<T>, "childr
   loop?: boolean;
 }
 
-export function TabsList<T>(props: Incoming<TabsListProps<T>>) {
+export function TabsList<T>(props: TabsListProps<T>) {
   const className = (): string =>
-    ui(tabsListVariants({ variant: props.variant?.() }), props.class?.(), props.className?.());
+    ui(tabsListVariants({ variant: props.variant }), props.class, props.className);
 
   if (useValueTabs() !== null) {
     return (
       <AriaValueTabList
         {...props}
-        data-slot={props["data-slot"]?.() ?? "tabs-list"}
-        data-variant={props.variant?.() ?? "default"}
+        data-slot={props["data-slot"] ?? "tabs-list"}
+        data-variant={props.variant ?? "default"}
         class={className()}
       />
     );
@@ -284,13 +285,13 @@ export function TabsList<T>(props: Incoming<TabsListProps<T>>) {
   if (children === undefined) {
     throw new Error("A <TabsList> under `items` takes a function of the item.");
   }
-  const collection = { ...props, children };
+  const collection = { ...cells(props), children };
 
   return (
     <AriaTabList
       {...collection}
-      data-slot={props["data-slot"]?.() ?? "tabs-list"}
-      data-variant={props.variant?.() ?? "default"}
+      data-slot={props["data-slot"] ?? "tabs-list"}
+      data-variant={props.variant ?? "default"}
       class={className()}
     />
   );
@@ -304,22 +305,22 @@ export interface TabsTriggerProps extends TabComponentProps {
   disabled?: boolean;
 }
 
-export function TabsTrigger(props: Incoming<TabsTriggerProps>) {
-  const value = props.value;
+export function TabsTrigger(props: TabsTriggerProps) {
+  const value = cells(props).value;
 
   return value === undefined ? (
     <AriaTab
       {...props}
-      data-slot={props["data-slot"]?.() ?? "tabs-trigger"}
-      class={ui(trigger, props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "tabs-trigger"}
+      class={ui(trigger, props.class, props.className)}
     />
   ) : (
     <AriaValueTab
       {...props}
       value={value() ?? ""}
-      isDisabled={props.isDisabled?.() ?? props.disabled?.()}
-      data-slot={props["data-slot"]?.() ?? "tabs-trigger"}
-      class={ui(trigger, props.class?.(), props.className?.())}
+      isDisabled={props.isDisabled ?? props.disabled}
+      data-slot={props["data-slot"] ?? "tabs-trigger"}
+      class={ui(trigger, props.class, props.className)}
     />
   );
 }
@@ -332,15 +333,15 @@ export interface TabsContentProps<T> extends Omit<TabPanelComponentProps<T>, "ch
   children?: ((item: T) => Child) | Child;
 }
 
-export function TabsContent<T>(props: Incoming<TabsContentProps<T>>) {
-  const value = props.value;
+export function TabsContent<T>(props: TabsContentProps<T>) {
+  const value = cells(props).value;
   if (value !== undefined) {
     return (
       <AriaValueTabPanel
         {...props}
         value={value() ?? ""}
-        data-slot={props["data-slot"]?.() ?? "tabs-content"}
-        class={ui(content, props.class?.(), props.className?.())}
+        data-slot={props["data-slot"] ?? "tabs-content"}
+        class={ui(content, props.class, props.className)}
       />
     );
   }
@@ -349,13 +350,13 @@ export function TabsContent<T>(props: Incoming<TabsContentProps<T>>) {
   if (children === undefined) {
     throw new Error("A <TabsContent> under `items` takes a function of the item.");
   }
-  const collection = { ...props, children };
+  const collection = { ...cells(props), children };
 
   return (
     <AriaTabPanel
       {...collection}
-      data-slot={props["data-slot"]?.() ?? "tabs-content"}
-      class={ui(content, props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "tabs-content"}
+      class={ui(content, props.class, props.className)}
     />
   );
 }

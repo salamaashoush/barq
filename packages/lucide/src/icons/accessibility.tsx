@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Accessibility(props: Incoming<IconProps>) {
+export function Accessibility(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <circle cx="16" cy="4" r="1" />
       <path d="m18 19 1-7-6 1" />
       <path d="m5 8 3-3 5.5 3-2.36 3.5" />

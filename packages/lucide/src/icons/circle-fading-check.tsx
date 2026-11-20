@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function CircleFadingCheck(props: Incoming<IconProps>) {
+export function CircleFadingCheck(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M12 2a10 10 0 017.38 16.75" />
       <path d="m16 9-5.5 5.5L8 12" />
       <path d="M2.5 8.875a10 10 0 00-.5 3" />

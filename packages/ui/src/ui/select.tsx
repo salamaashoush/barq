@@ -1,3 +1,4 @@
+import { cells } from "@barqjs/core";
 import type { Key } from "@barqjs/aria/collections";
 import {
   Section,
@@ -387,20 +388,20 @@ function hasItems<T>(
  * post, and the written one takes `value`, `open`, `disabled` and `required`
  * under shadcn's names as well as this package's.
  */
-export function Select<T>(props: Incoming<SelectProps<T>>) {
-  if (hasItems(props)) {
+export function Select<T>(props: SelectProps<T>) {
+  if (hasItems(cells(props))) {
     return (
       <AriaSelect
         {...props}
-        selectedKey={props.selectedKey?.() ?? props.value?.()}
-        defaultSelectedKey={props.defaultSelectedKey?.() ?? props.defaultValue?.()}
-        isOpen={props.isOpen?.() ?? props.open?.()}
-        isDisabled={props.isDisabled?.() ?? props.disabled?.()}
-        isRequired={props.isRequired?.() ?? props.required?.()}
-        onSelectionChange={(key) => chose(props, key)}
-        data-slot={props["data-slot"]?.() ?? "select-trigger"}
-        data-size={props.size?.() ?? "default"}
-        class={ui(trigger, chevron, props.class?.(), props.className?.())}
+        selectedKey={props.selectedKey ?? props.value}
+        defaultSelectedKey={props.defaultSelectedKey ?? props.defaultValue}
+        isOpen={props.isOpen ?? props.open}
+        isDisabled={props.isDisabled ?? props.disabled}
+        isRequired={props.isRequired ?? props.required}
+        onSelectionChange={(key) => chose(cells(props), key)}
+        data-slot={props["data-slot"] ?? "select-trigger"}
+        data-size={props.size ?? "default"}
+        class={ui(trigger, chevron, props.class, props.className)}
         listClass={list}
         listSlot="select-content"
       />
@@ -409,18 +410,18 @@ export function Select<T>(props: Incoming<SelectProps<T>>) {
 
   return (
     <SelectRoot
-      selectedKey={props.selectedKey?.() ?? props.value?.()}
-      defaultSelectedKey={props.defaultSelectedKey?.() ?? props.defaultValue?.()}
-      isOpen={props.isOpen?.() ?? props.open?.()}
-      defaultOpen={props.defaultOpen?.()}
-      isDisabled={props.isDisabled?.() ?? props.disabled?.()}
-      isRequired={props.isRequired?.() ?? props.required?.()}
-      name={props.name?.()}
-      form={props.form?.()}
-      autoComplete={props.autoComplete?.()}
-      dir={props.dir?.()}
-      onSelectionChange={(key) => chose(props, key)}
-      onOpenChange={props.onOpenChange?.()}
+      selectedKey={props.selectedKey ?? props.value}
+      defaultSelectedKey={props.defaultSelectedKey ?? props.defaultValue}
+      isOpen={props.isOpen ?? props.open}
+      defaultOpen={props.defaultOpen}
+      isDisabled={props.isDisabled ?? props.disabled}
+      isRequired={props.isRequired ?? props.required}
+      name={props.name}
+      form={props.form}
+      autoComplete={props.autoComplete}
+      dir={props.dir}
+      onSelectionChange={(key) => chose(cells(props), key)}
+      onOpenChange={props.onOpenChange}
     >
       {props.children}
     </SelectRoot>
@@ -445,14 +446,14 @@ export interface SelectTriggerProps extends SelectTriggerComponentProps {
  * points at; a combobox is named by its label, and one with neither that nor
  * an `aria-label` has no name at all.
  */
-export function SelectTrigger(props: Incoming<SelectTriggerProps>) {
+export function SelectTrigger(props: SelectTriggerProps) {
   return (
     <AriaSelectTrigger
       {...props}
-      isDisabled={props.isDisabled?.() ?? props.disabled?.()}
-      data-slot={props["data-slot"]?.() ?? "select-trigger"}
-      data-size={props.size?.() ?? "default"}
-      class={ui(trigger, props.class?.(), props.className?.())}
+      isDisabled={props.isDisabled ?? props.disabled}
+      data-slot={props["data-slot"] ?? "select-trigger"}
+      data-size={props.size ?? "default"}
+      class={ui(trigger, props.class, props.className)}
     >
       {props.children}
       <ChevronDown data-slot="select-icon" class={triggerIcon} aria-hidden="true" />
@@ -463,12 +464,12 @@ export function SelectTrigger(props: Incoming<SelectTriggerProps>) {
 export interface SelectValueProps extends SelectValueComponentProps {}
 
 /** What is chosen, or the placeholder. Inside a `<SelectTrigger>`. */
-export function SelectValue(props: Incoming<SelectValueProps>) {
+export function SelectValue(props: SelectValueProps) {
   return (
     <AriaSelectValue
       {...props}
-      data-slot={props["data-slot"]?.() ?? "select-value"}
-      class={ui(value, props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "select-value"}
+      class={ui(value, props.class, props.className)}
     />
   );
 }
@@ -502,20 +503,20 @@ const POPPER_GAP = 4;
  * The list a written select opens: the scroll buttons and the viewport the
  * options are in.
  */
-export function SelectContent(props: Incoming<SelectContentProps>) {
-  const position = (): SelectPosition => props.position?.() ?? "item-aligned";
+export function SelectContent(props: SelectContentProps) {
+  const position = (): SelectPosition => props.position ?? "item-aligned";
 
   return (
     <AriaSelectContent
       {...props}
-      data-slot={props["data-slot"]?.() ?? "select-content"}
-      class={ui(content, props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "select-content"}
+      class={ui(content, props.class, props.className)}
       position={position()}
       placement={
-        props.placement?.() ?? placementFor(props.side?.() ?? "bottom", props.align?.() ?? "center")
+        props.placement ?? placementFor(props.side ?? "bottom", props.align ?? "center")
       }
-      offset={props.offset?.() ?? (props.sideOffset?.() ?? 0) + POPPER_GAP}
-      crossOffset={props.alignOffset?.()}
+      offset={props.offset ?? (props.sideOffset ?? 0) + POPPER_GAP}
+      crossOffset={props.alignOffset}
     >
       <SelectScrollUpButton />
       <SelectViewport class={viewport} data-slot="select-viewport" data-position={position()}>
@@ -537,23 +538,23 @@ export interface SelectItemProps extends OptionComponentProps {
  * Written as a child it carries its own `value`. Its children are what the
  * trigger shows once it is chosen, so an icon beside the text goes there too.
  */
-export function SelectItem(props: Incoming<SelectItemProps>) {
+export function SelectItem(props: SelectItemProps) {
   const listbox = useListBox();
-  const key = listbox.staticItems === undefined ? useItemNode().key : props.value?.();
+  const key = listbox.staticItems === undefined ? useItemNode().key : props.value;
   const isChecked = (): boolean =>
     key !== undefined && listbox.state.selectionManager().isSelected(key);
   const isHighlighted = (): boolean =>
     key !== undefined && listbox.state.selectionManager().focusedKey === key;
-  const isDisabled = (): boolean => (props.isDisabled?.() ?? props.disabled?.()) === true;
+  const isDisabled = (): boolean => (props.isDisabled ?? props.disabled) === true;
 
   return (
     <Option
       {...props}
       isDisabled={isDisabled()}
-      data-slot={props["data-slot"]?.() ?? "select-item"}
+      data-slot={props["data-slot"] ?? "select-item"}
       data-state={isChecked() ? "checked" : "unchecked"}
       data-highlighted={isHighlighted() ? "" : undefined}
-      class={ui(item, props.class?.(), props.className?.())}
+      class={ui(item, props.class, props.className)}
     >
       <span data-slot="select-item-indicator" class={indicator}>
         <Check />
@@ -569,12 +570,12 @@ export function SelectItem(props: Incoming<SelectItemProps>) {
  * Inside a written `<SelectGroup>` it is what names the group, which is why
  * the group needs no `title` there.
  */
-export function SelectLabel(props: Incoming<UiProps>) {
+export function SelectLabel(props: UiProps) {
   const headingId = useSectionHeading();
   return (
     <li
-      {...uiProps("select-label", label, props)}
-      id={props.id?.() ?? headingId?.()}
+      {...uiProps("select-label", label, cells(props))}
+      id={props.id ?? headingId?.()}
       role="presentation"
     >
       {props.children}
@@ -582,18 +583,18 @@ export function SelectLabel(props: Incoming<UiProps>) {
   );
 }
 
-export function SelectSeparator(props: Incoming<UiProps>) {
-  return <li {...uiProps("select-separator", separator, props)} role="separator" />;
+export function SelectSeparator(props: UiProps) {
+  return <li {...uiProps("select-separator", separator, cells(props))} role="separator" />;
 }
 
 /** The arrow at the top of a written select's list, there while it can scroll up. */
-export function SelectScrollUpButton(props: Incoming<UiProps>) {
+export function SelectScrollUpButton(props: UiProps) {
   return (
     <SelectScrollButton
       {...props}
       direction="up"
-      data-slot={props["data-slot"]?.() ?? "select-scroll-up-button"}
-      class={ui(scrollButton, props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "select-scroll-up-button"}
+      class={ui(scrollButton, props.class, props.className)}
     >
       <ChevronUp />
     </SelectScrollButton>
@@ -601,13 +602,13 @@ export function SelectScrollUpButton(props: Incoming<UiProps>) {
 }
 
 /** The arrow at the bottom, there while it can scroll down. */
-export function SelectScrollDownButton(props: Incoming<UiProps>) {
+export function SelectScrollDownButton(props: UiProps) {
   return (
     <SelectScrollButton
       {...props}
       direction="down"
-      data-slot={props["data-slot"]?.() ?? "select-scroll-down-button"}
-      class={ui(scrollButton, props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "select-scroll-down-button"}
+      class={ui(scrollButton, props.class, props.className)}
     >
       <ChevronDown />
     </SelectScrollButton>
@@ -643,17 +644,17 @@ export interface SelectGroupProps extends Omit<UiProps, "title"> {
  * </Select>
  * ```
  */
-export function SelectGroup(props: Incoming<SelectGroupProps>) {
+export function SelectGroup(props: SelectGroupProps) {
   // A group named by a `<SelectLabel>` child has no title of its own, and the
   // element that would have held one must not be drawn as a heading.
   const isTitled = props.title !== undefined;
   return (
     <Section
       {...props}
-      data-slot={props["data-slot"]?.() ?? "select-group"}
+      data-slot={props["data-slot"] ?? "select-group"}
       titleSlot={isTitled ? "select-label" : "select-group-title"}
       titleClass={isTitled ? label : undefined}
-      class={ui(group, props.class?.(), props.className?.())}
+      class={ui(group, props.class, props.className)}
     />
   );
 }

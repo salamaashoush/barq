@@ -50,7 +50,7 @@ function Grid(props: { options?: () => Partial<TableOptions<Features, Person>> }
     columns,
     data: people,
     getRowId: (row: Person) => row.id,
-    ...props.options?.(),
+    ...props.options,
   }));
 
   return (

@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Scale3d(props: Incoming<IconProps>) {
+export function Scale3d(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M5 7v11a1 1 0 0 0 1 1h11" />
       <path d="M5.293 18.707 11 13" />
       <circle cx="19" cy="19" r="2" />

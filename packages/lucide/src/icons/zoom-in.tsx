@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function ZoomIn(props: Incoming<IconProps>) {
+export function ZoomIn(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <circle cx="11" cy="11" r="8" />
       <line x1="21" x2="16.65" y1="21" y2="16.65" />
       <line x1="11" x2="11" y1="8" y2="14" />

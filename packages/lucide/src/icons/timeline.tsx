@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Timeline(props: Incoming<IconProps>) {
+export function Timeline(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M4 12h.01" />
       <path d="M4 16h.01" />
       <path d="M4 20h.01" />

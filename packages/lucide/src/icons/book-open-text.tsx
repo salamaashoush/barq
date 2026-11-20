@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function BookOpenText(props: Incoming<IconProps>) {
+export function BookOpenText(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M12 5v16" />
       <path d="M16 13h2" />
       <path d="M16 9h2" />

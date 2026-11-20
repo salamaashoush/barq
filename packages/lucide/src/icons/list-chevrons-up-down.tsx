@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function ListChevronsUpDown(props: Incoming<IconProps>) {
+export function ListChevronsUpDown(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M3 5h8" />
       <path d="M3 12h8" />
       <path d="M3 19h8" />

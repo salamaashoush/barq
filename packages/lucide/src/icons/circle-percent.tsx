@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function CirclePercent(props: Incoming<IconProps>) {
+export function CirclePercent(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <circle cx="12" cy="12" r="10" />
       <path d="m15 9-6 6" />
       <path d="M9 9h.01" />

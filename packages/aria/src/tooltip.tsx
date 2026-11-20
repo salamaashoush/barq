@@ -22,6 +22,7 @@
  */
 
 import {
+  cells,
   type Accessor,
   type Child,
   createContext,
@@ -541,20 +542,20 @@ export interface TooltipTriggerComponentProps {
  * around it hears neither focus nor a description. A control this package does
  * not provide spreads `useTooltipTrigger().triggerProps` by hand.
  */
-export function TooltipTrigger(props: Incoming<TooltipTriggerComponentProps>) {
+export function TooltipTrigger(props: TooltipTriggerComponentProps) {
   const triggerRef = makeRef<HTMLElement>();
-  const options = fromProps(props);
+  const options = fromProps(cells(props));
   const group = useTooltipGroup();
   const isContentHoverable = (): boolean =>
-    (props.isContentHoverable?.() ?? group?.isContentHoverable()) !== false;
+    (props.isContentHoverable ?? group?.isContentHoverable()) !== false;
   const state = tooltipTriggerState({
     ...options,
-    delay: () => props.delay?.() ?? group?.delay(),
-    skipDelay: () => props.skipDelay?.() ?? group?.skipDelay(),
+    delay: () => props.delay ?? group?.delay(),
+    skipDelay: () => props.skipDelay ?? group?.skipDelay(),
     // The close delay is the time a pointer has to travel from the trigger to
     // the tooltip, and with nothing to travel to it is only a tooltip that
     // will not go away.
-    closeDelay: () => props.closeDelay?.() ?? (isContentHoverable() ? undefined : 0),
+    closeDelay: () => props.closeDelay ?? (isContentHoverable() ? undefined : 0),
   });
 
   const { triggerProps, tooltipProps } = tooltipTrigger(
@@ -609,21 +610,21 @@ export interface TooltipComponentProps extends StyleProps {
  * between two triggers is one tooltip changing place, and fading it out and
  * back in reads as a flicker.
  */
-export function Tooltip(props: Incoming<TooltipComponentProps>) {
+export function Tooltip(props: TooltipComponentProps) {
   const target = usePortalTarget();
   const domRef = makeRef<HTMLDivElement>();
   const trigger = useTooltipTrigger();
   const locale = useLocale();
-  const placement = (): Placement => props.placement?.() ?? "top";
+  const placement = (): Placement => props.placement ?? "top";
 
   const position = overlayPosition({
     targetRef: trigger.triggerRef,
     overlayRef: domRef,
     placement,
-    offset: () => props.offset?.() ?? 8,
-    crossOffset: () => props.crossOffset?.(),
-    shouldFlip: () => props.shouldFlip?.(),
-    containerPadding: () => props.containerPadding?.(),
+    offset: () => props.offset ?? 8,
+    crossOffset: () => props.crossOffset,
+    shouldFlip: () => props.shouldFlip,
+    containerPadding: () => props.containerPadding,
     isOpen: trigger.state.isOpen,
     direction: () => locale().direction,
   });
@@ -634,21 +635,21 @@ export function Tooltip(props: Incoming<TooltipComponentProps>) {
     tooltipProps,
     trigger.tooltipProps,
     position.overlayProps,
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
       "data-placement": position.placement,
       "data-side": position.placement,
       "data-align": () => alignOf(placement()),
       "data-skip-animation": trigger.state.shouldSkipAnimation,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
   return (
     <Show when={trigger.state.isOpen()}>
       <Portal mount={portalContainer(target)}>
-        <div {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
+        <div {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
           {props.children}
         </div>
       </Portal>

@@ -1,3 +1,4 @@
+import { cells } from "@barqjs/core";
 import { provideDirection, useDirection } from "@barqjs/aria/i18n";
 import {
   Radio as AriaRadio,
@@ -136,28 +137,28 @@ const GROUP_UPSTREAM = ["onValueChange", "disabled", "required", "aria-invalid"]
  * and a grid would give each of them a row and a gap whether it held anything
  * or not.
  */
-export function RadioGroup(props: Incoming<RadioGroupProps>) {
+export function RadioGroup(props: RadioGroupProps) {
   const inherited = useDirection();
-  if (props.dir !== undefined) provideDirection(() => props.dir?.() ?? inherited());
+  if (props.dir !== undefined) provideDirection(() => props.dir ?? inherited());
   const inField = useFieldInvalid();
   const invalid = (): boolean => {
-    const given = props.isInvalid?.() ?? props["aria-invalid"]?.();
+    const given = props.isInvalid ?? props["aria-invalid"];
     return given === undefined ? inField() : given === true || given === "true";
   };
 
   return (
     <AriaRadioGroup
-      {...omit(props, GROUP_UPSTREAM)}
+      {...omit(cells(props), GROUP_UPSTREAM)}
       data-slot="radio-group"
-      isDisabled={props.isDisabled?.() ?? props.disabled?.()}
-      isRequired={props.isRequired?.() ?? props.required?.()}
+      isDisabled={props.isDisabled ?? props.disabled}
+      isRequired={props.isRequired ?? props.required}
       isInvalid={invalid()}
       onChange={(value: string) => {
-        props.onChange?.()?.(value);
-        props.onValueChange?.()?.(value);
+        props.onChange?.(value);
+        props.onValueChange?.(value);
       }}
     >
-      <div data-slot="radio-group-items" class={ui(items, props.class?.(), props.className?.())}>
+      <div data-slot="radio-group-items" class={ui(items, props.class, props.className)}>
         {props.children}
       </div>
     </AriaRadioGroup>
@@ -170,16 +171,16 @@ export interface RadioGroupItemProps extends RadioComponentProps {
   disabled?: boolean;
 }
 
-export function RadioGroupItem(props: Incoming<RadioGroupItemProps>) {
+export function RadioGroupItem(props: RadioGroupItemProps) {
   return (
     <AriaRadio
-      {...omit(props, ["disabled"])}
+      {...omit(cells(props), ["disabled"])}
       // Written around text it is the label it used to be; on its own it is
       // the bare control, for the `<Label>` or `<Field>` that names it.
       elementType={props.children === undefined ? "span" : "label"}
-      data-slot={props["data-slot"]?.() ?? "radio-group-item"}
-      class={ui(circle, props.class?.(), props.className?.())}
-      isDisabled={props.isDisabled?.() ?? props.disabled?.()}
+      data-slot={props["data-slot"] ?? "radio-group-item"}
+      class={ui(circle, props.class, props.className)}
+      isDisabled={props.isDisabled ?? props.disabled}
     >
       <RadioGroupIndicator />
     </AriaRadio>

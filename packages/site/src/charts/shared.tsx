@@ -154,33 +154,33 @@ export interface ChartCardProps {
  * file a copyable example; here it is one component because the gallery renders
  * sixty of them and the difference between two is the DEFINITION.
  */
-export function ChartCard(props: Incoming<ChartCardProps>) {
+export function ChartCard(props: ChartCardProps) {
   return (
     <Card>
       <CardHeader>
         <CardTitle>{props.title}</CardTitle>
-        {props.description?.() === undefined ? null : (
-          <CardDescription>{props.description()}</CardDescription>
+        {props.description === undefined ? null : (
+          <CardDescription>{props.description}</CardDescription>
         )}
       </CardHeader>
       <CardContent>
-        <ChartContainer config={props.config()}>
+        <ChartContainer config={props.config}>
           <Chart
-            definition={props.definition()}
-            ariaLabel={props.ariaLabel()}
-            height={props.height?.() ?? 250}
+            definition={props.definition}
+            ariaLabel={props.ariaLabel}
+            height={props.height ?? 250}
           />
           {props.children}
         </ChartContainer>
       </CardContent>
-      {props.trend?.() === undefined && props.footnote?.() === undefined ? null : (
+      {props.trend === undefined && props.footnote === undefined ? null : (
         <CardFooter class={footer}>
-          {props.trend?.() === undefined ? null : (
+          {props.trend === undefined ? null : (
             <div class={trend}>
-              {props.trend()} <TrendingUp size={16} />
+              {props.trend} <TrendingUp size={16} />
             </div>
           )}
-          {props.footnote?.() === undefined ? null : <div class={note}>{props.footnote()}</div>}
+          {props.footnote === undefined ? null : <div class={note}>{props.footnote}</div>}
         </CardFooter>
       )}
     </Card>

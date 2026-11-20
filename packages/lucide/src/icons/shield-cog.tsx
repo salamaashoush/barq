@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function ShieldCog(props: Incoming<IconProps>) {
+export function ShieldCog(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="m10.929 14.467-.383.924" />
       <path d="M10.929 8.923 10.546 8" />
       <path d="M13.225 8.923 13.608 8" />

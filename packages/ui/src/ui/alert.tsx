@@ -1,3 +1,4 @@
+import { cells } from "@barqjs/core";
 import type { Incoming } from "@barqjs/core";
 import { layer, variants } from "@barqjs/css";
 
@@ -129,28 +130,28 @@ export interface AlertProps extends UiProps {
  * An icon is an ordinary child. The grid finds it with `:has(> svg)` and opens
  * a column for it, so there is no slot to remember and no prop to set.
  */
-export function Alert(props: Incoming<AlertProps>) {
-  const className = (): string => alertVariants({ variant: props.variant?.() });
+export function Alert(props: AlertProps) {
+  const className = (): string => alertVariants({ variant: props.variant });
   return (
     <div
-      {...uiProps("alert", className, props)}
-      role={props.role?.() ?? "alert"}
-      data-variant={props.variant?.() ?? "default"}
+      {...uiProps("alert", className, cells(props))}
+      role={props.role ?? "alert"}
+      data-variant={props.variant ?? "default"}
     >
       {props.children}
     </div>
   );
 }
 
-export function AlertTitle(props: Incoming<UiProps>) {
-  return <div {...uiProps("alert-title", title, props)}>{props.children}</div>;
+export function AlertTitle(props: UiProps) {
+  return <div {...uiProps("alert-title", title, cells(props))}>{props.children}</div>;
 }
 
-export function AlertDescription(props: Incoming<UiProps>) {
-  return <div {...uiProps("alert-description", description, props)}>{props.children}</div>;
+export function AlertDescription(props: UiProps) {
+  return <div {...uiProps("alert-description", description, cells(props))}>{props.children}</div>;
 }
 
 /** A control in the corner: dismiss, retry, the one thing the alert offers. */
-export function AlertAction(props: Incoming<UiProps>) {
-  return <div {...uiProps("alert-action", action, props)}>{props.children}</div>;
+export function AlertAction(props: UiProps) {
+  return <div {...uiProps("alert-action", action, cells(props))}>{props.children}</div>;
 }

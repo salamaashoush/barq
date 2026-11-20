@@ -1,3 +1,4 @@
+import { cells } from "@barqjs/core";
 import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
@@ -115,24 +116,24 @@ const caption = ui(text.sm, {
  * right thing for a data grid and the wrong thing for a table of five invoices.
  * Reach for `@barqjs/aria/table` when you need those; this is the markup.
  */
-export function Table(props: Incoming<UiProps>) {
+export function Table(props: UiProps) {
   return (
     <div data-slot="table-container" class={container}>
-      <table {...uiProps("table", table, props)}>{props.children}</table>
+      <table {...uiProps("table", table, cells(props))}>{props.children}</table>
     </div>
   );
 }
 
-export function TableHeader(props: Incoming<UiProps>) {
-  return <thead {...uiProps("table-header", header, props)}>{props.children}</thead>;
+export function TableHeader(props: UiProps) {
+  return <thead {...uiProps("table-header", header, cells(props))}>{props.children}</thead>;
 }
 
-export function TableBody(props: Incoming<UiProps>) {
-  return <tbody {...uiProps("table-body", body, props)}>{props.children}</tbody>;
+export function TableBody(props: UiProps) {
+  return <tbody {...uiProps("table-body", body, cells(props))}>{props.children}</tbody>;
 }
 
-export function TableFooter(props: Incoming<UiProps>) {
-  return <tfoot {...uiProps("table-footer", footer, props)}>{props.children}</tfoot>;
+export function TableFooter(props: UiProps) {
+  return <tfoot {...uiProps("table-footer", footer, cells(props))}>{props.children}</tfoot>;
 }
 
 export interface TableRowProps extends UiProps {
@@ -142,15 +143,15 @@ export interface TableRowProps extends UiProps {
   "data-state"?: string;
 }
 
-export function TableRow(props: Incoming<TableRowProps>) {
+export function TableRow(props: TableRowProps) {
   return (
     <tr
-      {...uiProps("table-row", row, props)}
-      data-selected={props.isSelected?.() === true ? "" : undefined}
+      {...uiProps("table-row", row, cells(props))}
+      data-selected={props.isSelected === true ? "" : undefined}
       data-state={
-        props["data-state"]?.() ?? (props.isSelected?.() === true ? "selected" : undefined)
+        props["data-state"] ?? (props.isSelected === true ? "selected" : undefined)
       }
-      aria-selected={props.isSelected?.() === true ? true : undefined}
+      aria-selected={props.isSelected === true ? true : undefined}
     >
       {props.children}
     </tr>
@@ -162,12 +163,12 @@ export interface TableHeadProps extends UiProps {
   scope?: "col" | "row" | "colgroup" | "rowgroup";
 }
 
-export function TableHead(props: Incoming<TableHeadProps>) {
+export function TableHead(props: TableHeadProps) {
   return (
     <th
-      {...uiProps("table-head", head, props)}
-      colSpan={props.colSpan?.()}
-      scope={props.scope?.() ?? "col"}
+      {...uiProps("table-head", head, cells(props))}
+      colSpan={props.colSpan}
+      scope={props.scope ?? "col"}
     >
       {props.children}
     </th>
@@ -179,12 +180,12 @@ export interface TableCellProps extends UiProps {
   rowSpan?: number;
 }
 
-export function TableCell(props: Incoming<TableCellProps>) {
+export function TableCell(props: TableCellProps) {
   return (
     <td
-      {...uiProps("table-cell", cell, props)}
-      colSpan={props.colSpan?.()}
-      rowSpan={props.rowSpan?.()}
+      {...uiProps("table-cell", cell, cells(props))}
+      colSpan={props.colSpan}
+      rowSpan={props.rowSpan}
     >
       {props.children}
     </td>
@@ -192,6 +193,6 @@ export function TableCell(props: Incoming<TableCellProps>) {
 }
 
 /** The table's name. Placed at the bottom, which is where shadcn puts it. */
-export function TableCaption(props: Incoming<UiProps>) {
-  return <caption {...uiProps("table-caption", caption, props)}>{props.children}</caption>;
+export function TableCaption(props: UiProps) {
+  return <caption {...uiProps("table-caption", caption, cells(props))}>{props.children}</caption>;
 }

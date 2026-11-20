@@ -22,19 +22,19 @@ import { Menu, MenuItem, SubmenuTrigger } from "./menu.tsx";
 import { Menubar, MenubarMenu, MenubarTrigger } from "./menubar.tsx";
 
 function Bar(
-  props: Incoming<{
+  props: {
     loop?: boolean;
     value?: string;
     onValueChange?: (value: string) => void;
     viewDisabled?: boolean;
-  }>,
+  },
 ) {
   return (
     <Menubar
       aria-label="Application"
-      loop={props.loop?.()}
-      value={props.value?.()}
-      onValueChange={props.onValueChange?.()}
+      loop={props.loop}
+      value={props.value}
+      onValueChange={props.onValueChange}
     >
       <MenubarMenu value="file">
         <MenubarTrigger>File</MenubarTrigger>
@@ -58,7 +58,7 @@ function Bar(
         </Menu>
       </MenubarMenu>
       <MenubarMenu value="view">
-        <MenubarTrigger isDisabled={props.viewDisabled?.() === true}>View</MenubarTrigger>
+        <MenubarTrigger isDisabled={props.viewDisabled === true}>View</MenubarTrigger>
         <Menu>
           <MenuItem>Reload</MenuItem>
         </Menu>
@@ -417,7 +417,7 @@ describe("a menubar", () => {
   });
 
   test("in a right-to-left page the horizontal arrows are the other way round", async () => {
-    function Mirrored(props: Incoming<{ children?: Child }>) {
+    function Mirrored(props: { children?: Child }) {
       const directionProps = provideDirection("rtl");
       return <div {...directionProps}>{props.children}</div>;
     }

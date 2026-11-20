@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function MidiPort(props: Incoming<IconProps>) {
+export function MidiPort(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M12 18h.01" />
       <path d="M15 2.458V5a1 1 0 01-1 1h-4a1 1 0 01-1-1V2.458" />
       <path d="M16 16h.01" />

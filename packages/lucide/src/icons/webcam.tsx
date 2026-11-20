@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Webcam(props: Incoming<IconProps>) {
+export function Webcam(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <circle cx="12" cy="10" r="8" />
       <circle cx="12" cy="10" r="3" />
       <path d="M7 22h10" />

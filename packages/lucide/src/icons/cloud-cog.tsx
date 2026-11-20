@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function CloudCog(props: Incoming<IconProps>) {
+export function CloudCog(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="m10.852 19.772-.383.924" />
       <path d="m13.148 14.228.383-.923" />
       <path d="M13.148 19.772a3 3 0 1 0-2.296-5.544l-.383-.923" />

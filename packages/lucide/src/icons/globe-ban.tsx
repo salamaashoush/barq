@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function GlobeBan(props: Incoming<IconProps>) {
+export function GlobeBan(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M12 22a14.48 14.48 0 01-4.008-10C7.993 9.136 9 5.258 11 2.05A10 10 0 0012 22" />
       <path d="m15.172 3.172 5.656 5.656" />
       <path d="M15.86 14a14.5 14.5 0 01-3.859 8 10 10 0 009.949-9" />

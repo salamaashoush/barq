@@ -29,14 +29,14 @@ const FRUITS = [
   { id: "cherry", name: "Cherry" },
 ];
 
-function Fixture(props: Incoming<{ onChange?: (key: string) => void; name?: string }>) {
+function Fixture(props: { onChange?: (key: string) => void; name?: string }) {
   return (
     <Select
       items={FRUITS}
       aria-label="Fruit"
       placeholder="Pick one"
-      name={props.name?.()}
-      onSelectionChange={(key) => props.onChange?.()?.(String(key))}
+      name={props.name}
+      onSelectionChange={(key) => props.onChange?.(String(key))}
     >
       {(fruit: (typeof FRUITS)[number]) => <SelectItem>{fruit.name}</SelectItem>}
     </Select>
@@ -238,7 +238,7 @@ describe("a Select written as parts", () => {
   }
 
   function Written(
-    props: Incoming<{
+    props: {
       value?: string;
       defaultValue?: string;
       onValueChange?: (value: string) => void;
@@ -256,32 +256,32 @@ describe("a Select written as parts", () => {
       placement?: "top start";
       offset?: number;
       "aria-label"?: string;
-    }>,
+    },
   ) {
     return (
       <>
         <label for="fruit">Fruit</label>
         <Select
-          value={props.value?.()}
-          defaultValue={props.defaultValue?.()}
-          onValueChange={props.onValueChange?.()}
-          open={props.open?.()}
-          onOpenChange={props.onOpenChange?.()}
-          name={props.name?.()}
-          disabled={props.disabled?.()}
-          required={props.required?.()}
+          value={props.value}
+          defaultValue={props.defaultValue}
+          onValueChange={props.onValueChange}
+          open={props.open}
+          onOpenChange={props.onOpenChange}
+          name={props.name}
+          disabled={props.disabled}
+          required={props.required}
         >
-          <SelectTrigger id="fruit" size={props.size?.()} aria-label={props["aria-label"]?.()}>
+          <SelectTrigger id="fruit" size={props.size} aria-label={props["aria-label"]}>
             <SelectValue placeholder="Select a fruit" />
           </SelectTrigger>
           <SelectContent
-            position={props.position?.()}
-            side={props.side?.()}
-            align={props.align?.()}
-            sideOffset={props.sideOffset?.()}
-            alignOffset={props.alignOffset?.()}
-            placement={props.placement?.()}
-            offset={props.offset?.()}
+            position={props.position}
+            side={props.side}
+            align={props.align}
+            sideOffset={props.sideOffset}
+            alignOffset={props.alignOffset}
+            placement={props.placement}
+            offset={props.offset}
           >
             <SelectGroup>
               <SelectLabel>Fruits</SelectLabel>

@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Locate(props: Incoming<IconProps>) {
+export function Locate(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <line x1="2" x2="5" y1="12" y2="12" />
       <line x1="19" x2="22" y1="12" y2="12" />
       <line x1="12" x2="12" y1="2" y2="5" />

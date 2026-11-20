@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function CirclePersonArmsSpread(props: Incoming<IconProps>) {
+export function CirclePersonArmsSpread(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="m15 17-3-3" />
       <path d="M8 10s2 1 4 1 4-1 4-1" />
       <path d="m9 17 3-3v-3" />

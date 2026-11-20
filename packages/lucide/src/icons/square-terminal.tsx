@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function SquareTerminal(props: Incoming<IconProps>) {
+export function SquareTerminal(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="m7 11 2-2-2-2" />
       <path d="M11 13h4" />
       <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />

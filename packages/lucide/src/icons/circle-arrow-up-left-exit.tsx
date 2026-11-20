@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function CircleArrowUpLeftExit(props: Incoming<IconProps>) {
+export function CircleArrowUpLeftExit(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M2 8V2h6" />
       <path d="m2 2 10 10" />
       <path d="M12 2A10 10 0 1 1 2 12" />

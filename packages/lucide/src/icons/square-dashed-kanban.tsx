@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function SquareDashedKanban(props: Incoming<IconProps>) {
+export function SquareDashedKanban(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M8 7v7" />
       <path d="M12 7v4" />
       <path d="M16 7v9" />

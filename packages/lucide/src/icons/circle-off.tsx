@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function CircleOff(props: Incoming<IconProps>) {
+export function CircleOff(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="m2 2 20 20" />
       <path d="M8.35 2.69A10 10 0 0 1 21.3 15.65" />
       <path d="M19.08 19.08A10 10 0 1 1 4.92 4.92" />

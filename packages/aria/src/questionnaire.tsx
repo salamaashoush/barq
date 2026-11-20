@@ -34,6 +34,7 @@
  */
 
 import {
+  cells,
   type Accessor,
   type Child,
   createContext,
@@ -478,30 +479,30 @@ export interface QuestionnaireProps extends StyleProps {
  * </Questionnaire>
  * ```
  */
-export function Questionnaire(props: Incoming<QuestionnaireProps>) {
-  const options = fromProps(props);
+export function Questionnaire(props: QuestionnaireProps) {
+  const options = fromProps(cells(props));
   const direction = useDirection();
 
-  const shortcuts = (): QuestionnaireShortcutMode | null => props.shortcuts?.() ?? null;
-  const noValidate = (): boolean => props.noValidate?.() ?? true;
+  const shortcuts = (): QuestionnaireShortcutMode | null => props.shortcuts ?? null;
+  const noValidate = (): boolean => props.noValidate ?? true;
   const backKey = (): "ArrowLeft" | "ArrowRight" =>
     direction() === "rtl" ? "ArrowRight" : "ArrowLeft";
   const forwardKey = (): "ArrowLeft" | "ArrowRight" =>
     direction() === "rtl" ? "ArrowLeft" : "ArrowRight";
 
-  const collection = createMemo(() => createCollection(props.items?.()));
+  const collection = createMemo(() => createCollection(props.items));
   const [handles, register] = registry<ItemHandle>();
   // `ownedWrite`: the form's own `ref` bumps it, and a ref is called while this
   // component is still being built.
   const [domVersion, setDomVersion] = createSignal(0, { ownedWrite: true });
   const [uncontrolled, setUncontrolled] = createSignal<string | null>(
-    untrack(() => initialItemName(collection(), props.defaultItem?.())),
+    untrack(() => initialItemName(collection(), props.defaultItem)),
   );
   let form: HTMLFormElement | null = null;
   let observer: MutationObserver | undefined;
   let pendingFocus: { name: string; target: "invalid" | "item" } | null = null;
 
-  const controlled = (): boolean => props.item?.() !== undefined;
+  const controlled = (): boolean => props.item !== undefined;
 
   const runtimeItems = createMemo(() => {
     domVersion();
@@ -515,7 +516,7 @@ export function Questionnaire(props: Incoming<QuestionnaireProps>) {
       ? runtimeItems().map((handle) => handle.name())
       : declared.enabled.map((definition) => definition.name);
   });
-  const requested = (): string | null => props.item?.() ?? uncontrolled();
+  const requested = (): string | null => props.item ?? uncontrolled();
   // Before the first question has been made current, the first one is.
   const activeName = (): string | null =>
     requested() ?? (controlled() ? null : (names()[0] ?? null));
@@ -642,7 +643,7 @@ export function Questionnaire(props: Incoming<QuestionnaireProps>) {
     for (const handle of handles()) handle.reset();
 
     const declared = collection();
-    const wanted = props.defaultItem?.();
+    const wanted = props.defaultItem;
     const name =
       declared === null
         ? (runtimeItems()
@@ -780,7 +781,7 @@ export function Questionnaire(props: Incoming<QuestionnaireProps>) {
 
   const formProps = mergeProps(
     filterDOMProps(options, { global: true, labelable: true, propNames: FORM_PROPS }),
-    styleProps(props),
+    styleProps(cells(props)),
     {
       noValidate,
       "data-shortcuts": () => shortcuts() ?? undefined,
@@ -799,7 +800,7 @@ export function Questionnaire(props: Incoming<QuestionnaireProps>) {
   );
 
   return (
-    <form {...formProps} ref={mergeRefs(attach, props.ref?.())}>
+    <form {...formProps} ref={mergeRefs(attach, props.ref)}>
       {props.children}
     </form>
   );
@@ -817,9 +818,9 @@ export interface QuestionnaireProgressProps extends StyleProps {
   render?: RenderPart<QuestionnaireProgressState>;
 }
 
-export function QuestionnaireProgress(props: Incoming<QuestionnaireProgressProps>) {
+export function QuestionnaireProgress(props: QuestionnaireProgressProps) {
   const root = useRoot();
-  const options = fromProps(props);
+  const options = fromProps(cells(props));
   const known = (): boolean => root.total() > 0;
   const label = (): string | undefined =>
     known() ? `Question ${String(root.current())} of ${String(root.total())}` : undefined;
@@ -839,10 +840,10 @@ export function QuestionnaireProgress(props: Incoming<QuestionnaireProgressProps
       "data-last": () => present(root.last()),
     },
     filterDOMProps(options, { global: true, labelable: true }),
-    styleProps(props),
+    styleProps(cells(props)),
   );
 
-  const render = props.render?.();
+  const render = props.render;
   if (render !== undefined) {
     const state: QuestionnaireProgressState = {
       current: root.current,
@@ -850,11 +851,11 @@ export function QuestionnaireProgress(props: Incoming<QuestionnaireProgressProps
       last: root.last,
       total: root.total,
     };
-    return render(partRender({ ...elementProps, ref: props.ref?.() }), state) as JSXElement;
+    return render(partRender({ ...elementProps, ref: props.ref }), state) as JSXElement;
   }
 
   return (
-    <div {...elementProps} ref={mergeRefs(props.ref?.())}>
+    <div {...elementProps} ref={mergeRefs(props.ref)}>
       {props.children === undefined ? () => label() : props.children}
     </div>
   );
@@ -880,15 +881,15 @@ export interface QuestionnaireItemProps extends StyleProps {
   ref?: RefTarget<HTMLFieldSetElement>;
 }
 
-export function QuestionnaireItem(props: Incoming<QuestionnaireItemProps>) {
+export function QuestionnaireItem(props: QuestionnaireItemProps) {
   const root = useRoot();
-  const options = fromProps(props);
+  const options = fromProps(cells(props));
 
-  const name = (): string => props.name();
-  const disabled = (): boolean => props.disabled?.() ?? false;
-  const required = (): boolean => props.required?.() ?? false;
-  const multiple = (): boolean => props.multiple?.() ?? false;
-  const externallyInvalid = (): boolean => props.invalid?.() ?? false;
+  const name = (): string => props.name;
+  const disabled = (): boolean => props.disabled ?? false;
+  const required = (): boolean => props.required ?? false;
+  const multiple = (): boolean => props.multiple ?? false;
+  const externallyInvalid = (): boolean => props.invalid ?? false;
 
   // Each of these is written by a child while this question is being built: a
   // choice that starts checked, a description announcing its id.
@@ -1105,17 +1106,17 @@ export function QuestionnaireItem(props: Incoming<QuestionnaireItemProps>) {
     const ids = [
       ...descriptionIds(),
       ...(invalid() ? errorIds() : []),
-      props["aria-describedby"]?.(),
+      props["aria-describedby"],
     ].filter((id) => id !== undefined && id !== "");
     return ids.length === 0 ? undefined : ids.join(" ");
   };
 
-  const fieldsetProps = mergeProps(filterDOMProps(options, { global: true }), styleProps(props), {
+  const fieldsetProps = mergeProps(filterDOMProps(options, { global: true }), styleProps(cells(props)), {
     "aria-describedby": describedBy,
     "aria-invalid": () => (invalid() ? true : undefined),
     "aria-keyshortcuts": () =>
       keyShortcuts(
-        props["aria-keyshortcuts"]?.(),
+        props["aria-keyshortcuts"],
         active() && "Meta+Enter Control+Enter",
         active() && answers().length > 0 && "ArrowUp ArrowDown",
         active() && !root.first() && root.backKey(),
@@ -1134,7 +1135,7 @@ export function QuestionnaireItem(props: Incoming<QuestionnaireItemProps>) {
   });
 
   return (
-    <fieldset {...fieldsetProps} ref={mergeRefs(attach, props.ref?.())}>
+    <fieldset {...fieldsetProps} ref={mergeRefs(attach, props.ref)}>
       {props.children}
     </fieldset>
   );
@@ -1150,29 +1151,29 @@ export interface QuestionnairePartProps extends StyleProps {
 }
 
 /** The question itself: a `<legend>`, so it names the group. */
-export function QuestionnaireTitle(props: Incoming<QuestionnairePartProps>) {
+export function QuestionnaireTitle(props: QuestionnairePartProps) {
   useItem();
   const elementProps = mergeProps(
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
   );
-  const render = props.render?.();
+  const render = props.render;
   if (render !== undefined) return render(partRender(elementProps)) as JSXElement;
   return <legend {...elementProps}>{props.children}</legend>;
 }
 
-export function QuestionnaireDescription(props: Incoming<QuestionnairePartProps>) {
+export function QuestionnaireDescription(props: QuestionnairePartProps) {
   const item = useItem();
   const generated = createUniqueId();
-  const descriptionId = (): string => props.id?.() ?? generated;
+  const descriptionId = (): string => props.id ?? generated;
   onCleanup(item.registerDescription(untrack(descriptionId)));
 
   const elementProps = mergeProps(
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     { id: descriptionId },
   );
-  const render = props.render?.();
+  const render = props.render;
   if (render !== undefined) return render(partRender(elementProps)) as JSXElement;
   return <p {...elementProps}>{props.children}</p>;
 }
@@ -1184,18 +1185,18 @@ export interface QuestionnaireErrorProps extends StyleProps {
 }
 
 /** Shown, and announced, only while the question is invalid. */
-export function QuestionnaireError(props: Incoming<QuestionnaireErrorProps>) {
+export function QuestionnaireError(props: QuestionnaireErrorProps) {
   const item = useItem();
   const generated = createUniqueId();
-  const errorId = (): string => props.id?.() ?? generated;
+  const errorId = (): string => props.id ?? generated;
   onCleanup(item.registerError(untrack(errorId)));
 
   const message = (): string =>
     item.required() ? "Choose an answer to continue." : "Choose an answer or skip this question.";
 
   const elementProps = mergeProps(
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
       id: errorId,
       hidden: () => !item.invalid(),
@@ -1203,7 +1204,7 @@ export function QuestionnaireError(props: Incoming<QuestionnaireErrorProps>) {
       "data-invalid": () => present(item.invalid()),
     },
   );
-  const render = props.render?.();
+  const render = props.render;
   if (render !== undefined) {
     return render(partRender(elementProps), { invalid: item.invalid }) as JSXElement;
   }
@@ -1219,14 +1220,14 @@ export interface QuestionnaireChoicesProps extends StyleProps {
   render?: RenderPart<QuestionnaireChoicesState>;
 }
 
-export function QuestionnaireChoices(props: Incoming<QuestionnaireChoicesProps>) {
+export function QuestionnaireChoices(props: QuestionnaireChoicesProps) {
   const item = useItem();
   const elementProps = mergeProps(
-    filterDOMProps(fromProps(props), { global: true, labelable: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true, labelable: true }),
+    styleProps(cells(props)),
     { "data-shortcuts": () => item.shortcuts() ?? undefined },
   );
-  const render = props.render?.();
+  const render = props.render;
   if (render !== undefined) {
     return render(partRender(elementProps), { shortcuts: item.shortcuts }) as JSXElement;
   }
@@ -1248,15 +1249,15 @@ export interface QuestionnaireChoiceProps extends StyleProps {
  * One fixed answer: a `<label>` around its input, so the whole row is the
  * target.
  */
-export function QuestionnaireChoice(props: Incoming<QuestionnaireChoiceProps>) {
+export function QuestionnaireChoice(props: QuestionnaireChoiceProps) {
   const item = useItem();
-  const options = fromProps(props);
+  const options = fromProps(cells(props));
   const answerId = createUniqueId();
 
-  const value = (): string => props.value();
-  const ownDisabled = (): boolean => props.disabled?.() ?? false;
+  const value = (): string => props.value;
+  const ownDisabled = (): boolean => props.disabled ?? false;
   const disabled = (): boolean => item.disabled() || ownDisabled();
-  const controlledChecked = (): boolean | undefined => props.checked?.();
+  const controlledChecked = (): boolean | undefined => props.checked;
   const checked = (): boolean => {
     const controlled = controlledChecked();
     if (controlled === undefined) return item.isSelected(answerId);
@@ -1268,7 +1269,7 @@ export function QuestionnaireChoice(props: Incoming<QuestionnaireChoiceProps>) {
   onCleanup(
     item.registerSelection(
       answerId,
-      untrack(() => props.defaultChecked?.() ?? false),
+      untrack(() => props.defaultChecked ?? false),
     ),
   );
   const initial = untrack(controlledChecked);
@@ -1293,7 +1294,7 @@ export function QuestionnaireChoice(props: Incoming<QuestionnaireChoiceProps>) {
   onCleanup(() => unregister?.());
 
   createEffect(
-    () => props.defaultChecked?.() ?? false,
+    () => props.defaultChecked ?? false,
     (now) => item.setDefault(answerId, now),
   );
 
@@ -1309,7 +1310,7 @@ export function QuestionnaireChoice(props: Incoming<QuestionnaireChoiceProps>) {
   createEffect(
     () => ({
       checked: checked(),
-      fallback: controlledChecked() ?? props.defaultChecked?.() ?? false,
+      fallback: controlledChecked() ?? props.defaultChecked ?? false,
       version: item.resetVersion(),
     }),
     (now) => {
@@ -1375,11 +1376,11 @@ export function QuestionnaireChoice(props: Incoming<QuestionnaireChoiceProps>) {
   const labelProps = mergeProps(
     // NOT `id`: it belongs on the input, which is the labelable element.
     filterDOMProps(options, { global: true, id: false }),
-    styleProps(props),
+    styleProps(cells(props)),
     stateProps,
   );
 
-  const render = props.render?.();
+  const render = props.render;
   if (render !== undefined) return render(partRender(labelProps), state) as JSXElement;
   return <label {...labelProps}>{props.children}</label>;
 }
@@ -1393,30 +1394,30 @@ export interface QuestionnaireChoiceInputProps extends StyleProps {
 }
 
 /** The radio or checkbox itself, which is what holds focus and is submitted. */
-export function QuestionnaireChoiceInput(props: Incoming<QuestionnaireChoiceInputProps>) {
+export function QuestionnaireChoiceInput(props: QuestionnaireChoiceInputProps) {
   const choice = useChoice();
   const { ref: attach, ...inputProps } = choice.inputProps;
   const elementProps = mergeProps(
-    filterDOMProps(fromProps(props), { global: true, labelable: true, id: false }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true, labelable: true, id: false }),
+    styleProps(cells(props)),
     choice.stateProps,
     inputProps,
   );
-  const ref = mergeRefs(attach as RefTarget<HTMLInputElement>, props.ref?.());
-  const render = props.render?.();
+  const ref = mergeRefs(attach as RefTarget<HTMLInputElement>, props.ref);
+  const render = props.render;
   if (render !== undefined) {
     return render(partRender({ ...elementProps, ref }), choice.state) as JSXElement;
   }
   return <input {...elementProps} ref={ref} />;
 }
 
-export function QuestionnaireChoiceLabel(props: Incoming<QuestionnairePartProps>) {
+export function QuestionnaireChoiceLabel(props: QuestionnairePartProps) {
   useChoice();
   const elementProps = mergeProps(
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
   );
-  const render = props.render?.();
+  const render = props.render;
   if (render !== undefined) return render(partRender(elementProps)) as JSXElement;
   return <span {...elementProps}>{props.children}</span>;
 }
@@ -1433,18 +1434,18 @@ export interface QuestionnaireChoiceShortcutProps extends StyleProps {
  * `aria-hidden`, because the input already carries it in `aria-keyshortcuts`
  * and reading it twice is noise.
  */
-export function QuestionnaireChoiceShortcut(props: Incoming<QuestionnaireChoiceShortcutProps>) {
+export function QuestionnaireChoiceShortcut(props: QuestionnaireChoiceShortcutProps) {
   const choice = useChoice();
   const elementProps = mergeProps(
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
       "aria-hidden": true,
       hidden: () => choice.state.shortcut() === null,
       "data-shortcut": () => choice.state.shortcut() ?? undefined,
     },
   );
-  const render = props.render?.();
+  const render = props.render;
   if (render !== undefined) {
     return render(partRender(elementProps), { shortcut: choice.state.shortcut }) as JSXElement;
   }
@@ -1486,15 +1487,15 @@ export interface QuestionnaireInputProps extends StyleProps {
 }
 
 /** A typed answer, on its own or beside the choices. */
-export function QuestionnaireInput(props: Incoming<QuestionnaireInputProps>) {
+export function QuestionnaireInput(props: QuestionnaireInputProps) {
   const item = useItem();
-  const options = fromProps(props);
+  const options = fromProps(cells(props));
   const answerId = createUniqueId();
 
-  const controlledValue = (): string | number | undefined => props.value?.();
-  const defaultFilled = (): boolean => hasInputValue(props.defaultValue?.());
+  const controlledValue = (): string | number | undefined => props.value;
+  const defaultFilled = (): boolean => hasInputValue(props.defaultValue);
   const [typed, setTyped] = createSignal(untrack(defaultFilled));
-  const disabled = (): boolean => item.disabled() || (props.disabled?.() ?? false);
+  const disabled = (): boolean => item.disabled() || (props.disabled ?? false);
   const filled = (): boolean => {
     const controlled = controlledValue();
     return controlled === undefined ? typed() : hasInputValue(controlled);
@@ -1512,7 +1513,7 @@ export function QuestionnaireInput(props: Incoming<QuestionnaireInputProps>) {
     unregister = undefined;
     input = node;
     if (node === null) return;
-    const start = untrack(() => props.defaultValue?.());
+    const start = untrack(() => props.defaultValue);
     // The content attribute, so a native reset has something to restore.
     if (untrack(controlledValue) === undefined && start !== undefined) {
       node.defaultValue = String(start);
@@ -1558,10 +1559,10 @@ export function QuestionnaireInput(props: Incoming<QuestionnaireInputProps>) {
       id: false,
       propNames: INPUT_PROPS,
     }),
-    styleProps(props),
+    styleProps(cells(props)),
     {
       id: answerId,
-      type: () => props.type?.() ?? "text",
+      type: () => props.type ?? "text",
       disabled,
       // Outside the form until it is the answer, so an abandoned draft is
       // neither submitted nor validated.
@@ -1578,8 +1579,8 @@ export function QuestionnaireInput(props: Incoming<QuestionnaireInputProps>) {
     props.value === undefined ? null : { value: () => String(controlledValue() ?? "") },
   );
 
-  const ref = mergeRefs(attach, props.ref?.());
-  const render = props.render?.();
+  const ref = mergeRefs(attach, props.ref);
+  const render = props.render;
   if (render !== undefined) {
     const state: QuestionnaireInputState = { disabled, filled, invalid: item.invalid };
     return render(partRender({ ...inputProps, ref }), state) as JSXElement;
@@ -1618,26 +1619,26 @@ interface NavigationOptions {
  * layout does not jump when the last question swaps Next for Submit.
  */
 function NavigationButton(
-  props: Incoming<QuestionnaireButtonProps>,
+  props: QuestionnaireButtonProps,
   navigation: NavigationOptions,
 ) {
   const root = useRoot();
-  const options = fromProps(props);
-  const disabled = (): boolean => props.disabled?.() ?? false;
+  const options = fromProps(cells(props));
+  const disabled = (): boolean => props.disabled ?? false;
   const shortcut = (): "Enter" | null =>
     navigation.confirms && navigation.visible() && !disabled() ? "Enter" : null;
 
   const buttonProps = mergeProps(
     filterDOMProps(options, { global: true, labelable: true, propNames: BUTTON_PROPS }),
-    styleProps(props),
+    styleProps(cells(props)),
     {
-      type: () => props.type?.() ?? navigation.type,
+      type: () => props.type ?? navigation.type,
       disabled,
       hidden: () => !navigation.visible(),
       inert: () => !navigation.visible(),
       "aria-hidden": () => (navigation.visible() ? undefined : true),
       "aria-keyshortcuts": () => shortcut() ?? undefined,
-      tabIndex: () => (navigation.visible() ? props.tabIndex?.() : -1),
+      tabIndex: () => (navigation.visible() ? props.tabIndex : -1),
       "data-visible": () => present(navigation.visible()),
       "data-hidden": () => present(!navigation.visible()),
       "data-disabled": () => present(disabled()),
@@ -1650,7 +1651,7 @@ function NavigationButton(
     },
   );
 
-  const render = props.render?.();
+  const render = props.render;
   if (render !== undefined) {
     const state: QuestionnaireNavigationState = {
       disabled,
@@ -1658,11 +1659,11 @@ function NavigationButton(
       status: root.activeStatus,
       visible: navigation.visible,
     };
-    return render(partRender({ ...buttonProps, ref: props.ref?.() }), state) as JSXElement;
+    return render(partRender({ ...buttonProps, ref: props.ref }), state) as JSXElement;
   }
 
   return (
-    <button {...buttonProps} ref={mergeRefs(props.ref?.())}>
+    <button {...buttonProps} ref={mergeRefs(props.ref)}>
       {props.children === undefined ? navigation.label : props.children}
     </button>
   );

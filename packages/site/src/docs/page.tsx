@@ -83,10 +83,10 @@ const prose = css`
  * the page. Backticks are all this handles: a note that wants a link or a bold
  * span is a note that wants to be a section.
  */
-function Prose(props: Incoming<{ text: string }>) {
+function Prose(props: { text: string }) {
   const parts = (): readonly { text: string; code: boolean }[] =>
     props
-      .text()
+      .text
       .split("`")
       .map((text, at) => ({ text, code: at % 2 === 1 }))
       .filter((part) => part.text !== "");
@@ -100,25 +100,25 @@ function Prose(props: Incoming<{ text: string }>) {
   );
 }
 
-function DemoSection(props: Incoming<{ demo: Demo }>) {
-  const Example = dynamic(() => props.demo().component);
+function DemoSection(props: { demo: Demo }) {
+  const Example = dynamic(() => props.demo.component);
   return (
     <>
-      {props.demo().title === undefined ? null : (
-        <h2 class={anchor} id={slugOf(props.demo().title ?? "")}>
-          {props.demo().title}
+      {props.demo.title === undefined ? null : (
+        <h2 class={anchor} id={slugOf(props.demo.title ?? "")}>
+          {props.demo.title}
         </h2>
       )}
-      {props.demo().note === undefined ? null : (
+      {props.demo.note === undefined ? null : (
         <p>
-          <Prose text={() => props.demo().note ?? ""} />
+          <Prose text={() => props.demo.note ?? ""} />
         </p>
       )}
       <ComponentPreview
-        code={asCopied(props.demo().code)}
-        align={props.demo().align}
-        size={props.demo().size}
-        rtl={props.demo().rtl}
+        code={asCopied(props.demo.code)}
+        align={props.demo.align}
+        size={props.demo.size}
+        rtl={props.demo.rtl}
       >
         <Example />
       </ComponentPreview>
@@ -156,8 +156,8 @@ function neighbours(slug: string): { previous?: ComponentDoc; next?: ComponentDo
   return { previous: COMPONENTS[at - 1], next: COMPONENTS[at + 1] };
 }
 
-function Actions(props: Incoming<{ slug: string }>) {
-  const around = (): { previous?: ComponentDoc; next?: ComponentDoc } => neighbours(props.slug());
+function Actions(props: { slug: string }) {
+  const around = (): { previous?: ComponentDoc; next?: ComponentDoc } => neighbours(props.slug);
   return (
     <div class={nav}>
       {() =>
@@ -182,8 +182,8 @@ function Actions(props: Incoming<{ slug: string }>) {
   );
 }
 
-function Found(props: Incoming<{ entry: ComponentDoc }>) {
-  const entry = (): ComponentDoc => props.entry();
+function Found(props: { entry: ComponentDoc }) {
+  const entry = (): ComponentDoc => props.entry;
   const hero = (): Demo | undefined => entry().demos[0];
   const Hero = dynamic(() => hero()?.component);
   const rest = (): readonly Demo[] => entry().demos.slice(1);

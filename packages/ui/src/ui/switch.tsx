@@ -1,3 +1,4 @@
+import { cells } from "@barqjs/core";
 import { Switch as AriaSwitch, useSwitch, type SwitchComponentProps } from "@barqjs/aria/switch";
 import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
@@ -145,21 +146,21 @@ const UPSTREAM = ["checked", "defaultChecked", "onCheckedChange", "disabled", "r
  * </FieldLabel>
  * ```
  */
-export function Switch(props: Incoming<SwitchProps>) {
+export function Switch(props: SwitchProps) {
   return (
     <AriaSwitch
-      {...omit(props, UPSTREAM)}
+      {...omit(cells(props), UPSTREAM)}
       elementType="span"
-      data-slot={props["data-slot"]?.() ?? "switch"}
-      data-size={props.size?.() ?? "default"}
-      class={ui(track, props.class?.(), props.className?.())}
-      isSelected={props.isSelected?.() ?? props.checked?.()}
-      defaultSelected={props.defaultSelected?.() ?? props.defaultChecked?.()}
-      isDisabled={props.isDisabled?.() ?? props.disabled?.()}
-      isRequired={props.isRequired?.() ?? props.required?.()}
+      data-slot={props["data-slot"] ?? "switch"}
+      data-size={props.size ?? "default"}
+      class={ui(track, props.class, props.className)}
+      isSelected={props.isSelected ?? props.checked}
+      defaultSelected={props.defaultSelected ?? props.defaultChecked}
+      isDisabled={props.isDisabled ?? props.disabled}
+      isRequired={props.isRequired ?? props.required}
       onChange={(checked: boolean) => {
-        props.onChange?.()?.(checked);
-        props.onCheckedChange?.()?.(checked);
+        props.onChange?.(checked);
+        props.onCheckedChange?.(checked);
       }}
     >
       <SwitchThumb />

@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Haze(props: Incoming<IconProps>) {
+export function Haze(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="m5.2 6.2 1.4 1.4" />
       <path d="M2 13h2" />
       <path d="M20 13h2" />

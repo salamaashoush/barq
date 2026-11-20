@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function TentTree(props: Incoming<IconProps>) {
+export function TentTree(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <circle cx="4" cy="4" r="2" />
       <path d="m14 5 3-3 3 3" />
       <path d="m14 10 3-3 3 3" />

@@ -4,7 +4,7 @@ import { AdditiveBlending, TextureLoader } from "three";
 
 import { useOrrery } from "./orrery.ts";
 
-export function Sun(props: Incoming<{ color: string; radius: number }>) {
+export function Sun(props: { color: string; radius: number }) {
   const orrery = useOrrery();
   const glow = useLoader(TextureLoader, "/textures/glow.svg");
   const lit = () => orrery.hovered() === "sun" || orrery.selected() === "sun";
@@ -23,13 +23,13 @@ export function Sun(props: Incoming<{ color: string; radius: number }>) {
         }}
         onPointerOut={() => orrery.setHovered(null)}
       >
-        <sphereGeometry args={[props.radius(), 64, 48]} />
-        <meshBasicMaterial color={props.color()} />
+        <sphereGeometry args={[props.radius, 64, 48]} />
+        <meshBasicMaterial color={props.color} />
       </mesh>
-      <sprite scale={props.radius() * (lit() ? 6.2 : 5.4)}>
+      <sprite scale={props.radius * (lit() ? 6.2 : 5.4)}>
         <spriteMaterial
           map={glow()}
-          color={props.color()}
+          color={props.color}
           transparent
           depthWrite={false}
           blending={AdditiveBlending}

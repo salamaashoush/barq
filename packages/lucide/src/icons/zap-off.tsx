@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function ZapOff(props: Incoming<IconProps>) {
+export function ZapOff(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M10.768 5.111 13.44 2.44a1.5 1.5 0 012.474 1.561l-1.633 4.625" />
       <path d="m18.889 13.232.672-.672A1.5 1.5 0 0018.5 10h-2.844" />
       <path d="m2 2 20 20" />

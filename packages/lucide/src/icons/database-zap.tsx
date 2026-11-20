@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function DatabaseZap(props: Incoming<IconProps>) {
+export function DatabaseZap(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <ellipse cx="12" cy="5" rx="9" ry="3" />
       <path d="M3 5V19A9 3 0 0 0 15 21.84" />
       <path d="M21 5V8" />

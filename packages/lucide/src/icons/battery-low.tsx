@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function BatteryLow(props: Incoming<IconProps>) {
+export function BatteryLow(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M22 14v-4" />
       <path d="M6 14v-4" />
       <rect x="2" y="6" width="16" height="12" rx="2" />

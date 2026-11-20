@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function CandyCane(props: Incoming<IconProps>) {
+export function CandyCane(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="m10.8 5 2.111 4.223" />
       <path d="M17.75 7 15 2.1" />
       <path d="m4.874 14.647 2.12 4.24" />

@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function SquareActivity(props: Incoming<IconProps>) {
+export function SquareActivity(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <rect width="18" height="18" x="3" y="3" rx="2" />
       <path d="M17 12h-2l-2 5-2-10-2 5H7" />
     </svg>

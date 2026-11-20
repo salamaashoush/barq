@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function CircleLetterH(props: Incoming<IconProps>) {
+export function CircleLetterH(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M9 16V8" />
       <path d="M15 16V8" />
       <path d="M9 12h6" />

@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function ListCollapse(props: Incoming<IconProps>) {
+export function ListCollapse(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M10 5h11" />
       <path d="M10 12h11" />
       <path d="M10 19h11" />

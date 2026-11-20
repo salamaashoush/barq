@@ -3,7 +3,7 @@ import {
   useCheckbox,
   type CheckboxComponentProps,
 } from "@barqjs/aria/checkbox";
-import { Show, type Incoming } from "@barqjs/core";
+import { cells, Show, type Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import { Check } from "@barqjs/lucide/icons/check";
@@ -143,25 +143,25 @@ const UPSTREAM = ["checked", "defaultChecked", "onCheckedChange", "disabled", "r
  * </FieldLabel>
  * ```
  */
-export function Checkbox(props: Incoming<CheckboxProps>) {
+export function Checkbox(props: CheckboxProps) {
   return (
     <AriaCheckbox
-      {...omit(props, UPSTREAM)}
+      {...omit(cells(props), UPSTREAM)}
       // Written around text it is the label it used to be; on its own it is
       // the bare control, for the `<Label>` or `<Field>` that names it.
       elementType={props.children === undefined ? "span" : "label"}
-      data-slot={props["data-slot"]?.() ?? "checkbox"}
-      class={ui(control, props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "checkbox"}
+      class={ui(control, props.class, props.className)}
       isSelected={
-        props.isSelected?.() ?? (props.checked === undefined ? undefined : props.checked() === true)
+        props.isSelected ?? (props.checked === undefined ? undefined : props.checked === true)
       }
-      isIndeterminate={props.isIndeterminate?.() ?? props.checked?.() === "indeterminate"}
-      defaultSelected={props.defaultSelected?.() ?? props.defaultChecked?.()}
-      isDisabled={props.isDisabled?.() ?? props.disabled?.()}
-      isRequired={props.isRequired?.() ?? props.required?.()}
+      isIndeterminate={props.isIndeterminate ?? props.checked === "indeterminate"}
+      defaultSelected={props.defaultSelected ?? props.defaultChecked}
+      isDisabled={props.isDisabled ?? props.disabled}
+      isRequired={props.isRequired ?? props.required}
       onChange={(checked: boolean) => {
-        props.onChange?.()?.(checked);
-        props.onCheckedChange?.()?.(checked);
+        props.onChange?.(checked);
+        props.onCheckedChange?.(checked);
       }}
     >
       <CheckboxIndicator />

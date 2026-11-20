@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function ListSortAscending(props: Incoming<IconProps>) {
+export function ListSortAscending(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M3 19h18" />
       <path d="M15 12H3" />
       <path d="M9 5H3" />

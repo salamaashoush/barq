@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function EyeDashed(props: Incoming<IconProps>) {
+export function EyeDashed(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M13.054 18.946a11 11 0 0 1-2.11 0" />
       <path d="M13.054 5.054a11 11 0 0 0-2.11-.001" />
       <path d="M17.072 6.274a11 11 0 0 1 1.753 1.173" />

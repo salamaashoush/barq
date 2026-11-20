@@ -1,3 +1,4 @@
+import { cells } from "@barqjs/core";
 import { Dialog as AriaDialog, Heading, Modal, useDialogDescription } from "@barqjs/aria/dialog";
 import type { Incoming } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
@@ -222,24 +223,24 @@ export interface AlertDialogProps extends OverlayRootProps {}
  * </AlertDialog>
  * ```
  */
-export function AlertDialog(props: Incoming<AlertDialogProps>) {
+export function AlertDialog(props: AlertDialogProps) {
   return <family.Root {...props} />;
 }
 
-export function AlertDialogTrigger(props: Incoming<TriggerPartProps>) {
+export function AlertDialogTrigger(props: TriggerPartProps) {
   return <family.Trigger {...props} />;
 }
 
 export interface AlertDialogPortalProps extends OverlayPortalProps {}
 
 /** Names the container the alert dialog inside is rendered into. See `<DialogPortal>`. */
-export function AlertDialogPortal(props: Incoming<AlertDialogPortalProps>) {
+export function AlertDialogPortal(props: AlertDialogPortalProps) {
   return <OverlayPortal {...props} />;
 }
 
 /** What the element behind the alert dialog looks like and carries. See `<DialogOverlay>`. */
-export function AlertDialogOverlay(props: Incoming<UiProps>) {
-  registerUnderlay(family.use(), uiProps("alert-dialog-overlay", overlay, props));
+export function AlertDialogOverlay(props: UiProps) {
+  registerUnderlay(family.use(), uiProps("alert-dialog-overlay", overlay, cells(props)));
   return <></>;
 }
 
@@ -248,7 +249,7 @@ export interface AlertDialogContentProps extends UiProps {
   size?: AlertDialogSize;
 }
 
-export function AlertDialogContent(props: Incoming<AlertDialogContentProps>) {
+export function AlertDialogContent(props: AlertDialogContentProps) {
   const { state, underlay } = family.use();
 
   return (
@@ -262,12 +263,12 @@ export function AlertDialogContent(props: Incoming<AlertDialogContentProps>) {
       underlayClass={underlay() === null ? overlay : undefined}
       underlaySlot="alert-dialog-overlay"
       underlayProps={underlay() ?? undefined}
-      {...handedOn(props)}
-      class={ui(content, props.class?.(), props.className?.())}
-      data-slot={props["data-slot"]?.() ?? "alert-dialog-content"}
-      data-size={props.size?.() ?? "default"}
+      {...handedOn(cells(props))}
+      class={ui(content, props.class, props.className)}
+      data-slot={props["data-slot"] ?? "alert-dialog-content"}
+      data-size={props.size ?? "default"}
     >
-      <AriaDialog {...named(props)} role="alertdialog" class={contents}>
+      <AriaDialog {...named(cells(props))} role="alertdialog" class={contents}>
         {props.children}
       </AriaDialog>
     </Modal>
@@ -279,39 +280,39 @@ const contents = ui({
   display: "contents",
 });
 
-export function AlertDialogHeader(props: Incoming<UiProps>) {
-  return <div {...uiProps("alert-dialog-header", header, props)}>{props.children}</div>;
+export function AlertDialogHeader(props: UiProps) {
+  return <div {...uiProps("alert-dialog-header", header, cells(props))}>{props.children}</div>;
 }
 
-export function AlertDialogFooter(props: Incoming<UiProps>) {
-  return <div {...uiProps("alert-dialog-footer", footer, props)}>{props.children}</div>;
+export function AlertDialogFooter(props: UiProps) {
+  return <div {...uiProps("alert-dialog-footer", footer, cells(props))}>{props.children}</div>;
 }
 
 /** An icon above the title, for the one that says what kind of interruption this is. */
-export function AlertDialogMedia(props: Incoming<UiProps>) {
-  return <div {...uiProps("alert-dialog-media", media, props)}>{props.children}</div>;
+export function AlertDialogMedia(props: UiProps) {
+  return <div {...uiProps("alert-dialog-media", media, cells(props))}>{props.children}</div>;
 }
 
-export function AlertDialogTitle(props: Incoming<UiProps>) {
+export function AlertDialogTitle(props: UiProps) {
   return (
     <Heading
       {...props}
       slot="title"
-      data-slot={props["data-slot"]?.() ?? "alert-dialog-title"}
-      class={ui(title, props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "alert-dialog-title"}
+      class={ui(title, props.class, props.className)}
     />
   );
 }
 
-export function AlertDialogDescription(props: Incoming<UiProps>) {
+export function AlertDialogDescription(props: UiProps) {
   const described = useDialogDescription();
   // The dialog points at this element, and only because the hook was called:
   // a description nothing references is read by whoever goes looking for it
   // and by nobody else.
   return (
     <p
-      {...uiProps("alert-dialog-description", description, props)}
-      id={props.id?.() ?? described?.id()}
+      {...uiProps("alert-dialog-description", description, cells(props))}
+      id={props.id ?? described?.id()}
     >
       {props.children}
     </p>
@@ -321,14 +322,14 @@ export function AlertDialogDescription(props: Incoming<UiProps>) {
 export interface AlertDialogActionProps extends ButtonProps {}
 
 /** The button that does the thing. It closes the dialog after its own handler. */
-export function AlertDialogAction(props: Incoming<AlertDialogActionProps>) {
+export function AlertDialogAction(props: AlertDialogActionProps) {
   const { state } = family.use();
   return (
     <Button
       {...props}
-      data-slot={props["data-slot"]?.() ?? "alert-dialog-action"}
+      data-slot={props["data-slot"] ?? "alert-dialog-action"}
       onPress={(event) => {
-        props.onPress?.()?.(event);
+        props.onPress?.(event);
         state.close();
       }}
     />
@@ -336,15 +337,15 @@ export function AlertDialogAction(props: Incoming<AlertDialogActionProps>) {
 }
 
 /** The button that does not. Outlined by default, which is shadcn's arrangement. */
-export function AlertDialogCancel(props: Incoming<AlertDialogActionProps>) {
+export function AlertDialogCancel(props: AlertDialogActionProps) {
   const { state } = family.use();
   return (
     <Button
       {...props}
-      data-slot={props["data-slot"]?.() ?? "alert-dialog-cancel"}
-      variant={props.variant?.() ?? "outline"}
+      data-slot={props["data-slot"] ?? "alert-dialog-cancel"}
+      variant={props.variant ?? "outline"}
       onPress={(event) => {
-        props.onPress?.()?.(event);
+        props.onPress?.(event);
         state.close();
       }}
     />

@@ -40,13 +40,13 @@ async function settle(): Promise<void> {
 }
 
 describe("Sheet", () => {
-  function Fixture(props: Incoming<{ side?: "top" | "right" | "bottom" | "left" }>) {
+  function Fixture(props: { side?: "top" | "right" | "bottom" | "left" }) {
     return (
       <Sheet>
         <SheetTrigger>
           <Button>Filters</Button>
         </SheetTrigger>
-        <SheetContent side={props.side?.()}>
+        <SheetContent side={props.side}>
           <SheetHeader>
             <SheetTitle>Filters</SheetTitle>
           </SheetHeader>
@@ -94,7 +94,7 @@ describe("Sheet", () => {
 });
 
 describe("AlertDialog", () => {
-  function Fixture(props: Incoming<{ onConfirm?: () => void }>) {
+  function Fixture(props: { onConfirm?: () => void }) {
     return (
       <AlertDialog>
         <AlertDialogTrigger>
@@ -107,7 +107,7 @@ describe("AlertDialog", () => {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onPress={() => props.onConfirm?.()?.()}>
+            <AlertDialogAction variant="destructive" onPress={() => props.onConfirm?.()}>
               Yes, delete
             </AlertDialogAction>
           </AlertDialogFooter>

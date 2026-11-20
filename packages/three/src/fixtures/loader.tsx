@@ -1,4 +1,4 @@
-import { Errored, Loading, type Accessor } from "@barqjs/core";
+import { cells, Errored, Loading, type Accessor } from "@barqjs/core";
 import * as THREE from "three";
 
 import { useGraph, useLoader } from "@barqjs/three";
@@ -35,9 +35,9 @@ export class FakeLoader extends THREE.Loader {
 }
 
 export function Textured(props: { url: Accessor<string> }) {
-  const texture = useLoader(FakeLoader, props.url) as Accessor<THREE.Texture>;
+  const texture = useLoader(FakeLoader, cells(props).url) as Accessor<THREE.Texture>;
   return (
-    <mesh name={`textured-${props.url()}`}>
+    <mesh name={`textured-${props.url}`}>
       <meshBasicMaterial map={texture()} />
     </mesh>
   );
@@ -47,7 +47,7 @@ export function Suspended(props: { url: Accessor<string> }) {
   return (
     <Loading fallback={<group name="fallback" />}>
       <Errored fallback={(error) => <group name={`failed: ${error().message}`} />}>
-        <Textured url={props.url()} />
+        <Textured url={props.url} />
       </Errored>
     </Loading>
   );
@@ -67,6 +67,6 @@ export function Model() {
 }
 
 export function Graphed(props: { object: Accessor<THREE.Object3D> }) {
-  const graph = useGraph(props.object);
+  const graph = useGraph(cells(props).object);
   return <group name={Object.keys(graph().meshes).join(",")} />;
 }

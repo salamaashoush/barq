@@ -35,7 +35,7 @@ use oxc::ast::ast::{
 use oxc::ast::builder::AstBuilder;
 use oxc::ast_visit::{Visit, VisitMut, walk, walk_mut};
 use oxc::semantic::{ScopeFlags, Scoping, SemanticBuilder, SemanticBuilderReturn, SymbolId};
-use oxc::span::Span;
+use oxc::span::{GetSpan, Span};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::options::ResolvedOptions;
@@ -45,6 +45,9 @@ const VALUES: &str = "_$values";
 const OMIT: &str = "_$omit";
 const WITH_DEFAULT: &str = "_$withDefault";
 const READ: &str = "_$readProp";
+
+/// One change the codemod makes: `text` in place of `start..end`.
+pub type Edit = (u32, u32, &'static str);
 
 /// A mistake this pass found, for the driver to report at `span`.
 pub struct Refusal {
@@ -74,7 +77,7 @@ enum Action<'a> {
     /// its members are handed on uncalled.
     Record { name: &'a str, param: bool },
     /// `record.prop`, then `steps` into its value.
-    Field { record: &'a str, prop: &'a str, steps: Vec<Step<'a>> },
+    Field { record: &'a str, prop: &'a str, steps: Vec<Step<'a>>, param: bool },
     /// A Cell this pass declared in the component's body: a prop with a default.
     Cell(&'a str),
 }
@@ -86,12 +89,32 @@ pub fn run<'a>(
     program: &mut Program<'a>,
     options: &ResolvedOptions,
 ) -> Vec<Refusal> {
+    pass(allocator, program, &options.core_source, false).0
+}
+
+/// The codemod from props read as Cells to props read as values: the spans to
+/// delete so that `props.title()` reads `props.title` and `Incoming<P>` reads
+/// `P`, in every function this pass takes for a component.
+pub fn migration<'a>(
+    allocator: &'a Allocator,
+    program: &mut Program<'a>,
+    core_source: &str,
+) -> Vec<Edit> {
+    pass(allocator, program, core_source, true).1
+}
+
+fn pass<'a>(
+    allocator: &'a Allocator,
+    program: &mut Program<'a>,
+    core_source: &str,
+    migrate: bool,
+) -> (Vec<Refusal>, Vec<Edit>) {
     let SemanticBuilderReturn { semantic, .. } = SemanticBuilder::new().build(program);
     let scoping = semantic.into_scoping();
 
     let mut survey = Survey {
         scoping: &scoping,
-        core_source: &options.core_source,
+        core_source,
         tags: FxHashSet::default(),
         named: FxHashMap::default(),
         holds_jsx: FxHashSet::default(),
@@ -118,7 +141,7 @@ pub fn run<'a>(
         components.insert(span);
     }
     if components.is_empty() {
-        return Vec::new();
+        return (Vec::new(), Vec::new());
     }
 
     let mut rewrite = Rewrite {
@@ -131,14 +154,19 @@ pub fn run<'a>(
         actions: FxHashMap::default(),
         component_tag: false,
         minted: 0,
+        edits: migrate.then(Vec::new),
+        plain: FxHashSet::default(),
         needs: [false; 4],
         refusals: Vec::new(),
     };
     rewrite.visit_program(program);
     let needs = rewrite.needs;
     let refusals = std::mem::take(&mut rewrite.refusals);
-    import_helpers(allocator, program, &options.core_source, needs);
-    refusals
+    let edits = rewrite.edits.take().unwrap_or_default();
+    if !migrate {
+        import_helpers(allocator, program, core_source, needs);
+    }
+    (refusals, edits)
 }
 
 // ── the survey: which functions are components ───────────────────────────────
@@ -276,6 +304,11 @@ struct Rewrite<'a, 's> {
     /// Whether the attributes being walked are a component's.
     component_tag: bool,
     minted: u32,
+    /// The codemod's deletions, when this run is one: `(start, end)` in the source.
+    edits: Option<Vec<Edit>>,
+    /// The codemod's: props members that keep their meaning as written, where a
+    /// Cell was only tested or handed on.
+    plain: FxHashSet<Span>,
     /// `values`, `omit`, `withDefault`, `readProp`, in that order.
     needs: [bool; 4],
     refusals: Vec<Refusal>,
@@ -319,6 +352,142 @@ impl<'a> Rewrite<'a, '_> {
 
     fn is_param(&self, expression: &Expression<'a>) -> bool {
         matches!(self.action(expression), Some(Action::Record { param: true, .. }))
+    }
+
+    /// Whether `callee` is a prop's Cell: a member of a props record other
+    /// than `children`, or a name a props pattern bound.
+    fn carries(&self, callee: &Expression<'a>) -> bool {
+        match unwrapped(callee) {
+            Expression::StaticMemberExpression(member) => {
+                member.property.name != "children" && self.record_of(&member.object).is_some()
+            }
+            Expression::ComputedMemberExpression(member) => {
+                matches!(&member.expression, Expression::StringLiteral(_))
+                    && self.record_of(&member.object).is_some()
+            }
+            identifier @ Expression::Identifier(_) => {
+                matches!(self.action(identifier), Some(Action::Field { .. } | Action::Cell(_)))
+            }
+            _ => false,
+        }
+    }
+
+    /// A props member, as the codemod asks about it.
+    fn prop_member(&self, expression: &Expression<'a>) -> Option<(Span, Span)> {
+        match unwrapped(expression) {
+            Expression::StaticMemberExpression(member)
+                if member.property.name != "children"
+                    && self.record_of(&member.object).is_some() =>
+            {
+                Some((member.span, member.object.span()))
+            }
+            Expression::ComputedMemberExpression(member)
+                if matches!(&member.expression, Expression::StringLiteral(_))
+                    && self.record_of(&member.object).is_some() =>
+            {
+                Some((member.span, member.object.span()))
+            }
+            _ => None,
+        }
+    }
+
+    fn keep_plain(&mut self, expression: &Expression<'a>) {
+        if let Some((span, _)) = self.prop_member(expression) {
+            self.plain.insert(span);
+        }
+    }
+
+    fn edit(&mut self, start: u32, end: u32, text: &'static str) {
+        if let Some(edits) = self.edits.as_mut() {
+            edits.push((start, end, text));
+        }
+    }
+
+    /// The codemod. Code written against Cells keeps its meaning: a called
+    /// Cell becomes the read it was, a Cell only tested or handed on stays as
+    /// written, and anything else that held a Cell or the record takes it from
+    /// `cells(props)`.
+    fn migrate(&mut self, expression: &mut Expression<'a>) {
+        let called = match expression {
+            Expression::CallExpression(call)
+                if call.arguments.is_empty() && self.carries(&call.callee) =>
+            {
+                Some((call.callee.span().end, call.span.end))
+            }
+            Expression::ChainExpression(chain) => match &chain.expression {
+                oxc::ast::ast::ChainElement::CallExpression(call)
+                    if call.arguments.is_empty() && self.carries(&call.callee) =>
+                {
+                    Some((call.callee.span().end, call.span.end))
+                }
+                _ => None,
+            },
+            _ => None,
+        };
+        if let Some((start, end)) = called {
+            self.edit(start, end, "");
+            return;
+        }
+        if let Expression::StaticMemberExpression(member) = unwrapped(expression)
+            && member.property.name == "children"
+            && self.record_of(&member.object).is_some()
+        {
+            return;
+        }
+        if let Some((span, object)) = self.prop_member(expression) {
+            if !self.plain.remove(&span) {
+                self.edit(object.start, object.start, "cells(");
+                self.edit(object.end, object.end, ")");
+            }
+            return;
+        }
+        match expression {
+            Expression::Identifier(identifier) => {
+                let span = identifier.span;
+                if self.record_of(expression).is_some() {
+                    self.edit(span.start, span.start, "cells(");
+                    self.edit(span.end, span.end, ")");
+                }
+                return;
+            }
+            Expression::CallExpression(call) => {
+                let callee = match &call.callee {
+                    Expression::Identifier(callee) => self.symbol(callee),
+                    _ => None,
+                };
+                let takes_record = callee.is_some_and(|symbol| {
+                    self.omit.contains(&symbol) || self.cells.contains(&symbol)
+                }) && call
+                    .arguments
+                    .first()
+                    .and_then(Argument::as_expression)
+                    .is_some_and(|first| self.record_of(first).is_some());
+                if takes_record {
+                    for argument in call.arguments.iter_mut().skip(1) {
+                        self.visit_argument(argument);
+                    }
+                    return;
+                }
+            }
+            Expression::ConditionalExpression(conditional) => self.keep_plain(&conditional.test),
+            Expression::LogicalExpression(logical) => self.keep_plain(&logical.left),
+            Expression::UnaryExpression(unary) => self.keep_plain(&unary.argument),
+            Expression::BinaryExpression(binary) if binary.operator.is_equality() => {
+                let nullish = |side: &Expression<'a>| match unwrapped(side) {
+                    Expression::NullLiteral(_) => true,
+                    Expression::Identifier(name) => name.name == "undefined",
+                    _ => false,
+                };
+                if nullish(&binary.right) {
+                    self.keep_plain(&binary.left);
+                }
+                if nullish(&binary.left) {
+                    self.keep_plain(&binary.right);
+                }
+            }
+            _ => {}
+        }
+        walk_mut::walk_expression(self, expression);
     }
 
     fn mint(&mut self, stem: &str) -> &'a str {
@@ -374,12 +543,12 @@ impl<'a> Rewrite<'a, '_> {
                 false,
                 &self.ast,
             ),
-            Action::Field { record, prop, steps } => {
+            Action::Field { record, prop, steps, param } => {
                 let cell = self.member(self.ident(record, span), prop, span);
                 if *prop == "children" && steps.is_empty() {
                     return cell;
                 }
-                if forwarded && steps.is_empty() {
+                if forwarded && *param && steps.is_empty() {
                     return cell;
                 }
                 let mut value = self.read(cell, span);
@@ -411,7 +580,10 @@ impl<'a> Rewrite<'a, '_> {
         match unwrapped(expression) {
             Expression::StaticMemberExpression(member) => self.is_param(&member.object),
             identifier @ Expression::Identifier(_) => {
-                matches!(self.action(identifier), Some(Action::Field { .. }))
+                matches!(
+                    self.action(identifier),
+                    Some(Action::Field { param: true, steps, .. }) if steps.is_empty()
+                )
             }
             _ => false,
         }
@@ -438,6 +610,17 @@ impl<'a> Rewrite<'a, '_> {
     fn open(&mut self, params: &mut FormalParameters<'a>) -> Opening<'a> {
         let mut opening = Opening { statements: Vec::new() };
         let Some(first) = params.items.first_mut() else { return opening };
+        if let Some(edits) = self.edits.as_mut()
+            && let Some(annotation) = first.type_annotation.as_ref()
+            && let oxc::ast::ast::TSType::TSTypeReference(reference) = &annotation.type_annotation
+            && let oxc::ast::ast::TSTypeName::IdentifierReference(name) = &reference.type_name
+            && name.name == "Incoming"
+            && let Some(arguments) = reference.type_arguments.as_ref()
+            && let [inner] = arguments.params.as_slice()
+        {
+            edits.push((reference.span.start, inner.span().start, ""));
+            edits.push((inner.span().end, reference.span.end, ""));
+        }
         match &mut first.pattern {
             BindingPattern::BindingIdentifier(id) => {
                 if let Some(symbol) = id.symbol_id.get() {
@@ -452,68 +635,8 @@ impl<'a> Rewrite<'a, '_> {
                     return opening;
                 }
                 let record = self.mint("_props$");
-                let mut taken: Vec<&'a str> = Vec::new();
-                let properties =
-                    std::mem::replace(&mut pattern.properties, ArenaVec::new_in(&self.allocator));
-                for property in properties {
-                    let property_span = property.span;
-                    let Some(prop) = key_name(&property.key, self.allocator) else { continue };
-                    taken.push(prop);
-                    match property.value {
-                        BindingPattern::BindingIdentifier(id) => {
-                            if let Some(symbol) = id.symbol_id.get() {
-                                self.actions.insert(
-                                    symbol,
-                                    Action::Field { record, prop, steps: Vec::new() },
-                                );
-                            }
-                        }
-                        BindingPattern::AssignmentPattern(assignment) => {
-                            let assignment = assignment.unbox();
-                            let BindingPattern::BindingIdentifier(id) = assignment.left else {
-                                continue;
-                            };
-                            let mut fallback = assignment.right;
-                            // Read where it is used: a default may name a prop
-                            // bound before it.
-                            self.visit_expression(&mut fallback);
-                            let cell = self.mint("_prop$");
-                            self.needs[2] = true;
-                            let thunk = self.thunk(fallback, property_span);
-                            let made = self.call(
-                                WITH_DEFAULT,
-                                vec![
-                                    self.ident(record, property_span),
-                                    self.string(prop, property_span),
-                                    thunk,
-                                ],
-                                property_span,
-                            );
-                            opening.statements.push(self.declare(cell, made, property_span));
-                            if let Some(symbol) = id.symbol_id.get() {
-                                self.actions.insert(symbol, Action::Cell(cell));
-                            }
-                        }
-                        nested => {
-                            let mut steps = Vec::new();
-                            self.nested(&nested, record, prop, &mut steps);
-                        }
-                    }
-                }
-                if let Some(rest) = pattern.rest.take()
-                    && let BindingPattern::BindingIdentifier(id) = &rest.argument
-                {
-                    let name = self.allocator.alloc_str(id.name.as_str());
-                    self.needs[1] = true;
-                    let mut arguments = vec![self.ident(record, rest.span)];
-                    arguments.extend(taken.iter().map(|prop| self.string(prop, rest.span)));
-                    let made = self.call(OMIT, arguments, rest.span);
-                    opening.statements.push(self.declare(name, made, rest.span));
-                    // The declaration this pass wrote has no symbol, so the
-                    // parameter's own is what the body's references resolve to.
-                    if let Some(symbol) = id.symbol_id.get() {
-                        self.actions.insert(symbol, Action::Record { name, param: false });
-                    }
+                for (name, init, at) in self.bind(pattern, record, true) {
+                    opening.statements.push(self.declare(name, init, at));
                 }
                 first.pattern = BindingPattern::new_binding_identifier(span, record, &self.ast);
             }
@@ -522,25 +645,99 @@ impl<'a> Rewrite<'a, '_> {
         opening
     }
 
+    /// Give every name a props pattern binds the read it stands for, and answer
+    /// with what the pattern has to declare: a Cell per default, and the rest.
+    fn bind(
+        &mut self,
+        pattern: &mut oxc::ast::ast::ObjectPattern<'a>,
+        record: &'a str,
+        param: bool,
+    ) -> Vec<(&'a str, Expression<'a>, Span)> {
+        let mut declared = Vec::new();
+        let mut taken: Vec<&'a str> = Vec::new();
+        let properties =
+            std::mem::replace(&mut pattern.properties, ArenaVec::new_in(&self.allocator));
+        for property in properties {
+            let at = property.span;
+            let Some(prop) = key_name(&property.key, self.allocator) else { continue };
+            taken.push(prop);
+            match property.value {
+                BindingPattern::BindingIdentifier(id) => {
+                    if let Some(symbol) = id.symbol_id.get() {
+                        self.actions.insert(
+                            symbol,
+                            Action::Field { record, prop, steps: Vec::new(), param },
+                        );
+                    }
+                }
+                BindingPattern::AssignmentPattern(assignment) => {
+                    let assignment = assignment.unbox();
+                    let BindingPattern::BindingIdentifier(id) = assignment.left else {
+                        continue;
+                    };
+                    let mut fallback = assignment.right;
+                    // Read where it is used: a default may name a prop bound
+                    // before it.
+                    self.visit_expression(&mut fallback);
+                    let cell = self.mint("_prop$");
+                    self.needs[2] = true;
+                    let thunk = self.thunk(fallback, at);
+                    let made = self.call(
+                        WITH_DEFAULT,
+                        vec![self.ident(record, at), self.string(prop, at), thunk],
+                        at,
+                    );
+                    declared.push((cell, made, at));
+                    if let Some(symbol) = id.symbol_id.get() {
+                        self.actions.insert(symbol, Action::Cell(cell));
+                    }
+                }
+                nested => {
+                    let mut steps = Vec::new();
+                    self.nested(&nested, record, prop, &mut steps, param);
+                }
+            }
+        }
+        if let Some(rest) = pattern.rest.take()
+            && let BindingPattern::BindingIdentifier(id) = &rest.argument
+        {
+            let name = self.allocator.alloc_str(id.name.as_str());
+            self.needs[1] = true;
+            let mut arguments = vec![self.ident(record, rest.span)];
+            arguments.extend(taken.iter().map(|prop| self.string(prop, rest.span)));
+            let made = self.call(OMIT, arguments, rest.span);
+            declared.push((name, made, rest.span));
+            // The declaration this pass writes has no symbol, so the pattern's
+            // own is what the body's references resolve to.
+            if let Some(symbol) = id.symbol_id.get() {
+                self.actions.insert(symbol, Action::Record { name, param: false });
+            }
+        }
+        declared
+    }
+
     fn nested(
         &mut self,
         pattern: &BindingPattern<'a>,
         record: &'a str,
         prop: &'a str,
         steps: &mut Vec<Step<'a>>,
+        param: bool,
     ) {
         match pattern {
             BindingPattern::BindingIdentifier(id) => {
                 if let Some(symbol) = id.symbol_id.get() {
-                    self.actions
-                        .insert(symbol, Action::Field { record, prop, steps: steps.clone() });
+                    self.actions.insert(
+                        symbol,
+                        Action::Field { record, prop, steps: steps.clone(), param },
+                    );
                 }
             }
             BindingPattern::ObjectPattern(object) => {
                 for property in &object.properties {
                     let Some(key) = key_name(&property.key, self.allocator) else { continue };
                     steps.push(Step::Key(key));
-                    self.nested(&property.value, record, prop, steps);
+                    self.nested(&property.value, record, prop, steps, param);
                     steps.pop();
                 }
             }
@@ -548,7 +745,7 @@ impl<'a> Rewrite<'a, '_> {
                 for (index, element) in array.elements.iter().enumerate() {
                     let Some(element) = element else { continue };
                     steps.push(Step::Index(index as u32));
-                    self.nested(element, record, prop, steps);
+                    self.nested(element, record, prop, steps, param);
                     steps.pop();
                 }
             }
@@ -690,6 +887,62 @@ impl<'a> VisitMut<'a> for Rewrite<'a, '_> {
         walk_mut::walk_arrow_function_expression(self, arrow);
     }
 
+    fn visit_variable_declaration(
+        &mut self,
+        declaration: &mut oxc::ast::ast::VariableDeclaration<'a>,
+    ) {
+        // `const { title, ...rest } = props` in the body binds what the same
+        // pattern binds as the parameter.
+        let declarators =
+            std::mem::replace(&mut declaration.declarations, ArenaVec::new_in(&self.allocator));
+        for mut declarator in declarators {
+            let record = match (&declarator.id, declarator.init.as_ref().map(unwrapped)) {
+                (BindingPattern::ObjectPattern(_), Some(init)) => match self.action(init) {
+                    Some(Action::Record { name, param }) => Some((*name, *param)),
+                    _ => None,
+                },
+                _ => None,
+            };
+            if let Some((record, param)) = record
+                && let BindingPattern::ObjectPattern(pattern) = &mut declarator.id
+            {
+                if supported(pattern) {
+                    for (name, init, at) in self.bind(pattern, record, param) {
+                        let id = BindingPattern::new_binding_identifier(at, name, &self.ast);
+                        declaration.declarations.push(VariableDeclarator::new(
+                            at,
+                            id,
+                            None,
+                            Some(init),
+                            false,
+                            &self.ast,
+                        ));
+                    }
+                    continue;
+                }
+                self.refusals.push(Refusal { span: pattern.span, message: UNSUPPORTED_PATTERN });
+            }
+            self.visit_variable_declarator(&mut declarator);
+            declaration.declarations.push(declarator);
+        }
+        if declaration.declarations.is_empty() {
+            // Every name the pattern bound is a read where it is used, and a
+            // declaration has to declare something.
+            let span = declaration.span;
+            let unused = self.mint("_unused$");
+            let id = BindingPattern::new_binding_identifier(span, unused, &self.ast);
+            let init = Expression::new_void_0(span, &self.ast);
+            declaration.declarations.push(VariableDeclarator::new(
+                span,
+                id,
+                None,
+                Some(init),
+                false,
+                &self.ast,
+            ));
+        }
+    }
+
     fn visit_variable_declarator(&mut self, declarator: &mut VariableDeclarator<'a>) {
         // `const rest = omit(props, "title")` is a props record under a new name.
         let derived = match declarator.init.as_ref().map(unwrapped) {
@@ -716,6 +969,17 @@ impl<'a> VisitMut<'a> for Rewrite<'a, '_> {
     }
 
     fn visit_jsx_element(&mut self, element: &mut JSXElement<'a>) {
+        if self.edits.is_some() {
+            for child in &element.children {
+                if let JSXChild::ExpressionContainer(container) = child
+                    && let Some(expression) = container.expression.as_expression()
+                {
+                    self.keep_plain(expression);
+                }
+            }
+            walk_mut::walk_jsx_element(self, element);
+            return;
+        }
         let outer = self.component_tag;
         self.component_tag = crate::analysis::is_component_tag(&element.opening_element.name);
         self.visit_jsx_opening_element(&mut element.opening_element);
@@ -735,6 +999,25 @@ impl<'a> VisitMut<'a> for Rewrite<'a, '_> {
     }
 
     fn visit_jsx_attribute_item(&mut self, item: &mut JSXAttributeItem<'a>) {
+        if self.edits.is_some() {
+            match item {
+                JSXAttributeItem::SpreadAttribute(spread)
+                    if self.record_of(&spread.argument).is_some() => {}
+                JSXAttributeItem::Attribute(attribute) => {
+                    if let Some(JSXAttributeValue::ExpressionContainer(container)) =
+                        attribute.value.as_ref()
+                        && let Some(expression) = container.expression.as_expression()
+                    {
+                        self.keep_plain(expression);
+                    }
+                    walk_mut::walk_jsx_attribute(self, attribute);
+                }
+                JSXAttributeItem::SpreadAttribute(_) => {
+                    walk_mut::walk_jsx_attribute_item(self, item);
+                }
+            }
+            return;
+        }
         match item {
             JSXAttributeItem::SpreadAttribute(spread) => {
                 // The record itself: a spread is a source, read by whoever
@@ -762,6 +1045,13 @@ impl<'a> VisitMut<'a> for Rewrite<'a, '_> {
                 walk_mut::walk_jsx_attribute(self, attribute);
             }
         }
+    }
+
+    fn visit_if_statement(&mut self, statement: &mut oxc::ast::ast::IfStatement<'a>) {
+        if self.edits.is_some() {
+            self.keep_plain(&statement.test);
+        }
+        walk_mut::walk_if_statement(self, statement);
     }
 
     fn visit_object_property(&mut self, property: &mut ObjectProperty<'a>) {
@@ -813,6 +1103,10 @@ impl<'a> VisitMut<'a> for Rewrite<'a, '_> {
     }
 
     fn visit_expression(&mut self, expression: &mut Expression<'a>) {
+        if self.edits.is_some() {
+            self.migrate(expression);
+            return;
+        }
         match expression {
             Expression::StaticMemberExpression(member)
                 if self.record_of(&member.object).is_some() =>
@@ -820,6 +1114,17 @@ impl<'a> VisitMut<'a> for Rewrite<'a, '_> {
                 if member.property.name == "children" {
                     return;
                 }
+                let span = member.span;
+                let placeholder = Expression::new_null_literal(span, &self.ast);
+                let cell = std::mem::replace(expression, placeholder);
+                *expression = self.read(cell, span);
+            }
+            // `props["data-slot"]` is the same read by a name an identifier
+            // cannot spell.
+            Expression::ComputedMemberExpression(member)
+                if matches!(&member.expression, Expression::StringLiteral(_))
+                    && self.record_of(&member.object).is_some() =>
+            {
                 let span = member.span;
                 let placeholder = Expression::new_null_literal(span, &self.ast);
                 let cell = std::mem::replace(expression, placeholder);

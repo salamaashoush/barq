@@ -726,8 +726,8 @@ function NavFavorites() {
 }
 
 /** A component per row, so each row owns the signal its chevron toggles. */
-function WorkspaceRow(props: Incoming<{ workspace: Workspace }>) {
-  const workspace = props.workspace();
+function WorkspaceRow(props: { workspace: Workspace }) {
+  const workspace = props.workspace;
   const WorkspaceIcon = workspace.icon;
 
   return (

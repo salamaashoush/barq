@@ -20,6 +20,7 @@
  */
 
 import {
+  cells,
   type Accessor,
   type Child,
   createContext,
@@ -269,22 +270,22 @@ export interface DatePickerComponentProps extends StyleProps {
  * <DatePicker label="Departure" value={date()} onChange={date.set} minValue={today()} />
  * ```
  */
-export function DatePicker(props: Incoming<DatePickerComponentProps>) {
+export function DatePicker(props: DatePickerComponentProps) {
   const groupRef = makeRef<HTMLDivElement>();
   const triggerRef = makeRef<HTMLButtonElement>();
 
   const state = datePickerState({
-    value: () => props.value?.(),
-    defaultValue: () => props.defaultValue?.(),
-    minValue: () => props.minValue?.(),
-    maxValue: () => props.maxValue?.(),
-    granularity: () => props.granularity?.(),
-    isDisabled: () => props.isDisabled?.(),
-    isReadOnly: () => props.isReadOnly?.(),
-    isOpen: () => props.isOpen?.(),
-    defaultOpen: () => props.defaultOpen?.(),
-    onChange: (value) => props.onChange?.()?.(value),
-    onOpenChange: (isOpen) => props.onOpenChange?.()?.(isOpen),
+    value: () => props.value,
+    defaultValue: () => props.defaultValue,
+    minValue: () => props.minValue,
+    maxValue: () => props.maxValue,
+    granularity: () => props.granularity,
+    isDisabled: () => props.isDisabled,
+    isReadOnly: () => props.isReadOnly,
+    isOpen: () => props.isOpen,
+    defaultOpen: () => props.defaultOpen,
+    onChange: (value) => props.onChange?.(value),
+    onOpenChange: (isOpen) => props.onOpenChange?.(isOpen),
   });
 
   const {
@@ -298,21 +299,21 @@ export function DatePicker(props: Incoming<DatePickerComponentProps>) {
   } = datePicker(
     {
       ref: groupRef,
-      label: () => props.label?.(),
-      description: () => props.description?.(),
-      errorMessage: () => props.errorMessage?.(),
-      isDisabled: () => props.isDisabled?.(),
-      isReadOnly: () => props.isReadOnly?.(),
-      isRequired: () => props.isRequired?.(),
-      isInvalid: () => props.isInvalid?.(),
-      "aria-label": () => props["aria-label"]?.(),
-      "aria-labelledby": () => props["aria-labelledby"]?.(),
+      label: () => props.label,
+      description: () => props.description,
+      errorMessage: () => props.errorMessage,
+      isDisabled: () => props.isDisabled,
+      isReadOnly: () => props.isReadOnly,
+      isRequired: () => props.isRequired,
+      isInvalid: () => props.isInvalid,
+      "aria-label": () => props["aria-label"],
+      "aria-labelledby": () => props["aria-labelledby"],
     },
     state,
   );
 
   const trigger = button(buttonProps, triggerRef);
-  const { hoverProps, isHovered } = hover({ isDisabled: () => props.isDisabled?.() });
+  const { hoverProps, isHovered } = hover({ isDisabled: () => props.isDisabled });
   const { focusProps, isFocusVisible } = focusRing();
 
   const owner = getOwner();
@@ -320,12 +321,12 @@ export function DatePicker(props: Incoming<DatePickerComponentProps>) {
 
   const elementProps = mergeProps(
     groupProps,
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
       "data-open": state.isOpen,
-      "data-disabled": () => props.isDisabled?.() === true,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-disabled": () => props.isDisabled === true,
+      "data-testid": () => props["data-testid"],
     },
   );
 
@@ -339,26 +340,26 @@ export function DatePicker(props: Incoming<DatePickerComponentProps>) {
   return (
     <>
       <span {...labelProps}>{props.label}</span>
-      <div {...elementProps} ref={mergeRefs(groupRef.set, props.ref?.())}>
+      <div {...elementProps} ref={mergeRefs(groupRef.set, props.ref)}>
         {/* Not labelled again: the group around it already carries the
             label, and naming both makes a screen reader say "Departure
             group, Departure group". The segments name themselves. */}
         <DateField
           value={state.value()}
-          placeholderValue={props.placeholderValue?.()}
-          minValue={props.minValue?.()}
-          maxValue={props.maxValue?.()}
-          granularity={props.granularity?.()}
-          hourCycle={props.hourCycle?.()}
-          isDisabled={props.isDisabled?.()}
-          isReadOnly={props.isReadOnly?.()}
-          isRequired={props.isRequired?.()}
-          isInvalid={props.isInvalid?.()}
+          placeholderValue={props.placeholderValue}
+          minValue={props.minValue}
+          maxValue={props.maxValue}
+          granularity={props.granularity}
+          hourCycle={props.hourCycle}
+          isDisabled={props.isDisabled}
+          isReadOnly={props.isReadOnly}
+          isRequired={props.isRequired}
+          isInvalid={props.isInvalid}
           validate={callback<[DateValue | null], string | string[] | true | null | undefined>(
-            props.validate,
+            cells(props).validate,
           )}
-          validationBehavior={props.validationBehavior?.()}
-          name={props.name?.()}
+          validationBehavior={props.validationBehavior}
+          name={props.name}
           onChange={(value) => state.setValue(value)}
         />
         <button {...triggerElementProps} type="button" ref={triggerRef.set}>
@@ -369,20 +370,20 @@ export function DatePicker(props: Incoming<DatePickerComponentProps>) {
         triggerRef={triggerRef}
         isOpen={state.isOpen()}
         onOpenChange={state.setOpen}
-        placement={props.placement?.() ?? "bottom start"}
+        placement={props.placement ?? "bottom start"}
       >
         <div {...dialogProps}>
           <Calendar
             aria-label={String(calendarProps["aria-label"])}
             value={state.dateValue()}
             defaultFocusedValue={
-              state.dateValue() ?? toCalendarDate(props.placeholderValue?.() ?? today())
+              state.dateValue() ?? toCalendarDate(props.placeholderValue ?? today())
             }
-            minValue={props.minValue?.()}
-            maxValue={props.maxValue?.()}
-            isDateUnavailable={callback<[CalendarDate], boolean>(props.isDateUnavailable)}
-            isDisabled={props.isDisabled?.()}
-            isReadOnly={props.isReadOnly?.()}
+            minValue={props.minValue}
+            maxValue={props.maxValue}
+            isDateUnavailable={callback<[CalendarDate], boolean>(cells(props).isDateUnavailable)}
+            isDisabled={props.isDisabled}
+            isReadOnly={props.isReadOnly}
             autoFocus
             onChange={(date) => state.setDateValue(date)}
           />
@@ -416,27 +417,27 @@ export interface DateRangePickerComponentProps extends Omit<
  * field holding "3 Mar – 7 Mar" is a string nobody can edit a part of — but
  * they share the calendar, where the range is drawn in one gesture.
  */
-export function DateRangePicker(props: Incoming<DateRangePickerComponentProps>) {
+export function DateRangePicker(props: DateRangePickerComponentProps) {
   const groupRef = makeRef<HTMLDivElement>();
   const triggerRef = makeRef<HTMLButtonElement>();
 
   const [value, setValue] = controllable<DateRange | null>(
-    () => props.value?.(),
-    () => props.defaultValue?.() ?? null,
-    (next) => props.onChange?.()?.(next),
+    () => props.value,
+    () => props.defaultValue ?? null,
+    (next) => props.onChange?.(next),
   );
 
   const overlay = overlayTriggerState({
-    isOpen: () => props.isOpen?.(),
-    defaultOpen: () => props.defaultOpen?.(),
-    onOpenChange: (isOpen) => props.onOpenChange?.()?.(isOpen),
+    isOpen: () => props.isOpen,
+    defaultOpen: () => props.defaultOpen,
+    onOpenChange: (isOpen) => props.onOpenChange?.(isOpen),
   });
 
   const labelId = id();
   const buttonId = id();
   const dialogId = id();
 
-  const isDisabled = (): boolean => props.isDisabled?.() === true;
+  const isDisabled = (): boolean => props.isDisabled === true;
 
   const trigger = button(
     {
@@ -446,7 +447,7 @@ export function DateRangePicker(props: Incoming<DateRangePickerComponentProps>) 
       "aria-controls": () => (overlay.isOpen() ? dialogId() : undefined),
       "aria-label": "Calendar",
       "aria-labelledby": () => `${buttonId()} ${labelId()}`,
-      isDisabled: () => isDisabled() || props.isReadOnly?.() === true,
+      isDisabled: () => isDisabled() || props.isReadOnly === true,
       onPress: () => overlay.toggle(),
     } as ButtonOptions,
     triggerRef,
@@ -472,44 +473,44 @@ export function DateRangePicker(props: Incoming<DateRangePickerComponentProps>) 
   };
 
   const elementProps = mergeProps(
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
       role: "group",
       "aria-labelledby": labelId,
       "aria-disabled": () => isDisabled() || undefined,
       "data-open": overlay.isOpen,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
   return (
     <>
       <span id={labelId}>{props.label}</span>
-      <div {...elementProps} ref={mergeRefs(groupRef.set, props.ref?.())}>
+      <div {...elementProps} ref={mergeRefs(groupRef.set, props.ref)}>
         <DateField
           aria-label="Start date"
           value={value()?.start ?? null}
-          placeholderValue={props.placeholderValue?.()}
-          minValue={props.minValue?.()}
-          maxValue={props.maxValue?.()}
-          granularity={props.granularity?.()}
-          isDisabled={props.isDisabled?.()}
-          isReadOnly={props.isReadOnly?.()}
-          name={props.startName?.()}
+          placeholderValue={props.placeholderValue}
+          minValue={props.minValue}
+          maxValue={props.maxValue}
+          granularity={props.granularity}
+          isDisabled={props.isDisabled}
+          isReadOnly={props.isReadOnly}
+          name={props.startName}
           onChange={(next) => setEnd("start", next)}
         />
         <span aria-hidden="true">–</span>
         <DateField
           aria-label="End date"
           value={value()?.end ?? null}
-          placeholderValue={props.placeholderValue?.()}
-          minValue={props.minValue?.()}
-          maxValue={props.maxValue?.()}
-          granularity={props.granularity?.()}
-          isDisabled={props.isDisabled?.()}
-          isReadOnly={props.isReadOnly?.()}
-          name={props.endName?.()}
+          placeholderValue={props.placeholderValue}
+          minValue={props.minValue}
+          maxValue={props.maxValue}
+          granularity={props.granularity}
+          isDisabled={props.isDisabled}
+          isReadOnly={props.isReadOnly}
+          name={props.endName}
           onChange={(next) => setEnd("end", next)}
         />
         <button
@@ -528,20 +529,20 @@ export function DateRangePicker(props: Incoming<DateRangePickerComponentProps>) 
         triggerRef={triggerRef}
         isOpen={overlay.isOpen()}
         onOpenChange={overlay.setOpen}
-        placement={props.placement?.() ?? "bottom start"}
+        placement={props.placement ?? "bottom start"}
       >
         <div id={dialogId} role="dialog" aria-labelledby={labelId}>
           <RangeCalendar
             aria-label="Choose dates"
             value={value()}
             defaultFocusedValue={
-              value()?.start ?? toCalendarDate(props.placeholderValue?.() ?? today())
+              value()?.start ?? toCalendarDate(props.placeholderValue ?? today())
             }
-            minValue={props.minValue?.()}
-            maxValue={props.maxValue?.()}
-            isDateUnavailable={callback<[CalendarDate], boolean>(props.isDateUnavailable)}
-            isDisabled={props.isDisabled?.()}
-            isReadOnly={props.isReadOnly?.()}
+            minValue={props.minValue}
+            maxValue={props.maxValue}
+            isDateUnavailable={callback<[CalendarDate], boolean>(cells(props).isDateUnavailable)}
+            isDisabled={props.isDisabled}
+            isReadOnly={props.isReadOnly}
             autoFocus
             onChange={(range) => {
               setValue(range);

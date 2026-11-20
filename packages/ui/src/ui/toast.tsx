@@ -13,6 +13,7 @@ import {
   type ToastSwipeDirection,
 } from "@barqjs/aria/toast";
 import {
+  cells,
   For,
   createContext,
   createSignal,
@@ -510,14 +511,14 @@ export interface ToastProviderProps {
  * </ToastProvider>
  * ```
  */
-export function ToastProvider(props: Incoming<ToastProviderProps>) {
-  const manager = props.toastManager?.() ?? toast;
+export function ToastProvider(props: ToastProviderProps) {
+  const manager = props.toastManager ?? toast;
   const internals = internalsOf.get(manager);
   if (internals === undefined) {
     throw new Error("`toastManager` must come from createToastManager().");
   }
   const { queue } = internals;
-  const limit = (): number => Math.max(1, props.limit?.() ?? DEFAULT_LIMIT);
+  const limit = (): number => Math.max(1, props.limit ?? DEFAULT_LIMIT);
 
   const [hovered, setHovered] = createSignal(false);
   const [focused, setFocused] = createSignal(false);
@@ -613,7 +614,7 @@ export function ToastProvider(props: Incoming<ToastProviderProps>) {
   let teardown: (() => void) | null = null;
 
   onSettled(() => {
-    internals.timeout = () => props.timeout?.();
+    internals.timeout = () => props.timeout;
     const unwatch = queue.watchDocument();
     // Asked at the moment a toast is closed. The attribute is written here
     // rather than left to the binding, because the exit rules select on it
@@ -645,16 +646,16 @@ export function ToastProvider(props: Incoming<ToastProviderProps>) {
  * Its own component, because a `provide` callback that BUILDS the children is
  * the only place the scope exists.
  */
-function ToastProviderInner(props: Incoming<{ value: ProviderValue; children?: Child }>) {
+function ToastProviderInner(props: { value: ProviderValue; children?: Child }) {
   return provide(
     ProviderContext,
-    () => props.value(),
+    () => props.value,
     () => props.children,
   );
 }
 
 /** Draws the viewport outside the tree, so no ancestor clips or transforms it. */
-export function ToastPortal(props: Incoming<UiProps>) {
+export function ToastPortal(props: UiProps) {
   const target = usePortalTarget();
   // Read here, where the toaster is written: the portal is outside the element
   // that carries `dir`.
@@ -662,7 +663,7 @@ export function ToastPortal(props: Incoming<UiProps>) {
 
   return (
     <Portal mount={portalContainer(target)}>
-      <div {...uiProps("toast-portal", "", props)} dir={() => props.dir?.() ?? declared()}>
+      <div {...uiProps("toast-portal", "", cells(props))} dir={() => props.dir ?? declared()}>
         {props.children}
       </div>
     </Portal>
@@ -679,7 +680,7 @@ export function ToastPortal(props: Incoming<UiProps>) {
  * opens it and stops every clock, because a toast that expires while it is
  * being read was never read.
  */
-export function ToastViewport(props: Incoming<UiProps>) {
+export function ToastViewport(props: UiProps) {
   const provider = useProvider();
   let node: HTMLElement | null = null;
 
@@ -703,12 +704,12 @@ export function ToastViewport(props: Incoming<UiProps>) {
 
   return (
     <div
-      {...uiProps("toast-viewport", viewport, props)}
+      {...uiProps("toast-viewport", viewport, cells(props))}
       ref={mergeRefs((element: HTMLElement | null) => {
         node = element;
-      }, props.ref?.())}
+      }, props.ref)}
       role="region"
-      aria-label={props["aria-label"]?.() ?? "Notifications"}
+      aria-label={props["aria-label"] ?? "Notifications"}
       aria-keyshortcuts="F6"
       // `polite`, so a toast waits for a screen reader to finish its sentence.
       aria-live="polite"
@@ -717,7 +718,7 @@ export function ToastViewport(props: Incoming<UiProps>) {
       tabIndex={-1}
       data-expanded={() => (provider.isExpanded() ? "" : undefined)}
       style={() => ({
-        ...props.style?.(),
+        ...props.style,
         "--toast-frontmost-height": `${String(provider.frontHeight())}px`,
       })}
       onMouseEnter={() => {
@@ -775,10 +776,10 @@ function useRoot(): RootValue {
   return value;
 }
 
-function ToastRootInner(props: Incoming<{ value: RootValue; children?: Child }>) {
+function ToastRootInner(props: { value: RootValue; children?: Child }) {
   return provide(
     RootContext,
-    () => props.value(),
+    () => props.value,
     () => props.children,
   );
 }
@@ -797,11 +798,11 @@ export interface ToastProps extends UiProps {
  * focus, and nothing behind it is taken away. `Escape` closes it while it has
  * focus. A pointer drags it, and thrown toward its edge it leaves that way.
  */
-export function Toast(props: Incoming<ToastProps>) {
+export function Toast(props: ToastProps) {
   const provider = useProvider();
   const direction = useDirection();
-  const entry = (): ToastObject => props.toast();
-  const { id } = props.toast();
+  const entry = (): ToastObject => props.toast;
+  const { id } = props.toast;
   const titleId = createUniqueId();
   const descriptionId = createUniqueId();
 
@@ -817,7 +818,7 @@ export function Toast(props: Incoming<ToastProps>) {
   let row: HTMLElement | null = null;
 
   const ways = (): readonly ToastSwipeDirection[] => {
-    const asked = props.swipeDirection?.();
+    const asked = props.swipeDirection;
     if (asked === undefined) return ["down", direction() === "rtl" ? "left" : "right"];
     return typeof asked === "string" ? [asked] : asked;
   };
@@ -882,7 +883,7 @@ export function Toast(props: Incoming<ToastProps>) {
     swipe.release();
     provider.attach(id, null);
     // Leaving the page with the provider is not being removed from the queue.
-    if (provider.queue.get(id) === undefined) props.toast().onRemove?.();
+    if (provider.queue.get(id) === undefined) props.toast.onRemove?.();
   });
 
   const value: RootValue = {
@@ -899,11 +900,11 @@ export function Toast(props: Incoming<ToastProps>) {
 
   return (
     <div
-      {...uiProps("toast", ui(root, "group/toast"), props)}
+      {...uiProps("toast", ui(root, "group/toast"), cells(props))}
       ref={mergeRefs((element: HTMLElement | null) => {
         row = element;
         provider.attach(id, element);
-      }, props.ref?.())}
+      }, props.ref)}
       role={() => (entry().priority === "high" ? "alertdialog" : "dialog")}
       aria-modal="false"
       aria-labelledby={() => (hasTitle()?.() === true ? titleId : undefined)}
@@ -924,7 +925,7 @@ export function Toast(props: Incoming<ToastProps>) {
       data-starting-style={() => (mounted() ? undefined : "")}
       data-ending-style={() => (isEnding() ? "" : undefined)}
       style={() => ({
-        ...props.style?.(),
+        ...props.style,
         "--toast-index": String(provider.indexOf(id)),
         "--toast-offset-y": `${String(provider.offsetOf(id))}px`,
         "--toast-height": `${String(provider.heightOf(id))}px`,
@@ -946,12 +947,12 @@ export function Toast(props: Incoming<ToastProps>) {
 }
 
 /** The padded row inside a toast, which fades while the toast is behind another. */
-export function ToastContent(props: Incoming<UiProps>) {
+export function ToastContent(props: UiProps) {
   const toastRoot = useRoot();
 
   return (
     <div
-      {...uiProps("toast-content", content, props)}
+      {...uiProps("toast-content", content, cells(props))}
       data-behind={() => (toastRoot.isBehind() ? "" : undefined)}
       data-expanded={() => (toastRoot.isExpanded() ? "" : undefined)}
     >
@@ -966,7 +967,7 @@ function draw(source: ToastText | undefined): Child {
 }
 
 /** The toast's name. Draws the toast's own `title` unless given children, and nothing without either. */
-export function ToastTitle(props: Incoming<UiProps>) {
+export function ToastTitle(props: UiProps) {
   const toastRoot = useRoot();
   const has = (): boolean => props.children !== undefined || toastRoot.toast().title !== undefined;
   toastRoot.labelledBy(has);
@@ -974,7 +975,7 @@ export function ToastTitle(props: Incoming<UiProps>) {
   return (
     <>
       {has() ? (
-        <h2 {...uiProps("toast-title", title, props)} id={props.id?.() ?? toastRoot.titleId}>
+        <h2 {...uiProps("toast-title", title, cells(props))} id={props.id ?? toastRoot.titleId}>
           {props.children === undefined ? draw(toastRoot.toast().title) : props.children}
         </h2>
       ) : null}
@@ -983,7 +984,7 @@ export function ToastTitle(props: Incoming<UiProps>) {
 }
 
 /** What the toast says. Draws the toast's own `description` unless given children. */
-export function ToastDescription(props: Incoming<UiProps>) {
+export function ToastDescription(props: UiProps) {
   const toastRoot = useRoot();
   const has = (): boolean =>
     props.children !== undefined || toastRoot.toast().description !== undefined;
@@ -993,8 +994,8 @@ export function ToastDescription(props: Incoming<UiProps>) {
     <>
       {has() ? (
         <p
-          {...uiProps("toast-description", description, props)}
-          id={props.id?.() ?? toastRoot.descriptionId}
+          {...uiProps("toast-description", description, cells(props))}
+          id={props.id ?? toastRoot.descriptionId}
         >
           {props.children === undefined ? draw(toastRoot.toast().description) : props.children}
         </p>
@@ -1009,7 +1010,7 @@ export function ToastDescription(props: Incoming<UiProps>) {
  * Draws nothing when the toast has none and no children were given. It does
  * what `onClick` says and no more: closing the toast is the caller's call.
  */
-export function ToastAction(props: Incoming<UiProps>) {
+export function ToastAction(props: UiProps) {
   const toastRoot = useRoot();
   const asked = (): ToastActionProps | undefined => toastRoot.toast().actionProps;
   const has = (): boolean => props.children !== undefined || asked()?.children !== undefined;
@@ -1021,15 +1022,15 @@ export function ToastAction(props: Incoming<UiProps>) {
           {...uiProps(
             "toast-action",
             () => ui(buttonVariants({ variant: "outline", size: "sm" }), action, asked()?.class),
-            props,
+            cells(props),
           )}
           type="button"
           data-variant="outline"
           data-size="sm"
-          aria-label={() => props["aria-label"]?.() ?? asked()?.["aria-label"]}
+          aria-label={() => props["aria-label"] ?? asked()?.["aria-label"]}
           onClick={(event: MouseEvent) => {
             asked()?.onClick?.(event);
-            props.onClick?.()?.(event);
+            props.onClick?.(event);
           }}
         >
           {props.children === undefined ? draw(asked()?.children) : props.children}
@@ -1040,7 +1041,7 @@ export function ToastAction(props: Incoming<UiProps>) {
 }
 
 /** Closes the toast it is in. Draws a cross unless given children. */
-export function ToastClose(props: Incoming<UiProps>) {
+export function ToastClose(props: UiProps) {
   const toastRoot = useRoot();
 
   return (
@@ -1048,14 +1049,14 @@ export function ToastClose(props: Incoming<UiProps>) {
       {...uiProps(
         "toast-close",
         ui(buttonVariants({ variant: "ghost", size: "icon-sm" }), close),
-        props,
+        cells(props),
       )}
       type="button"
       data-variant="ghost"
       data-size="icon-sm"
-      aria-label={props["aria-label"]?.() ?? "Close toast"}
+      aria-label={props["aria-label"] ?? "Close toast"}
       onClick={(event: MouseEvent) => {
-        props.onClick?.()?.(event);
+        props.onClick?.(event);
         toastRoot.close();
       }}
     >
@@ -1065,8 +1066,8 @@ export function ToastClose(props: Incoming<UiProps>) {
 }
 
 /** What each type draws. `aria-hidden`, because it repeats what the text says. */
-function ToastIcon(props: Incoming<{ type: string | undefined }>) {
-  const type = (): string | undefined => props.type();
+function ToastIcon(props: { type: string | undefined }) {
+  const type = (): string | undefined => props.type;
 
   return (
     <>
@@ -1125,12 +1126,12 @@ export interface ToasterProps extends ToastProviderProps {}
  * and the swipe are `@barqjs/aria`'s and the parts are named and styled as
  * upstream's are.
  */
-export function Toaster(props: Incoming<ToasterProps>) {
+export function Toaster(props: ToasterProps) {
   return (
     <ToastProvider
-      toastManager={props.toastManager?.()}
-      timeout={props.timeout?.()}
-      limit={props.limit?.()}
+      toastManager={props.toastManager}
+      timeout={props.timeout}
+      limit={props.limit}
     >
       {props.children}
       <ToastPortal>

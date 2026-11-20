@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Blend(props: Incoming<IconProps>) {
+export function Blend(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <circle cx="15" cy="9" r="7" />
       <circle cx="9" cy="15" r="7" />
     </svg>

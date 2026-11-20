@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function SprayCan(props: Incoming<IconProps>) {
+export function SprayCan(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="m12 19 8-3" />
       <path d="M14 6h-2" />
       <path d="M18 8.172V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v3.172" />

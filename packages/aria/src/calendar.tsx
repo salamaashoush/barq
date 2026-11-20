@@ -29,6 +29,7 @@
  */
 
 import {
+  cells,
   type Accessor,
   type Child,
   For,
@@ -1088,10 +1089,10 @@ export function useCalendar(): CalendarContextValue {
   return value;
 }
 
-function CalendarProvider(props: Incoming<{ value: CalendarContextValue; children?: Child }>) {
+function CalendarProvider(props: { value: CalendarContextValue; children?: Child }) {
   return provide(
     CalendarContext,
-    () => props.value(),
+    () => props.value,
     () => props.children as unknown,
   );
 }
@@ -1132,27 +1133,27 @@ export interface CalendarComponentProps extends StyleProps {
  *           minValue={today()} />
  * ```
  */
-export function Calendar(props: Incoming<CalendarComponentProps>) {
+export function Calendar(props: CalendarComponentProps) {
   const state = calendarState({
-    value: () => props.value?.(),
-    defaultValue: () => props.defaultValue?.(),
-    focusedValue: () => props.focusedValue?.(),
-    defaultFocusedValue: () => props.defaultFocusedValue?.(),
-    minValue: () => props.minValue?.(),
-    maxValue: () => props.maxValue?.(),
-    isDateUnavailable: callback<[CalendarDate], boolean>(props.isDateUnavailable),
-    isDateDisabled: callback<[CalendarDate], boolean>(props.isDateDisabled),
-    isDisabled: () => props.isDisabled?.(),
-    isReadOnly: () => props.isReadOnly?.(),
-    autoFocus: () => props.autoFocus?.(),
-    allowsDeselection: () => props.allowsDeselection?.(),
-    firstDayOfWeek: () => props.firstDayOfWeek?.(),
-    timeZone: () => props.timeZone?.(),
-    onChange: (value) => props.onChange?.()?.(value),
-    onFocusChange: (date) => props.onFocusChange?.()?.(date),
+    value: () => props.value,
+    defaultValue: () => props.defaultValue,
+    focusedValue: () => props.focusedValue,
+    defaultFocusedValue: () => props.defaultFocusedValue,
+    minValue: () => props.minValue,
+    maxValue: () => props.maxValue,
+    isDateUnavailable: callback<[CalendarDate], boolean>(cells(props).isDateUnavailable),
+    isDateDisabled: callback<[CalendarDate], boolean>(cells(props).isDateDisabled),
+    isDisabled: () => props.isDisabled,
+    isReadOnly: () => props.isReadOnly,
+    autoFocus: () => props.autoFocus,
+    allowsDeselection: () => props.allowsDeselection,
+    firstDayOfWeek: () => props.firstDayOfWeek,
+    timeZone: () => props.timeZone,
+    onChange: (value) => props.onChange?.(value),
+    onFocusChange: (date) => props.onFocusChange?.(date),
   });
 
-  return <CalendarBody state={state} of={props} />;
+  return <CalendarBody state={state} of={cells(props)} />;
 }
 
 export interface RangeCalendarComponentProps extends Omit<
@@ -1172,27 +1173,27 @@ export interface RangeCalendarComponentProps extends Omit<
  * focus between the two DRAWS: what is highlighted is what releasing would
  * give, so the user is never guessing.
  */
-export function RangeCalendar(props: Incoming<RangeCalendarComponentProps>) {
+export function RangeCalendar(props: RangeCalendarComponentProps) {
   const state = rangeCalendarState({
-    value: () => props.value?.(),
-    defaultValue: () => props.defaultValue?.(),
-    focusedValue: () => props.focusedValue?.(),
-    defaultFocusedValue: () => props.defaultFocusedValue?.(),
-    minValue: () => props.minValue?.(),
-    maxValue: () => props.maxValue?.(),
-    isDateUnavailable: callback<[CalendarDate], boolean>(props.isDateUnavailable),
-    isDateDisabled: callback<[CalendarDate], boolean>(props.isDateDisabled),
-    isDisabled: () => props.isDisabled?.(),
-    isReadOnly: () => props.isReadOnly?.(),
-    autoFocus: () => props.autoFocus?.(),
-    firstDayOfWeek: () => props.firstDayOfWeek?.(),
-    timeZone: () => props.timeZone?.(),
-    allowsNonContiguousRanges: () => props.allowsNonContiguousRanges?.(),
-    onChange: (value) => props.onChange?.()?.(value),
-    onFocusChange: (date) => props.onFocusChange?.()?.(date),
+    value: () => props.value,
+    defaultValue: () => props.defaultValue,
+    focusedValue: () => props.focusedValue,
+    defaultFocusedValue: () => props.defaultFocusedValue,
+    minValue: () => props.minValue,
+    maxValue: () => props.maxValue,
+    isDateUnavailable: callback<[CalendarDate], boolean>(cells(props).isDateUnavailable),
+    isDateDisabled: callback<[CalendarDate], boolean>(cells(props).isDateDisabled),
+    isDisabled: () => props.isDisabled,
+    isReadOnly: () => props.isReadOnly,
+    autoFocus: () => props.autoFocus,
+    firstDayOfWeek: () => props.firstDayOfWeek,
+    timeZone: () => props.timeZone,
+    allowsNonContiguousRanges: () => props.allowsNonContiguousRanges,
+    onChange: (value) => props.onChange?.(value),
+    onFocusChange: (date) => props.onFocusChange?.(date),
   });
 
-  return <CalendarBody state={state} of={props as unknown as Incoming<CalendarComponentProps>} />;
+  return <CalendarBody state={state} of={cells(props) as unknown as Incoming<CalendarComponentProps>} />;
 }
 
 export interface MultipleCalendarComponentProps extends Omit<
@@ -1216,29 +1217,29 @@ export interface MultipleCalendarComponentProps extends Omit<
  * says it takes more than one so a screen reader does not announce a choice
  * as having replaced the last.
  */
-export function MultipleCalendar(props: Incoming<MultipleCalendarComponentProps>) {
+export function MultipleCalendar(props: MultipleCalendarComponentProps) {
   const state = multipleCalendarState({
-    value: () => props.value?.(),
-    defaultValue: () => props.defaultValue?.(),
-    focusedValue: () => props.focusedValue?.(),
-    defaultFocusedValue: () => props.defaultFocusedValue?.(),
-    minValue: () => props.minValue?.(),
-    maxValue: () => props.maxValue?.(),
-    isDateUnavailable: callback<[CalendarDate], boolean>(props.isDateUnavailable),
-    isDateDisabled: callback<[CalendarDate], boolean>(props.isDateDisabled),
-    isDisabled: () => props.isDisabled?.(),
-    isReadOnly: () => props.isReadOnly?.(),
-    autoFocus: () => props.autoFocus?.(),
-    firstDayOfWeek: () => props.firstDayOfWeek?.(),
-    timeZone: () => props.timeZone?.(),
-    min: () => props.min?.(),
-    max: () => props.max?.(),
-    required: () => props.required?.(),
-    onChange: (value) => props.onChange?.()?.(value),
-    onFocusChange: (date) => props.onFocusChange?.()?.(date),
+    value: () => props.value,
+    defaultValue: () => props.defaultValue,
+    focusedValue: () => props.focusedValue,
+    defaultFocusedValue: () => props.defaultFocusedValue,
+    minValue: () => props.minValue,
+    maxValue: () => props.maxValue,
+    isDateUnavailable: callback<[CalendarDate], boolean>(cells(props).isDateUnavailable),
+    isDateDisabled: callback<[CalendarDate], boolean>(cells(props).isDateDisabled),
+    isDisabled: () => props.isDisabled,
+    isReadOnly: () => props.isReadOnly,
+    autoFocus: () => props.autoFocus,
+    firstDayOfWeek: () => props.firstDayOfWeek,
+    timeZone: () => props.timeZone,
+    min: () => props.min,
+    max: () => props.max,
+    required: () => props.required,
+    onChange: (value) => props.onChange?.(value),
+    onFocusChange: (date) => props.onFocusChange?.(date),
   });
 
-  return <CalendarBody state={state} of={props as unknown as Incoming<CalendarComponentProps>} />;
+  return <CalendarBody state={state} of={cells(props) as unknown as Incoming<CalendarComponentProps>} />;
 }
 
 interface CalendarBodyProps {
@@ -1248,9 +1249,9 @@ interface CalendarBodyProps {
 }
 
 /** The heading, the two page buttons and the grid: what both calendars are. */
-function CalendarBody(incoming: Incoming<CalendarBodyProps>) {
-  const state = incoming.state();
-  const props = incoming.of();
+function CalendarBody(incoming: CalendarBodyProps) {
+  const state = incoming.state;
+  const props = incoming.of;
   const prevRef = makeRef<HTMLButtonElement>();
   const nextRef = makeRef<HTMLButtonElement>();
 
@@ -1337,7 +1338,7 @@ export interface CalendarCellComponentProps extends StyleProps {
 }
 
 /** One day. */
-export function CalendarCell(props: Incoming<CalendarCellComponentProps>) {
+export function CalendarCell(props: CalendarCellComponentProps) {
   const domRef = makeRef<HTMLDivElement>();
   const { state } = useCalendar();
 
@@ -1353,7 +1354,7 @@ export function CalendarCell(props: Incoming<CalendarCellComponentProps>) {
     isSelectionStart,
     isSelectionEnd,
     formattedDate,
-  } = calendarCell({ date: () => props.date(), ref: domRef }, state);
+  } = calendarCell({ date: () => props.date, ref: domRef }, state);
 
   const { hoverProps, isHovered } = hover({ isDisabled });
   const { focusProps, isFocusVisible } = focusRing();
@@ -1362,8 +1363,8 @@ export function CalendarCell(props: Incoming<CalendarCellComponentProps>) {
     buttonProps,
     hoverProps,
     focusProps,
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
       "data-selected": isSelected,
       "data-focused": isFocused,
@@ -1375,13 +1376,13 @@ export function CalendarCell(props: Incoming<CalendarCellComponentProps>) {
       "data-today": isTodayCell,
       "data-selection-start": isSelectionStart,
       "data-selection-end": isSelectionEnd,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
   return (
     <div {...cellProps}>
-      <div {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
+      <div {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
         {formattedDate}
       </div>
     </div>

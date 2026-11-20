@@ -1,3 +1,4 @@
+import { cells } from "@barqjs/core";
 import { mergeProps } from "@barqjs/aria/utils";
 import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
@@ -38,13 +39,13 @@ export interface AspectRatioProps extends UiProps {
  * </AspectRatio>
  * ```
  */
-export function AspectRatio(props: Incoming<AspectRatioProps>) {
+export function AspectRatio(props: AspectRatioProps) {
   // A custom property rather than a class, so a ratio from a signal writes one
   // value and produces no new CSS.
-  const elementProps = mergeProps(uiProps("aspect-ratio", box, props), {
+  const elementProps = mergeProps(uiProps("aspect-ratio", box, cells(props)), {
     style: () => ({
-      ...props.style?.(),
-      "--barq-aspect-ratio": String(props.ratio?.() ?? 1),
+      ...props.style,
+      "--barq-aspect-ratio": String(props.ratio ?? 1),
     }),
   });
 

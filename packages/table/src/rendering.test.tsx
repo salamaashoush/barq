@@ -17,8 +17,8 @@ afterEach(unmountAll);
 
 function Badge(props: { value: () => number; tone?: () => string }) {
   return (
-    <b class="badge" data-tone={props.tone?.() ?? "plain"}>
-      {props.value()}
+    <b class="badge" data-tone={props.tone ?? "plain"}>
+      {props.value}
     </b>
   );
 }

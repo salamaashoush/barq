@@ -37,20 +37,20 @@ const SECTIONS: Section[] = [
 ];
 
 function Sections(
-  props: Incoming<{
+  props: {
     keyboardActivation?: "automatic" | "manual";
     orientation?: "horizontal" | "vertical";
     defaultSelectedKey?: Key;
     onSelectionChange?: (key: Key) => void;
-  }>,
+  },
 ) {
   return (
     <Tabs
       items={SECTIONS}
-      keyboardActivation={props.keyboardActivation?.()}
-      orientation={props.orientation?.()}
-      defaultSelectedKey={props.defaultSelectedKey?.()}
-      onSelectionChange={props.onSelectionChange?.()}
+      keyboardActivation={props.keyboardActivation}
+      orientation={props.orientation}
+      defaultSelectedKey={props.defaultSelectedKey}
+      onSelectionChange={props.onSelectionChange}
     >
       <TabList aria-label="History">{(section: Section) => <Tab>{section.name}</Tab>}</TabList>
       <TabPanel>{(section: Section) => <p>{section.body}</p>}</TabPanel>
@@ -75,7 +75,7 @@ function Sections(
 describe("a panel is a scope", () => {
   const Ctx = createContext<string | null>(null);
 
-  function Provider(props: Incoming<{ children?: Child }>) {
+  function Provider(props: { children?: Child }) {
     return provide(
       Ctx,
       () => "provided",
@@ -297,7 +297,7 @@ describe("Tabs", () => {
 });
 
 function Settings(
-  props: Incoming<{
+  props: {
     value?: string;
     defaultValue?: string;
     onValueChange?: (value: string) => void;
@@ -305,16 +305,16 @@ function Settings(
     activationMode?: "automatic" | "manual";
     dir?: "ltr" | "rtl";
     forceMount?: boolean;
-  }>,
+  },
 ) {
   return (
     <ValueTabs
-      value={props.value?.()}
-      defaultValue={props.defaultValue?.()}
-      onValueChange={props.onValueChange?.()}
-      orientation={props.orientation?.()}
-      activationMode={props.activationMode?.()}
-      dir={props.dir?.()}
+      value={props.value}
+      defaultValue={props.defaultValue}
+      onValueChange={props.onValueChange}
+      orientation={props.orientation}
+      activationMode={props.activationMode}
+      dir={props.dir}
     >
       <ValueTabList aria-label="Settings">
         <ValueTab value="account">Account</ValueTab>
@@ -324,16 +324,16 @@ function Settings(
         </ValueTab>
         <ValueTab value="team">Team</ValueTab>
       </ValueTabList>
-      <ValueTabPanel value="account" forceMount={props.forceMount?.()}>
+      <ValueTabPanel value="account" forceMount={props.forceMount}>
         Name and email
       </ValueTabPanel>
-      <ValueTabPanel value="password" forceMount={props.forceMount?.()}>
+      <ValueTabPanel value="password" forceMount={props.forceMount}>
         Change it here
       </ValueTabPanel>
-      <ValueTabPanel value="billing" forceMount={props.forceMount?.()}>
+      <ValueTabPanel value="billing" forceMount={props.forceMount}>
         Invoices
       </ValueTabPanel>
-      <ValueTabPanel value="team" forceMount={props.forceMount?.()}>
+      <ValueTabPanel value="team" forceMount={props.forceMount}>
         Members
       </ValueTabPanel>
     </ValueTabs>
@@ -527,7 +527,7 @@ describe("tabs that name themselves", () => {
   });
 
   test("a direction declared above is the one it follows", () => {
-    function Mirrored(props: Incoming<{ children?: Child }>) {
+    function Mirrored(props: { children?: Child }) {
       const directionProps = provideDirection("rtl");
       return <div {...directionProps}>{props.children}</div>;
     }

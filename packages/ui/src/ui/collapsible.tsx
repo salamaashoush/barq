@@ -1,3 +1,4 @@
+import { cells } from "@barqjs/core";
 import {
   Disclosure,
   DisclosureButton,
@@ -84,15 +85,15 @@ export interface CollapsibleProps extends DisclosureComponentProps, UiProps {
  * one there is nothing on the page carrying `data-slot="collapsible"` and a
  * `class` handed here went nowhere.
  */
-export function Collapsible(props: Incoming<CollapsibleProps>) {
+export function Collapsible(props: CollapsibleProps) {
   return (
     <Disclosure
-      isExpanded={props.isExpanded?.() ?? props.open?.()}
-      defaultExpanded={props.defaultExpanded?.() ?? props.defaultOpen?.()}
-      isDisabled={props.isDisabled?.() ?? props.disabled?.()}
+      isExpanded={props.isExpanded ?? props.open}
+      defaultExpanded={props.defaultExpanded ?? props.defaultOpen}
+      isDisabled={props.isDisabled ?? props.disabled}
       onExpandedChange={(open: boolean) => {
-        props.onExpandedChange?.()?.(open);
-        props.onOpenChange?.()?.(open);
+        props.onExpandedChange?.(open);
+        props.onOpenChange?.(open);
       }}
     >
       <CollapsibleRoot {...props}>{props.children}</CollapsibleRoot>
@@ -104,11 +105,11 @@ export function Collapsible(props: Incoming<CollapsibleProps>) {
  * The element, INSIDE the provider rather than around it, so it can say whether
  * it is open. Around it, the state is one scope too far down.
  */
-function CollapsibleRoot(props: Incoming<CollapsibleProps>) {
+function CollapsibleRoot(props: CollapsibleProps) {
   const disclosure = useDisclosure();
-  const render = props.render?.();
+  const render = props.render;
   if (render !== undefined) {
-    const { "data-slot": _, ...own } = uiProps("collapsible", "", props);
+    const { "data-slot": _, ...own } = uiProps("collapsible", "", cells(props));
     return render(
       partRender(
         mergeProps(own, {
@@ -120,7 +121,7 @@ function CollapsibleRoot(props: Incoming<CollapsibleProps>) {
   }
   return (
     <div
-      {...uiProps("collapsible", "", props)}
+      {...uiProps("collapsible", "", cells(props))}
       data-state={() => (disclosure.state.isExpanded() ? "open" : "closed")}
       data-disabled={() => (disclosure.isDisabled() ? "" : undefined)}
     >
@@ -147,22 +148,22 @@ export interface CollapsibleTriggerProps extends DisclosureButtonComponentProps 
  * </CollapsibleTrigger>
  * ```
  */
-export function CollapsibleTrigger(props: Incoming<CollapsibleTriggerProps>) {
-  if (props.asChild?.() === true || props.render?.() !== undefined) {
+export function CollapsibleTrigger(props: CollapsibleTriggerProps) {
+  if (props.asChild === true || props.render !== undefined) {
     return (
-      <CollapsibleTriggerSlot render={props.render?.()}>{props.children}</CollapsibleTriggerSlot>
+      <CollapsibleTriggerSlot render={props.render}>{props.children}</CollapsibleTriggerSlot>
     );
   }
   return (
     <DisclosureButton
       {...props}
-      data-slot={props["data-slot"]?.() ?? "collapsible-trigger"}
-      class={ui(trigger, props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "collapsible-trigger"}
+      class={ui(trigger, props.class, props.className)}
     />
   );
 }
 
-function CollapsibleTriggerSlot(props: Incoming<TriggerPartProps>) {
+function CollapsibleTriggerSlot(props: TriggerPartProps) {
   const disclosure = useDisclosure();
   return (
     <TriggerPart
@@ -171,7 +172,7 @@ function CollapsibleTriggerSlot(props: Incoming<TriggerPartProps>) {
           "data-state": () => (disclosure.state.isExpanded() ? "open" : "closed"),
         }),
       }}
-      render={props.render?.()}
+      render={props.render}
       name="collapsible-trigger"
     >
       {props.children}
@@ -181,10 +182,10 @@ function CollapsibleTriggerSlot(props: Incoming<TriggerPartProps>) {
 
 export interface CollapsibleContentProps extends DisclosurePanelComponentProps {}
 
-export function CollapsibleContent(props: Incoming<CollapsibleContentProps>) {
+export function CollapsibleContent(props: CollapsibleContentProps) {
   return (
     <DisclosurePanel {...props} data-slot="collapsible-content" class={panel}>
-      <div class={cn(props.class?.(), props.className?.())}>{props.children}</div>
+      <div class={cn(props.class, props.className)}>{props.children}</div>
     </DisclosurePanel>
   );
 }

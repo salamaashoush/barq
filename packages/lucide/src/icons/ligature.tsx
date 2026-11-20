@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Ligature(props: Incoming<IconProps>) {
+export function Ligature(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M14 12h2v8" />
       <path d="M14 20h4" />
       <path d="M6 12h4" />

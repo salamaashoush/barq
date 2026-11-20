@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function UserLock(props: Incoming<IconProps>) {
+export function UserLock(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M19 16v-2a2 2 0 0 0-4 0v2" />
       <path d="M9.5 15H7a4 4 0 0 0-4 4v2" />
       <circle cx="10" cy="7" r="4" />

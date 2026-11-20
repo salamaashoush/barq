@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function ChessQueen(props: Incoming<IconProps>) {
+export function ChessQueen(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="m10.68 5.499-.996 4.982a.65.65 0 01-1.131.295L5.885 7.663" />
       <path d="m13.32 5.5.995 4.98a.65.65 0 001.131.296l2.668-3.113" />
       <path d="M20.428 8.952 17.5 18" />

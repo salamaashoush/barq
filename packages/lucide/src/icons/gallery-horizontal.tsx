@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function GalleryHorizontal(props: Incoming<IconProps>) {
+export function GalleryHorizontal(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M2 3v18" />
       <rect width="12" height="18" x="6" y="3" rx="2" />
       <path d="M22 3v18" />

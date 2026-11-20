@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush, type Incoming, createSignal } from "@barqjs/core";
+import { cells, flush, type Incoming, createSignal } from "@barqjs/core";
 import { render, screen, user } from "@barqjs/testing";
 import { press, type PressEvent } from "./press.ts";
 
@@ -13,21 +13,21 @@ interface PressableProps {
 
 // Inside a component every prop is a Cell (`Incoming`), so a value option is
 // read with `props.x?.()` and forwarded as the Cell itself.
-function Pressable(props: Incoming<PressableProps>) {
+function Pressable(props: PressableProps) {
   const log = (entry: string): void => {
-    props.log().push(entry);
+    props.log.push(entry);
   };
 
   const { pressProps, isPressed } = press({
-    isDisabled: props.isDisabled,
-    preventFocusOnPress: props.preventFocusOnPress,
-    shouldCancelOnPointerExit: props.shouldCancelOnPointerExit,
+    isDisabled: cells(props).isDisabled,
+    preventFocusOnPress: cells(props).preventFocusOnPress,
+    shouldCancelOnPointerExit: cells(props).shouldCancelOnPointerExit,
     onPressStart: (e) => log(`start:${e.pointerType}`),
     onPressEnd: (e) => log(`end:${e.pointerType}`),
     onPressUp: (e) => log(`up:${e.pointerType}`),
     onPress: (e) => {
       log(`press:${e.pointerType}`);
-      props.onPress?.()?.(e);
+      props.onPress?.(e);
     },
     onPressChange: (pressed) => log(`change:${pressed}`),
   });

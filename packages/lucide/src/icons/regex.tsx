@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Regex(props: Incoming<IconProps>) {
+export function Regex(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M17 3v10" />
       <path d="m12.67 5.5 8.66 5" />
       <path d="m12.67 10.5 8.66-5" />

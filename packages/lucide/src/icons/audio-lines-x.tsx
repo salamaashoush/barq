@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function AudioLinesX(props: Incoming<IconProps>) {
+export function AudioLinesX(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M10 3v18" />
       <path d="M14 8v6.35" />
       <path d="m17 17 5 5" />

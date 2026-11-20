@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function SignalMedium(props: Incoming<IconProps>) {
+export function SignalMedium(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M2 20h.01" />
       <path d="M7 20v-4" />
       <path d="M12 20v-8" />

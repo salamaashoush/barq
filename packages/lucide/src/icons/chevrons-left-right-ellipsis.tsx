@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function ChevronsLeftRightEllipsis(props: Incoming<IconProps>) {
+export function ChevronsLeftRightEllipsis(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M12 12h.01" />
       <path d="M16 12h.01" />
       <path d="m17 7 5 5-5 5" />

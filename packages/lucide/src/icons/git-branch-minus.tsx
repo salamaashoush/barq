@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function GitBranchMinus(props: Incoming<IconProps>) {
+export function GitBranchMinus(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M15 6a9 9 0 0 0-9 9V3" />
       <path d="M21 18h-6" />
       <circle cx="18" cy="6" r="3" />

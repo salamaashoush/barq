@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function AlarmClock(props: Incoming<IconProps>) {
+export function AlarmClock(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <circle cx="12" cy="13" r="8" />
       <path d="M12 9v4l2 2" />
       <path d="M5 3 2 6" />

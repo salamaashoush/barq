@@ -17,21 +17,21 @@ function after(ms: number): Promise<void> {
 }
 
 function Saver(
-  props: Incoming<{
+  props: {
     delay?: number;
     closeDelay?: number;
     trigger?: "hover" | "focus";
     isDisabled?: boolean;
     shouldCloseOnPress?: boolean;
-  }>,
+  },
 ) {
   return (
     <TooltipTrigger
-      delay={props.delay?.() ?? 20}
-      closeDelay={props.closeDelay?.() ?? 20}
-      trigger={props.trigger?.()}
-      isDisabled={props.isDisabled?.()}
-      shouldCloseOnPress={props.shouldCloseOnPress?.()}
+      delay={props.delay ?? 20}
+      closeDelay={props.closeDelay ?? 20}
+      trigger={props.trigger}
+      isDisabled={props.isDisabled}
+      shouldCloseOnPress={props.shouldCloseOnPress}
     >
       <Button>Save</Button>
       <Tooltip>Saves without closing</Tooltip>
@@ -314,20 +314,20 @@ describe("TooltipProvider", () => {
   });
 
   function Toolbar(
-    props: Incoming<{
+    props: {
       delay?: number;
       skipDelay?: number;
       closeDelay?: number;
       isContentHoverable?: boolean;
-    }>,
+    },
   ) {
     return (
       <TooltipProvider
-        delay={props.delay?.()}
-        skipDelay={props.skipDelay?.()}
-        isContentHoverable={props.isContentHoverable?.()}
+        delay={props.delay}
+        skipDelay={props.skipDelay}
+        isContentHoverable={props.isContentHoverable}
       >
-        <TooltipTrigger closeDelay={props.closeDelay?.()}>
+        <TooltipTrigger closeDelay={props.closeDelay}>
           <Button>Save</Button>
           <Tooltip>Saves</Tooltip>
         </TooltipTrigger>

@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function WashingMachine(props: Incoming<IconProps>) {
+export function WashingMachine(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M3 6h3" />
       <path d="M17 6h.01" />
       <rect width="18" height="20" x="3" y="2" rx="2" />

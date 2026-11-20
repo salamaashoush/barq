@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function CircleDashedCheck(props: Incoming<IconProps>) {
+export function CircleDashedCheck(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M10.1 2.182a10 10 0 013.8 0" />
       <path d="M13.9 21.818a10 10 0 01-3.8 0" />
       <path d="m16 9-5.5 5.5L8 12" />

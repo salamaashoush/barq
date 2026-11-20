@@ -243,13 +243,13 @@ const NAV_MAIN: readonly NavSection[] = [
   },
 ];
 
-function NavMain(props: Incoming<{ items: readonly NavSection[] }>) {
+function NavMain(props: { items: readonly NavSection[] }) {
   const sidebar = useSidebar();
 
   return (
     <SidebarGroup>
       <SidebarMenu>
-        <For each={() => props.items()}>
+        <For each={() => props.items}>
           {(section: NavSection) => (
             <DropdownMenu>
               <SidebarMenuItem>

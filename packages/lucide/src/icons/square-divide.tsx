@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function SquareDivide(props: Incoming<IconProps>) {
+export function SquareDivide(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
       <line x1="8" x2="16" y1="12" y2="12" />
       <line x1="12" x2="12" y1="16" y2="16" />

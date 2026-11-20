@@ -1,4 +1,4 @@
-import { For, type Child, type Incoming } from "@barqjs/core";
+import { cells, For, type Child, type Incoming } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import { Link } from "@barqjs/router";
 
@@ -302,7 +302,7 @@ export function slugOf(label: string): string {
 }
 
 export function DocsPage(
-  props: Incoming<{
+  props: {
     title: string;
     lede?: string;
     /** The right-hand column: the headings on THIS page, as anchors. */
@@ -314,7 +314,7 @@ export function DocsPage(
     /** Beside the title — upstream's previous/next pair. */
     actions?: Child;
     children?: Child;
-  }>,
+  },
 ) {
   return (
     <div class={wrapper}>
@@ -329,7 +329,7 @@ export function DocsPage(
                     <Link
                       class={railLink}
                       to={`/docs/${entry.slug}`}
-                      aria-current={() => props.guide?.() === entry.slug}
+                      aria-current={() => props.guide === entry.slug}
                     >
                       {entry.title}
                     </Link>
@@ -339,7 +339,7 @@ export function DocsPage(
             )}
             <div class={railGroup}>
               <span class={railTitle}>Components</span>
-              <For each={() => props.rail?.() ?? []}>
+              <For each={() => props.rail ?? []}>
                 {(entry: RailEntry) => (
                   <Link class={railLink} to={entry.to} aria-current={entry.current === true}>
                     {entry.label}
@@ -355,9 +355,9 @@ export function DocsPage(
               <div class={articleHead}>
                 <div class={titleRow}>
                   <h1 class={heading}>{props.title}</h1>
-                  {props.actions === undefined ? null : props.actions}
+                  {props.actions === undefined ? null : cells(props).actions}
                 </div>
-                {props.lede?.() === undefined ? null : <p class={lede}>{props.lede()}</p>}
+                {props.lede === undefined ? null : <p class={lede}>{props.lede}</p>}
               </div>
               {props.children}
             </div>
@@ -365,7 +365,7 @@ export function DocsPage(
           <div class={contents}>
             <div class={contentsInner}>
               <span class={railTitle}>On this page</span>
-              <For each={() => props.sections()}>
+              <For each={() => props.sections}>
                 {(entry: DocsSection) => (
                   <a class={railLink} href={`#${entry.id}`}>
                     {entry.label}

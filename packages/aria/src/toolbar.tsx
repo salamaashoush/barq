@@ -19,7 +19,7 @@
  * already handling them, and two handlers on one keypress move focus twice.
  */
 
-import { type Child, createEffect, type Incoming, createSignal } from "@barqjs/core";
+import { cells, type Child, createEffect, type Incoming, createSignal } from "@barqjs/core";
 import { isServer } from "@barqjs/web";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { contains, targetElement } from "./dom.ts";
@@ -155,24 +155,24 @@ export interface ToolbarComponentProps extends StyleProps {
  * </Toolbar>
  * ```
  */
-export function Toolbar(props: Incoming<ToolbarComponentProps>) {
+export function Toolbar(props: ToolbarComponentProps) {
   const domRef = makeRef<HTMLDivElement>();
-  const options = fromProps(props);
+  const options = fromProps(cells(props));
 
   const { toolbarProps } = toolbar({ ...(options as unknown as ToolbarOptions), ref: domRef });
 
   const elementProps = mergeProps(
     toolbarProps,
     filterDOMProps(options, { global: true }),
-    styleProps(props),
+    styleProps(cells(props)),
     {
-      "data-orientation": () => props.orientation?.() ?? "horizontal",
-      "data-testid": () => props["data-testid"]?.(),
+      "data-orientation": () => props.orientation ?? "horizontal",
+      "data-testid": () => props["data-testid"],
     },
   );
 
   return (
-    <div {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
+    <div {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
       {props.children}
     </div>
   );

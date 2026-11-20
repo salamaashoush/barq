@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function ChartColumnStacked(props: Incoming<IconProps>) {
+export function ChartColumnStacked(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M11 13H7" />
       <path d="M19 9h-4" />
       <path d="M3 3v16a2 2 0 0 0 2 2h16" />

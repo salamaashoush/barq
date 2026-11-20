@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function SquarePaddingVertical(props: Incoming<IconProps>) {
+export function SquarePaddingVertical(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <rect x="3" y="3" width="18" height="18" rx="2" />
       <path d="M8 17h8" />
       <path d="M8 7h8" />

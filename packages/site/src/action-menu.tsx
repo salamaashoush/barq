@@ -71,18 +71,18 @@ export interface ActionMenuProps {
  * from its shortcut, and a button for it would be a fifth control in a footer
  * that already has four.
  */
-export function ActionMenu(props: Incoming<ActionMenuProps>) {
+export function ActionMenu(props: ActionMenuProps) {
   const run = (key: Key): void => {
     const apply = BY_KEY.get(String(key));
     if (apply === undefined) return;
-    props.design().set(apply);
-    props.onOpenChange()(false);
+    props.design.set(apply);
+    props.onOpenChange(false);
   };
 
   return (
     <CommandDialog
-      isOpen={props.isOpen()}
-      onOpenChange={props.onOpenChange()}
+      isOpen={props.isOpen}
+      onOpenChange={props.onOpenChange}
       title="Search"
       description="Jump to any of this page's choices."
       items={GROUPS}

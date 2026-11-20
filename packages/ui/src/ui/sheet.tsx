@@ -1,5 +1,5 @@
 import { Dialog as AriaDialog, Heading, Modal, useDialogDescription } from "@barqjs/aria/dialog";
-import { Show, type Incoming } from "@barqjs/core";
+import { cells, Show, type Incoming } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
 import { X } from "@barqjs/lucide/icons/x";
 
@@ -228,24 +228,24 @@ export interface SheetProps extends OverlayRootProps {}
  * </Sheet>
  * ```
  */
-export function Sheet(props: Incoming<SheetProps>) {
+export function Sheet(props: SheetProps) {
   return <family.Root {...props} />;
 }
 
-export function SheetTrigger(props: Incoming<TriggerPartProps>) {
+export function SheetTrigger(props: TriggerPartProps) {
   return <family.Trigger {...props} />;
 }
 
 export interface SheetPortalProps extends OverlayPortalProps {}
 
 /** Names the container the sheet inside is rendered into. See `<DialogPortal>`. */
-export function SheetPortal(props: Incoming<SheetPortalProps>) {
+export function SheetPortal(props: SheetPortalProps) {
   return <OverlayPortal {...props} />;
 }
 
 /** What the element behind the sheet looks like and carries. See `<DialogOverlay>`. */
-export function SheetOverlay(props: Incoming<UiProps>) {
-  registerUnderlay(family.use(), uiProps("sheet-overlay", overlay, props));
+export function SheetOverlay(props: UiProps) {
+  registerUnderlay(family.use(), uiProps("sheet-overlay", overlay, cells(props)));
   return <></>;
 }
 
@@ -261,29 +261,29 @@ export interface SheetContentProps extends UiProps {
   closeLabel?: string;
 }
 
-export function SheetContent(props: Incoming<SheetContentProps>) {
+export function SheetContent(props: SheetContentProps) {
   const { state, underlay } = family.use();
 
   return (
     <Modal
       isOpen={state.isOpen()}
       onOpenChange={state.setOpen}
-      isDismissable={props.isDismissable?.() !== false}
-      isKeyboardDismissDisabled={props.isKeyboardDismissDisabled?.() === true}
+      isDismissable={props.isDismissable !== false}
+      isKeyboardDismissDisabled={props.isKeyboardDismissDisabled === true}
       underlayClass={underlay() === null ? overlay : undefined}
       underlaySlot="sheet-overlay"
       underlayProps={underlay() ?? undefined}
-      {...handedOn(props)}
-      class={ui(content, props.class?.(), props.className?.())}
-      data-slot={props["data-slot"]?.() ?? "sheet-content"}
-      data-side={props.side?.() ?? "right"}
+      {...handedOn(cells(props))}
+      class={ui(content, props.class, props.className)}
+      data-slot={props["data-slot"] ?? "sheet-content"}
+      data-side={props.side ?? "right"}
     >
-      <AriaDialog {...named(props)} class={contents}>
+      <AriaDialog {...named(cells(props))} class={contents}>
         {props.children}
-        <Show when={props.showCloseButton?.() !== false}>
+        <Show when={props.showCloseButton !== false}>
           <button type="button" data-slot="sheet-close" class={close} onClick={() => state.close()}>
             <X />
-            <span class={srOnly}>{props.closeLabel?.() ?? "Close"}</span>
+            <span class={srOnly}>{props.closeLabel ?? "Close"}</span>
           </button>
         </Show>
       </AriaDialog>
@@ -296,33 +296,33 @@ const contents = ui({
   display: "contents",
 });
 
-export function SheetHeader(props: Incoming<UiProps>) {
-  return <div {...uiProps("sheet-header", header, props)}>{props.children}</div>;
+export function SheetHeader(props: UiProps) {
+  return <div {...uiProps("sheet-header", header, cells(props))}>{props.children}</div>;
 }
 
-export function SheetFooter(props: Incoming<UiProps>) {
-  return <div {...uiProps("sheet-footer", footer, props)}>{props.children}</div>;
+export function SheetFooter(props: UiProps) {
+  return <div {...uiProps("sheet-footer", footer, cells(props))}>{props.children}</div>;
 }
 
 /** The sheet's accessible name. */
-export function SheetTitle(props: Incoming<UiProps>) {
+export function SheetTitle(props: UiProps) {
   return (
     <Heading
       {...props}
       slot="title"
-      data-slot={props["data-slot"]?.() ?? "sheet-title"}
-      class={ui(title, props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "sheet-title"}
+      class={ui(title, props.class, props.className)}
     />
   );
 }
 
-export function SheetDescription(props: Incoming<UiProps>) {
+export function SheetDescription(props: UiProps) {
   const described = useDialogDescription();
   // The dialog points at this element, and only because the hook was called:
   // a description nothing references is read by whoever goes looking for it
   // and by nobody else.
   return (
-    <p {...uiProps("sheet-description", description, props)} id={props.id?.() ?? described?.id()}>
+    <p {...uiProps("sheet-description", description, cells(props))} id={props.id ?? described?.id()}>
       {props.children}
     </p>
   );
@@ -330,15 +330,15 @@ export function SheetDescription(props: Incoming<UiProps>) {
 
 export interface SheetCloseProps extends ButtonProps {}
 
-export function SheetClose(props: Incoming<SheetCloseProps>) {
+export function SheetClose(props: SheetCloseProps) {
   const { state } = family.use();
   return (
     <Button
       {...props}
-      data-slot={props["data-slot"]?.() ?? "sheet-close"}
-      variant={props.variant?.() ?? "outline"}
+      data-slot={props["data-slot"] ?? "sheet-close"}
+      variant={props.variant ?? "outline"}
       onPress={(event) => {
-        props.onPress?.()?.(event);
+        props.onPress?.(event);
         state.close();
       }}
     />

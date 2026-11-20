@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Turntable(props: Incoming<IconProps>) {
+export function Turntable(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M10 12.01h.01" />
       <path d="M18 8v4a8 8 0 0 1-1.07 4" />
       <circle cx="10" cy="12" r="4" />

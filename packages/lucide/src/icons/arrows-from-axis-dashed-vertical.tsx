@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function ArrowsFromAxisDashedVertical(props: Incoming<IconProps>) {
+export function ArrowsFromAxisDashedVertical(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M12 10V8" />
       <path d="M12 16v-2" />
       <path d="M12 22v-2" />

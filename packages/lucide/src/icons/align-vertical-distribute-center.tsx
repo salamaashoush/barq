@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function AlignVerticalDistributeCenter(props: Incoming<IconProps>) {
+export function AlignVerticalDistributeCenter(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M22 17h-3" />
       <path d="M22 7h-5" />
       <path d="M5 17H2" />

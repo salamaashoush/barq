@@ -12,12 +12,12 @@ import {
 } from "./colorpicker.tsx";
 
 describe("ColorSlider", () => {
-  function Hue(props: Incoming<{ onChange?: (value: Color) => void }>) {
+  function Hue(props: { onChange?: (value: Color) => void }) {
     return (
       <ColorSlider
         channel="hue"
         defaultValue="hsb(180, 100%, 100%)"
-        onChange={props.onChange?.()}
+        onChange={props.onChange}
       />
     );
   }

@@ -7,7 +7,7 @@
  * directory: every positive compiles and every `@ts-expect-error` fires.
  */
 
-import { createContext, merge, omit, provide } from "@barqjs/core";
+import { cells, createContext, merge, omit, provide } from "@barqjs/core";
 import type {
   Accessor,
   Child,
@@ -30,9 +30,9 @@ interface Row {
 }
 
 /** A children function that declares a parameter is called with it. */
-function List<T>(props: Incoming<{ items: T[]; children: (item: T, index: number) => Child }>) {
+function List<T>(props: { items: T[]; children: (item: T, index: number) => Child }) {
   assertType<Equal<typeof props.children, (item: T, index: number) => Child>>();
-  return <ul>{props.items().map((item, index) => props.children(item, index))}</ul>;
+  return <ul>{props.items.map((item, index) => props.children(item, index))}</ul>;
 }
 
 declare const rows: Row[];
@@ -48,7 +48,7 @@ export const listInfersItsItem = (
 );
 
 /** Content or a callback: the callback keeps its parameter, the content is read like any prop. */
-function Slot(props: Incoming<{ value: Row; children: Child | ((row: Row) => Child) }>) {
+function Slot(props: { value: Row; children: Child | ((row: Row) => Child) }) {
   const children = props.children;
   assertType<Equal<typeof children, Accessor<Child> | ((row: Row) => Child)>>();
   return <div>{typeof children === "function" ? null : children}</div>;
@@ -70,13 +70,13 @@ export const slotTakesEither = (
 
 /** A generic wrapper forwards its props, callback children included, to the generic it wraps. */
 function Menu<T>(
-  props: Incoming<{ items?: T[]; label?: string; children?: Child | ((item: T) => Child) }>,
+  props: { items?: T[]; label?: string; children?: Child | ((item: T) => Child) },
 ) {
-  return <ul aria-label={props.label?.()} />;
+  return <ul aria-label={props.label} />;
 }
 
 export function MenuWrapper<T>(
-  props: Incoming<{ items?: T[]; label?: string; children?: Child | ((item: T) => Child) }>,
+  props: { items?: T[]; label?: string; children?: Child | ((item: T) => Child) },
 ) {
   return <Menu<T> {...props} label="wrapped" />;
 }
@@ -92,7 +92,7 @@ export function ChildrenStayReadable(
   props.children?.(rows[0]);
 }
 
-function Button(props: Incoming<{ variant?: "primary" | "danger"; children?: Child }>) {
+function Button(props: { variant?: "primary" | "danger"; children?: Child }) {
   return <button type="button">{props.children}</button>;
 }
 
@@ -108,24 +108,24 @@ assertType<Equal<ComponentProps<"a">, JSX.IntrinsicElements["a"]>>();
 const Label: Component<{ text: string; tone?: "info" | "warn" }> = (props) => {
   assertType<Equal<typeof props.text, Accessor<string>>>();
   // @ts-expect-error a prop is read by calling it
-  const wrong: string = props.text;
+  const wrong: string = cells(props).text;
   void wrong;
-  return <span class={props.tone?.()}>{props.text()}</span>;
+  return <span class={props.tone}>{props.text}</span>;
 };
 
 const Divider: VoidComponent<{ inset?: boolean }> = (props) => (
-  <hr class={props.inset?.() ? "inset" : undefined} />
+  <hr class={props.inset ? "inset" : undefined} />
 );
 
 const Card: ParentComponent<{ title: string }> = (props) => (
   <section>
-    <h2>{props.title()}</h2>
+    <h2>{props.title}</h2>
     {props.children}
   </section>
 );
 
 const Each: FlowComponent<{ rows: Row[] }, (row: Row) => Child> = (props) => (
-  <ul>{props.rows().map((row) => props.children(row))}</ul>
+  <ul>{props.rows.map((row) => props.children(row))}</ul>
 );
 
 /** Bare `ParentProps` is children and nothing else. */
@@ -134,11 +134,11 @@ function Group(props: ParentProps) {
 }
 
 function Rule(props: VoidProps<{ label: string }>) {
-  return <hr aria-label={props.label()} />;
+  return <hr aria-label={props.label} />;
 }
 
 function Frame(props: FlowProps<{ tone: "info" | "warn" }>) {
-  return <div class={props.tone()}>{props.children}</div>;
+  return <div class={props.tone}>{props.children}</div>;
 }
 
 export const helpersAtTheCallSite = (
@@ -179,7 +179,7 @@ export const helperRefusals = (
 const Theme = createContext<"light" | "dark">();
 
 /** `provide` answers with what a component returns, whatever its block built. */
-export function ThemeProvider(props: Incoming<{ children?: Child }>): JSX.Element {
+export function ThemeProvider(props: { children?: Child }): JSX.Element {
   return provide(
     Theme,
     () => "dark" as const,

@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function PanelTopBottomDashed(props: Incoming<IconProps>) {
+export function PanelTopBottomDashed(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M14 15h1" />
       <path d="M14 9h1" />
       <path d="M19 15h2" />

@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function GitPullRequestCreate(props: Incoming<IconProps>) {
+export function GitPullRequestCreate(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <circle cx="6" cy="6" r="3" />
       <path d="M6 9v12" />
       <path d="M13 6h3a2 2 0 0 1 2 2v3" />

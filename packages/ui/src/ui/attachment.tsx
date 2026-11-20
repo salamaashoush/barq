@@ -1,3 +1,4 @@
+import { cells } from "@barqjs/core";
 import type { Incoming } from "@barqjs/core";
 import { layer, variants } from "@barqjs/css";
 
@@ -280,21 +281,21 @@ export interface AttachmentProps extends UiProps {
  * </Attachment>
  * ```
  */
-export function Attachment(props: Incoming<AttachmentProps>) {
+export function Attachment(props: AttachmentProps) {
   return (
     <div
       {...uiProps(
         "attachment",
         () =>
           ui(
-            attachmentVariants({ size: props.size?.(), orientation: props.orientation?.() }),
+            attachmentVariants({ size: props.size, orientation: props.orientation }),
             "group/attachment",
           ),
-        props,
+        cells(props),
       )}
-      data-state={props.state?.() ?? "done"}
-      data-size={props.size?.() ?? "default"}
-      data-orientation={props.orientation?.() ?? "horizontal"}
+      data-state={props.state ?? "done"}
+      data-size={props.size ?? "default"}
+      data-orientation={props.orientation ?? "horizontal"}
     >
       {props.children}
     </div>
@@ -302,8 +303,8 @@ export function Attachment(props: Incoming<AttachmentProps>) {
 }
 
 /** A row of them that scrolls sideways and snaps. */
-export function AttachmentGroup(props: Incoming<UiProps>) {
-  return <div {...uiProps("attachment-group", group, props)}>{props.children}</div>;
+export function AttachmentGroup(props: UiProps) {
+  return <div {...uiProps("attachment-group", group, cells(props))}>{props.children}</div>;
 }
 
 export interface AttachmentMediaProps extends UiProps {
@@ -311,46 +312,46 @@ export interface AttachmentMediaProps extends UiProps {
   variant?: AttachmentMediaVariant;
 }
 
-export function AttachmentMedia(props: Incoming<AttachmentMediaProps>) {
+export function AttachmentMedia(props: AttachmentMediaProps) {
   return (
     <div
       {...uiProps(
         "attachment-media",
-        () => attachmentMediaVariants({ variant: props.variant?.() }),
-        props,
+        () => attachmentMediaVariants({ variant: props.variant }),
+        cells(props),
       )}
-      data-variant={props.variant?.() ?? "icon"}
+      data-variant={props.variant ?? "icon"}
     >
       {props.children}
     </div>
   );
 }
 
-export function AttachmentContent(props: Incoming<UiProps>) {
-  return <div {...uiProps("attachment-content", content, props)}>{props.children}</div>;
+export function AttachmentContent(props: UiProps) {
+  return <div {...uiProps("attachment-content", content, cells(props))}>{props.children}</div>;
 }
 
-export function AttachmentTitle(props: Incoming<UiProps>) {
-  return <span {...uiProps("attachment-title", title, props)}>{props.children}</span>;
+export function AttachmentTitle(props: UiProps) {
+  return <span {...uiProps("attachment-title", title, cells(props))}>{props.children}</span>;
 }
 
-export function AttachmentDescription(props: Incoming<UiProps>) {
-  return <span {...uiProps("attachment-description", description, props)}>{props.children}</span>;
+export function AttachmentDescription(props: UiProps) {
+  return <span {...uiProps("attachment-description", description, cells(props))}>{props.children}</span>;
 }
 
-export function AttachmentActions(props: Incoming<UiProps>) {
-  return <div {...uiProps("attachment-actions", actions, props)}>{props.children}</div>;
+export function AttachmentActions(props: UiProps) {
+  return <div {...uiProps("attachment-actions", actions, cells(props))}>{props.children}</div>;
 }
 
 export interface AttachmentActionProps extends ButtonProps {}
 
-export function AttachmentAction(props: Incoming<AttachmentActionProps>) {
+export function AttachmentAction(props: AttachmentActionProps) {
   return (
     <Button
       {...props}
-      data-slot={props["data-slot"]?.() ?? "attachment-action"}
-      variant={props.variant?.() ?? "ghost"}
-      size={props.size?.() ?? "icon-xs"}
+      data-slot={props["data-slot"] ?? "attachment-action"}
+      variant={props.variant ?? "ghost"}
+      size={props.size ?? "icon-xs"}
     />
   );
 }
@@ -366,12 +367,12 @@ export interface AttachmentTriggerProps extends UiProps {
  * no browser renders and no screen reader can describe. This is a sibling with
  * a lower `z-index` than the actions, so the actions still take their presses.
  */
-export function AttachmentTrigger(props: Incoming<AttachmentTriggerProps>) {
+export function AttachmentTrigger(props: AttachmentTriggerProps) {
   return (
     <button
-      {...uiProps("attachment-trigger", trigger, props)}
+      {...uiProps("attachment-trigger", trigger, cells(props))}
       type="button"
-      onClick={() => props.onPress?.()?.()}
+      onClick={() => props.onPress?.()}
     >
       {props.children}
     </button>

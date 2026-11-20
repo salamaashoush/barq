@@ -1,3 +1,4 @@
+import { cells } from "@barqjs/core";
 import { Popover as AriaPopover, type PopoverComponentProps } from "@barqjs/aria/dialog";
 import { placementFor, type Align, type Placement, type Side } from "@barqjs/aria/overlays";
 import type { Incoming } from "@barqjs/core";
@@ -100,11 +101,11 @@ export interface PopoverProps extends OverlayRootProps {}
  * Portalled to the body, so an ancestor with `overflow: hidden` or a
  * `transform` neither clips it nor anchors it against the wrong box.
  */
-export function Popover(props: Incoming<PopoverProps>) {
+export function Popover(props: PopoverProps) {
   return <family.Root {...props} />;
 }
 
-export function PopoverTrigger(props: Incoming<TriggerPartProps>) {
+export function PopoverTrigger(props: TriggerPartProps) {
   return <family.Trigger {...props} />;
 }
 
@@ -121,10 +122,10 @@ export function PopoverTrigger(props: Incoming<TriggerPartProps>) {
  * A button at the end of a field opens a popover that should line up with the
  * FIELD. Focus still goes back to the trigger, which is what was pressed.
  */
-export function PopoverAnchor(props: Incoming<UiProps>) {
+export function PopoverAnchor(props: UiProps) {
   const { anchorRef } = family.use();
   return (
-    <div {...uiProps("popover-anchor", "", props)} ref={mergeRefs(anchorRef.set, props.ref?.())}>
+    <div {...uiProps("popover-anchor", "", cells(props))} ref={mergeRefs(anchorRef.set, props.ref)}>
       {props.children}
     </div>
   );
@@ -152,7 +153,7 @@ export interface PopoverContentProps
   isKeyboardDismissDisabled?: boolean;
 }
 
-export function PopoverContent(props: Incoming<PopoverContentProps>) {
+export function PopoverContent(props: PopoverContentProps) {
   const { state, triggerRef, anchorRef } = family.use();
   const target = (): HTMLElement | null => anchorRef() ?? triggerRef();
 
@@ -163,31 +164,31 @@ export function PopoverContent(props: Incoming<PopoverContentProps>) {
       isOpen={state.isOpen()}
       onOpenChange={state.setOpen}
       placement={
-        props.placement?.() ?? placementFor(props.side?.() ?? "bottom", props.align?.() ?? "center")
+        props.placement ?? placementFor(props.side ?? "bottom", props.align ?? "center")
       }
-      offset={props.offset?.() ?? props.sideOffset?.()}
-      crossOffset={props.crossOffset?.() ?? props.alignOffset?.()}
-      data-slot={props["data-slot"]?.() ?? "popover-content"}
+      offset={props.offset ?? props.sideOffset}
+      crossOffset={props.crossOffset ?? props.alignOffset}
+      data-slot={props["data-slot"] ?? "popover-content"}
       // Focusable, so the focus scope has somewhere to put focus when the
       // popover holds nothing focusable of its own. Without it focus stays on
       // the trigger, which is OUTSIDE the overlay — and Escape, whose handler
       // is on the overlay, never reaches it.
       tabIndex={-1}
-      class={ui(content, props.class?.(), props.className?.())}
+      class={ui(content, props.class, props.className)}
     >
       {props.children}
     </AriaPopover>
   );
 }
 
-export function PopoverHeader(props: Incoming<UiProps>) {
-  return <div {...uiProps("popover-header", header, props)}>{props.children}</div>;
+export function PopoverHeader(props: UiProps) {
+  return <div {...uiProps("popover-header", header, cells(props))}>{props.children}</div>;
 }
 
-export function PopoverTitle(props: Incoming<UiProps>) {
-  return <div {...uiProps("popover-title", title, props)}>{props.children}</div>;
+export function PopoverTitle(props: UiProps) {
+  return <div {...uiProps("popover-title", title, cells(props))}>{props.children}</div>;
 }
 
-export function PopoverDescription(props: Incoming<UiProps>) {
-  return <p {...uiProps("popover-description", description, props)}>{props.children}</p>;
+export function PopoverDescription(props: UiProps) {
+  return <p {...uiProps("popover-description", description, cells(props))}>{props.children}</p>;
 }

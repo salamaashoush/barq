@@ -20,7 +20,7 @@ import { describe, expect, test } from "bun:test";
 import { flush, createSignal, type Child, type Incoming } from "@barqjs/core";
 import { render, screen } from "@barqjs/testing";
 
-function Box(props: Incoming<{ children?: Child }>) {
+function Box(props: { children?: Child }) {
   return <div data-testid="box">{props.children}</div>;
 }
 

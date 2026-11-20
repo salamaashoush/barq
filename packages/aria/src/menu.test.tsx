@@ -35,23 +35,23 @@ const ACTIONS: Action[] = [
 ];
 
 function Actions(
-  props: Incoming<{
+  props: {
     selectionMode?: "none" | "single" | "multiple";
     onAction?: (key: Key) => void;
     onSelectionChange?: (keys: "all" | Set<Key>) => void;
     onClose?: () => void;
     autoFocus?: boolean | "first" | "last";
-  }>,
+  },
 ) {
   return (
     <Menu
       aria-label="Actions"
       items={ACTIONS}
-      selectionMode={props.selectionMode?.() ?? "none"}
-      autoFocus={props.autoFocus?.()}
-      onAction={props.onAction?.()}
-      onSelectionChange={props.onSelectionChange?.()}
-      onClose={props.onClose?.()}
+      selectionMode={props.selectionMode ?? "none"}
+      autoFocus={props.autoFocus}
+      onAction={props.onAction}
+      onSelectionChange={props.onSelectionChange}
+      onClose={props.onClose}
       getTextValue={(action: Action) => action.name}
     >
       {(action: Action) => <MenuItem>{action.name}</MenuItem>}
@@ -361,11 +361,11 @@ describe("MenuSection", () => {
 
 // ---------------------------------------------------------------------------
 
-function Trigger(props: Incoming<{ onAction?: (key: Key) => void }>) {
+function Trigger(props: { onAction?: (key: Key) => void }) {
   return (
     <MenuTrigger>
       <MenuButton>Actions</MenuButton>
-      <Menu aria-label="Actions" items={ACTIONS} onAction={props.onAction?.()}>
+      <Menu aria-label="Actions" items={ACTIONS} onAction={props.onAction}>
         {(action: Action) => <MenuItem>{action.name}</MenuItem>}
       </Menu>
     </MenuTrigger>
@@ -489,20 +489,20 @@ describe("MenuTrigger", () => {
  */
 describe("a menu whose items are its children", () => {
   function Written(
-    props: Incoming<{
+    props: {
       onAction?: (key: Key) => void;
       onRename?: () => void;
       onSelect?: (event: MenuSelectEvent) => void;
       onClose?: () => void;
       showCopy?: boolean;
-    }>,
+    },
   ) {
     return (
-      <Menu aria-label="Actions" onAction={props.onAction?.()} onClose={props.onClose?.()}>
-        <MenuItem id="rename" onAction={props.onRename?.()} onSelect={props.onSelect?.()}>
+      <Menu aria-label="Actions" onAction={props.onAction} onClose={props.onClose}>
+        <MenuItem id="rename" onAction={props.onRename} onSelect={props.onSelect}>
           Rename
         </MenuItem>
-        <Show when={props.showCopy?.() !== false}>
+        <Show when={props.showCopy !== false}>
           <MenuItem id="copy">Copy</MenuItem>
         </Show>
         <MenuItem id="paste" isDisabled>
@@ -630,16 +630,16 @@ describe("a menu whose items are its children", () => {
   });
 
   function View(
-    props: Incoming<{
+    props: {
       onToolbar?: (isSelected: boolean) => void;
       onDensity?: (value: string) => void;
       onClose?: () => void;
-    }>,
+    },
   ) {
     const [density, setDensity] = createSignal("compact");
     return (
-      <Menu aria-label="View" onClose={props.onClose?.()}>
-        <MenuItem defaultSelected onChange={props.onToolbar?.()}>
+      <Menu aria-label="View" onClose={props.onClose}>
+        <MenuItem defaultSelected onChange={props.onToolbar}>
           Toolbar
         </MenuItem>
         <MenuItem type="checkbox">Status bar</MenuItem>
@@ -648,7 +648,7 @@ describe("a menu whose items are its children", () => {
           value={density()}
           onValueChange={(value) => {
             setDensity(value);
-            props.onDensity?.()?.(value);
+            props.onDensity?.(value);
           }}
         >
           <MenuItem value="compact">Compact</MenuItem>
@@ -746,7 +746,7 @@ describe("a menu whose items are its children", () => {
     expect(document.activeElement?.textContent).toBe("Print");
   });
 
-  function Heading(props: Incoming<{ children?: Child }>) {
+  function Heading(props: { children?: Child }) {
     const headingId = useMenuGroupHeading();
     return (
       <li role="presentation" id={headingId?.()}>
@@ -792,9 +792,9 @@ describe("a menu whose items are its children", () => {
     return { followed, stop: () => document.removeEventListener("click", record, true) };
   }
 
-  function Links(props: Incoming<{ onClose?: () => void; onAction?: (key: Key) => void }>) {
+  function Links(props: { onClose?: () => void; onAction?: (key: Key) => void }) {
     return (
-      <Menu aria-label="Go" onClose={props.onClose?.()} onAction={props.onAction?.()}>
+      <Menu aria-label="Go" onClose={props.onClose} onAction={props.onAction}>
         <MenuItem id="docs" href="#docs">
           Documentation
         </MenuItem>

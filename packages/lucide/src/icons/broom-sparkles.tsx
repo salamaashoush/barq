@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function BroomSparkles(props: Incoming<IconProps>) {
+export function BroomSparkles(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M11 2v2" />
       <path d="M12 3h-2" />
       <path d="M13.5 10.5 22 2" />

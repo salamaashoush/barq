@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function TableCellsSplit(props: Incoming<IconProps>) {
+export function TableCellsSplit(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M12 15V9" />
       <path d="M3 15h18" />
       <path d="M3 9h18" />

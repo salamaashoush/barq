@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Ellipse(props: Incoming<IconProps>) {
+export function Ellipse(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <ellipse cx="12" cy="12" rx="10" ry="6" />
     </svg>
   );

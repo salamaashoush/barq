@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function PencilSparkles(props: Incoming<IconProps>) {
+export function PencilSparkles(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M10 3H8" />
       <path d="m15.007 5.008 3.987 3.986" />
       <path d="M20 15v4" />

@@ -25,6 +25,7 @@
  */
 
 import {
+  cells,
   type Accessor,
   type Child,
   createContext,
@@ -153,16 +154,16 @@ export interface MenubarComponentProps extends StyleProps {
  * </Menubar>
  * ```
  */
-export function Menubar(props: Incoming<MenubarComponentProps>) {
+export function Menubar(props: MenubarComponentProps) {
   const locale = useLocale();
   const entries = new Map<string, MenubarEntry>();
   const [registered, setRegistered] = createSignal(0, { ownedWrite: true });
   const [focused, setFocused] = createSignal<string | null>(null);
 
   const [value, setValue] = controllable<string>(
-    () => props.value?.(),
-    () => props.defaultValue?.() ?? "",
-    (next) => props.onValueChange?.()?.(next),
+    () => props.value,
+    () => props.defaultValue ?? "",
+    (next) => props.onValueChange?.(next),
   );
 
   const ordered = (): MenubarEntry[] =>
@@ -224,7 +225,7 @@ export function Menubar(props: Incoming<MenubarComponentProps>) {
       const at = all.findIndex((entry) => entry.value === from);
       const to = at + (step === "next" ? 1 : -1);
       if (to >= 0 && to < all.length) return all[to] ?? null;
-      if (props.loop?.() === false) return null;
+      if (props.loop === false) return null;
       return all[(to + all.length) % all.length] ?? null;
     },
     matching: (from, character) => {
@@ -266,19 +267,19 @@ export function Menubar(props: Incoming<MenubarComponentProps>) {
   };
 
   const elementProps = mergeProps(
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
       role: "menubar",
-      "aria-label": () => props["aria-label"]?.(),
-      "aria-labelledby": () => props["aria-labelledby"]?.(),
+      "aria-label": () => props["aria-label"],
+      "aria-labelledby": () => props["aria-labelledby"],
       "data-orientation": "horizontal",
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
   return (
-    <div {...elementProps} ref={mergeRefs(props.ref?.())}>
+    <div {...elementProps} ref={mergeRefs(props.ref)}>
       {provide(
         MenubarContext,
         () => bar,
@@ -556,19 +557,19 @@ export interface MenubarTriggerComponentProps extends StyleProps {
 }
 
 /** The button in the bar that opens the enclosing {@link MenubarMenu}. */
-export function MenubarTrigger(props: Incoming<MenubarTriggerComponentProps>) {
-  const options = fromProps(props);
+export function MenubarTrigger(props: MenubarTriggerComponentProps) {
+  const options = fromProps(cells(props));
   const { triggerProps, ref } = menubarTrigger(options);
 
   const elementProps = mergeProps(
     triggerProps,
     filterDOMProps(options, { global: true }),
-    styleProps(props),
-    { "data-testid": () => props["data-testid"]?.() },
+    styleProps(cells(props)),
+    { "data-testid": () => props["data-testid"] },
   );
 
   return (
-    <button {...elementProps} ref={mergeRefs(ref, props.ref?.())}>
+    <button {...elementProps} ref={mergeRefs(ref, props.ref)}>
       {props.children}
     </button>
   );

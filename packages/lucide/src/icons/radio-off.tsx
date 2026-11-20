@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function RadioOff(props: Incoming<IconProps>) {
+export function RadioOff(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M13.414 13.414a2 2 0 1 1-2.828-2.828" />
       <path d="M16.247 7.761a6 6 0 0 1 1.744 4.572" />
       <path d="M19.075 4.933a10 10 0 0 1 2.234 10.72" />

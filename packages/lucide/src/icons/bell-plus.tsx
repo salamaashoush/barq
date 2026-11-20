@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function BellPlus(props: Incoming<IconProps>) {
+export function BellPlus(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M10.268 21a2 2 0 0 0 3.464 0" />
       <path d="M15 8h6" />
       <path d="M18 5v6" />

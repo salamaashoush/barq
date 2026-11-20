@@ -822,7 +822,7 @@ describe("DrawerPortal and DrawerOverlay", () => {
 });
 
 describe("Drawer, vaul's remaining options", () => {
-  function Options(props: Incoming<DrawerProps & { input?: boolean }>) {
+  function Options(props: DrawerProps & { input?: boolean }) {
     return (
       <>
         <button type="button">Outside</button>
@@ -841,7 +841,7 @@ describe("Drawer, vaul's remaining options", () => {
           </DrawerTrigger>
           <DrawerContent>
             <DrawerTitle>Move goal</DrawerTitle>
-            <Show when={props.input?.() === true}>
+            <Show when={props.input === true}>
               <input aria-label="Goal" />
             </Show>
             <DrawerFooter>

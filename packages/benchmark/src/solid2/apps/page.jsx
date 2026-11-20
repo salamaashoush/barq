@@ -1,3 +1,4 @@
+import { cells } from "@barqjs/core";
 /**
  * A storefront page, the shared subject of the SSR and hydration rows: a
  * header with a nav list, a grid of product cards with conditional badges and
@@ -27,18 +28,18 @@ function Header(props) {
 
 function Card(props) {
   return (
-    <article class="card" data-id={props.item.id}>
-      <h2 class="card-title">{props.item.title}</h2>
-      <p class="card-description">{props.item.description}</p>
-      <Show when={props.item.onSale}>
+    <article class="card" data-id={cells(props).item.id}>
+      <h2 class="card-title">{cells(props).item.title}</h2>
+      <p class="card-description">{cells(props).item.description}</p>
+      <Show when={cells(props).item.onSale}>
         <span class="badge">Sale</span>
       </Show>
       <ul class="tags">
-        <For each={props.item.tags}>{(tag) => <li class="tag">{tag}</li>}</For>
+        <For each={cells(props).item.tags}>{(tag) => <li class="tag">{tag}</li>}</For>
       </ul>
       <div class="card-footer">
-        <span class="price">{props.item.price.toFixed(2)}</span>
-        <button type="button" class="add" onClick={() => props.onAdd(props.item.id)}>
+        <span class="price">{cells(props).item.price.toFixed(2)}</span>
+        <button type="button" class="add" onClick={() => cells(props).onAdd(cells(props).item.id)}>
           Add to cart
         </button>
       </div>
@@ -50,13 +51,13 @@ export function App(props) {
   const [cart, setCart] = createSignal(0)
   return (
     <div id="app">
-      <Header title="Example Shop" links={props.data.links} />
+      <Header title="Example Shop" links={cells(props).data.links} />
       <main>
         <p class="summary">
-          {props.data.items.length} products, {cart()} in cart
+          {cells(props).data.items.length} products, {cart()} in cart
         </p>
         <section class="grid">
-          <For each={props.data.items}>
+          <For each={cells(props).data.items}>
             {(item) => <Card item={item} onAdd={() => setCart((n) => n + 1)} />}
           </For>
         </section>

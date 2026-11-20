@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function ClipboardPaste(props: Incoming<IconProps>) {
+export function ClipboardPaste(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M11 14h10" />
       <path d="M16 4h2a2 2 0 0 1 2 2v1.344" />
       <path d="m17 18 4-4-4-4" />

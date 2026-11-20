@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Forklift(props: Incoming<IconProps>) {
+export function Forklift(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M12 12H5a2 2 0 0 0-2 2v5" />
       <path d="M15 19h7" />
       <path d="M16 19V2" />

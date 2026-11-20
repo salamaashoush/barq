@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Tornado(props: Incoming<IconProps>) {
+export function Tornado(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M21 4H3" />
       <path d="M18 8H6" />
       <path d="M19 12H9" />

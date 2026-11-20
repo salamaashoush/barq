@@ -104,8 +104,8 @@ function StyledDemo() {
   // interpolation standing where a declaration would go has no CSS grammar to
   // sit in, so the compiler refuses it (BARQ014) instead of guessing; written
   // as two classes, both compile and the choice is an ordinary ternary.
-  const Card = (props: Incoming<{ variant: "primary" | "secondary"; children: string }>) => (
-    <div class={atoms(cardBase, props.variant() === "primary" ? cardPrimary : cardSecondary)}>
+  const Card = (props: { variant: "primary" | "secondary"; children: string }) => (
+    <div class={atoms(cardBase, props.variant === "primary" ? cardPrimary : cardSecondary)}>
       {props.children}
     </div>
   );

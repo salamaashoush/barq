@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Spotlight(props: Incoming<IconProps>) {
+export function Spotlight(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M15.295 19.562 16 22" />
       <path d="m17 16 3.758 2.098" />
       <path d="m19 12.5 3.026-.598" />

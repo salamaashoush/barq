@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Waypoints(props: Incoming<IconProps>) {
+export function Waypoints(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="m10.586 5.414-5.172 5.172" />
       <path d="m18.586 13.414-5.172 5.172" />
       <path d="M6 12h12" />

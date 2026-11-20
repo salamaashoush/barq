@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Bike(props: Incoming<IconProps>) {
+export function Bike(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <circle cx="18.5" cy="17.5" r="3.5" />
       <circle cx="5.5" cy="17.5" r="3.5" />
       <circle cx="15" cy="5" r="1" />

@@ -38,19 +38,19 @@ function box(element: Element, rect: { top: number; left: number; width: number;
     }) as DOMRect;
 }
 
-function Fixture(props: Incoming<{ content?: PopoverContentProps }>) {
+function Fixture(props: { content?: PopoverContentProps }) {
   return (
     <Popover>
       <PopoverTrigger>
         <Button variant="outline">Open</Button>
       </PopoverTrigger>
       <PopoverContent
-        side={props.content?.()?.side}
-        align={props.content?.()?.align}
-        sideOffset={props.content?.()?.sideOffset}
-        alignOffset={props.content?.()?.alignOffset}
-        placement={props.content?.()?.placement}
-        offset={props.content?.()?.offset}
+        side={props.content?.side}
+        align={props.content?.align}
+        sideOffset={props.content?.sideOffset}
+        alignOffset={props.content?.alignOffset}
+        placement={props.content?.placement}
+        offset={props.content?.offset}
       >
         <PopoverHeader>
           <PopoverTitle>Dimensions</PopoverTitle>

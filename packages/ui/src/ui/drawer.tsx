@@ -19,6 +19,7 @@ import { portalContainer, usePortalTarget } from "@barqjs/aria/overlays";
 import { exitDuration } from "@barqjs/aria/presence";
 import { provideTriggerSlot } from "@barqjs/aria/utils";
 import {
+  cells,
   createContext,
   createEffect,
   getContext,
@@ -424,12 +425,12 @@ export interface DrawerProps extends OverlayRootProps {
  * A `<Drawer>` written inside a `<DrawerContent>` is nested: the one beneath
  * steps back while it is open and follows its drag.
  */
-export function Drawer(props: Incoming<DrawerProps>) {
+export function Drawer(props: DrawerProps) {
   return (
-    <family.Root {...props} isOpen={props.isOpen?.() ?? props.open?.()}>
+    <family.Root {...props} isOpen={props.isOpen ?? props.open}>
       <DrawerProvider {...props}>
-        <Show when={props.container?.() !== undefined} fallback={props.children}>
-          <PortalProvider getContainer={() => props.container?.() ?? null}>
+        <Show when={props.container !== undefined} fallback={props.children}>
+          <PortalProvider getContainer={() => props.container ?? null}>
             {props.children}
           </PortalProvider>
         </Show>
@@ -443,32 +444,32 @@ export function Drawer(props: Incoming<DrawerProps>) {
  * the only place the scope exists. Inlined in `Drawer` the callback would run
  * where its siblings read and the direction would be the default everywhere.
  */
-function DrawerProvider(props: Incoming<DrawerProps>) {
+function DrawerProvider(props: DrawerProps) {
   const owner = getOwner();
   const surface = getContext(DrawerSurfaceContext) ?? null;
   const value: DrawerValue = {
-    direction: () => props.direction?.() ?? "bottom",
-    snapPoints: () => props.snapPoints?.(),
-    activeSnapPoint: () => props.activeSnapPoint?.(),
-    setActiveSnapPoint: (point) => props.setActiveSnapPoint?.()?.(point),
-    fadeFromIndex: () => props.fadeFromIndex?.(),
-    snapToSequentialPoint: () => props.snapToSequentialPoint?.() === true,
-    dismissible: () => props.dismissible?.() !== false,
-    handleOnly: () => props.handleOnly?.() === true,
-    closeThreshold: () => props.closeThreshold?.(),
-    shouldScaleBackground: () => props.shouldScaleBackground?.() === true,
+    direction: () => props.direction ?? "bottom",
+    snapPoints: () => props.snapPoints,
+    activeSnapPoint: () => props.activeSnapPoint,
+    setActiveSnapPoint: (point) => props.setActiveSnapPoint?.(point),
+    fadeFromIndex: () => props.fadeFromIndex,
+    snapToSequentialPoint: () => props.snapToSequentialPoint === true,
+    dismissible: () => props.dismissible !== false,
+    handleOnly: () => props.handleOnly === true,
+    closeThreshold: () => props.closeThreshold,
+    shouldScaleBackground: () => props.shouldScaleBackground === true,
     setBackgroundColorOnScale: () =>
-      props.setBackgroundColorOnScale?.() !== false && props.noBodyStyles?.() !== true,
-    modal: () => props.modal?.() !== false,
-    autoFocus: () => props.autoFocus?.() !== false,
-    fixed: () => props.fixed?.() === true,
-    repositionInputs: () => props.repositionInputs?.() !== false,
-    container: () => props.container?.() ?? null,
-    onAnimationEnd: (open) => props.onAnimationEnd?.()?.(open),
-    onDrag: (event, progress) => props.onDrag?.()?.(event, progress),
-    onRelease: (event, open) => props.onRelease?.()?.(event, open),
-    onClose: () => props.onClose?.()?.(),
-    parent: props.nested?.() === false ? null : surface,
+      props.setBackgroundColorOnScale !== false && props.noBodyStyles !== true,
+    modal: () => props.modal !== false,
+    autoFocus: () => props.autoFocus !== false,
+    fixed: () => props.fixed === true,
+    repositionInputs: () => props.repositionInputs !== false,
+    container: () => props.container ?? null,
+    onAnimationEnd: (open) => props.onAnimationEnd?.(open),
+    onDrag: (event, progress) => props.onDrag?.(event, progress),
+    onRelease: (event, open) => props.onRelease?.(event, open),
+    onClose: () => props.onClose?.(),
+    parent: props.nested === false ? null : surface,
   };
   if (owner === null) return <>{props.children}</>;
   return provide(
@@ -480,7 +481,7 @@ function DrawerProvider(props: Incoming<DrawerProps>) {
 
 const TriggerScope = createContext<true | null>(null);
 
-export function DrawerTrigger(props: Incoming<{ children?: Child }>) {
+export function DrawerTrigger(props: { children?: Child }) {
   return (
     <family.Trigger>
       <DrawerTriggerSlot>{props.children}</DrawerTriggerSlot>
@@ -495,7 +496,7 @@ export function DrawerTrigger(props: Incoming<{ children?: Child }>) {
  * has: installed on the ambient owner the name would land beside the control
  * rather than above it.
  */
-function DrawerTriggerSlot(props: Incoming<{ children?: Child }>) {
+function DrawerTriggerSlot(props: { children?: Child }) {
   return provide(
     TriggerScope,
     () => true as const,
@@ -513,7 +514,7 @@ function DrawerTriggerSlot(props: Incoming<{ children?: Child }>) {
  * not `<DrawerContent>`: something drawn over the page that the drawer's state
  * opens, with `<DrawerOverlay>` behind it.
  */
-export function DrawerPortal(props: Incoming<{ children?: Child }>) {
+export function DrawerPortal(props: { children?: Child }) {
   const { state } = family.use();
   const target = usePortalTarget();
 
@@ -532,17 +533,17 @@ export function DrawerPortal(props: Incoming<{ children?: Child }>) {
  * a pointer: pressing it closes the drawer unless the drawer says it cannot be
  * dismissed.
  */
-export function DrawerOverlay(props: Incoming<UiProps>) {
+export function DrawerOverlay(props: UiProps) {
   const { state } = family.use();
   const drawer = useDrawer();
 
   return (
     <div
-      {...uiProps("drawer-overlay", overlay, props)}
+      {...uiProps("drawer-overlay", overlay, cells(props))}
       aria-hidden="true"
       data-state={() => (state.isOpen() ? "open" : "closed")}
       onClick={(event: MouseEvent) => {
-        props.onClick?.()?.(event);
+        props.onClick?.(event);
         if (drawer.dismissible()) state.close();
       }}
     />
@@ -566,16 +567,16 @@ export interface DrawerHandleProps extends UiProps {
  * It is hidden from assistive technology: the drawer is a dialog with Escape
  * and a close button, and a grip adds nothing to that but a nameless stop.
  */
-export function DrawerHandle(props: Incoming<DrawerHandleProps>) {
+export function DrawerHandle(props: DrawerHandleProps) {
   const surface = getContext(DrawerSurfaceContext) ?? null;
 
   return (
     <div
-      {...uiProps("drawer-handle", handle, props)}
+      {...uiProps("drawer-handle", handle, cells(props))}
       aria-hidden="true"
       onClick={(event: MouseEvent) => {
-        props.onClick?.()?.(event);
-        if (props.preventCycle?.() === true) return;
+        props.onClick?.(event);
+        if (props.preventCycle === true) return;
         surface?.press();
       }}
     />
@@ -602,10 +603,10 @@ function isHandle(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest('[data-slot="drawer-handle"]') !== null;
 }
 
-export function DrawerContent(props: Incoming<DrawerContentProps>) {
+export function DrawerContent(props: DrawerContentProps) {
   const { state } = family.use();
   const drawer = useDrawer();
-  const direction = (): DrawerDirection => props.direction?.() ?? drawer.direction();
+  const direction = (): DrawerDirection => props.direction ?? drawer.direction();
   const vertical = (): boolean => direction() === "top" || direction() === "bottom";
   const snaps = (): boolean => (drawer.snapPoints()?.length ?? 0) > 0;
 
@@ -722,7 +723,7 @@ export function DrawerContent(props: Incoming<DrawerContentProps>) {
   };
 
   const onPointerDown = (event: PointerEvent): void => {
-    props.onPointerDown?.()?.(event);
+    props.onPointerDown?.(event);
     draggedTo = 0;
     if (event.button !== 0 || isControl(event.target)) return;
     if (drawer.handleOnly() && !isHandle(event.target)) return;
@@ -866,28 +867,28 @@ export function DrawerContent(props: Incoming<DrawerContentProps>) {
     <Modal
       isOpen={state.isOpen()}
       onOpenChange={request}
-      isDismissable={props.isDismissable?.() !== false && drawer.dismissible()}
+      isDismissable={props.isDismissable !== false && drawer.dismissible()}
       isKeyboardDismissDisabled={
-        props.isKeyboardDismissDisabled?.() === true || !drawer.dismissible()
+        props.isKeyboardDismissDisabled === true || !drawer.dismissible()
       }
       isNonModal={!drawer.modal()}
       autoFocus={drawer.autoFocus()}
       underlayClass={drawer.modal() ? overlay : passThrough}
       underlaySlot={drawer.modal() ? "drawer-overlay" : undefined}
       data-vaul-custom-container={drawer.container() === null ? "false" : "true"}
-      {...handedOn(props)}
-      class={ui(content, props.class?.(), props.className?.())}
-      data-slot={props["data-slot"]?.() ?? "drawer-content"}
-      dir={props.dir?.()}
-      title={props.title?.()}
+      {...handedOn(cells(props))}
+      class={ui(content, props.class, props.className)}
+      data-slot={props["data-slot"] ?? "drawer-content"}
+      dir={props.dir}
+      title={props.title}
       data-direction={direction()}
       data-vaul-drawer-direction={direction()}
       data-state={state.isOpen() ? "open" : "closed"}
       onPointerDown={onPointerDown}
     >
-      <AriaDialog {...named(props)} class={contents} ref={section}>
+      <AriaDialog {...named(cells(props))} class={contents} ref={section}>
         <DrawerSurfaceProvider value={surface} onMount={mounted} onUnmount={unmounted}>
-          <Show when={props.showHandle?.() !== false && direction() === "bottom"}>
+          <Show when={props.showHandle !== false && direction() === "bottom"}>
             <DrawerHandle />
           </Show>
           {props.children}
@@ -906,22 +907,22 @@ export function DrawerContent(props: Incoming<DrawerContentProps>) {
  * is the one that moves.
  */
 function DrawerSurfaceProvider(
-  props: Incoming<{
+  props: {
     value: DrawerSurface;
     onMount: () => void;
     onUnmount: () => void;
     children?: Child;
-  }>,
+  },
 ) {
   onSettled(() => {
-    props.onMount()();
+    props.onMount();
   });
   onCleanup(() => {
-    props.onUnmount()();
+    props.onUnmount();
   });
   return provide(
     DrawerSurfaceContext,
-    () => props.value(),
+    () => props.value,
     () => props.children,
   );
 }
@@ -931,46 +932,46 @@ export interface DrawerHeaderProps extends UiProps {
   centered?: boolean;
 }
 
-export function DrawerHeader(props: Incoming<DrawerHeaderProps>) {
+export function DrawerHeader(props: DrawerHeaderProps) {
   const drawer = useDrawer();
   // The direction already decides this in CSS; the prop only exists to say
   // otherwise, so it writes a class either way rather than leaving the
   // direction's rule in place under a `centered={false}`.
   const centered = (): boolean =>
-    props.centered?.() ?? (drawer.direction() === "top" || drawer.direction() === "bottom");
+    props.centered ?? (drawer.direction() === "top" || drawer.direction() === "bottom");
 
   return (
     <div
-      {...uiProps("drawer-header", ui(header, centered() ? headerCentered : headerAligned), props)}
+      {...uiProps("drawer-header", ui(header, centered() ? headerCentered : headerAligned), cells(props))}
     >
       {props.children}
     </div>
   );
 }
 
-export function DrawerFooter(props: Incoming<UiProps>) {
-  return <div {...uiProps("drawer-footer", footer, props)}>{props.children}</div>;
+export function DrawerFooter(props: UiProps) {
+  return <div {...uiProps("drawer-footer", footer, cells(props))}>{props.children}</div>;
 }
 
 /** The drawer's accessible name. */
-export function DrawerTitle(props: Incoming<UiProps>) {
+export function DrawerTitle(props: UiProps) {
   return (
     <Heading
       {...props}
       slot="title"
-      data-slot={props["data-slot"]?.() ?? "drawer-title"}
-      class={ui(title, props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "drawer-title"}
+      class={ui(title, props.class, props.className)}
     />
   );
 }
 
-export function DrawerDescription(props: Incoming<UiProps>) {
+export function DrawerDescription(props: UiProps) {
   const described = useDialogDescription();
   // The dialog points at this element, and only because the hook was called:
   // a description nothing references is read by whoever goes looking for it
   // and by nobody else.
   return (
-    <p {...uiProps("drawer-description", description, props)} id={props.id?.() ?? described?.id()}>
+    <p {...uiProps("drawer-description", description, cells(props))} id={props.id ?? described?.id()}>
       {props.children}
     </p>
   );
@@ -982,16 +983,16 @@ export interface DrawerCloseProps extends ButtonProps {}
  * Closes the drawer, unless the drawer was told it cannot be dismissed, in
  * which case `onPress` is where the caller closes it.
  */
-export function DrawerClose(props: Incoming<DrawerCloseProps>) {
+export function DrawerClose(props: DrawerCloseProps) {
   const { state } = family.use();
   const drawer = useDrawer();
   return (
     <Button
       {...props}
-      data-slot={props["data-slot"]?.() ?? "drawer-close"}
-      variant={props.variant?.() ?? "outline"}
+      data-slot={props["data-slot"] ?? "drawer-close"}
+      variant={props.variant ?? "outline"}
       onPress={(event) => {
-        props.onPress?.()?.(event);
+        props.onPress?.(event);
         if (drawer.dismissible()) state.close();
       }}
     />

@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Transgender(props: Incoming<IconProps>) {
+export function Transgender(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M12 16v6" />
       <path d="M14 20h-4" />
       <path d="M18 2h4v4" />

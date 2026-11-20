@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Crosshair(props: Incoming<IconProps>) {
+export function Crosshair(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <circle cx="12" cy="12" r="10" />
       <line x1="22" x2="18" y1="12" y2="12" />
       <line x1="6" x2="2" y1="12" y2="12" />

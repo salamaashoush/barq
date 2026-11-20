@@ -82,7 +82,7 @@ function useCopy(): { copied: () => boolean; onCopy: (value: string) => void } {
   };
 }
 
-export function CodeBlock(props: Incoming<{ code: string; title?: string }>) {
+export function CodeBlock(props: { code: string; title?: string }) {
   const { copied, onCopy } = useCopy();
   return (
     <figure class={figure} data-not-typeset>
@@ -92,7 +92,7 @@ export function CodeBlock(props: Incoming<{ code: string; title?: string }>) {
         size="icon"
         variant="ghost"
         aria-label="Copy the code"
-        onClick={() => onCopy(props.code())}
+        onClick={() => onCopy(props.code)}
       >
         <Show when={copied()} fallback={<Copy />}>
           <Check />
@@ -100,7 +100,7 @@ export function CodeBlock(props: Incoming<{ code: string; title?: string }>) {
       </Button>
       <pre class={() => `${body} ${highlighted}`}>
         <code>
-          <Highlighted tokens={() => codeTokens(props.code())} />
+          <Highlighted tokens={() => codeTokens(props.code)} />
         </code>
       </pre>
     </figure>
@@ -113,8 +113,8 @@ export function CodeBlock(props: Incoming<{ code: string; title?: string }>) {
  * The palette and the `data-token` rules live on whichever `<pre>` holds it,
  * so a panel that wants a different one only redeclares the properties.
  */
-export function CodeTokens(props: Incoming<{ code: string }>) {
-  return <Highlighted tokens={() => codeTokens(props.code())} />;
+export function CodeTokens(props: { code: string }) {
+  return <Highlighted tokens={() => codeTokens(props.code)} />;
 }
 
 /**
@@ -125,9 +125,9 @@ export function CodeTokens(props: Incoming<{ code: string }>) {
  * but a row that is bare text gives the hydration walk no node to claim, and
  * every row the server wrote after it is reported as unclaimed.
  */
-function Highlighted(props: Incoming<{ tokens: readonly Token[] }>) {
+function Highlighted(props: { tokens: readonly Token[] }) {
   return (
-    <For each={() => props.tokens()}>
+    <For each={() => props.tokens}>
       {(token: Token) => (
         <span data-token={token.kind === "plain" ? undefined : token.kind}>{token.text}</span>
       )}
@@ -173,11 +173,11 @@ const MANAGERS = [
  * `barq-ui` command writes these components into a project: a runner given the
  * bare `barq-ui` would look for a package of that name.
  */
-export function CommandTabs(props: Incoming<{ command: string }>) {
+export function CommandTabs(props: { command: string }) {
   const [picked, setPicked] = createSignal<string>("pnpm");
   const line = (): string => {
     const manager = MANAGERS.find((entry) => entry.id === picked()) ?? MANAGERS[0];
-    return `${manager.run} ${props.command()}`;
+    return `${manager.run} ${props.command}`;
   };
   const { copied, onCopy } = useCopy();
 

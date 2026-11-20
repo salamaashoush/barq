@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function RobotVacuum(props: Incoming<IconProps>) {
+export function RobotVacuum(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M11 17h2" />
       <path d="M12 12h.01" />
       <path d="M17 12a5 5 0 00-10 0" />

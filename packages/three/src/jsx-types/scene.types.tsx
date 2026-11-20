@@ -84,8 +84,8 @@ export const flow = (
 
 function Box(props: { color: Accessor<string>; size?: Accessor<number> }) {
   return (
-    <mesh scale={props.size?.() ?? 1}>
-      <meshBasicMaterial color={props.color()} />
+    <mesh scale={props.size ?? 1}>
+      <meshBasicMaterial color={props.color} />
     </mesh>
   );
 }

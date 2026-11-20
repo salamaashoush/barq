@@ -1,5 +1,5 @@
 import { Dialog as AriaDialog, Heading, Modal, useDialogDescription } from "@barqjs/aria/dialog";
-import { Show, type Incoming } from "@barqjs/core";
+import { cells, Show, type Incoming } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
 import { X } from "@barqjs/lucide/icons/x";
 
@@ -197,11 +197,11 @@ export interface DialogProps extends OverlayRootProps {}
  * for the same reason — the element is gone the moment `isOpen` turns false —
  * which is the one visible difference from shadcn's.
  */
-export function Dialog(props: Incoming<DialogProps>) {
+export function Dialog(props: DialogProps) {
   return <family.Root {...props} />;
 }
 
-export function DialogTrigger(props: Incoming<TriggerPartProps>) {
+export function DialogTrigger(props: TriggerPartProps) {
   return <family.Trigger {...props} />;
 }
 
@@ -214,7 +214,7 @@ export interface DialogPortalProps extends OverlayPortalProps {}
  * other than the body: a shadow root, a fullscreen element. There is no
  * `forceMount`, because a closed dialog is not in the document at all.
  */
-export function DialogPortal(props: Incoming<DialogPortalProps>) {
+export function DialogPortal(props: DialogPortalProps) {
   return <OverlayPortal {...props} />;
 }
 
@@ -231,8 +231,8 @@ export function DialogPortal(props: Incoming<DialogPortalProps>) {
  * It renders nothing itself: the modal draws that element with its content, so
  * the two enter and leave together, and what this was given lands there.
  */
-export function DialogOverlay(props: Incoming<UiProps>) {
-  registerUnderlay(family.use(), uiProps("dialog-overlay", overlay, props));
+export function DialogOverlay(props: UiProps) {
+  registerUnderlay(family.use(), uiProps("dialog-overlay", overlay, cells(props)));
   return <></>;
 }
 
@@ -247,26 +247,26 @@ export interface DialogContentProps extends UiProps {
   role?: "dialog" | "alertdialog";
 }
 
-export function DialogContent(props: Incoming<DialogContentProps>) {
+export function DialogContent(props: DialogContentProps) {
   const { state, underlay } = family.use();
 
   return (
     <Modal
       isOpen={state.isOpen()}
       onOpenChange={state.setOpen}
-      isDismissable={props.isDismissable?.() !== false}
-      isKeyboardDismissDisabled={props.isKeyboardDismissDisabled?.() === true}
+      isDismissable={props.isDismissable !== false}
+      isKeyboardDismissDisabled={props.isKeyboardDismissDisabled === true}
       underlayClass={underlay() === null ? overlay : undefined}
       underlaySlot="dialog-overlay"
       underlayProps={underlay() ?? undefined}
-      {...handedOn(props)}
-      class={ui(content, props.class?.(), props.className?.())}
-      data-slot={props["data-slot"]?.() ?? "dialog-content"}
+      {...handedOn(cells(props))}
+      class={ui(content, props.class, props.className)}
+      data-slot={props["data-slot"] ?? "dialog-content"}
     >
-      <AriaDialog {...named(props)} role={props.role?.() ?? "dialog"} class={contents}>
+      <AriaDialog {...named(cells(props))} role={props.role ?? "dialog"} class={contents}>
         {props.children}
-        <Show when={props.showCloseButton?.() !== false}>
-          <CornerClose label={props.closeLabel?.() ?? "Close"} />
+        <Show when={props.showCloseButton !== false}>
+          <CornerClose label={props.closeLabel ?? "Close"} />
         </Show>
       </AriaDialog>
     </Modal>
@@ -282,8 +282,8 @@ const contents = ui({
   display: "contents",
 });
 
-export function DialogHeader(props: Incoming<UiProps>) {
-  return <div {...uiProps("dialog-header", header, props)}>{props.children}</div>;
+export function DialogHeader(props: UiProps) {
+  return <div {...uiProps("dialog-header", header, cells(props))}>{props.children}</div>;
 }
 
 export interface DialogFooterProps extends UiProps {
@@ -293,48 +293,48 @@ export interface DialogFooterProps extends UiProps {
   closeLabel?: string;
 }
 
-export function DialogFooter(props: Incoming<DialogFooterProps>) {
+export function DialogFooter(props: DialogFooterProps) {
   return (
-    <div {...uiProps("dialog-footer", footer, props)}>
+    <div {...uiProps("dialog-footer", footer, cells(props))}>
       {props.children}
-      <Show when={props.showCloseButton?.() === true}>
-        <DialogClose>{props.closeLabel?.() ?? "Close"}</DialogClose>
+      <Show when={props.showCloseButton === true}>
+        <DialogClose>{props.closeLabel ?? "Close"}</DialogClose>
       </Show>
     </div>
   );
 }
 
 /** The dialog's accessible name. Every dialog needs one. */
-export function DialogTitle(props: Incoming<UiProps>) {
+export function DialogTitle(props: UiProps) {
   return (
     <Heading
       {...props}
       slot="title"
-      data-slot={props["data-slot"]?.() ?? "dialog-title"}
-      class={ui(title, props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "dialog-title"}
+      class={ui(title, props.class, props.className)}
     />
   );
 }
 
-export function DialogDescription(props: Incoming<UiProps>) {
+export function DialogDescription(props: UiProps) {
   const described = useDialogDescription();
   // The dialog points at this element, and only because the hook was called:
   // a description nothing references is read by whoever goes looking for it
   // and by nobody else.
   return (
-    <p {...uiProps("dialog-description", description, props)} id={props.id?.() ?? described?.id()}>
+    <p {...uiProps("dialog-description", description, cells(props))} id={props.id ?? described?.id()}>
       {props.children}
     </p>
   );
 }
 
 /** The ✕ in the corner. Not `<DialogClose>`, which is a real button with padding and a border. */
-function CornerClose(props: Incoming<{ label: string }>) {
+function CornerClose(props: { label: string }) {
   const { state } = family.use();
   return (
     <button type="button" data-slot="dialog-close" class={close} onClick={() => state.close()}>
       <X />
-      <span class={srOnly}>{props.label()}</span>
+      <span class={srOnly}>{props.label}</span>
     </button>
   );
 }
@@ -349,15 +349,15 @@ export interface DialogCloseProps extends ButtonProps {}
  * it takes the same `variant` and `size` — nothing is cloned and nothing nests
  * a `<button>` inside a `<button>`.
  */
-export function DialogClose(props: Incoming<DialogCloseProps>) {
+export function DialogClose(props: DialogCloseProps) {
   const { state } = family.use();
   return (
     <Button
       {...props}
-      data-slot={props["data-slot"]?.() ?? "dialog-close"}
-      variant={props.variant?.() ?? "outline"}
+      data-slot={props["data-slot"] ?? "dialog-close"}
+      variant={props.variant ?? "outline"}
       onPress={(event) => {
-        props.onPress?.()?.(event);
+        props.onPress?.(event);
         state.close();
       }}
     />

@@ -30,9 +30,9 @@ export interface DirectionProviderProps {
  * reach, the arrow keys, the side a submenu opens on and the end a slider
  * starts from.
  */
-export function DirectionProvider(props: Incoming<DirectionProviderProps>) {
+export function DirectionProvider(props: DirectionProviderProps) {
   const inherited = useScopeDirection();
-  provideDirection(() => props.direction?.() ?? props.dir?.() ?? inherited());
+  provideDirection(() => props.direction ?? props.dir ?? inherited());
 
   return <>{props.children}</>;
 }

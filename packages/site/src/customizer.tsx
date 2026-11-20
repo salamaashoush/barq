@@ -172,13 +172,13 @@ function radiusIsFixed(style: string): boolean {
   return style === "lyra" || style === "sera";
 }
 
-export function Customizer(props: Incoming<{ design: Design }>) {
+export function Customizer(props: { design: Design }) {
   const [searching, setSearching] = createSignal(false);
   const [resetting, setResetting] = createSignal(false);
-  const now = (): Params => props.design().params();
-  const set = (next: Partial<Params>): void => props.design().set(next);
-  const preview = (next: Partial<Params>): void => props.design().preview(next);
-  const clear = (): void => props.design().clearPreview();
+  const now = (): Params => props.design.params();
+  const set = (next: Partial<Params>): void => props.design.set(next);
+  const preview = (next: Partial<Params>): void => props.design.preview(next);
+  const clear = (): void => props.design.clearPreview();
 
   const shuffle = (): void => {
     set({
@@ -211,7 +211,7 @@ export function Customizer(props: Incoming<{ design: Design }>) {
     <Card size="sm" class={ui(card, "dark")} data-slot="customizer">
       <CardHeader bordered class={head}>
         <MainMenu
-          design={props.design()}
+          design={props.design}
           onShuffle={shuffle}
           onToggleDark={toggleDark}
           onToggleRtl={toggleRtl}
@@ -319,8 +319,8 @@ export function Customizer(props: Incoming<{ design: Design }>) {
           are NOT buttons here: both are in the menu, and both render only their
           dialog — a footer of six is a different page. */}
       <CardFooter class={foot}>
-        <CopyPreset design={props.design()} />
-        <OpenPreset design={props.design()} class={growingFooterButton} />
+        <CopyPreset design={props.design} />
+        <OpenPreset design={props.design} class={growingFooterButton} />
         <Button
           variant="outline"
           class={ui(footerButton, narrowFooterButton)}
@@ -330,19 +330,19 @@ export function Customizer(props: Incoming<{ design: Design }>) {
           <span class={truncated}>Shuffle</span>
         </Button>
         <ActionMenu
-          design={props.design()}
+          design={props.design}
           isOpen={searching()}
           onOpenChange={(next: boolean) => setSearching(next)}
         />
         <ResetDialog
-          design={props.design()}
+          design={props.design}
           isOpen={resetting()}
           onOpenChange={(next: boolean) => setResetting(next)}
         />
       </CardFooter>
 
       <CardFooter class={footCode}>
-        <ProjectForm design={props.design()} />
+        <ProjectForm design={props.design} />
       </CardFooter>
     </Card>
   );
@@ -355,11 +355,11 @@ export function Customizer(props: Incoming<{ design: Design }>) {
  * decode. There is no server here, so the honest equivalent is the command
  * itself: it is longer, and it is the thing you were going to run anyway.
  */
-function CopyPreset(props: Incoming<{ design: Design }>) {
+function CopyPreset(props: { design: Design }) {
   const [took, setTook] = createSignal(false);
 
   const copy = (): void => {
-    void navigator.clipboard.writeText(commandFor(props.design().params()));
+    void navigator.clipboard.writeText(commandFor(props.design.params()));
     setTook(true);
     setTimeout(() => setTook(false), 2000);
   };
@@ -370,9 +370,9 @@ function CopyPreset(props: Incoming<{ design: Design }>) {
       class={ui(footerButton, growingFooterButton)}
       onPress={copy}
       data-slot="copy-preset"
-      title={commandFor(props.design().params())}
+      title={commandFor(props.design.params())}
     >
-      <span class={truncated}>{took() ? "Copied" : commandFor(props.design().params())}</span>
+      <span class={truncated}>{took() ? "Copied" : commandFor(props.design.params())}</span>
     </Button>
   );
 }

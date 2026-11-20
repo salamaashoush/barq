@@ -7,6 +7,7 @@ import {
   type ScrollbarType,
 } from "@barqjs/aria/scroller";
 import {
+  cells,
   createContext,
   createSignal,
   createUniqueId,
@@ -214,7 +215,7 @@ export interface ScrollAreaProps extends UiProps {
  * drawn scrollbar: rendering a `<ScrollBar>` hides the native bars and draws
  * that one over the content instead, on the axis it names.
  */
-export function ScrollArea(props: Incoming<ScrollAreaProps>) {
+export function ScrollArea(props: ScrollAreaProps) {
   const node = makeRef<HTMLDivElement>();
   const root = makeRef<HTMLDivElement>();
   const scoped = useDirection();
@@ -228,10 +229,10 @@ export function ScrollArea(props: Incoming<ScrollAreaProps>) {
   const value: ScrollAreaValue = {
     viewport: node,
     viewportId: createUniqueId(),
-    type: () => props.type?.(),
-    hideDelay: () => props.scrollHideDelay?.(),
+    type: () => props.type,
+    hideDelay: () => props.scrollHideDelay,
     direction: () => {
-      const own = props.dir?.();
+      const own = props.dir;
       return own === "ltr" || own === "rtl" ? own : scoped();
     },
     register(orientation, engine) {
@@ -248,17 +249,17 @@ export function ScrollArea(props: Incoming<ScrollAreaProps>) {
   // with Tab is a WCAG failure, and the platform only makes one focusable on
   // its own in Firefox. The stop is on whichever element scrolls: Tab landing
   // on a box that only clips is a stop that does nothing.
-  const stop = (): number => props.tabIndex?.() ?? 0;
+  const stop = (): number => props.tabIndex ?? 0;
   const rootFocus: DOMProps = { tabIndex: () => (custom() ? undefined : stop()) };
   const viewportFocus: DOMProps = { tabIndex: () => (custom() ? stop() : undefined) };
 
   return (
     <div
-      {...mergeProps(uiProps("scroll-area", box, props), rootFocus)}
-      ref={mergeRefs(root.set, props.ref?.())}
-      data-orientation={props.orientation?.() ?? "both"}
+      {...mergeProps(uiProps("scroll-area", box, cells(props)), rootFocus)}
+      ref={mergeRefs(root.set, props.ref)}
+      data-orientation={props.orientation ?? "both"}
       data-scrollbars={() => (custom() ? "custom" : undefined)}
-      role={props.role?.() ?? "region"}
+      role={props.role ?? "region"}
       onPointerEnter={() => {
         for (const entry of bars()) entry.engine.hoverStart();
       }}
@@ -282,10 +283,10 @@ export function ScrollArea(props: Incoming<ScrollAreaProps>) {
 }
 
 /** The context, in a component of its own because `provide` needs the scope. */
-function ScrollAreaProvider(props: Incoming<{ value: ScrollAreaValue; children?: Child }>) {
+function ScrollAreaProvider(props: { value: ScrollAreaValue; children?: Child }) {
   return provide(
     ScrollAreaContext,
-    () => props.value(),
+    () => props.value,
     () => props.children,
   );
 }
@@ -303,13 +304,13 @@ export interface ScrollBarProps extends UiProps {
  * far through the content it is, and a pointer can drag the thumb or press the
  * track.
  */
-export function ScrollBar(props: Incoming<ScrollBarProps>) {
+export function ScrollBar(props: ScrollBarProps) {
   const area = getContext(ScrollAreaContext);
   if (area === null || area === undefined) {
     throw new Error("This must be rendered inside a <ScrollArea>.");
   }
   const track = makeRef<HTMLDivElement>();
-  const orientation = (): ScrollbarOrientation => props.orientation?.() ?? "vertical";
+  const orientation = (): ScrollbarOrientation => props.orientation ?? "vertical";
   const engine = scrollbar({
     orientation,
     direction: area.direction,
@@ -332,9 +333,9 @@ export function ScrollBar(props: Incoming<ScrollBarProps>) {
       {...uiProps(
         "scroll-area-scrollbar",
         () => ui(bar, orientation() === "vertical" ? barVertical : barHorizontal),
-        props,
+        cells(props),
       )}
-      ref={mergeRefs(track.set, props.ref?.())}
+      ref={mergeRefs(track.set, props.ref)}
       role="scrollbar"
       aria-controls={area.viewportId}
       aria-orientation={orientation()}

@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function CircleSlash(props: Incoming<IconProps>) {
+export function CircleSlash(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <circle cx="12" cy="12" r="10" />
       <line x1="9" x2="15" y1="15" y2="9" />
     </svg>

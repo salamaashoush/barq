@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function IceCreamCone(props: Incoming<IconProps>) {
+export function IceCreamCone(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="m7 11 4.08 10.35a1 1 0 0 0 1.84 0L17 11" />
       <path d="M17 7A5 5 0 0 0 7 7" />
       <path d="M17 7a2 2 0 0 1 0 4H7a2 2 0 0 1 0-4" />

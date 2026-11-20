@@ -7,8 +7,8 @@ import { Hydration, NoHydration } from "@barqjs/core";
 import { clientOnly } from "../index.ts";
 import type { Incoming } from "@barqjs/core";
 
-function Chart(props: Incoming<{ name: string; points?: number[] }>) {
-  return <canvas data-name={props.name()} />;
+function Chart(props: { name: string; points?: number[] }) {
+  return <canvas data-name={props.name} />;
 }
 
 const ChartOnly = clientOnly(() => Promise.resolve({ default: Chart }));

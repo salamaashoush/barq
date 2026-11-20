@@ -151,21 +151,21 @@ describe("ScrollArea", () => {
 
 describe("ScrollBar", () => {
   function Area(
-    props: Incoming<{
+    props: {
       type?: "auto" | "always" | "scroll" | "hover";
       horizontal?: boolean;
       scrollHideDelay?: number;
-    }>,
+    },
   ) {
     return (
       <ScrollArea
         aria-label="Log"
-        type={props.type?.()}
-        scrollHideDelay={props.scrollHideDelay?.()}
+        type={props.type}
+        scrollHideDelay={props.scrollHideDelay}
       >
         <p>lots of text</p>
         <ScrollBar />
-        <Show when={props.horizontal?.() === true}>
+        <Show when={props.horizontal === true}>
           <ScrollBar orientation="horizontal" />
         </Show>
       </ScrollArea>

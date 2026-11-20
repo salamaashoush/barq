@@ -11,12 +11,12 @@ import {
 } from "./disclosure.tsx";
 
 function Details(
-  props: Incoming<{ defaultExpanded?: boolean; onExpandedChange?: (open: boolean) => void }>,
+  props: { defaultExpanded?: boolean; onExpandedChange?: (open: boolean) => void },
 ) {
   return (
     <Disclosure
-      defaultExpanded={props.defaultExpanded?.()}
-      onExpandedChange={props.onExpandedChange?.()}
+      defaultExpanded={props.defaultExpanded}
+      onExpandedChange={props.onExpandedChange}
     >
       <DisclosureButton>Details</DisclosureButton>
       <DisclosurePanel>Everything else</DisclosurePanel>
@@ -118,18 +118,18 @@ const SECTIONS: Section[] = [
 ];
 
 function Accordion(
-  props: Incoming<{
+  props: {
     allowsMultiple?: boolean;
     defaultExpandedKeys?: Iterable<Key>;
     onExpandedChange?: (keys: Set<Key>) => void;
-  }>,
+  },
 ) {
   return (
     <DisclosureGroup
       items={SECTIONS}
-      allowsMultiple={props.allowsMultiple?.()}
-      defaultExpandedKeys={props.defaultExpandedKeys?.()}
-      onExpandedChange={props.onExpandedChange?.()}
+      allowsMultiple={props.allowsMultiple}
+      defaultExpandedKeys={props.defaultExpandedKeys}
+      onExpandedChange={props.onExpandedChange}
     >
       {(section: Section) => (
         <DisclosureGroupItem>
@@ -291,26 +291,26 @@ describe("a panel the stylesheet animates shut", () => {
 
 describe("DisclosureGroup, written out rather than taken from items", () => {
   function Written(
-    props: Incoming<{
+    props: {
       isCollapsible?: boolean;
       orientation?: "vertical" | "horizontal";
       dir?: "ltr" | "rtl";
       defaultExpandedKeys?: Iterable<Key>;
       disabledSecond?: boolean;
-    }>,
+    },
   ) {
     return (
       <DisclosureGroup
-        isCollapsible={props.isCollapsible?.()}
-        orientation={props.orientation?.()}
-        dir={props.dir?.()}
-        defaultExpandedKeys={props.defaultExpandedKeys?.()}
+        isCollapsible={props.isCollapsible}
+        orientation={props.orientation}
+        dir={props.dir}
+        defaultExpandedKeys={props.defaultExpandedKeys}
       >
         <DisclosureGroupItem id="one">
           <DisclosureButton>One</DisclosureButton>
           <DisclosurePanel>First</DisclosurePanel>
         </DisclosureGroupItem>
-        <DisclosureGroupItem id="two" isDisabled={props.disabledSecond?.()}>
+        <DisclosureGroupItem id="two" isDisabled={props.disabledSecond}>
           <DisclosureButton>Two</DisclosureButton>
           <DisclosurePanel>Second</DisclosurePanel>
         </DisclosureGroupItem>

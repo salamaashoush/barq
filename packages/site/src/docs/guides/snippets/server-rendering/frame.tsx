@@ -25,10 +25,10 @@ export const getStory = createServerFn({ method: "GET" })
   });
 
 // The page's own component for each comment: its state survives an update.
-function Comment(props: Incoming<{ cid: number; children: Child }>) {
+function Comment(props: { cid: number; children: Child }) {
   const [open, setOpen] = createSignal(true);
   return (
-    <section data-cid={props.cid()}>
+    <section data-cid={props.cid}>
       <button type="button" onClick={() => setOpen((was) => !was)}>
         {() => (open() ? "collapse" : "expand")}
       </button>
@@ -38,7 +38,7 @@ function Comment(props: Incoming<{ cid: number; children: Child }>) {
 }
 
 export default function StoryPage(props: { story: () => unknown }) {
-  const Story = dynamic(() => props.story() as (props: Record<string, unknown>) => Node);
+  const Story = dynamic(() => props.story as (props: Record<string, unknown>) => Node);
   return (
     <Story
       comment={(slot: Incoming<{ cid: number; children: Child }>) => (

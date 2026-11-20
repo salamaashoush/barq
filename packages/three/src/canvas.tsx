@@ -11,6 +11,7 @@
  */
 
 import {
+  cells,
   createRenderEffect,
   getOwner,
   onCleanup,
@@ -72,13 +73,13 @@ function sourceOf(source: CanvasProps["eventSource"]): HTMLElement | null {
   return source;
 }
 
-export function Canvas(props: Incoming<CanvasProps>): JSXElement {
+export function Canvas(props: CanvasProps): JSXElement {
   const owner = getOwner();
 
   const read = (): RootConfig => {
     const config: Record<string, unknown> = {};
     for (const key of CONFIG_KEYS) {
-      const cell = props[key] as (() => unknown) | undefined;
+      const cell = cells(props)[key] as (() => unknown) | undefined;
       if (cell !== undefined) config[key] = cell();
     }
     return config;
@@ -88,9 +89,9 @@ export function Canvas(props: Incoming<CanvasProps>): JSXElement {
     const wrapper = canvas.parentElement!.parentElement!;
     const root = createRoot(canvas);
     const created = (state: RootState): void => {
-      const source = sourceOf(untrack(() => props.eventSource?.())) ?? wrapper;
+      const source = sourceOf(untrack(() => props.eventSource)) ?? wrapper;
       state.events.connect?.(source);
-      untrack(() => props.onCreated?.())?.(state);
+      untrack(() => props.onCreated)?.(state);
     };
     const configure = (config: RootConfig): void => {
       root.configure({ ...config, onCreated: created });
@@ -135,8 +136,8 @@ export function Canvas(props: Incoming<CanvasProps>): JSXElement {
   };
 
   const style = (): CanvasStyle => {
-    const events = props.eventSource?.() === undefined ? "auto" : "none";
-    const own = props.style?.();
+    const events = props.eventSource === undefined ? "auto" : "none";
+    const own = props.style;
     if (typeof own === "string") {
       return `position:relative;width:100%;height:100%;overflow:hidden;pointer-events:${events};${own}`;
     }
@@ -151,7 +152,7 @@ export function Canvas(props: Incoming<CanvasProps>): JSXElement {
   };
 
   return (
-    <div id={props.id?.()} class={props.class?.()} style={style()}>
+    <div id={props.id} class={props.class} style={style()}>
       <div style={{ width: "100%", height: "100%" }}>
         <canvas ref={mount} style={{ display: "block" }} />
       </div>

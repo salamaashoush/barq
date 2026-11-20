@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function MicSignal(props: Incoming<IconProps>) {
+export function MicSignal(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M12 17v4" />
       <path d="M18 11a6 6 0 00-3-5.197" />
       <path d="M2 11a10 10 0 015-8.662" />

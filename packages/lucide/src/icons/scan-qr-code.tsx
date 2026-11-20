@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function ScanQrCode(props: Incoming<IconProps>) {
+export function ScanQrCode(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M17 12v4a1 1 0 0 1-1 1h-4" />
       <path d="M17 3h2a2 2 0 0 1 2 2v2" />
       <path d="M17 8V7" />

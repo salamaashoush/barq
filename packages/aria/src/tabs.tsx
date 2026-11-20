@@ -21,6 +21,7 @@
  */
 
 import {
+  cells,
   type Accessor,
   type Child,
   createEffect,
@@ -506,14 +507,14 @@ export interface TabsComponentProps<T> extends StyleProps, ItemAccessors<T> {
  * page, so the element is the same element throughout and its id and its
  * labelling follow the selection.
  */
-export function Tabs<T>(props: Incoming<TabsComponentProps<T>>) {
-  const options = fromProps(props as unknown as Incoming<Record<string, unknown>>);
+export function Tabs<T>(props: TabsComponentProps<T>) {
+  const options = fromProps(cells(props) as unknown as Incoming<Record<string, unknown>>);
   const state = tabListState<T>({
     ...(options as TabListStateOptions<T>),
-    onSelectionChange: (key) => props.onSelectionChange?.()?.(key),
+    onSelectionChange: (key) => props.onSelectionChange?.(key),
   });
 
-  declareDirection(props.dir);
+  declareDirection(cells(props).dir);
 
   const baseId = id();
   const owner = getOwner();
@@ -521,18 +522,18 @@ export function Tabs<T>(props: Incoming<TabsComponentProps<T>>) {
     const value: TabsContextValue = {
       state: state,
       baseId,
-      orientation: () => props.orientation?.() ?? "horizontal",
-      keyboardActivation: () => props.keyboardActivation?.() ?? "automatic",
+      orientation: () => props.orientation ?? "horizontal",
+      keyboardActivation: () => props.keyboardActivation ?? "automatic",
     };
     install(owner, TabsContext, () => value);
   }
 
   const elementProps = mergeProps(
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
-      "data-orientation": () => props.orientation?.() ?? "horizontal",
-      "data-testid": () => props["data-testid"]?.(),
+      "data-orientation": () => props.orientation ?? "horizontal",
+      "data-testid": () => props["data-testid"],
     },
   );
 
@@ -547,7 +548,7 @@ export interface TabListComponentProps<T> extends StyleProps {
   ref?: RefTarget<HTMLDivElement>;
 }
 
-export function TabList<T>(props: Incoming<TabListComponentProps<T>>) {
+export function TabList<T>(props: TabListComponentProps<T>) {
   const domRef = makeRef<HTMLDivElement>();
   const tabs = useTabs();
 
@@ -556,26 +557,26 @@ export function TabList<T>(props: Incoming<TabListComponentProps<T>>) {
       ref: domRef,
       orientation: tabs.orientation,
       keyboardActivation: tabs.keyboardActivation,
-      "aria-label": () => props["aria-label"]?.(),
-      "aria-labelledby": () => props["aria-labelledby"]?.(),
+      "aria-label": () => props["aria-label"],
+      "aria-labelledby": () => props["aria-labelledby"],
     },
     tabs.state,
   );
 
   const elementProps = mergeProps(
     tabListProps,
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
       "data-orientation": tabs.orientation,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
   const render = props.children;
 
   return (
-    <div {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
+    <div {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
       <For each={() => [...tabs.state.collection()]}>
         {(node: Node<unknown>) => {
           const rowOwner = getOwner();
@@ -597,7 +598,7 @@ export interface TabComponentProps extends StyleProps {
  * One tab. Its key and disabled state come from the collection node the
  * enclosing {@link TabList} is rendering.
  */
-export function Tab(props: Incoming<TabComponentProps>) {
+export function Tab(props: TabComponentProps) {
   const domRef = makeRef<HTMLButtonElement>();
   const tabs = useTabs();
   const node = useTabNode();
@@ -607,7 +608,7 @@ export function Tab(props: Incoming<TabComponentProps>) {
       key: node.key,
       ref: domRef,
       baseId: tabs.baseId,
-      "aria-label": () => props["aria-label"]?.(),
+      "aria-label": () => props["aria-label"],
       isDisabled: () => node.props?.isDisabled === true,
     },
     tabs.state,
@@ -620,8 +621,8 @@ export function Tab(props: Incoming<TabComponentProps>) {
     tabProps,
     hoverProps,
     focusProps,
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
       type: "button",
       "data-selected": isSelected,
@@ -632,12 +633,12 @@ export function Tab(props: Incoming<TabComponentProps>) {
       "data-disabled": isDisabled,
       "data-state": () => (isSelected() ? "active" : "inactive"),
       "data-orientation": tabs.orientation,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
   return (
-    <button {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
+    <button {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
       {props.children}
     </button>
   );
@@ -650,7 +651,7 @@ export interface TabPanelComponentProps<T> extends StyleProps {
   ref?: RefTarget<HTMLDivElement>;
 }
 
-export function TabPanel<T>(props: Incoming<TabPanelComponentProps<T>>) {
+export function TabPanel<T>(props: TabPanelComponentProps<T>) {
   const domRef = makeRef<HTMLDivElement>();
   const tabs = useTabs();
 
@@ -658,19 +659,19 @@ export function TabPanel<T>(props: Incoming<TabPanelComponentProps<T>>) {
     {
       ref: domRef,
       baseId: tabs.baseId,
-      "aria-label": () => props["aria-label"]?.(),
+      "aria-label": () => props["aria-label"],
     },
     tabs.state,
   );
 
   const elementProps = mergeProps(
     tabPanelProps,
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
       "data-state": "active",
       "data-orientation": tabs.orientation,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
@@ -681,7 +682,7 @@ export function TabPanel<T>(props: Incoming<TabPanelComponentProps<T>>) {
   const renderPanel = props.children as unknown as (item: T | undefined) => Child;
 
   return (
-    <div {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
+    <div {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
       <Show when={tabs.state.selectedKey()} keyed>
         {() => {
           // The keyed `Show` supplies the selected KEY, and the panel wants the
@@ -783,12 +784,12 @@ export interface ValueTabsComponentProps extends StyleProps {
  * - **A disabled tab stays focusable by pointer and is skipped by the arrows**,
  *   as in {@link Tabs}, so it can still be announced as disabled.
  */
-export function ValueTabs(props: Incoming<ValueTabsComponentProps>) {
+export function ValueTabs(props: ValueTabsComponentProps) {
   const [chosen, setChosen] = controllable<string | null>(
-    () => props.value?.(),
-    () => props.defaultValue?.() ?? null,
+    () => props.value,
+    () => props.defaultValue ?? null,
     (next) => {
-      if (next !== null) props.onValueChange?.()?.(next);
+      if (next !== null) props.onValueChange?.(next);
     },
   );
 
@@ -799,9 +800,9 @@ export function ValueTabs(props: Incoming<ValueTabsComponentProps>) {
   const [adopted, setAdopted] = createSignal<string | null>(null, { ownedWrite: true });
 
   const value = (): string | null => chosen() ?? adopted();
-  const orientation = (): Orientation => props.orientation?.() ?? "horizontal";
+  const orientation = (): Orientation => props.orientation ?? "horizontal";
 
-  declareDirection(props.dir);
+  declareDirection(cells(props).dir);
 
   const owner = getOwner();
   if (owner !== null) {
@@ -817,18 +818,18 @@ export function ValueTabs(props: Incoming<ValueTabsComponentProps>) {
       },
       baseId: id(),
       orientation,
-      activationMode: () => props.activationMode?.() ?? "automatic",
-      isDisabled: () => props.isDisabled?.() === true,
+      activationMode: () => props.activationMode ?? "automatic",
+      isDisabled: () => props.isDisabled === true,
     };
     install(owner, ValueTabsContext, () => context);
   }
 
   const elementProps = mergeProps(
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
       "data-orientation": orientation,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
@@ -844,7 +845,7 @@ export interface ValueTabListComponentProps extends StyleProps {
   ref?: RefTarget<HTMLDivElement>;
 }
 
-export function ValueTabList(props: Incoming<ValueTabListComponentProps>) {
+export function ValueTabList(props: ValueTabListComponentProps) {
   const tabs = requireValueTabs();
   const direction = useDirection();
 
@@ -871,7 +872,7 @@ export function ValueTabList(props: Incoming<ValueTabListComponentProps>) {
     const step = (by: 1 | -1): HTMLElement | undefined => {
       const next = at + by;
       if (next >= 0 && next < stops.length) return stops[next];
-      if (props.loop?.() === false) return undefined;
+      if (props.loop === false) return undefined;
       return by === 1 ? stops[0] : stops[stops.length - 1];
     };
 
@@ -892,19 +893,19 @@ export function ValueTabList(props: Incoming<ValueTabListComponentProps>) {
   };
 
   const elementProps = mergeProps(
-    filterDOMProps(fromProps(props), { global: true, labelable: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true, labelable: true }),
+    styleProps(cells(props)),
     {
       role: "tablist",
       "aria-orientation": tabs.orientation,
       "data-orientation": tabs.orientation,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
       onKeyDown,
     },
   );
 
   return (
-    <div {...elementProps} ref={mergeRefs(props.ref?.())}>
+    <div {...elementProps} ref={mergeRefs(props.ref)}>
       {props.children}
     </div>
   );
@@ -918,36 +919,36 @@ export interface ValueTabComponentProps extends StyleProps {
   ref?: RefTarget<HTMLButtonElement>;
 }
 
-export function ValueTab(props: Incoming<ValueTabComponentProps>) {
+export function ValueTab(props: ValueTabComponentProps) {
   const tabs = requireValueTabs();
 
-  const isSelected = (): boolean => tabs.value() === props.value();
-  const isDisabled = (): boolean => tabs.isDisabled() || props.isDisabled?.() === true;
+  const isSelected = (): boolean => tabs.value() === props.value;
+  const isDisabled = (): boolean => tabs.isDisabled() || props.isDisabled === true;
 
-  if (!untrack(isDisabled)) tabs.adopt(untrack(() => props.value()));
+  if (!untrack(isDisabled)) tabs.adopt(untrack(() => props.value));
 
   const { hoverProps, isHovered } = hover({ isDisabled });
   const { focusProps, isFocused, isFocusVisible } = focusRing();
 
   const select = (): void => {
-    if (!isDisabled()) tabs.select(props.value());
+    if (!isDisabled()) tabs.select(props.value);
   };
 
   const elementProps = mergeProps(
     hoverProps,
     focusProps,
-    filterDOMProps(fromProps(props), { global: true, labelable: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true, labelable: true }),
+    styleProps(cells(props)),
     {
       type: "button",
       role: "tab",
-      id: () => valuePartId(tabs.baseId(), props.value(), "tab"),
+      id: () => valuePartId(tabs.baseId(), props.value, "tab"),
       "aria-selected": isSelected,
       "aria-disabled": () => isDisabled() || undefined,
       // Only the SELECTED tab controls a panel: the others control nothing
       // that is on the page.
       "aria-controls": () =>
-        isSelected() ? valuePartId(tabs.baseId(), props.value(), "tabpanel") : undefined,
+        isSelected() ? valuePartId(tabs.baseId(), props.value, "tabpanel") : undefined,
       tabIndex: () => (isSelected() ? 0 : -1),
       "data-selected": isSelected,
       "data-focused": isFocused,
@@ -956,7 +957,7 @@ export function ValueTab(props: Incoming<ValueTabComponentProps>) {
       "data-disabled": isDisabled,
       "data-state": () => (isSelected() ? "active" : "inactive"),
       "data-orientation": tabs.orientation,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
       onClick: select,
       onKeyDown: (event: KeyboardEvent) => {
         if (event.key === "Enter" || event.key === " ") select();
@@ -968,7 +969,7 @@ export function ValueTab(props: Incoming<ValueTabComponentProps>) {
   );
 
   return (
-    <button {...elementProps} ref={mergeRefs(props.ref?.())}>
+    <button {...elementProps} ref={mergeRefs(props.ref)}>
       {props.children}
     </button>
   );
@@ -983,34 +984,34 @@ export interface ValueTabPanelComponentProps extends StyleProps {
   ref?: RefTarget<HTMLDivElement>;
 }
 
-export function ValueTabPanel(props: Incoming<ValueTabPanelComponentProps>) {
+export function ValueTabPanel(props: ValueTabPanelComponentProps) {
   const domRef = makeRef<HTMLDivElement>();
   const tabs = requireValueTabs();
 
-  const isSelected = (): boolean => tabs.value() === props.value();
-  const focusable = hasTabbableChild(domRef, () => (isSelected() ? props.value() : null));
+  const isSelected = (): boolean => tabs.value() === props.value;
+  const focusable = hasTabbableChild(domRef, () => (isSelected() ? props.value : null));
 
   const elementProps = mergeProps(
-    filterDOMProps(fromProps(props), { global: true, labelable: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true, labelable: true }),
+    styleProps(cells(props)),
     {
       role: "tabpanel",
-      id: () => valuePartId(tabs.baseId(), props.value(), "tabpanel"),
+      id: () => valuePartId(tabs.baseId(), props.value, "tabpanel"),
       "aria-labelledby": () =>
-        props["aria-label"]?.() === undefined
-          ? valuePartId(tabs.baseId(), props.value(), "tab")
+        props["aria-label"] === undefined
+          ? valuePartId(tabs.baseId(), props.value, "tab")
           : undefined,
       tabIndex: () => (focusable() ? undefined : 0),
       hidden: () => !isSelected(),
       "data-state": () => (isSelected() ? "active" : "inactive"),
       "data-orientation": tabs.orientation,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
   return (
-    <Show when={isSelected() || props.forceMount?.() === true}>
-      <div {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
+    <Show when={isSelected() || props.forceMount === true}>
+      <div {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
         {props.children}
       </div>
     </Show>

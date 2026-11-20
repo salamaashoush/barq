@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function GraphRing(props: Incoming<IconProps>) {
+export function GraphRing(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M17.006 19.241a8 8 0 0 1-10.011 0" />
       <path d="M19.919 14.143a8 8 0 0 0-4.971-8.583" />
       <path d="M4.081 14.143A8 8 0 0 1 9.052 5.56" />

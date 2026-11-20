@@ -8,7 +8,7 @@
  * looking at rather than treating every activation the same.
  */
 
-import { type Accessor, type Child, type Incoming } from "@barqjs/core";
+import { cells, type Accessor, type Child, type Incoming } from "@barqjs/core";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { focusRing } from "./focus.ts";
 import { focusable, type FocusableOptions } from "./interactions/focusable.ts";
@@ -247,9 +247,9 @@ export interface LinkComponentProps extends StyleProps {
  * <Link href="/about">About</Link>
  * ```
  */
-export function Link(props: Incoming<LinkComponentProps>) {
+export function Link(props: LinkComponentProps) {
   const domRef = makeRef<HTMLAnchorElement>();
-  const options = fromProps(props);
+  const options = fromProps(cells(props));
 
   const { linkProps, isPressed } = link(options, domRef);
   const { hoverProps, isHovered } = hover({ isDisabled: options.isDisabled });
@@ -258,17 +258,17 @@ export function Link(props: Incoming<LinkComponentProps>) {
   // caller's handler runs twice for every mouse click.
   const { onClick: _, ...forwarded } = filterDOMProps(options, { global: true });
 
-  const elementProps = mergeProps(linkProps, hoverProps, focusProps, forwarded, styleProps(props), {
+  const elementProps = mergeProps(linkProps, hoverProps, focusProps, forwarded, styleProps(cells(props)), {
     "data-pressed": isPressed,
     "data-hovered": isHovered,
     "data-focused": isFocused,
     "data-focus-visible": isFocusVisible,
-    "data-disabled": () => props.isDisabled?.() === true,
-    "data-testid": () => props["data-testid"]?.(),
+    "data-disabled": () => props.isDisabled === true,
+    "data-testid": () => props["data-testid"],
   });
 
   return (
-    <a {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
+    <a {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
       {props.children}
     </a>
   );
@@ -284,22 +284,22 @@ export interface SeparatorComponentProps extends StyleProps {
   "aria-label"?: string;
 }
 
-export function Separator(props: Incoming<SeparatorComponentProps>) {
-  const options = fromProps(props);
+export function Separator(props: SeparatorComponentProps) {
+  const options = fromProps(cells(props));
   const { separatorProps } = separator({ ...(options as SeparatorOptions), elementType: "hr" });
 
   const elementProps = mergeProps(
     separatorProps,
     filterDOMProps(options, { global: true }),
-    styleProps(props),
+    styleProps(cells(props)),
     {
-      role: () => (props.decorative?.() === true ? "none" : undefined),
-      "data-orientation": () => props.orientation?.() ?? "horizontal",
+      role: () => (props.decorative === true ? "none" : undefined),
+      "data-orientation": () => props.orientation ?? "horizontal",
       "aria-orientation": () =>
-        props.orientation?.() === "vertical" && props.decorative?.() !== true
+        props.orientation === "vertical" && props.decorative !== true
           ? "vertical"
           : undefined,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
@@ -327,8 +327,8 @@ export interface ProgressBarComponentProps extends StyleProps {
  * The bar itself is the caller's: `data-percentage` carries the fraction so a
  * stylesheet can size a child without a `style` attribute.
  */
-export function ProgressBar(props: Incoming<ProgressBarComponentProps>) {
-  const options = fromProps(props);
+export function ProgressBar(props: ProgressBarComponentProps) {
+  const options = fromProps(cells(props));
   const { progressBarProps, labelProps, percentage, valueText } = progressBar(
     options as ProgressBarOptions,
   );
@@ -336,11 +336,11 @@ export function ProgressBar(props: Incoming<ProgressBarComponentProps>) {
   const elementProps = mergeProps(
     progressBarProps,
     filterDOMProps(options, { global: true }),
-    styleProps(props),
+    styleProps(cells(props)),
     {
-      "data-indeterminate": () => props.isIndeterminate?.() === true,
-      "data-percentage": () => (props.isIndeterminate?.() === true ? undefined : percentage()),
-      "data-testid": () => props["data-testid"]?.(),
+      "data-indeterminate": () => props.isIndeterminate === true,
+      "data-percentage": () => (props.isIndeterminate === true ? undefined : percentage()),
+      "data-testid": () => props["data-testid"],
     },
   );
 
@@ -355,8 +355,8 @@ export function ProgressBar(props: Incoming<ProgressBarComponentProps>) {
 
 export interface MeterComponentProps extends Omit<ProgressBarComponentProps, "isIndeterminate"> {}
 
-export function Meter(props: Incoming<MeterComponentProps>) {
-  const options = fromProps(props);
+export function Meter(props: MeterComponentProps) {
+  const options = fromProps(cells(props));
   const { progressBarProps, labelProps, percentage, valueText } = meter(
     options as ProgressBarOptions,
   );
@@ -364,10 +364,10 @@ export function Meter(props: Incoming<MeterComponentProps>) {
   const elementProps = mergeProps(
     progressBarProps,
     filterDOMProps(options, { global: true }),
-    styleProps(props),
+    styleProps(cells(props)),
     {
       "data-percentage": percentage,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 

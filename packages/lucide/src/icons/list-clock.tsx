@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function ListClock(props: Incoming<IconProps>) {
+export function ListClock(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M16 13v2.2l1.6 1" />
       <path d="M3 12h3.458" />
       <path d="M3 19h3.832" />

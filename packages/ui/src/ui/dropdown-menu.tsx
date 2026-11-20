@@ -1,3 +1,4 @@
+import { cells } from "@barqjs/core";
 import { PortalProvider } from "@barqjs/aria/dialog";
 import {
   Menu,
@@ -453,8 +454,8 @@ export interface DropdownMenuProps extends MenuTriggerComponentProps {
  * safe-triangle pointer tracking all come from `@barqjs/aria` and are not
  * reimplemented here.
  */
-export function DropdownMenu(props: Incoming<DropdownMenuProps>) {
-  return <MenuTrigger {...props} isOpen={props.isOpen?.() ?? props.open?.()} />;
+export function DropdownMenu(props: DropdownMenuProps) {
+  return <MenuTrigger {...props} isOpen={props.isOpen ?? props.open} />;
 }
 
 export interface DropdownMenuPortalProps {
@@ -467,10 +468,10 @@ export interface DropdownMenuPortalProps {
  * The menu is portalled already, so this is only for naming somewhere other
  * than the body to portal it to.
  */
-export function DropdownMenuPortal(props: Incoming<DropdownMenuPortalProps>) {
+export function DropdownMenuPortal(props: DropdownMenuPortalProps) {
   if (props.container === undefined) return <>{props.children}</>;
   return (
-    <PortalProvider getContainer={() => props.container?.() ?? null}>
+    <PortalProvider getContainer={() => props.container ?? null}>
       {props.children}
     </PortalProvider>
   );
@@ -487,14 +488,14 @@ export interface DropdownMenuTriggerProps extends TriggerPartProps {}
  * reach it without an element in between. Any other element takes them through
  * `render`, and a component of your own through `useTrigger()`.
  */
-export function DropdownMenuTrigger(props: Incoming<DropdownMenuTriggerProps>) {
+export function DropdownMenuTrigger(props: DropdownMenuTriggerProps) {
   const trigger = useMenuTrigger();
   if (trigger === null) throw new Error("A DropdownMenuTrigger must be inside a DropdownMenu.");
 
   return (
     <TriggerPart
       slot={{ props: trigger.menuTriggerProps, ref: trigger.triggerRef.set }}
-      render={props.render?.()}
+      render={props.render}
       name="dropdown-menu-trigger"
     >
       {props.children}
@@ -530,16 +531,16 @@ export interface DropdownMenuContentProps<T> extends MenuComponentProps<T>, Menu
   loop?: boolean;
 }
 
-export function DropdownMenuContent<T>(props: Incoming<DropdownMenuContentProps<T>>) {
+export function DropdownMenuContent<T>(props: DropdownMenuContentProps<T>) {
   return (
     <Menu
       {...props}
-      shouldFocusWrap={props.shouldFocusWrap?.() ?? props.loop?.()}
-      placement={menuPlacement(props)}
-      offset={props.offset?.() ?? props.sideOffset?.()}
-      crossOffset={props.crossOffset?.() ?? props.alignOffset?.()}
-      data-slot={props["data-slot"]?.() ?? "dropdown-menu-content"}
-      class={ui(content, props.class?.(), props.className?.())}
+      shouldFocusWrap={props.shouldFocusWrap ?? props.loop}
+      placement={menuPlacement(cells(props))}
+      offset={props.offset ?? props.sideOffset}
+      crossOffset={props.crossOffset ?? props.alignOffset}
+      data-slot={props["data-slot"] ?? "dropdown-menu-content"}
+      class={ui(content, props.class, props.className)}
     />
   );
 }
@@ -559,15 +560,15 @@ export interface DropdownMenuItemProps extends MenuItemComponentProps {
  * data it reads its item. With an `href` it is a real link that is still a
  * menu item, which is what upstream reaches with `asChild` around an `<a>`.
  */
-export function DropdownMenuItem(props: Incoming<DropdownMenuItemProps>) {
+export function DropdownMenuItem(props: DropdownMenuItemProps) {
   return (
     <MenuItem
       {...props}
-      isDisabled={disabled(props)}
-      data-slot={props["data-slot"]?.() ?? "dropdown-menu-item"}
-      data-variant={props.variant?.() ?? "default"}
-      data-inset={props.inset?.() === true ? "" : undefined}
-      class={ui(item, props.class?.(), props.className?.())}
+      isDisabled={disabled(cells(props))}
+      data-slot={props["data-slot"] ?? "dropdown-menu-item"}
+      data-variant={props.variant ?? "default"}
+      data-inset={props.inset === true ? "" : undefined}
+      class={ui(item, props.class, props.className)}
     />
   );
 }
@@ -605,22 +606,22 @@ export interface DropdownMenuCheckboxItemProps extends MenuItemComponentProps {
  * CSS off `data-selected` rather than by a conditional, so toggling one writes
  * one attribute.
  */
-export function DropdownMenuCheckboxItem(props: Incoming<DropdownMenuCheckboxItemProps>) {
+export function DropdownMenuCheckboxItem(props: DropdownMenuCheckboxItemProps) {
   return (
     <MenuItem
       {...props}
       type="checkbox"
-      isSelected={props.isSelected?.() ?? props.checked?.()}
-      defaultSelected={props.defaultSelected?.() ?? props.defaultChecked?.()}
+      isSelected={props.isSelected ?? props.checked}
+      defaultSelected={props.defaultSelected ?? props.defaultChecked}
       onChange={(checked: boolean) => {
-        props.onChange?.()?.(checked);
-        props.onCheckedChange?.()?.(checked);
+        props.onChange?.(checked);
+        props.onCheckedChange?.(checked);
       }}
-      isDisabled={disabled(props)}
-      data-slot={props["data-slot"]?.() ?? "dropdown-menu-checkbox-item"}
-      class={ui(checkItem, props.class?.(), props.className?.())}
+      isDisabled={disabled(cells(props))}
+      data-slot={props["data-slot"] ?? "dropdown-menu-checkbox-item"}
+      class={ui(checkItem, props.class, props.className)}
     >
-      <span data-slot={props.indicatorSlot?.() ?? "dropdown-menu-item-indicator"} class={indicator}>
+      <span data-slot={props.indicatorSlot ?? "dropdown-menu-item-indicator"} class={indicator}>
         <Check />
       </span>
       {props.children}
@@ -634,12 +635,12 @@ export interface DropdownMenuRadioGroupProps extends MenuRadioGroupComponentProp
  * The radio items written inside it, of which the one whose `value` is the
  * group's is on.
  */
-export function DropdownMenuRadioGroup(props: Incoming<DropdownMenuRadioGroupProps>) {
+export function DropdownMenuRadioGroup(props: DropdownMenuRadioGroupProps) {
   return (
     <MenuRadioGroup
       {...props}
-      data-slot={props["data-slot"]?.() ?? "dropdown-menu-radio-group"}
-      class={ui(group, props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "dropdown-menu-radio-group"}
+      class={ui(group, props.class, props.className)}
     />
   );
 }
@@ -654,16 +655,16 @@ export interface DropdownMenuRadioItemProps extends MenuItemComponentProps {
  * Rendered from data, as above with `selectionMode="single"`. Written as a
  * child, it goes inside a {@link DropdownMenuRadioGroup} and carries a `value`.
  */
-export function DropdownMenuRadioItem(props: Incoming<DropdownMenuRadioItemProps>) {
+export function DropdownMenuRadioItem(props: DropdownMenuRadioItemProps) {
   return (
     <MenuItem
       {...props}
-      isDisabled={disabled(props)}
-      data-slot={props["data-slot"]?.() ?? "dropdown-menu-radio-item"}
-      class={ui(checkItem, props.class?.(), props.className?.())}
+      isDisabled={disabled(cells(props))}
+      data-slot={props["data-slot"] ?? "dropdown-menu-radio-item"}
+      class={ui(checkItem, props.class, props.className)}
     >
       <span
-        data-slot={props.indicatorSlot?.() ?? "dropdown-menu-item-indicator"}
+        data-slot={props.indicatorSlot ?? "dropdown-menu-item-indicator"}
         class={radioIndicator}
       >
         <Circle />
@@ -678,27 +679,27 @@ export interface DropdownMenuLabelProps extends UiProps {
 }
 
 /** Inside a group it is what names the group to a screen reader. */
-export function DropdownMenuLabel(props: Incoming<DropdownMenuLabelProps>) {
+export function DropdownMenuLabel(props: DropdownMenuLabelProps) {
   const heading = useMenuGroupHeading();
   return (
     <li
-      {...uiProps("dropdown-menu-label", label, props)}
-      id={props.id?.() ?? heading?.()}
+      {...uiProps("dropdown-menu-label", label, cells(props))}
+      id={props.id ?? heading?.()}
       role="presentation"
-      data-inset={props.inset?.() === true ? "" : undefined}
+      data-inset={props.inset === true ? "" : undefined}
     >
       {props.children}
     </li>
   );
 }
 
-export function DropdownMenuSeparator(props: Incoming<UiProps>) {
-  return <li {...uiProps("dropdown-menu-separator", separator, props)} role="separator" />;
+export function DropdownMenuSeparator(props: UiProps) {
+  return <li {...uiProps("dropdown-menu-separator", separator, cells(props))} role="separator" />;
 }
 
 /** The key combination on the right of an item. Decoration: the shortcut itself is yours to bind. */
-export function DropdownMenuShortcut(props: Incoming<UiProps>) {
-  return <span {...uiProps("dropdown-menu-shortcut", shortcut, props)}>{props.children}</span>;
+export function DropdownMenuShortcut(props: UiProps) {
+  return <span {...uiProps("dropdown-menu-shortcut", shortcut, cells(props))}>{props.children}</span>;
 }
 
 export interface DropdownMenuGroupProps<T> extends MenuSectionComponentProps<T> {}
@@ -707,12 +708,12 @@ export interface DropdownMenuGroupProps<T> extends MenuSectionComponentProps<T> 
  * A section of the collection: an item whose own `children` are its items. In
  * a written menu, a `role="group"` around the items written inside it.
  */
-export function DropdownMenuGroup<T>(props: Incoming<DropdownMenuGroupProps<T>>) {
+export function DropdownMenuGroup<T>(props: DropdownMenuGroupProps<T>) {
   return (
     <MenuSection
       {...props}
-      data-slot={props["data-slot"]?.() ?? "dropdown-menu-group"}
-      class={ui(group, props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "dropdown-menu-group"}
+      class={ui(group, props.class, props.className)}
     />
   );
 }
@@ -729,9 +730,9 @@ export interface DropdownMenuSubProps extends SubmenuTriggerComponentProps {}
  * </DropdownMenuSub>
  * ```
  */
-export function DropdownMenuSub(props: Incoming<DropdownMenuSubProps>) {
+export function DropdownMenuSub(props: DropdownMenuSubProps) {
   return (
-    <SubmenuTrigger {...props} shouldCloseAllOnEscape={props.shouldCloseAllOnEscape?.() ?? true} />
+    <SubmenuTrigger {...props} shouldCloseAllOnEscape={props.shouldCloseAllOnEscape ?? true} />
   );
 }
 
@@ -741,20 +742,20 @@ export interface DropdownMenuSubTriggerProps extends MenuItemComponentProps {
   "data-slot"?: string;
 }
 
-export function DropdownMenuSubTrigger(props: Incoming<DropdownMenuSubTriggerProps>) {
+export function DropdownMenuSubTrigger(props: DropdownMenuSubTriggerProps) {
   return (
     <MenuItem
       {...props}
-      isDisabled={disabled(props)}
-      data-slot={props["data-slot"]?.() ?? "dropdown-menu-sub-trigger"}
-      data-inset={props.inset?.() === true ? "" : undefined}
-      class={ui(subTrigger, props.class?.(), props.className?.())}
+      isDisabled={disabled(cells(props))}
+      data-slot={props["data-slot"] ?? "dropdown-menu-sub-trigger"}
+      data-inset={props.inset === true ? "" : undefined}
+      class={ui(subTrigger, props.class, props.className)}
     >
       {props.children}
       <ChevronRight
         // Named after the row it is in, so a menu that renames the row does not
         // leave a dropdown's name on the arrow inside it.
-        data-slot={(props["data-slot"]?.() ?? "dropdown-menu-sub-trigger").replace(
+        data-slot={(props["data-slot"] ?? "dropdown-menu-sub-trigger").replace(
           /-trigger$/,
           "-chevron",
         )}
@@ -769,23 +770,23 @@ export interface DropdownMenuSubContentProps<T> extends MenuComponentProps<T>, M
   loop?: boolean;
 }
 
-export function DropdownMenuSubContent<T>(props: Incoming<DropdownMenuSubContentProps<T>>) {
+export function DropdownMenuSubContent<T>(props: DropdownMenuSubContentProps<T>) {
   return (
     <Menu
       {...props}
-      shouldFocusWrap={props.shouldFocusWrap?.() ?? props.loop?.()}
-      placement={menuPlacement(props, "inline-end")}
-      offset={props.offset?.() ?? props.sideOffset?.()}
-      crossOffset={props.crossOffset?.() ?? props.alignOffset?.()}
-      data-slot={props["data-slot"]?.() ?? "dropdown-menu-sub-content"}
-      class={ui(subContent, props.class?.(), props.className?.())}
+      shouldFocusWrap={props.shouldFocusWrap ?? props.loop}
+      placement={menuPlacement(cells(props), "inline-end")}
+      offset={props.offset ?? props.sideOffset}
+      crossOffset={props.crossOffset ?? props.alignOffset}
+      data-slot={props["data-slot"] ?? "dropdown-menu-sub-content"}
+      class={ui(subContent, props.class, props.className)}
     />
   );
 }
 
 /** The label a `<DropdownMenuGroup>` renders as its heading. */
-export function DropdownMenuGroupLabel(props: Incoming<UiProps>) {
-  return <span {...uiProps("dropdown-menu-group-label", groupLabel, props)}>{props.children}</span>;
+export function DropdownMenuGroupLabel(props: UiProps) {
+  return <span {...uiProps("dropdown-menu-group-label", groupLabel, cells(props))}>{props.children}</span>;
 }
 
 export type DropdownMenuSelectEvent = MenuSelectEvent;

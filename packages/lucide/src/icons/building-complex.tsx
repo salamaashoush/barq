@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function BuildingComplex(props: Incoming<IconProps>) {
+export function BuildingComplex(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M10 12h4" />
       <path d="M10 8h4" />
       <path d="M14 21v-3a2 2 0 0 0-4 0v3" />

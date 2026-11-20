@@ -46,7 +46,7 @@ afterEach(() => {
 });
 
 /** A control of the caller's own, taking whatever the triggers around it offer. */
-function Chip(props: Incoming<{ children?: Child }>) {
+function Chip(props: { children?: Child }) {
   const trigger = useTrigger();
   return (
     <button {...trigger.props} ref={trigger.ref}>
@@ -56,7 +56,7 @@ function Chip(props: Incoming<{ children?: Child }>) {
 }
 
 /** What a wrapper with a click handler of its own offers the control inside it. */
-function Counted(props: Incoming<{ children?: Child }>) {
+function Counted(props: { children?: Child }) {
   return <TriggerPart slot={{ props: { onClick: count } }}>{props.children}</TriggerPart>;
 }
 

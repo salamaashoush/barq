@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function BeefOff(props: Incoming<IconProps>) {
+export function BeefOff(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M11.771 6.109a2.5 2.5 0 0 1 3.12 3.12" />
       <path d="M17.852 12.185a6.5 6.5 0 0 0-9.035-9.04" />
       <path d="M18.013 18.013C15.029 20.349 10.831 22 7 22a3 3 0 0 1-2.68-1.66L2.4 16.5" />

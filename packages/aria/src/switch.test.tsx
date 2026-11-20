@@ -80,11 +80,11 @@ describe("Switch, with nothing of its own to say", () => {
     expect(control().parentElement?.getAttribute("data-state")).toBe("checked");
   });
 
-  function InALabel(props: Incoming<{ onChange?: (on: boolean) => void; isDisabled?: boolean }>) {
+  function InALabel(props: { onChange?: (on: boolean) => void; isDisabled?: boolean }) {
     return (
       <label>
         <span data-testid="text">Wi-Fi</span>
-        <Switch onChange={props.onChange?.()} isDisabled={props.isDisabled?.()} />
+        <Switch onChange={props.onChange} isDisabled={props.isDisabled} />
       </label>
     );
   }

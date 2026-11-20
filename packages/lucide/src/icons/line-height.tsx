@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function LineHeight(props: Incoming<IconProps>) {
+export function LineHeight(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M15 14H9" />
       <path d="M21 21H3" />
       <path d="M21 3H3" />

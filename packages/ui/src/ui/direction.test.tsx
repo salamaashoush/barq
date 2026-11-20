@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Tab, TabList, TabPanel, Tabs } from "@barqjs/aria/tabs";
-import { createSignal, flush, type Incoming } from "@barqjs/core";
+import { cells, createSignal, flush, type Incoming } from "@barqjs/core";
 import { render, screen, user } from "@barqjs/testing";
 
 import { DirectionProvider, useDirection } from "./direction.tsx";
@@ -25,8 +25,8 @@ function Sections() {
   );
 }
 
-function Reads(props: Incoming<{ local?: "ltr" | "rtl" }>) {
-  const direction = useDirection(props.local);
+function Reads(props: { local?: "ltr" | "rtl" }) {
+  const direction = useDirection(cells(props).local);
   return <output data-testid="direction">{direction()}</output>;
 }
 

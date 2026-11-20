@@ -217,13 +217,13 @@ function RevealOrderDemo() {
   );
 }
 
-function Slot(props: Incoming<{ name: string; delay: number; run: number }>) {
+function Slot(props: { name: string; delay: number; run: number }) {
   // `run` is in the URL: without it the second press replays Chrome's HTTP
   // cache and every slot settles in the same microtask, which reads exactly
   // like a group that reveals all at once.
   const data = createMemo(async () => {
     const res = await fetch(
-      `/api/staggered?name=${props.name()}&delay=${props.delay()}&run=${props.run()}`,
+      `/api/staggered?name=${props.name}&delay=${props.delay}&run=${props.run}`,
     );
     return (await res.json()) as { name: string; at: number };
   });

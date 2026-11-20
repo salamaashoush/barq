@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function DecimalsArrowRight(props: Incoming<IconProps>) {
+export function DecimalsArrowRight(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M10 18h10" />
       <path d="m17 21 3-3-3-3" />
       <path d="M3 11h.01" />

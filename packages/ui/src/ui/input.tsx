@@ -1,3 +1,4 @@
+import { cells } from "@barqjs/core";
 import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 import { mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
@@ -143,12 +144,12 @@ export interface InputProps extends Omit<UiProps, "ref"> {
  * `<Field>`'s job, exactly as it is in shadcn — an input that owned its own
  * label could not be put inside a form row that owns one too.
  */
-export function Input(props: Incoming<InputProps>) {
+export function Input(props: InputProps) {
   return (
     <input
-      {...controlProps("input", input, omit(props, ["size"]))}
-      data-size={props.size?.() ?? "default"}
-      ref={mergeRefs(props.ref?.())}
+      {...controlProps("input", input, omit(cells(props), ["size"]))}
+      data-size={props.size ?? "default"}
+      ref={mergeRefs(props.ref)}
     />
   );
 }

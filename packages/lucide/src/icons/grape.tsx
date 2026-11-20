@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Grape(props: Incoming<IconProps>) {
+export function Grape(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M22 5V2l-5.89 5.89" />
       <circle cx="16.6" cy="15.89" r="3" />
       <circle cx="8.11" cy="7.4" r="3" />

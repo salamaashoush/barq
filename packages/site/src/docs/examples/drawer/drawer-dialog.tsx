@@ -50,16 +50,16 @@ const footer = css`
   padding-top: calc(var(--spacing) * 2);
 `;
 
-function ProfileForm(props: Incoming<{ class?: string; id: string }>) {
+function ProfileForm(props: { class?: string; id: string }) {
   return (
-    <form class={`${form} ${props.class?.() ?? ""}`}>
+    <form class={`${form} ${props.class ?? ""}`}>
       <div class={row}>
-        <Label for={`${props.id()}-email`}>Email</Label>
-        <Input type="email" id={`${props.id()}-email`} defaultValue="salama@example.com" />
+        <Label for={`${props.id}-email`}>Email</Label>
+        <Input type="email" id={`${props.id}-email`} defaultValue="salama@example.com" />
       </div>
       <div class={row}>
-        <Label for={`${props.id()}-username`}>Username</Label>
-        <Input id={`${props.id()}-username`} defaultValue="@salama" />
+        <Label for={`${props.id}-username`}>Username</Label>
+        <Input id={`${props.id}-username`} defaultValue="@salama" />
       </div>
       <Button type="submit">Save changes</Button>
     </form>

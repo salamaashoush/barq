@@ -6,17 +6,17 @@ import { Button } from "../ui/button.tsx";
 import { TriggerPart, useTrigger, type TriggerPartProps } from "./trigger.tsx";
 
 /** A trigger as every family writes one: the slot it offers, and the part. */
-function Opener(props: Incoming<TriggerPartProps & { onOpen: () => void; isOpen: boolean }>) {
+function Opener(props: TriggerPartProps & { onOpen: () => void; isOpen: boolean }) {
   return (
     <TriggerPart
       slot={{
         props: {
           "aria-haspopup": true,
-          "aria-expanded": () => props.isOpen(),
-          onPress: () => props.onOpen()(),
+          "aria-expanded": () => props.isOpen,
+          onPress: () => props.onOpen(),
         },
       }}
-      render={props.render?.()}
+      render={props.render}
     >
       {props.children}
     </TriggerPart>
@@ -24,7 +24,7 @@ function Opener(props: Incoming<TriggerPartProps & { onOpen: () => void; isOpen:
 }
 
 /** Someone else's control: its own element, with what the trigger wants spread onto it. */
-function Chip(props: Incoming<{ children?: Child }>) {
+function Chip(props: { children?: Child }) {
   const trigger = useTrigger();
   return (
     <button data-testid="chip" {...trigger.props} ref={trigger.ref}>
@@ -33,19 +33,19 @@ function Chip(props: Incoming<{ children?: Child }>) {
   );
 }
 
-function Fixture(props: Incoming<{ kind: "slot" | "element" | "component" }>) {
+function Fixture(props: { kind: "slot" | "element" | "component" }) {
   const [open, setOpen] = createSignal(false);
   const onOpen = (): void => {
     setOpen(true);
   };
-  if (props.kind() === "slot") {
+  if (props.kind === "slot") {
     return (
       <Opener isOpen={open()} onOpen={onOpen}>
         <Button>Open</Button>
       </Opener>
     );
   }
-  if (props.kind() === "element") {
+  if (props.kind === "element") {
     return (
       <Opener
         isOpen={open()}

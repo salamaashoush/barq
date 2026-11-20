@@ -1,3 +1,4 @@
+import { cells } from "@barqjs/core";
 import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 import { ChevronDown } from "@barqjs/lucide/icons/chevron-down";
@@ -132,8 +133,8 @@ export interface NativeSelectProps extends Omit<UiProps, "ref"> {
  * </NativeSelect>
  * ```
  */
-export function NativeSelect(props: Incoming<NativeSelectProps>) {
-  const size = (): NativeSelectSize => props.size?.() ?? "default";
+export function NativeSelect(props: NativeSelectProps) {
+  const size = (): NativeSelectSize => props.size ?? "default";
   return (
     // `class` goes on the WRAPPER, because the wrapper is the box: it carries
     // `width: fit-content`, and a caller writing `class` to widen the control
@@ -141,14 +142,14 @@ export function NativeSelect(props: Incoming<NativeSelectProps>) {
     // so nothing moved. Everything else, `id` and the ARIA attributes and the
     // events, belongs to the control the label points at.
     <div
-      class={ui(wrapper, props.class?.(), props.className?.())}
+      class={ui(wrapper, props.class, props.className)}
       data-slot="native-select-wrapper"
       data-size={size()}
     >
       <select
-        {...controlProps("native-select", control, omit(props, ["size", "class", "className"]))}
+        {...controlProps("native-select", control, omit(cells(props), ["size", "class", "className"]))}
         data-size={size()}
-        ref={mergeRefs(props.ref?.())}
+        ref={mergeRefs(props.ref)}
       >
         {props.children}
       </select>
@@ -168,12 +169,12 @@ export interface NativeSelectOptionProps extends UiProps {
 // `selected` and `label` are named on the element rather than left to the
 // filter: neither is a form control's attribute in general, so the allow-list
 // that passes `value` and `disabled` drops both.
-export function NativeSelectOption(props: Incoming<NativeSelectOptionProps>) {
+export function NativeSelectOption(props: NativeSelectOptionProps) {
   return (
     <option
-      {...controlProps("native-select-option", option, props)}
-      selected={props.selected?.()}
-      label={props.label?.()}
+      {...controlProps("native-select-option", option, cells(props))}
+      selected={props.selected}
+      label={props.label}
     >
       {props.children}
     </option>
@@ -185,12 +186,12 @@ export interface NativeSelectOptGroupProps extends UiProps {
   disabled?: boolean;
 }
 
-export function NativeSelectOptGroup(props: Incoming<NativeSelectOptGroupProps>) {
+export function NativeSelectOptGroup(props: NativeSelectOptGroupProps) {
   return (
     <optgroup
-      {...uiProps("native-select-optgroup", option, props)}
-      label={props.label?.()}
-      disabled={props.disabled?.()}
+      {...uiProps("native-select-optgroup", option, cells(props))}
+      label={props.label}
+      disabled={props.disabled}
     >
       {props.children}
     </optgroup>

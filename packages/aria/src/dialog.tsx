@@ -18,6 +18,7 @@
  */
 
 import {
+  cells,
   type Accessor,
   type Child,
   type Incoming,
@@ -159,9 +160,9 @@ export interface DialogComponentProps extends StyleProps {
  * </Dialog>
  * ```
  */
-export function Dialog(props: Incoming<DialogComponentProps>) {
+export function Dialog(props: DialogComponentProps) {
   const domRef = makeRef<HTMLElement>();
-  const options = fromProps(props);
+  const options = fromProps(cells(props));
   const { dialogProps, titleProps, descriptionId, describe } = dialog(options);
 
   provideDialog({ titleProps, descriptionId, describe });
@@ -169,14 +170,14 @@ export function Dialog(props: Incoming<DialogComponentProps>) {
   const elementProps = mergeProps(
     dialogProps,
     filterDOMProps(options, { global: true }),
-    styleProps(props),
+    styleProps(cells(props)),
     {
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
   return (
-    <section {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
+    <section {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
       {props.children}
     </section>
   );
@@ -197,20 +198,20 @@ export interface HeadingComponentProps extends StyleProps {
  * the platform's own headings are what a screen reader's heading list is built
  * from.
  */
-export function Heading(props: Incoming<HeadingComponentProps>) {
+export function Heading(props: HeadingComponentProps) {
   const title = useDialogTitle();
 
   const elementProps = mergeProps(
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
       // The title names the dialog only when it says it is the title.
       id: () =>
-        props.slot?.() === "title"
+        props.slot === "title"
           ? access(title?.id as MaybeAccessor<string | undefined>)
-          : props.id?.(),
-      "aria-level": () => props.level?.() ?? 3,
-      "data-testid": () => props["data-testid"]?.(),
+          : props.id,
+      "aria-level": () => props.level ?? 3,
+      "data-testid": () => props["data-testid"],
     },
   );
 
@@ -266,8 +267,8 @@ function callerDirection(options: object): string | undefined {
   return access((options as { dir?: MaybeAccessor<string | undefined> }).dir);
 }
 
-export function Modal(props: Incoming<ModalComponentProps>) {
-  const options = fromProps(props);
+export function Modal(props: ModalComponentProps) {
+  const options = fromProps(cells(props));
   const state = overlayTriggerState(options);
   // Read here, where the modal is written. What it draws is portalled out from
   // under the element that carries `dir`.
@@ -277,15 +278,15 @@ export function Modal(props: Incoming<ModalComponentProps>) {
     <ModalContents
       isOpen={state.isOpen()}
       onClose={state.close}
-      isDismissable={props.isDismissable?.() !== false}
-      isKeyboardDismissDisabled={props.isKeyboardDismissDisabled?.() === true}
-      isNonModal={props.isNonModal?.() === true}
-      autoFocus={props.autoFocus?.() !== false}
-      underlayClass={props.underlayClass?.()}
-      underlaySlot={props.underlaySlot?.()}
-      underlayProps={props.underlayProps?.()}
-      class={props.class?.() ?? props.className?.()}
-      style={props.style?.()}
+      isDismissable={props.isDismissable !== false}
+      isKeyboardDismissDisabled={props.isKeyboardDismissDisabled === true}
+      isNonModal={props.isNonModal === true}
+      autoFocus={props.autoFocus !== false}
+      underlayClass={props.underlayClass}
+      underlaySlot={props.underlaySlot}
+      underlayProps={props.underlayProps}
+      class={props.class ?? props.className}
+      style={props.style}
       // The global attributes, the global events and every `data-*` the caller
       // gave THIS component, forwarded to the element the caller can see. They
       // cannot be spread on `<ModalContents>` itself: it is a private component
@@ -294,7 +295,7 @@ export function Modal(props: Incoming<ModalComponentProps>) {
       domProps={mergeProps(filterDOMProps(options, { global: true }), {
         dir: () => callerDirection(options) ?? direction(),
       })}
-      contentRef={props.ref?.()}
+      contentRef={props.ref}
     >
       {props.children}
     </ModalContents>
@@ -326,7 +327,7 @@ interface ContentsProps extends StyleProps {
  * holds it only while the stylesheet is still drawing it, marked `data-closed`
  * — and when nothing is animating, that is no time at all.
  */
-function ModalContents(props: Incoming<ContentsProps>) {
+function ModalContents(props: ContentsProps) {
   // `<Show>`, not a bare `{() => …}`: a Cell at a component's root travels in
   // the array its caller places, and an array hole is ONE effect — so the
   // condition would become a dependency of whatever hole holds this component,
@@ -336,7 +337,7 @@ function ModalContents(props: Incoming<ContentsProps>) {
   // created with the content it contains, because its disposal is what restores
   // focus; the ref only has to outlive the content so the exit can be measured.
   const domRef = makeRef<HTMLDivElement>();
-  const gate = presence({ isOpen: props.isOpen, ref: domRef });
+  const gate = presence({ isOpen: cells(props).isOpen, ref: domRef });
 
   return (
     <Show when={gate.isPresent()}>
@@ -344,18 +345,18 @@ function ModalContents(props: Incoming<ContentsProps>) {
         <ModalBody
           domRef={domRef}
           isExiting={gate.isExiting()}
-          onClose={props.onClose()}
-          isDismissable={props.isDismissable()}
-          isKeyboardDismissDisabled={props.isKeyboardDismissDisabled()}
-          isNonModal={props.isNonModal()}
-          autoFocus={props.autoFocus()}
-          underlayClass={props.underlayClass?.()}
-          underlaySlot={props.underlaySlot?.()}
-          underlayProps={props.underlayProps?.()}
-          domProps={props.domProps?.()}
-          contentRef={props.contentRef?.()}
-          class={props.class?.()}
-          style={props.style?.()}
+          onClose={props.onClose}
+          isDismissable={props.isDismissable}
+          isKeyboardDismissDisabled={props.isKeyboardDismissDisabled}
+          isNonModal={props.isNonModal}
+          autoFocus={props.autoFocus}
+          underlayClass={props.underlayClass}
+          underlaySlot={props.underlaySlot}
+          underlayProps={props.underlayProps}
+          domProps={props.domProps}
+          contentRef={props.contentRef}
+          class={props.class}
+          style={props.style}
         >
           {props.children}
         </ModalBody>
@@ -391,33 +392,33 @@ interface BodyProps extends StyleProps {
  * on an element after it is removed, so the assertion passed for the wrong
  * reason.
  */
-function ModalBody(props: Incoming<BodyProps>) {
-  const domRef = props.domRef();
+function ModalBody(props: BodyProps) {
+  const domRef = props.domRef;
   const scope = focusScope({
-    contain: () => !props.isNonModal(),
+    contain: () => !props.isNonModal,
     restoreFocus: true,
-    autoFocus: () => props.autoFocus(),
+    autoFocus: () => props.autoFocus,
   });
 
   const state: OverlayTriggerState = {
     isOpen: () => true,
     setOpen: (open) => {
-      if (!open) props.onClose()();
+      if (!open) props.onClose();
     },
     open: () => {},
-    close: () => props.onClose()(),
-    toggle: () => props.onClose()(),
+    close: () => props.onClose(),
+    toggle: () => props.onClose(),
   };
 
   const { overlayProps, underlayProps, modalProps } = modalOverlay(
     {
-      isDismissable: () => props.isDismissable() && !props.isNonModal(),
-      isKeyboardDismissDisabled: () => props.isKeyboardDismissDisabled(),
-      isScrollDisabled: () => props.isNonModal(),
-      isNonModal: () => props.isNonModal(),
+      isDismissable: () => props.isDismissable && !props.isNonModal,
+      isKeyboardDismissDisabled: () => props.isKeyboardDismissDisabled,
+      isScrollDisabled: () => props.isNonModal,
+      isNonModal: () => props.isNonModal,
       // Focus is free to leave a dialog that is not modal, and Escape still
       // belongs to it wherever focus went.
-      shouldCloseOnEscapeAnywhere: () => props.isNonModal(),
+      shouldCloseOnEscapeAnywhere: () => props.isNonModal,
     },
     state,
     domRef,
@@ -426,8 +427,8 @@ function ModalBody(props: Incoming<BodyProps>) {
   const elementProps = mergeProps(
     overlayProps,
     modalProps,
-    props.domProps?.() ?? null,
-    styleProps(props),
+    props.domProps ?? null,
+    styleProps(cells(props)),
   );
 
   // The caller's class joins the component's own rather than replacing it,
@@ -435,33 +436,33 @@ function ModalBody(props: Incoming<BodyProps>) {
   const underlay = mergeProps(
     underlayProps,
     {
-      class: () => props.underlayClass?.(),
+      class: () => props.underlayClass,
       // A `data-slot` like every other element in this package, and the reason
       // is a consumer's stylesheet: `[data-barq-underlay]` is one global rule
       // and cannot tell a dialog's backdrop from a sheet's. shadcn names them
       // separately (`cn-dialog-overlay`, `cn-sheet-overlay`) and so can anyone
       // styling these.
-      "data-slot": () => props.underlaySlot?.(),
+      "data-slot": () => props.underlaySlot,
     },
     // Taken once, as the body is built: the underlay's own attributes are
     // accessors already, and the set of them does not change while it is open.
-    untrack(() => props.underlayProps?.()) ?? null,
+    untrack(() => props.underlayProps) ?? null,
   );
 
   return (
     <div
       {...underlay}
       data-barq-underlay
-      data-closed={props.isExiting() ? "" : undefined}
-      data-state={props.isExiting() ? "closed" : "open"}
+      data-closed={props.isExiting ? "" : undefined}
+      data-state={props.isExiting ? "closed" : "open"}
     >
       <span hidden ref={scope.startRef} />
       <div
         {...elementProps}
-        data-non-modal={props.isNonModal() ? "" : undefined}
-        data-closed={props.isExiting() ? "" : undefined}
-        data-state={props.isExiting() ? "closed" : "open"}
-        ref={mergeRefs(domRef.set, props.contentRef?.())}
+        data-non-modal={props.isNonModal ? "" : undefined}
+        data-closed={props.isExiting ? "" : undefined}
+        data-state={props.isExiting ? "closed" : "open"}
+        ref={mergeRefs(domRef.set, props.contentRef)}
       >
         {props.children}
       </div>
@@ -526,24 +527,24 @@ export interface PopoverComponentProps extends StyleProps {
  * the right default for a menu or a colour picker; a date picker that must not
  * be escaped sets `isModal`.
  */
-export function Popover(props: Incoming<PopoverComponentProps>) {
+export function Popover(props: PopoverComponentProps) {
   const direction = declaredDirection();
   const domRef = makeRef<HTMLDivElement>();
-  const options = fromProps(props);
+  const options = fromProps(cells(props));
   const state = overlayTriggerState(options);
   const locale = useLocale();
-  const placement = (): Placement => props.placement?.() ?? "bottom";
+  const placement = (): Placement => props.placement ?? "bottom";
 
   const position = overlayPosition({
-    targetRef: () => access(props.triggerRef()),
-    targetRect: () => props.triggerRect?.() ?? null,
+    targetRef: () => access(props.triggerRef),
+    targetRect: () => props.triggerRect ?? null,
     overlayRef: domRef,
     placement,
     direction: () => locale().direction,
-    offset: () => props.offset?.() ?? 8,
-    crossOffset: () => props.crossOffset?.(),
-    shouldFlip: () => props.shouldFlip?.(),
-    containerPadding: () => props.containerPadding?.(),
+    offset: () => props.offset ?? 8,
+    crossOffset: () => props.crossOffset,
+    shouldFlip: () => props.shouldFlip,
+    containerPadding: () => props.containerPadding,
     isOpen: state.isOpen,
     onClose: state.close,
   });
@@ -553,27 +554,27 @@ export function Popover(props: Incoming<PopoverComponentProps>) {
   // two are one overlay as far as an outside press and `aria-hidden` are
   // concerned. Pressing a submenu item is not a press outside its menu.
   const group = usePopoverGroup();
-  const nested = group !== null && props.isNested?.() === true;
+  const nested = group !== null && props.isNested === true;
   const groupRef = makeRef<HTMLDivElement>();
 
   const { overlayProps } = overlay(
     {
       isOpen: state.isOpen,
       onClose: state.close,
-      isDismissable: () => props.isDismissable?.() !== false,
-      isKeyboardDismissDisabled: () => props.isKeyboardDismissDisabled?.() === true,
+      isDismissable: () => props.isDismissable !== false,
+      isKeyboardDismissDisabled: () => props.isKeyboardDismissDisabled === true,
       // Focus was never moved in, so Escape arrives wherever it already was.
-      shouldCloseOnEscapeAnywhere: () => props.shouldContainFocus?.() === false,
+      shouldCloseOnEscapeAnywhere: () => props.shouldContainFocus === false,
       groupRef: nested ? group : groupRef,
     },
     domRef,
   );
 
-  preventScroll({ isDisabled: () => !state.isOpen() || props.isModal?.() !== true });
+  preventScroll({ isDisabled: () => !state.isOpen() || props.isModal !== true });
 
   followOpen(
     () =>
-      state.isOpen() && props.isModal?.() === true
+      state.isOpen() && props.isModal === true
         ? (((nested ? access(group) : groupRef()) as Element | null) ?? null)
         : null,
     (element) => (element === null ? undefined : ariaHideOutside([element])),
@@ -585,12 +586,12 @@ export function Popover(props: Incoming<PopoverComponentProps>) {
     filterDOMProps(options, { global: true, labelable: true }),
     // Portalled out from under the element that carries `dir`.
     { dir: () => callerDirection(options) ?? direction() },
-    styleProps(props),
+    styleProps(cells(props)),
     {
       "data-placement": position.placement,
       "data-side": position.placement,
       "data-align": () => alignOf(placement()),
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
@@ -620,9 +621,9 @@ export function Popover(props: Incoming<PopoverComponentProps>) {
             <PopoverBody
               elementProps={elementProps}
               domRef={domRef}
-              forwardedRef={props.ref?.()}
+              forwardedRef={props.ref}
               isExiting={gate.isExiting()}
-              containsFocus={props.shouldContainFocus?.() !== false}
+              containsFocus={props.shouldContainFocus !== false}
             >
               {props.children}
             </PopoverBody>
@@ -650,18 +651,18 @@ interface PopoverBodyProps {
  * trigger. Called in `Popover`'s own body the scope outlives every open and
  * close, so nothing is ever disposed and focus is left on `<body>`.
  */
-function PopoverBody(props: Incoming<PopoverBodyProps>) {
-  const domRef = props.domRef();
-  const setElement = mergeRefs(domRef.set, props.forwardedRef?.());
+function PopoverBody(props: PopoverBodyProps) {
+  const domRef = props.domRef;
+  const setElement = mergeRefs(domRef.set, props.forwardedRef);
 
   // Read once: a popover does not change its mind about focus while it is open,
   // and a scope that came and went with a prop would restore focus mid-flight.
-  if (!props.containsFocus()) {
+  if (!props.containsFocus) {
     return (
       <div
-        {...props.elementProps()}
-        data-closed={props.isExiting() ? "" : undefined}
-        data-state={props.isExiting() ? "closed" : "open"}
+        {...props.elementProps}
+        data-closed={props.isExiting ? "" : undefined}
+        data-state={props.isExiting ? "closed" : "open"}
         ref={setElement}
       >
         {props.children}
@@ -675,9 +676,9 @@ function PopoverBody(props: Incoming<PopoverBodyProps>) {
     <>
       <span hidden ref={scope.startRef} />
       <div
-        {...props.elementProps()}
-        data-closed={props.isExiting() ? "" : undefined}
-        data-state={props.isExiting() ? "closed" : "open"}
+        {...props.elementProps}
+        data-closed={props.isExiting ? "" : undefined}
+        data-state={props.isExiting ? "closed" : "open"}
         ref={setElement}
       >
         {props.children}
@@ -769,15 +770,15 @@ export function popoverStateProps(): DOMProps {
 }
 
 function PopoverGroupProvider(
-  props: Incoming<{ value: ElementRef; placed: PopoverPlacement; children?: Child }>,
+  props: { value: ElementRef; placed: PopoverPlacement; children?: Child },
 ) {
   return provide(
     PopoverGroupContext,
-    () => props.value(),
+    () => props.value,
     () =>
       provide(
         PopoverPlacementContext,
-        () => props.placed(),
+        () => props.placed,
         () => props.children as unknown,
       ),
   );

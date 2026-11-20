@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Diameter(props: Incoming<IconProps>) {
+export function Diameter(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <circle cx="19" cy="19" r="2" />
       <circle cx="5" cy="5" r="2" />
       <path d="M6.48 3.66a10 10 0 0 1 13.86 13.86" />

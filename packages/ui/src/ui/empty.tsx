@@ -1,3 +1,4 @@
+import { cells } from "@barqjs/core";
 import type { Incoming } from "@barqjs/core";
 import { firstThatWorks, layer, variants } from "@barqjs/css";
 
@@ -111,12 +112,12 @@ export const emptyMediaVariants = variants({
  * </Empty>
  * ```
  */
-export function Empty(props: Incoming<UiProps>) {
-  return <div {...uiProps("empty", root, props)}>{props.children}</div>;
+export function Empty(props: UiProps) {
+  return <div {...uiProps("empty", root, cells(props))}>{props.children}</div>;
 }
 
-export function EmptyHeader(props: Incoming<UiProps>) {
-  return <div {...uiProps("empty-header", header, props)}>{props.children}</div>;
+export function EmptyHeader(props: UiProps) {
+  return <div {...uiProps("empty-header", header, cells(props))}>{props.children}</div>;
 }
 
 export interface EmptyMediaProps extends UiProps {
@@ -124,26 +125,26 @@ export interface EmptyMediaProps extends UiProps {
   variant?: EmptyMediaVariant;
 }
 
-export function EmptyMedia(props: Incoming<EmptyMediaProps>) {
-  const className = (): string => emptyMediaVariants({ variant: props.variant?.() });
+export function EmptyMedia(props: EmptyMediaProps) {
+  const className = (): string => emptyMediaVariants({ variant: props.variant });
   return (
     <div
-      {...uiProps("empty-media", className, props)}
-      data-variant={props.variant?.() ?? "default"}
+      {...uiProps("empty-media", className, cells(props))}
+      data-variant={props.variant ?? "default"}
     >
       {props.children}
     </div>
   );
 }
 
-export function EmptyTitle(props: Incoming<UiProps>) {
-  return <div {...uiProps("empty-title", title, props)}>{props.children}</div>;
+export function EmptyTitle(props: UiProps) {
+  return <div {...uiProps("empty-title", title, cells(props))}>{props.children}</div>;
 }
 
-export function EmptyDescription(props: Incoming<UiProps>) {
-  return <div {...uiProps("empty-description", description, props)}>{props.children}</div>;
+export function EmptyDescription(props: UiProps) {
+  return <div {...uiProps("empty-description", description, cells(props))}>{props.children}</div>;
 }
 
-export function EmptyContent(props: Incoming<UiProps>) {
-  return <div {...uiProps("empty-content", content, props)}>{props.children}</div>;
+export function EmptyContent(props: UiProps) {
+  return <div {...uiProps("empty-content", content, cells(props))}>{props.children}</div>;
 }

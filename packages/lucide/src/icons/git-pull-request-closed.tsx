@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function GitPullRequestClosed(props: Incoming<IconProps>) {
+export function GitPullRequestClosed(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="m15.5 3.5 5 5" />
       <path d="m15.5 8.5 5-5" />
       <path d="M18 11.62V15" />

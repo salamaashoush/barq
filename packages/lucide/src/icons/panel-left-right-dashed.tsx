@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function PanelLeftRightDashed(props: Incoming<IconProps>) {
+export function PanelLeftRightDashed(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M15 10V9" />
       <path d="M15 15v-1" />
       <path d="M15 21v-2" />

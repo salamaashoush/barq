@@ -45,23 +45,23 @@ const FRUITS: Fruit[] = [
 ];
 
 function Picker(
-  props: Incoming<{
+  props: {
     defaultSelectedKey?: Key | null;
     allowsCustomValue?: boolean;
     menuTrigger?: "input" | "focus" | "manual";
     onSelectionChange?: (key: Key | null) => void;
     onInputChange?: (value: string) => void;
-  }>,
+  },
 ) {
   return (
     <ComboBox
       label="Fruit"
       items={FRUITS}
-      defaultSelectedKey={props.defaultSelectedKey?.()}
-      allowsCustomValue={props.allowsCustomValue?.()}
-      menuTrigger={props.menuTrigger?.()}
-      onSelectionChange={props.onSelectionChange?.()}
-      onInputChange={props.onInputChange?.()}
+      defaultSelectedKey={props.defaultSelectedKey}
+      allowsCustomValue={props.allowsCustomValue}
+      menuTrigger={props.menuTrigger}
+      onSelectionChange={props.onSelectionChange}
+      onInputChange={props.onInputChange}
       getTextValue={(fruit: Fruit) => fruit.name}
     >
       {(fruit: Fruit) => <Option>{fruit.name}</Option>}
@@ -361,20 +361,20 @@ interface InlineProps {
   onOpenChange?: (open: boolean) => void;
 }
 
-function Inline(props: Incoming<InlineProps>) {
+function Inline(props: InlineProps) {
   return (
     <ComboboxRoot
       items={FRAMEWORKS}
-      defaultValue={props.defaultValue?.()}
-      value={props.value?.()}
-      autoHighlight={props.autoHighlight?.()}
-      disabled={props.disabled?.()}
-      name={props.name?.()}
-      open={props.open?.()}
-      filter={props.filter?.()}
-      onValueChange={(value) => props.onValueChange?.()?.(value as string | null)}
-      onInputValueChange={props.onInputValueChange?.()}
-      onOpenChange={props.onOpenChange?.()}
+      defaultValue={props.defaultValue}
+      value={props.value}
+      autoHighlight={props.autoHighlight}
+      disabled={props.disabled}
+      name={props.name}
+      open={props.open}
+      filter={props.filter}
+      onValueChange={(value) => props.onValueChange?.(value as string | null)}
+      onInputValueChange={props.onInputValueChange}
+      onOpenChange={props.onOpenChange}
     >
       <ComboboxInput aria-label="Framework" placeholder="Select a framework" />
       <ComboboxTrigger>
@@ -752,13 +752,13 @@ function Tick() {
   return <span data-testid="tick">{item.isSelected() ? "x" : ""}</span>;
 }
 
-function Popup(props: Incoming<{ onValueChange?: (value: Country | null) => void }>) {
+function Popup(props: { onValueChange?: (value: Country | null) => void }) {
   return (
     <ComboboxRoot
       items={COUNTRIES}
       defaultValue={EGYPT}
       itemToStringValue={(country: Country) => country.code}
-      onValueChange={(value) => props.onValueChange?.()?.(value as Country | null)}
+      onValueChange={(value) => props.onValueChange?.(value as Country | null)}
     >
       <ComboboxTrigger>
         <Button aria-label="Country">
@@ -853,13 +853,13 @@ interface ManyProps {
   onValueChange?: (value: string[]) => void;
 }
 
-function Many(props: Incoming<ManyProps>) {
+function Many(props: ManyProps) {
   return (
     <ComboboxRoot
       multiple
       items={FRAMEWORKS}
-      defaultValue={props.defaultValue?.()}
-      onValueChange={(value) => props.onValueChange?.()?.(value as string[])}
+      defaultValue={props.defaultValue}
+      onValueChange={(value) => props.onValueChange?.(value as string[])}
     >
       <ComboboxChips aria-label="Chosen frameworks" data-testid="chips">
         <ComboboxValue>
@@ -894,12 +894,12 @@ function chipTexts(): string[] {
 }
 
 describe("what a combobox shows for its value", () => {
-  function Shown(props: Incoming<{ multiple?: boolean; children?: Child }>) {
+  function Shown(props: { multiple?: boolean; children?: Child }) {
     return (
       <ComboboxRoot
-        multiple={props.multiple?.()}
+        multiple={props.multiple}
         items={COUNTRIES}
-        defaultValue={props.multiple?.() === true ? [EGYPT, JAPAN] : FRANCE}
+        defaultValue={props.multiple === true ? [EGYPT, JAPAN] : FRANCE}
         itemToStringValue={(country: Country) => country.code}
       >
         <ComboboxTrigger>
@@ -1073,7 +1073,7 @@ describe("a combobox holding several values", () => {
   });
 
   test("in a right-to-left page the arrows trade places", async () => {
-    function Arabic(props: Incoming<{ children?: Child }>) {
+    function Arabic(props: { children?: Child }) {
       provideLocale("ar");
       return <>{props.children}</>;
     }
@@ -1104,9 +1104,9 @@ describe("a combobox holding several values", () => {
 });
 
 describe("a combobox whose items are written out", () => {
-  function Written(props: Incoming<{ onValueChange?: (value: string | null) => void }>) {
+  function Written(props: { onValueChange?: (value: string | null) => void }) {
     return (
-      <ComboboxRoot onValueChange={(value) => props.onValueChange?.()?.(value as string | null)}>
+      <ComboboxRoot onValueChange={(value) => props.onValueChange?.(value as string | null)}>
         <ComboboxInput aria-label="Timezone" />
         <ComboboxPopup>
           <ComboboxEmpty>Nothing.</ComboboxEmpty>

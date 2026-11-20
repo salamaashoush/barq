@@ -26,13 +26,13 @@ async function settle(): Promise<void> {
   flush();
 }
 
-function Fixture(props: Incoming<{ side?: SheetSide; showCloseButton?: boolean }>) {
+function Fixture(props: { side?: SheetSide; showCloseButton?: boolean }) {
   return (
     <Sheet>
       <SheetTrigger>
         <Button>Filters</Button>
       </SheetTrigger>
-      <SheetContent side={props.side?.()} showCloseButton={props.showCloseButton?.()}>
+      <SheetContent side={props.side} showCloseButton={props.showCloseButton}>
         <SheetHeader>
           <SheetTitle>Filters</SheetTitle>
           <SheetDescription>Narrow the list.</SheetDescription>

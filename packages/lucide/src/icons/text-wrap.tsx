@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function TextWrap(props: Incoming<IconProps>) {
+export function TextWrap(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="m16 16-3 3 3 3" />
       <path d="M3 12h14.5a1 1 0 0 1 0 7H13" />
       <path d="M3 19h6" />

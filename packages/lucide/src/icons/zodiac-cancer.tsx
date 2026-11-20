@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function ZodiacCancer(props: Incoming<IconProps>) {
+export function ZodiacCancer(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M21 14.5A9 6.5 0 0 1 5.5 19" />
       <path d="M3 9.5A9 6.5 0 0 1 18.5 5" />
       <circle cx="17.5" cy="14.5" r="3.5" />

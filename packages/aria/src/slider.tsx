@@ -21,6 +21,7 @@
  */
 
 import {
+  cells,
   type Accessor,
   type Child,
   For,
@@ -805,20 +806,20 @@ export interface SliderComponentProps extends StyleProps {
  * and a thumb per value. Compose `<SliderOutput>`, `<SliderTrack>` and
  * `<SliderThumb>` yourself for anything else.
  */
-export function Slider(props: Incoming<SliderComponentProps>) {
+export function Slider(props: SliderComponentProps) {
   const trackRef = makeRef<HTMLDivElement>();
-  const options = fromProps(props);
+  const options = fromProps(cells(props));
 
   const state = sliderState({
     ...(options as SliderStateOptions),
-    onChange: (value) => props.onChange?.()?.(value),
-    onChangeEnd: (value) => props.onChangeEnd?.()?.(value),
+    onChange: (value) => props.onChange?.(value),
+    onChangeEnd: (value) => props.onChangeEnd?.(value),
   });
 
   // The caller's `id` is the first thumb's, because the thumb is what a
   // `<label for>` elsewhere on the page can name and focus: on the group it
   // pointed at a `<div>`, which a label reaches neither way.
-  const firstThumbId = (): string | undefined => props.id?.();
+  const firstThumbId = (): string | undefined => props.id;
   const { id: _, ...groupOptions } = options as unknown as SliderOptions & { id?: unknown };
   const { labelProps, groupProps, trackProps, outputProps, baseId } = slider(
     { ...groupOptions, trackRef, firstThumbId },
@@ -826,8 +827,8 @@ export function Slider(props: Incoming<SliderComponentProps>) {
   );
   const ownName = (): boolean =>
     props.label !== undefined ||
-    props["aria-label"]?.() !== undefined ||
-    props["aria-labelledby"]?.() !== undefined;
+    props["aria-label"] !== undefined ||
+    props["aria-labelledby"] !== undefined;
 
   // Named only by a `<label for>` on its first thumb, the group takes its name
   // from the same label. Asked once the slider is in the document, where the
@@ -874,27 +875,27 @@ export function Slider(props: Incoming<SliderComponentProps>) {
           : access(groupProps.id as MaybeAccessor<string | undefined>)),
       firstThumbId,
       outputProps,
-      name: () => props.name?.(),
-      form: () => props.form?.(),
+      name: () => props.name,
+      form: () => props.form,
     }));
   }
 
   const elementProps = mergeProps(
     groupProps,
     filterDOMProps(groupOptions, { global: true }),
-    styleProps(props),
+    styleProps(cells(props)),
     {
       "aria-labelledby": () =>
         access(groupProps["aria-labelledby"] as MaybeAccessor<string | undefined>) ?? namedBy(),
       "data-orientation": state.orientation,
       "data-inverted": state.isInverted,
       "data-disabled": state.isDisabled,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
   return (
-    <div {...elementProps} ref={mergeRefs(props.ref?.())}>
+    <div {...elementProps} ref={mergeRefs(props.ref)}>
       <span {...labelProps}>{props.label}</span>
       {() =>
         props.children === undefined ? (
@@ -917,15 +918,15 @@ export interface SliderOutputComponentProps extends StyleProps {
 }
 
 /** The current value, as text. */
-export function SliderOutput(props: Incoming<SliderOutputComponentProps>) {
+export function SliderOutput(props: SliderOutputComponentProps) {
   const group = useSlider();
 
   const elementProps = mergeProps(
     group.outputProps,
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
@@ -950,23 +951,23 @@ export interface SliderTrackComponentProps extends StyleProps {
  * A press anywhere on it moves the nearest thumb there, which is what makes a
  * slider usable with one gesture rather than requiring the thumb to be hit.
  */
-export function SliderTrack(props: Incoming<SliderTrackComponentProps>) {
+export function SliderTrack(props: SliderTrackComponentProps) {
   const group = useSlider();
   const render = props.children;
 
   const elementProps = mergeProps(
-    props.trackProps?.() ?? {},
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    props.trackProps ?? {},
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
       "data-orientation": group.state.orientation,
       "data-disabled": group.state.isDisabled,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
   return (
-    <div {...elementProps} ref={mergeRefs(group.trackRef.set, props.ref?.())}>
+    <div {...elementProps} ref={mergeRefs(group.trackRef.set, props.ref)}>
       <For each={() => group.state.values().map((_, index) => index)}>
         {(index: number) => render(index)}
       </For>
@@ -989,10 +990,10 @@ export interface SliderThumbComponentProps extends StyleProps {
  * The input is what the keyboard, the form and assistive technology all talk
  * to; the element around it is only what the user sees.
  */
-export function SliderThumb(props: Incoming<SliderThumbComponentProps>) {
+export function SliderThumb(props: SliderThumbComponentProps) {
   const group = useSlider();
   const inputRef = makeRef<HTMLInputElement>();
-  const index = props.index?.() ?? 0;
+  const index = props.index ?? 0;
 
   const { thumbProps, inputProps, isDragging, isFocused, isDisabled } = sliderThumb(
     {
@@ -1002,10 +1003,10 @@ export function SliderThumb(props: Incoming<SliderThumbComponentProps>) {
       baseId: group.baseId,
       id: () => (index === 0 ? group.firstThumbId() : undefined),
       groupLabelId: group.groupLabelId,
-      isDisabled: () => props.isDisabled?.(),
+      isDisabled: () => props.isDisabled,
       name: group.name,
       form: group.form,
-      "aria-label": () => props["aria-label"]?.(),
+      "aria-label": () => props["aria-label"],
     },
     group.state,
   );
@@ -1017,15 +1018,15 @@ export function SliderThumb(props: Incoming<SliderThumbComponentProps>) {
   const elementProps = mergeProps(
     thumbProps,
     hoverProps,
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
       "data-dragging": isDragging,
       "data-focused": isFocused,
       "data-focus-visible": isFocusVisible,
       "data-hovered": isHovered,
       "data-disabled": isDisabled,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
@@ -1034,7 +1035,7 @@ export function SliderThumb(props: Incoming<SliderThumbComponentProps>) {
   });
 
   return (
-    <div {...elementProps} ref={mergeRefs(props.ref?.())}>
+    <div {...elementProps} ref={mergeRefs(props.ref)}>
       <input {...hiddenInputProps} ref={inputRef.set} />
       {props.children}
     </div>

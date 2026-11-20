@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Lighthouse(props: Incoming<IconProps>) {
+export function Lighthouse(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M12 3V2" />
       <path d="M16.066 16.865 7 22l2-11V6a3 3 0 016 0v5l2 11" />
       <path d="m19.792 4.5.866-.5" />

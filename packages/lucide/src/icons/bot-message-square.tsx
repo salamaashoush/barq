@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function BotMessageSquare(props: Incoming<IconProps>) {
+export function BotMessageSquare(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M12 6V2H8" />
       <path d="M15 11v2" />
       <path d="M2 12h2" />

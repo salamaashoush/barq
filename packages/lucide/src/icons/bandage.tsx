@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Bandage(props: Incoming<IconProps>) {
+export function Bandage(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M10 10.01h.01" />
       <path d="M10 14.01h.01" />
       <path d="M14 10.01h.01" />

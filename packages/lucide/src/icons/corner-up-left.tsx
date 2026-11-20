@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function CornerUpLeft(props: Incoming<IconProps>) {
+export function CornerUpLeft(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
       <path d="M9 14 4 9l5-5" />
     </svg>

@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function PawPrint(props: Incoming<IconProps>) {
+export function PawPrint(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <circle cx="11" cy="4" r="2" />
       <circle cx="18" cy="8" r="2" />
       <circle cx="20" cy="16" r="2" />

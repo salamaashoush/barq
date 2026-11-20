@@ -533,3 +533,32 @@ pub fn layer_order(sheets: Vec<String>) -> Vec<String> {
     }
     order
 }
+
+/// One-off: the source with props read as values, for the repository's own
+/// migration. Not part of the published surface.
+#[napi(js_name = "migrateProps")]
+pub fn migrate_props(code: String, filename: String) -> String {
+    use oxc::allocator::Allocator;
+    use oxc::parser::Parser;
+    let allocator = Allocator::new();
+    let source_type = crate::compile::source_type_for(Some(&filename));
+    let mut program = Parser::new(&allocator, &code, source_type).parse().program;
+    let mut edits = crate::props_sugar::migration(&allocator, &mut program, "@barqjs/core");
+    // Stable, so an insertion that closes one span comes before the deletion
+    // that starts where it ends.
+    edits.sort_by_key(|edit| (edit.0, edit.1));
+    edits.dedup();
+    let mut out = String::with_capacity(code.len());
+    let mut at = 0usize;
+    for (start, end, text) in edits {
+        let (start, end) = (start as usize, end as usize);
+        if start < at {
+            continue;
+        }
+        out.push_str(&code[at..start]);
+        out.push_str(text);
+        at = end;
+    }
+    out.push_str(&code[at..]);
+    out
+}

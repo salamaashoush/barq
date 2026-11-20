@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function ShipWheel(props: Incoming<IconProps>) {
+export function ShipWheel(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <circle cx="12" cy="12" r="8" />
       <path d="M12 2v7.5" />
       <path d="m19 5-5.23 5.23" />

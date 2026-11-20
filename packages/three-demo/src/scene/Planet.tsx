@@ -1,4 +1,4 @@
-import { Show, type Incoming } from "@barqjs/core";
+import { cells, Show, type Incoming } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import { Html, useLoader, type ThreeEvent } from "@barqjs/three";
 import { DoubleSide, TextureLoader } from "three";
@@ -34,10 +34,10 @@ const label = css`
   }
 `;
 
-export function Planet(props: Incoming<{ planet: Body }>) {
+export function Planet(props: { planet: Body }) {
   const orrery = useOrrery();
   const bands = useLoader(TextureLoader, "/textures/bands.svg");
-  const planet = props.planet;
+  const planet = cells(props).planet;
   const phase = planet().distance * 1.7;
   const angle = () => phase + (orrery.days() / planet().period) * Math.PI * 2;
   const lit = () => orrery.hovered() === planet().id || orrery.selected() === planet().id;

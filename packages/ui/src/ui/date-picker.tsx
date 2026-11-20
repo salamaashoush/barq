@@ -2,7 +2,7 @@ import type { DateMatcher, DateRange } from "@barqjs/aria/calendar";
 import { CalendarDate, parseDate, today, type DateValue } from "@barqjs/aria/date";
 import { dateFormatter } from "@barqjs/aria/i18n";
 import { callback, controllable } from "@barqjs/aria/utils";
-import { createSignal, Show, type Incoming } from "@barqjs/core";
+import { cells, createSignal, Show, type Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 import { Calendar as CalendarIcon } from "@barqjs/lucide/icons/calendar";
 
@@ -123,25 +123,25 @@ function presetDate(preset: DatePreset): CalendarDate {
  * segments in the trigger. That is a different component and a better one for a
  * form; this one is shadcn's look, and shadcn's look is a button.
  */
-export function DatePicker(props: Incoming<DatePickerProps>) {
+export function DatePicker(props: DatePickerProps) {
   // The picker owns the date when nobody passes one, or its trigger would go
   // on saying "Pick a date" over a calendar that shows a day chosen.
   const [chosen, choose] = controllable<CalendarDate | null>(
-    () => props.value?.(),
-    () => props.defaultValue?.() ?? null,
-    (date) => props.onChange?.()?.(date),
+    () => props.value,
+    () => props.defaultValue ?? null,
+    (date) => props.onChange?.(date),
   );
   const [isOpen, setOpen] = createSignal(false);
   // Where the calendar is turned to. A preset can name a day in another month,
   // and a calendar that stayed put would have chosen a day nobody can see.
   const [focused, setFocused] = createSignal<CalendarDate | undefined>(undefined);
-  const presets = (): readonly DatePreset[] => props.presets?.() ?? [];
+  const presets = (): readonly DatePreset[] => props.presets ?? [];
 
   const format = dateFormatter(ONE);
 
   const pick = (date: CalendarDate | null): void => {
     choose(date);
-    if (date !== null && props.closeOnSelect?.() === true) setOpen(false);
+    if (date !== null && props.closeOnSelect === true) setOpen(false);
   };
 
   // ONE call, not a read per branch. The compiler proves reactivity rather
@@ -149,7 +149,7 @@ export function DatePicker(props: Incoming<DatePickerProps>) {
   const label = (): string => {
     const date = chosen();
     return date === null || date === undefined
-      ? (props.placeholder?.() ?? "Pick a date")
+      ? (props.placeholder ?? "Pick a date")
       : readable(date, format());
   };
 
@@ -161,9 +161,9 @@ export function DatePicker(props: Incoming<DatePickerProps>) {
             string. A component takes its props as props. */}
         <Button
           data-slot="date-picker-trigger"
-          class={ui(trigger, chosen() ? "" : empty, props.class?.(), props.className?.())}
+          class={ui(trigger, chosen() ? "" : empty, props.class, props.className)}
           variant="outline"
-          isDisabled={props.isDisabled?.()}
+          isDisabled={props.isDisabled}
         >
           <CalendarIcon />
           {label()}
@@ -178,7 +178,7 @@ export function DatePicker(props: Incoming<DatePickerProps>) {
           <Select
             items={presets()}
             aria-label="Presets"
-            placeholder={props.presetsPlaceholder?.() ?? "Select"}
+            placeholder={props.presetsPlaceholder ?? "Select"}
             data-slot="date-picker-presets"
             getKey={(preset: DatePreset) => preset.label}
             getTextValue={(preset: DatePreset) => preset.label}
@@ -195,17 +195,17 @@ export function DatePicker(props: Incoming<DatePickerProps>) {
         </Show>
         <div data-slot="date-picker-calendar" class={presets().length > 0 ? boxed : ""}>
           <Calendar
-            aria-label={props["aria-label"]?.() ?? "Choose a date"}
+            aria-label={props["aria-label"] ?? "Choose a date"}
             value={chosen()}
             focusedValue={focused()}
-            minValue={props.minValue?.()}
-            maxValue={props.maxValue?.()}
-            isDateUnavailable={callback<[CalendarDate], boolean>(props.isDateUnavailable)}
-            disabled={props.disabled?.()}
-            captionLayout={props.captionLayout?.()}
-            startMonth={props.startMonth?.()}
-            endMonth={props.endMonth?.()}
-            isDisabled={props.isDisabled?.()}
+            minValue={props.minValue}
+            maxValue={props.maxValue}
+            isDateUnavailable={callback<[CalendarDate], boolean>(cells(props).isDateUnavailable)}
+            disabled={props.disabled}
+            captionLayout={props.captionLayout}
+            startMonth={props.startMonth}
+            endMonth={props.endMonth}
+            isDisabled={props.isDisabled}
             autoFocus
             onFocusChange={setFocused}
             onChange={pick}
@@ -240,30 +240,30 @@ export interface DateRangePickerProps extends UiProps {
  * The same composition over `<RangeCalendar>`. The trigger reads
  * `Jan 20, 2022 - Feb 09, 2022`, and one end alone reads as that end.
  */
-export function DateRangePicker(props: Incoming<DateRangePickerProps>) {
+export function DateRangePicker(props: DateRangePickerProps) {
   const [chosen, choose] = controllable<DateRange | null>(
-    () => props.value?.(),
-    () => props.defaultValue?.() ?? null,
-    (range) => props.onChange?.()?.(range),
+    () => props.value,
+    () => props.defaultValue ?? null,
+    (range) => props.onChange?.(range),
   );
   const format = dateFormatter(BOTH);
 
   const label = (): string => {
     const range = chosen();
-    if (range === null || range === undefined) return props.placeholder?.() ?? "Pick a date";
+    if (range === null || range === undefined) return props.placeholder ?? "Pick a date";
     const from = readable(range.start, format());
     return range.end === range.start ? from : `${from} - ${readable(range.end, format())}`;
   };
 
   return (
-    <div {...uiProps("date-range-picker", rangeRoot, props)}>
+    <div {...uiProps("date-range-picker", rangeRoot, cells(props))}>
       <Popover>
         <PopoverTrigger>
           <Button
             data-slot="date-range-picker-trigger"
             class={ui(rangeTrigger, chosen() ? "" : empty)}
             variant="outline"
-            isDisabled={props.isDisabled?.()}
+            isDisabled={props.isDisabled}
           >
             <CalendarIcon />
             {label()}
@@ -275,14 +275,14 @@ export function DateRangePicker(props: Incoming<DateRangePickerProps>) {
           data-slot="date-range-picker-content"
         >
           <RangeCalendar
-            aria-label={props["aria-label"]?.() ?? "Choose a range of dates"}
+            aria-label={props["aria-label"] ?? "Choose a range of dates"}
             value={chosen()}
-            minValue={props.minValue?.()}
-            maxValue={props.maxValue?.()}
-            isDateUnavailable={callback<[CalendarDate], boolean>(props.isDateUnavailable)}
-            disabled={props.disabled?.()}
-            numberOfMonths={props.numberOfMonths?.() ?? 2}
-            isDisabled={props.isDisabled?.()}
+            minValue={props.minValue}
+            maxValue={props.maxValue}
+            isDateUnavailable={callback<[CalendarDate], boolean>(cells(props).isDateUnavailable)}
+            disabled={props.disabled}
+            numberOfMonths={props.numberOfMonths ?? 2}
+            isDisabled={props.isDisabled}
             autoFocus
             onChange={choose}
           />
@@ -348,11 +348,11 @@ export interface DatePickerInputProps extends UiProps {
  * `id` and the ARIA labelling props go on the field, which is the control a
  * label names; `class` goes on the group around it.
  */
-export function DatePickerInput(props: Incoming<DatePickerInputProps>) {
+export function DatePickerInput(props: DatePickerInputProps) {
   const [chosen, choose] = controllable<CalendarDate | null>(
-    () => props.value?.(),
-    () => props.defaultValue?.() ?? null,
-    (date) => props.onChange?.()?.(date),
+    () => props.value,
+    () => props.defaultValue ?? null,
+    (date) => props.onChange?.(date),
   );
   const [isOpen, setOpen] = createSignal(false);
   const [focused, setFocused] = createSignal<CalendarDate | undefined>(undefined);
@@ -361,8 +361,8 @@ export function DatePickerInput(props: Incoming<DatePickerInputProps>) {
   const [typed, setTyped] = createSignal<string | null>(null);
 
   const long = dateFormatter(TYPED);
-  const write = callback<[CalendarDate], string>(props.format);
-  const read = callback<[string], CalendarDate | null>(props.parse) ?? readDate;
+  const write = callback<[CalendarDate], string>(cells(props).format);
+  const read = callback<[string], CalendarDate | null>(cells(props).parse) ?? readDate;
 
   const text = (): string => {
     const own = typed();
@@ -374,21 +374,21 @@ export function DatePickerInput(props: Incoming<DatePickerInputProps>) {
 
   return (
     <InputGroup
-      class={ui(props.class?.(), props.className?.())}
-      style={props.style?.()}
-      isDisabled={props.isDisabled?.()}
-      data-slot={props["data-slot"]?.() ?? "input-group"}
-      data-testid={props["data-testid"]?.()}
+      class={ui(props.class, props.className)}
+      style={props.style}
+      isDisabled={props.isDisabled}
+      data-slot={props["data-slot"] ?? "input-group"}
+      data-testid={props["data-testid"]}
     >
       <InputGroupInput
-        id={props.id?.()}
-        name={props.name?.()}
+        id={props.id}
+        name={props.name}
         value={text()}
-        placeholder={props.placeholder?.()}
-        disabled={props.isDisabled?.()}
-        aria-label={props["aria-label"]?.()}
-        aria-labelledby={props["aria-labelledby"]?.()}
-        aria-describedby={props["aria-describedby"]?.()}
+        placeholder={props.placeholder}
+        disabled={props.isDisabled}
+        aria-label={props["aria-label"]}
+        aria-labelledby={props["aria-labelledby"]}
+        aria-describedby={props["aria-describedby"]}
         onInput={(event: Event) => {
           const value = (event.currentTarget as HTMLInputElement).value;
           setTyped(value);
@@ -416,8 +416,8 @@ export function DatePickerInput(props: Incoming<DatePickerInputProps>) {
               data-slot="date-picker-input-trigger"
               variant="ghost"
               size="icon-xs"
-              aria-label={props.buttonLabel?.() ?? "Select date"}
-              isDisabled={props.isDisabled?.()}
+              aria-label={props.buttonLabel ?? "Select date"}
+              isDisabled={props.isDisabled}
             >
               <CalendarIcon />
             </InputGroupButton>
@@ -430,17 +430,17 @@ export function DatePickerInput(props: Incoming<DatePickerInputProps>) {
             data-slot="date-picker-content"
           >
             <Calendar
-              aria-label={props.buttonLabel?.() ?? "Select date"}
+              aria-label={props.buttonLabel ?? "Select date"}
               value={chosen()}
               focusedValue={focused()}
-              minValue={props.minValue?.()}
-              maxValue={props.maxValue?.()}
-              isDateUnavailable={callback<[CalendarDate], boolean>(props.isDateUnavailable)}
-              disabled={props.disabled?.()}
-              captionLayout={props.captionLayout?.()}
-              startMonth={props.startMonth?.()}
-              endMonth={props.endMonth?.()}
-              isDisabled={props.isDisabled?.()}
+              minValue={props.minValue}
+              maxValue={props.maxValue}
+              isDateUnavailable={callback<[CalendarDate], boolean>(cells(props).isDateUnavailable)}
+              disabled={props.disabled}
+              captionLayout={props.captionLayout}
+              startMonth={props.startMonth}
+              endMonth={props.endMonth}
+              isDisabled={props.isDisabled}
               autoFocus
               onFocusChange={setFocused}
               onChange={(date) => {

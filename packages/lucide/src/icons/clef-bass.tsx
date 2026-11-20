@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function ClefBass(props: Incoming<IconProps>) {
+export function ClefBass(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M19 11h.01" />
       <path d="M19 6h.01" />
       <path d="M5 8c0-4 4-4 4-4 6 0 6 6 6 6 0 7-10 11-10 11" />

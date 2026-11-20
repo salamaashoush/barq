@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function RulerDimensionLine(props: Incoming<IconProps>) {
+export function RulerDimensionLine(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M10 15v-3" />
       <path d="M14 15v-3" />
       <path d="M18 15v-3" />

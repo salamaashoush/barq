@@ -19,7 +19,7 @@ import {
 } from "@barqjs/aria/tooltip";
 import { filterDOMProps, fromProps, mergeProps, styleProps } from "@barqjs/aria/utils";
 import { Portal } from "@barqjs/web";
-import { Show, type Child, type Incoming, type JSXElement } from "@barqjs/core";
+import { cells, Show, type Child, type Incoming, type JSXElement } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 
@@ -142,12 +142,12 @@ export interface TooltipProviderProps {
  * Optional, which it is not upstream: a `<Tooltip>` outside one works, and
  * waits `@barqjs/aria`'s own 1500ms rather than shadcn's none.
  */
-export function TooltipProvider(props: Incoming<TooltipProviderProps>) {
+export function TooltipProvider(props: TooltipProviderProps) {
   return (
     <AriaTooltipProvider
-      delay={props.delayDuration?.() ?? 0}
-      skipDelay={props.skipDelayDuration?.() ?? 300}
-      isContentHoverable={props.disableHoverableContent?.() !== true}
+      delay={props.delayDuration ?? 0}
+      skipDelay={props.skipDelayDuration ?? 300}
+      isContentHoverable={props.disableHoverableContent !== true}
     >
       {props.children}
     </AriaTooltipProvider>
@@ -174,15 +174,15 @@ export interface TooltipProps extends TooltipTriggerComponentProps {
  * slot, so `aria-describedby` and the focus handlers land on the BUTTON rather
  * than on a wrapper that focus never reaches.
  */
-export function Tooltip(props: Incoming<TooltipProps>) {
+export function Tooltip(props: TooltipProps) {
   return (
     <AriaTooltipTrigger
       {...props}
-      delay={props.delay?.() ?? props.delayDuration?.()}
+      delay={props.delay ?? props.delayDuration}
       isContentHoverable={
-        props.disableHoverableContent?.() === undefined
-          ? props.isContentHoverable?.()
-          : !props.disableHoverableContent()
+        props.disableHoverableContent === undefined
+          ? props.isContentHoverable
+          : !props.disableHoverableContent
       }
     />
   );
@@ -203,9 +203,9 @@ export function Tooltip(props: Incoming<TooltipProps>) {
  * handlers and nothing about being a button: a tooltip's trigger is whatever it
  * already was, a link as readily as a control.
  */
-export function TooltipTrigger(props: Incoming<TriggerPartProps>) {
+export function TooltipTrigger(props: TriggerPartProps) {
   const trigger = useTooltipTrigger();
-  const render = props.render?.();
+  const render = props.render;
   if (render === undefined) return <>{props.children}</>;
 
   return render({
@@ -250,14 +250,14 @@ export interface TooltipContentProps extends Omit<UiProps, "ref"> {
  * An ancestor with `overflow: hidden` then clipped what was left. Radix wraps
  * its content in `Tooltip.Portal` for both halves of the same reason.
  */
-export function TooltipContent(props: Incoming<TooltipContentProps>) {
+export function TooltipContent(props: TooltipContentProps) {
   const target = usePortalTarget();
   const domRef = makeRef<HTMLDivElement>();
   const arrowRef = makeRef<HTMLSpanElement>();
   const trigger = useTooltipTrigger();
   const locale = useLocale();
   const placement = (): Placement =>
-    props.placement?.() ?? placementFor(props.side?.() ?? "top", props.align?.() ?? "center");
+    props.placement ?? placementFor(props.side ?? "top", props.align ?? "center");
 
   const position = overlayPosition({
     targetRef: trigger.triggerRef,
@@ -267,10 +267,10 @@ export function TooltipContent(props: Incoming<TooltipContentProps>) {
     // tooltip's own text, which is the far corner rather than the trigger.
     arrowRef,
     placement,
-    offset: () => props.offset?.() ?? props.sideOffset?.() ?? 8,
-    crossOffset: () => props.crossOffset?.() ?? props.alignOffset?.(),
-    shouldFlip: () => props.shouldFlip?.(),
-    containerPadding: () => props.containerPadding?.(),
+    offset: () => props.offset ?? props.sideOffset ?? 8,
+    crossOffset: () => props.crossOffset ?? props.alignOffset,
+    shouldFlip: () => props.shouldFlip,
+    containerPadding: () => props.containerPadding,
     isOpen: trigger.state.isOpen,
     direction: () => locale().direction,
   });
@@ -283,17 +283,17 @@ export function TooltipContent(props: Incoming<TooltipContentProps>) {
     tooltipProps,
     trigger.tooltipProps,
     position.overlayProps,
-    filterDOMProps(fromProps(props), { global: true, labelable: true }),
+    filterDOMProps(fromProps(cells(props)), { global: true, labelable: true }),
     // Portalled out from under the element that carries `dir`.
-    { dir: () => props.dir?.() ?? contentDirection() },
-    styleProps(props),
+    { dir: () => props.dir ?? contentDirection() },
+    styleProps(cells(props)),
     {
       "data-slot": "tooltip-content",
       "data-placement": position.placement,
       "data-side": position.placement,
       "data-align": () => alignOf(placement()),
       "data-skip-animation": trigger.state.shouldSkipAnimation,
-      class: () => ui(content, props.class?.(), props.className?.()),
+      class: () => ui(content, props.class, props.className),
     },
   );
 
@@ -303,10 +303,10 @@ export function TooltipContent(props: Incoming<TooltipContentProps>) {
         <div
           {...elementProps}
           data-closed={gate.isExiting() ? "" : undefined}
-          ref={mergeRefs(domRef.set, props.ref?.())}
+          ref={mergeRefs(domRef.set, props.ref)}
         >
           {props.children}
-          <Show when={props.arrow?.() !== false}>
+          <Show when={props.arrow !== false}>
             <span
               {...position.arrowProps}
               ref={mergeRefs(arrowRef.set)}

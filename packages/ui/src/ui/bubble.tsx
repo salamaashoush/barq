@@ -1,4 +1,4 @@
-import { Show, type Incoming, type JSXElement } from "@barqjs/core";
+import { cells, Show, type Incoming, type JSXElement } from "@barqjs/core";
 import { layer, variants } from "@barqjs/css";
 
 import "../theme/layers.ts";
@@ -239,8 +239,8 @@ export const bubbleReactionsVariants = variants({
 });
 
 /** A column of bubbles from one side of a conversation. */
-export function BubbleGroup(props: Incoming<UiProps>) {
-  return <div {...uiProps("bubble-group", group, props)}>{props.children}</div>;
+export function BubbleGroup(props: UiProps) {
+  return <div {...uiProps("bubble-group", group, cells(props))}>{props.children}</div>;
 }
 
 export interface BubbleProps extends UiProps {
@@ -259,16 +259,16 @@ export interface BubbleProps extends UiProps {
  * </Bubble>
  * ```
  */
-export function Bubble(props: Incoming<BubbleProps>) {
+export function Bubble(props: BubbleProps) {
   return (
     <div
       {...uiProps(
         "bubble",
-        () => ui(bubbleVariants({ variant: props.variant?.() }), "group/bubble"),
-        props,
+        () => ui(bubbleVariants({ variant: props.variant }), "group/bubble"),
+        cells(props),
       )}
-      data-variant={props.variant?.() ?? "default"}
-      data-align={props.align?.() ?? "start"}
+      data-variant={props.variant ?? "default"}
+      data-align={props.align ?? "start"}
     >
       {props.children}
     </div>
@@ -285,21 +285,21 @@ export interface BubbleContentProps extends UiProps {
 }
 
 /** The painted part. */
-export function BubbleContent(props: Incoming<BubbleContentProps>) {
-  const render = props.render?.();
+export function BubbleContent(props: BubbleContentProps) {
+  const render = props.render;
   if (render !== undefined) {
-    return render(partRender(uiProps("bubble-content", content, props))) as JSXElement;
+    return render(partRender(uiProps("bubble-content", content, cells(props)))) as JSXElement;
   }
   return (
     <Show
-      when={props.href?.() !== undefined}
-      fallback={<div {...uiProps("bubble-content", content, props)}>{props.children}</div>}
+      when={props.href !== undefined}
+      fallback={<div {...uiProps("bubble-content", content, cells(props))}>{props.children}</div>}
     >
       <a
-        {...uiProps("bubble-content", content, props)}
-        href={props.href?.()}
-        target={props.target?.()}
-        rel={props.rel?.()}
+        {...uiProps("bubble-content", content, cells(props))}
+        href={props.href}
+        target={props.target}
+        rel={props.rel}
       >
         {props.children}
       </a>
@@ -315,16 +315,16 @@ export interface BubbleReactionsProps extends UiProps {
 }
 
 /** The little strip of emoji hanging off a corner of the bubble. */
-export function BubbleReactions(props: Incoming<BubbleReactionsProps>) {
+export function BubbleReactions(props: BubbleReactionsProps) {
   return (
     <div
       {...uiProps(
         "bubble-reactions",
-        () => bubbleReactionsVariants({ side: props.side?.(), align: props.align?.() }),
-        props,
+        () => bubbleReactionsVariants({ side: props.side, align: props.align }),
+        cells(props),
       )}
-      data-side={props.side?.() ?? "bottom"}
-      data-align={props.align?.() ?? "end"}
+      data-side={props.side ?? "bottom"}
+      data-align={props.align ?? "end"}
     >
       {props.children}
     </div>

@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Keyboard(props: Incoming<IconProps>) {
+export function Keyboard(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M10 8h.01" />
       <path d="M12 12h.01" />
       <path d="M14 8h.01" />

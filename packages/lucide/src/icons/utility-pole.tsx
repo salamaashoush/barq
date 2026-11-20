@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function UtilityPole(props: Incoming<IconProps>) {
+export function UtilityPole(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M12 2v20" />
       <path d="M2 5h20" />
       <path d="M3 3v2" />

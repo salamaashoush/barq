@@ -14,6 +14,7 @@
  */
 
 import {
+  cells,
   type Accessor,
   type Child,
   createSignal,
@@ -370,9 +371,9 @@ export interface SectionComponentProps extends Omit<StyleProps, "title"> {
  * order ACROSS section boundaries, so Down from the last option of one section
  * already reaches the first of the next.
  */
-export function Section(props: Incoming<SectionComponentProps>) {
+export function Section(props: SectionComponentProps) {
   const registry = getContext(ListBoxContext)?.staticItems;
-  if (registry !== undefined) return <StaticSection of={props} registry={registry} />;
+  if (registry !== undefined) return <StaticSection of={cells(props)} registry={registry} />;
 
   const node = useItemNode();
   const render = getContext(ItemRenderContext);
@@ -385,16 +386,16 @@ export function Section(props: Incoming<SectionComponentProps>) {
   // than joining it, and that a section with no heading gets no dangling
   // `aria-labelledby`.
   const { itemProps, headingProps, groupProps } = listBoxSection({
-    heading: () => (props.title?.() === undefined ? undefined : "titled"),
-    "aria-label": () => props["aria-label"]?.(),
+    heading: () => (props.title === undefined ? undefined : "titled"),
+    "aria-label": () => props["aria-label"],
   });
 
   return (
-    <li {...itemProps} {...styleProps(props)} data-slot={props["data-slot"]?.() ?? "section"}>
+    <li {...itemProps} {...styleProps(cells(props))} data-slot={props["data-slot"] ?? "section"}>
       <span
         {...headingProps}
-        data-slot={props.titleSlot?.() ?? "section-title"}
-        class={props.titleClass?.()}
+        data-slot={props.titleSlot ?? "section-title"}
+        class={props.titleClass}
       >
         {props.title}
       </span>
@@ -434,11 +435,11 @@ export function useSectionHeading(): Accessor<string> | null {
 }
 
 function StaticSection(
-  sectionProps: Incoming<{ of: Incoming<SectionComponentProps>; registry: StaticCollection }>,
+  sectionProps: { of: Incoming<SectionComponentProps>; registry: StaticCollection },
 ) {
-  const props = sectionProps.of();
+  const props = sectionProps.of;
   const list = useListBox();
-  const section = staticItem(sectionProps.registry(), { type: "section", textValue: "" });
+  const section = staticItem(sectionProps.registry, { type: "section", textValue: "" });
   const headingId = id();
   const [isNamed, setNamed] = createSignal(false, { ownedWrite: true });
   const hasTitle = (): boolean => props.title?.() !== undefined;
@@ -527,9 +528,9 @@ export interface ListBoxComponentProps<T> extends StyleProps, ItemAccessors<T> {
  * once has no reason to render the options twice — once to discover them and
  * once to show them — so the collection is derived from the values directly.
  */
-export function ListBox<T>(props: Incoming<ListBoxComponentProps<T>>) {
+export function ListBox<T>(props: ListBoxComponentProps<T>) {
   const domRef = makeRef<HTMLUListElement>();
-  const options = fromProps(props as unknown as Incoming<Record<string, unknown>>);
+  const options = fromProps(cells(props) as unknown as Incoming<Record<string, unknown>>);
   const rendered = props.items === undefined ? staticCollection() : null;
 
   const state = listState<T>({
@@ -537,7 +538,7 @@ export function ListBox<T>(props: Incoming<ListBoxComponentProps<T>>) {
     ...(rendered === null
       ? {}
       : ({ items: rendered.entries, ...staticAccessors } as unknown as ListStateOptions<T>)),
-    onSelectionChange: (keys) => props.onSelectionChange?.()?.(keys),
+    onSelectionChange: (keys) => props.onSelectionChange?.(keys),
   });
 
   // Inside a `<Virtualizer>` the list renders a WINDOW of its collection, and
@@ -569,13 +570,13 @@ export function ListBox<T>(props: Incoming<ListBoxComponentProps<T>>) {
 
   const elementProps = mergeProps(
     listBoxProps,
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
       "data-empty": () => state.collection().size === 0,
       "data-virtualized": () => virtual !== null,
-      style: () => (virtual === null ? props.style?.() : contentStyle(virtual.contentSize())),
+      style: () => (virtual === null ? props.style : contentStyle(virtual.contentSize())),
     },
   );
 
@@ -597,7 +598,7 @@ export function ListBox<T>(props: Incoming<ListBoxComponentProps<T>>) {
     return (
       <>
         <span {...labelProps}>{props.label}</span>
-        <ul {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
+        <ul {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
           {props.children}
         </ul>
         <span {...descriptionProps}>{props.description}</span>
@@ -609,7 +610,7 @@ export function ListBox<T>(props: Incoming<ListBoxComponentProps<T>>) {
   return (
     <>
       <span {...labelProps}>{props.label}</span>
-      <ul {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
+      <ul {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
         <For each={rows}>
           {(node: Node<T>) => {
             provideItemNode(node);
@@ -650,17 +651,17 @@ export interface OptionComponentProps extends StyleProps {
  * One option. Its key, value and disabled state come from the collection node
  * the enclosing {@link ListBox} is rendering, so nothing is repeated here.
  */
-export function Option(props: Incoming<OptionComponentProps>) {
+export function Option(props: OptionComponentProps) {
   const domRef = makeRef<HTMLLIElement>();
   const list = useListBox();
   const written =
     list.staticItems === undefined
       ? null
       : staticItem(list.staticItems, {
-          key: props.value?.(),
-          textValue: () => props.textValue?.(),
-          props: () => ({ isDisabled: props.isDisabled?.() === true }),
-          isHidden: () => props.isHidden?.(),
+          key: props.value,
+          textValue: () => props.textValue,
+          props: () => ({ isDisabled: props.isDisabled === true }),
+          isHidden: () => props.isHidden,
         });
   const node: Pick<Node<unknown>, "key" | "props"> = written === null
     ? useItemNode()
@@ -674,13 +675,13 @@ export function Option(props: Incoming<OptionComponentProps>) {
       key: node.key,
       ref: domRef,
       baseId: list.baseId,
-      "aria-label": () => props["aria-label"]?.(),
-      isDisabled: () => props.isDisabled?.() === true || node.props?.isDisabled === true,
+      "aria-label": () => props["aria-label"],
+      isDisabled: () => props.isDisabled === true || node.props?.isDisabled === true,
       shouldSelectOnPressUp: list.shouldSelectOnPressUp,
       shouldUseVirtualFocus: list.shouldUseVirtualFocus,
       isVirtualized: () => virtual !== null,
-      onAction: () => props.onAction?.()?.(),
-      hasAction: () => props.onAction?.() !== undefined,
+      onAction: () => props.onAction?.(),
+      hasAction: () => props.onAction !== undefined,
     },
     list.state,
   );
@@ -692,8 +693,8 @@ export function Option(props: Incoming<OptionComponentProps>) {
     optionProps,
     hoverProps,
     focusProps,
-    filterDOMProps(fromProps(props), { global: true, labelable: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true, labelable: true }),
+    styleProps(cells(props)),
     {
       "data-selected": isSelected,
       "data-focused": isFocused,
@@ -701,20 +702,20 @@ export function Option(props: Incoming<OptionComponentProps>) {
       "data-pressed": isPressed,
       "data-hovered": isHovered,
       "data-disabled": isDisabled,
-      hidden: () => props.isHidden?.() === true || undefined,
-      "data-testid": () => props["data-testid"]?.(),
+      hidden: () => props.isHidden === true || undefined,
+      "data-testid": () => props["data-testid"],
       // Positioned by the LAYOUT: the rows above it are not rendered, so
       // document flow has nothing to place it against.
       style: () => {
-        if (virtual === null) return props.style?.();
+        if (virtual === null) return props.style;
         const info = virtual.layout.getLayoutInfo(node.key);
-        return info === null ? props.style?.() : rowStyle(info);
+        return info === null ? props.style : rowStyle(info);
       },
     },
   );
 
   return (
-    <li {...elementProps} ref={mergeRefs(domRef.set, written?.ref, props.ref?.())}>
+    <li {...elementProps} ref={mergeRefs(domRef.set, written?.ref, props.ref)}>
       {props.children}
     </li>
   );

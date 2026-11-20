@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Vault(props: Incoming<IconProps>) {
+export function Vault(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <rect width="18" height="18" x="3" y="3" rx="2" />
       <circle cx="7.5" cy="7.5" r=".5" fill="currentColor" />
       <path d="m7.9 7.9 2.7 2.7" />

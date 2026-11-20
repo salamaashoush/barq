@@ -21,6 +21,7 @@
  */
 
 import {
+  cells,
   type Accessor,
   type Child,
   For,
@@ -727,10 +728,10 @@ export function useDateField(): DateFieldContextValue {
   return value;
 }
 
-function DateFieldProvider(props: Incoming<{ value: DateFieldContextValue; children?: Child }>) {
+function DateFieldProvider(props: { value: DateFieldContextValue; children?: Child }) {
   return provide(
     DateFieldContext,
-    () => props.value(),
+    () => props.value,
     () => props.children as unknown,
   );
 }
@@ -768,21 +769,21 @@ export interface DateFieldComponentProps extends StyleProps {
  * <DateField label="Starts" granularity="minute" />
  * ```
  */
-export function DateField(props: Incoming<DateFieldComponentProps>) {
+export function DateField(props: DateFieldComponentProps) {
   const domRef = makeRef<HTMLDivElement>();
 
   const state = dateFieldState({
-    value: () => props.value?.(),
-    defaultValue: () => props.defaultValue?.(),
-    placeholderValue: () => props.placeholderValue?.(),
-    minValue: () => props.minValue?.(),
-    maxValue: () => props.maxValue?.(),
-    granularity: () => props.granularity?.(),
-    hourCycle: () => props.hourCycle?.(),
-    isDisabled: () => props.isDisabled?.(),
-    isReadOnly: () => props.isReadOnly?.(),
-    isRequired: () => props.isRequired?.(),
-    onChange: (value) => props.onChange?.()?.(value),
+    value: () => props.value,
+    defaultValue: () => props.defaultValue,
+    placeholderValue: () => props.placeholderValue,
+    minValue: () => props.minValue,
+    maxValue: () => props.maxValue,
+    granularity: () => props.granularity,
+    hourCycle: () => props.hourCycle,
+    isDisabled: () => props.isDisabled,
+    isReadOnly: () => props.isReadOnly,
+    isRequired: () => props.isRequired,
+    onChange: (value) => props.onChange?.(value),
   });
 
   const {
@@ -797,38 +798,38 @@ export function DateField(props: Incoming<DateFieldComponentProps>) {
     {
       ref: domRef,
       validate: callback<[DateValue | null], string | string[] | true | null | undefined>(
-        props.validate,
+        cells(props).validate,
       ),
-      validationBehavior: () => props.validationBehavior?.(),
-      label: () => props.label?.(),
-      description: () => props.description?.(),
-      errorMessage: () => props.errorMessage?.(),
-      isDisabled: () => props.isDisabled?.(),
-      isReadOnly: () => props.isReadOnly?.(),
-      isRequired: () => props.isRequired?.(),
-      isInvalid: () => props.isInvalid?.(),
-      name: () => props.name?.(),
-      "aria-label": () => props["aria-label"]?.(),
-      "aria-labelledby": () => props["aria-labelledby"]?.(),
+      validationBehavior: () => props.validationBehavior,
+      label: () => props.label,
+      description: () => props.description,
+      errorMessage: () => props.errorMessage,
+      isDisabled: () => props.isDisabled,
+      isReadOnly: () => props.isReadOnly,
+      isRequired: () => props.isRequired,
+      isInvalid: () => props.isInvalid,
+      name: () => props.name,
+      "aria-label": () => props["aria-label"],
+      "aria-labelledby": () => props["aria-labelledby"],
     },
     state,
   );
 
   const elementProps = mergeProps(
     fieldProps,
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
-      "data-disabled": () => props.isDisabled?.() === true,
+      "data-disabled": () => props.isDisabled === true,
       "data-invalid": isInvalid,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
   return (
     <DateFieldProvider value={{ state }}>
       <span {...labelProps}>{props.label}</span>
-      <div {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
+      <div {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
         {/* Keyed by INDEX, not by the segment: a new object every read would
             rebuild every element on every keystroke, and the one holding
             focus would be destroyed under the user. */}
@@ -836,11 +837,11 @@ export function DateField(props: Incoming<DateFieldComponentProps>) {
           {(at: number) => <DateSegmentPart index={at} />}
         </For>
       </div>
-      {() => (props.name?.() === undefined ? null : <input {...inputProps} />)}
+      {() => (props.name === undefined ? null : <input {...inputProps} />)}
       <span {...descriptionProps}>{props.description}</span>
       <span {...errorMessageProps}>
         {() => {
-          const given = props.errorMessage?.();
+          const given = props.errorMessage;
           if (given !== undefined && given !== null && given !== "") return given;
           const found = errors();
           return found.length === 0 ? null : found.join(" ");
@@ -855,10 +856,10 @@ interface DateSegmentPartProps {
 }
 
 /** One segment. Its own component so it keeps its element as the value moves. */
-function DateSegmentPart(props: Incoming<DateSegmentPartProps>) {
+function DateSegmentPart(props: DateSegmentPartProps) {
   const domRef = makeRef<HTMLDivElement>();
   const { state } = useDateField();
-  const index = props.index();
+  const index = props.index;
 
   const segment = (): DateSegment =>
     state.segments()[index] ?? {
@@ -905,44 +906,44 @@ export interface TimeFieldComponentProps extends Omit<
  * The same segments without the date ones, so a meeting time is a field the
  * user fills rather than a string they format.
  */
-export function TimeField(props: Incoming<TimeFieldComponentProps>) {
+export function TimeField(props: TimeFieldComponentProps) {
   const day = today();
 
   return (
     <DateField
-      label={props.label?.()}
-      description={props.description?.()}
-      errorMessage={props.errorMessage?.()}
-      granularity={props.granularity?.() ?? "minute"}
-      hourCycle={props.hourCycle?.()}
-      isDisabled={props.isDisabled?.()}
-      isReadOnly={props.isReadOnly?.()}
-      isRequired={props.isRequired?.()}
-      isInvalid={props.isInvalid?.()}
-      validationBehavior={props.validationBehavior?.()}
+      label={props.label}
+      description={props.description}
+      errorMessage={props.errorMessage}
+      granularity={props.granularity ?? "minute"}
+      hourCycle={props.hourCycle}
+      isDisabled={props.isDisabled}
+      isReadOnly={props.isReadOnly}
+      isRequired={props.isRequired}
+      isInvalid={props.isInvalid}
+      validationBehavior={props.validationBehavior}
       validate={(value: DateValue | null) => {
         const check = callback<[Time | null], string | string[] | true | null | undefined>(
-          props.validate,
+          cells(props).validate,
         );
         if (check === undefined) return null;
         return check(value === null ? null : (value as CalendarDateTime).time);
       }}
-      aria-label={props["aria-label"]?.()}
-      aria-labelledby={props["aria-labelledby"]?.()}
-      class={props.class?.() ?? props.className?.()}
-      data-testid={props["data-testid"]?.()}
+      aria-label={props["aria-label"]}
+      aria-labelledby={props["aria-labelledby"]}
+      class={props.class ?? props.className}
+      data-testid={props["data-testid"]}
       value={(() => {
-        const time = props.value?.();
+        const time = props.value;
         if (time === undefined) return undefined;
         return time === null ? null : CalendarDateTime.from(day, time);
       })()}
       defaultValue={(() => {
-        const time = props.defaultValue?.();
+        const time = props.defaultValue;
         if (time === undefined) return undefined;
         return time === null ? null : CalendarDateTime.from(day, time);
       })()}
       onChange={(value) => {
-        props.onChange?.()?.(value === null ? null : (value as CalendarDateTime).time);
+        props.onChange?.(value === null ? null : (value as CalendarDateTime).time);
       }}
     />
   );

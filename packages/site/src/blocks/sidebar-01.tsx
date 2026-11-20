@@ -231,8 +231,8 @@ const NAV_MAIN: readonly NavSection[] = [
   },
 ];
 
-function VersionSwitcher(props: Incoming<{ versions: readonly string[]; defaultVersion: string }>) {
-  const [selected, setSelected] = createSignal(props.defaultVersion());
+function VersionSwitcher(props: { versions: readonly string[]; defaultVersion: string }) {
+  const [selected, setSelected] = createSignal(props.defaultVersion);
 
   return (
     <SidebarMenu>
@@ -251,7 +251,7 @@ function VersionSwitcher(props: Incoming<{ versions: readonly string[]; defaultV
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
-            <For each={() => props.versions()}>
+            <For each={() => props.versions}>
               {(version: string) => (
                 <DropdownMenuItem onSelect={() => setSelected(version)}>
                   v{version}{" "}

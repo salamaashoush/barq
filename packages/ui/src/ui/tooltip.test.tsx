@@ -34,30 +34,30 @@ async function settle(): Promise<void> {
 }
 
 function Toolbar(
-  props: Incoming<{
+  props: {
     delayDuration?: number;
     skipDelayDuration?: number;
     disableHoverableContent?: boolean;
     content?: TooltipContentProps;
-  }>,
+  },
 ) {
   return (
     <TooltipProvider
-      delayDuration={props.delayDuration?.()}
-      skipDelayDuration={props.skipDelayDuration?.()}
-      disableHoverableContent={props.disableHoverableContent?.()}
+      delayDuration={props.delayDuration}
+      skipDelayDuration={props.skipDelayDuration}
+      disableHoverableContent={props.disableHoverableContent}
     >
       <Tooltip>
         <TooltipTrigger>
           <Button>Save</Button>
         </TooltipTrigger>
         <TooltipContent
-          side={props.content?.()?.side}
-          align={props.content?.()?.align}
-          sideOffset={props.content?.()?.sideOffset}
-          alignOffset={props.content?.()?.alignOffset}
-          placement={props.content?.()?.placement}
-          offset={props.content?.()?.offset}
+          side={props.content?.side}
+          align={props.content?.align}
+          sideOffset={props.content?.sideOffset}
+          alignOffset={props.content?.alignOffset}
+          placement={props.content?.placement}
+          offset={props.content?.offset}
         >
           Saves to the server
         </TooltipContent>

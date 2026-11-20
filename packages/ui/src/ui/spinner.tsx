@@ -1,3 +1,4 @@
+import { cells } from "@barqjs/core";
 import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
@@ -39,15 +40,15 @@ export interface SpinnerProps {
  * `role="status"` with a name, so the wait is announced once rather than being
  * a silent turning circle.
  */
-export function Spinner(props: Incoming<SpinnerProps>) {
+export function Spinner(props: SpinnerProps) {
   return (
     <LoaderCircle
-      {...handedOn(props)}
-      role={props.role?.() ?? "status"}
-      aria-label={props.label?.() ?? props["aria-label"]?.() ?? "Loading"}
-      aria-hidden={props["aria-hidden"]?.()}
-      data-slot={props["data-slot"]?.() ?? "spinner"}
-      class={ui(spinner, props.class?.(), props.className?.())}
+      {...handedOn(cells(props))}
+      role={props.role ?? "status"}
+      aria-label={props.label ?? props["aria-label"] ?? "Loading"}
+      aria-hidden={props["aria-hidden"]}
+      data-slot={props["data-slot"] ?? "spinner"}
+      class={ui(spinner, props.class, props.className)}
     />
   );
 }

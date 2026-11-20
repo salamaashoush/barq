@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function TrendingUpDown(props: Incoming<IconProps>) {
+export function TrendingUpDown(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M14.828 14.828 21 21" />
       <path d="M21 16v5h-5" />
       <path d="m21 3-9 9-4-4-6 6" />

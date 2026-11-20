@@ -1,3 +1,4 @@
+import { cells } from "@barqjs/core";
 import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
@@ -62,24 +63,24 @@ const ellipsis = ui({
  * Links, not buttons: a page is an address, and a middle-click on page three
  * should open page three.
  */
-export function Pagination(props: Incoming<UiProps>) {
+export function Pagination(props: UiProps) {
   return (
     <nav
-      {...uiProps("pagination", root, props)}
+      {...uiProps("pagination", root, cells(props))}
       role="navigation"
-      aria-label={props["aria-label"]?.() ?? "pagination"}
+      aria-label={props["aria-label"] ?? "pagination"}
     >
       {props.children}
     </nav>
   );
 }
 
-export function PaginationContent(props: Incoming<UiProps>) {
-  return <ul {...uiProps("pagination-content", content, props)}>{props.children}</ul>;
+export function PaginationContent(props: UiProps) {
+  return <ul {...uiProps("pagination-content", content, cells(props))}>{props.children}</ul>;
 }
 
-export function PaginationItem(props: Incoming<UiProps>) {
-  return <li {...uiProps("pagination-item", "", props)}>{props.children}</li>;
+export function PaginationItem(props: UiProps) {
+  return <li {...uiProps("pagination-item", "", cells(props))}>{props.children}</li>;
 }
 
 export interface PaginationLinkProps extends UiProps {
@@ -90,19 +91,19 @@ export interface PaginationLinkProps extends UiProps {
   size?: ButtonSize;
 }
 
-export function PaginationLink(props: Incoming<PaginationLinkProps>) {
+export function PaginationLink(props: PaginationLinkProps) {
   const className = (): string =>
     buttonVariants({
-      variant: props.isActive?.() === true ? "outline" : "ghost",
-      size: props.size?.() ?? "icon",
+      variant: props.isActive === true ? "outline" : "ghost",
+      size: props.size ?? "icon",
     });
 
   return (
     <a
-      {...uiProps("pagination-link", className, props)}
-      href={props.href?.()}
-      aria-current={props.isActive?.() === true ? "page" : undefined}
-      data-active={props.isActive?.() === true ? "" : undefined}
+      {...uiProps("pagination-link", className, cells(props))}
+      href={props.href}
+      aria-current={props.isActive === true ? "page" : undefined}
+      data-active={props.isActive === true ? "" : undefined}
     >
       {props.children}
     </a>
@@ -123,29 +124,29 @@ const mirrored = ui({
   },
 });
 
-export function PaginationPrevious(props: Incoming<PaginationEdgeProps>) {
+export function PaginationPrevious(props: PaginationEdgeProps) {
   return (
     <PaginationLink
       {...props}
       size="default"
-      aria-label={props["aria-label"]?.() ?? "Go to previous page"}
-      class={ui(edge, props.class?.())}
+      aria-label={props["aria-label"] ?? "Go to previous page"}
+      class={ui(edge, props.class)}
     >
       <ChevronLeft data-icon="inline-start" class={mirrored} />
-      <span class={wide}>{() => props.label?.() ?? props.text?.() ?? "Previous"}</span>
+      <span class={wide}>{() => props.label ?? props.text ?? "Previous"}</span>
     </PaginationLink>
   );
 }
 
-export function PaginationNext(props: Incoming<PaginationEdgeProps>) {
+export function PaginationNext(props: PaginationEdgeProps) {
   return (
     <PaginationLink
       {...props}
       size="default"
-      aria-label={props["aria-label"]?.() ?? "Go to next page"}
-      class={ui(edge, props.class?.())}
+      aria-label={props["aria-label"] ?? "Go to next page"}
+      class={ui(edge, props.class)}
     >
-      <span class={wide}>{() => props.label?.() ?? props.text?.() ?? "Next"}</span>
+      <span class={wide}>{() => props.label ?? props.text ?? "Next"}</span>
       <ChevronRight data-icon="inline-end" class={mirrored} />
     </PaginationLink>
   );
@@ -159,9 +160,9 @@ const wide = ui({
   },
 });
 
-export function PaginationEllipsis(props: Incoming<UiProps>) {
+export function PaginationEllipsis(props: UiProps) {
   return (
-    <span {...uiProps("pagination-ellipsis", ellipsis, props)} aria-hidden="true">
+    <span {...uiProps("pagination-ellipsis", ellipsis, cells(props))} aria-hidden="true">
       <Ellipsis />
       <span class={srOnly}>More pages</span>
     </span>

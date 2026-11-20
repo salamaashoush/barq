@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Helicopter(props: Incoming<IconProps>) {
+export function Helicopter(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M11 17v4" />
       <path d="M14 3v8a2 2 0 0 0 2 2h5.865" />
       <path d="M17 17v4" />

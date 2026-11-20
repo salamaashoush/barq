@@ -347,26 +347,26 @@ export interface ButtonProps extends ButtonComponentProps {
  * The press comes from `@barqjs/aria`, so it begins on pointer-down, cancels
  * when the pointer leaves, and does not wait for a click on touch.
  */
-export function Button(props: Incoming<ButtonProps>) {
+export function Button(props: ButtonProps) {
   const className = (): string =>
     ui(
-      buttonVariants({ variant: props.variant?.(), size: props.size?.() }),
-      props.class?.(),
-      props.className?.(),
+      buttonVariants({ variant: props.variant, size: props.size }),
+      props.class,
+      props.className,
     );
-  const isDisabled = (): boolean | undefined => props.isDisabled?.() ?? props.disabled?.();
+  const isDisabled = (): boolean | undefined => props.isDisabled ?? props.disabled;
   const { ref: _, ...link } = props;
 
   return (
     <Show
-      when={props.href?.() !== undefined}
+      when={props.href !== undefined}
       fallback={
         <AriaButton
           {...props}
           isDisabled={isDisabled()}
-          data-slot={props["data-slot"]?.() ?? "button"}
-          data-variant={props.variant?.() ?? "default"}
-          data-size={props.size?.() ?? "default"}
+          data-slot={props["data-slot"] ?? "button"}
+          data-variant={props.variant ?? "default"}
+          data-size={props.size ?? "default"}
           class={className()}
         />
       }
@@ -374,9 +374,9 @@ export function Button(props: Incoming<ButtonProps>) {
       <AriaLink
         {...link}
         isDisabled={isDisabled()}
-        data-slot={props["data-slot"]?.() ?? "button"}
-        data-variant={props.variant?.() ?? "default"}
-        data-size={props.size?.() ?? "default"}
+        data-slot={props["data-slot"] ?? "button"}
+        data-variant={props.variant ?? "default"}
+        data-size={props.size ?? "default"}
         class={className()}
       />
     </Show>

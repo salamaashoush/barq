@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function MessageSquareDashed(props: Incoming<IconProps>) {
+export function MessageSquareDashed(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M14 3h2" />
       <path d="M16 19h-2" />
       <path d="M2 12v-2" />

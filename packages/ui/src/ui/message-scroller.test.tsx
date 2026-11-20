@@ -205,13 +205,13 @@ const settled = async (): Promise<void> => {
   flush();
 };
 
-function Transcript(props: Incoming<{ lines: readonly Line[]; autoScroll?: boolean }>) {
+function Transcript(props: { lines: readonly Line[]; autoScroll?: boolean }) {
   return (
-    <MessageScrollerProvider autoScroll={props.autoScroll?.()}>
+    <MessageScrollerProvider autoScroll={props.autoScroll}>
       <MessageScroller>
         <MessageScrollerViewport>
           <MessageScrollerContent>
-            <For each={() => props.lines()} keyed={(line: Line) => line.id}>
+            <For each={() => props.lines} keyed={(line: Line) => line.id}>
               {(line: () => Line) => (
                 <MessageScrollerItem messageId={line().id} scrollAnchor={line().anchor === true}>
                   {() => line().id}

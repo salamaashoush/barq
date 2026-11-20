@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function PaintGun(props: Incoming<IconProps>) {
+export function PaintGun(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M11 10v-.172a2 2 0 0 1 .586-1.414l.828-.828A2 2 0 0 0 13 6.172V3a1 1 0 0 0-1-1H6a1 1 0 0 0-1 1v3.172a2 2 0 0 0 .586 1.414l.828.828A2 2 0 0 1 7 9.828V10" />
       <path d="m12 14-.81 3.242a1 1 0 0 1-.97.758H7" />
       <path d="M13 12h1" />

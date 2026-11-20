@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function DraftingCompass(props: Incoming<IconProps>) {
+export function DraftingCompass(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="m12.99 6.74 1.93 3.44" />
       <path d="M19.136 12a10 10 0 0 1-14.271 0" />
       <path d="m21 21-2.16-3.84" />

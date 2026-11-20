@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function SunSnow(props: Incoming<IconProps>) {
+export function SunSnow(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M10 21v-1" />
       <path d="M10 4V3" />
       <path d="M10 9a3 3 0 0 0 0 6" />

@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Opacity(props: Incoming<IconProps>) {
+export function Opacity(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M12 3h.01" />
       <path d="M12 9h.01" />
       <path d="M15 6h.01" />

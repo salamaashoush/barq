@@ -16,6 +16,7 @@
  */
 
 import {
+  cells,
   type Child,
   For,
   createContext,
@@ -157,34 +158,34 @@ export interface BreadcrumbsComponentProps<T> extends StyleProps, ItemAccessors<
  * </Breadcrumbs>
  * ```
  */
-export function Breadcrumbs<T>(props: Incoming<BreadcrumbsComponentProps<T>>) {
-  const options = fromProps(props as unknown as Incoming<Record<string, unknown>>);
+export function Breadcrumbs<T>(props: BreadcrumbsComponentProps<T>) {
+  const options = fromProps(cells(props) as unknown as Incoming<Record<string, unknown>>);
   const { navProps } = breadcrumbs(options);
 
   const collection = (): ListCollection<T> =>
-    buildCollection(props.items(), props as unknown as ItemAccessors<T>);
+    buildCollection(props.items, cells(props) as unknown as ItemAccessors<T>);
 
   const owner = getOwner();
   if (owner !== null) {
     install(owner, BreadcrumbsContext, () => ({
-      isDisabled: () => props.isDisabled?.() === true,
-      onAction: () => props.onAction?.(),
+      isDisabled: () => props.isDisabled === true,
+      onAction: () => props.onAction,
     }));
   }
 
   const elementProps = mergeProps(
     navProps,
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
   const render = props.children;
 
   return (
-    <nav {...elementProps} ref={mergeRefs(props.ref?.())}>
+    <nav {...elementProps} ref={mergeRefs(props.ref)}>
       <ol>
         <For each={() => [...collection()]}>
           {(node: Node<T>) => {
@@ -222,15 +223,15 @@ export interface BreadcrumbComponentProps extends StyleProps {
  * `href` renders as a `<span>`: an anchor without one is not a link, and
  * dressing it as one is a promise the markup does not keep.
  */
-export function Breadcrumb(props: Incoming<BreadcrumbComponentProps>) {
+export function Breadcrumb(props: BreadcrumbComponentProps) {
   const domRef = makeRef<HTMLAnchorElement>();
   const trail = useBreadcrumbs();
   const { node, isLast } = useCrumb();
 
-  const isCurrent = (): boolean => props.isCurrent?.() ?? isLast;
-  const href = (): string | undefined => props.href?.() ?? (node.props?.href as string | undefined);
+  const isCurrent = (): boolean => props.isCurrent ?? isLast;
+  const href = (): string | undefined => props.href ?? (node.props?.href as string | undefined);
 
-  const isDisabled = (): boolean => props.isDisabled?.() === true || trail.isDisabled();
+  const isDisabled = (): boolean => props.isDisabled === true || trail.isDisabled();
 
   /**
    * Whether this crumb is a link at all.
@@ -246,10 +247,10 @@ export function Breadcrumb(props: Incoming<BreadcrumbComponentProps>) {
       isCurrent,
       isDisabled,
       href,
-      target: () => props.target?.(),
-      rel: () => props.rel?.(),
+      target: () => props.target,
+      rel: () => props.rel,
       onPress: (event) => {
-        props.onPress?.()?.(event);
+        props.onPress?.(event);
         trail.onAction()?.(node.key);
       },
     },
@@ -263,15 +264,15 @@ export function Breadcrumb(props: Incoming<BreadcrumbComponentProps>) {
     itemProps,
     hoverProps,
     focusProps,
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
       "data-current": isCurrent,
       "data-pressed": isPressed,
       "data-hovered": isHovered,
       "data-focus-visible": isFocusVisible,
       "data-disabled": isDisabled,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
@@ -286,7 +287,7 @@ export function Breadcrumb(props: Incoming<BreadcrumbComponentProps>) {
             {props.children}
           </span>
         ) : (
-          <a {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
+          <a {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
             {props.children}
           </a>
         )

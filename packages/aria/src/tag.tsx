@@ -19,6 +19,7 @@
  */
 
 import {
+  cells,
   type Accessor,
   type Child,
   For,
@@ -279,10 +280,10 @@ export function useTagNode(): Node<unknown> {
   return node;
 }
 
-function TagGroupProvider(props: Incoming<{ value: TagGroupContextValue; children?: Child }>) {
+function TagGroupProvider(props: { value: TagGroupContextValue; children?: Child }) {
   return provide(
     TagGroupContext,
-    () => props.value(),
+    () => props.value,
     () => props.children as unknown,
   );
 }
@@ -315,20 +316,20 @@ export interface TagGroupComponentProps<T> extends StyleProps, ItemAccessors<T> 
  * </TagGroup>
  * ```
  */
-export function TagGroup<T>(props: Incoming<TagGroupComponentProps<T>>) {
+export function TagGroup<T>(props: TagGroupComponentProps<T>) {
   const domRef = makeRef<HTMLDivElement>();
-  const options = fromProps(props as unknown as Incoming<Record<string, unknown>>);
+  const options = fromProps(cells(props) as unknown as Incoming<Record<string, unknown>>);
 
   const state = listState<T>({
     ...(options as ListStateOptions<T>),
-    onSelectionChange: (keys) => props.onSelectionChange?.()?.(keys),
+    onSelectionChange: (keys) => props.onSelectionChange?.(keys),
   });
 
   const { gridProps, labelProps, descriptionProps, errorMessageProps, baseId } = tagGroup(
     {
       ...(options as unknown as TagGroupOptions),
       ref: domRef,
-      onRemove: props.onRemove?.() === undefined ? undefined : (keys) => props.onRemove?.()?.(keys),
+      onRemove: props.onRemove === undefined ? undefined : (keys) => props.onRemove?.(keys),
     },
     state,
   );
@@ -336,16 +337,16 @@ export function TagGroup<T>(props: Incoming<TagGroupComponentProps<T>>) {
   const value: TagGroupContextValue = {
     state: state,
     baseId,
-    onRemove: () => props.onRemove?.(),
+    onRemove: () => props.onRemove,
   };
 
   const elementProps = mergeProps(
     gridProps,
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
       "data-empty": () => state.collection().size === 0,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
@@ -354,7 +355,7 @@ export function TagGroup<T>(props: Incoming<TagGroupComponentProps<T>>) {
   return (
     <TagGroupProvider value={value}>
       <span {...labelProps}>{props.label}</span>
-      <div {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
+      <div {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
         <For each={() => [...state.collection()]}>
           {(node: Node<T>) => {
             const rowOwner = getOwner();
@@ -382,7 +383,7 @@ export interface TagComponentProps extends StyleProps {
  * on it does the same thing. A second stop per tag would double the length of
  * every filter bar.
  */
-export function Tag(props: Incoming<TagComponentProps>) {
+export function Tag(props: TagComponentProps) {
   const domRef = makeRef<HTMLDivElement>();
   const buttonRef = makeRef<HTMLButtonElement>();
   const group = useTagGroup();
@@ -416,10 +417,10 @@ export function Tag(props: Incoming<TagComponentProps>) {
     rowProps,
     hoverProps,
     focusProps,
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
-      "aria-label": () => props["aria-label"]?.(),
+      "aria-label": () => props["aria-label"],
       "data-selected": isSelected,
       "data-focused": isFocused,
       "data-focus-visible": isFocusVisible,
@@ -427,7 +428,7 @@ export function Tag(props: Incoming<TagComponentProps>) {
       "data-hovered": isHovered,
       "data-disabled": isDisabled,
       "data-removable": allowsRemoving,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
@@ -436,7 +437,7 @@ export function Tag(props: Incoming<TagComponentProps>) {
   );
 
   return (
-    <div {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
+    <div {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
       <div {...gridCellProps}>
         {props.children}
         {() =>

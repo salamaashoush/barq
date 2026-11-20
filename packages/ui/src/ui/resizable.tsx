@@ -11,6 +11,7 @@ import {
 } from "@barqjs/aria/splitter";
 import { mergeProps } from "@barqjs/aria/utils";
 import {
+  cells,
   createContext,
   createUniqueId,
   getContext,
@@ -194,32 +195,32 @@ export interface ResizablePanelGroupProps extends UiProps {
  * resize and would drift as they were rounded. A bare number is a percentage
  * here; a limit in another unit is written as a string, `"240px"`.
  */
-export function ResizablePanelGroup(props: Incoming<ResizablePanelGroupProps>) {
+export function ResizablePanelGroup(props: ResizablePanelGroupProps) {
   const containerRef = makeRef<HTMLDivElement>();
   const generated = createUniqueId();
-  const id = (): string => props.id?.() ?? generated;
+  const id = (): string => props.id ?? generated;
   const direction = (): ReadingDirection | undefined => {
-    const dir = props.dir?.();
+    const dir = props.dir;
     return dir === "auto" ? undefined : dir;
   };
 
   const state = splitterState({
     ref: containerRef,
-    orientation: () => props.orientation?.() ?? props.direction?.() ?? "horizontal",
+    orientation: () => props.orientation ?? props.direction ?? "horizontal",
     direction,
-    isDisabled: () => props.disabled?.(),
-    keyboardResizeBy: () => props.keyboardResizeBy?.() ?? 1,
-    autoSaveId: () => props.autoSaveId?.(),
-    storage: () => props.storage?.(),
-    defaultLayout: () => props.defaultLayout?.(),
+    isDisabled: () => props.disabled,
+    keyboardResizeBy: () => props.keyboardResizeBy ?? 1,
+    autoSaveId: () => props.autoSaveId,
+    storage: () => props.storage,
+    defaultLayout: () => props.defaultLayout,
     onLayoutChange(layout, sizes) {
-      props.onLayout?.()?.(sizes);
-      props.onLayoutChange?.()?.(layout);
+      props.onLayout?.(sizes);
+      props.onLayoutChange?.(layout);
     },
-    onLayoutChanged: (layout) => props.onLayoutChanged?.()?.(layout),
+    onLayoutChanged: (layout) => props.onLayoutChanged?.(layout),
   });
 
-  lend<ResizableGroupHandle>(props.groupRef?.(), {
+  lend<ResizableGroupHandle>(props.groupRef, {
     getId: id,
     getLayout: () => state.getLayout(),
     setLayout: (layout) => state.setLayout(layout),
@@ -227,8 +228,8 @@ export function ResizablePanelGroup(props: Incoming<ResizablePanelGroupProps>) {
 
   return (
     <div
-      {...uiProps("resizable-panel-group", group_, omit(props, ["id", "dir"]))}
-      ref={mergeRefs(containerRef.set, props.ref?.())}
+      {...uiProps("resizable-panel-group", group_, omit(cells(props), ["id", "dir"]))}
+      ref={mergeRefs(containerRef.set, props.ref)}
       id={id()}
       dir={direction()}
       // `aria-orientation` and not a `data-*`, because shadcn's own rules select
@@ -248,10 +249,10 @@ export function ResizablePanelGroup(props: Incoming<ResizablePanelGroupProps>) {
 }
 
 /** The context, and nothing else; see the note in `input-otp.tsx`. */
-function GroupProvider(props: Incoming<{ value: SplitterState; children?: Child }>) {
+function GroupProvider(props: { value: SplitterState; children?: Child }) {
   return provide(
     GroupContext,
-    () => props.value(),
+    () => props.value,
     () => props.children,
   );
 }
@@ -277,10 +278,10 @@ export interface ResizablePanelProps extends UiProps {
   onExpand?: () => void;
 }
 
-export function ResizablePanel(props: Incoming<ResizablePanelProps>) {
+export function ResizablePanel(props: ResizablePanelProps) {
   const group = useGroup();
   const domRef = makeRef<HTMLDivElement>();
-  const given = props.id?.();
+  const given = props.id;
   const {
     panelProps,
     size,
@@ -290,26 +291,26 @@ export function ResizablePanel(props: Incoming<ResizablePanelProps>) {
       id: given ?? createUniqueId(),
       isGeneratedId: given === undefined,
       ref: domRef,
-      defaultSize: () => props.defaultSize?.(),
-      minSize: () => props.minSize?.() ?? 10,
-      maxSize: () => props.maxSize?.(),
-      collapsible: () => props.collapsible?.(),
-      collapsedSize: () => props.collapsedSize?.(),
-      onResize: (now, id, previous) => props.onResize?.()?.(now, id, previous),
-      onCollapse: () => props.onCollapse?.()?.(),
-      onExpand: () => props.onExpand?.()?.(),
+      defaultSize: () => props.defaultSize,
+      minSize: () => props.minSize ?? 10,
+      maxSize: () => props.maxSize,
+      collapsible: () => props.collapsible,
+      collapsedSize: () => props.collapsedSize,
+      onResize: (now, id, previous) => props.onResize?.(now, id, previous),
+      onCollapse: () => props.onCollapse?.(),
+      onExpand: () => props.onExpand?.(),
     },
     group,
   );
 
-  lend(props.panelRef?.(), api);
+  lend(props.panelRef, api);
 
   return (
     <div
-      {...mergeProps(panelProps, uiProps("resizable-panel", "", omit(props, ["id"])))}
-      ref={mergeRefs(domRef.set, props.ref?.())}
+      {...mergeProps(panelProps, uiProps("resizable-panel", "", omit(cells(props), ["id"])))}
+      ref={mergeRefs(domRef.set, props.ref)}
       style={() => ({
-        ...props.style?.(),
+        ...props.style,
         // `flex-basis` with no grow and no shrink, so the percentage IS the
         // size. `width` would be ignored the moment the container is a flex row.
         flex: `0 0 ${String(size())}%`,
@@ -336,32 +337,32 @@ export interface ResizableHandleProps extends UiProps {
  * collapses a collapsible panel and brings it back. A drag that only works with
  * a pointer is a control half the people using it cannot reach.
  */
-export function ResizableHandle(props: Incoming<ResizableHandleProps>) {
+export function ResizableHandle(props: ResizableHandleProps) {
   const group = useGroup();
   const domRef = makeRef<HTMLDivElement>();
-  const given = props.id?.();
+  const given = props.id;
   const id = given ?? createUniqueId();
   const { separatorProps, isDragging, isHovered } = splitterHandle(
     {
       id,
       ref: domRef,
-      isDisabled: () => props.disabled?.(),
-      onDragging: (now) => props.onDragging?.()?.(now),
+      isDisabled: () => props.disabled,
+      onDragging: (now) => props.onDragging?.(now),
     },
     group,
   );
 
   return (
     <div
-      {...mergeProps(separatorProps, uiProps("resizable-handle", handle, omit(props, ["id"])))}
-      ref={mergeRefs(domRef.set, props.ref?.())}
+      {...mergeProps(separatorProps, uiProps("resizable-handle", handle, omit(cells(props), ["id"])))}
+      ref={mergeRefs(domRef.set, props.ref)}
       id={given}
       data-resize-handle=""
       data-panel-resize-handle-id={id}
       data-panel-group-direction={() => group.orientation()}
       data-resize-handle-state={() => (isDragging() ? "drag" : isHovered() ? "hover" : "inactive")}
     >
-      {props.withHandle?.() === true ? (
+      {props.withHandle === true ? (
         <div class={grip} data-slot="resizable-handle-grip">
           <GripVertical class={gripIcon} />
         </div>

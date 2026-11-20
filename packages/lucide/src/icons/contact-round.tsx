@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function ContactRound(props: Incoming<IconProps>) {
+export function ContactRound(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M16 2v2" />
       <path d="M17.915 21a6 6 0 10-12 0" />
       <path d="M8 2v2" />

@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function HockeyStick(props: Incoming<IconProps>) {
+export function HockeyStick(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M11 4v4c0 1.1-2.025 2-4.5 2S2 9.1 2 8V4" />
       <path d="M18.21 3.106a2 2 0 013.579 1.789l-6.895 13.789A6 6 0 019.529 22H4.5a1 1 0 010-5h5.528a2 2 0 001.788-1.105z" />
       <path d="m18.59 11.295-3.578-1.789" />

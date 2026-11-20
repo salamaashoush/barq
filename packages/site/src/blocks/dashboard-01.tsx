@@ -442,15 +442,15 @@ const ROWS = [
   },
 ];
 
-function NavGroup(props: Incoming<{ label?: string; items: typeof NAV_MAIN }>) {
+function NavGroup(props: { label?: string; items: typeof NAV_MAIN }) {
   return (
     <SidebarGroup>
-      {props.label?.() === undefined ? null : (
-        <SidebarGroupLabel>{props.label()}</SidebarGroupLabel>
+      {props.label === undefined ? null : (
+        <SidebarGroupLabel>{props.label}</SidebarGroupLabel>
       )}
       <SidebarGroupContent>
         <SidebarMenu>
-          <For each={() => props.items()}>
+          <For each={() => props.items}>
             {(entry: (typeof NAV_MAIN)[number]) => (
               <SidebarMenuItem>
                 <SidebarMenuButton href="#" isActive={entry.active === true}>
@@ -730,11 +730,11 @@ export function Dashboard01() {
  * call inline in the card would rebuild it on every range change, which is what
  * made the legend flicker.
  */
-function CardContentChart(props: Incoming<{ data: typeof VISITORS }>) {
+function CardContentChart(props: { data: typeof VISITORS }) {
   return (
     <div class={padded}>
       <ChartContainer config={CHART_CONFIG} class={chartBox}>
-        <ChartLines data={props.data()} x="date" area aria-label="Visitors" />
+        <ChartLines data={props.data} x="date" area aria-label="Visitors" />
         <ChartLegend />
       </ChartContainer>
     </div>

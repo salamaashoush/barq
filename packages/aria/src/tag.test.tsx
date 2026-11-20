@@ -17,20 +17,20 @@ const FILTERS: Filter[] = [
 ];
 
 function Filters(
-  props: Incoming<{
+  props: {
     items?: Filter[];
     selectionMode?: "none" | "single" | "multiple";
     onRemove?: (keys: Set<Key>) => void;
     onSelectionChange?: (keys: "all" | Set<Key>) => void;
-  }>,
+  },
 ) {
   return (
     <TagGroup
       label="Cities"
-      items={props.items?.() ?? FILTERS}
-      selectionMode={props.selectionMode?.() ?? "none"}
-      onRemove={props.onRemove?.()}
-      onSelectionChange={props.onSelectionChange?.()}
+      items={props.items ?? FILTERS}
+      selectionMode={props.selectionMode ?? "none"}
+      onRemove={props.onRemove}
+      onSelectionChange={props.onSelectionChange}
       getTextValue={(filter: Filter) => filter.name}
     >
       {(filter: Filter) => <Tag>{filter.name}</Tag>}

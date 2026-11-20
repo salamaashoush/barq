@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function HardDriveDownload(props: Incoming<IconProps>) {
+export function HardDriveDownload(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M12 2v8" />
       <path d="m16 6-4 4-4-4" />
       <rect width="20" height="8" x="2" y="14" rx="2" />

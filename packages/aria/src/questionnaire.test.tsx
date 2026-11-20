@@ -26,11 +26,11 @@ import {
 } from "./questionnaire.tsx";
 import type { RenderPart } from "./utils.ts";
 
-function Option(props: Incoming<{ value: string; label: string; disabled?: boolean }>) {
+function Option(props: { value: string; label: string; disabled?: boolean }) {
   return (
-    <QuestionnaireChoice value={props.value()} disabled={props.disabled?.()}>
+    <QuestionnaireChoice value={props.value} disabled={props.disabled}>
       <QuestionnaireChoiceInput />
-      <QuestionnaireChoiceLabel>{props.label()}</QuestionnaireChoiceLabel>
+      <QuestionnaireChoiceLabel>{props.label}</QuestionnaireChoiceLabel>
       <QuestionnaireChoiceShortcut />
     </QuestionnaireChoice>
   );
@@ -52,20 +52,20 @@ interface SurveyProps {
  * Three questions: a required single choice with a freeform answer, an
  * optional single choice, and a required multiple choice.
  */
-function Survey(props: Incoming<SurveyProps>) {
+function Survey(props: SurveyProps) {
   return (
     <Questionnaire
       aria-label="Project"
-      shortcuts={props.shortcuts?.()}
-      items={props.items?.()}
-      item={props.item?.()}
-      defaultItem={props.defaultItem?.()}
-      noValidate={props.noValidate?.()}
-      onItemChange={(name: string) => props.onItemChange?.()?.(name)}
+      shortcuts={props.shortcuts}
+      items={props.items}
+      item={props.item}
+      defaultItem={props.defaultItem}
+      noValidate={props.noValidate}
+      onItemChange={(name: string) => props.onItemChange?.(name)}
       onSubmit={(event: SubmitEvent) => {
         event.preventDefault();
         const data = new FormData(event.currentTarget as HTMLFormElement);
-        props.onAnswers?.()?.([...data.entries()]);
+        props.onAnswers?.([...data.entries()]);
       }}
     >
       <QuestionnaireProgress />
@@ -82,8 +82,8 @@ function Survey(props: Incoming<SurveyProps>) {
       </QuestionnaireItem>
       <QuestionnaireItem
         name="detail"
-        invalid={props.detailInvalid?.()}
-        onStatusChange={(status: QuestionnaireItemStatus) => props.onStatus?.()?.(status)}
+        invalid={props.detailInvalid}
+        onStatusChange={(status: QuestionnaireItemStatus) => props.onStatus?.(status)}
       >
         <QuestionnaireTitle>How much detail?</QuestionnaireTitle>
         <QuestionnaireChoices>

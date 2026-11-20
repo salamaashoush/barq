@@ -10,6 +10,7 @@ import {
 } from "@barqjs/aria/overlays";
 import { fromProps, mergeProps } from "@barqjs/aria/utils";
 import {
+  cells,
   createContext,
   getContext,
   onCleanup,
@@ -162,7 +163,7 @@ export function HoverCard(props: Incoming<HoverCardProps>) {
  * focus handlers and `data-state`, and nothing about being a button: a hover
  * card's trigger is usually a link, and stays one.
  */
-export function HoverCardTrigger(props: Incoming<TriggerPartProps>) {
+export function HoverCardTrigger(props: TriggerPartProps) {
   const value = use();
   const { hoverProps } = hover({
     onHoverStart: () => value.enter(),
@@ -178,7 +179,7 @@ export function HoverCardTrigger(props: Incoming<TriggerPartProps>) {
     onBlur: () => value.leave(),
   });
 
-  const render = props.render?.();
+  const render = props.render;
   if (render !== undefined) {
     return render({
       props: mergeProps({ "data-slot": "hover-card-trigger" }, triggerProps),
@@ -210,7 +211,7 @@ export interface HoverCardContentProps extends UiProps {
   crossOffset?: number;
 }
 
-export function HoverCardContent(props: Incoming<HoverCardContentProps>) {
+export function HoverCardContent(props: HoverCardContentProps) {
   const value = use();
   // The pointer travelling from the trigger into the card must not close it,
   // which is the whole difference between this and a tooltip.
@@ -226,25 +227,25 @@ export function HoverCardContent(props: Incoming<HoverCardContentProps>) {
 
   return (
     <AriaPopover
-      {...handedOn(props)}
-      {...named(props)}
+      {...handedOn(cells(props))}
+      {...named(cells(props))}
       onPointerEnter={(event: PointerEvent) => enter?.(event)}
       onPointerLeave={(event: PointerEvent) => leave?.(event)}
       triggerRef={value.triggerRef}
       isOpen={value.state.isOpen()}
       onOpenChange={value.state.setOpen}
       placement={
-        props.placement?.() ?? placementFor(props.side?.() ?? "bottom", props.align?.() ?? "center")
+        props.placement ?? placementFor(props.side ?? "bottom", props.align ?? "center")
       }
-      offset={props.offset?.() ?? props.sideOffset?.()}
-      crossOffset={props.crossOffset?.() ?? props.alignOffset?.()}
+      offset={props.offset ?? props.sideOffset}
+      crossOffset={props.crossOffset ?? props.alignOffset}
       isDismissable
       // Opened by a pointer at rest or by focus arriving on the trigger, and in
       // both cases the user is somewhere else: a focus scope would pull focus
       // into the card and the blur that follows would close it.
       shouldContainFocus={false}
-      data-slot={props["data-slot"]?.() ?? "hover-card-content"}
-      class={ui(content, props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "hover-card-content"}
+      class={ui(content, props.class, props.className)}
     >
       {props.children}
     </AriaPopover>

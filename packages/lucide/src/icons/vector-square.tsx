@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function VectorSquare(props: Incoming<IconProps>) {
+export function VectorSquare(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M17.055 4.533a24 24 0 00-10.11 0" />
       <path d="M19.467 17.055a24 24 0 000-10.11" />
       <path d="M4.533 6.945a24 24 0 000 10.11" />

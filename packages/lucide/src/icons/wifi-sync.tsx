@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function WifiSync(props: Incoming<IconProps>) {
+export function WifiSync(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M11.965 10.105v4L13.5 12.5a5 5 0 0 1 8 1.5" />
       <path d="M11.965 14.105h4" />
       <path d="M17.965 18.105h4L20.43 19.71a5 5 0 0 1-8-1.5" />

@@ -33,9 +33,9 @@ export const sections: readonly DocsSection[] = [
   { id: "styles", label: "Component styles" },
 ];
 
-function Text(props: Incoming<{ text: string }>) {
+function Text(props: { text: string }) {
   const parts = props
-    .text()
+    .text
     .split("`")
     .map((text, at) => ({ text, code: at % 2 === 1 }))
     .filter((part) => part.text !== "");

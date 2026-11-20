@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function TextQuote(props: Incoming<IconProps>) {
+export function TextQuote(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M17 5H3" />
       <path d="M21 12H8" />
       <path d="M21 19H8" />

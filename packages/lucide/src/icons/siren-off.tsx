@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function SirenOff(props: Incoming<IconProps>) {
+export function SirenOff(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M12 12v6" />
       <path d="M12 2v1" />
       <path d="M12.707 7.05a5 5 0 0 1 4.243 4.243" />

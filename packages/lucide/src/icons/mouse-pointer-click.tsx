@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function MousePointerClick(props: Incoming<IconProps>) {
+export function MousePointerClick(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M14 4.1 12 6" />
       <path d="m5.1 8-2.9-.8" />
       <path d="m6 12-1.9 2" />

@@ -41,12 +41,12 @@ export interface SeparatorProps extends SeparatorComponentProps {
  * <Separator orientation="vertical" />
  * ```
  */
-export function Separator(props: Incoming<SeparatorProps>) {
+export function Separator(props: SeparatorProps) {
   return (
     <AriaSeparator
       {...props}
-      data-slot={props["data-slot"]?.() ?? "separator"}
-      class={ui(separator, noBorder, props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "separator"}
+      class={ui(separator, noBorder, props.class, props.className)}
     />
   );
 }

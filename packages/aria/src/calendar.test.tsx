@@ -30,25 +30,25 @@ import { CalendarDate } from "./date.ts";
 const MARCH = new CalendarDate(2024, 3, 7);
 
 function Departure(
-  props: Incoming<{
+  props: {
     value?: CalendarDate | null;
     minValue?: CalendarDate;
     maxValue?: CalendarDate;
     isDateUnavailable?: (date: CalendarDate) => boolean;
     isDisabled?: boolean;
     onChange?: (value: CalendarDate | null) => void;
-  }>,
+  },
 ) {
   return (
     <Calendar
       aria-label="Departure"
-      value={props.value?.()}
+      value={props.value}
       defaultFocusedValue={MARCH}
-      minValue={props.minValue?.()}
-      maxValue={props.maxValue?.()}
-      isDateUnavailable={props.isDateUnavailable?.()}
-      isDisabled={props.isDisabled?.()}
-      onChange={props.onChange?.()}
+      minValue={props.minValue}
+      maxValue={props.maxValue}
+      isDateUnavailable={props.isDateUnavailable}
+      isDisabled={props.isDisabled}
+      onChange={props.onChange}
     />
   );
 }
@@ -346,9 +346,9 @@ describe("Calendar", () => {
 });
 
 describe("RangeCalendar", () => {
-  function Stay(props: Incoming<{ onChange?: (value: DateRange | null) => void }>) {
+  function Stay(props: { onChange?: (value: DateRange | null) => void }) {
     return (
-      <RangeCalendar aria-label="Stay" defaultFocusedValue={MARCH} onChange={props.onChange?.()} />
+      <RangeCalendar aria-label="Stay" defaultFocusedValue={MARCH} onChange={props.onChange} />
     );
   }
 
@@ -805,13 +805,13 @@ describe("a range with a length", () => {
 });
 
 describe("MultipleCalendar", () => {
-  function Shifts(props: Incoming<{ onChange?: (value: CalendarDate[]) => void; max?: number }>) {
+  function Shifts(props: { onChange?: (value: CalendarDate[]) => void; max?: number }) {
     return (
       <MultipleCalendar
         aria-label="Shifts"
         defaultFocusedValue={MARCH}
-        max={props.max?.()}
-        onChange={props.onChange?.()}
+        max={props.max}
+        onChange={props.onChange}
       />
     );
   }

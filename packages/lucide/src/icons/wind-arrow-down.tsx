@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function WindArrowDown(props: Incoming<IconProps>) {
+export function WindArrowDown(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M10 2v8" />
       <path d="M12.8 21.6A2 2 0 1 0 14 18H2" />
       <path d="M17.5 10a2.5 2.5 0 1 1 2 4H2" />

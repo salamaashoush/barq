@@ -170,15 +170,15 @@ export interface PreviewProps {
   rtl?: boolean;
 }
 
-export function ComponentPreview(props: Incoming<PreviewProps>) {
+export function ComponentPreview(props: PreviewProps) {
   const [open, setOpen] = createSignal(false);
   const [copied, setCopied] = createSignal(false);
   const [rtl, setRtl] = createSignal(false);
   const dir = (): "ltr" | "rtl" | undefined =>
-    props.rtl?.() === true ? undefined : rtl() ? "rtl" : "ltr";
+    props.rtl === true ? undefined : rtl() ? "rtl" : "ltr";
 
   const onCopy = (): void => {
-    const source = props.code?.() ?? "";
+    const source = props.code ?? "";
     if (source === "") return;
     void navigator.clipboard?.writeText(source).then(() => {
       setCopied(true);
@@ -188,7 +188,7 @@ export function ComponentPreview(props: Incoming<PreviewProps>) {
 
   return (
     <div class={`${card} ${codeSurface}`} data-slot="component-preview" data-not-typeset>
-      <Show when={props.rtl?.() !== true}>
+      <Show when={props.rtl !== true}>
         <Toggle
           class={direction}
           size="sm"
@@ -205,8 +205,8 @@ export function ComponentPreview(props: Incoming<PreviewProps>) {
           class={preview}
           data-slot="preview"
           dir={dir()}
-          data-align={() => props.align?.() ?? "center"}
-          data-size={() => props.size?.() ?? "fixed"}
+          data-align={() => props.align ?? "center"}
+          data-size={() => props.size ?? "fixed"}
         >
           {props.children}
         </div>
@@ -226,7 +226,7 @@ export function ComponentPreview(props: Incoming<PreviewProps>) {
           </Button>
           <pre class={() => `${pre} ${highlighted} ${open() ? "" : collapsed}`}>
             <code>
-              <CodeTokens code={() => props.code?.() ?? ""} />
+              <CodeTokens code={() => props.code ?? ""} />
             </code>
           </pre>
           {() =>

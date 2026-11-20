@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function FerrisWheel(props: Incoming<IconProps>) {
+export function FerrisWheel(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <circle cx="12" cy="12" r="2" />
       <path d="M12 2v4" />
       <path d="m6.8 15-3.5 2" />

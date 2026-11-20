@@ -23,16 +23,16 @@ const ACTIONS: Action[] = [
   { id: "save", name: "Save as" },
 ];
 
-function Region(props: Incoming<{ onAction?: (key: Key) => void; isDisabled?: boolean }>) {
+function Region(props: { onAction?: (key: Key) => void; isDisabled?: boolean }) {
   return (
-    <ContextMenu isDisabled={props.isDisabled?.()} longPressThreshold={10}>
+    <ContextMenu isDisabled={props.isDisabled} longPressThreshold={10}>
       <ContextMenuTrigger>
         <button type="button">Inside</button>
       </ContextMenuTrigger>
       <Menu
         aria-label="Page"
         items={ACTIONS}
-        onAction={props.onAction?.()}
+        onAction={props.onAction}
         getTextValue={(action: Action) => action.name}
       >
         {(action: Action) => <MenuItem>{action.name}</MenuItem>}

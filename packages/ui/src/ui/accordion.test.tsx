@@ -9,7 +9,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./
 afterEach(cleanup);
 
 function Faq(
-  props: Incoming<{
+  props: {
     type?: "single" | "multiple";
     collapsible?: boolean;
     defaultValue?: string | string[];
@@ -17,17 +17,17 @@ function Faq(
     disabled?: boolean;
     orientation?: "vertical" | "horizontal";
     dir?: "ltr" | "rtl";
-  }>,
+  },
 ) {
   return (
     <Accordion
-      type={props.type?.() ?? "single"}
-      collapsible={props.collapsible?.()}
-      defaultValue={props.defaultValue?.()}
-      onValueChange={props.onValueChange?.()}
-      disabled={props.disabled?.()}
-      orientation={props.orientation?.()}
-      dir={props.dir?.()}
+      type={props.type ?? "single"}
+      collapsible={props.collapsible}
+      defaultValue={props.defaultValue}
+      onValueChange={props.onValueChange}
+      disabled={props.disabled}
+      orientation={props.orientation}
+      dir={props.dir}
     >
       <AccordionItem value="shipping">
         <AccordionTrigger>Shipping</AccordionTrigger>

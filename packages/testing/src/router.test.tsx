@@ -44,7 +44,7 @@ function Pending(): unknown {
  * compiler never lowers; a JSX one is not the same thing.
  */
 function Post(props: { data: () => { title: string } | undefined }): unknown {
-  return <h1>{props.data()?.title ?? "loading"}</h1>;
+  return <h1>{props.data?.title ?? "loading"}</h1>;
 }
 
 const tree = (log?: string[]): AnyRouteDefinition[] =>

@@ -33,14 +33,14 @@ const ACTIONS: Action[] = [
   { id: "delete", name: "Delete" },
 ];
 
-function Actions(props: Incoming<{ onAction?: (key: Key) => void }>) {
+function Actions(props: { onAction?: (key: Key) => void }) {
   return (
     <MenuTrigger>
       <MenuButton>Edit</MenuButton>
       <Menu
         aria-label="Actions"
         items={ACTIONS}
-        onAction={props.onAction?.()}
+        onAction={props.onAction}
         getTextValue={(action: Action) => action.name}
       >
         {(action: Action) =>
@@ -51,7 +51,7 @@ function Actions(props: Incoming<{ onAction?: (key: Key) => void }>) {
               <MenuItem>{action.name}</MenuItem>
               <Menu
                 items={action.submenu}
-                onAction={props.onAction?.()}
+                onAction={props.onAction}
                 getTextValue={(child: Action) => child.name}
               >
                 {(child: Action) => <MenuItem>{child.name}</MenuItem>}
@@ -272,15 +272,15 @@ describe("a submenu trigger", () => {
 
 /** The same tree with every item written as a child. */
 describe("a submenu written as children", () => {
-  function Written(props: Incoming<{ onAction?: (key: Key) => void }>) {
+  function Written(props: { onAction?: (key: Key) => void }) {
     return (
       <MenuTrigger>
         <MenuButton>Edit</MenuButton>
-        <Menu aria-label="Actions" onAction={props.onAction?.()}>
+        <Menu aria-label="Actions" onAction={props.onAction}>
           <MenuItem id="cut">Cut</MenuItem>
           <SubmenuTrigger>
             <MenuItem>Share</MenuItem>
-            <Menu onAction={props.onAction?.()}>
+            <Menu onAction={props.onAction}>
               <MenuItem id="email">Email</MenuItem>
               <MenuItem id="messages">Messages</MenuItem>
             </Menu>

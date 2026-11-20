@@ -268,8 +268,8 @@ const PROJECTS = [
   { id: "travel", name: "Travel", icon: MapIcon },
 ];
 
-function NavRow(props: Incoming<{ item: NavItem }>) {
-  const item = props.item();
+function NavRow(props: { item: NavItem }) {
+  const item = props.item;
   const Icon = item.icon;
 
   return (

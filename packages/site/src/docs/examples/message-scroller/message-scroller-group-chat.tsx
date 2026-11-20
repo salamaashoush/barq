@@ -147,8 +147,8 @@ const hint = css`
   color: var(--muted-foreground);
 `;
 
-function GroupChatRow(props: Incoming<{ item: GroupChatItem }>) {
-  const item = props.item();
+function GroupChatRow(props: { item: GroupChatItem }) {
+  const item = props.item;
   if (item.type === "event") {
     return (
       <MessageScrollerItem scrollAnchor={item.scrollAnchor === true}>

@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Heater(props: Incoming<IconProps>) {
+export function Heater(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M11 8c2-3-2-3 0-6" />
       <path d="M15.5 8c2-3-2-3 0-6" />
       <path d="M6 10h.01" />

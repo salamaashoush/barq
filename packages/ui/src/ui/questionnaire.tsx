@@ -1,3 +1,4 @@
+import { cells } from "@barqjs/core";
 import {
   Questionnaire as AriaQuestionnaire,
   QuestionnaireChoice as AriaQuestionnaireChoice,
@@ -462,72 +463,72 @@ export type QuestionnaireProps = AriaQuestionnaireProps;
  * The behaviour is `@barqjs/aria/questionnaire`: which question is showing,
  * what counts as answered, the keys, and the focus that follows a move.
  */
-export function Questionnaire(props: Incoming<QuestionnaireProps>) {
+export function Questionnaire(props: QuestionnaireProps) {
   return (
     <AriaQuestionnaire
       {...props}
-      data-slot={props["data-slot"]?.() ?? "questionnaire"}
-      class={ui(root, props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "questionnaire"}
+      class={ui(root, props.class, props.className)}
     />
   );
 }
 
 export type QuestionnaireProgressProps = AriaQuestionnaireProgressProps;
 
-export function QuestionnaireProgress(props: Incoming<QuestionnaireProgressProps>) {
+export function QuestionnaireProgress(props: QuestionnaireProgressProps) {
   return (
     <AriaQuestionnaireProgress
       {...props}
-      data-slot={props["data-slot"]?.() ?? "questionnaire-progress"}
-      class={ui(progress, props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "questionnaire-progress"}
+      class={ui(progress, props.class, props.className)}
     />
   );
 }
 
 export type QuestionnaireItemProps = AriaQuestionnaireItemProps;
 
-export function QuestionnaireItem(props: Incoming<QuestionnaireItemProps>) {
+export function QuestionnaireItem(props: QuestionnaireItemProps) {
   return (
     <AriaQuestionnaireItem
       {...props}
-      data-slot={props["data-slot"]?.() ?? "questionnaire-item"}
-      class={ui(item, props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "questionnaire-item"}
+      class={ui(item, props.class, props.className)}
     />
   );
 }
 
 export type QuestionnaireTitleProps = QuestionnairePartProps;
 
-export function QuestionnaireTitle(props: Incoming<QuestionnaireTitleProps>) {
+export function QuestionnaireTitle(props: QuestionnaireTitleProps) {
   return (
     <AriaQuestionnaireTitle
       {...props}
-      data-slot={props["data-slot"]?.() ?? "questionnaire-title"}
-      class={ui(title, props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "questionnaire-title"}
+      class={ui(title, props.class, props.className)}
     />
   );
 }
 
 export type QuestionnaireDescriptionProps = QuestionnairePartProps;
 
-export function QuestionnaireDescription(props: Incoming<QuestionnaireDescriptionProps>) {
+export function QuestionnaireDescription(props: QuestionnaireDescriptionProps) {
   return (
     <AriaQuestionnaireDescription
       {...props}
-      data-slot={props["data-slot"]?.() ?? "questionnaire-description"}
-      class={ui(description, props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "questionnaire-description"}
+      class={ui(description, props.class, props.className)}
     />
   );
 }
 
 export type QuestionnaireChoicesProps = AriaQuestionnaireChoicesProps;
 
-export function QuestionnaireChoices(props: Incoming<QuestionnaireChoicesProps>) {
+export function QuestionnaireChoices(props: QuestionnaireChoicesProps) {
   return (
     <AriaQuestionnaireChoices
       {...props}
-      data-slot={props["data-slot"]?.() ?? "questionnaire-choices"}
-      class={ui(choices, "group/questionnaire-choices", props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "questionnaire-choices"}
+      class={ui(choices, "group/questionnaire-choices", props.class, props.className)}
     />
   );
 }
@@ -541,12 +542,12 @@ export type QuestionnaireChoiceProps = AriaQuestionnaireChoiceProps;
  * at zero opacity, so the row is the target and the real control is what takes
  * focus, is read out and is submitted.
  */
-export function QuestionnaireChoice(props: Incoming<QuestionnaireChoiceProps>) {
+export function QuestionnaireChoice(props: QuestionnaireChoiceProps) {
   return (
     <AriaQuestionnaireChoice
       {...props}
-      data-slot={props["data-slot"]?.() ?? "questionnaire-choice"}
-      class={ui(choice, "group/questionnaire-choice", props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "questionnaire-choice"}
+      class={ui(choice, "group/questionnaire-choice", props.class, props.className)}
     >
       <AriaQuestionnaireChoiceInput data-slot="questionnaire-choice-input" class={choiceInput} />
       <span aria-hidden="true" data-slot="questionnaire-choice-indicator" class={indicator}>
@@ -565,9 +566,9 @@ export function QuestionnaireChoice(props: Incoming<QuestionnaireChoiceProps>) {
 }
 
 /** A second, quieter line inside a choice. */
-export function QuestionnaireChoiceDescription(props: Incoming<UiProps>) {
+export function QuestionnaireChoiceDescription(props: UiProps) {
   return (
-    <span {...uiProps("questionnaire-choice-description", choiceDescription, props)}>
+    <span {...uiProps("questionnaire-choice-description", choiceDescription, cells(props))}>
       {props.children}
     </span>
   );
@@ -575,7 +576,7 @@ export function QuestionnaireChoiceDescription(props: Incoming<UiProps>) {
 
 export type QuestionnaireInputProps = AriaQuestionnaireInputProps;
 
-export function QuestionnaireInput(props: Incoming<QuestionnaireInputProps>) {
+export function QuestionnaireInput(props: QuestionnaireInputProps) {
   return (
     <div
       data-slot="questionnaire-input-wrapper"
@@ -583,8 +584,8 @@ export function QuestionnaireInput(props: Incoming<QuestionnaireInputProps>) {
     >
       <AriaQuestionnaireInput
         {...props}
-        data-slot={props["data-slot"]?.() ?? "questionnaire-input"}
-        class={ui(input, props.class?.(), props.className?.())}
+        data-slot={props["data-slot"] ?? "questionnaire-input"}
+        class={ui(input, props.class, props.className)}
       />
     </div>
   );
@@ -592,19 +593,19 @@ export function QuestionnaireInput(props: Incoming<QuestionnaireInputProps>) {
 
 export type QuestionnaireErrorProps = AriaQuestionnaireErrorProps;
 
-export function QuestionnaireError(props: Incoming<QuestionnaireErrorProps>) {
+export function QuestionnaireError(props: QuestionnaireErrorProps) {
   return (
     <AriaQuestionnaireError
       {...props}
-      data-slot={props["data-slot"]?.() ?? "questionnaire-error"}
-      class={ui(error, props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "questionnaire-error"}
+      class={ui(error, props.class, props.className)}
     />
   );
 }
 
 /** The row the four navigation buttons sit in. */
-export function QuestionnaireActions(props: Incoming<UiProps>) {
-  return <div {...uiProps("questionnaire-actions", actions, props)}>{props.children}</div>;
+export function QuestionnaireActions(props: UiProps) {
+  return <div {...uiProps("questionnaire-actions", actions, cells(props))}>{props.children}</div>;
 }
 
 export interface QuestionnaireNavigationProps extends QuestionnaireButtonProps {
@@ -614,77 +615,77 @@ export interface QuestionnaireNavigationProps extends QuestionnaireButtonProps {
   variant?: ButtonVariant;
 }
 
-export function QuestionnairePrevious(props: Incoming<QuestionnaireNavigationProps>) {
-  const size = (): ButtonSize => props.size?.() ?? "default";
-  const variant = (): ButtonVariant => props.variant?.() ?? "outline";
+export function QuestionnairePrevious(props: QuestionnaireNavigationProps) {
+  const size = (): ButtonSize => props.size ?? "default";
+  const variant = (): ButtonVariant => props.variant ?? "outline";
   return (
     <AriaQuestionnairePrevious
       {...props}
-      data-slot={props["data-slot"]?.() ?? "questionnaire-previous"}
+      data-slot={props["data-slot"] ?? "questionnaire-previous"}
       data-size={size()}
       data-variant={variant()}
       class={ui(
         buttonVariants({ size: size(), variant: variant() }),
         previous,
-        props.class?.(),
-        props.className?.(),
+        props.class,
+        props.className,
       )}
     />
   );
 }
 
-export function QuestionnaireSkip(props: Incoming<QuestionnaireNavigationProps>) {
-  const size = (): ButtonSize => props.size?.() ?? "default";
-  const variant = (): ButtonVariant => props.variant?.() ?? "outline";
+export function QuestionnaireSkip(props: QuestionnaireNavigationProps) {
+  const size = (): ButtonSize => props.size ?? "default";
+  const variant = (): ButtonVariant => props.variant ?? "outline";
   return (
     <AriaQuestionnaireSkip
       {...props}
-      data-slot={props["data-slot"]?.() ?? "questionnaire-skip"}
+      data-slot={props["data-slot"] ?? "questionnaire-skip"}
       data-size={size()}
       data-variant={variant()}
       class={ui(
         buttonVariants({ size: size(), variant: variant() }),
         skip,
-        props.class?.(),
-        props.className?.(),
+        props.class,
+        props.className,
       )}
     />
   );
 }
 
-export function QuestionnaireNext(props: Incoming<QuestionnaireNavigationProps>) {
-  const size = (): ButtonSize => props.size?.() ?? "default";
-  const variant = (): ButtonVariant => props.variant?.() ?? "default";
+export function QuestionnaireNext(props: QuestionnaireNavigationProps) {
+  const size = (): ButtonSize => props.size ?? "default";
+  const variant = (): ButtonVariant => props.variant ?? "default";
   return (
     <AriaQuestionnaireNext
       {...props}
-      data-slot={props["data-slot"]?.() ?? "questionnaire-next"}
+      data-slot={props["data-slot"] ?? "questionnaire-next"}
       data-size={size()}
       data-variant={variant()}
       class={ui(
         buttonVariants({ size: size(), variant: variant() }),
         next,
-        props.class?.(),
-        props.className?.(),
+        props.class,
+        props.className,
       )}
     />
   );
 }
 
-export function QuestionnaireSubmit(props: Incoming<QuestionnaireNavigationProps>) {
-  const size = (): ButtonSize => props.size?.() ?? "default";
-  const variant = (): ButtonVariant => props.variant?.() ?? "default";
+export function QuestionnaireSubmit(props: QuestionnaireNavigationProps) {
+  const size = (): ButtonSize => props.size ?? "default";
+  const variant = (): ButtonVariant => props.variant ?? "default";
   return (
     <AriaQuestionnaireSubmit
       {...props}
-      data-slot={props["data-slot"]?.() ?? "questionnaire-submit"}
+      data-slot={props["data-slot"] ?? "questionnaire-submit"}
       data-size={size()}
       data-variant={variant()}
       class={ui(
         buttonVariants({ size: size(), variant: variant() }),
         next,
-        props.class?.(),
-        props.className?.(),
+        props.class,
+        props.className,
       )}
     />
   );

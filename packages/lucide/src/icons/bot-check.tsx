@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function BotCheck(props: Incoming<IconProps>) {
+export function BotCheck(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M12 8V4H8" />
       <path d="M15 13v2" />
       <path d="m16 19 2 2 4-4" />

@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function RemoveFormatting(props: Incoming<IconProps>) {
+export function RemoveFormatting(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M4 7V4h16v3" />
       <path d="M5 20h6" />
       <path d="M13 4 8 20" />

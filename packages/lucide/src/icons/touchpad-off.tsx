@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function TouchpadOff(props: Incoming<IconProps>) {
+export function TouchpadOff(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M12 20v-6" />
       <path d="M19.656 14H22" />
       <path d="M2 14h12" />

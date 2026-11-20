@@ -588,8 +588,8 @@ function NavFavorites() {
 
 // A component per row: the open state has to belong to the row, and a signal
 // held by the loop would be shared by all five.
-function WorkspaceRow(props: Incoming<{ workspace: Workspace }>) {
-  const workspace = props.workspace();
+function WorkspaceRow(props: { workspace: Workspace }) {
+  const workspace = props.workspace;
 
   return (
     <SidebarMenuItem>

@@ -45,7 +45,7 @@ const ACTIONS = [
 ];
 
 describe("DropdownMenu", () => {
-  function Fixture(props: Incoming<{ onAction?: (key: string) => void }>) {
+  function Fixture(props: { onAction?: (key: string) => void }) {
     return (
       <DropdownMenu>
         <DropdownMenuTrigger>
@@ -54,7 +54,7 @@ describe("DropdownMenu", () => {
         <DropdownMenuContent
           items={ACTIONS}
           aria-label="Actions"
-          onAction={(key) => props.onAction?.()?.(String(key))}
+          onAction={(key) => props.onAction?.(String(key))}
         >
           {(action: (typeof ACTIONS)[number]) => (
             <DropdownMenuItem variant={action.id === "delete" ? "destructive" : "default"}>
@@ -234,22 +234,22 @@ function slot(name: string): HTMLElement | null {
  */
 describe("a DropdownMenu written as children", () => {
   function Account(
-    props: Incoming<{
+    props: {
       onProfile?: (event: DropdownMenuSelectEvent) => void;
       onAction?: (key: string) => void;
-    }>,
+    },
   ) {
     return (
       <DropdownMenu>
         <DropdownMenuTrigger>
           <Button variant="outline">Open</Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent onAction={(key) => props.onAction?.()?.(String(key))}>
+        <DropdownMenuContent onAction={(key) => props.onAction?.(String(key))}>
           <DropdownMenuLabel>My account</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuGroup>
             <DropdownMenuLabel inset>Workspace</DropdownMenuLabel>
-            <DropdownMenuItem id="profile" onSelect={props.onProfile?.()}>
+            <DropdownMenuItem id="profile" onSelect={props.onProfile}>
               Profile
               <DropdownMenuShortcut>⇧⌘P</DropdownMenuShortcut>
             </DropdownMenuItem>
@@ -483,10 +483,10 @@ describe("a DropdownMenu written as children", () => {
   });
 
   function View(
-    props: Incoming<{
+    props: {
       onStatus?: (checked: boolean) => void;
       onPosition?: (value: string) => void;
-    }>,
+    },
   ) {
     const [status, setStatus] = createSignal(true);
     const [position, setPosition] = createSignal("bottom");
@@ -500,7 +500,7 @@ describe("a DropdownMenu written as children", () => {
             checked={status()}
             onCheckedChange={(checked) => {
               setStatus(checked);
-              props.onStatus?.()?.(checked);
+              props.onStatus?.(checked);
             }}
           >
             Status bar
@@ -512,7 +512,7 @@ describe("a DropdownMenu written as children", () => {
             value={position()}
             onValueChange={(value) => {
               setPosition(value);
-              props.onPosition?.()?.(value);
+              props.onPosition?.(value);
             }}
           >
             <DropdownMenuLabel>Panel position</DropdownMenuLabel>
@@ -671,13 +671,13 @@ describe("a DropdownMenu written as children", () => {
 
 describe("where a DropdownMenu's content goes", () => {
   function Placed(
-    props: Incoming<{
+    props: {
       side?: "top" | "right" | "bottom" | "left";
       align?: "start" | "center" | "end";
       sideOffset?: number;
       alignOffset?: number;
       placement?: "top end";
-    }>,
+    },
   ) {
     return (
       <DropdownMenu>
@@ -685,11 +685,11 @@ describe("where a DropdownMenu's content goes", () => {
           <Button>Open</Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
-          side={props.side?.()}
-          align={props.align?.()}
-          sideOffset={props.sideOffset?.()}
-          alignOffset={props.alignOffset?.()}
-          placement={props.placement?.()}
+          side={props.side}
+          align={props.align}
+          sideOffset={props.sideOffset}
+          alignOffset={props.alignOffset}
+          placement={props.placement}
         >
           <DropdownMenuItem>One</DropdownMenuItem>
         </DropdownMenuContent>
@@ -792,7 +792,7 @@ describe("where a DropdownMenu's content goes", () => {
  */
 describe("what a DropdownMenuTrigger can be", () => {
   /** Someone else's control: its own element, taking what the trigger offers. */
-  function Chip(props: Incoming<{ children?: Child }>) {
+  function Chip(props: { children?: Child }) {
     const trigger = useTrigger();
     return (
       <button {...trigger.props} ref={trigger.ref}>
@@ -810,8 +810,8 @@ describe("what a DropdownMenuTrigger can be", () => {
     );
   }
 
-  function Fixture(props: Incoming<{ kind: "button" | "element" | "component" }>) {
-    if (props.kind() === "button") {
+  function Fixture(props: { kind: "button" | "element" | "component" }) {
+    if (props.kind === "button") {
       return (
         <DropdownMenu>
           <DropdownMenuTrigger>
@@ -821,7 +821,7 @@ describe("what a DropdownMenuTrigger can be", () => {
         </DropdownMenu>
       );
     }
-    if (props.kind() === "element") {
+    if (props.kind === "element") {
       return (
         <DropdownMenu>
           <DropdownMenuTrigger

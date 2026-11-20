@@ -21,6 +21,7 @@
  */
 
 import {
+  cells,
   type Accessor,
   type Child,
   createMemo,
@@ -1083,11 +1084,11 @@ export interface ColorPickerComponentProps extends StyleProps {
  * </ColorPicker>
  * ```
  */
-export function ColorPicker(props: Incoming<ColorPickerComponentProps>) {
+export function ColorPicker(props: ColorPickerComponentProps) {
   const [value, setValue] = controllable<Color>(
-    () => asColor(props.value?.()),
-    () => asColor(props.defaultValue?.()) ?? defaultColor(),
-    (next) => props.onChange?.()?.(next),
+    () => asColor(props.value),
+    () => asColor(props.defaultValue) ?? defaultColor(),
+    (next) => props.onChange?.(next),
   );
 
   const owner = getOwner();
@@ -1095,15 +1096,15 @@ export function ColorPicker(props: Incoming<ColorPickerComponentProps>) {
     install(owner, ColorPickerContext, () => ({
       value,
       setValue,
-      isDisabled: () => props.isDisabled?.() === true,
+      isDisabled: () => props.isDisabled === true,
     }));
   }
 
   const elementProps = mergeProps(
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
@@ -1125,32 +1126,32 @@ export interface ColorSliderComponentProps extends StyleProps {
 }
 
 /** One channel on a track: a hue, an alpha, a red. */
-export function ColorSlider(props: Incoming<ColorSliderComponentProps>) {
+export function ColorSlider(props: ColorSliderComponentProps) {
   const trackRef = makeRef<HTMLDivElement>();
   const inputRef = makeRef<HTMLInputElement>();
   const picker = useColorPicker();
 
   const state = colorSliderState({
-    channel: () => props.channel(),
-    orientation: () => props.orientation?.(),
-    value: () => props.value?.() ?? picker?.value(),
-    defaultValue: () => props.defaultValue?.(),
-    isDisabled: () => props.isDisabled?.() ?? picker?.isDisabled(),
+    channel: () => props.channel,
+    orientation: () => props.orientation,
+    value: () => props.value ?? picker?.value(),
+    defaultValue: () => props.defaultValue,
+    isDisabled: () => props.isDisabled ?? picker?.isDisabled(),
     onChange: (value) => {
       picker?.setValue(value);
-      props.onChange?.()?.(value);
+      props.onChange?.(value);
     },
-    onChangeEnd: (value) => props.onChangeEnd?.()?.(value),
+    onChangeEnd: (value) => props.onChangeEnd?.(value),
   });
 
   const { labelProps, trackProps, thumbProps, inputProps, outputProps } = colorSlider(
     {
       trackRef,
       inputRef,
-      label: () => props.label?.(),
+      label: () => props.label,
       "aria-label": () =>
-        props["aria-label"]?.() ??
-        (props.label?.() === undefined ? state.value().getChannelName(props.channel()) : undefined),
+        props["aria-label"] ??
+        (props.label === undefined ? state.value().getChannelName(props.channel) : undefined),
     },
     state,
   );
@@ -1162,21 +1163,21 @@ export function ColorSlider(props: Incoming<ColorSliderComponentProps>) {
   const elementProps = mergeProps(
     trackProps,
     hoverProps,
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
       "data-orientation": state.orientation,
       "data-dragging": state.isDragging,
       "data-disabled": state.isDisabled,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
   return (
     <>
-      {() => (props.label?.() === undefined ? null : <label {...labelProps}>{props.label}</label>)}
+      {() => (props.label === undefined ? null : <label {...labelProps}>{props.label}</label>)}
       <output {...outputProps}>{() => state.valueText()}</output>
-      <div {...elementProps} ref={mergeRefs(trackRef.set, props.ref?.())}>
+      <div {...elementProps} ref={mergeRefs(trackRef.set, props.ref)}>
         <div
           {...mergeProps(thumbProps, {
             "data-focus-visible": isFocusVisible,
@@ -1206,23 +1207,23 @@ export interface ColorAreaComponentProps extends StyleProps {
 }
 
 /** Two channels in a square: saturation across, brightness up. */
-export function ColorArea(props: Incoming<ColorAreaComponentProps>) {
+export function ColorArea(props: ColorAreaComponentProps) {
   const containerRef = makeRef<HTMLDivElement>();
   const xInputRef = makeRef<HTMLInputElement>();
   const yInputRef = makeRef<HTMLInputElement>();
   const picker = useColorPicker();
 
   const state = colorAreaState({
-    value: () => props.value?.() ?? picker?.value(),
-    defaultValue: () => props.defaultValue?.(),
-    xChannel: () => props.xChannel?.(),
-    yChannel: () => props.yChannel?.(),
-    isDisabled: () => props.isDisabled?.() ?? picker?.isDisabled(),
+    value: () => props.value ?? picker?.value(),
+    defaultValue: () => props.defaultValue,
+    xChannel: () => props.xChannel,
+    yChannel: () => props.yChannel,
+    isDisabled: () => props.isDisabled ?? picker?.isDisabled(),
     onChange: (value) => {
       picker?.setValue(value);
-      props.onChange?.()?.(value);
+      props.onChange?.(value);
     },
-    onChangeEnd: (value) => props.onChangeEnd?.()?.(value),
+    onChangeEnd: (value) => props.onChangeEnd?.(value),
   });
 
   const { colorAreaProps, thumbProps, xInputProps, yInputProps } = colorArea(
@@ -1230,7 +1231,7 @@ export function ColorArea(props: Incoming<ColorAreaComponentProps>) {
       containerRef,
       xInputRef,
       yInputRef,
-      "aria-label": () => props["aria-label"]?.(),
+      "aria-label": () => props["aria-label"],
     },
     state,
   );
@@ -1240,17 +1241,17 @@ export function ColorArea(props: Incoming<ColorAreaComponentProps>) {
 
   const elementProps = mergeProps(
     colorAreaProps,
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
       "data-dragging": state.isDragging,
       "data-disabled": state.isDisabled,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
   return (
-    <div {...elementProps} ref={mergeRefs(containerRef.set, props.ref?.())}>
+    <div {...elementProps} ref={mergeRefs(containerRef.set, props.ref)}>
       <div {...mergeProps(thumbProps, { "data-focus-visible": isFocusVisible })}>
         <input
           {...mergeProps(xInputProps, focusProps, { style: visuallyHiddenProps.style })}
@@ -1291,24 +1292,24 @@ export interface ColorWheelComponentProps extends StyleProps {
  * the caller's to style; what is here is the geometry, the keyboard and the
  * hidden `<input type="range">` a screen reader announces.
  */
-export function ColorWheel(props: Incoming<ColorWheelComponentProps>) {
+export function ColorWheel(props: ColorWheelComponentProps) {
   const trackRef = makeRef<HTMLDivElement>();
   const inputRef = makeRef<HTMLInputElement>();
   const picker = useColorPicker();
 
   const state = colorWheelState({
-    value: () => props.value?.() ?? picker?.value(),
-    defaultValue: () => props.defaultValue?.(),
-    isDisabled: () => props.isDisabled?.() ?? picker?.isDisabled(),
+    value: () => props.value ?? picker?.value(),
+    defaultValue: () => props.defaultValue,
+    isDisabled: () => props.isDisabled ?? picker?.isDisabled(),
     onChange: (value) => {
       picker?.setValue(value);
-      props.onChange?.()?.(value);
+      props.onChange?.(value);
     },
-    onChangeEnd: (value) => props.onChangeEnd?.()?.(value),
+    onChangeEnd: (value) => props.onChangeEnd?.(value),
   });
 
-  const outerRadius = (): number => props.outerRadius?.() ?? 80;
-  const innerRadius = (): number => props.innerRadius?.() ?? 64;
+  const outerRadius = (): number => props.outerRadius ?? 80;
+  const innerRadius = (): number => props.innerRadius ?? 64;
 
   const { trackProps, thumbProps, inputProps } = colorWheel(
     {
@@ -1316,10 +1317,10 @@ export function ColorWheel(props: Incoming<ColorWheelComponentProps>) {
       inputRef,
       innerRadius,
       outerRadius,
-      name: () => props.name?.(),
-      form: () => props.form?.(),
-      "aria-label": () => props["aria-label"]?.(),
-      "aria-labelledby": () => props["aria-labelledby"]?.(),
+      name: () => props.name,
+      form: () => props.form,
+      "aria-label": () => props["aria-label"],
+      "aria-labelledby": () => props["aria-labelledby"],
     },
     state,
   );
@@ -1330,12 +1331,12 @@ export function ColorWheel(props: Incoming<ColorWheelComponentProps>) {
   const elementProps = mergeProps(
     trackProps,
     hoverProps,
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
       "data-dragging": state.isDragging,
       "data-disabled": state.isDisabled,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
       style: () => ({
         position: "relative",
         "touch-action": "none",
@@ -1346,7 +1347,7 @@ export function ColorWheel(props: Incoming<ColorWheelComponentProps>) {
   );
 
   return (
-    <div {...elementProps} ref={mergeRefs(trackRef.set, props.ref?.())}>
+    <div {...elementProps} ref={mergeRefs(trackRef.set, props.ref)}>
       <div
         {...mergeProps(thumbProps, {
           "data-focus-visible": isFocusVisible,
@@ -1382,40 +1383,40 @@ export interface ColorFieldComponentProps extends StyleProps {
 }
 
 /** A colour as text: `#7f00ff`, committed on blur and on Enter. */
-export function ColorField(props: Incoming<ColorFieldComponentProps>) {
+export function ColorField(props: ColorFieldComponentProps) {
   const domRef = makeRef<HTMLInputElement>();
   const picker = useColorPicker();
 
   const [value, setValue] = controllable<Color>(
-    () => asColor(props.value?.()) ?? picker?.value(),
-    () => asColor(props.defaultValue?.()) ?? defaultColor(),
+    () => asColor(props.value) ?? picker?.value(),
+    () => asColor(props.defaultValue) ?? defaultColor(),
     (next) => {
       picker?.setValue(next);
-      props.onChange?.()?.(next);
+      props.onChange?.(next);
     },
   );
 
   const state = {
     value,
     setValue,
-    isDisabled: (): boolean => props.isDisabled?.() ?? picker?.isDisabled() ?? false,
+    isDisabled: (): boolean => props.isDisabled ?? picker?.isDisabled() ?? false,
   };
 
   const { labelProps, inputProps, descriptionProps, errorMessageProps, errors, isInvalid } =
     colorField(
       {
-        label: () => props.label?.(),
-        description: () => props.description?.(),
-        errorMessage: () => props.errorMessage?.(),
-        format: () => props.format?.(),
+        label: () => props.label,
+        description: () => props.description,
+        errorMessage: () => props.errorMessage,
+        format: () => props.format,
         isDisabled: state.isDisabled,
-        isReadOnly: () => props.isReadOnly?.(),
-        isRequired: () => props.isRequired?.(),
-        isInvalid: () => props.isInvalid?.(),
-        validate: callback<[Color], string | string[] | true | null | undefined>(props.validate),
-        validationBehavior: () => props.validationBehavior?.(),
-        name: () => props.name?.(),
-        "aria-label": () => props["aria-label"]?.(),
+        isReadOnly: () => props.isReadOnly,
+        isRequired: () => props.isRequired,
+        isInvalid: () => props.isInvalid,
+        validate: callback<[Color], string | string[] | true | null | undefined>(cells(props).validate),
+        validationBehavior: () => props.validationBehavior,
+        name: () => props.name,
+        "aria-label": () => props["aria-label"],
       },
       state,
       domRef,
@@ -1426,23 +1427,23 @@ export function ColorField(props: Incoming<ColorFieldComponentProps>) {
   const elementProps = mergeProps(
     inputProps,
     focusProps,
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
       "data-focus-visible": isFocusVisible,
       "data-invalid": isInvalid,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
   return (
     <>
       <label {...labelProps}>{props.label}</label>
-      <input {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())} />
+      <input {...elementProps} ref={mergeRefs(domRef.set, props.ref)} />
       <span {...descriptionProps}>{props.description}</span>
       <span {...errorMessageProps}>
         {() => {
-          const given = props.errorMessage?.();
+          const given = props.errorMessage;
           if (given !== undefined && given !== null && given !== "") return given;
           const found = errors();
           return found.length === 0 ? null : found.join(" ");
@@ -1459,20 +1460,20 @@ export interface ColorSwatchComponentProps extends StyleProps {
 }
 
 /** A square showing a colour, named with what it is. */
-export function ColorSwatch(props: Incoming<ColorSwatchComponentProps>) {
+export function ColorSwatch(props: ColorSwatchComponentProps) {
   const picker = useColorPicker();
 
   const { swatchProps } = colorSwatch({
-    color: () => props.color?.() ?? picker?.value() ?? defaultColor(),
-    "aria-label": () => props["aria-label"]?.(),
+    color: () => props.color ?? picker?.value() ?? defaultColor(),
+    "aria-label": () => props["aria-label"],
   });
 
   const elementProps = mergeProps(swatchProps, {
-    class: () => props.class?.() ?? props.className?.(),
-    "data-testid": () => props["data-testid"]?.(),
+    class: () => props.class ?? props.className,
+    "data-testid": () => props["data-testid"],
   });
 
-  return <div {...elementProps} ref={mergeRefs(props.ref?.())} />;
+  return <div {...elementProps} ref={mergeRefs(props.ref)} />;
 }
 
 export { parseColor, type Color, type ColorChannel, type ColorFormat, type ColorSpace };

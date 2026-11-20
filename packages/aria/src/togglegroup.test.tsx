@@ -122,11 +122,11 @@ describe("toggleGroupState", () => {
   });
 });
 
-function Item(props: Incoming<{ state: ToggleGroupState; value: string; isDisabled?: boolean }>) {
+function Item(props: { state: ToggleGroupState; value: string; isDisabled?: boolean }) {
   const domRef = makeRef<HTMLButtonElement>();
   const item = toggleGroupItem(
-    { value: () => props.value(), isDisabled: () => props.isDisabled?.(), ref: domRef },
-    props.state(),
+    { value: () => props.value, isDisabled: () => props.isDisabled, ref: domRef },
+    props.state,
   );
   return (
     <ToggleButton
@@ -138,7 +138,7 @@ function Item(props: Incoming<{ state: ToggleGroupState; value: string; isDisabl
       excludeFromTabOrder={item.excludeFromTabOrder()}
       onChange={(next) => item.onChange(next)}
     >
-      {props.value()}
+      {props.value}
     </ToggleButton>
   );
 }
@@ -151,22 +151,22 @@ interface GroupProps {
   scoped?: "ltr" | "rtl";
 }
 
-function Group(props: Incoming<GroupProps>) {
-  if (props.scoped?.() !== undefined) provideDirection(() => props.scoped?.() ?? "ltr");
+function Group(props: GroupProps) {
+  if (props.scoped !== undefined) provideDirection(() => props.scoped ?? "ltr");
   return <Inner {...props} />;
 }
 
-function Inner(props: Incoming<GroupProps>) {
+function Inner(props: GroupProps) {
   const state = toggleGroupState({
-    selectionMode: () => props.selectionMode?.(),
-    rovingFocus: () => props.rovingFocus?.(),
+    selectionMode: () => props.selectionMode,
+    rovingFocus: () => props.rovingFocus,
   });
   const groupRef = makeRef<HTMLDivElement>();
   const { groupProps } = toggleGroup(
     {
       ref: groupRef,
-      orientation: () => props.orientation?.(),
-      direction: () => props.direction?.(),
+      orientation: () => props.orientation,
+      direction: () => props.direction,
       "aria-label": "Formatting",
     },
     state,

@@ -12,7 +12,7 @@ import { CalendarDate, CalendarDateTime, Time, type DateValue } from "./date.ts"
 import { DateField, TimeField } from "./datefield.tsx";
 
 function Departure(
-  props: Incoming<{
+  props: {
     value?: DateValue | null;
     defaultValue?: DateValue | null;
     granularity?: "day" | "hour" | "minute" | "second";
@@ -20,18 +20,18 @@ function Departure(
     isReadOnly?: boolean;
     name?: string;
     onChange?: (value: DateValue | null) => void;
-  }>,
+  },
 ) {
   return (
     <DateField
       label="Departure"
-      value={props.value?.()}
-      defaultValue={props.defaultValue?.()}
-      granularity={props.granularity?.()}
-      isDisabled={props.isDisabled?.()}
-      isReadOnly={props.isReadOnly?.()}
-      name={props.name?.()}
-      onChange={props.onChange?.()}
+      value={props.value}
+      defaultValue={props.defaultValue}
+      granularity={props.granularity}
+      isDisabled={props.isDisabled}
+      isReadOnly={props.isReadOnly}
+      name={props.name}
+      onChange={props.onChange}
     />
   );
 }

@@ -10,10 +10,10 @@ function Header(props) {
   return (
     <header class="site-header">
       <a href="/" class="logo">
-        {props.title()}
+        {props.title}
       </a>
       <nav>
-        <For each={props.links()}>
+        <For each={props.links}>
           {(link) => (
             <a href={link.href} class={link.active ? "nav-link active" : "nav-link"}>
               {link.label}
@@ -27,18 +27,18 @@ function Header(props) {
 
 function Card(props) {
   return (
-    <article class="card" data-id={props.item().id}>
-      <h2 class="card-title">{props.item().title}</h2>
-      <p class="card-description">{props.item().description}</p>
-      <Show when={props.item().onSale}>
+    <article class="card" data-id={props.item.id}>
+      <h2 class="card-title">{props.item.title}</h2>
+      <p class="card-description">{props.item.description}</p>
+      <Show when={props.item.onSale}>
         <span class="badge">Sale</span>
       </Show>
       <ul class="tags">
-        <For each={props.item().tags}>{(tag) => <li class="tag">{tag}</li>}</For>
+        <For each={props.item.tags}>{(tag) => <li class="tag">{tag}</li>}</For>
       </ul>
       <div class="card-footer">
-        <span class="price">{props.item().price.toFixed(2)}</span>
-        <button type="button" class="add" onClick={() => props.onAdd()(props.item().id)}>
+        <span class="price">{props.item.price.toFixed(2)}</span>
+        <button type="button" class="add" onClick={() => props.onAdd(props.item.id)}>
           Add to cart
         </button>
       </div>
@@ -50,13 +50,13 @@ export function App(props) {
   const [cart, setCart] = createSignal(0)
   return (
     <div id="app">
-      <Header title="Example Shop" links={props.data().links} />
+      <Header title="Example Shop" links={props.data.links} />
       <main>
         <p class="summary">
-          {props.data().items.length} products, {cart()} in cart
+          {props.data.items.length} products, {cart()} in cart
         </p>
         <section class="grid">
-          <For each={props.data().items}>
+          <For each={props.data.items}>
             {(item) => <Card item={item} onAdd={() => setCart((n) => n + 1)} />}
           </For>
         </section>

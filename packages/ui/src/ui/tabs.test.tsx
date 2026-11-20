@@ -8,7 +8,7 @@ import { rulesFor } from "../test-rules.ts";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./tabs.tsx";
 
 function Settings(
-  props: Incoming<{
+  props: {
     value?: string;
     defaultValue?: string;
     onValueChange?: (value: string) => void;
@@ -16,18 +16,18 @@ function Settings(
     activationMode?: "automatic" | "manual";
     dir?: "ltr" | "rtl";
     variant?: "default" | "line";
-  }>,
+  },
 ) {
   return (
     <Tabs
-      value={props.value?.()}
-      defaultValue={props.defaultValue?.()}
-      onValueChange={props.onValueChange?.()}
-      orientation={props.orientation?.()}
-      activationMode={props.activationMode?.()}
-      dir={props.dir?.()}
+      value={props.value}
+      defaultValue={props.defaultValue}
+      onValueChange={props.onValueChange}
+      orientation={props.orientation}
+      activationMode={props.activationMode}
+      dir={props.dir}
     >
-      <TabsList aria-label="Settings" variant={props.variant?.()}>
+      <TabsList aria-label="Settings" variant={props.variant}>
         <TabsTrigger value="account">Account</TabsTrigger>
         <TabsTrigger value="password">Password</TabsTrigger>
         <TabsTrigger value="billing" disabled>
@@ -46,9 +46,9 @@ const SECTIONS = [
   { id: "usage", name: "Usage", body: "How to use it" },
 ];
 
-function Sections(props: Incoming<{ orientation?: "horizontal" | "vertical" }>) {
+function Sections(props: { orientation?: "horizontal" | "vertical" }) {
   return (
-    <Tabs items={SECTIONS} orientation={props.orientation?.()}>
+    <Tabs items={SECTIONS} orientation={props.orientation}>
       <TabsList aria-label="Sections">
         {(section: (typeof SECTIONS)[number]) => <TabsTrigger>{section.name}</TabsTrigger>}
       </TabsList>
@@ -216,7 +216,7 @@ describe("Tabs from data", () => {
   });
 
   test("a direction declared above mirrors the arrows", () => {
-    function Mirrored(props: Incoming<{ children?: Child }>) {
+    function Mirrored(props: { children?: Child }) {
       const directionProps = provideDirection("rtl");
       return <div {...directionProps}>{props.children}</div>;
     }

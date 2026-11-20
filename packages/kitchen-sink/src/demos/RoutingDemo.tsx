@@ -186,7 +186,7 @@ export function UsersList(props: RouteProps<UsersData | undefined>) {
 
   const filteredUsers = () => {
     const filter = currentFilter();
-    const all = props.data()?.users ?? [];
+    const all = props.data?.users ?? [];
     if (filter === "all") return all;
     return all.filter((u) => u.role === filter);
   };
@@ -237,8 +237,8 @@ export function UserDetail(props: RouteProps<UserDetailData | undefined>) {
   // Destructuring at the top would snapshot the loader's answer; the reads stay
   // where they are used, which is what keeps the route alive across a parameter
   // change instead of remounting it.
-  const user = () => props.data()?.user;
-  const userPosts = () => props.data()?.posts ?? [];
+  const user = () => props.data?.user;
+  const userPosts = () => props.data?.posts ?? [];
 
   return (
     <Show when={user} fallback={<div class={errorStyle}>User not found</div>}>
@@ -293,7 +293,7 @@ export function PostsList(props: RouteProps<PostsData | undefined>) {
 
   const filteredPosts = () => {
     const cat = currentCategory();
-    const all = props.data()?.posts ?? [];
+    const all = props.data?.posts ?? [];
     if (cat === "all") return all;
     return all.filter((p) => p.category === cat);
   };
@@ -347,8 +347,8 @@ interface PostDetailData {
 
 export function PostDetail(props: RouteProps<PostDetailData | undefined>) {
   const nav = useNavigate();
-  const post = () => props.data()?.post;
-  const author = () => props.data()?.author;
+  const post = () => props.data?.post;
+  const author = () => props.data?.author;
 
   return (
     <Show when={post} fallback={<div class={errorStyle}>Post not found</div>}>

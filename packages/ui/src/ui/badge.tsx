@@ -1,4 +1,4 @@
-import { Show, type Incoming } from "@barqjs/core";
+import { cells, Show, type Incoming } from "@barqjs/core";
 import { layer, variants } from "@barqjs/css";
 
 import "../theme/layers.ts";
@@ -183,19 +183,19 @@ export interface BadgeProps extends UiProps {
  * <Badge variant="outline" href="/tags/rust">rust</Badge>
  * ```
  */
-export function Badge(props: Incoming<BadgeProps>) {
-  const className = (): string => badgeVariants({ variant: props.variant?.() });
+export function Badge(props: BadgeProps) {
+  const className = (): string => badgeVariants({ variant: props.variant });
   const common = (): Record<string, unknown> => ({
-    ...uiProps("badge", className, props),
-    "data-variant": props.variant?.() ?? "default",
+    ...uiProps("badge", className, cells(props)),
+    "data-variant": props.variant ?? "default",
   });
 
   return (
     <Show
-      when={props.href?.() !== undefined}
+      when={props.href !== undefined}
       fallback={<span {...common()}>{props.children}</span>}
     >
-      <a {...common()} href={props.href?.()} target={props.target?.()} rel={props.rel?.()}>
+      <a {...common()} href={props.href} target={props.target} rel={props.rel}>
         {props.children}
       </a>
     </Show>

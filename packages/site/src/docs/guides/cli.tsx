@@ -127,9 +127,9 @@ export const sections: readonly DocsSection[] = [
   { id: "namespaces", label: "Namespaced registries" },
 ];
 
-function Text(props: Incoming<{ text: string }>) {
+function Text(props: { text: string }) {
   const parts = props
-    .text()
+    .text
     .split("`")
     .map((text, at) => ({ text, code: at % 2 === 1 }))
     .filter((part) => part.text !== "");
@@ -142,10 +142,10 @@ function Text(props: Incoming<{ text: string }>) {
   );
 }
 
-function Options(props: Incoming<{ options: readonly Option[] }>) {
+function Options(props: { options: readonly Option[] }) {
   return (
     <ul>
-      <For each={() => props.options()}>
+      <For each={() => props.options}>
         {(option: Option) => (
           <li>
             <code>{option.flag}</code> <Text text={option.does} />

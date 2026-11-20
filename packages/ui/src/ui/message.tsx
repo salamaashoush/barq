@@ -1,3 +1,4 @@
+import { cells } from "@barqjs/core";
 import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
@@ -84,8 +85,8 @@ const footer = ui(band, {
 });
 
 /** A run of messages, one under another. */
-export function MessageGroup(props: Incoming<UiProps>) {
-  return <div {...uiProps("message-group", group, props)}>{props.children}</div>;
+export function MessageGroup(props: UiProps) {
+  return <div {...uiProps("message-group", group, cells(props))}>{props.children}</div>;
 }
 
 export interface MessageProps extends UiProps {
@@ -105,31 +106,31 @@ export interface MessageProps extends UiProps {
  * </Message>
  * ```
  */
-export function Message(props: Incoming<MessageProps>) {
+export function Message(props: MessageProps) {
   return (
     <div
-      {...uiProps("message", () => ui(root, "group/message"), props)}
-      data-align={props.align?.() ?? "start"}
+      {...uiProps("message", () => ui(root, "group/message"), cells(props))}
+      data-align={props.align ?? "start"}
     >
       {props.children}
     </div>
   );
 }
 
-export function MessageAvatar(props: Incoming<UiProps>) {
-  return <div {...uiProps("message-avatar", avatar, props)}>{props.children}</div>;
+export function MessageAvatar(props: UiProps) {
+  return <div {...uiProps("message-avatar", avatar, cells(props))}>{props.children}</div>;
 }
 
-export function MessageContent(props: Incoming<UiProps>) {
-  return <div {...uiProps("message-content", content, props)}>{props.children}</div>;
+export function MessageContent(props: UiProps) {
+  return <div {...uiProps("message-content", content, cells(props))}>{props.children}</div>;
 }
 
 /** The name and the time above the bubbles. */
-export function MessageHeader(props: Incoming<UiProps>) {
-  return <div {...uiProps("message-header", band, props)}>{props.children}</div>;
+export function MessageHeader(props: UiProps) {
+  return <div {...uiProps("message-header", band, cells(props))}>{props.children}</div>;
 }
 
 /** The delivery state under them. */
-export function MessageFooter(props: Incoming<UiProps>) {
-  return <div {...uiProps("message-footer", footer, props)}>{props.children}</div>;
+export function MessageFooter(props: UiProps) {
+  return <div {...uiProps("message-footer", footer, cells(props))}>{props.children}</div>;
 }

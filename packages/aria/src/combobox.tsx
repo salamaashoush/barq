@@ -25,6 +25,7 @@
  */
 
 import {
+  cells,
   type Accessor,
   type Child,
   For,
@@ -752,18 +753,18 @@ export interface ComboBoxComponentProps<T> extends StyleProps, ItemAccessors<T> 
  * </ComboBox>
  * ```
  */
-export function ComboBox<T>(props: Incoming<ComboBoxComponentProps<T>>) {
+export function ComboBox<T>(props: ComboBoxComponentProps<T>) {
   const inputRef = makeRef<HTMLInputElement>();
   const listRef = makeRef<HTMLUListElement>();
   const buttonRef = makeRef<HTMLButtonElement>();
-  const options = fromProps(props as unknown as Incoming<Record<string, unknown>>);
+  const options = fromProps(cells(props) as unknown as Incoming<Record<string, unknown>>);
 
   const state = comboBoxState<T>({
     ...(options as ComboBoxStateOptions<T>),
-    filterBy: callback<[string, string], boolean>(props.filterBy),
-    onSelectionChange: (key) => props.onSelectionChange?.()?.(key),
-    onInputChange: (value) => props.onInputChange?.()?.(value),
-    onOpenChange: (isOpen) => props.onOpenChange?.()?.(isOpen),
+    filterBy: callback<[string, string], boolean>(cells(props).filterBy),
+    onSelectionChange: (key) => props.onSelectionChange?.(key),
+    onInputChange: (value) => props.onInputChange?.(value),
+    onOpenChange: (isOpen) => props.onOpenChange?.(isOpen),
   });
 
   const {
@@ -781,27 +782,27 @@ export function ComboBox<T>(props: Incoming<ComboBoxComponentProps<T>>) {
       inputRef,
       listBoxRef: listRef,
       buttonRef,
-      validate: callback(props.validate),
-      validationBehavior: () => props.validationBehavior?.(),
+      validate: callback(cells(props).validate),
+      validationBehavior: () => props.validationBehavior,
     },
     state,
   );
 
   const { buttonProps } = button(buttonOptions, buttonRef);
-  const { hoverProps, isHovered } = hover({ isDisabled: () => props.isDisabled?.() });
+  const { hoverProps, isHovered } = hover({ isDisabled: () => props.isDisabled });
   const { focusProps, isFocusVisible } = focusRing();
 
   const inputElementProps = mergeProps(
     inputProps,
     focusProps,
     filterDOMProps(options, { global: true }),
-    styleProps(props),
+    styleProps(cells(props)),
     {
       "data-focus-visible": isFocusVisible,
       "data-open": state.isOpen,
-      "data-disabled": () => props.isDisabled?.() === true,
+      "data-disabled": () => props.isDisabled === true,
       "data-invalid": isInvalid,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
@@ -825,7 +826,7 @@ export function ComboBox<T>(props: Incoming<ComboBoxComponentProps<T>>) {
   return (
     <>
       <span {...labelProps}>{props.label}</span>
-      <input {...inputElementProps} ref={mergeRefs(inputRef.set, props.ref?.())} />
+      <input {...inputElementProps} ref={mergeRefs(inputRef.set, props.ref)} />
       <button {...buttonElementProps} type="button" ref={buttonRef.set}>
         <span aria-hidden="true">▾</span>
       </button>
@@ -833,7 +834,7 @@ export function ComboBox<T>(props: Incoming<ComboBoxComponentProps<T>>) {
         triggerRef={inputRef}
         isOpen={state.isOpen()}
         onOpenChange={state.setOpen}
-        placement={props.placement?.() ?? "bottom start"}
+        placement={props.placement ?? "bottom start"}
         isDismissable
       >
         <ComboBoxList
@@ -846,7 +847,7 @@ export function ComboBox<T>(props: Incoming<ComboBoxComponentProps<T>>) {
       <span {...descriptionProps}>{props.description}</span>
       <span {...errorMessageProps}>
         {() => {
-          const given = props.errorMessage?.();
+          const given = props.errorMessage;
           if (given !== undefined && given !== null && given !== "") return given;
           const found = errors();
           return found.length === 0 ? null : found.join(" ");
@@ -869,11 +870,11 @@ interface ComboBoxListProps {
  * Built only once the list is open, so its autofocus reads the focus strategy
  * the opening keypress set rather than the one from before it.
  */
-function ComboBoxList(props: Incoming<ComboBoxListProps>) {
-  const state = props.state();
-  const listRef = props.listRef();
-  const render = props.render();
-  const options = props.options();
+function ComboBoxList(props: ComboBoxListProps) {
+  const state = props.state;
+  const listRef = props.listRef;
+  const render = props.render;
+  const options = props.options;
 
   const { listBoxProps, baseId } = listBox(
     { ...(options as unknown as Record<string, MaybeAccessor<never>>), ref: listRef },
@@ -1551,10 +1552,10 @@ function createComboboxRoot<V>(props: Incoming<ComboboxRootProps<V>>): ComboboxR
   };
 }
 
-function ComboboxRootProvider(props: Incoming<{ value: ComboboxRootValue; children?: Child }>) {
+function ComboboxRootProvider(props: { value: ComboboxRootValue; children?: Child }) {
   return provide(
     ComboboxRootContext,
-    () => props.value(),
+    () => props.value,
     () => props.children as unknown,
   );
 }
@@ -1594,8 +1595,8 @@ function ComboboxFormValue() {
  *
  * Renders no element of its own: the parts are placed by whoever writes them.
  */
-export function ComboboxRoot<V>(props: Incoming<ComboboxRootProps<V>>) {
-  const root = createComboboxRoot(props);
+export function ComboboxRoot<V>(props: ComboboxRootProps<V>) {
+  const root = createComboboxRoot(cells(props));
   return (
     <ComboboxRootProvider value={root}>
       {props.children}
@@ -1634,17 +1635,17 @@ export interface ComboboxInputProps extends StyleProps {
  * search over a list a button opened, and inside {@link ComboboxChips} it also
  * walks the chips beside it.
  */
-export function ComboboxInput(props: Incoming<ComboboxInputProps>) {
+export function ComboboxInput(props: ComboboxInputProps) {
   const root = useComboboxRoot();
   const chips = getContext(ComboboxChipsContext) ?? null;
   const isInside = getContext(ComboboxPopupContext);
-  const isDisabled = (): boolean => props.disabled?.() === true;
+  const isDisabled = (): boolean => props.disabled === true;
 
   root.attachInput({
     isInside,
     isDisabled,
-    label: () => props["aria-label"]?.(),
-    labelledBy: () => props["aria-labelledby"]?.(),
+    label: () => props["aria-label"],
+    labelledBy: () => props["aria-labelledby"],
   });
 
   const { focusProps, isFocusVisible } = focusRing();
@@ -1652,20 +1653,20 @@ export function ComboboxInput(props: Incoming<ComboboxInputProps>) {
   const elementProps = mergeProps(
     root.inputProps(chips),
     focusProps,
-    filterDOMProps(fromProps(props), { global: true, labelable: true, propNames: INPUT_PROPS }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true, labelable: true, propNames: INPUT_PROPS }),
+    styleProps(cells(props)),
     {
-      placeholder: () => props.placeholder?.(),
+      placeholder: () => props.placeholder,
       disabled: root.isDisabled,
       "data-focus-visible": isFocusVisible,
       "data-open": root.isOpen,
       "data-state": () => (root.isOpen() ? "open" : "closed"),
       "data-disabled": root.isDisabled,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
-  return <input {...elementProps} ref={mergeRefs(root.inputRef.set, props.ref?.())} />;
+  return <input {...elementProps} ref={mergeRefs(root.inputRef.set, props.ref)} />;
 }
 
 /** Nothing reads it. `provide` is what creates the scope a slot is installed in. */
@@ -1726,7 +1727,7 @@ export function ComboboxTrigger(props: Incoming<{ children?: Child }>) {
   );
 }
 
-function ComboboxClearSlot(props: Incoming<{ children?: Child }>) {
+function ComboboxClearSlot(props: { children?: Child }) {
   const root = useComboboxRoot();
   return provide(
     SlotScope,
@@ -1750,7 +1751,7 @@ function ComboboxClearSlot(props: Incoming<{ children?: Child }>) {
  * Hands the clearing press to the button inside it, and renders that button
  * only while there is something to clear.
  */
-export function ComboboxClear(props: Incoming<{ children?: Child }>) {
+export function ComboboxClear(props: { children?: Child }) {
   const root = useComboboxRoot();
   return (
     <Show when={root.values().length > 0 || root.inputValue() !== ""}>
@@ -1773,14 +1774,14 @@ export interface ComboboxValueProps {
  * place, so a `<For>` over it adds and removes chips without rebuilding the
  * input written beside them, which would take the caret with it.
  */
-export function ComboboxValue(props: Incoming<ComboboxValueProps>) {
+export function ComboboxValue(props: ComboboxValueProps) {
   const root = useComboboxRoot();
   const render = renderCallback(props.children);
 
   if (render === null) {
     const text = (): string => {
       const chosen = root.values();
-      if (chosen.length === 0) return props.placeholder?.() ?? "";
+      if (chosen.length === 0) return props.placeholder ?? "";
       return chosen.map(root.labelOf).join(", ");
     };
     return <>{props.children === undefined ? text() : (props.children as () => Child)()}</>;
@@ -1837,7 +1838,7 @@ export interface ComboboxPopupProps extends StyleProps {
  * one is the caller's to style. Animating the positioned element would move
  * the thing being measured.
  */
-export function ComboboxPopup(props: Incoming<ComboboxPopupProps>) {
+export function ComboboxPopup(props: ComboboxPopupProps) {
   const root = useComboboxRoot();
   const locale = useLocale();
   const positionerRef = makeRef<HTMLDivElement>();
@@ -1845,14 +1846,14 @@ export function ComboboxPopup(props: Incoming<ComboboxPopupProps>) {
   const close = (): void => root.setOpen(false);
 
   const placement = (): Placement =>
-    placementFor(props.side?.() ?? "bottom", props.align?.() ?? "start");
+    placementFor(props.side ?? "bottom", props.align ?? "start");
 
   const position = overlayPosition({
-    targetRef: () => anchorElement(props.anchor?.()) ?? root.anchor(),
+    targetRef: () => anchorElement(props.anchor) ?? root.anchor(),
     overlayRef: positionerRef,
     placement,
-    offset: () => props.sideOffset?.() ?? 6,
-    crossOffset: () => props.alignOffset?.() ?? 0,
+    offset: () => props.sideOffset ?? 6,
+    crossOffset: () => props.alignOffset ?? 0,
     isOpen: root.isOpen,
     onClose: close,
     direction: () => locale().direction,
@@ -1875,12 +1876,12 @@ export function ComboboxPopup(props: Incoming<ComboboxPopupProps>) {
 
   const popupDirection = declaredDirection();
   const popupProps = mergeProps(
-    filterDOMProps(fromProps(props), { global: true, labelable: true }),
+    filterDOMProps(fromProps(cells(props)), { global: true, labelable: true }),
     // Portalled out from under the element that carries `dir`.
-    { dir: () => props.dir?.() ?? popupDirection() },
-    styleProps(props),
+    { dir: () => props.dir ?? popupDirection() },
+    styleProps(cells(props)),
     {
-      role: () => props.role?.() ?? "presentation",
+      role: () => props.role ?? "presentation",
       "data-open": () => !gate.isExiting(),
       "data-closed": gate.isExiting,
       "data-state": () => (gate.isExiting() ? "closed" : "open"),
@@ -1888,7 +1889,7 @@ export function ComboboxPopup(props: Incoming<ComboboxPopupProps>) {
       "data-align": () => alignOf(placement()),
       "data-placement": position.placement,
       "data-empty": root.isEmpty,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
@@ -1900,7 +1901,7 @@ export function ComboboxPopup(props: Incoming<ComboboxPopupProps>) {
           positionerRef={positionerRef}
           popupProps={popupProps}
           popupRef={popupRef}
-          forwardedRef={props.ref?.()}
+          forwardedRef={props.ref}
         >
           {props.children}
         </ComboboxPopupBody>
@@ -1925,20 +1926,20 @@ interface ComboboxPopupBodyProps {
  * Only when there is no input outside: a list under a field the user is typing
  * in must not take the caret, and a scope would.
  */
-function ComboboxPopupBody(props: Incoming<ComboboxPopupBodyProps>) {
+function ComboboxPopupBody(props: ComboboxPopupBodyProps) {
   const root = useComboboxRoot();
   const scope = untrack(root.hasOuterInput)
     ? null
     : focusScope({ contain: true, restoreFocus: true, autoFocus: true });
-  const positionerRef = props.positionerRef();
-  const setPopup = mergeRefs(props.popupRef().set, props.forwardedRef?.());
+  const positionerRef = props.positionerRef;
+  const setPopup = mergeRefs(props.popupRef.set, props.forwardedRef);
 
   return (
     <>
       <span hidden ref={scope?.startRef} />
       <ComboboxPopupScope>
-        <div {...props.positionerProps()} ref={positionerRef.set}>
-          <div {...props.popupProps()} ref={setPopup}>
+        <div {...props.positionerProps} ref={positionerRef.set}>
+          <div {...props.popupProps} ref={setPopup}>
             {props.children}
           </div>
         </div>
@@ -1948,7 +1949,7 @@ function ComboboxPopupBody(props: Incoming<ComboboxPopupBodyProps>) {
   );
 }
 
-function ComboboxPopupScope(props: Incoming<{ children?: Child }>) {
+function ComboboxPopupScope(props: { children?: Child }) {
   return provide(
     ComboboxPopupContext,
     () => true,
@@ -1964,7 +1965,7 @@ export interface ComboboxListProps extends StyleProps {
 }
 
 /** The listbox. Its options are whatever its children render. */
-export function ComboboxList(props: Incoming<ComboboxListProps>) {
+export function ComboboxList(props: ComboboxListProps) {
   const root = useComboboxRoot();
   const { children: _children, ...own } = props;
 
@@ -1982,19 +1983,19 @@ export function ComboboxList(props: Incoming<ComboboxListProps>) {
 
   const elementProps = mergeProps(
     listBoxProps,
-    filterDOMProps(fromProps(own), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(own)), { global: true }),
+    styleProps(cells(props)),
     {
       id: root.listId,
       "aria-label": () =>
-        props["aria-label"]?.() ??
+        props["aria-label"] ??
         root.listName().label ??
-        (root.listName().labelledBy === undefined && props["aria-labelledby"]?.() === undefined
+        (root.listName().labelledBy === undefined && props["aria-labelledby"] === undefined
           ? "Suggestions"
           : undefined),
-      "aria-labelledby": () => props["aria-labelledby"]?.() ?? root.listName().labelledBy,
+      "aria-labelledby": () => props["aria-labelledby"] ?? root.listName().labelledBy,
       "data-empty": root.isEmpty,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
@@ -2046,10 +2047,10 @@ export function useComboboxItem(): ComboboxItemValue {
   return value;
 }
 
-function ComboboxItemProvider(props: Incoming<{ value: ComboboxItemValue; children?: Child }>) {
+function ComboboxItemProvider(props: { value: ComboboxItemValue; children?: Child }) {
   return provide(
     ComboboxItemContext,
-    () => props.value(),
+    () => props.value,
     () => props.children as unknown,
   );
 }
@@ -2066,15 +2067,15 @@ export interface ComboboxItemProps extends StyleProps {
 }
 
 /** One option. It joins the list by rendering and leaves it by going away. */
-export function ComboboxItem(props: Incoming<ComboboxItemProps>) {
+export function ComboboxItem(props: ComboboxItemProps) {
   const root = useComboboxRoot();
   // Read once: an option does not turn into a different one.
-  const item = untrack(props.value);
+  const item = untrack(cells(props).value);
   const key = root.keyOf(item);
   root.attachItem(key, item);
 
   const manager = () => root.list.selectionManager();
-  const isDisabled = (): boolean => props.disabled?.() === true;
+  const isDisabled = (): boolean => props.disabled === true;
   const state: ComboboxItemValue = {
     isSelected: () => manager().isSelected(key),
     isHighlighted: () => root.isOpen() && manager().focusedKey === key,
@@ -2085,7 +2086,7 @@ export function ComboboxItem(props: Incoming<ComboboxItemProps>) {
     untrack(() => {
       root.rememberLabel(
         key,
-        props.textValue?.() ??
+        props.textValue ??
           root.ownLabelOf(item) ??
           root.registry.elementOf(key)?.textContent?.trim() ??
           "",
@@ -2100,7 +2101,7 @@ export function ComboboxItem(props: Incoming<ComboboxItemProps>) {
       <Option
         {...rest}
         value={key}
-        textValue={props.textValue?.() ?? root.ownLabelOf(item)}
+        textValue={props.textValue ?? root.ownLabelOf(item)}
         isDisabled={isDisabled()}
         isHidden={!root.matches(item)}
         data-highlighted={state.isHighlighted() ? "" : undefined}
@@ -2127,12 +2128,12 @@ interface GroupValue {
 const ComboboxGroupContext = createContext<GroupValue | null>(null);
 
 function ComboboxGroupProvider(
-  props: Incoming<{ value: GroupValue; section: Key; children?: Child }>,
+  props: { value: GroupValue; section: Key; children?: Child },
 ) {
-  return provideStaticSection(props.section(), () =>
+  return provideStaticSection(props.section, () =>
     provide(
       ComboboxGroupContext,
-      () => props.value(),
+      () => props.value,
       () => props.children as unknown,
     ),
   ) as never;
@@ -2152,28 +2153,28 @@ export interface ComboboxGroupProps extends StyleProps {
  * accessibility tree and a `<li>` cannot hold another `<li>`: the outer one is
  * presentational and takes the caller's class, the inner one is the group.
  */
-export function ComboboxGroup(props: Incoming<ComboboxGroupProps>) {
+export function ComboboxGroup(props: ComboboxGroupProps) {
   const root = useComboboxRoot();
   const section = staticItem(root.registry, { type: "section", textValue: "" });
   const headingId = id();
   const [isNamed, setNamed] = createSignal(false, { ownedWrite: true });
 
   const group: GroupValue = {
-    items: () => props.items?.() ?? [],
+    items: () => props.items ?? [],
     headingId,
     name: setNamed,
   };
 
   const elementProps = mergeProps(
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
       role: "presentation",
       // A group the query has emptied still holds its label, and a design
       // system hides the whole thing off this.
       "data-empty": () =>
         (root.list.collection().getItem(section.key)?.childNodes.length ?? 0) === 0,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
@@ -2182,7 +2183,7 @@ export function ComboboxGroup(props: Incoming<ComboboxGroupProps>) {
       <li {...elementProps} ref={section.ref}>
         <ul
           role="group"
-          aria-label={props["aria-label"]?.()}
+          aria-label={props["aria-label"]}
           aria-labelledby={isNamed() ? headingId() : undefined}
         >
           {props.children}
@@ -2202,19 +2203,19 @@ export interface ComboboxGroupLabelProps extends StyleProps {
  * Rendering it is what makes the group point here, and leaving undoes that, so
  * a group never names an element that is not there.
  */
-export function ComboboxGroupLabel(props: Incoming<ComboboxGroupLabelProps>) {
+export function ComboboxGroupLabel(props: ComboboxGroupLabelProps) {
   const group = getContext(ComboboxGroupContext) ?? null;
   group?.name(true);
   onCleanup(() => group?.name(false));
 
   const elementProps = mergeProps(
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
       // Inside the group and not one of its options.
       role: "presentation",
       id: () => group?.headingId(),
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
@@ -2227,7 +2228,7 @@ export interface ComboboxCollectionProps {
 }
 
 /** The enclosing {@link ComboboxGroup}'s items, less what the query rules out. */
-export function ComboboxCollection(props: Incoming<ComboboxCollectionProps>) {
+export function ComboboxCollection(props: ComboboxCollectionProps) {
   const root = useComboboxRoot();
   const group = getContext(ComboboxGroupContext) ?? null;
   const render = renderCallback(props.children);
@@ -2253,17 +2254,17 @@ export interface ComboboxEmptyProps extends StyleProps {
  * region announces a change to what it holds, and one that arrives already
  * full announces nothing.
  */
-export function ComboboxEmpty(props: Incoming<ComboboxEmptyProps>) {
+export function ComboboxEmpty(props: ComboboxEmptyProps) {
   const root = useComboboxRoot();
 
   const elementProps = mergeProps(
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
       role: "status",
       "aria-live": "polite",
       "aria-atomic": "true",
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
@@ -2274,10 +2275,10 @@ export function ComboboxEmpty(props: Incoming<ComboboxEmptyProps>) {
   );
 }
 
-function ComboboxChipsProvider(props: Incoming<{ value: ChipsValue; children?: Child }>) {
+function ComboboxChipsProvider(props: { value: ChipsValue; children?: Child }) {
   return provide(
     ComboboxChipsContext,
-    () => props.value(),
+    () => props.value,
     () => props.children as unknown,
   );
 }
@@ -2296,7 +2297,7 @@ export interface ComboboxChipsProps extends StyleProps {
  * A `<div>` that looks like a field: the chips inside carry remove buttons,
  * and a button inside an input is markup nothing can render.
  */
-export function ComboboxChips(props: Incoming<ComboboxChipsProps>) {
+export function ComboboxChips(props: ComboboxChipsProps) {
   const root = useComboboxRoot();
   const registry = staticCollection();
   root.attachChips();
@@ -2312,14 +2313,14 @@ export function ComboboxChips(props: Incoming<ComboboxChipsProps>) {
   };
 
   const elementProps = mergeProps(
-    filterDOMProps(fromProps(props), { global: true, labelable: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true, labelable: true }),
+    styleProps(cells(props)),
     {
       // A toolbar only while there are chips to move between: an input alone
       // in a toolbar is a toolbar of one.
       role: () => (chips.count() > 0 ? "toolbar" : undefined),
       "data-disabled": root.isDisabled,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
       onMouseDown: (event: MouseEvent) => {
         // The box is the field, so a press on its own padding is a press on
         // the input.
@@ -2332,7 +2333,7 @@ export function ComboboxChips(props: Incoming<ComboboxChipsProps>) {
 
   return (
     <ComboboxChipsProvider value={chips}>
-      <div {...elementProps} ref={mergeRefs(root.chipsRef.set, props.ref?.())}>
+      <div {...elementProps} ref={mergeRefs(root.chipsRef.set, props.ref)}>
         {props.children}
       </div>
     </ComboboxChipsProvider>
@@ -2356,10 +2357,10 @@ export function useComboboxChip(): ComboboxChipValue {
   return value;
 }
 
-function ComboboxChipProvider(props: Incoming<{ value: ComboboxChipValue; children?: Child }>) {
+function ComboboxChipProvider(props: { value: ComboboxChipValue; children?: Child }) {
   return provide(
     ComboboxChipContext,
-    () => props.value(),
+    () => props.value,
     () => props.children as unknown,
   );
 }
@@ -2377,7 +2378,7 @@ export interface ComboboxChipProps extends StyleProps {
  * Reached with the arrows from the input rather than with Tab: a field holding
  * eight values would otherwise be eight stops before the next field.
  */
-export function ComboboxChip(props: Incoming<ComboboxChipProps>) {
+export function ComboboxChip(props: ComboboxChipProps) {
   const root = useComboboxRoot();
   const locale = useLocale();
   const chips = getContext(ComboboxChipsContext);
@@ -2424,13 +2425,13 @@ export function ComboboxChip(props: Incoming<ComboboxChipProps>) {
   };
 
   const elementProps = mergeProps(
-    filterDOMProps(fromProps(props), { global: true, labelable: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true, labelable: true }),
+    styleProps(cells(props)),
     {
       tabIndex: -1,
       "data-highlighted": isFocused,
       "data-disabled": root.isDisabled,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
       onKeyDown,
       onFocus: (event: FocusEvent) => {
         if (event.target === event.currentTarget) setFocused(true);
@@ -2444,7 +2445,7 @@ export function ComboboxChip(props: Incoming<ComboboxChipProps>) {
   // a hydrating page would claim the server's label as the button.
   return (
     <ComboboxChipProvider value={{ remove, label }}>
-      <div {...elementProps} ref={mergeRefs(chip.ref, props.ref?.())}>
+      <div {...elementProps} ref={mergeRefs(chip.ref, props.ref)}>
         {props.children}
       </div>
     </ComboboxChipProvider>

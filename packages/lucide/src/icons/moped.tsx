@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Moped(props: Incoming<IconProps>) {
+export function Moped(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="m18.16 14.12-2.927-8.447A1 1 0 0 0 14.288 5H13" />
       <path d="M19 10a7 7 0 0 0-6.928 6" />
       <path d="M2 10h5.5a3 3 0 0 1 2.747 1.795l1.669 3.803A1 1 0 0 1 11.01 17H8" />

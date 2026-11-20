@@ -7,6 +7,7 @@ import {
   type MessageScrollerVisibilityState,
 } from "@barqjs/aria/scroller";
 import {
+  cells,
   createContext,
   getContext,
   onCleanup,
@@ -244,13 +245,13 @@ export interface MessageScrollerProviderProps {
  * The provider exists so that something OUTSIDE the frame, a header's "jump to
  * latest" or a search result, can reach the commands.
  */
-export function MessageScrollerProvider(props: Incoming<MessageScrollerProviderProps>) {
+export function MessageScrollerProvider(props: MessageScrollerProviderProps) {
   const scroller = messageScroller({
-    follow: () => props.autoScroll?.() ?? false,
-    tolerance: () => props.scrollEdgeThreshold?.(),
-    defaultScrollPosition: () => props.defaultScrollPosition?.() ?? "end",
-    scrollPreviousItemPeek: () => props.scrollPreviousItemPeek?.(),
-    scrollMargin: () => props.scrollMargin?.(),
+    follow: () => props.autoScroll ?? false,
+    tolerance: () => props.scrollEdgeThreshold,
+    defaultScrollPosition: () => props.defaultScrollPosition ?? "end",
+    scrollPreviousItemPeek: () => props.scrollPreviousItemPeek,
+    scrollMargin: () => props.scrollMargin,
   });
   onCleanup(() => scroller.attach(null));
 
@@ -288,19 +289,19 @@ export interface MessageScrollerProps extends UiProps {
  * `follow` and `tolerance` are read when there is no `<MessageScrollerProvider>`
  * above; under one, its props decide.
  */
-export function MessageScroller(props: Incoming<MessageScrollerProps>) {
+export function MessageScroller(props: MessageScrollerProps) {
   const provided = getContext(ScrollerContext);
   const scroller =
     provided ??
     messageScroller({
-      follow: () => props.follow?.(),
-      tolerance: () => props.tolerance?.(),
+      follow: () => props.follow,
+      tolerance: () => props.tolerance,
     });
   if (provided === null || provided === undefined) onCleanup(() => scroller.attach(null));
 
   return (
     <div
-      {...uiProps("message-scroller", ui(root, "group/message-scroller"), props)}
+      {...uiProps("message-scroller", ui(root, "group/message-scroller"), cells(props))}
       data-pending-scroll={() => (scroller.isPending() ? "" : undefined)}
       data-scrollable={() => edgesOf(scroller)}
       data-autoscrolling={() => (scroller.isAutoscrolling() ? "" : undefined)}
@@ -319,10 +320,10 @@ function edgesOf(scroller: MessageScrollerEngine): string | undefined {
 }
 
 /** See `drawer.tsx`: the scope a `provide` needs exists only in a component. */
-function ScrollerProvider(props: Incoming<{ value: MessageScrollerEngine; children?: Child }>) {
+function ScrollerProvider(props: { value: MessageScrollerEngine; children?: Child }) {
   return provide(
     ScrollerContext,
-    () => props.value(),
+    () => props.value,
     () => props.children,
   );
 }
@@ -341,10 +342,10 @@ export interface MessageScrollerViewportProps extends UiProps {
  * A labelled region with a Tab stop, because a transcript longer than its box
  * is content a keyboard has to be able to reach and scroll.
  */
-export function MessageScrollerViewport(props: Incoming<MessageScrollerViewportProps>) {
+export function MessageScrollerViewport(props: MessageScrollerViewportProps) {
   const scroller = useScroller();
   const node = makeRef<HTMLDivElement>();
-  scroller.preserveOnPrepend(() => props.preserveScrollOnPrepend?.());
+  scroller.preserveOnPrepend(() => props.preserveScrollOnPrepend);
   // Once mounted rather than from the `ref`: attaching measures and publishes
   // what it found, and a ref is called while this component is still being
   // built, where a write is refused.
@@ -354,11 +355,11 @@ export function MessageScrollerViewport(props: Incoming<MessageScrollerViewportP
 
   return (
     <div
-      {...uiProps("message-scroller-viewport", viewport, props)}
-      ref={mergeRefs(node.set, props.ref?.())}
-      role={props.role?.() ?? "region"}
-      aria-label={props["aria-label"]?.() ?? "Messages"}
-      tabIndex={props.tabIndex?.() ?? 0}
+      {...uiProps("message-scroller-viewport", viewport, cells(props))}
+      ref={mergeRefs(node.set, props.ref)}
+      role={props.role ?? "region"}
+      aria-label={props["aria-label"] ?? "Messages"}
+      tabIndex={props.tabIndex ?? 0}
       data-autoscrolling={scroller.isAutoscrolling() ? "" : undefined}
       data-pending-scroll={() => (scroller.isPending() ? "" : undefined)}
       data-scrollable={() => edgesOf(scroller)}
@@ -388,15 +389,15 @@ export interface MessageScrollerContentProps extends UiProps {
  * A `log`: new messages are announced politely as they arrive, in order, and
  * the ones already there are left alone.
  */
-export function MessageScrollerContent(props: Incoming<MessageScrollerContentProps>) {
+export function MessageScrollerContent(props: MessageScrollerContentProps) {
   const scroller = useScroller();
 
   return (
     <div
-      {...uiProps("message-scroller-content", content, props)}
-      ref={mergeRefs(scroller.attachContent, props.ref?.())}
-      role={props.role?.() ?? "log"}
-      aria-relevant={props["aria-relevant"]?.() ?? "additions"}
+      {...uiProps("message-scroller-content", content, cells(props))}
+      ref={mergeRefs(scroller.attachContent, props.ref)}
+      role={props.role ?? "log"}
+      aria-relevant={props["aria-relevant"] ?? "additions"}
     >
       {props.children}
       <div
@@ -404,7 +405,7 @@ export function MessageScrollerContent(props: Incoming<MessageScrollerContentPro
         aria-hidden="true"
         data-message-scroller-spacer=""
         hidden
-        class={props.spacerClass?.()}
+        class={props.spacerClass}
       />
     </div>
   );
@@ -422,11 +423,11 @@ export interface MessageScrollerItemProps extends UiProps {
 }
 
 /** One row: a message, a marker, a typing indicator, a separator. */
-export function MessageScrollerItem(props: Incoming<MessageScrollerItemProps>) {
+export function MessageScrollerItem(props: MessageScrollerItemProps) {
   const scroller = useScroller();
   let mounted: HTMLDivElement | null = null;
   const register = (element: HTMLDivElement | null): void => {
-    const messageId = props.messageId?.();
+    const messageId = props.messageId;
     if (messageId !== undefined && messageId !== "") {
       scroller.register(messageId, element, mounted);
     }
@@ -436,10 +437,10 @@ export function MessageScrollerItem(props: Incoming<MessageScrollerItemProps>) {
 
   return (
     <div
-      {...uiProps("message-scroller-item", item, props)}
-      ref={mergeRefs(register, props.ref?.())}
-      data-message-id={props.messageId?.()}
-      data-scroll-anchor={props.scrollAnchor?.() === true ? "true" : "false"}
+      {...uiProps("message-scroller-item", item, cells(props))}
+      ref={mergeRefs(register, props.ref)}
+      data-message-id={props.messageId}
+      data-scroll-anchor={props.scrollAnchor === true ? "true" : "false"}
     >
       {props.children}
     </div>
@@ -462,18 +463,18 @@ export interface MessageScrollerButtonProps extends ButtonProps {
  * whether it is reachable: a button that unmounts cannot animate, and this one
  * arrives and leaves on every scroll.
  */
-export function MessageScrollerButton(props: Incoming<MessageScrollerButtonProps>) {
+export function MessageScrollerButton(props: MessageScrollerButtonProps) {
   const scroller = useScroller();
-  const direction = (): "start" | "end" => props.direction?.() ?? "end";
+  const direction = (): "start" | "end" => props.direction ?? "end";
   const active = (): boolean => scroller.scrollable()[direction()];
 
   return (
     <Button
       {...props}
-      data-slot={props["data-slot"]?.() ?? "message-scroller-button"}
-      variant={props.variant?.() ?? "secondary"}
-      size={props.size?.() ?? "icon-sm"}
-      class={ui(button, props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "message-scroller-button"}
+      variant={props.variant ?? "secondary"}
+      size={props.size ?? "icon-sm"}
+      class={ui(button, props.class, props.className)}
       data-direction={direction()}
       data-active={active() ? "true" : "false"}
       // Out of the tab order while it is out of the way, or Tab lands on a
@@ -481,15 +482,15 @@ export function MessageScrollerButton(props: Incoming<MessageScrollerButtonProps
       excludeFromTabOrder={!active()}
       onPress={(event) => {
         if (!active()) return;
-        props.onPress?.()?.(event);
-        const behavior = props.behavior?.() ?? "smooth";
+        props.onPress?.(event);
+        const behavior = props.behavior ?? "smooth";
         if (direction() === "end") scroller.toEnd(behavior);
         else scroller.toStart(behavior);
       }}
     >
       {props.children ?? <ArrowDown />}
       <span class={srOnly}>
-        {props.label?.() ?? (direction() === "end" ? "Scroll to end" : "Scroll to start")}
+        {props.label ?? (direction() === "end" ? "Scroll to end" : "Scroll to start")}
       </span>
     </Button>
   );

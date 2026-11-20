@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Minimize2(props: Incoming<IconProps>) {
+export function Minimize2(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="m14 10 7-7" />
       <path d="M20 10h-6V4" />
       <path d="m3 21 7-7" />

@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function WifiLock(props: Incoming<IconProps>) {
+export function WifiLock(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M2 8.82a15 15 0 0120 0" />
       <path d="M20 16v-2a2 2 0 00-4 0v2" />
       <path d="M5 12.859a10 10 0 018.436-2.756" />

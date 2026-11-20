@@ -62,13 +62,13 @@ const PANES: readonly Pane[] = [
   { id: "css", name: "CSS", text: (params) => themeCss(selectionOf(params)) },
 ];
 
-export function ProjectForm(props: Incoming<{ design: Design }>) {
+export function ProjectForm(props: { design: Design }) {
   const [open, setOpen] = createSignal(false);
   const [showing, setShowing] = createSignal("command");
   const [took, setTook] = createSignal(false);
 
   const paneOf = (id: string): Pane => PANES.find((pane) => pane.id === id) ?? PANES[0]!;
-  const text = (): string => paneOf(showing()).text(props.design().params());
+  const text = (): string => paneOf(showing()).text(props.design.params());
 
   const copy = (): void => {
     void navigator.clipboard.writeText(text());
@@ -97,7 +97,7 @@ export function ProjectForm(props: Incoming<{ design: Design }>) {
             {(pane: Pane) => <TabsTrigger>{pane.name}</TabsTrigger>}
           </TabsList>
           <TabsContent>
-            {(pane: Pane) => <pre class={code}>{pane.text(props.design().params())}</pre>}
+            {(pane: Pane) => <pre class={code}>{pane.text(props.design.params())}</pre>}
           </TabsContent>
         </Tabs>
         <DialogFooter>

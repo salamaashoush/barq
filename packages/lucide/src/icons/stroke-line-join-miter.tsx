@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function StrokeLineJoinMiter(props: Incoming<IconProps>) {
+export function StrokeLineJoinMiter(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M11 21v-2.002" />
       <path d="M3 3h16a2 2 0 012 2v16" />
       <path d="M5 13H3" />

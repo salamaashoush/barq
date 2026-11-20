@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function ChartQuadrant(props: Incoming<IconProps>) {
+export function ChartQuadrant(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M13 3v18" />
       <path d="M3 12h18" />
       <path d="M3 3v16a2 2 0 002 2h16" />

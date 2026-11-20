@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function SlidersVertical(props: Incoming<IconProps>) {
+export function SlidersVertical(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M10 8h4" />
       <path d="M12 21v-9" />
       <path d="M12 8V3" />

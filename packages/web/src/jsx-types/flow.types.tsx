@@ -215,8 +215,8 @@ export const loadingAndPortal = (
   </Loading>
 );
 
-function Badge(props: Incoming<{ label: string; tone?: "info" | "warn" }>) {
-  return <span class={props.tone?.()}>{props.label()}</span>;
+function Badge(props: { label: string; tone?: "info" | "warn" }) {
+  return <span class={props.tone}>{props.label}</span>;
 }
 
 declare const tag: "a" | "button";

@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function BetweenVerticalEnd(props: Incoming<IconProps>) {
+export function BetweenVerticalEnd(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <rect width="7" height="13" x="3" y="3" rx="1" />
       <path d="m9 22 3-3 3 3" />
       <rect width="7" height="13" x="14" y="3" rx="1" />

@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function GeorgianLari(props: Incoming<IconProps>) {
+export function GeorgianLari(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M10 10V3" />
       <path d="M14 10V3" />
       <path d="M19 13a7 7 0 10-7 7" />

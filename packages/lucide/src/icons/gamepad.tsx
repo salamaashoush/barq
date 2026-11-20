@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Gamepad(props: Incoming<IconProps>) {
+export function Gamepad(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <line x1="6" x2="10" y1="12" y2="12" />
       <line x1="8" x2="8" y1="10" y2="14" />
       <line x1="15" x2="15.01" y1="13" y2="13" />

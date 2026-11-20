@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function RepeatOff(props: Incoming<IconProps>) {
+export function RepeatOff(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M11.656 6H21l-4-4" />
       <path d="M17.898 17.898A4 4 0 0 1 17 18H3l4-4" />
       <path d="m2 2 20 20" />

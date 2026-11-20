@@ -1,4 +1,5 @@
 import {
+  cells,
   createContext,
   createMemo,
   createEffect,
@@ -381,10 +382,10 @@ export interface ChartContainerProps extends UiProps {
  * style has no way to differ under `.dark`, so those series get a rule per
  * scheme from {@link ChartStyle}, addressed to this chart by `data-chart`.
  */
-export function ChartContainer(props: Incoming<ChartContainerProps>) {
+export function ChartContainer(props: ChartContainerProps) {
   const generated = createUniqueId();
-  const chartId = (): string => `chart-${props.id?.() ?? generated.replace(/:/g, "")}`;
-  const series = (): readonly Series[] => seriesOf(props.config());
+  const chartId = (): string => `chart-${props.id ?? generated.replace(/:/g, "")}`;
+  const series = (): readonly Series[] => seriesOf(props.config);
 
   // `ownedWrite` on both: a tooltip announces itself from its own body, and
   // the host reports a cleared focus from inside the update that cleared it.
@@ -413,7 +414,7 @@ export function ChartContainer(props: Incoming<ChartContainerProps>) {
 
   return (
     <div
-      {...uiProps("chart", chart, omit(props, ["id"]))}
+      {...uiProps("chart", chart, omit(cells(props), ["id"]))}
       data-chart={chartId()}
       style={() => ({
         ...Object.fromEntries(
@@ -425,7 +426,7 @@ export function ChartContainer(props: Incoming<ChartContainerProps>) {
             return palette;
           }),
         ),
-        ...declared(props.style?.()),
+        ...declared(props.style),
       })}
     >
       <ChartStyle id={chartId()} config={themed()} />
@@ -442,10 +443,10 @@ export function ChartContainer(props: Incoming<ChartContainerProps>) {
  * context rather than under it: every plot then threw `props.config is not a
  * function`, because it was reading a `props` the provider never gave it.
  */
-function ChartProvider(props: Incoming<{ value: ChartValue; children?: Child }>) {
+function ChartProvider(props: { value: ChartValue; children?: Child }) {
   return provide(
     ChartContext,
-    () => props.value(),
+    () => props.value,
     () => props.children,
   );
 }
@@ -463,9 +464,9 @@ export interface ChartStyleProps {
  * own it writes every coloured series, which is upstream's, for a chart whose
  * container is not this package's.
  */
-export function ChartStyle(props: Incoming<ChartStyleProps>) {
+export function ChartStyle(props: ChartStyleProps) {
   const rules = (): string => {
-    const coloured = seriesOf(props.config()).filter(
+    const coloured = seriesOf(props.config).filter(
       (entry) => entry.theme !== undefined || entry.color !== undefined,
     );
     if (coloured.length === 0) return "";
@@ -477,7 +478,7 @@ export function ChartStyle(props: Incoming<ChartStyleProps>) {
         })
         .filter((line) => line !== "")
         .join("\n");
-      return `\n${THEMES[scheme]} [data-chart=${props.id()}] {\n${declarations}\n}\n`;
+      return `\n${THEMES[scheme]} [data-chart=${props.id}] {\n${declarations}\n}\n`;
     }).join("\n");
   };
 
@@ -538,7 +539,7 @@ export interface ChartOrigin {
  * definition updates the live host, and everything a definition captured stays
  * captured.
  */
-export function Chart(props: Incoming<ChartProps>) {
+export function Chart(props: ChartProps) {
   const node = makeRef<HTMLDivElement>();
 
   /**
@@ -562,23 +563,23 @@ export function Chart(props: Incoming<ChartProps>) {
   );
 
   const heightOf = (): number | undefined =>
-    props.height?.() ?? (measured() > 0 ? measured() : undefined);
+    props.height ?? (measured() > 0 ? measured() : undefined);
 
   const optionsOf = (): Parameters<typeof createChartAdapter>[0] => ({
-    definition: props.definition(),
-    ariaLabel: props.ariaLabel(),
+    definition: props.definition,
+    ariaLabel: props.ariaLabel,
     ...(heightOf() === undefined ? {} : { height: heightOf() }),
-    ...(props.aspectRatio?.() === undefined ? {} : { aspectRatio: props.aspectRatio?.() }),
-    initialWidth: props.initialWidth?.() ?? 640,
+    ...(props.aspectRatio === undefined ? {} : { aspectRatio: props.aspectRatio }),
+    initialWidth: props.initialWidth ?? 640,
     className: scene,
     onFocusGroupChange: (points) => {
       const element = node();
-      props.onFocusGroupChange?.()?.(points, {
+      props.onFocusGroupChange?.(points, {
         x: element?.offsetLeft ?? 0,
         y: element?.offsetTop ?? 0,
       });
     },
-    onSelect: (point) => props.onSelect?.()?.(point),
+    onSelect: (point) => props.onSelect?.(point),
   });
 
   const built = optionsOf();
@@ -621,8 +622,8 @@ export function Chart(props: Incoming<ChartProps>) {
 
   return (
     <div
-      {...uiProps("chart-surface", surface, props)}
-      ref={mergeRefs(node.set, props.ref?.())}
+      {...uiProps("chart-surface", surface, cells(props))}
+      ref={mergeRefs(node.set, props.ref)}
       dangerouslySetInnerHTML={{ __html: markup }}
     />
   );
@@ -737,7 +738,7 @@ const TICK_LABELS = { fontSize: AXIS_FONT_SIZE, thin: true } as const;
 const AXIS = { tickLabels: TICK_LABELS } as const;
 
 /** A column per datum, one bar per series, side by side. */
-export function ChartBars(props: Incoming<ChartPlotProps>) {
+export function ChartBars(props: ChartPlotProps) {
   const scope = useChart();
   const { config } = scope;
 
@@ -746,7 +747,7 @@ export function ChartBars(props: Incoming<ChartPlotProps>) {
   const definition = createMemo((): ChartDefinition =>
     defineChart({
       marks: [
-        barY(fold(props.data(), config(), props.x()), {
+        barY(fold(props.data, config(), props.x), {
           x: "x",
           y: "value",
           color: "series",
@@ -767,24 +768,24 @@ export function ChartBars(props: Incoming<ChartPlotProps>) {
     <Chart
       {...props}
       definition={definition()}
-      ariaLabel={props["aria-label"]?.() ?? "Chart"}
-      height={props.height?.()}
+      ariaLabel={props["aria-label"] ?? "Chart"}
+      height={props.height}
       onFocusGroupChange={(points, origin) => scope.setFocus(focusOf(points, origin))}
     />
   );
 }
 
 /** A path per series, optionally filled to the axis. */
-export function ChartLines(props: Incoming<ChartPlotProps & { area?: boolean }>) {
+export function ChartLines(props: ChartPlotProps & { area?: boolean }) {
   const scope = useChart();
   const { config } = scope;
 
   const definition = createMemo((): ChartDefinition => {
-    const rows = fold(props.data(), config(), props.x());
+    const rows = fold(props.data, config(), props.x);
     const line = lineY(rows, { x: "x", y: "value", z: "series", color: "series" });
     return defineChart({
       marks:
-        props.area?.() === true
+        props.area === true
           ? [
               areaY(rows, { x: "x", y: "value", z: "series", color: "series", fillOpacity: 0.2 }),
               line,
@@ -804,8 +805,8 @@ export function ChartLines(props: Incoming<ChartPlotProps & { area?: boolean }>)
     <Chart
       {...props}
       definition={definition()}
-      ariaLabel={props["aria-label"]?.() ?? "Chart"}
-      height={props.height?.()}
+      ariaLabel={props["aria-label"] ?? "Chart"}
+      height={props.height}
       onFocusGroupChange={(points, origin) => scope.setFocus(focusOf(points, origin))}
     />
   );
@@ -823,11 +824,11 @@ export interface ChartLegendContentProps extends UiProps {
 }
 
 /** The key: a swatch or an icon and a label for each series. */
-export function ChartLegendContent(props: Incoming<ChartLegendContentProps>) {
+export function ChartLegendContent(props: ChartLegendContentProps) {
   const { config } = useChart();
   const entries = (): readonly ChartPayloadItem[] =>
     (
-      props.payload?.() ??
+      props.payload ??
       config().map((series): ChartPayloadItem => ({
         dataKey: series.key,
         value: series.key,
@@ -835,13 +836,13 @@ export function ChartLegendContent(props: Incoming<ChartLegendContentProps>) {
       }))
     ).filter((item) => item.type !== "none");
   const entryOf = (item: ChartPayloadItem): Series | undefined =>
-    entryFor(config(), item, props.nameKey?.() ?? item.dataKey ?? "value");
+    entryFor(config(), item, props.nameKey ?? item.dataKey ?? "value");
 
   return (
     <Show when={entries().length > 0}>
       <div
-        {...uiProps("chart-legend", legend, props)}
-        data-align={props.verticalAlign?.() ?? "bottom"}
+        {...uiProps("chart-legend", legend, cells(props))}
+        data-align={props.verticalAlign ?? "bottom"}
       >
         <For each={() => entries()}>
           {(item: ChartPayloadItem) => {
@@ -849,7 +850,7 @@ export function ChartLegendContent(props: Incoming<ChartLegendContentProps>) {
             return (
               <div class={legendItem} data-slot="chart-legend-item">
                 <Show
-                  when={props.hideIcon?.() !== true && entryOf(item)?.icon !== undefined}
+                  when={props.hideIcon !== true && entryOf(item)?.icon !== undefined}
                   fallback={
                     <span
                       class={legendSwatch}
@@ -887,12 +888,12 @@ export interface ChartLegendProps extends ChartLegendContentProps {
  * `content`, that is drawn in its place, and where it goes is the content's
  * own `verticalAlign`: nothing is cloned here to pass one down.
  */
-export function ChartLegend(props: Incoming<ChartLegendProps>) {
+export function ChartLegend(props: ChartLegendProps) {
   return (
     <>
       {props.content === undefined
         ? (props.children ?? <ChartLegendContent {...props} />)
-        : props.content()}
+        : props.content}
     </>
   );
 }
@@ -941,15 +942,15 @@ export type ChartTooltipProps = ChartTooltipContentProps;
  * `payload` or `items` of its own it describes those, which is what makes it
  * usable beside a chart, in a table cell or in a story, with no plot at all.
  */
-export function ChartTooltipContent(props: Incoming<ChartTooltipContentProps>) {
+export function ChartTooltipContent(props: ChartTooltipContentProps) {
   const scope = getContext(ChartContext) ?? null;
   const config = (): readonly Series[] => scope?.config() ?? [];
-  const indicator = (): ChartTooltipIndicator => props.indicator?.() ?? "dot";
+  const indicator = (): ChartTooltipIndicator => props.indicator ?? "dot";
 
   const rows = (): readonly ChartPayloadItem[] => {
-    const given = props.payload?.();
+    const given = props.payload;
     if (given !== undefined) return given;
-    const items = props.items?.();
+    const items = props.items;
     if (items !== undefined) {
       return items.map((item) => ({
         dataKey: item.key,
@@ -962,22 +963,22 @@ export function ChartTooltipContent(props: Incoming<ChartTooltipContentProps>) {
   };
   const shown = (): readonly ChartPayloadItem[] => rows().filter((item) => item.type !== "none");
   const active = (): boolean => {
-    const given = props.active?.();
+    const given = props.active;
     if (given !== undefined) return given;
-    if (props.payload?.() !== undefined || props.items?.() !== undefined) return true;
+    if (props.payload !== undefined || props.items !== undefined) return true;
     return scope !== null && scope.focus() !== null;
   };
 
   const heading = (): Child => {
     const first = rows()[0];
-    if (props.hideLabel?.() === true || first === undefined) return undefined;
-    const label = props.label?.() ?? scope?.focus()?.label;
-    const labelKey = props.labelKey?.();
+    if (props.hideLabel === true || first === undefined) return undefined;
+    const label = props.label ?? scope?.focus()?.label;
+    const labelKey = props.labelKey;
     const named =
       labelKey === undefined && label !== undefined
         ? (config().find((series) => series.key === label)?.label ?? label)
         : entryFor(config(), first, labelKey ?? first.dataKey ?? first.name ?? "value")?.label;
-    const format = props.labelFormatter?.();
+    const format = props.labelFormatter;
     if (format !== undefined) return format(named, rows());
     return named === undefined || named === "" ? undefined : named;
   };
@@ -988,20 +989,20 @@ export function ChartTooltipContent(props: Incoming<ChartTooltipContentProps>) {
     const text = heading();
     if (text === undefined || text === null) return undefined;
     return (
-      <div class={ui(tooltipLabel, props.labelClass?.())} data-slot="chart-tooltip-label">
+      <div class={ui(tooltipLabel, props.labelClass)} data-slot="chart-tooltip-label">
         {text}
       </div>
     );
   };
 
   const entryOf = (item: ChartPayloadItem): Series | undefined =>
-    entryFor(config(), item, props.nameKey?.() ?? item.name ?? item.dataKey ?? "value");
+    entryFor(config(), item, props.nameKey ?? item.name ?? item.dataKey ?? "value");
   const paintOf = (item: ChartPayloadItem): string | undefined => {
     const fill = item.payload?.fill;
-    return props.color?.() ?? (typeof fill === "string" ? fill : item.color);
+    return props.color ?? (typeof fill === "string" ? fill : item.color);
   };
   const formatted = (item: ChartPayloadItem, index: number): Child => {
-    const format = props.formatter?.();
+    const format = props.formatter;
     if (format === undefined || item.value === undefined) return undefined;
     if (item.name === undefined || item.name === "") return undefined;
     return format(item.value, item.name, item, index, item.payload);
@@ -1011,7 +1012,7 @@ export function ChartTooltipContent(props: Incoming<ChartTooltipContentProps>) {
 
   return (
     <Show when={active() && shown().length > 0}>
-      <div {...uiProps("chart-tooltip", tooltip, props)}>
+      <div {...uiProps("chart-tooltip", tooltip, cells(props))}>
         <Show when={!nested()}>{headingElement()}</Show>
         <div class={tooltipNames}>
           <For each={() => shown().map((item, index) => ({ item, index }))}>
@@ -1024,7 +1025,7 @@ export function ChartTooltipContent(props: Incoming<ChartTooltipContentProps>) {
                     fallback={formatted(row.item, row.index)}
                   >
                     <Show when={entryOf(row.item)?.icon === undefined} fallback={<Icon />}>
-                      <Show when={props.hideIndicator?.() !== true}>
+                      <Show when={props.hideIndicator !== true}>
                         <span
                           class={tooltipIndicator}
                           data-slot="chart-tooltip-indicator"
@@ -1083,15 +1084,15 @@ export interface ChartTooltipPopupProps extends UiProps {
  * the keyboard lands on is read out, which is the only way a screen reader
  * gets the numbers out of a drawing.
  */
-export function ChartTooltip(props: Incoming<ChartTooltipPopupProps>) {
+export function ChartTooltip(props: ChartTooltipPopupProps) {
   const scope = useChart();
   const node = makeRef<HTMLDivElement>();
-  onCleanup(scope.watch(() => props.cursor?.() !== false));
+  onCleanup(scope.watch(() => props.cursor !== false));
 
   const place = (): Record<string, string> => {
     const focus = scope.focus();
     if (focus === null) return {};
-    const gap = props.offset?.() ?? 10;
+    const gap = props.offset ?? 10;
     const element = node();
     const width = element?.offsetWidth ?? 0;
     const room = element?.parentElement?.clientWidth ?? 0;
@@ -1104,13 +1105,13 @@ export function ChartTooltip(props: Incoming<ChartTooltipPopupProps>) {
 
   return (
     <div
-      {...uiProps("chart-tooltip-popup", popup, props)}
-      ref={mergeRefs(node.set, props.ref?.())}
+      {...uiProps("chart-tooltip-popup", popup, cells(props))}
+      ref={mergeRefs(node.set, props.ref)}
       role="status"
       data-state={() => (scope.focus() === null ? "closed" : "open")}
-      style={() => ({ ...declared(props.style?.()), ...place() })}
+      style={() => ({ ...declared(props.style), ...place() })}
     >
-      {props.content === undefined ? (props.children ?? <ChartTooltipContent />) : props.content()}
+      {props.content === undefined ? (props.children ?? <ChartTooltipContent />) : props.content}
     </div>
   );
 }

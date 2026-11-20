@@ -22,7 +22,7 @@ const COMMANDS = [
   { id: "search", name: "Search the project", keys: "⌘F" },
 ];
 
-function Fixture(props: Incoming<{ onAction?: (key: string) => void }>) {
+function Fixture(props: { onAction?: (key: string) => void }) {
   return (
     <Command
       items={COMMANDS}
@@ -30,7 +30,7 @@ function Fixture(props: Incoming<{ onAction?: (key: string) => void }>) {
       aria-label="Commands"
       // `?.()?.(…)`: a component's props are Cells, so the first call unwraps
       // the handler and the second one runs it.
-      onAction={(key) => props.onAction?.()?.(String(key))}
+      onAction={(key) => props.onAction?.(String(key))}
     >
       {(entry: (typeof COMMANDS)[number]) => (
         <CommandItem>
@@ -153,11 +153,11 @@ async function settle(): Promise<void> {
  */
 describe("a Command written as children", () => {
   function Written(
-    props: Incoming<{ onSelect?: (value: string) => void; loop?: boolean; alwaysRender?: boolean }>,
+    props: { onSelect?: (value: string) => void; loop?: boolean; alwaysRender?: boolean },
   ) {
-    const run = (value: string): void => props.onSelect?.()?.(value);
+    const run = (value: string): void => props.onSelect?.(value);
     return (
-      <Command label="Commands" loop={props.loop?.()}>
+      <Command label="Commands" loop={props.loop}>
         <CommandInput placeholder="Type a command or search..." />
         <CommandList>
           <CommandEmpty>No results found.</CommandEmpty>
@@ -168,7 +168,7 @@ describe("a Command written as children", () => {
               Calculator
             </CommandItem>
           </CommandGroup>
-          <CommandSeparator alwaysRender={props.alwaysRender?.()} />
+          <CommandSeparator alwaysRender={props.alwaysRender} />
           <CommandGroup heading="Settings">
             <CommandItem onSelect={run}>
               Profile
@@ -371,26 +371,26 @@ describe("a Command written as children", () => {
 
 describe("CommandDialog", () => {
   function Palette(
-    props: Incoming<{
+    props: {
       isOpen?: boolean;
       open?: boolean;
       showCloseButton?: boolean;
       onOpenChange?: (isOpen: boolean) => void;
       onSelect?: (value: string) => void;
-    }>,
+    },
   ) {
     return (
       <CommandDialog
-        isOpen={props.isOpen?.()}
-        open={props.open?.()}
-        showCloseButton={props.showCloseButton?.()}
-        onOpenChange={props.onOpenChange?.()}
+        isOpen={props.isOpen}
+        open={props.open}
+        showCloseButton={props.showCloseButton}
+        onOpenChange={props.onOpenChange}
         title="Actions"
         description="Search for something to do."
       >
         <CommandInput placeholder="Search" />
         <CommandList>
-          <CommandItem onSelect={(value) => props.onSelect?.()?.(value)}>Profile</CommandItem>
+          <CommandItem onSelect={(value) => props.onSelect?.(value)}>Profile</CommandItem>
           <CommandItem>Billing</CommandItem>
         </CommandList>
       </CommandDialog>

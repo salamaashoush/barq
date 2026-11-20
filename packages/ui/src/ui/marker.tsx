@@ -1,3 +1,4 @@
+import { cells } from "@barqjs/core";
 import type { Child, Incoming } from "@barqjs/core";
 import { layer, variants } from "@barqjs/css";
 
@@ -107,15 +108,15 @@ export interface MarkerProps extends UiProps {
  * </Marker>
  * ```
  */
-export function Marker(props: Incoming<MarkerProps>) {
+export function Marker(props: MarkerProps) {
   return (
     <div
       {...uiProps(
         "marker",
-        () => ui(markerVariants({ variant: props.variant?.() }), "group/marker"),
-        props,
+        () => ui(markerVariants({ variant: props.variant }), "group/marker"),
+        cells(props),
       )}
-      data-variant={props.variant?.() ?? "default"}
+      data-variant={props.variant ?? "default"}
     >
       {props.children}
     </div>
@@ -123,14 +124,14 @@ export function Marker(props: Incoming<MarkerProps>) {
 }
 
 /** Decoration beside the label, and hidden from a screen reader for that reason. */
-export function MarkerIcon(props: Incoming<UiProps>) {
+export function MarkerIcon(props: UiProps) {
   return (
-    <span {...uiProps("marker-icon", iconBox, props)} aria-hidden="true">
+    <span {...uiProps("marker-icon", iconBox, cells(props))} aria-hidden="true">
       {props.children}
     </span>
   );
 }
 
-export function MarkerContent(props: Incoming<{ children?: Child } & UiProps>) {
-  return <span {...uiProps("marker-content", content, props)}>{props.children}</span>;
+export function MarkerContent(props: { children?: Child } & UiProps) {
+  return <span {...uiProps("marker-content", content, cells(props))}>{props.children}</span>;
 }

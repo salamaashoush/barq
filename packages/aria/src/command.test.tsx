@@ -99,7 +99,7 @@ describe("commandScore", () => {
 });
 
 function Palette(
-  props: Incoming<{
+  props: {
     onSelect?: (value: string) => void;
     onValueChange?: (value: string) => void;
     value?: string;
@@ -112,24 +112,24 @@ function Palette(
     onSearchChange?: (search: string) => void;
     showArchive?: boolean;
     alwaysRender?: boolean;
-  }>,
+  },
 ) {
-  const run = (value: string): void => props.onSelect?.()?.(value);
+  const run = (value: string): void => props.onSelect?.(value);
   return (
     <Command
       label="Commands"
-      value={props.value?.()}
-      onValueChange={props.onValueChange?.()}
-      loop={props.loop?.()}
-      shouldFilter={props.shouldFilter?.()}
-      filter={props.filter?.()}
-      disablePointerSelection={props.disablePointerSelection?.()}
-      vimBindings={props.vimBindings?.()}
+      value={props.value}
+      onValueChange={props.onValueChange}
+      loop={props.loop}
+      shouldFilter={props.shouldFilter}
+      filter={props.filter}
+      disablePointerSelection={props.disablePointerSelection}
+      vimBindings={props.vimBindings}
     >
       <CommandInput
         placeholder="Type a command"
-        value={props.search?.()}
-        onValueChange={props.onSearchChange?.()}
+        value={props.search}
+        onValueChange={props.onSearchChange}
       />
       <CommandList>
         <CommandEmpty>No results found.</CommandEmpty>
@@ -140,13 +140,13 @@ function Palette(
             Calculator
           </CommandItem>
         </CommandGroup>
-        <CommandSeparator alwaysRender={props.alwaysRender?.()} />
+        <CommandSeparator alwaysRender={props.alwaysRender} />
         <CommandGroup heading="Settings">
           <CommandItem onSelect={run}>Profile</CommandItem>
           <CommandItem onSelect={run} value="billing" keywords={["invoice", "payment"]}>
             Billing
           </CommandItem>
-          <Show when={props.showArchive?.() === true}>
+          <Show when={props.showArchive === true}>
             <CommandItem onSelect={run}>Archive</CommandItem>
           </Show>
           <CommandItem onSelect={run}>Settings</CommandItem>

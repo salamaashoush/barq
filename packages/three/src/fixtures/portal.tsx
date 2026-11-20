@@ -21,7 +21,7 @@ function Inner() {
 export function WithPortal(props: { shown: Accessor<boolean> }) {
   return (
     <group name="main">
-      <Show when={props.shown()}>
+      <Show when={props.shown}>
         {createPortal(
           () => (
             <Inner />

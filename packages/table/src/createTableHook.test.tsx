@@ -28,7 +28,7 @@ function RowCount() {
 
 function Shout(props: { mark?: () => string }) {
   const cell = useCellContext<string>();
-  return <strong>{cell.getValue().toUpperCase() + (props.mark?.() ?? "")}</strong>;
+  return <strong>{cell.getValue().toUpperCase() + (props.mark ?? "")}</strong>;
 }
 
 function SortButton() {
@@ -71,7 +71,7 @@ const columns = helper.columns([
 ]);
 
 function App(props: { rows?: () => Person[] }) {
-  const table = createAppTable<Person>(() => ({ columns, data: props.rows?.() ?? people }));
+  const table = createAppTable<Person>(() => ({ columns, data: props.rows ?? people }));
   return (
     <table.AppTable>
       <table.RowCount />

@@ -1,4 +1,5 @@
 import {
+  cells,
   createContext,
   getContext,
   onCleanup,
@@ -477,29 +478,29 @@ export interface NavigationMenuProps extends UiProps {
  * because the animation is the only thing separating this from a row of
  * popovers; `navigationMenu` beside it is the keyboard and the pointer.
  */
-export function NavigationMenu(props: Incoming<NavigationMenuProps>) {
+export function NavigationMenu(props: NavigationMenuProps) {
   const navRef = makeRef<HTMLElement>();
   // `ownedWrite`: a viewport says it was written from its own component body.
   const [written, setWritten] = createSignal(false, { ownedWrite: true });
 
   const state = navigationMenuState({
-    value: () => props.value?.(),
-    defaultValue: () => props.defaultValue?.(),
-    delay: () => props.delayDuration?.(),
-    skipDelay: () => props.skipDelayDuration?.(),
-    onValueChange: (next) => props.onValueChange?.()?.(next),
+    value: () => props.value,
+    defaultValue: () => props.defaultValue,
+    delay: () => props.delayDuration,
+    skipDelay: () => props.skipDelayDuration,
+    onValueChange: (next) => props.onValueChange?.(next),
   });
 
   const menu = navigationMenu(
     {
       ref: navRef,
-      orientation: () => props.orientation?.(),
+      orientation: () => props.orientation,
       direction: () => {
-        const dir = props.dir?.();
+        const dir = props.dir;
         return dir === "ltr" || dir === "rtl" ? dir : undefined;
       },
-      "aria-label": () => props["aria-label"]?.(),
-      "aria-labelledby": () => props["aria-labelledby"]?.(),
+      "aria-label": () => props["aria-label"],
+      "aria-labelledby": () => props["aria-labelledby"],
     },
     state,
   );
@@ -507,7 +508,7 @@ export function NavigationMenu(props: Incoming<NavigationMenuProps>) {
   const value: MenuValue = {
     state,
     menu,
-    hasViewport: () => props.viewport?.() ?? true,
+    hasViewport: () => props.viewport ?? true,
     isViewportWritten: written,
     writeViewport: setWritten,
   };
@@ -515,10 +516,10 @@ export function NavigationMenu(props: Incoming<NavigationMenuProps>) {
   return (
     <nav
       {...mergeProps(
-        uiProps("navigation-menu", ui(root, "group/navigation-menu"), props),
+        uiProps("navigation-menu", ui(root, "group/navigation-menu"), cells(props)),
         menu.rootProps,
       )}
-      ref={mergeRefs(navRef.set, props.ref?.())}
+      ref={mergeRefs(navRef.set, props.ref)}
       data-viewport={() => String(value.hasViewport())}
     >
       <MenuProvider value={value}>
@@ -535,16 +536,16 @@ export function NavigationMenu(props: Incoming<NavigationMenuProps>) {
  * at the CALL site, so the children go up beside the context rather than under
  * it and every `useMenu` throws.
  */
-function MenuProvider(props: Incoming<{ value: MenuValue; children?: Child }>) {
+function MenuProvider(props: { value: MenuValue; children?: Child }) {
   return provide(
     MenuContext,
-    () => props.value(),
+    () => props.value,
     () => props.children,
   );
 }
 
 /** The children, and the viewport shadcn's root adds after them. */
-function MenuBody(props: Incoming<{ children?: Child }>) {
+function MenuBody(props: { children?: Child }) {
   const value = useMenu();
   return (
     <>
@@ -556,10 +557,10 @@ function MenuBody(props: Incoming<{ children?: Child }>) {
   );
 }
 
-export function NavigationMenuList(props: Incoming<UiProps>) {
+export function NavigationMenuList(props: UiProps) {
   const { menu } = useMenu();
   return (
-    <ul {...mergeProps(uiProps("navigation-menu-list", ui(list, "group"), props), menu.listProps)}>
+    <ul {...mergeProps(uiProps("navigation-menu-list", ui(list, "group"), cells(props)), menu.listProps)}>
       {props.children}
     </ul>
   );
@@ -570,21 +571,21 @@ export interface NavigationMenuItemProps extends UiProps {
   value?: Key;
 }
 
-export function NavigationMenuItem(props: Incoming<NavigationMenuItemProps>) {
+export function NavigationMenuItem(props: NavigationMenuItemProps) {
   const { menu } = useMenu();
-  const entry = menu.item({ key: props.value?.() });
+  const entry = menu.item({ key: props.value });
 
   return (
-    <li {...uiProps("navigation-menu-item", item, props)}>
+    <li {...uiProps("navigation-menu-item", item, cells(props))}>
       <ItemProvider value={entry}>{props.children}</ItemProvider>
     </li>
   );
 }
 
-function ItemProvider(props: Incoming<{ value: NavigationMenuItemResult; children?: Child }>) {
+function ItemProvider(props: { value: NavigationMenuItemResult; children?: Child }) {
   return provide(
     ItemContext,
-    () => props.value(),
+    () => props.value,
     () => props.children,
   );
 }
@@ -602,7 +603,7 @@ export interface NavigationMenuTriggerProps extends UiProps {
  * the trigger appeared dead. `@barqjs/aria` therefore closes on a press only
  * what a press opened.
  */
-export function NavigationMenuTrigger(props: Incoming<NavigationMenuTriggerProps>) {
+export function NavigationMenuTrigger(props: NavigationMenuTriggerProps) {
   const value = useMenu();
   const entry = useItem();
 
@@ -610,11 +611,11 @@ export function NavigationMenuTrigger(props: Incoming<NavigationMenuTriggerProps
     <>
       <button
         {...mergeProps(
-          uiProps("navigation-menu-trigger", navigationMenuTriggerStyle(), props),
-          entry.triggerProps({ isDisabled: () => props.disabled?.() }),
+          uiProps("navigation-menu-trigger", navigationMenuTriggerStyle(), cells(props)),
+          entry.triggerProps({ isDisabled: () => props.disabled }),
         )}
         type="button"
-        ref={mergeRefs(entry.triggerRef, props.ref?.())}
+        ref={mergeRefs(entry.triggerRef, props.ref)}
       >
         {props.children}
         <ChevronDown class={triggerIcon} aria-hidden="true" />
@@ -639,7 +640,7 @@ export function NavigationMenuTrigger(props: Incoming<NavigationMenuTriggerProps
  * With a viewport it is drawn INSIDE the viewport, which is what sizes to it
  * and clips its slide; without one it stays under its own item.
  */
-export function NavigationMenuContent(props: Incoming<UiProps>) {
+export function NavigationMenuContent(props: UiProps) {
   const value = useMenu();
   const entry = useItem();
   const gate = presence({ isOpen: entry.isOpen, ref: entry.content });
@@ -653,11 +654,11 @@ export function NavigationMenuContent(props: Incoming<UiProps>) {
     <Show when={gate.isPresent()}>
       <Show
         when={value.hasViewport()}
-        fallback={<Panel of={props} entry={entry} isExiting={gate.isExiting()} />}
+        fallback={<Panel of={cells(props)} entry={entry} isExiting={gate.isExiting()} />}
       >
         <Show when={value.menu.viewport() !== null}>
           <Portal mount={value.menu.viewport()}>
-            <Panel of={props} entry={entry} isExiting={gate.isExiting()} />
+            <Panel of={cells(props)} entry={entry} isExiting={gate.isExiting()} />
           </Portal>
         </Show>
       </Show>
@@ -666,16 +667,16 @@ export function NavigationMenuContent(props: Incoming<UiProps>) {
 }
 
 function Panel(
-  props: Incoming<{ of: Incoming<UiProps>; entry: NavigationMenuItemResult; isExiting: boolean }>,
+  props: { of: Incoming<UiProps>; entry: NavigationMenuItemResult; isExiting: boolean },
 ) {
-  const own = props.of();
-  const entry = props.entry();
+  const own = props.of;
+  const entry = props.entry;
 
   return (
     <div
       {...mergeProps(uiProps("navigation-menu-content", content, own), entry.contentProps)}
       ref={mergeRefs(entry.contentRef, own.ref?.())}
-      data-closed={props.isExiting() ? "" : undefined}
+      data-closed={props.isExiting ? "" : undefined}
     >
       {own.children}
     </div>
@@ -693,7 +694,7 @@ function Panel(
  * `<NavigationMenu>` renders one itself. Write it out only to give it a class
  * or to put it somewhere else in the bar.
  */
-export function NavigationMenuViewport(props: Incoming<UiProps>) {
+export function NavigationMenuViewport(props: UiProps) {
   const value = useMenu();
   value.writeViewport(true);
   onCleanup(() => value.writeViewport(false));
@@ -701,14 +702,14 @@ export function NavigationMenuViewport(props: Incoming<UiProps>) {
   return <Viewport {...props} />;
 }
 
-function Viewport(props: Incoming<UiProps>) {
+function Viewport(props: UiProps) {
   const { menu } = useMenu();
 
   return (
     <div class={viewportWrapper} data-slot="navigation-menu-viewport-wrapper">
       <div
-        {...mergeProps(uiProps("navigation-menu-viewport", viewport, props), menu.viewportProps)}
-        ref={mergeRefs(menu.viewportRef, props.ref?.())}
+        {...mergeProps(uiProps("navigation-menu-viewport", viewport, cells(props)), menu.viewportProps)}
+        ref={mergeRefs(menu.viewportRef, props.ref)}
       >
         {props.children}
       </div>
@@ -736,9 +737,9 @@ export interface NavigationMenuLinkProps extends UiProps {
  * `<NavigationMenuLink asChild><Link href="…" /></NavigationMenuLink>` to get
  * one, and here `href` does that with no element to clone.
  */
-export function NavigationMenuLink(props: Incoming<NavigationMenuLinkProps>) {
+export function NavigationMenuLink(props: NavigationMenuLinkProps) {
   const value = getContext(MenuContext) ?? null;
-  const isActive = (): boolean => (props.active?.() ?? props.isActive?.()) === true;
+  const isActive = (): boolean => (props.active ?? props.isActive) === true;
   const behaviour =
     value === null
       ? {
@@ -747,15 +748,15 @@ export function NavigationMenuLink(props: Incoming<NavigationMenuLinkProps>) {
         }
       : value.menu.linkProps({
           isActive,
-          onSelect: (event) => props.onSelect?.()?.(event),
+          onSelect: (event) => props.onSelect?.(event),
         });
 
   return (
     <a
-      {...mergeProps(uiProps("navigation-menu-link", link, props), behaviour)}
-      href={props.href?.()}
-      target={props.target?.()}
-      rel={props.rel?.()}
+      {...mergeProps(uiProps("navigation-menu-link", link, cells(props)), behaviour)}
+      href={props.href}
+      target={props.target}
+      rel={props.rel}
     >
       {props.children}
     </a>
@@ -763,11 +764,11 @@ export function NavigationMenuLink(props: Incoming<NavigationMenuLinkProps>) {
 }
 
 /** The little arrow that points at whichever trigger is open. */
-export function NavigationMenuIndicator(props: Incoming<UiProps>) {
+export function NavigationMenuIndicator(props: UiProps) {
   const { menu } = useMenu();
   return (
     <div
-      {...mergeProps(uiProps("navigation-menu-indicator", indicator, props), menu.indicatorProps)}
+      {...mergeProps(uiProps("navigation-menu-indicator", indicator, cells(props)), menu.indicatorProps)}
     >
       <div class={indicatorArrow} data-slot="navigation-menu-indicator-arrow" />
     </div>

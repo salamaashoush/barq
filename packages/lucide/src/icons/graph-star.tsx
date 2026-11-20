@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function GraphStar(props: Incoming<IconProps>) {
+export function GraphStar(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="m12.342 9.316 1.764-3.527" />
       <path d="m12.59 14.545 2.35 3.759" />
       <path d="m13.982 12.332 4.03.447" />

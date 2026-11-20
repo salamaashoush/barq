@@ -22,7 +22,7 @@ const glyph = ui({
 });
 
 /** `stroke` only, and the same weight upstream draws every one of them at. */
-function Outline(props: Incoming<{ children?: unknown; round?: boolean }>) {
+function Outline(props: { children?: unknown; round?: boolean }) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -32,7 +32,7 @@ function Outline(props: Incoming<{ children?: unknown; round?: boolean }>) {
       aria-hidden="true"
       stroke="currentColor"
       stroke-width="2"
-      stroke-linejoin={props.round?.() === true ? "round" : undefined}
+      stroke-linejoin={props.round === true ? "round" : undefined}
       class={glyph}
     >
       {props.children as never}
@@ -53,15 +53,15 @@ const STYLE_PATHS: Readonly<Record<string, string>> = {
 const ROUNDED = new Set(["nova", "mira", "luma", "rhea"]);
 
 /** A style's own shape. `maia` is a circle and `sera` a rectangle, so those two are elements. */
-export function StyleGlyph(props: Incoming<{ name: string }>) {
-  if (props.name() === "maia") {
+export function StyleGlyph(props: { name: string }) {
+  if (props.name === "maia") {
     return (
       <Outline round>
         <circle cx="12" cy="12" r="10" />
       </Outline>
     );
   }
-  if (props.name() === "sera") {
+  if (props.name === "sera") {
     return (
       <Outline>
         <rect x="3" y="3" width="18" height="18" />
@@ -69,8 +69,8 @@ export function StyleGlyph(props: Incoming<{ name: string }>) {
     );
   }
   return (
-    <Outline round={ROUNDED.has(props.name())}>
-      <path d={STYLE_PATHS[props.name()] ?? STYLE_PATHS["none"]} />
+    <Outline round={ROUNDED.has(props.name)}>
+      <path d={STYLE_PATHS[props.name] ?? STYLE_PATHS["none"]} />
     </Outline>
   );
 }
@@ -119,11 +119,11 @@ const letters = ui({
  * is the only part of the trigger that changes family: the label beside it
  * stays in the chrome's font, or the row would reflow on every hover.
  */
-export function FontGlyph(props: Incoming<{ stack?: string }>) {
+export function FontGlyph(props: { stack?: string }) {
   return (
     <span
       class={letters}
-      style={{ "font-family": props.stack?.() ?? "inherit" }}
+      style={{ "font-family": props.stack ?? "inherit" }}
       aria-hidden="true"
     >
       Aa

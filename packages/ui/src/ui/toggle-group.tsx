@@ -4,7 +4,7 @@ import {
   toggleGroupState,
   type ToggleGroupState,
 } from "@barqjs/aria/togglegroup";
-import { createContext, getContext, provide, type Child, type Incoming } from "@barqjs/core";
+import { cells, createContext, getContext, provide, type Child, type Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 import { mergeRefs, ref as makeRef } from "@barqjs/primitives/refs";
 
@@ -161,55 +161,55 @@ const listOf = (value: string | readonly string[] | undefined): readonly string[
  * Tab enters it once and the arrows, Home and End move among the items; see
  * `@barqjs/aria/togglegroup` for which item Tab lands on.
  */
-export function ToggleGroup(props: Incoming<ToggleGroupProps>) {
-  const type = (): ToggleGroupType => props.type?.() ?? "single";
+export function ToggleGroup(props: ToggleGroupProps) {
+  const type = (): ToggleGroupType => props.type ?? "single";
   const state = toggleGroupState({
     selectionMode: type,
-    selectedKeys: () => listOf(props.value?.()),
-    defaultSelectedKeys: () => listOf(props.defaultValue?.()),
-    isDisabled: () => (props.disabled?.() ?? props.isDisabled?.()) === true,
-    rovingFocus: () => props.rovingFocus?.(),
+    selectedKeys: () => listOf(props.value),
+    defaultSelectedKeys: () => listOf(props.defaultValue),
+    isDisabled: () => (props.disabled ?? props.isDisabled) === true,
+    rovingFocus: () => props.rovingFocus,
     onSelectionChange(keys) {
-      props.onChange?.()?.(keys);
-      props.onValueChange?.()?.(type() === "multiple" ? keys : (keys[0] ?? ""));
+      props.onChange?.(keys);
+      props.onValueChange?.(type() === "multiple" ? keys : (keys[0] ?? ""));
     },
   });
-  const orientation = (): ToggleGroupOrientation => props.orientation?.() ?? "horizontal";
+  const orientation = (): ToggleGroupOrientation => props.orientation ?? "horizontal";
   const groupRef = makeRef<HTMLDivElement>();
   const { groupProps } = toggleGroup(
     {
       ref: groupRef,
-      orientation: () => props.orientation?.(),
+      orientation: () => props.orientation,
       direction: () => {
-        const dir = props.dir?.();
+        const dir = props.dir;
         return dir === "auto" ? undefined : dir;
       },
-      loop: () => props.loop?.(),
+      loop: () => props.loop,
     },
     state,
   );
 
   const value: GroupValue = {
     state,
-    variant: () => props.variant?.(),
-    size: () => props.size?.(),
-    spacing: () => props.spacing?.() ?? 0,
+    variant: () => props.variant,
+    size: () => props.size,
+    spacing: () => props.spacing ?? 0,
     orientation,
   };
 
-  const className = (): string => ui(group, props.class?.(), props.className?.());
+  const className = (): string => ui(group, props.class, props.className);
   return (
     <div
       {...groupProps}
-      {...uiProps("toggle-group", className, omit(props, ["dir"]))}
-      ref={mergeRefs(groupRef.set, props.ref?.())}
-      role={props.role?.() ?? "group"}
-      data-variant={props.variant?.() ?? "default"}
-      data-size={props.size?.() ?? "default"}
-      data-spacing={String(props.spacing?.() ?? 0)}
+      {...uiProps("toggle-group", className, omit(cells(props), ["dir"]))}
+      ref={mergeRefs(groupRef.set, props.ref)}
+      role={props.role ?? "group"}
+      data-variant={props.variant ?? "default"}
+      data-size={props.size ?? "default"}
+      data-spacing={String(props.spacing ?? 0)}
       data-orientation={orientation()}
       data-disabled={() => (state.isDisabled() ? "" : undefined)}
-      style={{ ...props.style?.(), "--gap": String(props.spacing?.() ?? 0) }}
+      style={{ ...props.style, "--gap": String(props.spacing ?? 0) }}
     >
       <GroupProvider value={value}>{props.children}</GroupProvider>
     </div>
@@ -220,10 +220,10 @@ export function ToggleGroup(props: Incoming<ToggleGroupProps>) {
  * Its own component, because a `provide` callback that BUILDS the children is
  * the only place the scope exists.
  */
-function GroupProvider(props: Incoming<{ value: GroupValue; children?: Child }>) {
+function GroupProvider(props: { value: GroupValue; children?: Child }) {
   return provide(
     GroupContext,
-    () => props.value(),
+    () => props.value,
     () => props.children,
   );
 }
@@ -238,7 +238,7 @@ export interface ToggleGroupItemProps extends Omit<
 
 const OWN = ["value", "variant", "size", "disabled", "isDisabled", "onChange", "ref"];
 
-export function ToggleGroupItem(props: Incoming<ToggleGroupItemProps>) {
+export function ToggleGroupItem(props: ToggleGroupItemProps) {
   const held = getContext(GroupContext);
   if (held === null || held === undefined) {
     throw new Error("A ToggleGroupItem has to be inside a ToggleGroup.");
@@ -246,36 +246,36 @@ export function ToggleGroupItem(props: Incoming<ToggleGroupItemProps>) {
   const domRef = makeRef<HTMLButtonElement>();
   const item = toggleGroupItem(
     {
-      value: () => props.value(),
-      isDisabled: () => (props.disabled?.() ?? props.isDisabled?.()) === true,
+      value: () => props.value,
+      isDisabled: () => (props.disabled ?? props.isDisabled) === true,
       ref: domRef,
     },
     held.state,
   );
-  const forward = mergeRefs<HTMLButtonElement>(domRef.set, props.ref?.());
+  const forward = mergeRefs<HTMLButtonElement>(domRef.set, props.ref);
 
   // `variant` and `size` rather than the attributes they produce: `<Toggle>`
   // writes both itself, from the props it was given, and applies the classes
   // that go with them.
   return (
     <Toggle
-      {...omit(props, OWN)}
+      {...omit(cells(props), OWN)}
       ref={(element: unknown) => {
         if (element instanceof HTMLButtonElement) forward(element);
       }}
       isSelected={item.isSelected()}
       onChange={(next: boolean) => {
         item.onChange(next);
-        props.onChange?.()?.(next);
+        props.onChange?.(next);
       }}
       isDisabled={item.isDisabled()}
       excludeFromTabOrder={item.excludeFromTabOrder()}
-      variant={held.variant() ?? props.variant?.()}
-      size={held.size() ?? props.size?.()}
+      variant={held.variant() ?? props.variant}
+      size={held.size() ?? props.size}
       data-slot="toggle-group-item"
       data-spacing={String(held.spacing())}
       data-orientation={held.orientation()}
-      class={ui(item_, props.class?.(), props.className?.())}
+      class={ui(item_, props.class, props.className)}
     >
       {props.children}
     </Toggle>

@@ -1,3 +1,4 @@
+import { cells } from "@barqjs/core";
 import type { Incoming } from "@barqjs/core";
 import { layer, variants } from "@barqjs/css";
 
@@ -128,13 +129,13 @@ export interface ButtonGroupProps extends UiProps {
  * The rules select `& > *`, so anything with a border joins the seam: a
  * `<Button>`, a `<ButtonGroupText>`, a `<Select>`'s trigger, an `<Input>`.
  */
-export function ButtonGroup(props: Incoming<ButtonGroupProps>) {
-  const className = (): string => buttonGroupVariants({ orientation: props.orientation?.() });
+export function ButtonGroup(props: ButtonGroupProps) {
+  const className = (): string => buttonGroupVariants({ orientation: props.orientation });
   return (
     <div
-      {...uiProps("button-group", className, props)}
-      role={props.role?.() ?? "group"}
-      data-orientation={props.orientation?.() ?? "horizontal"}
+      {...uiProps("button-group", className, cells(props))}
+      role={props.role ?? "group"}
+      data-orientation={props.orientation ?? "horizontal"}
     >
       {props.children}
     </div>
@@ -142,20 +143,20 @@ export function ButtonGroup(props: Incoming<ButtonGroupProps>) {
 }
 
 /** A label welded into the group: a unit, a prefix, an icon that is not a button. */
-export function ButtonGroupText(props: Incoming<UiProps>) {
-  return <div {...uiProps("button-group-text", label, props)}>{props.children}</div>;
+export function ButtonGroupText(props: UiProps) {
+  return <div {...uiProps("button-group-text", label, cells(props))}>{props.children}</div>;
 }
 
 export interface ButtonGroupSeparatorProps extends SeparatorProps {}
 
 /** The line between two segments. Vertical by default, which is what a row of buttons wants. */
-export function ButtonGroupSeparator(props: Incoming<ButtonGroupSeparatorProps>) {
+export function ButtonGroupSeparator(props: ButtonGroupSeparatorProps) {
   return (
     <Separator
       {...props}
-      data-slot={props["data-slot"]?.() ?? "button-group-separator"}
-      orientation={props.orientation?.() ?? "vertical"}
-      class={ui(separator, props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "button-group-separator"}
+      orientation={props.orientation ?? "vertical"}
+      class={ui(separator, props.class, props.className)}
     />
   );
 }

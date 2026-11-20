@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function BriefcaseConveyorBelt(props: Incoming<IconProps>) {
+export function BriefcaseConveyorBelt(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M10 20v2" />
       <path d="M14 20v2" />
       <path d="M18 20v2" />

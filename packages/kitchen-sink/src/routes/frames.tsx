@@ -32,10 +32,10 @@ function like(): Like {
   };
 }
 
-function Comment(props: Incoming<{ cid: number; children: Child }>) {
+function Comment(props: { cid: number; children: Child }) {
   const [open, setOpen] = createSignal(true);
   return (
-    <section class={commentStyle} data-cid={props.cid()}>
+    <section class={commentStyle} data-cid={props.cid}>
       <button type="button" class="toggle" onClick={() => setOpen((was) => !was)}>
         {() => (open() ? "collapse" : "expand")}
       </button>
@@ -77,7 +77,7 @@ function LiveBoard() {
 
 function Frames(props: RouteProps) {
   const location = useLocation();
-  const View = dynamic(() => props.data() as (props: Record<string, unknown>) => Node);
+  const View = dynamic(() => props.data as (props: Record<string, unknown>) => Node);
   const [revising, setRevising] = createSignal(false);
   const revise = async (): Promise<void> => {
     setRevising(true);

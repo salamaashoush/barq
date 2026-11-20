@@ -48,26 +48,26 @@ async function frame(): Promise<void> {
 
 /** shadcn's own demo, with the triggers given the pattern's role. */
 function Application(
-  props: Incoming<{
+  props: {
     value?: string;
     onValueChange?: (value: string) => void;
     loop?: boolean;
     onNewTab?: () => void;
     onProfile?: (value: string) => void;
-  }>,
+  },
 ) {
   const [profile, setProfile] = createSignal("salama");
   return (
     <Menubar
       aria-label="Application"
-      value={props.value?.()}
-      onValueChange={props.onValueChange?.()}
-      loop={props.loop?.()}
+      value={props.value}
+      onValueChange={props.onValueChange}
+      loop={props.loop}
     >
       <MenubarMenu value="file">
         <MenubarTrigger role="menuitem">File</MenubarTrigger>
         <MenubarContent>
-          <MenubarItem onSelect={() => props.onNewTab?.()?.()}>
+          <MenubarItem onSelect={() => props.onNewTab?.()}>
             New tab <MenubarShortcut>⌘T</MenubarShortcut>
           </MenubarItem>
           <MenubarItem disabled>New incognito window</MenubarItem>
@@ -103,7 +103,7 @@ function Application(
             value={profile()}
             onValueChange={(value) => {
               setProfile(value);
-              props.onProfile?.()?.(value);
+              props.onProfile?.(value);
             }}
           >
             <MenubarRadioItem value="salama">Salama</MenubarRadioItem>
@@ -415,18 +415,18 @@ describe("Menubar", () => {
   });
 
   function PerMenu(
-    props: Incoming<{
+    props: {
       defaultOpen?: boolean;
       isOpen?: boolean;
       onOpenChange?: (isOpen: boolean) => void;
-    }>,
+    },
   ) {
     return (
       <Menubar aria-label="Application">
         <MenubarMenu
-          defaultOpen={props.defaultOpen?.()}
-          isOpen={props.isOpen?.()}
-          onOpenChange={props.onOpenChange?.()}
+          defaultOpen={props.defaultOpen}
+          isOpen={props.isOpen}
+          onOpenChange={props.onOpenChange}
         >
           <MenubarTrigger>File</MenubarTrigger>
           <MenubarContent>
@@ -484,7 +484,7 @@ describe("Menubar", () => {
   });
 
   test("in a right-to-left page the horizontal arrows are the other way round", async () => {
-    function Mirrored(props: Incoming<{ children?: Child }>) {
+    function Mirrored(props: { children?: Child }) {
       const directionProps = provideDirection("rtl");
       return <div {...directionProps}>{props.children}</div>;
     }

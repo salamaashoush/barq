@@ -19,21 +19,21 @@ const FRUITS: Fruit[] = [
 
 // Every prop is a Cell inside a component, so a value is read with `?.()`.
 function Fruits(
-  props: Incoming<{
+  props: {
     selectionMode?: "none" | "single" | "multiple";
     onSelectionChange?: (keys: "all" | Set<Key>) => void;
     disallowEmptySelection?: boolean;
     shouldFocusWrap?: boolean;
-  }>,
+  },
 ) {
   return (
     <ListBox
       label="Fruit"
       items={FRUITS}
-      selectionMode={props.selectionMode?.() ?? "single"}
-      disallowEmptySelection={props.disallowEmptySelection?.()}
-      shouldFocusWrap={props.shouldFocusWrap?.()}
-      onSelectionChange={props.onSelectionChange?.()}
+      selectionMode={props.selectionMode ?? "single"}
+      disallowEmptySelection={props.disallowEmptySelection}
+      shouldFocusWrap={props.shouldFocusWrap}
+      onSelectionChange={props.onSelectionChange}
       getTextValue={(fruit: Fruit) => fruit.name}
     >
       {(fruit: Fruit) => <Option>{fruit.name}</Option>}
@@ -320,25 +320,25 @@ describe("a section", () => {
  */
 describe("a listbox whose options are its children", () => {
   function Written(
-    props: Incoming<{
+    props: {
       onSelectionChange?: (keys: "all" | Set<Key>) => void;
       showBanana?: boolean;
       hideDate?: boolean;
       onAction?: () => void;
-    }>,
+    },
   ) {
     return (
-      <ListBox label="Fruit" selectionMode="single" onSelectionChange={props.onSelectionChange?.()}>
-        <Option value="apple" onAction={props.onAction?.()}>
+      <ListBox label="Fruit" selectionMode="single" onSelectionChange={props.onSelectionChange}>
+        <Option value="apple" onAction={props.onAction}>
           Apple
         </Option>
-        <Show when={props.showBanana?.() !== false}>
+        <Show when={props.showBanana !== false}>
           <Option value="banana">Banana</Option>
         </Show>
         <Option value="cherry" isDisabled>
           Cherry
         </Option>
-        <Option value="date" isHidden={props.hideDate?.() === true}>
+        <Option value="date" isHidden={props.hideDate === true}>
           Date
         </Option>
       </ListBox>
@@ -425,7 +425,7 @@ describe("a listbox whose options are its children", () => {
     expect(document.activeElement?.textContent).toBe("Banana");
   });
 
-  function Heading(props: Incoming<{ children?: Child }>) {
+  function Heading(props: { children?: Child }) {
     const headingId = useSectionHeading();
     return (
       <li role="presentation" id={headingId?.()}>

@@ -1,4 +1,5 @@
 import {
+  cells,
   For,
   Show,
   createContext,
@@ -273,8 +274,8 @@ const errorList = ui({
  * </FieldSet>
  * ```
  */
-export function FieldSet(props: Incoming<UiProps>) {
-  return <fieldset {...uiProps("field-set", fieldSet, props)}>{props.children}</fieldset>;
+export function FieldSet(props: UiProps) {
+  return <fieldset {...uiProps("field-set", fieldSet, cells(props))}>{props.children}</fieldset>;
 }
 
 export interface FieldLegendProps extends UiProps {
@@ -282,11 +283,11 @@ export interface FieldLegendProps extends UiProps {
   variant?: FieldLegendVariant;
 }
 
-export function FieldLegend(props: Incoming<FieldLegendProps>) {
+export function FieldLegend(props: FieldLegendProps) {
   return (
     <legend
-      {...uiProps("field-legend", fieldLegend, props)}
-      data-variant={props.variant?.() ?? "legend"}
+      {...uiProps("field-legend", fieldLegend, cells(props))}
+      data-variant={props.variant ?? "legend"}
     >
       {props.children}
     </legend>
@@ -303,9 +304,9 @@ export interface FieldGroupProps extends UiProps {
  * against. A responsive field outside one never turns horizontal, which is why
  * this exists as a component rather than as a class on whatever wraps a form.
  */
-export function FieldGroup(props: Incoming<FieldGroupProps>) {
+export function FieldGroup(props: FieldGroupProps) {
   return (
-    <div {...uiProps("field-group", fieldGroup, props)} data-variant={props.variant?.()}>
+    <div {...uiProps("field-group", fieldGroup, cells(props))} data-variant={props.variant}>
       {props.children}
     </div>
   );
@@ -335,10 +336,10 @@ function marked(value: unknown): boolean {
   return value !== undefined && value !== null && value !== false && value !== "false";
 }
 
-export function Field(props: Incoming<FieldProps>) {
+export function Field(props: FieldProps) {
   const isInvalid = (): boolean =>
-    props.isInvalid?.() === true ||
-    marked((props as { "data-invalid"?: () => unknown })["data-invalid"]?.());
+    props.isInvalid === true ||
+    marked((cells(props) as { "data-invalid"?: () => unknown })["data-invalid"]?.());
   return (
     <FieldProvider state={{ isInvalid }}>
       <FieldElement {...props} isInvalid={isInvalid()} />
@@ -346,8 +347,8 @@ export function Field(props: Incoming<FieldProps>) {
   );
 }
 
-function FieldProvider(props: Incoming<{ state: { isInvalid: () => boolean }; children?: Child }>) {
-  const state = props.state();
+function FieldProvider(props: { state: { isInvalid: () => boolean }; children?: Child }) {
+  const state = props.state;
   return provide(
     FieldInvalid,
     () => state.isInvalid,
@@ -355,15 +356,15 @@ function FieldProvider(props: Incoming<{ state: { isInvalid: () => boolean }; ch
   );
 }
 
-function FieldElement(props: Incoming<FieldProps>) {
-  const className = (): string => fieldVariants({ orientation: props.orientation?.() });
+function FieldElement(props: FieldProps) {
+  const className = (): string => fieldVariants({ orientation: props.orientation });
   return (
     <div
-      {...uiProps("field", className, props)}
-      role={props.role?.() ?? "group"}
-      data-orientation={props.orientation?.() ?? "vertical"}
-      data-invalid={props.isInvalid?.() === true ? "" : undefined}
-      data-disabled={props.isDisabled?.() === true ? "" : undefined}
+      {...uiProps("field", className, cells(props))}
+      role={props.role ?? "group"}
+      data-orientation={props.orientation ?? "vertical"}
+      data-invalid={props.isInvalid === true ? "" : undefined}
+      data-disabled={props.isDisabled === true ? "" : undefined}
     >
       {props.children}
     </div>
@@ -371,40 +372,40 @@ function FieldElement(props: Incoming<FieldProps>) {
 }
 
 /** The column beside a checkbox or a radio, holding its title and description. */
-export function FieldContent(props: Incoming<UiProps>) {
-  return <div {...uiProps("field-content", fieldContent, props)}>{props.children}</div>;
+export function FieldContent(props: UiProps) {
+  return <div {...uiProps("field-content", fieldContent, cells(props))}>{props.children}</div>;
 }
 
 export interface FieldLabelProps extends LabelProps {}
 
 /** A `<Label>` that a `<Field>` can lay out, and that lights up around a chosen control. */
-export function FieldLabel(props: Incoming<FieldLabelProps>) {
+export function FieldLabel(props: FieldLabelProps) {
   return (
     <Label
       {...props}
-      data-slot={props["data-slot"]?.() ?? "field-label"}
-      class={ui(fieldLabel, props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "field-label"}
+      class={ui(fieldLabel, props.class, props.className)}
     />
   );
 }
 
 /** What a `<Field>` is called when it has no control of its own to label. */
-export function FieldTitle(props: Incoming<UiProps>) {
-  return <div {...uiProps("field-title", fieldTitle, props)}>{props.children}</div>;
+export function FieldTitle(props: UiProps) {
+  return <div {...uiProps("field-title", fieldTitle, cells(props))}>{props.children}</div>;
 }
 
-export function FieldDescription(props: Incoming<UiProps>) {
-  return <p {...uiProps("field-description", fieldDescription, props)}>{props.children}</p>;
+export function FieldDescription(props: UiProps) {
+  return <p {...uiProps("field-description", fieldDescription, cells(props))}>{props.children}</p>;
 }
 
 export interface FieldSeparatorProps extends UiProps {}
 
 /** A rule across a `<FieldGroup>`, with an optional word sitting on it. */
-export function FieldSeparator(props: Incoming<FieldSeparatorProps>) {
+export function FieldSeparator(props: FieldSeparatorProps) {
   const hasContent = (): boolean => props.children?.() !== undefined;
   return (
     <div
-      {...uiProps("field-separator", fieldSeparator, props)}
+      {...uiProps("field-separator", fieldSeparator, cells(props))}
       data-content={hasContent() ? "" : undefined}
     >
       <Separator data-slot="field-separator-line" class={fieldSeparatorLine} />
@@ -429,10 +430,10 @@ export interface FieldErrorProps extends UiProps {
  * Repeated messages are shown once. A schema that reports the same failure for
  * three fields at once is the ordinary case, not an edge one.
  */
-export function FieldError(props: Incoming<FieldErrorProps>) {
+export function FieldError(props: FieldErrorProps) {
   const messages = (): string[] => {
     const unique = new Set<string>();
-    for (const error of props.errors?.() ?? []) {
+    for (const error of props.errors ?? []) {
       const message = error?.message;
       if (message !== undefined && message !== "") unique.add(message);
     }
@@ -443,7 +444,7 @@ export function FieldError(props: Incoming<FieldErrorProps>) {
 
   return (
     <Show when={!isEmpty()}>
-      <div {...uiProps("field-error", fieldError, props)} role={props.role?.() ?? "alert"}>
+      <div {...uiProps("field-error", fieldError, cells(props))} role={props.role ?? "alert"}>
         <Show
           when={hasChildren()}
           fallback={

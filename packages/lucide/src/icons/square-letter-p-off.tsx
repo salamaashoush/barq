@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function SquareLetterPOff(props: Incoming<IconProps>) {
+export function SquareLetterPOff(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M12 12h1a2 2 0 000-4H9.5a.5.5 0 00-.5.5V9" />
       <path d="M15.343 21H5a2 2 0 01-2-2V8.657" />
       <path d="M22 22 2 2" />

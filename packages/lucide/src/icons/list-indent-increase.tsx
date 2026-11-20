@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function ListIndentIncrease(props: Incoming<IconProps>) {
+export function ListIndentIncrease(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M21 5H11" />
       <path d="M21 12H11" />
       <path d="M21 19H11" />

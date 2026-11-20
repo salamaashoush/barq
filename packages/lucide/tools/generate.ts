@@ -77,13 +77,13 @@ const RESTRICTED = new Set(["Infinity", "NaN", "undefined", "eval", "arguments"]
 function icon(name: string, nodes: readonly IconNode[]): string {
   const exported = pascal(name);
   const local = RESTRICTED.has(exported) ? `${exported}Icon` : exported;
-  const body = `import type { Incoming } from "@barqjs/core";
+  const body = `import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-function ${local}(props: Incoming<IconProps>) {
+function ${local}(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
 ${nodes.map(element).join("\n")}
     </svg>
   );

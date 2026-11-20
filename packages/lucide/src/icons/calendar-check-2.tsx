@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function CalendarCheck2(props: Incoming<IconProps>) {
+export function CalendarCheck2(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M 19 3 L 5 3" />
       <path d="M 21 13 L 21 5" />
       <path d="M 21 5 A2 2 0 0 0 19 3" />

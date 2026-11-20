@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Nfc(props: Incoming<IconProps>) {
+export function Nfc(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M6 8.32a7.43 7.43 0 0 1 0 7.36" />
       <path d="M9.46 6.21a11.76 11.76 0 0 1 0 11.58" />
       <path d="M12.91 4.1a15.91 15.91 0 0 1 .01 15.8" />

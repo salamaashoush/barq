@@ -19,20 +19,20 @@ async function settle(): Promise<void> {
 }
 
 function Row(
-  props: Incoming<{
+  props: {
     of: StaticCollection;
     id?: string;
     textValue?: string;
     isDisabled?: boolean;
     isHidden?: boolean;
     children?: Child;
-  }>,
+  },
 ) {
-  const item = staticItem(props.of(), {
-    key: props.id?.(),
-    textValue: () => props.textValue?.(),
-    props: () => ({ isDisabled: props.isDisabled?.() === true }),
-    isHidden: () => props.isHidden?.(),
+  const item = staticItem(props.of, {
+    key: props.id,
+    textValue: () => props.textValue,
+    props: () => ({ isDisabled: props.isDisabled === true }),
+    isHidden: () => props.isHidden,
   });
   return (
     <li ref={item.ref} data-key={String(item.key)}>
@@ -41,8 +41,8 @@ function Row(
   );
 }
 
-function Group(props: Incoming<{ of: StaticCollection; id: string; children?: Child }>) {
-  const section = staticItem(props.of(), { key: props.id(), type: "section", textValue: "" });
+function Group(props: { of: StaticCollection; id: string; children?: Child }) {
+  const section = staticItem(props.of, { key: props.id, type: "section", textValue: "" });
   return (
     <li ref={section.ref}>
       <ul>{provideStaticSection(section.key, () => props.children) as Child}</ul>

@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function ImageOff(props: Incoming<IconProps>) {
+export function ImageOff(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <line x1="2" x2="22" y1="2" y2="22" />
       <path d="M10.41 10.41a2 2 0 1 1-2.83-2.83" />
       <line x1="13.5" x2="6" y1="13.5" y2="21" />

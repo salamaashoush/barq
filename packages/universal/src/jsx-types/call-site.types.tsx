@@ -31,7 +31,7 @@ export const flow = (
 );
 
 function Badge(props: { label: Accessor<string>; count?: Accessor<number> }) {
-  return <badge label={props.label()} count={props.count?.()} />;
+  return <badge label={props.label} count={props.count} />;
 }
 
 export const values = <Badge label="salama" count={3} />;

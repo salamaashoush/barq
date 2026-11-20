@@ -4,7 +4,7 @@ import { accessibleName, expectNoAriaViolations, render, screen, user } from "@b
 import { NumberField } from "./numberfield.tsx";
 
 function Quantity(
-  props: Incoming<{
+  props: {
     defaultValue?: number | null;
     minValue?: number;
     maxValue?: number;
@@ -12,18 +12,18 @@ function Quantity(
     formatOptions?: Intl.NumberFormatOptions;
     isDisabled?: boolean;
     onChange?: (value: number) => void;
-  }>,
+  },
 ) {
   return (
     <NumberField
       label="Quantity"
-      defaultValue={props.defaultValue?.()}
-      minValue={props.minValue?.()}
-      maxValue={props.maxValue?.()}
-      step={props.step?.()}
-      formatOptions={props.formatOptions?.()}
-      isDisabled={props.isDisabled?.()}
-      onChange={props.onChange?.()}
+      defaultValue={props.defaultValue}
+      minValue={props.minValue}
+      maxValue={props.maxValue}
+      step={props.step}
+      formatOptions={props.formatOptions}
+      isDisabled={props.isDisabled}
+      onChange={props.onChange}
     />
   );
 }

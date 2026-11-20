@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function CircuitBoard(props: Incoming<IconProps>) {
+export function CircuitBoard(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <rect width="18" height="18" x="3" y="3" rx="2" />
       <path d="M11 9h4a2 2 0 0 0 2-2V3" />
       <circle cx="9" cy="9" r="2" />

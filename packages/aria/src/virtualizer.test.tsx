@@ -61,19 +61,19 @@ function scrollTo(element: HTMLElement, top: number): void {
 }
 
 function Cities(
-  props: Incoming<{
+  props: {
     overscan?: number;
     selectionMode?: "none" | "single" | "multiple";
     onSelectionChange?: (keys: "all" | Set<Key>) => void;
-  }>,
+  },
 ) {
   return (
-    <Virtualizer layout={listLayout({ rowHeight: ROW })} overscan={props.overscan?.() ?? 0}>
+    <Virtualizer layout={listLayout({ rowHeight: ROW })} overscan={props.overscan ?? 0}>
       <ListBox
         aria-label="Cities"
         items={CITIES}
-        selectionMode={props.selectionMode?.() ?? "none"}
-        onSelectionChange={props.onSelectionChange?.()}
+        selectionMode={props.selectionMode ?? "none"}
+        onSelectionChange={props.onSelectionChange}
         getTextValue={(city: City) => city.name}
       >
         {(city: City) => <Option>{city.name}</Option>}

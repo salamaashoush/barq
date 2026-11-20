@@ -9,7 +9,7 @@
  * cancelled by dragging off, and arrives late on touch.
  */
 
-import { type Accessor, type Child, type Incoming } from "@barqjs/core";
+import { cells, type Accessor, type Child, type Incoming } from "@barqjs/core";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { focusRing } from "./focus.ts";
 import { focusable, type FocusableOptions } from "./interactions/focusable.ts";
@@ -254,7 +254,7 @@ function withoutClick(props: DOMProps): DOMProps {
  * <Button onPress={() => save()}>Save</Button>
  * ```
  */
-export function Button(props: Incoming<ButtonComponentProps>) {
+export function Button(props: ButtonComponentProps) {
   const domRef = makeRef<HTMLButtonElement>();
   // What a tooltip, a menu or a dialog wrapped around this button wants on it,
   // merged into the button's OPTIONS rather than onto its element.
@@ -266,7 +266,7 @@ export function Button(props: Incoming<ButtonComponentProps>) {
   // saw a value and kept it. Through the options both arrive where `button()`
   // already knows what to do with them, and `mergeProps` chains the two
   // `onPress` handlers instead of one replacing the other.
-  const options = mergeProps(fromProps(props), triggerSlot().props) as ButtonOptions;
+  const options = mergeProps(fromProps(cells(props)), triggerSlot().props) as ButtonOptions;
   const slot = triggerSlot();
 
   const { buttonProps, isPressed } = button(options, domRef);
@@ -278,18 +278,18 @@ export function Button(props: Incoming<ButtonComponentProps>) {
     hoverProps,
     focusProps,
     withoutClick(filterDOMProps(options, { global: true })),
-    styleProps(props),
+    styleProps(cells(props)),
     {
       "data-pressed": isPressed,
       "data-hovered": isHovered,
       "data-focused": isFocused,
       "data-focus-visible": isFocusVisible,
-      "data-disabled": () => props.isDisabled?.() === true,
+      "data-disabled": () => props.isDisabled === true,
     },
   );
 
   return (
-    <button {...elementProps} ref={mergeRefs(domRef.set, slot.ref, props.ref?.())}>
+    <button {...elementProps} ref={mergeRefs(domRef.set, slot.ref, props.ref)}>
       {props.children}
     </button>
   );
@@ -306,11 +306,11 @@ export interface ToggleButtonComponentProps extends Omit<ButtonComponentProps, "
  * <ToggleButton defaultSelected onChange={(on) => bold.set(on)}>Bold</ToggleButton>
  * ```
  */
-export function ToggleButton(props: Incoming<ToggleButtonComponentProps>) {
+export function ToggleButton(props: ToggleButtonComponentProps) {
   const domRef = makeRef<HTMLButtonElement>();
   // See `Button` for why the slot goes into the options and not onto the
   // element.
-  const options = mergeProps(fromProps(props), triggerSlot().props) as ToggleButtonOptions;
+  const options = mergeProps(fromProps(cells(props)), triggerSlot().props) as ToggleButtonOptions;
   const slot = triggerSlot();
 
   const state = toggleState(options);
@@ -323,19 +323,19 @@ export function ToggleButton(props: Incoming<ToggleButtonComponentProps>) {
     hoverProps,
     focusProps,
     withoutClick(filterDOMProps(options, { global: true })),
-    styleProps(props),
+    styleProps(cells(props)),
     {
       "data-pressed": isPressed,
       "data-hovered": isHovered,
       "data-focused": isFocused,
       "data-focus-visible": isFocusVisible,
       "data-selected": state.isSelected,
-      "data-disabled": () => props.isDisabled?.() === true,
+      "data-disabled": () => props.isDisabled === true,
     },
   );
 
   return (
-    <button {...elementProps} ref={mergeRefs(domRef.set, slot.ref, props.ref?.())}>
+    <button {...elementProps} ref={mergeRefs(domRef.set, slot.ref, props.ref)}>
       {props.children}
     </button>
   );

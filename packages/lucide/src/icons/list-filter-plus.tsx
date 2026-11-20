@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function ListFilterPlus(props: Incoming<IconProps>) {
+export function ListFilterPlus(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M12 5H2" />
       <path d="M6 12h12" />
       <path d="M9 19h6" />

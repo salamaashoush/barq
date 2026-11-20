@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function ChartBarDecreasing(props: Incoming<IconProps>) {
+export function ChartBarDecreasing(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M3 3v16a2 2 0 0 0 2 2h16" />
       <path d="M7 11h8" />
       <path d="M7 16h3" />

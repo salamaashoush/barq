@@ -34,20 +34,20 @@ function box(element: Element, rect: { top: number; left: number; width: number;
 }
 
 function Fixture(
-  props: Incoming<{ openDelay?: number; closeDelay?: number; content?: HoverCardContentProps }>,
+  props: { openDelay?: number; closeDelay?: number; content?: HoverCardContentProps },
 ) {
   return (
     <>
-      <HoverCard openDelay={props.openDelay?.() ?? 20} closeDelay={props.closeDelay?.() ?? 20}>
+      <HoverCard openDelay={props.openDelay ?? 20} closeDelay={props.closeDelay ?? 20}>
         <HoverCardTrigger>
           <Button variant="link">@salama</Button>
         </HoverCardTrigger>
         <HoverCardContent
-          side={props.content?.()?.side}
-          align={props.content?.()?.align}
-          sideOffset={props.content?.()?.sideOffset}
-          alignOffset={props.content?.()?.alignOffset}
-          placement={props.content?.()?.placement}
+          side={props.content?.side}
+          align={props.content?.align}
+          sideOffset={props.content?.sideOffset}
+          alignOffset={props.content?.alignOffset}
+          placement={props.content?.placement}
         >
           <a href="https://example.com/salama">Profile</a>
         </HoverCardContent>

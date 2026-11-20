@@ -1,3 +1,4 @@
+import { cells } from "@barqjs/core";
 import type { Child, Incoming, JSXElement } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
@@ -89,20 +90,20 @@ const ellipsis = ui({
  * focus. `@barqjs/aria`'s `<Breadcrumbs>` is the collection-driven one, with
  * all of that.
  */
-export function Breadcrumb(props: Incoming<UiProps>) {
+export function Breadcrumb(props: UiProps) {
   return (
-    <nav {...uiProps("breadcrumb", "", props)} aria-label={props["aria-label"]?.() ?? "breadcrumb"}>
+    <nav {...uiProps("breadcrumb", "", cells(props))} aria-label={props["aria-label"] ?? "breadcrumb"}>
       {props.children}
     </nav>
   );
 }
 
-export function BreadcrumbList(props: Incoming<UiProps>) {
-  return <ol {...uiProps("breadcrumb-list", list, props)}>{props.children}</ol>;
+export function BreadcrumbList(props: UiProps) {
+  return <ol {...uiProps("breadcrumb-list", list, cells(props))}>{props.children}</ol>;
 }
 
-export function BreadcrumbItem(props: Incoming<UiProps>) {
-  return <li {...uiProps("breadcrumb-item", item, props)}>{props.children}</li>;
+export function BreadcrumbItem(props: UiProps) {
+  return <li {...uiProps("breadcrumb-item", item, cells(props))}>{props.children}</li>;
 }
 
 export interface BreadcrumbLinkProps extends UiProps {
@@ -113,17 +114,17 @@ export interface BreadcrumbLinkProps extends UiProps {
   render?: RenderPart;
 }
 
-export function BreadcrumbLink(props: Incoming<BreadcrumbLinkProps>) {
-  const render = props.render?.();
+export function BreadcrumbLink(props: BreadcrumbLinkProps) {
+  const render = props.render;
   if (render !== undefined) {
-    return render(partRender(uiProps("breadcrumb-link", link, props))) as JSXElement;
+    return render(partRender(uiProps("breadcrumb-link", link, cells(props)))) as JSXElement;
   }
   return (
     <a
-      {...uiProps("breadcrumb-link", link, props)}
-      href={props.href?.()}
-      target={props.target?.()}
-      rel={props.rel?.()}
+      {...uiProps("breadcrumb-link", link, cells(props))}
+      href={props.href}
+      target={props.target}
+      rel={props.rel}
     >
       {props.children}
     </a>
@@ -135,10 +136,10 @@ export function BreadcrumbLink(props: Incoming<BreadcrumbLinkProps>) {
  * last crumb being unclickable is a visual convention a screen reader cannot
  * see.
  */
-export function BreadcrumbPage(props: Incoming<UiProps>) {
+export function BreadcrumbPage(props: UiProps) {
   return (
     <span
-      {...uiProps("breadcrumb-page", page, props)}
+      {...uiProps("breadcrumb-page", page, cells(props))}
       role="link"
       aria-disabled="true"
       aria-current="page"
@@ -152,10 +153,10 @@ export interface BreadcrumbSeparatorProps extends UiProps {
   children?: Child;
 }
 
-export function BreadcrumbSeparator(props: Incoming<BreadcrumbSeparatorProps>) {
+export function BreadcrumbSeparator(props: BreadcrumbSeparatorProps) {
   return (
     <li
-      {...uiProps("breadcrumb-separator", separator, props)}
+      {...uiProps("breadcrumb-separator", separator, cells(props))}
       role="presentation"
       aria-hidden="true"
     >
@@ -165,10 +166,10 @@ export function BreadcrumbSeparator(props: Incoming<BreadcrumbSeparatorProps>) {
 }
 
 /** The gap in a shortened trail. */
-export function BreadcrumbEllipsis(props: Incoming<UiProps>) {
+export function BreadcrumbEllipsis(props: UiProps) {
   return (
     <span
-      {...uiProps("breadcrumb-ellipsis", ellipsis, props)}
+      {...uiProps("breadcrumb-ellipsis", ellipsis, cells(props))}
       role="presentation"
       aria-hidden="true"
     >

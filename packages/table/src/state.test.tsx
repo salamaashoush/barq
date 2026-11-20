@@ -39,7 +39,7 @@ const columns: Array<ColumnDef<Features, Person>> = [
 const names = (view: Mounted): string[] => view.text("li .name");
 
 function Rows(props: { table: () => BarqTable<Features, Person> }) {
-  const table = props.table();
+  const table = props.table;
   return (
     <ul>
       <For each={table.getRowModel().rows}>
@@ -350,7 +350,7 @@ describe("granularity and lifetime", () => {
 
 describe("row identity", () => {
   function Body(props: { table: () => BarqTable<Features, Person> }) {
-    const table = props.table();
+    const table = props.table;
     return (
       <table>
         <tbody>

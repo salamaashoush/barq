@@ -5,7 +5,7 @@ import { provideDirection } from "./i18n.ts";
 import { Slider } from "./slider.tsx";
 
 function Volume(
-  props: Incoming<{
+  props: {
     defaultValue?: number | number[];
     minValue?: number;
     maxValue?: number;
@@ -17,22 +17,22 @@ function Volume(
     onChangeEnd?: (value: number[]) => void;
     isInverted?: boolean;
     minStepsBetweenThumbs?: number;
-  }>,
+  },
 ) {
   return (
     <Slider
       label="Volume"
-      defaultValue={props.defaultValue?.() ?? 30}
-      minValue={props.minValue?.()}
-      maxValue={props.maxValue?.()}
-      step={props.step?.()}
-      isDisabled={props.isDisabled?.()}
-      orientation={props.orientation?.()}
-      formatOptions={props.formatOptions?.()}
-      onChange={props.onChange?.()}
-      onChangeEnd={props.onChangeEnd?.()}
-      isInverted={props.isInverted?.()}
-      minStepsBetweenThumbs={props.minStepsBetweenThumbs?.()}
+      defaultValue={props.defaultValue ?? 30}
+      minValue={props.minValue}
+      maxValue={props.maxValue}
+      step={props.step}
+      isDisabled={props.isDisabled}
+      orientation={props.orientation}
+      formatOptions={props.formatOptions}
+      onChange={props.onChange}
+      onChangeEnd={props.onChangeEnd}
+      isInverted={props.isInverted}
+      minStepsBetweenThumbs={props.minStepsBetweenThumbs}
     />
   );
 }

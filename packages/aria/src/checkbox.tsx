@@ -8,6 +8,7 @@
  */
 
 import {
+  cells,
   type Accessor,
   type Child,
   createContext,
@@ -416,12 +417,12 @@ export interface CheckboxGroupComponentProps extends StyleProps {
  * </CheckboxGroup>
  * ```
  */
-export function CheckboxGroup(props: Incoming<CheckboxGroupComponentProps>) {
-  const options = fromProps(props);
+export function CheckboxGroup(props: CheckboxGroupComponentProps) {
+  const options = fromProps(cells(props));
   const state = checkboxGroupState({
     ...(options as CheckboxGroupStateOptions),
-    validate: callback(props.validate),
-    validationBehavior: () => props.validationBehavior?.(),
+    validate: callback(cells(props).validate),
+    validationBehavior: () => props.validationBehavior,
   });
   const { groupProps, labelProps, descriptionProps, errorMessageProps } = checkboxGroup(
     options,
@@ -433,13 +434,13 @@ export function CheckboxGroup(props: Incoming<CheckboxGroupComponentProps>) {
   const outerProps = mergeProps(
     groupProps,
     filterDOMProps(options, { global: true }),
-    styleProps(props),
+    styleProps(cells(props)),
     {
       "data-disabled": state.isDisabled,
       "data-readonly": state.isReadOnly,
       "data-invalid": state.isInvalid,
       "data-required": state.isRequired,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 

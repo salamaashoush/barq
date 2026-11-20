@@ -128,12 +128,12 @@ const full = css`
   width: 100%;
 `;
 
-function OpeningPositionScroller(props: Incoming<{ position: Position }>) {
+function OpeningPositionScroller(props: { position: Position }) {
   const { scrollToEnd, scrollToMessage, scrollToStart } = useMessageScroller();
   let frame = 0;
   onSettled(() => {
     frame = requestAnimationFrame(() => {
-      const position = props.position();
+      const position = props.position;
       if (position === "start") {
         scrollToStart({ behavior: "auto" });
         return;

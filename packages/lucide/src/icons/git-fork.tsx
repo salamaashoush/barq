@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function GitFork(props: Incoming<IconProps>) {
+export function GitFork(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <circle cx="12" cy="18" r="3" />
       <circle cx="6" cy="6" r="3" />
       <circle cx="18" cy="6" r="3" />

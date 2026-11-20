@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Asterisk(props: Incoming<IconProps>) {
+export function Asterisk(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M12 5v14" />
       <path d="m18.065 8.496-12.125 7" />
       <path d="m5.94 8.504 12.125 7" />

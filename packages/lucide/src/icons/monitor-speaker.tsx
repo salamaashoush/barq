@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function MonitorSpeaker(props: Incoming<IconProps>) {
+export function MonitorSpeaker(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M5.5 20H8" />
       <path d="M17 9h.01" />
       <rect width="10" height="16" x="12" y="4" rx="2" />

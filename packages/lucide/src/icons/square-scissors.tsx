@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function SquareScissors(props: Incoming<IconProps>) {
+export function SquareScissors(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="m17 17-2.18-2.18" />
       <path d="M9.56 14.44 17 7" />
       <path d="M9.56 9.56 12 12" />

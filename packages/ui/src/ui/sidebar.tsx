@@ -7,6 +7,7 @@ import {
   type MaybeAccessor,
 } from "@barqjs/aria/utils";
 import {
+  cells,
   createContext,
   getContext,
   getOwner,
@@ -869,15 +870,15 @@ export interface SidebarProviderProps extends UiProps {
  * toggles it. The width lives in `--sidebar-width` rather than in a class so a
  * caller can change it on one element and every part follows.
  */
-export function SidebarProvider(props: Incoming<SidebarProviderProps>) {
-  const [uncontrolled, setUncontrolled] = createSignal(props.defaultOpen?.() ?? true);
+export function SidebarProvider(props: SidebarProviderProps) {
+  const [uncontrolled, setUncontrolled] = createSignal(props.defaultOpen ?? true);
   const [openMobile, writeOpenMobile] = createSignal(false);
   const narrow = useIsMobile();
 
-  const open = (): boolean => props.open?.() ?? uncontrolled();
+  const open = (): boolean => props.open ?? uncontrolled();
   const setOpen = (next: boolean): void => {
-    if (props.open?.() === undefined) setUncontrolled(next);
-    props.onOpenChange?.()?.(next);
+    if (props.open === undefined) setUncontrolled(next);
+    props.onOpenChange?.(next);
     // shadcn persists it, so a reload keeps the layout the person left.
     if (typeof document !== "undefined") {
       document.cookie = `${COOKIE}=${String(next)}; path=/; max-age=${String(COOKIE_MAX_AGE)}`;
@@ -915,13 +916,13 @@ export function SidebarProvider(props: Incoming<SidebarProviderProps>) {
 
   return (
     <div
-      {...uiProps("sidebar-wrapper", ui(wrapper, "group/sidebar-wrapper"), props)}
+      {...uiProps("sidebar-wrapper", ui(wrapper, "group/sidebar-wrapper"), cells(props))}
       // The caller's last: a width set on this element is the documented way to
       // resize every part, and the defaults must not write over it.
       style={() => ({
         "--sidebar-width": WIDTH,
         "--sidebar-width-icon": WIDTH_ICON,
-        ...props.style?.(),
+        ...props.style,
       })}
     >
       {owner === null ? (
@@ -940,10 +941,10 @@ export function SidebarProvider(props: Incoming<SidebarProviderProps>) {
  * at the CALL site, so the children go up beside the context rather than under
  * it and every `useSidebar` throws.
  */
-function SidebarProviderInner(props: Incoming<{ value: SidebarValue; children?: Child }>) {
+function SidebarProviderInner(props: { value: SidebarValue; children?: Child }) {
   return provide(
     SidebarContext,
-    () => props.value(),
+    () => props.value,
     () => props.children,
   );
 }
@@ -965,17 +966,17 @@ export interface SidebarProps extends UiProps {
  * placeholder holds the space is what makes the collapse move the page content
  * without relayout jitter, and it is shadcn's arrangement exactly.
  */
-export function Sidebar(props: Incoming<SidebarProps>) {
+export function Sidebar(props: SidebarProps) {
   const sidebar = useSidebar();
-  const side = (): SidebarSide => props.side?.() ?? "left";
-  const variant = (): SidebarVariant => props.variant?.() ?? "sidebar";
-  const collapsible = (): SidebarCollapsible => props.collapsible?.() ?? "offcanvas";
+  const side = (): SidebarSide => props.side ?? "left";
+  const variant = (): SidebarVariant => props.variant ?? "sidebar";
+  const collapsible = (): SidebarCollapsible => props.collapsible ?? "offcanvas";
   const floats = (): boolean => variant() === "floating" || variant() === "inset";
 
   return (
     <>
       {collapsible() === "none" ? (
-        <div {...uiProps("sidebar", none, props)}>{props.children}</div>
+        <div {...uiProps("sidebar", none, cells(props))}>{props.children}</div>
       ) : sidebar.isMobile() ? (
         <Sheet isOpen={sidebar.openMobile()} onOpenChange={sidebar.setOpenMobile}>
           <SheetContent
@@ -1019,7 +1020,7 @@ export function Sidebar(props: Incoming<SidebarProps>) {
                   side() === "left" ? containerLeft : containerRight,
                   floats() ? containerFloating : containerPlain,
                 ),
-              props,
+              cells(props),
             )}
           >
             <div class={inner} data-slot="sidebar-inner" data-sidebar="sidebar">
@@ -1068,19 +1069,19 @@ function slotted(elementType: MaybeAccessor<string>): Slotted {
   return { props: mergeProps(buttonProps, dom), ref: mergeRefs(domRef.set, slot.ref) };
 }
 
-export function SidebarTrigger(props: Incoming<ButtonProps>) {
+export function SidebarTrigger(props: ButtonProps) {
   const sidebar = useSidebar();
   return (
     <Button
       {...props}
-      data-slot={props["data-slot"]?.() ?? "sidebar-trigger"}
+      data-slot={props["data-slot"] ?? "sidebar-trigger"}
       data-sidebar="trigger"
-      variant={props.variant?.() ?? "ghost"}
-      size={props.size?.() ?? "icon"}
-      class={ui(trigger, props.class?.(), props.className?.())}
-      aria-label={props["aria-label"]?.() ?? "Toggle Sidebar"}
+      variant={props.variant ?? "ghost"}
+      size={props.size ?? "icon"}
+      class={ui(trigger, props.class, props.className)}
+      aria-label={props["aria-label"] ?? "Toggle Sidebar"}
       onPress={(event) => {
-        props.onPress?.()?.(event);
+        props.onPress?.(event);
         sidebar.toggle();
       }}
     >
@@ -1090,11 +1091,11 @@ export function SidebarTrigger(props: Incoming<ButtonProps>) {
 }
 
 /** The hairline down the edge, which drags the sidebar open and shut. */
-export function SidebarRail(props: Incoming<UiProps>) {
+export function SidebarRail(props: UiProps) {
   const sidebar = useSidebar();
   return (
     <button
-      {...uiProps("sidebar-rail", rail, props)}
+      {...uiProps("sidebar-rail", rail, cells(props))}
       type="button"
       data-sidebar="rail"
       aria-label="Toggle Sidebar"
@@ -1105,59 +1106,59 @@ export function SidebarRail(props: Incoming<UiProps>) {
   );
 }
 
-export function SidebarInset(props: Incoming<UiProps>) {
-  return <main {...uiProps("sidebar-inset", inset, props)}>{props.children}</main>;
+export function SidebarInset(props: UiProps) {
+  return <main {...uiProps("sidebar-inset", inset, cells(props))}>{props.children}</main>;
 }
 
-export function SidebarInput(props: Incoming<InputProps>) {
+export function SidebarInput(props: InputProps) {
   return (
     <Input
       {...props}
       data-slot="sidebar-input"
       data-sidebar="input"
-      class={ui(input, props.class?.(), props.className?.())}
+      class={ui(input, props.class, props.className)}
     />
   );
 }
 
-export function SidebarHeader(props: Incoming<UiProps>) {
+export function SidebarHeader(props: UiProps) {
   return (
-    <div {...uiProps("sidebar-header", header, props)} data-sidebar="header">
+    <div {...uiProps("sidebar-header", header, cells(props))} data-sidebar="header">
       {props.children}
     </div>
   );
 }
 
-export function SidebarFooter(props: Incoming<UiProps>) {
+export function SidebarFooter(props: UiProps) {
   return (
-    <div {...uiProps("sidebar-footer", footer, props)} data-sidebar="footer">
+    <div {...uiProps("sidebar-footer", footer, cells(props))} data-sidebar="footer">
       {props.children}
     </div>
   );
 }
 
-export function SidebarSeparator(props: Incoming<Omit<UiProps, "children">>) {
+export function SidebarSeparator(props: Omit<UiProps, "children">) {
   return (
     <Separator
       {...props}
       data-slot="sidebar-separator"
       data-sidebar="separator"
-      class={ui(separator, props.class?.())}
+      class={ui(separator, props.class)}
     />
   );
 }
 
-export function SidebarContent(props: Incoming<UiProps>) {
+export function SidebarContent(props: UiProps) {
   return (
-    <div {...uiProps("sidebar-content", content, props)} data-sidebar="content">
+    <div {...uiProps("sidebar-content", content, cells(props))} data-sidebar="content">
       {props.children}
     </div>
   );
 }
 
-export function SidebarGroup(props: Incoming<UiProps>) {
+export function SidebarGroup(props: UiProps) {
   return (
-    <div {...uiProps("sidebar-group", group, props)} data-sidebar="group">
+    <div {...uiProps("sidebar-group", group, cells(props))} data-sidebar="group">
       {props.children}
     </div>
   );
@@ -1177,12 +1178,12 @@ export function SidebarGroup(props: Incoming<UiProps>) {
  */
 export const sidebarGroupLabelVariants = variants({ base: groupLabel, variants: {} });
 
-export function SidebarGroupLabel(props: Incoming<UiProps>) {
+export function SidebarGroupLabel(props: UiProps) {
   const taken = slotted("div");
   return (
     <div
-      {...mergeProps(taken.props, uiProps("sidebar-group-label", groupLabel, props))}
-      ref={mergeRefs(taken.ref, props.ref?.())}
+      {...mergeProps(taken.props, uiProps("sidebar-group-label", groupLabel, cells(props)))}
+      ref={mergeRefs(taken.ref, props.ref)}
       data-sidebar="group-label"
     >
       {props.children}
@@ -1190,12 +1191,12 @@ export function SidebarGroupLabel(props: Incoming<UiProps>) {
   );
 }
 
-export function SidebarGroupAction(props: Incoming<UiProps>) {
+export function SidebarGroupAction(props: UiProps) {
   const taken = slotted("button");
   return (
     <button
-      {...mergeProps(taken.props, uiProps("sidebar-group-action", groupAction, props))}
-      ref={mergeRefs(taken.ref, props.ref?.())}
+      {...mergeProps(taken.props, uiProps("sidebar-group-action", groupAction, cells(props)))}
+      ref={mergeRefs(taken.ref, props.ref)}
       type="button"
       data-sidebar="group-action"
     >
@@ -1204,26 +1205,26 @@ export function SidebarGroupAction(props: Incoming<UiProps>) {
   );
 }
 
-export function SidebarGroupContent(props: Incoming<UiProps>) {
+export function SidebarGroupContent(props: UiProps) {
   return (
-    <div {...uiProps("sidebar-group-content", groupContent, props)} data-sidebar="group-content">
+    <div {...uiProps("sidebar-group-content", groupContent, cells(props))} data-sidebar="group-content">
       {props.children}
     </div>
   );
 }
 
-export function SidebarMenu(props: Incoming<UiProps>) {
+export function SidebarMenu(props: UiProps) {
   return (
-    <ul {...uiProps("sidebar-menu", menu, props)} data-sidebar="menu">
+    <ul {...uiProps("sidebar-menu", menu, cells(props))} data-sidebar="menu">
       {props.children}
     </ul>
   );
 }
 
-export function SidebarMenuItem(props: Incoming<UiProps>) {
+export function SidebarMenuItem(props: UiProps) {
   return (
     <li
-      {...uiProps("sidebar-menu-item", ui(menuItem, "group/menu-item"), props)}
+      {...uiProps("sidebar-menu-item", ui(menuItem, "group/menu-item"), cells(props))}
       data-sidebar="menu-item"
     >
       {props.children}
@@ -1278,10 +1279,10 @@ export interface SidebarMenuButtonProps extends UiProps {
  * is disabled rather than rendered and hidden: a disabled trigger writes no
  * `aria-describedby` either.
  */
-export function SidebarMenuButton(props: Incoming<SidebarMenuButtonProps>) {
+export function SidebarMenuButton(props: SidebarMenuButtonProps) {
   const sidebar = useSidebar();
   const tip = (): TooltipContentProps | undefined => {
-    const tooltip = props.tooltip?.();
+    const tooltip = props.tooltip;
     if (tooltip === undefined || tooltip === "") return undefined;
     return typeof tooltip === "string" ? { children: tooltip } : tooltip;
   };
@@ -1323,39 +1324,39 @@ export function SidebarMenuButton(props: Incoming<SidebarMenuButtonProps>) {
  * element, so the row reads the slot its surroundings offer rather than being
  * wrapped in an element focus never reaches.
  */
-function SidebarMenuControl(props: Incoming<SidebarMenuButtonProps>) {
-  const taken = slotted(() => (props.href?.() === undefined ? "button" : "a"));
+function SidebarMenuControl(props: SidebarMenuButtonProps) {
+  const taken = slotted(() => (props.href === undefined ? "button" : "a"));
   const className = (): string =>
     ui(
       sidebarMenuButtonVariants({
-        variant: props.variant?.() ?? "default",
-        size: props.size?.() ?? "default",
+        variant: props.variant ?? "default",
+        size: props.size ?? "default",
       }),
-      props.class?.(),
-      props.className?.(),
+      props.class,
+      props.className,
     );
 
   return (
     <>
-      {props.href?.() === undefined ? (
+      {props.href === undefined ? (
         <button
-          {...mergeProps(taken.props, uiProps("sidebar-menu-button", className, props))}
-          ref={mergeRefs(taken.ref, props.ref?.())}
+          {...mergeProps(taken.props, uiProps("sidebar-menu-button", className, cells(props)))}
+          ref={mergeRefs(taken.ref, props.ref)}
           type="button"
           data-sidebar="menu-button"
-          data-size={() => props.size?.() ?? "default"}
-          data-active={() => (props.isActive?.() === true ? "true" : "false")}
+          data-size={() => props.size ?? "default"}
+          data-active={() => (props.isActive === true ? "true" : "false")}
         >
           {props.children}
         </button>
       ) : (
         <a
-          {...mergeProps(taken.props, uiProps("sidebar-menu-button", className, props))}
-          ref={mergeRefs(taken.ref, props.ref?.())}
-          href={props.href()}
+          {...mergeProps(taken.props, uiProps("sidebar-menu-button", className, cells(props)))}
+          ref={mergeRefs(taken.ref, props.ref)}
+          href={props.href}
           data-sidebar="menu-button"
-          data-size={() => props.size?.() ?? "default"}
-          data-active={() => (props.isActive?.() === true ? "true" : "false")}
+          data-size={() => props.size ?? "default"}
+          data-active={() => (props.isActive === true ? "true" : "false")}
         >
           {props.children}
         </a>
@@ -1375,7 +1376,7 @@ export const sidebarMenuActionVariants = variants({
   defaults: { showOnHover: "false" },
 });
 
-export function SidebarMenuAction(props: Incoming<SidebarMenuActionProps>) {
+export function SidebarMenuAction(props: SidebarMenuActionProps) {
   const taken = slotted("button");
   return (
     <button
@@ -1383,11 +1384,11 @@ export function SidebarMenuAction(props: Incoming<SidebarMenuActionProps>) {
         taken.props,
         uiProps(
           "sidebar-menu-action",
-          () => sidebarMenuActionVariants({ showOnHover: props.showOnHover?.() === true }),
-          props,
+          () => sidebarMenuActionVariants({ showOnHover: props.showOnHover === true }),
+          cells(props),
         ),
       )}
-      ref={mergeRefs(taken.ref, props.ref?.())}
+      ref={mergeRefs(taken.ref, props.ref)}
       type="button"
       data-sidebar="menu-action"
     >
@@ -1396,9 +1397,9 @@ export function SidebarMenuAction(props: Incoming<SidebarMenuActionProps>) {
   );
 }
 
-export function SidebarMenuBadge(props: Incoming<UiProps>) {
+export function SidebarMenuBadge(props: UiProps) {
   return (
-    <div {...uiProps("sidebar-menu-badge", menuBadge, props)} data-sidebar="menu-badge">
+    <div {...uiProps("sidebar-menu-badge", menuBadge, cells(props))} data-sidebar="menu-badge">
       {props.children}
     </div>
   );
@@ -1415,11 +1416,11 @@ export interface SidebarMenuSkeletonProps extends UiProps {
  * width is computed ONCE per instance rather than per render, or every paint
  * would resize it.
  */
-export function SidebarMenuSkeleton(props: Incoming<SidebarMenuSkeletonProps>) {
+export function SidebarMenuSkeleton(props: SidebarMenuSkeletonProps) {
   const width = `${String(Math.floor(Math.random() * 40) + 50)}%`;
   return (
-    <div {...uiProps("sidebar-menu-skeleton", menuSkeleton, props)} data-sidebar="menu-skeleton">
-      {props.showIcon?.() === true ? (
+    <div {...uiProps("sidebar-menu-skeleton", menuSkeleton, cells(props))} data-sidebar="menu-skeleton">
+      {props.showIcon === true ? (
         <Skeleton
           data-slot="sidebar-menu-skeleton-icon"
           data-sidebar="menu-skeleton-icon"
@@ -1435,18 +1436,18 @@ export function SidebarMenuSkeleton(props: Incoming<SidebarMenuSkeletonProps>) {
   );
 }
 
-export function SidebarMenuSub(props: Incoming<UiProps>) {
+export function SidebarMenuSub(props: UiProps) {
   return (
-    <ul {...uiProps("sidebar-menu-sub", menuSub, props)} data-sidebar="menu-sub">
+    <ul {...uiProps("sidebar-menu-sub", menuSub, cells(props))} data-sidebar="menu-sub">
       {props.children}
     </ul>
   );
 }
 
-export function SidebarMenuSubItem(props: Incoming<UiProps>) {
+export function SidebarMenuSubItem(props: UiProps) {
   return (
     <li
-      {...uiProps("sidebar-menu-sub-item", ui(menuSubItem, "group/menu-sub-item"), props)}
+      {...uiProps("sidebar-menu-sub-item", ui(menuSubItem, "group/menu-sub-item"), cells(props))}
       data-sidebar="menu-sub-item"
     >
       {props.children}
@@ -1461,24 +1462,24 @@ export interface SidebarMenuSubButtonProps extends UiProps {
   href?: string;
 }
 
-export function SidebarMenuSubButton(props: Incoming<SidebarMenuSubButtonProps>) {
+export function SidebarMenuSubButton(props: SidebarMenuSubButtonProps) {
   const taken = slotted("a");
   const className = (): string =>
     ui(
       menuSubButton,
-      (props.size?.() ?? "md") === "sm" ? menuSubButtonSm : menuSubButtonMd,
-      props.class?.(),
-      props.className?.(),
+      (props.size ?? "md") === "sm" ? menuSubButtonSm : menuSubButtonMd,
+      props.class,
+      props.className,
     );
 
   return (
     <a
-      {...mergeProps(taken.props, uiProps("sidebar-menu-sub-button", className, props))}
-      ref={mergeRefs(taken.ref, props.ref?.())}
-      href={props.href?.()}
+      {...mergeProps(taken.props, uiProps("sidebar-menu-sub-button", className, cells(props)))}
+      ref={mergeRefs(taken.ref, props.ref)}
+      href={props.href}
       data-sidebar="menu-sub-button"
-      data-size={() => props.size?.() ?? "md"}
-      data-active={() => (props.isActive?.() === true ? "true" : "false")}
+      data-size={() => props.size ?? "md"}
+      data-active={() => (props.isActive === true ? "true" : "false")}
     >
       {props.children}
     </a>

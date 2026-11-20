@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function TriangleDashed(props: Incoming<IconProps>) {
+export function TriangleDashed(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M10.17 4.193a2 2 0 0 1 3.666.013" />
       <path d="M14 21h2" />
       <path d="m15.874 7.743 1 1.732" />

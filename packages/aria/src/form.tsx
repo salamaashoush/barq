@@ -16,7 +16,7 @@
  *   handler AND navigates does both.
  */
 
-import { type Child, type Incoming } from "@barqjs/core";
+import { cells, type Child, type Incoming } from "@barqjs/core";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import {
   provideValidationBehavior,
@@ -54,14 +54,14 @@ export interface FormComponentProps extends StyleProps {
  * </Form>
  * ```
  */
-export function Form(props: Incoming<FormComponentProps>) {
+export function Form(props: FormComponentProps) {
   const domRef = makeRef<HTMLFormElement>();
 
-  provideValidationErrors(() => props.validationErrors?.() ?? {});
-  provideValidationBehavior(() => props.validationBehavior?.());
+  provideValidationErrors(() => props.validationErrors ?? {});
+  provideValidationBehavior(() => props.validationBehavior);
 
   const onSubmit = (event: SubmitEvent): void => {
-    const handler = props.onSubmit?.();
+    const handler = props.onSubmit;
     if (handler === undefined) return;
     // Both calling a handler and navigating is doing the thing twice.
     event.preventDefault();
@@ -69,25 +69,25 @@ export function Form(props: Incoming<FormComponentProps>) {
   };
 
   const elementProps = mergeProps(
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
-      action: () => props.action?.(),
-      method: () => props.method?.(),
-      enctype: () => props.encType?.(),
-      target: () => props.target?.(),
-      autocomplete: () => props.autoComplete?.(),
-      novalidate: () => props.noValidate?.() === true || undefined,
-      "aria-label": () => props["aria-label"]?.(),
-      "aria-labelledby": () => props["aria-labelledby"]?.(),
-      "data-testid": () => props["data-testid"]?.(),
+      action: () => props.action,
+      method: () => props.method,
+      enctype: () => props.encType,
+      target: () => props.target,
+      autocomplete: () => props.autoComplete,
+      novalidate: () => props.noValidate === true || undefined,
+      "aria-label": () => props["aria-label"],
+      "aria-labelledby": () => props["aria-labelledby"],
+      "data-testid": () => props["data-testid"],
       onSubmit,
-      onReset: (event: Event) => props.onReset?.()?.(event),
+      onReset: (event: Event) => props.onReset?.(event),
     },
   );
 
   return (
-    <form {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
+    <form {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
       {props.children}
     </form>
   );

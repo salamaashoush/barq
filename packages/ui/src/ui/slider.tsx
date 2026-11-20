@@ -1,3 +1,4 @@
+import { cells } from "@barqjs/core";
 import { provideDirection, useDirection } from "@barqjs/aria/i18n";
 import {
   Slider as AriaSlider,
@@ -199,28 +200,28 @@ const UPSTREAM = ["min", "max", "onValueChange", "onValueCommit", "disabled", "i
  * rather than decorative — each is a visually hidden `<input type="range">`, so
  * the keyboard, the form and a screen reader all talk to the platform.
  */
-export function Slider(props: Incoming<SliderProps>) {
+export function Slider(props: SliderProps) {
   const inherited = useDirection();
   // Declared for the subtree rather than read here, so the pointer and the
   // arrow keys in `@barqjs/aria` mirror with the drawing.
-  if (props.dir !== undefined) provideDirection(() => props.dir?.() ?? inherited());
+  if (props.dir !== undefined) provideDirection(() => props.dir ?? inherited());
 
   return (
     <AriaSlider
-      {...omit(props, UPSTREAM)}
-      data-slot={props["data-slot"]?.() ?? "slider"}
-      class={ui(root, props.class?.(), props.className?.())}
-      minValue={props.minValue?.() ?? props.min?.()}
-      maxValue={props.maxValue?.() ?? props.max?.()}
-      isDisabled={props.isDisabled?.() ?? props.disabled?.()}
-      isInverted={props.isInverted?.() ?? props.inverted?.()}
+      {...omit(cells(props), UPSTREAM)}
+      data-slot={props["data-slot"] ?? "slider"}
+      class={ui(root, props.class, props.className)}
+      minValue={props.minValue ?? props.min}
+      maxValue={props.maxValue ?? props.max}
+      isDisabled={props.isDisabled ?? props.disabled}
+      isInverted={props.isInverted ?? props.inverted}
       onChange={(value: number[]) => {
-        props.onChange?.()?.(value);
-        props.onValueChange?.()?.(value);
+        props.onChange?.(value);
+        props.onValueChange?.(value);
       }}
       onChangeEnd={(value: number[]) => {
-        props.onChangeEnd?.()?.(value);
-        props.onValueCommit?.()?.(value);
+        props.onChangeEnd?.(value);
+        props.onValueCommit?.(value);
       }}
     >
       <SliderOutput data-slot="slider-output" class={output} />

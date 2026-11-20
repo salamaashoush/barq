@@ -40,14 +40,14 @@ interface BarProps {
 let state: NavigationMenuState;
 
 function Panel(
-  props: Incoming<{ menu: NavigationMenuResult; item: NavigationMenuItemResult; names: string[] }>,
+  props: { menu: NavigationMenuResult; item: NavigationMenuItemResult; names: string[] },
 ) {
-  const item = props.item();
+  const item = props.item;
   return (
     <Show when={item.isOpen()}>
       <div {...item.contentProps} ref={item.contentRef}>
-        {props.names().map((name) => (
-          <a {...props.menu().linkProps()} href={`/${name.toLowerCase()}`}>
+        {props.names.map((name) => (
+          <a {...props.menu.linkProps()} href={`/${name.toLowerCase()}`}>
             {name}
           </a>
         ))}
@@ -56,20 +56,20 @@ function Panel(
   );
 }
 
-function Bar(props: Incoming<BarProps>) {
+function Bar(props: BarProps) {
   const navRef = ref<HTMLElement>();
-  if (props.direction?.() !== undefined) provideDirection(() => props.direction?.() ?? "ltr");
+  if (props.direction !== undefined) provideDirection(() => props.direction ?? "ltr");
   state = navigationMenuState({
-    delay: () => props.delay?.(),
-    closeDelay: () => props.closeDelay?.(),
+    delay: () => props.delay,
+    closeDelay: () => props.closeDelay,
   });
-  const menu = navigationMenu({ ref: navRef, orientation: () => props.orientation?.() }, state);
+  const menu = navigationMenu({ ref: navRef, orientation: () => props.orientation }, state);
   const products = menu.item({ key: "products" });
   const solutions = menu.item({ key: "solutions" });
-  const detached = props.detached?.() === true;
+  const detached = props.detached === true;
 
   return (
-    <div onKeyDown={(event: KeyboardEvent) => props.onOuterKeyDown?.()?.(event)}>
+    <div onKeyDown={(event: KeyboardEvent) => props.onOuterKeyDown?.(event)}>
       <button type="button">Before</button>
       <nav {...menu.rootProps} ref={navRef.set}>
         <ul {...menu.listProps}>
@@ -84,7 +84,7 @@ function Bar(props: Incoming<BarProps>) {
           <li>
             <button
               type="button"
-              {...solutions.triggerProps({ isDisabled: () => props.disableSolutions?.() === true })}
+              {...solutions.triggerProps({ isDisabled: () => props.disableSolutions === true })}
               ref={solutions.triggerRef}
             >
               Solutions
@@ -97,7 +97,7 @@ function Bar(props: Incoming<BarProps>) {
             <a
               {...menu.linkProps({
                 isActive: true,
-                onSelect: (event) => props.onSelect?.()?.(event),
+                onSelect: (event) => props.onSelect?.(event),
               })}
               href="/pricing"
             >

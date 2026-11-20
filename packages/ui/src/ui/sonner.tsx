@@ -1,4 +1,5 @@
 import {
+  cells,
   For,
   createSignal,
   createEffect,
@@ -702,8 +703,8 @@ function draw(content: ToastContent | undefined): Child {
 export type ToasterIcons = Partial<Record<Exclude<ToastKind, "default"> | "close", ToastContent>>;
 
 /** What each kind draws, which is shadcn's own mapping. */
-function KindIcon(props: Incoming<{ kind: ToastKind }>) {
-  const kind = (): ToastKind => props.kind();
+function KindIcon(props: { kind: ToastKind }) {
+  const kind = (): ToastKind => props.kind;
   return (
     <>
       {kind() === "success" ? (
@@ -829,10 +830,10 @@ interface Stack {
   readonly hold: (held: boolean) => void;
 }
 
-function ToastRow(props: Incoming<{ toast: Toast<Presentation>; stack: Stack }>) {
-  const stack = props.stack();
-  const entry = (): Toast<Presentation> => props.toast();
-  const { id } = props.toast();
+function ToastRow(props: { toast: Toast<Presentation>; stack: Stack }) {
+  const stack = props.stack;
+  const entry = (): Toast<Presentation> => props.toast;
+  const { id } = props.toast;
   const data = (): Presentation => entry().data ?? {};
   const position = (): ToasterPosition => stack.positionOf(entry());
   const mine = (): readonly Toast<Presentation>[] => stack.shown(position());
@@ -1072,16 +1073,16 @@ function ToastRow(props: Incoming<{ toast: Toast<Presentation>; stack: Stack }>)
  * timer in it, because a toast that expires while the pointer is over it was
  * never read.
  */
-export function Toaster(props: Incoming<ToasterProps>) {
+export function Toaster(props: ToasterProps) {
   const direction = useDirection();
   const dir = (): "ltr" | "rtl" => {
-    const asked = props.dir?.();
+    const asked = props.dir;
     return asked === "ltr" || asked === "rtl" ? asked : direction();
   };
-  const position = (): ToasterPosition => props.position?.() ?? DEFAULT_POSITION;
-  const visible = (): number => Math.max(1, props.visibleToasts?.() ?? DEFAULT_VISIBLE);
-  const gap = (): number => props.gap?.() ?? DEFAULT_GAP;
-  const hotkey = (): readonly string[] => props.hotkey?.() ?? DEFAULT_HOTKEY;
+  const position = (): ToasterPosition => props.position ?? DEFAULT_POSITION;
+  const visible = (): number => Math.max(1, props.visibleToasts ?? DEFAULT_VISIBLE);
+  const gap = (): number => props.gap ?? DEFAULT_GAP;
+  const hotkey = (): readonly string[] => props.hotkey ?? DEFAULT_HOTKEY;
 
   const [hovered, setHovered] = createSignal(false);
   const [focused, setFocused] = createSignal(false);
@@ -1107,7 +1108,7 @@ export function Toaster(props: Incoming<ToasterProps>) {
   };
 
   const theme = (): "light" | "dark" | undefined => {
-    const asked = props.theme?.();
+    const asked = props.theme;
     if (asked === "system") return prefersDark() ? "dark" : "light";
     return asked;
   };
@@ -1132,7 +1133,7 @@ export function Toaster(props: Incoming<ToasterProps>) {
   const stack: Stack = {
     positionOf,
     shown,
-    isExpanded: () => props.expand?.() === true || hovered() || focused(),
+    isExpanded: () => props.expand === true || hovered() || focused(),
     gap,
     heightOf: (id) => heights().get(id) ?? 0,
     measured: (id, height) => {
@@ -1154,7 +1155,7 @@ export function Toaster(props: Incoming<ToasterProps>) {
       else rows.set(id, element);
     },
     swipeDirections: (at) => {
-      const asked = props.swipeDirections?.();
+      const asked = props.swipeDirections;
       if (asked !== undefined) return asked.map((each) => SWIPE_NAMES[each]);
       const [y, x] = at.split("-");
       const ways: ToastSwipeDirection[] = [y === "top" ? "up" : "down"];
@@ -1166,11 +1167,11 @@ export function Toaster(props: Incoming<ToasterProps>) {
       return ways;
     },
     dismiss,
-    richColors: () => props.richColors?.() === true,
-    closeButton: () => props.closeButton?.() ?? true,
-    invert: () => props.invert?.() === true,
-    icons: () => props.icons?.() ?? {},
-    options: () => props.toastOptions?.() ?? {},
+    richColors: () => props.richColors === true,
+    closeButton: () => props.closeButton ?? true,
+    invert: () => props.invert === true,
+    icons: () => props.icons ?? {},
+    options: () => props.toastOptions ?? {},
     hold: (next) => {
       held = next;
       if (next) queue.pause("swipe");
@@ -1202,7 +1203,7 @@ export function Toaster(props: Incoming<ToasterProps>) {
   let teardown: (() => void) | null = null;
 
   onSettled(() => {
-    fallback.duration = () => props.duration?.() ?? props.toastOptions?.()?.duration;
+    fallback.duration = () => props.duration ?? props.toastOptions?.duration;
     const unwatch = queue.watchDocument();
     // Asked at the moment a toast is dismissed. The attribute is written here
     // rather than left to the binding, because the exit rules select on it and
@@ -1243,11 +1244,11 @@ export function Toaster(props: Incoming<ToasterProps>) {
 
   return (
     <section
-      {...uiProps("toaster", "", props)}
+      {...uiProps("toaster", "", cells(props))}
       ref={mergeRefs((element: HTMLElement | null) => {
         section = element;
-      }, props.ref?.())}
-      aria-label={props.customAriaLabel?.() ?? props.containerAriaLabel?.() ?? "Notifications"}
+      }, props.ref)}
+      aria-label={props.customAriaLabel ?? props.containerAriaLabel ?? "Notifications"}
       aria-keyshortcuts={shortcut(hotkey())}
       tabIndex={-1}
       // `polite`, so a toast waits for a screen reader to finish its sentence.
@@ -1320,8 +1321,8 @@ export function Toaster(props: Incoming<ToasterProps>) {
               "--front-toast-height": `${String(stack.heightOf(shown(at()).at(-1)?.id ?? -1))}px`,
               "--width": DEFAULT_WIDTH,
               "--gap": `${String(gap())}px`,
-              ...offsets("--offset", props.offset?.(), DEFAULT_OFFSET),
-              ...offsets("--mobile-offset", props.mobileOffset?.(), DEFAULT_MOBILE_OFFSET),
+              ...offsets("--offset", props.offset, DEFAULT_OFFSET),
+              ...offsets("--mobile-offset", props.mobileOffset, DEFAULT_MOBILE_OFFSET),
             })}
           >
             <For each={() => shown(at())} keyed={(each: Toast<Presentation>) => each.id}>

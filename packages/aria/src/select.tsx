@@ -21,6 +21,7 @@
  */
 
 import {
+  cells,
   type Accessor,
   type Child,
   For,
@@ -549,17 +550,17 @@ const ITEM_TEXT_ATTRIBUTE = "data-barq-item-text";
  * shown here as it is drawn there: a COPY of its {@link SelectItemText}, since
  * one node cannot be in the list and in the trigger at once.
  */
-export function SelectValue(props: Incoming<SelectValueComponentProps>) {
+export function SelectValue(props: SelectValueComponentProps) {
   const picker = useSelect();
-  const placeholder = (): string => props.placeholder?.() ?? picker.placeholder() ?? "";
+  const placeholder = (): string => props.placeholder ?? picker.placeholder() ?? "";
 
   const elementProps = mergeProps(
     picker.valueProps,
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
       "data-placeholder": () => picker.state.selectedItem() === null,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
@@ -653,15 +654,15 @@ export interface SelectComponentProps<T> extends StyleProps, ItemAccessors<T> {
  * </Select>
  * ```
  */
-export function Select<T>(props: Incoming<SelectComponentProps<T>>) {
+export function Select<T>(props: SelectComponentProps<T>) {
   const triggerRef = makeRef<HTMLButtonElement>();
   const listRef = makeRef<HTMLUListElement>();
   const selectRef = makeRef<HTMLSelectElement>();
-  const options = fromProps(props as unknown as Incoming<Record<string, unknown>>);
+  const options = fromProps(cells(props) as unknown as Incoming<Record<string, unknown>>);
 
   const state = selectState<T>({
     ...(options as SelectStateOptions<T>),
-    onSelectionChange: (key) => props.onSelectionChange?.()?.(key),
+    onSelectionChange: (key) => props.onSelectionChange?.(key),
   });
 
   const {
@@ -678,8 +679,8 @@ export function Select<T>(props: Incoming<SelectComponentProps<T>>) {
     {
       ...(options as unknown as SelectOptions),
       ref: triggerRef,
-      validate: callback(props.validate),
-      validationBehavior: () => props.validationBehavior?.(),
+      validate: callback(cells(props).validate),
+      validationBehavior: () => props.validationBehavior,
     },
     state,
   );
@@ -688,7 +689,7 @@ export function Select<T>(props: Incoming<SelectComponentProps<T>>) {
     { ...(options as ButtonOptions), ...triggerProps },
     triggerRef,
   );
-  const { hoverProps, isHovered } = hover({ isDisabled: () => props.isDisabled?.() });
+  const { hoverProps, isHovered } = hover({ isDisabled: () => props.isDisabled });
   const { focusProps, isFocusVisible } = focusRing();
 
   const buttonElementProps = mergeProps(
@@ -700,17 +701,17 @@ export function Select<T>(props: Incoming<SelectComponentProps<T>>) {
     hoverProps,
     focusProps,
     filterDOMProps(options, { global: true }),
-    styleProps(props),
+    styleProps(cells(props)),
     {
       "data-pressed": isPressed,
       "data-hovered": isHovered,
       "data-focus-visible": isFocusVisible,
       "data-open": state.isOpen,
       "data-state": () => (state.isOpen() ? "open" : "closed"),
-      "data-disabled": () => props.isDisabled?.() === true,
+      "data-disabled": () => props.isDisabled === true,
       "data-placeholder": () => state.selectedItem() === null,
       "data-invalid": isInvalid,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
@@ -718,12 +719,12 @@ export function Select<T>(props: Incoming<SelectComponentProps<T>>) {
     {
       selectRef,
       triggerRef,
-      name: () => props.name?.(),
-      form: () => props.form?.(),
-      autoComplete: () => props.autoComplete?.(),
-      isDisabled: () => props.isDisabled?.(),
-      isRequired: () => props.isRequired?.(),
-      validationBehavior: () => props.validationBehavior?.(),
+      name: () => props.name,
+      form: () => props.form,
+      autoComplete: () => props.autoComplete,
+      isDisabled: () => props.isDisabled,
+      isRequired: () => props.isRequired,
+      validationBehavior: () => props.validationBehavior,
       validation,
     },
     state,
@@ -736,18 +737,18 @@ export function Select<T>(props: Incoming<SelectComponentProps<T>>) {
     install(owner, SelectContext, () => ({
       state: state as unknown as SelectState<unknown>,
       valueProps,
-      placeholder: () => props.placeholder?.(),
+      placeholder: () => props.placeholder,
     }));
   }
 
   return (
     <>
       <span {...labelProps}>{props.label}</span>
-      <button {...buttonElementProps} ref={mergeRefs(triggerRef.set, props.ref?.())}>
+      <button {...buttonElementProps} ref={mergeRefs(triggerRef.set, props.ref)}>
         <SelectValue />
       </button>
       {() =>
-        props.name?.() === undefined ? null : (
+        props.name === undefined ? null : (
           <div {...containerProps}>
             <label>
               {props.label}
@@ -765,13 +766,13 @@ export function Select<T>(props: Incoming<SelectComponentProps<T>>) {
         triggerRef={triggerRef}
         isOpen={state.isOpen()}
         onOpenChange={state.setOpen}
-        placement={props.placement?.() ?? "bottom start"}
+        placement={props.placement ?? "bottom start"}
       >
         <SelectList
           options={listBoxOptions}
-          ariaLabel={props["aria-label"]?.()}
-          listClass={props.listClass?.()}
-          listSlot={props.listSlot?.()}
+          ariaLabel={props["aria-label"]}
+          listClass={props.listClass}
+          listSlot={props.listSlot}
           state={state}
           listRef={listRef}
           render={renderOption as unknown as (item: unknown) => Child}
@@ -780,7 +781,7 @@ export function Select<T>(props: Incoming<SelectComponentProps<T>>) {
       <span {...descriptionProps}>{props.description}</span>
       <span {...errorMessageProps}>
         {() => {
-          const given = props.errorMessage?.();
+          const given = props.errorMessage;
           if (given !== undefined && given !== null && given !== "") return given;
           const found = errors();
           return found.length === 0 ? null : found.join(" ");
@@ -808,17 +809,17 @@ interface SelectListProps {
  * reading it before the popover opened would always find the strategy unset
  * and land focus on the list instead of on an option.
  */
-function SelectList(props: Incoming<SelectListProps>) {
-  const state = props.state();
-  const listRef = props.listRef();
-  const render = props.render();
-  const options = props.options();
+function SelectList(props: SelectListProps) {
+  const state = props.state;
+  const listRef = props.listRef;
+  const render = props.render;
+  const options = props.options;
 
   const { listBoxProps, baseId } = listBox(
     {
       ...(options as unknown as Record<string, MaybeAccessor<never>>),
       ref: listRef,
-      "aria-label": props.ariaLabel,
+      "aria-label": cells(props).ariaLabel,
     },
     state,
   );
@@ -826,8 +827,8 @@ function SelectList(props: Incoming<SelectListProps>) {
   const elementProps = mergeProps(listBoxProps, popoverStateProps(), {
     id: options.id,
     "aria-labelledby": options["aria-labelledby"],
-    class: props.listClass,
-    "data-slot": () => props.listSlot?.() ?? "select-list",
+    class: cells(props).listClass,
+    "data-slot": () => props.listSlot ?? "select-list",
   });
 
   provideItemRender(render);
@@ -1021,27 +1022,27 @@ export interface SelectRootComponentProps {
 }
 
 /** The state of a select written as parts. Renders no element of its own. */
-export function SelectRoot(props: Incoming<SelectRootComponentProps>) {
+export function SelectRoot(props: SelectRootComponentProps) {
   const triggerRef = makeRef<HTMLButtonElement>();
   const valueRef = makeRef<HTMLSpanElement>();
   const selectRef = makeRef<HTMLSelectElement>();
   const registry = staticCollection();
   const baseId = id();
-  const isDisabled = (): boolean => props.isDisabled?.() === true;
+  const isDisabled = (): boolean => props.isDisabled === true;
 
   const state = selectState<StaticEntry>({
     items: registry.entries,
     ...staticAccessors,
-    selectedKey: () => props.selectedKey?.(),
-    defaultSelectedKey: () => props.defaultSelectedKey?.(),
-    isOpen: () => props.isOpen?.(),
-    defaultOpen: () => props.defaultOpen?.(),
-    onOpenChange: (isOpen) => props.onOpenChange?.()?.(isOpen),
-    onSelectionChange: (key) => props.onSelectionChange?.()?.(key),
+    selectedKey: () => props.selectedKey,
+    defaultSelectedKey: () => props.defaultSelectedKey,
+    isOpen: () => props.isOpen,
+    defaultOpen: () => props.defaultOpen,
+    onOpenChange: (isOpen) => props.onOpenChange?.(isOpen),
+    onSelectionChange: (key) => props.onSelectionChange?.(key),
   }) as unknown as SelectState<unknown>;
 
   const { triggerProps, comboboxProps, listBoxProps } = selectTrigger(
-    { ref: triggerRef, isDisabled, isRequired: () => props.isRequired?.() },
+    { ref: triggerRef, isDisabled, isRequired: () => props.isRequired },
     state,
   );
 
@@ -1051,7 +1052,7 @@ export function SelectRoot(props: Incoming<SelectRootComponentProps>) {
   const { state: validation, isInvalid } = fieldValidation<Key | Key[] | null>({
     value: state.value,
     validationBehavior: "native",
-    name: () => props.name?.(),
+    name: () => props.name,
   });
 
   // The hidden control's options, written onto it rather than rendered into
@@ -1081,11 +1082,11 @@ export function SelectRoot(props: Incoming<SelectRootComponentProps>) {
     {
       selectRef,
       triggerRef,
-      name: () => props.name?.(),
-      form: () => props.form?.(),
-      autoComplete: () => props.autoComplete?.(),
+      name: () => props.name,
+      form: () => props.form,
+      autoComplete: () => props.autoComplete,
       isDisabled,
-      isRequired: () => props.isRequired?.(),
+      isRequired: () => props.isRequired,
       validationBehavior: "native",
       validation,
     },
@@ -1096,7 +1097,7 @@ export function SelectRoot(props: Incoming<SelectRootComponentProps>) {
   // no ancestors yet, and no form to find.
   const [isInsideForm, setInsideForm] = createSignal(false);
   const inForm = (): boolean =>
-    props.name?.() !== undefined || props.form?.() !== undefined || isInsideForm();
+    props.name !== undefined || props.form !== undefined || isInsideForm();
 
   const value: SelectContextValue = {
     state,
@@ -1112,7 +1113,7 @@ export function SelectRoot(props: Incoming<SelectRootComponentProps>) {
       baseId,
       isDisabled,
       isInvalid,
-      dir: () => props.dir?.(),
+      dir: () => props.dir,
       placed: () => {
         setInsideForm((triggerRef()?.closest("form") ?? null) !== null);
       },
@@ -1152,23 +1153,23 @@ export interface SelectTriggerComponentProps extends StyleProps {
 }
 
 /** The control that shows the value and opens the list. */
-export function SelectTrigger(props: Incoming<SelectTriggerComponentProps>) {
+export function SelectTrigger(props: SelectTriggerComponentProps) {
   const picker = useSelectParts("SelectTrigger");
   const { parts, state } = picker;
-  const isDisabled = (): boolean => parts.isDisabled() || props.isDisabled?.() === true;
+  const isDisabled = (): boolean => parts.isDisabled() || props.isDisabled === true;
   const isInvalid = (): boolean => {
-    const given = props["aria-invalid"]?.();
+    const given = props["aria-invalid"];
     return given === undefined ? parts.isInvalid() : given === true || given === "true";
   };
 
-  const options = fromProps(props);
+  const options = fromProps(cells(props));
   const { buttonProps, isPressed } = button(
     {
       ...(parts.triggerProps as ButtonOptions),
       isDisabled,
-      "aria-label": () => props["aria-label"]?.(),
-      "aria-labelledby": () => props["aria-labelledby"]?.(),
-      "aria-describedby": () => props["aria-describedby"]?.(),
+      "aria-label": () => props["aria-label"],
+      "aria-labelledby": () => props["aria-labelledby"],
+      "aria-describedby": () => props["aria-describedby"],
       "aria-invalid": isInvalid,
     },
     parts.triggerRef,
@@ -1184,10 +1185,10 @@ export function SelectTrigger(props: Incoming<SelectTriggerComponentProps>) {
     hoverProps,
     focusProps,
     filterDOMProps(options, { global: true }),
-    styleProps(props),
+    styleProps(cells(props)),
     {
       // A caller's `id` is what a `<label for>` points at, and it wins.
-      id: () => props.id?.() ?? access(parts.comboboxProps.id as MaybeAccessor<string>),
+      id: () => props.id ?? access(parts.comboboxProps.id as MaybeAccessor<string>),
       dir: () => parts.dir(),
       "data-state": () => (state.isOpen() ? "open" : "closed"),
       "data-open": state.isOpen,
@@ -1197,12 +1198,12 @@ export function SelectTrigger(props: Incoming<SelectTriggerComponentProps>) {
       "data-disabled": isDisabled,
       "data-placeholder": () => state.selectedItem() === null,
       "data-invalid": isInvalid,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
   return (
-    <button {...elementProps} ref={mergeRefs(parts.triggerRef.set, props.ref?.())}>
+    <button {...elementProps} ref={mergeRefs(parts.triggerRef.set, props.ref)}>
       {props.children}
     </button>
   );
@@ -1296,10 +1297,10 @@ function useSelectContent(part: string): SelectContentValue {
   return value;
 }
 
-function SelectContentProvider(props: Incoming<{ value: SelectContentValue; children?: Child }>) {
+function SelectContentProvider(props: { value: SelectContentValue; children?: Child }) {
   return provide(
     SelectContentContext,
-    () => props.value(),
+    () => props.value,
     () => props.children as unknown,
   );
 }
@@ -1345,7 +1346,7 @@ function laidOutBox(element: Element | null): Box | null {
  * The listbox itself is the {@link SelectViewport} inside, so the scroll
  * buttons beside it are not children of a `role="listbox"`.
  */
-export function SelectContent(props: Incoming<SelectContentComponentProps>) {
+export function SelectContent(props: SelectContentComponentProps) {
   const { parts, state } = useSelectParts("SelectContent");
   const locale = useLocale();
   const viewportRef = makeRef<HTMLUListElement>();
@@ -1371,7 +1372,7 @@ export function SelectContent(props: Incoming<SelectContentComponentProps>) {
   };
 
   const align = (): void => {
-    if (props.position?.() !== "item-aligned") return;
+    if (props.position !== "item-aligned") return;
     const trigger = parts.triggerRef();
     const content = contentRef();
     const key = state.selectedKey();
@@ -1418,23 +1419,23 @@ export function SelectContent(props: Incoming<SelectContentComponentProps>) {
       align();
       measure();
     },
-    ariaLabel: () => props["aria-label"]?.(),
-    ariaLabelledBy: () => props["aria-labelledby"]?.(),
+    ariaLabel: () => props["aria-label"],
+    ariaLabelledBy: () => props["aria-labelledby"],
   };
 
-  const options = fromProps(props);
+  const options = fromProps(cells(props));
   const elementProps = mergeProps(
     filterDOMProps(options, { global: true, labelable: true }),
-    styleProps(props),
+    styleProps(cells(props)),
     {
       role: "presentation",
       dir: () => parts.dir(),
-      "data-position": () => props.position?.() ?? "popper",
+      "data-position": () => props.position ?? "popper",
       // Said of what was ASKED for, so a design system can drop its entrance
       // animation before the first frame: the list is measured as it is drawn,
       // and a scale on it would be measured too.
-      "data-align-trigger": () => String(props.position?.() === "item-aligned"),
-      "data-testid": () => props["data-testid"]?.(),
+      "data-align-trigger": () => String(props.position === "item-aligned"),
+      "data-testid": () => props["data-testid"],
     },
   );
 
@@ -1452,15 +1453,15 @@ export function SelectContent(props: Incoming<SelectContentComponentProps>) {
         triggerRef={parts.triggerRef}
         isOpen={state.isOpen()}
         onOpenChange={state.setOpen}
-        placement={aligned() === null ? (props.placement?.() ?? "bottom start") : "bottom start"}
-        offset={aligned()?.offset ?? props.offset?.() ?? 8}
-        crossOffset={aligned()?.crossOffset ?? props.crossOffset?.()}
+        placement={aligned() === null ? (props.placement ?? "bottom start") : "bottom start"}
+        offset={aligned()?.offset ?? props.offset ?? 8}
+        crossOffset={aligned()?.crossOffset ?? props.crossOffset}
         shouldFlip={aligned() === null}
       >
         <SelectContentBox
           elementProps={elementProps}
           contentRef={contentRef}
-          forwardedRef={props.ref?.()}
+          forwardedRef={props.ref}
           value={showing}
         >
           {props.children}
@@ -1479,14 +1480,14 @@ interface SelectContentBoxProps {
 }
 
 /** Inside the popover, which is the only place its side and state can be read. */
-function SelectContentBox(props: Incoming<SelectContentBoxProps>) {
+function SelectContentBox(props: SelectContentBoxProps) {
   return (
     <div
-      {...props.elementProps()}
+      {...props.elementProps}
       {...popoverStateProps()}
-      ref={mergeRefs(props.contentRef().set, props.forwardedRef?.())}
+      ref={mergeRefs(props.contentRef.set, props.forwardedRef)}
     >
-      <SelectContentProvider value={props.value()}>{props.children}</SelectContentProvider>
+      <SelectContentProvider value={props.value}>{props.children}</SelectContentProvider>
     </div>
   );
 }
@@ -1497,7 +1498,7 @@ export interface SelectViewportComponentProps extends StyleProps {
 }
 
 /** The listbox: the scroller the options are in. */
-export function SelectViewport(props: Incoming<SelectViewportComponentProps>) {
+export function SelectViewport(props: SelectViewportComponentProps) {
   const { parts, state } = useSelectParts("SelectViewport");
   const content = useSelectContent("SelectViewport");
 
@@ -1535,8 +1536,8 @@ export function SelectViewport(props: Incoming<SelectViewportComponentProps>) {
 
   const elementProps = mergeProps(
     listBoxProps,
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
       id: options.id,
       "aria-labelledby": () =>
@@ -1545,7 +1546,7 @@ export function SelectViewport(props: Incoming<SelectViewportComponentProps>) {
           ? access(options["aria-labelledby"] as MaybeAccessor<string>)
           : undefined),
       onScroll: content.measure,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
@@ -1575,11 +1576,11 @@ export interface SelectItemTextComponentProps extends StyleProps {
  *
  * Everything else in the row, a tick or a shortcut, stays in the row.
  */
-export function SelectItemText(props: Incoming<SelectItemTextComponentProps>) {
+export function SelectItemText(props: SelectItemTextComponentProps) {
   const elementProps = mergeProps(
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
-    { [ITEM_TEXT_ATTRIBUTE]: "", "data-testid": () => props["data-testid"]?.() },
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
+    { [ITEM_TEXT_ATTRIBUTE]: "", "data-testid": () => props["data-testid"] },
   );
   return <span {...elementProps}>{props.children}</span>;
 }
@@ -1601,12 +1602,12 @@ const SCROLL_INTERVAL = 50;
  * moving through it, so the arrow is a pointer's convenience and nothing a
  * screen reader user needs to find.
  */
-export function SelectScrollButton(props: Incoming<SelectScrollButtonComponentProps>) {
+export function SelectScrollButton(props: SelectScrollButtonComponentProps) {
   useSelectParts("SelectScrollButton");
   const content = useSelectContent("SelectScrollButton");
   if (content.isRegistering) return null;
 
-  const isUp = props.direction() === "up";
+  const isUp = props.direction === "up";
   let timer: ReturnType<typeof setInterval> | undefined;
 
   const stop = (): void => {
@@ -1630,14 +1631,14 @@ export function SelectScrollButton(props: Incoming<SelectScrollButtonComponentPr
   onCleanup(stop);
 
   const elementProps = mergeProps(
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
       "aria-hidden": "true",
       onPointerDown: start,
       onPointerMove: start,
       onPointerLeave: stop,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
@@ -1656,10 +1657,10 @@ export function SelectScrollButton(props: Incoming<SelectScrollButtonComponentPr
  * no `pointerleave` to say so.
  */
 function ScrollButton(
-  props: Incoming<{ elementProps: DOMProps; onLeave: () => void; children?: Child }>,
+  props: { elementProps: DOMProps; onLeave: () => void; children?: Child },
 ) {
-  onCleanup(() => props.onLeave()());
-  return <div {...props.elementProps()}>{props.children}</div>;
+  onCleanup(() => props.onLeave());
+  return <div {...props.elementProps}>{props.children}</div>;
 }
 
 export { Option };

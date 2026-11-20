@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function VectorPolygon(props: Incoming<IconProps>) {
+export function VectorPolygon(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="m12.828 4.813 5.344 2.375" />
       <path d="m15.769 18.153 3.461-8.306" />
       <path d="m5.687 14.074 7.625 4.852" />

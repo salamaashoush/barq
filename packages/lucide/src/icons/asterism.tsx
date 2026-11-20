@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Asterism(props: Incoming<IconProps>) {
+export function Asterism(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M12 2v8" />
       <path d="m14.5 15 7 4" />
       <path d="m14.5 19 7-4" />

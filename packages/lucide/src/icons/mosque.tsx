@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Mosque(props: Incoming<IconProps>) {
+export function Mosque(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M12.268 2a2 2 0 003.465 2" />
       <path d="M14 5 L14 8" />
       <path d="M16 22v-3a2 2 0 00-4 0v3" />

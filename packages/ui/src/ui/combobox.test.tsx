@@ -38,14 +38,14 @@ async function settle(): Promise<void> {
   flush();
 }
 
-function Fixture(props: Incoming<{ onChange?: (key: string | null) => void }>) {
+function Fixture(props: { onChange?: (key: string | null) => void }) {
   return (
     <Combobox
       items={FRAMEWORKS}
       placeholder="Select a framework"
       aria-label="Framework"
       label={(entry: (typeof FRAMEWORKS)[number]) => entry.name}
-      onChange={(key) => props.onChange?.()?.(key === null ? null : String(key))}
+      onChange={(key) => props.onChange?.(key === null ? null : String(key))}
     />
   );
 }
@@ -139,7 +139,7 @@ describe("Combobox", () => {
   });
 });
 
-function Many(props: Incoming<{ onValuesChange?: (keys: readonly string[]) => void }>) {
+function Many(props: { onValuesChange?: (keys: readonly string[]) => void }) {
   return (
     <Combobox
       multiple
@@ -147,7 +147,7 @@ function Many(props: Incoming<{ onValuesChange?: (keys: readonly string[]) => vo
       placeholder="Pick some"
       aria-label="Frameworks"
       label={(entry: (typeof FRAMEWORKS)[number]) => entry.name}
-      onValuesChange={(keys) => props.onValuesChange?.()?.(keys.map(String))}
+      onValuesChange={(keys) => props.onValuesChange?.(keys.map(String))}
     />
   );
 }
@@ -373,20 +373,20 @@ interface PartsProps {
   onValueChange?: (value: string | null) => void;
 }
 
-function Parts(props: Incoming<PartsProps>) {
+function Parts(props: PartsProps) {
   return (
     <Combobox
       items={NAMES}
-      defaultValue={props.defaultValue?.()}
-      onValueChange={(value) => props.onValueChange?.()?.(value as string | null)}
+      defaultValue={props.defaultValue}
+      onValueChange={(value) => props.onValueChange?.(value as string | null)}
     >
       <ComboboxInput
         aria-label="Framework"
         placeholder="Select a framework"
-        showTrigger={props.showTrigger?.()}
-        showClear={props.showClear?.()}
+        showTrigger={props.showTrigger}
+        showClear={props.showClear}
       />
-      <ComboboxContent side={props.side?.()} align={props.align?.()}>
+      <ComboboxContent side={props.side} align={props.align}>
         <ComboboxEmpty>No items found.</ComboboxEmpty>
         <ComboboxList>
           {(item: string) => <ComboboxItem value={item}>{item}</ComboboxItem>}
@@ -626,14 +626,14 @@ describe("a Combobox whose trigger is a button", () => {
 });
 
 describe("a Combobox of chips", () => {
-  function Chips(props: Incoming<{ onValueChange?: (value: string[]) => void }>) {
+  function Chips(props: { onValueChange?: (value: string[]) => void }) {
     const anchor = useComboboxAnchor();
     return (
       <Combobox
         multiple
         items={NAMES}
         defaultValue={["Remix", "Astro"]}
-        onValueChange={(value) => props.onValueChange?.()?.(value as string[])}
+        onValueChange={(value) => props.onValueChange?.(value as string[])}
       >
         <ComboboxChips ref={anchor} aria-label="Chosen frameworks">
           <ComboboxValue>

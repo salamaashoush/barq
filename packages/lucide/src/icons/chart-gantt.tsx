@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function ChartGantt(props: Incoming<IconProps>) {
+export function ChartGantt(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M10 6h8" />
       <path d="M12 16h6" />
       <path d="M3 3v16a2 2 0 0 0 2 2h16" />

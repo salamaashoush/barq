@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function SquircleDashed(props: Incoming<IconProps>) {
+export function SquircleDashed(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M13.77 3.043a34 34 0 0 0-3.54 0" />
       <path d="M13.771 20.956a33 33 0 0 1-3.541.001" />
       <path d="M20.18 17.74c-.51 1.15-1.29 1.93-2.439 2.44" />

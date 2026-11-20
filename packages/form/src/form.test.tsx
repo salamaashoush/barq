@@ -522,11 +522,11 @@ describe("array fields", () => {
     name: string;
   }
 
-  function NameInput(props: Incoming<{ value: string; onChange: (value: string) => void }>) {
+  function NameInput(props: { value: string; onChange: (value: string) => void }) {
     return (
       <input
-        value={props.value()}
-        onInput={(event) => props.onChange()(event.currentTarget.value)}
+        value={props.value}
+        onInput={(event) => props.onChange(event.currentTarget.value)}
       />
     );
   }

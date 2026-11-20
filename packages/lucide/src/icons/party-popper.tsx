@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function PartyPopper(props: Incoming<IconProps>) {
+export function PartyPopper(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M5.8 11.3 2 22l10.7-3.79" />
       <path d="M4 3h.01" />
       <path d="M22 8h.01" />

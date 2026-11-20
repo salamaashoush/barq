@@ -597,7 +597,7 @@ const headerActions = css`
 `;
 
 export function PageHeader(
-  props: Incoming<{ title: string; lede?: string; actions?: Child; children?: Child }>,
+  props: { title: string; lede?: string; actions?: Child; children?: Child },
 ) {
   return (
     <section class={headerSection}>
@@ -605,7 +605,7 @@ export function PageHeader(
         <div class={`${container} ${headerInner}`}>
           {props.children}
           <h1 class={headerHeading}>{props.title}</h1>
-          {props.lede?.() === undefined ? null : <p class={headerLede}>{props.lede()}</p>}
+          {props.lede === undefined ? null : <p class={headerLede}>{props.lede}</p>}
           {/* `props.actions === undefined` tests PRESENCE without invoking.
               `actions` is JSX, so it lowers to a Block, and a Block called with
               no scope throws — `props.actions?.()` is the Cell read this slot
@@ -631,10 +631,10 @@ const shell = css`
  * header the front page does, so this is that header and the content under it
  * rather than a heading each page styles itself.
  */
-export function Page(props: Incoming<{ title: string; lede?: string; children?: Child }>) {
+export function Page(props: { title: string; lede?: string; children?: Child }) {
   return (
     <>
-      <PageHeader title={props.title()} lede={props.lede?.()}>
+      <PageHeader title={props.title} lede={props.lede}>
         <Announcement />
       </PageHeader>
       <div class={wrapper}>

@@ -176,7 +176,7 @@ describe("ToggleButton", () => {
  * is still a value as far as `mergeProps` can tell.
  */
 describe("the trigger slot", () => {
-  function Wrap(props: Incoming<{ children?: Child; onPress?: () => void }>) {
+  function Wrap(props: { children?: Child; onPress?: () => void }) {
     return provide(
       probe,
       () => 1,
@@ -186,7 +186,7 @@ describe("the trigger slot", () => {
             "aria-haspopup": "menu",
             "aria-expanded": true,
             "data-from-slot": "yes",
-            onPress: () => props.onPress?.()?.(),
+            onPress: () => props.onPress?.(),
           },
         });
         return props.children;

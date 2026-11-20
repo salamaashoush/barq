@@ -19,29 +19,29 @@ const FILES: File[] = [
 ];
 
 function Files(
-  props: Incoming<{
+  props: {
     selectionMode?: "none" | "single" | "multiple";
     keyboardNavigationBehavior?: "arrow" | "tab";
     onSelectionChange?: (keys: "all" | Set<Key>) => void;
     onAction?: (key: Key) => void;
     withButtons?: boolean;
-  }>,
+  },
 ) {
   return (
     <GridList
       aria-label="Files"
       items={FILES}
-      selectionMode={props.selectionMode?.() ?? "none"}
-      keyboardNavigationBehavior={props.keyboardNavigationBehavior?.()}
-      onSelectionChange={props.onSelectionChange?.()}
-      onAction={props.onAction?.()}
+      selectionMode={props.selectionMode ?? "none"}
+      keyboardNavigationBehavior={props.keyboardNavigationBehavior}
+      onSelectionChange={props.onSelectionChange}
+      onAction={props.onAction}
       getTextValue={(file: File) => file.name}
     >
       {(file: File) => (
         <GridListItem>
           <span>{file.name}</span>
           {() =>
-            props.withButtons?.() === true ? (
+            props.withButtons === true ? (
               <>
                 <Button>Rename {file.name}</Button>
                 <Button>Delete {file.name}</Button>

@@ -354,9 +354,9 @@ function grouped(options: readonly Option[]): Row[] {
   });
 }
 
-export function Picker(props: Incoming<PickerProps>) {
-  const current = (): Option | undefined => optionOf(props.options(), props.value());
-  const rows = (): Row[] => grouped(props.options());
+export function Picker(props: PickerProps) {
+  const current = (): Option | undefined => optionOf(props.options, props.value);
+  const rows = (): Row[] => grouped(props.options);
 
   return (
     <div class={group} data-slot="picker">
@@ -365,7 +365,7 @@ export function Picker(props: Incoming<PickerProps>) {
           // Clearing on CLOSE, not only on leaving the list. Selecting removes
           // the content, so its `mouseleave` never fires and the preview would
           // stay applied forever, which looks exactly like a commit and is not.
-          if (!open) props.clearPreview?.()?.();
+          if (!open) props.clearPreview?.();
         }}
       >
         <DropdownMenuTrigger>
@@ -377,12 +377,12 @@ export function Picker(props: Incoming<PickerProps>) {
             variant="ghost"
             class={trigger}
             data-slot="picker-trigger"
-            isDisabled={props.disabled?.()}
+            isDisabled={props.disabled}
           >
             <span class={label}>
-              <span class={name}>{props.label()}</span>
+              <span class={name}>{props.label}</span>
               <span class={chosen} data-slot="picker-value">
-                {current()?.label ?? props.value()}
+                {current()?.label ?? props.value}
               </span>
             </span>
             {/* `props.glyph`, not `props.glyph()`. A children-shaped prop that
@@ -410,18 +410,18 @@ export function Picker(props: Incoming<PickerProps>) {
           // selects the same one whatever you press.
           getKey={(row: Row) => row.option.value}
           getTextValue={(row: Row) => row.option.label}
-          aria-label={props.label()}
+          aria-label={props.label}
           data-slot="picker-content"
           class={ui(positioned, popup)}
           placement="right top"
           offset={20}
           selectionMode="single"
-          selectedKeys={[props.value()]}
+          selectedKeys={[props.value]}
           // `onAction`, not `onSelectionChange`: a menu item is chosen by a
           // PRESS here and routes through `onPress`, so a selection listener is
           // never called and every click was silently a no-op.
-          onAction={(key: Key) => props.onPick()(String(key))}
-          onMouseLeave={() => props.clearPreview?.()?.()}
+          onAction={(key: Key) => props.onPick(String(key))}
+          onMouseLeave={() => props.clearPreview?.()}
         >
           {(row: Row) => (
             <>
@@ -435,13 +435,13 @@ export function Picker(props: Incoming<PickerProps>) {
                 // pointer settles on one, or the arrow keys move focus to it.
                 // The provider debounces, so a sweep applies nothing until it
                 // stops.
-                onMouseMove={() => props.onPreview?.()?.(row.option.value)}
-                onFocus={() => props.onPreview?.()?.(row.option.value)}
+                onMouseMove={() => props.onPreview?.(row.option.value)}
+                onFocus={() => props.onPreview?.(row.option.value)}
               >
                 {row.option.swatch === undefined ? null : (
                   <span class={itemDot} style={{ background: row.option.swatch }} />
                 )}
-                {row.option.swatch === undefined && hasSwatches(props.options()) ? (
+                {row.option.swatch === undefined && hasSwatches(props.options) ? (
                   <span class={ui(itemDot, itemDotHollow)} />
                 ) : null}
                 <span class={itemLabel}>{row.option.label}</span>
@@ -467,7 +467,7 @@ export interface PickerLabelProps {
 }
 
 /** A heading inside a popup, which a grouped list draws above each run. */
-export function PickerGroupLabel(props: Incoming<PickerLabelProps>) {
+export function PickerGroupLabel(props: PickerLabelProps) {
   return (
     <div class={groupLabel} data-slot="picker-label">
       {props.children as never}

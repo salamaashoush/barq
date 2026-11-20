@@ -25,19 +25,19 @@ import {
 } from "./questionnaire.tsx";
 
 function Plans(
-  props: Incoming<{
+  props: {
     shortcuts?: QuestionnaireShortcutMode;
     onAnswers?: (answers: [string, string][]) => void;
-  }>,
+  },
 ) {
   return (
     <Questionnaire
       aria-label="Plan"
-      shortcuts={props.shortcuts?.()}
+      shortcuts={props.shortcuts}
       onSubmit={(event: SubmitEvent) => {
         event.preventDefault();
         const data = new FormData(event.currentTarget as HTMLFormElement);
-        props.onAnswers?.()?.([...data.entries()]);
+        props.onAnswers?.([...data.entries()]);
       }}
     >
       <QuestionnaireProgress />

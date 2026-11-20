@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function FaceExpressionless(props: Incoming<IconProps>) {
+export function FaceExpressionless(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M14 10h2" />
       <path d="M8 10h2" />
       <path d="M8 16h8" />

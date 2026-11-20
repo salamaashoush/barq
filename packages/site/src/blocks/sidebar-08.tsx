@@ -302,8 +302,8 @@ const PROJECTS = [
 
 // A component per row: the open state has to belong to the row, and a signal
 // held by the loop would be shared by all four.
-function NavRow(props: Incoming<{ item: NavItem }>) {
-  const item = props.item();
+function NavRow(props: { item: NavItem }) {
+  const item = props.item;
 
   return (
     <Collapsible

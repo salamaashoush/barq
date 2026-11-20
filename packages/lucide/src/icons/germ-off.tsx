@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function GermOff(props: Incoming<IconProps>) {
+export function GermOff(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="m11 2 .925 1.848" />
       <path d="M13 15h.01" />
       <path d="M13.424 7.768a2 2 0 112.808 2.808" />

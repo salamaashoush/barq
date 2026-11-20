@@ -12,7 +12,7 @@ afterEach(cleanup);
 const slot = (name: string): HTMLElement =>
   document.querySelector(`[data-slot="${name}"]`) as HTMLElement;
 
-function Mirrored(props: Incoming<{ children?: Child }>) {
+function Mirrored(props: { children?: Child }) {
   provideDirection("rtl");
   return <div dir="rtl">{props.children}</div>;
 }
@@ -68,9 +68,9 @@ describe("Progress", () => {
 });
 
 describe("Progress, with its parts written out", () => {
-  function Upload(props: Incoming<{ value?: number; isIndeterminate?: boolean }>) {
+  function Upload(props: { value?: number; isIndeterminate?: boolean }) {
     return (
-      <Progress value={props.value?.() ?? 40} isIndeterminate={props.isIndeterminate?.()}>
+      <Progress value={props.value ?? 40} isIndeterminate={props.isIndeterminate}>
         <ProgressLabel>Upload</ProgressLabel>
         <ProgressValue />
       </Progress>

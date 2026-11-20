@@ -2,6 +2,7 @@ import { useDirection } from "@barqjs/aria/i18n";
 import { progressBar } from "@barqjs/aria/link";
 import { fromProps, id, mergeProps } from "@barqjs/aria/utils";
 import {
+  cells,
   Show,
   createContext,
   createSignal,
@@ -114,29 +115,29 @@ function useProgress(): ProgressValueOf {
  * rectangle a screen reader announces as "progress bar, 60 percent" with no
  * word about what is at sixty percent.
  */
-export function Progress(props: Incoming<ProgressProps>) {
+export function Progress(props: ProgressProps) {
   const direction = useDirection();
   const labelId = id();
   // `ownedWrite`: a `<ProgressLabel>` announces itself while it is being built.
   const [labelled, setLabelled] = createSignal(false, { ownedWrite: true });
 
-  const max = (): number => props.maxValue?.() ?? props.max?.() ?? 100;
+  const max = (): number => props.maxValue ?? props.max ?? 100;
   const { progressBarProps, labelProps, percentage, valueText } = progressBar({
-    ...fromProps(props),
-    formatOptions: props.formatOptions?.(),
+    ...fromProps(cells(props)),
+    formatOptions: props.formatOptions,
     maxValue: max,
     valueLabel: () =>
-      props.getValueLabel?.()?.(props.value?.() ?? 0, max()) ?? props.valueLabel?.(),
+      props.getValueLabel?.(props.value ?? 0, max()) ?? props.valueLabel,
     "aria-labelledby": () =>
-      [props["aria-labelledby"]?.(), labelled() ? labelId() : undefined]
+      [props["aria-labelledby"], labelled() ? labelId() : undefined]
         .filter((part) => part !== undefined)
         .join(" ") || undefined,
   });
 
-  const indeterminate = (): boolean => props.isIndeterminate?.() === true;
+  const indeterminate = (): boolean => props.isIndeterminate === true;
   const status = (): ProgressStatus =>
     indeterminate() ? "indeterminate" : percentage() >= 1 ? "complete" : "loading";
-  const value = (): number | null => (indeterminate() ? null : (props.value?.() ?? 0));
+  const value = (): number | null => (indeterminate() ? null : (props.value ?? 0));
 
   // The fill starts at the reading edge, which right to left is the right one.
   const fill = (): Record<string, string> => {
@@ -161,14 +162,14 @@ export function Progress(props: Incoming<ProgressProps>) {
     "data-state": status,
     "data-value": () => value() ?? undefined,
     "data-max": max,
-    "data-testid": () => props["data-testid"]?.(),
-    class: () => ui(composed ? stack : track, props.class?.(), props.className?.()),
-    style: () => props.style?.(),
+    "data-testid": () => props["data-testid"],
+    class: () => ui(composed ? stack : track, props.class, props.className),
+    style: () => props.style,
   });
 
   return (
     <div {...elementProps}>
-      <Show when={props.label?.() !== undefined}>
+      <Show when={props.label !== undefined}>
         <span {...labelProps} class={visuallyHidden}>
           {props.label}
         </span>
@@ -189,24 +190,24 @@ export function Progress(props: Incoming<ProgressProps>) {
   );
 }
 
-function ProgressProvider(props: Incoming<{ value: ProgressValueOf; children?: Child }>) {
+function ProgressProvider(props: { value: ProgressValueOf; children?: Child }) {
   return provide(
     ProgressContext,
-    () => props.value(),
+    () => props.value,
     () => props.children,
   );
 }
 
 /** The pill the fill moves inside, when the bar has a label and a value above it. */
-export function ProgressTrack(props: Incoming<UiProps>) {
-  return <div {...uiProps("progress-track", track, props)}>{props.children}</div>;
+export function ProgressTrack(props: UiProps) {
+  return <div {...uiProps("progress-track", track, cells(props))}>{props.children}</div>;
 }
 
-export function ProgressIndicator(props: Incoming<Omit<UiProps, "children">>) {
+export function ProgressIndicator(props: Omit<UiProps, "children">) {
   const progress = useProgress();
   return (
     <div
-      {...uiProps("progress-indicator", bar, props)}
+      {...uiProps("progress-indicator", bar, cells(props))}
       data-state={() => progress.status()}
       data-value={() => progress.value() ?? undefined}
       data-max={() => progress.max()}
@@ -216,13 +217,13 @@ export function ProgressIndicator(props: Incoming<Omit<UiProps, "children">>) {
 }
 
 /** Visible text that names the bar: the root points its `aria-labelledby` here. */
-export function ProgressLabel(props: Incoming<UiProps>) {
+export function ProgressLabel(props: UiProps) {
   const progress = useProgress();
   progress.setLabelled(true);
   onCleanup(() => progress.setLabelled(false));
 
   return (
-    <span {...uiProps("progress-label", caption, props)} id={() => progress.labelId()}>
+    <span {...uiProps("progress-label", caption, cells(props))} id={() => progress.labelId()}>
       {props.children}
     </span>
   );
@@ -237,7 +238,7 @@ export interface ProgressValueProps extends Omit<UiProps, "children"> {
  * The value as text, for a sighted reader. Hidden from assistive technology,
  * which already has it as the bar's `aria-valuetext` and would read it twice.
  */
-export function ProgressValue(props: Incoming<ProgressValueProps>) {
+export function ProgressValue(props: ProgressValueProps) {
   const progress = useProgress();
 
   type Render = (formatted: string | null, value: number | null) => Child;
@@ -252,7 +253,7 @@ export function ProgressValue(props: Incoming<ProgressValueProps>) {
   const formatted = (): string | null => progress.text() ?? null;
 
   return (
-    <span {...uiProps("progress-value", amount, props)} aria-hidden="true">
+    <span {...uiProps("progress-value", amount, cells(props))} aria-hidden="true">
       {() => (render === undefined ? formatted() : render(formatted(), progress.value()))}
     </span>
   );

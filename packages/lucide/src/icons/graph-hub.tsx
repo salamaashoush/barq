@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function GraphHub(props: Incoming<IconProps>) {
+export function GraphHub(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <circle cx="12" cy="7" r="4" />
       <circle cx="4" cy="19" r="2" />
       <circle cx="12" cy="19" r="2" />

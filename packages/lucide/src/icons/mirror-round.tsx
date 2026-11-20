@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function MirrorRound(props: Incoming<IconProps>) {
+export function MirrorRound(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M10 6.6 8.6 8" />
       <path d="M12 18v4" />
       <path d="M15 7.5 9.5 13" />

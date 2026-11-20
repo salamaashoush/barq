@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function ArrowDown01(props: Incoming<IconProps>) {
+export function ArrowDown01(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="m3 16 4 4 4-4" />
       <path d="M7 20V4" />
       <rect x="15" y="4" width="4" height="6" ry="2" />

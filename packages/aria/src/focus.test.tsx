@@ -1,15 +1,15 @@
 import { describe, expect, test } from "bun:test";
 
-import { flush, createSignal, Show, type Incoming } from "@barqjs/core";
+import { cells, flush, createSignal, Show, type Incoming } from "@barqjs/core";
 import { render, screen, tick, user } from "@barqjs/testing";
 import { createFocusManager, focusRing, focusScope, focusableWalker } from "./focus.ts";
 import { setInteractionModality } from "./interactions/modality.ts";
 
 function Trap(props: { autoFocus?: boolean; contain?: boolean; restoreFocus?: boolean }) {
   const scope = focusScope({
-    contain: props.contain,
-    restoreFocus: props.restoreFocus,
-    autoFocus: props.autoFocus,
+    contain: cells(props).contain,
+    restoreFocus: cells(props).restoreFocus,
+    autoFocus: cells(props).autoFocus,
   });
 
   return (
@@ -249,12 +249,12 @@ describe("focusRing", () => {
  * refs had run.
  */
 describe("a scope whose content appears later", () => {
-  function Late(props: Incoming<{ open: boolean }>) {
+  function Late(props: { open: boolean }) {
     const scope = focusScope({ contain: true, autoFocus: true });
     return (
       <>
         <button type="button">outside</button>
-        <Show when={props.open()}>
+        <Show when={props.open}>
           <span hidden ref={scope.startRef} />
           <button type="button">inside first</button>
           <button type="button">inside second</button>

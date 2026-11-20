@@ -1,3 +1,4 @@
+import { cells } from "@barqjs/core";
 import { useMenuGroupHeading } from "@barqjs/aria/menu";
 import {
   Menubar as AriaMenubar,
@@ -130,12 +131,12 @@ export interface MenubarProps extends MenubarComponentProps {}
  *
  * `value` is the open menu's `value`, and `""` when none is.
  */
-export function Menubar(props: Incoming<MenubarProps>) {
+export function Menubar(props: MenubarProps) {
   return (
     <AriaMenubar
       {...props}
-      data-slot={props["data-slot"]?.() ?? "menubar"}
-      class={ui(bar, props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "menubar"}
+      class={ui(bar, props.class, props.className)}
     />
   );
 }
@@ -146,13 +147,13 @@ export interface MenubarMenuProps extends MenubarMenuComponentProps {}
  * One menu in the bar. Which menu is open is the bar's `value`; `isOpen`,
  * `defaultOpen` and `onOpenChange` are for a caller that cares about this one.
  */
-export function MenubarMenu(props: Incoming<MenubarMenuProps>) {
+export function MenubarMenu(props: MenubarMenuProps) {
   return <AriaMenubarMenu {...props} />;
 }
 
 export interface MenubarPortalProps extends DropdownMenuPortalProps {}
 
-export function MenubarPortal(props: Incoming<MenubarPortalProps>) {
+export function MenubarPortal(props: MenubarPortalProps) {
   return <DropdownMenuPortal {...props} />;
 }
 
@@ -174,30 +175,30 @@ export interface MenubarTriggerProps extends Omit<
  * `menubar`, and what sits in one is an item that happens to open a menu. A
  * `role` given by the caller wins.
  */
-export function MenubarTrigger(props: Incoming<MenubarTriggerProps>) {
-  const options = fromProps(props);
+export function MenubarTrigger(props: MenubarTriggerProps) {
+  const options = fromProps(cells(props));
   const { triggerProps, ref } = menubarTrigger({
     ...options,
-    isDisabled: () => props.isDisabled?.() ?? props.disabled?.(),
+    isDisabled: () => props.isDisabled ?? props.disabled,
   });
   const { role: patternRole, ...behaviour } = triggerProps;
 
   const elementProps = mergeProps(behaviour, filterDOMProps(options, { global: true }), {
-    role: () => props.role?.() ?? patternRole,
-    "aria-label": () => props["aria-label"]?.(),
-    "data-slot": () => props["data-slot"]?.() ?? "menubar-trigger",
+    role: () => props.role ?? patternRole,
+    "aria-label": () => props["aria-label"],
+    "data-slot": () => props["data-slot"] ?? "menubar-trigger",
     "data-variant": "ghost",
     "data-size": "default",
     class: () =>
-      ui(buttonVariants({ variant: "ghost" }), trigger, props.class?.(), props.className?.()),
-    style: () => props.style?.(),
+      ui(buttonVariants({ variant: "ghost" }), trigger, props.class, props.className),
+    style: () => props.style,
   });
 
-  const render = props.render?.();
+  const render = props.render;
   if (render !== undefined) return render({ props: elementProps, ref }) as JSXElement;
 
   return (
-    <button {...elementProps} ref={mergeRefs(ref, props.ref?.())}>
+    <button {...elementProps} ref={mergeRefs(ref, props.ref)}>
       {props.children}
     </button>
   );
@@ -206,26 +207,26 @@ export function MenubarTrigger(props: Incoming<MenubarTriggerProps>) {
 export interface MenubarContentProps<T> extends DropdownMenuContentProps<T> {}
 
 /** Aligned to the start of its trigger and pulled 4px back past it, as upstream's is. */
-export function MenubarContent<T>(props: Incoming<MenubarContentProps<T>>) {
+export function MenubarContent<T>(props: MenubarContentProps<T>) {
   return (
     <DropdownMenuContent
       {...props}
-      alignOffset={props.alignOffset?.() ?? -4}
+      alignOffset={props.alignOffset ?? -4}
       data-slot="menubar-content"
-      class={ui(props.class?.(), props.className?.())}
+      class={ui(props.class, props.className)}
     />
   );
 }
 
 export interface MenubarItemProps extends DropdownMenuItemProps {}
 
-export function MenubarItem(props: Incoming<MenubarItemProps>) {
+export function MenubarItem(props: MenubarItemProps) {
   return <DropdownMenuItem {...props} data-slot="menubar-item" />;
 }
 
 export interface MenubarCheckboxItemProps extends DropdownMenuCheckboxItemProps {}
 
-export function MenubarCheckboxItem(props: Incoming<MenubarCheckboxItemProps>) {
+export function MenubarCheckboxItem(props: MenubarCheckboxItemProps) {
   return (
     <DropdownMenuCheckboxItem
       {...props}
@@ -237,13 +238,13 @@ export function MenubarCheckboxItem(props: Incoming<MenubarCheckboxItemProps>) {
 
 export interface MenubarRadioGroupProps extends DropdownMenuRadioGroupProps {}
 
-export function MenubarRadioGroup(props: Incoming<MenubarRadioGroupProps>) {
+export function MenubarRadioGroup(props: MenubarRadioGroupProps) {
   return <DropdownMenuRadioGroup {...props} data-slot="menubar-radio-group" />;
 }
 
 export interface MenubarRadioItemProps extends DropdownMenuRadioItemProps {}
 
-export function MenubarRadioItem(props: Incoming<MenubarRadioItemProps>) {
+export function MenubarRadioItem(props: MenubarRadioItemProps) {
   return (
     <DropdownMenuRadioItem
       {...props}
@@ -256,52 +257,52 @@ export function MenubarRadioItem(props: Incoming<MenubarRadioItemProps>) {
 export interface MenubarLabelProps extends DropdownMenuLabelProps {}
 
 /** Its own element, because a menubar's label is body-coloured `text-sm`. */
-export function MenubarLabel(props: Incoming<MenubarLabelProps>) {
+export function MenubarLabel(props: MenubarLabelProps) {
   const heading = useMenuGroupHeading();
   return (
     <li
-      {...uiProps("menubar-label", label, props)}
-      id={props.id?.() ?? heading?.()}
+      {...uiProps("menubar-label", label, cells(props))}
+      id={props.id ?? heading?.()}
       role="presentation"
-      data-inset={props.inset?.() === true ? "" : undefined}
+      data-inset={props.inset === true ? "" : undefined}
     >
       {props.children}
     </li>
   );
 }
 
-export function MenubarSeparator(props: Incoming<UiProps>) {
+export function MenubarSeparator(props: UiProps) {
   return <DropdownMenuSeparator {...props} data-slot="menubar-separator" />;
 }
 
-export function MenubarShortcut(props: Incoming<UiProps>) {
+export function MenubarShortcut(props: UiProps) {
   return <DropdownMenuShortcut {...props} data-slot="menubar-shortcut" />;
 }
 
 export interface MenubarGroupProps<T> extends DropdownMenuGroupProps<T> {}
 
-export function MenubarGroup<T>(props: Incoming<MenubarGroupProps<T>>) {
+export function MenubarGroup<T>(props: MenubarGroupProps<T>) {
   return <DropdownMenuGroup {...props} data-slot="menubar-group" />;
 }
 
-export function MenubarGroupLabel(props: Incoming<UiProps>) {
+export function MenubarGroupLabel(props: UiProps) {
   return <DropdownMenuGroupLabel {...props} data-slot="menubar-group-label" />;
 }
 
 export interface MenubarSubProps extends DropdownMenuSubProps {}
 
-export function MenubarSub(props: Incoming<MenubarSubProps>) {
+export function MenubarSub(props: MenubarSubProps) {
   return <DropdownMenuSub {...props} />;
 }
 
 export interface MenubarSubTriggerProps extends DropdownMenuSubTriggerProps {}
 
-export function MenubarSubTrigger(props: Incoming<MenubarSubTriggerProps>) {
+export function MenubarSubTrigger(props: MenubarSubTriggerProps) {
   return <DropdownMenuSubTrigger {...props} data-slot="menubar-sub-trigger" />;
 }
 
 export interface MenubarSubContentProps<T> extends DropdownMenuSubContentProps<T> {}
 
-export function MenubarSubContent<T>(props: Incoming<MenubarSubContentProps<T>>) {
+export function MenubarSubContent<T>(props: MenubarSubContentProps<T>) {
   return <DropdownMenuSubContent {...props} data-slot="menubar-sub-content" />;
 }

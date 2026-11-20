@@ -1,4 +1,4 @@
-import { Show, createSignal, onCleanup, type Incoming } from "@barqjs/core";
+import { cells, Show, createSignal, onCleanup, type Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
@@ -121,9 +121,9 @@ export interface AvatarProps extends UiProps {
  * </Avatar>
  * ```
  */
-export function Avatar(props: Incoming<AvatarProps>) {
+export function Avatar(props: AvatarProps) {
   return (
-    <span {...uiProps("avatar", root, props)} data-size={props.size?.() ?? "default"}>
+    <span {...uiProps("avatar", root, cells(props))} data-size={props.size ?? "default"}>
       {props.children}
     </span>
   );
@@ -151,28 +151,28 @@ export interface AvatarImageProps extends UiProps {
  * This renders the `<img>` and hides it on `error`, so a cached image paints
  * with the document instead of one frame after hydration.
  */
-export function AvatarImage(props: Incoming<AvatarImageProps>) {
+export function AvatarImage(props: AvatarImageProps) {
   const [failed, setFailed] = createSignal(false);
 
   return (
     <Show when={!failed()}>
       <img
-        {...uiProps("avatar-image", image, props)}
-        src={props.src?.()}
-        alt={props.alt?.() ?? ""}
-        srcset={props.srcSet?.()}
-        sizes={props.sizes?.()}
-        width={props.width?.()}
-        height={props.height?.()}
-        loading={props.loading?.()}
-        decoding={props.decoding?.()}
-        crossOrigin={props.crossOrigin?.()}
-        referrerPolicy={props.referrerPolicy?.()}
+        {...uiProps("avatar-image", image, cells(props))}
+        src={props.src}
+        alt={props.alt ?? ""}
+        srcset={props.srcSet}
+        sizes={props.sizes}
+        width={props.width}
+        height={props.height}
+        loading={props.loading}
+        decoding={props.decoding}
+        crossOrigin={props.crossOrigin}
+        referrerPolicy={props.referrerPolicy}
         onError={() => {
           setFailed(true);
-          props.onLoadingStatusChange?.()?.("error");
+          props.onLoadingStatusChange?.("error");
         }}
-        onLoad={() => props.onLoadingStatusChange?.()?.("loaded")}
+        onLoad={() => props.onLoadingStatusChange?.("loaded")}
       />
     </Show>
   );
@@ -184,8 +184,8 @@ export interface AvatarFallbackProps extends UiProps {
 }
 
 /** Initials, or whatever stands in for a photo that is not there. */
-export function AvatarFallback(props: Incoming<AvatarFallbackProps>) {
-  const delay = props.delayMs?.();
+export function AvatarFallback(props: AvatarFallbackProps) {
+  const delay = props.delayMs;
   const [ready, setReady] = createSignal(delay === undefined);
   if (delay !== undefined && typeof window !== "undefined") {
     const timer = setTimeout(() => setReady(true), delay);
@@ -194,14 +194,14 @@ export function AvatarFallback(props: Incoming<AvatarFallbackProps>) {
 
   return (
     <Show when={ready()}>
-      <span {...uiProps("avatar-fallback", fallback, props)}>{props.children}</span>
+      <span {...uiProps("avatar-fallback", fallback, cells(props))}>{props.children}</span>
     </Show>
   );
 }
 
 /** A dot in the corner: presence, a count, a tick. */
-export function AvatarBadge(props: Incoming<UiProps>) {
-  return <span {...uiProps("avatar-badge", badge, props)}>{props.children}</span>;
+export function AvatarBadge(props: UiProps) {
+  return <span {...uiProps("avatar-badge", badge, cells(props))}>{props.children}</span>;
 }
 
 const group = ui({
@@ -269,13 +269,13 @@ const groupCount = ui(text.sm, {
  * one behind it, and putting it on the avatar would draw a halo around every
  * single one on the page.
  */
-export function AvatarGroup(props: Incoming<UiProps>) {
+export function AvatarGroup(props: UiProps) {
   return (
-    <div {...uiProps("avatar-group", ui(group, "group/avatar-group"), props)}>{props.children}</div>
+    <div {...uiProps("avatar-group", ui(group, "group/avatar-group"), cells(props))}>{props.children}</div>
   );
 }
 
 /** The "+3" at the end of the row, which is not an avatar and has no image. */
-export function AvatarGroupCount(props: Incoming<UiProps>) {
-  return <div {...uiProps("avatar-group-count", groupCount, props)}>{props.children}</div>;
+export function AvatarGroupCount(props: UiProps) {
+  return <div {...uiProps("avatar-group-count", groupCount, cells(props))}>{props.children}</div>;
 }

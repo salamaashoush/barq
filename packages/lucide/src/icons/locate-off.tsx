@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function LocateOff(props: Incoming<IconProps>) {
+export function LocateOff(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M12 19v3" />
       <path d="M12 2v3" />
       <path d="M18.89 13.24a7 7 0 0 0-8.13-8.13" />

@@ -26,10 +26,10 @@ export function App(props: {
           renderers.push(gl);
           return gl;
         }}
-        dpr={props.dpr?.() ?? 1}
+        dpr={props.dpr ?? 1}
         class="stage"
         style={{ height: "300px" }}
-        onCreated={props.onCreated()}
+        onCreated={props.onCreated}
       >
         <ambientLight intensity={0.5} />
         <For each={inline()}>{(name) => <mesh name={`inline-${name}`} />}</For>

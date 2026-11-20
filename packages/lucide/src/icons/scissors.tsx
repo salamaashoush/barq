@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Scissors(props: Incoming<IconProps>) {
+export function Scissors(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <circle cx="6" cy="6" r="3" />
       <path d="M8.12 8.12 12 12" />
       <path d="M20 4 8.12 15.88" />

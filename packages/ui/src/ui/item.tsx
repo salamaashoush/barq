@@ -1,4 +1,4 @@
-import { Show, type Incoming } from "@barqjs/core";
+import { cells, Show, type Incoming } from "@barqjs/core";
 import { firstThatWorks, layer, variants } from "@barqjs/css";
 
 import "../theme/layers.ts";
@@ -275,9 +275,9 @@ const band = ui({
 });
 
 /** A list of `<Item>`s. `role="list"`, so a reader counts them. */
-export function ItemGroup(props: Incoming<UiProps>) {
+export function ItemGroup(props: UiProps) {
   return (
-    <div {...uiProps("item-group", group, props)} role={props.role?.() ?? "list"}>
+    <div {...uiProps("item-group", group, cells(props))} role={props.role ?? "list"}>
       {props.children}
     </div>
   );
@@ -285,13 +285,13 @@ export function ItemGroup(props: Incoming<UiProps>) {
 
 export interface ItemSeparatorProps extends SeparatorProps {}
 
-export function ItemSeparator(props: Incoming<ItemSeparatorProps>) {
+export function ItemSeparator(props: ItemSeparatorProps) {
   return (
     <Separator
       {...props}
-      data-slot={props["data-slot"]?.() ?? "item-separator"}
+      data-slot={props["data-slot"] ?? "item-separator"}
       orientation="horizontal"
-      class={ui(separator, props.class?.(), props.className?.())}
+      class={ui(separator, props.class, props.className)}
     />
   );
 }
@@ -327,18 +327,18 @@ export interface ItemProps extends UiProps {
  * which is what shadcn's `asChild` is for and what barq has no element to clone
  * for.
  */
-export function Item(props: Incoming<ItemProps>) {
+export function Item(props: ItemProps) {
   const className = (): string =>
-    itemVariants({ variant: props.variant?.(), size: props.size?.() });
+    itemVariants({ variant: props.variant, size: props.size });
   const common = (): Record<string, unknown> => ({
-    ...uiProps("item", className, props),
-    "data-variant": props.variant?.() ?? "default",
-    "data-size": props.size?.() ?? "default",
+    ...uiProps("item", className, cells(props)),
+    "data-variant": props.variant ?? "default",
+    "data-size": props.size ?? "default",
   });
 
   return (
-    <Show when={props.href?.() !== undefined} fallback={<div {...common()}>{props.children}</div>}>
-      <a {...common()} href={props.href?.()} target={props.target?.()} rel={props.rel?.()}>
+    <Show when={props.href !== undefined} fallback={<div {...common()}>{props.children}</div>}>
+      <a {...common()} href={props.href} target={props.target} rel={props.rel}>
         {props.children}
       </a>
     </Show>
@@ -350,38 +350,38 @@ export interface ItemMediaProps extends UiProps {
   variant?: ItemMediaVariant;
 }
 
-export function ItemMedia(props: Incoming<ItemMediaProps>) {
-  const className = (): string => itemMediaVariants({ variant: props.variant?.() });
+export function ItemMedia(props: ItemMediaProps) {
+  const className = (): string => itemMediaVariants({ variant: props.variant });
   return (
-    <div {...uiProps("item-media", className, props)} data-variant={props.variant?.() ?? "default"}>
+    <div {...uiProps("item-media", className, cells(props))} data-variant={props.variant ?? "default"}>
       {props.children}
     </div>
   );
 }
 
 /** The growing column. A second one beside it does not grow, which is how a value column stays put. */
-export function ItemContent(props: Incoming<UiProps>) {
-  return <div {...uiProps("item-content", content, props)}>{props.children}</div>;
+export function ItemContent(props: UiProps) {
+  return <div {...uiProps("item-content", content, cells(props))}>{props.children}</div>;
 }
 
-export function ItemTitle(props: Incoming<UiProps>) {
-  return <div {...uiProps("item-title", title, props)}>{props.children}</div>;
+export function ItemTitle(props: UiProps) {
+  return <div {...uiProps("item-title", title, cells(props))}>{props.children}</div>;
 }
 
-export function ItemDescription(props: Incoming<UiProps>) {
-  return <p {...uiProps("item-description", description, props)}>{props.children}</p>;
+export function ItemDescription(props: UiProps) {
+  return <p {...uiProps("item-description", description, cells(props))}>{props.children}</p>;
 }
 
-export function ItemActions(props: Incoming<UiProps>) {
-  return <div {...uiProps("item-actions", actions, props)}>{props.children}</div>;
+export function ItemActions(props: UiProps) {
+  return <div {...uiProps("item-actions", actions, cells(props))}>{props.children}</div>;
 }
 
 /** A full-width band above the row's columns. */
-export function ItemHeader(props: Incoming<UiProps>) {
-  return <div {...uiProps("item-header", band, props)}>{props.children}</div>;
+export function ItemHeader(props: UiProps) {
+  return <div {...uiProps("item-header", band, cells(props))}>{props.children}</div>;
 }
 
 /** A full-width band below them. */
-export function ItemFooter(props: Incoming<UiProps>) {
-  return <div {...uiProps("item-footer", band, props)}>{props.children}</div>;
+export function ItemFooter(props: UiProps) {
+  return <div {...uiProps("item-footer", band, cells(props))}>{props.children}</div>;
 }

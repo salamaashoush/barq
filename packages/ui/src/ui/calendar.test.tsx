@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { DateRange } from "@barqjs/aria/calendar";
 import { CalendarDate } from "@barqjs/aria/date";
 import { provideDirection, provideLocale } from "@barqjs/aria/i18n";
-import { createSignal, flush, type Child, type Incoming } from "@barqjs/core";
+import { cells, createSignal, flush, type Child, type Incoming } from "@barqjs/core";
 import { accessibleName, expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
 
 import { rulesFor } from "../test-rules.ts";
@@ -24,9 +24,9 @@ function cellOf(button: HTMLElement): HTMLElement {
 }
 
 describe("Calendar", () => {
-  function Departure(props: Incoming<{ onChange?: (value: CalendarDate | null) => void }>) {
+  function Departure(props: { onChange?: (value: CalendarDate | null) => void }) {
     return (
-      <Calendar aria-label="Departure" defaultFocusedValue={MARCH} onChange={props.onChange?.()} />
+      <Calendar aria-label="Departure" defaultFocusedValue={MARCH} onChange={props.onChange} />
     );
   }
 
@@ -296,13 +296,13 @@ describe("Calendar, a range by mode", () => {
 });
 
 describe("Calendar, several months", () => {
-  function Two(props: Incoming<{ pagedNavigation?: boolean }>) {
+  function Two(props: { pagedNavigation?: boolean }) {
     return (
       <Calendar
         aria-label="Departure"
         defaultFocusedValue={MARCH}
         numberOfMonths={2}
-        pagedNavigation={props.pagedNavigation?.()}
+        pagedNavigation={props.pagedNavigation}
       />
     );
   }
@@ -380,12 +380,12 @@ describe("Calendar, several months", () => {
 });
 
 describe("Calendar, caption dropdowns", () => {
-  function Birth(props: Incoming<{ layout?: "dropdown" | "dropdown-months" | "dropdown-years" }>) {
+  function Birth(props: { layout?: "dropdown" | "dropdown-months" | "dropdown-years" }) {
     return (
       <Calendar
         aria-label="Date of birth"
         defaultFocusedValue={MARCH}
-        captionLayout={props.layout?.() ?? "dropdown"}
+        captionLayout={props.layout ?? "dropdown"}
         startMonth={new CalendarDate(2022, 6, 1)}
         endMonth={new CalendarDate(2025, 2, 1)}
       />
@@ -571,13 +571,13 @@ describe("Calendar, the days it draws", () => {
 });
 
 describe("Calendar, switched-off days", () => {
-  function Weekdays(props: Incoming<{ onChange?: (value: CalendarDate | null) => void }>) {
+  function Weekdays(props: { onChange?: (value: CalendarDate | null) => void }) {
     return (
       <Calendar
         aria-label="Appointment"
         defaultFocusedValue={new CalendarDate(2024, 3, 8)}
         disabled={[{ dayOfWeek: [0, 6] }, { before: new CalendarDate(2024, 3, 5) }]}
-        onChange={props.onChange?.()}
+        onChange={props.onChange}
       />
     );
   }
@@ -818,12 +818,12 @@ describe("Calendar, upstream's names for its props", () => {
 });
 
 describe("Calendar, language and direction", () => {
-  function In(props: Incoming<{ locale: string; children?: Child }>) {
-    const localeProps = provideLocale(props.locale);
+  function In(props: { locale: string; children?: Child }) {
+    const localeProps = provideLocale(cells(props).locale);
     return <div {...localeProps}>{props.children}</div>;
   }
 
-  function Mirrored(props: Incoming<{ children?: Child }>) {
+  function Mirrored(props: { children?: Child }) {
     const directionProps = provideDirection("rtl");
     return <div {...directionProps}>{props.children}</div>;
   }

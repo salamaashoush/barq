@@ -1,3 +1,4 @@
+import { cells } from "@barqjs/core";
 import {
   ToggleButton as AriaToggleButton,
   toggleState,
@@ -148,32 +149,32 @@ const ALIASES = ["pressed", "defaultPressed", "onPressedChange", "disabled", "va
  * `data-selected` is what the CSS reads. `data-state` says the same thing as
  * `on` or `off`, for a rule written against shadcn's markup.
  */
-export function Toggle(props: Incoming<ToggleProps>) {
+export function Toggle(props: ToggleProps) {
   // Held here and handed down controlled, so the attribute below and the
   // button's own `aria-pressed` read one value.
   const state = toggleState({
-    isSelected: () => props.pressed?.() ?? props.isSelected?.(),
-    defaultSelected: () => props.defaultPressed?.() ?? props.defaultSelected?.(),
+    isSelected: () => props.pressed ?? props.isSelected,
+    defaultSelected: () => props.defaultPressed ?? props.defaultSelected,
     onChange(next) {
-      props.onChange?.()?.(next);
-      props.onPressedChange?.()?.(next);
+      props.onChange?.(next);
+      props.onPressedChange?.(next);
     },
   });
 
   return (
     <AriaToggleButton
-      {...omit(props, ALIASES)}
+      {...omit(cells(props), ALIASES)}
       isSelected={state.isSelected()}
       onChange={(next: boolean) => state.setSelected(next)}
-      isDisabled={props.isDisabled?.() ?? props.disabled?.()}
-      data-slot={props["data-slot"]?.() ?? "toggle"}
-      data-variant={props.variant?.() ?? "default"}
-      data-size={props.size?.() ?? "default"}
+      isDisabled={props.isDisabled ?? props.disabled}
+      data-slot={props["data-slot"] ?? "toggle"}
+      data-variant={props.variant ?? "default"}
+      data-size={props.size ?? "default"}
       data-state={state.isSelected() ? "on" : "off"}
       class={ui(
-        toggleVariants({ variant: props.variant?.(), size: props.size?.() }),
-        props.class?.(),
-        props.className?.(),
+        toggleVariants({ variant: props.variant, size: props.size }),
+        props.class,
+        props.className,
       )}
     />
   );

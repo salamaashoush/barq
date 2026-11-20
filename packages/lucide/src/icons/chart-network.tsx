@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function ChartNetwork(props: Incoming<IconProps>) {
+export function ChartNetwork(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="m13.11 7.664 1.78 2.672" />
       <path d="m14.162 12.788-3.324 1.424" />
       <path d="m20 4-6.06 1.515" />

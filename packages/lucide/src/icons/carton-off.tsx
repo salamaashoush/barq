@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function CartonOff(props: Incoming<IconProps>) {
+export function CartonOff(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M10 10H5v10a2 2 0 002 2h10a2 2 0 002-2v-1" />
       <path d="M13 22v-9" />
       <path d="M13.902 8.245 16 6h-4.343" />

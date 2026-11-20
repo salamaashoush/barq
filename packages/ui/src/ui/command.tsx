@@ -23,6 +23,7 @@ import {
 import type { ItemAccessors, Key, Node } from "@barqjs/aria/collections";
 import { fromProps, mergeProps } from "@barqjs/aria/utils";
 import {
+  cells,
   createContext,
   For,
   getContext,
@@ -261,10 +262,10 @@ function use(): CommandValue<unknown> {
  */
 const WrittenContext = createContext<boolean>(false);
 
-function Mode(props: Incoming<{ isWritten: boolean; children?: Child }>) {
+function Mode(props: { isWritten: boolean; children?: Child }) {
   return provide(
     WrittenContext,
-    () => props.isWritten(),
+    () => props.isWritten,
     () => props.children as unknown,
   );
 }
@@ -356,13 +357,13 @@ export interface CommandProps<T> extends Omit<UiProps, "children">, ItemAccessor
  * </Command>
  * ```
  */
-export function Command<T>(props: Incoming<CommandProps<T>>) {
+export function Command<T>(props: CommandProps<T>) {
   if (props.items === undefined) {
     return (
       <WrittenCommand
         {...props}
-        data-slot={props["data-slot"]?.() ?? "command"}
-        class={ui(root, props.class?.(), props.className?.())}
+        data-slot={props["data-slot"] ?? "command"}
+        class={ui(root, props.class, props.className)}
       >
         <Mode isWritten>{props.children}</Mode>
       </WrittenCommand>
@@ -371,22 +372,22 @@ export function Command<T>(props: Incoming<CommandProps<T>>) {
 
   const inputRef = makeRef<HTMLInputElement>();
   const listRef = makeRef<HTMLUListElement>();
-  const options = fromProps(props as unknown as Incoming<Record<string, unknown>>);
+  const options = fromProps(cells(props) as unknown as Incoming<Record<string, unknown>>);
 
   const state = comboBoxState<T>({
     ...(options as unknown as Record<string, never>),
-    inputValue: () => props.value?.(),
-    defaultInputValue: () => props.defaultValue?.() ?? "",
+    inputValue: () => props.value,
+    defaultInputValue: () => props.defaultValue ?? "",
     // Always open and never closing: the list is part of the palette rather
     // than a popover it puts up, so there is no closed state to be in.
     isOpen: () => true,
     allowsEmptyCollection: () => true,
     menuTrigger: () => "focus",
-    filterBy: props.filterBy?.(),
-    onInputChange: (value) => props.onValueChange?.()?.(value),
+    filterBy: props.filterBy,
+    onInputChange: (value) => props.onValueChange?.(value),
     onSelectionChange: (key) => {
       if (key === null) return;
-      props.onAction?.()?.(key);
+      props.onAction?.(key);
       // A palette runs the thing and forgets it. Leaving the key selected would
       // make choosing it twice in a row do nothing the second time.
       state.setSelectedKey(null);
@@ -417,13 +418,13 @@ export function Command<T>(props: Incoming<CommandProps<T>>) {
   const isEmpty = (): boolean => [...state.collection()].length === 0;
 
   return (
-    <div {...uiProps("command", root, props)}>
+    <div {...uiProps("command", root, cells(props))}>
       <Mode isWritten={false}>
-        <ItemsInput placeholder={props.placeholder?.()} />
+        <ItemsInput placeholder={props.placeholder} />
         <Show
           when={isEmpty()}
           fallback={
-            <ItemsList aria-label={props["aria-label"]?.()} listSlot={props.listSlot?.()}>
+            <ItemsList aria-label={props["aria-label"]} listSlot={props.listSlot}>
               <For each={() => [...state.collection()]}>
                 {(node: Node<T>) => {
                   provideItemNode(node);
@@ -433,8 +434,8 @@ export function Command<T>(props: Incoming<CommandProps<T>>) {
             </ItemsList>
           }
         >
-          <div data-slot={props.emptySlot?.() ?? "command-empty"} class={empty}>
-            {props.empty?.() ?? "No results found."}
+          <div data-slot={props.emptySlot ?? "command-empty"} class={empty}>
+            {props.empty ?? "No results found."}
           </div>
         </Show>
       </Mode>
@@ -447,12 +448,12 @@ interface InputProps {
 }
 
 /** The search box of a palette given `items`, which renders it itself. */
-function ItemsInput(props: Incoming<InputProps>) {
+function ItemsInput(props: InputProps) {
   const value = use();
   const elementProps = mergeProps(value.inputProps(), {
     "data-slot": "command-input",
     class: () => input,
-    placeholder: () => props.placeholder?.(),
+    placeholder: () => props.placeholder,
   });
 
   return (
@@ -473,26 +474,26 @@ export interface CommandInputProps extends UiProps {
 }
 
 /** The search box of a written palette. One given `items` renders its own. */
-export function CommandInput(props: Incoming<CommandInputProps>) {
+export function CommandInput(props: CommandInputProps) {
   return (
     <div data-slot="command-input-wrapper" cmdk-input-wrapper="" class={inputWrapper}>
       <Search data-slot="command-input-icon" class={inputIcon} aria-hidden="true" />
       <WrittenInput
         {...props}
-        data-slot={props["data-slot"]?.() ?? "command-input"}
-        class={ui(input, props.class?.(), props.className?.())}
+        data-slot={props["data-slot"] ?? "command-input"}
+        class={ui(input, props.class, props.className)}
       />
     </div>
   );
 }
 
 /** The listbox of a written palette, holding its groups and items. */
-export function CommandList(props: Incoming<UiProps>) {
+export function CommandList(props: UiProps) {
   return (
     <WrittenList
       {...props}
-      data-slot={props["data-slot"]?.() ?? "command-list"}
-      class={ui(list, props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "command-list"}
+      class={ui(list, props.class, props.className)}
     >
       {props.children}
     </WrittenList>
@@ -500,12 +501,12 @@ export function CommandList(props: Incoming<UiProps>) {
 }
 
 /** What a written palette shows while the search matches nothing. */
-export function CommandEmpty(props: Incoming<UiProps>) {
+export function CommandEmpty(props: UiProps) {
   return (
     <WrittenEmpty
       {...props}
-      data-slot={props["data-slot"]?.() ?? "command-empty"}
-      class={ui(empty, props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "command-empty"}
+      class={ui(empty, props.class, props.className)}
     >
       {props.children}
     </WrittenEmpty>
@@ -520,12 +521,12 @@ export interface CommandLoadingProps extends UiProps {
 }
 
 /** A row to show, by your own condition, while a written palette's items load. */
-export function CommandLoading(props: Incoming<CommandLoadingProps>) {
+export function CommandLoading(props: CommandLoadingProps) {
   return (
     <WrittenLoading
       {...props}
-      data-slot={props["data-slot"]?.() ?? "command-loading"}
-      class={ui(empty, props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "command-loading"}
+      class={ui(empty, props.class, props.className)}
     >
       {props.children}
     </WrittenLoading>
@@ -539,7 +540,7 @@ interface ListProps {
 }
 
 /** The listbox of a palette given `items`, which renders it itself. */
-function ItemsList(props: Incoming<ListProps>) {
+function ItemsList(props: ListProps) {
   const value = use();
   const options = value.listBoxProps();
 
@@ -551,8 +552,8 @@ function ItemsList(props: Incoming<ListProps>) {
   const elementProps = mergeProps(listBoxProps, {
     id: options["id"],
     "aria-labelledby": options["aria-labelledby"],
-    "aria-label": () => props["aria-label"]?.(),
-    "data-slot": props.listSlot?.() ?? "command-list",
+    "aria-label": () => props["aria-label"],
+    "data-slot": props.listSlot ?? "command-list",
     class: () => list,
   });
 
@@ -589,14 +590,14 @@ export interface CommandGroupProps extends UiProps {
  * grouped entries render into: an `<li role="presentation">` holding a heading
  * and a `role="group"` of its own options.
  */
-export function CommandGroup(props: Incoming<CommandGroupProps>) {
+export function CommandGroup(props: CommandGroupProps) {
   if (isWritten()) {
     return (
       <WrittenGroup
         {...props}
         headingSlot="command-group-label"
-        data-slot={props["data-slot"]?.() ?? "command-group"}
-        class={ui(group, props.class?.(), props.className?.())}
+        data-slot={props["data-slot"] ?? "command-group"}
+        class={ui(group, props.class, props.className)}
       >
         {props.children}
       </WrittenGroup>
@@ -604,21 +605,21 @@ export function CommandGroup(props: Incoming<CommandGroupProps>) {
   }
 
   const { itemProps, headingProps, groupProps } = listBoxSection({
-    heading: () => props.heading?.(),
-    "aria-label": () => props["aria-label"]?.(),
+    heading: () => props.heading,
+    "aria-label": () => props["aria-label"],
   });
 
   return (
     <li {...itemProps}>
-      <Show when={props.heading?.() !== undefined}>
+      <Show when={props.heading !== undefined}>
         <div {...headingProps} data-slot="command-group-label">
           {props.heading}
         </div>
       </Show>
       <ul
         {...groupProps}
-        data-slot={props["data-slot"]?.() ?? "command-group"}
-        class={ui(group, props.class?.(), props.className?.())}
+        data-slot={props["data-slot"] ?? "command-group"}
+        class={ui(group, props.class, props.className)}
       >
         {props.children}
       </ul>
@@ -646,16 +647,16 @@ export interface CommandItemProps extends UiProps {
   onSelect?: (value: string) => void;
 }
 
-export function CommandItem(props: Incoming<CommandItemProps>) {
-  const isDisabled = (): boolean | undefined => props.isDisabled?.() ?? props.disabled?.();
+export function CommandItem(props: CommandItemProps) {
+  const isDisabled = (): boolean | undefined => props.isDisabled ?? props.disabled;
 
   if (isWritten()) {
     return (
       <WrittenItem
         {...props}
         disabled={isDisabled()}
-        data-slot={props["data-slot"]?.() ?? "command-item"}
-        class={ui(item, props.class?.(), props.className?.())}
+        data-slot={props["data-slot"] ?? "command-item"}
+        class={ui(item, props.class, props.className)}
       >
         {props.children}
       </WrittenItem>
@@ -666,16 +667,16 @@ export function CommandItem(props: Incoming<CommandItemProps>) {
     <Option
       {...props}
       isDisabled={isDisabled()}
-      data-slot={props["data-slot"]?.() ?? "command-item"}
-      class={ui(item, props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "command-item"}
+      class={ui(item, props.class, props.className)}
     >
       {props.children}
     </Option>
   );
 }
 
-export function CommandShortcut(props: Incoming<UiProps>) {
-  return <span {...uiProps("command-shortcut", shortcut, props)}>{props.children}</span>;
+export function CommandShortcut(props: UiProps) {
+  return <span {...uiProps("command-shortcut", shortcut, cells(props))}>{props.children}</span>;
 }
 
 export interface CommandSeparatorProps extends UiProps {
@@ -683,17 +684,17 @@ export interface CommandSeparatorProps extends UiProps {
   alwaysRender?: boolean;
 }
 
-export function CommandSeparator(props: Incoming<CommandSeparatorProps>) {
+export function CommandSeparator(props: CommandSeparatorProps) {
   if (isWritten()) {
     return (
       <WrittenSeparator
         {...props}
-        data-slot={props["data-slot"]?.() ?? "command-separator"}
-        class={ui(separator, props.class?.(), props.className?.())}
+        data-slot={props["data-slot"] ?? "command-separator"}
+        class={ui(separator, props.class, props.className)}
       />
     );
   }
-  return <hr {...uiProps("command-separator", separator, props)} />;
+  return <hr {...uiProps("command-separator", separator, cells(props))} />;
 }
 
 export interface CommandDialogProps<T> extends CommandProps<T> {
@@ -739,24 +740,24 @@ const DIALOG_PROPS = [
  * `class` styles the dialog's content, as upstream's does; everything else is
  * the palette's own.
  */
-export function CommandDialog<T>(props: Incoming<CommandDialogProps<T>>) {
+export function CommandDialog<T>(props: CommandDialogProps<T>) {
   return (
     <Dialog
-      isOpen={props.isOpen?.() ?? props.open?.()}
-      defaultOpen={props.defaultOpen?.()}
-      onOpenChange={props.onOpenChange?.()}
+      isOpen={props.isOpen ?? props.open}
+      defaultOpen={props.defaultOpen}
+      onOpenChange={props.onOpenChange}
     >
       <DialogContent
-        class={ui(dialogContent, props.class?.(), props.className?.())}
-        showCloseButton={props.showCloseButton?.() === true}
+        class={ui(dialogContent, props.class, props.className)}
+        showCloseButton={props.showCloseButton === true}
       >
         <DialogHeader class={srOnly}>
-          <DialogTitle>{props.title?.() ?? "Command palette"}</DialogTitle>
+          <DialogTitle>{props.title ?? "Command palette"}</DialogTitle>
           <DialogDescription>
-            {props.description?.() ?? "Search for a command to run."}
+            {props.description ?? "Search for a command to run."}
           </DialogDescription>
         </DialogHeader>
-        <Command {...omit(props, DIALOG_PROPS)} />
+        <Command {...omit(cells(props), DIALOG_PROPS)} />
       </DialogContent>
     </Dialog>
   );

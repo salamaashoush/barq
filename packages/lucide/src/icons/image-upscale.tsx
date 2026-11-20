@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function ImageUpscale(props: Incoming<IconProps>) {
+export function ImageUpscale(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M16 3h5v5" />
       <path d="M17 21h2a2 2 0 0 0 2-2" />
       <path d="M21 12v3" />

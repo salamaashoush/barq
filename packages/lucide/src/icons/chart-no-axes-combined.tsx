@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function ChartNoAxesCombined(props: Incoming<IconProps>) {
+export function ChartNoAxesCombined(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M12 16v5" />
       <path d="M16 14.639V21" />
       <path d="M20 10.656V21" />

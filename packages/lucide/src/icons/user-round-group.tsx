@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function UserRoundGroup(props: Incoming<IconProps>) {
+export function UserRoundGroup(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M17 21a5 5 0 00-10 0" />
       <path d="M22 10.5a3.5 3.5 0 00-5.507-2.868" />
       <path d="M7.507 7.632A3.5 3.5 0 002 10.5" />

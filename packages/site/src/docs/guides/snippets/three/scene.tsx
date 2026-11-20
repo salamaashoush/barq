@@ -8,7 +8,7 @@ export default function Box(props: { x: () => number }) {
   useFrame((_, delta) => setAngle(angle() + delta));
   return (
     <mesh
-      position-x={props.x()}
+      position-x={props.x}
       rotation={[angle(), angle(), 0]}
       scale={clicked() ? 1.5 : 1}
       onClick={(event: ThreeEvent<MouseEvent>) => {

@@ -1,3 +1,4 @@
+import { cells } from "@barqjs/core";
 import type { Incoming } from "@barqjs/core";
 import { layer, variants } from "@barqjs/css";
 
@@ -289,12 +290,12 @@ export interface InputGroupProps extends UiProps {
  * That is why `<InputGroupInput>` exists instead of a bare `<Input>`: it
  * carries the `data-slot="input-group-control"` the group looks for.
  */
-export function InputGroup(props: Incoming<InputGroupProps>) {
+export function InputGroup(props: InputGroupProps) {
   return (
     <div
-      {...uiProps("input-group", root, props)}
-      role={props.role?.() ?? "group"}
-      data-disabled={props.isDisabled?.() === true ? "" : undefined}
+      {...uiProps("input-group", root, cells(props))}
+      role={props.role ?? "group"}
+      data-disabled={props.isDisabled === true ? "" : undefined}
     >
       {props.children}
     </div>
@@ -310,14 +311,14 @@ export interface InputGroupAddonProps extends UiProps {
  * A press on the padding moves focus to the control, the way a click on an
  * input's own padding does. A press on a button inside is that button's.
  */
-export function InputGroupAddon(props: Incoming<InputGroupAddonProps>) {
+export function InputGroupAddon(props: InputGroupAddonProps) {
   return (
     <div
-      {...uiProps("input-group-addon", addon, props)}
-      role={props.role?.() ?? "group"}
-      data-align={props.align?.() ?? "inline-start"}
+      {...uiProps("input-group-addon", addon, cells(props))}
+      role={props.role ?? "group"}
+      data-align={props.align ?? "inline-start"}
       onClick={(event: MouseEvent) => {
-        props.onClick?.()?.(event);
+        props.onClick?.(event);
         const target = event.target as HTMLElement | null;
         if (target !== null && target.closest("button") !== null) return;
         const group = (event.currentTarget as HTMLElement).parentElement;
@@ -338,47 +339,47 @@ export interface InputGroupButtonProps extends Omit<ButtonProps, "size"> {
 }
 
 /** A `<Button>` sized to sit inside the border rather than beside it. */
-export function InputGroupButton(props: Incoming<InputGroupButtonProps>) {
+export function InputGroupButton(props: InputGroupButtonProps) {
   return (
     <Button
       {...props}
-      data-slot={props["data-slot"]?.() ?? "input-group-button"}
-      variant={props.variant?.() ?? "ghost"}
-      size={props.size?.() ?? "xs"}
+      data-slot={props["data-slot"] ?? "input-group-button"}
+      variant={props.variant ?? "ghost"}
+      size={props.size ?? "xs"}
       class={ui(
-        inputGroupButtonVariants({ size: props.size?.() }),
-        props.class?.(),
-        props.className?.(),
+        inputGroupButtonVariants({ size: props.size }),
+        props.class,
+        props.className,
       )}
     />
   );
 }
 
 /** A word inside the border: a unit, a currency, a domain. */
-export function InputGroupText(props: Incoming<UiProps>) {
-  return <span {...uiProps("input-group-text", label, props)}>{props.children}</span>;
+export function InputGroupText(props: UiProps) {
+  return <span {...uiProps("input-group-text", label, cells(props))}>{props.children}</span>;
 }
 
 export interface InputGroupInputProps extends InputProps {}
 
-export function InputGroupInput(props: Incoming<InputGroupInputProps>) {
+export function InputGroupInput(props: InputGroupInputProps) {
   return (
     <Input
       {...props}
-      data-slot={props["data-slot"]?.() ?? "input-group-control"}
-      class={ui(control, props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "input-group-control"}
+      class={ui(control, props.class, props.className)}
     />
   );
 }
 
 export interface InputGroupTextareaProps extends TextareaProps {}
 
-export function InputGroupTextarea(props: Incoming<InputGroupTextareaProps>) {
+export function InputGroupTextarea(props: InputGroupTextareaProps) {
   return (
     <Textarea
       {...props}
-      data-slot={props["data-slot"]?.() ?? "input-group-control"}
-      class={ui(controlTextarea, props.class?.(), props.className?.())}
+      data-slot={props["data-slot"] ?? "input-group-control"}
+      class={ui(controlTextarea, props.class, props.className)}
     />
   );
 }

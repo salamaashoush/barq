@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function ChartCandlestick(props: Incoming<IconProps>) {
+export function ChartCandlestick(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M9 5v4" />
       <rect width="4" height="6" x="7" y="9" rx="1" />
       <path d="M9 15v2" />

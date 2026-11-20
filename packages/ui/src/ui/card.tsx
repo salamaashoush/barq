@@ -1,3 +1,4 @@
+import { cells } from "@barqjs/core";
 import type { Incoming } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
 
@@ -150,9 +151,9 @@ export interface CardProps extends UiProps {
  * </Card>
  * ```
  */
-export function Card(props: Incoming<CardProps>) {
+export function Card(props: CardProps) {
   return (
-    <div {...uiProps("card", card, props)} data-size={props.size?.() ?? "default"}>
+    <div {...uiProps("card", card, cells(props))} data-size={props.size ?? "default"}>
       {props.children}
     </div>
   );
@@ -171,7 +172,7 @@ export interface CardEdgeProps extends UiProps {
   bordered?: boolean;
 }
 
-export function CardHeader(props: Incoming<CardEdgeProps>) {
+export function CardHeader(props: CardEdgeProps) {
   // A literal alongside the atoms. The styles ask for the padding as
   // `[.border-b]:pb-(--card-spacing)`, which compiles to `&:is(.border-b)`, so
   // without the class a bordered header had a rule under every style and no
@@ -179,28 +180,28 @@ export function CardHeader(props: Incoming<CardEdgeProps>) {
   // because the compiler folds a call whose arguments are all constants and
   // two independent conditions would leave the merge on the runtime.
   const className = (): string =>
-    props.bordered?.() === true ? ui(header, headerBordered, "border-b") : ui(header);
-  return <div {...uiProps("card-header", className, props)}>{props.children}</div>;
+    props.bordered === true ? ui(header, headerBordered, "border-b") : ui(header);
+  return <div {...uiProps("card-header", className, cells(props))}>{props.children}</div>;
 }
 
-export function CardTitle(props: Incoming<UiProps>) {
-  return <div {...uiProps("card-title", title, props)}>{props.children}</div>;
+export function CardTitle(props: UiProps) {
+  return <div {...uiProps("card-title", title, cells(props))}>{props.children}</div>;
 }
 
-export function CardDescription(props: Incoming<UiProps>) {
-  return <div {...uiProps("card-description", description, props)}>{props.children}</div>;
+export function CardDescription(props: UiProps) {
+  return <div {...uiProps("card-description", description, cells(props))}>{props.children}</div>;
 }
 
 /** The control in a header's top-right corner: the grid puts it there. */
-export function CardAction(props: Incoming<UiProps>) {
-  return <div {...uiProps("card-action", action, props)}>{props.children}</div>;
+export function CardAction(props: UiProps) {
+  return <div {...uiProps("card-action", action, cells(props))}>{props.children}</div>;
 }
 
-export function CardContent(props: Incoming<UiProps>) {
-  return <div {...uiProps("card-content", content, props)}>{props.children}</div>;
+export function CardContent(props: UiProps) {
+  return <div {...uiProps("card-content", content, cells(props))}>{props.children}</div>;
 }
 
 /** The rule above it and the muted fill are upstream's, not a `bordered` prop. */
-export function CardFooter(props: Incoming<UiProps>) {
-  return <div {...uiProps("card-footer", footer, props)}>{props.children}</div>;
+export function CardFooter(props: UiProps) {
+  return <div {...uiProps("card-footer", footer, cells(props))}>{props.children}</div>;
 }

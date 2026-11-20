@@ -21,6 +21,7 @@
  */
 
 import {
+  cells,
   type Accessor,
   type Child,
   createMemo,
@@ -722,21 +723,21 @@ export interface NumberFieldComponentProps extends StyleProps {
  * <NumberField label="Price" formatOptions={{ style: "currency", currency: "GBP" }} />
  * ```
  */
-export function NumberField(props: Incoming<NumberFieldComponentProps>) {
+export function NumberField(props: NumberFieldComponentProps) {
   const inputRef = makeRef<HTMLInputElement>();
   const incrementRef = makeRef<HTMLButtonElement>();
   const decrementRef = makeRef<HTMLButtonElement>();
 
   const state = numberFieldState({
-    value: () => props.value?.(),
-    defaultValue: () => props.defaultValue?.(),
-    minValue: () => props.minValue?.(),
-    maxValue: () => props.maxValue?.(),
-    step: () => props.step?.(),
-    formatOptions: () => props.formatOptions?.(),
-    isDisabled: () => props.isDisabled?.(),
-    isReadOnly: () => props.isReadOnly?.(),
-    onChange: (value) => props.onChange?.()?.(value),
+    value: () => props.value,
+    defaultValue: () => props.defaultValue,
+    minValue: () => props.minValue,
+    maxValue: () => props.maxValue,
+    step: () => props.step,
+    formatOptions: () => props.formatOptions,
+    isDisabled: () => props.isDisabled,
+    isReadOnly: () => props.isReadOnly,
+    onChange: (value) => props.onChange?.(value),
   });
 
   const {
@@ -752,25 +753,25 @@ export function NumberField(props: Incoming<NumberFieldComponentProps>) {
   } = numberField(
     {
       inputRef,
-      label: () => props.label?.(),
-      name: () => props.name?.(),
-      form: () => props.form?.(),
-      validate: callback<[number], string | string[] | true | null | undefined>(props.validate),
-      validationBehavior: () => props.validationBehavior?.(),
-      minValue: () => props.minValue?.(),
-      maxValue: () => props.maxValue?.(),
-      formatOptions: () => props.formatOptions?.(),
-      placeholder: () => props.placeholder?.(),
-      isDisabled: () => props.isDisabled?.(),
-      isReadOnly: () => props.isReadOnly?.(),
-      isRequired: () => props.isRequired?.(),
-      isInvalid: () => props.isInvalid?.(),
-      isWheelDisabled: () => props.isWheelDisabled?.(),
-      autoFocus: () => props.autoFocus?.(),
-      incrementAriaLabel: () => props.incrementAriaLabel?.(),
-      decrementAriaLabel: () => props.decrementAriaLabel?.(),
-      "aria-label": () => props["aria-label"]?.(),
-      "aria-labelledby": () => props["aria-labelledby"]?.(),
+      label: () => props.label,
+      name: () => props.name,
+      form: () => props.form,
+      validate: callback<[number], string | string[] | true | null | undefined>(cells(props).validate),
+      validationBehavior: () => props.validationBehavior,
+      minValue: () => props.minValue,
+      maxValue: () => props.maxValue,
+      formatOptions: () => props.formatOptions,
+      placeholder: () => props.placeholder,
+      isDisabled: () => props.isDisabled,
+      isReadOnly: () => props.isReadOnly,
+      isRequired: () => props.isRequired,
+      isInvalid: () => props.isInvalid,
+      isWheelDisabled: () => props.isWheelDisabled,
+      autoFocus: () => props.autoFocus,
+      incrementAriaLabel: () => props.incrementAriaLabel,
+      decrementAriaLabel: () => props.decrementAriaLabel,
+      "aria-label": () => props["aria-label"],
+      "aria-labelledby": () => props["aria-labelledby"],
     },
     state,
   );
@@ -778,7 +779,7 @@ export function NumberField(props: Incoming<NumberFieldComponentProps>) {
   const increment = button(incrementButtonProps, incrementRef);
   const decrement = button(decrementButtonProps, decrementRef);
   const { focusProps, isFocusVisible } = focusRing();
-  const { hoverProps, isHovered } = hover({ isDisabled: () => props.isDisabled?.() });
+  const { hoverProps, isHovered } = hover({ isDisabled: () => props.isDisabled });
 
   const owner = getOwner();
   if (owner !== null) install(owner, NumberFieldContext, () => ({ state }));
@@ -786,19 +787,19 @@ export function NumberField(props: Incoming<NumberFieldComponentProps>) {
   const elementProps = mergeProps(
     groupProps,
     hoverProps,
-    filterDOMProps(fromProps(props), { global: true }),
-    styleProps(props),
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
     {
       "data-hovered": isHovered,
-      "data-disabled": () => props.isDisabled?.() === true,
+      "data-disabled": () => props.isDisabled === true,
       "data-invalid": isInvalid,
-      "data-testid": () => props["data-testid"]?.(),
+      "data-testid": () => props["data-testid"],
     },
   );
 
   const inputElementProps = mergeProps(inputProps, focusProps, {
-    name: () => props.name?.(),
-    form: () => props.form?.(),
+    name: () => props.name,
+    form: () => props.form,
     "data-focus-visible": isFocusVisible,
   });
 
@@ -814,7 +815,7 @@ export function NumberField(props: Incoming<NumberFieldComponentProps>) {
         >
           <span aria-hidden="true">−</span>
         </button>
-        <input {...inputElementProps} ref={mergeRefs(inputRef.set, props.ref?.())} />
+        <input {...inputElementProps} ref={mergeRefs(inputRef.set, props.ref)} />
         <button
           {...increment.buttonProps}
           type="button"
@@ -827,7 +828,7 @@ export function NumberField(props: Incoming<NumberFieldComponentProps>) {
       <span {...descriptionProps}>{props.description}</span>
       <span {...errorMessageProps}>
         {() => {
-          const given = props.errorMessage?.();
+          const given = props.errorMessage;
           if (given !== undefined && given !== null && given !== "") return given;
           const found = errors();
           return found.length === 0 ? null : found.join(" ");

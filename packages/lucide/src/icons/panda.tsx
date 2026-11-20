@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Panda(props: Incoming<IconProps>) {
+export function Panda(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M11.25 17.25h1.5L12 18z" />
       <path d="m15 12 2 2" />
       <path d="M17.902 6.599a8 8 0 0 0-.5-.5" />

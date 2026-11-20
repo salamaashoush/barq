@@ -13,21 +13,21 @@ import { CalendarDate, CalendarDateTime, type DateValue } from "./date.ts";
 import { DatePicker, DateRangePicker } from "./datepicker.tsx";
 
 function Departure(
-  props: Incoming<{
+  props: {
     value?: DateValue | null;
     granularity?: "day" | "minute";
     isDisabled?: boolean;
     onChange?: (value: DateValue | null) => void;
-  }>,
+  },
 ) {
   return (
     <DatePicker
       label="Departure"
-      value={props.value?.()}
+      value={props.value}
       placeholderValue={new CalendarDate(2024, 3, 7)}
-      granularity={props.granularity?.()}
-      isDisabled={props.isDisabled?.()}
-      onChange={props.onChange?.()}
+      granularity={props.granularity}
+      isDisabled={props.isDisabled}
+      onChange={props.onChange}
     />
   );
 }
@@ -157,12 +157,12 @@ describe("DatePicker", () => {
 });
 
 describe("DateRangePicker", () => {
-  function Stay(props: Incoming<{ onChange?: (value: DateRange | null) => void }>) {
+  function Stay(props: { onChange?: (value: DateRange | null) => void }) {
     return (
       <DateRangePicker
         label="Stay"
         placeholderValue={new CalendarDate(2024, 3, 7)}
-        onChange={props.onChange?.()}
+        onChange={props.onChange}
       />
     );
   }

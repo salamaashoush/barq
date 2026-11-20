@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function RadioTower(props: Incoming<IconProps>) {
+export function RadioTower(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M4.9 16.1C1 12.2 1 5.8 4.9 1.9" />
       <path d="M7.8 4.7a6.14 6.14 0 0 0-.8 7.5" />
       <circle cx="12" cy="9" r="2" />

@@ -502,10 +502,10 @@ const heading = css`
  * links and headings are two lists drifts the moment one gains an entry, and
  * the drift is a link that silently scrolls nowhere.
  */
-function Section(props: Incoming<{ title?: string; children?: Child }>) {
-  const id = (): string => slugOf(props.title?.() ?? "");
+function Section(props: { title?: string; children?: Child }) {
+  const id = (): string => slugOf(props.title ?? "");
   return (
-    <section data-section={props.title?.()} id={id} class={anchor}>
+    <section data-section={props.title} id={id} class={anchor}>
       <h2 class={heading}>{props.title}</h2>
       {props.children}
     </section>
@@ -1729,8 +1729,8 @@ export function Designer() {
  * overlays — without it a dialog opened inside the preview portals to the body,
  * outside the scoped theme, and paints in the page's colours.
  */
-function PreviewPortal(props: Incoming<{ target: Element | null; children?: Child }>) {
-  providePortalTarget(() => props.target());
+function PreviewPortal(props: { target: Element | null; children?: Child }) {
+  providePortalTarget(() => props.target);
   return <>{props.children}</>;
 }
 

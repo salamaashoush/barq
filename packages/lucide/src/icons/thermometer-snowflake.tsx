@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function ThermometerSnowflake(props: Incoming<IconProps>) {
+export function ThermometerSnowflake(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="m10 20-1.25-2.5L6 18" />
       <path d="M10 4 8.75 6.5 6 6" />
       <path d="M10.585 15H10" />

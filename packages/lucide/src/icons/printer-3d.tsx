@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { cells } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Printer3d(props: Incoming<IconProps>) {
+export function Printer3d(props: IconProps) {
   return (
-    <svg {...iconProps(props)}>
+    <svg {...iconProps(cells(props))}>
       <path d="M10 11v1" />
       <path d="M12 8h8" />
       <path d="M15 20v-3a1 1 0 00-1-1H9a1 1 0 00-1 1v3" />

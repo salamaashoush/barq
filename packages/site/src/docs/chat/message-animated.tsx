@@ -30,28 +30,28 @@ const still = css`
 
 /** A chat row: the bubble, its paragraphs, and an entrance for the user's own. */
 export function MessageAnimated(
-  props: Incoming<{
+  props: {
     message: ChatMessage;
     scrollAnchor?: boolean;
     animation?: MessageAnimation;
     userVariant?: BubbleVariant;
     assistantVariant?: BubbleVariant;
-  }>,
+  },
 ) {
-  const isUser = (): boolean => props.message().role === "user";
+  const isUser = (): boolean => props.message.role === "user";
   const parts = (): string[] =>
     props
-      .message()
+      .message
       .text.split(/\n\s*\n/)
       .map((part) => part.trim())
       .filter(Boolean);
 
   return (
     <MessageScrollerItem
-      messageId={props.message().id}
-      scrollAnchor={props.scrollAnchor?.() ?? isUser()}
+      messageId={props.message.id}
+      scrollAnchor={props.scrollAnchor ?? isUser()}
       class={
-        isUser() ? `${(props.animation?.() ?? MESSAGE_ANIMATIONS[1]).class} ${still}` : undefined
+        isUser() ? `${(props.animation ?? MESSAGE_ANIMATIONS[1]).class} ${still}` : undefined
       }
     >
       <Message align={isUser() ? "end" : "start"}>
@@ -59,8 +59,8 @@ export function MessageAnimated(
           <Bubble
             variant={
               isUser()
-                ? (props.userVariant?.() ?? "muted")
-                : (props.assistantVariant?.() ?? "ghost")
+                ? (props.userVariant ?? "muted")
+                : (props.assistantVariant ?? "ghost")
             }
           >
             <BubbleContent class={paragraphs}>

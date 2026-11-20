@@ -190,7 +190,7 @@ describe("NavigationMenu", () => {
 
 /** shadcn's own shape: no `value` on an item, no viewport written out. */
 function Site(
-  props: Incoming<{
+  props: {
     viewport?: boolean;
     orientation?: "horizontal" | "vertical";
     dir?: "ltr" | "rtl";
@@ -200,32 +200,32 @@ function Site(
     onValueChange?: (value: string | null) => void;
     onSelect?: (event: Event) => void;
     disableDocs?: boolean;
-  }>,
+  },
 ) {
   return (
     <>
       <button type="button">Before</button>
       <NavigationMenu
-        viewport={props.viewport?.()}
-        orientation={props.orientation?.()}
-        dir={props.dir?.()}
-        delayDuration={props.delayDuration?.()}
-        skipDelayDuration={props.skipDelayDuration?.()}
-        value={props.value?.()}
-        onValueChange={(next) => props.onValueChange?.()?.(next === null ? null : String(next))}
+        viewport={props.viewport}
+        orientation={props.orientation}
+        dir={props.dir}
+        delayDuration={props.delayDuration}
+        skipDelayDuration={props.skipDelayDuration}
+        value={props.value}
+        onValueChange={(next) => props.onValueChange?.(next === null ? null : String(next))}
       >
         <NavigationMenuList>
           <NavigationMenuItem>
             <NavigationMenuTrigger>Home</NavigationMenuTrigger>
             <NavigationMenuContent>
-              <NavigationMenuLink href="/intro" onSelect={(event) => props.onSelect?.()?.(event)}>
+              <NavigationMenuLink href="/intro" onSelect={(event) => props.onSelect?.(event)}>
                 Introduction
               </NavigationMenuLink>
               <NavigationMenuLink href="/install">Installation</NavigationMenuLink>
             </NavigationMenuContent>
           </NavigationMenuItem>
           <NavigationMenuItem>
-            <NavigationMenuTrigger disabled={props.disableDocs?.()}>
+            <NavigationMenuTrigger disabled={props.disableDocs}>
               Components
             </NavigationMenuTrigger>
             <NavigationMenuContent>

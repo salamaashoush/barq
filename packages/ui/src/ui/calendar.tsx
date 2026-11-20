@@ -30,6 +30,7 @@ import {
   type MaybeAccessor,
 } from "@barqjs/aria/utils";
 import {
+  cells,
   createMemo,
   For,
   Repeat,
@@ -579,47 +580,47 @@ export function Calendar(props: Incoming<CalendarProps>): JSXElement;
 export function Calendar(props: Incoming<MultipleCalendarProps & { mode: "multiple" }>): JSXElement;
 export function Calendar(props: Incoming<RangeCalendarProps & { mode: "range" }>): JSXElement;
 export function Calendar(props: ModeProps): JSXElement {
-  const mode: CalendarMode = props.mode?.() ?? "single";
+  const mode: CalendarMode = props.mode ?? "single";
   if (mode === "multiple")
-    return <MultipleCalendar {...(props as Incoming<MultipleCalendarProps>)} />;
-  if (mode === "range") return <RangeCalendar {...(props as Incoming<RangeCalendarProps>)} />;
-  return <SingleCalendar {...(props as Incoming<CalendarProps>)} />;
+    return <MultipleCalendar {...(cells(props) as Incoming<MultipleCalendarProps>)} />;
+  if (mode === "range") return <RangeCalendar {...(cells(props) as Incoming<RangeCalendarProps>)} />;
+  return <SingleCalendar {...(cells(props) as Incoming<CalendarProps>)} />;
 }
 
-function SingleCalendar(props: Incoming<CalendarProps>) {
+function SingleCalendar(props: CalendarProps) {
   const state = calendarState({
-    ...sharedOptions(props),
-    value: () => chosen(props.value, props.selected),
-    defaultValue: () => props.defaultValue?.(),
-    allowsDeselection: () => props.required?.() === false,
+    ...sharedOptions(cells(props)),
+    value: () => chosen(cells(props).value, cells(props).selected),
+    defaultValue: () => props.defaultValue,
+    allowsDeselection: () => props.required === false,
     onChange: (value) => {
-      props.onChange?.()?.(value);
-      props.onSelect?.()?.(value);
+      props.onChange?.(value);
+      props.onSelect?.(value);
     },
   });
 
-  return <CalendarShell state={state} of={props} />;
+  return <CalendarShell state={state} of={cells(props)} />;
 }
 
 /**
  * Any number of days, each pressed on and off on its own. `<Calendar
  * mode="multiple">` is this.
  */
-export function MultipleCalendar(props: Incoming<MultipleCalendarProps>) {
+export function MultipleCalendar(props: MultipleCalendarProps) {
   const state = multipleCalendarState({
-    ...sharedOptions(props),
-    value: () => chosen(props.value, props.selected),
-    defaultValue: () => props.defaultValue?.(),
-    min: () => props.min?.(),
-    max: () => props.max?.(),
-    required: () => props.required?.(),
+    ...sharedOptions(cells(props)),
+    value: () => chosen(cells(props).value, cells(props).selected),
+    defaultValue: () => props.defaultValue,
+    min: () => props.min,
+    max: () => props.max,
+    required: () => props.required,
     onChange: (value) => {
-      props.onChange?.()?.(value);
-      props.onSelect?.()?.(value);
+      props.onChange?.(value);
+      props.onSelect?.(value);
     },
   });
 
-  return <CalendarShell state={state} of={props} />;
+  return <CalendarShell state={state} of={cells(props)} />;
 }
 
 /**
@@ -627,30 +628,30 @@ export function MultipleCalendar(props: Incoming<MultipleCalendarProps>) {
  * finishes, and moving the pointer between the two draws what releasing would
  * give. `<Calendar mode="range">` is this.
  */
-export function RangeCalendar(props: Incoming<RangeCalendarProps>) {
+export function RangeCalendar(props: RangeCalendarProps) {
   const state = rangeCalendarState({
-    ...sharedOptions(props),
-    value: () => chosen(props.value, props.selected),
-    defaultValue: () => props.defaultValue?.(),
-    allowsNonContiguousRanges: () => props.allowsNonContiguousRanges?.(),
+    ...sharedOptions(cells(props)),
+    value: () => chosen(cells(props).value, cells(props).selected),
+    defaultValue: () => props.defaultValue,
+    allowsNonContiguousRanges: () => props.allowsNonContiguousRanges,
     // Upstream counts the days BETWEEN the ends, so a stay of two nights is a
     // `min` of 2 and covers three days. It also ignores a `min` of 1.
     minDays: () => {
-      const min = props.min?.();
+      const min = props.min;
       return min === undefined || min <= 1 ? undefined : min + 1;
     },
     maxDays: () => {
-      const max = props.max?.();
+      const max = props.max;
       return max === undefined || max <= 0 ? undefined : max + 1;
     },
-    excludeDisabled: () => props.excludeDisabled?.(),
+    excludeDisabled: () => props.excludeDisabled,
     onChange: (value) => {
-      props.onChange?.()?.(value);
-      props.onSelect?.()?.(value);
+      props.onChange?.(value);
+      props.onSelect?.(value);
     },
   });
 
-  return <CalendarShell state={state} of={props} />;
+  return <CalendarShell state={state} of={cells(props)} />;
 }
 
 interface ShellProps {
@@ -667,9 +668,9 @@ interface ShellProps {
  * and a month wrapper, none of which that component renders. The hooks
  * underneath it are the same ones.
  */
-function CalendarShell(incoming: Incoming<ShellProps>) {
-  const state = incoming.state();
-  const props = incoming.of();
+function CalendarShell(incoming: ShellProps) {
+  const state = incoming.state;
+  const props = incoming.of;
   const prevRef = makeRef<HTMLButtonElement>();
   const nextRef = makeRef<HTMLButtonElement>();
 
@@ -777,9 +778,9 @@ interface MonthProps extends ShellProps {
 }
 
 /** One month: its caption, its weekday row and its grid of weeks. */
-function CalendarMonth(incoming: Incoming<MonthProps>) {
-  const state = incoming.state();
-  const props = incoming.of();
+function CalendarMonth(incoming: MonthProps) {
+  const state = incoming.state;
+  const props = incoming.of;
   const titleId = id();
   const hasSelect = (): boolean => (props.captionLayout?.() ?? "label") !== "label";
 
@@ -787,7 +788,7 @@ function CalendarMonth(incoming: Incoming<MonthProps>) {
     calendarGrid(
       {
         weekdayStyle: () => props.weekdayStyle?.() ?? "short",
-        monthOffset: () => incoming.offset(),
+        monthOffset: () => incoming.offset,
         fixedWeeks: () => props.fixedWeeks?.(),
         isoWeek: () => props.ISOWeek?.(),
         "aria-labelledby": () => (hasSelect() ? undefined : titleId()),
@@ -813,7 +814,7 @@ function CalendarMonth(incoming: Incoming<MonthProps>) {
             </h2>
           }
         >
-          <CalendarDropdowns state={state} of={props} offset={incoming.offset()} month={month()} />
+          <CalendarDropdowns state={state} of={props} offset={incoming.offset} month={month()} />
         </Show>
       </div>
 
@@ -901,14 +902,14 @@ const MONTHS = Array.from({ length: 12 }, (_, at) => at + 1);
  * hand, on a phone most of all. The label is decoration and hidden from
  * assistive technology; the select carries the name and the value.
  */
-function CalendarDropdowns(incoming: Incoming<DropdownsProps>) {
-  const state = incoming.state();
-  const props = incoming.of();
+function CalendarDropdowns(incoming: DropdownsProps) {
+  const state = incoming.state;
+  const props = incoming.of;
   const layout = (): CalendarCaptionLayout => props.captionLayout?.() ?? "dropdown";
   const monthFormat = dateFormatter({ month: "short" });
   const yearFormat = dateFormatter({ year: "numeric" });
 
-  const shown = (): CalendarDate => incoming.month();
+  const shown = (): CalendarDate => incoming.month;
   const first = (): CalendarDate => startOfMonth(props.startMonth?.() ?? earliest(state.today()));
   const last = (): CalendarDate => startOfMonth(props.endMonth?.() ?? latest(state.today()));
 
@@ -935,7 +936,7 @@ function CalendarDropdowns(incoming: Incoming<DropdownsProps>) {
   };
 
   const show = (year: number, month: number): void =>
-    state.showMonth(new CalendarDate(year, month, 1), incoming.offset());
+    state.showMonth(new CalendarDate(year, month, 1), incoming.offset);
 
   return (
     <div data-slot="calendar-dropdowns" class={dropdowns}>
@@ -1030,12 +1031,12 @@ export interface CalendarDayProps {
  * Both carry the range position, because shadcn styles both — the cell paints
  * the strip the range runs through and the button paints its two ends.
  */
-export function CalendarDay(props: Incoming<CalendarDayProps>) {
+export function CalendarDay(props: CalendarDayProps) {
   const domRef = makeRef<HTMLDivElement>();
-  const state = props.state();
+  const state = props.state;
 
   const cell = calendarCell(
-    { date: () => props.date(), ref: domRef, month: () => props.month?.() },
+    { date: () => props.date, ref: domRef, month: () => props.month },
     state,
   );
   const {
@@ -1056,8 +1057,8 @@ export function CalendarDay(props: Incoming<CalendarDayProps>) {
   const isRangeMiddle = (): boolean =>
     inRange && isSelected() && !isSelectionStart() && !isSelectionEnd();
   const isHidden = (): boolean =>
-    (isOutsideVisibleRange() && props.showOutsideDays?.() === false) ||
-    dateMatches(props.date(), matcher(props.hidden));
+    (isOutsideVisibleRange() && props.showOutsideDays === false) ||
+    dateMatches(props.date, matcher(cells(props).hidden));
 
   const marks = {
     "data-selected": isSelected,
@@ -1084,26 +1085,26 @@ export function CalendarDay(props: Incoming<CalendarDayProps>) {
   };
 
   const matches = (name: string): boolean =>
-    built[name]?.() ?? dateMatches(props.date(), props.modifiers?.()?.[name]);
+    built[name]?.() ?? dateMatches(props.date, props.modifiers?.[name]);
 
   // The NAMES are read once: an attribute that comes and goes with a prop
   // would need the element rebuilt, and which modifiers exist is a decision a
   // caller makes when writing the calendar. Whether a day matches one is live.
   const custom = Object.fromEntries(
-    Object.keys(props.modifiers?.() ?? {}).map((name) => [`data-${name}`, () => matches(name)]),
+    Object.keys(props.modifiers ?? {}).map((name) => [`data-${name}`, () => matches(name)]),
   );
 
   const cellClass = (): string => {
-    const named = props.modifiersClassNames?.() ?? {};
+    const named = props.modifiersClassNames ?? {};
     // One argument, not a spread: the compiler counts a call's arguments to
     // fold the ones it can read, and the merge treats a list as its members.
     const matched = Object.keys(named)
       .filter(matches)
       .map((name) => named[name]);
-    return ui(day, props.afterWeekNumber?.() === true ? dayAfterNumber : dayFirst, matched);
+    return ui(day, props.afterWeekNumber === true ? dayAfterNumber : dayFirst, matched);
   };
 
-  const render = callback<[CalendarDate, CalendarDayModifiers], Child>(props.renderDay);
+  const render = callback<[CalendarDate, CalendarDayModifiers], Child>(cells(props).renderDay);
 
   const modifiersNow = (): CalendarDayModifiers => ({
     selected: isSelected(),
@@ -1122,12 +1123,12 @@ export function CalendarDay(props: Incoming<CalendarDayProps>) {
   // day had when it was pressed.
   const dayClicked = (): void => {
     if (isHidden()) return;
-    props.onDayClick?.()?.(props.date(), modifiersNow());
+    props.onDayClick?.(props.date, modifiersNow());
   };
 
   const content = (): Child => {
-    if (render !== undefined) return render(props.date(), modifiersNow());
-    return props.formatDay?.()?.(props.date()) ?? cell.formattedDate();
+    if (render !== undefined) return render(props.date, modifiersNow());
+    return props.formatDay?.(props.date) ?? cell.formattedDate();
   };
 
   return (
@@ -1147,8 +1148,8 @@ export function CalendarDay(props: Incoming<CalendarDayProps>) {
     >
       <CalendarDayButton
         cell={cell}
-        date={props.date()}
-        variant={props.variant?.()}
+        date={props.date}
+        variant={props.variant}
         isHidden={isHidden()}
         isRangeMiddle={isRangeMiddle()}
         isSingle={!inRange && isSelected()}
@@ -1182,8 +1183,8 @@ export interface CalendarDayButtonProps {
  * Exported for a calendar that draws its own days, as upstream's is: it takes
  * the cell `calendarCell` built and anything to show under the number.
  */
-export function CalendarDayButton(props: Incoming<CalendarDayButtonProps>) {
-  const cell = props.cell();
+export function CalendarDayButton(props: CalendarDayButtonProps) {
+  const cell = props.cell;
   const { hoverProps, isHovered } = hover({ isDisabled: cell.isDisabled });
   const { focusProps, isFocusVisible } = focusRing();
 
@@ -1197,22 +1198,22 @@ export function CalendarDayButton(props: Incoming<CalendarDayButtonProps>) {
         "data-outside-month": cell.isOutsideVisibleRange,
         "data-range-start": cell.isSelectionStart,
         "data-range-end": cell.isSelectionEnd,
-        "data-range-middle": () => props.isRangeMiddle?.() === true,
-        "data-selected-single": () => props.isSingle?.() === true,
+        "data-range-middle": () => props.isRangeMiddle === true,
+        "data-selected-single": () => props.isSingle === true,
         "data-focus-visible": isFocusVisible,
         "data-hovered": isHovered,
       })}
       data-slot="calendar-day-button"
-      data-day={() => props.date().toString()}
+      data-day={() => props.date.toString()}
       class={() =>
         ui(
-          buttonVariants({ variant: props.variant?.() ?? "ghost", size: "icon" }),
+          buttonVariants({ variant: props.variant ?? "ghost", size: "icon" }),
           dayButton,
-          props.isHidden?.() === true ? hidden : undefined,
-          props.class?.(),
+          props.isHidden === true ? hidden : undefined,
+          props.class,
         )
       }
-      ref={mergeRefs(props.buttonRef?.())}
+      ref={mergeRefs(props.buttonRef)}
     >
       {props.children}
     </div>

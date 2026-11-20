@@ -42,24 +42,24 @@ const FILES: File_[] = [
 ];
 
 function Files(
-  props: Incoming<{
+  props: {
     selectionMode?: "none" | "single" | "multiple";
     sortDescriptor?: SortDescriptor;
     onSortChange?: (descriptor: SortDescriptor) => void;
     onSelectionChange?: (keys: "all" | Set<Key>) => void;
     onAction?: (key: Key) => void;
-  }>,
+  },
 ) {
   return (
     <Table
       aria-label="Files"
       columns={COLUMNS}
       items={FILES}
-      selectionMode={props.selectionMode?.() ?? "none"}
-      sortDescriptor={props.sortDescriptor?.()}
-      onSortChange={props.onSortChange?.()}
-      onSelectionChange={props.onSelectionChange?.()}
-      onAction={props.onAction?.()}
+      selectionMode={props.selectionMode ?? "none"}
+      sortDescriptor={props.sortDescriptor}
+      onSortChange={props.onSortChange}
+      onSelectionChange={props.onSelectionChange}
+      onAction={props.onAction}
     >
       <TableHeader>{(column: Column_) => <Column>{column.name}</Column>}</TableHeader>
       <TableBody>
