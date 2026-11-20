@@ -17,6 +17,7 @@ export {
   CONTEXT_MISS,
   ERROR_BOUNDARY,
   OWNERSHIP,
+  INTERACTION,
   clearHydrationData,
   currentRenderSession,
   diagnosticsEnabled,

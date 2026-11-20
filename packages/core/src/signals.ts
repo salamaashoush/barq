@@ -190,6 +190,15 @@ export const onFlush = (callback: () => void): void => {
  */
 export const OWNERSHIP: { sink: OwnershipSink | null } = { sink: null };
 
+/**
+ * How a renderer runs an event handler as the interaction its event is. Empty
+ * until the development entry fills it, so a production bundle carries the one
+ * test and none of what describes an event.
+ */
+export const INTERACTION: { frame: ((event: object, run: () => void) => void) | null } = {
+  frame: null,
+};
+
 // ============================================================================
 // The Block brand
 // ============================================================================

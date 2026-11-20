@@ -12,6 +12,7 @@ import {
   installClaimEffect,
   jsxAsValue,
   OWNERSHIP,
+  INTERACTION,
   renderEffect,
   unclaimedSeeds,
   underScope,
@@ -377,43 +378,14 @@ function ownerIn(state: DelegatedContainer, from: Node | null): Node | null {
 // their reads on that callback. A handler is a scope of its own: it reads the
 // current value on purpose, so it runs untracked, with no owner.
 //
-// Where the engine keeps attribution, the handler also runs as the interaction
-// `e` is: a write it makes is recorded as caused by `click on button "Save"`,
-// and every listener of one dispatch joins one record.
+// A development build also runs it as the interaction `e` is, so a write it
+// makes is recorded as caused by that event.
 function asHandler(e: Event, run: () => void): void {
-  if (OBSERVE !== undefined && OBSERVE.attribution.installed !== null) {
-    OBSERVE.attribution.withInteraction(
-      { type: e.type, target: describeTarget(e.target), at: dispatchedAt(e), event: e },
-      () => runWithOwner(null, () => untrack(run)),
-    );
+  if (INTERACTION.frame !== null) {
+    INTERACTION.frame(e, () => runWithOwner(null, () => untrack(run)));
     return;
   }
   runWithOwner(null, () => untrack(run));
-}
-
-/** `button#next "Next"`, `input[name=q]`: the tag, its id or name, its text. */
-function describeTarget(target: EventTarget | null): string | undefined {
-  if (!(target instanceof Element)) return undefined;
-  const tag = target.tagName.toLowerCase();
-  let out = tag;
-  const name = target.getAttribute("name");
-  if (target.id !== "") out += `#${target.id}`;
-  else if (name !== null && name !== "") out += `[name=${name}]`;
-  if (tag !== "input" && tag !== "textarea" && tag !== "select") {
-    const text = (target.textContent ?? "").trim().replace(/\s+/g, " ");
-    if (text !== "") out += ` "${text.length > 30 ? `${text.slice(0, 29)}…` : text}"`;
-  }
-  return out;
-}
-
-/**
- * When the browser made the event, on the `performance.now()` clock, which is
- * where the user's wait began. An environment that stamps events on another
- * clock answers a value past now, and that is left for the engine to default.
- */
-function dispatchedAt(e: Event): number | undefined {
-  const at = e.timeStamp;
-  return at >= 0 && at <= performance.now() ? at : undefined;
 }
 
 function dispatchDelegated(e: Event, container: Node, state: DelegatedContainer): void {

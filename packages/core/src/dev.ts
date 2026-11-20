@@ -5,9 +5,11 @@
  */
 
 import { installDevConsole } from "./dev-console.ts";
+import { installInteractionFrames } from "./dev-interaction.ts";
 
 export * from "./index.ts";
 
 export const isDev: boolean = true;
 
 installDevConsole();
+installInteractionFrames();
