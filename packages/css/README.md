@@ -272,6 +272,18 @@ under an at-rule, since `@media` adds none. The atom's **tier** decides that one
 and a tier is an ORDER: a production build runs `orderCss` over the concatenated
 asset, rule by rule.
 
+**A build writes every atom in one stylesheet.** A code-split build has a
+stylesheet per chunk, and the tier order holds inside one sheet. An atom two
+chunks use was written in both, so a chunk loaded later put a base rule after an
+earlier chunk's `@media` rule for the same property and won a pair it should
+lose. Measured on `@barqjs/ui`'s site: the docs sidebar computed `display: none`
+at 1280px. Each module holding an atom now imports one shared sheet,
+`@barqjs/vite` gathers every chunk's atoms into it once the bundle is known, and
+a chunk's own sheet keeps only its `css` blocks. On that site this took 8,882
+computed values that differed from the dev server down to 1,437 across ten
+pages, and the stylesheets from 224 KB to 204 KB gzip, since 1,179 rules had
+been written more than once.
+
 **Dev orders the same way.** `registerCss` files a compiled module's
 stylesheet under the module's id, and the registry splits it back into rules,
 reads each atom's tier off its rule text, and orders atoms as `orderCss` orders

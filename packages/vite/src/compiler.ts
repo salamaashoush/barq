@@ -496,6 +496,16 @@ interface NativeResult {
  */
 const CSS_QUERY = ".barq.css";
 
+/**
+ * Where a build's atoms go: one stylesheet that every module holding an atom
+ * imports, so the bundler puts it in a chunk each of them loads. It is served
+ * as the marker rule below and filled in `generateBundle`, once every module's
+ * atoms are known. A real `.css` path, for the reason `CSS_QUERY` is one.
+ */
+const ATOMS_ID = "/__barq_atoms.css";
+const ATOMS_MARKER = ".__barq_atoms__{--barq-atoms:0}";
+const ATOMS_MARKER_RULE = /\.__barq_atoms__\{[^}]*\}/;
+
 interface NativeCompiler {
   transform(code: string, options?: NativeTransformOptions): NativeResult;
   /**
@@ -504,6 +514,7 @@ interface NativeCompiler {
    * would be its third copy.
    */
   orderCss(css: string, layers?: string[]): string;
+  gatherAtoms(sheets: string[]): { atoms: string; sheets: string[] };
   /** The cascade layer order the given module stylesheets declare between them. */
   layerOrder(sheets: string[]): string[];
 }
@@ -1095,6 +1106,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
 
     resolveId(id) {
       if (id === CLIENT_ID) return RESOLVED_CLIENT_ID;
+      if (id === ATOMS_ID) return ATOMS_ID;
       // Claimed verbatim rather than resolved: the id already IS a real path,
       // and letting Vite resolve it again drops the query the stylesheet is
       // keyed by.
@@ -1114,6 +1126,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
           compilerOptions.coreSource ?? "@barqjs/core",
         );
       }
+      if (id === ATOMS_ID) return ATOMS_MARKER;
       if (!id.includes(CSS_QUERY)) return null;
       return cssByModule.get(id) ?? "";
     },
@@ -1155,16 +1168,50 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
      * name only the layers with no block in the same file, which is sound
      * within one sheet and loses the order across several.
      */
-    generateBundle(_options, bundle) {
-      const compiler = loadNativeCompiler();
-      if (!compiler) return;
-      const layers = compiler.layerOrder([...cssByModule.values()]);
-      for (const asset of Object.values(bundle)) {
-        if (asset.type !== "asset" || !asset.fileName.endsWith(".css")) continue;
-        const source =
-          typeof asset.source === "string" ? asset.source : Buffer.from(asset.source).toString();
-        asset.source = compiler.orderCss(source, layers);
-      }
+    generateBundle: {
+      // Before every other plugin's: the router and Start read each chunk's
+      // list of stylesheets in this hook to write what a route links, and this
+      // is what takes the emptied ones off it.
+      order: "pre",
+      handler(_options, bundle) {
+        const compiler = loadNativeCompiler();
+        if (!compiler) return;
+        const layers = compiler.layerOrder([...cssByModule.values()]);
+        const assets = Object.values(bundle).filter(
+          (asset) => asset.type === "asset" && asset.fileName.endsWith(".css"),
+        ) as { source: string | Uint8Array }[];
+        let sources = assets.map((asset) =>
+          typeof asset.source === "string" ? asset.source : Buffer.from(asset.source).toString(),
+        );
+        // One sheet for every atom, where the marker stands: a chunk loaded later
+        // then cannot write a base rule after another chunk's `@media` rule for
+        // the same property. A build with no marker has no module that asked for
+        // the shared sheet, and each asset keeps its own atoms.
+        if (sources.some((source) => ATOMS_MARKER_RULE.test(source))) {
+          const gathered = compiler.gatherAtoms(sources);
+          sources = gathered.sheets.map((source) =>
+            source.replace(ATOMS_MARKER_RULE, () => gathered.atoms),
+          );
+        }
+        assets.forEach((asset, index) => {
+          asset.source = compiler.orderCss(sources[index] ?? "", layers);
+        });
+        // A chunk whose stylesheet was atoms and nothing else now has an empty
+        // one. It leaves the bundle and every chunk's list of what to link, which
+        // the manifest and the preload lists are written from after this, so no
+        // page asks for a file that holds nothing.
+        for (const [name, asset] of Object.entries(bundle)) {
+          if (asset.type !== "asset" || !name.endsWith(".css")) continue;
+          // Vite ends each sheet with a comment of its own at this point, which is
+          // then all that is left.
+          if (typeof asset.source !== "string") continue;
+          if (asset.source.replace(/\/\*[\s\S]*?\*\//g, "").trim() !== "") continue;
+          delete bundle[name];
+          for (const chunk of Object.values(bundle)) {
+            if (chunk.type === "chunk") chunk.viteMetadata?.importedCss.delete(name);
+          }
+        }
+      },
     },
 
     // Dev only, so no byte of the panel can reach a production bundle.
@@ -1483,6 +1530,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
       // source map the compiler just produced.
       const mode = cssMode ?? (dev === true ? "inline" : "asset");
       let emitted = result.code;
+      let sharesAtoms = false;
       // Collected rather than appended one at a time: they share an import.
       const inline: [string, string][] = [];
       if (result.css !== undefined && result.css !== "") {
@@ -1493,6 +1541,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
           const changed = cssByModule.get(stylesheet) !== result.css;
           cssByModule.set(stylesheet, result.css);
           emitted += `\nimport ${JSON.stringify(stylesheet)};\n`;
+          sharesAtoms ||= result.css.includes(".a-");
           // The stylesheet's id does not change when its content does, so Vite
           // would serve the module it already has.
           if (changed && server !== undefined) {
@@ -1520,6 +1569,12 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
         }
         cssByModule.set(other, sheet);
         emitted += `\nimport ${JSON.stringify(other)};\n`;
+        sharesAtoms ||= sheet.includes(".a-");
+      }
+      // A build only: a server answers each module's own stylesheet as it is
+      // asked for, and has no moment at which every atom is known.
+      if (sharesAtoms && !serving) {
+        emitted += `\nimport ${JSON.stringify(ATOMS_ID)};\n`;
       }
 
       emitted += cssRegistrations(inline, cssSource);

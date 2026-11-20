@@ -80,6 +80,7 @@ const binding = load();
 // exports by scanning for this shape, so `import { transform }` needs it.
 
 module.exports.diagnosticCodes = binding.diagnosticCodes;
+module.exports.gatherAtoms = binding.gatherAtoms;
 module.exports.layerOrder = binding.layerOrder;
 module.exports.middlewareSplit = binding.middlewareSplit;
 module.exports.opcodes = binding.opcodes;

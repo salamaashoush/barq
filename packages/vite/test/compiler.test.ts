@@ -781,6 +781,97 @@ export const card = css\`color: red\`;
  * before `barq.reset`, and Tailwind's preflight — a later layer — beat every
  * one of them. Buttons lost their padding and their background.
  */
+describe("one stylesheet for a build's atoms", () => {
+  const ATOMS = `import { atoms } from "@barqjs/css";
+export const box = atoms({ display: "none" });
+`;
+  const MARKER = ".__barq_atoms__{--barq-atoms:0}";
+  const BASE = ".a-display_1aweqsj{display:none}";
+  const WIDE = "@media (width>=48rem){.a-display-17pnonp_1mc215m{display:block}}";
+
+  function bundle(plugin: ReturnType<typeof barqVitePlugin>, assets: Record<string, string>) {
+    const chunks = Object.fromEntries(
+      Object.entries(assets).map(([fileName, source]) => [
+        fileName,
+        { type: "asset" as const, fileName, source },
+      ]),
+    );
+    const hook = (
+      plugin.generateBundle as unknown as {
+        handler: (options: unknown, bundle: unknown) => void;
+      }
+    ).handler;
+    hook.call(plugin, {}, chunks);
+    return Object.fromEntries(Object.entries(chunks).map(([name, asset]) => [name, asset.source]));
+  }
+
+  test("a module holding an atom imports the shared sheet in a build", async () => {
+    const plugin = barqVitePlugin({ dev: false });
+    configure(plugin, { command: "build", mode: "production" });
+    const { result } = await run(plugin, ATOMS, "/a/box.ts");
+    expect(result?.code).toContain('import "/__barq_atoms.css";');
+  });
+
+  test("a module holding only a block does not", async () => {
+    const plugin = barqVitePlugin({ dev: false });
+    configure(plugin, { command: "build", mode: "production" });
+    const block = 'import { css } from "@barqjs/css";\nexport const card = css`color: red`;\n';
+    const { result } = await run(plugin, block, "/a/card.ts");
+    expect(result?.code).toContain(".barq.css");
+    expect(result?.code).not.toContain("__barq_atoms");
+  });
+
+  test("a server has no moment at which every atom is known, and imports none", async () => {
+    const plugin = barqVitePlugin({ dev: false });
+    configure(plugin, { command: "serve", mode: "production" });
+    const { result } = await run(plugin, ATOMS, "/a/box.ts");
+    expect(result?.code).not.toContain("__barq_atoms");
+  });
+
+  /**
+   * The sidebar of `@barqjs/ui`'s own site: a later chunk wrote the base rule
+   * again after the first chunk's `@media` rule, and the sidebar computed
+   * `display: none` at 1280px.
+   */
+  test("an atom two chunks hold is written once, in the shared sheet, in tier order", () => {
+    const plugin = barqVitePlugin({ dev: false });
+    const out = bundle(plugin, {
+      "shared.css": `.plain{gap:0}${MARKER}`,
+      "sidebar.css": `${BASE}${WIDE}.b1n4k2p0{color:red}`,
+      "later.css": BASE,
+    });
+    expect(out["shared.css"]).toBe(`.plain{gap:0}${BASE}${WIDE}`);
+    expect(out["sidebar.css"]).toBe(".b1n4k2p0{color:red}");
+    // Emptied, so it is gone, and no chunk still lists it.
+    expect("later.css" in out).toBe(false);
+  });
+
+  test("a stylesheet the gathering emptied leaves every chunk's list of links", () => {
+    const plugin = barqVitePlugin({ dev: false });
+    const linked = new Set(["shared.css", "later.css"]);
+    const chunks: Record<string, unknown> = {
+      "shared.css": { type: "asset", fileName: "shared.css", source: MARKER },
+      "later.css": { type: "asset", fileName: "later.css", source: `${BASE}\n/*$vite$:1*/` },
+      "route.js": { type: "chunk", fileName: "route.js", viteMetadata: { importedCss: linked } },
+    };
+    const hook = (
+      plugin.generateBundle as unknown as {
+        handler: (options: unknown, bundle: unknown) => void;
+      }
+    ).handler;
+    hook.call(plugin, {}, chunks);
+    expect(Object.keys(chunks).toSorted()).toEqual(["route.js", "shared.css"]);
+    expect([...linked]).toEqual(["shared.css"]);
+  });
+
+  test("a build with no shared sheet leaves each asset its own atoms", () => {
+    const plugin = barqVitePlugin({ dev: false });
+    const out = bundle(plugin, { "one.css": `${WIDE}${BASE}`, "two.css": BASE });
+    expect(out["one.css"]).toBe(`${BASE}${WIDE}`);
+    expect(out["two.css"]).toBe(BASE);
+  });
+});
+
 describe("cascade layer order", () => {
   const ORDER = `import { globalCss } from "@barqjs/css";
 globalCss\`@layer barq.reset, barq.base, barq.ui;\`;
@@ -797,7 +888,11 @@ export const card = css\`color: red\`;
         { type: "asset" as const, fileName, source },
       ]),
     );
-    const hook = plugin.generateBundle as unknown as (options: unknown, bundle: unknown) => void;
+    const hook = (
+      plugin.generateBundle as unknown as {
+        handler: (options: unknown, bundle: unknown) => void;
+      }
+    ).handler;
     hook.call(plugin, {}, chunks);
     return Object.fromEntries(Object.entries(chunks).map(([name, asset]) => [name, asset.source]));
   }

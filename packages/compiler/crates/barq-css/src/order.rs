@@ -293,6 +293,219 @@ pub fn arranged(atoms: &[Atom]) -> Vec<&Atom> {
     sorted
 }
 
+/// Every atom of a build in ONE stylesheet, and each sheet with its atoms taken
+/// out.
+///
+/// A code-split build is several stylesheets, and an atom two chunks use is
+/// written in both. That is bytes, and it is also a wrong answer: the tier
+/// order holds inside one sheet, so a chunk loaded later, carrying a base rule
+/// the page already had, puts that rule after the first chunk's `@media` rule
+/// for the same property and wins a pair it should lose. One sheet has one
+/// order, which is what the runtime's registry has always had in development.
+///
+/// An atom is filed under the layer it was written in and printed once. Rules
+/// that are not atoms stay where they were: a `css` block belongs to its
+/// module's chunk. A minifier merges neighbouring rules under one at-rule, so a
+/// block of several is taken apart first and neighbours are joined again after
+/// the sort.
+pub fn gather_atoms(sheets: &[&str]) -> (String, Vec<String>) {
+    let mut layers: Vec<(String, Vec<String>)> = Vec::new();
+    let mut seen: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
+    let mut file = |layer: &str, rule: &str| {
+        for unit in exploded(rule) {
+            if !seen.insert((layer.to_string(), unit.clone())) {
+                continue;
+            }
+            match layers.iter_mut().find(|(name, _)| name == layer) {
+                Some((_, rules)) => rules.push(unit),
+                None => layers.push((layer.to_string(), vec![unit])),
+            }
+        }
+    };
+
+    let mut rest: Vec<String> = Vec::with_capacity(sheets.len());
+    for sheet in sheets {
+        let mut kept = String::with_capacity(sheet.len());
+        for statement in statements(sheet) {
+            let (declared, statement) = leading_declarations(statement);
+            kept.push_str(declared);
+            if let Some((head, body)) = layer_body(statement) {
+                let name = layer_name(head);
+                let mut inner = String::new();
+                for rule in statements(body) {
+                    if holds_only_atoms(rule) {
+                        file(name, rule);
+                    } else {
+                        inner.push_str(rule);
+                    }
+                }
+                let opening = head.rfind("@layer ").unwrap_or(0);
+                kept.push_str(&head[..opening]);
+                if !inner.trim().is_empty() {
+                    kept.push_str(&head[opening..]);
+                    kept.push_str(&inner);
+                    kept.push('}');
+                }
+            } else if holds_only_atoms(statement) {
+                file("", statement);
+            } else {
+                kept.push_str(statement);
+            }
+        }
+        rest.push(kept);
+    }
+
+    let mut atoms = String::new();
+    for (name, rules) in &layers {
+        let ordered = regrouped(&order_rules(&rules.concat()));
+        if name.is_empty() {
+            atoms.push_str(&ordered);
+        } else {
+            atoms.push_str("@layer ");
+            atoms.push_str(name);
+            atoms.push('{');
+            atoms.push_str(&ordered);
+            atoms.push('}');
+        }
+    }
+    (atoms, rest)
+}
+
+/// The `@layer a, b;` and `@import …;` statements in front of a rule, and the
+/// rule. Brace counting ends a statement at `}`, so a declaration with no block
+/// of its own arrives attached to whatever follows it.
+fn leading_declarations(statement: &str) -> (&str, &str) {
+    let mut at = 0;
+    loop {
+        let rest = &statement[at..];
+        let trimmed = rest.trim_start();
+        if !trimmed.starts_with('@') {
+            break;
+        }
+        match trimmed.find(['{', ';']) {
+            Some(end) if trimmed.as_bytes()[end] == b';' => {
+                at += rest.len() - trimmed.len() + end + 1;
+            }
+            _ => break,
+        }
+    }
+    statement.split_at(at)
+}
+
+/// The name in the `@layer NAME{` a [`layer_body`] head ends with.
+fn layer_name(head: &str) -> &str {
+    let opening = head.rfind("@layer ").map_or(0, |at| at + "@layer ".len());
+    head[opening..].trim_end_matches('{').trim()
+}
+
+/// Whether `rule` is an atom, or an at-rule block every rule of which is one.
+fn holds_only_atoms(rule: &str) -> bool {
+    let units = exploded(rule);
+    !units.is_empty() && units.iter().all(|unit| tier_of_rule(unit).is_some())
+}
+
+/// `@media x{a b}` as `@media x{a}` and `@media x{b}`, to any depth. A rule with
+/// nothing to take apart is itself.
+fn exploded(rule: &str) -> Vec<String> {
+    let trimmed = rule.trim();
+    if trimmed.is_empty() {
+        return Vec::new();
+    }
+    let conditional =
+        ["@media", "@supports", "@container"].iter().any(|at| trimmed.starts_with(at));
+    let (Some(open), true) = (trimmed.find('{'), conditional && trimmed.ends_with('}')) else {
+        return by_atom(trimmed);
+    };
+    let prelude = &trimmed[..open];
+    let body = &trimmed[open + 1..trimmed.len() - 1];
+    statements(body)
+        .into_iter()
+        .flat_map(exploded)
+        .map(|inner| format!("{prelude}{{{inner}}}"))
+        .collect()
+}
+
+/// A rule whose selector list names several atoms, as one rule an atom.
+///
+/// A minifier joins rules that hold the same declaration, so two atoms that
+/// set `display:none` under different conditions come back as
+/// `[data-open] .a-display-x_1,.a-display_1{display:none}`. Read whole, that is
+/// neither atom: it would be filed once under the first class and the second
+/// atom would stay a duplicate wherever another chunk wrote it alone. Branches
+/// are grouped by the class they name, since one atom's own condition can be a
+/// list too.
+fn by_atom(rule: &str) -> Vec<String> {
+    let whole = || vec![rule.to_string()];
+    if rule.starts_with('@') || !rule.ends_with('}') {
+        return whole();
+    }
+    let Some(open) = rule.find('{') else { return whole() };
+    let (selector, body) = (&rule[..open], &rule[open..]);
+    let mut groups: Vec<(&str, Vec<&str>)> = Vec::new();
+    let mut depth = 0i32;
+    let mut start = 0usize;
+    let mut branches: Vec<&str> = Vec::new();
+    for (index, character) in selector.char_indices() {
+        match character {
+            '(' | '[' => depth += 1,
+            ')' | ']' => depth -= 1,
+            ',' if depth == 0 => {
+                branches.push(&selector[start..index]);
+                start = index + 1;
+            }
+            _ => {}
+        }
+    }
+    branches.push(&selector[start..]);
+    for branch in branches {
+        let Some(class) = atom_class(branch) else { return whole() };
+        match groups.iter_mut().find(|(name, _)| *name == class) {
+            Some((_, list)) => list.push(branch.trim()),
+            None => groups.push((class, vec![branch.trim()])),
+        }
+    }
+    if groups.len() < 2 {
+        return whole();
+    }
+    groups.into_iter().map(|(_, list)| format!("{}{body}", list.join(","))).collect()
+}
+
+/// Neighbouring rules under one at-rule prelude, written under it once.
+fn regrouped(css: &str) -> String {
+    let mut out = String::with_capacity(css.len());
+    let mut open: Option<&str> = None;
+    for rule in statements(css) {
+        let prelude = rule
+            .starts_with('@')
+            .then(|| rule.find('{'))
+            .flatten()
+            .filter(|_| rule.ends_with('}'))
+            .map(|brace| (&rule[..brace], &rule[brace + 1..rule.len() - 1]));
+        match (prelude, open) {
+            (Some((head, body)), Some(current)) if head == current => out.push_str(body),
+            (Some((head, body)), _) => {
+                if open.is_some() {
+                    out.push('}');
+                }
+                out.push_str(head);
+                out.push('{');
+                out.push_str(body);
+                open = Some(head);
+            }
+            (None, _) => {
+                if open.take().is_some() {
+                    out.push('}');
+                }
+                out.push_str(rule);
+            }
+        }
+    }
+    if open.is_some() {
+        out.push('}');
+    }
+    out
+}
+
 /// One layer's contents, with its atoms tier-ordered and everything else fixed.
 fn order_rules(body: &str) -> String {
     let rules: Vec<&str> = statements(body);
@@ -545,6 +758,89 @@ mod tests {
         assert!(at(&base.class) < at(&media.class), "{ordered}");
         // The hand-written rule kept its index, which is between them.
         assert!(at("mine") > at(&base.class) && at("mine") < at(&media.class), "{ordered}");
+    }
+
+    #[test]
+    fn every_atom_of_a_build_is_gathered_into_one_sheet_once() {
+        let base = atom_in("barq.ui", "color", "default", "red");
+        let media = atom_in("barq.ui", "color", "@media print", "green");
+        let plain = atom_in("", "margin-top", "default", "0");
+        let first = format!(
+            "@layer barq.reset, barq.ui;@layer barq.ui{{{}.mine{{color:blue}}{}}}.b1n4k2p0{{gap:1px}}{}",
+            media.rule_body(),
+            base.rule_body(),
+            plain.rule,
+        );
+        // Loaded later, with the base rule the first chunk already had.
+        let second = format!("@layer barq.ui{{{}}}{}", base.rule_body(), plain.rule);
+        let (atoms, rest) = gather_atoms(&[&first, &second]);
+
+        assert_eq!(atoms.matches(&base.class).count(), 1, "{atoms}");
+        assert_eq!(atoms.matches(&plain.class).count(), 1, "{atoms}");
+        let at = |needle: &str| atoms.find(needle).expect(needle);
+        assert!(at(&base.class) < at(&media.class), "{atoms}");
+        assert!(atoms.contains("@layer barq.ui{"), "{atoms}");
+
+        assert_eq!(
+            rest[0],
+            "@layer barq.reset, barq.ui;@layer barq.ui{.mine{color:blue}}.b1n4k2p0{gap:1px}"
+        );
+        // Nothing of the second sheet was anything but atoms.
+        assert_eq!(rest[1], "");
+    }
+
+    /// A minifier joins neighbours under one query, and two chunks join
+    /// different neighbours, so the rule is found inside either block.
+    #[test]
+    fn a_block_a_minifier_merged_is_taken_apart_and_joined_again() {
+        let a = atom_in("", "color", "@media print", "green");
+        let b = atom_in("", "margin-top", "@media print", "0");
+        let c = atom_in("", "padding-top", "@media print", "0");
+        let inner = |atom: &Atom| {
+            let open = atom.rule.find('{').expect("a block") + 1;
+            atom.rule[open..atom.rule.len() - 1].to_string()
+        };
+        let first = format!("@media print{{{}{}}}", inner(&a), inner(&b));
+        let second = format!("@media print{{{}{}}}", inner(&b), inner(&c));
+        let (atoms, rest) = gather_atoms(&[&first, &second]);
+        assert_eq!(rest, ["", ""]);
+        assert_eq!(atoms.matches("@media print{").count(), 1, "{atoms}");
+        for atom in [&a, &b, &c] {
+            assert_eq!(atoms.matches(&atom.class).count(), 1, "{atoms}");
+        }
+    }
+
+    /// What the minifier did to `@barqjs/ui`'s sidebar: the base `display:none`
+    /// joined to another atom's rule in a later chunk, after the first chunk's
+    /// `@media` atom, and the sidebar was hidden at every width.
+    #[test]
+    fn a_selector_list_a_minifier_joined_is_read_as_the_atoms_it_names() {
+        let base = atom_in("", "display", "default", "none");
+        let open = atom_in("", "display", "[data-expanded] &", "none");
+        let wide = atom_in("", "display", "@media (min-width: 48rem)", "block");
+        let selector = |atom: &Atom| atom.rule[..atom.rule.find('{').expect("a block")].to_string();
+        let joined = format!("{},{}{{display:none}}", selector(&open), selector(&base));
+        let first = format!("{}{}", base.rule, wide.rule);
+        let (atoms, rest) = gather_atoms(&[&first, &joined]);
+        assert_eq!(rest, ["", ""]);
+        assert_eq!(atoms.matches(&format!(".{}{{", base.class)).count(), 1, "{atoms}");
+        let at = |needle: &str| atoms.rfind(needle).expect(needle);
+        assert!(at(&base.class) < at(&wide.class), "{atoms}");
+    }
+
+    #[test]
+    fn one_atom_whose_own_condition_is_a_list_stays_one_rule() {
+        let atom = atom_in("", "color", "[data-expanded], &[data-open]", "red");
+        let (atoms, _) = gather_atoms(&[&atom.rule]);
+        assert_eq!(atoms, atom.rule);
+    }
+
+    #[test]
+    fn a_sheet_holding_no_atom_comes_back_as_it_was() {
+        let css = "@layer a, b;@import \"x.css\";.b1n4k2p0{color:red}@media print{.card{gap:0}}@keyframes s{to{opacity:1}}";
+        let (atoms, rest) = gather_atoms(&[css]);
+        assert_eq!(atoms, "");
+        assert_eq!(rest, [css]);
     }
 
     /// A minifier writes `@layer a;@layer b{…}` as one top-level statement, and

@@ -546,6 +546,26 @@ pub fn order_css(css: String, layers: Option<Vec<String>>) -> String {
     }
 }
 
+/// Every atom of a build's stylesheets in one sheet, each written once and in
+/// one tier order, and the sheets without them.
+///
+/// The bundler's stylesheets are per chunk and the tier order is per sheet, so
+/// an atom two chunks share is written twice and the later copy can win a pair
+/// the order was meant to settle. `sheets[i]` of the result is `sheets[i]` of
+/// the input with its atoms removed; `atoms` goes where every page loads it.
+#[napi(object)]
+pub struct GatheredAtoms {
+    pub atoms: String,
+    pub sheets: Vec<String>,
+}
+
+#[napi]
+pub fn gather_atoms(sheets: Vec<String>) -> GatheredAtoms {
+    let borrowed: Vec<&str> = sheets.iter().map(String::as_str).collect();
+    let (atoms, sheets) = barq_css::order::gather_atoms(&borrowed);
+    GatheredAtoms { atoms, sheets }
+}
+
 /// The cascade layer order `sheets` between them declare, as one list.
 ///
 /// Read from the modules the compiler emitted rather than from the built
