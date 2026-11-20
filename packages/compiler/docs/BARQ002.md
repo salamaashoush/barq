@@ -33,8 +33,8 @@ A function is always truthy. `if (loading)`, `loading ? a : b`, `loading && x`, 
 and a loop that tests an accessor therefore never change with the signal: one branch is
 dead from the start, and a `while (loading)` never ends.
 
-A prop is not reported here, because `props.label ? a : b` is how a component asks whether
-an optional prop was passed at all.
+A prop is not reported here: a component writes `props.label` as the value and the
+compiler writes the read, so `props.label ? a : b` tests what the caller passed.
 
 ## Silencing one line
 

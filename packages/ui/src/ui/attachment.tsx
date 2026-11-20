@@ -1,5 +1,4 @@
 import { cells } from "@barqjs/core";
-import type { Incoming } from "@barqjs/core";
 import { layer, variants } from "@barqjs/css";
 
 import "../theme/layers.ts";
@@ -336,7 +335,9 @@ export function AttachmentTitle(props: UiProps) {
 }
 
 export function AttachmentDescription(props: UiProps) {
-  return <span {...uiProps("attachment-description", description, cells(props))}>{props.children}</span>;
+  return (
+    <span {...uiProps("attachment-description", description, cells(props))}>{props.children}</span>
+  );
 }
 
 export function AttachmentActions(props: UiProps) {

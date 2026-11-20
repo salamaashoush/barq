@@ -4,10 +4,9 @@ export const [label, setLabel] = createSignal("first")
 
 /**
  * A rest element collects everything the pattern did not name, and the rest
- * object is then spread onto an intrinsic element. A rest pattern reads EVERY
- * remaining prop eagerly — it has to, to build the object — so this is the one
- * props shape where fine-grained flow across the boundary cannot survive at
- * all, and the two paths have to agree about that.
+ * object is then spread onto an intrinsic element. The rest object is the
+ * props record without the names the pattern took, so making it reads
+ * nothing.
  */
 function Chip(props: { text: () => string; id: string; "data-tone": string }) {
   const { text, ...rest } = props

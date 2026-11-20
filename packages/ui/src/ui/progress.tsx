@@ -12,7 +12,6 @@ import {
   provide,
   type Accessor,
   type Child,
-  type Incoming,
 } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
@@ -126,8 +125,7 @@ export function Progress(props: ProgressProps) {
     ...fromProps(cells(props)),
     formatOptions: props.formatOptions,
     maxValue: max,
-    valueLabel: () =>
-      props.getValueLabel?.(props.value ?? 0, max()) ?? props.valueLabel,
+    valueLabel: () => props.getValueLabel?.(props.value ?? 0, max()) ?? props.valueLabel,
     "aria-labelledby": () =>
       [props["aria-labelledby"], labelled() ? labelId() : undefined]
         .filter((part) => part !== undefined)

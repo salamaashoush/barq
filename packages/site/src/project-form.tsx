@@ -13,7 +13,7 @@
  * configurator, and a configurator you cannot get the result out of is a toy.
  */
 
-import { createSignal, type Incoming } from "@barqjs/core";
+import { createSignal } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 import {
   Button,

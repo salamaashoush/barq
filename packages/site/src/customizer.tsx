@@ -20,7 +20,7 @@
  * between shadcn's three component bases, and there is one here.
  */
 
-import { createSignal, type Incoming } from "@barqjs/core";
+import { createSignal } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 import {
   Button,

@@ -25,7 +25,6 @@ import {
   provide,
   type Accessor,
   type Child,
-  type Incoming,
 } from "@barqjs/core";
 import { Portal } from "@barqjs/web";
 import { layer } from "@barqjs/css";
@@ -1128,11 +1127,7 @@ export interface ToasterProps extends ToastProviderProps {}
  */
 export function Toaster(props: ToasterProps) {
   return (
-    <ToastProvider
-      toastManager={props.toastManager}
-      timeout={props.timeout}
-      limit={props.limit}
-    >
+    <ToastProvider toastManager={props.toastManager} timeout={props.timeout} limit={props.limit}>
       {props.children}
       <ToastPortal>
         <ToastViewport>

@@ -1,5 +1,4 @@
 import { Separator as AriaSeparator, type SeparatorComponentProps } from "@barqjs/aria/link";
-import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";

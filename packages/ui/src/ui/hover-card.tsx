@@ -15,6 +15,7 @@ import {
   getContext,
   onCleanup,
   provide,
+  values,
   type Child,
   type Incoming,
   type JSXElement,
@@ -227,16 +228,14 @@ export function HoverCardContent(props: HoverCardContentProps) {
 
   return (
     <AriaPopover
-      {...handedOn(cells(props))}
-      {...named(cells(props))}
+      {...values(handedOn(cells(props)))}
+      {...values(named(cells(props)))}
       onPointerEnter={(event: PointerEvent) => enter?.(event)}
       onPointerLeave={(event: PointerEvent) => leave?.(event)}
       triggerRef={value.triggerRef}
       isOpen={value.state.isOpen()}
       onOpenChange={value.state.setOpen}
-      placement={
-        props.placement ?? placementFor(props.side ?? "bottom", props.align ?? "center")
-      }
+      placement={props.placement ?? placementFor(props.side ?? "bottom", props.align ?? "center")}
       offset={props.offset ?? props.sideOffset}
       crossOffset={props.crossOffset ?? props.alignOffset}
       isDismissable

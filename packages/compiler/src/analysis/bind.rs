@@ -4,15 +4,15 @@ use oxc::ast::ast::{
     Declaration, DoWhileStatement, ExportDefaultDeclarationKind, Expression, ForStatement,
     FormalParameters, Function, FunctionType, IfStatement, ImportDeclarationSpecifier,
     JSXAttributeItem, JSXAttributeName, JSXAttributeValue, JSXChild, JSXElement, JSXElementName,
-    JSXExpression, LogicalExpression, ModuleExportName, ObjectExpression, ObjectPattern,
-    ObjectPropertyKind, Program, PropertyKey, Statement, StaticMemberExpression, SwitchStatement,
+    JSXExpression, LogicalExpression, ModuleExportName, ObjectExpression, ObjectPropertyKind,
+    Program, PropertyKey, Statement, StaticMemberExpression, SwitchStatement,
     TaggedTemplateExpression, TemplateLiteral, UnaryExpression, UnaryOperator, VariableDeclarator,
     WhileStatement,
 };
 use oxc::ast_visit::Visit;
 use oxc::ast_visit::walk;
 use oxc::semantic::{Scoping, SymbolId};
-use oxc::span::{GetSpan, Span};
+use oxc::span::Span;
 
 use crate::diag::Code;
 use crate::ir::{
@@ -122,7 +122,6 @@ pub fn classify<'a>(
 
     let mut binder = Binder {
         allocator,
-        source: module.source,
         scoping: &module.scoping,
         sugared: module.props_params.as_deref(),
         env: &mut module.env,
@@ -138,10 +137,6 @@ pub fn classify<'a>(
         suspects: Vec::new(),
         bodies: Vec::new(),
         assumed: Vec::new(),
-        destructured: Vec::new(),
-        prop_names: Vec::new(),
-        prop_calls: Vec::new(),
-        prop_typeofs: Vec::new(),
         components: Vec::new(),
         declarations: Vec::new(),
         cell_reads: Vec::new(),
@@ -193,7 +188,6 @@ fn number_reactive_symbols(env: &mut ReactiveEnv<'_>) {
 
 struct Binder<'p, 'a> {
     allocator: &'a Allocator,
-    source: &'a str,
     scoping: &'p Scoping,
     /// The props parameters the props pass declared, when it ran.
     sugared: Option<&'p [Span]>,
@@ -230,7 +224,7 @@ struct Binder<'p, 'a> {
     /// does not have it.
     valued: Vec<SymbolId>,
     exported: Vec<SymbolId>,
-    /// D1 and D3. Off for a build that will not deliver them, so a production
+    /// D1. Off for a build that will not deliver it, so a production
     /// compile pays nothing for advice nobody reads.
     rules: bool,
     /// D1's candidates. `env.kind` is not final until [`Binder::fixpoint`], so
@@ -246,19 +240,6 @@ struct Binder<'p, 'a> {
     /// object would be advice that throws. Codegen is unaffected — the two arms
     /// emit the same bytes for every read that does not call the row.
     assumed: Vec<SymbolId>,
-    /// D3. Every one-parameter object pattern a JSX-returning function takes,
-    /// judged once the tag-or-export evidence [`Binder::props_params`] needs is
-    /// in.
-    destructured: Vec<Destructured<'a>>,
-    /// D3. Every name those patterns bind, so the walk can record what only
-    /// it sees: a call to one, and a `typeof` test of one.
-    prop_names: Vec<SymbolId>,
-    /// D3. `(callee, call span, optional)` for every call of a name in
-    /// [`Binder::prop_names`].
-    prop_calls: Vec<(SymbolId, Span, bool)>,
-    /// D3. Every name in [`Binder::prop_names`] that a `typeof` tests, which is
-    /// how code that knows the name may be either kind tells them apart.
-    prop_typeofs: Vec<SymbolId>,
     /// Every function this module DECLARES as a component. `(owner, span, name)`.
     components: Vec<(Option<SymbolId>, Span, &'a str)>,
     /// C2, the other direction. Every named function-valued declaration in the
@@ -309,40 +290,7 @@ struct Suspect<'a> {
     symbol: SymbolId,
     /// The member being read, for the member-position arm.
     member: Option<&'a str>,
-    /// `props.<prop>`, when what was written is a member of a binding rather
-    /// than the binding itself. `symbol` is then the props object.
-    prop: Option<&'a str>,
 }
-
-/// A component's one parameter, written as an object pattern. Every prop
-/// arrives as a Cell, so each name the pattern binds is a function and is
-/// correct wherever a function is, `{text}` in JSX included.
-struct Destructured<'a> {
-    owner: Option<SymbolId>,
-    names: Vec<PropName<'a>>,
-    /// `(pattern span, prop key, is an array pattern)` for a pattern written
-    /// under a prop's key, which takes the Cell function itself apart.
-    nested: Vec<(Span, Option<&'a str>, bool)>,
-}
-
-#[derive(Clone, Copy)]
-struct PropName<'a> {
-    symbol: SymbolId,
-    key: &'a str,
-    /// The default's span, when it is a literal that is not a function: the
-    /// name then holds that literal when the prop is missing and a Cell when it
-    /// is passed. A default of any other kind leaves the name out entirely.
-    default: Option<Span>,
-    /// The default may be falsy, so a truthiness test can guard a call.
-    falsy: bool,
-    /// The default is `null`, so `name?.()` is safe when the prop is missing.
-    null: bool,
-}
-
-/// What a prop's Cell is legitimately asked for without being called. Narrower
-/// than [`ACCESSOR_MEMBERS`]: `props.user.name` and `props.items.length` read a
-/// function's own `name` and `length`, which nobody means.
-const CELL_MEMBERS: &[&str] = &["apply", "bind", "call"];
 
 /// Members an accessor legitimately has. It is a FUNCTION and nothing more, so
 /// `Function.prototype`'s own members are the whole list: a `.set` or a `.peek`
@@ -498,7 +446,6 @@ impl<'a> Binder<'_, 'a> {
                             if let Some(props) = props_symbol(&function.params) {
                                 self.candidates.push((None, props));
                             }
-                            self.record_destructured(None, &function.params);
                             let name =
                                 function.id.as_ref().map_or("default", |id| id.name.as_str());
                             self.components.push((None, function.span, name));
@@ -509,7 +456,6 @@ impl<'a> Binder<'_, 'a> {
                             if let Some(props) = props_symbol(&arrow.params) {
                                 self.candidates.push((None, props));
                             }
-                            self.record_destructured(None, &arrow.params);
                             self.components.push((None, arrow.span, "default"));
                         }
                     }
@@ -563,47 +509,14 @@ impl<'a> Binder<'_, 'a> {
         }
     }
 
-    /// D1 and D3, taken after [`Binder::fixpoint`] and [`Binder::props_params`]
-    /// because neither `env.kind` nor the tag-or-export evidence is final until
-    /// then. Nothing here walks the AST a second time.
+    /// D1, taken after [`Binder::fixpoint`] because `env.kind` is not final
+    /// until then. Nothing here walks the AST a second time.
     fn report(&mut self) {
         if !self.rules {
             return;
         }
-        let props = self.proven_props();
         for index in 0..self.suspects.len() {
-            let Suspect { code, span, symbol, member, prop } = self.suspects[index];
-            if let Some(prop) = prop {
-                // A prop is a Cell: `props.count * 2` multiplies a function and
-                // `props.user.name` is the function's own name.
-                if self.env.kind[symbol] != SourceKind::PropsParam {
-                    continue;
-                }
-                if member.is_some_and(|name| CELL_MEMBERS.contains(&name)) {
-                    continue;
-                }
-                let name = self.scoping.symbol_name(symbol);
-                let message = match (code, member) {
-                    (Code::Barq003, Some(member)) => format!(
-                        "`{name}.{prop}` is a Cell, a function you call to read the prop, so \
-                         `.{member}` is read from the function and not from the prop's value: \
-                         the result is `undefined` or the function's own `name` or `length`. \
-                         Call it first: `{name}.{prop}().{member}`."
-                    ),
-                    _ => format!(
-                        "`{name}.{prop}` is a Cell, a function you call to read the prop, and \
-                         here the function itself is used as the value. In a string it prints \
-                         its own source text and in arithmetic it gives `NaN`. Call it: \
-                         `{name}.{prop}()`."
-                    ),
-                };
-                self.diagnose(code, span, &message);
-                continue;
-            }
-            if let Some(name) = props.iter().find(|name| name.symbol == symbol).copied() {
-                self.misused_prop(code, span, member, name);
-                continue;
-            }
+            let Suspect { code, span, symbol, member } = self.suspects[index];
             // Keyed on the BINDING, never on `React::Reactive`: a rule keyed on
             // "a reactive read in a binary expression" fires on every correct
             // `count() * 2`.
@@ -650,188 +563,6 @@ impl<'a> Binder<'_, 'a> {
                 },
             };
             self.diagnose(code, span, &message);
-        }
-
-        for (symbol, span, optional) in std::mem::take(&mut self.prop_calls) {
-            let Some(name) = props.iter().find(|name| name.symbol == symbol).copied() else {
-                continue;
-            };
-            let Some(default) = name.default else { continue };
-            if optional && name.null {
-                continue;
-            }
-            // `onClose && onClose()` with `onClose = null` never calls the default.
-            let tested = self.suspects.iter().any(|suspect| {
-                suspect.code == Code::Barq002 && suspect.prop.is_none() && suspect.symbol == symbol
-            });
-            if name.falsy && tested {
-                continue;
-            }
-            let local = self.scoping.symbol_name(symbol);
-            let (described, fix) = self.default_fix(default, name.key);
-            self.diagnose(
-                Code::Barq005,
-                span,
-                &format!(
-                    "`{local}` comes from destructuring the props with {described}, which is not a \
-                     function, so when the prop is missing this call throws `{local} is not a \
-                     function`. Take one `props` parameter and read {fix}."
-                ),
-            );
-        }
-    }
-
-    /// D3's names, from the functions this module proved to be components,
-    /// with every nested pattern under them reported on the way: such a
-    /// pattern takes the Cell function itself apart, which is wrong whatever
-    /// the component does next.
-    fn proven_props(&mut self) -> Vec<PropName<'a>> {
-        let mut props: Vec<PropName<'a>> = Vec::new();
-        let mut reported: Vec<Span> = Vec::new();
-        for destructured in std::mem::take(&mut self.destructured) {
-            if !self.is_component(destructured.owner) {
-                continue;
-            }
-            for (span, key, array) in destructured.nested {
-                if reported.contains(&span) {
-                    continue;
-                }
-                reported.push(span);
-                let (named, fix) = match key {
-                    Some(key) => (
-                        format!("`{key}`"),
-                        format!("Bind `{key}` itself and read from its value: `{key}()`."),
-                    ),
-                    None => (
-                        "This prop".to_string(),
-                        "Bind the prop itself and read from its value.".to_string(),
-                    ),
-                };
-                let message = if array {
-                    format!(
-                        "{named} arrives as a Cell, a function you call to read the prop, and a \
-                         function is not iterable, so this pattern throws when the component \
-                         runs. {fix}"
-                    )
-                } else {
-                    format!(
-                        "{named} arrives as a Cell, a function you call to read the prop, so this \
-                         pattern takes its names from the function and not from the prop's value: \
-                         each is `undefined` or one of the function's own properties. {fix}"
-                    )
-                };
-                self.diagnose(Code::Barq005, span, &message);
-            }
-            for name in destructured.names {
-                // A reassigned name may hold anything by the time it is read,
-                // and a `typeof` test is code that already knows it may be
-                // either kind.
-                if props.iter().any(|known| known.symbol == name.symbol)
-                    || self.scoping.symbol_is_mutated(name.symbol)
-                    || self.prop_typeofs.contains(&name.symbol)
-                {
-                    continue;
-                }
-                props.push(name);
-            }
-        }
-        props
-    }
-
-    fn record_destructured(&mut self, owner: Option<SymbolId>, params: &FormalParameters<'a>) {
-        if !self.rules {
-            return;
-        }
-        let Some(pattern) = destructured_props(params) else { return };
-        let mut names = Vec::new();
-        let mut nested = Vec::new();
-        for property in &pattern.properties {
-            let key = match &property.key {
-                _ if property.computed => None,
-                PropertyKey::StaticIdentifier(key) => Some(key.name.as_str()),
-                PropertyKey::StringLiteral(key) => key.value.as_str(),
-                _ => None,
-            };
-            let (binding, default) = match &property.value {
-                BindingPattern::AssignmentPattern(assignment) => {
-                    (&assignment.left, Some(&assignment.right))
-                }
-                value => (value, None),
-            };
-            match binding {
-                BindingPattern::BindingIdentifier(identifier) => {
-                    let Some(symbol) = identifier.symbol_id.get() else { continue };
-                    let mut name = PropName {
-                        symbol,
-                        key: key.unwrap_or(identifier.name.as_str()),
-                        default: None,
-                        falsy: false,
-                        null: false,
-                    };
-                    if let Some(default) = default {
-                        let Some(falsy) = literal_falsiness(default) else { continue };
-                        name.default = Some(default.span());
-                        name.falsy = falsy;
-                        name.null =
-                            matches!(default.without_parentheses(), Expression::NullLiteral(_));
-                    }
-                    names.push(name);
-                    self.prop_names.push(symbol);
-                }
-                BindingPattern::ObjectPattern(inner) => nested.push((inner.span, key, false)),
-                BindingPattern::ArrayPattern(inner) => nested.push((inner.span, key, true)),
-                BindingPattern::AssignmentPattern(_) => {}
-            }
-        }
-        self.destructured.push(Destructured { owner, names, nested });
-    }
-
-    /// D3 at the misuse. Only a proven component's names reach here, and only
-    /// in the positions D1 already narrows to, so `{text}` in JSX and `text`
-    /// passed as an argument are never reported.
-    fn misused_prop(&mut self, code: Code, span: Span, member: Option<&str>, name: PropName<'a>) {
-        // A missing prop is `undefined` or the default, so a truthiness test is
-        // how its presence is asked about, exactly as for `props.x`.
-        if code == Code::Barq002 || member.is_some_and(|member| CELL_MEMBERS.contains(&member)) {
-            return;
-        }
-        let local = self.scoping.symbol_name(name.symbol);
-        let message = match (name.default, member) {
-            (None, None) => format!(
-                "`{local}` comes from destructuring the props, so it is the prop's Cell, a \
-                 function you call, and here the function itself is used as the value. In a \
-                 string it prints its own source text and in arithmetic it gives `NaN`. Call it: \
-                 `{local}()`."
-            ),
-            (None, Some(member)) => format!(
-                "`{local}` comes from destructuring the props, so it is the prop's Cell, a \
-                 function you call, and `.{member}` is read from the function and not from the \
-                 prop's value: the result is `undefined` or the function's own `name` or \
-                 `length`. Call it first: `{local}().{member}`."
-            ),
-            (Some(default), _) => {
-                let (described, fix) = self.default_fix(default, name.key);
-                format!(
-                    "`{local}` comes from destructuring the props with {described}, so it holds \
-                     the default when the prop is missing and the prop's Cell, a function, when \
-                     it is passed. Used as a value here, it is wrong whenever the prop is passed: \
-                     in a string it prints the function's source text and in arithmetic it gives \
-                     `NaN`. Take one `props` parameter and read {fix}."
-                )
-            }
-        };
-        self.diagnose(Code::Barq005, span, &message);
-    }
-
-    /// The default as the author wrote it, and the read that replaces the
-    /// destructured name, for a message to print. A default too long for one
-    /// line of a message is described instead of quoted.
-    fn default_fix(&self, span: Span, key: &str) -> (String, String) {
-        let text = &self.source[span.start as usize..span.end as usize];
-        if text.len() > 40 || text.contains('\n') {
-            ("a default".to_string(), format!("`props.{key}?.()` with the default after `??`"))
-        } else {
-            (format!("the default `{text}`"), format!("`props.{key}?.() ?? {text}`"))
         }
     }
 
@@ -924,7 +655,6 @@ impl<'a> Binder<'_, 'a> {
             if let Some(props) = props_symbol(params) {
                 self.candidates.push((None, props));
             }
-            self.record_destructured(None, params);
             // `None`, so `is_component` answers yes without further evidence.
             // The evidence is the key.
             self.components.push((None, span, key.name.as_str()));
@@ -958,32 +688,9 @@ impl<'a> Binder<'_, 'a> {
         if !self.rules {
             return;
         }
-        match expression {
-            Expression::Identifier(identifier) => {
-                let Some(symbol) = symbol_of(self.scoping, expression) else { return };
-                self.suspects.push(Suspect {
-                    code,
-                    span: identifier.span,
-                    symbol,
-                    member,
-                    prop: None,
-                });
-            }
-            // `props.x` in the same position. Not the truthiness arm: a prop
-            // the caller left out is `undefined`, so `props.x ? … : …` is how
-            // its presence is asked about.
-            Expression::StaticMemberExpression(read) if code != Code::Barq002 => {
-                let Some(symbol) = symbol_of(self.scoping, &read.object) else { return };
-                self.suspects.push(Suspect {
-                    code,
-                    span: read.span,
-                    symbol,
-                    member,
-                    prop: Some(read.property.name.as_str()),
-                });
-            }
-            _ => {}
-        }
+        let Expression::Identifier(identifier) = expression else { return };
+        let Some(symbol) = symbol_of(self.scoping, expression) else { return };
+        self.suspects.push(Suspect { code, span: identifier.span, symbol, member });
     }
 
     /// Aliasing needs the alias target's answer, so the declaration list runs to
@@ -1239,7 +946,6 @@ impl<'a> Binder<'_, 'a> {
                 if let Some(props) = props_symbol(params) {
                     self.candidates.push((Some(owner), props));
                 }
-                self.record_destructured(Some(owner), params);
                 self.components.push((Some(owner), span, identifier.name.as_str()));
             }
         }
@@ -1734,43 +1440,6 @@ fn props_symbol(params: &FormalParameters<'_>) -> Option<SymbolId> {
     identifier.symbol_id.get()
 }
 
-/// D3's shape. A rest parameter or an arity other than one is a different shape
-/// and gets no diagnostic.
-fn destructured_props<'p, 'a>(params: &'p FormalParameters<'a>) -> Option<&'p ObjectPattern<'a>> {
-    if params.items.len() != 1 || params.rest.is_some() {
-        return None;
-    }
-    match &params.items[0].pattern {
-        BindingPattern::ObjectPattern(pattern) => Some(pattern),
-        _ => None,
-    }
-}
-
-/// `Some` for a literal that is not a function, answering whether it may be
-/// falsy; `None` for anything else, whose value the analysis does not know.
-fn literal_falsiness(expression: &Expression<'_>) -> Option<bool> {
-    match expression.without_parentheses() {
-        Expression::NullLiteral(_) => Some(true),
-        Expression::BooleanLiteral(literal) => Some(!literal.value),
-        Expression::NumericLiteral(literal) => Some(literal.value == 0.0 || literal.value.is_nan()),
-        Expression::StringLiteral(literal) => Some(literal.value.is_empty()),
-        Expression::TemplateLiteral(literal) => Some(
-            !literal.expressions.is_empty()
-                || literal.quasis.iter().all(|quasi| quasi.value.raw.is_empty()),
-        ),
-        Expression::UnaryExpression(unary)
-            if unary.operator == UnaryOperator::UnaryNegation
-                && matches!(unary.argument, Expression::NumericLiteral(_)) =>
-        {
-            literal_falsiness(&unary.argument)
-        }
-        Expression::ObjectExpression(_)
-        | Expression::ArrayExpression(_)
-        | Expression::RegExpLiteral(_) => Some(false),
-        _ => None,
-    }
-}
-
 /// The bare name a callee spells, for the factory match above. A member
 /// expression is deliberately not followed: `x.createFileRoute` is not the
 /// factory and treating it as one would be a guess.
@@ -1868,12 +1537,6 @@ impl<'a> Visit<'a> for Binder<'_, 'a> {
     /// argument takes a scope exactly as a Block written in a component tag's
     /// slot does.
     fn visit_call_expression(&mut self, it: &oxc::ast::ast::CallExpression<'a>) {
-        if !self.prop_names.is_empty()
-            && let Some(symbol) = symbol_of(self.scoping, &it.callee)
-            && self.prop_names.contains(&symbol)
-        {
-            self.prop_calls.push((symbol, it.span, it.optional));
-        }
         if symbol_of(self.scoping, &it.callee)
             .is_some_and(|symbol| self.root_mounts.contains(&symbol))
             && let Some(first) = it.arguments.first()
@@ -1962,7 +1625,6 @@ impl<'a> Visit<'a> for Binder<'_, 'a> {
             {
                 self.candidates.push((Some(owner), props));
             }
-            self.record_destructured(owner, &it.params);
             if let Some(name) = it.id.as_ref().map(|id| id.name.as_str()) {
                 self.components.push((owner, it.span, name));
             }
@@ -2025,13 +1687,6 @@ impl<'a> Visit<'a> for Binder<'_, 'a> {
                 self.suspect(Code::Barq001, &it.argument, None);
             }
             UnaryOperator::LogicalNot => self.suspect(Code::Barq002, &it.argument, None),
-            UnaryOperator::Typeof if !self.prop_names.is_empty() => {
-                if let Some(symbol) = symbol_of(self.scoping, &it.argument)
-                    && self.prop_names.contains(&symbol)
-                {
-                    self.prop_typeofs.push(symbol);
-                }
-            }
             _ => {}
         }
         walk::walk_unary_expression(self, it);

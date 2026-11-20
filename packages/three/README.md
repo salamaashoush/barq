@@ -17,16 +17,16 @@ bun add -d @types/three
 
 ```tsx
 // src/app.tsx
-import { createSignal, type Accessor } from "@barqjs/core";
+import { createSignal } from "@barqjs/core";
 import { Canvas, useFrame } from "@barqjs/three";
 
-function Box(props: { position: Accessor<[number, number, number]> }) {
+function Box(props: { position: [number, number, number] }) {
   const [hovered, setHovered] = createSignal(false);
   const [angle, setAngle] = createSignal(0);
   useFrame((_, delta) => setAngle(angle() + delta));
   return (
     <mesh
-      position={props.position()}
+      position={props.position}
       rotation-y={angle()}
       onPointerOver={() => setHovered(true)}
       onPointerOut={() => setHovered(false)}

@@ -82,9 +82,7 @@ export interface OverlayPortalProps {
 export function OverlayPortal(props: OverlayPortalProps) {
   if (props.container === undefined) return <>{props.children}</>;
   return (
-    <PortalProvider getContainer={() => props.container ?? null}>
-      {props.children}
-    </PortalProvider>
+    <PortalProvider getContainer={() => props.container ?? null}>{props.children}</PortalProvider>
   );
 }
 

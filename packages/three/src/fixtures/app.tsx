@@ -13,10 +13,7 @@ export const [inline, setInline] = createSignal(["a", "b"]);
  * configuration: inline as the canvas's children, and as a component from a
  * file of its own.
  */
-export function App(props: {
-  onCreated: (state: RootState) => void;
-  dpr?: number;
-}) {
+export function App(props: { onCreated: (state: RootState) => void; dpr?: number }) {
   return (
     <main>
       <h1>scene</h1>

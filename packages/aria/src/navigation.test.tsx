@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush, Show, type Incoming } from "@barqjs/core";
+import { flush, Show } from "@barqjs/core";
 import { ref } from "@barqjs/primitives/refs";
 import { expectNoAriaViolations, render, screen, tick, user } from "@barqjs/testing";
 
@@ -39,9 +39,11 @@ interface BarProps {
 
 let state: NavigationMenuState;
 
-function Panel(
-  props: { menu: NavigationMenuResult; item: NavigationMenuItemResult; names: string[] },
-) {
+function Panel(props: {
+  menu: NavigationMenuResult;
+  item: NavigationMenuItemResult;
+  names: string[];
+}) {
   const item = props.item;
   return (
     <Show when={item.isOpen()}>

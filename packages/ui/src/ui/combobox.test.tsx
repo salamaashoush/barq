@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush, For, type Incoming } from "@barqjs/core";
+import { flush, For } from "@barqjs/core";
 import { expectNoAriaViolations, render, screen, tick, user } from "@barqjs/testing";
 
 import { rulesFor } from "../test-rules.ts";

@@ -1415,7 +1415,7 @@ mod tests {
         let found = codes(
             "export function Card({ user: { name = \"guest\" } }) { return <p>{name}</p>; }\n",
         );
-        assert!(found.contains(&Code::Barq031), "{found:?}");
+        assert_eq!(found, vec![Code::Barq031]);
     }
 
     #[test]
@@ -1425,5 +1425,118 @@ mod tests {
             code.contains("_$insert(_el$1, () => log({ title: _$readProp(_props$1.title) }));"),
             "{code}"
         );
+    }
+
+    #[test]
+    fn an_object_spread_onto_a_component_is_carried_and_thunked_only_when_it_moves() {
+        let code = emit(
+            "import { Chip } from \"./chip\";\n\
+             const bag = { tone: \"warm\" };\n\
+             export function Named() { return <Chip {...bag} />; }\n\
+             export function Called() { return <Chip {...pick()} />; }\n",
+        );
+        assert!(code.contains("return Chip(_$props([_$carry(bag)]));"), "{code}");
+        assert!(code.contains("return Chip(_$props([() => _$carry(pick())]));"), "{code}");
+        assert!(code.contains("carry as _$carry"), "{code}");
+    }
+
+    #[test]
+    fn a_record_spread_onto_a_component_passes_uncarried() {
+        let code = emit(
+            "import { cells, values } from \"@barqjs/core\";\n\
+             import { Chip } from \"./chip\";\n\
+             export function Whole(props) { return <Chip {...props} />; }\n\
+             export function Cast(props: Q) { return <Chip {...(props as Q)} />; }\n\
+             export function Cells(props) { return <Chip {...cells(props)} />; }\n\
+             export function Values() { return <Chip {...values(held)} />; }\n\
+             export function Rest({ a, ...rest }) { return <Chip {...rest} />; }\n",
+        );
+        assert!(
+            code.contains("export function Whole(props) {\n  return Chip(_$props([props]));"),
+            "{code}"
+        );
+        assert!(
+            code.contains(
+                "export function Cast(props: Q) {\n  return Chip(_$props([props as Q]));"
+            ),
+            "{code}"
+        );
+        assert!(
+            code.contains("export function Cells(props) {\n  return Chip(_$props([props]));"),
+            "{code}"
+        );
+        assert!(
+            code.contains("export function Values() {\n  return Chip(_$props([held]));"),
+            "{code}"
+        );
+        assert!(code.contains("const rest = _$omit(_props$1, \"a\");"), "{code}");
+        assert!(code.contains("return Chip(_$props([rest]));"), "{code}");
+        assert!(!code.contains("_$carry"), "{code}");
+    }
+
+    #[test]
+    fn a_spread_onto_an_element_is_not_carried() {
+        let code = emit(
+            "const bag = { title: \"warm\" };\n\
+             export function Card() { return <p {...bag} />; }\n",
+        );
+        assert!(code.contains("_$spread(_el$1, bag);"), "{code}");
+        assert!(!code.contains("_$carry"), "{code}");
+    }
+
+    #[test]
+    fn merge_carries_its_plain_arguments_and_its_result_is_read_as_values() {
+        let code = emit(
+            "import { merge } from \"@barqjs/core\";\n\
+             import { Chip } from \"./chip\";\n\
+             const defaults = { tone: \"warm\" };\n\
+             export function Card(props) { const all = merge(defaults, props); \
+             return <p title={all.title}><Chip {...all} /></p>; }\n",
+        );
+        assert!(code.contains("const all = merge(_$carry(defaults), props);"), "{code}");
+        assert!(
+            code.contains("_$bindProp(_el$1, _$setAttr, \"title\", () => _$readProp(all.title));"),
+            "{code}"
+        );
+        assert!(code.contains("Chip(_$props([all]))"), "{code}");
+        assert!(!code.contains("_$values"), "{code}");
+    }
+
+    #[test]
+    fn a_prop_handed_to_a_lowered_construct_is_read() {
+        let code = emit(
+            "import { Show } from \"@barqjs/core\";\n\
+             export function Card(props) { return <Show when={props.open}><b>x</b></Show>; }\n",
+        );
+        assert!(code.contains("() => _$readProp(props.open) ? 1 : 0"), "{code}");
+    }
+
+    /// The pass is the first stage, so what it leaves untouched is what the
+    /// stages after it would have been given without it.
+    #[test]
+    fn a_module_with_no_component_and_no_spread_is_left_as_it_was_parsed() {
+        use oxc::allocator::Allocator;
+        use oxc::codegen::Codegen;
+        use oxc::parser::Parser;
+
+        let source = "import { createSignal } from \"@barqjs/core\";\n\
+                      const [count] = createSignal(0);\n\
+                      function row(item) { return <li title={item.title}>{item.name}</li>; }\n\
+                      export const list = (rows) => <ul>{rows.map(row)}{count()}</ul>;\n";
+        let allocator = Allocator::new();
+        let source_type = crate::compile::source_type_for(Some("s.tsx"));
+        let untouched = Parser::new(&allocator, source, source_type).parse().program;
+        let mut program = Parser::new(&allocator, source, source_type).parse().program;
+        let outcome =
+            super::run(&allocator, &mut program, &ResolvedOptions::with_filename("s.tsx"));
+        assert!(outcome.params.is_empty());
+        assert!(outcome.refusals.is_empty());
+        assert_eq!(Codegen::new().build(&program).code, Codegen::new().build(&untouched).code);
+
+        let code = emit(source);
+        for helper in ["_$readProp", "_$values", "_$carry", "_$omit", "_$withDefault"] {
+            assert!(!code.contains(helper), "{helper} in {code}");
+        }
+        assert!(code.contains("_$insert(_el$1, () => item.name);"), "{code}");
     }
 }

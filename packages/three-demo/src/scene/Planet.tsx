@@ -1,4 +1,4 @@
-import { cells, Show, type Incoming } from "@barqjs/core";
+import { cells, Show } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import { Html, useLoader, type ThreeEvent } from "@barqjs/three";
 import { DoubleSide, TextureLoader } from "three";

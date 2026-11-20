@@ -1,5 +1,5 @@
 import { Dialog as AriaDialog, Heading, Modal, useDialogDescription } from "@barqjs/aria/dialog";
-import { cells, Show, type Incoming } from "@barqjs/core";
+import { cells, Show, values } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
 import { X } from "@barqjs/lucide/icons/x";
 
@@ -273,12 +273,12 @@ export function SheetContent(props: SheetContentProps) {
       underlayClass={underlay() === null ? overlay : undefined}
       underlaySlot="sheet-overlay"
       underlayProps={underlay() ?? undefined}
-      {...handedOn(cells(props))}
+      {...values(handedOn(cells(props)))}
       class={ui(content, props.class, props.className)}
       data-slot={props["data-slot"] ?? "sheet-content"}
       data-side={props.side ?? "right"}
     >
-      <AriaDialog {...named(cells(props))} class={contents}>
+      <AriaDialog {...values(named(cells(props)))} class={contents}>
         {props.children}
         <Show when={props.showCloseButton !== false}>
           <button type="button" data-slot="sheet-close" class={close} onClick={() => state.close()}>
@@ -322,7 +322,10 @@ export function SheetDescription(props: UiProps) {
   // a description nothing references is read by whoever goes looking for it
   // and by nobody else.
   return (
-    <p {...uiProps("sheet-description", description, cells(props))} id={props.id ?? described?.id()}>
+    <p
+      {...uiProps("sheet-description", description, cells(props))}
+      id={props.id ?? described?.id()}
+    >
       {props.children}
     </p>
   );

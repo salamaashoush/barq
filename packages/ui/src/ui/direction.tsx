@@ -4,7 +4,7 @@ import {
   type ReadingDirection,
 } from "@barqjs/aria/i18n";
 import { access, type MaybeAccessor } from "@barqjs/aria/utils";
-import type { Accessor, Child, Incoming } from "@barqjs/core";
+import type { Accessor, Child } from "@barqjs/core";
 
 export type Direction = ReadingDirection;
 

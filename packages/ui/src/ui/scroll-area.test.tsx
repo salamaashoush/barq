@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { provideDirection } from "@barqjs/aria/i18n";
-import { Show, createSignal, flush, type Child, type Incoming } from "@barqjs/core";
+import { Show, createSignal, flush, type Child } from "@barqjs/core";
 import { cleanup, render, screen, tick, user } from "@barqjs/testing";
 
 import { rulesFor } from "../test-rules.ts";
@@ -150,19 +150,13 @@ describe("ScrollArea", () => {
 });
 
 describe("ScrollBar", () => {
-  function Area(
-    props: {
-      type?: "auto" | "always" | "scroll" | "hover";
-      horizontal?: boolean;
-      scrollHideDelay?: number;
-    },
-  ) {
+  function Area(props: {
+    type?: "auto" | "always" | "scroll" | "hover";
+    horizontal?: boolean;
+    scrollHideDelay?: number;
+  }) {
     return (
-      <ScrollArea
-        aria-label="Log"
-        type={props.type}
-        scrollHideDelay={props.scrollHideDelay}
-      >
+      <ScrollArea aria-label="Log" type={props.type} scrollHideDelay={props.scrollHideDelay}>
         <p>lots of text</p>
         <ScrollBar />
         <Show when={props.horizontal === true}>

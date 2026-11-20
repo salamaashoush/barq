@@ -18,7 +18,6 @@ import {
   onCleanup,
   provide,
   type Child,
-  type Incoming,
 } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 import { GripVertical } from "@barqjs/lucide/icons/grip-vertical";
@@ -354,7 +353,10 @@ export function ResizableHandle(props: ResizableHandleProps) {
 
   return (
     <div
-      {...mergeProps(separatorProps, uiProps("resizable-handle", handle, omit(cells(props), ["id"])))}
+      {...mergeProps(
+        separatorProps,
+        uiProps("resizable-handle", handle, omit(cells(props), ["id"])),
+      )}
       ref={mergeRefs(domRef.set, props.ref)}
       id={given}
       data-resize-handle=""

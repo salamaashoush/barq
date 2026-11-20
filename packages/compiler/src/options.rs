@@ -399,7 +399,7 @@ pub struct TransformOptions {
     /// because the two are different backends over the same IR and asking for
     /// both is a caller bug rather than a blend.
     pub interp: Option<bool>,
-    /// Run the source-level diagnostic rules (D1, D3). Defaults to `dev`: they
+    /// Run the source-level diagnostic rules (D1). Defaults to `dev`: they
     /// are advice about reactivity, they are delivered through the dev channels,
     /// and a production build should not pay for analysis nobody reads. Set it
     /// explicitly to run them in CI.

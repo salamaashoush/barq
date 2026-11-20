@@ -8,7 +8,7 @@
  * and a crash reporter or a console told about it reports a failure nobody had.
  */
 
-import { flush, settle } from "@barqjs/core";
+import { type Incoming, flush, fromCells, settle } from "@barqjs/core";
 import { render } from "@barqjs/web";
 import { afterEach, describe, expect, test } from "bun:test";
 
@@ -129,7 +129,9 @@ describe("a loader run the router aborts", () => {
       routeTree: routes([
         {
           path: "/",
-          component: (props: RouteProps) => document.createTextNode(String(props.data())),
+          component: fromCells((props: Incoming<RouteProps>) =>
+            document.createTextNode(String(props.data())),
+          ),
           onError: (error: unknown) => told.push(error),
           loader: ({ signal }: { signal: AbortSignal }) => {
             const run = ++runs;

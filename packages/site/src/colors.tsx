@@ -1,4 +1,4 @@
-import { For, createSignal, type Incoming } from "@barqjs/core";
+import { For, createSignal } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import { Check } from "@barqjs/lucide/icons/check";
 import { Clipboard } from "@barqjs/lucide/icons/clipboard";

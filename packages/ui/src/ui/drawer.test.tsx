@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
-import { Show, createSignal, flush, type Incoming } from "@barqjs/core";
+import { Show, createSignal, flush } from "@barqjs/core";
 import { cleanup, render, screen, user } from "@barqjs/testing";
 
 import { rulesFor } from "../test-rules.ts";

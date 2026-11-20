@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import type { Incoming } from "@barqjs/core";
 import { render, screen, user } from "@barqjs/testing";
 
 import { rulesFor } from "../test-rules.ts";
@@ -24,12 +23,10 @@ import {
   type QuestionnaireShortcutMode,
 } from "./questionnaire.tsx";
 
-function Plans(
-  props: {
-    shortcuts?: QuestionnaireShortcutMode;
-    onAnswers?: (answers: [string, string][]) => void;
-  },
-) {
+function Plans(props: {
+  shortcuts?: QuestionnaireShortcutMode;
+  onAnswers?: (answers: [string, string][]) => void;
+}) {
   return (
     <Questionnaire
       aria-label="Plan"

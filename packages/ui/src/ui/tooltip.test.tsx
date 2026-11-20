@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { resetTooltipWarmup } from "@barqjs/aria/tooltip";
-import { createSignal, flush, onSettled, type Incoming } from "@barqjs/core";
+import { createSignal, flush, onSettled } from "@barqjs/core";
 import {
   accessibleDescription,
   expectNoAriaViolations,
@@ -33,14 +33,12 @@ async function settle(): Promise<void> {
   flush();
 }
 
-function Toolbar(
-  props: {
-    delayDuration?: number;
-    skipDelayDuration?: number;
-    disableHoverableContent?: boolean;
-    content?: TooltipContentProps;
-  },
-) {
+function Toolbar(props: {
+  delayDuration?: number;
+  skipDelayDuration?: number;
+  disableHoverableContent?: boolean;
+  content?: TooltipContentProps;
+}) {
   return (
     <TooltipProvider
       delayDuration={props.delayDuration}

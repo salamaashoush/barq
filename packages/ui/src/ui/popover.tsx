@@ -1,7 +1,6 @@
 import { cells } from "@barqjs/core";
 import { Popover as AriaPopover, type PopoverComponentProps } from "@barqjs/aria/dialog";
 import { placementFor, type Align, type Placement, type Side } from "@barqjs/aria/overlays";
-import type { Incoming } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
@@ -163,9 +162,7 @@ export function PopoverContent(props: PopoverContentProps) {
       triggerRef={target}
       isOpen={state.isOpen()}
       onOpenChange={state.setOpen}
-      placement={
-        props.placement ?? placementFor(props.side ?? "bottom", props.align ?? "center")
-      }
+      placement={props.placement ?? placementFor(props.side ?? "bottom", props.align ?? "center")}
       offset={props.offset ?? props.sideOffset}
       crossOffset={props.crossOffset ?? props.alignOffset}
       data-slot={props["data-slot"] ?? "popover-content"}

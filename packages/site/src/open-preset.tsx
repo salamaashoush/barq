@@ -12,7 +12,7 @@
  * cannot work should say so before you press the button, not after.
  */
 
-import { createSignal, type Incoming } from "@barqjs/core";
+import { createSignal } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 import {
   Button,

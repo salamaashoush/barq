@@ -29,8 +29,8 @@ import {
   provide,
   Show,
   untrack,
+  values,
   type Child,
-  type Incoming,
 } from "@barqjs/core";
 import { Portal } from "@barqjs/web";
 import { firstThatWorks, layer } from "@barqjs/css";
@@ -868,15 +868,13 @@ export function DrawerContent(props: DrawerContentProps) {
       isOpen={state.isOpen()}
       onOpenChange={request}
       isDismissable={props.isDismissable !== false && drawer.dismissible()}
-      isKeyboardDismissDisabled={
-        props.isKeyboardDismissDisabled === true || !drawer.dismissible()
-      }
+      isKeyboardDismissDisabled={props.isKeyboardDismissDisabled === true || !drawer.dismissible()}
       isNonModal={!drawer.modal()}
       autoFocus={drawer.autoFocus()}
       underlayClass={drawer.modal() ? overlay : passThrough}
       underlaySlot={drawer.modal() ? "drawer-overlay" : undefined}
       data-vaul-custom-container={drawer.container() === null ? "false" : "true"}
-      {...handedOn(cells(props))}
+      {...values(handedOn(cells(props)))}
       class={ui(content, props.class, props.className)}
       data-slot={props["data-slot"] ?? "drawer-content"}
       dir={props.dir}
@@ -886,7 +884,7 @@ export function DrawerContent(props: DrawerContentProps) {
       data-state={state.isOpen() ? "open" : "closed"}
       onPointerDown={onPointerDown}
     >
-      <AriaDialog {...named(cells(props))} class={contents} ref={section}>
+      <AriaDialog {...values(named(cells(props)))} class={contents} ref={section}>
         <DrawerSurfaceProvider value={surface} onMount={mounted} onUnmount={unmounted}>
           <Show when={props.showHandle !== false && direction() === "bottom"}>
             <DrawerHandle />
@@ -906,14 +904,12 @@ export function DrawerContent(props: DrawerContentProps) {
  * is in the document, and what the drawer needs is the element's PARENT, which
  * is the one that moves.
  */
-function DrawerSurfaceProvider(
-  props: {
-    value: DrawerSurface;
-    onMount: () => void;
-    onUnmount: () => void;
-    children?: Child;
-  },
-) {
+function DrawerSurfaceProvider(props: {
+  value: DrawerSurface;
+  onMount: () => void;
+  onUnmount: () => void;
+  children?: Child;
+}) {
   onSettled(() => {
     props.onMount();
   });
@@ -942,7 +938,11 @@ export function DrawerHeader(props: DrawerHeaderProps) {
 
   return (
     <div
-      {...uiProps("drawer-header", ui(header, centered() ? headerCentered : headerAligned), cells(props))}
+      {...uiProps(
+        "drawer-header",
+        ui(header, centered() ? headerCentered : headerAligned),
+        cells(props),
+      )}
     >
       {props.children}
     </div>
@@ -971,7 +971,10 @@ export function DrawerDescription(props: UiProps) {
   // a description nothing references is read by whoever goes looking for it
   // and by nobody else.
   return (
-    <p {...uiProps("drawer-description", description, cells(props))} id={props.id ?? described?.id()}>
+    <p
+      {...uiProps("drawer-description", description, cells(props))}
+      id={props.id ?? described?.id()}
+    >
       {props.children}
     </p>
   );

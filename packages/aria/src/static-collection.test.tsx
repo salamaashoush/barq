@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createRoot, createSignal, flush, Show, type Child, type Incoming } from "@barqjs/core";
+import { createRoot, createSignal, flush, Show, type Child } from "@barqjs/core";
 import { render, tick } from "@barqjs/testing";
 
 import { listState } from "./collections.ts";
@@ -18,16 +18,14 @@ async function settle(): Promise<void> {
   flush();
 }
 
-function Row(
-  props: {
-    of: StaticCollection;
-    id?: string;
-    textValue?: string;
-    isDisabled?: boolean;
-    isHidden?: boolean;
-    children?: Child;
-  },
-) {
+function Row(props: {
+  of: StaticCollection;
+  id?: string;
+  textValue?: string;
+  isDisabled?: boolean;
+  isHidden?: boolean;
+  children?: Child;
+}) {
   const item = staticItem(props.of, {
     key: props.id,
     textValue: () => props.textValue,

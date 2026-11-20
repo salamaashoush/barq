@@ -92,7 +92,6 @@ codes! {
     Barq002 = "BARQ002", Warning, "An accessor is used as a condition, which is always true";
     Barq003 = "BARQ003", Warning, "A property is read from an accessor instead of from its value";
     Barq004 = "BARQ004", Note, "A `<For>` row reads a field once, which goes stale if `each` holds store objects";
-    Barq005 = "BARQ005", Warning, "A destructured prop is used as a value, or called where it may not be a function";
     Barq008 = "BARQ008", Warning, "A `barq-ignore-next-line` comment silences nothing on the next line";
     Barq009 = "BARQ009", Warning, "A `barq-ignore-next-line` comment is malformed and silences nothing";
     Barq010 = "BARQ010", Warning, "JSX is passed to a prop the component reads as a value, which throws";
@@ -237,7 +236,7 @@ const MIN_REASON: usize = 10;
 
 pub const DIRECTIVE: &str = "barq-ignore-next-line";
 
-/// A parsed `// barq-ignore-next-line BARQ001, BARQ005 (reason text)`.
+/// A parsed `// barq-ignore-next-line BARQ001, BARQ003 (reason text)`.
 #[derive(Debug)]
 pub struct Suppression {
     pub codes: Vec<Code>,
@@ -442,7 +441,7 @@ mod tests {
         let mixed = severities(&[("BARQ001", "suppress"), ("BARQ004", "warning")], Some("error"));
         assert_eq!(mixed.resolve(Code::Barq001), None);
         assert_eq!(mixed.resolve(Code::Barq004), Some(Level::Warning));
-        assert_eq!(mixed.resolve(Code::Barq005), Some(Level::Error));
+        assert_eq!(mixed.resolve(Code::Barq002), Some(Level::Error));
     }
 
     /// TypeScript#62579: an unused suppression that fails the build is what

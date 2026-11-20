@@ -1821,7 +1821,7 @@ mod tests {
 
         // The code is what stops a directive swallowing an unrelated diagnostic
         // — microsoft/TypeScript#47551, labelled a Design Limitation.
-        let wrong_code = silenced.replace("BARQ001", "BARQ005");
+        let wrong_code = silenced.replace("BARQ001", "BARQ002");
         let output = compile(&wrong_code, &diagnosing("App.tsx")).expect("compiles");
         assert_eq!(codes(&output), vec!["BARQ008", "BARQ001"]);
 
@@ -1948,6 +1948,25 @@ mod tests {
         assert!(codes(&output).is_empty(), "{:?}", codes(&output));
         assert!(output.code.contains("@barqjs/server"), "{}", output.code);
         assert!(!output.code.contains("_$template"), "{}", output.code);
+    }
+
+    /// `BARQ005` warned that a name destructured from the props was the prop's
+    /// Cell, used as a value. The props pass makes each such name the read it
+    /// stands for, so the code it described is correct and the code is gone: a
+    /// comment that still names it is malformed, like one naming any code the
+    /// table does not hold.
+    #[test]
+    fn a_destructured_prop_used_as_a_value_has_nothing_to_report() {
+        let source = "export function Chip({ text, tone = \"warm\" }) {\n  \
+                      return <span data-tone={tone}>{`#${text}`}</span>;\n}\n";
+        let output = compile(source, &diagnosing("App.tsx")).expect("compiles");
+        assert!(codes(&output).is_empty(), "{:?}", codes(&output));
+        assert!(output.code.contains("`#${_$readProp(_props$1.text)}`"), "{}", output.code);
+
+        let named =
+            format!("// barq-ignore-next-line BARQ005 (the panel shows the text)\n{source}");
+        let output = compile(&named, &diagnosing("App.tsx")).expect("compiles");
+        assert_eq!(codes(&output), vec!["BARQ009"]);
     }
 
     /// A `barq-ignore` must never influence codegen. facebook/react#34261 is the

@@ -8,7 +8,7 @@
  * looking at rather than treating every activation the same.
  */
 
-import { cells, type Accessor, type Child, type Incoming } from "@barqjs/core";
+import { cells, type Accessor, type Child } from "@barqjs/core";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { focusRing } from "./focus.ts";
 import { focusable, type FocusableOptions } from "./interactions/focusable.ts";
@@ -258,14 +258,21 @@ export function Link(props: LinkComponentProps) {
   // caller's handler runs twice for every mouse click.
   const { onClick: _, ...forwarded } = filterDOMProps(options, { global: true });
 
-  const elementProps = mergeProps(linkProps, hoverProps, focusProps, forwarded, styleProps(cells(props)), {
-    "data-pressed": isPressed,
-    "data-hovered": isHovered,
-    "data-focused": isFocused,
-    "data-focus-visible": isFocusVisible,
-    "data-disabled": () => props.isDisabled === true,
-    "data-testid": () => props["data-testid"],
-  });
+  const elementProps = mergeProps(
+    linkProps,
+    hoverProps,
+    focusProps,
+    forwarded,
+    styleProps(cells(props)),
+    {
+      "data-pressed": isPressed,
+      "data-hovered": isHovered,
+      "data-focused": isFocused,
+      "data-focus-visible": isFocusVisible,
+      "data-disabled": () => props.isDisabled === true,
+      "data-testid": () => props["data-testid"],
+    },
+  );
 
   return (
     <a {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
@@ -296,9 +303,7 @@ export function Separator(props: SeparatorComponentProps) {
       role: () => (props.decorative === true ? "none" : undefined),
       "data-orientation": () => props.orientation ?? "horizontal",
       "aria-orientation": () =>
-        props.orientation === "vertical" && props.decorative !== true
-          ? "vertical"
-          : undefined,
+        props.orientation === "vertical" && props.decorative !== true ? "vertical" : undefined,
       "data-testid": () => props["data-testid"],
     },
   );

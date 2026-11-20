@@ -6,7 +6,7 @@
  * failure here is about the router and not about a render.
  */
 
-import { flush } from "@barqjs/core";
+import { type Incoming, flush, fromCells } from "@barqjs/core";
 import { insert, render } from "@barqjs/web";
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 
@@ -498,7 +498,9 @@ describe("redirect and notFound, options form", () => {
             {
               id: "leaf",
               path: "$id",
-              component: (props: RouteProps) => document.createTextNode(String(props.data())),
+              component: fromCells((props: Incoming<RouteProps>) =>
+                document.createTextNode(String(props.data())),
+              ),
               notFoundComponent: () => document.createTextNode("leaf says missing"),
               loader: () => {
                 throw notFound({ routeId: "layout", data: { id: 7 } });
@@ -550,7 +552,9 @@ describe("router defaults, TanStack's names", () => {
       routeTree: routes([
         {
           path: "/",
-          component: (props: RouteProps) => document.createTextNode(String(props.data())),
+          component: fromCells((props: Incoming<RouteProps>) =>
+            document.createTextNode(String(props.data())),
+          ),
           loader: () => {
             throw new Error("boom");
           },
@@ -596,7 +600,9 @@ describe("router defaults, TanStack's names", () => {
       routeTree: routes([
         {
           path: "/",
-          component: (props: RouteProps) => document.createTextNode(String(props.data())),
+          component: fromCells((props: Incoming<RouteProps>) =>
+            document.createTextNode(String(props.data())),
+          ),
           loader: async () => {
             await tick(20);
             return "loaded";
@@ -703,7 +709,9 @@ describe("router defaults, TanStack's names", () => {
         { path: "/login", component: page("login") },
         {
           path: "/moved",
-          component: (props: RouteProps) => document.createTextNode(String(props.data())),
+          component: fromCells((props: Incoming<RouteProps>) =>
+            document.createTextNode(String(props.data())),
+          ),
           errorComponent: (props: { error: () => Error }) => {
             shown.push(props.error().message);
             return document.createTextNode("failed");

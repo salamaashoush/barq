@@ -1,12 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  createContext,
-  flush,
-  provide,
-  createSignal,
-  type Child,
-  type Incoming,
-} from "@barqjs/core";
+import { createContext, flush, provide, createSignal, type Child } from "@barqjs/core";
 import { expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
 import { Button, ToggleButton } from "./button.tsx";
 import { provideTriggerSlot } from "./utils.ts";

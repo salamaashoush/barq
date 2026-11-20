@@ -1,4 +1,4 @@
-import { For, type Incoming } from "@barqjs/core";
+import { For } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import {
   Bubble,
@@ -29,20 +29,17 @@ const still = css`
 `;
 
 /** A chat row: the bubble, its paragraphs, and an entrance for the user's own. */
-export function MessageAnimated(
-  props: {
-    message: ChatMessage;
-    scrollAnchor?: boolean;
-    animation?: MessageAnimation;
-    userVariant?: BubbleVariant;
-    assistantVariant?: BubbleVariant;
-  },
-) {
+export function MessageAnimated(props: {
+  message: ChatMessage;
+  scrollAnchor?: boolean;
+  animation?: MessageAnimation;
+  userVariant?: BubbleVariant;
+  assistantVariant?: BubbleVariant;
+}) {
   const isUser = (): boolean => props.message.role === "user";
   const parts = (): string[] =>
-    props
-      .message
-      .text.split(/\n\s*\n/)
+    props.message.text
+      .split(/\n\s*\n/)
       .map((part) => part.trim())
       .filter(Boolean);
 
@@ -50,17 +47,13 @@ export function MessageAnimated(
     <MessageScrollerItem
       messageId={props.message.id}
       scrollAnchor={props.scrollAnchor ?? isUser()}
-      class={
-        isUser() ? `${(props.animation ?? MESSAGE_ANIMATIONS[1]).class} ${still}` : undefined
-      }
+      class={isUser() ? `${(props.animation ?? MESSAGE_ANIMATIONS[1]).class} ${still}` : undefined}
     >
       <Message align={isUser() ? "end" : "start"}>
         <MessageContent>
           <Bubble
             variant={
-              isUser()
-                ? (props.userVariant ?? "muted")
-                : (props.assistantVariant ?? "ghost")
+              isUser() ? (props.userVariant ?? "muted") : (props.assistantVariant ?? "ghost")
             }
           >
             <BubbleContent class={paragraphs}>

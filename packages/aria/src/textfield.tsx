@@ -11,7 +11,7 @@
  * VoiceOver and NVDA still do not announce the latter.
  */
 
-import { cells, type Accessor, type Child, type Incoming } from "@barqjs/core";
+import { cells, type Accessor, type Child } from "@barqjs/core";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { focusRing } from "./focus.ts";
 import { focusable, type FocusableOptions } from "./interactions/focusable.ts";
@@ -330,9 +330,7 @@ export function TextField(props: TextFieldComponentProps) {
         props.isMultiLine === true ? (
           <textarea
             {...controlProps}
-            ref={
-              mergeRefs(inputRef.set, props.ref) as unknown as (el: HTMLTextAreaElement) => void
-            }
+            ref={mergeRefs(inputRef.set, props.ref) as unknown as (el: HTMLTextAreaElement) => void}
           />
         ) : (
           <input {...controlProps} ref={mergeRefs(inputRef.set, props.ref)} />

@@ -1,4 +1,4 @@
-import { cells, Show, type Incoming } from "@barqjs/core";
+import { cells, Show } from "@barqjs/core";
 import { layer, variants } from "@barqjs/css";
 
 import "../theme/layers.ts";
@@ -191,10 +191,7 @@ export function Badge(props: BadgeProps) {
   });
 
   return (
-    <Show
-      when={props.href !== undefined}
-      fallback={<span {...common()}>{props.children}</span>}
-    >
+    <Show when={props.href !== undefined} fallback={<span {...common()}>{props.children}</span>}>
       <a {...common()} href={props.href} target={props.target} rel={props.rel}>
         {props.children}
       </a>

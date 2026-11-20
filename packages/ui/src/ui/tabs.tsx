@@ -1,4 +1,5 @@
 import { cells } from "@barqjs/core";
+import type { Content } from "../lib/slot.ts";
 import {
   Tab as AriaTab,
   TabList as AriaTabList,
@@ -15,7 +16,7 @@ import {
   ValueTabs as AriaValueTabs,
   type ValueTabsComponentProps,
 } from "@barqjs/aria/tabs";
-import type { Child, Incoming } from "@barqjs/core";
+import type { Child } from "@barqjs/core";
 import { layer, variants } from "@barqjs/css";
 
 import "../theme/layers.ts";
@@ -278,7 +279,7 @@ export function TabsList<T>(props: TabsListProps<T>) {
         data-variant={props.variant ?? "default"}
         class={className()}
       >
-        {props.children as Child}
+        {props.children as Content}
       </AriaValueTabList>
     );
   }
@@ -346,7 +347,7 @@ export function TabsContent<T>(props: TabsContentProps<T>) {
         data-slot={props["data-slot"] ?? "tabs-content"}
         class={ui(content, props.class, props.className)}
       >
-        {props.children as Child}
+        {props.children as Content}
       </AriaValueTabPanel>
     );
   }

@@ -1,12 +1,10 @@
-import { cells } from "@barqjs/core";
+import { omit } from "@barqjs/core";
 import { Switch as AriaSwitch, useSwitch, type SwitchComponentProps } from "@barqjs/aria/switch";
-import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { box } from "../lib/shared-box.ts";
 import { ringSlot } from "../lib/shared-ring-slot.ts";
-import { omit } from "../lib/slot.ts";
 import { when } from "../lib/shared-when.ts";
 
 const ui = layer("barq.ui");
@@ -149,7 +147,7 @@ const UPSTREAM = ["checked", "defaultChecked", "onCheckedChange", "disabled", "r
 export function Switch(props: SwitchProps) {
   return (
     <AriaSwitch
-      {...omit(cells(props), UPSTREAM)}
+      {...omit(props, ...UPSTREAM)}
       elementType="span"
       data-slot={props["data-slot"] ?? "switch"}
       data-size={props.size ?? "default"}

@@ -31,9 +31,9 @@ export const Total = () => <p>{`total: ${count()}`}</p>;
 
 An accessor is a function, and JavaScript turns a function into a string or a number
 without complaint: `` `${count}` `` puts the accessor's source text on the page and
-`count * 2` is `NaN`. Neither throws, and TypeScript accepts the string forms. The same
-applies to a prop, which is a Cell: write `props.count()`, not `props.count`, inside a
-string or a calculation.
+`count * 2` is `NaN`. Neither throws, and TypeScript accepts the string forms. A prop is
+not an accessor: a component writes `props.count` as the value and the compiler writes the
+read, so a prop inside a string or a calculation is correct and is not reported.
 
 Passing the accessor itself to JSX is correct and is not reported: `<p>{count}</p>` and
 `<div id={count}>` both stay up to date.

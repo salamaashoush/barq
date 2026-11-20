@@ -384,14 +384,16 @@ export function merge<T extends unknown[]>(...sources: T): Merge<T> {
 }
 
 /** The props without `keys`. What a rest destructure would do, without copying. */
+export function omit<T extends Record<string, unknown>, K extends keyof T & string>(
+  source: T,
+  ...keys: K[]
+): Omit<T, K>;
 export function omit<T extends object, K extends keyof T & string>(
   source: T,
   ...keys: K[]
-): Omit<T, K> {
-  return view([source as Record<string, unknown>], {
-    keys: new Set(keys),
-    carriers: false,
-  }) as Omit<T, K>;
+): Omit<T, K>;
+export function omit(source: object, ...keys: string[]): object {
+  return view([source as Record<string, unknown>], { keys: new Set(keys), carriers: false });
 }
 
 /**
@@ -400,11 +402,11 @@ export function omit<T extends object, K extends keyof T & string>(
  * passed, and it is the value: calling it here would build it at every read,
  * where the component means to place it once.
  */
-export function readProp(carrier: unknown): unknown {
-  if (typeof carrier !== "function") return carrier;
-  return (carrier as unknown as Record<symbol, unknown>)[BLOCK] === true
-    ? carrier
-    : (carrier as () => unknown)();
+export function readProp(held: unknown): unknown {
+  if (typeof held !== "function") return held;
+  return (held as unknown as Record<symbol, unknown>)[BLOCK] === true
+    ? held
+    : (held as () => unknown)();
 }
 
 /**
@@ -439,7 +441,9 @@ const RECORD = Symbol.for("barq.props.record");
  * `props` is wherever it leaves the component whole, passed to a function or
  * read by a computed key.
  */
-export function values<P>(record: Incoming<P>): P {
+export function values<P>(record: Incoming<P>): P;
+export function values(record: Record<string, unknown>): Record<string, unknown>;
+export function values(record: object): object {
   const held = record as Record<string, unknown>;
   return new Proxy(held, {
     get(target, key: string | symbol): unknown {
@@ -460,7 +464,7 @@ export function values<P>(record: Incoming<P>): P {
     deleteProperty(): boolean {
       return false;
     },
-  }) as P;
+  });
 }
 
 /**
@@ -469,9 +473,9 @@ export function values<P>(record: Incoming<P>): P {
  * prop many times and wants no view between. In a compiled component
  * `cells(props)` is the record itself and costs nothing.
  */
-export function cells<P>(props: P): Incoming<P> {
-  const record = (props as Record<symbol, unknown> | null | undefined)?.[RECORD];
-  return (record ?? props) as Incoming<P>;
+export function cells<P>(given: P): Incoming<P> {
+  const record = (given as Record<symbol, unknown> | null | undefined)?.[RECORD];
+  return (record ?? given) as Incoming<P>;
 }
 
 /**
@@ -512,4 +516,16 @@ export function carry(source: unknown): unknown {
     carried.set(source, made);
   }
   return made;
+}
+
+/**
+ * Mark an object as a props record already: its function members are Cells
+ * (or handlers a DOM spread attaches), so a spread onto a component hands it
+ * over as it is instead of carrying each key. For a library that builds the
+ * props of a part by hand and lets the caller place them on an element or on a
+ * component.
+ */
+export function asRecord<T extends object>(bag: T): T {
+  Object.defineProperty(bag, VIEW, { value: true });
+  return bag;
 }

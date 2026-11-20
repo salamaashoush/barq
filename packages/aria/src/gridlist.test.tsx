@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush, createSignal, type Incoming } from "@barqjs/core";
+import { flush, createSignal } from "@barqjs/core";
 import { accessibleName, expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
 import { Button } from "./button.tsx";
 import type { Key } from "./collections.ts";
@@ -18,15 +18,13 @@ const FILES: File[] = [
   { id: "photos", name: "Photos" },
 ];
 
-function Files(
-  props: {
-    selectionMode?: "none" | "single" | "multiple";
-    keyboardNavigationBehavior?: "arrow" | "tab";
-    onSelectionChange?: (keys: "all" | Set<Key>) => void;
-    onAction?: (key: Key) => void;
-    withButtons?: boolean;
-  },
-) {
+function Files(props: {
+  selectionMode?: "none" | "single" | "multiple";
+  keyboardNavigationBehavior?: "arrow" | "tab";
+  onSelectionChange?: (keys: "all" | Set<Key>) => void;
+  onAction?: (key: Key) => void;
+  withButtons?: boolean;
+}) {
   return (
     <GridList
       aria-label="Files"

@@ -24,6 +24,7 @@ import type { ItemAccessors, Key, Node } from "@barqjs/aria/collections";
 import { fromProps, mergeProps } from "@barqjs/aria/utils";
 import {
   cells,
+  omit,
   createContext,
   For,
   getContext,
@@ -44,7 +45,7 @@ import { icon } from "../lib/shared-icon.ts";
 import { when } from "../lib/shared-when.ts";
 import { text } from "../lib/shared-text.ts";
 import type { UiProps } from "../lib/props.ts";
-import { omit, uiProps } from "../lib/slot.ts";
+import { uiProps, type Content } from "../lib/slot.ts";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./dialog.tsx";
 import { srOnly } from "./sr-only.ts";
 
@@ -365,7 +366,7 @@ export function Command<T>(props: CommandProps<T>) {
         data-slot={props["data-slot"] ?? "command"}
         class={ui(root, props.class, props.className)}
       >
-        <Mode isWritten>{props.children as Child}</Mode>
+        <Mode isWritten>{props.children as Content}</Mode>
       </WrittenCommand>
     );
   }
@@ -721,7 +722,7 @@ const DIALOG_PROPS = [
   "onOpenChange",
   "class",
   "className",
-];
+] as const;
 
 /**
  * The palette, in a dialog.
@@ -757,7 +758,7 @@ export function CommandDialog<T>(props: CommandDialogProps<T>) {
             {props.description ?? "Search for a command to run."}
           </DialogDescription>
         </DialogHeader>
-        <Command {...omit(cells(props), DIALOG_PROPS)} />
+        <Command {...omit(props, ...DIALOG_PROPS)} />
       </DialogContent>
     </Dialog>
   );

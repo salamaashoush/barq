@@ -17,7 +17,7 @@
  * these are lucide, which is this package's one icon set by decision.
  */
 
-import { For, createSignal, type Incoming } from "@barqjs/core";
+import { For, createSignal } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import {
   Avatar,
@@ -445,9 +445,7 @@ const ROWS = [
 function NavGroup(props: { label?: string; items: typeof NAV_MAIN }) {
   return (
     <SidebarGroup>
-      {props.label === undefined ? null : (
-        <SidebarGroupLabel>{props.label}</SidebarGroupLabel>
-      )}
+      {props.label === undefined ? null : <SidebarGroupLabel>{props.label}</SidebarGroupLabel>}
       <SidebarGroupContent>
         <SidebarMenu>
           <For each={() => props.items}>

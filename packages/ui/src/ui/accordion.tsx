@@ -1,4 +1,4 @@
-import { cells } from "@barqjs/core";
+import { cells, omit } from "@barqjs/core";
 import type { Key } from "@barqjs/aria/collections";
 import {
   DisclosureButton,
@@ -10,7 +10,6 @@ import {
   type DisclosureGroupComponentProps,
   type DisclosurePanelComponentProps,
 } from "@barqjs/aria/disclosure";
-import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 import { ChevronDown } from "@barqjs/lucide/icons/chevron-down";
 import { ChevronUp } from "@barqjs/lucide/icons/chevron-up";
@@ -21,7 +20,7 @@ import { ringSlot } from "../lib/shared-ring-slot.ts";
 import { when } from "../lib/shared-when.ts";
 import { text } from "../lib/shared-text.ts";
 import type { UiProps } from "../lib/props.ts";
-import { omit, uiProps } from "../lib/slot.ts";
+import { uiProps } from "../lib/slot.ts";
 
 const ui = layer("barq.ui");
 
@@ -203,12 +202,11 @@ export function Accordion<T>(props: AccordionProps<T>) {
 
   return (
     <DisclosureGroup
-      {...omit(cells(props), UPSTREAM)}
+      {...omit(props, ...UPSTREAM)}
       data-slot="accordion"
       allowsMultiple={multiple()}
       isCollapsible={
-        props.isCollapsible ??
-        (props.type === undefined ? undefined : (props.collapsible ?? false))
+        props.isCollapsible ?? (props.type === undefined ? undefined : (props.collapsible ?? false))
       }
       isDisabled={props.isDisabled ?? props.disabled}
       expandedKeys={props.expandedKeys ?? keysOf(props.value)}
@@ -236,10 +234,7 @@ export interface AccordionItemProps extends UiProps {
  */
 export function AccordionItem(props: AccordionItemProps) {
   return (
-    <DisclosureGroupItem
-      id={props.value}
-      isDisabled={props.isDisabled ?? props.disabled}
-    >
+    <DisclosureGroupItem id={props.value} isDisabled={props.isDisabled ?? props.disabled}>
       <AccordionSection {...props}>{props.children}</AccordionSection>
     </DisclosureGroupItem>
   );

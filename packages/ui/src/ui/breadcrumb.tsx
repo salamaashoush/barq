@@ -1,5 +1,5 @@
 import { cells } from "@barqjs/core";
-import type { Child, Incoming, JSXElement } from "@barqjs/core";
+import type { Child, JSXElement } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import { ChevronRight } from "@barqjs/lucide/icons/chevron-right";
@@ -92,7 +92,10 @@ const ellipsis = ui({
  */
 export function Breadcrumb(props: UiProps) {
   return (
-    <nav {...uiProps("breadcrumb", "", cells(props))} aria-label={props["aria-label"] ?? "breadcrumb"}>
+    <nav
+      {...uiProps("breadcrumb", "", cells(props))}
+      aria-label={props["aria-label"] ?? "breadcrumb"}
+    >
       {props.children}
     </nav>
   );

@@ -124,7 +124,7 @@ export function Canvas(props: CanvasProps): JSXElement {
     window.addEventListener("scroll", measure, { capture: true, passive: true });
     window.addEventListener("resize", measure, { passive: true });
 
-    root.render(() => props.children as unknown as JSXElement, { owner });
+    root.render(() => props.children, { owner });
 
     onCleanup(() => {
       observer?.disconnect();

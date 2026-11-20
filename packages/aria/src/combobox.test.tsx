@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createSignal, flush, For, type Child, type Incoming } from "@barqjs/core";
+import { createSignal, flush, For, type Child } from "@barqjs/core";
 import {
   accessibleName,
   expectNoAriaViolations,
@@ -44,15 +44,13 @@ const FRUITS: Fruit[] = [
   { id: "cherry", name: "Cherry" },
 ];
 
-function Picker(
-  props: {
-    defaultSelectedKey?: Key | null;
-    allowsCustomValue?: boolean;
-    menuTrigger?: "input" | "focus" | "manual";
-    onSelectionChange?: (key: Key | null) => void;
-    onInputChange?: (value: string) => void;
-  },
-) {
+function Picker(props: {
+  defaultSelectedKey?: Key | null;
+  allowsCustomValue?: boolean;
+  menuTrigger?: "input" | "focus" | "manual";
+  onSelectionChange?: (key: Key | null) => void;
+  onInputChange?: (value: string) => void;
+}) {
   return (
     <ComboBox
       label="Fruit"

@@ -3,7 +3,7 @@
  * `apps/v4/registry/new-york-v4/blocks/sidebar-15/`.
  */
 
-import { For, createSignal, type Incoming } from "@barqjs/core";
+import { For, createSignal } from "@barqjs/core";
 import { dynamic } from "@barqjs/web";
 import { css } from "@barqjs/css";
 import {

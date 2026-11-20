@@ -3,7 +3,7 @@
  * `apps/v4/registry/new-york-v4/blocks/sidebar-06/`.
  */
 
-import { For, Show, type Incoming } from "@barqjs/core";
+import { For, Show } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import {
   Breadcrumb,

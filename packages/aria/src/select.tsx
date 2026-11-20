@@ -1656,9 +1656,7 @@ export function SelectScrollButton(props: SelectScrollButtonComponentProps) {
  * goes the moment the list reaches its end, with the pointer still over it and
  * no `pointerleave` to say so.
  */
-function ScrollButton(
-  props: { elementProps: DOMProps; onLeave: () => void; children?: Child },
-) {
+function ScrollButton(props: { elementProps: DOMProps; onLeave: () => void; children?: Child }) {
   onCleanup(() => props.onLeave());
   return <div {...props.elementProps}>{props.children}</div>;
 }

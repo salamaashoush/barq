@@ -29,7 +29,7 @@ import {
   styleProps,
   type DOMProps,
 } from "@barqjs/aria/utils";
-import type { Incoming } from "@barqjs/core";
+import type { Child, Incoming } from "@barqjs/core";
 import { mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 
 import { ui } from "./atoms.ts";
@@ -178,13 +178,13 @@ export function uiProps(slot: string, className: string | (() => string), props:
  * slot by name, and whatever else the caller wrote has to be passed as well or
  * it is dropped without a word: `style`, `id`, the `ref` and every `data-*`.
  *
- * The values are the Cells they arrived as, so spreading the result onto a
- * component is the same as having written each prop. `data-slot` is left out,
- * because the part names its own.
+ * The values are the Cells they arrived as, so spreading `values(result)` onto
+ * a component is the same as having written each prop. `data-slot` is left
+ * out, because the part names its own.
  */
-export function handedOn(props: object): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  const source = props as Record<string, unknown>;
+export function handedOn(props: object): Incoming<Record<string, unknown>> {
+  const out: Incoming<Record<string, unknown>> = {};
+  const source = props as Incoming<Record<string, unknown>>;
   for (const key in source) {
     if (!Object.hasOwn(source, key)) continue;
     const kept =
@@ -192,7 +192,8 @@ export function handedOn(props: object): Record<string, unknown> {
       key === "id" ||
       key === "ref" ||
       (key.startsWith("data-") && key !== "data-slot");
-    if (kept) out[key] = source[key];
+    const held = source[key];
+    if (kept && held !== undefined) out[key] = held;
   }
   return out;
 }
@@ -206,11 +207,12 @@ const NAMING = ["aria-label", "aria-labelledby", "aria-describedby"] as const;
  * `role="dialog"` inside it), `aria-*` belongs on the second: a description on
  * the panel describes a `<div>`.
  */
-export function named(props: object): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  const source = props as Record<string, unknown>;
+export function named(props: object): Incoming<Record<string, unknown>> {
+  const out: Incoming<Record<string, unknown>> = {};
+  const source = props as Incoming<Record<string, unknown>>;
   for (const key of NAMING) {
-    if (Object.hasOwn(source, key)) out[key] = source[key];
+    const held = source[key];
+    if (held !== undefined && Object.hasOwn(source, key)) out[key] = held;
   }
   return out;
 }
@@ -241,3 +243,10 @@ export function controlProps(
 
 // Defined in aria, whose questionnaire parts draw their own elements and take a `render` too.
 export { partRender, type PartRender, type RenderPart } from "@barqjs/aria/utils";
+
+/**
+ * Children that are content to place, with a row callback ruled out. A part
+ * that takes either narrows to this on the branch that has no rows, where its
+ * children go on to a part that only places them.
+ */
+export type Content = Exclude<Child, (...args: never[]) => unknown> | (() => Child);

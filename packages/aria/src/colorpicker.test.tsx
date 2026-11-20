@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush, type Incoming } from "@barqjs/core";
+import { flush } from "@barqjs/core";
 import { accessibleName, expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
 import { parseColor, type Color } from "./color.ts";
 import {
@@ -14,11 +14,7 @@ import {
 describe("ColorSlider", () => {
   function Hue(props: { onChange?: (value: Color) => void }) {
     return (
-      <ColorSlider
-        channel="hue"
-        defaultValue="hsb(180, 100%, 100%)"
-        onChange={props.onChange}
-      />
+      <ColorSlider channel="hue" defaultValue="hsb(180, 100%, 100%)" onChange={props.onChange} />
     );
   }
 

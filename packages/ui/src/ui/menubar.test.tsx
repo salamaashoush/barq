@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createSignal, flush, type Child, type Incoming } from "@barqjs/core";
+import { createSignal, flush, type Child } from "@barqjs/core";
 import { provideDirection } from "@barqjs/aria/i18n";
 import {
   accessibleName,
@@ -47,15 +47,13 @@ async function frame(): Promise<void> {
 }
 
 /** shadcn's own demo, with the triggers given the pattern's role. */
-function Application(
-  props: {
-    value?: string;
-    onValueChange?: (value: string) => void;
-    loop?: boolean;
-    onNewTab?: () => void;
-    onProfile?: (value: string) => void;
-  },
-) {
+function Application(props: {
+  value?: string;
+  onValueChange?: (value: string) => void;
+  loop?: boolean;
+  onNewTab?: () => void;
+  onProfile?: (value: string) => void;
+}) {
   const [profile, setProfile] = createSignal("salama");
   return (
     <Menubar
@@ -414,13 +412,11 @@ describe("Menubar", () => {
     expect(accessibleName(screen.getByRole("menu"))).toBe("Profiles");
   });
 
-  function PerMenu(
-    props: {
-      defaultOpen?: boolean;
-      isOpen?: boolean;
-      onOpenChange?: (isOpen: boolean) => void;
-    },
-  ) {
+  function PerMenu(props: {
+    defaultOpen?: boolean;
+    isOpen?: boolean;
+    onOpenChange?: (isOpen: boolean) => void;
+  }) {
     return (
       <Menubar aria-label="Application">
         <MenubarMenu

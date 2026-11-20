@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush, type Incoming } from "@barqjs/core";
+import { flush } from "@barqjs/core";
 import {
   accessibleName,
   expectNoAriaViolations,
@@ -11,17 +11,15 @@ import {
 import { CalendarDate, CalendarDateTime, Time, type DateValue } from "./date.ts";
 import { DateField, TimeField } from "./datefield.tsx";
 
-function Departure(
-  props: {
-    value?: DateValue | null;
-    defaultValue?: DateValue | null;
-    granularity?: "day" | "hour" | "minute" | "second";
-    isDisabled?: boolean;
-    isReadOnly?: boolean;
-    name?: string;
-    onChange?: (value: DateValue | null) => void;
-  },
-) {
+function Departure(props: {
+  value?: DateValue | null;
+  defaultValue?: DateValue | null;
+  granularity?: "day" | "hour" | "minute" | "second";
+  isDisabled?: boolean;
+  isReadOnly?: boolean;
+  name?: string;
+  onChange?: (value: DateValue | null) => void;
+}) {
   return (
     <DateField
       label="Departure"

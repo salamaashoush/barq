@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush, createSignal, type Incoming } from "@barqjs/core";
+import { flush, createSignal } from "@barqjs/core";
 import { expectNoAriaViolations, render, screen, tick, user } from "@barqjs/testing";
 
 import { rulesFor } from "../test-rules.ts";
@@ -189,19 +189,17 @@ describe("NavigationMenu", () => {
 });
 
 /** shadcn's own shape: no `value` on an item, no viewport written out. */
-function Site(
-  props: {
-    viewport?: boolean;
-    orientation?: "horizontal" | "vertical";
-    dir?: "ltr" | "rtl";
-    delayDuration?: number;
-    skipDelayDuration?: number;
-    value?: string | null;
-    onValueChange?: (value: string | null) => void;
-    onSelect?: (event: Event) => void;
-    disableDocs?: boolean;
-  },
-) {
+function Site(props: {
+  viewport?: boolean;
+  orientation?: "horizontal" | "vertical";
+  dir?: "ltr" | "rtl";
+  delayDuration?: number;
+  skipDelayDuration?: number;
+  value?: string | null;
+  onValueChange?: (value: string | null) => void;
+  onSelect?: (event: Event) => void;
+  disableDocs?: boolean;
+}) {
   return (
     <>
       <button type="button">Before</button>
@@ -225,9 +223,7 @@ function Site(
             </NavigationMenuContent>
           </NavigationMenuItem>
           <NavigationMenuItem>
-            <NavigationMenuTrigger disabled={props.disableDocs}>
-              Components
-            </NavigationMenuTrigger>
+            <NavigationMenuTrigger disabled={props.disableDocs}>Components</NavigationMenuTrigger>
             <NavigationMenuContent>
               <NavigationMenuLink href="/tabs">Tabs</NavigationMenuLink>
             </NavigationMenuContent>

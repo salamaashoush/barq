@@ -13,7 +13,7 @@ import {
   type ChartDefinition,
 } from "@barqjs/ui";
 
-import type { Child, Incoming } from "@barqjs/core";
+import type { Child } from "@barqjs/core";
 
 /** The theme the scene paints with, in this package's own tokens. */
 export const THEME = {

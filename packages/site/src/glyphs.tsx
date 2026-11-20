@@ -11,7 +11,6 @@
  * than carrying a colour of its own.
  */
 
-import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 const ui = layer("barq.ui");
@@ -121,11 +120,7 @@ const letters = ui({
  */
 export function FontGlyph(props: { stack?: string }) {
   return (
-    <span
-      class={letters}
-      style={{ "font-family": props.stack ?? "inherit" }}
-      aria-hidden="true"
-    >
+    <span class={letters} style={{ "font-family": props.stack ?? "inherit" }} aria-hidden="true">
       Aa
     </span>
   );

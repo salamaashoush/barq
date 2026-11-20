@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush, createSignal, type Incoming } from "@barqjs/core";
+import { flush, createSignal } from "@barqjs/core";
 import {
   accessibleName,
   expectNoAriaViolations,
@@ -41,15 +41,13 @@ const FILES: File_[] = [
   { id: "photos", name: "Photos", size: "9 MB", modified: "March" },
 ];
 
-function Files(
-  props: {
-    selectionMode?: "none" | "single" | "multiple";
-    sortDescriptor?: SortDescriptor;
-    onSortChange?: (descriptor: SortDescriptor) => void;
-    onSelectionChange?: (keys: "all" | Set<Key>) => void;
-    onAction?: (key: Key) => void;
-  },
-) {
+function Files(props: {
+  selectionMode?: "none" | "single" | "multiple";
+  sortDescriptor?: SortDescriptor;
+  onSortChange?: (descriptor: SortDescriptor) => void;
+  onSelectionChange?: (keys: "all" | Set<Key>) => void;
+  onAction?: (key: Key) => void;
+}) {
   return (
     <Table
       aria-label="Files"

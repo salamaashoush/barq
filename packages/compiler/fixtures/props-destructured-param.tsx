@@ -3,11 +3,10 @@ import { createSignal } from "@barqjs/core"
 export const [label, setLabel] = createSignal("first")
 
 /**
- * Props destructured in the PARAMETER LIST. The compiler lowers reactive props
- * to getters, and a parameter pattern flattens every one of them exactly once —
- * so the only thing that can stay live across the boundary is a prop whose
- * VALUE is an accessor. That is the contract this shape pins, and it is the
- * commonest way real code loses reactivity by accident.
+ * Props destructured in the PARAMETER LIST. The pattern becomes one props
+ * record and each name the read it stood for, so both names stay live across
+ * the boundary where a JavaScript destructure would have copied them once.
+ * That is the contract this shape pins.
  */
 function Chip({ text, tone }: { text: () => string; tone: string }) {
   return (
@@ -31,10 +30,9 @@ export const steps = [() => setLabel("second")]
 export const optimality = {
   target: 1,
   templates: 2,
-  // A destructured PARAMETER reads every prop at binding time, so the two
-  // locals are snapshots and nothing the compiler does can make them live.
-  // What it can do is not pretend otherwise: the props object is built with
-  // plain values, and the author-written accessor passes through as one.
+  // A destructured PARAMETER is not a snapshot: the two names are reads of the
+  // one props record. The call site is what it is for a `props` parameter: a
+  // real props object, with the author-written accessor passed through as one.
   emits: ["Chip(", '() => "warm"', "text: label"],
   absent: ["get text()", "get tone()", "(Chip, {"],
 }

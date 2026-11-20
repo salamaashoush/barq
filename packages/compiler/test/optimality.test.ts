@@ -466,6 +466,12 @@ describe("target 1 — semantic reactivity (never name regexes)", () => {
     expect(code).toContain("cb: () => [_$readProp(props.handler), _$readProp(props.label)]");
   });
 
+  it("component-spread: a spread object is carried in place in the source list", () => {
+    const code = compileFixtureBody("component-spread");
+    expect(code).toContain("Chip(_$props([{ label }, _$carry(shared)]))");
+    expect(code).toContain("Chip(_$props([_$carry(shared), {");
+  });
+
   it("handler-no-closure: a handler closing over nothing is not re-created per instance", () => {
     const code = compileFixtureBody("handler-no-closure");
     // Hoisted to module scope: the arrow appears above the component, not inside

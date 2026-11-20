@@ -3,7 +3,7 @@
  * a tag, typed from three's own declarations.
  */
 
-import { For, createSignal, type Accessor } from "@barqjs/core";
+import { For, createSignal } from "@barqjs/core";
 import * as THREE from "three";
 
 import type { ThreeElement, ThreeEvent } from "@barqjs/three";

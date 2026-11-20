@@ -1,5 +1,4 @@
 import { cells } from "@barqjs/core";
-import type { Incoming } from "@barqjs/core";
 import { layer, variants } from "@barqjs/css";
 
 import "../theme/layers.ts";
@@ -346,11 +345,7 @@ export function InputGroupButton(props: InputGroupButtonProps) {
       data-slot={props["data-slot"] ?? "input-group-button"}
       variant={props.variant ?? "ghost"}
       size={props.size ?? "xs"}
-      class={ui(
-        inputGroupButtonVariants({ size: props.size }),
-        props.class,
-        props.className,
-      )}
+      class={ui(inputGroupButtonVariants({ size: props.size }), props.class, props.className)}
     />
   );
 }

@@ -4,7 +4,6 @@ import {
   type ContextMenuComponentProps,
   type ContextMenuTriggerComponentProps,
 } from "@barqjs/aria/menu";
-import type { Incoming } from "@barqjs/core";
 
 import "../theme/layers.ts";
 import type { UiProps } from "../lib/props.ts";
@@ -74,10 +73,7 @@ export interface ContextMenuTriggerProps extends ContextMenuTriggerComponentProp
 /** The region the menu opens over. Unlike every other trigger here, it renders an element. */
 export function ContextMenuTrigger(props: ContextMenuTriggerProps) {
   return (
-    <AriaContextMenuTrigger
-      {...props}
-      data-slot={props["data-slot"] ?? "context-menu-trigger"}
-    />
+    <AriaContextMenuTrigger {...props} data-slot={props["data-slot"] ?? "context-menu-trigger"} />
   );
 }
 

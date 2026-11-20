@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { createSignal, flush, type Incoming } from "@barqjs/core";
+import { createSignal, flush } from "@barqjs/core";
 import { cleanup, render, screen, user } from "@barqjs/testing";
 
 import { rulesFor } from "../test-rules.ts";
@@ -8,17 +8,15 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./
 
 afterEach(cleanup);
 
-function Faq(
-  props: {
-    type?: "single" | "multiple";
-    collapsible?: boolean;
-    defaultValue?: string | string[];
-    onValueChange?: (value: string | string[]) => void;
-    disabled?: boolean;
-    orientation?: "vertical" | "horizontal";
-    dir?: "ltr" | "rtl";
-  },
-) {
+function Faq(props: {
+  type?: "single" | "multiple";
+  collapsible?: boolean;
+  defaultValue?: string | string[];
+  onValueChange?: (value: string | string[]) => void;
+  disabled?: boolean;
+  orientation?: "vertical" | "horizontal";
+  dir?: "ltr" | "rtl";
+}) {
   return (
     <Accordion
       type={props.type ?? "single"}

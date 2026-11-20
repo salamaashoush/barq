@@ -36,7 +36,7 @@ import { ringSlot } from "../lib/shared-ring-slot.ts";
 import { when } from "../lib/shared-when.ts";
 import { text } from "../lib/shared-text.ts";
 import type { UiProps } from "../lib/props.ts";
-import { uiProps } from "../lib/slot.ts";
+import { uiProps, type Content } from "../lib/slot.ts";
 
 const ui = layer("barq.ui");
 
@@ -421,7 +421,7 @@ export function Select<T>(props: SelectProps<T>) {
       onSelectionChange={(key) => chose(cells(props), key)}
       onOpenChange={props.onOpenChange}
     >
-      {props.children as Child}
+      {props.children as Content}
     </SelectRoot>
   );
 }
@@ -510,9 +510,7 @@ export function SelectContent(props: SelectContentProps) {
       data-slot={props["data-slot"] ?? "select-content"}
       class={ui(content, props.class, props.className)}
       position={position()}
-      placement={
-        props.placement ?? placementFor(props.side ?? "bottom", props.align ?? "center")
-      }
+      placement={props.placement ?? placementFor(props.side ?? "bottom", props.align ?? "center")}
       offset={props.offset ?? (props.sideOffset ?? 0) + POPPER_GAP}
       crossOffset={props.alignOffset}
     >

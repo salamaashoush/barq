@@ -1,4 +1,4 @@
-import { For, type Incoming } from "@barqjs/core";
+import { For } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import { ChevronRight } from "@barqjs/lucide/icons/chevron-right";
 import { File } from "@barqjs/lucide/icons/file";

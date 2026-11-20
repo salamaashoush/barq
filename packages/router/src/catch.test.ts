@@ -7,7 +7,7 @@
  * above, or a 404 fallback ends up rendering for a crash.
  */
 
-import { createSignal, flush, markSafeError } from "@barqjs/core";
+import { type Incoming, createSignal, flush, fromCells, markSafeError } from "@barqjs/core";
 import { insert, render } from "@barqjs/web";
 import { esc, html as ssrHtml } from "@barqjs/server";
 import { afterEach, describe, expect, test } from "bun:test";
@@ -37,8 +37,9 @@ function mounted(home: () => unknown): {
       {
         path: "/",
         component: home,
-        errorComponent: (props: ErrorProps) =>
+        errorComponent: fromCells((props: Incoming<ErrorProps>) =>
           document.createTextNode(`route caught: ${props.error().message}`),
+        ),
       },
       { path: "/other", component: () => document.createTextNode("other") },
     ] as never,
@@ -69,8 +70,10 @@ describe("<CatchBoundary>", () => {
           call(CatchBoundary, {
             getResetKey: () => () => "k",
             onCatch: () => (error: Error) => caught.push(error.message),
-            errorComponent: () => (props: ErrorProps) =>
-              document.createTextNode(`caught: ${props.error().message}`),
+            errorComponent: () =>
+              fromCells((props: Incoming<ErrorProps>) =>
+                document.createTextNode(`caught: ${props.error().message}`),
+              ),
             children: () => {
               throw new Error("boom");
             },
@@ -124,10 +127,11 @@ describe("<CatchBoundary>", () => {
     const { host, dispose } = mounted(() =>
       call(CatchBoundary, {
         getResetKey: () => () => "k",
-        errorComponent: () => (props: ErrorProps) => {
-          reset = props.reset();
-          return document.createTextNode("failed");
-        },
+        errorComponent: () =>
+          fromCells((props: Incoming<ErrorProps>) => {
+            reset = props.reset();
+            return document.createTextNode("failed");
+          }),
         children: () => {
           if (broken) throw new Error("boom");
           return document.createTextNode("recovered");
@@ -189,8 +193,10 @@ describe("on the string backend", () => {
               `<main>before ${esc(
                 call(CatchBoundary, {
                   getResetKey: () => () => "k",
-                  errorComponent: () => (props: ErrorProps) =>
-                    ssrHtml(`<p>caught: ${esc(props.error().message)}</p>`),
+                  errorComponent: () =>
+                    fromCells((props: Incoming<ErrorProps>) =>
+                      ssrHtml(`<p>caught: ${esc(props.error().message)}</p>`),
+                    ),
                   children: () => {
                     throw markSafeError(new Error("boom"));
                   },

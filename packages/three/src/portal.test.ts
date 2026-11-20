@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { createSignal, flush } from "@barqjs/core";
+import { createComponent, createSignal, flush } from "@barqjs/core";
 
 import { WithPortal, target } from "./fixtures/portal.tsx";
 import { manualFrames, mount, unmountAll, type Frames } from "./test-utils.ts";
@@ -15,7 +15,7 @@ afterEach(() => {
 
 test("createPortal renders into another object, under a state whose scene is that object", async () => {
   const [shown, setShown] = createSignal(true);
-  const { scene, gl } = mount(() => WithPortal({ shown }));
+  const { scene, gl } = mount(() => createComponent(WithPortal, { shown }));
   await Promise.resolve();
   flush();
   expect(target.children.map((child) => child.name)).toEqual(["in-layer"]);

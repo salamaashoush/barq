@@ -1,4 +1,4 @@
-import { cells, For, type Child, type Incoming } from "@barqjs/core";
+import { cells, For, type Child } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import { Link } from "@barqjs/router";
 
@@ -301,21 +301,19 @@ export function slugOf(label: string): string {
     .replace(/^-|-$/g, "");
 }
 
-export function DocsPage(
-  props: {
-    title: string;
-    lede?: string;
-    /** The right-hand column: the headings on THIS page, as anchors. */
-    sections: readonly DocsSection[];
-    /** The left rail: every component, as links. */
-    rail?: readonly RailEntry[];
-    /** The guide being read, which the rail's first group marks. */
-    guide?: string;
-    /** Beside the title — upstream's previous/next pair. */
-    actions?: Child;
-    children?: Child;
-  },
-) {
+export function DocsPage(props: {
+  title: string;
+  lede?: string;
+  /** The right-hand column: the headings on THIS page, as anchors. */
+  sections: readonly DocsSection[];
+  /** The left rail: every component, as links. */
+  rail?: readonly RailEntry[];
+  /** The guide being read, which the rail's first group marks. */
+  guide?: string;
+  /** Beside the title — upstream's previous/next pair. */
+  actions?: Child;
+  children?: Child;
+}) {
   return (
     <div class={wrapper}>
       <div class={shell}>

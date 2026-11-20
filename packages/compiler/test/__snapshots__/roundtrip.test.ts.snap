@@ -819,8 +819,8 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots component-forwarded-handler-tuple 1`] = `
-"import { template as _$template, insert as _$insert, delegateEvents as _$delegateEvents, setAttr as _$setAttr, bindProp as _$bindProp, bindEvent as _$bindEvent } from "@barqjs/web";
-import { cells, createSignal, readProp as _$readProp } from "@barqjs/core";
+"import { template as _$template, insert as _$insert, delegateEvents as _$delegateEvents, setAttr as _$setAttr, bindEvent as _$bindEvent } from "@barqjs/web";
+import { cells, createSignal, readProp as _$readProp, bindEffect as _$bindEffect } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<button type="button" class="chip"></button>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div class="wrap"><b class="picked"></b></div>\`);
 const _k$1 = () => true;
@@ -859,7 +859,9 @@ function Chip(props: {
   tone: string;
 }) {
   const _el$1 = _tmpl$1();
-  _$bindProp(_el$1, _$setAttr, "data-tone", () => _$readProp(props.tone));
+  _$bindEffect(() => _$readProp(props.tone), (_v$, _p$) => {
+    _$setAttr(_el$1, "data-tone", _v$, _p$);
+  });
   _$setAttr(_el$1, "data-same", String(props.cb === props.cb));
   _$setAttr(_el$1, "data-render-same", String(props.render === props.render));
   _$bindEvent(_el$1, "click", _$readProp(props.cb));
@@ -1033,8 +1035,8 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots component-spread 1`] = `
-"import { template as _$template, insert as _$insert, setAttr as _$setAttr, readOpaque as _$readOpaque } from "@barqjs/web";
-import { createSignal, readProp as _$readProp, bindEffect as _$bindEffect, props as _$props } from "@barqjs/core";
+"import { template as _$template, insert as _$insert, setAttr as _$setAttr } from "@barqjs/web";
+import { createSignal, readProp as _$readProp, carry as _$carry, bindEffect as _$bindEffect, props as _$props } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<span class="chip"></span>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div><!----></div>\`);
 const _k$1 = () => "chip-2";
@@ -1046,8 +1048,8 @@ function Chip(props: {
 }) {
   const _el$1 = _tmpl$1();
   _$bindEffect(() => ({
-    a: _$readOpaque(_$readProp(props.tone), "data-tone"),
-    b: _$readOpaque(_$readProp(props.id), "id")
+    a: _$readProp(props.tone),
+    b: _$readProp(props.id)
   }), (_v$, _p$ = {}) => {
     if (_v$.a !== _p$.a) _$setAttr(_el$1, "data-tone", _v$.a);
     if (_v$.b !== _p$.b) _$setAttr(_el$1, "id", _v$.b);
@@ -1056,18 +1058,17 @@ function Chip(props: {
   return _el$1;
 }
 export default function ComponentSpread() {
-  // C3 law 1 is TOTAL, and a spread source is spliced into the source list
-  // verbatim — so its own properties have to be Cells like every other prop.
-  // A raw value here is handed to the consumer as its carrier, and a raw
-  // function among them is called as a Cell.
+  // C3 law 1 is TOTAL, so a spread source has to reach the consumer as Cells
+  // like every other prop. The object is written as values, as an attribute
+  // beside it is, and the compiler carries each one as a Cell.
   const shared = {
-    tone: () => "warm",
-    id: () => "chip-1"
+    tone: "warm",
+    id: "chip-1"
   };
   const _el$2 = _tmpl$2();
   const _el$3 = _el$2.firstChild;
-  _$insert(_el$2, Chip(_$props([{ label }, shared])), _el$3);
-  _$insert(_el$2, Chip(_$props([shared, {
+  _$insert(_el$2, Chip(_$props([{ label }, _$carry(shared)])), _el$3);
+  _$insert(_el$2, Chip(_$props([_$carry(shared), {
     id: _k$1,
     label: () => "static"
   }])));
@@ -1079,11 +1080,12 @@ export const optimality = {
   templates: 2,
   // Target #4 across a component boundary: \`data-tone\` and \`id\` are two live
   // reads on ONE element, so they share ONE renderEffect with per-key \`!==\`
-  // guards. A spread onto a COMPONENT is an ordinary object spread — no
-  // spread helper call, no runtime prop resolution.
+  // guards. A spread onto a COMPONENT is one more source in the props list,
+  // carried as it stands: no DOM spread helper, no runtime prop resolution.
   emits: [
     "Chip(",
-    "[{ label }, shared]",
+    "{ label }, ",
+    "carry(shared)",
     "bindEffect(",
     "\\"data-tone\\"",
     "\\"id\\""
@@ -4687,17 +4689,16 @@ export const steps = [() => setChecked(true), () => setText("edited")];
 `;
 
 exports[`emitted code snapshots props-destructured-body 1`] = `
-"import { template as _$template, insert as _$insert, setAttr as _$setAttr, bindProp as _$bindProp } from "@barqjs/web";
-import { createSignal, readProp as _$readProp } from "@barqjs/core";
+"import { template as _$template, insert as _$insert, setAttr as _$setAttr } from "@barqjs/web";
+import { createSignal, readProp as _$readProp, bindEffect as _$bindEffect } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<span class="chip"></span>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div class="chips"></div>\`);
 const _k$1 = () => "warm";
 export const [label, setLabel] = createSignal("first");
 /**
-* The same flattening, one statement later: destructured in the BODY rather
-* than in the parameter list. The parameter is still a \`PropsParam\`, so every
-* member read on it is ⊤-reactive right up to the point the pattern copies it
-* out — and after that it is a plain local.
+* Destructured in the BODY rather than in the parameter list. The pattern is
+* not a copy: each name it binds is the read it stands for, so \`text\` and
+* \`tone\` follow the props exactly as \`props.text\` and \`props.tone\` do.
 */
 function Chip(props: {
   text: () => string;
@@ -4705,7 +4706,9 @@ function Chip(props: {
 }) {
   const _unused$1 = void 0;
   const _el$1 = _tmpl$1();
-  _$bindProp(_el$1, _$setAttr, "data-tone", () => _$readProp(props.tone));
+  _$bindEffect(() => _$readProp(props.tone), (_v$, _p$) => {
+    _$setAttr(_el$1, "data-tone", _v$, _p$);
+  });
   _$insert(_el$1, props.text);
   return _el$1;
 }
@@ -4721,9 +4724,9 @@ export const steps = [() => setLabel("second")];
 export const optimality = {
   target: 1,
   templates: 2,
-  // Destructuring in the BODY is the same read at a different line: \`const {
-  // text, tone } = props\` drains the object once. The claim is that the call
-  // site still hands over a real props object and not a copy of one.
+  // Destructuring in the BODY is the same read at a different line: every use
+  // of \`text\` and \`tone\` reads \`props\`, live. The claim is that the call site
+  // still hands over a real props object and not a copy of one.
   emits: [
     "Chip(",
     "() => \\"warm\\"",
@@ -4739,26 +4742,27 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots props-destructured-param 1`] = `
-"import { template as _$template, insert as _$insert, setAttr as _$setAttr, bindProp as _$bindProp } from "@barqjs/web";
-import { createSignal, readProp as _$readProp } from "@barqjs/core";
+"import { template as _$template, insert as _$insert, setAttr as _$setAttr } from "@barqjs/web";
+import { createSignal, readProp as _$readProp, bindEffect as _$bindEffect } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<span class="chip"></span>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div class="chips"><!----></div>\`);
 const _k$1 = () => "warm";
 const _k$2 = () => "cool";
 export const [label, setLabel] = createSignal("first");
 /**
-* Props destructured in the PARAMETER LIST. The compiler lowers reactive props
-* to getters, and a parameter pattern flattens every one of them exactly once —
-* so the only thing that can stay live across the boundary is a prop whose
-* VALUE is an accessor. That is the contract this shape pins, and it is the
-* commonest way real code loses reactivity by accident.
+* Props destructured in the PARAMETER LIST. The pattern becomes one props
+* record and each name the read it stood for, so both names stay live across
+* the boundary where a JavaScript destructure would have copied them once.
+* That is the contract this shape pins.
 */
 function Chip(_props$1: {
   text: () => string;
   tone: string;
 }) {
   const _el$1 = _tmpl$1();
-  _$bindProp(_el$1, _$setAttr, "data-tone", () => _$readProp(_props$1.tone));
+  _$bindEffect(() => _$readProp(_props$1.tone), (_v$, _p$) => {
+    _$setAttr(_el$1, "data-tone", _v$, _p$);
+  });
   _$insert(_el$1, _props$1.text);
   return _el$1;
 }
@@ -4779,10 +4783,9 @@ export const steps = [() => setLabel("second")];
 export const optimality = {
   target: 1,
   templates: 2,
-  // A destructured PARAMETER reads every prop at binding time, so the two
-  // locals are snapshots and nothing the compiler does can make them live.
-  // What it can do is not pretend otherwise: the props object is built with
-  // plain values, and the author-written accessor passes through as one.
+  // A destructured PARAMETER is not a snapshot: the two names are reads of the
+  // one props record. The call site is what it is for a \`props\` parameter: a
+  // real props object, with the author-written accessor passed through as one.
   emits: [
     "Chip(",
     "() => \\"warm\\"",
@@ -4798,8 +4801,8 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots props-raw-forward 1`] = `
-"import { template as _$template, insert as _$insert, setAttr as _$setAttr, bindProp as _$bindProp } from "@barqjs/web";
-import { createSignal, readProp as _$readProp } from "@barqjs/core";
+"import { template as _$template, insert as _$insert, setAttr as _$setAttr } from "@barqjs/web";
+import { createSignal, readProp as _$readProp, bindEffect as _$bindEffect } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<span class="chip"></span>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div class="wrap"></div>\`);
 export const [tone, setTone] = createSignal("warm");
@@ -4822,7 +4825,9 @@ function Chip(props: {
   tone: string;
 }) {
   const _el$1 = _tmpl$1();
-  _$bindProp(_el$1, _$setAttr, "data-tone", () => _$readProp(props.tone));
+  _$bindEffect(() => _$readProp(props.tone), (_v$, _p$) => {
+    _$setAttr(_el$1, "data-tone", _v$, _p$);
+  });
   _$insert(_el$1, props.tone);
   return _el$1;
 }
@@ -4857,9 +4862,9 @@ const _k$1 = () => "cool";
 export const [label, setLabel] = createSignal("first");
 /**
 * Renamed and defaulted at once: \`text: body\` binds a different local name to
-* the prop, and \`tone = "warm"\` supplies a value when the prop is absent. A
-* default is a read of the prop plus a branch, so the getter fires exactly once
-* per pattern element and never again.
+* the prop, and \`tone = "warm"\` supplies a value when the prop is absent. Both
+* names are reads of the prop, so the default applies whenever the prop is
+* \`undefined\` and not only when the component first runs.
 */
 function Chip(props: {
   text: () => string;
@@ -4887,7 +4892,7 @@ export const steps = [() => setLabel("second")];
 export const optimality = {
   target: 1,
   templates: 2,
-  // Renaming and defaulting are ordinary destructuring, so they snapshot like
+  // Renaming and defaulting are ordinary destructuring, so they stay live like
   // the other two. The prop the caller OMITS must be omitted from the object
   // as well — emitting \`tone: undefined\` would defeat the default.
   emits: ["text: label", "() => \\"cool\\""],
@@ -4906,10 +4911,9 @@ const _k$2 = () => "warm";
 export const [label, setLabel] = createSignal("first");
 /**
 * A rest element collects everything the pattern did not name, and the rest
-* object is then spread onto an intrinsic element. A rest pattern reads EVERY
-* remaining prop eagerly — it has to, to build the object — so this is the one
-* props shape where fine-grained flow across the boundary cannot survive at
-* all, and the two paths have to agree about that.
+* object is then spread onto an intrinsic element. The rest object is the
+* props record without the names the pattern took, so making it reads
+* nothing.
 */
 function Chip(props: {
   text: () => string;

@@ -163,7 +163,7 @@ describe("the diagnostic engine", () => {
 
     // A directive naming a different code silences nothing — naming the code is
     // what stops one suppression swallowing an unrelated diagnostic.
-    expect(codes(diagnose(silenced.replace("BARQ001", "BARQ005")))).toEqual(["BARQ008", "BARQ001"]);
+    expect(codes(diagnose(silenced.replace("BARQ001", "BARQ002")))).toEqual(["BARQ008", "BARQ001"]);
 
     // Unused: reported, at warning level, even with defaultCategory error.
     const stale =
@@ -263,7 +263,6 @@ describe("the diagnostic engine", () => {
         `import { For, useStore } from "@barqjs/core";\n` +
         `const [state] = useStore({ rows: [] });\n` +
         "export const V = () => <For each={state.rows}>{({ name }) => <li>{name}</li>}</For>;\n",
-      BARQ005: "export const V = ({ text }) => <p>{`#${text}`}</p>;\n",
       BARQ008:
         "// barq-ignore-next-line BARQ001 (nothing reports this here)\n" +
         "export const V = () => <p>ok</p>;\n",
@@ -344,7 +343,8 @@ describe("the diagnostic engine", () => {
         source: "export const V = () => <mesh />;\n",
         options: { intrinsics: CONTESTED_MESH },
       },
-      BARQ030: "export const V = (props) => {\n  props.count = 1;\n  return <p>{props.count}</p>;\n};\n",
+      BARQ030:
+        "export const V = (props) => {\n  props.count = 1;\n  return <p>{props.count}</p>;\n};\n",
       BARQ031: 'export const V = ({ user: { name = "guest" } }) => <p>{name}</p>;\n',
     };
 
@@ -374,8 +374,7 @@ describe("the diagnostic engine", () => {
   /**
    * Precision, measured against the whole corpus rather than asserted. One hit,
    * and it is known: `diagnostic-accessor-coercion` is the positive fixture,
-   * added for this. `props-destructured-param` writes its destructured names
-   * only where a function is correct, so BARQ005 is silent there.
+   * added for this.
    *
    * D1 fires on ZERO of the 116 fixtures that predate it, and on zero of the 71
    * real `.ts`/`.tsx` files in this repo's own packages beyond the four genuine

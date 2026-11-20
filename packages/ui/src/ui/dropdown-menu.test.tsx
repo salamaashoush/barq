@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createSignal, flush, type Child, type Incoming } from "@barqjs/core";
+import { createSignal, flush, type Child } from "@barqjs/core";
 import {
   accessibleName,
   expectNoAriaViolations,
@@ -233,12 +233,10 @@ function slot(name: string): HTMLElement | null {
  * author put them.
  */
 describe("a DropdownMenu written as children", () => {
-  function Account(
-    props: {
-      onProfile?: (event: DropdownMenuSelectEvent) => void;
-      onAction?: (key: string) => void;
-    },
-  ) {
+  function Account(props: {
+    onProfile?: (event: DropdownMenuSelectEvent) => void;
+    onAction?: (key: string) => void;
+  }) {
     return (
       <DropdownMenu>
         <DropdownMenuTrigger>
@@ -482,12 +480,10 @@ describe("a DropdownMenu written as children", () => {
     expect(screen.queryByRole("menu")).toBeNull();
   });
 
-  function View(
-    props: {
-      onStatus?: (checked: boolean) => void;
-      onPosition?: (value: string) => void;
-    },
-  ) {
+  function View(props: {
+    onStatus?: (checked: boolean) => void;
+    onPosition?: (value: string) => void;
+  }) {
     const [status, setStatus] = createSignal(true);
     const [position, setPosition] = createSignal("bottom");
     return (
@@ -670,15 +666,13 @@ describe("a DropdownMenu written as children", () => {
 });
 
 describe("where a DropdownMenu's content goes", () => {
-  function Placed(
-    props: {
-      side?: "top" | "right" | "bottom" | "left";
-      align?: "start" | "center" | "end";
-      sideOffset?: number;
-      alignOffset?: number;
-      placement?: "top end";
-    },
-  ) {
+  function Placed(props: {
+    side?: "top" | "right" | "bottom" | "left";
+    align?: "start" | "center" | "end";
+    sideOffset?: number;
+    alignOffset?: number;
+    placement?: "top end";
+  }) {
     return (
       <DropdownMenu>
         <DropdownMenuTrigger>

@@ -1,4 +1,4 @@
-import { For, createSignal, type Child, type Incoming } from "@barqjs/core";
+import { For, createSignal, type Child } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import { ArrowRight } from "@barqjs/lucide/icons/arrow-right";
 import { Menu } from "@barqjs/lucide/icons/menu";
@@ -596,9 +596,12 @@ const headerActions = css`
   }
 `;
 
-export function PageHeader(
-  props: { title: string; lede?: string; actions?: Child; children?: Child },
-) {
+export function PageHeader(props: {
+  title: string;
+  lede?: string;
+  actions?: Child;
+  children?: Child;
+}) {
   return (
     <section class={headerSection}>
       <div class={wrapper}>

@@ -1653,7 +1653,11 @@ export function ComboboxInput(props: ComboboxInputProps) {
   const elementProps = mergeProps(
     root.inputProps(chips),
     focusProps,
-    filterDOMProps(fromProps(cells(props)), { global: true, labelable: true, propNames: INPUT_PROPS }),
+    filterDOMProps(fromProps(cells(props)), {
+      global: true,
+      labelable: true,
+      propNames: INPUT_PROPS,
+    }),
     styleProps(cells(props)),
     {
       placeholder: () => props.placeholder,
@@ -1845,8 +1849,7 @@ export function ComboboxPopup(props: ComboboxPopupProps) {
   const popupRef = root.popupRef;
   const close = (): void => root.setOpen(false);
 
-  const placement = (): Placement =>
-    placementFor(props.side ?? "bottom", props.align ?? "start");
+  const placement = (): Placement => placementFor(props.side ?? "bottom", props.align ?? "start");
 
   const position = overlayPosition({
     targetRef: () => anchorElement(props.anchor) ?? root.anchor(),
@@ -2127,9 +2130,7 @@ interface GroupValue {
 
 const ComboboxGroupContext = createContext<GroupValue | null>(null);
 
-function ComboboxGroupProvider(
-  props: { value: GroupValue; section: Key; children?: Child },
-) {
+function ComboboxGroupProvider(props: { value: GroupValue; section: Key; children?: Child }) {
   return provideStaticSection(props.section, () =>
     provide(
       ComboboxGroupContext,

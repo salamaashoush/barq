@@ -14,7 +14,6 @@ import {
   provide,
   createSignal,
   type Child,
-  type Incoming,
 } from "@barqjs/core";
 import { firstThatWorks, layer, variants } from "@barqjs/css";
 import { PanelLeft } from "@barqjs/lucide/icons/panel-left";
@@ -1207,7 +1206,10 @@ export function SidebarGroupAction(props: UiProps) {
 
 export function SidebarGroupContent(props: UiProps) {
   return (
-    <div {...uiProps("sidebar-group-content", groupContent, cells(props))} data-sidebar="group-content">
+    <div
+      {...uiProps("sidebar-group-content", groupContent, cells(props))}
+      data-sidebar="group-content"
+    >
       {props.children}
     </div>
   );
@@ -1419,7 +1421,10 @@ export interface SidebarMenuSkeletonProps extends UiProps {
 export function SidebarMenuSkeleton(props: SidebarMenuSkeletonProps) {
   const width = `${String(Math.floor(Math.random() * 40) + 50)}%`;
   return (
-    <div {...uiProps("sidebar-menu-skeleton", menuSkeleton, cells(props))} data-sidebar="menu-skeleton">
+    <div
+      {...uiProps("sidebar-menu-skeleton", menuSkeleton, cells(props))}
+      data-sidebar="menu-skeleton"
+    >
       {props.showIcon === true ? (
         <Skeleton
           data-slot="sidebar-menu-skeleton-icon"

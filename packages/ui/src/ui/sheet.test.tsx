@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createSignal, flush, onSettled, type Incoming } from "@barqjs/core";
+import { createSignal, flush, onSettled } from "@barqjs/core";
 import { render, screen, tick, user } from "@barqjs/testing";
 
 import { rulesFor } from "../test-rules.ts";

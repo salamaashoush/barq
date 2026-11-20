@@ -12,7 +12,6 @@
  * takes one array rather than a list of lists.
  */
 
-import type { Incoming } from "@barqjs/core";
 import type { Key } from "@barqjs/aria/collections";
 import { CommandDialog, CommandGroup, CommandItem } from "@barqjs/ui";
 

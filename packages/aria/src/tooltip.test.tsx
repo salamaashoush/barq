@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { flush, type Incoming } from "@barqjs/core";
+import { flush } from "@barqjs/core";
 import {
   accessibleDescription,
   expectNoAriaViolations,
@@ -16,15 +16,13 @@ function after(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms + 15));
 }
 
-function Saver(
-  props: {
-    delay?: number;
-    closeDelay?: number;
-    trigger?: "hover" | "focus";
-    isDisabled?: boolean;
-    shouldCloseOnPress?: boolean;
-  },
-) {
+function Saver(props: {
+  delay?: number;
+  closeDelay?: number;
+  trigger?: "hover" | "focus";
+  isDisabled?: boolean;
+  shouldCloseOnPress?: boolean;
+}) {
   return (
     <TooltipTrigger
       delay={props.delay ?? 20}
@@ -313,14 +311,12 @@ describe("TooltipProvider", () => {
     resetTooltipWarmup();
   });
 
-  function Toolbar(
-    props: {
-      delay?: number;
-      skipDelay?: number;
-      closeDelay?: number;
-      isContentHoverable?: boolean;
-    },
-  ) {
+  function Toolbar(props: {
+    delay?: number;
+    skipDelay?: number;
+    closeDelay?: number;
+    isContentHoverable?: boolean;
+  }) {
     return (
       <TooltipProvider
         delay={props.delay}

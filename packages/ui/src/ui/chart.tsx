@@ -14,7 +14,6 @@ import {
   type Accessor,
   type Child,
   type Component,
-  type Incoming,
 } from "@barqjs/core";
 import { dynamic } from "@barqjs/web";
 import { layer } from "@barqjs/css";

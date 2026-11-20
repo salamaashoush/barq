@@ -1,4 +1,4 @@
-import { cells } from "@barqjs/core";
+import { omit } from "@barqjs/core";
 import { provideDirection, useDirection } from "@barqjs/aria/i18n";
 import {
   Radio as AriaRadio,
@@ -7,13 +7,11 @@ import {
   type RadioComponentProps,
   type RadioGroupComponentProps,
 } from "@barqjs/aria/radio";
-import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { box } from "../lib/shared-box.ts";
 import { ringSlot } from "../lib/shared-ring-slot.ts";
-import { omit } from "../lib/slot.ts";
 import { useFieldInvalid } from "./field.tsx";
 import { when } from "../lib/shared-when.ts";
 
@@ -148,7 +146,7 @@ export function RadioGroup(props: RadioGroupProps) {
 
   return (
     <AriaRadioGroup
-      {...omit(cells(props), GROUP_UPSTREAM)}
+      {...omit(props, ...GROUP_UPSTREAM)}
       data-slot="radio-group"
       isDisabled={props.isDisabled ?? props.disabled}
       isRequired={props.isRequired ?? props.required}
@@ -174,7 +172,7 @@ export interface RadioGroupItemProps extends RadioComponentProps {
 export function RadioGroupItem(props: RadioGroupItemProps) {
   return (
     <AriaRadio
-      {...omit(cells(props), ["disabled"])}
+      {...omit(props, "disabled")}
       // Written around text it is the label it used to be; on its own it is
       // the bare control, for the `<Label>` or `<Field>` that names it.
       elementType={props.children === undefined ? "span" : "label"}

@@ -69,15 +69,15 @@ export const slotTakesEither = (
 );
 
 /** A generic wrapper forwards its props, callback children included, to the generic it wraps. */
-function Menu<T>(
-  props: { items?: T[]; label?: string; children?: Child | ((item: T) => Child) },
-) {
+function Menu<T>(props: { items?: T[]; label?: string; children?: Child | ((item: T) => Child) }) {
   return <ul aria-label={props.label} />;
 }
 
-export function MenuWrapper<T>(
-  props: { items?: T[]; label?: string; children?: Child | ((item: T) => Child) },
-) {
+export function MenuWrapper<T>(props: {
+  items?: T[];
+  label?: string;
+  children?: Child | ((item: T) => Child);
+}) {
   return <Menu<T> {...props} label="wrapped" />;
 }
 
@@ -126,10 +126,15 @@ export function Tag(props: { text: string; tone?: "info" | "warn" }) {
   return <span class={props.tone}>{label()}</span>;
 }
 
-/** `Component<P>` hands the body Cells; the call site writes values. */
+/** `Component<P>` hands the body values and `cells` the Accessors; the call site writes values. */
 const Label: Component<{ text: string; tone?: "info" | "warn" }> = (props) => {
-  assertType<Equal<typeof props.text, Accessor<string>>>();
-  // @ts-expect-error a prop is read by calling it
+  assertType<Equal<typeof props.text, string>>();
+  assertType<Equal<typeof props.tone, "info" | "warn" | undefined>>();
+  const record = cells(props);
+  assertType<Equal<typeof record.text, Accessor<string>>>();
+  // @ts-expect-error a value is not called
+  props.text();
+  // @ts-expect-error a Cell is read by calling it
   const wrong: string = cells(props).text;
   void wrong;
   return <span class={props.tone}>{props.text}</span>;
@@ -166,7 +171,6 @@ function Frame(props: FlowProps<{ tone: "info" | "warn" }>) {
 export const helpersAtTheCallSite = (
   <Group>
     <Label text="plain value" tone="info" />
-    <Label text={() => "an accessor"} />
     <Divider inset />
     <Card title="Titled">
       <p>content</p>
@@ -185,6 +189,8 @@ export const helperRefusals = (
     <Label tone="info" />
     {/* @ts-expect-error `tone` is one of two words */}
     <Label text="x" tone="loud" />
+    {/* @ts-expect-error an accessor is not the value a prop declares */}
+    <Label text={() => "an accessor"} />
     <Divider>
       {/* @ts-expect-error a void component takes no children */}
       <p>no</p>

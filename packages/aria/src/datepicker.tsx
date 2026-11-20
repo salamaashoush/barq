@@ -26,7 +26,6 @@ import {
   createContext,
   getContext,
   getOwner,
-  type Incoming,
   install,
 } from "@barqjs/core";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";

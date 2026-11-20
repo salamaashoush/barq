@@ -47,7 +47,6 @@ import {
   createMemo,
   createSignal,
   getContext,
-  type Incoming,
   onCleanup,
   onSettled,
   provide,
@@ -1078,11 +1077,7 @@ export function CommandGroup(props: CommandGroupComponentProps) {
   return (
     <div {...elementProps} ref={mergeRefs(group.ref, props.ref)}>
       <Show when={props.heading !== undefined}>
-        <div
-          {...group.headingProps}
-          class={props.headingClass}
-          data-slot={props.headingSlot}
-        >
+        <div {...group.headingProps} class={props.headingClass} data-slot={props.headingSlot}>
           {props.heading}
         </div>
       </Show>

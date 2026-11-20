@@ -6,7 +6,6 @@ import {
   onCleanup,
   onSettled,
   type Child,
-  type Incoming,
 } from "@barqjs/core";
 import { useDirection } from "@barqjs/aria/i18n";
 import { exitDuration } from "@barqjs/aria/presence";

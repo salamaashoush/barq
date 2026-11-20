@@ -3,7 +3,7 @@
  * `apps/v4/registry/new-york-v4/blocks/sidebar-01/`.
  */
 
-import { For, createSignal, type Incoming, Show } from "@barqjs/core";
+import { For, createSignal, Show } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import {
   Breadcrumb,

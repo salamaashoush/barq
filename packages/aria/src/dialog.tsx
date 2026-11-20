@@ -207,9 +207,7 @@ export function Heading(props: HeadingComponentProps) {
     {
       // The title names the dialog only when it says it is the title.
       id: () =>
-        props.slot === "title"
-          ? access(title?.id as MaybeAccessor<string | undefined>)
-          : props.id,
+        props.slot === "title" ? access(title?.id as MaybeAccessor<string | undefined>) : props.id,
       "aria-level": () => props.level ?? 3,
       "data-testid": () => props["data-testid"],
     },
@@ -769,9 +767,11 @@ export function popoverStateProps(): DOMProps {
   };
 }
 
-function PopoverGroupProvider(
-  props: { value: ElementRef; placed: PopoverPlacement; children?: Child },
-) {
+function PopoverGroupProvider(props: {
+  value: ElementRef;
+  placed: PopoverPlacement;
+  children?: Child;
+}) {
   return provide(
     PopoverGroupContext,
     () => props.value,

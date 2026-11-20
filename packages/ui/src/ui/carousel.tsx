@@ -10,7 +10,6 @@ import {
   createSignal,
   type Accessor,
   type Child,
-  type Incoming,
 } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 import { ArrowLeft } from "@barqjs/lucide/icons/arrow-left";

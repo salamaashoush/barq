@@ -168,7 +168,7 @@ mod tests {
         module
     }
 
-    /// D1 and D3 are off unless asked for, so a production compile pays nothing.
+    /// D1 is off unless asked for, so a production compile pays nothing.
     fn diagnosing() -> ResolvedOptions {
         ResolvedOptions { dev: true, diagnostics: true, ..ResolvedOptions::default() }
     }
@@ -364,51 +364,6 @@ mod tests {
 
     /// D1's POSITION ALLOWLIST, as implemented. Every arm is a slot where no
     /// correct program could put an accessor; `vue/no-ref-as-operand` is the
-    /// The same rule one step out: a prop is a Cell, and the positions that
-    /// turn an accessor into a value turn `props.x` into one too. Asking
-    /// whether a prop was passed at all is not one of them.
-    #[test]
-    fn a_prop_used_as_a_value_without_being_called_is_reported() {
-        let allocator = Allocator::new();
-        let fires = [
-            ("props.count + 1", "BARQ001"),
-            ("`hello ${props.name}`", "BARQ001"),
-            ("props.count > 3", "BARQ001"),
-            ("props.user.name", "BARQ003"),
-            ("props.items.length", "BARQ003"),
-            ("props.items.map((item) => item)", "BARQ003"),
-        ];
-        for (expression, code) in fires {
-            let source = allocator.alloc_str(&format!(
-                "export function Card(props) {{ const v = {expression}; return <p>{{v}}</p>; }}\n"
-            ));
-            let module = module_with(&allocator, source, &diagnosing());
-            assert_eq!(codes_of(&module), vec![code], "expected {code} for `{expression}`");
-        }
-
-        let silent = [
-            "props.count() + 1",
-            "props.user().name",
-            "props.title ? 1 : 2",
-            "props.title === undefined",
-            "props.onPress.call(null)",
-            "props.onPress?.()",
-            "<p title={props.title}>{props.title}</p>",
-        ];
-        for expression in silent {
-            let source = allocator.alloc_str(&format!(
-                "export function Card(props) {{ const v = {expression}; return <p>{{v}}</p>; }}\n"
-            ));
-            let module = module_with(&allocator, source, &diagnosing());
-            assert_eq!(codes_of(&module), Vec::<&str>::new(), "`{expression}` is correct code");
-        }
-
-        // An object that merely happens to be called `props` is not one.
-        let source = "const props = { count: 1 };\nexport const total = props.count + 1;\n";
-        let module = module_with(&allocator, source, &diagnosing());
-        assert_eq!(codes_of(&module), Vec::<&str>::new());
-    }
-
     /// model, and every narrowing below is a refusal to guess.
     #[test]
     fn d1_fires_only_in_the_position_allowlist() {
@@ -483,6 +438,50 @@ mod tests {
             ));
             let module = module_with(&allocator, source, &diagnosing());
             assert_eq!(codes_of(&module), Vec::<&str>::new(), "`{expression}` must be silent");
+        }
+    }
+
+    /// A prop is written as the value its type says it is, so the positions
+    /// that report an accessor say nothing about `props.x` or about a name
+    /// destructured from the props.
+    #[test]
+    fn a_prop_used_as_a_value_is_correct_code() {
+        let allocator = Allocator::new();
+        let silent = [
+            "props.count + 1",
+            "`hello ${props.name}`",
+            "props.count > 3",
+            "-props.count",
+            "props.user.name",
+            "props.items.length",
+            "props.items.map((item) => item)",
+            "props.title ? 1 : 2",
+            "props.title === undefined",
+            "props.onPress.call(null)",
+            "props.onPress?.()",
+            "<p title={props.title}>{props.title}</p>",
+        ];
+        for expression in silent {
+            let source = allocator.alloc_str(&format!(
+                "export function Card(props) {{ const v = {expression}; return <p>{{v}}</p>; }}\n"
+            ));
+            let module = module_with(&allocator, source, &diagnosing());
+            assert_eq!(codes_of(&module), Vec::<&str>::new(), "`{expression}` is correct code");
+        }
+
+        let destructured = [
+            "export function Chip({ text }) { return <b>{`#${text}`}</b>; }",
+            "export function Chip({ text: label }) { return <b>{label * 2}</b>; }",
+            "export function Chip({ items }) { return <b>{items.length}</b>; }",
+            "export function Chip({ tone = \"warm\" }) { return <b>{`t-${tone}`}</b>; }",
+            "export function Chip({ size = 2 }) { return <b>{size.toFixed(1)}</b>; }",
+            "export function Chip({ text }) { if (!text) return null; return <b>{text}</b>; }",
+            "export function Chip({ text, ...rest }) { return <b {...rest}>{text}</b>; }",
+        ];
+        for source in destructured {
+            let source = allocator.alloc_str(source);
+            let module = module_with(&allocator, source, &diagnosing());
+            assert_eq!(codes_of(&module), Vec::<&str>::new(), "{source}");
         }
     }
 
@@ -564,8 +563,8 @@ mod tests {
     fn d1_keys_on_the_binding_and_stays_silent_where_it_cannot_see() {
         let allocator = Allocator::new();
         let cases = [
-            // a prop that is CALLED is a value, correct in every position
-            "export function Card(props) { return <p>{props.total() * 2}</p>; }",
+            // a prop is written as its value, correct in every position
+            "export function Card(props) { return <p>{props.total * 2}</p>; }",
             // cross-module: P0 Bind is module-scoped, so this is invisible. The
             // documented false negative — NOT covered by a name heuristic, which
             // is the proximate cause of eslint-plugin-solid #184/#190/#199.
@@ -581,134 +580,6 @@ mod tests {
             let module = module_with(&allocator, source, &diagnosing());
             assert_eq!(codes_of(&module), Vec::<&str>::new(), "{source}");
         }
-    }
-
-    /// D3. A destructured prop is a Cell, which is correct wherever a function
-    /// is, so the rule reports a misuse of one and never the pattern itself.
-    #[test]
-    fn d3_fires_on_a_destructured_parameter_list_and_only_there() {
-        let allocator = Allocator::new();
-        let fires = [
-            "function Chip({ text }) { return <b>{`#${text}`}</b>; }\nconst v = <Chip/>;\n",
-            "const Chip = ({ text }) => <b>{text.length}</b>;\nexport { Chip };\n",
-            "export default function Page({ title }) { return <h1>{title + \"!\"}</h1>; }\n",
-        ];
-        for source in fires {
-            let source = allocator.alloc_str(source);
-            let module = module_with(&allocator, source, &diagnosing());
-            assert_eq!(codes_of(&module), vec!["BARQ005"], "{source}");
-        }
-
-        let silent = [
-            // the shape the compiler CAN keep reactive
-            "function Chip(props) { return <b>{props.text}</b>; }\nconst v = <Chip/>;\n",
-            // a `<For>` row callback is one destructured parameter and JSX-returning
-            "import { For } from \"@barqjs/core\";\n\
-             const v = <For each={[]}>{({ text }) => <b>{`${text}`}</b>}</For>;\n",
-            // no evidence it is a component: never tagged, never exported
-            "function chip({ text }) { return <b>{`${text}`}</b>; }\n",
-            // arity is not one, so it is a different shape
-            "function Chip({ text }, extra) { return <b>{`${text}`}</b>; }\nconst v = <Chip/>;\n",
-            // returns no JSX
-            "export function useThing({ text }) { return `${text}`; }\n",
-        ];
-        for source in silent {
-            let source = allocator.alloc_str(source);
-            let module = module_with(&allocator, source, &diagnosing());
-            assert_eq!(codes_of(&module), Vec::<&str>::new(), "{source}");
-        }
-    }
-
-    /// Each case reports once, at the misuse, which `at` names.
-    #[test]
-    fn d3_reports_a_destructured_prop_where_it_is_misused() {
-        let allocator = Allocator::new();
-        let fires = [
-            ("export function Chip({ text: label }) { return <b>{label * 2}</b>; }", "label"),
-            ("export function Chip({ n }) { return <b>{-n}</b>; }", "n"),
-            ("export function Chip({ items }) { return <b>{items.length}</b>; }", "items"),
-            (
-                "export function Chip({ tone = \"warm\" }) { return <b data-tone={tone()} />; }",
-                "tone()",
-            ),
-            ("export function Chip({ tone = \"warm\" }) { return <b>{tone?.()}</b>; }", "tone?.()"),
-            ("export function Chip({ open = false }) { return <b>{open()}</b>; }", "open()"),
-            ("export function Chip({ tone = \"warm\" }) { return <b>{`t-${tone}`}</b>; }", "tone"),
-            ("export function Chip({ size = 2 }) { return <b>{size.toFixed(1)}</b>; }", "size"),
-            ("export function Card({ user: { name } }) { return <b>{name}</b>; }", "{ name }"),
-            ("export function Card({ items: [first] }) { return <b>{first}</b>; }", "[first]"),
-            ("export function Card({ user: { name } = {} }) { return <b>{name}</b>; }", "{ name }"),
-        ];
-        for (source, at) in fires {
-            let source = allocator.alloc_str(source);
-            let module = module_with(&allocator, source, &diagnosing());
-            assert_eq!(codes_of(&module), vec!["BARQ005"], "{source}");
-            let span = module.env.diagnostics[0].span;
-            assert_eq!(&source[span.start as usize..span.end as usize], at, "{source}");
-        }
-
-        let silent = [
-            // a function is what JSX takes, in a child and in an attribute
-            "export function Chip({ text }) { return <b title={text}>{text}</b>; }",
-            // handed on, or called first
-            "export function Chip({ text }) { return <b>{format(text)}</b>; }",
-            "export function Chip({ text }) { return <b>{`${text()}`}</b>; }",
-            // truthiness asks whether the prop was passed, as it does for `props.x`
-            "export function Chip({ text }) { return <b>{text ? \"y\" : \"n\"}</b>; }",
-            "export function Chip({ text }) { if (!text) return null; return <b>{text}</b>; }",
-            // what a Cell is legitimately asked for, and identity
-            "export function Chip({ text }) { return <b>{text.call(null)}</b>; }",
-            "export function Chip({ a, b }) { return <b>{a === b ? 1 : 2}</b>; }",
-            // a defaulted name in JSX renders correctly either way
-            "export function Chip({ tone = \"warm\" }) { return <b data-tone={tone}>{tone}</b>; }",
-            // a `null` default is safe to call optionally, or behind a test
-            "export function Chip({ onClose = null }) { return <b onClick={() => onClose?.()} />; }",
-            "export function Chip({ onClose = null }) { return <b onClick={() => onClose && onClose()} />; }",
-            // code that already tells the two kinds apart
-            "export function Chip({ tone = \"warm\" }) {\n\
-               const t = typeof tone === \"function\" ? tone() : tone;\n\
-               return <b>{`${t}`}</b>;\n}",
-            // a default that is a function, or whose value is unknown
-            "export function Chip({ format = (v) => v }) { return <b>{format(1)}</b>; }",
-            "export function Chip({ tone = DEFAULT }) { return <b>{tone() + 1}</b>; }",
-            // reassigned, or shadowed
-            "export function Chip({ text }) { text = text(); return <b>{`${text}`}</b>; }",
-            "export function Chip({ text }) { const f = (text) => `${text}`; return <b>{f(1)}</b>; }",
-            // the rest object holds Cells and is spread whole
-            "export function Chip({ text, ...rest }) { return <b {...rest}>{text}</b>; }",
-        ];
-        for source in silent {
-            let source = allocator.alloc_str(source);
-            let module = module_with(&allocator, source, &diagnosing());
-            assert_eq!(codes_of(&module), Vec::<&str>::new(), "{source}");
-        }
-    }
-
-    #[test]
-    fn d3_words_each_misuse_for_what_goes_wrong() {
-        let allocator = Allocator::new();
-        let message = |source: &str| {
-            let source = allocator.alloc_str(source);
-            let module = module_with(&allocator, source, &diagnosing());
-            module.env.diagnostics[0].message.to_string()
-        };
-        let value = message("export function Chip({ text }) { return <b>{`${text}`}</b>; }");
-        assert!(value.contains("Call it: `text()`"), "{value}");
-        let member = message("export function Chip({ text }) { return <b>{text.length}</b>; }");
-        assert!(member.contains("`text().length`"), "{member}");
-        let passed =
-            message("export function Chip({ tone = \"warm\" }) { return <b>{`${tone}`}</b>; }");
-        assert!(passed.contains("wrong whenever the prop is passed"), "{passed}");
-        assert!(passed.contains("`props.tone?.() ?? \"warm\"`"), "{passed}");
-        let missing =
-            message("export function Chip({ tone: t = \"warm\" }) { return <b>{t()}</b>; }");
-        assert!(missing.contains("when the prop is missing this call throws"), "{missing}");
-        assert!(missing.contains("`props.tone?.() ?? \"warm\"`"), "{missing}");
-        let object = message("export function Card({ user: { name } }) { return <b>{name}</b>; }");
-        assert!(object.contains("`user` arrives as a Cell"), "{object}");
-        assert!(object.contains("`user()`"), "{object}");
-        let array = message("export function Card({ items: [first] }) { return <b>{first}</b>; }");
-        assert!(array.contains("not iterable"), "{array}");
     }
 
     /// The rules are off unless asked for, so a production compile pays for no

@@ -32,8 +32,8 @@ export const Email = () => <p>{user().email}</p>;
 The value is behind the call, so `user.email` asks the function for a property it does
 not have and the page shows nothing. Habits from other libraries land here too: an
 accessor has no `.value`, `.set` or `.peek`, and writing goes through the setter that
-`createSignal` returns beside it. A prop works the same way: `props.user.email` has to be
-`props.user().email`.
+`createSignal` returns beside it. A prop is different: a component writes it as the value
+and the compiler writes the read, so `props.user.email` is correct and is not reported.
 
 `items.length` is reported too, with its own message. Every function has a `length`, so it
 never comes back `undefined`: it is the accessor's parameter count, `0`, and a list that

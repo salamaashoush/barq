@@ -23,7 +23,7 @@ import {
   lazy,
 } from "@barqjs/core";
 import { Portal, dynamic } from "../index.ts";
-import type { Accessor, Child, Incoming } from "@barqjs/core";
+import type { Accessor, Child } from "@barqjs/core";
 import { assertType } from "./assert.ts";
 import type { Equal } from "./assert.ts";
 

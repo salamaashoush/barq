@@ -1193,7 +1193,9 @@ export function RangeCalendar(props: RangeCalendarComponentProps) {
     onFocusChange: (date) => props.onFocusChange?.(date),
   });
 
-  return <CalendarBody state={state} of={cells(props) as unknown as Incoming<CalendarComponentProps>} />;
+  return (
+    <CalendarBody state={state} of={cells(props) as unknown as Incoming<CalendarComponentProps>} />
+  );
 }
 
 export interface MultipleCalendarComponentProps extends Omit<
@@ -1239,7 +1241,9 @@ export function MultipleCalendar(props: MultipleCalendarComponentProps) {
     onFocusChange: (date) => props.onFocusChange?.(date),
   });
 
-  return <CalendarBody state={state} of={cells(props) as unknown as Incoming<CalendarComponentProps>} />;
+  return (
+    <CalendarBody state={state} of={cells(props) as unknown as Incoming<CalendarComponentProps>} />
+  );
 }
 
 interface CalendarBodyProps {

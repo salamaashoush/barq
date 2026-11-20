@@ -15,7 +15,7 @@
  * where upstream puts it.
  */
 
-import { Show, createSignal, type Child, type Incoming } from "@barqjs/core";
+import { Show, createSignal, type Child } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import { Check } from "@barqjs/lucide/icons/check";
 import { Copy } from "@barqjs/lucide/icons/copy";

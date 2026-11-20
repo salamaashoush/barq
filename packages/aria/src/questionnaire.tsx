@@ -1111,28 +1111,32 @@ export function QuestionnaireItem(props: QuestionnaireItemProps) {
     return ids.length === 0 ? undefined : ids.join(" ");
   };
 
-  const fieldsetProps = mergeProps(filterDOMProps(options, { global: true }), styleProps(cells(props)), {
-    "aria-describedby": describedBy,
-    "aria-invalid": () => (invalid() ? true : undefined),
-    "aria-keyshortcuts": () =>
-      keyShortcuts(
-        props["aria-keyshortcuts"],
-        active() && "Meta+Enter Control+Enter",
-        active() && answers().length > 0 && "ArrowUp ArrowDown",
-        active() && !root.first() && root.backKey(),
-        active() && !root.last() && status() !== "unanswered" && root.forwardKey(),
-      ),
-    disabled,
-    hidden: () => !active(),
-    inert: () => !active(),
-    tabIndex: -1,
-    "data-active": () => present(active()),
-    "data-disabled": () => present(disabled()),
-    "data-invalid": () => present(invalid()),
-    "data-multiple": () => present(multiple()),
-    "data-required": () => present(required()),
-    "data-status": status,
-  });
+  const fieldsetProps = mergeProps(
+    filterDOMProps(options, { global: true }),
+    styleProps(cells(props)),
+    {
+      "aria-describedby": describedBy,
+      "aria-invalid": () => (invalid() ? true : undefined),
+      "aria-keyshortcuts": () =>
+        keyShortcuts(
+          props["aria-keyshortcuts"],
+          active() && "Meta+Enter Control+Enter",
+          active() && answers().length > 0 && "ArrowUp ArrowDown",
+          active() && !root.first() && root.backKey(),
+          active() && !root.last() && status() !== "unanswered" && root.forwardKey(),
+        ),
+      disabled,
+      hidden: () => !active(),
+      inert: () => !active(),
+      tabIndex: -1,
+      "data-active": () => present(active()),
+      "data-disabled": () => present(disabled()),
+      "data-invalid": () => present(invalid()),
+      "data-multiple": () => present(multiple()),
+      "data-required": () => present(required()),
+      "data-status": status,
+    },
+  );
 
   return (
     <fieldset {...fieldsetProps} ref={mergeRefs(attach, props.ref)}>

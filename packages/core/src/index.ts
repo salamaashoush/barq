@@ -169,6 +169,7 @@ export type { Block, Cell, Scope, Slot } from "./scope.ts";
 // source list and copy nothing.
 export {
   props,
+  asRecord,
   cell,
   cells,
   block,

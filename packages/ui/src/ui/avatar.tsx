@@ -1,4 +1,4 @@
-import { cells, Show, createSignal, onCleanup, type Incoming } from "@barqjs/core";
+import { cells, Show, createSignal, onCleanup } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
@@ -271,7 +271,9 @@ const groupCount = ui(text.sm, {
  */
 export function AvatarGroup(props: UiProps) {
   return (
-    <div {...uiProps("avatar-group", ui(group, "group/avatar-group"), cells(props))}>{props.children}</div>
+    <div {...uiProps("avatar-group", ui(group, "group/avatar-group"), cells(props))}>
+      {props.children}
+    </div>
   );
 }
 

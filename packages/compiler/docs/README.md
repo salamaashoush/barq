@@ -8,7 +8,6 @@ exists and how to silence it.
 - [BARQ002](BARQ002.md), warning: An accessor is used as a condition, which is always true.
 - [BARQ003](BARQ003.md), warning: A property is read from an accessor instead of from its value.
 - [BARQ004](BARQ004.md), note: A `<For>` row reads a field once, which goes stale if `each` holds store objects.
-- [BARQ005](BARQ005.md), warning: A destructured prop is used as a value, or called where it may not be a function.
 - [BARQ008](BARQ008.md), warning: A `barq-ignore-next-line` comment silences nothing on the next line.
 - [BARQ009](BARQ009.md), warning: A `barq-ignore-next-line` comment is malformed and silences nothing.
 - [BARQ010](BARQ010.md), warning: JSX is passed to a prop the component reads as a value, which throws.
@@ -36,7 +35,7 @@ exists and how to silence it.
 
 When each code is reported:
 
-- BARQ001, BARQ002, BARQ003, BARQ005, BARQ011 and BARQ018 to BARQ021: when the
+- BARQ001, BARQ002, BARQ003, BARQ011 and BARQ018 to BARQ021: when the
   `diagnostics` option is on. It defaults to on in development builds, and
   `barq({ compiler: { diagnostics: true } })` runs them in a production build.
 - BARQ004 and BARQ010: in development builds only.
@@ -44,10 +43,12 @@ When each code is reported:
   BARQ013 also needs the route table, which file-based routing provides.
 - BARQ008 and BARQ009: in every build, about your own suppression comments.
 
-[BARQ006](BARQ006.md) and BARQ007 were removed and are not reported. BARQ006 has a page
-because a suppression comment may still name it. BARQ007 announced a fallback from the
-server renderer to the DOM renderer, and there is no such fallback any more. A comment
-that names either code is reported as [BARQ009](BARQ009.md).
+[BARQ005](BARQ005.md), [BARQ006](BARQ006.md) and BARQ007 were removed and are not
+reported. BARQ005 and BARQ006 have a page because a suppression comment may still name
+them. BARQ005 warned about a destructured prop used as a value, which is correct code now
+that destructuring props is supported. BARQ007 announced a fallback from the server
+renderer to the DOM renderer, and there is no such fallback any more. A comment that names
+any of the three is reported as [BARQ009](BARQ009.md).
 
 ## Codes are stable
 
@@ -118,12 +119,14 @@ The checks report only what they can prove from one file, so silence is not a gu
 - **Files without JSX.** The accessor and props rules run on `.jsx` and `.tsx` files.
 - **A reassigned name.** A `let` that is assigned again is not treated as an
   accessor.
-- **A component only ever passed as a value.** BARQ005 needs to know that a function is
-  a component, which it learns from a JSX tag, an export, or a route option such as
-  `component`. A function that is only passed to another function is not reported.
-- **A prop's value.** Every prop is a function you call, whether or not the caller passes
-  anything that changes, so BARQ018 counts a prop only where the same file renders the
-  component with a value that changes.
+- **A function that is not a component.** BARQ030 and BARQ031 are about a component's
+  props, and a component is a function with a capitalised name that holds JSX or is
+  written as a tag, a default export that holds JSX, or a function written inline at a
+  route option such as `component`. A function with a lowercase name is not one, so its
+  parameter is not reported.
+- **A prop's value.** Every prop can change as far as the component can tell, whether or
+  not the caller passes anything that changes, so BARQ018 counts a prop only where the
+  same file renders the component with a value that changes.
 - **A helper function.** BARQ019 sees a write written in the component body or in the
   computation itself, not one inside a function the body calls.
 - **A row whose `keyed` is not written out.** With `<For keyed={KEYED}>` or

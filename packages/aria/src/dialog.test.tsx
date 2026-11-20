@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Incoming, Show, createSignal, onSettled } from "@barqjs/core";
+import { Show, createSignal, onSettled } from "@barqjs/core";
 import { accessibleName, render, screen, tick, user } from "@barqjs/testing";
 import { Button } from "./button.tsx";
 import { ref } from "@barqjs/primitives/refs";

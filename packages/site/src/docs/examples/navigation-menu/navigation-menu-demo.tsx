@@ -1,4 +1,4 @@
-import { For, type Child, type Incoming } from "@barqjs/core";
+import { For, type Child } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import {
   NavigationMenu,

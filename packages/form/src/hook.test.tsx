@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { type Incoming, createRoot, flush } from "@barqjs/core";
+import { createRoot, flush } from "@barqjs/core";
 
 import {
   createFieldGroup,

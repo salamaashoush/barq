@@ -111,5 +111,5 @@ export const Route = createFileRoute<Row>("/control")({
   // Written INLINE, which is the shape a route file wants and the one that used
   // to be silently miscompiled: an arrow in a plain object literal kept the
   // `(props)` signature while the router called it `(scope, props)`.
-  notFoundComponent: ({ error }) => <p id="not-found">not found: {() => error().message}</p>,
+  notFoundComponent: ({ error }) => <p id="not-found">not found: {error.message}</p>,
 });

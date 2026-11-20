@@ -55,13 +55,13 @@ describe("a component referenced through a type cast", () => {
 
   /**
    * The other half of the rule, so the fix cannot be "call everything a
-   * component". A function nothing references is not one, so its parameter is
-   * not a props object: `props.label()` is an opaque call, wrapped, where the
-   * tests above see a Cell handed over as it is.
+   * component". A function with a lowercase name is not one, so its parameter
+   * is not a props object: `props.label` is a member of an object nothing is
+   * known about, wrapped, where the tests above see a Cell handed over as it is.
    */
-  it("but a local function nothing references is still not one", () => {
-    const out = compileSource(component, "tree.tsx");
-    expect(out).toMatch(/_\$insert\([^,]+, \(\) => props\.label\(\)/);
+  it("but a local function with a lowercase name is still not one", () => {
+    const out = compileSource(component.replace("function Home", "function home"), "tree.tsx");
+    expect(out).toMatch(/_\$insert\([^,]+, \(\) => props\.label\)/);
     expect(out).not.toMatch(/_\$insert\([^,]+, props\.label[,)]/);
   });
 });

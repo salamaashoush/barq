@@ -15,7 +15,6 @@ import {
   provide,
   type Accessor,
   type Child,
-  type Incoming,
 } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 import { ArrowDown } from "@barqjs/lucide/icons/arrow-down";

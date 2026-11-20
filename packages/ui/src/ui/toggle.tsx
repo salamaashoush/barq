@@ -1,10 +1,9 @@
-import { cells } from "@barqjs/core";
+import { omit } from "@barqjs/core";
 import {
   ToggleButton as AriaToggleButton,
   toggleState,
   type ToggleButtonComponentProps,
 } from "@barqjs/aria/button";
-import type { Incoming } from "@barqjs/core";
 import { layer, variants } from "@barqjs/css";
 
 import "../theme/layers.ts";
@@ -12,7 +11,6 @@ import { box } from "../lib/shared-box.ts";
 import { icon } from "../lib/shared-icon.ts";
 import { ring } from "../lib/shared-ring.ts";
 import { ringSlot } from "../lib/shared-ring-slot.ts";
-import { omit } from "../lib/slot.ts";
 import { text } from "../lib/shared-text.ts";
 
 const ui = layer("barq.ui");
@@ -138,7 +136,14 @@ export interface ToggleProps extends ToggleButtonComponentProps {
   "data-spacing"?: string;
 }
 
-const ALIASES = ["pressed", "defaultPressed", "onPressedChange", "disabled", "variant", "size"];
+const ALIASES = [
+  "pressed",
+  "defaultPressed",
+  "onPressedChange",
+  "disabled",
+  "variant",
+  "size",
+] as const;
 
 /**
  * ```tsx
@@ -163,7 +168,7 @@ export function Toggle(props: ToggleProps) {
 
   return (
     <AriaToggleButton
-      {...omit(cells(props), ALIASES)}
+      {...omit(props, ...ALIASES)}
       isSelected={state.isSelected()}
       onChange={(next: boolean) => state.setSelected(next)}
       isDisabled={props.isDisabled ?? props.disabled}

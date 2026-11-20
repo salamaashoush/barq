@@ -238,3 +238,54 @@ would call it with none first.
 - `packages/compiler/src/compile.rs`, `a_component_is_called_and_a_fragment_is_an_array` (two expectations): `_$props([rest, {` became `_$props([_$carry(rest), {`.
 - `packages/compiler/src/analysis/boundary.rs`, `a_named_import_is_a_boundary_and_its_children_build_through_its_renderer`: `() => p.on() ? 1 : 0` became `() => _$readProp(p.on) ? 1 : 0`. A prop handed to a lowered construct (`<Show when={p.on}>`) is read, not called, so a prop the caller left out no longer throws.
 - `packages/router/src/catch.test.ts:128`: the uncompiled error component reads `props.reset()` instead of `props.reset`. The router now passes `reset` as a Cell like every other prop; the assertion is unchanged.
+
+## ui, site and apps
+
+No run-time assertion was changed, skipped or deleted. Inputs and fixtures restated:
+
+- `packages/ui/src/forwarding.test.tsx`: the `Given` fixture's `ref` is the callback itself (`ref: record`, typed `(element: Element | null) => void`) instead of a Cell that yields it, and its doc comment says so. An object spread onto a component holds values, so a function in it is the handler, not a Cell.
+- `packages/three/src/canvas.test.ts`, `hooks.test.ts`, `portal.test.ts`: compiled fixtures (`App`, `Suspended`, `Graphed`, `WithPortal`) are called as `createComponent(Comp, record)` instead of `Comp(record)`, and `onCreated`'s parameter is annotated `RootState`. The records are still Cells; only the typed way to hand them over changed.
+- `packages/virtual/src/index.test.tsx`: the fixture components `List`, `Page` and `LateList` declare `options: ListOptions`, `options: Partial<VirtualizerOptions<…>>` and `open: boolean` instead of accessors of them. Their bodies already read values (`...props.options`, `<Show when={props.open}>`), so the declared types were stale and lint read the spread as a spread of a function.
+- `packages/router/src/abort.test.ts`, `catch.test.ts`, `match.test.ts`, `navigation.test.ts`, `request-middleware.test.ts`, `router.test.ts`: 29 hand-written route and error components that call `props.data()`, `props.params()`, `props.context()`, `props.error()` or `props.reset()` are wrapped in `fromCells(...)` with the parameter typed `Incoming<RouteProps>` or `Incoming<ErrorProps>` (`Incoming<{ data: unknown }>` in `request-middleware.test.ts`). Bodies are unchanged: they receive Cells at run time and only their types were stale.
+- `packages/router/src/matcher.test.ts`, `what a route component is handed, as types`: `each prop is read with one call` asserts over `Incoming<Handed>["data" | "params" | "context"]` instead of `Handed[...]`, because `RouteProps` now describes values and the record of Cells is `Incoming` of it. `an authored component is callable as the invoked form` writes the authored component as `fromCells((props) => props.data().title)` and calls the invoked form with `createComponent(invoked, record)`; the `expect` is unchanged.
+- `packages/kitchen-sink/src/routes/control.tsx`: the inline `notFoundComponent` reads `{error.message}` instead of `{() => error().message}`. It is a compiled route option, so the destructured `error` is the value and stays live.
+- `packages/web/src/jsx-types/components.types.tsx` (type-level): `Label` (`Component<P>`) now asserts `props.text` is `string` and `props.tone` is the declared union, that `cells(props).text` is `Accessor<string>`, that `props.text()` is refused, and keeps the refusal of `const wrong: string = cells(props).text`. `<Label text={() => "an accessor"} />` moved from the accepted call sites to the refused ones under `@ts-expect-error`. `Divider`, `Card`, `Each`, `Group`, `Rule` and `Frame` already read values and are kept as they were; no case was removed.
+
+## Left failing on purpose (ui and site)
+
+- `packages/ui/src/ui/collapsible.test.tsx`, `render makes a sidebar menu item the collapsible, state and all`, and in `packages/site`: `sidebar-16 > only the active section starts open, and its chevron opens another`, `the sidebar examples > the demo opens its first group and the trigger collapses it to icons`, `the sidebar examples > a collapsible item is the menu item and opens its pages`. All four spread a part's `PartRender.props` (a `DOMProps` bag of accessors, plain values and handlers) onto a component, `<SidebarMenuItem {...root.props} ref={root.ref}>`. Under the values rule each accessor arrives as a value, so `data-state` renders as the function's source and `class` is lost. `{...values(root.props)}` makes the ui test pass at run time (the site ones were not tried) but does not typecheck (`DOMProps` is `Record<string, unknown>`, not `Incoming<P>`) and would call any handler in the bag. Needs a decision on what `PartRender.props` is when spread onto a component.
+
+## Compiler, second round
+
+### Changed expectations
+
+- `test/__snapshots__/roundtrip.test.ts.snap`, 7 entries, each diff read before updating:
+  - `component-forwarded-handler-tuple`, `props-destructured-body`, `props-destructured-param`, `props-raw-forward`: `_$bindProp(el, _$setAttr, "data-tone", () => _$readProp(props.tone))` became the `_$bindEffect(() => _$readProp(props.tone), (_v$, _p$) => { _$setAttr(...) })` block, with `bindEffect` imported from core in place of `bindProp` from web. Analysis knows the read, so the attribute is a proven reactive binding.
+  - `component-spread`: `_$props([{ label }, shared])` and `_$props([shared, {` became `_$props([{ label }, _$carry(shared)])` and `_$props([_$carry(shared), {`; the fused effect's fields lost `_$readOpaque(…, name)` and read `_$readProp(props.tone)` / `_$readProp(props.id)`. A spread object is carried, and the reads are proven.
+  - The same entries plus `props-renamed-and-defaulted` and `props-rest-spread` carry the fixture comments corrected below; those two change in comment text only.
+- `src/props_sugar.rs`, `a_default_inside_a_nested_pattern_reports_barq031`: `found.contains(&Code::Barq031)` became `assert_eq!(found, vec![Code::Barq031])`. BARQ005 no longer fires beside it, so the exact list holds.
+- `src/compile.rs`, `a_suppression_needs_a_code_and_a_reason_and_is_scoped_to_both`, `src/diag.rs` (`mixed.resolve(...)`) and `test/diagnostics.test.ts`, `silences a diagnostic per code and per span, and reports a stale directive`: the "other code" probe was BARQ005 and is BARQ002. Expectations unchanged (`["BARQ008", "BARQ001"]`, `Some(Level::Error)`); BARQ005 is no longer a known code, so naming it would be BARQ009.
+
+### Restated inputs
+
+- `fixtures/component-spread.tsx`: `shared = { tone: () => "warm", id: () => "chip-1" }` became `{ tone: "warm", id: "chip-1" }`. A spread object is values now; the old object of Cells rendered `data-tone="() => "warm""`. With the restated input the oracle, modes, universal and SSR tests pass against their unchanged expectations. `emits` needle `"[{ label }, shared]"` became `"{ label }, "` and `"carry(shared)"` (a declaration may not name a compiler uid), with the exact `Chip(_$props([{ label }, _$carry(shared)]))` and `Chip(_$props([_$carry(shared), {` asserted in the new `test/optimality.test.ts` test `component-spread: a spread object is carried in place in the source list`. Both comments corrected.
+- `test/roundtrip.test.ts`, `a component named only as an object property is compiled as one`, second half: the function nothing names is `layout`, lowercase. Old expectation `_$insert(_el$1, () => props.x())`, new `_$insert(_el$1, () => props.x);`. A capitalised function holding JSX is a component whatever names it; a lowercase one is not, so its `props.x` is a member of an unknown object, wrapped and uncalled.
+- `test/component-through-cast.test.ts`, renamed `but a local function with a lowercase name is still not one`: input is the same source as `function home`. Old `/_\$insert\([^,]+, \(\) => props\.label\(\)/`, new `/_\$insert\([^,]+, \(\) => props\.label\)/`. The `not.toMatch` beside it is unchanged.
+- `src/analysis/render.rs`, `a_choice_made_from_a_prop_needs_a_changing_call_site`: `props.on()` became `props.on` and the aliased `on()` became `on`. The test now runs the props pass before `bind` (new helper `codes_of_values`), as the driver does. All seven expectations unchanged.
+- `src/analysis/mod.rs`, `d1_keys_on_the_binding_and_stays_silent_where_it_cannot_see`: `props.total() * 2` became `props.total * 2`; still silent.
+- `test/diagnostics.test.ts`, `every advertised code is reachable from some input`: the BARQ005 entry is gone with the code.
+- Comments only: `fixtures/props-destructured-body.tsx`, `props-destructured-param.tsx`, `props-renamed-and-defaulted.tsx`, `props-rest-spread.tsx` no longer say destructured names are snapshots; `test/diagnostics.test.ts` no longer mentions BARQ005 in the corpus-precision comment.
+
+### Removed tests
+
+- `src/analysis/mod.rs`, `d3_fires_on_a_destructured_parameter_list_and_only_there`: only subject was BARQ005 firing.
+- `src/analysis/mod.rs`, `d3_reports_a_destructured_prop_where_it_is_misused`: same.
+- `src/analysis/mod.rs`, `d3_words_each_misuse_for_what_goes_wrong`: BARQ005's message text.
+- `src/analysis/mod.rs`, `a_prop_used_as_a_value_without_being_called_is_reported`: pinned the `props.name` arms of BARQ001 and BARQ003, which are removed. Replaced by `a_prop_used_as_a_value_is_correct_code`, which keeps the old silent cases, turns the old firing cases into silent ones, and adds destructured names taken from the removed d3 tests.
+- `test/diagnostics.test.ts`, `the docs pages > BARQ005: the page's examples do what the page says`: generated per advertised code, so it left with the code. `docs/BARQ005.md` is a removed page.
+
+### Added tests
+
+- `src/props_sugar.rs`: `an_object_spread_onto_a_component_is_carried_and_thunked_only_when_it_moves`, `a_record_spread_onto_a_component_passes_uncarried`, `a_spread_onto_an_element_is_not_carried`, `merge_carries_its_plain_arguments_and_its_result_is_read_as_values`, `a_prop_handed_to_a_lowered_construct_is_read`, `a_module_with_no_component_and_no_spread_is_left_as_it_was_parsed`.
+- `src/compile.rs`: `a_destructured_prop_used_as_a_value_has_nothing_to_report` (silent compile, and a comment naming BARQ005 is BARQ009).
+- `test/optimality.test.ts`: the `component-spread` test above.

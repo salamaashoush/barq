@@ -1,4 +1,4 @@
-import { cells } from "@barqjs/core";
+import { omit } from "@barqjs/core";
 import { provideDirection, useDirection } from "@barqjs/aria/i18n";
 import {
   Slider as AriaSlider,
@@ -10,12 +10,11 @@ import {
   type SliderComponentProps,
   type SliderContextValue,
 } from "@barqjs/aria/slider";
-import type { Accessor, Incoming } from "@barqjs/core";
+import type { Accessor } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { box } from "../lib/shared-box.ts";
-import { omit } from "../lib/slot.ts";
 import { when } from "../lib/shared-when.ts";
 
 const ui = layer("barq.ui");
@@ -208,7 +207,7 @@ export function Slider(props: SliderProps) {
 
   return (
     <AriaSlider
-      {...omit(cells(props), UPSTREAM)}
+      {...omit(props, ...UPSTREAM)}
       data-slot={props["data-slot"] ?? "slider"}
       class={ui(root, props.class, props.className)}
       minValue={props.minValue ?? props.min}

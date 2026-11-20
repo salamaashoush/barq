@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush, type Incoming } from "@barqjs/core";
+import { flush } from "@barqjs/core";
 import {
   accessibleName,
   expectNoAriaViolations,
@@ -12,14 +12,12 @@ import type { DateRange } from "./calendar.tsx";
 import { CalendarDate, CalendarDateTime, type DateValue } from "./date.ts";
 import { DatePicker, DateRangePicker } from "./datepicker.tsx";
 
-function Departure(
-  props: {
-    value?: DateValue | null;
-    granularity?: "day" | "minute";
-    isDisabled?: boolean;
-    onChange?: (value: DateValue | null) => void;
-  },
-) {
+function Departure(props: {
+  value?: DateValue | null;
+  granularity?: "day" | "minute";
+  isDisabled?: boolean;
+  onChange?: (value: DateValue | null) => void;
+}) {
   return (
     <DatePicker
       label="Departure"

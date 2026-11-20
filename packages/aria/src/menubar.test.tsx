@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { createSignal, flush, type Child, type Incoming } from "@barqjs/core";
+import { createSignal, flush, type Child } from "@barqjs/core";
 import {
   accessibleName,
   expectNoAriaViolations,
@@ -21,14 +21,12 @@ import { provideDirection } from "./i18n.ts";
 import { Menu, MenuItem, SubmenuTrigger } from "./menu.tsx";
 import { Menubar, MenubarMenu, MenubarTrigger } from "./menubar.tsx";
 
-function Bar(
-  props: {
-    loop?: boolean;
-    value?: string;
-    onValueChange?: (value: string) => void;
-    viewDisabled?: boolean;
-  },
-) {
+function Bar(props: {
+  loop?: boolean;
+  value?: string;
+  onValueChange?: (value: string) => void;
+  viewDisabled?: boolean;
+}) {
   return (
     <Menubar
       aria-label="Application"

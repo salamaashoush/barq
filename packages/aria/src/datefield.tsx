@@ -29,7 +29,6 @@ import {
   createContext,
   createEffect,
   getContext,
-  type Incoming,
   provide,
   createSignal,
 } from "@barqjs/core";

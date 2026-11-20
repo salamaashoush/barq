@@ -265,7 +265,7 @@ export const Route = createFileRoute("/users/$id")({
   loader: ({ context, params }) =>
     (context.queryClient as QueryClient).ensureQueryData(userQuery(params.id)),
   component: (props) => {
-    const user = useSuspenseQuery(() => userQuery(props.params().id));
+    const user = useSuspenseQuery(() => userQuery(props.params.id));
     return <h1>{user.data.name}</h1>;
   },
 });

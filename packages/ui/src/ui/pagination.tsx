@@ -1,5 +1,4 @@
 import { cells } from "@barqjs/core";
-import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import { ChevronLeft } from "@barqjs/lucide/icons/chevron-left";

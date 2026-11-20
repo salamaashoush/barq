@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush, createSignal, type Incoming } from "@barqjs/core";
+import { flush, createSignal } from "@barqjs/core";
 import { accessibleName, expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
 import type { Key } from "./collections.ts";
 import { Tag, TagGroup } from "./tag.tsx";
@@ -16,14 +16,12 @@ const FILTERS: Filter[] = [
   { id: "seville", name: "Seville" },
 ];
 
-function Filters(
-  props: {
-    items?: Filter[];
-    selectionMode?: "none" | "single" | "multiple";
-    onRemove?: (keys: Set<Key>) => void;
-    onSelectionChange?: (keys: "all" | Set<Key>) => void;
-  },
-) {
+function Filters(props: {
+  items?: Filter[];
+  selectionMode?: "none" | "single" | "multiple";
+  onRemove?: (keys: Set<Key>) => void;
+  onSelectionChange?: (keys: "all" | Set<Key>) => void;
+}) {
   return (
     <TagGroup
       label="Cities"

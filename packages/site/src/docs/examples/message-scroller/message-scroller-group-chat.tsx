@@ -1,4 +1,4 @@
-import { For, Show, createSignal, type Incoming } from "@barqjs/core";
+import { For, Show, createSignal } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import { RotateCw } from "@barqjs/lucide/icons/rotate-cw";
 import {

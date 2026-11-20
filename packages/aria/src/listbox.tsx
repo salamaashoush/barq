@@ -434,9 +434,10 @@ export function useSectionHeading(): Accessor<string> | null {
   return heading.id;
 }
 
-function StaticSection(
-  sectionProps: { of: Incoming<SectionComponentProps>; registry: StaticCollection },
-) {
+function StaticSection(sectionProps: {
+  of: Incoming<SectionComponentProps>;
+  registry: StaticCollection;
+}) {
   const props = sectionProps.of;
   const list = useListBox();
   const section = staticItem(sectionProps.registry, { type: "section", textValue: "" });

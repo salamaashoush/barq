@@ -17,7 +17,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { flush, createSignal, type Child, type Incoming } from "@barqjs/core";
+import { flush, createSignal, type Child } from "@barqjs/core";
 import { render, screen } from "@barqjs/testing";
 
 function Box(props: { children?: Child }) {

@@ -25,15 +25,7 @@ import {
   type FilterFn,
 } from "@barqjs/aria/combobox";
 import type { Align, Side } from "@barqjs/aria/overlays";
-import {
-  cells,
-  For,
-  isBlock,
-  Show,
-  createSignal,
-  type Child,
-  type JSXElement,
-} from "@barqjs/core";
+import { cells, For, isBlock, Show, createSignal, type Child, type JSXElement } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
 import type { RefTarget } from "@barqjs/primitives/refs";
 
@@ -445,9 +437,7 @@ function ComboboxPicker<T>(props: ComboboxProps<T>) {
                   onPress={() => remove(key)}
                 >
                   <X />
-                  <span
-                    class={srOnly}
-                  >{`${props.removeLabel ?? "Remove"} ${String(key)}`}</span>
+                  <span class={srOnly}>{`${props.removeLabel ?? "Remove"} ${String(key)}`}</span>
                 </Button>
               </span>
             )}
@@ -722,9 +712,7 @@ function isWritten<T>(
  */
 export function Combobox<T>(props: ComboboxProps<T>): JSXElement;
 export function Combobox<V>(props: ComboboxRootProps<V>): JSXElement;
-export function Combobox(
-  props: ComboboxProps<unknown> | ComboboxRootProps<unknown>,
-): JSXElement {
+export function Combobox(props: ComboboxProps<unknown> | ComboboxRootProps<unknown>): JSXElement {
   if (isWritten(props)) {
     return <AriaComboboxRoot {...props} />;
   }

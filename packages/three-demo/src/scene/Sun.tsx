@@ -1,4 +1,3 @@
-import type { Incoming } from "@barqjs/core";
 import { useLoader, type ThreeEvent } from "@barqjs/three";
 import { AdditiveBlending, TextureLoader } from "three";
 

@@ -10,7 +10,7 @@ made with `@barqjs/universal`.
 
 It also generates the file route table, splits route and middleware modules into
 their client and server halves, compiles `@barqjs/css` blocks to a stylesheet,
-and reports mistakes before the code runs: 26 [diagnostics](./docs/README.md),
+and reports mistakes before the code runs: 28 [diagnostics](./docs/README.md),
 each with a stable `BARQ` code, a page that shows the fix, and a required reason
 to silence it.
 
@@ -47,9 +47,11 @@ delegated events.
 
 Where it differs:
 
-- A prop crosses a component boundary as a Cell, a function the component calls:
-  `props.name()`. Solid passes a getter on the props object and the component
-  reads `props.name`.
+- A component writes a prop as its value, `props.name` or a destructured
+  `{ name }`, and both stay live. The props record holds a Cell per prop, a
+  function, and the compiler writes the call that reads it. Solid passes a
+  getter on the props object, so destructuring there reads once.
+  `cells(props)` gives the record itself, where a Cell is wanted unread.
 - What is reactive is decided from the binding a name resolves to (oxc's
   `SymbolId`), never from how it is spelled. `createSignal` imported under
   another name is still a signal.
@@ -79,6 +81,11 @@ export const Counter = () => (
 Passing the accessor itself, `{count}`, is also live. Using it as a value,
 `count * 2` or `` `${count}` ``, is a bug that
 [BARQ001](./docs/BARQ001.md) reports.
+
+Props are written as values. `props.title` and a destructured
+`{ title, tone = "warm", ...rest }` both follow the prop, because the compiler
+writes each read. An object spread onto a component, `<Chip {...options} />`,
+is an object of values too.
 
 ## API
 

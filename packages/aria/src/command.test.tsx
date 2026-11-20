@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createSignal, flush, Show, type Incoming } from "@barqjs/core";
+import { createSignal, flush, Show } from "@barqjs/core";
 import {
   accessibleName,
   expectNoAriaViolations,
@@ -98,22 +98,20 @@ describe("commandScore", () => {
   });
 });
 
-function Palette(
-  props: {
-    onSelect?: (value: string) => void;
-    onValueChange?: (value: string) => void;
-    value?: string;
-    loop?: boolean;
-    shouldFilter?: boolean;
-    filter?: CommandFilter;
-    disablePointerSelection?: boolean;
-    vimBindings?: boolean;
-    search?: string;
-    onSearchChange?: (search: string) => void;
-    showArchive?: boolean;
-    alwaysRender?: boolean;
-  },
-) {
+function Palette(props: {
+  onSelect?: (value: string) => void;
+  onValueChange?: (value: string) => void;
+  value?: string;
+  loop?: boolean;
+  shouldFilter?: boolean;
+  filter?: CommandFilter;
+  disablePointerSelection?: boolean;
+  vimBindings?: boolean;
+  search?: string;
+  onSearchChange?: (search: string) => void;
+  showArchive?: boolean;
+  alwaysRender?: boolean;
+}) {
   const run = (value: string): void => props.onSelect?.(value);
   return (
     <Command

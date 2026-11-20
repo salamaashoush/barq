@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { createSignal, flush } from "@barqjs/core";
+import { createComponent, createSignal, flush } from "@barqjs/core";
 import { render } from "@barqjs/web";
 
 import * as THREE from "three";
@@ -26,8 +26,8 @@ function mountApp(dpr?: () => number) {
   let state: RootState | null = null;
   const dispose = render(
     () =>
-      App({
-        onCreated: () => (created) => {
+      createComponent(App, {
+        onCreated: () => (created: RootState) => {
           state = created;
         },
         dpr,

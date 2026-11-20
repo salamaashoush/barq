@@ -1,13 +1,4 @@
-import {
-  cells,
-  For,
-  Show,
-  createContext,
-  getContext,
-  provide,
-  type Child,
-  type Incoming,
-} from "@barqjs/core";
+import { cells, For, Show, createContext, getContext, provide, type Child } from "@barqjs/core";
 import { firstThatWorks, layer, variants } from "@barqjs/css";
 
 import "../theme/layers.ts";

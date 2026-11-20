@@ -26,7 +26,6 @@ import {
   type QuestionnaireProgressProps as AriaQuestionnaireProgressProps,
   type QuestionnaireProps as AriaQuestionnaireProps,
 } from "@barqjs/aria/questionnaire";
-import type { Incoming } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
 import { Check } from "@barqjs/lucide/icons/check";
 

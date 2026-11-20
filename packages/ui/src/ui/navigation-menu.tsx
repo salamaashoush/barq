@@ -560,7 +560,12 @@ function MenuBody(props: { children?: Child }) {
 export function NavigationMenuList(props: UiProps) {
   const { menu } = useMenu();
   return (
-    <ul {...mergeProps(uiProps("navigation-menu-list", ui(list, "group"), cells(props)), menu.listProps)}>
+    <ul
+      {...mergeProps(
+        uiProps("navigation-menu-list", ui(list, "group"), cells(props)),
+        menu.listProps,
+      )}
+    >
       {props.children}
     </ul>
   );
@@ -666,9 +671,11 @@ export function NavigationMenuContent(props: UiProps) {
   );
 }
 
-function Panel(
-  props: { of: Incoming<UiProps>; entry: NavigationMenuItemResult; isExiting: boolean },
-) {
+function Panel(props: {
+  of: Incoming<UiProps>;
+  entry: NavigationMenuItemResult;
+  isExiting: boolean;
+}) {
   const own = props.of;
   const entry = props.entry;
 
@@ -708,7 +715,10 @@ function Viewport(props: UiProps) {
   return (
     <div class={viewportWrapper} data-slot="navigation-menu-viewport-wrapper">
       <div
-        {...mergeProps(uiProps("navigation-menu-viewport", viewport, cells(props)), menu.viewportProps)}
+        {...mergeProps(
+          uiProps("navigation-menu-viewport", viewport, cells(props)),
+          menu.viewportProps,
+        )}
         ref={mergeRefs(menu.viewportRef, props.ref)}
       >
         {props.children}
@@ -768,7 +778,10 @@ export function NavigationMenuIndicator(props: UiProps) {
   const { menu } = useMenu();
   return (
     <div
-      {...mergeProps(uiProps("navigation-menu-indicator", indicator, cells(props)), menu.indicatorProps)}
+      {...mergeProps(
+        uiProps("navigation-menu-indicator", indicator, cells(props)),
+        menu.indicatorProps,
+      )}
     >
       <div class={indicatorArrow} data-slot="navigation-menu-indicator-arrow" />
     </div>

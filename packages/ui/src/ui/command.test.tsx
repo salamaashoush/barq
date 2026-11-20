@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createSignal, flush, type Incoming } from "@barqjs/core";
+import { createSignal, flush } from "@barqjs/core";
 import { expectNoAriaViolations, render, screen, tick, user } from "@barqjs/testing";
 
 import { rulesFor } from "../test-rules.ts";
@@ -152,9 +152,11 @@ async function settle(): Promise<void> {
  * does, and nothing rendered from data.
  */
 describe("a Command written as children", () => {
-  function Written(
-    props: { onSelect?: (value: string) => void; loop?: boolean; alwaysRender?: boolean },
-  ) {
+  function Written(props: {
+    onSelect?: (value: string) => void;
+    loop?: boolean;
+    alwaysRender?: boolean;
+  }) {
     const run = (value: string): void => props.onSelect?.(value);
     return (
       <Command label="Commands" loop={props.loop}>
@@ -370,15 +372,13 @@ describe("a Command written as children", () => {
 });
 
 describe("CommandDialog", () => {
-  function Palette(
-    props: {
-      isOpen?: boolean;
-      open?: boolean;
-      showCloseButton?: boolean;
-      onOpenChange?: (isOpen: boolean) => void;
-      onSelect?: (value: string) => void;
-    },
-  ) {
+  function Palette(props: {
+    isOpen?: boolean;
+    open?: boolean;
+    showCloseButton?: boolean;
+    onOpenChange?: (isOpen: boolean) => void;
+    onSelect?: (value: string) => void;
+  }) {
     return (
       <CommandDialog
         isOpen={props.isOpen}

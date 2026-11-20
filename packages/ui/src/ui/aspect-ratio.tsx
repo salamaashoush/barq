@@ -1,6 +1,5 @@
 import { cells } from "@barqjs/core";
 import { mergeProps } from "@barqjs/aria/utils";
-import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";

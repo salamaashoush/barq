@@ -9,7 +9,7 @@ import {
   type DisclosurePanelComponentProps,
 } from "@barqjs/aria/disclosure";
 import { mergeProps } from "@barqjs/aria/utils";
-import type { Incoming, JSXElement } from "@barqjs/core";
+import type { JSXElement } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
@@ -150,9 +150,7 @@ export interface CollapsibleTriggerProps extends DisclosureButtonComponentProps 
  */
 export function CollapsibleTrigger(props: CollapsibleTriggerProps) {
   if (props.asChild === true || props.render !== undefined) {
-    return (
-      <CollapsibleTriggerSlot render={props.render}>{props.children}</CollapsibleTriggerSlot>
-    );
+    return <CollapsibleTriggerSlot render={props.render}>{props.children}</CollapsibleTriggerSlot>;
   }
   return (
     <DisclosureButton

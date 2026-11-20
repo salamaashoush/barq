@@ -1,6 +1,6 @@
 import { Button as AriaButton, type ButtonComponentProps } from "@barqjs/aria/button";
 import { Link as AriaLink } from "@barqjs/aria/link";
-import { Show, type Incoming } from "@barqjs/core";
+import { Show } from "@barqjs/core";
 import { layer, variants } from "@barqjs/css";
 
 import "../theme/layers.ts";
@@ -349,11 +349,7 @@ export interface ButtonProps extends ButtonComponentProps {
  */
 export function Button(props: ButtonProps) {
   const className = (): string =>
-    ui(
-      buttonVariants({ variant: props.variant, size: props.size }),
-      props.class,
-      props.className,
-    );
+    ui(buttonVariants({ variant: props.variant, size: props.size }), props.class, props.className);
   const isDisabled = (): boolean | undefined => props.isDisabled ?? props.disabled;
   const { ref: _, ...link } = props;
 

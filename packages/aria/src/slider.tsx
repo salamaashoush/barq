@@ -30,7 +30,6 @@ import {
   createEffect,
   getContext,
   getOwner,
-  type Incoming,
   install,
   createSignal,
   onSettled,

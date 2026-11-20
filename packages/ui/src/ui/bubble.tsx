@@ -1,4 +1,4 @@
-import { cells, Show, type Incoming, type JSXElement } from "@barqjs/core";
+import { cells, Show, type JSXElement } from "@barqjs/core";
 import { layer, variants } from "@barqjs/css";
 
 import "../theme/layers.ts";

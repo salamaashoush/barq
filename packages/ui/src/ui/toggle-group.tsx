@@ -4,13 +4,13 @@ import {
   toggleGroupState,
   type ToggleGroupState,
 } from "@barqjs/aria/togglegroup";
-import { cells, createContext, getContext, provide, type Child, type Incoming } from "@barqjs/core";
+import { cells, createContext, getContext, omit, provide, type Child } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 import { mergeRefs, ref as makeRef } from "@barqjs/primitives/refs";
 
 import "../theme/layers.ts";
 import type { UiProps } from "../lib/props.ts";
-import { omit, uiProps } from "../lib/slot.ts";
+import { omit as omitCells, uiProps } from "../lib/slot.ts";
 import { Toggle, type ToggleProps, type ToggleSize, type ToggleVariant } from "./toggle.tsx";
 
 const ui = layer("barq.ui");
@@ -201,7 +201,7 @@ export function ToggleGroup(props: ToggleGroupProps) {
   return (
     <div
       {...groupProps}
-      {...uiProps("toggle-group", className, omit(cells(props), ["dir"]))}
+      {...uiProps("toggle-group", className, omitCells(cells(props), ["dir"]))}
       ref={mergeRefs(groupRef.set, props.ref)}
       role={props.role ?? "group"}
       data-variant={props.variant ?? "default"}
@@ -236,7 +236,7 @@ export interface ToggleGroupItemProps extends Omit<
   value: string;
 }
 
-const OWN = ["value", "variant", "size", "disabled", "isDisabled", "onChange", "ref"];
+const OWN = ["value", "variant", "size", "disabled", "isDisabled", "onChange", "ref"] as const;
 
 export function ToggleGroupItem(props: ToggleGroupItemProps) {
   const held = getContext(GroupContext);
@@ -259,7 +259,7 @@ export function ToggleGroupItem(props: ToggleGroupItemProps) {
   // that go with them.
   return (
     <Toggle
-      {...omit(cells(props), OWN)}
+      {...omit(props, ...OWN)}
       ref={(element: unknown) => {
         if (element instanceof HTMLButtonElement) forward(element);
       }}

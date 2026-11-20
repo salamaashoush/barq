@@ -128,7 +128,7 @@ function translate(virtualizer: Virtualizer<never, never>, start: number): strin
   return virtualizer.options.horizontal ? `translateX(${start}px)` : `translateY(${start}px)`;
 }
 
-export function List(props: { options: () => ListOptions }): JSXElement {
+export function List(props: { options: ListOptions }): JSXElement {
   let scroller: HTMLDivElement | null = null;
   const virtualizer = createVirtualizer<HTMLDivElement, HTMLDivElement>(() => ({
     count: 100,
@@ -748,7 +748,7 @@ describe("reactive options", () => {
 
 let late: ElementVirtualizer;
 
-export function LateList(props: { open: () => boolean }): JSXElement {
+export function LateList(props: { open: boolean }): JSXElement {
   const [scroller, setScroller] = createSignal<HTMLDivElement | null>(null, { ownedWrite: true });
   const virtualizer = createVirtualizer<HTMLDivElement, HTMLDivElement>({
     count: 100,
@@ -849,7 +849,7 @@ describe("dispose", () => {
 let page: Virtualizer<Window, HTMLLIElement>;
 
 export function Page(props: {
-  options: () => Partial<VirtualizerOptions<Window, HTMLLIElement>>;
+  options: Partial<VirtualizerOptions<Window, HTMLLIElement>>;
 }): JSXElement {
   const virtualizer = createWindowVirtualizer<HTMLLIElement>(() => ({
     count: 1000,

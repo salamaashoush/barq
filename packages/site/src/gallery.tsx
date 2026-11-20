@@ -9,7 +9,7 @@
 import "@fontsource-variable/geist/index.css";
 import "@fontsource-variable/geist-mono/index.css";
 
-import { For, createSignal, type Child, type Incoming } from "@barqjs/core";
+import { For, createSignal, type Child } from "@barqjs/core";
 import { css, globalCss, layer } from "@barqjs/css";
 
 const ui = layer("barq.ui");

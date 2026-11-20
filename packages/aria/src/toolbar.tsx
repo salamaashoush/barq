@@ -19,7 +19,7 @@
  * already handling them, and two handlers on one keypress move focus twice.
  */
 
-import { cells, type Child, createEffect, type Incoming, createSignal } from "@barqjs/core";
+import { cells, type Child, createEffect, createSignal } from "@barqjs/core";
 import { isServer } from "@barqjs/web";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { contains, targetElement } from "./dom.ts";

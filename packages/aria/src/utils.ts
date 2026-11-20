@@ -14,6 +14,7 @@
  */
 
 import {
+  asRecord,
   type Accessor,
   type Child,
   type Incoming,
@@ -650,7 +651,7 @@ export type RenderPart<State = void> = (part: PartRender, state: State) => Child
 
 export function partRender(props: DOMProps): PartRender {
   const { ref, ...rest } = props as DOMProps & { ref?: RefTarget<Element | null> };
-  return { props: rest, ref: mergeRefs<Element | null>(ref) };
+  return { props: asRecord(rest), ref: mergeRefs<Element | null>(ref) };
 }
 
 /**

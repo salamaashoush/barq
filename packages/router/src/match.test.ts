@@ -8,7 +8,7 @@
  * navigation that moves something else.
  */
 
-import { type Cell, flush } from "@barqjs/core";
+import { type Cell, type Incoming, flush, fromCells } from "@barqjs/core";
 import { insert, render } from "@barqjs/web";
 import { afterEach, describe, expect, test } from "bun:test";
 
@@ -400,7 +400,9 @@ describe("useRouterState", () => {
             {
               id: "/slow",
               path: "slow",
-              component: (props: RouteProps) => document.createTextNode(String(props.data())),
+              component: fromCells((props: Incoming<RouteProps>) =>
+                document.createTextNode(String(props.data())),
+              ),
               loader: async () => {
                 await tick(20);
                 return "slow";

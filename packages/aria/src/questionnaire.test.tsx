@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Show, createSignal, flush, type Incoming } from "@barqjs/core";
+import { Show, createSignal, flush } from "@barqjs/core";
 import { expectNoAriaViolations, render, screen, tick, user } from "@barqjs/testing";
 import { provideDirection } from "./i18n.ts";
 import {

@@ -14,7 +14,6 @@ import {
   onSettled,
   provide,
   type Child,
-  type Incoming,
 } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 import { Minus } from "@barqjs/lucide/icons/minus";
@@ -379,13 +378,7 @@ export function InputOTP(props: InputOTPProps) {
 
   const containerProps: DOMProps = {
     class: () =>
-      ui(
-        container,
-        props.class,
-        props.className,
-        props.containerClass,
-        props.containerClassName,
-      ),
+      ui(container, props.class, props.className, props.containerClass, props.containerClassName),
     hidden: () => props.hidden,
     "data-disabled": () => (isDisabled() ? "true" : undefined),
   };

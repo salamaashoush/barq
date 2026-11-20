@@ -13,6 +13,7 @@ import {
   setCookie,
   setResponseHeader,
 } from "@barqjs/start";
+import { type Incoming, fromCells } from "@barqjs/core";
 import { afterEach, expect, test } from "bun:test";
 
 import { createFileRoute } from "./file-route.ts";
@@ -91,8 +92,9 @@ test("a page runs the global request middleware once, and a loader reads what it
         {
           path: "/",
           loader: async () => String(getGlobalStartContext().visitor),
-          component: (props: { data: () => unknown }) =>
+          component: fromCells((props: Incoming<{ data: unknown }>) =>
             ssrHtml(`<main>${esc(props.data())}</main>`),
+          ),
         },
       ],
       stream,

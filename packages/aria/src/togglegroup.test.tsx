@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createRoot, createSignal, flush, type Incoming } from "@barqjs/core";
+import { createRoot, createSignal, flush } from "@barqjs/core";
 import { ref as makeRef } from "@barqjs/primitives/refs";
 import { accessibleName, render, screen, user } from "@barqjs/testing";
 import { Button, ToggleButton } from "./button.tsx";

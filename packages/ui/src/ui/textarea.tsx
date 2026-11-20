@@ -1,5 +1,4 @@
 import { cells } from "@barqjs/core";
-import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 import { mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 
@@ -74,5 +73,7 @@ export interface TextareaProps extends Omit<InputProps, "type" | "ref"> {
  * resize observer and no shadow element to measure against.
  */
 export function Textarea(props: TextareaProps) {
-  return <textarea {...controlProps("textarea", textarea, cells(props))} ref={mergeRefs(props.ref)} />;
+  return (
+    <textarea {...controlProps("textarea", textarea, cells(props))} ref={mergeRefs(props.ref)} />
+  );
 }

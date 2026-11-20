@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush, type Child, type Incoming, Show, createSignal } from "@barqjs/core";
+import { flush, type Child, Show, createSignal } from "@barqjs/core";
 import { accessibleName, expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
 import type { Key } from "./collections.ts";
 import { ListBox, Option, Section, useSectionHeading } from "./listbox.tsx";
@@ -18,14 +18,12 @@ const FRUITS: Fruit[] = [
 ];
 
 // Every prop is a Cell inside a component, so a value is read with `?.()`.
-function Fruits(
-  props: {
-    selectionMode?: "none" | "single" | "multiple";
-    onSelectionChange?: (keys: "all" | Set<Key>) => void;
-    disallowEmptySelection?: boolean;
-    shouldFocusWrap?: boolean;
-  },
-) {
+function Fruits(props: {
+  selectionMode?: "none" | "single" | "multiple";
+  onSelectionChange?: (keys: "all" | Set<Key>) => void;
+  disallowEmptySelection?: boolean;
+  shouldFocusWrap?: boolean;
+}) {
   return (
     <ListBox
       label="Fruit"
@@ -319,14 +317,12 @@ describe("a section", () => {
  * Each one says what it is, and the collection is whatever rendered.
  */
 describe("a listbox whose options are its children", () => {
-  function Written(
-    props: {
-      onSelectionChange?: (keys: "all" | Set<Key>) => void;
-      showBanana?: boolean;
-      hideDate?: boolean;
-      onAction?: () => void;
-    },
-  ) {
+  function Written(props: {
+    onSelectionChange?: (keys: "all" | Set<Key>) => void;
+    showBanana?: boolean;
+    hideDate?: boolean;
+    onAction?: () => void;
+  }) {
     return (
       <ListBox label="Fruit" selectionMode="single" onSelectionChange={props.onSelectionChange}>
         <Option value="apple" onAction={props.onAction}>

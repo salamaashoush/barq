@@ -12,7 +12,7 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { flush, type Child, type Incoming, type JSXElement } from "@barqjs/core";
+import { flush, type Child, type JSXElement } from "@barqjs/core";
 import { accessibleName, render, user } from "@barqjs/testing";
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../ui/collapsible.tsx";

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { DateRange } from "@barqjs/aria/calendar";
 import { CalendarDate } from "@barqjs/aria/date";
 import { provideDirection, provideLocale } from "@barqjs/aria/i18n";
-import { cells, createSignal, flush, type Child, type Incoming } from "@barqjs/core";
+import { cells, createSignal, flush, type Child } from "@barqjs/core";
 import { accessibleName, expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
 
 import { rulesFor } from "../test-rules.ts";

@@ -91,10 +91,10 @@ inside the returned element, make the same choice there.
 
 The rule reports reads of signals, memos, stores and functions that read them. A prop is
 reported only when this file renders the component with a value that changes, such as
-`<Status online={online()} />`: every prop is a function you call, whether or not its
-caller passes anything that moves, and reading a configuration prop such as an element
-type once is ordinary. So a component rendered only from other files is not checked for
-its props.
+`<Status online={online()} />`: every prop can change as far as the component can tell,
+whether or not its caller passes anything that moves, and reading a configuration prop
+such as an element type once is ordinary. So a component rendered only from other files is
+not checked for its props.
 
 ## Silencing one line
 

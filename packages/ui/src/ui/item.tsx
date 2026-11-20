@@ -1,4 +1,4 @@
-import { cells, Show, type Incoming } from "@barqjs/core";
+import { cells, Show } from "@barqjs/core";
 import { firstThatWorks, layer, variants } from "@barqjs/css";
 
 import "../theme/layers.ts";
@@ -328,8 +328,7 @@ export interface ItemProps extends UiProps {
  * for.
  */
 export function Item(props: ItemProps) {
-  const className = (): string =>
-    itemVariants({ variant: props.variant, size: props.size });
+  const className = (): string => itemVariants({ variant: props.variant, size: props.size });
   const common = (): Record<string, unknown> => ({
     ...uiProps("item", className, cells(props)),
     "data-variant": props.variant ?? "default",
@@ -353,7 +352,10 @@ export interface ItemMediaProps extends UiProps {
 export function ItemMedia(props: ItemMediaProps) {
   const className = (): string => itemMediaVariants({ variant: props.variant });
   return (
-    <div {...uiProps("item-media", className, cells(props))} data-variant={props.variant ?? "default"}>
+    <div
+      {...uiProps("item-media", className, cells(props))}
+      data-variant={props.variant ?? "default"}
+    >
       {props.children}
     </div>
   );

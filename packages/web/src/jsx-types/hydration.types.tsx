@@ -5,7 +5,6 @@
 
 import { Hydration, NoHydration } from "@barqjs/core";
 import { clientOnly } from "../index.ts";
-import type { Incoming } from "@barqjs/core";
 
 function Chart(props: { name: string; points?: number[] }) {
   return <canvas data-name={props.name} />;

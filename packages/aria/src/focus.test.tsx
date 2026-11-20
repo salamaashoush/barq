@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { cells, flush, createSignal, Show, type Incoming } from "@barqjs/core";
+import { cells, flush, createSignal, Show } from "@barqjs/core";
 import { render, screen, tick, user } from "@barqjs/testing";
 import { createFocusManager, focusRing, focusScope, focusableWalker } from "./focus.ts";
 import { setInteractionModality } from "./interactions/modality.ts";

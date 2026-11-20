@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Tab, TabList, TabPanel, Tabs } from "@barqjs/aria/tabs";
-import { cells, createSignal, flush, type Incoming } from "@barqjs/core";
+import { cells, createSignal, flush } from "@barqjs/core";
 import { render, screen, user } from "@barqjs/testing";
 
 import { DirectionProvider, useDirection } from "./direction.tsx";

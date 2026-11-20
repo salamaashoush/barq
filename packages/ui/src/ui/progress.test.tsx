@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { provideDirection } from "@barqjs/aria/i18n";
-import { createSignal, flush, type Child, type Incoming } from "@barqjs/core";
+import { createSignal, flush, type Child } from "@barqjs/core";
 import { cleanup, expectNoAriaViolations, render, screen } from "@barqjs/testing";
 
 import { rulesFor } from "../test-rules.ts";

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createSignal, flush, type Incoming } from "@barqjs/core";
+import { createSignal, flush } from "@barqjs/core";
 import {
   accessibleName,
   expectNoAriaViolations,
@@ -29,16 +29,14 @@ import { CalendarDate } from "./date.ts";
 /** March 2024: begins on a Friday, has 31 days, so six week rows. */
 const MARCH = new CalendarDate(2024, 3, 7);
 
-function Departure(
-  props: {
-    value?: CalendarDate | null;
-    minValue?: CalendarDate;
-    maxValue?: CalendarDate;
-    isDateUnavailable?: (date: CalendarDate) => boolean;
-    isDisabled?: boolean;
-    onChange?: (value: CalendarDate | null) => void;
-  },
-) {
+function Departure(props: {
+  value?: CalendarDate | null;
+  minValue?: CalendarDate;
+  maxValue?: CalendarDate;
+  isDateUnavailable?: (date: CalendarDate) => boolean;
+  isDisabled?: boolean;
+  onChange?: (value: CalendarDate | null) => void;
+}) {
   return (
     <Calendar
       aria-label="Departure"

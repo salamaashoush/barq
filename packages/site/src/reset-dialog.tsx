@@ -8,7 +8,6 @@
  * same reset directly, which is one fewer indirection for the same behaviour.
  */
 
-import type { Incoming } from "@barqjs/core";
 import {
   AlertDialog,
   AlertDialogAction,

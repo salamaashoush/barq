@@ -8,7 +8,6 @@
  * binds them, so the menu is documentation of something rather than decoration.
  */
 
-import type { Incoming } from "@barqjs/core";
 import type { Key } from "@barqjs/aria/collections";
 import { layer } from "@barqjs/css";
 import {

@@ -2056,7 +2056,11 @@ export function MenuItem(props: MenuItemComponentProps) {
     hoverProps,
     focusProps,
     // A written item's `id` is its key; the element's id is derived from it.
-    filterDOMProps(fromProps(cells(props)), { global: true, labelable: true, id: written === null }),
+    filterDOMProps(fromProps(cells(props)), {
+      global: true,
+      labelable: true,
+      id: written === null,
+    }),
     styleProps(cells(props)),
     {
       "data-selected": isSelected,

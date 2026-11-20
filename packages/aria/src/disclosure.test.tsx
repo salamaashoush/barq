@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { flush, type Incoming } from "@barqjs/core";
+import { flush } from "@barqjs/core";
 import { expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
 import type { Key } from "./collections.ts";
 import {
@@ -10,14 +10,9 @@ import {
   DisclosurePanel,
 } from "./disclosure.tsx";
 
-function Details(
-  props: { defaultExpanded?: boolean; onExpandedChange?: (open: boolean) => void },
-) {
+function Details(props: { defaultExpanded?: boolean; onExpandedChange?: (open: boolean) => void }) {
   return (
-    <Disclosure
-      defaultExpanded={props.defaultExpanded}
-      onExpandedChange={props.onExpandedChange}
-    >
+    <Disclosure defaultExpanded={props.defaultExpanded} onExpandedChange={props.onExpandedChange}>
       <DisclosureButton>Details</DisclosureButton>
       <DisclosurePanel>Everything else</DisclosurePanel>
     </Disclosure>
@@ -117,13 +112,11 @@ const SECTIONS: Section[] = [
   { id: "three", name: "Three", body: "Third" },
 ];
 
-function Accordion(
-  props: {
-    allowsMultiple?: boolean;
-    defaultExpandedKeys?: Iterable<Key>;
-    onExpandedChange?: (keys: Set<Key>) => void;
-  },
-) {
+function Accordion(props: {
+  allowsMultiple?: boolean;
+  defaultExpandedKeys?: Iterable<Key>;
+  onExpandedChange?: (keys: Set<Key>) => void;
+}) {
   return (
     <DisclosureGroup
       items={SECTIONS}
@@ -290,15 +283,13 @@ describe("a panel the stylesheet animates shut", () => {
 });
 
 describe("DisclosureGroup, written out rather than taken from items", () => {
-  function Written(
-    props: {
-      isCollapsible?: boolean;
-      orientation?: "vertical" | "horizontal";
-      dir?: "ltr" | "rtl";
-      defaultExpandedKeys?: Iterable<Key>;
-      disabledSecond?: boolean;
-    },
-  ) {
+  function Written(props: {
+    isCollapsible?: boolean;
+    orientation?: "vertical" | "horizontal";
+    dir?: "ltr" | "rtl";
+    defaultExpandedKeys?: Iterable<Key>;
+    disabledSecond?: boolean;
+  }) {
     return (
       <DisclosureGroup
         isCollapsible={props.isCollapsible}

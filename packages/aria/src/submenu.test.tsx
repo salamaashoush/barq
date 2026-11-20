@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { flush, type Incoming } from "@barqjs/core";
+import { flush } from "@barqjs/core";
 import { expectNoAriaViolations, render, screen, tick, user, within } from "@barqjs/testing";
 import type { Key } from "./collections.ts";
 import { Menu, MenuButton, MenuItem, MenuTrigger, SubmenuTrigger } from "./menu.tsx";

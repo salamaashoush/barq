@@ -374,9 +374,7 @@ export function useRowNode(): Node<unknown> {
 }
 
 /** Make `<GridListItem>` usable inside something that is not a `<GridList>`. */
-export function GridListProvider(
-  props: { value: GridListContextValue; children?: Child },
-) {
+export function GridListProvider(props: { value: GridListContextValue; children?: Child }) {
   return provide(
     GridListContext,
     () => props.value,

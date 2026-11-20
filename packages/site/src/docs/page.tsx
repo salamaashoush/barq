@@ -85,8 +85,7 @@ const prose = css`
  */
 function Prose(props: { text: string }) {
   const parts = (): readonly { text: string; code: boolean }[] =>
-    props
-      .text
+    props.text
       .split("`")
       .map((text, at) => ({ text, code: at % 2 === 1 }))
       .filter((part) => part.text !== "");

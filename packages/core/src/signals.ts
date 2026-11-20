@@ -51,6 +51,7 @@ import {
   type Observe,
 } from "@solidjs/signals";
 import { abandonClaim, hydrating, mismatchIn } from "./hydration-state.ts";
+import type { Incoming } from "./config.ts";
 import { sharedSourcesOf } from "./shared-sources.ts";
 import type { OwnershipSink, ScopeKind } from "./trace.ts";
 

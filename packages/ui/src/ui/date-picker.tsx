@@ -2,7 +2,7 @@ import type { DateMatcher, DateRange } from "@barqjs/aria/calendar";
 import { CalendarDate, parseDate, today, type DateValue } from "@barqjs/aria/date";
 import { dateFormatter } from "@barqjs/aria/i18n";
 import { callback, controllable } from "@barqjs/aria/utils";
-import { cells, createSignal, Show, type Incoming } from "@barqjs/core";
+import { cells, createSignal, Show } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 import { Calendar as CalendarIcon } from "@barqjs/lucide/icons/calendar";
 

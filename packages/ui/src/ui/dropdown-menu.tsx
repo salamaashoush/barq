@@ -471,9 +471,7 @@ export interface DropdownMenuPortalProps {
 export function DropdownMenuPortal(props: DropdownMenuPortalProps) {
   if (props.container === undefined) return <>{props.children}</>;
   return (
-    <PortalProvider getContainer={() => props.container ?? null}>
-      {props.children}
-    </PortalProvider>
+    <PortalProvider getContainer={() => props.container ?? null}>{props.children}</PortalProvider>
   );
 }
 
@@ -699,7 +697,9 @@ export function DropdownMenuSeparator(props: UiProps) {
 
 /** The key combination on the right of an item. Decoration: the shortcut itself is yours to bind. */
 export function DropdownMenuShortcut(props: UiProps) {
-  return <span {...uiProps("dropdown-menu-shortcut", shortcut, cells(props))}>{props.children}</span>;
+  return (
+    <span {...uiProps("dropdown-menu-shortcut", shortcut, cells(props))}>{props.children}</span>
+  );
 }
 
 export interface DropdownMenuGroupProps<T> extends MenuSectionComponentProps<T> {}
@@ -786,7 +786,11 @@ export function DropdownMenuSubContent<T>(props: DropdownMenuSubContentProps<T>)
 
 /** The label a `<DropdownMenuGroup>` renders as its heading. */
 export function DropdownMenuGroupLabel(props: UiProps) {
-  return <span {...uiProps("dropdown-menu-group-label", groupLabel, cells(props))}>{props.children}</span>;
+  return (
+    <span {...uiProps("dropdown-menu-group-label", groupLabel, cells(props))}>
+      {props.children}
+    </span>
+  );
 }
 
 export type DropdownMenuSelectEvent = MenuSelectEvent;

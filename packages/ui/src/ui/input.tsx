@@ -1,5 +1,4 @@
 import { cells } from "@barqjs/core";
-import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 import { mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 

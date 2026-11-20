@@ -16,7 +16,7 @@
  *   handler AND navigates does both.
  */
 
-import { cells, type Child, type Incoming } from "@barqjs/core";
+import { cells, type Child } from "@barqjs/core";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import {
   provideValidationBehavior,

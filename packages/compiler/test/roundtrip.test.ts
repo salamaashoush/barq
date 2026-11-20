@@ -138,14 +138,15 @@ describe("emitted code snapshots", () => {
     expect(code).toContain("_$insert(_el$1, props.x)");
     expect(code).not.toContain("_s$");
 
-    // And the same declaration with nothing naming it as a component: the read
-    // is a call the compiler wraps, which is the shape that renders once.
+    // And the same body under a lowercase name, which is not a component
+    // whatever names it: its parameter is not a props record, so the read is a
+    // member of an object nothing is known about, wrapped and left uncalled.
     const loose = compileSource(
-      'function Layout(props) { return <div class="l">{props.x}</div>; }\n' +
+      'function layout(props) { return <div class="l">{props.x}</div>; }\n' +
         "export const other = 1;\n",
       "__root.tsx",
     );
-    expect(loose).toContain("_$insert(_el$1, () => props.x())");
+    expect(loose).toContain("_$insert(_el$1, () => props.x);");
   });
 
   /**

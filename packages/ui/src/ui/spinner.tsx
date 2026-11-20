@@ -1,5 +1,4 @@
-import { cells } from "@barqjs/core";
-import type { Incoming } from "@barqjs/core";
+import { cells, values } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import { LoaderCircle } from "@barqjs/lucide/icons/loader-circle";
@@ -43,7 +42,7 @@ export interface SpinnerProps {
 export function Spinner(props: SpinnerProps) {
   return (
     <LoaderCircle
-      {...handedOn(cells(props))}
+      {...values(handedOn(cells(props)))}
       role={props.role ?? "status"}
       aria-label={props.label ?? props["aria-label"] ?? "Loading"}
       aria-hidden={props["aria-hidden"]}

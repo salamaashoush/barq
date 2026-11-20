@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { For, createSignal, flush, type Accessor, type Incoming } from "@barqjs/core";
+import { For, createSignal, flush, type Accessor } from "@barqjs/core";
 import { cleanup, render, screen, tick, user } from "@barqjs/testing";
 
 import { rulesFor } from "../test-rules.ts";

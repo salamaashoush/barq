@@ -3,7 +3,7 @@
  * `apps/v4/registry/new-york-v4/blocks/sidebar-08/`.
  */
 
-import { For, type Incoming } from "@barqjs/core";
+import { For } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import {
   Avatar,

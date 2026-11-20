@@ -1,24 +1,22 @@
 import { describe, expect, test } from "bun:test";
-import { flush, type Incoming } from "@barqjs/core";
+import { flush } from "@barqjs/core";
 import { accessibleName, expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
 import { provideDirection } from "./i18n.ts";
 import { Slider } from "./slider.tsx";
 
-function Volume(
-  props: {
-    defaultValue?: number | number[];
-    minValue?: number;
-    maxValue?: number;
-    step?: number;
-    isDisabled?: boolean;
-    orientation?: "horizontal" | "vertical";
-    formatOptions?: Intl.NumberFormatOptions;
-    onChange?: (value: number[]) => void;
-    onChangeEnd?: (value: number[]) => void;
-    isInverted?: boolean;
-    minStepsBetweenThumbs?: number;
-  },
-) {
+function Volume(props: {
+  defaultValue?: number | number[];
+  minValue?: number;
+  maxValue?: number;
+  step?: number;
+  isDisabled?: boolean;
+  orientation?: "horizontal" | "vertical";
+  formatOptions?: Intl.NumberFormatOptions;
+  onChange?: (value: number[]) => void;
+  onChangeEnd?: (value: number[]) => void;
+  isInverted?: boolean;
+  minStepsBetweenThumbs?: number;
+}) {
   return (
     <Slider
       label="Volume"

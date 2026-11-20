@@ -21,7 +21,7 @@
  * list: the transcription stays a transcription.
  */
 
-import type { Child, Incoming } from "@barqjs/core";
+import type { Child } from "@barqjs/core";
 import type { Key } from "@barqjs/aria/collections";
 import { layer } from "@barqjs/css";
 import {

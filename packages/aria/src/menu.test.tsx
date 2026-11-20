@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush, type Child, type Incoming, provide, Show, createSignal } from "@barqjs/core";
+import { flush, type Child, provide, Show, createSignal } from "@barqjs/core";
 import {
   accessibleName,
   expectNoAriaViolations,
@@ -34,15 +34,13 @@ const ACTIONS: Action[] = [
   { id: "delete", name: "Delete" },
 ];
 
-function Actions(
-  props: {
-    selectionMode?: "none" | "single" | "multiple";
-    onAction?: (key: Key) => void;
-    onSelectionChange?: (keys: "all" | Set<Key>) => void;
-    onClose?: () => void;
-    autoFocus?: boolean | "first" | "last";
-  },
-) {
+function Actions(props: {
+  selectionMode?: "none" | "single" | "multiple";
+  onAction?: (key: Key) => void;
+  onSelectionChange?: (keys: "all" | Set<Key>) => void;
+  onClose?: () => void;
+  autoFocus?: boolean | "first" | "last";
+}) {
   return (
     <Menu
       aria-label="Actions"
@@ -488,15 +486,13 @@ describe("MenuTrigger", () => {
  * one says what it is, and the collection is whatever rendered.
  */
 describe("a menu whose items are its children", () => {
-  function Written(
-    props: {
-      onAction?: (key: Key) => void;
-      onRename?: () => void;
-      onSelect?: (event: MenuSelectEvent) => void;
-      onClose?: () => void;
-      showCopy?: boolean;
-    },
-  ) {
+  function Written(props: {
+    onAction?: (key: Key) => void;
+    onRename?: () => void;
+    onSelect?: (event: MenuSelectEvent) => void;
+    onClose?: () => void;
+    showCopy?: boolean;
+  }) {
     return (
       <Menu aria-label="Actions" onAction={props.onAction} onClose={props.onClose}>
         <MenuItem id="rename" onAction={props.onRename} onSelect={props.onSelect}>
@@ -629,13 +625,11 @@ describe("a menu whose items are its children", () => {
     expect(rename.id.endsWith("-item-rename")).toBe(true);
   });
 
-  function View(
-    props: {
-      onToolbar?: (isSelected: boolean) => void;
-      onDensity?: (value: string) => void;
-      onClose?: () => void;
-    },
-  ) {
+  function View(props: {
+    onToolbar?: (isSelected: boolean) => void;
+    onDensity?: (value: string) => void;
+    onClose?: () => void;
+  }) {
     const [density, setDensity] = createSignal("compact");
     return (
       <Menu aria-label="View" onClose={props.onClose}>

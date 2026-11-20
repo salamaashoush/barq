@@ -16,7 +16,6 @@ import {
   onSettled,
   provide,
   type Child,
-  type Incoming,
 } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 import { ref as makeRef } from "@barqjs/primitives/refs";

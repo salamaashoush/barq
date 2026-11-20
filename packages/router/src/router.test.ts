@@ -7,7 +7,16 @@
  * that did nothing.
  */
 
-import { type Scope, flush, getOwner, isDisposed, lazy, settle } from "@barqjs/core";
+import {
+  type Incoming,
+  type Scope,
+  flush,
+  fromCells,
+  getOwner,
+  isDisposed,
+  lazy,
+  settle,
+} from "@barqjs/core";
 import { insert, render } from "@barqjs/web";
 import { afterEach, describe, expect, jest, test } from "bun:test";
 
@@ -171,7 +180,7 @@ describe("params", () => {
       routeTree: [
         {
           path: "/u/$id",
-          component: (props: RouteProps) => {
+          component: fromCells((props: Incoming<RouteProps>) => {
             builds++;
             const node = document.createTextNode("");
             // A render effect would be the compiled form; reading once per
@@ -183,7 +192,7 @@ describe("params", () => {
             };
             update();
             return node;
-          },
+          }),
         },
       ] as never,
       history,
@@ -219,11 +228,11 @@ describe("loaders", () => {
           // settled. `insert` is what the compiler emits for a dynamic hole and
           // it is a tracked effect, which is what registers the read with the
           // loading boundary.
-          component: (props: RouteProps) => {
+          component: fromCells((props: Incoming<RouteProps>) => {
             const node = document.createElement("span");
             insert(node, () => String(props.data()));
             return node;
-          },
+          }),
         },
       ] as never,
       history,
@@ -256,11 +265,11 @@ describe("loaders", () => {
             return `page ${page_}`;
           },
           pendingComponent: page("loading"),
-          component: (props: RouteProps) => {
+          component: fromCells((props: Incoming<RouteProps>) => {
             const node = document.createElement("span");
             insert(node, () => String(props.data()));
             return node;
-          },
+          }),
         },
       ] as never,
       history,
@@ -308,11 +317,11 @@ describe("loaders", () => {
             return "once";
           },
           pendingComponent: page("loading"),
-          component: (props: RouteProps) => {
+          component: fromCells((props: Incoming<RouteProps>) => {
             const node = document.createElement("span");
             insert(node, () => String(props.data()));
             return node;
-          },
+          }),
         },
       ] as never,
       history,
@@ -336,11 +345,11 @@ describe("loaders", () => {
       routeTree: [
         {
           path: "/",
-          component: (props: RouteProps) => {
+          component: fromCells((props: Incoming<RouteProps>) => {
             const node = document.createElement("span");
             insert(node, () => String(props.data()));
             return node;
-          },
+          }),
         },
       ] as never,
       history,
@@ -352,11 +361,11 @@ describe("loaders", () => {
 
 describe("loaderDeps and the reload policy", () => {
   /** The compiled shape: the read goes in `insert`, which is a tracked effect. */
-  const span = (props: RouteProps): Node => {
+  const span = fromCells((props: Incoming<RouteProps>): Node => {
     const node = document.createElement("span");
     insert(node, () => String(props.data()));
     return node;
-  };
+  });
 
   test("loaderDeps narrows the key: an unrelated param does not refetch", async () => {
     // Without `loaderDeps` the WHOLE search is the key, so `?ref=` busts it.
@@ -663,12 +672,12 @@ describe("loaderDeps and the reload policy", () => {
     // parallelism.
     const started: string[] = [];
     const history = memoryHistory({ initial: ["/other"] });
-    const layout = (props: RouteProps): Node => {
+    const layout = fromCells((props: Incoming<RouteProps>): Node => {
       const node = document.createElement("div");
       insert(node, () => String(props.data()));
       insert(node, () => props.children);
       return node;
-    };
+    });
     const { dispose } = mount({
       routeTree: [
         { path: "/other", component: page("other") },
@@ -881,11 +890,11 @@ describe("validateSearch", () => {
 });
 
 describe("beforeLoad and route context", () => {
-  const span = (props: RouteProps): Node => {
+  const span = fromCells((props: Incoming<RouteProps>): Node => {
     const node = document.createElement("span");
     insert(node, () => JSON.stringify(props.context()));
     return node;
-  };
+  });
 
   test("context merges parent to child, and the child wins a collision", async () => {
     const history = memoryHistory({ initial: ["/app/7"] });
@@ -1035,11 +1044,11 @@ describe("beforeLoad and route context", () => {
               ran.push("beforeLoad");
               return { token: "from-client" };
             },
-            component: (props: RouteProps) => {
+            component: fromCells((props: Incoming<RouteProps>) => {
               const node = document.createElement("span");
               insert(node, () => JSON.stringify(props.context()));
               return node;
-            },
+            }),
           },
         ] as never,
         history,
@@ -1078,11 +1087,11 @@ describe("beforeLoad and route context", () => {
               ran.push("beforeLoad");
               return { token: "fresh" };
             },
-            component: (props: RouteProps) => {
+            component: fromCells((props: Incoming<RouteProps>) => {
               const node = document.createElement("span");
               insert(node, () => JSON.stringify(props.context()));
               return node;
-            },
+            }),
           },
         ] as never,
         history,
@@ -1113,11 +1122,11 @@ describe("beforeLoad and route context", () => {
               ran.push("beforeLoad");
               return { token: "fresh" };
             },
-            component: (props: RouteProps) => {
+            component: fromCells((props: Incoming<RouteProps>) => {
               const node = document.createElement("span");
               insert(node, () => JSON.stringify(props.context()));
               return node;
-            },
+            }),
           },
         ] as never,
         history,
@@ -1231,11 +1240,11 @@ describe("beforeLoad and route context", () => {
                 return "ok";
               },
               pendingComponent: page("l"),
-              component: (props: RouteProps) => {
+              component: fromCells((props: Incoming<RouteProps>) => {
                 const node = document.createElement("b");
                 insert(node, () => String(props.data()));
                 return node;
-              },
+              }),
             },
           ],
         },
@@ -1272,11 +1281,11 @@ describe("errorComponent on the DOM backend", () => {
             insert(node, () => props.error().message);
             return node;
           },
-          component: (props: RouteProps) => {
+          component: fromCells((props: Incoming<RouteProps>) => {
             const node = document.createElement("span");
             insert(node, () => String(props.data()));
             return node;
-          },
+          }),
         },
       ] as never,
       history,
@@ -1310,11 +1319,11 @@ describe("errorComponent on the DOM backend", () => {
             insert(node, () => props.error().message);
             return node;
           },
-          component: (props: RouteProps) => {
+          component: fromCells((props: Incoming<RouteProps>) => {
             const node = document.createElement("span");
             insert(node, () => String(props.data()));
             return node;
-          },
+          }),
         },
       ] as never,
       history,
@@ -2002,11 +2011,11 @@ describe("the smaller surface", () => {
             return "data";
           },
           pendingComponent: page("SKELETON"),
-          component: (props: RouteProps) => {
+          component: fromCells((props: Incoming<RouteProps>) => {
             const node = document.createElement("span");
             insert(node, () => String(props.data()));
             return node;
-          },
+          }),
         },
       ] as never,
       history,
@@ -2040,11 +2049,11 @@ describe("the smaller surface", () => {
               return "data";
             },
             pendingComponent: page("SKELETON"),
-            component: (props: RouteProps) => {
+            component: fromCells((props: Incoming<RouteProps>) => {
               const node = document.createElement("span");
               insert(node, () => String(props.data()));
               return node;
-            },
+            }),
           },
         ] as never,
         history,
@@ -2087,11 +2096,11 @@ describe("the smaller surface", () => {
               return "data";
             },
             pendingComponent: page("SKELETON"),
-            component: (props: RouteProps) => {
+            component: fromCells((props: Incoming<RouteProps>) => {
               const node = document.createElement("span");
               insert(node, () => String(props.data()));
               return node;
-            },
+            }),
           },
         ] as never,
         history,
@@ -3504,12 +3513,12 @@ describe("structuralSharing", () => {
           pendingComponent: (() => document.createTextNode("loading")) as never,
           // A HOLE, which is what makes the read tracked — a body reads once
           // and would never see the second answer.
-          component: (props: RouteProps) => {
+          component: fromCells((props: Incoming<RouteProps>) => {
             state = useRouter();
             const node = document.createElement("span");
             insert(node, () => `page ${String(props.data() ?? "")}`);
             return node;
-          },
+          }),
         },
       ] as never,
       history,

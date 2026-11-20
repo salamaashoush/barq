@@ -1,6 +1,5 @@
-import { cells } from "@barqjs/core";
+import { cells, values } from "@barqjs/core";
 import { Dialog as AriaDialog, Heading, Modal, useDialogDescription } from "@barqjs/aria/dialog";
-import type { Incoming } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
@@ -263,12 +262,12 @@ export function AlertDialogContent(props: AlertDialogContentProps) {
       underlayClass={underlay() === null ? overlay : undefined}
       underlaySlot="alert-dialog-overlay"
       underlayProps={underlay() ?? undefined}
-      {...handedOn(cells(props))}
+      {...values(handedOn(cells(props)))}
       class={ui(content, props.class, props.className)}
       data-slot={props["data-slot"] ?? "alert-dialog-content"}
       data-size={props.size ?? "default"}
     >
-      <AriaDialog {...named(cells(props))} role="alertdialog" class={contents}>
+      <AriaDialog {...values(named(cells(props)))} role="alertdialog" class={contents}>
         {props.children}
       </AriaDialog>
     </Modal>

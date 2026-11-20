@@ -1,4 +1,4 @@
-import { Show, createSignal, type Incoming } from "@barqjs/core";
+import { Show, createSignal } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import {
   Button,

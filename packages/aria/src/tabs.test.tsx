@@ -1,13 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  createContext,
-  flush,
-  getContext,
-  provide,
-  createSignal,
-  type Child,
-  type Incoming,
-} from "@barqjs/core";
+import { createContext, flush, getContext, provide, createSignal, type Child } from "@barqjs/core";
 import { accessibleName, expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
 import type { Key } from "./collections.ts";
 import { provideDirection } from "./i18n.ts";
@@ -36,14 +28,12 @@ const SECTIONS: Section[] = [
   { id: "notes", name: "Notes", body: "Odds and ends" },
 ];
 
-function Sections(
-  props: {
-    keyboardActivation?: "automatic" | "manual";
-    orientation?: "horizontal" | "vertical";
-    defaultSelectedKey?: Key;
-    onSelectionChange?: (key: Key) => void;
-  },
-) {
+function Sections(props: {
+  keyboardActivation?: "automatic" | "manual";
+  orientation?: "horizontal" | "vertical";
+  defaultSelectedKey?: Key;
+  onSelectionChange?: (key: Key) => void;
+}) {
   return (
     <Tabs
       items={SECTIONS}
@@ -296,17 +286,15 @@ describe("Tabs", () => {
   });
 });
 
-function Settings(
-  props: {
-    value?: string;
-    defaultValue?: string;
-    onValueChange?: (value: string) => void;
-    orientation?: "horizontal" | "vertical";
-    activationMode?: "automatic" | "manual";
-    dir?: "ltr" | "rtl";
-    forceMount?: boolean;
-  },
-) {
+function Settings(props: {
+  value?: string;
+  defaultValue?: string;
+  onValueChange?: (value: string) => void;
+  orientation?: "horizontal" | "vertical";
+  activationMode?: "automatic" | "manual";
+  dir?: "ltr" | "rtl";
+  forceMount?: boolean;
+}) {
   return (
     <ValueTabs
       value={props.value}

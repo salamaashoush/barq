@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createSignal, flush, type Child, type Incoming } from "@barqjs/core";
+import { createSignal, flush, type Child } from "@barqjs/core";
 import { render, screen, user } from "@barqjs/testing";
 
 import { Button } from "../ui/button.tsx";

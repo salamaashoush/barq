@@ -1,4 +1,4 @@
-import { For, type Incoming } from "@barqjs/core";
+import { For } from "@barqjs/core";
 
 import { anchor, type DocsSection } from "../../docs.tsx";
 
@@ -106,8 +106,7 @@ export const sections: readonly DocsSection[] = MONTHS.map((month) => ({
 }));
 
 function Text(props: { text: string }) {
-  const parts = props
-    .text
+  const parts = props.text
     .split("`")
     .map((text, at) => ({ text, code: at % 2 === 1 }))
     .filter((part) => part.text !== "");

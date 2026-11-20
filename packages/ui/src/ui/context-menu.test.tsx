@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createSignal, flush, type Incoming } from "@barqjs/core";
+import { createSignal, flush } from "@barqjs/core";
 import {
   accessibleName,
   expectNoAriaViolations,
@@ -134,13 +134,11 @@ describe("ContextMenu", () => {
 
 /** The menu as shadcn's own demo writes it. */
 describe("a ContextMenu written as children", () => {
-  function Page(
-    props: {
-      onReload?: () => void;
-      onBookmarks?: (checked: boolean) => void;
-      onPerson?: (value: string) => void;
-    },
-  ) {
+  function Page(props: {
+    onReload?: () => void;
+    onBookmarks?: (checked: boolean) => void;
+    onPerson?: (value: string) => void;
+  }) {
     const [person, setPerson] = createSignal("salama");
     return (
       <ContextMenu>

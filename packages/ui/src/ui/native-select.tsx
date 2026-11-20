@@ -1,5 +1,4 @@
 import { cells } from "@barqjs/core";
-import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 import { ChevronDown } from "@barqjs/lucide/icons/chevron-down";
 
@@ -147,7 +146,11 @@ export function NativeSelect(props: NativeSelectProps) {
       data-size={size()}
     >
       <select
-        {...controlProps("native-select", control, omit(cells(props), ["size", "class", "className"]))}
+        {...controlProps(
+          "native-select",
+          control,
+          omit(cells(props), ["size", "class", "className"]),
+        )}
         data-size={size()}
         ref={mergeRefs(props.ref)}
       >

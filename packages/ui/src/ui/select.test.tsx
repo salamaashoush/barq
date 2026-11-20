@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createSignal, flush, type Incoming } from "@barqjs/core";
+import { createSignal, flush } from "@barqjs/core";
 import { expectNoAriaViolations, render, screen, tick, user } from "@barqjs/testing";
 
 import { rulesFor } from "../test-rules.ts";
@@ -237,27 +237,25 @@ describe("a Select written as parts", () => {
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
   }
 
-  function Written(
-    props: {
-      value?: string;
-      defaultValue?: string;
-      onValueChange?: (value: string) => void;
-      open?: boolean;
-      onOpenChange?: (isOpen: boolean) => void;
-      name?: string;
-      disabled?: boolean;
-      required?: boolean;
-      size?: "sm" | "default";
-      position?: "item-aligned" | "popper";
-      side?: "top" | "right" | "bottom" | "left";
-      align?: "start" | "center" | "end";
-      sideOffset?: number;
-      alignOffset?: number;
-      placement?: "top start";
-      offset?: number;
-      "aria-label"?: string;
-    },
-  ) {
+  function Written(props: {
+    value?: string;
+    defaultValue?: string;
+    onValueChange?: (value: string) => void;
+    open?: boolean;
+    onOpenChange?: (isOpen: boolean) => void;
+    name?: string;
+    disabled?: boolean;
+    required?: boolean;
+    size?: "sm" | "default";
+    position?: "item-aligned" | "popper";
+    side?: "top" | "right" | "bottom" | "left";
+    align?: "start" | "center" | "end";
+    sideOffset?: number;
+    alignOffset?: number;
+    placement?: "top start";
+    offset?: number;
+    "aria-label"?: string;
+  }) {
     return (
       <>
         <label for="fruit">Fruit</label>

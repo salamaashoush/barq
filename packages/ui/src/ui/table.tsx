@@ -1,5 +1,4 @@
 import { cells } from "@barqjs/core";
-import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
@@ -148,9 +147,7 @@ export function TableRow(props: TableRowProps) {
     <tr
       {...uiProps("table-row", row, cells(props))}
       data-selected={props.isSelected === true ? "" : undefined}
-      data-state={
-        props["data-state"] ?? (props.isSelected === true ? "selected" : undefined)
-      }
+      data-state={props["data-state"] ?? (props.isSelected === true ? "selected" : undefined)}
       aria-selected={props.isSelected === true ? true : undefined}
     >
       {props.children}

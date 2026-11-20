@@ -6,6 +6,7 @@
  * find deliberately rather than discover.
  */
 
+import { type Incoming, createComponent, fromCells } from "@barqjs/core";
 import { describe, expect, test } from "bun:test";
 
 import { Outlet } from "./components.ts";
@@ -425,19 +426,19 @@ describe("what a route component is handed, as types", () => {
   });
 
   test("each prop is read with one call", () => {
-    assertType<Same<ReturnType<Handed["data"]>, Data>>(true);
-    assertType<Same<ReturnType<Handed["params"]>, Params>>(true);
-    assertType<Same<ReturnType<Handed["context"]>, Record<string, unknown>>>(true);
+    assertType<Same<ReturnType<Incoming<Handed>["data"]>, Data>>(true);
+    assertType<Same<ReturnType<Incoming<Handed>["params"]>, Params>>(true);
+    assertType<Same<ReturnType<Incoming<Handed>["context"]>, Record<string, unknown>>>(true);
   });
 
   test("an authored component is callable as the invoked form", () => {
-    const authored: RouteComponent<Data, Params> = (props) => props.data().title;
+    const authored: RouteComponent<Data, Params> = fromCells((props) => props.data().title);
     const invoked = authored as InvokedRouteComponent<Data, Params>;
-    const title = invoked({
+    const title = createComponent(invoked, {
       data: () => ({ title: "first" }),
       params: () => ({ id: "7" }),
       context: () => ({}),
-      children: null,
+      children: () => null,
     });
     expect(title as unknown).toBe("first");
   });

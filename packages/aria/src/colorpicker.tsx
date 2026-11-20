@@ -28,7 +28,6 @@ import {
   createContext,
   getContext,
   getOwner,
-  type Incoming,
   install,
   createSignal,
 } from "@barqjs/core";
@@ -1413,7 +1412,9 @@ export function ColorField(props: ColorFieldComponentProps) {
         isReadOnly: () => props.isReadOnly,
         isRequired: () => props.isRequired,
         isInvalid: () => props.isInvalid,
-        validate: callback<[Color], string | string[] | true | null | undefined>(cells(props).validate),
+        validate: callback<[Color], string | string[] | true | null | undefined>(
+          cells(props).validate,
+        ),
         validationBehavior: () => props.validationBehavior,
         name: () => props.name,
         "aria-label": () => props["aria-label"],

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { cells, flush, type Incoming, createSignal } from "@barqjs/core";
+import { cells, flush, createSignal } from "@barqjs/core";
 import { render, screen, user } from "@barqjs/testing";
 import { focused, focusWithin } from "./focus-events.ts";
 import { hover } from "./hover.ts";

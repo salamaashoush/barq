@@ -9,7 +9,7 @@
  * cancelled by dragging off, and arrives late on touch.
  */
 
-import { cells, type Accessor, type Child, type Incoming } from "@barqjs/core";
+import { cells, type Accessor, type Child } from "@barqjs/core";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { focusRing } from "./focus.ts";
 import { focusable, type FocusableOptions } from "./interactions/focusable.ts";

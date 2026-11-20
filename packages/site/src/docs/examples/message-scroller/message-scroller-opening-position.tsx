@@ -1,4 +1,4 @@
-import { For, Show, createSignal, onCleanup, onSettled, type Incoming } from "@barqjs/core";
+import { For, Show, createSignal, onCleanup, onSettled } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import {
   Bubble,

@@ -8,7 +8,7 @@ import {
   type MenubarMenuComponentProps,
 } from "@barqjs/aria/menubar";
 import { filterDOMProps, fromProps, mergeProps } from "@barqjs/aria/utils";
-import type { Child, Incoming, JSXElement } from "@barqjs/core";
+import type { Child, JSXElement } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 import { mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 
@@ -189,8 +189,7 @@ export function MenubarTrigger(props: MenubarTriggerProps) {
     "data-slot": () => props["data-slot"] ?? "menubar-trigger",
     "data-variant": "ghost",
     "data-size": "default",
-    class: () =>
-      ui(buttonVariants({ variant: "ghost" }), trigger, props.class, props.className),
+    class: () => ui(buttonVariants({ variant: "ghost" }), trigger, props.class, props.className),
     style: () => props.style,
   });
 

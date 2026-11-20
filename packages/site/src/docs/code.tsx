@@ -11,7 +11,7 @@
  * `<CommandTabs>` is their `<CodeTabs>` over the four package managers.
  */
 
-import { For, createSignal, type Incoming, Show } from "@barqjs/core";
+import { For, createSignal, Show } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import { Check } from "@barqjs/lucide/icons/check";
 import { Copy } from "@barqjs/lucide/icons/copy";

@@ -1,5 +1,5 @@
 import { cells } from "@barqjs/core";
-import type { Child, Incoming } from "@barqjs/core";
+import type { Child } from "@barqjs/core";
 import { layer, variants } from "@barqjs/css";
 
 import "../theme/layers.ts";

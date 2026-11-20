@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { createSignal, flush } from "@barqjs/core";
+import { createComponent, createSignal, flush } from "@barqjs/core";
 import * as THREE from "three";
 
 import { FakeLoader, Graphed, Model, Suspended } from "./fixtures/loader.tsx";
@@ -33,7 +33,7 @@ function names(scene: THREE.Object3D): string[] {
 
 describe("useLoader", () => {
   test("suspends to the nearest Loading until the asset is loaded, then shows it", async () => {
-    const { scene } = mount(() => Suspended({ url: () => "a.png" }));
+    const { scene } = mount(() => createComponent(Suspended, { url: () => "a.png" }));
     expect(names(scene)).toEqual(["fallback"]);
     expect(FakeLoader.calls).toEqual(["a.png"]);
     const texture = new THREE.Texture();
@@ -45,7 +45,7 @@ describe("useLoader", () => {
   });
 
   test("a cached asset is answered at once, without a second load or a fallback", () => {
-    const { scene } = mount(() => Suspended({ url: () => "a.png" }));
+    const { scene } = mount(() => createComponent(Suspended, { url: () => "a.png" }));
     expect(names(scene)).toEqual(["textured-a.png"]);
     expect(FakeLoader.calls).toEqual([]);
   });
@@ -55,19 +55,19 @@ describe("useLoader", () => {
     expect(FakeLoader.calls).toEqual(["b.png"]);
     FakeLoader.finish("b.png", new THREE.Texture());
     await settle();
-    const { scene } = mount(() => Suspended({ url: () => "b.png" }));
+    const { scene } = mount(() => createComponent(Suspended, { url: () => "b.png" }));
     expect(names(scene)).toEqual(["textured-b.png"]);
     expect(FakeLoader.calls).toEqual(["b.png"]);
 
     useLoader.clear(FakeLoader, "b.png");
-    const again = mount(() => Suspended({ url: () => "b.png" }));
+    const again = mount(() => createComponent(Suspended, { url: () => "b.png" }));
     expect(names(again.scene)).toEqual(["fallback"]);
     expect(FakeLoader.calls).toEqual(["b.png", "b.png"]);
   });
 
   test("a URL from a signal loads the next asset when it changes", async () => {
     const [url, setUrl] = createSignal("c.png");
-    const { scene } = mount(() => Suspended({ url }));
+    const { scene } = mount(() => createComponent(Suspended, { url }));
     FakeLoader.finish("c.png", new THREE.Texture());
     await settle();
     expect(names(scene)).toEqual(["textured-c.png"]);
@@ -80,11 +80,11 @@ describe("useLoader", () => {
   });
 
   test("a failed load reaches the nearest Errored and is not cached", async () => {
-    const { scene } = mount(() => Suspended({ url: () => "missing.png" }));
+    const { scene } = mount(() => createComponent(Suspended, { url: () => "missing.png" }));
     FakeLoader.fail("missing.png", "404");
     await settle();
     expect(names(scene)).toEqual(["failed: Could not load missing.png: 404"]);
-    mount(() => Suspended({ url: () => "missing.png" }));
+    mount(() => createComponent(Suspended, { url: () => "missing.png" }));
     expect(FakeLoader.calls).toEqual(["missing.png", "missing.png"]);
     FakeLoader.fail("missing.png", "404");
     await settle();
@@ -122,7 +122,7 @@ describe("useGraph and useThree", () => {
     mesh.name = "one";
     first.add(mesh);
     const [object, setObject] = createSignal<THREE.Object3D>(first);
-    const { scene } = mount(() => Graphed({ object }));
+    const { scene } = mount(() => createComponent(Graphed, { object }));
     expect(scene.children[0].name).toBe("one");
     const second = new THREE.Group();
     const other = new THREE.Mesh();

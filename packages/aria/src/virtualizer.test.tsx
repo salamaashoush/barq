@@ -12,7 +12,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { flush, createSignal, type Incoming } from "@barqjs/core";
+import { flush, createSignal } from "@barqjs/core";
 import { render, screen, user } from "@barqjs/testing";
 import type { Key, Node } from "./collections.ts";
 import { ListCollection } from "./collections.ts";
@@ -60,13 +60,11 @@ function scrollTo(element: HTMLElement, top: number): void {
   flush();
 }
 
-function Cities(
-  props: {
-    overscan?: number;
-    selectionMode?: "none" | "single" | "multiple";
-    onSelectionChange?: (keys: "all" | Set<Key>) => void;
-  },
-) {
+function Cities(props: {
+  overscan?: number;
+  selectionMode?: "none" | "single" | "multiple";
+  onSelectionChange?: (keys: "all" | Set<Key>) => void;
+}) {
   return (
     <Virtualizer layout={listLayout({ rowHeight: ROW })} overscan={props.overscan ?? 0}>
       <ListBox

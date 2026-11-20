@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, jest, mock, test } from "bun:test";
-import { For, type Incoming, createRoot, createSignal, flush } from "@barqjs/core";
+import { For, createRoot, createSignal, flush } from "@barqjs/core";
 
 import {
   type AnyFieldApi,
@@ -524,10 +524,7 @@ describe("array fields", () => {
 
   function NameInput(props: { value: string; onChange: (value: string) => void }) {
     return (
-      <input
-        value={props.value}
-        onInput={(event) => props.onChange(event.currentTarget.value)}
-      />
+      <input value={props.value} onInput={(event) => props.onChange(event.currentTarget.value)} />
     );
   }
 

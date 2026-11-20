@@ -29,7 +29,6 @@ import {
   createEffect,
   getContext,
   getOwner,
-  type Incoming,
   install,
   createSignal,
 } from "@barqjs/core";
@@ -756,7 +755,9 @@ export function NumberField(props: NumberFieldComponentProps) {
       label: () => props.label,
       name: () => props.name,
       form: () => props.form,
-      validate: callback<[number], string | string[] | true | null | undefined>(cells(props).validate),
+      validate: callback<[number], string | string[] | true | null | undefined>(
+        cells(props).validate,
+      ),
       validationBehavior: () => props.validationBehavior,
       minValue: () => props.minValue,
       maxValue: () => props.maxValue,

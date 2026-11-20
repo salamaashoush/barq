@@ -19,7 +19,7 @@ import {
 } from "@barqjs/aria/tooltip";
 import { filterDOMProps, fromProps, mergeProps, styleProps } from "@barqjs/aria/utils";
 import { Portal } from "@barqjs/web";
-import { cells, Show, type Child, type Incoming, type JSXElement } from "@barqjs/core";
+import { cells, Show, type Child, type JSXElement } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 

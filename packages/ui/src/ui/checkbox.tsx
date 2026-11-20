@@ -3,7 +3,7 @@ import {
   useCheckbox,
   type CheckboxComponentProps,
 } from "@barqjs/aria/checkbox";
-import { cells, Show, type Incoming } from "@barqjs/core";
+import { omit, Show } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import { Check } from "@barqjs/lucide/icons/check";
@@ -12,7 +12,6 @@ import { Minus } from "@barqjs/lucide/icons/minus";
 import "../theme/layers.ts";
 import { box } from "../lib/shared-box.ts";
 import { ringSlot } from "../lib/shared-ring-slot.ts";
-import { omit } from "../lib/slot.ts";
 import { when } from "../lib/shared-when.ts";
 
 const ui = layer("barq.ui");
@@ -146,7 +145,7 @@ const UPSTREAM = ["checked", "defaultChecked", "onCheckedChange", "disabled", "r
 export function Checkbox(props: CheckboxProps) {
   return (
     <AriaCheckbox
-      {...omit(cells(props), UPSTREAM)}
+      {...omit(props, ...UPSTREAM)}
       // Written around text it is the label it used to be; on its own it is
       // the bare control, for the `<Label>` or `<Field>` that names it.
       elementType={props.children === undefined ? "span" : "label"}

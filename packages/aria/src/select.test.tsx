@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { createSignal, flush, type Incoming } from "@barqjs/core";
+import { createSignal, flush } from "@barqjs/core";
 import {
   accessibleName,
   expectNoAriaViolations,
@@ -35,14 +35,12 @@ const FRUITS: Fruit[] = [
   { id: "date", name: "Date" },
 ];
 
-function Picker(
-  props: {
-    defaultSelectedKey?: Key | null;
-    name?: string;
-    isDisabled?: boolean;
-    onSelectionChange?: (key: Key | null) => void;
-  },
-) {
+function Picker(props: {
+  defaultSelectedKey?: Key | null;
+  name?: string;
+  isDisabled?: boolean;
+  onSelectionChange?: (key: Key | null) => void;
+}) {
   return (
     <Select
       label="Fruit"
@@ -314,20 +312,18 @@ describe("a select written as parts", () => {
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
   }
 
-  function Parts(
-    props: {
-      selectedKey?: Key | null;
-      defaultSelectedKey?: Key | null;
-      name?: string;
-      isDisabled?: boolean;
-      isRequired?: boolean;
-      dir?: "ltr" | "rtl";
-      position?: "item-aligned" | "popper";
-      "aria-label"?: string;
-      onSelectionChange?: (key: Key | null) => void;
-      onOpenChange?: (isOpen: boolean) => void;
-    },
-  ) {
+  function Parts(props: {
+    selectedKey?: Key | null;
+    defaultSelectedKey?: Key | null;
+    name?: string;
+    isDisabled?: boolean;
+    isRequired?: boolean;
+    dir?: "ltr" | "rtl";
+    position?: "item-aligned" | "popper";
+    "aria-label"?: string;
+    onSelectionChange?: (key: Key | null) => void;
+    onOpenChange?: (isOpen: boolean) => void;
+  }) {
     return (
       <>
         <label for="fruit">Fruit</label>

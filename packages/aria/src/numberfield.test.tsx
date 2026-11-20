@@ -1,19 +1,17 @@
 import { describe, expect, test } from "bun:test";
-import { flush, type Incoming } from "@barqjs/core";
+import { flush } from "@barqjs/core";
 import { accessibleName, expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
 import { NumberField } from "./numberfield.tsx";
 
-function Quantity(
-  props: {
-    defaultValue?: number | null;
-    minValue?: number;
-    maxValue?: number;
-    step?: number;
-    formatOptions?: Intl.NumberFormatOptions;
-    isDisabled?: boolean;
-    onChange?: (value: number) => void;
-  },
-) {
+function Quantity(props: {
+  defaultValue?: number | null;
+  minValue?: number;
+  maxValue?: number;
+  step?: number;
+  formatOptions?: Intl.NumberFormatOptions;
+  isDisabled?: boolean;
+  onChange?: (value: number) => void;
+}) {
   return (
     <NumberField
       label="Quantity"

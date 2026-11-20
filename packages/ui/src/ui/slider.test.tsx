@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { provideDirection } from "@barqjs/aria/i18n";
-import { flush, type Child, type Incoming } from "@barqjs/core";
+import { flush, type Child } from "@barqjs/core";
 import { cleanup, render, screen, user } from "@barqjs/testing";
 
 import { Label } from "./label.tsx";

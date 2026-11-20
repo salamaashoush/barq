@@ -824,6 +824,23 @@ mod tests {
         module.env.diagnostics.iter().map(|diag| diag.code.as_str()).collect()
     }
 
+    /// As the driver runs it: the props pass first, so a prop written as a
+    /// value reaches the analysis as the read the pass made of it.
+    fn codes_of_values(body: &str) -> Vec<&'static str> {
+        let source = format!("{IMPORT}{body}");
+        let allocator = Allocator::new();
+        let source = allocator.alloc_str(&source);
+        let mut program =
+            Parser::new(&allocator, source, source_type_for(Some("a.tsx"))).parse().program;
+        let options =
+            ResolvedOptions { dev: true, diagnostics: true, ..ResolvedOptions::default() };
+        let sugar = crate::props_sugar::run(&allocator, &mut program, &options);
+        let mut module = Module::for_source(&allocator, source);
+        module.props_params = Some(sugar.params);
+        super::super::bind(&allocator, &program, &mut module, &options);
+        module.env.diagnostics.iter().map(|diag| diag.code.as_str()).collect()
+    }
+
     #[test]
     fn a_choice_made_from_a_signal_in_a_component_body_is_reported() {
         let cases = [
@@ -866,33 +883,33 @@ mod tests {
     /// nothing about whether it moves.
     #[test]
     fn a_choice_made_from_a_prop_needs_a_changing_call_site() {
-        let gate = "function Gate(props) {\n  if (!props.on()) return <p>off</p>;\n  \
+        let gate = "function Gate(props) {\n  if (!props.on) return <p>off</p>;\n  \
                     return <p>on</p>;\n}\n";
         let live = format!(
             "{gate}const [on] = createSignal(false);\nexport const V = () => <Gate on={{on()}} />;\n"
         );
-        assert_eq!(codes(&live), ["BARQ018"]);
+        assert_eq!(codes_of_values(&live), ["BARQ018"]);
         let by_name = format!(
             "{gate}const [on] = createSignal(false);\nexport const V = () => <Gate on={{on}} />;\n"
         );
-        assert_eq!(codes(&by_name), ["BARQ018"]);
+        assert_eq!(codes_of_values(&by_name), ["BARQ018"]);
         let constant = format!("{gate}export const V = () => <Gate on={{true}} />;\n");
-        assert_eq!(codes(&constant), Vec::<&str>::new());
+        assert_eq!(codes_of_values(&constant), Vec::<&str>::new());
         let once = format!(
             "{gate}const [on] = createSignal(false);\nexport const V = () => <Gate on={{untrack(() => on())}} />;\n"
         );
-        assert_eq!(codes(&once), Vec::<&str>::new());
+        assert_eq!(codes_of_values(&once), Vec::<&str>::new());
         let exported = format!("export {gate}");
-        assert_eq!(codes(&exported), Vec::<&str>::new());
+        assert_eq!(codes_of_values(&exported), Vec::<&str>::new());
         let other_prop = format!(
             "{gate}const [on] = createSignal(false);\nexport const V = () => <Gate on={{true}} label={{on()}} />;\n"
         );
-        assert_eq!(codes(&other_prop), Vec::<&str>::new());
+        assert_eq!(codes_of_values(&other_prop), Vec::<&str>::new());
 
-        let aliased = "function Gate(props) {\n  const { on } = props;\n  if (!on()) return <p>off</p>;\n  \
+        let aliased = "function Gate(props) {\n  const { on } = props;\n  if (!on) return <p>off</p>;\n  \
                        return <p>on</p>;\n}\nconst [on] = createSignal(false);\n\
                        export const V = () => <Gate on={on()} />;\n";
-        assert_eq!(codes(aliased), ["BARQ018"]);
+        assert_eq!(codes_of_values(aliased), ["BARQ018"]);
     }
 
     #[test]

@@ -9,7 +9,7 @@
  * only appears on hover — where `dashboard-01` asks about its width.
  */
 
-import { For, createSignal, type Incoming } from "@barqjs/core";
+import { For, createSignal } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import { BadgeCheck } from "@barqjs/lucide/icons/badge-check";
 import { Bell } from "@barqjs/lucide/icons/bell";

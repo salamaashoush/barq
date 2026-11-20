@@ -1,23 +1,21 @@
 import { describe, expect, test } from "bun:test";
 import { provideDirection } from "@barqjs/aria/i18n";
-import { createSignal, flush, type Child, type Incoming } from "@barqjs/core";
+import { createSignal, flush, type Child } from "@barqjs/core";
 import { expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
 
 import { rulesFor } from "../test-rules.ts";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./tabs.tsx";
 
-function Settings(
-  props: {
-    value?: string;
-    defaultValue?: string;
-    onValueChange?: (value: string) => void;
-    orientation?: "horizontal" | "vertical";
-    activationMode?: "automatic" | "manual";
-    dir?: "ltr" | "rtl";
-    variant?: "default" | "line";
-  },
-) {
+function Settings(props: {
+  value?: string;
+  defaultValue?: string;
+  onValueChange?: (value: string) => void;
+  orientation?: "horizontal" | "vertical";
+  activationMode?: "automatic" | "manual";
+  dir?: "ltr" | "rtl";
+  variant?: "default" | "line";
+}) {
   return (
     <Tabs
       value={props.value}
