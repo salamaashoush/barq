@@ -1,6 +1,6 @@
 ---
 name: compiler-diagnostics
-description: Map a barq compiler diagnostic code (BARQ001 to BARQ033) to its repair. Load when a build, the Vite dev overlay, the terminal or a transform result reports BARQ0NN at a file, line and column. Runtime [CODE] findings are in the diagnostics skill of @barqjs/core.
+description: Map a barq compiler diagnostic code (BARQ001 to BARQ034) to its repair. Load when a build, the Vite dev overlay, the terminal or a transform result reports BARQ0NN at a file, line and column. Runtime [CODE] findings are in the diagnostics skill of @barqjs/core.
 ---
 
 # Repairing barq code from a compiler diagnostic code
@@ -57,7 +57,7 @@ Each code also has a page with the full message and more examples at
   `diagnostics` option is on. It is on in development builds, and
   `barq({ compiler: { diagnostics: true } })` runs them in a production build.
 - `BARQ004`, `BARQ010`: development builds only.
-- `BARQ012` to `BARQ017`, `BARQ022` to `BARQ033`: every build.
+- `BARQ012` to `BARQ017`, `BARQ022` to `BARQ034`: every build.
 - `BARQ008`, `BARQ009`: every build, about suppression comments.
 
 `BARQ005`, `BARQ006` and `BARQ007` are retired and never reported. A
@@ -669,8 +669,31 @@ atoms({ color: { "[data-active]": "red", ":not([data-active]):hover": "blue" } }
 ```
 
 Not reported: an attribute equal to two values, two different child positions,
-a selector against its `:not()`, two selectors of different specificity, one
-value under both, or two pseudo-elements.
+a selector against its `:not()`, two media ranges of one feature that do not
+meet, two selectors of different specificity, one value under both, two
+pseudo-elements, or a pair the same object settles with a condition that is
+both at once. Every reported pair is listed.
+
+### BARQ034
+
+Default level: error.
+
+A component destructures a prop with a string default and writes the name as a
+tag. A tag is called as a component, so `"div"` can never render. An element
+chosen at run time is `dynamic`:
+
+```tsx
+// before
+function Box({ as: Tag = "div", ...rest }) {
+  return <Tag {...rest} />;
+}
+
+// after
+function Box(props) {
+  const Tag = dynamic(() => props.as ?? "div");
+  return <Tag {...omit(props, "as")} />;
+}
+```
 
 ## Solid 1.x spellings
 

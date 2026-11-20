@@ -33,5 +33,5 @@ export const optimality = {
   // guards. A spread onto a COMPONENT is one more source in the props list,
   // carried as it stands: no DOM spread helper, no runtime prop resolution.
   emits: ["createComponent(Chip, ", "{ label }, ", "carry(shared)", "bindEffect(", '"data-tone"', '"id"'],
-  absent: ["createElement(Chip", "spread("],
+  absent: ["(Chip, {", "spread("],
 }

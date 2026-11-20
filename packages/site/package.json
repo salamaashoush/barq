@@ -9,6 +9,7 @@
     "preview": "bun dist/server/serve.js",
     "typecheck": "tsc --noEmit",
     "test": "bun test --timeout 30000",
+    "check": "barq check src",
     "theme": "bun run tools/emit-theme.ts"
   },
   "dependencies": {
@@ -33,6 +34,7 @@
     "three": "^0.187.0"
   },
   "devDependencies": {
+    "@barqjs/cli": "workspace:*",
     "@barqjs/compiler": "workspace:*",
     "@barqjs/testing": "workspace:*",
     "@barqjs/vite": "workspace:*",

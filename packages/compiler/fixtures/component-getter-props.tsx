@@ -42,7 +42,8 @@ export const optimality = {
   // props object over as it is, is what stops `createElement` copying it back
   // into a value.
   emits: ["count: () => total()", "props.count", "createComponent(Badge, "],
-  // The call `createElement` would be. Its bare name would be satisfied by the
-  // prose above, which explains what it does.
-  absent: ["createElement(Badge"],
+  // The argument shape a `createElement` call would have, which only
+  // `createComponent` may take. Naming the helper itself would be satisfied by
+  // the prose above, which explains what it does.
+  absent: ["(Badge, {"],
 }

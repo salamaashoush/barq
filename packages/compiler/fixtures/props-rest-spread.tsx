@@ -35,5 +35,5 @@ export const optimality = {
   // baked, because a key inside `rest` may name it.
   templates: 2,
   emits: ["createComponent(Chip, ", "spread(", "rest"],
-  absent: ["get text()", "createElement"],
+  absent: ["get text()", "(Chip, {", "createElement"],
 }

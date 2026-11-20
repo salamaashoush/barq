@@ -23,9 +23,10 @@ export const steps = [() => setTheme("sepia")]
 export const optimality = {
   target: 1,
   templates: 2,
-  // The context is its own provider, called like any component. `useContext`
+  // The context is its own provider, called directly: it opens a scope of its
+  // own, so a frame around it would be an owner nothing uses. `useContext`
   // returns whatever was provided, so the read inside `Badge` stays Opaque and
   // is emitted exactly as written.
-  emits: ["createComponent(Theme, {", "value: theme"],
+  emits: ["Theme({", "value: theme"],
   absent: ["Theme.Provider", "get value()"],
 }

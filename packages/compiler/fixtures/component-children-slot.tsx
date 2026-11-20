@@ -62,5 +62,5 @@ export const optimality = {
   ],
   // A component call, never `createElement`; and `title` is a literal the
   // caller wrote, so nothing wraps it in a getter it does not need.
-  absent: ["createElement(Panel", "get title()"],
+  absent: ["(Panel, {", "get title()"],
 }

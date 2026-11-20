@@ -114,3 +114,39 @@ test("a page that subscribes to diagnostics carries the findings' words", async 
   `);
   for (const text of FINDING_PROSE) expect(code).toContain(text);
 });
+
+/**
+ * A page of components that install nothing. What a component hands back is
+ * made to carry a binding its body installed, and a page with no install has
+ * nothing for that to carry; nor has it anything that could hear the
+ * component path written onto what a body threw.
+ */
+const COMPONENTS = `
+  import { render, template } from ${WEB};
+  import { createComponent } from ${CORE};
+  const view = template("<p>salama</p>");
+  function Greeting() {
+    return view();
+  }
+  render(() => [createComponent(Greeting, {}), createComponent(Greeting, {})], document.body);
+`;
+
+test("a page of components that install nothing carries no hand-back and no owner path", async () => {
+  const code = await bundle(COMPONENTS);
+  expect(code).toContain("salama");
+  expect(code).not.toContain("Reflect.ownKeys");
+  expect(code).not.toContain("barq.ownerPath");
+});
+
+test("a page whose component installs carries the hand-back", async () => {
+  const code = await bundle(`${COMPONENTS}
+    import { createContext, setContext } from ${CORE};
+    const Theme = createContext("plain");
+    function Dark(props) {
+      setContext(Theme, "dark");
+      return props.children;
+    }
+    render(() => createComponent(Dark, { children: () => "x" }), document.body);
+  `);
+  expect(code).toContain("Reflect.ownKeys");
+});

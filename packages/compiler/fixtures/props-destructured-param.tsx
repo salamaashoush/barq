@@ -34,5 +34,5 @@ export const optimality = {
   // one props record. The call site is what it is for a `props` parameter: a
   // real props object, with the author-written accessor passed through as one.
   emits: ["createComponent(Chip, ", '() => "warm"', "text: label"],
-  absent: ["get text()", "get tone()", "createElement(Chip"],
+  absent: ["get text()", "get tone()", "(Chip, {"],
 }

@@ -24,6 +24,7 @@ import {
   untrack,
   unwrapBlocks,
   provideOn,
+  recordInstall,
   runWithOwner,
   ScopeMissingError,
   type Context,
@@ -119,6 +120,7 @@ export function provide<T>(context: Context<T>, value: Cell<T>, block: Block<unk
  */
 export function install<T>(scope: Scope, context: Context<T>, value: Cell<T>): void {
   provideOn(scope, context.id, value);
+  recordInstall(scope, context.id, value);
 }
 
 /** The context read against an explicit scope, answering with the Cell. */

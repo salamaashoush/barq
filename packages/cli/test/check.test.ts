@@ -77,6 +77,35 @@ const plain: Paint = {
   bold: (text) => text,
 };
 
+describe("check across modules", () => {
+  const SHARED = `import { layer } from "@barqjs/css";
+export const ui = layer("app");
+export const ring = ui.create({ ring: { outlineWidth: "3px" } });
+`;
+
+  test("a call through an imported layer binding folds, and a decline is reported", () => {
+    const root = project({
+      "src/shared.ts": SHARED,
+      "src/page.ts": `import { ui, ring } from "./shared";
+export const a = ui(ring.ring, { color: "red" });
+export const b = (pick: () => string) => ui({ color: pick() });
+`,
+      "src/card.tsx": `import { ui } from "./shared.ts";
+export const Card = () => <p class={ui({ padding: 4 })}>salama</p>;
+`,
+    });
+    const result = check({ root });
+    const byFile = (file: string) =>
+      result.findings.filter((finding) => finding.file === file).map((finding) => finding.code);
+    expect(byFile("src/page.ts")).toEqual(["BARQ017"]);
+    expect(byFile("src/card.tsx")).toEqual([]);
+    expect(
+      result.findings.find((finding) => finding.file === "src/page.ts")?.line,
+      "the decline, not the call that folded",
+    ).toBe(3);
+  });
+});
+
 describe("check", () => {
   test("reports each finding with its code, position, page and guide section", () => {
     const root = project({ "src/view.tsx": VIEW, "src/greeting.tsx": CLEAN });

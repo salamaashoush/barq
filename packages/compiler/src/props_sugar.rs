@@ -46,6 +46,7 @@ const VALUES: &str = "_$values";
 const OMIT: &str = "_$omit";
 const WITH_DEFAULT: &str = "_$withDefault";
 pub(crate) const READ: &str = "_$readProp";
+const READ_TAG: &str = "_$readTag";
 const CARRY: &str = "_$carry";
 
 /// The object under `_$carry(object)`, the record this pass makes of an
@@ -64,8 +65,12 @@ pub(crate) fn carried<'e, 'a>(
 }
 
 /// What the pass leaves for the stages after it.
-pub struct Outcome {
+pub struct Outcome<'a> {
     pub refusals: Vec<Refusal>,
+    /// A tag that names a prop, `<props.as />` or a destructured `<As />`, by
+    /// where its name starts, with the read it stands for. A tag cannot hold
+    /// an expression, so the call is written by the shape pass from this.
+    pub tags: Vec<(u32, Expression<'a>)>,
     /// Where each component's props parameter is declared. Analysis takes
     /// these, and nothing else, for the records whose members are Cells, so
     /// the two never disagree about what a component is.
@@ -81,6 +86,9 @@ pub struct Refusal {
 pub const ASSIGNED: &str = "A prop is assigned here, and props are read-only: the component \
      that passed it owns the value. Call a function prop to ask for the change, or keep a \
      signal of your own and write to that.";
+pub const STRING_TAG: &str = "This tag names a prop whose default is a string, and a tag is \
+     called as a component, so the default can never render. An element chosen at run time is \
+     `dynamic`: `const Tag = dynamic(() => props.as ?? \"div\")`, then `<Tag />`.";
 pub const UNSUPPORTED_PATTERN: &str = "This props pattern cannot be kept reactive: a computed \
      key, a default inside a nested pattern, or a rest element inside one. Destructure one \
      level, or read the prop from `props` where it is used.";
@@ -116,7 +124,7 @@ pub fn run<'a>(
     allocator: &'a Allocator,
     program: &mut Program<'a>,
     options: &ResolvedOptions,
-) -> Outcome {
+) -> Outcome<'a> {
     let core_source: &str = &options.core_source;
     let SemanticBuilderReturn { semantic, .. } = SemanticBuilder::new().build(program);
     let scoping = semantic.into_scoping();
@@ -157,7 +165,7 @@ pub fn run<'a>(
     }
     // A module with no component and no spread has nothing to rewrite.
     if components.is_empty() && !survey.spreads {
-        return Outcome { refusals: Vec::new(), params: Vec::new() };
+        return Outcome { refusals: Vec::new(), tags: Vec::new(), params: Vec::new() };
     }
 
     let mut rewrite = Rewrite {
@@ -173,15 +181,21 @@ pub fn run<'a>(
         actions: FxHashMap::default(),
         component_tag: false,
         minted: 0,
-        needs: [false; 5],
+        needs: [false; 6],
         refusals: Vec::new(),
         params: Vec::new(),
+        tags: Vec::new(),
+        string_defaults: FxHashSet::default(),
     };
     rewrite.visit_program(program);
     let needs = rewrite.needs;
     let refusals = std::mem::take(&mut rewrite.refusals);
     import_helpers(allocator, program, core_source, needs);
-    Outcome { refusals, params: std::mem::take(&mut rewrite.params) }
+    Outcome {
+        refusals,
+        tags: std::mem::take(&mut rewrite.tags),
+        params: std::mem::take(&mut rewrite.params),
+    }
 }
 
 // ── the survey: which functions are components ───────────────────────────────
@@ -362,10 +376,14 @@ struct Rewrite<'a, 's> {
     /// Whether the attributes being walked are a component's.
     component_tag: bool,
     minted: u32,
-    /// `values`, `omit`, `withDefault`, `readProp`, `carry`, in that order.
-    needs: [bool; 5],
+    /// `values`, `omit`, `withDefault`, `readProp`, `carry`, `readTag`, in that
+    /// order.
+    needs: [bool; 6],
     refusals: Vec<Refusal>,
     params: Vec<Span>,
+    tags: Vec<(u32, Expression<'a>)>,
+    /// The names a props pattern gave a string as their default.
+    string_defaults: FxHashSet<SymbolId>,
 }
 
 /// What a destructured parameter asks of the body it belongs to.
@@ -648,6 +666,62 @@ impl<'a> Rewrite<'a, '_> {
         }
     }
 
+    /// A tag that names a prop is called with the prop's value, read where the
+    /// element is built, as any other read of it is.
+    fn tag_read(&mut self, name: &JSXElementName<'a>) {
+        let (root, members, span) = match name {
+            JSXElementName::IdentifierReference(identifier) => {
+                (&**identifier, Vec::new(), identifier.span)
+            }
+            JSXElementName::MemberExpression(member) => {
+                let mut members = vec![member.property.name.as_str()];
+                let mut object = &member.object;
+                let root = loop {
+                    match object {
+                        oxc::ast::ast::JSXMemberExpressionObject::IdentifierReference(root) => {
+                            break &**root;
+                        }
+                        oxc::ast::ast::JSXMemberExpressionObject::MemberExpression(inner) => {
+                            members.push(inner.property.name.as_str());
+                            object = &inner.object;
+                        }
+                        oxc::ast::ast::JSXMemberExpressionObject::ThisExpression(_) => return,
+                    }
+                };
+                members.reverse();
+                (root, members, member.span)
+            }
+            _ => return,
+        };
+        let Some(symbol) = self.symbol(root) else { return };
+        let Some(action) = self.actions.get(&symbol).cloned() else { return };
+        if members.is_empty() && self.string_defaults.contains(&symbol) {
+            self.refusals.push(Refusal { span, message: STRING_TAG });
+        }
+        let allocator = self.allocator;
+        let mut members = members.into_iter().map(|name| -> &'a str { allocator.alloc_str(name) });
+        let action = match action {
+            Action::Record { name, param } => {
+                let Some(prop) = members.next() else { return };
+                Action::Field { record: name, prop, steps: Vec::new(), param }
+            }
+            other => other,
+        };
+        let members: Vec<&'a str> = members.collect();
+        let read = match &action {
+            // The tag is the prop itself, which a server component's slot can
+            // be: called by the tag, never read.
+            Action::Field { record, prop, steps, .. } if steps.is_empty() && members.is_empty() => {
+                let cell = self.member(self.ident(record, span), prop, span);
+                self.needs[5] = true;
+                self.call(READ_TAG, vec![cell], span)
+            }
+            _ => self.field(&action, span, false),
+        };
+        let read = members.into_iter().fold(read, |object, name| self.member(object, name, span));
+        self.tags.push((name_start(name), read));
+    }
+
     /// Whether `expression` is a prop named and nothing more, the shape a
     /// forward takes: `props.title`, or a name a props pattern bound.
     fn forwards(&self, expression: &Expression<'a>) -> bool {
@@ -741,6 +815,11 @@ impl<'a> Rewrite<'a, '_> {
                         continue;
                     };
                     let mut fallback = assignment.right;
+                    if matches!(unwrapped(&fallback), Expression::StringLiteral(_))
+                        && let Some(symbol) = id.symbol_id.get()
+                    {
+                        self.string_defaults.insert(symbol);
+                    }
                     // Read where it is used: a default may name a prop bound
                     // before it.
                     self.visit_expression(&mut fallback);
@@ -896,6 +975,10 @@ fn supported(pattern: &oxc::ast::ast::ObjectPattern<'_>) -> bool {
         })
 }
 
+fn name_start(name: &JSXElementName<'_>) -> u32 {
+    oxc::span::GetSpan::span(name).start
+}
+
 fn static_key(key: &PropertyKey<'_>) -> bool {
     matches!(key, PropertyKey::StaticIdentifier(_) | PropertyKey::StringLiteral(_))
 }
@@ -1038,6 +1121,7 @@ impl<'a> VisitMut<'a> for Rewrite<'a, '_> {
     }
 
     fn visit_jsx_element(&mut self, element: &mut JSXElement<'a>) {
+        self.tag_read(&element.opening_element.name);
         let outer = self.component_tag;
         let construct = matches!(&element.opening_element.name,
             JSXElementName::IdentifierReference(name)
@@ -1162,7 +1246,7 @@ fn import_helpers<'a>(
     allocator: &'a Allocator,
     program: &mut Program<'a>,
     core_source: &str,
-    needs: [bool; 5],
+    needs: [bool; 6],
 ) {
     let wanted: Vec<(&str, &str)> = [
         ("values", VALUES),
@@ -1170,6 +1254,7 @@ fn import_helpers<'a>(
         ("withDefault", WITH_DEFAULT),
         ("readProp", READ),
         ("carry", CARRY),
+        ("readTag", READ_TAG),
     ]
     .into_iter()
     .zip(needs)
@@ -1247,6 +1332,50 @@ mod tests {
             Ok(output) => output.warnings.iter().filter_map(|warning| warning.code).collect(),
             Err(errors) => errors.iter().filter_map(|error| error.code).collect(),
         }
+    }
+
+    /// A tag that names a prop is a read like any other, made where the
+    /// element is built, and what it reads is called as the component.
+    #[test]
+    fn a_tag_that_names_a_prop_calls_what_the_prop_holds() {
+        let code = emit(
+            "function A(props) { return <props.component y={1} />; }\n\
+             function B(props) { return <props.icons.Left />; }\n\
+             function C({ component: Comp }) { return <Comp />; }\n\
+             function D(props) { const { component: Comp } = props; return <Comp />; }\n\
+             function E({ component: Comp = Fallback }) { return <Comp />; }\n\
+             function F({ ...rest }) { return <rest.component />; }\n\
+             export { A, B, C, D, E, F };\n",
+        );
+        for expected in [
+            "_$createComponent(_$readTag(props.component), { y: _k$1 })",
+            "_$createComponent(_$readProp(props.icons).Left, {})",
+            "_$createComponent(_$readTag(_props$1.component), {})",
+            "_$createComponent(_$readTag(props.component), {})",
+            "_$createComponent(_prop$4(), {})",
+            "_$createComponent(_$readTag(rest.component), {})",
+        ] {
+            assert!(code.contains(expected), "{expected} missing from\n{code}");
+        }
+        assert!(!code.contains("_$createComponent(Comp"), "{code}");
+        assert!(codes("function D(props) { const { component: Comp } = props; return <Comp />; }\nexport { D };\n").is_empty());
+    }
+
+    /// A string default can never be called as a component.
+    #[test]
+    fn a_tag_with_a_string_default_is_refused() {
+        let source = "export function Box({ as: Tag = \"div\" }) { return <Tag />; }\n";
+        assert_eq!(codes(source), vec![Code::Barq034]);
+        // A component default is a component.
+        assert!(codes("export function Box({ as: Tag = Other }) { return <Tag />; }\n").is_empty());
+    }
+
+    /// A lowercase tag is an element by its spelling, never the binding.
+    #[test]
+    fn a_lowercase_tag_is_an_element_whatever_a_pattern_bound() {
+        let code = emit("export function Box({ as: tag }) { return <tag>x</tag>; }\n");
+        assert!(code.contains("_$template(`<tag>x</tag>`)"), "{code}");
+        assert!(!code.contains("createComponent"), "{code}");
     }
 
     #[test]

@@ -399,6 +399,7 @@ function addDiagnosticListener(listener: DiagnosticListener): () => void {
   }
   listening++;
   finding = emitFinding;
+  markThrown = markOwnerPath;
   refreshDiagnosticsOn();
   let live = true;
   return () => {
@@ -417,6 +418,7 @@ function addDiagnosticListener(listener: DiagnosticListener): () => void {
 export function setDiagnosticReporter(report: DiagnosticListener | null): void {
   reporter = report;
   finding = emitFinding;
+  markThrown = markOwnerPath;
   refreshDiagnosticsOn();
 }
 
@@ -484,6 +486,22 @@ export function ownerPathOf(subject: DiagnosticSubject | null | undefined): stri
 const OWNER_PATH = Symbol.for("barq.ownerPath");
 
 /**
+ * Write the component path onto what a component's body threw, for
+ * `errorOwnerPath`. Installed with the first diagnostics listener or reporter,
+ * which is also what a development tier is heard through: where nothing can
+ * hear one, the path is `undefined` anyway and the bundle does not carry this.
+ */
+let markThrown: ((error: unknown, owner: Scope) => void) | null = null;
+
+function markOwnerPath(error: unknown, owner: Scope): void {
+  if (typeof error !== "object" || error === null || OWNER_PATH in error) return;
+  const path = ownerPathOf(owner);
+  if (path !== undefined) {
+    Object.defineProperty(error, OWNER_PATH, { value: path, configurable: true });
+  }
+}
+
+/**
  * Where an error was thrown, as a component path: the innermost component
  * whose body threw it, or the computation the engine says it left.
  */
@@ -540,22 +558,39 @@ export function createComponent<P, R>(
   const outerInstalls = frameInstalls;
   runningFrame = owner;
   frameInstalls = null;
+  calling = component as (props: unknown) => unknown;
+  callingWith = record;
   try {
-    const built = runWithOwner(owner, () => component(record));
+    const built = runWithOwner(owner, callPending) as R;
     const installed = frameInstalls as Map<string | symbol, unknown> | null;
-    return installed === null ? built : carry(built, owner, installed);
+    return installed === null ? built : (carrying as Carry)(built, owner, installed);
   } catch (error) {
-    if (typeof error === "object" && error !== null && !(OWNER_PATH in error)) {
-      const path = ownerPathOf(owner);
-      if (path !== undefined) {
-        Object.defineProperty(error, OWNER_PATH, { value: path, configurable: true });
-      }
-    }
+    markThrown?.(error, owner);
+    // O4.4: nothing holds what a body built before it threw, and a body that
+    // suspended is built again from the start in a frame of its own.
+    disposeScope(owner);
     throw error;
   } finally {
     runningFrame = outerFrame;
     frameInstalls = outerInstalls;
   }
+}
+
+/**
+ * The component `createComponent` is about to run, and its props, handed to
+ * `callPending` through the module rather than through a closure made per
+ * call. `callPending` takes both before it runs anything, so a component the
+ * body calls in turn finds them free.
+ */
+let calling: ((props: unknown) => unknown) | null = null;
+let callingWith: unknown = null;
+
+function callPending(): unknown {
+  const component = calling as (props: unknown) => unknown;
+  const props = callingWith;
+  calling = null;
+  callingWith = null;
+  return component(props);
 }
 
 /**
@@ -944,7 +979,19 @@ export function provideOn(scope: Scope, key: string | symbol, value: unknown): v
 /** `provideOn` for a value the runtime binds itself, which is never a Block. */
 export function bindOn(scope: Scope, key: string | symbol, value: unknown): void {
   engineSetContext(channel(key), value, scope);
-  if (scope === runningFrame) (frameInstalls ??= new Map()).set(key, value);
+}
+
+/**
+ * Remember a binding written onto a scope that already existed, when that
+ * scope is the frame of the component whose body is running, so what the
+ * component hands back carries it. Only `install` and `setContext` write onto
+ * a scope they did not open; every binding the runtime makes is on a scope it
+ * opened for it, which no component body is running in.
+ */
+export function recordInstall(scope: Scope, key: string | symbol, value: unknown): void {
+  if (scope !== runningFrame) return;
+  (frameInstalls ??= new Map()).set(key, value);
+  carrying = carry;
 }
 
 export function lookupContext(scope: Scope | null, key: string | symbol): unknown {
@@ -960,6 +1007,15 @@ export function lookupContext(scope: Scope | null, key: string | symbol): unknow
  */
 let runningFrame: Scope | null = null;
 let frameInstalls: Map<string | symbol, unknown> | null = null;
+
+type Carry = <R>(value: R, home: Scope, bindings: Map<string | symbol, unknown>) => R;
+
+/**
+ * `carry`, reached through `recordInstall` and nowhere else: `frameInstalls`
+ * is only ever set beside it, and a page that never installs onto a running
+ * frame does not ship it.
+ */
+let carrying: Carry | null = null;
 
 /**
  * Run a component's `body` under `frame`, the owner of that one instance:
@@ -991,7 +1047,7 @@ export function inFrame<R>(frame: Scope, body: () => R): R {
   try {
     const built = runWithOwner(frame, body);
     const installed = frameInstalls as Map<string | symbol, unknown> | null;
-    return installed === null ? built : carry(built, frame, installed);
+    return installed === null ? built : (carrying as Carry)(built, frame, installed);
   } finally {
     runningFrame = outerFrame;
     frameInstalls = outerInstalls;
@@ -1001,13 +1057,21 @@ export function inFrame<R>(frame: Scope, body: () => R): R {
 function carry<R>(value: R, home: Scope, bindings: Map<string | symbol, unknown>): R {
   if (isBlock(value)) {
     const build = value as unknown as (...args: unknown[]) => unknown;
-    return block((...args: unknown[]): unknown => {
+    const carried = (...args: unknown[]): unknown => {
       const at = getOwner();
       if (at === null) return build(...args);
       const scope = childScope(at);
       for (const [key, held] of bindings) bindOn(scope, key, held);
       return runWithOwner(scope, () => carry(build(...args), scope, bindings));
-    }) as unknown as R;
+    };
+    // What the Block is, said again on the one standing in for it: a consumer
+    // tells a row callback from parts by `length`, and reads any brand it set.
+    for (const key of Reflect.ownKeys(build)) {
+      if (key === "prototype" || key === "arguments" || key === "caller") continue;
+      const descriptor = Object.getOwnPropertyDescriptor(build, key);
+      if (descriptor !== undefined) Object.defineProperty(carried, key, descriptor);
+    }
+    return carried as unknown as R;
   }
   if (Array.isArray(value)) {
     let changed = false;
@@ -1169,7 +1233,9 @@ export function setContext<T>(
   }
 
   const resolved = value === undefined ? context.defaultValue : value;
-  provideOn(owner, context.id, () => resolved);
+  const cell = (): T | undefined => resolved;
+  provideOn(owner, context.id, cell);
+  recordInstall(owner, context.id, cell);
 }
 
 /**

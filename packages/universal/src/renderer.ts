@@ -14,6 +14,7 @@ import {
   type Maybe,
   type RevealOrder,
   type Scope,
+  createComponent,
   createEffect,
   getOwner,
   isBlock,
@@ -976,7 +977,8 @@ export function createRenderer<N extends object>(ops: HostOps<N>): Renderer<N> {
         const resolved = untrack(component);
         if (resolved === null || resolved === undefined || resolved === false) return null;
         if (typeof resolved === "string") return element(resolved, props);
-        return (resolved as (props: Record<string, unknown>) => unknown)(props);
+        // A component chosen at run time is called as a compiled tag calls one.
+        return createComponent(resolved as (props: Record<string, unknown>) => unknown, props);
       });
     };
   }

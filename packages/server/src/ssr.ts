@@ -29,6 +29,7 @@ import {
   ScopeMissingError,
   block,
   childScope,
+  createComponent,
   createContext,
   getContext,
   getOwner,
@@ -1760,7 +1761,11 @@ export function reveal(order: unknown, collapsed: unknown, body: unknown): SsrHt
 export function resolveDynamic(component: unknown, props: Record<string, unknown>): unknown {
   const resolved = untrack(() => readValue(component, "dynamic"));
   if (resolved === null || resolved === undefined || resolved === false) return null;
-  if (typeof resolved !== "string") return invokeBlock(resolved, [props]);
+  // A component chosen at run time is called as a compiled tag calls one.
+  if (typeof resolved === "function") {
+    return createComponent(resolved as (props: Record<string, unknown>) => unknown, props);
+  }
+  if (typeof resolved !== "string") return resolved;
   return element(resolved, props);
 }
 

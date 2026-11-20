@@ -45,5 +45,5 @@ export const optimality = {
   // The forward itself: the middle layer must hand ON a getter, not the value
   // its own read produced.
   emits: ["tone: props.tone", "createComponent(Chip, "],
-  absent: ["createElement(Chip"],
+  absent: ["(Chip, {"],
 }

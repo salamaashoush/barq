@@ -629,13 +629,14 @@ export const shared = ui.create({ ring: { outlineWidth: "3px" } });
     plugin: ReturnType<typeof barqVitePlugin>,
     code: string,
     context = withResolver(),
+    file = "card.tsx",
   ): Promise<{ code: string; watched: string[] }> {
     const hook = plugin.transform as unknown as (
       this: unknown,
       code: string,
       id: string,
     ) => Promise<TransformResult | null>;
-    const result = await hook.call(context, code, join(DIR, "card.tsx"));
+    const result = await hook.call(context, code, join(DIR, file));
     return { code: (result as { code?: string } | null)?.code ?? "", watched: context.watched };
   }
 
@@ -657,9 +658,34 @@ export const c = ui({ padding: 4 });
     expect(code).toContain("a-outline-width_");
   });
 
+  test("a module whose only tie to the package is an imported layer binding folds", async () => {
+    const PAGE = `import { ui, shared } from "./shared.ts";
+export const a = ui({ color: "red" });
+export const b = ui(shared.ring, { padding: 4 });
+`;
+    for (const file of ["page.ts", "page.tsx"]) {
+      const plugin = barqVitePlugin();
+      const { code } = await transform(plugin, PAGE, withResolver(), file);
+      expect(code, file).not.toContain("ui({");
+      expect(code, file).not.toContain("ui(shared");
+      const [klass] = /a-color_[\w-]+/.exec(code) ?? [];
+      expect(klass, file).toBeDefined();
+      const sheet = sheetOf(plugin, file);
+      expect(sheet, file).toStartWith("@layer app{");
+      expect(sheet, file).toContain(`.${klass}{color:red}`);
+    }
+  });
+
+  /** The stylesheet the plugin serves for `file` in this directory. */
+  function sheetOf(plugin: ReturnType<typeof barqVitePlugin>, file: string): string {
+    const hook = plugin.load as unknown as (id: string) => string | null;
+    return hook.call(plugin, `${join(DIR, file)}.barq.css`) ?? "";
+  }
+
   test("a layer named by an imported constant folds into that layer", async () => {
+    const plugin = barqVitePlugin();
     const { code } = await transform(
-      barqVitePlugin(),
+      plugin,
       `import { layer } from "@barqjs/css";
 import { LAYER } from "./tokens.ts";
 const ui = layer(LAYER);
@@ -667,7 +693,11 @@ export const a = ui({ padding: 4 });
 `,
     );
     expect(code).not.toContain("ui({");
-    expect(code).toContain("a-padding-top_");
+    const [klass] = /a-padding-top_[\w-]+/.exec(code) ?? [];
+    expect(klass).toBeDefined();
+    const sheet = sheetOf(plugin, "card.tsx");
+    expect(sheet).toStartWith("@layer app{");
+    expect(sheet).toContain(`.${klass}{padding-top:4px}`);
   });
 
   test("and the file each value came from is watched, so an edit retransforms this one", async () => {

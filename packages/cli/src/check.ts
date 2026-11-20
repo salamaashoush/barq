@@ -10,7 +10,7 @@
 
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { join, relative, resolve, sep } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 
 export type Severity = "error" | "warning" | "note";
 
@@ -124,8 +124,10 @@ interface Native {
       sourceNames: boolean;
       checks?: string[][];
       routes?: string[];
+      cssImports?: string[][];
+      cssExports?: boolean;
     },
-  ): { diagnostics?: NativeDiagnostic[] };
+  ): { diagnostics?: NativeDiagnostic[]; cssWanted?: string[][]; cssExports?: string[][] };
   diagnosticCodes(): { code: string; level: string; summary: string; docs: string }[];
   routeTree(
     root: string,
@@ -151,11 +153,61 @@ const SKIPPED = new Set(["node_modules", "dist", "build", "coverage", ".git", ".
 /** A fix can uncover the next one, such as a call inside a call. */
 const MAX_PASSES = 5;
 
+const NAMED_IMPORT = /import\s*\{([^}]*)\}\s*from\s*["']([^"']+)["']/g;
+
+/**
+ * Whether `code` calls a binding it imports the way a `layer` binding is
+ * called, which makes it a module the build compiles though it never names
+ * barq. The same guess as `@barqjs/vite`'s, so both compile the same files.
+ */
+function callsThroughImport(code: string): boolean {
+  for (const [, names, from] of code.matchAll(NAMED_IMPORT)) {
+    if (from === "@barqjs/css" || names === undefined) continue;
+    for (const entry of names.split(",")) {
+      const local = entry
+        .trim()
+        .replace(/^type\s+/, "")
+        .split(/\s+as\s+/)
+        .pop()
+        ?.trim();
+      if (local === undefined || !/^[A-Za-z_$][\w$]*$/.test(local)) continue;
+      const call = new RegExp(
+        `(?<![\\w$.])${local.replace(/\$/g, "\\$")}(?:\\.dynamic\\(|(?:\\.(?:create|props))?\\([^()]*\\{)`,
+      );
+      if (call.test(code)) return true;
+    }
+  }
+  return false;
+}
+
 /** A script with no JSX is compiled only when it names barq, as the build does. */
 function wanted(path: string, text: () => string): boolean {
   if (path.endsWith(".d.ts")) return false;
   if (JSX.test(path)) return true;
-  return SCRIPT.test(path) && text().includes("@barqjs/");
+  return SCRIPT.test(path) && (text().includes("@barqjs/") || callsThroughImport(text()));
+}
+
+const EXTENSIONS = [
+  "",
+  ".ts",
+  ".tsx",
+  ".js",
+  ".jsx",
+  ".mts",
+  "/index.ts",
+  "/index.tsx",
+  "/index.js",
+];
+
+/** A relative import as the file it names, or `undefined` for a package. */
+function resolveImport(from: string, specifier: string): string | undefined {
+  if (!specifier.startsWith(".")) return undefined;
+  const base = resolve(dirname(from), specifier);
+  for (const extension of EXTENSIONS) {
+    const candidate = base + extension;
+    if (existsSync(candidate) && statSync(candidate).isFile()) return candidate;
+  }
+  return undefined;
 }
 
 function collect(path: string, out: string[]): void {
@@ -177,6 +229,82 @@ interface Project {
   options: CheckOptions;
   /** The route patterns, when the project has file routes. */
   patterns: string[] | undefined;
+  /** What each file exports that a style call folds against, once per file. */
+  exports: Map<string, string[][]>;
+}
+
+/** How many modules deep a folded value is followed, as `@barqjs/vite` does. */
+const IMPORT_DEPTH = 6;
+
+/**
+ * The transform the build runs for `file`: compiled again with the values it
+ * asked for from the files it imports, until a round learns nothing, so a call
+ * through an imported `layer` binding or token folds, and declines, as it does
+ * in the build.
+ */
+function transformWithImports(
+  file: string,
+  source: string,
+  options: Parameters<Native["transform"]>[1],
+  project: Project,
+  depth: number,
+  seen: Set<string>,
+): ReturnType<Native["transform"]> {
+  let out = compiler().transform(source, options);
+  if (depth <= 0) return out;
+  const cssImports: string[][] = [];
+  const asked = new Set<string>();
+  for (let round = 0; round < 4; round++) {
+    const fresh = (out.cssWanted ?? []).filter(
+      ([specifier, name]) => !asked.has(`${specifier}\u0000${name}`),
+    );
+    if (fresh.length === 0) break;
+    let learned = false;
+    for (const [specifier = "", name = ""] of fresh) {
+      asked.add(`${specifier}\u0000${name}`);
+      const dependency = resolveImport(file, specifier);
+      if (dependency === undefined) continue;
+      for (const row of exportsOf(dependency, project, depth - 1, new Set(seen))) {
+        if (row[0] !== name) continue;
+        cssImports.push([specifier, ...row]);
+        learned = true;
+      }
+    }
+    if (!learned) break;
+    out = compiler().transform(source, { ...options, cssImports });
+  }
+  return out;
+}
+
+function exportsOf(file: string, project: Project, depth: number, seen: Set<string>): string[][] {
+  if (depth <= 0 || seen.has(file)) return [];
+  seen.add(file);
+  const known = project.exports.get(file);
+  if (known !== undefined) return known;
+  let rows: string[][] = [];
+  try {
+    const source = readFileSync(file, "utf8");
+    rows =
+      transformWithImports(
+        file,
+        source,
+        {
+          filename: file,
+          root: dirname(file),
+          dev: true,
+          diagnostics: false,
+          sourceNames: false,
+          cssExports: true,
+        },
+        project,
+        depth,
+        seen,
+      ).cssExports ?? [];
+  } catch {
+    rows = [];
+  }
+  project.exports.set(file, rows);
+  return rows;
 }
 
 /** A finding about the project and no one position in a file. */
@@ -212,15 +340,22 @@ function findingsOf(file: string, root: string, source: string, project: Project
   let diagnostics: NativeDiagnostic[];
   try {
     diagnostics =
-      compiler().transform(source, {
-        filename: file,
-        root,
-        dev: true,
-        diagnostics: true,
-        sourceNames: false,
-        checks: options.levels?.map(([code, level]) => [code, level]),
-        routes: project.patterns,
-      }).diagnostics ?? [];
+      transformWithImports(
+        file,
+        source,
+        {
+          filename: file,
+          root,
+          dev: true,
+          diagnostics: true,
+          sourceNames: false,
+          checks: options.levels?.map(([code, level]) => [code, level]),
+          routes: project.patterns,
+        },
+        project,
+        IMPORT_DEPTH,
+        new Set([file]),
+      ).diagnostics ?? [];
   } catch (error) {
     // The compiler refuses a file it cannot parse by throwing, and the message
     // already carries the position.
@@ -287,6 +422,7 @@ export function check(options: CheckOptions): CheckResult {
   const routes = routesOf(root, options.routes ?? "src/routes");
   const project: Project = {
     options,
+    exports: new Map(),
     patterns:
       routes.patterns === undefined
         ? undefined

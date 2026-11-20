@@ -33,5 +33,5 @@ export const optimality = {
   // of `text` and `tone` reads `props`, live. The claim is that the call site
   // still hands over a real props object and not a copy of one.
   emits: ["createComponent(Chip, ", '() => "warm"', "text: label"],
-  absent: ["get text()", "get tone()", "createElement(Chip"],
+  absent: ["get text()", "get tone()", "(Chip, {"],
 }

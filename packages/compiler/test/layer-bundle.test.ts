@@ -20,15 +20,35 @@ const native = createRequire(import.meta.url)("../index.js") as {
   transform(
     source: string,
     options: Record<string, unknown>,
-  ): { code: string; css?: string | null; warnings: string[] };
+  ): {
+    code: string;
+    css?: string | null;
+    warnings: string[];
+    cssExports?: string[][];
+    cssWanted?: string[][];
+  };
 };
 
 const CSS = fileURLToPath(new URL("../../css/src/index.ts", import.meta.url));
 const WORK = join(TMP_DIR, "layer-bundle");
 
-/** Compiled as a build compiles it, and written where the bundle will find it. */
+/** What each compiled module exports that another folds against. */
+const exported = new Map<string, string[][]>();
+
+/**
+ * Compiled as a build compiles it, with what it asks for from the modules
+ * compiled before it, and written where the bundle will find it.
+ */
 function compiled(name: string, source: string): { code: string; css: string } {
-  const out = native.transform(source, { filename: join(WORK, name), cssSource: CSS });
+  const options = { filename: join(WORK, name), cssSource: CSS, cssExports: true };
+  let out = native.transform(source, options);
+  const cssImports = (out.cssWanted ?? []).flatMap(([specifier = "", wanted = ""]) =>
+    (exported.get(specifier.replace(/^\.\//, "")) ?? [])
+      .filter(([exportedName]) => exportedName === wanted)
+      .map((row) => [specifier, ...row]),
+  );
+  if (cssImports.length > 0) out = native.transform(source, { ...options, cssImports });
+  exported.set(name, out.cssExports ?? []);
   writeFileSync(join(WORK, name), out.code);
   return { code: out.code, css: out.css ?? "" };
 }
@@ -91,32 +111,48 @@ export const b = ui.create({ c: { padding: 4 } }).c;
 });
 
 test("a declined call is the runtime's, through a binding from another module", async () => {
+  // One module calls the binding another declared, with literals the build
+  // folds and with values it can only leave to the runtime.
   const page = compiled(
     "page.ts",
     `import { ui, ring } from "./shared.ts";
+export const folded = ui(ring.ring, { color: "teal" });
 export const tint = (colour: string) => ui(ring.ring, { color: colour });
+export const padded = ui.props({ padding: 6 });
 export const pad = (size: number) => ui.props({ padding: size });
 `,
   );
-  expect(page.code).toContain("ui(");
+  expect(page.code).not.toContain('ui(ring.ring, { color: "teal" })');
+  expect(page.code).toContain("ui(ring.ring, { color: colour })");
+  expect(page.code).not.toContain("ui.props({ padding: 6 })");
+  expect(page.code).toContain("ui.props({ padding: size })");
+  expect(page.css).toContain("@layer app{");
   writeFileSync(
     join(WORK, "declined.ts"),
     `import { collectCss } from ${JSON.stringify(CSS)};
-import { tint, pad } from "./page.ts";
-console.log(JSON.stringify({ tint: tint("teal"), pad: pad(6).class, sheet: collectCss() }));
+import { folded, tint, padded, pad } from "./page.ts";
+console.log(JSON.stringify({
+  folded,
+  tint: tint("teal"),
+  padded: padded.class,
+  pad: pad(6).class,
+  sheet: collectCss(),
+}));
 `,
   );
   writeFileSync(join(WORK, "declined.js"), await bundle("declined.ts"));
   const result = JSON.parse(await run([join(WORK, "declined.js")])) as {
+    folded: string;
     tint: string;
+    padded: string;
     pad: string;
     sheet: string;
   };
-  // The group's class is the compiled one, kept beside the runtime's own: its
-  // rule is in the stylesheet the build wrote, not in the runtime's.
-  const [group, colour] = result.tint.split(" ");
-  expect(group).toStartWith("a-outline-width_");
+  // The runtime names a declaration as the build did, so a page holding both
+  // never carries one declaration as two classes.
+  expect(result.tint).toBe(result.folded);
+  expect(result.pad).toBe(result.padded);
+  const colour = result.tint.split(" ").find((cls) => cls.startsWith("a-color_"));
   expect(result.sheet).toContain("@layer app{");
   expect(result.sheet).toContain(`.${colour}{color:teal}`);
-  for (const cls of result.pad.split(" ")) expect(result.sheet).toContain(`.${cls}{padding-`);
 });

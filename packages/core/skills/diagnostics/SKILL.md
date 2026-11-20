@@ -19,7 +19,7 @@ Severity `error` means broken behaviour. `warn` means code that works but is
 structurally wrong or expensive. `info` is a measurement to read, and stays off
 the console.
 
-Compiler codes (`BARQ001` to `BARQ033`) are reported at build time, not here:
+Compiler codes (`BARQ001` to `BARQ034`) are reported at build time, not here:
 see `node_modules/@barqjs/compiler/skills/compiler-diagnostics/SKILL.md`.
 
 ## Locating a finding

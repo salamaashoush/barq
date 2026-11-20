@@ -30,5 +30,5 @@ export const optimality = {
   // as a literal. The compiler cannot know the caller, and a component that is
   // reactive only for some of its callers is not reactive.
   emits: ["createComponent(Greeting, ", "readProp(props.name)", "punctuation: "],
-  absent: ["createElement(Greeting"],
+  absent: ["(Greeting, {"],
 }

@@ -181,6 +181,7 @@ export {
   merge,
   omit,
   readProp,
+  readTag,
   SOURCES,
   values,
   withDefault,

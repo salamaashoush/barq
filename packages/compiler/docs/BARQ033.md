@@ -55,8 +55,15 @@ which is the one case where the order you wrote visibly loses.
 
 It does not fire when the pair cannot both apply as written: one attribute equal to two
 values or starting with two prefixes that do not start each other, two different child
-positions, or a selector against its `:not()`. Nor when specificity decides, when both set
-the same value, or when the two are different pseudo-elements.
+positions, a selector against its `:not()`, or two media queries over ranges of one
+feature that do not meet, such as `(width < 48rem)` against `(width >= 48rem)`, compared
+in pixels where the units convert. Nor when specificity decides, when both set the same
+value, when the two are different pseudo-elements, or when the same object also gives the
+property a condition that is both at once, `":is(.dark *)[data-selected]"` beside
+`":is(.dark *)"` and `"[data-selected]"`, which outweighs either and decides where both
+match.
+
+Every such pair in a call is reported, not only the first.
 
 ## Silencing one line
 

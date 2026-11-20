@@ -92,5 +92,5 @@ export const optimality = {
     "readProp(props.label)",
     "tone: props.label",
   ],
-  absent: ["get cb()", "get render()", "get tone()", "createElement(Chip"],
+  absent: ["get cb()", "get render()", "get tone()", "(Chip, {"],
 }

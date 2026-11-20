@@ -383,6 +383,7 @@
         "three": "^0.187.0",
       },
       "devDependencies": {
+        "@barqjs/cli": "workspace:*",
         "@barqjs/compiler": "workspace:*",
         "@barqjs/testing": "workspace:*",
         "@barqjs/vite": "workspace:*",

@@ -112,6 +112,9 @@ pub struct Module<'a> {
     /// decided. `None` when that pass did not run, and analysis falls back on
     /// its own evidence.
     pub props_params: Option<Vec<oxc::span::Span>>,
+    /// A tag that names a prop, by where its name starts, with the read the
+    /// props pass made of it. The shape pass calls that read.
+    pub tag_reads: FxHashMap<u32, Expression<'a>>,
     /// Present when the compile carries source positions into the output.
     pub locator: Option<Locator>,
     /// The text every `Span` in the IR indexes into. P4 reads it for JSX text
@@ -710,6 +713,7 @@ impl<'a> Module<'a> {
     pub fn for_source(allocator: &'a Allocator, source: &'a str) -> Self {
         Self {
             props_params: None,
+            tag_reads: FxHashMap::default(),
             locator: None,
             source,
             units: AVec::new_in(&allocator),

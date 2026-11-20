@@ -137,7 +137,8 @@ pub fn run<'a>(
     // `export const BRAND = "var(--brand)"` is exactly that file. So the seed
     // still runs when a caller asked for the exports, and only the rewrite is
     // skipped.
-    if tags.is_empty() && !options.css_exports {
+    let through_import = tags.is_empty() && calls_through_import(program, &options.css_source);
+    if tags.is_empty() && !options.css_exports && !through_import {
         return Extracted {
             css: String::new(),
             reports: Vec::new(),
@@ -146,7 +147,7 @@ pub fn run<'a>(
             scoping,
         };
     }
-    let rewrite = !tags.is_empty();
+    let rewrite = !tags.is_empty() || through_import;
 
     let mut pass = Css {
         allocator,
@@ -754,7 +755,11 @@ impl<'a> Css<'a, '_> {
     /// `const ui = layer(…)`: the layer it binds, or that this pass cannot
     /// read it.
     fn bind_layer(&mut self, symbol: SymbolId, call: &oxc::ast::ast::CallExpression<'_>) {
-        match self.text_argument(call, 0) {
+        // A binding written again later holds whichever layer was assigned
+        // last when a call runs, which is not a fact about this declaration.
+        let name =
+            if self.scoping.symbol_is_mutated(symbol) { None } else { self.text_argument(call, 0) };
+        match name {
             Some(name) => {
                 self.layers.insert(symbol, name);
             }
@@ -935,29 +940,37 @@ impl<'a> Css<'a, '_> {
 
     /// A call through a `layer` binding whose name this pass cannot read.
     ///
-    /// Reported only when a style object is in the call, because a layer this
-    /// pass cannot read takes the WHOLE call to the runtime — objects and all —
+    /// Reported when a style object is in the call, because a layer this pass
+    /// cannot read takes the WHOLE call to the runtime — objects and all —
     /// where an opaque argument beside a literal layer takes only the merge.
+    /// A `dynamic` group always declares one, behind the function it is handed.
     fn declined_layer(&mut self, call: &oxc::ast::ast::CallExpression<'_>, span: Span) {
-        let holds_an_object = call.arguments.iter().any(|argument| {
-            let Some(expression) = argument.as_expression() else { return true };
-            match without_type_wrappers(expression) {
-                Expression::ObjectExpression(_) => true,
-                Expression::LogicalExpression(logical) => {
-                    matches!(without_type_wrappers(&logical.right), Expression::ObjectExpression(_))
+        let dynamic = matches!(without_type_wrappers(&call.callee),
+            Expression::StaticMemberExpression(member) if member.property.name == "dynamic");
+        let holds_an_object = dynamic
+            || call.arguments.iter().any(|argument| {
+                let Some(expression) = argument.as_expression() else { return true };
+                match without_type_wrappers(expression) {
+                    Expression::ObjectExpression(_) => true,
+                    Expression::LogicalExpression(logical) => {
+                        matches!(
+                            without_type_wrappers(&logical.right),
+                            Expression::ObjectExpression(_)
+                        )
+                    }
+                    _ => false,
                 }
-                _ => false,
-            }
-        });
+            });
         if holds_an_object {
             self.decline(
                 span,
                 (
-                    "The layer this call writes into was given to `layer` as something other \
-                     than a string literal or a `const` in this file, and it becomes part of \
-                     every class name.",
-                    "Name it with a literal where it is bound, `const ui = layer(\"app.ui\")`, \
-                     or with a `const` declared in this module.",
+                    "The layer this call writes into cannot be read in this file: the binding \
+                     was given to `layer` as something other than a string literal or a \
+                     `const`, or is assigned again, and the layer becomes part of every class \
+                     name.",
+                    "Bind it once with a literal, `const ui = layer(\"app.ui\")`, or with a \
+                     `const` declared in this module.",
                 ),
             );
         }
@@ -1847,11 +1860,11 @@ impl<'a> Css<'a, '_> {
     /// pair whose later condition loses although it is written later. Two
     /// conditions that rule each other out cannot both match, and are left
     /// alone: `[data-state="open"]` against `[data-state="closed"]`, or `X`
-    /// against `:not(X)`.
+    /// against `:not(X)`. Nor is a pair the same call already decides with a
+    /// third condition that is both at once and weighs more than either.
+    ///
+    /// Every pair is said, so fixing one does not uncover the next.
     fn report_condition_order(&mut self, atoms: &[barq_css::atoms::Atom], span: Span) {
-        if self.reports.iter().any(|report| report.code == Code::Barq033 && report.span == span) {
-            return;
-        }
         let read: Vec<(&str, String, &barq_css::atoms::Atom)> = atoms
             .iter()
             .filter(|atom| atom.tier != barq_css::atoms::Tier::Base)
@@ -1883,27 +1896,39 @@ impl<'a> Css<'a, '_> {
                 {
                     continue;
                 }
+                // `{ A: …, B: …, "A B": … }` says what wins where both match.
+                let weight = specificity(subject(&early.rule));
+                let settled = read.iter().any(|(third, both, atom)| {
+                    third == property
+                        && conjunction(both, first, second)
+                        && specificity(subject(&atom.rule)) > weight
+                        && pseudo_element(subject(&atom.rule))
+                            == pseudo_element(subject(&early.rule))
+                });
+                if settled {
+                    continue;
+                }
                 let order = barq_css::order::rank(late.tier, &late.rule)
                     .cmp(&barq_css::order::rank(early.tier, &early.rule));
                 if order != std::cmp::Ordering::Less {
                     continue;
                 }
-                self.reports.push(Report {
-                    code: Code::Barq033,
-                    message: format!(
-                        "`{property}` is set under `{}` and then under `{}`, and both can match \
+                let message = format!(
+                    "`{property}` is set under `{}` and then under `{}`, and both can match \
                          one element. One stylesheet serves every call, so it cannot keep this \
                          call's order: it puts `{}` first, and where both match `{}` wins although \
                          it is written earlier. Write them in that order, so the code reads the \
                          way the page behaves, or make one rule the other out.",
-                        shown(first),
-                        shown(second),
-                        shown(second),
-                        shown(first),
-                    ),
-                    span,
-                });
-                return;
+                    shown(first),
+                    shown(second),
+                    shown(second),
+                    shown(first),
+                );
+                if !self.reports.iter().any(|report| {
+                    report.code == Code::Barq033 && report.span == span && report.message == message
+                }) {
+                    self.reports.push(Report { code: Code::Barq033, message, span });
+                }
             }
         }
     }
@@ -2519,6 +2544,43 @@ const MERGE_STYLES: &str = "_$mergeStyles";
 /// `mergeStyles` beside the names the module already imports from the package.
 fn import_merge_styles<'a>(allocator: &'a Allocator, program: &mut Program<'a>, css_source: &str) {
     let ast = AstBuilder::new(allocator);
+    let imports_package = program.body.iter().any(|statement| {
+        matches!(statement, Statement::ImportDeclaration(declaration)
+            if declaration.source.value.as_str() == Some(css_source)
+                && declaration.import_kind == oxc::ast::ast::ImportOrExportKind::Value)
+    });
+    if !imports_package {
+        // A module whose only tie to the package is a layer binding it
+        // imports from another module.
+        let specifier = ImportDeclarationSpecifier::new_import_specifier(
+            Span::default(),
+            ModuleExportName::IdentifierName(oxc::ast::ast::IdentifierName::new(
+                Span::default(),
+                "mergeStyles",
+                &ast,
+            )),
+            oxc::ast::ast::BindingIdentifier::new(Span::default(), MERGE_STYLES, &ast),
+            oxc::ast::ast::ImportOrExportKind::Value,
+            &ast,
+        );
+        let source = oxc::ast::ast::StringLiteral::new(
+            Span::default(),
+            allocator.alloc_str(css_source),
+            None,
+            &ast,
+        );
+        let declaration = oxc::ast::ast::ImportDeclaration::boxed(
+            Span::default(),
+            Some(ArenaVec::from_iter_in([specifier], &allocator)),
+            source,
+            None,
+            None,
+            oxc::ast::ast::ImportOrExportKind::Value,
+            &ast,
+        );
+        program.body.insert(0, Statement::ImportDeclaration(declaration));
+        return;
+    }
     for statement in program.body.iter_mut() {
         let Statement::ImportDeclaration(declaration) = statement else { continue };
         if declaration.source.value.as_str() != Some(css_source)
@@ -2722,11 +2784,154 @@ fn compound_weight(selector: &str) -> (u32, u32, u32) {
     (a, b, c)
 }
 
+/// Whether `both` is `first` and `second` at once on one subject: the same
+/// at-rules around it, every ancestor either names, and everything either adds
+/// to the subject itself.
+fn conjunction(both: &str, first: &str, second: &str) -> bool {
+    let parts = |condition: &str| -> Option<(String, String, String)> {
+        let (prelude, selector) = condition.rsplit_once('{').unwrap_or(("", condition));
+        let (before, after) = selector.split_once('&')?;
+        Some((
+            prelude.to_string(),
+            before.trim_end_matches('.').trim().to_string(),
+            after.trim().to_string(),
+        ))
+    };
+    let (Some(all), Some(one), Some(two)) = (parts(both), parts(first), parts(second)) else {
+        return false;
+    };
+    all.0 == one.0
+        && all.0 == two.0
+        && (all.1 != one.1 || all.2 != one.2)
+        && (all.1 != two.1 || all.2 != two.2)
+        && all.1.contains(one.1.as_str())
+        && all.1.contains(two.1.as_str())
+        && all.2.contains(one.2.as_str())
+        && all.2.contains(two.2.as_str())
+}
+
+/// One feature's bounds in pixels: `(feature, low, low included, high, high
+/// included)`.
+type Range = (String, f64, bool, f64, bool);
+
+/// A media query's bounds on each feature it bounds. `None` for a query this
+/// cannot read as ranges joined by `and`, which is then taken as able to match
+/// anywhere.
+fn media_ranges(condition: &str) -> Option<Vec<Range>> {
+    let prelude = condition.split('{').find(|part| part.trim_start().starts_with("@media"))?;
+    let query = prelude.trim_start().strip_prefix("@media")?.trim().to_ascii_lowercase();
+    if query.contains(',') || query.contains(" or ") || query.starts_with("not ") {
+        return None;
+    }
+    let mut out = Vec::new();
+    for part in query.split(" and ") {
+        let inner = part.trim().strip_prefix('(')?.strip_suffix(')')?.trim();
+        if let Some((name, value)) = inner.split_once(':') {
+            let value = pixels(value.trim())?;
+            let name = name.trim();
+            if let Some(feature) = name.strip_prefix("min-") {
+                out.push((feature.to_string(), value, true, f64::INFINITY, false));
+            } else {
+                let feature = name.strip_prefix("max-")?;
+                out.push((feature.to_string(), f64::NEG_INFINITY, false, value, true));
+            }
+            continue;
+        }
+        // `width >= 600px`, `600px <= width`, `400px < width <= 800px`.
+        let tokens: Vec<&str> =
+            inner.split(|c: char| c.is_whitespace()).filter(|token| !token.is_empty()).collect();
+        let feature_at = tokens
+            .iter()
+            .position(|token| token.chars().next().is_some_and(|c| c.is_ascii_alphabetic()))?;
+        let feature = tokens[feature_at].to_string();
+        let mut range = (feature, f64::NEG_INFINITY, false, f64::INFINITY, false);
+        let mut bound = |operator: &str, value: &str, feature_first: bool| -> Option<()> {
+            let value = pixels(value)?;
+            let closed = operator.ends_with('=');
+            let above = match (operator.trim_end_matches('='), feature_first) {
+                (">", true) | ("<", false) => true,
+                ("<", true) | (">", false) => false,
+                _ => return None,
+            };
+            if above {
+                range.1 = value;
+                range.2 = closed;
+            } else {
+                range.3 = value;
+                range.4 = closed;
+            }
+            Some(())
+        };
+        match (feature_at, tokens.len()) {
+            (0, 3) => bound(tokens[1], tokens[2], true)?,
+            (2, 3) => bound(tokens[1], tokens[0], false)?,
+            (2, 5) => {
+                bound(tokens[1], tokens[0], false)?;
+                bound(tokens[3], tokens[4], true)?;
+            }
+            _ => return None,
+        }
+        out.push(range);
+    }
+    Some(out)
+}
+
+/// A length as pixels, at the 16px an `em` is in a media query.
+fn pixels(text: &str) -> Option<f64> {
+    let end = text.find(|c: char| !(c.is_ascii_digit() || c == '.')).unwrap_or(text.len());
+    let value: f64 = text[..end].parse().ok()?;
+    match &text[end..] {
+        "px" => Some(value),
+        "em" | "rem" => Some(value * 16.0),
+        _ => None,
+    }
+}
+
+/// Whether two media queries bound one feature to ranges with no width in
+/// common, so no viewport matches both.
+fn media_apart(first: &str, second: &str) -> bool {
+    let (Some(one), Some(two)) = (media_ranges(first), media_ranges(second)) else {
+        return false;
+    };
+    let narrowed = |ranges: &[Range], feature: &str| {
+        ranges.iter().filter(|range| range.0 == feature).fold(
+            (f64::NEG_INFINITY, false, f64::INFINITY, false),
+            |(low, low_in, high, high_in), range| {
+                let (low, low_in) = if range.1 > low || (range.1 == low && !range.2) {
+                    (range.1, range.2)
+                } else {
+                    (low, low_in)
+                };
+                let (high, high_in) = if range.3 < high || (range.3 == high && !range.4) {
+                    (range.3, range.4)
+                } else {
+                    (high, high_in)
+                };
+                (low, low_in, high, high_in)
+            },
+        )
+    };
+    one.iter().any(|(feature, ..)| {
+        if !two.iter().any(|range| &range.0 == feature) {
+            return false;
+        }
+        let (a_low, a_low_in, a_high, a_high_in) = narrowed(&one, feature);
+        let (b_low, b_low_in, b_high, b_high_in) = narrowed(&two, feature);
+        a_high < b_low
+            || b_high < a_low
+            || (a_high == b_low && !(a_high_in && b_low_in))
+            || (b_high == a_low && !(b_high_in && a_low_in))
+    })
+}
+
 /// Whether two conditions rule each other out by how they are written: one
 /// attribute equal to two different values or starting with two that do not
-/// start each other, two different child positions, or a selector and its
-/// `:not()`.
+/// start each other, two different child positions, a selector and its
+/// `:not()`, or two media queries over ranges that do not meet.
 fn exclusive(first: &str, second: &str) -> bool {
+    if media_apart(first, second) {
+        return true;
+    }
     let values = |condition: &str| -> Vec<(String, bool, String)> {
         let mut out = Vec::new();
         let mut rest = condition;
@@ -3094,6 +3299,82 @@ fn imported_bindings(
 }
 
 /// The local symbols `css` / `keyframes` / `globalCss` were imported as.
+/// Whether the module calls a binding it imports from somewhere other than
+/// the package the way a `layer` binding is called: `ui({ … })`,
+/// `ui.create({ … })`, `ui.props(…)` or `ui.dynamic(…)` with a style object in
+/// it. Such a module never names the package, and the binding may be one
+/// another module made with `layer`, which only the integration can say.
+/// Read off the syntax, before the symbol table that would cost.
+pub fn calls_through_import(program: &Program<'_>, css_source: &str) -> bool {
+    use oxc::ast_visit::Visit;
+
+    struct Calls<'n> {
+        imported: FxHashSet<&'n str>,
+        found: bool,
+    }
+    impl<'a> Visit<'a> for Calls<'_> {
+        fn visit_call_expression(&mut self, call: &oxc::ast::ast::CallExpression<'a>) {
+            if self.found {
+                return;
+            }
+            let (name, member) = match without_type_wrappers(&call.callee) {
+                Expression::Identifier(identifier) => (identifier.name.as_str(), None),
+                Expression::StaticMemberExpression(member) => match &member.object {
+                    Expression::Identifier(identifier) => {
+                        (identifier.name.as_str(), Some(member.property.name.as_str()))
+                    }
+                    _ => ("", None),
+                },
+                _ => ("", None),
+            };
+            if self.imported.contains(name) {
+                self.found = match member {
+                    None | Some("props") | Some("create") => {
+                        call.arguments.iter().any(|argument| {
+                            argument.as_expression().is_some_and(|expression| {
+                                match without_type_wrappers(expression) {
+                                    Expression::ObjectExpression(_) => true,
+                                    Expression::LogicalExpression(logical) => matches!(
+                                        without_type_wrappers(&logical.right),
+                                        Expression::ObjectExpression(_)
+                                    ),
+                                    _ => false,
+                                }
+                            })
+                        })
+                    }
+                    Some("dynamic") => true,
+                    Some(_) => false,
+                };
+            }
+            if !self.found {
+                oxc::ast_visit::walk::walk_call_expression(self, call);
+            }
+        }
+    }
+
+    let mut imported = FxHashSet::default();
+    for statement in &program.body {
+        let Statement::ImportDeclaration(declaration) = statement else { continue };
+        if declaration.source.value.as_str() == Some(css_source)
+            || declaration.import_kind == oxc::ast::ast::ImportOrExportKind::Type
+        {
+            continue;
+        }
+        for specifier in declaration.specifiers.iter().flatten() {
+            if let ImportDeclarationSpecifier::ImportSpecifier(imported_one) = specifier {
+                imported.insert(imported_one.local.name.as_str());
+            }
+        }
+    }
+    if imported.is_empty() {
+        return false;
+    }
+    let mut calls = Calls { imported, found: false };
+    calls.visit_program(program);
+    calls.found
+}
+
 fn imported_tags(program: &Program<'_>, css_source: &str) -> FxHashMap<SymbolId, Tag> {
     let mut out = FxHashMap::default();
     for statement in &program.body {
@@ -3415,6 +3696,17 @@ mod atom_tests {
         assert!(out.code.contains("layer(\"barq.ui\")"), "{}", out.code);
     }
 
+    /// A binding assigned again holds whichever layer was written last when a
+    /// call runs, so nothing is folded through it.
+    #[test]
+    fn a_layer_binding_assigned_again_is_not_one() {
+        let out = run(
+            "let ui = layer(\"x\");\nui = layer(\"y\");\nexport const a = ui({ color: \"red\" });",
+        );
+        assert!(out.code.contains("ui({"), "{}", out.code);
+        assert_eq!(out.css, None);
+    }
+
     /// The layer has to be a literal in THIS module, which is what keeps the
     /// pass per-file. A binding built from anything else is not one.
     #[test]
@@ -3627,6 +3919,65 @@ mod atom_tests {
         }
     }
 
+    /// A third condition that is both at once, and weighs more, decides the
+    /// overlap whatever order the two are in.
+    #[test]
+    fn a_pair_the_call_settles_with_their_conjunction_is_not_reported() {
+        let settled = run(
+            "export const c = atoms({ color: { \":is(.dark *)\": \"gray\", \"[data-selected]\": \"black\", \":is(.dark *)[data-selected]\": \"black\" } });",
+        );
+        assert!(condition_order(&settled).is_empty(), "{:?}", settled.warnings);
+        let open = run(
+            "export const c = atoms({ color: { \":is(.dark *)\": \"gray\", \"[data-selected]\": \"black\" } });",
+        );
+        assert_eq!(condition_order(&open).len(), 1, "{:?}", open.warnings);
+    }
+
+    /// And the same where one of the two is an ancestor's condition.
+    #[test]
+    fn a_pair_settled_across_an_ancestor_is_not_reported() {
+        let source = "export const c = atoms({ backgroundColor: { \":is(.dark *)[data-selected]\": \"gray\", \"[data-a][data-b] &\": \"none\", \"[data-a][data-b] &:is(.dark *)[data-selected]\": \"none\" } });";
+        let settled = run(source);
+        assert!(condition_order(&settled).is_empty(), "{:?}", settled.warnings);
+        let open =
+            run(&source
+                .replace(", \"[data-a][data-b] &:is(.dark *)[data-selected]\": \"none\"", ""));
+        assert_eq!(condition_order(&open).len(), 1, "{:?}", open.warnings);
+    }
+
+    /// Every pair, so fixing the first does not uncover the next.
+    #[test]
+    fn every_reversed_pair_in_one_object_is_reported() {
+        let out = run(
+            "export const c = atoms({ color: { \":hover\": \"blue\", \"[data-active]\": \"red\" }, backgroundColor: { \":active\": \"red\", \":hover\": \"blue\" } });",
+        );
+        assert_eq!(condition_order(&out).len(), 2, "{:?}", out.warnings);
+    }
+
+    /// Two ranges of one feature that do not meet never both match, in either
+    /// spelling and across units that convert; a pair this cannot read is
+    /// still reported.
+    #[test]
+    fn complementary_media_ranges_are_exclusive() {
+        for source in [
+            "export const c = atoms({ width: { \"@media (width < 600px)\": 2, \"@media (width >= 600px)\": 1 } });",
+            "export const c = atoms({ width: { \"@media (max-width: 599px)\": 2, \"@media (min-width: 600px)\": 1 } });",
+            "export const c = atoms({ width: { \"@media (width < 40rem)\": 2, \"@media (width >= 640px)\": 1 } });",
+        ] {
+            let out = run(source);
+            assert!(condition_order(&out).is_empty(), "{source}: {:?}", out.warnings);
+        }
+        for source in [
+            // They meet at 600px.
+            "export const c = atoms({ width: { \"@media (width <= 600px)\": 2, \"@media (width >= 600px)\": 1 } });",
+            // A unit with no fixed size in pixels.
+            "export const c = atoms({ width: { \"@media (width < 40ch)\": 2, \"@media (width >= 640px)\": 1 } });",
+        ] {
+            let out = run(source);
+            assert_eq!(condition_order(&out).len(), 1, "{source}: {:?}", out.warnings);
+        }
+    }
+
     #[test]
     fn two_conditions_that_cannot_reverse_are_not() {
         for source in [
@@ -3821,6 +4172,14 @@ mod decline_tests {
             (
                 "a layer group whose layer is not a literal",
                 "const ui = layer(LAYER);\nexport const a = ui.create({ x: { color: \"red\" } });",
+            ),
+            (
+                "a dynamic group whose layer is not a literal",
+                "const ui = layer(LAYER);\nexport const a = ui.dynamic((c) => ({ color: c }));",
+            ),
+            (
+                "a layer binding assigned again",
+                "let ui = layer(\"x\");\nui = layer(\"y\");\nexport const a = ui({ color: \"red\" });",
             ),
             (
                 "a layer group that will not read",
@@ -4127,12 +4486,17 @@ mod surface_tests {
              export const g = ui.create({ ring: { outlineWidth: \"3px\" } });\n\
              export const p = ui.props({ padding: 8 });\n\
              export const d = ui.dynamic((c) => ({ backgroundColor: c }));");
-        let css = bound.css.as_deref().unwrap_or_default();
-        assert!(css.starts_with("@layer barq.ui{"), "{css}");
-        assert_eq!(css.matches("@layer ").count(), 1, "{css}");
-        assert!(css.contains("outline-width:3px"), "{css}");
-        assert!(css.contains("padding-top:8px"), "{css}");
-        assert!(css.contains("background-color:var(--"), "{css}");
+        assert_eq!(
+            bound.css.as_deref(),
+            Some(
+                "@layer barq.ui{.a-outline-width_vwnyyq{outline-width:3px}\
+                 .a-padding-top_173k9nj{padding-top:8px}.a-padding-right_173k9nj{padding-right:8px}\
+                 .a-padding-bottom_173k9nj{padding-bottom:8px}\
+                 .a-padding-left_173k9nj{padding-left:8px}\
+                 .a-background-color_117kgsa{background-color:var(--background-color-1j1m7tz)}}\
+                 @property --background-color-1j1m7tz{syntax:\"*\";inherits:false}"
+            )
+        );
         assert!(!bound.code.contains("ui.create("), "{}", bound.code);
         assert!(!bound.code.contains("ui.props("), "{}", bound.code);
         assert!(!bound.code.contains("ui.dynamic("), "{}", bound.code);
@@ -4419,6 +4783,46 @@ mod cross_file_tests {
             false,
         );
         assert!(out.code.contains("app({"), "{}", out.code);
+    }
+
+    /// A module whose only tie to the package is a layer binding it imports
+    /// never names the package, and still asks for the binding and folds
+    /// through it once it is handed over.
+    #[test]
+    fn a_module_that_only_imports_a_layer_binding_folds_through_it() {
+        let shared = rows(
+            &plain(
+                "import { layer } from \"@barqjs/css\";\n\
+                 export const ui = layer(\"app\");",
+            ),
+            "./shared.ts",
+        );
+        let card = "import { ui } from \"./shared.ts\";\n\
+                    export const a = ui({ color: \"red\" });\n\
+                    const tint = ui.dynamic((c: string) => ({ color: c }));\n\
+                    export const p = (c: string) => ui.props({ padding: 1 }, tint(c));\n";
+        let asked = run(card, Vec::new(), false);
+        assert!(
+            asked.css_wanted.contains(&("./shared.ts".to_string(), "ui".to_string())),
+            "{:?}",
+            asked.css_wanted
+        );
+        assert!(asked.code.contains("ui({"), "{}", asked.code);
+
+        let out = run(card, shared, false);
+        assert!(!out.code.contains("ui({"), "{}", out.code);
+        assert!(out.css.as_deref().unwrap_or_default().starts_with("@layer app{"), "{:?}", out.css);
+        // The merge the folded `props` call leaves needs the package, which
+        // the module did not import.
+        assert!(
+            out.code.contains("import { mergeStyles as _$mergeStyles } from \"@barqjs/css\""),
+            "{}",
+            out.code
+        );
+        // And a module calling an imported function some other way is not
+        // compiled for it at all.
+        let other = run("import { log } from \"./log.ts\";\nlog(1);\n", Vec::new(), false);
+        assert!(other.css_wanted.is_empty(), "{:?}", other.css_wanted);
     }
 
     /// `export { x as y }` is the other spelling, and an importer asks for `y`.

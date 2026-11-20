@@ -410,6 +410,17 @@ export function readProp(held: unknown): unknown {
 }
 
 /**
+ * What a tag that names a prop calls: `<props.as />`. The value, read as
+ * `readProp` reads it, except that a function taking something is called by
+ * the tag itself rather than read: a server component's slot is one, and
+ * reading it would place it once with nothing.
+ */
+export function readTag(held: unknown): unknown {
+  if (typeof held === "function" && (held as { length: number }).length > 0) return held;
+  return readProp(held);
+}
+
+/**
  * The Cell of a prop that has a default. The default is made once, the first
  * time the prop reads `undefined`, so a default that builds an array or an
  * object is the same one at every read.

@@ -59,6 +59,7 @@ pub fn run<'a>(
         renderers,
         renderer_ranges,
         locator,
+        tag_reads,
         ..
     } = module;
     let helpers = *helpers;
@@ -99,6 +100,7 @@ pub fn run<'a>(
             untracks: !options.ssr,
             depth: 0,
             built_once: FxHashSet::default(),
+            tag_reads,
         };
         for root in roots.iter_mut() {
             if let Root::Verbatim(expression) = root {
@@ -177,6 +179,8 @@ pub(super) struct Shaper<'a, 'm> {
     used: [bool; HELPER_COUNT],
     renderers: &'m mut Vec<crate::ir::Renderer<'a>>,
     renderer_ranges: &'m [(u32, u32, u8)],
+    /// What a tag that names a prop reads, from the props pass.
+    tag_reads: &'m FxHashMap<u32, Expression<'a>>,
     /// Whether a component call that may run inside a compute is wrapped in
     /// `untrack`. The string backend runs no computes around a call.
     untracks: bool,
@@ -208,6 +212,9 @@ pub(super) enum Source<'a> {
 
 impl<'a> Shaper<'a, '_> {
     pub(super) fn callee(&self, name: &JSXElementName<'a>) -> Callee<'a> {
+        if let Some(read) = self.tag_reads.get(&name.span().start) {
+            return Callee::Component(read.clone_in(self.allocator), None);
+        }
         match name {
             // oxc gives a lowercase tag the `Identifier` variant and a
             // capitalised one `IdentifierReference`, so the intrinsic/component
@@ -316,7 +323,12 @@ impl<'a> Shaper<'a, '_> {
         // A flow component is matched by its callee after this pass, so only a
         // user component is called through `createComponent`. Only a
         // development compile names it.
-        let framed = flow.is_none() && !self.namespaced_flow(&callee);
+        // A context of this module is its own provider, which opens a scope of
+        // its own and installs only there, so a frame around it is an owner
+        // nothing uses. A development compile keeps it for the name it carries.
+        let provider =
+            symbol.is_some_and(|symbol| self.lift.env().contexts.contains(&symbol)) && !self.dev;
+        let framed = flow.is_none() && !provider && !self.namespaced_flow(&callee);
         let label = (self.dev && framed)
             .then(|| self.allocator.alloc_str(opening.name.span().source_text(self.source)));
 
@@ -1885,7 +1897,9 @@ mod tests {
         assert!(code.contains("children: _$block(() => _$createComponent(Child, {})"), "{code}");
         // O2's negation, written down: the child as a syntactic argument.
         assert!(!code.contains("children: Child("), "{code}");
-        assert!(code.contains("_$createComponent(Ctx, {"), "{code}");
+        // A context of this module is its own provider and takes no frame.
+        assert!(code.contains("Ctx({"), "{code}");
+        assert!(!code.contains("_$createComponent(Ctx"), "{code}");
         assert!(!code.contains("_s$"), "{code}");
     }
 

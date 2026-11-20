@@ -1,0 +1,24 @@
+import { type Child } from "@barqjs/core";
+import { type Slot, createServerFn } from "@barqjs/start";
+
+const STORIES: Record<string, { title: string; comments: { id: number; text: string }[] }> = {
+  "1": { title: "Signals all the way down", comments: [{ id: 1, text: "The engine is Solid's." }] },
+};
+
+// The handler returns a component, so the answer is a frame: its markup, never this code.
+export const getStory = createServerFn({ method: "GET" })
+  .validator((input: { id: string }) => input)
+  .handler(({ data }) => {
+    const story = STORIES[data.id] ?? { title: "missing", comments: [] };
+    return (props: { comment: Slot<{ cid: number }>; children?: Child }) => (
+      <article>
+        <h2>{story.title}</h2>
+        {story.comments.map((c) => (
+          <props.comment $key={c.id} cid={c.id}>
+            <p>{c.text}</p>
+          </props.comment>
+        ))}
+        <footer>{props.children}</footer>
+      </article>
+    );
+  });

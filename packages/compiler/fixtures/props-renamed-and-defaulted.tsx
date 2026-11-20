@@ -35,5 +35,5 @@ export const optimality = {
   // the other two. The prop the caller OMITS must be omitted from the object
   // as well — emitting `tone: undefined` would defeat the default.
   emits: ["text: label", '() => "cool"'],
-  absent: ["tone: undefined", "createElement(Chip"],
+  absent: ["tone: undefined", "(Chip, {"],
 }

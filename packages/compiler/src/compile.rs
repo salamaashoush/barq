@@ -454,8 +454,9 @@ fn compile_on_this_stack(
     // `lower` sees it, so `fold` bakes the class into the template markup and
     // the element carries no class channel.
     let mut stylesheet = (crate::css::mentions(source_text, &options.css_source)
-        || options.css_exports)
-        .then(|| crate::css::run(&allocator, &mut program, options));
+        || options.css_exports
+        || crate::css::calls_through_import(&program, &options.css_source))
+    .then(|| crate::css::run(&allocator, &mut program, options));
 
     let locator =
         options.source_names.then_some(options.filename.as_deref()).flatten().map(|filename| {
@@ -476,12 +477,13 @@ fn compile_on_this_stack(
     // nothing for P0 to classify and the symbol table is pure cost.
     if let Some(sugar) = sugar {
         module.props_params = Some(sugar.params);
+        module.tag_reads = sugar.tags.into_iter().collect();
         analysis::bind(&allocator, &program, &mut module, options);
         for refusal in sugar.refusals {
-            let code = if refusal.message == crate::props_sugar::ASSIGNED {
-                Code::Barq030
-            } else {
-                Code::Barq031
+            let code = match refusal.message {
+                crate::props_sugar::ASSIGNED => Code::Barq030,
+                crate::props_sugar::STRING_TAG => Code::Barq034,
+                _ => Code::Barq031,
             };
             module.env.diagnostics.push(crate::ir::Diag {
                 code,

@@ -45,6 +45,7 @@ import {
   type HydrationReport,
 } from "@barqjs/core/internal";
 import {
+  createComponent,
   followAsync,
   isBlock,
   NotReadyError,
@@ -657,8 +658,9 @@ export function resolveDynamic(
   // make the body's own construction a dependency of the swap that created it.
   const resolved = untrack(component as () => unknown);
   if (resolved === null || resolved === undefined || resolved === false) return null;
+  // A component chosen at run time is called as a compiled tag calls one.
   if (typeof resolved !== "string") {
-    return (resolved as (props: Record<string, unknown>) => unknown)(props);
+    return createComponent(resolved as (props: Record<string, unknown>) => unknown, props);
   }
   return element(resolved, props);
 }

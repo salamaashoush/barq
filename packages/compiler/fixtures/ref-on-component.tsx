@@ -45,5 +45,5 @@ export const optimality = {
   // as a VALUE — a getter would hand the callee a fresh object per read and the
   // ref would resolve into something nobody holds.
   emits: ["createComponent(Boxed, ", "ref: () => viaComponent", ", viaElement)"],
-  absent: ["get ref()", "createElement(Boxed"],
+  absent: ["get ref()", "(Boxed, {"],
 }

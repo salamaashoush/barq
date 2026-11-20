@@ -715,6 +715,36 @@ function checkPairs(checks: BarqCompilerOptions["checks"]): string[][] | undefin
 
 const SCRIPT_MODULE = /\.[cm]?[jt]sx?$/;
 
+const NAMED_IMPORT = /import\s*\{([^}]*)\}\s*from\s*["']([^"']+)["']/g;
+
+/**
+ * Whether `code` calls a binding it imports, other than from the package, the
+ * way a `layer` binding is called: `ui({ … })`, `ui.create({ … })`,
+ * `ui.props(…{ … })` or `ui.dynamic(…)`. Such a module never names the
+ * package, and whether the binding is a layer is known only once the module
+ * it comes from is read, which the compile asks for. A guess that is wrong
+ * costs one compile that folds nothing.
+ */
+function callsThroughImport(code: string, cssSource: string): boolean {
+  for (const [, names, from] of code.matchAll(NAMED_IMPORT)) {
+    if (from === cssSource || names === undefined) continue;
+    for (const entry of names.split(",")) {
+      const local = entry
+        .trim()
+        .replace(/^type\s+/, "")
+        .split(/\s+as\s+/)
+        .pop()
+        ?.trim();
+      if (local === undefined || !/^[A-Za-z_$][\w$]*$/.test(local)) continue;
+      const call = new RegExp(
+        `(?<![\\w$.])${local.replace(/\$/g, "\\$")}(?:\\.dynamic\\(|(?:\\.(?:create|props))?\\([^()]*\\{)`,
+      );
+      if (call.test(code)) return true;
+    }
+  }
+  return false;
+}
+
 /** The compiler takes `include` as a list, and an entry may name one glob. */
 function rendererEntries(
   renderers: BarqCompilerOptions["renderers"],
@@ -1488,7 +1518,8 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
         (code.includes(coreSource) || code.includes("@solidjs/signals"));
       const shouldTransform =
         include.some((ext) => path.endsWith(ext)) ||
-        (SCRIPT_MODULE.test(path) && (named || code.includes(cssSource)));
+        (SCRIPT_MODULE.test(path) &&
+          (named || code.includes(cssSource) || callsThroughImport(code, cssSource)));
       if (!shouldTransform) {
         // The package's name was the only reason this module was compiled, and
         // an edit that takes the last rule out usually takes the import too.

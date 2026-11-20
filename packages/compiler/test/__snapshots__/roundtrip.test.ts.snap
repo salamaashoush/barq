@@ -696,7 +696,7 @@ export const optimality = {
     "readProp(props.name)",
     "punctuation: "
   ],
-  absent: ["createElement(Greeting"]
+  absent: ["(Greeting, {"]
 };
 "
 `;
@@ -813,7 +813,7 @@ export const optimality = {
   ],
   // A component call, never \`createElement\`; and \`title\` is a literal the
   // caller wrote, so nothing wraps it in a getter it does not need.
-  absent: ["createElement(Panel", "get title()"]
+  absent: ["(Panel, {", "get title()"]
 };
 "
 `;
@@ -914,7 +914,7 @@ export const optimality = {
     "get cb()",
     "get render()",
     "get tone()",
-    "createElement(Chip"
+    "(Chip, {"
   ]
 };
 "
@@ -1029,9 +1029,10 @@ export const optimality = {
     "props.count",
     "createComponent(Badge, "
   ],
-  // The call \`createElement\` would be. Its bare name would be satisfied by the
-  // prose above, which explains what it does.
-  absent: ["createElement(Badge"]
+  // The argument shape a \`createElement\` call would have, which only
+  // \`createComponent\` may take. Naming the helper itself would be satisfied by
+  // the prose above, which explains what it does.
+  absent: ["(Badge, {"]
 };
 "
 `;
@@ -1092,7 +1093,7 @@ export const optimality = {
     "\\"data-tone\\"",
     "\\"id\\""
   ],
-  absent: ["createElement(Chip", "spread("]
+  absent: ["(Chip, {", "spread("]
 };
 "
 `;
@@ -1161,7 +1162,7 @@ function Badge() {
 export default function ContextProvider() {
   const _el$2 = _tmpl$2();
   const _el$3 = _el$2.firstChild;
-  _$insert(_el$2, _$createComponent(Theme, {
+  _$insert(_el$2, Theme({
     value: theme,
     children: _$block(() => _$createComponent(Badge, {}))
   }), _el$3);
@@ -1172,10 +1173,11 @@ export const steps = [() => setTheme("sepia")];
 export const optimality = {
   target: 1,
   templates: 2,
-  // The context is its own provider, called like any component. \`useContext\`
+  // The context is its own provider, called directly: it opens a scope of its
+  // own, so a frame around it would be an owner nothing uses. \`useContext\`
   // returns whatever was provided, so the read inside \`Badge\` stays Opaque and
   // is emitted exactly as written.
-  emits: ["createComponent(Theme, {", "value: theme"],
+  emits: ["Theme({", "value: theme"],
   absent: ["Theme.Provider", "get value()"]
 };
 "
@@ -4742,7 +4744,7 @@ export const optimality = {
   absent: [
     "get text()",
     "get tone()",
-    "createElement(Chip"
+    "(Chip, {"
   ]
 };
 "
@@ -4801,7 +4803,7 @@ export const optimality = {
   absent: [
     "get text()",
     "get tone()",
-    "createElement(Chip"
+    "(Chip, {"
   ]
 };
 "
@@ -4855,7 +4857,7 @@ export const optimality = {
   // The forward itself: the middle layer must hand ON a getter, not the value
   // its own read produced.
   emits: ["tone: props.tone", "createComponent(Chip, "],
-  absent: ["createElement(Chip"]
+  absent: ["(Chip, {"]
 };
 "
 `;
@@ -4903,7 +4905,7 @@ export const optimality = {
   // the other two. The prop the caller OMITS must be omitted from the object
   // as well — emitting \`tone: undefined\` would defeat the default.
   emits: ["text: label", "() => \\"cool\\""],
-  absent: ["tone: undefined", "createElement(Chip"]
+  absent: ["tone: undefined", "(Chip, {"]
 };
 "
 `;
@@ -4958,7 +4960,11 @@ export const optimality = {
     "spread(",
     "rest"
   ],
-  absent: ["get text()", "createElement"]
+  absent: [
+    "get text()",
+    "(Chip, {",
+    "createElement"
+  ]
 };
 "
 `;
@@ -5265,7 +5271,7 @@ export const optimality = {
     "ref: () => viaComponent",
     ", viaElement)"
   ],
-  absent: ["get ref()", "createElement(Boxed"]
+  absent: ["get ref()", "(Boxed, {"]
 };
 "
 `;

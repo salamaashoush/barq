@@ -350,8 +350,13 @@ function served(html: string): string[] {
   return read(holder);
 }
 
-async function check(mode: Mode, cases: Record<string, string[]>): Promise<void> {
-  const { client, server } = await compile(SCOPES, mode, SCOPE_COMPONENTS);
+async function check(
+  mode: Mode,
+  cases: Record<string, string[]>,
+  source = SCOPES,
+  components: readonly string[] = SCOPE_COMPONENTS,
+): Promise<void> {
+  const { client, server } = await compile(source, mode, components);
   for (const [name, expected] of Object.entries(cases)) {
     expect(read(rendered(() => client[name]!({}))), `${name}, fresh`).toEqual(expected);
 
@@ -394,6 +399,136 @@ describe("a binding installed in a component's body is seen alike in every compi
       const [inside, after] = client.captured!;
       expect(client.localeAt!(inside)).toBe("de-DE");
       expect(client.localeAt!(after)).toBe("en-US");
+    });
+  }
+});
+
+const TAGS = `
+  import { dynamic } from "${WEB}";
+  import { provideLocale, useLocale } from "${SRC}/i18n.ts";
+
+  function Inner(props) {
+    provideLocale("de-DE");
+    return <i>{"inner" + props.y + ":" + useLocale()().locale}</i>;
+  }
+
+  function After() {
+    return <i>{"after:" + useLocale()().locale}</i>;
+  }
+
+  function Member(props) {
+    return <props.component y={1} />;
+  }
+
+  function Nested(props) {
+    return <props.icons.Left y={2} />;
+  }
+
+  function Param({ component: C }) {
+    return <C y={3} />;
+  }
+
+  function Body(props) {
+    const { component: C } = props;
+    return <C y={4} />;
+  }
+
+  function Defaulted({ component: C = Inner }) {
+    return <C y={5} />;
+  }
+
+  function Rest({ ...rest }) {
+    return <rest.component y={6} />;
+  }
+
+  function Middle(props) {
+    return <props.component y={7} />;
+  }
+
+  function Outer(props) {
+    return <Middle component={props.component} />;
+  }
+
+  function Hands(props) {
+    provideLocale("de-DE");
+    return <>{props.children}</>;
+  }
+
+  const Chosen = dynamic(() => Hands);
+
+  function Reader(props) {
+    return <i>{"read" + props.y + ":" + useLocale()().locale}</i>;
+  }
+
+  export function ByMember() {
+    return <main><Member component={Inner} /><After /></main>;
+  }
+  export function ByNested() {
+    return <main><Nested icons={{ Left: Inner }} /><After /></main>;
+  }
+  export function ByParam() {
+    return <main><Param component={Inner} /><After /></main>;
+  }
+  export function ByBody() {
+    return <main><Body component={Inner} /><After /></main>;
+  }
+  export function ByDefault() {
+    return <main><Defaulted /><After /></main>;
+  }
+  export function ByRest() {
+    return <main><Rest component={Inner} /><After /></main>;
+  }
+  export function ByForward() {
+    return <main><Outer component={Inner} /><After /></main>;
+  }
+
+  export function ByDynamic() {
+    return <main><Chosen><Reader y={8} /></Chosen><After /></main>;
+  }
+`;
+
+const TAG_COMPONENTS = [
+  "Inner",
+  "After",
+  "Member",
+  "Nested",
+  "Param",
+  "Body",
+  "Defaulted",
+  "Rest",
+  "Middle",
+  "Outer",
+  "Hands",
+  "Reader",
+  "ByMember",
+  "ByNested",
+  "ByParam",
+  "ByBody",
+  "ByDefault",
+  "ByRest",
+  "ByForward",
+  "ByDynamic",
+];
+
+/**
+ * A tag that names a prop calls the component the prop holds, with the props
+ * the tag writes and under a frame of its own, however the prop was named.
+ */
+const BY_TAG: Record<string, string[]> = {
+  ByMember: ["inner1:de-DE", "after:en-US"],
+  ByNested: ["inner2:de-DE", "after:en-US"],
+  ByParam: ["inner3:de-DE", "after:en-US"],
+  ByBody: ["inner4:de-DE", "after:en-US"],
+  ByDefault: ["inner5:de-DE", "after:en-US"],
+  ByRest: ["inner6:de-DE", "after:en-US"],
+  ByForward: ["inner7:de-DE", "after:en-US"],
+  ByDynamic: ["read8:de-DE", "after:en-US"],
+};
+
+describe("a tag that names a prop renders the component the prop holds", () => {
+  for (const mode of MODES) {
+    test(`${mode}: with its props, under a frame of its own`, async () => {
+      await check(mode, BY_TAG, TAGS, TAG_COMPONENTS);
     });
   }
 });

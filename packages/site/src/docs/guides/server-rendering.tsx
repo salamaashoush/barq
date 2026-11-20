@@ -1,6 +1,7 @@
 import { anchor, type DocsSection } from "../../docs.tsx";
 import { CodeBlock } from "../code.tsx";
 import declarations from "./snippets/server-rendering/declarations.tsx?raw";
+import frameStory from "./snippets/server-rendering/frame-story.tsx?raw";
 import frame from "./snippets/server-rendering/frame.tsx?raw";
 import handler from "./snippets/server-rendering/handler.tsx?raw";
 import memoOptions from "./snippets/server-rendering/memo-options.tsx?raw";
@@ -111,6 +112,7 @@ export function Body() {
         fill: <code>props.children</code>, and a call such as <code>props.comment(...)</code> whose
         arguments cross as data and whose children cross as server markup.
       </p>
+      <CodeBlock code={frameStory} />
       <CodeBlock code={frame} />
       <p>
         A route renders the frame its loader answered with. On the first request the server writes

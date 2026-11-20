@@ -350,6 +350,7 @@ describe("the diagnostic engine", () => {
         'import { atoms } from "@barqjs/css";\nexport const c = atoms({ border: "1px solid gray" }, { borderColor: "red" });\n',
       BARQ033:
         'import { atoms } from "@barqjs/css";\nexport const c = atoms({ color: { ":hover": "blue", "[data-active]": "red" } });\n',
+      BARQ034: 'export const V = ({ as: Tag = "div" }) => <Tag />;\n',
     };
 
     const advertised = native

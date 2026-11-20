@@ -29,6 +29,9 @@ import {
   type OptimalityExpectation,
 } from "./harness.ts";
 import { concatFixtures, TYPICAL_COMPONENT_FILE, typicalComponentFile } from "./measure.ts";
+
+/** A fixture's declaration of what it should compile to, which is not code. */
+const OPTIMALITY_BLOCK = /\n?export const optimality = \{[\s\S]*?\n\}\n?/;
 import { countAnchors } from "./normalize.ts";
 
 /**
@@ -146,8 +149,12 @@ describe("declared optimality", () => {
         `${name} must emit ${JSON.stringify(needle)}`,
       ).toBeGreaterThan(0);
     }
+    // `createComponent` is the one helper allowed to take a component and its
+    // props, so a needle such as `(Chip, {` bans every other spelling of that
+    // call, `createElement` and any wrapper alike, and not that one.
+    const calls = code.replaceAll("_$createComponent(", "_$createComponent:");
     for (const needle of decl.absent ?? []) {
-      expect(occurrences(code, needle), `${name} must not emit ${JSON.stringify(needle)}`).toBe(0);
+      expect(occurrences(calls, needle), `${name} must not emit ${JSON.stringify(needle)}`).toBe(0);
     }
     for (const [first, second] of decl.ordered ?? []) {
       const at = code.indexOf(first);
@@ -223,6 +230,90 @@ describe("declared optimality", () => {
    * It lives in the test file because a fixture may not name a compiler uid:
    * see the test above for what happens when one does.
    */
+  /**
+   * SEMANTICS C1's falsifier, swept over the corpus on every backend: a user
+   * component is called as `createComponent(Comp, props)` and in no other
+   * shape. A context the module creates is a construct here: its provider
+   * opens a scope of its own. A direct `Comp({` or `Comp(_$props(` runs the body under its
+   * caller's owner, where what it installs reaches its later siblings.
+   */
+  it("every user component is called through createComponent, on every backend", () => {
+    const FLOW = new Set([
+      "For",
+      "Repeat",
+      "Show",
+      "Switch",
+      "Match",
+      "Loading",
+      "Errored",
+      "Reveal",
+      "Portal",
+      "NoHydration",
+    ]);
+    const BACKENDS: Record<string, Record<string, unknown>> = {
+      dom: {},
+      ssr: { ssr: true },
+      hydratable: { hydratable: true },
+      universal: { target: "universal", moduleSource: "./renderer.ts" },
+    };
+    const direct: string[] = [];
+    let framed = 0;
+    for (const name of listFixtures()) {
+      const source = fixtureSource(name).replace(OPTIMALITY_BLOCK, "");
+      // What a package exports as a construct is matched by the backends
+      // by name, and is not a component the module calls.
+      const constructs = new Set<string>();
+      for (const [, names = "", from = ""] of source.matchAll(
+        /import\s*\{([^}]*)\}\s*from\s*"(@barqjs\/[^"]+)"/g,
+      )) {
+        if (!from.startsWith("@barqjs/")) continue;
+        for (const entry of names.split(",")) {
+          const [imported = "", local = imported] = entry.trim().split(/\s+as\s+/);
+          if (FLOW.has(imported.trim())) constructs.add(local.trim());
+        }
+      }
+      // A context the module creates is its own provider, called directly.
+      for (const [, local = ""] of source.matchAll(/const\s+(\w+)\s*=\s*createContext\b/g)) {
+        constructs.add(local);
+      }
+      const namespaces = [...source.matchAll(/import\s*\*\s*as\s+(\w+)\s+from\s*"@barqjs\//g)].map(
+        (match) => match[1] ?? "",
+      );
+      const tags = new Set(
+        [
+          ...source.matchAll(
+            /<([A-Z][\w$]*(?:\.[A-Za-z_$][\w$]*)*|[a-z_$][\w$]*\.[A-Za-z_$][\w$.]*)[\s/>]/g,
+          ),
+        ]
+          .map((match) => match[1] ?? "")
+          .filter((tag) => {
+            if (constructs.has(tag)) return false;
+            const [root = "", property = ""] = tag.split(".");
+            return !(namespaces.includes(root) && FLOW.has(property));
+          }),
+      );
+      for (const [backend, options] of Object.entries(BACKENDS)) {
+        let code: string;
+        try {
+          code = stripLiterals(stripComments(compileFixtureBody(name, options)));
+        } catch {
+          // A fixture a backend refuses (BARQ027, BARQ028) emits nothing.
+          continue;
+        }
+        framed += [...code.matchAll(/_\$createComponent\(/g)].length;
+        for (const tag of tags) {
+          const escaped = tag.replace(/[.$]/g, (char) => `\\${char}`);
+          const call = new RegExp(
+            `(?<![\\w$.])(?:\\(0, )?${escaped}\\)?\\(\\s*(?:\\{|_\\$props\\()`,
+          );
+          if (call.test(code)) direct.push(`${name} (${backend}): ${tag}`);
+        }
+      }
+    }
+    expect(direct, "a user component called directly").toEqual([]);
+    expect(framed, "the sweep found no component calls at all").toBeGreaterThan(100);
+  }, 120_000);
+
   it("the call shape is C1's: props first, and no scope threaded anywhere", () => {
     let calls = 0;
     let blocks = 0;
