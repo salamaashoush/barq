@@ -15,6 +15,7 @@ import {
   check,
   codes,
   formatText,
+  projectOptions,
   type CheckResult,
   type Paint,
 } from "../src/check.ts";
@@ -159,6 +160,82 @@ describe("check", () => {
     const result = check({ root });
     expect(result.summary.errors).toBeGreaterThan(0);
     expect(result.findings[0]?.file).toBe("src/broken.tsx");
+  });
+});
+
+describe("file routes", () => {
+  const route = (id: string, body: string): string =>
+    `import { Link, createFileRoute } from "@barqjs/router";\nexport const Route = createFileRoute("${id}")({ component: () => ${body} });\n`;
+
+  test("a link to a path no route file gives is reported, and one to a route is not", () => {
+    const root = project({
+      "src/routes/index.tsx": route("/", '<Link to="/about">about</Link>'),
+      "src/routes/about.tsx": route("/about", '<Link to="/pricing">pricing</Link>'),
+    });
+    const result = check({ root });
+    expect(result.findings.map((finding) => [finding.code, finding.file])).toEqual([
+      ["BARQ013", "src/routes/about.tsx"],
+    ]);
+    expect(result.findings[0]?.message).toContain('`to="/pricing"` matches none');
+  });
+
+  test("a route file whose id differs from its filename is an error, and nothing is rewritten", () => {
+    const stale = route("/old", "<p>salama</p>");
+    const root = project({ "src/routes/about.tsx": stale });
+    const result = check({ root });
+    expect(result.summary.errors).toBe(1);
+    expect(result.findings[0]).toMatchObject({ severity: "error", file: "src/routes/about.tsx" });
+    expect(result.findings[0]?.message).toContain('Write `createFileRoute("/about")`.');
+    expect(readFileSync(join(root, "src/routes/about.tsx"), "utf8")).toBe(stale);
+  });
+
+  test("with no routes directory a link is not judged", () => {
+    const root = project({
+      "src/view.tsx": `import { Link } from "@barqjs/router";\nexport const V = () => <Link to="/anywhere">go</Link>;\n`,
+    });
+    expect(check({ root }).findings).toEqual([]);
+  });
+
+  test("`routes` names another directory", () => {
+    const root = project({
+      "app/pages/index.tsx": route("/", '<Link to="/nowhere">x</Link>'),
+    });
+    expect(check({ root, routes: "app/pages" }).findings.map((finding) => finding.code)).toEqual([
+      "BARQ013",
+    ]);
+  });
+});
+
+describe("a project's own settings", () => {
+  const link = `import { Link } from "@barqjs/router";\nexport const V = () => <Link to="/demo/users">users</Link>;\n`;
+  const index = `import { createFileRoute } from "@barqjs/router";\nexport const Route = createFileRoute("/")({ component: () => <p>salama</p> });\n`;
+
+  test("`barq.check` in package.json declares routes beside the file routes, and levels", () => {
+    const root = project({
+      "src/routes/index.tsx": index,
+      "src/view.tsx": link,
+      "package.json": JSON.stringify({
+        barq: { check: { paths: ["src"], extraRoutes: ["/demo/users"] } },
+      }),
+    });
+    expect(main(["check", "--json", "--root", root], () => {})).toBe(0);
+    expect(check({ root, ...projectOptions(root) }).findings).toEqual([]);
+    expect(check({ root }).findings.map((finding) => finding.code)).toEqual(["BARQ013"]);
+  });
+
+  test("a level in package.json applies, and one on the command line replaces it", () => {
+    const root = project({
+      "src/routes/index.tsx": index,
+      "src/view.tsx": link,
+      "package.json": JSON.stringify({ barq: { check: { levels: { BARQ013: "error" } } } }),
+    });
+    expect(main(["check", "--root", root], () => {})).toBe(1);
+    expect(main(["check", "--root", root, "--level", "BARQ013=suppress"], () => {})).toBe(0);
+  });
+
+  test("a package.json with no such field, or none at all, sets nothing", () => {
+    expect(projectOptions(project({ "package.json": "{}" }))).toEqual({});
+    expect(projectOptions(project({}))).toEqual({});
   });
 });
 

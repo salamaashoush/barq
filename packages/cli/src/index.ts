@@ -10,9 +10,9 @@ import { realpathSync } from "node:fs";
 import { stdout } from "node:process";
 import { fileURLToPath } from "node:url";
 
-import { check, codes, formatText, type Paint } from "./check.ts";
+import { check, codes, formatText, projectOptions, type Paint } from "./check.ts";
 
-export { applyFixes, check, codes, formatText } from "./check.ts";
+export { applyFixes, check, codes, formatText, projectOptions } from "./check.ts";
 export type {
   CheckOptions,
   CheckResult,
@@ -31,11 +31,16 @@ check options:
   --json                One JSON document on stdout, for a program to read
   --fix                 Apply the fixes the findings carry, then report what is left
   --root <dir>          The project root (default: the current directory)
+  --routes <dir>        The file routes, for checking links (default: src/routes)
   --level <CODE=level>  Set a code to suppress, note, warning or error; repeatable
   --max-warnings <n>    Exit 1 when there are more warnings than this
 
 codes options:
   --json                The list as JSON
+
+A project sets its own defaults under "barq": { "check": { ... } } in
+package.json: paths, routes, extraRoutes (patterns beside the file routes) and
+levels ({ "BARQ004": "error" }).
 
 Exit status: 0 clean, 1 findings at error level or past --max-warnings, 2 a
 command line this does not understand.
@@ -51,6 +56,7 @@ interface Parsed {
   json: boolean;
   fix: boolean;
   root: string;
+  routes: string | undefined;
   levels: [string, string][];
   maxWarnings: number | undefined;
   help: boolean;
@@ -63,6 +69,7 @@ export function parse(argv: readonly string[]): Parsed {
     json: false,
     fix: false,
     root: process.cwd(),
+    routes: undefined,
     levels: [],
     maxWarnings: undefined,
     help: false,
@@ -89,6 +96,9 @@ export function parse(argv: readonly string[]): Parsed {
         break;
       case "--root":
         parsed.root = value(arg, ++index);
+        break;
+      case "--routes":
+        parsed.routes = value(arg, ++index);
         break;
       case "--level": {
         const pair = value(arg, ++index);
@@ -154,11 +164,16 @@ export function main(argv: readonly string[], write: (text: string) => void): nu
   }
   switch (parsed.command) {
     case "check": {
+      const set = projectOptions(parsed.root);
       const result = check({
+        ...set,
         root: parsed.root,
-        paths: parsed.paths,
         fix: parsed.fix,
-        levels: parsed.levels,
+        // A level on the command line is added after the project's, and the
+        // compiler takes the last one named for a code.
+        levels: [...(set.levels ?? []), ...parsed.levels],
+        ...(parsed.paths.length > 0 ? { paths: parsed.paths } : {}),
+        ...(parsed.routes !== undefined ? { routes: parsed.routes } : {}),
       });
       write(
         parsed.json ? `${JSON.stringify(result, null, 2)}\n` : `${formatText(result, painter())}\n`,

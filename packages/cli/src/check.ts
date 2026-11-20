@@ -8,7 +8,7 @@
  * one.
  */
 
-import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, relative, resolve, sep } from "node:path";
 
@@ -57,6 +57,48 @@ export interface CheckOptions {
   fix?: boolean;
   /** Per-code level, as `[code, "suppress" | "note" | "warning" | "error"]`. */
   levels?: readonly (readonly [string, string])[];
+  /**
+   * The directory of file routes, relative to the root. When it exists, every
+   * `<Link to>` is checked against the routes in it and a route file whose id
+   * disagrees with its filename is reported.
+   * @default "src/routes"
+   */
+  routes?: string;
+  /**
+   * Route patterns a link may name beside the file routes, such as those of a
+   * second router the application builds by hand.
+   */
+  extraRoutes?: readonly string[];
+}
+
+/**
+ * What a project sets for every run, under `barq.check` in its `package.json`.
+ * A flag on the command line replaces the field of the same name.
+ */
+export function projectOptions(root: string): Partial<CheckOptions> {
+  let manifest: unknown;
+  try {
+    manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+  } catch {
+    return {};
+  }
+  const set = (manifest as { barq?: { check?: unknown } }).barq?.check;
+  if (typeof set !== "object" || set === null) return {};
+  const { paths, routes, extraRoutes, levels } = set as Record<string, unknown>;
+  const strings = (value: unknown): string[] | undefined =>
+    Array.isArray(value) && value.every((item) => typeof item === "string") ? value : undefined;
+  const out: Partial<CheckOptions> = {};
+  const listed = strings(paths);
+  if (listed !== undefined) out.paths = listed;
+  if (typeof routes === "string") out.routes = routes;
+  const extra = strings(extraRoutes);
+  if (extra !== undefined) out.extraRoutes = extra;
+  if (typeof levels === "object" && levels !== null) {
+    out.levels = Object.entries(levels).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string",
+    );
+  }
+  return out;
 }
 
 interface NativeDiagnostic {
@@ -81,9 +123,18 @@ interface Native {
       diagnostics: boolean;
       sourceNames: boolean;
       checks?: string[][];
+      routes?: string[];
     },
   ): { diagnostics?: NativeDiagnostic[] };
   diagnosticCodes(): { code: string; level: string; summary: string; docs: string }[];
+  routeTree(
+    root: string,
+    dir: string,
+  ): {
+    patterns: string[];
+    warnings: string[];
+    mismatches: { file: string; declared: string; expected: string }[];
+  };
 }
 
 let native: Native | undefined;
@@ -122,7 +173,41 @@ function severityOf(level: string): Severity {
   return level === "error" ? "error" : level === "note" ? "note" : "warning";
 }
 
-function findingsOf(file: string, root: string, source: string, options: CheckOptions): Finding[] {
+interface Project {
+  options: CheckOptions;
+  /** The route patterns, when the project has file routes. */
+  patterns: string[] | undefined;
+}
+
+/** A finding about the project and no one position in a file. */
+function about(file: string, severity: Severity, message: string): Finding {
+  return { severity, message, file, line: 1, column: 1, endLine: 1, endColumn: 1 };
+}
+
+/**
+ * The file routes, read the way the build reads them and written nowhere: the
+ * patterns a link may name, and what the scan itself found wrong.
+ */
+function routesOf(root: string, dir: string): { patterns?: string[]; findings: Finding[] } {
+  if (!existsSync(join(root, dir))) return { findings: [] };
+  const tree = compiler().routeTree(root, dir);
+  return {
+    patterns: tree.patterns,
+    findings: [
+      ...tree.warnings.map((warning) => about(dir, "warning", warning)),
+      ...tree.mismatches.map((mismatch) =>
+        about(
+          mismatch.file,
+          "error",
+          `\`createFileRoute("${mismatch.declared}")\` names an id that differs from the one this file's name gives, \`${mismatch.expected}\`, and a build refuses it. Write \`createFileRoute("${mismatch.expected}")\`.`,
+        ),
+      ),
+    ],
+  };
+}
+
+function findingsOf(file: string, root: string, source: string, project: Project): Finding[] {
+  const { options } = project;
   const name = relative(root, file).split(sep).join("/");
   let diagnostics: NativeDiagnostic[];
   try {
@@ -134,21 +219,12 @@ function findingsOf(file: string, root: string, source: string, options: CheckOp
         diagnostics: true,
         sourceNames: false,
         checks: options.levels?.map(([code, level]) => [code, level]),
+        routes: project.patterns,
       }).diagnostics ?? [];
   } catch (error) {
     // The compiler refuses a file it cannot parse by throwing, and the message
     // already carries the position.
-    return [
-      {
-        severity: "error",
-        message: error instanceof Error ? error.message : String(error),
-        file: name,
-        line: 1,
-        column: 1,
-        endLine: 1,
-        endColumn: 1,
-      },
-    ];
+    return [about(name, "error", error instanceof Error ? error.message : String(error))];
   }
   return diagnostics.map((found) => {
     const finding: Finding = {
@@ -208,7 +284,15 @@ export function check(options: CheckOptions): CheckResult {
     collect(resolve(root, path), files);
   }
 
-  const findings: Finding[] = [];
+  const routes = routesOf(root, options.routes ?? "src/routes");
+  const project: Project = {
+    options,
+    patterns:
+      routes.patterns === undefined
+        ? undefined
+        : [...routes.patterns, ...(options.extraRoutes ?? [])],
+  };
+  const findings: Finding[] = [...routes.findings];
   let checked = 0;
   let fixed = 0;
   for (const file of files) {
@@ -216,7 +300,7 @@ export function check(options: CheckOptions): CheckResult {
     const text = (): string => (source ??= readFileSync(file, "utf8"));
     if (!wanted(file, text)) continue;
     checked++;
-    let found = findingsOf(file, root, text(), options);
+    let found = findingsOf(file, root, text(), project);
     if (options.fix === true) {
       let current = text();
       for (let pass = 0; pass < MAX_PASSES; pass++) {
@@ -224,7 +308,7 @@ export function check(options: CheckOptions): CheckResult {
         if (repaired === 0) break;
         current = next;
         fixed += repaired;
-        found = findingsOf(file, root, current, options);
+        found = findingsOf(file, root, current, project);
       }
       if (current !== text()) writeFileSync(file, current);
     }

@@ -30,12 +30,40 @@ Options:
 - `--json`: one JSON document on stdout.
 - `--fix`: apply the fixes, then report what is left.
 - `--root <dir>`: the project root. Paths in the output are relative to it.
+- `--routes <dir>`: the directory of file routes. Defaults to `src/routes`.
 - `--level <CODE=level>`: set a code to `suppress`, `note`, `warning` or
   `error`. Repeatable.
 - `--max-warnings <n>`: exit 1 when there are more warnings than `n`.
 
 Exit status: `0` when nothing is at error level, `1` when something is or the
 warnings pass `--max-warnings`, `2` for a command line it does not understand.
+
+### File routes
+
+When the routes directory exists, the check reads it the way the build does and
+writes nothing. Every `<Link to>` is then checked against the routes it gives
+(`BARQ013`), and a route file whose `createFileRoute` id disagrees with its
+filename is an error, as it is in a build.
+
+### Settings in `package.json`
+
+```json
+{
+  "barq": {
+    "check": {
+      "paths": ["src"],
+      "routes": "src/routes",
+      "extraRoutes": ["/demo/dashboard", "/demo/dashboard/users/$id"],
+      "levels": { "BARQ004": "error", "BARQ011": "suppress" }
+    }
+  }
+}
+```
+
+`extraRoutes` names patterns a link may use beside the file routes, such as
+those of a second router the application builds by hand. A flag on the command
+line replaces the setting of the same name, and a `--level` is added after the
+ones here.
 
 ### The JSON form
 
@@ -97,5 +125,5 @@ const result = check({ root: process.cwd(), paths: ["src"] });
 if (result.summary.errors > 0) process.exitCode = 1;
 ```
 
-`check`, `codes`, `applyFixes` and `formatText` are exported, with the types of
+`check`, `codes`, `applyFixes`, `formatText` and `projectOptions` are exported, with the types of
 what they take and return.
