@@ -606,14 +606,26 @@ export function cls(...parts: unknown[]): string {
 }
 
 /** `{...props}` on an intrinsic element, in the object's own key order. */
-export function spreadAttrs(props: unknown, tag?: string): string {
+export function spreadAttrs(props: unknown, tag?: string, svg?: boolean): string {
   const resolved = unwrap(props);
   if (!isObject(resolved)) return "";
   let out = "";
   for (const key in resolved) {
-    out += attr(key, resolved[key], tag);
+    out += attr(svg === true ? svgName(key) : key, resolved[key], tag);
   }
   return out;
+}
+
+/**
+ * A spread key as the attribute it names inside the SVG namespace, which is
+ * `attrNameOf` in the DOM renderer and has to stay it: `strokeWidth` is
+ * `stroke-width`, and `class` and `viewBox` are written as they are. Left
+ * camel-cased, the browser reads an attribute no SVG element has, and an icon
+ * is drawn with the default stroke until the page hydrates.
+ */
+function svgName(key: string): string {
+  if (key === "className" || key === "class" || key === "viewBox") return key;
+  return key.replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase();
 }
 
 // ── binding slots ────────────────────────────────────────────────────────

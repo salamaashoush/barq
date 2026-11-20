@@ -413,6 +413,22 @@ describe("attributes", () => {
     );
     expect(spreadAttrs(() => ({ id: "a" }))).toBe(' id="a"');
     expect(spreadAttrs(null)).toBe("");
+  });
+
+  test("spreadAttrs inside SVG writes the names the browser reads", () => {
+    const icon = {
+      viewBox: "0 0 24 24",
+      strokeWidth: 2,
+      strokeLinecap: "round",
+      className: "lucide",
+      "aria-hidden": true,
+      onClick: () => {},
+    };
+    expect(spreadAttrs(icon, "svg", true)).toBe(
+      ' viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" class="lucide" aria-hidden="true"',
+    );
+    // In a document element the key is the attribute, as written.
+    expect(spreadAttrs({ strokeWidth: 2 }, "div")).toBe(' strokeWidth="2"');
     expect(spreadAttrs({ title: '"><script>' })).toBe(' title="&quot;><script>"');
   });
 

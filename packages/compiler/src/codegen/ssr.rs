@@ -299,6 +299,17 @@ fn content_patch(ctx: &Emit<'_, '_>, unit: &Unit<'_>, node: NodeId) -> Option<us
 /// Everything between `<tag` and `>`. Static attributes come from the skeleton
 /// and dynamic ones from the patch program; both carry the position the author
 /// wrote them at, and they are interleaved back into it.
+/// The third argument of `spreadAttrs` for an element in the SVG namespace,
+/// and nothing for any other.
+///
+/// A named attribute is kebab-cased here, where its name is read. A spread's
+/// keys exist only at run time, so the helper is told which namespace it is
+/// writing into and does what the DOM backend's `spread` does there:
+/// `strokeWidth` is written `stroke-width`, the name the browser reads.
+fn svg_flag<'a>(ctx: &Emit<'a, '_>, svg: bool, span: Span) -> Option<Argument<'a>> {
+    svg.then(|| Argument::from(Expression::new_boolean_literal(span, true, &ctx.ast)))
+}
+
 fn open_tag<'a>(
     ctx: &mut Emit<'a, '_>,
     unit: &mut Unit<'a>,
@@ -359,7 +370,9 @@ fn open_tag<'a>(
         let span = unit.spans[node as usize];
         let name = ctx.string(tag, span);
         let callee = ctx.helper(Helper::SpreadAttrs, span);
-        let call = ctx.call(callee, vec![Argument::from(object), Argument::from(name)], span);
+        let mut arguments = vec![Argument::from(object), Argument::from(name)];
+        arguments.extend(svg_flag(ctx, element.ns == crate::ir::Ns::Svg, span));
+        let call = ctx.call(callee, arguments, span);
         chunks.hole(call);
         bind_positions(ctx, unit, chunks, tag, &bound);
         return;
@@ -663,8 +676,16 @@ impl<'a> Backend<'a> for Ssr<'a, '_, '_, '_, '_> {
         let span = at.span();
         let value = take(self.ctx, self.unit, value, span);
         let tag = self.ctx.string(tag, span);
+        let svg = self
+            .unit
+            .skeleton
+            .node(at.target())
+            .as_element()
+            .is_some_and(|element| element.ns == crate::ir::Ns::Svg);
         let callee = self.ctx.helper(Helper::SpreadAttrs, span);
-        let call = self.ctx.call(callee, vec![Argument::from(value), Argument::from(tag)], span);
+        let mut arguments = vec![Argument::from(value), Argument::from(tag)];
+        arguments.extend(svg_flag(self.ctx, svg, span));
+        let call = self.ctx.call(callee, arguments, span);
         self.chunks.hole(call);
     }
 
@@ -1272,7 +1293,9 @@ fn jsx_element_into<'a>(
         let props = ctx.props(opening.attributes);
         let name = ctx.string(tag, span);
         let callee = ctx.helper(Helper::SpreadAttrs, span);
-        let call = ctx.call(callee, vec![Argument::from(props), Argument::from(name)], span);
+        let mut arguments = vec![Argument::from(props), Argument::from(name)];
+        arguments.extend(svg_flag(ctx, is_svg, span));
+        let call = ctx.call(callee, arguments, span);
         chunks.hole(call);
     } else {
         for item in opening.attributes {
@@ -1564,6 +1587,15 @@ mod tests {
         let dirty = ssr("export const V = () => <input value={t()} readOnly={r()} />;\n").code;
         assert!(dirty.contains("_$attr(\"value\", t(), \"input\")"), "{dirty}");
         assert!(dirty.contains("_$attr(\"readOnly\", r(), \"input\")"), "{dirty}");
+
+        // Inside SVG the helper is told so, on the element and under it: the
+        // keys are run-time data and `strokeWidth` has to be written
+        // `stroke-width`.
+        let icon = ssr("export const V = (p) => <svg {...p}><path {...p} /></svg>;\n").code;
+        assert!(icon.contains(", \"svg\", true)"), "{icon}");
+        assert!(icon.contains(", \"path\", true)"), "{icon}");
+        let plain = ssr("export const V = (p) => <p {...p} />;\n").code;
+        assert!(plain.contains(", \"p\")"), "{plain}");
 
         // A spread is the one place a NAME is runtime data, and it keeps
         // `attr`'s `checkName`, the guard against a hostile key.
