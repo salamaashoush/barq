@@ -204,7 +204,7 @@ server:
 ```ts
 // vite.config.ts
 import { barqDiagnostics } from "@barqjs/diagnostics/vite";
-import { barq } from "@barqjs/vite";
+import barq from "@barqjs/vite";
 import { defineConfig } from "vite";
 
 export default defineConfig({ plugins: [barq(), barqDiagnostics()] });
