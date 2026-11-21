@@ -11,12 +11,14 @@ that question on this document's own terms, and doing so is its acceptance test.
 
 **Reading the rules against the code.** Two conventions reach many sections:
 
-- **The emitted convention carries no scope argument.** A component is
-  `createComponent(Comp, props)`, which calls `Comp(props)` under a frame of its own, a Block is
-  `block(() => …)`, and a construct makes the scope it opened the engine's current owner
-  (`runWithOwner`) before it invokes a Block. Where a rule writes a scope as the first argument
-  (`$s`, `_s$`, `block(c)`), read "made current by the construct". The ownership claims themselves
-  (O2.1, X1, X3) are checked by the ownership trace.
+- **The emitted convention carries no scope argument, and ownership is ambient.** A component is
+  `createComponent(Comp, props)`, which calls `Comp(props)` under a frame of its own (plus the
+  tag's name and location in a development compile), a Block is `block(() => …)`, and a construct
+  makes the scope it opened the engine's current owner (`runWithOwner`) before it invokes a Block.
+  The ownership claims themselves (O2.1, X1, X3) are checked by the ownership trace.
+- **Props are Cells at run time and values in source.** The record a component receives holds a
+  Cell per prop (C3). The author writes `props.title` as the value its type declares, and the
+  compiler's props pass rewrites each read to the call that performs it (C4).
 - **The reactive engine is `@solidjs/signals`.** `packages/core/src/signals.ts` re-exports it under
   Solid 2.0's names (`createSignal` pairs, `createMemo`, `createEffect`, `flush`) and adds scopes,
   Blocks and context beside it. A context is its own provider: `<Ctx value={…}>` provides and
@@ -75,7 +77,7 @@ whose trace differs if the rule is broken.
 ### 0.4 Backends
 
 `Out` is backend-parameterised. On the DOM backend `Out = Node | Node[] | Cell<Out> | null`; on the SSR
-backend `Out = string`. Every rule below holds on both backends unless it is explicitly scoped to one
+backend `Out = SsrHtml`, the branded markup string `@barqjs/server` builds. Every rule below holds on both backends unless it is explicitly scoped to one
 (the ordering rules M3 and M5 and the whole of §9 are DOM-only; §11 is SSR+hydrate). A rule that
 cannot be stated for both backends is a design smell and is marked as such.
 
@@ -93,9 +95,11 @@ runtime object; it is *not* a reactive node and *not* a DOM node.
 callable any number of times, **arity-tolerant** (C3.6). A signal getter is a Cell. A context accessor
 is a Cell. A props member is a Cell.
 
-**Block** — a deferred *construction* under a supplied scope. `Block = (s: Scope, ...args: Cell<any>[]) => Out`.
-A Block is not a Cell: it takes a scope and it builds. Its first parameter is the ownership channel and
-is not optional (C3.8).
+**Block** — a deferred *construction*. `Block = (...args: Cell<unknown>[]) => Out`, branded by
+`block()` at its definition site. A Block is not a Cell: it builds. It takes no scope: the construct
+that invokes it makes its instance scope the current owner first, and its only arguments are the
+Cells that construct hands over (a row's item and index, a fallback's error and reset). A Block in a
+Cell slot is refused (C3.8).
 
 **Position** — a compile-time address `(module, unit, position)`. A position is where a construct is
 written. It is stable across renders, across the two backends, and across `-O0`/`-Ox`.
@@ -106,9 +110,11 @@ one position. An `each` with three rows has three activations of the row positio
 **Instance scope** — the scope a construct creates for one activation. One activation, one instance
 scope, one Block invocation (C7).
 
-**Owner** — the scope user code is currently running under. Reachable as `CURRENT` / `getOwner()`.
+**Owner** — the scope user code is currently running under: the engine's current owner, read with
+`getOwner()`. This document calls it `CURRENT`.
 
-**Observer** — the reactive node currently collecting dependencies. Distinct from the owner (O6).
+**Observer** — the reactive node currently collecting dependencies, which it does only while the
+engine's tracking flag is on. Distinct from the owner (O6).
 
 **Catcher** — the nearest ancestor scope that is an error boundary, copied onto every scope at
 `enter` so lookup is O(1) and never walks.
@@ -128,7 +134,12 @@ bug.
 **Rule.** A scope is created by exactly six constructs and by nothing else: `render`, a `branch`
 instance, an `each` row, `provide`, `boundary`, `portal`. **A component call MUST NOT create a
 scope.** An element MUST NOT create a scope. A Block invocation MUST NOT create a scope — the
-*construct that invokes it* created the scope and handed it over (O2).
+*construct that invokes it* created the scope and made it current (O2).
+
+The frame `createComponent` opens around a component body (C1) is not a scope. It is a transparent
+engine owner (`createOwner(TRANSPARENT)`): it owns what the body creates, so a binding the body
+installs stays the component's, and the engine numbers what is inside it as if it were absent.
+`scopeAllocations()` does not count it.
 
 **Falsified by.** Mount a tree of 1,000 components, three deep, containing no branch, no list, no
 provider, no boundary and no portal. Count `Scope` allocations. The count MUST be 1 (the `render`
@@ -139,7 +150,7 @@ count this procedure asks for is allocations, not trace events.
 **Status.** `PLANNED`: a plain component allocates no scope, and the flow components, a provider and
 an error boundary each allocate one per instance. No fixture pins the count.
 
-### O2 — a Block runs under the scope it is given, never under an ambient one
+### O2 — a Block runs under the scope its construct opened, never under the call site's owner
 
 **Rule.** Let `K` be a scope-creating construct at position `p`. For each activation of `p`, `K` MUST:
 
@@ -150,15 +161,16 @@ an error boundary each allocate one per instance. No fixture pins the count.
 
 A Block MUST run under the scope its construct opened for it. The emitted code passes no scope: the
 construct makes `c` current with `runWithOwner` before it invokes the Block, so the owner the Block
-reads is `c` and never the one that was ambient at the call site. `CURRENT` is an *observation*
-channel (O4.5), never a decision channel.
+reads is `c` and never the one that was ambient at the call site. Ownership is ambient: `CURRENT`
+is what every primitive files its work on, and O4.5 is what keeps that from drifting.
 
 > **O2.1.** A component's body executes while the current scope is the scope of the construct that
 > received it as `children`, and after that scope's context bindings are installed. It MUST NOT
 > execute at the call site of the construct, before that scope exists.
 
-**Escape hatch.** `pin(s, block)` returns a Block that ignores its scope argument and uses `s`. It is
-the only sanctioned way to break dynamic ownership and it is visible in the emitted text.
+**Escape hatch.** `pin(s, body)` returns a branded Block that runs `body` under `s` whatever owner
+is current when it is invoked. It is the only sanctioned way to break dynamic ownership and it is
+visible in the source that calls it.
 
 **Falsified by.** `<Ctx value={1}><Child/></Ctx>` where `Child` calls `useContext(Ctx)`
 and `Ctx` has no default. If `Child` throws `ContextNotFoundError`, or renders the default when a
@@ -168,8 +180,8 @@ call in the emitted module** — that shape is O2's negation written down. A con
 that is NOT the ambient one must put its subtree under the scope it was handed.
 
 **Status.** `HOLDS`, and O2.1 with it: the emission is `Ctx({ value: _k$1, children: _$block(() =>
-Child({})) })`, so `Child` is constructed by the provider, inside the instance scope, after the
-binding is written. Pinned by `sem-ctx-provider-direct-child.tsx` (the direct form, with no
+_$createComponent(Child, {})) })`, so `Child` is constructed by the provider, inside the instance
+scope, after the binding is written. Pinned by `sem-ctx-provider-direct-child.tsx` (the direct form, with no
 `{() => …}` wrapper) and `packages/web`'s `calling-convention.test.ts`.
 
 ### O3 — disposal is total and ordered
@@ -214,12 +226,15 @@ from outside the runtime after `dispose()` returns and find nothing.
 the normal path *and* on the exceptional path. A construct that enters a scope and returns a value
 into the caller's expression — `provide`, `boundary`, `dynamic`, and any Block invocation whose result is
 consumed — has no other opportunity, so `try { … } finally { exit(c) }` is the conforming
-implementation for those.
+implementation for those. Every entry in this runtime goes through the engine's `runWithOwner`, which
+is exactly that: it saves the current owner in a local, runs the body, and restores it in a
+`finally`.
 
-**O4.2 — the cost claim is what survives, not the syntactic claim.** There is at most one `try/finally`
-per *scope-entering primitive invocation*. There is **none** per component call and **none** per
-element, because neither creates a scope (O1). Ambient state is how ownership is *observed*, never
-how it is *passed*.
+**O4.2 — the cost claim is what survives, not the syntactic claim.** There is at most one owner
+restoration per *owner-entering invocation*: a scope-creating construct (O1) and the frame
+`createComponent` opens for a component (C1) each pay one `runWithOwner`. There is **none** per
+element. Ownership is ambient, so the owner is passed by making it current and never by an
+argument.
 
 **O4.3 — which scope a catcher restores to.** Every construct with a `catch` MUST capture
 `const prev = CURRENT` on the statement immediately before its `enter`, and its `catch` clause MUST
@@ -234,52 +249,62 @@ the failed instance scope, which by O3 disposes its kids depth-first, runs their
 their signals and removes their range. Half-built DOM is never left in the document and half-registered
 cleanups are never left unrun.
 
-**O4.5 — `CURRENT` is never read to decide ownership.** It exists so that user-written `onCleanup()`
-and `useContext(Ctx)` can find their owner without being handed a scope. A framework primitive that
-consults `CURRENT` at a point where a `Scope` argument is in scope is a defect. The delegated
-dispatcher runs a handler under NO owner, and the scope stapled to the element is where a throw from
-it is routed (E2 entry 6).
+**O4.5 — work is owned by the owner current AT THE CALL, and nothing that becomes current later
+adopts it.** Ownership is ambient: `CURRENT` is what `onCleanup()`, `useContext(Ctx)`, an effect and
+every runtime primitive file their work on. A primitive MUST capture the owner when it is called
+(`insert`, `setProp`, `bindEffect`, the four flow primitives, `ref`, `listen`, `spread`), and a Block
+MUST run with its owner current for its whole body; a primitive that reads `CURRENT` again at some
+later moment, and files work on whatever it finds there, is a defect. The delegated dispatcher runs a
+handler under NO owner, and the owner stored on the element is where a throw from it is routed
+(E2 entry 6).
 
 **Falsified by.** Throw from a Block under a boundary. After the fallback has rendered: (a)
 `getOwner()` at the boundary's call site MUST be the same object it was before the boundary was
 called; (b) every cleanup registered by the failed subtree MUST have run; (c) no node built by the
 failed subtree may remain in the document; (d) a second, sibling boundary must still catch its own
-throw afterwards, which it cannot if `CURRENT` was left dangling. For O4.5: enter scope A, leave it,
-enter B, and hand A to a primitive or to a compiled binding; everything it creates must be owned by A.
+throw afterwards, which it cannot if `CURRENT` was left dangling. For O4.5: with two disjoint live
+scopes A and B, call a primitive or a compiled binding under A, then make B current for the rest of
+the procedure; disposing A MUST stop the work, and disposing B MUST NOT.
 
-**Status.** O4.1-O4.2 `VIOLATED` (no restoration on the exceptional path); O4.3 `VIOLATED` and
+**Status.** O4.1-O4.2 `HOLDS` by construction, because every entry is the engine's `runWithOwner`,
+which restores in a `finally`; no fixture throws through an entry and reads `getOwner()` afterwards.
+O4.3 `VIOLATED` and
 untestable as written, because an engine owner has no `catcher` field; O4.4 `PARTIAL` (`provide`
 disposes its instance scope on a throw, and `sem-err-construction-throw`'s
 `the-failed-subtree-is-disposed-not-abandoned` pins clause (b)); O4.5 `HOLDS`, pinned by
-`sem-own-given-scope-wins.tsx`, whose fourth claim drives the compiled emission.
+`sem-own-given-scope-wins.tsx`, which drives `insert`, `setProp`, the flow primitives, the effect the
+compiler emits for a live attribute, a Block's body and a children Block reached through `insert`.
 
 ### O5 — `render` opens a root and returns a disposer that disposes
 
 **Rule.** `render(block, container) → dispose` MUST: open a root scope; establish that root as a
 catcher, so O4.3's "the nearest catching scope always exists" is true by construction; invoke `block`
-with the root scope; insert the result; flush. The returned disposer MUST `dispose()` the root scope
+with the root scope current; insert the result; flush. The returned disposer MUST `dispose()` the root scope
 (O3, with all of O3.7) **and** remove its range.
 
 **Falsified by.** Render a tree containing an effect. Call the disposer. Write a signal the effect
 depends on. If the effect runs, O5 is false.
 
-**Status.** `HOLDS` for every spelling a compiled module can produce: the `scope` pass wraps a bare
-JSX argument in `render`/`hydrate`'s first position into a Block, so the eager form has no compiled
-spelling. The runtime still accepts an already-built subtree from a hand-written caller and warns
+**Status.** `HOLDS` for every spelling a compiled module can produce: the shape pass wraps a bare
+JSX argument in `render`/`hydrate`'s first position into a Block (`analysis::bind` records the
+spans in `ReactiveEnv::root_jsx_args`), so the eager form has no compiled spelling. The runtime still accepts an already-built subtree from a hand-written caller and warns
 (`RENDER_SUBTREE_NOT_OWNED`) when an owner was current. Pinned by
 `sem-own-render-disposer-disposes.tsx`, which drives the compiled spelling, the hand-written Block and
 a subtree built through a local.
 
-### O6 — owner and observer are separate ambients, and only the observer must be ambient
+### O6 — owner and tracking are separate ambients
 
-**Rule.** `untrack` MUST change the observer and MUST NOT change the owner. `enter`/`exit` MUST change
-the owner and MUST NOT change the observer. A cleanup registered inside `untrack` MUST attach to the
-same scope it would have attached to outside it.
+**Rule.** `untrack` MUST turn tracking off and MUST NOT change the owner. Entering a scope
+(`runWithOwner`) MUST change the owner, turns tracking off for the body it runs, and MUST restore
+both on exit, so a construction subscribes its enclosing computation to nothing (R1). A cleanup
+registered inside `untrack` MUST attach to the same scope it would have attached to outside it.
 
 **Falsified by.** Inside `untrack`, call `onCleanup(f)`; dispose the enclosing scope; `f` MUST run.
 Inside `untrack`, read a signal; the enclosing effect MUST NOT re-run when it is written.
 
-**Status.** `HOLDS`, both directions. Pinned by `sem-react-untrack-keeps-owner.tsx`.
+**Status.** `HOLDS`, both directions. The engine keeps the owner (`context`) and the tracking flag
+in two variables: `untrack` saves and clears only the flag, and `runWithOwner` sets the owner,
+clears the flag and restores both in a `finally`. Pinned by `sem-react-untrack-keeps-owner.tsx`.
 
 ---
 
@@ -307,27 +332,33 @@ by `component-boundary-props.tsx` and `arrow-body-component.tsx`.
 ### C2 — components are declared, not inferred
 
 **Rule.** A function containing JSX in value position **is** a component and MUST NOT be called
-directly as a plain function. Doing so is a diagnostic that names the fix. This is a real language
-rule and it is the price of C1.
+directly as a plain function: a direct call skips the frame `createComponent` opens (C1). Doing so
+is a diagnostic that names the fix. This is a real language rule and it is the price of C1.
 
 **Falsified by.** `const x = MyComponent({a: 1})` in a compiled module producing no diagnostic. In
 the other direction: a component whose body does not syntactically return JSX, written as a tag, must
-be treated as a component, and `rows.map((row) => <li/>)` must keep the arity `map` calls it with.
+be treated as a component — called through `createComponent`, its parameter read as a props record —
+and `rows.map((row) => <li/>)` must keep the arity `map` calls it with and receive its item.
 
-**Status.** `HOLDS`: `analysis::bind` records every named function-valued declaration, and the call
-site and the declaration read the same set. Pinned by `sem-calling-convention.tsx`, whose two C2
-claims are the two directions.
+**Status.** `PARTIAL`. The second direction `HOLDS`: `analysis::bind` records every named
+function-valued declaration, and the call site and the declaration read the same set; pinned by
+`sem-calling-convention.tsx`, whose two C2 claims are its two halves. The first direction is
+`VIOLATED`: no diagnostic code reports a direct call to a component.
 
 ### C3 — props are Cells and Blocks; the five laws
 
 **Rule.** Every own property of a props object is a `Cell` or a `Block`. No exceptions — `children`,
 `onClick`, `each`, `value`, `key`. A props member is **never** a getter and **never** a bare value.
+This is the record at run time; how a component's source reads it is C4.
 
 - **C3.1 Totality.** Stated above. It is what makes the ABI total and therefore what makes
   cross-module correctness need no cross-module knowledge.
-- **C3.2 Purity-cheapness.** A compiler-emitted Cell is exactly `() => <the JSX expression>` and is
-  **not** memoised. Calling it twice evaluates twice. A consumer that must not evaluate twice calls
-  once.
+- **C3.2 Purity-cheapness.** A compiler-emitted Cell is `() => <the JSX expression>` and is
+  **not** memoised: calling it twice evaluates twice, and a consumer that must not evaluate twice
+  calls once. Two forms carry a value fixed at the call site instead: a literal crosses as a
+  module-hoisted `const _k$N = () => …`, and a value whose identity is observable (a parameterised
+  function, an array, an object whose contents do not move) as `_$cell(v)`, evaluated once so
+  `props.onClick` is the same object at every read.
 - **C3.3 Neutrality.** A Cell neither enters nor exits tracking; it inherits the caller's tracking
   state. This is what makes "read at the point of use" mean something: the **consumer's** effect
   subscribes, at the consumer's position, not the producer's.
@@ -341,82 +372,103 @@ claims are the two directions.
 The Cell/Block reconciliation:
 
 - **C3.6 — Cells are arity-tolerant.** `Cell<T> = (...ignored: never[]) => T`. A Cell MUST ignore
-  every argument it is passed. The compiler only ever emits `() => expr`, forwards existing Cells by
-  name, or passes a signal getter — none of which declare a parameter — so this is free. A
-  hand-written "Cell" that declares a parameter or reads `arguments` is outside the ABI and is a DEV
-  diagnostic. **Consequence: `cell($s)` and `cell()` are the same call.**
+  every argument it is passed. The compiler only ever emits `() => expr`, `_k$N`, `_$cell(v)`,
+  forwards existing Cells by name, or passes a signal getter — none of which declare a parameter —
+  so this is free. A hand-written "Cell" that declares a parameter or reads `arguments` is outside
+  the ABI and is a DEV diagnostic. **Consequence: a Cell called with a construct's arguments and a Cell called with none
+  are the same call**, which is what lets one call site serve both kinds.
 - **C3.7 — a Cell is safe in a Block slot; a Block is not safe in a Cell slot.** A Block-slot consumer
-  invokes `x($c)`. If `x` is a Cell this degrades by C3.6 to `x()` and yields `T`, which the slot
-  accepts iff `T` is `Out`. A Cell-slot consumer invokes `x()`. If `x` is a Block it receives
-  `s === undefined`. The asymmetry is the whole content of the rule.
-- **C3.8 — a Block invoked without a scope MUST throw, never fall back.** `s === undefined` at a Block
-  entry raises `ScopeMissingError` carrying the Block's `origin`. It MUST NOT fall back to `CURRENT`.
-  A fallback to `CURRENT` is exactly the ambient-ownership shape this design removes, and it would
-  reintroduce the Provider bug at the one place nobody would look for it. Blocks that *use* their
-  scope are branded by the compiler (`_$b`) at their definition site — once per module for a hoisted
-  Block, zero per activation — so the check is a property test, not an arity guess. Blocks that ignore
-  their scope (an arity-0 `template()`, C6) need no brand: they are simultaneously legal Cells and the
-  degradation is harmless for C3.8's purpose. The brand is a property of the VALUE, so the refusal is
-  made where a slot READS the value: a `ref` slot invokes it with the Element and an event slot with
-  the Event, where an entry guard testing `s === undefined` is unreachable.
+  makes its instance scope current and invokes `x(...args)` with its construct's Cells. If `x` is a
+  Cell this degrades by C3.6 to `x()` and yields `T`, which the slot accepts iff `T` is `Out`. A
+  Cell-slot consumer reads `x()` with no instance scope of its own to make current, so a Block there
+  would build under whatever owner happens to be current. The asymmetry is the whole content of the
+  rule.
+- **C3.8 — a Block in a Cell slot MUST throw, never build.** A Block read where a value is expected
+  raises `ScopeMissingError` (built by `jsxAsValue`) naming the slot. It MUST NOT be invoked and its
+  result used, and it MUST NOT yield `undefined`: either would build a subtree under whatever owner is
+  current, which is the Provider bug at the one place nobody would look for it. Blocks are branded by
+  the compiler (`_$block(…)`, the runtime's `block`) at their definition site — once per module for a
+  hoisted Block, zero per activation — so the check is a property test, not an arity guess. The brand
+  is a property of the VALUE, so the refusal is made where a slot READS the value, before the Block's
+  body runs: `readSlot` (a flow construct's Cell slot through its adapter), `cellSlot` (`branch`'s
+  key, `each`'s source, `boundary`'s `on`, `portal`'s target), the attribute channels (`setAttr`,
+  `bindProp`, `readOpaque`) and a provider's `value`. A Cell that YIELDS a Block, the laundered form
+  an uncompiled `() => x` wrapper produces, is refused the same way, and so is a `pin()`ned Block.
 
-  It is **not** harmless for C7's, and the two rules have to be read together. C7 counts invocations
-  per activation and forbids a second one; C3.2 says a Cell is not memoised and calling it twice is
-  ordinary. An unbranded arity-0 `template()` is both, so nothing at runtime can tell a permitted
-  second Cell read from a forbidden second Block invocation. **C7's counter is therefore scoped to
-  BRANDED Blocks**, and an arity-0 slot is outside it.
+  C7 reads with this rule. C7 counts invocations through the construction path, and C3.2 says a Cell
+  is not memoised and reading it twice is ordinary. A Cell READ never goes through the construction
+  path, so the two rules never count the same call.
 - **C3.9 — kind travels with the value, not with the name.** Forwarding is identity (C5), so a
   forwarded Block is still a Block and a forwarded Cell is still a Cell. The only way a Block reaches
-  a Cell slot is a *consumer* reading a Block-carrying name with `()`, which is caught statically by
-  `Props<P>` when the prop is typed and dynamically by C3.8 when it is not.
+  a Cell slot is a *consumer* reading a Block-carrying prop where a value is expected, which is caught
+  statically by the types (C4) when the prop is typed and dynamically by C3.8 when it is not.
 
 **Falsified by.** (a) A counting Cell handed as a prop and then spread, rest-destructured,
 `Object.assign`ed, `for…in`ed and forwarded through three wrappers MUST report **0 reads**. (b) A Cell
 called twice MUST evaluate twice. (c) A Cell read inside a consumer's effect MUST make that effect
-re-run when the underlying signal is written. (d) Invoking a scope-using Block with no scope MUST
-throw `ScopeMissingError`, not render under an ambient owner.
+re-run when the underlying signal is written. (d) Reading a Block through a Cell slot MUST throw
+`ScopeMissingError` before the Block's body runs, not render under the current owner.
 
 **Status.** C3.6-C3.9 `HOLDS`: every one of eighteen (shape, slot) pairs takes a Block and refuses a
-Block where a Cell belongs, pinned by `sem-props-block-in-cell-slot.tsx`. C3.1-C3.5 `VIOLATED` as last
-observed: the compiler emits no getter anywhere, which is C3.4's precondition, but procedures (a) and
-(b) have no fixture.
+Block where a Cell belongs, pinned by `sem-props-block-in-cell-slot.tsx`. C3.1-C3.5 `HOLDS` for
+procedure (a), pinned by the laziness conformance tests in `packages/core/src/props.test.ts` and
+`sem-calling-convention.tsx`'s `forwarding-through-three-wrappers-reads-nothing`; procedures (b) and
+(c) are not run by any fixture of their own.
 
-### C4 — props are read by calling, and the type says so
+### C4 — props are written as values and read through their Cell, and the type says which
 
-**Rule.** `props.x()`. One rule — *a Cell is called* — holds uniformly across props, context, rows,
-refs, resources and slot arguments. There is **no** compiler rewrite of `props.x` to `props.x()`: a
-transform is legitimate only if the untransformed code has the same semantics, and this one does not.
+**Rule.** Inside a component, a prop is written as the value its type declares: `props.title`,
+`{ title }` destructured from the parameter, `title` with a default. The compiler's props pass
+(`src/props_sugar.rs`) rewrites each read, before any other stage sees the program, to the call that
+performs it:
 
-**The type:**
+- a read, `props.title` in value position → `_$readProp(props.title)`, which calls the Cell and
+  answers `undefined` for a prop the caller left out;
+- a forward, `props.title` handed straight on as a component's attribute or as a child → the Cell
+  itself, so forwarding stays identity (C5);
+- `{...props}`, `omit(props, …)` and `cells(props)` → the record;
+- any other use (`useThing(props)`, `props[key]`) → `values(props)`, a view that reads each Cell on
+  access.
+
+A destructured parameter becomes one named record and each bound name the read it stood for, so
+destructured props stay reactive; a default becomes `_$withDefault(record, key, () => …)`. Assigning
+to a prop is BARQ030 and a pattern that cannot be kept reactive is BARQ031. Code that holds the
+record of Cells outside a component — a hook handed `cells(props)`, a component written with
+`fromCells` — calls `props.title()`: one rule, *a Cell is called*, holds there uniformly across
+props, context, rows, refs and slot arguments.
+
+**The type** (`packages/core/src/scope.ts`, `packages/core/src/config.ts`):
 
 ```ts
-type Cell<T>   = (...ignored: never[]) => T                    // arity-tolerant (C3.6)
-type Block     = (s: Scope, ...args: Cell<unknown>[]) => Out    // scope is NOT optional (C3.8)
-type Slot<T>   = [T] extends [never] ? never
-               : T extends Out ? Cell<T> | Block               // an Out-typed slot accepts either
-               : Cell<T>                                       // anything else is a Cell slot only
-type Props<P>  = { [K in keyof P]-?: Slot<P[K]> } & { $?: Source[] }
-type Props     = { [k: string]: Cell<unknown> | Block } & { $?: Source[] }   // the erased view
+type Cell<T>     = (...ignored: never[]) => T                     // arity-tolerant (C3.6)
+type Block<R, A extends unknown[] = Cell<unknown>[]> = (...args: A) => R   // no scope parameter
+type Slot<T>     = Cell<T> | Block<T>                             // a renderable slot takes either
+type Incoming<P> = { [K in keyof P]: K extends "children" ? IncomingChildren<P[K]> : Accessor<P[K]> }
 ```
 
-The unparameterised `Props` is the **erasure** of `Props<P>`, not a second claim about it.
-`Slot<T>` is the reconciliation: a slot whose declared type is renderable accepts a Block *or* a Cell
-(C3.7 makes the Cell case safe); every other slot accepts a Cell only, and a Block landing there is a
-type error in value position — which is the point of stating the type at all.
+A component declares its props as values (`props: { title: string }`). `Incoming<P>` is the record
+of Cells that type crosses as, which `cells(props)` returns and `fromCells` takes. `Slot<T>` is the
+reconciliation: a renderable slot accepts a Block *or* a Cell (C3.7 makes the Cell case safe); every
+other slot accepts a Cell only, and a Block landing there is a type error in value position.
 
-**Falsified by.** `props.x` in value position where `x: string` MUST be a type error, not a silent
-`() => string`. `props.children()` where `children: JSX.Element` MUST be a type error (a `Block`
-requires a `Scope`).
+**Falsified by.** On the record of Cells: `props.x` in value position where `x: Cell<string>` MUST be
+a type error, not a silent `() => string`, and `props.children(scope)` MUST be a type error, because
+a Block takes only its construct's Cells. In a component's source: `props.x` in value position MUST
+read the value, live, and `{ x }` destructured from the parameter MUST stay live.
 
-**Status.** `HOLDS`, in the type channel only. Pinned by
+**Status.** `HOLDS`. The type channel is pinned by
 `packages/web/src/jsx-types/props-typed-slot.types.tsx`, typechecked by
 `jsx-types/attribute-types.test.ts`, which asserts the positives compile and every
-`@ts-expect-error` still fires.
+`@ts-expect-error` still fires. The rewrite is pinned by `props_sugar.rs`'s own tests and by
+`component-boundary-props.tsx`, `props-destructured-param.tsx`, `props-destructured-body.tsx` and
+`props-renamed-and-defaulted.tsx`.
 
 ### C5 — forwarding is free, depth-independent, and kind-preserving
 
-**Rule.** `<B x={props.x} />` MUST emit `B($s, { x: props.x })` — the **same** function object, not a
-new closure. Forwarding depth MUST NOT become closure depth.
+**Rule.** `<B x={props.x} />` MUST emit `_$createComponent(B, { x: props.x })` — the **same**
+function object, not a new closure. Forwarding depth MUST NOT become closure depth. A name
+destructured from the props parameter forwards the same way: it stands for the record's member, so
+it crosses as that Cell and is never re-wrapped.
 
 **C5.1 — a Block landing in a Cell slot.** Because forwarding is identity, forwarding cannot change a
 value's kind (C3.9). Therefore this situation arises only two ways, and each has a defined outcome:
@@ -441,9 +493,9 @@ value's kind (C3.9). Therefore this situation arises only two ways, and each has
    - and the whole thing is DEV-only, so a production build gets item 2 and nothing else.
 
    None is a gap in the guarantee, because item 2 is total; all of them bound what item 1 promises.
-2. **Across a module boundary**, the compiler cannot know. The consumer's `props.x()` then hits C3.8
-   and throws `ScopeMissingError` with the Block's `origin` and the consuming scope's origin chain. It
-   MUST NOT silently render under `CURRENT` and it MUST NOT silently produce `undefined`.
+2. **Across a module boundary**, the compiler cannot know. The Block then reaches the Cell slot the
+   consumer reads it in, and that slot's read hits C3.8 and throws `ScopeMissingError` naming the
+   slot. It MUST NOT silently render under `CURRENT` and it MUST NOT silently produce `undefined`.
 
 **C5.2 — η-reduction is sound and is restricted to Cells.** `x={s()}` → `x: s` is sound because a
 signal getter *is* a Cell (R6) and Cells are arity-tolerant. It MUST NOT be applied when the reduced
@@ -464,12 +516,12 @@ every hop.
 `template()` **is** a legal Block and is passed by name with zero allocation. Slot parameters are
 extra `Cell` arguments to the Block.
 
-**Falsified by.** An emitted `children:` whose value is a built node, an already-invoked expression, a
-nullary thunk, or an array of nodes. All four are O2's negation in different clothes.
+**Falsified by.** An emitted `children:` whose value is a built node, an already-invoked expression, an
+unbranded nullary thunk, or an array of nodes. All four are O2's negation in different clothes.
 
 **Status.** `HOLDS`: every children and JSX-valued slot is emitted as `_$block(…)`, branded, and the
 runtime reads every renderable slot by calling it. Nothing the compiler emits takes the arity-0
-`template()` form, because the brand C3.8 and C7 rely on costs one closure per construction.
+`template()` form, because the brand C3.8 relies on costs one closure per construction.
 `compile.rs`'s `the_whole_corpus_emits_one_calling_convention_at_both_levels` fails on any of the
 four falsifiers in any slot, and `the_calling_convention_audit_sees_all_four_of_c6s_falsifiers` shows
 it can see each. Pinned by `component-children-slot.tsx`, `sem-own-slot-arguments.tsx` and
@@ -481,9 +533,10 @@ it can see each. Pinned by `component-children-slot.tsx`, `sem-own-slot-argument
 not twice. Every consumer of a Block is a primitive owning exactly one compile-addressed slot; a
 second invocation at that slot is a DEV assertion failure naming the position.
 
-**Scope of the counter.** BRANDED Blocks only (C3.8). An unbranded arity-0 `template()` is
-simultaneously a legal Cell, and C3.2 permits calling a Cell twice, so counting it would make C7 and
-C3.2 contradict each other on one value.
+**Scope of the counter.** The construction path only: the counter is `flow.ts`'s `invoke`, which
+every construct builds a body through. A Cell READ — a hole re-reading its value, a Cell slot read
+through `readSlot` — never passes through it, so C3.2's permission to read a Cell twice and C7 never
+count the same call (C3.8).
 
 Calling a Block twice is *not* an error of the Block — building twice is correct behaviour, because
 DOM has identity and two invocations mean two subtrees. It is an error of the **consumer**.
@@ -517,9 +570,11 @@ a function child.
 
 ### C9 — the props source list
 
-**Rule.** `<Foo {...a} b={x()} {...c} />` MUST emit `Foo($s, _$props([a, { b: () => x() }, c]))`, with
-the sources in **written order** and read **last-wins**. `_$props` returns its single argument
-unchanged when the list is one plain record. A Proxy over an existing `$` concatenates rather than
+**Rule.** `<Foo {...a} b={x()} {...c} />` MUST emit
+`_$createComponent(Foo, _$props([_$carry(a), { b: () => x() }, _$carry(c)]))`, with the sources in
+**written order** and read **last-wins**. An object of values spread onto a component is carried as
+a record of Cells (`_$carry`); a props record or a view from `omit`/`merge` is carried as itself.
+`_$props` returns its single argument unchanged when the list is one plain record. A Proxy over an existing `$` concatenates rather than
 nesting, so merged merges stay linear.
 
 **Falsified by.** Later sources MUST shadow earlier ones on read; `ownKeys` and `has` MUST union all
@@ -533,13 +588,15 @@ spread emits the object itself. Pinned by `component-spread.tsx`, `spread-static
 
 ## 4. X — Context and DI
 
-### X1 — provision creates a scope, forks the record, and installs before invoking
+### X1 — provision creates a scope, binds the value, and installs before invoking
 
-**Rule.** `provide(s, Ctx, value, block)` MUST, in this order: `enter(s)` to create instance scope
-`c`; fork `c.ctx` as `Object.create(c.ctx)`; write `c.ctx[Ctx.id] = value`; **then** invoke
-`block(c)`. Every step before the invocation is mandatory and ordered. `provide` MUST restore
-`CURRENT` on both paths (O4.1). The fork is `Object.create`, not a spread copy, so its cost does not
-grow with the keys already in scope (X6).
+**Rule.** A provider — `<Ctx value={…}>`, a context being its own provider, and `provide(Ctx,
+value, block)` — MUST, in this order: create instance scope `c` as a child of the current owner;
+bind `value` on `c` (`provideOn`, the engine's `setContext`, which gives `c` a record of its own,
+X6); **then** invoke the children Block with `c` current. Every step before the invocation is
+mandatory and ordered, because a scope inherits its bindings when it is created (X3): anything built
+before the binding is written would never see it. A provider MUST restore `CURRENT` on both paths
+(O4.1).
 
 **Falsified by.** The ownership trace for `<Provider><Child/></Provider>` must show, in order:
 `enter(provider)`, `ctx-write(provider)`, `block-invoke(child, provider)`. Any other order falsifies
@@ -564,26 +621,28 @@ object it was, and the consumed text changed.
 `useContext` agree on a plain value and on a function set as one. Pinned by
 `test/context-value-live.test.ts`, `context-provider.tsx` and `sem-ctx-value-is-live.tsx`.
 
-### X3 — context resolves at READ time, through the scope chain
+### X3 — context resolves at READ time, against the record the reading scope inherited
 
-**Rule.** A context read resolves **when the read happens**, by walking the scope chain from the
-reading scope. It MUST NOT resolve at scope-creation time and it MUST NOT be captured at construction.
+**Rule.** A context read resolves **when the read happens**, against the reading owner's own record.
+A scope takes its parent's record when it is CREATED (X6), so the record holds every binding made on
+an ancestor before the scope was opened, and the nearest one wins. A read MUST NOT be captured at
+construction: a value read through a provided Cell is read at the read (X2).
 
-**The consequence.** A scope created *before* a provider installed its value still sees that value,
-provided the provider is an ancestor at read time.
+**The consequence.** A scope created *before* a provider installed its value does NOT see that
+value. This is why X1's order — bind, then build — is mandatory: the binding has to be on the
+provider's scope before any scope that should see it is opened under it. A read from a fully disposed
+scope still resolves, because disposal does not clear the record, and there is no diagnostic on the
+read side.
 
-**X3 does not make X1 optional.** X3 governs RESOLUTION: a read is a walk, performed whenever the
-read happens. X1 governs the ordering that puts something on the chain for the walk to find. Moving
-`provide`'s write to *after* it invokes its block satisfies X3's letter and breaks every thunked
-control claim in `fixtures/semantics/`. A read from a fully disposed scope still resolves, because
-disposal does not clear the record, and there is no diagnostic on the read side.
-
-**Falsified by.** Build a consumer's scope, then install a provider above it, then read. The read must
-see the provided value.
+**Falsified by.** Install a provider, build a consumer under it, read: the read must see the
+provided value. Nest two providers of one context: the inner consumer must see the inner value.
+Build a consumer's scope, then bind a value on an ancestor that already exists, then read: the read
+must NOT see it.
 
 **Status.** `HOLDS`, at depth, under shadowing, and through a `pin` whose ambient differs from its
-lexical parent. Pinned by `control-flow-error-boundary.tsx` and the `fixtures/semantics/` context
-fixtures.
+lexical parent. The engine copies the parent's record into a child at creation and reads the
+owner's own record (`getContext`). Pinned by `control-flow-error-boundary.tsx` and the
+`fixtures/semantics/` context fixtures; no fixture runs the third procedure.
 
 ### X4 — cross-boundary reads follow the scope chain, not the DOM chain
 
@@ -605,20 +664,24 @@ the logical tree.
 **Falsified by.** The thrown error's stack must name the consuming component and each enclosing
 construct, in order, in DEV.
 
-**Status.** `PARTIAL`: the throw `HOLDS`; the stack is `PLANNED`, because a scope carries no
-`origin`.
+**Status.** `PARTIAL`: the throw `HOLDS` (`contextNotFound` names the context). The stack is
+`PARTIAL`: in a development build with a diagnostics listener installed, `createComponent` marks an
+error thrown from a component body with the component path, which `errorOwnerPath` reads
+(`["<Page>", "<Broken>"]`); the path names components and not the enclosing constructs, and no
+fixture reads it for a context miss.
 
-### X6 — the context record is shared by reference until a provide forks it
+### X6 — the context record is shared by reference until a binding copies it
 
-**Rule.** A scope shares its parent's `ctx` object **by reference**. Only `provide` forks. Therefore
-the cost of a scope that provides nothing is zero, and the cost of a provider is one `Object.create`
-regardless of how many keys are in scope.
+**Rule.** A scope shares its parent's context record **by reference** when it is created. Only a
+binding (`provideOn`, `install`, `setContext`) replaces a scope's record, with a copy of it plus the
+new key. Therefore the cost of a scope that provides nothing is zero, and the cost of one binding is
+one copy of the record it extends, proportional to the keys already in scope.
 
-**Falsified by.** Allocate 200 scopes under 200 keys of context; the per-scope cost must not scale
-with the key count.
+**Falsified by.** Allocate 200 scopes under 200 keys of context, none of which binds anything; the
+per-scope cost must not scale with the key count.
 
-**Status.** `HOLDS` by construction (`provideOn` forks once, on the first provide). No benchmark
-pins the flat cost.
+**Status.** `HOLDS` by construction: the engine's owner takes `parent._context` at creation and
+`setContext` writes `{ ...record, [id]: value }`. No benchmark pins the cost.
 
 ---
 
@@ -735,10 +798,11 @@ treated as index-keyed. Rendering MUST NOT be abandoned and rows MUST NOT be sil
 ### K5 — a key expression is plain emitted JavaScript
 
 **Rule.** The runtime never evaluates a condition. `branch` receives a `Cell<K>` computing an integer
-key; `Show`, `Switch`/`Match`, ternaries, `&&`, `Dynamic` and a router `Outlet` all lower onto it.
-`Show`, `Switch`, `Match`, `Repeat`, `Dynamic` and `Portal` **cease to exist as components**
-and are recognised by `SymbolId` resolved to the framework module — never by name, which is unsound
-under shadowing.
+key; `Show`, `Switch`/`Match`, the `dynamic` factory and a router `Outlet` all lower onto it. A
+ternary or `&&` in a hole is not a construct: it is a live `insert` hole whose thunk the runtime
+re-reads. In an optimised emission `Show`, `Switch`, `Match`, `For`, `Repeat`, `Loading`, `Errored`
+and `Portal` **cease to exist as component calls**, and they are recognised by `SymbolId` resolved
+to the framework module — never by name, which is unsound under shadowing.
 
 **Falsified by.** A locally-shadowed `Show` MUST be treated as a user component, not lowered. An
 imported-and-renamed `Show` MUST be lowered.
@@ -746,8 +810,10 @@ imported-and-renamed `Show` MUST be lowered.
 **Status.** `HOLDS`. `passes/flow.rs` lowers `Show` and `Switch`/`Match` to `branch`, `For`/`Repeat`
 to `each`, `Loading` and `Errored` to `boundary` and `Portal` to `portal`, with the key as plain
 emitted JavaScript (`() => visible() ? 1 : 0`) and the `(parent, anchor)` pair from the template
-walk. A refused shape (a mapped list of `<Match>`, `Dynamic` behind a spread) keeps the component
-call, which reaches the same primitive through an adapter; `Reveal` lowers to a `reveal` call. The
+walk. A refused shape (a mapped list of `<Match>`, an unreadable `keyed` written as a static
+attribute) keeps the component call, which reaches the same primitive through an adapter in
+`packages/core/src/components.ts`, and so does every construct at `-O0`; `Reveal` lowers to a
+`reveal` call. The
 `STATIC_KEY` and `NO_SCOPE` flags are written only where the compiler proves them. Pinned by
 `renamed-core-import.tsx`, `signal-alias.tsx`, the control-flow fixtures' `optimality` declarations,
 `control-flow-show-static-key.tsx`, `control-flow-switch-static-key.tsx` and the flag census in
@@ -829,8 +895,8 @@ the boundary, not at its call site.
 the fallback MUST render.
 
 **E2.2 — a handler throw is the framework's problem.** A handler is code the framework invoked, so the
-framework owns its failure. The delegated dispatcher stores the owning scope alongside the handler —
-one `$$s` expando per ELEMENT, beside the `$$<type>` the protocol already had — and routes a throw to
+framework owns its failure. The delegated dispatcher reads the owning scope stored beside the handler —
+one `__bqs` expando per ELEMENT, written with `getOwner()` beside the `__bq_<type>` expando — and routes a throw to
 the nearest `ERROR_BOUNDARY` on that scope's chain. A listener the element owns routes the same way,
 inside `listen`, and so does one bound through `spread`, so no registration can be given one
 behaviour and another a different one.
@@ -861,14 +927,20 @@ be a new object.
 
 ### E4 — an error carries the scope chain as a component stack
 
-**Rule.** In DEV, `enter` stamps `s.origin` with `(module, unit, position, name)` and a routed error
-carries the scope chain. This is free, because the scope chain **is** the logical tree — there is no
-second structure to maintain and nothing to keep in sync.
+**Rule.** In DEV, every owner a construct or a component opens is named for what opened it, with
+its source position, and a routed error carries the owner chain. This is free, because the owner
+chain **is** the logical tree — there is no second structure to maintain and nothing to keep in
+sync.
 
 **Falsified by.** A throw at depth 5 must produce a stack naming all five enclosing constructs, in
 order, with their source positions.
 
-**Status.** `PLANNED`. No fixture.
+**Status.** `PARTIAL`. A development compile passes each component's tag name and location to
+`createComponent`, which keeps them on the component's frame (`<Comp>`), and wraps each binding and
+construct in `labelled` (`li.class`, `<Show>`) with its location; an error thrown from a component
+body carries the component path (`errorOwnerPath`), pinned by `packages/web/src/diagnostics.test.ts`
+(`["<Page>", "<Broken>"]`). The path names components only, without positions and without the
+constructs between them, and no fixture throws at depth 5.
 
 ---
 
@@ -988,8 +1060,9 @@ decides whether the read subscribes. This is the rule that makes props fine-grai
 inside a child's effect subscribes that child's effect, at the child's position, with no involvement
 from the parent.
 
-**Falsified by.** Pass `x={sig()}` (η-reduced to `x: sig`); read `props.x()` inside the child's effect;
-write `sig`. Only that child's effect may re-run. Read the same prop in the child's body; write `sig`;
+**Falsified by.** Pass `x={sig()}` (η-reduced to `x: sig`); read `props.x` inside the child's effect
+(the props pass makes it `_$readProp(props.x)`, C4); write `sig`. Only that child's effect may
+re-run. Read the same prop in the child's body; write `sig`;
 nothing may re-run.
 
 **Status.** `PLANNED`. Pinned in part by `component-boundary-props.tsx`; no fixture runs the
@@ -1110,7 +1183,8 @@ record) and `sem-react-apply-is-untracked.tsx`.
 
 ### B3 — `ref` is not a prop
 
-**Rule.** `<div ref={el}>` with a writable binding MUST emit an assignment `el = _n1`. `ref={fn}` MUST
+**Rule.** `<div ref={el}>` with a writable binding MUST emit an assignment `el = _el$N`, the
+element's own binding. `ref={fn}` MUST
 emit a ref registration that runs per M3. `useRef()` and the `{current}` shape are deleted.
 
 **Falsified by.** After render, the `let` binding MUST hold the element.
@@ -1549,12 +1623,13 @@ The specification answers, rule by rule, with no appeal to any implementation:
    "children, already built" (C6, falsification clause).
 2. **`provide` creates one scope** — `provide` is one of the six creators (O1) — as a child of the
    scope `App` is running under (O2.1).
-3. **`provide` forks the context record and writes the value, before invoking anything** (X1). The
-   fork is `Object.create`, so the cost is flat in the number of keys already in scope (X6).
+3. **`provide` binds the value on its scope before invoking anything** (X1). The binding gives the
+   scope a record of its own, copied from its parent's (X6).
 4. **`provide` invokes the children Block with that scope current** (O2), **exactly once** (C7).
-5. **`Child` runs under the provider's instance scope.** It creates no scope of its own (O1).
-6. **`useContext(Ctx)` resolves at read time by walking the scope chain from
-   `Child`'s owner** (X3, C4). It finds the provider's fork. It returns `1`.
+5. **`Child` runs under the provider's instance scope**, inside the frame `createComponent` opens
+   for it (C1). It creates no scope of its own (O1).
+6. **`useContext(Ctx)` resolves at read time against the record `Child`'s owner inherited** when it
+   was opened under the provider's scope (X3). It finds the provider's binding. It returns `1`.
 7. **The rendered output is `<span>1</span>`.**
 8. **If the provided value later changes, `<span>` is not rebuilt** — the value is a Cell, the read is
    live, and the text node is updated in place (X2, M5).
@@ -1570,12 +1645,15 @@ The specification answers, rule by rule, with no appeal to any implementation:
 The emitted module:
 
 ```js
-export const App = () => Ctx({ value: _k$1, children: _$block(() => Child({})) });
+export const App = () =>
+  Ctx({ value: _k$1, children: _$block(() => _$createComponent(Child, {})) });
 ```
 
-`Child` is inside a Block, so nothing evaluates it until the provider has entered its scope and
-written its value. Had it been an argument, `Child({})` would run at the call site, under the
-caller's owner, before the provider's scope exists, and violate **O2, O2.1, X1, C6**.
+A production compile calls the context directly, because a provider opens a scope of its own; a
+development compile wraps it in `_$createComponent` too, for the name it carries. `Child` is inside a
+Block, so nothing evaluates it until the provider has entered its scope and written its value. Had it
+been an argument, `_$createComponent(Child, {})` would run at the call site, under the caller's
+owner, before the provider's scope exists, and violate **O2, O2.1, X1, C6**.
 
 ---
 

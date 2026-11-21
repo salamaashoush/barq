@@ -505,10 +505,9 @@ fn compile_on_this_stack(
         Vec::new()
     };
 
-    // The `scope` pass used to prepend a scope parameter to every component and
-    // deferred body here. Ownership is ambient now — the runtime enters the
+    // No stage threads a scope. Ownership is ambient — the runtime enters the
     // scope a body belongs to before invoking it — so a component is a function
-    // of its props and nothing has to be threaded.
+    // of its props.
     if module.target == codegen::Target::Ssr {
         analysis::boundary::drop_server_children(&mut program, &module.scoping, options);
     }
@@ -3713,8 +3712,9 @@ export const Route = createFileRoute("/x")({ component: Page });
     /// An arity-0 arrow counts: a nullary thunk holding a template clone is a
     /// Block stripped of its brand, and the rule has no expression meaning
     /// "children, already built" precisely so that it cannot be spelled. An
-    /// arrow that TAKES the scope is a Block and is not counted, however deep
-    /// its body builds.
+    /// arrow that TAKES parameters is a construction its construct invokes with
+    /// arguments (a row's item and index) and is not counted, however deep its
+    /// body builds.
     fn builds_dom_eagerly(value: &oxc::ast::ast::Expression<'_>) -> bool {
         use oxc::ast::ast::{ArrowFunctionBody, Expression, Statement};
         match value {

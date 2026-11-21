@@ -15,7 +15,7 @@
 //!   ["insert", 1, 0, "live", null],
 //! ]];
 //! export default function App() {
-//!   return _$interp(_s$, _ir$1, [() => count()]);
+//!   return _$interp(_ir$1, [() => count()]);
 //! }
 //! ```
 //!

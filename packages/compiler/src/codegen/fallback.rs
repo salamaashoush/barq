@@ -347,7 +347,7 @@ impl<'a> Emit<'a, '_> {
     /// refused the element. Without a thunk the expression is evaluated once at
     /// the call site and the child is frozen — `<table>{a()}-{b()}</table>`
     /// emitted `{ children: [a(), "-", b()] }` and never updated again, on a
-    /// shape the template path gets right (`_$insert($s, el, a)`).
+    /// shape the template path gets right (`_$insert(el, () => a())`).
     ///
     /// So the rule here is conservative in the SAFE direction: everything that
     /// is not provably inert becomes `() => value`. A static value inside a

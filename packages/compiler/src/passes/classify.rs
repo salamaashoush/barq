@@ -555,11 +555,10 @@ impl<'a> Lift<'a, '_> {
                     return Rx { react: React::Reactive, deps: self.dep(symbol), ..Rx::OPAQUE };
                 }
                 // C3.1/C4: every own property of a props object is a Cell.
-                // Taking the reference reads nothing and CALLING it is the read,
-                // which is the same shape `Resource<T>` already has below. The
-                // getter model's verdict (the member read IS the tracked read)
-                // would make `thunk()` wrap a Cell in a second Cell at -O0 while
-                // fusion unwrapped one level at -Ox.
+                // Taking the reference reads nothing and CALLING it is the read.
+                // Taking the member read itself as the tracked read would make
+                // `thunk()` wrap a Cell in a second Cell at -O0 while fusion
+                // unwrapped one level at -Ox.
                 SourceKind::PropsParam => {
                     return Rx {
                         react: React::Static,

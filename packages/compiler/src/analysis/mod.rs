@@ -24,10 +24,9 @@ use crate::options::ResolvedOptions;
 /// `{ component: Home as never }` did not mark `Home` as used-as-a-value.
 ///
 /// What that cost is worth stating, because nothing reported it: an undetected
-/// component keeps its authored parameter list, its JSX lowers against a
-/// module-level `const _s$ = null`, its holes are emitted EAGERLY rather than
-/// as accessors, and no `block()` wraps it. The result renders once, against no
-/// scope, and never updates again.
+/// component's parameter is not classified as a props record, so its prop
+/// reads are emitted EAGERLY rather than as live reads. The result renders
+/// once and never updates again.
 pub fn without_type_wrappers<'a, 'b>(expression: &'b Expression<'a>) -> &'b Expression<'a> {
     let mut current = expression;
     loop {

@@ -1,5 +1,5 @@
-//! P4b Flow — the thirteen control-flow constructs, lowered onto `flow.ts`'s
-//! four primitives.
+//! P4b Flow — the control-flow constructs, lowered onto `flow.ts`'s
+//! primitives.
 //!
 //! A construct that reaches here stops
 //! being a component: it becomes a [`Region`] row carrying the arguments its
@@ -23,7 +23,7 @@
 //! `Reveal` lowers too. It is a `reveal` call rather than a region
 //! row, because it creates a PROVIDE scope and not a range.
 //!
-//! There are nine constructs, not thirteen: `Suspense`, `Await` and
+//! There are nine constructs: `Suspense`, `Await` and
 //! `ErrorBoundary` are not supported because Solid 2.0 ships none of them, and each was a
 //! spelling of something here — `Loading`, a `Loading` around an `Errored`, and
 //! `Errored` with the error by value. `Dynamic` went because Solid 2.0
@@ -1158,10 +1158,10 @@ fn pass_value<'a>(
 /// value is handed on untouched, which is the overwhelming case and costs
 /// neither a closure nor a call.
 ///
-/// ONE parameter, not two. While the scope was threaded a value-taking body was
-/// `(_s$, v) => …` and the test was arity beyond the scope; now it is `(v) => …`
-/// and counting past one left every keyed arm unwrapped, so `v` was undefined
-/// wherever the body actually read it.
+/// ONE parameter: a value-taking body is `(v) => …`, and a Block takes no
+/// scope, so the value is its first parameter. Counting past one would leave
+/// every keyed arm unwrapped, and `v` would be undefined wherever the body
+/// read it.
 fn wants_value(body: &Expression<'_>) -> bool {
     match body {
         // `_$block(fn)` — the brand is a call around the function it marks.

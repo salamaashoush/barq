@@ -201,11 +201,12 @@ struct Binder<'p, 'a> {
     /// Every binding this module writes as a JSX tag.
     tags: Vec<SymbolId>,
     /// O5. Every binding imported from the framework whose FIRST argument is a
-    /// Block the call itself supplies a root scope to — `render` and `hydrate`.
+    /// Block the call itself runs under a root scope — `render` and `hydrate`.
     root_mounts: Vec<SymbolId>,
     /// Every binding this module writes directly into a COMPONENT tag's slot.
     /// `<For each={rows}>{row}</For>` hands `row` to a callee that invokes it
-    /// with a scope, which is the same standing being written as a tag gives.
+    /// as a construction, which is the same standing being written as a tag
+    /// gives.
     slotted: Vec<SymbolId>,
     /// Every binding this module names as an OBJECT PROPERTY's value.
     ///
@@ -218,8 +219,8 @@ struct Binder<'p, 'a> {
     ///
     /// A PROPERTY value and not a bare argument, deliberately. `rows.map(row)`
     /// hands a JSX-returning function to a callee that invokes it with
-    /// `(item, index)` — taking that as evidence would give it a scope
-    /// parameter and put the item where the scope goes. The comment above
+    /// `(item, index)` — taking that as evidence would read its first parameter
+    /// as a props record when it holds the item. The comment above
     /// [`Binder::props_params`] names that same ambiguity; an object property
     /// does not have it.
     valued: Vec<SymbolId>,
@@ -243,11 +244,11 @@ struct Binder<'p, 'a> {
     /// Every function this module DECLARES as a component. `(owner, span, name)`.
     components: Vec<(Option<SymbolId>, Span, &'a str)>,
     /// C2, the other direction. Every named function-valued declaration in the
-    /// module, whatever its body returns. A call site emits `Comp(_s$, props)`
-    /// for anything written as a tag, so any declaration this module TAGS has to
-    /// take the scope even when it never spells JSX — `function Label(props) {
-    /// return props.text() }` is an ordinary component and binding `props` to
-    /// the scope is a silent miscompilation with both halves in view.
+    /// module, whatever its body returns. A call site emits
+    /// `_$createComponent(Comp, props)` for anything written as a tag, so any
+    /// declaration this module TAGS receives a props record even when it never
+    /// spells JSX — `function Label(props) { return props.text }` is an
+    /// ordinary component, and its parameter has to be read as one.
     declarations: Vec<(SymbolId, Span, &'a str)>,
     /// C5.1 item 1, direct: `(props symbol, prop name, the attribute that
     /// consumes it)` for every `props.x` read as an attribute on an intrinsic.
@@ -475,9 +476,9 @@ impl<'a> Binder<'_, 'a> {
         }
     }
 
-    /// The props parameter of a compiled component. Member reads on
-    /// it are ⊤-reactive because our own component emit lowers props to getters,
-    /// so without this the getter is dead weight and `{props.total}` renders once.
+    /// The props parameter of a compiled component, a record of Cells: a member
+    /// read yields the Cell and calling it is the tracked read, so without this
+    /// `{props.total}` renders once.
     ///
     /// A candidate needs BOTH halves of the evidence: the function returns JSX,
     /// and the module either writes it as a tag or lets it out. A one-parameter
@@ -571,11 +572,10 @@ impl<'a> Binder<'_, 'a> {
         }
     }
 
-    /// Only the functions this module proved to be components, so neither the
-    /// dev-label containment search nor C1's scope pass can land on a `.map`
-    /// body. Published on every build: `scope` reads it to decide which
-    /// declarations take a scope, and C2 says that answer may not depend on
-    /// whether labels were asked for.
+    /// Only the functions this module proved to be components, so the
+    /// dev-label containment search cannot land on a `.map` body. Published on
+    /// every build, because C2 says which declarations are components may not
+    /// depend on whether labels were asked for.
     fn publish_components(&mut self) {
         for index in 0..self.components.len() {
             let (owner, span, name) = self.components[index];
@@ -586,8 +586,8 @@ impl<'a> Binder<'_, 'a> {
         // C2's second half. `is_component` above wants the body to return JSX,
         // which is the evidence that tells a component from a `<For>` row
         // callback when the module only EXPORTS it. A tag site needs no such
-        // guess: this module writes the call, the call passes a scope, and the
-        // declaration has to accept one. Without this the two halves read
+        // guess: this module writes the call, the call passes a props record,
+        // and the declaration receives one. Without this the two halves read
         // different sets and the mismatch is silent.
         for index in 0..self.declarations.len() {
             let (owner, span, name) = self.declarations[index];
@@ -632,7 +632,7 @@ impl<'a> Binder<'_, 'a> {
     ///
     /// WHY THIS IS NOT THE GENERAL RULE. `is_component` is deliberately strict
     /// about a bare `const`: a JSX-returning one-parameter arrow is
-    /// indistinguishable from a `<For>` row callback, so it takes a scope only
+    /// indistinguishable from a `<For>` row callback, so it is a component only
     /// once the module tags, exports or slots it. An object property has no such
     /// ambiguity HERE and only here — the key is one the router itself invokes,
     /// and the calling convention is therefore known statically rather than
@@ -1003,7 +1003,7 @@ impl<'a> Binder<'_, 'a> {
     }
 
     /// A binding written by NAME into a component tag's slot. It is forwarded
-    /// by identity (C5) into a position the callee invokes with a scope, so it
+    /// by identity (C5) into a position the callee invokes as a construction, so it
     /// is a component declaration wherever it was written — the same standing
     /// [`Binder::is_component`] gives a binding written as a tag.
     fn slot_references(&mut self, element: &JSXElement<'a>) {
@@ -1432,7 +1432,7 @@ impl<'a> Binder<'_, 'a> {
 }
 
 /// The single identifier parameter a props object can arrive through. A
-/// destructured or defaulted pattern reads every getter at binding time, so the
+/// destructured or defaulted pattern reads every prop at binding time, so the
 /// names it produces are snapshots and marking them reactive would buy an effect
 /// that can never re-run.
 fn props_symbol(params: &FormalParameters<'_>) -> Option<SymbolId> {
@@ -1537,10 +1537,10 @@ fn yields_jsx(expression: &Expression<'_>) -> bool {
 /// that arm because its origin tracking survives reassignment; ours is a lattice
 /// that joins to ⊤ on a write, by design.
 impl<'a> Visit<'a> for Binder<'_, 'a> {
-    /// O5's Block position. `render((scope) => <App/>, host)` is the only
-    /// spelling in which the root reaches the tree, so the literal in that
-    /// argument takes a scope exactly as a Block written in a component tag's
-    /// slot does.
+    /// O5's Block position. `render(() => <App/>, host)` runs the root under
+    /// the scope `render` opens, so the literal in that argument is a Block
+    /// exactly as one written in a component tag's slot is, and a bare
+    /// `render(<App/>, host)` is recorded so the shape pass can wrap it into one.
     fn visit_call_expression(&mut self, it: &oxc::ast::ast::CallExpression<'a>) {
         if symbol_of(self.scoping, &it.callee)
             .is_some_and(|symbol| self.root_mounts.contains(&symbol))
@@ -1572,8 +1572,8 @@ impl<'a> Visit<'a> for Binder<'_, 'a> {
         // `createRootRoute({ … })`, where it is not. Matched by NAME rather than
         // by resolved import, which is what `route_split::mentions` already
         // does — the factory is never aliased in practice and a false positive
-        // costs one scope parameter on a function that returns JSX under a key
-        // called `component`.
+        // costs treating a function that returns JSX under a key called
+        // `component` as a component.
         let factory = match &it.callee {
             Expression::CallExpression(inner) => callee_name(&inner.callee),
             callee => callee_name(callee),
@@ -1746,11 +1746,11 @@ impl<'a> Visit<'a> for Binder<'_, 'a> {
     ///
     /// THROUGH A CAST. `{ component: Home as never }` is how a route table
     /// written by hand spells this, and matching `Expression::Identifier`
-    /// against the `TSAsExpression` found nothing — so `Home` was never marked
-    /// used-as-a-value, `is_component` answered no, and the function was lowered
-    /// as ordinary code containing JSX: `const _s$ = null` at module scope, its
-    /// holes eager instead of accessors, and no `block()`. It rendered once and
-    /// never updated, with nothing reported.
+    /// against the `TSAsExpression` finds nothing — so without the unwrap `Home`
+    /// is never marked used-as-a-value, `is_component` answers no, and the
+    /// function is lowered as ordinary code containing JSX, its prop reads eager
+    /// instead of live. It renders once and never updates, with nothing
+    /// reported.
     fn visit_object_expression(&mut self, it: &oxc::ast::ast::ObjectExpression<'a>) {
         for property in &it.properties {
             if let oxc::ast::ast::ObjectPropertyKind::ObjectProperty(property) = property

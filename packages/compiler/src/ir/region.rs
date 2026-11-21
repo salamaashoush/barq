@@ -68,17 +68,17 @@ pub const TAGGED: u8 = 1 << 5;
 /// primitive decides the emission and the [`Flow`] decides the diagnostic.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum RegionKind {
-    /// `branch(s, parent, anchor, key, bodies, flags)`
+    /// `branch(parent, anchor, key, bodies, flags)`
     Branch,
-    /// `each(s, parent, anchor, src, keyOf, row, flags, fallback)`
+    /// `each(parent, anchor, src, keyOf, row, flags, fallback)`
     Each,
-    /// `boundary(s, parent, anchor, "error", fallback, body, flags)`
+    /// `boundary(parent, anchor, "error", fallback, body, flags)`
     Error,
-    /// `boundary(s, parent, anchor, "loading", fallback, body, flags, on)`
+    /// `boundary(parent, anchor, "loading", fallback, body, flags, on)`
     Loading,
-    /// `portal(s, target, block, flags)`
+    /// `portal(target, block, flags)`
     Portal,
-    /// `island(s, parent, anchor, block, flags)` — a subtree the client does not
+    /// `island(parent, anchor, block, flags)` — a subtree the client does not
     /// hydrate. Not control flow: it renders its children unconditionally and
     /// exactly once, and what it changes is who CLAIMS the markup.
     Island,

@@ -47,7 +47,7 @@ higher and a hole that stopped going live moves that number.
 
 `ssrDiffers` is the one declaration left, and it is not an exemption from a reference: it
 names markup the string backend is **required** to differ on, because DESIGN §5 drops
-`Delegate`, `Listen` and `Ref` and a handler cannot exist on the wire. `ssr.test.ts`
+`Delegate`, `Listen`, `SetEvent` and `Ref` and a handler cannot exist on the wire. `ssr.test.ts`
 fails if the markup is not the declared bytes, and fails as stale if the two backends
 stop differing.
 
@@ -58,10 +58,11 @@ the emitted code is *good*, stated next to the JSX it is a claim about.
 
 ```ts
 export const optimality = {
-  target: 3,          // which of the ten optimization targets this fixture proves
+  target: 3,          // which optimization target this fixture proves (see "The corpus by target")
   effects: 0,         // effects the compiled render must create
   templates: 1,       // _$template() calls
-  patchCalls: 0,      // _$insert + _$setProp + _$spread calls
+  patchCalls: 0,      // _$insert, channel writes on an element, _$bindProp, _$ref, _$listen,
+                      // _$bindEvent and _$bindValue calls
   emits: ['class="btn btn--primary"'],
   absent: ["${base}"],
   ordered: [["hoisted handler", "function Component"]] as Array<[string, string]>,
@@ -70,7 +71,12 @@ export const optimality = {
 
 `optimality.test.ts` asserts every declaration in the corpus; none is pending. A claim the
 compiler does not meet yet is a failing test, not a skipped one. Every field is optional
-except `target`.
+except `target`. `patchCalls` counts every call the module makes after the clone: `_$insert`
+holes, the resolved channel writes (`_$setAttr`, `_$setDomProp`, `_$setLive`, `_$setClass`,
+`_$setStyle`, `_$setHtml`) whose first argument is an element binding, `_$bindProp`, and the
+element channels with entry points of their own (`_$ref`, `_$listen`, `_$bindEvent`,
+`_$bindValue`). A control-flow region is not a patch call: its primitive is handed the
+`(parent, anchor)` pair and does the joining itself.
 
 The declaration is source like any other and reaches the emitted module, so code-level
 assertions compile the fixture through `compileFixtureBody`, which strips it first.
@@ -119,9 +125,9 @@ Every fixture that is the proof of an optimization target declares it, and
 - **5 walk elision**: `sibling-walk`, `deep-walk`, `walk-from-the-back`. The cheapest route to each hole: chained from the previous hole, reached from `lastChild`, and minimal where a `firstChild` chain already is.
 - **6 template dedup**: `dedup-identical-markup`, `two-components-two-templates`. Two components emitting byte-identical markup share one `template()`, and two differing by one byte do not.
 - **7 delegated events**: `delegated-event`, `non-delegated-event`, `handler-closure`, `handler-no-closure`, `handler-by-reference`, `delegated-handler-tuple`. `__bq_click` expando writes, one `delegateEvents` per module, closure-free handlers hoisted, and a handler bound to a *variable* at either scope.
-- **8 thunk elision**: `control-flow-show-static-body`, `control-flow-for-static-body`, `control-flow-nested`. A static `Show` body is passed as a built node; a `For` ROW body keeps its thunk however static it is, because `For` calls it per row; a body with a hole keeps it too.
+- **8 thunk elision**: `control-flow-show-static-body`, `control-flow-for-static-body`, `control-flow-nested`. Each construct is a region, so its `insert` is gone. A static `Show` body costs one template and no patch call, cloned inside the Block the `branch` invokes; a `For` ROW body stays a Block however static it is, because `each` calls it per row, with one shared template cloned per row; a body with a hole keeps that hole's patch.
 - **9 marker elision**: `text-hole-trailing`, `text-hole-followed`, `text-hole-fused`, `text-hole-adjacent`, `marker-literal-text`, `hole-then-element-sibling`, `two-nested-holes`. No anchor when nothing follows, no anchor when what follows is an element, an anchor only where the text either side would fuse, and ONE anchor for two adjacent holes.
-- **8 thunk elision (cont.)**: `control-flow-reveal`, `control-flow-show-eager-children`, `control-flow-show-fragment-body`, `portal`, `dynamic`, `for-unkeyed-rows`, `switch-match-component-bodies`, `flow-prop-eta-boundary`. An eager body is handed over as built nodes; `Match` stays a real call; and η-reduction fires on the five props the runtime unwraps and on NOTHING else.
+- **8 thunk elision (cont.)**: `control-flow-reveal`, `control-flow-show-eager-children`, `control-flow-show-fragment-body`, `portal`, `dynamic`, `for-unkeyed-rows`, `switch-match-component-bodies`, `flow-prop-eta-boundary`. A body the author wrote without a thunk gets no closure of the compiler's own, only the single clone inside the Block the primitive invokes; a `Switch` over literal `<Match>` arms collapses into ONE `branch` on an integer key; and η-reduction applies to every zero-arity Cell, visible in the primitives' argument lists.
 - **9 marker elision (cont.)**: `logical-and-child`, `component-child-of-element`. A short-circuit hole and a component hole both take the following ELEMENT as their anchor.
 - **10 SSR**: `static-only`, `html-entities`, `escaping-adversarial`. Escaped static chunks, one concatenation, and every escaping context compared against the DOM the runtime would have built.
 - **11 throughput**: the whole corpus. Under 1 ms per file, measured on output that really was compiled.
@@ -146,8 +152,10 @@ leaves this directory leaves the project. The rows worth knowing about are:
 - **props, every shape**: `component-boundary-props` (plain),
   `props-destructured-param`, `props-destructured-body`,
   `props-renamed-and-defaulted`, `props-rest-spread`, `component-spread`,
-  `component-getter-props`. Flattening a getter is the failure mode, and each
-  shape flattens at a different moment.
+  `component-getter-props`. Props are Cells at run time and values in source, and
+  the failure mode is a read spent once where it should stay live: each shape (a
+  destructure, a default, a rest, a spread, a forward) is a different place the
+  props pass has to keep it live.
 - **every flow component** (`For`, `Repeat`, `Show`, `Switch`, `Match`,
   `Loading`, `Errored`, `Reveal`, `Portal`, `NoHydration`) and the `dynamic`
   factory, plus `control-flow-nested`, `for-unkeyed-rows` (`keyed={false}`,
@@ -166,17 +174,17 @@ leaves this directory leaves the project. The rows worth knowing about are:
   falsy OPERAND: `false`, `""`, `0` or `null`. Every one of them has to render as
   nothing, while `0` still renders as itself when it is the value rather than
   the guard.
-- **the two refusals nothing reached**: `component-forwarded-handler-tuple`
-  makes `getter_shaped`'s refusal branch reachable (a prop that is both
-  `React::Reactive` and function-shaped, which needs two props reads inside one
-  array or one conditional), and `flow-prop-eta-boundary` carries the
-  η-reduction whitelist from both sides in one module. Widening either was a
-  fully green mutation across the whole corpus before they existed.
+- **two boundaries nothing else reaches**: `component-forwarded-handler-tuple`
+  pins the identity of the two prop shapes where identity is observable — an
+  array evaluated once into `_$cell` and an author-written zero-arity arrow
+  forwarded as the Cell it already is, each read twice and compared — and
+  `flow-prop-eta-boundary` carries η-reduction across three different flow
+  primitives in one module, with the shapes it must not reduce beside them.
 
 ## `ssrDiffers`: markup the string backend is REQUIRED to lose
 
-DESIGN §5's opcode table drops `Delegate`, `Listen` and `Ref` on the SSR target:
-a handler and a ref resolve to a NODE, and there are no nodes on the wire. A
+DESIGN §5's opcode table drops `Delegate`, `Listen`, `SetEvent` and `Ref` on the SSR
+target: a handler and a ref resolve to a NODE, and there are no nodes on the wire. A
 fixture whose DOM render differs from its string render only BECAUSE one of them
 ran declares it:
 
@@ -188,9 +196,10 @@ export const ssrDiffers = {
 ```
 
 `ssr.test.ts` fails if the SSR markup is not `markup` byte for byte, fails as
-**stale** if the two paths stopped differing, and fails if the fixture binds none
-of the three dropped opcodes, so it cannot become a way to sign off on an
-ordinary bug. Three fixtures declare one: `ref-binding`,
+**stale** if the two paths stopped differing, and fails if the emitted DOM module
+binds no client-only channel (a `__bq_<type>` or `__bqs` expando, `_$ref`,
+`_$listen`, `_$bindEvent` or `_$bindValue`), so it cannot become a way to sign
+off on an ordinary bug. Three fixtures declare one: `ref-binding`,
 `class-owns-only-its-tokens` and `attribute-namespaces` (where `prop:` writes a
 property, which has no markup).
 
@@ -217,7 +226,7 @@ both directions: a build that panics the SSR compile turns every claim below int
 a silent pass, and a build that IGNORES `ssr: true` compares DOM against DOM and
 calls it a string-backend differential.
 
-Beside the corpus runs an escaping matrix, seven contexts by fifteen values, each
+Beside the corpus runs an escaping matrix, nine contexts by sixteen values, each
 cell asserted as a ROUND TRIP: parse the markup back and the value is still the
 value. Not "the output contains `&lt;`", which is a claim about which escaper was
 chosen; this is a claim about what a browser will do with the bytes, and it is

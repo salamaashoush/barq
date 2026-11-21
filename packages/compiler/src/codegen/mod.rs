@@ -177,26 +177,22 @@ pub enum Helper {
     Template = 0,
     Insert = 1,
     SetProp = 2,
-    /// `_$element($s, tag, props)` — one element by tag NAME, built rather than
+    /// `_$element(tag, props)` — one element by tag NAME, built rather than
     /// cloned, for an intrinsic the tree builder would not produce as written,
     /// which a template therefore cannot carry. `dynamic`'s string arm calls the
     /// same function at run time. It goes through `spread` and `insert` from
     /// there, so the props and children rules are the compiled ones.
     Element = 3,
-    /// `_$spread($s, el, sources)` on an element. The one
+    /// `_$spread(el, sources)` on an element. The one
     /// channel whose NAMES are not a compile-time fact, so the object travels
     /// whole and the runtime resolves each key through the same tables
     /// `build.rs` generates the compiler's from.
     Spread = 4,
-    /// `_$bindEffect($s, compute, apply)` — the element-binding effect, O4.5.
+    /// `_$bindEffect(compute, apply)` — the element-binding effect, O4.5.
     ///
-    /// Scope FIRST, like every other entry point on this surface. The bare
-    /// `renderEffect(compute, apply)` this replaces took no scope at all, so the
-    /// whole attribute/class/style/domprop channel was owned by whatever was
-    /// ambient at the call site rather than by the scope its Block was handed —
-    /// the exact defect O4.5 names, in the one channel the compiled path uses
-    /// most. It is also what makes `brand`'s `ReadsScope` see these components:
-    /// a body whose only reactive work is an element binding now mentions `_s$`.
+    /// It captures the owner current when it is called and opens its render
+    /// effect under it, so the whole attribute/class/style/domprop channel is
+    /// owned by the body that ran it and not by whatever becomes current later.
     BindEffect = 5,
     DelegateEvents = 6,
     /// `_$props([…])` — C9's ordered source list. Returns its single argument
@@ -207,22 +203,21 @@ pub enum Helper {
     /// FUNCTION-valued prop takes, so `props.onClick()` returns the same object
     /// every time and C5's identity claim survives a handler.
     Cell = 8,
-    /// `_$b(fn)` — the scope brand. Marks a Block that USES the scope it is
-    /// handed, once per definition site, so kind travels with the VALUE and a
-    /// consumer never has to guess it from arity. It is what makes a Block
-    /// landing in a Cell slot throw instead of being invoked with `undefined`
-    /// and silently stringified.
+    /// `_$block(fn)` — the Block brand. Marks a deferred construction once per
+    /// definition site, so kind travels with the VALUE and a consumer never has
+    /// to guess it from arity. It is what makes a Block landing in a Cell slot
+    /// throw instead of being built and silently stringified (C3.8).
     Block = 9,
     // ── `flow.ts`'s four primitives, plus `each`'s count-mode symbol ──────
     //
-    // These are what the thirteen control-flow constructs lower ONTO: the
+    // These are what the control-flow constructs lower ONTO: the
     // compiler hands each one the `(parent, anchor)` pair its own template walk
     // computed, and a flags integer carrying the properties it proved.
     Branch = 10,
     Each = 11,
     Boundary = 12,
     Portal = 13,
-    /// `island(s, parent, anchor, block, flags)` — a subtree the client does not
+    /// `island(parent, anchor, block, flags)` — a subtree the client does not
     /// hydrate.
     ///
     /// One of the names [`home`] gives two sources on purpose: one name, one
@@ -234,7 +229,7 @@ pub enum Helper {
     /// `COUNT` — `each`'s fourth mode, where `src` is a count rather than a list.
     Count = 15,
     // ── two more names that exist in BOTH halves ──────────────────────────
-    /// `_$reveal($s, order, collapsed, body)` — reveal ORDERING, which is a
+    /// `_$reveal(order, collapsed, body)` — reveal ORDERING, which is a
     /// provide scope rather than a range (O1 lists `provide` separately). Not
     /// one of the four primitives, and no component wraps it.
     Reveal = 16,
@@ -246,8 +241,8 @@ pub enum Helper {
     /// `_$readSlot(v, "origin")` — the Cell-slot read, at the one
     /// place the compiler cannot perform it itself: a prop that arrived through
     /// a SPREAD, where the source object is the author's own and nothing wrapped
-    /// its values into Cells. It is the call the fourteen adapters made under
-    /// the name `readValue`, and the `origin` string is what makes a Block
+    /// its values into Cells. It is the call the adapters in `components.ts`
+    /// make under the name `readValue`, and the `origin` string is what makes a Block
     /// landing in a Cell slot throw with the prop's name instead of stringify.
     ///
     /// It is core's because the lowering that emits it runs before the backend
@@ -267,7 +262,7 @@ pub enum Helper {
     SetClass = 22,
     SetStyle = 23,
     SetHtml = 24,
-    /// `_$bindProp($s, el, _$setAttr, "id", v)` — the ONE question kept
+    /// `_$bindProp(el, _$setAttr, "id", v)` — the ONE question kept
     /// at run time: whether the value that arrived is a live Cell. The channel
     /// is the compiler's and is passed in.
     BindProp = 25,
@@ -275,13 +270,13 @@ pub enum Helper {
     BindValue = 26,
     /// A scope-owned `ref` registration (B3, E2 #7).
     Ref = 27,
-    /// `_$formAction($s, el, value)`. `action` on a
+    /// `_$formAction(el, value)`. `action` on a
     /// `<form>` is a URL or a SUBMIT HANDLER, and nothing about the expression
     /// tells them apart: an `action()` is `(...args) => Promise<R>`, so its
     /// arity is 0 and the arity rule reads it as a Cell. The SLOT decides,
     /// exactly
-    /// as it does for `on*`. It takes a scope because the listener it installs
-    /// is owned by the position (B4).
+    /// as it does for `on*`. The listener it installs is owned by the position
+    /// (B4): the owner current when it is called.
     FormAction = 28,
     /// A scope-owned `addEventListener` (B4, E2 #6).
     Listen = 29,
@@ -307,8 +302,9 @@ pub enum Helper {
     /// `_$hole(parent, anchor, build)` — claim the server's range at a hole,
     /// THEN build the value that goes in it.
     ///
-    /// It exists for one evaluation-order fact: `_$insert(s, el, Comp(s, {}))`
-    /// evaluates `Comp` before `insert` is entered, so a component in a child
+    /// It exists for one evaluation-order fact:
+    /// `_$insert(el, _$createComponent(Comp, {}))` evaluates `Comp` before
+    /// `insert` is entered, so a component in a child
     /// position would claim from wherever the enclosing walk happened to leave
     /// the cursor rather than from its own hole. The compiler knows the position
     /// statically — that is what an address IS — so it says so, instead of the
@@ -331,7 +327,7 @@ pub enum Helper {
     SsrLoading = 47,
     SsrErrored = 48,
     SsrPortal = 49,
-    /// `ssrIsland(s, props)` — the COMPONENT form, for a build whose flow pass
+    /// `ssrIsland(props)` — the COMPONENT form, for a build whose flow pass
     /// is off. [`Island`] is the region form, whose source the target picks; this is
     /// the string backend's answer when the construct was never lowered, exactly
     /// as [`SsrPortal`] is for `Portal`.
@@ -968,11 +964,8 @@ impl<'a, 'm> Emit<'a, 'm> {
         )
     }
 
-    /// `_s$` — the scope the enclosing Block was given. The convention puts
-    /// it FIRST on every ABI primitive that constructs, so a Block reached with
-    /// no scope throws at the primitive rather than building under whatever was
-    /// ambient. One identifier at every position, so lexical shadowing does the
-    /// threading and a module-level unit reaches `const _s$ = null`.
+    /// An identifier for the reserved `_s$` base. No codegen path calls this:
+    /// no call the compiler emits takes a scope.
     pub fn scope(&mut self, span: Span) -> Expression<'a> {
         let name = self.module.uids.scope();
         self.ident(name, span)

@@ -103,7 +103,7 @@ pub struct Opt {
     /// The flow pass. On: a recognised control-flow construct is lowered onto
     /// one of `flow.ts`'s four primitives, handed the `(parent, anchor)` pair
     /// the template walk already computed and a flags integer carrying what the
-    /// compiler proved. Off: it stays `Show($s, {…})` and the runtime adapter
+    /// compiler proved. Off: it stays a `Show({…})` call and the runtime adapter
     /// does the work — a props object, an adapter frame, `(null, null)` and
     /// `flags = 0`.
     ///

@@ -31,14 +31,14 @@ use super::classify::Lift;
 /// component, a control-flow builtin, a `Ns.Item` member — becomes a real
 /// call expression built in the same arena.
 ///
-/// The call is what buys fine-grained flow across a component boundary.
-/// `createElement` copies the props object it is handed (`{ ...props }`,
-/// `dom.ts:309`), which reads every getter exactly once and freezes the result;
-/// a direct call hands the component the object this pass built, so a `Reactive`
-/// prop stays a getter and the READER decides when to read it.
+/// The call is what buys fine-grained flow across a component boundary: the
+/// component is handed the props record this pass built, every prop in it a
+/// Cell (C3), so a `Reactive` prop stays live and the READER decides when to
+/// read it.
 ///
 /// Intrinsic markup the HTML parser reshapes, and fragments, are left as JSX for
-/// codegen's `createElement` path: their semantics are the runtime's, not ours.
+/// codegen's `element()` path and array form: their semantics are the
+/// runtime's, not ours.
 pub fn run<'a>(
     allocator: &'a Allocator,
     module: &mut Module<'a>,
@@ -305,12 +305,12 @@ impl<'a> Shaper<'a, '_> {
     /// `<Comp a={x}>{k}</Comp>` →
     /// `_$createComponent(Comp, { a: () => x, children: _$block(() => k) })`.
     ///
-    /// C1: the scope the component must run under is its FIRST argument, so
-    /// mistiming is a missing argument rather than a runtime surprise. C3: every
-    /// own property of the props object is a Cell or a Block, with no exception —
-    /// `children`, `onClick`, `each`, `value`, `key`. C9: a spread is a COMPILER
-    /// CONSTRUCT, an ordered source list, never a JavaScript spread — so there
-    /// is no object to flatten and no getter to read at the copy.
+    /// C1: the component is called through `createComponent`, which runs it
+    /// under a frame of its own with the props record as its only argument. C3:
+    /// every own property of the props object is a Cell or a Block, with no
+    /// exception — `children`, `onClick`, `each`, `value`, `key`. C9: a spread
+    /// is a COMPILER CONSTRUCT, an ordered source list, never a JavaScript
+    /// spread — so there is no object to flatten and no prop read at the copy.
     fn component_call(
         &mut self,
         callee: Expression<'a>,
@@ -459,12 +459,10 @@ impl<'a> Shaper<'a, '_> {
             self.diagnose(Code::Barq004, at, STALE_ROW);
         }
 
-        // `BARQ006` is gone with the getters, and this is where that is recorded.
-        // It warned that `Dynamic`'s `{ component: _, ...rest }` reads every
-        // getter once and hands the rendered component dead values. There are
-        // no getters — every prop is a Cell, and a copy of a Cell is the same
-        // Cell (C3.4) — so the premise is false and warning anyway would be a
-        // lie about the emitted module.
+        // Nothing is reported for a component that copies its props with a
+        // rest pattern, `{ component: _, ...rest }`, and hands `rest` on: every
+        // prop is a Cell, and a copy of a Cell is the same Cell (C3.4), so the
+        // component it renders still reads live values.
 
         let props = self.source_list(sources, span);
         if !framed {
@@ -532,12 +530,12 @@ impl<'a> Shaper<'a, '_> {
         // A lone child that CHOOSES which DOM to build cannot stay a lone
         // child.
         //
-        // `buildChild` untracks a Block on purpose, so `_$block((_s$) =>
+        // `buildChild` untracks a Block on purpose, so `_$block(() =>
         // on() ? <A/> : <B/>)` picks its branch once and never again; a bare
-        // `() => …` tracks but captures the scope at the CALL site, which is
-        // the Provider bug. A function IN AN ARRAY is neither: it is a live
-        // hole of its own, and the thunk sits inside the Block, where `_s$`
-        // has already been rebound to the receiving scope. So this one case
+        // `() => …` tracks but is built under the owner current at the CALL
+        // site, which is the Provider bug. A function IN AN ARRAY is neither:
+        // it is a live hole of its own, and the thunk sits inside the Block,
+        // where the receiving scope is already current. So this one case
         // becomes the many-child case.
         //
         // `chooses_dom` and not "reactive": a plain `<Child />` is an opaque
@@ -563,10 +561,11 @@ impl<'a> Shaper<'a, '_> {
             // `label()`'s first value and never moved again.
             //
             // A moving child is THUNKED, never branded as a Block of its
-            // own. A second Block shadows the `_s$` this one just rebound,
-            // which is the Provider bug from the other side: it stopped
+            // own. A second Block is built under whatever owner places it
+            // rather than the one this Block made current, which is the
+            // Provider bug from the other side: it stops
             // `<ContextMenuTrigger>` finding the `<ContextMenu>` that
-            // installed its context. A thunk CAPTURES that binding instead,
+            // installed its context. A thunk runs inside this Block instead,
             // so a construction inside it is built under the receiving
             // scope and its condition is still a dependency of the hole.
             //
@@ -868,8 +867,8 @@ impl<'a> Shaper<'a, '_> {
 
     /// A function literal that TAKES something is a deferred construction, not
     /// a deferred read: a row callback `(item, index) => …`, a fallback handed
-    /// `(error, reset)`. A Cell is `() => T` by definition, so arity is what
-    /// separates them now that neither carries a scope parameter.
+    /// `(error, reset)`. A Cell is `() => T` by definition and a Block takes no
+    /// scope, so arity is what separates them.
     ///
     /// Forwarded unchanged — wrapping it would make the consumer's `x()` hand
     /// back the function instead of running it.
@@ -1093,7 +1092,7 @@ impl<'a> Shaper<'a, '_> {
         Some(self.ident(name, span))
     }
 
-    /// `(_s$) => value` — a Block. When the body is a compiled unit's
+    /// `_$block(() => value)` — a Block. When the body is a compiled unit's
     /// placeholder its site is retargeted, so codegen splices the walk and the
     /// patch program straight into the arrow, costing neither an IIFE nor a
     /// call.
@@ -1107,12 +1106,11 @@ impl<'a> Shaper<'a, '_> {
         self.brand(arrow, span)
     }
 
-    /// `_$b(fn)` marks the function in place and hands it back, so
+    /// `_$block(fn)` marks the function in place and hands it back, so
     /// a Block costs one property write at its definition site and no extra
     /// closure at any activation. Kind then travels with the VALUE (rule 4): a
     /// forwarded Block is still branded, a Cell never is, and no consumer has to
-    /// guess from arity — which is the guess that put a Scope where a row
-    /// callback's item belongs.
+    /// guess from arity.
     pub(super) fn brand(&mut self, value: Expression<'a>, span: Span) -> Expression<'a> {
         let callee = self.helper(Helper::Block, span);
         let arguments = ArenaVec::from_iter_in([Argument::from(value)], &self.allocator);
@@ -1523,10 +1521,10 @@ impl<'a> Shaper<'a, '_> {
         };
         let channel = read.channel;
         let name = self.lift.scoping().symbol_name(callee).to_string();
-        // The refusal is a test on the VALUE, not on the scope argument, and the
-        // message has to say so: at `ref` the Block would be invoked with the
-        // ELEMENT and at `on*` with the EVENT, so "invoked with no scope" is
-        // false at exactly the two positions where it is easiest to forward one.
+        // The refusal is a test on the VALUE, and the message has to name the
+        // position: at `ref` the Block would be invoked with the ELEMENT and at
+        // `on*` with the EVENT, so a message about a value read would be wrong
+        // at exactly the two positions where it is easiest to forward one.
         let refusal = if channel == "ref" || channel.starts_with("on") {
             "JSX is neither an element reference nor an event handler"
         } else {
@@ -1727,9 +1725,9 @@ impl<'a> VisitMut<'a> for Shaper<'a, '_> {
         // entered, so the root never owns it and the disposer only removes the
         // range. Wrapping it makes the two spellings one program.
         //
-        // `bind.rs` has always recorded the spans. `scope.rs` consumed them and
-        // is deleted, so the wrap went with it and `render(<App/>, host)` went
-        // back to building eagerly with nothing reporting it.
+        // `bind.rs` records the spans (`ReactiveEnv::root_jsx_args`); without
+        // this wrap `render(<App/>, host)` builds eagerly with nothing
+        // reporting it.
         let mount = matches!(it, Expression::JSXElement(_) | Expression::JSXFragment(_))
             .then(|| it.span())
             .filter(|span| self.lift.env().root_jsx_args.contains(span));

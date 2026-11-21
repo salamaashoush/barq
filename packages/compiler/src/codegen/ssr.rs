@@ -1252,7 +1252,7 @@ pub(crate) fn server_flow(flow: Flow) -> Helper {
         Flow::Portal => Helper::SsrPortal,
         Flow::Reveal => Helper::SsrReveal,
         // The COMPONENT form: `server_flow` is the un-lowered path, and a
-        // component takes `(s, props)`. The region form is `Helper::Island`.
+        // component takes `(props)`. The region form is `Helper::Island`.
         Flow::NoHydration => Helper::SsrIsland,
     }
 }

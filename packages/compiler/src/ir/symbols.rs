@@ -9,17 +9,17 @@ use crate::diag::Code;
 use super::{AVec, Const, react::BIT_OVERFLOW};
 
 /// What a resolved binding IS. Assigned per `SymbolId`, so shadowing is free,
-/// name collisions are impossible, and `import { signal as sig }` just works.
+/// name collisions are impossible, and `import { createSignal as sig }` just works.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum SourceKind {
     /// Calling it is a reactive read: what `createSignal()[0]` and
     /// `createMemo()` hand back.
     Accessor,
-    /// ANY member read is a reactive read: `useStore()[0]`, `projection`,
-    /// `optimisticStore()[0]`.
+    /// ANY member read is a reactive read: `createStore()[0]`,
+    /// `createProjection()`, `createOptimisticStore()[0]`.
     ReactiveObject,
-    /// A compiled component's props parameter. Member reads are ⊤-reactive
-    /// because our own component emit lowers props to getters.
+    /// A compiled component's props parameter: a record of Cells. A member
+    /// read yields the Cell, and calling it is the tracked read.
     PropsParam,
     /// Resolves to a primitive imported from `coreSource` or `moduleSource`;
     /// drives the return-shape table.
@@ -51,8 +51,8 @@ pub enum SourceKind {
 }
 
 impl SourceKind {
-    /// A user component whose props we lower to getters, versus a builtin whose
-    /// unwrapping contract we know. η-reduction is legal only for the latter.
+    /// The flow construct this binding resolves to, if it is one: a builtin
+    /// whose props contract the compiler knows, as opposed to a user component.
     #[inline]
     pub fn flow(self) -> Option<Flow> {
         match self {
@@ -94,8 +94,8 @@ pub enum Prim {
 
 impl Prim {
     /// Resolved by module specifier + imported name in P0, never by the local
-    /// binding's spelling — `import { signal as sig }` classifies, and a
-    /// user-defined `const signal = 1` does not.
+    /// binding's spelling — `import { createSignal as sig }` classifies, and a
+    /// user-defined `const createSignal = 1` does not.
     pub fn of_export(name: &str) -> Option<Self> {
         Some(match name {
             "createSignal" => Prim::Signal,
@@ -137,7 +137,7 @@ impl Prim {
 }
 
 /// How `<For>` hands a row to `children`, read off `props.keyed`
-/// (`components.ts:238-276`, `map.ts:53-57`). Three arms, not two: a key
+/// (`For` in `components.ts`, `keyMode` in `flow.ts`). Three arms, not two: a key
 /// FUNCTION boxes the item in a row signal, so the item is an ACCESSOR there
 /// and a plain value only in the by-item arm.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -161,7 +161,7 @@ impl Keyed {
     }
 
     /// The arm, and whether the source PROVED it. The runtime asks `typeof
-    /// options.keyed === "function"` (`map.ts:53`), which no static analysis can
+    /// options.keyed === "function"` (`flow.ts`'s `keyMode`), which no static analysis can
     /// answer for `keyed={KEYED}` or `keyed={props.keyed}`; those resolve to the
     /// safe arm with `proved = false`, and a consumer that would tell the author
     /// something about the row — D1 — must stay out of an unproved row.
@@ -341,14 +341,11 @@ pub struct ReactiveEnv<'a> {
     /// framework's `render`/`hydrate`, resolved by module specifier and
     /// imported name rather than by spelling.
     ///
-    /// `render(block, container)` opens the ROOT scope and calls the block with
-    /// it — that is the whole of O5 — so the block is a Block position in
-    /// exactly the sense C6 means, and its scope parameter is the only route by
-    /// which the root reaches the application. Without this a mount emits
-    /// `App(_s$, …)` against the module-level `const _s$ = null` and every
+    /// `render(block, container)` opens the ROOT scope and runs the block with
+    /// it current — that is the whole of O5 — so the block is a Block position
+    /// in exactly the sense C6 means: everything it builds, and every
     /// scope-creating primitive below it (`provide`, `branch`, `boundary`,
-    /// `portal`) opens a DETACHED root, so `render`'s disposer disposes
-    /// nothing it mounted.
+    /// `portal`), is owned by the root, and `render`'s disposer disposes it.
     pub root_blocks: Vec<Span>,
     /// O5's other spelling: a bare JSX ARGUMENT in that same first position,
     /// `render(<App/>, host)`.
@@ -360,8 +357,8 @@ pub struct ReactiveEnv<'a> {
     /// is entered the tree is built and its ownership is already decided, which
     /// is why `dom.ts` could only warn (`RENDER_SUBTREE_NOT_OWNED`).
     ///
-    /// The compiler CAN repair it, and this is the span it repairs: `scope`
-    /// wraps the expression into the Block the callee wants, so the two
+    /// The compiler CAN repair it, and this is the span it repairs: the shape
+    /// pass wraps the expression into the Block the callee wants, so the two
     /// spellings compile to one program. The runtime keeps accepting a built
     /// subtree, because a hand-written caller can still hand it one — that is
     /// what the fixture's controls drive.
@@ -391,8 +388,8 @@ pub struct ReactiveEnv<'a> {
 /// was written at, and `channel` is the attribute it lands on there — which is
 /// not always an ordinary attribute: `ref` and `on*` are Cell slots too, and at
 /// those two the value is invoked with the ELEMENT or the EVENT rather than
-/// with no scope, so a message that says "invoked with no scope" is false
-/// exactly where it matters most.
+/// read as a value, so a message that speaks of a value read is false exactly
+/// where it matters most.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CellSlot<'a> {
     pub component: SymbolId,

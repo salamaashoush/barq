@@ -92,13 +92,8 @@ pub fn emit_unit<'a>(ctx: &mut Emit<'a, '_>, unit: &mut Unit<'a>, span: Span) ->
 }
 
 /// P8a's `Backend`. Every op lowers to at most one statement, spliced into the
-/// unit's construction sequence in program order.
-///
-/// The one op with no row here — `Spread` — reaches the DOM through the props
-/// object `createElement` builds (`fallback.rs`), because P1 refuses to put an
-/// element carrying one on the template path at all. Returning `None` for it is
-/// that decision written down, not a case that fell through: there is no
-/// wildcard arm to fall through.
+/// unit's construction sequence in program order. There is no wildcard arm: a
+/// new op is a compile error here until it is given a row.
 pub struct Dom<'a, 'e, 'm, 'u> {
     pub ctx: &'e mut Emit<'a, 'm>,
     pub unit: &'u mut Unit<'a>,
@@ -396,12 +391,10 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
         Some(Statement::new_expression_statement(span, call, &self.ctx.ast))
     }
 
-    /// B3: `ref` is not a prop. A writable binding is an ASSIGNMENT — today's
-    /// `setProp(el, "ref", el)` READS the variable and never writes it — and
-    /// everything else is a scope-owned registration.
-    /// `_$formAction($s, el, value)`. The scope is here because the listener the
-    /// runtime may install is owned by the position (B4), which is also why this
-    /// is an op rather than a channel: a channel call has no scope to give it.
+    /// `_$formAction(el, value)`. The listener the runtime may install is owned
+    /// by the position (B4), the owner current at the call, which is also why
+    /// this is an op rather than a channel: the value decides whether it is an
+    /// attribute at all.
     fn form_action(&mut self, at: At<'_>, value: ExprId) -> Self::Out {
         let span = at.span();
         let element = ref_ident(self.ctx, self.unit, at.target(), span);
@@ -412,6 +405,8 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
         Some(Statement::new_expression_statement(span, call, &self.ctx.ast))
     }
 
+    /// B3: `ref` is not a prop. A writable binding is an ASSIGNMENT, and
+    /// everything else is a `_$ref` registration owned by the current owner.
     fn set_ref(&mut self, at: At<'_>, value: ExprId, write: bool) -> Self::Out {
         let span = at.span();
         let element = ref_ident(self.ctx, self.unit, at.target(), span);
@@ -620,7 +615,7 @@ pub fn region_call<'a>(
             trailing.push(needed.then(|| number(ctx, flags, span)));
             trailing.push(fallback);
         }
-        // `island(s, parent, anchor, block, flags)` — the body and nothing else.
+        // `island(parent, anchor, block, flags)` — the body and nothing else.
         // No key, no fallback: what it decides is who claims the markup.
         RegionKind::Island => {
             arguments.push(Argument::from(body));
@@ -639,7 +634,7 @@ pub fn region_call<'a>(
         RegionKind::Portal => unreachable!("handled above"),
     }
     // A trailing argument only survives if something after it does, which is
-    // what keeps `_$branch(_s$, _el$1, null, k, b)` from growing a `, 0`.
+    // what keeps `_$branch(_el$1, null, k, b)` from growing a `, 0`.
     while matches!(trailing.last(), Some(None)) {
         trailing.pop();
     }
@@ -717,7 +712,7 @@ pub(super) fn writable_target(value: Expression<'_>) -> AssignmentTarget<'_> {
 /// The fused compute/apply record.
 ///
 /// ```js
-/// _$bindEffect(_s$, () => ({ a: cls(), b: id() }), (_v$, _p$ = {}) => {
+/// _$bindEffect(() => ({ a: cls(), b: id() }), (_v$, _p$ = {}) => {
 ///   _v$.a = _$setClass(_el$1, "class", _v$.a, _p$.a);
 ///   if (_v$.b !== _p$.b) _$setAttr(_el$1, "id", _v$.b);
 /// });

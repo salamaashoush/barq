@@ -103,7 +103,8 @@ pub enum Root<'a> {
     /// The template path: an index into [`Module::units`].
     Unit(UnitId),
     /// Refused by P1 — a component, a fragment, or markup the HTML parser
-    /// reshapes. Codegen lowers it through `createElement`.
+    /// reshapes. P4 turns its components into calls, and codegen builds each
+    /// refused intrinsic with `element(tag, props)`.
     Verbatim(Expression<'a>),
 }
 
@@ -175,16 +176,10 @@ pub struct Module<'a> {
     /// a server bundle keeps the client's flow component for a call nothing
     /// makes.
     pub flow_rewrites: Vec<SymbolId>,
-    /// A JSX root was written outside every function, so no component parameter
-    /// binds the scope name P4 threads through the calls it emits. `install`
-    /// answers it with one module-scope binding, `const _s$ = null`.
-    ///
-    /// `null` is a scope VALUE and not a missing one (`scope.ts`: it is the
-    /// parent of a root), so a Block reached this way is invoked, runs, and owns
-    /// nothing — it does NOT raise `ScopeMissingError`, which only `undefined`
-    /// does. A module-level root therefore produces an ownerless subtree today.
-    /// Whether that should instead be `enterRoot()` or a diagnostic is an open
-    /// question; what it must not be is described as a throw it is not.
+    /// Read by `install`, which keeps its preamble when this is set even if the
+    /// module has no template and no helper. No stage sets it: no call the
+    /// compiler emits takes a scope, so a JSX root written outside every
+    /// function needs no module-scope binding.
     pub detached_roots: bool,
     /// Every runtime entry point's local name in this module, and which of them
     /// the compiler has already committed to. The names are derived from the
@@ -257,9 +252,8 @@ pub struct Uids<'a> {
     value: &'a str,
     /// One serialised unit of the analysed IR, for the reference backend.
     ir: &'a str,
-    /// The ownership channel. ONE name for every position: a Block declares it
-    /// too, so an inner Block shadows an outer one and a component call reaches
-    /// the innermost enclosing scope by writing this and nothing else.
+    /// The base `_s$`. Reserved so no name the compiler mints collides with it;
+    /// no call the compiler emits takes a scope.
     scope: &'a str,
     /// A module-hoisted constant Cell (`_k$N`), deduped module-wide.
     konst: &'a str,
@@ -359,7 +353,7 @@ impl<'a> Uids<'a> {
         .any(|base| name.starts_with(base))
     }
 
-    /// The scope every component takes and every Block declares.
+    /// The reserved `_s$` base.
     #[inline]
     pub fn scope(&self) -> &'a str {
         self.scope

@@ -12,12 +12,12 @@ use crate::ir::{Hoisted, Ns, TemplateId};
 use oxc::allocator::CloneIn;
 
 /// The module preamble: the helper import, then one hoisted
-/// `const _tmpl$N = /*#__PURE__*/ template("…")` per template row.
+/// `` const _tmpl$N = /* @__PURE__ */ template(`…`) `` per template row.
 pub fn run<'a>(emit: &mut Emit<'a, '_>, program: &mut Program<'a>) {
-    // A module with no template and no helper can still owe two declarations: a
-    // hoisted constant Cell, and the scope binding a detached root reads. Both
-    // are readers of nothing but themselves, so neither is caught by the two
-    // conditions that used to stand here alone.
+    // A module with no template and no helper can still owe a declaration: a
+    // hoisted constant Cell, which reads nothing but itself, so the template
+    // and helper conditions alone do not catch it. `detached_roots` is never
+    // set, so its condition never keeps the preamble.
     let cells = emit.module.hoisted.iter().any(|it| matches!(it, Hoisted::Cell { .. }));
     if emit.module.templates.is_empty()
         && !emit.used.iter().any(|used| *used)
