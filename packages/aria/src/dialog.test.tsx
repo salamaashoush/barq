@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { renderToString } from "@barqjs/server";
-import { type Child, Show, createSignal, isDev, onSettled } from "@barqjs/core";
+import { type Child, Show, createSignal, isDev, onSettled, flush } from "@barqjs/core";
 import { accessibleName, render, screen, tick, user } from "@barqjs/testing";
 import { Button } from "./button.tsx";
 import { ref } from "@barqjs/primitives/refs";
@@ -921,3 +921,61 @@ async function ssrModule<T>(source: string): Promise<T> {
   writeFileSync(file, code);
   return (await import(file)) as T;
 }
+
+describe("a popover that focus leaves", () => {
+  function Page(props: { children?: Child }) {
+    const triggerRef = ref<HTMLElement>();
+    const state = overlayTriggerState({ defaultOpen: true });
+    return (
+      <>
+        <button type="button" ref={triggerRef.set}>
+          Open
+        </button>
+        {providePopoverTrigger({ triggerRef, state, shouldContainFocus: false }, () => (
+          <Popover aria-label="Options">{props.children}</Popover>
+        ))}
+        <button type="button">Elsewhere</button>
+      </>
+    );
+  }
+
+  test("closes when focus moves to something outside it", async () => {
+    render(() => (
+      <Page>
+        <button type="button">Inside</button>
+      </Page>
+    ));
+    await settle();
+    const inside = screen.getByRole("button", { name: "Inside" });
+    inside.focus();
+    flush();
+
+    const elsewhere = screen.getByRole("button", { name: "Elsewhere" });
+    inside.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: elsewhere }));
+    elsewhere.focus();
+    await settle();
+    expect(screen.queryByRole("button", { name: "Inside" })).toBeNull();
+  });
+
+  test("stays open when focus moves into a popover it opened", async () => {
+    render(() => (
+      <Page>
+        <button type="button">Inside</button>
+        <Page>
+          <button type="button">Deeper</button>
+        </Page>
+      </Page>
+    ));
+    await settle();
+    const inside = screen.getByRole("button", { name: "Inside" });
+    inside.focus();
+    flush();
+
+    const deeper = screen.getByRole("button", { name: "Deeper" });
+    inside.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: deeper }));
+    deeper.focus();
+    await settle();
+    expect(screen.queryByRole("button", { name: "Inside" })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Deeper" })).not.toBeNull();
+  });
+});

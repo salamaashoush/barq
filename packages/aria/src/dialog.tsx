@@ -636,6 +636,7 @@ export function Popover(props: PopoverComponentProps) {
       isKeyboardDismissDisabled: () => props.isKeyboardDismissDisabled === true,
       // Focus was never moved in, so Escape arrives wherever it already was.
       shouldCloseOnEscapeAnywhere: () => !containsFocus(),
+      shouldCloseOnBlur: true,
       groupRef: nested ? group : groupRef,
     },
     domRef,

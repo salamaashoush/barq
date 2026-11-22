@@ -328,6 +328,11 @@ export function overlay(options: OverlayOptions, ref: ElementRef): OverlayResult
       // for focus genuinely moving elsewhere.
       const related = event.relatedTarget as Element | null;
       if (related === null) return;
+      // Focus going into a submenu, or into an overlay this one opened, has
+      // not left: both are this overlay's own, wherever they are mounted.
+      if (contains(access(inside), related)) return;
+      const above = openOverlays.slice(openOverlays.indexOf(ref) + 1);
+      if (above.some((child) => contains(access(child), related))) return;
       if (shouldClose(related)) options.onClose?.();
     },
   });
