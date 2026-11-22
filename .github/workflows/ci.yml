@@ -141,8 +141,11 @@ jobs:
 
       # Every package, both engine builds: each package's `test` runs its suite
       # once as shipped and once under `--conditions=development`.
+      # One package at a time. Run together, twenty suites share a two-core
+      # runner and whichever test waits on a real timer loses: a different one
+      # timed out on each run.
       - name: Run tests
-        run: bun run test
+        run: bun run test:ci
 
       # Loads what the compiler emits for each dynamic prop and checks a signal
       # write reaches the DOM, so a benchmark case cannot time a dead binding.
