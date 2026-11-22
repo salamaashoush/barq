@@ -8,7 +8,12 @@ npm run dev        # http://localhost:5173
 npm run build      # dist
 npm run preview
 npm run typecheck
+npm run check      # the compiler's findings, no build needed
+npm test           # vitest
 ```
+
+`AGENTS.md` tells a coding agent how to work in this project, and `CLAUDE.md`
+points Claude Code at it.
 
 ```
 index.html       the document

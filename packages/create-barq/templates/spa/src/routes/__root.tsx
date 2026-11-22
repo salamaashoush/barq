@@ -8,13 +8,15 @@
 
 import { NavLink, Outlet, createRootRoute } from "@barqjs/router";
 
+import { layout } from "../styles.ts";
+
 function Layout() {
   return (
-    <div>
+    <div class={layout}>
       <nav>
-        <NavLink to="/" activeClass="active">
+        <NavLink to="/" activeClass="active" activeOptions={{ exact: true }}>
           Home
-        </NavLink>{" "}
+        </NavLink>
         <NavLink to="/about" activeClass="active">
           About
         </NavLink>

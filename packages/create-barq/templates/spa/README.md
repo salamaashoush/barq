@@ -12,7 +12,12 @@ npm run build      # dist/client and dist/server
 npm run preview    # the built server, through vite preview
 npm start          # bun dist/server/serve.js
 npm run typecheck
+npm run check      # the compiler's findings, no build needed
+npm test           # vitest
 ```
+
+`AGENTS.md` tells a coding agent how to work in this project, and `CLAUDE.md`
+points Claude Code at it.
 
 ## The files
 
@@ -22,6 +27,8 @@ src/main.tsx            creates the router and renders it into #app
 src/routes/__root.tsx   the layout. No shellComponent: index.html is the document.
 src/routes/index.tsx    /
 src/routes/about.tsx    /about, whose loader calls a server function
+src/components/         components, each with its test beside it
+src/styles.ts           the styles, compiled to a stylesheet
 src/data/greeting.ts    that server function
 src/routeTree.gen.ts    written by the build. Commit it, do not edit it.
 ```

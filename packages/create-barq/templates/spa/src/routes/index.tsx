@@ -1,14 +1,13 @@
-import { createSignal } from "@barqjs/core";
 import { createFileRoute } from "@barqjs/router";
 
+import { Counter } from "../components/Counter.tsx";
+
 function Home() {
-  const [count, setCount] = createSignal(0);
   return (
     <section>
       <h1>barq</h1>
-      <button type="button" onClick={() => setCount((n) => n + 1)}>
-        clicked {count} times
-      </button>
+      <p>Edit src/routes/index.tsx and save: the page updates in place.</p>
+      <Counter />
     </section>
   );
 }

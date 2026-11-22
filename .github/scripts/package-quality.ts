@@ -354,6 +354,8 @@ export async function checkTarball(workspace: Workspace, tarball: string): Promi
 
     for (const file of files) {
       for (const [pattern, what] of FORBIDDEN) {
+        // A project template's tests are what it scaffolds, not this package's.
+        if (what === "a test file" && file.startsWith("templates/")) continue;
         if (pattern.test(file)) problems.push(`ships ${what}: ${file}`);
       }
     }

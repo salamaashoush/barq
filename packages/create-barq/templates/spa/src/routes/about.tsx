@@ -14,9 +14,9 @@ function About() {
     <section>
       <h1>About</h1>
       <Loading fallback={<p>loading…</p>}>
-        <p>{() => data()?.message}</p>
+        <p>{data()?.message}</p>
         <p>
-          answered at <code>{() => data()?.at}</code>
+          answered at <code>{data()?.at}</code>
         </p>
       </Loading>
     </section>

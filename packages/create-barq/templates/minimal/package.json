@@ -7,7 +7,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "check": "barq check src"
+    "check": "barq check src",
+    "test": "vitest run"
   },
   "dependencies": {
     "@barqjs/core": "^0.2.0-next.1",
@@ -16,8 +17,12 @@
   },
   "devDependencies": {
     "@barqjs/cli": "^0.2.0-next.1",
+    "@barqjs/diagnostics": "^0.2.0-next.1",
+    "@barqjs/testing": "^0.2.0-next.1",
     "@barqjs/vite": "^0.2.0-next.1",
+    "happy-dom": "^21.0.4",
     "typescript": "^7.0.2",
-    "vite": "^8.3.8"
+    "vite": "^8.3.8",
+    "vitest": "^4.1.6"
   }
 }

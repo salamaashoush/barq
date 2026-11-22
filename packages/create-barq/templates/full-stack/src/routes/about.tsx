@@ -16,9 +16,9 @@ function About() {
   return (
     <section>
       <h1>About</h1>
-      <p>{() => data()?.message ?? "…"}</p>
+      <p>{data()?.message ?? "…"}</p>
       <p>
-        rendered at <code>{() => data()?.at ?? "…"}</code>
+        rendered at <code>{data()?.at ?? "…"}</code>
       </p>
     </section>
   );

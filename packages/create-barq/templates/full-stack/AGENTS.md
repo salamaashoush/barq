@@ -35,17 +35,35 @@ npm run preview    # the built server, through vite preview
 npm start          # bun dist/server/serve.js
 npm run typecheck  # tsc --noEmit
 npm run check      # barq check: the compiler's findings, no build needed
+npm test           # vitest, components rendered with @barqjs/testing
 ```
 
-Run `npm run check` and `npm run typecheck` after a change, and `npm run build`
-before calling it done. `npx barq check --json` gives the findings as JSON, and
+Run `npm run check`, `npm run typecheck` and `npm test` after a change, and
+`npm run build` before calling it done. `npx barq check --json` gives the findings as JSON, and
 `npx barq check --fix` applies the repairs that are one spelling. Diagnostics print
 in the browser console, and server-side ones in the terminal of `npm run dev`.
+
+## Checking a change in the running page
+
+`npm run dev` also serves `/__barq/diagnostics`. `GET` lists what the page has
+reported; `POST {"method":"begin","params":{"scenario":"..."}}`, interact, then
+`POST {"method":"end"}` captures one interaction as an artifact with every
+finding, cost and held update in it. The agent-loops skill above explains the
+methods.
+
+## Adding components
+
+`npx barq-ui init`, then `npx barq-ui add button dialog`, copies styled,
+accessible components into `src/components/ui`. They are yours to edit.
+Import `src/components/theme/theme.ts` once in the entry before using them.
 
 ## Layout
 
 - `src/routes`: one file per route. `__root.tsx` is the document and the
   layout, and `api/health.ts` is an API route.
+- `src/components`: components, each with its `*.test.tsx` beside it.
+- `src/styles.ts`: the application's styles, written with `css` and compiled
+  to a stylesheet.
 - `src/data/greeting.ts`: a server function. A file that exports server
   functions exports nothing else (`BARQ012`).
 - `src/routeTree.gen.ts`: written by the build. Commit it, do not edit it.

@@ -18,31 +18,33 @@
     "url": "git+https://github.com/salamaashoush/barq.git",
     "directory": "packages/create-barq"
   },
+  "bin": {
+    "create-barq": "./dist/index.js"
+  },
   "files": [
     "dist",
     "templates"
   ],
   "type": "module",
   "sideEffects": true,
-  "bin": {
-    "create-barq": "./dist/index.js"
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test ./test/"
   },
   "devDependencies": {
     "@types/bun": "^1.4.4",
+    "happy-dom": "^21.0.4",
     "typescript": "^7.0.2",
-    "vite": "^8.3.8"
+    "vite": "^8.3.8",
+    "vitest": "^4.1.6"
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
-  },
-  "publishConfig": {
-    "access": "public",
-    "provenance": true
   }
 }

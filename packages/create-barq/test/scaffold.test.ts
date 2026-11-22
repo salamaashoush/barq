@@ -35,7 +35,18 @@ const OWN_MODULES = fileURLToPath(new URL("../node_modules", import.meta.url));
  * entry imports `collectCss` from `@barqjs/css`, so a project that never writes
  * a `css` block still resolves it.
  */
-const WORKSPACE = ["core", "css", "router", "server", "start", "compiler", "vite", "web"];
+const WORKSPACE = [
+  "core",
+  "css",
+  "router",
+  "server",
+  "start",
+  "compiler",
+  "vite",
+  "web",
+  "diagnostics",
+  "testing",
+];
 
 /** Built once for the whole file: a template resolves `@barqjs/*` through it. */
 function ensureBuilt(): void {
@@ -64,7 +75,7 @@ function link(target: string): void {
   for (const name of WORKSPACE) {
     symlinkSync(join(PACKAGES, name), join(modules, "@barqjs", name));
   }
-  for (const name of ["vite", "typescript", "@types", ".bin"]) {
+  for (const name of ["vite", "vitest", "happy-dom", "typescript", "@types", ".bin"]) {
     const source = join(OWN_MODULES, name);
     if (existsSync(source)) symlinkSync(source, join(modules, name));
   }
@@ -120,6 +131,12 @@ describe.each(TEMPLATES.map((template) => [template.name, template] as const))(
       // AFTER the build, because `src/routeTree.gen.ts` is written by it and
       // the project imports the file by path like any other module.
       const result = run(directory, ["node", "node_modules/.bin/tsc", "--noEmit"]);
+      expect(result.code, result.output).toBe(0);
+    }, 120_000);
+
+    test("its own tests pass", () => {
+      const { directory } = built.get(name)!;
+      const result = run(directory, ["node", "node_modules/.bin/vitest", "run"]);
       expect(result.code, result.output).toBe(0);
     }, 120_000);
 
