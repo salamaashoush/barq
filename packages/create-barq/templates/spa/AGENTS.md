@@ -67,4 +67,6 @@ Import `src/components/theme/theme.ts` once in the entry before using them.
   to a stylesheet.
 - `src/data/greeting.ts`: a server function. A file that exports server
   functions exports nothing else (`BARQ012`).
-- `src/routeTree.gen.ts`: written by the build. Commit it, do not edit it.
+- `src/routeTree.gen.ts`: written by the first `npm run dev`, `npm run build`
+  or `npm test`. Run one of them before `npm run typecheck` in a fresh
+  checkout, then commit the file. Do not edit it.
