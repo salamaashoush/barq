@@ -1,7 +1,7 @@
 {
   "name": "create-barq",
   "version": "0.2.0-next.2",
-  "description": "Scaffold a barq project from the full-stack, SPA or minimal template",
+  "description": "Create a barq project: a template, its add-ons, the install and the first commit",
   "keywords": [
     "barq",
     "create",
@@ -35,9 +35,11 @@
     "build": "tsdown",
     "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit",
-    "test": "bun test ./test/"
+    "test": "bun test ./test/",
+    "manifest": "bun tools/manifest.ts"
   },
   "devDependencies": {
+    "@clack/prompts": "^1.9.0",
     "@types/bun": "^1.4.4",
     "happy-dom": "^21.0.4",
     "typescript": "^7.0.2",

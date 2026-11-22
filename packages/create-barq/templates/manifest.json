@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "templates": {
+    "full-stack": [
+      "AGENTS.md",
+      "CLAUDE.md",
+      "README.md",
+      "_gitignore",
+      "package.json",
+      "src/components/Counter.test.tsx",
+      "src/components/Counter.tsx",
+      "src/data/greeting.ts",
+      "src/routes/__root.tsx",
+      "src/routes/about.tsx",
+      "src/routes/api/health.ts",
+      "src/routes/index.tsx",
+      "src/styles.ts",
+      "tsconfig.json",
+      "vite.config.ts"
+    ],
+    "spa": [
+      "AGENTS.md",
+      "CLAUDE.md",
+      "README.md",
+      "_gitignore",
+      "index.html",
+      "package.json",
+      "src/components/Counter.test.tsx",
+      "src/components/Counter.tsx",
+      "src/data/greeting.ts",
+      "src/main.tsx",
+      "src/routes/__root.tsx",
+      "src/routes/about.tsx",
+      "src/routes/index.tsx",
+      "src/styles.ts",
+      "tsconfig.json",
+      "vite.config.ts"
+    ],
+    "minimal": [
+      "AGENTS.md",
+      "CLAUDE.md",
+      "README.md",
+      "_gitignore",
+      "index.html",
+      "package.json",
+      "src/App.test.tsx",
+      "src/App.tsx",
+      "src/main.tsx",
+      "tsconfig.json",
+      "vite.config.ts"
+    ]
+  }
+}

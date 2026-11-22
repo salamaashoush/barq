@@ -17,8 +17,11 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+
+import { TEMPLATE_ROOT } from "./source.ts";
+
+export { TEMPLATE_ROOT };
 
 /**
  * npm REWRITES a published `.gitignore` to `.npmignore`, so a template that
@@ -27,14 +30,6 @@ import { fileURLToPath } from "node:url";
  */
 const RENAMED: Readonly<Record<string, string>> = { _gitignore: ".gitignore" };
 
-/**
- * `../templates`, from `dist/index.js` and from `src/` alike.
- *
- * Both are one directory below the package root, which is why this is a single
- * expression rather than a build-time constant.
- */
-export const TEMPLATE_ROOT = fileURLToPath(new URL("../templates", import.meta.url));
-
 export interface ScaffoldOptions {
   readonly template: string;
   readonly target: string;
@@ -42,6 +37,8 @@ export interface ScaffoldOptions {
   readonly packageName: string;
   /** Empty the target first. Refuses a non-empty directory without it. */
   readonly overwrite?: boolean;
+  /** The template's files, when they were fetched. Otherwise the bundled copy. */
+  readonly files?: ReadonlyMap<string, Uint8Array>;
 }
 
 export function isEmpty(path: string): boolean {
@@ -66,7 +63,9 @@ export function toValidPackageName(name: string): string {
 
 export function scaffold(options: ScaffoldOptions): void {
   const source = join(TEMPLATE_ROOT, options.template);
-  if (!existsSync(source)) throw new Error(`no template named "${options.template}"`);
+  if (options.files === undefined && !existsSync(source)) {
+    throw new Error(`no template named "${options.template}"`);
+  }
 
   if (options.overwrite === true && existsSync(options.target)) {
     // The directory itself survives: it may be the shell's cwd, and `.git` is
@@ -80,7 +79,14 @@ export function scaffold(options: ScaffoldOptions): void {
   }
 
   mkdirSync(options.target, { recursive: true });
-  cpSync(source, options.target, { recursive: true });
+  if (options.files === undefined) cpSync(source, options.target, { recursive: true });
+  else {
+    for (const [file, body] of options.files) {
+      const written = join(options.target, file);
+      mkdirSync(dirname(written), { recursive: true });
+      writeFileSync(written, body);
+    }
+  }
 
   for (const [from, to] of Object.entries(RENAMED)) {
     const written = join(options.target, from);

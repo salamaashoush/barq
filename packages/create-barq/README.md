@@ -1,7 +1,7 @@
 # create-barq
 
-Scaffold a barq project: a Vite app with the barq compiler, and, depending on
-the template, file routes, server rendering and server functions.
+Create a barq project: the template, its add-ons, the install and the first
+commit, in one command.
 
 ## Usage
 
@@ -11,28 +11,51 @@ npm create barq@latest my-app
 pnpm create barq my-app
 ```
 
-With no arguments it asks for a directory and a template. With them it asks
-nothing:
+It asks what it was not told: where, which template, which add-ons, whether to
+install and whether to start a repository. Every question has a flag, and
+`--yes` takes the defaults, so a script or a coding agent never meets a prompt:
 
 ```bash
-bun create barq my-app --template spa
+bun create barq my-app --template spa --add-ons ui --yes
 ```
 
 ```
 create-barq [directory] [options]
 
-  -t, --template NAME   full-stack | spa | minimal
-      --overwrite       empty the directory first
-  -h, --help            show this
+  -t, --template NAME      full-stack | spa | minimal
+      --add-ons LIST       comma separated: ui
+      --no-add-ons         none, without being asked
+      --pm NAME            npm | pnpm | yarn | bun. Defaults to the one that ran this
+      --install            install dependencies (--no-install to skip)
+      --git                start a repository with one commit (--no-git to skip)
+  -y, --yes                take every default without asking
+      --overwrite          empty the directory first
+      --ref REF            the branch, tag or commit to take templates from
+      --offline            use the templates this package was published with
+      --list-templates     what can be created (with --json for a tool)
+      --list-add-ons       what can be added (with --json for a tool)
+  -h, --help               show this
 ```
 
-Then install and start the dev server with the package manager that ran it:
+When it finishes the project is installed, its generated files are written and
+committed, and `bun run dev` starts it.
 
-```bash
-cd my-app
-bun install
-bun run dev
-```
+## Where templates come from
+
+From GitHub, at the `templates` branch of this repository, so a template that
+is fixed there reaches the next project without a release of this package. The
+branch is moved only to templates a published release has been checked with.
+
+`--offline` uses the copy this package was published with, and so does a run
+that cannot reach GitHub; it says so when that happens. `--ref` names another
+branch, tag or commit, and `BARQ_TEMPLATES` replaces the source with a base URL
+or a local directory.
+
+## Add-ons
+
+- `ui`: sets up [`barq-ui`](../ui-cli#readme), copies a theme and a starter set
+  of components (`button`, `card`, `input`, `label`) into `src/components`,
+  and imports the theme at the project's entry.
 
 ## The templates
 
@@ -49,8 +72,8 @@ from `@barqjs/vite`: `barq({ ssr: true, start })`, `barq({ start: true })` and
 `barq()`.
 
 Every template is tested before it is published. `test/scaffold.test.ts`
-scaffolds each into a temporary directory, runs its own `vite build` and `tsc`,
-starts the server it produced and fetches from it.
+scaffolds each into a temporary directory, runs its own `vite build`, `tsc` and
+tests, starts the server it produced and fetches from it.
 
 ## What a scaffolded project does not contain
 
@@ -58,9 +81,10 @@ starts the server it produced and fetches from it.
   `src/entry-server.ts` are optional overrides, and the plugin supplies the
   defaults. The `spa` template's `src/main.tsx` is the module `index.html`
   loads, not an entry the plugin looks for.
-- **No `src/routeTree.gen.ts`.** The Vite plugin writes it on the first build
-  or dev start. Commit it. It is an ordinary module the project imports by
-  path, and it typechecks and reads like one.
+- **No `src/routeTree.gen.ts` in the template.** The Vite plugin writes it,
+  and `create-barq` has it written right after the install, so it is in the
+  first commit. It is an ordinary module the project imports by path, and it
+  typechecks and reads like one.
 - **No `src/virtual.d.ts`.** The declarations for the build's own modules ship
   inside `@barqjs/router`.
 

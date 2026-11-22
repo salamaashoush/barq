@@ -31,6 +31,23 @@ npm never accepts a version twice, even after an unpublish. The first release
 from this repository is `0.2.0-next.0` because `@barqjs/core` and
 `@barqjs/testing` already have a `0.1.0` on npm from an older codebase.
 
+## Templates
+
+`create-barq` takes its templates from the `templates` branch, not from the
+package. After a release is published and a project made from `main`'s
+templates has been checked against it (scaffold, install, check, typecheck,
+test, build, and a look at it in a browser with the `ui` add-on), move the
+branch:
+
+```sh
+git push origin main:templates
+```
+
+A template fix that needs no new package version ships the same way, with no
+publish. `packages/create-barq/templates/manifest.json` lists every template
+file and is what the CLI fetches by: run `bun run manifest` in
+`packages/create-barq` after adding or removing one.
+
 ## Before merging a version PR
 
 Run the dry run from the Actions tab: Release, "Run workflow" on `main`. It does
