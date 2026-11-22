@@ -448,9 +448,15 @@ impl<'a> Lift<'a, '_> {
                 let mut rx = Rx { react: React::Static, shape: Shape::Arr, ..Rx::OPAQUE };
                 let mut first_is_function = false;
                 for (index, element) in array.elements.iter().enumerate() {
-                    let Some(expression) = element.as_expression() else {
-                        rx.react = rx.react.join(React::Opaque);
-                        continue;
+                    let expression = match element {
+                        // What a spread reads is read where the array is built,
+                        // so `[...items()]` is as reactive as `items()`.
+                        oxc::ast::ast::ArrayExpressionElement::SpreadElement(spread) => {
+                            rx = join(rx, self.rx(&spread.argument));
+                            continue;
+                        }
+                        oxc::ast::ast::ArrayExpressionElement::Elision(_) => continue,
+                        _ => element.to_expression(),
                     };
                     let part = self.rx(expression);
                     if index == 0 {

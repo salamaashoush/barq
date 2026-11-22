@@ -4565,6 +4565,37 @@ export const Route = createFileRoute("/x")({ component: Page });
         assert!(!output.code.contains("theme"), "{}", output.code);
     }
 
+    /// An array literal reads what it spreads at the moment it is built, so a
+    /// spread of a signal or of an unknown call is a read that has to run again.
+    /// Read as an element the classifier knew nothing about, `[...items()]` was
+    /// handed to `each` as a value built once, and the list never changed.
+    #[test]
+    fn an_array_that_spreads_a_read_is_built_again_when_the_read_changes() {
+        let known = "import { For, createSignal } from \"@barqjs/core\";\n\
+                     export const V = () => {\n  const [items] = createSignal([1]);\n\
+                     return <ul><For each={[...items()]}>{(x) => <li>{x}</li>}</For></ul>;\n};\n";
+        let unknown = "import { For } from \"@barqjs/core\";\n\
+                       export const V = () => {\n  const state = make();\n\
+                       return <ul><For each={[0, ...state.rows()]}>{(x) => <li>{x}</li>}</For></ul>;\n};\n";
+        let text = "import { createSignal } from \"@barqjs/core\";\n\
+                    export const V = () => {\n  const [items] = createSignal([1]);\n\
+                    return <p>{[...items()].join(\", \")}</p>;\n};\n";
+        for (source, built) in
+            [(known, "() => [...items()]"), (unknown, "() => [0, ...state.rows()]")]
+        {
+            let output = compile_ok(source, "V.tsx");
+            assert!(output.code.contains(built), "{}", output.code);
+            assert!(!output.code.contains("_$cell(["), "{}", output.code);
+        }
+        let output = compile_ok(text, "V.tsx");
+        assert!(output.code.contains("() => [...items()].join"), "{}", output.code);
+        // A spread of a plain value reads nothing and is still built once.
+        let fixed = "import { For } from \"@barqjs/core\";\nconst BASE = [1, 2];\n\
+                     export const V = () => <ul><For each={[...BASE, 3]}>{(x) => <li>{x}</li>}</For></ul>;\n";
+        let output = compile_ok(fixed, "V.tsx");
+        assert!(!output.code.contains("() => [...BASE"), "{}", output.code);
+    }
+
     /// The refusals. This is the only pass that deletes user code, so each one
     /// is a case where the binding is still reachable or still does work.
     #[test]
