@@ -193,18 +193,28 @@ if (STRICT) {
 
 const tally = { pass: 0, fail: 0, skip: 0, differ: 0 };
 
+// A case that differs by model may spin until a guard stops it: the suite's
+// own at 1,100,000 runs or `RUNAWAY` here. That is a second on a workstation
+// and fifteen on a shared CI runner with coverage on, which the suite-wide
+// timeout reported as a failure of a case that is expected to fail.
+const RUNAWAY_TIMEOUT = 120_000;
+
 for (const section of correctness) {
   describe(`conformance: ${section.name}`, () => {
     for (const { id, title, run } of section.cases) {
       const name = `#${id} ${title}`;
       const reason = MODEL[`#${id}`];
       if (reason !== undefined) {
-        test.failing(`${name} (${reason})`, () => {
-          tally.differ++;
-          barq.run(() => {
-            run(barq);
-          });
-        });
+        test.failing(
+          `${name} (${reason})`,
+          () => {
+            tally.differ++;
+            barq.run(() => {
+              run(barq);
+            });
+          },
+          RUNAWAY_TIMEOUT,
+        );
         continue;
       }
       test(name, () => {
