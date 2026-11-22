@@ -161,6 +161,12 @@ export function RadioGroup(props: RadioGroupProps) {
       data-slot="radio-group"
       isDisabled={props.isDisabled ?? props.disabled}
       isRequired={props.isRequired ?? props.required}
+      // shadcn's `required` is the native attribute: Radix writes it on its
+      // hidden input and the browser refuses the submit. `@barqjs/aria` writes
+      // it only under native validation, so that is what it asks for.
+      validationBehavior={
+        props.validationBehavior ?? (props.required === true ? "native" : undefined)
+      }
       isInvalid={invalid()}
       onChange={(value: string) => {
         props.onChange?.(value);

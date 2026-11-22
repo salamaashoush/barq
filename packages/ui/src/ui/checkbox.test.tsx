@@ -140,3 +140,40 @@ describe("Checkbox, as the bare control upstream renders", () => {
     expect(seen).toEqual([true, false]);
   });
 });
+
+describe("Checkbox, required as shadcn means it", () => {
+  test("a required box blocks the submit until it is checked", () => {
+    render(() => (
+      <form data-testid="form">
+        <Checkbox aria-label="Terms" name="terms" required />
+      </form>
+    ));
+    const form = screen.getByTestId<HTMLFormElement>("form");
+    const box = screen.getByRole<HTMLInputElement>("checkbox");
+    expect(form.checkValidity()).toBe(false);
+
+    user.click(box);
+    flush();
+
+    expect(form.checkValidity()).toBe(true);
+  });
+
+  test("a validation behaviour the caller chose is kept", () => {
+    render(() => (
+      <form data-testid="form">
+        <Checkbox aria-label="Terms" required validationBehavior="aria" />
+      </form>
+    ));
+    const box = screen.getByRole<HTMLInputElement>("checkbox");
+    expect(box.required).toBe(false);
+    expect(box.getAttribute("aria-required")).toBe("true");
+    expect(screen.getByTestId<HTMLFormElement>("form").checkValidity()).toBe(true);
+  });
+
+  test("isRequired keeps the aria behaviour", () => {
+    render(() => <Checkbox aria-label="Terms" isRequired />);
+    const box = screen.getByRole<HTMLInputElement>("checkbox");
+    expect(box.required).toBe(false);
+    expect(box.getAttribute("aria-required")).toBe("true");
+  });
+});

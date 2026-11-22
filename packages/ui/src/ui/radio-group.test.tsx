@@ -244,3 +244,24 @@ describe("RadioGroup, invalid", () => {
     expect(radios()[0]?.getAttribute("aria-invalid")).toBe("true");
   });
 });
+
+describe("RadioGroup, required as shadcn means it", () => {
+  test("a required group with nothing chosen blocks the submit", () => {
+    render(() => (
+      <form data-testid="form">
+        <RadioGroup aria-label="Size" name="size" required>
+          <RadioGroupItem value="s" aria-label="Small" />
+          <RadioGroupItem value="m" aria-label="Medium" />
+        </RadioGroup>
+      </form>
+    ));
+    const form = screen.getByTestId<HTMLFormElement>("form");
+    expect(radios().every((radio) => radio.required)).toBe(true);
+    expect(form.checkValidity()).toBe(false);
+
+    user.click(radios()[0] as HTMLElement);
+    flush();
+
+    expect(form.checkValidity()).toBe(true);
+  });
+});

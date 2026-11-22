@@ -171,6 +171,12 @@ export function Checkbox(props: CheckboxProps) {
       defaultSelected={props.defaultSelected ?? props.defaultChecked}
       isDisabled={props.isDisabled ?? props.disabled}
       isRequired={props.isRequired ?? props.required}
+      // shadcn's `required` is the native attribute: Radix writes it on its
+      // hidden input and the browser refuses the submit. `@barqjs/aria` writes
+      // it only under native validation, so that is what it asks for.
+      validationBehavior={
+        props.validationBehavior ?? (props.required === true ? "native" : undefined)
+      }
       onChange={(checked: boolean) => {
         props.onChange?.(checked);
         props.onCheckedChange?.(checked);

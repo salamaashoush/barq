@@ -556,6 +556,9 @@ function sharedOptions(
     autoFocus: () => props.autoFocus?.(),
     firstDayOfWeek: () => props.firstDayOfWeek?.() ?? props.weekStartsOn?.(),
     visibleMonths: () => props.numberOfMonths?.(),
+    // The chosen day's month comes first, as react-day-picker shows it; the
+    // state's own default centres it among three or more months.
+    selectionAlignment: () => "start",
     pagedNavigation: () => props.pagedNavigation?.(),
     visibleMonth: () => props.month?.(),
     onVisibleMonthChange: (month) => props.onMonthChange?.()?.(month),
@@ -679,9 +682,11 @@ function CalendarShell(incoming: ShellProps) {
   const props = incoming.of;
   const prevRef = makeRef<HTMLButtonElement>();
   const nextRef = makeRef<HTMLButtonElement>();
+  const rootRef = makeRef<HTMLDivElement>();
 
   const { calendarProps, prevButtonProps, nextButtonProps, errorMessageProps } = calendar(
     {
+      ref: rootRef,
       "aria-label": () => props["aria-label"]?.(),
       "aria-labelledby": () => props["aria-labelledby"]?.(),
     },
@@ -739,7 +744,7 @@ function CalendarShell(incoming: ShellProps) {
     <div
       {...elementProps}
       class={ui(root, "group/calendar", props.class?.(), props.className?.())}
-      ref={mergeRefs(props.ref?.())}
+      ref={mergeRefs(rootRef.set, props.ref?.())}
     >
       <div data-slot="calendar-months" class={months}>
         <Show when={props.hideNavigation?.() !== true}>

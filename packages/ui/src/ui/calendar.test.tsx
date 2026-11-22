@@ -307,6 +307,17 @@ describe("Calendar, several months", () => {
     );
   }
 
+  test("with three months, the month in focus comes first", () => {
+    render(() => (
+      <Calendar aria-label="Departure" defaultFocusedValue={MARCH} numberOfMonths={3} />
+    ));
+    expect(screen.getAllByRole("grid").map((grid) => accessibleName(grid))).toEqual([
+      "March 2024",
+      "April 2024",
+      "May 2024",
+    ]);
+  });
+
   test("each month is a grid named by its own caption, under one pair of arrows", () => {
     render(() => <Two />);
     const grids = screen.getAllByRole("grid");

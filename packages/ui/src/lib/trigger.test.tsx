@@ -134,3 +134,54 @@ describe("TriggerPart", () => {
     expect(control.hasAttribute("aria-haspopup")).toBe(false);
   });
 });
+
+describe("focus handlers a slot offers", () => {
+  function Focused(props: {
+    log: string[];
+    children?: Child;
+    render?: TriggerPartProps["render"];
+  }) {
+    return (
+      <TriggerPart
+        slot={{
+          props: {
+            onFocus: () => props.log.push("focus"),
+            onBlur: () => props.log.push("blur"),
+          },
+        }}
+        render={props.render}
+      >
+        {props.children}
+      </TriggerPart>
+    );
+  }
+
+  test("run once each on a rendered control", () => {
+    const log: string[] = [];
+    render(() => (
+      <Focused
+        log={log}
+        render={(trigger) => (
+          <button {...trigger.props} ref={trigger.ref}>
+            Open
+          </button>
+        )}
+      />
+    ));
+    user.focus(screen.getByRole("button"));
+    user.blur(screen.getByRole("button"));
+    expect(log).toEqual(["focus", "blur"]);
+  });
+
+  test("run once each on a component that reads the slot", () => {
+    const log: string[] = [];
+    render(() => (
+      <Focused log={log}>
+        <Chip>Open</Chip>
+      </Focused>
+    ));
+    user.focus(screen.getByRole("button"));
+    user.blur(screen.getByRole("button"));
+    expect(log).toEqual(["focus", "blur"]);
+  });
+});

@@ -99,10 +99,15 @@ function forElement(slot: TriggerSlot): TriggerRender {
   const domRef = makeRef<Element>();
   const options: ButtonOptions = slot.props;
   const { buttonProps } = button(options, domRef);
-  // `button()` delivers `onClick` itself, as part of the press. Bound on the
-  // element as well, a handler a wrapper offered through the slot runs twice
-  // for every mouse click.
-  const { onClick: _, ...forwarded } = filterDOMProps(slot.props, { global: true });
+  // `button()` delivers `onClick` itself, as part of the press, and `onFocus`
+  // and `onBlur` through `focusable`. Bound on the element as well, a handler a
+  // wrapper offered through the slot runs twice.
+  const {
+    onClick: _click,
+    onFocus: _focus,
+    onBlur: _blur,
+    ...forwarded
+  } = filterDOMProps(slot.props, { global: true });
 
   return {
     props: mergeProps(buttonProps, forwarded),
