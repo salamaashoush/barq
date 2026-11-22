@@ -28,9 +28,11 @@ import {
   ListDropTargetDelegate,
   navigateDropTarget,
   TreeDropTargetDelegate,
+  dndStrings,
   readFromDataTransfer,
   writeToDataTransfer,
 } from "./dnd/index.ts";
+import { StringFormatter } from "./i18n.ts";
 import { clearAnnouncer } from "./live.ts";
 import { isMac } from "./platform.ts";
 import { ListKeyboardDelegate } from "./selection.ts";
@@ -1527,5 +1529,21 @@ describe("TreeDropTargetDelegate", () => {
     const delegate = new TreeDropTargetDelegate(base.delegate, treeOf());
     base.answer = { type: "item", key: "project-2", dropPosition: "after" };
     expect(delegate.getDropTargetFromPoint(0, 0, () => false)).toEqual({ type: "root" });
+  });
+});
+
+describe("what drag and drop says, in the page's language", () => {
+  test("every locale has every message, and a plural follows the locale's own rules", () => {
+    const keys = Object.keys(dndStrings.forLocale("en-US"));
+    for (const locale of ["ar-AE", "de-DE", "fr-FR", "ja-JP", "ru-RU", "zh-CN"]) {
+      expect(Object.keys(dndStrings.forLocale(locale)).toSorted()).toEqual(keys.toSorted());
+    }
+    const german = new StringFormatter("de-DE", dndStrings);
+    expect(german.format("dropCanceled")).not.toBe("Drop canceled.");
+    expect(german.format("dragSelectedItems", { count: 1 })).not.toBe(
+      german.format("dragSelectedItems", { count: 3 }),
+    );
+    expect(german.format("dragSelectedItems", { count: 3 })).toContain("3");
+    expect(german.format("dropOnItem", { itemText: "salama" })).toContain("salama");
   });
 });
