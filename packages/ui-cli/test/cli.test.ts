@@ -763,6 +763,24 @@ describe.if(ready)("installing what an item needs", () => {
     expect(realpathSync((ran[0] ?? "").split(" ")[0] ?? "")).toBe(realpathSync(root));
   });
 
+  test("a barq package is installed at the release the components are from", async () => {
+    const version = (
+      JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
+        version: string;
+      }
+    ).version;
+    writeFileSync(join(root, "pnpm-lock.yaml"), "");
+    const pnpm = recorder(root, "pnpm");
+    await barq(root, "init", "--yes");
+
+    await spawn(root, ["add", "dialog"], pnpm.env);
+    const ran = readFileSync(pnpm.log, "utf8");
+    // A bare name is the `latest` tag, which in a prerelease is an older
+    // release than the components just copied.
+    expect(ran).toContain(`@barqjs/aria@${version}`);
+    expect(ran).not.toMatch(/@barqjs\/aria(\s|$)/m);
+  });
+
   test("--no-install names the command and runs nothing", async () => {
     writeFileSync(join(root, "yarn.lock"), "");
     const yarn = recorder(root, "yarn");

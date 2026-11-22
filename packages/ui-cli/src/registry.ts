@@ -34,7 +34,7 @@ export interface Source {
 /** Replaces the default registry, for a fork, a mirror or a local build. */
 export const REGISTRY_ENV = "BARQ_UI_REGISTRY";
 
-function ownVersion(): string {
+export function ownVersion(): string {
   // `../package.json` from both `src/registry.ts` and the bundled `dist/index.js`.
   const manifest = new URL("../package.json", import.meta.url);
   return (JSON.parse(readFileSync(manifest, "utf8")) as { version: string }).version;

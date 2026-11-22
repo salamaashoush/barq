@@ -16,6 +16,7 @@
 import { relative } from "node:path";
 
 import { hashOf, placed, read, rewrite, targetOf, write } from "./files.ts";
+import { ownVersion } from "./registry.ts";
 import type { RegistryItem } from "./schema.ts";
 import type { Config } from "./schema.ts";
 
@@ -117,8 +118,22 @@ export function missingDependencies(
   const wanted = new Set<string>();
   for (const item of items) {
     for (const dependency of item[field]) {
-      if (!installed.has(packageName(dependency))) wanted.add(dependency);
+      if (!installed.has(packageName(dependency))) wanted.add(released(dependency));
     }
   }
   return [...wanted].toSorted();
+}
+
+/**
+ * A barq package at the release this CLI is, where the registry named no
+ * version. The components a CLI copies are that release's, and barq's packages
+ * are versioned together: left to the package manager a bare name resolves to
+ * the `latest` tag, which during a prerelease is an older release whose API
+ * the copied components do not fit.
+ */
+function released(dependency: string): string {
+  if (!dependency.startsWith("@barqjs/") || packageName(dependency) !== dependency) {
+    return dependency;
+  }
+  return `${dependency}@${ownVersion()}`;
 }
