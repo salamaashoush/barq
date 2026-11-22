@@ -26,7 +26,7 @@ globalCss`
 `;
 
 export const layout = css`
-  max-width: 40rem;
+  max-width: 48rem;
   margin: 0 auto;
   padding: 2rem 1.5rem 4rem;
 

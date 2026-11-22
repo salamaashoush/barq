@@ -1,6 +1,7 @@
+/// <reference types="vitest/config" />
 import { barqDiagnostics } from "@barqjs/diagnostics/vite";
 import barq from "@barqjs/vite";
-import { defineConfig } from "vitest/config";
+import { defineConfig } from "vite";
 
 export default defineConfig({
   // No `ssr`: `index.html` is the document and the router renders into it in
