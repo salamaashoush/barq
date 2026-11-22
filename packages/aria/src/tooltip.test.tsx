@@ -9,6 +9,7 @@ import {
   user,
 } from "@barqjs/testing";
 import { Button } from "./button.tsx";
+import { OverlayArrow } from "./overlay-arrow.tsx";
 import { Tooltip, TooltipProvider, TooltipTrigger, resetTooltipWarmup } from "./tooltip.tsx";
 
 /** Long enough for a timer scheduled at `ms` to have run. */
@@ -465,5 +466,38 @@ describe("TooltipProvider", () => {
     await after(20);
     flush();
     expect(screen.getByRole("tooltip").textContent).toBe("Saves");
+  });
+});
+
+/** happy-dom lays nothing out; an overlay with no size has no edge to put an arrow along. */
+function laidOut(element: HTMLElement | null): void {
+  if (element === null) return;
+  Object.defineProperty(element, "offsetWidth", { value: 200, configurable: true });
+  Object.defineProperty(element, "offsetHeight", { value: 40, configurable: true });
+}
+
+describe("a tooltip's arrow", () => {
+  beforeEach(() => {
+    resetTooltipWarmup();
+  });
+
+  test("is told the side the tooltip is on, and where along it the trigger is", async () => {
+    render(() => (
+      <TooltipTrigger delay={0}>
+        <Button>Save</Button>
+        <Tooltip placement="bottom" ref={laidOut}>
+          <OverlayArrow data-testid="arrow" />
+          Saves without closing
+        </Tooltip>
+      </TooltipTrigger>
+    ));
+    user.hover(target());
+    await after(0);
+    flush();
+
+    const arrow = screen.getByTestId("arrow");
+    expect(arrow.getAttribute("data-placement")).toBe("bottom");
+    // A measured offset in pixels, not the centred fallback.
+    expect(arrow.style.left).toMatch(/px$/);
   });
 });

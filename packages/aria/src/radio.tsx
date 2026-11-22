@@ -33,10 +33,13 @@ import { focusable } from "./interactions/focusable.ts";
 import { press, type ElementRef, type PressEvent } from "./interactions/press.ts";
 import { useLocale } from "./i18n.ts";
 import { field, type FieldOptions } from "./label.ts";
-import { formReset, toggleElementType, type ToggleElementType } from "./toggle.ts";
-import { toggleInput } from "./toggle-input.tsx";
+import { focusInput, formReset, toggleElementType, type ToggleElementType } from "./toggle.ts";
+import { SelectionIndicatorProvider } from "./selection-indicator.tsx";
+import { SharedElementTransition } from "./shared-element-transition.tsx";
+import { toggleInput, withHelpText } from "./toggle-input.tsx";
 import {
   fieldValidation,
+  formValidation,
   type FormValidationState,
   type ValidateFunction,
   type ValidationBehavior,
@@ -75,7 +78,8 @@ export interface RadioGroupStateOptions {
 
 export interface RadioGroupState {
   selectedValue: Accessor<string | null>;
-  setSelectedValue(value: string): void;
+  /** `null` clears the choice, which only a form reset does. */
+  setSelectedValue(value: string | null): void;
   /**
    * The radio Tab last landed on.
    *
@@ -89,6 +93,8 @@ export interface RadioGroupState {
   isReadOnly: Accessor<boolean>;
   isRequired: Accessor<boolean>;
   isInvalid: Accessor<boolean>;
+  /** The group's own behaviour, or the form's, which every radio follows. */
+  validationBehavior: Accessor<ValidationBehavior | undefined>;
   /**
    * On the STATE rather than on `radioGroup`, because each radio reads it:
    * an invalid group marks every button in it, and a radio has no way back to
@@ -113,6 +119,7 @@ export function radioGroupState(options: RadioGroupStateOptions): RadioGroupStat
 
   const {
     state: validation,
+    behavior,
     isInvalid,
     errors,
     errorMessage,
@@ -139,6 +146,7 @@ export function radioGroupState(options: RadioGroupStateOptions): RadioGroupStat
     isReadOnly,
     isRequired: () => access(options.isRequired) === true,
     isInvalid,
+    validationBehavior: behavior,
     validation,
     errors,
     errorMessage,
@@ -147,6 +155,8 @@ export function radioGroupState(options: RadioGroupStateOptions): RadioGroupStat
 
 export interface RadioGroupOptions extends FieldOptions {
   name?: MaybeAccessor<string | undefined>;
+  /** The id of the `<form>` the radios belong to, when they are not inside it. */
+  form?: MaybeAccessor<string | undefined>;
   /** @default "vertical" */
   orientation?: MaybeAccessor<"horizontal" | "vertical" | undefined>;
   isDisabled?: MaybeAccessor<boolean | undefined>;
@@ -161,19 +171,30 @@ export interface RadioGroupResult {
   errorMessageProps: DOMProps;
   /** The shared `name`, which is what makes them one group to the platform. */
   name: Accessor<string>;
+  /** For each radio's `aria-describedby`: the group's help text and error. */
+  descriptionIds: Accessor<string | undefined>;
 }
+
+/** What a radio needs from its group's hook, which only the hook knows. */
+interface RadioGroupData {
+  form: Accessor<string | undefined>;
+  descriptionIds: Accessor<string | undefined>;
+}
+
+const radioGroupData = new WeakMap<RadioGroupState, RadioGroupData>();
 
 export function radioGroup(options: RadioGroupOptions, state: RadioGroupState): RadioGroupResult {
   const locale = useLocale();
   const groupName = id(options.name);
 
-  const { labelProps, fieldProps, descriptionProps, errorMessageProps } = field({
+  const { labelProps, fieldProps, descriptionProps, errorMessageProps, descriptionIds } = field({
     ...options,
     // A radiogroup is not a labelable element.
     labelElementType: "span",
     isInvalid: state.isInvalid,
     errorMessage: state.errorMessage,
   });
+  radioGroupData.set(state, { form: () => access(options.form), descriptionIds });
 
   const orientation = (): "horizontal" | "vertical" => access(options.orientation) ?? "vertical";
 
@@ -230,6 +251,7 @@ export function radioGroup(options: RadioGroupOptions, state: RadioGroupState): 
 
   return {
     name: groupName,
+    descriptionIds,
     radioGroupProps: mergeProps(filterDOMProps(options, { labelable: true }), fieldProps, {
       role: "radiogroup",
       "aria-orientation": orientation,
@@ -256,6 +278,8 @@ export function radioGroup(options: RadioGroupOptions, state: RadioGroupState): 
 export interface RadioOptions {
   value: MaybeAccessor<string>;
   isDisabled?: MaybeAccessor<boolean | undefined>;
+  /** Help text for this one radio, which describes it when there is any. */
+  description?: MaybeAccessor<unknown>;
   autoFocus?: MaybeAccessor<boolean | undefined>;
   children?: MaybeAccessor<unknown>;
   "aria-label"?: MaybeAccessor<string | undefined>;
@@ -269,6 +293,8 @@ export interface RadioOptions {
 export interface RadioResult {
   labelProps: DOMProps;
   inputProps: DOMProps;
+  /** For this radio's help text, outside its label. */
+  descriptionProps: DOMProps;
   isSelected: Accessor<boolean>;
   isPressed: Accessor<boolean>;
   isDisabled: Accessor<boolean>;
@@ -309,6 +335,7 @@ export function radio(
         return;
       }
       options.onPress?.(event);
+      focusInput(ref);
     },
   });
 
@@ -323,9 +350,17 @@ export function radio(
     ref,
   );
 
-  formReset(ref, state.defaultValue(), (next) => {
-    if (next !== null) state.setSelectedValue(next);
-  });
+  formReset(ref, state.defaultValue(), (next) => state.setSelectedValue(next));
+
+  const group = radioGroupData.get(state);
+  const isNative = (): boolean => state.validationBehavior() === "native";
+  formValidation({ validationBehavior: state.validationBehavior }, state.validation, ref);
+
+  const descriptionId = id();
+  const describedBy = (): string | undefined =>
+    [present(access(options.description)) ? descriptionId() : undefined, group?.descriptionIds()]
+      .filter((part): part is string => part !== undefined)
+      .join(" ") || undefined;
 
   /**
    * The roving tab index: exactly one radio in the group is tabbable.
@@ -357,11 +392,15 @@ export function radio(
         tabIndex,
         checked: isSelected,
         value,
+        form: () => group?.form(),
         disabled: isDisabled,
-        required: () => state.isRequired(),
+        // The browser refuses the submit for `required`, so only when the page
+        // asked for that.
+        required: () => state.isRequired() && isNative(),
         // On each radio as well as on the group: a screen reader moving
         // through the radios reads theirs, not the group's.
         "aria-invalid": () => state.isInvalid() || undefined,
+        "aria-describedby": describedBy,
         onChange: (event: Event) => {
           event.stopPropagation();
           state.setSelectedValue(value());
@@ -372,10 +411,28 @@ export function radio(
       },
     ),
 
+    descriptionProps: { id: descriptionId },
     isSelected,
     isPressed: () => isPressed() || labelPressed(),
     isDisabled,
   };
+}
+
+/**
+ * A radio's children, told whether it is the chosen one, so a
+ * `<SelectionIndicator>` among them is shown only there.
+ */
+function offeringSelection(
+  isSelected: Accessor<boolean>,
+  children: Incoming<{ children?: Child }>["children"],
+): Incoming<{ children?: Child }>["children"] {
+  return () => (
+    <SelectionIndicatorProvider isSelected={isSelected()}>{children}</SelectionIndicatorProvider>
+  );
+}
+
+function present(value: unknown): boolean {
+  return value !== undefined && value !== null && value !== false && value !== "";
 }
 
 // ---------------------------------------------------------------------------
@@ -406,6 +463,8 @@ export interface RadioGroupComponentProps extends StyleProps {
   value?: string | null;
   defaultValue?: string | null;
   name?: string;
+  /** The id of the `<form>` the radios belong to, when they are not inside it. */
+  form?: string;
   orientation?: "horizontal" | "vertical";
   isDisabled?: boolean;
   isReadOnly?: boolean;
@@ -463,7 +522,9 @@ export function RadioGroup(props: RadioGroupComponentProps) {
   return (
     <div {...outerProps}>
       <span {...labelProps}>{props.label}</span>
-      {props.children}
+      {/* One transition for the group, so an indicator drawn in the chosen
+          radio slides to the next one rather than appearing there. */}
+      <SharedElementTransition>{props.children}</SharedElementTransition>
       <span {...descriptionProps}>{props.description}</span>
       <span {...errorMessageProps}>
         {() => (state.isInvalid() ? (state.errorMessage() as Child) : null)}
@@ -482,6 +543,8 @@ export interface RadioComponentProps extends StyleProps {
    */
   elementType?: ToggleElementType;
   isDisabled?: boolean;
+  /** Help text for this radio, rendered after it and announced with it. */
+  description?: Child;
   autoFocus?: boolean;
   "aria-label"?: string;
   "aria-labelledby"?: string;
@@ -517,7 +580,7 @@ export function Radio(props: Incoming<RadioComponentProps>) {
   const options = fromProps(props);
   const group = useRadioGroup();
 
-  const { labelProps, inputProps, isSelected, isPressed, isDisabled } = radio(
+  const { labelProps, inputProps, descriptionProps, isSelected, isPressed, isDisabled } = radio(
     options as RadioOptions,
     group.state,
     inputRef,
@@ -550,19 +613,29 @@ export function Radio(props: Incoming<RadioComponentProps>) {
       "data-focused": isFocused,
       "data-focus-visible": isFocusVisible,
       "data-disabled": isDisabled,
+      "data-readonly": group.state.isReadOnly,
       "data-invalid": group.state.isInvalid,
+      "data-required": group.state.isRequired,
       "data-testid": () => props["data-testid"]?.(),
     },
   );
 
-  return toggleInput({
-    elementType: toggleElementType(props.elementType?.(), props.children),
-    outerProps,
-    inputProps,
-    focusProps,
-    inputRef,
-    ref: props.ref?.(),
-    children: props.children,
-    isDisabled,
-  });
+  return withHelpText(
+    toggleInput({
+      elementType: toggleElementType(props.elementType?.(), props.children),
+      outerProps,
+      inputProps,
+      focusProps,
+      inputRef,
+      ref: props.ref?.(),
+      children: offeringSelection(isSelected, props.children),
+      isDisabled,
+    }),
+    {
+      descriptionProps,
+      errorMessageProps: {},
+      description: () => props.description?.(),
+      errorMessage: () => undefined,
+    },
+  );
 }

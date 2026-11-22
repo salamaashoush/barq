@@ -29,8 +29,10 @@ import {
   ComboboxValue,
   useComboboxItem,
 } from "./combobox.tsx";
+import { Form } from "./form.tsx";
 import { provideLocale } from "./i18n.ts";
-import { Option } from "./listbox.tsx";
+import { destroyAnnouncer } from "./live.ts";
+import { Option, Section } from "./listbox.tsx";
 
 interface Fruit {
   id: string;
@@ -394,6 +396,335 @@ function Inline(props: InlineProps) {
     </ComboboxRoot>
   );
 }
+
+/** Everything the live region has been given since it was last torn down. */
+function announcements(): string[] {
+  const region = document.querySelector("[data-barq-live-announcer]");
+  if (region === null) return [];
+  return [...region.querySelectorAll('[role="log"] > div')].map((entry) => entry.textContent ?? "");
+}
+
+describe("what a combobox tells a screen reader", () => {
+  function onApple(run: () => Promise<void> | void): Promise<void> | void {
+    const platform = Object.getOwnPropertyDescriptor(navigator, "platform");
+    Object.defineProperty(navigator, "platform", { value: "MacIntel", configurable: true });
+    const restore = (): void => {
+      if (platform === undefined) Reflect.deleteProperty(navigator, "platform");
+      else Object.defineProperty(navigator, "platform", platform);
+    };
+    const done = run();
+    if (done instanceof Promise) return done.finally(restore);
+    restore();
+    return undefined;
+  }
+
+  test("opening announces how many options there are, and again when typing changes it", async () => {
+    destroyAnnouncer();
+    render(() => <Picker />);
+    user.focus(input());
+    type("b");
+    await tick();
+    expect(announcements()).toContain("2 options available.");
+
+    type("bl");
+    await tick();
+    expect(announcements()).toContain("1 option available.");
+  });
+
+  test("on an Apple device, choosing is announced", async () => {
+    await onApple(async () => {
+      destroyAnnouncer();
+      render(() => <Picker />);
+      user.focus(input());
+      type("ch");
+      await tick();
+      user.keyDown("ArrowDown");
+      user.keyDown("Enter");
+      flush();
+      await tick();
+      expect(announcements()).toContain("Cherry, selected");
+    });
+  });
+
+  test("on an Apple device, moving into a section names it", async () => {
+    await onApple(async () => {
+      destroyAnnouncer();
+      render(() => <Grouped />);
+      user.focus(input());
+      user.keyDown("ArrowDown");
+      flush();
+      await tick();
+      expect(announcements()).toContain("Entered group Fruit, with 2 options. Apple");
+    });
+  });
+
+  test("while it is open the rest of the page is hidden, and the field and the list are not", async () => {
+    render(() => (
+      <>
+        <p>behind</p>
+        <Picker />
+      </>
+    ));
+    user.focus(input());
+    type("b");
+    await tick();
+
+    expect(screen.getByText("behind").closest("[aria-hidden=true]")).not.toBeNull();
+    expect(input().closest("[aria-hidden=true]")).toBeNull();
+    expect(screen.getByRole("listbox").closest("[aria-hidden=true]")).toBeNull();
+
+    user.keyDown("Escape");
+    flush();
+    await tick();
+    expect(screen.getByText("behind").closest("[aria-hidden=true]")).toBeNull();
+  });
+
+  test("the button is named in the page's language", () => {
+    function German() {
+      provideLocale("de-DE");
+      return <Picker />;
+    }
+    render(() => <German />);
+    expect(screen.getByRole("button").getAttribute("aria-label")).toBe("Empfehlungen anzeigen");
+  });
+});
+
+interface Food {
+  id: string;
+  name: string;
+  children?: Food[];
+}
+
+const FOOD: Food[] = [
+  {
+    id: "fruit",
+    name: "Fruit",
+    children: [
+      { id: "apple", name: "Apple" },
+      { id: "banana", name: "Banana" },
+    ],
+  },
+  { id: "veg", name: "Veg", children: [{ id: "leek", name: "Leek" }] },
+];
+
+function Grouped() {
+  return (
+    <ComboBox label="Food" items={FOOD} getTextValue={(item: Food) => item.name}>
+      {(item: Food) =>
+        item.children === undefined ? <Option>{item.name}</Option> : <Section title={item.name} />
+      }
+    </ComboBox>
+  );
+}
+
+describe("a combobox's list and value", () => {
+  test("typing filters inside sections, and drops a section left empty", async () => {
+    render(() => <Grouped />);
+    user.focus(input());
+    type("lee");
+    await tick();
+
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["Leek"]);
+    expect(screen.queryByText("Fruit")).toBeNull();
+  });
+
+  test("items that arrive after an empty result open the list again", async () => {
+    const [items, setItems] = createSignal<Fruit[]>([{ id: "zest", name: "Zest" }]);
+    render(() => (
+      <ComboBox label="Fruit" items={items()} getTextValue={(fruit: Fruit) => fruit.name}>
+        {(fruit: Fruit) => <Option>{fruit.name}</Option>}
+      </ComboBox>
+    ));
+    user.focus(input());
+    type("z");
+    await tick();
+    expect(input().getAttribute("aria-expanded")).toBe("true");
+
+    // The search answered with nothing, then with something.
+    setItems([]);
+    flush();
+    await tick();
+    expect(input().getAttribute("aria-expanded")).toBe("false");
+
+    setItems([{ id: "zucchini", name: "Zucchini" }]);
+    flush();
+    await tick();
+    expect(input().getAttribute("aria-expanded")).toBe("true");
+    expect(document.activeElement).toBe(input());
+  });
+
+  test("Escape after a query that emptied the list does not open it again", async () => {
+    render(() => <Picker />);
+    user.focus(input());
+    type("b");
+    await tick();
+    type("bzzz");
+    await tick();
+    expect(screen.queryByRole("listbox")).toBeNull();
+
+    user.keyDown("Escape");
+    flush();
+    await tick();
+    flush();
+    expect(input().value).toBe("");
+    expect(screen.queryByRole("listbox")).toBeNull();
+  });
+
+  test("coming back to a field left on an empty query does not open the list", async () => {
+    render(() => (
+      <>
+        <Picker />
+        <button type="button">elsewhere</button>
+      </>
+    ));
+    user.focus(input());
+    type("b");
+    await tick();
+    type("bzzz");
+    await tick();
+    user.focus(screen.getByRole("button", { name: "elsewhere" }));
+    flush();
+    await tick();
+    expect(screen.queryByRole("listbox")).toBeNull();
+
+    user.focus(input());
+    flush();
+    await tick();
+    flush();
+    expect(screen.queryByRole("listbox")).toBeNull();
+  });
+
+  for (const formValue of ["key", "text"] as const) {
+    test(`a server error for its name reaches it (formValue ${formValue})`, async () => {
+      render(() => (
+        <Form validationErrors={{ fruit: "Pick a fruit we sell" }}>
+          <ComboBox
+            label="Fruit"
+            name="fruit"
+            formValue={formValue}
+            items={FRUITS}
+            getTextValue={(fruit: Fruit) => fruit.name}
+          >
+            {(fruit: Fruit) => <Option>{fruit.name}</Option>}
+          </ComboBox>
+        </Form>
+      ));
+      await tick();
+      expect(input().getAttribute("aria-invalid")).toBe("true");
+    });
+  }
+
+  test("a form submits the chosen key, not the text shown", () => {
+    const { container } = render(() => (
+      <form>
+        <ComboBox
+          label="Fruit"
+          name="fruit"
+          items={FRUITS}
+          defaultSelectedKey="banana"
+          getTextValue={(fruit: Fruit) => fruit.name}
+        >
+          {(fruit: Fruit) => <Option>{fruit.name}</Option>}
+        </ComboBox>
+      </form>
+    ));
+    const data = new FormData(container.querySelector("form") as HTMLFormElement);
+    expect(data.getAll("fruit")).toEqual(["banana"]);
+  });
+
+  test("with formValue text, or a custom value allowed, the text is what is submitted", () => {
+    const { container } = render(() => (
+      <form>
+        <ComboBox
+          label="Fruit"
+          name="fruit"
+          formValue="text"
+          items={FRUITS}
+          defaultSelectedKey="banana"
+          getTextValue={(fruit: Fruit) => fruit.name}
+        >
+          {(fruit: Fruit) => <Option>{fruit.name}</Option>}
+        </ComboBox>
+        <ComboBox
+          label="Colour"
+          name="colour"
+          allowsCustomValue
+          items={FRUITS}
+          defaultInputValue="teal"
+          getTextValue={(fruit: Fruit) => fruit.name}
+        >
+          {(fruit: Fruit) => <Option>{fruit.name}</Option>}
+        </ComboBox>
+      </form>
+    ));
+    const data = new FormData(container.querySelector("form") as HTMLFormElement);
+    expect(data.getAll("fruit")).toEqual(["Banana"]);
+    expect(data.getAll("colour")).toEqual(["teal"]);
+  });
+
+  test("a form reset puts the field and the selection back together", async () => {
+    const chosen: (Key | null)[] = [];
+    const { container } = render(() => (
+      <form>
+        <ComboBox
+          label="Fruit"
+          name="fruit"
+          items={FRUITS}
+          defaultSelectedKey="banana"
+          onSelectionChange={(key) => chosen.push(key)}
+          getTextValue={(fruit: Fruit) => fruit.name}
+        >
+          {(fruit: Fruit) => <Option>{fruit.name}</Option>}
+        </ComboBox>
+      </form>
+    ));
+    user.focus(input());
+    type("ch");
+    await tick();
+    user.keyDown("ArrowDown");
+    user.keyDown("Enter");
+    flush();
+    expect(input().value).toBe("Cherry");
+
+    (container.querySelector("form") as HTMLFormElement).reset();
+    flush();
+    await tick();
+
+    expect(input().value).toBe("Banana");
+    expect(chosen.at(-1)).toBe("banana");
+    expect(new FormData(container.querySelector("form") as HTMLFormElement).get("fruit")).toBe(
+      "banana",
+    );
+  });
+
+  test("required blocks a submit only under native validation", () => {
+    const { container } = render(() => (
+      <form>
+        <ComboBox
+          label="Fruit"
+          items={FRUITS}
+          isRequired
+          getTextValue={(fruit: Fruit) => fruit.name}
+        >
+          {(fruit: Fruit) => <Option>{fruit.name}</Option>}
+        </ComboBox>
+        <ComboBox
+          label="Colour"
+          items={FRUITS}
+          isRequired
+          validationBehavior="native"
+          getTextValue={(fruit: Fruit) => fruit.name}
+        >
+          {(fruit: Fruit) => <Option>{fruit.name}</Option>}
+        </ComboBox>
+      </form>
+    ));
+    const [aria, native] = screen.getAllByRole<HTMLInputElement>("combobox");
+    expect(aria?.required).toBe(false);
+    expect(native?.required).toBe(true);
+    expect((container.querySelector("form") as HTMLFormElement).checkValidity()).toBe(false);
+  });
+});
 
 describe("a combobox written as parts", () => {
   test("is a combobox that says it has a list and that the list is shut", () => {
@@ -942,6 +1273,31 @@ describe("what a combobox shows for its value", () => {
 });
 
 describe("a combobox holding several values", () => {
+  test("required holds a submit back only while nothing is chosen", async () => {
+    const [chosen, setChosen] = createSignal<string[]>([]);
+    const { container } = render(() => (
+      <form>
+        <ComboboxRoot multiple name="frameworks" items={FRAMEWORKS} value={chosen()}>
+          <ComboboxInput aria-label="Frameworks" required />
+          <ComboboxPopup>
+            <ComboboxList>
+              {(item: string) => <ComboboxItem value={item}>{item}</ComboboxItem>}
+            </ComboboxList>
+          </ComboboxPopup>
+        </ComboboxRoot>
+      </form>
+    ));
+    const form = container.querySelector("form") as HTMLFormElement;
+    expect(form.checkValidity()).toBe(false);
+
+    setChosen(["Remix"]);
+    await settle();
+    // The field holds a query, which is empty once something is chosen.
+    expect(field().value).toBe("");
+    expect(form.checkValidity()).toBe(true);
+    expect(new FormData(form).getAll("frameworks")).toEqual(["Remix"]);
+  });
+
   test("choosing adds a chip, keeps the list open and clears the query", async () => {
     const seen: string[][] = [];
     render(() => <Many onValueChange={(value) => seen.push(value)} />);

@@ -396,3 +396,87 @@ describe("a virtualised table", () => {
     expect(grid.getAttribute("aria-rowcount")).toBe("1001");
   });
 });
+
+describe("a measured row after the width changes", () => {
+  test("is estimated again, from its last height, so it is measured again", () => {
+    const layout = listLayout({ estimatedRowHeight: ROW });
+    const collection = new ListCollection(nodesOf(CITIES.slice(0, 3)));
+
+    layout.update({ collection, visibleRect: rect(0, 0, 200, VIEWPORT) });
+    layout.updateItemSize("c0", { width: 200, height: 50 });
+    layout.update({ collection, visibleRect: rect(0, 0, 200, VIEWPORT) });
+    expect(layout.getLayoutInfo("c0")?.isEstimated).toBe(false);
+
+    // Narrower: the text in the row wraps differently, so 50 is a guess now.
+    layout.update({ collection, visibleRect: rect(0, 0, 120, VIEWPORT) });
+    const info = layout.getLayoutInfo("c0");
+    expect(info?.isEstimated, "a row measured at another width kept its height").toBe(true);
+    expect(info?.rect.height).toBe(50);
+
+    layout.updateItemSize("c0", { width: 120, height: 70 });
+    layout.update({ collection, visibleRect: rect(0, 0, 120, VIEWPORT) });
+    expect(layout.getLayoutInfo("c0")?.isEstimated).toBe(false);
+    expect(layout.getLayoutInfo("c1")?.rect.y).toBe(70);
+  });
+
+  test("a row of a fixed height is never estimated, whatever the width", () => {
+    const layout = listLayout({ rowHeight: ROW });
+    const collection = new ListCollection(nodesOf(CITIES.slice(0, 3)));
+    layout.update({ collection, visibleRect: rect(0, 0, 200, VIEWPORT) });
+    layout.update({ collection, visibleRect: rect(0, 0, 120, VIEWPORT) });
+    expect(layout.getLayoutInfo("c0")?.isEstimated).toBe(false);
+  });
+});
+
+describe("a container the page scrolls", () => {
+  test("renders what the window shows of it, not its whole height", () => {
+    render(() => <Cities />);
+    const element = list();
+    // As tall as the collection, so it never scrolls itself: the page does,
+    // and has carried its top 1000px above the viewport.
+    Object.defineProperty(element, "clientHeight", {
+      value: CITIES.length * ROW,
+      configurable: true,
+    });
+    Object.defineProperty(element, "clientWidth", { value: 200, configurable: true });
+    element.getBoundingClientRect = () =>
+      ({
+        top: -1000,
+        left: 0,
+        bottom: CITIES.length * ROW - 1000,
+        right: 200,
+        width: 200,
+        height: CITIES.length * ROW,
+      }) as DOMRect;
+
+    window.dispatchEvent(new Event("scroll"));
+    flush();
+
+    const rendered = options();
+    expect(rendered.length, "every row of the collection was rendered").toBeLessThan(
+      Math.ceil(window.innerHeight / ROW) + 2,
+    );
+    expect(rendered[0]?.textContent).toBe("City 50");
+  });
+
+  test("a row is as wide as the container, however little of it is on screen", () => {
+    render(() => <Cities />);
+    const element = list();
+    Object.defineProperty(element, "clientHeight", { value: VIEWPORT, configurable: true });
+    Object.defineProperty(element, "clientWidth", { value: 200, configurable: true });
+    element.getBoundingClientRect = () =>
+      ({
+        top: 0,
+        left: -50,
+        bottom: VIEWPORT,
+        right: 150,
+        width: 200,
+        height: VIEWPORT,
+      }) as DOMRect;
+
+    window.dispatchEvent(new Event("scroll"));
+    flush();
+
+    expect(options()[0]?.style.width).toBe("200px");
+  });
+});

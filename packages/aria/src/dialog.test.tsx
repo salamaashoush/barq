@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Show, createSignal, onSettled } from "@barqjs/core";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { join } from "node:path";
+import { renderToString } from "@barqjs/server";
+import { type Child, Show, createSignal, isDev, onSettled } from "@barqjs/core";
 import { accessibleName, render, screen, tick, user } from "@barqjs/testing";
 import { Button } from "./button.tsx";
 import { ref } from "@barqjs/primitives/refs";
@@ -10,8 +14,13 @@ import {
   Popover,
   popoverStateProps,
   PortalProvider,
+  providePopoverTrigger,
   useDialogDescription,
+  useDialogTitle,
 } from "./dialog.tsx";
+import { provideLocale } from "./i18n.ts";
+import { overlayTriggerState } from "./overlays.ts";
+import { OverlayArrow } from "./overlay-arrow.tsx";
 
 /** The portal builds on a microtask after its marker connects. */
 async function settle(): Promise<void> {
@@ -573,3 +582,342 @@ describe("a Modal that is not modal", () => {
     expect(document.activeElement?.textContent).not.toBe("Apply");
   });
 });
+
+/** The nearest element that hides `node` from assistive technology, if any. */
+function hiddenBy(node: Element | null): Element | null {
+  for (let at = node; at !== null; at = at.parentElement) {
+    if (at.getAttribute("aria-hidden") === "true" || (at as HTMLElement).inert) return at;
+  }
+  return null;
+}
+
+describe("a popover inside a modal", () => {
+  function Nested(props: { isModal?: boolean }) {
+    const triggerRef = ref<HTMLElement>();
+    const [open, setOpen] = createSignal(false);
+    return (
+      <>
+        <p>behind</p>
+        <Modal isOpen>
+          <Dialog aria-label="Settings">
+            <button type="button" ref={triggerRef.set} onClick={() => setOpen(true)}>
+              Size
+            </button>
+            <Popover
+              triggerRef={triggerRef}
+              isOpen={open()}
+              onOpenChange={setOpen}
+              isModal={props.isModal}
+              aria-label="Sizes"
+            >
+              <p>Small</p>
+            </Popover>
+          </Dialog>
+        </Modal>
+      </>
+    );
+  }
+
+  test("stays readable by a screen reader once it opens", async () => {
+    render(() => <Nested />);
+    await settle();
+    user.click(screen.getByRole("button", { name: "Size" }));
+    await settle();
+
+    expect(hiddenBy(screen.getByText("Small"))).toBeNull();
+    expect(hiddenBy(screen.getByText("behind"))).not.toBeNull();
+  });
+
+  test("a modal one makes the rest of the page inert, and gives it back on closing", async () => {
+    const triggerRef = ref<HTMLElement>();
+    const [open, setOpen] = createSignal(false);
+    render(() => (
+      <>
+        <p>behind</p>
+        <button type="button" ref={triggerRef.set}>
+          Size
+        </button>
+        <Popover triggerRef={triggerRef} isOpen={open()} onOpenChange={setOpen} isModal>
+          <p>Small</p>
+        </Popover>
+      </>
+    ));
+    setOpen(true);
+    await settle();
+
+    const behind = screen.getByText("behind");
+    expect(behind.inert || (behind.parentElement as HTMLElement).inert).toBe(true);
+    expect(hiddenBy(screen.getByText("Small"))).toBeNull();
+
+    setOpen(false);
+    await settle();
+    expect(hiddenBy(behind)).toBeNull();
+  });
+});
+
+describe("the dismiss button", () => {
+  function Sizes(props: { isModal?: boolean; onOpenChange?: (open: boolean) => void }) {
+    const triggerRef = ref<HTMLElement>();
+    return (
+      <>
+        <button type="button" ref={triggerRef.set}>
+          Size
+        </button>
+        <Popover
+          triggerRef={triggerRef}
+          defaultOpen
+          isModal={props.isModal}
+          onOpenChange={props.onOpenChange}
+        >
+          <button type="button">Small</button>
+        </Popover>
+      </>
+    );
+  }
+
+  test("a modal popover has one at each end that closes it", async () => {
+    const changes: boolean[] = [];
+    render(() => <Sizes isModal onOpenChange={(open) => changes.push(open)} />);
+    await settle();
+
+    const dismiss = screen.getAllByRole("button", { name: "Dismiss" });
+    expect(dismiss).toHaveLength(2);
+    const popover = screen.getByText("Small").parentElement as HTMLElement;
+    expect(popover.firstElementChild).toBe(dismiss[0] as Element);
+    expect(popover.lastElementChild).toBe(dismiss[1] as Element);
+    expect(dismiss[1]?.getAttribute("tabindex")).toBe("-1");
+    // Focus still goes to the content, not to a button nobody can see.
+    expect(document.activeElement?.textContent).toBe("Small");
+
+    user.click(dismiss[1] as HTMLElement);
+    expect(changes).toEqual([false]);
+  });
+
+  test("a dismissable modal starts with one, and focus still goes to the content", async () => {
+    const changes: boolean[] = [];
+    render(() => <Confirm isOpen onOpenChange={(open) => changes.push(open)} />);
+    await tick();
+
+    expect(document.activeElement?.textContent).toBe("Cancel");
+    user.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(changes).toEqual([false]);
+  });
+
+  test("a modal that cannot be dismissed has none", async () => {
+    render(() => (
+      <Modal isOpen isDismissable={false}>
+        <Dialog aria-label="Terms">
+          <Button>Accept</Button>
+        </Dialog>
+      </Modal>
+    ));
+    await tick();
+    expect(screen.queryByRole("button", { name: "Dismiss" })).toBeNull();
+  });
+
+  test("is named in the page's language", async () => {
+    function German() {
+      provideLocale("de-DE");
+      return <Sizes isModal />;
+    }
+    render(() => <German />);
+    await settle();
+    expect(screen.getAllByRole("button", { name: "Schließen" })).toHaveLength(2);
+  });
+});
+
+describe("a dialog with no title", () => {
+  test("points aria-labelledby at nothing, and says so in development", async () => {
+    const warned: unknown[] = [];
+    const warn = console.warn;
+    console.warn = (...args: unknown[]) => warned.push(args[0]);
+    try {
+      render(() => (
+        <Dialog>
+          <p>Body</p>
+        </Dialog>
+      ));
+      await tick();
+    } finally {
+      console.warn = warn;
+    }
+
+    expect(screen.getByRole("dialog").hasAttribute("aria-labelledby")).toBe(false);
+    expect(warned.some((message) => String(message).includes("title"))).toBe(isDev);
+  });
+
+  test("a title that arrives later names it", async () => {
+    const [titled, setTitled] = createSignal(false);
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      render(() => (
+        <Dialog>
+          <Show when={titled()}>
+            <Heading slot="title">Later</Heading>
+          </Show>
+        </Dialog>
+      ));
+      await tick();
+    } finally {
+      console.warn = warn;
+    }
+    expect(screen.getByRole("dialog").hasAttribute("aria-labelledby")).toBe(false);
+
+    setTitled(true);
+    await tick();
+    expect(accessibleName(screen.getByRole("dialog"))).toBe("Later");
+  });
+});
+
+/** happy-dom lays nothing out; an overlay with no size has no edge to put an arrow along. */
+function laidOut(element: HTMLElement | null): void {
+  if (element === null) return;
+  Object.defineProperty(element, "offsetWidth", { value: 200, configurable: true });
+  Object.defineProperty(element, "offsetHeight", { value: 40, configurable: true });
+}
+
+describe("a popover's arrow", () => {
+  test("is told where along the popover's edge the trigger is", async () => {
+    const triggerRef = ref<HTMLElement>();
+    render(() => (
+      <>
+        <button type="button" ref={triggerRef.set}>
+          Size
+        </button>
+        <Popover triggerRef={triggerRef} defaultOpen aria-label="Sizes" ref={laidOut}>
+          <OverlayArrow data-testid="arrow" />
+          <p>Small</p>
+        </Popover>
+      </>
+    ));
+    await settle();
+
+    const arrow = screen.getByTestId("arrow");
+    expect(arrow.getAttribute("data-placement")).toBe("bottom");
+    expect(arrow.style.left).toMatch(/px$/);
+  });
+});
+
+describe("a popover under a trigger it did not build", () => {
+  function Preview(props: { children?: Child }) {
+    const triggerRef = ref<HTMLElement>();
+    const state = overlayTriggerState({});
+    return (
+      <>
+        <button type="button" ref={triggerRef.set} onClick={() => state.toggle()}>
+          Salama
+        </button>
+        {providePopoverTrigger(
+          { triggerRef, state, overlayProps: { "data-from-trigger": "" } },
+          () => props.children,
+        )}
+      </>
+    );
+  }
+
+  test("opens and closes with the trigger's state, and carries its props", async () => {
+    render(() => (
+      <Preview>
+        <Popover aria-label="Profile">
+          <a href="https://example.com">Profile</a>
+        </Popover>
+      </Preview>
+    ));
+    expect(screen.queryByText("Profile")).toBeNull();
+
+    user.click(screen.getByRole("button", { name: "Salama" }));
+    await settle();
+    const link = screen.getByText("Profile");
+    expect(link.closest("[data-from-trigger]")).not.toBeNull();
+
+    user.keyDown("Escape");
+    await settle();
+    expect(screen.queryByText("Profile")).toBeNull();
+  });
+
+  test("a popover told its own state keeps it", async () => {
+    render(() => (
+      <Preview>
+        <Popover aria-label="Pinned" isOpen>
+          <p>Pinned</p>
+        </Popover>
+      </Preview>
+    ));
+    await settle();
+    expect(screen.getByText("Pinned")).toBeTruthy();
+  });
+});
+
+describe("a dialog's title", () => {
+  test("a titled dialog does not warn", async () => {
+    const warned: unknown[] = [];
+    const warn = console.warn;
+    console.warn = (...args: unknown[]) => warned.push(args[0]);
+    try {
+      render(() => (
+        <Modal isOpen>
+          <Dialog>
+            <Heading slot="title">Hello</Heading>
+          </Dialog>
+        </Modal>
+      ));
+      await tick();
+      await tick();
+    } finally {
+      console.warn = warn;
+    }
+    expect(warned.filter((message) => String(message).includes("title"))).toEqual([]);
+  });
+
+  test("a design system's own heading names it through useDialogTitle", async () => {
+    function Title(props: { children?: Child }) {
+      const title = useDialogTitle();
+      return <h2 id={title?.id as () => string}>{props.children}</h2>;
+    }
+    render(() => (
+      <Dialog>
+        <Title>Rename</Title>
+      </Dialog>
+    ));
+    await tick();
+    expect(accessibleName(screen.getByRole("dialog"))).toBe("Rename");
+  });
+
+  test("a server-rendered dialog with a title heading is named by it", async () => {
+    const mod = await ssrModule<{ App: () => unknown }>(`
+      import { Dialog, Heading } from "${SRC}/dialog.tsx";
+      export function App() {
+        return <Dialog><Heading slot="title">Delete?</Heading><p>Body</p></Dialog>;
+      }
+    `);
+    const html = renderToString(() => mod.App() as never);
+    const labelledBy = /aria-labelledby="([^"]+)"/.exec(html)?.[1];
+    expect(labelledBy).toBeDefined();
+    expect(html).toContain(`id="${labelledBy}"`);
+  });
+});
+
+const ssrRequire = createRequire(import.meta.url);
+const compiler = ssrRequire("@barqjs/compiler") as {
+  transform(code: string, options?: Record<string, unknown>): { code: string };
+};
+const SRC = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
+const SSR_OUT = join(SRC, "..", "node_modules", ".barq-ssr-fixtures");
+let ssrSequence = 0;
+
+/** A fixture compiled for the server, as `ssr.test.ts` compiles its own. */
+async function ssrModule<T>(source: string): Promise<T> {
+  mkdirSync(SSR_OUT, { recursive: true });
+  const name = `dialog-fixture-${ssrSequence++}`;
+  const { code } = compiler.transform(source, {
+    filename: join(SSR_OUT, `${name}.tsx`),
+    ssr: true,
+    moduleSource: new URL("../node_modules/@barqjs/web/src/index.ts", import.meta.url).pathname,
+    coreSource: new URL("../node_modules/@barqjs/core/src/index.ts", import.meta.url).pathname,
+    serverSource: new URL("../node_modules/@barqjs/server/src/index.ts", import.meta.url).pathname,
+  });
+  const file = join(SSR_OUT, `${name}.ts`);
+  writeFileSync(file, code);
+  return (await import(file)) as T;
+}

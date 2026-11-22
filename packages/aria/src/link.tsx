@@ -8,14 +8,21 @@
  * looking at rather than treating every activation the same.
  */
 
-import { cells, type Accessor, type Child } from "@barqjs/core";
+import { cells, getContext, Show, type Accessor, type Child } from "@barqjs/core";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { focusRing } from "./focus.ts";
 import { focusable, type FocusableOptions } from "./interactions/focusable.ts";
-import { hover } from "./interactions/hover.ts";
-import { handleLinkClick, router, syntheticLinkProps } from "./interactions/open-link.ts";
+import { hover, type HoverEvent } from "./interactions/hover.ts";
+import {
+  handleLinkClick,
+  router,
+  type RouterOptions,
+  syntheticLinkProps,
+} from "./interactions/open-link.ts";
 import { press, type ElementRef, type PressEvent } from "./interactions/press.ts";
 import { label as labelHook } from "./label.ts";
+import { ProgressBarContext } from "./progress-bar-context.ts";
+
 import { numberFormatter } from "./i18n.ts";
 import {
   access,
@@ -27,6 +34,7 @@ import {
   mergeProps,
   type StyleProps,
   styleProps,
+  triggerSlot,
 } from "./utils.ts";
 
 export interface LinkOptions extends FocusableOptions {
@@ -39,7 +47,13 @@ export interface LinkOptions extends FocusableOptions {
   download?: MaybeAccessor<boolean | string | undefined>;
   ping?: MaybeAccessor<string | undefined>;
   referrerPolicy?: MaybeAccessor<string | undefined>;
+  /** Handed to the router in scope along with the href. */
+  routerOptions?: MaybeAccessor<RouterOptions>;
   "aria-current"?: MaybeAccessor<boolean | string | undefined>;
+  /** From a trigger the link stands in for: a preview, a menu. */
+  "aria-haspopup"?: MaybeAccessor<boolean | string | undefined>;
+  "aria-expanded"?: MaybeAccessor<boolean | undefined>;
+  "aria-controls"?: MaybeAccessor<string | undefined>;
   "aria-label"?: MaybeAccessor<string | undefined>;
   "aria-labelledby"?: MaybeAccessor<string | undefined>;
   "aria-describedby"?: MaybeAccessor<string | undefined>;
@@ -62,6 +76,29 @@ export function link(options: LinkOptions, ref?: ElementRef): LinkResult {
   const { pressProps, isPressed } = press({ ...options, ref });
   const { focusableProps } = focusable(options, ref);
   const navigate = router();
+  // The href a client router renders for the path: a base path, a locale
+  // prefix. The click still hands the router the path it was given.
+  const routedHref = (): string | undefined => {
+    const href = access(options.href);
+    return href === undefined ? undefined : navigate.href(href);
+  };
+  // The link's `data-*` shape, for an element that is not an anchor: none on
+  // an anchor, which has the real attributes, and none while disabled, which
+  // must not navigate.
+  const synthetic = (): Record<string, unknown> =>
+    elementType() === "a" || isDisabled()
+      ? {}
+      : syntheticLinkProps(
+          {
+            href: access(options.href),
+            target: access(options.target),
+            rel: access(options.rel),
+            download: access(options.download),
+            ping: access(options.ping),
+            referrerPolicy: access(options.referrerPolicy),
+          },
+          navigate,
+        );
 
   const roleProps: DOMProps = {
     // Anything that is not an `<a href>` has to say what it is, and be
@@ -76,17 +113,27 @@ export function link(options: LinkOptions, ref?: ElementRef): LinkResult {
       filterDOMProps(options, { labelable: true, isLink: true }),
       // The `data-href` shape, so a non-anchor element can still be opened by
       // the router or by a middle click.
-      elementType() === "a" ? {} : syntheticLinkProps(options as never),
+      {
+        "data-href": () => synthetic()["data-href"],
+        "data-target": () => synthetic()["data-target"],
+        "data-rel": () => synthetic()["data-rel"],
+        "data-download": () => synthetic()["data-download"],
+        "data-ping": () => synthetic()["data-ping"],
+        "data-referrer-policy": () => synthetic()["data-referrer-policy"],
+      },
       focusableProps,
       pressProps,
       roleProps,
       {
         // A disabled link must not navigate, and `<a>` has no `disabled`.
-        href: () => (isDisabled() ? undefined : access(options.href)),
+        href: () => (isDisabled() ? undefined : routedHref()),
         "aria-disabled": () => isDisabled() || undefined,
         "aria-current": () => access(options["aria-current"]),
+        "aria-haspopup": () => access(options["aria-haspopup"]),
+        "aria-expanded": () => access(options["aria-expanded"]),
+        "aria-controls": () => access(options["aria-controls"]),
         onClick: (event: MouseEvent) => {
-          handleLinkClick(event, access(options.href), navigate);
+          handleLinkClick(event, access(options.href), navigate, access(options.routerOptions));
         },
       },
     ),
@@ -232,31 +279,62 @@ export interface LinkComponentProps extends StyleProps {
   target?: string;
   rel?: string;
   download?: boolean | string;
+  ping?: string;
+  referrerPolicy?: string;
+  routerOptions?: RouterOptions;
   isDisabled?: boolean;
   autoFocus?: boolean;
   "aria-label"?: string;
   "aria-labelledby"?: string;
   "aria-current"?: boolean | string;
-  ref?: RefTarget<HTMLAnchorElement>;
+  ref?: RefTarget<HTMLAnchorElement | HTMLSpanElement>;
   onPress?: (event: PressEvent) => void;
+  onPressStart?: (event: PressEvent) => void;
+  onPressEnd?: (event: PressEvent) => void;
+  onPressChange?: (isPressed: boolean) => void;
+  onHoverStart?: (event: HoverEvent) => void;
+  onHoverEnd?: (event: HoverEvent) => void;
+  onHoverChange?: (isHovered: boolean) => void;
+  onFocus?: (event: FocusEvent) => void;
+  onBlur?: (event: FocusEvent) => void;
   onClick?: (event: MouseEvent) => void;
 }
 
 /**
+ * An `<a>` while it has somewhere to go; a `<span role="link">` with no href
+ * or while disabled, since an anchor without an href is neither a link to
+ * assistive technology nor reachable by Tab.
+ *
  * ```tsx
  * <Link href="/about">About</Link>
  * ```
  */
 export function Link(props: LinkComponentProps) {
-  const domRef = makeRef<HTMLAnchorElement>();
-  const options = fromProps(cells(props));
+  const domRef = makeRef<HTMLAnchorElement | HTMLSpanElement>();
+  // A trigger the link is written inside (a FileTrigger, a PreviewTrigger)
+  // hands its press, its ARIA and its ref through the slot, as it does to a
+  // Button.
+  const slot = triggerSlot();
+  const options = mergeProps(fromProps(cells(props)), slot.props) as LinkOptions;
+  const elementType = (): "a" | "span" =>
+    props.href !== undefined && props.isDisabled !== true ? "a" : "span";
 
-  const { linkProps, isPressed } = link(options, domRef);
-  const { hoverProps, isHovered } = hover({ isDisabled: options.isDisabled });
+  const { linkProps, isPressed } = link({ ...options, elementType }, domRef);
+  const { hoverProps, isHovered } = hover({
+    isDisabled: options.isDisabled,
+    onHoverStart: (event) => props.onHoverStart?.(event),
+    onHoverEnd: (event) => props.onHoverEnd?.(event),
+    onHoverChange: (hovered) => props.onHoverChange?.(hovered),
+  });
   const { focusProps, isFocused, isFocusVisible } = focusRing();
-  // `link()` delivers `onClick` itself; bound on the element as well, a
-  // caller's handler runs twice for every mouse click.
-  const { onClick: _, ...forwarded } = filterDOMProps(options, { global: true });
+  // `link()` delivers `onClick`, `onFocus` and `onBlur` itself; bound on the
+  // element as well, a caller's handler runs twice.
+  const {
+    onClick: _click,
+    onFocus: _focus,
+    onBlur: _blur,
+    ...forwarded
+  } = filterDOMProps(options, { global: true });
 
   const elementProps = mergeProps(
     linkProps,
@@ -274,10 +352,20 @@ export function Link(props: LinkComponentProps) {
     },
   );
 
+  const ref = mergeRefs(domRef.set, slot.ref, props.ref);
   return (
-    <a {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
-      {props.children}
-    </a>
+    <Show
+      when={elementType() === "a"}
+      fallback={
+        <span {...elementProps} ref={ref}>
+          {props.children}
+        </span>
+      }
+    >
+      <a {...elementProps} ref={ref}>
+        {props.children}
+      </a>
+    </Show>
   );
 }
 
@@ -334,9 +422,12 @@ export interface ProgressBarComponentProps extends StyleProps {
  */
 export function ProgressBar(props: ProgressBarComponentProps) {
   const options = fromProps(cells(props));
-  const { progressBarProps, labelProps, percentage, valueText } = progressBar(
-    options as ProgressBarOptions,
-  );
+  const context = getContext(ProgressBarContext);
+  const { progressBarProps, labelProps, percentage, valueText } = progressBar({
+    ...(options as ProgressBarOptions),
+    id: () =>
+      access((options as ProgressBarOptions).id) ?? (context ? access(context.id) : undefined),
+  });
 
   const elementProps = mergeProps(
     progressBarProps,

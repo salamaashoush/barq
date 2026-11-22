@@ -98,6 +98,110 @@ describe("Disclosure", () => {
     const { container } = render(() => <Details defaultExpanded />);
     expectNoAriaViolations(container);
   });
+
+  test("a shut panel is hidden from assistive technology", () => {
+    render(() => <Details />);
+    expect(panel().getAttribute("aria-hidden")).toBe("true");
+
+    user.click(trigger());
+    flush();
+    expect(panel().hasAttribute("aria-hidden")).toBe(false);
+  });
+
+  test("the panel's size is written for the stylesheet to animate", () => {
+    render(() => <Details />);
+    expect(panel().style.getPropertyValue("--disclosure-panel-width")).toBe("0px");
+    expect(panel().style.getPropertyValue("--disclosure-panel-height")).toBe("0px");
+  });
+
+  test("an open panel's size is auto, so its content can resize", async () => {
+    render(() => <Details defaultExpanded />);
+    expect(panel().style.getPropertyValue("--disclosure-panel-height")).toBe("auto");
+
+    user.click(trigger());
+    flush();
+    expect(panel().style.getPropertyValue("--disclosure-panel-height")).toBe("0px");
+
+    user.click(trigger());
+    flush();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(panel().style.getPropertyValue("--disclosure-panel-width")).toBe("auto");
+    expect(panel().style.getPropertyValue("--disclosure-panel-height")).toBe("auto");
+  });
+
+  test("holding Enter down toggles once", () => {
+    const changes: boolean[] = [];
+    render(() => <Details onExpandedChange={(open) => changes.push(open)} />);
+    trigger().focus();
+    const hold = (): void => {
+      user.keyDown("Enter");
+      for (let count = 0; count < 3; count++) user.keyDown("Enter", { repeat: true });
+      user.keyUp("Enter");
+      flush();
+    };
+
+    hold();
+    expect(changes).toEqual([true]);
+
+    hold();
+    expect(changes).toEqual([true, false]);
+  });
+
+  test("find-in-page asks a controlled, shut disclosure to open and leaves it shut", () => {
+    const changes: boolean[] = [];
+    render(() => (
+      <Disclosure isExpanded={false} onExpandedChange={(open) => changes.push(open)}>
+        <DisclosureButton>Details</DisclosureButton>
+        <DisclosurePanel>Everything else</DisclosurePanel>
+      </Disclosure>
+    ));
+
+    panel().removeAttribute("hidden");
+    panel().dispatchEvent(new Event("beforematch", { bubbles: true }));
+    flush();
+
+    expect(changes).toEqual([true]);
+    expect(trigger().getAttribute("aria-expanded")).toBe("false");
+    expect(panel().getAttribute("hidden")).toBe("until-found");
+  });
+
+  test("a disabled disclosure can still be opened by its owner", () => {
+    render(() => (
+      <Disclosure isDisabled isExpanded>
+        <DisclosureButton>Details</DisclosureButton>
+        <DisclosurePanel>Everything else</DisclosurePanel>
+      </Disclosure>
+    ));
+    expect(trigger().hasAttribute("disabled")).toBe(true);
+    expect(panel().hasAttribute("hidden")).toBe(false);
+  });
+
+  test("the panel's role can be replaced", () => {
+    render(() => (
+      <Disclosure defaultExpanded>
+        <DisclosureButton>Details</DisclosureButton>
+        <DisclosurePanel role="region">Everything else</DisclosurePanel>
+      </Disclosure>
+    ));
+    expect(screen.getByRole("region", { name: "Details" }).textContent).toBe("Everything else");
+  });
+
+  test("the panel says when keyboard focus is inside it", () => {
+    render(() => (
+      <Disclosure defaultExpanded>
+        <DisclosureButton>Details</DisclosureButton>
+        <DisclosurePanel>
+          <input aria-label="Notes" />
+        </DisclosurePanel>
+      </Disclosure>
+    ));
+    trigger().focus();
+    user.tab();
+    flush();
+    expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Notes" }));
+    expect(panel().hasAttribute("data-focus-visible-within")).toBe(true);
+  });
 });
 
 interface Section {
@@ -212,6 +316,11 @@ describe("DisclosureGroup", () => {
     const { container } = render(() => <Accordion defaultExpandedKeys={["two"]} />);
     expectNoAriaViolations(container);
   });
+
+  test("one open at a time holds even when given several", () => {
+    render(() => <Accordion defaultExpandedKeys={["two", "three"]} />);
+    expect(expandedNames()).toEqual(["Two"]);
+  });
 });
 
 /**
@@ -240,6 +349,16 @@ describe("a panel the stylesheet animates shut", () => {
         },
       });
   }
+
+  test("a closing panel is hidden from assistive technology at once", async () => {
+    withTransition("0.2s");
+    render(() => <Details defaultExpanded />);
+
+    await user.click(trigger());
+    flush();
+    expect(panel().hasAttribute("hidden")).toBe(false);
+    expect(panel().getAttribute("aria-hidden")).toBe("true");
+  });
 
   test("stays rendered until the transition has run", async () => {
     withTransition("0.2s");

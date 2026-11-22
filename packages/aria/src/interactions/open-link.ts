@@ -24,10 +24,30 @@ export interface LinkModifiers {
   shiftKey?: boolean;
 }
 
+/**
+ * Augment with `routerOptions` to type what a link hands its router:
+ *
+ * ```ts
+ * declare module "@barqjs/aria" {
+ *   interface RouterConfig {
+ *     routerOptions: { replace?: boolean };
+ *   }
+ * }
+ * ```
+ */
+export interface RouterConfig {}
+
+export type RouterOptions = RouterConfig extends { routerOptions: infer O } ? O : unknown;
+
 export interface Router {
   /** Whether navigation is the browser's, rather than a client router's. */
   isNative: boolean;
-  open: (target: Element, modifiers: LinkModifiers, href: string) => void;
+  open: (
+    target: Element,
+    modifiers: LinkModifiers,
+    href: string,
+    routerOptions?: RouterOptions,
+  ) => void;
   href: (href: string) => string;
 }
 
@@ -149,17 +169,25 @@ function withSyntheticLink(target: Element, open: (link: HTMLAnchorElement) => v
   }
 }
 
-/** The `data-*` attributes that make a non-anchor element behave as a link. */
-export function syntheticLinkProps(props: {
-  href?: string;
-  target?: string;
-  rel?: string;
-  download?: boolean | string;
-  ping?: string;
-  referrerPolicy?: string;
-}): Record<string, unknown> {
+/**
+ * The `data-*` attributes that make a non-anchor element behave as a link.
+ *
+ * `active` is the router the href is rendered for, read once by a caller that
+ * computes these again later, outside the scope that provides it.
+ */
+export function syntheticLinkProps(
+  props: {
+    href?: string;
+    target?: string;
+    rel?: string;
+    download?: boolean | string;
+    ping?: string;
+    referrerPolicy?: string;
+  },
+  active: Router = router(),
+): Record<string, unknown> {
   return {
-    "data-href": props.href === undefined ? undefined : router().href(props.href),
+    "data-href": props.href === undefined ? undefined : active.href(props.href),
     "data-target": props.target,
     "data-rel": props.rel,
     "data-download": props.download,
@@ -175,7 +203,12 @@ export function syntheticLinkProps(props: {
  * `active` is the {@link router} the link read while it was being set up: a
  * click has no owner to find one from.
  */
-export function handleLinkClick(event: MouseEvent, href: string | undefined, active: Router): void {
+export function handleLinkClick(
+  event: MouseEvent,
+  href: string | undefined,
+  active: Router,
+  routerOptions?: RouterOptions,
+): void {
   const target = event.currentTarget;
   if (
     active.isNative ||
@@ -189,5 +222,5 @@ export function handleLinkClick(event: MouseEvent, href: string | undefined, act
   }
 
   event.preventDefault();
-  active.open(target, event, href);
+  active.open(target, event, href, routerOptions);
 }

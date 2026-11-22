@@ -25,7 +25,8 @@ function testPlatform(re: RegExp): boolean {
   if (typeof window === "undefined" || window.navigator === undefined) return false;
   const data = (window.navigator as Navigator & { userAgentData?: { platform?: string } })
     .userAgentData;
-  return re.test(data?.platform ?? window.navigator.platform);
+  // Chromium can report an empty platform here; the legacy one still answers.
+  return re.test(data?.platform || window.navigator.platform);
 }
 
 /**

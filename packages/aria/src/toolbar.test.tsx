@@ -112,6 +112,58 @@ describe("Toolbar", () => {
     expect(document.activeElement).toBe(controls[2] as HTMLElement);
   });
 
+  test("a toolbar inside a toolbar is a group", () => {
+    render(() => (
+      <Toolbar aria-label="Outer">
+        <Toolbar aria-label="Inner">
+          <Button>One</Button>
+        </Toolbar>
+      </Toolbar>
+    ));
+    flush();
+
+    expect(screen.getByLabelText("Outer").getAttribute("role")).toBe("toolbar");
+    expect(screen.getByLabelText("Inner").getAttribute("role")).toBe("group");
+  });
+
+  test("a click back into the toolbar keeps focus on the control clicked", () => {
+    render(() => (
+      <>
+        <Formatting />
+        <button type="button">Outside</button>
+      </>
+    ));
+
+    const [bold, italic] = buttons();
+    const outside = screen.getByRole("button", { name: "Outside" });
+    user.focus(italic as HTMLElement);
+    user.focus(outside);
+
+    user.click(bold as HTMLElement);
+    flush();
+
+    expect(document.activeElement).toBe(bold as HTMLElement);
+  });
+
+  test("Tab back into the toolbar returns to the control last focused", () => {
+    render(() => (
+      <>
+        <Formatting />
+        <button type="button">Outside</button>
+      </>
+    ));
+
+    const [, italic] = buttons();
+    const outside = screen.getByRole("button", { name: "Outside" });
+    user.focus(italic as HTMLElement);
+    user.focus(outside);
+
+    user.tab({ shift: true });
+    flush();
+
+    expect(document.activeElement).toBe(italic as HTMLElement);
+  });
+
   test("has no ARIA violations", () => {
     const { container } = render(() => <Formatting />);
     expectNoAriaViolations(container);

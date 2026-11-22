@@ -43,6 +43,11 @@
       "barq": "./src/index.ts",
       "bun": "./src/index.ts"
     },
+    "./autocomplete": {
+      "types": "./src/autocomplete.tsx",
+      "barq": "./src/autocomplete.tsx",
+      "bun": "./src/autocomplete.tsx"
+    },
     "./breadcrumbs": {
       "types": "./src/breadcrumbs.tsx",
       "barq": "./src/breadcrumbs.tsx",
@@ -77,6 +82,11 @@
       "types": "./src/colorpicker.tsx",
       "barq": "./src/colorpicker.tsx",
       "bun": "./src/colorpicker.tsx"
+    },
+    "./colorswatchpicker": {
+      "types": "./src/colorswatchpicker.tsx",
+      "barq": "./src/colorswatchpicker.tsx",
+      "bun": "./src/colorswatchpicker.tsx"
     },
     "./combobox": {
       "types": "./src/combobox.tsx",
@@ -113,15 +123,35 @@
       "barq": "./src/disclosure.tsx",
       "bun": "./src/disclosure.tsx"
     },
-    "./drawer": {
-      "types": "./src/drawer.ts",
-      "barq": "./src/drawer.ts",
-      "bun": "./src/drawer.ts"
+    "./dnd": {
+      "types": "./src/dnd/index.ts",
+      "barq": "./src/dnd/index.ts",
+      "bun": "./src/dnd/index.ts"
     },
     "./dom": {
       "types": "./src/dom.ts",
       "barq": "./src/dom.ts",
       "bun": "./src/dom.ts"
+    },
+    "./drag-and-drop": {
+      "types": "./src/drag-and-drop.tsx",
+      "barq": "./src/drag-and-drop.tsx",
+      "bun": "./src/drag-and-drop.tsx"
+    },
+    "./drawer": {
+      "types": "./src/drawer.ts",
+      "barq": "./src/drawer.ts",
+      "bun": "./src/drawer.ts"
+    },
+    "./dropzone": {
+      "types": "./src/dropzone.tsx",
+      "barq": "./src/dropzone.tsx",
+      "bun": "./src/dropzone.tsx"
+    },
+    "./file-trigger": {
+      "types": "./src/file-trigger.tsx",
+      "barq": "./src/file-trigger.tsx",
+      "bun": "./src/file-trigger.tsx"
     },
     "./focus": {
       "types": "./src/focus.ts",
@@ -137,6 +167,11 @@
       "types": "./src/gridlist.tsx",
       "barq": "./src/gridlist.tsx",
       "bun": "./src/gridlist.tsx"
+    },
+    "./group": {
+      "types": "./src/group.tsx",
+      "barq": "./src/group.tsx",
+      "bun": "./src/group.tsx"
     },
     "./i18n": {
       "types": "./src/i18n.ts",
@@ -178,6 +213,16 @@
       "barq": "./src/menubar.tsx",
       "bun": "./src/menubar.tsx"
     },
+    "./navigation": {
+      "types": "./src/navigation.ts",
+      "barq": "./src/navigation.ts",
+      "bun": "./src/navigation.ts"
+    },
+    "./navigation-tree": {
+      "types": "./src/navigation-tree.tsx",
+      "barq": "./src/navigation-tree.tsx",
+      "bun": "./src/navigation-tree.tsx"
+    },
     "./numberfield": {
       "types": "./src/numberfield.tsx",
       "barq": "./src/numberfield.tsx",
@@ -188,20 +233,30 @@
       "barq": "./src/otp.ts",
       "bun": "./src/otp.ts"
     },
+    "./overlay-arrow": {
+      "types": "./src/overlay-arrow.tsx",
+      "barq": "./src/overlay-arrow.tsx",
+      "bun": "./src/overlay-arrow.tsx"
+    },
     "./overlays": {
       "types": "./src/overlays.ts",
       "barq": "./src/overlays.ts",
       "bun": "./src/overlays.ts"
+    },
+    "./platform": {
+      "types": "./src/platform.ts",
+      "barq": "./src/platform.ts",
+      "bun": "./src/platform.ts"
     },
     "./presence": {
       "types": "./src/presence.ts",
       "barq": "./src/presence.ts",
       "bun": "./src/presence.ts"
     },
-    "./platform": {
-      "types": "./src/platform.ts",
-      "barq": "./src/platform.ts",
-      "bun": "./src/platform.ts"
+    "./preview-trigger": {
+      "types": "./src/preview-trigger.tsx",
+      "barq": "./src/preview-trigger.tsx",
+      "bun": "./src/preview-trigger.tsx"
     },
     "./questionnaire": {
       "types": "./src/questionnaire.tsx",
@@ -228,10 +283,20 @@
       "barq": "./src/selection.ts",
       "bun": "./src/selection.ts"
     },
-    "./static-collection": {
-      "types": "./src/static-collection.ts",
-      "barq": "./src/static-collection.ts",
-      "bun": "./src/static-collection.ts"
+    "./selection-indicator": {
+      "types": "./src/selection-indicator.tsx",
+      "barq": "./src/selection-indicator.tsx",
+      "bun": "./src/selection-indicator.tsx"
+    },
+    "./shared-element-transition": {
+      "types": "./src/shared-element-transition.tsx",
+      "barq": "./src/shared-element-transition.tsx",
+      "bun": "./src/shared-element-transition.tsx"
+    },
+    "./sheet": {
+      "types": "./src/sheet.tsx",
+      "barq": "./src/sheet.tsx",
+      "bun": "./src/sheet.tsx"
     },
     "./slider": {
       "types": "./src/slider.tsx",
@@ -242,6 +307,11 @@
       "types": "./src/splitter.ts",
       "barq": "./src/splitter.ts",
       "bun": "./src/splitter.ts"
+    },
+    "./static-collection": {
+      "types": "./src/static-collection.ts",
+      "barq": "./src/static-collection.ts",
+      "bun": "./src/static-collection.ts"
     },
     "./switch": {
       "types": "./src/switch.tsx",
@@ -263,20 +333,45 @@
       "barq": "./src/tag.tsx",
       "bun": "./src/tag.tsx"
     },
+    "./textarea": {
+      "types": "./src/textarea.tsx",
+      "barq": "./src/textarea.tsx",
+      "bun": "./src/textarea.tsx"
+    },
     "./textfield": {
       "types": "./src/textfield.tsx",
       "barq": "./src/textfield.tsx",
       "bun": "./src/textfield.tsx"
+    },
+    "./toast": {
+      "types": "./src/toast.ts",
+      "barq": "./src/toast.ts",
+      "bun": "./src/toast.ts"
+    },
+    "./toast-components": {
+      "types": "./src/toast-components.tsx",
+      "barq": "./src/toast-components.tsx",
+      "bun": "./src/toast-components.tsx"
     },
     "./toggle": {
       "types": "./src/toggle.ts",
       "barq": "./src/toggle.ts",
       "bun": "./src/toggle.ts"
     },
+    "./toggle-button-group": {
+      "types": "./src/toggle-button-group.tsx",
+      "barq": "./src/toggle-button-group.tsx",
+      "bun": "./src/toggle-button-group.tsx"
+    },
     "./togglegroup": {
       "types": "./src/togglegroup.ts",
       "barq": "./src/togglegroup.ts",
       "bun": "./src/togglegroup.ts"
+    },
+    "./tokenfield": {
+      "types": "./src/tokenfield.tsx",
+      "barq": "./src/tokenfield.tsx",
+      "bun": "./src/tokenfield.tsx"
     },
     "./toolbar": {
       "types": "./src/toolbar.tsx",
@@ -287,6 +382,11 @@
       "types": "./src/tooltip.tsx",
       "barq": "./src/tooltip.tsx",
       "bun": "./src/tooltip.tsx"
+    },
+    "./tree": {
+      "types": "./src/tree.tsx",
+      "barq": "./src/tree.tsx",
+      "bun": "./src/tree.tsx"
     },
     "./utils": {
       "types": "./src/utils.ts",
@@ -303,17 +403,7 @@
       "barq": "./src/virtualizer.tsx",
       "bun": "./src/virtualizer.tsx"
     },
-    "./package.json": "./package.json",
-    "./navigation": {
-      "types": "./src/navigation.ts",
-      "barq": "./src/navigation.ts",
-      "bun": "./src/navigation.ts"
-    },
-    "./toast": {
-      "types": "./src/toast.ts",
-      "barq": "./src/toast.ts",
-      "bun": "./src/toast.ts"
-    }
+    "./package.json": "./package.json"
   },
   "publishConfig": {
     "access": "public",

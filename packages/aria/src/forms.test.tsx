@@ -12,6 +12,10 @@ import {
 import { Switch } from "./switch.tsx";
 import { Radio, RadioGroup } from "./radio.tsx";
 import { Link, Meter, ProgressBar, Separator } from "./link.tsx";
+import { Autocomplete, type AutocompleteFilter } from "./autocomplete.tsx";
+import type { Key } from "./collections.ts";
+import { Form } from "./form.tsx";
+import { ListBox, Option } from "./listbox.tsx";
 import { SearchField, TextField } from "./textfield.tsx";
 
 describe("Switch", () => {
@@ -346,5 +350,204 @@ describe("SearchField", () => {
     user.click(screen.getByText("Clear search"));
 
     expect(input.value).toBe("");
+  });
+});
+
+describe("TextField, required", () => {
+  test("under aria it does not block the submit", () => {
+    render(() => (
+      <Form aria-label="Account">
+        <TextField label="Email" name="email" isRequired />
+      </Form>
+    ));
+    const input = screen.getByRole<HTMLInputElement>("textbox");
+    expect(input.required).toBe(false);
+    expect(input.getAttribute("aria-required")).toBe("true");
+    expect(screen.getByRole<HTMLFormElement>("form").checkValidity()).toBe(true);
+  });
+
+  test("says read-only and required to a stylesheet", () => {
+    render(() => <TextField label="Email" isReadOnly isRequired />);
+    const input = screen.getByRole("textbox");
+    expect(input.hasAttribute("data-readonly")).toBe(true);
+    expect(input.hasAttribute("data-required")).toBe(true);
+  });
+});
+
+describe("SearchField, keys", () => {
+  test("Escape that clears the field goes no further", () => {
+    const outside: string[] = [];
+    render(() => (
+      <div onKeyDown={(event: KeyboardEvent) => outside.push(event.key)}>
+        <SearchField label="Search" defaultValue="cat" />
+      </div>
+    ));
+    const input = screen.getByRole<HTMLInputElement>("searchbox");
+    input.focus();
+
+    user.keyDown("Escape");
+
+    expect(input.value).toBe("");
+    expect(outside).toEqual([]);
+  });
+
+  test("Escape in an empty field is left to whatever is around it", () => {
+    const outside: string[] = [];
+    render(() => (
+      <div onKeyDown={(event: KeyboardEvent) => outside.push(event.key)}>
+        <SearchField label="Search" onClear={() => {}} />
+      </div>
+    ));
+    screen.getByRole<HTMLInputElement>("searchbox").focus();
+
+    user.keyDown("Escape");
+
+    expect(outside).toEqual(["Escape"]);
+  });
+
+  test("Enter without onSubmit is the form's, and submits it", () => {
+    render(() => (
+      <form>
+        <SearchField label="Search" name="q" />
+      </form>
+    ));
+    const enter = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+    screen.getByRole("searchbox").dispatchEvent(enter);
+    expect(enter.defaultPrevented).toBe(false);
+  });
+
+  test("Enter with onSubmit is the field's", () => {
+    render(() => <SearchField label="Search" onSubmit={() => {}} />);
+    const enter = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+    screen.getByRole("searchbox").dispatchEvent(enter);
+    expect(enter.defaultPrevented).toBe(true);
+  });
+
+  test("says invalid, read-only and required to a stylesheet", () => {
+    render(() => <SearchField label="Search" isInvalid isReadOnly isRequired />);
+    const input = screen.getByRole("searchbox");
+    expect(input.hasAttribute("data-invalid")).toBe(true);
+    expect(input.hasAttribute("data-readonly")).toBe(true);
+    expect(input.hasAttribute("data-required")).toBe(true);
+  });
+});
+
+describe("a field inside an Autocomplete", () => {
+  interface Fruit {
+    id: string;
+    name: string;
+  }
+
+  const FRUITS: Fruit[] = [
+    { id: "apple", name: "Apple" },
+    { id: "apricot", name: "Apricot" },
+    { id: "banana", name: "Banana" },
+  ];
+
+  const contains: AutocompleteFilter = (textValue, inputValue) =>
+    textValue.toLowerCase().includes(inputValue.toLowerCase());
+
+  function Fruits(props: { onAction?: (key: Key) => void }) {
+    return (
+      <ListBox items={FRUITS} getTextValue={(fruit: Fruit) => fruit.name} onAction={props.onAction}>
+        {(fruit: Fruit) => <Option>{fruit.name}</Option>}
+      </ListBox>
+    );
+  }
+
+  const names = (): string[] =>
+    screen.getAllByRole("option").map((option) => option.textContent ?? "");
+
+  test("a SearchField filters the list and controls it", () => {
+    const changes: string[] = [];
+    render(() => (
+      <Autocomplete filter={contains}>
+        <SearchField label="Fruit" onChange={(value) => changes.push(value)} />
+        <Fruits />
+      </Autocomplete>
+    ));
+    flush();
+    const input = screen.getByRole<HTMLInputElement>("searchbox");
+
+    expect(input.getAttribute("aria-controls")).toBe(screen.getByRole("listbox").id);
+    expect(input.getAttribute("aria-autocomplete")).toBe("list");
+
+    user.type(input, "ap");
+    flush();
+
+    expect(names()).toEqual(["Apple", "Apricot"]);
+    // The caller still hears every change, after the autocomplete has.
+    expect(changes).toEqual(["a", "ap"]);
+  });
+
+  test("the arrows highlight options while focus stays in the SearchField", () => {
+    const acted: Key[] = [];
+    render(() => (
+      <Autocomplete filter={contains}>
+        <SearchField label="Fruit" />
+        <Fruits onAction={(key) => acted.push(key)} />
+      </Autocomplete>
+    ));
+    flush();
+    const input = screen.getByRole<HTMLInputElement>("searchbox");
+
+    user.focus(input);
+    user.keyDown("ArrowDown");
+    flush();
+
+    const apple = screen.getByRole("option", { name: "Apple" });
+    expect(input.getAttribute("aria-activedescendant")).toBe(apple.id);
+    expect(document.activeElement).toBe(input);
+
+    user.key("Enter");
+    flush();
+    expect(acted).toEqual(["apple"]);
+  });
+
+  test("Escape in the SearchField clears the query and shows the whole list", () => {
+    render(() => (
+      <Autocomplete filter={contains} defaultInputValue="ban">
+        <SearchField label="Fruit" />
+        <Fruits />
+      </Autocomplete>
+    ));
+    flush();
+    const input = screen.getByRole<HTMLInputElement>("searchbox");
+    expect(input.value).toBe("ban");
+    expect(names()).toEqual(["Banana"]);
+
+    input.focus();
+    user.keyDown("Escape");
+    flush();
+
+    expect(input.value).toBe("");
+    expect(names()).toHaveLength(3);
+  });
+
+  test("a TextField works the same way", () => {
+    const changes: string[] = [];
+    render(() => (
+      <Autocomplete filter={contains}>
+        <TextField label="Fruit" onChange={(value) => changes.push(value)} />
+        <Fruits />
+      </Autocomplete>
+    ));
+    flush();
+    const input = screen.getByRole<HTMLInputElement>("textbox");
+
+    expect(input.getAttribute("aria-controls")).toBe(screen.getByRole("listbox").id);
+
+    user.type(input, "ban");
+    flush();
+
+    expect(names()).toEqual(["Banana"]);
+    expect(changes).toEqual(["b", "ba", "ban"]);
+  });
+
+  test("outside an Autocomplete nothing is added", () => {
+    render(() => <SearchField label="Fruit" />);
+    const input = screen.getByRole("searchbox");
+    expect(input.hasAttribute("aria-controls")).toBe(false);
+    expect(input.hasAttribute("aria-autocomplete")).toBe(false);
   });
 });

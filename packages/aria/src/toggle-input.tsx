@@ -46,3 +46,41 @@ export function toggleInput(parts: {
     </label>
   );
 }
+
+function present(value: unknown): boolean {
+  return value !== undefined && value !== null && value !== false && value !== "";
+}
+
+/**
+ * A toggle with its help text and its error after it.
+ *
+ * After, not inside: the label's content is the control's name, and text in it
+ * would be read once as the name and again as the description. Nothing is
+ * rendered for either while it has nothing to say.
+ */
+export function withHelpText(
+  control: Child,
+  parts: {
+    descriptionProps: DOMProps;
+    errorMessageProps: DOMProps;
+    description: Accessor<unknown>;
+    /** What the error says, or nothing while the control is valid. */
+    errorMessage: Accessor<unknown>;
+  },
+) {
+  return (
+    <>
+      {control}
+      {() =>
+        present(parts.description()) ? (
+          <span {...parts.descriptionProps}>{parts.description() as Child}</span>
+        ) : null
+      }
+      {() =>
+        present(parts.errorMessage()) ? (
+          <span {...parts.errorMessageProps}>{parts.errorMessage() as Child}</span>
+        ) : null
+      }
+    </>
+  );
+}

@@ -16,6 +16,8 @@
  * `Shadowdomize/DOMFunctions`, which is where react-aria took them from.
  */
 
+import { isIOS, isWebKit } from "./platform.ts";
+
 let shadowDOMEnabled = false;
 
 /**
@@ -613,7 +615,7 @@ export function scrollIntoView(
   let portRight = viewRight - (isRoot ? 0 : borderRight) - number(viewStyle.scrollPaddingRight);
 
   // WebKit on iOS puts the scrollbar on the right whichever way the text runs.
-  if (viewStyle.direction === "rtl" && !isWebKitIOS()) portLeft += barWidth;
+  if (viewStyle.direction === "rtl" && !(isIOS() && isWebKit())) portLeft += barWidth;
   else portRight -= barWidth;
 
   const scrollBlock = areaTop < portTop || areaBottom > portBottom;
@@ -648,11 +650,6 @@ export function scrollIntoView(
     view.scrollLeft = x;
     view.scrollTop = y;
   }
-}
-
-function isWebKitIOS(): boolean {
-  if (typeof navigator === "undefined") return false;
-  return /AppleWebKit/i.test(navigator.userAgent) && /iPhone|iPad/i.test(navigator.platform ?? "");
 }
 
 /**

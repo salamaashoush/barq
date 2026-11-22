@@ -173,6 +173,39 @@ describe("a menubar", () => {
     expect(focused()).toBe("Profiles");
   });
 
+  test("typing the same letter again steps to the next trigger starting with it", () => {
+    render(() => (
+      <Menubar aria-label="Application">
+        <MenubarMenu value="file">
+          <MenubarTrigger>File</MenubarTrigger>
+          <Menu>
+            <MenuItem>New tab</MenuItem>
+          </Menu>
+        </MenubarMenu>
+        <MenubarMenu value="format">
+          <MenubarTrigger>Format</MenubarTrigger>
+          <Menu>
+            <MenuItem>Bold</MenuItem>
+          </Menu>
+        </MenubarMenu>
+        <MenubarMenu value="help">
+          <MenubarTrigger>Help</MenubarTrigger>
+          <Menu>
+            <MenuItem>About</MenuItem>
+          </Menu>
+        </MenubarMenu>
+      </Menubar>
+    ));
+
+    user.focus(trigger("Help"));
+    user.keyDown("f");
+    expect(focused()).toBe("File");
+    user.keyDown("f");
+    expect(focused(), "a repeated letter was searched for as 'ff'").toBe("Format");
+    user.keyDown("f");
+    expect(focused()).toBe("File");
+  });
+
   test("a disabled trigger is passed over and is never the Tab stop", () => {
     render(() => <Bar viewDisabled />);
     flush();

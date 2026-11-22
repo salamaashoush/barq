@@ -39,11 +39,15 @@ import { button } from "./button.tsx";
 import type { ItemAccessors, Key, ListStateOptions, Node, SelectionMode } from "./collections.ts";
 import { listState, type ListState } from "./collections.ts";
 import { focusRing } from "./focus.ts";
-import { useLocale } from "./i18n.ts";
+import { StringDictionary, stringFormatter, useLocale } from "./i18n.ts";
+import { description } from "./interactions/description.ts";
 import { focusWithin } from "./interactions/focus-events.ts";
 import { hover } from "./interactions/hover.ts";
+import { modality } from "./interactions/modality.ts";
 import type { ElementRef } from "./interactions/press.ts";
 import { field, type FieldOptions } from "./label.ts";
+import { SelectionIndicatorProvider } from "./selection-indicator.tsx";
+import { SharedElementTransition } from "./shared-element-transition.tsx";
 import {
   ListKeyboardDelegate,
   selectableItem,
@@ -172,6 +176,9 @@ export interface TagOptions {
   baseId: MaybeAccessor<string>;
   isDisabled?: MaybeAccessor<boolean | undefined>;
   onRemove?: (keys: Set<Key>) => void;
+  onAction?: (key: Key) => void;
+  /** See `selectableItem`. @default `onAction !== undefined` */
+  hasAction?: MaybeAccessor<boolean | undefined>;
 }
 
 export interface TagResult {
@@ -186,8 +193,149 @@ export interface TagResult {
   isDisabled: Accessor<boolean>;
 }
 
+const strings = new StringDictionary<"removeButtonLabel" | "removeDescription">({
+  "ar-AE": {
+    removeButtonLabel: "إزالة",
+    removeDescription: "اضغط على مفتاح DELETE لإزالة علامة.",
+  },
+  "bg-BG": {
+    removeButtonLabel: "Премахване",
+    removeDescription: "Натиснете Delete, за да премахнете маркера.",
+  },
+  "cs-CZ": {
+    removeButtonLabel: "Odebrat",
+    removeDescription: "Stisknutím klávesy Delete odeberete značku.",
+  },
+  "da-DK": {
+    removeButtonLabel: "Fjern",
+    removeDescription: "Tryk på Slet for at fjerne tag.",
+  },
+  "de-DE": {
+    removeButtonLabel: "Entfernen",
+    removeDescription: "Auf „Löschen“ drücken, um das Tag zu entfernen.",
+  },
+  "el-GR": {
+    removeButtonLabel: "Κατάργηση",
+    removeDescription: "Πατήστε Διαγραφή για να καταργήσετε την ετικέτα.",
+  },
+  "en-US": {
+    removeButtonLabel: "Remove",
+    removeDescription: "Press Delete to remove tag.",
+  },
+  "es-ES": {
+    removeButtonLabel: "Quitar",
+    removeDescription: "Pulse Eliminar para quitar la etiqueta.",
+  },
+  "et-EE": {
+    removeButtonLabel: "Eemalda",
+    removeDescription: "Sildi eemaldamiseks vajutage kustutusklahvi Delete.",
+  },
+  "fi-FI": {
+    removeButtonLabel: "Poista",
+    removeDescription: "Poista tunniste painamalla Poista-painiketta.",
+  },
+  "fr-FR": {
+    removeButtonLabel: "Supprimer",
+    removeDescription: "Appuyez sur Supprimer pour supprimer l’étiquette.",
+  },
+  "he-IL": {
+    removeButtonLabel: "הסר",
+    removeDescription: "לחץ על מחק כדי להסיר תג.",
+  },
+  "hr-HR": {
+    removeButtonLabel: "Ukloni",
+    removeDescription: "Pritisnite Delete za uklanjanje oznake.",
+  },
+  "hu-HU": {
+    removeButtonLabel: "Eltávolítás",
+    removeDescription: "Nyomja meg a Delete billentyűt a címke eltávolításához.",
+  },
+  "it-IT": {
+    removeButtonLabel: "Rimuovi",
+    removeDescription: "Premi Elimina per rimuovere il tag.",
+  },
+  "ja-JP": {
+    removeButtonLabel: "削除",
+    removeDescription: "タグを削除するには、Delete キーを押します。",
+  },
+  "ko-KR": {
+    removeButtonLabel: "제거",
+    removeDescription: "태그를 제거하려면 Delete 키를 누르십시오.",
+  },
+  "lt-LT": {
+    removeButtonLabel: "Pašalinti",
+    removeDescription: "Norėdami pašalinti žymą, paspauskite „Delete“ klavišą.",
+  },
+  "lv-LV": {
+    removeButtonLabel: "Noņemt",
+    removeDescription: "Nospiediet Delete [Dzēst], lai noņemtu tagu.",
+  },
+  "nb-NO": {
+    removeButtonLabel: "Fjern",
+    removeDescription: "Trykk på Slett for å fjerne taggen.",
+  },
+  "nl-NL": {
+    removeButtonLabel: "Verwijderen",
+    removeDescription: "Druk op Verwijderen om de tag te verwijderen.",
+  },
+  "pl-PL": {
+    removeButtonLabel: "Usuń",
+    removeDescription: "Naciśnij Usuń, aby usunąć znacznik.",
+  },
+  "pt-BR": {
+    removeButtonLabel: "Remover",
+    removeDescription: "Pressione Delete para remover a tag.",
+  },
+  "pt-PT": {
+    removeButtonLabel: "Eliminar",
+    removeDescription: "Prima Delete para eliminar a tag.",
+  },
+  "ro-RO": {
+    removeButtonLabel: "Îndepărtaţi",
+    removeDescription: "Apăsați pe Delete (Ștergere) pentru a elimina eticheta.",
+  },
+  "ru-RU": {
+    removeButtonLabel: "Удалить",
+    removeDescription: "Нажмите DELETE, чтобы удалить тег.",
+  },
+  "sk-SK": {
+    removeButtonLabel: "Odstrániť",
+    removeDescription: "Ak chcete odstrániť značku, stlačte kláves Delete.",
+  },
+  "sl-SI": {
+    removeButtonLabel: "Odstrani",
+    removeDescription: "Pritisnite Delete, da odstranite oznako.",
+  },
+  "sr-SP": {
+    removeButtonLabel: "Ukloni",
+    removeDescription: "Pritisnite Obriši da biste uklonili oznaku.",
+  },
+  "sv-SE": {
+    removeButtonLabel: "Ta bort",
+    removeDescription: "Tryck på Radera för att ta bort taggen.",
+  },
+  "tr-TR": {
+    removeButtonLabel: "Kaldır",
+    removeDescription: "Etiketi kaldırmak için Sil tuşuna basın.",
+  },
+  "uk-UA": {
+    removeButtonLabel: "Вилучити",
+    removeDescription: "Натисніть Delete, щоб вилучити тег.",
+  },
+  "zh-CN": {
+    removeButtonLabel: "删除",
+    removeDescription: "按下“删除”以删除标记。",
+  },
+  "zh-TW": {
+    removeButtonLabel: "移除",
+    removeDescription: "按 Delete 鍵以移除標記。",
+  },
+});
+
 export function tag(options: TagOptions, state: ListState<unknown>): TagResult {
   const buttonId = id();
+  const message = stringFormatter(strings);
+  const how = modality();
   const rowId = (): string => tagIdFor(access(options.baseId), options.key);
   const node = (): Node<unknown> | null => state.collection().getItem(options.key);
 
@@ -198,14 +346,19 @@ export function tag(options: TagOptions, state: ListState<unknown>): TagResult {
     selectionManager: state.selectionManager,
     isDisabled: options.isDisabled,
     linkBehavior: "override",
+    hasAction: () => access(options.hasAction) ?? options.onAction !== undefined,
+    onAction: () => options.onAction?.(options.key),
   });
 
   const allowsRemoving = (): boolean => options.onRemove !== undefined;
 
-  const remove = (): void => {
+  /**
+   * Delete on a tag that is one of SEVERAL selected removes them all: the
+   * selection is what the user pointed at. The button is on one tag, and
+   * removes that one.
+   */
+  const removeFromKeyboard = (): void => {
     if (item.isDisabled()) return;
-    // Removing one of SEVERAL selected tags removes them all: the selection is
-    // what the user pointed at, and taking one out of it would be a surprise.
     const manager = state.selectionManager();
     if (manager.isSelected(options.key)) {
       options.onRemove?.(new Set(manager.selectedKeys));
@@ -218,8 +371,16 @@ export function tag(options: TagOptions, state: ListState<unknown>): TagResult {
     if (!allowsRemoving() || item.isDisabled()) return;
     if (event.key !== "Delete" && event.key !== "Backspace") return;
     event.preventDefault();
-    remove();
+    removeFromKeyboard();
   };
+
+  // Delete is the only way to remove a tag without a pointer, and nothing on
+  // screen says so; a pointer user has the button and needs no hint.
+  const hint = description(() =>
+    allowsRemoving() && (how() === "keyboard" || how() === "virtual")
+      ? message().format("removeDescription")
+      : undefined,
+  );
 
   return {
     allowsRemoving,
@@ -236,16 +397,19 @@ export function tag(options: TagOptions, state: ListState<unknown>): TagResult {
       "aria-selected": () =>
         state.selectionManager().canSelectItem(options.key) ? item.isSelected() : undefined,
       "aria-disabled": () => item.isDisabled() || undefined,
+      "aria-describedby": hint["aria-describedby"],
     }),
     removeButtonProps: {
       id: buttonId,
       // Named by itself AND by the tag, so it is announced as "Remove,
       // Barcelona" rather than as one of a row of identical Remove buttons.
-      "aria-label": "Remove",
+      "aria-label": () => message().format("removeButtonLabel"),
       "aria-labelledby": () => `${buttonId()} ${rowId()}`,
       isDisabled: item.isDisabled,
       excludeFromTabOrder: true,
-      onPress: remove,
+      onPress: () => {
+        if (!item.isDisabled()) options.onRemove?.(new Set([options.key]));
+      },
     },
   };
 }
@@ -258,6 +422,7 @@ interface TagGroupContextValue {
   state: ListState<unknown>;
   baseId: Accessor<string>;
   onRemove: Accessor<((keys: Set<Key>) => void) | undefined>;
+  onAction?: Accessor<((key: Key) => void) | undefined>;
 }
 
 const TagGroupContext = createContext<TagGroupContextValue | null>(null);
@@ -307,6 +472,8 @@ export interface TagGroupComponentProps<T> extends StyleProps, ItemAccessors<T> 
   onSelectionChange?: (keys: "all" | Set<Key>) => void;
   /** Without it the tags have no remove button and cannot be deleted. */
   onRemove?: (keys: Set<Key>) => void;
+  /** A tag was activated: pressed, or Enter on it. */
+  onAction?: (key: Key) => void;
 }
 
 /**
@@ -338,14 +505,20 @@ export function TagGroup<T>(props: TagGroupComponentProps<T>) {
     state: state,
     baseId,
     onRemove: () => props.onRemove,
+    onAction: () => props.onAction,
   };
+
+  const { focusProps, isFocused, isFocusVisible } = focusRing();
 
   const elementProps = mergeProps(
     gridProps,
+    focusProps,
     filterDOMProps(fromProps(cells(props)), { global: true }),
     styleProps(cells(props)),
     {
       "data-empty": () => state.collection().size === 0,
+      "data-focused": isFocused,
+      "data-focus-visible": isFocusVisible,
       "data-testid": () => props["data-testid"],
     },
   );
@@ -356,13 +529,15 @@ export function TagGroup<T>(props: TagGroupComponentProps<T>) {
     <TagGroupProvider value={value}>
       <span {...labelProps}>{props.label}</span>
       <div {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
-        <For each={() => [...state.collection()]}>
-          {(node: Node<T>) => {
-            const rowOwner = getOwner();
-            if (rowOwner !== null) install(rowOwner, TagNodeContext, () => node as Node<unknown>);
-            return render(node.value as T);
-          }}
-        </For>
+        <SharedElementTransition>
+          <For each={() => [...state.collection()]}>
+            {(node: Node<T>) => {
+              const rowOwner = getOwner();
+              if (rowOwner !== null) install(rowOwner, TagNodeContext, () => node as Node<unknown>);
+              return render(node.value as T);
+            }}
+          </For>
+        </SharedElementTransition>
       </div>
       <span {...descriptionProps}>{props.description}</span>
       <span {...errorMessageProps}>{props.errorMessage}</span>
@@ -405,6 +580,8 @@ export function Tag(props: TagComponentProps) {
       baseId: group.baseId,
       isDisabled: () => node.props?.isDisabled === true,
       onRemove: group.onRemove() === undefined ? undefined : (keys) => group.onRemove()?.(keys),
+      hasAction: () => group.onAction?.() !== undefined,
+      onAction: (key) => group.onAction?.()?.(key),
     },
     group.state,
   );
@@ -428,6 +605,11 @@ export function Tag(props: TagComponentProps) {
       "data-hovered": isHovered,
       "data-disabled": isDisabled,
       "data-removable": allowsRemoving,
+      "data-allows-removing": allowsRemoving,
+      "data-selection-mode": () => {
+        const mode = group.state.selectionManager().selectionMode;
+        return mode === "none" ? undefined : mode;
+      },
       "data-testid": () => props["data-testid"],
     },
   );
@@ -439,7 +621,9 @@ export function Tag(props: TagComponentProps) {
   return (
     <div {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
       <div {...gridCellProps}>
-        {props.children}
+        <SelectionIndicatorProvider isSelected={isSelected()}>
+          {props.children}
+        </SelectionIndicatorProvider>
         {() =>
           allowsRemoving() ? (
             <button {...removeProps()} ref={buttonRef.set}>

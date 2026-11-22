@@ -1,9 +1,34 @@
-import { describe, expect, test } from "bun:test";
-import { flush, createSignal } from "@barqjs/core";
-import { accessibleName, expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
+import { afterEach, describe, expect, mock, test } from "bun:test";
+import { flush, createSignal, provide } from "@barqjs/core";
+import {
+  accessibleName,
+  expectNoAriaViolations,
+  render,
+  screen,
+  user,
+  within,
+} from "@barqjs/testing";
 import { Button } from "./button.tsx";
 import type { Key } from "./collections.ts";
-import { GridList, GridListItem } from "./gridlist.tsx";
+import {
+  DragButton,
+  dragAndDrop,
+  type DragAndDropOptions,
+  DropIndicator,
+} from "./drag-and-drop.tsx";
+import { dragSession, type DroppableCollectionReorderEvent, type DropTarget } from "./dnd/index.ts";
+import {
+  GridList,
+  GridListHeader,
+  GridListItem,
+  type GridListRenderState,
+  GridListSection,
+  GridListSelectionCheckbox,
+} from "./gridlist.tsx";
+import { RouterContext } from "./interactions/open-link.ts";
+import { clearAnnouncer } from "./live.ts";
+import { SelectionIndicator } from "./selection-indicator.tsx";
+import { fireDrag, MockDataTransfer, nextFrame } from "./test-dnd.ts";
 
 interface File {
   id: string;
@@ -219,5 +244,698 @@ describe("an action that arrives after the rows were built", () => {
 
     user.click(screen.getByRole("row", { name: "Notes" }));
     expect(acted, "the row is still reading the action it saw at construction").toEqual(["notes"]);
+  });
+});
+
+describe("drag and drop", () => {
+  interface Animal {
+    id: string;
+    name: string;
+  }
+
+  const ANIMALS: Animal[] = [
+    { id: "cat", name: "Cat" },
+    { id: "dog", name: "Dog" },
+    { id: "kangaroo", name: "Kangaroo" },
+  ];
+
+  function Animals(props: {
+    label?: string;
+    options?: Partial<DragAndDropOptions<Animal>>;
+    disabledKeys?: Key[];
+  }) {
+    const { dragAndDropHooks } = dragAndDrop<Animal>({
+      getItems: (keys) => [...keys].map((key) => ({ "text/plain": String(key) })),
+      ...props.options,
+    });
+    return (
+      <GridList
+        aria-label={props.label ?? "Animals"}
+        items={ANIMALS}
+        getTextValue={(animal: Animal) => animal.name}
+        disabledKeys={props.disabledKeys}
+        dragAndDropHooks={dragAndDropHooks}
+      >
+        {(animal: Animal) => (
+          <GridListItem>
+            <DragButton>≡</DragButton>
+            <span>{animal.name}</span>
+          </GridListItem>
+        )}
+      </GridList>
+    );
+  }
+
+  const indicator = (target: DropTarget) => (
+    <DropIndicator target={target} class="indicator">
+      Test
+    </DropIndicator>
+  );
+
+  function press(key: string) {
+    user.keyDown(key);
+    user.keyUp(key);
+  }
+
+  /** Into the first row, onto its drag button, and Enter. */
+  async function startDrag() {
+    user.tab();
+    press("ArrowRight");
+    expect(document.activeElement?.getAttribute("data-slot")).toBe("drag");
+    press("Enter");
+    await nextFrame();
+  }
+
+  function indicatorLabels(grid: HTMLElement): (string | null)[] {
+    return [...grid.querySelectorAll(".indicator")].map(
+      (row) => row.querySelector('[role="button"]')?.getAttribute("aria-label") ?? null,
+    );
+  }
+
+  afterEach(async () => {
+    if (dragSession() !== null) press("Escape");
+    await nextFrame();
+    clearAnnouncer();
+  });
+
+  test("a row drags from anywhere, and its drag button starts a keyboard drag", () => {
+    render(() => <Animals />);
+    const cat = rows()[0] as HTMLElement;
+    expect(cat.getAttribute("draggable")).toBe("true");
+    expect(cat.hasAttribute("data-allows-dragging")).toBe(true);
+    const handle = within(cat).getByRole("button", { name: "Drag Cat" });
+    expect(handle.style.pointerEvents).toBe("none");
+  });
+
+  test("a DragButton outside a draggable row is refused", () => {
+    expect(() => render(() => <DragButton>≡</DragButton>)).toThrow();
+  });
+
+  test("renders drop indicators and reorders from the keyboard", async () => {
+    const onReorder = mock((_event: DroppableCollectionReorderEvent) => {});
+    render(() => <Animals options={{ onReorder, renderDropIndicator: indicator }} />);
+    await startDrag();
+
+    const grid = screen.getByRole("grid");
+    expect(indicatorLabels(grid)).toEqual([
+      "Insert before Cat",
+      "Insert between Cat and Dog",
+      "Insert between Dog and Kangaroo",
+      "Insert after Kangaroo",
+    ]);
+    const indicators = [...grid.querySelectorAll(".indicator")];
+    expect(indicators[0]?.getAttribute("role")).toBe("row");
+    expect(indicators[0]?.textContent).toBe("Test");
+    expect(indicators[1]?.hasAttribute("data-drop-target")).toBe(true);
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("Insert between Cat and Dog");
+
+    press("ArrowDown");
+    expect(document.activeElement?.getAttribute("aria-label")).toBe(
+      "Insert between Dog and Kangaroo",
+    );
+    expect(indicators[1]?.hasAttribute("data-drop-target")).toBe(false);
+    expect(indicators[2]?.hasAttribute("data-drop-target")).toBe(true);
+
+    press("Enter");
+    await nextFrame();
+    expect(onReorder).toHaveBeenCalledTimes(1);
+    expect([...(onReorder.mock.calls[0]?.[0].keys ?? [])]).toEqual(["cat"]);
+    expect(onReorder.mock.calls[0]?.[0].target).toEqual({
+      type: "item",
+      key: "kangaroo",
+      dropPosition: "before",
+    });
+  });
+
+  test("does not skip drop positions next to a disabled row", async () => {
+    render(() => <Animals disabledKeys={["dog"]} options={{ onReorder: () => {} }} />);
+    await startDrag();
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("Insert between Cat and Dog");
+    press("ArrowDown");
+    expect(document.activeElement?.getAttribute("aria-label")).toBe(
+      "Insert between Dog and Kangaroo",
+    );
+    press("ArrowDown");
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("Insert after Kangaroo");
+  });
+
+  test("drops on a row of another list", async () => {
+    const onItemDrop = mock();
+    render(() => (
+      <>
+        <Animals label="From" />
+        <Animals label="To" options={{ onItemDrop }} />
+      </>
+    ));
+    await startDrag();
+
+    const to = screen.getByRole("grid", { name: "To" });
+    const targets = [...to.querySelectorAll('[role="button"][aria-label^="Drop on"]')];
+    expect(targets.map((target) => target.getAttribute("aria-label"))).toEqual([
+      "Drop on Cat",
+      "Drop on Dog",
+      "Drop on Kangaroo",
+    ]);
+    const catRow = within(to)
+      .getAllByRole("row")
+      .find((row) => row.dataset.key === "cat");
+    expect(catRow?.hasAttribute("data-drop-target")).toBe(true);
+    expect(document.activeElement).toBe(targets[0] as HTMLElement);
+
+    press("Enter");
+    await nextFrame();
+    expect(onItemDrop).toHaveBeenCalledTimes(1);
+    expect(onItemDrop.mock.calls[0]?.[0]).toMatchObject({
+      target: { type: "item", key: "cat", dropPosition: "on" },
+      isInternal: false,
+    });
+  });
+
+  test("drops on another list itself", async () => {
+    const onRootDrop = mock();
+    render(() => (
+      <>
+        <Animals label="From" />
+        <Animals label="To" options={{ onRootDrop }} />
+      </>
+    ));
+    await startDrag();
+
+    const to = screen.getByRole("grid", { name: "To" });
+    const active = document.activeElement as HTMLElement;
+    expect(to.contains(active)).toBe(true);
+    expect(active.getAttribute("aria-label")).toBe("Drop on");
+    expect(active.getAttribute("aria-labelledby")).toBe(`${active.id} ${to.id}`);
+    expect(to.hasAttribute("data-drop-target")).toBe(true);
+
+    press("Enter");
+    await nextFrame();
+    expect(onRootDrop).toHaveBeenCalledTimes(1);
+  });
+
+  test("with a handle, only the drag button starts a pointer drag", async () => {
+    const onDragStart = mock();
+    render(() => <Animals options={{ pointerDragSource: "handle", onDragStart }} />);
+    const cat = rows()[0] as HTMLElement;
+    const handle = within(cat).getByRole("button", { name: "Drag Cat" });
+    expect(cat.hasAttribute("draggable")).toBe(false);
+    expect(handle.getAttribute("draggable")).toBe("true");
+
+    const fromText = new MockDataTransfer();
+    fireDrag(within(cat).getByText("Cat"), "dragstart", { dataTransfer: fromText });
+    expect(onDragStart).not.toHaveBeenCalled();
+
+    const dataTransfer = new MockDataTransfer();
+    fireDrag(handle, "dragstart", { dataTransfer });
+    expect(onDragStart).toHaveBeenCalledTimes(1);
+    expect(dataTransfer.entries()).toEqual([{ type: "text/plain", data: "cat" }]);
+    // The whole row is photographed, not only the button.
+    expect(dataTransfer.dragImage?.node).toBe(cat);
+    fireDrag(handle, "dragend", { dataTransfer });
+  });
+
+  test("the drag button starts a keyboard drag with a handle too", async () => {
+    const onDragStart = mock();
+    render(() => <Animals options={{ pointerDragSource: "handle", onDragStart }} />);
+    await startDrag();
+    expect(onDragStart).toHaveBeenCalledTimes(1);
+    expect(rows()[0]?.hasAttribute("data-dragging")).toBe(true);
+  });
+});
+
+describe("tab navigation keeps a row's controls to themselves", () => {
+  function Editable(props: { onSelectionChange?: (keys: "all" | Set<Key>) => void }) {
+    return (
+      <GridList
+        aria-label="Files"
+        items={FILES}
+        keyboardNavigationBehavior="tab"
+        selectionMode="multiple"
+        onSelectionChange={props.onSelectionChange}
+        getTextValue={(file: File) => file.name}
+      >
+        {(file: File) => (
+          <GridListItem>
+            <input aria-label={`Name of ${file.name}`} />
+            <Button>Delete {file.name}</Button>
+          </GridListItem>
+        )}
+      </GridList>
+    );
+  }
+
+  test("typing in a field inside a row is not a typeahead", () => {
+    render(() => <Editable />);
+    const input = screen.getByRole<HTMLInputElement>("textbox", { name: "Name of Notes" });
+    user.focus(input);
+    user.key("b");
+    flush();
+    expect(document.activeElement).toBe(input);
+    expect(input.value).toBe("b");
+  });
+
+  test("Home, Ctrl+A, Space and the arrows inside a field stay with the field", () => {
+    const selections: string[][] = [];
+    render(() => (
+      <Editable
+        onSelectionChange={(keys) =>
+          selections.push(keys === "all" ? ["all"] : [...keys].map(String))
+        }
+      />
+    ));
+    const input = screen.getByRole<HTMLInputElement>("textbox", { name: "Name of Notes" });
+    user.focus(input);
+
+    expect(user.keyDown("Home")).toBe(true);
+    expect(user.keyDown("a", { ctrlKey: true, metaKey: true })).toBe(true);
+    expect(user.keyDown("ArrowDown")).toBe(true);
+    user.key(" ");
+    flush();
+    expect(document.activeElement).toBe(input);
+    expect(selections).toEqual([]);
+  });
+
+  test("Tab still moves between the row's controls and out of the list", () => {
+    render(() => (
+      <>
+        <Editable />
+        <button type="button">After</button>
+      </>
+    ));
+    user.tab();
+    expect(document.activeElement).toBe(rows()[0] as HTMLElement);
+    user.tab();
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("Name of Notes");
+    user.tab();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Delete Notes" }));
+  });
+
+  test("the arrows on the row itself still move between rows", () => {
+    render(() => <Editable />);
+    user.focus(rows()[0] as HTMLElement);
+    user.keyDown("ArrowDown");
+    flush();
+    expect(document.activeElement).toBe(rows()[1] as HTMLElement);
+  });
+
+  test("allowsArrowNavigation lets the arrows move rows from a control", () => {
+    render(() => (
+      <GridList aria-label="Files" items={FILES} keyboardNavigationBehavior="tab">
+        {(file: File) => (
+          <GridListItem allowsArrowNavigation>
+            <Button>Open {file.name}</Button>
+          </GridListItem>
+        )}
+      </GridList>
+    ));
+    user.focus(screen.getByRole("button", { name: "Open Notes" }));
+    flush();
+    user.keyDown("ArrowDown");
+    flush();
+    expect(document.activeElement).toBe(rows()[1] as HTMLElement);
+  });
+
+  test("focusMode child hands the row's focus to its first control", async () => {
+    render(() => (
+      <GridList aria-label="Files" items={FILES} keyboardNavigationBehavior="tab">
+        {(file: File) => (
+          <GridListItem focusMode="child">
+            <Button>Open {file.name}</Button>
+          </GridListItem>
+        )}
+      </GridList>
+    ));
+    user.tab();
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
+    flush();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Open Notes" }));
+  });
+});
+
+describe("pointer focus inside a row", () => {
+  test("pressing a field or a button inside a row leaves focus on it", () => {
+    render(() => (
+      <GridList aria-label="Files" items={FILES} selectionMode="multiple">
+        {(file: File) => (
+          <GridListItem>
+            <input aria-label={`Name of ${file.name}`} />
+            <Button>Delete {file.name}</Button>
+          </GridListItem>
+        )}
+      </GridList>
+    ));
+
+    const input = screen.getByRole("textbox", { name: "Name of Budget" });
+    user.click(input);
+    flush();
+    expect(document.activeElement).toBe(input);
+
+    const remove = screen.getByRole("button", { name: "Delete Photos" });
+    user.click(remove);
+    flush();
+    expect(document.activeElement).toBe(remove);
+    expect(rows()[3]?.getAttribute("aria-selected")).toBe("false");
+  });
+});
+
+describe("keys and layout", () => {
+  test("Page Down and Page Up reach the ends of a list that does not scroll", () => {
+    render(() => <Files />);
+    user.focus(screen.getByRole("grid"));
+    user.keyDown("PageDown");
+    flush();
+    expect(document.activeElement).toBe(rows()[3] as HTMLElement);
+    user.keyDown("PageUp");
+    flush();
+    expect(document.activeElement).toBe(rows()[0] as HTMLElement);
+  });
+
+  test("the grid writes its layout, orientation, focus and selection mode", () => {
+    render(() => <Files selectionMode="multiple" />);
+    const grid = screen.getByRole("grid");
+    expect(grid.getAttribute("data-layout")).toBe("stack");
+    expect(grid.getAttribute("data-orientation")).toBe("vertical");
+    expect(rows()[0]?.getAttribute("data-selection-mode")).toBe("multiple");
+  });
+
+  test("a horizontal list under tab navigation moves between rows with Left and Right", () => {
+    render(() => (
+      <GridList
+        aria-label="Files"
+        items={FILES}
+        orientation="horizontal"
+        keyboardNavigationBehavior="tab"
+      >
+        {(file: File) => <GridListItem>{file.name}</GridListItem>}
+      </GridList>
+    ));
+    expect(screen.getByRole("grid").getAttribute("data-orientation")).toBe("horizontal");
+    user.focus(rows()[0] as HTMLElement);
+    user.keyDown("ArrowRight");
+    flush();
+    expect(document.activeElement).toBe(rows()[1] as HTMLElement);
+  });
+
+  test("a grid layout uses tab navigation and moves across rows with the arrows", () => {
+    render(() => (
+      <GridList aria-label="Files" items={FILES} layout="grid">
+        {(file: File) => (
+          <GridListItem>
+            {file.name}
+            <Button>Open {file.name}</Button>
+          </GridListItem>
+        )}
+      </GridList>
+    ));
+    expect(screen.getByRole("grid").getAttribute("data-layout")).toBe("grid");
+    user.focus(rows()[0] as HTMLElement);
+    user.keyDown("ArrowRight");
+    flush();
+    expect(document.activeElement).toBe(rows()[1] as HTMLElement);
+  });
+
+  test("a row in focus has data-focus-visible-within while a control in it has the ring", () => {
+    render(() => <Files withButtons />);
+    user.tab();
+    user.keyDown("ArrowRight");
+    flush();
+    expect(document.activeElement?.textContent).toBe("Rename Notes");
+    expect(rows()[0]?.hasAttribute("data-focus-visible-within")).toBe(true);
+    expect(rows()[1]?.hasAttribute("data-focus-visible-within")).toBe(false);
+  });
+
+  test("a row keeps the id its key gives it, which its checkbox names", () => {
+    render(() => (
+      <GridList aria-label="Files" items={FILES} selectionMode="multiple">
+        {(file: File) => (
+          <GridListItem id={`mine-${file.id}`}>
+            <GridListSelectionCheckbox />
+            {file.name}
+          </GridListItem>
+        )}
+      </GridList>
+    ));
+    expect(rows()[0]?.id).not.toBe("mine-notes");
+    expect(screen.getByRole("checkbox", { name: "Select Notes" })).not.toBeNull();
+  });
+
+  test("a row's id is a single token even when its key is not", () => {
+    render(() => (
+      <GridList aria-label="Cities" items={[{ id: "New York", name: "New York" }]}>
+        {(city: { name: string }) => <GridListItem>{city.name}</GridListItem>}
+      </GridList>
+    ));
+    expect(rows()[0]?.id).toMatch(/^[A-Za-z][\w:.-]*$/);
+  });
+
+  test("an empty list renders its empty state and stays a Tab stop", () => {
+    render(() => (
+      <GridList
+        aria-label="Files"
+        items={[] as File[]}
+        renderEmptyState={(grid) => <span>No files {grid.isEmpty() ? "yet" : ""}</span>}
+      >
+        {(file: File) => <GridListItem>{file.name}</GridListItem>}
+      </GridList>
+    ));
+    const grid = screen.getByRole("grid");
+    expect(grid.textContent).toBe("No files yet");
+    expect(grid.getAttribute("tabindex")).toBe("0");
+    user.tab();
+    expect(document.activeElement).toBe(grid);
+    expect(grid.hasAttribute("data-focus-visible")).toBe(true);
+  });
+
+  test("an empty state with a control of its own takes the Tab stop from the grid", () => {
+    render(() => (
+      <GridList
+        aria-label="Files"
+        items={[] as File[]}
+        renderEmptyState={(_grid: GridListRenderState) => <button type="button">Upload</button>}
+      >
+        {(file: File) => <GridListItem>{file.name}</GridListItem>}
+      </GridList>
+    ));
+    flush();
+    expect(screen.getByRole("grid").getAttribute("tabindex")).toBe("-1");
+    user.tab();
+    expect(document.activeElement?.textContent).toBe("Upload");
+  });
+
+  test("shouldSelectOnPressUp selects on release", () => {
+    const selections: string[][] = [];
+    render(() => (
+      <GridList
+        aria-label="Files"
+        items={FILES}
+        selectionMode="single"
+        shouldSelectOnPressUp
+        onSelectionChange={(keys) =>
+          selections.push(keys === "all" ? ["all"] : [...keys].map(String))
+        }
+      >
+        {(file: File) => <GridListItem>{file.name}</GridListItem>}
+      </GridList>
+    ));
+    user.pointerDown(rows()[1] as HTMLElement);
+    flush();
+    expect(selections).toEqual([]);
+    user.pointerUp(rows()[1] as HTMLElement);
+    user.click(rows()[1] as HTMLElement);
+    flush();
+    expect(selections).toEqual([["budget"]]);
+  });
+});
+
+describe("item events and actions", () => {
+  test("a row's own onAction runs before the list's, and its press events reach it", () => {
+    const seen: string[] = [];
+    render(() => (
+      <GridList aria-label="Files" items={FILES} onAction={(key: Key) => seen.push(`list ${key}`)}>
+        {(file: File) => (
+          <GridListItem
+            onAction={() => seen.push(`own ${file.id}`)}
+            onPressStart={() => seen.push("press start")}
+            onPress={() => seen.push("press")}
+            onHoverStart={() => seen.push("hover")}
+          >
+            {file.name}
+          </GridListItem>
+        )}
+      </GridList>
+    ));
+    user.hover(rows()[0] as HTMLElement);
+    user.click(rows()[0] as HTMLElement);
+    flush();
+    expect(seen).toEqual(["hover", "press start", "own notes", "list notes", "press"]);
+  });
+
+  test("a row with an href is a link that the router follows", () => {
+    const opened: string[] = [];
+    const LINKS = [
+      { id: "docs", name: "Docs", href: "/docs" },
+      { id: "blog", name: "Blog", href: "/blog" },
+    ];
+    render(
+      () =>
+        provide(
+          RouterContext,
+          () => ({
+            isNative: false,
+            open: (_target: Element, _modifiers: object, href: string) => opened.push(href),
+            href: (href: string) => href,
+          }),
+          () => (
+            <GridList aria-label="Pages" items={LINKS}>
+              {(page: { name: string }) => <GridListItem>{page.name}</GridListItem>}
+            </GridList>
+          ),
+        ) as never,
+    );
+
+    expect(rows()[0]?.getAttribute("data-href")).toBe("/docs");
+    user.click(rows()[0] as HTMLElement);
+    flush();
+    expect(opened).toEqual(["/docs"]);
+
+    user.keyDown("ArrowDown");
+    user.key("Enter");
+    flush();
+    expect(opened).toEqual(["/docs", "/blog"]);
+  });
+});
+
+describe("a selection checkbox", () => {
+  function Checked(props: {
+    selectionBehavior?: "toggle" | "replace";
+    onSelectionChange?: (keys: "all" | Set<Key>) => void;
+  }) {
+    return (
+      <GridList
+        aria-label="Files"
+        items={FILES}
+        selectionMode="multiple"
+        selectionBehavior={props.selectionBehavior}
+        onSelectionChange={props.onSelectionChange}
+      >
+        {(file: File) => (
+          <GridListItem>
+            <GridListSelectionCheckbox />
+            {file.name}
+          </GridListItem>
+        )}
+      </GridList>
+    );
+  }
+
+  test("is named after its row and follows the row's selection", () => {
+    render(() => <Checked />);
+    const box = screen.getByRole<HTMLInputElement>("checkbox", { name: "Select Budget" });
+    expect(box.checked).toBe(false);
+    user.click(rows()[1] as HTMLElement);
+    flush();
+    expect(box.checked).toBe(true);
+    expect(
+      screen.getByRole<HTMLInputElement>("checkbox", { name: "Select Archive" }).disabled,
+    ).toBe(true);
+  });
+
+  test("adds to the selection even under replace selection", () => {
+    const selections: string[][] = [];
+    render(() => (
+      <Checked
+        selectionBehavior="replace"
+        onSelectionChange={(keys) =>
+          selections.push(keys === "all" ? ["all"] : [...keys].map(String).toSorted())
+        }
+      />
+    ));
+    user.click(screen.getByRole("checkbox", { name: "Select Notes" }));
+    user.click(screen.getByRole("checkbox", { name: "Select Budget" }));
+    flush();
+    expect(selections.at(-1)).toEqual(["budget", "notes"]);
+  });
+});
+
+describe("sections", () => {
+  type Entry = { id: string; name: string; files?: Entry[] };
+  const GROUPS: Entry[] = [
+    {
+      id: "documents",
+      name: "Documents",
+      files: [
+        { id: "notes", name: "Notes" },
+        { id: "budget", name: "Budget" },
+      ],
+    },
+    { id: "media", name: "Media", files: [{ id: "photos", name: "Photos" }] },
+  ];
+
+  function Grouped() {
+    return (
+      <GridList aria-label="Files" items={GROUPS} getChildren={(entry: Entry) => entry.files}>
+        {(entry: Entry) =>
+          entry.files === undefined ? (
+            <GridListItem>{entry.name}</GridListItem>
+          ) : (
+            <GridListSection>
+              <GridListHeader>{entry.name}</GridListHeader>
+            </GridListSection>
+          )
+        }
+      </GridList>
+    );
+  }
+
+  test("each section is a row group named by its header", () => {
+    render(() => <Grouped />);
+    const groups = screen.getAllByRole("rowgroup");
+    expect(groups.map((group) => accessibleName(group))).toEqual(["Documents", "Media"]);
+    expect(
+      within(groups[0] as HTMLElement)
+        .getAllByRole("row")
+        .map((row) => row.textContent),
+    ).toEqual(["Documents", "Notes", "Budget"]);
+    expect(screen.getByRole("rowheader", { name: "Media" })).not.toBeNull();
+  });
+
+  test("the keyboard walks the rows across sections and never stops on a header", () => {
+    render(() => <Grouped />);
+    user.focus(screen.getByRole("grid"));
+    expect(document.activeElement?.textContent).toBe("Notes");
+    user.keyDown("ArrowDown");
+    user.keyDown("ArrowDown");
+    flush();
+    expect(document.activeElement?.textContent).toBe("Photos");
+    user.keyDown("Home");
+    flush();
+    expect(document.activeElement?.textContent).toBe("Notes");
+  });
+
+  test("has no ARIA violations", () => {
+    const { container } = render(() => <Grouped />);
+    expectNoAriaViolations(container);
+  });
+});
+
+describe("a selection indicator", () => {
+  test("is shown in the selected row only", () => {
+    render(() => (
+      <GridList
+        aria-label="Files"
+        items={FILES}
+        selectionMode="single"
+        defaultSelectedKeys={["budget"]}
+      >
+        {(file: File) => (
+          <GridListItem>
+            {file.name}
+            <SelectionIndicator class="indicator" />
+          </GridListItem>
+        )}
+      </GridList>
+    ));
+    const shown = [...document.querySelectorAll(".indicator")];
+    expect(shown.map((each) => each.closest('[role="row"]')?.textContent)).toEqual(["Budget"]);
   });
 });

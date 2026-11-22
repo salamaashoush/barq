@@ -50,6 +50,7 @@ import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/re
 import { button } from "./button.tsx";
 import {
   buildCollection,
+  getItemCount,
   listState,
   type FocusStrategy,
   type ItemAccessors,
@@ -61,7 +62,13 @@ import {
 } from "./collections.ts";
 import { Popover } from "./dialog.tsx";
 import { focusRing, focusScope } from "./focus.ts";
-import { declaredDirection, filter as makeFilter, useLocale } from "./i18n.ts";
+import {
+  declaredDirection,
+  filter as makeFilter,
+  StringDictionary,
+  stringFormatter,
+  useLocale,
+} from "./i18n.ts";
 import { hover } from "./interactions/hover.ts";
 import type { ElementRef, PressEvent } from "./interactions/press.ts";
 import { field, type FieldOptions } from "./label.ts";
@@ -77,10 +84,16 @@ import {
   Option,
   optionIdFor,
   provideItemNode,
+  provideItemRender,
   type ListBoxContextValue,
 } from "./listbox.tsx";
+import { announce } from "./live.ts";
+import { isAppleDevice } from "./platform.ts";
+import { formReset } from "./toggle.ts";
 import {
   alignOf,
+  ariaHideOutside,
+  followOpen,
   overlay as dismissal,
   overlayPosition,
   overlayTriggerState,
@@ -177,6 +190,28 @@ export interface ComboBoxState<T>
   revert(): void;
 }
 
+/**
+ * The nodes the typed text keeps, looking inside sections.
+ *
+ * A section stays while any of its items does, holding only those, and goes
+ * when it is left empty. Copies, because a collection links the nodes it is
+ * built from, and the unfiltered collection shares them.
+ */
+function filterNodes<T>(nodes: Iterable<Node<T>>, keeps: (text: string) => boolean): Node<T>[] {
+  const kept: Node<T>[] = [];
+  for (const node of nodes) {
+    if (node.type === "section" && node.hasChildNodes) {
+      const children = filterNodes(node.childNodes, keeps);
+      if (children.some((child) => child.type === "item")) {
+        kept.push({ ...node, childNodes: children });
+      }
+    } else if (node.type !== "item" || keeps(node.textValue)) {
+      kept.push({ ...node });
+    }
+  }
+  return kept;
+}
+
 export function comboBoxState<T>(options: ComboBoxStateOptions<T>): ComboBoxState<T> {
   const overlay = overlayTriggerState({
     ...(options as OverlayTriggerStateOptions),
@@ -225,11 +260,7 @@ export function comboBoxState<T>(options: ComboBoxStateOptions<T>): ComboBoxStat
       if (showAll()) return nodes;
       const query = inputValue();
       const keep = keeps();
-      const kept: Node<T>[] = [];
-      for (const node of nodes) {
-        if (node.type !== "item" || keep(node.textValue, query)) kept.push(node);
-      }
-      return kept;
+      return filterNodes(nodes, (text) => keep(text, query));
     },
     onSelectionChange: (keys: SelectionValue) => {
       const key = keys === "all" ? null : (keys.values().next().value ?? null);
@@ -261,6 +292,7 @@ export function comboBoxState<T>(options: ComboBoxStateOptions<T>): ComboBoxStat
   const open = (focusStrategy: FocusStrategy | null = null, trigger?: MenuTriggerAction): void => {
     const all = displaysAll(trigger);
     if (!canShow(all)) return;
+    closedForEmpty = false;
     if (all) setShowAll(true);
     lastTrigger = trigger;
     setStrategy(focusStrategy);
@@ -287,12 +319,18 @@ export function comboBoxState<T>(options: ComboBoxStateOptions<T>): ComboBoxStat
    */
   let syncedKey: Key | null = untrack(selectedKey);
 
+  /** Closed by the effect below for having nothing to show, not by the user. */
+  let closedForEmpty = false;
+
   const resetInput = (): void => {
     syncedKey = selectedKey();
     setInputValueRaw(selectedText());
   };
 
   const commitValue = (): void => {
+    // Leaving the query, or settling it, is the end of the search that came
+    // back empty: an answer arriving after it must not open the list.
+    closedForEmpty = false;
     if (access(options.allowsCustomValue) === true && inputValue() !== selectedText()) {
       // Text matching nothing IS the value, so the selection goes away rather
       // than the text.
@@ -322,6 +360,7 @@ export function comboBoxState<T>(options: ComboBoxStateOptions<T>): ComboBoxStat
   };
 
   const revert = (): void => {
+    closedForEmpty = false;
     if (access(options.allowsCustomValue) === true && selectedKey() === null) {
       overlay.close();
       return;
@@ -380,7 +419,29 @@ export function comboBoxState<T>(options: ComboBoxStateOptions<T>): ComboBoxStat
           ? null
           : list.collection(),
       (collection) => {
-        if (collection !== null && collection.size === 0) overlay.close();
+        if (collection !== null && collection.size === 0) {
+          closedForEmpty = true;
+          overlay.close();
+        }
+      },
+    );
+
+    // And one closed for being empty opens again when items arrive, which is
+    // what an asynchronous search answering after an empty answer looks like.
+    createEffect(
+      () =>
+        [
+          list.collection().size,
+          isFocused(),
+          overlay.isOpen(),
+          access(options.menuTrigger) === "manual",
+        ] as const,
+      ([size, focused, isOpen, isManual]) => {
+        if (!closedForEmpty || !focused || isOpen || isManual || size === 0) return;
+        closedForEmpty = false;
+        lastTrigger = "input";
+        setStrategy(null);
+        overlay.open();
       },
     );
 
@@ -439,6 +500,321 @@ export function comboBoxState<T>(options: ComboBoxStateOptions<T>): ComboBoxStat
 // Hooks
 // ---------------------------------------------------------------------------
 
+const comboBoxStrings = new StringDictionary<
+  | "buttonLabel"
+  | "listboxLabel"
+  | "countAnnouncement"
+  | "focusAnnouncement"
+  | "selectedAnnouncement"
+>({
+  "ar-AE": {
+    buttonLabel: "عرض المقترحات",
+    listboxLabel: "مقترحات",
+    countAnnouncement: (values, format) =>
+      `${format.plural(Number(values?.optionCount), { one: () => `${format.number(Number(values?.optionCount))} خيار`, other: () => `${format.number(Number(values?.optionCount))} خيارات` })} متاحة.`,
+    focusAnnouncement: (values, format) =>
+      `${format.select({ true: () => `المجموعة المدخلة ${String(values?.groupTitle ?? "")}, مع ${format.plural(Number(values?.groupCount), { one: () => `${format.number(Number(values?.groupCount))} خيار`, other: () => `${format.number(Number(values?.groupCount))} خيارات` })}. `, other: () => "" }, String(values?.isGroupChange))}${String(values?.optionText ?? "")}${format.select({ true: () => ", محدد", other: () => "" }, String(values?.isSelected))}`,
+    selectedAnnouncement: (values) => `${String(values?.optionText ?? "")}، محدد`,
+  },
+  "bg-BG": {
+    buttonLabel: "Покажи предложения",
+    listboxLabel: "Предложения",
+    countAnnouncement: (values, format) =>
+      `${format.plural(Number(values?.optionCount), { one: () => `${format.number(Number(values?.optionCount))} опция`, other: () => `${format.number(Number(values?.optionCount))} опции` })} на разположение.`,
+    focusAnnouncement: (values, format) =>
+      `${format.select({ true: () => `Въведена група ${String(values?.groupTitle ?? "")}, с ${format.plural(Number(values?.groupCount), { one: () => `${format.number(Number(values?.groupCount))} опция`, other: () => `${format.number(Number(values?.groupCount))} опции` })}. `, other: () => "" }, String(values?.isGroupChange))}${String(values?.optionText ?? "")}${format.select({ true: () => ", избрани", other: () => "" }, String(values?.isSelected))}`,
+    selectedAnnouncement: (values) => `${String(values?.optionText ?? "")}, избрани`,
+  },
+  "cs-CZ": {
+    buttonLabel: "Zobrazit doporučení",
+    listboxLabel: "Návrhy",
+    countAnnouncement: (values, format) =>
+      `K dispozici ${format.plural(Number(values?.optionCount), { one: () => `je ${format.number(Number(values?.optionCount))} možnost`, other: () => `jsou/je ${format.number(Number(values?.optionCount))} možnosti/-í` })}.`,
+    focusAnnouncement: (values, format) =>
+      `${format.select({ true: () => `Zadaná skupina „${String(values?.groupTitle ?? "")}“ ${format.plural(Number(values?.groupCount), { one: () => `s ${format.number(Number(values?.groupCount))} možností`, other: () => `se ${format.number(Number(values?.groupCount))} možnostmi` })}. `, other: () => "" }, String(values?.isGroupChange))}${String(values?.optionText ?? "")}${format.select({ true: () => " (vybráno)", other: () => "" }, String(values?.isSelected))}`,
+    selectedAnnouncement: (values) => `${String(values?.optionText ?? "")}, vybráno`,
+  },
+  "da-DK": {
+    buttonLabel: "Vis forslag",
+    listboxLabel: "Forslag",
+    countAnnouncement: (values, format) =>
+      `${format.plural(Number(values?.optionCount), { one: () => `${format.number(Number(values?.optionCount))} mulighed tilgængelig`, other: () => `${format.number(Number(values?.optionCount))} muligheder tilgængelige` })}.`,
+    focusAnnouncement: (values, format) =>
+      `${format.select({ true: () => `Angivet gruppe ${String(values?.groupTitle ?? "")}, med ${format.plural(Number(values?.groupCount), { one: () => `${format.number(Number(values?.groupCount))} mulighed`, other: () => `${format.number(Number(values?.groupCount))} muligheder` })}. `, other: () => "" }, String(values?.isGroupChange))}${String(values?.optionText ?? "")}${format.select({ true: () => ", valgt", other: () => "" }, String(values?.isSelected))}`,
+    selectedAnnouncement: (values) => `${String(values?.optionText ?? "")}, valgt`,
+  },
+  "de-DE": {
+    buttonLabel: "Empfehlungen anzeigen",
+    listboxLabel: "Empfehlungen",
+    countAnnouncement: (values, format) =>
+      `${format.plural(Number(values?.optionCount), { one: () => `${format.number(Number(values?.optionCount))} Option`, other: () => `${format.number(Number(values?.optionCount))} Optionen` })} verfügbar.`,
+    focusAnnouncement: (values, format) =>
+      `${format.select({ true: () => `Eingetretene Gruppe ${String(values?.groupTitle ?? "")}, mit ${format.plural(Number(values?.groupCount), { one: () => `${format.number(Number(values?.groupCount))} Option`, other: () => `${format.number(Number(values?.groupCount))} Optionen` })}. `, other: () => "" }, String(values?.isGroupChange))}${String(values?.optionText ?? "")}${format.select({ true: () => ", ausgewählt", other: () => "" }, String(values?.isSelected))}`,
+    selectedAnnouncement: (values) => `${String(values?.optionText ?? "")}, ausgewählt`,
+  },
+  "el-GR": {
+    buttonLabel: "Προβολή προτάσεων",
+    listboxLabel: "Προτάσεις",
+    countAnnouncement: (values, format) =>
+      `${format.plural(Number(values?.optionCount), { one: () => `${format.number(Number(values?.optionCount))} επιλογή`, other: () => `${format.number(Number(values?.optionCount))} επιλογές ` })} διαθέσιμες.`,
+    focusAnnouncement: (values, format) =>
+      `${format.select({ true: () => `Εισαγμένη ομάδα ${String(values?.groupTitle ?? "")}, με ${format.plural(Number(values?.groupCount), { one: () => `${format.number(Number(values?.groupCount))} επιλογή`, other: () => `${format.number(Number(values?.groupCount))} επιλογές` })}. `, other: () => "" }, String(values?.isGroupChange))}${String(values?.optionText ?? "")}${format.select({ true: () => ", επιλεγμένο", other: () => "" }, String(values?.isSelected))}`,
+    selectedAnnouncement: (values) => `${String(values?.optionText ?? "")}, επιλέχθηκε`,
+  },
+  "en-US": {
+    buttonLabel: "Show suggestions",
+    listboxLabel: "Suggestions",
+    countAnnouncement: (values, format) =>
+      `${format.plural(Number(values?.optionCount), { one: () => `${format.number(Number(values?.optionCount))} option`, other: () => `${format.number(Number(values?.optionCount))} options` })} available.`,
+    focusAnnouncement: (values, format) =>
+      `${format.select({ true: () => `Entered group ${String(values?.groupTitle ?? "")}, with ${format.plural(Number(values?.groupCount), { one: () => `${format.number(Number(values?.groupCount))} option`, other: () => `${format.number(Number(values?.groupCount))} options` })}. `, other: () => "" }, String(values?.isGroupChange))}${String(values?.optionText ?? "")}${format.select({ true: () => ", selected", other: () => "" }, String(values?.isSelected))}`,
+    selectedAnnouncement: (values) => `${String(values?.optionText ?? "")}, selected`,
+  },
+  "es-ES": {
+    buttonLabel: "Mostrar sugerencias",
+    listboxLabel: "Sugerencias",
+    countAnnouncement: (values, format) =>
+      `${format.plural(Number(values?.optionCount), { one: () => `${format.number(Number(values?.optionCount))} opción`, other: () => `${format.number(Number(values?.optionCount))} opciones` })} disponible(s).`,
+    focusAnnouncement: (values, format) =>
+      `${format.select({ true: () => `Se ha unido al grupo ${String(values?.groupTitle ?? "")}, con ${format.plural(Number(values?.groupCount), { one: () => `${format.number(Number(values?.groupCount))} opción`, other: () => `${format.number(Number(values?.groupCount))} opciones` })}. `, other: () => "" }, String(values?.isGroupChange))}${String(values?.optionText ?? "")}${format.select({ true: () => ", seleccionado", other: () => "" }, String(values?.isSelected))}`,
+    selectedAnnouncement: (values) => `${String(values?.optionText ?? "")}, seleccionado`,
+  },
+  "et-EE": {
+    buttonLabel: "Kuva soovitused",
+    listboxLabel: "Soovitused",
+    countAnnouncement: (values, format) =>
+      `${format.plural(Number(values?.optionCount), { one: () => `${format.number(Number(values?.optionCount))} valik`, other: () => `${format.number(Number(values?.optionCount))} valikud` })} saadaval.`,
+    focusAnnouncement: (values, format) =>
+      `${format.select({ true: () => `Sisestatud rühm ${String(values?.groupTitle ?? "")}, valikuga ${format.plural(Number(values?.groupCount), { one: () => `${format.number(Number(values?.groupCount))} valik`, other: () => `${format.number(Number(values?.groupCount))} valikud` })}. `, other: () => "" }, String(values?.isGroupChange))}${String(values?.optionText ?? "")}${format.select({ true: () => ", valitud", other: () => "" }, String(values?.isSelected))}`,
+    selectedAnnouncement: (values) => `${String(values?.optionText ?? "")}, valitud`,
+  },
+  "fi-FI": {
+    buttonLabel: "Näytä ehdotukset",
+    listboxLabel: "Ehdotukset",
+    countAnnouncement: (values, format) =>
+      `${format.plural(Number(values?.optionCount), { one: () => `${format.number(Number(values?.optionCount))} vaihtoehto`, other: () => `${format.number(Number(values?.optionCount))} vaihtoehtoa` })} saatavilla.`,
+    focusAnnouncement: (values, format) =>
+      `${format.select({ true: () => `Siirtyi ryhmään ${String(values?.groupTitle ?? "")}, jossa ${format.plural(Number(values?.groupCount), { one: () => `${format.number(Number(values?.groupCount))} vaihtoehto`, other: () => `${format.number(Number(values?.groupCount))} vaihtoehtoa` })}.`, other: () => "" }, String(values?.isGroupChange))}${String(values?.optionText ?? "")}${format.select({ true: () => ", valittu", other: () => "" }, String(values?.isSelected))}`,
+    selectedAnnouncement: (values) => `${String(values?.optionText ?? "")}, valittu`,
+  },
+  "fr-FR": {
+    buttonLabel: "Afficher les suggestions",
+    listboxLabel: "Suggestions",
+    countAnnouncement: (values, format) =>
+      `${format.plural(Number(values?.optionCount), { one: () => `${format.number(Number(values?.optionCount))} option`, other: () => `${format.number(Number(values?.optionCount))} options` })} disponible(s).`,
+    focusAnnouncement: (values, format) =>
+      `${format.select({ true: () => `Groupe ${String(values?.groupTitle ?? "")} rejoint, avec ${format.plural(Number(values?.groupCount), { one: () => `${format.number(Number(values?.groupCount))} option`, other: () => `${format.number(Number(values?.groupCount))} options` })}. `, other: () => "" }, String(values?.isGroupChange))}${String(values?.optionText ?? "")}${format.select({ true: () => ", sélectionné(s)", other: () => "" }, String(values?.isSelected))}`,
+    selectedAnnouncement: (values) => `${String(values?.optionText ?? "")}, sélectionné`,
+  },
+  "he-IL": {
+    buttonLabel: "הצג הצעות",
+    listboxLabel: "הצעות",
+    countAnnouncement: (values, format) =>
+      `${format.plural(Number(values?.optionCount), { one: () => `אפשרות ${format.number(Number(values?.optionCount))}`, other: () => `${format.number(Number(values?.optionCount))} אפשרויות` })} במצב זמין.`,
+    focusAnnouncement: (values, format) =>
+      `${format.select({ true: () => `נכנס לקבוצה ${String(values?.groupTitle ?? "")}, עם ${format.plural(Number(values?.groupCount), { one: () => `אפשרות ${format.number(Number(values?.groupCount))}`, other: () => `${format.number(Number(values?.groupCount))} אפשרויות` })}. `, other: () => "" }, String(values?.isGroupChange))}${String(values?.optionText ?? "")}${format.select({ true: () => ", נבחר", other: () => "" }, String(values?.isSelected))}`,
+    selectedAnnouncement: (values) => `${String(values?.optionText ?? "")}, נבחר`,
+  },
+  "hr-HR": {
+    buttonLabel: "Prikaži prijedloge",
+    listboxLabel: "Prijedlozi",
+    countAnnouncement: (values, format) =>
+      `Dostupno još: ${format.plural(Number(values?.optionCount), { one: () => `${format.number(Number(values?.optionCount))} opcija`, other: () => `${format.number(Number(values?.optionCount))} opcije/a` })}.`,
+    focusAnnouncement: (values, format) =>
+      `${format.select({ true: () => `Unesena skupina ${String(values?.groupTitle ?? "")}, s ${format.plural(Number(values?.groupCount), { one: () => `${format.number(Number(values?.groupCount))} opcijom`, other: () => `${format.number(Number(values?.groupCount))} opcije/a` })}. `, other: () => "" }, String(values?.isGroupChange))}${String(values?.optionText ?? "")}${format.select({ true: () => ", odabranih", other: () => "" }, String(values?.isSelected))}`,
+    selectedAnnouncement: (values) => `${String(values?.optionText ?? "")}, odabrano`,
+  },
+  "hu-HU": {
+    buttonLabel: "Javaslatok megjelenítése",
+    listboxLabel: "Javaslatok",
+    countAnnouncement: (values, format) =>
+      `${format.plural(Number(values?.optionCount), { one: () => `${format.number(Number(values?.optionCount))} lehetőség`, other: () => `${format.number(Number(values?.optionCount))} lehetőség` })} áll rendelkezésre.`,
+    focusAnnouncement: (values, format) =>
+      `${format.select({ true: () => `Belépett a(z) ${String(values?.groupTitle ?? "")} csoportba, amely ${format.plural(Number(values?.groupCount), { one: () => `${format.number(Number(values?.groupCount))} lehetőséget`, other: () => `${format.number(Number(values?.groupCount))} lehetőséget` })} tartalmaz. `, other: () => "" }, String(values?.isGroupChange))}${String(values?.optionText ?? "")}${format.select({ true: () => ", kijelölve", other: () => "" }, String(values?.isSelected))}`,
+    selectedAnnouncement: (values) => `${String(values?.optionText ?? "")}, kijelölve`,
+  },
+  "it-IT": {
+    buttonLabel: "Mostra suggerimenti",
+    listboxLabel: "Suggerimenti",
+    countAnnouncement: (values, format) =>
+      `${format.plural(Number(values?.optionCount), { one: () => `${format.number(Number(values?.optionCount))} opzione disponibile`, other: () => `${format.number(Number(values?.optionCount))} opzioni disponibili` })}.`,
+    focusAnnouncement: (values, format) =>
+      `${format.select({ true: () => `Ingresso nel gruppo ${String(values?.groupTitle ?? "")}, con ${format.plural(Number(values?.groupCount), { one: () => `${format.number(Number(values?.groupCount))} opzione`, other: () => `${format.number(Number(values?.groupCount))} opzioni` })}. `, other: () => "" }, String(values?.isGroupChange))}${String(values?.optionText ?? "")}${format.select({ true: () => ", selezionato", other: () => "" }, String(values?.isSelected))}`,
+    selectedAnnouncement: (values) => `${String(values?.optionText ?? "")}, selezionato`,
+  },
+  "ja-JP": {
+    buttonLabel: "候補を表示",
+    listboxLabel: "候補",
+    countAnnouncement: (values, format) =>
+      `${format.plural(Number(values?.optionCount), { one: () => `${format.number(Number(values?.optionCount))} 個のオプション`, other: () => `${format.number(Number(values?.optionCount))} 個のオプション` })}を利用できます。`,
+    focusAnnouncement: (values, format) =>
+      `${format.select({ true: () => `入力されたグループ ${String(values?.groupTitle ?? "")}、${format.plural(Number(values?.groupCount), { one: () => `${format.number(Number(values?.groupCount))} 個のオプション`, other: () => `${format.number(Number(values?.groupCount))} 個のオプション` })}を含む。`, other: () => "" }, String(values?.isGroupChange))}${String(values?.optionText ?? "")}${format.select({ true: () => "、選択済み", other: () => "" }, String(values?.isSelected))}`,
+    selectedAnnouncement: (values) => `${String(values?.optionText ?? "")}、選択済み`,
+  },
+  "ko-KR": {
+    buttonLabel: "제안 사항 표시",
+    listboxLabel: "제안",
+    countAnnouncement: (values, format) =>
+      `${format.plural(Number(values?.optionCount), { one: () => `${format.number(Number(values?.optionCount))}개 옵션`, other: () => `${format.number(Number(values?.optionCount))}개 옵션` })}을 사용할 수 있습니다.`,
+    focusAnnouncement: (values, format) =>
+      `${format.select({ true: () => `입력한 그룹 ${String(values?.groupTitle ?? "")}, ${format.plural(Number(values?.groupCount), { one: () => `${format.number(Number(values?.groupCount))}개 옵션`, other: () => `${format.number(Number(values?.groupCount))}개 옵션` })}. `, other: () => "" }, String(values?.isGroupChange))}${String(values?.optionText ?? "")}${format.select({ true: () => ", 선택됨", other: () => "" }, String(values?.isSelected))}`,
+    selectedAnnouncement: (values) => `${String(values?.optionText ?? "")}, 선택됨`,
+  },
+  "lt-LT": {
+    buttonLabel: "Rodyti pasiūlymus",
+    listboxLabel: "Pasiūlymai",
+    countAnnouncement: (values, format) =>
+      `Yra ${format.plural(Number(values?.optionCount), { one: () => `${format.number(Number(values?.optionCount))} parinktis`, other: () => `${format.number(Number(values?.optionCount))} parinktys (-ių)` })}.`,
+    focusAnnouncement: (values, format) =>
+      `${format.select({ true: () => `Įvesta grupė ${String(values?.groupTitle ?? "")}, su ${format.plural(Number(values?.groupCount), { one: () => `${format.number(Number(values?.groupCount))} parinktimi`, other: () => `${format.number(Number(values?.groupCount))} parinktimis (-ių)` })}. `, other: () => "" }, String(values?.isGroupChange))}${String(values?.optionText ?? "")}${format.select({ true: () => ", pasirinkta", other: () => "" }, String(values?.isSelected))}`,
+    selectedAnnouncement: (values) => `${String(values?.optionText ?? "")}, pasirinkta`,
+  },
+  "lv-LV": {
+    buttonLabel: "Rādīt ieteikumus",
+    listboxLabel: "Ieteikumi",
+    countAnnouncement: (values, format) =>
+      `Pieejamo opciju skaits: ${format.plural(Number(values?.optionCount), { one: () => `${format.number(Number(values?.optionCount))} opcija`, other: () => `${format.number(Number(values?.optionCount))} opcijas` })}.`,
+    focusAnnouncement: (values, format) =>
+      `${format.select({ true: () => `Ievadīta grupa ${String(values?.groupTitle ?? "")}, ar ${format.plural(Number(values?.groupCount), { one: () => `${format.number(Number(values?.groupCount))} opciju`, other: () => `${format.number(Number(values?.groupCount))} opcijām` })}. `, other: () => "" }, String(values?.isGroupChange))}${String(values?.optionText ?? "")}${format.select({ true: () => ", atlasīta", other: () => "" }, String(values?.isSelected))}`,
+    selectedAnnouncement: (values) => `${String(values?.optionText ?? "")}, atlasīta`,
+  },
+  "nb-NO": {
+    buttonLabel: "Vis forslag",
+    listboxLabel: "Forslag",
+    countAnnouncement: (values, format) =>
+      `${format.plural(Number(values?.optionCount), { one: () => `${format.number(Number(values?.optionCount))} alternativ`, other: () => `${format.number(Number(values?.optionCount))} alternativer` })} finnes.`,
+    focusAnnouncement: (values, format) =>
+      `${format.select({ true: () => `Angitt gruppe ${String(values?.groupTitle ?? "")}, med ${format.plural(Number(values?.groupCount), { one: () => `${format.number(Number(values?.groupCount))} alternativ`, other: () => `${format.number(Number(values?.groupCount))} alternativer` })}. `, other: () => "" }, String(values?.isGroupChange))}${String(values?.optionText ?? "")}${format.select({ true: () => ", valgt", other: () => "" }, String(values?.isSelected))}`,
+    selectedAnnouncement: (values) => `${String(values?.optionText ?? "")}, valgt`,
+  },
+  "nl-NL": {
+    buttonLabel: "Suggesties weergeven",
+    listboxLabel: "Suggesties",
+    countAnnouncement: (values, format) =>
+      `${format.plural(Number(values?.optionCount), { one: () => `${format.number(Number(values?.optionCount))} optie`, other: () => `${format.number(Number(values?.optionCount))} opties` })} beschikbaar.`,
+    focusAnnouncement: (values, format) =>
+      `${format.select({ true: () => `Groep ${String(values?.groupTitle ?? "")} ingevoerd met ${format.plural(Number(values?.groupCount), { one: () => `${format.number(Number(values?.groupCount))} optie`, other: () => `${format.number(Number(values?.groupCount))} opties` })}. `, other: () => "" }, String(values?.isGroupChange))}${String(values?.optionText ?? "")}${format.select({ true: () => ", geselecteerd", other: () => "" }, String(values?.isSelected))}`,
+    selectedAnnouncement: (values) => `${String(values?.optionText ?? "")}, geselecteerd`,
+  },
+  "pl-PL": {
+    buttonLabel: "Wyświetlaj sugestie",
+    listboxLabel: "Sugestie",
+    countAnnouncement: (values, format) =>
+      `dostępna/dostępne(-nych) ${format.plural(Number(values?.optionCount), { one: () => `${format.number(Number(values?.optionCount))} opcja`, other: () => `${format.number(Number(values?.optionCount))} opcje(-i)` })}.`,
+    focusAnnouncement: (values, format) =>
+      `${format.select({ true: () => `Dołączono do grupy ${String(values?.groupTitle ?? "")}, z ${format.plural(Number(values?.groupCount), { one: () => `${format.number(Number(values?.groupCount))} opcją`, other: () => `${format.number(Number(values?.groupCount))} opcjami` })}. `, other: () => "" }, String(values?.isGroupChange))}${String(values?.optionText ?? "")}${format.select({ true: () => ", wybrano", other: () => "" }, String(values?.isSelected))}`,
+    selectedAnnouncement: (values) => `${String(values?.optionText ?? "")}, wybrano`,
+  },
+  "pt-BR": {
+    buttonLabel: "Mostrar sugestões",
+    listboxLabel: "Sugestões",
+    countAnnouncement: (values, format) =>
+      `${format.plural(Number(values?.optionCount), { one: () => `${format.number(Number(values?.optionCount))} opção`, other: () => `${format.number(Number(values?.optionCount))} opções` })} disponível.`,
+    focusAnnouncement: (values, format) =>
+      `${format.select({ true: () => `Grupo inserido ${String(values?.groupTitle ?? "")}, com ${format.plural(Number(values?.groupCount), { one: () => `${format.number(Number(values?.groupCount))} opção`, other: () => `${format.number(Number(values?.groupCount))} opções` })}. `, other: () => "" }, String(values?.isGroupChange))}${String(values?.optionText ?? "")}${format.select({ true: () => ", selecionado", other: () => "" }, String(values?.isSelected))}`,
+    selectedAnnouncement: (values) => `${String(values?.optionText ?? "")}, selecionado`,
+  },
+  "pt-PT": {
+    buttonLabel: "Apresentar sugestões",
+    listboxLabel: "Sugestões",
+    countAnnouncement: (values, format) =>
+      `${format.plural(Number(values?.optionCount), { one: () => `${format.number(Number(values?.optionCount))} opção`, other: () => `${format.number(Number(values?.optionCount))} opções` })} disponível.`,
+    focusAnnouncement: (values, format) =>
+      `${format.select({ true: () => `Grupo introduzido ${String(values?.groupTitle ?? "")}, com ${format.plural(Number(values?.groupCount), { one: () => `${format.number(Number(values?.groupCount))} opção`, other: () => `${format.number(Number(values?.groupCount))} opções` })}. `, other: () => "" }, String(values?.isGroupChange))}${String(values?.optionText ?? "")}${format.select({ true: () => ", selecionado", other: () => "" }, String(values?.isSelected))}`,
+    selectedAnnouncement: (values) => `${String(values?.optionText ?? "")}, selecionado`,
+  },
+  "ro-RO": {
+    buttonLabel: "Afișare sugestii",
+    listboxLabel: "Sugestii",
+    countAnnouncement: (values, format) =>
+      `${format.plural(Number(values?.optionCount), { one: () => `${format.number(Number(values?.optionCount))} opțiune`, other: () => `${format.number(Number(values?.optionCount))} opțiuni` })} disponibile.`,
+    focusAnnouncement: (values, format) =>
+      `${format.select({ true: () => `Grup ${String(values?.groupTitle ?? "")} introdus, cu ${format.plural(Number(values?.groupCount), { one: () => `${format.number(Number(values?.groupCount))} opțiune`, other: () => `${format.number(Number(values?.groupCount))} opțiuni` })}. `, other: () => "" }, String(values?.isGroupChange))}${String(values?.optionText ?? "")}${format.select({ true: () => ", selectat", other: () => "" }, String(values?.isSelected))}`,
+    selectedAnnouncement: (values) => `${String(values?.optionText ?? "")}, selectat`,
+  },
+  "ru-RU": {
+    buttonLabel: "Показать предложения",
+    listboxLabel: "Предложения",
+    countAnnouncement: (values, format) =>
+      `${format.plural(Number(values?.optionCount), { one: () => `${format.number(Number(values?.optionCount))} параметр`, other: () => `${format.number(Number(values?.optionCount))} параметров` })} доступно.`,
+    focusAnnouncement: (values, format) =>
+      `${format.select({ true: () => `Введенная группа ${String(values?.groupTitle ?? "")}, с ${format.plural(Number(values?.groupCount), { one: () => `${format.number(Number(values?.groupCount))} параметром`, other: () => `${format.number(Number(values?.groupCount))} параметрами` })}. `, other: () => "" }, String(values?.isGroupChange))}${String(values?.optionText ?? "")}${format.select({ true: () => ", выбранными", other: () => "" }, String(values?.isSelected))}`,
+    selectedAnnouncement: (values) => `${String(values?.optionText ?? "")}, выбрано`,
+  },
+  "sk-SK": {
+    buttonLabel: "Zobraziť návrhy",
+    listboxLabel: "Návrhy",
+    countAnnouncement: (values, format) =>
+      `${format.plural(Number(values?.optionCount), { one: () => `${format.number(Number(values?.optionCount))} možnosť`, other: () => `${format.number(Number(values?.optionCount))} možnosti/-í` })} k dispozícii.`,
+    focusAnnouncement: (values, format) =>
+      `${format.select({ true: () => `Zadaná skupina ${String(values?.groupTitle ?? "")}, s ${format.plural(Number(values?.groupCount), { one: () => `${format.number(Number(values?.groupCount))} možnosťou`, other: () => `${format.number(Number(values?.groupCount))} možnosťami` })}. `, other: () => "" }, String(values?.isGroupChange))}${String(values?.optionText ?? "")}${format.select({ true: () => ", vybraté", other: () => "" }, String(values?.isSelected))}`,
+    selectedAnnouncement: (values) => `${String(values?.optionText ?? "")}, vybraté`,
+  },
+  "sl-SI": {
+    buttonLabel: "Prikaži predloge",
+    listboxLabel: "Predlogi",
+    countAnnouncement: (values, format) =>
+      `Na voljo je ${format.plural(Number(values?.optionCount), { one: () => `${format.number(Number(values?.optionCount))} opcija`, other: () => `${format.number(Number(values?.optionCount))} opcije` })}.`,
+    focusAnnouncement: (values, format) =>
+      `${format.select({ true: () => `Vnesena skupina ${String(values?.groupTitle ?? "")}, z ${format.plural(Number(values?.groupCount), { one: () => `${format.number(Number(values?.groupCount))} opcija`, other: () => `${format.number(Number(values?.groupCount))} opcije` })}. `, other: () => "" }, String(values?.isGroupChange))}${String(values?.optionText ?? "")}${format.select({ true: () => ", izbrano", other: () => "" }, String(values?.isSelected))}`,
+    selectedAnnouncement: (values) => `${String(values?.optionText ?? "")}, izbrano`,
+  },
+  "sr-SP": {
+    buttonLabel: "Prikaži predloge",
+    listboxLabel: "Predlozi",
+    countAnnouncement: (values, format) =>
+      `Dostupno još: ${format.plural(Number(values?.optionCount), { one: () => `${format.number(Number(values?.optionCount))} opcija`, other: () => `${format.number(Number(values?.optionCount))} opcije/a` })}.`,
+    focusAnnouncement: (values, format) =>
+      `${format.select({ true: () => `Unesena grupa ${String(values?.groupTitle ?? "")}, s ${format.plural(Number(values?.groupCount), { one: () => `${format.number(Number(values?.groupCount))} opcijom`, other: () => `${format.number(Number(values?.groupCount))} optione/a` })}. `, other: () => "" }, String(values?.isGroupChange))}${String(values?.optionText ?? "")}${format.select({ true: () => ", izabranih", other: () => "" }, String(values?.isSelected))}`,
+    selectedAnnouncement: (values) => `${String(values?.optionText ?? "")}, izabrano`,
+  },
+  "sv-SE": {
+    buttonLabel: "Visa förslag",
+    listboxLabel: "Förslag",
+    countAnnouncement: (values, format) =>
+      `${format.plural(Number(values?.optionCount), { one: () => `${format.number(Number(values?.optionCount))} alternativ`, other: () => `${format.number(Number(values?.optionCount))} alternativ` })} tillgängliga.`,
+    focusAnnouncement: (values, format) =>
+      `${format.select({ true: () => `Ingick i gruppen ${String(values?.groupTitle ?? "")} med ${format.plural(Number(values?.groupCount), { one: () => `${format.number(Number(values?.groupCount))} alternativ`, other: () => `${format.number(Number(values?.groupCount))} alternativ` })}. `, other: () => "" }, String(values?.isGroupChange))}${String(values?.optionText ?? "")}${format.select({ true: () => ", valda", other: () => "" }, String(values?.isSelected))}`,
+    selectedAnnouncement: (values) => `${String(values?.optionText ?? "")}, valda`,
+  },
+  "tr-TR": {
+    buttonLabel: "Önerileri göster",
+    listboxLabel: "Öneriler",
+    countAnnouncement: (values, format) =>
+      `${format.plural(Number(values?.optionCount), { one: () => `${format.number(Number(values?.optionCount))} seçenek`, other: () => `${format.number(Number(values?.optionCount))} seçenekler` })} kullanılabilir.`,
+    focusAnnouncement: (values, format) =>
+      `${format.select({ true: () => `Girilen grup ${String(values?.groupTitle ?? "")}, ile ${format.plural(Number(values?.groupCount), { one: () => `${format.number(Number(values?.groupCount))} seçenek`, other: () => `${format.number(Number(values?.groupCount))} seçenekler` })}. `, other: () => "" }, String(values?.isGroupChange))}${String(values?.optionText ?? "")}${format.select({ true: () => ", seçildi", other: () => "" }, String(values?.isSelected))}`,
+    selectedAnnouncement: (values) => `${String(values?.optionText ?? "")}, seçildi`,
+  },
+  "uk-UA": {
+    buttonLabel: "Показати пропозиції",
+    listboxLabel: "Пропозиції",
+    countAnnouncement: (values, format) =>
+      `${format.plural(Number(values?.optionCount), { one: () => `${format.number(Number(values?.optionCount))} параметр`, other: () => `${format.number(Number(values?.optionCount))} параметри(-ів)` })} доступно.`,
+    focusAnnouncement: (values, format) =>
+      `${format.select({ true: () => `Введена група ${String(values?.groupTitle ?? "")}, з ${format.plural(Number(values?.groupCount), { one: () => `${format.number(Number(values?.groupCount))} параметр`, other: () => `${format.number(Number(values?.groupCount))} параметри(-ів)` })}. `, other: () => "" }, String(values?.isGroupChange))}${String(values?.optionText ?? "")}${format.select({ true: () => ", вибрано", other: () => "" }, String(values?.isSelected))}`,
+    selectedAnnouncement: (values) => `${String(values?.optionText ?? "")}, вибрано`,
+  },
+  "zh-CN": {
+    buttonLabel: "显示建议",
+    listboxLabel: "建议",
+    countAnnouncement: (values, format) =>
+      `有 ${format.plural(Number(values?.optionCount), { one: () => `${format.number(Number(values?.optionCount))} 个选项`, other: () => `${format.number(Number(values?.optionCount))} 个选项` })}可用。`,
+    focusAnnouncement: (values, format) =>
+      `${format.select({ true: () => `进入了 ${String(values?.groupTitle ?? "")} 组，其中有 ${format.plural(Number(values?.groupCount), { one: () => `${format.number(Number(values?.groupCount))} 个选项`, other: () => `${format.number(Number(values?.groupCount))} 个选项` })}. `, other: () => "" }, String(values?.isGroupChange))}${String(values?.optionText ?? "")}${format.select({ true: () => ", 已选择", other: () => "" }, String(values?.isSelected))}`,
+    selectedAnnouncement: (values) => `${String(values?.optionText ?? "")}, 已选择`,
+  },
+  "zh-TW": {
+    buttonLabel: "顯示建議",
+    listboxLabel: "建議",
+    countAnnouncement: (values, format) =>
+      `${format.plural(Number(values?.optionCount), { one: () => `${format.number(Number(values?.optionCount))} 選項`, other: () => `${format.number(Number(values?.optionCount))} 選項` })} 可用。`,
+    focusAnnouncement: (values, format) =>
+      `${format.select({ true: () => `輸入的群組 ${String(values?.groupTitle ?? "")}, 有 ${format.plural(Number(values?.groupCount), { one: () => `${format.number(Number(values?.groupCount))} 選項`, other: () => `${format.number(Number(values?.groupCount))} 選項` })}. `, other: () => "" }, String(values?.isGroupChange))}${String(values?.optionText ?? "")}${format.select({ true: () => ", 已選取", other: () => "" }, String(values?.isSelected))}`,
+    selectedAnnouncement: (values) => `${String(values?.optionText ?? "")}, 已選取`,
+  },
+});
+
 export interface ComboBoxOptions extends FieldOptions {
   inputRef: ElementRef<HTMLInputElement>;
   listBoxRef: ElementRef;
@@ -450,6 +826,14 @@ export interface ComboBoxOptions extends FieldOptions {
   shouldFocusWrap?: MaybeAccessor<boolean | undefined>;
   name?: MaybeAccessor<string | undefined>;
   form?: MaybeAccessor<string | undefined>;
+  /**
+   * What the field's own `name` submits. With "key" the field carries no
+   * `name`, and the caller renders a hidden input holding the key; the name
+   * still matches the form's server errors to this field.
+   *
+   * @default "text"
+   */
+  formValue?: MaybeAccessor<"key" | "text" | undefined>;
   placeholder?: MaybeAccessor<string | undefined>;
   keyboardDelegate?: KeyboardDelegate;
   /** What the page thinks of the choice, checked as it changes. */
@@ -480,6 +864,7 @@ export function comboBox(options: ComboBoxOptions, state: ComboBoxState<unknown>
 
   const {
     state: validation,
+    behavior,
     isInvalid,
     errors,
     errorMessage,
@@ -569,6 +954,114 @@ export function comboBox(options: ComboBoxOptions, state: ComboBoxState<unknown>
     }
   };
 
+  const message = stringFormatter(comboBoxStrings);
+
+  // What a screen reader is told that it cannot see for itself. The input
+  // keeps focus throughout, so moving through the list, the list changing
+  // under the typing and a choice being made are all silent otherwise.
+  if (!isServer) {
+    let first = true;
+    let lastOpen = false;
+    let lastCount = 0;
+    createEffect(
+      () =>
+        [
+          state.isOpen(),
+          getItemCount(state.collection()),
+          state.selectionManager().focusedKey,
+          message(),
+        ] as const,
+      ([isOpen, count, focusedKey, format]) => {
+        // Only when the list opens with nothing highlighted: a highlighted
+        // option is read as "1 of 6" already. VoiceOver reads no such count.
+        const opened = isOpen && !lastOpen && (focusedKey === null || isAppleDevice());
+        if (!first && isOpen && (opened || count !== lastCount)) {
+          announce(format.format("countAnnouncement", { optionCount: count }));
+        }
+        first = false;
+        lastOpen = isOpen;
+        lastCount = count;
+      },
+    );
+
+    // VoiceOver reads each option on its own, but says nothing on entering a
+    // section, so the section is named the moment the highlight crosses into
+    // one.
+    let lastSection: Key | null = null;
+    let lastItem: Key | null = null;
+    createEffect(
+      () => {
+        const item = focusedItem();
+        const sectionKey = item?.parentKey ?? null;
+        return [
+          item,
+          sectionKey === null ? null : state.collection().getItem(sectionKey),
+          item === null ? false : state.selectionManager().isSelected(item.key),
+          message(),
+        ] as const;
+      },
+      ([item, section, isSelected, format]) => {
+        const itemKey = item?.key ?? null;
+        const sectionKey = section?.key ?? null;
+        if (isAppleDevice() && item !== null && itemKey !== lastItem) {
+          if (section !== null && sectionKey !== lastSection) {
+            announce(
+              format.format("focusAnnouncement", {
+                isGroupChange: true,
+                groupTitle: section["aria-label"] ?? section.textValue,
+                groupCount: section.childNodes.filter((child) => child.type === "item").length,
+                optionText: item["aria-label"] ?? item.textValue,
+                isSelected,
+              }),
+            );
+          }
+        }
+        lastSection = sectionKey;
+        lastItem = itemKey;
+      },
+    );
+
+    // Other screen readers announce a selection themselves; VoiceOver does not.
+    let lastSelected: Key | null = untrack(state.selectedKey);
+    createEffect(
+      () => [state.selectedKey(), state.selectedItem(), state.isFocused(), message()] as const,
+      ([key, item, focused, format]) => {
+        if (isAppleDevice() && focused && item !== null && key !== lastSelected) {
+          announce(
+            format.format("selectedAnnouncement", {
+              optionText: item["aria-label"] ?? item.textValue,
+            }),
+          );
+        }
+        lastSelected = key;
+      },
+    );
+  }
+
+  // While the list is open, nothing but the field and the list is there for a
+  // screen reader: its virtual cursor would otherwise walk off the field into
+  // the page with the list still open over it.
+  followOpen(
+    () =>
+      state.isOpen()
+        ? ([
+            access(options.inputRef) as Element | null,
+            access(options.popoverRef ?? options.listBoxRef) as Element | null,
+          ] as const)
+        : null,
+    (targets) => {
+      if (targets === null) return undefined;
+      const present = targets.filter((target): target is Element => target !== null);
+      return present.length === 0 ? undefined : ariaHideOutside(present);
+    },
+  );
+
+  // A form reset puts the selection back to where it started, and the text
+  // with it: the browser resets only the text, which then names one option
+  // while the selection is another.
+  const initialKey = untrack(state.selectedKey);
+  formReset(options.inputRef, initialKey, (key) => state.setSelectedKey(key));
+
   const onInput = (event: Event): void => {
     const input = event.target as HTMLInputElement;
     state.setInputValue(input.value);
@@ -606,8 +1099,9 @@ export function comboBox(options: ComboBoxOptions, state: ComboBoxState<unknown>
         value: state.inputValue,
         disabled: () => access(options.isDisabled) === true,
         readOnly: () => access(options.isReadOnly) === true,
-        required: () => access(options.isRequired) === true,
-        name: () => access(options.name),
+        // Only native validation blocks the submit; under "aria" the page decides.
+        required: () => behavior() === "native" && access(options.isRequired) === true,
+        name: () => (access(options.formValue) === "key" ? undefined : access(options.name)),
         form: () => access(options.form),
         placeholder: () => access(options.placeholder),
         "aria-expanded": () => state.isOpen(),
@@ -659,7 +1153,7 @@ export function comboBox(options: ComboBoxOptions, state: ComboBoxState<unknown>
         ]
           .filter(Boolean)
           .join(" "),
-      "aria-label": "Show suggestions",
+      "aria-label": () => message().format("buttonLabel"),
       onPressStart: (event: { pointerType: string }) => {
         if (event.pointerType === "touch") return;
         (access(options.inputRef) as HTMLInputElement | null)?.focus();
@@ -736,6 +1230,13 @@ export interface ComboBoxComponentProps<T> extends StyleProps, ItemAccessors<T> 
   validationBehavior?: ValidationBehavior;
   name?: string;
   form?: string;
+  /**
+   * What `name` submits: the chosen option's key, or the text in the field.
+   * With `allowsCustomValue` the text is the value, and it is always the text.
+   *
+   * @default "key"
+   */
+  formValue?: "key" | "text";
   /** @default "bottom start" */
   placement?: Placement;
   "aria-label"?: string;
@@ -757,7 +1258,9 @@ export function ComboBox<T>(props: ComboBoxComponentProps<T>) {
   const inputRef = makeRef<HTMLInputElement>();
   const listRef = makeRef<HTMLUListElement>();
   const buttonRef = makeRef<HTMLButtonElement>();
+  const popoverRef = makeRef<HTMLDivElement>();
   const options = fromProps(cells(props) as unknown as Incoming<Record<string, unknown>>);
+  const submitsText = (): boolean => props.allowsCustomValue === true || props.formValue === "text";
 
   const state = comboBoxState<T>({
     ...(options as ComboBoxStateOptions<T>),
@@ -782,6 +1285,8 @@ export function ComboBox<T>(props: ComboBoxComponentProps<T>) {
       inputRef,
       listBoxRef: listRef,
       buttonRef,
+      popoverRef,
+      formValue: () => (submitsText() ? "text" : "key"),
       validate: callback(cells(props).validate),
       validationBehavior: () => props.validationBehavior,
     },
@@ -827,6 +1332,14 @@ export function ComboBox<T>(props: ComboBoxComponentProps<T>) {
     <>
       <span {...labelProps}>{props.label}</span>
       <input {...inputElementProps} ref={mergeRefs(inputRef.set, props.ref)} />
+      <Show when={props.name !== undefined && !submitsText()}>
+        <input
+          type="hidden"
+          name={props.name}
+          form={props.form}
+          value={String(state.selectedKey() ?? "")}
+        />
+      </Show>
       <button {...buttonElementProps} type="button" ref={buttonRef.set}>
         <span aria-hidden="true">▾</span>
       </button>
@@ -836,6 +1349,7 @@ export function ComboBox<T>(props: ComboBoxComponentProps<T>) {
         onOpenChange={state.setOpen}
         placement={props.placement ?? "bottom start"}
         isDismissable
+        ref={popoverRef.set}
       >
         <ComboBoxList
           options={listBoxProps}
@@ -892,6 +1406,9 @@ function ComboBoxList(props: ComboBoxListProps) {
     shouldSelectOnPressUp: () => true,
     shouldUseVirtualFocus: () => true,
   };
+
+  // A section builds its options with the same callback.
+  provideItemRender(render);
 
   return (
     <ListBoxProvider value={value}>
@@ -1662,6 +2179,9 @@ export function ComboboxInput(props: ComboboxInputProps) {
     {
       placeholder: () => props.placeholder,
       disabled: root.isDisabled,
+      // With several values the field only ever holds a query, empty once
+      // something is chosen, so it is required only while nothing is.
+      required: () => props.required === true && (!root.isMultiple() || root.values().length === 0),
       "data-focus-visible": isFocusVisible,
       "data-open": root.isOpen,
       "data-state": () => (root.isOpen() ? "open" : "closed"),

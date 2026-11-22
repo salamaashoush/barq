@@ -25,6 +25,7 @@ import {
   For,
   createContext,
   createEffect,
+  createMemo,
   getContext,
   getOwner,
   type Incoming,
@@ -117,7 +118,7 @@ export interface DisclosureGroupState {
 export function disclosureGroupState(
   options: DisclosureGroupStateOptions = {},
 ): DisclosureGroupState {
-  const [expandedKeys, setExpandedKeys] = controllable<Set<Key>>(
+  const [stored, setExpandedKeys] = controllable<Set<Key>>(
     () => {
       const given = access(options.expandedKeys);
       return given === undefined ? undefined : new Set(given);
@@ -127,6 +128,12 @@ export function disclosureGroupState(
   );
 
   const allowsMultiple = (): boolean => access(options.allowsMultiple) === true;
+  const expandedKeys = createMemo((): Set<Key> => {
+    const keys = stored();
+    if (allowsMultiple() || keys.size <= 1) return keys;
+    const [first] = keys;
+    return new Set([first as Key]);
+  });
   const isLocked = (key: Key): boolean =>
     !allowsMultiple() && access(options.isCollapsible) === false && expandedKeys().has(key);
 
@@ -207,20 +214,55 @@ export function disclosure(options: DisclosureOptions, state: DisclosureState): 
      * one with no transition, and one under `prefers-reduced-motion` — so
      * nothing flashes open on the first render.
      */
-    let hasOpened = false;
+    let previous: boolean | null = null;
     createEffect(
       () => [access(options.panelRef) as HTMLElement | null, state.isExpanded()] as const,
       ([panel, expanded]) => {
         if (panel === null) return undefined;
 
+        const first = previous === null;
+        previous = expanded;
         const hide = (): void => panel.setAttribute("hidden", "until-found");
+        const size = (width: string, height: string): void => {
+          panel.style.setProperty("--disclosure-panel-width", width);
+          panel.style.setProperty("--disclosure-panel-height", height);
+        };
+        const measured = (): void => size(`${panel.scrollWidth}px`, `${panel.scrollHeight}px`);
+
         if (expanded) {
-          hasOpened = true;
           panel.removeAttribute("hidden");
+          if (first || typeof panel.getAnimations !== "function") {
+            size("auto", "auto");
+            return undefined;
+          }
+          // Pixels, so a transition has two lengths to run between; `auto`
+          // again once it is done, so the content can grow and shrink.
+          measured();
+          let settled = false;
+          Promise.all(panel.getAnimations().map((animation) => animation.finished)).then(
+            () => {
+              if (!settled) size("auto", "auto");
+            },
+            () => {},
+          );
+          return () => {
+            settled = true;
+          };
+        }
+
+        if (first) {
+          size("0px", "0px");
+          hide();
           return undefined;
         }
 
-        const closing = hasOpened ? exitDuration(panel) : 0;
+        measured();
+        // Layout is forced between the two lengths, or the browser coalesces
+        // them and the transition starts from zero.
+        panel.getBoundingClientRect();
+        size("0px", "0px");
+
+        const closing = exitDuration(panel);
         if (closing <= 0) {
           hide();
           return undefined;
@@ -253,6 +295,9 @@ export function disclosure(options: DisclosureOptions, state: DisclosureState): 
       id: panelId,
       role: "group",
       "aria-labelledby": triggerId,
+      // At once, while `hidden` waits for the collapse to finish: a panel on
+      // its way out is still painted, and still read, unless it says so.
+      "aria-hidden": () => !state.isExpanded() || undefined,
       // On the SERVER the attribute is all there is: the effects above have
       // not run, and a panel rendered without it would flash open.
       hidden: () => (isServer ? (state.isExpanded() ? undefined : "until-found") : undefined),
@@ -390,6 +435,8 @@ export function DisclosureButton(props: DisclosureButtonComponentProps) {
 
 export interface DisclosurePanelComponentProps extends StyleProps {
   children?: Child;
+  /** @default "group" */
+  role?: string;
   ref?: RefTarget<HTMLDivElement>;
 }
 
@@ -399,12 +446,16 @@ export interface DisclosurePanelComponentProps extends StyleProps {
  */
 export function DisclosurePanel(props: DisclosurePanelComponentProps) {
   const value = useDisclosure();
+  const { focusProps, isFocusVisible } = focusRing({ within: true });
 
   const elementProps = mergeProps(
     value.panelProps,
     filterDOMProps(fromProps(cells(props)), { global: true, labelable: true }),
     styleProps(cells(props)),
+    focusProps,
     {
+      role: () => props.role ?? "group",
+      "data-focus-visible-within": isFocusVisible,
       "data-expanded": value.state.isExpanded,
       "data-state": () => (value.state.isExpanded() ? "open" : "closed"),
       "data-orientation": () => value.group?.orientation(),

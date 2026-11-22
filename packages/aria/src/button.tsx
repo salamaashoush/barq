@@ -9,17 +9,21 @@
  * cancelled by dragging off, and arrives late on touch.
  */
 
-import { cells, type Accessor, type Child } from "@barqjs/core";
+import { cells, createEffect, provide, type Accessor, type Child } from "@barqjs/core";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { focusRing } from "./focus.ts";
 import { focusable, type FocusableOptions } from "./interactions/focusable.ts";
-import { hover } from "./interactions/hover.ts";
+import { hover, type HoverEvent } from "./interactions/hover.ts";
 import { press, type ElementRef, type PressEvent } from "./interactions/press.ts";
+import { ProgressBarContext } from "./progress-bar-context.ts";
+import { announce } from "./live.ts";
+import { SelectionIndicatorProvider } from "./selection-indicator.tsx";
 import { controllable } from "./utils.ts";
 import {
   access,
   filterDOMProps,
   fromProps,
+  id,
   mergeProps,
   styleProps,
   triggerSlot,
@@ -29,6 +33,7 @@ import {
 } from "./utils.ts";
 
 export interface ButtonOptions extends FocusableOptions {
+  id?: MaybeAccessor<string | undefined>;
   isDisabled?: MaybeAccessor<boolean | undefined>;
   /**
    * What the element actually is.
@@ -47,8 +52,20 @@ export interface ButtonOptions extends FocusableOptions {
   target?: MaybeAccessor<string | undefined>;
   rel?: MaybeAccessor<string | undefined>;
   form?: MaybeAccessor<string | undefined>;
+  /** Where a submit button sends the form, in place of the form's own `action`. */
+  formAction?: MaybeAccessor<string | undefined>;
+  formEncType?: MaybeAccessor<string | undefined>;
+  formMethod?: MaybeAccessor<string | undefined>;
+  formNoValidate?: MaybeAccessor<boolean | undefined>;
+  formTarget?: MaybeAccessor<string | undefined>;
   name?: MaybeAccessor<string | undefined>;
   value?: MaybeAccessor<string | undefined>;
+  /**
+   * Keep a `tabindex` of -1 while disabled, so a control that moves focus to
+   * the button itself (a number field's stepper) can still do so.
+   */
+  allowFocusWhenDisabled?: MaybeAccessor<boolean | undefined>;
+  "aria-disabled"?: MaybeAccessor<boolean | "true" | "false" | undefined>;
   "aria-label"?: MaybeAccessor<string | undefined>;
   "aria-labelledby"?: MaybeAccessor<string | undefined>;
   "aria-describedby"?: MaybeAccessor<string | undefined>;
@@ -90,7 +107,14 @@ export function button(options: ButtonOptions, ref?: ElementRef): ButtonResult {
   const isDisabled = (): boolean => access(options.isDisabled) === true;
 
   const { pressProps, isPressed } = press({ ...options, ref });
-  const { focusableProps } = focusable(options, ref);
+  const { focusableProps: focusableBase } = focusable(options, ref);
+  const focusableProps = mergeProps(focusableBase, {
+    tabIndex: () =>
+      access(options.allowFocusWhenDisabled) === true && isDisabled()
+        ? -1
+        : access(focusableBase.tabIndex as MaybeAccessor<number | undefined>),
+  });
+  const isFormControl = (): boolean => elementType() === "button" || elementType() === "input";
 
   const nativeProps: DOMProps = {
     type: () =>
@@ -103,14 +127,20 @@ export function button(options: ButtonOptions, ref?: ElementRef): ButtonResult {
       elementType() === "button" || elementType() === "input" ? isDisabled() : undefined,
     role: () => (elementType() === "button" ? undefined : "button"),
     "aria-disabled": () =>
-      elementType() === "button" || elementType() === "input"
+      access(options["aria-disabled"]) ??
+      (elementType() === "button" || elementType() === "input"
         ? undefined
-        : isDisabled() || undefined,
+        : isDisabled() || undefined),
     // A disabled link must not navigate, and `disabled` does not exist on `<a>`.
     href: () => (elementType() === "a" && !isDisabled() ? access(options.href) : undefined),
     target: () => (elementType() === "a" ? access(options.target) : undefined),
     rel: () => (elementType() === "a" ? access(options.rel) : undefined),
     form: () => access(options.form),
+    formAction: () => (isFormControl() ? access(options.formAction) : undefined),
+    formEncType: () => (isFormControl() ? access(options.formEncType) : undefined),
+    formMethod: () => (isFormControl() ? access(options.formMethod) : undefined),
+    formNoValidate: () => (isFormControl() ? access(options.formNoValidate) : undefined),
+    formTarget: () => (isFormControl() ? access(options.formTarget) : undefined),
     name: () => access(options.name),
     value: () => access(options.value),
   };
@@ -213,12 +243,25 @@ export function toggleButton(
 export interface ButtonComponentProps extends StyleProps {
   children?: Child;
   isDisabled?: boolean;
+  /**
+   * Waiting on the action the button started. Presses and hover are ignored,
+   * focus stays, a submit button stops submitting, and a focused button
+   * announces the change. A `<ProgressBar>` inside joins the button's name.
+   */
+  isPending?: boolean;
   type?: "button" | "submit" | "reset";
   autoFocus?: boolean;
   excludeFromTabOrder?: boolean;
+  id?: string;
   form?: string;
+  formAction?: string;
+  formEncType?: string;
+  formMethod?: string;
+  formNoValidate?: boolean;
+  formTarget?: string;
   name?: string;
   value?: string;
+  "aria-disabled"?: boolean | "true" | "false";
   "aria-label"?: string;
   "aria-labelledby"?: string;
   "aria-describedby"?: string;
@@ -229,18 +272,44 @@ export interface ButtonComponentProps extends StyleProps {
   onPress?: (event: PressEvent) => void;
   onPressStart?: (event: PressEvent) => void;
   onPressEnd?: (event: PressEvent) => void;
+  onPressUp?: (event: PressEvent) => void;
   onPressChange?: (isPressed: boolean) => void;
+  onHoverStart?: (event: HoverEvent) => void;
+  onHoverEnd?: (event: HoverEvent) => void;
+  onHoverChange?: (isHovered: boolean) => void;
+  onFocus?: (event: FocusEvent) => void;
+  onBlur?: (event: FocusEvent) => void;
   onClick?: (event: MouseEvent) => void;
 }
 
 /**
  * `press` already delivers `onClick`, including the one a keyboard or a touch
- * activation would have produced. Bound on the element as well, a caller's
- * handler runs twice for every mouse click.
+ * activation would have produced, and `focusable` delivers `onFocus` and
+ * `onBlur`. Bound on the element as well, a caller's handler runs twice.
  */
 function withoutClick(props: DOMProps): DOMProps {
-  const { onClick: _, ...rest } = props;
+  const { onClick: _click, onFocus: _focus, onBlur: _blur, ...rest } = props;
   return rest;
+}
+
+/** What a pending button still answers: focus, and what a tooltip listens to. */
+const LIVE_WHILE_PENDING =
+  /Focus|Blur|Hover|Pointer(Enter|Leave|Over|Out)|Mouse(Enter|Leave|Over|Out)/;
+
+function inertWhilePending(props: DOMProps, isPending: () => boolean): DOMProps {
+  const result: DOMProps = {};
+  for (const key in props) {
+    const value = props[key];
+    if (key.startsWith("on") && typeof value === "function" && !LIVE_WHILE_PENDING.test(key)) {
+      const handler = value as (event: Event) => void;
+      result[key] = (event: Event): void => {
+        if (!isPending()) handler(event);
+      };
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
 }
 
 /**
@@ -269,33 +338,83 @@ export function Button(props: ButtonComponentProps) {
   const options = mergeProps(fromProps(cells(props)), triggerSlot().props) as ButtonOptions;
   const slot = triggerSlot();
 
+  const isPending = (): boolean => props.isPending === true;
+
   const { buttonProps, isPressed } = button(options, domRef);
-  const { hoverProps, isHovered } = hover({ isDisabled: options.isDisabled });
+  const { hoverProps, isHovered } = hover({
+    isDisabled: () => access(options.isDisabled) === true || isPending(),
+    onHoverStart: (event) => props.onHoverStart?.(event),
+    onHoverEnd: (event) => props.onHoverEnd?.(event),
+    onHoverChange: (hovered) => props.onHoverChange?.(hovered),
+  });
   const { focusProps, isFocused, isFocusVisible } = focusRing();
 
+  const buttonId = id(options.id);
+  const progressId = id();
+  // `aria-labelledby` outranks `aria-label` in the name computation, so a
+  // labelled button that wants its progress bar read has to name itself.
+  const labelledBy = (): string | undefined => {
+    const given = access(options["aria-labelledby"]);
+    if (!isPending()) return given;
+    if (given) return `${given} ${progressId()}`;
+    if (access(options["aria-label"])) {
+      return `${buttonId()} ${progressId()}`;
+    }
+    return given;
+  };
+
+  let wasPending = isPending();
+  createEffect(
+    () => ({ pending: isPending(), focused: isFocused(), by: labelledBy() || buttonId() }),
+    ({ pending, focused, by }) => {
+      if (focused && pending !== wasPending) announce({ "aria-labelledby": by }, "assertive");
+      wasPending = pending;
+    },
+  );
+
   const elementProps = mergeProps(
-    buttonProps,
+    inertWhilePending(buttonProps, isPending),
     hoverProps,
     focusProps,
     withoutClick(filterDOMProps(options, { global: true })),
     styleProps(cells(props)),
     {
-      "data-pressed": isPressed,
+      id: buttonId,
+      // A pending submit button must not submit, implicitly from a text field
+      // on Enter included.
+      type: () => {
+        const type = access(buttonProps.type as MaybeAccessor<string | undefined>);
+        return type === "submit" && isPending() ? "button" : type;
+      },
+      "aria-labelledby": labelledBy,
+      "aria-disabled": () =>
+        isPending()
+          ? "true"
+          : access(buttonProps["aria-disabled"] as MaybeAccessor<string | boolean | undefined>),
+      "data-pressed": () => isPressed() && !isPending(),
       "data-hovered": isHovered,
       "data-focused": isFocused,
       "data-focus-visible": isFocusVisible,
       "data-disabled": () => props.isDisabled === true,
+      "data-pending": isPending,
     },
   );
 
   return (
     <button {...elementProps} ref={mergeRefs(domRef.set, slot.ref, props.ref)}>
-      {props.children}
+      {provide(
+        ProgressBarContext,
+        () => ({ id: progressId }),
+        () => props.children as unknown,
+      )}
     </button>
   );
 }
 
-export interface ToggleButtonComponentProps extends Omit<ButtonComponentProps, "aria-pressed"> {
+export interface ToggleButtonComponentProps extends Omit<
+  ButtonComponentProps,
+  "aria-pressed" | "isPending"
+> {
   isSelected?: boolean;
   defaultSelected?: boolean;
   onChange?: (isSelected: boolean) => void;
@@ -315,7 +434,12 @@ export function ToggleButton(props: ToggleButtonComponentProps) {
 
   const state = toggleState(options);
   const { buttonProps, isPressed } = toggleButton(options, state, domRef);
-  const { hoverProps, isHovered } = hover({ isDisabled: options.isDisabled });
+  const { hoverProps, isHovered } = hover({
+    isDisabled: options.isDisabled,
+    onHoverStart: (event) => props.onHoverStart?.(event),
+    onHoverEnd: (event) => props.onHoverEnd?.(event),
+    onHoverChange: (hovered) => props.onHoverChange?.(hovered),
+  });
   const { focusProps, isFocused, isFocusVisible } = focusRing();
 
   const elementProps = mergeProps(
@@ -336,7 +460,9 @@ export function ToggleButton(props: ToggleButtonComponentProps) {
 
   return (
     <button {...elementProps} ref={mergeRefs(domRef.set, slot.ref, props.ref)}>
-      {props.children}
+      <SelectionIndicatorProvider isSelected={state.isSelected()}>
+        {props.children}
+      </SelectionIndicatorProvider>
     </button>
   );
 }

@@ -36,6 +36,7 @@ import {
   ownerDocument,
   ownerWindow,
   propagationTargets,
+  scrollIntoViewport,
   scrollParents,
   setStyle,
   targetElement,
@@ -45,7 +46,9 @@ import { resizeObserver } from "@barqjs/primitives/observers";
 
 import { focusWithin } from "./interactions/focus-events.ts";
 import { interactOutside } from "./interactions/interact-outside.ts";
+import { isTextEntry } from "./interactions/modality.ts";
 import type { ElementRef } from "./interactions/press.ts";
+import { StringDictionary, stringFormatter } from "./i18n.ts";
 import { isIOS, isWebKit } from "./platform.ts";
 import {
   access,
@@ -686,19 +689,124 @@ function preventScrollWebKitIOS(): () => void {
   // Injected as a stylesheet because iOS 26 requires it to be in effect before
   // the touchstart, which a property set in the handler is not.
   const style = document.createElement("style");
+  const nonce = cspNonce(document);
+  if (nonce !== undefined) style.nonce = nonce;
   style.textContent = "@layer{*{overscroll-behavior:contain}}";
   document.head.prepend(style);
 
+  const restoreFocus = overrideFocus();
   const removeEvents = chain(
     addEvent(document, "touchstart", onTouchStart, { passive: false, capture: true }),
     addEvent(document, "touchmove", onTouchMove, { passive: false, capture: true }),
+    addEvent(document, "blur", onBlurForKeyboard, true),
   );
 
   return () => {
     restoreOverflow();
     removeEvents();
     style.remove();
+    restoreFocus();
   };
+}
+
+/**
+ * The nonce a Content Security Policy wants on an injected `<style>`, as the
+ * page publishes it: a `csp-nonce` meta tag, or the bundler's global.
+ */
+function cspNonce(doc: Document): string | undefined {
+  const view = doc.defaultView;
+  const meta = doc.querySelector('meta[name="csp-nonce"], meta[property="csp-nonce"]');
+  if (view !== null && meta instanceof view.HTMLMetaElement) {
+    const declared = meta.nonce || meta.content;
+    if (declared) return declared;
+  }
+  const bundled =
+    (view as { __webpack_nonce__?: string } | null)?.__webpack_nonce__ ??
+    (globalThis as { __webpack_nonce__?: string }).__webpack_nonce__;
+  return bundled === undefined || bundled === "" ? undefined : bundled;
+}
+
+/**
+ * Run once the on-screen keyboard has finished appearing, if focus is about to
+ * bring it up, and straight away otherwise.
+ *
+ * Two frames for focus to land, then the visual viewport's resize, which is
+ * the keyboard arriving. A keyboard that never arrives (a hardware one is
+ * attached) is given up on after the time iOS takes to animate one in.
+ */
+function afterKeyboard(run: () => void): void {
+  const view = window;
+  view.requestAnimationFrame(() => {
+    view.requestAnimationFrame(() => {
+      const visual = view.visualViewport;
+      if (visual === null || visual === undefined || !isTextEntry(document.activeElement)) {
+        run();
+        return;
+      }
+      let done = false;
+      const finish = (): void => {
+        if (done) return;
+        done = true;
+        visual.removeEventListener("resize", finish);
+        clearTimeout(timer);
+        run();
+      };
+      const timer = setTimeout(finish, KEYBOARD_TIMEOUT);
+      visual.addEventListener("resize", finish);
+    });
+  });
+}
+
+/** How long iOS takes to bring the on-screen keyboard in. */
+const KEYBOARD_TIMEOUT = 600;
+
+/**
+ * Programmatic focus that does not scroll the page.
+ *
+ * WebKit on iOS scrolls the whole page to centre a focused field, which moves
+ * even a fixed modal off the screen. Focus is taken without scrolling, and the
+ * field is brought into view by its own scroll parents once the keyboard has
+ * taken its share of the screen.
+ */
+function overrideFocus(): () => void {
+  const prototype = HTMLElement.prototype;
+  const own = Object.getOwnPropertyDescriptor(prototype, "focus");
+  const focus = Reflect.get(prototype, "focus");
+  Reflect.defineProperty(prototype, "focus", {
+    configurable: true,
+    writable: true,
+    value(this: HTMLElement, options?: FocusOptions) {
+      focus.call(this, { ...options, preventScroll: true });
+      if (options?.preventScroll === true) return;
+      afterKeyboard(() => {
+        if (ownerDocument(this).activeElement === this) scrollIntoViewport(this);
+      });
+    },
+  });
+  return () => {
+    if (own === undefined) Reflect.deleteProperty(prototype, "focus");
+    else Reflect.defineProperty(prototype, "focus", own);
+  };
+}
+
+/**
+ * Route focus moves that WebKit makes itself through {@link overrideFocus}.
+ *
+ * Tapping a field focuses it natively, which scrolls the page; focusing it
+ * again from here takes the path that does not. The keyboard's Done button
+ * sends focus to the body, and the next tap on the same field then fires no
+ * blur at all, so focus goes to the nearest focusable ancestor instead.
+ */
+function onBlurForKeyboard(event: Event): void {
+  const blur = event as FocusEvent;
+  const target = targetElement(blur);
+  const related = blur.relatedTarget as HTMLElement | null;
+  if (related !== null && isTextEntry(related)) {
+    related.focus();
+  } else if (related === null) {
+    const holder = target?.parentElement?.closest<HTMLElement>("[tabindex]") ?? null;
+    holder?.focus({ preventScroll: true });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -783,6 +891,11 @@ export interface PositionOptions {
   containerPadding?: MaybeAccessor<number | undefined>;
   /** The arrow element, so it can be centred on the target. */
   arrowRef?: ElementRef;
+  /**
+   * The least distance between the arrow and the overlay's ends, so it stays
+   * clear of a rounded corner. @default 0
+   */
+  arrowBoundaryOffset?: MaybeAccessor<number | undefined>;
   isOpen?: MaybeAccessor<boolean | undefined>;
   onClose?: () => void;
   /** Text direction, for `start` and `end` placements. @default "ltr" */
@@ -849,7 +962,7 @@ function layoutSize(element: Element): { width: number; height: number } {
 
 function place(
   target: Box,
-  panel: Box,
+  panel: { width: number; height: number },
   axis: Axis,
   align: string,
   offset: number,
@@ -879,26 +992,97 @@ function place(
   return { top, left };
 }
 
-function fits(
-  position: { top: number; left: number },
-  panel: Box,
-  boundary: Box,
-  padding: number,
-): boolean {
+/** The room between the target and the boundary on one side, past the offset and the padding. */
+function spaceOn(axis: Axis, target: Box, boundary: Box, offset: number, padding: number): number {
+  const room =
+    axis === "top"
+      ? target.top - boundary.top
+      : axis === "bottom"
+        ? boundary.top + boundary.height - (target.top + target.height)
+        : axis === "left"
+          ? target.left - boundary.left
+          : boundary.left + boundary.width - (target.left + target.width);
+  return Math.max(0, room - offset - padding);
+}
+
+/**
+ * How far to move an overlay along one axis so it stays inside the boundary.
+ *
+ * When it is bigger than the boundary its START edge wins, so the beginning of
+ * a list too long for the screen is what stays in view.
+ */
+function shiftInto(start: number, size: number, low: number, high: number): number {
+  if (start < low) return low - start;
+  if (start + size > high) return Math.max(high - (start + size), low - start);
+  return 0;
+}
+
+/**
+ * What an overlay inside the page is laid out in: the area the user can see.
+ *
+ * The visual viewport where there is one. A pinch-zoomed page and an iOS page
+ * with the on-screen keyboard up both show less than `innerHeight`, and an
+ * overlay sized to the layout viewport is cut off behind the keyboard.
+ */
+function visibleViewport(view: Window): Box {
+  const visual = view.visualViewport;
+  if (visual !== null && visual !== undefined) {
+    return {
+      top: visual.offsetTop,
+      left: visual.offsetLeft,
+      width: visual.width,
+      height: visual.height,
+    };
+  }
+  return { top: 0, left: 0, width: view.innerWidth, height: view.innerHeight };
+}
+
+/** A computed value that is set, which happy-dom reports as "" rather than "none". */
+function isSet(value: string | undefined): boolean {
+  return value !== undefined && value !== "" && value !== "none";
+}
+
+function establishesContainingBlock(style: CSSStyleDeclaration): boolean {
+  const backdrop = (style as CSSStyleDeclaration & { webkitBackdropFilter?: string })
+    .webkitBackdropFilter;
   return (
-    position.top >= boundary.top + padding &&
-    position.left >= boundary.left + padding &&
-    position.top + panel.height <= boundary.top + boundary.height - padding &&
-    position.left + panel.width <= boundary.left + boundary.width - padding
+    (style.position !== "" && style.position !== "static") ||
+    isSet(style.transform) ||
+    /transform|perspective/.test(style.willChange) ||
+    isSet(style.filter) ||
+    style.contain === "paint" ||
+    isSet(style.backdropFilter) ||
+    isSet(backdrop)
   );
+}
+
+/**
+ * The element an absolutely positioned overlay is placed relative to, or
+ * `null` for the initial containing block.
+ *
+ * An overlay portalled into a container of the page's own (a transformed
+ * shell, a `position: relative` panel) is offset from THAT box, so page
+ * coordinates put it wherever the container happens to sit away from the
+ * page's origin.
+ */
+function containingBlock(element: Element): Element | null {
+  const view = ownerWindow(element);
+  const doc = ownerDocument(element);
+  let node = element.parentElement;
+  while (node !== null && node !== doc.documentElement) {
+    if (establishesContainingBlock(view.getComputedStyle(node))) return node;
+    node = node.parentElement;
+  }
+  return null;
 }
 
 /**
  * Place an overlay next to its trigger.
  *
  * The order is: try the requested side; flip to the opposite side if it does
- * not fit and flipping is allowed; then shift along the cross axis to stay
- * inside the boundary; then cap the height to what is left. Shifting after
+ * not fit, flipping is allowed and the opposite side has more room; then shift
+ * along the cross axis to stay inside the boundary; then cap the height to
+ * what is left. Shifting after
  * flipping rather than instead of it is what keeps a popover pointing at its
  * trigger rather than sliding across the screen.
  */
@@ -935,10 +1119,9 @@ export function overlayPosition(options: PositionOptions): PositionResult {
 
     const boundaryElement = access(options.boundaryRef ?? undefined) as Element | null;
     const view = ownerWindow(element);
+    const viewport = visibleViewport(view);
     const boundary: Box =
-      boundaryElement !== null && boundaryElement !== undefined
-        ? boxOf(boundaryElement)
-        : { top: 0, left: 0, width: view.innerWidth, height: view.innerHeight };
+      boundaryElement !== null && boundaryElement !== undefined ? boxOf(boundaryElement) : viewport;
 
     // The overlay's LAYOUT size, not its painted one. Every overlay here enters
     // with `zoom-in-95`, so the first measurement caught it at 95% — a 288px
@@ -953,36 +1136,87 @@ export function overlayPosition(options: PositionOptions): PositionResult {
 
     const [start, align] = resolveAxis(access(options.placement) ?? "bottom", direction);
     let axis = start;
-    let placed = place(targetBox, overlayBox, axis, align, offset, cross);
 
-    if (!fits(placed, overlayBox, boundary, padding) && access(options.shouldFlip) !== false) {
-      const flipped = place(targetBox, overlayBox, OPPOSITE[axis], align, offset, cross);
-      if (fits(flipped, overlayBox, boundary, padding)) {
+    // Flip only on the MAIN axis, and to whichever side has more room. Whether
+    // the overlay also overhangs sideways is the cross-axis shift's business,
+    // and an overlay that fits neither side still belongs on the larger one,
+    // where the height cap below costs it least.
+    if (access(options.shouldFlip) !== false) {
+      const size = axis === "top" || axis === "bottom" ? overlayBox.height : overlayBox.width;
+      const room = spaceOn(axis, targetBox, boundary, offset, padding);
+      if (size > room && spaceOn(OPPOSITE[axis], targetBox, boundary, offset, padding) > room) {
         axis = OPPOSITE[axis];
-        placed = flipped;
       }
     }
 
+    // What the height may grow to, inside both the boundary and what is
+    // visible of the page.
+    const visibleTop = Math.max(boundary.top, viewport.top);
+    const visibleBottom = Math.min(boundary.top + boundary.height, viewport.top + viewport.height);
+
+    // An arrow is measured by its layout box too: it is usually a rotated
+    // square, and `getBoundingClientRect` reports the box the rotation sweeps
+    // out, wider than the arrow itself.
+    const arrow = access(options.arrowRef ?? undefined) as Element | null;
+    const arrowBox = arrow === null || arrow === undefined ? null : layoutSize(arrow);
+    const vertical = axis === "top" || axis === "bottom";
+    const arrowSize = arrowBox === null ? 0 : vertical ? arrowBox.width : arrowBox.height;
+    const arrowEdge = access(options.arrowBoundaryOffset) ?? 0;
+
     // Shift along the cross axis, never the main one: moving along the main
-    // axis would detach the overlay from its trigger.
-    if (axis === "top" || axis === "bottom") {
-      placed.left = Math.min(
-        Math.max(placed.left, boundary.left + padding),
-        boundary.left + boundary.width - overlayBox.width - padding,
-      );
-    } else {
-      placed.top = Math.min(
-        Math.max(placed.top, boundary.top + padding),
-        boundary.top + boundary.height - overlayBox.height - padding,
-      );
-    }
+    // axis would detach the overlay from its trigger. An overlay with an arrow
+    // first keeps enough of itself over the trigger for the arrow to point at
+    // it, however far a cross offset asked it to go.
+    const shift = (at: { top: number; left: number }, height: number): void => {
+      if (vertical) {
+        if (arrowSize > 0) {
+          at.left = clamp(
+            at.left,
+            targetBox.left - overlayBox.width + arrowSize + arrowEdge,
+            targetBox.left + targetBox.width - arrowSize - arrowEdge,
+          );
+        }
+        at.left += shiftInto(
+          at.left,
+          overlayBox.width,
+          boundary.left + padding,
+          boundary.left + boundary.width - padding,
+        );
+      } else {
+        if (arrowSize > 0) {
+          at.top = clamp(
+            at.top,
+            targetBox.top - height + arrowSize + arrowEdge,
+            targetBox.top + targetBox.height - arrowSize - arrowEdge,
+          );
+        }
+        at.top += shiftInto(
+          at.top,
+          height,
+          boundary.top + padding,
+          boundary.top + boundary.height - padding,
+        );
+      }
+    };
+
+    let placed = place(targetBox, overlayBox, axis, align, offset, cross);
+    shift(placed, overlayBox.height);
 
     const maxHeight =
       axis === "top"
-        ? targetBox.top - offset - boundary.top - padding
+        ? targetBox.top - offset - visibleTop - padding
         : axis === "bottom"
-          ? boundary.top + boundary.height - padding - (targetBox.top + targetBox.height + offset)
-          : boundary.height - padding * 2;
+          ? visibleBottom - padding - (targetBox.top + targetBox.height + offset)
+          : align === "bottom" || align === "end"
+            ? placed.top + overlayBox.height - visibleTop - padding
+            : visibleBottom - padding - placed.top;
+
+    // Placed again at the height it will have once capped. An overlay above
+    // its trigger is positioned by its top edge, and it is the capped height
+    // that puts its bottom edge against the trigger.
+    const height = Math.min(overlayBox.height, Math.max(0, maxHeight));
+    placed = place(targetBox, { width: overlayBox.width, height }, axis, align, offset, cross);
+    shift(placed, height);
 
     // The same question along the other axis. A menu placed to the RIGHT has
     // the space between its trigger and the boundary edge to grow into, and a
@@ -1011,14 +1245,27 @@ export function overlayPosition(options: PositionOptions): PositionResult {
       axis === "bottom"
         ? 0
         : axis === "top"
-          ? overlayBox.height
-          : clamp(targetBox.top + targetBox.height / 2 - placed.top, 0, overlayBox.height);
+          ? height
+          : clamp(targetBox.top + targetBox.height / 2 - placed.top, 0, height);
 
-    // The overlay is positioned relative to the page, so the scroll offset is
-    // part of the answer.
+    // Everything so far is in client coordinates. Relative to the page, the
+    // scroll offset is part of the answer; relative to a containing block of
+    // the page's own, that block's box and its scroll are.
+    const container = containingBlock(element);
+    let originTop = -view.scrollY;
+    let originLeft = -view.scrollX;
+    if (container !== null) {
+      const containerBox = container.getBoundingClientRect();
+      const style = view.getComputedStyle(container);
+      originTop =
+        containerBox.top + (Number.parseFloat(style.borderTopWidth) || 0) - container.scrollTop;
+      originLeft =
+        containerBox.left + (Number.parseFloat(style.borderLeftWidth) || 0) - container.scrollLeft;
+    }
+
     setPosition({
-      top: placed.top + view.scrollY,
-      left: placed.left + view.scrollX,
+      top: placed.top - originTop,
+      left: placed.left - originLeft,
       maxHeight: Math.max(0, maxHeight),
       maxWidth: Math.max(0, maxWidth),
       targetWidth: targetBox.width,
@@ -1028,25 +1275,19 @@ export function overlayPosition(options: PositionOptions): PositionResult {
     });
     setResolvedAxis(axis);
 
-    const arrow = access(options.arrowRef ?? undefined) as Element | null;
-    if (arrow !== null && arrow !== undefined) {
-      // The same reason, and one more: an arrow is a rotated square, so
-      // `getBoundingClientRect` reports the box the rotation sweeps out — 14.1px
-      // for a 10px arrow — which centred it 2px off its trigger.
-      const arrowBox = layoutSize(arrow);
+    if (arrowBox !== null) {
       // Centred on the TARGET, not on the overlay: after a shift the two are
       // no longer aligned, and the arrow has to keep pointing at the trigger.
-      if (axis === "top" || axis === "bottom") {
-        const centre = targetBox.left + targetBox.width / 2 - placed.left;
-        setArrowOffset(
-          Math.min(Math.max(centre - arrowBox.width / 2, 0), overlayBox.width - arrowBox.width),
-        );
-      } else {
-        const centre = targetBox.top + targetBox.height / 2 - placed.top;
-        setArrowOffset(
-          Math.min(Math.max(centre - arrowBox.height / 2, 0), overlayBox.height - arrowBox.height),
-        );
-      }
+      // Kept over the trigger, then inside the overlay clear of its ends.
+      const from = vertical ? targetBox.left - placed.left : targetBox.top - placed.top;
+      const along = vertical ? targetBox.width : targetBox.height;
+      const extent = vertical ? overlayBox.width : height;
+      const centre = clamp(
+        clamp(from + along / 2, from + arrowSize / 2, from + along - arrowSize / 2),
+        arrowSize / 2 + arrowEdge,
+        extent - arrowSize / 2 - arrowEdge,
+      );
+      setArrowOffset(centre - arrowSize / 2);
     }
   };
 
@@ -1077,6 +1318,7 @@ export function overlayPosition(options: PositionOptions): PositionResult {
               access(options.overlayRef),
               access(options.boundaryRef ?? undefined),
               access(options.arrowRef ?? undefined),
+              access(options.arrowBoundaryOffset),
               access(options.placement),
               access(options.offset),
               access(options.crossOffset),
@@ -1173,6 +1415,18 @@ export interface ModalOverlayOptions extends OverlayOptions {
   isScrollDisabled?: MaybeAccessor<boolean | undefined>;
   /** Nothing outside is hidden from assistive technology, and it is not marked modal. */
   isNonModal?: MaybeAccessor<boolean | undefined>;
+  /**
+   * Still animating in. The rest of the page is hidden only once it has
+   * arrived: moving a screen reader's cursor into a modal that is still sliding
+   * in scrolls, and on iOS that interrupts the animation. Until then the modal
+   * is only kept visible inside whatever is already hiding the page.
+   *
+   * Moving focus in waits for the same moment, and is the caller's: a focus
+   * scope's `autoFocus`.
+   *
+   * @default false
+   */
+  isEntering?: MaybeAccessor<boolean | undefined>;
 }
 
 export interface ModalOverlayResult extends OverlayResult {
@@ -1200,9 +1454,13 @@ export function modalOverlay(
   followOpen(
     () =>
       state.isOpen() && access(options.isNonModal) !== true
-        ? ((access(ref) as Element | null) ?? null)
+        ? ([(access(ref) as Element | null) ?? null, access(options.isEntering) === true] as const)
         : null,
-    (element) => (element === null ? undefined : ariaHideOutside([element])),
+    (open) => {
+      if (open === null || open[0] === null) return undefined;
+      const [element, isEntering] = open;
+      return isEntering ? keepVisible(element) : ariaHideOutside([element]);
+    },
   );
 
   return {
@@ -1212,6 +1470,43 @@ export function modalOverlay(
   };
 }
 
+const overlayStrings = new StringDictionary<"dismiss">({
+  "ar-AE": { dismiss: "تجاهل" },
+  "bg-BG": { dismiss: "Отхвърляне" },
+  "cs-CZ": { dismiss: "Odstranit" },
+  "da-DK": { dismiss: "Luk" },
+  "de-DE": { dismiss: "Schließen" },
+  "el-GR": { dismiss: "Απόρριψη" },
+  "en-US": { dismiss: "Dismiss" },
+  "es-ES": { dismiss: "Descartar" },
+  "et-EE": { dismiss: "Lõpeta" },
+  "fi-FI": { dismiss: "Hylkää" },
+  "fr-FR": { dismiss: "Rejeter" },
+  "he-IL": { dismiss: "התעלם" },
+  "hr-HR": { dismiss: "Odbaci" },
+  "hu-HU": { dismiss: "Elutasítás" },
+  "it-IT": { dismiss: "Ignora" },
+  "ja-JP": { dismiss: "閉じる" },
+  "ko-KR": { dismiss: "무시" },
+  "lt-LT": { dismiss: "Atmesti" },
+  "lv-LV": { dismiss: "Nerādīt" },
+  "nb-NO": { dismiss: "Lukk" },
+  "nl-NL": { dismiss: "Negeren" },
+  "pl-PL": { dismiss: "Zignoruj" },
+  "pt-BR": { dismiss: "Descartar" },
+  "pt-PT": { dismiss: "Dispensar" },
+  "ro-RO": { dismiss: "Revocare" },
+  "ru-RU": { dismiss: "Пропустить" },
+  "sk-SK": { dismiss: "Zrušiť" },
+  "sl-SI": { dismiss: "Opusti" },
+  "sr-SP": { dismiss: "Odbaci" },
+  "sv-SE": { dismiss: "Avvisa" },
+  "tr-TR": { dismiss: "Kapat" },
+  "uk-UA": { dismiss: "Скасувати" },
+  "zh-CN": { dismiss: "取消" },
+  "zh-TW": { dismiss: "關閉" },
+});
+
 /**
  * A button that closes the overlay, rendered at its end and visible only to a
  * screen reader.
@@ -1220,9 +1515,11 @@ export function modalOverlay(
  * last element and the next swipe leaves the overlay without closing it.
  */
 export function dismissButtonProps(onDismiss: () => void): DOMProps {
+  const message = stringFormatter(overlayStrings);
   return {
+    type: "button",
     tabIndex: -1,
-    "aria-label": "Dismiss",
+    "aria-label": () => message().format("dismiss"),
     style: {
       width: "1px",
       height: "1px",

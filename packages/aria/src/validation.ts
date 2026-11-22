@@ -35,6 +35,7 @@ import {
   getOwner,
   install,
   createSignal,
+  onFlush,
   useContext,
 } from "@barqjs/core";
 import { isServer } from "@barqjs/web";
@@ -221,6 +222,17 @@ export function formValidationState<T>(
   /** What has been found but not yet shown, under `"native"`. */
   let pending: ValidationResult = VALID_RESULT;
   const [shown, setShown] = createSignal<ValidationResult>(VALID_RESULT);
+  /** What the last commit put up, read without subscribing to it. */
+  let committed: ValidationResult = VALID_RESULT;
+  let queued = false;
+
+  const show = (result: ValidationResult): void => {
+    if (sameResult(committed, result)) return;
+    committed = result;
+    setShown(result);
+  };
+
+  const commitNow = (): void => show(client() ?? builtin() ?? pending);
 
   const realtimeValidation = (): ValidationResult =>
     controlled() ?? server() ?? client() ?? builtin() ?? VALID_RESULT;
@@ -237,7 +249,7 @@ export function formValidationState<T>(
       // Under `"aria"` everything is shown as it happens; under `"native"` it
       // waits for a commit.
       if (behavior() === "aria") {
-        if (!sameResult(shown(), result)) setShown(result);
+        show(result);
         return;
       }
       pending = result;
@@ -245,15 +257,26 @@ export function formValidationState<T>(
     resetValidation: () => {
       // Back to valid even if the native validity still says otherwise: it
       // will say so again on the next submit.
-      if (!sameResult(shown(), VALID_RESULT)) setShown(VALID_RESULT);
+      show(VALID_RESULT);
       pending = VALID_RESULT;
+      queued = false;
       setServerCleared(true);
     },
     commitValidation: () => {
       setServerCleared(true);
       if (behavior() !== "native") return;
-      const found = client() ?? builtin() ?? pending;
-      if (!sameResult(shown(), found)) setShown(found);
+      commitNow();
+      // A commit comes from the event that changed the value, before the write
+      // has been applied, so `validate` and the element's validity both still
+      // describe the old value. Committed again once the flush has run, which
+      // is the value the user is looking at.
+      if (queued) return;
+      queued = true;
+      onFlush(() => {
+        if (!queued) return;
+        queued = false;
+        commitNow();
+      });
     },
   };
 }
@@ -265,6 +288,11 @@ export function formValidationState<T>(
 export interface FieldValidationOptions<T> extends FormValidationStateOptions<T> {
   /** The caller's own message, which wins over anything found here. */
   errorMessage?: MaybeAccessor<unknown>;
+  /**
+   * A state to show instead of one of the field's own: a checkbox in a group
+   * shows the group's validity, which its own `validate` feeds into.
+   */
+  state?: FormValidationState;
 }
 
 export interface FieldValidation {
@@ -299,7 +327,7 @@ export interface FieldValidation {
 export function fieldValidation<T>(options: FieldValidationOptions<T>): FieldValidation {
   const inherited = useValidationBehavior();
 
-  const state = formValidationState<T>(options);
+  const state = options.state ?? formValidationState<T>(options);
 
   const behavior = (): ValidationBehavior | undefined =>
     access(options.validationBehavior) ?? inherited;
@@ -381,6 +409,20 @@ export function formValidation(
 
   const isNative = (): boolean => access(options.validationBehavior) === "native";
 
+  const sync = (element: ValidatableElement, found: ValidationResult): void => {
+    if (typeof element.setCustomValidity !== "function") return;
+    if ((element as HTMLInputElement).disabled) return;
+
+    element.setCustomValidity(
+      found.isInvalid ? found.validationErrors.join(" ") || "Invalid value." : "",
+    );
+    // Firefox shows the `title` in the validation bubble, so an empty one
+    // keeps the page's message from being repeated in the browser's.
+    if (!element.hasAttribute("title")) element.title = "";
+
+    if (!found.isInvalid) state.updateValidation(nativeValidity(element));
+  };
+
   createEffect(
     () => {
       const element = access(ref) as ValidatableElement | null;
@@ -388,19 +430,7 @@ export function formValidation(
       return [element, state.realtimeValidation()] as const;
     },
     (next) => {
-      if (next === null) return;
-      const [element, found] = next;
-      if (typeof element.setCustomValidity !== "function") return;
-      if ((element as HTMLInputElement).disabled) return;
-
-      element.setCustomValidity(
-        found.isInvalid ? found.validationErrors.join(" ") || "Invalid value." : "",
-      );
-      // Firefox shows the `title` in the validation bubble, so an empty one
-      // keeps the page's message from being repeated in the browser's.
-      if (!element.hasAttribute("title")) element.title = "";
-
-      if (!found.isInvalid) state.updateValidation(nativeValidity(element));
+      if (next !== null) sync(next[0], next[1]);
     },
   );
 
@@ -416,8 +446,7 @@ export function formValidation(
 
         const form = element.form;
         if (!event.defaultPrevented && form !== null) {
-          const first = form.querySelector<ValidatableElement>(":invalid");
-          if (first === element) {
+          if (firstInvalid(form) === element) {
             if (options.focus !== undefined) options.focus();
             else element.focus();
             // The focus ring shows: focus moved for a reason the user did not
@@ -430,18 +459,46 @@ export function formValidation(
         event.preventDefault();
       };
 
-      const onChange = (): void => state.commitValidation();
-      const onReset = (): void => state.resetValidation();
+      // An edit can change what the browser thinks (`required`, `pattern`,
+      // `type="email"`) without changing anything the page's own validation
+      // reads, and then nothing re-runs the effect above. Read it again here,
+      // so the commit that follows is not of the value before the edit.
+      const onInput = (): void => {
+        if (isNative()) sync(element, state.realtimeValidation());
+      };
+      const onChange = (): void => {
+        onInput();
+        state.commitValidation();
+      };
+      const onReset = (event: Event): void => {
+        if (!event.defaultPrevented) state.resetValidation();
+      };
 
       element.addEventListener("invalid", onInvalid);
+      element.addEventListener("input", onInput);
       element.addEventListener("change", onChange);
       element.form?.addEventListener("reset", onReset);
 
       return () => {
         element.removeEventListener("invalid", onInvalid);
+        element.removeEventListener("input", onInput);
         element.removeEventListener("change", onChange);
         element.form?.removeEventListener("reset", onReset);
       };
     },
   );
+}
+
+/**
+ * The control a refused submit should land on.
+ *
+ * Not `form.querySelector(":invalid")`: a `<fieldset>` matches `:invalid` when
+ * anything inside it does, and it comes before its contents in tree order, so
+ * a form with its fields in a fieldset would focus nothing.
+ */
+function firstInvalid(form: HTMLFormElement): Element | null {
+  for (const element of form.elements) {
+    if ((element as Partial<ValidatableElement>).validity?.valid === false) return element;
+  }
+  return null;
 }

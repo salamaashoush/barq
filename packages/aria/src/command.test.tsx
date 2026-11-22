@@ -681,6 +681,67 @@ describe("Command", () => {
     expect(list.scrollTop).toBe(0);
   });
 
+  test("moving the caret hands the screen reader back to the input, and the arrows resume", async () => {
+    render(() => <Palette />);
+    await settle();
+    const field = input();
+    field.focus();
+    user.keyDown("ArrowDown");
+    flush();
+    expect(highlighted()).toBe("Search Emoji");
+
+    const right = user.keyDown("ArrowRight");
+    flush();
+    expect(right).toBe(true);
+    expect(field.hasAttribute("aria-activedescendant")).toBe(false);
+    expect(screen.getByRole("listbox").hasAttribute("aria-activedescendant")).toBe(false);
+    expect(screen.getByRole("option", { name: "Search Emoji" }).getAttribute("data-selected")).toBe(
+      "true",
+    );
+
+    user.keyDown("ArrowDown");
+    flush();
+    expect(highlighted()).toBe("Profile");
+  });
+
+  test("a mouse press in the input hands the screen reader back to it", async () => {
+    render(() => <Palette />);
+    await settle();
+    const field = input();
+    field.focus();
+    expect(highlighted()).toBe("Calendar");
+
+    user.pointerDown(field, { pointerType: "touch" });
+    flush();
+    expect(highlighted()).toBe("Calendar");
+
+    user.pointerDown(field);
+    flush();
+    expect(field.hasAttribute("aria-activedescendant")).toBe(false);
+
+    user.type(field, "s");
+    await settle();
+    expect(highlighted()).toBe("Search Emoji");
+  });
+
+  test("Shift with Home or End selects text when nothing is highlighted", async () => {
+    render(() => <Palette />);
+    await settle();
+    user.type(input(), "zzz");
+    await settle();
+    input().focus();
+
+    expect(user.keyDown("Home", { shiftKey: true })).toBe(true);
+    expect(user.keyDown("End", { shiftKey: true })).toBe(true);
+    expect(user.keyDown("End")).toBe(false);
+  });
+
+  test("the on-screen keyboard's Enter key says go", async () => {
+    render(() => <Palette />);
+    await settle();
+    expect(input().getAttribute("enterkeyhint")).toBe("go");
+  });
+
   test("a loading row is a progress bar with a name", async () => {
     render(() => (
       <Command label="Commands">

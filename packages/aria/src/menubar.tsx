@@ -233,7 +233,10 @@ export function Menubar(props: MenubarComponentProps) {
       forget = setTimeout(() => {
         typed = "";
       }, TYPEAHEAD_RESET);
-      typed += character.toLowerCase();
+      // The same letter again steps on to the next trigger starting with it,
+      // rather than searching for the letter twice over.
+      const letter = character.toLowerCase();
+      typed = typed === "" || typed === letter ? letter : typed + letter;
 
       const all = ordered();
       const at = all.findIndex((entry) => entry.value === from);

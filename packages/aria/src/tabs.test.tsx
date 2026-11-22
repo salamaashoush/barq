@@ -13,6 +13,7 @@ import {
   ValueTabPanel,
   ValueTabs,
 } from "./tabs.tsx";
+import { SelectionIndicator } from "./selection-indicator.tsx";
 
 interface Section {
   id: string;
@@ -604,5 +605,137 @@ describe("tabs that name themselves", () => {
   test("has no ARIA violations", () => {
     const { container } = render(() => <Settings defaultValue="account" />);
     expectNoAriaViolations(container);
+  });
+});
+
+describe("tabs that are links", () => {
+  const PAGES = [
+    { id: "home", name: "Home", href: "/home" },
+    { id: "about", name: "About", href: "/about" },
+  ];
+
+  test("a tab with an href is an anchor and is followed", () => {
+    const seen: { href: string | null; prevented: boolean }[] = [];
+    const listener = (event: Event): void => {
+      if (event.target instanceof HTMLAnchorElement) {
+        seen.push({ href: event.target.getAttribute("href"), prevented: event.defaultPrevented });
+      }
+    };
+    document.addEventListener("click", listener);
+    try {
+      render(() => (
+        <Tabs items={PAGES}>
+          <TabList aria-label="Site">{(page: { name: string }) => <Tab>{page.name}</Tab>}</TabList>
+          <TabPanel>{(page: { name: string }) => <p>{page.name}</p>}</TabPanel>
+        </Tabs>
+      ));
+
+      const about = screen.getByRole("tab", { name: "About" });
+      expect(about.tagName).toBe("A");
+      expect(about.getAttribute("href")).toBe("/about");
+
+      user.click(about);
+      flush();
+      expect(seen.at(-1)).toEqual({ href: "/about", prevented: false });
+    } finally {
+      document.removeEventListener("click", listener);
+    }
+  });
+});
+
+describe("panels", () => {
+  test("shouldForceMount keeps every panel, hidden and inert but the selected one", () => {
+    render(() => (
+      <Tabs items={SECTIONS}>
+        <TabList aria-label="History">{(section: Section) => <Tab>{section.name}</Tab>}</TabList>
+        <TabPanel shouldForceMount>{(section: Section) => <p>{section.body}</p>}</TabPanel>
+      </Tabs>
+    ));
+
+    const all = document.querySelectorAll('[role="tabpanel"]');
+    expect(all).toHaveLength(SECTIONS.length);
+    const hidden = [...all].filter((panel) => panel.hasAttribute("hidden"));
+    expect(hidden).toHaveLength(SECTIONS.length - 1);
+    expect(hidden.every((panel) => panel.getAttribute("data-inert") === "true")).toBe(true);
+    expect(screen.getByRole("tabpanel").textContent).toBe("How it began");
+  });
+
+  test("a force-mounted panel keeps its state across a switch", () => {
+    render(() => (
+      <Tabs items={SECTIONS}>
+        <TabList aria-label="History">{(section: Section) => <Tab>{section.name}</Tab>}</TabList>
+        <TabPanel shouldForceMount>
+          {(section: Section) => <input aria-label={`Notes on ${section.name}`} />}
+        </TabPanel>
+      </Tabs>
+    ));
+
+    const field = screen.getByRole<HTMLInputElement>("textbox", { name: "Notes on Founding" });
+    field.value = "salama";
+    user.click(screen.getByRole("tab", { name: "Today" }));
+    flush();
+    user.click(screen.getByRole("tab", { name: "Founding" }));
+    flush();
+
+    expect(screen.getByRole<HTMLInputElement>("textbox").value).toBe("salama");
+  });
+
+  test("a panel coming in is marked entering, and stops being once it has", async () => {
+    render(() => <Sections />);
+    user.click(screen.getByRole("tab", { name: "Today" }));
+    flush();
+
+    const panel = screen.getByRole("tabpanel");
+    expect(panel.hasAttribute("data-entering")).toBe(true);
+    await new Promise<void>((done) => requestAnimationFrame(() => setTimeout(done, 0)));
+    flush();
+    expect(panel.hasAttribute("data-entering")).toBe(false);
+  });
+
+  test("a panel leaving stays while its exit animation runs", async () => {
+    render(() => <Sections />);
+    const leaving = screen.getByRole("tabpanel");
+    leaving.style.transitionDuration = "50ms";
+
+    user.click(screen.getByRole("tab", { name: "Today" }));
+    flush();
+
+    expect(leaving.isConnected, "the panel was removed before it could animate out").toBe(true);
+    expect(leaving.hasAttribute("data-exiting")).toBe(true);
+    await new Promise<void>((done) => setTimeout(done, 80));
+    flush();
+    expect(leaving.isConnected).toBe(false);
+  });
+});
+
+describe("a selection indicator", () => {
+  test("is shown in the selected tab only, and follows the selection", async () => {
+    render(() => (
+      <Tabs items={SECTIONS}>
+        <TabList aria-label="History">
+          {(section: Section) => (
+            <Tab>
+              {section.name}
+              <SelectionIndicator data-testid="indicator" />
+            </Tab>
+          )}
+        </TabList>
+        <TabPanel>{(section: Section) => <p>{section.body}</p>}</TabPanel>
+      </Tabs>
+    ));
+    const shown = (role: string): (string | null)[] =>
+      screen
+        .queryAllByTestId("indicator")
+        .map(
+          (element: Element) =>
+            element.closest(`[role="${role}"]`)?.getAttribute("data-key") ?? null,
+        );
+    expect(shown("tab"), "the tab never told its indicator it was selected").toEqual(["founding"]);
+
+    user.click(screen.getByRole("tab", { name: "Today" }));
+    flush();
+    await new Promise<void>((done) => requestAnimationFrame(() => setTimeout(done, 0)));
+    flush();
+    expect(shown("tab")).toEqual(["today"]);
   });
 });

@@ -130,6 +130,10 @@ export function announce(
   assertiveness: Assertiveness = "assertive",
   timeout: number = DEFAULT_TIMEOUT,
 ): void {
+  // A region the page took out of the document says nothing, and an
+  // application that replaces the body's content does take it out.
+  if (announcer !== null && !announcer.isAttached()) destroyAnnouncer();
+
   if (announcer !== null) {
     announcer.announce(message, assertiveness, timeout);
     return;

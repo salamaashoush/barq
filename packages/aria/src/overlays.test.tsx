@@ -6,7 +6,9 @@ import { ref } from "@barqjs/primitives/refs";
 import {
   alignOf,
   overlayPosition,
+  modalOverlay,
   placementFor,
+  preventScroll,
   type Placement,
   type PositionResult,
 } from "./overlays.ts";
@@ -472,6 +474,238 @@ describe("overlayPosition", () => {
   });
 });
 
+describe("preventing scroll on iOS", () => {
+  function onIOS(run: () => void): void {
+    const platform = Object.getOwnPropertyDescriptor(navigator, "platform");
+    const agent = Object.getOwnPropertyDescriptor(navigator, "userAgent");
+    Object.defineProperty(navigator, "platform", { value: "iPhone", configurable: true });
+    Object.defineProperty(navigator, "userAgent", {
+      value: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15",
+      configurable: true,
+    });
+    try {
+      run();
+    } finally {
+      for (const [name, descriptor] of [
+        ["platform", platform],
+        ["userAgent", agent],
+      ] as const) {
+        if (descriptor === undefined) Reflect.deleteProperty(navigator, name);
+        else Object.defineProperty(navigator, name, descriptor);
+      }
+    }
+  }
+
+  function Locked(props: { isLocked: boolean }) {
+    preventScroll({ isDisabled: () => !props.isLocked });
+    return null;
+  }
+
+  test("the injected stylesheet carries the page's CSP nonce", () => {
+    const meta = document.createElement("meta");
+    meta.setAttribute("property", "csp-nonce");
+    meta.setAttribute("content", "salama-nonce");
+    document.head.append(meta);
+    try {
+      onIOS(() => {
+        const { unmount } = render(() => <Locked isLocked />);
+        flush();
+        const style = [...document.head.querySelectorAll("style")].find((each) =>
+          each.textContent?.includes("overscroll-behavior"),
+        );
+        expect(style?.nonce).toBe("salama-nonce");
+        unmount();
+      });
+    } finally {
+      meta.remove();
+    }
+  });
+
+  test("programmatic focus does not scroll the page while it is locked", () => {
+    const original = HTMLElement.prototype.focus;
+    const asked: (FocusOptions | undefined)[] = [];
+    HTMLElement.prototype.focus = function (this: HTMLElement, options?: FocusOptions) {
+      asked.push(options);
+    };
+    try {
+      onIOS(() => {
+        const [locked, setLocked] = createSignal(true);
+        render(() => <Locked isLocked={locked()} />);
+        flush();
+
+        const input = document.createElement("input");
+        document.body.append(input);
+        try {
+          input.focus();
+          expect(asked.at(-1)?.preventScroll).toBe(true);
+
+          setLocked(false);
+          flush();
+          input.focus();
+          expect(asked.at(-1)).toBeUndefined();
+        } finally {
+          input.remove();
+        }
+      });
+    } finally {
+      HTMLElement.prototype.focus = original;
+    }
+  });
+});
+
+describe("flipping and capping", () => {
+  const placed: Element[] = [];
+  afterEach(() => {
+    for (const element of placed.splice(0)) element.remove();
+  });
+
+  /** happy-dom's window is 1024 by 768. */
+  function placeAt(
+    target: Rect,
+    overlay: { width: number; height: number },
+    options: {
+      placement: Placement;
+      shouldFlip?: boolean;
+      container?: HTMLElement;
+      arrow?: number;
+      crossOffset?: number;
+      arrowBoundaryOffset?: number;
+    },
+  ): { position: PositionResult; style: Record<string, string | number | undefined> } {
+    const trigger = document.createElement("button");
+    const panel = document.createElement("div");
+    box(trigger, target);
+    box(panel, { top: 0, left: 0, ...overlay });
+    Object.defineProperty(panel, "offsetWidth", { value: overlay.width, configurable: true });
+    Object.defineProperty(panel, "offsetHeight", { value: overlay.height, configurable: true });
+    document.body.append(trigger);
+    (options.container ?? document.body).append(panel);
+    placed.push(trigger, panel);
+    const arrow = document.createElement("span");
+    if (options.arrow !== undefined) {
+      const size = options.arrow;
+      Object.defineProperty(arrow, "offsetWidth", { value: size, configurable: true });
+      Object.defineProperty(arrow, "offsetHeight", { value: size, configurable: true });
+      panel.append(arrow);
+    }
+
+    let position: PositionResult | undefined;
+    function Fixture() {
+      position = overlayPosition({
+        targetRef: () => trigger,
+        overlayRef: () => panel,
+        placement: options.placement,
+        shouldFlip: options.shouldFlip,
+        crossOffset: options.crossOffset,
+        arrowBoundaryOffset: options.arrowBoundaryOffset,
+        arrowRef: options.arrow === undefined ? undefined : () => arrow,
+        isOpen: true,
+      });
+      return null;
+    }
+    render(() => <Fixture />);
+    flush();
+    position?.update();
+    if (position === undefined) throw new Error("overlayPosition returned nothing");
+    return { position, style: styleOf(position.overlayProps) };
+  }
+
+  const px = (value: string | number | undefined): number => Number.parseFloat(String(value));
+
+  test("goes to the side with more room when it fits on neither", () => {
+    // 216px below the trigger, 488px above, and 600px of list.
+    const { position, style } = placeAt(
+      { top: 500, left: 100, width: 100, height: 40 },
+      { width: 200, height: 600 },
+      { placement: "bottom start" },
+    );
+    expect(position.placement()).toBe("top");
+    expect(px(style.maxHeight)).toBe(488);
+    expect(px(style.top)).toBe(12);
+  });
+
+  test("an overhang along the trigger does not stop a flip", () => {
+    // The overlay is wider than the room to the right of the trigger, which
+    // is the cross-axis shift's problem and not a reason to stay below.
+    const { position, style } = placeAt(
+      { top: 600, left: 950, width: 60, height: 40 },
+      { width: 300, height: 200 },
+      { placement: "bottom start" },
+    );
+    expect(position.placement()).toBe("top");
+    expect(px(style.top)).toBe(400);
+    expect(px(style.left)).toBe(1024 - 12 - 300);
+  });
+
+  test("an overlay above its trigger that is capped stays against it", () => {
+    // 288px of room above and 400px of overlay: capped to 288, its bottom on
+    // the trigger's top, rather than hanging 112px off the top of the screen.
+    const { position, style } = placeAt(
+      { top: 300, left: 100, width: 100, height: 30 },
+      { width: 200, height: 400 },
+      { placement: "top start", shouldFlip: false },
+    );
+    expect(position.placement()).toBe("top");
+    expect(px(style.maxHeight)).toBe(288);
+    expect(px(style.top)).toBe(12);
+    expect(style["--barq-transform-origin"]).toBe("50px 288px");
+  });
+
+  test("is placed relative to a containing block the page made", () => {
+    const shell = document.createElement("div");
+    shell.style.transform = "translateX(0)";
+    box(shell, { top: 100, left: 50, width: 800, height: 600 });
+    document.body.append(shell);
+    placed.push(shell);
+
+    const { style } = placeAt(
+      { top: 200, left: 300, width: 80, height: 30 },
+      { width: 100, height: 50 },
+      { placement: "bottom start", container: shell },
+    );
+    expect(px(style.top)).toBe(130);
+    expect(px(style.left)).toBe(250);
+  });
+
+  test("an arrow stays clear of the overlay's ends by arrowBoundaryOffset", () => {
+    // The trigger's centre is 10, which is 2px left of where the overlay was
+    // shifted to; the arrow keeps 8px clear of the overlay's corner instead.
+    const { position } = placeAt(
+      { top: 100, left: 0, width: 20, height: 30 },
+      { width: 300, height: 100 },
+      { placement: "bottom start", arrow: 10, arrowBoundaryOffset: 8 },
+    );
+    expect(px(styleOf(position.arrowProps).left)).toBe(8);
+  });
+
+  test("a cross offset cannot carry an overlay with an arrow off its trigger", () => {
+    const { style } = placeAt(
+      { top: 100, left: 400, width: 80, height: 30 },
+      { width: 200, height: 100 },
+      { placement: "bottom start", arrow: 10, crossOffset: 500 },
+    );
+    // Its left edge stops where the arrow can still sit over the trigger.
+    expect(px(style.left)).toBe(470);
+  });
+
+  test("stays inside the visual viewport, not the layout one", () => {
+    // The on-screen keyboard covers everything below 400.
+    const visual = { offsetTop: 0, offsetLeft: 0, width: 1024, height: 400 };
+    Object.defineProperty(window, "visualViewport", { value: visual, configurable: true });
+    try {
+      const { position, style } = placeAt(
+        { top: 300, left: 100, width: 100, height: 30 },
+        { width: 200, height: 200 },
+        { placement: "bottom start" },
+      );
+      expect(position.placement()).toBe("top");
+      expect(px(style.maxHeight)).toBe(288);
+    } finally {
+      Reflect.deleteProperty(window, "visualViewport");
+    }
+  });
+});
+
 describe("a side and an alignment", () => {
   test("name the same position a placement does", () => {
     expect(placementFor("bottom")).toBe("bottom");
@@ -529,5 +763,41 @@ describe("a side and an alignment", () => {
     expect(leftOf(placed("bottom start", "ltr"))).toBe(400);
     expect(leftOf(placed("bottom start", "rtl"))).toBe(500);
     expect(leftOf(placed("bottom end", "rtl"))).toBe(400);
+  });
+});
+
+describe("a modal that is still entering", () => {
+  test("hides the page only once it has arrived, and is kept visible until then", () => {
+    const [entering, setEntering] = createSignal(true);
+    function Sheet() {
+      const element = ref<HTMLDivElement>();
+      modalOverlay(
+        { isEntering: entering },
+        {
+          isOpen: () => true,
+          setOpen: () => {},
+          open: () => {},
+          close: () => {},
+          toggle: () => {},
+        },
+        element,
+      );
+      return (
+        <>
+          <p>behind</p>
+          <div ref={element.set}>sheet</div>
+        </>
+      );
+    }
+    const { container } = render(() => <Sheet />);
+    flush();
+    const behind = container.querySelector("p") as HTMLElement;
+    const sheet = container.querySelector("div") as HTMLElement;
+    expect(behind.closest("[aria-hidden=true]")).toBeNull();
+
+    setEntering(false);
+    flush();
+    expect(behind.closest("[aria-hidden=true]")).not.toBeNull();
+    expect(sheet.closest("[aria-hidden=true]")).toBeNull();
   });
 });

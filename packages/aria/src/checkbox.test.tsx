@@ -1,7 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { flush, createSignal } from "@barqjs/core";
-import { accessibleName, expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
+import {
+  accessibleDescription,
+  accessibleName,
+  expectNoAriaViolations,
+  render,
+  screen,
+  user,
+} from "@barqjs/testing";
 import { Checkbox, CheckboxGroup, GroupCheckbox, useCheckbox } from "./checkbox.tsx";
+import { Form } from "./form.tsx";
 import { getInteractionModality, isFocusVisible } from "./interactions/modality.ts";
 
 describe("Checkbox", () => {
@@ -385,5 +393,194 @@ describe("Checkbox, with nothing of its own to say", () => {
     user.click(capers?.parentElement as HTMLElement);
     flush();
     expect(seen).toEqual([["capers"]]);
+  });
+});
+
+describe("Checkbox, focus", () => {
+  test("a press on its label focuses it, as WebKit does not", () => {
+    render(() => (
+      <>
+        <button type="button">Before</button>
+        <Checkbox>I agree</Checkbox>
+      </>
+    ));
+    const before = screen.getByRole("button");
+    before.focus();
+
+    user.click(box().parentElement as HTMLElement);
+    flush();
+
+    expect(box().checked).toBe(true);
+    expect(document.activeElement).toBe(box());
+  });
+
+  function box(): HTMLInputElement {
+    return screen.getByRole<HTMLInputElement>("checkbox");
+  }
+});
+
+describe("Checkbox, help text", () => {
+  test("a description is rendered after the label and describes the checkbox", () => {
+    render(() => <Checkbox description="We send one a month">Newsletter</Checkbox>);
+    const box = screen.getByRole("checkbox");
+
+    expect(accessibleName(box)).toBe("Newsletter");
+    expect(accessibleDescription(box)).toBe("We send one a month");
+  });
+
+  test("an error message is shown and described only while it is invalid", () => {
+    const [invalid, setInvalid] = createSignal(false);
+    render(() => (
+      <Checkbox isInvalid={invalid()} errorMessage="You have to agree">
+        I agree
+      </Checkbox>
+    ));
+    const box = screen.getByRole("checkbox");
+    expect(accessibleDescription(box)).toBe("");
+    expect(screen.queryByText("You have to agree")).toBeNull();
+
+    setInvalid(true);
+    flush();
+    expect(accessibleDescription(box)).toBe("You have to agree");
+  });
+
+  test("without a message of its own, what validation found is shown", () => {
+    render(() => (
+      <Checkbox validate={(on: boolean) => (on ? null : "You have to agree")}>I agree</Checkbox>
+    ));
+    expect(accessibleDescription(screen.getByRole("checkbox"))).toBe("You have to agree");
+  });
+
+  test("the caller's own aria-describedby is kept", () => {
+    render(() => (
+      <>
+        <p id="terms">Terms apply</p>
+        <Checkbox aria-describedby="terms" description="Monthly">
+          Newsletter
+        </Checkbox>
+      </>
+    ));
+    expect(accessibleDescription(screen.getByRole("checkbox"))).toBe("Monthly Terms apply");
+  });
+});
+
+describe("Checkbox, required", () => {
+  test("under aria it does not block the submit, and says it is required", () => {
+    render(() => (
+      <Form aria-label="Terms">
+        <Checkbox isRequired>I agree</Checkbox>
+      </Form>
+    ));
+    const box = screen.getByRole<HTMLInputElement>("checkbox");
+
+    expect(box.required).toBe(false);
+    expect(box.getAttribute("aria-required")).toBe("true");
+    expect(screen.getByRole<HTMLFormElement>("form").checkValidity()).toBe(true);
+  });
+
+  test("under native the browser blocks the submit", () => {
+    render(() => (
+      <Form aria-label="Terms" validationBehavior="native">
+        <Checkbox isRequired>I agree</Checkbox>
+      </Form>
+    ));
+    const box = screen.getByRole<HTMLInputElement>("checkbox");
+
+    expect(box.required).toBe(true);
+    expect(box.hasAttribute("aria-required")).toBe(false);
+    expect(screen.getByRole<HTMLFormElement>("form").checkValidity()).toBe(false);
+  });
+
+  test("the label says so to a stylesheet", () => {
+    render(() => <Checkbox isRequired>I agree</Checkbox>);
+    expect(screen.getByRole("checkbox").parentElement?.hasAttribute("data-required")).toBe(true);
+  });
+});
+
+describe("Checkbox, form reset", () => {
+  test("a reset that was cancelled leaves it alone", () => {
+    render(() => (
+      <form data-testid="form">
+        <Checkbox name="agree">I agree</Checkbox>
+      </form>
+    ));
+    const form = screen.getByTestId<HTMLFormElement>("form");
+    const box = screen.getByRole<HTMLInputElement>("checkbox");
+    user.click(box.parentElement as HTMLElement);
+    flush();
+
+    form.addEventListener("reset", (event) => event.preventDefault(), { capture: true });
+    form.dispatchEvent(new Event("reset", { bubbles: true, cancelable: true }));
+    flush();
+
+    expect(box.checked).toBe(true);
+    expect(box.parentElement?.hasAttribute("data-selected")).toBe(true);
+  });
+});
+
+describe("CheckboxGroup, its members", () => {
+  test("each member is described by the group's description and error", () => {
+    render(() => (
+      <CheckboxGroup
+        label="Toppings"
+        description="Pick as many as you like"
+        isInvalid
+        errorMessage="Pick at least one"
+      >
+        <GroupCheckbox value="cheese">Cheese</GroupCheckbox>
+        <GroupCheckbox value="olives">Olives</GroupCheckbox>
+      </CheckboxGroup>
+    ));
+
+    for (const box of screen.getAllByRole("checkbox")) {
+      expect(accessibleDescription(box)).toBe("Pick as many as you like Pick at least one");
+    }
+  });
+
+  test("a required group lets the form submit once one box is checked", () => {
+    render(() => (
+      <Form aria-label="Order" validationBehavior="native">
+        <CheckboxGroup label="Toppings" name="toppings" isRequired>
+          <GroupCheckbox value="cheese">Cheese</GroupCheckbox>
+          <GroupCheckbox value="olives">Olives</GroupCheckbox>
+        </CheckboxGroup>
+      </Form>
+    ));
+    const form = screen.getByRole<HTMLFormElement>("form");
+    const [cheese, olives] = screen.getAllByRole<HTMLInputElement>("checkbox");
+
+    expect([cheese?.required, olives?.required]).toEqual([true, true]);
+    expect(form.checkValidity()).toBe(false);
+
+    user.click(cheese?.parentElement as HTMLElement);
+    flush();
+
+    expect([cheese?.required, olives?.required]).toEqual([false, false]);
+    expect(form.checkValidity()).toBe(true);
+  });
+
+  test("a required group under aria marks its members without blocking", () => {
+    render(() => (
+      <Form aria-label="Order">
+        <CheckboxGroup label="Toppings" isRequired>
+          <GroupCheckbox value="cheese">Cheese</GroupCheckbox>
+        </CheckboxGroup>
+      </Form>
+    ));
+    const box = screen.getByRole<HTMLInputElement>("checkbox");
+    expect(box.required).toBe(false);
+    expect(box.getAttribute("aria-required")).toBe("true");
+    expect(screen.getByRole<HTMLFormElement>("form").checkValidity()).toBe(true);
+  });
+
+  test("the members take the group's form", () => {
+    render(() => (
+      <CheckboxGroup label="Toppings" name="toppings" form="order">
+        <GroupCheckbox value="cheese">Cheese</GroupCheckbox>
+      </CheckboxGroup>
+    ));
+    const box = screen.getByRole<HTMLInputElement>("checkbox");
+    expect(box.getAttribute("form")).toBe("order");
+    expect(box.name).toBe("toppings");
   });
 });

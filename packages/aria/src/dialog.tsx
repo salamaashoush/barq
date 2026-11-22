@@ -21,8 +21,11 @@ import {
   cells,
   type Accessor,
   type Child,
+  createEffect,
   type Incoming,
+  isDev,
   onCleanup,
+  onSettled,
   Show,
   createSignal,
   untrack,
@@ -36,7 +39,9 @@ import type { ElementRef } from "./interactions/press.ts";
 import {
   alignOf,
   ariaHideOutside,
+  dismissButtonProps,
   followOpen,
+  keepVisible,
   modalOverlay,
   overlay,
   portalContainer,
@@ -53,6 +58,7 @@ import {
   type OverlayTriggerState,
   type Placement,
 } from "./overlays.ts";
+import { OverlayArrowProvider } from "./overlay-arrow.tsx";
 import { presence } from "./presence.ts";
 import {
   access,
@@ -61,6 +67,7 @@ import {
   fromProps,
   id,
   type MaybeAccessor,
+  clearTriggerSlot,
   mergeProps,
   type StyleProps,
   styleProps,
@@ -91,6 +98,8 @@ export interface DialogResult {
    * only once something has registered and goes again when it leaves.
    */
   readonly describe: (has: boolean) => void;
+  /** The same for the title, which is what makes the dialog point at it. */
+  readonly title: (has: boolean) => void;
 }
 
 /**
@@ -108,13 +117,24 @@ export function dialog(options: DialogOptions = {}): DialogResult {
   // A description registers from its own component body, so the write is one
   // the body makes on purpose.
   const [described, setDescribed] = createSignal(0, { ownedWrite: true });
-  const labelled = (): string | undefined => access(options["aria-labelledby"]) ?? titleId();
+  const [titled, setTitled] = createSignal(0, { ownedWrite: true });
+  // The title's id is written until the dialog has settled, which is all the
+  // server ever renders: a title registers from an effect, and there are no
+  // effects there. Once settled, it is written only while a title is present,
+  // so a dialog without one points at nothing.
+  const [settled, setSettled] = createSignal(false);
+  onSettled(() => {
+    setSettled(true);
+  });
+  const labelled = (): string | undefined =>
+    access(options["aria-labelledby"]) ?? (titled() > 0 || !settled() ? titleId() : undefined);
 
   return {
     titleProps: { id: titleId },
     descriptionProps: { id: descriptionId },
     descriptionId,
     describe: (has) => setDescribed((n) => n + (has ? 1 : -1)),
+    title: (has) => setTitled((n) => n + (has ? 1 : -1)),
     dialogProps: mergeProps(filterDOMProps(options, { labelable: true }), {
       role: () => access(options.role) ?? "dialog",
       tabIndex: -1,
@@ -163,9 +183,24 @@ export interface DialogComponentProps extends StyleProps {
 export function Dialog(props: DialogComponentProps) {
   const domRef = makeRef<HTMLElement>();
   const options = fromProps(cells(props));
-  const { dialogProps, titleProps, descriptionId, describe } = dialog(options);
+  const { dialogProps, titleProps, descriptionId, describe, title } = dialog(options);
 
-  provideDialog({ titleProps, descriptionId, describe });
+  provideDialog({ titleProps, descriptionId, describe, title });
+
+  if (isDev) {
+    onSettled(() => {
+      // After the title has had its chance to register, which happens as the
+      // content settles.
+      queueMicrotask(() => {
+        const element = domRef();
+        if (element === null || !element.isConnected) return;
+        if (element.hasAttribute("aria-label") || element.hasAttribute("aria-labelledby")) return;
+        console.warn(
+          'A Dialog with no <Heading slot="title"> needs an aria-label or an aria-labelledby, or a screen reader announces it with no name.',
+        );
+      });
+    });
+  }
 
   const elementProps = mergeProps(
     dialogProps,
@@ -199,7 +234,19 @@ export interface HeadingComponentProps extends StyleProps {
  * from.
  */
 export function Heading(props: HeadingComponentProps) {
-  const title = useDialogTitle();
+  const slots = getContext(DialogSlotsContext) ?? null;
+  const title = slots?.titleProps ?? null;
+
+  // Only a heading that says it is the title names the dialog, and only for
+  // as long as it is there.
+  createEffect(
+    () => props.slot === "title",
+    (isTitle) => {
+      if (!isTitle || slots === null) return undefined;
+      slots.title(true);
+      return () => slots.title(false);
+    },
+  );
 
   const elementProps = mergeProps(
     filterDOMProps(fromProps(cells(props)), { global: true }),
@@ -266,6 +313,7 @@ function callerDirection(options: object): string | undefined {
 }
 
 export function Modal(props: ModalComponentProps) {
+  clearTriggerSlot();
   const options = fromProps(cells(props));
   const state = overlayTriggerState(options);
   // Read here, where the modal is written. What it draws is portalled out from
@@ -462,6 +510,9 @@ function ModalBody(props: BodyProps) {
         data-state={props.isExiting ? "closed" : "open"}
         ref={mergeRefs(domRef.set, props.contentRef)}
       >
+        <Show when={props.isDismissable && !props.isNonModal}>
+          <DismissButton onDismiss={props.onClose} />
+        </Show>
         {props.children}
       </div>
       <span hidden ref={scope.endRef} />
@@ -471,8 +522,11 @@ function ModalBody(props: BodyProps) {
 
 export interface PopoverComponentProps extends StyleProps {
   children?: Child;
-  /** The element the popover is anchored to. */
-  triggerRef: ElementRef;
+  /**
+   * The element the popover is anchored to. Without it, the trigger in scope
+   * ({@link providePopoverTrigger}) is.
+   */
+  triggerRef?: ElementRef;
   /**
    * A box to place against instead of the trigger's own, in client
    * coordinates. A context menu passes the point the pointer was at.
@@ -526,17 +580,36 @@ export interface PopoverComponentProps extends StyleProps {
  * be escaped sets `isModal`.
  */
 export function Popover(props: PopoverComponentProps) {
+  clearTriggerSlot();
   const direction = declaredDirection();
   const domRef = makeRef<HTMLDivElement>();
   const options = fromProps(cells(props));
-  const state = overlayTriggerState(options);
+  const trigger = usePopoverTrigger();
+  const own = overlayTriggerState(options);
+  // The trigger in scope owns the state, unless this popover was told its own.
+  const fromTrigger = (): boolean =>
+    trigger !== null && props.isOpen === undefined && props.defaultOpen === undefined;
+  const state: OverlayTriggerState = {
+    isOpen: () => (fromTrigger() ? (trigger?.state.isOpen() ?? false) : own.isOpen()),
+    setOpen: (open) => {
+      if (fromTrigger()) trigger?.state.setOpen(open);
+      else own.setOpen(open);
+    },
+    open: () => state.setOpen(true),
+    close: () => state.setOpen(false),
+    toggle: () => state.setOpen(!state.isOpen()),
+  };
+  const containsFocus = (): boolean =>
+    (props.shouldContainFocus ?? access(trigger?.shouldContainFocus)) !== false;
   const locale = useLocale();
   const placement = (): Placement => props.placement ?? "bottom";
 
+  const arrowRef = makeRef<Element>();
   const position = overlayPosition({
-    targetRef: () => access(props.triggerRef),
+    targetRef: () => access(props.triggerRef ?? trigger?.triggerRef),
     targetRect: () => props.triggerRect ?? null,
     overlayRef: domRef,
+    arrowRef,
     placement,
     direction: () => locale().direction,
     offset: () => props.offset ?? 8,
@@ -562,7 +635,7 @@ export function Popover(props: PopoverComponentProps) {
       isDismissable: () => props.isDismissable !== false,
       isKeyboardDismissDisabled: () => props.isKeyboardDismissDisabled === true,
       // Focus was never moved in, so Escape arrives wherever it already was.
-      shouldCloseOnEscapeAnywhere: () => props.shouldContainFocus === false,
+      shouldCloseOnEscapeAnywhere: () => !containsFocus(),
       groupRef: nested ? group : groupRef,
     },
     domRef,
@@ -570,17 +643,29 @@ export function Popover(props: PopoverComponentProps) {
 
   preventScroll({ isDisabled: () => !state.isOpen() || props.isModal !== true });
 
+  // A modal popover hides the rest of the page. One that is not still has to
+  // be exempt from whatever is hiding the page around it: a list opened from
+  // inside a modal dialog is portalled out of the dialog, and the dialog's own
+  // hiding would otherwise take it for more of the page behind.
   followOpen(
     () =>
-      state.isOpen() && props.isModal === true
-        ? (((nested ? access(group) : groupRef()) as Element | null) ?? null)
+      state.isOpen()
+        ? ([
+            ((nested ? access(group) : groupRef()) as Element | null) ?? null,
+            props.isModal === true,
+          ] as const)
         : null,
-    (element) => (element === null ? undefined : ariaHideOutside([element])),
+    (open) => {
+      if (open === null || open[0] === null) return undefined;
+      const [element, isModal] = open;
+      return isModal ? ariaHideOutside([element], { shouldUseInert: true }) : keepVisible(element);
+    },
   );
 
   const elementProps = mergeProps(
     overlayProps,
     position.overlayProps,
+    trigger?.overlayProps ?? null,
     filterDOMProps(options, { global: true, labelable: true }),
     // Portalled out from under the element that carries `dir`.
     { dir: () => callerDirection(options) ?? direction() },
@@ -616,15 +701,25 @@ export function Popover(props: PopoverComponentProps) {
             than its own, so a submenu three deep is still one group. */}
         <div ref={groupRef.set} style={{ display: "contents" }}>
           <PopoverGroupProvider value={nested && group !== null ? group : groupRef} placed={placed}>
-            <PopoverBody
-              elementProps={elementProps}
-              domRef={domRef}
-              forwardedRef={props.ref}
-              isExiting={gate.isExiting()}
-              containsFocus={props.shouldContainFocus !== false}
+            <OverlayArrowProvider
+              value={{
+                placement: position.placement,
+                arrowProps: position.arrowProps,
+                ref: arrowRef.set,
+              }}
             >
-              {props.children}
-            </PopoverBody>
+              <PopoverBody
+                elementProps={elementProps}
+                domRef={domRef}
+                forwardedRef={props.ref}
+                isExiting={gate.isExiting()}
+                containsFocus={containsFocus()}
+                isModal={props.isModal === true}
+                onDismiss={state.close}
+              >
+                {props.children}
+              </PopoverBody>
+            </OverlayArrowProvider>
           </PopoverGroupProvider>
         </div>
       </Portal>
@@ -638,6 +733,8 @@ interface PopoverBodyProps {
   forwardedRef?: RefTarget<HTMLDivElement>;
   isExiting: boolean;
   containsFocus: boolean;
+  isModal: boolean;
+  onDismiss: () => void;
   children?: Child;
 }
 
@@ -663,7 +760,13 @@ function PopoverBody(props: PopoverBodyProps) {
         data-state={props.isExiting ? "closed" : "open"}
         ref={setElement}
       >
+        <Show when={props.isModal}>
+          <DismissButton onDismiss={props.onDismiss} />
+        </Show>
         {props.children}
+        <Show when={props.isModal}>
+          <DismissButton onDismiss={props.onDismiss} />
+        </Show>
       </div>
     );
   }
@@ -679,11 +782,41 @@ function PopoverBody(props: PopoverBodyProps) {
         data-state={props.isExiting ? "closed" : "open"}
         ref={setElement}
       >
+        <Show when={props.isModal}>
+          <DismissButton onDismiss={props.onDismiss} />
+        </Show>
         {props.children}
+        <Show when={props.isModal}>
+          <DismissButton onDismiss={props.onDismiss} />
+        </Show>
       </div>
       <span hidden ref={scope.endRef} />
     </>
   );
+}
+
+export interface DismissButtonComponentProps {
+  /** Called when a screen reader activates it. */
+  onDismiss?: () => void;
+  /** @default "Dismiss", in the locale in scope */
+  "aria-label"?: string;
+  "aria-labelledby"?: string;
+  id?: string;
+}
+
+/**
+ * A button only a screen reader can find, that closes the overlay it is in.
+ *
+ * iOS VoiceOver has no Escape key: without one of these at the end of a
+ * popover, swiping past its last element leaves the popover open behind the
+ * user with no way back to close it.
+ */
+export function DismissButton(props: DismissButtonComponentProps) {
+  const elementProps = mergeProps(
+    dismissButtonProps(() => props.onDismiss?.()),
+    filterDOMProps(fromProps(cells(props)), { labelable: true }),
+  );
+  return <button {...elementProps} />;
 }
 
 export interface DialogTriggerComponentProps {
@@ -725,6 +858,43 @@ import { createContext, getContext, getOwner, install, provide } from "@barqjs/c
  * taking the nested one out of its trigger's DOM.
  */
 const PopoverGroupContext = createContext<ElementRef | null>(null);
+
+/**
+ * What opens a popover, for a {@link Popover} written inside it with no
+ * `triggerRef` and no `isOpen` of its own.
+ */
+export interface PopoverTriggerValue {
+  /** The element the popover is anchored to. */
+  triggerRef: ElementRef;
+  /** Whether it is open, and how the popover closes it. */
+  state: OverlayTriggerState;
+  /** Props for the popover's own element: the id the trigger points at, handlers. */
+  overlayProps?: DOMProps;
+  /** @default true */
+  shouldContainFocus?: MaybeAccessor<boolean | undefined>;
+}
+
+const PopoverTriggerContext = createContext<PopoverTriggerValue | null>(null);
+
+/**
+ * Offer a trigger to the popovers written inside `children`.
+ *
+ * A trigger of a new kind (a hover preview, a toolbar's overflow) provides
+ * this and renders the ordinary `<Popover>`, rather than a popover component
+ * of its own that passes the same four props through.
+ */
+export function providePopoverTrigger(value: PopoverTriggerValue, children: () => Child): Child {
+  return provide(
+    PopoverTriggerContext,
+    () => value,
+    () => children() as unknown,
+  ) as Child;
+}
+
+/** The trigger in scope, if one was provided. */
+export function usePopoverTrigger(): PopoverTriggerValue | null {
+  return getContext(PopoverTriggerContext) ?? null;
+}
 
 /** The enclosing popover's container, if this is inside one. */
 export function usePopoverGroup(): ElementRef | null {
@@ -779,7 +949,13 @@ function PopoverGroupProvider(props: {
       provide(
         PopoverPlacementContext,
         () => props.placed,
-        () => props.children as unknown,
+        // A popover opened from inside this one has a trigger of its own.
+        () =>
+          provide(
+            PopoverTriggerContext,
+            () => null,
+            () => props.children as unknown,
+          ),
       ),
   );
 }
@@ -821,6 +997,7 @@ interface DialogSlots {
   titleProps: DOMProps;
   descriptionId: Accessor<string>;
   readonly describe: (has: boolean) => void;
+  readonly title: (has: boolean) => void;
 }
 
 export interface DialogDescription {
@@ -834,9 +1011,17 @@ function provideDialog(slots: DialogSlots): void {
   if (owner !== null) install(owner, DialogSlotsContext, () => slots);
 }
 
-/** The props the enclosing dialog's title element must carry, if any. */
+/**
+ * The props the enclosing dialog's title element must carry, and the
+ * registration that makes the dialog point at it, for as long as the caller
+ * is rendered: a design system's own heading names the dialog this way.
+ */
 export function useDialogTitle(): DOMProps | null {
-  return getContext(DialogSlotsContext)?.titleProps ?? null;
+  const slots = getContext(DialogSlotsContext);
+  if (slots === null || slots === undefined) return null;
+  slots.title(true);
+  onCleanup(() => slots.title(false));
+  return slots.titleProps;
 }
 
 /**

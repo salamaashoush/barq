@@ -30,7 +30,7 @@ import {
   type ToggleOptions,
   type ToggleResult,
 } from "./toggle.ts";
-import { toggleInput } from "./toggle-input.tsx";
+import { toggleInput, withHelpText } from "./toggle-input.tsx";
 import type { ValidateFunction, ValidationBehavior } from "./validation.ts";
 import {
   callback,
@@ -75,6 +75,13 @@ export interface SwitchComponentProps extends StyleProps {
   validate?: ValidateFunction<boolean>;
   /** @default "aria" */
   validationBehavior?: ValidationBehavior;
+  /** Help text, rendered after the switch and announced with it. */
+  description?: Child;
+  /**
+   * What is wrong, rendered after the switch while it is invalid. Without one,
+   * whatever validation found is shown.
+   */
+  errorMessage?: Child;
   value?: string;
   name?: string;
   form?: string;
@@ -131,16 +138,26 @@ export function Switch(props: Incoming<SwitchComponentProps>) {
   const options = fromProps(props);
 
   const state = toggleState(options);
-  const { labelProps, inputProps, isSelected, isPressed, isDisabled, isReadOnly, isInvalid } =
-    switchToggle(
-      {
-        ...(options as SwitchOptions),
-        validate: callback(props.validate),
-        validationBehavior: () => props.validationBehavior?.(),
-      },
-      state,
-      inputRef,
-    );
+  const {
+    labelProps,
+    inputProps,
+    descriptionProps,
+    errorMessageProps,
+    isSelected,
+    isPressed,
+    isDisabled,
+    isReadOnly,
+    isInvalid,
+    errorMessage,
+  } = switchToggle(
+    {
+      ...(options as SwitchOptions),
+      validate: callback(props.validate),
+      validationBehavior: () => props.validationBehavior?.(),
+    },
+    state,
+    inputRef,
+  );
   const { hoverProps, isHovered } = hover({ isDisabled: options.isDisabled });
   const { focusProps, isFocused, isFocusVisible } = focusRing();
 
@@ -170,17 +187,26 @@ export function Switch(props: Incoming<SwitchComponentProps>) {
       "data-disabled": isDisabled,
       "data-readonly": isReadOnly,
       "data-invalid": isInvalid,
+      "data-required": () => props.isRequired?.() === true,
     },
   );
 
-  return toggleInput({
-    elementType: toggleElementType(props.elementType?.(), props.children),
-    outerProps,
-    inputProps,
-    focusProps,
-    inputRef,
-    ref: props.ref?.(),
-    children: props.children,
-    isDisabled,
-  });
+  return withHelpText(
+    toggleInput({
+      elementType: toggleElementType(props.elementType?.(), props.children),
+      outerProps,
+      inputProps,
+      focusProps,
+      inputRef,
+      ref: props.ref?.(),
+      children: props.children,
+      isDisabled,
+    }),
+    {
+      descriptionProps,
+      errorMessageProps,
+      description: () => props.description?.(),
+      errorMessage: () => (isInvalid() ? errorMessage() : undefined),
+    },
+  );
 }

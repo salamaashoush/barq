@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { flush } from "@barqjs/core";
+import { createSignal, flush } from "@barqjs/core";
 import { accessibleName, expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
 import { provideDirection } from "./i18n.ts";
-import { Slider } from "./slider.tsx";
+import { Slider, SliderFill, SliderThumb, SliderTrack } from "./slider.tsx";
 
 function Volume(props: {
   defaultValue?: number | number[];
@@ -332,5 +332,114 @@ describe("Slider, by the pointer", () => {
     press(trackOf(screen.getByRole("group")), 50);
     flush();
     expect(thumb().value).toBe("75");
+  });
+});
+
+describe("Slider, enabled after it was built", () => {
+  test("its thumb can be dragged", () => {
+    const [disabled, setDisabled] = createSignal(true);
+    render(() => <Slider label="Volume" defaultValue={10} isDisabled={disabled()} />);
+    setDisabled(false);
+    flush();
+    const body = thumb().parentElement as HTMLElement;
+
+    body.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        bubbles: true,
+        cancelable: true,
+        pointerId: 1,
+        pointerType: "mouse",
+        button: 0,
+        clientX: 5,
+        clientY: 5,
+      }),
+    );
+    flush();
+
+    expect(body.hasAttribute("data-dragging")).toBe(true);
+  });
+
+  test("a disabled one still cannot be", () => {
+    render(() => <Slider label="Volume" defaultValue={10} isDisabled />);
+    const body = thumb().parentElement as HTMLElement;
+
+    body.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        bubbles: true,
+        cancelable: true,
+        pointerId: 1,
+        pointerType: "mouse",
+        button: 0,
+      }),
+    );
+    flush();
+
+    expect(body.hasAttribute("data-dragging")).toBe(false);
+  });
+});
+
+describe("SliderFill", () => {
+  function Filled(props: {
+    defaultValue: number | number[];
+    offset?: number;
+    orientation?: "horizontal" | "vertical";
+  }) {
+    return (
+      <Slider label="Volume" defaultValue={props.defaultValue} orientation={props.orientation}>
+        <SliderTrack>
+          {(index: number) => (
+            <>
+              {index === 0 ? <SliderFill offset={props.offset} data-testid="fill" /> : null}
+              <SliderThumb index={index} />
+            </>
+          )}
+        </SliderTrack>
+      </Slider>
+    );
+  }
+
+  const fill = (): HTMLElement => screen.getByTestId("fill");
+
+  test("covers the track from the minimum to the thumb", () => {
+    render(() => <Filled defaultValue={30} />);
+    expect(fill().style.left).toBe("0%");
+    expect(fill().style.width).toBe("30%");
+  });
+
+  test("follows the thumb", () => {
+    render(() => <Filled defaultValue={30} />);
+    thumb().focus();
+    user.keyDown("End");
+    flush();
+    expect(fill().style.width).toBe("100%");
+  });
+
+  test("covers a range between its thumbs", () => {
+    render(() => <Filled defaultValue={[20, 60]} />);
+    expect(fill().style.left).toBe("20%");
+    expect(fill().style.width).toBe("40%");
+  });
+
+  test("starts from an offset, on either side of it", () => {
+    render(() => <Filled defaultValue={30} offset={50} />);
+    expect(fill().style.left).toBe("30%");
+    expect(fill().style.width).toBe("20%");
+  });
+
+  test("right to left, it runs from the right", () => {
+    function Mirrored() {
+      provideDirection("rtl");
+      return <Filled defaultValue={30} />;
+    }
+    render(() => <Mirrored />);
+    expect(fill().style.left).toBe("70%");
+    expect(fill().style.width).toBe("30%");
+  });
+
+  test("vertical, it runs up from the bottom", () => {
+    render(() => <Filled defaultValue={30} orientation="vertical" />);
+    expect(fill().style.top).toBe("70%");
+    expect(fill().style.height).toBe("30%");
+    expect(fill().getAttribute("data-orientation")).toBe("vertical");
   });
 });

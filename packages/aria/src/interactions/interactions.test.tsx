@@ -1,15 +1,30 @@
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 import { cells, flush, createSignal } from "@barqjs/core";
 import { render, screen, user } from "@barqjs/testing";
 import { focused, focusWithin } from "./focus-events.ts";
 import { hover } from "./hover.ts";
-import { createEventHandler, keyboard } from "./keyboard.ts";
+import {
+  canonicalKeyboardShortcut,
+  createEventHandler,
+  createKeyboardShortcutHandler,
+  keyboard,
+  type KeyboardOptions,
+  parseKeyboardShortcut,
+} from "./keyboard.ts";
 import { longPress } from "./long-press.ts";
 import { move } from "./move.ts";
 import { interactOutside } from "./interact-outside.ts";
 import { description } from "./description.ts";
+import { mergeProps } from "../utils.ts";
 
 describe("hover", () => {
+  // A touch anywhere on the page mutes hover for half a second, so that the
+  // mouse events a browser makes up after a tap are not taken for a mouse. A
+  // test file that ran before this one may have ended on a tap.
+  beforeAll(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 510));
+  });
+
   function Hoverable(props: { log: string[]; isDisabled?: boolean }) {
     const { hoverProps, isHovered } = hover({
       isDisabled: cells(props).isDisabled,
@@ -151,6 +166,44 @@ describe("focusWithin", () => {
   });
 });
 
+describe("focusWithin, when a handler passes focus on", () => {
+  test("focus forwarded from the container to a child is one entry", () => {
+    const log: string[] = [];
+
+    function Container() {
+      const { focusWithinProps } = focusWithin({
+        onFocusWithin: () => log.push("in"),
+        onBlurWithin: () => log.push("out"),
+        onFocusWithinChange: (on) => log.push(`within:${on}`),
+      });
+      // A collection does this: focus that lands on the list goes to an item,
+      // in the same turn and after this hook has heard the first arrival.
+      const forward = (event: FocusEvent): void => {
+        if (event.target !== event.currentTarget) return;
+        (event.currentTarget as HTMLElement).querySelector("button")?.focus();
+      };
+      return (
+        <div
+          data-testid="list"
+          tabIndex={0}
+          {...mergeProps(focusWithinProps, { onFocusIn: forward })}
+        >
+          <button type="button">item</button>
+        </div>
+      );
+    }
+
+    render(() => <Container />);
+    screen.getByTestId("list").focus();
+    flush();
+    expect(log).toEqual(["in", "within:true"]);
+
+    screen.getByRole("button").blur();
+    flush();
+    expect(log).toEqual(["in", "within:true", "out", "within:false"]);
+  });
+});
+
 describe("keyboard", () => {
   test("stops propagation by default", () => {
     const outer: string[] = [];
@@ -227,6 +280,258 @@ describe("keyboard", () => {
     expect(seen).toEqual(["outer", "inner"]);
     expect(bubbled).toEqual(["body"]);
     element.remove();
+  });
+});
+
+function withPlatform(platform: string, run: () => void): void {
+  const descriptor = Object.getOwnPropertyDescriptor(navigator, "platform");
+  Object.defineProperty(navigator, "platform", { value: platform, configurable: true });
+  try {
+    run();
+  } finally {
+    if (descriptor === undefined) Reflect.deleteProperty(navigator, "platform");
+    else Object.defineProperty(navigator, "platform", descriptor);
+  }
+}
+
+describe("keyboard: shortcuts", () => {
+  function Field(props: { options: KeyboardOptions; outer?: string[] }) {
+    const { keyboardProps } = keyboard(props.options);
+    return (
+      <div onKeyDown={(e: KeyboardEvent) => props.outer?.push(e.key)}>
+        <button type="button" {...keyboardProps}>
+          Save
+        </button>
+      </div>
+    );
+  }
+
+  function setup(options: KeyboardOptions): { outer: string[]; target: HTMLElement } {
+    const outer: string[] = [];
+    render(() => <Field options={options} outer={outer} />);
+    const target = screen.getByRole("button");
+    target.focus();
+    return { outer, target };
+  }
+
+  test("parsing rejects a shortcut with no key, and ignores case and order", () => {
+    expect(() => parseKeyboardShortcut("Mod+Shift")).toThrow(/Invalid keyboard shortcut/);
+    expect(() => parseKeyboardShortcut("")).toThrow(/Invalid keyboard shortcut/);
+    expect(parseKeyboardShortcut("SHIFT+mod+A")).toEqual({
+      shift: true,
+      alt: false,
+      ctrl: false,
+      meta: false,
+      mod: true,
+      key: "A",
+    });
+  });
+
+  test("Mod is Meta on a Mac and Control elsewhere", () => {
+    withPlatform("MacIntel", () => {
+      expect(canonicalKeyboardShortcut(parseKeyboardShortcut("Mod+s"))).toBe("Meta+s");
+    });
+    withPlatform("Win32", () => {
+      expect(canonicalKeyboardShortcut(parseKeyboardShortcut("Mod+s"))).toBe("Control+s");
+    });
+  });
+
+  test("a match runs, prevents the default and stops the event", () => {
+    const saved: string[] = [];
+    withPlatform("MacIntel", () => {
+      const { outer } = setup({
+        shortcuts: {
+          "Mod+s": () => {
+            saved.push("save");
+          },
+        },
+      });
+
+      expect(user.keyDown("s", { metaKey: true })).toBe(false);
+      expect(saved).toEqual(["save"]);
+      expect(outer).toEqual([]);
+    });
+  });
+
+  test("a key with no binding is let through untouched", () => {
+    const { outer } = setup({ shortcuts: { "Control+s": () => undefined } });
+
+    expect(user.keyDown("s")).toBe(true);
+    expect(user.keyDown("x", { ctrlKey: true })).toBe(true);
+    expect(outer).toEqual(["s", "x"]);
+  });
+
+  test("the modifiers must match exactly", () => {
+    const seen: string[] = [];
+    setup({
+      shortcuts: {
+        "Control+a": () => {
+          seen.push("ctrl+a");
+        },
+        "Control+Shift+a": () => {
+          seen.push("ctrl+shift+a");
+        },
+      },
+    });
+
+    user.keyDown("A", { ctrlKey: true, shiftKey: true });
+    user.keyDown("a", { ctrlKey: true });
+    user.keyDown("a", { ctrlKey: true, altKey: true });
+
+    expect(seen).toEqual(["ctrl+shift+a", "ctrl+a"]);
+  });
+
+  test("aliases name the keys", () => {
+    const seen: string[] = [];
+    setup({
+      shortcuts: {
+        "Shift+Alt+down": () => {
+          seen.push("down");
+        },
+        Esc: () => {
+          seen.push("esc");
+        },
+      },
+    });
+
+    user.keyDown("ArrowDown", { shiftKey: true, altKey: true });
+    user.keyDown("Escape");
+
+    expect(seen).toEqual(["down", "esc"]);
+  });
+
+  test("false lets the event through with its default", () => {
+    const { outer } = setup({ shortcuts: { Enter: () => false } });
+    expect(user.keyDown("Enter")).toBe(true);
+    expect(outer).toEqual(["Enter"]);
+  });
+
+  test("an object controls the default and the propagation separately", () => {
+    const { outer } = setup({
+      shortcuts: { Enter: () => ({ shouldContinuePropagation: true, shouldPreventDefault: true }) },
+    });
+    expect(user.keyDown("Enter")).toBe(false);
+    expect(outer).toEqual(["Enter"]);
+  });
+
+  test("a repeat or a composition is ignored unless allowed", () => {
+    const seen: string[] = [];
+    setup({
+      shortcuts: {
+        a: () => {
+          seen.push("a");
+        },
+      },
+    });
+    user.keyDown("a", { repeat: true });
+    const composing = new KeyboardEvent("keydown", { key: "a", bubbles: true, isComposing: true });
+    document.activeElement?.dispatchEvent(composing);
+    expect(seen).toEqual([]);
+  });
+
+  test("allowRepeats and allowComposing let them through", () => {
+    const seen: string[] = [];
+    setup({
+      shortcuts: {
+        a: () => {
+          seen.push("a");
+        },
+      },
+      allowRepeats: true,
+      allowComposing: true,
+    });
+    user.keyDown("a", { repeat: true });
+    const composing = new KeyboardEvent("keydown", { key: "a", bubbles: true, isComposing: true });
+    document.activeElement?.dispatchEvent(composing);
+    expect(seen).toEqual(["a", "a"]);
+  });
+
+  test("shortcuts never run on keyup", () => {
+    const seen: string[] = [];
+    setup({
+      shortcuts: {
+        a: () => {
+          seen.push("a");
+        },
+      },
+    });
+    user.keyUp("a");
+    expect(seen).toEqual([]);
+  });
+
+  test("onKeyDown and onKeyUp still run beside the shortcuts", () => {
+    const seen: string[] = [];
+    setup({
+      shortcuts: { a: () => true },
+      onKeyDown: () => {
+        seen.push("down");
+      },
+      onKeyUp: () => {
+        seen.push("up");
+      },
+    });
+    user.key("a");
+    expect(seen).toEqual(["down", "up"]);
+  });
+
+  test("composed: any shortcut that stops the key stops it", () => {
+    const outer: string[] = [];
+    function Composed() {
+      const first = keyboard({
+        shortcuts: { ArrowLeft: () => ({ shouldContinuePropagation: true }) },
+      });
+      const second = keyboard({
+        shortcuts: { ArrowLeft: () => undefined },
+        ...first.keyboardProps,
+      });
+      return (
+        <div onKeyDown={(e: KeyboardEvent) => outer.push(e.key)}>
+          <button type="button" {...second.keyboardProps}>
+            Save
+          </button>
+        </div>
+      );
+    }
+    render(() => <Composed />);
+    screen.getByRole("button").focus();
+    user.keyDown("ArrowLeft");
+    expect(outer).toEqual([]);
+  });
+
+  test("composed: the key goes through when every shortcut agrees", () => {
+    const outer: string[] = [];
+    function Composed() {
+      const first = keyboard({
+        shortcuts: { ArrowLeft: () => ({ shouldContinuePropagation: true }) },
+      });
+      const second = keyboard({ shortcuts: { Enter: () => undefined }, ...first.keyboardProps });
+      return (
+        <div onKeyDown={(e: KeyboardEvent) => outer.push(e.key)}>
+          <button type="button" {...second.keyboardProps}>
+            Save
+          </button>
+        </div>
+      );
+    }
+    render(() => <Composed />);
+    screen.getByRole("button").focus();
+    user.keyDown("ArrowLeft");
+    expect(outer).toEqual(["ArrowLeft"]);
+  });
+
+  test("later duplicate bindings win", () => {
+    const seen: string[] = [];
+    const handler = createKeyboardShortcutHandler({
+      "Control+Shift+a": () => {
+        seen.push("first");
+      },
+      "Shift+Control+A": () => {
+        seen.push("second");
+      },
+    });
+    const event = new KeyboardEvent("keydown", { key: "a", ctrlKey: true, shiftKey: true });
+    handler(Object.assign(event, { continuePropagation: () => undefined }));
+    expect(seen).toEqual(["second"]);
   });
 });
 

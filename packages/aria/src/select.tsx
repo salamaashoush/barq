@@ -42,6 +42,7 @@ import { resizeObserver } from "@barqjs/primitives/observers";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { button, type ButtonOptions } from "./button.tsx";
 import type {
+  Collection,
   FocusStrategy,
   ItemAccessors,
   Key,
@@ -258,6 +259,8 @@ export interface SelectResult {
   validation: FormValidationState;
   errors: Accessor<string[]>;
   isInvalid: Accessor<boolean>;
+  /** The behaviour in force: the select's own, or the enclosing form's. */
+  validationBehavior: Accessor<ValidationBehavior | undefined>;
 }
 
 export function select(options: SelectOptions, state: SelectState<unknown>): SelectResult {
@@ -284,6 +287,7 @@ export function select(options: SelectOptions, state: SelectState<unknown>): Sel
 
   const {
     state: validation,
+    behavior,
     isInvalid,
     errors,
     errorMessage,
@@ -306,11 +310,18 @@ export function select(options: SelectOptions, state: SelectState<unknown>): Sel
   });
 
   // Typing on the CLOSED button moves the selection, as a native select does.
-  const { typeSelectProps } = typeSelect({
-    keyboardDelegate: delegate,
-    selectionManager: state.selectionManager,
-    onTypeSelect: (key) => state.setSelectedKey(key),
-  });
+  const { typeSelectProps } = singleTypeSelect(delegate, state);
+
+  // With only an `aria-label`, the label lives on the trigger itself, and the
+  // value's id in `aria-labelledby` would replace it: the trigger joins the
+  // list so it keeps its own name.
+  const labelledBy = (): string | undefined => {
+    const given = access(fieldProps["aria-labelledby"] as MaybeAccessor<string | undefined>);
+    if (given !== undefined) return given;
+    return access(fieldProps["aria-label"] as MaybeAccessor<string | undefined>) === undefined
+      ? undefined
+      : triggerId();
+  };
 
   /**
    * Left and right step through the values WITHOUT opening.
@@ -340,6 +351,7 @@ export function select(options: SelectOptions, state: SelectState<unknown>): Sel
     validation,
     errors,
     isInvalid,
+    validationBehavior: behavior,
     valueProps: { id: valueId },
     labelProps: mergeProps(labelProps, {
       // Clicking the label focuses the button, as it would a native control.
@@ -359,10 +371,7 @@ export function select(options: SelectOptions, state: SelectState<unknown>): Sel
         "aria-invalid": () => isInvalid() || undefined,
         "aria-required": () => access(options.isRequired) === true || undefined,
         // The label FIRST and the value second: "Fruit, Banana", not "Banana".
-        "aria-labelledby": () =>
-          [access(fieldProps["aria-labelledby"] as MaybeAccessor<string | undefined>), valueId()]
-            .filter(Boolean)
-            .join(" "),
+        "aria-labelledby": () => [labelledBy(), valueId()].filter(Boolean).join(" "),
         onFocus: () => state.setFocused(true),
         onBlur: () => {
           // Focus inside the open popup is still focus on the select.
@@ -374,16 +383,65 @@ export function select(options: SelectOptions, state: SelectState<unknown>): Sel
     ),
     listBoxProps: {
       id: menuProps.id,
-      "aria-labelledby": () =>
-        [access(fieldProps["aria-labelledby"] as MaybeAccessor<string | undefined>), valueId()]
-          .filter(Boolean)
-          .join(" "),
+      "aria-labelledby": () => [labelledBy(), valueId()].filter(Boolean).join(" "),
       autoFocus: () => state.focusStrategy() ?? true,
       // A select's popup closes on choosing, so choosing on pointer DOWN would
       // consume the press that opened it.
       shouldSelectOnPressUp: true,
       disallowEmptySelection: true,
       linkBehavior: "selection",
+    },
+  };
+}
+
+/**
+ * Typing on the closed trigger, which picks the match as a native select does.
+ *
+ * Not in multiple selection, where picking the match would replace every
+ * other choice with it.
+ */
+function singleTypeSelect(
+  delegate: KeyboardDelegate,
+  state: SelectState<unknown>,
+): { typeSelectProps: DOMProps } {
+  const { typeSelectProps } = typeSelect({
+    keyboardDelegate: delegate,
+    selectionManager: state.selectionManager,
+    onTypeSelect: (key) => state.setSelectedKey(key),
+  });
+  const isSingle = (): boolean => state.selectionManager().selectionMode !== "multiple";
+  const onKeyDown = typeSelectProps.onKeyDown as (event: KeyboardEvent) => void;
+  const onKeyDownCapture = typeSelectProps.onKeyDownCapture as (event: KeyboardEvent) => void;
+  return {
+    typeSelectProps: {
+      onKeyDown: (event: KeyboardEvent) => {
+        if (isSingle()) onKeyDown(event);
+      },
+      onKeyDownCapture: (event: KeyboardEvent) => {
+        if (isSingle()) onKeyDownCapture(event);
+      },
+    },
+  };
+}
+
+/**
+ * Whether a select's hidden control belongs in the page: with a `name`, with
+ * `form`, or inside a form, where a required select with no name still has to
+ * hold back a native submit and only a control in the form can.
+ *
+ * The form is looked for once the trigger is attached; at the moment its ref
+ * resolves it has no ancestors yet.
+ */
+function hiddenControlPresence(
+  triggerRef: Accessor<HTMLElement | null>,
+  name: Accessor<string | undefined>,
+  form: Accessor<string | undefined>,
+): { isNeeded: Accessor<boolean>; placed: () => void } {
+  const [isInsideForm, setInsideForm] = createSignal(false);
+  return {
+    isNeeded: () => name() !== undefined || form() !== undefined || isInsideForm(),
+    placed: () => {
+      setInsideForm((triggerRef()?.closest("form") ?? null) !== null);
     },
   };
 }
@@ -493,7 +551,9 @@ export function hiddenSelect(
       tabIndex: -1,
       autocomplete: () => access(options.autoComplete),
       disabled: () => access(options.isDisabled) === true,
-      required: () => access(options.isRequired) === true,
+      // Only a native select blocks the submit; under "aria" the page decides.
+      required: () =>
+        access(options.validationBehavior) === "native" && access(options.isRequired) === true,
       multiple: () => state.selectionManager().selectionMode === "multiple",
       name: () => access(options.name),
       form: () => access(options.form),
@@ -511,6 +571,15 @@ export function hiddenSelect(
 // ---------------------------------------------------------------------------
 // Components
 // ---------------------------------------------------------------------------
+
+function itemsOf<T>(collection: Collection<T>): Node<T>[] {
+  const items: Node<T>[] = [];
+  for (const key of collection.getKeys()) {
+    const node = collection.getItem(key);
+    if (node !== null && node.type === "item") items.push(node);
+  }
+  return items;
+}
 
 interface SelectContextValue {
   state: SelectState<unknown>;
@@ -605,6 +674,11 @@ export interface SelectComponentProps<T> extends StyleProps, ItemAccessors<T> {
   placeholder?: string;
   selectedKey?: Key | null;
   defaultSelectedKey?: Key | null;
+  /** @default "single" */
+  selectionMode?: "single" | "multiple";
+  /** Every chosen key, for a multiple select. */
+  selectedKeys?: Iterable<Key>;
+  defaultSelectedKeys?: Iterable<Key>;
   disabledKeys?: Iterable<Key>;
   isOpen?: boolean;
   defaultOpen?: boolean;
@@ -615,7 +689,10 @@ export interface SelectComponentProps<T> extends StyleProps, ItemAccessors<T> {
   validate?: ValidateFunction<Key | Key[] | null>;
   /** @default "aria" */
   validationBehavior?: ValidationBehavior;
-  /** Submitted with the form. Without it, no hidden control is rendered. */
+  /**
+   * Submitted with the form. Without it, the hidden control is rendered only
+   * inside a form or with `form`, where it still carries `isRequired`.
+   */
   name?: string;
   form?: string;
   autoComplete?: string;
@@ -643,6 +720,8 @@ export interface SelectComponentProps<T> extends StyleProps, ItemAccessors<T> {
   "aria-labelledby"?: string;
   ref?: RefTarget<HTMLButtonElement>;
   onSelectionChange?: (key: Key | null) => void;
+  /** Every chosen key, for a multiple select. */
+  onSelectionChangeAll?: (keys: SelectionValue) => void;
   onOpenChange?: (isOpen: boolean) => void;
 }
 
@@ -675,6 +754,7 @@ export function Select<T>(props: SelectComponentProps<T>) {
     errors,
     isInvalid,
     validation,
+    validationBehavior,
   } = select(
     {
       ...(options as unknown as SelectOptions),
@@ -724,11 +804,18 @@ export function Select<T>(props: SelectComponentProps<T>) {
       autoComplete: () => props.autoComplete,
       isDisabled: () => props.isDisabled,
       isRequired: () => props.isRequired,
-      validationBehavior: () => props.validationBehavior,
+      validationBehavior,
       validation,
     },
     state,
   );
+
+  const formControl = hiddenControlPresence(
+    triggerRef,
+    () => props.name,
+    () => props.form,
+  );
+  onSettled(formControl.placed);
 
   const renderOption = props.children;
 
@@ -747,21 +834,23 @@ export function Select<T>(props: SelectComponentProps<T>) {
       <button {...buttonElementProps} ref={mergeRefs(triggerRef.set, props.ref)}>
         <SelectValue />
       </button>
-      {() =>
-        props.name === undefined ? null : (
-          <div {...containerProps}>
-            <label>
-              {props.label}
-              <select {...selectProps} ref={selectRef.set}>
-                <option value="" label="&nbsp;" />
-                <For each={() => [...state.collection()].filter((node) => node.type === "item")}>
-                  {(node: Node<T>) => <option value={String(node.key)}>{node.textValue}</option>}
-                </For>
-              </select>
-            </label>
-          </div>
-        )
-      }
+      <Show when={formControl.isNeeded()}>
+        <div {...containerProps}>
+          <label>
+            {/* Text only: an element can be in one place, and it belongs in
+                the visible label that names the trigger. */}
+            {() => (typeof props.label === "string" ? props.label : null)}
+            <select {...selectProps} ref={selectRef.set}>
+              <option value="" label="&nbsp;" />
+              {/* Every item, whichever section holds it: the top level of a
+                  sectioned collection is its sections. */}
+              <For each={() => itemsOf(state.collection())}>
+                {(node: Node<T>) => <option value={String(node.key)}>{node.textValue}</option>}
+              </For>
+            </select>
+          </label>
+        </div>
+      </Show>
       <Popover
         triggerRef={triggerRef}
         isOpen={state.isOpen()}
@@ -964,11 +1053,7 @@ export function selectTrigger(
     state,
   );
 
-  const { typeSelectProps } = typeSelect({
-    keyboardDelegate: delegate,
-    selectionManager: state.selectionManager,
-    onTypeSelect: (key) => state.setSelectedKey(key),
-  });
+  const { typeSelectProps } = singleTypeSelect(delegate, state);
 
   return {
     triggerProps: mergeProps(
@@ -1067,9 +1152,7 @@ export function SelectRoot(props: SelectRootComponentProps) {
       while (element.options.length > 1) element.remove(1);
       // By key rather than by walking the top level, which holds the GROUPS: a
       // native `<select>` wants every option, whichever group it was written in.
-      for (const key of collection.getKeys()) {
-        const node = collection.getItem(key);
-        if (node === null || node.type !== "item") continue;
+      for (const node of itemsOf(collection)) {
         const option = element.ownerDocument.createElement("option");
         option.value = String(node.key);
         option.textContent = node.textValue;
@@ -1093,11 +1176,11 @@ export function SelectRoot(props: SelectRootComponentProps) {
     state,
   );
 
-  // Asked once the trigger is attached: at the moment its ref resolves it has
-  // no ancestors yet, and no form to find.
-  const [isInsideForm, setInsideForm] = createSignal(false);
-  const inForm = (): boolean =>
-    props.name !== undefined || props.form !== undefined || isInsideForm();
+  const formControl = hiddenControlPresence(
+    triggerRef,
+    () => props.name,
+    () => props.form,
+  );
 
   const value: SelectContextValue = {
     state,
@@ -1114,9 +1197,7 @@ export function SelectRoot(props: SelectRootComponentProps) {
       isDisabled,
       isInvalid,
       dir: () => props.dir,
-      placed: () => {
-        setInsideForm((triggerRef()?.closest("form") ?? null) !== null);
-      },
+      placed: formControl.placed,
     },
   };
 
@@ -1129,7 +1210,7 @@ export function SelectRoot(props: SelectRootComponentProps) {
           () => props.children as unknown,
         ) as Child
       }
-      <Show when={inForm()}>
+      <Show when={formControl.isNeeded()}>
         <div {...containerProps}>
           <select {...selectProps} ref={selectRef.set}>
             <option value="" label="&nbsp;" />

@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { flush } from "@barqjs/core";
 import { accessibleName, expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
 import { parseColor, type Color } from "./color.ts";
+import { ColorSwatchPicker, ColorSwatchPickerItem } from "./colorswatchpicker.tsx";
+import { provideDirection, provideLocale } from "./i18n.ts";
 import {
   ColorArea,
   ColorField,
@@ -156,7 +158,7 @@ describe("ColorField", () => {
   });
 
   test("commits on blur, not as you type", () => {
-    const changes: Color[] = [];
+    const changes: (Color | null)[] = [];
     render(() => (
       <ColorField label="Hex" defaultValue="#7f00ff" onChange={(value) => changes.push(value)} />
     ));
@@ -176,7 +178,7 @@ describe("ColorField", () => {
   });
 
   test("Enter commits too", () => {
-    const changes: Color[] = [];
+    const changes: (Color | null)[] = [];
     render(() => (
       <ColorField label="Hex" defaultValue="#7f00ff" onChange={(value) => changes.push(value)} />
     ));
@@ -192,7 +194,7 @@ describe("ColorField", () => {
   });
 
   test("text that is not a colour goes back to what the field holds", () => {
-    const changes: Color[] = [];
+    const changes: (Color | null)[] = [];
     render(() => (
       <ColorField label="Hex" defaultValue="#7f00ff" onChange={(value) => changes.push(value)} />
     ));
@@ -379,5 +381,552 @@ describe("a colour area has two inputs and only one can hold focus", () => {
     expect(accessibleName(x as HTMLInputElement)).not.toBe(accessibleName(y as HTMLInputElement));
     expect((x as HTMLInputElement).getAttribute("aria-orientation")).toBe("horizontal");
     expect((y as HTMLInputElement).getAttribute("aria-orientation")).toBe("vertical");
+  });
+});
+
+describe("a colour slider's keys", () => {
+  function Hue(props: { onChange?: (value: Color) => void; onChangeEnd?: (value: Color) => void }) {
+    return (
+      <ColorSlider
+        channel="hue"
+        defaultValue="hsb(180, 100%, 100%)"
+        onChange={props.onChange}
+        onChangeEnd={props.onChangeEnd}
+      />
+    );
+  }
+
+  test("an arrow steps by one and ends the change", () => {
+    const changes: Color[] = [];
+    const ends: Color[] = [];
+    render(() => (
+      <Hue onChange={(value) => changes.push(value)} onChangeEnd={(value) => ends.push(value)} />
+    ));
+
+    user.focus(screen.getByRole("slider"));
+    user.keyDown("ArrowRight");
+    flush();
+    expect(changes.at(-1)?.getChannelValue("hue")).toBe(181);
+    expect(ends.map((value) => value.getChannelValue("hue"))).toEqual([181]);
+
+    user.keyDown("ArrowDown");
+    flush();
+    expect(ends.map((value) => value.getChannelValue("hue"))).toEqual([181, 180]);
+  });
+
+  test("Shift with an arrow moves by the page size", () => {
+    const changes: Color[] = [];
+    render(() => <Hue onChange={(value) => changes.push(value)} />);
+
+    user.focus(screen.getByRole("slider"));
+    user.keyDown("ArrowUp", { shiftKey: true });
+    flush();
+    expect(changes.at(-1)?.getChannelValue("hue")).toBe(195);
+  });
+
+  test("Home and End go to the ends of the channel", () => {
+    const ends: Color[] = [];
+    render(() => (
+      <ColorSlider
+        channel="saturation"
+        defaultValue="hsb(180, 40%, 100%)"
+        onChangeEnd={(value) => ends.push(value)}
+      />
+    ));
+
+    user.focus(screen.getByRole("slider"));
+    user.keyDown("End");
+    flush();
+    user.keyDown("Home");
+    flush();
+    expect(ends.map((value) => value.getChannelValue("saturation"))).toEqual([100, 0]);
+  });
+
+  test("Page Up ends the change too", () => {
+    const ends: Color[] = [];
+    render(() => <Hue onChangeEnd={(value) => ends.push(value)} />);
+
+    user.focus(screen.getByRole("slider"));
+    user.keyDown("PageUp");
+    flush();
+    expect(ends.map((value) => value.getChannelValue("hue"))).toEqual([195]);
+  });
+
+  test("right to left, right lowers it", () => {
+    const changes: Color[] = [];
+    function Mirrored() {
+      provideDirection("rtl");
+      return <Hue onChange={(value) => changes.push(value)} />;
+    }
+    render(() => <Mirrored />);
+
+    user.focus(screen.getByRole("slider"));
+    user.keyDown("ArrowRight");
+    flush();
+    expect(changes.at(-1)?.getChannelValue("hue")).toBe(179);
+  });
+
+  test("right to left, the minimum is on the right", () => {
+    function Mirrored() {
+      provideDirection("rtl");
+      return <ColorSlider channel="saturation" defaultValue="hsb(180, 20%, 100%)" />;
+    }
+    render(() => <Mirrored />);
+    const thumb = screen.getByRole("slider").parentElement as HTMLElement;
+    expect(thumb.style.left).toBe("80%");
+  });
+});
+
+describe("a colour slider names the colour", () => {
+  test("a channel other than hue or alpha says what the colour is", () => {
+    render(() => <ColorSlider channel="saturation" defaultValue="hsb(0, 100%, 100%)" />);
+    expect(screen.getByRole("slider").getAttribute("aria-valuetext")).toBe(
+      "Saturation 100, vibrant red",
+    );
+  });
+
+  test("the channel is named in the page's language", () => {
+    function German() {
+      provideLocale("de-DE");
+      return <ColorSlider channel="hue" defaultValue="hsb(0, 100%, 100%)" />;
+    }
+    render(() => <German />);
+    expect(accessibleName(screen.getByRole("slider"))).toBe("Farbton");
+  });
+});
+
+describe("a colour slider in a form", () => {
+  test("name and form reach the input", () => {
+    render(() => (
+      <ColorSlider channel="hue" defaultValue="hsb(180, 100%, 100%)" name="hue" form="acme" />
+    ));
+    const input = screen.getByRole<HTMLInputElement>("slider");
+    expect(input.name).toBe("hue");
+    expect(input.getAttribute("form")).toBe("acme");
+    expect(input.value).toBe("180");
+  });
+
+  test("a form reset goes back to the starting colour", () => {
+    const { container } = render(() => (
+      <form>
+        <ColorSlider channel="hue" defaultValue="hsb(180, 100%, 100%)" name="hue" />
+      </form>
+    ));
+    const input = screen.getByRole<HTMLInputElement>("slider");
+    user.focus(input);
+    user.keyDown("PageUp");
+    flush();
+    expect(input.value).toBe("195");
+
+    (container.querySelector("form") as HTMLFormElement).reset();
+    flush();
+    expect(input.value).toBe("180");
+  });
+});
+
+describe("a colour area's keys", () => {
+  function Area(props: {
+    onChange?: (value: Color) => void;
+    onChangeEnd?: (value: Color) => void;
+    defaultValue?: string;
+  }) {
+    return (
+      <ColorArea
+        defaultValue={props.defaultValue ?? "hsb(180, 50%, 60%)"}
+        onChange={props.onChange}
+        onChangeEnd={props.onChangeEnd}
+      />
+    );
+  }
+
+  function inputs(): [HTMLInputElement, HTMLInputElement] {
+    const [x, y] = screen.getAllByRole<HTMLInputElement>("slider");
+    return [x as HTMLInputElement, y as HTMLInputElement];
+  }
+
+  test("left and right step the X channel by one and end the change", () => {
+    const changes: Color[] = [];
+    const ends: Color[] = [];
+    render(() => (
+      <Area onChange={(value) => changes.push(value)} onChangeEnd={(value) => ends.push(value)} />
+    ));
+
+    user.focus(inputs()[0]);
+    user.keyDown("ArrowRight");
+    flush();
+    expect(changes.at(-1)?.getChannelValue("saturation")).toBe(51);
+    expect(changes.at(-1)?.getChannelValue("brightness")).toBe(60);
+    expect(ends).toHaveLength(1);
+  });
+
+  test("up and down step the Y channel and hand focus to its input", () => {
+    const changes: Color[] = [];
+    render(() => <Area onChange={(value) => changes.push(value)} />);
+
+    user.focus(inputs()[0]);
+    user.keyDown("ArrowUp");
+    flush();
+    expect(changes.at(-1)?.getChannelValue("brightness")).toBe(61);
+    expect(changes.at(-1)?.getChannelValue("saturation")).toBe(50);
+    expect(document.activeElement).toBe(inputs()[1]);
+  });
+
+  test("Shift with an arrow moves by the page size", () => {
+    const changes: Color[] = [];
+    render(() => <Area onChange={(value) => changes.push(value)} />);
+
+    user.focus(inputs()[0]);
+    user.keyDown("ArrowRight", { shiftKey: true });
+    flush();
+    expect(changes.at(-1)?.getChannelValue("saturation")).toBe(60);
+  });
+
+  test("Page Up and Down page Y, Home and End page X", () => {
+    const ends: Color[] = [];
+    render(() => <Area onChangeEnd={(value) => ends.push(value)} />);
+
+    user.focus(inputs()[0]);
+    user.keyDown("PageUp");
+    flush();
+    user.keyDown("PageDown");
+    flush();
+    user.keyDown("End");
+    flush();
+    user.keyDown("Home");
+    flush();
+    expect(
+      ends.map((value) => [
+        value.getChannelValue("saturation"),
+        value.getChannelValue("brightness"),
+      ]),
+    ).toEqual([
+      [50, 70],
+      [50, 60],
+      [60, 60],
+      [50, 60],
+    ]);
+  });
+
+  test("right to left, right lowers X and Home raises it", () => {
+    const changes: Color[] = [];
+    function Mirrored() {
+      provideDirection("rtl");
+      return <Area onChange={(value) => changes.push(value)} />;
+    }
+    render(() => <Mirrored />);
+
+    user.focus(inputs()[0]);
+    user.keyDown("ArrowRight");
+    flush();
+    expect(changes.at(-1)?.getChannelValue("saturation")).toBe(49);
+    user.keyDown("Home");
+    flush();
+    expect(changes.at(-1)?.getChannelValue("saturation")).toBe(59);
+  });
+
+  test("right to left, the X minimum is on the right", () => {
+    function Mirrored() {
+      provideDirection("rtl");
+      return <Area defaultValue="hsb(180, 20%, 60%)" />;
+    }
+    render(() => <Mirrored />);
+    const thumb = inputs()[0].parentElement as HTMLElement;
+    expect(thumb.style.left).toBe("80%");
+  });
+});
+
+describe("a colour area in a form, and named", () => {
+  test("each axis submits under its own name", () => {
+    render(() => (
+      <ColorArea
+        defaultValue="hsb(180, 50%, 60%)"
+        xName="saturation"
+        yName="brightness"
+        form="acme"
+      />
+    ));
+    const [x, y] = screen.getAllByRole<HTMLInputElement>("slider");
+    expect(x?.name).toBe("saturation");
+    expect(y?.name).toBe("brightness");
+    expect(x?.getAttribute("form")).toBe("acme");
+    expect(y?.getAttribute("form")).toBe("acme");
+  });
+
+  test("a form reset goes back to the starting colour", () => {
+    const { container } = render(() => (
+      <form>
+        <ColorArea defaultValue="hsb(180, 50%, 60%)" xName="saturation" yName="brightness" />
+      </form>
+    ));
+    const [x] = screen.getAllByRole<HTMLInputElement>("slider");
+    user.focus(x as HTMLInputElement);
+    user.keyDown("ArrowRight");
+    flush();
+    expect(x?.value).toBe("51");
+
+    (container.querySelector("form") as HTMLFormElement).reset();
+    flush();
+    expect(x?.value).toBe("50");
+  });
+
+  test("with no name of its own it is a colour picker, in the page's language", () => {
+    function German() {
+      provideLocale("de-DE");
+      return <ColorArea defaultValue="hsb(180, 50%, 60%)" />;
+    }
+    render(() => <German />);
+    const area = screen.getByRole("application");
+    expect(accessibleName(area)).toBe("Farbwähler");
+    expect(area.getAttribute("aria-roledescription")).toBe("2D-Schieberegler");
+  });
+
+  test("in English it is a colour picker", () => {
+    render(() => <ColorArea defaultValue="hsb(180, 50%, 60%)" />);
+    expect(accessibleName(screen.getByRole("application"))).toBe("Color picker");
+  });
+});
+
+describe("a colour thumb", () => {
+  test("says when either of the area's inputs holds focus", () => {
+    render(() => <ColorArea defaultValue="hsb(180, 50%, 60%)" />);
+    const [, y] = screen.getAllByRole<HTMLInputElement>("slider");
+    const thumb = (y as HTMLInputElement).parentElement as HTMLElement;
+    expect(thumb.hasAttribute("data-focused")).toBe(false);
+
+    user.focus(y as HTMLInputElement);
+    flush();
+    expect(thumb.hasAttribute("data-focused")).toBe(true);
+  });
+
+  test("says when it is disabled", () => {
+    render(() => <ColorSlider channel="hue" defaultValue="hsb(180, 100%, 100%)" isDisabled />);
+    const thumb = screen.getByRole("slider").parentElement as HTMLElement;
+    expect(thumb.hasAttribute("data-disabled")).toBe(true);
+  });
+
+  test("says while it is being dragged, and a press on the track ends the change", () => {
+    const ends: Color[] = [];
+    render(() => (
+      <ColorSlider
+        channel="hue"
+        defaultValue="hsb(180, 100%, 100%)"
+        onChangeEnd={(value) => ends.push(value)}
+      />
+    ));
+    const thumb = screen.getByRole("slider").parentElement as HTMLElement;
+    const track = thumb.parentElement as HTMLElement;
+    track.getBoundingClientRect = () => new DOMRect(0, 0, 360, 10);
+
+    user.pointerDown(track, { clientX: 90, clientY: 5 });
+    flush();
+    expect(thumb.hasAttribute("data-dragging")).toBe(true);
+
+    user.pointerUp(track, { clientX: 90, clientY: 5 });
+    flush();
+    expect(thumb.hasAttribute("data-dragging")).toBe(false);
+    expect(ends.map((value) => value.getChannelValue("hue"))).toEqual([90]);
+  });
+});
+
+describe("a colour wheel's ring", () => {
+  test("a press on it ends the change when released", () => {
+    const ends: Color[] = [];
+    render(() => (
+      <ColorWheel
+        defaultValue="hsl(30, 100%, 50%)"
+        outerRadius={80}
+        innerRadius={64}
+        onChangeEnd={(value) => ends.push(value)}
+      />
+    ));
+    const track = (screen.getByRole("slider").parentElement as HTMLElement)
+      .parentElement as HTMLElement;
+    track.getBoundingClientRect = () => new DOMRect(0, 0, 160, 160);
+
+    // Straight below the centre, on the ring: 90 degrees.
+    user.pointerDown(track, { clientX: 80, clientY: 152 });
+    user.pointerUp(track, { clientX: 80, clientY: 152 });
+    flush();
+    expect(ends.map((value) => Math.round(value.getChannelValue("hue")))).toEqual([90]);
+  });
+});
+
+describe("a colour wheel's keys", () => {
+  test("an arrow ends the change", () => {
+    const ends: Color[] = [];
+    render(() => (
+      <ColorWheel defaultValue="hsl(30, 100%, 50%)" onChangeEnd={(value) => ends.push(value)} />
+    ));
+    user.focus(screen.getByRole("slider"));
+    user.keyDown("ArrowRight");
+    flush();
+    expect(ends.map((value) => value.getChannelValue("hue"))).toEqual([31]);
+  });
+});
+
+describe("a colour field's text and keys", () => {
+  function field(): HTMLInputElement {
+    return screen.getByRole<HTMLInputElement>("textbox");
+  }
+
+  function typeInto(text: string): void {
+    user.focus(field());
+    field().value = text;
+    field().dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  test("hex without a # is still hex", () => {
+    const changes: (Color | null)[] = [];
+    render(() => (
+      <ColorField label="Hex" defaultValue="#000000" onChange={(value) => changes.push(value)} />
+    ));
+    typeInto("ff0000");
+    user.keyDown("Enter");
+    flush();
+    expect(changes.at(-1)?.toString("hex")).toBe("#ff0000");
+    expect(field().value).toBe("#ff0000");
+  });
+
+  test("the arrows step the colour by one", () => {
+    const changes: (Color | null)[] = [];
+    render(() => (
+      <ColorField label="Hex" defaultValue="#7f00ff" onChange={(value) => changes.push(value)} />
+    ));
+    user.focus(field());
+    user.keyDown("ArrowUp");
+    flush();
+    expect(changes.at(-1)?.toString("hex")).toBe("#7f0100");
+    expect(field().value).toBe("#7f0100");
+
+    user.keyDown("ArrowDown");
+    user.keyDown("ArrowDown");
+    flush();
+    expect(field().value).toBe("#7f00fe");
+
+    user.keyDown("PageUp");
+    flush();
+    expect(field().value).toBe("#7f00ff");
+  });
+
+  test("Home and End go to black and white", () => {
+    render(() => <ColorField label="Hex" defaultValue="#7f00ff" />);
+    user.focus(field());
+    user.keyDown("End");
+    flush();
+    expect(field().value).toBe("#ffffff");
+    user.keyDown("Home");
+    flush();
+    expect(field().value).toBe("#000000");
+  });
+
+  test("the arrows step from what was typed, not from what was last committed", () => {
+    render(() => <ColorField label="Hex" defaultValue="#7f00ff" />);
+    typeInto("#000010");
+    user.keyDown("ArrowUp");
+    flush();
+    expect(field().value).toBe("#000011");
+  });
+
+  test("the wheel steps a focused field", () => {
+    render(() => <ColorField label="Hex" defaultValue="#000010" />);
+    user.focus(field());
+    field().dispatchEvent(new WheelEvent("wheel", { deltaY: 10, bubbles: true, cancelable: true }));
+    flush();
+    expect(field().value).toBe("#000011");
+  });
+
+  test("the wheel leaves an unfocused field alone", () => {
+    render(() => <ColorField label="Hex" defaultValue="#000010" />);
+    field().dispatchEvent(new WheelEvent("wheel", { deltaY: 10, bubbles: true, cancelable: true }));
+    flush();
+    expect(field().value).toBe("#000010");
+  });
+
+  test("emptying the field clears the colour", () => {
+    const changes: (Color | null)[] = [];
+    render(() => (
+      <ColorField label="Hex" defaultValue="#7f00ff" onChange={(value) => changes.push(value)} />
+    ));
+    typeInto("");
+    user.blur(field());
+    flush();
+    expect(changes).toEqual([null]);
+    expect(field().value).toBe("");
+  });
+
+  test("a field with no colour starts empty", () => {
+    render(() => <ColorField label="Hex" />);
+    expect(field().value).toBe("");
+  });
+
+  test("emptied inside a picker, it goes back to the picker's colour", () => {
+    const changes: Color[] = [];
+    render(() => (
+      <ColorPicker defaultValue="#7f00ff" onChange={(value) => changes.push(value)}>
+        <ColorField label="Hex" />
+      </ColorPicker>
+    ));
+    typeInto("");
+    user.blur(field());
+    flush();
+    expect(changes).toEqual([]);
+    expect(field().value).toBe("#7f00ff");
+  });
+});
+
+describe("a colour swatch's name", () => {
+  test("a fully transparent colour is called transparent", () => {
+    render(() => <ColorSwatch color="rgba(255, 0, 0, 0)" />);
+    expect(accessibleName(screen.getByRole("img"))).toBe("transparent");
+  });
+
+  test("it says it is a colour swatch", () => {
+    render(() => <ColorSwatch color="#ff0000" />);
+    expect(screen.getByRole("img").getAttribute("aria-roledescription")).toBe("color swatch");
+  });
+
+  test("in another language it is named for the colour", () => {
+    function German() {
+      provideLocale("de-DE");
+      return <ColorSwatch color="#ff0000" />;
+    }
+    render(() => <German />);
+    const swatch = screen.getByRole("img");
+    expect(accessibleName(swatch)).toBe("lebhaftes rot");
+    expect(swatch.getAttribute("aria-roledescription")).toBe("Farbfeld");
+  });
+});
+
+describe("a colour swatch inside a swatch picker item", () => {
+  test("a bare swatch shows its item's colour, not the picker's", () => {
+    render(() => (
+      <ColorPicker defaultValue="#0000ff">
+        <ColorSwatchPicker aria-label="Brand colours">
+          <ColorSwatchPickerItem color="#ff0000">
+            <ColorSwatch data-testid="red" />
+          </ColorSwatchPickerItem>
+          <ColorSwatchPickerItem color="#00ff00">
+            <ColorSwatch data-testid="green" />
+          </ColorSwatchPickerItem>
+        </ColorSwatchPicker>
+      </ColorPicker>
+    ));
+    const background = (testId: string): string =>
+      screen.getByTestId(testId).style.getPropertyValue("background-color");
+    expect(background("red")).toBe(parseColor("#ff0000").toString("css"));
+    expect(background("green")).toBe(parseColor("#00ff00").toString("css"));
+  });
+
+  test("a colour of its own still wins", () => {
+    render(() => (
+      <ColorSwatchPicker aria-label="Brand colours">
+        <ColorSwatchPickerItem color="#ff0000">
+          <ColorSwatch data-testid="own" color="#000000" />
+        </ColorSwatchPickerItem>
+      </ColorSwatchPicker>
+    ));
+    expect(screen.getByTestId("own").style.getPropertyValue("background-color")).toBe(
+      parseColor("#000000").toString("css"),
+    );
   });
 });

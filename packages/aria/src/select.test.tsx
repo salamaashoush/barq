@@ -9,6 +9,7 @@ import {
   user,
 } from "@barqjs/testing";
 import type { Key } from "./collections.ts";
+import { Form } from "./form.tsx";
 import { Option } from "./listbox.tsx";
 import {
   itemAlignedPosition,
@@ -260,6 +261,166 @@ describe("a select built from data says its state in both vocabularies", () => {
     expect(list.getAttribute("data-state")).toBe("open");
     expect(list.getAttribute("data-side")).toBe("bottom");
     expect(list.getAttribute("data-align")).toBe("start");
+  });
+});
+
+describe("a select's name", () => {
+  test("with only an aria-label, the trigger is named by it and by the value", () => {
+    render(() => (
+      <Select
+        aria-label="Fruit"
+        items={FRUITS}
+        defaultSelectedKey="banana"
+        getTextValue={(fruit: Fruit) => fruit.name}
+      >
+        {(fruit: Fruit) => <Option>{fruit.name}</Option>}
+      </Select>
+    ));
+    expect(accessibleName(trigger())).toBe("Fruit Banana");
+  });
+
+  test("the list it opens is named by that aria-label too", async () => {
+    render(() => (
+      <Select aria-label="Fruit" items={FRUITS} getTextValue={(fruit: Fruit) => fruit.name}>
+        {(fruit: Fruit) => <Option>{fruit.name}</Option>}
+      </Select>
+    ));
+    user.click(trigger());
+    await tick();
+    expect(accessibleName(screen.getByRole("listbox"))).toContain("Fruit");
+  });
+});
+
+describe("a select in a form", () => {
+  function Required(props: { validationBehavior?: "aria" | "native"; name?: string }) {
+    return (
+      <form>
+        <Select
+          label="Fruit"
+          items={FRUITS}
+          name={props.name}
+          isRequired
+          validationBehavior={props.validationBehavior}
+          getTextValue={(fruit: Fruit) => fruit.name}
+        >
+          {(fruit: Fruit) => <Option>{fruit.name}</Option>}
+        </Select>
+      </form>
+    );
+  }
+
+  test("required, under aria validation, does not block the submit", () => {
+    const { container } = render(() => <Required name="fruit" />);
+    const hidden = container.querySelector("select") as HTMLSelectElement;
+    expect(hidden.required).toBe(false);
+    expect((container.querySelector("form") as HTMLFormElement).checkValidity()).toBe(true);
+  });
+
+  test("required, under native validation, does", () => {
+    const { container } = render(() => <Required name="fruit" validationBehavior="native" />);
+    expect((container.querySelector("select") as HTMLSelectElement).required).toBe(true);
+    expect((container.querySelector("form") as HTMLFormElement).checkValidity()).toBe(false);
+  });
+
+  test("a form's native validation reaches it", () => {
+    const { container } = render(() => (
+      <Form validationBehavior="native">
+        <Select
+          label="Fruit"
+          items={FRUITS}
+          name="fruit"
+          isRequired
+          getTextValue={(fruit: Fruit) => fruit.name}
+        >
+          {(fruit: Fruit) => <Option>{fruit.name}</Option>}
+        </Select>
+      </Form>
+    ));
+    expect((container.querySelector("select") as HTMLSelectElement).required).toBe(true);
+  });
+
+  test("with no name, a required one still blocks a native submit", async () => {
+    const { container } = render(() => <Required validationBehavior="native" />);
+    await tick();
+    flush();
+    const form = container.querySelector("form") as HTMLFormElement;
+    expect(container.querySelector("select")).not.toBeNull();
+    expect(form.checkValidity()).toBe(false);
+  });
+
+  test("sectioned items are all in the hidden select, and the chosen one is submitted", () => {
+    const GROUPS = [
+      {
+        id: "fruit",
+        name: "Fruit",
+        children: [
+          { id: "apple", name: "Apple" },
+          { id: "banana", name: "Banana" },
+        ],
+      },
+      { id: "veg", name: "Veg", children: [{ id: "leek", name: "Leek" }] },
+    ];
+    const { container } = render(() => (
+      <form>
+        <Select
+          label="Food"
+          items={GROUPS}
+          name="food"
+          defaultSelectedKey="leek"
+          getTextValue={(item: { name: string }) => item.name}
+        >
+          {(item: { name: string }) => <Option>{item.name}</Option>}
+        </Select>
+      </form>
+    ));
+    const hidden = container.querySelector("select") as HTMLSelectElement;
+    expect([...hidden.options].map((option) => option.value)).toEqual([
+      "",
+      "apple",
+      "banana",
+      "leek",
+    ]);
+    expect(new FormData(container.querySelector("form") as HTMLFormElement).get("food")).toBe(
+      "leek",
+    );
+  });
+});
+
+describe("a select's label inside a form", () => {
+  test("an element label stays where it was written, naming the trigger", async () => {
+    render(() => (
+      <form>
+        <Select label={<b>Fruit</b>} items={FRUITS} getTextValue={(fruit: Fruit) => fruit.name}>
+          {(fruit: Fruit) => <Option>{fruit.name}</Option>}
+        </Select>
+      </form>
+    ));
+    await tick();
+    await tick();
+    expect(document.querySelectorAll("b")).toHaveLength(1);
+    expect(accessibleName(trigger())).toContain("Fruit");
+  });
+});
+
+describe("a multiple select", () => {
+  test("typing on the closed trigger leaves the selection alone", () => {
+    const chosen: unknown[] = [];
+    render(() => (
+      <Select
+        label="Fruit"
+        items={FRUITS}
+        selectionMode="multiple"
+        defaultSelectedKeys={["apple", "banana"]}
+        onSelectionChangeAll={(keys: unknown) => chosen.push(keys)}
+        getTextValue={(fruit: Fruit) => fruit.name}
+      >
+        {(fruit: Fruit) => <Option>{fruit.name}</Option>}
+      </Select>
+    ));
+    trigger().focus();
+    user.keyDown("d");
+    flush();
+    expect(chosen).toEqual([]);
   });
 });
 

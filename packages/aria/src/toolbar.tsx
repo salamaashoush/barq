@@ -25,6 +25,7 @@ import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/re
 import { contains, targetElement } from "./dom.ts";
 import { createFocusManager } from "./focus.ts";
 import { useLocale } from "./i18n.ts";
+import { getInteractionModality } from "./interactions/modality.ts";
 import type { ElementRef } from "./interactions/press.ts";
 import type { Orientation } from "./selection.ts";
 import {
@@ -118,14 +119,18 @@ export function toolbar(options: ToolbarOptions): ToolbarResult {
     // is the roving focus doing its job.
     if (contains(current, event.relatedTarget as Element | null)) return;
     if (!contains(current, targetElement(event))) return;
-    // Gone from the document since: whatever the browser landed on stands.
-    if (lastFocused.isConnected) lastFocused.focus();
+    // Only for the keyboard: a pointer landed on the control it meant, and
+    // moving focus off it would take the press with it. Gone from the document
+    // since: whatever the browser landed on stands.
+    if (getInteractionModality() === "keyboard" && lastFocused.isConnected) lastFocused.focus();
     lastFocused = null;
   };
 
   return {
     toolbarProps: mergeProps(filterDOMProps(options, { labelable: true }), {
-      role: "toolbar",
+      // A toolbar inside another is a group of the outer one's controls: the
+      // outer toolbar is the one stop in the Tab order.
+      role: () => (nested() ? "group" : "toolbar"),
       "aria-orientation": orientation,
       onKeyDown,
       onFocusIn: onFocus,

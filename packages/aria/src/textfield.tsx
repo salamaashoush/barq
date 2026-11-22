@@ -13,6 +13,7 @@
 
 import { cells, type Accessor, type Child } from "@barqjs/core";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
+import { type AutocompleteInputValue, useAutocompleteInput } from "./autocomplete.tsx";
 import { focusRing } from "./focus.ts";
 import { focusable, type FocusableOptions } from "./interactions/focusable.ts";
 import { hover } from "./interactions/hover.ts";
@@ -135,6 +136,19 @@ export function textField(
   const isDisabled = (): boolean => access(options.isDisabled) === true;
   const isReadOnly = (): boolean => access(options.isReadOnly) === true;
   const isRequired = (): boolean => access(options.isRequired) === true;
+  const isNative = (): boolean => behavior() === "native";
+
+  // A blur commits only what was edited, as `change` would: tabbing through a
+  // field the server rejected has fixed nothing, and must not clear the error.
+  let focusedValue: string | null = null;
+  const onFocus = (): void => {
+    focusedValue = value();
+  };
+  const onBlur = (): void => {
+    const edited = focusedValue !== null && focusedValue !== value();
+    focusedValue = null;
+    if (edited) validation.commitValidation();
+  };
 
   const onInput = (event: Event): void => {
     const input = event.target as HTMLInputElement;
@@ -164,7 +178,9 @@ export function textField(
         value,
         disabled: isDisabled,
         readOnly: isReadOnly,
-        required: isRequired,
+        // The browser refuses the submit for `required`, so only when the page
+        // asked for that; otherwise assistive technology is told instead.
+        required: () => isRequired() && isNative(),
         placeholder: () => access(options.placeholder),
         name: () => access(options.name),
         form: () => access(options.form),
@@ -174,12 +190,13 @@ export function textField(
         pattern: () => access(options.pattern),
         inputmode: () => access(options.inputMode),
         "aria-invalid": () => isInvalid() || undefined,
-        "aria-required": () => isRequired() || undefined,
+        "aria-required": () => (isRequired() && !isNative()) || undefined,
         "aria-readonly": () => isReadOnly() || undefined,
         onInput,
         onKeyDown: options.onKeyDown,
         onKeyUp: options.onKeyUp,
-        onBlur: () => validation.commitValidation(),
+        onFocus,
+        onBlur,
       },
     ),
   };
@@ -222,14 +239,22 @@ export function searchField(
   };
 
   const onKeyDown = (event: KeyboardEvent): void => {
+    if (access(options.isReadOnly) === true || access(options.isDisabled) === true) return;
     if (event.key === "Enter") {
+      // Without a handler of its own, Enter is the form's: it submits.
+      if (options.onSubmit === undefined) return;
       event.preventDefault();
-      options.onSubmit?.(result.value());
+      options.onSubmit(result.value());
       return;
     }
     if (event.key === "Escape") {
-      if (result.value() === "" && options.onClear === undefined) return;
+      const input = access(ref) as HTMLInputElement | null;
+      // Nothing to clear, so the key is someone else's: the dialog around it.
+      if (result.value() === "" && (input === null || input.value === "")) return;
+      // Handled here, so it goes no further: Escape that cleared the field
+      // must not also close the dialog it is in.
       event.preventDefault();
+      event.stopPropagation();
       clear();
     }
   };
@@ -254,6 +279,22 @@ export function searchField(
 // ---------------------------------------------------------------------------
 // Components
 // ---------------------------------------------------------------------------
+
+/**
+ * Inside an {@link Autocomplete} the field's value is the query. A value the
+ * caller gave still wins, and the caller's `onChange` hears every change after
+ * the autocomplete has.
+ */
+function queryOf(
+  auto: AutocompleteInputValue | null,
+  options: TextFieldOptions,
+): Partial<TextFieldOptions> {
+  if (auto === null) return {};
+  return {
+    value: () => access(options.value) ?? auto.inputOptions.value(),
+    onChange: chain((value: string) => auto.inputOptions.onChange(value), options.onChange),
+  };
+}
 
 export interface TextFieldComponentProps extends StyleProps {
   label?: Child;
@@ -298,11 +339,13 @@ export interface TextFieldComponentProps extends StyleProps {
 export function TextField(props: TextFieldComponentProps) {
   const inputRef = makeRef<HTMLInputElement>();
   const options = fromProps(cells(props));
+  const auto = useAutocompleteInput();
 
   const { labelProps, inputProps, descriptionProps, errorMessageProps, errors, isInvalid } =
     textField(
       {
         ...(options as TextFieldOptions),
+        ...queryOf(auto, options as TextFieldOptions),
         validate: callback(cells(props).validate),
         validationBehavior: () => props.validationBehavior,
       },
@@ -311,13 +354,21 @@ export function TextField(props: TextFieldComponentProps) {
   const { hoverProps, isHovered } = hover({ isDisabled: options.isDisabled });
   const { focusProps, isFocused, isFocusVisible } = focusRing({ isTextInput: true });
 
-  const controlProps = mergeProps(inputProps, hoverProps, focusProps, {
-    "data-hovered": isHovered,
-    "data-focused": isFocused,
-    "data-focus-visible": isFocusVisible,
-    "data-disabled": () => props.isDisabled === true,
-    "data-invalid": isInvalid,
-  });
+  const controlProps = mergeProps(
+    inputProps,
+    hoverProps,
+    focusProps,
+    {
+      "data-hovered": isHovered,
+      "data-focused": isFocused,
+      "data-focus-visible": isFocusVisible,
+      "data-disabled": () => props.isDisabled === true,
+      "data-readonly": () => props.isReadOnly === true,
+      "data-required": () => props.isRequired === true,
+      "data-invalid": isInvalid,
+    },
+    auto?.inputProps,
+  );
 
   return (
     <div
@@ -330,10 +381,14 @@ export function TextField(props: TextFieldComponentProps) {
         props.isMultiLine === true ? (
           <textarea
             {...controlProps}
-            ref={mergeRefs(inputRef.set, props.ref) as unknown as (el: HTMLTextAreaElement) => void}
+            ref={
+              mergeRefs(inputRef.set, props.ref, auto?.ref) as unknown as (
+                el: HTMLTextAreaElement,
+              ) => void
+            }
           />
         ) : (
-          <input {...controlProps} ref={mergeRefs(inputRef.set, props.ref)} />
+          <input {...controlProps} ref={mergeRefs(inputRef.set, props.ref, auto?.ref)} />
         )
       }
       <span {...descriptionProps}>{props.description}</span>
@@ -366,6 +421,7 @@ export interface SearchFieldComponentProps extends TextFieldComponentProps {
 export function SearchField(props: SearchFieldComponentProps) {
   const inputRef = makeRef<HTMLInputElement>();
   const options = fromProps(cells(props));
+  const auto = useAutocompleteInput();
 
   const {
     labelProps,
@@ -376,16 +432,28 @@ export function SearchField(props: SearchFieldComponentProps) {
     value,
     errors,
     isInvalid,
-  } = searchField(options as SearchFieldOptions, inputRef);
+  } = searchField(
+    { ...(options as SearchFieldOptions), ...queryOf(auto, options as SearchFieldOptions) },
+    inputRef,
+  );
   const { hoverProps, isHovered } = hover({ isDisabled: options.isDisabled });
   const { focusProps, isFocused, isFocusVisible } = focusRing({ isTextInput: true });
 
-  const controlProps = mergeProps(inputProps, hoverProps, focusProps, {
-    "data-hovered": isHovered,
-    "data-focused": isFocused,
-    "data-focus-visible": isFocusVisible,
-    "data-disabled": () => props.isDisabled === true,
-  });
+  const controlProps = mergeProps(
+    inputProps,
+    hoverProps,
+    focusProps,
+    {
+      "data-hovered": isHovered,
+      "data-focused": isFocused,
+      "data-focus-visible": isFocusVisible,
+      "data-disabled": () => props.isDisabled === true,
+      "data-readonly": () => props.isReadOnly === true,
+      "data-required": () => props.isRequired === true,
+      "data-invalid": isInvalid,
+    },
+    auto?.inputProps,
+  );
 
   return (
     <div
@@ -395,7 +463,7 @@ export function SearchField(props: SearchFieldComponentProps) {
       })}
     >
       <label {...labelProps}>{props.label}</label>
-      <input {...controlProps} ref={mergeRefs(inputRef.set, props.ref)} />
+      <input {...controlProps} ref={mergeRefs(inputRef.set, props.ref, auto?.ref)} />
       <button type="button" {...clearButtonProps}>
         {() => props.clearLabel ?? "Clear search"}
       </button>

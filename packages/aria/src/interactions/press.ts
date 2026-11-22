@@ -37,7 +37,12 @@ import { isMac } from "../platform.ts";
 import { access, type DOMProps, type MaybeAccessor } from "../utils.ts";
 import { isOpeningLink } from "./flags.ts";
 import { globalListeners } from "./listeners.ts";
-import { isVirtualClick, isVirtualPointerEvent, type PointerType } from "./modality.ts";
+import {
+  isVirtualClick,
+  isVirtualPointerEvent,
+  NON_TEXT_INPUT_TYPES,
+  type PointerType,
+} from "./modality.ts";
 import { openLink } from "./open-link.ts";
 import { preventFocus } from "./prevent-focus.ts";
 import { disableTextSelection, restoreTextSelection } from "./text-selection.ts";
@@ -181,23 +186,12 @@ interface PressState {
   pointerType: PointerType | null;
   metaKeyEvents: Map<string, KeyboardEvent> | undefined;
   disposables: (() => void)[];
+  defaultKeyboardClickEvent: KeyboardEvent | null;
 }
 
 const LINK_CLICKED = Symbol.for("barq.aria.linkClicked");
 const PRESSABLE_ATTRIBUTE = "data-barq-pressable";
 const STYLE_ID = "barq-aria-pressable-style";
-
-const NON_TEXT_INPUT_TYPES = new Set([
-  "checkbox",
-  "radio",
-  "range",
-  "color",
-  "file",
-  "image",
-  "button",
-  "submit",
-  "reset",
-]);
 
 function isAnchorLink(target: Element): target is HTMLAnchorElement {
   return target.tagName === "A" && target.hasAttribute("href");
@@ -239,9 +233,13 @@ function shouldPreventDefaultUp(target: Element): boolean {
   return true;
 }
 
-function shouldPreventDefaultKeyboard(target: Element, key: string): boolean {
+function shouldPreventDefaultKeyboard(
+  target: Element,
+  event: Pick<KeyboardEvent, "key" | "ctrlKey">,
+): boolean {
+  const { key } = event;
   // Control-Enter opens the context menu on macOS.
-  if (isMac() && key === "Enter") return false;
+  if (isMac() && key === "Enter" && event.ctrlKey) return false;
 
   if (target instanceof HTMLInputElement) {
     // Enter on a checkbox or radio submits the form; it must not also toggle.
@@ -353,6 +351,7 @@ export function press(options: PressOptions): PressResult {
     pointerType: null,
     metaKeyEvents: undefined,
     disposables: [],
+    defaultKeyboardClickEvent: null,
   };
 
   const isDisabled = (): boolean => access(options.isDisabled) === true;
@@ -462,9 +461,13 @@ export function press(options: PressOptions): PressResult {
   const onKeyUp = (event: KeyboardEvent): void => {
     if (state.isPressed && state.target !== null && isActivationKey(event, state.target)) {
       const target = targetElement(event);
-      if (shouldPreventDefaultKeyboard(target ?? state.target, event.key)) event.preventDefault();
+      if (shouldPreventDefaultKeyboard(target ?? state.target, event)) event.preventDefault();
 
       const wasPressed = contains(state.target, target);
+      // Space activates on keyup, and the browser follows with a click of its
+      // own. This listener captures, so a later handler may still prevent the
+      // default: keep the event and read `defaultPrevented` at the click.
+      state.defaultKeyboardClickEvent = event.key !== "Enter" && wasPressed ? event : null;
       triggerPressEnd(retarget(state.target, event), "keyboard", wasPressed);
       if (wasPressed) triggerSyntheticClick(event, state.target);
       listeners.removeAll();
@@ -508,7 +511,10 @@ export function press(options: PressOptions): PressResult {
       return;
     }
 
-    if (shouldPreventDefaultKeyboard(targetElement(event) ?? currentTarget, event.key)) {
+    // Enter activates on keydown, and the browser follows with a click.
+    state.defaultKeyboardClickEvent = event.key === "Enter" ? event : null;
+
+    if (shouldPreventDefaultKeyboard(targetElement(event) ?? currentTarget, event)) {
       event.preventDefault();
     }
 
@@ -558,7 +564,17 @@ export function press(options: PressOptions): PressResult {
     let stopPropagation = true;
     if (isDisabled()) event.preventDefault();
 
-    if (!state.isPressed && (state.pointerType === "virtual" || isVirtualClick(event))) {
+    // The click a browser fires as a key's default action looks like a virtual
+    // click. It happens only when nothing prevented the key's default, and
+    // unlike `element.click()` it is trusted.
+    const isDefaultKeyboardClick =
+      event.isTrusted && state.defaultKeyboardClickEvent?.defaultPrevented === false;
+
+    if (
+      !isDefaultKeyboardClick &&
+      !state.isPressed &&
+      (state.pointerType === "virtual" || isVirtualClick(event))
+    ) {
       // A screen reader, or `element.click()`. There was no pointer sequence,
       // so the whole press runs here.
       const start = triggerPressStart(event, "virtual");
@@ -578,6 +594,7 @@ export function press(options: PressOptions): PressResult {
       cancel(event);
     }
 
+    state.defaultKeyboardClickEvent = null;
     if (stopPropagation) event.stopPropagation();
   };
 

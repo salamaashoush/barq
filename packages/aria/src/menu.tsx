@@ -36,6 +36,7 @@ import {
   onCleanup,
   provide,
   createSignal,
+  Show,
 } from "@barqjs/core";
 import { isServer } from "@barqjs/web";
 import { tryCleanup } from "@barqjs/primitives/utils";
@@ -48,7 +49,7 @@ import type {
   Node,
   SelectionMode,
 } from "./collections.ts";
-import { listState, type ListState } from "./collections.ts";
+import { getItemCount, listState, type ListState } from "./collections.ts";
 import {
   contains,
   focusWithoutScrolling,
@@ -57,6 +58,9 @@ import {
   targetElement,
 } from "./dom.ts";
 import { Popover, popoverStateProps } from "./dialog.tsx";
+import { useAutocompleteCollection } from "./autocomplete.tsx";
+import { SelectionIndicatorProvider } from "./selection-indicator.tsx";
+import { SharedElementTransition } from "./shared-element-transition.tsx";
 import { focusRing } from "./focus.ts";
 import { hover } from "./interactions/hover.ts";
 import { getInteractionModality, isFocusVisible } from "./interactions/modality.ts";
@@ -117,7 +121,7 @@ export interface MenuOptions {
   "aria-labelledby"?: MaybeAccessor<string | undefined>;
   /** Called when an item is chosen and the menu should go away. */
   onClose?: () => void;
-  onAction?: (key: Key) => void;
+  onAction?: (key: Key, value?: unknown) => void;
   /**
    * Chained BEFORE the collection's own key handling.
    *
@@ -233,7 +237,8 @@ export interface MenuItemOptions {
   onToggle?: () => void;
   /** Called when the item is chosen, before the menu closes; preventing it keeps the menu open. */
   onSelect?: (event: MenuSelectEvent) => void;
-  onAction?: (key: Key) => void;
+  /** Called with the item's key and the value it was built from. */
+  onAction?: (key: Key, value?: unknown) => void;
   onClose?: () => void;
 }
 
@@ -343,7 +348,7 @@ export function menuItem(options: MenuItemOptions, state: ListState<unknown>): M
 
       const itemAction = node()?.props?.onAction;
       if (typeof itemAction === "function") (itemAction as () => void)();
-      options.onAction?.(options.key);
+      options.onAction?.(options.key, node()?.value ?? undefined);
 
       const closes = !prevented && shouldClose(event);
       // Followed here rather than by the collection, which was told to leave
@@ -408,8 +413,9 @@ export function menuItem(options: MenuItemOptions, state: ListState<unknown>): M
       "aria-controls": () => access(options["aria-controls"]),
       "aria-posinset": () =>
         access(options.isVirtualized) === true ? (node()?.index ?? 0) + 1 : undefined,
+      // Items only: a section is not a member of the set.
       "aria-setsize": () =>
-        access(options.isVirtualized) === true ? state.collection().size : undefined,
+        access(options.isVirtualized) === true ? getItemCount(state.collection()) : undefined,
     }),
   };
 }
@@ -1270,8 +1276,10 @@ interface MenuContextValue {
    */
   root: RootMenuTriggerState;
   shouldUseVirtualFocus: Accessor<boolean | undefined>;
-  onAction: Accessor<((key: Key) => void) | undefined>;
+  onAction: Accessor<((key: Key, value?: unknown) => void) | undefined>;
   onClose: Accessor<(() => void) | undefined>;
+  /** Whether choosing an item closes the menu, for every item that does not say. */
+  shouldCloseOnSelect?: Accessor<boolean | undefined>;
   /**
    * Where a `<MenuItem>` written as a child registers itself.
    *
@@ -1691,8 +1699,16 @@ export interface MenuComponentProps<T> extends StyleProps, ItemAccessors<T> {
   /** Distance along the trigger's edge, from where `placement` aligns it. @default 0 */
   crossOffset?: number;
   ref?: RefTarget<HTMLUListElement>;
+  /**
+   * Whether choosing an item closes the menu, for every item that does not
+   * say for itself. @default by the selection mode, as {@link menuItem} says
+   */
+  shouldCloseOnSelect?: boolean;
+  /** Shown, as the menu's one entry, when it has no items. */
+  renderEmpty?: Child;
   onSelectionChange?: (keys: "all" | Set<Key>) => void;
-  onAction?: (key: Key) => void;
+  /** Called with the chosen item's key, and the value it was built from. */
+  onAction?: (key: Key, value: T) => void;
   onClose?: () => void;
 }
 
@@ -1788,12 +1804,16 @@ function MenuList<T>(listProps: MenuListProps<T>) {
   const written = props.items === undefined ? staticCollection() : null;
   // The trigger at the top of the tree, which a submenu is not handed.
   const treeKeyDown = useMenuTrigger()?.onMenuKeyDown;
+  // Inside an `<Autocomplete>` the field's query narrows the items, and the
+  // field keeps focus while the arrows move a highlight here.
+  const auto = useAutocompleteCollection();
 
   const state = listState<T>({
     ...(options as ListStateOptions<T>),
     ...(written === null
       ? {}
       : ({ items: written.entries, ...staticAccessors } as unknown as ListStateOptions<T>)),
+    filter: auto?.filterNodes as ListStateOptions<T>["filter"],
     onSelectionChange: (keys) => props.onSelectionChange?.()?.(keys),
   });
 
@@ -1818,6 +1838,16 @@ function MenuList<T>(listProps: MenuListProps<T>) {
             },
           }),
       ref: domRef,
+      // The caller's own name first; inside an autocomplete, the one it gives.
+      "aria-label": () =>
+        props["aria-label"]?.() ??
+        (props["aria-labelledby"]?.() === undefined
+          ? auto?.collectionProps["aria-label"]
+          : undefined),
+      shouldUseVirtualFocus: () => auto?.collectionProps.shouldUseVirtualFocus() === true,
+      disallowTypeAhead: () =>
+        access((options as unknown as MenuOptions).disallowTypeAhead) ??
+        auto?.collectionProps.disallowTypeAhead(),
       // A submenu with no label of its own is named by the ITEM that opens it,
       // which is what a screen reader announces on the way in.
       "aria-labelledby": () =>
@@ -1830,6 +1860,7 @@ function MenuList<T>(listProps: MenuListProps<T>) {
             ) ?? undefined)),
       autoFocus: () =>
         props.autoFocus?.() ??
+        (auto === null ? undefined : auto.collectionProps.autoFocus() || undefined) ??
         (submenu === null
           ? trigger === null
             ? undefined
@@ -1847,12 +1878,23 @@ function MenuList<T>(listProps: MenuListProps<T>) {
       baseId,
       menuRef: domRef,
       root,
-      shouldUseVirtualFocus: () => undefined,
-      onAction: () => props.onAction?.(),
+      shouldUseVirtualFocus: () => auto?.collectionProps.shouldUseVirtualFocus(),
+      onAction: () => props.onAction?.() as ((key: Key, value?: unknown) => void) | undefined,
       onClose: () => close,
+      shouldCloseOnSelect: () => props.shouldCloseOnSelect?.(),
       staticItems: written ?? undefined,
     };
     install(owner, MenuContext, () => value);
+  }
+
+  if (auto !== null) {
+    onCleanup(
+      auto.connect({
+        ref: domRef,
+        state,
+        idFor: (key) => menuItemIdFor(baseId(), key),
+      }),
+    );
   }
 
   const elementProps = mergeProps(
@@ -1863,7 +1905,9 @@ function MenuList<T>(listProps: MenuListProps<T>) {
       id: () =>
         access(
           (submenu?.submenuProps.id ?? trigger?.menuProps.id) as MaybeAccessor<string | undefined>,
-        ),
+        ) ??
+        access((options as unknown as { id?: MaybeAccessor<string | undefined> }).id) ??
+        auto?.collectionProps.id(),
       "data-testid": () => props["data-testid"]?.(),
       "data-empty": () => state.collection().size === 0,
     },
@@ -1872,10 +1916,21 @@ function MenuList<T>(listProps: MenuListProps<T>) {
     popoverStateProps(),
   );
 
+  // A menu with nothing in it still says why, as its one entry: a menu
+  // with no items at all is announced as empty with no reason given.
+  const empty = (
+    <Show when={state.collection().size === 0 && props.renderEmpty?.() !== undefined}>
+      <li role="menuitem" aria-disabled="true" style={{ display: "contents" }}>
+        {props.renderEmpty?.()}
+      </li>
+    </Show>
+  );
+
   if (written !== null) {
     return (
       <ul {...elementProps} ref={mergeRefs(domRef.set, submenu?.submenuRef.set, props.ref?.())}>
-        {props.children}
+        <SharedElementTransition>{props.children}</SharedElementTransition>
+        {empty}
       </ul>
     );
   }
@@ -1884,12 +1939,15 @@ function MenuList<T>(listProps: MenuListProps<T>) {
 
   return (
     <ul {...elementProps} ref={mergeRefs(domRef.set, submenu?.submenuRef.set, props.ref?.())}>
-      <For each={() => [...state.collection()]}>
-        {(node: Node<T>) => {
-          provideMenuNode(node);
-          return render(node.value as T);
-        }}
-      </For>
+      <SharedElementTransition>
+        <For each={() => [...state.collection()]}>
+          {(node: Node<T>) => {
+            provideMenuNode(node);
+            return render(node.value as T);
+          }}
+        </For>
+      </SharedElementTransition>
+      {empty}
     </ul>
   );
 }
@@ -1960,6 +2018,7 @@ export function MenuItem(props: MenuItemComponentProps) {
       ? enclosing
       : null;
   const group = registry === undefined ? null : (getContext(MenuRadioGroupContext) ?? null);
+  const sectionCloses = getContext(MenuSectionCloseContext) ?? null;
   const ownType = (): MenuItemType | undefined => {
     if (registry === undefined) return undefined;
     const declared = props.type;
@@ -2016,7 +2075,8 @@ export function MenuItem(props: MenuItemComponentProps) {
       baseId: list.baseId,
       "aria-label": () => props["aria-label"],
       isDisabled: () => props.isDisabled === true || node.props?.isDisabled === true,
-      shouldCloseOnSelect: () => props.shouldCloseOnSelect,
+      shouldCloseOnSelect: () =>
+        props.shouldCloseOnSelect ?? sectionCloses?.() ?? list.shouldCloseOnSelect?.(),
       shouldUseVirtualFocus: list.shouldUseVirtualFocus,
       type: ownType,
       isSelected: () =>
@@ -2028,7 +2088,8 @@ export function MenuItem(props: MenuItemComponentProps) {
         } else ticked?.toggle();
       },
       onSelect: (event) => props.onSelect?.(event),
-      onAction: (key) => list.onAction()?.(key),
+      // A written item was built from no value of the caller's.
+      onAction: (key, value) => list.onAction()?.(key, written === null ? value : undefined),
       onClose: () => list.onClose()?.(),
       ...(opens as unknown as Record<string, never>),
     },
@@ -2071,6 +2132,12 @@ export function MenuItem(props: MenuItemComponentProps) {
       "data-pressed": isPressed,
       "data-hovered": isHovered,
       "data-disabled": isDisabled,
+      "data-selection-mode": () => {
+        const mode = list.state.selectionManager().selectionMode;
+        return mode === "none" ? undefined : mode;
+      },
+      "data-has-submenu": () => submenu !== null,
+      "data-open": () => submenu?.state.isOpen() === true,
       "data-state": () => {
         if (submenu !== null) return submenu.state.isOpen() ? "open" : "closed";
         if (!checks()) return undefined;
@@ -2104,7 +2171,9 @@ export function MenuItem(props: MenuItemComponentProps) {
     return (
       <li role="none">
         <a {...linkProps} ref={anchorRef}>
-          {props.children}
+          <SelectionIndicatorProvider isSelected={isSelected()}>
+            {props.children}
+          </SelectionIndicatorProvider>
         </a>
       </li>
     );
@@ -2115,7 +2184,9 @@ export function MenuItem(props: MenuItemComponentProps) {
       {...elementProps}
       ref={mergeRefs(domRef.set, submenu?.triggerRef.set, written?.ref, props.ref)}
     >
-      {props.children}
+      <SelectionIndicatorProvider isSelected={isSelected()}>
+        {props.children}
+      </SelectionIndicatorProvider>
     </li>
   );
 }
@@ -2126,6 +2197,9 @@ interface MenuRadioGroupValue {
 }
 
 const MenuRadioGroupContext = createContext<MenuRadioGroupValue | null>(null);
+
+/** A section's `shouldCloseOnSelect`, for the items inside it. */
+const MenuSectionCloseContext = createContext<Accessor<boolean | undefined> | null>(null);
 
 interface MenuGroupHeading {
   id: Accessor<string>;
@@ -2243,6 +2317,8 @@ export interface MenuSectionComponentProps<T> extends StyleProps {
   heading?: Child;
   "aria-label"?: string;
   "aria-labelledby"?: string;
+  /** Whether choosing one of this section's items closes the menu. @default the menu's */
+  shouldCloseOnSelect?: boolean;
   /** How one child of this section renders; or, in a written menu, its items. */
   children: ((item: T) => Child) | Child;
 }
@@ -2266,8 +2342,14 @@ export interface MenuSectionComponentProps<T> extends StyleProps {
  * ```
  */
 export function MenuSection<T>(props: MenuSectionComponentProps<T>) {
+  const enclosing = getContext(MenuSectionCloseContext) ?? null;
+  const closes = (): boolean | undefined => props.shouldCloseOnSelect ?? enclosing?.();
   if (useMenu().staticItems !== undefined) {
-    return <WrittenGroup of={cells(props)} />;
+    return provide(
+      MenuSectionCloseContext,
+      () => closes,
+      () => <WrittenGroup of={cells(props)} />,
+    );
   }
 
   const node = useMenuNode();
@@ -2283,12 +2365,18 @@ export function MenuSection<T>(props: MenuSectionComponentProps<T>) {
     <li {...itemProps}>
       <span {...headingProps}>{props.heading}</span>
       <ul {...mergeProps(groupProps, styleProps(cells(props)))}>
-        <For each={() => [...node.childNodes]}>
-          {(child: Node<unknown>) => {
-            provideMenuNode(child);
-            return render(child.value as T);
-          }}
-        </For>
+        {provide(
+          MenuSectionCloseContext,
+          () => closes,
+          () => (
+            <For each={() => [...node.childNodes]}>
+              {(child: Node<unknown>) => {
+                provideMenuNode(child);
+                return render(child.value as T);
+              }}
+            </For>
+          ),
+        )}
       </ul>
     </li>
   );

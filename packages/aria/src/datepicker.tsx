@@ -29,15 +29,21 @@ import {
   install,
 } from "@barqjs/core";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
-import { button, type ButtonOptions } from "./button.tsx";
+import { button } from "./button.tsx";
 import { Calendar, RangeCalendar, type DateRange } from "./calendar.tsx";
 import { CalendarDate, CalendarDateTime, toCalendarDate, today, type DateValue } from "./date.ts";
+import { StringDictionary, stringFormatter } from "./i18n.ts";
 import { Popover } from "./dialog.tsx";
 import { focusRing } from "./focus.ts";
 import { hover } from "./interactions/hover.ts";
 import type { ElementRef } from "./interactions/press.ts";
 import { field, type FieldOptions } from "./label.ts";
-import type { ValidateFunction, ValidationBehavior } from "./validation.ts";
+import {
+  fieldValidation,
+  type ValidateFunction,
+  type ValidationBehavior,
+  type ValidationResult,
+} from "./validation.ts";
 import {
   overlayTriggerState,
   type OverlayTriggerState,
@@ -158,6 +164,7 @@ export function datePicker(options: DatePickerOptions, state: DatePickerState): 
   const groupId = id();
   const buttonId = id();
   const dialogId = id();
+  const messages = stringFormatter(PICKER_STRINGS);
 
   const {
     labelProps,
@@ -182,6 +189,8 @@ export function datePicker(options: DatePickerOptions, state: DatePickerState): 
       role: "group",
       id: groupId,
       "aria-disabled": () => state.isDisabled() || undefined,
+      onKeyDown: (event: KeyboardEvent) =>
+        opensOnAltArrow(event, state, state.isDisabled() || state.isReadOnly()),
     }),
     fieldProps: {
       "aria-labelledby": () => access(labelProps.id as MaybeAccessor<string | undefined>),
@@ -195,7 +204,7 @@ export function datePicker(options: DatePickerOptions, state: DatePickerState): 
       "aria-controls": () => (state.isOpen() ? dialogId() : undefined),
       // Named by ITSELF and by the field, so it is announced as "Calendar,
       // Departure" rather than as one of a page of identical buttons.
-      "aria-label": "Calendar",
+      "aria-label": () => messages().format("calendar"),
       "aria-labelledby": () =>
         `${buttonId()} ${access(labelProps.id as MaybeAccessor<string | undefined>) ?? groupId()}`,
       isDisabled: () => state.isDisabled() || state.isReadOnly(),
@@ -208,9 +217,27 @@ export function datePicker(options: DatePickerOptions, state: DatePickerState): 
         access(labelProps.id as MaybeAccessor<string | undefined>) ?? groupId(),
     },
     calendarProps: {
-      "aria-label": "Choose a date",
+      "aria-label": () => messages().format("calendar"),
     },
   };
+}
+
+/**
+ * Alt with an arrow opens the calendar, from anywhere in the field.
+ *
+ * The segments leave a modified arrow alone, so it reaches the group whichever
+ * segment holds focus.
+ */
+function opensOnAltArrow(
+  event: KeyboardEvent,
+  overlay: Pick<OverlayTriggerState, "isOpen" | "setOpen">,
+  isBlocked = false,
+): void {
+  if (!event.altKey || (event.key !== "ArrowDown" && event.key !== "ArrowUp")) return;
+  if (isBlocked || overlay.isOpen()) return;
+  event.preventDefault();
+  event.stopPropagation();
+  overlay.setOpen(true);
 }
 
 // ---------------------------------------------------------------------------
@@ -348,6 +375,7 @@ export function DatePicker(props: DatePickerComponentProps) {
           placeholderValue={props.placeholderValue}
           minValue={props.minValue}
           maxValue={props.maxValue}
+          isDateUnavailable={callback<[CalendarDate], boolean>(cells(props).isDateUnavailable)}
           granularity={props.granularity}
           hourCycle={props.hourCycle}
           isDisabled={props.isDisabled}
@@ -373,7 +401,7 @@ export function DatePicker(props: DatePickerComponentProps) {
       >
         <div {...dialogProps}>
           <Calendar
-            aria-label={String(calendarProps["aria-label"])}
+            aria-label={access(calendarProps["aria-label"] as MaybeAccessor<string>)}
             value={state.dateValue()}
             defaultFocusedValue={
               state.dateValue() ?? toCalendarDate(props.placeholderValue ?? today())
@@ -398,15 +426,48 @@ export function DatePicker(props: DatePickerComponentProps) {
 // A range of days
 // ---------------------------------------------------------------------------
 
-export interface DateRangePickerComponentProps extends Omit<
+/** Two ends, each a day or a day with a time. */
+export interface DateTimeRange<T extends DateValue = DateValue> {
+  start: T;
+  end: T;
+}
+
+export interface DateRangePickerComponentProps<T extends DateValue = CalendarDate> extends Omit<
   DatePickerComponentProps,
-  "value" | "defaultValue" | "onChange" | "name"
+  "value" | "defaultValue" | "onChange" | "name" | "validate"
 > {
-  value?: DateRange | null;
-  defaultValue?: DateRange | null;
+  value?: DateTimeRange<T> | null;
+  defaultValue?: DateTimeRange<T> | null;
   startName?: string;
   endName?: string;
-  onChange?: (value: DateRange | null) => void;
+  /** What the page thinks of the RANGE, checked as it changes. */
+  validate?: ValidateFunction<DateTimeRange<T> | null>;
+  onChange?: (value: DateTimeRange<T> | null) => void;
+}
+
+/** A range whose end comes before its start, which no stay or booking can be. */
+function reversedRange(
+  range: DateTimeRange | null,
+  message: () => string,
+): ValidationResult | undefined {
+  if (range === null || range.end.compare(range.start) >= 0) return undefined;
+  return {
+    isInvalid: true,
+    validationErrors: [message()],
+    validationDetails: {
+      badInput: false,
+      customError: false,
+      patternMismatch: false,
+      rangeOverflow: true,
+      rangeUnderflow: true,
+      stepMismatch: false,
+      tooLong: false,
+      tooShort: false,
+      typeMismatch: false,
+      valueMissing: false,
+      valid: false,
+    },
+  };
 }
 
 /**
@@ -414,13 +475,18 @@ export interface DateRangePickerComponentProps extends Omit<
  *
  * The fields are separate controls — a start and an end are two dates, and one
  * field holding "3 Mar – 7 Mar" is a string nobody can edit a part of — but
- * they share the calendar, where the range is drawn in one gesture.
+ * they share the calendar, where the range is drawn in one gesture. What is
+ * wrong with the range as a whole, an end before its start, is said once, by
+ * the group, rather than by either field.
  */
-export function DateRangePicker(props: DateRangePickerComponentProps) {
+export function DateRangePicker<T extends DateValue = CalendarDate>(
+  props: DateRangePickerComponentProps<T>,
+) {
   const groupRef = makeRef<HTMLDivElement>();
   const triggerRef = makeRef<HTMLButtonElement>();
+  const messages = stringFormatter(PICKER_STRINGS);
 
-  const [value, setValue] = controllable<DateRange | null>(
+  const [value, setValue] = controllable<DateTimeRange<T> | null>(
     () => props.value,
     () => props.defaultValue ?? null,
     (next) => props.onChange?.(next),
@@ -432,11 +498,38 @@ export function DateRangePicker(props: DateRangePickerComponentProps) {
     onOpenChange: (isOpen) => props.onOpenChange?.(isOpen),
   });
 
-  const labelId = id();
   const buttonId = id();
   const dialogId = id();
 
   const isDisabled = (): boolean => props.isDisabled === true;
+
+  const { isInvalid, errors, errorMessage } = fieldValidation<DateTimeRange<T> | null>({
+    value,
+    builtinValidation: () => reversedRange(value(), () => messages().format("rangeReversed")),
+    validate: callback<[DateTimeRange<T> | null], string | string[] | true | null | undefined>(
+      cells(props).validate,
+    ),
+    validationBehavior: () => props.validationBehavior,
+    isInvalid: () => props.isInvalid,
+    errorMessage: () => props.errorMessage,
+  });
+
+  const {
+    labelProps,
+    fieldProps: labelledProps,
+    descriptionProps,
+    errorMessageProps,
+  } = field({
+    label: () => props.label,
+    description: () => props.description,
+    errorMessage,
+    isInvalid,
+    "aria-label": () => props["aria-label"],
+    "aria-labelledby": () => props["aria-labelledby"],
+    labelElementType: "span",
+  });
+  const labelId = (): string | undefined =>
+    access(labelProps.id as MaybeAccessor<string | undefined>);
 
   const trigger = button(
     {
@@ -444,71 +537,106 @@ export function DateRangePicker(props: DateRangePickerComponentProps) {
       "aria-haspopup": "dialog",
       "aria-expanded": () => overlay.isOpen(),
       "aria-controls": () => (overlay.isOpen() ? dialogId() : undefined),
-      "aria-label": "Calendar",
-      "aria-labelledby": () => `${buttonId()} ${labelId()}`,
+      "aria-label": () => messages().format("calendar"),
+      "aria-labelledby": () => `${buttonId()} ${labelId() ?? ""}`.trim(),
       isDisabled: () => isDisabled() || props.isReadOnly === true,
       onPress: () => overlay.toggle(),
-    } as ButtonOptions,
+    },
     triggerRef,
   );
 
   const { hoverProps, isHovered } = hover({ isDisabled });
   const { focusProps, isFocusVisible } = focusRing();
 
-  /** One end changed. The other is kept, so the range is edited rather than reset. */
-  const setEnd = (which: "start" | "end", date: DateValue | null): void => {
+  /**
+   * One end changed. The other is kept, so the range is edited rather than
+   * reset, and each end keeps the time typed into it.
+   */
+  const setEnd = (which: "start" | "end", reported: DateValue | null): void => {
     const current = value();
-    if (date === null) {
+    if (reported === null) {
       setValue(null);
       return;
     }
-    const day = toCalendarDate(date);
+    // The field reports a day or a day with a time as its granularity says,
+    // which is the kind the caller's range holds.
+    const date = reported as T;
     const other = which === "start" ? current?.end : current?.start;
     if (other === undefined) {
-      setValue({ start: day, end: day });
+      setValue({ start: date, end: date });
       return;
     }
-    setValue(which === "start" ? { start: day, end: other } : { start: other, end: day });
+    setValue(which === "start" ? { start: date, end: other } : { start: other, end: date });
+  };
+
+  /** A range drawn in the calendar, with the times the two ends already held. */
+  const fromCalendar = (range: DateRange | null): DateTimeRange<T> | null => {
+    if (range === null) return null;
+    const current = value();
+    // A day chosen in the calendar keeps the time its end already had.
+    const keep = (day: CalendarDate, was: T | undefined): T =>
+      (was instanceof CalendarDateTime ? CalendarDateTime.from(day, was.time) : day) as T;
+    return { start: keep(range.start, current?.start), end: keep(range.end, current?.end) };
+  };
+
+  const days = (): DateRange | null => {
+    const current = value();
+    if (current === null) return null;
+    return { start: toCalendarDate(current.start), end: toCalendarDate(current.end) };
   };
 
   const elementProps = mergeProps(
+    labelledProps,
     filterDOMProps(fromProps(cells(props)), { global: true }),
     styleProps(cells(props)),
     {
       role: "group",
-      "aria-labelledby": labelId,
       "aria-disabled": () => isDisabled() || undefined,
+      "aria-invalid": () => isInvalid() || undefined,
       "data-open": overlay.isOpen,
+      "data-invalid": isInvalid,
       "data-testid": () => props["data-testid"],
+      onKeyDown: (event: KeyboardEvent) =>
+        opensOnAltArrow(event, overlay, isDisabled() || props.isReadOnly === true),
     },
   );
 
   return (
     <>
-      <span id={labelId}>{props.label}</span>
+      <span {...labelProps}>{props.label}</span>
       <div {...elementProps} ref={mergeRefs(groupRef.set, props.ref)}>
         <DateField
-          aria-label="Start date"
+          aria-label={messages().format("startDate")}
           value={value()?.start ?? null}
           placeholderValue={props.placeholderValue}
           minValue={props.minValue}
           maxValue={props.maxValue}
+          isDateUnavailable={callback<[CalendarDate], boolean>(cells(props).isDateUnavailable)}
           granularity={props.granularity}
+          hourCycle={props.hourCycle}
           isDisabled={props.isDisabled}
           isReadOnly={props.isReadOnly}
+          isRequired={props.isRequired}
+          isInvalid={isInvalid() || undefined}
+          validationBehavior={props.validationBehavior}
           name={props.startName}
           onChange={(next) => setEnd("start", next)}
         />
         <span aria-hidden="true">–</span>
         <DateField
-          aria-label="End date"
+          aria-label={messages().format("endDate")}
           value={value()?.end ?? null}
           placeholderValue={props.placeholderValue}
           minValue={props.minValue}
           maxValue={props.maxValue}
+          isDateUnavailable={callback<[CalendarDate], boolean>(cells(props).isDateUnavailable)}
           granularity={props.granularity}
+          hourCycle={props.hourCycle}
           isDisabled={props.isDisabled}
           isReadOnly={props.isReadOnly}
+          isRequired={props.isRequired}
+          isInvalid={isInvalid() || undefined}
+          validationBehavior={props.validationBehavior}
           name={props.endName}
           onChange={(next) => setEnd("end", next)}
         />
@@ -530,13 +658,15 @@ export function DateRangePicker(props: DateRangePickerComponentProps) {
         onOpenChange={overlay.setOpen}
         placement={props.placement ?? "bottom start"}
       >
-        <div id={dialogId} role="dialog" aria-labelledby={labelId}>
+        <div
+          id={dialogId}
+          role="dialog"
+          aria-labelledby={`${buttonId()} ${labelId() ?? ""}`.trim()}
+        >
           <RangeCalendar
-            aria-label="Choose dates"
-            value={value()}
-            defaultFocusedValue={
-              value()?.start ?? toCalendarDate(props.placeholderValue ?? today())
-            }
+            aria-label={messages().format("calendar")}
+            value={days()}
+            defaultFocusedValue={days()?.start ?? toCalendarDate(props.placeholderValue ?? today())}
             minValue={props.minValue}
             maxValue={props.maxValue}
             isDateUnavailable={callback<[CalendarDate], boolean>(cells(props).isDateUnavailable)}
@@ -544,13 +674,234 @@ export function DateRangePicker(props: DateRangePickerComponentProps) {
             isReadOnly={props.isReadOnly}
             autoFocus
             onChange={(range) => {
-              setValue(range);
+              setValue(fromCalendar(range));
               overlay.close();
             }}
           />
         </div>
       </Popover>
-      <span>{props.description}</span>
+      <span {...descriptionProps}>{props.description}</span>
+      <span {...errorMessageProps}>
+        {() => {
+          const given = props.errorMessage;
+          if (given !== undefined && given !== null && given !== "") return given;
+          const found = errors();
+          return found.length === 0 ? null : found.join(" ");
+        }}
+      </span>
     </>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Strings
+// ---------------------------------------------------------------------------
+
+type PickerKey = "calendar" | "startDate" | "endDate" | "rangeReversed";
+
+const PICKER_STRINGS = new StringDictionary<PickerKey>({
+  "en-US": {
+    calendar: "Calendar",
+    startDate: "Start date",
+    endDate: "End date",
+    rangeReversed: "The start date is after the end date.",
+  },
+  "ar-AE": {
+    calendar: "التقويم",
+    startDate: "تاريخ البدء",
+    endDate: "تاريخ الانتهاء",
+    rangeReversed: "تاريخ البدء يجب أن يكون قبل تاريخ الانتهاء.",
+  },
+  "bg-BG": {
+    calendar: "Календар",
+    startDate: "Начална дата",
+    endDate: "Крайна дата",
+    rangeReversed: "Началната дата трябва да е преди крайната.",
+  },
+  "cs-CZ": {
+    calendar: "Kalendář",
+    startDate: "Počáteční datum",
+    endDate: "Konečné datum",
+    rangeReversed: "Datum zahájení musí předcházet datu ukončení.",
+  },
+  "da-DK": {
+    calendar: "Kalender",
+    startDate: "Startdato",
+    endDate: "Slutdato",
+    rangeReversed: "Startdatoen skal være før slutdatoen.",
+  },
+  "de-DE": {
+    calendar: "Kalender",
+    startDate: "Startdatum",
+    endDate: "Enddatum",
+    rangeReversed: "Das Startdatum muss vor dem Enddatum liegen.",
+  },
+  "el-GR": {
+    calendar: "Ημερολόγιο",
+    startDate: "Ημερομηνία έναρξης",
+    endDate: "Ημερομηνία λήξης",
+    rangeReversed: "Η ημερομηνία έναρξης πρέπει να είναι πριν από την ημερομηνία λήξης.",
+  },
+  "es-ES": {
+    calendar: "Calendario",
+    startDate: "Fecha de inicio",
+    endDate: "Fecha final",
+    rangeReversed: "La fecha de inicio debe ser anterior a la fecha de finalización.",
+  },
+  "et-EE": {
+    calendar: "Kalender",
+    startDate: "Alguskuupäev",
+    endDate: "Lõppkuupäev",
+    rangeReversed: "Alguskuupäev peab olema enne lõppkuupäeva.",
+  },
+  "fi-FI": {
+    calendar: "Kalenteri",
+    startDate: "Alkamispäivä",
+    endDate: "Päättymispäivä",
+    rangeReversed: "Aloituspäivän on oltava ennen lopetuspäivää.",
+  },
+  "fr-FR": {
+    calendar: "Calendrier",
+    startDate: "Date de début",
+    endDate: "Date de fin",
+    rangeReversed: "La date de début doit être antérieure à la date de fin.",
+  },
+  "he-IL": {
+    calendar: "לוח שנה",
+    startDate: "תאריך התחלה",
+    endDate: "תאריך סיום",
+    rangeReversed: "תאריך ההתחלה חייב להיות לפני תאריך הסיום.",
+  },
+  "hr-HR": {
+    calendar: "Kalendar",
+    startDate: "Datum početka",
+    endDate: "Datum završetka",
+    rangeReversed: "Datum početka mora biti prije datuma završetka.",
+  },
+  "hu-HU": {
+    calendar: "Naptár",
+    startDate: "Kezdő dátum",
+    endDate: "Befejező dátum",
+    rangeReversed: "A kezdő dátumnak a befejező dátumnál korábbinak kell lennie.",
+  },
+  "it-IT": {
+    calendar: "Calendario",
+    startDate: "Data iniziale",
+    endDate: "Data finale",
+    rangeReversed: "La data di inizio deve essere antecedente alla data di fine.",
+  },
+  "ja-JP": {
+    calendar: "カレンダー",
+    startDate: "開始日",
+    endDate: "終了日",
+    rangeReversed: "開始日は終了日より前にする必要があります。",
+  },
+  "ko-KR": {
+    calendar: "달력",
+    startDate: "시작일",
+    endDate: "종료일",
+    rangeReversed: "시작일은 종료일 이전이어야 합니다.",
+  },
+  "lt-LT": {
+    calendar: "Kalendorius",
+    startDate: "Pradžios data",
+    endDate: "Pabaigos data",
+    rangeReversed: "Pradžios data turi būti ankstesnė nei pabaigos data.",
+  },
+  "lv-LV": {
+    calendar: "Kalendārs",
+    startDate: "Sākuma datums",
+    endDate: "Beigu datums",
+    rangeReversed: "Sākuma datumam ir jābūt pirms beigu datuma.",
+  },
+  "nb-NO": {
+    calendar: "Kalender",
+    startDate: "Startdato",
+    endDate: "Sluttdato",
+    rangeReversed: "Startdatoen må være før sluttdatoen.",
+  },
+  "nl-NL": {
+    calendar: "Kalender",
+    startDate: "Startdatum",
+    endDate: "Einddatum",
+    rangeReversed: "De startdatum moet voor de einddatum liggen.",
+  },
+  "pl-PL": {
+    calendar: "Kalendarz",
+    startDate: "Data początkowa",
+    endDate: "Data końcowa",
+    rangeReversed: "Data rozpoczęcia musi być wcześniejsza niż data zakończenia.",
+  },
+  "pt-BR": {
+    calendar: "Calendário",
+    startDate: "Data inicial",
+    endDate: "Data final",
+    rangeReversed: "A data inicial deve ser anterior à data final.",
+  },
+  "pt-PT": {
+    calendar: "Calendário",
+    startDate: "Data de Início",
+    endDate: "Data de Término",
+    rangeReversed: "A data de início deve ser anterior à data de fim.",
+  },
+  "ro-RO": {
+    calendar: "Calendar",
+    startDate: "Dată început",
+    endDate: "Dată final",
+    rangeReversed: "Data de început trebuie să fie anterioară datei de sfârșit.",
+  },
+  "ru-RU": {
+    calendar: "Календарь",
+    startDate: "Дата начала",
+    endDate: "Дата окончания",
+    rangeReversed: "Дата начала должна предшествовать дате окончания.",
+  },
+  "sk-SK": {
+    calendar: "Kalendár",
+    startDate: "Dátum začatia",
+    endDate: "Dátum ukončenia",
+    rangeReversed: "Dátum začiatku musí byť skorší ako dátum konca.",
+  },
+  "sl-SI": {
+    calendar: "Koledar",
+    startDate: "Datum začetka",
+    endDate: "Datum konca",
+    rangeReversed: "Začetni datum mora biti pred končnim datumom.",
+  },
+  "sr-SP": {
+    calendar: "Kalendar",
+    startDate: "Datum početka",
+    endDate: "Datum završetka",
+    rangeReversed: "Datum početka mora biti pre datuma završetka.",
+  },
+  "sv-SE": {
+    calendar: "Kalender",
+    startDate: "Startdatum",
+    endDate: "Slutdatum",
+    rangeReversed: "Startdatumet måste vara före slutdatumet.",
+  },
+  "tr-TR": {
+    calendar: "Takvim",
+    startDate: "Başlangıç Tarihi",
+    endDate: "Bitiş Tarihi",
+    rangeReversed: "Başlangıç tarihi bitiş tarihinden önce olmalıdır.",
+  },
+  "uk-UA": {
+    calendar: "Календар",
+    startDate: "Дата початку",
+    endDate: "Дата завершення",
+    rangeReversed: "Дата початку має передувати даті завершення.",
+  },
+  "zh-CN": {
+    calendar: "日历",
+    startDate: "开始日期",
+    endDate: "结束日期",
+    rangeReversed: "开始日期必须早于结束日期。",
+  },
+  "zh-TW": {
+    calendar: "日曆",
+    startDate: "開始日期",
+    endDate: "結束日期",
+    rangeReversed: "開始日期必須在結束日期之前。",
+  },
+});

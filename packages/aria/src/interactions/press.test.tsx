@@ -198,6 +198,153 @@ describe("press: keyboard", () => {
   });
 });
 
+/** The click a browser fires as a key's default action: trusted, no pointer, `detail` 0. */
+function trustedKeyboardClick(element: Element): void {
+  const click = new MouseEvent("click", { bubbles: true, cancelable: true, detail: 0, button: 0 });
+  Object.defineProperty(click, "isTrusted", { value: true });
+  element.dispatchEvent(click);
+}
+
+function withPlatform(platform: string, run: () => void): void {
+  const descriptor = Object.getOwnPropertyDescriptor(navigator, "platform");
+  Object.defineProperty(navigator, "platform", { value: platform, configurable: true });
+  try {
+    run();
+  } finally {
+    if (descriptor === undefined) Reflect.deleteProperty(navigator, "platform");
+    else Object.defineProperty(navigator, "platform", descriptor);
+  }
+}
+
+describe("press: the browser's own keyboard click", () => {
+  test("Space on a submit button presses once, not again for the click that follows", () => {
+    const presses: string[] = [];
+    function Submit() {
+      const { pressProps } = press({ onPress: (e) => presses.push(e.pointerType) });
+      return (
+        <form onSubmit={(event: Event) => event.preventDefault()}>
+          <button type="submit" {...pressProps}>
+            Go
+          </button>
+        </form>
+      );
+    }
+    render(() => <Submit />);
+    const button = screen.getByRole("button");
+    button.focus();
+
+    expect(user.keyDown(" ")).toBe(true);
+    expect(user.keyUp(" ")).toBe(true);
+    trustedKeyboardClick(button);
+
+    expect(presses).toEqual(["keyboard"]);
+  });
+
+  test("Space on a native checkbox with onPress presses once", () => {
+    const presses: string[] = [];
+    function Check() {
+      const { pressProps } = press({ onPress: (e) => presses.push(e.pointerType) });
+      return <input type="checkbox" aria-label="salama" {...pressProps} />;
+    }
+    render(() => <Check />);
+    const box = screen.getByRole("checkbox");
+    box.focus();
+
+    expect(user.keyDown(" ")).toBe(true);
+    expect(user.keyUp(" ")).toBe(true);
+    trustedKeyboardClick(box);
+
+    expect(presses).toEqual(["keyboard"]);
+  });
+
+  test("Enter on a submit button presses once when the browser clicks on keydown", () => {
+    const presses: string[] = [];
+    function Submit() {
+      const { pressProps } = press({ onPress: (e) => presses.push(e.pointerType) });
+      return (
+        <form onSubmit={(event: Event) => event.preventDefault()}>
+          <button type="submit" {...pressProps}>
+            Go
+          </button>
+        </form>
+      );
+    }
+    render(() => <Submit />);
+    const button = screen.getByRole("button");
+    button.focus();
+
+    expect(user.keyDown("Enter")).toBe(true);
+    trustedKeyboardClick(button);
+    user.keyUp("Enter");
+
+    expect(presses).toEqual(["keyboard"]);
+  });
+
+  test("element.click() after a keyboard press is still a virtual press", () => {
+    const presses: string[] = [];
+    function Submit() {
+      const { pressProps } = press({ onPress: (e) => presses.push(e.pointerType) });
+      return (
+        <button type="submit" {...pressProps}>
+          Go
+        </button>
+      );
+    }
+    render(() => <Submit />);
+    const button = screen.getByRole("button");
+    button.focus();
+
+    user.keyDown(" ");
+    user.keyUp(" ");
+    user.virtualClick(button);
+
+    expect(presses).toEqual(["keyboard", "virtual"]);
+  });
+
+  test("a keyup whose default another handler prevented leaves the next click virtual", () => {
+    const presses: string[] = [];
+    function Submit() {
+      const { pressProps } = press({ onPress: (e) => presses.push(e.pointerType) });
+      return (
+        <div onKeyUp={(event: KeyboardEvent) => event.preventDefault()}>
+          <button type="submit" {...pressProps}>
+            Go
+          </button>
+        </div>
+      );
+    }
+    render(() => <Submit />);
+    const button = screen.getByRole("button");
+    button.focus();
+
+    user.keyDown(" ");
+    user.keyUp(" ");
+    trustedKeyboardClick(button);
+
+    expect(presses).toEqual(["keyboard", "virtual"]);
+  });
+});
+
+describe("press: Enter on macOS", () => {
+  test("Enter is prevented", () => {
+    withPlatform("MacIntel", () => {
+      const { button } = setup();
+      button.focus();
+      expect(user.keyDown("Enter")).toBe(false);
+      expect(user.keyUp("Enter")).toBe(false);
+    });
+  });
+
+  test("Control-Enter is not prevented, so the context menu can open", () => {
+    withPlatform("MacIntel", () => {
+      const { button } = setup();
+      button.focus();
+      expect(user.keyDown("Enter", { ctrlKey: true })).toBe(true);
+      user.keyUp("Enter", { ctrlKey: true });
+    });
+  });
+});
+
 describe("press: virtual", () => {
   test("a screen reader click runs the whole sequence", () => {
     const { log, button } = setup();

@@ -182,6 +182,10 @@ export function id(given?: MaybeAccessor<string | undefined>): Accessor<string> 
   return () => access(given) ?? current();
 }
 
+function isEmptyId(value: unknown): boolean {
+  return value === undefined || value === null || value === "";
+}
+
 /**
  * One id for two components that both wrote one onto the same element.
  *
@@ -196,6 +200,17 @@ export function mergeIds(
   const left = access(a);
   const right = access(b);
   if (left === right) return a;
+
+  // A side that names no id has nothing to merge: repointing a generated id
+  // at it would leave the element with no id and every reference to it
+  // dangling. Whichever side has one keeps it, and an empty one that later
+  // gains a value still wins, as `mergeProps` lets a later value win.
+  if (isEmptyId(left) || isEmptyId(right)) {
+    return () => {
+      const later = access(b);
+      return isEmptyId(later) ? access(a) : later;
+    };
+  }
 
   const leftGroup = idGroups.get(left);
   if (leftGroup !== undefined) {
@@ -613,6 +628,19 @@ export function provideTriggerSlot(slot: TriggerSlot): void {
 /** What the surroundings want on this control, if anything. */
 export function triggerSlot(): TriggerSlot {
   return getContext(TriggerSlotContext) ?? { props: {} };
+}
+
+/**
+ * End the reach of every trigger slot above, for what the calling component
+ * builds. A slot is meant for the control that opens an overlay, and the
+ * overlay's own content is written under the same trigger: without this a
+ * close button inside a popover takes the trigger's `onPress` and its
+ * `aria-expanded`, and pressing it opens what it was meant to close.
+ */
+export function clearTriggerSlot(): void {
+  const owner = getOwner();
+  if (owner === null) return;
+  install(owner, TriggerSlotContext, () => null);
 }
 
 // ---------------------------------------------------------------------------

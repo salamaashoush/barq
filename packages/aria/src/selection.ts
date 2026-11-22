@@ -43,6 +43,7 @@ import type {
 } from "./collections.ts";
 import { focusableWalker } from "./focus.ts";
 import { collator, useLocale } from "./i18n.ts";
+import { isOpeningLink } from "./interactions/flags.ts";
 import { focusSafely } from "./interactions/focusable.ts";
 import type { BaseEvent } from "./interactions/keyboard.ts";
 import { getInteractionModality, type PointerType } from "./interactions/modality.ts";
@@ -74,14 +75,28 @@ export function isCtrlKeyPressed(event: { ctrlKey?: boolean; metaKey?: boolean }
 /** The rendered element for a key, if it is rendered at all. */
 export function itemElement(container: Element | null | undefined, key: Key): Element | null {
   if (container === null || container === undefined) return null;
-  let selector = `[data-key="${CSS.escape(String(key))}"]`;
-  const collection = (container as HTMLElement).dataset?.collection;
+  const collection = container.getAttribute("data-collection");
   // Scoped to this collection, so a nested one — a tag group inside a table
-  // cell — does not answer for its parent.
-  if (collection !== undefined)
-    selector = `[data-collection="${CSS.escape(collection)}"]${selector}`;
-  return container.querySelector(selector);
+  // cell — does not answer for its parent: the nearest collection around the
+  // element has to be this one. An item may carry the collection's id itself.
+  for (const element of container.querySelectorAll(`[data-key="${CSS.escape(String(key))}"]`)) {
+    if (collection === null) return element;
+    const owner = element.closest("[data-collection]");
+    if (owner === container || owner?.getAttribute("data-collection") === collection)
+      return element;
+  }
+  return null;
 }
+
+/**
+ * The id each collection writes as `data-collection`, by the selection
+ * manager accessor its items are handed too.
+ *
+ * The collection's hook runs in its component's body, before the items are
+ * built, so an item finds the id as it is set up. An item handed a different
+ * accessor finds nothing and goes without; `itemElement` still finds it.
+ */
+const collectionIds = new WeakMap<Accessor<SelectionManager>, Accessor<string>>();
 
 // ---------------------------------------------------------------------------
 // Layout and keyboard delegates
@@ -370,11 +385,13 @@ export class ListKeyboardDelegate implements KeyboardDelegate {
     return at ?? this.getLastKey();
   }
 
+  /** The first item after `fromKey` whose text starts with `search`, or from the top without one. */
   getKeyForSearch(search: string, fromKey?: Key | null): Key | null {
     const compare = this.#options.collator?.();
     if (compare === undefined) return null;
 
-    let key = fromKey ?? this.getFirstKey();
+    let key =
+      fromKey === undefined || fromKey === null ? this.getFirstKey() : this.getNextKey(fromKey);
     while (key !== null) {
       const item = this.#collection.getItem(key);
       if (item === null) return null;
@@ -412,7 +429,11 @@ export interface TypeSelectResult {
  * the selection handler sees the key.
  */
 export function typeSelect(options: TypeSelectOptions): TypeSelectResult {
-  const state = { search: "", timeout: undefined as ReturnType<typeof setTimeout> | undefined };
+  const state = {
+    search: "",
+    startKey: null as Key | null,
+    timeout: undefined as ReturnType<typeof setTimeout> | undefined,
+  };
 
   tryCleanup(() => clearTimeout(state.timeout));
 
@@ -420,14 +441,15 @@ export function typeSelect(options: TypeSelectOptions): TypeSelectResult {
     clearTimeout(state.timeout);
     state.timeout = setTimeout(() => {
       state.search = "";
+      state.startKey = null;
     }, TYPEAHEAD_TIMEOUT);
   };
 
   const jump = (): boolean => {
     const manager = options.selectionManager();
-    // After the focused item first, so repeated letters cycle forwards rather
-    // than always landing on the first match.
-    let key = options.keyboardDelegate.getKeyForSearch?.(state.search, manager.focusedKey) ?? null;
+    // After the item that was focused when the search began, so a longer
+    // prefix can still land on the item a shorter one reached.
+    let key = options.keyboardDelegate.getKeyForSearch?.(state.search, state.startKey) ?? null;
     if (key === null) key = options.keyboardDelegate.getKeyForSearch?.(state.search) ?? null;
     if (key === null) return false;
 
@@ -451,7 +473,14 @@ export function typeSelect(options: TypeSelectOptions): TypeSelectResult {
       return;
     }
 
-    state.search += character;
+    // The same letter again steps to the next item starting with it rather than
+    // searching for "bb", as a native select does.
+    if (state.search === "" || state.search === character) {
+      state.search = character;
+      state.startKey = options.selectionManager().focusedKey;
+    } else {
+      state.search += character;
+    }
 
     if (jump()) {
       event.preventDefault();
@@ -576,6 +605,7 @@ function isSelectionKey(key: string | undefined): boolean {
  */
 export function selectableItem(options: SelectableItemOptions): SelectableItemResult {
   const itemId = id(options.id);
+  const collectionId = collectionIds.get(options.selectionManager);
   const navigate = router();
 
   const manager = (): SelectionManager => options.selectionManager();
@@ -684,7 +714,9 @@ export function selectableItem(options: SelectableItemOptions): SelectableItemRe
     (focused) => {
       if (focused === null) return;
       const { element } = focused;
-      if (element !== null && activeElement(ownerDocument(element)) !== element) {
+      // Focus already inside the item, on a field or a button in the row, is
+      // where the user put it.
+      if (element !== null && !contains(element, activeElement(ownerDocument(element)))) {
         focusSafely(element);
       }
     },
@@ -847,15 +879,39 @@ export function selectableItem(options: SelectableItemOptions): SelectableItemRe
     if (modality === "touch" && longPressWasEnabled) event.preventDefault();
   };
 
-  // A link's navigation is ours to time, so the browser's is cancelled.
+  // A link's navigation is ours to time, so the browser's is cancelled. The
+  // click the router dispatches to open it bubbles through here too, and that
+  // one is let through.
   const onClick = (event: MouseEvent): void => {
     if (linkBehavior() === "none" || !manager().isLink(options.key)) return;
-    event.preventDefault();
+    if (!isOpeningLink()) event.preventDefault();
+  };
+
+  const linkData = (name: string): (() => unknown) => {
+    return () => {
+      if (linkBehavior() === "none") return undefined;
+      const props = manager().getItemProps(options.key);
+      if (props?.href === undefined) return undefined;
+      if (name === "href") return navigate.href(props.href as string);
+      return props[name];
+    };
   };
 
   const itemProps = mergeProps(
     focusProps,
-    { "data-key": String(options.key), id: itemId },
+    {
+      "data-key": String(options.key),
+      "data-collection": collectionId,
+      id: itemId,
+      // The native router opens a link by reading these off the element it is
+      // handed, so an item that is not an anchor carries them itself.
+      "data-href": linkData("href"),
+      "data-target": linkData("target"),
+      "data-rel": linkData("rel"),
+      "data-download": linkData("download"),
+      "data-ping": linkData("ping"),
+      "data-referrer-policy": linkData("referrerPolicy"),
+    },
     pressProps,
     longPressProps,
     { onDoubleClick, onDragStartCapture, onClick },
@@ -954,6 +1010,7 @@ export function selectableCollection(
   const navigate = router();
   const delegate = options.keyboardDelegate;
   const collectionId = id();
+  collectionIds.set(options.selectionManager, collectionId);
 
   const manager = (): SelectionManager => options.selectionManager();
   const virtualFocus = (): boolean => access(options.shouldUseVirtualFocus) === true;

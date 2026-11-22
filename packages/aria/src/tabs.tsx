@@ -45,7 +45,11 @@ import {
 } from "./collections.ts";
 import { focusableWalker } from "./focus.ts";
 import { focusRing } from "./focus.ts";
+import { presence } from "./presence.ts";
+import { SelectionIndicatorProvider } from "./selection-indicator.tsx";
+import { SharedElementTransition } from "./shared-element-transition.tsx";
 import { hover } from "./interactions/hover.ts";
+import { router } from "./interactions/open-link.ts";
 import type { ElementRef } from "./interactions/press.ts";
 import { provideDirection, useDirection, useLocale, type ReadingDirection } from "./i18n.ts";
 import {
@@ -57,6 +61,7 @@ import {
 } from "./selection.ts";
 import {
   access,
+  callback,
   controllable,
   type DOMProps,
   filterDOMProps,
@@ -577,13 +582,15 @@ export function TabList<T>(props: TabListComponentProps<T>) {
 
   return (
     <div {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
-      <For each={() => [...tabs.state.collection()]}>
-        {(node: Node<unknown>) => {
-          const rowOwner = getOwner();
-          if (rowOwner !== null) install(rowOwner, TabNodeContext, () => node);
-          return render(node.value as T);
-        }}
-      </For>
+      <SharedElementTransition>
+        <For each={() => [...tabs.state.collection()]}>
+          {(node: Node<unknown>) => {
+            const rowOwner = getOwner();
+            if (rowOwner !== null) install(rowOwner, TabNodeContext, () => node);
+            return render(node.value as T);
+          }}
+        </For>
+      </SharedElementTransition>
     </div>
   );
 }
@@ -599,7 +606,7 @@ export interface TabComponentProps extends StyleProps {
  * enclosing {@link TabList} is rendering.
  */
 export function Tab(props: TabComponentProps) {
-  const domRef = makeRef<HTMLButtonElement>();
+  const domRef = makeRef<HTMLElement>();
   const tabs = useTabs();
   const node = useTabNode();
 
@@ -637,9 +644,33 @@ export function Tab(props: TabComponentProps) {
     },
   );
 
+  // A tab with an href is a real link, so a middle click and "copy link
+  // address" mean what they mean anywhere else. Choosing it still selects it,
+  // and the router follows it with the modifiers the press carried.
+  const href = node.props?.href;
+  if (typeof href === "string") {
+    const toHref = router().href;
+    const linkProps = mergeProps(elementProps, {
+      type: undefined,
+      href: () => (isDisabled() ? undefined : toHref(href)),
+      target: node.props?.target,
+      rel: node.props?.rel,
+      download: node.props?.download,
+    });
+    return (
+      <a {...linkProps} ref={mergeRefs(domRef.set, props.ref as RefTarget<HTMLElement>)}>
+        <SelectionIndicatorProvider isSelected={isSelected()}>
+          {props.children}
+        </SelectionIndicatorProvider>
+      </a>
+    );
+  }
+
   return (
     <button {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
-      {props.children}
+      <SelectionIndicatorProvider isSelected={isSelected()}>
+        {props.children}
+      </SelectionIndicatorProvider>
     </button>
   );
 }
@@ -648,51 +679,128 @@ export interface TabPanelComponentProps<T> extends StyleProps {
   /** What the selected tab shows. Given the selected item. */
   children: ((item: T) => Child) | Child;
   "aria-label"?: string;
+  /**
+   * Keep every tab's panel in the document, the unselected ones `hidden` and
+   * `inert`, so their state survives switching away and back.
+   */
+  shouldForceMount?: boolean;
   ref?: RefTarget<HTMLDivElement>;
 }
 
+/**
+ * A panel per tab, of which the selected one is shown.
+ *
+ * Each tab's panel is its own element, so a panel that is leaving can stay in
+ * the document, marked `data-exiting`, for as long as its exit animation runs
+ * while the new one comes in marked `data-entering`. With no animation the
+ * old panel is gone in the same tick and there is only ever one.
+ */
 export function TabPanel<T>(props: TabPanelComponentProps<T>) {
+  const tabs = useTabs();
+  return (
+    <For each={[...tabs.state.collection()]}>
+      {(node: Node<unknown>) => <OnePanel node={node} of={cells(props)} />}
+    </For>
+  );
+}
+
+/** Wait out the enter animations a stylesheet started on `element`. */
+function afterEnterAnimations(element: Element, done: () => void): () => void {
+  let cancelled = false;
+  const frame = requestAnimationFrame(() => {
+    const source = element as Element & { getAnimations?: () => Animation[] };
+    const running = typeof source.getAnimations === "function" ? source.getAnimations() : [];
+    let left = running.length;
+    if (left === 0) {
+      if (!cancelled) done();
+      return;
+    }
+    // Finished or cancelled, each one counts once.
+    const settle = (): void => {
+      left--;
+      if (left === 0 && !cancelled) done();
+    };
+    for (const animation of running) {
+      animation.addEventListener("finish", settle, { once: true });
+      animation.addEventListener("cancel", settle, { once: true });
+    }
+  });
+  return () => {
+    cancelled = true;
+    cancelAnimationFrame(frame);
+  };
+}
+
+function OnePanel<T>(panel: { node: Node<unknown>; of: Incoming<TabPanelComponentProps<T>> }) {
+  const props = panel.of;
+  const key = panel.node.key;
   const domRef = makeRef<HTMLDivElement>();
   const tabs = useTabs();
+
+  const isSelected = (): boolean => tabs.state.selectedKey() === key;
+  const isMounted = (): boolean => isSelected() || props.shouldForceMount?.() === true;
+  const gate = presence({ isOpen: isSelected, ref: domRef });
+  const [isEntering, setEntering] = createSignal(false);
+
+  if (!isServer) {
+    createEffect(
+      () => [isSelected(), domRef()] as const,
+      ([selected, element]) => {
+        if (!selected || element === null) return undefined;
+        setEntering(true);
+        return afterEnterAnimations(element, () => setEntering(false));
+      },
+    );
+  }
 
   const { tabPanelProps } = tabPanel(
     {
       ref: domRef,
       baseId: tabs.baseId,
-      "aria-label": () => props["aria-label"],
+      key,
+      "aria-label": () => props["aria-label"]?.(),
     },
     tabs.state,
   );
+  const { focusProps, isFocused, isFocusVisible } = focusRing();
 
   const elementProps = mergeProps(
     tabPanelProps,
-    filterDOMProps(fromProps(cells(props)), { global: true }),
-    styleProps(cells(props)),
+    focusProps,
+    filterDOMProps(fromProps(props), { global: true }),
+    styleProps(props),
     {
-      "data-state": "active",
+      // Kept for its state but not shown, and nothing in it reachable.
+      hidden: () => !isSelected() && !gate.isExiting(),
+      inert: () => !isSelected(),
+      "data-inert": () => (isSelected() ? undefined : "true"),
+      "data-state": () => (isSelected() ? "active" : "inactive"),
       "data-orientation": tabs.orientation,
-      "data-testid": () => props["data-testid"],
+      "data-focused": isFocused,
+      "data-focus-visible": isFocusVisible,
+      "data-entering": isEntering,
+      "data-exiting": gate.isExiting,
+      "data-testid": () => props["data-testid"]?.(),
     },
   );
 
-  // The children are a Block, and a Block that closes over the selected item
-  // has to be REBUILT when the selection changes rather than re-read. `Show`
-  // keyed on the selected key is what rebuilds it, and only then: the panel
-  // is one element throughout, and only its contents are swapped.
-  const renderPanel = props.children as unknown as (item: T | undefined) => Child;
+  // Either a render function, which `callback` hands back as it is, or the
+  // content itself, which it reads out of its Cell.
+  const renderPanel = (item: T | undefined): Child => {
+    const content = callback(
+      props.children as unknown as MaybeAccessor<((item: T | undefined) => Child) | undefined>,
+    ) as unknown;
+    return typeof content === "function"
+      ? (content as (item: T | undefined) => Child)(item)
+      : (content as Child);
+  };
 
   return (
-    <div {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
-      <Show when={tabs.state.selectedKey()} keyed>
-        {() => {
-          // The keyed `Show` supplies the selected KEY, and the panel wants the
-          // ITEM. Reading it untracked keeps the rebuild governed by the key
-          // alone, so an item mutated in place does not discard the panel.
-          const selected = untrack(() => tabs.state.selectedItem());
-          return renderPanel(selected === null ? undefined : (selected.value as T));
-        }}
-      </Show>
-    </div>
+    <Show when={isMounted() || gate.isPresent()}>
+      <div {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
+        {renderPanel(panel.node.value as T)}
+      </div>
+    </Show>
   );
 }
 

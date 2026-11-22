@@ -30,6 +30,67 @@ describe("parseColor", () => {
   });
 });
 
+describe("parseColor refuses a colour function it cannot read", () => {
+  test("a channel that is not a number throws", () => {
+    expect(() => parseColor("rgb(a, b, c)")).toThrow(RangeError);
+    expect(() => parseColor("rgba(0, 0, 0, abc)")).toThrow(RangeError);
+    expect(() => parseColor("rgb(12px, 0, 0)")).toThrow(RangeError);
+    expect(() => parseColor("hsl(abc, 10%, 10%)")).toThrow(RangeError);
+    expect(() => parseColor("hsb(0, x%, 10%)")).toThrow(RangeError);
+  });
+
+  test("an empty channel throws rather than reading as zero", () => {
+    expect(() => parseColor("rgb(, , )")).toThrow(RangeError);
+    expect(() => parseColor("rgb(255, , 0)")).toThrow(RangeError);
+  });
+
+  test("more channels than a colour has throws", () => {
+    expect(() => parseColor("rgba(1, 2, 3, 0.5, 9)")).toThrow(RangeError);
+  });
+
+  test("a number out of range is clamped, not refused", () => {
+    expect(parseColor("rgba(300, -10, 0, 4)").toString("rgba")).toBe("rgba(255, 0, 0, 1)");
+  });
+});
+
+describe("naming a colour", () => {
+  test("the name says lightness, chroma and hue", () => {
+    expect(parseColor("hsl(30, 0%, 22.5%)").getColorName("en-US")).toBe("dark gray");
+    expect(parseColor("hsl(30, 50%, 100%)").getColorName("en-US")).toBe("white");
+    expect(parseColor("hsl(30, 100%, 0%)").getColorName("en-US")).toBe("black");
+    expect(parseColor("#E78B8B").getColorName("en-US")).toBe("light red");
+    expect(parseColor("#E7E7B8").getColorName("en-US")).toBe("very light pale yellow");
+    expect(parseColor("hsl(30, 39%, 25%)").getColorName("en-US")).toBe("dark grayish brown");
+    expect(parseColor("hsl(30, 100%, 50%)").getColorName("en-US")).toBe("vibrant orange");
+    expect(parseColor("hsb(200, 60%, 62%)").getColorName("en-US")).toBe("grayish cyan blue");
+    expect(parseColor("#0000FF").getColorName("en-US")).toBe("dark vibrant blue");
+    expect(parseColor("#808000").getColorName("en-US")).toBe("yellow green");
+    expect(parseColor("#9932cc").getColorName("en-US")).toBe("dark vibrant purple magenta");
+    expect(parseColor("#cd853f").getColorName("en-US")).toBe("brown");
+  });
+
+  test("a translucent colour says how transparent it is", () => {
+    expect(parseColor("hsba(0, 100%, 100%, 0.2)").getColorName("en-US")).toBe(
+      "vibrant red, 80% transparent",
+    );
+  });
+
+  test("the hue alone has a name too", () => {
+    expect(parseColor("hsl(200, 100%, 50%)").getHueName("en-US")).toBe("cyan blue");
+    expect(parseColor("#808080").getHueName("en-US")).toBe("gray");
+  });
+
+  test("names are in the locale asked for", () => {
+    expect(parseColor("#ff0000").getColorName("de-DE")).toBe("lebhaftes rot");
+    expect(parseColor("#ff0000").getChannelName("hue", "de-DE")).toBe("Farbton");
+    expect(parseColor("#ff0000").getChannelName("saturation", "es-ES")).toBe("Saturación");
+  });
+
+  test("a channel name with no locale given is English", () => {
+    expect(parseColor("#ff0000").getChannelName("brightness")).toBe("Brightness");
+  });
+});
+
 describe("converting", () => {
   test("rgb and hsl are each other's inverse", () => {
     const rgb = new RGBColor(64, 128, 192);

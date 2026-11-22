@@ -157,6 +157,14 @@ export interface FocusWithinResult {
  */
 export function focusWithin(options: FocusWithinOptions = {}): FocusWithinResult {
   const [isFocusWithin, setIsFocusWithin] = createSignal(false);
+  // What the handlers test. The signal is for readers: a write to it lands at
+  // the next flush, and a handler that passes focus on to a child sends a
+  // second arrival before then, which the signal would report as the first.
+  let within = false;
+  const setWithin = (next: boolean): void => {
+    within = next;
+    setIsFocusWithin(next);
+  };
   const listeners = globalListeners();
 
   const onBlur = (event: FocusEvent): void => {
@@ -165,9 +173,9 @@ export function focusWithin(options: FocusWithinOptions = {}): FocusWithinResult
 
     // Focus moving between two children is not leaving. `relatedTarget` is
     // where it is going.
-    if (!isFocusWithin() || contains(currentTarget, event.relatedTarget as Element | null)) return;
+    if (!within || contains(currentTarget, event.relatedTarget as Element | null)) return;
 
-    setIsFocusWithin(false);
+    setWithin(false);
     listeners.removeAll();
     options.onBlurWithin?.(event);
     options.onFocusWithinChange?.(false);
@@ -179,11 +187,11 @@ export function focusWithin(options: FocusWithinOptions = {}): FocusWithinResult
 
     const target = targetElement(event);
     const doc = ownerDocument(target);
-    if (isFocusWithin() || activeElement(doc) !== target) return;
+    if (within || activeElement(doc) !== target) return;
 
+    setWithin(true);
     options.onFocusWithin?.(event);
     options.onFocusWithinChange?.(true);
-    setIsFocusWithin(true);
 
     // No blur fires when the focused element is removed. A focus landing
     // outside is the evidence that it left.
@@ -192,7 +200,7 @@ export function focusWithin(options: FocusWithinOptions = {}): FocusWithinResult
       "focus",
       (moved: Event) => {
         const next = targetElement(moved);
-        if (!isFocusWithin() || contains(currentTarget, next)) return;
+        if (!within || contains(currentTarget, next)) return;
         const synthetic = new FocusEvent("blur", { relatedTarget: next });
         Object.defineProperty(synthetic, "target", { value: currentTarget });
         Object.defineProperty(synthetic, "currentTarget", { value: currentTarget });

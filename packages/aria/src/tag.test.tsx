@@ -2,12 +2,15 @@ import { describe, expect, test } from "bun:test";
 import { flush, createSignal } from "@barqjs/core";
 import { accessibleName, expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
 import type { Key } from "./collections.ts";
+import { provideLocale } from "./i18n.ts";
 import { Tag, TagGroup } from "./tag.tsx";
+import { SelectionIndicator } from "./selection-indicator.tsx";
 
 interface Filter {
   id: string;
   name: string;
   isDisabled?: boolean;
+  href?: string;
 }
 
 const FILTERS: Filter[] = [
@@ -186,5 +189,120 @@ describe("TagGroup", () => {
   test("has no ARIA violations", () => {
     const { container } = render(() => <Filters selectionMode="multiple" onRemove={() => {}} />);
     expectNoAriaViolations(container);
+  });
+});
+
+describe("removing", () => {
+  test("the remove button removes its own tag, not the selection around it", () => {
+    const removed: string[][] = [];
+    render(() => (
+      <Filters selectionMode="multiple" onRemove={(keys) => removed.push([...keys].map(String))} />
+    ));
+
+    user.click(tags()[0] as HTMLElement);
+    user.click(tags()[1] as HTMLElement);
+    flush();
+    user.click(screen.getAllByRole("button")[1] as HTMLElement);
+    flush();
+
+    expect(removed).toEqual([["madrid"]]);
+  });
+
+  test("a keyboard user is told Delete removes the tag", () => {
+    render(() => <Filters onRemove={() => {}} />);
+
+    user.focus(tags()[0] as HTMLElement);
+    user.keyDown("ArrowRight");
+    flush();
+
+    const described = tags()[1]?.getAttribute("aria-describedby");
+    expect(described, "nothing says how to remove a tag").toBeTruthy();
+    expect(document.getElementById(described as string)?.textContent).toBe(
+      "Press Delete to remove tag.",
+    );
+  });
+
+  test("the labels are in the reader's language", () => {
+    function German() {
+      provideLocale("de-DE");
+      return <Filters onRemove={() => {}} />;
+    }
+    render(() => <German />);
+
+    expect(accessibleName(screen.getAllByRole("button")[0] as HTMLElement)).toBe(
+      "Entfernen Barcelona",
+    );
+  });
+});
+
+describe("acting on a tag", () => {
+  test("pressing a tag calls onAction with its key", () => {
+    const acted: Key[] = [];
+    render(() => (
+      <TagGroup label="Cities" items={FILTERS} onAction={(key: Key) => acted.push(key)}>
+        {(filter: Filter) => <Tag>{filter.name}</Tag>}
+      </TagGroup>
+    ));
+
+    user.click(tags()[2] as HTMLElement);
+    flush();
+    expect(acted).toEqual(["seville"]);
+  });
+
+  test("a tag with an href is a link that is followed", () => {
+    const seen: { href: string | null; prevented: boolean }[] = [];
+    const listener = (event: Event): void => {
+      if (event.target instanceof HTMLAnchorElement) {
+        seen.push({ href: event.target.getAttribute("href"), prevented: event.defaultPrevented });
+      }
+    };
+    document.addEventListener("click", listener);
+    try {
+      render(() => (
+        <TagGroup label="Links" items={[{ id: "docs", name: "Docs", href: "/docs" }]}>
+          {(filter: Filter) => <Tag>{filter.name}</Tag>}
+        </TagGroup>
+      ));
+      expect(tags()[0]?.getAttribute("data-href")).toBe("/docs");
+
+      user.click(tags()[0] as HTMLElement);
+      flush();
+      expect(seen).toEqual([{ href: "/docs", prevented: false }]);
+    } finally {
+      document.removeEventListener("click", listener);
+    }
+  });
+
+  test("a tag says whether it can be removed", () => {
+    render(() => <Filters onRemove={() => {}} />);
+    expect(tags()[0]?.hasAttribute("data-allows-removing")).toBe(true);
+  });
+});
+
+describe("a selection indicator", () => {
+  test("is shown in the selected tags only", () => {
+    render(() => (
+      <TagGroup
+        label="Cities"
+        items={FILTERS}
+        selectionMode="single"
+        defaultSelectedKeys={["madrid"]}
+      >
+        {(filter: Filter) => (
+          <Tag>
+            {filter.name}
+            <SelectionIndicator data-testid="indicator" />
+          </Tag>
+        )}
+      </TagGroup>
+    ));
+    const shown = (role: string): (string | null)[] =>
+      screen
+        .queryAllByTestId("indicator")
+        .map(
+          (element: Element) =>
+            element.closest(`[role="${role}"]`)?.getAttribute("data-key") ?? null,
+        );
+    expect(shown("row")).toEqual(["madrid"]);
   });
 });

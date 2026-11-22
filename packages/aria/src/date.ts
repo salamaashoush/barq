@@ -83,6 +83,10 @@ function fromEpochDay(epochDay: number): [number, number, number] {
   return [month <= 2 ? year + 1 : year, month, day];
 }
 
+function within(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
 function pad(value: number, width: number): string {
   return String(Math.abs(value)).padStart(width, "0");
 }
@@ -216,10 +220,10 @@ export class Time {
   readonly millisecond: number;
 
   constructor(hour = 0, minute = 0, second = 0, millisecond = 0) {
-    this.hour = hour;
-    this.minute = minute;
-    this.second = second;
-    this.millisecond = millisecond;
+    this.hour = within(hour, 0, 23);
+    this.minute = within(minute, 0, 59);
+    this.second = within(second, 0, 59);
+    this.millisecond = within(millisecond, 0, 999);
   }
 
   set(fields: Partial<Record<TimeUnit, number>>): Time {
@@ -376,20 +380,38 @@ export type DateValue = CalendarDate | CalendarDateTime;
 const DATE_PATTERN = /^(-?\d{4,})-(\d{2})-(\d{2})$/;
 const TIME_PATTERN = /^(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/;
 
-/** An ISO date, or a throw naming what was given. */
+/** A field of a parsed string, refused when it names something that does not exist. */
+function checked(text: string, min: number, max: number, value: string, kind: string): number {
+  const number = Number(text);
+  if (number < min || number > max) {
+    throw new RangeError(`Not an ISO 8601 ${kind}: ${JSON.stringify(value)}`);
+  }
+  return number;
+}
+
+/**
+ * An ISO date, or a throw naming what was given.
+ *
+ * The 31st of February is refused rather than read as the 3rd of March: a
+ * string that names a day that does not exist is a mistake somewhere, and
+ * rolling it over hides the mistake inside a plausible date.
+ */
 export function parseDate(value: string): CalendarDate {
   const match = DATE_PATTERN.exec(value);
   if (match === null) throw new RangeError(`Not an ISO 8601 date: ${JSON.stringify(value)}`);
-  return new CalendarDate(Number(match[1]), Number(match[2]), Number(match[3]));
+  const year = Number(match[1]);
+  const month = checked(match[2] as string, 1, 12, value, "date");
+  const day = checked(match[3] as string, 1, getDaysInMonth(year, month), value, "date");
+  return new CalendarDate(year, month, day);
 }
 
 export function parseTime(value: string): Time {
   const match = TIME_PATTERN.exec(value);
   if (match === null) throw new RangeError(`Not an ISO 8601 time: ${JSON.stringify(value)}`);
   return new Time(
-    Number(match[1]),
-    Number(match[2]),
-    Number(match[3] ?? 0),
+    checked(match[1] as string, 0, 23, value, "time"),
+    checked(match[2] as string, 0, 59, value, "time"),
+    checked(match[3] ?? "0", 0, 59, value, "time"),
     Number((match[4] ?? "0").padEnd(3, "0")),
   );
 }

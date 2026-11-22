@@ -22,7 +22,7 @@
  * ```
  */
 
-import { type Accessor, createMemo, createRenderEffect, createSignal } from "@barqjs/core";
+import { type Accessor, createMemo, createRenderEffect, createSignal, isDev } from "@barqjs/core";
 import { access, callback, controllable, type MaybeAccessor } from "./utils.ts";
 
 /** What identifies an item. */
@@ -181,6 +181,43 @@ export class ListCollection<T> implements Collection<T> {
   }
 }
 
+const keyOrders = new WeakMap<Collection<unknown>, Map<Key, number>>();
+
+function keyPositions(collection: Collection<unknown>): Map<Key, number> {
+  let positions = keyOrders.get(collection);
+  if (positions === undefined) {
+    positions = new Map();
+    for (const key of collection.getKeys()) positions.set(key, positions.size);
+    keyOrders.set(collection, positions);
+  }
+  return positions;
+}
+
+const itemCounts = new WeakMap<Collection<unknown>, number>();
+
+/**
+ * How many items a collection holds, sections and separators left out.
+ *
+ * `size` counts a section as one of its entries, which is right for "is it
+ * empty" and wrong for `aria-setsize`: a list of two sections of three items
+ * is a set of six, not eight.
+ */
+export function getItemCount(collection: Collection<unknown>): number {
+  const known = itemCounts.get(collection);
+  if (known !== undefined) return known;
+
+  let count = 0;
+  const visit = (nodes: Iterable<Node<unknown>>): void => {
+    for (const node of nodes) {
+      if (node.type === "section") visit(collection.getChildren(node.key));
+      else if (node.type === "item") count++;
+    }
+  };
+  visit(collection);
+  itemCounts.set(collection, count);
+  return count;
+}
+
 // ---------------------------------------------------------------------------
 // Building a collection from items
 // ---------------------------------------------------------------------------
@@ -235,6 +272,9 @@ export function buildCollection<T>(
   const getChildren = callback(accessors.getChildren) ?? defaultChildren;
   const getType = callback(accessors.getType);
   const getProps = callback(accessors.getProps);
+  // Two items under one key share one entry in the key map, so the second
+  // silently replaces the first and the linked order skips or loops.
+  const seen = isDev ? new Set<Key>() : null;
 
   const build = (source: Iterable<T>, level: number, parentKey: Key | undefined): Node<T>[] => {
     const nodes: Node<T>[] = [];
@@ -242,6 +282,14 @@ export function buildCollection<T>(
 
     for (const item of source) {
       const key = getKey(item, index);
+      if (seen !== null) {
+        if (seen.has(key)) {
+          console.warn(
+            `Duplicate key "${String(key)}" in a collection. Every item needs a key of its own.`,
+          );
+        }
+        seen.add(key);
+      }
       const children = getChildren(item);
       const childNodes = children === undefined ? [] : build(children, level + 1, key);
       const props =
@@ -599,12 +647,47 @@ export class SelectionManager {
     return this.#state.disabledBehavior();
   }
 
+  /**
+   * Which of two nodes comes first in the document.
+   *
+   * Siblings compare by index. Otherwise each is walked up to the children of
+   * the nearest ancestor they share, and those two compare; a node that is
+   * the other's ancestor comes first. Comparing parents alone ties a row with
+   * its uncle in a tree, and the selection's first key then depends on the
+   * order the set was filled in.
+   */
   #order(a: Node<unknown>, b: Node<unknown>): number {
     if (a.parentKey === b.parentKey) return a.index - b.index;
-    // Different parents: compare the sections instead.
-    const parentA = a.parentKey === undefined ? null : this.collection.getItem(a.parentKey);
-    const parentB = b.parentKey === undefined ? null : this.collection.getItem(b.parentKey);
-    return (parentA?.index ?? a.index) - (parentB?.index ?? b.index);
+
+    // The key order is document order, where the collection lists the keys
+    // at all. An index alone cannot say it: a list numbers its items across
+    // sections and its sections among siblings, so the two do not compare.
+    const positions = keyPositions(this.collection);
+    const positionA = positions.get(a.key);
+    const positionB = positions.get(b.key);
+    if (positionA !== undefined && positionB !== undefined) return positionA - positionB;
+
+    const lineage = (node: Node<unknown>): Node<unknown>[] => {
+      const chain = [node];
+      let step = node;
+      while (step.parentKey !== undefined) {
+        const parent = this.collection.getItem(step.parentKey);
+        if (parent === null) break;
+        chain.unshift(parent);
+        step = parent;
+      }
+      return chain;
+    };
+
+    const ofA = lineage(a);
+    const ofB = lineage(b);
+    const depth = Math.min(ofA.length, ofB.length);
+    for (let level = 0; level < depth; level++) {
+      const x = ofA[level] as Node<unknown>;
+      const y = ofB[level] as Node<unknown>;
+      if (x.key !== y.key) return x.index - y.index;
+    }
+    return ofA.length - ofB.length;
   }
 
   extendSelection(to: Key): void {

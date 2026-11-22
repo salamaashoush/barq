@@ -5,6 +5,7 @@ import {
   expectNoAriaViolations,
   render,
   screen,
+  tick,
   user,
 } from "@barqjs/testing";
 import { Button } from "./button.tsx";
@@ -547,4 +548,196 @@ describe("a select validates NATIVELY, not only in aria", () => {
   // The wiring is `hiddenSelect`'s `focus: () => triggerRef.focus()`, and the
   // reason it exists is that focusing a clipped element looks to the user like
   // the submit did nothing.
+});
+
+describe("native validation, once the value is fixed", () => {
+  test("a required text field's error goes once a value is typed and committed", () => {
+    render(() => (
+      <Form aria-label="Account" validationBehavior="native">
+        <TextField label="Email" name="email" isRequired />
+      </Form>
+    ));
+    screen.getByRole<HTMLFormElement>("form").checkValidity();
+    flush();
+    expect(field().getAttribute("aria-invalid")).toBe("true");
+
+    type("me@example.com");
+    field().dispatchEvent(new Event("change", { bubbles: true }));
+    flush();
+
+    expect(field().checkValidity()).toBe(true);
+    expect(field().hasAttribute("aria-invalid")).toBe(false);
+  });
+
+  test("a required checkbox's error goes once it is checked", () => {
+    render(() => (
+      <Form aria-label="Terms" validationBehavior="native">
+        <Checkbox name="agree" isRequired>
+          I agree
+        </Checkbox>
+      </Form>
+    ));
+    const box = screen.getByRole<HTMLInputElement>("checkbox");
+    screen.getByRole<HTMLFormElement>("form").checkValidity();
+    flush();
+    expect(box.getAttribute("aria-invalid")).toBe("true");
+
+    user.click(box);
+    flush();
+
+    expect(box.hasAttribute("aria-invalid")).toBe(false);
+  });
+
+  test("a validate error goes once the value it was about has changed", async () => {
+    render(() => (
+      <Form aria-label="Terms" validationBehavior="native">
+        <Checkbox name="agree" validate={(on: boolean) => (on ? null : "You have to agree")}>
+          I agree
+        </Checkbox>
+      </Form>
+    ));
+    const box = screen.getByRole<HTMLInputElement>("checkbox");
+    screen.getByRole<HTMLFormElement>("form").checkValidity();
+    flush();
+    expect(box.getAttribute("aria-invalid")).toBe("true");
+
+    user.click(box);
+    await tick();
+    flush();
+
+    expect(box.checked).toBe(true);
+    expect(box.hasAttribute("aria-invalid")).toBe(false);
+  });
+
+  test("a refused submit focuses the first invalid field inside a fieldset", () => {
+    render(() => (
+      <Form aria-label="Account" validationBehavior="native">
+        <fieldset>
+          <TextField label="Email" name="email" isRequired />
+        </fieldset>
+      </Form>
+    ));
+
+    screen.getByRole<HTMLFormElement>("form").checkValidity();
+    flush();
+
+    expect(document.activeElement).toBe(field());
+  });
+
+  test("only the first invalid field takes focus", () => {
+    render(() => (
+      <Form aria-label="Account" validationBehavior="native">
+        <TextField label="Name" name="name" isRequired />
+        <TextField label="Email" name="email" isRequired />
+      </Form>
+    ));
+
+    screen.getByRole<HTMLFormElement>("form").checkValidity();
+    flush();
+
+    expect(document.activeElement).toBe(screen.getAllByRole("textbox")[0] as HTMLElement);
+  });
+});
+
+describe("server errors, and a blur", () => {
+  test("tabbing through a field without editing it keeps the error", () => {
+    render(() => (
+      <Form aria-label="Account" validationErrors={{ email: "That address is already taken" }}>
+        <TextField label="Email" name="email" defaultValue="me@example.com" />
+      </Form>
+    ));
+
+    user.focus(field());
+    user.blur(field());
+
+    expect(field().getAttribute("aria-invalid")).toBe("true");
+  });
+});
+
+describe("a cancelled form reset", () => {
+  test("leaves the value and what is shown alone", () => {
+    render(() => (
+      <Form aria-label="Account" validationBehavior="native">
+        <TextField label="Name" name="name" defaultValue="salama" isRequired />
+      </Form>
+    ));
+    const form = screen.getByRole<HTMLFormElement>("form");
+    type("");
+    form.checkValidity();
+    flush();
+    expect(field().getAttribute("aria-invalid")).toBe("true");
+
+    form.addEventListener("reset", (event) => event.preventDefault(), { capture: true });
+    form.dispatchEvent(new Event("reset", { bubbles: true, cancelable: true }));
+    flush();
+
+    expect(field().value).toBe("");
+    expect(field().getAttribute("aria-invalid")).toBe("true");
+  });
+});
+
+describe("a checkbox group validates natively", () => {
+  test("the group's validate blocks the submit through its members", () => {
+    render(() => (
+      <Form aria-label="Order" validationBehavior="native">
+        <CheckboxGroup
+          label="Toppings"
+          name="toppings"
+          defaultValue={["cheese"]}
+          validate={(picked: string[]) => (picked.length < 2 ? "Pick two" : null)}
+        >
+          <GroupCheckbox value="cheese">Cheese</GroupCheckbox>
+          <GroupCheckbox value="olives">Olives</GroupCheckbox>
+        </CheckboxGroup>
+      </Form>
+    ));
+    flush();
+    const form = screen.getByRole<HTMLFormElement>("form");
+    const group = screen.getByRole("group");
+
+    expect(group.hasAttribute("aria-invalid")).toBe(false);
+    expect(form.checkValidity()).toBe(false);
+    flush();
+    expect(group.getAttribute("aria-invalid")).toBe("true");
+    expect(accessibleDescription(group)).toBe("Pick two");
+
+    user.click(screen.getByRole("checkbox", { name: "Olives" }));
+    flush();
+    expect(form.checkValidity()).toBe(true);
+  });
+
+  test("a member's own validate makes the group invalid", () => {
+    render(() => (
+      <CheckboxGroup label="Terms" name="terms">
+        <GroupCheckbox value="privacy" validate={(on: boolean) => (on ? null : "Required")}>
+          Privacy policy
+        </GroupCheckbox>
+        <GroupCheckbox value="news">Newsletter</GroupCheckbox>
+      </CheckboxGroup>
+    ));
+    flush();
+    const [privacy, news] = screen.getAllByRole("checkbox");
+
+    expect(privacy?.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.getByRole("group").getAttribute("aria-invalid")).toBe("true");
+    expect(news?.hasAttribute("aria-invalid")).toBe(false);
+
+    user.click(privacy as HTMLElement);
+    flush();
+
+    expect(privacy?.hasAttribute("aria-invalid")).toBe(false);
+    expect(screen.getByRole("group").hasAttribute("aria-invalid")).toBe(false);
+  });
+
+  test("an invalid group marks every member", () => {
+    render(() => (
+      <CheckboxGroup label="Toppings" isInvalid>
+        <GroupCheckbox value="cheese">Cheese</GroupCheckbox>
+        <GroupCheckbox value="olives">Olives</GroupCheckbox>
+      </CheckboxGroup>
+    ));
+    for (const box of screen.getAllByRole("checkbox")) {
+      expect(box.getAttribute("aria-invalid")).toBe("true");
+    }
+  });
 });

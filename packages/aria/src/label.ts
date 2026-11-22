@@ -86,6 +86,12 @@ export interface FieldOptions extends LabelOptions {
 export interface FieldResult extends LabelResult {
   descriptionProps: DOMProps;
   errorMessageProps: DOMProps;
+  /**
+   * The description and the error, when they are rendered, without the
+   * caller's own `aria-describedby`: for the controls inside a group, which a
+   * screen reader reaches one by one without passing the group.
+   */
+  descriptionIds: Accessor<string | undefined>;
 }
 
 /**
@@ -105,22 +111,28 @@ export function field(options: FieldOptions): FieldResult {
     return resolved !== undefined && resolved !== null && resolved !== false && resolved !== "";
   };
 
-  const describedBy = (): string | undefined => {
-    const parts = [
+  const ids = (...parts: (string | undefined)[]): string | undefined => {
+    const given = parts.filter((part): part is string => part !== undefined);
+    return given.length === 0 ? undefined : given.join(" ");
+  };
+
+  const descriptionIds = (): string | undefined =>
+    ids(
       present(options.description) ? descriptionId() : undefined,
       present(options.errorMessage) && access(options.isInvalid) === true
         ? errorMessageId()
         : undefined,
-      access(options["aria-describedby"]),
-    ].filter((part): part is string => part !== undefined);
-    return parts.length === 0 ? undefined : parts.join(" ");
-  };
+    );
+
+  const describedBy = (): string | undefined =>
+    ids(descriptionIds(), access(options["aria-describedby"]));
 
   return {
     labelProps,
     fieldProps: mergeProps(fieldProps, { "aria-describedby": describedBy }),
     descriptionProps: { id: descriptionId },
     errorMessageProps: { id: errorMessageId },
+    descriptionIds,
   };
 }
 

@@ -25,7 +25,14 @@ import {
   type ValidateFunction,
   type ValidationBehavior,
 } from "./validation.ts";
-import { access, filterDOMProps, mergeProps, type DOMProps, type MaybeAccessor } from "./utils.ts";
+import {
+  access,
+  filterDOMProps,
+  id,
+  mergeProps,
+  type DOMProps,
+  type MaybeAccessor,
+} from "./utils.ts";
 
 export { toggleState } from "./button.tsx";
 export type { ToggleState, ToggleStateOptions } from "./button.tsx";
@@ -47,7 +54,9 @@ export function formReset<T>(
       const form = element?.form;
       if (form === null || form === undefined) return undefined;
 
-      const handle = (): void => onReset(access(initial) as T);
+      const handle = (event: Event): void => {
+        if (!event.defaultPrevented) onReset(access(initial) as T);
+      };
       form.addEventListener("reset", handle);
       return () => form.removeEventListener("reset", handle);
     },
@@ -65,6 +74,13 @@ export interface ToggleOptions extends FocusableOptions {
   validationBehavior?: MaybeAccessor<ValidationBehavior | undefined>;
   /** The caller's own message, which wins over anything validation found. */
   errorMessage?: MaybeAccessor<unknown>;
+  /** Help text for the control, which describes it when there is any. */
+  description?: MaybeAccessor<unknown>;
+  /**
+   * The validity to show, when it belongs to something bigger than this one
+   * control: a checkbox in a group is valid or not with its group.
+   */
+  validationState?: FormValidationState;
   /** The form value when selected. */
   value?: MaybeAccessor<string | undefined>;
   name?: MaybeAccessor<string | undefined>;
@@ -88,6 +104,10 @@ export interface ToggleOptions extends FocusableOptions {
 export interface ToggleResult {
   labelProps: DOMProps;
   inputProps: DOMProps;
+  /** For the help text, outside the label so it is not read as the name. */
+  descriptionProps: DOMProps;
+  /** For the error, outside the label for the same reason. */
+  errorMessageProps: DOMProps;
   isSelected: Accessor<boolean>;
   isPressed: Accessor<boolean>;
   isDisabled: Accessor<boolean>;
@@ -125,7 +145,21 @@ export function toggle(
     isInvalid: options.isInvalid,
     errorMessage: options.errorMessage,
     name: options.name,
+    state: options.validationState,
   });
+  const isNative = (): boolean => behavior() === "native";
+  const isRequired = (): boolean => access(options.isRequired) === true;
+
+  const descriptionId = id();
+  const errorMessageId = id();
+  const describedBy = (): string | undefined =>
+    [
+      present(access(options.description)) ? descriptionId() : undefined,
+      isInvalid() && present(errorMessage()) ? errorMessageId() : undefined,
+      access(options["aria-describedby"]),
+    ]
+      .filter((part): part is string => part !== undefined)
+      .join(" ") || undefined;
 
   formValidation(
     {
@@ -185,6 +219,7 @@ export function toggle(
         return;
       }
       options.onPress?.(event);
+      focusInput(ref);
     },
   });
 
@@ -207,6 +242,8 @@ export function toggle(
   };
 
   return {
+    descriptionProps: { id: descriptionId },
+    errorMessageProps: { id: errorMessageId },
     // The label's own click is what toggles the input, so it is left alone.
     // `mousedown` is not: without this the label takes focus, and the ring
     // appears around the text rather than the control.
@@ -215,19 +252,25 @@ export function toggle(
     }),
 
     inputProps: mergeProps(
-      filterDOMProps(options, { labelable: true }),
+      // Its own description first, then the caller's, which is the order they
+      // are read in; `describedBy` puts the caller's back at the end.
+      filterDOMProps({ ...options, "aria-describedby": undefined }, { labelable: true }),
       pressProps,
       focusableProps,
       {
         type: "checkbox",
         checked: () => state.isSelected(),
         disabled: isDisabled,
-        required: () => access(options.isRequired) === true,
+        // `required` is the browser's, and the browser refuses the submit for
+        // it, so only when the page asked for that. Otherwise the form still
+        // submits and assistive technology is told instead.
+        required: () => isRequired() && isNative(),
         name: () => access(options.name),
         form: () => access(options.form),
         value: () => access(options.value),
-        "aria-required": () => access(options.isRequired) === true || undefined,
+        "aria-required": () => (isRequired() && !isNative()) || undefined,
         "aria-invalid": () => isInvalid() || undefined,
+        "aria-describedby": describedBy,
         "aria-errormessage": () => access(options["aria-errormessage"]),
         "aria-controls": () => access(options["aria-controls"]),
         "aria-readonly": () => isReadOnly() || undefined,
@@ -244,6 +287,22 @@ export function toggle(
     isInvalid,
     errorMessage,
   };
+}
+
+function present(value: unknown): boolean {
+  return value !== undefined && value !== null && value !== false && value !== "";
+}
+
+/**
+ * Focus the input a press on its label was for.
+ *
+ * WebKit does not focus a checkbox or a radio for a mouse click, its label's
+ * included, so without this the press leaves focus wherever it was and the
+ * next Space toggles something else.
+ */
+export function focusInput(ref: ElementRef<HTMLInputElement>): void {
+  const input = access(ref) as HTMLInputElement | null;
+  if (input !== null && input.ownerDocument.activeElement !== input) input.focus();
 }
 
 /** The element a toggle's visual is drawn on. */

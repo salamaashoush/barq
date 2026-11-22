@@ -572,9 +572,13 @@ export function command(options: CommandOptions, state: CommandState): CommandRe
   const baseId = id();
   const label = (): string | undefined => access(options.label) ?? access(options["aria-label"]);
   const itemId = (key: Key): string => `${baseId()}-item-${String(key)}`;
+  // While the caret is being moved, the screen reader has to read the text and
+  // not the option: the highlight stays, and the input stops naming it until
+  // the next move into the list.
+  const [isListActive, setListActive] = createSignal(true, { ownedWrite: true });
   const activeId = (): string | undefined => {
     const key = state.highlightedKey();
-    return key === null ? undefined : itemId(key);
+    return key === null || !isListActive() ? undefined : itemId(key);
   };
 
   /** Scroll to an item, and to its group's heading when it is the group's first. */
@@ -595,6 +599,7 @@ export function command(options: CommandOptions, state: CommandState): CommandRe
 
   const step = (event: KeyboardEvent, by: 1 | -1): void => {
     event.preventDefault();
+    setListActive(true);
     if (event.metaKey) reveal(state.moveToEdge(by === 1 ? "last" : "first"));
     else if (event.altKey) reveal(state.moveToGroup(by));
     else reveal(state.move(by));
@@ -603,7 +608,12 @@ export function command(options: CommandOptions, state: CommandState): CommandRe
   const onKeyDown = (event: KeyboardEvent): void => {
     if (event.defaultPrevented || isComposing(event)) return;
 
+    const nothingHighlighted = untrack(state.highlightedKey) === null;
     switch (event.key) {
+      case "ArrowLeft":
+      case "ArrowRight":
+        setListActive(false);
+        break;
       case "n":
       case "j":
         if (state.vimBindings() && event.ctrlKey) step(event, 1);
@@ -619,12 +629,12 @@ export function command(options: CommandOptions, state: CommandState): CommandRe
         step(event, -1);
         break;
       case "Home":
-        event.preventDefault();
-        reveal(state.moveToEdge("first"));
-        break;
       case "End":
+        // Shift extends the text selection, unless the list is what is moving.
+        if (event.shiftKey && nothingHighlighted) break;
         event.preventDefault();
-        reveal(state.moveToEdge("last"));
+        setListActive(true);
+        reveal(state.moveToEdge(event.key === "Home" ? "first" : "last"));
         break;
       case "Enter":
         event.preventDefault();
@@ -638,9 +648,20 @@ export function command(options: CommandOptions, state: CommandState): CommandRe
   // A new search starts again from the top, where its best match is.
   createEffect(state.search, (now, previous) => {
     if (previous === undefined || previous === now) return;
+    setListActive(true);
     const list = untrack(() => access(options.listRef)) as HTMLElement | null;
     if (list !== null) list.scrollTop = 0;
   });
+
+  createEffect(state.highlightedKey, (now, previous) => {
+    if (previous !== undefined && previous !== now) setListActive(true);
+  });
+
+  const onPointerDown = (event: PointerEvent): void => {
+    // A touch opens the on-screen keyboard rather than placing a caret.
+    if (event.button !== 0 || event.pointerType === "touch") return;
+    setListActive(false);
+  };
 
   return {
     label,
@@ -659,6 +680,8 @@ export function command(options: CommandOptions, state: CommandState): CommandRe
       "aria-label": () =>
         access(options.label) === undefined ? access(options["aria-label"]) : undefined,
       "aria-activedescendant": activeId,
+      enterkeyhint: "go",
+      onPointerDown,
     },
     listProps: {
       "cmdk-list": "",

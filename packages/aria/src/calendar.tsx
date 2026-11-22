@@ -41,6 +41,7 @@ import {
   provide,
   Repeat,
   createSignal,
+  onSettled,
   untrack,
 } from "@barqjs/core";
 import { isServer } from "@barqjs/web";
@@ -66,7 +67,14 @@ import {
 } from "./date.ts";
 import { activeElement, contains, ownerDocument } from "./dom.ts";
 import { focusRing } from "./focus.ts";
-import { dateFormatter, useLocale } from "./i18n.ts";
+import {
+  dateFormatter,
+  listFormatter,
+  type LocalizedString,
+  StringDictionary,
+  stringFormatter,
+  useLocale,
+} from "./i18n.ts";
 import { focusSafely } from "./interactions/focusable.ts";
 import { hover } from "./interactions/hover.ts";
 import type { ElementRef } from "./interactions/press.ts";
@@ -191,6 +199,15 @@ export interface CalendarStateOptions {
   today?: MaybeAccessor<CalendarDate | undefined>;
   /** The IANA zone today is reckoned in. Defaults to the local one. */
   timeZone?: MaybeAccessor<string | undefined>;
+  /** Said by the caller, whatever the value is. */
+  isInvalid?: MaybeAccessor<boolean | undefined>;
+  /**
+   * Where the chosen day, or today, sits among several months when the
+   * calendar first shows. @default "center"
+   */
+  selectionAlignment?: MaybeAccessor<"start" | "center" | "end" | undefined>;
+  /** Every month drawn with this many week rows, however many it needs. */
+  weeksInMonth?: MaybeAccessor<number | undefined>;
   onChange?: (value: CalendarDate | null) => void;
   onFocusChange?: (date: CalendarDate) => void;
 }
@@ -212,6 +229,13 @@ export interface CalendarState {
   firstDayOfWeek: Accessor<number>;
   isDisabled: Accessor<boolean>;
   isReadOnly: Accessor<boolean>;
+  /**
+   * The value is one the calendar would not offer, or the caller said it is
+   * wrong: the chosen days say so, and point at the error message.
+   */
+  isValueInvalid: Accessor<boolean>;
+  /** The week rows every month is drawn with, when the caller fixed them. */
+  weeksInMonth: Accessor<number | undefined>;
   isSelected(date: CalendarDate): boolean;
   isCellFocused(date: CalendarDate): boolean;
   isCellDisabled(date: CalendarDate): boolean;
@@ -299,6 +323,41 @@ export function calendarState(options: CalendarStateOptions): CalendarState {
     return month.compare(last) > 0 ? month.subtract({ months: visibleMonths() - 1 }) : start;
   };
 
+  /**
+   * The first month on show when the calendar is built, placed so the focused
+   * day sits where `selectionAlignment` asks and no month beyond the bounds is
+   * shown to make room for it.
+   */
+  const aligned = (focused: CalendarDate): CalendarDate => {
+    const count = visibleMonths();
+    const month = startOfMonth(focused);
+    let before: number;
+    switch (access(options.selectionAlignment) ?? "center") {
+      case "start":
+        before = 0;
+        break;
+      case "end":
+        before = count - 1;
+        break;
+      default: {
+        const half = Math.floor(count / 2);
+        before = half > 0 && count % 2 === 0 ? half - 1 : half;
+      }
+    }
+    let start = month.subtract({ months: before });
+    const max = access(options.maxValue);
+    if (max !== undefined && max !== null && focused.compare(max) <= 0) {
+      const latest = startOfMonth(max).subtract({ months: count - 1 });
+      if (start.compare(latest) > 0) start = latest;
+    }
+    const min = access(options.minValue);
+    if (min !== undefined && min !== null && focused.compare(min) >= 0) {
+      const earliest = startOfMonth(min);
+      if (start.compare(earliest) < 0) start = earliest;
+    }
+    return start;
+  };
+
   // Where the window begins. It stays where it was until the focused day leaves
   // it or a page is asked for, which is what lets focus cross from one visible
   // month into the next without the months changing places under it.
@@ -309,7 +368,7 @@ export function calendarState(options: CalendarStateOptions): CalendarState {
       if (kept !== undefined && kept !== null) return { start: startOfMonth(kept), request };
 
       const focused = rawFocusedDate();
-      let from = startOfMonth(focused);
+      let from = aligned(focused);
       if (previous !== undefined) {
         from = request !== null && request !== previous.request ? request.start : previous.start;
       }
@@ -405,6 +464,15 @@ export function calendarState(options: CalendarStateOptions): CalendarState {
 
   const move = (duration: Duration): void => land(focusedDate().add(duration), duration);
 
+  /** A day the calendar would not let anyone choose, for whatever reason. */
+  const isRefused = (date: CalendarDate): boolean => {
+    const min = access(options.minValue);
+    const max = access(options.maxValue);
+    if (min !== undefined && min !== null && date.compare(min) < 0) return true;
+    if (max !== undefined && max !== null && date.compare(max) > 0) return true;
+    return isCellUnavailable(date) || options.isDateDisabled?.(date) === true;
+  };
+
   const selectDate = (date: CalendarDate): void => {
     if (isReadOnly() || isDisabled()) return;
     if (isCellDisabled(date) || isCellUnavailable(date)) return;
@@ -432,6 +500,12 @@ export function calendarState(options: CalendarStateOptions): CalendarState {
     firstDayOfWeek,
     isDisabled,
     isReadOnly,
+    isValueInvalid: () => {
+      if (access(options.isInvalid) === true) return true;
+      const selected = value();
+      return selected !== null && isRefused(selected);
+    },
+    weeksInMonth: () => access(options.weeksInMonth),
     isSelected: (date) => {
       const selected = value();
       return selected !== null && isSameDay(selected, date);
@@ -478,9 +552,15 @@ export function calendarState(options: CalendarStateOptions): CalendarState {
 
 export interface RangeCalendarStateOptions extends Omit<
   CalendarStateOptions,
-  "value" | "defaultValue" | "onChange"
+  "value" | "defaultValue" | "onChange" | "isDateUnavailable"
 > {
   value?: MaybeAccessor<DateRange | null | undefined>;
+  /**
+   * Days that exist but cannot be chosen. The second argument is the day the
+   * range being drawn began on, or null, so what is available can depend on
+   * it: a stay of at most a week from wherever it starts.
+   */
+  isDateUnavailable?: (date: CalendarDate, anchorDate: CalendarDate | null) => boolean;
   defaultValue?: MaybeAccessor<DateRange | null | undefined>;
   /** Nothing between the ends may be unavailable. @default false */
   allowsNonContiguousRanges?: MaybeAccessor<boolean | undefined>;
@@ -505,6 +585,13 @@ export interface RangeCalendarState extends Omit<
   /** What the range currently covers: the value, or the drag in progress. */
   highlightedRange: Accessor<DateRange | null>;
   highlightDate(date: CalendarDate): void;
+  /** A pointer is down and drawing the range. */
+  isDragging: Accessor<boolean>;
+  setDragging(isDragging: boolean): void;
+  /** Finish the range being drawn at the day it reaches now. */
+  commitSelection(): void;
+  /** Abandon the range being drawn and the value with it. */
+  clearSelection(): void;
 }
 
 function ordered(a: CalendarDate, b: CalendarDate): DateRange {
@@ -520,18 +607,50 @@ export function rangeCalendarState(options: RangeCalendarStateOptions): RangeCal
     options.onChange,
   );
 
-  const [anchorDate, writeAnchorDate] = createSignal<CalendarDate | null>(null);
+  const [anchorDate, writeAnchorSignal] = createSignal<CalendarDate | null>(null);
   const [drawn, setDrawn] = createSignal<DateRange | null>(null);
+  const [isDragging, setDragging] = createSignal(false);
+
+  // The anchor and the day the drawing reached, as plain variables too: a
+  // pointer's down and up can arrive before a signal write is published, and
+  // the up has to see what the down did.
+  let anchorNow: CalendarDate | null = null;
+  let reached: CalendarDate | null = null;
+
+  const writeAnchorDate = (date: CalendarDate | null): void => {
+    anchorNow = date;
+    reached = date;
+    writeAnchorSignal(date);
+  };
+
+  const ask = options.isDateUnavailable;
+  const visibleMonths = (): number => Math.max(1, Math.floor(access(options.visibleMonths) ?? 1));
+
+  // Centred on the range's start, unless its end would then be off the
+  // window, in which case the start goes first.
+  const alignment = (): "start" | "center" | "end" => {
+    const given = access(options.selectionAlignment);
+    if (given !== undefined) return given;
+    const range = untrack(value);
+    if (range === null) return "center";
+    const count = visibleMonths();
+    const half = Math.floor(count / 2);
+    const before = half > 0 && count % 2 === 0 ? half - 1 : half;
+    const last = endOfMonth(startOfMonth(range.start).add({ months: count - 1 - before }));
+    return range.end.compare(last) > 0 ? "start" : "center";
+  };
 
   const base = calendarState({
-    ...(options as CalendarStateOptions),
+    ...(options as Omit<CalendarStateOptions, "isDateUnavailable">),
     value: () => value()?.start ?? null,
     defaultValue: undefined,
     onChange: undefined,
+    selectionAlignment: alignment,
+    isDateUnavailable: ask === undefined ? undefined : (date) => ask(date, anchorDate()),
     onFocusChange: (date) => {
       // While a range is being drawn, moving focus IS drawing it, whichever
       // way the focus moved: a press, an arrow key or a page button.
-      if (untrack(anchorDate) !== null) highlightDate(date);
+      if (anchorNow !== null) highlightDate(date);
       options.onFocusChange?.(date);
     },
   });
@@ -562,8 +681,9 @@ export function rangeCalendarState(options: RangeCalendarStateOptions): RangeCal
   };
 
   const highlightDate = (date: CalendarDate): void => {
-    const anchor = anchorDate();
+    const anchor = anchorNow;
     if (anchor === null) return;
+    reached = date;
     setDrawn(ordered(anchor, date));
   };
 
@@ -571,7 +691,7 @@ export function rangeCalendarState(options: RangeCalendarStateOptions): RangeCal
     if (base.isReadOnly() || base.isDisabled()) return;
     if (base.isCellDisabled(date) || base.isCellUnavailable(date)) return;
 
-    const anchor = anchorDate();
+    const anchor = anchorNow;
     if (anchor === null) {
       writeAnchorDate(date);
       setDrawn({ start: date, end: date });
@@ -591,18 +711,48 @@ export function rangeCalendarState(options: RangeCalendarStateOptions): RangeCal
     setValueRaw(range);
   };
 
+  const isAvailable = (date: CalendarDate): boolean => {
+    const min = access(options.minValue);
+    const max = access(options.maxValue);
+    if (min !== undefined && min !== null && date.compare(min) < 0) return false;
+    if (max !== undefined && max !== null && date.compare(max) > 0) return false;
+    return !base.isCellUnavailable(date) && options.isDateDisabled?.(date) !== true;
+  };
+
   return {
     ...base,
     selectionMode: "range",
     value,
     setValue: (next) => setValueRaw(next),
-    anchorDate,
+    // The signal is read so a reader is told when it changes; the variable is
+    // returned so a handler sees what the event before it in the same tick did.
+    anchorDate: () => {
+      anchorDate();
+      return anchorNow;
+    },
     setAnchorDate: (date) => {
       writeAnchorDate(date);
       setDrawn(date === null ? null : { start: date, end: date });
     },
     highlightedRange,
     highlightDate,
+    isDragging,
+    setDragging: (next) => setDragging(next),
+    commitSelection: () => {
+      if (anchorNow === null) return;
+      selectDate(reached ?? base.focusedDate());
+    },
+    clearSelection: () => {
+      writeAnchorDate(null);
+      setDrawn(null);
+      setValueRaw(null);
+    },
+    isValueInvalid: () => {
+      if (access(options.isInvalid) === true) return true;
+      const range = value();
+      if (range === null || anchorDate() !== null) return false;
+      return !isAvailable(range.start) || !isAvailable(range.end);
+    },
     isSelected: (date) => {
       const range = highlightedRange();
       if (range === null) return false;
@@ -684,11 +834,20 @@ export function multipleCalendarState(
     setValueRaw([...chosen, date]);
   };
 
+  const isRefused = (date: CalendarDate): boolean => {
+    const min = access(options.minValue);
+    const max = access(options.maxValue);
+    if (min !== undefined && min !== null && date.compare(min) < 0) return true;
+    if (max !== undefined && max !== null && date.compare(max) > 0) return true;
+    return base.isCellUnavailable(date) || options.isDateDisabled?.(date) === true;
+  };
+
   return {
     ...base,
     selectionMode: "multiple",
     value,
     setValue: (next) => setValueRaw(next),
+    isValueInvalid: () => access(options.isInvalid) === true || value().some(isRefused),
     isSelected,
     selectDate,
     selectFocusedDate: () => selectDate(base.focusedDate()),
@@ -707,6 +866,75 @@ export interface CalendarOptions {
   // flag a caller could set and watch do nothing.
   "aria-label"?: MaybeAccessor<string | undefined>;
   "aria-labelledby"?: MaybeAccessor<string | undefined>;
+  /** The calendar's element, for telling a release or a blur outside it from one inside. */
+  ref?: ElementRef;
+  /**
+   * What a range half drawn becomes when the pointer is released outside the
+   * calendar or focus leaves it: finished where it reached, abandoned, or
+   * abandoned with the value cleared. @default "select"
+   */
+  commitBehavior?: MaybeAccessor<"clear" | "reset" | "select" | undefined>;
+}
+
+/** What a calendar's cells need from the calendar around them. */
+interface CalendarData {
+  errorMessageId: Accessor<string>;
+}
+
+const calendarData = new WeakMap<AnyCalendarState, CalendarData>();
+
+/** The press a range is being drawn with, shared by the cells of one calendar. */
+interface Drag {
+  /** The day the press began on, and what it did there. */
+  origin: CalendarDate | null;
+  kind: "anchor" | "boundary" | null;
+  /** A touch waits before it draws, in case it is a scroll. */
+  timer: ReturnType<typeof setTimeout> | undefined;
+  /** A cell handled the press, so the click that follows is not a second one. */
+  clickPending: boolean;
+}
+
+const drags = new WeakMap<AnyCalendarState, Drag>();
+
+function dragOf(state: AnyCalendarState): Drag {
+  let drag = drags.get(state);
+  if (drag === undefined) {
+    drag = { origin: null, kind: null, timer: undefined, clickPending: false };
+    drags.set(state, drag);
+  }
+  return drag;
+}
+
+/** A screen reader's pointer has no size; its press is a click, and handled as one. */
+function isVirtualPointer(event: PointerEvent): boolean {
+  return event.pointerType === "" || (event.width === 0 && event.height === 0);
+}
+
+/**
+ * Splits a formatted range into its two ends, at the last literal they share.
+ *
+ * The locale's own range format puts the separator where it belongs, "11–13
+ * March" or "March 11 – 13", and the message around the two ends is the
+ * locale's too.
+ */
+function formatRange(
+  format: Intl.DateTimeFormat,
+  start: CalendarDate,
+  end: CalendarDate,
+): { startDate: string; endDate: string } {
+  const parts = format.formatRangeToParts(start.toDate(), end.toDate());
+  let separator = -1;
+  for (const [at, part] of parts.entries()) {
+    if (part.source === "shared" && part.type === "literal") separator = at;
+    else if (part.source === "endRange") break;
+  }
+  let startDate = "";
+  let endDate = "";
+  for (const [at, part] of parts.entries()) {
+    if (at < separator) startDate += part.value;
+    else if (at > separator) endDate += part.value;
+  }
+  return { startDate, endDate };
 }
 
 export interface CalendarResult {
@@ -724,6 +952,51 @@ export function calendar(options: CalendarOptions, state: AnyCalendarState): Cal
   const baseId = id();
   const errorMessageId = id();
   const titleFormat = dateFormatter({ month: "long", year: "numeric" });
+  const messages = stringFormatter(CALENDAR_STRINGS);
+  const longDate = dateFormatter({
+    weekday: "long",
+    month: "long",
+    year: "numeric",
+    day: "numeric",
+  });
+  const list = listFormatter();
+  calendarData.set(state, { errorMessageId });
+
+  /** What has been chosen, in words, or nothing while a range is half drawn. */
+  const selection = (): string => {
+    const spoken = (date: CalendarDate): string => longDate().format(date.toDate());
+    if (state.selectionMode === "range") {
+      const range = state.value();
+      if (range === null || state.anchorDate() !== null) return "";
+      if (isSameDay(range.start, range.end)) {
+        return messages().format("selectedDateDescription", { date: spoken(range.start) });
+      }
+      const dateRange = messages().format(
+        "dateRange",
+        formatRange(longDate(), range.start, range.end),
+      );
+      return messages().format("selectedRangeDescription", { dateRange });
+    }
+    if (state.selectionMode === "multiple") {
+      const days = state.value();
+      if (days.length === 0) return "";
+      return messages().format("selectedDateDescription", {
+        date: list().format(days.map(spoken)),
+      });
+    }
+    const chosen = state.value();
+    return chosen === null
+      ? ""
+      : messages().format("selectedDateDescription", { date: spoken(chosen) });
+  };
+
+  const commit = (): void => {
+    if (state.selectionMode !== "range" || state.anchorDate() === null) return;
+    const behavior = access(options.commitBehavior) ?? "select";
+    if (behavior === "clear") state.clearSelection();
+    else if (behavior === "reset") state.setAnchorDate(null);
+    else state.commitSelection();
+  };
 
   const title = (): string => {
     const range = state.visibleRange();
@@ -741,6 +1014,55 @@ export function calendar(options: CalendarOptions, state: AnyCalendarState): Cal
       previous = current;
       if (!untrack(state.isFocused)) announce(current);
     });
+
+    // A choice is said once it is made, since the day pressed is announced
+    // before the press changes it.
+    let chosen = untrack(selection);
+    createEffect(selection, (current) => {
+      if (current === chosen) return;
+      chosen = current;
+      if (current !== "") announce(current, "polite", 4000);
+    });
+
+    if (state.selectionMode === "range") {
+      // A range drawn by dragging ends where the pointer is released. Released
+      // outside the calendar, or anywhere in it but on a day, the range is
+      // finished, abandoned or cleared as `commitBehavior` says.
+      onSettled(() => {
+        const view = typeof window === "undefined" ? null : window;
+        if (view === null) return undefined;
+        const release = (event: PointerEvent): void => {
+          if (isVirtualPointer(event)) return;
+          const drag = dragOf(state);
+          clearTimeout(drag.timer);
+          drag.timer = undefined;
+          drag.origin = null;
+          drag.kind = null;
+          state.setDragging(false);
+          if (state.anchorDate() === null) return;
+          const root = access(options.ref) as Element | null;
+          if (root === null || !contains(root, activeElement(ownerDocument(root)))) return;
+          const target = event.target instanceof Element ? event.target : null;
+          if (
+            target !== null &&
+            contains(root, target) &&
+            target.closest('button, [role="button"]') !== null
+          ) {
+            return;
+          }
+          commit();
+        };
+        const clicked = (): void => {
+          dragOf(state).clickPending = false;
+        };
+        view.addEventListener("pointerup", release);
+        view.addEventListener("click", clicked);
+        return () => {
+          view.removeEventListener("pointerup", release);
+          view.removeEventListener("click", clicked);
+        };
+      });
+    }
   }
 
   return {
@@ -752,14 +1074,30 @@ export function calendar(options: CalendarOptions, state: AnyCalendarState): Cal
       id: baseId,
       "aria-label": () => access(options["aria-label"]),
       "aria-labelledby": () => access(options["aria-labelledby"]),
+      // Leaving the calendar with a range half drawn finishes it, as letting
+      // go of the pointer outside it does. Focus leaving because the focused
+      // day was removed is not leaving, and is told apart a microtask later.
+      onFocusOut: (event: FocusEvent) => {
+        if (state.selectionMode !== "range") return;
+        const root = event.currentTarget as Element | null;
+        if (root === null) return;
+        const next = event.relatedTarget instanceof Element ? event.relatedTarget : null;
+        if (next !== null) {
+          if (!contains(root, next)) commit();
+          return;
+        }
+        queueMicrotask(() => {
+          if (!contains(root, activeElement(ownerDocument(root)))) commit();
+        });
+      },
     }),
     prevButtonProps: {
-      "aria-label": "Previous month",
+      "aria-label": () => messages().format("previous"),
       isDisabled: () => state.isDisabled() || state.isPreviousVisibleRangeInvalid(),
       onPress: () => state.focusPreviousPage(),
     },
     nextButtonProps: {
-      "aria-label": "Next month",
+      "aria-label": () => messages().format("next"),
       isDisabled: () => state.isDisabled() || state.isNextVisibleRangeInvalid(),
       onPress: () => state.focusNextPage(),
     },
@@ -816,7 +1154,9 @@ export function calendarGrid(
   });
 
   const weeksInMonth = (): number =>
-    access(options.fixedWeeks) === true ? 6 : getWeeksInMonth(month(), state.firstDayOfWeek());
+    access(options.fixedWeeks) === true
+      ? 6
+      : (state.weeksInMonth() ?? getWeeksInMonth(month(), state.firstDayOfWeek()));
 
   const weekDates = (week: number): CalendarDate[] => {
     const first = startOfWeek(month(), state.firstDayOfWeek());
@@ -982,6 +1322,8 @@ export function calendarCell(
     year: "numeric",
   });
   const dayFormat = dateFormatter({ day: "numeric" });
+  const messages = stringFormatter(CALENDAR_STRINGS);
+  const drag = dragOf(state);
 
   const date = (): CalendarDate => access(options.date);
 
@@ -992,7 +1334,30 @@ export function calendarCell(
   const isDisabled = (): boolean => state.isCellDisabled(date()) || isOutside();
   const isUnavailable = (): boolean => state.isCellUnavailable(date());
   const isSelectable = (): boolean => !isDisabled() && !isUnavailable();
-  const isSelected = (): boolean => state.isSelected(date()) && isSelectable();
+
+  /** This day is part of a value the calendar says is wrong. */
+  const isInvalid = (): boolean => {
+    if (!state.isValueInvalid()) return false;
+    const day = date();
+    if (state.selectionMode === "range") {
+      const range = state.highlightedRange();
+      return (
+        state.anchorDate() === null &&
+        range !== null &&
+        day.compare(range.start) >= 0 &&
+        day.compare(range.end) <= 0
+      );
+    }
+    if (state.selectionMode === "multiple") return state.value().some((one) => isSameDay(one, day));
+    const chosen = state.value();
+    return chosen !== null && isSameDay(chosen, day);
+  };
+
+  // A chosen day stays drawn as chosen while it is invalid, even when it is
+  // one that could not be chosen now: the value is what it is, and hiding it
+  // would leave the error pointing at nothing.
+  const isSelected = (): boolean =>
+    (state.isSelected(date()) && isSelectable()) || (isInvalid() && !isDisabled());
   const isFocused = (): boolean => state.isCellFocused(date()) && !isOutside();
   const isTodayCell = (): boolean => isSameDay(date(), state.today());
 
@@ -1022,10 +1387,85 @@ export function calendarCell(
   }
 
   const label = (): string => {
-    let text = labelFormat().format(date().toDate());
-    if (isTodayCell()) text = `Today, ${text}`;
-    if (isSelected()) text = `${text}, selected`;
-    return text;
+    const text = labelFormat().format(date().toDate());
+    if (isTodayCell()) {
+      return messages().format(isSelected() ? "todayDateSelected" : "todayDate", { date: text });
+    }
+    return isSelected() ? messages().format("dateSelected", { date: text }) : text;
+  };
+
+  /** A range drawn by pressing one day and releasing on another. */
+  const onPointerDown = (event: PointerEvent): void => {
+    if (state.selectionMode !== "range" || event.button !== 0 || isVirtualPointer(event)) return;
+    drag.clickPending = true;
+    // A touch keeps the pointer on the element it began on unless released,
+    // and the days it is dragged over would then never hear it.
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.hasPointerCapture?.(event.pointerId) === true) {
+      target.releasePointerCapture(event.pointerId);
+    }
+    if (!isSelectable()) return;
+    const day = date();
+    if (state.isReadOnly()) {
+      state.setFocusedDate(day);
+      return;
+    }
+    if (state.anchorDate() !== null) return;
+
+    // Pressing an end of the chosen range takes hold of it, so dragging moves
+    // that end and leaves the other where it is.
+    const range = state.highlightedRange();
+    if (range !== null && !isInvalid()) {
+      const other = isSameDay(day, range.start)
+        ? range.end
+        : isSameDay(day, range.end)
+          ? range.start
+          : null;
+      if (other !== null) {
+        state.setAnchorDate(other);
+        state.setFocusedDate(day);
+        state.setDragging(true);
+        drag.origin = day;
+        drag.kind = "boundary";
+        return;
+      }
+    }
+
+    const start = (): void => {
+      drag.timer = undefined;
+      state.setDragging(true);
+      state.selectDate(day);
+      state.setFocusedDate(day);
+      drag.origin = day;
+      drag.kind = "anchor";
+    };
+    if (event.pointerType === "touch") drag.timer = setTimeout(start, 200);
+    else start();
+  };
+
+  const onPointerUp = (event: PointerEvent): void => {
+    if (state.selectionMode !== "range" || event.button !== 0 || isVirtualPointer(event)) return;
+    drag.clickPending = true;
+    if (state.isReadOnly()) return;
+    const day = date();
+
+    // A tap quicker than the wait for a drag is a press like any other.
+    if (drag.timer !== undefined) {
+      clearTimeout(drag.timer);
+      drag.timer = undefined;
+      state.selectDate(day);
+      state.setFocusedDate(day);
+      return;
+    }
+
+    const fromHere = drag.origin !== null && isSameDay(drag.origin, day);
+    if (drag.kind === "boundary" && fromHere) {
+      // An end pressed and let go without moving starts a new range there.
+      state.setAnchorDate(day);
+    } else if (state.anchorDate() !== null && !(drag.kind === "anchor" && fromHere)) {
+      state.selectDate(day);
+      state.setFocusedDate(day);
+    }
   };
 
   return {
@@ -1042,6 +1482,7 @@ export function calendarCell(
       role: "gridcell",
       "aria-selected": () => isSelected() || undefined,
       "aria-disabled": () => (!isSelectable() ? true : undefined),
+      "aria-invalid": () => isInvalid() || undefined,
     },
     buttonProps: {
       role: "button",
@@ -1049,19 +1490,35 @@ export function calendarCell(
       // from the last week reaches the next MONTH and not a duplicate.
       "aria-hidden": () => isOutside() || undefined,
       "aria-label": label,
-      "aria-invalid": () => undefined,
+      "aria-invalid": () => isInvalid() || undefined,
+      // The error message says what is wrong with the value, so the days that
+      // make it up point at it.
+      "aria-describedby": () =>
+        isInvalid() ? calendarData.get(state)?.errorMessageId() : undefined,
       // The roving focus: one day in the Tab order, and it moves with the
       // arrows.
       tabIndex: () =>
         isOutside() ? undefined : isFocused() || isSameDay(state.focusedDate(), date()) ? 0 : -1,
-      onPointerEnter: () => {
+      onPointerEnter: (event: PointerEvent) => {
         // Drawing a range follows the pointer, so the highlight is what the
-        // user would get by releasing here.
-        if ("highlightDate" in state && state.anchorDate() !== null) {
-          state.highlightDate(date());
-        }
+        // user would get by releasing here. A touch only draws once it has
+        // waited long enough to be a drag rather than a scroll.
+        if (state.selectionMode !== "range" || state.anchorDate() === null) return;
+        if (event.pointerType === "touch" && !state.isDragging()) return;
+        if (isSelectable()) state.highlightDate(date());
+      },
+      onPointerDown,
+      onPointerUp,
+      onContextMenu: (event: MouseEvent) => {
+        // A long press on a touch screen is a drag here, not a menu.
+        if (state.selectionMode === "range") event.preventDefault();
       },
       onClick: () => {
+        // The pointer already chose; this is the click the browser sends after.
+        if (drag.clickPending) {
+          drag.clickPending = false;
+          return;
+        }
         if (isOutside() || state.isCellDisabled(date())) return;
         state.setFocusedDate(date());
         state.selectDate(date());
@@ -1119,6 +1576,12 @@ export interface CalendarComponentProps extends StyleProps {
   timeZone?: string;
   /** @default "narrow" */
   weekdayStyle?: "narrow" | "short" | "long";
+  /** Where the chosen day sits among several months when first shown. @default "center" */
+  selectionAlignment?: "start" | "center" | "end";
+  /** Every month drawn with this many week rows. */
+  weeksInMonth?: number;
+  /** Said by the caller, whatever the value is. */
+  isInvalid?: boolean;
   errorMessage?: Child;
   "aria-label"?: string;
   "aria-labelledby"?: string;
@@ -1149,6 +1612,9 @@ export function Calendar(props: CalendarComponentProps) {
     allowsDeselection: () => props.allowsDeselection,
     firstDayOfWeek: () => props.firstDayOfWeek,
     timeZone: () => props.timeZone,
+    isInvalid: () => props.isInvalid,
+    selectionAlignment: () => props.selectionAlignment,
+    weeksInMonth: () => props.weeksInMonth,
     onChange: (value) => props.onChange?.(value),
     onFocusChange: (date) => props.onFocusChange?.(date),
   });
@@ -1158,11 +1624,18 @@ export function Calendar(props: CalendarComponentProps) {
 
 export interface RangeCalendarComponentProps extends Omit<
   CalendarComponentProps,
-  "value" | "defaultValue" | "onChange"
+  "value" | "defaultValue" | "onChange" | "isDateUnavailable"
 > {
   value?: DateRange | null;
   defaultValue?: DateRange | null;
   allowsNonContiguousRanges?: boolean;
+  /** Days that cannot be chosen, told the day the range being drawn began on. */
+  isDateUnavailable?: (date: CalendarDate, anchorDate: CalendarDate | null) => boolean;
+  /**
+   * What a range half drawn becomes when the pointer is released outside the
+   * calendar or focus leaves it. @default "select"
+   */
+  commitBehavior?: "clear" | "reset" | "select";
   onChange?: (value: DateRange | null) => void;
 }
 
@@ -1181,20 +1654,29 @@ export function RangeCalendar(props: RangeCalendarComponentProps) {
     defaultFocusedValue: () => props.defaultFocusedValue,
     minValue: () => props.minValue,
     maxValue: () => props.maxValue,
-    isDateUnavailable: callback<[CalendarDate], boolean>(cells(props).isDateUnavailable),
+    isDateUnavailable: callback<[CalendarDate, CalendarDate | null], boolean>(
+      cells(props).isDateUnavailable,
+    ),
     isDateDisabled: callback<[CalendarDate], boolean>(cells(props).isDateDisabled),
     isDisabled: () => props.isDisabled,
     isReadOnly: () => props.isReadOnly,
     autoFocus: () => props.autoFocus,
     firstDayOfWeek: () => props.firstDayOfWeek,
     timeZone: () => props.timeZone,
+    isInvalid: () => props.isInvalid,
+    selectionAlignment: () => props.selectionAlignment,
+    weeksInMonth: () => props.weeksInMonth,
     allowsNonContiguousRanges: () => props.allowsNonContiguousRanges,
     onChange: (value) => props.onChange?.(value),
     onFocusChange: (date) => props.onFocusChange?.(date),
   });
 
   return (
-    <CalendarBody state={state} of={cells(props) as unknown as Incoming<CalendarComponentProps>} />
+    <CalendarBody
+      state={state}
+      of={cells(props) as unknown as Incoming<CalendarComponentProps>}
+      commitBehavior={props.commitBehavior}
+    />
   );
 }
 
@@ -1234,6 +1716,9 @@ export function MultipleCalendar(props: MultipleCalendarComponentProps) {
     autoFocus: () => props.autoFocus,
     firstDayOfWeek: () => props.firstDayOfWeek,
     timeZone: () => props.timeZone,
+    isInvalid: () => props.isInvalid,
+    selectionAlignment: () => props.selectionAlignment,
+    weeksInMonth: () => props.weeksInMonth,
     min: () => props.min,
     max: () => props.max,
     required: () => props.required,
@@ -1250,6 +1735,7 @@ interface CalendarBodyProps {
   state: AnyCalendarState;
   /** The calendar's own props, still as Cells. */
   of: Incoming<CalendarComponentProps>;
+  commitBehavior?: "clear" | "reset" | "select";
 }
 
 /** The heading, the two page buttons and the grid: what both calendars are. */
@@ -1258,12 +1744,15 @@ function CalendarBody(incoming: CalendarBodyProps) {
   const props = incoming.of;
   const prevRef = makeRef<HTMLButtonElement>();
   const nextRef = makeRef<HTMLButtonElement>();
+  const rootRef = makeRef<HTMLDivElement>();
 
   const { calendarProps, prevButtonProps, nextButtonProps, errorMessageProps, title, baseId } =
     calendar(
       {
+        ref: rootRef,
         "aria-label": () => props["aria-label"]?.(),
         "aria-labelledby": () => props["aria-labelledby"]?.(),
+        commitBehavior: () => incoming.commitBehavior,
       },
       state,
     );
@@ -1296,7 +1785,7 @@ function CalendarBody(incoming: CalendarBodyProps) {
 
   return (
     <CalendarProvider value={value}>
-      <div {...elementProps} ref={mergeRefs(props.ref?.())}>
+      <div {...elementProps} ref={mergeRefs(rootRef.set, props.ref?.())}>
         <div>
           <button {...previous.buttonProps} type="button" ref={prevRef.set}>
             <span aria-hidden="true">‹</span>
@@ -1392,3 +1881,436 @@ export function CalendarCell(props: CalendarCellComponentProps) {
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Strings
+// ---------------------------------------------------------------------------
+
+/** A message with `{name}` slots filled from the variables it is formatted with. */
+function say(template: string): LocalizedString {
+  return (variables) =>
+    template.replace(/\{(\w+)\}/g, (_, slot: string) => String(variables?.[slot] ?? ""));
+}
+
+type CalendarKey =
+  | "previous"
+  | "next"
+  | "selectedDateDescription"
+  | "selectedRangeDescription"
+  | "todayDate"
+  | "todayDateSelected"
+  | "dateSelected"
+  | "minimumDate"
+  | "maximumDate"
+  | "dateRange";
+
+const CALENDAR_STRINGS = new StringDictionary<CalendarKey>({
+  "en-US": {
+    previous: "Previous month",
+    next: "Next month",
+    selectedDateDescription: say("Selected Date: {date}"),
+    selectedRangeDescription: say("Selected Range: {dateRange}"),
+    todayDate: say("Today, {date}"),
+    todayDateSelected: say("Today, {date} selected"),
+    dateSelected: say("{date} selected"),
+    minimumDate: "First available date",
+    maximumDate: "Last available date",
+    dateRange: say("{startDate} to {endDate}"),
+  },
+  "ar-AE": {
+    previous: "السابق",
+    next: "التالي",
+    selectedDateDescription: say("تاريخ محدد: {date}"),
+    selectedRangeDescription: say("المدى الزمني المحدد: {dateRange}"),
+    todayDate: say("اليوم، {date}"),
+    todayDateSelected: say("اليوم، {date} محدد"),
+    dateSelected: say("{date} المحدد"),
+    minimumDate: "أول تاريخ متاح",
+    maximumDate: "آخر تاريخ متاح",
+    dateRange: say("{startDate} إلى {endDate}"),
+  },
+  "bg-BG": {
+    previous: "Назад",
+    next: "Напред",
+    selectedDateDescription: say("Избрана дата: {date}"),
+    selectedRangeDescription: say("Избран диапазон: {dateRange}"),
+    todayDate: say("Днес, {date}"),
+    todayDateSelected: say("Днес, {date} са избрани"),
+    dateSelected: say("Избрано е {date}"),
+    minimumDate: "Първа налична дата",
+    maximumDate: "Последна налична дата",
+    dateRange: say("{startDate} до {endDate}"),
+  },
+  "cs-CZ": {
+    previous: "Předchozí",
+    next: "Další",
+    selectedDateDescription: say("Vybrané datum: {date}"),
+    selectedRangeDescription: say("Vybrané období: {dateRange}"),
+    todayDate: say("Dnes, {date}"),
+    todayDateSelected: say("Dnes, vybráno {date}"),
+    dateSelected: say("Vybráno {date}"),
+    minimumDate: "První dostupné datum",
+    maximumDate: "Poslední dostupné datum",
+    dateRange: say("{startDate} až {endDate}"),
+  },
+  "da-DK": {
+    previous: "Forrige",
+    next: "Næste",
+    selectedDateDescription: say("Valgt dato: {date}"),
+    selectedRangeDescription: say("Valgt interval: {dateRange}"),
+    todayDate: say("I dag, {date}"),
+    todayDateSelected: say("I dag, {date} valgt"),
+    dateSelected: say("{date} valgt"),
+    minimumDate: "Første ledige dato",
+    maximumDate: "Sidste ledige dato",
+    dateRange: say("{startDate} til {endDate}"),
+  },
+  "de-DE": {
+    previous: "Zurück",
+    next: "Weiter",
+    selectedDateDescription: say("Ausgewähltes Datum: {date}"),
+    selectedRangeDescription: say("Ausgewählter Bereich: {dateRange}"),
+    todayDate: say("Heute, {date}"),
+    todayDateSelected: say("Heute, {date} ausgewählt"),
+    dateSelected: say("{date} ausgewählt"),
+    minimumDate: "Erstes verfügbares Datum",
+    maximumDate: "Letztes verfügbares Datum",
+    dateRange: say("{startDate} bis {endDate}"),
+  },
+  "el-GR": {
+    previous: "Προηγούμενο",
+    next: "Επόμενο",
+    selectedDateDescription: say("Επιλεγμένη ημερομηνία: {date}"),
+    selectedRangeDescription: say("Επιλεγμένο εύρος: {dateRange}"),
+    todayDate: say("Σήμερα, {date}"),
+    todayDateSelected: say("Σήμερα, επιλέχτηκε {date}"),
+    dateSelected: say("Επιλέχθηκε {date}"),
+    minimumDate: "Πρώτη διαθέσιμη ημερομηνία",
+    maximumDate: "Τελευταία διαθέσιμη ημερομηνία",
+    dateRange: say("{startDate} έως {endDate}"),
+  },
+  "es-ES": {
+    previous: "Anterior",
+    next: "Siguiente",
+    selectedDateDescription: say("Fecha seleccionada: {date}"),
+    selectedRangeDescription: say("Intervalo seleccionado: {dateRange}"),
+    todayDate: say("Hoy, {date}"),
+    todayDateSelected: say("Hoy, {date} seleccionado"),
+    dateSelected: say("{date} seleccionado"),
+    minimumDate: "Primera fecha disponible",
+    maximumDate: "Última fecha disponible",
+    dateRange: say("{startDate} a {endDate}"),
+  },
+  "et-EE": {
+    previous: "Eelmine",
+    next: "Järgmine",
+    selectedDateDescription: say("Valitud kuupäev: {date}"),
+    selectedRangeDescription: say("Valitud vahemik: {dateRange}"),
+    todayDate: say("Täna, {date}"),
+    todayDateSelected: say("Täna, {date} valitud"),
+    dateSelected: say("{date} valitud"),
+    minimumDate: "Esimene saadaolev kuupäev",
+    maximumDate: "Viimane saadaolev kuupäev",
+    dateRange: say("{startDate} kuni {endDate}"),
+  },
+  "fi-FI": {
+    previous: "Edellinen",
+    next: "Seuraava",
+    selectedDateDescription: say("Valittu päivämäärä: {date}"),
+    selectedRangeDescription: say("Valittu aikaväli: {dateRange}"),
+    todayDate: say("Tänään, {date}"),
+    todayDateSelected: say("Tänään, {date} valittu"),
+    dateSelected: say("{date} valittu"),
+    minimumDate: "Ensimmäinen varattavissa oleva päivämäärä",
+    maximumDate: "Viimeinen varattavissa oleva päivämäärä",
+    dateRange: say("{startDate} – {endDate}"),
+  },
+  "fr-FR": {
+    previous: "Précédent",
+    next: "Suivant",
+    selectedDateDescription: say("Date sélectionnée : {date}"),
+    selectedRangeDescription: say("Plage sélectionnée : {dateRange}"),
+    todayDate: say("Aujourd'hui, {date}"),
+    todayDateSelected: say("Aujourd’hui, {date} sélectionné"),
+    dateSelected: say("{date} sélectionné"),
+    minimumDate: "Première date disponible",
+    maximumDate: "Dernière date disponible",
+    dateRange: say("{startDate} à {endDate}"),
+  },
+  "he-IL": {
+    previous: "הקודם",
+    next: "הבא",
+    selectedDateDescription: say("תאריך נבחר: {date}"),
+    selectedRangeDescription: say("טווח נבחר: {dateRange}"),
+    todayDate: say("היום, {date}"),
+    todayDateSelected: say("היום, {date} נבחר"),
+    dateSelected: say("{date} נבחר"),
+    minimumDate: "תאריך פנוי ראשון",
+    maximumDate: "תאריך פנוי אחרון",
+    dateRange: say("{startDate} עד {endDate}"),
+  },
+  "hr-HR": {
+    previous: "Prethodni",
+    next: "Sljedeći",
+    selectedDateDescription: say("Odabrani datum: {date}"),
+    selectedRangeDescription: say("Odabrani raspon: {dateRange}"),
+    todayDate: say("Danas, {date}"),
+    todayDateSelected: say("Danas, odabran {date}"),
+    dateSelected: say("{date} odabran"),
+    minimumDate: "Prvi raspoloživi datum",
+    maximumDate: "Posljednji raspoloživi datum",
+    dateRange: say("{startDate} do {endDate}"),
+  },
+  "hu-HU": {
+    previous: "Előző",
+    next: "Következő",
+    selectedDateDescription: say("Kijelölt dátum: {date}"),
+    selectedRangeDescription: say("Kijelölt tartomány: {dateRange}"),
+    todayDate: say("Ma, {date}"),
+    todayDateSelected: say("Ma, {date} kijelölve"),
+    dateSelected: say("{date} kiválasztva"),
+    minimumDate: "Az első elérhető dátum",
+    maximumDate: "Utolsó elérhető dátum",
+    dateRange: say("{startDate}–{endDate}"),
+  },
+  "it-IT": {
+    previous: "Precedente",
+    next: "Successivo",
+    selectedDateDescription: say("Data selezionata: {date}"),
+    selectedRangeDescription: say("Intervallo selezionato: {dateRange}"),
+    todayDate: say("Oggi, {date}"),
+    todayDateSelected: say("Oggi, {date} selezionata"),
+    dateSelected: say("{date} selezionata"),
+    minimumDate: "Prima data disponibile",
+    maximumDate: "Ultima data disponibile",
+    dateRange: say("Da {startDate} a {endDate}"),
+  },
+  "ja-JP": {
+    previous: "前へ",
+    next: "次へ",
+    selectedDateDescription: say("選択した日付 : {date}"),
+    selectedRangeDescription: say("選択範囲 : {dateRange}"),
+    todayDate: say("本日、{date}"),
+    todayDateSelected: say("本日、{date} を選択"),
+    dateSelected: say("{date} を選択"),
+    minimumDate: "最初の利用可能日",
+    maximumDate: "最終利用可能日",
+    dateRange: say("{startDate} から {endDate}"),
+  },
+  "ko-KR": {
+    previous: "이전",
+    next: "다음",
+    selectedDateDescription: say("선택 일자: {date}"),
+    selectedRangeDescription: say("선택 범위: {dateRange}"),
+    todayDate: say("오늘, {date}"),
+    todayDateSelected: say("오늘, {date} 선택됨"),
+    dateSelected: say("{date} 선택됨"),
+    minimumDate: "처음으로 사용 가능한 일자",
+    maximumDate: "마지막으로 사용 가능한 일자",
+    dateRange: say("{startDate} ~ {endDate}"),
+  },
+  "lt-LT": {
+    previous: "Ankstesnis",
+    next: "Paskesnis",
+    selectedDateDescription: say("Pasirinkta data: {date}"),
+    selectedRangeDescription: say("Pasirinktas intervalas: {dateRange}"),
+    todayDate: say("Šiandien, {date}"),
+    todayDateSelected: say("Šiandien, pasirinkta {date}"),
+    dateSelected: say("Pasirinkta {date}"),
+    minimumDate: "Pirmoji galima data",
+    maximumDate: "Paskutinė galima data",
+    dateRange: say("Nuo {startDate} iki {endDate}"),
+  },
+  "lv-LV": {
+    previous: "Atpakaļ",
+    next: "Tālāk",
+    selectedDateDescription: say("Atlasītais datums: {date}"),
+    selectedRangeDescription: say("Atlasītais diapazons: {dateRange}"),
+    todayDate: say("Šodien, {date}"),
+    todayDateSelected: say("Atlasīta šodiena, {date}"),
+    dateSelected: say("Atlasīts: {date}"),
+    minimumDate: "Pirmais pieejamais datums",
+    maximumDate: "Pēdējais pieejamais datums",
+    dateRange: say("No {startDate} līdz {endDate}"),
+  },
+  "nb-NO": {
+    previous: "Forrige",
+    next: "Neste",
+    selectedDateDescription: say("Valgt dato: {date}"),
+    selectedRangeDescription: say("Valgt område: {dateRange}"),
+    todayDate: say("I dag, {date}"),
+    todayDateSelected: say("I dag, {date} valgt"),
+    dateSelected: say("{date} valgt"),
+    minimumDate: "Første tilgjengelige dato",
+    maximumDate: "Siste tilgjengelige dato",
+    dateRange: say("{startDate} til {endDate}"),
+  },
+  "nl-NL": {
+    previous: "Vorige",
+    next: "Volgende",
+    selectedDateDescription: say("Geselecteerde datum: {date}"),
+    selectedRangeDescription: say("Geselecteerd bereik: {dateRange}"),
+    todayDate: say("Vandaag, {date}"),
+    todayDateSelected: say("Vandaag, {date} geselecteerd"),
+    dateSelected: say("{date} geselecteerd"),
+    minimumDate: "Eerste beschikbare datum",
+    maximumDate: "Laatste beschikbare datum",
+    dateRange: say("{startDate} tot {endDate}"),
+  },
+  "pl-PL": {
+    previous: "Wstecz",
+    next: "Dalej",
+    selectedDateDescription: say("Wybrana data: {date}"),
+    selectedRangeDescription: say("Wybrany zakres: {dateRange}"),
+    todayDate: say("Dzisiaj, {date}"),
+    todayDateSelected: say("Dzisiaj wybrano {date}"),
+    dateSelected: say("Wybrano {date}"),
+    minimumDate: "Pierwsza dostępna data",
+    maximumDate: "Ostatnia dostępna data",
+    dateRange: say("{startDate} do {endDate}"),
+  },
+  "pt-BR": {
+    previous: "Anterior",
+    next: "Próximo",
+    selectedDateDescription: say("Data selecionada: {date}"),
+    selectedRangeDescription: say("Intervalo selecionado: {dateRange}"),
+    todayDate: say("Hoje, {date}"),
+    todayDateSelected: say("Hoje, {date} selecionado"),
+    dateSelected: say("{date} selecionado"),
+    minimumDate: "Primeira data disponível",
+    maximumDate: "Última data disponível",
+    dateRange: say("{startDate} a {endDate}"),
+  },
+  "pt-PT": {
+    previous: "Anterior",
+    next: "Próximo",
+    selectedDateDescription: say("Data selecionada: {date}"),
+    selectedRangeDescription: say("Intervalo selecionado: {dateRange}"),
+    todayDate: say("Hoje, {date}"),
+    todayDateSelected: say("Hoje, {date} selecionado"),
+    dateSelected: say("{date} selecionado"),
+    minimumDate: "Primeira data disponível",
+    maximumDate: "Última data disponível",
+    dateRange: say("{startDate} a {endDate}"),
+  },
+  "ro-RO": {
+    previous: "Înainte",
+    next: "Următorul",
+    selectedDateDescription: say("Dată selectată: {date}"),
+    selectedRangeDescription: say("Interval selectat: {dateRange}"),
+    todayDate: say("Astăzi, {date}"),
+    todayDateSelected: say("Azi, {date} selectată"),
+    dateSelected: say("{date} selectată"),
+    minimumDate: "Prima dată disponibilă",
+    maximumDate: "Ultima dată disponibilă",
+    dateRange: say("De la {startDate} până la {endDate}"),
+  },
+  "ru-RU": {
+    previous: "Назад",
+    next: "Далее",
+    selectedDateDescription: say("Выбранная дата: {date}"),
+    selectedRangeDescription: say("Выбранный диапазон: {dateRange}"),
+    todayDate: say("Сегодня, {date}"),
+    todayDateSelected: say("Сегодня, выбрано {date}"),
+    dateSelected: say("Выбрано {date}"),
+    minimumDate: "Первая доступная дата",
+    maximumDate: "Последняя доступная дата",
+    dateRange: say("С {startDate} по {endDate}"),
+  },
+  "sk-SK": {
+    previous: "Predchádzajúce",
+    next: "Nasledujúce",
+    selectedDateDescription: say("Vybratý dátum: {date}"),
+    selectedRangeDescription: say("Vybratý rozsah: {dateRange}"),
+    todayDate: say("Dnes {date}"),
+    todayDateSelected: say("Vybratý dnešný dátum {date}"),
+    dateSelected: say("Vybratý dátum {date}"),
+    minimumDate: "Prvý dostupný dátum",
+    maximumDate: "Posledný dostupný dátum",
+    dateRange: say("Od {startDate} do {endDate}"),
+  },
+  "sl-SI": {
+    previous: "Nazaj",
+    next: "Naprej",
+    selectedDateDescription: say("Izbrani datum: {date}"),
+    selectedRangeDescription: say("Izbrano območje: {dateRange}"),
+    todayDate: say("Danes, {date}"),
+    todayDateSelected: say("Danes, {date} izbrano"),
+    dateSelected: say("{date} izbrano"),
+    minimumDate: "Prvi razpoložljivi datum",
+    maximumDate: "Zadnji razpoložljivi datum",
+    dateRange: say("{startDate} do {endDate}"),
+  },
+  "sr-SP": {
+    previous: "Prethodni",
+    next: "Sledeći",
+    selectedDateDescription: say("Izabrani datum: {date}"),
+    selectedRangeDescription: say("Izabrani period: {dateRange}"),
+    todayDate: say("Danas, {date}"),
+    todayDateSelected: say("Danas, izabran {date}"),
+    dateSelected: say("{date} izabran"),
+    minimumDate: "Prvi raspoloživi datum",
+    maximumDate: "Zadnji raspoloživi datum",
+    dateRange: say("{startDate} do {endDate}"),
+  },
+  "sv-SE": {
+    previous: "Föregående",
+    next: "Nästa",
+    selectedDateDescription: say("Valt datum: {date}"),
+    selectedRangeDescription: say("Valt intervall: {dateRange}"),
+    todayDate: say("Idag, {date}"),
+    todayDateSelected: say("Idag, {date} har valts"),
+    dateSelected: say("{date} har valts"),
+    minimumDate: "Första tillgängliga datum",
+    maximumDate: "Sista tillgängliga datum",
+    dateRange: say("{startDate} till {endDate}"),
+  },
+  "tr-TR": {
+    previous: "Önceki",
+    next: "Sonraki",
+    selectedDateDescription: say("Seçilen Tarih: {date}"),
+    selectedRangeDescription: say("Seçilen Aralık: {dateRange}"),
+    todayDate: say("Bugün, {date}"),
+    todayDateSelected: say("Bugün, {date} seçildi"),
+    dateSelected: say("{date} seçildi"),
+    minimumDate: "İlk müsait tarih",
+    maximumDate: "Son müsait tarih",
+    dateRange: say("{startDate} - {endDate}"),
+  },
+  "uk-UA": {
+    previous: "Попередній",
+    next: "Наступний",
+    selectedDateDescription: say("Вибрана дата: {date}"),
+    selectedRangeDescription: say("Вибраний діапазон: {dateRange}"),
+    todayDate: say("Сьогодні, {date}"),
+    todayDateSelected: say("Сьогодні, вибрано {date}"),
+    dateSelected: say("Вибрано {date}"),
+    minimumDate: "Перша доступна дата",
+    maximumDate: "Остання доступна дата",
+    dateRange: say("{startDate} — {endDate}"),
+  },
+  "zh-CN": {
+    previous: "上一页",
+    next: "下一页",
+    selectedDateDescription: say("选定的日期：{date}"),
+    selectedRangeDescription: say("选定的范围：{dateRange}"),
+    todayDate: say("今天，即 {date}"),
+    todayDateSelected: say("已选择今天，即 {date}"),
+    dateSelected: say("已选择 {date}"),
+    minimumDate: "第一个可用日期",
+    maximumDate: "最后一个可用日期",
+    dateRange: say("{startDate} 至 {endDate}"),
+  },
+  "zh-TW": {
+    previous: "上一頁",
+    next: "下一頁",
+    selectedDateDescription: say("選定的日期：{date}"),
+    selectedRangeDescription: say("選定的範圍：{dateRange}"),
+    todayDate: say("今天，{date}"),
+    todayDateSelected: say("已選取今天，{date}"),
+    dateSelected: say("已選取 {date}"),
+    minimumDate: "第一個可用日期",
+    maximumDate: "最後一個可用日期",
+    dateRange: say("{startDate} 至 {endDate}"),
+  },
+});

@@ -8,8 +8,12 @@ import {
   tick,
   user,
 } from "@barqjs/testing";
-import type { Key } from "./collections.ts";
+import { ref as makeRef, mergeRefs } from "@barqjs/primitives/refs";
+import { Autocomplete, type AutocompleteFilter, useAutocompleteInput } from "./autocomplete.tsx";
+import { listState, type Key, type ListState } from "./collections.ts";
 import { RouterContext } from "./interactions/open-link.ts";
+import { searchField } from "./textfield.tsx";
+import { mergeProps } from "./utils.ts";
 import {
   Menu,
   MenuButton,
@@ -17,9 +21,11 @@ import {
   MenuRadioGroup,
   MenuSection,
   MenuTrigger,
+  menuItem,
   useMenuGroupHeading,
   type MenuSelectEvent,
 } from "./menu.tsx";
+import { SelectionIndicator } from "./selection-indicator.tsx";
 
 interface Action {
   id: string;
@@ -983,5 +989,250 @@ describe("a menu whose items are its children", () => {
     expect(menu.getAttribute("data-state")).toBe("open");
     expect(menu.getAttribute("data-side")).toBe("bottom");
     expect(menu.getAttribute("data-align")).toBe("start");
+  });
+});
+
+describe("what the menu as a whole says", () => {
+  test("onAction receives the value the item was built from", () => {
+    const actions: [Key, Action][] = [];
+    render(() => (
+      <Menu
+        aria-label="Actions"
+        items={ACTIONS}
+        onAction={(key: Key, action: Action) => actions.push([key, action])}
+      >
+        {(action: Action) => <MenuItem>{action.name}</MenuItem>}
+      </Menu>
+    ));
+
+    user.click(screen.getByRole("menuitem", { name: "Copy" }));
+    expect(actions).toEqual([["copy", ACTIONS[1] as Action]]);
+  });
+
+  test("shouldCloseOnSelect on the menu holds every item open", () => {
+    let closed = 0;
+    render(() => (
+      <Menu
+        aria-label="Actions"
+        items={ACTIONS}
+        shouldCloseOnSelect={false}
+        onClose={() => closed++}
+      >
+        {(action: Action) => <MenuItem>{action.name}</MenuItem>}
+      </Menu>
+    ));
+
+    user.click(screen.getByRole("menuitem", { name: "Copy" }));
+    expect(closed).toBe(0);
+  });
+
+  test("an item's own shouldCloseOnSelect wins over the menu's", () => {
+    let closed = 0;
+    render(() => (
+      <Menu
+        aria-label="Actions"
+        items={ACTIONS}
+        shouldCloseOnSelect={false}
+        onClose={() => closed++}
+      >
+        {(action: Action) => (
+          <MenuItem shouldCloseOnSelect={action.id === "copy"}>{action.name}</MenuItem>
+        )}
+      </Menu>
+    ));
+
+    user.click(screen.getByRole("menuitem", { name: "Copy" }));
+    expect(closed).toBe(1);
+  });
+
+  test("a section's shouldCloseOnSelect covers its items", () => {
+    let closed = 0;
+    const grouped = [{ id: "edit", name: "Edit", children: ACTIONS.slice(0, 2) }];
+    render(() => (
+      <Menu aria-label="Actions" items={grouped} onClose={() => closed++}>
+        {(entry: { name: string }) => (
+          <MenuSection heading={entry.name} shouldCloseOnSelect={false}>
+            {(action: Action) => <MenuItem>{action.name}</MenuItem>}
+          </MenuSection>
+        )}
+      </Menu>
+    ));
+
+    user.click(screen.getByRole("menuitem", { name: "Cut" }));
+    expect(closed).toBe(0);
+  });
+
+  test("an empty menu says why", () => {
+    render(() => (
+      <Menu aria-label="Actions" items={[] as Action[]} renderEmpty={<span>No actions</span>}>
+        {(action: Action) => <MenuItem>{action.name}</MenuItem>}
+      </Menu>
+    ));
+
+    expect(screen.getByRole("menuitem").textContent).toBe("No actions");
+    expect(screen.getByRole("menu").hasAttribute("data-empty")).toBe(true);
+  });
+
+  test("a virtualised item's set size counts items, not sections", () => {
+    const grouped = [
+      { id: "edit", name: "Edit", children: ACTIONS.slice(0, 2) },
+      { id: "more", name: "More", children: ACTIONS.slice(3) },
+    ];
+    function Item(props: { state: ListState<unknown> }) {
+      const ref = makeRef<HTMLLIElement>();
+      const { menuItemProps } = menuItem(
+        { key: "cut", ref, baseId: "menu", isVirtualized: true },
+        props.state,
+      );
+      return (
+        <li {...menuItemProps} ref={ref.set}>
+          Cut
+        </li>
+      );
+    }
+    function Harness() {
+      const state = listState({ items: () => grouped }) as unknown as ListState<unknown>;
+      return (
+        <ul role="menu" aria-label="Actions">
+          <Item state={state} />
+        </ul>
+      );
+    }
+    render(() => <Harness />);
+
+    expect(screen.getByRole("menuitem").getAttribute("aria-setsize"), "sections were counted").toBe(
+      "3",
+    );
+  });
+
+  test("items say how the menu selects", () => {
+    render(() => <Actions selectionMode="multiple" />);
+    expect(
+      screen.getByRole("menuitemcheckbox", { name: "Copy" }).getAttribute("data-selection-mode"),
+    ).toBe("multiple");
+  });
+});
+
+describe("typeahead", () => {
+  const FRUIT = [
+    { id: "apple", name: "Apple" },
+    { id: "banana", name: "Banana" },
+    { id: "blueberry", name: "Blueberry" },
+  ];
+
+  test("the same letter again steps to the next item starting with it", () => {
+    render(() => (
+      <Menu aria-label="Fruit" items={FRUIT}>
+        {(fruit: { name: string }) => <MenuItem>{fruit.name}</MenuItem>}
+      </Menu>
+    ));
+    user.focus(screen.getByRole("menu"));
+    user.keyDown("b");
+    flush();
+    user.keyDown("b");
+    flush();
+
+    expect(document.activeElement?.textContent).toBe("Blueberry");
+  });
+});
+
+describe("inside an autocomplete", () => {
+  function Search() {
+    const auto = useAutocompleteInput();
+    const domRef = makeRef<HTMLInputElement>();
+    const { inputProps, labelProps } = searchField(
+      { label: "Command", ...auto?.inputOptions },
+      domRef,
+    );
+    return (
+      <>
+        <label {...labelProps}>Command</label>
+        <input
+          {...mergeProps(inputProps, auto?.inputProps ?? {})}
+          ref={mergeRefs(domRef.set, auto?.ref)}
+        />
+      </>
+    );
+  }
+
+  const includes: AutocompleteFilter = (text, query) =>
+    text.toLowerCase().includes(query.toLowerCase());
+
+  function Commands(props: { onAction?: (key: Key) => void }) {
+    return (
+      <Autocomplete filter={includes}>
+        <Search />
+        <Menu aria-label="Commands" items={ACTIONS} onAction={props.onAction}>
+          {(action: Action) => <MenuItem>{action.name}</MenuItem>}
+        </Menu>
+      </Autocomplete>
+    );
+  }
+
+  test("the field's query narrows the items", () => {
+    render(() => <Commands />);
+    const field = screen.getByRole("searchbox");
+    user.focus(field);
+    user.type(field, "co");
+    flush();
+
+    expect(screen.getAllByRole("menuitem").map((item: Element) => item.textContent)).toEqual([
+      "Copy",
+    ]);
+  });
+
+  test("the arrows highlight an item while focus stays in the field, and Enter chooses it", async () => {
+    const actions: Key[] = [];
+    render(() => <Commands onAction={(key) => actions.push(key)} />);
+    const field = screen.getByRole("searchbox");
+    user.focus(field);
+    flush();
+
+    user.keyDown("ArrowDown");
+    flush();
+    await tick();
+    flush();
+
+    expect(document.activeElement).toBe(field);
+    const active = field.getAttribute("aria-activedescendant");
+    expect(active, "the field names no highlighted item").toBeTruthy();
+    expect(document.getElementById(active as string)?.textContent).toBe("Cut");
+
+    user.key("Enter");
+    flush();
+    expect(actions).toEqual(["cut"]);
+  });
+
+  test("the menu is named by the caller first", () => {
+    render(() => <Commands />);
+    expect(accessibleName(screen.getByRole("menu"))).toBe("Commands");
+  });
+});
+
+describe("a selection indicator", () => {
+  test("is shown in the selected item only", () => {
+    render(() => (
+      <Menu
+        aria-label="Actions"
+        items={ACTIONS}
+        selectionMode="single"
+        defaultSelectedKeys={["copy"]}
+      >
+        {(action: Action) => (
+          <MenuItem>
+            {action.name}
+            <SelectionIndicator data-testid="indicator" />
+          </MenuItem>
+        )}
+      </Menu>
+    ));
+    const shown = (role: string): (string | null)[] =>
+      screen
+        .queryAllByTestId("indicator")
+        .map(
+          (element: Element) =>
+            element.closest(`[role="${role}"]`)?.getAttribute("data-key") ?? null,
+        );
+    expect(shown("menuitemradio")).toEqual(["copy"]);
   });
 });

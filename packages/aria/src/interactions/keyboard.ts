@@ -12,6 +12,8 @@
  * would break `preventDefault`, `currentTarget` and every other live property.
  */
 
+import { contains, targetElement } from "../dom.ts";
+import { isMac } from "../platform.ts";
 import { access, type DOMProps, type MaybeAccessor } from "../utils.ts";
 
 /** A native event with the opt-out from this module's default. */
@@ -65,10 +67,174 @@ export function createEventHandler<E extends Event>(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Shortcuts
+// ---------------------------------------------------------------------------
+
+/**
+ * What a shortcut does. Returning nothing or `true` prevents the default and
+ * stops the event; `false` lets it through untouched; an object decides each.
+ */
+export type KeyboardShortcutAction = (
+  event: BaseEvent<KeyboardEvent>,
+) =>
+  | void
+  | boolean
+  | Partial<{ shouldContinuePropagation: boolean; shouldPreventDefault: boolean }>;
+
+/** Shortcut strings (`"Mod+s"`, `"Control+Shift+a"`, `"Escape"`) to what they do. */
+export type KeyboardShortcutBindings = Record<string, KeyboardShortcutAction>;
+
+export interface ParsedKeyboardShortcut {
+  shift: boolean;
+  alt: boolean;
+  ctrl: boolean;
+  meta: boolean;
+  /** Command on Apple platforms, Control everywhere else. */
+  mod: boolean;
+  key: string;
+}
+
+const MODIFIER_ORDER = ["Alt", "Control", "Meta", "Shift"] as const;
+
+const KEY_ALIASES: Record<string, string> = {
+  space: " ",
+  esc: "escape",
+  del: "delete",
+  ins: "insert",
+  left: "arrowleft",
+  right: "arrowright",
+  up: "arrowup",
+  down: "arrowdown",
+};
+
+/** `"Mod+Shift+z"` into its parts. Modifiers ignore case and order. */
+export function parseKeyboardShortcut(spec: string): ParsedKeyboardShortcut {
+  const parsed: ParsedKeyboardShortcut = {
+    shift: false,
+    alt: false,
+    ctrl: false,
+    meta: false,
+    mod: false,
+    key: "",
+  };
+  for (const part of spec.split("+")) {
+    const lower = part.toLowerCase();
+    if (lower === "shift") parsed.shift = true;
+    else if (lower === "alt") parsed.alt = true;
+    else if (lower === "control") parsed.ctrl = true;
+    else if (lower === "meta") parsed.meta = true;
+    else if (lower === "mod") parsed.mod = true;
+    else parsed.key = part;
+  }
+  if (parsed.key === "") {
+    throw new Error(
+      `Invalid keyboard shortcut: "${spec}". Must include exactly one non-modifier key (e.g. "a", "Enter", "ArrowDown"). Combine any of Shift, Alt, Control, Meta, and Mod.`,
+    );
+  }
+  return parsed;
+}
+
+function joinShortcut(modifiers: Set<string>, key: string): string {
+  const ordered = MODIFIER_ORDER.filter((name) => modifiers.has(name));
+  return ordered.length > 0 ? `${ordered.join("+")}+${key}` : key;
+}
+
+/** One spelling per shortcut, so `Shift+Mod+a` and `Mod+Shift+a` are the same key. */
+export function canonicalKeyboardShortcut(parsed: ParsedKeyboardShortcut): string {
+  const modifiers = new Set<string>();
+  if (parsed.alt) modifiers.add("Alt");
+  if (parsed.shift) modifiers.add("Shift");
+  if (parsed.ctrl) modifiers.add("Control");
+  if (parsed.meta) modifiers.add("Meta");
+  if (parsed.mod) modifiers.add(isMac() ? "Meta" : "Control");
+  const key = parsed.key.toLowerCase();
+  return joinShortcut(modifiers, KEY_ALIASES[key] ?? key);
+}
+
+/** The canonical shortcut a keydown spells. */
+export function keyboardEventToCanonicalShortcut(event: KeyboardEvent): string {
+  const modifiers = new Set<string>();
+  if (event.altKey) modifiers.add("Alt");
+  if (event.ctrlKey) modifiers.add("Control");
+  if (event.metaKey) modifiers.add("Meta");
+  if (event.shiftKey) modifiers.add("Shift");
+  return joinShortcut(modifiers, event.key.toLowerCase());
+}
+
+/**
+ * A keydown handler that runs the binding whose modifiers and key match the
+ * event exactly. Two bindings that spell the same shortcut: the later wins.
+ *
+ * ```ts
+ * const onKeyDown = createKeyboardShortcutHandler({ "Mod+s": () => save() });
+ * ```
+ */
+export function createKeyboardShortcutHandler(
+  bindings: KeyboardShortcutBindings,
+): (event: BaseEvent<KeyboardEvent>) => void {
+  const map = new Map<string, KeyboardShortcutAction>();
+  for (const [spec, action] of Object.entries(bindings)) {
+    map.set(canonicalKeyboardShortcut(parseKeyboardShortcut(spec)), action);
+  }
+
+  return (event) => {
+    const action = map.get(keyboardEventToCanonicalShortcut(event));
+    if (action === undefined) {
+      event.continuePropagation();
+      return;
+    }
+    const result = action(event);
+    const outcome =
+      result === undefined
+        ? { shouldContinuePropagation: false, shouldPreventDefault: true }
+        : typeof result === "boolean"
+          ? { shouldContinuePropagation: !result, shouldPreventDefault: result }
+          : result;
+    if (outcome.shouldPreventDefault === true) event.preventDefault();
+    if (outcome.shouldContinuePropagation === true) event.continuePropagation();
+  };
+}
+
+/**
+ * Call a handler that does not decide propagation. It still receives a
+ * `continuePropagation`, the enclosing handler's when there is one.
+ */
+function callUndecided(
+  handler: ((event: BaseEvent<KeyboardEvent>) => void) | undefined,
+  event: KeyboardEvent,
+): void {
+  if (handler === undefined) return;
+  const base = event as Partial<BaseEvent<KeyboardEvent>>;
+  if (typeof base.continuePropagation === "function") {
+    handler(event as BaseEvent<KeyboardEvent>);
+    return;
+  }
+  Object.defineProperty(event, "continuePropagation", {
+    configurable: true,
+    writable: true,
+    value: (): void => {},
+  });
+  try {
+    handler(event as BaseEvent<KeyboardEvent>);
+  } finally {
+    delete base.continuePropagation;
+  }
+}
+
 export interface KeyboardOptions {
   isDisabled?: MaybeAccessor<boolean | undefined>;
   onKeyDown?: (event: BaseEvent<KeyboardEvent>) => void;
   onKeyUp?: (event: BaseEvent<KeyboardEvent>) => void;
+  /**
+   * Keyboard shortcuts on keydown. With these, `onKeyDown` and `onKeyUp` run
+   * as they are and only the shortcuts decide whether the event goes on.
+   */
+  shortcuts?: KeyboardShortcutBindings;
+  /** Run shortcuts for a held key's repeats too. */
+  allowRepeats?: MaybeAccessor<boolean | undefined>;
+  /** Run shortcuts while an input method is composing. */
+  allowComposing?: MaybeAccessor<boolean | undefined>;
 }
 
 export interface KeyboardResult {
@@ -88,9 +254,36 @@ export interface KeyboardResult {
  * ```
  */
 export function keyboard(options: KeyboardOptions = {}): KeyboardResult {
-  const down = createEventHandler(options.onKeyDown);
-  const up = createEventHandler(options.onKeyUp);
   const enabled = (): boolean => access(options.isDisabled) !== true;
+  let down: ((event: KeyboardEvent) => void) | undefined;
+  let up: ((event: KeyboardEvent) => void) | undefined;
+
+  if (options.shortcuts === undefined) {
+    down = createEventHandler(options.onKeyDown);
+    up = createEventHandler(options.onKeyUp);
+  } else {
+    const shortcut = createKeyboardShortcutHandler(options.shortcuts);
+    const onShortcut = createEventHandler<KeyboardEvent>((event) => {
+      // A key from a portalled subtree is not this element's.
+      if (!contains(event.currentTarget as Element | null, targetElement(event))) {
+        event.continuePropagation();
+        return;
+      }
+      if (
+        (event.repeat && access(options.allowRepeats) !== true) ||
+        (event.isComposing && access(options.allowComposing) !== true)
+      ) {
+        event.continuePropagation();
+        return;
+      }
+      shortcut(event);
+    });
+    down = (event) => {
+      callUndecided(options.onKeyDown, event);
+      onShortcut?.(event);
+    };
+    up = (event) => callUndecided(options.onKeyUp, event);
+  }
 
   return {
     keyboardProps: {

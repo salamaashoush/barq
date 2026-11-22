@@ -43,6 +43,7 @@ import { focusable } from "./interactions/focusable.ts";
 import { hover } from "./interactions/hover.ts";
 import { getInteractionModality, isFocusVisible, trackModality } from "./interactions/modality.ts";
 import type { ElementRef } from "./interactions/press.ts";
+import { OverlayArrowProvider } from "./overlay-arrow.tsx";
 import {
   alignOf,
   followOpen,
@@ -61,6 +62,7 @@ import {
   fromProps,
   id,
   type MaybeAccessor,
+  clearTriggerSlot,
   mergeProps,
   provideTriggerSlot,
   type StyleProps,
@@ -600,6 +602,8 @@ export interface TooltipComponentProps extends StyleProps {
   crossOffset?: number;
   shouldFlip?: boolean;
   containerPadding?: number;
+  /** The least distance between an arrow and the tooltip's ends. @default 0 */
+  arrowBoundaryOffset?: number;
   ref?: RefTarget<HTMLDivElement>;
 }
 
@@ -611,15 +615,19 @@ export interface TooltipComponentProps extends StyleProps {
  * a flicker.
  */
 export function Tooltip(props: TooltipComponentProps) {
+  clearTriggerSlot();
   const target = usePortalTarget();
   const domRef = makeRef<HTMLDivElement>();
   const trigger = useTooltipTrigger();
   const locale = useLocale();
   const placement = (): Placement => props.placement ?? "top";
 
+  const arrowRef = makeRef<Element>();
   const position = overlayPosition({
     targetRef: trigger.triggerRef,
     overlayRef: domRef,
+    arrowRef,
+    arrowBoundaryOffset: () => props.arrowBoundaryOffset,
     placement,
     offset: () => props.offset ?? 8,
     crossOffset: () => props.crossOffset,
@@ -650,7 +658,15 @@ export function Tooltip(props: TooltipComponentProps) {
     <Show when={trigger.state.isOpen()}>
       <Portal mount={portalContainer(target)}>
         <div {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
-          {props.children}
+          <OverlayArrowProvider
+            value={{
+              placement: position.placement,
+              arrowProps: position.arrowProps,
+              ref: arrowRef.set,
+            }}
+          >
+            {props.children}
+          </OverlayArrowProvider>
         </div>
       </Portal>
     </Show>

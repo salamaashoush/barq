@@ -186,6 +186,31 @@ describe("parsing", () => {
     expect(() => parseDate("2024-3-7")).toThrow(RangeError);
     expect(() => parseTime("9:05")).toThrow(RangeError);
   });
+
+  test("a date or time that does not exist throws rather than rolling over", () => {
+    expect(() => parseDate("2026-02-31")).toThrow(RangeError);
+    expect(() => parseDate("2026-13-01")).toThrow(RangeError);
+    expect(() => parseDate("2026-04-00")).toThrow(RangeError);
+    expect(parseDate("2024-02-29").toString()).toBe("2024-02-29");
+    expect(() => parseTime("25:00")).toThrow(RangeError);
+    expect(() => parseTime("10:60")).toThrow(RangeError);
+    expect(() => parseDateTime("2026-01-01T25:99")).toThrow(RangeError);
+    expect(() => parseDateTime("2026-02-30T10:00")).toThrow(RangeError);
+  });
+});
+
+describe("a time out of range", () => {
+  test("milliseconds stop at 999 rather than spilling into a fourth digit", () => {
+    expect(new Time(10, 0, 0, 1500).millisecond).toBe(999);
+    expect(new Time(10, 0, 0, 1500).toString()).toBe("10:00:00.999");
+    expect(new CalendarDateTime(2026, 1, 1, 10, 0, 0, 1500).millisecond).toBe(999);
+    expect(new Time(10, 0, 0, 40).set({ millisecond: 4000 }).millisecond).toBe(999);
+  });
+
+  test("every field is held to its range", () => {
+    const time = new Time(24, 60, 60, -1);
+    expect([time.hour, time.minute, time.second, time.millisecond]).toEqual([23, 59, 59, 0]);
+  });
 });
 
 describe("constrainDate", () => {

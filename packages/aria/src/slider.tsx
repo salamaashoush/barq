@@ -679,19 +679,22 @@ export function sliderThumb(options: SliderThumbOptions, state: SliderState): Sl
     return flipped() ? 1 - percent : percent;
   };
 
-  const interactions: DOMProps = isDisabled()
-    ? {}
-    : mergeProps(moveProps, {
-        onMouseDown: (event: MouseEvent) => {
-          if (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey) return;
-          onDown();
-        },
-        onPointerDown: (event: PointerEvent) => {
-          if (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey) return;
-          onDown(event.pointerId);
-        },
-        onTouchStart: (event: TouchEvent) => onDown(event.changedTouches[0]?.identifier),
-      });
+  // Bound once and asked on every event, so a slider enabled after it was
+  // built answers a drag on its thumb.
+  const interactions = whileEnabled(
+    mergeProps(moveProps, {
+      onMouseDown: (event: MouseEvent) => {
+        if (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey) return;
+        onDown();
+      },
+      onPointerDown: (event: PointerEvent) => {
+        if (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey) return;
+        onDown(event.pointerId);
+      },
+      onTouchStart: (event: TouchEvent) => onDown(event.changedTouches[0]?.identifier),
+    }),
+    isDisabled,
+  );
 
   return {
     isDragging: () => state.isThumbDragging(index),
@@ -738,6 +741,20 @@ export function sliderThumb(options: SliderThumbOptions, state: SliderState): Sl
       },
     }),
   };
+}
+
+/** Every handler in `props`, doing nothing while `isDisabled` says so. */
+function whileEnabled(props: DOMProps, isDisabled: Accessor<boolean>): DOMProps {
+  const guarded: DOMProps = {};
+  for (const [key, value] of Object.entries(props)) {
+    guarded[key] =
+      /^on[A-Z]/.test(key) && typeof value === "function"
+        ? (event: Event) => {
+            if (!isDisabled()) (value as (event: Event) => void)(event);
+          }
+        : value;
+  }
+  return guarded;
 }
 
 // ---------------------------------------------------------------------------
@@ -972,6 +989,84 @@ export function SliderTrack(props: SliderTrackComponentProps) {
       </For>
     </div>
   );
+}
+
+export interface SliderFillComponentProps extends StyleProps {
+  /**
+   * Where a single thumb's fill starts, as a value: the middle of a balance
+   * control fills outwards from zero. A range fills between its first and last
+   * thumbs and ignores it.
+   *
+   * @default the minimum
+   */
+  offset?: number;
+  ref?: RefTarget<HTMLDivElement>;
+}
+
+/**
+ * The part of the track that is selected, placed inside `<SliderTrack>`.
+ *
+ * It is positioned the way the thumbs are, so it follows right to left, a
+ * vertical slider and `isInverted` without anything set on it. A `style` given
+ * here is laid over that rather than replacing it.
+ */
+export function SliderFill(props: SliderFillComponentProps) {
+  const group = useSlider();
+  const state = group.state;
+  const locale = useLocale();
+  const { hoverProps, isHovered } = hover({});
+
+  /** Where it starts and how much it covers, as fractions of the track. */
+  const span = (): [number, number] => {
+    const values = state.values();
+    let start: number;
+    if (values.length > 1) {
+      start = state.getThumbPercent(0);
+    } else {
+      const offset = props.offset;
+      const min = state.getThumbMinValue(0);
+      start = state.getValuePercent(
+        offset === undefined ? min : clamp(offset, min, state.getThumbMaxValue(0)),
+      );
+    }
+    const end = values.length === 0 ? 0 : state.getThumbPercent(values.length - 1);
+    const low = Math.min(start, end);
+    const high = Math.max(start, end);
+    const flipped = runsBackwards(state, locale().direction === "rtl");
+    return [flipped ? 1 - high : low, high - low];
+  };
+
+  const elementProps = mergeProps(
+    hoverProps,
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
+    {
+      style: () => {
+        const [from, size] = span();
+        const placed =
+          state.orientation() === "vertical"
+            ? {
+                position: "absolute",
+                top: `${from * 100}%`,
+                height: `${size * 100}%`,
+                width: "100%",
+              }
+            : {
+                position: "absolute",
+                left: `${from * 100}%`,
+                width: `${size * 100}%`,
+                height: "100%",
+              };
+        return { ...placed, ...props.style };
+      },
+      "data-orientation": state.orientation,
+      "data-disabled": state.isDisabled,
+      "data-hovered": isHovered,
+      "data-testid": () => props["data-testid"],
+    },
+  );
+
+  return <div {...elementProps} ref={mergeRefs(props.ref)} />;
 }
 
 export interface SliderThumbComponentProps extends StyleProps {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush } from "@barqjs/core";
+import { type Child, flush } from "@barqjs/core";
 import {
   accessibleName,
   expectNoAriaViolations,
@@ -10,6 +10,7 @@ import {
 } from "@barqjs/testing";
 import { CalendarDate, CalendarDateTime, Time, type DateValue } from "./date.ts";
 import { DateField, TimeField } from "./datefield.tsx";
+import { provideLocale } from "./i18n.ts";
 
 function Departure(props: {
   value?: DateValue | null;
@@ -328,5 +329,298 @@ describe("a date outside minValue or maxValue", () => {
   test("an empty field is not out of range", () => {
     render(() => <DateField label="Departure" minValue={new CalendarDate(2026, 6, 1)} />);
     expect(group().hasAttribute("aria-invalid")).toBe(false);
+  });
+});
+
+function InLocale(props: { tag: string; children?: Child }) {
+  const localeProps = provideLocale(() => props.tag);
+  return <div {...localeProps}>{props.children}</div>;
+}
+
+function beforeInput(element: Element, inputType: string, data: string | null = null): boolean {
+  return element.dispatchEvent(
+    new InputEvent("beforeinput", { inputType, data, bubbles: true, cancelable: true }),
+  );
+}
+
+describe("editing on a touch device", () => {
+  test("an editable segment is content-editable, a disabled or read-only one is not", () => {
+    render(() => <Departure />);
+    expect(segment("month").getAttribute("contenteditable")).toBe("true");
+    expect(segment("month").getAttribute("inputmode")).toBe("numeric");
+
+    render(() => <Departure isReadOnly />);
+    const readOnly = screen.getAllByRole("spinbutton").at(-1) as HTMLElement;
+    expect(readOnly.getAttribute("contenteditable")).not.toBe("true");
+  });
+
+  test("a virtual keyboard's beforeinput types into the segment", () => {
+    const changes: (DateValue | null)[] = [];
+    render(() => <Departure onChange={(value) => changes.push(value)} />);
+
+    user.focus(segment("month"));
+    // The keydown of a virtual keyboard carries no key; the character arrives
+    // only in beforeinput, which the browser would otherwise write into the
+    // segment's text.
+    expect(beforeInput(segment("month"), "insertText", "4")).toBe(false);
+    flush();
+    expect(segment("month").textContent).toBe("04");
+    expect(document.activeElement).toBe(segment("day"));
+
+    for (const key of ["7", "2", "0", "2", "6"]) {
+      beforeInput(document.activeElement as Element, "insertText", key);
+      flush();
+    }
+    expect(changes.at(-1)?.toString()).toBe("2026-04-07");
+  });
+
+  test("a virtual keyboard's delete removes one digit", () => {
+    render(() => <Departure defaultValue={new CalendarDate(2024, 12, 7)} />);
+    user.focus(segment("month"));
+    beforeInput(segment("month"), "deleteContentBackward");
+    flush();
+    expect(segment("month").textContent).toBe("01");
+  });
+
+  test("on iOS a segment is a textbox, because VoiceOver cannot focus a spin button", () => {
+    const platform = Object.getOwnPropertyDescriptor(window.navigator, "platform");
+    Object.defineProperty(window.navigator, "platform", { value: "iPhone", configurable: true });
+    try {
+      render(() => <Departure value={new CalendarDate(2024, 3, 7)} />);
+      const boxes = screen.getAllByRole("textbox");
+      expect(boxes).toHaveLength(3);
+      expect(boxes[0]?.hasAttribute("aria-valuenow")).toBe(false);
+      expect(boxes[0]?.hasAttribute("aria-valuetext")).toBe(false);
+    } finally {
+      if (platform === undefined) Reflect.deleteProperty(window.navigator, "platform");
+      else Object.defineProperty(window.navigator, "platform", platform);
+    }
+  });
+});
+
+describe("what a segment reads as", () => {
+  test("a month reads as its number and its name", () => {
+    render(() => <Departure value={new CalendarDate(2024, 3, 7)} />);
+    expect(segment("month").getAttribute("aria-valuetext")).toBe("03 – March");
+    expect(segment("day").getAttribute("aria-valuetext")).toBe("07");
+  });
+
+  test("an hour reads as the hour of the day", () => {
+    render(() => (
+      <Departure granularity="minute" value={new CalendarDateTime(2024, 3, 7, 14, 30)} />
+    ));
+    expect(segment("hour").getAttribute("aria-valuetext")).toBe("2 PM");
+  });
+
+  test("an empty field's placeholders are the locale's own", () => {
+    render(() => (
+      <InLocale tag="de-DE">
+        <DateField label="Abreise" />
+      </InLocale>
+    ));
+    expect(segments().map((element: Element) => element.textContent)).toEqual(["tt", "mm", "jjjj"]);
+  });
+});
+
+describe("Backspace", () => {
+  test("removes the last digit rather than the whole segment", () => {
+    const changes: (DateValue | null)[] = [];
+    render(() => (
+      <Departure
+        defaultValue={new CalendarDate(2024, 12, 7)}
+        onChange={(value) => changes.push(value)}
+      />
+    ));
+
+    user.focus(segment("year"));
+    user.keyDown("Backspace");
+    flush();
+    expect(segment("year").textContent).toBe("202");
+    expect(changes.at(-1)?.toString()).toBe("0202-12-07");
+
+    user.focus(segment("month"));
+    user.keyDown("Backspace");
+    flush();
+    expect(segment("month").textContent).toBe("01");
+  });
+
+  test("on an empty segment moves back to the one before", () => {
+    render(() => <Departure />);
+    user.focus(segment("day"));
+    user.keyDown("Backspace");
+    flush();
+    expect(document.activeElement).toBe(segment("month"));
+  });
+});
+
+describe("the arrow keys between segments", () => {
+  test("follow the screen, not the DOM, right to left", () => {
+    render(() => (
+      <InLocale tag="he-IL">
+        <DateField label="תאריך" value={new CalendarDate(2024, 3, 7)} />
+      </InLocale>
+    ));
+    const all = segments();
+    // Laid out right to left: the first segment in the DOM is on the right.
+    all.forEach((element, at) => {
+      const left = (all.length - 1 - at) * 40;
+      element.getBoundingClientRect = () => new DOMRect(left, 0, 30, 20);
+    });
+
+    user.focus(all[1] as HTMLElement);
+    user.keyDown("ArrowLeft");
+    flush();
+    expect(document.activeElement).toBe(all[2] as HTMLElement);
+
+    user.keyDown("ArrowRight");
+    flush();
+    user.keyDown("ArrowRight");
+    flush();
+    expect(document.activeElement).toBe(all[0] as HTMLElement);
+  });
+
+  test("a modified arrow is not the segment's", () => {
+    render(() => <Departure defaultValue={new CalendarDate(2024, 3, 7)} />);
+    user.focus(segment("month"));
+    user.keyDown("ArrowDown", { altKey: true });
+    flush();
+    expect(segment("month").textContent).toBe("03");
+  });
+});
+
+describe("a day-first locale", () => {
+  test("typing a whole date in en-GB gives that date, whatever month the placeholder shows", () => {
+    const changes: (DateValue | null)[] = [];
+    render(() => (
+      <InLocale tag="en-GB">
+        <DateField
+          label="Due"
+          placeholderValue={new CalendarDate(2026, 11, 21)}
+          onChange={(value) => changes.push(value)}
+        />
+      </InLocale>
+    ));
+
+    user.focus(segments()[0] as HTMLElement);
+    for (const key of "31122026") {
+      user.keyDown(key);
+      flush();
+    }
+    expect(changes.at(-1)?.toString()).toBe("2026-12-31");
+  });
+
+  test("a day that its month lacks is held as typed until the field is left", () => {
+    const changes: (DateValue | null)[] = [];
+    render(() => (
+      <InLocale tag="en-GB">
+        <DateField label="Due" onChange={(value) => changes.push(value)} />
+        <button type="button">after</button>
+      </InLocale>
+    ));
+
+    user.focus(segments()[0] as HTMLElement);
+    for (const key of "31022026") {
+      user.keyDown(key);
+      flush();
+    }
+    expect(segments().map((element: Element) => element.textContent)).toEqual(["31", "02", "2026"]);
+    expect(changes.filter((value) => value !== null)).toEqual([]);
+
+    user.tab();
+    flush();
+    expect(changes.at(-1)?.toString()).toBe("2026-02-28");
+    expect(segments()[0]?.textContent).toBe("28");
+  });
+});
+
+describe("TimeField on its own", () => {
+  test("an empty one shows only the time", () => {
+    render(() => <TimeField label="Starts" />);
+    expect(segments().map((element: Element) => element.getAttribute("data-type"))).toEqual([
+      "hour",
+      "minute",
+      "dayPeriod",
+    ]);
+  });
+
+  test("typing a time reports it", () => {
+    const changes: (Time | null)[] = [];
+    render(() => <TimeField label="Starts" onChange={(value) => changes.push(value)} />);
+
+    user.focus(segment("hour"));
+    for (const key of ["9", "3", "0", "p"]) {
+      user.keyDown(key);
+      flush();
+    }
+    expect(changes.at(-1)?.toString()).toBe("21:30:00");
+  });
+
+  test("puts the time into the form, and checks it against its bounds", () => {
+    render(() => (
+      <form data-testid="form">
+        <TimeField
+          label="Starts"
+          name="starts"
+          defaultValue={new Time(7, 15)}
+          minValue={new Time(9, 0)}
+          maxValue={new Time(17, 0)}
+        />
+      </form>
+    ));
+
+    const form = screen.getByTestId<HTMLFormElement>("form");
+    expect([...new FormData(form).entries()]).toEqual([["starts", "07:15:00"]]);
+    expect(screen.getByRole("group").getAttribute("aria-invalid")).toBe("true");
+  });
+
+  test("an empty one counts from its placeholder", () => {
+    render(() => <TimeField label="Starts" placeholderValue={new Time(14, 0)} />);
+    user.focus(segment("hour"));
+    user.keyDown("ArrowUp");
+    flush();
+    expect(segment("hour").textContent).toBe("02");
+    expect(segment("AM/PM").textContent).toBe("PM");
+  });
+});
+
+describe("a DateField in a form", () => {
+  test("a required empty field blocks a native submit", () => {
+    render(() => (
+      <form data-testid="form">
+        <DateField label="Due" name="due" isRequired validationBehavior="native" />
+      </form>
+    ));
+    const form = screen.getByTestId<HTMLFormElement>("form");
+    expect(form.checkValidity()).toBe(false);
+  });
+
+  test("a reset puts the default back", () => {
+    render(() => (
+      <form data-testid="form">
+        <DateField label="Due" name="due" defaultValue={new CalendarDate(2026, 3, 10)} />
+      </form>
+    ));
+    const form = screen.getByTestId<HTMLFormElement>("form");
+
+    user.focus(segment("month"));
+    user.keyDown("ArrowUp");
+    flush();
+    expect(new FormData(form).get("due")).toBe("2026-04-10");
+
+    form.reset();
+    flush();
+    expect(new FormData(form).get("due")).toBe("2026-03-10");
+    expect(segment("month").textContent).toBe("03");
+  });
+
+  test("a date the page says is unavailable is invalid", () => {
+    render(() => (
+      <DateField
+        label="Due"
+        defaultValue={new CalendarDate(2026, 3, 10)}
+        isDateUnavailable={(date) => date.day === 10}
+      />
+    ));
+    expect(screen.getByRole("group").getAttribute("aria-invalid")).toBe("true");
   });
 });

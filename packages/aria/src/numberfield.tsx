@@ -24,6 +24,7 @@ import {
   cells,
   type Accessor,
   type Child,
+  flush,
   createMemo,
   createContext,
   createEffect,
@@ -172,11 +173,14 @@ export function numberFieldState(options: NumberFieldStateOptions): NumberFieldS
   if (!isServer) {
     // The number changing from OUTSIDE reformats the field. A change the field
     // made itself is already in it, as typed.
-    createEffect(numberValue, (value) => {
-      if (value === live) return;
-      live = value;
-      writeInputValue(asText(value));
-    });
+    createEffect(
+      () => [numberValue(), asText(numberValue())] as const,
+      ([value, text]) => {
+        if (value === live) return;
+        live = value;
+        writeInputValue(text);
+      },
+    );
   }
 
   const parsed = createMemo(() => parser().parse(inputValue()));
@@ -324,7 +328,7 @@ const REPEAT_INTERVAL = 60;
  */
 export function spinButton(options: SpinButtonOptions): SpinButtonResult {
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let announced = false;
+  let focused = false;
 
   const stop = (): void => {
     if (timer !== undefined) clearTimeout(timer);
@@ -392,23 +396,29 @@ export function spinButton(options: SpinButtonOptions): SpinButtonResult {
   if (!isServer) {
     // Announced assertively, because the input carries no spin button role to
     // announce it for us. `clearAnnouncer` first, so holding a stepper does
-    // not queue up thirty values to read out in turn.
+    // not queue up thirty values to read out in turn. Only while the field or
+    // one of its steppers has focus: a value set from elsewhere on the page
+    // is not something the user is doing, and interrupts whatever they are.
     createEffect(
       () => [access(options.textValue), access(options.value)] as const,
       ([textValue, value]) => {
+        if (!focused) return;
         const text = textValue ?? String(value ?? "");
         // A hyphen-minus between a currency symbol and a number is read as a
         // hyphen and swallowed; the real minus sign is announced.
         const spoken = text === "" ? "Empty" : text.replace("-", "−");
-        if (!announced) {
-          announced = true;
-          return;
-        }
         clearAnnouncer("assertive");
         announce(spoken, "assertive");
       },
     );
   }
+
+  const onFocus = (): void => {
+    focused = true;
+  };
+  const onBlur = (): void => {
+    focused = false;
+  };
 
   /**
    * One step now, then a repeat while it is held.
@@ -422,14 +432,21 @@ export function spinButton(options: SpinButtonOptions): SpinButtonResult {
     guard: () => boolean,
   ): {
     onPressStart: (event: { pointerType: string }) => void;
+    onPressUp: (event: { pointerType: string }) => void;
     onPressEnd: (event: { pointerType: string }) => void;
+    onFocus: () => void;
+    onBlur: () => void;
   } => {
     let held = false;
     let spun = false;
+    // A touch that ends without lifting the finger over the button (it moved
+    // off to scroll, and the browser cancelled the pointer) is not a press.
+    let lifted = false;
     return {
       onPressStart: (event) => {
         stop();
         spun = false;
+        lifted = false;
         held = event.pointerType === "touch";
         if (!enabled()) return;
         if (!held) act();
@@ -442,16 +459,22 @@ export function spinButton(options: SpinButtonOptions): SpinButtonResult {
           REPEAT_DELAY,
         );
       },
+      onPressUp: () => {
+        lifted = true;
+      },
       onPressEnd: () => {
         stop();
-        if (held && !spun && enabled()) act();
+        if (held && lifted && !spun && enabled()) act();
         held = false;
+        lifted = false;
       },
+      onFocus,
+      onBlur,
     };
   };
 
   return {
-    spinButtonProps: { onKeyDown },
+    spinButtonProps: { onKeyDown, onFocus, onBlur },
     incrementButtonProps: stepper(() => options.onIncrement?.(), belowMax),
     decrementButtonProps: stepper(() => options.onDecrement?.(), aboveMin),
   };
@@ -476,6 +499,15 @@ export interface NumberFieldOptions extends Omit<
   formatOptions?: MaybeAccessor<Intl.NumberFormatOptions | undefined>;
   minValue?: MaybeAccessor<number | undefined>;
   maxValue?: MaybeAccessor<number | undefined>;
+  step?: MaybeAccessor<number | undefined>;
+  /**
+   * What the state does with a value off the range or the step. Under
+   * `"validate"` it is kept, and this marks the field invalid with the
+   * browser's own message for it.
+   *
+   * @default "snap"
+   */
+  commitBehavior?: MaybeAccessor<"snap" | "validate" | undefined>;
   /** Stop the scroll wheel changing the value. @default false */
   isWheelDisabled?: MaybeAccessor<boolean | undefined>;
   incrementAriaLabel?: MaybeAccessor<string | undefined>;
@@ -560,6 +592,30 @@ export function numberField(
     return "numeric";
   };
 
+  /**
+   * What the browser would say about this number, when the state kept it off
+   * the range or the step rather than snapping it.
+   *
+   * Asked of an `<input type="number">` that is never attached, so the
+   * message is the browser's, in the browser's language. With no `step` any
+   * value is on it: a field with decimals and no step holds 1.5 when snapping,
+   * and must not call it invalid when validating.
+   */
+  const outOfRange = (value: number): string[] => {
+    if (isServer || access(options.commitBehavior) !== "validate" || Number.isNaN(value)) {
+      return [];
+    }
+    const probe = rangeProbe();
+    const min = access(options.minValue);
+    const max = access(options.maxValue);
+    const size = access(options.step);
+    probe.min = min === undefined || Number.isNaN(min) ? "" : String(min);
+    probe.max = max === undefined || Number.isNaN(max) ? "" : String(max);
+    probe.step = size === undefined || Number.isNaN(size) ? "any" : String(size);
+    probe.value = String(value);
+    return probe.validity.valid ? [] : [probe.validationMessage];
+  };
+
   const {
     labelProps,
     inputProps: fieldProps,
@@ -576,9 +632,17 @@ export function numberField(
       // The caller validates the NUMBER; `textField` validates a string, so
       // the typed text is ignored and the parsed value is handed over instead.
       validate:
-        options.validate === undefined
+        options.validate === undefined && options.commitBehavior === undefined
           ? undefined
-          : () => (options.validate as ValidateFunction<number>)(state.numberValue()),
+          : () => {
+              const value = state.numberValue();
+              const own = options.validate?.(value);
+              const found = [
+                ...(own === true || own === null || own === undefined ? [] : [own].flat()),
+                ...outOfRange(value),
+              ];
+              return found.length === 0 ? null : found;
+            },
       value: state.inputValue,
       // Rejected keystrokes never reach the state, so a field that cannot hold
       // a letter never shows one.
@@ -592,16 +656,19 @@ export function numberField(
 
   formReset(options.inputRef, state.defaultNumberValue, (value) => state.setNumberValue(value));
 
-  const onBlur = (): void => {
-    state.commit();
-    validation.commitValidation();
-  };
+  // What the validation is told is left to the text field, which commits it
+  // only for an edit: tabbing through must not clear a server's error.
+  const onBlur = (): void => state.commit();
 
   const onKeyDown = (event: KeyboardEvent): void => {
-    if (event.key !== "Enter") return;
+    if (event.key !== "Enter" || isDisabled() || isReadOnly()) return;
     // Not prevented: a number field inside a form still submits it, with the
-    // committed value rather than the typed one.
+    // committed value rather than the typed one. The submit reads the form
+    // as soon as this handler returns, so the commit is applied now rather
+    // than at the next flush.
     state.commit();
+    flush();
+    validation.commitValidation();
   };
 
   const onPaste = (event: ClipboardEvent): void => {
@@ -638,6 +705,10 @@ export function numberField(
       "aria-disabled": () => isDisabled() || undefined,
     }),
     inputProps: mergeProps(spinButtonProps, fieldProps, {
+      // The typed text is not the value. A form gets the number from a hidden
+      // input of its own; the name stays on the options for server errors.
+      name: () => undefined,
+      form: () => undefined,
       onKeyDown,
       onBlur,
       onPaste,
@@ -665,6 +736,16 @@ export function numberField(
       onPressStart: onButtonPressStart,
     }),
   };
+}
+
+let probeInput: HTMLInputElement | null = null;
+
+function rangeProbe(): HTMLInputElement {
+  if (probeInput === null) {
+    probeInput = document.createElement("input");
+    probeInput.type = "number";
+  }
+  return probeInput;
 }
 
 // ---------------------------------------------------------------------------
@@ -695,6 +776,13 @@ export interface NumberFieldComponentProps extends StyleProps {
   maxValue?: number;
   step?: number;
   formatOptions?: Intl.NumberFormatOptions;
+  /**
+   * Whether committing snaps to the range and the step, or leaves the value
+   * as typed and marks it invalid.
+   *
+   * @default "snap"
+   */
+  commitBehavior?: "snap" | "validate";
   placeholder?: string;
   isDisabled?: boolean;
   isReadOnly?: boolean;
@@ -734,6 +822,7 @@ export function NumberField(props: NumberFieldComponentProps) {
     maxValue: () => props.maxValue,
     step: () => props.step,
     formatOptions: () => props.formatOptions,
+    commitBehavior: () => props.commitBehavior,
     isDisabled: () => props.isDisabled,
     isReadOnly: () => props.isReadOnly,
     onChange: (value) => props.onChange?.(value),
@@ -761,6 +850,8 @@ export function NumberField(props: NumberFieldComponentProps) {
       validationBehavior: () => props.validationBehavior,
       minValue: () => props.minValue,
       maxValue: () => props.maxValue,
+      step: () => props.step,
+      commitBehavior: () => props.commitBehavior,
       formatOptions: () => props.formatOptions,
       placeholder: () => props.placeholder,
       isDisabled: () => props.isDisabled,
@@ -793,14 +884,14 @@ export function NumberField(props: NumberFieldComponentProps) {
     {
       "data-hovered": isHovered,
       "data-disabled": () => props.isDisabled === true,
+      "data-readonly": () => props.isReadOnly === true,
+      "data-required": () => props.isRequired === true,
       "data-invalid": isInvalid,
       "data-testid": () => props["data-testid"],
     },
   );
 
   const inputElementProps = mergeProps(inputProps, focusProps, {
-    name: () => props.name,
-    form: () => props.form,
     "data-focus-visible": isFocusVisible,
   });
 
@@ -817,6 +908,17 @@ export function NumberField(props: NumberFieldComponentProps) {
           <span aria-hidden="true">−</span>
         </button>
         <input {...inputElementProps} ref={mergeRefs(inputRef.set, props.ref)} />
+        {() =>
+          props.name === undefined ? null : (
+            <input
+              type="hidden"
+              name={props.name}
+              form={props.form}
+              value={Number.isNaN(state.numberValue()) ? "" : String(state.numberValue())}
+              disabled={props.isDisabled === true}
+            />
+          )
+        }
         <button
           {...increment.buttonProps}
           type="button"

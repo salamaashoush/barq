@@ -43,7 +43,8 @@ let hasBlurredWindowRecently = false;
 // user typing, and a ring that appears while typing is noise.
 const TEXT_INPUT_FOCUS_KEYS = new Set(["Tab", "Escape"]);
 
-const NON_TEXT_INPUT_TYPES = new Set([
+/** The `<input>` types that are a control rather than a place to type. */
+export const NON_TEXT_INPUT_TYPES: ReadonlySet<string> = new Set([
   "checkbox",
   "radio",
   "range",
@@ -54,6 +55,21 @@ const NON_TEXT_INPUT_TYPES = new Set([
   "submit",
   "reset",
 ]);
+
+/**
+ * Whether the element takes typed text: a text-like input, a textarea, or
+ * editable content. What brings up an on-screen keyboard, and where a key
+ * press is typing rather than navigation.
+ */
+export function isTextEntry(element: Element | null): boolean {
+  if (element === null) return false;
+  const view = ownerWindow(element);
+  return (
+    (element instanceof view.HTMLInputElement && !NON_TEXT_INPUT_TYPES.has(element.type)) ||
+    element instanceof view.HTMLTextAreaElement ||
+    (element instanceof view.HTMLElement && element.isContentEditable)
+  );
+}
 
 function notify(next: Modality, event: ModalityEvent): void {
   for (const handler of handlers) handler(next, event);
@@ -363,11 +379,7 @@ function shouldReportKeyboardFocus(
   // The caller passes `isTextInput` for the case the DOM cannot answer: a key
   // pressed on a button that is about to move focus INTO a field, where the
   // active element at this moment is still the button.
-  const intoText =
-    isTextInput ||
-    (active instanceof view.HTMLInputElement && !NON_TEXT_INPUT_TYPES.has(active.type)) ||
-    active instanceof view.HTMLTextAreaElement ||
-    (active instanceof view.HTMLElement && active.isContentEditable);
+  const intoText = isTextInput || isTextEntry(active);
 
   return !(
     intoText &&

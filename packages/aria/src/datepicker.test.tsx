@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { flush } from "@barqjs/core";
 import {
+  accessibleDescription,
   accessibleName,
   expectNoAriaViolations,
   render,
@@ -223,5 +224,139 @@ describe("a date picker with a range", () => {
       .getAllByRole("group")
       .find((g) => g.getAttribute("aria-invalid") === "true");
     expect(field, "nothing in the picker reported the value as out of range").not.toBeUndefined();
+  });
+});
+
+describe("opening from the keyboard", () => {
+  test("Alt+ArrowDown in the field opens the calendar and leaves the date alone", async () => {
+    const changes: (DateValue | null)[] = [];
+    render(() => (
+      <DatePicker
+        label="Departure"
+        defaultValue={new CalendarDate(2024, 3, 7)}
+        onChange={(value) => changes.push(value)}
+      />
+    ));
+
+    user.focus(segment("month"));
+    user.keyDown("ArrowDown", { altKey: true });
+    await tick();
+
+    expect(screen.getByRole("dialog")).not.toBeNull();
+    expect(changes).toEqual([]);
+  });
+
+  test("so does Alt+ArrowUp, in a range picker too", async () => {
+    render(() => <DateRangePicker label="Stay" placeholderValue={new CalendarDate(2024, 3, 7)} />);
+
+    user.focus(screen.getAllByRole("spinbutton")[0] as HTMLElement);
+    user.keyDown("ArrowUp", { altKey: true });
+    await tick();
+    expect(screen.getByRole("dialog")).not.toBeNull();
+  });
+});
+
+describe("what a date picker refuses", () => {
+  test("a typed date the page says is unavailable is invalid", () => {
+    render(() => (
+      <DatePicker
+        label="Departure"
+        defaultValue={new CalendarDate(2026, 3, 10)}
+        isDateUnavailable={(date) => date.day === 10}
+      />
+    ));
+    const invalid = screen
+      .getAllByRole("group")
+      .filter((group) => group.getAttribute("aria-invalid") === "true");
+    expect(invalid.length).toBeGreaterThan(0);
+  });
+
+  test("a range that ends before it starts is invalid, and says so", () => {
+    render(() => (
+      <DateRangePicker
+        label="Stay"
+        defaultValue={{ start: new CalendarDate(2026, 3, 10), end: new CalendarDate(2026, 3, 12) }}
+      />
+    ));
+
+    const end = screen.getByRole("group", { name: "End date" });
+    const endDay = end.querySelectorAll<HTMLElement>('[role="spinbutton"]')[1] as HTMLElement;
+    user.focus(endDay);
+    user.keyDown("0");
+    user.keyDown("1");
+    flush();
+
+    const stay = screen.getByRole("group", { name: "Stay" });
+    expect(stay.getAttribute("aria-invalid")).toBe("true");
+    expect(accessibleDescription(stay)).toContain("The start date is after the end date.");
+    expect(end.getAttribute("aria-invalid")).toBe("true");
+  });
+
+  test("a range keeps the time typed into either end", () => {
+    const ranges: string[][] = [];
+    render(() => (
+      <DateRangePicker
+        label="Stay"
+        granularity="minute"
+        hourCycle={24}
+        defaultValue={{
+          start: new CalendarDateTime(2026, 3, 10, 9, 0),
+          end: new CalendarDateTime(2026, 3, 12, 17, 0),
+        }}
+        onChange={(value) =>
+          ranges.push(value === null ? [] : [String(value.start), String(value.end)])
+        }
+      />
+    ));
+
+    const end = screen.getByRole("group", { name: "End date" });
+    const hour = end.querySelector<HTMLElement>('[data-type="hour"]') as HTMLElement;
+    user.focus(hour);
+    user.keyDown("ArrowUp");
+    flush();
+    expect(ranges.at(-1)).toEqual(["2026-03-10T09:00:00", "2026-03-12T18:00:00"]);
+  });
+
+  test("a range picker takes what a date picker takes", () => {
+    render(() => (
+      <DateRangePicker
+        label="Stay"
+        granularity="minute"
+        hourCycle={24}
+        isRequired
+        isInvalid
+        errorMessage="Pick your nights"
+        defaultValue={{
+          start: new CalendarDateTime(2026, 3, 10, 9, 0),
+          end: new CalendarDateTime(2026, 3, 12, 17, 0),
+        }}
+      />
+    ));
+
+    const stay = screen.getByRole("group", { name: "Stay" });
+    expect(stay.getAttribute("aria-invalid")).toBe("true");
+    expect(accessibleDescription(stay)).toContain("Pick your nights");
+    const start = screen.getByRole("group", { name: "Start date" });
+    expect(start.getAttribute("aria-required")).toBe("true");
+    // A 24-hour clock has no AM and PM.
+    expect(start.querySelector('[data-type="dayPeriod"]')).toBeNull();
+  });
+
+  test("a range picker's validate sees the range", () => {
+    const seen: string[] = [];
+    render(() => (
+      <DateRangePicker
+        label="Stay"
+        defaultValue={{ start: new CalendarDate(2026, 3, 10), end: new CalendarDate(2026, 3, 12) }}
+        validate={(range) => {
+          seen.push(range === null ? "" : `${String(range.start)}/${String(range.end)}`);
+          return "Too short";
+        }}
+      />
+    ));
+    expect(seen).toContain("2026-03-10/2026-03-12");
+    const stay = screen.getByRole("group", { name: "Stay" });
+    expect(stay.getAttribute("aria-invalid")).toBe("true");
+    expect(accessibleDescription(stay)).toContain("Too short");
   });
 });

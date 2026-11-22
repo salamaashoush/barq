@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { createSignal, flush } from "@barqjs/core";
+import { type Child, createSignal, flush } from "@barqjs/core";
 import {
+  accessibleDescription,
   accessibleName,
   expectNoAriaViolations,
   render,
@@ -25,6 +26,12 @@ import {
   type RangeCalendarStateOptions,
 } from "./calendar.tsx";
 import { CalendarDate } from "./date.ts";
+import { provideLocale } from "./i18n.ts";
+
+function InLocale(props: { tag: string; children?: Child }) {
+  const localeProps = provideLocale(() => props.tag);
+  return <div {...localeProps}>{props.children}</div>;
+}
 
 /** March 2024: begins on a Friday, has 31 days, so six week rows. */
 const MARCH = new CalendarDate(2024, 3, 7);
@@ -936,5 +943,219 @@ describe("drawing a range from the keyboard", () => {
     user.key("Enter", { target: day("Saturday", 9, "March") });
     flush();
     expect(ranges).toEqual([["2024-03-07", "2024-03-09"]]);
+  });
+});
+
+function polite(): string {
+  return document.querySelector("[data-barq-live-announcer] [aria-live=polite]")?.textContent ?? "";
+}
+
+describe("what the calendar says", () => {
+  test("choosing a day announces it", () => {
+    render(() => <Departure />);
+    user.click(day("Friday", 15, "March"));
+    flush();
+    expect(polite()).toContain("Selected Date: Friday, March 15, 2024");
+  });
+
+  test("a finished range is announced as a range", () => {
+    render(() => <RangeCalendar aria-label="Stay" defaultFocusedValue={MARCH} />);
+    user.click(day("Monday", 11, "March"));
+    user.click(day("Wednesday", 13, "March"));
+    flush();
+    expect(polite()).toContain("Selected Range:");
+    expect(polite()).toContain("March 11");
+  });
+
+  test("the page buttons are named in the page's language", () => {
+    render(() => (
+      <InLocale tag="de-DE">
+        <Calendar aria-label="Abreise" defaultFocusedValue={MARCH} />
+      </InLocale>
+    ));
+    expect(screen.getByRole("button", { name: "Zurück" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Weiter" })).not.toBeNull();
+  });
+});
+
+describe("an invalid calendar", () => {
+  test("a value the calendar would not offer is invalid, and the day says why", () => {
+    render(() => (
+      <Calendar
+        aria-label="Departure"
+        value={new CalendarDate(2024, 3, 14)}
+        isDateUnavailable={(date) => date.day === 14}
+        errorMessage="That day is booked"
+      />
+    ));
+    const chosen = day("Thursday", 14, "March");
+    expect(chosen.getAttribute("aria-invalid")).toBe("true");
+    expect(chosen.parentElement?.getAttribute("aria-invalid")).toBe("true");
+    expect(accessibleDescription(chosen)).toBe("That day is booked");
+  });
+
+  test("isInvalid marks the chosen day invalid", () => {
+    render(() => (
+      <Calendar
+        aria-label="Departure"
+        value={new CalendarDate(2024, 3, 15)}
+        isInvalid
+        errorMessage="Pick a weekday"
+      />
+    ));
+    const chosen = day("Friday", 15, "March");
+    expect(chosen.getAttribute("aria-invalid")).toBe("true");
+    expect(accessibleDescription(chosen)).toBe("Pick a weekday");
+    expect(day("Thursday", 14, "March").hasAttribute("aria-invalid")).toBe(false);
+  });
+
+  test("a valid one points at no error", () => {
+    render(() => <Calendar aria-label="Departure" value={new CalendarDate(2024, 3, 15)} />);
+    expect(day("Friday", 15, "March").hasAttribute("aria-invalid")).toBe(false);
+    expect(day("Friday", 15, "March").hasAttribute("aria-describedby")).toBe(false);
+  });
+});
+
+describe("drawing a range with a pointer", () => {
+  function Stay(props: {
+    onChange?: (value: DateRange | null) => void;
+    commitBehavior?: "clear" | "reset" | "select";
+    defaultValue?: DateRange;
+  }) {
+    return (
+      <>
+        <RangeCalendar
+          aria-label="Stay"
+          defaultFocusedValue={MARCH}
+          defaultValue={props.defaultValue}
+          commitBehavior={props.commitBehavior}
+          onChange={props.onChange}
+        />
+        <button type="button">elsewhere</button>
+      </>
+    );
+  }
+
+  const recorder = (into: string[][]) => (value: DateRange | null) =>
+    into.push(value === null ? [] : [String(value.start), String(value.end)]);
+
+  test("a drag from one day to another is the range between them", () => {
+    const ranges: string[][] = [];
+    render(() => <Stay onChange={recorder(ranges)} />);
+
+    user.pointerDown(day("Monday", 11, "March"));
+    flush();
+    user.hover(day("Tuesday", 12, "March"));
+    user.hover(day("Wednesday", 13, "March"));
+    flush();
+    expect(day("Tuesday", 12, "March").getAttribute("data-selected")).toBe("");
+
+    user.pointerUp(day("Wednesday", 13, "March"));
+    flush();
+    expect(ranges).toEqual([["2024-03-11", "2024-03-13"]]);
+  });
+
+  test("dragging an end of a chosen range moves that end", () => {
+    const ranges: string[][] = [];
+    render(() => (
+      <Stay
+        defaultValue={{ start: new CalendarDate(2024, 3, 11), end: new CalendarDate(2024, 3, 13) }}
+        onChange={recorder(ranges)}
+      />
+    ));
+
+    user.pointerDown(day("Wednesday", 13, "March"));
+    flush();
+    user.hover(day("Friday", 15, "March"));
+    user.pointerUp(day("Friday", 15, "March"));
+    flush();
+    expect(ranges.at(-1)).toEqual(["2024-03-11", "2024-03-15"]);
+  });
+
+  test("leaving the calendar with a range half drawn finishes it there", () => {
+    const ranges: string[][] = [];
+    render(() => <Stay onChange={recorder(ranges)} />);
+
+    const start = day("Thursday", 7, "March");
+    user.focus(start);
+    user.key("Enter", { target: start });
+    flush();
+    user.key("ArrowRight", { target: start });
+    flush();
+    user.key("ArrowRight", { target: day("Friday", 8, "March") });
+    flush();
+
+    user.focus(screen.getByRole("button", { name: "elsewhere" }));
+    flush();
+    expect(ranges).toEqual([["2024-03-07", "2024-03-09"]]);
+  });
+
+  test("letting go outside the calendar finishes the range, or not, as asked", () => {
+    for (const [behavior, expected] of [
+      ["select", [["2024-03-11", "2024-03-13"]]],
+      ["reset", []],
+      ["clear", [[]]],
+    ] as const) {
+      const ranges: string[][] = [];
+      const { unmount } = render(() => (
+        <Stay
+          commitBehavior={behavior}
+          defaultValue={{ start: new CalendarDate(2024, 3, 3), end: new CalendarDate(2024, 3, 5) }}
+          onChange={recorder(ranges)}
+        />
+      ));
+      user.click(day("Monday", 11, "March"));
+      flush();
+      user.hover(day("Wednesday", 13, "March"));
+      flush();
+      user.pointerDown(document.body);
+      user.pointerUp(document.body);
+      flush();
+      expect(ranges).toEqual(expected.map((range) => [...range]));
+      unmount();
+    }
+  });
+});
+
+describe("options a calendar takes", () => {
+  test("several months are centred on the chosen day, unless told otherwise", () => {
+    const may = new CalendarDate(2024, 5, 15);
+    expect(span(single({ defaultValue: may, visibleMonths: 3 }))).toEqual([
+      "2024-04-01",
+      "2024-06-30",
+    ]);
+    expect(
+      span(single({ defaultValue: may, visibleMonths: 3, selectionAlignment: "start" })),
+    ).toEqual(["2024-05-01", "2024-07-31"]);
+    expect(
+      span(single({ defaultValue: may, visibleMonths: 3, selectionAlignment: "end" })),
+    ).toEqual(["2024-03-01", "2024-05-31"]);
+  });
+
+  test("a fixed number of weeks a month", () => {
+    render(() => (
+      <Calendar
+        aria-label="Departure"
+        defaultFocusedValue={new CalendarDate(2026, 2, 10)}
+        weeksInMonth={6}
+      />
+    ));
+    expect(screen.getAllByRole("row")).toHaveLength(6);
+  });
+
+  test("a range calendar tells isDateUnavailable where the range began", () => {
+    const anchors: (string | null)[] = [];
+    const state = stay({
+      defaultFocusedValue: MARCH,
+      isDateUnavailable: (date, anchor) => {
+        anchors.push(anchor === null ? null : String(anchor));
+        return anchor !== null && date.compare(anchor.add({ days: 3 })) > 0;
+      },
+    });
+    state.selectDate(new CalendarDate(2024, 3, 11));
+    flush();
+    expect(state.isCellUnavailable(new CalendarDate(2024, 3, 20))).toBe(true);
+    expect(state.isCellUnavailable(new CalendarDate(2024, 3, 13))).toBe(false);
+    expect(anchors).toContain("2024-03-11");
   });
 });

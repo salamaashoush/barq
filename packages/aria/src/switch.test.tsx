@@ -1,6 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { flush } from "@barqjs/core";
-import { accessibleName, expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
+import {
+  accessibleDescription,
+  accessibleName,
+  expectNoAriaViolations,
+  render,
+  screen,
+  user,
+} from "@barqjs/testing";
+import { Form } from "./form.tsx";
 import { Switch, useSwitch } from "./switch.tsx";
 
 function Thumb() {
@@ -167,5 +175,67 @@ describe("Switch, with nothing of its own to say", () => {
   test("has no ARIA violations inside a label", () => {
     const { container } = render(() => <InALabel />);
     expectNoAriaViolations(container);
+  });
+});
+
+describe("Switch, help text and state", () => {
+  test("a description describes it and does not name it", () => {
+    render(() => <Switch description="Uses more battery">Wi-Fi</Switch>);
+    const control = screen.getByRole("switch");
+    expect(accessibleName(control)).toBe("Wi-Fi");
+    expect(accessibleDescription(control)).toBe("Uses more battery");
+  });
+
+  test("an error message describes it while it is invalid", () => {
+    render(() => (
+      <Switch isInvalid errorMessage="Turn this on to continue">
+        Notifications
+      </Switch>
+    ));
+    expect(accessibleDescription(screen.getByRole("switch"))).toBe("Turn this on to continue");
+  });
+
+  test("a press on its label focuses it, as WebKit does not", () => {
+    render(() => (
+      <>
+        <button type="button">Before</button>
+        <Switch>Wi-Fi</Switch>
+      </>
+    ));
+    screen.getByRole("button").focus();
+    const control = screen.getByRole("switch");
+
+    user.click(control.parentElement as HTMLElement);
+    flush();
+
+    expect(document.activeElement).toBe(control);
+  });
+
+  test("required says so to a stylesheet", () => {
+    render(() => <Switch isRequired>Terms</Switch>);
+    const control = screen.getByRole("switch");
+    expect(control.parentElement?.hasAttribute("data-required")).toBe(true);
+    expect(control.getAttribute("aria-required")).toBe("true");
+  });
+
+  test("blocks a submit only under native", () => {
+    render(() => (
+      <>
+        <Form aria-label="Aria">
+          <Switch isRequired>Terms</Switch>
+        </Form>
+        <Form aria-label="Native" validationBehavior="native">
+          <Switch isRequired>Terms</Switch>
+        </Form>
+      </>
+    ));
+    const [aria, native] = screen.getAllByRole<HTMLInputElement>("switch");
+    expect(aria?.required).toBe(false);
+    expect(native?.required).toBe(true);
+    expect(native?.hasAttribute("aria-required")).toBe(false);
+    expect(screen.getByRole<HTMLFormElement>("form", { name: "Aria" }).checkValidity()).toBe(true);
+    expect(screen.getByRole<HTMLFormElement>("form", { name: "Native" }).checkValidity()).toBe(
+      false,
+    );
   });
 });

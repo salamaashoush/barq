@@ -41,14 +41,19 @@ import {
   type ColorFormat,
   type ColorSpace,
 } from "./color.ts";
+import { useColorSwatchPickerItem } from "./colorswatchpicker.tsx";
 import { focusWithoutScrolling } from "./dom.ts";
 import { focusRing } from "./focus.ts";
+import { numberFormatter, StringDictionary, stringFormatter, useLocale } from "./i18n.ts";
+import { focusWithin } from "./interactions/focus-events.ts";
 import { hover } from "./interactions/hover.ts";
 import { globalListeners } from "./interactions/listeners.ts";
 import { move, type MoveMoveEvent } from "./interactions/move.ts";
 import type { ElementRef } from "./interactions/press.ts";
+import { scrollWheel } from "./interactions/scroll-wheel.ts";
 import { label as useLabelHook } from "./label.ts";
 import { visuallyHidden } from "./live.ts";
+import { spinButton } from "./numberfield.tsx";
 import { formReset, HIDDEN_INPUT_STYLE } from "./toggle.ts";
 import { textField, type TextFieldOptions } from "./textfield.tsx";
 import {
@@ -88,6 +93,29 @@ export interface ColorStateOptions {
 function asColor(value: Color | string | null | undefined): Color | undefined {
   if (value === null || value === undefined) return undefined;
   return typeof value === "string" ? parseColor(value) : value;
+}
+
+/** A channel as words read it, in the locale in scope: "Hue 212", "Alpha 50%". */
+function channelWords(): (color: Color, channel: ColorChannel) => string {
+  const locale = useLocale();
+  const decimal = numberFormatter();
+  const percent = numberFormatter({ style: "percent", maximumFractionDigits: 0 });
+  return (color, channel) => {
+    const amount = color.getChannelValue(channel);
+    const value =
+      channel === "alpha" ? percent().format(amount) : decimal().format(Math.round(amount));
+    return `${color.getChannelName(channel, locale().locale)} ${value}`;
+  };
+}
+
+function message(
+  format: Accessor<{ format(key: PickerStringKey): string }>,
+  key: PickerStringKey,
+  variables: Record<string, string> = {},
+): string {
+  return format()
+    .format(key)
+    .replace(/\{(\w+)\}/g, (whole, name: string) => variables[name] ?? whole);
 }
 
 // ---------------------------------------------------------------------------
@@ -130,10 +158,15 @@ export function colorSliderState(options: ColorSliderStateOptions): ColorSliderS
   const [dragging, writeDragging] = createSignal(false);
   const channel = (): ColorChannel => access(options.channel);
   const isDisabled = (): boolean => access(options.isDisabled) === true;
+  const locale = useLocale();
+  const words = channelWords();
 
   // What the LAST write produced, so a drag reads its own change back rather
-  // than the value a controlled owner has not caught up with yet.
+  // than the value a controlled owner has not caught up with yet. The drag
+  // flag is kept the same way: a key press starts and ends a drag in one
+  // tick, before the signal's write is published.
   let live = value();
+  let isDragging = false;
 
   const setValue = (next: Color): void => {
     live = next;
@@ -169,7 +202,8 @@ export function colorSliderState(options: ColorSliderStateOptions): ColorSliderS
       setChannelValue(Math.round(raw / limits.step) * limits.step);
     },
     setDragging: (next) => {
-      const was = dragging();
+      const was = isDragging;
+      isDragging = next;
       writeDragging(next);
       if (was && !next) options.onChangeEnd?.(live);
     },
@@ -177,9 +211,10 @@ export function colorSliderState(options: ColorSliderStateOptions): ColorSliderS
     decrement: (step) => setChannelValue(live.getChannelValue(channel()) - (step ?? range().step)),
     valueText: () => {
       const current = value();
-      const name = current.getChannelName(channel());
-      const amount = current.getChannelValue(channel());
-      return `${name} ${channel() === "alpha" ? `${Math.round(amount * 100)}%` : Math.round(amount)}`;
+      const text = words(current, channel());
+      if (channel() === "hue" || channel() === "alpha") return text;
+      // The channel's number alone does not say what colour it made.
+      return `${text}, ${current.withChannelValue("alpha", 1).getColorName(locale().locale)}`;
     },
   };
 }
@@ -227,8 +262,10 @@ export function colorAreaState(options: ColorAreaStateOptions): ColorAreaState {
 
   const [dragging, writeDragging] = createSignal(false);
   const isDisabled = (): boolean => access(options.isDisabled) === true;
+  const words = channelWords();
 
   let live = value();
+  let isDragging = false;
   const setValue = (next: Color): void => {
     live = next;
     setValueRaw(next);
@@ -286,7 +323,8 @@ export function colorAreaState(options: ColorAreaStateOptions): ColorAreaState {
       );
     },
     setDragging: (next) => {
-      const was = dragging();
+      const was = isDragging;
+      isDragging = next;
       writeDragging(next);
       if (was && !next) options.onChangeEnd?.(live);
     },
@@ -296,9 +334,7 @@ export function colorAreaState(options: ColorAreaStateOptions): ColorAreaState {
     decrementY: (by) => step(yChannel(), -(by ?? live.getChannelRange(yChannel()).step)),
     valueText: () => {
       const current = value();
-      return `${current.getChannelName(xChannel())} ${Math.round(
-        current.getChannelValue(xChannel()),
-      )}, ${current.getChannelName(yChannel())} ${Math.round(current.getChannelValue(yChannel()))}`;
+      return `${words(current, xChannel())}, ${words(current, yChannel())}`;
     },
   };
 }
@@ -311,6 +347,8 @@ export interface ColorSliderOptions {
   trackRef: ElementRef;
   inputRef: ElementRef<HTMLInputElement>;
   label?: MaybeAccessor<Child>;
+  name?: MaybeAccessor<string | undefined>;
+  form?: MaybeAccessor<string | undefined>;
   "aria-label"?: MaybeAccessor<string | undefined>;
   "aria-labelledby"?: MaybeAccessor<string | undefined>;
 }
@@ -342,8 +380,32 @@ export function colorSlider(
     labelElementType: "label",
   });
 
+  const locale = useLocale();
+  const listeners = globalListeners();
   const isVertical = (): boolean => state.orientation() === "vertical";
+  // Right to left, the minimum of a horizontal track is on the right.
+  const isMirrored = (): boolean => !isVertical() && locale().direction === "rtl";
   let position: number | null = null;
+
+  const range = (): ReturnType<Color["getChannelRange"]> =>
+    state.value().getChannelRange(state.channel());
+
+  // A press that never moves is still a change, and the release ends it.
+  const endOnRelease = (element: Element): void => {
+    if (isServer) return;
+    listeners.add(element.ownerDocument.defaultView ?? window, "pointerup", () => {
+      state.setDragging(false);
+      listeners.removeAll();
+    });
+  };
+
+  // A key press is a drag that starts and ends at once, so it ends the change.
+  const byKeyboard = (change: () => void): void => {
+    if (state.isDisabled()) return;
+    state.setDragging(true);
+    change();
+    state.setDragging(false);
+  };
 
   const { moveProps } = move({
     onMoveStart: () => {
@@ -351,6 +413,17 @@ export function colorSlider(
       state.setDragging(true);
     },
     onMove: (event) => {
+      if (event.pointerType === "keyboard") {
+        const by = event.shiftKey ? range().pageSize : range().step;
+        const lower =
+          (event.deltaX > 0 && isMirrored()) ||
+          (event.deltaX < 0 && !isMirrored()) ||
+          event.deltaY > 0;
+        if (lower) state.decrement(by);
+        else state.increment(by);
+        return;
+      }
+
       const track = access(options.trackRef) as Element | null;
       if (track === null) return;
       const box = track.getBoundingClientRect();
@@ -359,7 +432,8 @@ export function colorSlider(
 
       if (position === null) position = state.percent() * size;
       // Up is MORE on a vertical track, and the y axis counts down.
-      position += isVertical() ? -event.deltaY : event.deltaX;
+      if (isVertical()) position -= event.deltaY;
+      else position += isMirrored() ? -event.deltaX : event.deltaX;
       state.setPercent(position / size);
     },
     onMoveEnd: () => state.setDragging(false),
@@ -373,12 +447,13 @@ export function colorSlider(
     if (size === 0) return;
     const offset = (isVertical() ? clientY : clientX) - (isVertical() ? box.top : box.left);
     state.setDragging(true);
-    state.setPercent(isVertical() ? 1 - offset / size : offset / size);
+    state.setPercent(isVertical() || isMirrored() ? 1 - offset / size : offset / size);
     (access(options.inputRef) as HTMLInputElement | null)?.focus();
+    endOnRelease(track);
   };
 
-  const range = (): ReturnType<Color["getChannelRange"]> =>
-    state.value().getChannelRange(state.channel());
+  const initial = state.channelValue();
+  formReset(options.inputRef, initial, (next: number) => state.setChannelValue(next));
 
   return {
     labelProps,
@@ -393,7 +468,7 @@ export function colorSlider(
       style: () => ({
         position: "absolute",
         [isVertical() ? "top" : "left"]:
-          `${(isVertical() ? 1 - state.percent() : state.percent()) * 100}%`,
+          `${(isVertical() || isMirrored() ? 1 - state.percent() : state.percent()) * 100}%`,
         transform: "translate(-50%, -50%)",
         "touch-action": "none",
       }),
@@ -406,6 +481,8 @@ export function colorSlider(
       step: () => range().step,
       value: state.channelValue,
       disabled: state.isDisabled,
+      name: () => access(options.name),
+      form: () => access(options.form),
       "aria-orientation": state.orientation,
       // The number MEANS something: "212" is not a colour, "Hue 212" is.
       "aria-valuetext": state.valueText,
@@ -416,13 +493,24 @@ export function colorSlider(
         state.setChannelValue(Number.parseFloat((event.target as HTMLInputElement).value));
       },
       onKeyDown: (event: KeyboardEvent) => {
-        // Page Up and Page Down, which a range input has no notion of.
-        if (event.key !== "PageUp" && event.key !== "PageDown") return;
+        // Keys a range input either lacks or handles without ending the change.
+        switch (event.key) {
+          case "PageUp":
+            byKeyboard(() => state.increment(range().pageSize));
+            break;
+          case "PageDown":
+            byKeyboard(() => state.decrement(range().pageSize));
+            break;
+          case "Home":
+            byKeyboard(() => state.setChannelValue(range().minValue));
+            break;
+          case "End":
+            byKeyboard(() => state.setChannelValue(range().maxValue));
+            break;
+          default:
+            return;
+        }
         event.preventDefault();
-        state.setDragging(true);
-        if (event.key === "PageUp") state.increment(range().pageSize);
-        else state.decrement(range().pageSize);
-        state.setDragging(false);
       },
     }),
     outputProps: { "aria-live": "off", for: inputId },
@@ -433,6 +521,10 @@ export interface ColorAreaOptions {
   containerRef: ElementRef;
   xInputRef: ElementRef<HTMLInputElement>;
   yInputRef: ElementRef<HTMLInputElement>;
+  /** The form names the two channels are submitted under. */
+  xName?: MaybeAccessor<string | undefined>;
+  yName?: MaybeAccessor<string | undefined>;
+  form?: MaybeAccessor<string | undefined>;
   "aria-label"?: MaybeAccessor<string | undefined>;
   "aria-labelledby"?: MaybeAccessor<string | undefined>;
 }
@@ -454,7 +546,12 @@ export interface ColorAreaResult {
  */
 export function colorArea(options: ColorAreaOptions, state: ColorAreaState): ColorAreaResult {
   const listeners = globalListeners();
+  const locale = useLocale();
+  const strings = stringFormatter(PICKER_STRINGS);
   let position: { x: number; y: number } | null = null;
+
+  // Right to left, X grows leftwards, as the text does.
+  const isMirrored = (): boolean => locale().direction === "rtl";
 
   /**
    * Which axis the keyboard last moved, so a drag ends on the input that was
@@ -472,12 +569,39 @@ export function colorArea(options: ColorAreaOptions, state: ColorAreaState): Col
     (access(ref) as HTMLInputElement | null)?.focus();
   };
 
+  const pageOf = (channel: ColorChannel): number => {
+    const range = state.value().getChannelRange(channel);
+    return Math.max(range.pageSize, range.step);
+  };
+
+  // A key press is a drag that starts and ends at once, so it ends the change.
+  const byKeyboard = (moved: "x" | "y", change: () => void): void => {
+    if (state.isDisabled()) return;
+    state.setDragging(true);
+    change();
+    state.setDragging(false);
+    axis = moved;
+    focusAxis();
+  };
+
   const { moveProps } = move({
     onMoveStart: () => {
       position = null;
       state.setDragging(true);
     },
     onMove: (event) => {
+      if (event.pointerType === "keyboard") {
+        const xStep = event.shiftKey ? pageOf(state.xChannel()) : undefined;
+        const yStep = event.shiftKey ? pageOf(state.yChannel()) : undefined;
+        const right = isMirrored() ? -event.deltaX : event.deltaX;
+        if (right > 0) state.incrementX(xStep);
+        else if (right < 0) state.decrementX(xStep);
+        else if (event.deltaY > 0) state.decrementY(yStep);
+        else if (event.deltaY < 0) state.incrementY(yStep);
+        axis = Math.abs(event.deltaY) > Math.abs(event.deltaX) ? "y" : "x";
+        return;
+      }
+
       const container = access(options.containerRef) as Element | null;
       if (container === null) return;
       const box = container.getBoundingClientRect();
@@ -486,7 +610,7 @@ export function colorArea(options: ColorAreaOptions, state: ColorAreaState): Col
       if (position === null) {
         position = { x: state.xPercent() * box.width, y: (1 - state.yPercent()) * box.height };
       }
-      position.x += event.deltaX;
+      position.x += isMirrored() ? -event.deltaX : event.deltaX;
       position.y += event.deltaY;
       // The y axis counts DOWN the screen and UP the value.
       state.setPercents(position.x / box.width, 1 - position.y / box.height);
@@ -502,8 +626,9 @@ export function colorArea(options: ColorAreaOptions, state: ColorAreaState): Col
     if (container === null || state.isDisabled()) return;
     const box = container.getBoundingClientRect();
     if (box.width === 0 || box.height === 0) return;
+    const x = (clientX - box.left) / box.width;
     state.setDragging(true);
-    state.setPercents((clientX - box.left) / box.width, 1 - (clientY - box.top) / box.height);
+    state.setPercents(isMirrored() ? 1 - x : x, 1 - (clientY - box.top) / box.height);
     // A pointer drives both channels at once, so it lands on X — which is what
     // a reader then announces, and what the arrows move next.
     axis = "x";
@@ -515,6 +640,8 @@ export function colorArea(options: ColorAreaOptions, state: ColorAreaState): Col
       listeners.removeAll();
     });
   };
+
+  formReset(options.xInputRef, state.value(), (next: Color) => state.setValue(next));
 
   const inputFor = (axisName: "x" | "y"): DOMProps => {
     const channel = axisName === "x" ? state.xChannel : state.yChannel;
@@ -530,7 +657,9 @@ export function colorArea(options: ColorAreaOptions, state: ColorAreaState): Col
       step: () => range().step,
       value: read,
       disabled: state.isDisabled,
-      "aria-label": () => state.value().getChannelName(channel()),
+      name: () => access(axisName === "x" ? options.xName : options.yName),
+      form: () => access(options.form),
+      "aria-label": () => state.value().getChannelName(channel(), locale().locale),
       "aria-orientation": axisName === "x" ? "horizontal" : "vertical",
       // Both axes, on both inputs: a screen reader user moving one has to hear
       // what the other is, or the colour is half a description.
@@ -553,20 +682,45 @@ export function colorArea(options: ColorAreaOptions, state: ColorAreaState): Col
     colorAreaProps: mergeProps(moveProps, {
       // The arrows belong to the thumb, not to the reading cursor.
       role: "application",
-      "aria-label": () => access(options["aria-label"]) ?? "Color area",
+      "aria-label": () => access(options["aria-label"]) ?? message(strings, "colorPicker"),
       "aria-labelledby": () => access(options["aria-labelledby"]),
-      "aria-roledescription": "2D slider",
+      "aria-roledescription": () => message(strings, "twoDimensionalSlider"),
       "aria-disabled": () => state.isDisabled() || undefined,
       onPointerDown: (event: PointerEvent) => {
         if (event.button !== 0) return;
         onDown(event.clientX, event.clientY);
+      },
+      onKeyDown: (event: KeyboardEvent) => {
+        // Page Up and Down page Y; Home and End page X, towards the start and
+        // the end of the line as the text runs.
+        const toEnd = (by: number): void =>
+          isMirrored() ? state.decrementX(by) : state.incrementX(by);
+        const toStart = (by: number): void =>
+          isMirrored() ? state.incrementX(by) : state.decrementX(by);
+        switch (event.key) {
+          case "PageUp":
+            byKeyboard("y", () => state.incrementY(pageOf(state.yChannel())));
+            break;
+          case "PageDown":
+            byKeyboard("y", () => state.decrementY(pageOf(state.yChannel())));
+            break;
+          case "Home":
+            byKeyboard("x", () => toStart(pageOf(state.xChannel())));
+            break;
+          case "End":
+            byKeyboard("x", () => toEnd(pageOf(state.xChannel())));
+            break;
+          default:
+            return;
+        }
+        event.preventDefault();
       },
       style: { position: "relative", "touch-action": "none" },
     }),
     thumbProps: {
       style: () => ({
         position: "absolute",
-        left: `${state.xPercent() * 100}%`,
+        left: `${(isMirrored() ? 1 - state.xPercent() : state.xPercent()) * 100}%`,
         top: `${(1 - state.yPercent()) * 100}%`,
         transform: "translate(-50%, -50%)",
         "touch-action": "none",
@@ -652,6 +806,7 @@ export function colorWheelState(options: ColorWheelStateOptions = {}): ColorWhee
   // What the LAST write produced, so a drag reads its own change back rather
   // than the value a controlled owner has not caught up with yet.
   let live = value();
+  let isDragging = false;
 
   const setValue = (next: Color): void => {
     live = next;
@@ -687,7 +842,8 @@ export function colorWheelState(options: ColorWheelStateOptions = {}): ColorWhee
     isDragging: dragging,
     isDisabled,
     setDragging: (next) => {
-      const was = dragging();
+      const was = isDragging;
+      isDragging = next;
       writeDragging(next);
       if (was && !next) options.onChangeEnd?.(live);
     },
@@ -748,6 +904,9 @@ export interface ColorWheelResult {
  */
 export function colorWheel(options: ColorWheelOptions, state: ColorWheelState): ColorWheelResult {
   const inputId = id();
+  const locale = useLocale();
+  const words = channelWords();
+  const listeners = globalListeners();
   const thumbRadius = (): number => (access(options.innerRadius) + access(options.outerRadius)) / 2;
 
   const focusInput = (): void => {
@@ -828,6 +987,13 @@ export function colorWheel(options: ColorWheelOptions, state: ColorWheelState): 
     state.setHueFromPoint(x, y, radius);
     focusInput();
     state.setDragging(true);
+    if (isServer) return;
+    // A press that never moves is still a change, and the release ends it.
+    listeners.add(track.ownerDocument.defaultView ?? window, "pointerup", () => {
+      onTrack = false;
+      state.setDragging(false);
+      listeners.removeAll();
+    });
   };
 
   return {
@@ -864,10 +1030,11 @@ export function colorWheel(options: ColorWheelOptions, state: ColorWheelState): 
       disabled: state.isDisabled,
       name: () => access(options.name),
       form: () => access(options.form),
-      "aria-label": () => access(options["aria-label"]) ?? "Hue",
+      "aria-label": () =>
+        access(options["aria-label"]) ?? state.value().getChannelName("hue", locale().locale),
       "aria-labelledby": () => access(options["aria-labelledby"]),
       // The number MEANS something: "212" is not a colour, "Hue 212" is.
-      "aria-valuetext": () => `Hue ${Math.round(state.hue())}`,
+      "aria-valuetext": () => words(state.value(), "hue"),
       style: HIDDEN_INPUT_STYLE,
       onInput: (event: Event) => {
         state.setHue(Number.parseFloat((event.target as HTMLInputElement).value));
@@ -898,9 +1065,12 @@ export interface ColorFieldOptions extends Omit<
    * What the page thinks of the COLOUR, checked as it is committed.
    *
    * The colour rather than the typed text: "#ff" is a prefix, not a colour,
-   * and a validator handed one has nothing to say about it.
+   * and a validator handed one has nothing to say about it. An empty field has
+   * no colour, and is not handed over.
    */
   validate?: ValidateFunction<Color>;
+  /** Stop the scroll wheel stepping the colour. @default false */
+  isWheelDisabled?: MaybeAccessor<boolean | undefined>;
 }
 
 export interface ColorFieldResult {
@@ -914,50 +1084,90 @@ export interface ColorFieldResult {
   isInvalid: Accessor<boolean>;
 }
 
+const BLACK = 0x000000;
+const WHITE = 0xffffff;
+
+function fromHexInt(value: number): Color {
+  return parseColor(`#${value.toString(16).padStart(6, "0")}`);
+}
+
+/** What was typed, as a colour, or null. Hex may be typed without its `#`. */
+function readColor(text: string): Color | null {
+  const trimmed = text.trim();
+  for (const candidate of [trimmed, `#${trimmed}`]) {
+    try {
+      return parseColor(candidate);
+    } catch {
+      // Not this reading; the next, or none.
+    }
+  }
+  return null;
+}
+
 /**
  * A colour as text.
  *
  * Committed on blur and on Enter, never as you type: "#ff" is not a colour,
  * and a field that reported one on every keystroke would flash the page
- * through every prefix of what was typed.
+ * through every prefix of what was typed. The arrows, Page Up and Down, and the
+ * wheel step it through the 24-bit colours one at a time; Home and End go to
+ * black and to white. Emptied and committed, it holds no colour at all.
  */
 export function colorField(
   options: ColorFieldOptions,
-  state: { value: Accessor<Color>; setValue(value: Color): void; isDisabled: Accessor<boolean> },
+  state: {
+    value: Accessor<Color | null>;
+    setValue(value: Color | null): void;
+    isDisabled: Accessor<boolean>;
+  },
   ref: ElementRef<HTMLInputElement>,
 ): ColorFieldResult {
   const format = (): ColorFormat => access(options.format) ?? "hex";
-  const [text, writeText] = createSignal(state.value().toString(format()));
+  const show = (color: Color | null): string => color?.toString(format()) ?? "";
+  // Bumped on every commit, so the text is re-seeded from the colour even when
+  // the colour did not move: a controlled field refusing the edit, or text
+  // that was not a colour, both go back to what the field holds.
+  const [commits, setCommits] = createSignal(0);
+  const [text, writeText] = createSignal(() => {
+    commits();
+    return show(state.value());
+  });
 
-  let live = state.value().toString(format());
-  // What the field SHOWS. Enter commits in the same tick as the keystroke that
-  // produced the text, and a signal write is not published until the flush, so
-  // `text()` would hand the parser the value the typing replaced.
-  let typed = live;
+  // What was typed since the last commit. Enter commits in the same tick as
+  // the keystroke that produced the text, and a signal write is not published
+  // until the flush, so `text()` would hand the parser the value the typing
+  // replaced.
+  let typed: string | null = null;
   const setText = (next: string): void => {
     typed = next;
     writeText(next);
   };
+  const current = (): string => typed ?? text();
 
-  const sync = (): void => {
-    const formatted = state.value().toString(format());
-    if (formatted === live) return;
-    live = formatted;
-    setText(formatted);
+  const put = (next: Color | null): void => {
+    typed = null;
+    setCommits((count) => count + 1);
+    const held = state.value();
+    const same = next === null ? held === null : held !== null && next.isEqual(held);
+    if (!same) state.setValue(next);
   };
 
   const commit = (): void => {
-    try {
-      const parsed = parseColor(typed);
-      live = parsed.toString(format());
-      setText(live);
-      state.setValue(parsed);
-    } catch {
-      // Not a colour: the field goes back to what it holds rather than
-      // keeping text that means nothing.
-      setText(state.value().toString(format()));
+    const entered = current();
+    if (entered.trim() === "") {
+      put(null);
+      return;
     }
+    put(readColor(entered) ?? state.value());
   };
+
+  const stepTo = (target: (from: number) => number): void => {
+    const from = (readColor(current()) ?? fromHexInt(BLACK)).toHexInt();
+    put(fromHexInt(Math.min(Math.max(target(from), BLACK), WHITE)));
+    validation.commitValidation();
+  };
+
+  const isReadOnly = (): boolean => access(options.isReadOnly) === true;
 
   const {
     labelProps,
@@ -971,21 +1181,51 @@ export function colorField(
     {
       ...options,
       type: "text",
-      value: () => {
-        sync();
-        return text();
-      },
+      value: text,
       // The caller validates the COLOUR; `textField` validates a string, so
       // the typed text is ignored and the committed value is handed over.
       validate:
         options.validate === undefined
           ? undefined
-          : () => (options.validate as ValidateFunction<Color>)(state.value()),
+          : () => {
+              const held = state.value();
+              return held === null ? null : (options.validate as ValidateFunction<Color>)(held);
+            },
       onChange: setText,
       autoComplete: "off",
     },
     ref,
   );
+
+  const { spinButtonProps } = spinButton({
+    isDisabled: state.isDisabled,
+    isReadOnly,
+    minValue: BLACK,
+    maxValue: WHITE,
+    value: () => state.value()?.toHexInt(),
+    textValue: () => state.value()?.toString("hex"),
+    onIncrement: () => stepTo((from) => from + 1),
+    onDecrement: () => stepTo((from) => from - 1),
+    onIncrementToMax: () => stepTo(() => WHITE),
+    onDecrementToMin: () => stepTo(() => BLACK),
+  });
+
+  const { focusWithinProps, isFocusWithin } = focusWithin({ isDisabled: state.isDisabled });
+
+  scrollWheel({
+    ref,
+    isDisabled: () =>
+      access(options.isWheelDisabled) === true ||
+      state.isDisabled() ||
+      isReadOnly() ||
+      !isFocusWithin(),
+    onScroll: (delta) => {
+      // Mostly sideways is a trackpad scrolling the page, not this field.
+      if (Math.abs(delta.deltaY) <= Math.abs(delta.deltaX)) return;
+      if (delta.deltaY > 0) stepTo((from) => from + 1);
+      else stepTo((from) => from - 1);
+    },
+  });
 
   return {
     labelProps,
@@ -994,7 +1234,7 @@ export function colorField(
     validation,
     errors,
     isInvalid,
-    inputProps: mergeProps(inputProps, {
+    inputProps: mergeProps(inputProps, spinButtonProps, focusWithinProps, {
       autocorrect: "off",
       spellcheck: "false",
       onBlur: () => {
@@ -1027,12 +1267,23 @@ export function colorSwatch(options: ColorSwatchOptions): ColorSwatchResult {
     return typeof given === "string" ? parseColor(given) : given;
   });
 
+  const locale = useLocale();
+  const strings = stringFormatter(PICKER_STRINGS);
+  const degrees = numberFormatter({ style: "unit", unit: "degree", unitDisplay: "long" });
+  const percent = numberFormatter({ style: "percent" });
+
   const description = (): string => {
     const current = color();
+    if (current.alpha === 0) return message(strings, "transparent");
     const hsl = current.toFormat("hsl");
-    return `${Math.round(hsl.getChannelValue("hue"))} degrees, ${Math.round(
-      hsl.getChannelValue("saturation"),
-    )}% saturation, ${Math.round(hsl.getChannelValue("lightness"))}% lightness`;
+    const share = (channel: ColorChannel): string =>
+      percent().format(Math.round(hsl.getChannelValue(channel)) / 100);
+    return message(strings, "colorSwatchDescription", {
+      hue: degrees().format(Math.round(hsl.getChannelValue("hue"))),
+      saturation: share("saturation"),
+      lightness: share("lightness"),
+      name: current.getColorName(locale().locale),
+    });
   };
 
   return {
@@ -1040,6 +1291,7 @@ export function colorSwatch(options: ColorSwatchOptions): ColorSwatchResult {
     swatchProps: {
       // An image, not a button: it SHOWS a colour and does nothing.
       role: "img",
+      "aria-roledescription": () => message(strings, "colorSwatch"),
       "aria-label": () => access(options["aria-label"]) ?? description(),
       style: () => ({ "background-color": color().toString("css") }),
     },
@@ -1118,6 +1370,9 @@ export interface ColorSliderComponentProps extends StyleProps {
   /** @default "horizontal" */
   orientation?: Orientation;
   isDisabled?: boolean;
+  /** The form name the channel's value is submitted under. */
+  name?: string;
+  form?: string;
   "aria-label"?: string;
   ref?: RefTarget<HTMLDivElement>;
   onChange?: (value: Color) => void;
@@ -1129,6 +1384,7 @@ export function ColorSlider(props: ColorSliderComponentProps) {
   const trackRef = makeRef<HTMLDivElement>();
   const inputRef = makeRef<HTMLInputElement>();
   const picker = useColorPicker();
+  const locale = useLocale();
 
   const state = colorSliderState({
     channel: () => props.channel,
@@ -1148,15 +1404,19 @@ export function ColorSlider(props: ColorSliderComponentProps) {
       trackRef,
       inputRef,
       label: () => props.label,
+      name: () => props.name,
+      form: () => props.form,
       "aria-label": () =>
         props["aria-label"] ??
-        (props.label === undefined ? state.value().getChannelName(props.channel) : undefined),
+        (props.label === undefined
+          ? state.value().getChannelName(props.channel, locale().locale)
+          : undefined),
     },
     state,
   );
 
   const { visuallyHiddenProps } = visuallyHidden();
-  const { focusProps, isFocusVisible } = focusRing();
+  const { focusProps, isFocused, isFocusVisible } = focusRing();
   const { hoverProps, isHovered } = hover({ isDisabled: state.isDisabled });
 
   const elementProps = mergeProps(
@@ -1179,8 +1439,11 @@ export function ColorSlider(props: ColorSliderComponentProps) {
       <div {...elementProps} ref={mergeRefs(trackRef.set, props.ref)}>
         <div
           {...mergeProps(thumbProps, {
+            "data-focused": isFocused,
             "data-focus-visible": isFocusVisible,
             "data-hovered": isHovered,
+            "data-dragging": state.isDragging,
+            "data-disabled": state.isDisabled,
           })}
         >
           <input
@@ -1199,6 +1462,10 @@ export interface ColorAreaComponentProps extends StyleProps {
   xChannel?: ColorChannel;
   yChannel?: ColorChannel;
   isDisabled?: boolean;
+  /** The form names the two channels are submitted under. */
+  xName?: string;
+  yName?: string;
+  form?: string;
   "aria-label"?: string;
   ref?: RefTarget<HTMLDivElement>;
   onChange?: (value: Color) => void;
@@ -1230,13 +1497,17 @@ export function ColorArea(props: ColorAreaComponentProps) {
       containerRef,
       xInputRef,
       yInputRef,
+      xName: () => props.xName,
+      yName: () => props.yName,
+      form: () => props.form,
       "aria-label": () => props["aria-label"],
     },
     state,
   );
 
   const { visuallyHiddenProps } = visuallyHidden();
-  const { focusProps, isFocusVisible } = focusRing();
+  // One ring for both inputs: the thumb is one thing, whichever axis has focus.
+  const { focusProps, isFocused, isFocusVisible } = focusRing();
 
   const elementProps = mergeProps(
     colorAreaProps,
@@ -1251,13 +1522,20 @@ export function ColorArea(props: ColorAreaComponentProps) {
 
   return (
     <div {...elementProps} ref={mergeRefs(containerRef.set, props.ref)}>
-      <div {...mergeProps(thumbProps, { "data-focus-visible": isFocusVisible })}>
+      <div
+        {...mergeProps(thumbProps, {
+          "data-focused": isFocused,
+          "data-focus-visible": isFocusVisible,
+          "data-dragging": state.isDragging,
+          "data-disabled": state.isDisabled,
+        })}
+      >
         <input
           {...mergeProps(xInputProps, focusProps, { style: visuallyHiddenProps.style })}
           ref={xInputRef.set}
         />
         <input
-          {...mergeProps(yInputProps, { style: visuallyHiddenProps.style })}
+          {...mergeProps(yInputProps, focusProps, { style: visuallyHiddenProps.style })}
           ref={yInputRef.set}
         />
       </div>
@@ -1324,7 +1602,7 @@ export function ColorWheel(props: ColorWheelComponentProps) {
     state,
   );
 
-  const { focusProps, isFocusVisible } = focusRing();
+  const { focusProps, isFocused, isFocusVisible } = focusRing();
   const { hoverProps, isHovered } = hover({ isDisabled: state.isDisabled });
 
   const elementProps = mergeProps(
@@ -1349,8 +1627,11 @@ export function ColorWheel(props: ColorWheelComponentProps) {
     <div {...elementProps} ref={mergeRefs(trackRef.set, props.ref)}>
       <div
         {...mergeProps(thumbProps, {
+          "data-focused": isFocused,
           "data-focus-visible": isFocusVisible,
           "data-hovered": isHovered,
+          "data-dragging": state.isDragging,
+          "data-disabled": state.isDisabled,
         })}
       >
         <input {...mergeProps(inputProps, focusProps)} ref={inputRef.set} />
@@ -1363,8 +1644,9 @@ export interface ColorFieldComponentProps extends StyleProps {
   label?: Child;
   description?: Child;
   errorMessage?: Child;
-  value?: Color | string;
-  defaultValue?: Color | string;
+  /** Null is an empty field: no colour at all. */
+  value?: Color | string | null;
+  defaultValue?: Color | string | null;
   /** @default "hex" */
   format?: ColorFormat;
   isDisabled?: boolean;
@@ -1375,10 +1657,13 @@ export interface ColorFieldComponentProps extends StyleProps {
   validate?: ValidateFunction<Color>;
   /** @default "aria" */
   validationBehavior?: ValidationBehavior;
+  /** Stop the scroll wheel stepping the colour. @default false */
+  isWheelDisabled?: boolean;
   name?: string;
   "aria-label"?: string;
   ref?: RefTarget<HTMLInputElement>;
-  onChange?: (value: Color) => void;
+  /** Called with null when the field is emptied. */
+  onChange?: (value: Color | null) => void;
 }
 
 /** A colour as text: `#7f00ff`, committed on blur and on Enter. */
@@ -1386,11 +1671,13 @@ export function ColorField(props: ColorFieldComponentProps) {
   const domRef = makeRef<HTMLInputElement>();
   const picker = useColorPicker();
 
-  const [value, setValue] = controllable<Color>(
-    () => asColor(props.value) ?? picker?.value(),
-    () => asColor(props.defaultValue) ?? defaultColor(),
+  const [value, setValue] = controllable<Color | null>(
+    () => (props.value === null ? null : (asColor(props.value) ?? picker?.value())),
+    () => asColor(props.defaultValue) ?? null,
     (next) => {
-      picker?.setValue(next);
+      // A picker always holds a colour, so emptying a field inside one leaves
+      // the picker's colour where it was and the field goes back to it.
+      if (next !== null) picker?.setValue(next);
       props.onChange?.(next);
     },
   );
@@ -1416,6 +1703,7 @@ export function ColorField(props: ColorFieldComponentProps) {
           cells(props).validate,
         ),
         validationBehavior: () => props.validationBehavior,
+        isWheelDisabled: () => props.isWheelDisabled,
         name: () => props.name,
         "aria-label": () => props["aria-label"],
       },
@@ -1463,9 +1751,10 @@ export interface ColorSwatchComponentProps extends StyleProps {
 /** A square showing a colour, named with what it is. */
 export function ColorSwatch(props: ColorSwatchComponentProps) {
   const picker = useColorPicker();
+  const item = useColorSwatchPickerItem();
 
   const { swatchProps } = colorSwatch({
-    color: () => props.color ?? picker?.value() ?? defaultColor(),
+    color: () => props.color ?? item?.() ?? picker?.value() ?? defaultColor(),
     "aria-label": () => props["aria-label"],
   });
 
@@ -1478,3 +1767,257 @@ export function ColorSwatch(props: ColorSwatchComponentProps) {
 }
 
 export { parseColor, type Color, type ColorChannel, type ColorFormat, type ColorSpace };
+
+// ---------------------------------------------------------------------------
+// Strings
+// ---------------------------------------------------------------------------
+
+type PickerStringKey =
+  | "colorPicker"
+  | "twoDimensionalSlider"
+  | "colorSwatch"
+  | "transparent"
+  | "colorSwatchDescription";
+
+// English describes a swatch by its numbers. No other locale has a translation
+// of that, so every other one names the colour, in its own words.
+const PICKER_STRINGS = new StringDictionary<PickerStringKey>({
+  "ar-AE": {
+    colorPicker: "أداة انتقاء اللون",
+    twoDimensionalSlider: "مُنزلق 2D",
+    colorSwatch: "تغيير الألوان",
+    transparent: "شفاف",
+    colorSwatchDescription: "{name}",
+  },
+  "bg-BG": {
+    colorPicker: "Средство за избиране на цвят",
+    twoDimensionalSlider: "2D плъзгач",
+    colorSwatch: "цветна мостра",
+    transparent: "прозрачен",
+    colorSwatchDescription: "{name}",
+  },
+  "cs-CZ": {
+    colorPicker: "Výběr barvy",
+    twoDimensionalSlider: "2D posuvník",
+    colorSwatch: "barevný vzorek",
+    transparent: "průhledný",
+    colorSwatchDescription: "{name}",
+  },
+  "da-DK": {
+    colorPicker: "Farvevælger",
+    twoDimensionalSlider: "2D-skyder",
+    colorSwatch: "farveprøve",
+    transparent: "gennemsigtig",
+    colorSwatchDescription: "{name}",
+  },
+  "de-DE": {
+    colorPicker: "Farbwähler",
+    twoDimensionalSlider: "2D-Schieberegler",
+    colorSwatch: "Farbfeld",
+    transparent: "transparent",
+    colorSwatchDescription: "{name}",
+  },
+  "el-GR": {
+    colorPicker: "Επιλογέας χρωμάτων",
+    twoDimensionalSlider: "Ρυθμιστικό 2D",
+    colorSwatch: "χρωματικό δείγμα",
+    transparent: "διαφανές",
+    colorSwatchDescription: "{name}",
+  },
+  "en-US": {
+    colorPicker: "Color picker",
+    twoDimensionalSlider: "2D slider",
+    colorSwatch: "color swatch",
+    transparent: "transparent",
+    colorSwatchDescription: "{hue}, {saturation} saturation, {lightness} lightness",
+  },
+  "es-ES": {
+    colorPicker: "Selector de color",
+    twoDimensionalSlider: "Regulador 2D",
+    colorSwatch: "muestra de color",
+    transparent: "transparente",
+    colorSwatchDescription: "{name}",
+  },
+  "et-EE": {
+    colorPicker: "Värvivalija",
+    twoDimensionalSlider: "2D-liugur",
+    colorSwatch: "värvinäidis",
+    transparent: "läbipaistev",
+    colorSwatchDescription: "{name}",
+  },
+  "fi-FI": {
+    colorPicker: "Värimuokkain",
+    twoDimensionalSlider: "2D-liukusäädin",
+    colorSwatch: "värimalli",
+    transparent: "läpinäkyvä",
+    colorSwatchDescription: "{name}",
+  },
+  "fr-FR": {
+    colorPicker: "Sélecteur de couleurs",
+    twoDimensionalSlider: "Curseur 2D",
+    colorSwatch: "Échantillon de couleurs",
+    transparent: "Transparent",
+    colorSwatchDescription: "{name}",
+  },
+  "he-IL": {
+    colorPicker: "בוחר הצבעים",
+    twoDimensionalSlider: "מחוון דו מימדי",
+    colorSwatch: "דוגמית צבע",
+    transparent: "שקוף",
+    colorSwatchDescription: "{name}",
+  },
+  "hr-HR": {
+    colorPicker: "Odabir boje",
+    twoDimensionalSlider: "2D klizač",
+    colorSwatch: "uzorak boje",
+    transparent: "transparentno",
+    colorSwatchDescription: "{name}",
+  },
+  "hu-HU": {
+    colorPicker: "Színválasztó",
+    twoDimensionalSlider: "2D-csúszka",
+    colorSwatch: "színtár",
+    transparent: "átlátszó",
+    colorSwatchDescription: "{name}",
+  },
+  "it-IT": {
+    colorPicker: "Selettore colore",
+    twoDimensionalSlider: "Cursore 2D",
+    colorSwatch: "campione di colore",
+    transparent: "trasparente",
+    colorSwatchDescription: "{name}",
+  },
+  "ja-JP": {
+    colorPicker: "カラーピッカー",
+    twoDimensionalSlider: "2D スライダー",
+    colorSwatch: "カラースウォッチ",
+    transparent: "透明",
+    colorSwatchDescription: "{name}",
+  },
+  "ko-KR": {
+    colorPicker: "색상 피커",
+    twoDimensionalSlider: "2D 슬라이더",
+    colorSwatch: "색상 견본",
+    transparent: "투명도",
+    colorSwatchDescription: "{name}",
+  },
+  "lt-LT": {
+    colorPicker: "Spalvų parinkiklis",
+    twoDimensionalSlider: "2D slankiklis",
+    colorSwatch: "spalvų pavyzdys",
+    transparent: "skaidrus",
+    colorSwatchDescription: "{name}",
+  },
+  "lv-LV": {
+    colorPicker: "Krāsu atlasītājs",
+    twoDimensionalSlider: "2D slīdnis",
+    colorSwatch: "krāsu paraugs",
+    transparent: "caurspīdīgs",
+    colorSwatchDescription: "{name}",
+  },
+  "nb-NO": {
+    colorPicker: "Fargevelger",
+    twoDimensionalSlider: "2D-glidebryter",
+    colorSwatch: "fargekart",
+    transparent: "gjennomsiktig",
+    colorSwatchDescription: "{name}",
+  },
+  "nl-NL": {
+    colorPicker: "Kleurkiezer",
+    twoDimensionalSlider: "2D-schuifregelaar",
+    colorSwatch: "kleurstaal",
+    transparent: "transparant",
+    colorSwatchDescription: "{name}",
+  },
+  "pl-PL": {
+    colorPicker: "Próbnik kolorów",
+    twoDimensionalSlider: "Suwak 2D",
+    colorSwatch: "próbka koloru",
+    transparent: "przezroczysty",
+    colorSwatchDescription: "{name}",
+  },
+  "pt-BR": {
+    colorPicker: "Seletor de cores",
+    twoDimensionalSlider: "Controle deslizante 2D",
+    colorSwatch: "amostra de cores",
+    transparent: "transparente",
+    colorSwatchDescription: "{name}",
+  },
+  "pt-PT": {
+    colorPicker: "Seletor de cores",
+    twoDimensionalSlider: "Controle deslizante 2D",
+    colorSwatch: "amostra de cor",
+    transparent: "transparente",
+    colorSwatchDescription: "{name}",
+  },
+  "ro-RO": {
+    colorPicker: "Selector de culori",
+    twoDimensionalSlider: "Glisor 2D",
+    colorSwatch: "specimen de culoare",
+    transparent: "transparent",
+    colorSwatchDescription: "{name}",
+  },
+  "ru-RU": {
+    colorPicker: "Палитра цветов",
+    twoDimensionalSlider: "Ползунок 2D",
+    colorSwatch: "цветовой образец",
+    transparent: "прозрачный",
+    colorSwatchDescription: "{name}",
+  },
+  "sk-SK": {
+    colorPicker: "Výber farieb",
+    twoDimensionalSlider: "2D jazdec",
+    colorSwatch: "vzorkovník farieb",
+    transparent: "transparentný",
+    colorSwatchDescription: "{name}",
+  },
+  "sl-SI": {
+    colorPicker: "Izbirnik barv",
+    twoDimensionalSlider: "2D drsnik",
+    colorSwatch: "barvna paleta",
+    transparent: "prozorno",
+    colorSwatchDescription: "{name}",
+  },
+  "sr-SP": {
+    colorPicker: "Birač boja",
+    twoDimensionalSlider: "2D klizač",
+    colorSwatch: "Uzorak boje",
+    transparent: "providno",
+    colorSwatchDescription: "{name}",
+  },
+  "sv-SE": {
+    colorPicker: "Färgväljaren",
+    twoDimensionalSlider: "2D-reglage",
+    colorSwatch: "färgruta",
+    transparent: "genomskinlig",
+    colorSwatchDescription: "{name}",
+  },
+  "tr-TR": {
+    colorPicker: "Renk Seçici",
+    twoDimensionalSlider: "2D sürgü",
+    colorSwatch: "renk örneği",
+    transparent: "saydam",
+    colorSwatchDescription: "{name}",
+  },
+  "uk-UA": {
+    colorPicker: "Палітра кольорів",
+    twoDimensionalSlider: "Повзунок 2D",
+    colorSwatch: "зразок кольору",
+    transparent: "прозорий",
+    colorSwatchDescription: "{name}",
+  },
+  "zh-CN": {
+    colorPicker: "拾色器",
+    twoDimensionalSlider: "2D 滑块",
+    colorSwatch: "颜色色板",
+    transparent: "透明",
+    colorSwatchDescription: "{name}",
+  },
+  "zh-TW": {
+    colorPicker: "檢色器",
+    twoDimensionalSlider: "2D 滑桿",
+    colorSwatch: "色票",
+    transparent: "透明",
+    colorSwatchDescription: "{name}",
+  },
+});

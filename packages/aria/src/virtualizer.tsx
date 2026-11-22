@@ -47,6 +47,7 @@ import { isServer } from "@barqjs/web";
 import { ListCollection } from "./collections.ts";
 import type { Collection, Key, LayoutDelegate, Node, Rect, Size } from "./collections.ts";
 import { access, type MaybeAccessor } from "./utils.ts";
+import { addEvent, contains, ownerWindow, propagationTargets } from "./dom.ts";
 import type { ElementRef } from "./interactions/press.ts";
 
 // ---------------------------------------------------------------------------
@@ -132,6 +133,14 @@ export interface LayoutContext {
   collection: Collection<unknown>;
   /** What the scroll container shows, in content coordinates. */
   visibleRect: Rect;
+  /**
+   * The size of the scroll container's box. @default the visible rectangle's
+   *
+   * Larger than the visible rectangle when the page scrolls the container
+   * rather than the container itself: rows are as wide as the container,
+   * however little of it is on screen.
+   */
+  size?: Size;
 }
 
 /**
@@ -155,7 +164,7 @@ export abstract class Layout implements LayoutDelegate {
 
   /** The window moved but the layout did not: keep the rectangle current. */
   setVisibleRect(area: Rect): void {
-    this.context = { collection: this.context.collection, visibleRect: area };
+    this.context = { ...this.context, visibleRect: area };
   }
 
   abstract getLayoutInfo(key: Key): LayoutInfo | null;
@@ -240,7 +249,9 @@ export class ListLayout extends Layout {
   #infos = new Map<Key, LayoutInfo>();
   /** In collection order, so a visible range is a slice rather than a scan. */
   #order: LayoutInfo[] = [];
-  #measured = new Map<Key, number>();
+  /** A measured height, and the width it was measured at. */
+  #measured = new Map<Key, { height: number; width: number }>();
+  #width = 0;
   #contentHeight = 0;
 
   constructor(options: ListLayoutOptions = {}) {
@@ -264,7 +275,11 @@ export class ListLayout extends Layout {
   override update(context: LayoutContext): void {
     super.update(context);
 
-    const width = Math.max(0, context.visibleRect.width - this.#options.padding * 2);
+    const width = Math.max(
+      0,
+      (context.size?.width ?? context.visibleRect.width) - this.#options.padding * 2,
+    );
+    this.#width = width;
     const previous = this.#infos;
     this.#infos = new Map();
     this.#order = [];
@@ -301,19 +316,32 @@ export class ListLayout extends Layout {
       Math.max(this.#options.padding, y - this.#options.gap) + this.#options.padding;
 
     // A measurement survives a collection change: the row is the same row.
+    // It does not survive a change of width, which `#isEstimated` has said.
     for (const [key, info] of this.#infos) {
       const old = previous.get(key);
-      if (old !== undefined && !old.isEstimated) info.isEstimated = false;
+      if (old !== undefined && !old.isEstimated && old.rect.width === info.rect.width) {
+        info.isEstimated = false;
+      }
     }
   }
 
+  /**
+   * Whether a row's height is a guess.
+   *
+   * A height measured at another width is one: text that wraps takes more or
+   * fewer lines when the row narrows, so the old height is kept as the guess
+   * and the row is measured again. Left as measured, the row would be drawn
+   * at a fixed height that no longer fits it and never observed again.
+   */
   #isEstimated(key: Key, isHeading: boolean): boolean {
-    if (this.#measured.has(key)) return false;
-    return Number.isNaN(isHeading ? this.#options.headingHeight : this.#options.rowHeight);
+    const fixed = !Number.isNaN(isHeading ? this.#options.headingHeight : this.#options.rowHeight);
+    const measured = this.#measured.get(key);
+    if (measured === undefined) return !fixed;
+    return !fixed && measured.width !== this.#width;
   }
 
   #heightOf(key: Key, isHeading: boolean): number {
-    const measured = this.#measured.get(key);
+    const measured = this.#measured.get(key)?.height;
     if (measured !== undefined) return measured;
     const fixed = isHeading ? this.#options.headingHeight : this.#options.rowHeight;
     if (!Number.isNaN(fixed)) return fixed;
@@ -337,13 +365,16 @@ export class ListLayout extends Layout {
   }
 
   override getContentSize(): Size {
-    return { width: this.context.visibleRect.width, height: this.#contentHeight };
+    const width = this.context.size?.width ?? this.context.visibleRect.width;
+    return { width, height: this.#contentHeight };
   }
 
   override updateItemSize(key: Key, size: Size): boolean {
     const known = this.#measured.get(key);
-    if (known === size.height) return false;
-    this.#measured.set(key, size.height);
+    // The width the layout gave the row, which is what it was measured at.
+    const width = this.#infos.get(key)?.rect.width ?? this.#width;
+    if (known !== undefined && known.height === size.height && known.width === width) return false;
+    this.#measured.set(key, { height: size.height, width });
     return true;
   }
 
@@ -407,17 +438,36 @@ export interface VirtualizerState {
  */
 export function virtualizer(options: VirtualizerOptions): VirtualizerState {
   const [visibleRect, writeVisibleRect] = createSignal<Rect>(rect(0, 0, 0, 0));
+  const [size, writeSize] = createSignal<Size>({ width: 0, height: 0 });
   const [revision, setRevision] = createSignal(0);
 
   const overscan = (): number => access(options.overscan) ?? 1;
 
+  /**
+   * What of the container is on screen: its own scroll position, clipped to
+   * the window.
+   *
+   * A container that grows with its content never scrolls itself; the page
+   * does. Its whole height would then count as visible and every row would
+   * render, so the part of it above the viewport is skipped and no more than
+   * a viewport is taken. Scrollers between it and the page are not measured,
+   * only their scroll positions, which can render up to a viewport more than
+   * is shown and never less.
+   */
   const read = (element: HTMLElement): void => {
+    const view = ownerWindow(element);
+    const bounds = element.getBoundingClientRect();
+    const offsetX = bounds.left < 0 ? -bounds.left : 0;
+    const offsetY = bounds.top < 0 ? -bounds.top : 0;
     const next = rect(
-      element.scrollLeft,
-      element.scrollTop,
-      element.clientWidth,
-      element.clientHeight,
+      offsetX + element.scrollLeft,
+      offsetY + element.scrollTop,
+      Math.max(0, Math.min(element.clientWidth - offsetX, view.innerWidth)),
+      Math.max(0, Math.min(element.clientHeight - offsetY, view.innerHeight)),
     );
+    const box = { width: element.clientWidth, height: element.clientHeight };
+    const known = untrack(size);
+    if (box.width !== known.width || box.height !== known.height) writeSize(box);
     if (!rectEquals(next, untrack(visibleRect))) writeVisibleRect(next);
   };
 
@@ -429,13 +479,25 @@ export function virtualizer(options: VirtualizerOptions): VirtualizerState {
 
         const measure = (): void => read(element);
         measure();
-        element.addEventListener("scroll", measure, { passive: true });
+        // Captured at the window, so the page or any scroller around the
+        // container moving it is seen as well as the container's own scroll.
+        const onScroll = (event: Event): void => {
+          const target = event.target;
+          if (target instanceof Node && !contains(target, element)) return;
+          measure();
+        };
+        const stopScroll = addEvent(propagationTargets(element), "scroll", onScroll, {
+          capture: true,
+          passive: true,
+        });
+        const stopResize = addEvent(ownerWindow(element), "resize", measure);
 
         const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
         observer?.observe(element);
 
         return () => {
-          element.removeEventListener("scroll", measure);
+          stopScroll();
+          stopResize();
           observer?.disconnect();
         };
       },
@@ -457,14 +519,18 @@ export function virtualizer(options: VirtualizerOptions): VirtualizerState {
   const laidOut = (): Layout => {
     revision();
     const area = visibleRect();
+    const box = size();
     const collection = options.collection();
-    const stale = collection !== lastCollection || options.layout.shouldInvalidate(area, lastRect);
+    // The layout is asked about the container's box: the window clipping it
+    // changes what is on screen, not where anything goes.
+    const sized = rect(area.x, area.y, box.width, box.height);
+    const stale = collection !== lastCollection || options.layout.shouldInvalidate(sized, lastRect);
 
-    if (stale) options.layout.update({ collection, visibleRect: area });
+    if (stale) options.layout.update({ collection, visibleRect: area, size: box });
     else options.layout.setVisibleRect(area);
 
     lastCollection = collection;
-    lastRect = area;
+    lastRect = sized;
     return options.layout;
   };
 
@@ -492,8 +558,8 @@ export function virtualizer(options: VirtualizerOptions): VirtualizerState {
 
   const contentSize = (): Size => laidOut().getContentSize();
 
-  const measure = (key: Key, size: Size): void => {
-    if (options.layout.updateItemSize?.(key, size) === true) setRevision((n) => n + 1);
+  const measure = (key: Key, measured: Size): void => {
+    if (options.layout.updateItemSize?.(key, measured) === true) setRevision((n) => n + 1);
   };
 
   return { visible, contentSize, visibleRect, measure, layout: options.layout };
