@@ -18,7 +18,7 @@
     },
     "packages/aria": {
       "name": "@barqjs/aria",
-      "version": "0.2.0-next.1",
+      "version": "0.2.0-next.2",
       "devDependencies": {
         "@barqjs/compiler": "workspace:*",
         "@barqjs/core": "workspace:*",
@@ -32,10 +32,10 @@
         "typescript": "^7.0.2",
       },
       "peerDependencies": {
-        "@barqjs/core": ">=0.2.0-next.1",
-        "@barqjs/primitives": ">=0.2.0-next.1",
-        "@barqjs/server": ">=0.2.0-next.1",
-        "@barqjs/web": ">=0.2.0-next.1",
+        "@barqjs/core": ">=0.2.0-next.2",
+        "@barqjs/primitives": ">=0.2.0-next.2",
+        "@barqjs/server": ">=0.2.0-next.2",
+        "@barqjs/web": ">=0.2.0-next.2",
       },
     },
     "packages/benchmark": {
@@ -69,7 +69,7 @@
     },
     "packages/cli": {
       "name": "@barqjs/cli",
-      "version": "0.2.0-next.1",
+      "version": "0.2.0-next.2",
       "bin": {
         "barq": "./dist/index.js",
       },
@@ -83,7 +83,7 @@
     },
     "packages/compiler": {
       "name": "@barqjs/compiler",
-      "version": "0.2.0-next.1",
+      "version": "0.2.0-next.2",
       "devDependencies": {
         "@barqjs/core": "workspace:*",
         "@barqjs/router": "workspace:*",
@@ -107,35 +107,35 @@
     },
     "packages/compiler/npm/darwin-arm64": {
       "name": "@barqjs/compiler-darwin-arm64",
-      "version": "0.2.0-next.1",
+      "version": "0.2.0-next.2",
     },
     "packages/compiler/npm/darwin-x64": {
       "name": "@barqjs/compiler-darwin-x64",
-      "version": "0.2.0-next.1",
+      "version": "0.2.0-next.2",
     },
     "packages/compiler/npm/linux-arm64-gnu": {
       "name": "@barqjs/compiler-linux-arm64-gnu",
-      "version": "0.2.0-next.1",
+      "version": "0.2.0-next.2",
     },
     "packages/compiler/npm/linux-x64-gnu": {
       "name": "@barqjs/compiler-linux-x64-gnu",
-      "version": "0.2.0-next.1",
+      "version": "0.2.0-next.2",
     },
     "packages/compiler/npm/linux-x64-musl": {
       "name": "@barqjs/compiler-linux-x64-musl",
-      "version": "0.2.0-next.1",
+      "version": "0.2.0-next.2",
     },
     "packages/compiler/npm/win32-arm64-msvc": {
       "name": "@barqjs/compiler-win32-arm64-msvc",
-      "version": "0.2.0-next.1",
+      "version": "0.2.0-next.2",
     },
     "packages/compiler/npm/win32-x64-msvc": {
       "name": "@barqjs/compiler-win32-x64-msvc",
-      "version": "0.2.0-next.1",
+      "version": "0.2.0-next.2",
     },
     "packages/core": {
       "name": "@barqjs/core",
-      "version": "0.2.0-next.1",
+      "version": "0.2.0-next.2",
       "dependencies": {
         "@solidjs/signals": "2.0.3",
       },
@@ -150,7 +150,7 @@
     },
     "packages/create-barq": {
       "name": "create-barq",
-      "version": "0.2.0-next.1",
+      "version": "0.2.0-next.2",
       "bin": {
         "create-barq": "./dist/index.js",
       },
@@ -164,7 +164,7 @@
     },
     "packages/css": {
       "name": "@barqjs/css",
-      "version": "0.2.0-next.1",
+      "version": "0.2.0-next.2",
       "dependencies": {
         "csstype": "^3.2.4",
       },
@@ -176,7 +176,7 @@
     },
     "packages/diagnostics": {
       "name": "@barqjs/diagnostics",
-      "version": "0.2.0-next.1",
+      "version": "0.2.0-next.2",
       "dependencies": {
         "@solidjs/signals": "2.0.3",
       },
@@ -193,7 +193,7 @@
         "vitest": "^4.1.6",
       },
       "peerDependencies": {
-        "@barqjs/core": ">=0.2.0-next.1",
+        "@barqjs/core": ">=0.2.0-next.2",
         "vite": ">=8.0.0",
         "vitest": ">=2.0.0",
       },
@@ -204,7 +204,7 @@
     },
     "packages/form": {
       "name": "@barqjs/form",
-      "version": "0.2.0-next.1",
+      "version": "0.2.0-next.2",
       "dependencies": {
         "@tanstack/form-core": "^1.33.5",
         "@tanstack/store": "^0.11.2",
@@ -219,8 +219,8 @@
         "typescript": "^7.0.2",
       },
       "peerDependencies": {
-        "@barqjs/core": ">=0.2.0-next.1",
-        "@barqjs/web": ">=0.2.0-next.1",
+        "@barqjs/core": ">=0.2.0-next.2",
+        "@barqjs/web": ">=0.2.0-next.2",
       },
     },
     "packages/kitchen-sink": {
@@ -248,7 +248,7 @@
     },
     "packages/lucide": {
       "name": "@barqjs/lucide",
-      "version": "0.2.0-next.1",
+      "version": "0.2.0-next.2",
       "devDependencies": {
         "@barqjs/compiler": "workspace:*",
         "@barqjs/core": "workspace:*",
@@ -261,14 +261,14 @@
         "typescript": "^7.0.2",
       },
       "peerDependencies": {
-        "@barqjs/core": ">=0.2.0-next.1",
-        "@barqjs/server": ">=0.2.0-next.1",
-        "@barqjs/web": ">=0.2.0-next.1",
+        "@barqjs/core": ">=0.2.0-next.2",
+        "@barqjs/server": ">=0.2.0-next.2",
+        "@barqjs/web": ">=0.2.0-next.2",
       },
     },
     "packages/primitives": {
       "name": "@barqjs/primitives",
-      "version": "0.2.0-next.1",
+      "version": "0.2.0-next.2",
       "devDependencies": {
         "@barqjs/core": "workspace:*",
         "@barqjs/web": "workspace:*",
@@ -277,13 +277,13 @@
         "typescript": "^7.0.2",
       },
       "peerDependencies": {
-        "@barqjs/core": ">=0.2.0-next.1",
-        "@barqjs/web": ">=0.2.0-next.1",
+        "@barqjs/core": ">=0.2.0-next.2",
+        "@barqjs/web": ">=0.2.0-next.2",
       },
     },
     "packages/query": {
       "name": "@barqjs/query",
-      "version": "0.2.0-next.1",
+      "version": "0.2.0-next.2",
       "dependencies": {
         "@tanstack/query-core": "^5.108.1",
       },
@@ -301,9 +301,9 @@
         "typescript": "^7.0.2",
       },
       "peerDependencies": {
-        "@barqjs/core": ">=0.2.0-next.1",
-        "@barqjs/router": ">=0.2.0-next.1",
-        "@barqjs/web": ">=0.2.0-next.1",
+        "@barqjs/core": ">=0.2.0-next.2",
+        "@barqjs/router": ">=0.2.0-next.2",
+        "@barqjs/web": ">=0.2.0-next.2",
         "@tanstack/query-core": "^5.104.3",
         "@tanstack/query-devtools": "^5.104.3",
         "@tanstack/query-persist-client-core": "^5.104.3",
@@ -316,7 +316,7 @@
     },
     "packages/router": {
       "name": "@barqjs/router",
-      "version": "0.2.0-next.1",
+      "version": "0.2.0-next.2",
       "dependencies": {
         "isbot": "^5.2.3",
       },
@@ -332,10 +332,10 @@
         "typescript": "^7.0.2",
       },
       "peerDependencies": {
-        "@barqjs/core": ">=0.2.0-next.1",
-        "@barqjs/server": ">=0.2.0-next.1",
-        "@barqjs/start": ">=0.2.0-next.1",
-        "@barqjs/web": ">=0.2.0-next.1",
+        "@barqjs/core": ">=0.2.0-next.2",
+        "@barqjs/server": ">=0.2.0-next.2",
+        "@barqjs/start": ">=0.2.0-next.2",
+        "@barqjs/web": ">=0.2.0-next.2",
       },
       "optionalPeers": [
         "@barqjs/server",
@@ -344,7 +344,7 @@
     },
     "packages/server": {
       "name": "@barqjs/server",
-      "version": "0.2.0-next.1",
+      "version": "0.2.0-next.2",
       "dependencies": {
         "seroval": "^1.8.2",
       },
@@ -356,8 +356,8 @@
         "typescript": "^7.0.2",
       },
       "peerDependencies": {
-        "@barqjs/core": ">=0.2.0-next.1",
-        "@barqjs/web": ">=0.2.0-next.1",
+        "@barqjs/core": ">=0.2.0-next.2",
+        "@barqjs/web": ">=0.2.0-next.2",
       },
     },
     "packages/site": {
@@ -398,7 +398,7 @@
     },
     "packages/start": {
       "name": "@barqjs/start",
-      "version": "0.2.0-next.1",
+      "version": "0.2.0-next.2",
       "dependencies": {
         "@barqjs/css": "workspace:*",
         "srvx": "^1.0.8",
@@ -412,14 +412,14 @@
         "typescript": "^7.0.2",
       },
       "peerDependencies": {
-        "@barqjs/core": ">=0.2.0-next.1",
-        "@barqjs/server": ">=0.2.0-next.1",
-        "@barqjs/web": ">=0.2.0-next.1",
+        "@barqjs/core": ">=0.2.0-next.2",
+        "@barqjs/server": ">=0.2.0-next.2",
+        "@barqjs/web": ">=0.2.0-next.2",
       },
     },
     "packages/table": {
       "name": "@barqjs/table",
-      "version": "0.2.0-next.1",
+      "version": "0.2.0-next.2",
       "dependencies": {
         "@tanstack/store": "^0.11.2",
         "@tanstack/table-core": "^9.3.1",
@@ -434,13 +434,13 @@
         "typescript": "^7.0.2",
       },
       "peerDependencies": {
-        "@barqjs/core": ">=0.2.0-next.1",
-        "@barqjs/web": ">=0.2.0-next.1",
+        "@barqjs/core": ">=0.2.0-next.2",
+        "@barqjs/web": ">=0.2.0-next.2",
       },
     },
     "packages/testing": {
       "name": "@barqjs/testing",
-      "version": "0.2.0-next.1",
+      "version": "0.2.0-next.2",
       "dependencies": {
         "@testing-library/dom": "^10.4.2",
       },
@@ -459,11 +459,11 @@
         "typescript": "^7.0.2",
       },
       "peerDependencies": {
-        "@barqjs/core": ">=0.2.0-next.1",
-        "@barqjs/router": ">=0.2.0-next.1",
-        "@barqjs/server": ">=0.2.0-next.1",
-        "@barqjs/start": ">=0.2.0-next.1",
-        "@barqjs/web": ">=0.2.0-next.1",
+        "@barqjs/core": ">=0.2.0-next.2",
+        "@barqjs/router": ">=0.2.0-next.2",
+        "@barqjs/server": ">=0.2.0-next.2",
+        "@barqjs/start": ">=0.2.0-next.2",
+        "@barqjs/web": ">=0.2.0-next.2",
       },
       "optionalPeers": [
         "@barqjs/router",
@@ -472,7 +472,7 @@
     },
     "packages/three": {
       "name": "@barqjs/three",
-      "version": "0.2.0-next.1",
+      "version": "0.2.0-next.2",
       "dependencies": {
         "@barqjs/universal": "workspace:*",
       },
@@ -491,8 +491,8 @@
         "vite": "^8.3.8",
       },
       "peerDependencies": {
-        "@barqjs/core": ">=0.2.0-next.1",
-        "@barqjs/web": ">=0.2.0-next.1",
+        "@barqjs/core": ">=0.2.0-next.2",
+        "@barqjs/web": ">=0.2.0-next.2",
         "@types/three": ">=0.186.0",
         "three": ">=0.186.0",
         "typescript": ">=7.0.0",
@@ -552,18 +552,18 @@
         "vite": "^8.3.8",
       },
       "peerDependencies": {
-        "@barqjs/aria": ">=0.2.0-next.1",
-        "@barqjs/core": ">=0.2.0-next.1",
-        "@barqjs/css": ">=0.2.0-next.1",
-        "@barqjs/lucide": ">=0.2.0-next.1",
-        "@barqjs/primitives": ">=0.2.0-next.1",
-        "@barqjs/server": ">=0.2.0-next.1",
-        "@barqjs/web": ">=0.2.0-next.1",
+        "@barqjs/aria": ">=0.2.0-next.2",
+        "@barqjs/core": ">=0.2.0-next.2",
+        "@barqjs/css": ">=0.2.0-next.2",
+        "@barqjs/lucide": ">=0.2.0-next.2",
+        "@barqjs/primitives": ">=0.2.0-next.2",
+        "@barqjs/server": ">=0.2.0-next.2",
+        "@barqjs/web": ">=0.2.0-next.2",
       },
     },
     "packages/ui-cli": {
       "name": "@barqjs/ui-cli",
-      "version": "0.2.0-next.1",
+      "version": "0.2.0-next.2",
       "bin": {
         "barq-ui": "./dist/index.js",
       },
@@ -574,7 +574,7 @@
     },
     "packages/universal": {
       "name": "@barqjs/universal",
-      "version": "0.2.0-next.1",
+      "version": "0.2.0-next.2",
       "devDependencies": {
         "@barqjs/core": "workspace:*",
         "@barqjs/web": "workspace:*",
@@ -583,13 +583,13 @@
         "typescript": "^7.0.2",
       },
       "peerDependencies": {
-        "@barqjs/core": ">=0.2.0-next.1",
+        "@barqjs/core": ">=0.2.0-next.2",
         "typescript": ">=7.0.0",
       },
     },
     "packages/virtual": {
       "name": "@barqjs/virtual",
-      "version": "0.2.0-next.1",
+      "version": "0.2.0-next.2",
       "dependencies": {
         "@tanstack/virtual-core": "^3.19.11",
       },
@@ -604,13 +604,13 @@
         "typescript": "^7.0.2",
       },
       "peerDependencies": {
-        "@barqjs/core": ">=0.2.0-next.1",
-        "@barqjs/web": ">=0.2.0-next.1",
+        "@barqjs/core": ">=0.2.0-next.2",
+        "@barqjs/web": ">=0.2.0-next.2",
       },
     },
     "packages/vite": {
       "name": "@barqjs/vite",
-      "version": "0.2.0-next.1",
+      "version": "0.2.0-next.2",
       "dependencies": {
         "@barqjs/compiler": "workspace:*",
         "srvx": "^1.0.8",
@@ -628,8 +628,8 @@
         "vite": "^8.3.8",
       },
       "peerDependencies": {
-        "@barqjs/router": ">=0.2.0-next.1",
-        "@barqjs/start": ">=0.2.0-next.1",
+        "@barqjs/router": ">=0.2.0-next.2",
+        "@barqjs/start": ">=0.2.0-next.2",
         "vite": ">=8.0.0",
       },
       "optionalPeers": [
@@ -639,7 +639,7 @@
     },
     "packages/web": {
       "name": "@barqjs/web",
-      "version": "0.2.0-next.1",
+      "version": "0.2.0-next.2",
       "dependencies": {
         "csstype": "^3.2.4",
       },
@@ -652,7 +652,7 @@
         "typescript": "^7.0.2",
       },
       "peerDependencies": {
-        "@barqjs/core": ">=0.2.0-next.1",
+        "@barqjs/core": ">=0.2.0-next.2",
         "typescript": ">=7.0.0",
       },
     },

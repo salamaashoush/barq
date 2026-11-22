@@ -1,6 +1,6 @@
 {
   "name": "@barqjs/ui-cli",
-  "version": "0.2.0-next.1",
+  "version": "0.2.0-next.2",
   "description": "Copy @barqjs/ui components into your project, and keep them in sync",
   "keywords": [
     "barq",

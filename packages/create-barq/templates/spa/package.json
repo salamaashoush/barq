@@ -12,18 +12,18 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@barqjs/core": "^0.2.0-next.1",
-    "@barqjs/css": "^0.2.0-next.1",
-    "@barqjs/router": "^0.2.0-next.1",
-    "@barqjs/server": "^0.2.0-next.1",
-    "@barqjs/start": "^0.2.0-next.1",
-    "@barqjs/web": "^0.2.0-next.1"
+    "@barqjs/core": "^0.2.0-next.2",
+    "@barqjs/css": "^0.2.0-next.2",
+    "@barqjs/router": "^0.2.0-next.2",
+    "@barqjs/server": "^0.2.0-next.2",
+    "@barqjs/start": "^0.2.0-next.2",
+    "@barqjs/web": "^0.2.0-next.2"
   },
   "devDependencies": {
-    "@barqjs/cli": "^0.2.0-next.1",
-    "@barqjs/diagnostics": "^0.2.0-next.1",
-    "@barqjs/testing": "^0.2.0-next.1",
-    "@barqjs/vite": "^0.2.0-next.1",
+    "@barqjs/cli": "^0.2.0-next.2",
+    "@barqjs/diagnostics": "^0.2.0-next.2",
+    "@barqjs/testing": "^0.2.0-next.2",
+    "@barqjs/vite": "^0.2.0-next.2",
     "@types/bun": "^1.4.4",
     "happy-dom": "^21.0.4",
     "typescript": "^7.0.2",
