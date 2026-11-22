@@ -239,3 +239,16 @@ describe("Switch, help text and state", () => {
     );
   });
 });
+
+describe("Switch, required said by the caller", () => {
+  test("an aria-required the caller writes stays under native validation", () => {
+    render(() => (
+      <Switch aria-label="Terms" isRequired validationBehavior="native" aria-required>
+        Terms
+      </Switch>
+    ));
+    const input = screen.getByRole<HTMLInputElement>("switch");
+    expect(input.required).toBe(true);
+    expect(input.getAttribute("aria-required")).toBe("true");
+  });
+});

@@ -186,3 +186,22 @@ describe("Switch, inside a label that is not its own", () => {
     expect(document.activeElement).toBe(control());
   });
 });
+
+describe("Switch, required as shadcn means it", () => {
+  test("a required switch holds the form until it is on, and still says so", () => {
+    render(() => (
+      <form data-testid="form">
+        <Switch aria-label="Terms" name="terms" required />
+      </form>
+    ));
+    const form = screen.getByTestId<HTMLFormElement>("form");
+    const control = screen.getByRole<HTMLInputElement>("switch");
+    expect(control.getAttribute("aria-required")).toBe("true");
+    expect(form.checkValidity()).toBe(false);
+
+    user.click(control);
+    flush();
+
+    expect(form.checkValidity()).toBe(true);
+  });
+});

@@ -88,6 +88,7 @@ export interface ToggleOptions extends FocusableOptions {
   /** Whether there is a visible label. Without one, `aria-label` is required. */
   children?: MaybeAccessor<unknown>;
   "aria-label"?: MaybeAccessor<string | undefined>;
+  "aria-required"?: MaybeAccessor<boolean | undefined>;
   "aria-labelledby"?: MaybeAccessor<string | undefined>;
   "aria-describedby"?: MaybeAccessor<string | undefined>;
   "aria-controls"?: MaybeAccessor<string | undefined>;
@@ -268,7 +269,10 @@ export function toggle(
         name: () => access(options.name),
         form: () => access(options.form),
         value: () => access(options.value),
-        "aria-required": () => (isRequired() && !isNative()) || undefined,
+        // The caller's own word wins: a kit whose control states `required`
+        // both ways, as Radix's switch does, says so here.
+        "aria-required": () =>
+          access(options["aria-required"]) ?? ((isRequired() && !isNative()) || undefined),
         "aria-invalid": () => isInvalid() || undefined,
         "aria-describedby": describedBy,
         "aria-errormessage": () => access(options["aria-errormessage"]),

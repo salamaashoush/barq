@@ -160,6 +160,12 @@ export function Switch(props: SwitchProps) {
       defaultSelected={props.defaultSelected ?? props.defaultChecked}
       isDisabled={props.isDisabled ?? props.disabled}
       isRequired={props.isRequired ?? props.required}
+      // shadcn's `required` is both of Radix's: `aria-required` on the switch
+      // and the native attribute on its input, so the browser holds the form.
+      validationBehavior={
+        props.validationBehavior ?? (props.required === true ? "native" : undefined)
+      }
+      aria-required={props.required === true ? true : undefined}
       onChange={(checked: boolean) => {
         props.onChange?.(checked);
         props.onCheckedChange?.(checked);
