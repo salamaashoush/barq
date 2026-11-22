@@ -105,6 +105,7 @@ import {
   provideDragButton,
   provideDropIndicator,
   useDragAndDropContext,
+  dropIndicatorStyle,
 } from "./drag-and-drop.tsx";
 import { focusableWalker, focusRing } from "./focus.ts";
 import { rowIdFor, type KeyboardNavigationBehavior } from "./gridlist.tsx";
@@ -1137,7 +1138,13 @@ export function Tree<T>(props: TreeComponentProps<T>) {
   });
   const anyState = state as unknown as TreeState<unknown>;
 
-  virtual?.attach(state.collection, domRef, () => state.selectionManager().focusedKey);
+  const dropping: { held?: CollectionDragAndDrop } = {};
+  virtual?.attach(
+    state.collection,
+    domRef,
+    () => state.selectionManager().focusedKey,
+    () => dropping.held?.persistedKeys() ?? [],
+  );
 
   const isEmpty = (): boolean => state.collection().size === 0;
   const [emptyStateIsTabbable, setEmptyStateIsTabbable] = createSignal(false);
@@ -1167,7 +1174,8 @@ export function Tree<T>(props: TreeComponentProps<T>) {
 
   const { focusProps, isFocused, isFocusVisible } = focusRing();
   const selectionMode = (): SelectionMode => state.selectionManager().selectionMode;
-  const dragAndDrop = treeDragAndDrop(props.dragAndDropHooks, anyState, domRef, virtual?.layout);
+  const dragAndDrop = treeDragAndDrop(props.dragAndDropHooks, anyState, domRef, virtual);
+  dropping.held = dragAndDrop;
   const isDropTarget = (): boolean => dragAndDrop?.isRootDropTarget() === true;
   const allowsDragging = (): boolean =>
     dragAndDrop?.dragState !== undefined && !dragAndDrop.dragState.isDisabled();
@@ -1257,9 +1265,10 @@ function treeDragAndDrop(
   hooks: DragAndDropHooks | undefined,
   state: TreeState<unknown>,
   domRef: Accessor<HTMLDivElement | null>,
-  layoutDelegate: LayoutDelegate | undefined,
+  virtual: VirtualizerValue | null,
 ): CollectionDragAndDrop | undefined {
   if (hooks === undefined) return undefined;
+  const layoutDelegate = virtual?.layout;
   const locale = useLocale();
   const direction = (): "ltr" | "rtl" => locale().direction;
   const collection = state.collection as Accessor<Collection<unknown>>;
@@ -1269,6 +1278,7 @@ function treeDragAndDrop(
   };
 
   const result: CollectionDragAndDrop = collectionDragAndDrop({
+    virtual,
     hooks,
     collection,
     selectionManager: state.selectionManager,
@@ -1320,6 +1330,7 @@ function TreeDropIndicator(indicator: { of: Incoming<DropIndicatorProps> }) {
 
   const target = props.target();
   const buttonRef = makeRef<HTMLDivElement>();
+  const virtual = useVirtualizer();
   const { visuallyHiddenProps } = visuallyHidden();
   const { dropIndicatorProps, isDropTarget, isHidden } = dragAndDropHooks.dropIndicator(
     { target },
@@ -1333,7 +1344,12 @@ function TreeDropIndicator(indicator: { of: Incoming<DropIndicatorProps> }) {
     <Show when={!isHidden()}>
       <div
         class={props.class?.() ?? props.className?.()}
-        style={{ position: "relative", "--tree-item-level": String(level()), ...props.style?.() }}
+        style={{
+          position: "relative",
+          "--tree-item-level": String(level()),
+          ...props.style?.(),
+          ...(target.type === "item" ? dropIndicatorStyle(virtual, target) : undefined),
+        }}
         role="row"
         aria-level={level()}
         data-slot={props["data-slot"]?.() ?? "drop-indicator"}

@@ -26,6 +26,7 @@ import {
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { button, type ButtonOptions } from "./button.tsx";
 import type { Collection, Key, SelectionManager } from "./collections.ts";
+import { rowStyle, type VirtualizerValue } from "./virtualizer.tsx";
 import { contains } from "./dom.ts";
 import {
   draggableCollection,
@@ -495,6 +496,12 @@ export interface CollectionDragAndDropOptions {
   onKeyDown?: (event: KeyboardEvent) => void;
   /** What takes focus for an item after a drop, where items are not focusable themselves. */
   focusKeyFor?: (key: Key) => Key;
+  /**
+   * The virtualiser the collection is inside. Its layout then finds the target
+   * under the pointer and places the indicators, since most rows a drop may
+   * fall between are not in the document.
+   */
+  virtual?: VirtualizerValue | null;
 }
 
 /**
@@ -549,6 +556,21 @@ export interface CollectionDragAndDrop {
   shouldRenderIndicator(target: ItemDropTarget): boolean;
   /** The caller's indicator for `target`, or the default one. */
   renderDropIndicator(target: ItemDropTarget): Child;
+  /** Rows a virtualiser has to keep rendered: the one a drop is aimed at. */
+  persistedKeys: Accessor<Key[]>;
+}
+
+/**
+ * Where a virtualised collection draws the indicator for `target`, as a style.
+ * Nothing outside a virtualiser, where the indicator sits in the flow between
+ * the rows it separates.
+ */
+export function dropIndicatorStyle(
+  virtual: VirtualizerValue | null,
+  target: ItemDropTarget,
+): Record<string, string> | undefined {
+  const info = virtual?.layout.getDropTargetLayoutInfo?.(target) ?? null;
+  return info === null ? undefined : rowStyle(info);
 }
 
 /**
@@ -588,13 +610,19 @@ export function collectionDragAndDrop(
       selectionManager: options.selectionManager,
     });
     const Delegate = hooks.ListDropTargetDelegate ?? ListDropTargetDelegate;
+    const placed = options.virtual?.layout;
     const base =
       hooks.dropTargetDelegate ??
-      new Delegate(options.collection, options.ref, {
-        layout: options.layout,
-        orientation: options.orientation,
-        direction: options.direction,
-      });
+      (placed?.getDropTargetFromPoint === undefined
+        ? new Delegate(options.collection, options.ref, {
+            layout: options.layout,
+            orientation: options.orientation,
+            direction: options.direction,
+          })
+        : {
+            getDropTargetFromPoint: (x, y, isValid) =>
+              placed.getDropTargetFromPoint?.(x, y, isValid) ?? null,
+          });
     const result = hooks.droppableCollection?.(
       {
         keyboardDelegate: dropNavigation(
@@ -621,6 +649,10 @@ export function collectionDragAndDrop(
 
   const droppable = dropState;
   return {
+    persistedKeys: () => {
+      const target = droppable?.target() ?? null;
+      return target !== null && target.type === "item" ? [target.key] : [];
+    },
     hooks,
     dragState,
     dropState,

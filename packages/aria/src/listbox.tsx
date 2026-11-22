@@ -45,6 +45,7 @@ import {
   type CollectionDragAndDrop,
   collectionDragAndDrop,
   type DragAndDropHooks,
+  dropIndicatorStyle,
   type DropIndicatorProps,
   provideDropIndicator,
   useDragAndDropContext,
@@ -80,6 +81,7 @@ import {
   rowStyle,
   useVirtualizer,
   type LayoutInfo,
+  type VirtualizerValue,
 } from "./virtualizer.tsx";
 import {
   access,
@@ -768,7 +770,13 @@ export function ListBox<T>(props: ListBoxComponentProps<T>) {
   // Inside a `<Virtualizer>` the list renders a WINDOW of its collection, and
   // the layout — not the DOM — answers what is above, below and a page away.
   const virtual = useVirtualizer();
-  virtual?.attach(state.collection, domRef, () => state.selectionManager().focusedKey);
+  const dropping: { held?: CollectionDragAndDrop } = {};
+  virtual?.attach(
+    state.collection,
+    domRef,
+    () => state.selectionManager().focusedKey,
+    () => dropping.held?.persistedKeys() ?? [],
+  );
 
   // A press selects on release in a draggable list, so that pressing one of
   // several selected items to drag them all does not first select only it.
@@ -793,7 +801,9 @@ export function ListBox<T>(props: ListBoxComponentProps<T>) {
   const dragAndDrop = listBoxDragAndDrop(props.dragAndDropHooks, anyState, domRef, {
     orientation: () => props.orientation,
     layoutDelegate: virtual?.layout,
+    virtual,
   });
+  dropping.held = dragAndDrop;
 
   if (auto !== null) {
     onCleanup(
@@ -1166,6 +1176,7 @@ function listBoxDragAndDrop(
   layout: {
     orientation: Accessor<"horizontal" | "vertical" | undefined>;
     layoutDelegate: LayoutDelegate | undefined;
+    virtual: VirtualizerValue | null;
   },
 ): CollectionDragAndDrop | undefined {
   if (hooks === undefined) return undefined;
@@ -1189,6 +1200,7 @@ function listBoxDragAndDrop(
     }),
     orientation: layout.orientation,
     direction,
+    virtual: layout.virtual,
   });
 
   if (dragAndDrop.dropState !== undefined) {
@@ -1206,6 +1218,11 @@ function ListBoxDropIndicator(indicator: { of: Incoming<DropIndicatorProps> }) {
   }
 
   const domRef = makeRef<HTMLLIElement>();
+  const virtual = useVirtualizer();
+  const indicatorStyle = (): Record<string, string> | undefined => {
+    const target = props.target();
+    return target.type === "item" ? dropIndicatorStyle(virtual, target) : undefined;
+  };
   const { dropIndicatorProps, isDropTarget, isHidden } = dragAndDropHooks.dropIndicator(
     { target: props.target() },
     dropState,
@@ -1217,6 +1234,7 @@ function ListBoxDropIndicator(indicator: { of: Incoming<DropIndicatorProps> }) {
       <li
         {...dropIndicatorProps}
         {...styleProps(props)}
+        {...(virtual === null ? {} : { style: indicatorStyle })}
         role="option"
         data-slot={props["data-slot"]?.() ?? "drop-indicator"}
         data-drop-target={isDropTarget()}

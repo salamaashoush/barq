@@ -81,6 +81,7 @@ import {
   provideDragButton,
   provideDropIndicator,
   useDragAndDropContext,
+  dropIndicatorStyle,
 } from "./drag-and-drop.tsx";
 import {
   activeElement,
@@ -1434,10 +1435,12 @@ export function Table<R, C>(props: TableComponentProps<R, C>) {
   // layout — not the DOM — answers what is above, below and a page away. Only
   // the BODY is windowed: the header is one row and always on screen.
   const virtual = useVirtualizer();
+  const dropping: { held?: CollectionDragAndDrop } = {};
   virtual?.attach(
     () => rowsOnly(state.collection()),
     domRef,
     () => state.selectionManager().focusedKey,
+    () => dropping.held?.persistedKeys() ?? [],
   );
 
   const { gridProps, baseId } = table(
@@ -1450,7 +1453,8 @@ export function Table<R, C>(props: TableComponentProps<R, C>) {
     state,
   );
 
-  const dragAndDrop = tableDragAndDrop(props.dragAndDropHooks, state, domRef, virtual?.layout);
+  const dragAndDrop = tableDragAndDrop(props.dragAndDropHooks, state, domRef, virtual);
+  dropping.held = dragAndDrop;
   const hasDragHooks = (): boolean => dragAndDrop?.dragState !== undefined;
   const allowsDragging = (): boolean =>
     hasDragHooks() && dragAndDrop?.dragState?.isDisabled() !== true;
@@ -1570,9 +1574,10 @@ function tableDragAndDrop(
   hooks: DragAndDropHooks | undefined,
   state: TableState<unknown, unknown>,
   domRef: Accessor<HTMLDivElement | null>,
-  layoutDelegate: LayoutDelegate | undefined,
+  virtual: VirtualizerValue | null,
 ): CollectionDragAndDrop | undefined {
   if (hooks === undefined) return undefined;
+  const layoutDelegate = virtual?.layout;
   const locale = useLocale();
   const direction = (): "ltr" | "rtl" => locale().direction;
   const body = createMemo(
@@ -1595,6 +1600,7 @@ function tableDragAndDrop(
   };
 
   const result: CollectionDragAndDrop = collectionDragAndDrop({
+    virtual,
     hooks,
     collection: body,
     selectionManager: state.selectionManager,
@@ -1648,6 +1654,7 @@ function TableDropIndicator(indicator: { of: Incoming<DropIndicatorProps> }) {
 
   const target = props.target();
   const buttonRef = makeRef<HTMLDivElement>();
+  const virtual = useVirtualizer();
   const { visuallyHiddenProps } = visuallyHidden();
   const { dropIndicatorProps, isDropTarget, isHidden } = dragAndDropHooks.dropIndicator(
     { target },
@@ -1662,7 +1669,11 @@ function TableDropIndicator(indicator: { of: Incoming<DropIndicatorProps> }) {
     <Show when={!isHidden()}>
       <div
         class={props.class?.() ?? props.className?.()}
-        style={{ "--table-row-level": String(level() + 1), ...props.style?.() }}
+        style={{
+          "--table-row-level": String(level() + 1),
+          ...props.style?.(),
+          ...(target.type === "item" ? dropIndicatorStyle(virtual, target) : undefined),
+        }}
         role="row"
         aria-level={isTree() ? level() : undefined}
         data-slot={props["data-slot"]?.() ?? "drop-indicator"}

@@ -11,14 +11,17 @@
  * which is what a real scroll would have produced.
  */
 
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { flush, createSignal } from "@barqjs/core";
 import { render, screen, user } from "@barqjs/testing";
 import type { Key, Node } from "./collections.ts";
 import { ListCollection } from "./collections.ts";
+import type { DroppableCollectionReorderEvent } from "./dnd/index.ts";
+import { dragAndDrop } from "./drag-and-drop.tsx";
 import { GridList, GridListItem } from "./gridlist.tsx";
 import { ListBox, Option } from "./listbox.tsx";
 import { Cell, Column, Row, Table, TableBody, TableHeader } from "./table.tsx";
+import { fireDrag, MockDataTransfer, nextFrame, restoreRects, stubRects } from "./test-dnd.ts";
 import {
   listLayout,
   rectIntersects,
@@ -478,5 +481,196 @@ describe("a container the page scrolls", () => {
     flush();
 
     expect(options()[0]?.style.width).toBe("200px");
+  });
+});
+
+describe("a list layout as a place to drop", () => {
+  function laidOut(rowHeight = ROW) {
+    const layout = listLayout({ rowHeight });
+    layout.update({
+      collection: new ListCollection(nodesOf(CITIES.slice(0, 10))),
+      visibleRect: rect(0, 40, 200, VIEWPORT),
+    });
+    return layout;
+  }
+
+  test("a point near a row's edge is between rows, and its middle is on it", () => {
+    const layout = laidOut();
+    const any = (): boolean => true;
+    // The window is scrolled by 40, so a point 5 down is at 45: row c2, top edge.
+    expect(layout.getDropTargetFromPoint(10, 5, any)).toEqual({
+      type: "item",
+      key: "c2",
+      dropPosition: "before",
+    });
+    // A row twice the edge's reach has no middle; a taller one does.
+    expect(laidOut(40).getDropTargetFromPoint(10, 20, any)).toEqual({
+      type: "item",
+      key: "c1",
+      dropPosition: "on",
+    });
+    expect(layout.getDropTargetFromPoint(10, 17, any)).toEqual({
+      type: "item",
+      key: "c2",
+      dropPosition: "after",
+    });
+  });
+
+  test("where a drop on a row is refused, the nearer half decides", () => {
+    const layout = laidOut();
+    const between = (target: { type: string; dropPosition?: string }): boolean =>
+      target.type === "item" && target.dropPosition !== "on";
+    expect(layout.getDropTargetFromPoint(10, 8, between)).toMatchObject({
+      key: "c2",
+      dropPosition: "before",
+    });
+    expect(layout.getDropTargetFromPoint(10, 12, between)).toMatchObject({
+      key: "c2",
+      dropPosition: "after",
+    });
+  });
+
+  test("below the last row is the list itself", () => {
+    expect(laidOut().getDropTargetFromPoint(10, 500, () => true)).toEqual({ type: "root" });
+  });
+
+  test("an indicator is drawn on the line between the two rows", () => {
+    const layout = laidOut();
+    const before = layout.getDropTargetLayoutInfo({
+      type: "item",
+      key: "c2",
+      dropPosition: "before",
+    });
+    const after = layout.getDropTargetLayoutInfo({
+      type: "item",
+      key: "c2",
+      dropPosition: "after",
+    });
+    expect(before?.rect).toEqual(rect(0, 39, 200, 2));
+    expect(after?.rect).toEqual(rect(0, 59, 200, 2));
+  });
+});
+
+describe("dropping into a virtualised listbox", () => {
+  afterEach(restoreRects);
+
+  function Sortable(props: { onReorder: (event: DroppableCollectionReorderEvent) => void }) {
+    const { dragAndDropHooks } = dragAndDrop<City>({
+      getItems: (keys) => [...keys].map((key) => ({ "text/plain": String(key) })),
+      onReorder: props.onReorder,
+    });
+    return (
+      <Virtualizer layout={listLayout({ rowHeight: ROW })} overscan={0}>
+        <ListBox
+          aria-label="Cities"
+          items={CITIES}
+          getTextValue={(city: City) => city.name}
+          dragAndDropHooks={dragAndDropHooks}
+        >
+          {(city: City) => <Option>{city.name}</Option>}
+        </ListBox>
+      </Virtualizer>
+    );
+  }
+
+  test("the layout finds the target, places the indicator and keeps the target's row", async () => {
+    stubRects(function (this: HTMLElement) {
+      return {
+        left: 0,
+        right: 200,
+        top: 0,
+        bottom: VIEWPORT,
+        x: 0,
+        y: 0,
+        width: 200,
+        height: VIEWPORT,
+      };
+    });
+    const reorders: DroppableCollectionReorderEvent[] = [];
+    render(() => <Sortable onReorder={(event) => reorders.push(event)} />);
+    scrollTo(list(), 0);
+
+    const dragged = options().find((option) => option.textContent === "City 0") as HTMLElement;
+    const dataTransfer = new MockDataTransfer();
+    fireDrag(dragged, "dragstart", { dataTransfer, clientX: 10, clientY: 5 });
+    await nextFrame();
+
+    // 45 down: the top edge of the third row, so between City 1 and City 2.
+    fireDrag(list(), "dragenter", { dataTransfer, clientX: 10, clientY: 45 });
+    fireDrag(list(), "dragover", { dataTransfer, clientX: 10, clientY: 45 });
+    const indicator = list().querySelector("[data-drop-target]") as HTMLElement;
+    expect(indicator.getAttribute("aria-label")).toBe("Insert between City 1 and City 2");
+    expect(indicator.style.position).toBe("absolute");
+    expect(indicator.style.top).toBe("39px");
+
+    // Scrolled far away, the row the drop is aimed at is still rendered.
+    scrollTo(list(), 4000);
+    expect(options().some((option) => option.textContent === "City 2")).toBe(true);
+    expect(options().some((option) => option.textContent === "City 3")).toBe(false);
+
+    scrollTo(list(), 0);
+    fireDrag(list(), "drop", { dataTransfer, clientX: 10, clientY: 45 });
+    expect(reorders[0]?.target).toEqual({ type: "item", key: "c2", dropPosition: "before" });
+    fireDrag(dragged, "dragend", { dataTransfer, clientX: 10, clientY: 45 });
+  });
+});
+
+describe("dropping into a virtualised grid list", () => {
+  afterEach(restoreRects);
+
+  test("the layout finds the target and places the indicator row", async () => {
+    stubRects(function (this: HTMLElement) {
+      return {
+        left: 0,
+        right: 200,
+        top: 0,
+        bottom: VIEWPORT,
+        x: 0,
+        y: 0,
+        width: 200,
+        height: VIEWPORT,
+      };
+    });
+    const reorders: DroppableCollectionReorderEvent[] = [];
+    function Sortable() {
+      const { dragAndDropHooks } = dragAndDrop<City>({
+        getItems: (keys) => [...keys].map((key) => ({ "text/plain": String(key) })),
+        onReorder: (event) => {
+          reorders.push(event);
+        },
+      });
+      return (
+        <Virtualizer layout={listLayout({ rowHeight: ROW })} overscan={0}>
+          <GridList
+            aria-label="Cities"
+            items={CITIES}
+            getTextValue={(c: City) => c.name}
+            dragAndDropHooks={dragAndDropHooks}
+          >
+            {(city: City) => <GridListItem>{city.name}</GridListItem>}
+          </GridList>
+        </Virtualizer>
+      );
+    }
+    render(() => <Sortable />);
+    const grid = screen.getByRole("grid");
+    scrollTo(grid, 0);
+
+    const dragged = screen
+      .getAllByRole("row")
+      .find((row) => (row.textContent ?? "").includes("City 0")) as HTMLElement;
+    const dataTransfer = new MockDataTransfer();
+    fireDrag(dragged, "dragstart", { dataTransfer, clientX: 10, clientY: 5 });
+    await nextFrame();
+
+    fireDrag(grid, "dragenter", { dataTransfer, clientX: 10, clientY: 45 });
+    fireDrag(grid, "dragover", { dataTransfer, clientX: 10, clientY: 45 });
+    const indicator = grid.querySelector('[data-slot="drop-indicator"][data-drop-target]');
+    expect((indicator as HTMLElement).style.position).toBe("absolute");
+    expect((indicator as HTMLElement).style.top).toBe("39px");
+
+    fireDrag(grid, "drop", { dataTransfer, clientX: 10, clientY: 45 });
+    expect(reorders[0]?.target).toEqual({ type: "item", key: "c2", dropPosition: "before" });
+    fireDrag(dragged, "dragend", { dataTransfer, clientX: 10, clientY: 45 });
   });
 });

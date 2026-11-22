@@ -49,6 +49,7 @@ import type { Collection, Key, LayoutDelegate, Node, Rect, Size } from "./collec
 import { access, type MaybeAccessor } from "./utils.ts";
 import { addEvent, contains, ownerWindow, propagationTargets } from "./dom.ts";
 import type { ElementRef } from "./interactions/press.ts";
+import type { DropTarget, ItemDropTarget } from "./dnd/types.ts";
 
 // ---------------------------------------------------------------------------
 // Geometry
@@ -188,6 +189,21 @@ export abstract class Layout implements LayoutDelegate {
   /** The real size of a row that was measured. Returns whether it moved anything. */
   updateItemSize?(key: Key, size: Size): boolean;
 
+  /**
+   * The drop target under a point, the point measured from the scrolling
+   * element's own corner. A layout that answers is what lets a virtualised
+   * collection take a drop: the rows a point may fall between are mostly not
+   * in the document to be measured.
+   */
+  getDropTargetFromPoint?(
+    x: number,
+    y: number,
+    isValidDropTarget: (target: DropTarget) => boolean,
+  ): DropTarget | null;
+
+  /** Where the indicator for a position before or after an item is drawn. */
+  getDropTargetLayoutInfo?(target: ItemDropTarget): LayoutInfo | null;
+
   getItemRect(key: Key): Rect | null {
     return this.getLayoutInfo(key)?.rect ?? null;
   }
@@ -217,6 +233,11 @@ function emptyCollection(): Collection<unknown> {
 // ---------------------------------------------------------------------------
 // A list of rows
 // ---------------------------------------------------------------------------
+
+/** How near a row's edge a point counts as between rows, where a drop on the row is allowed. */
+const DROP_EDGE = 10;
+/** The height an indicator between two rows is given. Its look is the caller's. */
+const DROP_INDICATOR_THICKNESS = 2;
 
 export interface ListLayoutOptions {
   /** A fixed height for every row. Leave it out to estimate and measure. */
@@ -376,6 +397,75 @@ export class ListLayout extends Layout {
     if (known !== undefined && known.height === size.height && known.width === width) return false;
     this.#measured.set(key, { height: size.height, width });
     return true;
+  }
+
+  override getDropTargetFromPoint(
+    x: number,
+    y: number,
+    isValidDropTarget: (target: DropTarget) => boolean,
+  ): DropTarget | null {
+    const visible = this.context.visibleRect;
+    const at = y + visible.y;
+    const gap = this.#options.gap;
+    // A point in the gap between two rows belongs to the nearer of them.
+    const search = rect(x + visible.x, Math.max(0, at - gap), 1, Math.max(1, gap * 2));
+
+    let nearest: LayoutInfo | null = null;
+    let distance = Number.POSITIVE_INFINITY;
+    for (const info of this.#order) {
+      if (info.type !== "item" || !rectIntersects(info.rect, search)) continue;
+      const away = Math.min(Math.abs(info.rect.y - at), Math.abs(rectMaxY(info.rect) - at));
+      if (away < distance) {
+        distance = away;
+        nearest = info;
+      }
+    }
+    if (nearest === null || this.context.collection.size === 0) return { type: "root" };
+
+    const start = nearest.rect.y;
+    const end = rectMaxY(nearest.rect);
+    const on: ItemDropTarget = { type: "item", key: nearest.key, dropPosition: "on" };
+    const before: ItemDropTarget = { ...on, dropPosition: "before" };
+    const after: ItemDropTarget = { ...on, dropPosition: "after" };
+
+    if (!isValidDropTarget(on)) {
+      if (at <= start + nearest.rect.height / 2 && isValidDropTarget(before)) return before;
+      return isValidDropTarget(after) ? after : on;
+    }
+    // Still between rows within reach of an edge, where a drop on is allowed.
+    if (at <= start + DROP_EDGE && isValidDropTarget(before)) return before;
+    if (at >= end - DROP_EDGE && isValidDropTarget(after)) return after;
+    return on;
+  }
+
+  override getDropTargetLayoutInfo(target: ItemDropTarget): LayoutInfo | null {
+    let info = this.#infos.get(target.key);
+    if (info === undefined) return null;
+
+    if (target.dropPosition === "after") {
+      // After the last row of the item's own branch, which is where an
+      // expanded parent ends.
+      const collection = this.context.collection;
+      const level = collection.getItem(target.key)?.level ?? 0;
+      let next = collection.getKeyAfter(target.key);
+      while (next !== null) {
+        const node = collection.getItem(next);
+        if (node === null || node === undefined || (node.level ?? 0) <= level) break;
+        info = this.#infos.get(next) ?? info;
+        next = collection.getKeyAfter(next);
+      }
+    }
+
+    const y =
+      target.dropPosition === "before"
+        ? Math.max(0, info.rect.y - DROP_INDICATOR_THICKNESS / 2)
+        : target.dropPosition === "after"
+          ? rectMaxY(info.rect) - DROP_INDICATOR_THICKNESS / 2
+          : info.rect.y;
+    const height = target.dropPosition === "on" ? info.rect.height : DROP_INDICATOR_THICKNESS;
+    return layoutInfo("item", target.key, rect(info.rect.x, y, info.rect.width, height), {
+      parentKey: info.parentKey,
+    });
   }
 
   override getKeyRange(from: Key, to: Key): Key[] {
@@ -583,6 +673,8 @@ export interface VirtualizerValue {
     collection: Accessor<Collection<unknown>>,
     ref: ElementRef,
     focusedKey: Accessor<Key | null>,
+    /** Rows the collection needs kept, as the one a drop is aimed at. */
+    persistedKeys?: Accessor<Iterable<Key>>,
   ) => void;
   /** What to render, in collection order. */
   visible: Accessor<LayoutInfo[]>;
@@ -697,6 +789,10 @@ export function Virtualizer(props: Incoming<VirtualizerComponentProps>) {
     { read: () => null },
     ATTACHED,
   );
+  const [kept, setKept] = createSignal<{ read: Accessor<Iterable<Key>> }>(
+    { read: () => [] },
+    ATTACHED,
+  );
   const layout = props.layout();
 
   const state = virtualizer({
@@ -712,17 +808,18 @@ export function Virtualizer(props: Incoming<VirtualizerComponentProps>) {
     // user scrolling with the arrows would lose their place every time.
     persistedKeys: () => {
       const focused = focusedKey().read();
-      const given = [...(props.persistedKeys?.() ?? [])];
+      const given = [...(props.persistedKeys?.() ?? []), ...kept().read()];
       return focused === null ? given : [...given, focused];
     },
   });
 
   const value: VirtualizerValue = {
     layout,
-    attach: (source, ref, focused) => {
+    attach: (source, ref, focused, persisted) => {
       setCollection({ read: source });
       setScrollRef({ ref });
       setFocusedKey({ read: focused });
+      if (persisted !== undefined) setKept({ read: persisted });
     },
     visible: state.visible,
     contentSize: state.contentSize,

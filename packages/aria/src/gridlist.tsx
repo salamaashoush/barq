@@ -62,6 +62,7 @@ import {
   rowStyle,
   useVirtualizer,
   type LayoutInfo,
+  type VirtualizerValue,
 } from "./virtualizer.tsx";
 import {
   activeElement,
@@ -80,6 +81,7 @@ import {
   provideDragButton,
   provideDropIndicator,
   useDragAndDropContext,
+  dropIndicatorStyle,
 } from "./drag-and-drop.tsx";
 import { afterDropIndicatorTargets, type ItemDropTarget } from "./dnd/index.ts";
 import { focusableWalker, focusRing } from "./focus.ts";
@@ -751,7 +753,13 @@ export function GridList<T>(props: GridListComponentProps<T>) {
   // Inside a `<Virtualizer>` the list renders a WINDOW of its collection, and
   // the layout — not the DOM — answers what is above, below and a page away.
   const virtual = useVirtualizer();
-  virtual?.attach(state.collection, domRef, () => state.selectionManager().focusedKey);
+  const dropping: { held?: CollectionDragAndDrop } = {};
+  virtual?.attach(
+    state.collection,
+    domRef,
+    () => state.selectionManager().focusedKey,
+    () => dropping.held?.persistedKeys() ?? [],
+  );
 
   const isEmpty = (): boolean => state.collection().size === 0;
   // Whether the empty state holds a Tab stop, so the grid need not be one.
@@ -782,12 +790,8 @@ export function GridList<T>(props: GridListComponentProps<T>) {
     anyState,
   );
 
-  const dragAndDrop = gridListDragAndDrop(
-    props.dragAndDropHooks,
-    anyState,
-    domRef,
-    virtual?.layout,
-  );
+  const dragAndDrop = gridListDragAndDrop(props.dragAndDropHooks, anyState, domRef, virtual);
+  dropping.held = dragAndDrop;
   const render = props.children as unknown as (item: unknown) => Child;
 
   const value: GridListContextValue = {
@@ -875,14 +879,16 @@ function gridListDragAndDrop(
   hooks: DragAndDropHooks | undefined,
   state: ListState<unknown>,
   domRef: Accessor<HTMLDivElement | null>,
-  layoutDelegate: LayoutDelegate | undefined,
+  virtual: VirtualizerValue | null,
 ): CollectionDragAndDrop | undefined {
   if (hooks === undefined) return undefined;
+  const layoutDelegate = virtual?.layout;
   const locale = useLocale();
   const direction = (): "ltr" | "rtl" => locale().direction;
   const collection = state.collection as Accessor<Collection<unknown>>;
 
   const dragAndDrop = collectionDragAndDrop({
+    virtual,
     hooks,
     collection,
     selectionManager: state.selectionManager,
@@ -916,6 +922,11 @@ function GridListDropIndicator(indicator: { of: Incoming<DropIndicatorProps> }) 
   }
 
   const buttonRef = makeRef<HTMLDivElement>();
+  const virtual = useVirtualizer();
+  const placed = (): Record<string, string> | undefined => {
+    const target = props.target();
+    return target.type === "item" ? dropIndicatorStyle(virtual, target) : undefined;
+  };
   const { visuallyHiddenProps } = visuallyHidden();
   const { dropIndicatorProps, isDropTarget, isHidden } = dragAndDropHooks.dropIndicator(
     { target: props.target() },
@@ -927,6 +938,7 @@ function GridListDropIndicator(indicator: { of: Incoming<DropIndicatorProps> }) 
     <Show when={!isHidden()}>
       <div
         {...styleProps(props)}
+        {...(virtual === null ? {} : { style: placed })}
         role="row"
         data-slot={props["data-slot"]?.() ?? "drop-indicator"}
         data-drop-target={isDropTarget()}

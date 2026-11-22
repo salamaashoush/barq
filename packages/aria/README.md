@@ -249,7 +249,8 @@ Drag and drop is `dragAndDrop()` from `@barqjs/aria/drag-and-drop`, passed to a
 `ListBox`, `GridList`, `Tree` or `Table` as `dragAndDropHooks`, over the hooks
 in `@barqjs/aria/dnd` (`drag`, `drop`, `clipboard`, the droppable collection and
 its indicators). Pointer, touch, keyboard and screen-reader drags all go through
-it.
+it, in the page's language, and inside a `<Virtualizer>` the layout finds the
+target and places the indicator.
 
 ## Where this stands against React Aria
 
@@ -273,8 +274,6 @@ Not built yet, in rough order of how much is missing:
 
 - **SearchAutocomplete**, **StepList**, **ActionGroup** and **Landmark**
   navigation.
-- **Drag and drop inside a `<Virtualizer>`**: the layout has no place for a
-  drop indicator, and only the focused row is kept rendered.
 - **Selection announcements** for a grid, gridlist, tree and table. The
   selection checkboxes are there.
 - **Load more** for a list, gridlist and table. A tree has it

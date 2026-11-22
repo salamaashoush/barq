@@ -1501,6 +1501,7 @@ export {
   type DragPreviewProps,
   type DropIndicatorContextValue,
   type DropIndicatorProps,
+  dropIndicatorStyle,
 } from "./drag-and-drop.tsx";
 export {
   DropZone,
