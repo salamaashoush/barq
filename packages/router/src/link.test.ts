@@ -295,20 +295,22 @@ describe("a rendered link", () => {
   });
 
   test("`preloadDelay` is how long a hover has to last before it warms anything", async () => {
-    const { element, dispose } = anchor({ to: "/posts/7", preload: "intent", preloadDelay: 40 });
+    // Real timers, so the window is wide: on a busy runner a 15ms wait has
+    // taken longer than a 40ms delay.
+    const { element, dispose } = anchor({ to: "/posts/7", preload: "intent", preloadDelay: 300 });
     element.dispatchEvent(new Event("mouseenter"));
-    await tick(15);
+    await tick(20);
     expect(loads).toEqual([]);
-    await tick(50);
+    await tick(400);
     expect(loads).toEqual(["7"]);
     dispose();
 
     // Leaving inside the window is not intent at all.
-    const second = anchor({ to: "/posts/8", preload: "intent", preloadDelay: 40 });
+    const second = anchor({ to: "/posts/8", preload: "intent", preloadDelay: 300 });
     second.element.dispatchEvent(new Event("mouseenter"));
-    await tick(10);
+    await tick(20);
     second.element.dispatchEvent(new Event("mouseleave"));
-    await tick(60);
+    await tick(400);
     expect(loads).toEqual([]);
     second.dispose();
   });
