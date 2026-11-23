@@ -220,8 +220,24 @@ Hooks and state, by module:
   its exit animation ends.
 - `virtualizer`: `Layout`, `ListLayout`, `listLayout`, `virtualizer`,
   `<Virtualizer>`.
-- `date` and `color`: barq's answers to `@internationalized/date` and
-  `@react-stately/color`.
+- `date`: `@internationalized/date`, re-exported: every calendar system it
+  knows, `ZonedDateTime` with steps that respect daylight saving, and the
+  queries and conversions, plus `getWeekOfYear`, `getISOWeek` and
+  `getMinimalDaysInFirstWeek`.
+- `color`: barq's answer to `@react-stately/color`, in RGB, HSL and HSB and in
+  CSS Color 4's OKLCH, OKLab, Lab, LCH and HWB. Each space parses and writes its
+  own CSS syntax, keeps its hue through grey, and maps out-of-gamut colours into
+  sRGB with the spec's OKLCH search rather than clipping. `colorAreaGradient`
+  draws a colour area's background in any of them.
+- `landmark`: `landmark` and `createLandmarkController`. F6 and Shift+F6 move
+  between the page's landmarks, Alt+F6 goes to `main`, and a manager shared
+  through a global lets two copies of the package take turns.
+- `grid-selection`: `gridSelectionAnnouncement` and
+  `highlightSelectionDescription`, which `GridList`, `Tree`, `Table` and
+  `TagGroup` use to announce what a selection change did.
+- `load-more`: `loadMoreSentinel`, behind every `*LoadMoreItem`.
+- `table-column-layout`: `calculateColumnSizes`, `TableColumnLayout` and
+  `tableColumnResizeState`, the width maths behind a resizable table.
 - `validation`: `formValidationState`, `fieldValidation`, `formValidation`.
 - `toggle` and `togglegroup`: `toggle`, `toggleGroup`, `toggleGroupItem`,
   `toggleGroupState`.
@@ -242,8 +258,19 @@ Components: `Button` `ToggleButton` `Checkbox` `CheckboxGroup` `Switch`
 `ColorSwatchPicker` `Tooltip` `Form` `Questionnaire` `Virtualizer` `Tree`
 `NavigationTree` `Sheet` `Autocomplete` `TokenField` `DropZone` `FileTrigger`
 `PreviewTrigger` `OverlayArrow` `SelectionIndicator` `SharedElementTransition`
-`ToggleButtonGroup` `Group` `TextArea` and the toast parts (`ToastRegion`,
-`ToastList`, `ToastRoot`).
+`ToggleButtonGroup` `Group` `TextArea` `ActionGroup` `StepList`
+`SearchAutocomplete` and the toast parts (`ToastRegion`, `ToastList`,
+`ToastRoot`).
+
+`ListBox`, `GridList`, `Table` and `Tree` load more as they scroll through
+`ListBoxLoadMoreItem`, `GridListLoadMoreItem`, `TableLoadMoreItem` and
+`TreeLoadMoreItem`. A `Table` inside a `ResizableTableContainer` resizes its
+columns through a `ColumnResizer`, by pointer, keyboard or screen reader. A
+`Calendar` takes a `CalendarMonthPicker` and a `CalendarYearPicker` as its
+caption, and the date fields show an era segment and a time-zone segment when
+the value has one. `ColorField` edits one channel as a number when given
+`channel` and `colorSpace`, and `ColorSlider`, `ColorArea` and `ColorWheel` take
+a `colorSpace`, so an OKLCH hue wheel is one prop.
 
 Drag and drop is `dragAndDrop()` from `@barqjs/aria/drag-and-drop`, passed to a
 `ListBox`, `GridList`, `Tree` or `Table` as `dragAndDropHooks`, over the hooks
@@ -270,23 +297,6 @@ Deliberately absent:
   `ariaViolations`. A headless DOM cannot answer either, and a wrong answer is
   worse than none.
 
-Not built yet, in rough order of how much is missing:
-
-- **SearchAutocomplete**, **StepList**, **ActionGroup** and **Landmark**
-  navigation.
-- **Selection announcements** for a grid, gridlist, tree and table. The
-  selection checkboxes are there.
-- **Load more** for a list, gridlist and table. A tree has it
-  (`TreeLoadMoreItem`, `loadMoreSentinel`).
-- **Table column resizing**.
-- **Calendar month and year pickers.** The grid and the cells are there, the
-  two dropdowns are not.
-- `useColorChannelField`, and the gradient helper behind a colour area's
-  background.
-- Time zones and non-Gregorian calendars in `date.ts`; colour spaces beyond
-  RGB, HSL and HSB in `color.ts`. Both modules state their limits in their own
-  headers.
-
 ## Things that will bite
 
 - **Keying a `<For>` by an object built in the `each` expression rebuilds every
@@ -295,7 +305,9 @@ Not built yet, in rough order of how much is missing:
 - **A callback prop must declare its parameter.** `callback()` tells a handler
   from a Cell by arity, so `validate={() => "Bad"}` is read as a Cell and
   called, and the message becomes the callback. Write
-  `validate={(value) => "Bad"}`.
+  `validate={(value) => "Bad"}`, and
+  `createCalendar={(name) => new JapaneseCalendar()}` rather than a factory
+  with no parameter.
 - **A component's JSX in a `const` is built eagerly.** `const body = <div/>`
   constructs it there and then. Put it in a component or inline it where it
   belongs, or a conditional above it will not gate it.
