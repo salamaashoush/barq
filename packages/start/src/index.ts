@@ -133,6 +133,14 @@ export {
 } from "./client.ts";
 export type { ServerFnInputAnswer, ServerFnIssue, ServerFnThrown } from "./client.ts";
 export { type ServerTiming, serverTiming } from "./timing.ts";
+export {
+  type WebSocketError,
+  type WebSocketHooks,
+  type WebSocketMessage,
+  type WebSocketPeer,
+  defineWebSocket,
+  upgradeWebSocket,
+} from "./websocket.ts";
 export { type BindingSlot, FRAME_APPLIED_EVENT, type Slot, isFrame } from "./frames.ts";
 export { type LiveIterable, type LiveStatus, live } from "./live-client.ts";
 

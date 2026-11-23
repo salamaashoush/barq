@@ -1,4 +1,13 @@
-import { cpSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -61,3 +70,24 @@ export const PORTS = {
   minimal: 4695,
   provider: 4697,
 } as const;
+
+/**
+ * The code a server entry runs: the entry and every chunk it imports, however
+ * the build split them. `serve.js` and what only it imports are left out, so
+ * this is what a host importing `server.js` gets.
+ */
+export function serverCode(out: string, entry = "server.js"): string {
+  const seen = new Set<string>();
+  const parts: string[] = [];
+  const visit = (file: string): void => {
+    if (seen.has(file) || !existsSync(file)) return;
+    seen.add(file);
+    const code = readFileSync(file, "utf8");
+    parts.push(code);
+    for (const match of code.matchAll(/(?:from\s*|import\s*\(?\s*)["'](\.{1,2}\/[^"']+)["']/g)) {
+      visit(join(dirname(file), match[1]));
+    }
+  };
+  visit(join(out, "server", entry));
+  return parts.join("\n");
+}

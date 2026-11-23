@@ -1,21 +1,24 @@
 /**
  * The production entry — runtime-agnostic.
  *
- * `srvx`'s root export resolves by runtime condition (`deno`, `bun`, `workerd`,
- * `node`, and a generic default), so one entry serves Node, Deno, Bun and
- * Cloudflare without a per-runtime adapter here. The handler below is an
+ * One built file serves Node, Deno and Bun: `runtime()` below picks srvx's
+ * and crossws's adapter for the process that starts it. The handler is an
  * ordinary `Request -> Response` function, which is the only shape all of them
- * agree on.
+ * agree on. A host that runs its own server (Cloudflare, Nitro) imports the
+ * `index` entry instead and never reaches this file.
  *
  * The dev half is deliberately NOT this: Vite's middleware pipeline is
  * Connect-shaped and hands over a Node request/response pair, so `vite.ts`
  * adapts with `srvx/node`. That is adapting Vite, not choosing a runtime.
  */
 
-import { type Server, type ServerOptions, serve } from "srvx";
+import type { Server, ServerOptions, ServerPlugin } from "srvx";
 
 import { type HandlerOptions, handleServerFn } from "./server.ts";
 import { type StaticOptions, assetMiddleware } from "./static.ts";
+import { resolveWebSocket } from "./websocket.ts";
+
+export { resolveWebSocket } from "./websocket.ts";
 
 export type { AssetManifest, PrerenderedAsset, StaticOptions } from "./static.ts";
 export { ASSET_MANIFEST_FILE, assetMiddleware } from "./static.ts";
@@ -114,13 +117,39 @@ function failed(error: unknown): Response {
 }
 
 /**
+ * srvx's server and crossws's WebSocket plugin for the runtime this process
+ * is, chosen when it starts.
+ *
+ * Both packages pick a runtime through export conditions, which a bundler
+ * settles at BUILD time: a `serve.js` built under Bun called `Bun.serve` on
+ * Node, and one built under Node handed Bun crossws's Node adapter, which
+ * refuses to run there. Imported by name instead, the build carries every
+ * adapter and the runtime that starts the file decides.
+ */
+async function runtime(): Promise<{
+  serve: (options: ServerOptions) => Server;
+  websocketPlugin: (options: { resolve: ReturnType<typeof resolveWebSocket> }) => ServerPlugin;
+}> {
+  if ("Bun" in globalThis) {
+    const [srvx, crossws] = await Promise.all([import("srvx/bun"), import("crossws/server/bun")]);
+    return { serve: srvx.serve, websocketPlugin: crossws.plugin };
+  }
+  if ("Deno" in globalThis) {
+    const [srvx, crossws] = await Promise.all([import("srvx/deno"), import("crossws/server/deno")]);
+    return { serve: srvx.serve, websocketPlugin: crossws.plugin };
+  }
+  const [srvx, crossws] = await Promise.all([import("srvx/node"), import("crossws/server/node")]);
+  return { serve: srvx.serve, websocketPlugin: crossws.plugin };
+}
+
+/**
  * Serve on whatever runtime this is.
  *
  * Mount the generated manifest before calling this — importing
  * `virtual:barq-server-fns` is what puts the ids in the registry, and without
  * it every call is a 404.
  */
-export function serveBarq(options: BarqServeOptions = {}): Server {
+export async function serveBarq(options: BarqServeOptions = {}): Promise<Server> {
   // `reachable` and `static` come out too. They were not, so both were handed
   // to `serve()` as options it has never heard of — harmless, and exactly the
   // drift that spreads once one key leaks.
@@ -144,10 +173,16 @@ export function serveBarq(options: BarqServeOptions = {}): Server {
       ? middleware
       : [assetMiddleware(assets === true ? {} : assets), ...(middleware ?? [])];
 
+  const fetch = createFetchHandler(options);
+  const { serve, websocketPlugin } = await runtime();
   return serve({
     ...rest,
     error: rest.error ?? failed,
     middleware: chain,
-    fetch: createFetchHandler(options),
+    // An upgrade asks the app which route takes it, through the same handler
+    // as every other request. On Node it never reaches `fetch` at all: the
+    // runtime hands it over as an `upgrade` event, which this plugin hears.
+    plugins: [...(rest.plugins ?? []), websocketPlugin({ resolve: resolveWebSocket(fetch) })],
+    fetch,
   });
 }

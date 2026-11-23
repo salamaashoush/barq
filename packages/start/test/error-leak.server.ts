@@ -16,7 +16,7 @@ mount(
   ),
 );
 
-serveBarq({
+await serveBarq({
   port: Number(process.env.PORT),
   hostname: "127.0.0.1",
   silent: true,

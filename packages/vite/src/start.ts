@@ -33,6 +33,7 @@ import {
 } from "@barqjs/start/prerender";
 import { PRERENDER_HEADER } from "@barqjs/start/protocol";
 import { ASSET_MANIFEST_FILE, type AssetManifest } from "@barqjs/start/serve";
+import { upgradeListener } from "@barqjs/start/websocket-node";
 import { NodeRequest, sendNodeResponse } from "srvx/node";
 import type { Plugin, RunnableDevEnvironment, ViteBuilder, ViteDevServer } from "vite";
 
@@ -530,7 +531,7 @@ function defaultServeEntry(server: BarqServerOptions | undefined, spa: string | 
     ``,
     `import handler from "${SERVER_ENTRY_ID}";`,
     ``,
-    `serveBarq({ ${options.join(", ")} });`,
+    `await serveBarq({ ${options.join(", ")} });`,
     ``,
   ].join("\n");
 }
@@ -1612,6 +1613,12 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
       return () => {
         let service: Promise<{ default: { fetch(request: Request): Promise<Response> } }> | null =
           null;
+        const sockets = upgradeListener(async (request) => {
+          service ??= import(pathToFileURL(entryFile).href);
+          return (await service).default.fetch(request);
+        });
+        preview.httpServer.on("upgrade", sockets.listener);
+        preview.httpServer.once("close", sockets.close);
         preview.middlewares.use((req, res, next) => {
           void (async () => {
             try {
@@ -1817,6 +1824,12 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
         built = { from: entry, fetch: fetchPage };
         return fetchPage;
       };
+
+      // A WebSocket route answers the upgrade through the same page handler,
+      // beside Vite's own socket, which keeps the upgrades it announces.
+      const sockets = upgradeListener(async (request) => (await pageFetch())(request));
+      viteServer.httpServer?.on("upgrade", sockets.listener);
+      viteServer.httpServer?.once("close", sockets.close);
 
       return () => {
         viteServer.middlewares.use((req, res, next) => {

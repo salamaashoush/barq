@@ -20,6 +20,7 @@ import { fileURLToPath } from "node:url";
 import { createBuilder } from "vite";
 
 import { barqStart } from "../src/start.ts";
+import { serverCode } from "./project.ts";
 
 const ROOT = fileURLToPath(new URL("./fixtures/spa", import.meta.url));
 const OUT = join(ROOT, "dist");
@@ -69,7 +70,7 @@ describe("a build that renders no pages", () => {
   });
 
   test("still mounts the server functions", () => {
-    const server = readFileSync(join(OUT, "server", "server.js"), "utf8");
+    const server = serverCode(OUT);
     expect(server).toContain("src/data.ts#loadUser");
   });
 });

@@ -654,6 +654,39 @@ const add = action(function* (text: string) {
 On the server the memo's call is in-process and its answer seeds the page, so
 the browser does not ask again until `refresh`.
 
+## WebSockets
+
+A WebSocket route is a route like any other: its `GET` handler makes whatever
+checks it needs and returns `upgradeWebSocket` with the connection's hooks.
+Any other answer refuses the upgrade with that answer, so a 401 from an auth
+check is what the client gets.
+
+```ts
+import { createFileRoute } from "@barqjs/router";
+import { upgradeWebSocket } from "@barqjs/start";
+
+export const Route = createFileRoute("/rooms/$room")({
+  server: {
+    handlers: {
+      GET: ({ request, params }) =>
+        upgradeWebSocket(request, {
+          open: (peer) => peer.subscribe(params.room),
+          message: (peer, message) => {
+            peer.publish(params.room, message.text());
+          },
+          close: (peer) => peer.unsubscribe(params.room),
+        }),
+    },
+  },
+});
+```
+
+The hooks and the `peer` are [crossws](https://crossws.h3.dev)'s, the layer
+Nitro and h3 run on, so a `defineWebSocketHandler` body moves over unchanged.
+`vite dev` and `vite preview` take upgrades beside Vite's own socket, and the
+built server takes them on Bun, Node and Deno. A plain `GET` to the address
+gets 426.
+
 ## Subpaths
 
 - `@barqjs/start`: the isomorphic surface. `createServerFn`, `createMiddleware`,
@@ -665,6 +698,9 @@ the browser does not ask again until `refresh`.
 - `@barqjs/start/server`: `handleServerFn`, `mount`, the origin check.
 - `@barqjs/start/serve`: `serveBarq`, `createFetchHandler`, the asset
   middleware.
+- `@barqjs/start/websocket-node`: `upgradeListener`, which hands a Node
+  server's `upgrade` events to WebSocket routes, for a server barq does not
+  start itself.
 - `@barqjs/start/prerender`: the prerenderer, for a custom build.
 - `@barqjs/start/middleware` and `@barqjs/start/env`: the middleware runner and
   the one-side functions, split out so the client stub can import them without

@@ -32,6 +32,7 @@ import {
   staticUrl,
 } from "@barqjs/start/client";
 import { type BarqStartOptions, barqStart } from "../src/start.ts";
+import { serverCode } from "./project.ts";
 
 const ROOT = fileURLToPath(new URL("./fixtures/build", import.meta.url));
 const OUT = join(ROOT, "dist");
@@ -75,7 +76,7 @@ beforeAll(async () => {
     .filter((name) => name.endsWith(".js"))
     .map((name) => readFileSync(join(assets, name), "utf8"))
     .join("\n");
-  server = readFileSync(join(OUT, "server", "server.js"), "utf8");
+  server = serverCode(OUT);
 }, 60_000);
 
 afterAll(() => rmSync(OUT, { recursive: true, force: true }));

@@ -64,6 +64,11 @@
       "bun": "./src/serve.ts",
       "import": "./dist/serve.js"
     },
+    "./websocket-node": {
+      "types": "./dist/websocket-node.d.ts",
+      "bun": "./src/websocket-node.ts",
+      "import": "./dist/websocket-node.js"
+    },
     "./prerender": {
       "types": "./dist/prerender.d.ts",
       "bun": "./src/prerender.ts",
@@ -87,6 +92,7 @@
   },
   "dependencies": {
     "@barqjs/css": "workspace:*",
+    "crossws": "^0.4.17",
     "srvx": "^1.0.8"
   },
   "devDependencies": {
