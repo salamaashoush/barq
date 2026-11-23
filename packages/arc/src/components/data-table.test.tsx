@@ -109,7 +109,7 @@ describe("DataTable sorting", () => {
     expect(header.getAttribute("role")).toBe("columnheader");
     expect(header.textContent).toBe("Customer");
 
-    user.keyDown("Enter");
+    await user.keyboard("{Enter}");
     await settle();
     expect(header.getAttribute("aria-sort")).toBe("ascending");
     expect(texts()).toEqual(["INV-001", "INV-002", "INV-003"]);

@@ -1122,14 +1122,6 @@ export function tableColumnHeader<R, C>(
     onPress: sortByColumn,
   });
 
-  const onKeyDown = (event: KeyboardEvent): void => {
-    if (!allowsSorting()) return;
-    if (event.key !== "Enter" && event.key !== " ") return;
-    event.preventDefault();
-    event.stopPropagation();
-    state.sort(options.column.key);
-  };
-
   // TalkBack reads no `aria-sort`, so on Android the direction goes in the
   // description instead, after "sortable column".
   const message = stringFormatter(strings);
@@ -1150,7 +1142,6 @@ export function tableColumnHeader<R, C>(
     columnHeaderProps: mergeProps(place.props, pressProps, description, {
       id: () => columnHeaderIdFor(access(options.baseId), options.column.key),
       role: "columnheader",
-      onKeyDown,
       // On the SORTED column only. `aria-sort="none"` on the others says the
       // table is unsorted, which contradicts the one that says it is not.
       "aria-sort": () => (isAndroid() ? undefined : sortDirection()),

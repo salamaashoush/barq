@@ -271,8 +271,37 @@ describe("Table", () => {
     user.focus(headers()[1] as HTMLElement);
     user.keyDown("Enter");
     flush();
+    expect(changes).toEqual([]);
 
+    user.keyUp("Enter");
+    flush();
     expect(changes).toEqual([{ column: "size", direction: "ascending" }]);
+  });
+
+  test("one Enter or Space press sorts once", () => {
+    const [sort, setSort] = createSignal<SortDescriptor | undefined>(undefined);
+    const changes: SortDescriptor[] = [];
+    render(() => (
+      <Files
+        sortDescriptor={sort()}
+        onSortChange={(descriptor) => {
+          changes.push(descriptor);
+          setSort(descriptor);
+        }}
+      />
+    ));
+
+    user.focus(headers()[1] as HTMLElement);
+    user.keyboard("{Enter}");
+    flush();
+    expect(changes).toEqual([{ column: "size", direction: "ascending" }]);
+    expect(headers()[1]?.getAttribute("aria-sort")).toBe("ascending");
+
+    user.keyboard(" ");
+    flush();
+    expect(changes.at(-1)).toEqual({ column: "size", direction: "descending" });
+    expect(changes).toHaveLength(2);
+    expect(headers()[1]?.getAttribute("aria-sort")).toBe("descending");
   });
 
   test("clicking a row selects it", () => {
