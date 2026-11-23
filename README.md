@@ -172,6 +172,7 @@ Components and libraries:
 - [`@barqjs/primitives`](./packages/primitives#readme): scheduling, events, observers, browser APIs and motion.
 - [`@barqjs/lucide`](./packages/lucide#readme): every lucide icon as a component.
 - [`@barqjs/query`](./packages/query#readme): queries, mutations and caching, on TanStack Query's core.
+- [`@barqjs/db`](./packages/db#readme): live queries over TanStack DB collections, with server rendering.
 - [`@barqjs/form`](./packages/form#readme): forms, fields and validation, on TanStack Form's core.
 - [`@barqjs/table`](./packages/table#readme): headless tables, on TanStack Table's core.
 - [`@barqjs/virtual`](./packages/virtual#readme): virtualized scrolling for long lists, on TanStack Virtual's core.
@@ -197,16 +198,16 @@ Each package README is the reference for that package. Beyond them:
 
 ```
 packages/
-  core, web, server, universal, three    the runtime and its renderers
-  compiler, vite, cli                    the Rust compiler, the Vite plugin, `barq check`
-  router, start                          routing and the server
-  css, aria, primitives, ui, ui-cli      styling, accessibility and components
-  query, form, table, virtual, lucide    libraries
-  testing, diagnostics                   test utilities and findings
-  create-barq                            the project scaffolder
-  site, kitchen-sink, three-demo         the docs site and two example apps
-  benchmark                              the measurements behind the published numbers
-.github/                                 CI, the release workflow and their scripts
+  core, web, server, universal, three      the runtime and its renderers
+  compiler, vite, cli                      the Rust compiler, the Vite plugin, `barq check`
+  router, start                            routing and the server
+  css, aria, primitives, ui, ui-cli        styling, accessibility and components
+  query, db, form, table, virtual, lucide  libraries
+  testing, diagnostics                     test utilities and findings
+  create-barq                              the project scaffolder
+  site, kitchen-sink, three-demo           the docs site and two example apps
+  benchmark                                the measurements behind the published numbers
+.github/                                   CI, the release workflow and their scripts
 ```
 
 ## Contributing
