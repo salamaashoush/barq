@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { flush, createSignal, provide } from "@barqjs/core";
 import {
   accessibleName,
@@ -26,9 +26,10 @@ import {
   GridListSelectionCheckbox,
 } from "./gridlist.tsx";
 import { RouterContext } from "./interactions/open-link.ts";
-import { clearAnnouncer } from "./live.ts";
+import { provideLocale } from "./i18n.ts";
+import { clearAnnouncer, destroyAnnouncer } from "./live.ts";
 import { SelectionIndicator } from "./selection-indicator.tsx";
-import { fireDrag, MockDataTransfer, nextFrame } from "./test-dnd.ts";
+import { announcements, fireDrag, MockDataTransfer, nextFrame } from "./test-dnd.ts";
 
 interface File {
   id: string;
@@ -937,5 +938,225 @@ describe("a selection indicator", () => {
     ));
     const shown = [...document.querySelectorAll(".indicator")];
     expect(shown.map((each) => each.closest('[role="row"]')?.textContent)).toEqual(["Budget"]);
+  });
+});
+
+describe("selection announcements", () => {
+  const PLAIN: File[] = [
+    { id: "notes", name: "Notes" },
+    { id: "budget", name: "Budget" },
+    { id: "photos", name: "Photos" },
+  ];
+
+  beforeEach(() => destroyAnnouncer());
+  afterEach(() => {
+    destroyAnnouncer();
+    Reflect.deleteProperty(window, "ontouchstart");
+  });
+
+  function Plain(props: {
+    selectionMode?: "single" | "multiple";
+    selectionBehavior?: "toggle" | "replace";
+    selectedKeys?: Iterable<Key>;
+    onAction?: (key: Key) => void;
+    withCheckboxes?: boolean;
+  }) {
+    return (
+      <GridList
+        aria-label="Files"
+        items={PLAIN}
+        selectionMode={props.selectionMode ?? "multiple"}
+        selectionBehavior={props.selectionBehavior}
+        selectedKeys={props.selectedKeys}
+        onAction={props.onAction}
+      >
+        {(file: File) => (
+          <GridListItem>
+            {() => (props.withCheckboxes === true ? <GridListSelectionCheckbox /> : null)}
+            {file.name}
+          </GridListItem>
+        )}
+      </GridList>
+    );
+  }
+
+  /** The last thing said, after the frame a change made without focus waits for. */
+  async function said(): Promise<string | undefined> {
+    await nextFrame();
+    return announcements().at(-1);
+  }
+
+  test("a row selected and deselected is named", async () => {
+    render(() => <Plain selectionMode="single" />);
+    user.click(rows()[1] as HTMLElement);
+    flush();
+    expect(await said()).toBe("Budget selected.");
+    user.click(rows()[1] as HTMLElement);
+    flush();
+    expect(await said()).toBe("Budget not selected.");
+    expect(announcements()).toHaveLength(2);
+  });
+
+  test("the count follows once more than one row is selected", async () => {
+    render(() => <Plain withCheckboxes />);
+    const boxes = (): HTMLElement[] => screen.getAllByRole("checkbox");
+    user.click(boxes()[1] as HTMLElement);
+    flush();
+    expect(await said()).toBe("Budget selected.");
+    user.click(boxes()[2] as HTMLElement);
+    flush();
+    expect(await said()).toBe("Photos selected. 2 items selected.");
+    user.click(boxes()[2] as HTMLElement);
+    flush();
+    expect(await said()).toBe("Photos not selected. 1 item selected.");
+    expect(announcements()).toHaveLength(3);
+  });
+
+  test("Space and Enter on a row announce it", async () => {
+    render(() => <Plain />);
+    user.tab();
+    user.keyboard(" ");
+    flush();
+    expect(await said()).toBe("Notes selected.");
+    user.keyboard("{ArrowDown}");
+    user.keyboard("{Enter}");
+    flush();
+    expect(await said()).toBe("Budget selected. 2 items selected.");
+  });
+
+  test("a range is announced as its count alone", async () => {
+    render(() => <Plain />);
+    user.click(rows()[0] as HTMLElement);
+    flush();
+    user.click(rows()[2] as HTMLElement, { shiftKey: true });
+    flush();
+    expect(await said()).toBe("3 items selected.");
+    user.click(rows()[0] as HTMLElement, { shiftKey: true });
+    flush();
+    expect(await said()).toBe("1 item selected.");
+    expect(announcements()).toHaveLength(3);
+  });
+
+  test("select all and clearing it are announced", async () => {
+    render(() => <Plain />);
+    user.click(rows()[0] as HTMLElement);
+    flush();
+    expect(await said()).toBe("Notes selected.");
+    user.key("a", { ctrlKey: true, metaKey: true });
+    flush();
+    expect(await said()).toBe("All items selected.");
+    user.keyboard("{Escape}");
+    flush();
+    expect(await said()).toBe("No items selected.");
+    expect(announcements()).toHaveLength(3);
+  });
+
+  test("under replace selection the arrows name the row they select, and no count", async () => {
+    render(() => <Plain selectionBehavior="replace" />);
+    user.click(rows()[0] as HTMLElement);
+    flush();
+    expect(await said()).toBe("Notes selected.");
+    user.keyboard("{ArrowDown}");
+    flush();
+    expect(await said()).toBe("Budget selected.");
+    user.keyboard("{ArrowUp}");
+    flush();
+    expect(await said()).toBe("Notes selected.");
+    user.key("ArrowDown", { shiftKey: true });
+    flush();
+    expect(await said()).toBe("Budget selected. 2 items selected.");
+    user.keyboard("{ArrowDown}");
+    flush();
+    expect(await said()).toBe("Photos selected. 1 item selected.");
+    expect(announcements()).toHaveLength(5);
+  });
+
+  test("moving focus without selecting says nothing", async () => {
+    render(() => <Plain selectionBehavior="replace" />);
+    user.click(rows()[0] as HTMLElement);
+    flush();
+    user.key("ArrowDown", { ctrlKey: true, metaKey: true });
+    flush();
+    await nextFrame();
+    expect(announcements()).toEqual(["Notes selected."]);
+    expect(document.activeElement).toBe(rows()[1] as HTMLElement);
+  });
+
+  test("from all to one row names the row and the count", async () => {
+    render(() => <Plain selectionBehavior="replace" />);
+    user.click(rows()[0] as HTMLElement);
+    flush();
+    user.key("a", { ctrlKey: true, metaKey: true });
+    flush();
+    expect(await said()).toBe("All items selected.");
+    user.keyboard("{ArrowDown}");
+    flush();
+    expect(await said()).toBe("Budget selected. 1 item selected.");
+  });
+
+  test("a selection the page changes while the grid is not focused is not announced", async () => {
+    const [selected, setSelected] = createSignal<Key[]>([]);
+    render(() => <Plain selectedKeys={selected()} />);
+    setSelected(["budget"]);
+    flush();
+    await nextFrame();
+    setSelected(["budget", "photos"]);
+    flush();
+    await nextFrame();
+    expect(announcements()).toEqual([]);
+  });
+
+  test("a single selection never says a count", async () => {
+    render(() => <Plain selectionMode="single" />);
+    user.click(rows()[0] as HTMLElement);
+    flush();
+    await nextFrame();
+    // One row in and one out is neither a row added nor a row removed, and a
+    // single selection has no count to fall back on.
+    user.click(rows()[1] as HTMLElement);
+    flush();
+    await nextFrame();
+    expect(announcements()).toEqual(["Notes selected."]);
+  });
+
+  test("is said in the reader's language", async () => {
+    render(() => {
+      const localeProps = provideLocale(() => "de-DE");
+      return (
+        <div {...localeProps}>
+          <Plain withCheckboxes />
+        </div>
+      );
+    });
+    const boxes = (): HTMLElement[] => screen.getAllByRole("checkbox");
+    user.click(boxes()[0] as HTMLElement);
+    flush();
+    user.click(boxes()[1] as HTMLElement);
+    flush();
+    expect(await said()).toBe("Budget ausgewählt. 2 Elemente ausgewählt.");
+  });
+
+  test("on a touch device a grid whose tap is an action describes the long press", () => {
+    Object.defineProperty(window, "ontouchstart", { value: null, configurable: true });
+    render(() => <Plain selectionBehavior="replace" onAction={() => {}} />);
+    const grid = screen.getByRole("grid");
+    const ids = grid.getAttribute("aria-describedby")?.split(" ") ?? [];
+    const described = ids.map((id) => document.getElementById(id)?.textContent);
+    expect(described).toContain("Long press to enter selection mode.");
+  });
+
+  test("the long press is not described without an action, a touch screen or replace", () => {
+    Object.defineProperty(window, "ontouchstart", { value: null, configurable: true });
+    const { unmount } = render(() => <Plain selectionBehavior="replace" />);
+    expect(screen.getByRole("grid").hasAttribute("aria-describedby")).toBe(false);
+    unmount();
+
+    render(() => <Plain onAction={() => {}} />);
+    expect(screen.getByRole("grid").hasAttribute("aria-describedby")).toBe(false);
+  });
+
+  test("without a touch screen there is no long press to describe", () => {
+    render(() => <Plain selectionBehavior="replace" onAction={() => {}} />);
+    expect(screen.getByRole("grid").hasAttribute("aria-describedby")).toBe(false);
   });
 });

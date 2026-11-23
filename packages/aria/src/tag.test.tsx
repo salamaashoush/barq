@@ -1,10 +1,12 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { flush, createSignal } from "@barqjs/core";
 import { accessibleName, expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
 import type { Key } from "./collections.ts";
 import { provideLocale } from "./i18n.ts";
+import { destroyAnnouncer } from "./live.ts";
 import { Tag, TagGroup } from "./tag.tsx";
 import { SelectionIndicator } from "./selection-indicator.tsx";
+import { announcements, nextFrame } from "./test-dnd.ts";
 
 interface Filter {
   id: string;
@@ -304,5 +306,28 @@ describe("a selection indicator", () => {
             element.closest(`[role="${role}"]`)?.getAttribute("data-key") ?? null,
         );
     expect(shown("row")).toEqual(["madrid"]);
+  });
+});
+
+describe("selection announcements", () => {
+  beforeEach(() => destroyAnnouncer());
+  afterEach(() => destroyAnnouncer());
+
+  test("a tag selected and deselected is named, with the count past one", async () => {
+    render(() => <Filters selectionMode="multiple" />);
+    user.click(tags()[0] as HTMLElement);
+    flush();
+    await nextFrame();
+    user.click(tags()[1] as HTMLElement);
+    flush();
+    await nextFrame();
+    user.click(tags()[1] as HTMLElement);
+    flush();
+    await nextFrame();
+    expect(announcements()).toEqual([
+      "Barcelona selected.",
+      "Madrid selected. 2 items selected.",
+      "Madrid not selected. 1 item selected.",
+    ]);
   });
 });

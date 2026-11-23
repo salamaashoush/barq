@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { type Child, createSignal, flush, provide } from "@barqjs/core";
 import {
   accessibleName,
@@ -26,8 +26,15 @@ import {
 import type { KeyboardNavigationBehavior } from "./gridlist.tsx";
 import { provideLocale } from "./i18n.ts";
 import { RouterContext } from "./interactions/open-link.ts";
-import { clearAnnouncer } from "./live.ts";
-import { fireDrag, MockDataTransfer, nextFrame, restoreRects, stubRects } from "./test-dnd.ts";
+import { clearAnnouncer, destroyAnnouncer } from "./live.ts";
+import {
+  announcements,
+  fireDrag,
+  MockDataTransfer,
+  nextFrame,
+  restoreRects,
+  stubRects,
+} from "./test-dnd.ts";
 import {
   Tree,
   TreeHeader,
@@ -2333,5 +2340,66 @@ describe("drag and drop", () => {
     const acme = rowOf(to, "acme");
     expect(document.activeElement).toBe(acme);
     expect(acme.getAttribute("aria-selected")).toBe("true");
+  });
+});
+
+describe("selection announcements", () => {
+  beforeEach(() => destroyAnnouncer());
+  afterEach(() => {
+    destroyAnnouncer();
+    Reflect.deleteProperty(window, "ontouchstart");
+  });
+
+  async function said(): Promise<string | undefined> {
+    await nextFrame();
+    return announcements().at(-1);
+  }
+
+  test("a row selected and deselected is named, and the count follows past one", async () => {
+    render(() => <Files selectionMode="multiple" withControls />);
+    const box = (name: string): HTMLElement => within(row(name)).getByRole("checkbox");
+    user.click(box("Projects"));
+    flush();
+    expect(await said()).toBe("Projects selected.");
+    user.click(box("Project 1"));
+    flush();
+    expect(await said()).toBe("Project 1 selected. 2 items selected.");
+    user.click(box("Projects"));
+    flush();
+    expect(await said()).toBe("Projects not selected. 1 item selected.");
+    user.click(box("Project 1"));
+    flush();
+    expect(await said()).toBe("Project 1 not selected.");
+    expect(announcements()).toHaveLength(4);
+  });
+
+  test("select all covers the tree and is announced", async () => {
+    render(() => <Files selectionMode="multiple" />);
+    user.click(row("Projects"));
+    flush();
+    user.key("a", { ctrlKey: true, metaKey: true });
+    flush();
+    expect(await said()).toBe("All items selected.");
+  });
+
+  test("arrowing through a replace tree names the row it selects", async () => {
+    render(() => <Files selectionMode="multiple" selectionBehavior="replace" />);
+    user.click(row("Projects"));
+    flush();
+    expect(await said()).toBe("Projects selected.");
+    press("ArrowDown");
+    expect(await said()).toBe("Project 1 selected.");
+    expect(announcements()).toHaveLength(2);
+  });
+
+  test("on a touch device a tree whose tap is an action describes the long press", () => {
+    Object.defineProperty(window, "ontouchstart", { value: null, configurable: true });
+    render(() => (
+      <Files selectionMode="multiple" selectionBehavior="replace" onAction={() => {}} />
+    ));
+    const ids = screen.getByRole("treegrid").getAttribute("aria-describedby")?.split(" ") ?? [];
+    expect(ids.map((id) => document.getElementById(id)?.textContent)).toContain(
+      "Long press to enter selection mode.",
+    );
   });
 });

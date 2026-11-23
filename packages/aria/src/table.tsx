@@ -45,6 +45,7 @@ import type {
   Key,
   LayoutDelegate,
   Node,
+  SelectionBehavior,
   SelectionMode,
   SelectionValue,
 } from "./collections.ts";
@@ -92,6 +93,11 @@ import {
   targetElement,
 } from "./dom.ts";
 import { focusableWalker, focusRing } from "./focus.ts";
+import {
+  gridSelectionAnnouncement,
+  type GridSelectionAnnouncementOptions,
+  highlightSelectionDescription,
+} from "./grid-selection.ts";
 import { SelectionIndicatorProvider } from "./selection-indicator.tsx";
 import { SharedElementTransition } from "./shared-element-transition.tsx";
 import { collator, StringDictionary, stringFormatter, useLocale } from "./i18n.ts";
@@ -804,8 +810,13 @@ export interface TableOptions {
   disallowEmptySelection?: MaybeAccessor<boolean | undefined>;
   disallowTypeAhead?: MaybeAccessor<boolean | undefined>;
   keyboardDelegate?: KeyboardDelegate;
+  /** Whether a row has an action, which a tap then performs instead of selecting. */
+  hasAction?: MaybeAccessor<boolean | undefined>;
+  /** What a row is called when its selection is announced. @default its text value */
+  getRowText?: GridSelectionAnnouncementOptions["getRowText"];
   "aria-label"?: MaybeAccessor<string | undefined>;
   "aria-labelledby"?: MaybeAccessor<string | undefined>;
+  "aria-describedby"?: MaybeAccessor<string | undefined>;
 }
 
 export interface TableResult {
@@ -840,20 +851,31 @@ export function table<R, C>(options: TableOptions, state: TableState<R, C>): Tab
     selectOnFocus: false,
   });
 
+  const descriptionProps = highlightSelectionDescription({
+    selectionManager: state.selectionManager,
+    hasItemActions: options.hasAction,
+  });
+  gridSelectionAnnouncement({ getRowText: options.getRowText }, state);
+
   return {
     baseId,
-    gridProps: mergeProps(filterDOMProps(options, { labelable: true }), collectionProps, {
-      role: () => (state.collection().isTree ? "treegrid" : "grid"),
-      id: baseId,
-      "aria-multiselectable": () =>
-        state.selectionManager().selectionMode === "multiple" ? true : undefined,
-      "aria-rowcount": () =>
-        // The header row counts: a screen reader saying "row 1 of 8" for the
-        // first body row of seven is off by the header it just read.
-        access(options.isVirtualized) === true ? state.collection().size + 1 : undefined,
-      "aria-colcount": () =>
-        access(options.isVirtualized) === true ? state.collection().columns.length : undefined,
-    }),
+    gridProps: mergeProps(
+      filterDOMProps(options, { labelable: true }),
+      collectionProps,
+      descriptionProps,
+      {
+        role: () => (state.collection().isTree ? "treegrid" : "grid"),
+        id: baseId,
+        "aria-multiselectable": () =>
+          state.selectionManager().selectionMode === "multiple" ? true : undefined,
+        "aria-rowcount": () =>
+          // The header row counts: a screen reader saying "row 1 of 8" for the
+          // first body row of seven is off by the header it just read.
+          access(options.isVirtualized) === true ? state.collection().size + 1 : undefined,
+        "aria-colcount": () =>
+          access(options.isVirtualized) === true ? state.collection().columns.length : undefined,
+      },
+    ),
   };
 }
 
@@ -1376,6 +1398,8 @@ export interface TableComponentProps<R, C> extends StyleProps {
   columnAccessors?: ItemAccessors<C>;
   /** @default "none" */
   selectionMode?: SelectionMode;
+  /** @default "toggle" */
+  selectionBehavior?: SelectionBehavior;
   selectedKeys?: "all" | Iterable<Key>;
   defaultSelectedKeys?: "all" | Iterable<Key>;
   disabledKeys?: Iterable<Key>;
@@ -1449,6 +1473,7 @@ export function Table<R, C>(props: TableComponentProps<R, C>) {
       ref: domRef,
       isVirtualized: () => virtual !== null,
       layoutDelegate: virtual?.layout,
+      hasAction: () => props.onAction !== undefined,
     },
     state,
   );

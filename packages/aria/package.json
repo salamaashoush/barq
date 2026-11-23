@@ -163,6 +163,11 @@
       "barq": "./src/form.tsx",
       "bun": "./src/form.tsx"
     },
+    "./grid-selection": {
+      "types": "./src/grid-selection.ts",
+      "barq": "./src/grid-selection.ts",
+      "bun": "./src/grid-selection.ts"
+    },
     "./gridlist": {
       "types": "./src/gridlist.tsx",
       "barq": "./src/gridlist.tsx",

@@ -109,6 +109,7 @@ import {
 } from "./drag-and-drop.tsx";
 import { focusableWalker, focusRing } from "./focus.ts";
 import { rowIdFor, type KeyboardNavigationBehavior } from "./gridlist.tsx";
+import { gridSelectionAnnouncement, highlightSelectionDescription } from "./grid-selection.ts";
 import { StringDictionary, stringFormatter, useLocale } from "./i18n.ts";
 import { focused } from "./interactions/focus-events.ts";
 import { focusSafely } from "./interactions/focusable.ts";
@@ -534,6 +535,8 @@ export interface TreeOptions {
   layoutDelegate?: LayoutDelegate;
   /** Whether the empty state holds something Tab stops at, so the tree itself need not. */
   emptyStateIsTabbable?: MaybeAccessor<boolean | undefined>;
+  /** Whether a row has an action, which a tap then performs instead of selecting. */
+  hasAction?: MaybeAccessor<boolean | undefined>;
   "aria-label"?: MaybeAccessor<string | undefined>;
   "aria-labelledby"?: MaybeAccessor<string | undefined>;
   "aria-describedby"?: MaybeAccessor<string | undefined>;
@@ -560,23 +563,34 @@ export function tree(options: TreeOptions, state: TreeState<unknown>): TreeResul
     linkBehavior: "action",
   });
 
+  const descriptionProps = highlightSelectionDescription({
+    selectionManager: state.selectionManager,
+    hasItemActions: options.hasAction,
+  });
+  gridSelectionAnnouncement({}, state);
+
   return {
     baseId,
-    gridProps: mergeProps(filterDOMProps(options, { labelable: true }), listProps, {
-      role: "treegrid",
-      id: baseId,
-      "aria-multiselectable": () =>
-        state.selectionManager().selectionMode === "multiple" ? true : undefined,
-      // Empty, the tree is still a Tab stop so a keyboard user can land on it
-      // and hear that it is empty, unless the empty state has its own stop.
-      tabIndex: () => {
-        if (!isEmpty()) return access(listProps.tabIndex as MaybeAccessor<number>);
-        return access(options.emptyStateIsTabbable) === true ? -1 : 0;
+    gridProps: mergeProps(
+      filterDOMProps(options, { labelable: true }),
+      listProps,
+      descriptionProps,
+      {
+        role: "treegrid",
+        id: baseId,
+        "aria-multiselectable": () =>
+          state.selectionManager().selectionMode === "multiple" ? true : undefined,
+        // Empty, the tree is still a Tab stop so a keyboard user can land on it
+        // and hear that it is empty, unless the empty state has its own stop.
+        tabIndex: () => {
+          if (!isEmpty()) return access(listProps.tabIndex as MaybeAccessor<number>);
+          return access(options.emptyStateIsTabbable) === true ? -1 : 0;
+        },
+        "aria-rowcount": () =>
+          access(options.isVirtualized) === true ? state.collection().rowCount : undefined,
+        "aria-colcount": () => (access(options.isVirtualized) === true ? 1 : undefined),
       },
-      "aria-rowcount": () =>
-        access(options.isVirtualized) === true ? state.collection().rowCount : undefined,
-      "aria-colcount": () => (access(options.isVirtualized) === true ? 1 : undefined),
-    }),
+    ),
   };
 }
 
@@ -1168,6 +1182,7 @@ export function Tree<T>(props: TreeComponentProps<T>) {
       isVirtualized: () => virtual !== null,
       layoutDelegate: virtual?.layout,
       emptyStateIsTabbable,
+      hasAction: () => props.onAction !== undefined,
     },
     anyState,
   );

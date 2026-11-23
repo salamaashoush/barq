@@ -86,6 +86,7 @@ import {
 import { afterDropIndicatorTargets, type ItemDropTarget } from "./dnd/index.ts";
 import { focusableWalker, focusRing } from "./focus.ts";
 import { collator, StringDictionary, stringFormatter, useLocale } from "./i18n.ts";
+import { gridSelectionAnnouncement, highlightSelectionDescription } from "./grid-selection.ts";
 import { focused } from "./interactions/focus-events.ts";
 import { focusSafely } from "./interactions/focusable.ts";
 import { hover, type HoverEvent } from "./interactions/hover.ts";
@@ -211,9 +212,16 @@ export function gridList(options: GridListOptions, state: ListState<unknown>): G
     linkBehavior,
   });
 
+  const hasAction = (): boolean => access(options.hasAction) ?? options.onAction !== undefined;
+  const descriptionProps = highlightSelectionDescription({
+    selectionManager: state.selectionManager,
+    hasItemActions: hasAction,
+  });
+  gridSelectionAnnouncement({}, state);
+
   gridData.set(state, {
     baseId,
-    hasAction: () => access(options.hasAction) ?? options.onAction !== undefined,
+    hasAction,
     onAction: (key) => options.onAction?.(key),
     linkBehavior,
     keyboardNavigationBehavior: () =>
@@ -225,21 +233,26 @@ export function gridList(options: GridListOptions, state: ListState<unknown>): G
 
   return {
     baseId,
-    gridProps: mergeProps(filterDOMProps(options, { labelable: true }), listProps, {
-      role: "grid",
-      id: baseId,
-      "aria-multiselectable": () =>
-        state.selectionManager().selectionMode === "multiple" ? true : undefined,
-      // An empty grid still has to be reachable, or a keyboard user cannot
-      // land on it to be told it is empty, unless its empty state has a stop.
-      tabIndex: () => {
-        if (!isEmpty()) return access(listProps.tabIndex as MaybeAccessor<number>);
-        return access(options.emptyStateIsTabbable) === true ? -1 : 0;
+    gridProps: mergeProps(
+      filterDOMProps(options, { labelable: true }),
+      listProps,
+      descriptionProps,
+      {
+        role: "grid",
+        id: baseId,
+        "aria-multiselectable": () =>
+          state.selectionManager().selectionMode === "multiple" ? true : undefined,
+        // An empty grid still has to be reachable, or a keyboard user cannot
+        // land on it to be told it is empty, unless its empty state has a stop.
+        tabIndex: () => {
+          if (!isEmpty()) return access(listProps.tabIndex as MaybeAccessor<number>);
+          return access(options.emptyStateIsTabbable) === true ? -1 : 0;
+        },
+        "aria-rowcount": () =>
+          access(options.isVirtualized) === true ? rowCount(state.collection()) : undefined,
+        "aria-colcount": () => (access(options.isVirtualized) === true ? 1 : undefined),
       },
-      "aria-rowcount": () =>
-        access(options.isVirtualized) === true ? rowCount(state.collection()) : undefined,
-      "aria-colcount": () => (access(options.isVirtualized) === true ? 1 : undefined),
-    }),
+    ),
   };
 }
 

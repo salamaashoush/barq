@@ -39,6 +39,7 @@ import { button } from "./button.tsx";
 import type { ItemAccessors, Key, ListStateOptions, Node, SelectionMode } from "./collections.ts";
 import { listState, type ListState } from "./collections.ts";
 import { focusRing } from "./focus.ts";
+import { gridSelectionAnnouncement } from "./grid-selection.ts";
 import { StringDictionary, stringFormatter, useLocale } from "./i18n.ts";
 import { description } from "./interactions/description.ts";
 import { focusWithin } from "./interactions/focus-events.ts";
@@ -118,6 +119,7 @@ export function tagGroup(options: TagGroupOptions, state: ListState<unknown>): T
     shouldFocusWrap: true,
     linkBehavior: "override",
   });
+  gridSelectionAnnouncement({}, state);
 
   const { focusWithinProps, isFocusWithin } = focusWithin({});
 

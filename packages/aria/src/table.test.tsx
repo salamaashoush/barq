@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { flush, createSignal } from "@barqjs/core";
 import {
   accessibleName,
@@ -18,8 +18,15 @@ import {
   type DragAndDropOptions,
   DropIndicator,
 } from "./drag-and-drop.tsx";
-import { clearAnnouncer } from "./live.ts";
-import { fireDrag, MockDataTransfer, nextFrame, restoreRects, stubRects } from "./test-dnd.ts";
+import { clearAnnouncer, destroyAnnouncer } from "./live.ts";
+import {
+  announcements,
+  fireDrag,
+  MockDataTransfer,
+  nextFrame,
+  restoreRects,
+  stubRects,
+} from "./test-dnd.ts";
 import {
   Cell,
   Column,
@@ -1550,5 +1557,151 @@ describe("drag and drop", () => {
       expect(rowOf(to, "documents").getAttribute("aria-expanded")).toBe("true");
       fireDrag(rowOf(from, "a"), "dragend", { dataTransfer });
     });
+  });
+});
+
+describe("selection announcements", () => {
+  beforeEach(() => destroyAnnouncer());
+  afterEach(() => {
+    destroyAnnouncer();
+    Reflect.deleteProperty(window, "ontouchstart");
+  });
+
+  async function said(): Promise<string | undefined> {
+    await nextFrame();
+    return announcements().at(-1);
+  }
+
+  const body = (): HTMLElement[] => screen.getAllByRole("row").slice(1);
+
+  test("the selected or deselected row is named", async () => {
+    render(() => <Files selectionMode="multiple" />);
+    user.click(body()[0] as HTMLElement);
+    flush();
+    expect(await said()).toBe("Notes selected.");
+    user.click(body()[0] as HTMLElement);
+    flush();
+    expect(await said()).toBe("Notes not selected.");
+  });
+
+  test("past one row the count follows the row", async () => {
+    render(() => <Files selectionMode="multiple" />);
+    user.click(body()[0] as HTMLElement);
+    flush();
+    user.click(body()[1] as HTMLElement);
+    flush();
+    expect(await said()).toBe("Budget selected. 2 items selected.");
+    user.click(body()[1] as HTMLElement);
+    flush();
+    expect(await said()).toBe("Budget not selected. 1 item selected.");
+  });
+
+  test("rows selected at once are announced as their count", async () => {
+    render(() => <Files selectionMode="multiple" />);
+    user.click(body()[0] as HTMLElement);
+    flush();
+    user.click(body()[3] as HTMLElement, { shiftKey: true });
+    flush();
+    // The disabled row in between is not selected.
+    expect(await said()).toBe("3 items selected.");
+    user.click(body()[0] as HTMLElement, { shiftKey: true });
+    flush();
+    expect(await said()).toBe("1 item selected.");
+  });
+
+  test("select all and clearing it are announced", async () => {
+    render(() => <Files selectionMode="multiple" />);
+    user.click(body()[0] as HTMLElement);
+    flush();
+    user.key("a", { ctrlKey: true, metaKey: true });
+    flush();
+    expect(await said()).toBe("All items selected.");
+    user.keyboard("{Escape}");
+    flush();
+    expect(await said()).toBe("No items selected.");
+  });
+
+  test("a row is named by every row header column", async () => {
+    interface Person {
+      id: string;
+      first: string;
+      last: string;
+      birthday: string;
+      [key: string]: unknown;
+    }
+    const columns = [
+      { id: "first", name: "First Name", isRowHeader: true },
+      { id: "last", name: "Last Name", isRowHeader: true },
+      { id: "birthday", name: "Birthday" },
+    ];
+    const people: Person[] = [
+      { id: "sam", first: "Sam", last: "Smith", birthday: "May 3" },
+      { id: "julia", first: "Julia", last: "Jones", birthday: "February 10" },
+    ];
+    render(() => (
+      <Table aria-label="People" columns={columns} items={people} selectionMode="multiple">
+        <TableHeader>{(column: Column_) => <Column>{column.name}</Column>}</TableHeader>
+        <TableBody>
+          {(person: Person) => (
+            <Row>{(column: Column_) => <Cell>{String(person[column.id])}</Cell>}</Row>
+          )}
+        </TableBody>
+      </Table>
+    ));
+    user.click(body()[0] as HTMLElement);
+    flush();
+    expect(await said()).toBe("Sam Smith selected.");
+    user.click(body()[0] as HTMLElement);
+    flush();
+    expect(await said()).toBe("Sam Smith not selected.");
+  });
+
+  test("a selection the page changes is not announced while the table is not focused", async () => {
+    const [selected, setSelected] = createSignal<Key[]>([]);
+    render(() => (
+      <Table
+        aria-label="Files"
+        columns={COLUMNS}
+        items={FILES}
+        selectionMode="multiple"
+        selectedKeys={selected()}
+      >
+        <TableHeader>{(column: Column_) => <Column>{column.name}</Column>}</TableHeader>
+        <TableBody>
+          {(file: File_) => (
+            <Row>{(column: Column_) => <Cell>{String(file[column.id])}</Cell>}</Row>
+          )}
+        </TableBody>
+      </Table>
+    ));
+    setSelected(["notes", "budget"]);
+    flush();
+    await nextFrame();
+    expect(announcements()).toEqual([]);
+  });
+
+  test("on a touch device a table whose tap is an action describes the long press", () => {
+    Object.defineProperty(window, "ontouchstart", { value: null, configurable: true });
+    render(() => (
+      <Table
+        aria-label="Files"
+        columns={COLUMNS}
+        items={FILES}
+        selectionMode="multiple"
+        selectionBehavior="replace"
+        onAction={() => {}}
+      >
+        <TableHeader>{(column: Column_) => <Column>{column.name}</Column>}</TableHeader>
+        <TableBody>
+          {(file: File_) => (
+            <Row>{(column: Column_) => <Cell>{String(file[column.id])}</Cell>}</Row>
+          )}
+        </TableBody>
+      </Table>
+    ));
+    const ids = screen.getByRole("grid").getAttribute("aria-describedby")?.split(" ") ?? [];
+    expect(ids.map((id) => document.getElementById(id)?.textContent)).toContain(
+      "Long press to enter selection mode.",
+    );
   });
 });

@@ -54,6 +54,7 @@ const ENTRIES = [
   "file-trigger",
   "focus",
   "form",
+  "grid-selection",
   "gridlist",
   "group",
   "i18n",

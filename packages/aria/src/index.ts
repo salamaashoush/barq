@@ -725,6 +725,15 @@ export {
   type GridListSelectionCheckboxResult,
 } from "./gridlist.tsx";
 export {
+  gridSelectionAnnouncement,
+  type GridSelectionAnnouncementOptions,
+  type GridSelectionMessage,
+  type GridSelectionState,
+  gridSelectionStrings,
+  highlightSelectionDescription,
+  type HighlightSelectionDescriptionOptions,
+} from "./grid-selection.ts";
+export {
   Link,
   link,
   type LinkComponentProps,
