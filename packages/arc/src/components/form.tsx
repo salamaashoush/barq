@@ -701,7 +701,7 @@ export interface SubmitButtonProps {
  */
 export function SubmitButton(props: SubmitButtonProps) {
   const form = useArcFormContext();
-  const state = form.useStore((current) => ({
+  const state = form.useSelector((current) => ({
     canSubmit: current.canSubmit,
     isSubmitting: current.isSubmitting,
   }));
@@ -722,7 +722,7 @@ export function SubmitButton(props: SubmitButtonProps) {
 /** What went wrong with the form as a whole: a form validator's error, or the server's. */
 export function FormError(props: { class?: string }) {
   const form = useArcFormContext();
-  const errors = form.useStore((current) => messagesOf(current.errors));
+  const errors = form.useSelector((current) => messagesOf(current.errors));
   return (
     <Show when={errors().length > 0}>
       <Alert variant="destructive" class={props.class} role="alert" data-slot="form-error">

@@ -1,7 +1,6 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { type Child, type Incoming, type JSXElement, flush } from "@barqjs/core";
 import { type ZonedDateTime, parseDate, parseZonedDateTime } from "@barqjs/aria/date";
-import { destroyAnnouncer } from "@barqjs/aria/live";
 import { ariaViolations, render, screen, tick, user, waitFor } from "@barqjs/testing";
 
 import { createArcForm, setServerErrors, useArcField, useArcForm } from "./form.tsx";
@@ -325,10 +324,6 @@ describe("DateField and DateTimeField", () => {
 });
 
 describe("submitting", () => {
-  // A pending button announces itself through the page's one live region,
-  // which outlives the test that rendered the button.
-  afterEach(() => destroyAnnouncer());
-
   test("the submit is pending while the form submits, and disabled while it is invalid", async () => {
     let finish: (() => void) | undefined;
     const saved: string[] = [];

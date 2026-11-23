@@ -35,7 +35,7 @@ export interface UnsavedChangesGuardProps extends DiscardLabels {
  * or closing the tab.
  *
  * ```tsx
- * <UnsavedChangesGuard when={form.useStore((state) => state.isDirty)()} />
+ * <UnsavedChangesGuard when={form.useSelector((state) => state.isDirty)()} />
  * ```
  *
  * In the app it asks through `confirm()`, so it needs the `<ConfirmHost />`
