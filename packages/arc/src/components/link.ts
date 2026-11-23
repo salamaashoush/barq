@@ -1,4 +1,4 @@
-import { type LinkProps, useLinkProps } from "@barqjs/router";
+import { type LinkProps, type RouterState, useLinkProps, useRouter } from "@barqjs/router";
 
 /** Where a piece of navigation data points, in the router's terms. */
 export interface LinkTarget {
@@ -42,4 +42,13 @@ export function routerLink(target: LinkTarget): RouterLink {
     onMouseEnter: link.onMouseEnter as (event: MouseEvent) => void,
     onMouseLeave: link.onMouseLeave as (event: MouseEvent) => void,
   };
+}
+
+/** The router this component renders under, or none outside one. */
+export function maybeRouter(): RouterState | undefined {
+  try {
+    return useRouter();
+  } catch {
+    return undefined;
+  }
 }

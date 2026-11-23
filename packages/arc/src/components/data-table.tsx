@@ -21,7 +21,7 @@ import { ArrowDown } from "@barqjs/lucide/icons/arrow-down";
 import { ArrowUp } from "@barqjs/lucide/icons/arrow-up";
 import { ChevronsUpDown } from "@barqjs/lucide/icons/chevrons-up-down";
 import { mediaQuery } from "@barqjs/primitives/media";
-import { type RouterState, useRouter } from "@barqjs/router";
+import type { RouterState } from "@barqjs/router";
 import {
   type ColumnDef,
   type Header,
@@ -46,6 +46,7 @@ import { Spinner } from "@barqjs/ui/spinner";
 
 import { arcLayer as arc } from "../layer.ts";
 import { EmptyState } from "./empty-state.tsx";
+import { maybeRouter } from "./link.ts";
 import { SelectionBar, type SelectionAction } from "./selection-bar.tsx";
 
 const features = tableFeatures({
@@ -430,14 +431,6 @@ function linkRouter(state: RouterState | undefined): Router | undefined {
     },
     href: (href) => href,
   };
-}
-
-function maybeRouter(): RouterState | undefined {
-  try {
-    return useRouter();
-  } catch {
-    return undefined;
-  }
 }
 
 /**

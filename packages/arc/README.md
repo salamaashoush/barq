@@ -196,6 +196,11 @@ if (await confirm({ title: "Delete the check?", tone: "danger", confirmLabel: "D
   </form.AppForm>;
   ```
 
+- `FormSheet`: an arc form in a `DetailSheet`, its fields in the body and
+  Cancel and Save at the foot. Closing it with unsaved changes, by Cancel,
+  Escape or its close button, asks first, and so does leaving the page while
+  it is open. It stays open while it submits and closes once a submission
+  succeeds.
 - `UnsavedChangesGuard`: asks through `confirm()` before a page with unsaved
   changes is left by a link or the back button, and has the browser ask
   before the tab closes. It guards while `when` is true and stops when it

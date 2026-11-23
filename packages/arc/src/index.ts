@@ -50,6 +50,7 @@ export {
   type EmptyStateVariant,
   emptyStateVariants,
 } from "./components/empty-state.tsx";
+export { FormSheet, type FormSheetProps } from "./components/form-sheet.tsx";
 export {
   type ArcFieldProps,
   CheckboxField,
