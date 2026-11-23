@@ -53,7 +53,14 @@ import type { ElementRef } from "./interactions/press.ts";
 import { scrollWheel } from "./interactions/scroll-wheel.ts";
 import { label as useLabelHook } from "./label.ts";
 import { visuallyHidden } from "./live.ts";
-import { spinButton } from "./numberfield.tsx";
+import {
+  numberField,
+  type NumberFieldOptions,
+  type NumberFieldResult,
+  numberFieldState,
+  type NumberFieldState,
+  spinButton,
+} from "./numberfield.tsx";
 import { formReset, HIDDEN_INPUT_STYLE } from "./toggle.ts";
 import { textField, type TextFieldOptions } from "./textfield.tsx";
 import {
@@ -1249,6 +1256,157 @@ export function colorField(
   };
 }
 
+// ---------------------------------------------------------------------------
+// One channel as a number: the channel field
+// ---------------------------------------------------------------------------
+
+export interface ColorChannelFieldStateOptions {
+  /** Null is an empty field: no colour at all. */
+  value?: MaybeAccessor<Color | string | null | undefined>;
+  defaultValue?: MaybeAccessor<Color | string | null | undefined>;
+  channel: MaybeAccessor<ColorChannel>;
+  /** The space the channel is read in. @default the colour's own */
+  colorSpace?: MaybeAccessor<ColorSpace | undefined>;
+  isDisabled?: MaybeAccessor<boolean | undefined>;
+  isReadOnly?: MaybeAccessor<boolean | undefined>;
+  /** Called with null when the field is emptied. */
+  onChange?: (value: Color | null) => void;
+}
+
+export interface ColorChannelFieldState extends NumberFieldState {
+  /** The colour, in the field's space. Black while the field is empty. */
+  colorValue: Accessor<Color>;
+  /** What a form reset goes back to. */
+  defaultColorValue: Accessor<Color | null>;
+  setColorValue(value: Color | null): void;
+  /** How the number is written, fixed by the channel the field was made for. */
+  formatOptions: Intl.NumberFormatOptions;
+  step: Accessor<number>;
+}
+
+const BLACK_COLOR = parseColor("#000");
+
+/**
+ * One channel of a colour as a number field: a hue in degrees, a saturation in
+ * percent, a red from 0 to 255.
+ *
+ * The number field holds the channel and the colour is what changes: an edit
+ * writes the channel back into the colour, converted to the field's space, so
+ * a hue typed into an RGB colour arrives as the HSL colour with that hue. A
+ * percent channel held on a 0 to 100 scale is a fraction to the number field,
+ * because that is what a percent formatter reads.
+ */
+export function colorChannelFieldState(
+  options: ColorChannelFieldStateOptions,
+): ColorChannelFieldState {
+  const [colorValue, setColorValue] = controllable<Color | null>(
+    () => {
+      const given = access(options.value);
+      if (given === undefined) return undefined;
+      return given === null ? null : (asColor(given) ?? null);
+    },
+    () => asColor(access(options.defaultValue)) ?? null,
+    options.onChange,
+  );
+
+  // Read once: a form reset goes back to where the field STARTED.
+  const initial = colorValue();
+  const channel = (): ColorChannel => access(options.channel);
+  const inSpace = (value: Color | null): Color => {
+    const space = access(options.colorSpace);
+    const held = value ?? BLACK_COLOR;
+    return space === undefined ? held : held.toFormat(space);
+  };
+  const color = (): Color => inSpace(colorValue());
+  const defaultColorValue = (): Color | null => asColor(access(options.defaultValue)) ?? initial;
+
+  const range = (): ReturnType<Color["getChannelRange"]> => color().getChannelRange(channel());
+  const formatOptions = color().getChannelFormatOptions(channel());
+  const scale = (): number =>
+    formatOptions.style === "percent" && range().maxValue === 100 ? 100 : 1;
+  const step = (): number => range().step / scale();
+
+  const numberState = numberFieldState({
+    value: () =>
+      colorValue() === null ? Number.NaN : color().getChannelValue(channel()) / scale(),
+    defaultValue: () => {
+      const given = defaultColorValue();
+      return given === null ? Number.NaN : inSpace(given).getChannelValue(channel()) / scale();
+    },
+    minValue: () => range().minValue / scale(),
+    maxValue: () => range().maxValue / scale(),
+    step,
+    formatOptions,
+    isDisabled: options.isDisabled,
+    isReadOnly: options.isReadOnly,
+    onChange: (next) => {
+      setColorValue(
+        Number.isNaN(next) ? null : color().withChannelValue(channel(), next * scale()),
+      );
+    },
+  });
+
+  return {
+    ...numberState,
+    colorValue: color,
+    defaultColorValue,
+    setColorValue,
+    formatOptions,
+    step,
+  };
+}
+
+export interface ColorChannelFieldOptions extends Omit<
+  NumberFieldOptions,
+  "inputRef" | "formatOptions" | "minValue" | "maxValue" | "step" | "validate" | "commitBehavior"
+> {
+  channel: MaybeAccessor<ColorChannel>;
+  /**
+   * What the page thinks of the COLOUR the channel is part of. An empty field
+   * has no colour, and is not handed over.
+   */
+  validate?: ValidateFunction<Color>;
+}
+
+/**
+ * A number field for one channel of a colour.
+ *
+ * With no label of any kind it is named for its channel, in the locale in
+ * scope: a field reading "210°" means nothing until something says it is the
+ * hue.
+ */
+export function colorChannelField(
+  options: ColorChannelFieldOptions,
+  state: ColorChannelFieldState,
+  inputRef: ElementRef<HTMLInputElement>,
+): NumberFieldResult {
+  const locale = useLocale();
+  const validate = options.validate;
+  return numberField(
+    {
+      ...options,
+      inputRef,
+      formatOptions: state.formatOptions,
+      minValue: state.minValue,
+      maxValue: state.maxValue,
+      step: state.step,
+      validate:
+        validate === undefined
+          ? undefined
+          : (value) => (Number.isNaN(value) ? null : validate(state.colorValue())),
+      "aria-label": () => {
+        const given = access(options["aria-label"]);
+        if (given !== undefined && given !== "") return given;
+        const label = access(options.label);
+        const hasLabel = label !== undefined && label !== null && label !== false && label !== "";
+        if (hasLabel || access(options["aria-labelledby"]) !== undefined) return undefined;
+        return state.colorValue().getChannelName(access(options.channel), locale().locale);
+      },
+    },
+    state,
+  );
+}
+
 export interface ColorSwatchOptions {
   color: MaybeAccessor<Color | string>;
   /** What to call it. Defaults to the colour's own description. */
@@ -1647,8 +1805,15 @@ export interface ColorFieldComponentProps extends StyleProps {
   /** Null is an empty field: no colour at all. */
   value?: Color | string | null;
   defaultValue?: Color | string | null;
-  /** @default "hex" */
+  /** How the colour is written when no `channel` is given. @default "hex" */
   format?: ColorFormat;
+  /**
+   * The one channel the field edits, as a number. Without it the field edits
+   * the whole colour as text.
+   */
+  channel?: ColorChannel;
+  /** The space `channel` is read in. @default the colour's own */
+  colorSpace?: ColorSpace;
   isDisabled?: boolean;
   isReadOnly?: boolean;
   isRequired?: boolean;
@@ -1660,14 +1825,136 @@ export interface ColorFieldComponentProps extends StyleProps {
   /** Stop the scroll wheel stepping the colour. @default false */
   isWheelDisabled?: boolean;
   name?: string;
+  form?: string;
   "aria-label"?: string;
+  "aria-labelledby"?: string;
   ref?: RefTarget<HTMLInputElement>;
   /** Called with null when the field is emptied. */
   onChange?: (value: Color | null) => void;
 }
 
-/** A colour as text: `#7f00ff`, committed on blur and on Enter. */
+/**
+ * ```tsx
+ * <ColorField label="Hex" defaultValue="#7f00ff" />
+ * <ColorField channel="hue" colorSpace="hsl" defaultValue="#7f00ff" />
+ * ```
+ *
+ * A colour as text, `#7f00ff`, committed on blur and on Enter; or, given a
+ * `channel`, one channel of it as a number, named for the channel unless it
+ * has a label of its own. Changing `channel` makes a new field: the two edit
+ * different things.
+ */
 export function ColorField(props: ColorFieldComponentProps) {
+  return (
+    <>
+      {() => {
+        const channel = props.channel;
+        return channel === undefined ? (
+          <HexColorField {...props} />
+        ) : (
+          <ChannelColorField {...props} channel={channel} />
+        );
+      }}
+    </>
+  );
+}
+
+interface ChannelColorFieldProps extends ColorFieldComponentProps {
+  channel: ColorChannel;
+}
+
+function ChannelColorField(props: ChannelColorFieldProps) {
+  const inputRef = makeRef<HTMLInputElement>();
+  const picker = useColorPicker();
+
+  const state = colorChannelFieldState({
+    value: () => (props.value === null ? null : (props.value ?? picker?.value())),
+    defaultValue: () => props.defaultValue,
+    channel: () => props.channel,
+    colorSpace: () => props.colorSpace,
+    isDisabled: () => props.isDisabled ?? picker?.isDisabled(),
+    isReadOnly: () => props.isReadOnly,
+    onChange: (next) => {
+      // A picker always holds a colour, so emptying a field inside one leaves
+      // the picker's colour where it was and the field goes back to it.
+      if (next !== null) picker?.setValue(next);
+      props.onChange?.(next);
+    },
+  });
+
+  const isDisabled = (): boolean => props.isDisabled ?? picker?.isDisabled() ?? false;
+
+  const { labelProps, inputProps, descriptionProps, errorMessageProps, errors, isInvalid } =
+    colorChannelField(
+      {
+        channel: () => props.channel,
+        label: () => props.label,
+        description: () => props.description,
+        errorMessage: () => props.errorMessage,
+        isDisabled,
+        isReadOnly: () => props.isReadOnly,
+        isRequired: () => props.isRequired,
+        isInvalid: () => props.isInvalid,
+        validate: callback<[Color], string | string[] | true | null | undefined>(
+          cells(props).validate,
+        ),
+        validationBehavior: () => props.validationBehavior,
+        isWheelDisabled: () => props.isWheelDisabled,
+        name: () => props.name,
+        form: () => props.form,
+        "aria-label": () => props["aria-label"],
+        "aria-labelledby": () => props["aria-labelledby"],
+      },
+      state,
+      inputRef,
+    );
+
+  const { focusProps, isFocusVisible } = focusRing();
+
+  const elementProps = mergeProps(
+    inputProps,
+    focusProps,
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
+    {
+      "data-channel": () => props.channel,
+      "data-focus-visible": isFocusVisible,
+      "data-invalid": isInvalid,
+      "data-disabled": isDisabled,
+      "data-testid": () => props["data-testid"],
+    },
+  );
+
+  return (
+    <>
+      {() => (props.label === undefined ? null : <label {...labelProps}>{props.label}</label>)}
+      <input {...elementProps} ref={mergeRefs(inputRef.set, props.ref)} />
+      {() =>
+        props.name === undefined ? null : (
+          // The typed text is "210°"; a form wants the number.
+          <input
+            type="hidden"
+            name={props.name}
+            form={props.form}
+            value={Number.isNaN(state.numberValue()) ? "" : String(state.numberValue())}
+            disabled={isDisabled()}
+          />
+        )
+      }
+      <span {...descriptionProps}>{props.description}</span>
+      <span {...errorMessageProps}>
+        {() => {
+          const given = props.errorMessage;
+          if (given !== undefined && given !== null && given !== "") return given;
+          const found = errors();
+          return found.length === 0 ? null : found.join(" ");
+        }}
+      </span>
+    </>
+  );
+}
+
+function HexColorField(props: ColorFieldComponentProps) {
   const domRef = makeRef<HTMLInputElement>();
   const picker = useColorPicker();
 
@@ -1705,7 +1992,9 @@ export function ColorField(props: ColorFieldComponentProps) {
         validationBehavior: () => props.validationBehavior,
         isWheelDisabled: () => props.isWheelDisabled,
         name: () => props.name,
+        form: () => props.form,
         "aria-label": () => props["aria-label"],
+        "aria-labelledby": () => props["aria-labelledby"],
       },
       state,
       domRef,
@@ -1719,6 +2008,7 @@ export function ColorField(props: ColorFieldComponentProps) {
     filterDOMProps(fromProps(cells(props)), { global: true }),
     styleProps(cells(props)),
     {
+      "data-channel": "hex",
       "data-focus-visible": isFocusVisible,
       "data-invalid": isInvalid,
       "data-testid": () => props["data-testid"],

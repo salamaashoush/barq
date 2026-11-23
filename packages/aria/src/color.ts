@@ -64,16 +64,32 @@ function message(
     .replace(/\{(\w+)\}/g, (whole, name: string) => variables[name] ?? whole);
 }
 
-const percentFormatters = new Map<string, Intl.NumberFormat>();
+const formatters = new Map<string, Intl.NumberFormat>();
 
-function formatPercent(value: number, locale: string): string {
-  let format = percentFormatters.get(locale);
+function formatNumber(value: number, locale: string, options: Intl.NumberFormatOptions): string {
+  const key = `${locale} ${JSON.stringify(options)}`;
+  let format = formatters.get(key);
   if (format === undefined) {
-    format = new Intl.NumberFormat(locale, { style: "percent" });
-    percentFormatters.set(locale, format);
+    format = new Intl.NumberFormat(locale, options);
+    formatters.set(key, format);
   }
   return format.format(value);
 }
+
+const DEGREES: Intl.NumberFormatOptions = { style: "unit", unit: "degree", unitDisplay: "narrow" };
+const PERCENT: Intl.NumberFormatOptions = { style: "percent" };
+const DECIMAL: Intl.NumberFormatOptions = { style: "decimal" };
+
+const FORMATS: Record<ColorChannel, Intl.NumberFormatOptions> = {
+  hue: DEGREES,
+  saturation: PERCENT,
+  brightness: PERCENT,
+  lightness: PERCENT,
+  red: DECIMAL,
+  green: DECIMAL,
+  blue: DECIMAL,
+  alpha: PERCENT,
+};
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
@@ -100,6 +116,25 @@ export abstract class Color {
 
   getChannelName(channel: ColorChannel, locale = "en-US"): string {
     return message(channel, locale);
+  }
+
+  /** How the channel's number is written for a person: `210°`, `25%`, `170`. */
+  getChannelFormatOptions(channel: ColorChannel): Intl.NumberFormatOptions {
+    return FORMATS[channel];
+  }
+
+  /**
+   * The channel's number as a person reads it, in a locale.
+   *
+   * A percent channel held on a 0 to 100 scale is a fraction to the
+   * formatter, or a saturation of 25 would read as "2,500%".
+   */
+  formatChannelValue(channel: ColorChannel, locale = "en-US"): string {
+    const options = this.getChannelFormatOptions(channel);
+    const value = this.getChannelValue(channel);
+    const scale =
+      options.style === "percent" && this.getChannelRange(channel).maxValue === 100 ? 100 : 1;
+    return formatNumber(value / scale, locale, options);
   }
 
   /**
@@ -131,7 +166,7 @@ export abstract class Color {
       lightness: lightnessWord === undefined ? "" : message(lightnessWord, locale),
       chroma: chromaWord === undefined ? "" : message(chromaWord, locale),
       hue: hueName,
-      percentTransparent: formatPercent(1 - this.alpha, locale),
+      percentTransparent: formatNumber(1 - this.alpha, locale, PERCENT),
     };
     return message(this.alpha < 1 ? "transparentColorName" : "colorName", locale, variables)
       .replace(/\s+/g, " ")

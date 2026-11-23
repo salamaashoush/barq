@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush } from "@barqjs/core";
+import { createSignal, flush } from "@barqjs/core";
 import { accessibleName, expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
 import { parseColor, type Color } from "./color.ts";
 import { ColorSwatchPicker, ColorSwatchPickerItem } from "./colorswatchpicker.tsx";
@@ -208,6 +208,190 @@ describe("ColorField", () => {
 
     expect(input.value).toBe("#7f00ff");
     expect(changes).toEqual([]);
+  });
+});
+
+describe("ColorField with a channel", () => {
+  test("shows the one channel, formatted, named for it, with the number in a hidden input", () => {
+    render(() => <ColorField value="#abc" colorSpace="hsl" channel="hue" name="hue" />);
+
+    const field = screen.getByRole<HTMLInputElement>("textbox");
+    expect(field.value).toBe("210°");
+    expect(accessibleName(field)).toBe("Hue");
+    expect(field.getAttribute("data-channel")).toBe("hue");
+    expect(field.hasAttribute("name")).toBe(false);
+
+    const hidden = document.querySelector<HTMLInputElement>("input[name=hue]");
+    expect(hidden?.type).toBe("hidden");
+    expect(hidden?.value).toBe("210");
+  });
+
+  test("a typed channel is written back into the colour, in the field's space", () => {
+    const changes: (Color | null)[] = [];
+    render(() => (
+      <ColorField
+        value="#abc"
+        colorSpace="hsl"
+        channel="hue"
+        onChange={(value) => changes.push(value)}
+      />
+    ));
+
+    const field = screen.getByRole<HTMLInputElement>("textbox");
+    user.clear(field);
+    user.type(field, "100");
+    user.blur(field);
+    flush();
+
+    expect(changes.at(-1)?.getColorSpace()).toBe("hsl");
+    expect(changes.at(-1)?.toString("hsla")).toBe(
+      parseColor("hsl(100, 25%, 73.33%)").toString("hsla"),
+    );
+  });
+
+  test("defaults to empty, and a null value is empty", () => {
+    render(() => (
+      <>
+        <ColorField colorSpace="hsl" channel="hue" aria-label="first" />
+        <ColorField value={null} colorSpace="hsl" channel="hue" aria-label="second" />
+      </>
+    ));
+    for (const field of screen.getAllByRole<HTMLInputElement>("textbox")) {
+      expect(field.value).toBe("");
+    }
+  });
+
+  test("clearing it empties the colour", () => {
+    const changes: (Color | null)[] = [];
+    render(() => (
+      <ColorField
+        defaultValue="#abc"
+        colorSpace="hsl"
+        channel="hue"
+        onChange={(value) => changes.push(value)}
+      />
+    ));
+
+    const field = screen.getByRole<HTMLInputElement>("textbox");
+    expect(field.value).toBe("210°");
+    user.focus(field);
+    user.clear(field);
+    user.blur(field);
+    flush();
+
+    expect(field.value).toBe("");
+    expect(changes).toEqual([null]);
+  });
+
+  test("a percent channel counts in its own percent", () => {
+    const changes: (Color | null)[] = [];
+    render(() => (
+      <ColorField
+        defaultValue="hsl(210, 25%, 73%)"
+        channel="saturation"
+        onChange={(value) => changes.push(value)}
+      />
+    ));
+
+    const field = screen.getByRole<HTMLInputElement>("textbox");
+    expect(field.value).toBe("25%");
+    expect(accessibleName(field)).toBe("Saturation");
+
+    user.focus(field);
+    user.keyDown("ArrowUp");
+    flush();
+    expect(field.value).toBe("26%");
+    expect(changes.at(-1)?.getChannelValue("saturation")).toBeCloseTo(26, 6);
+  });
+
+  test("the channel's range bounds it", () => {
+    render(() => <ColorField defaultValue="#ff0000" channel="red" />);
+    const field = screen.getByRole<HTMLInputElement>("textbox");
+
+    user.focus(field);
+    user.keyDown("ArrowUp");
+    flush();
+    expect(field.value).toBe("255");
+    user.keyDown("Home");
+    flush();
+    expect(field.value).toBe("0");
+  });
+
+  test("a label of its own replaces the channel's name", () => {
+    render(() => <ColorField label="Tint" defaultValue="#abc" colorSpace="hsl" channel="hue" />);
+    const field = screen.getByRole<HTMLInputElement>("textbox");
+    expect(accessibleName(field)).toBe("Tint");
+    expect(field.hasAttribute("aria-label")).toBe(false);
+  });
+
+  test("the channel's name is localised", () => {
+    function German() {
+      provideLocale("de-DE");
+      return <ColorField defaultValue="#abc" colorSpace="hsl" channel="hue" />;
+    }
+    render(() => <German />);
+    expect(accessibleName(screen.getByRole("textbox"))).toBe("Farbton");
+  });
+
+  test("a form reset goes back to the starting colour", () => {
+    const { container } = render(() => {
+      const [value, setValue] = createSignal<Color | null>(parseColor("#ff0"));
+      return (
+        <form>
+          <ColorField channel="red" value={value()} onChange={setValue} />
+        </form>
+      );
+    });
+
+    const field = screen.getByRole<HTMLInputElement>("textbox");
+    expect(field.value).toBe("255");
+    user.clear(field);
+    user.type(field, "0");
+    user.blur(field);
+    flush();
+    expect(field.value).toBe("0");
+
+    (container.querySelector("form") as HTMLFormElement).reset();
+    flush();
+    expect(field.value).toBe("255");
+  });
+
+  test("form reaches the hidden input", () => {
+    render(() => <ColorField defaultValue="#abc" channel="red" name="red" form="acme" />);
+    const hidden = document.querySelector<HTMLInputElement>("input[name=red]");
+    expect(hidden?.getAttribute("form")).toBe("acme");
+    expect(hidden?.value).toBe("170");
+  });
+
+  test("inside a picker it edits the picker's colour", () => {
+    const changes: Color[] = [];
+    render(() => (
+      <ColorPicker defaultValue="#ff0000" onChange={(value) => changes.push(value)}>
+        <ColorField channel="hue" colorSpace="hsb" />
+        <ColorSwatch />
+      </ColorPicker>
+    ));
+
+    const field = screen.getByRole<HTMLInputElement>("textbox");
+    expect(field.value).toBe("0°");
+    user.clear(field);
+    user.type(field, "240");
+    user.keyDown("Enter");
+    flush();
+
+    expect(changes.at(-1)?.toString("hex")).toBe("#0000ff");
+  });
+
+  test("the hex field says it is one", () => {
+    render(() => <ColorField label="Hex" defaultValue="#abc" />);
+    expect(screen.getByRole("textbox").getAttribute("data-channel")).toBe("hex");
+  });
+
+  test("has no ARIA violations", () => {
+    const { container } = render(() => (
+      <ColorField defaultValue="#abc" colorSpace="hsl" channel="lightness" />
+    ));
+    expectNoAriaViolations(container);
   });
 });
 
