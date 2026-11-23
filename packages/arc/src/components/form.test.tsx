@@ -286,6 +286,11 @@ describe("DateField and DateTimeField", () => {
     await settle();
     const group = screen.getByRole("group", { name: "Due" });
     expect(describedBy(group)).toEqual(["The day it is owed."]);
+    const [first, ...rest] = screen.getAllByRole("spinbutton");
+    expect(describedBy(first as HTMLElement)).toEqual(["The day it is owed."]);
+    expect(rest.map((each) => each.hasAttribute("aria-describedby"))).toEqual(
+      rest.map(() => false),
+    );
     const day = screen.getByRole("spinbutton", { name: /day/ });
     day.focus();
     await user.keyboard("{ArrowUp}");

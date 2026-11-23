@@ -139,8 +139,8 @@ interface FrameProps {
   description?: Child;
   /** Beside the control rather than over it: a switch, a checkbox. */
   inline?: boolean;
-  /** Names and describes the field itself, for a control that cannot take them. */
-  group?: boolean;
+  /** The control is named from the label's id: a group of segments has nothing for `<label for>`. */
+  labelledById?: boolean;
   class?: string;
   children?: Child;
 }
@@ -164,17 +164,16 @@ function Frame(props: FrameProps) {
       class={props.class}
       orientation={props.inline === true ? "horizontal" : "vertical"}
       isInvalid={of.isInvalid()}
-      aria-labelledby={props.group === true ? of.ids.label : undefined}
-      aria-describedby={
-        props.group === true ? of.describedBy(props.description !== undefined) : undefined
-      }
       data-slot="arc-field"
     >
       <Show
         when={props.inline === true}
         fallback={
           <>
-            <FieldLabel id={of.ids.label} for={props.group === true ? undefined : of.ids.control}>
+            <FieldLabel
+              id={of.ids.label}
+              for={props.labelledById === true ? undefined : of.ids.control}
+            >
               {props.label}
             </FieldLabel>
             {props.children}
@@ -625,9 +624,17 @@ const segments = arc({
 export function DateField(props: ArcFieldProps) {
   const of = control<CalendarDate | null>();
   return (
-    <Frame of={of} label={props.label} description={props.description} class={props.class} group>
+    <Frame
+      of={of}
+      label={props.label}
+      description={props.description}
+      class={props.class}
+      labelledById
+    >
       <AriaDateField<CalendarDate>
         class={segments}
+        aria-labelledby={of.ids.label}
+        aria-describedby={of.describedBy(props.description !== undefined)}
         value={of.field().state.value ?? null}
         granularity="day"
         name={of.field().name}
@@ -670,9 +677,17 @@ export function DateTimeField(props: DateTimeFieldProps) {
       ? undefined
       : now(props.timeZone).set({ minute: 0, second: 0, millisecond: 0 });
   return (
-    <Frame of={of} label={props.label} description={props.description} class={props.class} group>
+    <Frame
+      of={of}
+      label={props.label}
+      description={props.description}
+      class={props.class}
+      labelledById
+    >
       <AriaDateField<ZonedDateTime>
         class={segments}
+        aria-labelledby={of.ids.label}
+        aria-describedby={of.describedBy(props.description !== undefined)}
         value={shown()}
         placeholderValue={placeholder()}
         granularity={props.granularity ?? "minute"}

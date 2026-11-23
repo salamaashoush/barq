@@ -1017,6 +1017,8 @@ export interface DateFieldResult {
   validation: FormValidationState;
   errors: Accessor<string[]>;
   isInvalid: Accessor<boolean>;
+  /** The ids the field is described by, for {@link dateSegment}. */
+  describedBy: Accessor<string | undefined>;
 }
 
 const SEGMENT_SELECTOR = '[role="spinbutton"], [role="textbox"]';
@@ -1068,6 +1070,8 @@ export function dateField(options: DateFieldOptions, state: DateFieldState): Dat
     validation,
     errors,
     isInvalid,
+    describedBy: () =>
+      access(labelledProps["aria-describedby"] as MaybeAccessor<string | undefined>),
     fieldProps: mergeProps(filterDOMProps(options, { labelable: true }), labelledProps, {
       // A group, because the segments are separate controls that together are
       // one field: `role="textbox"` would promise editing the whole string.
@@ -1075,7 +1079,6 @@ export function dateField(options: DateFieldOptions, state: DateFieldState): Dat
       "aria-disabled": () => state.isDisabled() || undefined,
       "aria-invalid": () => isInvalid() || undefined,
       "aria-required": () => access(options.isRequired) === true || undefined,
-      "aria-describedby": () => access(options["aria-describedby"]),
       // A date is committed segment by segment, so leaving the field is the
       // first moment the whole value is worth judging. Moving between its own
       // segments is not leaving it.
@@ -1103,6 +1106,9 @@ export function dateField(options: DateFieldOptions, state: DateFieldState): Dat
 export interface DateSegmentOptions {
   segment: Accessor<DateSegment>;
   ref: ElementRef;
+  /** The field's {@link DateFieldResult.describedBy}. */
+  "aria-describedby"?: MaybeAccessor<string | undefined>;
+  isInvalid?: MaybeAccessor<boolean | undefined>;
 }
 
 export interface DateSegmentResult {
@@ -1482,11 +1488,22 @@ export function dateSegment(options: DateSegmentOptions, state: DateFieldState):
 
   const isSpinButton = (): boolean => !isLiteral() && !asTextbox();
 
+  // On the first editable segment only, unless the value is invalid: moving
+  // between segments would otherwise read the description again at each one.
+  const describedBy = (): string | undefined => {
+    if (isLiteral()) return undefined;
+    const first = state.segments().find((each) => each.isEditable);
+    return access(options.isInvalid) === true || first?.type === segment().type
+      ? access(options["aria-describedby"])
+      : undefined;
+  };
+
   return {
     segmentProps: {
       role: () => (isLiteral() ? undefined : asTextbox() ? "textbox" : "spinbutton"),
       "aria-hidden": () => (isLiteral() ? true : undefined),
       "aria-label": () => (isLiteral() ? undefined : name()),
+      "aria-describedby": describedBy,
       "aria-valuenow": () => (isSpinButton() ? segment().value : undefined),
       "aria-valuemin": () => (isSpinButton() ? segment().minValue : undefined),
       "aria-valuemax": () => (isSpinButton() ? segment().maxValue : undefined),
@@ -1533,6 +1550,8 @@ export function dateSegment(options: DateSegmentOptions, state: DateFieldState):
 
 interface DateFieldContextValue {
   state: DateFieldState;
+  describedBy: Accessor<string | undefined>;
+  isInvalid: Accessor<boolean>;
 }
 
 const DateFieldContext = createContext<DateFieldContextValue | null>(null);
@@ -1583,6 +1602,7 @@ export interface DateFieldComponentProps<T extends DateValue = DateValue> extend
   name?: string;
   "aria-label"?: string;
   "aria-labelledby"?: string;
+  "aria-describedby"?: string;
   ref?: RefTarget<HTMLDivElement>;
   onChange?: (value: NoInfer<MappedDateValue<T>> | null) => void;
 }
@@ -1657,6 +1677,7 @@ function FieldBody(incoming: FieldBodyProps) {
     inputProps,
     errors,
     isInvalid,
+    describedBy,
   } = dateField(
     {
       ref: domRef,
@@ -1673,6 +1694,7 @@ function FieldBody(incoming: FieldBodyProps) {
       name: () => props.name?.(),
       "aria-label": () => props["aria-label"]?.(),
       "aria-labelledby": () => props["aria-labelledby"]?.(),
+      "aria-describedby": () => props["aria-describedby"]?.(),
     },
     state,
   );
@@ -1689,7 +1711,7 @@ function FieldBody(incoming: FieldBodyProps) {
   );
 
   return (
-    <DateFieldProvider value={{ state }}>
+    <DateFieldProvider value={{ state, describedBy, isInvalid }}>
       <span {...labelProps}>{() => props.label?.()}</span>
       <div {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
         {/* Keyed by INDEX, not by the segment: a new object every read would
@@ -1720,7 +1742,7 @@ interface DateSegmentPartProps {
 /** One segment. Its own component so it keeps its element as the value moves. */
 function DateSegmentPart(props: DateSegmentPartProps) {
   const domRef = makeRef<HTMLDivElement>();
-  const { state } = useDateField();
+  const { state, describedBy, isInvalid } = useDateField();
   const index = props.index;
 
   const segment = (): DateSegment =>
@@ -1731,7 +1753,10 @@ function DateSegmentPart(props: DateSegmentPartProps) {
       isEditable: false,
     };
 
-  const { segmentProps } = dateSegment({ segment, ref: domRef }, state);
+  const { segmentProps } = dateSegment(
+    { segment, ref: domRef, "aria-describedby": describedBy, isInvalid },
+    state,
+  );
   const { hoverProps, isHovered } = hover({ isDisabled: state.isDisabled });
   const { focusProps, isFocusVisible } = focusRing();
 

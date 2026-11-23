@@ -290,6 +290,58 @@ describe("TimeField", () => {
   });
 });
 
+describe("a segment's description", () => {
+  const described = (): string[] => segments().map((element) => accessibleDescription(element));
+
+  test("the first segment reads the field's description and the rest do not", () => {
+    render(() => (
+      <>
+        <span id="trip-note">Local time</span>
+        <DateField
+          label="Departure"
+          description="When the train leaves"
+          aria-describedby="trip-note"
+          defaultValue={new CalendarDate(2026, 3, 8)}
+        />
+      </>
+    ));
+
+    expect(described()).toEqual(["When the train leaves Local time", "", ""]);
+    const group = accessibleDescription(screen.getByRole("group"));
+    expect(group).toContain("When the train leaves");
+    expect(group).toContain("Local time");
+  });
+
+  test("an invalid field describes every segment, with its error", () => {
+    render(() => (
+      <DateField
+        label="Departure"
+        description="When the train leaves"
+        errorMessage="No trains that day"
+        isInvalid
+        defaultValue={new CalendarDate(2026, 3, 8)}
+      />
+    ));
+
+    expect(described()).toEqual(
+      Array.from({ length: 3 }, () => "When the train leaves No trains that day"),
+    );
+  });
+
+  test("a TimeField describes its first segment too", () => {
+    render(() => (
+      <TimeField label="Starts" description="In the venue's zone" value={new Time(14, 30)} />
+    ));
+
+    expect(described()[0]).toBe("In the venue's zone");
+    expect(
+      described()
+        .slice(1)
+        .every((text) => text === ""),
+    ).toBe(true);
+  });
+});
+
 describe("a date outside minValue or maxValue", () => {
   function group(): HTMLElement {
     return screen.getByRole("group");
