@@ -138,4 +138,47 @@ describe("the data layer on the server", () => {
     // Narrow until the browser says otherwise: the server answers every media query false.
     expect(html).not.toContain(">Total<");
   });
+
+  test("a form of arc's fields writes its labels, values and wiring", async () => {
+    const jsx = `
+      (() => {
+        const form = useArcForm(() => ({
+          defaultValues: { email: "salama@example.com", plan: "team", alerts: true },
+        }));
+        return (
+          <form.AppForm>
+            <form>
+              <form.AppField name="email">
+                {(field) => <field.TextField label="Email" description="Where receipts go." />}
+              </form.AppField>
+              <form.AppField name="plan">
+                {(field) => (
+                  <field.SelectField
+                    label="Plan"
+                    options={[{ value: "free", label: "Free" }, { value: "team", label: "Team" }]}
+                  />
+                )}
+              </form.AppField>
+              <form.AppField name="alerts">
+                {(field) => <field.SwitchField label="Alerts" />}
+              </form.AppField>
+              <form.SubmitButton>Save</form.SubmitButton>
+            </form>
+          </form.AppForm>
+        );
+      })()
+    `;
+    const { code, html, errors } = await serverProcess(routed(["useArcForm"], jsx, "/"));
+    expect(errors).toBe("");
+    expect(code).toBe(0);
+    const input = /<input [^>]*name="email"[^>]*>/.exec(html)?.[0] ?? "";
+    expect(input).toContain('value="salama@example.com"');
+    const id = /id="([^"]+)"/.exec(input)?.[1] ?? "";
+    expect(html).toContain(`for="${id}"`);
+    expect(input).toContain("aria-describedby=");
+    expect(html).toContain("Where receipts go.");
+    expect(html).toContain("Team");
+    expect(html).toMatch(/role="switch"[^>]*checked|checked[^>]*role="switch"/);
+    expect(html).toContain('type="submit"');
+  });
 });

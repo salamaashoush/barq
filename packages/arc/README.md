@@ -162,6 +162,40 @@ if (await confirm({ title: "Delete the check?", tone: "danger", confirmLabel: "D
 - `SelectionBar`: how many rows are selected, in a live region, the actions
   for them, and a button that lets go. An action may ask through `confirm()`
   first, and holds the bar pending while it runs.
+- Forms, on `@barqjs/form`: `useArcForm` is `createFormHook` bound to arc's
+  fields, and `createArcForm` adds an app's own beside them. Each field is
+  `ui`'s `Field` with its label naming the control, its description and its
+  error wired by `aria-describedby`, and the error shown once the field is
+  touched. `TextField`, `PasswordField` with a button that shows what was
+  typed, `NumberField` held as a number, `TextareaField`, `SwitchField`,
+  `CheckboxField`, `SelectField`, `ComboboxField`, `DateField` and
+  `DateTimeField` (aria's segments, a date and time held as a
+  `ZonedDateTime` and shown in `timeZone`), and `TimeZoneField`, found by
+  typing a city. `form.SubmitButton` is pending while the form submits and
+  disabled while it holds an error, and `form.FormError` shows what is wrong
+  with the whole form. `setServerErrors` puts a failed submission's errors on
+  the fields they name and the rest on the form; editing a field retires its
+  error.
+
+  ```tsx
+  const form = useArcForm(() => ({
+    defaultValues: { email: "", zone: "UTC" },
+    onSubmit: async ({ value, formApi }) => {
+      const result = await save(value);
+      if (!result.ok) setServerErrors(formApi, { fields: result.errors });
+    },
+  }));
+
+  <form.AppForm>
+    <form onSubmit={(event) => { event.preventDefault(); void form.handleSubmit(); }}>
+      <form.FormError />
+      <form.AppField name="email">{(field) => <field.TextField label="Email" type="email" />}</form.AppField>
+      <form.AppField name="zone">{(field) => <field.TimeZoneField label="Time zone" />}</form.AppField>
+      <form.SubmitButton>Save</form.SubmitButton>
+    </form>
+  </form.AppForm>;
+  ```
+
 - `UnsavedChangesGuard`: asks through `confirm()` before a page with unsaved
   changes is left by a link or the back button, and has the browser ask
   before the tab closes. It guards while `when` is true and stops when it
