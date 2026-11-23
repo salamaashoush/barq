@@ -531,6 +531,8 @@ export {
   ComboBox,
   comboBox,
   type ComboBoxComponentProps,
+  ComboBoxListBox,
+  type ComboBoxListBoxProps,
   type ComboBoxOptions,
   type ComboBoxResult,
   type ComboBoxState,
@@ -577,6 +579,16 @@ export {
   useComboboxRoot,
   useOptionalComboboxRoot,
 } from "./combobox.tsx";
+export {
+  SearchAutocomplete,
+  searchAutocomplete,
+  type SearchAutocompleteComponentProps,
+  type SearchAutocompleteLoadingState,
+  type SearchAutocompleteOptions,
+  type SearchAutocompleteResult,
+  searchAutocompleteState,
+  type SearchAutocompleteStateOptions,
+} from "./search-autocomplete.tsx";
 export {
   Command,
   command,

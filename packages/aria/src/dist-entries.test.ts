@@ -76,6 +76,7 @@ const ENTRIES = [
   "presence",
   "preview-trigger",
   "radio",
+  "search-autocomplete",
   "select",
   "selection",
   "selection-indicator",

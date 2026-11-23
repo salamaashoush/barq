@@ -840,6 +840,11 @@ export interface ComboBoxOptions extends FieldOptions {
   validate?: ValidateFunction<Key | null>;
   /** @default "aria" */
   validationBehavior?: MaybeAccessor<ValidationBehavior | undefined>;
+  /**
+   * A validation to show in place of the one over the chosen key, for a field
+   * whose value is its text: a search autocomplete has no chosen key at all.
+   */
+  validationState?: FormValidationState;
 }
 
 export interface ComboBoxResult {
@@ -875,6 +880,7 @@ export function comboBox(options: ComboBoxOptions, state: ComboBoxState<unknown>
     isInvalid: options.isInvalid,
     errorMessage: options.errorMessage,
     name: options.name,
+    state: options.validationState,
   });
 
   const { labelProps, fieldProps, descriptionProps, errorMessageProps } = field({
@@ -1351,7 +1357,7 @@ export function ComboBox<T>(props: ComboBoxComponentProps<T>) {
         isDismissable
         ref={popoverRef.set}
       >
-        <ComboBoxList
+        <ComboBoxListBox
           options={listBoxProps}
           state={state}
           listRef={listRef}
@@ -1371,20 +1377,23 @@ export function ComboBox<T>(props: ComboBoxComponentProps<T>) {
   );
 }
 
-interface ComboBoxListProps {
+export interface ComboBoxListBoxProps {
+  /** The `listBoxProps` {@link comboBox} returned. */
   options: DOMProps;
   state: ComboBoxState<unknown>;
   listRef: ReturnType<typeof makeRef<HTMLUListElement>>;
   render: (item: unknown) => Child;
+  /** Shown, as the list's one entry, while it has no options. */
+  renderEmpty?: () => Child;
 }
 
 /**
- * The listbox inside the popover.
+ * The listbox inside the popover, for a component built on {@link comboBox}.
  *
  * Built only once the list is open, so its autofocus reads the focus strategy
  * the opening keypress set rather than the one from before it.
  */
-function ComboBoxList(props: ComboBoxListProps) {
+export function ComboBoxListBox(props: ComboBoxListBoxProps) {
   const state = props.state;
   const listRef = props.listRef;
   const render = props.render;
@@ -1419,6 +1428,11 @@ function ComboBoxList(props: ComboBoxListProps) {
             return render(node.value);
           }}
         </For>
+        <Show when={state.collection().size === 0 && props.renderEmpty !== undefined}>
+          <li role="option" style={{ display: "contents" }}>
+            {props.renderEmpty?.()}
+          </li>
+        </Show>
       </ul>
     </ListBoxProvider>
   );

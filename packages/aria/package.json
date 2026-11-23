@@ -293,6 +293,11 @@
       "barq": "./src/scroller.ts",
       "bun": "./src/scroller.ts"
     },
+    "./search-autocomplete": {
+      "types": "./src/search-autocomplete.tsx",
+      "barq": "./src/search-autocomplete.tsx",
+      "bun": "./src/search-autocomplete.tsx"
+    },
     "./select": {
       "types": "./src/select.tsx",
       "barq": "./src/select.tsx",
