@@ -528,3 +528,30 @@ describe("NumberField, as attributes a stylesheet reads", () => {
     expect(group.hasAttribute("data-required")).toBe(true);
   });
 });
+
+describe("a controlled number field", () => {
+  test("shows the value its owner takes from a commit", () => {
+    render(() => {
+      const [value, setValue] = createSignal(255);
+      return <NumberField label="Amount" value={value()} onChange={setValue} />;
+    });
+    const input = screen.getByRole<HTMLInputElement>("textbox");
+    user.focus(input);
+    user.clear(input);
+    user.type(input, "7");
+    user.blur(input);
+    flush();
+    expect(input.value).toBe("7");
+  });
+
+  test("goes back to its value when the owner refuses the commit", () => {
+    render(() => <NumberField label="Amount" value={255} />);
+    const input = screen.getByRole<HTMLInputElement>("textbox");
+    user.focus(input);
+    user.clear(input);
+    user.type(input, "7");
+    user.blur(input);
+    flush();
+    expect(input.value).toBe("255");
+  });
+});

@@ -193,11 +193,16 @@ export function numberFieldState(options: NumberFieldStateOptions): NumberFieldS
 
   const commit = (override?: string): void => {
     const text = override ?? inputValue();
+    // A controlled owner has not taken the new value yet, so the field shows
+    // what it holds now and `live` stays on it: when the owner does take the
+    // value, the effect sees it arrive and reformats; when it refuses, the
+    // field already shows what it kept.
+    const isControlled = access(options.value) !== undefined;
 
     if (text.length === 0) {
-      live = Number.NaN;
+      if (!isControlled) live = Number.NaN;
       setNumberValueRaw(Number.NaN);
-      writeInputValue(access(options.value) === undefined ? "" : asText(numberValue()));
+      writeInputValue(isControlled ? asText(numberValue()) : "");
       return;
     }
 
@@ -212,9 +217,9 @@ export function numberFieldState(options: NumberFieldStateOptions): NumberFieldS
     // Formatted and read back, so the value IS what the field will show: a
     // field displaying two decimal places holds two decimal places.
     const clamped = parser().parse(asText(snaps() ? snap(value) : value));
-    live = clamped;
+    if (!isControlled) live = clamped;
     setNumberValueRaw(clamped);
-    writeInputValue(asText(access(options.value) === undefined ? clamped : numberValue()));
+    writeInputValue(asText(isControlled ? numberValue() : clamped));
   };
 
   /**
@@ -512,8 +517,11 @@ export interface NumberFieldOptions extends Omit<
   isWheelDisabled?: MaybeAccessor<boolean | undefined>;
   incrementAriaLabel?: MaybeAccessor<string | undefined>;
   decrementAriaLabel?: MaybeAccessor<string | undefined>;
-  /** The field's visible label, for naming the stepper buttons. */
-  label?: MaybeAccessor<string | undefined>;
+  /**
+   * The field's visible label. Text also names the stepper buttons; markup
+   * cannot, so they fall back to `aria-label`.
+   */
+  label?: MaybeAccessor<Child>;
 }
 
 export interface NumberFieldResult {
@@ -691,7 +699,10 @@ export function numberField(
     if (event.pointerType === "mouse") input.focus();
   };
 
-  const fieldLabel = (): string => access(options.label) ?? access(options["aria-label"]) ?? "";
+  const fieldLabel = (): string => {
+    const given = access(options.label);
+    return (typeof given === "string" ? given : undefined) ?? access(options["aria-label"]) ?? "";
+  };
 
   return {
     labelProps,
