@@ -83,3 +83,6 @@ if (await confirm({ title: "Delete the check?", tone: "danger", confirmLabel: "D
   one, with an optional pulse that stops under reduced motion.
 - `confirm()`: a promise for the reader's answer, drawn by one `<ConfirmHost />`
   on the page.
+- `Breadcrumbs`: where the page sits, read from the matched routes'
+  `staticData.crumb` or given as items. A narrow trail folds its middle steps
+  behind a button that shows them.
