@@ -739,8 +739,10 @@ describe('ActionGroup overflowMode="collapse"', () => {
 
   beforeEach(() => {
     widths = { button: 100, other: 250 };
-    const spy = spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
-      this: HTMLElement,
+    // Element.prototype owns the method; a spy on HTMLElement.prototype leaves an
+    // own property behind on restore that shadows later patches of Element's.
+    const spy = spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (
+      this: Element,
     ) {
       const width = this instanceof HTMLButtonElement ? widths.button : widths.other;
       return {
