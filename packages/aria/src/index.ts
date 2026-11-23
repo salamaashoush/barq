@@ -140,6 +140,16 @@ export {
   type LabelOptions,
   type LabelResult,
 } from "./label.ts";
+export {
+  createLandmarkController,
+  landmark,
+  type LandmarkController,
+  type LandmarkControllerOptions,
+  type LandmarkDirection,
+  type LandmarkOptions,
+  type LandmarkResult,
+  type LandmarkRole,
+} from "./landmark.ts";
 
 // -------------------------------------------------------------------------
 // What the user did

@@ -193,6 +193,11 @@
       "barq": "./src/label.ts",
       "bun": "./src/label.ts"
     },
+    "./landmark": {
+      "types": "./src/landmark.ts",
+      "barq": "./src/landmark.ts",
+      "bun": "./src/landmark.ts"
+    },
     "./link": {
       "types": "./src/link.tsx",
       "barq": "./src/link.tsx",

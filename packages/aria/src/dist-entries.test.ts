@@ -60,6 +60,7 @@ const ENTRIES = [
   "i18n",
   "interactions",
   "label",
+  "landmark",
   "link",
   "listbox",
   "live",
