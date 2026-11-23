@@ -205,6 +205,24 @@ describe("websocket", () => {
     dispose();
   });
 
+  test("a reactive url moves an open socket to the new address", () => {
+    const [room, setRoom] = createSignal("alpha");
+    const [dispose, socket] = createRoot(
+      (d) => [d, websocket(() => `wss://example.test/${room()}`)] as const,
+    );
+    flush();
+    sockets[0]!.open();
+    setRoom("beta");
+    flush();
+    expect(sockets[0]!.closedWith).toBe(1000);
+    expect(sockets).toHaveLength(2);
+    expect(sockets[1]!.url).toBe("wss://example.test/beta");
+    expect(socket.state()).toBe("connecting");
+    sockets[1]!.open();
+    expect(socket.state()).toBe("open");
+    dispose();
+  });
+
   test("closes with its owner", () => {
     const dispose = createRoot((d) => {
       websocket("wss://example.test/feed");

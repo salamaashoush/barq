@@ -1,4 +1,4 @@
-import { type Accessor, createSignal } from "@barqjs/core";
+import { type Accessor, createRenderEffect, createSignal } from "@barqjs/core";
 import { isServer } from "@barqjs/web";
 import { type Clear, type MaybeAccessor, access, tryCleanup } from "./utils.ts";
 
@@ -107,7 +107,12 @@ export function websocket<T = string>(
     socket = next;
     setRaw(next);
 
+    // A handler for a socket that a newer one has replaced says nothing about
+    // the connection this primitive now holds.
+    const stale = (): boolean => socket !== null && socket !== next;
+
     next.addEventListener("open", () => {
+      if (stale()) return;
       setState("open");
       tries = 0;
       setAttempts(0);
@@ -121,9 +126,12 @@ export function websocket<T = string>(
       }
     });
 
-    next.addEventListener("message", (event: MessageEvent) => setMessage(() => event.data as T));
+    next.addEventListener("message", (event: MessageEvent) => {
+      if (!stale()) setMessage(() => event.data as T);
+    });
 
     next.addEventListener("close", (event: CloseEvent) => {
+      if (stale()) return;
       stopBeat();
       socket = null;
       setRaw(null);
@@ -155,6 +163,17 @@ export function websocket<T = string>(
     disposed = true;
     close();
   });
+
+  if (typeof url === "function" && !isServer) {
+    let current: string | undefined;
+    createRenderEffect(url, (next) => {
+      const previous = current;
+      current = next;
+      if (previous === undefined || previous === next || socket === null) return;
+      close();
+      connect();
+    });
+  }
 
   if (options?.immediate !== false) connect();
 
