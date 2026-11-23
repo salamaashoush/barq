@@ -1,15 +1,13 @@
 {
   "name": "@barqjs/ui",
-  "private": true,
-  "version": "0.1.0",
-  "description": "Styled, accessible components and twenty-four themes for barq, compiled to a stylesheet, from shadcn/ui's designs",
+  "version": "0.2.0-next.3",
+  "description": "barq's styled, accessible base components and twenty-four themes, compiled to a stylesheet: the source barq-ui copies from and @barqjs/arc builds on",
   "keywords": [
     "barq",
     "components",
-    "css-in-js",
     "design-system",
     "shadcn",
-    "ui"
+    "accessibility"
   ],
   "homepage": "https://github.com/salamaashoush/barq#readme",
   "bugs": {
@@ -21,6 +19,20 @@
     "url": "git+https://github.com/salamaashoush/barq.git",
     "directory": "packages/ui"
   },
+  "files": [
+    "src",
+    "!src/**/*.test.ts",
+    "!src/**/*.test.tsx",
+    "!src/**/test-*.ts",
+    "!src/**/test-rules.ts",
+    "!src/**/*-harness.ts",
+    "!src/**/*-probe.ts",
+    "!src/**/fixtures",
+    "!src/**/fixtures.ts",
+    "!src/**/ssr-fixtures.ts",
+    "!src/compile-setup.ts",
+    "!src/test-setup.ts"
+  ],
   "type": "module",
   "sideEffects": [
     "./dist/theme/*.js",
@@ -43,6 +55,11 @@
       "types": "./src/theme/reset.ts",
       "barq": "./src/theme/reset.ts",
       "bun": "./src/theme/reset.ts"
+    },
+    "./theme/layers": {
+      "types": "./src/theme/layers.ts",
+      "barq": "./src/theme/layers.ts",
+      "bun": "./src/theme/layers.ts"
     },
     "./atoms": {
       "types": "./src/lib/atoms.ts",
@@ -488,5 +505,9 @@
   "peerDependenciesMeta": {},
   "engines": {
     "bun": ">=1.1.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   }
 }

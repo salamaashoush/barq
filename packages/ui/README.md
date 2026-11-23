@@ -6,9 +6,11 @@ themes and styles compiled to a stylesheet at build time. Behaviour comes from
 and icons from [`@barqjs/lucide`](../lucide#readme). The designs and themes are
 shadcn/ui's, with none of React, Radix or Tailwind underneath.
 
-This package is not published. As with shadcn, an app gets components by
-copying their source with [`barq-ui`](../ui-cli#readme), and from then on they
-are its own code.
+There are two ways to use these components, from one source. As with shadcn,
+an app can copy their source with [`barq-ui`](../ui-cli#readme), and from then
+on they are its own code. Or it imports [`@barqjs/arc`](../arc#readme), the
+design system built on them, which depends on this package so a fix here
+reaches both. Import arc rather than this package directly.
 
 ## Use
 
@@ -113,7 +115,7 @@ which is what makes an application's own components cost nothing extra.
 The layers are declared once, in order:
 
 ```css
-@layer barq.reset, barq.base, barq.theme, barq.ui, barq.style;
+@layer barq.reset, barq.base, barq.theme, barq.ui, barq.style, barq.arc;
 ```
 
 **The one trap.** An application whose own reset is unlayered beats these

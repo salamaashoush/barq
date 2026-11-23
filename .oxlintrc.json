@@ -70,6 +70,10 @@
     // "@fontsource-variable/geist/index.css"` is how a bundle says the face has
     // to be in the document, and there is no binding it could produce.
     //
+    // `@barqjs/ui/theme/layers` is the same claim from another package:
+    // `@barqjs/arc` builds on ui, and its rules sit in a layer ui's
+    // declaration orders.
+    //
     // `@barqjs/web/host` is a third: it installs the document as the host
     // core's components render through, which is the whole of what it does.
     "import/no-unassigned-import": [
@@ -83,7 +87,8 @@
           "@barqjs/web/host",
           "./host.ts",
           "**/*.css",
-          "**/theme.ts"
+          "**/theme.ts",
+          "@barqjs/ui/theme/layers"
         ]
       }
     ],

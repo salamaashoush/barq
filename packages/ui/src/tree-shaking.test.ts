@@ -67,7 +67,9 @@ describe("tree shaking", () => {
       globalThis.probe = Badge;
     `);
     expect(out).toContain("--spacing");
-    expect(out).toContain("@layer barq.reset, barq.base, barq.theme, barq.ui, barq.style;");
+    expect(out).toContain(
+      "@layer barq.reset, barq.base, barq.theme, barq.ui, barq.style, barq.arc;",
+    );
   });
 
   test("the reset is not dragged in by the theme", async () => {

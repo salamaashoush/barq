@@ -35,6 +35,7 @@ export { ring } from "./lib/shared-ring.ts";
 export { text } from "./lib/shared-text.ts";
 export { when } from "./lib/shared-when.ts";
 export {
+  type Content,
   controlProps,
   handedOn,
   named,

@@ -25,6 +25,10 @@
  * is 0-2-0 too and the tie would fall to import order. A later layer settles it
  * without either side counting.
  *
+ * `barq.arc` comes after it: `@barqjs/arc` composes these components into
+ * pages, tables and shells, and its rules have to hold whichever style is on.
+ * An application's own unlayered rules still beat all of them.
+ *
  * The cost, and it is real: an application whose own reset is unlayered beats
  * these components. `@layer` your reset, or import `./reset.ts` instead.
  */
@@ -32,5 +36,5 @@
 import { globalCss } from "@barqjs/css";
 
 globalCss`
-@layer barq.reset, barq.base, barq.theme, barq.ui, barq.style;
+@layer barq.reset, barq.base, barq.theme, barq.ui, barq.style, barq.arc;
 `;

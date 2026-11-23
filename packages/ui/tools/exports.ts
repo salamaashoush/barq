@@ -185,6 +185,9 @@ function main(): void {
     ".": entry("./src/index.ts"),
     "./theme": entry("./src/theme/index.ts"),
     "./theme/reset": entry("./src/theme/reset.ts"),
+    // The layer order alone, for a package that builds on these components
+    // and writes rules of its own into a layer this declaration orders.
+    "./theme/layers": entry("./src/theme/layers.ts"),
     ...Object.fromEntries(
       [...lib, ...hooks, ...ui].map((module_) => [
         `./${module_.name}`,
