@@ -1,0 +1,89 @@
+{
+  "name": "@barqjs/arc",
+  "version": "0.2.0-next.3",
+  "description": "barq's design system: themes, app shell, pages, data tables, form fields and the patterns every product repeats, on @barqjs/ui's accessible components",
+  "keywords": [
+    "accessibility",
+    "barq",
+    "components",
+    "design-system",
+    "themes"
+  ],
+  "homepage": "https://github.com/salamaashoush/barq#readme",
+  "bugs": {
+    "url": "https://github.com/salamaashoush/barq/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/salamaashoush/barq.git",
+    "directory": "packages/arc"
+  },
+  "files": [
+    "src",
+    "!src/**/*.test.ts",
+    "!src/**/*.test.tsx",
+    "!src/**/test-*.ts",
+    "!src/**/*-harness.ts",
+    "!src/**/*-probe.ts",
+    "!src/**/fixtures",
+    "!src/**/fixtures.ts",
+    "!src/compile-setup.ts",
+    "!src/register-dom.ts"
+  ],
+  "type": "module",
+  "sideEffects": [
+    "./src/theme/*.ts"
+  ],
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "barq": "./src/index.ts",
+      "bun": "./src/index.ts"
+    },
+    "./theme": {
+      "types": "./src/theme/index.ts",
+      "barq": "./src/theme/index.ts",
+      "bun": "./src/theme/index.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test --timeout 10000 && bun test --timeout 10000 --conditions=development"
+  },
+  "devDependencies": {
+    "@barqjs/aria": "workspace:*",
+    "@barqjs/compiler": "workspace:*",
+    "@barqjs/core": "workspace:*",
+    "@barqjs/css": "workspace:*",
+    "@barqjs/lucide": "workspace:*",
+    "@barqjs/primitives": "workspace:*",
+    "@barqjs/router": "workspace:*",
+    "@barqjs/server": "workspace:*",
+    "@barqjs/testing": "workspace:*",
+    "@barqjs/ui": "workspace:*",
+    "@barqjs/vite": "workspace:*",
+    "@barqjs/web": "workspace:*",
+    "@happy-dom/global-registrator": "^21.0.4",
+    "@types/bun": "^1.4.4",
+    "typescript": "^7.0.2"
+  },
+  "peerDependencies": {
+    "@barqjs/aria": ">=0.2.0-next.3",
+    "@barqjs/core": ">=0.2.0-next.3",
+    "@barqjs/css": ">=0.2.0-next.3",
+    "@barqjs/lucide": ">=0.2.0-next.3",
+    "@barqjs/primitives": ">=0.2.0-next.3",
+    "@barqjs/server": ">=0.2.0-next.3",
+    "@barqjs/ui": ">=0.2.0-next.3",
+    "@barqjs/web": ">=0.2.0-next.3"
+  },
+  "engines": {
+    "bun": ">=1.1.0"
+  }
+}

@@ -1,0 +1,70 @@
+# @barqjs/arc
+
+barq's design system: a theme with the tokens products add to shadcn's, and the
+patterns every product rebuilds, on [`@barqjs/ui`](../ui#readme)'s accessible
+components. An app imports it; a fix to a base component lands in `@barqjs/ui`
+once and reaches arc and every copy `barq-ui` makes.
+
+## Install
+
+```bash
+bun add @barqjs/arc @barqjs/ui @barqjs/aria @barqjs/core @barqjs/css @barqjs/web
+```
+
+Like every barq component package it ships source, and the app's build compiles
+it: `@barqjs/vite` finds it through the `barq` export condition.
+
+## The theme
+
+```ts
+import { installArcTheme } from "@barqjs/arc/theme";
+
+installArcTheme({
+  base: "neutral",
+  accent: "blue",
+  tokens: {
+    light: { brand: "oklch(0.55 0.15 40)", "brand-ink": "white" },
+    dark: { brand: "oklch(0.75 0.12 40)" },
+  },
+});
+```
+
+Everything `@barqjs/ui`'s themes declare, plus what products keep adding on
+top:
+
+- five tones, `success`, `warning`, `danger`, `info` and `neutral`, each as the
+  tone, a `-foreground` for text and a `-subtle` fill;
+- `sunken`, `link`, `faint-foreground`, `border-strong`, `selection`,
+  `overlay` and two shadow colours;
+- code colours (`code-keyword`, `code-string`, ...);
+- motion (`duration-fast`, `duration-base`, `duration-slow`, `ease-standard`)
+  and stacking (`z-sticky`, `z-header`, `z-popover`, `z-overlay`, `z-toast`).
+
+`tokens` overrides any of them, light and dark, and adds a brand under names of
+its own. The rules sit in `@layer barq.theme`, and arc's components in
+`barq.arc`, after `@barqjs/ui`'s, so an app's own unlayered CSS beats both.
+
+## Components
+
+```tsx
+import { PageHeader, Status, confirm } from "@barqjs/arc";
+
+<PageHeader
+  heading="Checks"
+  description="Everything this project watches."
+  actions={<Button onPress={create}>New check</Button>}
+/>;
+
+<Status tone="success">Operational</Status>;
+
+if (await confirm({ title: "Delete the check?", tone: "danger", confirmLabel: "Delete" })) {
+  await remove(id);
+}
+```
+
+- `PageHeader`: the page's `<h1>`, a line about it, what sits above it and the
+  actions beside it.
+- `Status`: a state in a word and a tone, as a dot, a tinted pill or a filled
+  one, with an optional pulse that stops under reduced motion.
+- `confirm()`: a promise for the reader's answer, drawn by one `<ConfirmHost />`
+  on the page.

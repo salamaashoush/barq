@@ -4,6 +4,7 @@
   "commit": false,
   "fixed": [
     [
+      "@barqjs/arc",
       "@barqjs/aria",
       "@barqjs/cli",
       "@barqjs/compiler",
@@ -27,6 +28,7 @@
       "@barqjs/table",
       "@barqjs/testing",
       "@barqjs/three",
+      "@barqjs/ui",
       "@barqjs/ui-cli",
       "@barqjs/universal",
       "@barqjs/virtual",
