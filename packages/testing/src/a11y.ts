@@ -555,8 +555,32 @@ function opening(element: Element): string {
   return end === -1 ? html.slice(0, 120) : html.slice(0, end + 1);
 }
 
+/**
+ * The element is behind a getter, not an own property. A failed
+ * `expect(ariaViolations()).toEqual([])` prints what it received, and a DOM
+ * node printed as data drags in its document and window: megabytes for an
+ * empty page, and long enough to look like a hang after a full suite.
+ */
+class Violation implements AriaViolation {
+  readonly rule: string;
+  readonly message: string;
+  readonly html: string;
+  readonly #element: Element;
+
+  constructor(rule: string, message: string, element: Element) {
+    this.rule = rule;
+    this.message = message;
+    this.html = opening(element);
+    this.#element = element;
+  }
+
+  get element(): Element {
+    return this.#element;
+  }
+}
+
 function violation(rule: string, message: string, element: Element): AriaViolation {
-  return { rule, message, element, html: opening(element) };
+  return new Violation(rule, message, element);
 }
 
 function checkAttributeValue(

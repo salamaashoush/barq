@@ -115,3 +115,22 @@ describe("required states", () => {
     expect(ariaViolations(container).map((found) => found.rule)).toEqual(["aria-required-attr"]);
   });
 });
+
+describe("a violation that fails a test", () => {
+  test("prints as its rule, message and markup, not as the whole document", () => {
+    const { container } = render(() => <div role="img" aria-labelledby="gone" />);
+    const found = ariaViolations(container);
+    expect(found.map((each) => each.rule)).toEqual(["aria-referenced-id-exists"]);
+    expect(found[0]?.element).toBe(container.firstElementChild as Element);
+
+    let failure = "";
+    try {
+      expect(found).toEqual([]);
+    } catch (error) {
+      failure = String(error);
+    }
+    expect(failure).toContain('points at "#gone"');
+    expect(failure).toContain('<div role="img" aria-labelledby="gone">');
+    expect(failure.length).toBeLessThan(2000);
+  });
+});
