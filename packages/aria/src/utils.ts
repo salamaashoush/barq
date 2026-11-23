@@ -67,19 +67,30 @@ function isHandlerKey(key: string): boolean {
   return HANDLER.test(key);
 }
 
+/**
+ * Both token lists, each token once: a caller's description id reaches a
+ * control through its own props and through the field around it, and a
+ * reader that met it twice would announce the description twice.
+ */
+function joinTokens(a: unknown, b: unknown): string | undefined {
+  const tokens = new Set<string>();
+  for (const value of [a, b]) {
+    if (typeof value !== "string" && typeof value !== "number") continue;
+    for (const token of String(value).split(/\s+/)) {
+      if (token !== "") tokens.add(token);
+    }
+  }
+  return tokens.size === 0 ? undefined : [...tokens].join(" ");
+}
+
 function combineTokens(a: unknown, b: unknown): unknown {
   const empty = (value: unknown): boolean => value === undefined || value === null || value === "";
   if (empty(a)) return b;
   if (empty(b)) return a;
   if (typeof a === "function" || typeof b === "function") {
-    return (): string | undefined => {
-      const left = access(a);
-      const right = access(b);
-      const joined = [left, right].filter(Boolean).join(" ");
-      return joined === "" ? undefined : joined;
-    };
+    return (): string | undefined => joinTokens(access(a), access(b));
   }
-  return `${String(a)} ${String(b)}`;
+  return joinTokens(a, b);
 }
 
 /**

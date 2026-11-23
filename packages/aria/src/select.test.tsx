@@ -291,6 +291,32 @@ describe("a select's name", () => {
   });
 });
 
+describe("a select's description", () => {
+  test("each id it is described by is listed once", () => {
+    render(() => (
+      <>
+        <span id="billing-note">Billed monthly</span>
+        <Select
+          label="Fruit"
+          description="Pick a ripe one"
+          aria-describedby="billing-note"
+          items={FRUITS}
+          getTextValue={(fruit: Fruit) => fruit.name}
+        >
+          {(fruit: Fruit) => <Option>{fruit.name}</Option>}
+        </Select>
+      </>
+    ));
+    const ids = (trigger().getAttribute("aria-describedby") ?? "").split(" ");
+    expect(ids).toHaveLength(2);
+    expect(new Set(ids).size).toBe(2);
+    expect(ids.map((id) => document.getElementById(id)?.textContent)).toEqual([
+      "Billed monthly",
+      "Pick a ripe one",
+    ]);
+  });
+});
+
 describe("a select in a form", () => {
   function Required(props: { validationBehavior?: "aria" | "native"; name?: string }) {
     return (

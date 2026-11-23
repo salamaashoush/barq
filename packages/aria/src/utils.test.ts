@@ -51,6 +51,16 @@ describe("mergeProps", () => {
     expect((merged.class as () => string)()).toBe("base danger");
   });
 
+  test("an id described from two sources is listed once", () => {
+    const merged = mergeProps(
+      { "aria-describedby": "help ext" },
+      { "aria-describedby": "ext" },
+      { "aria-describedby": () => "ext error" },
+    );
+    expect((merged["aria-describedby"] as () => string)()).toBe("help ext error");
+    expect(mergeProps({ class: "a b" }, { class: "b c" }).class).toBe("a b c");
+  });
+
   test("a later undefined does not erase an earlier value", () => {
     const merged = mergeProps({ role: "button" }, { role: undefined });
     expect(merged.role).toBe("button");
