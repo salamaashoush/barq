@@ -6,6 +6,7 @@
 import { runInThisContext } from "node:vm";
 
 import { esc, html as ssrHtml } from "@barqjs/server";
+import { setResponseHeader } from "@barqjs/start";
 import { type Child, flush } from "@barqjs/core";
 import { render } from "@barqjs/web";
 import { afterEach, describe, expect, test } from "bun:test";
@@ -350,6 +351,44 @@ describe("dehydrate and hydrate", () => {
     const at = html.indexOf('<script nonce="n0nce">window.injected=1</script>');
     expect(at).toBeGreaterThan(html.indexOf('<div id="app">') + '<div id="app">'.length);
     expect(at).toBeLessThan(html.indexOf("</body>"));
+  });
+
+  test("a nonce function mints one per request, inside it, so it can set the policy too", async () => {
+    let minted = 0;
+    const routeTree = [
+      {
+        id: "/",
+        path: "/",
+        loader: async () => {
+          serving?.serverSsr?.injectScript("window.injected=1");
+          await tick(1);
+          return "loaded";
+        },
+        component: (props: { data: () => unknown }) => ssrHtml(`<main>${esc(props.data())}</main>`),
+      },
+    ] as never;
+    let serving: ReturnType<typeof createRouter> | undefined;
+    const handler = createPageHandler({
+      routeTree,
+      getRouter: () => {
+        serving = createRouter({ routeTree });
+        return serving;
+      },
+      stream: true,
+      nonce: () => {
+        const nonce = `n${++minted}`;
+        setResponseHeader("content-security-policy", `script-src 'nonce-${nonce}'`);
+        return nonce;
+      },
+      app: renderRoutes,
+      document,
+    });
+    const first = await handler(get("/"));
+    const second = await handler(get("/"));
+    expect(first.headers.get("content-security-policy")).toBe("script-src 'nonce-n1'");
+    expect(await first.text()).toContain('<script nonce="n1">window.injected=1</script>');
+    expect(second.headers.get("content-security-policy")).toBe("script-src 'nonce-n2'");
+    expect(await second.text()).toContain('<script nonce="n2">window.injected=1</script>');
   });
 
   test("a page with no dehydrate carries nothing extra", async () => {

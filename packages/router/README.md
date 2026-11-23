@@ -317,6 +317,26 @@ writes as written. A function of `{ url, kind }` decides per asset, and
 `{ createTransform, cache: false }` per request, for a CDN chosen by region.
 Otherwise the transform runs once and is reused.
 
+## A content security policy
+
+Every inline script and style a page render writes carries the handler's
+`nonce`, those a component declares with `useHead` included. Give a function
+and it is called once per page request, inside it, so it can mint a fresh
+nonce and send the policy that names it:
+
+```ts
+import { createStartHandler } from "@barqjs/router/server";
+import { setResponseHeader } from "@barqjs/start";
+
+export default createStartHandler({
+  nonce: () => {
+    const nonce = crypto.randomUUID();
+    setResponseHeader("content-security-policy", `script-src 'self' 'nonce-${nonce}'`);
+    return nonce;
+  },
+});
+```
+
 ## API routes
 
 An API route is an ordinary route file that declares handlers instead of a

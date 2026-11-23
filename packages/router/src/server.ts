@@ -710,7 +710,15 @@ export interface PageHandlerOptions extends SharedRouterOptions {
 
   /** Streamed by default. A crawler or a test may want the whole thing at once. */
   readonly stream?: boolean;
-  readonly nonce?: string;
+  /**
+   * The CSP nonce every inline script and style this render writes carries.
+   *
+   * A function is called once per page request, inside it, so it can mint a
+   * fresh nonce and set the `content-security-policy` header that names it
+   * with `setResponseHeader`. A fixed string is the same for every response,
+   * which a policy built on nonces cannot use.
+   */
+  readonly nonce?: string | ((request: Request) => string | undefined);
   /**
    * Last look at the bytes that go out BEFORE the app's markup.
    *
@@ -899,6 +907,9 @@ async function runRouteHandlers(
   });
 }
 
+/** One request's options: the nonce settled for it. */
+type PageOptions = Omit<PageHandlerOptions, "nonce"> & { readonly nonce?: string };
+
 export function createPageHandler(
   configured: PageHandlerOptions,
 ): (request: Request) => Promise<Response> {
@@ -957,8 +968,11 @@ export function createPageHandler(
       // a page that does not exist here.
       if (configured.pages === false) return new Response("not found", { status: 404 });
       const transformed = assetsFor === undefined ? undefined : await assetsFor(request);
-      const options: PageHandlerOptions =
-        transformed === undefined ? configured : { ...configured, ...transformed };
+      const options: PageOptions = {
+        ...(transformed === undefined ? configured : { ...configured, ...transformed }),
+        nonce:
+          typeof configured.nonce === "function" ? configured.nonce(request) : configured.nonce,
+      };
       const crossOrigin = transformed?.crossOrigin;
       if (crossOrigin !== undefined) ASSET_CROSS_ORIGIN.set(options, crossOrigin);
 
@@ -2081,7 +2095,7 @@ const DOCTYPE = "<!doctype html>";
 
 function wrapStream(
   stream: ReadableStream<Uint8Array>,
-  options: PageHandlerOptions,
+  options: PageOptions,
   chain: readonly Route[] | null,
   url: URL,
   /** Runs when the body is finished or abandoned — never before. */
@@ -2387,7 +2401,7 @@ function isCrawler(request: Request, options: PageHandlerOptions): boolean {
  */
 function shellStream(
   stream: ReadableStream<Uint8Array>,
-  options: PageHandlerOptions,
+  options: PageOptions,
   url: URL,
   done: () => void,
   answer: () => Response | null,

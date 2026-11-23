@@ -6,6 +6,7 @@
  * is reachable from a browser bundle.
  */
 
+import { escapeAttribute } from "@barqjs/server";
 import { createSeedEncoder } from "@barqjs/server/codec";
 
 import type { RouterState } from "./router.ts";
@@ -39,7 +40,7 @@ export interface RenderChannel {
 }
 
 export function createRenderChannel(nonce?: string): RenderChannel {
-  const attr = nonce === undefined ? "" : ` nonce="${nonce}"`;
+  const attr = nonce === undefined ? "" : ` nonce="${escapeAttribute(nonce)}"`;
   const scripts: string[] = [];
   const listeners: (() => void)[] = [];
   let finished = false;
