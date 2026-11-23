@@ -32,6 +32,7 @@ export {
   type RouteCrumb,
 } from "./components/breadcrumbs.tsx";
 export { PageHeader, type PageHeaderProps } from "./components/page-header.tsx";
+export { type StatCardProps, type StatDelta, StatCard } from "./components/stat-card.tsx";
 export {
   Status,
   type StatusProps,

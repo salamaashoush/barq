@@ -88,4 +88,23 @@ describe("on the server", () => {
     const unset = await serverProcess(routed(["ArcProvider", "ThemeToggle"], jsx, "/"));
     expect(unset.html).toMatch(/data-choice="system"/);
   });
+
+  test("CopyButton, EmptyState and StatCard render with no DOM", async () => {
+    const jsx = `
+      <main>
+        <CopyButton value="tok_example" label="Copy the token" />
+        <EmptyState heading="No invoices yet" description="None sent." />
+        <StatCard label="Requests" value="128" trend={[1, 3, 2]} />
+      </main>
+    `;
+    const { code, html, errors } = await serverProcess(
+      routed(["CopyButton", "EmptyState", "StatCard"], jsx, "/"),
+    );
+    expect(errors).toBe("");
+    expect(code).toBe(0);
+    expect(html).toContain('aria-label="Copy the token"');
+    expect(html).toContain('data-slot="copy-button-status"');
+    expect(html).toContain("No invoices yet");
+    expect(html).toContain('aria-label="Trend over 3 values, from 1 to 2; lowest 1, highest 3"');
+  });
 });

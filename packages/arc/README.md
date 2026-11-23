@@ -103,6 +103,9 @@ if (await confirm({ title: "Delete the check?", tone: "danger", confirmLabel: "D
   and the actions that fill it, on `@barqjs/ui`'s `Empty`.
 - `PageHeader`: the page's `<h1>`, a line about it, what sits above it and the
   actions beside it.
+- `StatCard`: one number, what it counts, how it moved in a tone, and an
+  optional sparkline drawn as inline SVG, with its numbers in words for a
+  screen reader.
 - `Status`: a state in a word and a tone, as a dot, a tinted pill or a filled
   one, with an optional pulse that stops under reduced motion.
 - `confirm()`: a promise for the reader's answer, drawn by one `<ConfirmHost />`
