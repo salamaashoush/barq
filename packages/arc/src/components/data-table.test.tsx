@@ -557,3 +557,94 @@ describe("DataTable rows", () => {
     expect(rendered[0]?.style.position).toBe("absolute");
   });
 });
+
+describe("DataTable over a long list", () => {
+  const invoices = (from: number, count: number): Invoice[] =>
+    Array.from({ length: count }, (_, at) => ({
+      id: `r${String(from + at)}`,
+      number: `INV-${String(from + at).padStart(3, "0")}`,
+      customer: "Acme",
+      total: from + at,
+    }));
+
+  /** happy-dom lays nothing out, so the grid is told what a browser would report. */
+  function scrollGrid(top: number): HTMLElement {
+    const grid = screen.getByRole("grid");
+    grid.style.overflow = "auto";
+    Object.defineProperty(grid, "clientHeight", { value: 400, configurable: true });
+    Object.defineProperty(grid, "clientWidth", { value: 600, configurable: true });
+    Object.defineProperty(grid, "scrollTop", { value: top, writable: true, configurable: true });
+    grid.dispatchEvent(new Event("scroll"));
+    return grid;
+  }
+
+  const rowOf = (element: Element | null): HTMLElement | null =>
+    element?.closest('[role="row"]') ?? null;
+
+  function Long(props: { data: Invoice[] }) {
+    return (
+      <DataTable
+        label="Invoices"
+        columns={COLUMNS}
+        data={props.data}
+        getRowId={(i) => i.id}
+        virtualRowHeight={40}
+        height="400px"
+      />
+    );
+  }
+
+  test("each rendered row numbers itself among all the rows, past the header", async () => {
+    render(() => <Long data={invoices(0, 200)} />);
+    await settle();
+    const grid = scrollGrid(4000);
+    await settle();
+
+    expect(grid.getAttribute("aria-rowcount")).toBe("201");
+    const rendered = bodyRows();
+    expect(rendered.length).toBeLessThan(60);
+    expect(texts()).toContain("INV-100");
+    for (const row of rendered) {
+      const number = Number(row.querySelector('[role="rowheader"]')?.textContent?.slice(4));
+      expect(row.getAttribute("aria-rowindex")).toBe(String(number + 2));
+    }
+  });
+
+  test("the keyboard reaches rows that were never rendered", async () => {
+    render(() => <Long data={invoices(0, 200)} />);
+    await settle();
+    scrollGrid(0);
+    await settle();
+    user.tab();
+    await settle();
+    expect(document.activeElement?.textContent).toBe("INV-000");
+
+    await user.keyboard("{PageDown}");
+    await settle();
+    const paged = rowOf(document.activeElement);
+    expect(Number(paged?.getAttribute("aria-rowindex"))).toBeGreaterThan(2 + 5);
+
+    user.keyDown("End", { ctrlKey: true });
+    user.keyUp("End", { ctrlKey: true });
+    await settle();
+    const last = rowOf(document.activeElement);
+    expect(last?.getAttribute("aria-rowindex")).toBe("201");
+    expect(last?.querySelector('[role="rowheader"]')?.textContent).toBe("INV-199");
+  });
+
+  test("rows added below leave the rows in view where they were", async () => {
+    const [data, setData] = createSignal(invoices(0, 200));
+    render(() => <Long data={data()} />);
+    await settle();
+    const grid = scrollGrid(4000);
+    await settle();
+    const before = bodyRows().map((row) => [row.textContent, row.style.top]);
+
+    setData([...data(), ...invoices(200, 100)]);
+    await settle();
+    expect(grid.scrollTop).toBe(4000);
+    expect(grid.getAttribute("aria-rowcount")).toBe("301");
+    const after = bodyRows().map((row) => [row.textContent, row.style.top]);
+    for (const entry of before) expect(after).toContainEqual(entry);
+  });
+});

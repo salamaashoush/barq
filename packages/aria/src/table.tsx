@@ -1990,19 +1990,35 @@ export function Table<R, C>(props: TableComponentProps<R, C>) {
   // the BODY is windowed: the header is one row and always on screen.
   const virtual = useVirtualizer();
   const dropping: { held?: CollectionDragAndDrop } = {};
+  // The layout places ROWS, and focus is on a cell: a cell is wherever its row
+  // is, or the layout would know nothing of it, the focused row would not be
+  // kept rendered, and Page Down would have no rectangle to measure from.
+  const rowKeyOf = (key: Key): Key => state.collection().parseCellKey(key)?.row.key ?? key;
   virtual?.attach(
     () => rowsOnly(state.collection()),
     domRef,
-    () => state.selectionManager().focusedKey,
+    () => {
+      const focused = state.selectionManager().focusedKey;
+      return focused === null ? null : rowKeyOf(focused);
+    },
     () => dropping.held?.persistedKeys() ?? [],
   );
+  const layoutDelegate: LayoutDelegate | undefined =
+    virtual === null
+      ? undefined
+      : {
+          getItemRect: (key) => virtual.layout.getItemRect(rowKeyOf(key)),
+          getContentSize: () => virtual.layout.getContentSize(),
+          getVisibleRect: () => virtual.layout.getVisibleRect(),
+          getKeyRange: (from, to) => virtual.layout.getKeyRange(from, to),
+        };
 
   const { gridProps, baseId } = table(
     {
       ...(options as unknown as TableOptions),
       ref: domRef,
       isVirtualized: () => virtual !== null,
-      layoutDelegate: virtual?.layout,
+      layoutDelegate,
       hasAction: () => props.onAction !== undefined,
     },
     state,

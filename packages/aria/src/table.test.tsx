@@ -446,6 +446,56 @@ describe("paging through a table", () => {
     expect(active?.textContent).toBe("9 MB");
   });
 
+  test("virtualised, Page Down moves by a viewport over rows never rendered, in the same column", () => {
+    const many: File_[] = Array.from({ length: 200 }, (_, at) => ({
+      id: `f${at}`,
+      name: `File ${at}`,
+      size: `${at} KB`,
+      modified: "Today",
+    }));
+    render(() => (
+      <Virtualizer layout={listLayout({ rowHeight: 20 })} overscan={0}>
+        <Table aria-label="Files" columns={COLUMNS} items={many}>
+          <TableHeader>{(column: Column_) => <Column>{column.name}</Column>}</TableHeader>
+          <TableBody>
+            {(file: File_) => (
+              <Row>{(column: Column_) => <Cell>{String(file[column.id])}</Cell>}</Row>
+            )}
+          </TableBody>
+        </Table>
+      </Virtualizer>
+    ));
+    const grid = screen.getByRole("grid");
+    grid.style.overflow = "auto";
+    Object.defineProperty(grid, "clientHeight", { value: 100, configurable: true });
+    Object.defineProperty(grid, "clientWidth", { value: 200, configurable: true });
+    grid.dispatchEvent(new Event("scroll"));
+    flush();
+
+    user.focus(cell("File 0", "Size"));
+    flush();
+    user.keyDown("PageDown");
+    flush();
+    // Five 20px rows fill the 100px viewport: a page lands on the last of them.
+    expect(document.activeElement?.textContent).toBe("4 KB");
+    user.keyDown("PageDown");
+    flush();
+    expect(document.activeElement?.textContent).toBe("8 KB");
+
+    user.keyDown("End", { ctrlKey: true });
+    flush();
+    const last = document.activeElement?.closest('[role="row"]');
+    expect(last?.getAttribute("aria-rowindex")).toBe("201");
+    expect(document.activeElement?.textContent).toBe("Today");
+
+    // Scrolled back to the top, the row holding focus stays rendered.
+    Object.defineProperty(grid, "scrollTop", { value: 0, writable: true, configurable: true });
+    grid.dispatchEvent(new Event("scroll"));
+    flush();
+    expect(screen.getByRole("row", { name: /File 199/ })).toBe(last as HTMLElement);
+    expect(document.activeElement?.textContent).toBe("Today");
+  });
+
   test("Page Up goes as far up as the arrows do, which is the column header", () => {
     render(() => <Files />);
 
