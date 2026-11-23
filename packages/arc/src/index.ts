@@ -17,6 +17,7 @@ export {
   useCommands,
 } from "./components/command-menu.tsx";
 export { ConfirmHost, type ConfirmOptions, confirm } from "./components/confirm.tsx";
+export { CopyButton, type CopyButtonProps } from "./components/copy-button.tsx";
 export { ArcProvider, type ArcProviderProps } from "./components/provider.tsx";
 export {
   Breadcrumbs,

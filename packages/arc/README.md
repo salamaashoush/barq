@@ -97,6 +97,8 @@ if (await confirm({ title: "Delete the check?", tone: "danger", confirmLabel: "D
 - `ThemeToggle`: light, dark or system from a menu on one button, on the
   provider's `colorScheme`. Its icon shows the choice, which the server knows
   from the cookie, so the page hydrates without a flicker.
+- `CopyButton`: puts a value on the clipboard, turns to a check for a moment
+  and tells a screen reader through a live region.
 - `PageHeader`: the page's `<h1>`, a line about it, what sits above it and the
   actions beside it.
 - `Status`: a state in a word and a tone, as a dot, a tinted pill or a filled
