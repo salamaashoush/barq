@@ -20,6 +20,7 @@
       "@barqjs/db",
       "@barqjs/diagnostics",
       "@barqjs/form",
+      "@barqjs/lexical",
       "@barqjs/lucide",
       "@barqjs/primitives",
       "@barqjs/query",
