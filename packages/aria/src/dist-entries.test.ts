@@ -83,6 +83,7 @@ const ENTRIES = [
   "sheet",
   "slider",
   "static-collection",
+  "step-list",
   "switch",
   "table",
   "tabs",

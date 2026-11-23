@@ -333,6 +333,11 @@
       "barq": "./src/static-collection.ts",
       "bun": "./src/static-collection.ts"
     },
+    "./step-list": {
+      "types": "./src/step-list.tsx",
+      "barq": "./src/step-list.tsx",
+      "bun": "./src/step-list.tsx"
+    },
     "./switch": {
       "types": "./src/switch.tsx",
       "barq": "./src/switch.tsx",
