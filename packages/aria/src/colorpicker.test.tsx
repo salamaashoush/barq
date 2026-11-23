@@ -6,6 +6,9 @@ import { ColorSwatchPicker, ColorSwatchPickerItem } from "./colorswatchpicker.ts
 import { provideDirection, provideLocale } from "./i18n.ts";
 import {
   ColorArea,
+  colorAreaGradient,
+  colorAreaState,
+  type ColorAreaStateOptions,
   ColorField,
   ColorPicker,
   ColorSlider,
@@ -148,6 +151,142 @@ describe("ColorArea", () => {
   test("has no ARIA violations", () => {
     const { container } = render(() => <ColorArea defaultValue="hsb(180, 50%, 60%)" />);
     expectNoAriaViolations(container);
+  });
+});
+
+describe("a colour area's gradient", () => {
+  function gradient(
+    options: ColorAreaStateOptions,
+    direction?: "ltr" | "rtl",
+  ): { area: Record<string, string>; thumb: Record<string, string> } {
+    let area: Record<string, string> = {};
+    let thumb: Record<string, string> = {};
+    render(() => {
+      const state = colorAreaState(options);
+      const { colorAreaStyleProps, thumbStyleProps } = colorAreaGradient({ state, direction });
+      area = colorAreaStyleProps.style();
+      thumb = thumbStyleProps.style();
+      return null;
+    });
+    return { area, thumb };
+  }
+
+  test("saturation across and brightness up, over the hue", () => {
+    const { area } = gradient({ defaultValue: "hsb(120, 50%, 50%)" });
+    expect(area.background).toBe(
+      [
+        "linear-gradient(to top, black, transparent)",
+        "linear-gradient(to right, hsla(120, 0%, 100%, 1), transparent)",
+        "hsla(120, 100%, 50%, 1)",
+      ].join(", "),
+    );
+    expect(area["forced-color-adjust"]).toBe("none");
+    expect(area["touch-action"]).toBe("none");
+  });
+
+  test("right to left, the x axis runs the other way", () => {
+    const { area, thumb } = gradient({ defaultValue: "hsb(120, 25%, 50%)" }, "rtl");
+    expect(area.background).toContain("linear-gradient(to left, hsla(120, 0%, 100%, 1)");
+    expect(thumb.left).toBe("75%");
+    expect(thumb.top).toBe("50%");
+  });
+
+  test("hue across a brightness-fixed HSB area", () => {
+    const { area } = gradient({
+      defaultValue: "hsb(0, 100%, 40%)",
+      xChannel: "hue",
+      yChannel: "saturation",
+    });
+    expect(area.background).toBe(
+      [
+        "linear-gradient(to top, hsla(0, 0%, 40%, 1), transparent)",
+        `linear-gradient(to right, ${[0, 60, 120, 180, 240, 300, 360]
+          .map((hue) => parseColor(`hsb(${hue}, 100%, 40%)`).toString("css"))
+          .join(", ")})`,
+      ].join(", "),
+    );
+  });
+
+  test("an HSL area fades lightness through black and white", () => {
+    const { area } = gradient({
+      defaultValue: "hsl(200, 60%, 50%)",
+      xChannel: "saturation",
+      yChannel: "lightness",
+    });
+    expect(area.background).toBe(
+      [
+        "linear-gradient(to top, black, transparent, white)",
+        "linear-gradient(to right, hsla(200, 0%, 50%, 1), transparent)",
+        "hsla(200, 100%, 50%, 1)",
+      ].join(", "),
+    );
+  });
+
+  test("an HSL area at a fixed saturation has no flat colour under it", () => {
+    const { area } = gradient({
+      defaultValue: "hsl(200, 60%, 50%)",
+      xChannel: "hue",
+      yChannel: "lightness",
+    });
+    const layers = area.background?.split(/, (?=linear-gradient)/) ?? [];
+    expect(layers).toHaveLength(2);
+    expect(layers[0]).toBe("linear-gradient(to top, black, transparent, white)");
+    expect(layers[1]).toStartWith("linear-gradient(to right, hsla(0, 60%, 50%, 1), ");
+  });
+
+  test("an RGB area screens one layer per channel", () => {
+    const { area } = gradient({
+      defaultValue: "rgb(10, 20, 30)",
+      xChannel: "red",
+      yChannel: "green",
+    });
+    expect(area.background).toBe(
+      [
+        "linear-gradient(to right, rgba(0, 0, 0, 1), rgba(255, 0, 0, 1))",
+        "linear-gradient(to top, rgba(0, 0, 0, 1), rgba(0, 255, 0, 1))",
+        "rgba(0, 0, 30, 1)",
+      ].join(", "),
+    );
+    expect(area["background-blend-mode"]).toBe("screen");
+  });
+
+  test("the third channel is the one neither axis holds, and moves the background", () => {
+    const { area } = gradient({
+      defaultValue: "rgb(10, 20, 30)",
+      xChannel: "blue",
+      yChannel: "red",
+    });
+    expect(area.background).toContain("rgba(0, 20, 0, 1)");
+  });
+
+  test("one axis given pushes the other off its channel", () => {
+    let channels: string[] = [];
+    render(() => {
+      const state = colorAreaState({ defaultValue: "hsb(0, 50%, 50%)", yChannel: "saturation" });
+      channels = [state.xChannel(), state.yChannel(), state.zChannel()];
+      return null;
+    });
+    expect(channels).toEqual(["brightness", "saturation", "hue"]);
+  });
+
+  test("a disabled area has no gradient", () => {
+    const { area } = gradient({ defaultValue: "hsb(120, 50%, 50%)", isDisabled: true });
+    expect(area.background).toBeUndefined();
+    expect(area.position).toBe("relative");
+  });
+
+  test("ColorArea draws it, keeps it under a style of the caller's, and fills the thumb", () => {
+    const { container } = render(() => (
+      <ColorArea defaultValue="hsba(120, 50%, 50%, 0.5)" style={{ width: "192px" }} />
+    ));
+    const area = container.querySelector<HTMLElement>("[role=application]");
+    const style = area?.getAttribute("style") ?? "";
+    expect(style).toContain("linear-gradient");
+    expect(style).toContain("width: 192px");
+    const thumb = area?.firstElementChild as HTMLElement;
+    expect(thumb.getAttribute("style")).toContain(
+      `background-color: ${parseColor("hsb(120, 50%, 50%)").toString("css")}`,
+    );
   });
 });
 

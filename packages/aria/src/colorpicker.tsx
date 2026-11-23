@@ -242,6 +242,10 @@ export interface ColorAreaState {
   setValue(value: Color): void;
   xChannel: Accessor<ColorChannel>;
   yChannel: Accessor<ColorChannel>;
+  /** The channel neither axis moves: the hue under a saturation/brightness area. */
+  zChannel: Accessor<ColorChannel>;
+  /** What the thumb shows: the colour, opaque. */
+  displayColor: Accessor<Color>;
   xValue: Accessor<number>;
   yValue: Accessor<number>;
   setXValue: (value: number) => void;
@@ -278,16 +282,30 @@ export function colorAreaState(options: ColorAreaStateOptions): ColorAreaState {
     setValueRaw(next);
   };
 
-  // The two channels that are not the first: saturation and brightness in
-  // HSB, green and blue in RGB. The first is the one a hue slider or a red
-  // slider edits alongside the area.
-  const channels = (): [ColorChannel, ColorChannel] => {
-    const [, second, third] = value().getColorChannels();
-    return [second, third];
+  // By default the two channels that are not the first: saturation and
+  // brightness in HSB, green and blue in RGB. The first is the one a hue
+  // slider or a red slider edits alongside the area. An axis that is given
+  // pushes the other one along, so the two never land on the same channel.
+  const xChannel = (): ColorChannel => {
+    const given = access(options.xChannel);
+    if (given !== undefined) return given;
+    const [first, second, third] = value().getColorChannels();
+    const y = access(options.yChannel);
+    return [second, third, first].find((channel) => channel !== y) ?? second;
   };
-
-  const xChannel = (): ColorChannel => access(options.xChannel) ?? channels()[0];
-  const yChannel = (): ColorChannel => access(options.yChannel) ?? channels()[1];
+  const yChannel = (): ColorChannel => {
+    const given = access(options.yChannel);
+    if (given !== undefined) return given;
+    const [first, second, third] = value().getColorChannels();
+    const x = xChannel();
+    return [third, second, first].find((channel) => channel !== x) ?? third;
+  };
+  const zChannel = (): ColorChannel => {
+    const x = xChannel();
+    const y = yChannel();
+    const channels = value().getColorChannels();
+    return channels.find((channel) => channel !== x && channel !== y) ?? channels[0];
+  };
 
   const percentOf = (channel: ColorChannel): number => {
     const limits = value().getChannelRange(channel);
@@ -309,6 +327,8 @@ export function colorAreaState(options: ColorAreaStateOptions): ColorAreaState {
     setValue,
     xChannel,
     yChannel,
+    zChannel,
+    displayColor: () => value().withChannelValue("alpha", 1),
     isDisabled,
     isDragging: dragging,
     xValue: () => value().getChannelValue(xChannel()),
@@ -524,6 +544,169 @@ export function colorSlider(
   };
 }
 
+// ---------------------------------------------------------------------------
+// What the area looks like: its gradient
+// ---------------------------------------------------------------------------
+
+type Style = Record<string, string>;
+
+const hueStops = (color: Color): string =>
+  [0, 60, 120, 180, 240, 300, 360]
+    .map((hue) => color.withChannelValue("hue", hue).toString("css"))
+    .join(", ");
+
+const saturationStops = (color: Color): string =>
+  `${color.withChannelValue("saturation", 0).toString("css")}, transparent`;
+
+// What each channel fades through, laid over the others. Lightness in HSL
+// is a mix towards black below the middle and white above it; brightness in
+// HSB is a mix towards black. Both are exact as layers, which is what lets
+// two flat gradients draw a whole plane.
+const HSL_STOPS: Partial<Record<ColorChannel, (color: Color) => string>> = {
+  hue: hueStops,
+  saturation: saturationStops,
+  lightness: () => "black, transparent, white",
+};
+
+const HSB_STOPS: Partial<Record<ColorChannel, (color: Color) => string>> = {
+  hue: hueStops,
+  saturation: saturationStops,
+  brightness: () => "black, transparent",
+};
+
+/** One gradient per axis, the second axis's on top, over the hue when the hue is fixed. */
+function layered(
+  base: Color,
+  stops: Partial<Record<ColorChannel, (color: Color) => string>>,
+  channels: { x: ColorChannel; y: ColorChannel; z: ColorChannel },
+  zValue: number,
+  end: string,
+  space: ColorChannel[],
+): Style {
+  const value = base.withChannelValue(channels.z, zValue);
+  const layers = space
+    .filter((channel) => channel !== channels.z)
+    .map((channel) => {
+      const fade = stops[channel];
+      return fade === undefined
+        ? ""
+        : `linear-gradient(to ${channel === channels.x ? end : "top"}, ${fade(value)})`;
+    })
+    .filter((layer) => layer !== "")
+    .toReversed();
+  if (channels.z === "hue") layers.push(value.toString("css"));
+  return { background: layers.join(", ") };
+}
+
+/** The area's own background for the channels it shows, at the third channel's value. */
+function areaBackground(
+  color: Color,
+  channels: { x: ColorChannel; y: ColorChannel; z: ColorChannel },
+  end: "left" | "right",
+): Style {
+  const zValue = color.getChannelValue(channels.z);
+  switch (color.getColorSpace()) {
+    case "rgb": {
+      // The screen blend mode multiplies the inverses, 1 - (1 - a)(1 - b), so
+      // one layer per channel with the others at zero adds up channel by
+      // channel into the colour at every point.
+      const black = parseColor("rgb(0, 0, 0)");
+      const ramp = (channel: ColorChannel): string =>
+        `${black.withChannelValue(channel, 0).toString("css")}, ${black
+          .withChannelValue(channel, 255)
+          .toString("css")}`;
+      return {
+        background: [
+          `linear-gradient(to ${end}, ${ramp(channels.x)})`,
+          `linear-gradient(to top, ${ramp(channels.y)})`,
+          black.withChannelValue(channels.z, zValue).toString("css"),
+        ].join(", "),
+        "background-blend-mode": "screen",
+      };
+    }
+    case "hsl":
+      return layered(
+        parseColor("hsl(0, 100%, 50%)"),
+        HSL_STOPS,
+        channels,
+        zValue,
+        end,
+        color.getColorChannels(),
+      );
+    default:
+      return layered(
+        parseColor("hsb(0, 100%, 100%)"),
+        HSB_STOPS,
+        channels,
+        zValue,
+        end,
+        color.getColorChannels(),
+      );
+  }
+}
+
+export interface ColorAreaGradientOptions {
+  state: ColorAreaState;
+  /** Which way the x axis grows. @default the locale's */
+  direction?: MaybeAccessor<"ltr" | "rtl" | undefined>;
+}
+
+export interface ColorAreaGradientResult {
+  /** The area's background, and what keeps a pointer drag from scrolling the page. */
+  colorAreaStyleProps: { style: Accessor<Style> };
+  /** Where the thumb sits, centred on the value. */
+  thumbStyleProps: { style: Accessor<Style> };
+}
+
+/**
+ * What a colour area looks like: the plane of colours its two channels span
+ * at the third channel's value, so the area draws itself and the thumb sits on
+ * the colour it holds.
+ *
+ * Right to left, the x axis grows leftwards and so does the gradient. Forced
+ * colours are kept off both: a high contrast theme flattening the gradient
+ * would leave a square with nothing on it to choose. A disabled area has no
+ * gradient, as React Spectrum's do not: it offers no colour to pick.
+ */
+export function colorAreaGradient(options: ColorAreaGradientOptions): ColorAreaGradientResult {
+  const { state } = options;
+  const locale = useLocale();
+  const direction = (): "ltr" | "rtl" => access(options.direction) ?? locale().direction;
+
+  const background = createMemo((): Style => {
+    if (state.isDisabled()) return {};
+    return areaBackground(
+      state.value(),
+      { x: state.xChannel(), y: state.yChannel(), z: state.zChannel() },
+      direction() === "rtl" ? "left" : "right",
+    );
+  });
+
+  return {
+    colorAreaStyleProps: {
+      style: () => ({
+        position: "relative",
+        "touch-action": "none",
+        "forced-color-adjust": "none",
+        ...background(),
+      }),
+    },
+    thumbStyleProps: {
+      style: () => {
+        const x = state.xPercent();
+        return {
+          position: "absolute",
+          left: `${(direction() === "rtl" ? 1 - x : x) * 100}%`,
+          top: `${(1 - state.yPercent()) * 100}%`,
+          transform: "translate(-50%, -50%)",
+          "touch-action": "none",
+          "forced-color-adjust": "none",
+        };
+      },
+    },
+  };
+}
+
 export interface ColorAreaOptions {
   containerRef: ElementRef;
   xInputRef: ElementRef<HTMLInputElement>;
@@ -534,6 +717,8 @@ export interface ColorAreaOptions {
   form?: MaybeAccessor<string | undefined>;
   "aria-label"?: MaybeAccessor<string | undefined>;
   "aria-labelledby"?: MaybeAccessor<string | undefined>;
+  /** The caller's own style, laid over the area's gradient rather than replacing it. */
+  style?: MaybeAccessor<Record<string, string | number | undefined> | undefined>;
 }
 
 export interface ColorAreaResult {
@@ -552,6 +737,7 @@ export interface ColorAreaResult {
  * value reachable at all without a pointer.
  */
 export function colorArea(options: ColorAreaOptions, state: ColorAreaState): ColorAreaResult {
+  const { colorAreaStyleProps, thumbStyleProps } = colorAreaGradient({ state });
   const listeners = globalListeners();
   const locale = useLocale();
   const strings = stringFormatter(PICKER_STRINGS);
@@ -722,15 +908,12 @@ export function colorArea(options: ColorAreaOptions, state: ColorAreaState): Col
         }
         event.preventDefault();
       },
-      style: { position: "relative", "touch-action": "none" },
+      style: () => ({ ...colorAreaStyleProps.style(), ...access(options.style) }),
     }),
     thumbProps: {
       style: () => ({
-        position: "absolute",
-        left: `${(isMirrored() ? 1 - state.xPercent() : state.xPercent()) * 100}%`,
-        top: `${(1 - state.yPercent()) * 100}%`,
-        transform: "translate(-50%, -50%)",
-        "touch-action": "none",
+        ...thumbStyleProps.style(),
+        "background-color": state.displayColor().toString("css"),
       }),
     },
     xInputProps: inputFor("x"),
@@ -1659,6 +1842,7 @@ export function ColorArea(props: ColorAreaComponentProps) {
       yName: () => props.yName,
       form: () => props.form,
       "aria-label": () => props["aria-label"],
+      style: () => props.style,
     },
     state,
   );
@@ -1668,9 +1852,10 @@ export function ColorArea(props: ColorAreaComponentProps) {
   const { focusProps, isFocused, isFocusVisible } = focusRing();
 
   const elementProps = mergeProps(
-    colorAreaProps,
     filterDOMProps(fromProps(cells(props)), { global: true }),
     styleProps(cells(props)),
+    // Last, so the gradient survives a `style` prop: the caller's is in it.
+    colorAreaProps,
     {
       "data-dragging": state.isDragging,
       "data-disabled": state.isDisabled,
