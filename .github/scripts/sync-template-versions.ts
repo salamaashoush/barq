@@ -25,8 +25,10 @@ function versionOf(name: string): string {
   return manifest.version;
 }
 
-for (const template of readdirSync(templates)) {
-  const path = join(templates, template, "package.json");
+for (const template of readdirSync(templates, { withFileTypes: true })) {
+  // The directory also holds `manifest.json`, which is not a template.
+  if (!template.isDirectory()) continue;
+  const path = join(templates, template.name, "package.json");
   const manifest = JSON.parse(readFileSync(path, "utf8")) as Manifest;
   for (const group of [manifest.dependencies, manifest.devDependencies]) {
     for (const name of Object.keys(group ?? {})) {

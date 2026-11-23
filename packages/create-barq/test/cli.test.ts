@@ -132,6 +132,19 @@ describe("where templates come from", () => {
   });
 });
 
+describe("the release's version script", () => {
+  test("runs over a templates directory that also holds the manifest", () => {
+    const root = fileURLToPath(new URL("../../..", import.meta.url));
+    const result = Bun.spawnSync({
+      cmd: ["bun", ".github/scripts/sync-template-versions.ts"],
+      cwd: root,
+    });
+    // It lists `templates/` and once took every entry for a template, which
+    // failed the release the first time a file sat beside them.
+    expect(result.exitCode, result.stderr.toString()).toBe(0);
+  });
+});
+
 describe("a project made without a prompt", () => {
   test("--yes writes the default template and says what is left to run", () => {
     const cwd = scratch();
