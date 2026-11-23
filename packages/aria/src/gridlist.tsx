@@ -94,6 +94,12 @@ import { isFocusVisible as focusIsVisible } from "./interactions/modality.ts";
 import type { ElementRef, PressEvent } from "./interactions/press.ts";
 import { idFragment } from "./listbox.tsx";
 import { visuallyHidden } from "./live.ts";
+import {
+  loaderRowStyle,
+  loadMoreSentinel,
+  loadMoreSentinelStyle,
+  reportLoading,
+} from "./load-more.ts";
 import { SelectionIndicatorProvider } from "./selection-indicator.tsx";
 import {
   ListKeyboardDelegate,
@@ -1301,6 +1307,80 @@ export function GridListHeader(props: GridListHeaderProps) {
         {props.children}
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Loading more
+// ---------------------------------------------------------------------------
+
+export interface GridListLoadMoreItemProps extends StyleProps {
+  /** What shows while loading: a spinner, a line of text. */
+  children?: Child;
+  /** Whether the loading row is shown. The sentinel is there either way. */
+  isLoading?: boolean;
+  onLoadMore?: () => void;
+  /** How near the end, in heights of the scrolling region, counts as reached. @default 1 */
+  scrollOffset?: number;
+  ref?: RefTarget<HTMLDivElement>;
+}
+
+/**
+ * Where more rows will appear, rendered for an item whose `getType` is
+ * `"loader"`.
+ *
+ * The sentinel that asks for the next page is always rendered; the row is
+ * rendered while `isLoading`. The row is not a stop for the keyboard and does
+ * not count towards `aria-rowcount`.
+ */
+export function GridListLoadMoreItem(props: GridListLoadMoreItemProps) {
+  const list = useGridList();
+  const node = useRowNode();
+  const virtual = useVirtualizer();
+  const options = fromProps(cells(props));
+  const sentinel = makeRef<HTMLDivElement>();
+  const isLoading = (): boolean => props.isLoading === true && props.children !== undefined;
+
+  loadMoreSentinel(
+    {
+      collection: list.state.collection,
+      onLoadMore: options.onLoadMore,
+      scrollOffset: () => props.scrollOffset,
+    },
+    sentinel,
+  );
+  reportLoading(virtual, node.key, isLoading);
+
+  const elementProps = mergeProps(
+    filterDOMProps(options, { global: true, id: false }),
+    styleProps(cells(props)),
+    {
+      role: "row",
+      "data-testid": () => props["data-testid"],
+      style: () => loaderRowStyle(virtual, node.key, props.style),
+    },
+  );
+
+  return (
+    <>
+      {/* Zero-sized and inert, so it takes no room and nothing can reach it. */}
+      <div style={loadMoreSentinelStyle(virtual, node.key)} inert>
+        <div
+          data-load-more-sentinel=""
+          style={{ position: "absolute", width: "1px", height: "1px" }}
+          ref={sentinel.set}
+        />
+      </div>
+      {() =>
+        isLoading() ? (
+          <div {...elementProps} ref={mergeRefs(props.ref)}>
+            <div role="gridcell" aria-colindex={virtual === null ? undefined : 1}>
+              {props.children}
+            </div>
+          </div>
+        ) : null
+      }
+    </>
   );
 }
 

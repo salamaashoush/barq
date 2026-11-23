@@ -733,6 +733,8 @@ export {
   type GridListSelectionCheckboxOptions,
   type GridListSelectionCheckboxProps,
   type GridListSelectionCheckboxResult,
+  GridListLoadMoreItem,
+  type GridListLoadMoreItemProps,
 } from "./gridlist.tsx";
 export {
   gridSelectionAnnouncement,
@@ -788,7 +790,16 @@ export {
   useListBox,
   useSectionHeading,
   type ListBoxRenderState,
+  ListBoxLoadMoreItem,
+  type ListBoxLoadMoreItemProps,
 } from "./listbox.tsx";
+export {
+  loaderRowStyle,
+  loadMoreSentinel,
+  type LoadMoreSentinelOptions,
+  loadMoreSentinelStyle,
+  reportLoading,
+} from "./load-more.ts";
 export {
   ContextMenu,
   type ContextMenuComponentProps,
@@ -1057,6 +1068,8 @@ export {
   type TableFooterComponentProps,
   type TableKeyboardNavigationBehavior,
   type TableRowPosition,
+  TableLoadMoreItem,
+  type TableLoadMoreItemProps,
 } from "./table.tsx";
 export {
   Tab,
@@ -1336,8 +1349,6 @@ export {
   useSheet,
 } from "./sheet.tsx";
 export {
-  loadMoreSentinel,
-  type LoadMoreSentinelOptions,
   tree,
   Tree,
   TreeCollection,

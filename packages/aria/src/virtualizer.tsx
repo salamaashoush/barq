@@ -190,6 +190,13 @@ export abstract class Layout implements LayoutDelegate {
   updateItemSize?(key: Key, size: Size): boolean;
 
   /**
+   * Whether a loader is showing its loading row. A layout that answers gives
+   * the loader a row's height only while it does. Returns whether that moved
+   * anything.
+   */
+  updateLoaderState?(key: Key, isLoading: boolean): boolean;
+
+  /**
    * The drop target under a point, the point measured from the scrolling
    * element's own corner. A layout that answers is what lets a virtualised
    * collection take a drop: the rows a point may fall between are mostly not
@@ -254,6 +261,8 @@ export interface ListLayoutOptions {
   padding?: number;
   /** Keep a section's heading in view while its rows scroll under it. */
   stickyHeadings?: boolean;
+  /** The height of a loader's row while it is loading. @default `rowHeight`, or `estimatedRowHeight` */
+  loaderHeight?: number;
 }
 
 /**
@@ -264,6 +273,10 @@ export interface ListLayoutOptions {
  * rendered, and every row below the corrected one moves. That correction is
  * why the scrollbar drifts slightly on first scroll through a list of
  * estimated rows, and why `rowHeight` is worth giving when it is known.
+ *
+ * A loader takes `loaderHeight` while it is loading and nothing otherwise, and
+ * is in every window whatever the scroll: its sentinel is what asks for the
+ * next page, and it can only do that while it is rendered.
  */
 export class ListLayout extends Layout {
   #options: Required<ListLayoutOptions>;
@@ -274,6 +287,8 @@ export class ListLayout extends Layout {
   #measured = new Map<Key, { height: number; width: number }>();
   #width = 0;
   #contentHeight = 0;
+  /** The loaders whose loading row is showing. */
+  #loading = new Set<Key>();
 
   constructor(options: ListLayoutOptions = {}) {
     super();
@@ -285,6 +300,7 @@ export class ListLayout extends Layout {
       gap: options.gap ?? 0,
       padding: options.padding ?? 0,
       stickyHeadings: options.stickyHeadings ?? false,
+      loaderHeight: options.loaderHeight ?? options.rowHeight ?? options.estimatedRowHeight ?? 48,
     };
   }
 
@@ -308,10 +324,15 @@ export class ListLayout extends Layout {
     let y = this.#options.padding;
 
     const place = (node: Node<unknown>, parentKey: Key | null, isHeading: boolean): void => {
-      const height = this.#heightOf(node.key, isHeading);
+      const isLoader = node.type === "loader";
+      const height = isLoader
+        ? this.#loading.has(node.key)
+          ? this.#options.loaderHeight
+          : 0
+        : this.#heightOf(node.key, isHeading);
       const info = layoutInfo(node.type, node.key, rect(this.#options.padding, y, width, height), {
         parentKey,
-        isEstimated: this.#isEstimated(node.key, isHeading),
+        isEstimated: !isLoader && this.#isEstimated(node.key, isHeading),
         isSticky: isHeading && this.#options.stickyHeadings,
       });
       this.#infos.set(node.key, info);
@@ -375,12 +396,21 @@ export class ListLayout extends Layout {
 
   override getVisibleLayoutInfos(area: Rect): LayoutInfo[] {
     const visible: LayoutInfo[] = [];
-    for (const info of this.#order) {
-      if (info.isSticky || rectIntersects(info.rect, area)) visible.push(info);
+    let at = 0;
+    for (; at < this.#order.length; at++) {
+      const info = this.#order[at] as LayoutInfo;
+      if (info.isSticky || info.type === "loader" || rectIntersects(info.rect, area)) {
+        visible.push(info);
+      }
       // In order, so once past the bottom there is nothing left — except a
       // sticky heading, which is why the loop does not break early when
       // headings stick.
       else if (info.rect.y > rectMaxY(area) && !this.#options.stickyHeadings) break;
+    }
+    // Nor a loader below the window, which is always rendered.
+    for (; at < this.#order.length; at++) {
+      const info = this.#order[at] as LayoutInfo;
+      if (info.type === "loader") visible.push(info);
     }
     return visible;
   }
@@ -396,6 +426,13 @@ export class ListLayout extends Layout {
     const width = this.#infos.get(key)?.rect.width ?? this.#width;
     if (known !== undefined && known.height === size.height && known.width === width) return false;
     this.#measured.set(key, { height: size.height, width });
+    return true;
+  }
+
+  override updateLoaderState(key: Key, isLoading: boolean): boolean {
+    if (this.#loading.has(key) === isLoading) return false;
+    if (isLoading) this.#loading.add(key);
+    else this.#loading.delete(key);
     return true;
   }
 
@@ -516,6 +553,8 @@ export interface VirtualizerState {
   visibleRect: Accessor<Rect>;
   /** Report a rendered row's real size, for a layout that estimated it. */
   measure: (key: Key, size: Size) => void;
+  /** Report whether a loader is showing its loading row. */
+  setLoading: (key: Key, isLoading: boolean) => void;
   layout: Layout;
 }
 
@@ -652,7 +691,11 @@ export function virtualizer(options: VirtualizerOptions): VirtualizerState {
     if (options.layout.updateItemSize?.(key, measured) === true) setRevision((n) => n + 1);
   };
 
-  return { visible, contentSize, visibleRect, measure, layout: options.layout };
+  const setLoading = (key: Key, isLoading: boolean): void => {
+    if (options.layout.updateLoaderState?.(key, isLoading) === true) setRevision((n) => n + 1);
+  };
+
+  return { visible, contentSize, visibleRect, measure, setLoading, layout: options.layout };
 }
 
 // ---------------------------------------------------------------------------
@@ -680,6 +723,8 @@ export interface VirtualizerValue {
   visible: Accessor<LayoutInfo[]>;
   contentSize: Accessor<Size>;
   measure: (key: Key, size: Size) => void;
+  /** Whether a loader is showing its loading row, which the layout gives a height. */
+  setLoading: (key: Key, isLoading: boolean) => void;
   /** Whether rows should measure themselves: only when the layout estimated. */
   shouldMeasure: Accessor<boolean>;
 }
@@ -824,6 +869,7 @@ export function Virtualizer(props: Incoming<VirtualizerComponentProps>) {
     visible: state.visible,
     contentSize: state.contentSize,
     measure: state.measure,
+    setLoading: state.setLoading,
     shouldMeasure: () => state.visible().some((info) => info.isEstimated),
   };
 

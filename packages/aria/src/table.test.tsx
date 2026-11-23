@@ -27,6 +27,8 @@ import {
   restoreRects,
   stubRects,
 } from "./test-dnd.ts";
+import { stubIntersections } from "./test-load-more.ts";
+import { listLayout, Virtualizer } from "./virtualizer.tsx";
 import {
   Cell,
   Column,
@@ -36,6 +38,7 @@ import {
   TableExpandButton,
   TableFooter,
   TableHeader,
+  TableLoadMoreItem,
   type SortDescriptor,
   useTable,
 } from "./table.tsx";
@@ -1703,5 +1706,184 @@ describe("selection announcements", () => {
     expect(ids.map((id) => document.getElementById(id)?.textContent)).toContain(
       "Long press to enter selection mode.",
     );
+  });
+});
+
+describe("loading more", () => {
+  const LOADER: File_ = { id: "loader", name: "Loading", size: "", modified: "", kind: "loader" };
+
+  function Loading(props: {
+    items?: File_[];
+    isLoading?: boolean;
+    onLoadMore?: () => void;
+    treeColumn?: string;
+    defaultExpandedKeys?: Key[];
+  }) {
+    return (
+      <Table
+        aria-label="Files"
+        columns={COLUMNS}
+        items={props.items ?? [...FILES, LOADER]}
+        selectionMode="multiple"
+        treeColumn={props.treeColumn}
+        defaultExpandedKeys={props.defaultExpandedKeys}
+        rowAccessors={{
+          getType: (file: File_) => (file.kind === "loader" ? "loader" : "item"),
+        }}
+      >
+        <TableHeader>{(column: Column_) => <Column>{column.name}</Column>}</TableHeader>
+        <TableBody renderEmpty="No files">
+          {(file: File_) =>
+            file.kind === "loader" ? (
+              <TableLoadMoreItem isLoading={props.isLoading} onLoadMore={props.onLoadMore}>
+                {file.name}
+              </TableLoadMoreItem>
+            ) : (
+              <Row>{(column: Column_) => <Cell>{String(file[column.id])}</Cell>}</Row>
+            )
+          }
+        </TableBody>
+      </Table>
+    );
+  }
+
+  test("the loading row is one header cell spanning every column", () => {
+    render(() => <Loading isLoading />);
+    const loader = screen.getAllByRole("row").at(-1) as HTMLElement;
+    expect(loader.textContent).toBe("Loading");
+    const only = within(loader).getByRole("rowheader");
+    expect(only.getAttribute("aria-colspan")).toBe("3");
+    expect(within(loader).queryAllByRole("gridcell")).toHaveLength(0);
+    expect(loader.hasAttribute("aria-level")).toBe(false);
+    expect(loader.hasAttribute("aria-selected")).toBe(false);
+    expect(loader.style.getPropertyValue("--table-row-level")).toBe("1");
+  });
+
+  test("the keyboard and select all pass over it", () => {
+    render(() => <Loading isLoading />);
+    user.tab();
+    user.key("End", { ctrlKey: true });
+    flush();
+    expect(document.activeElement?.textContent).toBe("March");
+    user.keyboard("{ArrowDown}");
+    flush();
+    expect(document.activeElement?.textContent).toBe("March");
+    user.keyboard("{Home}");
+    flush();
+    user.key("a", { ctrlKey: true, metaKey: true });
+    flush();
+    const selected = screen
+      .getAllByRole("row")
+      .filter((row) => row.getAttribute("aria-selected") === "true");
+    expect(selected.map((row) => row.textContent?.slice(0, 5))).toEqual([
+      "Notes",
+      "Budge",
+      "Photo",
+    ]);
+  });
+
+  test("a table holding only a loader is empty, and shows both", () => {
+    const [loading, setLoading] = createSignal(true);
+    render(() => <Loading items={[LOADER]} isLoading={loading()} />);
+    expect(screen.getByRole("grid").hasAttribute("data-empty")).toBe(true);
+    const body = screen.getAllByRole("rowgroup")[1] as HTMLElement;
+    expect(body.hasAttribute("data-empty")).toBe(true);
+    expect(
+      within(body)
+        .getAllByRole("row")
+        .map((row) => row.textContent),
+    ).toEqual(["Loading", "No files"]);
+    setLoading(false);
+    flush();
+    expect(
+      within(body)
+        .getAllByRole("row")
+        .map((row) => row.textContent),
+    ).toEqual(["No files"]);
+  });
+
+  test("not loading, the sentinel is there and the row is not", () => {
+    const { container } = render(() => <Loading />);
+    expect(screen.getAllByRole("row")).toHaveLength(5);
+    const sentinels = container.querySelectorAll("[data-load-more-sentinel]");
+    expect(sentinels).toHaveLength(1);
+    expect(sentinels[0]?.closest("[inert]")).not.toBeNull();
+    expectNoAriaViolations(container);
+  });
+
+  test("the sentinel asks for more when it comes into reach, loading or not", () => {
+    const intersections = stubIntersections();
+    try {
+      let loads = 0;
+      const [loading, setLoading] = createSignal(true);
+      render(() => <Loading isLoading={loading()} onLoadMore={() => loads++} />);
+      flush();
+      expect(intersections.live()).toHaveLength(1);
+      intersections.fire();
+      expect(loads).toBe(1);
+      setLoading(false);
+      flush();
+      intersections.fire();
+      expect(loads).toBe(2);
+    } finally {
+      intersections.restore();
+    }
+  });
+
+  test("a nested loader states its level and is not one of its siblings", () => {
+    const nested: File_[] = [
+      {
+        id: "docs",
+        name: "Docs",
+        size: "",
+        modified: "",
+        children: [
+          { id: "readme", name: "Readme", size: "1 KB", modified: "Today" },
+          { ...LOADER, id: "docs-loader", name: "Loading docs" },
+        ],
+      },
+      { id: "photos", name: "Photos", size: "9 MB", modified: "March" },
+    ];
+    render(() => (
+      <Loading items={nested} isLoading treeColumn="name" defaultExpandedKeys={["docs"]} />
+    ));
+    const all = screen.getAllByRole("row");
+    const docsLoader = all.find((row) => row.textContent === "Loading docs") as HTMLElement;
+    expect(docsLoader.getAttribute("aria-level")).toBe("2");
+    expect(docsLoader.getAttribute("data-level")).toBe("2");
+    const readme = all.find((row) => row.textContent?.startsWith("Readme")) as HTMLElement;
+    expect(readme.getAttribute("aria-setsize")).toBe("1");
+    expect(readme.getAttribute("aria-posinset")).toBe("1");
+  });
+
+  test("virtualised, the loader follows the last row and is not counted", () => {
+    const many: File_[] = [
+      ...Array.from({ length: 50 }, (_, at) => ({
+        id: `f${at}`,
+        name: `File ${at}`,
+        size: "1 KB",
+        modified: "Today",
+      })),
+      LOADER,
+    ];
+    const { container } = render(() => (
+      <Virtualizer layout={listLayout({ rowHeight: 20, loaderHeight: 40 })} overscan={0}>
+        <Loading items={many} isLoading />
+      </Virtualizer>
+    ));
+    const grid = screen.getByRole("grid");
+    grid.style.overflow = "auto";
+    Object.defineProperty(grid, "clientHeight", { value: 100, configurable: true });
+    Object.defineProperty(grid, "clientWidth", { value: 200, configurable: true });
+    grid.dispatchEvent(new Event("scroll"));
+    flush();
+
+    expect(grid.getAttribute("aria-rowcount")).toBe("51");
+    const loader = screen.getAllByRole("row").at(-1) as HTMLElement;
+    expect(loader.textContent).toBe("Loading");
+    expect(loader.style.top).toBe("1000px");
+    expect(loader.style.height).toBe("40px");
+    const box = container.querySelector("[data-load-more-sentinel]")?.parentElement;
+    expect(box?.style.top).toBe("1000px");
   });
 });

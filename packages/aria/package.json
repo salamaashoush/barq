@@ -213,6 +213,11 @@
       "barq": "./src/live.ts",
       "bun": "./src/live.ts"
     },
+    "./load-more": {
+      "types": "./src/load-more.ts",
+      "barq": "./src/load-more.ts",
+      "bun": "./src/load-more.ts"
+    },
     "./menu": {
       "types": "./src/menu.tsx",
       "barq": "./src/menu.tsx",

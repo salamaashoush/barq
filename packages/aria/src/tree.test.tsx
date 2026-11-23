@@ -1749,6 +1749,37 @@ describe("a virtualised tree", () => {
     expect(drawn[0]?.style.position).toBe("absolute");
   });
 
+  test("a loader is placed after the rows, wherever the scroll is", () => {
+    const { container } = render(() => (
+      <Virtualizer layout={listLayout({ rowHeight: 20 })} overscan={0}>
+        <Tree
+          aria-label="Many"
+          items={[...MANY, { id: "root-loader", name: "Loading", kind: "loader" }]}
+          getType={(folder: Folder) => (folder.kind === "loader" ? "loader" : "item")}
+        >
+          {(folder: Folder) =>
+            folder.kind === "loader" ? (
+              <TreeLoadMoreItem isLoading>{folder.name}</TreeLoadMoreItem>
+            ) : (
+              <TreeItem>{folder.name}</TreeItem>
+            )
+          }
+        </Tree>
+      </Virtualizer>
+    ));
+    const grid = screen.getByRole("treegrid");
+    scrollTo(grid, 0);
+
+    const loader = rows().at(-1) as HTMLElement;
+    expect(loader.textContent).toBe("Loading");
+    expect(loader.style.top).toBe("4000px");
+    expect(loader.style.height).toBe("20px");
+    expect(grid.getAttribute("aria-rowcount")).toBe("200");
+    const box = container.querySelector("[data-load-more-sentinel]")?.parentElement;
+    expect(box?.style.position).toBe("absolute");
+    expect(box?.style.top).toBe("4000px");
+  });
+
   test("a section's header is placed by the layout and its rows follow it", () => {
     render(() => (
       <Virtualizer layout={listLayout({ rowHeight: 20, headingHeight: 30 })}>

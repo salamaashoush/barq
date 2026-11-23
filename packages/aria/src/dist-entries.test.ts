@@ -64,6 +64,7 @@ const ENTRIES = [
   "link",
   "listbox",
   "live",
+  "load-more",
   "menu",
   "menubar",
   "navigation-tree",

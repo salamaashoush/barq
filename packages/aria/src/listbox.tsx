@@ -59,6 +59,12 @@ import { type BaseEvent, keyboard } from "./interactions/keyboard.ts";
 import { focusVisible, isFocusVisible as focusIsVisible } from "./interactions/modality.ts";
 import type { ElementRef, PressEvent } from "./interactions/press.ts";
 import { field, type FieldOptions } from "./label.ts";
+import {
+  loaderRowStyle,
+  loadMoreSentinel,
+  loadMoreSentinelStyle,
+  reportLoading,
+} from "./load-more.ts";
 import { SelectionIndicatorProvider } from "./selection-indicator.tsx";
 import {
   type KeyboardDelegate,
@@ -1243,5 +1249,88 @@ function ListBoxDropIndicator(indicator: { of: Incoming<DropIndicatorProps> }) {
         {props.children?.()}
       </li>
     </Show>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Loading more
+// ---------------------------------------------------------------------------
+
+export interface ListBoxLoadMoreItemProps extends StyleProps {
+  /** What shows while loading: a spinner, a line of text. */
+  children?: Child;
+  /** Whether the loading option is shown. The sentinel is there either way. */
+  isLoading?: boolean;
+  onLoadMore?: () => void;
+  /** How near the end, in heights of the scrolling region, counts as reached. @default 1 */
+  scrollOffset?: number;
+  ref?: RefTarget<HTMLLIElement>;
+}
+
+/**
+ * Where more options will appear: rendered for an item whose `getType` is
+ * `"loader"`, or written after the options of a list with no `items`.
+ *
+ * The sentinel that asks for the next page is always rendered; the loading
+ * option is rendered while `isLoading`. It is an option because a listbox owns
+ * nothing else, but not one the keyboard stops on or `aria-setsize` counts.
+ */
+export function ListBoxLoadMoreItem(props: ListBoxLoadMoreItemProps) {
+  const list = useListBox();
+  const virtual = useVirtualizer();
+  const options = fromProps(cells(props));
+  const written =
+    list.staticItems === undefined
+      ? null
+      : staticItem(list.staticItems, { type: "loader", textValue: "" });
+  const key = written === null ? useItemNode().key : written.key;
+  const sentinel = makeRef<HTMLDivElement>();
+  const isLoading = (): boolean => props.isLoading === true && props.children !== undefined;
+
+  loadMoreSentinel(
+    {
+      collection: list.state.collection,
+      onLoadMore: options.onLoadMore,
+      scrollOffset: () => props.scrollOffset,
+    },
+    sentinel,
+  );
+  reportLoading(virtual, key, isLoading);
+
+  const elementProps = mergeProps(
+    filterDOMProps(options, { global: true, id: false }),
+    styleProps(cells(props)),
+    {
+      role: "option",
+      // Focusable, for TalkBack to reach it, and in no Tab order.
+      tabIndex: -1,
+      "data-testid": () => props["data-testid"],
+      style: () => loaderRowStyle(virtual, key, props.style),
+    },
+  );
+
+  return (
+    <>
+      {/* Zero-sized and inert, so it takes no room and nothing can reach it. */}
+      <li
+        role="presentation"
+        style={loadMoreSentinelStyle(virtual, key)}
+        inert
+        ref={written === null ? undefined : written.ref}
+      >
+        <div
+          data-load-more-sentinel=""
+          style={{ position: "absolute", width: "1px", height: "1px" }}
+          ref={sentinel.set}
+        />
+      </li>
+      {() =>
+        isLoading() ? (
+          <li {...elementProps} ref={mergeRefs(props.ref)}>
+            {props.children}
+          </li>
+        ) : null
+      }
+    </>
   );
 }

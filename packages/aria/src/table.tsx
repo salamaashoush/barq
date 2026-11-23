@@ -106,6 +106,12 @@ import { hover } from "./interactions/hover.ts";
 import { press, type ElementRef } from "./interactions/press.ts";
 import { visuallyHidden } from "./live.ts";
 import {
+  loaderRowStyle,
+  loadMoreSentinel,
+  loadMoreSentinelStyle,
+  reportLoading,
+} from "./load-more.ts";
+import {
   DOMLayoutDelegate,
   ListKeyboardDelegate,
   selectableCollection,
@@ -196,6 +202,7 @@ export class TableCollection<R, C> implements Collection<R> {
   readonly rowHeaderColumns: Node<C>[];
   readonly footerStart: number;
   #tree: Map<Key, TableRowPosition> | null;
+  #itemCount: number;
   #rowIndex = new Map<Key, number>();
   #columnIndex = new Map<Key, number>();
   #cells = new Map<Key, { row: Node<R>; column: Node<C>; index: number }>();
@@ -205,6 +212,9 @@ export class TableCollection<R, C> implements Collection<R> {
     this.columns = columns;
     this.footerStart = Math.min(options.footerStart ?? rows.length, rows.length);
     this.#tree = options.tree ?? null;
+    // A loader is a row of the table and not one of its items: it does not
+    // make the table non-empty or count towards `aria-rowcount`.
+    this.#itemCount = rows.filter((row) => row.type === "item").length;
     rows.forEach((row, at) => this.#rowIndex.set(row.key, at));
     columns.forEach((column, at) => this.#columnIndex.set(column.key, at));
     // Composed once rather than parsed on every lookup, so a key that happens
@@ -222,7 +232,7 @@ export class TableCollection<R, C> implements Collection<R> {
   }
 
   get size(): number {
-    return this.rows.length;
+    return this.#itemCount;
   }
 
   get bodyRows(): Node<R>[] {
@@ -370,8 +380,13 @@ export class TableKeyboardDelegate<R, C> implements KeyboardDelegate {
     return (access(this.#options.direction) ?? "ltr") === "rtl";
   }
 
+  /** Whether the arrows pass over a row: a disabled one, or a loader. */
   #isDisabled(row: Node<R>): boolean {
-    return this.#options.disabledKeys?.().has(row.key) === true || row.props?.isDisabled === true;
+    return (
+      row.type !== "item" ||
+      this.#options.disabledKeys?.().has(row.key) === true ||
+      row.props?.isDisabled === true
+    );
   }
 
   /** Where a key stands: a column header, or a cell at (row, column). */
@@ -659,7 +674,10 @@ function repairFocus<R, C>(
       const rowKey = old.parseCellKey(focused)?.row.key ?? focused;
       const from = old.rowIndexOf(rowKey);
       const survives = (row: Node<R> | undefined): row is Node<R> =>
-        row !== undefined && current.rowIndexOf(row.key) >= 0 && !manager.isDisabled(row.key);
+        row !== undefined &&
+        row.type === "item" &&
+        current.rowIndexOf(row.key) >= 0 &&
+        !manager.isDisabled(row.key);
 
       let row: Node<R> | undefined;
       for (let at = from + 1; at < old.rows.length && row === undefined; at++) {
@@ -745,15 +763,18 @@ export function tableState<R, C>(options: TableStateOptions<R, C>): TableState<R
     const tree = isTree ? new Map<Key, TableRowPosition>() : undefined;
     const rows: Node<R>[] = [];
     const visit = (siblings: Node<R>[]): void => {
-      siblings.forEach((node, at) => {
+      // A loader among the siblings is not one of them.
+      const items = siblings.filter((node) => node.type === "item");
+      for (const node of siblings) {
         rows.push(node);
+        if (node.type !== "item") continue;
         tree?.set(node.key, {
-          posinset: at + 1,
-          setsize: siblings.length,
+          posinset: items.indexOf(node) + 1,
+          setsize: items.length,
           hasChildRows: node.childNodes.length > 0,
         });
         if (expanded.has(node.key)) visit(node.childNodes);
-      });
+      }
     };
     visit(body);
 
@@ -1869,7 +1890,8 @@ function renderRows(rows: () => Node<unknown>[], render: (item: never) => Child)
 export function TableBody<R>(props: TableBodyComponentProps<R>) {
   const grid = useTable();
   const render = props.children;
-  const isEmpty = (): boolean => grid.state.collection().bodyRows.length === 0;
+  const isEmpty = (): boolean =>
+    grid.state.collection().bodyRows.every((row) => row.type !== "item");
 
   const droppable = grid.dragAndDrop?.dropState !== undefined;
 
@@ -2239,5 +2261,95 @@ export function Cell(props: CellComponentProps) {
     <div {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
       {props.children}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Loading more
+// ---------------------------------------------------------------------------
+
+export interface TableLoadMoreItemProps extends StyleProps {
+  /** What shows while loading: a spinner, a line of text. */
+  children?: Child;
+  /** Whether the loading row is shown. The sentinel is there either way. */
+  isLoading?: boolean;
+  onLoadMore?: () => void;
+  /** How near the end, in heights of the scrolling region, counts as reached. @default 1 */
+  scrollOffset?: number;
+  ref?: RefTarget<HTMLDivElement>;
+}
+
+/**
+ * Where more rows will appear, rendered from `<TableBody>`'s callback for a
+ * row whose `getType` is `"loader"`, at the end of the body or as the last
+ * child of a nested row.
+ *
+ * The sentinel that asks for the next page is always rendered; the row is
+ * rendered while `isLoading`, one cell spanning every column. Neither the
+ * keyboard nor `aria-rowcount` counts it, and it does not make an empty table
+ * any less empty.
+ */
+export function TableLoadMoreItem(props: TableLoadMoreItemProps) {
+  const grid = useTable();
+  const row = useRow();
+  const options = fromProps(cells(props));
+  const sentinel = makeRef<HTMLDivElement>();
+  const level = (): number => row.level + 1;
+  const isTree = (): boolean => grid.state.collection().isTree;
+  const isLoading = (): boolean => props.isLoading === true && props.children !== undefined;
+
+  loadMoreSentinel(
+    {
+      collection: grid.state.collection,
+      onLoadMore: options.onLoadMore,
+      scrollOffset: () => props.scrollOffset,
+    },
+    sentinel,
+  );
+  reportLoading(grid.virtual, row.key, isLoading);
+
+  const elementProps = mergeProps(
+    filterDOMProps(options, { global: true, id: false }),
+    styleProps(cells(props)),
+    {
+      role: "row",
+      "aria-level": () => (isTree() ? level() : undefined),
+      "data-level": () => (isTree() ? level() : undefined),
+      "data-testid": () => props["data-testid"],
+      style: () =>
+        loaderRowStyle(grid.virtual, row.key, {
+          "--table-row-level": String(level()),
+          ...props.style,
+        }),
+    },
+  );
+
+  return (
+    <>
+      {/* Zero-sized and inert, so it takes no room and nothing can reach it. */}
+      <div
+        style={{ ...loadMoreSentinelStyle(grid.virtual, row.key), "grid-column": "1 / -1" }}
+        inert
+      >
+        <div
+          data-load-more-sentinel=""
+          style={{ position: "absolute", width: "1px", height: "1px" }}
+          ref={sentinel.set}
+        />
+      </div>
+      {() =>
+        isLoading() ? (
+          <div {...elementProps} ref={mergeRefs(props.ref)}>
+            <div
+              role="rowheader"
+              aria-colspan={grid.state.collection().columns.length}
+              style={{ "grid-column": "1 / -1" }}
+            >
+              {props.children}
+            </div>
+          </div>
+        ) : null
+      }
+    </>
   );
 }

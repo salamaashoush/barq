@@ -160,6 +160,49 @@ describe("a list layout", () => {
     expect(layout.getContentSize().height).toBe(50 + ROW * 2);
   });
 
+  test("a loader takes its height only while loading", () => {
+    const layout = listLayout({ rowHeight: ROW, loaderHeight: 30 });
+    const loader: Node<City> = {
+      ...(nodesOf([{ id: "more", name: "Loading" }])[0] as Node<City>),
+      type: "loader",
+    };
+    const context = {
+      collection: new ListCollection([...nodesOf(CITIES.slice(0, 3)), loader]),
+      visibleRect: rect(0, 0, 200, VIEWPORT),
+    };
+
+    layout.update(context);
+    expect(layout.getLayoutInfo("more")?.rect).toEqual(rect(0, 3 * ROW, 200, 0));
+    expect(layout.getContentSize().height).toBe(3 * ROW);
+
+    expect(layout.updateLoaderState("more", true)).toBe(true);
+    expect(layout.updateLoaderState("more", true)).toBe(false);
+    layout.update(context);
+    expect(layout.getLayoutInfo("more")?.rect).toEqual(rect(0, 3 * ROW, 200, 30));
+    expect(layout.getLayoutInfo("more")?.isEstimated).toBe(false);
+    expect(layout.getContentSize().height).toBe(3 * ROW + 30);
+  });
+
+  test("a loader is visible wherever the window is, and a loader height defaults to a row's", () => {
+    const layout = listLayout({ rowHeight: ROW });
+    const loader: Node<City> = {
+      ...(nodesOf([{ id: "more", name: "Loading" }])[0] as Node<City>),
+      type: "loader",
+    };
+    const context = {
+      collection: new ListCollection([...nodesOf(CITIES.slice(0, 50)), loader]),
+      visibleRect: rect(0, 0, 200, VIEWPORT),
+    };
+    layout.updateLoaderState("more", true);
+    layout.update(context);
+
+    expect(layout.getLayoutInfo("more")?.rect.height).toBe(ROW);
+    const keys = layout.getVisibleLayoutInfos(rect(0, 0, 200, VIEWPORT)).map((info) => info.key);
+    expect(keys).toEqual(["c0", "c1", "c2", "c3", "c4", "more"]);
+    // Nor is it an item a range selection reaches.
+    expect(layout.getKeyRange("c48", "more")).toEqual(["c48", "c49"]);
+  });
+
   test("a range between two keys is every item between them", () => {
     const layout = listLayout({ rowHeight: ROW });
     layout.update({

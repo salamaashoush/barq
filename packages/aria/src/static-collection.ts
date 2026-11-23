@@ -48,7 +48,7 @@ import { access, type MaybeAccessor } from "./utils.ts";
 /** One rendered item, as the data a `ListState` is built from. */
 export interface StaticEntry {
   key: Key;
-  type: "item" | "section";
+  type: "item" | "section" | "loader";
   textValue: string;
   /** `isDisabled`, `href`, and whatever the widget adds. */
   props: Record<string, unknown>;
@@ -59,7 +59,7 @@ export interface StaticItemOptions {
   /** @default a generated id */
   key?: Key | undefined;
   /** @default "item" */
-  type?: "item" | "section";
+  type?: "item" | "section" | "loader";
   /** @default the element's text */
   textValue?: MaybeAccessor<string | undefined>;
   /** Per-item options, read whenever the collection is rebuilt. */
@@ -88,7 +88,7 @@ export interface StaticCollection {
 
 interface Registration {
   key: Key;
-  type: "item" | "section";
+  type: "item" | "section" | "loader";
   parentKey: Key | undefined;
   options: StaticItemOptions;
   element: Accessor<Element | null>;

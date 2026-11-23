@@ -119,6 +119,12 @@ import { router } from "./interactions/open-link.ts";
 import type { ElementRef, PressEvent } from "./interactions/press.ts";
 import { visuallyHidden } from "./live.ts";
 import {
+  loaderRowStyle,
+  loadMoreSentinel,
+  loadMoreSentinelStyle,
+  reportLoading,
+} from "./load-more.ts";
+import {
   ListKeyboardDelegate,
   selectableItem,
   selectableList,
@@ -364,15 +370,15 @@ export class TreeCollection<T> implements Collection<T> {
     return this.#tree.setSizes.get(key) ?? 0;
   }
 
-  /** The row's position among the rendered rows, counting from 1. */
+  /** The row's position among the showing rows, counting from 1. Loaders are not rows. */
   rowIndexOf(key: Key): number {
-    const rows = this.#showing().filter((at) => this.getItem(at)?.type !== "section");
+    const rows = this.#showing().filter((at) => this.getItem(at)?.type === "item");
     return rows.indexOf(key) + 1;
   }
 
-  /** How many rows are rendered. */
+  /** How many rows are showing, loaders left out. */
   get rowCount(): number {
-    return this.#showing().filter((at) => this.getItem(at)?.type !== "section").length;
+    return this.#showing().filter((at) => this.getItem(at)?.type === "item").length;
   }
 
   /** The visible rows between two keys, in order, whichever comes first. */
@@ -1962,60 +1968,6 @@ export function TreeHeader(props: TreeHeaderProps) {
 // Loading more
 // ---------------------------------------------------------------------------
 
-export interface LoadMoreSentinelOptions {
-  /** Changes whenever the rows above the sentinel do, so the observer is set up again. */
-  collection: Accessor<unknown>;
-  onLoadMore?: () => void;
-  /**
-   * How far from the end of the scrolling region, as a fraction of its height,
-   * the sentinel counts as reached. @default 1
-   */
-  scrollOffset?: MaybeAccessor<number | undefined>;
-  /** `"start"` for a list that grows upwards. @default "end" */
-  direction?: MaybeAccessor<"start" | "end" | undefined>;
-}
-
-/**
- * Call `onLoadMore` when the sentinel comes within reach of the scrolling
- * region's edge.
- *
- * The observer is rebuilt whenever the collection changes. Kept, it would not
- * fire again after a page loads that left the sentinel inside the margin,
- * because nothing about its intersection changed, and the list would stop
- * growing with room still to fill.
- */
-export function loadMoreSentinel(options: LoadMoreSentinelOptions, ref: ElementRef): void {
-  if (isServer) return;
-  createEffect(
-    () => ({
-      collection: options.collection(),
-      element: access(ref) as Element | null,
-      offset: access(options.scrollOffset) ?? 1,
-      direction: access(options.direction) ?? "end",
-    }),
-    ({ element, offset, direction }) => {
-      if (element === null || typeof IntersectionObserver === "undefined") return undefined;
-      const margin = 100 * offset;
-      const observer = new IntersectionObserver(
-        (entries) => {
-          for (const entry of entries) {
-            if (entry.isIntersecting) options.onLoadMore?.();
-          }
-        },
-        {
-          root: scrollParents(element)[0] ?? null,
-          rootMargin:
-            direction === "start"
-              ? `${margin}% 0px 0px 0px`
-              : `0px ${margin}% ${margin}% ${margin}%`,
-        },
-      );
-      observer.observe(element);
-      return () => observer.disconnect();
-    },
-  );
-}
-
 export interface TreeLoadMoreItemProps extends StyleProps {
   /** What shows while loading: a spinner, a line of text. */
   children?: Child;
@@ -2041,6 +1993,7 @@ export function TreeLoadMoreItem(props: TreeLoadMoreItemProps) {
   const sentinel = makeRef<HTMLDivElement>();
   const options = fromProps(cells(props));
   const level = (): number => node.level + 1;
+  const isLoading = (): boolean => props.isLoading === true && props.children !== undefined;
 
   loadMoreSentinel(
     {
@@ -2050,6 +2003,7 @@ export function TreeLoadMoreItem(props: TreeLoadMoreItemProps) {
     },
     sentinel,
   );
+  reportLoading(root.virtual, node.key, isLoading);
 
   const elementProps = mergeProps(
     filterDOMProps(options, { global: true, id: false }),
@@ -2058,18 +2012,14 @@ export function TreeLoadMoreItem(props: TreeLoadMoreItemProps) {
       role: "row",
       "aria-level": level,
       "data-level": () => String(level()),
-      style: () => {
-        if (root.virtual === null) return props.style;
-        const info = root.virtual.layout.getLayoutInfo(node.key);
-        return info === null ? props.style : rowStyle(info);
-      },
+      style: () => loaderRowStyle(root.virtual, node.key, props.style),
     },
   );
 
   return (
     <>
       {/* Zero-sized and inert, so it takes no room and nothing can reach it. */}
-      <div style={{ position: "relative", width: "0", height: "0" }} inert>
+      <div style={loadMoreSentinelStyle(root.virtual, node.key)} inert>
         <div
           data-load-more-sentinel=""
           style={{ position: "absolute", width: "1px", height: "1px" }}
@@ -2077,7 +2027,7 @@ export function TreeLoadMoreItem(props: TreeLoadMoreItemProps) {
         />
       </div>
       {() =>
-        props.isLoading === true && props.children !== undefined ? (
+        isLoading() ? (
           <div {...elementProps} ref={mergeRefs(props.ref)}>
             <div role="gridcell" aria-colindex={1}>
               {props.children}

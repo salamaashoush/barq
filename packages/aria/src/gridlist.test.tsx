@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { flush, createSignal, provide } from "@barqjs/core";
+import { type Child, flush, createSignal, provide } from "@barqjs/core";
 import {
   accessibleName,
   expectNoAriaViolations,
@@ -21,6 +21,7 @@ import {
   GridList,
   GridListHeader,
   GridListItem,
+  GridListLoadMoreItem,
   type GridListRenderState,
   GridListSection,
   GridListSelectionCheckbox,
@@ -30,6 +31,8 @@ import { provideLocale } from "./i18n.ts";
 import { clearAnnouncer, destroyAnnouncer } from "./live.ts";
 import { SelectionIndicator } from "./selection-indicator.tsx";
 import { announcements, fireDrag, MockDataTransfer, nextFrame } from "./test-dnd.ts";
+import { stubIntersections } from "./test-load-more.ts";
+import { listLayout, Virtualizer } from "./virtualizer.tsx";
 
 interface File {
   id: string;
@@ -1158,5 +1161,140 @@ describe("selection announcements", () => {
   test("without a touch screen there is no long press to describe", () => {
     render(() => <Plain selectionBehavior="replace" onAction={() => {}} />);
     expect(screen.getByRole("grid").hasAttribute("aria-describedby")).toBe(false);
+  });
+});
+
+describe("loading more", () => {
+  interface Entry {
+    id: string;
+    name: string;
+    kind?: "loader";
+  }
+
+  const PAGE: Entry[] = [
+    { id: "notes", name: "Notes" },
+    { id: "budget", name: "Budget" },
+    { id: "loader", name: "Loading", kind: "loader" },
+  ];
+
+  function Loading(props: {
+    items?: Entry[];
+    isLoading?: boolean;
+    onLoadMore?: () => void;
+    renderEmptyState?: (grid: GridListRenderState) => Child;
+  }) {
+    return (
+      <GridList
+        aria-label="Files"
+        items={props.items ?? PAGE}
+        selectionMode="multiple"
+        getType={(entry: Entry) => (entry.kind === "loader" ? "loader" : "item")}
+        renderEmptyState={props.renderEmptyState}
+      >
+        {(entry: Entry) =>
+          entry.kind === "loader" ? (
+            <GridListLoadMoreItem isLoading={props.isLoading} onLoadMore={props.onLoadMore}>
+              {entry.name}
+            </GridListLoadMoreItem>
+          ) : (
+            <GridListItem>{entry.name}</GridListItem>
+          )
+        }
+      </GridList>
+    );
+  }
+
+  test("the loading row is a row holding a cell, and the keyboard skips it", () => {
+    render(() => <Loading isLoading />);
+    const all = rows();
+    expect(all.map((row) => row.textContent)).toEqual(["Notes", "Budget", "Loading"]);
+    const loader = all[2] as HTMLElement;
+    expect(within(loader).getByRole("gridcell").hasAttribute("aria-colindex")).toBe(false);
+    expect(loader.hasAttribute("aria-selected")).toBe(false);
+    expect(loader.hasAttribute("tabindex")).toBe(false);
+
+    user.tab();
+    user.keyboard("{End}");
+    flush();
+    expect(document.activeElement?.textContent).toBe("Budget");
+    user.keyboard("{ArrowDown}");
+    flush();
+    expect(document.activeElement?.textContent).toBe("Budget");
+    // Select all is every item, and the loader is not one.
+    user.key("a", { ctrlKey: true, metaKey: true });
+    flush();
+    expect(rows().filter((row) => row.getAttribute("aria-selected") === "true")).toHaveLength(2);
+  });
+
+  test("not loading, the sentinel is there and the row is not", () => {
+    const { container } = render(() => <Loading />);
+    expect(rows()).toHaveLength(2);
+    const sentinels = container.querySelectorAll("[data-load-more-sentinel]");
+    expect(sentinels).toHaveLength(1);
+    expect(sentinels[0]?.closest("[inert]")).not.toBeNull();
+    expectNoAriaViolations(container);
+  });
+
+  test("the sentinel asks for more when it comes into reach, loading or not", () => {
+    const intersections = stubIntersections();
+    try {
+      let loads = 0;
+      const [loading, setLoading] = createSignal(true);
+      render(() => <Loading isLoading={loading()} onLoadMore={() => loads++} />);
+      flush();
+      expect(intersections.live()).toHaveLength(1);
+      intersections.fire();
+      expect(loads).toBe(1);
+      setLoading(false);
+      flush();
+      intersections.fire();
+      expect(loads).toBe(2);
+    } finally {
+      intersections.restore();
+    }
+  });
+
+  test("a grid holding only a loader is empty, and shows both", () => {
+    const [loading, setLoading] = createSignal(true);
+    render(() => (
+      <Loading
+        items={[{ id: "loader", name: "Loading", kind: "loader" }]}
+        isLoading={loading()}
+        renderEmptyState={(_grid: GridListRenderState) => (loading() ? null : "No files")}
+      />
+    ));
+    expect(screen.getByRole("grid").hasAttribute("data-empty")).toBe(true);
+    expect(rows().map((row) => row.textContent)).toEqual(["Loading", ""]);
+    setLoading(false);
+    flush();
+    expect(rows().map((row) => row.textContent)).toEqual(["No files"]);
+  });
+
+  test("virtualised, the loader follows the last row and is counted nowhere", () => {
+    const many: Entry[] = [
+      ...Array.from({ length: 50 }, (_, at) => ({ id: `f${at}`, name: `File ${at}` })),
+      { id: "loader", name: "Loading", kind: "loader" as const },
+    ];
+    const { container } = render(() => (
+      <Virtualizer layout={listLayout({ rowHeight: 20 })} overscan={0}>
+        <Loading items={many} isLoading />
+      </Virtualizer>
+    ));
+    const grid = screen.getByRole("grid");
+    grid.style.overflow = "auto";
+    Object.defineProperty(grid, "clientHeight", { value: 100, configurable: true });
+    Object.defineProperty(grid, "clientWidth", { value: 200, configurable: true });
+    grid.dispatchEvent(new Event("scroll"));
+    flush();
+
+    expect(grid.getAttribute("aria-rowcount")).toBe("50");
+    const loader = rows().at(-1) as HTMLElement;
+    expect(loader.textContent).toBe("Loading");
+    expect(loader.style.top).toBe("1000px");
+    expect(loader.style.height).toBe("20px");
+    expect(within(loader).getByRole("gridcell").getAttribute("aria-colindex")).toBe("1");
+    expect(grid.style.height).toBe("1020px");
+    const box = container.querySelector("[data-load-more-sentinel]")?.parentElement;
+    expect(box?.style.top).toBe("1000px");
   });
 });

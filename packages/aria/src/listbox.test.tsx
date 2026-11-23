@@ -14,7 +14,14 @@ import type { Key } from "./collections.ts";
 import { dragAndDrop, type DragAndDropOptions, DropIndicator } from "./drag-and-drop.tsx";
 import { dragSession, type DroppableCollectionReorderEvent } from "./dnd/index.ts";
 import { RouterContext } from "./interactions/open-link.ts";
-import { ListBox, Option, Section, useSectionHeading } from "./listbox.tsx";
+import {
+  ListBox,
+  ListBoxLoadMoreItem,
+  type ListBoxRenderState,
+  Option,
+  Section,
+  useSectionHeading,
+} from "./listbox.tsx";
 import { clearAnnouncer } from "./live.ts";
 import { SelectionIndicator } from "./selection-indicator.tsx";
 import {
@@ -28,9 +35,11 @@ import {
 
 // A stub left behind by a failing test would shadow other files' stubs.
 afterEach(restoreRects);
+import { stubIntersections } from "./test-load-more.ts";
 import { searchField } from "./textfield.tsx";
 import type { KeyboardDelegate } from "./selection.ts";
 import { mergeProps } from "./utils.ts";
+import { listLayout, Virtualizer } from "./virtualizer.tsx";
 
 interface Fruit {
   id: string;
@@ -1545,5 +1554,211 @@ describe("inside an autocomplete", () => {
     user.key("Enter");
     flush();
     expect(acted).toEqual(["apple"]);
+  });
+});
+
+describe("loading more", () => {
+  interface Entry {
+    id: string;
+    name: string;
+    kind?: "loader";
+  }
+
+  const PAGE: Entry[] = [
+    { id: "apple", name: "Apple" },
+    { id: "banana", name: "Banana" },
+    { id: "loader", name: "Loading", kind: "loader" },
+  ];
+
+  function Loading(props: {
+    items?: Entry[];
+    isLoading?: boolean;
+    onLoadMore?: () => void;
+    renderEmptyState?: (list: ListBoxRenderState) => Child;
+  }) {
+    return (
+      <ListBox
+        aria-label="Fruit"
+        items={props.items ?? PAGE}
+        selectionMode="single"
+        getType={(entry: Entry) => (entry.kind === "loader" ? "loader" : "item")}
+        renderEmptyState={props.renderEmptyState}
+      >
+        {(entry: Entry) =>
+          entry.kind === "loader" ? (
+            <ListBoxLoadMoreItem isLoading={props.isLoading} onLoadMore={props.onLoadMore}>
+              {entry.name}
+            </ListBoxLoadMoreItem>
+          ) : (
+            <Option>{entry.name}</Option>
+          )
+        }
+      </ListBox>
+    );
+  }
+
+  test("the loading row is an option the keyboard skips", () => {
+    render(() => <Loading isLoading />);
+    const options = screen.getAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual(["Apple", "Banana", "Loading"]);
+    const loader = options[2] as HTMLElement;
+    expect(loader.getAttribute("tabindex")).toBe("-1");
+    expect(loader.hasAttribute("aria-selected")).toBe(false);
+    expect(loader.hasAttribute("aria-posinset")).toBe(false);
+
+    user.tab();
+    user.keyboard("{End}");
+    flush();
+    expect(document.activeElement?.textContent).toBe("Banana");
+    user.keyboard("{ArrowDown}");
+    flush();
+    expect(document.activeElement?.textContent).toBe("Banana");
+  });
+
+  test("not loading, the sentinel is there and the row is not", () => {
+    const { container } = render(() => <Loading />);
+    expect(screen.getAllByRole("option")).toHaveLength(2);
+    const sentinels = container.querySelectorAll("[data-load-more-sentinel]");
+    expect(sentinels).toHaveLength(1);
+    expect(sentinels[0]?.closest("[inert]")?.getAttribute("role")).toBe("presentation");
+  });
+
+  test("the sentinel asks for more when it comes into reach, loading or not", () => {
+    const intersections = stubIntersections();
+    try {
+      let loads = 0;
+      const [loading, setLoading] = createSignal(true);
+      const [items, setItems] = createSignal(PAGE);
+      render(() => <Loading items={items()} isLoading={loading()} onLoadMore={() => loads++} />);
+      flush();
+      expect(intersections.live()).toHaveLength(1);
+      intersections.fire();
+      expect(loads).toBe(1);
+
+      setLoading(false);
+      flush();
+      intersections.fire();
+      expect(loads).toBe(2);
+
+      // A page arrived: the observer is rebuilt, so a sentinel still in reach
+      // asks again.
+      setItems([{ id: "cherry", name: "Cherry" }, ...PAGE]);
+      flush();
+      expect(intersections.live()).toHaveLength(1);
+      intersections.fire();
+      expect(loads).toBe(3);
+    } finally {
+      intersections.restore();
+    }
+  });
+
+  test("a list holding only a loader is empty, and shows both", () => {
+    const [loading, setLoading] = createSignal(true);
+    render(() => (
+      <Loading
+        items={[{ id: "loader", name: "Loading", kind: "loader" }]}
+        isLoading={loading()}
+        renderEmptyState={(_list: ListBoxRenderState) => (loading() ? null : "No fruit")}
+      />
+    ));
+    const list = screen.getByRole("listbox");
+    expect(list.hasAttribute("data-empty")).toBe(true);
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "Loading",
+      "",
+    ]);
+
+    setLoading(false);
+    flush();
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["No fruit"]);
+  });
+
+  test("written after the options of a list with no items", () => {
+    const intersections = stubIntersections();
+    try {
+      let loads = 0;
+      render(() => (
+        <ListBox aria-label="Fruit" selectionMode="single">
+          <Option value="apple">Apple</Option>
+          <Option value="banana">Banana</Option>
+          <ListBoxLoadMoreItem isLoading onLoadMore={() => loads++}>
+            Loading
+          </ListBoxLoadMoreItem>
+        </ListBox>
+      ));
+      flush();
+      expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
+        "Apple",
+        "Banana",
+        "Loading",
+      ]);
+      intersections.fire();
+      expect(loads).toBe(1);
+      user.tab();
+      user.keyboard("{End}");
+      flush();
+      expect(document.activeElement?.textContent).toBe("Banana");
+    } finally {
+      intersections.restore();
+    }
+  });
+
+  test("the sentinel adds nothing a checker objects to", () => {
+    const { container } = render(() => <Loading />);
+    expectNoAriaViolations(container);
+  });
+
+  describe("virtualised", () => {
+    const MANY: Entry[] = [
+      ...Array.from({ length: 100 }, (_, at) => ({ id: `f${at}`, name: `Fruit ${at}` })),
+      { id: "loader", name: "Loading", kind: "loader" as const },
+    ];
+
+    function scrollTo(element: HTMLElement, top: number): void {
+      element.style.overflow = "auto";
+      Object.defineProperty(element, "clientHeight", { value: 100, configurable: true });
+      Object.defineProperty(element, "clientWidth", { value: 200, configurable: true });
+      Object.defineProperty(element, "scrollTop", {
+        value: top,
+        writable: true,
+        configurable: true,
+      });
+      element.dispatchEvent(new Event("scroll"));
+      flush();
+    }
+
+    function Many(props: { isLoading?: boolean }) {
+      return (
+        <Virtualizer layout={listLayout({ rowHeight: 20, loaderHeight: 30 })} overscan={0}>
+          <Loading items={MANY} isLoading={props.isLoading} />
+        </Virtualizer>
+      );
+    }
+
+    test("the loader is placed after the last row and is rendered wherever the scroll is", () => {
+      const { container } = render(() => <Many isLoading />);
+      const list = screen.getByRole("listbox");
+      scrollTo(list, 0);
+
+      const options = screen.getAllByRole("option");
+      expect(options.length).toBeLessThan(20);
+      const loader = options.at(-1) as HTMLElement;
+      expect(loader.textContent).toBe("Loading");
+      expect(loader.style.top).toBe("2000px");
+      expect(loader.style.height).toBe("30px");
+      expect(options[0]?.getAttribute("aria-setsize")).toBe("100");
+      expect(list.style.height).toBe("2030px");
+
+      const box = container.querySelector("[data-load-more-sentinel]")?.parentElement;
+      expect(box?.style.position).toBe("absolute");
+      expect(box?.style.top).toBe("2000px");
+    });
+
+    test("not loading, the loader takes no room", () => {
+      render(() => <Many />);
+      const list = screen.getByRole("listbox");
+      scrollTo(list, 0);
+      expect(list.style.height).toBe("2000px");
+    });
   });
 });
