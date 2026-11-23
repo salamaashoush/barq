@@ -43,6 +43,11 @@
       "barq": "./src/index.ts",
       "bun": "./src/index.ts"
     },
+    "./action-group": {
+      "types": "./src/action-group.tsx",
+      "barq": "./src/action-group.tsx",
+      "bun": "./src/action-group.tsx"
+    },
     "./autocomplete": {
       "types": "./src/autocomplete.tsx",
       "barq": "./src/autocomplete.tsx",

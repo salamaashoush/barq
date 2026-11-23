@@ -1541,6 +1541,19 @@ export {
   type DropZoneProps,
 } from "./dropzone.tsx";
 export {
+  ActionGroup,
+  actionGroup,
+  type ActionGroupComponentProps,
+  ActionGroupItem,
+  actionGroupItem,
+  type ActionGroupItemComponentProps,
+  type ActionGroupItemOptions,
+  type ActionGroupItemResult,
+  type ActionGroupOptions,
+  type ActionGroupResult,
+  useActionGroup,
+} from "./action-group.tsx";
+export {
   autocomplete,
   Autocomplete,
   autocompleteState,

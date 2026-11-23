@@ -31,6 +31,7 @@ import { describe, expect, test } from "bun:test";
 
 const ENTRIES = [
   "index",
+  "action-group",
   "autocomplete",
   "breadcrumbs",
   "button",
