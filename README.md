@@ -177,6 +177,7 @@ Components and libraries:
 - [`@barqjs/table`](./packages/table#readme): headless tables, on TanStack Table's core.
 - [`@barqjs/virtual`](./packages/virtual#readme): virtualized scrolling for long lists, on TanStack Virtual's core.
 - [`@barqjs/lexical`](./packages/lexical#readme): rich-text editing on Lexical, with barq components in the document, menus, Yjs collaboration and server rendering.
+- [`@barqjs/diagram`](./packages/diagram#readme): whiteboard diagrams on Excalidraw's element model, with its file format, canvas and SVG rendering, export, and a viewer that renders on the server.
 
 ## Documentation
 
@@ -199,16 +200,16 @@ Each package README is the reference for that package. Beyond them:
 
 ```
 packages/
-  core, web, server, universal, three               the runtime and its renderers
-  compiler, vite, cli                               the Rust compiler, the Vite plugin, `barq check`
-  router, start                                     routing and the server
-  css, aria, primitives, ui, ui-cli                 styling, accessibility and components
-  query, db, form, table, virtual, lexical, lucide  libraries
-  testing, diagnostics                              test utilities and findings
-  create-barq                                       the project scaffolder
-  site, kitchen-sink, three-demo                    the docs site and two example apps
-  benchmark                                         the measurements behind the published numbers
-.github/                                            CI, the release workflow and their scripts
+  core, web, server, universal, three                        the runtime and its renderers
+  compiler, vite, cli                                        the Rust compiler, the Vite plugin, `barq check`
+  router, start                                              routing and the server
+  css, aria, primitives, ui, ui-cli                          styling, accessibility and components
+  query, db, form, table, virtual, lexical, diagram, lucide  libraries
+  testing, diagnostics                                       test utilities and findings
+  create-barq                                                the project scaffolder
+  site, kitchen-sink, three-demo                             the docs site and two example apps
+  benchmark                                                  the measurements behind the published numbers
+.github/                                                     CI, the release workflow and their scripts
 ```
 
 ## Contributing

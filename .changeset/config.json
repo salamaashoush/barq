@@ -18,6 +18,7 @@
       "@barqjs/core",
       "@barqjs/css",
       "@barqjs/db",
+      "@barqjs/diagram",
       "@barqjs/diagnostics",
       "@barqjs/form",
       "@barqjs/lexical",
