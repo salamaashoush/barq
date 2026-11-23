@@ -25,4 +25,13 @@ describe("the live announcer", () => {
     expect(said()).toEqual(["no results"]);
     expect(document.querySelectorAll("[data-barq-live-announcer]")).toHaveLength(1);
   });
+
+  test("an announcement taken back leaves the region, and the others stay", () => {
+    const first = announce("three results");
+    announce("saved");
+    first();
+    expect(said()).toEqual(["saved"]);
+    first();
+    expect(said()).toEqual(["saved"]);
+  });
 });

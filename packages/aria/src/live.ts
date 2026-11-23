@@ -71,8 +71,8 @@ class Announcer {
     return this.node?.isConnected === true;
   }
 
-  announce(message: Announcement, assertiveness: Assertiveness, timeout: number): void {
-    if (this.node === null) return;
+  announce(message: Announcement, assertiveness: Assertiveness, timeout: number): () => void {
+    if (this.node === null) return () => {};
 
     const entry = document.createElement("div");
     if (typeof message === "object") {
@@ -88,9 +88,11 @@ class Announcer {
 
     // Removed once it has certainly been read, so the region does not grow
     // without bound over a long session.
-    if (message !== "") {
-      setTimeout(() => entry.remove(), timeout);
-    }
+    const timer = message === "" ? undefined : setTimeout(() => entry.remove(), timeout);
+    return () => {
+      clearTimeout(timer);
+      entry.remove();
+    };
   }
 
   clear(assertiveness?: Assertiveness): void {
@@ -124,31 +126,41 @@ const isTest = typeof process !== "undefined" && process.env.NODE_ENV === "test"
  * The first call creates the region and waits a moment before filling it:
  * WebKit reads nothing from a region that gained its content in the same frame
  * it was inserted. Subsequent calls are immediate.
+ *
+ * Returns a function that takes the announcement back. One made by reference
+ * must be taken back when the element it names goes: until its timeout the
+ * entry would point at an id that is gone, or that the next element to be
+ * given the id answers for.
  */
 export function announce(
   message: Announcement,
   assertiveness: Assertiveness = "assertive",
   timeout: number = DEFAULT_TIMEOUT,
-): void {
+): () => void {
   // A region the page took out of the document says nothing, and an
   // application that replaces the body's content does take it out.
   if (announcer !== null && !announcer.isAttached()) destroyAnnouncer();
 
   if (announcer !== null) {
-    announcer.announce(message, assertiveness, timeout);
-    return;
+    return announcer.announce(message, assertiveness, timeout);
   }
 
   announcer = new Announcer();
 
   if (isTest) {
-    announcer.announce(message, assertiveness, timeout);
-    return;
+    return announcer.announce(message, assertiveness, timeout);
   }
 
+  let withdraw: (() => void) | undefined;
+  let withdrawn = false;
   setTimeout(() => {
-    if (announcer?.isAttached() === true) announcer.announce(message, assertiveness, timeout);
+    if (withdrawn || announcer?.isAttached() !== true) return;
+    withdraw = announcer.announce(message, assertiveness, timeout);
   }, 100);
+  return () => {
+    withdrawn = true;
+    withdraw?.();
+  };
 }
 
 /** Drop everything queued, for one politeness level or both. */

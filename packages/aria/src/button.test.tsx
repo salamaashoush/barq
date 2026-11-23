@@ -341,6 +341,23 @@ describe("Button: isPending", () => {
     clearAnnouncer();
   });
 
+  test("what a button announced goes with it, so nothing names its id afterwards", () => {
+    clearAnnouncer();
+    const [pending, setPending] = createSignal(false);
+    const { unmount } = render(() => <Button isPending={pending()}>Save</Button>);
+    const button = screen.getByRole("button");
+    const naming = (): number =>
+      document.querySelectorAll(`[aria-live] [aria-labelledby~="${button.id}"]`).length;
+
+    button.focus();
+    setPending(true);
+    flush();
+    expect(naming()).toBe(1);
+
+    unmount();
+    expect(naming()).toBe(0);
+  });
+
   test("an unfocused button announces nothing", () => {
     clearAnnouncer();
     const [pending, setPending] = createSignal(false);

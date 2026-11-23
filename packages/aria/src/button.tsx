@@ -9,7 +9,7 @@
  * cancelled by dragging off, and arrives late on touch.
  */
 
-import { cells, createEffect, provide, type Accessor, type Child } from "@barqjs/core";
+import { cells, createEffect, onCleanup, provide, type Accessor, type Child } from "@barqjs/core";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { focusRing } from "./focus.ts";
 import { focusable, type FocusableOptions } from "./interactions/focusable.ts";
@@ -364,10 +364,17 @@ export function Button(props: ButtonComponentProps) {
   };
 
   let wasPending = isPending();
+  // Each announcement names this button by id, so none may outlive it.
+  const withdrawals: (() => void)[] = [];
+  onCleanup(() => {
+    for (const withdraw of withdrawals.splice(0)) withdraw();
+  });
   createEffect(
     () => ({ pending: isPending(), focused: isFocused(), by: labelledBy() || buttonId() }),
     ({ pending, focused, by }) => {
-      if (focused && pending !== wasPending) announce({ "aria-labelledby": by }, "assertive");
+      if (focused && pending !== wasPending) {
+        withdrawals.push(announce({ "aria-labelledby": by }, "assertive"));
+      }
       wasPending = pending;
     },
   );
