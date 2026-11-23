@@ -1,0 +1,559 @@
+import { describe, expect, test } from "bun:test";
+import { createSignal, flush } from "@barqjs/core";
+import type { ColumnVisibilityState, SortingState } from "@barqjs/table";
+import { ariaViolations, render, screen, tick, user, waitFor } from "@barqjs/testing";
+import { renderRoute } from "@barqjs/testing/router";
+
+import { ConfirmHost } from "./confirm.tsx";
+import { type DataTableColumn, DataTable } from "./data-table.tsx";
+
+async function settle(): Promise<void> {
+  flush();
+  await tick();
+  flush();
+}
+
+interface Invoice {
+  id: string;
+  number: string;
+  customer: string;
+  total: number;
+}
+
+const INVOICES: Invoice[] = [
+  { id: "a", number: "INV-001", customer: "Acme", total: 120 },
+  { id: "b", number: "INV-002", customer: "Globex", total: 80 },
+  { id: "c", number: "INV-003", customer: "Initech", total: 300 },
+];
+
+const COLUMNS: DataTableColumn<Invoice>[] = [
+  { accessorKey: "number", header: "Number" },
+  { accessorKey: "customer", header: "Customer" },
+  { accessorKey: "total", header: "Total", align: "end" },
+];
+
+const bodyRows = (): HTMLElement[] =>
+  screen.getAllByRole("row").filter((row) => row.getAttribute("data-slot") === "data-table-row");
+
+const texts = (): string[] =>
+  bodyRows().map((row) => row.querySelector('[role="rowheader"]')?.textContent ?? "");
+
+describe("DataTable", () => {
+  test("is a grid named by its label, with a header row and a row per record", async () => {
+    render(() => (
+      <DataTable label="Invoices" columns={COLUMNS} data={INVOICES} getRowId={(i) => i.id} />
+    ));
+    await settle();
+    const grid = screen.getByRole("grid", { name: "Invoices" });
+    expect(grid.getAttribute("data-slot")).toBe("data-table-grid");
+    expect(screen.getAllByRole("columnheader").map((head) => head.textContent)).toEqual([
+      "Number",
+      "Customer",
+      "Total",
+    ]);
+    expect(texts()).toEqual(["INV-001", "INV-002", "INV-003"]);
+    expect(screen.getAllByRole("rowheader")).toHaveLength(3);
+    expect(await ariaViolations(document.body)).toEqual([]);
+  });
+});
+
+function viewport(width: number): void {
+  (
+    window as unknown as { happyDOM: { setViewport(size: { width: number }): void } }
+  ).happyDOM.setViewport({
+    width,
+  });
+}
+
+describe("DataTable sorting", () => {
+  test("pressing a sortable header orders the rows, and again reverses them", async () => {
+    render(() => (
+      <DataTable label="Invoices" columns={COLUMNS} data={INVOICES} getRowId={(i) => i.id} />
+    ));
+    await settle();
+    const total = screen.getByRole("columnheader", { name: "Total" });
+    await user.click(total);
+    await settle();
+    expect(total.getAttribute("aria-sort")).toBe("ascending");
+    expect(texts()).toEqual(["INV-002", "INV-001", "INV-003"]);
+
+    await user.click(total);
+    await settle();
+    expect(total.getAttribute("aria-sort")).toBe("descending");
+    expect(texts()).toEqual(["INV-003", "INV-001", "INV-002"]);
+    expect(screen.getByRole("columnheader", { name: "Number" }).hasAttribute("aria-sort")).toBe(
+      false,
+    );
+  });
+
+  test("from the keyboard: the arrows reach a header and Enter sorts by it", async () => {
+    render(() => (
+      <DataTable label="Invoices" columns={COLUMNS} data={INVOICES} getRowId={(i) => i.id} />
+    ));
+    await settle();
+    user.tab();
+    await settle();
+    const first = document.activeElement as HTMLElement;
+    expect(first.getAttribute("role")).toBe("rowheader");
+    expect(first.textContent).toBe("INV-001");
+
+    await user.keyboard("{ArrowRight}");
+    await settle();
+    expect(document.activeElement?.textContent).toBe("Acme");
+    await user.keyboard("{ArrowDown}");
+    await settle();
+    expect(document.activeElement?.textContent).toBe("Globex");
+    await user.keyboard("{ArrowUp}{ArrowUp}");
+    await settle();
+    const header = document.activeElement as HTMLElement;
+    expect(header.getAttribute("role")).toBe("columnheader");
+    expect(header.textContent).toBe("Customer");
+
+    user.keyDown("Enter");
+    await settle();
+    expect(header.getAttribute("aria-sort")).toBe("ascending");
+    expect(texts()).toEqual(["INV-001", "INV-002", "INV-003"]);
+  });
+
+  test("follows the caller's sorting and hands every change back", async () => {
+    const [sorting, setSorting] = createSignal<SortingState>([{ id: "customer", desc: true }]);
+    const seen: SortingState[] = [];
+    render(() => (
+      <DataTable
+        label="Invoices"
+        columns={COLUMNS}
+        data={INVOICES}
+        getRowId={(i) => i.id}
+        sorting={sorting()}
+        onSortingChange={(next) => {
+          seen.push(next);
+          setSorting(next);
+        }}
+      />
+    ));
+    await settle();
+    expect(texts()).toEqual(["INV-003", "INV-002", "INV-001"]);
+    await user.click(screen.getByRole("columnheader", { name: "Number" }));
+    await settle();
+    expect(seen).toEqual([[{ id: "number", desc: false }]]);
+    expect(texts()).toEqual(["INV-001", "INV-002", "INV-003"]);
+  });
+
+  test("a server's order is left alone with manualSorting", async () => {
+    const seen: SortingState[] = [];
+    render(() => (
+      <DataTable
+        label="Invoices"
+        columns={COLUMNS}
+        data={INVOICES}
+        getRowId={(i) => i.id}
+        manualSorting
+        onSortingChange={(next) => seen.push(next)}
+      />
+    ));
+    await settle();
+    await user.click(screen.getByRole("columnheader", { name: "Total" }));
+    await settle();
+    expect(seen).toEqual([[{ id: "total", desc: false }]]);
+    expect(texts()).toEqual(["INV-001", "INV-002", "INV-003"]);
+  });
+
+  test("a column that cannot sort says nothing about order", async () => {
+    render(() => (
+      <DataTable
+        label="Invoices"
+        columns={[
+          { accessorKey: "number", header: "Number", enableSorting: false },
+          ...COLUMNS.slice(1),
+        ]}
+        data={INVOICES}
+        getRowId={(i) => i.id}
+      />
+    ));
+    await settle();
+    const number = screen.getByRole("columnheader", { name: "Number" });
+    expect(number.hasAttribute("aria-sort")).toBe(false);
+    expect(number.querySelector("svg")).toBeNull();
+  });
+});
+
+describe("DataTable selection", () => {
+  function Selecting(props: { onArchive?: (rows: readonly Invoice[]) => void }) {
+    return (
+      <>
+        <DataTable
+          label="Invoices"
+          columns={COLUMNS}
+          data={INVOICES}
+          getRowId={(i) => i.id}
+          selectionMode="multiple"
+          selectionActions={[
+            { label: "Export", onAction: () => {} },
+            {
+              label: "Archive",
+              tone: "danger",
+              confirm: (rows) => ({ title: `Archive ${String(rows.length)} invoices?` }),
+              onAction: (rows) => props.onArchive?.(rows),
+            },
+          ]}
+        />
+        <ConfirmHost />
+      </>
+    );
+  }
+
+  test("each row has a checkbox named after it, and the header one selects them all", async () => {
+    render(() => <Selecting />);
+    await settle();
+    const all = screen.getByRole("checkbox", { name: "Select all" });
+    expect(screen.getByRole("checkbox", { name: "Select INV-002" })).toBeDefined();
+    expect(screen.queryByRole("group", { name: "Selection" })).toBeNull();
+
+    await user.click(screen.getByRole("checkbox", { name: "Select INV-002" }));
+    await settle();
+    expect(bodyRows()[1]?.getAttribute("aria-selected")).toBe("true");
+    expect(bodyRows()[0]?.getAttribute("aria-selected")).toBe("false");
+    expect((all as HTMLInputElement).indeterminate).toBe(true);
+    expect(screen.getByRole("status").textContent).toBe("1 selected");
+
+    await user.click(all);
+    await settle();
+    expect(bodyRows().every((row) => row.getAttribute("aria-selected") === "true")).toBe(true);
+    expect(screen.getByRole("status").textContent).toBe("3 selected");
+    expect(await ariaViolations(document.body)).toEqual([]);
+  });
+
+  test("Space on a row selects it, and the bar's clear button lets go", async () => {
+    const seen: string[][] = [];
+    render(() => (
+      <DataTable
+        label="Invoices"
+        columns={COLUMNS}
+        data={INVOICES}
+        getRowId={(i) => i.id}
+        selectionMode="multiple"
+        onSelectionChange={(keys) => seen.push([...keys])}
+        selectionActions={[{ label: "Export", onAction: () => {} }]}
+      />
+    ));
+    await settle();
+    user.tab();
+    await settle();
+    await user.keyboard("{ArrowDown}");
+    await user.keyboard(" ");
+    await settle();
+    expect(seen.at(-1)).toEqual(["b"]);
+    await user.click(screen.getByRole("button", { name: "Clear selection" }));
+    await settle();
+    expect(seen.at(-1)).toEqual([]);
+    expect(screen.queryByRole("group", { name: "Selection" })).toBeNull();
+  });
+
+  test("an action that asks first acts on the rows once confirmed, then clears", async () => {
+    const archived: string[][] = [];
+    render(() => <Selecting onArchive={(rows) => archived.push(rows.map((row) => row.id))} />);
+    await settle();
+    await user.click(screen.getByRole("checkbox", { name: "Select INV-001" }));
+    await user.click(screen.getByRole("checkbox", { name: "Select INV-003" }));
+    await settle();
+    await user.click(screen.getByRole("button", { name: "Archive" }));
+    await settle();
+    const dialog = await waitFor(() => screen.getByRole("alertdialog"));
+    expect(dialog.textContent).toContain("Archive 2 invoices?");
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+    await waitFor(() => expect(archived).toEqual([["a", "c"]]));
+    await settle();
+    expect(screen.queryByRole("group", { name: "Selection" })).toBeNull();
+  });
+
+  test("single selection has no checkboxes and takes one row", async () => {
+    const seen: string[][] = [];
+    render(() => (
+      <DataTable
+        label="Invoices"
+        columns={COLUMNS}
+        data={INVOICES}
+        getRowId={(i) => i.id}
+        selectionMode="single"
+        onSelectionChange={(keys) => seen.push([...keys])}
+      />
+    ));
+    await settle();
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    await user.click(screen.getByText("Globex"));
+    await user.click(screen.getByText("Initech"));
+    await settle();
+    expect(seen.at(-1)).toEqual(["c"]);
+  });
+});
+
+describe("DataTable columns", () => {
+  test("hides the columns the visibility leaves out, and follows it as it changes", async () => {
+    const [visibility, setVisibility] = createSignal<ColumnVisibilityState>({ customer: false });
+    render(() => (
+      <DataTable
+        label="Invoices"
+        columns={COLUMNS}
+        data={INVOICES}
+        getRowId={(i) => i.id}
+        columnVisibility={visibility()}
+      />
+    ));
+    await settle();
+    expect(screen.getAllByRole("columnheader").map((head) => head.textContent)).toEqual([
+      "Number",
+      "Total",
+    ]);
+    setVisibility({});
+    await settle();
+    expect(screen.getAllByRole("columnheader")).toHaveLength(3);
+  });
+
+  test("a column below its breakpoint is left out of the grid, not just hidden", async () => {
+    viewport(500);
+    try {
+      render(() => (
+        <DataTable
+          label="Invoices"
+          columns={[COLUMNS[0], { ...COLUMNS[1], hideBelow: "md" }, COLUMNS[2]] as never}
+          data={INVOICES}
+          getRowId={(i) => i.id}
+        />
+      ));
+      await settle();
+      expect(screen.getAllByRole("columnheader").map((head) => head.textContent)).toEqual([
+        "Number",
+        "Total",
+      ]);
+      expect(bodyRows()[0]?.querySelectorAll('[role="gridcell"]')).toHaveLength(1);
+    } finally {
+      viewport(1024);
+    }
+  });
+
+  test("a wide screen shows it", async () => {
+    render(() => (
+      <DataTable
+        label="Invoices"
+        columns={[COLUMNS[0], { ...COLUMNS[1], hideBelow: "md" }, COLUMNS[2]] as never}
+        data={INVOICES}
+        getRowId={(i) => i.id}
+      />
+    ));
+    await settle();
+    expect(screen.getAllByRole("columnheader")).toHaveLength(3);
+  });
+
+  test("resizable columns get a handle a keyboard can work", async () => {
+    const ends: string[][] = [];
+    render(() => (
+      <DataTable
+        label="Invoices"
+        columns={COLUMNS}
+        data={INVOICES}
+        getRowId={(i) => i.id}
+        resizable
+        onColumnResize={(widths) => ends.push([...widths.keys()])}
+      />
+    ));
+    await settle();
+    const handles = screen.getAllByRole("slider", { hidden: true });
+    expect(handles).toHaveLength(3);
+    expect(handles[0]?.getAttribute("aria-label")).toContain("Resize column");
+    const frame = document.querySelector('[data-slot="data-table-frame"]') as HTMLElement;
+    expect(frame.style.getPropertyValue("--arc-data-table-columns")).toBe(
+      "max-content max-content max-content",
+    );
+    expect(screen.getAllByRole("columnheader")[0]?.style.width).not.toBe("");
+  });
+});
+
+describe("DataTable rows", () => {
+  test("a row with an href is a link the router follows; a button in it stays a button", async () => {
+    const pressed: string[] = [];
+    const columns: DataTableColumn<Invoice>[] = [
+      ...COLUMNS,
+      {
+        id: "actions",
+        header: "Actions",
+        enableSorting: false,
+        cell: (context) => (
+          <button type="button" onClick={() => pressed.push(context.row.original.id)}>
+            Remind
+          </button>
+        ),
+      },
+    ];
+    function Invoices() {
+      return (
+        <DataTable
+          label="Invoices"
+          columns={columns}
+          data={INVOICES}
+          getRowId={(i) => i.id}
+          rowHref={(invoice) => `/invoices/${invoice.id}`}
+        />
+      );
+    }
+    const view = await renderRoute({
+      routeTree: [
+        { path: "/invoices", component: Invoices },
+        { path: "/invoices/$id", component: () => <p>Detail</p> },
+      ] as never,
+      path: "/invoices",
+    });
+    await settle();
+    expect(bodyRows()[1]?.getAttribute("data-href")).toBe("/invoices/b");
+
+    await user.click(screen.getAllByRole("button", { name: "Remind" })[0] as HTMLElement);
+    await settle();
+    expect(pressed).toEqual(["a"]);
+    expect(view.state.location().pathname).toBe("/invoices");
+
+    await user.click(screen.getByText("Globex"));
+    await waitFor(() => expect(view.state.location().pathname).toBe("/invoices/b"));
+    view.unmount();
+  });
+
+  test("Enter on a row runs its action", async () => {
+    const opened: string[] = [];
+    render(() => (
+      <DataTable
+        label="Invoices"
+        columns={COLUMNS}
+        data={INVOICES}
+        getRowId={(i) => i.id}
+        onRowAction={(invoice) => opened.push(invoice.id)}
+      />
+    ));
+    await settle();
+    user.tab();
+    await settle();
+    await user.keyboard("{ArrowDown}{ArrowDown}{Enter}");
+    await settle();
+    expect(opened).toEqual(["c"]);
+  });
+
+  test("while loading it draws skeleton rows and says it is busy", async () => {
+    render(() => (
+      <DataTable
+        label="Invoices"
+        columns={COLUMNS}
+        data={undefined}
+        getRowId={(i: Invoice) => i.id}
+        skeletonRows={4}
+      />
+    ));
+    await settle();
+    expect(bodyRows()).toHaveLength(4);
+    expect(bodyRows()[0]?.getAttribute("data-skeleton")).toBe("");
+    expect(document.querySelectorAll('[data-slot="skeleton"]')).toHaveLength(12);
+    expect(screen.getByRole("grid").closest("[aria-busy]")?.getAttribute("aria-busy")).toBe("true");
+  });
+
+  test("with no rows it shows the empty state inside the grid", async () => {
+    render(() => (
+      <DataTable
+        label="Invoices"
+        columns={COLUMNS}
+        data={[]}
+        getRowId={(i: Invoice) => i.id}
+        empty={<p>No invoices yet</p>}
+      />
+    ));
+    await settle();
+    const message = screen.getByText("No invoices yet");
+    expect(message.closest('[role="gridcell"]')).not.toBeNull();
+    expect(await ariaViolations(document.body)).toEqual([]);
+  });
+
+  test("pages through the rows, a page at a time", async () => {
+    render(() => (
+      <DataTable
+        label="Invoices"
+        columns={COLUMNS}
+        data={INVOICES}
+        getRowId={(i) => i.id}
+        pagination={{ pageSize: 2 }}
+      />
+    ));
+    await settle();
+    const pages = screen.getByRole("navigation", { name: "Pages" });
+    expect(pages.textContent).toContain("Page 1 of 2");
+    expect(texts()).toEqual(["INV-001", "INV-002"]);
+    expect(screen.getByRole("button", { name: "Previous page" }).hasAttribute("disabled")).toBe(
+      true,
+    );
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+    await settle();
+    expect(texts()).toEqual(["INV-003"]);
+    expect(pages.textContent).toContain("Page 2 of 2");
+  });
+
+  test("a server's pages are shown as they arrive", async () => {
+    const asked: number[] = [];
+    render(() => (
+      <DataTable
+        label="Invoices"
+        columns={COLUMNS}
+        data={INVOICES}
+        getRowId={(i) => i.id}
+        pagination={{ pageSize: 3, pageCount: 4, onPageIndexChange: (page) => asked.push(page) }}
+      />
+    ));
+    await settle();
+    expect(texts()).toHaveLength(3);
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+    await settle();
+    expect(asked).toEqual([1]);
+    expect(texts()).toHaveLength(3);
+  });
+
+  test("a list that loads more has a loader row that is not one of the rows", async () => {
+    render(() => (
+      <DataTable
+        label="Invoices"
+        columns={COLUMNS}
+        data={INVOICES}
+        getRowId={(i) => i.id}
+        onLoadMore={() => {}}
+        isLoadingMore
+      />
+    ));
+    await settle();
+    const loader = screen.getAllByRole("row").at(-1) as HTMLElement;
+    expect(loader.getAttribute("data-slot")).toBe("data-table-loader");
+    expect(loader.textContent).toContain("Loading more");
+    expect(document.querySelector("[data-load-more-sentinel]")).not.toBeNull();
+    expect(bodyRows()).toHaveLength(3);
+  });
+
+  test("virtualised, only the rows in view are in the document", async () => {
+    const many: Invoice[] = Array.from({ length: 200 }, (_, at) => ({
+      id: `r${String(at)}`,
+      number: `INV-${String(at).padStart(3, "0")}`,
+      customer: "Acme",
+      total: at,
+    }));
+    render(() => (
+      <DataTable
+        label="Invoices"
+        columns={COLUMNS}
+        data={many}
+        getRowId={(i) => i.id}
+        virtualRowHeight={40}
+        height="400px"
+      />
+    ));
+    await settle();
+    const grid = screen.getByRole("grid");
+    Object.defineProperty(grid, "clientHeight", { value: 400, configurable: true });
+    Object.defineProperty(grid, "clientWidth", { value: 600, configurable: true });
+    grid.dispatchEvent(new Event("scroll"));
+    await settle();
+    const rendered = bodyRows();
+    expect(rendered.length).toBeGreaterThan(0);
+    expect(rendered.length).toBeLessThan(60);
+    expect(rendered[0]?.style.position).toBe("absolute");
+  });
+});

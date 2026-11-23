@@ -108,3 +108,34 @@ describe("on the server", () => {
     expect(html).toContain('aria-label="Trend over 3 values, from 1 to 2; lowest 1, highest 3"');
   });
 });
+
+describe("the data layer on the server", () => {
+  test("DataTable writes its grid, its headers and its rows", async () => {
+    const jsx = `
+      <DataTable
+        label="Invoices"
+        getRowId={(invoice) => invoice.id}
+        data={[
+          { id: "a", number: "INV-001", total: 120 },
+          { id: "b", number: "INV-002", total: 80 },
+        ]}
+        columns={[
+          { accessorKey: "number", header: "Number" },
+          { accessorKey: "total", header: "Total", align: "end", hideBelow: "md" },
+        ]}
+        selectionMode="multiple"
+        defaultSorting={[{ id: "number", desc: true }]}
+      />
+    `;
+    const { code, html, errors } = await serverProcess(routed(["DataTable"], jsx, "/"));
+    expect(errors).toBe("");
+    expect(code).toBe(0);
+    expect(html).toContain('role="grid"');
+    expect(html).toContain('aria-label="Invoices"');
+    expect(html).toContain('aria-sort="descending"');
+    expect(html.indexOf("INV-002")).toBeLessThan(html.indexOf("INV-001"));
+    expect(html).toContain('aria-label="Select all"');
+    // Narrow until the browser says otherwise: the server answers every media query false.
+    expect(html).not.toContain(">Total<");
+  });
+});

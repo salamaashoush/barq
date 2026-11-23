@@ -113,6 +113,38 @@ if (await confirm({ title: "Delete the check?", tone: "danger", confirmLabel: "D
   one, with an optional pulse that stops under reduced motion.
 - `confirm()`: a promise for the reader's answer, drawn by one `<ConfirmHost />`
   on the page.
+- `DataTable`: records as a grid, from TanStack column definitions through
+  `@barqjs/table`, read by `@barqjs/aria`'s table. The arrows move a cell at a
+  time and a header sorts when pressed. Sorting, selection, column visibility
+  and the page are each the caller's when given and the table's own when not.
+  It selects one row or many, with a checkbox per row and one for all, and a
+  `SelectionBar` of `selectionActions` while any are selected. Columns resize
+  through aria's handles, leave the grid below their `hideBelow` breakpoint,
+  and align numbers at the end. `rowHref` makes the whole row a link the
+  router follows, while a button in a cell stays a button. It draws skeleton
+  rows while loading, an `EmptyState` when empty, pages or loads more as the
+  end comes into view, keeps its header stuck, and renders only the rows on
+  screen with `virtualRowHeight`.
+
+  ```tsx
+  <DataTable
+    label="Invoices"
+    data={invoices()}
+    getRowId={(invoice) => invoice.id}
+    columns={[
+      { accessorKey: "number", header: "Number" },
+      { accessorKey: "customer", header: "Customer", hideBelow: "md" },
+      { accessorKey: "total", header: "Total", align: "end" },
+    ]}
+    selectionMode="multiple"
+    selectionActions={[{ label: "Archive", tone: "danger", onAction: archive }]}
+    rowHref={(invoice) => `/invoices/${invoice.id}`}
+  />
+  ```
+
+- `SelectionBar`: how many rows are selected, in a live region, the actions
+  for them, and a button that lets go. An action may ask through `confirm()`
+  first, and holds the bar pending while it runs.
 - `UnsavedChangesGuard`: asks through `confirm()` before a page with unsaved
   changes is left by a link or the back button, and has the browser ask
   before the tab closes. It guards while `when` is true and stops when it

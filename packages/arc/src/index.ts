@@ -19,6 +19,16 @@ export {
 export { ConfirmHost, type ConfirmOptions, confirm } from "./components/confirm.tsx";
 export { CopyButton, type CopyButtonProps } from "./components/copy-button.tsx";
 export {
+  type Breakpoint,
+  DataTable,
+  type DataTableColumn,
+  type DataTableColumnOptions,
+  type DataTableFeatures,
+  type DataTableLabels,
+  type DataTablePagination,
+  type DataTableProps,
+} from "./components/data-table.tsx";
+export {
   DetailSheet,
   type DetailSheetProps,
   type DetailSheetSize,
@@ -38,6 +48,11 @@ export {
   type RouteCrumb,
 } from "./components/breadcrumbs.tsx";
 export { PageHeader, type PageHeaderProps } from "./components/page-header.tsx";
+export {
+  SelectionBar,
+  type SelectionAction,
+  type SelectionBarProps,
+} from "./components/selection-bar.tsx";
 export { type StatCardProps, type StatDelta, StatCard } from "./components/stat-card.tsx";
 export {
   Status,
