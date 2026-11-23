@@ -25,7 +25,14 @@ import {
   useLiveSuspenseQuery,
   usePacedMutations,
 } from "./index.ts";
-import { type Channel, type Message, settle, subscribers, workspace } from "./test-helpers.ts";
+import {
+  type Channel,
+  type Message,
+  settle,
+  status,
+  subscribers,
+  workspace,
+} from "./test-helpers.ts";
 
 const cleanups: Array<() => void> = [];
 
@@ -236,10 +243,11 @@ describe("owner disposal", () => {
     const liveCollection = list.collection;
 
     dispose();
-    await settle();
+    flush();
+    await subscribers(channelsCollection, 0);
+    await status(liveCollection, "cleaned-up");
     expect(channelsCollection.subscriberCount).toBe(0);
     expect(liveCollection.subscriberCount).toBe(0);
-    expect(liveCollection.status).toBe("cleaned-up");
   });
 
   test("a recompile retires the previous live query and keeps one subscription", async () => {
@@ -256,9 +264,10 @@ describe("owner disposal", () => {
     const before = list.collection;
 
     setWorkspaceId("example");
-    await settle();
+    flush();
+    await status(before, "cleaned-up");
+    await subscribers(channelsCollection, 1);
     expect(list.collection).not.toBe(before);
-    expect(before.status).toBe("cleaned-up");
     expect(channelsCollection.subscriberCount).toBe(1);
   });
 
@@ -285,7 +294,8 @@ describe("owner disposal", () => {
     expect(channelsCollection.subscriberCount).toBe(1);
 
     setShown(false);
-    await settle();
+    flush();
+    await subscribers(channelsCollection, 0);
     expect(element.textContent).toBe("");
     expect(channelsCollection.subscriberCount).toBe(0);
   });

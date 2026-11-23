@@ -19,6 +19,23 @@ interface Watched {
   ): () => void;
 }
 
+interface Staged {
+  readonly status: string;
+  on(event: "status:change", listener: (event: { status: string }) => void): () => void;
+}
+
+/** Resolves once `collection` reaches `status`, on the same chain {@link subscribers} waits out. */
+export function status(collection: Staged, wanted: string): Promise<void> {
+  if (collection.status === wanted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const stop = collection.on("status:change", (event) => {
+      if (event.status !== wanted) return;
+      stop();
+      resolve();
+    });
+  });
+}
+
 /**
  * Resolves once `collection` has `count` subscribers. A live query a hook let go
  * of is released on its collection's GC timer, then an idle callback, then an
