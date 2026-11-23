@@ -67,6 +67,11 @@
       "bun": "./src/collections.ts",
       "import": "./dist/collections.js"
     },
+    "./color-scheme": {
+      "types": "./dist/color-scheme.d.ts",
+      "bun": "./src/color-scheme.ts",
+      "import": "./dist/color-scheme.js"
+    },
     "./derived": {
       "types": "./dist/derived.d.ts",
       "bun": "./src/derived.ts",
@@ -191,6 +196,7 @@
   },
   "devDependencies": {
     "@barqjs/core": "workspace:*",
+    "@barqjs/server": "workspace:*",
     "@barqjs/web": "workspace:*",
     "@happy-dom/global-registrator": "^21.0.4",
     "@types/bun": "^1.4.4",

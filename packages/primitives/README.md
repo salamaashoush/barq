@@ -175,6 +175,41 @@ const wide = mediaQuery("(min-width: 768px)");
 a key nobody has set stays unset. A quota failure reaches `onError` instead of
 taking the render down.
 
+### Light, dark and system
+
+```tsx
+import { colorScheme, useColorScheme } from "@barqjs/primitives";
+
+function Root(props: { children: Child }) {
+  colorScheme({ disableTransitionOnChange: true });
+  return props.children;
+}
+
+function Toggle() {
+  const scheme = useColorScheme();
+  return (
+    <button onClick={() => scheme.set(scheme.resolved() === "dark" ? "light" : "dark")}>
+      {scheme.resolved() ?? "theme"}
+    </button>
+  );
+}
+```
+
+The choice is kept in a cookie, so the server renders with it, and
+`colorScheme()` puts a script in the head that writes the theme on `<html>`
+before the first paint. A reader who picked dark, or whose system is dark, never
+sees a light frame, and that includes a prerendered page whose server never saw
+the cookie. Afterwards the page follows the operating system and every other
+open tab.
+
+`resolved()` is `undefined` while the choice is `"system"` and the answer is not
+known yet, on the server and until the page has hydrated, because the server
+could not have known it either; style with the `.dark` class and keep markup
+that depends on the answer for after hydration. `themes`, `attribute` (a class
+or a `data-` attribute), `values` and `defaultChoice` take the rest of
+`next-themes`' options. An app whose document is a static `index.html` puts
+`colorSchemeScript()` in it.
+
 `online` is honest about what it knows: `navigator.onLine` reports that a route
 exists, not that anything is reachable, so treat `false` as certainly offline
 and `true` as unknown.
@@ -335,6 +370,7 @@ would mean two listeners.
 - `keyboard`: `keysDown`, `isKeyDown`, `shortcut`, `parseCombo`.
 - `focus`: `activeElement`, `focused`, `focusWithin`, `clickOutside`.
 - `media`: `mediaQuery`, `breakpoints`, `prefersDark`, `prefersReducedMotion`, `coarsePointer`.
+- `color-scheme`: `colorScheme`, `useColorScheme`, `colorSchemeScript`.
 - `storage`: `persisted`, `persistedSession`, `clearPersisted`, `peekPersisted`.
 - `browser`: `online`, `pageVisible`, `userIdle`, `permission`, `devicePixelRatio`, `languages`, `documentTitle`.
 - `clipboard`: `clipboard`, `writeClipboard`, `readClipboard`.

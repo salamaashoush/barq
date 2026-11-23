@@ -19,6 +19,7 @@ import * as browser from "./browser.ts";
 import * as bus from "./bus.ts";
 import * as clipboard from "./clipboard.ts";
 import * as collections from "./collections.ts";
+import * as colorScheme from "./color-scheme.ts";
 import * as derived from "./derived.ts";
 import * as element from "./element.ts";
 import * as event from "./event.ts";
@@ -48,6 +49,7 @@ const MODULES: Record<string, Record<string, unknown>> = {
   bus,
   clipboard,
   collections,
+  "color-scheme": colorScheme,
   derived,
   element,
   event,
@@ -113,9 +115,9 @@ describe("the root entry", () => {
     const sources = files
       .filter((name) => !name.includes(".test."))
       .map((name) => name.replace(/\.ts$/, ""))
-      // Neither is a module: one wires happy-dom into `bun test`, the other is
-      // the script `server.test.ts` spawns without a DOM.
-      .filter((name) => name !== "test-setup" && name !== "server-probe" && name !== "index");
+      // None is a module: one wires happy-dom into `bun test`, and a probe is a
+      // script a test spawns without a DOM.
+      .filter((name) => name !== "test-setup" && !name.endsWith("-probe") && name !== "index");
 
     expect(sources.toSorted()).toEqual(Object.keys(MODULES).toSorted());
 

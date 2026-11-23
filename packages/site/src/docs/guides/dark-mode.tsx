@@ -4,6 +4,29 @@ import { ComponentPreview } from "../preview.tsx";
 import ModeToggle from "./snippets/dark-mode/mode-toggle.tsx";
 import toggle from "./snippets/dark-mode/mode-toggle.tsx?raw";
 
+const pageToggle = `import { colorScheme, useColorScheme } from "@barqjs/primitives";
+
+function Root(props: { children: Child }) {
+  colorScheme({ disableTransitionOnChange: true });
+  return props.children;
+}
+
+function ModeToggle() {
+  const scheme = useColorScheme();
+  return (
+    <Button
+      variant="outline"
+      size="icon"
+      aria-label="Toggle theme"
+      onPress={() => scheme.set(scheme.resolved() === "dark" ? "light" : "dark")}
+    >
+      <Show when={scheme.resolved() === "dark"} fallback={<Moon />}>
+        <Sun />
+      </Show>
+    </Button>
+  );
+}`;
+
 export const sections: readonly DocsSection[] = [
   { id: "class", label: "The dark class" },
   { id: "toggle", label: "A mode toggle" },
@@ -31,15 +54,25 @@ export function Body() {
         A mode toggle
       </h2>
       <p>
-        The choice is a signal, and the class follows it. This one remembers the choice in{" "}
-        <code>localStorage</code>, which it reads once the page has settled: the server has no
-        storage, and reading it while the tree is built would make the server and the client
-        disagree.
+        For the whole page, call <code>colorScheme()</code> from <code>@barqjs/primitives</code>{" "}
+        once, near the root. It keeps the choice in a cookie, so the server renders with it, and
+        puts a script in the head that writes the class on <code>{"<html>"}</code> before the first
+        paint: a reader who picked dark, or whose system is dark, never sees a light frame. Anything
+        below reads it back with <code>useColorScheme()</code>.
+      </p>
+      <CodeBlock code={pageToggle} />
+      <p>
+        <code>resolved()</code> is <code>undefined</code> while the choice is <code>"system"</code>{" "}
+        and the page has not hydrated, because the server could not know the answer either. Style
+        with the <code>dark</code> class rather than with that value.
+      </p>
+      <p>
+        The class can also go on one element. This toggle turns only its own surface, and remembers
+        the choice once the page has settled:
       </p>
       <ComponentPreview code={toggle}>
         <ModeToggle />
       </ComponentPreview>
-
       <h2 class={anchor} id="system">
         Follow the system
       </h2>

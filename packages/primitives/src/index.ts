@@ -103,6 +103,15 @@ export {
 } from "./machine.ts";
 
 export {
+  type ColorScheme,
+  type ColorSchemeOptions,
+  type SchemeChoice,
+  colorScheme,
+  colorSchemeScript,
+  useColorScheme,
+} from "./color-scheme.ts";
+
+export {
   type BreakpointState,
   type Breakpoints,
   breakpoints,

@@ -7,6 +7,7 @@ const modules = [
   "bus",
   "clipboard",
   "collections",
+  "color-scheme",
   "derived",
   "element",
   "event",
