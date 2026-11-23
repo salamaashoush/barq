@@ -29,6 +29,16 @@ export {
   type DataTableProps,
 } from "./components/data-table.tsx";
 export {
+  DataToolbar,
+  type DataToolbarColumn,
+  type DataToolbarFilter,
+  type DataToolbarFilterOption,
+  type DataToolbarLabels,
+  type DataToolbarProps,
+  type DataToolbarSearch,
+  type DataToolbarSelection,
+} from "./components/data-toolbar.tsx";
+export {
   DetailSheet,
   type DetailSheetProps,
   type DetailSheetSize,

@@ -142,6 +142,23 @@ if (await confirm({ title: "Delete the check?", tone: "danger", confirmLabel: "D
   />
   ```
 
+- `DataToolbar`: the row above a list, a search landmark holding the search
+  field, a chip per filter, a Clear once any is set, the view options that
+  show and hide columns, and the caller's actions. The search and each filter
+  are the caller's, the toolbar's own, or a search parameter's, so a filtered
+  list has a link. While rows are selected their count and actions take the
+  filters' place.
+
+  ```tsx
+  <DataToolbar
+    search={{ label: "Search invoices", param: "q" }}
+    filters={[{ id: "status", label: "Status", param: "status", options: STATUSES }]}
+    columns={[{ id: "customer", label: "Customer" }]}
+    columnVisibility={visibility()}
+    onColumnVisibilityChange={setVisibility}
+  />
+  ```
+
 - `SelectionBar`: how many rows are selected, in a live region, the actions
   for them, and a button that lets go. An action may ask through `confirm()`
   first, and holds the bar pending while it runs.
