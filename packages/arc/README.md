@@ -99,6 +99,8 @@ if (await confirm({ title: "Delete the check?", tone: "danger", confirmLabel: "D
   from the cookie, so the page hydrates without a flicker.
 - `CopyButton`: puts a value on the clipboard, turns to a check for a moment
   and tells a screen reader through a live region.
+- `EmptyState`: a list with nothing in it yet, as an icon, a heading, a line
+  and the actions that fill it, on `@barqjs/ui`'s `Empty`.
 - `PageHeader`: the page's `<h1>`, a line about it, what sits above it and the
   actions beside it.
 - `Status`: a state in a word and a tone, as a dot, a tinted pill or a filled

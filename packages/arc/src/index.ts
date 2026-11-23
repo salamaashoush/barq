@@ -18,6 +18,12 @@ export {
 } from "./components/command-menu.tsx";
 export { ConfirmHost, type ConfirmOptions, confirm } from "./components/confirm.tsx";
 export { CopyButton, type CopyButtonProps } from "./components/copy-button.tsx";
+export {
+  EmptyState,
+  type EmptyStateProps,
+  type EmptyStateVariant,
+  emptyStateVariants,
+} from "./components/empty-state.tsx";
 export { ArcProvider, type ArcProviderProps } from "./components/provider.tsx";
 export {
   Breadcrumbs,
