@@ -794,53 +794,18 @@ function publishesSource(exports: unknown): boolean {
  *
  * Vite EXTERNALISES a dependency in the SSR environment, so node would be
  * handed the `.ts` the condition resolved to and refuse it. They have to be
- * bundled, which means naming them.
- *
- * One level past the direct dependencies, because a barq package depends on
- * barq packages — `@barqjs/ui` on `@barqjs/aria` on `@barqjs/core`.
+ * bundled, which means naming them, at every depth: an application installs a
+ * design system, which builds on `@barqjs/aria`, which peers on
+ * `@barqjs/primitives`, and the last one is as much source as the first.
  */
 function barqPackages(root: string): string[] {
-  const found = new Set<string>();
-  const seen = new Set<string>();
-  const require_ = createRequire(join(root, "package.json"));
-
-  const visit = (from: string, depth: number): void => {
-    if (depth < 0 || seen.has(from)) return;
-    seen.add(from);
-    let manifest: {
-      dependencies?: Record<string, string>;
-      devDependencies?: Record<string, string>;
-    };
-    try {
-      manifest = JSON.parse(readFileSync(from, "utf8")) as typeof manifest;
-    } catch {
-      return;
+  const names = new Set<string>();
+  for (const { manifest } of installedPackages(root)) {
+    if (typeof manifest.name === "string" && publishesSource(manifest.exports)) {
+      names.add(manifest.name);
     }
-    for (const name of [
-      ...Object.keys(manifest.dependencies ?? {}),
-      ...Object.keys(manifest.devDependencies ?? {}),
-    ]) {
-      let resolved: string;
-      try {
-        resolved = require_.resolve(`${name}/package.json`);
-      } catch {
-        continue;
-      }
-      let theirs: { exports?: unknown };
-      try {
-        theirs = JSON.parse(readFileSync(resolved, "utf8")) as typeof theirs;
-      } catch {
-        continue;
-      }
-      if (publishesSource(theirs.exports)) {
-        found.add(name);
-        visit(resolved, depth - 1);
-      }
-    }
-  };
-
-  visit(join(root, "package.json"), 2);
-  return [...found];
+  }
+  return [...names];
 }
 
 /**
@@ -876,6 +841,7 @@ export function packageDir(root: string, name: string): string | null {
 
 interface BoundaryManifest {
   name?: unknown;
+  exports?: unknown;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
@@ -976,26 +942,62 @@ function declaredIntrinsics(manifest: BoundaryManifest, dir: string): BarqIntrin
   return found;
 }
 
-/** The directory and manifest of every dependency and workspace package of the project. */
-function dependencyManifests(root: string): { dir: string; manifest: BoundaryManifest }[] {
+/** Whether a package takes part in the build: it ships source, or declares under `barq`. */
+function takesPart(manifest: BoundaryManifest): boolean {
+  return publishesSource(manifest.exports) || manifest.barq !== undefined;
+}
+
+/**
+ * Every package the project installs that the build has to know about: the
+ * direct dependencies and workspace packages, and then, through each one that
+ * takes part, what it depends on and peers on, to any depth.
+ *
+ * A package's own dependencies are looked up from where it is really
+ * installed. Under an isolated install (bun's, pnpm's) a transitive
+ * dependency is a sibling in the store, not something the root can see.
+ * Packages that take no part are not walked into, which keeps this to the
+ * barq corner of `node_modules` rather than all of it.
+ */
+function installedPackages(root: string): { dir: string; manifest: BoundaryManifest }[] {
   const manifest = readManifest(join(root, "package.json"));
   if (manifest === null) return [];
-  const names = new Set([
+  const found = new Map<string, { dir: string; manifest: BoundaryManifest }>();
+  const pending: { dir: string; manifest: BoundaryManifest }[] = [];
+  const add = (dir: string): void => {
+    let real: string;
+    try {
+      real = realpathSync(dir);
+    } catch {
+      return;
+    }
+    if (found.has(real)) return;
+    const theirs = readManifest(join(real, "package.json"));
+    if (theirs === null) return;
+    const entry = { dir: real, manifest: theirs };
+    found.set(real, entry);
+    if (takesPart(theirs)) pending.push(entry);
+  };
+  for (const name of [
     ...Object.keys(manifest.dependencies ?? {}),
     ...Object.keys(manifest.devDependencies ?? {}),
     ...Object.keys(manifest.peerDependencies ?? {}),
     ...Object.keys(manifest.optionalDependencies ?? {}),
-  ]);
-  const dirs = [
-    ...[...names].flatMap((name) => packageDir(root, name) ?? []),
-    ...workspaceDirs(root, manifest.workspaces),
-  ];
-  const found: { dir: string; manifest: BoundaryManifest }[] = [];
-  for (const dir of new Set(dirs)) {
-    const theirs = readManifest(join(dir, "package.json"));
-    if (theirs !== null) found.push({ dir, manifest: theirs });
+  ]) {
+    const dir = packageDir(root, name);
+    if (dir !== null) add(dir);
   }
-  return found;
+  for (const dir of workspaceDirs(root, manifest.workspaces)) add(dir);
+  for (let next = pending.shift(); next !== undefined; next = pending.shift()) {
+    for (const name of [
+      ...Object.keys(next.manifest.dependencies ?? {}),
+      ...Object.keys(next.manifest.peerDependencies ?? {}),
+      ...Object.keys(next.manifest.optionalDependencies ?? {}),
+    ]) {
+      const dir = packageDir(next.dir, name);
+      if (dir !== null) add(dir);
+    }
+  }
+  return [...found.values()];
 }
 
 /**
@@ -1006,7 +1008,7 @@ function dependencyManifests(root: string): { dir: string; manifest: BoundaryMan
  * with no configuration.
  */
 export function discoverBoundaries(root: string): BarqBoundary[] {
-  const found = dependencyManifests(root).flatMap(({ manifest }) => declaredBoundaries(manifest));
+  const found = installedPackages(root).flatMap(({ manifest }) => declaredBoundaries(manifest));
   return mergeBoundaries([], found);
 }
 
@@ -1015,9 +1017,7 @@ export function discoverBoundaries(root: string): BarqBoundary[] {
  * declare, under `"barq": { "intrinsics": [...] }`.
  */
 export function discoverIntrinsics(root: string): BarqIntrinsic[] {
-  return dependencyManifests(root).flatMap(({ dir, manifest }) =>
-    declaredIntrinsics(manifest, dir),
-  );
+  return installedPackages(root).flatMap(({ dir, manifest }) => declaredIntrinsics(manifest, dir));
 }
 
 /**

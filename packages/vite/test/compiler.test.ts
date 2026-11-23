@@ -1566,3 +1566,77 @@ export const App = () => <main><h1>salama</h1></main>;
     expect(own).not.toContain("@acme/scene/renderer");
   });
 });
+
+describe("packages that ship source", () => {
+  const made: string[] = [];
+  afterAll(() => {
+    for (const dir of made) rmSync(dir, { recursive: true, force: true });
+  });
+
+  const SOURCE_EXPORTS = { ".": { barq: "./src/index.ts", default: "./src/index.ts" } };
+
+  /**
+   * An isolated install, the layout bun and pnpm write: every package in a
+   * store directory beside its own dependencies, and only the application's
+   * direct dependencies linked where the root can see them.
+   */
+  function isolated(): string {
+    const root = join(tmpdir(), `barq-source-packages-${process.pid}`);
+    made.push(root);
+    rmSync(root, { recursive: true, force: true });
+    const store = join(root, "node_modules", ".store");
+    const install = (name: string, manifest: Record<string, unknown>, deps: string[]): string => {
+      const dir = join(store, name.replace("/", "+"), "node_modules", name);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "package.json"), JSON.stringify({ name, ...manifest }));
+      for (const dep of deps) {
+        const link = join(store, name.replace("/", "+"), "node_modules", dep);
+        mkdirSync(join(link, ".."), { recursive: true });
+        symlinkSync(join(store, dep.replace("/", "+"), "node_modules", dep), link);
+      }
+      return dir;
+    };
+    install("@acme/core", { exports: SOURCE_EXPORTS }, []);
+    install("@acme/primitives", { exports: SOURCE_EXPORTS, dependencies: { "@acme/core": "1" } }, [
+      "@acme/core",
+    ]);
+    install(
+      "@acme/aria",
+      { exports: SOURCE_EXPORTS, peerDependencies: { "@acme/primitives": "1" } },
+      ["@acme/primitives"],
+    );
+    install("left-pad", { exports: { ".": "./index.js" } }, []);
+    install(
+      "@acme/ds",
+      { exports: SOURCE_EXPORTS, dependencies: { "@acme/aria": "1", "left-pad": "1" } },
+      ["@acme/aria", "left-pad"],
+    );
+    const blocks = install(
+      "@acme/blocks",
+      { exports: SOURCE_EXPORTS, dependencies: { "@acme/ds": "1" } },
+      ["@acme/ds"],
+    );
+    mkdirSync(join(root, "node_modules", "@acme"), { recursive: true });
+    symlinkSync(blocks, join(root, "node_modules", "@acme", "blocks"));
+    writeFileSync(
+      join(root, "package.json"),
+      JSON.stringify({ name: "salama-app", dependencies: { "@acme/blocks": "1" } }),
+    );
+    return root;
+  }
+
+  test("are bundled for the server and kept from the optimizer, at every depth and through peers", () => {
+    const root = isolated();
+    const plugin = barqVitePlugin({ dev: false });
+    const config: {
+      root: string;
+      resolve?: { noExternal?: unknown };
+      optimizeDeps?: { exclude?: string[] };
+    } = { root };
+    const hook = plugin.config as unknown as (config: unknown, env: ConfigEnv) => void;
+    hook.call(plugin, config, { command: "build", mode: "production" });
+    const expected = ["@acme/aria", "@acme/blocks", "@acme/core", "@acme/ds", "@acme/primitives"];
+    expect((config.resolve?.noExternal as string[] | undefined)?.toSorted()).toEqual(expected);
+    expect((config.optimizeDeps?.exclude ?? []).toSorted()).toEqual(expected);
+  });
+});
