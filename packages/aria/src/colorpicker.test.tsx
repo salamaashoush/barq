@@ -14,6 +14,7 @@ import {
   ColorSlider,
   ColorSwatch,
   ColorWheel,
+  colorWheelState,
 } from "./colorpicker.tsx";
 
 describe("ColorSlider", () => {
@@ -1251,5 +1252,233 @@ describe("a colour swatch inside a swatch picker item", () => {
     expect(screen.getByTestId("own").style.getPropertyValue("background-color")).toBe(
       parseColor("#000000").toString("css"),
     );
+  });
+});
+
+describe("editing an OKLCH colour", () => {
+  test("a slider moves OKLCH lightness in its own range, and says it to the step", () => {
+    const changes: Color[] = [];
+    render(() => (
+      <ColorSlider
+        channel="lightness"
+        colorSpace="oklch"
+        defaultValue="#ff0000"
+        onChange={(value) => changes.push(value)}
+      />
+    ));
+
+    const input = screen.getByRole<HTMLInputElement>("slider");
+    expect(accessibleName(input)).toBe("Lightness");
+    expect([input.min, input.max, input.step]).toEqual(["0", "1", "0.001"]);
+    expect(input.getAttribute("aria-valuetext")).toStartWith("Lightness 0.628, ");
+
+    user.focus(input);
+    user.keyDown("PageUp");
+    flush();
+    const moved = changes.at(-1);
+    expect(moved?.getColorSpace()).toBe("oklch");
+    expect(moved?.getChannelValue("lightness")).toBeCloseTo(0.678, 3);
+    expect(moved?.getChannelValue("hue")).toBeCloseTo(29.234, 3);
+  });
+
+  test("a chroma slider edits a colour already in OKLCH without converting it", () => {
+    const changes: Color[] = [];
+    render(() => (
+      <ColorSlider
+        channel="chroma"
+        defaultValue="oklch(0.7 0.1 250)"
+        onChange={(value) => changes.push(value)}
+      />
+    ));
+    const input = screen.getByRole<HTMLInputElement>("slider");
+    expect(input.max).toBe("0.4");
+    user.focus(input);
+    user.keyDown("End");
+    flush();
+    expect(changes.at(-1)?.toString()).toBe("oklch(0.7 0.4 250)");
+  });
+
+  test("an area spans OKLCH chroma across and lightness up, at the colour's hue", () => {
+    const changes: Color[] = [];
+    render(() => (
+      <ColorArea
+        colorSpace="oklch"
+        xChannel="chroma"
+        yChannel="lightness"
+        defaultValue="oklch(0.6 0.1 250)"
+        onChange={(value) => changes.push(value)}
+      />
+    ));
+
+    const [x, y] = screen.getAllByRole<HTMLInputElement>("slider");
+    expect(accessibleName(x as HTMLElement)).toBe("Chroma");
+    expect(accessibleName(y as HTMLElement)).toBe("Lightness");
+    expect(y?.getAttribute("aria-valuetext")).toBe("Chroma 0.1, Lightness 0.6");
+
+    user.focus(x as HTMLElement);
+    user.key("ArrowRight");
+    flush();
+    expect(changes.at(-1)?.toString()).toBe("oklch(0.6 0.101 250)");
+  });
+
+  function areaBackground(options: ColorAreaStateOptions, direction?: "ltr" | "rtl"): string {
+    let background = "";
+    render(() => {
+      const state = colorAreaState(options);
+      background =
+        colorAreaGradient({ state, direction }).colorAreaStyleProps.style().background ?? "";
+      return null;
+    });
+    return background;
+  }
+
+  test("its gradient is drawn in OKLCH, in strips that leave no seam", () => {
+    const background = areaBackground({
+      colorSpace: "oklch",
+      xChannel: "chroma",
+      yChannel: "lightness",
+      defaultValue: "oklch(0.6 0.1 250)",
+    });
+    const layers = background.split(/, (?=linear-gradient)/);
+    expect(layers).toHaveLength(64);
+    // Last strip on top, at the right; each strip twice its width, so the
+    // next one over it closes any gap.
+    expect(layers[0]).toBe(
+      "linear-gradient(in oklch to top, oklch(0 0.39688 250), oklch(1 0.39688 250)) 101.6129% 0% / 3.125% 100% no-repeat",
+    );
+    expect(layers[63]).toBe(
+      "linear-gradient(in oklch to top, oklch(0 0.00313 250), oklch(1 0.00313 250)) 0% 0% / 3.125% 100% no-repeat",
+    );
+  });
+
+  test("right to left, the strips run the other way", () => {
+    const layers = areaBackground(
+      {
+        colorSpace: "oklch",
+        xChannel: "chroma",
+        yChannel: "lightness",
+        defaultValue: "oklch(0.6 0.1 250)",
+      },
+      "rtl",
+    ).split(/, (?=linear-gradient)/);
+    expect(layers[0]).toStartWith("linear-gradient(in oklch to top, oklch(0 0.00313 250),");
+    expect(layers[63]).toStartWith("linear-gradient(in oklch to top, oklch(0 0.39688 250),");
+  });
+
+  test("with the hue across, the strips are rows and the hue is the smooth direction", () => {
+    const layers = areaBackground({
+      colorSpace: "oklch",
+      xChannel: "hue",
+      yChannel: "chroma",
+      defaultValue: "oklch(0.7 0.1 250)",
+    }).split(/, (?=linear-gradient)/);
+    expect(layers[0]).toStartWith(
+      "linear-gradient(in oklch to right, oklch(0.7 0.39688 0), oklch(0.7 0.39688 60),",
+    );
+    expect(layers[0]).toEndWith("0% -1.6129% / 100% 3.125% no-repeat");
+  });
+
+  test("Lab, OKLab and HWB planes are drawn in their own spaces", () => {
+    expect(areaBackground({ defaultValue: "lab(50 20 -30)" })).toStartWith(
+      "linear-gradient(in lab to top, lab(50 123.047 -125), lab(50 123.047 125))",
+    );
+    expect(areaBackground({ defaultValue: "oklab(0.5 0.1 -0.1)" })).toStartWith(
+      "linear-gradient(in oklab to top, oklab(0.5 0.39375 -0.4), oklab(0.5 0.39375 0.4))",
+    );
+    expect(areaBackground({ defaultValue: "hwb(120 10% 20%)" })).toStartWith(
+      "linear-gradient(in hwb to top, hwb(120 99.22% 0%), hwb(120 99.22% 100%))",
+    );
+  });
+
+  test("a wheel turns the OKLCH hue and keeps the lightness", () => {
+    const changes: Color[] = [];
+    render(() => (
+      <ColorWheel
+        colorSpace="oklch"
+        defaultValue="#ff0000"
+        onChange={(value) => changes.push(value)}
+      />
+    ));
+    const input = screen.getByRole<HTMLInputElement>("slider");
+    expect(input.getAttribute("aria-valuetext")).toBe("Hue 29");
+
+    user.focus(input);
+    user.keyDown("PageUp");
+    flush();
+    const turned = changes.at(-1);
+    expect(turned?.getColorSpace()).toBe("oklch");
+    // Onto the wheel's step grid, as an HSL wheel lands.
+    expect(turned?.getChannelValue("hue")).toBe(44);
+    expect(turned?.getChannelValue("lightness")).toBeCloseTo(0.628, 3);
+  });
+
+  test("a wheel keeps a value already in a space with a hue", () => {
+    let space = "";
+    render(() => {
+      space = colorWheelState({ defaultValue: "lch(50 30 120)" }).value().getColorSpace();
+      return null;
+    });
+    expect(space).toBe("lch");
+  });
+
+  test("a channel field shows OKLCH lightness as CSS writes its percentage", () => {
+    const changes: (Color | null)[] = [];
+    render(() => (
+      <ColorField
+        channel="lightness"
+        colorSpace="oklch"
+        defaultValue="oklch(0.628 0.2577 29.23)"
+        onChange={(value) => changes.push(value)}
+      />
+    ));
+    const field = screen.getByRole<HTMLInputElement>("textbox");
+    expect(field.value).toBe("62.8%");
+    expect(accessibleName(field)).toBe("Lightness");
+
+    user.clear(field);
+    user.type(field, "92.2");
+    user.blur(field);
+    flush();
+    expect(changes.at(-1)?.toString()).toBe("oklch(0.922 0.2577 29.23)");
+  });
+
+  test("a colour field writes and reads oklch()", () => {
+    const changes: (Color | null)[] = [];
+    render(() => (
+      <ColorField
+        label="Token"
+        format="oklch"
+        defaultValue="#ff0000"
+        onChange={(value) => changes.push(value)}
+      />
+    ));
+    const field = screen.getByRole<HTMLInputElement>("textbox");
+    expect(field.value).toBe("oklch(0.62796 0.25768 29.234)");
+
+    user.focus(field);
+    user.clear(field);
+    user.type(field, "oklch(0.205 0 0)");
+    user.blur(field);
+    flush();
+    expect(changes.at(-1)?.toString()).toBe("oklch(0.205 0 0)");
+    expect(field.value).toBe("oklch(0.205 0 0)");
+  });
+
+  test("one OKLCH colour, shared by a picker's controls", () => {
+    let held: Color | undefined;
+    render(() => (
+      <ColorPicker defaultValue="oklch(0.6 0.15 250)" onChange={(value) => (held = value)}>
+        <ColorArea colorSpace="oklch" xChannel="chroma" yChannel="lightness" />
+        <ColorWheel colorSpace="oklch" />
+        <ColorField channel="hue" colorSpace="oklch" />
+      </ColorPicker>
+    ));
+
+    const wheel = screen.getAllByRole<HTMLInputElement>("slider")[2] as HTMLInputElement;
+    user.focus(wheel);
+    user.keyDown("PageUp");
+    flush();
+    expect(held?.toString()).toBe("oklch(0.6 0.15 265)");
+    expect(screen.getByRole<HTMLInputElement>("textbox").value).toBe("265°");
   });
 });

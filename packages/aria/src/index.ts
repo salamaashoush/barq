@@ -447,6 +447,11 @@ export {
   defaultColor,
   HSBColor,
   HSLColor,
+  HWBColor,
+  LabColor,
+  LCHColor,
+  OKLabColor,
+  OKLCHColor,
   parseColor,
   RGBColor,
 } from "./color.ts";
@@ -593,6 +598,7 @@ export {
   type ColorWheelState,
   colorWheelState,
   type ColorWheelStateOptions,
+  type HueColorSpace,
   useColorPicker,
 } from "./colorpicker.tsx";
 export {

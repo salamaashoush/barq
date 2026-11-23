@@ -1,39 +1,78 @@
 /**
- * Colours as values, in the three spaces a picker needs.
+ * Colours as values, in every space a picker or a design system edits.
  *
- * A colour picker is not one control but four — an area, a hue slider, an
- * alpha slider, a hex field — and each edits a different SPACE. Dragging in a
- * saturation/brightness area is HSB; the hue wheel is HSL or HSB; the field is
- * hex, which is RGB. So a colour has to be convertible between all three
- * without drifting, and that means:
+ * A colour picker is not one control but several, and each edits a different
+ * SPACE: a saturation/brightness area is HSB, a hue wheel is HSL, a hex field
+ * is RGB, and a design system's tokens are OKLCH, `oklch(0.63 0.26 29)`,
+ * because its lightness is the same for every hue at the same perceived
+ * brightness. So a colour converts between all of them without drifting:
  *
+ * - **Two families of space.** RGB, HSL, HSB and HWB are the sRGB cube in
+ *   four coordinate systems. CIE Lab and LCH and OKLab and OKLCH are
+ *   perceptual, and wider than sRGB: they hold colours no sRGB screen shows.
+ *   Conversions between the families go through CIE XYZ, with CSS Color 4's
+ *   own sample code and matrices, so a colour here is the colour a browser
+ *   draws for the same CSS.
  * - **Hue survives a round trip through grey.** Converting `hsb(210, 0%, 50%)`
- *   to RGB loses the hue — every grey is the same three numbers — and back
+ *   to RGB loses the hue, since every grey is the same three numbers, and back
  *   again would answer 0. So a conversion carries the hue rather than
- *   recomputing it, and dragging saturation to zero and back does not spin the
- *   wheel to red.
- * - **Every channel knows its own range and step.** A hue is 0–360 and wraps;
- *   a saturation is 0–100; a red is 0–255. A slider that assumed 0–100 for all
- *   of them would give the wrong value for two of the three.
+ *   recomputing it, in every space that has one, and dragging saturation or
+ *   chroma to zero and back does not spin the wheel to red.
+ * - **Out of gamut is mapped, not clipped.** `oklch(0.7 0.4 30)` has no sRGB
+ *   value. Clipping each channel shifts its hue and lightness; CSS Color 4's
+ *   gamut mapping lowers the chroma in OKLCH until the colour fits within a
+ *   just noticeable difference, which is what a browser shows for it. Hex,
+ *   `rgb()` and the sRGB spaces get that colour.
+ * - **A channel's range belongs to its space.** A hue is 0 to 360 and wraps,
+ *   in every space that has one. Lightness is 0 to 100 in HSL and Lab but 0 to
+ *   1 in OKLCH, which is how CSS writes each, so a channel is looked up in the
+ *   colour's own space, and one the space lacks in the nearest space that has
+ *   it: a Lab colour's hue is its LCH hue, not its HSL one.
  * - **A colour is immutable.** `withChannelValue` answers a new one, so a
  *   drag can hold the colour it started from and compare by content.
  */
 
 import { StringDictionary, StringFormatter } from "./i18n.ts";
 
-export type ColorSpace = "rgb" | "hsl" | "hsb";
+export type ColorSpace = "rgb" | "hsl" | "hsb" | "hwb" | "lab" | "lch" | "oklab" | "oklch";
 
+/**
+ * A channel, by what it means.
+ *
+ * Lab's and OKLab's a and b axes are `greenRed` and `blueYellow`, the two
+ * opponent axes they measure, negative to positive. Not `a` and `b`: CSS's
+ * relative colour syntax already gives `b` to blue in `rgb()`, and a channel
+ * named `b` beside one named `blue` invites reading one as the other.
+ */
 export type ColorChannel =
   | "hue"
   | "saturation"
   | "brightness"
   | "lightness"
+  | "whiteness"
+  | "blackness"
+  | "chroma"
   | "red"
   | "green"
   | "blue"
+  | "greenRed"
+  | "blueYellow"
   | "alpha";
 
-export type ColorFormat = "hex" | "hexa" | "rgb" | "rgba" | "hsl" | "hsla" | "hsb" | "hsba";
+export type ColorFormat =
+  | "hex"
+  | "hexa"
+  | "rgb"
+  | "rgba"
+  | "hsl"
+  | "hsla"
+  | "hsb"
+  | "hsba"
+  | "hwb"
+  | "lab"
+  | "lch"
+  | "oklab"
+  | "oklch";
 
 export interface ColorChannelRange {
   minValue: number;
@@ -43,15 +82,145 @@ export interface ColorChannelRange {
   pageSize: number;
 }
 
-const RANGES: Record<ColorChannel, ColorChannelRange> = {
-  hue: { minValue: 0, maxValue: 360, step: 1, pageSize: 15 },
-  saturation: { minValue: 0, maxValue: 100, step: 1, pageSize: 10 },
-  brightness: { minValue: 0, maxValue: 100, step: 1, pageSize: 10 },
-  lightness: { minValue: 0, maxValue: 100, step: 1, pageSize: 10 },
-  red: { minValue: 0, maxValue: 255, step: 1, pageSize: 17 },
-  green: { minValue: 0, maxValue: 255, step: 1, pageSize: 17 },
-  blue: { minValue: 0, maxValue: 255, step: 1, pageSize: 17 },
-  alpha: { minValue: 0, maxValue: 1, step: 0.01, pageSize: 0.1 },
+type Triple = [number, number, number];
+type Channels = [ColorChannel, ColorChannel, ColorChannel];
+
+interface ChannelSpec {
+  range: ColorChannelRange;
+  format: Intl.NumberFormatOptions;
+}
+
+const DEGREES: Intl.NumberFormatOptions = { style: "unit", unit: "degree", unitDisplay: "narrow" };
+const PERCENT: Intl.NumberFormatOptions = { style: "percent" };
+
+const HUE: ChannelSpec = {
+  range: { minValue: 0, maxValue: 360, step: 1, pageSize: 15 },
+  format: DEGREES,
+};
+const SHARE: ChannelSpec = {
+  range: { minValue: 0, maxValue: 100, step: 1, pageSize: 10 },
+  format: PERCENT,
+};
+const BYTE: ChannelSpec = {
+  range: { minValue: 0, maxValue: 255, step: 1, pageSize: 17 },
+  format: { style: "decimal" },
+};
+const ALPHA: ChannelSpec = {
+  range: { minValue: 0, maxValue: 1, step: 0.01, pageSize: 0.1 },
+  format: PERCENT,
+};
+
+// The perceptual spaces step a tenth of a percent of lightness, finer than
+// HSL's whole percent: design tokens are written to three decimals,
+// `oklch(0.922 0 0)`, and a field that snapped them to two would change a
+// token by being tabbed through. Page Up and Down make the coarse moves.
+const PERCEPTUAL_LIGHTNESS: ChannelSpec = {
+  range: { minValue: 0, maxValue: 100, step: 0.1, pageSize: 5 },
+  format: { style: "percent", maximumFractionDigits: 1 },
+};
+const OK_LIGHTNESS: ChannelSpec = {
+  range: { minValue: 0, maxValue: 1, step: 0.001, pageSize: 0.05 },
+  format: { style: "percent", maximumFractionDigits: 1 },
+};
+// Where 100% lands in CSS: 125 for Lab's axes, 150 for LCH's chroma, 0.4 for
+// OKLab's and OKLCH's. Past it are colours no display shows.
+const LAB_AXIS: ChannelSpec = {
+  range: { minValue: -125, maxValue: 125, step: 0.1, pageSize: 5 },
+  format: { style: "decimal", maximumFractionDigits: 1 },
+};
+const LCH_CHROMA: ChannelSpec = {
+  range: { minValue: 0, maxValue: 150, step: 0.1, pageSize: 5 },
+  format: { style: "decimal", maximumFractionDigits: 1 },
+};
+const OK_AXIS: ChannelSpec = {
+  range: { minValue: -0.4, maxValue: 0.4, step: 0.001, pageSize: 0.02 },
+  format: { style: "decimal", maximumFractionDigits: 3 },
+};
+const OK_CHROMA: ChannelSpec = {
+  range: { minValue: 0, maxValue: 0.4, step: 0.001, pageSize: 0.02 },
+  format: { style: "decimal", maximumFractionDigits: 3 },
+};
+
+const SPACES: Record<
+  ColorSpace,
+  { channels: Channels; specs: Partial<Record<ColorChannel, ChannelSpec>> }
+> = {
+  rgb: { channels: ["red", "green", "blue"], specs: { red: BYTE, green: BYTE, blue: BYTE } },
+  hsl: {
+    channels: ["hue", "saturation", "lightness"],
+    specs: { hue: HUE, saturation: SHARE, lightness: SHARE },
+  },
+  hsb: {
+    channels: ["hue", "saturation", "brightness"],
+    specs: { hue: HUE, saturation: SHARE, brightness: SHARE },
+  },
+  hwb: {
+    channels: ["hue", "whiteness", "blackness"],
+    specs: { hue: HUE, whiteness: SHARE, blackness: SHARE },
+  },
+  lab: {
+    channels: ["lightness", "greenRed", "blueYellow"],
+    specs: { lightness: PERCEPTUAL_LIGHTNESS, greenRed: LAB_AXIS, blueYellow: LAB_AXIS },
+  },
+  lch: {
+    channels: ["lightness", "chroma", "hue"],
+    specs: { lightness: PERCEPTUAL_LIGHTNESS, chroma: LCH_CHROMA, hue: HUE },
+  },
+  oklab: {
+    channels: ["lightness", "greenRed", "blueYellow"],
+    specs: { lightness: OK_LIGHTNESS, greenRed: OK_AXIS, blueYellow: OK_AXIS },
+  },
+  oklch: {
+    channels: ["lightness", "chroma", "hue"],
+    specs: { lightness: OK_LIGHTNESS, chroma: OK_CHROMA, hue: HUE },
+  },
+};
+
+/**
+ * Where a channel the colour's own space lacks is read, nearest first.
+ *
+ * The other half of a pair before anything else, so a Lab colour's chroma is
+ * its LCH chroma and an OKLCH colour's `greenRed` its OKLab one; among the
+ * sRGB spaces, saturation and lightness are HSL's, as they always were.
+ */
+const NEIGHBOURS: Record<ColorSpace, ColorSpace[]> = {
+  rgb: ["hsl", "hsb", "hwb", "oklch", "oklab"],
+  hsl: ["hsb", "rgb", "hwb", "oklch", "oklab"],
+  hsb: ["hsl", "rgb", "hwb", "oklch", "oklab"],
+  hwb: ["hsl", "hsb", "rgb", "oklch", "oklab"],
+  lab: ["lch", "rgb", "hsl", "hsb", "hwb", "oklch"],
+  lch: ["lab", "rgb", "hsl", "hsb", "hwb", "oklab"],
+  oklab: ["oklch", "rgb", "hsl", "hsb", "hwb", "lch"],
+  oklch: ["oklab", "rgb", "hsl", "hsb", "hwb", "lch"],
+};
+
+/** The space a channel is read in, for a colour in `space`. */
+function homeOf(space: ColorSpace, channel: ColorChannel): ColorSpace {
+  if (SPACES[space].channels.includes(channel)) return space;
+  return NEIGHBOURS[space].find((other) => SPACES[other].channels.includes(channel)) ?? space;
+}
+
+function specOf(space: ColorSpace, channel: ColorChannel): ChannelSpec {
+  if (channel === "alpha") return ALPHA;
+  const spec = SPACES[homeOf(space, channel)].specs[channel];
+  if (spec === undefined) throw new RangeError(`Not a colour channel: ${channel}`);
+  return spec;
+}
+
+const FORMAT_SPACE: Record<ColorFormat, ColorSpace> = {
+  hex: "rgb",
+  hexa: "rgb",
+  rgb: "rgb",
+  rgba: "rgb",
+  hsl: "hsl",
+  hsla: "hsl",
+  hsb: "hsb",
+  hsba: "hsb",
+  hwb: "hwb",
+  lab: "lab",
+  lch: "lch",
+  oklab: "oklab",
+  oklch: "oklch",
 };
 
 function message(
@@ -76,21 +245,6 @@ function formatNumber(value: number, locale: string, options: Intl.NumberFormatO
   return format.format(value);
 }
 
-const DEGREES: Intl.NumberFormatOptions = { style: "unit", unit: "degree", unitDisplay: "narrow" };
-const PERCENT: Intl.NumberFormatOptions = { style: "percent" };
-const DECIMAL: Intl.NumberFormatOptions = { style: "decimal" };
-
-const FORMATS: Record<ColorChannel, Intl.NumberFormatOptions> = {
-  hue: DEGREES,
-  saturation: PERCENT,
-  brightness: PERCENT,
-  lightness: PERCENT,
-  red: DECIMAL,
-  green: DECIMAL,
-  blue: DECIMAL,
-  alpha: PERCENT,
-};
-
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
@@ -100,18 +254,65 @@ function round(value: number, places = 0): number {
   return Math.round(value * scale) / scale;
 }
 
+/** An angle in [0, 360): a hue is an angle, and 370 is 10. */
+function wrapHue(hue: number): number {
+  return ((hue % 360) + 360) % 360;
+}
+
+function alphaSuffix(alpha: number): string {
+  return alpha < 1 ? ` / ${round(alpha, 2)}` : "";
+}
+
 /** A colour, in whichever space it was written in. */
 export abstract class Color {
   abstract readonly alpha: number;
   abstract getColorSpace(): ColorSpace;
-  abstract toFormat(format: ColorFormat): Color;
   abstract toString(format?: ColorFormat | "css"): string;
-  abstract getChannelValue(channel: ColorChannel): number;
-  abstract withChannelValue(channel: ColorChannel, value: number): Color;
-  abstract getColorChannels(): [ColorChannel, ColorChannel, ColorChannel];
+  /** One of the colour's own three channels. */
+  protected abstract own(channel: ColorChannel): number;
+
+  /**
+   * The hue a conversion hands on when its result is a grey, which has none
+   * of its own. A colour with a hue channel hands on that; RGB, Lab and OKLab
+   * colours carry the one they were converted from.
+   */
+  get sourceHue(): number {
+    return SPACES[this.getColorSpace()].channels.includes("hue") ? this.own("hue") : 0;
+  }
+
+  getColorChannels(): Channels {
+    const [first, second, third] = SPACES[this.getColorSpace()].channels;
+    return [first, second, third];
+  }
+
+  toFormat(format: ColorFormat): Color {
+    return convert(this, FORMAT_SPACE[format]);
+  }
+
+  getChannelValue(channel: ColorChannel): number {
+    if (channel === "alpha") return this.alpha;
+    const space = this.getColorSpace();
+    if (SPACES[space].channels.includes(channel)) return this.own(channel);
+    return this.toFormat(homeOf(space, channel)).getChannelValue(channel);
+  }
+
+  withChannelValue(channel: ColorChannel, value: number): Color {
+    const space = this.getColorSpace();
+    const range = this.getChannelRange(channel);
+    // Wraps rather than clamps: a hue is an angle, and 370 is 10.
+    const next = channel === "hue" ? value : clamp(value, range.minValue, range.maxValue);
+    const values = coordinates(this);
+    if (channel === "alpha") return make(space, values, next, this.sourceHue);
+    const at = SPACES[space].channels.indexOf(channel);
+    if (at === -1) {
+      return this.toFormat(homeOf(space, channel)).withChannelValue(channel, next).toFormat(space);
+    }
+    values[at] = next;
+    return make(space, values, this.alpha, this.sourceHue);
+  }
 
   getChannelRange(channel: ColorChannel): ColorChannelRange {
-    return RANGES[channel];
+    return specOf(this.getColorSpace(), channel).range;
   }
 
   getChannelName(channel: ColorChannel, locale = "en-US"): string {
@@ -120,7 +321,7 @@ export abstract class Color {
 
   /** How the channel's number is written for a person: `210°`, `25%`, `170`. */
   getChannelFormatOptions(channel: ColorChannel): Intl.NumberFormatOptions {
-    return FORMATS[channel];
+    return specOf(this.getColorSpace(), channel).format;
   }
 
   /**
@@ -145,7 +346,7 @@ export abstract class Color {
    * pure blue equally light, and nobody looking at them would.
    */
   getColorName(locale = "en-US"): string {
-    const [perceived, chroma, hue] = toOKLCH(this);
+    const [perceived, chroma, hue] = oklchOf(this);
     if (perceived > 0.999) return message("white", locale);
     if (perceived < 0.001) return message("black", locale);
 
@@ -175,24 +376,79 @@ export abstract class Color {
 
   /** What the hue alone is called: "cyan blue", or "gray" when there is none. */
   getHueName(locale = "en-US"): string {
-    const [lightness, chroma, hue] = toOKLCH(this);
+    const [lightness, chroma, hue] = oklchOf(this);
     return oklchHueName(lightness, chroma, hue, locale)[0];
   }
 
-  /** The colour as a 24-bit integer, for a canvas or a comparison. */
+  /** The colour as a 24-bit integer, for a canvas or a comparison. Mapped into sRGB first. */
   toHexInt(): number {
-    const rgb = this.toFormat("rgb") as RGBColor;
-    return (rgb.red << 16) | (rgb.green << 8) | rgb.blue;
+    const rgb = this.toFormat("rgb");
+    return (
+      (rgb.getChannelValue("red") << 16) |
+      (rgb.getChannelValue("green") << 8) |
+      rgb.getChannelValue("blue")
+    );
   }
 
-  /** Whether two colours are the same colour, whatever they were written in. */
+  /**
+   * Whether two colours are the same colour, whatever they were written in.
+   *
+   * Between sRGB spaces, the same 8-bit colour is the same colour, as it
+   * always was. A perceptual colour can be finer than that, or outside sRGB
+   * where many colours map to one, so there the test is a distance in OKLab
+   * well under what an eye or the channel's step can tell apart.
+   */
   isEqual(other: Color): boolean {
-    return this.toString("rgba") === other.toString("rgba");
+    if (isSrgbSpace(this.getColorSpace()) && isSrgbSpace(other.getColorSpace())) {
+      return this.toString("rgba") === other.toString("rgba");
+    }
+    return (
+      round(this.alpha, 2) === round(other.alpha, 2) &&
+      deltaEOK(oklabOf(this), oklabOf(other)) < SAME_COLOR
+    );
+  }
+}
+
+/** Below a tenth of the finest OKLab step a channel takes. */
+const SAME_COLOR = 0.0002;
+
+function coordinates(color: Color): Triple {
+  const [first, second, third] = color.getColorChannels();
+  return [
+    color.getChannelValue(first),
+    color.getChannelValue(second),
+    color.getChannelValue(third),
+  ];
+}
+
+function make(
+  space: ColorSpace,
+  [first, second, third]: Triple,
+  alpha: number,
+  hue: number,
+): Color {
+  switch (space) {
+    case "rgb":
+      return new RGBColor(first, second, third, alpha, hue);
+    case "hsl":
+      return new HSLColor(first, second, third, alpha);
+    case "hsb":
+      return new HSBColor(first, second, third, alpha);
+    case "hwb":
+      return new HWBColor(first, second, third, alpha);
+    case "lab":
+      return new LabColor(first, second, third, alpha, hue);
+    case "lch":
+      return new LCHColor(first, second, third, alpha);
+    case "oklab":
+      return new OKLabColor(first, second, third, alpha, hue);
+    default:
+      return new OKLCHColor(first, second, third, alpha);
   }
 }
 
 // ---------------------------------------------------------------------------
-// The three spaces
+// The spaces
 // ---------------------------------------------------------------------------
 
 export class RGBColor extends Color {
@@ -203,9 +459,9 @@ export class RGBColor extends Color {
   /**
    * The hue this colour came from, when it came from one.
    *
-   * A grey has no hue to recover — 0, 0, 0 is every hue at once — so a
-   * conversion out of HSL or HSB carries it, and dragging saturation to zero
-   * and back does not spin the wheel to red.
+   * A grey has no hue to recover, since 0, 0, 0 is every hue at once, so a
+   * conversion out of a space with a hue carries it, and dragging saturation
+   * to zero and back does not spin the wheel to red.
    */
   readonly #hue: number;
 
@@ -218,7 +474,7 @@ export class RGBColor extends Color {
     this.#hue = hue;
   }
 
-  get sourceHue(): number {
+  override get sourceHue(): number {
     return this.#hue;
   }
 
@@ -226,55 +482,9 @@ export class RGBColor extends Color {
     return "rgb";
   }
 
-  getColorChannels(): [ColorChannel, ColorChannel, ColorChannel] {
-    return ["red", "green", "blue"];
-  }
-
-  getChannelValue(channel: ColorChannel): number {
-    switch (channel) {
-      case "red":
-        return this.red;
-      case "green":
-        return this.green;
-      case "blue":
-        return this.blue;
-      case "alpha":
-        return this.alpha;
-      default:
-        return this.toFormat(channel === "brightness" ? "hsb" : "hsl").getChannelValue(channel);
-    }
-  }
-
-  withChannelValue(channel: ColorChannel, value: number): Color {
-    const range = RANGES[channel];
-    const next = clamp(value, range.minValue, range.maxValue);
-    switch (channel) {
-      case "red":
-        return new RGBColor(next, this.green, this.blue, this.alpha, this.#hue);
-      case "green":
-        return new RGBColor(this.red, next, this.blue, this.alpha, this.#hue);
-      case "blue":
-        return new RGBColor(this.red, this.green, next, this.alpha, this.#hue);
-      case "alpha":
-        return new RGBColor(this.red, this.green, this.blue, next, this.#hue);
-      default:
-        return this.toFormat(channel === "brightness" ? "hsb" : "hsl")
-          .withChannelValue(channel, next)
-          .toFormat("rgb");
-    }
-  }
-
-  toFormat(format: ColorFormat): Color {
-    switch (format) {
-      case "hsl":
-      case "hsla":
-        return rgbToHsl(this);
-      case "hsb":
-      case "hsba":
-        return rgbToHsb(this);
-      default:
-        return this;
-    }
+  protected own(channel: ColorChannel): number {
+    if (channel === "red") return this.red;
+    return channel === "green" ? this.green : this.blue;
   }
 
   toString(format: ColorFormat | "css" = "css"): string {
@@ -304,8 +514,7 @@ export class HSLColor extends Color {
 
   constructor(hue: number, saturation: number, lightness: number, alpha = 1) {
     super();
-    // Wraps rather than clamps: a hue is an angle, and 370 is 10.
-    this.hue = ((hue % 360) + 360) % 360;
+    this.hue = wrapHue(hue);
     this.saturation = clamp(saturation, 0, 100);
     this.lightness = clamp(lightness, 0, 100);
     this.alpha = clamp(alpha, 0, 1);
@@ -315,53 +524,9 @@ export class HSLColor extends Color {
     return "hsl";
   }
 
-  getColorChannels(): [ColorChannel, ColorChannel, ColorChannel] {
-    return ["hue", "saturation", "lightness"];
-  }
-
-  getChannelValue(channel: ColorChannel): number {
-    switch (channel) {
-      case "hue":
-        return this.hue;
-      case "saturation":
-        return this.saturation;
-      case "lightness":
-        return this.lightness;
-      case "alpha":
-        return this.alpha;
-      default:
-        return (this.toFormat("rgb") as RGBColor).getChannelValue(channel);
-    }
-  }
-
-  withChannelValue(channel: ColorChannel, value: number): Color {
-    const range = RANGES[channel];
-    const next = channel === "hue" ? value : clamp(value, range.minValue, range.maxValue);
-    switch (channel) {
-      case "hue":
-        return new HSLColor(next, this.saturation, this.lightness, this.alpha);
-      case "saturation":
-        return new HSLColor(this.hue, next, this.lightness, this.alpha);
-      case "lightness":
-        return new HSLColor(this.hue, this.saturation, next, this.alpha);
-      case "alpha":
-        return new HSLColor(this.hue, this.saturation, this.lightness, next);
-      default:
-        return (this.toFormat("rgb") as RGBColor).withChannelValue(channel, next).toFormat("hsl");
-    }
-  }
-
-  toFormat(format: ColorFormat): Color {
-    switch (format) {
-      case "hsl":
-      case "hsla":
-        return this;
-      case "hsb":
-      case "hsba":
-        return hslToHsb(this);
-      default:
-        return hslToRgb(this);
-    }
+  protected own(channel: ColorChannel): number {
+    if (channel === "hue") return this.hue;
+    return channel === "saturation" ? this.saturation : this.lightness;
   }
 
   toString(format: ColorFormat | "css" = "css"): string {
@@ -385,7 +550,7 @@ export class HSBColor extends Color {
 
   constructor(hue: number, saturation: number, brightness: number, alpha = 1) {
     super();
-    this.hue = ((hue % 360) + 360) % 360;
+    this.hue = wrapHue(hue);
     this.saturation = clamp(saturation, 0, 100);
     this.brightness = clamp(brightness, 0, 100);
     this.alpha = clamp(alpha, 0, 1);
@@ -395,53 +560,9 @@ export class HSBColor extends Color {
     return "hsb";
   }
 
-  getColorChannels(): [ColorChannel, ColorChannel, ColorChannel] {
-    return ["hue", "saturation", "brightness"];
-  }
-
-  getChannelValue(channel: ColorChannel): number {
-    switch (channel) {
-      case "hue":
-        return this.hue;
-      case "saturation":
-        return this.saturation;
-      case "brightness":
-        return this.brightness;
-      case "alpha":
-        return this.alpha;
-      default:
-        return (this.toFormat("rgb") as RGBColor).getChannelValue(channel);
-    }
-  }
-
-  withChannelValue(channel: ColorChannel, value: number): Color {
-    const range = RANGES[channel];
-    const next = channel === "hue" ? value : clamp(value, range.minValue, range.maxValue);
-    switch (channel) {
-      case "hue":
-        return new HSBColor(next, this.saturation, this.brightness, this.alpha);
-      case "saturation":
-        return new HSBColor(this.hue, next, this.brightness, this.alpha);
-      case "brightness":
-        return new HSBColor(this.hue, this.saturation, next, this.alpha);
-      case "alpha":
-        return new HSBColor(this.hue, this.saturation, this.brightness, next);
-      default:
-        return (this.toFormat("rgb") as RGBColor).withChannelValue(channel, next).toFormat("hsb");
-    }
-  }
-
-  toFormat(format: ColorFormat): Color {
-    switch (format) {
-      case "hsb":
-      case "hsba":
-        return this;
-      case "hsl":
-      case "hsla":
-        return hsbToHsl(this);
-      default:
-        return hsbToRgb(this);
-    }
+  protected own(channel: ColorChannel): number {
+    if (channel === "hue") return this.hue;
+    return channel === "saturation" ? this.saturation : this.brightness;
   }
 
   toString(format: ColorFormat | "css" = "css"): string {
@@ -459,52 +580,289 @@ export class HSBColor extends Color {
   }
 }
 
+/** Hue, whiteness and blackness: a hue with white and black mixed in. */
+export class HWBColor extends Color {
+  readonly hue: number;
+  readonly whiteness: number;
+  readonly blackness: number;
+  readonly alpha: number;
+
+  constructor(hue: number, whiteness: number, blackness: number, alpha = 1) {
+    super();
+    this.hue = wrapHue(hue);
+    this.whiteness = clamp(whiteness, 0, 100);
+    this.blackness = clamp(blackness, 0, 100);
+    this.alpha = clamp(alpha, 0, 1);
+  }
+
+  getColorSpace(): ColorSpace {
+    return "hwb";
+  }
+
+  protected own(channel: ColorChannel): number {
+    if (channel === "hue") return this.hue;
+    return channel === "whiteness" ? this.whiteness : this.blackness;
+  }
+
+  toString(format: ColorFormat | "css" = "css"): string {
+    if (format !== "hwb" && format !== "css") return this.toFormat(format).toString(format);
+    return `hwb(${round(this.hue, 2)} ${round(this.whiteness, 2)}% ${round(this.blackness, 2)}%${alphaSuffix(this.alpha)})`;
+  }
+}
+
+/** CIE Lab, relative to D50: lightness 0 to 100 and two opponent axes. */
+export class LabColor extends Color {
+  readonly lightness: number;
+  /** a: negative is green, positive red. */
+  readonly greenRed: number;
+  /** b: negative is blue, positive yellow. */
+  readonly blueYellow: number;
+  readonly alpha: number;
+  readonly #hue: number;
+
+  constructor(lightness: number, greenRed: number, blueYellow: number, alpha = 1, hue = 0) {
+    super();
+    // CSS clamps lightness at parse time; the axes are unbounded.
+    this.lightness = clamp(lightness, 0, 100);
+    this.greenRed = greenRed;
+    this.blueYellow = blueYellow;
+    this.alpha = clamp(alpha, 0, 1);
+    this.#hue = hue;
+  }
+
+  override get sourceHue(): number {
+    return this.#hue;
+  }
+
+  getColorSpace(): ColorSpace {
+    return "lab";
+  }
+
+  protected own(channel: ColorChannel): number {
+    if (channel === "lightness") return this.lightness;
+    return channel === "greenRed" ? this.greenRed : this.blueYellow;
+  }
+
+  toString(format: ColorFormat | "css" = "css"): string {
+    if (format !== "lab" && format !== "css") return this.toFormat(format).toString(format);
+    return `lab(${round(this.lightness, 3)} ${round(this.greenRed, 3)} ${round(this.blueYellow, 3)}${alphaSuffix(this.alpha)})`;
+  }
+}
+
+/** CIE LCH: Lab in polar form, chroma and hue in place of the two axes. */
+export class LCHColor extends Color {
+  readonly lightness: number;
+  readonly chroma: number;
+  readonly hue: number;
+  readonly alpha: number;
+
+  constructor(lightness: number, chroma: number, hue: number, alpha = 1) {
+    super();
+    this.lightness = clamp(lightness, 0, 100);
+    this.chroma = Math.max(chroma, 0);
+    this.hue = wrapHue(hue);
+    this.alpha = clamp(alpha, 0, 1);
+  }
+
+  getColorSpace(): ColorSpace {
+    return "lch";
+  }
+
+  protected own(channel: ColorChannel): number {
+    if (channel === "lightness") return this.lightness;
+    return channel === "chroma" ? this.chroma : this.hue;
+  }
+
+  toString(format: ColorFormat | "css" = "css"): string {
+    if (format !== "lch" && format !== "css") return this.toFormat(format).toString(format);
+    return `lch(${round(this.lightness, 3)} ${round(this.chroma, 3)} ${round(this.hue, 3)}${alphaSuffix(this.alpha)})`;
+  }
+}
+
+/** OKLab, relative to D65: lightness 0 to 1 and two opponent axes. */
+export class OKLabColor extends Color {
+  readonly lightness: number;
+  /** a: negative is green, positive red. */
+  readonly greenRed: number;
+  /** b: negative is blue, positive yellow. */
+  readonly blueYellow: number;
+  readonly alpha: number;
+  readonly #hue: number;
+
+  constructor(lightness: number, greenRed: number, blueYellow: number, alpha = 1, hue = 0) {
+    super();
+    this.lightness = clamp(lightness, 0, 1);
+    this.greenRed = greenRed;
+    this.blueYellow = blueYellow;
+    this.alpha = clamp(alpha, 0, 1);
+    this.#hue = hue;
+  }
+
+  override get sourceHue(): number {
+    return this.#hue;
+  }
+
+  getColorSpace(): ColorSpace {
+    return "oklab";
+  }
+
+  protected own(channel: ColorChannel): number {
+    if (channel === "lightness") return this.lightness;
+    return channel === "greenRed" ? this.greenRed : this.blueYellow;
+  }
+
+  toString(format: ColorFormat | "css" = "css"): string {
+    if (format !== "oklab" && format !== "css") return this.toFormat(format).toString(format);
+    return `oklab(${round(this.lightness, 5)} ${round(this.greenRed, 5)} ${round(this.blueYellow, 5)}${alphaSuffix(this.alpha)})`;
+  }
+}
+
+/** OKLCH: OKLab in polar form, and what design tokens are written in. */
+export class OKLCHColor extends Color {
+  readonly lightness: number;
+  readonly chroma: number;
+  readonly hue: number;
+  readonly alpha: number;
+
+  constructor(lightness: number, chroma: number, hue: number, alpha = 1) {
+    super();
+    this.lightness = clamp(lightness, 0, 1);
+    this.chroma = Math.max(chroma, 0);
+    this.hue = wrapHue(hue);
+    this.alpha = clamp(alpha, 0, 1);
+  }
+
+  getColorSpace(): ColorSpace {
+    return "oklch";
+  }
+
+  protected own(channel: ColorChannel): number {
+    if (channel === "lightness") return this.lightness;
+    return channel === "chroma" ? this.chroma : this.hue;
+  }
+
+  toString(format: ColorFormat | "css" = "css"): string {
+    if (format !== "oklch" && format !== "css") return this.toFormat(format).toString(format);
+    return `oklch(${round(this.lightness, 5)} ${round(this.chroma, 5)} ${round(this.hue, 3)}${alphaSuffix(this.alpha)})`;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Conversions
+// https://www.w3.org/TR/css-color-4/#color-conversion-code
 // ---------------------------------------------------------------------------
+
+function isSrgbSpace(space: ColorSpace): boolean {
+  return space === "rgb" || space === "hsl" || space === "hsb" || space === "hwb";
+}
+
+/**
+ * The colour in another space.
+ *
+ * Inside the sRGB family the conversions are direct. Out of it, the colour
+ * goes through XYZ, and into it through gamut mapping. A result that is grey
+ * takes the source's hue, so the hue survives.
+ */
+function convert(color: Color, target: ColorSpace): Color {
+  const source = color.getColorSpace();
+  if (source === target) return color;
+  const { alpha, sourceHue } = color;
+
+  if (color instanceof HSLColor && target === "hsb") return hslToHsb(color);
+  if (color instanceof HSBColor && target === "hsl") return hsbToHsl(color);
+  if (isSrgbSpace(target)) return fromSrgb(target, srgbOf(color), alpha, sourceHue);
+
+  if (target === "lch" || target === "lab") {
+    const [lightness, a, b] =
+      color instanceof LCHColor
+        ? polarToRectangular([color.lightness, color.chroma, color.hue])
+        : color instanceof LabColor
+          ? [color.lightness, color.greenRed, color.blueYellow]
+          : xyzD50ToLab(multiply(D65_TO_D50, xyzOf(color)));
+    if (target === "lab") return new LabColor(lightness, a, b, alpha, sourceHue);
+    const [, chroma, hue] = rectangularToPolar([lightness, a, b]);
+    return new LCHColor(lightness, chroma, chroma <= LCH_ACHROMATIC ? sourceHue : hue, alpha);
+  }
+
+  const [lightness, a, b] = oklabOf(color);
+  if (target === "oklab") return new OKLabColor(lightness, a, b, alpha, sourceHue);
+  const [, chroma, hue] = rectangularToPolar([lightness, a, b]);
+  return new OKLCHColor(lightness, chroma, chroma <= OKLCH_ACHROMATIC ? sourceHue : hue, alpha);
+}
+
+// Below these a hue is powerless: CSS Color 4's ε for each space.
+const LCH_ACHROMATIC = 0.0015;
+const OKLCH_ACHROMATIC = 0.000004;
+// The smallest spread of the three sRGB channels that still has a hue. A
+// difference of one in 8 bits is 1/255; this sits far below that and far
+// above the float noise of a grey that came through XYZ.
+const SRGB_ACHROMATIC = 1e-7;
 
 function hex(value: number): string {
   return clamp(Math.round(value), 0, 255).toString(16).padStart(2, "0");
 }
 
-function rgbToHsl(color: RGBColor): HSLColor {
-  const red = color.red / 255;
-  const green = color.green / 255;
-  const blue = color.blue / 255;
+/** The colour as sRGB, 0 to 1 per channel; a perceptual colour is gamut mapped into it. */
+function srgbOf(color: Color): Triple {
+  if (color instanceof RGBColor) return [color.red / 255, color.green / 255, color.blue / 255];
+  if (color instanceof HSLColor) return hslToSrgb(color.hue, color.saturation, color.lightness);
+  if (color instanceof HSBColor) return hsbToSrgb(color.hue, color.saturation, color.brightness);
+  if (color instanceof HWBColor) return hwbToSrgb(color.hue, color.whiteness, color.blackness);
+  return gamutMap(oklchOf(color));
+}
+
+function fromSrgb(target: ColorSpace, srgb: Triple, alpha: number, hue: number): Color {
+  const [red, green, blue] = srgb;
+  switch (target) {
+    case "hsl": {
+      const [h, s, l] = srgbToHsl(red, green, blue);
+      return new HSLColor(Number.isNaN(h) ? hue : h, s, l, alpha);
+    }
+    case "hsb": {
+      const [h, s, b] = srgbToHsb(red, green, blue);
+      return new HSBColor(Number.isNaN(h) ? hue : h, s, b, alpha);
+    }
+    case "hwb": {
+      const [h, w, b] = srgbToHwb(red, green, blue);
+      return new HWBColor(Number.isNaN(h) ? hue : h, w, b, alpha);
+    }
+    default:
+      return new RGBColor(red * 255, green * 255, blue * 255, alpha, hue);
+  }
+}
+
+/** The hue of an sRGB colour in degrees, or NaN for a grey. */
+function srgbHue(red: number, green: number, blue: number): number {
   const max = Math.max(red, green, blue);
   const min = Math.min(red, green, blue);
-  const lightness = (max + min) / 2;
-
-  if (max === min) {
-    // Grey: the hue it CAME from, not zero.
-    return new HSLColor(color.sourceHue, 0, lightness * 100, color.alpha);
-  }
-
   const delta = max - min;
-  const saturation = lightness > 0.5 ? delta / (2 - max - min) : delta / (max + min);
+  if (delta < SRGB_ACHROMATIC) return Number.NaN;
   let hue: number;
   if (max === red) hue = ((green - blue) / delta + (green < blue ? 6 : 0)) * 60;
   else if (max === green) hue = ((blue - red) / delta + 2) * 60;
   else hue = ((red - green) / delta + 4) * 60;
-
-  return new HSLColor(hue, saturation * 100, lightness * 100, color.alpha);
+  return hue >= 360 ? hue - 360 : hue;
 }
 
-function hslToRgb(color: HSLColor): RGBColor {
-  const hue = color.hue / 360;
-  const saturation = color.saturation / 100;
-  const lightness = color.lightness / 100;
+function srgbToHsl(red: number, green: number, blue: number): Triple {
+  const max = Math.max(red, green, blue);
+  const min = Math.min(red, green, blue);
+  const lightness = (max + min) / 2;
+  const hue = srgbHue(red, green, blue);
+  if (Number.isNaN(hue)) return [hue, 0, lightness * 100];
+  const delta = max - min;
+  const saturation = lightness > 0.5 ? delta / (2 - max - min) : delta / (max + min);
+  return [hue, saturation * 100, lightness * 100];
+}
 
-  if (saturation === 0) {
-    const grey = lightness * 255;
-    return new RGBColor(grey, grey, grey, color.alpha, color.hue);
-  }
+function hslToSrgb(hue: number, saturation: number, lightness: number): Triple {
+  const h = hue / 360;
+  const s = saturation / 100;
+  const l = lightness / 100;
+  if (s === 0) return [l, l, l];
 
-  const q =
-    lightness < 0.5
-      ? lightness * (1 + saturation)
-      : lightness + saturation - lightness * saturation;
-  const p = 2 * lightness - q;
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
   const channel = (t: number): number => {
     let at = t;
     if (at < 0) at += 1;
@@ -514,56 +872,60 @@ function hslToRgb(color: HSLColor): RGBColor {
     if (at < 2 / 3) return p + (q - p) * (2 / 3 - at) * 6;
     return p;
   };
-
-  return new RGBColor(
-    channel(hue + 1 / 3) * 255,
-    channel(hue) * 255,
-    channel(hue - 1 / 3) * 255,
-    color.alpha,
-    color.hue,
-  );
+  return [channel(h + 1 / 3), channel(h), channel(h - 1 / 3)];
 }
 
-function rgbToHsb(color: RGBColor): HSBColor {
-  const red = color.red / 255;
-  const green = color.green / 255;
-  const blue = color.blue / 255;
+function srgbToHsb(red: number, green: number, blue: number): Triple {
   const max = Math.max(red, green, blue);
   const min = Math.min(red, green, blue);
-  const delta = max - min;
-
-  if (delta === 0) return new HSBColor(color.sourceHue, 0, max * 100, color.alpha);
-
-  let hue: number;
-  if (max === red) hue = ((green - blue) / delta + (green < blue ? 6 : 0)) * 60;
-  else if (max === green) hue = ((blue - red) / delta + 2) * 60;
-  else hue = ((red - green) / delta + 4) * 60;
-
-  return new HSBColor(hue, (delta / max) * 100, max * 100, color.alpha);
+  const hue = srgbHue(red, green, blue);
+  if (Number.isNaN(hue)) return [hue, 0, max * 100];
+  return [hue, ((max - min) / max) * 100, max * 100];
 }
 
-function hsbToRgb(color: HSBColor): RGBColor {
-  const hue = color.hue / 60;
-  const saturation = color.saturation / 100;
-  const brightness = color.brightness / 100;
+function hsbToSrgb(hue: number, saturation: number, brightness: number): Triple {
+  const h = hue / 60;
+  const s = saturation / 100;
+  const v = brightness / 100;
 
-  const sector = Math.floor(hue) % 6;
-  const fraction = hue - Math.floor(hue);
-  const p = brightness * (1 - saturation);
-  const q = brightness * (1 - fraction * saturation);
-  const t = brightness * (1 - (1 - fraction) * saturation);
+  const sector = Math.floor(h) % 6;
+  const fraction = h - Math.floor(h);
+  const p = v * (1 - s);
+  const q = v * (1 - fraction * s);
+  const t = v * (1 - (1 - fraction) * s);
 
-  const triples: [number, number, number][] = [
-    [brightness, t, p],
-    [q, brightness, p],
-    [p, brightness, t],
-    [p, q, brightness],
-    [t, p, brightness],
-    [brightness, p, q],
+  const triples: Triple[] = [
+    [v, t, p],
+    [q, v, p],
+    [p, v, t],
+    [p, q, v],
+    [t, p, v],
+    [v, p, q],
   ];
-  const [red = 0, green = 0, blue = 0] = triples[sector] ?? [];
+  return triples[sector] ?? [v, v, v];
+}
 
-  return new RGBColor(red * 255, green * 255, blue * 255, color.alpha, color.hue);
+// https://www.w3.org/TR/css-color-4/#hwb-to-rgb
+function hwbToSrgb(hue: number, whiteness: number, blackness: number): Triple {
+  const white = whiteness / 100;
+  const black = blackness / 100;
+  if (white + black >= 1) {
+    const grey = white / (white + black);
+    return [grey, grey, grey];
+  }
+  const [red, green, blue] = hslToSrgb(hue, 100, 50);
+  const scale = 1 - white - black;
+  return [red * scale + white, green * scale + white, blue * scale + white];
+}
+
+// https://www.w3.org/TR/css-color-4/#rgb-to-hwb
+function srgbToHwb(red: number, green: number, blue: number): Triple {
+  const white = Math.min(red, green, blue);
+  const black = 1 - Math.max(red, green, blue);
+  // CSS's ε for HWB: a whiteness and blackness this close to filling the
+  // colour leave no hue.
+  const hue = white + black >= 1 - 1e-5 ? Number.NaN : srgbHue(red, green, blue);
+  return [hue, white * 100, black * 100];
 }
 
 function hsbToHsl(color: HSBColor): HSLColor {
@@ -581,6 +943,245 @@ function hslToHsb(color: HSLColor): HSBColor {
   const brightness = lightness + saturation * Math.min(lightness, 1 - lightness);
   const hsbSaturation = brightness === 0 ? 0 : 2 * (1 - lightness / brightness);
   return new HSBColor(color.hue, hsbSaturation * 100, brightness * 100, color.alpha);
+}
+
+type Matrix = readonly [number, number, number, number, number, number, number, number, number];
+
+function multiply(matrix: Matrix, [x, y, z]: Triple): Triple {
+  return [
+    matrix[0] * x + matrix[1] * y + matrix[2] * z,
+    matrix[3] * x + matrix[4] * y + matrix[5] * z,
+    matrix[6] * x + matrix[7] * y + matrix[8] * z,
+  ];
+}
+
+// The extended transfer functions: a negative channel, out of gamut, mirrors
+// the curve rather than breaking it.
+function toLinear(value: number): number {
+  const magnitude = Math.abs(value);
+  if (magnitude <= 0.04045) return value / 12.92;
+  return Math.sign(value) * ((magnitude + 0.055) / 1.055) ** 2.4;
+}
+
+function toGamma(value: number): number {
+  const magnitude = Math.abs(value);
+  if (magnitude > 0.0031308) return Math.sign(value) * (1.055 * magnitude ** (1 / 2.4) - 0.055);
+  return 12.92 * value;
+}
+
+const LINEAR_SRGB_TO_XYZ: Matrix = [
+  506752 / 1228815,
+  87881 / 245763,
+  12673 / 70218,
+  87098 / 409605,
+  175762 / 245763,
+  12673 / 175545,
+  7918 / 409605,
+  87881 / 737289,
+  1001167 / 1053270,
+];
+
+const XYZ_TO_LINEAR_SRGB: Matrix = [
+  12831 / 3959,
+  -329 / 214,
+  -1974 / 3959,
+  -851781 / 878810,
+  1648619 / 878810,
+  36519 / 878810,
+  705 / 12673,
+  -2585 / 12673,
+  705 / 667,
+];
+
+// Bradford chromatic adaptation between the two white points: Lab is D50,
+// everything else here is D65.
+const D65_TO_D50: Matrix = [
+  1.0479297925449969, 0.022946870601609652, -0.05019226628920524, 0.02962780877005599,
+  0.9904344267538799, -0.017073799063418826, -0.009243040646204504, 0.015055191490298152,
+  0.7518742814281371,
+];
+
+const D50_TO_D65: Matrix = [
+  0.955473421488075, -0.02309845494876471, 0.06325924320057072, -0.0283697093338637,
+  1.0099953980813041, 0.021041441191917323, 0.012314014864481998, -0.020507649298898964,
+  1.330365926242124,
+];
+
+const D50: Triple = [0.3457 / 0.3585, 1, (1 - 0.3457 - 0.3585) / 0.3585];
+
+const XYZ_TO_LMS: Matrix = [
+  0.819022437996703, 0.3619062600528904, -0.1288737815209879, 0.0329836539323885,
+  0.9292868615863434, 0.0361446663506424, 0.0481771893596242, 0.2642395317527308,
+  0.6335478284694309,
+];
+
+const LMS_TO_OKLAB: Matrix = [
+  0.210454268309314, 0.7936177747023054, -0.0040720430116193, 1.9779985324311684,
+  -2.4285922420485799, 0.450593709617411, 0.0259040424655478, 0.7827717124575296,
+  -0.8086757549230774,
+];
+
+const OKLAB_TO_LMS: Matrix = [
+  1, 0.3963377773761749, 0.2158037573099136, 1, -0.1055613458156586, -0.0638541728258133, 1,
+  -0.0894841775298119, -1.2914855480194092,
+];
+
+const LMS_TO_XYZ: Matrix = [
+  1.2268798758459243, -0.5578149944602171, 0.2813910456659647, -0.0405757452148008,
+  1.112286803280317, -0.0717110580655164, -0.0763729366746601, -0.4214933324022432,
+  1.5869240198367816,
+];
+
+function srgbToXyz([red, green, blue]: Triple): Triple {
+  return multiply(LINEAR_SRGB_TO_XYZ, [toLinear(red), toLinear(green), toLinear(blue)]);
+}
+
+function xyzToSrgb(xyz: Triple): Triple {
+  const [red, green, blue] = multiply(XYZ_TO_LINEAR_SRGB, xyz);
+  return [toGamma(red), toGamma(green), toGamma(blue)];
+}
+
+// CIE's ε and κ, as the rational fractions the standard now defines them as.
+const LAB_EPSILON = 216 / 24389;
+const LAB_KAPPA = 24389 / 27;
+
+function xyzD50ToLab([x, y, z]: Triple): Triple {
+  const f = (value: number, white: number): number => {
+    const scaled = value / white;
+    return scaled > LAB_EPSILON ? Math.cbrt(scaled) : (LAB_KAPPA * scaled + 16) / 116;
+  };
+  const fx = f(x, D50[0]);
+  const fy = f(y, D50[1]);
+  const fz = f(z, D50[2]);
+  return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
+}
+
+function labToXyzD50([lightness, a, b]: Triple): Triple {
+  // L kept out of L + 16 for precision near black.
+  const lightness116 = lightness / 116;
+  const a500 = a / 500;
+  const b200 = b / 200;
+  const fy = lightness116 + 16 / 116;
+  const fx = fy + a500;
+  const fz = fy - b200;
+  const xyz: Triple = [
+    fx ** 3 > LAB_EPSILON ? fx ** 3 : (lightness116 + a500) * (116 / LAB_KAPPA),
+    lightness > LAB_KAPPA * LAB_EPSILON ? ((lightness + 16) / 116) ** 3 : lightness / LAB_KAPPA,
+    fz ** 3 > LAB_EPSILON ? fz ** 3 : (lightness116 - b200) * (116 / LAB_KAPPA),
+  ];
+  return [xyz[0] * D50[0], xyz[1] * D50[1], xyz[2] * D50[2]];
+}
+
+function xyzToOklab(xyz: Triple): Triple {
+  const [l, m, s] = multiply(XYZ_TO_LMS, xyz);
+  // `Math.cbrt` keeps the sign, which a general power would not.
+  return multiply(LMS_TO_OKLAB, [Math.cbrt(l), Math.cbrt(m), Math.cbrt(s)]);
+}
+
+function oklabToXyz(oklab: Triple): Triple {
+  const [l, m, s] = multiply(OKLAB_TO_LMS, oklab);
+  return multiply(LMS_TO_XYZ, [l ** 3, m ** 3, s ** 3]);
+}
+
+function rectangularToPolar([lightness, a, b]: Triple): Triple {
+  const hue = (Math.atan2(b, a) * 180) / Math.PI;
+  return [lightness, Math.hypot(a, b), hue < 0 ? hue + 360 : hue];
+}
+
+function polarToRectangular([lightness, chroma, hue]: Triple): Triple {
+  const radians = (hue * Math.PI) / 180;
+  return [lightness, chroma * Math.cos(radians), chroma * Math.sin(radians)];
+}
+
+/** CIE XYZ relative to D65, from any space. */
+function xyzOf(color: Color): Triple {
+  if (color instanceof LabColor) {
+    return multiply(D50_TO_D65, labToXyzD50([color.lightness, color.greenRed, color.blueYellow]));
+  }
+  if (color instanceof LCHColor) {
+    return multiply(
+      D50_TO_D65,
+      labToXyzD50(polarToRectangular([color.lightness, color.chroma, color.hue])),
+    );
+  }
+  if (color instanceof OKLabColor || color instanceof OKLCHColor) return oklabToXyz(oklabOf(color));
+  return srgbToXyz(srgbOf(color));
+}
+
+function oklabOf(color: Color): Triple {
+  if (color instanceof OKLabColor) return [color.lightness, color.greenRed, color.blueYellow];
+  if (color instanceof OKLCHColor) {
+    return polarToRectangular([color.lightness, color.chroma, color.hue]);
+  }
+  return xyzToOklab(xyzOf(color));
+}
+
+function oklchOf(color: Color): Triple {
+  if (color instanceof OKLCHColor) return [color.lightness, color.chroma, color.hue];
+  return rectangularToPolar(oklabOf(color));
+}
+
+function deltaEOK([l1, a1, b1]: Triple, [l2, a2, b2]: Triple): number {
+  return Math.hypot(l1 - l2, a1 - a2, b1 - b2);
+}
+
+// One just noticeable difference in OKLab, and how close the search gets.
+const JND = 0.02;
+const GAMUT_EPSILON = 0.0001;
+
+function inSrgbGamut(srgb: Triple): boolean {
+  return srgb.every((channel) => channel >= 0 && channel <= 1);
+}
+
+function clip(srgb: Triple): Triple {
+  return [clamp(srgb[0], 0, 1), clamp(srgb[1], 0, 1), clamp(srgb[2], 0, 1)];
+}
+
+/**
+ * An OKLCH colour as the sRGB colour CSS shows for it.
+ *
+ * CSS Color 4's binary search with local MINDE: lightness and hue stay where
+ * they are and chroma comes down until clipping what is left moves the colour
+ * by less than a just noticeable difference. Clipping alone would keep the
+ * chroma and give up the hue and lightness, which are what the eye notices.
+ *
+ * https://www.w3.org/TR/css-color-4/#binsearch
+ */
+function gamutMap([lightness, chroma, hue]: Triple): Triple {
+  if (lightness >= 1) return [1, 1, 1];
+  if (lightness <= 0) return [0, 0, 0];
+
+  const at = (c: number): Triple => polarToRectangular([lightness, c, hue]);
+  const srgbAt = (c: number): Triple => xyzToSrgb(oklabToXyz(at(c)));
+  const delta = (srgb: Triple, c: number): number => deltaEOK(xyzToOklab(srgbToXyz(srgb)), at(c));
+
+  const origin = srgbAt(chroma);
+  if (inSrgbGamut(origin)) return origin;
+
+  let clipped = clip(origin);
+  if (delta(clipped, chroma) < JND) return clipped;
+
+  let min = 0;
+  let max = chroma;
+  let minInGamut = true;
+  while (max - min > GAMUT_EPSILON) {
+    const current = (min + max) / 2;
+    const srgb = srgbAt(current);
+    if (minInGamut && inSrgbGamut(srgb)) {
+      min = current;
+      continue;
+    }
+    clipped = clip(srgb);
+    const error = delta(clipped, current);
+    if (error < JND) {
+      if (JND - error < GAMUT_EPSILON) return clipped;
+      minInGamut = false;
+      min = current;
+    } else {
+      max = current;
+    }
+  }
+  return clipped;
 }
 
 // ---------------------------------------------------------------------------
@@ -637,100 +1238,104 @@ function oklchHueName(
   return [message("gray", locale), lightness];
 }
 
-// https://www.w3.org/TR/css-color-4/#color-conversion-code
-function toOKLCH(color: Color): [number, number, number] {
-  const rgb = color.toFormat("rgb");
-  const [red, green, blue] = [
-    rgb.getChannelValue("red"),
-    rgb.getChannelValue("green"),
-    rgb.getChannelValue("blue"),
-  ].map((channel) => toLinear(channel / 255)) as [number, number, number];
-
-  const [x, y, z] = multiply(
-    [
-      506752 / 1228815,
-      87881 / 245763,
-      12673 / 70218,
-      87098 / 409605,
-      175762 / 245763,
-      12673 / 175545,
-      7918 / 409605,
-      87881 / 737289,
-      1001167 / 1053270,
-    ],
-    red,
-    green,
-    blue,
-  );
-  const [l, m, s] = multiply(
-    [
-      0.819022437996703, 0.3619062600528904, -0.1288737815209879, 0.0329836539323885,
-      0.9292868615863434, 0.0361446663506424, 0.0481771893596242, 0.2642395317527308,
-      0.6335478284694309,
-    ],
-    x,
-    y,
-    z,
-  );
-  const [lightness, a, b] = multiply(
-    [
-      0.210454268309314, 0.7936177747023054, -0.0040720430116193, 1.9779985324311684,
-      -2.4285922420485799, 0.450593709617411, 0.0259040424655478, 0.7827717124575296,
-      -0.8086757549230774,
-    ],
-    Math.cbrt(l),
-    Math.cbrt(m),
-    Math.cbrt(s),
-  );
-
-  const hue = (Math.atan2(b, a) * 180) / Math.PI;
-  return [lightness, Math.hypot(a, b), hue >= 0 ? hue : hue + 360];
-}
-
-function toLinear(value: number): number {
-  const magnitude = Math.abs(value);
-  if (magnitude <= 0.04045) return value / 12.92;
-  return Math.sign(value) * ((magnitude + 0.055) / 1.055) ** 2.4;
-}
-
-function multiply(
-  matrix: readonly number[],
-  x: number,
-  y: number,
-  z: number,
-): [number, number, number] {
-  const at = (index: number): number => matrix[index] ?? 0;
-  return [
-    at(0) * x + at(1) * y + at(2) * z,
-    at(3) * x + at(4) * y + at(5) * z,
-    at(6) * x + at(7) * y + at(8) * z,
-  ];
-}
-
 // ---------------------------------------------------------------------------
 // Reading
 // ---------------------------------------------------------------------------
 
 const HEX = /^#([0-9a-f]{3,8})$/i;
-const FUNCTION = /^(rgba?|hsla?|hsba?)\(([^)]*)\)$/i;
+const FUNCTION = /^([a-z]+)\((.*)\)$/is;
+const NUMBER = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i;
+const ANGLE = /^(.*?)(deg|grad|rad|turn)?$/i;
 
-// `Number` rather than `parseFloat`, which reads "12px" as 12, and a test for
-// the empty string, which `Number` reads as 0.
-function part(text: string, max: number, value: string): number {
-  const trimmed = text.trim();
-  const percent = trimmed.endsWith("%");
-  const digits = percent ? trimmed.slice(0, -1) : trimmed;
-  const parsed = digits.trim() === "" ? Number.NaN : Number(digits);
-  if (!Number.isFinite(parsed)) throw new RangeError(`Not a colour: ${JSON.stringify(value)}`);
-  return percent ? (parsed / 100) * max : parsed;
+const TURN: Record<string, number> = { deg: 1, grad: 360 / 400, rad: 180 / Math.PI, turn: 360 };
+
+/** How one argument is read: an angle, or a number with what 100% stands for. */
+type Argument = { hue: true } | { percent: number };
+
+interface Syntax {
+  space: ColorSpace;
+  args: [Argument, Argument, Argument];
+  /** Whether the comma-separated form of CSS Color 3 is accepted. */
+  legacy: boolean;
+}
+
+const RGB_SYNTAX: Syntax = {
+  space: "rgb",
+  args: [{ percent: 255 }, { percent: 255 }, { percent: 255 }],
+  legacy: true,
+};
+const HSL_SYNTAX: Syntax = {
+  space: "hsl",
+  args: [{ hue: true }, { percent: 100 }, { percent: 100 }],
+  legacy: true,
+};
+const HSB_SYNTAX: Syntax = { ...HSL_SYNTAX, space: "hsb" };
+
+// The percent reference ranges are CSS Color 4's, per function.
+const SYNTAXES: Record<string, Syntax> = {
+  rgb: RGB_SYNTAX,
+  rgba: RGB_SYNTAX,
+  hsl: HSL_SYNTAX,
+  hsla: HSL_SYNTAX,
+  hsb: HSB_SYNTAX,
+  hsba: HSB_SYNTAX,
+  hwb: { space: "hwb", args: [{ hue: true }, { percent: 100 }, { percent: 100 }], legacy: false },
+  lab: {
+    space: "lab",
+    args: [{ percent: 100 }, { percent: 125 }, { percent: 125 }],
+    legacy: false,
+  },
+  lch: { space: "lch", args: [{ percent: 100 }, { percent: 150 }, { hue: true }], legacy: false },
+  oklab: {
+    space: "oklab",
+    args: [{ percent: 1 }, { percent: 0.4 }, { percent: 0.4 }],
+    legacy: false,
+  },
+  oklch: { space: "oklch", args: [{ percent: 1 }, { percent: 0.4 }, { hue: true }], legacy: false },
+};
+
+function notAColour(value: string): RangeError {
+  return new RangeError(`Not a colour: ${JSON.stringify(value)}`);
+}
+
+// A regular expression rather than `parseFloat`, which reads "12px" as 12, or
+// `Number`, which reads the empty string as 0.
+function number(text: string, value: string): number {
+  if (!NUMBER.test(text)) throw notAColour(value);
+  return Number(text);
+}
+
+/**
+ * One argument of a colour function.
+ *
+ * `none` is a missing component, which CSS treats as zero once the colour is
+ * used; the modern, space-separated syntax allows it and the legacy one does
+ * not.
+ */
+function argument(token: string, kind: Argument, modern: boolean, value: string): number {
+  if (modern && token.toLowerCase() === "none") return 0;
+  if ("hue" in kind) {
+    const angle = ANGLE.exec(token);
+    if (angle === null) throw notAColour(value);
+    const unit = (angle[2] ?? "deg").toLowerCase();
+    return number(angle[1] as string, value) * (TURN[unit] ?? 1);
+  }
+  if (token.endsWith("%")) return (number(token.slice(0, -1), value) / 100) * kind.percent;
+  return number(token, value);
+}
+
+function alphaArgument(token: string, modern: boolean, value: string): number {
+  return argument(token, { percent: 1 }, modern, value);
 }
 
 /**
  * A colour from a string, or a throw naming what was given.
  *
- * Accepts what CSS accepts — `#abc`, `#aabbcc`, `#aabbccdd`, `rgb()`, `rgba()`,
- * `hsl()`, `hsla()` — and `hsb()`/`hsba()`, which CSS does not have but a
- * picker's brightness area is written in.
+ * Accepts what CSS Color 4 accepts: `#abc`, `#aabbcc`, `#aabbccdd`, `rgb()`,
+ * `rgba()`, `hsl()`, `hsla()` in their comma and space forms, and `hwb()`,
+ * `lab()`, `lch()`, `oklab()`, `oklch()` in the space form, with `none`,
+ * percentages and angle units where CSS allows them. Also `hsb()`/`hsba()`,
+ * which CSS does not have but a picker's brightness area is written in.
  */
 export function parseColor(value: string): Color {
   const text = value.trim();
@@ -738,45 +1343,50 @@ export function parseColor(value: string): Color {
   const hexMatch = HEX.exec(text);
   if (hexMatch !== null) {
     const digits = hexMatch[1] as string;
+    if (digits.length !== 3 && digits.length !== 4 && digits.length !== 6 && digits.length !== 8) {
+      throw notAColour(value);
+    }
     const expand = (at: number): number =>
       Number.parseInt(
         digits.length <= 4 ? (digits[at] as string).repeat(2) : digits.slice(at * 2, at * 2 + 2),
         16,
       );
-    if (digits.length !== 3 && digits.length !== 4 && digits.length !== 6 && digits.length !== 8) {
-      throw new RangeError(`Not a colour: ${JSON.stringify(value)}`);
-    }
     const hasAlpha = digits.length === 4 || digits.length === 8;
     return new RGBColor(expand(0), expand(1), expand(2), hasAlpha ? expand(3) / 255 : 1);
   }
 
   const call = FUNCTION.exec(text);
-  if (call === null) throw new RangeError(`Not a colour: ${JSON.stringify(value)}`);
+  const syntax = call === null ? undefined : SYNTAXES[(call[1] as string).toLowerCase()];
+  if (call === null || syntax === undefined) throw notAColour(value);
+  const body = (call[2] as string).trim();
 
-  const name = (call[1] as string).toLowerCase();
-  const args = (call[2] as string).split(/[,/]/).map((entry) => entry.trim());
-  if (args.length < 3 || args.length > 4) {
-    throw new RangeError(`Not a colour: ${JSON.stringify(value)}`);
+  let tokens: string[];
+  let alphaToken: string | undefined;
+  const modern = !body.includes(",");
+  if (modern) {
+    const [channels = "", alpha, ...rest] = body.split("/");
+    if (rest.length > 0) throw notAColour(value);
+    tokens = channels.trim().split(/\s+/);
+    if (alpha !== undefined) {
+      alphaToken = alpha.trim();
+      if (alphaToken === "" || /\s/.test(alphaToken)) throw notAColour(value);
+    }
+  } else {
+    if (!syntax.legacy) throw notAColour(value);
+    const parts = body.split(",").map((entry) => entry.trim());
+    if (parts.length > 4) throw notAColour(value);
+    tokens = parts.slice(0, 3);
+    alphaToken = parts[3];
   }
-  const alpha = args.length > 3 ? part(args[3] as string, 1, value) : 1;
+  if (tokens.length !== 3) throw notAColour(value);
 
-  if (name.startsWith("rgb")) {
-    return new RGBColor(
-      part(args[0] as string, 255, value),
-      part(args[1] as string, 255, value),
-      part(args[2] as string, 255, value),
-      alpha,
-    );
-  }
-  const hue = part((args[0] as string).replace(/deg\s*$/i, ""), 360, value);
-  const saturation = part(args[1] as string, 100, value);
-  const third = part(args[2] as string, 100, value);
-  return name.startsWith("hsl")
-    ? new HSLColor(hue, saturation, third, alpha)
-    : new HSBColor(hue, saturation, third, alpha);
+  const read = (at: 0 | 1 | 2): number =>
+    argument(tokens[at] ?? "", syntax.args[at], modern, value);
+  const alpha = alphaToken === undefined ? 1 : alphaArgument(alphaToken, modern, value);
+  return make(syntax.space, [read(0), read(1), read(2)], alpha, 0);
 }
 
-/** Black, as a starting point for a picker with no value. */
+/** A strong red, as a starting point for a picker with no value. */
 export function defaultColor(): Color {
   return new HSBColor(0, 100, 100, 1);
 }
@@ -794,6 +1404,11 @@ type ColorStringKey =
   | "green"
   | "blue"
   | "alpha"
+  | "whiteness"
+  | "blackness"
+  | "chroma"
+  | "greenRed"
+  | "blueYellow"
   | "colorName"
   | "transparentColorName"
   | "very dark"
@@ -834,6 +1449,11 @@ const STRINGS = new StringDictionary<ColorStringKey>({
     green: "أخضر",
     blue: "أزرق",
     alpha: "ألفا",
+    whiteness: "البياض",
+    blackness: "السواد",
+    chroma: "الكروما",
+    greenRed: "أخضر-أحمر",
+    blueYellow: "أزرق-أصفر",
     colorName: "{lightness} {chroma} {hue}",
     transparentColorName: "{lightness} {chroma} {hue}, {percentTransparent} شفاف",
     "very dark": "داكن جدًا",
@@ -873,6 +1493,11 @@ const STRINGS = new StringDictionary<ColorStringKey>({
     green: "Зелено",
     blue: "Синьо",
     alpha: "Алфа",
+    whiteness: "Белота",
+    blackness: "Чернота",
+    chroma: "Хрома",
+    greenRed: "Зелено-червено",
+    blueYellow: "Синьо-жълто",
     colorName: "{lightness} {chroma} {hue}",
     transparentColorName: "{lightness} {chroma} {hue}, {percentTransparent} прозрачен",
     "very dark": "много тъмно",
@@ -912,6 +1537,11 @@ const STRINGS = new StringDictionary<ColorStringKey>({
     green: "Zelená",
     blue: "Modrá",
     alpha: "Alfa",
+    whiteness: "Bělost",
+    blackness: "Černost",
+    chroma: "Chroma",
+    greenRed: "Zelená-červená",
+    blueYellow: "Modrá-žlutá",
     colorName: "{lightness} {chroma} {hue}",
     transparentColorName: "{lightness} {chroma} {hue}, {percentTransparent} průhledné",
     "very dark": "velmi tmavá",
@@ -951,6 +1581,11 @@ const STRINGS = new StringDictionary<ColorStringKey>({
     green: "Grøn",
     blue: "Blå",
     alpha: "Alfa",
+    whiteness: "Hvidhed",
+    blackness: "Sorthed",
+    chroma: "Kroma",
+    greenRed: "Grøn-rød",
+    blueYellow: "Blå-gul",
     colorName: "{lightness} {chroma} {hue}",
     transparentColorName: "{lightness} {chroma} {hue}, {percentTransparent} gennemsigtig",
     "very dark": "meget mørk",
@@ -990,6 +1625,11 @@ const STRINGS = new StringDictionary<ColorStringKey>({
     green: "Grün",
     blue: "Blau",
     alpha: "Alpha",
+    whiteness: "Weißanteil",
+    blackness: "Schwarzanteil",
+    chroma: "Buntheit",
+    greenRed: "Grün-Rot",
+    blueYellow: "Blau-Gelb",
     colorName: "{lightness} {chroma} {hue}",
     transparentColorName: "{lightness} {chroma} {hue}, zu {percentTransparent} transparent",
     "very dark": "sehr dunkles",
@@ -1029,6 +1669,11 @@ const STRINGS = new StringDictionary<ColorStringKey>({
     green: "Πράσινο",
     blue: "Μπλε",
     alpha: "Άλφα",
+    whiteness: "Λευκότητα",
+    blackness: "Μαυρότητα",
+    chroma: "Χρωματικότητα",
+    greenRed: "Πράσινο-κόκκινο",
+    blueYellow: "Μπλε-κίτρινο",
     colorName: "{lightness} {chroma} {hue}",
     transparentColorName: "{lightness} {chroma} {hue}, {percentTransparent} διαφανές",
     "very dark": "πολύ σκούρο",
@@ -1068,6 +1713,11 @@ const STRINGS = new StringDictionary<ColorStringKey>({
     green: "Green",
     blue: "Blue",
     alpha: "Alpha",
+    whiteness: "Whiteness",
+    blackness: "Blackness",
+    chroma: "Chroma",
+    greenRed: "Green-red",
+    blueYellow: "Blue-yellow",
     colorName: "{lightness} {chroma} {hue}",
     transparentColorName: "{lightness} {chroma} {hue}, {percentTransparent} transparent",
     "very dark": "very dark",
@@ -1107,6 +1757,11 @@ const STRINGS = new StringDictionary<ColorStringKey>({
     green: "Verde",
     blue: "Azul",
     alpha: "Alpha",
+    whiteness: "Blancura",
+    blackness: "Negrura",
+    chroma: "Croma",
+    greenRed: "Verde-rojo",
+    blueYellow: "Azul-amarillo",
     colorName: "{lightness} {chroma} {hue}",
     transparentColorName: "{lightness} {chroma} {hue}, {percentTransparent} transparente",
     "very dark": "muy oscuro",
@@ -1146,6 +1801,11 @@ const STRINGS = new StringDictionary<ColorStringKey>({
     green: "Roheline",
     blue: "Sinine",
     alpha: "Alfa",
+    whiteness: "Valgesus",
+    blackness: "Mustus",
+    chroma: "Kroomsus",
+    greenRed: "Roheline-punane",
+    blueYellow: "Sinine-kollane",
     colorName: "{lightness} {chroma} {hue}",
     transparentColorName: "{lightness} {chroma} {hue}, {percentTransparent} läbipaistev",
     "very dark": "väga tume",
@@ -1185,6 +1845,11 @@ const STRINGS = new StringDictionary<ColorStringKey>({
     green: "Vihreä",
     blue: "Sininen",
     alpha: "Alpha",
+    whiteness: "Valkoisuus",
+    blackness: "Mustuus",
+    chroma: "Kroma",
+    greenRed: "Vihreä-punainen",
+    blueYellow: "Sininen-keltainen",
     colorName: "{lightness} {chroma} {hue}",
     transparentColorName: "{lightness} {chroma} {hue}, {percentTransparent} läpinäkyvä",
     "very dark": "hyvin tumma",
@@ -1224,6 +1889,11 @@ const STRINGS = new StringDictionary<ColorStringKey>({
     green: "Vert",
     blue: "Bleu",
     alpha: "Alpha",
+    whiteness: "Blancheur",
+    blackness: "Noirceur",
+    chroma: "Chroma",
+    greenRed: "Vert-rouge",
+    blueYellow: "Bleu-jaune",
     colorName: "{lightness} {chroma} {hue}",
     transparentColorName: "{lightness} {chroma} {hue}, {percentTransparent} transparent",
     "very dark": "Très sombre",
@@ -1263,6 +1933,11 @@ const STRINGS = new StringDictionary<ColorStringKey>({
     green: "ירוק",
     blue: "כחול",
     alpha: "אלפא",
+    whiteness: "לובן",
+    blackness: "שחרות",
+    chroma: "כרומה",
+    greenRed: "ירוק-אדום",
+    blueYellow: "כחול-צהוב",
     colorName: "{lightness} {chroma} {hue}",
     transparentColorName: "{lightness} {chroma} {hue}, {percentTransparent} שקוף",
     "very dark": "כהה מאוד",
@@ -1302,6 +1977,11 @@ const STRINGS = new StringDictionary<ColorStringKey>({
     green: "Zelena",
     blue: "Plava",
     alpha: "Alfa",
+    whiteness: "Bjelina",
+    blackness: "Crnina",
+    chroma: "Kroma",
+    greenRed: "Zelena-crvena",
+    blueYellow: "Plava-žuta",
     colorName: "{lightness} {chroma} {hue}",
     transparentColorName: "{lightness} {chroma} {hue}, {percentTransparent} prozirnosti",
     "very dark": "jako tamna",
@@ -1341,6 +2021,11 @@ const STRINGS = new StringDictionary<ColorStringKey>({
     green: "Zöld",
     blue: "Kék",
     alpha: "Alfa",
+    whiteness: "Fehérség",
+    blackness: "Feketeség",
+    chroma: "Króma",
+    greenRed: "Zöld-piros",
+    blueYellow: "Kék-sárga",
     colorName: "{lightness} {chroma} {hue}",
     transparentColorName: "{lightness} {chroma} {hue}, {percentTransparent} átlátszó",
     "very dark": "nagyon sötét",
@@ -1380,6 +2065,11 @@ const STRINGS = new StringDictionary<ColorStringKey>({
     green: "Verde",
     blue: "Blu",
     alpha: "Alfa",
+    whiteness: "Bianchezza",
+    blackness: "Nerezza",
+    chroma: "Croma",
+    greenRed: "Verde-rosso",
+    blueYellow: "Blu-giallo",
     colorName: "{hue} {chroma} {lightness}",
     transparentColorName: "{hue} {chroma} {lightness}, trasparenza {percentTransparent}",
     "very dark": "molto scuro",
@@ -1419,6 +2109,11 @@ const STRINGS = new StringDictionary<ColorStringKey>({
     green: "緑",
     blue: "青",
     alpha: "アルファ",
+    whiteness: "白み",
+    blackness: "黒み",
+    chroma: "クロマ",
+    greenRed: "緑-赤",
+    blueYellow: "青-黄",
     colorName: "{lightness} {chroma} {hue}",
     transparentColorName: "{lightness} {chroma} {hue}, {percentTransparent} 透明",
     "very dark": "最も暗い",
@@ -1458,6 +2153,11 @@ const STRINGS = new StringDictionary<ColorStringKey>({
     green: "초록",
     blue: "파랑",
     alpha: "알파",
+    whiteness: "백색도",
+    blackness: "흑색도",
+    chroma: "크로마",
+    greenRed: "초록-빨강",
+    blueYellow: "파랑-노랑",
     colorName: "{lightness}, {chroma}, {hue}",
     transparentColorName: "{lightness}, {chroma}, {hue}, {percentTransparent} 투명도",
     "very dark": "매우 어두운",
@@ -1497,6 +2197,11 @@ const STRINGS = new StringDictionary<ColorStringKey>({
     green: "Žalia",
     blue: "Mėlyna",
     alpha: "Alfa",
+    whiteness: "Baltumas",
+    blackness: "Juodumas",
+    chroma: "Chroma",
+    greenRed: "Žalia-raudona",
+    blueYellow: "Mėlyna-geltona",
     colorName: "{lightness} {chroma} {hue}",
     transparentColorName: "{lightness} {chroma} {hue}, {percentTransparent} skaidri",
     "very dark": "labai tamsi",
@@ -1536,6 +2241,11 @@ const STRINGS = new StringDictionary<ColorStringKey>({
     green: "Zaļa",
     blue: "Zila",
     alpha: "Alfa",
+    whiteness: "Baltums",
+    blackness: "Melnums",
+    chroma: "Hroma",
+    greenRed: "Zaļa-sarkana",
+    blueYellow: "Zila-dzeltena",
     colorName: "{lightness} {chroma} {hue}",
     transparentColorName: "{lightness} {chroma} {hue}, {percentTransparent} caurspīdīgs",
     "very dark": "ļoti tumšs",
@@ -1575,6 +2285,11 @@ const STRINGS = new StringDictionary<ColorStringKey>({
     green: "Grønn",
     blue: "Blå",
     alpha: "Alfa",
+    whiteness: "Hvithet",
+    blackness: "Sorthet",
+    chroma: "Kroma",
+    greenRed: "Grønn-rød",
+    blueYellow: "Blå-gul",
     colorName: "{lightness} {chroma} {hue}",
     transparentColorName: "{lightness} {chroma} {hue}, {percentTransparent} gjennomsiktig",
     "very dark": "svært mørk",
@@ -1614,6 +2329,11 @@ const STRINGS = new StringDictionary<ColorStringKey>({
     green: "Groen",
     blue: "Blauw",
     alpha: "Alfa",
+    whiteness: "Witheid",
+    blackness: "Zwartheid",
+    chroma: "Chroma",
+    greenRed: "Groen-rood",
+    blueYellow: "Blauw-geel",
     colorName: "{lightness} {chroma} {hue}",
     transparentColorName: "{lightness} {chroma} {hue}, {percentTransparent} transparant",
     "very dark": "heel donker",
@@ -1653,6 +2373,11 @@ const STRINGS = new StringDictionary<ColorStringKey>({
     green: "Zielony",
     blue: "Niebieski",
     alpha: "Alfa",
+    whiteness: "Biel",
+    blackness: "Czerń",
+    chroma: "Chroma",
+    greenRed: "Zielony-czerwony",
+    blueYellow: "Niebieski-żółty",
     colorName: "{lightness} {chroma} {hue}",
     transparentColorName: "{lightness} {chroma} {hue}, {percentTransparent} przezroczystości",
     "very dark": "bardzo ciemny",
@@ -1692,6 +2417,11 @@ const STRINGS = new StringDictionary<ColorStringKey>({
     green: "Verde",
     blue: "Azul",
     alpha: "Alfa",
+    whiteness: "Brancura",
+    blackness: "Negrura",
+    chroma: "Croma",
+    greenRed: "Verde-vermelho",
+    blueYellow: "Azul-amarelo",
     colorName: "{lightness} {chroma} {hue}",
     transparentColorName: "{lightness} {chroma} {hue}, {percentTransparent} transparente",
     "very dark": "muito escuro",
@@ -1731,6 +2461,11 @@ const STRINGS = new StringDictionary<ColorStringKey>({
     green: "Verde",
     blue: "Azul",
     alpha: "Alfa",
+    whiteness: "Brancura",
+    blackness: "Negrura",
+    chroma: "Croma",
+    greenRed: "Verde-vermelho",
+    blueYellow: "Azul-amarelo",
     colorName: "{lightness} {chroma} {hue}",
     transparentColorName: "{lightness} {chroma} {hue}, {percentTransparent} transparente",
     "very dark": "muito escuro",
@@ -1770,6 +2505,11 @@ const STRINGS = new StringDictionary<ColorStringKey>({
     green: "Verde",
     blue: "Albastru",
     alpha: "Alfa",
+    whiteness: "Albeață",
+    blackness: "Negreață",
+    chroma: "Cromă",
+    greenRed: "Verde-roșu",
+    blueYellow: "Albastru-galben",
     colorName: "{lightness} {chroma} {hue}",
     transparentColorName: "{lightness} {chroma} {hue}, {percentTransparent} transparent",
     "very dark": "foarte închis",
@@ -1809,6 +2549,11 @@ const STRINGS = new StringDictionary<ColorStringKey>({
     green: "Зеленый",
     blue: "Синий",
     alpha: "Альфа",
+    whiteness: "Белизна",
+    blackness: "Чернота",
+    chroma: "Цветность",
+    greenRed: "Зеленый-красный",
+    blueYellow: "Синий-желтый",
     colorName: "{lightness} {chroma} {hue}",
     transparentColorName: "{lightness} {chroma} {hue}, прозрачный на {percentTransparent}",
     "very dark": "очень темный",
@@ -1848,6 +2593,11 @@ const STRINGS = new StringDictionary<ColorStringKey>({
     green: "Zelená",
     blue: "Modrá",
     alpha: "Alfa",
+    whiteness: "Belosť",
+    blackness: "Čierność",
+    chroma: "Chróma",
+    greenRed: "Zelená-červená",
+    blueYellow: "Modrá-žltá",
     colorName: "{lightness} {chroma} {hue}",
     transparentColorName: "{lightness} {chroma} {hue}, {percentTransparent} priehľadná",
     "very dark": "veľmi tmavá",
@@ -1887,6 +2637,11 @@ const STRINGS = new StringDictionary<ColorStringKey>({
     green: "Zelena",
     blue: "Modra",
     alpha: "Alfa",
+    whiteness: "Belina",
+    blackness: "Črnina",
+    chroma: "Kroma",
+    greenRed: "Zelena-rdeča",
+    blueYellow: "Modra-rumena",
     colorName: "{lightness} {chroma} {hue}",
     transparentColorName: "{lightness} {chroma} {hue}, {percentTransparent} prozorna",
     "very dark": "zelo temna",
@@ -1926,6 +2681,11 @@ const STRINGS = new StringDictionary<ColorStringKey>({
     green: "Zelena",
     blue: "Plava",
     alpha: "Alfa",
+    whiteness: "Belina",
+    blackness: "Crnina",
+    chroma: "Hroma",
+    greenRed: "Zelena-crvena",
+    blueYellow: "Plava-žuta",
     colorName: "{lightness} {chroma} {hue}",
     transparentColorName: "{lightness} {chroma} {hue}, {percentTransparent} prozirna",
     "very dark": "veoma tamno",
@@ -1965,6 +2725,11 @@ const STRINGS = new StringDictionary<ColorStringKey>({
     green: "Grönt",
     blue: "Blått",
     alpha: "Alfa",
+    whiteness: "Vithet",
+    blackness: "Svärta",
+    chroma: "Kroma",
+    greenRed: "Grönt-rött",
+    blueYellow: "Blått-gult",
     colorName: "{lightness} {chroma} {hue}",
     transparentColorName: "{lightness} {chroma} {hue}, {percentTransparent} genomskinlig",
     "very dark": "mycket mörk",
@@ -2004,6 +2769,11 @@ const STRINGS = new StringDictionary<ColorStringKey>({
     green: "Yeşil",
     blue: "Mavi",
     alpha: "Alfa",
+    whiteness: "Beyazlık",
+    blackness: "Siyahlık",
+    chroma: "Kroma",
+    greenRed: "Yeşil-kırmızı",
+    blueYellow: "Mavi-sarı",
     colorName: "{lightness} {chroma} {hue}",
     transparentColorName: "{lightness} {chroma} {hue}, {percentTransparent} saydam",
     "very dark": "çok koyu",
@@ -2043,6 +2813,11 @@ const STRINGS = new StringDictionary<ColorStringKey>({
     green: "Зелений",
     blue: "Синій",
     alpha: "Альфа",
+    whiteness: "Білизна",
+    blackness: "Чорнота",
+    chroma: "Кольоровість",
+    greenRed: "Зелений-червоний",
+    blueYellow: "Синій-жовтий",
     colorName: "{lightness} {chroma} {hue}",
     transparentColorName: "{lightness} {chroma} {hue}, прозорий на {percentTransparent}",
     "very dark": "дуже темний",
@@ -2082,6 +2857,11 @@ const STRINGS = new StringDictionary<ColorStringKey>({
     green: "绿色",
     blue: "蓝色",
     alpha: "Alpha",
+    whiteness: "白度",
+    blackness: "黑度",
+    chroma: "色度",
+    greenRed: "绿-红",
+    blueYellow: "蓝-黄",
     colorName: "{lightness} {chroma} {hue}",
     transparentColorName: "{lightness} {chroma} {hue}, {percentTransparent} 透明",
     "very dark": "很暗",
@@ -2121,6 +2901,11 @@ const STRINGS = new StringDictionary<ColorStringKey>({
     green: "綠色",
     blue: "藍色",
     alpha: "Alpha",
+    whiteness: "白度",
+    blackness: "黑度",
+    chroma: "色度",
+    greenRed: "綠-紅",
+    blueYellow: "藍-黃",
     colorName: "{lightness} {chroma} {hue}",
     transparentColorName: "{lightness} {chroma} {hue}, {percentTransparent} 透明",
     "very dark": "很暗",

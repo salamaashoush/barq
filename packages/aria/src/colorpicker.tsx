@@ -102,6 +102,20 @@ function asColor(value: Color | string | null | undefined): Color | undefined {
   return typeof value === "string" ? parseColor(value) : value;
 }
 
+/** The colour in the space a control edits, when it names one. */
+function inSpace(color: Color, space: ColorSpace | undefined): Color;
+function inSpace(color: Color | undefined, space: ColorSpace | undefined): Color | undefined;
+function inSpace(color: Color | undefined, space: ColorSpace | undefined): Color | undefined {
+  return color === undefined || space === undefined ? color : color.toFormat(space);
+}
+
+/** The decimal places of a step: 1 has none, 0.001 has three. */
+function placesOf(step: number): number {
+  const text = String(step);
+  const point = text.indexOf(".");
+  return point === -1 ? 0 : text.length - point - 1;
+}
+
 /** A channel as words read it, in the locale in scope: "Hue 212", "Alpha 50%". */
 function channelWords(): (color: Color, channel: ColorChannel) => string {
   const locale = useLocale();
@@ -109,8 +123,13 @@ function channelWords(): (color: Color, channel: ColorChannel) => string {
   const percent = numberFormatter({ style: "percent", maximumFractionDigits: 0 });
   return (color, channel) => {
     const amount = color.getChannelValue(channel);
+    // To the channel's own step: "Hue 212" and "Lightness 0.628", not
+    // "Lightness 1" for an OKLCH lightness that runs from 0 to 1.
+    const scale = 10 ** placesOf(color.getChannelRange(channel).step);
     const value =
-      channel === "alpha" ? percent().format(amount) : decimal().format(Math.round(amount));
+      channel === "alpha"
+        ? percent().format(amount)
+        : decimal().format(Math.round(amount * scale) / scale);
     return `${color.getChannelName(channel, locale().locale)} ${value}`;
   };
 }
@@ -131,6 +150,12 @@ function message(
 
 export interface ColorSliderStateOptions extends ColorStateOptions {
   channel: MaybeAccessor<ColorChannel>;
+  /**
+   * The space the channel is edited in, and the colour reported back in.
+   * `"oklch"` makes a lightness slider move OKLCH lightness whatever space
+   * the value was written in. @default the value's own
+   */
+  colorSpace?: MaybeAccessor<ColorSpace | undefined>;
   /** @default "horizontal" */
   orientation?: MaybeAccessor<Orientation | undefined>;
 }
@@ -156,9 +181,10 @@ export interface ColorSliderState {
 }
 
 export function colorSliderState(options: ColorSliderStateOptions): ColorSliderState {
+  const space = (): ColorSpace | undefined => access(options.colorSpace);
   const [value, setValueRaw] = controllable<Color>(
-    () => asColor(access(options.value)),
-    () => asColor(access(options.defaultValue)) ?? defaultColor(),
+    () => inSpace(asColor(access(options.value)), space()),
+    () => inSpace(asColor(access(options.defaultValue)) ?? defaultColor(), space()),
     options.onChange,
   );
 
@@ -231,6 +257,12 @@ export function colorSliderState(options: ColorSliderStateOptions): ColorSliderS
 // ---------------------------------------------------------------------------
 
 export interface ColorAreaStateOptions extends ColorStateOptions {
+  /**
+   * The space the two channels are edited in, and the colour reported back
+   * in: `"oklch"` with `xChannel="chroma"` and `yChannel="lightness"` is an
+   * OKLCH plane at the colour's hue. @default the value's own
+   */
+  colorSpace?: MaybeAccessor<ColorSpace | undefined>;
   /** @default the colour's second channel */
   xChannel?: MaybeAccessor<ColorChannel | undefined>;
   /** @default the colour's third channel */
@@ -265,9 +297,10 @@ export interface ColorAreaState {
 }
 
 export function colorAreaState(options: ColorAreaStateOptions): ColorAreaState {
+  const space = (): ColorSpace | undefined => access(options.colorSpace);
   const [value, setValueRaw] = controllable<Color>(
-    () => asColor(access(options.value)),
-    () => asColor(access(options.defaultValue)) ?? defaultColor(),
+    () => inSpace(asColor(access(options.value)), space()),
+    () => inSpace(asColor(access(options.defaultValue)) ?? defaultColor(), space()),
     options.onChange,
   );
 
@@ -633,7 +666,7 @@ function areaBackground(
         end,
         color.getColorChannels(),
       );
-    default:
+    case "hsb":
       return layered(
         parseColor("hsb(0, 100%, 100%)"),
         HSB_STOPS,
@@ -642,7 +675,72 @@ function areaBackground(
         end,
         color.getColorChannels(),
       );
+    default:
+      return striped(color, channels, end);
   }
+}
+
+/**
+ * Enough strips that neighbours differ by less than one just noticeable
+ * difference, an OKLab distance of 0.02, across a whole lightness axis.
+ */
+const STRIPS = 64;
+
+function percentage(value: number): string {
+  return `${Math.round(value * 1e4) / 1e4}%`;
+}
+
+/**
+ * A plane in a space that layers cannot draw: HWB, Lab, LCH, OKLab, OKLCH.
+ *
+ * Layers blend in sRGB, and none of these spaces mixes linearly there, so two
+ * fades laid over each other would show the wrong colours. Instead the area is
+ * cut into strips across one axis, each an exact gradient along the other,
+ * interpolated in the colour's own space (`linear-gradient(in oklch ...)`).
+ * The hue, when it is on an axis, is the smooth direction: it needs the most
+ * stops and shows banding first. Each strip is drawn twice its width and the
+ * next one over it, so no seam opens between them at a fractional pixel.
+ */
+function striped(
+  color: Color,
+  channels: { x: ColorChannel; y: ColorChannel; z: ColorChannel },
+  end: "left" | "right",
+): Style {
+  const space = color.getColorSpace();
+  const base = color.withChannelValue("alpha", 1);
+  const rows = channels.x === "hue";
+  const across = rows ? channels.y : channels.x;
+  const along = rows ? channels.x : channels.y;
+  const acrossRange = base.getChannelRange(across);
+  const alongRange = base.getChannelRange(along);
+  const alongValues =
+    along === "hue" ? [0, 60, 120, 180, 240, 300, 360] : [alongRange.minValue, alongRange.maxValue];
+  const direction = rows ? `to ${end}` : "to top";
+  const size = 200 / STRIPS;
+  const offset = (strip: number): number => (strip / (STRIPS - 2)) * 100;
+
+  const layers: string[] = [];
+  // The last strip first, so it is on top and each one before runs on under it.
+  for (let strip = STRIPS - 1; strip >= 0; strip--) {
+    // Columns count from the start of the line, rows from the bottom.
+    const fraction = (strip + 0.5) / STRIPS;
+    const at = rows || end === "right" ? fraction : 1 - fraction;
+    const stripColor = base.withChannelValue(
+      across,
+      acrossRange.minValue + at * (acrossRange.maxValue - acrossRange.minValue),
+    );
+    const stops = alongValues
+      .map((value) => stripColor.withChannelValue(along, value).toString("css"))
+      .join(", ");
+    const position = rows
+      ? `0% ${percentage(offset(STRIPS - 2 - strip))}`
+      : `${percentage(offset(strip))} 0%`;
+    const dimensions = rows ? `100% ${percentage(size)}` : `${percentage(size)} 100%`;
+    layers.push(
+      `linear-gradient(in ${space} ${direction}, ${stops}) ${position} / ${dimensions} no-repeat`,
+    );
+  }
+  return { background: layers.join(", ") };
 }
 
 export interface ColorAreaGradientOptions {
@@ -941,7 +1039,23 @@ function mod(n: number, m: number): number {
   return ((n % m) + m) % m;
 }
 
-export interface ColorWheelStateOptions extends ColorStateOptions {}
+/** The spaces with a hue to turn. */
+export type HueColorSpace = "hsl" | "hsb" | "hwb" | "lch" | "oklch";
+
+export interface ColorWheelStateOptions extends ColorStateOptions {
+  /**
+   * The space whose hue the wheel turns. `"oklch"` turns a hue that keeps its
+   * perceived lightness all the way round, where HSL's swings from a dark blue
+   * to a bright yellow. @default the value's own when it has a hue, else HSL
+   */
+  colorSpace?: MaybeAccessor<HueColorSpace | undefined>;
+}
+
+function hasHue(space: ColorSpace): space is HueColorSpace {
+  return (
+    space === "hsl" || space === "hsb" || space === "hwb" || space === "lch" || space === "oklch"
+  );
+}
 
 export interface ColorWheelState {
   value: Accessor<Color>;
@@ -971,7 +1085,8 @@ export interface ColorWheelState {
  * 360 lands on 0 rather than stopping, and decrementing from 0 goes to the
  * last step below 360 rather than to −1.
  *
- * The value is kept in HSL or HSB, because RGB has no hue to turn.
+ * The value is kept in a space with a hue, HSL unless it names another,
+ * because RGB has no hue to turn.
  */
 export function colorWheelState(options: ColorWheelStateOptions = {}): ColorWheelState {
   const [raw, setRaw] = controllable<Color>(
@@ -982,8 +1097,9 @@ export function colorWheelState(options: ColorWheelStateOptions = {}): ColorWhee
 
   const value = (): Color => {
     const current = raw();
-    const space = current.getColorSpace();
-    return space === "hsl" || space === "hsb" ? current : current.toFormat("hsl");
+    const space = access(options.colorSpace);
+    if (space !== undefined) return current.toFormat(space);
+    return hasHue(current.getColorSpace()) ? current : current.toFormat("hsl");
   };
 
   // Read once: a form reset goes back to where the wheel STARTED, not to
@@ -1495,12 +1611,9 @@ export function colorChannelFieldState(
   // Read once: a form reset goes back to where the field STARTED.
   const initial = colorValue();
   const channel = (): ColorChannel => access(options.channel);
-  const inSpace = (value: Color | null): Color => {
-    const space = access(options.colorSpace);
-    const held = value ?? BLACK_COLOR;
-    return space === undefined ? held : held.toFormat(space);
-  };
-  const color = (): Color => inSpace(colorValue());
+  const inFieldSpace = (value: Color | null): Color =>
+    inSpace(value ?? BLACK_COLOR, access(options.colorSpace));
+  const color = (): Color => inFieldSpace(colorValue());
   const defaultColorValue = (): Color | null => asColor(access(options.defaultValue)) ?? initial;
 
   const range = (): ReturnType<Color["getChannelRange"]> => color().getChannelRange(channel());
@@ -1514,7 +1627,7 @@ export function colorChannelFieldState(
       colorValue() === null ? Number.NaN : color().getChannelValue(channel()) / scale(),
     defaultValue: () => {
       const given = defaultColorValue();
-      return given === null ? Number.NaN : inSpace(given).getChannelValue(channel()) / scale();
+      return given === null ? Number.NaN : inFieldSpace(given).getChannelValue(channel()) / scale();
     },
     minValue: () => range().minValue / scale(),
     maxValue: () => range().maxValue / scale(),
@@ -1705,6 +1818,8 @@ export function ColorPicker(props: ColorPickerComponentProps) {
 
 export interface ColorSliderComponentProps extends StyleProps {
   channel: ColorChannel;
+  /** The space the channel is edited in. @default the value's own */
+  colorSpace?: ColorSpace;
   label?: Child;
   value?: Color | string;
   defaultValue?: Color | string;
@@ -1729,6 +1844,7 @@ export function ColorSlider(props: ColorSliderComponentProps) {
 
   const state = colorSliderState({
     channel: () => props.channel,
+    colorSpace: () => props.colorSpace,
     orientation: () => props.orientation,
     value: () => props.value ?? picker?.value(),
     defaultValue: () => props.defaultValue,
@@ -1800,6 +1916,8 @@ export function ColorSlider(props: ColorSliderComponentProps) {
 export interface ColorAreaComponentProps extends StyleProps {
   value?: Color | string;
   defaultValue?: Color | string;
+  /** The space the two channels are edited in. @default the value's own */
+  colorSpace?: ColorSpace;
   xChannel?: ColorChannel;
   yChannel?: ColorChannel;
   isDisabled?: boolean;
@@ -1823,6 +1941,7 @@ export function ColorArea(props: ColorAreaComponentProps) {
   const state = colorAreaState({
     value: () => props.value ?? picker?.value(),
     defaultValue: () => props.defaultValue,
+    colorSpace: () => props.colorSpace,
     xChannel: () => props.xChannel,
     yChannel: () => props.yChannel,
     isDisabled: () => props.isDisabled ?? picker?.isDisabled(),
@@ -1889,6 +2008,8 @@ export function ColorArea(props: ColorAreaComponentProps) {
 export interface ColorWheelComponentProps extends StyleProps {
   value?: Color | string;
   defaultValue?: Color | string;
+  /** The space whose hue the wheel turns. @default the value's own, or HSL */
+  colorSpace?: HueColorSpace;
   /** The hole in the middle, in pixels. @default 64 */
   innerRadius?: number;
   /** The wheel's radius, in pixels. @default 80 */
@@ -1920,6 +2041,7 @@ export function ColorWheel(props: ColorWheelComponentProps) {
   const state = colorWheelState({
     value: () => props.value ?? picker?.value(),
     defaultValue: () => props.defaultValue,
+    colorSpace: () => props.colorSpace,
     isDisabled: () => props.isDisabled ?? picker?.isDisabled(),
     onChange: (value) => {
       picker?.setValue(value);
