@@ -13,7 +13,10 @@
  *   is one, but it sits after the segments, so tabbing through a form goes
  *   month, day, year, calendar, next field.
  * - **Choosing a date closes the popover** and puts the value in the field,
- *   because the calendar exists to answer one question.
+ *   because the calendar exists to answer one question. With a time to set,
+ *   a time field sits beside the calendar and the popover stays: the day
+ *   waits for the time and the two are reported together, and closing with
+ *   only the day chosen gives it the placeholder's time.
  * - **`aria-haspopup="dialog"`,** not `menu` or `listbox`: what opens is a
  *   dialog holding a grid, and saying otherwise makes a screen reader promise
  *   the wrong keys.
@@ -26,8 +29,11 @@ import {
   type Child,
   createContext,
   getContext,
+  createSignal,
   getOwner,
   install,
+  Show,
+  untrack,
 } from "@barqjs/core";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { button } from "./button.tsx";
@@ -38,6 +44,7 @@ import {
   type DateValue,
   type MappedDateValue,
   Time,
+  toCalendarDate,
   toCalendarDateTime,
   type TimeValue,
 } from "./date.ts";
@@ -59,7 +66,7 @@ import {
   type OverlayTriggerStateOptions,
   type Placement,
 } from "./overlays.ts";
-import { DateField, type Granularity } from "./datefield.tsx";
+import { DateField, type Granularity, TimeField } from "./datefield.tsx";
 import {
   access,
   callback,
@@ -91,6 +98,11 @@ export interface DatePickerStateOptions<
   granularity?: MaybeAccessor<Granularity | undefined>;
   isDisabled?: MaybeAccessor<boolean | undefined>;
   isReadOnly?: MaybeAccessor<boolean | undefined>;
+  /**
+   * Close the calendar once a day is chosen. A picker with a time keeps it
+   * open by default, so the time can be set beside it. @default true
+   */
+  shouldCloseOnSelect?: boolean | (() => boolean);
   onChange?: (value: NoInfer<MappedDateValue<T>> | null) => void;
 }
 
@@ -98,36 +110,31 @@ export interface DatePickerState extends OverlayTriggerState {
   value: Accessor<DateValue | null>;
   setValue(value: DateValue | null): void;
   /**
-   * A day chosen in the calendar. It arrives with the time and zone the value
-   * already had, and a picker with a time gives a day without one the
-   * placeholder's, or midnight.
+   * The day part: the value's, or a day chosen in the calendar while the time
+   * has still to be set. The calendar shows this one.
    */
+  dateValue: Accessor<DateValue | null>;
+  /** Choose a day, as the calendar does. */
   setDateValue(date: DateValue | null): void;
+  /** The time part: the value's, or a time set before a day was chosen. */
+  timeValue: Accessor<TimeValue | null>;
+  /** Set the time, as the time field beside the calendar does. */
+  setTimeValue(time: TimeValue | null): void;
   granularity: Accessor<Granularity>;
+  /** The granularity asks for a time, so the calendar comes with a time field. */
+  hasTime: Accessor<boolean>;
   isDisabled: Accessor<boolean>;
   isReadOnly: Accessor<boolean>;
 }
 
-/**
- * A day from the calendar as a value of the picker's granularity.
- *
- * The calendar keeps the time a value had, so only a day chosen while there
- * was none needs one: the placeholder's, zone and all, or midnight.
- */
-function withTime(
-  date: DateValue,
-  granularity: Granularity,
-  placeholder: DateValue | null | undefined,
-): DateValue {
-  if (granularity === "day" || "hour" in date) return date;
-  const time: TimeValue =
-    placeholder !== null && placeholder !== undefined && "hour" in placeholder
-      ? placeholder
-      : new Time();
-  if ("timeZone" in time) {
-    return time.set({ era: date.era, year: date.year, month: date.month, day: date.day });
-  }
-  return toCalendarDateTime(date, time);
+/** The time of a value that has one, for the time field beside the calendar. */
+function timeOf(value: DateValue | null | undefined): TimeValue | undefined {
+  return value !== null && value !== undefined && "hour" in value ? value : undefined;
+}
+
+/** A granularity as the time field takes it. */
+function timeGranularity(granularity: Granularity): "hour" | "minute" | "second" | undefined {
+  return granularity === "day" ? undefined : granularity;
 }
 
 /** What a value or its stand-in says the granularity is, when the caller did not. */
@@ -135,6 +142,34 @@ function defaultGranularity(model: DateValue | null | undefined): Granularity {
   return model !== null && model !== undefined && "minute" in model ? "minute" : "day";
 }
 
+/** The time a day takes when none was set: the stand-in's, zone and all, or midnight. */
+function placeholderTime(model: DateValue | null | undefined): TimeValue {
+  return model !== null && model !== undefined && "hour" in model ? model : new Time();
+}
+
+/** A day and a time as one value, in the time's zone when it has one. */
+function combine(date: DateValue, time: TimeValue): DateValue {
+  if ("timeZone" in time) return time.set(toCalendarDate(date));
+  return toCalendarDateTime(date, time);
+}
+
+const hasTimeIn = (granularity: Granularity): boolean => granularity !== "day";
+
+/** The two times of a range, either of which may not be set yet. */
+interface TimeRange {
+  start: TimeValue | null;
+  end: TimeValue | null;
+}
+
+/**
+ * The picker's value, and the half of one chosen so far.
+ *
+ * With a time, a day chosen in the calendar is not yet a value: it waits,
+ * with the calendar open, for the time beside it, and the two are reported
+ * together. Closing the calendar with a day chosen gives it the placeholder's
+ * time; closing it with only a time chosen reports nothing, and the time waits
+ * for the calendar to open again.
+ */
 export function datePickerState<T extends DateValue = DateValue>(
   options: DatePickerStateOptions<T>,
 ): DatePickerState {
@@ -146,30 +181,71 @@ export function datePickerState<T extends DateValue = DateValue>(
     (next) => options.onChange?.(next as MappedDateValue<T> | null),
   );
 
+  const [pendingDate, setPendingDate] = createSignal<DateValue | null>(null);
+  const [pendingTime, setPendingTime] = createSignal<TimeValue | null>(null);
+
   const granularity = (): Granularity =>
     access(options.granularity) ?? defaultGranularity(value() ?? access(options.placeholderValue));
+  const hasTime = (): boolean => hasTimeIn(granularity());
+
+  const dateValue = (): DateValue | null => value() ?? pendingDate();
+  const timeValue = (): TimeValue | null => {
+    const current = value();
+    return current !== null && "hour" in current ? current : pendingTime();
+  };
+  const stand = (): DateValue | null | undefined =>
+    access(options.defaultValue) ?? access(options.placeholderValue);
+
+  const commit = (date: DateValue, time: TimeValue): void => {
+    setValue(combine(date, time));
+    setPendingDate(null);
+    setPendingTime(null);
+  };
+
+  const shouldClose = (): boolean => {
+    const given = options.shouldCloseOnSelect ?? true;
+    return typeof given === "function" ? given() : given;
+  };
+
+  const setOpen = (isOpen: boolean): void => {
+    const date = untrack(pendingDate);
+    if (!isOpen && untrack(value) === null && date !== null && untrack(hasTime)) {
+      commit(date, untrack(pendingTime) ?? placeholderTime(stand()));
+    }
+    overlay.setOpen(isOpen);
+  };
 
   return {
     ...overlay,
+    setOpen,
+    close: () => setOpen(false),
+    toggle: () => setOpen(!untrack(overlay.isOpen)),
     value,
     setValue,
+    dateValue,
+    timeValue,
     granularity,
+    hasTime,
     isDisabled: () => access(options.isDisabled) === true,
     isReadOnly: () => access(options.isReadOnly) === true,
     setDateValue: (date) => {
+      const close = shouldClose();
       if (date === null) {
         setValue(null);
-        overlay.close();
-        return;
+        setPendingDate(null);
+      } else if (untrack(hasTime)) {
+        const time = untrack(timeValue);
+        if (time !== null || close) commit(date, time ?? placeholderTime(stand()));
+        else setPendingDate(date);
+      } else {
+        setValue(date);
       }
-      setValue(
-        withTime(
-          date,
-          granularity(),
-          access(options.defaultValue) ?? access(options.placeholderValue),
-        ),
-      );
-      overlay.close();
+      if (close) setOpen(false);
+    },
+    setTimeValue: (time) => {
+      const date = untrack(dateValue);
+      if (date !== null && time !== null) commit(date, time);
+      else setPendingTime(time);
     },
   };
 }
@@ -313,6 +389,11 @@ export interface DatePickerComponentProps<T extends DateValue = DateValue> exten
   hideTimeZone?: boolean;
   /** Builds the calendar system the locale names. @default createCalendar */
   createCalendar?: (identifier: CalendarIdentifier) => CalendarSystem;
+  /**
+   * Close the calendar once a day is chosen. Defaults to closing unless there
+   * is a time to set: then the calendar comes with a time field and stays.
+   */
+  shouldCloseOnSelect?: boolean;
   isDisabled?: boolean;
   isReadOnly?: boolean;
   isRequired?: boolean;
@@ -356,7 +437,9 @@ export function DatePicker<T extends DateValue = DateValue>(
     string | string[] | true | null | undefined
   >(cells(props).validate);
 
-  const state = datePickerState<T>({
+  const messages = stringFormatter(PICKER_STRINGS);
+
+  const state: DatePickerState = datePickerState<T>({
     value: () => props.value,
     defaultValue: () => props.defaultValue,
     placeholderValue: () => props.placeholderValue,
@@ -367,6 +450,8 @@ export function DatePicker<T extends DateValue = DateValue>(
     isReadOnly: () => props.isReadOnly,
     isOpen: () => props.isOpen,
     defaultOpen: () => props.defaultOpen,
+    // A day is half a value when there is a time to set beside it.
+    shouldCloseOnSelect: () => props.shouldCloseOnSelect ?? !state.hasTime(),
     onChange: (value) => props.onChange?.(value),
     onOpenChange: (isOpen) => props.onOpenChange?.(isOpen),
   });
@@ -463,8 +548,8 @@ export function DatePicker<T extends DateValue = DateValue>(
         <div {...dialogProps}>
           <Calendar
             aria-label={access(calendarProps["aria-label"] as MaybeAccessor<string>)}
-            value={state.value()}
-            defaultFocusedValue={state.value() ?? props.placeholderValue ?? undefined}
+            value={state.dateValue()}
+            defaultFocusedValue={state.dateValue() ?? props.placeholderValue ?? undefined}
             minValue={props.minValue}
             maxValue={props.maxValue}
             isDateUnavailable={isDateUnavailable}
@@ -474,6 +559,21 @@ export function DatePicker<T extends DateValue = DateValue>(
             autoFocus
             onChange={(date) => state.setDateValue(date)}
           />
+          <Show when={state.hasTime()}>
+            <TimeField
+              label={messages().format("time")}
+              value={state.timeValue()}
+              onChange={(time) => state.setTimeValue(time)}
+              placeholderValue={timeOf(props.placeholderValue)}
+              granularity={timeGranularity(state.granularity())}
+              minValue={timeOf(props.minValue)}
+              maxValue={timeOf(props.maxValue)}
+              hourCycle={props.hourCycle}
+              hideTimeZone={props.hideTimeZone}
+              isDisabled={props.isDisabled}
+              isReadOnly={props.isReadOnly}
+            />
+          </Show>
         </div>
       </Popover>
       <span {...descriptionProps}>{props.description}</span>
@@ -605,7 +705,7 @@ export function DateRangePicker<T extends DateValue = DateValue>(
       "aria-label": () => messages().format("calendar"),
       "aria-labelledby": () => `${buttonId()} ${labelId() ?? ""}`.trim(),
       isDisabled: () => isDisabled() || props.isReadOnly === true,
-      onPress: () => overlay.toggle(),
+      onPress: () => setOpen(!untrack(overlay.isOpen)),
     },
     triggerRef,
   );
@@ -631,18 +731,64 @@ export function DateRangePicker<T extends DateValue = DateValue>(
     setValue(which === "start" ? { start: date, end: other } : { start: other, end: date });
   };
 
-  /**
-   * A range drawn in the calendar. Its ends keep the times they already held,
-   * which the calendar sees to; one drawn while there was none takes the
-   * placeholder's time.
-   */
-  const fromCalendar = (range: DateRange<DateValue> | null): DateRange<DateValue> | null => {
-    if (range === null) return null;
-    const placeholder = props.defaultValue?.start ?? props.placeholderValue;
-    return {
-      start: withTime(range.start, granularity(), placeholder),
-      end: withTime(range.end, granularity(), placeholder),
-    };
+  // The range drawn and the times set so far, while the other half is still
+  // to come: with a time, a range drawn in the calendar waits with the
+  // calendar open for the two times beside it.
+  const [pendingDates, setPendingDates] = createSignal<DateRange<DateValue> | null>(null);
+  const [pendingTimes, setPendingTimes] = createSignal<TimeRange | null>(null);
+  const hasTime = (): boolean => hasTimeIn(granularity());
+  const dateRange = (): DateRange<DateValue> | null => value() ?? pendingDates();
+  const timeRange = (): TimeRange | null => {
+    const current = value();
+    if (current !== null && "hour" in current.start && "hour" in current.end) {
+      return { start: current.start, end: current.end };
+    }
+    return pendingTimes();
+  };
+  const placeholder = (): TimeValue => placeholderTime(props.placeholderValue);
+
+  const commit = (dates: DateRange<DateValue>, times: TimeRange): void => {
+    setValue({
+      start: combine(dates.start, times.start ?? placeholder()),
+      end: combine(dates.end, times.end ?? placeholder()),
+    });
+    setPendingDates(null);
+    setPendingTimes(null);
+  };
+
+  const setOpen = (isOpen: boolean): void => {
+    const dates = untrack(pendingDates);
+    if (!isOpen && untrack(value) === null && dates !== null && untrack(hasTime)) {
+      commit(dates, untrack(pendingTimes) ?? { start: null, end: null });
+    }
+    overlay.setOpen(isOpen);
+  };
+
+  const setDateRange = (range: DateRange<DateValue> | null): void => {
+    const close = props.shouldCloseOnSelect ?? !untrack(hasTime);
+    if (range === null) {
+      setValue(null);
+      setPendingDates(null);
+    } else if (untrack(hasTime)) {
+      const times = untrack(timeRange);
+      const timed = times !== null && times.start !== null && times.end !== null;
+      if (close || timed) commit(range, times ?? { start: null, end: null });
+      else setPendingDates(range);
+    } else {
+      setValue(range);
+    }
+    if (close) setOpen(false);
+  };
+
+  const setTime = (which: "start" | "end", time: TimeValue | null): void => {
+    const was = untrack(timeRange);
+    const times: TimeRange =
+      which === "start"
+        ? { start: time, end: was?.end ?? null }
+        : { start: was?.start ?? null, end: time };
+    const dates = untrack(dateRange);
+    if (dates !== null && times.start !== null && times.end !== null) commit(dates, times);
+    else setPendingTimes(times);
   };
 
   const elementProps = mergeProps(
@@ -657,7 +803,11 @@ export function DateRangePicker<T extends DateValue = DateValue>(
       "data-invalid": isInvalid,
       "data-testid": () => props["data-testid"],
       onKeyDown: (event: KeyboardEvent) =>
-        opensOnAltArrow(event, overlay, isDisabled() || props.isReadOnly === true),
+        opensOnAltArrow(
+          event,
+          { isOpen: overlay.isOpen, setOpen },
+          isDisabled() || props.isReadOnly === true,
+        ),
     },
   );
 
@@ -719,7 +869,7 @@ export function DateRangePicker<T extends DateValue = DateValue>(
       <Popover
         triggerRef={triggerRef}
         isOpen={overlay.isOpen()}
-        onOpenChange={overlay.setOpen}
+        onOpenChange={setOpen}
         placement={props.placement ?? "bottom start"}
       >
         <div
@@ -729,8 +879,8 @@ export function DateRangePicker<T extends DateValue = DateValue>(
         >
           <RangeCalendar
             aria-label={messages().format("calendar")}
-            value={value()}
-            defaultFocusedValue={value()?.start ?? props.placeholderValue ?? undefined}
+            value={dateRange()}
+            defaultFocusedValue={dateRange()?.start ?? props.placeholderValue ?? undefined}
             minValue={props.minValue}
             maxValue={props.maxValue}
             isDateUnavailable={isDateUnavailable}
@@ -738,11 +888,36 @@ export function DateRangePicker<T extends DateValue = DateValue>(
             isDisabled={props.isDisabled}
             isReadOnly={props.isReadOnly}
             autoFocus
-            onChange={(range) => {
-              setValue(fromCalendar(range));
-              overlay.close();
-            }}
+            onChange={setDateRange}
           />
+          <Show when={hasTime()}>
+            <TimeField
+              label={messages().format("startTime")}
+              value={timeRange()?.start ?? null}
+              onChange={(time) => setTime("start", time)}
+              placeholderValue={timeOf(props.placeholderValue)}
+              granularity={timeGranularity(granularity())}
+              minValue={timeOf(props.minValue)}
+              maxValue={timeOf(props.maxValue)}
+              hourCycle={props.hourCycle}
+              hideTimeZone={props.hideTimeZone}
+              isDisabled={props.isDisabled}
+              isReadOnly={props.isReadOnly}
+            />
+            <TimeField
+              label={messages().format("endTime")}
+              value={timeRange()?.end ?? null}
+              onChange={(time) => setTime("end", time)}
+              placeholderValue={timeOf(props.placeholderValue)}
+              granularity={timeGranularity(granularity())}
+              minValue={timeOf(props.minValue)}
+              maxValue={timeOf(props.maxValue)}
+              hourCycle={props.hourCycle}
+              hideTimeZone={props.hideTimeZone}
+              isDisabled={props.isDisabled}
+              isReadOnly={props.isReadOnly}
+            />
+          </Show>
         </div>
       </Popover>
       <span {...descriptionProps}>{props.description}</span>
@@ -762,7 +937,14 @@ export function DateRangePicker<T extends DateValue = DateValue>(
 // Strings
 // ---------------------------------------------------------------------------
 
-type PickerKey = "calendar" | "startDate" | "endDate" | "rangeReversed";
+type PickerKey =
+  | "calendar"
+  | "startDate"
+  | "endDate"
+  | "rangeReversed"
+  | "time"
+  | "startTime"
+  | "endTime";
 
 const PICKER_STRINGS = new StringDictionary<PickerKey>({
   "en-US": {
@@ -770,203 +952,305 @@ const PICKER_STRINGS = new StringDictionary<PickerKey>({
     startDate: "Start date",
     endDate: "End date",
     rangeReversed: "The start date is after the end date.",
+    time: "Time",
+    startTime: "Start time",
+    endTime: "End time",
   },
   "ar-AE": {
     calendar: "التقويم",
     startDate: "تاريخ البدء",
     endDate: "تاريخ الانتهاء",
     rangeReversed: "تاريخ البدء يجب أن يكون قبل تاريخ الانتهاء.",
+    time: "الوقت",
+    startTime: "وقت البدء",
+    endTime: "وقت الانتهاء",
   },
   "bg-BG": {
     calendar: "Календар",
     startDate: "Начална дата",
     endDate: "Крайна дата",
     rangeReversed: "Началната дата трябва да е преди крайната.",
+    time: "Време",
+    startTime: "Начален час",
+    endTime: "Краен час",
   },
   "cs-CZ": {
     calendar: "Kalendář",
     startDate: "Počáteční datum",
     endDate: "Konečné datum",
     rangeReversed: "Datum zahájení musí předcházet datu ukončení.",
+    time: "Čas",
+    startTime: "Počáteční čas",
+    endTime: "Konečný čas",
   },
   "da-DK": {
     calendar: "Kalender",
     startDate: "Startdato",
     endDate: "Slutdato",
     rangeReversed: "Startdatoen skal være før slutdatoen.",
+    time: "Klokkeslæt",
+    startTime: "Starttidspunkt",
+    endTime: "Sluttidspunkt",
   },
   "de-DE": {
     calendar: "Kalender",
     startDate: "Startdatum",
     endDate: "Enddatum",
     rangeReversed: "Das Startdatum muss vor dem Enddatum liegen.",
+    time: "Uhrzeit",
+    startTime: "Startzeit",
+    endTime: "Endzeit",
   },
   "el-GR": {
     calendar: "Ημερολόγιο",
     startDate: "Ημερομηνία έναρξης",
     endDate: "Ημερομηνία λήξης",
     rangeReversed: "Η ημερομηνία έναρξης πρέπει να είναι πριν από την ημερομηνία λήξης.",
+    time: "Χρόνος",
+    startTime: "Ώρα έναρξης",
+    endTime: "Χρόνος λήξης",
   },
   "es-ES": {
     calendar: "Calendario",
     startDate: "Fecha de inicio",
     endDate: "Fecha final",
     rangeReversed: "La fecha de inicio debe ser anterior a la fecha de finalización.",
+    time: "Hora",
+    startTime: "Hora de inicio",
+    endTime: "Hora de finalización",
   },
   "et-EE": {
     calendar: "Kalender",
     startDate: "Alguskuupäev",
     endDate: "Lõppkuupäev",
     rangeReversed: "Alguskuupäev peab olema enne lõppkuupäeva.",
+    time: "Aeg",
+    startTime: "Algusaeg",
+    endTime: "Lõpuaeg",
   },
   "fi-FI": {
     calendar: "Kalenteri",
     startDate: "Alkamispäivä",
     endDate: "Päättymispäivä",
     rangeReversed: "Aloituspäivän on oltava ennen lopetuspäivää.",
+    time: "Aika",
+    startTime: "Alkamisaika",
+    endTime: "Päättymisaika",
   },
   "fr-FR": {
     calendar: "Calendrier",
     startDate: "Date de début",
     endDate: "Date de fin",
     rangeReversed: "La date de début doit être antérieure à la date de fin.",
+    time: "Heure",
+    startTime: "Heure de début",
+    endTime: "Heure de fin",
   },
   "he-IL": {
     calendar: "לוח שנה",
     startDate: "תאריך התחלה",
     endDate: "תאריך סיום",
     rangeReversed: "תאריך ההתחלה חייב להיות לפני תאריך הסיום.",
+    time: "זמן",
+    startTime: "שעת התחלה",
+    endTime: "שעת סיום",
   },
   "hr-HR": {
     calendar: "Kalendar",
     startDate: "Datum početka",
     endDate: "Datum završetka",
     rangeReversed: "Datum početka mora biti prije datuma završetka.",
+    time: "Vrijeme",
+    startTime: "Vrijeme početka",
+    endTime: "Vrijeme završetka",
   },
   "hu-HU": {
     calendar: "Naptár",
     startDate: "Kezdő dátum",
     endDate: "Befejező dátum",
     rangeReversed: "A kezdő dátumnak a befejező dátumnál korábbinak kell lennie.",
+    time: "Idő",
+    startTime: "Kezdés ideje",
+    endTime: "Befejezés ideje",
   },
   "it-IT": {
     calendar: "Calendario",
     startDate: "Data iniziale",
     endDate: "Data finale",
     rangeReversed: "La data di inizio deve essere antecedente alla data di fine.",
+    time: "Ora",
+    startTime: "Ora di inizio",
+    endTime: "Ora di fine",
   },
   "ja-JP": {
     calendar: "カレンダー",
     startDate: "開始日",
     endDate: "終了日",
     rangeReversed: "開始日は終了日より前にする必要があります。",
+    time: "時刻",
+    startTime: "開始時刻",
+    endTime: "終了時刻",
   },
   "ko-KR": {
     calendar: "달력",
     startDate: "시작일",
     endDate: "종료일",
     rangeReversed: "시작일은 종료일 이전이어야 합니다.",
+    time: "시간",
+    startTime: "시작 시간",
+    endTime: "종료 시간",
   },
   "lt-LT": {
     calendar: "Kalendorius",
     startDate: "Pradžios data",
     endDate: "Pabaigos data",
     rangeReversed: "Pradžios data turi būti ankstesnė nei pabaigos data.",
+    time: "Laikas",
+    startTime: "Pradžios laikas",
+    endTime: "Pabaigos laikas",
   },
   "lv-LV": {
     calendar: "Kalendārs",
     startDate: "Sākuma datums",
     endDate: "Beigu datums",
     rangeReversed: "Sākuma datumam ir jābūt pirms beigu datuma.",
+    time: "Laiks",
+    startTime: "Sākuma laiks",
+    endTime: "Beigu laiks",
   },
   "nb-NO": {
     calendar: "Kalender",
     startDate: "Startdato",
     endDate: "Sluttdato",
     rangeReversed: "Startdatoen må være før sluttdatoen.",
+    time: "Tid",
+    startTime: "Starttid",
+    endTime: "Sluttid",
   },
   "nl-NL": {
     calendar: "Kalender",
     startDate: "Startdatum",
     endDate: "Einddatum",
     rangeReversed: "De startdatum moet voor de einddatum liggen.",
+    time: "Tijd",
+    startTime: "Starttijd",
+    endTime: "Eindtijd",
   },
   "pl-PL": {
     calendar: "Kalendarz",
     startDate: "Data początkowa",
     endDate: "Data końcowa",
     rangeReversed: "Data rozpoczęcia musi być wcześniejsza niż data zakończenia.",
+    time: "Godzina",
+    startTime: "Godzina początkowa",
+    endTime: "Godzina końcowa",
   },
   "pt-BR": {
     calendar: "Calendário",
     startDate: "Data inicial",
     endDate: "Data final",
     rangeReversed: "A data inicial deve ser anterior à data final.",
+    time: "Hora",
+    startTime: "Hora inicial",
+    endTime: "Hora final",
   },
   "pt-PT": {
     calendar: "Calendário",
     startDate: "Data de Início",
     endDate: "Data de Término",
     rangeReversed: "A data de início deve ser anterior à data de fim.",
+    time: "Tempo",
+    startTime: "Iniciar tempo",
+    endTime: "Terminar tempo",
   },
   "ro-RO": {
     calendar: "Calendar",
     startDate: "Dată început",
     endDate: "Dată final",
     rangeReversed: "Data de început trebuie să fie anterioară datei de sfârșit.",
+    time: "Ora",
+    startTime: "Ora de început",
+    endTime: "Ora de sfârșit",
   },
   "ru-RU": {
     calendar: "Календарь",
     startDate: "Дата начала",
     endDate: "Дата окончания",
     rangeReversed: "Дата начала должна предшествовать дате окончания.",
+    time: "Время",
+    startTime: "Время начала",
+    endTime: "Время окончания",
   },
   "sk-SK": {
     calendar: "Kalendár",
     startDate: "Dátum začatia",
     endDate: "Dátum ukončenia",
     rangeReversed: "Dátum začiatku musí byť skorší ako dátum konca.",
+    time: "Čas",
+    startTime: "Čas začiatku",
+    endTime: "Čas ukončenia",
   },
   "sl-SI": {
     calendar: "Koledar",
     startDate: "Datum začetka",
     endDate: "Datum konca",
     rangeReversed: "Začetni datum mora biti pred končnim datumom.",
+    time: "Čas",
+    startTime: "Začetni čas",
+    endTime: "Končni čas",
   },
   "sr-SP": {
     calendar: "Kalendar",
     startDate: "Datum početka",
     endDate: "Datum završetka",
     rangeReversed: "Datum početka mora biti pre datuma završetka.",
+    time: "Vreme",
+    startTime: "Početno vreme",
+    endTime: "Završno vreme",
   },
   "sv-SE": {
     calendar: "Kalender",
     startDate: "Startdatum",
     endDate: "Slutdatum",
     rangeReversed: "Startdatumet måste vara före slutdatumet.",
+    time: "Tid",
+    startTime: "Starttid",
+    endTime: "Sluttid",
   },
   "tr-TR": {
     calendar: "Takvim",
     startDate: "Başlangıç Tarihi",
     endDate: "Bitiş Tarihi",
     rangeReversed: "Başlangıç tarihi bitiş tarihinden önce olmalıdır.",
+    time: "Saat",
+    startTime: "Başlangıç saati",
+    endTime: "Bitiş saati",
   },
   "uk-UA": {
     calendar: "Календар",
     startDate: "Дата початку",
     endDate: "Дата завершення",
     rangeReversed: "Дата початку має передувати даті завершення.",
+    time: "Час",
+    startTime: "Час початку",
+    endTime: "Час завершення",
   },
   "zh-CN": {
     calendar: "日历",
     startDate: "开始日期",
     endDate: "结束日期",
     rangeReversed: "开始日期必须早于结束日期。",
+    time: "时间",
+    startTime: "开始时间",
+    endTime: "结束时间",
   },
   "zh-TW": {
     calendar: "日曆",
     startDate: "開始日期",
     endDate: "結束日期",
     rangeReversed: "開始日期必須在結束日期之前。",
+    time: "時間",
+    startTime: "開始時間",
+    endTime: "結束時間",
   },
 });

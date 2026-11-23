@@ -8,6 +8,7 @@ import {
   screen,
   tick,
   user,
+  within,
 } from "@barqjs/testing";
 import type { DateRange } from "./calendar.tsx";
 import { CalendarDate, CalendarDateTime, parseZonedDateTime, type DateValue } from "./date.ts";
@@ -385,7 +386,8 @@ describe("a date picker in a zone or another calendar", () => {
     flush();
 
     expect(changes.at(-1)?.toString()).toBe("2024-03-10T09:30:00-04:00[America/New_York]");
-    expect(screen.getByRole("textbox", { name: "time zone" }).textContent).toBe("EDT");
+    // The field's own zone, not the time field's beside the calendar.
+    expect(screen.getAllByRole("textbox", { name: "time zone" })[0]?.textContent).toBe("EDT");
   });
 
   test("a day chosen with no value yet takes the placeholder's time and zone", async () => {
@@ -401,6 +403,9 @@ describe("a date picker in a zone or another calendar", () => {
     user.click(trigger());
     await tick();
     user.click(screen.getByRole("button", { name: /^Friday, March 8, 2024/ }));
+    flush();
+    expect(changes).toEqual([]);
+    user.keyDown("Escape");
     flush();
     expect(changes.at(-1)?.toString()).toBe("2024-03-08T09:30:00-05:00[America/New_York]");
   });
@@ -425,5 +430,189 @@ describe("a date picker in a zone or another calendar", () => {
     flush();
     expect(changes.at(-1)?.calendar.identifier).toBe("gregory");
     expect(changes.at(-1)?.toString()).toBe("2024-02-15");
+  });
+});
+
+describe("a date picker with a time", () => {
+  /** The time field beside the calendar, and one of its segments. */
+  const timeSegment = (name: string): HTMLElement =>
+    within(screen.getByRole("group", { name: "Time" })).getByRole("spinbutton", { name });
+
+  test("choosing a day keeps the calendar open, with a time field beside it", async () => {
+    const changes: (DateValue | null)[] = [];
+    render(() => (
+      <DatePicker
+        label="Date"
+        defaultValue={new CalendarDateTime(2019, 2, 3, 8, 45)}
+        onChange={(value) => changes.push(value)}
+      />
+    ));
+
+    user.click(trigger());
+    await tick();
+    expect(timeSegment("hour").textContent).toBe("08");
+
+    user.click(screen.getByRole("button", { name: /^Monday, February 4, 2019/ }));
+    flush();
+    expect(screen.getByRole("dialog")).not.toBeNull();
+    expect(changes.map(String)).toEqual(["2019-02-04T08:45:00"]);
+
+    user.focus(timeSegment("hour"));
+    user.keyDown("ArrowUp");
+    flush();
+    expect(screen.getByRole("dialog")).not.toBeNull();
+    expect(changes.map(String)).toEqual(["2019-02-04T08:45:00", "2019-02-04T09:45:00"]);
+  });
+
+  test("nothing is reported until both a day and a time are chosen", async () => {
+    const changes: (DateValue | null)[] = [];
+    render(() => <Departure granularity="minute" onChange={(value) => changes.push(value)} />);
+
+    user.click(trigger());
+    await tick();
+    const day = screen.getByRole("button", { name: /^Friday, March 15, 2024/ });
+    user.click(day);
+    flush();
+    expect(day.closest('[role="gridcell"]')?.getAttribute("aria-selected")).toBe("true");
+    expect(changes).toEqual([]);
+
+    user.focus(timeSegment("hour"));
+    user.keyDown("ArrowUp");
+    flush();
+    expect(changes).toEqual([]);
+
+    user.focus(timeSegment("minute"));
+    user.keyDown("ArrowUp");
+    flush();
+    expect(changes.map(String)).toEqual(["2024-03-15T00:00:00"]);
+    expect(screen.getByRole("dialog")).not.toBeNull();
+  });
+
+  test("closing with a day chosen and no time gives it the placeholder's time", async () => {
+    const changes: (DateValue | null)[] = [];
+    render(() => <Departure granularity="minute" onChange={(value) => changes.push(value)} />);
+
+    user.click(trigger());
+    await tick();
+    user.click(screen.getByRole("button", { name: /^Friday, March 15, 2024/ }));
+    flush();
+    expect(changes).toEqual([]);
+
+    user.keyDown("Escape");
+    flush();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(changes.map(String)).toEqual(["2024-03-15T00:00:00"]);
+  });
+
+  test("closing with only a time chosen reports nothing, and keeps the time", async () => {
+    const changes: (DateValue | null)[] = [];
+    render(() => <Departure granularity="minute" onChange={(value) => changes.push(value)} />);
+
+    user.click(trigger());
+    await tick();
+    user.focus(timeSegment("hour"));
+    user.keyDown("ArrowUp");
+    user.focus(timeSegment("minute"));
+    user.keyDown("ArrowUp");
+    user.keyDown("ArrowUp");
+    flush();
+    user.keyDown("Escape");
+    flush();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(changes).toEqual([]);
+
+    // Open again, the time is still set, and choosing a day completes it.
+    user.click(trigger());
+    await tick();
+    user.click(screen.getByRole("button", { name: /^Friday, March 15, 2024/ }));
+    flush();
+    expect(changes.map(String)).toEqual(["2024-03-15T00:01:00"]);
+  });
+
+  test("shouldCloseOnSelect closes the calendar on a day, with the placeholder's time", async () => {
+    const changes: (DateValue | null)[] = [];
+    render(() => (
+      <DatePicker
+        label="Date"
+        granularity="minute"
+        placeholderValue={new CalendarDateTime(2024, 3, 7, 9, 30)}
+        shouldCloseOnSelect
+        onChange={(value) => changes.push(value)}
+      />
+    ));
+
+    user.click(trigger());
+    await tick();
+    user.click(screen.getByRole("button", { name: /^Friday, March 15, 2024/ }));
+    flush();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(changes.map(String)).toEqual(["2024-03-15T09:30:00"]);
+  });
+
+  test("a range waits for both times, and closing gives the missing ones the placeholder's", async () => {
+    const ranges: string[][] = [];
+    render(() => (
+      <DateRangePicker
+        label="Stay"
+        granularity="minute"
+        placeholderValue={new CalendarDate(2024, 3, 7)}
+        onChange={(value) =>
+          ranges.push(value === null ? [] : [String(value.start), String(value.end)])
+        }
+      />
+    ));
+    const startTime = (name: string): HTMLElement =>
+      within(screen.getByRole("group", { name: "Start time" })).getByRole("spinbutton", { name });
+
+    user.click(screen.getByRole("button", { name: /Calendar/ }));
+    await tick();
+    user.click(screen.getByRole("button", { name: /^Monday, March 11, 2024/ }));
+    user.click(screen.getByRole("button", { name: /^Friday, March 15, 2024/ }));
+    flush();
+    expect(screen.getByRole("dialog")).not.toBeNull();
+    expect(ranges).toEqual([]);
+
+    // One end's time is not the range's.
+    user.focus(startTime("hour"));
+    user.keyDown("ArrowUp");
+    user.focus(startTime("minute"));
+    user.keyDown("ArrowUp");
+    flush();
+    expect(ranges).toEqual([]);
+
+    user.keyDown("Escape");
+    flush();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(ranges).toEqual([["2024-03-11T00:00:00", "2024-03-15T00:00:00"]]);
+  });
+
+  test("a range is reported once both times are set", async () => {
+    const ranges: string[][] = [];
+    render(() => (
+      <DateRangePicker
+        label="Stay"
+        granularity="minute"
+        placeholderValue={new CalendarDate(2024, 3, 7)}
+        onChange={(value) =>
+          ranges.push(value === null ? [] : [String(value.start), String(value.end)])
+        }
+      />
+    ));
+    const time = (group: string, name: string): HTMLElement =>
+      within(screen.getByRole("group", { name: group })).getByRole("spinbutton", { name });
+
+    user.click(screen.getByRole("button", { name: /Calendar/ }));
+    await tick();
+    user.click(screen.getByRole("button", { name: /^Monday, March 11, 2024/ }));
+    user.click(screen.getByRole("button", { name: /^Friday, March 15, 2024/ }));
+    for (const group of ["Start time", "End time"]) {
+      user.focus(time(group, "hour"));
+      user.keyDown("ArrowUp");
+      user.focus(time(group, "minute"));
+      user.keyDown("ArrowUp");
+      flush();
+    }
+    expect(ranges).toEqual([["2024-03-11T00:00:00", "2024-03-15T00:00:00"]]);
+    expect(screen.getByRole("dialog")).not.toBeNull();
   });
 });
