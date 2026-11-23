@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "isolatedDeclarations": false,
+    "declaration": false,
+    "paths": {
+      "@tanstack-db-tests/*": ["../node_modules/.cache/tanstack-db-tests/packages/db/tests/*"]
+    }
+  },
+  "include": ["./**/*"],
+  "exclude": []
+}

@@ -1,0 +1,81 @@
+{
+  "name": "@barqjs/db",
+  "version": "0.2.0-next.3",
+  "description": "Live queries over TanStack DB collections for barq: useLiveQuery, useLiveInfiniteQuery and server rendering, on @tanstack/db",
+  "keywords": [
+    "barq",
+    "database",
+    "live-query",
+    "sync",
+    "tanstack"
+  ],
+  "homepage": "https://github.com/salamaashoush/barq#readme",
+  "bugs": {
+    "url": "https://github.com/salamaashoush/barq/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/salamaashoush/barq.git",
+    "directory": "packages/db"
+  },
+  "files": [
+    "dist",
+    "src",
+    "!src/**/*.test.ts",
+    "!src/**/*.test.tsx",
+    "!src/**/test-*.ts",
+    "!src/**/*-harness.ts",
+    "!src/**/*-probe.ts",
+    "!src/**/fixtures",
+    "!src/**/fixtures.ts",
+    "!src/**/ssr-fixtures.ts",
+    "!src/ssr-server.ts"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "test": "bun test --timeout 10000 && bun test --timeout 10000 --conditions=development && bun run conformance",
+    "conformance": "bun conformance/upstream.ts && vitest run --config conformance/vitest.config.ts && BARQ_ENGINE=production vitest run --config conformance/vitest.config.ts",
+    "typecheck": "bun conformance/upstream.ts && tsc --noEmit && tsc --noEmit -p conformance"
+  },
+  "dependencies": {
+    "@tanstack/db": "1.0.0-rc.1.5"
+  },
+  "devDependencies": {
+    "@barqjs/compiler": "workspace:*",
+    "@barqjs/core": "workspace:*",
+    "@barqjs/server": "workspace:*",
+    "@barqjs/vite": "workspace:*",
+    "@barqjs/web": "workspace:*",
+    "@happy-dom/global-registrator": "^21.0.4",
+    "@tanstack/oracles": "https://pkg.pr.new/TanStack/oracles/@tanstack/oracles@6d05f05",
+    "@tanstack/query-core": "^5.108.1",
+    "@tanstack/query-db-collection": "1.5.2",
+    "@types/bun": "^1.4.4",
+    "fast-check": "^4.11.0",
+    "happy-dom": "^21.0.4",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^4.1.6"
+  },
+  "peerDependencies": {
+    "@barqjs/core": ">=0.2.0-next.3",
+    "@barqjs/web": ">=0.2.0-next.3"
+  }
+}
