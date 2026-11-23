@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createSignal, flush } from "@barqjs/core";
 import { accessibleName, expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
-import { parseColor, type Color } from "./color.ts";
+import { parseColor, type Color, type ColorFormat } from "./color.ts";
 import { ColorSwatchPicker, ColorSwatchPickerItem } from "./colorswatchpicker.tsx";
 import { provideDirection, provideLocale } from "./i18n.ts";
 import {
@@ -1617,7 +1617,7 @@ describe("a colour slider's track", () => {
   });
 });
 
-describe("a colour wheel's ring", () => {
+describe("a colour wheel draws its ring", () => {
   function ring(options: ColorWheelStateOptions): {
     track: Record<string, string>;
     thumb: Record<string, string>;
@@ -1679,4 +1679,94 @@ describe("a colour wheel's ring", () => {
     expect(style).toContain("width: 100px");
     expect(style).toContain("margin: 4px");
   });
+});
+
+describe("a colour field steps only where its text is the 24-bit value", () => {
+  function Field(props: {
+    format?: ColorFormat;
+    defaultValue: string;
+    onChange: (value: Color | null) => void;
+  }) {
+    return (
+      <ColorField
+        label="Colour"
+        format={props.format}
+        defaultValue={props.defaultValue}
+        onChange={props.onChange}
+      />
+    );
+  }
+
+  test("a hex step keeps the colour's own space, its alpha, and a grey's hue", () => {
+    const changes: (Color | null)[] = [];
+    render(() => (
+      <Field defaultValue="hsla(210, 0%, 50%, 0.5)" onChange={(v) => changes.push(v)} />
+    ));
+    const field = screen.getByRole<HTMLInputElement>("textbox");
+    expect(field.value).toBe("#808080");
+
+    user.focus(field);
+    user.keyDown("Home");
+    flush();
+    // Black has no hue of its own; the one the grey had survives.
+    expect(changes.at(-1)?.getColorSpace()).toBe("hsl");
+    expect(changes.at(-1)?.getChannelValue("hue")).toBe(210);
+
+    user.keyDown("ArrowUp");
+    flush();
+    const stepped = changes.at(-1);
+    expect(stepped?.getColorSpace()).toBe("hsl");
+    expect(stepped?.toString("hex")).toBe("#000001");
+    expect(stepped?.alpha).toBe(0.5);
+  });
+
+  test("a hexa step keeps the alpha the text says", () => {
+    const changes: (Color | null)[] = [];
+    render(() => (
+      <Field format="hexa" defaultValue="#10203080" onChange={(v) => changes.push(v)} />
+    ));
+    const field = screen.getByRole<HTMLInputElement>("textbox");
+    user.focus(field);
+    user.keyDown("PageUp");
+    flush();
+    expect(changes.at(-1)?.toString("hexa")).toBe("#10203180");
+  });
+
+  test("an OKLCH colour stepped in hex stays OKLCH", () => {
+    const changes: (Color | null)[] = [];
+    render(() => <Field defaultValue="oklch(0.6 0.1 250)" onChange={(v) => changes.push(v)} />);
+    const field = screen.getByRole<HTMLInputElement>("textbox");
+    const before = field.value;
+    user.focus(field);
+    user.keyDown("ArrowUp");
+    flush();
+    const stepped = changes.at(-1);
+    expect(stepped?.getColorSpace()).toBe("oklch");
+    expect(stepped?.toHexInt()).toBe(Number.parseInt(before.slice(1), 16) + 1);
+  });
+
+  for (const [format, value] of [
+    ["oklch", "oklch(0.6 0.1 250)"],
+    ["hsl", "hsl(210, 50%, 50%)"],
+    ["rgb", "rgb(10, 20, 30)"],
+    ["lab", "lab(50 20 -30)"],
+  ] as const) {
+    test(`written as ${format}, the keys and the wheel leave the colour alone`, () => {
+      const changes: (Color | null)[] = [];
+      render(() => (
+        <Field format={format} defaultValue={value} onChange={(v) => changes.push(v)} />
+      ));
+      const field = screen.getByRole<HTMLInputElement>("textbox");
+      const shown = field.value;
+      user.focus(field);
+      for (const key of ["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"]) {
+        // Not prevented: the caret is the keys' to move.
+        expect(user.keyDown(key)).toBe(true);
+      }
+      field.dispatchEvent(new WheelEvent("wheel", { deltaY: 10, bubbles: true, cancelable: true }));
+      flush();
+      expect(changes).toEqual([]);
+      expect(field.value).toBe(shown);
+    });
+  }
 });

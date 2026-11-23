@@ -1553,9 +1553,16 @@ function readColor(text: string): Color | null {
  *
  * Committed on blur and on Enter, never as you type: "#ff" is not a colour,
  * and a field that reported one on every keystroke would flash the page
- * through every prefix of what was typed. The arrows, Page Up and Down, and the
- * wheel step it through the 24-bit colours one at a time; Home and End go to
- * black and to white. Emptied and committed, it holds no colour at all.
+ * through every prefix of what was typed. Emptied and committed, it holds no
+ * colour at all.
+ *
+ * Written in hex, the arrows, Page Up and Down, and the wheel step it through
+ * the 24-bit colours one at a time, and Home and End go to black and to white,
+ * as React Aria's field does: the hex text IS that integer, so one step is one
+ * unit of what the field shows. The colour keeps its own space and its alpha
+ * through a step. Written any other way there is no such unit, `hsl(...)` and
+ * `oklch(...)` being three numbers, so the field does not step at all and the
+ * keys move the caret through the text, as in any other text field.
  */
 export function colorField(
   options: ColorFieldOptions,
@@ -1605,9 +1612,22 @@ export function colorField(
     put(readColor(entered) ?? state.value());
   };
 
+  const steps = (): boolean => format() === "hex" || format() === "hexa";
+
   const stepTo = (target: (from: number) => number): void => {
-    const from = (readColor(current()) ?? fromHexInt(BLACK)).toHexInt();
-    put(fromHexInt(Math.min(Math.max(target(from), BLACK), WHITE)));
+    const held = state.value();
+    const from = readColor(current()) ?? held ?? fromHexInt(BLACK);
+    const value = clamp(target(from.toHexInt()), BLACK, WHITE);
+    // Built on the colour held, so a grey keeps the hue it came from; the
+    // alpha is what the text says when the text can say it.
+    const next = (held ?? from)
+      .toFormat("rgb")
+      .withChannelValue("red", (value >> 16) & 0xff)
+      .withChannelValue("green", (value >> 8) & 0xff)
+      .withChannelValue("blue", value & 0xff)
+      .withChannelValue("alpha", (format() === "hexa" ? from : (held ?? from)).alpha)
+      .toFormat(held?.getColorSpace() ?? "rgb");
+    put(next);
     validation.commitValidation();
   };
 
@@ -1642,12 +1662,12 @@ export function colorField(
   );
 
   const { spinButtonProps } = spinButton({
-    isDisabled: state.isDisabled,
+    isDisabled: () => state.isDisabled() || !steps(),
     isReadOnly,
     minValue: BLACK,
     maxValue: WHITE,
-    value: () => state.value()?.toHexInt(),
-    textValue: () => state.value()?.toString("hex"),
+    value: () => (steps() ? state.value()?.toHexInt() : undefined),
+    textValue: () => show(state.value()),
     onIncrement: () => stepTo((from) => from + 1),
     onDecrement: () => stepTo((from) => from - 1),
     onIncrementToMax: () => stepTo(() => WHITE),
@@ -1660,6 +1680,7 @@ export function colorField(
     ref,
     isDisabled: () =>
       access(options.isWheelDisabled) === true ||
+      !steps() ||
       state.isDisabled() ||
       isReadOnly() ||
       !isFocusWithin(),
