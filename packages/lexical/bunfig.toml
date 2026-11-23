@@ -1,0 +1,19 @@
+# Bun configuration for @barqjs/lexical
+# https://bun.sh/docs/runtime/bunfig
+
+[test]
+onlyFailures = true
+root = "./src"
+
+# happy-dom, then the barq compiler as a loader
+preload = ["./src/test-setup.ts"]
+
+coverage = false
+smol = true
+
+[install]
+frozen = false
+peer = true
+
+[run]
+silent = false

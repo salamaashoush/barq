@@ -1,0 +1,95 @@
+{
+  "name": "@barqjs/lexical",
+  "version": "0.2.0-next.3",
+  "description": "Lexical for barq: a composer over Lexical extensions, a content editable, decorator nodes rendered as barq components, typeahead and node menus, Yjs collaboration and editor-state signals",
+  "keywords": [
+    "barq",
+    "collaboration",
+    "contenteditable",
+    "editor",
+    "lexical",
+    "rich-text",
+    "yjs"
+  ],
+  "homepage": "https://github.com/salamaashoush/barq#readme",
+  "bugs": {
+    "url": "https://github.com/salamaashoush/barq/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/salamaashoush/barq.git",
+    "directory": "packages/lexical"
+  },
+  "files": [
+    "src",
+    "!src/**/*.test.ts",
+    "!src/**/*.test.tsx",
+    "!src/**/test-*.ts",
+    "!src/**/test-*.tsx",
+    "!src/**/*-harness.ts",
+    "!src/**/fixtures",
+    "!src/ssr-server.ts"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "barq": "./src/index.ts",
+      "bun": "./src/index.ts"
+    },
+    "./collaboration": {
+      "types": "./src/collaboration.tsx",
+      "barq": "./src/collaboration.tsx",
+      "bun": "./src/collaboration.tsx"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "test": "bun test --timeout 20000 && bun test --timeout 20000 --conditions=development",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@floating-ui/dom": "^1.8.0",
+    "@lexical/a11y": "0.53.0",
+    "@lexical/extension": "0.53.0",
+    "@lexical/text": "0.53.0",
+    "@lexical/utils": "0.53.0",
+    "@lexical/yjs": "0.53.0",
+    "lexical": "0.53.0"
+  },
+  "devDependencies": {
+    "@barqjs/compiler": "workspace:*",
+    "@barqjs/core": "workspace:*",
+    "@barqjs/server": "workspace:*",
+    "@barqjs/vite": "workspace:*",
+    "@barqjs/web": "workspace:*",
+    "@happy-dom/global-registrator": "^21.0.4",
+    "@lexical/history": "0.53.0",
+    "@lexical/link": "0.53.0",
+    "@lexical/list": "0.53.0",
+    "@lexical/markdown": "0.53.0",
+    "@lexical/plain-text": "0.53.0",
+    "@lexical/rich-text": "0.53.0",
+    "@types/bun": "^1.4.4",
+    "happy-dom": "^21.0.4",
+    "typescript": "^7.0.2",
+    "yjs": "^13.6.33"
+  },
+  "peerDependencies": {
+    "@barqjs/core": ">=0.2.0-next.3",
+    "@barqjs/server": ">=0.2.0-next.3",
+    "@barqjs/web": ">=0.2.0-next.3",
+    "yjs": ">=13.5.37"
+  },
+  "peerDependenciesMeta": {
+    "yjs": {
+      "optional": true
+    }
+  }
+}
