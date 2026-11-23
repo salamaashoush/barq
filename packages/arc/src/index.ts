@@ -1,4 +1,12 @@
 export * from "@barqjs/ui";
+export {
+  AppShell,
+  type AppShellProps,
+  type NavGroup,
+  type NavIcon,
+  type NavItem,
+  type NavSubItem,
+} from "./components/app-shell.tsx";
 export { ConfirmHost, type ConfirmOptions, confirm } from "./components/confirm.tsx";
 export { ArcProvider, type ArcProviderProps } from "./components/provider.tsx";
 export {

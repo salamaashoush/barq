@@ -8,7 +8,7 @@ once and reaches arc and every copy `barq-ui` makes.
 ## Install
 
 ```bash
-bun add @barqjs/arc @barqjs/ui @barqjs/aria @barqjs/core @barqjs/css @barqjs/web
+bun add @barqjs/arc @barqjs/ui @barqjs/aria @barqjs/core @barqjs/css @barqjs/web @barqjs/router
 ```
 
 Like every barq component package it ships source, and the app's build compiles
@@ -62,7 +62,19 @@ the toast stack and the host `confirm()` draws in. Every base component of
 ## Components
 
 ```tsx
-import { PageHeader, Status, confirm } from "@barqjs/arc";
+import { AppShell, PageHeader, Status, confirm } from "@barqjs/arc";
+
+<AppShell
+  header={<WorkspaceSwitcher />}
+  footer={<AccountMenu />}
+  actions={<ThemeToggle />}
+  navigation={[
+    { items: [{ label: "Overview", to: "/", exact: true, icon: House }] },
+    { label: "Projects", items: [{ label: "All projects", to: "/projects", icon: Folder }] },
+  ]}
+>
+  <Outlet />
+</AppShell>;
 
 <PageHeader
   heading="Checks"
@@ -77,6 +89,11 @@ if (await confirm({ title: "Delete the check?", tone: "danger", confirmLabel: "D
 }
 ```
 
+- `AppShell`: the sidebar and the page beside it, with a top bar holding the
+  trigger, the trail and the actions. The navigation is data, each item a
+  router link marked current while the location is under it. The sidebar
+  collapses to its icons, opens as it was left (the server reads the same
+  cookie), and is a sheet on a narrow screen.
 - `PageHeader`: the page's `<h1>`, a line about it, what sits above it and the
   actions beside it.
 - `Status`: a state in a word and a tone, as a dot, a tinted pill or a filled
