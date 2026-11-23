@@ -72,20 +72,14 @@ function parseStaticWidth(width: number | string, tableWidth: number): number {
   return tableWidth * (Number.parseFloat(match[0]) / 100);
 }
 
-function getMaxWidth(
-  maxWidth: number | string | null | undefined,
-  tableWidth: number,
-): number {
+function getMaxWidth(maxWidth: number | string | null | undefined, tableWidth: number): number {
   return maxWidth === null || maxWidth === undefined
     ? Number.MAX_SAFE_INTEGER
     : parseStaticWidth(maxWidth, tableWidth);
 }
 
 /** A share of the rest cannot be a minimum: it would need every other width first. */
-function getMinWidth(
-  minWidth: number | string | null | undefined,
-  tableWidth: number,
-): number {
+function getMinWidth(minWidth: number | string | null | undefined, tableWidth: number): number {
   return minWidth === null || minWidth === undefined ? 0 : parseStaticWidth(minWidth, tableWidth);
 }
 
