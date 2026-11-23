@@ -15,6 +15,12 @@ use crate::ir::{ExprTable, Module, Op, Patch, Thunk, Unit};
 /// from program order, and no member's write is delayed past anything it used
 /// to precede: the effect only runs earlier for members that came later.
 ///
+/// Running earlier is safe for a write that merely came later, and wrong for
+/// one placed after the children because it reads them: a `<select>`'s value
+/// names one of the options its children build, and written ahead of them it
+/// selects nothing. So a children patch closes the group, and the bindings
+/// after it share a second effect that stands where they do.
+///
 /// A unit whose only candidate is a single opaque binding is left alone,
 /// because `bindProp` already gives it the one effect a group would.
 pub fn run<'a>(allocator: &'a Allocator, module: &mut Module<'a>) {
@@ -47,26 +53,45 @@ pub fn members(unit: &Unit<'_>, header: usize, len: u16) -> Vec<usize> {
         .collect()
 }
 
+/// A patch that builds an element's children. Every attribute patch of a unit
+/// precedes them, except the writes lowering placed after them on purpose.
+fn builds_children(op: Op) -> bool {
+    matches!(op, Op::Insert { .. } | Op::Region { .. })
+}
+
 fn regroup<'a>(allocator: &'a Allocator, unit: &mut Unit<'a>) {
+    let mut headers: Vec<(usize, u16)> = Vec::new();
     let mut first = None;
     let mut count = 0usize;
     let mut live = false;
+    let mut close = |first: &mut Option<usize>, count: &mut usize, live: &mut bool| {
+        if let Some(at) = first.take()
+            && (*count >= 2 || *live)
+        {
+            let len = u16::try_from(*count).expect("a template with more than u16::MAX bindings");
+            headers.push((at, len));
+        }
+        *count = 0;
+        *live = false;
+    };
     for (index, patch) in unit.patch.iter().enumerate() {
-        if fuses(patch, &unit.exprs) {
+        if builds_children(patch.op) {
+            close(&mut first, &mut count, &mut live);
+        } else if fuses(patch, &unit.exprs) {
             first.get_or_insert(index);
             count += 1;
             live |= matches!(patch.op, Op::SetLive { .. });
         }
     }
-    let Some(first) = first else { return };
-    if count < 2 && !live {
+    close(&mut first, &mut count, &mut live);
+    if headers.is_empty() {
         return;
     }
-    let len = u16::try_from(count).expect("a template with more than u16::MAX bindings");
     let old = std::mem::replace(&mut unit.patch, oxc::allocator::Vec::new_in(&allocator));
-    unit.patch.reserve(old.len() + 1);
+    unit.patch.reserve(old.len() + headers.len());
+    let mut headers = headers.into_iter().peekable();
     for (index, patch) in old.iter().enumerate() {
-        if index == first {
+        if let Some((_, len)) = headers.next_if(|&(at, _)| at == index) {
             unit.patch.push(Patch {
                 target: patch.target,
                 span: patch.span,
@@ -80,7 +105,7 @@ fn regroup<'a>(allocator: &'a Allocator, unit: &mut Unit<'a>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::{Chan, DepSet, Diff, ExprSrc, Ns, Rx, Site, Unit};
+    use crate::ir::{Anchor, Chan, DepSet, Diff, ExprSrc, InsertPlan, Ns, Rx, Site, Unit};
     use oxc::span::Span;
 
     fn live(target: u32, value: u32) -> Patch {
@@ -156,6 +181,28 @@ mod tests {
         regroup(&allocator, &mut unit);
         assert_eq!(headers(&unit), vec![(1, 2)]);
         assert_eq!(members(&unit, 1, 2), vec![2, 3]);
+    }
+
+    /// A `<select>`'s value stands after the insert that builds its options,
+    /// and a header ahead of that insert would write it before they exist.
+    #[test]
+    fn a_binding_after_the_children_gets_an_effect_of_its_own() {
+        let allocator = Allocator::new();
+        let cheap = Rx { deps: DepSet::single(0), ..Rx::OPAQUE };
+        let mut unit = unit_with(&allocator, &[], &[cheap, Rx::OPAQUE, cheap]);
+        unit.patch.extend([
+            live(0, 0),
+            Patch {
+                target: 0,
+                span: Span::default(),
+                op: Op::Insert { slot: 0, anchor: Anchor::End, value: 1, plan: InsertPlan::Live },
+            },
+            live(0, 2),
+        ]);
+        regroup(&allocator, &mut unit);
+        assert_eq!(headers(&unit), vec![(0, 1), (3, 1)]);
+        assert_eq!(members(&unit, 0, 1), vec![1]);
+        assert_eq!(members(&unit, 3, 1), vec![4]);
     }
 
     /// `bindProp` already makes the one effect, in fewer bytes.

@@ -407,8 +407,9 @@ mod tests {
             assert!(!is_delegated_event(event), "{event} is NOT delegated by this runtime");
         }
 
-        assert_eq!(DOM_PROPS.len(), 12);
+        assert_eq!(DOM_PROPS.len(), 13);
         assert!(is_dom_prop("value") && is_dom_prop("readOnly") && is_dom_prop("innerHTML"));
+        assert!(is_dom_prop("selectedIndex"));
         assert!(!is_dom_prop("class") && !is_dom_prop("href"));
 
         assert!(is_svg_tag("svg") && is_svg_tag("feTurbulence") && is_svg_tag("foreignObject"));
@@ -436,6 +437,7 @@ mod tests {
             "checked",
             "innerHTML",
             "dangerouslySetInnerHTML",
+            "selectedIndex",
         ] {
             assert!(attr_intercepts(name), "{name} is decided by attr itself");
         }

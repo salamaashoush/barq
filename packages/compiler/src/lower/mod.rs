@@ -433,8 +433,8 @@ impl<'a> Lower<'a, '_> {
         //
         // Two writes read what is written after them, and go where it exists.
         // `bind:group` compares the field's own `value`, so it follows every
-        // other attribute; a `<select>`'s value names one of its options, so
-        // it follows the children that build them.
+        // other attribute; a `<select>`'s value or selected index names one
+        // of its options, so it follows the children that build them.
         let mut unit = build.unit;
         let mut grouped = Vec::new();
         let mut selecting = Vec::new();
@@ -843,7 +843,7 @@ impl<'a> Lower<'a, '_> {
             Op::Bind { prop, .. } => prop,
             _ => return false,
         };
-        if self.module.interner.name(name).text != "value" {
+        if !matches!(self.module.interner.name(name).text, "value" | "selectedIndex") {
             return false;
         }
         let SkelNode::Element(element) = &unit.skeleton.nodes[patch.target as usize] else {

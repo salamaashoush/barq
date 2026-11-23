@@ -311,8 +311,9 @@ const REFLECTS_AS: Record<string, string> = {
 /**
  * Names that write no attribute at all.
  *
- * `indeterminate` is the only form-field property with NO content attribute —
- * there is no markup that expresses it, so a server can say nothing about it.
+ * `indeterminate` and `selectedIndex` are the form-field properties with NO
+ * content attribute — there is no markup that expresses them, so a server can
+ * say nothing about them.
  *
  * `checked`, `selected` and `value` USED TO BE HERE, on the argument that they
  * are dirty values which reflect to nothing. That is true of a live DOM and the
@@ -330,6 +331,7 @@ const NOT_AN_ATTRIBUTE: Record<string, 1> = {
   ref: 1,
   key: 1,
   indeterminate: 1,
+  selectedIndex: 1,
   valueAsDate: 1,
   innerHTML: 1,
   innerText: 1,
@@ -457,7 +459,7 @@ function isEnumeratedAttr(name: string): boolean {
  * Every name `attr` above answers about ITSELF rather than by writing
  * `name="value"`: the two aliases, the three that build their value out of an
  * object, the one whose answer depends on the element, the three that reflect
- * under a different name, and the ten that write nothing at all.
+ * under a different name, and the eleven that write nothing at all.
  *
  * It exists so the compiler can decide, at compile time, which call sites can
  * take `attrLit` instead — the name is a literal it wrote, so everything `attr`
@@ -475,6 +477,7 @@ const ATTR_INTERCEPTED: Record<string, 1> = {
   checked: 1,
   selected: 1,
   indeterminate: 1,
+  selectedIndex: 1,
   innerHTML: 1,
   innerText: 1,
   textContent: 1,
