@@ -87,6 +87,11 @@
       "bun": "./src/event.ts",
       "import": "./dist/event.js"
     },
+    "./event-source": {
+      "types": "./dist/event-source.d.ts",
+      "bun": "./src/event-source.ts",
+      "import": "./dist/event-source.js"
+    },
     "./focus": {
       "types": "./dist/focus.d.ts",
       "bun": "./src/focus.ts",

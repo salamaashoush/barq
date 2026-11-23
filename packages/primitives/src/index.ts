@@ -112,6 +112,14 @@ export {
 } from "./color-scheme.ts";
 
 export {
+  type EventSourceOptions,
+  type EventSourceState,
+  type Source,
+  type StreamEvent,
+  eventSource,
+} from "./event-source.ts";
+
+export {
   type BreakpointState,
   type Breakpoints,
   breakpoints,

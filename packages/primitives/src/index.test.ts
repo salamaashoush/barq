@@ -23,6 +23,7 @@ import * as colorScheme from "./color-scheme.ts";
 import * as derived from "./derived.ts";
 import * as element from "./element.ts";
 import * as event from "./event.ts";
+import * as eventSource from "./event-source.ts";
 import * as focus from "./focus.ts";
 import * as fullscreen from "./fullscreen.ts";
 import * as geolocation from "./geolocation.ts";
@@ -53,6 +54,7 @@ const MODULES: Record<string, Record<string, unknown>> = {
   derived,
   element,
   event,
+  "event-source": eventSource,
   focus,
   fullscreen,
   geolocation,

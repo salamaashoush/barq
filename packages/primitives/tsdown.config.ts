@@ -11,6 +11,7 @@ const modules = [
   "derived",
   "element",
   "event",
+  "event-source",
   "focus",
   "fullscreen",
   "geolocation",

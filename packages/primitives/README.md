@@ -344,6 +344,21 @@ how a logout loop starts. The retry budget counts consecutive failures, so a
 socket that drops once an hour keeps its full budget each time. A reactive URL
 reconnects to the new one.
 
+```ts
+import { eventSource } from "@barqjs/primitives";
+
+const events = eventSource(() => `/api/orgs/${org()}/events`, { parse: JSON.parse });
+events.on("run.completed", ({ data }) => refresh(data.check));
+events.state(); // "connecting" | "open" | "closed"
+```
+
+`eventSource` leaves a dropped connection to the browser, which reconnects by
+itself and honours the stream's `retry:`. It steps in where the browser gives
+up for good, on an answer that is not a stream, and connects again with
+backoff, because a server restarting behind a proxy answers 502 for a moment.
+Handlers registered with `on` stay bound across every reconnect, and a
+reactive URL moves the stream.
+
 ## Everything else
 
 `bus` and `emitter` for typed events that unsubscribe with their scope,
@@ -383,6 +398,7 @@ would mean two listeners.
 - `history`: `history`.
 - `animation`: `tween`, `spring`, `easing`, `cubicBezier`.
 - `websocket`: `websocket`.
+- `event-source`: `eventSource`.
 - `timer`: `timeout`, `interval`, `now`, `elapsed`.
 - `raf`: `raf`, `fps`.
 - `promise`: `until`, `raceTimeout`, `TimeoutError`, `sleep`, `abortOnCleanup`.
