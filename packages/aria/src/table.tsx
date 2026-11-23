@@ -101,6 +101,7 @@ import {
   highlightSelectionDescription,
 } from "./grid-selection.ts";
 import { SelectionIndicatorProvider } from "./selection-indicator.tsx";
+import { isAndroid } from "./platform.ts";
 import { SharedElementTransition } from "./shared-element-transition.tsx";
 import {
   type ColumnSize,
@@ -115,7 +116,7 @@ import { hover, type HoverEvent } from "./interactions/hover.ts";
 import { modality } from "./interactions/modality.ts";
 import { move } from "./interactions/move.ts";
 import { press, type ElementRef } from "./interactions/press.ts";
-import { visuallyHidden } from "./live.ts";
+import { announce, visuallyHidden } from "./live.ts";
 import {
   loaderRowStyle,
   loadMoreSentinel,
@@ -954,11 +955,37 @@ export function table<R, C>(options: TableOptions, state: TableState<R, C>): Tab
   });
   gridSelectionAnnouncement({ getRowText: options.getRowText }, state);
 
+  // What the table is sorted by, as its description: a user tabbing in hears
+  // it. A change to it is announced, since nothing focused changed with it.
+  const message = stringFormatter(strings);
+  const sortDescription = (): string | undefined => {
+    const descriptor = state.sortDescriptor();
+    if (descriptor === undefined) return undefined;
+    const name =
+      state.collection().columns.find((column) => column.key === descriptor.column)?.textValue ??
+      "";
+    return message().format(
+      descriptor.direction === "ascending" ? "ascendingSort" : "descendingSort",
+      { columnName: name },
+    );
+  };
+  const sortDescriptionProps = descriptionFor(sortDescription);
+  if (!isServer) {
+    createEffect(
+      sortDescription,
+      (description) => {
+        if (description !== undefined) announce(description, "assertive", 500);
+      },
+      { defer: true },
+    );
+  }
+
   return {
     baseId,
     gridProps: mergeProps(
       filterDOMProps(options, { labelable: true }),
       collectionProps,
+      sortDescriptionProps,
       descriptionProps,
       {
         role: () => (state.collection().isTree ? "treegrid" : "grid"),
@@ -1103,18 +1130,30 @@ export function tableColumnHeader<R, C>(
     state.sort(options.column.key);
   };
 
+  // TalkBack reads no `aria-sort`, so on Android the direction goes in the
+  // description instead, after "sortable column".
+  const message = stringFormatter(strings);
+  const description = descriptionFor(() => {
+    if (!allowsSorting()) return undefined;
+    const sortable = message().format("sortable");
+    const direction = sortDirection();
+    return direction !== undefined && isAndroid()
+      ? `${sortable}, ${message().format(direction)}`
+      : sortable;
+  });
+
   return {
     allowsSorting,
     sortDirection,
     isFocused: place.isFocused,
     isPressed,
-    columnHeaderProps: mergeProps(place.props, pressProps, {
+    columnHeaderProps: mergeProps(place.props, pressProps, description, {
       id: () => columnHeaderIdFor(access(options.baseId), options.column.key),
       role: "columnheader",
       onKeyDown,
       // On the SORTED column only. `aria-sort="none"` on the others says the
       // table is unsorted, which contradicts the one that says it is not.
-      "aria-sort": sortDirection,
+      "aria-sort": () => (isAndroid() ? undefined : sortDirection()),
       "aria-colindex": () => state.collection().columnIndexOf(options.column.key) + 1,
     }),
   };
@@ -1143,7 +1182,17 @@ export interface TableRowResult {
   hasChildRows: Accessor<boolean>;
 }
 
-type TableMessage = "expand" | "collapse" | "columnSize" | "resizerDescription" | "resizer";
+type TableMessage =
+  | "expand"
+  | "collapse"
+  | "columnSize"
+  | "resizerDescription"
+  | "resizer"
+  | "sortable"
+  | "ascending"
+  | "descending"
+  | "ascendingSort"
+  | "descendingSort";
 
 function asText(value: string | number | boolean | undefined): string {
   return value === undefined ? "" : String(value);
@@ -1155,6 +1204,11 @@ const strings = new StringDictionary<TableMessage>({
     collapse: "طي",
     columnSize: (v) => `${asText(v?.value)} بالبكسل`,
     resizerDescription: "اضغط على مفتاح Enter لبدء تغيير الحجم",
+    sortable: "عمود قابل للترتيب",
+    ascending: "تصاعدي",
+    descending: "تنازلي",
+    ascendingSort: (v) => `ترتيب حسب العمود ${asText(v?.columnName)} بترتيب تصاعدي`,
+    descendingSort: (v) => `ترتيب حسب العمود ${asText(v?.columnName)} بترتيب تنازلي`,
     resizer: "أداة تغيير الحجم",
   },
   "bg-BG": {
@@ -1162,6 +1216,11 @@ const strings = new StringDictionary<TableMessage>({
     collapse: "Свиване",
     columnSize: (v) => `${asText(v?.value)} пиксела`,
     resizerDescription: "Натиснете „Enter“, за да започнете да преоразмерявате",
+    sortable: "сортираща колона",
+    ascending: "възходящ",
+    descending: "низходящ",
+    ascendingSort: (v) => `сортирано по колона ${asText(v?.columnName)} във възходящ ред`,
+    descendingSort: (v) => `сортирано по колона ${asText(v?.columnName)} в низходящ ред`,
     resizer: "Преоразмерител",
   },
   "cs-CZ": {
@@ -1169,6 +1228,11 @@ const strings = new StringDictionary<TableMessage>({
     collapse: "Sbalit",
     columnSize: (v) => `${asText(v?.value)} pixelů`,
     resizerDescription: "Stisknutím klávesy Enter začnete měnit velikost",
+    sortable: "sloupec s možností řazení",
+    ascending: "vzestupně",
+    descending: "sestupně",
+    ascendingSort: (v) => `řazeno vzestupně podle sloupce ${asText(v?.columnName)}`,
+    descendingSort: (v) => `řazeno sestupně podle sloupce ${asText(v?.columnName)}`,
     resizer: "Změna velikosti",
   },
   "da-DK": {
@@ -1176,6 +1240,11 @@ const strings = new StringDictionary<TableMessage>({
     collapse: "Skjul",
     columnSize: (v) => `${asText(v?.value)} pixels`,
     resizerDescription: "Tryk på Enter for at ændre størrelse",
+    sortable: "sorterbar kolonne",
+    ascending: "stigende",
+    descending: "faldende",
+    ascendingSort: (v) => `sorteret efter kolonne ${asText(v?.columnName)} i stigende rækkefølge`,
+    descendingSort: (v) => `sorteret efter kolonne ${asText(v?.columnName)} i faldende rækkefølge`,
     resizer: "Størrelsesændring",
   },
   "de-DE": {
@@ -1183,6 +1252,13 @@ const strings = new StringDictionary<TableMessage>({
     collapse: "Reduzieren",
     columnSize: (v) => `${asText(v?.value)} Pixel`,
     resizerDescription: "Eingabetaste zum Starten der Größenänderung drücken",
+    sortable: "sortierbare Spalte",
+    ascending: "aufsteigend",
+    descending: "absteigend",
+    ascendingSort: (v) =>
+      `sortiert nach Spalte ${asText(v?.columnName)} in aufsteigender Reihenfolge`,
+    descendingSort: (v) =>
+      `sortiert nach Spalte ${asText(v?.columnName)} in absteigender Reihenfolge`,
     resizer: "Größenanpassung",
   },
   "el-GR": {
@@ -1190,6 +1266,11 @@ const strings = new StringDictionary<TableMessage>({
     collapse: "Σύμπτυξη",
     columnSize: (v) => `${asText(v?.value)} pixel`,
     resizerDescription: "Πατήστε Enter για έναρξη της αλλαγής μεγέθους",
+    sortable: "Στήλη διαλογής",
+    ascending: "αύξουσα",
+    descending: "φθίνουσα",
+    ascendingSort: (v) => `διαλογή ανά στήλη ${asText(v?.columnName)} σε αύξουσα σειρά`,
+    descendingSort: (v) => `διαλογή ανά στήλη ${asText(v?.columnName)} σε φθίνουσα σειρά`,
     resizer: "Αλλαγή μεγέθους",
   },
   "en-US": {
@@ -1197,6 +1278,11 @@ const strings = new StringDictionary<TableMessage>({
     collapse: "Collapse",
     columnSize: (v) => `${asText(v?.value)} pixels`,
     resizerDescription: "Press Enter to start resizing",
+    sortable: "sortable column",
+    ascending: "ascending",
+    descending: "descending",
+    ascendingSort: (v) => `sorted by column ${asText(v?.columnName)} in ascending order`,
+    descendingSort: (v) => `sorted by column ${asText(v?.columnName)} in descending order`,
     resizer: "Resizer",
   },
   "es-ES": {
@@ -1204,6 +1290,11 @@ const strings = new StringDictionary<TableMessage>({
     collapse: "Contraer",
     columnSize: (v) => `${asText(v?.value)} píxeles`,
     resizerDescription: "Pulse Intro para empezar a redimensionar",
+    sortable: "columna ordenable",
+    ascending: "ascendente",
+    descending: "descendente",
+    ascendingSort: (v) => `ordenado por columna ${asText(v?.columnName)} en sentido ascendente`,
+    descendingSort: (v) => `ordenado por columna ${asText(v?.columnName)} en orden descendente`,
     resizer: "Cambiador de tamaño",
   },
   "et-EE": {
@@ -1211,6 +1302,11 @@ const strings = new StringDictionary<TableMessage>({
     collapse: "Ahenda",
     columnSize: (v) => `${asText(v?.value)} pikslit`,
     resizerDescription: "Suuruse muutmise alustamiseks vajutage klahvi Enter",
+    sortable: "sorditav veerg",
+    ascending: "tõusev järjestus",
+    descending: "laskuv järjestus",
+    ascendingSort: (v) => `sorditud veeru järgi ${asText(v?.columnName)} tõusvas järjestuses`,
+    descendingSort: (v) => `sorditud veeru järgi ${asText(v?.columnName)} laskuvas järjestuses`,
     resizer: "Suuruse muutja",
   },
   "fi-FI": {
@@ -1218,6 +1314,13 @@ const strings = new StringDictionary<TableMessage>({
     collapse: "Pienennä",
     columnSize: (v) => `${asText(v?.value)} pikseliä`,
     resizerDescription: "Aloita koon muutos painamalla Enter-näppäintä",
+    sortable: "lajiteltava sarake",
+    ascending: "nouseva",
+    descending: "laskeva",
+    ascendingSort: (v) =>
+      `lajiteltu sarakkeen ${asText(v?.columnName)} mukaan nousevassa järjestyksessä`,
+    descendingSort: (v) =>
+      `lajiteltu sarakkeen ${asText(v?.columnName)} mukaan laskevassa järjestyksessä`,
     resizer: "Koon muuttaja",
   },
   "fr-FR": {
@@ -1225,6 +1328,13 @@ const strings = new StringDictionary<TableMessage>({
     collapse: "Réduire",
     columnSize: (v) => `${asText(v?.value)} pixels`,
     resizerDescription: "Appuyez sur Entrée pour commencer le redimensionnement.",
+    sortable: "colonne triable",
+    ascending: "croissant",
+    descending: "décroissant",
+    ascendingSort: (v) =>
+      `trié en fonction de la colonne ${asText(v?.columnName)} par ordre croissant`,
+    descendingSort: (v) =>
+      `trié en fonction de la colonne ${asText(v?.columnName)} par ordre décroissant`,
     resizer: "Redimensionneur",
   },
   "he-IL": {
@@ -1232,6 +1342,11 @@ const strings = new StringDictionary<TableMessage>({
     collapse: "כווץ",
     columnSize: (v) => `${asText(v?.value)} פיקסלים`,
     resizerDescription: "הקש Enter כדי לשנות את הגודל",
+    sortable: "עמודה שניתן למיין",
+    ascending: "עולה",
+    descending: "יורד",
+    ascendingSort: (v) => `מוין לפי עמודה ${asText(v?.columnName)} בסדר עולה`,
+    descendingSort: (v) => `מוין לפי עמודה ${asText(v?.columnName)} בסדר יורד`,
     resizer: "שינוי גודל",
   },
   "hr-HR": {
@@ -1239,6 +1354,11 @@ const strings = new StringDictionary<TableMessage>({
     collapse: "Sažmi",
     columnSize: (v) => `${asText(v?.value)} piksela`,
     resizerDescription: "Pritisnite Enter da biste započeli promenu veličine",
+    sortable: "stupac koji se može razvrstati",
+    ascending: "rastući",
+    descending: "padajući",
+    ascendingSort: (v) => `razvrstano po stupcima ${asText(v?.columnName)} rastućem redoslijedom`,
+    descendingSort: (v) => `razvrstano po stupcima ${asText(v?.columnName)} padajućim redoslijedom`,
     resizer: "Promjena veličine",
   },
   "hu-HU": {
@@ -1246,6 +1366,13 @@ const strings = new StringDictionary<TableMessage>({
     collapse: "Összecsukás",
     columnSize: (v) => `${asText(v?.value)} képpont`,
     resizerDescription: "Nyomja le az Enter billentyűt az átméretezés megkezdéséhez",
+    sortable: "rendezendő oszlop",
+    ascending: "növekvő",
+    descending: "csökkenő",
+    ascendingSort: (v) =>
+      `rendezve a(z) ${asText(v?.columnName)} oszlop szerint, növekvő sorrendben`,
+    descendingSort: (v) =>
+      `rendezve a(z) ${asText(v?.columnName)} oszlop szerint, csökkenő sorrendben`,
     resizer: "Átméretező",
   },
   "it-IT": {
@@ -1253,6 +1380,11 @@ const strings = new StringDictionary<TableMessage>({
     collapse: "Comprimi",
     columnSize: (v) => `${asText(v?.value)} pixel`,
     resizerDescription: "Premi Invio per iniziare a ridimensionare",
+    sortable: "colonna ordinabile",
+    ascending: "crescente",
+    descending: "decrescente",
+    ascendingSort: (v) => `in ordine crescente in base alla colonna ${asText(v?.columnName)}`,
+    descendingSort: (v) => `in ordine decrescente in base alla colonna ${asText(v?.columnName)}`,
     resizer: "Ridimensionamento",
   },
   "ja-JP": {
@@ -1260,6 +1392,11 @@ const strings = new StringDictionary<TableMessage>({
     collapse: "折りたたむ",
     columnSize: (v) => `${asText(v?.value)} ピクセル`,
     resizerDescription: "Enter キーを押してサイズ変更を開始",
+    sortable: "並べ替え可能な列",
+    ascending: "昇順",
+    descending: "降順",
+    ascendingSort: (v) => `列 ${asText(v?.columnName)} を昇順で並べ替え`,
+    descendingSort: (v) => `列 ${asText(v?.columnName)} を降順で並べ替え`,
     resizer: "サイズ変更ツール",
   },
   "ko-KR": {
@@ -1267,6 +1404,11 @@ const strings = new StringDictionary<TableMessage>({
     collapse: "접기",
     columnSize: (v) => `${asText(v?.value)} 픽셀`,
     resizerDescription: "크기 조정을 시작하려면 Enter를 누르세요.",
+    sortable: "정렬 가능한 열",
+    ascending: "오름차순",
+    descending: "내림차순",
+    ascendingSort: (v) => `${asText(v?.columnName)} 열을 기준으로 오름차순으로 정렬됨`,
+    descendingSort: (v) => `${asText(v?.columnName)} 열을 기준으로 내림차순으로 정렬됨`,
     resizer: "크기 조정기",
   },
   "lt-LT": {
@@ -1274,6 +1416,11 @@ const strings = new StringDictionary<TableMessage>({
     collapse: "Sutraukti",
     columnSize: (v) => `${asText(v?.value)} piks.`,
     resizerDescription: "Paspauskite „Enter“, kad pradėtumėte keisti dydį",
+    sortable: "rikiuojamas stulpelis",
+    ascending: "didėjančia tvarka",
+    descending: "mažėjančia tvarka",
+    ascendingSort: (v) => `surikiuota pagal stulpelį ${asText(v?.columnName)} didėjančia tvarka`,
+    descendingSort: (v) => `surikiuota pagal stulpelį ${asText(v?.columnName)} mažėjančia tvarka`,
     resizer: "Dydžio keitiklis",
   },
   "lv-LV": {
@@ -1281,6 +1428,11 @@ const strings = new StringDictionary<TableMessage>({
     collapse: "Sakļaut",
     columnSize: (v) => `${asText(v?.value)} pikseļi`,
     resizerDescription: "Nospiediet Enter, lai sāktu izmēru mainīšanu",
+    sortable: "kārtojamā kolonna",
+    ascending: "augošā secībā",
+    descending: "dilstošā secībā",
+    ascendingSort: (v) => `kārtots pēc kolonnas ${asText(v?.columnName)} augošā secībā`,
+    descendingSort: (v) => `kārtots pēc kolonnas ${asText(v?.columnName)} dilstošā secībā`,
     resizer: "Izmēra mainītājs",
   },
   "nb-NO": {
@@ -1288,6 +1440,11 @@ const strings = new StringDictionary<TableMessage>({
     collapse: "Skjul",
     columnSize: (v) => `${asText(v?.value)} piksler`,
     resizerDescription: "Trykk på Enter for å starte størrelsesendring",
+    sortable: "kolonne som kan sorteres",
+    ascending: "stigende",
+    descending: "synkende",
+    ascendingSort: (v) => `sortert etter kolonne ${asText(v?.columnName)} i stigende rekkefølge`,
+    descendingSort: (v) => `sortert etter kolonne ${asText(v?.columnName)} i synkende rekkefølge`,
     resizer: "Størrelsesendrer",
   },
   "nl-NL": {
@@ -1295,6 +1452,11 @@ const strings = new StringDictionary<TableMessage>({
     collapse: "Samenvouwen",
     columnSize: (v) => `${asText(v?.value)} pixels`,
     resizerDescription: "Druk op Enter om het formaat te wijzigen",
+    sortable: "sorteerbare kolom",
+    ascending: "oplopend",
+    descending: "aflopend",
+    ascendingSort: (v) => `gesorteerd in oplopende volgorde in kolom ${asText(v?.columnName)}`,
+    descendingSort: (v) => `gesorteerd in aflopende volgorde in kolom ${asText(v?.columnName)}`,
     resizer: "Resizer",
   },
   "pl-PL": {
@@ -1302,6 +1464,12 @@ const strings = new StringDictionary<TableMessage>({
     collapse: "Zwiń",
     columnSize: (v) => `Liczba pikseli: ${asText(v?.value)}`,
     resizerDescription: "Naciśnij Enter, aby rozpocząć zmienianie rozmiaru",
+    sortable: "kolumna z możliwością sortowania",
+    ascending: "rosnąco",
+    descending: "malejąco",
+    ascendingSort: (v) => `posortowano według kolumny ${asText(v?.columnName)} w porządku rosnącym`,
+    descendingSort: (v) =>
+      `posortowano według kolumny ${asText(v?.columnName)} w porządku malejącym`,
     resizer: "Zmiana rozmiaru",
   },
   "pt-BR": {
@@ -1309,6 +1477,11 @@ const strings = new StringDictionary<TableMessage>({
     collapse: "Recolher",
     columnSize: (v) => `${asText(v?.value)} pixels`,
     resizerDescription: "Pressione Enter para começar a redimensionar",
+    sortable: "coluna classificável",
+    ascending: "crescente",
+    descending: "decrescente",
+    ascendingSort: (v) => `classificado pela coluna ${asText(v?.columnName)} em ordem crescente`,
+    descendingSort: (v) => `classificado pela coluna ${asText(v?.columnName)} em ordem decrescente`,
     resizer: "Redimensionador",
   },
   "pt-PT": {
@@ -1316,6 +1489,11 @@ const strings = new StringDictionary<TableMessage>({
     collapse: "Colapsar",
     columnSize: (v) => `${asText(v?.value)} pixels`,
     resizerDescription: "Prima Enter para iniciar o redimensionamento",
+    sortable: "Coluna ordenável",
+    ascending: "ascendente",
+    descending: "descendente",
+    ascendingSort: (v) => `Ordenar por coluna ${asText(v?.columnName)} em ordem ascendente`,
+    descendingSort: (v) => `Ordenar por coluna ${asText(v?.columnName)} em ordem descendente`,
     resizer: "Redimensionador",
   },
   "ro-RO": {
@@ -1323,6 +1501,11 @@ const strings = new StringDictionary<TableMessage>({
     collapse: "Restrângeți",
     columnSize: (v) => `${asText(v?.value)} pixeli`,
     resizerDescription: "Apăsați pe Enter pentru a începe redimensionarea",
+    sortable: "coloană sortabilă",
+    ascending: "crescătoare",
+    descending: "descrescătoare",
+    ascendingSort: (v) => `sortate după coloana ${asText(v?.columnName)} în ordine crescătoare`,
+    descendingSort: (v) => `sortate după coloana ${asText(v?.columnName)} în ordine descrescătoare`,
     resizer: "Instrument de redimensionare",
   },
   "ru-RU": {
@@ -1330,6 +1513,11 @@ const strings = new StringDictionary<TableMessage>({
     collapse: "Свернуть",
     columnSize: (v) => `${asText(v?.value)} пикс.`,
     resizerDescription: "Нажмите клавишу Enter для начала изменения размеров",
+    sortable: "сортируемый столбец",
+    ascending: "возрастание",
+    descending: "убывание",
+    ascendingSort: (v) => `сортировать столбец ${asText(v?.columnName)} в порядке возрастания`,
+    descendingSort: (v) => `сортировать столбец ${asText(v?.columnName)} в порядке убывания`,
     resizer: "Средство изменения размера",
   },
   "sk-SK": {
@@ -1337,6 +1525,11 @@ const strings = new StringDictionary<TableMessage>({
     collapse: "Zbaliť",
     columnSize: (v) => `Počet pixelov: ${asText(v?.value)}`,
     resizerDescription: "Stlačením klávesu Enter začnete zmenu veľkosti",
+    sortable: "zoraditeľný stĺpec",
+    ascending: "vzostupne",
+    descending: "zostupne",
+    ascendingSort: (v) => `zoradené zostupne podľa stĺpca ${asText(v?.columnName)}`,
+    descendingSort: (v) => `zoradené zostupne podľa stĺpca ${asText(v?.columnName)}`,
     resizer: "Nástroj na zmenu veľkosti",
   },
   "sl-SI": {
@@ -1344,6 +1537,13 @@ const strings = new StringDictionary<TableMessage>({
     collapse: "Strni",
     columnSize: (v) => `${asText(v?.value)} slikovnih pik`,
     resizerDescription: "Pritisnite tipko Enter da začnete spreminjati velikost",
+    sortable: "razvrstljivi stolpec",
+    ascending: "naraščajoče",
+    descending: "padajoče",
+    ascendingSort: (v) =>
+      `razvrščeno po stolpcu ${asText(v?.columnName)} v naraščajočem vrstnem redu`,
+    descendingSort: (v) =>
+      `razvrščeno po stolpcu ${asText(v?.columnName)} v padajočem vrstnem redu`,
     resizer: "Spreminjanje velikosti",
   },
   "sr-SP": {
@@ -1351,6 +1551,11 @@ const strings = new StringDictionary<TableMessage>({
     collapse: "Skupi",
     columnSize: (v) => `${asText(v?.value)} piksela`,
     resizerDescription: "Pritisnite Enter da biste započeli promenu veličine",
+    sortable: "kolona koja se može sortirati",
+    ascending: "rastući",
+    descending: "padajući",
+    ascendingSort: (v) => `sortirano po kolonama ${asText(v?.columnName)} rastućim redosledom`,
+    descendingSort: (v) => `sortirano po kolonama ${asText(v?.columnName)} padajućim redosledom`,
     resizer: "Promena veličine",
   },
   "sv-SE": {
@@ -1358,6 +1563,11 @@ const strings = new StringDictionary<TableMessage>({
     collapse: "Dölj",
     columnSize: (v) => `${asText(v?.value)} pixlar`,
     resizerDescription: "Tryck på Retur för att börja ändra storlek",
+    sortable: "sorterbar kolumn",
+    ascending: "stigande",
+    descending: "fallande",
+    ascendingSort: (v) => `sorterat på kolumn ${asText(v?.columnName)} i stigande ordning`,
+    descendingSort: (v) => `sorterat på kolumn ${asText(v?.columnName)} i fallande ordning`,
     resizer: "Storleksändrare",
   },
   "tr-TR": {
@@ -1365,6 +1575,11 @@ const strings = new StringDictionary<TableMessage>({
     collapse: "Daralt",
     columnSize: (v) => `${asText(v?.value)} piksel`,
     resizerDescription: "Yeniden boyutlandırmak için Enter'a basın",
+    sortable: "Sıralanabilir sütun",
+    ascending: "artan sırada",
+    descending: "azalan sırada",
+    ascendingSort: (v) => `${asText(v?.columnName)} sütuna göre artan düzende sırala`,
+    descendingSort: (v) => `${asText(v?.columnName)} sütuna göre azalan düzende sırala`,
     resizer: "Yeniden boyutlandırıcı",
   },
   "uk-UA": {
@@ -1372,6 +1587,11 @@ const strings = new StringDictionary<TableMessage>({
     collapse: "Згорнути",
     columnSize: (v) => `${asText(v?.value)} пікс.`,
     resizerDescription: "Натисніть Enter, щоб почати зміну розміру",
+    sortable: "сортувальний стовпець",
+    ascending: "висхідний",
+    descending: "низхідний",
+    ascendingSort: (v) => `відсортовано за стовпцем ${asText(v?.columnName)} у висхідному порядку`,
+    descendingSort: (v) => `відсортовано за стовпцем ${asText(v?.columnName)} у низхідному порядку`,
     resizer: "Засіб змінення розміру",
   },
   "zh-CN": {
@@ -1379,6 +1599,11 @@ const strings = new StringDictionary<TableMessage>({
     collapse: "折叠",
     columnSize: (v) => `${asText(v?.value)} 像素`,
     resizerDescription: "按 Enter 开始调整大小。",
+    sortable: "可排序的列",
+    ascending: "升序",
+    descending: "降序",
+    ascendingSort: (v) => `按列 ${asText(v?.columnName)} 升序排序`,
+    descendingSort: (v) => `按列 ${asText(v?.columnName)} 降序排序`,
     resizer: "尺寸调整器",
   },
   "zh-TW": {
@@ -1386,6 +1611,11 @@ const strings = new StringDictionary<TableMessage>({
     collapse: "收合",
     columnSize: (v) => `${asText(v?.value)} 像素`,
     resizerDescription: "按 Enter 鍵以開始調整大小",
+    sortable: "可排序的欄",
+    ascending: "遞增",
+    descending: "遞減",
+    ascendingSort: (v) => `已依據「${asText(v?.columnName)}」欄遞增排序`,
+    descendingSort: (v) => `已依據「${asText(v?.columnName)}」欄遞減排序`,
     resizer: "大小調整器",
   },
 });

@@ -2772,3 +2772,95 @@ describe("column resizing", () => {
     expect(body.style.width).toBe("2000px");
   });
 });
+
+describe("sorting, told to a screen reader", () => {
+  beforeEach(() => destroyAnnouncer());
+  afterEach(() => destroyAnnouncer());
+
+  function Sorted(props: { initial?: SortDescriptor }) {
+    const [sort, setSort] = createSignal<SortDescriptor | undefined>(props.initial);
+    return (
+      <Files
+        sortDescriptor={sort()}
+        onSortChange={(descriptor: SortDescriptor) => setSort(descriptor)}
+      />
+    );
+  }
+
+  function described(element: Element): string[] {
+    return (element.getAttribute("aria-describedby") ?? "")
+      .split(" ")
+      .filter((id) => id !== "")
+      .map((id) => document.getElementById(id)?.textContent ?? "");
+  }
+
+  test("each change in sort order is announced, and the first render is not", () => {
+    render(() => <Sorted initial={{ column: "size", direction: "ascending" }} />);
+    expect(announcements()).toEqual([]);
+
+    user.click(headers()[1] as HTMLElement);
+    flush();
+    expect(announcements().at(-1)).toBe("sorted by column Size in descending order");
+    user.click(headers()[1] as HTMLElement);
+    flush();
+    expect(announcements().at(-1)).toBe("sorted by column Size in ascending order");
+    user.click(headers()[0] as HTMLElement);
+    flush();
+    expect(announcements().at(-1)).toBe("sorted by column Name in ascending order");
+    user.click(headers()[0] as HTMLElement);
+    flush();
+    expect(announcements().at(-1)).toBe("sorted by column Name in descending order");
+    expect(announcements()).toHaveLength(4);
+  });
+
+  test("the table is described by what it is sorted by", () => {
+    render(() => <Sorted initial={{ column: "name", direction: "descending" }} />);
+    expect(described(screen.getByRole("grid"))).toContain(
+      "sorted by column Name in descending order",
+    );
+  });
+
+  test("an unsorted table has no sort description", () => {
+    render(() => <Files />);
+    expect(screen.getByRole("grid").hasAttribute("aria-describedby")).toBe(false);
+  });
+
+  test("a sortable column says so, and one that is not says nothing", () => {
+    render(() => <Sorted />);
+    expect(described(headers()[0] as HTMLElement)).toEqual(["sortable column"]);
+    expect(described(headers()[1] as HTMLElement)).toEqual(["sortable column"]);
+    expect(headers()[2]?.hasAttribute("aria-describedby")).toBe(false);
+  });
+
+  test("in the reader's language", () => {
+    render(() => {
+      const localeProps = provideLocale(() => "de-DE");
+      return (
+        <div {...localeProps}>
+          <Sorted />
+        </div>
+      );
+    });
+    expect(described(headers()[0] as HTMLElement)).toEqual(["sortierbare Spalte"]);
+    user.click(headers()[0] as HTMLElement);
+    flush();
+    expect(announcements().at(-1)).toBe("sortiert nach Spalte Name in aufsteigender Reihenfolge");
+  });
+
+  test("on Android the direction is in the description, since TalkBack reads no aria-sort", () => {
+    const agent = Object.getOwnPropertyDescriptor(navigator, "userAgent");
+    Object.defineProperty(navigator, "userAgent", {
+      value: "Mozilla/5.0 (Linux; Android 14) Chrome/120",
+      configurable: true,
+    });
+    try {
+      render(() => <Sorted initial={{ column: "name", direction: "ascending" }} />);
+      expect(headers()[0]?.hasAttribute("aria-sort")).toBe(false);
+      expect(described(headers()[0] as HTMLElement)).toEqual(["sortable column, ascending"]);
+      expect(described(headers()[1] as HTMLElement)).toEqual(["sortable column"]);
+    } finally {
+      if (agent === undefined) Reflect.deleteProperty(navigator, "userAgent");
+      else Object.defineProperty(navigator, "userAgent", agent);
+    }
+  });
+});
