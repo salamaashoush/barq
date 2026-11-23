@@ -203,11 +203,13 @@ const serveEntryWith = (options: Parameters<typeof barqStart>[0]): string => {
 };
 
 describe("the entries an application does not write", () => {
-  const entries = (): {
+  const entries = (
+    options?: Parameters<typeof barqStart>[0],
+  ): {
     resolveId: (id: string) => string | null;
     load: (id: string) => string | null;
   } => {
-    const plugins = barqStart() as unknown as (Loose & { name: string })[];
+    const plugins = barqStart(options) as unknown as (Loose & { name: string })[];
     // EVERY plugin, because `root` is one closure the whole `barqStart()` call
     // shares and whichever plugin declares `configResolved` is the one that
     // fills it in. Driving only the entries plugin left `root` at
@@ -289,6 +291,21 @@ describe("the entries an application does not write", () => {
     expect(code).toContain("serveBarq({");
     expect(code).not.toContain("export default");
     expect(code).not.toContain("export const");
+  });
+
+  test("imports each setup module from the root and passes the header rules", () => {
+    const plugin = entries({
+      server: {
+        setup: ["./src/server/scheduler.ts"],
+        headers: { "/pyodide/**": { "access-control-allow-origin": "*" } },
+      },
+    });
+    const code = plugin.load(plugin.resolveId(SERVE_ENTRY_ID) as string) ?? "";
+    expect(code).toContain(
+      `import setup0 from ${JSON.stringify(join(ROOT, "src/server/scheduler.ts"))};`,
+    );
+    expect(code).toContain("setup: [setup0]");
+    expect(code).toContain('headers: {"/pyodide/**":{"access-control-allow-origin":"*"}}');
   });
 
   test("static serving is on by default, and its path resolves at RUNTIME", async () => {

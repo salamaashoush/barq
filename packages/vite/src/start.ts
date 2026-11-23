@@ -32,7 +32,13 @@ import {
   prerenderShell,
 } from "@barqjs/start/prerender";
 import { PRERENDER_HEADER } from "@barqjs/start/protocol";
-import { ASSET_MANIFEST_FILE, type AssetManifest } from "@barqjs/start/serve";
+import {
+  ASSET_MANIFEST_FILE,
+  type AssetManifest,
+  headersFor,
+  runSetups,
+} from "@barqjs/start/serve";
+import type { ServerSetup } from "@barqjs/start";
 import { upgradeListener } from "@barqjs/start/websocket-node";
 import { NodeRequest, sendNodeResponse } from "srvx/node";
 import type { Plugin, RunnableDevEnvironment, ViteBuilder, ViteDevServer } from "vite";
@@ -480,9 +486,18 @@ function defaultServerEntry(pages: boolean): string {
  * So: `server.js` is importable and serves nothing, `serve.js` runs and exports
  * nothing.
  */
-function defaultServeEntry(server: BarqServerOptions | undefined, spa: string | null): string {
+function defaultServeEntry(
+  server: BarqServerOptions | undefined,
+  spa: string | null,
+  root: string,
+): string {
   const assets = server?.static ?? true;
   const options: string[] = [`fetch: handler.fetch`];
+  const setups = (server?.setup ?? []).map((path) => resolve(root, path));
+  if (setups.length > 0) {
+    options.push(`setup: [${setups.map((_, at) => `setup${at}`).join(", ")}]`);
+  }
+  if (server?.headers !== undefined) options.push(`headers: ${JSON.stringify(server.headers)}`);
   if (assets !== false) {
     const tuning =
       assets === true
@@ -530,6 +545,7 @@ function defaultServeEntry(server: BarqServerOptions | undefined, spa: string | 
     `import { serveBarq } from "@barqjs/start/serve";`,
     ``,
     `import handler from "${SERVER_ENTRY_ID}";`,
+    ...setups.map((path, at) => `import setup${at} from ${JSON.stringify(path)};`),
     ``,
     `await serveBarq({ ${options.join(", ")} });`,
     ``,
@@ -896,6 +912,20 @@ export interface BarqServerOptions {
    * that for a build whose output names carry no hash.
    */
   readonly static?: boolean | { readonly maxAge?: number; readonly immutable?: boolean };
+  /**
+   * Response headers by path, set on every answer, static files included:
+   * `{ "/pyodide/**": { "access-control-allow-origin": "*" } }`. `**` spans
+   * directories and `*` one segment. The dev and preview servers set them too.
+   */
+  readonly headers?: Readonly<Record<string, Readonly<Record<string, string>>>>;
+  /**
+   * Modules run once when the server starts, in order, before it takes a
+   * request: each default-exports `defineServerSetup(...)` from
+   * `@barqjs/start`. For a check that the environment is usable or a timer
+   * for a scheduled job. Paths are from the project root. The built server and
+   * the dev server run them; prerendering does not.
+   */
+  readonly setup?: readonly string[];
 }
 
 export interface BarqStartOptions {
@@ -1181,7 +1211,7 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
       if (id === RESOLVED_SERVER_ENTRY_ID) return defaultServerEntry(serving && !spaMode);
       if (id === RESOLVED_SERVE_ENTRY_ID) {
         const document = spaMode ? shellFile : !serving && hasIndexHtml(root) ? "index.html" : null;
-        return defaultServeEntry(options.server, document);
+        return defaultServeEntry(options.server, document, root);
       }
       if (id === RESOLVED_SERVICE_ENTRY_ID) return defaultServiceEntry(options.server);
       if (id === RESOLVED_ROUTER_ENTRY_ID) return defaultRouterEntry(treeImport);
@@ -1617,6 +1647,17 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
           service ??= import(pathToFileURL(entryFile).href);
           return (await service).default.fetch(request);
         });
+        if (options.server?.headers !== undefined) {
+          const find = headersFor(options.server.headers);
+          preview.middlewares.use((req, res, next) => {
+            for (const [name, value] of find(
+              (req.originalUrl ?? req.url ?? "/").split("?")[0] ?? "/",
+            )) {
+              res.setHeader(name, value);
+            }
+            next();
+          });
+        }
         preview.httpServer.on("upgrade", sockets.listener);
         preview.httpServer.once("close", sockets.close);
         preview.middlewares.use((req, res, next) => {
@@ -1668,6 +1709,17 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
 
     configureServer(viteServer) {
       server = viteServer;
+      if (options.server?.headers !== undefined) {
+        const find = headersFor(options.server.headers);
+        viteServer.middlewares.use((req, res, next) => {
+          for (const [name, value] of find(
+            (req.originalUrl ?? req.url ?? "/").split("?")[0] ?? "/",
+          )) {
+            res.setHeader(name, value);
+          }
+          next();
+        });
+      }
       const environment = viteServer.environments[ENVIRONMENTS.server];
       // A host that owns the server environment answers requests through its
       // own runtime, which imports `index` the way a deployment does. Answering
@@ -1682,6 +1734,31 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
       const diagnostics = serverDiagnostics(viteServer, (specifier) =>
         environment.runner.import(specifier),
       );
+
+      // The setup modules a deployment runs at start, run here once the dev
+      // server is up, and closed with it.
+      const setups = options.server?.setup ?? [];
+      if (setups.length > 0) {
+        const closing = (async () => {
+          const loaded: ServerSetup[] = [];
+          for (const path of setups) {
+            const module = await environment.runner.import<{ default?: unknown }>(
+              resolve(root, path),
+            );
+            if (typeof module.default !== "function") {
+              throw new Error(
+                `[barq-start] \`server.setup\` names ${path}, which has no default-exported setup function.`,
+              );
+            }
+            loaded.push(module.default as ServerSetup);
+          }
+          return runSetups(loaded);
+        })();
+        closing.catch((error: unknown) => viteServer.config.logger.error(String(error)));
+        viteServer.httpServer?.once("close", () => {
+          void closing.then((close) => close()).catch(() => undefined);
+        });
+      }
       (globalThis as { [DEV_STYLESHEETS]?: unknown })[DEV_STYLESHEETS] = async (
         routes: readonly string[],
       ) => {

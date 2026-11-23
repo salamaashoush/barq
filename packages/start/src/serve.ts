@@ -16,9 +16,17 @@ import type { Server, ServerOptions, ServerPlugin } from "srvx";
 
 import { type HandlerOptions, handleServerFn } from "./server.ts";
 import { type StaticOptions, assetMiddleware } from "./static.ts";
+import {
+  type HeaderRules,
+  type ServerSetup,
+  closingPlugin,
+  headerMiddleware,
+  runSetups,
+} from "./lifecycle.ts";
 import { resolveWebSocket } from "./websocket.ts";
 
 export { resolveWebSocket } from "./websocket.ts";
+export { type HeaderRules, headersFor, runSetups } from "./lifecycle.ts";
 
 export type { AssetManifest, PrerenderedAsset, StaticOptions } from "./static.ts";
 export { ASSET_MANIFEST_FILE, assetMiddleware } from "./static.ts";
@@ -57,6 +65,10 @@ export interface BarqServeOptions extends Omit<ServerOptions, "fetch">, HandlerO
    * paths it did not.
    */
   spa?: string | URL;
+  /** Response headers by path, set on every answer including static files. */
+  headers?: HeaderRules;
+  /** Run in order before the server takes a request; see `defineServerSetup`. */
+  setup?: readonly ServerSetup[];
 }
 
 /**
@@ -161,6 +173,8 @@ export async function serveBarq(options: BarqServeOptions = {}): Promise<Server>
     reachable: _reachable,
     static: assets,
     spa: _spa,
+    headers,
+    setup,
     middleware,
     ...rest
   } = options;
@@ -168,12 +182,16 @@ export async function serveBarq(options: BarqServeOptions = {}): Promise<Server>
   // FIRST in the chain, so a hashed chunk never enters the page handler. Ahead
   // of a project's own middleware too: those exist to shape application
   // responses, and an asset is not one.
-  const chain =
-    assets === undefined || assets === false
-      ? middleware
-      : [assetMiddleware(assets === true ? {} : assets), ...(middleware ?? [])];
+  const chain = [
+    ...(headers === undefined ? [] : [headerMiddleware(headers)]),
+    ...(assets === undefined || assets === false
+      ? []
+      : [assetMiddleware(assets === true ? {} : assets)]),
+    ...(middleware ?? []),
+  ];
 
   const fetch = createFetchHandler(options);
+  const close = await runSetups(setup ?? []);
   const { serve, websocketPlugin } = await runtime();
   return serve({
     ...rest,
@@ -182,7 +200,11 @@ export async function serveBarq(options: BarqServeOptions = {}): Promise<Server>
     // An upgrade asks the app which route takes it, through the same handler
     // as every other request. On Node it never reaches `fetch` at all: the
     // runtime hands it over as an `upgrade` event, which this plugin hears.
-    plugins: [...(rest.plugins ?? []), websocketPlugin({ resolve: resolveWebSocket(fetch) })],
+    plugins: [
+      ...(rest.plugins ?? []),
+      websocketPlugin({ resolve: resolveWebSocket(fetch) }),
+      closingPlugin(close),
+    ],
     fetch,
   });
 }

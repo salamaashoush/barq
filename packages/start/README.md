@@ -715,6 +715,51 @@ points at the upstream is rewritten to this origin. The runtime asks upstream
 only for encodings it can decode, since `fetch` decodes what it gets back.
 `headers`, `drop`, `redirect`, `location` and `forwarded` change each of those.
 
+## Headers by path, and code that runs at start
+
+Two server options in the Vite plugin cover what Nitro's `routeRules` and
+plugins do:
+
+```ts
+barq({
+  ssr: true,
+  start: {
+    server: {
+      headers: {
+        "/pyodide/**": {
+          "access-control-allow-origin": "*",
+          "cache-control": "public, max-age=31536000, immutable",
+        },
+      },
+      setup: ["./src/server/preflight.ts", "./src/server/scheduler.ts"],
+    },
+  },
+});
+```
+
+`headers` sets its headers on every answer whose path matches, static files
+included, because the rule runs ahead of the asset middleware. `**` spans
+directories and `*` one segment; a later rule wins a header both set. The dev
+and preview servers set them too.
+
+Each `setup` module runs once, in order, before the server takes a request,
+and default-exports a setup:
+
+```ts
+import { defineServerSetup } from "@barqjs/start";
+
+export default defineServerSetup(({ onClose }) => {
+  const timer = setInterval(runDailyRoundIfDue, 60 * 60 * 1000);
+  onClose(() => clearInterval(timer));
+});
+```
+
+A setup may be async, and one that throws stops the server from starting,
+which is what a check that the environment is usable wants. `onClose` runs
+when the server shuts down (on `SIGINT` or `SIGTERM`, after it stops taking
+requests), in reverse order. The dev server runs setups once it is up and
+closes them with it; prerendering does not run them.
+
 ## Subpaths
 
 - `@barqjs/start`: the isomorphic surface. `createServerFn`, `createMiddleware`,
