@@ -113,6 +113,10 @@ if (await confirm({ title: "Delete the check?", tone: "danger", confirmLabel: "D
   one, with an optional pulse that stops under reduced motion.
 - `confirm()`: a promise for the reader's answer, drawn by one `<ConfirmHost />`
   on the page.
+- `UnsavedChangesGuard`: asks through `confirm()` before a page with unsaved
+  changes is left by a link or the back button, and has the browser ask
+  before the tab closes. It guards while `when` is true and stops when it
+  unmounts.
 - `CommandMenu`: the palette `Mod+K` opens, of places to go and things to do.
   A page adds its own actions with `useCommands` for as long as it is open,
   and `registerCommands` adds them from outside any component.

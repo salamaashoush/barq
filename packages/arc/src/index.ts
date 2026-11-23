@@ -51,6 +51,11 @@ export {
   type ThemeToggleProps,
 } from "./components/theme-toggle.tsx";
 export {
+  type DiscardLabels,
+  UnsavedChangesGuard,
+  type UnsavedChangesGuardProps,
+} from "./components/unsaved-changes-guard.tsx";
+export {
   ARC_DARK,
   ARC_LIGHT,
   TONES,
