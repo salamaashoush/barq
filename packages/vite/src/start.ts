@@ -774,98 +774,7 @@ interface Discovered {
  * Everything here is available there too, because both end up as
  * `BarqServeOptions`.
  */
-/**
- * The runtime this BUILD is running on, as an srvx adapter name.
- *
- * `target: "auto"` used to leave the import as bare `srvx` on the reasoning
- * that its root export resolves by runtime condition. A bundler is what makes
- * that false: none of `deno`, `bun`, `workerd` or `node` is in a Vite server
- * build's conditions, so `default` won and every `auto` build shipped srvx's
- * GENERIC adapter — whose `serve()` is an empty method that opens no socket.
- * Measured on `@barqjs/site`: `bun dist/server/serve.js` exited 0 in 9ms,
- * having served nothing, with no error of any kind.
- *
- * So `auto` names the runtime it is built on. Build and deployment are the same
- * runtime in almost every case, and where they are not the node adapter is what
- * a Bun or Deno deployment falls back to — both implement `node:http`, so it
- * runs. `target` is for saying otherwise on purpose.
- */
-function buildingRuntime(): "node" | "bun" | "deno" {
-  const versions = (globalThis as { process?: { versions?: Record<string, string> } }).process
-    ?.versions;
-  if (versions?.bun !== undefined) return "bun";
-  if (versions?.deno !== undefined) return "deno";
-  return "node";
-}
-
-/**
- * `srvx` pinned to one adapter, in the SERVER graph only.
- *
- * A `resolveId` hook and NOT `resolve.alias`, which is what this was and why
- * `target` never did anything. Vite's per-environment `resolve` is
- * `EnvironmentResolveOptions`, and `alias` is not on it — only the top-level
- * `resolve` is `AllResolveOptions`. So `environments.ssr.resolve.alias` was
- * accepted, ignored, and asserted on by a test that read the config object
- * rather than the bundle. Every build shipped srvx's `default` export, the
- * GENERIC adapter, whose `serve()` opens no socket: `bun dist/server/serve.js`
- * exited 0 in 9ms having served nothing, on `auto` and on a named target alike.
- *
- * PRE, which is what makes it run at all: Vite orders alias, then `pre`
- * plugins, then its own `vite:resolve`. A plugin with no `enforce` is asked
- * only after `vite:resolve` has answered, and for a bare specifier it always
- * has.
- *
- * `this.environment` is what keeps it to the server graph, which a top-level
- * alias could not have been.
- */
-function srvxTarget(target: BarqServerOptions["target"]): Plugin {
-  return {
-    name: "barq-start:srvx",
-    enforce: "pre",
-    sharedDuringBuild: true,
-    // EXACT, so `srvx/static` and `srvx/node` are left alone.
-    resolveId(
-      this: {
-        environment?: { name?: string };
-        resolve?: (
-          source: string,
-          importer?: string,
-          options?: { skipSelf?: boolean },
-        ) => Promise<{ id: string } | null>;
-      },
-      id,
-      importer,
-    ) {
-      if (id !== "srvx" || this.environment?.name !== ENVIRONMENTS.server) return null;
-      const pinned = target === undefined || target === "auto" ? buildingRuntime() : target;
-      // THE IMPORTER, and it is not optional. `srvx` is a dependency of
-      // `@barqjs/start`, and under an isolated node_modules layout it sits in
-      // the store rather than beside the application — so resolving from the
-      // project root finds nothing and the hook declines in silence. Resolving
-      // from the module that asked for it is the only lookup that can succeed.
-      return this.resolve?.(`srvx/${pinned}`, importer, { skipSelf: true }) ?? null;
-    },
-  };
-}
-
 export interface BarqServerOptions {
-  /**
-   * Which srvx adapter the entry imports `serve` from.
-   *
-   * `"auto"` is the default and imports from `srvx`, whose root export resolves
-   * by runtime condition — `deno`, `bun`, `workerd`, `node`, and a generic
-   * fallback. That genuinely covers Node, Bun and Deno with no configuration,
-   * which is why it is the default rather than a guess.
-   *
-   * Naming one pins the import to `srvx/<name>` instead. That matters when the
-   * BUILD's conditions are not the deployment's, which is every bundled target.
-   *
-   * `cloudflare` and `aws-lambda` are deliberately absent: their entry has a
-   * different EXPORT SHAPE, not a different adapter import, and an export is not
-   * something a runtime condition can add. Write `src/entry-server.ts` for
-   * those; `serve.ts` documents what each needs.
-   */
-  readonly target?: "auto" | "node" | "bun" | "deno";
   /** Overridden by `PORT` in the environment, which every host sets. */
   readonly port?: number;
   readonly hostname?: string;
@@ -1976,7 +1885,6 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
       }),
     },
     { ...barqStylesheets(), sharedDuringBuild: true },
-    srvxTarget(options.server?.target),
     entries,
     manifest,
     dev,

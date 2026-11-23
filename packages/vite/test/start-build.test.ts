@@ -390,6 +390,26 @@ describe("`serve.js`, the half a person runs", () => {
     expect(server).not.toContain("serveBarq(");
   });
 
+  test("runs on Node as well as Bun, whichever runtime built it", async () => {
+    // srvx's and crossws's adapters are chosen when the process starts. A file
+    // built under Bun that pinned Bun's called `Bun.serve` on Node and died.
+    const node = Bun.which("node");
+    expect(node, "the suite needs node on PATH to check the other runtime").not.toBeNull();
+    const child = Bun.spawn([node!, join(OUT, "server", "serve.js")], {
+      env: { ...process.env, PORT: "0" },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    try {
+      const page = await fetch(await listening(child));
+      expect(page.status).toBe(200);
+      expect(await page.text()).toContain("<h1>home</h1>");
+    } finally {
+      child.kill();
+      await child.exited;
+    }
+  });
+
   test("serves a page, an asset and a 404, with one command and no wrapper", async () => {
     // Port 0, and the address read back from the server's own announcement. A
     // port picked here can be one another suite is serving on at the time, and
