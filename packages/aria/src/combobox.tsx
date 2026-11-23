@@ -83,6 +83,7 @@ import {
   ListBoxProvider,
   Option,
   optionIdFor,
+  ListBoxLoadMoreItem,
   provideItemNode,
   provideItemRender,
   type ListBoxContextValue,
@@ -1384,7 +1385,16 @@ export interface ComboBoxListBoxProps {
   listRef: ReturnType<typeof makeRef<HTMLUListElement>>;
   render: (item: unknown) => Child;
   /** Shown, as the list's one entry, while it has no options. */
-  renderEmpty?: () => Child;
+  renderEmpty?: (state: ComboBoxState<unknown>) => Child;
+  /**
+   * Called when the end of the list comes into reach, for suggestions that
+   * load a page at a time. Adds a {@link ListBoxLoadMoreItem} after the options.
+   */
+  onLoadMore?: () => void;
+  /** Whether the next page is loading: shows `renderLoading` as the list's last entry. */
+  isLoadingMore?: boolean;
+  /** What shows while the next page loads. */
+  renderLoading?: (state: ComboBoxState<unknown>) => Child;
 }
 
 /**
@@ -1419,6 +1429,27 @@ export function ComboBoxListBox(props: ComboBoxListBoxProps) {
   // A section builds its options with the same callback.
   provideItemRender(render);
 
+  // The loader is no item of the caller's, so it has a node of its own: in
+  // no collection, counted by no `aria-setsize`, and only there to give the
+  // load-more item the key it reports its loading under.
+  const loaderId = id();
+  const loader = (): Node<unknown>[] =>
+    props.onLoadMore === undefined
+      ? []
+      : [
+          {
+            type: "loader",
+            key: `${loaderId()}-loader`,
+            value: null,
+            textValue: "",
+            level: 0,
+            index: 0,
+            hasChildNodes: false,
+            childNodes: [],
+            props: {},
+          },
+        ];
+
   return (
     <ListBoxProvider value={value}>
       <ul {...elementProps} ref={listRef.set}>
@@ -1428,9 +1459,22 @@ export function ComboBoxListBox(props: ComboBoxListBoxProps) {
             return render(node.value);
           }}
         </For>
+        <For each={loader}>
+          {(node: Node<unknown>) => {
+            provideItemNode(node);
+            return (
+              <ListBoxLoadMoreItem
+                isLoading={props.isLoadingMore === true}
+                onLoadMore={() => props.onLoadMore?.()}
+              >
+                {props.renderLoading?.(state)}
+              </ListBoxLoadMoreItem>
+            );
+          }}
+        </For>
         <Show when={state.collection().size === 0 && props.renderEmpty !== undefined}>
           <li role="option" style={{ display: "contents" }}>
-            {props.renderEmpty?.()}
+            {props.renderEmpty?.(state)}
           </li>
         </Show>
       </ul>

@@ -18,7 +18,10 @@
  *
  * A `loadingState` makes the list asynchronous: it may open empty, says "No
  * results" when it is, and an indicator appears once a load has run for half
- * a second, which is long enough not to flicker on a fast answer.
+ * a second, which is long enough not to flicker on a fast answer. With
+ * `onLoadMore` the suggestions load a page at a time: the next is asked for
+ * as the end of the list scrolls into reach, and `"loadingMore"` shows the
+ * indicator as the list's last entry.
  */
 
 import {
@@ -413,6 +416,8 @@ export interface SearchAutocompleteComponentProps<T> extends StyleProps, ItemAcc
   ref?: RefTarget<HTMLInputElement>;
   onSubmit?: (value: string | null, key: Key | null) => void;
   onClear?: () => void;
+  /** Called when the end of the suggestions comes into reach, to load the next page. */
+  onLoadMore?: () => void;
   onInputChange?: (value: string) => void;
   onOpenChange?: (isOpen: boolean, trigger?: MenuTriggerAction) => void;
   onKeyDown?: (event: KeyboardEvent) => void;
@@ -578,13 +583,17 @@ export function SearchAutocomplete<T>(props: SearchAutocompleteComponentProps<T>
           render={props.children as unknown as (item: unknown) => Child}
           renderEmpty={
             isAsync()
-              ? () => <span data-empty-state="">{message().format("noResults")}</span>
+              ? (_state: ComboBoxState<unknown>) => (
+                  <span data-empty-state="">{message().format("noResults")}</span>
+                )
               : undefined
           }
+          onLoadMore={props.onLoadMore}
+          isLoadingMore={props.loadingState === "loadingMore"}
+          renderLoading={(_state: ComboBoxState<unknown>) => (
+            <span role="progressbar" aria-label={loadingLabel()} data-loading-more="" />
+          )}
         />
-        <Show when={props.loadingState === "loadingMore"}>
-          <span role="progressbar" aria-label={loadingLabel()} data-loading-more="" />
-        </Show>
       </Popover>
       <span {...descriptionProps}>{props.description}</span>
       <span {...errorMessageProps}>

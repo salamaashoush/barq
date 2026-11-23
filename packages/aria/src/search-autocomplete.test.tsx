@@ -15,6 +15,7 @@ import { Form } from "./form.tsx";
 import { provideLocale } from "./i18n.ts";
 import { Option } from "./listbox.tsx";
 import { destroyAnnouncer } from "./live.ts";
+import { stubIntersections } from "./test-load-more.ts";
 import {
   SearchAutocomplete,
   searchAutocomplete,
@@ -528,12 +529,62 @@ describe("SearchAutocomplete loadingState", () => {
     const list = screen.getByRole("listbox");
     expect(list.textContent).toBe("No results");
   });
+});
 
-  test("loading more shows an indicator in the list's popover", async () => {
-    render(() => <Search loadingState="loadingMore" menuTrigger="focus" />);
+describe("SearchAutocomplete onLoadMore", () => {
+  test("asks for the next page when the end of the list comes into reach", async () => {
+    const intersections = stubIntersections();
+    try {
+      let asked = 0;
+      render(() => <Search menuTrigger="focus" onLoadMore={() => asked++} />);
+      user.focus(input());
+      await tick();
+      const list = screen.getByRole("listbox");
+      expect(list.querySelector("[data-load-more-sentinel]")).not.toBeNull();
+      expect(asked).toBe(0);
+
+      intersections.fire();
+      expect(asked).toBe(1);
+    } finally {
+      intersections.restore();
+    }
+  });
+
+  test("without onLoadMore there is nothing to reach", async () => {
+    render(() => <Search menuTrigger="focus" />);
+    user.focus(input());
+    await tick();
+    expect(screen.getByRole("listbox").querySelector("[data-load-more-sentinel]")).toBeNull();
+  });
+
+  test("loadingMore shows the indicator as the list's last entry, which the arrows pass by", async () => {
+    render(() => <Search menuTrigger="focus" loadingState="loadingMore" onLoadMore={() => {}} />);
+    user.focus(input());
+    await tick();
+    const list = screen.getByRole("listbox");
+    const entries = within(list).getAllByRole("option");
+    const loading = entries.at(-1) as HTMLElement;
+    expect(within(loading).getByRole("progressbar").getAttribute("aria-label")).toBe("Loading...");
+    expect(loading.getAttribute("tabindex")).toBe("-1");
+    expect(screen.getAllByRole("progressbar")).toHaveLength(1);
+
+    press("ArrowUp");
+    expect(highlighted()).toBe("Three");
+    // The last option is the end: the loading entry is not one to stop on.
+    press("ArrowDown");
+    expect(highlighted()).toBe("Three");
+  });
+
+  test("the indicator goes when the page has loaded", async () => {
+    const [state, setState] = createSignal<"loadingMore" | "idle">("loadingMore");
+    render(() => <Search menuTrigger="focus" loadingState={state()} onLoadMore={() => {}} />);
     user.focus(input());
     await tick();
     expect(screen.getAllByRole("progressbar")).toHaveLength(1);
+    setState("idle");
+    flush();
+    expect(screen.queryByRole("progressbar")).toBeNull();
+    expect(screen.getByRole("listbox").querySelector("[data-load-more-sentinel]")).not.toBeNull();
   });
 });
 
