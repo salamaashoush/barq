@@ -7,6 +7,15 @@ export {
   type NavItem,
   type NavSubItem,
 } from "./components/app-shell.tsx";
+export {
+  CommandMenu,
+  type CommandMenuAction,
+  type CommandMenuGroup,
+  type CommandMenuProps,
+  openCommandMenu,
+  registerCommands,
+  useCommands,
+} from "./components/command-menu.tsx";
 export { ConfirmHost, type ConfirmOptions, confirm } from "./components/confirm.tsx";
 export { ArcProvider, type ArcProviderProps } from "./components/provider.tsx";
 export {
