@@ -448,7 +448,10 @@ function ComboboxPicker<T>(props: ComboboxProps<T>) {
             <Button
               variant="ghost"
               size="sm"
+              id={props.id}
               aria-label={props["aria-label"]}
+              aria-labelledby={props["aria-labelledby"]}
+              aria-describedby={props["aria-describedby"]}
               isDisabled={props.isDisabled}
               data-slot="combobox-trigger"
               class={chipsTrigger}
@@ -467,7 +470,10 @@ function ComboboxPicker<T>(props: ComboboxProps<T>) {
             `aria-haspopup` and `aria-expanded` that say what it opens. */}
           <Button
             variant="outline"
+            id={props.id}
             aria-label={props["aria-label"]}
+            aria-labelledby={props["aria-labelledby"]}
+            aria-describedby={props["aria-describedby"]}
             isDisabled={props.isDisabled}
             data-slot="combobox-trigger"
             class={ui(trigger, props.class, props.className)}
@@ -487,6 +493,7 @@ function ComboboxPicker<T>(props: ComboboxProps<T>) {
           listSlot="combobox-list"
           filterBy={props.filterBy}
           aria-label={props["aria-label"]}
+          aria-labelledby={props["aria-labelledby"]}
           onAction={(key) => {
             if (multiple()) {
               const held = many();

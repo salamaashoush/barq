@@ -139,6 +139,39 @@ describe("Combobox", () => {
   });
 });
 
+describe("a Combobox named and described from outside", () => {
+  function Labelled(props: { multiple?: boolean }) {
+    return (
+      <>
+        <span id="framework-label">Framework</span>
+        <span id="framework-help">The one the app is built on</span>
+        <Combobox
+          items={FRAMEWORKS}
+          multiple={props.multiple}
+          id="framework"
+          aria-labelledby="framework-label"
+          aria-describedby="framework-help"
+          label={(entry: (typeof FRAMEWORKS)[number]) => entry.name}
+        />
+      </>
+    );
+  }
+
+  for (const multiple of [false, true]) {
+    test(`the ${multiple ? "chips' trigger" : "trigger"} and the search take the label and description`, async () => {
+      render(() => <Labelled multiple={multiple} />);
+      const trigger = screen.getByRole("button", { name: "Framework" });
+      expect(trigger.id).toBe("framework");
+      expect(trigger.getAttribute("aria-describedby")).toBe("framework-help");
+
+      await user.click(trigger);
+      await settle();
+      expect(screen.getByRole("combobox", { name: "Framework" })).toBeTruthy();
+      expect(screen.getByRole("listbox", { name: "Framework" })).toBeTruthy();
+    });
+  }
+});
+
 function Many(props: { onValuesChange?: (keys: readonly string[]) => void }) {
   return (
     <Combobox
