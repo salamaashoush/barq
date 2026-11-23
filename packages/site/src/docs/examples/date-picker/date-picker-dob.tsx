@@ -1,4 +1,4 @@
-import { CalendarDate } from "@barqjs/aria/date";
+import { CalendarDate, getLocalTimeZone } from "@barqjs/aria/date";
 import { createSignal } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import {
@@ -37,7 +37,7 @@ export default function DatePickerDob() {
       <Popover isOpen={open()} onOpenChange={setOpen}>
         <PopoverTrigger>
           <Button variant="outline" id="date-picker-dob" class={trigger}>
-            {() => date()?.toDate().toLocaleDateString() ?? "Select date"}
+            {() => date()?.toDate(getLocalTimeZone()).toLocaleDateString() ?? "Select date"}
           </Button>
         </PopoverTrigger>
         <PopoverContent class={panel} align="start">

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush } from "@barqjs/core";
+import { type Child, flush } from "@barqjs/core";
 import {
   accessibleDescription,
   accessibleName,
@@ -10,8 +10,14 @@ import {
   user,
 } from "@barqjs/testing";
 import type { DateRange } from "./calendar.tsx";
-import { CalendarDate, CalendarDateTime, type DateValue } from "./date.ts";
+import { CalendarDate, CalendarDateTime, parseZonedDateTime, type DateValue } from "./date.ts";
 import { DatePicker, DateRangePicker } from "./datepicker.tsx";
+import { provideLocale } from "./i18n.ts";
+
+function InLocale(props: { tag: string; children?: Child }) {
+  const localeProps = provideLocale(() => props.tag);
+  return <div {...localeProps}>{props.children}</div>;
+}
 
 function Departure(props: {
   value?: DateValue | null;
@@ -156,7 +162,7 @@ describe("DatePicker", () => {
 });
 
 describe("DateRangePicker", () => {
-  function Stay(props: { onChange?: (value: DateRange | null) => void }) {
+  function Stay(props: { onChange?: (value: DateRange<DateValue> | null) => void }) {
     return (
       <DateRangePicker
         label="Stay"
@@ -358,5 +364,66 @@ describe("what a date picker refuses", () => {
     const stay = screen.getByRole("group", { name: "Stay" });
     expect(stay.getAttribute("aria-invalid")).toBe("true");
     expect(accessibleDescription(stay)).toContain("Too short");
+  });
+});
+
+describe("a date picker in a zone or another calendar", () => {
+  test("choosing a day keeps a zoned value's time and zone", async () => {
+    const changes: (DateValue | null)[] = [];
+    render(() => (
+      <DatePicker
+        label="Call"
+        defaultValue={parseZonedDateTime("2024-03-07T09:30[America/New_York]")}
+        onChange={(value) => changes.push(value)}
+      />
+    ));
+
+    expect(screen.getByRole("textbox", { name: "time zone" }).textContent).toBe("EST");
+    user.click(trigger());
+    await tick();
+    user.click(screen.getByRole("button", { name: /^Sunday, March 10, 2024/ }));
+    flush();
+
+    expect(changes.at(-1)?.toString()).toBe("2024-03-10T09:30:00-04:00[America/New_York]");
+    expect(screen.getByRole("textbox", { name: "time zone" }).textContent).toBe("EDT");
+  });
+
+  test("a day chosen with no value yet takes the placeholder's time and zone", async () => {
+    const changes: (DateValue | null)[] = [];
+    render(() => (
+      <DatePicker
+        label="Call"
+        placeholderValue={parseZonedDateTime("2024-03-07T09:30[America/New_York]")}
+        onChange={(value) => changes.push(value)}
+      />
+    ));
+
+    user.click(trigger());
+    await tick();
+    user.click(screen.getByRole("button", { name: /^Friday, March 8, 2024/ }));
+    flush();
+    expect(changes.at(-1)?.toString()).toBe("2024-03-08T09:30:00-05:00[America/New_York]");
+  });
+
+  test("the field and the calendar both follow the locale's calendar", async () => {
+    const changes: (DateValue | null)[] = [];
+    render(() => (
+      <InLocale tag="en-US-u-ca-japanese">
+        <DatePicker
+          label="Date"
+          defaultValue={new CalendarDate(2024, 2, 1)}
+          onChange={(value) => changes.push(value)}
+        />
+      </InLocale>
+    ));
+
+    expect(segment("era")).not.toBeNull();
+    user.click(trigger());
+    await tick();
+    expect(screen.getByRole("heading").textContent).toBe("February Reiwa 6");
+    user.click(screen.getByRole("button", { name: /^Thursday, February 15, Reiwa 6/ }));
+    flush();
+    expect(changes.at(-1)?.calendar.identifier).toBe("gregory");
+    expect(changes.at(-1)?.toString()).toBe("2024-02-15");
   });
 });

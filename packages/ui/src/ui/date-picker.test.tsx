@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { CalendarDate, today } from "@barqjs/aria/date";
+import { CalendarDate, getLocalTimeZone, today } from "@barqjs/aria/date";
 import { flush, createSignal } from "@barqjs/core";
 import { render, screen, user } from "@barqjs/testing";
 
@@ -136,10 +136,10 @@ describe("DatePicker, holding its own date", () => {
     const trigger = at("date-picker-trigger") as HTMLElement;
     await user.click(trigger);
     await opened();
-    await user.click(dayOf(today()));
+    await user.click(dayOf(today(getLocalTimeZone())));
     flush();
     expect(trigger.textContent).not.toContain("Pick a date");
-    expect(String(chosen.at(-1))).toBe(String(today()));
+    expect(String(chosen.at(-1))).toBe(String(today(getLocalTimeZone())));
   });
 
   test("a controlled picker still waits for its owner", async () => {
@@ -217,7 +217,7 @@ describe("DatePicker, with presets", () => {
     await user.click(screen.getByRole("option", { name: "In a week" }));
     await opened();
 
-    const expected = today().add({ days: 7 });
+    const expected = today(getLocalTimeZone()).add({ days: 7 });
     expect(String(chosen.at(-1))).toBe(String(expected));
     expect(dayOf(expected).getAttribute("data-selected-single")).toBe("");
   });

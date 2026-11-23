@@ -1,5 +1,5 @@
 import type { DateRange } from "@barqjs/aria/calendar";
-import { CalendarDate, getDayOfWeek } from "@barqjs/aria/date";
+import { CalendarDate, getLocalTimeZone, isWeekend } from "@barqjs/aria/date";
 import { createSignal } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import { Calendar, Card, CardContent, type CalendarDayModifiers } from "@barqjs/ui";
@@ -26,11 +26,6 @@ const calendar = css`
   }
 `;
 
-function isWeekend(date: CalendarDate): boolean {
-  const day = getDayOfWeek(date);
-  return day === 0 || day === 6;
-}
-
 export default function CalendarCustomDays() {
   const [range, setRange] = createSignal<DateRange | null>({
     start,
@@ -51,12 +46,13 @@ export default function CalendarCustomDays() {
           captionLayout="dropdown"
           class={calendar}
           formatters={{
-            formatMonthDropdown: (date: CalendarDate) => monthName.format(date.toDate()),
+            formatMonthDropdown: (date: CalendarDate) =>
+              monthName.format(date.toDate(getLocalTimeZone())),
           }}
           renderDay={(date: CalendarDate, modifiers: CalendarDayModifiers) => (
             <>
               {date.day}
-              {modifiers.outside ? null : <span>{isWeekend(date) ? "$120" : "$100"}</span>}
+              {modifiers.outside ? null : <span>{isWeekend(date, "en-US") ? "$120" : "$100"}</span>}
             </>
           )}
         />

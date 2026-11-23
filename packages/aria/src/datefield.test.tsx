@@ -5,10 +5,20 @@ import {
   expectNoAriaViolations,
   render,
   screen,
+  tick,
   user,
   accessibleDescription,
 } from "@barqjs/testing";
-import { CalendarDate, CalendarDateTime, Time, type DateValue } from "./date.ts";
+import {
+  CalendarDate,
+  CalendarDateTime,
+  HebrewCalendar,
+  JapaneseCalendar,
+  parseZonedDateTime,
+  Time,
+  ZonedDateTime,
+  type DateValue,
+} from "./date.ts";
 import { DateField, TimeField } from "./datefield.tsx";
 import { provideLocale } from "./i18n.ts";
 
@@ -622,5 +632,254 @@ describe("a DateField in a form", () => {
       />
     ));
     expect(screen.getByRole("group").getAttribute("aria-invalid")).toBe("true");
+  });
+});
+
+describe("a calendar with eras", () => {
+  function Japanese(props: {
+    defaultValue: DateValue;
+    onChange?: (value: DateValue | null) => void;
+  }) {
+    return (
+      <InLocale tag="en-US-u-ca-japanese">
+        <DateField label="Date" defaultValue={props.defaultValue} onChange={props.onChange} />
+      </InLocale>
+    );
+  }
+
+  test("the locale's calendar names the era, as a segment of its own", () => {
+    render(() => <Japanese defaultValue={new CalendarDate(2024, 2, 3)} />);
+
+    const types = segments().map((element) => element.getAttribute("data-type"));
+    expect(types).toEqual(["month", "day", "era", "year"]);
+    // 2024 is the sixth year of Reiwa.
+    expect(segment("year").textContent).toBe("6");
+    expect(segment("era").getAttribute("aria-valuetext")).toBe(segment("era").textContent);
+  });
+
+  test("the arrows step the era, keeping the year of it", () => {
+    const changes: (DateValue | null)[] = [];
+    const japanese = new JapaneseCalendar();
+    render(() => (
+      <Japanese
+        defaultValue={new CalendarDate(japanese, "heisei", 5, 2, 3)}
+        onChange={(value) => changes.push(value)}
+      />
+    ));
+
+    user.focus(segment("era"));
+    user.keyDown("ArrowUp");
+    flush();
+    expect(changes.at(-1)).toEqual(new CalendarDate(japanese, "reiwa", 5, 2, 3));
+
+    user.keyDown("ArrowDown");
+    user.keyDown("ArrowDown");
+    flush();
+    expect(changes.at(-1)).toEqual(new CalendarDate(japanese, "showa", 5, 2, 3));
+  });
+
+  test("stepping the year crosses into the era before", () => {
+    const changes: (DateValue | null)[] = [];
+    const japanese = new JapaneseCalendar();
+    render(() => (
+      <Japanese
+        defaultValue={new CalendarDate(japanese, "reiwa", 1, 12, 28)}
+        onChange={(value) => changes.push(value)}
+      />
+    ));
+
+    user.focus(segment("year"));
+    user.keyDown("ArrowDown");
+    flush();
+    expect(changes.at(-1)).toEqual(new CalendarDate(japanese, "heisei", 30, 12, 28));
+  });
+
+  test("typing an era's first letter chooses it", () => {
+    const changes: (DateValue | null)[] = [];
+    const japanese = new JapaneseCalendar();
+    render(() => (
+      <Japanese
+        defaultValue={new CalendarDate(japanese, "reiwa", 5, 2, 3)}
+        onChange={(value) => changes.push(value)}
+      />
+    ));
+
+    user.focus(segment("era"));
+    user.keyDown("h");
+    flush();
+    expect(changes.at(-1)).toEqual(new CalendarDate(japanese, "heisei", 5, 2, 3));
+  });
+
+  test("a value is reported in its own calendar, whatever the field shows", () => {
+    const changes: (DateValue | null)[] = [];
+    render(() => (
+      <Japanese
+        defaultValue={new CalendarDate(2024, 2, 3)}
+        onChange={(value) => changes.push(value)}
+      />
+    ));
+
+    user.focus(segment("day"));
+    user.keyDown("ArrowUp");
+    flush();
+    expect(changes.at(-1)?.calendar.identifier).toBe("gregory");
+    expect(changes.at(-1)?.toString()).toBe("2024-02-04");
+  });
+
+  test("a Gregorian year before the common era shows its era, and loses it with it", async () => {
+    render(() => <Departure defaultValue={new CalendarDate("BC", 2020, 2, 3)} />);
+
+    const era = segment("era");
+    expect(segments().at(-1)).toBe(era);
+
+    user.focus(era);
+    user.keyDown("ArrowUp");
+    flush();
+    await tick();
+
+    expect(screen.queryByRole("spinbutton", { name: "era" })).toBeNull();
+    // The era went from under the focus, which moves back to the year.
+    expect(document.activeElement).toBe(segment("year"));
+  });
+
+  test("a Hebrew leap year's thirteenth month can be reached", () => {
+    const changes: (DateValue | null)[] = [];
+    const hebrew = new HebrewCalendar();
+    render(() => (
+      <InLocale tag="en-US-u-ca-hebrew">
+        <DateField
+          label="Date"
+          defaultValue={new CalendarDate(hebrew, 5784, 12, 1)}
+          onChange={(value) => changes.push(value)}
+        />
+      </InLocale>
+    ));
+
+    expect(segment("month").getAttribute("aria-valuemax")).toBe("13");
+    user.focus(segment("month"));
+    user.keyDown("ArrowUp");
+    flush();
+    expect(changes.at(-1)).toEqual(new CalendarDate(hebrew, 5784, 13, 1));
+  });
+});
+
+describe("a value in a time zone", () => {
+  const zoned = (text: string) => parseZonedDateTime(text);
+
+  test("shows its zone as a segment that reads out and cannot be edited", () => {
+    render(() => (
+      <DateField label="Call" defaultValue={zoned("2024-03-10T01:30[America/New_York]")} />
+    ));
+
+    const zone = screen.getByRole("textbox", { name: "time zone" });
+    expect(zone.textContent).toBe("EST");
+    expect(zone.getAttribute("aria-readonly")).toBe("true");
+    expect(zone.getAttribute("contenteditable")).toBe("false");
+    // A zoned value has a time, so the field asks for one without being told.
+    expect(screen.getByRole("spinbutton", { name: "minute" }).textContent).toBe("30");
+  });
+
+  test("stepping the hour across the spring change lands on the hour the clock shows", () => {
+    const changes: (DateValue | null)[] = [];
+    render(() => (
+      <DateField
+        label="Call"
+        defaultValue={zoned("2024-03-10T01:30[America/New_York]")}
+        onChange={(value) => changes.push(value)}
+      />
+    ));
+
+    user.focus(screen.getByRole("spinbutton", { name: "hour" }));
+    user.keyDown("ArrowUp");
+    flush();
+
+    expect(changes.at(-1)?.toString()).toBe("2024-03-10T03:30:00-04:00[America/New_York]");
+    expect(screen.getByRole("textbox", { name: "time zone" }).textContent).toBe("EDT");
+  });
+
+  test("hideTimeZone leaves the zone out", () => {
+    render(() => (
+      <DateField
+        label="Call"
+        hideTimeZone
+        defaultValue={zoned("2024-03-10T01:30[America/New_York]")}
+      />
+    ));
+    expect(screen.queryByRole("textbox", { name: "time zone" })).toBeNull();
+  });
+
+  test("puts the whole zoned value into the form", () => {
+    render(() => (
+      <DateField
+        label="Call"
+        name="call"
+        defaultValue={new ZonedDateTime(2020, 2, 3, "America/Los_Angeles", -28800000, 12, 24, 45)}
+      />
+    ));
+    const input = document.querySelector<HTMLInputElement>('input[name="call"]');
+    expect(input?.value).toBe("2020-02-03T12:24:45-08:00[America/Los_Angeles]");
+  });
+
+  test("a time field steps through the hour the autumn change repeats", () => {
+    const changes: (string | undefined)[] = [];
+    render(() => (
+      <TimeField
+        label="Time"
+        defaultValue={zoned("2021-11-07T01:45:00-07:00[America/Los_Angeles]")}
+        onChange={(value) => changes.push(value?.toString())}
+      />
+    ));
+
+    user.focus(screen.getByRole("spinbutton", { name: "hour" }));
+    for (const key of ["ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown", "ArrowDown"]) {
+      user.keyDown(key);
+      flush();
+    }
+
+    expect(changes).toEqual([
+      "2021-11-07T01:45:00-08:00[America/Los_Angeles]",
+      "2021-11-07T02:45:00-08:00[America/Los_Angeles]",
+      "2021-11-07T01:45:00-08:00[America/Los_Angeles]",
+      "2021-11-07T01:45:00-07:00[America/Los_Angeles]",
+      "2021-11-07T00:45:00-07:00[America/Los_Angeles]",
+    ]);
+  });
+
+  test("a time field keeps its zone when a segment is emptied and filled again", () => {
+    render(() => (
+      <TimeField label="Time" defaultValue={zoned("2023-07-01T01:05-07:00[America/Los_Angeles]")} />
+    ));
+    const minute = screen.getByRole("spinbutton", { name: "minute" });
+
+    user.focus(minute);
+    user.keyDown("Backspace");
+    flush();
+    expect(minute.getAttribute("aria-valuetext")).toBe("Empty");
+    expect(screen.getByRole("textbox", { name: "time zone" }).textContent).toBe("PDT");
+
+    user.keyDown("ArrowUp");
+    flush();
+    expect(minute.getAttribute("aria-valuetext")).toBe("00");
+    expect(screen.getByRole("textbox", { name: "time zone" }).textContent).toBe("PDT");
+  });
+
+  test("an empty time field counting from a zoned placeholder steps through the repeated hour", () => {
+    render(() => (
+      <TimeField
+        label="Time"
+        placeholderValue={zoned("2021-11-07T01:45:00-07:00[America/Los_Angeles]")}
+      />
+    ));
+    const hour = screen.getByRole("spinbutton", { name: "hour" });
+
+    user.focus(hour);
+    const seen: (string | null)[] = [];
+    for (const key of ["ArrowUp", "ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown", "ArrowDown"]) {
+      user.keyDown(key);
+      flush();
+      seen.push(hour.textContent);
+    }
+    // The first press takes the placeholder's hour; 1 o'clock happens twice.
+    expect(seen).toEqual(["01", "01", "02", "01", "01", "12"]);
   });
 });

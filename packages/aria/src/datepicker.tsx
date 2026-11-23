@@ -22,6 +22,7 @@
 import {
   cells,
   type Accessor,
+  type CallSite,
   type Child,
   createContext,
   getContext,
@@ -30,8 +31,16 @@ import {
 } from "@barqjs/core";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { button } from "./button.tsx";
-import { Calendar, RangeCalendar, type DateRange } from "./calendar.tsx";
-import { CalendarDate, CalendarDateTime, toCalendarDate, today, type DateValue } from "./date.ts";
+import { Calendar, type DateRange, RangeCalendar } from "./calendar.tsx";
+import {
+  type Calendar as CalendarSystem,
+  type CalendarIdentifier,
+  type DateValue,
+  type MappedDateValue,
+  Time,
+  toCalendarDateTime,
+  type TimeValue,
+} from "./date.ts";
 import { StringDictionary, stringFormatter } from "./i18n.ts";
 import { Popover } from "./dialog.tsx";
 import { focusRing } from "./focus.ts";
@@ -69,39 +78,76 @@ import {
 // State
 // ---------------------------------------------------------------------------
 
-export interface DatePickerStateOptions extends OverlayTriggerStateOptions {
-  value?: MaybeAccessor<DateValue | null | undefined>;
-  defaultValue?: MaybeAccessor<DateValue | null | undefined>;
+export interface DatePickerStateOptions<
+  T extends DateValue = DateValue,
+> extends OverlayTriggerStateOptions {
+  value?: MaybeAccessor<T | null | undefined>;
+  defaultValue?: MaybeAccessor<T | null | undefined>;
+  /** What an empty picker counts from, and the time a chosen day takes. */
+  placeholderValue?: MaybeAccessor<DateValue | null | undefined>;
   minValue?: MaybeAccessor<DateValue | null | undefined>;
   maxValue?: MaybeAccessor<DateValue | null | undefined>;
-  /** @default "day" */
+  /** Defaults to `"minute"` for a value with a time and `"day"` for one without. */
   granularity?: MaybeAccessor<Granularity | undefined>;
   isDisabled?: MaybeAccessor<boolean | undefined>;
   isReadOnly?: MaybeAccessor<boolean | undefined>;
-  onChange?: (value: DateValue | null) => void;
+  onChange?: (value: NoInfer<MappedDateValue<T>> | null) => void;
 }
 
 export interface DatePickerState extends OverlayTriggerState {
   value: Accessor<DateValue | null>;
   setValue(value: DateValue | null): void;
-  /** The day part, for the calendar, which knows nothing about time. */
-  dateValue: Accessor<CalendarDate | null>;
-  setDateValue(date: CalendarDate | null): void;
+  /**
+   * A day chosen in the calendar. It arrives with the time and zone the value
+   * already had, and a picker with a time gives a day without one the
+   * placeholder's, or midnight.
+   */
+  setDateValue(date: DateValue | null): void;
   granularity: Accessor<Granularity>;
   isDisabled: Accessor<boolean>;
   isReadOnly: Accessor<boolean>;
 }
 
-export function datePickerState(options: DatePickerStateOptions): DatePickerState {
+/**
+ * A day from the calendar as a value of the picker's granularity.
+ *
+ * The calendar keeps the time a value had, so only a day chosen while there
+ * was none needs one: the placeholder's, zone and all, or midnight.
+ */
+function withTime(
+  date: DateValue,
+  granularity: Granularity,
+  placeholder: DateValue | null | undefined,
+): DateValue {
+  if (granularity === "day" || "hour" in date) return date;
+  const time: TimeValue =
+    placeholder !== null && placeholder !== undefined && "hour" in placeholder
+      ? placeholder
+      : new Time();
+  if ("timeZone" in time) {
+    return time.set({ era: date.era, year: date.year, month: date.month, day: date.day });
+  }
+  return toCalendarDateTime(date, time);
+}
+
+/** What a value or its stand-in says the granularity is, when the caller did not. */
+function defaultGranularity(model: DateValue | null | undefined): Granularity {
+  return model !== null && model !== undefined && "minute" in model ? "minute" : "day";
+}
+
+export function datePickerState<T extends DateValue = DateValue>(
+  options: DatePickerStateOptions<T>,
+): DatePickerState {
   const overlay = overlayTriggerState(options);
 
   const [value, setValue] = controllable<DateValue | null>(
     () => access(options.value),
     () => access(options.defaultValue) ?? null,
-    options.onChange,
+    (next) => options.onChange?.(next as MappedDateValue<T> | null),
   );
 
-  const granularity = (): Granularity => access(options.granularity) ?? "day";
+  const granularity = (): Granularity =>
+    access(options.granularity) ?? defaultGranularity(value() ?? access(options.placeholderValue));
 
   return {
     ...overlay,
@@ -110,27 +156,19 @@ export function datePickerState(options: DatePickerStateOptions): DatePickerStat
     granularity,
     isDisabled: () => access(options.isDisabled) === true,
     isReadOnly: () => access(options.isReadOnly) === true,
-    dateValue: () => {
-      const current = value();
-      return current === null ? null : toCalendarDate(current);
-    },
     setDateValue: (date) => {
       if (date === null) {
         setValue(null);
         overlay.close();
         return;
       }
-      // The time the field already holds is KEPT: choosing a day in the
-      // calendar is choosing a day, not resetting the meeting to midnight.
-      const current = value();
-      const next =
-        granularity() === "day"
-          ? date
-          : CalendarDateTime.from(
-              date,
-              current instanceof CalendarDateTime ? current.time : undefined,
-            );
-      setValue(next);
+      setValue(
+        withTime(
+          date,
+          granularity(),
+          access(options.defaultValue) ?? access(options.placeholderValue),
+        ),
+      );
       overlay.close();
     },
   };
@@ -258,25 +296,29 @@ export function useDatePicker(): DatePickerContextValue {
   return value;
 }
 
-export interface DatePickerComponentProps extends StyleProps {
+export interface DatePickerComponentProps<T extends DateValue = DateValue> extends StyleProps {
   label?: Child;
   description?: Child;
   errorMessage?: Child;
-  value?: DateValue | null;
-  defaultValue?: DateValue | null;
-  placeholderValue?: DateValue;
+  value?: T | null;
+  defaultValue?: T | null;
+  placeholderValue?: DateValue | null;
   minValue?: DateValue | null;
   maxValue?: DateValue | null;
-  isDateUnavailable?: (date: CalendarDate) => boolean;
-  /** @default "day" */
+  isDateUnavailable?: (date: DateValue) => boolean;
+  /** Defaults to `"minute"` for a value with a time and `"day"` for one without. */
   granularity?: Granularity;
   hourCycle?: 12 | 24;
+  /** Leave a zoned value's zone out of the segments. @default false */
+  hideTimeZone?: boolean;
+  /** Builds the calendar system the locale names. @default createCalendar */
+  createCalendar?: (identifier: CalendarIdentifier) => CalendarSystem;
   isDisabled?: boolean;
   isReadOnly?: boolean;
   isRequired?: boolean;
   isInvalid?: boolean;
   /** What the page thinks of the date, checked as it changes. */
-  validate?: ValidateFunction<DateValue | null>;
+  validate?: ValidateFunction<NoInfer<MappedDateValue<T>> | null>;
   /** @default "aria" */
   validationBehavior?: ValidationBehavior;
   isOpen?: boolean;
@@ -287,22 +329,37 @@ export interface DatePickerComponentProps extends StyleProps {
   "aria-label"?: string;
   "aria-labelledby"?: string;
   ref?: RefTarget<HTMLDivElement>;
-  onChange?: (value: DateValue | null) => void;
+  onChange?: (value: NoInfer<MappedDateValue<T>> | null) => void;
   onOpenChange?: (isOpen: boolean) => void;
 }
 
 /**
  * ```tsx
- * <DatePicker label="Departure" value={date()} onChange={date.set} minValue={today()} />
+ * <DatePicker label="Departure" value={date()} onChange={date.set}
+ *             minValue={today(getLocalTimeZone())} />
  * ```
  */
-export function DatePicker(props: DatePickerComponentProps) {
+// Declared as its own call site, so JSX infers `T` from the value written
+// there: through the mapped type that widens Cells back to values, a type
+// parameter standing alone in a prop is not inferred.
+export function DatePicker<T extends DateValue = DateValue>(
+  props: DatePickerComponentProps<T> & CallSite<DatePickerComponentProps<T>>,
+) {
   const groupRef = makeRef<HTMLDivElement>();
   const triggerRef = makeRef<HTMLButtonElement>();
+  const createCalendar = callback<[CalendarIdentifier], CalendarSystem>(
+    cells(props).createCalendar,
+  );
+  const isDateUnavailable = callback<[DateValue], boolean>(cells(props).isDateUnavailable);
+  const validate = callback<
+    [MappedDateValue<T> | null],
+    string | string[] | true | null | undefined
+  >(cells(props).validate);
 
-  const state = datePickerState({
+  const state = datePickerState<T>({
     value: () => props.value,
     defaultValue: () => props.defaultValue,
+    placeholderValue: () => props.placeholderValue,
     minValue: () => props.minValue,
     maxValue: () => props.maxValue,
     granularity: () => props.granularity,
@@ -375,16 +432,20 @@ export function DatePicker(props: DatePickerComponentProps) {
           placeholderValue={props.placeholderValue}
           minValue={props.minValue}
           maxValue={props.maxValue}
-          isDateUnavailable={callback<[CalendarDate], boolean>(cells(props).isDateUnavailable)}
-          granularity={props.granularity}
+          isDateUnavailable={isDateUnavailable}
+          granularity={state.granularity()}
           hourCycle={props.hourCycle}
+          hideTimeZone={props.hideTimeZone}
+          createCalendar={createCalendar}
           isDisabled={props.isDisabled}
           isReadOnly={props.isReadOnly}
           isRequired={props.isRequired}
           isInvalid={props.isInvalid}
-          validate={callback<[DateValue | null], string | string[] | true | null | undefined>(
-            cells(props).validate,
-          )}
+          validate={
+            validate === undefined
+              ? undefined
+              : (value: DateValue | null) => validate(value as MappedDateValue<T> | null)
+          }
           validationBehavior={props.validationBehavior}
           name={props.name}
           onChange={(value) => state.setValue(value)}
@@ -402,13 +463,12 @@ export function DatePicker(props: DatePickerComponentProps) {
         <div {...dialogProps}>
           <Calendar
             aria-label={access(calendarProps["aria-label"] as MaybeAccessor<string>)}
-            value={state.dateValue()}
-            defaultFocusedValue={
-              state.dateValue() ?? toCalendarDate(props.placeholderValue ?? today())
-            }
+            value={state.value()}
+            defaultFocusedValue={state.value() ?? props.placeholderValue ?? undefined}
             minValue={props.minValue}
             maxValue={props.maxValue}
-            isDateUnavailable={callback<[CalendarDate], boolean>(cells(props).isDateUnavailable)}
+            isDateUnavailable={isDateUnavailable}
+            createCalendar={createCalendar}
             isDisabled={props.isDisabled}
             isReadOnly={props.isReadOnly}
             autoFocus
@@ -426,28 +486,22 @@ export function DatePicker(props: DatePickerComponentProps) {
 // A range of days
 // ---------------------------------------------------------------------------
 
-/** Two ends, each a day or a day with a time. */
-export interface DateTimeRange<T extends DateValue = DateValue> {
-  start: T;
-  end: T;
-}
-
-export interface DateRangePickerComponentProps<T extends DateValue = CalendarDate> extends Omit<
-  DatePickerComponentProps,
+export interface DateRangePickerComponentProps<T extends DateValue = DateValue> extends Omit<
+  DatePickerComponentProps<T>,
   "value" | "defaultValue" | "onChange" | "name" | "validate"
 > {
-  value?: DateTimeRange<T> | null;
-  defaultValue?: DateTimeRange<T> | null;
+  value?: DateRange<T> | null;
+  defaultValue?: DateRange<T> | null;
   startName?: string;
   endName?: string;
   /** What the page thinks of the RANGE, checked as it changes. */
-  validate?: ValidateFunction<DateTimeRange<T> | null>;
-  onChange?: (value: DateTimeRange<T> | null) => void;
+  validate?: ValidateFunction<NoInfer<DateRange<MappedDateValue<T>>> | null>;
+  onChange?: (value: NoInfer<DateRange<MappedDateValue<T>>> | null) => void;
 }
 
 /** A range whose end comes before its start, which no stay or booking can be. */
 function reversedRange(
-  range: DateTimeRange | null,
+  range: DateRange<DateValue> | null,
   message: () => string,
 ): ValidationResult | undefined {
   if (range === null || range.end.compare(range.start) >= 0) return undefined;
@@ -479,18 +533,24 @@ function reversedRange(
  * wrong with the range as a whole, an end before its start, is said once, by
  * the group, rather than by either field.
  */
-export function DateRangePicker<T extends DateValue = CalendarDate>(
-  props: DateRangePickerComponentProps<T>,
+export function DateRangePicker<T extends DateValue = DateValue>(
+  props: DateRangePickerComponentProps<T> & CallSite<DateRangePickerComponentProps<T>>,
 ) {
   const groupRef = makeRef<HTMLDivElement>();
   const triggerRef = makeRef<HTMLButtonElement>();
   const messages = stringFormatter(PICKER_STRINGS);
+  const createCalendar = callback<[CalendarIdentifier], CalendarSystem>(
+    cells(props).createCalendar,
+  );
+  const isDateUnavailable = callback<[DateValue], boolean>(cells(props).isDateUnavailable);
 
-  const [value, setValue] = controllable<DateTimeRange<T> | null>(
+  const [value, setValue] = controllable<DateRange<DateValue> | null>(
     () => props.value,
     () => props.defaultValue ?? null,
-    (next) => props.onChange?.(next),
+    (next) => props.onChange?.(next as DateRange<MappedDateValue<T>> | null),
   );
+  const granularity = (): Granularity =>
+    props.granularity ?? defaultGranularity(value()?.start ?? props.placeholderValue);
 
   const overlay = overlayTriggerState({
     isOpen: () => props.isOpen,
@@ -503,12 +563,17 @@ export function DateRangePicker<T extends DateValue = CalendarDate>(
 
   const isDisabled = (): boolean => props.isDisabled === true;
 
-  const { isInvalid, errors, errorMessage } = fieldValidation<DateTimeRange<T> | null>({
+  const check = callback<
+    [DateRange<MappedDateValue<T>> | null],
+    string | string[] | true | null | undefined
+  >(cells(props).validate);
+  const { isInvalid, errors, errorMessage } = fieldValidation<DateRange<DateValue> | null>({
     value,
     builtinValidation: () => reversedRange(value(), () => messages().format("rangeReversed")),
-    validate: callback<[DateTimeRange<T> | null], string | string[] | true | null | undefined>(
-      cells(props).validate,
-    ),
+    validate:
+      check === undefined
+        ? undefined
+        : (range) => check(range as DateRange<MappedDateValue<T>> | null),
     validationBehavior: () => props.validationBehavior,
     isInvalid: () => props.isInvalid,
     errorMessage: () => props.errorMessage,
@@ -552,15 +617,12 @@ export function DateRangePicker<T extends DateValue = CalendarDate>(
    * One end changed. The other is kept, so the range is edited rather than
    * reset, and each end keeps the time typed into it.
    */
-  const setEnd = (which: "start" | "end", reported: DateValue | null): void => {
+  const setEnd = (which: "start" | "end", date: DateValue | null): void => {
     const current = value();
-    if (reported === null) {
+    if (date === null) {
       setValue(null);
       return;
     }
-    // The field reports a day or a day with a time as its granularity says,
-    // which is the kind the caller's range holds.
-    const date = reported as T;
     const other = which === "start" ? current?.end : current?.start;
     if (other === undefined) {
       setValue({ start: date, end: date });
@@ -569,20 +631,18 @@ export function DateRangePicker<T extends DateValue = CalendarDate>(
     setValue(which === "start" ? { start: date, end: other } : { start: other, end: date });
   };
 
-  /** A range drawn in the calendar, with the times the two ends already held. */
-  const fromCalendar = (range: DateRange | null): DateTimeRange<T> | null => {
+  /**
+   * A range drawn in the calendar. Its ends keep the times they already held,
+   * which the calendar sees to; one drawn while there was none takes the
+   * placeholder's time.
+   */
+  const fromCalendar = (range: DateRange<DateValue> | null): DateRange<DateValue> | null => {
     if (range === null) return null;
-    const current = value();
-    // A day chosen in the calendar keeps the time its end already had.
-    const keep = (day: CalendarDate, was: T | undefined): T =>
-      (was instanceof CalendarDateTime ? CalendarDateTime.from(day, was.time) : day) as T;
-    return { start: keep(range.start, current?.start), end: keep(range.end, current?.end) };
-  };
-
-  const days = (): DateRange | null => {
-    const current = value();
-    if (current === null) return null;
-    return { start: toCalendarDate(current.start), end: toCalendarDate(current.end) };
+    const placeholder = props.defaultValue?.start ?? props.placeholderValue;
+    return {
+      start: withTime(range.start, granularity(), placeholder),
+      end: withTime(range.end, granularity(), placeholder),
+    };
   };
 
   const elementProps = mergeProps(
@@ -611,9 +671,11 @@ export function DateRangePicker<T extends DateValue = CalendarDate>(
           placeholderValue={props.placeholderValue}
           minValue={props.minValue}
           maxValue={props.maxValue}
-          isDateUnavailable={callback<[CalendarDate], boolean>(cells(props).isDateUnavailable)}
-          granularity={props.granularity}
+          isDateUnavailable={isDateUnavailable}
+          granularity={granularity()}
           hourCycle={props.hourCycle}
+          hideTimeZone={props.hideTimeZone}
+          createCalendar={createCalendar}
           isDisabled={props.isDisabled}
           isReadOnly={props.isReadOnly}
           isRequired={props.isRequired}
@@ -629,9 +691,11 @@ export function DateRangePicker<T extends DateValue = CalendarDate>(
           placeholderValue={props.placeholderValue}
           minValue={props.minValue}
           maxValue={props.maxValue}
-          isDateUnavailable={callback<[CalendarDate], boolean>(cells(props).isDateUnavailable)}
-          granularity={props.granularity}
+          isDateUnavailable={isDateUnavailable}
+          granularity={granularity()}
           hourCycle={props.hourCycle}
+          hideTimeZone={props.hideTimeZone}
+          createCalendar={createCalendar}
           isDisabled={props.isDisabled}
           isReadOnly={props.isReadOnly}
           isRequired={props.isRequired}
@@ -665,11 +729,12 @@ export function DateRangePicker<T extends DateValue = CalendarDate>(
         >
           <RangeCalendar
             aria-label={messages().format("calendar")}
-            value={days()}
-            defaultFocusedValue={days()?.start ?? toCalendarDate(props.placeholderValue ?? today())}
+            value={value()}
+            defaultFocusedValue={value()?.start ?? props.placeholderValue ?? undefined}
             minValue={props.minValue}
             maxValue={props.maxValue}
-            isDateUnavailable={callback<[CalendarDate], boolean>(cells(props).isDateUnavailable)}
+            isDateUnavailable={isDateUnavailable}
+            createCalendar={createCalendar}
             isDisabled={props.isDisabled}
             isReadOnly={props.isReadOnly}
             autoFocus

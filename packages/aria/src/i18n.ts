@@ -25,6 +25,7 @@ import {
 } from "@barqjs/core";
 import { isServer } from "@barqjs/web";
 import { tryCleanup } from "@barqjs/primitives/utils";
+import { DateFormatter } from "@internationalized/date";
 import { access, type MaybeAccessor } from "./utils.ts";
 
 export interface Locale {
@@ -629,12 +630,16 @@ export function numberParser(options?: Intl.NumberFormatOptions): Accessor<Numbe
 }
 
 const dateFormatters = memoised(
-  (locale: string, options?: Intl.DateTimeFormatOptions) =>
-    new Intl.DateTimeFormat(locale, options),
+  (locale: string, options?: Intl.DateTimeFormatOptions) => new DateFormatter(locale, options),
 );
 
 /**
- * An `Intl.DateTimeFormat` for the locale in scope, cached.
+ * A date format for the locale in scope, cached.
+ *
+ * `@internationalized/date`'s `DateFormatter` rather than a bare
+ * `Intl.DateTimeFormat`: it corrects engines that report a 24-hour locale's
+ * hour cycle as running 1 to 24, which a date field would otherwise draw as
+ * "24:30", and it formats ranges where `formatRange` is missing.
  *
  * The locale in scope can only be found while there is an owner. A caller that
  * formats later, from an event handler, passes the one it read during setup.
@@ -642,7 +647,7 @@ const dateFormatters = memoised(
 export function dateFormatter(
   options?: Intl.DateTimeFormatOptions,
   locale: Accessor<Locale> = useLocale(),
-): Accessor<Intl.DateTimeFormat> {
+): Accessor<DateFormatter> {
   return () => dateFormatters(locale().locale, options);
 }
 

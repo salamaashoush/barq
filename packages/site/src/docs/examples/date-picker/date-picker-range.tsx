@@ -1,5 +1,5 @@
 import type { DateRange } from "@barqjs/aria/calendar";
-import { CalendarDate } from "@barqjs/aria/date";
+import { CalendarDate, getLocalTimeZone } from "@barqjs/aria/date";
 import { createSignal } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import { Calendar as CalendarIcon } from "@barqjs/lucide/icons/calendar";
@@ -30,7 +30,9 @@ const panel = css`
 `;
 
 const short = (date: CalendarDate): string =>
-  date.toDate().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
+  date
+    .toDate(getLocalTimeZone())
+    .toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
 
 const from = new CalendarDate(new Date().getFullYear(), 1, 20);
 

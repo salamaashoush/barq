@@ -1,4 +1,4 @@
-import { CalendarDate } from "@barqjs/aria/date";
+import { CalendarDate, getLocalTimeZone } from "@barqjs/aria/date";
 import { createSignal } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import { Calendar as CalendarIcon } from "@barqjs/lucide/icons/calendar";
@@ -30,7 +30,7 @@ const panel = css`
 function formatDate(date: CalendarDate | null): string {
   if (date === null) return "";
   return date
-    .toDate()
+    .toDate(getLocalTimeZone())
     .toLocaleDateString("en-US", { day: "2-digit", month: "long", year: "numeric" });
 }
 

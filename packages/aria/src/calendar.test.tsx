@@ -25,7 +25,16 @@ import {
   type RangeCalendarState,
   type RangeCalendarStateOptions,
 } from "./calendar.tsx";
-import { CalendarDate } from "./date.ts";
+import {
+  CalendarDate,
+  CalendarDateTime,
+  createCalendar,
+  GregorianCalendar,
+  now,
+  parseZonedDateTime,
+  today,
+  type ZonedDateTime,
+} from "./date.ts";
 import { provideLocale } from "./i18n.ts";
 
 function InLocale(props: { tag: string; children?: Child }) {
@@ -1157,5 +1166,146 @@ describe("options a calendar takes", () => {
     expect(state.isCellUnavailable(new CalendarDate(2024, 3, 20))).toBe(true);
     expect(state.isCellUnavailable(new CalendarDate(2024, 3, 13))).toBe(false);
     expect(anchors).toContain("2024-03-11");
+  });
+});
+
+describe("a calendar other than the Gregorian", () => {
+  function heading(): string {
+    return screen.getByRole("heading").textContent ?? "";
+  }
+
+  test("the locale names the calendar the grid is drawn in, era and all", () => {
+    render(() => (
+      <InLocale tag="en-US-u-ca-japanese">
+        <Calendar aria-label="Date" defaultFocusedValue={new CalendarDate(2024, 2, 1)} />
+      </InLocale>
+    ));
+
+    expect(heading()).toBe("February Reiwa 6");
+    expect(screen.getByRole("button", { name: /^Thursday, February 1, Reiwa 6/ })).not.toBeNull();
+  });
+
+  test("a day chosen there is reported in the value's own calendar", () => {
+    const changes: (CalendarDate | null)[] = [];
+    render(() => (
+      <InLocale tag="en-US-u-ca-japanese">
+        <Calendar
+          aria-label="Date"
+          defaultFocusedValue={new CalendarDate(2024, 2, 1)}
+          onChange={(value) => changes.push(value)}
+        />
+      </InLocale>
+    ));
+
+    user.click(screen.getByRole("button", { name: /^Thursday, February 15, Reiwa 6/ }));
+    flush();
+    expect(changes.at(-1)?.calendar.identifier).toBe("gregory");
+    expect(changes.at(-1)?.toString()).toBe("2024-02-15");
+  });
+
+  test("a Hebrew leap year takes thirteen pages to come round", () => {
+    render(() => (
+      <InLocale tag="en-US-u-ca-hebrew">
+        <Calendar aria-label="Date" defaultFocusedValue={new CalendarDate(2023, 9, 16)} />
+      </InLocale>
+    ));
+    expect(heading()).toBe("Tishri 5784");
+
+    const next = screen.getByRole("button", { name: "Next month" });
+    for (let page = 0; page < 12; page++) {
+      user.click(next);
+      flush();
+    }
+    // 5784 is a leap year: Adar I and Adar II, and Elul is the thirteenth.
+    expect(heading()).toBe("Elul 5784");
+    user.click(next);
+    flush();
+    expect(heading()).toBe("Tishri 5785");
+  });
+
+  test("createCalendar decides the calendar, whatever the locale names", () => {
+    render(() => (
+      <InLocale tag="en-US-u-ca-japanese">
+        <Calendar
+          aria-label="Date"
+          defaultFocusedValue={new CalendarDate(2024, 2, 1)}
+          createCalendar={(identifier) =>
+            identifier === "japanese" ? new GregorianCalendar() : createCalendar(identifier)
+          }
+        />
+      </InLocale>
+    ));
+    expect(heading()).toBe("February 2024");
+  });
+
+  test("a Gregorian month before the common era says so", () => {
+    render(() => (
+      <Calendar aria-label="Date" defaultFocusedValue={new CalendarDate("BC", 2, 1, 5)} />
+    ));
+    expect(heading()).toBe("January 2 BC");
+  });
+});
+
+describe("a value with a time", () => {
+  test("choosing a day keeps the time and the zone", () => {
+    const changes: (ZonedDateTime | null)[] = [];
+    render(() => (
+      <Calendar
+        aria-label="Call"
+        defaultValue={parseZonedDateTime("2024-03-07T09:30[America/New_York]")}
+        onChange={(value) => changes.push(value)}
+      />
+    ));
+
+    user.click(day("Sunday", 10, "March"));
+    flush();
+    // The day the clocks go forward, at the same wall time.
+    expect(changes.at(-1)?.toString()).toBe("2024-03-10T09:30:00-04:00[America/New_York]");
+  });
+
+  test("a date and time keeps its time", () => {
+    const changes: (CalendarDateTime | null)[] = [];
+    render(() => (
+      <Calendar
+        aria-label="Call"
+        defaultValue={new CalendarDateTime(2024, 3, 7, 14, 45)}
+        onChange={(value) => changes.push(value)}
+      />
+    ));
+
+    user.click(day("Friday", 8, "March"));
+    flush();
+    expect(changes.at(-1)?.toString()).toBe("2024-03-08T14:45:00");
+  });
+
+  test("today is today in the zone of a zoned value", () => {
+    // UTC+14: at least as late a day as anywhere on Earth.
+    const zone = "Pacific/Kiritimati";
+    render(() => <Calendar aria-label="Call" defaultValue={now(zone)} />);
+    const marked = document.querySelector('[data-today=""]');
+    expect(marked?.getAttribute("aria-label")).toContain(String(today(zone).day));
+  });
+
+  test("each end of a range keeps its own time", () => {
+    const changes: (DateRange<CalendarDateTime> | null)[] = [];
+    render(() => (
+      <RangeCalendar
+        aria-label="Stay"
+        defaultValue={{
+          start: new CalendarDateTime(2024, 3, 7, 15),
+          end: new CalendarDateTime(2024, 3, 9, 11),
+        }}
+        onChange={(value) => changes.push(value)}
+      />
+    ));
+
+    user.click(day("Monday", 11, "March"));
+    user.click(day("Wednesday", 13, "March"));
+    flush();
+    const range = changes.at(-1);
+    expect([range?.start.toString(), range?.end.toString()]).toEqual([
+      "2024-03-11T15:00:00",
+      "2024-03-13T11:00:00",
+    ]);
   });
 });

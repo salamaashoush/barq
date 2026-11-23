@@ -1,4 +1,4 @@
-import { CalendarDate } from "@barqjs/aria/date";
+import { CalendarDate, getLocalTimeZone } from "@barqjs/aria/date";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { createSignal } from "@barqjs/core";
 import { css } from "@barqjs/css";
@@ -29,7 +29,7 @@ const panel = css`
 `;
 
 const long = (date: CalendarDate): string =>
-  date.toDate().toLocaleDateString("ar-EG", { dateStyle: "long" });
+  date.toDate(getLocalTimeZone()).toLocaleDateString("ar-EG", { dateStyle: "long" });
 
 export default function DatePickerRtl() {
   provideLocale("ar-EG");

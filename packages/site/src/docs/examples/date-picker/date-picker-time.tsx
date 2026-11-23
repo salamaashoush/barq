@@ -1,4 +1,4 @@
-import { CalendarDate } from "@barqjs/aria/date";
+import { CalendarDate, getLocalTimeZone } from "@barqjs/aria/date";
 import { createSignal } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import { ChevronDown } from "@barqjs/lucide/icons/chevron-down";
@@ -47,7 +47,7 @@ const time = css`
 `;
 
 const long = (date: CalendarDate): string =>
-  date.toDate().toLocaleDateString("en-US", { dateStyle: "long" });
+  date.toDate(getLocalTimeZone()).toLocaleDateString("en-US", { dateStyle: "long" });
 
 export default function DatePickerTime() {
   const [open, setOpen] = createSignal(false);

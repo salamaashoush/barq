@@ -31,6 +31,7 @@
 import {
   cells,
   type Accessor,
+  type CallSite,
   type Child,
   For,
   createMemo,
@@ -48,28 +49,37 @@ import { isServer } from "@barqjs/web";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { button } from "./button.tsx";
 import {
+  type Calendar as CalendarSystem,
   CalendarDate,
-  constrainDate,
+  type CalendarIdentifier,
+  createCalendar,
+  type DateDuration,
+  type DateValue,
+  type DayOfWeek,
   endOfMonth,
   endOfWeek,
   getDayOfWeek,
-  getFirstDayOfWeek,
   getISOWeek,
-  getMinimalDaysInFirstWeek,
+  getLocalTimeZone,
   getWeekOfYear,
   getWeeksInMonth,
+  GregorianCalendar,
+  isEqualCalendar,
   isSameDay,
   isSameMonth,
+  type MappedDateValue,
   startOfMonth,
   startOfWeek,
+  toCalendar,
+  toCalendarDate,
   today,
-  type DateValue,
 } from "./date.ts";
 import { activeElement, contains, ownerDocument } from "./dom.ts";
 import { focusRing } from "./focus.ts";
 import {
   dateFormatter,
   listFormatter,
+  type Locale,
   type LocalizedString,
   StringDictionary,
   stringFormatter,
@@ -97,9 +107,15 @@ import {
 // State
 // ---------------------------------------------------------------------------
 
-export interface DateRange {
-  start: CalendarDate;
-  end: CalendarDate;
+/**
+ * Two ends and everything between them.
+ *
+ * Inside a calendar the ends are days in the calendar it draws; what a caller
+ * hands in and gets back is any kind of date value, and keeps its kind.
+ */
+export interface DateRange<T extends DateValue = CalendarDate> {
+  start: T;
+  end: T;
 }
 
 /**
@@ -134,7 +150,7 @@ export function dateMatches(date: CalendarDate, matcher: DateMatcher | undefined
 
   if ("dayOfWeek" in matcher) {
     const days = typeof matcher.dayOfWeek === "number" ? [matcher.dayOfWeek] : matcher.dayOfWeek;
-    return days.includes(getDayOfWeek(date));
+    return days.includes(getDayOfWeek(date, "en-US", "sun"));
   }
   if ("start" in matcher) {
     return date.compare(matcher.start) >= 0 && date.compare(matcher.end) <= 0;
@@ -156,11 +172,16 @@ export function dateMatches(date: CalendarDate, matcher: DateMatcher | undefined
   return after !== undefined && date.compare(after) > 0;
 }
 
-export interface CalendarStateOptions {
-  value?: MaybeAccessor<CalendarDate | null | undefined>;
-  defaultValue?: MaybeAccessor<CalendarDate | null | undefined>;
-  focusedValue?: MaybeAccessor<CalendarDate | undefined>;
-  defaultFocusedValue?: MaybeAccessor<CalendarDate | undefined>;
+export interface CalendarStateOptions<T extends DateValue = CalendarDate> {
+  /**
+   * The chosen day. Any kind of date value: one with a time keeps its time
+   * when another day is chosen, and one in another calendar is answered in
+   * that calendar, whatever calendar the grid is drawn in.
+   */
+  value?: MaybeAccessor<T | null | undefined>;
+  defaultValue?: MaybeAccessor<T | null | undefined>;
+  focusedValue?: MaybeAccessor<DateValue | null | undefined>;
+  defaultFocusedValue?: MaybeAccessor<DateValue | null | undefined>;
   minValue?: MaybeAccessor<DateValue | null | undefined>;
   maxValue?: MaybeAccessor<DateValue | null | undefined>;
   /** Days that exist but cannot be chosen: booked, closed, sold out. */
@@ -178,7 +199,14 @@ export interface CalendarStateOptions {
   /** Pressing the chosen day again clears it. @default false */
   allowsDeselection?: MaybeAccessor<boolean | undefined>;
   /** Which day starts the week. Defaults to what the locale says. */
-  firstDayOfWeek?: MaybeAccessor<number | undefined>;
+  firstDayOfWeek?: MaybeAccessor<DayOfWeek | undefined>;
+  /**
+   * Builds the calendar system the grid is drawn in, from the identifier the
+   * locale names: `ja-JP-u-ca-japanese` asks for `"japanese"`. Passing one
+   * that knows only some systems keeps the others out of a bundle.
+   * @default createCalendar
+   */
+  createCalendar?: (identifier: CalendarIdentifier) => CalendarSystem;
   /** How many months are on show side by side. @default 1 */
   visibleMonths?: MaybeAccessor<number | undefined>;
   /** Turn every month on show at once, rather than sliding by one. @default false */
@@ -196,8 +224,11 @@ export interface CalendarStateOptions {
   startMonth?: MaybeAccessor<DateValue | null | undefined>;
   endMonth?: MaybeAccessor<DateValue | null | undefined>;
   /** Which day counts as today. Defaults to today in `timeZone`. */
-  today?: MaybeAccessor<CalendarDate | undefined>;
-  /** The IANA zone today is reckoned in. Defaults to the local one. */
+  today?: MaybeAccessor<DateValue | undefined>;
+  /**
+   * The IANA zone today is reckoned in and days are formatted in. Defaults to
+   * the zone of a zoned value, and otherwise to the local one.
+   */
   timeZone?: MaybeAccessor<string | undefined>;
   /** Said by the caller, whatever the value is. */
   isInvalid?: MaybeAccessor<boolean | undefined>;
@@ -208,12 +239,13 @@ export interface CalendarStateOptions {
   selectionAlignment?: MaybeAccessor<"start" | "center" | "end" | undefined>;
   /** Every month drawn with this many week rows, however many it needs. */
   weeksInMonth?: MaybeAccessor<number | undefined>;
-  onChange?: (value: CalendarDate | null) => void;
+  onChange?: (value: NoInfer<MappedDateValue<T>> | null) => void;
   onFocusChange?: (date: CalendarDate) => void;
 }
 
 export interface CalendarState {
   readonly selectionMode: "single";
+  /** The chosen day, in the calendar the grid is drawn in. */
   value: Accessor<CalendarDate | null>;
   setValue(value: CalendarDate | null): void;
   focusedDate: Accessor<CalendarDate>;
@@ -222,11 +254,20 @@ export interface CalendarState {
   visibleRange: Accessor<DateRange>;
   visibleMonths: Accessor<number>;
   today: Accessor<CalendarDate>;
+  /** The zone days are reckoned and formatted in. */
+  timeZone: Accessor<string>;
+  /** The bounds, as days in the calendar the grid is drawn in. */
+  minValue: Accessor<CalendarDate | null>;
+  maxValue: Accessor<CalendarDate | null>;
+  /** The first and last month that can be paged to, as their first days. */
+  startMonth: Accessor<CalendarDate | null>;
+  endMonth: Accessor<CalendarDate | null>;
   /** Put a month on show, `position` months in from the first one. */
   showMonth(month: DateValue, position?: number): void;
   isFocused: Accessor<boolean>;
   setFocused(isFocused: boolean): void;
-  firstDayOfWeek: Accessor<number>;
+  /** The day the caller said starts the week, or undefined for the locale's. */
+  firstDayOfWeek: Accessor<DayOfWeek | undefined>;
   isDisabled: Accessor<boolean>;
   isReadOnly: Accessor<boolean>;
   /**
@@ -257,40 +298,149 @@ export interface CalendarState {
   focusNextPage(): void;
 }
 
-type Duration = Parameters<CalendarDate["add"]>[0];
-
 /** A month a page button or a caption asked for. Compared by identity. */
 interface PageRequest {
   start: CalendarDate;
 }
 
-function unavailable(options: CalendarStateOptions, date: CalendarDate): boolean {
+function unavailable(
+  options: Pick<CalendarStateOptions, "isDateUnavailable">,
+  date: CalendarDate,
+): boolean {
   return options.isDateUnavailable?.(date) === true;
 }
 
-export function calendarState(options: CalendarStateOptions): CalendarState {
-  const locale = useLocale();
+/**
+ * The calendar system the grid is drawn in: the one the locale names, built
+ * by the caller's factory.
+ */
+function displayCalendar(
+  locale: Accessor<Locale>,
+  factory: ((identifier: CalendarIdentifier) => CalendarSystem) | undefined,
+): Accessor<CalendarSystem> {
+  const system = dateFormatter(undefined, locale);
+  return createMemo(
+    () => (factory ?? createCalendar)(system().resolvedOptions().calendar as CalendarIdentifier),
+    { equals: isEqualCalendar },
+  );
+}
 
-  const [value, setValueRaw] = controllable<CalendarDate | null>(
+/** A value read as a day in the calendar the grid is drawn in. */
+function inCalendar(value: DateValue, system: CalendarSystem): CalendarDate {
+  return toCalendar(toCalendarDate(value), system);
+}
+
+/**
+ * A day chosen in the grid, as the kind of value the caller gave.
+ *
+ * The calendar the grid is drawn in has no say in what is reported: a value
+ * given in the Gregorian calendar is answered in it, and a value with a time,
+ * or a zone, keeps both.
+ */
+function asValueOf(date: CalendarDate, was: DateValue | null | undefined): DateValue {
+  const day = toCalendar(date, was?.calendar ?? new GregorianCalendar());
+  if (was === null || was === undefined || !("hour" in was)) return day;
+  return was.set({ era: day.era, year: day.year, month: day.month, day: day.day });
+}
+
+/** A day held between two bounds, in its own calendar. */
+function constrainValue(
+  date: CalendarDate,
+  minValue: DateValue | null | undefined,
+  maxValue: DateValue | null | undefined,
+): CalendarDate {
+  if (minValue !== null && minValue !== undefined && date.compare(minValue) < 0) {
+    return inCalendar(minValue, date.calendar);
+  }
+  if (maxValue !== null && maxValue !== undefined && date.compare(maxValue) > 0) {
+    return inCalendar(maxValue, date.calendar);
+  }
+  return date;
+}
+
+/**
+ * How many months apart two months are.
+ *
+ * Counted by stepping, because neither twelve months a year nor one year
+ * number per era holds: a Hebrew leap year has thirteen, and a Japanese year
+ * can begin in May.
+ */
+function monthsBetween(from: CalendarDate, to: CalendarDate): number {
+  let month = startOfMonth(from);
+  const target = startOfMonth(to);
+  const step = target.compare(month) >= 0 ? 1 : -1;
+  let count = 0;
+  while (!isSameMonth(month, target)) {
+    const next = month.add({ months: step });
+    // The end of the calendar system, where adding stops moving.
+    if (isSameMonth(next, month)) break;
+    month = next;
+    count += step;
+  }
+  return count;
+}
+
+export function calendarState<T extends DateValue = CalendarDate>(
+  options: CalendarStateOptions<T>,
+): CalendarState {
+  const locale = useLocale();
+  const system = displayCalendar(locale, options.createCalendar);
+  const shown = (date: DateValue): CalendarDate => inCalendar(date, system());
+
+  const [given, setGiven] = controllable<DateValue | null>(
     () => access(options.value),
     () => access(options.defaultValue) ?? null,
-    options.onChange,
+    (next) => options.onChange?.(next as MappedDateValue<T> | null),
   );
 
-  const firstDayOfWeek = (): number =>
-    access(options.firstDayOfWeek) ?? getFirstDayOfWeek(locale().locale);
+  const value = (): CalendarDate | null => {
+    const current = given();
+    return current === null ? null : shown(current);
+  };
 
-  const todayDate = (): CalendarDate => access(options.today) ?? today(access(options.timeZone));
+  const firstDayOfWeek = (): DayOfWeek | undefined => access(options.firstDayOfWeek);
+
+  const timeZone = (): string => {
+    const zone = access(options.timeZone);
+    if (zone !== undefined) return zone;
+    const current = given();
+    return current !== null && "timeZone" in current ? current.timeZone : getLocalTimeZone();
+  };
+
+  const todayDate = (): CalendarDate => shown(access(options.today) ?? today(timeZone()));
   const visibleMonths = (): number => Math.max(1, Math.floor(access(options.visibleMonths) ?? 1));
 
-  const constrained = (date: CalendarDate): CalendarDate =>
-    constrainDate(date, access(options.minValue), access(options.maxValue));
+  const bound = (
+    date: MaybeAccessor<DateValue | null | undefined> | undefined,
+  ): CalendarDate | null => {
+    const read = access(date);
+    return read === null || read === undefined ? null : shown(read);
+  };
+  const minValue = (): CalendarDate | null => bound(options.minValue);
+  const maxValue = (): CalendarDate | null => bound(options.maxValue);
+  const startMonth = (): CalendarDate | null => {
+    const first = bound(options.startMonth);
+    return first === null ? null : startOfMonth(first);
+  };
+  const endMonth = (): CalendarDate | null => {
+    const last = bound(options.endMonth);
+    return last === null ? null : startOfMonth(last);
+  };
 
-  const [rawFocusedDate, setFocusedDateRaw] = controllable<CalendarDate>(
-    () => access(options.focusedValue),
-    () => constrained(access(options.defaultFocusedValue) ?? value() ?? todayDate()),
+  const constrained = (date: CalendarDate): CalendarDate =>
+    constrainValue(date, minValue(), maxValue());
+
+  const [focusedAsSet, setFocusedDateRaw] = controllable<CalendarDate>(
+    () => {
+      const focused = access(options.focusedValue);
+      return focused === null || focused === undefined ? undefined : shown(focused);
+    },
+    () => constrained(shown(access(options.defaultFocusedValue) ?? value() ?? todayDate())),
     options.onFocusChange,
   );
+  // An uncontrolled focus was stored in the calendar of its day; the locale
+  // may have named another since.
+  const rawFocusedDate = (): CalendarDate => shown(focusedAsSet());
 
   const [isFocused, setIsFocused] = createSignal(access(options.autoFocus) === true);
 
@@ -301,17 +451,14 @@ export function calendarState(options: CalendarStateOptions): CalendarState {
 
   /** A first month kept inside the months that can be reached. */
   const bounded = (start: CalendarDate): CalendarDate => {
-    const first = access(options.startMonth);
-    const last = access(options.endMonth);
+    const first = startMonth();
+    const last = endMonth();
     let next = start;
-    if (last !== undefined && last !== null) {
-      const latest = startOfMonth(last).subtract({ months: visibleMonths() - 1 });
+    if (last !== null) {
+      const latest = last.subtract({ months: visibleMonths() - 1 });
       if (next.compare(latest) > 0) next = latest;
     }
-    if (first !== undefined && first !== null) {
-      const earliest = startOfMonth(first);
-      if (next.compare(earliest) < 0) next = earliest;
-    }
+    if (first !== null && next.compare(first) < 0) next = first;
     return next;
   };
 
@@ -345,13 +492,13 @@ export function calendarState(options: CalendarStateOptions): CalendarState {
       }
     }
     let start = month.subtract({ months: before });
-    const max = access(options.maxValue);
-    if (max !== undefined && max !== null && focused.compare(max) <= 0) {
+    const max = maxValue();
+    if (max !== null && focused.compare(max) <= 0) {
       const latest = startOfMonth(max).subtract({ months: count - 1 });
       if (start.compare(latest) > 0) start = latest;
     }
-    const min = access(options.minValue);
-    if (min !== undefined && min !== null && focused.compare(min) >= 0) {
+    const min = minValue();
+    if (min !== null && focused.compare(min) >= 0) {
       const earliest = startOfMonth(min);
       if (start.compare(earliest) < 0) start = earliest;
     }
@@ -365,12 +512,16 @@ export function calendarState(options: CalendarStateOptions): CalendarState {
     (previous) => {
       const request = requested();
       const kept = access(options.visibleMonth);
-      if (kept !== undefined && kept !== null) return { start: startOfMonth(kept), request };
+      if (kept !== undefined && kept !== null) {
+        return { start: startOfMonth(shown(kept)), request };
+      }
 
       const focused = rawFocusedDate();
       let from = aligned(focused);
       if (previous !== undefined) {
-        from = request !== null && request !== previous.request ? request.start : previous.start;
+        from = shown(
+          request !== null && request !== previous.request ? request.start : previous.start,
+        );
       }
       return { start: bounded(holding(from, focused)), request };
     },
@@ -404,10 +555,10 @@ export function calendarState(options: CalendarStateOptions): CalendarState {
 
   const isCellDisabled = (date: CalendarDate): boolean => {
     if (isDisabled()) return true;
-    const min = access(options.minValue);
-    const max = access(options.maxValue);
-    if (min !== undefined && min !== null && date.compare(min) < 0) return true;
-    if (max !== undefined && max !== null && date.compare(max) > 0) return true;
+    const min = minValue();
+    const max = maxValue();
+    if (min !== null && date.compare(min) < 0) return true;
+    if (max !== null && date.compare(max) > 0) return true;
     return options.isDateDisabled?.(date) === true;
   };
 
@@ -415,7 +566,7 @@ export function calendarState(options: CalendarStateOptions): CalendarState {
 
   /** Focus, held inside the allowed range rather than refused at its edge. */
   const setFocusedDate = (date: CalendarDate): void => {
-    const next = constrained(date);
+    const next = constrained(shown(date));
     const current = untrack(visibleRange).start;
     const start = bounded(holding(current, next));
     setFocusedDateRaw(next);
@@ -425,9 +576,9 @@ export function calendarState(options: CalendarStateOptions): CalendarState {
   /** The window moved to begin at a month, and the focused day carried with it. */
   const showFrom = (month: CalendarDate): void => {
     const current = untrack(visibleRange).start;
-    const start = bounded(month);
+    const start = bounded(shown(month));
     if (isSameDay(start, current)) return;
-    const months = (start.year - current.year) * 12 + start.month - current.month;
+    const months = monthsBetween(current, start);
     setRequested({ start });
     setFocusedDateRaw(constrained(untrack(focusedDate).add({ months })));
     options.onVisibleMonthChange?.(start);
@@ -445,7 +596,7 @@ export function calendarState(options: CalendarStateOptions): CalendarState {
    * the focus then stays where it is rather than resting on a day that cannot
    * be chosen.
    */
-  const reachable = (date: CalendarDate, step: Duration): CalendarDate | null => {
+  const reachable = (date: CalendarDate, step: DateDuration): CalendarDate | null => {
     const off = options.isDateDisabled;
     let next = constrained(date);
     if (off === undefined) return next;
@@ -457,20 +608,24 @@ export function calendarState(options: CalendarStateOptions): CalendarState {
     return next;
   };
 
-  const land = (date: CalendarDate, step: Duration): void => {
+  const land = (date: CalendarDate, step: DateDuration): void => {
     const next = reachable(date, step);
     if (next !== null) setFocusedDate(next);
   };
 
-  const move = (duration: Duration): void => land(focusedDate().add(duration), duration);
+  const move = (duration: DateDuration): void => land(focusedDate().add(duration), duration);
 
   /** A day the calendar would not let anyone choose, for whatever reason. */
   const isRefused = (date: CalendarDate): boolean => {
-    const min = access(options.minValue);
-    const max = access(options.maxValue);
-    if (min !== undefined && min !== null && date.compare(min) < 0) return true;
-    if (max !== undefined && max !== null && date.compare(max) > 0) return true;
+    const min = minValue();
+    const max = maxValue();
+    if (min !== null && date.compare(min) < 0) return true;
+    if (max !== null && date.compare(max) > 0) return true;
     return isCellUnavailable(date) || options.isDateDisabled?.(date) === true;
+  };
+
+  const setValue = (next: CalendarDate | null): void => {
+    setGiven(next === null ? null : asValueOf(next, untrack(given)));
   };
 
   const selectDate = (date: CalendarDate): void => {
@@ -478,23 +633,28 @@ export function calendarState(options: CalendarStateOptions): CalendarState {
     if (isCellDisabled(date) || isCellUnavailable(date)) return;
     const chosen = untrack(value);
     if (access(options.allowsDeselection) === true && chosen !== null && isSameDay(chosen, date)) {
-      setValueRaw(null);
+      setValue(null);
       return;
     }
-    setValueRaw(date);
+    setValue(date);
   };
 
   return {
     selectionMode: "single",
     value,
-    setValue: (next) => setValueRaw(next),
+    setValue,
     focusedDate,
     setFocusedDate,
     visibleRange,
     visibleMonths,
     today: todayDate,
+    timeZone,
+    minValue,
+    maxValue,
+    startMonth,
+    endMonth,
     showMonth: (month, position = 0) =>
-      showFrom(startOfMonth(month).subtract({ months: position })),
+      showFrom(startOfMonth(shown(month)).subtract({ months: position })),
     isFocused,
     setFocused: (next) => setIsFocused(next),
     firstDayOfWeek,
@@ -514,22 +674,23 @@ export function calendarState(options: CalendarStateOptions): CalendarState {
     isCellDisabled,
     isCellUnavailable,
     isPreviousVisibleRangeInvalid: () => {
-      const first = access(options.startMonth);
-      if (first !== undefined && first !== null) {
-        if (visibleRange().start.compare(startOfMonth(first)) <= 0) return true;
-      }
-      const min = access(options.minValue);
-      if (min === undefined || min === null) return false;
-      return visibleRange().start.subtract({ days: 1 }).compare(min) < 0;
+      const first = startMonth();
+      if (first !== null && visibleRange().start.compare(first) <= 0) return true;
+      const start = visibleRange().start;
+      const before = start.subtract({ days: 1 });
+      // Subtracting stops moving at the beginning of the calendar system.
+      if (isSameDay(before, start)) return true;
+      const min = minValue();
+      return min !== null && before.compare(min) < 0;
     },
     isNextVisibleRangeInvalid: () => {
-      const last = access(options.endMonth);
-      if (last !== undefined && last !== null) {
-        if (visibleRange().end.compare(endOfMonth(last)) >= 0) return true;
-      }
-      const max = access(options.maxValue);
-      if (max === undefined || max === null) return false;
-      return visibleRange().end.add({ days: 1 }).compare(max) > 0;
+      const last = endMonth();
+      if (last !== null && visibleRange().end.compare(endOfMonth(last)) >= 0) return true;
+      const end = visibleRange().end;
+      const after = end.add({ days: 1 });
+      if (isSameDay(after, end)) return true;
+      const max = maxValue();
+      return max !== null && after.compare(max) > 0;
     },
     focusPreviousDay: () => move({ days: -1 }),
     focusNextDay: () => move({ days: 1 }),
@@ -537,8 +698,10 @@ export function calendarState(options: CalendarStateOptions): CalendarState {
     focusNextRow: () => move({ weeks: 1 }),
     focusPreviousSection: (larger) => move(larger === true ? { years: -1 } : { months: -1 }),
     focusNextSection: (larger) => move(larger === true ? { years: 1 } : { months: 1 }),
-    focusSectionStart: () => land(startOfWeek(focusedDate(), firstDayOfWeek()), { days: 1 }),
-    focusSectionEnd: () => land(endOfWeek(focusedDate(), firstDayOfWeek()), { days: -1 }),
+    focusSectionStart: () =>
+      land(startOfWeek(focusedDate(), locale().locale, firstDayOfWeek()), { days: 1 }),
+    focusSectionEnd: () =>
+      land(endOfWeek(focusedDate(), locale().locale, firstDayOfWeek()), { days: -1 }),
     selectDate,
     selectFocusedDate: () => selectDate(focusedDate()),
     focusPreviousPage: () => page(-1),
@@ -550,18 +713,18 @@ export function calendarState(options: CalendarStateOptions): CalendarState {
 // A range of days
 // ---------------------------------------------------------------------------
 
-export interface RangeCalendarStateOptions extends Omit<
-  CalendarStateOptions,
+export interface RangeCalendarStateOptions<T extends DateValue = CalendarDate> extends Omit<
+  CalendarStateOptions<T>,
   "value" | "defaultValue" | "onChange" | "isDateUnavailable"
 > {
-  value?: MaybeAccessor<DateRange | null | undefined>;
+  value?: MaybeAccessor<DateRange<T> | null | undefined>;
   /**
    * Days that exist but cannot be chosen. The second argument is the day the
    * range being drawn began on, or null, so what is available can depend on
    * it: a stay of at most a week from wherever it starts.
    */
   isDateUnavailable?: (date: CalendarDate, anchorDate: CalendarDate | null) => boolean;
-  defaultValue?: MaybeAccessor<DateRange | null | undefined>;
+  defaultValue?: MaybeAccessor<DateRange<T> | null | undefined>;
   /** Nothing between the ends may be unavailable. @default false */
   allowsNonContiguousRanges?: MaybeAccessor<boolean | undefined>;
   /** The fewest and the most days a range may cover, both ends counted. */
@@ -569,7 +732,7 @@ export interface RangeCalendarStateOptions extends Omit<
   maxDays?: MaybeAccessor<number | undefined>;
   /** A switched-off day between the ends breaks the range. @default false */
   excludeDisabled?: MaybeAccessor<boolean | undefined>;
-  onChange?: (value: DateRange | null) => void;
+  onChange?: (value: NoInfer<DateRange<MappedDateValue<T>>> | null) => void;
 }
 
 export interface RangeCalendarState extends Omit<
@@ -577,6 +740,7 @@ export interface RangeCalendarState extends Omit<
   "value" | "setValue" | "selectionMode"
 > {
   readonly selectionMode: "range";
+  /** The chosen range, as days in the calendar the grid is drawn in. */
   value: Accessor<DateRange | null>;
   setValue(value: DateRange | null): void;
   /** Where a range being drawn began, or null when none is. */
@@ -600,12 +764,31 @@ function ordered(a: CalendarDate, b: CalendarDate): DateRange {
   return a.compare(b) <= 0 ? { start: a, end: b } : { start: b, end: a };
 }
 
-export function rangeCalendarState(options: RangeCalendarStateOptions): RangeCalendarState {
-  const [value, setValueRaw] = controllable<DateRange | null>(
+export function rangeCalendarState<T extends DateValue = CalendarDate>(
+  options: RangeCalendarStateOptions<T>,
+): RangeCalendarState {
+  const system = displayCalendar(useLocale(), options.createCalendar);
+
+  const [given, setGiven] = controllable<DateRange<DateValue> | null>(
     () => access(options.value),
     () => access(options.defaultValue) ?? null,
-    options.onChange,
+    (next) => options.onChange?.(next as DateRange<MappedDateValue<T>> | null),
   );
+
+  const value = (): DateRange | null => {
+    const range = given();
+    if (range === null) return null;
+    return { start: inCalendar(range.start, system()), end: inCalendar(range.end, system()) };
+  };
+
+  const setValueRaw = (next: DateRange | null): void => {
+    const was = untrack(given);
+    setGiven(
+      next === null
+        ? null
+        : { start: asValueOf(next.start, was?.start), end: asValueOf(next.end, was?.end) },
+    );
+  };
 
   const [anchorDate, writeAnchorSignal] = createSignal<CalendarDate | null>(null);
   const [drawn, setDrawn] = createSignal<DateRange | null>(null);
@@ -629,8 +812,8 @@ export function rangeCalendarState(options: RangeCalendarStateOptions): RangeCal
   // Centred on the range's start, unless its end would then be off the
   // window, in which case the start goes first.
   const alignment = (): "start" | "center" | "end" => {
-    const given = access(options.selectionAlignment);
-    if (given !== undefined) return given;
+    const asked = access(options.selectionAlignment);
+    if (asked !== undefined) return asked;
     const range = untrack(value);
     if (range === null) return "center";
     const count = visibleMonths();
@@ -640,9 +823,12 @@ export function rangeCalendarState(options: RangeCalendarStateOptions): RangeCal
     return range.end.compare(last) > 0 ? "start" : "center";
   };
 
-  const base = calendarState({
-    ...(options as Omit<CalendarStateOptions, "isDateUnavailable">),
-    value: () => value()?.start ?? null,
+  const base = calendarState<DateValue>({
+    ...(options as Omit<
+      CalendarStateOptions<T>,
+      "value" | "defaultValue" | "onChange" | "isDateUnavailable"
+    >),
+    value: () => given()?.start ?? null,
     defaultValue: undefined,
     onChange: undefined,
     selectionAlignment: alignment,
@@ -674,7 +860,8 @@ export function rangeCalendarState(options: RangeCalendarStateOptions): RangeCal
   };
 
   const allowedLength = (range: DateRange): boolean => {
-    const days = range.end.epochDay - range.start.epochDay + 1;
+    // Between two days, `compare` is the number of days apart.
+    const days = range.end.compare(range.start) + 1;
     const min = access(options.minDays);
     const max = access(options.maxDays);
     return (min === undefined || days >= min) && (max === undefined || days <= max);
@@ -712,10 +899,10 @@ export function rangeCalendarState(options: RangeCalendarStateOptions): RangeCal
   };
 
   const isAvailable = (date: CalendarDate): boolean => {
-    const min = access(options.minValue);
-    const max = access(options.maxValue);
-    if (min !== undefined && min !== null && date.compare(min) < 0) return false;
-    if (max !== undefined && max !== null && date.compare(max) > 0) return false;
+    const min = base.minValue();
+    const max = base.maxValue();
+    if (min !== null && date.compare(min) < 0) return false;
+    if (max !== null && date.compare(max) > 0) return false;
     return !base.isCellUnavailable(date) && options.isDateDisabled?.(date) !== true;
   };
 
@@ -723,7 +910,7 @@ export function rangeCalendarState(options: RangeCalendarStateOptions): RangeCal
     ...base,
     selectionMode: "range",
     value,
-    setValue: (next) => setValueRaw(next),
+    setValue: setValueRaw,
     // The signal is read so a reader is told when it changes; the variable is
     // returned so a handler sees what the event before it in the same tick did.
     anchorDate: () => {
@@ -767,18 +954,18 @@ export function rangeCalendarState(options: RangeCalendarStateOptions): RangeCal
 // Several days
 // ---------------------------------------------------------------------------
 
-export interface MultipleCalendarStateOptions extends Omit<
-  CalendarStateOptions,
+export interface MultipleCalendarStateOptions<T extends DateValue = CalendarDate> extends Omit<
+  CalendarStateOptions<T>,
   "value" | "defaultValue" | "onChange"
 > {
-  value?: MaybeAccessor<readonly CalendarDate[] | undefined>;
-  defaultValue?: MaybeAccessor<readonly CalendarDate[] | undefined>;
+  value?: MaybeAccessor<readonly T[] | undefined>;
+  defaultValue?: MaybeAccessor<readonly T[] | undefined>;
   /** The fewest days that may be left chosen, and the most that may be. */
   min?: MaybeAccessor<number | undefined>;
   max?: MaybeAccessor<number | undefined>;
   /** The last chosen day cannot be taken away. @default false */
   required?: MaybeAccessor<boolean | undefined>;
-  onChange?: (value: CalendarDate[]) => void;
+  onChange?: (value: NoInfer<MappedDateValue<T>>[]) => void;
 }
 
 export interface MultipleCalendarState extends Omit<
@@ -786,7 +973,7 @@ export interface MultipleCalendarState extends Omit<
   "value" | "setValue" | "selectionMode"
 > {
   readonly selectionMode: "multiple";
-  /** The chosen days, in the order they were chosen. */
+  /** The chosen days, in the order they were chosen, in the calendar the grid is drawn in. */
   value: Accessor<readonly CalendarDate[]>;
   setValue(value: readonly CalendarDate[]): void;
 }
@@ -798,18 +985,28 @@ export interface MultipleCalendarState extends Omit<
  * nothing, rather than dropping some other day to make room: which day to drop
  * is not a decision a calendar can make for anyone.
  */
-export function multipleCalendarState(
-  options: MultipleCalendarStateOptions,
+export function multipleCalendarState<T extends DateValue = CalendarDate>(
+  options: MultipleCalendarStateOptions<T>,
 ): MultipleCalendarState {
-  const [value, setValueRaw] = controllable<readonly CalendarDate[]>(
+  const system = displayCalendar(useLocale(), options.createCalendar);
+
+  const [given, setGiven] = controllable<readonly DateValue[]>(
     () => access(options.value),
     () => access(options.defaultValue) ?? [],
-    (next) => options.onChange?.([...next]),
+    (next) => options.onChange?.([...next] as MappedDateValue<T>[]),
   );
 
-  const base = calendarState({
-    ...(options as CalendarStateOptions),
-    value: () => value()[0] ?? null,
+  const value = (): readonly CalendarDate[] => given().map((one) => inCalendar(one, system()));
+
+  /** The days, each as the kind of value the first one given was. */
+  const setValueRaw = (next: readonly CalendarDate[]): void => {
+    const was = untrack(given);
+    setGiven(next.map((day) => asValueOf(day, was.find((one) => isSameDay(one, day)) ?? was[0])));
+  };
+
+  const base = calendarState<DateValue>({
+    ...(options as Omit<CalendarStateOptions<T>, "value" | "defaultValue" | "onChange">),
+    value: () => given()[0] ?? null,
     defaultValue: undefined,
     onChange: undefined,
   });
@@ -835,10 +1032,10 @@ export function multipleCalendarState(
   };
 
   const isRefused = (date: CalendarDate): boolean => {
-    const min = access(options.minValue);
-    const max = access(options.maxValue);
-    if (min !== undefined && min !== null && date.compare(min) < 0) return true;
-    if (max !== undefined && max !== null && date.compare(max) > 0) return true;
+    const min = base.minValue();
+    const max = base.maxValue();
+    if (min !== null && date.compare(min) < 0) return true;
+    if (max !== null && date.compare(max) > 0) return true;
     return base.isCellUnavailable(date) || options.isDateDisabled?.(date) === true;
   };
 
@@ -846,7 +1043,7 @@ export function multipleCalendarState(
     ...base,
     selectionMode: "multiple",
     value,
-    setValue: (next) => setValueRaw(next),
+    setValue: setValueRaw,
     isValueInvalid: () => access(options.isInvalid) === true || value().some(isRefused),
     isSelected,
     selectDate,
@@ -921,8 +1118,9 @@ function formatRange(
   format: Intl.DateTimeFormat,
   start: CalendarDate,
   end: CalendarDate,
+  timeZone: string,
 ): { startDate: string; endDate: string } {
-  const parts = format.formatRangeToParts(start.toDate(), end.toDate());
+  const parts = format.formatRangeToParts(start.toDate(timeZone), end.toDate(timeZone));
   let separator = -1;
   for (const [at, part] of parts.entries()) {
     if (part.source === "shared" && part.type === "literal") separator = at;
@@ -935,6 +1133,46 @@ function formatRange(
     else if (at > separator) endDate += part.value;
   }
   return { startDate, endDate };
+}
+
+/**
+ * A day as a format names it.
+ *
+ * A calendar built by a caller's `createCalendar` can number its months
+ * differently from the system `Intl` formats in, a fiscal year beginning in
+ * February; the calendar maps its month back to the one to print.
+ */
+function formattable(date: CalendarDate): CalendarDate {
+  return date.calendar.getFormattableMonth?.(date) ?? date;
+}
+
+/** A Gregorian day before the common era says so, since its year alone reads as one after. */
+function eraFormat(date: CalendarDate | null | undefined): "short" | undefined {
+  return date?.calendar.identifier === "gregory" && date.era === "BC" ? "short" : undefined;
+}
+
+/**
+ * A date format for the days a calendar shows.
+ *
+ * It names the calendar the grid is drawn in as well as the locale does,
+ * because a caller's `createCalendar` can draw it in one the locale did not
+ * name, and it formats in the zone the calendar reckons days in, which is the
+ * one a day's `toDate` is given.
+ */
+function calendarFormat(
+  options: () => Intl.DateTimeFormatOptions,
+  state: AnyCalendarState,
+  locale: Accessor<Locale>,
+): Accessor<Intl.DateTimeFormat> {
+  return () =>
+    dateFormatter(
+      {
+        ...options(),
+        calendar: state.visibleRange().start.calendar.identifier,
+        timeZone: state.timeZone(),
+      },
+      locale,
+    )();
 }
 
 export interface CalendarResult {
@@ -951,20 +1189,31 @@ export interface CalendarResult {
 export function calendar(options: CalendarOptions, state: AnyCalendarState): CalendarResult {
   const baseId = id();
   const errorMessageId = id();
-  const titleFormat = dateFormatter({ month: "long", year: "numeric" });
+  const locale = useLocale();
+  const titleFormat = calendarFormat(
+    () => {
+      const range = state.visibleRange();
+      return {
+        month: "long",
+        year: "numeric",
+        era: eraFormat(range.start) ?? eraFormat(range.end),
+      };
+    },
+    state,
+    locale,
+  );
   const messages = stringFormatter(CALENDAR_STRINGS);
-  const longDate = dateFormatter({
-    weekday: "long",
-    month: "long",
-    year: "numeric",
-    day: "numeric",
-  });
+  const longDate = calendarFormat(
+    () => ({ weekday: "long", month: "long", year: "numeric", day: "numeric" }),
+    state,
+    locale,
+  );
   const list = listFormatter();
   calendarData.set(state, { errorMessageId });
 
   /** What has been chosen, in words, or nothing while a range is half drawn. */
   const selection = (): string => {
-    const spoken = (date: CalendarDate): string => longDate().format(date.toDate());
+    const spoken = (date: CalendarDate): string => longDate().format(date.toDate(state.timeZone()));
     if (state.selectionMode === "range") {
       const range = state.value();
       if (range === null || state.anchorDate() !== null) return "";
@@ -973,7 +1222,7 @@ export function calendar(options: CalendarOptions, state: AnyCalendarState): Cal
       }
       const dateRange = messages().format(
         "dateRange",
-        formatRange(longDate(), range.start, range.end),
+        formatRange(longDate(), range.start, range.end, state.timeZone()),
       );
       return messages().format("selectedRangeDescription", { dateRange });
     }
@@ -1000,9 +1249,10 @@ export function calendar(options: CalendarOptions, state: AnyCalendarState): Cal
 
   const title = (): string => {
     const range = state.visibleRange();
-    const first = range.start.toDate();
+    const zone = state.timeZone();
+    const first = formattable(range.start).toDate(zone);
     if (state.visibleMonths() === 1) return titleFormat().format(first);
-    return titleFormat().formatRange(first, startOfMonth(range.end).toDate());
+    return titleFormat().formatRange(first, formattable(startOfMonth(range.end)).toDate(zone));
   };
 
   if (!isServer) {
@@ -1138,36 +1388,45 @@ export function calendarGrid(
   state: AnyCalendarState,
 ): CalendarGridResult {
   const locale = useLocale();
-  const titleFormat = dateFormatter({ month: "long", year: "numeric" });
 
   const month = (): CalendarDate =>
     state.visibleRange().start.add({ months: access(options.monthOffset) ?? 0 });
-  const dayFormat = createMemo(() =>
-    dateFormatter({ weekday: access(options.weekdayStyle) ?? "narrow" })(),
+  const titleFormat = calendarFormat(
+    () => ({ month: "long", year: "numeric", era: eraFormat(month()) }),
+    state,
+    locale,
+  );
+  const weekdayFormat = calendarFormat(
+    () => ({ weekday: access(options.weekdayStyle) ?? "narrow" }),
+    state,
+    locale,
   );
 
   const weekDays = createMemo(() => {
-    const start = startOfWeek(today(), state.firstDayOfWeek());
+    const zone = state.timeZone();
+    const start = startOfWeek(today(zone), locale().locale, state.firstDayOfWeek());
     return Array.from({ length: 7 }, (_, at) =>
-      dayFormat().format(start.add({ days: at }).toDate()),
+      weekdayFormat().format(start.add({ days: at }).toDate(zone)),
     );
   });
 
   const weeksInMonth = (): number =>
     access(options.fixedWeeks) === true
       ? 6
-      : (state.weeksInMonth() ?? getWeeksInMonth(month(), state.firstDayOfWeek()));
+      : (state.weeksInMonth() ?? getWeeksInMonth(month(), locale().locale, state.firstDayOfWeek()));
 
   const weekDates = (week: number): CalendarDate[] => {
-    const first = startOfWeek(month(), state.firstDayOfWeek());
+    const first = startOfWeek(month(), locale().locale, state.firstDayOfWeek());
     const start = first.add({ weeks: week });
     return Array.from({ length: 7 }, (_, at) => start.add({ days: at }));
   };
 
   const weekNumber = (week: number): number => {
-    const first = startOfWeek(month(), state.firstDayOfWeek()).add({ weeks: week });
+    const first = startOfWeek(month(), locale().locale, state.firstDayOfWeek()).add({
+      weeks: week,
+    });
     if (access(options.isoWeek) === true) return getISOWeek(first);
-    return getWeekOfYear(first, state.firstDayOfWeek(), getMinimalDaysInFirstWeek(locale().locale));
+    return getWeekOfYear(first, locale().locale, state.firstDayOfWeek());
   };
 
   const onKeyDown = (event: KeyboardEvent): void => {
@@ -1221,7 +1480,7 @@ export function calendarGrid(
     event.stopPropagation();
   };
 
-  const title = (): string => titleFormat().format(month().toDate());
+  const title = (): string => titleFormat().format(formattable(month()).toDate(state.timeZone()));
 
   return {
     month,
@@ -1315,17 +1574,22 @@ export function calendarCell(
   options: CalendarCellOptions,
   state: AnyCalendarState,
 ): CalendarCellResult {
-  const labelFormat = dateFormatter({
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
-  const dayFormat = dateFormatter({ day: "numeric" });
+  const locale = useLocale();
+  const date = (): CalendarDate => access(options.date);
+  const labelFormat = calendarFormat(
+    () => ({
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+      era: eraFormat(date()),
+    }),
+    state,
+    locale,
+  );
+  const dayFormat = calendarFormat(() => ({ day: "numeric" }), state, locale);
   const messages = stringFormatter(CALENDAR_STRINGS);
   const drag = dragOf(state);
-
-  const date = (): CalendarDate => access(options.date);
 
   const isOutside = (): boolean =>
     access(options.isOutsideMonth) === true ||
@@ -1387,7 +1651,7 @@ export function calendarCell(
   }
 
   const label = (): string => {
-    const text = labelFormat().format(date().toDate());
+    const text = labelFormat().format(date().toDate(state.timeZone()));
     if (isTodayCell()) {
       return messages().format(isSelected() ? "todayDateSelected" : "todayDate", { date: text });
     }
@@ -1477,7 +1741,11 @@ export function calendarCell(
     isToday: isTodayCell,
     isSelectionStart,
     isSelectionEnd,
-    formattedDate: () => dayFormat().format(date().toDate()),
+    // The day's own part of the format: some calendars write more around it.
+    formattedDate: () =>
+      dayFormat()
+        .formatToParts(date().toDate(state.timeZone()))
+        .find((part) => part.type === "day")?.value ?? String(date().day),
     cellProps: {
       role: "gridcell",
       "aria-selected": () => isSelected() || undefined,
@@ -1554,11 +1822,11 @@ function CalendarProvider(props: { value: CalendarContextValue; children?: Child
   );
 }
 
-export interface CalendarComponentProps extends StyleProps {
-  value?: CalendarDate | null;
-  defaultValue?: CalendarDate | null;
-  focusedValue?: CalendarDate;
-  defaultFocusedValue?: CalendarDate;
+export interface CalendarComponentProps<T extends DateValue = CalendarDate> extends StyleProps {
+  value?: T | null;
+  defaultValue?: T | null;
+  focusedValue?: DateValue;
+  defaultFocusedValue?: DateValue;
   minValue?: DateValue | null;
   maxValue?: DateValue | null;
   isDateUnavailable?: (date: CalendarDate) => boolean;
@@ -1569,10 +1837,12 @@ export interface CalendarComponentProps extends StyleProps {
   autoFocus?: boolean;
   /** Pressing the chosen day again clears it. @default false */
   allowsDeselection?: boolean;
-  firstDayOfWeek?: number;
+  firstDayOfWeek?: DayOfWeek;
+  /** Builds the calendar system the locale names. @default createCalendar */
+  createCalendar?: (identifier: CalendarIdentifier) => CalendarSystem;
   /** Always six week rows. @default false */
   fixedWeeks?: boolean;
-  /** The IANA zone today is reckoned in. Defaults to the local one. */
+  /** The IANA zone today is reckoned in. Defaults to a zoned value's, then the local one. */
   timeZone?: string;
   /** @default "narrow" */
   weekdayStyle?: "narrow" | "short" | "long";
@@ -1586,18 +1856,23 @@ export interface CalendarComponentProps extends StyleProps {
   "aria-label"?: string;
   "aria-labelledby"?: string;
   ref?: RefTarget<HTMLDivElement>;
-  onChange?: (value: CalendarDate | null) => void;
+  onChange?: (value: NoInfer<MappedDateValue<T>> | null) => void;
   onFocusChange?: (date: CalendarDate) => void;
 }
 
 /**
  * ```tsx
  * <Calendar aria-label="Departure" value={date()} onChange={date.set}
- *           minValue={today()} />
+ *           minValue={today(getLocalTimeZone())} />
  * ```
  */
-export function Calendar(props: CalendarComponentProps) {
-  const state = calendarState({
+// Declared as its own call site, so JSX infers `T` from the value written
+// there: through the mapped type that widens Cells back to values, a type
+// parameter standing alone in a prop is not inferred.
+export function Calendar<T extends DateValue = CalendarDate>(
+  props: CalendarComponentProps<T> & CallSite<CalendarComponentProps<T>>,
+) {
+  const state = calendarState<T>({
     value: () => props.value,
     defaultValue: () => props.defaultValue,
     focusedValue: () => props.focusedValue,
@@ -1611,6 +1886,7 @@ export function Calendar(props: CalendarComponentProps) {
     autoFocus: () => props.autoFocus,
     allowsDeselection: () => props.allowsDeselection,
     firstDayOfWeek: () => props.firstDayOfWeek,
+    createCalendar: callback<[CalendarIdentifier], CalendarSystem>(cells(props).createCalendar),
     timeZone: () => props.timeZone,
     isInvalid: () => props.isInvalid,
     selectionAlignment: () => props.selectionAlignment,
@@ -1619,15 +1895,17 @@ export function Calendar(props: CalendarComponentProps) {
     onFocusChange: (date) => props.onFocusChange?.(date),
   });
 
-  return <CalendarBody state={state} of={cells(props)} />;
+  return (
+    <CalendarBody state={state} of={cells(props) as unknown as Incoming<CalendarComponentProps>} />
+  );
 }
 
-export interface RangeCalendarComponentProps extends Omit<
-  CalendarComponentProps,
+export interface RangeCalendarComponentProps<T extends DateValue = CalendarDate> extends Omit<
+  CalendarComponentProps<T>,
   "value" | "defaultValue" | "onChange" | "isDateUnavailable"
 > {
-  value?: DateRange | null;
-  defaultValue?: DateRange | null;
+  value?: DateRange<T> | null;
+  defaultValue?: DateRange<T> | null;
   allowsNonContiguousRanges?: boolean;
   /** Days that cannot be chosen, told the day the range being drawn began on. */
   isDateUnavailable?: (date: CalendarDate, anchorDate: CalendarDate | null) => boolean;
@@ -1636,7 +1914,7 @@ export interface RangeCalendarComponentProps extends Omit<
    * calendar or focus leaves it. @default "select"
    */
   commitBehavior?: "clear" | "reset" | "select";
-  onChange?: (value: DateRange | null) => void;
+  onChange?: (value: NoInfer<DateRange<MappedDateValue<T>>> | null) => void;
 }
 
 /**
@@ -1646,8 +1924,10 @@ export interface RangeCalendarComponentProps extends Omit<
  * focus between the two DRAWS: what is highlighted is what releasing would
  * give, so the user is never guessing.
  */
-export function RangeCalendar(props: RangeCalendarComponentProps) {
-  const state = rangeCalendarState({
+export function RangeCalendar<T extends DateValue = CalendarDate>(
+  props: RangeCalendarComponentProps<T> & CallSite<RangeCalendarComponentProps<T>>,
+) {
+  const state = rangeCalendarState<T>({
     value: () => props.value,
     defaultValue: () => props.defaultValue,
     focusedValue: () => props.focusedValue,
@@ -1662,6 +1942,7 @@ export function RangeCalendar(props: RangeCalendarComponentProps) {
     isReadOnly: () => props.isReadOnly,
     autoFocus: () => props.autoFocus,
     firstDayOfWeek: () => props.firstDayOfWeek,
+    createCalendar: callback<[CalendarIdentifier], CalendarSystem>(cells(props).createCalendar),
     timeZone: () => props.timeZone,
     isInvalid: () => props.isInvalid,
     selectionAlignment: () => props.selectionAlignment,
@@ -1680,18 +1961,18 @@ export function RangeCalendar(props: RangeCalendarComponentProps) {
   );
 }
 
-export interface MultipleCalendarComponentProps extends Omit<
-  CalendarComponentProps,
+export interface MultipleCalendarComponentProps<T extends DateValue = CalendarDate> extends Omit<
+  CalendarComponentProps<T>,
   "value" | "defaultValue" | "onChange"
 > {
-  value?: readonly CalendarDate[];
-  defaultValue?: readonly CalendarDate[];
+  value?: readonly T[];
+  defaultValue?: readonly T[];
   /** The fewest days that may be left chosen, and the most that may be. */
   min?: number;
   max?: number;
   /** The last chosen day cannot be taken away. @default false */
   required?: boolean;
-  onChange?: (value: CalendarDate[]) => void;
+  onChange?: (value: NoInfer<MappedDateValue<T>>[]) => void;
 }
 
 /**
@@ -1701,8 +1982,10 @@ export interface MultipleCalendarComponentProps extends Omit<
  * says it takes more than one so a screen reader does not announce a choice
  * as having replaced the last.
  */
-export function MultipleCalendar(props: MultipleCalendarComponentProps) {
-  const state = multipleCalendarState({
+export function MultipleCalendar<T extends DateValue = CalendarDate>(
+  props: MultipleCalendarComponentProps<T> & CallSite<MultipleCalendarComponentProps<T>>,
+) {
+  const state = multipleCalendarState<T>({
     value: () => props.value,
     defaultValue: () => props.defaultValue,
     focusedValue: () => props.focusedValue,
@@ -1715,6 +1998,7 @@ export function MultipleCalendar(props: MultipleCalendarComponentProps) {
     isReadOnly: () => props.isReadOnly,
     autoFocus: () => props.autoFocus,
     firstDayOfWeek: () => props.firstDayOfWeek,
+    createCalendar: callback<[CalendarIdentifier], CalendarSystem>(cells(props).createCalendar),
     timeZone: () => props.timeZone,
     isInvalid: () => props.isInvalid,
     selectionAlignment: () => props.selectionAlignment,

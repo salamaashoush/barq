@@ -14,7 +14,14 @@ import {
   type DateRange,
 } from "@barqjs/aria/calendar";
 import { button, type ButtonOptions } from "@barqjs/aria/button";
-import { CalendarDate, startOfMonth, today } from "@barqjs/aria/date";
+import {
+  CalendarDate,
+  type DayOfWeek,
+  getLocalTimeZone,
+  startOfMonth,
+  toCalendarDate,
+  today,
+} from "@barqjs/aria/date";
 import { focusRing } from "@barqjs/aria/focus";
 import { dateFormatter } from "@barqjs/aria/i18n";
 import { hover } from "@barqjs/aria/interactions";
@@ -524,17 +531,23 @@ function chosen<T>(
 const earliest = (now: CalendarDate): CalendarDate => new CalendarDate(now.year - 100, 1, 1);
 const latest = (now: CalendarDate): CalendarDate => new CalendarDate(now.year, 12, 1);
 
+/** react-day-picker numbers the days of the week from Sunday as 0. */
+const WEEK: readonly DayOfWeek[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+
 /** What all three states are built from. */
 function sharedOptions(
   props: Incoming<CalendarBaseProps>,
 ): Omit<CalendarStateOptions, "value" | "defaultValue" | "onChange"> {
   const own = callback<[CalendarDate], boolean>(props.isDateDisabled);
   const hasSelect = (): boolean => (props.captionLayout?.() ?? "label") !== "label";
-  const now = (): CalendarDate => props.today?.() ?? today(props.timeZone?.());
+  const now = (): CalendarDate =>
+    props.today?.() ?? today(props.timeZone?.() ?? getLocalTimeZone());
   // With navigation off, the months on show when the calendar was built are
   // the only ones there are: the arrows, the selects and the keyboard all stop
   // at their edges.
-  const shown = props.month?.() ?? props.defaultFocusedValue?.() ?? props.defaultMonth?.() ?? now();
+  const shown = toCalendarDate(
+    props.month?.() ?? props.defaultFocusedValue?.() ?? props.defaultMonth?.() ?? now(),
+  );
   const pinned = (): { start: CalendarDate; end: CalendarDate } | undefined => {
     if (props.disableNavigation?.() !== true) return undefined;
     const start = shown.set({ day: 1 });
@@ -554,7 +567,10 @@ function sharedOptions(
     isDisabled: () => props.isDisabled?.(),
     isReadOnly: () => props.isReadOnly?.(),
     autoFocus: () => props.autoFocus?.(),
-    firstDayOfWeek: () => props.firstDayOfWeek?.() ?? props.weekStartsOn?.(),
+    firstDayOfWeek: () => {
+      const numbered = props.weekStartsOn?.();
+      return props.firstDayOfWeek?.() ?? (numbered === undefined ? undefined : WEEK[numbered % 7]);
+    },
     visibleMonths: () => props.numberOfMonths?.(),
     // The chosen day's month comes first, as react-day-picker shows it; the
     // state's own default centres it among three or more months.
@@ -935,11 +951,17 @@ function CalendarDropdowns(incoming: DropdownsProps) {
 
   const monthName = (month: number): string => {
     const date = new CalendarDate(shown().year, month, 1);
-    return props.formatters?.()?.formatMonthDropdown?.(date) ?? monthFormat().format(date.toDate());
+    return (
+      props.formatters?.()?.formatMonthDropdown?.(date) ??
+      monthFormat().format(date.toDate(state.timeZone()))
+    );
   };
   const yearName = (year: number): string => {
     const date = new CalendarDate(year, 1, 1);
-    return props.formatters?.()?.formatYearDropdown?.(date) ?? yearFormat().format(date.toDate());
+    return (
+      props.formatters?.()?.formatYearDropdown?.(date) ??
+      yearFormat().format(date.toDate(state.timeZone()))
+    );
   };
   const unreachable = (month: number): boolean => {
     const date = new CalendarDate(shown().year, month, 1);

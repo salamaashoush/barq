@@ -444,6 +444,9 @@
     "test": "bun test --timeout 10000 && bun test --timeout 10000 --conditions=development",
     "test:coverage": "bun test --timeout 10000 --coverage"
   },
+  "dependencies": {
+    "@internationalized/date": "^3.12.4"
+  },
   "devDependencies": {
     "@barqjs/compiler": "workspace:*",
     "@barqjs/core": "workspace:*",

@@ -28,6 +28,7 @@
 import {
   cells,
   type Accessor,
+  type CallSite,
   type Child,
   For,
   createMemo,
@@ -42,14 +43,28 @@ import {
 import { isServer } from "@barqjs/web";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import {
+  type Calendar as CalendarSystem,
   CalendarDate,
-  CalendarDateTime,
-  Time,
-  today,
-  toCalendarDate,
+  type CalendarIdentifier,
+  createCalendar,
   type DateValue,
+  getLocalTimeZone,
+  GregorianCalendar,
+  isEqualCalendar,
+  type MappedDateValue,
+  type MappedTimeValue,
+  now,
+  Time,
+  toCalendar,
+  toCalendarDate,
+  toCalendarDateTime,
+  today,
+  toTime,
+  toZoned,
+  type TimeValue,
+  type ZonedDateTime,
 } from "./date.ts";
-import { contains } from "./dom.ts";
+import { activeElement, contains, ownerDocument } from "./dom.ts";
 import { focusRing } from "./focus.ts";
 import {
   dateFormatter,
@@ -92,6 +107,7 @@ import {
 // ---------------------------------------------------------------------------
 
 export type SegmentType =
+  | "era"
   | "year"
   | "month"
   | "day"
@@ -99,12 +115,14 @@ export type SegmentType =
   | "minute"
   | "second"
   | "dayPeriod"
+  | "timeZoneName"
   | "literal";
 
 export interface DateSegment {
   type: SegmentType;
   /** What it shows: the value, or the placeholder standing in for it. */
   text: string;
+  /** The number it holds; for an era, the era's place in its calendar's list. */
   value?: number;
   minValue?: number;
   maxValue?: number;
@@ -112,7 +130,10 @@ export interface DateSegment {
   isPlaceholder: boolean;
   /** What it shows while it is empty. */
   placeholder?: string;
-  /** A separator is not a segment the user can stand in. */
+  /**
+   * The user can change it. A separator cannot, and neither can the zone of a
+   * zoned value, which is read out and focusable but belongs to the value.
+   */
   isEditable: boolean;
 }
 
@@ -120,9 +141,10 @@ export interface DateSegment {
 export type Granularity = "day" | "hour" | "minute" | "second";
 
 type HourCycle = "h11" | "h12" | "h23" | "h24";
-type EditableType = Exclude<SegmentType, "literal">;
+type EditableType = "era" | "year" | "month" | "day" | "hour" | "dayPeriod" | "minute" | "second";
 
 const EDITABLE: readonly EditableType[] = [
+  "era",
   "year",
   "month",
   "day",
@@ -131,6 +153,15 @@ const EDITABLE: readonly EditableType[] = [
   "minute",
   "second",
 ];
+
+/** What `formatToParts` calls a part, as the segment it becomes. */
+const PART_TYPES: Record<string, SegmentType> = {
+  // A cyclic year's number, in the Chinese and Dangi calendars.
+  relatedYear: "year",
+  // Its name, which the number already says and nobody types.
+  yearName: "literal",
+  timeZoneName: "timeZoneName",
+};
 
 /**
  * Puts `text` back into a segment a composition wrote into.
@@ -201,15 +232,37 @@ function cycleValue(
   return next;
 }
 
+/** One date field of a value, the hour as the clock says it. */
+function fieldOf(value: DateValue, type: Exclude<EditableType, "hour" | "dayPeriod">) {
+  switch (type) {
+    case "era":
+      return value.era;
+    case "year":
+      return value.year;
+    case "month":
+      return value.month;
+    case "day":
+      return value.day;
+    default:
+      return "hour" in value ? value[type] : null;
+  }
+}
+
 /**
  * A date as the user has typed it so far: any field may be missing, and the
  * fields present need not make a date that exists.
  *
- * The hour is kept in the hour cycle with the half of the day beside it, so
- * the user can change AM to PM without the hour moving.
+ * The fields are the calendar's: a Japanese year is a year of its era, and a
+ * Hebrew month can be the thirteenth. The hour is kept in the hour cycle with
+ * the half of the day beside it, so the user can change AM to PM without the
+ * hour moving. A zoned value's offset is kept too, because in the hour a
+ * clock goes back the same wall time happens twice and only the offset says
+ * which of the two was meant.
  */
 class Fields {
+  readonly calendar: CalendarSystem;
   readonly hourCycle: HourCycle;
+  era: string | null = null;
   year: number | null = null;
   month: number | null = null;
   day: number | null = null;
@@ -218,23 +271,28 @@ class Fields {
   minute: number | null = null;
   second: number | null = null;
   millisecond: number | null = null;
+  offset: number | null = null;
 
-  constructor(hourCycle: HourCycle, value?: DateValue | null) {
+  constructor(calendar: CalendarSystem, hourCycle: HourCycle, value?: DateValue | null) {
+    this.calendar = calendar;
     this.hourCycle = hourCycle;
     if (value === null || value === undefined) return;
+    this.era = value.era;
     this.year = value.year;
     this.month = value.month;
     this.day = value.day;
-    if (value instanceof CalendarDateTime) {
+    if ("hour" in value) {
       [this.dayPeriod, this.hour] = toHourCycle(value.hour, hourCycle);
       this.minute = value.minute;
       this.second = value.second;
       this.millisecond = value.millisecond;
     }
+    if ("offset" in value) this.offset = value.offset;
   }
 
   copy(): Fields {
-    const next = new Fields(this.hourCycle);
+    const next = new Fields(this.calendar, this.hourCycle);
+    next.era = this.era;
     next.year = this.year;
     next.month = this.month;
     next.day = this.day;
@@ -243,6 +301,7 @@ class Fields {
     next.minute = this.minute;
     next.second = this.second;
     next.millisecond = this.millisecond;
+    next.offset = this.offset;
     return next;
   }
 
@@ -255,90 +314,164 @@ class Fields {
   }
 
   /** Whether `value` says what these fields say, which it does not if it was constrained. */
-  matches(value: CalendarDateTime, types: readonly EditableType[]): boolean {
+  matches(value: DateValue, types: readonly EditableType[]): boolean {
     return types.every((type) => {
       if (type === "hour" || type === "dayPeriod") {
+        if (!("hour" in value)) return true;
         const [period, hour] = toHourCycle(value.hour, this.hourCycle);
         return this.dayPeriod === period && this.hour === hour;
       }
-      return this[type] === value[type];
+      return this[type] === fieldOf(value, type);
     });
   }
 
-  set(type: EditableType, value: number, placeholder: CalendarDateTime): Fields {
+  set(type: EditableType, value: number | string, placeholder: DateValue): Fields {
     const next = this.copy();
-    next[type] = type === "dayPeriod" ? (value >= 1 ? 1 : 0) : value;
-    if (type === "hour" && next.dayPeriod === null) {
+    if (type === "era") next.era = String(value);
+    else if (type === "dayPeriod") next.dayPeriod = Number(value) >= 1 ? 1 : 0;
+    else next[type] = Number(value);
+    if (type === "hour" && next.dayPeriod === null && "hour" in placeholder) {
       next.dayPeriod = toHourCycle(placeholder.hour, this.hourCycle)[0];
     }
+    if (type === "year" && next.era === null) next.era = placeholder.era;
+    // Any field but the second can move the value into the other offset.
+    if (type !== "second") next.offset = null;
     return next;
   }
 
   clear(type: EditableType): Fields {
     const next = this.copy();
     next[type] = null;
+    // A year without its era is a number with no year to be.
+    if (type === "year") next.era = null;
+    next.offset = null;
     return next;
   }
 
   /** One step of one field; an empty one takes the placeholder's value instead. */
-  cycle(type: EditableType, amount: number, placeholder: CalendarDateTime): Fields {
+  cycle(
+    type: EditableType,
+    amount: number,
+    placeholder: DateValue,
+    shown: readonly EditableType[],
+  ): Fields {
     const next = this.copy();
-    if (next[type] === null && type !== "dayPeriod") {
+    if (next[type] === null && type !== "dayPeriod" && type !== "era") {
       if (type === "hour") {
-        [next.dayPeriod, next.hour] = toHourCycle(placeholder.hour, this.hourCycle);
+        if ("hour" in placeholder) {
+          [next.dayPeriod, next.hour] = toHourCycle(placeholder.hour, this.hourCycle);
+        }
       } else {
-        next[type] = placeholder[type];
+        next[type] = fieldOf(placeholder, type) as number;
       }
+      if (type === "year" && next.era === null) next.era = placeholder.era;
       return next;
     }
 
-    const limits = this.limits(type);
     switch (type) {
-      case "year":
-        next.year = cycleValue(next.year ?? placeholder.year, amount, 1, 9999, true);
+      case "era": {
+        const eras = this.calendar.getEras();
+        const at = cycleValue(eras.indexOf(next.era ?? ""), amount, 0, eras.length - 1);
+        next.era = eras[at] ?? next.era;
+        break;
+      }
+      case "year": {
+        // Through a whole date, so stepping back from year 1 of an era lands
+        // in the last year of the one before.
+        const date = new CalendarDate(
+          this.calendar,
+          this.era ?? placeholder.era,
+          this.year ?? placeholder.year,
+          this.month ?? 1,
+          this.day ?? 1,
+        ).cycle("year", amount, { round: true });
+        next.era = date.era;
+        next.year = date.year;
+        break;
+      }
+      case "month":
+        next.month = cycleValue(next.month ?? 1, amount, 1, this.calendar.getMaximumMonthsInYear());
+        break;
+      case "day":
+        // Up to the longest month the calendar has: in a day-first locale the
+        // day is typed before the month that decides how long it is.
+        next.day = cycleValue(next.day ?? 1, amount, 1, this.calendar.getMaximumDaysInMonth());
+        break;
+      case "hour": {
+        const hasDate = shown.some((one) => one === "year" || one === "month" || one === "day");
+        const whole = next.year !== null && next.month !== null && next.day !== null;
+        if ("timeZone" in placeholder && (!hasDate || whole)) {
+          // Through the zoned value, so stepping across a change of the
+          // clocks lands on the hour the clock shows: from 1:59 to 3:00 when
+          // it goes forward, and through 1:00 twice when it goes back.
+          const zoned = (this.toValue(placeholder) as ZonedDateTime).cycle("hour", amount, {
+            hourCycle: this.hourCycle === "h12" ? 12 : 24,
+            round: false,
+          });
+          [next.dayPeriod, next.hour] = toHourCycle(zoned.hour, this.hourCycle);
+          next.offset = zoned.offset;
+        } else {
+          const limits = this.limits("hour");
+          next.hour = cycleValue(next.hour ?? 0, amount, limits.min, limits.max);
+          if (next.dayPeriod === null && "hour" in placeholder) {
+            next.dayPeriod = toHourCycle(placeholder.hour, this.hourCycle)[0];
+          }
+        }
+        break;
+      }
+      case "dayPeriod":
+        next.dayPeriod = cycleValue(next.dayPeriod ?? 0, amount, 0, 1);
         break;
       case "minute":
       case "second":
-        next[type] = cycleValue(next[type] ?? 0, amount, limits.min, limits.max, true);
+        next[type] = cycleValue(next[type] ?? 0, amount, 0, 59, true);
         break;
-      case "hour":
-        next.hour = cycleValue(next.hour ?? 0, amount, limits.min, limits.max);
-        if (next.dayPeriod === null) {
-          next.dayPeriod = toHourCycle(placeholder.hour, this.hourCycle)[0];
-        }
-        break;
-      default:
-        next[type] = cycleValue(next[type] ?? limits.min, amount, limits.min, limits.max);
     }
     return next;
   }
 
   /** A whole value: these fields over `base`, with a day its month lacks made into one it has. */
-  toValue(base: CalendarDateTime): CalendarDateTime {
+  toValue(base: DateValue): DateValue {
+    const date = {
+      era: this.era ?? base.era,
+      year: this.year ?? base.year,
+      month: this.month ?? base.month,
+      day: this.day ?? base.day,
+    };
+    if (!("hour" in base)) return base.set(date);
+
     let hour: number | null = this.hour;
     if (hour !== null) hour = fromHourCycle(hour, this.dayPeriod ?? 0, this.hourCycle);
     else if (this.dayPeriod !== null && (this.hourCycle === "h11" || this.hourCycle === "h12")) {
       hour = this.dayPeriod === 1 ? 12 : 0;
     }
-    return base.set({
-      year: this.year ?? base.year,
-      month: this.month ?? base.month,
-      day: this.day ?? base.day,
+    const time = {
       hour: hour ?? base.hour,
       minute: this.minute ?? base.minute,
       second: this.second ?? base.second,
       millisecond: this.millisecond ?? base.millisecond,
-    });
+    };
+    if (!("timeZone" in base)) return base.set({ ...date, ...time });
+
+    const zoned = base.set({ ...date, ...time });
+    // The wall time is in the hour that happens twice, and the offset the
+    // user stepped into is the other one.
+    if (this.offset !== null && zoned.offset !== this.offset) {
+      return zoned.add({ milliseconds: zoned.offset - this.offset });
+    }
+    return zoned;
   }
 
   limits(type: EditableType): { min: number; max: number } {
     switch (type) {
+      case "era":
+        return { min: 0, max: this.calendar.getEras().length - 1 };
       case "year":
         return { min: 1, max: 9999 };
       case "month":
-        return { min: 1, max: 12 };
+        return { min: 1, max: this.calendar.getMaximumMonthsInYear() };
       case "day":
-        return { min: 1, max: 31 };
+        return { min: 1, max: this.calendar.getMaximumDaysInMonth() };
       case "dayPeriod":
         return { min: 0, max: 1 };
       case "hour":
@@ -350,40 +483,77 @@ class Fields {
         return { min: 0, max: 59 };
     }
   }
+
+  /** The number a segment holds; an era's is its place in the calendar's list. */
+  numberOf(type: EditableType): number | null {
+    if (type !== "era") return this[type];
+    return this.era === null ? null : this.calendar.getEras().indexOf(this.era);
+  }
 }
 
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 
-export interface DateFieldStateOptions {
-  value?: MaybeAccessor<DateValue | null | undefined>;
-  defaultValue?: MaybeAccessor<DateValue | null | undefined>;
-  /** What an empty field's segments count from. @default today */
-  placeholderValue?: MaybeAccessor<DateValue | undefined>;
+export interface DateFieldStateOptions<T extends DateValue = DateValue> {
+  /**
+   * Any kind of date value. The field edits it in the calendar the locale
+   * names and reports it back in the calendar it came in; a zoned value adds
+   * its zone as a segment and is stepped through daylight-saving changes.
+   */
+  value?: MaybeAccessor<T | null | undefined>;
+  defaultValue?: MaybeAccessor<T | null | undefined>;
+  /**
+   * What an empty field's segments count from, and the kind of value it
+   * reports. @default today at midnight
+   */
+  placeholderValue?: MaybeAccessor<DateValue | null | undefined>;
   minValue?: MaybeAccessor<DateValue | null | undefined>;
   maxValue?: MaybeAccessor<DateValue | null | undefined>;
   /** Days that exist but cannot be chosen: a value on one is invalid. */
-  isDateUnavailable?: (date: CalendarDate) => boolean;
-  /** @default "day" */
+  isDateUnavailable?: (date: DateValue) => boolean;
+  /**
+   * The smallest part shown. Defaults to `"minute"` for a value with a time
+   * and `"day"` for one without.
+   */
   granularity?: MaybeAccessor<Granularity | undefined>;
   /** The largest part shown. `"hour"` makes it a field for a time alone. @default "year" */
   maxGranularity?: MaybeAccessor<"year" | "hour" | undefined>;
   /** 12- or 24-hour. Defaults to what the locale does. */
   hourCycle?: MaybeAccessor<12 | 24 | undefined>;
+  /** Leave a zoned value's zone out of the segments. @default false */
+  hideTimeZone?: MaybeAccessor<boolean | undefined>;
+  /**
+   * Builds the calendar system the locale names: `ja-JP-u-ca-japanese` asks
+   * for `"japanese"`. @default createCalendar
+   */
+  createCalendar?: (identifier: CalendarIdentifier) => CalendarSystem;
   isDisabled?: MaybeAccessor<boolean | undefined>;
   isReadOnly?: MaybeAccessor<boolean | undefined>;
   isRequired?: MaybeAccessor<boolean | undefined>;
-  onChange?: (value: DateValue | null) => void;
+  onChange?: (value: NoInfer<MappedDateValue<T>> | null) => void;
 }
 
 export interface DateFieldState {
+  /** The value as it was given, in the calendar it was given in. */
   value: Accessor<DateValue | null>;
   /** What a form reset goes back to. */
   defaultValue: Accessor<DateValue | null>;
   setValue(value: DateValue | null): void;
-  /** The display value: the real one, or the placeholder standing in. */
-  displayValue: Accessor<CalendarDateTime>;
+  /**
+   * What the segments show, in the calendar the field is drawn in: the value,
+   * or the placeholder standing in for what has not been typed.
+   */
+  displayValue: Accessor<DateValue>;
+  /** {@link displayValue} as an instant, in {@link timeZone}. */
+  dateValue: Accessor<Date>;
+  /** The calendar system the field is drawn in. */
+  calendar: Accessor<CalendarSystem>;
+  /**
+   * The zone the field formats in: a zoned value's, or UTC for one without,
+   * which has no hour a change of the clocks skips.
+   */
+  timeZone: Accessor<string>;
   segments: Accessor<DateSegment[]>;
   granularity: Accessor<Granularity>;
   maxGranularity: Accessor<"year" | "hour">;
@@ -396,7 +566,8 @@ export interface DateFieldState {
   decrement(type: SegmentType): void;
   incrementPage(type: SegmentType): void;
   decrementPage(type: SegmentType): void;
-  setSegment(type: SegmentType, value: number): void;
+  /** A number for a segment, or an era's identifier for the era. */
+  setSegment(type: SegmentType, value: number | string): void;
   clearSegment(type: SegmentType): void;
   clear(): void;
   /**
@@ -419,17 +590,14 @@ const PAGE: Partial<Record<SegmentType, number>> = {
   second: 15,
 };
 
-function asDateTime(value: DateValue): CalendarDateTime {
-  return value instanceof CalendarDateTime ? value : CalendarDateTime.from(value);
-}
-
-export function dateFieldState(options: DateFieldStateOptions): DateFieldState {
+export function dateFieldState<T extends DateValue = DateValue>(
+  options: DateFieldStateOptions<T>,
+): DateFieldState {
   const locale = useLocale();
   const messages = stringFormatter(FIELD_STRINGS);
   const plainNumber = numberFormatter({ useGrouping: false });
   const twoDigits = numberFormatter({ useGrouping: false, minimumIntegerDigits: 2 });
 
-  const granularity = (): Granularity => access(options.granularity) ?? "day";
   const maxGranularity = (): "year" | "hour" => access(options.maxGranularity) ?? "year";
   const isDisabled = (): boolean => access(options.isDisabled) === true;
   const isReadOnly = (): boolean => access(options.isReadOnly) === true;
@@ -437,25 +605,66 @@ export function dateFieldState(options: DateFieldStateOptions): DateFieldState {
   const [value, setValueRaw] = controllable<DateValue | null>(
     () => access(options.value),
     () => access(options.defaultValue) ?? null,
-    options.onChange,
+    (next) => options.onChange?.(next as MappedDateValue<T> | null),
   );
   const initialValue = untrack(value);
 
-  const hourCycle = createMemo((): HourCycle => {
-    const given = access(options.hourCycle);
-    const resolved = new Intl.DateTimeFormat(locale().locale, {
-      hour: "numeric",
-      hour12: given === undefined ? undefined : given === 12,
-    }).resolvedOptions().hourCycle;
-    return resolved ?? (given === 12 ? "h12" : "h23");
+  // The value, or what stands in for it, decides the granularity and the
+  // zone. Emptied, a field keeps the last ones it had, or its segments would
+  // change shape under the user who cleared it.
+  let lastShape: { granularity: Granularity; timeZone: string | undefined } = {
+    granularity: "day",
+    timeZone: undefined,
+  };
+  const shape = createMemo(() => {
+    const model =
+      value() ?? access(options.defaultValue) ?? access(options.placeholderValue) ?? null;
+    if (model !== null) {
+      lastShape = {
+        granularity: "minute" in model ? "minute" : "day",
+        timeZone: "timeZone" in model ? model.timeZone : undefined,
+      };
+    }
+    return lastShape;
   });
+  const granularity = (): Granularity => access(options.granularity) ?? shape().granularity;
+  const valueZone = (): string | undefined => shape().timeZone;
+  const timeZone = (): string => valueZone() ?? "UTC";
+
+  // What the locale says about the calendar and the clock, read from a format
+  // that has both.
+  const resolved = createMemo(() => {
+    const given = access(options.hourCycle);
+    return dateFormatter(
+      {
+        dateStyle: "short",
+        timeStyle: "short",
+        hour12: given === undefined ? undefined : given === 12,
+      },
+      locale,
+    )().resolvedOptions();
+  });
+  const calendar = createMemo(
+    () => (options.createCalendar ?? createCalendar)(resolved().calendar as CalendarIdentifier),
+    { equals: isEqualCalendar },
+  );
+  const hourCycle = (): HourCycle => {
+    const cycle = resolved().hourCycle;
+    return cycle ?? (access(options.hourCycle) === 12 ? "h12" : "h23");
+  };
+
+  /** The value as the field edits it, in the calendar it is drawn in. */
+  const calendarValue = (): DateValue | null => {
+    const current = value();
+    return current === null ? null : toCalendar(current, calendar());
+  };
 
   /** The segments the field shows, which are the ones that must be filled. */
   const shown = createMemo((): EditableType[] => {
     const twelve = hourCycle() === "h11" || hourCycle() === "h12";
     const all: EditableType[] = twelve
-      ? ["year", "month", "day", "hour", "dayPeriod", "minute", "second"]
-      : ["year", "month", "day", "hour", "minute", "second"];
+      ? ["era", "year", "month", "day", "hour", "dayPeriod", "minute", "second"]
+      : ["era", "year", "month", "day", "hour", "minute", "second"];
     const level = granularity();
     const last = all.indexOf(
       level === "day" ? "day" : level === "hour" && twelve ? "dayPeriod" : level,
@@ -463,17 +672,20 @@ export function dateFieldState(options: DateFieldStateOptions): DateFieldState {
     return all.slice(maxGranularity() === "hour" ? all.indexOf("hour") : 0, last + 1);
   });
 
-  const placeholder = createMemo((): CalendarDateTime => {
+  const placeholder = createMemo((): DateValue => {
     const given = access(options.placeholderValue);
-    if (given !== undefined) return asDateTime(given);
-    return CalendarDateTime.from(today(), new Time());
+    if (given !== null && given !== undefined) return toCalendar(given, calendar());
+    const zone = valueZone();
+    const midnight = toCalendar(
+      now(zone ?? getLocalTimeZone()).set({ hour: 0, minute: 0, second: 0, millisecond: 0 }),
+      calendar(),
+    );
+    if (granularity() === "day") return toCalendarDate(midnight);
+    return zone === undefined ? toCalendarDateTime(midnight) : midnight;
   });
 
   /** What edits are made over: the value, or the placeholder while there is none. */
-  const basis = (): CalendarDateTime => {
-    const current = value();
-    return current === null ? placeholder() : asDateTime(current);
-  };
+  const basis = (): DateValue => calendarValue() ?? placeholder();
 
   /**
    * What the user has typed, which is what the segments show.
@@ -481,7 +693,7 @@ export function dateFieldState(options: DateFieldStateOptions): DateFieldState {
    * A plain variable as well as a signal: two keystrokes can arrive before the
    * signal is published, and the second has to build on the first.
    */
-  let live = new Fields(untrack(hourCycle), initialValue);
+  let live = new Fields(untrack(calendar), untrack(hourCycle), untrack(calendarValue));
   const [display, setDisplay] = createSignal<Fields>(live);
   /** The value this field last reported, so it is not mistaken for one from outside. */
   let emitted: DateValue | null | undefined;
@@ -491,13 +703,18 @@ export function dateFieldState(options: DateFieldStateOptions): DateFieldState {
     setDisplay(next);
   };
 
+  /** A value from the field, reported in the calendar the caller's value is in. */
   const write = (next: DateValue | null): void => {
-    emitted = next;
-    setValueRaw(next);
+    const model =
+      untrack(value) ?? access(options.defaultValue) ?? access(options.placeholderValue);
+    const reported =
+      next === null ? null : toCalendar(next, model?.calendar ?? new GregorianCalendar());
+    emitted = reported;
+    setValueRaw(reported);
   };
 
-  const output = (next: CalendarDateTime): DateValue =>
-    granularity() === "day" && maxGranularity() === "year" ? next.date : next;
+  const fresh = (current: DateValue | null): Fields =>
+    new Fields(calendar(), hourCycle(), current === null ? null : toCalendar(current, calendar()));
 
   /**
    * The fields shown, and the value reported when they make one.
@@ -516,26 +733,26 @@ export function dateFieldState(options: DateFieldStateOptions): DateFieldState {
     }
     const whole = next.toValue(basis());
     if (!next.matches(whole, types)) return;
-    const result = output(whole);
-    const current = value();
-    if (
-      current === null ||
-      current.compare(result) !== 0 ||
-      current.constructor !== result.constructor
-    ) {
-      write(result);
-    }
+    const current = calendarValue();
+    if (current === null || current.compare(whole) !== 0) write(whole);
   };
 
   if (!isServer) {
     // A value arriving from OUTSIDE fills the field, and one taken away
-    // empties it back to the placeholder.
+    // empties it back to the placeholder. So does the locale naming another
+    // calendar or clock.
     createEffect(
-      () => [value(), hourCycle()] as const,
-      ([current, cycle]) => {
-        if (current === emitted && cycle === live.hourCycle) return;
+      () => [value(), calendar(), hourCycle()] as const,
+      ([current, system, cycle]) => {
+        if (
+          current === emitted &&
+          isEqualCalendar(system, live.calendar) &&
+          cycle === live.hourCycle
+        ) {
+          return;
+        }
         emitted = undefined;
-        show(new Fields(cycle, current));
+        show(new Fields(system, cycle, current === null ? null : toCalendar(current, system)));
       },
     );
   }
@@ -543,13 +760,20 @@ export function dateFieldState(options: DateFieldStateOptions): DateFieldState {
   const isComplete = (): boolean => display().isComplete(shown());
 
   const displayValue = createMemo(() => display().toValue(basis()));
+  const dateValue = (): Date => displayValue().toDate(timeZone());
 
   const format = createMemo(() => {
-    const parts: Intl.DateTimeFormatOptions = {};
+    const parts: Intl.DateTimeFormatOptions = {
+      calendar: calendar().identifier,
+      timeZone: timeZone(),
+    };
     if (maxGranularity() === "year") {
       parts.year = "numeric";
       parts.month = "2-digit";
       parts.day = "2-digit";
+      // A Gregorian year before the common era reads as one after it
+      // without its era; other calendars print theirs on their own.
+      if (calendar().identifier === "gregory" && display().era === "BC") parts.era = "short";
     }
     const level = granularity();
     if (level !== "day" || maxGranularity() === "hour") {
@@ -557,6 +781,9 @@ export function dateFieldState(options: DateFieldStateOptions): DateFieldState {
       parts.hourCycle = hourCycle();
       if (level !== "hour") parts.minute = "2-digit";
       if (level === "second") parts.second = "2-digit";
+      if (valueZone() !== undefined && access(options.hideTimeZone) !== true) {
+        parts.timeZoneName = "short";
+      }
     }
     return dateFormatter(parts, locale)();
   });
@@ -565,29 +792,32 @@ export function dateFieldState(options: DateFieldStateOptions): DateFieldState {
     const fields = display();
     const level = granularity();
     const tag = locale().locale;
-    const parts = format().formatToParts(displayValue().toDate());
+    const parts = format().formatToParts(dateValue());
     const list: DateSegment[] = [];
 
     for (const part of parts) {
-      const named: string = part.type;
-      const type = named === "relatedYear" ? "year" : named;
+      const type = PART_TYPES[part.type] ?? (part.type as SegmentType);
+      if (type === "timeZoneName") {
+        list.push({ type, text: part.value, isPlaceholder: false, isEditable: false });
+        continue;
+      }
       if (!(EDITABLE as readonly string[]).includes(type)) {
         list.push({ type: "literal", text: part.value, isPlaceholder: false, isEditable: false });
         continue;
       }
 
       const editable = type as EditableType;
-      const number = fields[editable];
+      const number = fields.numberOf(editable);
       const limits = fields.limits(editable);
       let text = part.value;
-      if (editable !== "dayPeriod" && number !== null) {
+      if (editable !== "dayPeriod" && editable !== "era" && number !== null) {
         const wide = editable !== "year" && part.value.length >= 2;
         text = (wide ? twoDigits() : plainNumber()).format(number);
       }
       const empty =
         editable === "year" || editable === "month" || editable === "day"
           ? stringFor(PLACEHOLDERS, editable, tag)
-          : editable === "dayPeriod"
+          : editable === "dayPeriod" || editable === "era"
             ? part.value
             : "––";
 
@@ -599,7 +829,8 @@ export function dateFieldState(options: DateFieldStateOptions): DateFieldState {
         maxValue: limits.max,
         isPlaceholder: number === null,
         placeholder: empty,
-        isEditable: true,
+        // A calendar with one era has nothing to choose.
+        isEditable: editable !== "era" || calendar().getEras().length > 1,
       };
 
       // A time reads left to right even in a right-to-left locale, so the
@@ -620,9 +851,34 @@ export function dateFieldState(options: DateFieldStateOptions): DateFieldState {
     return list;
   });
 
+  const isEditableType = (type: SegmentType): type is EditableType =>
+    (EDITABLE as readonly string[]).includes(type);
+
   const step = (type: SegmentType, amount: number): void => {
-    if (type === "literal") return;
-    apply(live.cycle(type, amount, basis()));
+    if (!isEditableType(type)) return;
+    apply(live.cycle(type, amount, basis(), shown()));
+  };
+
+  /** A format for a value said in words, in the calendar and zone the field formats in. */
+  const wordsFormat = (fieldOptions: Intl.DateTimeFormatOptions): Intl.DateTimeFormat =>
+    dateFormatter(
+      { ...fieldOptions, calendar: calendar().identifier, timeZone: timeZone() },
+      locale,
+    )();
+
+  /**
+   * How a bound is said in an error. A zoned one names its zone, which the
+   * date and time styles cannot be combined with, so it is spelled out.
+   */
+  const boundOptions = (): Intl.DateTimeFormatOptions => {
+    const zoned = valueZone() !== undefined;
+    if (maxGranularity() === "hour") {
+      return { hour: "numeric", minute: "2-digit", timeZoneName: zoned ? "short" : undefined };
+    }
+    if (granularity() === "day") return { dateStyle: "medium" };
+    if (!zoned) return { dateStyle: "medium", timeStyle: "short" };
+    const parts = { year: "numeric", month: "short", day: "numeric" } as const;
+    return { ...parts, hour: "numeric", minute: "2-digit", timeZoneName: "short" };
   };
 
   const rangeValidation = (): ValidationResult | undefined => {
@@ -633,25 +889,21 @@ export function dateFieldState(options: DateFieldStateOptions): DateFieldState {
     const max = access(options.maxValue);
     const under = min !== null && min !== undefined && current.compare(min) < 0;
     const over = max !== null && max !== undefined && current.compare(max) > 0;
-    const unavailable = options.isDateUnavailable?.(toCalendarDate(current)) === true;
+    const unavailable = options.isDateUnavailable?.(current) === true;
     if (!under && !over && !unavailable) return undefined;
 
-    const formatted = dateFormatter(
-      maxGranularity() === "hour"
-        ? { hour: "numeric", minute: "2-digit" }
-        : granularity() === "day"
-          ? { dateStyle: "medium" }
-          : { dateStyle: "medium", timeStyle: "short" },
-      locale,
-    )();
+    const formatted = wordsFormat(boundOptions());
+    const zone = timeZone();
     const errors: string[] = [];
     if (under) {
       errors.push(
-        messages().format("rangeUnderflow", { minValue: formatted.format(min.toDate()) }),
+        messages().format("rangeUnderflow", { minValue: formatted.format(min.toDate(zone)) }),
       );
     }
     if (over) {
-      errors.push(messages().format("rangeOverflow", { maxValue: formatted.format(max.toDate()) }));
+      errors.push(
+        messages().format("rangeOverflow", { maxValue: formatted.format(max.toDate(zone)) }),
+      );
     }
     if (unavailable) errors.push(messages().format("unavailableDate"));
 
@@ -679,6 +931,9 @@ export function dateFieldState(options: DateFieldStateOptions): DateFieldState {
     defaultValue: () => access(options.defaultValue) ?? initialValue,
     rangeValidation,
     displayValue,
+    dateValue,
+    calendar,
+    timeZone,
     segments,
     granularity,
     maxGranularity,
@@ -687,7 +942,7 @@ export function dateFieldState(options: DateFieldStateOptions): DateFieldState {
     isRequired: () => access(options.isRequired) === true,
     isComplete,
     setValue: (next) => {
-      show(new Fields(hourCycle(), next));
+      show(fresh(next));
       write(next);
     },
     increment: (type) => step(type, 1),
@@ -695,37 +950,39 @@ export function dateFieldState(options: DateFieldStateOptions): DateFieldState {
     incrementPage: (type) => step(type, PAGE[type] ?? 1),
     decrementPage: (type) => step(type, -(PAGE[type] ?? 1)),
     setSegment: (type, next) => {
-      if (type === "literal") return;
-      apply(live.set(type, next, basis()));
+      if (!isEditableType(type)) return;
+      // An era by its identifier, or by its place in the list as Home and
+      // End give it.
+      const given =
+        type === "era" && typeof next === "number" ? (calendar().getEras()[next] ?? "") : next;
+      apply(live.set(type, given, basis()));
     },
     clearSegment: (type) => {
-      if (type === "literal") return;
+      if (!isEditableType(type)) return;
       apply(live.clear(type));
     },
     clear: () => {
       if (isDisabled() || isReadOnly()) return;
-      show(new Fields(hourCycle()));
+      show(fresh(null));
       write(null);
     },
     confirmPlaceholder: () => {
       if (isDisabled() || isReadOnly()) return;
       if (!live.isComplete(shown())) return;
-      const result = output(live.toValue(basis()));
-      show(new Fields(hourCycle(), result));
-      const current = value();
+      const result = live.toValue(basis());
+      show(new Fields(calendar(), hourCycle(), result));
+      const current = calendarValue();
       if (current === null || current.compare(result) !== 0) write(result);
     },
     formatValue: (formatOptions) => {
-      const current = value();
+      const current = calendarValue();
       if (current === null) return "";
       if (maxGranularity() === "hour") {
-        return dateFormatter(formatOptions ?? { timeStyle: "short" }, locale)().format(
-          asDateTime(current).toDate(),
+        return wordsFormat(formatOptions ?? { timeStyle: "short" }).format(
+          current.toDate(timeZone()),
         );
       }
-      return dateFormatter(formatOptions ?? { dateStyle: "long" }, locale)().format(
-        toCalendarDate(current).toDate(),
-      );
+      return wordsFormat(formatOptions ?? { dateStyle: "long" }).format(current.toDate(timeZone()));
     },
   };
 }
@@ -858,12 +1115,39 @@ export function dateSegment(options: DateSegmentOptions, state: DateFieldState):
   const messages = stringFormatter(FIELD_STRINGS);
   const parser = numberParser({ maximumFractionDigits: 0 });
   const { startsWith } = filter({ sensitivity: "base" });
-  const monthName = dateFormatter({ month: "long" });
-  const hourIn12 = (): Accessor<Intl.DateTimeFormat> =>
-    dateFormatter({ hour: "numeric", hour12: true }, locale);
-  const hourIn24 = (): Accessor<Intl.DateTimeFormat> =>
-    dateFormatter({ hour: "numeric", hour12: false }, locale);
+  /** A format in the calendar and zone the field is drawn in. */
+  const fieldFormat = (format: Intl.DateTimeFormatOptions): Intl.DateTimeFormat =>
+    dateFormatter(
+      { ...format, calendar: state.calendar().identifier, timeZone: state.timeZone() },
+      locale,
+    )();
   const periods = dateFormatter({ hour: "numeric", hour12: true });
+
+  /**
+   * The calendar's eras as the locale writes them, so typing the first letter
+   * of one chooses it.
+   *
+   * What every name shares is cut off first: in a calendar whose eras are
+   * ERA0 and ERA1, the Ethiopic, the keys are 0 and 1.
+   */
+  const eras = createMemo(() => {
+    if (segment().type !== "era") return [];
+    const system = state.calendar();
+    const format = dateFormatter(
+      { year: "numeric", era: "narrow", calendar: system.identifier, timeZone: "UTC" },
+      locale,
+    )();
+    const first = toCalendar(new CalendarDate(1, 1, 1), system);
+    const named = system.getEras().map((era) => {
+      const at = first.set({ era, year: 1, month: 1, day: 1 }).toDate("UTC");
+      // An era CLDR has no name for is left out of the format; its
+      // identifier is still something to type.
+      const formatted = format.formatToParts(at).find((part) => part.type === "era")?.value ?? era;
+      return { era, formatted };
+    });
+    const shared = commonPrefixLength(named.map((one) => one.formatted));
+    return named.map((one) => ({ era: one.era, formatted: one.formatted.slice(shared) }));
+  });
 
   /**
    * What has been typed into this segment since focus arrived.
@@ -872,6 +1156,8 @@ export function dateSegment(options: DateSegmentOptions, state: DateFieldState):
    * a segment left half typed shows what was typed and commits nothing more.
    */
   let entered = "";
+  /** Where among the field's segments this one was when it took focus, while it has it. */
+  let focusedAt = -1;
 
   const isEditable = (): boolean =>
     segment().isEditable && !state.isDisabled() && !state.isReadOnly();
@@ -924,6 +1210,14 @@ export function dateSegment(options: DateSegmentOptions, state: DateFieldState):
       return;
     }
 
+    if (current.type === "era") {
+      const matched = eras().find((one) => key !== "" && startsWith(one.formatted, key));
+      if (matched === undefined) return;
+      state.setSegment("era", matched.era);
+      moveFocus(1);
+      return;
+    }
+
     const next = `${entered}${key}`;
     if (!parser().isValidPartialNumber(next)) return;
     const number = parser().parse(next);
@@ -953,7 +1247,7 @@ export function dateSegment(options: DateSegmentOptions, state: DateFieldState):
       return;
     }
     if (!isEditable()) return;
-    if (current.type === "dayPeriod") {
+    if (current.type === "dayPeriod" || current.type === "era") {
       state.clearSegment(current.type);
       return;
     }
@@ -971,11 +1265,14 @@ export function dateSegment(options: DateSegmentOptions, state: DateFieldState):
 
   const onKeyDown = (event: KeyboardEvent): void => {
     const current = segment();
-    if (!current.isEditable) return;
+    if (current.type === "literal") return;
     // A modified key belongs to something else: Alt+ArrowDown opens a date
     // picker's calendar, and stepping the segment as well would change the
     // date the user is about to choose.
     if (event.altKey || event.ctrlKey || event.metaKey) return;
+
+    // The zone of a zoned value is read out and passed through, not changed.
+    if (!current.isEditable && event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
 
     switch (event.key) {
       case "ArrowUp":
@@ -1106,6 +1403,29 @@ export function dateSegment(options: DateSegmentOptions, state: DateFieldState):
         return () => document.removeEventListener("selectionchange", collapse);
       },
     );
+
+    // A segment can go while it holds focus: the era of a year before the
+    // common era goes when the year is stepped into the common era. Focus
+    // moves to the segment before it, or after it when it was the first,
+    // rather than falling to the page.
+    createEffect(
+      () => element(),
+      (self) => {
+        if (self === null) return undefined;
+        const group = self.closest('[role="group"]');
+        return () => {
+          const at = focusedAt;
+          if (at < 0 || group === null) return;
+          queueMicrotask(() => {
+            const document = ownerDocument(group);
+            const active = activeElement(document);
+            if (!group.isConnected || (active !== null && active !== document.body)) return;
+            const all = [...group.querySelectorAll<HTMLElement>(SEGMENT_SELECTOR)];
+            (all[at - 1] ?? all[at])?.focus();
+          });
+        };
+      },
+    );
   }
 
   const name = (): string => {
@@ -1125,20 +1445,28 @@ export function dateSegment(options: DateSegmentOptions, state: DateFieldState):
   const valueText = (): string | undefined => {
     const current = segment();
     if (current.isPlaceholder) return messages().format("empty");
-    const at = state.displayValue().toDate();
+    const at = state.dateValue();
     if (current.type === "month") {
-      const month = monthName().format(at);
+      const month = fieldFormat({ month: "long" }).format(at);
       return month === current.text ? month : `${current.text} – ${month}`;
     }
     if (current.type === "hour") {
       const twelve = state.segments().some((each) => each.type === "dayPeriod");
-      return (twelve ? hourIn12() : hourIn24())().format(at);
+      return fieldFormat({ hour: "numeric", hour12: twelve }).format(at);
     }
     return current.text;
   };
 
-  // VoiceOver on iOS cannot focus a spin button, so there it is a text box.
-  const asTextbox = (): boolean => isIOS();
+  const isLiteral = (): boolean => segment().type === "literal";
+
+  // VoiceOver on iOS cannot focus a spin button, so there it is a text box. So
+  // is the zone, which is text and has no number to spin.
+  const asTextbox = (): boolean => isIOS() || segment().type === "timeZoneName";
+
+  const isNumeric = (): boolean => {
+    const kind = segment().type;
+    return kind !== "dayPeriod" && kind !== "era" && kind !== "timeZoneName";
+  };
 
   const numericDirection = (): Record<string, string> => {
     const style: Record<string, string> = { "caret-color": "transparent" };
@@ -1147,35 +1475,36 @@ export function dateSegment(options: DateSegmentOptions, state: DateFieldState):
       // from a number, so every segment is embedded, and a number runs left
       // to right.
       style["unicode-bidi"] = "embed";
-      if (segment().type !== "dayPeriod") style.direction = "ltr";
+      if (isNumeric()) style.direction = "ltr";
     }
     return style;
   };
 
+  const isSpinButton = (): boolean => !isLiteral() && !asTextbox();
+
   return {
     segmentProps: {
-      role: () => (segment().isEditable ? (asTextbox() ? "textbox" : "spinbutton") : undefined),
-      "aria-hidden": () => (segment().isEditable ? undefined : true),
-      "aria-label": () => (segment().isEditable ? name() : undefined),
-      "aria-valuenow": () => (segment().isEditable && !asTextbox() ? segment().value : undefined),
-      "aria-valuemin": () =>
-        segment().isEditable && !asTextbox() ? segment().minValue : undefined,
-      "aria-valuemax": () =>
-        segment().isEditable && !asTextbox() ? segment().maxValue : undefined,
+      role: () => (isLiteral() ? undefined : asTextbox() ? "textbox" : "spinbutton"),
+      "aria-hidden": () => (isLiteral() ? true : undefined),
+      "aria-label": () => (isLiteral() ? undefined : name()),
+      "aria-valuenow": () => (isSpinButton() ? segment().value : undefined),
+      "aria-valuemin": () => (isSpinButton() ? segment().minValue : undefined),
+      "aria-valuemax": () => (isSpinButton() ? segment().maxValue : undefined),
       // What the number MEANS: an empty segment reads as "empty" rather than
       // as the placeholder letters, and a month as its name.
-      "aria-valuetext": () => (segment().isEditable && !asTextbox() ? valueText() : undefined),
+      "aria-valuetext": () => (isSpinButton() ? valueText() : undefined),
       "aria-disabled": () => (state.isDisabled() ? true : undefined),
-      "aria-readonly": () => (state.isReadOnly() ? true : undefined),
+      "aria-readonly": () =>
+        !isLiteral() && (state.isReadOnly() || !segment().isEditable) ? true : undefined,
       // Editable text, so a touch device raises its keyboard for it; what is
       // typed is intercepted before the browser writes it.
-      contentEditable: () => (segment().isEditable ? (isEditable() ? "true" : "false") : undefined),
+      contentEditable: () => (isLiteral() ? undefined : isEditable() ? "true" : "false"),
       spellcheck: () => (isEditable() ? "false" : undefined),
       autocorrect: () => (isEditable() ? "off" : undefined),
       enterKeyHint: () => (isEditable() ? "next" : undefined),
-      inputMode: () => (isEditable() && segment().type !== "dayPeriod" ? "numeric" : undefined),
-      style: () => (segment().isEditable ? numericDirection() : undefined),
-      tabIndex: () => (segment().isEditable && !state.isDisabled() ? 0 : undefined),
+      inputMode: () => (isEditable() && isNumeric() ? "numeric" : undefined),
+      style: () => (isLiteral() ? undefined : numericDirection()),
+      tabIndex: () => (!isLiteral() && !state.isDisabled() ? 0 : undefined),
       onKeyDown,
       onBeforeInput,
       onInput,
@@ -1183,10 +1512,16 @@ export function dateSegment(options: DateSegmentOptions, state: DateFieldState):
         entered = "";
         // Collapsed at the start, or Chrome fires no input events.
         const self = element();
-        if (self !== null) self.ownerDocument.getSelection()?.collapse(self);
+        if (self === null) return;
+        self.ownerDocument.getSelection()?.collapse(self);
+        const group = self.closest('[role="group"]');
+        focusedAt =
+          group === null ? -1 : [...group.querySelectorAll(SEGMENT_SELECTOR)].indexOf(self);
       },
       onBlur: () => {
         entered = "";
+        // Focus leaving for somewhere else, not the segment being taken away.
+        if (element()?.isConnected === true) focusedAt = -1;
       },
     },
   };
@@ -1218,64 +1553,81 @@ function DateFieldProvider(props: { value: DateFieldContextValue; children?: Chi
   );
 }
 
-export interface DateFieldComponentProps extends StyleProps {
+export interface DateFieldComponentProps<T extends DateValue = DateValue> extends StyleProps {
   label?: Child;
   description?: Child;
   errorMessage?: Child;
-  value?: DateValue | null;
-  defaultValue?: DateValue | null;
-  placeholderValue?: DateValue;
+  value?: T | null;
+  defaultValue?: T | null;
+  /** What an empty field counts from, and the kind of value it reports. */
+  placeholderValue?: DateValue | null;
   minValue?: DateValue | null;
   maxValue?: DateValue | null;
   /** Days that exist but cannot be chosen: a value on one is invalid. */
-  isDateUnavailable?: (date: CalendarDate) => boolean;
-  /** @default "day" */
+  isDateUnavailable?: (date: DateValue) => boolean;
+  /** Defaults to `"minute"` for a value with a time and `"day"` for one without. */
   granularity?: Granularity;
   hourCycle?: 12 | 24;
+  /** Leave a zoned value's zone out of the segments. @default false */
+  hideTimeZone?: boolean;
+  /** Builds the calendar system the locale names. @default createCalendar */
+  createCalendar?: (identifier: CalendarIdentifier) => CalendarSystem;
   isDisabled?: boolean;
   isReadOnly?: boolean;
   isRequired?: boolean;
   isInvalid?: boolean;
   /** What the page thinks of the date, checked as it changes. */
-  validate?: ValidateFunction<DateValue | null>;
+  validate?: ValidateFunction<NoInfer<MappedDateValue<T>> | null>;
   /** @default "aria" */
   validationBehavior?: ValidationBehavior;
   name?: string;
   "aria-label"?: string;
   "aria-labelledby"?: string;
   ref?: RefTarget<HTMLDivElement>;
-  onChange?: (value: DateValue | null) => void;
+  onChange?: (value: NoInfer<MappedDateValue<T>> | null) => void;
 }
 
 /**
  * ```tsx
  * <DateField label="Departure" value={date()} onChange={date.set} />
  * <DateField label="Starts" granularity="minute" />
+ * <DateField label="Call" value={parseZonedDateTime("2026-03-08T09:00[America/New_York]")} />
  * ```
  */
-export function DateField(props: DateFieldComponentProps) {
-  const state = dateFieldState({
+// Declared as its own call site, so JSX infers `T` from the value written
+// there: through the mapped type that widens Cells back to values, a type
+// parameter standing alone in a prop is not inferred.
+export function DateField<T extends DateValue = DateValue>(
+  props: DateFieldComponentProps<T> & CallSite<DateFieldComponentProps<T>>,
+) {
+  const state = dateFieldState<T>({
     value: () => props.value,
     defaultValue: () => props.defaultValue,
     placeholderValue: () => props.placeholderValue,
     minValue: () => props.minValue,
     maxValue: () => props.maxValue,
-    isDateUnavailable: callback<[CalendarDate], boolean>(cells(props).isDateUnavailable),
+    isDateUnavailable: callback<[DateValue], boolean>(cells(props).isDateUnavailable),
     granularity: () => props.granularity,
     hourCycle: () => props.hourCycle,
+    hideTimeZone: () => props.hideTimeZone,
+    createCalendar: callback<[CalendarIdentifier], CalendarSystem>(cells(props).createCalendar),
     isDisabled: () => props.isDisabled,
     isReadOnly: () => props.isReadOnly,
     isRequired: () => props.isRequired,
     onChange: (value) => props.onChange?.(value),
   });
 
+  const check = callback<[MappedDateValue<T> | null], string | string[] | true | null | undefined>(
+    cells(props).validate,
+  );
+
   return (
     <FieldBody
       state={state}
-      of={cells(props)}
-      validate={callback<[DateValue | null], string | string[] | true | null | undefined>(
-        cells(props).validate,
-      )}
+      of={cells(props) as unknown as Incoming<DateFieldComponentProps>}
+      validate={
+        check === undefined ? undefined : (value) => check(value as MappedDateValue<T> | null)
+      }
       inputValue={() => state.value()?.toString() ?? ""}
     />
   );
@@ -1397,7 +1749,7 @@ function DateSegmentPart(props: DateSegmentPartProps) {
   );
 }
 
-export interface TimeFieldComponentProps extends Omit<
+export interface TimeFieldComponentProps<T extends TimeValue = Time> extends Omit<
   DateFieldComponentProps,
   | "granularity"
   | "value"
@@ -1406,52 +1758,93 @@ export interface TimeFieldComponentProps extends Omit<
   | "minValue"
   | "maxValue"
   | "isDateUnavailable"
+  | "createCalendar"
   | "onChange"
   | "validate"
 > {
-  value?: Time | null;
-  defaultValue?: Time | null;
+  /**
+   * A time, or a date and time whose time is edited. A zoned one shows its
+   * zone, and stepping its hour follows the clock through a change.
+   */
+  value?: T | null;
+  defaultValue?: T | null;
   /** What an empty field's segments count from. @default midnight */
-  placeholderValue?: Time;
-  minValue?: Time | null;
-  maxValue?: Time | null;
+  placeholderValue?: TimeValue;
+  minValue?: TimeValue | null;
+  maxValue?: TimeValue | null;
   /** @default "minute" */
   granularity?: "hour" | "minute" | "second";
   /** What the page thinks of the TIME, not of the date standing behind it. */
-  validate?: ValidateFunction<Time | null>;
-  onChange?: (value: Time | null) => void;
+  validate?: ValidateFunction<NoInfer<MappedTimeValue<T>> | null>;
+  onChange?: (value: NoInfer<MappedTimeValue<T>> | null) => void;
 }
 
 /**
  * A time on its own.
  *
  * The same segments without the date ones, so a meeting time is a field the
- * user fills rather than a string they format. The day a time is kept against
- * is today, and it never reaches the caller.
+ * user fills rather than a string they format. A plain time is kept against
+ * today and reported as a time; a date and time, zoned or not, is edited on
+ * its own day and reported whole.
  */
-export function TimeField(props: TimeFieldComponentProps) {
-  const day = today();
-  const onDay = (time: Time | null | undefined): CalendarDateTime | null | undefined =>
-    time === null || time === undefined ? time : CalendarDateTime.from(day, time);
-  const timeOf = (value: DateValue | null): Time | null =>
-    value === null ? null : asDateTime(value).time;
+export function TimeField<T extends TimeValue = Time>(
+  props: TimeFieldComponentProps<T> & CallSite<TimeFieldComponentProps<T>>,
+) {
+  const day = today(getLocalTimeZone());
+  const onDay = (
+    time: TimeValue | null | undefined,
+    date: DateValue = day,
+  ): DateValue | null | undefined =>
+    time === null || time === undefined
+      ? time
+      : "day" in time
+        ? time
+        : toCalendarDateTime(date, time);
+
+  const placeholder = (): TimeValue => props.placeholderValue ?? new Time();
+  /** The day the time stands on, when the caller gave one. */
+  const standing = (): DateValue | undefined => {
+    const model = props.value ?? placeholder();
+    return "day" in model ? model : undefined;
+  };
+  const defaultZone = (): string | undefined => {
+    const given = props.defaultValue;
+    return given !== null && given !== undefined && "timeZone" in given
+      ? given.timeZone
+      : undefined;
+  };
+  /** A whole value is reported whole; a time alone is reported as a time. */
+  const reported = (value: DateValue | null): MappedTimeValue<T> | null => {
+    if (value === null || !("hour" in value)) return null;
+    const whole = standing() !== undefined || defaultZone() !== undefined;
+    return (whole ? value : toTime(value)) as MappedTimeValue<T>;
+  };
 
   const state = dateFieldState({
     value: () => onDay(props.value),
     defaultValue: () => onDay(props.defaultValue),
-    placeholderValue: () => onDay(props.placeholderValue) ?? undefined,
-    minValue: () => onDay(props.minValue),
-    maxValue: () => onDay(props.maxValue),
+    placeholderValue: () => {
+      const model = props.value ?? placeholder();
+      const zone = ("timeZone" in model ? model.timeZone : undefined) ?? defaultZone();
+      const date = onDay(placeholder());
+      if (date === null || date === undefined) return date;
+      return zone !== undefined && !("timeZone" in date) ? toZoned(date, zone) : date;
+    },
+    minValue: () => onDay(props.minValue, standing()),
+    maxValue: () => onDay(props.maxValue, standing()),
     granularity: () => props.granularity ?? "minute",
     maxGranularity: "hour",
     hourCycle: () => props.hourCycle,
+    hideTimeZone: () => props.hideTimeZone,
+    // A time has no calendar, and its day is never shown.
+    createCalendar: () => new GregorianCalendar(),
     isDisabled: () => props.isDisabled,
     isReadOnly: () => props.isReadOnly,
     isRequired: () => props.isRequired,
-    onChange: (value) => props.onChange?.(timeOf(value)),
+    onChange: (value) => props.onChange?.(reported(value)),
   });
 
-  const check = callback<[Time | null], string | string[] | true | null | undefined>(
+  const check = callback<[MappedTimeValue<T> | null], string | string[] | true | null | undefined>(
     cells(props).validate,
   );
 
@@ -1459,13 +1852,14 @@ export function TimeField(props: TimeFieldComponentProps) {
     <FieldBody
       state={state}
       of={cells(props) as unknown as Incoming<DateFieldComponentProps>}
-      validate={check === undefined ? undefined : (value) => check(timeOf(value))}
-      inputValue={() => timeOf(state.value())?.toString() ?? ""}
+      validate={check === undefined ? undefined : (value) => check(reported(value))}
+      inputValue={() => {
+        const current = state.value();
+        return current !== null && "hour" in current ? toTime(current).toString() : "";
+      }}
     />
   );
 }
-
-export { CalendarDate, CalendarDateTime, Time };
 
 // ---------------------------------------------------------------------------
 // Strings
@@ -1475,6 +1869,20 @@ export { CalendarDate, CalendarDateTime, Time };
 function say(template: string): LocalizedString {
   return (variables) =>
     template.replace(/\{(\w+)\}/g, (_, slot: string) => String(variables?.[slot] ?? ""));
+}
+
+/**
+ * How many leading characters the strings share before they differ, or none
+ * when one is all of another: cutting that much would leave nothing to type.
+ */
+function commonPrefixLength(strings: readonly string[]): number {
+  const sorted = strings.toSorted();
+  const first = sorted[0] ?? "";
+  const last = sorted.at(-1) ?? "";
+  for (let at = 0; at < first.length; at++) {
+    if (first[at] !== last[at]) return at;
+  }
+  return 0;
 }
 
 function stringFor<K extends string>(
@@ -1496,6 +1904,7 @@ type FieldKey =
   | "minute"
   | "second"
   | "dayPeriod"
+  | "timeZoneName"
   | "rangeUnderflow"
   | "rangeOverflow"
   | "unavailableDate";
@@ -1597,6 +2006,7 @@ const FIELD_STRINGS = new StringDictionary<FieldKey>({
     minute: "minute",
     second: "second",
     dayPeriod: "AM/PM",
+    timeZoneName: "time zone",
     rangeUnderflow: "The date is before the earliest one allowed.",
     rangeOverflow: "The date is after the latest one allowed.",
     unavailableDate: "The date is not available.",
@@ -1611,6 +2021,7 @@ const FIELD_STRINGS = new StringDictionary<FieldKey>({
     minute: "الدقائق",
     second: "الثواني",
     dayPeriod: "ص/م",
+    timeZoneName: "التوقيت",
     rangeUnderflow: say("يجب أن تكون القيمة {minValue} أو بعد ذلك."),
     rangeOverflow: say("يجب أن تكون القيمة {maxValue} أو قبل ذلك."),
     unavailableDate: "البيانات المحددة غير متاحة.",
@@ -1625,6 +2036,7 @@ const FIELD_STRINGS = new StringDictionary<FieldKey>({
     minute: "минута",
     second: "секунда",
     dayPeriod: "пр.об./сл.об.",
+    timeZoneName: "часова зона",
     rangeUnderflow: say("Стойността трябва да е {minValue} или по-късно."),
     rangeOverflow: say("Стойността трябва да е {maxValue} или по-ранна."),
     unavailableDate: "Избраната дата не е налична.",
@@ -1639,6 +2051,7 @@ const FIELD_STRINGS = new StringDictionary<FieldKey>({
     minute: "minuta",
     second: "sekunda",
     dayPeriod: "část dne",
+    timeZoneName: "časové pásmo",
     rangeUnderflow: say("Hodnota musí být {minValue} nebo pozdější."),
     rangeOverflow: say("Hodnota musí být {maxValue} nebo dřívější."),
     unavailableDate: "Vybrané datum není k dispozici.",
@@ -1653,6 +2066,7 @@ const FIELD_STRINGS = new StringDictionary<FieldKey>({
     minute: "minut",
     second: "sekund",
     dayPeriod: "AM/PM",
+    timeZoneName: "tidszone",
     rangeUnderflow: say("Værdien skal være {minValue} eller nyere."),
     rangeOverflow: say("Værdien skal være {maxValue} eller tidligere."),
     unavailableDate: "Den valgte dato er ikke tilgængelig.",
@@ -1667,6 +2081,7 @@ const FIELD_STRINGS = new StringDictionary<FieldKey>({
     minute: "Minute",
     second: "Sekunde",
     dayPeriod: "Tageshälfte",
+    timeZoneName: "Zeitzone",
     rangeUnderflow: say("Der Wert muss {minValue} oder später sein."),
     rangeOverflow: say("Der Wert muss {maxValue} oder früher sein."),
     unavailableDate: "Das ausgewählte Datum ist nicht verfügbar.",
@@ -1681,6 +2096,7 @@ const FIELD_STRINGS = new StringDictionary<FieldKey>({
     minute: "λεπτό",
     second: "δευτερόλεπτο",
     dayPeriod: "π.μ./μ.μ.",
+    timeZoneName: "ζώνη ώρας",
     rangeUnderflow: say("Η τιμή πρέπει να είναι {minValue} ή μεταγενέστερη."),
     rangeOverflow: say("Η τιμή πρέπει να είναι {maxValue} ή παλαιότερη."),
     unavailableDate: "Η επιλεγμένη ημερομηνία δεν είναι διαθέσιμη.",
@@ -1695,6 +2111,7 @@ const FIELD_STRINGS = new StringDictionary<FieldKey>({
     minute: "minuto",
     second: "segundo",
     dayPeriod: "a. m./p. m.",
+    timeZoneName: "zona horaria",
     rangeUnderflow: say("El valor debe ser {minValue} o posterior."),
     rangeOverflow: say("El valor debe ser {maxValue} o anterior."),
     unavailableDate: "Fecha seleccionada no disponible.",
@@ -1709,6 +2126,7 @@ const FIELD_STRINGS = new StringDictionary<FieldKey>({
     minute: "minut",
     second: "sekund",
     dayPeriod: "enne/pärast lõunat",
+    timeZoneName: "ajavöönd",
     rangeUnderflow: say("Väärtus peab olema {minValue} või hilisem."),
     rangeOverflow: say("Väärtus peab olema {maxValue} või varasem."),
     unavailableDate: "Valitud kuupäev pole saadaval.",
@@ -1723,6 +2141,7 @@ const FIELD_STRINGS = new StringDictionary<FieldKey>({
     minute: "minuutti",
     second: "sekunti",
     dayPeriod: "vuorokaudenaika",
+    timeZoneName: "aikavyöhyke",
     rangeUnderflow: say("Arvon on oltava {minValue} tai sitä myöhäisempi."),
     rangeOverflow: say("Arvon on oltava {maxValue} tai sitä aikaisempi."),
     unavailableDate: "Valittu päivämäärä ei ole käytettävissä.",
@@ -1737,6 +2156,7 @@ const FIELD_STRINGS = new StringDictionary<FieldKey>({
     minute: "minute",
     second: "seconde",
     dayPeriod: "cadran",
+    timeZoneName: "fuseau horaire",
     rangeUnderflow: say("La valeur doit être {minValue} ou ultérieure."),
     rangeOverflow: say("La valeur doit être {maxValue} ou antérieure."),
     unavailableDate: "La date sélectionnée n’est pas disponible.",
@@ -1751,6 +2171,7 @@ const FIELD_STRINGS = new StringDictionary<FieldKey>({
     minute: "דקה",
     second: "שנייה",
     dayPeriod: "לפנה״צ/אחה״צ",
+    timeZoneName: "אזור זמן",
     rangeUnderflow: say("הערך חייב להיות {minValue} או מאוחר יותר."),
     rangeOverflow: say("הערך חייב להיות {maxValue} או מוקדם יותר."),
     unavailableDate: "התאריך הנבחר אינו זמין.",
@@ -1765,6 +2186,7 @@ const FIELD_STRINGS = new StringDictionary<FieldKey>({
     minute: "minuta",
     second: "sekunda",
     dayPeriod: "AM/PM",
+    timeZoneName: "vremenska zona",
     rangeUnderflow: say("Vrijednost mora biti {minValue} ili kasnije."),
     rangeOverflow: say("Vrijednost mora biti {maxValue} ili ranije."),
     unavailableDate: "Odabrani datum nije dostupan.",
@@ -1779,6 +2201,7 @@ const FIELD_STRINGS = new StringDictionary<FieldKey>({
     minute: "perc",
     second: "másodperc",
     dayPeriod: "napszak",
+    timeZoneName: "időzóna",
     rangeUnderflow: say("Az értéknek {minValue} vagy későbbinek kell lennie."),
     rangeOverflow: say("Az értéknek {maxValue} vagy korábbinak kell lennie."),
     unavailableDate: "A kiválasztott dátum nem érhető el.",
@@ -1793,6 +2216,7 @@ const FIELD_STRINGS = new StringDictionary<FieldKey>({
     minute: "minuto",
     second: "secondo",
     dayPeriod: "AM/PM",
+    timeZoneName: "fuso orario",
     rangeUnderflow: say("Il valore deve essere {minValue} o successivo."),
     rangeOverflow: say("Il valore deve essere {maxValue} o precedente."),
     unavailableDate: "Data selezionata non disponibile.",
@@ -1807,6 +2231,7 @@ const FIELD_STRINGS = new StringDictionary<FieldKey>({
     minute: "分",
     second: "秒",
     dayPeriod: "午前/午後",
+    timeZoneName: "タイムゾーン",
     rangeUnderflow: say("値は {minValue} 以上にする必要があります。"),
     rangeOverflow: say("値は {maxValue} 以下にする必要があります。"),
     unavailableDate: "選択した日付は使用できません。",
@@ -1821,6 +2246,7 @@ const FIELD_STRINGS = new StringDictionary<FieldKey>({
     minute: "분",
     second: "초",
     dayPeriod: "오전/오후",
+    timeZoneName: "시간대",
     rangeUnderflow: say("값은 {minValue} 이후여야 합니다."),
     rangeOverflow: say("값은 {maxValue} 이전이어야 합니다."),
     unavailableDate: "선택한 날짜를 사용할 수 없습니다.",
@@ -1835,6 +2261,7 @@ const FIELD_STRINGS = new StringDictionary<FieldKey>({
     minute: "minutė",
     second: "sekundė",
     dayPeriod: "iki pietų / po pietų",
+    timeZoneName: "laiko juosta",
     rangeUnderflow: say("Reikšmė turi būti {minValue} arba naujesnė."),
     rangeOverflow: say("Reikšmė turi būti {maxValue} arba ankstesnė."),
     unavailableDate: "Pasirinkta data nepasiekiama.",
@@ -1849,6 +2276,7 @@ const FIELD_STRINGS = new StringDictionary<FieldKey>({
     minute: "minūtes",
     second: "sekundes",
     dayPeriod: "priekšpusdienā/pēcpusdienā",
+    timeZoneName: "laika josla",
     rangeUnderflow: say("Vērtībai ir jābūt {minValue} vai vēlākai."),
     rangeOverflow: say("Vērtībai ir jābūt {maxValue} vai agrākai."),
     unavailableDate: "Atlasītais datums nav pieejams.",
@@ -1863,6 +2291,7 @@ const FIELD_STRINGS = new StringDictionary<FieldKey>({
     minute: "minutt",
     second: "sekund",
     dayPeriod: "a.m./p.m.",
+    timeZoneName: "tidssone",
     rangeUnderflow: say("Verdien må være {minValue} eller senere."),
     rangeOverflow: say("Verdien må være {maxValue} eller tidligere."),
     unavailableDate: "Valgt dato utilgjengelig.",
@@ -1877,6 +2306,7 @@ const FIELD_STRINGS = new StringDictionary<FieldKey>({
     minute: "minuut",
     second: "seconde",
     dayPeriod: "a.m./p.m.",
+    timeZoneName: "tijdzone",
     rangeUnderflow: say("Waarde moet {minValue} of later zijn."),
     rangeOverflow: say("Waarde moet {maxValue} of eerder zijn."),
     unavailableDate: "Geselecteerde datum niet beschikbaar.",
@@ -1891,6 +2321,7 @@ const FIELD_STRINGS = new StringDictionary<FieldKey>({
     minute: "minuta",
     second: "sekunda",
     dayPeriod: "rano / po południu / wieczorem",
+    timeZoneName: "strefa czasowa",
     rangeUnderflow: say("Wartość musi mieć wartość {minValue} lub późniejszą."),
     rangeOverflow: say("Wartość musi mieć wartość {maxValue} lub wcześniejszą."),
     unavailableDate: "Wybrana data jest niedostępna.",
@@ -1905,6 +2336,7 @@ const FIELD_STRINGS = new StringDictionary<FieldKey>({
     minute: "minuto",
     second: "segundo",
     dayPeriod: "AM/PM",
+    timeZoneName: "fuso horário",
     rangeUnderflow: say("O valor deve ser {minValue} ou posterior."),
     rangeOverflow: say("O valor deve ser {maxValue} ou anterior."),
     unavailableDate: "Data selecionada indisponível.",
@@ -1919,6 +2351,7 @@ const FIELD_STRINGS = new StringDictionary<FieldKey>({
     minute: "minuto",
     second: "segundo",
     dayPeriod: "am/pm",
+    timeZoneName: "fuso horário",
     rangeUnderflow: say("O valor tem de ser {minValue} ou posterior."),
     rangeOverflow: say("O valor tem de ser {maxValue} ou anterior."),
     unavailableDate: "Data selecionada indisponível.",
@@ -1933,6 +2366,7 @@ const FIELD_STRINGS = new StringDictionary<FieldKey>({
     minute: "minut",
     second: "secundă",
     dayPeriod: "a.m/p.m.",
+    timeZoneName: "fus orar",
     rangeUnderflow: say("Valoarea trebuie să fie {minValue} sau ulterioară."),
     rangeOverflow: say("Valoarea trebuie să fie {maxValue} sau anterioară."),
     unavailableDate: "Data selectată nu este disponibilă.",
@@ -1947,6 +2381,7 @@ const FIELD_STRINGS = new StringDictionary<FieldKey>({
     minute: "минута",
     second: "секунда",
     dayPeriod: "AM/PM",
+    timeZoneName: "часовой пояс",
     rangeUnderflow: say("Значение должно быть не раньше {minValue}."),
     rangeOverflow: say("Значение должно быть не позже {maxValue}."),
     unavailableDate: "Выбранная дата недоступна.",
@@ -1961,6 +2396,7 @@ const FIELD_STRINGS = new StringDictionary<FieldKey>({
     minute: "minúta",
     second: "sekunda",
     dayPeriod: "AM/PM",
+    timeZoneName: "časové pásmo",
     rangeUnderflow: say("Hodnota musí byť {minValue} alebo neskoršia."),
     rangeOverflow: say("Hodnota musí byť {maxValue} alebo skoršia."),
     unavailableDate: "Vybratý dátum je nedostupný.",
@@ -1975,6 +2411,7 @@ const FIELD_STRINGS = new StringDictionary<FieldKey>({
     minute: "minuta",
     second: "sekunda",
     dayPeriod: "dop/pop",
+    timeZoneName: "časovni pas",
     rangeUnderflow: say("Vrednost mora biti {minValue} ali novejša."),
     rangeOverflow: say("Vrednost mora biti {maxValue} ali starejša."),
     unavailableDate: "Izbrani datum ni na voljo.",
@@ -1989,6 +2426,7 @@ const FIELD_STRINGS = new StringDictionary<FieldKey>({
     minute: "минут",
     second: "секунд",
     dayPeriod: "пре подне/по подне",
+    timeZoneName: "временска зона",
     rangeUnderflow: say("Vrednost mora da bude {minValue} ili novija."),
     rangeOverflow: say("Vrednost mora da bude {maxValue} ili starija."),
     unavailableDate: "Izabrani datum nije dostupan.",
@@ -2003,6 +2441,7 @@ const FIELD_STRINGS = new StringDictionary<FieldKey>({
     minute: "minut",
     second: "sekund",
     dayPeriod: "fm/em",
+    timeZoneName: "tidszon",
     rangeUnderflow: say("Värdet måste vara {minValue} eller senare."),
     rangeOverflow: say("Värdet måste vara {maxValue} eller tidigare."),
     unavailableDate: "Det valda datumet är inte tillgängligt.",
@@ -2017,6 +2456,7 @@ const FIELD_STRINGS = new StringDictionary<FieldKey>({
     minute: "dakika",
     second: "saniye",
     dayPeriod: "ÖÖ/ÖS",
+    timeZoneName: "saat dilimi",
     rangeUnderflow: say("Değer, {minValue} veya sonrası olmalıdır."),
     rangeOverflow: say("Değer, {maxValue} veya öncesi olmalıdır."),
     unavailableDate: "Seçilen tarih kullanılamıyor.",
@@ -2031,6 +2471,7 @@ const FIELD_STRINGS = new StringDictionary<FieldKey>({
     minute: "хвилина",
     second: "секунда",
     dayPeriod: "дп/пп",
+    timeZoneName: "часовий пояс",
     rangeUnderflow: say("Значення має бути не раніше {minValue}."),
     rangeOverflow: say("Значення має бути не пізніше {maxValue}."),
     unavailableDate: "Вибрана дата недоступна.",
@@ -2045,6 +2486,7 @@ const FIELD_STRINGS = new StringDictionary<FieldKey>({
     minute: "分钟",
     second: "秒",
     dayPeriod: "上午/下午",
+    timeZoneName: "时区",
     rangeUnderflow: say("值必须是 {minValue} 或更晚日期。"),
     rangeOverflow: say("值必须是 {maxValue} 或更早日期。"),
     unavailableDate: "所选日期不可用。",
@@ -2059,6 +2501,7 @@ const FIELD_STRINGS = new StringDictionary<FieldKey>({
     minute: "分钟",
     second: "秒",
     dayPeriod: "上午/下午",
+    timeZoneName: "时区",
     rangeUnderflow: say("值必須是 {minValue} 或更晚。"),
     rangeOverflow: say("值必須是 {maxValue} 或更早。"),
     unavailableDate: "所選日期無法使用。",

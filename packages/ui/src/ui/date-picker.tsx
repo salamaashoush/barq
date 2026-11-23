@@ -1,5 +1,11 @@
 import type { DateMatcher, DateRange } from "@barqjs/aria/calendar";
-import { CalendarDate, parseDate, today, type DateValue } from "@barqjs/aria/date";
+import {
+  CalendarDate,
+  getLocalTimeZone,
+  parseDate,
+  today,
+  type DateValue,
+} from "@barqjs/aria/date";
 import { dateFormatter } from "@barqjs/aria/i18n";
 import { callback, controllable } from "@barqjs/aria/utils";
 import { cells, createSignal, Show } from "@barqjs/core";
@@ -65,7 +71,7 @@ const rangeRoot = ui({ display: "grid", gap: "calc(var(--spacing) * 2)" });
  * picker and the calendar inside it agree about the locale without being told.
  */
 function readable(date: DateValue, format: Intl.DateTimeFormat): string {
-  return format.format(date.toDate());
+  return format.format(date.toDate(getLocalTimeZone()));
 }
 
 const ONE: Intl.DateTimeFormatOptions = { dateStyle: "long" };
@@ -104,7 +110,9 @@ export interface DatePreset {
 }
 
 function presetDate(preset: DatePreset): CalendarDate {
-  return typeof preset.value === "number" ? today().add({ days: preset.value }) : preset.value;
+  return typeof preset.value === "number"
+    ? today(getLocalTimeZone()).add({ days: preset.value })
+    : preset.value;
 }
 
 /**
