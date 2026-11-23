@@ -1,6 +1,6 @@
 {
   "name": "@barqjs/query",
-  "version": "0.2.0-next.2",
+  "version": "0.2.0-next.3",
   "description": "Data fetching and caching for barq: queries, mutations and infinite queries, on @tanstack/query-core",
   "keywords": [
     "async",
@@ -85,9 +85,9 @@
     "typescript": "^7.0.2"
   },
   "peerDependencies": {
-    "@barqjs/core": ">=0.2.0-next.2",
-    "@barqjs/router": ">=0.2.0-next.2",
-    "@barqjs/web": ">=0.2.0-next.2",
+    "@barqjs/core": ">=0.2.0-next.3",
+    "@barqjs/router": ">=0.2.0-next.3",
+    "@barqjs/web": ">=0.2.0-next.3",
     "@tanstack/query-core": "^5.104.3",
     "@tanstack/query-devtools": "^5.104.3",
     "@tanstack/query-persist-client-core": "^5.104.3"

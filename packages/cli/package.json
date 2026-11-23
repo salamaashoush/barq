@@ -1,6 +1,6 @@
 {
   "name": "@barqjs/cli",
-  "version": "0.2.0-next.2",
+  "version": "0.2.0-next.3",
   "description": "The barq command: check a project against the compiler's diagnostics, as text or JSON, and apply the fixes it offers",
   "keywords": [
     "agents",

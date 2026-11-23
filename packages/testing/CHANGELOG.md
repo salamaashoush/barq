@@ -1,5 +1,17 @@
 # @barqjs/testing
 
+## 0.2.0-next.3
+
+### Patch Changes
+
+- Updated dependencies [28c1c5a]
+- Updated dependencies [66de74c]
+  - @barqjs/core@0.2.0-next.3
+  - @barqjs/router@0.2.0-next.3
+  - @barqjs/server@0.2.0-next.3
+  - @barqjs/start@0.2.0-next.3
+  - @barqjs/web@0.2.0-next.3
+
 ## 0.2.0-next.2
 
 ### Patch Changes
