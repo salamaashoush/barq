@@ -1,0 +1,185 @@
+# @barqjs/diagram
+
+Whiteboard diagrams for barq, built the way [Excalidraw](https://excalidraw.com)
+is built and reading and writing its files. The element model, geometry and
+shape generation are Excalidraw's own framework-free packages
+(`@excalidraw/element`, `@excalidraw/math`, `@excalidraw/common`), used as
+they are. This package carries the rest of what Excalidraw's React package
+does around them, without React: restoring and serializing scenes, the canvas
+and SVG renderers, export, fonts, and a read-only viewer that renders on the
+server.
+
+An `.excalidraw` file, or a PNG or SVG exported with its scene, opens here
+unchanged, and what this package writes opens in Excalidraw.
+
+## Install
+
+```bash
+bun add @barqjs/diagram
+bun add -d @barqjs/vite
+```
+
+`@barqjs/core`, `@barqjs/web`, `@barqjs/server` and `@barqjs/primitives` are
+peer dependencies. The package ships its TypeScript source under the `barq`
+export condition, and `@barqjs/vite` compiles it for the DOM or the server
+with the rest of the application. `@excalidraw/mermaid-to-excalidraw` is an
+optional peer dependency, needed only by `@barqjs/diagram/mermaid`.
+
+## Example
+
+A saved diagram on a page: loaded from its file, shown read-only, with a PNG
+for a document beside it.
+
+```tsx
+import { DiagramViewer, type DiagramScene, exportToBlob, loadFromBlob } from "@barqjs/diagram";
+
+const scene: DiagramScene = await loadFromBlob(file, null, null);
+
+<DiagramViewer scene={scene} label="Release flow" height={360} />;
+
+const png = await exportToBlob({
+  elements: scene.elements,
+  appState: { ...scene.appState, exportBackground: false, exportScale: 2 },
+  files: scene.files,
+  mimeType: "image/png",
+  exportPadding: 24,
+});
+```
+
+## The viewer
+
+`DiagramViewer` draws the scene on a canvas and lets a reader move around it:
+
+- drag to pan; the wheel pans on a trackpad, and with ctrl or cmd (how a
+  trackpad pinch arrives) it zooms around the pointer, as in Excalidraw;
+- a two-finger pinch zooms and pans together;
+- the arrow keys pan, by a whole viewport with shift; PageUp and PageDown
+  page; `+` and `-` zoom; ctrl+`0` resets to 100%; shift+`1` fits again.
+
+It opens fitted to the content (`fit`, `padding`), and refits as it resizes
+until the reader navigates. Without a `height` it takes the content's aspect
+ratio at the width it is given. It is a focusable region named by `label`
+(the scene's name by default) and described by the diagram's text in reading
+order, or by `description`.
+
+The theme is `theme` when given; otherwise it follows the `colorScheme()`
+above it, which is what `@barqjs/arc`'s `ArcProvider` sets up, and is light
+without one. Dark is Excalidraw's dark mode: every color is filtered, the
+background included.
+
+`api` receives `getSceneElements()`, `getAppState()` and `getFiles()` under
+Excalidraw's names, with `scrollToContent()`, `zoomIn()`, `zoomOut()`,
+`resetZoom()` and `refresh()`.
+
+## Server rendering
+
+On the server the viewer renders its region, its description and `snapshot`:
+the scene as SVG markup, which `exportToSvgString` produces in any process,
+one without a DOM included. A loader computes it once with the scene:
+
+```ts
+import { exportToSvgString } from "@barqjs/diagram";
+
+const snapshot = await exportToSvgString(scene, { theme: "light" });
+```
+
+The page then shows the diagram before any script runs. In the browser the
+region hydrates without a mismatch, the canvas draws under the snapshot, and
+the snapshot goes once the canvas has the scene's fonts and images. Without
+a snapshot the server sends an empty box of the content's proportions, so
+nothing moves when the canvas arrives.
+
+## Data
+
+The functions Excalidraw exports for its file format, under the same names:
+
+- `loadFromBlob(blob, localAppState, localElements)` opens a `.excalidraw`
+  file, or a PNG or SVG with an embedded scene;
+  `loadSceneOrLibraryFromBlob` tells a scene from a library and
+  `loadLibraryFromBlob` opens a library;
+- `restore`, `restoreElements`, `restoreAppState` and `restoreLibraryItems`
+  validate and migrate imported data, older versions included;
+- `serializeAsJSON(elements, appState, files, "local" | "database")` and
+  `serializeLibraryAsJSON` write them;
+- `convertToExcalidrawElements` builds elements from skeletons (`{ type,
+  x, y, label }`), measuring their text;
+- `getDefaultAppState`, `cleanAppStateForExport` and their siblings shape the
+  app state.
+
+## Export
+
+`exportToCanvas`, `exportToBlob` and `exportToSvg` take Excalidraw's options:
+`elements`, `appState` (whose `exportBackground`, `exportWithDarkMode`,
+`exportScale`, `exportEmbedScene` and `viewBackgroundColor` set the
+rendering), `files`, `exportPadding`, `maxWidthOrHeight` and
+`exportingFrame`. With `exportEmbedScene` the PNG or SVG carries the scene and
+opens again with `loadFromBlob`.
+
+`exportScene({ type, data, config })` is the same pipeline with an explicit
+config: `"canvas"`, `"png"`, `"jpeg"` or `"svg"`, sizes by `width`, `height`
+or `maxWidthOrHeight`, a region by `x` and `y`, and `config.environment` to
+export where there is no browser (`createSvgDocument()` is a document an SVG
+can be built in on a server).
+
+## Fonts
+
+Excalidraw's fonts (Excalifont, Virgil, Nunito, Lilita One, Comic Shanns,
+Cascadia, Liberation Sans, and Xiaolai for Chinese, Japanese and Korean) are
+fetched by unicode range, only for the characters a scene uses. They load
+from Excalidraw's published package on a public CDN by default; an app that
+serves them itself copies that package's `dist/prod/fonts` and calls
+`setFontAssetPath("/excalidraw/")` (or sets `window.EXCALIDRAW_ASSET_PATH`,
+which is read the same way). An SVG export inlines the faces it needs.
+
+Right-to-left text, Arabic and Hebrew, is laid out right to left on the
+canvas and in SVG. Excalidraw's fonts have no Arabic glyphs, so Arabic falls
+back to the system's font unless a face is registered for it:
+
+```ts
+import { Fonts } from "@barqjs/diagram";
+
+Fonts.register("Excalifont", {
+  uri: "/fonts/arabic-hand.woff2",
+  descriptors: { unicodeRange: "U+0600-06FF, U+0750-077F, U+FB50-FDFF, U+FE70-FEFF" },
+});
+```
+
+The face then draws that family's Arabic on the canvas and is inlined into
+exports for it.
+
+## Mermaid
+
+`@barqjs/diagram/mermaid` turns a Mermaid definition into scene elements
+through `@excalidraw/mermaid-to-excalidraw` and `convertToExcalidrawElements`:
+
+```ts
+import { mermaidToExcalidraw } from "@barqjs/diagram/mermaid";
+
+const { elements, files } = await mermaidToExcalidraw("flowchart LR\n  A --> B");
+```
+
+The converter parses with the document's `DOMParser`. On a server without
+one it draws the diagram as a single image, which `files` holds.
+
+## For an editor
+
+The renderers are exported for an editor built on this package:
+`renderStaticScene` and `renderInteractiveScene` (selection, handles, snap
+lines, remote cursors), `Renderer` for the visible set, `SceneCanvas` for a
+static layer with its image cache and fonts, and the navigation the viewer
+uses (`wheelNavigation`, `keyboardNavigation`, `PointerNavigation`,
+`zoomAt`, `fitToContent`).
+
+## Coming from `@excalidraw/excalidraw`
+
+- `loadFromBlob`, `serializeAsJSON`, `exportToBlob`, `exportToSvg`,
+  `exportToCanvas`, `restore` and `convertToExcalidrawElements` take the same
+  arguments and return the same things.
+- `<Excalidraw viewModeEnabled>` for showing a scene is `<DiagramViewer>`,
+  and `excalidrawAPI` is `api`.
+- `window.EXCALIDRAW_ASSET_PATH` works as before; `setFontAssetPath` says it
+  without a global.
+
+## License
+
+MIT. Portions are ported from Excalidraw, MIT, Copyright (c) 2020 Excalidraw.

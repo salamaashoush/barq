@@ -1,0 +1,90 @@
+{
+  "name": "@barqjs/diagram",
+  "version": "0.2.0-next.3",
+  "description": "Whiteboard diagrams for barq on Excalidraw's element model: scene data, canvas and SVG rendering, export, and a read-only viewer that renders on the server",
+  "keywords": [
+    "barq",
+    "canvas",
+    "diagram",
+    "excalidraw",
+    "svg",
+    "whiteboard"
+  ],
+  "homepage": "https://github.com/salamaashoush/barq#readme",
+  "bugs": {
+    "url": "https://github.com/salamaashoush/barq/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/salamaashoush/barq.git",
+    "directory": "packages/diagram"
+  },
+  "files": [
+    "src",
+    "!src/**/*.test.ts",
+    "!src/**/*.test.tsx",
+    "!src/**/test-*.ts",
+    "!src/**/test-*.tsx",
+    "!src/**/*-harness.ts",
+    "!src/**/fixtures",
+    "!src/ssr-server.ts"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "barq": "./src/index.ts",
+      "bun": "./src/index.ts"
+    },
+    "./mermaid": {
+      "types": "./src/mermaid.ts",
+      "barq": "./src/mermaid.ts",
+      "bun": "./src/mermaid.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "test": "bun test --timeout 20000 && bun test --timeout 20000 --conditions=development",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@excalidraw/common": "0.18.0-2c3dcc0",
+    "@excalidraw/element": "0.18.0-2c3dcc0",
+    "@excalidraw/math": "0.18.0-2c3dcc0",
+    "nanoid": "^5.1.6",
+    "pako": "^2.1.0",
+    "roughjs": "4.6.4"
+  },
+  "devDependencies": {
+    "@barqjs/compiler": "workspace:*",
+    "@barqjs/core": "workspace:*",
+    "@barqjs/primitives": "workspace:*",
+    "@barqjs/server": "workspace:*",
+    "@barqjs/vite": "workspace:*",
+    "@barqjs/web": "workspace:*",
+    "@excalidraw/mermaid-to-excalidraw": "3.6.0",
+    "@happy-dom/global-registrator": "^21.0.4",
+    "@types/bun": "^1.4.4",
+    "@types/pako": "^2.0.4",
+    "happy-dom": "^21.0.4",
+    "typescript": "^7.0.2"
+  },
+  "peerDependencies": {
+    "@barqjs/core": ">=0.2.0-next.3",
+    "@barqjs/primitives": ">=0.2.0-next.3",
+    "@barqjs/server": ">=0.2.0-next.3",
+    "@barqjs/web": ">=0.2.0-next.3",
+    "@excalidraw/mermaid-to-excalidraw": ">=3.6.0"
+  },
+  "peerDependenciesMeta": {
+    "@excalidraw/mermaid-to-excalidraw": {
+      "optional": true
+    }
+  }
+}

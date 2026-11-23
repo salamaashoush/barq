@@ -1,0 +1,397 @@
+import { nanoid } from "nanoid";
+
+import { IMAGE_MIME_TYPES, MIME_TYPES, bytesToHexString, isPromiseLike } from "@excalidraw/common";
+
+import type { ValueOf } from "@excalidraw/common/utility-types";
+import type { ExcalidrawElement, FileId } from "@excalidraw/element/types";
+
+import { cleanAppStateForExport } from "../app-state.ts";
+
+import { CanvasError, ImageSceneDataError } from "../errors.ts";
+import { getScrollToContentState } from "../viewport.ts";
+
+import { base64ToString, stringToBase64, toByteString } from "./encode.ts";
+import { decodeSvgBase64Payload } from "./svg-payload.ts";
+import { isValidExcalidrawData, isValidLibrary } from "./json.ts";
+import { restoreAppState, restoreElements, restoreLibraryItems } from "./restore.ts";
+
+import type { AppState, DataURL, LibraryItem } from "../types.ts";
+
+import type { ImportedLibraryData } from "./types.ts";
+
+/**
+ * A blob as a file picker or a drop hands it over: a `File` carries its name,
+ * and `browser-fs-access` attaches the handle it was opened from.
+ */
+export type BlobWithHandle = Blob & {
+  name?: string;
+  handle?: FileSystemFileHandle | null;
+};
+
+const parseFileContents = async (blob: Blob | File): Promise<string> => {
+  let contents: string;
+
+  if (blob.type === MIME_TYPES.png) {
+    try {
+      return await (await import("./image")).decodePngMetadata(blob);
+    } catch (error: unknown) {
+      if ((error as Error).message === "INVALID") {
+        throw new ImageSceneDataError(
+          "Image doesn't contain scene",
+          "IMAGE_NOT_CONTAINS_SCENE_DATA",
+        );
+      } else {
+        throw new ImageSceneDataError("Error: cannot restore image");
+      }
+    }
+  } else {
+    // Safari before 14 has no `Blob.prototype.text`.
+    if (typeof blob.text === "function") {
+      contents = await blob.text();
+    } else {
+      contents = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.readAsText(blob, "utf8");
+        reader.addEventListener(
+          "loadend",
+          () => {
+            if (reader.readyState === FileReader.DONE) {
+              resolve(reader.result as string);
+            }
+          },
+          { once: true },
+        );
+      });
+    }
+    if (blob.type === MIME_TYPES.svg) {
+      try {
+        return decodeSvgBase64Payload({
+          svg: contents,
+        });
+      } catch (error: unknown) {
+        if ((error as Error).message === "INVALID") {
+          throw new ImageSceneDataError(
+            "Image doesn't contain scene",
+            "IMAGE_NOT_CONTAINS_SCENE_DATA",
+          );
+        } else {
+          throw new ImageSceneDataError("Error: cannot restore image");
+        }
+      }
+    }
+  }
+  return contents;
+};
+
+export const getMimeType = (blob: BlobWithHandle | string): string => {
+  let name: string;
+  if (typeof blob === "string") {
+    name = blob;
+  } else {
+    if (blob.type) {
+      return blob.type;
+    }
+    name = blob.name || "";
+  }
+  if (/\.(excalidraw|json)$/.test(name)) {
+    return MIME_TYPES.json;
+  } else if (name.endsWith(".png")) {
+    return MIME_TYPES.png;
+  } else if (/\.jpe?g$/.test(name)) {
+    return MIME_TYPES.jpg;
+  } else if (name.endsWith(".svg")) {
+    return MIME_TYPES.svg;
+  } else if (name.endsWith(".excalidrawlib")) {
+    return MIME_TYPES.excalidrawlib;
+  }
+  return "";
+};
+
+export const getFileHandleType = (handle: FileSystemFileHandle | null) => {
+  if (!handle) {
+    return null;
+  }
+
+  return handle.name.match(/\.(json|excalidraw|png|svg)$/)?.[1] || null;
+};
+
+export const isImageFileHandleType = (type: string | null): type is "png" | "svg" => {
+  return type === "png" || type === "svg";
+};
+
+export const isImageFileHandle = (
+  handle: FileSystemFileHandle | null,
+): handle is FileSystemFileHandle => {
+  const type = getFileHandleType(handle);
+  return type === "png" || type === "svg";
+};
+
+export const isSupportedImageFileType = (type: string | null | undefined) => {
+  return !!type && (Object.values(IMAGE_MIME_TYPES) as string[]).includes(type);
+};
+
+export const isSupportedImageFile = (
+  blob: Blob | null | undefined,
+): blob is Blob & { type: ValueOf<typeof IMAGE_MIME_TYPES> } => {
+  const { type } = blob || {};
+  return isSupportedImageFileType(type);
+};
+
+export const loadSceneOrLibraryFromBlob = async (
+  blob: BlobWithHandle,
+  /** @see restore.localAppState */
+  localAppState: AppState | null,
+  localElements: readonly ExcalidrawElement[] | null,
+  /** FileSystemFileHandle. Defaults to `blob.handle` if defined, otherwise null. */
+  fileHandle?: FileSystemFileHandle | null,
+) => {
+  const contents = await parseFileContents(blob);
+  let data: unknown;
+  try {
+    try {
+      data = JSON.parse(contents);
+    } catch (error: unknown) {
+      if (isSupportedImageFile(blob)) {
+        throw new ImageSceneDataError(
+          "Image doesn't contain scene",
+          "IMAGE_NOT_CONTAINS_SCENE_DATA",
+        );
+      }
+      throw error;
+    }
+    if (isValidExcalidrawData(data)) {
+      const elements = restoreElements(data.elements, localElements, {
+        repairBindings: true,
+        deleteInvisibleElements: true,
+      });
+      return {
+        type: MIME_TYPES.excalidraw,
+        data: {
+          elements,
+          appState: restoreAppState(
+            {
+              theme: localAppState?.theme,
+              fileHandle: fileHandle || blob.handle || null,
+              ...cleanAppStateForExport(data.appState || {}),
+              ...(localAppState ? getScrollToContentState(elements, localAppState) : {}),
+            },
+            localAppState,
+          ),
+          files: data.files || {},
+        },
+      };
+    } else if (isValidLibrary(data)) {
+      return {
+        type: MIME_TYPES.excalidrawlib,
+        data,
+      };
+    }
+    throw new Error("Error: invalid file");
+  } catch (error: unknown) {
+    if (error instanceof ImageSceneDataError) {
+      throw error;
+    }
+    throw new Error("Error: invalid file", { cause: error });
+  }
+};
+
+export const loadFromBlob = async (
+  blob: Blob,
+  /** @see restore.localAppState */
+  localAppState: AppState | null,
+  localElements: readonly ExcalidrawElement[] | null,
+  /** FileSystemFileHandle. Defaults to `blob.handle` if defined, otherwise null. */
+  fileHandle?: FileSystemFileHandle | null,
+) => {
+  const ret = await loadSceneOrLibraryFromBlob(blob, localAppState, localElements, fileHandle);
+  if (ret.type !== MIME_TYPES.excalidraw) {
+    throw new Error("Error: invalid file");
+  }
+  return ret.data;
+};
+
+export const parseLibraryJSON = (
+  json: string,
+  defaultStatus: LibraryItem["status"] = "unpublished",
+) => {
+  const data: ImportedLibraryData | undefined = JSON.parse(json);
+  if (!isValidLibrary(data)) {
+    throw new Error("Invalid library");
+  }
+  const libraryItems = data.libraryItems || data.library;
+  return restoreLibraryItems(libraryItems, defaultStatus);
+};
+
+export const loadLibraryFromBlob = async (
+  blob: Blob,
+  defaultStatus: LibraryItem["status"] = "unpublished",
+) => {
+  return parseLibraryJSON(await parseFileContents(blob), defaultStatus);
+};
+
+export const canvasToBlob = async (
+  canvas: HTMLCanvasElement | Promise<HTMLCanvasElement>,
+): Promise<Blob> => {
+  const resolvedCanvas = isPromiseLike(canvas) ? await canvas : canvas;
+  return new Promise((resolve, reject) => {
+    resolvedCanvas.toBlob((blob) => {
+      if (!blob) {
+        return reject(new CanvasError("Error: Canvas too big", "CANVAS_POSSIBLY_TOO_BIG"));
+      }
+      resolve(blob);
+    });
+  });
+};
+
+/** generates SHA-1 digest from supplied file (if not supported, falls back
+    to a 40-char base64 random id) */
+export const generateIdFromFile = async (file: File): Promise<FileId> => {
+  try {
+    const hashBuffer = await window.crypto.subtle.digest("SHA-1", await blobToArrayBuffer(file));
+    return bytesToHexString(new Uint8Array(hashBuffer)) as FileId;
+  } catch (error: unknown) {
+    console.error(error);
+    // length 40 to align with the HEX length of SHA-1 (which is 160 bit)
+    return nanoid<FileId>(40);
+  }
+};
+
+/** async. For sync variant, use getDataURL_sync */
+export const getDataURL = async (file: Blob | File): Promise<DataURL> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener(
+      "load",
+      () => {
+        const dataURL = reader.result as DataURL;
+        resolve(dataURL);
+      },
+      { once: true },
+    );
+    reader.addEventListener("error", (error) => reject(error), { once: true });
+    reader.readAsDataURL(file);
+  });
+};
+
+export const getDataURL_sync = (
+  data: string | Uint8Array | ArrayBuffer,
+  mimeType: ValueOf<typeof MIME_TYPES>,
+): DataURL => {
+  return `data:${mimeType};base64,${stringToBase64(toByteString(data), true)}` as DataURL;
+};
+
+export const dataURLToFile = (dataURL: DataURL, filename = "") => {
+  const dataIndexStart = dataURL.indexOf(",");
+  const byteString = atob(dataURL.slice(dataIndexStart + 1));
+  const mimeType = /^data:([^;,]*)/.exec(dataURL)?.[1] ?? "";
+
+  const ab = new ArrayBuffer(byteString.length);
+  const ia = new Uint8Array(ab);
+  for (let i = 0; i < byteString.length; i++) {
+    ia[i] = byteString.charCodeAt(i);
+  }
+  return new File([ab], filename, { type: mimeType });
+};
+
+export const dataURLToString = (dataURL: DataURL) => {
+  return base64ToString(dataURL.slice(dataURL.indexOf(",") + 1));
+};
+
+export const SVGStringToFile = (SVGString: string, filename: string = "") => {
+  return new File([new TextEncoder().encode(SVGString)], filename, {
+    type: MIME_TYPES.svg,
+  }) as File & { type: typeof MIME_TYPES.svg };
+};
+
+/**
+ * attempts to detect if a buffer is a valid image by checking its leading bytes
+ */
+const getActualMimeTypeFromImage = async (file: Blob | File) => {
+  let mimeType: ValueOf<Pick<typeof MIME_TYPES, "png" | "jpg" | "gif" | "webp">> | null = null;
+
+  const leadingBytes = [...new Uint8Array(await blobToArrayBuffer(file.slice(0, 15)))].join(" ");
+
+  // uint8 leading bytes
+  const bytes = {
+    // https://en.wikipedia.org/wiki/Portable_Network_Graphics#File_header
+    png: /^137 80 78 71 13 10 26 10\b/,
+    // https://en.wikipedia.org/wiki/JPEG#Syntax_and_structure
+    // jpg is a bit wonky. Checking the first three bytes should be enough,
+    // but may yield false positives. (https://stackoverflow.com/a/23360709/927631)
+    jpg: /^255 216 255\b/,
+    // https://en.wikipedia.org/wiki/GIF#Example_GIF_file
+    gif: /^71 73 70 56 57 97\b/,
+    // 4 bytes for RIFF + 4 bytes for chunk size + WEBP identifier
+    webp: /^82 73 70 70 \d+ \d+ \d+ \d+ 87 69 66 80 86 80 56\b/,
+  };
+
+  for (const type of Object.keys(bytes) as (keyof typeof bytes)[]) {
+    if (leadingBytes.match(bytes[type])) {
+      mimeType = MIME_TYPES[type];
+      break;
+    }
+  }
+
+  return mimeType || file.type || null;
+};
+
+export const createFile = (
+  blob: File | Blob | ArrayBuffer,
+  mimeType: string,
+  name: string | undefined,
+) => {
+  return new File([blob], name || "", {
+    type: mimeType,
+  });
+};
+
+const normalizedFileSymbol = Symbol("fileNormalized");
+
+/** attempts to detect correct mimeType if none is set, or if an image
+ * has an incorrect extension.
+ * Note: doesn't handle missing .excalidraw/.excalidrawlib extension  */
+export const normalizeFile = async (file: File) => {
+  // to prevent double normalization (perf optim)
+  if ((file as File & { [normalizedFileSymbol]?: boolean })[normalizedFileSymbol]) {
+    return file;
+  }
+
+  if (file?.name?.endsWith(".excalidrawlib")) {
+    file = createFile(file, MIME_TYPES.excalidrawlib, file.name);
+  } else if (file?.name?.endsWith(".excalidraw")) {
+    file = createFile(file, MIME_TYPES.excalidraw, file.name);
+  } else if (!file.type || file.type?.startsWith("image/")) {
+    // when the file is an image, make sure the extension corresponds to the
+    // actual mimeType (this is an edge case, but happens - especially
+    // with AI generated images)
+    const mimeType = await getActualMimeTypeFromImage(file);
+    if (mimeType && mimeType !== file.type) {
+      file = createFile(file, mimeType, file.name);
+    }
+  }
+
+  (file as File & { [normalizedFileSymbol]?: boolean })[normalizedFileSymbol] = true;
+
+  return file;
+};
+
+export const blobToArrayBuffer = (blob: Blob): Promise<ArrayBuffer> => {
+  if ("arrayBuffer" in blob) {
+    return blob.arrayBuffer();
+  }
+  // Safari
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener(
+      "load",
+      (event) => {
+        if (!event.target?.result) {
+          return reject(new Error("Couldn't convert blob to ArrayBuffer"));
+        }
+        resolve(event.target.result as ArrayBuffer);
+      },
+      { once: true },
+    );
+    reader.readAsArrayBuffer(blob);
+  });
+};

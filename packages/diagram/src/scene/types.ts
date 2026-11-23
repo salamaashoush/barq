@@ -1,0 +1,202 @@
+import type { UserIdleState, EditorInterface } from "@excalidraw/common";
+import type {
+  ExcalidrawElement,
+  ExcalidrawFrameLikeElement,
+  NonDeletedElementsMap,
+  NonDeletedExcalidrawElement,
+  NonDeletedSceneElementsMap,
+} from "@excalidraw/element/types";
+
+import type { MakeBrand } from "@excalidraw/common/utility-types";
+import type { RenderEnvironment } from "@excalidraw/element/renderEnvironment";
+
+import type {
+  AppState,
+  EmbedsValidationStatus,
+  ElementRenderOverrides,
+  ElementsPendingErasure,
+  ImageCache,
+  InteractiveCanvasAppState,
+  StaticCanvasAppState,
+  SocketId,
+  PendingExcalidrawElements,
+} from "../types.ts";
+import type { RoughCanvas } from "roughjs/bin/canvas";
+import type { Drawable } from "roughjs/bin/core";
+
+export type RenderableElementsMap = NonDeletedElementsMap & MakeBrand<"RenderableElementsMap">;
+
+export type StaticCanvasRenderConfig = {
+  canvasBackgroundColor: AppState["viewBackgroundColor"];
+  /**
+   * Backing-store scale the target canvas was bootstrapped with -- the owner
+   * window's devicePixelRatio when rendering into the editor, exportScale when
+   * exporting. Element caches are built and blitted at this ratio, so it must
+   * be the same value passed as `StaticSceneRenderConfig["scale"]`.
+   */
+  scale: number;
+  /**
+   * Host environment that creates the canvases and images this render
+   * rasterizes (per-editor owner window in the app; the export's
+   * `config.environment` when exporting). Defaults to the browser's.
+   */
+  renderEnvironment?: RenderEnvironment;
+  /** export only: clips everything drawn to this frame (square corners) */
+  clipToFrame?: ExcalidrawFrameLikeElement | null;
+  // extra options passed to the renderer
+  // ---------------------------------------------------------------------------
+  imageCache: ImageCache;
+  renderGrid: boolean;
+  /** whether to render link icons on elements with links (never rendered
+   when exporting). @default true */
+  renderLinks?: boolean;
+  /** when exporting the behavior is slightly different (e.g. we can't use
+   CSS filters), and we disable render optimizations for best output */
+  isExporting: boolean;
+  embedsValidationStatus: EmbedsValidationStatus;
+  elementsPendingErasure: ElementsPendingErasure;
+  pendingFlowchartNodes: PendingExcalidrawElements | null;
+  theme: AppState["theme"];
+  elementRenderOverrides?: ElementRenderOverrides;
+};
+
+export type SVGRenderConfig = {
+  /**
+   * Host environment used for the text measurements this render needs (the
+   * SVG itself is built through `exportToSvg`'s owner document). Defaults to
+   * the browser's.
+   */
+  renderEnvironment?: RenderEnvironment;
+  offsetX: number;
+  offsetY: number;
+  isExporting: boolean;
+  exportWithDarkMode: boolean;
+  renderEmbeddables: boolean;
+  frameRendering: AppState["frameRendering"];
+  canvasBackgroundColor: AppState["viewBackgroundColor"];
+  embedsValidationStatus: EmbedsValidationStatus;
+  /**
+   * whether to attempt to reuse images as much as possible through symbols
+   * (reduces SVG size, but may be incompoatible with some SVG renderers)
+   *
+   * @default true
+   */
+  reuseImages: boolean;
+  theme: AppState["theme"];
+};
+
+export type InteractiveCanvasRenderConfig = {
+  // collab-related state
+  // ---------------------------------------------------------------------------
+  remoteSelectedElementIds: Map<ExcalidrawElement["id"], SocketId[]>;
+  remotePointerViewportCoords: Map<SocketId, { x: number; y: number }>;
+  remotePointerUserStates: Map<SocketId, UserIdleState>;
+  remotePointerUsernames: Map<SocketId, string>;
+  remotePointerButton: Map<SocketId, string | undefined>;
+  selectionColor: string;
+  lastViewportPosition: { x: number; y: number };
+  // extra options passed to the renderer
+  // ---------------------------------------------------------------------------
+  renderScrollbars?: boolean;
+  /** Places the vertical scrollbar on the left. */
+  isRTL?: boolean;
+};
+
+export type RenderInteractiveSceneCallback = {
+  scrollBars?: ScrollBars;
+};
+
+export type StaticSceneRenderConfig = {
+  canvas: HTMLCanvasElement;
+  rc: RoughCanvas;
+  elementsMap: RenderableElementsMap;
+  allElementsMap: NonDeletedSceneElementsMap;
+  visibleElements: readonly NonDeletedExcalidrawElement[];
+  scale: number;
+  appState: StaticCanvasAppState;
+  renderConfig: StaticCanvasRenderConfig;
+};
+
+export type InteractiveSceneRenderAnimationState = {
+  bindingHighlight: { runtime: number } | undefined;
+};
+
+/** What the interactive renderer reads from the editor driving it, beyond its app state. */
+export type InteractiveSceneApp = {
+  state: Pick<AppState, "bindMode">;
+  /** The pending switch into the inside-binding mode while a pointer dwells on an element. */
+  bindModeHandler: ReturnType<typeof setTimeout> | null;
+  lastPointerMoveEvent: PointerEvent | null;
+  lastPointerMoveCoords: { x: number; y: number } | null;
+};
+
+export type InteractiveSceneRenderConfig = {
+  app: InteractiveSceneApp;
+  canvas: HTMLCanvasElement | null;
+  elementsMap: RenderableElementsMap;
+  visibleElements: readonly NonDeletedExcalidrawElement[];
+  selectedElements: readonly NonDeletedExcalidrawElement[];
+  allElementsMap: NonDeletedSceneElementsMap;
+  scale: number;
+  appState: InteractiveCanvasAppState;
+  renderConfig: InteractiveCanvasRenderConfig;
+  editorInterface: EditorInterface;
+  callback: (data: RenderInteractiveSceneCallback) => void;
+  animationState?: InteractiveSceneRenderAnimationState;
+  deltaTime: number;
+};
+
+export type NewElementSceneRenderConfig = {
+  canvas: HTMLCanvasElement | null;
+  rc: RoughCanvas;
+  newElement: NonDeletedExcalidrawElement | null;
+  elementsMap: RenderableElementsMap;
+  allElementsMap: NonDeletedSceneElementsMap;
+  scale: number;
+  appState: AppState;
+  renderConfig: StaticCanvasRenderConfig;
+};
+
+export type SceneScroll = {
+  scrollX: number;
+  scrollY: number;
+};
+
+export type ExportType = "png" | "clipboard" | "clipboard-svg" | "backend" | "svg";
+
+export type ScrollBars = {
+  horizontal: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    deltaMultiplier: number;
+  } | null;
+  vertical: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    deltaMultiplier: number;
+  } | null;
+};
+
+export type SVGPathString = string & { __brand: "SVGPathString" };
+
+export type ElementShape = Drawable | Drawable[] | Path2D | (Drawable | SVGPathString)[] | null;
+
+export type ElementShapes = {
+  rectangle: Drawable;
+  ellipse: Drawable;
+  diamond: Drawable;
+  iframe: Drawable;
+  embeddable: Drawable;
+  freedraw: (Drawable | SVGPathString)[];
+  arrow: Drawable[];
+  line: Drawable[];
+  text: null;
+  stickynote: null;
+  image: null;
+  frame: null;
+  magicframe: null;
+};

@@ -1,0 +1,55 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`exportToSvg the light export has the scene's structure 1`] = `
+"<svg viewBox=0 0 800 500.75006789591055 width=800 height=500.75006789591055>
+  <metadata>
+  <defs>
+    <symbol>
+      <image width=100% height=100%>
+    <clippath>
+      <rect width=240 height=200>
+    <style class=style-fonts>
+  <rect width=800 height=500.75006789591055 fill=#ffffff>
+  <g>
+    <text font-family=Helvetica, sans-serif, Segoe UI Emoji font-size=14px fill=#999999 text-anchor=start direction=ltr dominant-baseline=alphabetic> Decision
+  <rect width=240px height=200px fill=none stroke=#bbb>
+  <g>
+    <path stroke=#a5d8ff fill=none d=…>
+    <path stroke=#1e1e1e fill=none d=…>
+  <g>
+    <text font-family=Excalifont, Xiaolai, sans-serif, Segoe UI Emoji font-size=20px fill=#1e1e1e text-anchor=middle direction=ltr dominant-baseline=alphabetic> Start
+  <g>
+    <g>
+      <path stroke=#1e1e1e fill=none d=…>
+  <g>
+    <g>
+      <text font-family=Excalifont, Xiaolai, sans-serif, Segoe UI Emoji font-size=20px fill=#1e1e1e text-anchor=middle direction=ltr dominant-baseline=alphabetic> Ready?
+  <g>
+    <path stroke=#1e1e1e fill=none stroke-dasharray=8 10 d=…>
+  <g>
+    <text font-family=Excalifont, Xiaolai, sans-serif, Segoe UI Emoji font-size=20px fill=#1e1e1e text-anchor=middle direction=ltr dominant-baseline=alphabetic> Done
+  <g>
+    <g>
+      <path stroke=#1e1e1e fill=none d=…>
+    <g>
+      <path stroke=#1e1e1e fill=none d=…>
+    <g>
+      <path stroke=#1e1e1e fill=none d=…>
+  <mask width=547.9114560093311 height=230.01594137292648>
+    <rect fill=#fff width=547.9114560093311 height=230.01594137292648>
+    <rect fill=#000 width=30 height=35>
+  <g>
+    <text font-family=Excalifont, Xiaolai, sans-serif, Segoe UI Emoji font-size=20px fill=#1e1e1e text-anchor=middle direction=ltr dominant-baseline=alphabetic> go
+  <g>
+    <g>
+      <path stroke=#1e1e1e fill=none d=…>
+  <mask>
+  <g>
+    <text font-family=Excalifont, Xiaolai, sans-serif, Segoe UI Emoji font-size=28px fill=#1e1e1e text-anchor=start direction=ltr dominant-baseline=alphabetic> Release flow
+  <g>
+    <text font-family=Excalifont, Xiaolai, sans-serif, Segoe UI Emoji font-size=24px fill=#1e1e1e text-anchor=end direction=rtl dominant-baseline=alphabetic> مرحبا بالعالم
+  <g>
+    <use width=120 height=120>
+  <g stroke=none>
+    <path fill=#1e1e1e d=…>"
+`;
