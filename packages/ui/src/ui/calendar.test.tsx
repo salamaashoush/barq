@@ -390,6 +390,11 @@ describe("Calendar, several months", () => {
   });
 });
 
+function InLocale(props: { locale: string; children?: Child }) {
+  const localeProps = provideLocale(cells(props).locale);
+  return <div {...localeProps}>{props.children}</div>;
+}
+
 describe("Calendar, caption dropdowns", () => {
   function Birth(props: { layout?: "dropdown" | "dropdown-months" | "dropdown-years" }) {
     return (
@@ -407,11 +412,19 @@ describe("Calendar, caption dropdowns", () => {
     screen.getByRole<HTMLSelectElement>("combobox", { name: "Choose the Month" });
   const year = (): HTMLSelectElement =>
     screen.getByRole<HTMLSelectElement>("combobox", { name: "Choose the Year" });
+  // A year's option is keyed by its place in the list, since a Japanese year
+  // number repeats in every era; these read and choose one by what it says.
+  const yearShown = (): string | null | undefined =>
+    [...year().options].find((option) => option.value === year().value)?.textContent;
+  const chooseYear = (text: string): void => {
+    const option = [...year().options].find((one) => one.textContent === text);
+    choose(year(), option?.value ?? "");
+  };
 
   test("the month and the year are two named selects showing what is on show", () => {
     render(() => <Birth />);
     expect(month().value).toBe("3");
-    expect(year().value).toBe("2024");
+    expect(yearShown()).toBe("2024");
     expect(month().getAttribute("data-slot")).toBe("calendar-dropdown");
     // The label drawn over each select is decoration: the select says it.
     const labels = all("calendar-caption-label");
@@ -421,7 +434,7 @@ describe("Calendar, caption dropdowns", () => {
 
   test("the years run from the first reachable month to the last", () => {
     render(() => <Birth />);
-    expect([...year().options].map((option) => option.value)).toEqual([
+    expect([...year().options].map((option) => option.textContent)).toEqual([
       "2022",
       "2023",
       "2024",
@@ -435,18 +448,73 @@ describe("Calendar, caption dropdowns", () => {
     expect(accessibleName(screen.getByRole("grid"))).toBe("May 2024");
     expect(iso("2024-05-07")).toBeTruthy();
 
-    choose(year(), "2023");
+    chooseYear("2023");
     expect(accessibleName(screen.getByRole("grid"))).toBe("May 2023");
   });
 
   test("a month outside the reachable ones cannot be chosen", () => {
     render(() => <Birth />);
-    choose(year(), "2025");
+    chooseYear("2025");
     const options = [...month().options];
     expect(options.filter((option) => !option.disabled).map((option) => option.value)).toEqual([
       "1",
       "2",
     ]);
+  });
+
+  test("with several months on show, each caption picks its own month", () => {
+    render(() => (
+      <Calendar
+        aria-label="Stay"
+        defaultFocusedValue={MARCH}
+        numberOfMonths={2}
+        captionLayout="dropdown"
+        startMonth={new CalendarDate(2024, 1, 1)}
+        endMonth={new CalendarDate(2024, 12, 1)}
+      />
+    ));
+    const pickers = screen.getAllByRole<HTMLSelectElement>("combobox", {
+      name: "Choose the Month",
+    });
+    expect(pickers.map((picker) => picker.value)).toEqual(["3", "4"]);
+
+    choose(pickers[1] as HTMLSelectElement, "9");
+    expect(screen.getAllByRole("grid").map((grid) => accessibleName(grid))).toEqual([
+      "August 2024",
+      "September 2024",
+    ]);
+  });
+
+  test("the selects list the locale's calendar: thirteen months in a Hebrew leap year", () => {
+    render(() => (
+      <InLocale locale="en-US-u-ca-hebrew">
+        <Calendar
+          aria-label="Date"
+          defaultFocusedValue={new CalendarDate(2023, 9, 16)}
+          captionLayout="dropdown"
+        />
+      </InLocale>
+    ));
+    expect(month().options).toHaveLength(13);
+    expect(yearShown()).toBe("5784");
+  });
+
+  test("a Japanese year is listed with its era", () => {
+    render(() => (
+      <InLocale locale="en-US-u-ca-japanese">
+        <Calendar
+          aria-label="Date"
+          defaultFocusedValue={MARCH}
+          captionLayout="dropdown"
+          startMonth={new CalendarDate(2018, 1, 1)}
+          endMonth={new CalendarDate(2024, 12, 1)}
+        />
+      </InLocale>
+    ));
+    const names = [...year().options].map((option) => option.textContent);
+    expect(names[0]).toBe("Heisei 30");
+    expect(names.at(-1)).toBe("Reiwa 6");
+    expect(yearShown()).toBe("Reiwa 6");
   });
 
   test("either half can be a select on its own", () => {
@@ -854,11 +922,6 @@ describe("Calendar, upstream's names for its props", () => {
 });
 
 describe("Calendar, language and direction", () => {
-  function In(props: { locale: string; children?: Child }) {
-    const localeProps = provideLocale(cells(props).locale);
-    return <div {...localeProps}>{props.children}</div>;
-  }
-
   function Mirrored(props: { children?: Child }) {
     const directionProps = provideDirection("rtl");
     return <div {...directionProps}>{props.children}</div>;
@@ -866,9 +929,9 @@ describe("Calendar, language and direction", () => {
 
   test("the month, the weekdays and the first day of the week are the locale's", () => {
     render(() => (
-      <In locale="fr-FR">
+      <InLocale locale="fr-FR">
         <Calendar aria-label="Départ" defaultFocusedValue={MARCH} />
-      </In>
+      </InLocale>
     ));
     expect(at("calendar-caption-label").textContent).toBe("mars 2024");
     expect(all("calendar-weekday")[0]?.textContent).toBe("lun.");
@@ -877,9 +940,9 @@ describe("Calendar, language and direction", () => {
 
   test("the dropdown lists the months in the locale too", () => {
     render(() => (
-      <In locale="fr-FR">
+      <InLocale locale="fr-FR">
         <Calendar aria-label="Départ" defaultFocusedValue={MARCH} captionLayout="dropdown" />
-      </In>
+      </InLocale>
     ));
     const months = screen.getAllByRole<HTMLSelectElement>("combobox")[0] as HTMLSelectElement;
     expect(months.options[2]?.textContent).toBe("mars");

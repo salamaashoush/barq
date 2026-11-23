@@ -2,7 +2,10 @@ import {
   calendar,
   calendarCell,
   calendarGrid,
+  calendarMonthPicker,
+  type CalendarPickerItem,
   calendarState,
+  calendarYearPicker,
   dateMatches,
   multipleCalendarState,
   rangeCalendarState,
@@ -18,12 +21,11 @@ import {
   CalendarDate,
   type DayOfWeek,
   getLocalTimeZone,
-  startOfMonth,
+  startOfYear,
   toCalendarDate,
   today,
 } from "@barqjs/aria/date";
 import { focusRing } from "@barqjs/aria/focus";
-import { dateFormatter } from "@barqjs/aria/i18n";
 import { hover } from "@barqjs/aria/interactions";
 import {
   access,
@@ -841,7 +843,7 @@ function CalendarMonth(incoming: MonthProps) {
             </h2>
           }
         >
-          <CalendarDropdowns state={state} of={props} offset={incoming.offset} month={month()} />
+          <CalendarDropdowns state={state} of={props} offset={incoming.offset} />
         </Show>
       </div>
 
@@ -914,13 +916,6 @@ function CalendarMonth(incoming: MonthProps) {
   );
 }
 
-interface DropdownsProps extends MonthProps {
-  /** The first day of the month this caption is over. */
-  month: CalendarDate;
-}
-
-const MONTHS = Array.from({ length: 12 }, (_, at) => at + 1);
-
 /**
  * The caption as selects.
  *
@@ -928,54 +923,58 @@ const MONTHS = Array.from({ length: 12 }, (_, at) => at + 1);
  * and the platform's picker for that is better than anything positioned by
  * hand, on a phone most of all. The label is decoration and hidden from
  * assistive technology; the select carries the name and the value.
+ *
+ * What they list comes from `@barqjs/aria`'s month and year pickers, so it is
+ * the locale's calendar: thirteen months in a Hebrew leap year, Japanese years
+ * named with their era. A year's option is keyed by its place in the list,
+ * since a Japanese year number repeats in every era.
  */
-function CalendarDropdowns(incoming: DropdownsProps) {
+function CalendarDropdowns(incoming: MonthProps) {
   const state = incoming.state;
   const props = incoming.of;
   const layout = (): CalendarCaptionLayout => props.captionLayout?.() ?? "dropdown";
-  const monthFormat = dateFormatter({ month: "short" });
-  const yearFormat = dateFormatter({ year: "numeric" });
 
-  const shown = (): CalendarDate => incoming.month;
-  const first = (): CalendarDate => startOfMonth(props.startMonth?.() ?? earliest(state.today()));
-  const last = (): CalendarDate => startOfMonth(props.endMonth?.() ?? latest(state.today()));
-
-  const years = createMemo(
-    () => {
-      const from = first().year;
-      const to = Math.max(last().year, from);
-      return Array.from({ length: to - from + 1 }, (_, at) => from + at);
+  const monthPicker = calendarMonthPicker({ monthOffset: () => incoming.offset }, state);
+  const yearPicker = calendarYearPicker(
+    {
+      monthOffset: () => incoming.offset,
+      // Every year from the first reachable month to the last: the picker
+      // slides its list inside the bounds, so asking for more years than the
+      // bounds hold gives exactly the years they hold.
+      visibleYears: () => {
+        const first = state.startMonth();
+        const last = state.endMonth();
+        return first === null || last === null
+          ? undefined
+          : Math.ceil(last.compare(first) / 365) + 2;
+      },
     },
-    { equals: (a, b) => a.length === b.length && a[0] === b[0] },
+    state,
   );
 
-  const monthName = (month: number): string => {
-    const date = new CalendarDate(shown().year, month, 1);
-    return (
-      props.formatters?.()?.formatMonthDropdown?.(date) ??
-      monthFormat().format(date.toDate(state.timeZone()))
-    );
-  };
-  const yearName = (year: number): string => {
-    const date = new CalendarDate(year, 1, 1);
-    return (
-      props.formatters?.()?.formatYearDropdown?.(date) ??
-      yearFormat().format(date.toDate(state.timeZone()))
-    );
-  };
-  const unreachable = (month: number): boolean => {
-    const date = new CalendarDate(shown().year, month, 1);
-    return date.compare(first()) < 0 || date.compare(last()) > 0;
-  };
+  const monthItem = (key: number): CalendarPickerItem | undefined =>
+    monthPicker.items().find((item) => item.id === key);
+  const yearItem = (key: number): CalendarPickerItem | undefined =>
+    yearPicker.items().find((item) => item.id === key);
 
-  const show = (year: number, month: number): void =>
-    state.showMonth(new CalendarDate(year, month, 1), incoming.offset);
+  const monthName = (item: CalendarPickerItem | undefined): string =>
+    item === undefined
+      ? ""
+      : (props.formatters?.()?.formatMonthDropdown?.(item.date) ?? item.formatted);
+  const yearName = (item: CalendarPickerItem | undefined): string =>
+    item === undefined
+      ? ""
+      : (props.formatters?.()?.formatYearDropdown?.(startOfYear(item.date)) ?? item.formatted);
 
   return (
     <div data-slot="calendar-dropdowns" class={dropdowns}>
       <Show
         when={layout() !== "dropdown-years"}
-        fallback={<span data-slot="calendar-caption-label">{() => monthName(shown().month)}</span>}
+        fallback={
+          <span data-slot="calendar-caption-label">
+            {() => monthName(monthItem(monthPicker.value()))}
+          </span>
+        }
       >
         <span
           data-slot="calendar-dropdown-root"
@@ -986,29 +985,35 @@ function CalendarDropdowns(incoming: DropdownsProps) {
             data-slot="calendar-dropdown"
             class={dropdown}
             aria-label="Choose the Month"
-            value={() => String(shown().month)}
+            value={() => String(monthPicker.value())}
             disabled={() => state.isDisabled()}
             onChange={(event: Event) =>
-              show(shown().year, Number((event.currentTarget as HTMLSelectElement).value))
+              monthPicker.onChange((event.currentTarget as HTMLSelectElement).value)
             }
           >
-            <For each={() => MONTHS}>
-              {(month: number) => (
-                <option value={month} disabled={() => unreachable(month)}>
-                  {() => monthName(month)}
+            {/* Keyed by id, so an option stays the element it was while the
+                list is rebuilt around it, and the select keeps its value. */}
+            <For each={() => monthPicker.items().map((item) => item.id)}>
+              {(key: number) => (
+                <option value={key} disabled={() => monthItem(key)?.isDisabled === true}>
+                  {() => monthName(monthItem(key))}
                 </option>
               )}
             </For>
           </select>
           <span data-slot="calendar-caption-label" class={dropdownLabel} aria-hidden="true">
-            {() => monthName(shown().month)}
+            {() => monthName(monthItem(monthPicker.value()))}
             <ChevronDown />
           </span>
         </span>
       </Show>
       <Show
         when={layout() !== "dropdown-months"}
-        fallback={<span data-slot="calendar-caption-label">{() => yearName(shown().year)}</span>}
+        fallback={
+          <span data-slot="calendar-caption-label">
+            {() => yearName(yearItem(yearPicker.value()))}
+          </span>
+        }
       >
         <span
           data-slot="calendar-dropdown-root"
@@ -1019,18 +1024,18 @@ function CalendarDropdowns(incoming: DropdownsProps) {
             data-slot="calendar-dropdown"
             class={dropdown}
             aria-label="Choose the Year"
-            value={() => String(shown().year)}
+            value={() => String(yearPicker.value())}
             disabled={() => state.isDisabled()}
             onChange={(event: Event) =>
-              show(Number((event.currentTarget as HTMLSelectElement).value), shown().month)
+              yearPicker.onChange((event.currentTarget as HTMLSelectElement).value)
             }
           >
-            <For each={() => years()}>
-              {(year: number) => <option value={year}>{() => yearName(year)}</option>}
+            <For each={() => yearPicker.items().map((item) => item.id)}>
+              {(key: number) => <option value={key}>{() => yearName(yearItem(key))}</option>}
             </For>
           </select>
           <span data-slot="calendar-caption-label" class={dropdownLabel} aria-hidden="true">
-            {() => yearName(shown().year)}
+            {() => yearName(yearItem(yearPicker.value()))}
             <ChevronDown />
           </span>
         </span>
