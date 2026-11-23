@@ -77,4 +77,15 @@ describe("on the server", () => {
     expect(html).toContain('data-state="collapsed"');
     expect(html).toContain('data-collapsible="icon"');
   });
+
+  test("ThemeToggle draws the choice from the request's cookie", async () => {
+    const jsx = "<ArcProvider toaster={false}><ThemeToggle /></ArcProvider>";
+    const dark = await serverProcess(
+      routed(["ArcProvider", "ThemeToggle"], jsx, "/", "theme=dark"),
+    );
+    expect(dark.errors).toBe("");
+    expect(dark.html).toMatch(/data-choice="dark"/);
+    const unset = await serverProcess(routed(["ArcProvider", "ThemeToggle"], jsx, "/"));
+    expect(unset.html).toMatch(/data-choice="system"/);
+  });
 });

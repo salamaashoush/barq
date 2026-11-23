@@ -94,6 +94,9 @@ if (await confirm({ title: "Delete the check?", tone: "danger", confirmLabel: "D
   router link marked current while the location is under it. The sidebar
   collapses to its icons, opens as it was left (the server reads the same
   cookie), and is a sheet on a narrow screen.
+- `ThemeToggle`: light, dark or system from a menu on one button, on the
+  provider's `colorScheme`. Its icon shows the choice, which the server knows
+  from the cookie, so the page hydrates without a flicker.
 - `PageHeader`: the page's `<h1>`, a line about it, what sits above it and the
   actions beside it.
 - `Status`: a state in a word and a tone, as a dot, a tinted pill or a filled

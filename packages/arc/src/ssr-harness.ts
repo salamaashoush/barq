@@ -10,7 +10,7 @@
  */
 
 import { afterAll } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -59,17 +59,27 @@ function plugin(ssr: boolean) {
 
 const root = fileURLToPath(new URL("./index.ts", import.meta.url));
 // Inside the package, so the built module resolves the externals from here.
-const workspace = mkdtempSync(
-  join(fileURLToPath(new URL("../node_modules/", import.meta.url)), "barq-arc-ssr-"),
-);
+// Made on first use, and again after a suite's `afterAll` removed it: this
+// module is shared by every suite in the process.
+let made: string | undefined;
+function workspace(): string {
+  if (made === undefined || !existsSync(made)) {
+    made = mkdtempSync(
+      join(fileURLToPath(new URL("../node_modules/", import.meta.url)), "barq-arc-ssr-"),
+    );
+  }
+  return made;
+}
 
-afterAll(() => rmSync(workspace, { recursive: true, force: true }));
+afterAll(() => {
+  if (made !== undefined) rmSync(made, { recursive: true, force: true });
+});
 
 let probes = 0;
 
 async function bundle(source: string, ssr: boolean): Promise<string> {
   const id = probes++;
-  const entry = join(workspace, `probe${String(id)}.tsx`);
+  const entry = join(workspace(), `probe${String(id)}.tsx`);
   writeFileSync(entry, source.replaceAll("<arc>", root));
   const result = await Bun.build({
     entrypoints: [entry],
@@ -79,7 +89,7 @@ async function bundle(source: string, ssr: boolean): Promise<string> {
     external: EXTERNAL,
   });
   if (!result.success) throw new AggregateError(result.logs, "the fixture did not build");
-  const file = join(workspace, `built${String(id)}-${ssr ? "ssr" : "dom"}.mjs`);
+  const file = join(workspace(), `built${String(id)}-${ssr ? "ssr" : "dom"}.mjs`);
   writeFileSync(file, await (result.outputs[0] as { text(): Promise<string> }).text());
   return file;
 }
@@ -102,7 +112,7 @@ export async function serverProcess(
   source: string,
 ): Promise<{ code: number; html: string; errors: string }> {
   const built = await bundle(source, true);
-  const runner = join(workspace, `run${String(probes++)}.mjs`);
+  const runner = join(workspace(), `run${String(probes++)}.mjs`);
   writeFileSync(
     runner,
     [
@@ -112,7 +122,7 @@ export async function serverProcess(
       "",
     ].join("\n"),
   );
-  const child = Bun.spawn(["bun", runner], { cwd: workspace, stdout: "pipe", stderr: "pipe" });
+  const child = Bun.spawn(["bun", runner], { cwd: workspace(), stdout: "pipe", stderr: "pipe" });
   const [code, html, errors] = await Promise.all([
     child.exited,
     new Response(child.stdout).text(),

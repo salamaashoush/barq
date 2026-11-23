@@ -32,6 +32,11 @@ export {
   statusVariants,
 } from "./components/status.tsx";
 export {
+  ThemeToggle,
+  type ThemeToggleLabels,
+  type ThemeToggleProps,
+} from "./components/theme-toggle.tsx";
+export {
   ARC_DARK,
   ARC_LIGHT,
   TONES,
