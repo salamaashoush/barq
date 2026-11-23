@@ -80,6 +80,54 @@ describe("useHead on the server", () => {
   });
 });
 
+describe("useHead under a nonce", () => {
+  const inline = () => () => {
+    useHead([
+      { tag: "script", children: "document.documentElement.className='dark'" },
+      { tag: "style", children: ":root{color-scheme:dark}" },
+      { tag: "script", props: { nonce: "own" }, children: "void 0" },
+    ]);
+    return html("<html><head></head><body><main>a</main></body></html>");
+  };
+
+  test("gives an inline script and style the render's nonce, keeping one the tag brought", () => {
+    const out = renderToString(inline(), { nonce: { script: "s1", style: "t1" } });
+
+    expect(out).toContain(`<script nonce="s1" data-bh="script::document.documentElement`);
+    expect(out).toContain(`<style nonce="t1" data-bh="style::`);
+    expect(out).toContain(`<script nonce="own" data-bh="script::void 0">`);
+  });
+
+  test("gives a streamed patch's inline script the nonce too", async () => {
+    const body = await new Response(
+      renderToStream(
+        () => {
+          const who = createMemo(async () => {
+            await tick();
+            return "salama";
+          });
+          return html(
+            `<html><head></head><body>${esc(
+              ssrLoading({
+                fallback: () => html("<i>wait</i>"),
+                children: () => {
+                  useHead({ tag: "script", children: `window.who='${who()}'` });
+                  return html("<b>ok</b>");
+                },
+              }),
+            )}</body></html>`,
+          );
+        },
+        { nonce: "n2" },
+      ).readable,
+    ).text();
+
+    const patch = /window\.__BARQ_HEAD__\((\[.*?\])\)/.exec(body);
+    const ops = JSON.parse(patch?.[1] ?? "[]") as { t: string; a: Record<string, string> }[];
+    expect(ops.find((op) => op.t === "script")?.a.nonce).toBe("n2");
+  });
+});
+
 describe("useHead in the browser", () => {
   test("applies a tag and takes it back with its scope, restoring the title", () => {
     document.title = "before";

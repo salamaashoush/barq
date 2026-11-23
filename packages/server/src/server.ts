@@ -132,7 +132,7 @@ export function renderToString(fn: RootRender, options: RenderToStringOptions = 
   const session = Symbol("render");
   const event = getRequestEvent();
   const previous = setAsyncSession(session);
-  const head = new HeadCollector(options.manifest, event);
+  const head = new HeadCollector(options.manifest, event, options.nonce);
   const previousHead = setHeadSink(head.sink);
   const owner = rootScope(null, options.renderId);
   try {
@@ -232,7 +232,12 @@ export async function renderPage(
 ): Promise<{ html: string; data: Record<string, unknown>; script: string }> {
   const job = startRender(
     fn,
-    { session: options?.session, renderId: options?.renderId, manifest: options?.manifest },
+    {
+      session: options?.session,
+      renderId: options?.renderId,
+      manifest: options?.manifest,
+      nonce: options?.nonce,
+    },
     true,
   );
   const page = await settledPage(job, BOUNDARY_TIMEOUT, null);
@@ -365,8 +370,20 @@ class HeadCollector {
   constructor(
     private readonly manifest?: AssetManifest,
     event?: RequestEvent,
+    private readonly nonce?: CSPNonce,
   ) {
     this.trace = event === undefined ? "" : traceMetaMarkup(traceForEvent(event));
+  }
+
+  /**
+   * An inline `<script>` or `<style>` a component declared, carrying the
+   * render's nonce: under a nonce-based CSP one without it never runs, and the
+   * component that declared it cannot know the request's nonce.
+   */
+  private sealedTag(tag: HeadTag): HeadTag {
+    if ((tag.tag !== "script" && tag.tag !== "style") || tag.props?.nonce !== undefined) return tag;
+    const nonce = tag.tag === "script" ? scriptNonce(this.nonce) : styleNonce(this.nonce);
+    return nonce === undefined || nonce === "" ? tag : { ...tag, props: { ...tag.props, nonce } };
   }
   readonly tags = new Map<string, HeadTag>();
   /** Set once the shell's head is written; declarations after it are patches. */
@@ -414,19 +431,17 @@ class HeadCollector {
   /** The shell's head, as markup. */
   markup(): string {
     let out = this.trace;
-    for (const [key, tag] of this.tags) out += headMarkup(key, tag);
+    for (const [key, tag] of this.tags) out += headMarkup(key, this.sealedTag(tag));
     return out;
   }
 
   /** What was declared since the last call, as the patch `__BARQ_HEAD__` applies. */
   patch(): string {
     if (this.fresh.size === 0) return "";
-    const ops = [...this.fresh].map(([key, tag]) => ({
-      k: key,
-      t: tag.tag,
-      a: attributesOf(tag),
-      c: tag.children,
-    }));
+    const ops = [...this.fresh].map(([key, declared]) => {
+      const tag = this.sealedTag(declared);
+      return { k: key, t: tag.tag, a: attributesOf(tag), c: tag.children };
+    });
     this.fresh = new Map();
     return `window.__BARQ_HEAD__(${JSON.stringify(ops).replaceAll("<", "\\u003c")})`;
   }
@@ -480,7 +495,7 @@ function withHead(html: string, head: HeadCollector, onHead?: (markup: string) =
  */
 function startRender(
   fn: RootRender,
-  options: { session?: symbol; renderId?: string; manifest?: AssetManifest },
+  options: { session?: symbol; renderId?: string; manifest?: AssetManifest; nonce?: CSPNonce },
   viaDom: boolean,
 ): Job {
   const stamp = crypto.randomUUID();
@@ -497,7 +512,7 @@ function startRender(
     guards: new Map(),
     guardsById: new Map(),
     sink: null as never,
-    head: new HeadCollector(options.manifest, event),
+    head: new HeadCollector(options.manifest, event, options.nonce),
     groups: new Map(),
     inlined: new Set(),
     released: false,
@@ -1386,7 +1401,12 @@ export function renderToStream(
   try {
     job = startRender(
       fn,
-      { session: options.session, renderId: options.renderId, manifest: options.manifest },
+      {
+        session: options.session,
+        renderId: options.renderId,
+        manifest: options.manifest,
+        nonce: options.nonce,
+      },
       false,
     );
   } catch (error) {
