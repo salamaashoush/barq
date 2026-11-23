@@ -35,6 +35,17 @@ describe("useHead on the server", () => {
     expect(out).not.toContain('content="first"');
   });
 
+  test("names a script or style by its id, so a later one with other text replaces it", () => {
+    const out = renderToString(() => {
+      useHead({ tag: "script", props: { id: "boot" }, children: "window.v=1" });
+      useHead({ tag: "script", props: { id: "boot" }, children: "window.v=2" });
+      return html("<html><head></head><body></body></html>");
+    });
+
+    expect(out).toContain('<script id="boot" data-bh="script#boot">window.v=2</script>');
+    expect(out).not.toContain("window.v=1");
+  });
+
   test("hands the markup to onHead when the render has no head of its own", () => {
     let head = "";
     const out = renderToString(

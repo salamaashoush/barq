@@ -70,6 +70,7 @@ export function headKey(tag: HeadTag): string {
     case "link":
       return `link:${String(props.rel ?? "")}:${String(props.href ?? "")}`;
     default:
+      if (props.id !== undefined && props.id !== null) return `${tag.tag}#${String(props.id)}`;
       return `${tag.tag}:${String(props.src ?? props.href ?? "")}:${tag.children ?? ""}`;
   }
 }
