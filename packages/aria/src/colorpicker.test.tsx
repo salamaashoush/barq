@@ -14,8 +14,15 @@ import {
   ColorSlider,
   ColorSwatch,
   ColorWheel,
+  colorSlider,
+  colorSliderState,
+  type ColorSliderStateOptions,
+  colorWheel,
   colorWheelState,
+  type ColorWheelStateOptions,
 } from "./colorpicker.tsx";
+import { ref as makeRef } from "@barqjs/primitives/refs";
+import type { DOMProps } from "./utils.ts";
 
 describe("ColorSlider", () => {
   function Hue(props: { onChange?: (value: Color) => void }) {
@@ -1480,5 +1487,196 @@ describe("editing an OKLCH colour", () => {
     flush();
     expect(held?.toString()).toBe("oklch(0.6 0.15 265)");
     expect(screen.getByRole<HTMLInputElement>("textbox").value).toBe("265°");
+  });
+});
+
+// The styles as the hooks hand them over: a headless DOM drops a background it
+// cannot parse, `in oklch` and conic gradients among them.
+function styleOf(props: DOMProps): Record<string, string> {
+  return (props.style as () => Record<string, string>)();
+}
+
+const CHECKERBOARD = "repeating-conic-gradient(#e1e1e1 0% 25%, white 0% 50%) 50% / 16px 16px";
+
+describe("a colour slider's track", () => {
+  function track(
+    options: ColorSliderStateOptions,
+    direction: "ltr" | "rtl" = "ltr",
+  ): { track: Record<string, string>; thumb: Record<string, string> } {
+    let result = { track: {}, thumb: {} };
+    render(() => {
+      provideDirection(direction);
+      const state = colorSliderState(options);
+      const { trackProps, thumbProps } = colorSlider(
+        { trackRef: makeRef<HTMLDivElement>(), inputRef: makeRef<HTMLInputElement>() },
+        state,
+      );
+      result = { track: styleOf(trackProps), thumb: styleOf(thumbProps) };
+      return null;
+    });
+    return result;
+  }
+
+  const hues = [0, 60, 120, 180, 240, 300, 360]
+    .map((hue) => parseColor(`hsl(${hue}, 100%, 50%)`).toString("css"))
+    .join(", ");
+
+  test("a hue slider shows every pure hue, whatever the colour's saturation", () => {
+    const { track: style, thumb } = track({ channel: "hue", defaultValue: "hsb(120, 20%, 30%)" });
+    expect(style.background).toBe(`linear-gradient(to right, ${hues}), ${CHECKERBOARD}`);
+    expect(style["forced-color-adjust"]).toBe("none");
+    expect(thumb["background-color"]).toBe("hsla(120, 100%, 50%, 1)");
+  });
+
+  test("right to left it runs leftwards, and a vertical one runs up", () => {
+    expect(track({ channel: "hue" }, "rtl").track.background).toStartWith(
+      "linear-gradient(to left,",
+    );
+    expect(track({ channel: "hue", orientation: "vertical" }, "rtl").track.background).toStartWith(
+      "linear-gradient(to top,",
+    );
+  });
+
+  test("HSL lightness passes through the hue on its way to white", () => {
+    expect(
+      track({ channel: "lightness", defaultValue: "hsl(200, 80%, 30%)" }).track.background,
+    ).toBe(
+      `linear-gradient(to right, hsla(200, 80%, 0%, 1), hsla(200, 80%, 50%, 1), hsla(200, 80%, 100%, 1)), ${CHECKERBOARD}`,
+    );
+  });
+
+  test("the other sRGB channels run from their minimum to their maximum", () => {
+    expect(
+      track({ channel: "saturation", defaultValue: "hsb(200, 80%, 30%)" }).track.background,
+    ).toBe(
+      `linear-gradient(to right, ${parseColor("hsb(200, 0%, 30%)").toString("css")}, ${parseColor("hsb(200, 100%, 30%)").toString("css")}), ${CHECKERBOARD}`,
+    );
+    expect(track({ channel: "red", defaultValue: "rgb(10, 20, 30)" }).track.background).toBe(
+      `linear-gradient(to right, rgba(0, 20, 30, 1), rgba(255, 20, 30, 1)), ${CHECKERBOARD}`,
+    );
+  });
+
+  test("alpha fades to transparent over the checkerboard, and the thumb shows it", () => {
+    const { track: style, thumb } = track({
+      channel: "alpha",
+      defaultValue: "rgba(10, 20, 30, 0.5)",
+    });
+    expect(style.background).toBe(
+      `linear-gradient(to right, rgba(10, 20, 30, 0), rgba(10, 20, 30, 1)), ${CHECKERBOARD}`,
+    );
+    expect(thumb["background-color"]).toBe("rgba(10, 20, 30, 0.5)");
+  });
+
+  test("an OKLCH channel is interpolated in OKLCH", () => {
+    expect(
+      track({ channel: "lightness", colorSpace: "oklch", defaultValue: "oklch(0.6 0.1 250)" }).track
+        .background,
+    ).toBe(
+      `linear-gradient(in oklch to right, oklch(0 0.1 250), oklch(1 0.1 250)), ${CHECKERBOARD}`,
+    );
+    expect(track({ channel: "hue", defaultValue: "oklch(0.6 0.1 250)" }).track.background).toBe(
+      `linear-gradient(in oklch to right, ${[0, 60, 120, 180, 240, 300, 0]
+        .map((hue) => `oklch(0.6 0.1 ${hue})`)
+        .join(", ")}), ${CHECKERBOARD}`,
+    );
+  });
+
+  test("a channel the colour lacks is drawn in the space it is read in", () => {
+    expect(track({ channel: "chroma", defaultValue: "#ff0000" }).track.background).toStartWith(
+      "linear-gradient(in oklch to right, oklch(0.62796 0 29.234), oklch(0.62796 0.4 29.234))",
+    );
+  });
+
+  test("Lab, OKLab and HWB channels are interpolated in their own spaces", () => {
+    expect(
+      track({ channel: "greenRed", defaultValue: "lab(50 20 -30)" }).track.background,
+    ).toStartWith("linear-gradient(in lab to right, lab(50 -125 -30), lab(50 125 -30))");
+    expect(
+      track({ channel: "blueYellow", defaultValue: "oklab(0.5 0.1 -0.1)" }).track.background,
+    ).toStartWith("linear-gradient(in oklab to right, oklab(0.5 0.1 -0.4), oklab(0.5 0.1 0.4))");
+    expect(
+      track({ channel: "whiteness", defaultValue: "hwb(120 10% 20%)" }).track.background,
+    ).toStartWith("linear-gradient(in hwb to right, hwb(120 0% 20%), hwb(120 100% 20%))");
+  });
+
+  test("a disabled track has no gradient", () => {
+    const { track: style } = track({ channel: "hue", isDisabled: true });
+    expect(style.background).toBeUndefined();
+    expect(style.position).toBe("relative");
+  });
+
+  test("ColorSlider keeps its track under a style of the caller's", () => {
+    const { container } = render(() => (
+      <ColorSlider channel="red" defaultValue="rgb(10, 20, 30)" style={{ width: "200px" }} />
+    ));
+    const style = container.querySelector("[data-orientation]")?.getAttribute("style") ?? "";
+    // The headless DOM keeps only the layer it can parse; that it kept one is
+    // what shows the track survived.
+    expect(style).toContain("repeating-conic-gradient");
+    expect(style).toContain("width: 200px");
+  });
+});
+
+describe("a colour wheel's ring", () => {
+  function ring(options: ColorWheelStateOptions): {
+    track: Record<string, string>;
+    thumb: Record<string, string>;
+  } {
+    let result = { track: {}, thumb: {} };
+    render(() => {
+      const state = colorWheelState(options);
+      const { trackProps, thumbProps } = colorWheel(
+        {
+          trackRef: makeRef<HTMLDivElement>(),
+          inputRef: makeRef<HTMLInputElement>(),
+          innerRadius: 64,
+          outerRadius: 80,
+        },
+        state,
+      );
+      result = { track: styleOf(trackProps), thumb: styleOf(thumbProps) };
+      return null;
+    });
+    return result;
+  }
+
+  const angles = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330, 360];
+
+  test("every pure hue, from three o'clock clockwise, cut to the band between the radii", () => {
+    const { track, thumb } = ring({ defaultValue: "hsl(200, 30%, 20%)" });
+    expect(track.background).toBe(
+      `conic-gradient(from 90deg, ${angles
+        .map((hue) => parseColor(`hsl(${hue}, 100%, 50%)`).toString("css"))
+        .join(", ")})`,
+    );
+    expect(track["clip-path"]).toBe(
+      'path(evenodd, "M 80, 80 m -80, 0 a 80, 80, 0, 1, 0, 160, 0 a 80, 80, 0, 1, 0 -160, 0 M 80, 80 m -64, 0 a 64, 64, 0, 1, 0, 128, 0 a 64, 64, 0, 1, 0 -128, 0")',
+    );
+    expect([track.width, track.height]).toEqual(["160px", "160px"]);
+    expect(track["forced-color-adjust"]).toBe("none");
+    expect(thumb["background-color"]).toBe("hsla(200, 100%, 50%, 1)");
+  });
+
+  test("an OKLCH wheel turns the colour's own lightness and chroma, in OKLCH", () => {
+    const { track, thumb } = ring({ defaultValue: "oklch(0.6 0.1 30 / 0.5)" });
+    expect(track.background).toBe(
+      `conic-gradient(in oklch from 90deg, ${angles
+        .map((hue) => `oklch(0.6 0.1 ${hue % 360})`)
+        .join(", ")})`,
+    );
+    expect(thumb["background-color"]).toBe("oklch(0.6 0.1 30)");
+  });
+
+  test("a disabled wheel has no ring", () => {
+    const { track } = ring({ defaultValue: "hsl(200, 30%, 20%)", isDisabled: true });
+    expect(track.background).toBeUndefined();
+    expect(track["clip-path"]).toBeUndefined();
+  });
+
+  test("ColorWheel keeps its size and ring under a style of the caller's", () => {
+    const { container } = render(() => <ColorWheel outerRadius={50} style={{ margin: "4px" }} />);
+    const style = container.querySelector("[data-testid], div")?.getAttribute("style") ?? "";
+    expect(style).toContain("width: 100px");
+    expect(style).toContain("margin: 4px");
   });
 });

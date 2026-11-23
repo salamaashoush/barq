@@ -178,6 +178,13 @@ export interface ColorSliderState {
   decrement(step?: number): void;
   /** What the value is, in words. */
   valueText: Accessor<string>;
+  /**
+   * What the thumb and the track show. A hue slider over an sRGB colour shows
+   * the pure hue, whatever its saturation and lightness, as React Aria's does;
+   * a perceptual hue keeps its own lightness and chroma, the colours the
+   * slider will actually give. Only an alpha slider shows the transparency.
+   */
+  displayColor: Accessor<Color>;
 }
 
 export function colorSliderState(options: ColorSliderStateOptions): ColorSliderState {
@@ -242,6 +249,17 @@ export function colorSliderState(options: ColorSliderStateOptions): ColorSliderS
     },
     increment: (step) => setChannelValue(live.getChannelValue(channel()) + (step ?? range().step)),
     decrement: (step) => setChannelValue(live.getChannelValue(channel()) - (step ?? range().step)),
+    displayColor: () => {
+      const current = value();
+      if (channel() === "alpha") return current;
+      if (channel() === "hue" && hasPureHue(current.getChannelSpace("hue"))) {
+        return parseColor("hsl(0, 100%, 50%)").withChannelValue(
+          "hue",
+          current.getChannelValue("hue"),
+        );
+      }
+      return current.withChannelValue("alpha", 1);
+    },
     valueText: () => {
       const current = value();
       const text = words(current, channel());
@@ -403,6 +421,52 @@ export function colorAreaState(options: ColorAreaStateOptions): ColorAreaState {
 // Hooks
 // ---------------------------------------------------------------------------
 
+function isSrgbSpace(space: ColorSpace): boolean {
+  return space === "rgb" || space === "hsl" || space === "hsb";
+}
+
+/** Whether a hue in this space is shown as the pure hue: every sRGB space's is HSL's. */
+function hasPureHue(space: ColorSpace): boolean {
+  return isSrgbSpace(space) || space === "hwb";
+}
+
+/**
+ * How a gradient between stops of `space` is interpolated.
+ *
+ * RGB, HSL and HSB channels are linear in sRGB, so plain stops draw them
+ * exactly, as React Aria's do. HWB and the perceptual spaces are not; a
+ * gradient interpolated in their own space is linear in their channel.
+ */
+function interpolation(space: ColorSpace): string {
+  return isSrgbSpace(space) ? "" : `in ${space} `;
+}
+
+/** The squares that show through a transparent stop, as React Spectrum draws them. */
+const CHECKERBOARD = "repeating-conic-gradient(#e1e1e1 0% 25%, white 0% 50%) 50% / 16px 16px";
+
+/**
+ * A slider's track: the channel from its minimum to its maximum, in the
+ * space the colour reads the channel in, with everything else held.
+ *
+ * HSL lightness gets a stop in the middle, as upstream's does: black to
+ * white directly would never show the hue.
+ */
+function sliderTrack(display: Color, channel: ColorChannel, to: string): string {
+  const space = display.getChannelSpace(channel);
+  const color = display.toFormat(space);
+  const { minValue, maxValue } = color.getChannelRange(channel);
+  const values =
+    channel === "hue"
+      ? [0, 60, 120, 180, 240, 300, 360]
+      : channel === "lightness" && space === "hsl"
+        ? [minValue, (maxValue - minValue) / 2, maxValue]
+        : [minValue, maxValue];
+  const stops = values
+    .map((value) => color.withChannelValue(channel, value).toString("css"))
+    .join(", ");
+  return `linear-gradient(${interpolation(space)}to ${to}, ${stops}), ${CHECKERBOARD}`;
+}
+
 export interface ColorSliderOptions {
   trackRef: ElementRef;
   inputRef: ElementRef<HTMLInputElement>;
@@ -411,6 +475,8 @@ export interface ColorSliderOptions {
   form?: MaybeAccessor<string | undefined>;
   "aria-label"?: MaybeAccessor<string | undefined>;
   "aria-labelledby"?: MaybeAccessor<string | undefined>;
+  /** The caller's own style, laid over the track's rather than replacing it. */
+  style?: MaybeAccessor<Record<string, string | number | undefined> | undefined>;
 }
 
 export interface ColorSliderResult {
@@ -522,7 +588,24 @@ export function colorSlider(
         if (event.button !== 0) return;
         onTrackDown(event.clientX, event.clientY);
       },
-      style: { position: "relative", "touch-action": "none" },
+      // The track draws itself: up a vertical one, and towards the end of
+      // the line on a horizontal one. Forced colours would flatten it into
+      // nothing to choose from; a disabled one offers nothing, and has none.
+      style: () => ({
+        position: "relative",
+        "touch-action": "none",
+        "forced-color-adjust": "none",
+        ...(state.isDisabled()
+          ? {}
+          : {
+              background: sliderTrack(
+                state.displayColor(),
+                state.channel(),
+                isVertical() ? "top" : isMirrored() ? "left" : "right",
+              ),
+            }),
+        ...access(options.style),
+      }),
     }),
     thumbProps: {
       style: () => ({
@@ -531,6 +614,8 @@ export function colorSlider(
           `${(isVertical() || isMirrored() ? 1 - state.percent() : state.percent()) * 100}%`,
         transform: "translate(-50%, -50%)",
         "touch-action": "none",
+        "forced-color-adjust": "none",
+        "background-color": state.displayColor().toString("css"),
       }),
     },
     inputProps: mergeProps(fieldProps, {
@@ -1075,6 +1160,12 @@ export interface ColorWheelState {
   isDragging: Accessor<boolean>;
   setDragging(isDragging: boolean): void;
   isDisabled: Accessor<boolean>;
+  /**
+   * What the thumb and the ring show: the pure hue for an sRGB colour, as
+   * React Aria's does, and for a perceptual one the colour at its own
+   * lightness and chroma, which is what turning the wheel will give.
+   */
+  displayColor: Accessor<Color>;
 }
 
 /**
@@ -1147,6 +1238,14 @@ export function colorWheelState(options: ColorWheelStateOptions = {}): ColorWhee
     pageStep,
     isDragging: dragging,
     isDisabled,
+    displayColor: () => {
+      const current = value();
+      if (!hasPureHue(current.getColorSpace())) return current.withChannelValue("alpha", 1);
+      return parseColor("hsl(0, 100%, 50%)").withChannelValue(
+        "hue",
+        current.getChannelValue("hue"),
+      );
+    },
     setDragging: (next) => {
       const was = isDragging;
       isDragging = next;
@@ -1188,6 +1287,24 @@ export interface ColorWheelOptions {
   form?: MaybeAccessor<string | undefined>;
   "aria-label"?: MaybeAccessor<string | undefined>;
   "aria-labelledby"?: MaybeAccessor<string | undefined>;
+  /** The caller's own style, laid over the wheel's rather than replacing it. */
+  style?: MaybeAccessor<Record<string, string | number | undefined> | undefined>;
+}
+
+/** A circle as an SVG path, for cutting the hole out of the ring. */
+function circlePath(cx: number, cy: number, r: number): string {
+  return `M ${cx}, ${cy} m ${-r}, 0 a ${r}, ${r}, 0, 1, 0, ${r * 2}, 0 a ${r}, ${r}, 0, 1, 0 ${-r * 2}, 0`;
+}
+
+/**
+ * The ring: every hue at once, starting at three o'clock and running
+ * clockwise as the angle does.
+ */
+function wheelTrack(display: Color): string {
+  const stops = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330, 360]
+    .map((hue) => display.withChannelValue("hue", hue).toString("css"))
+    .join(", ");
+  return `conic-gradient(${interpolation(display.getColorSpace())}from 90deg, ${stops})`;
 }
 
 export interface ColorWheelResult {
@@ -1308,7 +1425,26 @@ export function colorWheel(options: ColorWheelOptions, state: ColorWheelState): 
         if (event.button !== 0) return;
         onTrackDown(event.clientX, event.clientY);
       },
-      style: { position: "relative", "touch-action": "none" },
+      // The ring draws itself, cut to the band between the radii. A disabled
+      // wheel offers no hue, and shows none.
+      style: () => {
+        const outer = access(options.outerRadius);
+        const inner = access(options.innerRadius);
+        return {
+          position: "relative",
+          "touch-action": "none",
+          "forced-color-adjust": "none",
+          width: `${outer * 2}px`,
+          height: `${outer * 2}px`,
+          ...(state.isDisabled()
+            ? {}
+            : {
+                background: wheelTrack(state.displayColor()),
+                "clip-path": `path(evenodd, "${circlePath(outer, outer, outer)} ${circlePath(outer, outer, inner)}")`,
+              }),
+          ...access(options.style),
+        };
+      },
     }),
     thumbProps: mergeProps(thumbMoveProps, {
       style: () => {
@@ -1319,6 +1455,8 @@ export function colorWheel(options: ColorWheelOptions, state: ColorWheelState): 
           top: `${position.y + access(options.outerRadius)}px`,
           transform: "translate(-50%, -50%)",
           "touch-action": "none",
+          "forced-color-adjust": "none",
+          "background-color": state.displayColor().toString("css"),
         };
       },
       onPointerDown: () => {
@@ -1868,6 +2006,7 @@ export function ColorSlider(props: ColorSliderComponentProps) {
         (props.label === undefined
           ? state.value().getChannelName(props.channel, locale().locale)
           : undefined),
+      style: () => props.style,
     },
     state,
   );
@@ -1877,10 +2016,11 @@ export function ColorSlider(props: ColorSliderComponentProps) {
   const { hoverProps, isHovered } = hover({ isDisabled: state.isDisabled });
 
   const elementProps = mergeProps(
-    trackProps,
     hoverProps,
     filterDOMProps(fromProps(cells(props)), { global: true }),
     styleProps(cells(props)),
+    // Last, so the track survives a `style` prop: the caller's is in it.
+    trackProps,
     {
       "data-orientation": state.orientation,
       "data-dragging": state.isDragging,
@@ -2029,9 +2169,9 @@ export interface ColorWheelComponentProps extends StyleProps {
  * <ColorWheel defaultValue="hsl(30, 100%, 50%)" onChange={(c) => colour.set(c)} />
  * ```
  *
- * The hue on a circle. The conic gradient that makes it look like a wheel is
- * the caller's to style; what is here is the geometry, the keyboard and the
- * hidden `<input type="range">` a screen reader announces.
+ * The hue on a circle: the ring draws itself, every hue at once, and under
+ * it are the geometry, the keyboard and the hidden `<input type="range">` a
+ * screen reader announces.
  */
 export function ColorWheel(props: ColorWheelComponentProps) {
   const trackRef = makeRef<HTMLDivElement>();
@@ -2063,6 +2203,7 @@ export function ColorWheel(props: ColorWheelComponentProps) {
       form: () => props.form,
       "aria-label": () => props["aria-label"],
       "aria-labelledby": () => props["aria-labelledby"],
+      style: () => props.style,
     },
     state,
   );
@@ -2071,20 +2212,15 @@ export function ColorWheel(props: ColorWheelComponentProps) {
   const { hoverProps, isHovered } = hover({ isDisabled: state.isDisabled });
 
   const elementProps = mergeProps(
-    trackProps,
     hoverProps,
     filterDOMProps(fromProps(cells(props)), { global: true }),
     styleProps(cells(props)),
+    // Last, so the ring survives a `style` prop: the caller's is in it.
+    trackProps,
     {
       "data-dragging": state.isDragging,
       "data-disabled": state.isDisabled,
       "data-testid": () => props["data-testid"],
-      style: () => ({
-        position: "relative",
-        "touch-action": "none",
-        width: `${outerRadius() * 2}px`,
-        height: `${outerRadius() * 2}px`,
-      }),
     },
   );
 

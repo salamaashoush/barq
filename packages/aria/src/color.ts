@@ -311,6 +311,14 @@ export abstract class Color {
     return make(space, values, this.alpha, this.sourceHue);
   }
 
+  /**
+   * The space this colour reads a channel in: its own when it has the
+   * channel, else the nearest that does. Alpha is in every space.
+   */
+  getChannelSpace(channel: ColorChannel): ColorSpace {
+    return channel === "alpha" ? this.getColorSpace() : homeOf(this.getColorSpace(), channel);
+  }
+
   getChannelRange(channel: ColorChannel): ColorChannelRange {
     return specOf(this.getColorSpace(), channel).range;
   }
