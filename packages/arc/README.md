@@ -44,6 +44,21 @@ top:
 its own. The rules sit in `@layer barq.theme`, and arc's components in
 `barq.arc`, after `@barqjs/ui`'s, so an app's own unlayered CSS beats both.
 
+## The provider
+
+```tsx
+import { ArcProvider } from "@barqjs/arc";
+
+<ArcProvider theme={{ base: "neutral", accent: "blue" }} locale="ar">
+  <App />
+</ArcProvider>;
+```
+
+It installs the theme, sets up `colorScheme` (light, dark and system, right on
+the first paint), provides the locale the components lay out by, and renders
+the toast stack and the host `confirm()` draws in. Every base component of
+`@barqjs/ui` is exported from here too, so an app imports from one place.
+
 ## Components
 
 ```tsx
