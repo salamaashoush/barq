@@ -11,6 +11,30 @@ export async function settle(ms = 15): Promise<void> {
   flush();
 }
 
+interface Watched {
+  readonly subscriberCount: number;
+  on(
+    event: "subscribers:change",
+    listener: (event: { subscriberCount: number }) => void,
+  ): () => void;
+}
+
+/**
+ * Resolves once `collection` has `count` subscribers. A live query a hook let go
+ * of is released on its collection's GC timer, then an idle callback, then an
+ * async cleanup: a chain a fixed sleep loses to whenever the machine is slow.
+ */
+export function subscribers(collection: Watched, count: number): Promise<void> {
+  if (collection.subscriberCount === count) return Promise.resolve();
+  return new Promise((resolve) => {
+    const stop = collection.on("subscribers:change", (event) => {
+      if (event.subscriberCount !== count) return;
+      stop();
+      resolve();
+    });
+  });
+}
+
 export interface Channel {
   id: string;
   workspace_id: string;

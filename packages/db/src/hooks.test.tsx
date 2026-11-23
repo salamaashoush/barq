@@ -25,7 +25,7 @@ import {
   useLiveSuspenseQuery,
   usePacedMutations,
 } from "./index.ts";
-import { type Channel, type Message, settle, workspace } from "./test-helpers.ts";
+import { type Channel, type Message, settle, subscribers, workspace } from "./test-helpers.ts";
 
 const cleanups: Array<() => void> = [];
 
@@ -310,12 +310,14 @@ describe("owner disposal", () => {
         },
       });
     });
-    await settle();
+    flush();
+    await messagesCollection.toArrayWhenReady();
     expect(entered).toHaveLength(7);
     expect(messagesCollection.subscriberCount).toBe(2);
 
     dispose();
-    await settle();
+    flush();
+    await subscribers(messagesCollection, 0);
     expect(messagesCollection.subscriberCount).toBe(0);
   });
 });
