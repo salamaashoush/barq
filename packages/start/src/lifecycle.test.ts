@@ -78,3 +78,37 @@ describe("server setup", () => {
     expect(order).toEqual(["setup", "request", "closed"]);
   });
 });
+
+describe("around", () => {
+  test("wraps server functions and pages alike, with the request it is handed", async () => {
+    const { createFetchHandler } = await import("./serve.ts");
+    const seen: string[] = [];
+    const handler = createFetchHandler({
+      fetch: (request) => {
+        seen.push(`page ${request.headers.get("cookie") ?? "none"}`);
+        return new Response("page");
+      },
+      around: async (request, next) => {
+        const headers = new Headers(request.headers);
+        headers.delete("cookie");
+        const response = await next(new Request(request, { headers }));
+        const out = new Response(response.body, response);
+        out.headers.set("x-around", "1");
+        return out;
+      },
+    });
+    const page = await handler(
+      new Request("http://localhost/about", {
+        // A second header, because Bun 1.4 builds `new Request(request, { headers })`
+        // with the ORIGINAL headers when the replacement is empty.
+        headers: { cookie: "sid=1", accept: "text/html" },
+      }),
+    );
+    expect(page.headers.get("x-around")).toBe("1");
+    expect(seen).toEqual(["page none"]);
+
+    const call = await handler(new Request("http://localhost/_barq/fn/missing.data"));
+    expect(call.headers.get("x-around")).toBe("1");
+    expect(seen).toEqual(["page none"]);
+  });
+});

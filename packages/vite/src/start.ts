@@ -36,6 +36,7 @@ import {
   ASSET_MANIFEST_FILE,
   type AssetManifest,
   headersFor,
+  nativeRequest,
   runSetups,
 } from "@barqjs/start/serve";
 import type { ServerSetup } from "@barqjs/start";
@@ -492,7 +493,7 @@ function defaultServeEntry(
   root: string,
 ): string {
   const assets = server?.static ?? true;
-  const options: string[] = [`fetch: handler.fetch`];
+  const options: string[] = [`fetch: handler.fetch`, `around: handler.around`];
   const setups = (server?.setup ?? []).map((path) => resolve(root, path));
   if (setups.length > 0) {
     options.push(`setup: [${setups.map((_, at) => `setup${at}`).join(", ")}]`);
@@ -573,10 +574,12 @@ function defaultServiceEntry(server: BarqServerOptions | undefined): string {
     ``,
     `const options = { ${options.join(", ")} };`,
     ``,
+    `const handle = async (request) =>`,
+    `  (await handleServerFn(request, options)) ?? handler.fetch(request);`,
+    ``,
     `export default {`,
-    `  async fetch(request) {`,
-    `    return (await handleServerFn(request, options)) ?? handler.fetch(request);`,
-    `  },`,
+    `  fetch: (request) =>`,
+    `    handler.around === undefined ? handle(request) : handler.around(request, handle),`,
     `};`,
     ``,
   ].join("\n");
@@ -1826,12 +1829,26 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
             await environment.runner.import(START_ENTRY_ID);
             await diagnostics.ready();
 
-            const response = await start.handleServerFn(new NodeRequest({ req, res }), {
-              allowedOrigins: options.allowedOrigins,
-              maxBodySize: options.server?.maxBodySize,
-              maxFormSize: options.server?.maxFormSize,
-              revealError: diagnostics.revealError,
-            });
+            const call = (request: Request): Promise<Response | null> =>
+              start.handleServerFn(request, {
+                allowedOrigins: options.allowedOrigins,
+                maxBodySize: options.server?.maxBodySize,
+                maxFormSize: options.server?.maxFormSize,
+                revealError: diagnostics.revealError,
+              });
+            // The entry's `around` wraps a call as it wraps a page, as the
+            // built server does.
+            const entry = await environment.runner.import<ServerEntryModule>(SERVER_ENTRY_ID);
+            const around = entry.default?.around;
+            const request = new NodeRequest({ req, res });
+            const response =
+              around === undefined
+                ? await call(request)
+                : await around(
+                    nativeRequest(request),
+                    async (passed) =>
+                      (await call(passed)) ?? new Response("not found", { status: 404 }),
+                  );
             if (response === null) {
               next();
               return;
@@ -1898,8 +1915,14 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
               "Default-export `createStartHandler()` from `@barqjs/router/server`, or an object with `fetch(request)` that returns a `Response`.",
           );
         }
-        built = { from: entry, fetch: fetchPage };
-        return fetchPage;
+        const around = entry.default?.around;
+        const fetch =
+          around === undefined
+            ? fetchPage
+            : async (request: Request): Promise<Response> =>
+                around(nativeRequest(request), fetchPage);
+        built = { from: entry, fetch };
+        return fetch;
       };
 
       // A WebSocket route answers the upgrade through the same page handler,

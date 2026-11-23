@@ -925,3 +925,21 @@ and Cloudflare take the same entry.
 `src/entry-client.tsx` and `src/entry-server.tsx` are overrides. The defaults
 are two lines each and the plugin supplies them; nothing in an application names
 a `virtual:` or `#`-prefixed specifier.
+
+An `entry-server` that has to see every request first, server functions and
+WebSocket upgrades included, wraps the handler with `createServerEntry`. Route
+by host, run inside an `AsyncLocalStorage`, hand `next` a different request,
+or change the response:
+
+```ts
+// src/entry-server.ts
+import { createServerEntry, createStartHandler } from "@barqjs/router/server";
+
+export default createServerEntry(createStartHandler(), (request, next) =>
+  paraglideMiddleware(request, () => next(request)),
+);
+```
+
+The dev server, `serve.js` and a host's `index` entry apply it the same way,
+and on Node it is handed the runtime's own `Request`, so
+`new Request(request, init)` works inside it.

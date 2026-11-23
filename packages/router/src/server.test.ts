@@ -39,6 +39,7 @@ import { HeadContent, Scripts } from "./components.ts";
 import {
   chainVerifier,
   createPageHandler,
+  createServerEntry,
   notFound,
   preloadTags,
   redirect,
@@ -3167,5 +3168,25 @@ describe("router options on the server", () => {
     const fromBefore = await handler(get("/before"));
     expect(fromBefore.status).toBe(404);
     expect(fromBefore.headers.get("x-reason")).toBe("retired");
+  });
+});
+
+describe("createServerEntry", () => {
+  test("keeps the handler's halves and adds the code around every request", async () => {
+    const page = async (): Promise<Response> => new Response("page");
+    const handler = {
+      fetch: page,
+      createFetch: () => page,
+      verifyChains: async () => "",
+    };
+    const around = async (
+      request: Request,
+      next: (request: Request) => Promise<Response>,
+    ): Promise<Response> => next(request);
+    const entry = createServerEntry(handler, around);
+    expect(entry.around).toBe(around);
+    expect(entry.fetch).toBe(page);
+    expect(entry.createFetch()).toBe(page);
+    expect(await entry.verifyChains(new Map())).toBe("");
   });
 });

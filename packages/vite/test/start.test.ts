@@ -12,6 +12,7 @@ import {
   ROUTER_ENTRY_ID,
   SERVER_ENTRY_ID,
   SERVE_ENTRY_ID,
+  SERVICE_ENTRY_ID,
   START_ENTRY_ID,
   barqStart,
 } from "../src/start.ts";
@@ -306,6 +307,14 @@ describe("the entries an application does not write", () => {
     );
     expect(code).toContain("setup: [setup0]");
     expect(code).toContain('headers: {"/pyodide/**":{"access-control-allow-origin":"*"}}');
+  });
+
+  test("passes the entry's around to the runnable server and wraps the host's entry with it", () => {
+    const plugin = entries();
+    const serve = plugin.load(plugin.resolveId(SERVE_ENTRY_ID) as string) ?? "";
+    expect(serve).toContain("around: handler.around");
+    const service = plugin.load(plugin.resolveId(SERVICE_ENTRY_ID) as string) ?? "";
+    expect(service).toContain("handler.around(request, handle)");
   });
 
   test("static serving is on by default, and its path resolves at RUNTIME", async () => {

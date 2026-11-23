@@ -61,6 +61,7 @@ import {
 import { provideRequestEvent } from "@barqjs/server/storage";
 import { crossOriginRefused, mountOnDemand, mounted, mountedFn } from "@barqjs/start/server";
 import { PRERENDER_HEADER } from "@barqjs/start/protocol";
+import type { AroundRequest } from "@barqjs/start/serve";
 
 import { type Redirect, NotFound, errorFallbackFor, isNotFound, isRedirect } from "./errors.ts";
 import { type LocationRewrite, rewriteHref } from "./rewrite.ts";
@@ -1845,6 +1846,31 @@ export interface StartHandler {
     extra?: Partial<PageHandlerOptions>,
   ) => (request: Request) => Promise<Response>;
   readonly verifyChains: (reachability: Reachability) => Promise<string>;
+  /** Code around every request, server functions included: see `createServerEntry`. */
+  readonly around?: AroundRequest;
+}
+
+/**
+ * A server entry that wraps every request the server answers, server
+ * functions and WebSocket upgrades as well as pages.
+ *
+ * For what has to see the request before the router does: routing by host,
+ * running the request inside an `AsyncLocalStorage`, a locale middleware that
+ * reads the URL and the cookie, a request with cookies stripped, or a change
+ * to the response on its way out. The dev server, `serve.js` and a host's
+ * `index` entry all apply it the same way.
+ *
+ * ```ts
+ * // src/entry-server.ts
+ * import { createServerEntry, createStartHandler } from "@barqjs/router/server";
+ *
+ * export default createServerEntry(createStartHandler(), (request, next) =>
+ *   paraglideMiddleware(request, () => next(request)),
+ * );
+ * ```
+ */
+export function createServerEntry(handler: StartHandler, around: AroundRequest): StartHandler {
+  return { ...handler, around };
 }
 
 /**

@@ -57,5 +57,10 @@ export interface ServerEntryModule {
     readonly verifyChains?: (
       reachability: ReadonlyMap<string, ReadonlySet<string>>,
     ) => string | Promise<string>;
+    /** Wraps every request, server functions included; see `AroundRequest` in `./serve`. */
+    readonly around?: (
+      request: Request,
+      next: (request: Request) => Promise<Response>,
+    ) => Response | Promise<Response>;
   };
 }

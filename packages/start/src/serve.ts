@@ -69,7 +69,22 @@ export interface BarqServeOptions extends Omit<ServerOptions, "fetch">, HandlerO
   headers?: HeaderRules;
   /** Run in order before the server takes a request; see `defineServerSetup`. */
   setup?: readonly ServerSetup[];
+  /**
+   * Code around every request this server answers, server functions and
+   * pages alike: `createServerEntry` in `@barqjs/router/server` sets it.
+   */
+  around?: AroundRequest;
 }
+
+/**
+ * Wrap the whole handling of a request: route it by host, run it inside an
+ * `AsyncLocalStorage`, hand `next` a different request, or change the
+ * response on its way out.
+ */
+export type AroundRequest = (
+  request: Request,
+  next: (request: Request) => Promise<Response>,
+) => Response | Promise<Response>;
 
 /**
  * One request, in the order the checks have to happen.
@@ -101,7 +116,7 @@ export function createFetchHandler(
       return missing;
     }
   };
-  return async (request: Request): Promise<Response> => {
+  const handle = async (request: Request): Promise<Response> => {
     const answered = await handleServerFn(request, options);
     if (answered !== null) return answered;
     const response = await page(request);
@@ -113,6 +128,19 @@ export function createFetchHandler(
     if (!(request.headers.get("accept") ?? "").includes("text/html")) return response;
     return spaDocument(document, response);
   };
+  const around = options.around;
+  return around === undefined ? handle : async (request) => around(nativeRequest(request), handle);
+}
+
+/**
+ * The request as the runtime's own `Request`.
+ *
+ * srvx hands Node requests over as a lazy stand-in, and undici refuses one as
+ * the input of `new Request(request, init)`, which is the first thing code
+ * that wraps a request writes. Materialised only where such code runs.
+ */
+export function nativeRequest(request: Request): Request {
+  return (request as { _request?: Request })._request ?? request;
 }
 
 /**
@@ -173,6 +201,7 @@ export async function serveBarq(options: BarqServeOptions = {}): Promise<Server>
     reachable: _reachable,
     static: assets,
     spa: _spa,
+    around: _around,
     headers,
     setup,
     middleware,
