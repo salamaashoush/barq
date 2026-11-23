@@ -26,6 +26,10 @@
  *   its month, and the roving focus is shared between them: one Tab stop, and
  *   an arrow off the end of one month lands in the next without the months
  *   changing places. A day drawn in two grids is the day in one of them only.
+ * - **A month is the calendar's own.** The grid is drawn in the calendar the
+ *   locale names, so a Hebrew year pages through thirteen months and a
+ *   Japanese one is headed with its era, and a month or year picker lists
+ *   what that year holds rather than twelve Gregorian names.
  */
 
 import {
@@ -41,6 +45,7 @@ import {
   type Incoming,
   provide,
   Repeat,
+  Show,
   createSignal,
   onSettled,
   untrack,
@@ -67,6 +72,7 @@ import {
   isEqualCalendar,
   isSameDay,
   isSameMonth,
+  isSameYear,
   type MappedDateValue,
   startOfMonth,
   startOfWeek,
@@ -1796,6 +1802,246 @@ export function calendarCell(
 }
 
 // ---------------------------------------------------------------------------
+// Month and year pickers
+// ---------------------------------------------------------------------------
+
+/** One month or year a picker offers. */
+export interface CalendarPickerItem {
+  /** The key a picker is changed with: the month's number, or the year's place in the list. */
+  id: number;
+  /** The day choosing it goes to. */
+  date: CalendarDate;
+  formatted: string;
+  /** Nothing in it can be reached: it lies outside the bounds. */
+  isDisabled: boolean;
+}
+
+export interface CalendarPickerResult {
+  /** The field's name in the locale: "month", "year". */
+  "aria-label": Accessor<string>;
+  /** The id of the item on show. */
+  value: Accessor<number>;
+  /** Go to an item, by its id. A select hands its value over as a string. */
+  onChange: (key: number | string | null) => void;
+  items: Accessor<CalendarPickerItem[]>;
+}
+
+interface PickerBase {
+  /**
+   * Which of the months on show the picker heads, counted from the first.
+   *
+   * Without one the picker follows the focused day and moves it, as upstream's
+   * does. With one it follows that month and turns the page to the month it
+   * is given, which is what a caption over each of several months needs.
+   */
+  monthOffset?: MaybeAccessor<number | undefined>;
+}
+
+export interface CalendarMonthPickerOptions extends PickerBase {
+  /** @default "short" */
+  format?: MaybeAccessor<"numeric" | "2-digit" | "long" | "short" | "narrow" | undefined>;
+}
+
+export interface CalendarYearPickerOptions extends PickerBase {
+  /** How many years are offered, around the one on show. @default 20 */
+  visibleYears?: MaybeAccessor<number | undefined>;
+  format?: MaybeAccessor<
+    { year?: "numeric" | "2-digit"; era?: "long" | "short" | "narrow" } | undefined
+  >;
+}
+
+/** A date field's name, in the locale. */
+function fieldName(locale: string, field: "month" | "year"): string {
+  try {
+    return new Intl.DisplayNames(locale, { type: "dateTimeField" }).of(field) ?? field;
+  } catch {
+    // `dateTimeField` is the second edition of `Intl.DisplayNames`, which an
+    // older engine does not have.
+    return field;
+  }
+}
+
+/** The day a picker counts from, and how choosing an item moves the calendar. */
+function pickerBasis(
+  options: PickerBase,
+  state: AnyCalendarState,
+): { base: () => CalendarDate; go: (date: CalendarDate) => void } {
+  return {
+    base: () => {
+      const offset = access(options.monthOffset);
+      return offset === undefined
+        ? state.focusedDate()
+        : state.visibleRange().start.add({ months: offset });
+    },
+    go: (date) => {
+      const offset = access(options.monthOffset);
+      if (offset === undefined) state.setFocusedDate(date);
+      else state.showMonth(date, offset);
+    },
+  };
+}
+
+/**
+ * The first and last day a picker may go to: the bounds on a value and the
+ * months the calendar can be paged to, whichever is tighter.
+ */
+function pickerBounds(state: AnyCalendarState): {
+  first: CalendarDate | null;
+  last: CalendarDate | null;
+} {
+  const min = state.minValue();
+  const max = state.maxValue();
+  const start = state.startMonth();
+  const end = state.endMonth();
+  const endDay = end === null ? null : endOfMonth(end);
+  return {
+    first: min === null ? start : start === null || min.compare(start) > 0 ? min : start,
+    last: max === null ? endDay : endDay === null || max.compare(endDay) < 0 ? max : endDay,
+  };
+}
+
+/**
+ * The months of the year on show, to choose one from.
+ *
+ * As many as the year has in its calendar: a Hebrew leap year has thirteen,
+ * so the list is built from the year and not from a constant. A month nothing
+ * of which can be reached is offered and marked, so a list does not change
+ * length as the year does.
+ */
+export function calendarMonthPicker(
+  options: CalendarMonthPickerOptions,
+  state: AnyCalendarState,
+): CalendarPickerResult {
+  const locale = useLocale();
+  const { base, go } = pickerBasis(options, state);
+  const format = calendarFormat(
+    () => ({ month: access(options.format) ?? "short" }),
+    state,
+    locale,
+  );
+
+  const items = createMemo((): CalendarPickerItem[] => {
+    const from = base();
+    const { first, last } = pickerBounds(state);
+    const zone = state.timeZone();
+    const count = from.calendar.getMonthsInYear(from);
+    return Array.from({ length: count }, (_, at) => {
+      const date = from.set({ month: at + 1 });
+      return {
+        id: at + 1,
+        date,
+        formatted: format().format(formattable(date).toDate(zone)),
+        isDisabled:
+          (first !== null && endOfMonth(date).compare(first) < 0) ||
+          (last !== null && startOfMonth(date).compare(last) > 0),
+      };
+    });
+  });
+
+  return {
+    "aria-label": () => fieldName(locale().locale, "month"),
+    value: () => base().month,
+    onChange: (key) => {
+      if (key === null) return;
+      const item = untrack(items)[Number(key) - 1];
+      if (item !== undefined) go(item.date);
+    },
+    items,
+  };
+}
+
+/** Whole years from one day's year to another's, counted by stepping through them. */
+function yearsBetween(from: CalendarDate, to: CalendarDate): number {
+  const step = to.compare(from) >= 0 ? 1 : -1;
+  let date = from;
+  let count = 0;
+  while (!isSameYear(date, to)) {
+    const next = date.add({ years: step });
+    // The end of the calendar system, or a year the step went past.
+    if (isSameDay(next, date) || (step > 0 ? next.compare(to) > 0 : next.compare(to) < 0)) {
+      return isSameYear(next, to) ? count + step : count;
+    }
+    date = next;
+    count += step;
+  }
+  return count;
+}
+
+/**
+ * The years around the one on show, to choose one from.
+ *
+ * Each is the day on show moved by whole years, so choosing one keeps the
+ * month and the day. The list is centred on the year on show and slides to
+ * stay inside the bounds, as upstream's does; a year at a bound goes to the
+ * bound's day. Its keys are places in the list rather than year numbers,
+ * because a Japanese year number repeats in every era.
+ */
+export function calendarYearPicker(
+  options: CalendarYearPickerOptions,
+  state: AnyCalendarState,
+): CalendarPickerResult {
+  const locale = useLocale();
+  const { base, go } = pickerBasis(options, state);
+  const format = calendarFormat(
+    () => {
+      const given = access(options.format);
+      return { year: given?.year ?? "numeric", era: given?.era ?? eraFormat(base()) };
+    },
+    state,
+    locale,
+  );
+
+  const items = createMemo((): CalendarPickerItem[] => {
+    const from = base();
+    const { first, last } = pickerBounds(state);
+    const count = Math.max(1, Math.floor(access(options.visibleYears) ?? 20));
+    const zone = state.timeZone();
+
+    let earliest = from.subtract({ years: Math.floor(count / 2) });
+    let latest = from.add({ years: Math.ceil(count / 2) - 1 });
+    if (last !== null && latest.compare(last) > 0) {
+      latest = last;
+      earliest = latest.subtract({ years: count - 1 });
+    }
+    if (first !== null && earliest.compare(first) < 0) {
+      earliest = first;
+      latest = earliest.add({ years: count - 1 });
+      if (last !== null && latest.compare(last) > 0) latest = last;
+    }
+
+    const list: CalendarPickerItem[] = [];
+    const end = yearsBetween(from, latest);
+    for (let step = yearsBetween(from, earliest); step <= end; step++) {
+      let date = from.add({ years: step });
+      if (first !== null && date.compare(first) < 0) date = first;
+      if (last !== null && date.compare(last) > 0) date = last;
+      list.push({
+        id: list.length,
+        date,
+        formatted: format().format(date.toDate(zone)),
+        isDisabled: false,
+      });
+    }
+    return list;
+  });
+
+  return {
+    "aria-label": () => fieldName(locale().locale, "year"),
+    value: () => {
+      const from = base();
+      const at = items().findIndex((item) => isSameYear(item.date, from));
+      return Math.max(at, 0);
+    },
+    onChange: (key) => {
+      if (key === null) return;
+      const item = untrack(items)[Number(key)];
+      if (item !== undefined) go(item.date);
+    },
+    items,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Components
 // ---------------------------------------------------------------------------
 
@@ -1853,6 +2099,12 @@ export interface CalendarComponentProps<T extends DateValue = CalendarDate> exte
   /** Said by the caller, whatever the value is. */
   isInvalid?: boolean;
   errorMessage?: Child;
+  /**
+   * The header between the page buttons, in place of the month's heading: a
+   * {@link CalendarMonthPicker} and a {@link CalendarYearPicker}, say. The
+   * grid is then named for its month itself.
+   */
+  children?: Child;
   "aria-label"?: string;
   "aria-labelledby"?: string;
   ref?: RefTarget<HTMLDivElement>;
@@ -2042,12 +2294,13 @@ function CalendarBody(incoming: CalendarBodyProps) {
     );
 
   const titleId = id();
+  const hasCaption = props.children !== undefined;
 
   const { gridProps, headerProps, weekDays, weeksInMonth, weekDates } = calendarGrid(
     {
       weekdayStyle: () => props.weekdayStyle?.(),
       fixedWeeks: () => props.fixedWeeks?.(),
-      "aria-labelledby": titleId,
+      "aria-labelledby": hasCaption ? undefined : titleId,
     },
     state,
   );
@@ -2074,7 +2327,9 @@ function CalendarBody(incoming: CalendarBodyProps) {
           <button {...previous.buttonProps} type="button" ref={prevRef.set}>
             <span aria-hidden="true">‹</span>
           </button>
-          <h2 id={titleId}>{title}</h2>
+          <Show when={hasCaption} fallback={<h2 id={titleId}>{title}</h2>}>
+            {props.children}
+          </Show>
           <button {...next.buttonProps} type="button" ref={nextRef.set}>
             <span aria-hidden="true">›</span>
           </button>
@@ -2164,6 +2419,66 @@ export function CalendarCell(props: CalendarCellComponentProps) {
       </div>
     </div>
   );
+}
+
+export interface CalendarMonthPickerComponentProps {
+  /** @default "short" */
+  format?: "numeric" | "2-digit" | "long" | "short" | "narrow";
+  /** Which of the months on show it heads. Without one it follows the focused day. */
+  monthOffset?: number;
+  /** Draws the picker: a select, a list box, anything that can take one of the items. */
+  children: (picker: CalendarPickerResult) => Child;
+}
+
+/**
+ * A month to go to, for a caption that is a picker rather than a heading.
+ *
+ * ```tsx
+ * <CalendarMonthPicker>
+ *   {(picker) => (
+ *     <select aria-label={picker["aria-label"]()} value={picker.value()}
+ *             onChange={(event) => picker.onChange(event.currentTarget.value)}>
+ *       <For each={picker.items}>{(item) => <option value={item.id}>{item.formatted}</option>}</For>
+ *     </select>
+ *   )}
+ * </CalendarMonthPicker>
+ * ```
+ */
+export function CalendarMonthPicker(props: CalendarMonthPickerComponentProps) {
+  const { state } = useCalendar();
+  const picker = calendarMonthPicker(
+    { format: () => props.format, monthOffset: () => props.monthOffset },
+    state,
+  );
+  // A render function written inline arrives as itself, one passed by name as
+  // a Cell around it.
+  const render = callback<[CalendarPickerResult], Child>(cells(props).children);
+  return <>{render?.(picker)}</>;
+}
+
+export interface CalendarYearPickerComponentProps {
+  /** How many years are offered, around the one on show. @default 20 */
+  visibleYears?: number;
+  format?: { year?: "numeric" | "2-digit"; era?: "long" | "short" | "narrow" };
+  /** Which of the months on show it heads. Without one it follows the focused day. */
+  monthOffset?: number;
+  /** Draws the picker. Its items are keyed by place, not by year number. */
+  children: (picker: CalendarPickerResult) => Child;
+}
+
+/** A year to go to, the month and day kept. */
+export function CalendarYearPicker(props: CalendarYearPickerComponentProps) {
+  const { state } = useCalendar();
+  const picker = calendarYearPicker(
+    {
+      visibleYears: () => props.visibleYears,
+      format: () => props.format,
+      monthOffset: () => props.monthOffset,
+    },
+    state,
+  );
+  const render = callback<[CalendarPickerResult], Child>(cells(props).children);
+  return <>{render?.(picker)}</>;
 }
 
 // ---------------------------------------------------------------------------

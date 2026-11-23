@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { type Child, createSignal, flush } from "@barqjs/core";
+import { type Child, createSignal, flush, For } from "@barqjs/core";
 import {
   accessibleDescription,
   accessibleName,
+  cleanup,
   expectNoAriaViolations,
   render,
   screen,
@@ -11,7 +12,12 @@ import {
 } from "@barqjs/testing";
 import {
   Calendar,
+  calendarMonthPicker,
+  CalendarMonthPicker,
+  type CalendarPickerItem,
+  type CalendarPickerResult,
   calendarState,
+  CalendarYearPicker,
   dateMatches,
   MultipleCalendar,
   multipleCalendarState,
@@ -1307,5 +1313,263 @@ describe("a value with a time", () => {
       "2024-03-11T15:00:00",
       "2024-03-13T11:00:00",
     ]);
+  });
+});
+
+describe("month and year pickers", () => {
+  /**
+   * The options of a picker, the way a page would list them in a select:
+   * keyed by id, so an option stays the same element while the list is
+   * rebuilt around it and the select keeps what it shows.
+   */
+  function Options(props: { picker: CalendarPickerResult }) {
+    const picker = props.picker;
+    return (
+      <For each={() => picker.items().map((item) => item.id)}>
+        {(key: number) => {
+          const item = (): CalendarPickerItem | undefined =>
+            picker.items().find((one) => one.id === key);
+          return (
+            <option
+              value={key}
+              disabled={item()?.isDisabled === true}
+              data-date={String(item()?.date)}
+            >
+              {() => item()?.formatted}
+            </option>
+          );
+        }}
+      </For>
+    );
+  }
+
+  const changed =
+    (picker: CalendarPickerResult) =>
+    (event: Event): void =>
+      picker.onChange((event.currentTarget as HTMLSelectElement).value);
+
+  function Appointment(props: {
+    defaultFocusedValue?: CalendarDate;
+    focusedValue?: CalendarDate;
+    minValue?: CalendarDate;
+    maxValue?: CalendarDate;
+    visibleYears?: number;
+  }) {
+    // The name comes through a labelling element: a select whose value and
+    // name are both bound has its value written before its options exist.
+    return (
+      <Calendar
+        aria-label="Appointment date"
+        defaultFocusedValue={props.defaultFocusedValue}
+        focusedValue={props.focusedValue}
+        minValue={props.minValue}
+        maxValue={props.maxValue}
+      >
+        <CalendarMonthPicker>
+          {(picker) => (
+            <span>
+              <span id="month-name">{picker["aria-label"]()}</span>
+              <select
+                aria-labelledby="month-name"
+                value={String(picker.value())}
+                onChange={changed(picker)}
+              >
+                <Options picker={picker} />
+              </select>
+            </span>
+          )}
+        </CalendarMonthPicker>
+        <CalendarYearPicker visibleYears={props.visibleYears}>
+          {(picker) => (
+            <span>
+              <span id="year-name">{picker["aria-label"]()}</span>
+              <select
+                aria-labelledby="year-name"
+                value={String(picker.value())}
+                onChange={changed(picker)}
+              >
+                <Options picker={picker} />
+              </select>
+            </span>
+          )}
+        </CalendarYearPicker>
+      </Calendar>
+    );
+  }
+
+  const month = (): HTMLSelectElement =>
+    screen.getByRole<HTMLSelectElement>("combobox", { name: "month" });
+  const year = (): HTMLSelectElement =>
+    screen.getByRole<HTMLSelectElement>("combobox", { name: "year" });
+  const texts = (select: HTMLSelectElement): string[] =>
+    [...select.options].map((option) => option.textContent ?? "");
+  function choose(select: HTMLSelectElement, value: string): void {
+    select.value = value;
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+    flush();
+  }
+
+  test("a month and a year select take the heading's place, and the grid names its month", () => {
+    render(() => <Appointment defaultFocusedValue={new CalendarDate(2026, 4, 1)} />);
+    const grid = screen.getByRole("grid");
+    expect(screen.queryByRole("heading")).toBeNull();
+    expect(accessibleName(grid)).toBe("April 2026");
+
+    expect(month().value).toBe("4");
+    expect(texts(month())).toEqual([
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ]);
+    choose(month(), "6");
+    expect(month().value).toBe("6");
+    expect(accessibleName(grid)).toBe("June 2026");
+
+    expect(year().value).toBe("10");
+    expect(texts(year())).toEqual(Array.from({ length: 20 }, (_, at) => String(at + 2016)));
+    choose(year(), "14");
+    // The list centres on the year chosen, and the month is kept.
+    expect(year().value).toBe("10");
+    expect(texts(year())).toEqual(Array.from({ length: 20 }, (_, at) => String(at + 2020)));
+    expect(accessibleName(grid)).toBe("June 2030");
+  });
+
+  test("the years stop at maxValue, at minValue, or at both", () => {
+    const listed = (): string[] => texts(year());
+
+    render(() => (
+      <Appointment
+        defaultFocusedValue={new CalendarDate(2026, 4, 1)}
+        maxValue={new CalendarDate(2026, 6, 30)}
+      />
+    ));
+    expect(listed()).toEqual(Array.from({ length: 20 }, (_, at) => String(2007 + at)));
+    cleanup();
+
+    render(() => (
+      <Appointment
+        defaultFocusedValue={new CalendarDate(2026, 4, 1)}
+        minValue={new CalendarDate(2020, 6, 30)}
+      />
+    ));
+    expect(listed()).toEqual(Array.from({ length: 20 }, (_, at) => String(2020 + at)));
+    cleanup();
+
+    render(() => (
+      <Appointment
+        defaultFocusedValue={new CalendarDate(2026, 4, 1)}
+        minValue={new CalendarDate(2020, 6, 30)}
+        maxValue={new CalendarDate(2026, 6, 30)}
+      />
+    ));
+    expect(listed()).toEqual(Array.from({ length: 7 }, (_, at) => String(2020 + at)));
+  });
+
+  test("a year at a bound goes to the bound's day, and the others keep the day on show", () => {
+    render(() => (
+      <Appointment
+        focusedValue={new CalendarDate(2025, 2, 1)}
+        minValue={new CalendarDate(2024, 8, 3)}
+        maxValue={new CalendarDate(2025, 2, 3)}
+      />
+    ));
+    expect(texts(year())).toEqual(["2024", "2025"]);
+    expect(year().value).toBe("1");
+    const dates = [...year().options].map((option) => option.getAttribute("data-date"));
+    expect(dates).toEqual(["2024-08-03", "2025-02-01"]);
+  });
+
+  test("visibleYears sets how many years are offered", () => {
+    render(() => (
+      <Appointment defaultFocusedValue={new CalendarDate(2026, 6, 30)} visibleYears={1} />
+    ));
+    expect(texts(year())).toEqual(["2026"]);
+  });
+
+  test("a Hebrew leap year offers thirteen months, and an ordinary one twelve", () => {
+    render(() => (
+      <InLocale tag="en-US-u-ca-hebrew">
+        <Appointment defaultFocusedValue={new CalendarDate(2023, 9, 16)} />
+      </InLocale>
+    ));
+    expect(month().options).toHaveLength(13);
+    expect(texts(month())).toContain("Adar II");
+
+    choose(year(), String(year().selectedIndex + 1));
+    expect(month().options).toHaveLength(12);
+  });
+
+  test("a Japanese year is named with its era, and the list runs across eras", () => {
+    render(() => (
+      <InLocale tag="en-US-u-ca-japanese">
+        <Appointment defaultFocusedValue={new CalendarDate(2020, 6, 1)} />
+      </InLocale>
+    ));
+    const names = texts(year());
+    expect(names[year().selectedIndex]).toBe("Reiwa 2");
+    expect(names[0]).toBe("Heisei 22");
+    choose(year(), "0");
+    expect(accessibleName(screen.getByRole("grid"))).toBe("June Heisei 22");
+  });
+
+  test("a month nothing of which can be reached is marked", () => {
+    render(() => (
+      <Appointment
+        defaultFocusedValue={new CalendarDate(2024, 3, 7)}
+        minValue={new CalendarDate(2024, 2, 20)}
+        maxValue={new CalendarDate(2024, 10, 1)}
+      />
+    ));
+    const open = [...month().options].filter((option) => !option.disabled);
+    expect(open.map((option) => option.value)).toEqual([
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "7",
+      "8",
+      "9",
+      "10",
+    ]);
+  });
+
+  test("a picker over one of several months follows that month and turns the page to it", () => {
+    let state: CalendarState | undefined;
+    let second: CalendarPickerResult | undefined;
+    function Probe() {
+      state = calendarState({
+        defaultFocusedValue: new CalendarDate(2024, 3, 7),
+        visibleMonths: 2,
+        selectionAlignment: "start",
+      });
+      second = calendarMonthPicker({ monthOffset: 1 }, state);
+      return <span />;
+    }
+    render(() => <Probe />);
+    const shown = state as CalendarState;
+    const picker = second as CalendarPickerResult;
+
+    expect(picker.value()).toBe(4);
+    picker.onChange("9");
+    flush();
+    expect(span(shown)).toEqual(["2024-08-01", "2024-09-30"]);
+    expect(picker.value()).toBe(9);
+  });
+
+  test("has no ARIA violations", () => {
+    const { container } = render(() => (
+      <Appointment defaultFocusedValue={new CalendarDate(2026, 4, 1)} />
+    ));
+    expectNoAriaViolations(container);
   });
 });
