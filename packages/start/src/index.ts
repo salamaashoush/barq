@@ -132,6 +132,7 @@ export {
   staticUrl,
 } from "./client.ts";
 export type { ServerFnInputAnswer, ServerFnIssue, ServerFnThrown } from "./client.ts";
+export { type ProxyOptions, proxyRequest } from "./proxy.ts";
 export { type ServerTiming, serverTiming } from "./timing.ts";
 export {
   type WebSocketError,

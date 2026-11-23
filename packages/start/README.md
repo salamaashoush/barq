@@ -687,6 +687,34 @@ Nitro and h3 run on, so a `defineWebSocketHandler` body moves over unchanged.
 built server takes them on Bun, Node and Deno. A plain `GET` to the address
 gets 426.
 
+## Proxying to another server
+
+When the API lives elsewhere, a route can relay to it, so the browser talks
+only to this origin: cookies stay first-party and nothing needs CORS.
+
+```ts
+import { createFileRoute } from "@barqjs/router";
+import { proxyRequest } from "@barqjs/start";
+
+export const Route = createFileRoute("/api/$")({
+  server: {
+    handlers: {
+      ANY: ({ request }) => {
+        const url = new URL(request.url);
+        return proxyRequest(request, `${process.env.API_URL}${url.pathname}${url.search}`);
+      },
+    },
+  },
+});
+```
+
+The body streams both ways, and hop-by-hop headers stay on their own hop.
+Redirects reach the client rather than being followed here, because a sign-in's
+303 carries cookies the browser has to receive with it, and a `Location` that
+points at the upstream is rewritten to this origin. The runtime asks upstream
+only for encodings it can decode, since `fetch` decodes what it gets back.
+`headers`, `drop`, `redirect`, `location` and `forwarded` change each of those.
+
 ## Subpaths
 
 - `@barqjs/start`: the isomorphic surface. `createServerFn`, `createMiddleware`,
