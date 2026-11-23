@@ -1573,3 +1573,53 @@ describe("month and year pickers", () => {
     expectNoAriaViolations(container);
   });
 });
+
+describe("the edges of a calendar system", () => {
+  /** The places of a week row: a day's number, or "" where there is no day. */
+  function row(index: number): string[] {
+    const rows = screen
+      .getAllByRole("row")
+      .filter((one) => one.getAttribute("aria-hidden") === null);
+    return [...(rows.at(index)?.children ?? [])].map((cell) => cell.textContent ?? "");
+  }
+  const pageButton = (name: string): HTMLButtonElement =>
+    screen.getByRole<HTMLButtonElement>("button", { name });
+
+  test("the Japanese calendar begins partway through a week, and the days before it are empty", () => {
+    render(() => (
+      <InLocale tag="en-US-u-ca-japanese">
+        <Calendar aria-label="Date" defaultFocusedValue={new CalendarDate(1868, 9, 12)} />
+      </InLocale>
+    ));
+
+    expect(screen.getAllByRole("columnheader", { hidden: true })).toHaveLength(7);
+    // Meiji 1, month 9, began on Tuesday the 8th.
+    expect(row(0)).toEqual(["", "", "8", "9", "10", "11", "12"]);
+    expect(pageButton("Previous month").disabled).toBe(true);
+    expect(pageButton("Next month").disabled).toBe(false);
+  });
+
+  test("the last month a calendar has ends where it does", () => {
+    render(() => (
+      <Calendar aria-label="Date" defaultFocusedValue={new CalendarDate(9999, 12, 12)} />
+    ));
+
+    // 31 December 9999 is a Friday, and there is no Saturday after it.
+    const last = row(-1);
+    expect(last).toEqual(["26", "27", "28", "29", "30", "31", ""]);
+    expect(pageButton("Next month").disabled).toBe(true);
+    expect(pageButton("Previous month").disabled).toBe(false);
+  });
+
+  test("an empty place is a cell with nothing to press", () => {
+    const { container } = render(() => (
+      <InLocale tag="en-US-u-ca-japanese">
+        <Calendar aria-label="Date" defaultFocusedValue={new CalendarDate(1868, 9, 12)} />
+      </InLocale>
+    ));
+    const first = screen.getAllByRole("gridcell")[0] as HTMLElement;
+    expect(first.textContent).toBe("");
+    expect(first.querySelector('[role="button"]')).toBeNull();
+    expectNoAriaViolations(container);
+  });
+});

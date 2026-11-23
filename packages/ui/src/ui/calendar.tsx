@@ -890,22 +890,36 @@ function CalendarMonth(incoming: MonthProps) {
               </Show>
               <Repeat count={7}>
                 {(column: number) => (
-                  <CalendarDay
-                    state={state}
-                    date={weekDates(at)[column] as CalendarDate}
-                    month={month()}
-                    showOutsideDays={props.showOutsideDays?.() !== false}
-                    variant={props.dayButtonVariant?.()}
-                    afterWeekNumber={numbered()}
-                    modifiers={props.modifiers?.()}
-                    modifiersClassNames={props.modifiersClassNames?.()}
-                    hidden={props.hidden?.()}
-                    onDayClick={props.onDayClick?.()}
-                    formatDay={props.formatters?.()?.formatDay}
-                    renderDay={callback<[CalendarDate, CalendarDayModifiers], Child>(
-                      props.renderDay,
-                    )}
-                  />
+                  // A place before the calendar system's first day or after
+                  // its last is a cell with nothing in it.
+                  <Show
+                    when={(weekDates(at)[column] ?? null) !== null}
+                    fallback={
+                      <div
+                        role="gridcell"
+                        data-slot="calendar-day"
+                        data-empty=""
+                        class={ui(day, numbered() ? dayAfterNumber : dayFirst)}
+                      />
+                    }
+                  >
+                    <CalendarDay
+                      state={state}
+                      date={weekDates(at)[column] as CalendarDate}
+                      month={month()}
+                      showOutsideDays={props.showOutsideDays?.() !== false}
+                      variant={props.dayButtonVariant?.()}
+                      afterWeekNumber={numbered()}
+                      modifiers={props.modifiers?.()}
+                      modifiersClassNames={props.modifiersClassNames?.()}
+                      hidden={props.hidden?.()}
+                      onDayClick={props.onDayClick?.()}
+                      formatDay={props.formatters?.()?.formatDay}
+                      renderDay={callback<[CalendarDate, CalendarDayModifiers], Child>(
+                        props.renderDay,
+                      )}
+                    />
+                  </Show>
                 )}
               </Repeat>
             </div>

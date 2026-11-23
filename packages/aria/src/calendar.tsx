@@ -1383,8 +1383,13 @@ export interface CalendarGridResult {
   /** The weekday names, from the locale, starting on its first day. */
   weekDays: Accessor<string[]>;
   weeksInMonth: Accessor<number>;
-  /** Every day of a week row, including the ones outside the month. */
-  weekDates: (week: number) => CalendarDate[];
+  /**
+   * Every day of a week row, including the ones outside the month. A place
+   * before the first day the calendar system has, or after its last, is null:
+   * the Japanese calendar begins with Meiji partway through a week, and a row
+   * keeps its seven columns with nothing in them.
+   */
+  weekDates: (week: number) => (CalendarDate | null)[];
   /** Which week of the year a row is, going by the row's first day. */
   weekNumber: (week: number) => number;
 }
@@ -1421,10 +1426,25 @@ export function calendarGrid(
       ? 6
       : (state.weeksInMonth() ?? getWeeksInMonth(month(), locale().locale, state.firstDayOfWeek()));
 
-  const weekDates = (week: number): CalendarDate[] => {
-    const first = startOfWeek(month(), locale().locale, state.firstDayOfWeek());
-    const start = first.add({ weeks: week });
-    return Array.from({ length: 7 }, (_, at) => start.add({ days: at }));
+  const weekDates = (week: number): (CalendarDate | null)[] => {
+    const tag = locale().locale;
+    const first = state.firstDayOfWeek();
+    let date = startOfWeek(month().add({ weeks: week }), tag, first);
+    // `startOfWeek` stops at the calendar's first day, which can fall in the
+    // middle of a week; the days before it do not exist.
+    const dates: (CalendarDate | null)[] = Array.from(
+      { length: getDayOfWeek(date, tag, first) },
+      () => null,
+    );
+    while (dates.length < 7) {
+      dates.push(date);
+      const next = date.add({ days: 1 });
+      // Adding stops moving at the calendar's last day.
+      if (isSameDay(next, date)) break;
+      date = next;
+    }
+    while (dates.length < 7) dates.push(null);
+    return dates;
   };
 
   const weekNumber = (week: number): number => {
@@ -2352,7 +2372,7 @@ function CalendarBody(incoming: CalendarBodyProps) {
             {(week: number) => (
               <div role="row">
                 <Repeat count={7}>
-                  {(at: number) => <CalendarCell date={weekDates(week)[at] as CalendarDate} />}
+                  {(at: number) => <DaySlot date={weekDates(week)[at] ?? null} />}
                 </Repeat>
               </div>
             )}
@@ -2361,6 +2381,15 @@ function CalendarBody(incoming: CalendarBodyProps) {
         <span {...errorMessageProps}>{props.errorMessage}</span>
       </div>
     </CalendarProvider>
+  );
+}
+
+/** A place in a week row: a day, or nothing where the calendar system has none. */
+function DaySlot(props: { date: CalendarDate | null }) {
+  return (
+    <Show when={props.date !== null} fallback={<div role="gridcell" />}>
+      <CalendarCell date={props.date as CalendarDate} />
+    </Show>
   );
 }
 

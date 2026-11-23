@@ -938,6 +938,28 @@ describe("Calendar, language and direction", () => {
     expect(accessibleName(iso("2024-03-07"))).toContain("jeudi 7 mars 2024");
   });
 
+  test("a day before the calendar system's first is an empty cell", () => {
+    render(() => (
+      <InLocale locale="en-US-u-ca-japanese">
+        <Calendar aria-label="Date" defaultFocusedValue={new CalendarDate(1868, 9, 12)} />
+      </InLocale>
+    ));
+    // Meiji began on Tuesday 8 September 1868, so the row's first two places are empty.
+    const first = all("calendar-week")[0] as HTMLElement;
+    const places = [...first.querySelectorAll('[data-slot="calendar-day"]')];
+    expect(places.map((place) => place.hasAttribute("data-empty"))).toEqual([
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]);
+    expect(places[2]?.textContent).toBe("8");
+    expect(at("calendar-nav-previous").hasAttribute("disabled")).toBe(true);
+  });
+
   test("the dropdown lists the months in the locale too", () => {
     render(() => (
       <InLocale locale="fr-FR">
