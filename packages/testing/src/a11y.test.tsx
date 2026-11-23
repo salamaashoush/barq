@@ -96,3 +96,22 @@ describe("the role of a `<section>`", () => {
     expect(role(container.querySelector("header") as HTMLElement)).toBe("generic");
   });
 });
+
+describe("required states", () => {
+  test("an option need not say whether it is selected, as ARIA 1.2 has it", () => {
+    const { container } = render(() => (
+      <ul role="listbox" aria-label="Fruit">
+        <li role="option" aria-selected="true">
+          Apple
+        </li>
+        <li role="option">Loading</li>
+      </ul>
+    ));
+    expect(ariaViolations(container)).toEqual([]);
+  });
+
+  test("a checkbox still has to say whether it is checked", () => {
+    const { container } = render(() => <div role="checkbox" aria-label="Agree" tabIndex={0} />);
+    expect(ariaViolations(container).map((found) => found.rule)).toEqual(["aria-required-attr"]);
+  });
+});

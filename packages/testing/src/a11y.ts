@@ -461,13 +461,19 @@ const ARIA_ATTRIBUTES: Record<
   "aria-valuetext": "string",
 };
 
-/** Attributes a role cannot do without. */
+/**
+ * Attributes a role cannot do without, as ARIA 1.2 lists them.
+ *
+ * Not `option`: ARIA 1.1 required `aria-selected` on it and 1.2 made it a
+ * supported state, absent meaning not selected. An option that cannot be
+ * selected, a loading row or an empty state's message, is right to leave it
+ * out, since `aria-selected="false"` tells a screen reader it could be.
+ */
 const REQUIRED_BY_ROLE: Record<string, readonly string[]> = {
   checkbox: ["aria-checked"],
   combobox: ["aria-expanded"],
   heading: ["aria-level"],
   meter: ["aria-valuenow"],
-  option: ["aria-selected"],
   radio: ["aria-checked"],
   scrollbar: ["aria-controls", "aria-valuenow"],
   separator: [],

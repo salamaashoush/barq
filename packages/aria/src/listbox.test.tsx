@@ -1703,8 +1703,23 @@ describe("loading more", () => {
     }
   });
 
-  test("the sentinel adds nothing a checker objects to", () => {
-    const { container } = render(() => <Loading />);
+  test("the sentinel and the loading option add nothing a checker objects to", () => {
+    const { container, unmount } = render(() => <Loading />);
+    expectNoAriaViolations(container);
+    unmount();
+    const loading = render(() => <Loading isLoading />);
+    expectNoAriaViolations(loading.container);
+  });
+
+  test("an empty state and a loader together have no ARIA violations", () => {
+    const { container } = render(() => (
+      <Loading
+        items={[{ id: "loader", name: "Loading", kind: "loader" }]}
+        isLoading
+        renderEmptyState={(_list: ListBoxRenderState) => "No fruit"}
+      />
+    ));
+    expect(screen.getAllByRole("option")).toHaveLength(2);
     expectNoAriaViolations(container);
   });
 
