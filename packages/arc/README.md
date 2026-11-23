@@ -99,6 +99,9 @@ if (await confirm({ title: "Delete the check?", tone: "danger", confirmLabel: "D
   from the cookie, so the page hydrates without a flicker.
 - `CopyButton`: puts a value on the clipboard, turns to a check for a moment
   and tells a screen reader through a live region.
+- `DetailSheet`: a record's detail in a sheet from the reading direction's
+  end, in four widths. Its open state is the caller's, its own, or a search
+  parameter's, so the detail has a link and closing takes the parameter out.
 - `EmptyState`: a list with nothing in it yet, as an icon, a heading, a line
   and the actions that fill it, on `@barqjs/ui`'s `Empty`.
 - `PageHeader`: the page's `<h1>`, a line about it, what sits above it and the

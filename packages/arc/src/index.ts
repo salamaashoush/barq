@@ -19,6 +19,12 @@ export {
 export { ConfirmHost, type ConfirmOptions, confirm } from "./components/confirm.tsx";
 export { CopyButton, type CopyButtonProps } from "./components/copy-button.tsx";
 export {
+  DetailSheet,
+  type DetailSheetProps,
+  type DetailSheetSize,
+  detailSheetVariants,
+} from "./components/detail-sheet.tsx";
+export {
   EmptyState,
   type EmptyStateProps,
   type EmptyStateVariant,
