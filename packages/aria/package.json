@@ -353,6 +353,11 @@
       "barq": "./src/table.tsx",
       "bun": "./src/table.tsx"
     },
+    "./table-column-layout": {
+      "types": "./src/table-column-layout.ts",
+      "barq": "./src/table-column-layout.ts",
+      "bun": "./src/table-column-layout.ts"
+    },
     "./tabs": {
       "types": "./src/tabs.tsx",
       "barq": "./src/tabs.tsx",

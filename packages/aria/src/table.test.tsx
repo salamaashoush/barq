@@ -9,6 +9,7 @@ import {
   user,
   within,
 } from "@barqjs/testing";
+import { ref as makeRef } from "@barqjs/primitives/refs";
 import { Button } from "./button.tsx";
 import type { Key } from "./collections.ts";
 import { dragSession, type DroppableCollectionReorderEvent, type DropTarget } from "./dnd/index.ts";
@@ -27,12 +28,19 @@ import {
   restoreRects,
   stubRects,
 } from "./test-dnd.ts";
+import { provideDirection, provideLocale } from "./i18n.ts";
+import type { ColumnSize } from "./table-column-layout.ts";
 import { stubIntersections } from "./test-load-more.ts";
 import { listLayout, Virtualizer } from "./virtualizer.tsx";
 import {
   Cell,
   Column,
+  type ColumnRenderState,
+  ColumnResizer,
+  ResizableTableContainer,
   Row,
+  tableColumnResize,
+  useColumn,
   Table,
   TableBody,
   TableExpandButton,
@@ -1885,5 +1893,882 @@ describe("loading more", () => {
     expect(loader.style.height).toBe("40px");
     const box = container.querySelector("[data-load-more-sentinel]")?.parentElement;
     expect(box?.style.top).toBe("1000px");
+  });
+});
+
+describe("column resizing", () => {
+  interface Sized {
+    id: string;
+    name: string;
+    width?: ColumnSize;
+    defaultWidth?: ColumnSize;
+    minWidth?: number | `${number}%`;
+    maxWidth?: number | `${number}%`;
+  }
+
+  interface Monster {
+    id: number;
+    name: string;
+    type: string;
+    level: string;
+    weight: string;
+    height: string;
+    [key: string]: unknown;
+  }
+
+  const MONSTERS: Monster[] = [
+    { id: 1, name: "Charizard", type: "Fire", level: "67", weight: "200lbs", height: "5'7" },
+    { id: 2, name: "Blastoise", type: "Water", level: "56", weight: "188lbs", height: "5'3" },
+  ];
+
+  const DEFAULT: Sized[] = [
+    { name: "Name", id: "name", width: "1fr" },
+    { name: "Type", id: "type", width: "1fr" },
+    { name: "Height", id: "height" },
+    { name: "Weight", id: "weight" },
+    { name: "Level", id: "level", width: "5fr" },
+  ];
+
+  /** The same columns, starting at those widths rather than held to them. */
+  const UNCONTROLLED: Sized[] = DEFAULT.map(({ width, ...column }) => ({
+    ...column,
+    defaultWidth: width,
+  }));
+
+  let tableWidth = 900;
+  const realWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
+  let observed: ((entries: { target: Element }[]) => void) | null = null;
+  const RealObserver = globalThis.ResizeObserver;
+
+  beforeEach(() => {
+    tableWidth = 900;
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get: () => tableWidth,
+    });
+    observed = null;
+    const targets: Element[] = [];
+    globalThis.ResizeObserver = class {
+      constructor(callback: (entries: { target: Element }[]) => void) {
+        observed = (entries) =>
+          callback(entries.length > 0 ? entries : targets.map((target) => ({ target })));
+      }
+      observe(target: Element): void {
+        targets.push(target);
+      }
+      unobserve(): void {}
+      disconnect(): void {}
+    } as unknown as typeof ResizeObserver;
+  });
+
+  afterEach(() => {
+    if (realWidth !== undefined)
+      Object.defineProperty(HTMLElement.prototype, "clientWidth", realWidth);
+    globalThis.ResizeObserver = RealObserver;
+    destroyAnnouncer();
+  });
+
+  interface ResizeHandlers {
+    onResizeStart?: (widths: Map<Key, ColumnSize>) => void;
+    onResize?: (widths: Map<Key, ColumnSize>) => void;
+    onResizeEnd?: (widths: Map<Key, ColumnSize>) => void;
+  }
+
+  function Resizable(props: ResizeHandlers & { columns: Sized[] }) {
+    return (
+      <ResizableTableContainer
+        onResizeStart={props.onResizeStart}
+        onResize={props.onResize}
+        onResizeEnd={props.onResizeEnd}
+      >
+        <Table aria-label="Monsters" columns={props.columns} items={MONSTERS}>
+          <TableHeader>
+            {(column: Sized) => (
+              <Column>
+                {column.name}
+                <ColumnResizer />
+              </Column>
+            )}
+          </TableHeader>
+          <TableBody>
+            {(monster: Monster) => (
+              <Row>{(column: Sized) => <Cell>{String(monster[column.id])}</Cell>}</Row>
+            )}
+          </TableBody>
+        </Table>
+      </ResizableTableContainer>
+    );
+  }
+
+  /** Widths written back to the columns from `onResize`, as a controlled table does. */
+  function Controlled(props: ResizeHandlers & { columns?: Sized[] }) {
+    const given = (): Sized[] => props.columns ?? DEFAULT;
+    const [widths, setWidths] = createSignal(
+      new Map<Key, ColumnSize>(
+        given()
+          .filter((column) => column.width !== undefined)
+          .map((column) => [column.id, column.width as ColumnSize]),
+      ),
+    );
+    return (
+      <Resizable
+        columns={given().map((column) => ({ ...column, width: widths().get(column.id) }))}
+        onResizeStart={props.onResizeStart}
+        onResize={(next) => {
+          setWidths(next);
+          props.onResize?.(next);
+        }}
+        onResizeEnd={props.onResizeEnd}
+      />
+    );
+  }
+
+  interface Recorder {
+    (widths: Map<Key, ColumnSize>): void;
+    calls: Map<Key, ColumnSize>[];
+  }
+
+  /** A handler that keeps what it was called with. It declares its parameter, as a handler must. */
+  function recorder(): Recorder {
+    const calls: Map<Key, ColumnSize>[] = [];
+    const handler = (widths: Map<Key, ColumnSize>): void => {
+      calls.push(widths);
+    };
+    return Object.assign(handler, { calls });
+  }
+
+  function widthsOf(): number[] {
+    return screen
+      .getAllByRole("columnheader")
+      .map((each) => Number(each.style.width.replace("px", "")));
+  }
+
+  function columnHeader(name: string): HTMLElement {
+    for (const each of screen.getAllByRole("columnheader")) {
+      if ((each.textContent ?? "").startsWith(name)) return each;
+    }
+    throw new Error(`No column ${name}`);
+  }
+
+  function slider(name: string): HTMLInputElement {
+    return within(columnHeader(name)).getByRole<HTMLInputElement>("slider");
+  }
+
+  function pointer(type: string, target: EventTarget, x: number): void {
+    const event = new PointerEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      pointerId: 1,
+      pointerType: "mouse",
+      button: 0,
+      clientX: x,
+      clientY: 0,
+    });
+    Object.defineProperty(event, "pageX", { value: x });
+    Object.defineProperty(event, "pageY", { value: 0 });
+    target.dispatchEvent(event);
+  }
+
+  /** Drag a column's handle `delta` pixels along. */
+  function resizeColumn(name: string, delta: number): void {
+    const handle = slider(name).parentElement as HTMLElement;
+    pointer("pointerdown", handle, 0);
+    flush();
+    pointer("pointermove", handle, delta);
+    flush();
+    pointer("pointerup", handle, delta);
+    // A press ends at the click a browser sends after the pointer comes up.
+    handle.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }));
+    flush();
+  }
+
+  function resizeTable(width: number): void {
+    tableWidth = width;
+    observed?.([]);
+    flush();
+  }
+
+  function byName(names: string[], widths: ColumnSize[]): Map<Key, ColumnSize> {
+    return new Map(widths.map((width, at) => [(names[at] as string).toLowerCase(), width]));
+  }
+
+  describe("initial widths", () => {
+    const cases: [string, Sized[], number[]][] = [
+      [
+        "with no widths, an equal share",
+        [
+          { name: "Name", id: "name" },
+          { name: "Type", id: "type" },
+          { name: "Level", id: "level" },
+        ],
+        [300, 300, 300],
+      ],
+      [
+        "pixels",
+        [
+          { name: "Name", id: "name", defaultWidth: 100 },
+          { name: "Type", id: "type", defaultWidth: 100 },
+          { name: "Level", id: "level", defaultWidth: 400 },
+        ],
+        [100, 100, 400],
+      ],
+      [
+        "percentages",
+        [
+          { name: "Name", id: "name", defaultWidth: "50%" },
+          { name: "Type", id: "type", defaultWidth: "16%" },
+          { name: "Level", id: "level", defaultWidth: "33%" },
+        ],
+        [450, 144, 297],
+      ],
+      [
+        "shares of the rest",
+        [
+          { name: "Name", id: "name", defaultWidth: "4fr" },
+          { name: "Type", id: "type", defaultWidth: "3fr" },
+          { name: "Level", id: "level", defaultWidth: "2fr" },
+        ],
+        [400, 300, 200],
+      ],
+      [
+        "a mix",
+        [
+          { name: "Name", id: "name", defaultWidth: "50%" },
+          { name: "Type", id: "type", defaultWidth: "2fr" },
+          { name: "Level", id: "level", defaultWidth: 100 },
+          { name: "Height", id: "height" },
+        ],
+        [450, 233, 100, 117],
+      ],
+      [
+        "one share left takes all the rest, whatever it is worth",
+        [
+          { name: "Name", id: "name", defaultWidth: "50%" },
+          { name: "Type", id: "type", defaultWidth: 100 },
+          { name: "Level", id: "level", defaultWidth: 100 },
+          { name: "Height", id: "height" },
+        ],
+        [450, 100, 100, 250],
+      ],
+      [
+        "never under a minWidth",
+        [
+          { name: "Name", id: "name", minWidth: 500, defaultWidth: "50%" },
+          { name: "Type", id: "type", minWidth: 100, defaultWidth: "1fr" },
+          { name: "Level", id: "level", minWidth: 150, defaultWidth: 100 },
+          { name: "Height", id: "height", minWidth: 200 },
+        ],
+        [500, 100, 150, 200],
+      ],
+      [
+        "never over a maxWidth",
+        [
+          { name: "Name", id: "name", maxWidth: 400, defaultWidth: "50%" },
+          { name: "Type", id: "type", maxWidth: 100, defaultWidth: "1fr" },
+          { name: "Level", id: "level", maxWidth: 100, defaultWidth: 150 },
+          { name: "Height", id: "height", maxWidth: 100 },
+        ],
+        [400, 100, 100, 100],
+      ],
+      [
+        "a minWidth as a percentage",
+        [
+          { name: "Name", id: "name", minWidth: "50%", defaultWidth: "30%" },
+          { name: "Type", id: "type", maxWidth: 100, defaultWidth: "1fr" },
+          { name: "Level", id: "level", maxWidth: 100, defaultWidth: 100 },
+          { name: "Height", id: "height", maxWidth: 100 },
+        ],
+        [450, 100, 100, 100],
+      ],
+      [
+        "a maxWidth as a percentage",
+        [
+          { name: "Name", id: "name", maxWidth: "50%", defaultWidth: "70%" },
+          { name: "Type", id: "type", maxWidth: 100, defaultWidth: "1fr" },
+          { name: "Level", id: "level", maxWidth: 100, defaultWidth: 100 },
+          { name: "Height", id: "height", maxWidth: 100 },
+        ],
+        [450, 100, 100, 100],
+      ],
+    ];
+    for (const [name, columns, expected] of cases) {
+      test(name, () => {
+        render(() => <Resizable columns={columns} />);
+        expect(widthsOf()).toEqual(expected);
+      });
+    }
+
+    test("every cell is as wide as its column", () => {
+      render(() => <Resizable columns={UNCONTROLLED} />);
+      const cells = within(screen.getAllByRole("row")[1] as HTMLElement).getAllByText(/./);
+      expect(cells.map((each) => each.style.width)).toEqual([
+        "100px",
+        "100px",
+        "100px",
+        "100px",
+        "500px",
+      ]);
+    });
+  });
+
+  describe("dragging", () => {
+    const names = ["Name", "Type", "Height", "Weight", "Level"];
+    const cases: [string, number, number[], ColumnSize[]][] = [
+      ["Name", -50, [75, 103, 103, 103, 516], [75, "1fr", "1fr", "1fr", "5fr"]],
+      ["Name", 50, [150, 94, 94, 93, 469], [150, "1fr", "1fr", "1fr", "5fr"]],
+      ["Type", -50, [100, 75, 104, 103, 518], [100, 75, "1fr", "1fr", "5fr"]],
+      ["Type", 50, [100, 150, 93, 93, 464], [100, 150, "1fr", "1fr", "5fr"]],
+      ["Height", -50, [100, 100, 75, 104, 521], [100, 100, 75, "1fr", "5fr"]],
+      ["Height", 50, [100, 100, 150, 92, 458], [100, 100, 150, "1fr", "5fr"]],
+      ["Weight", -50, [100, 100, 100, 75, 525], [100, 100, 100, 75, "5fr"]],
+      ["Weight", 50, [100, 100, 100, 150, 450], [100, 100, 100, 150, "5fr"]],
+      ["Level", -50, [100, 100, 100, 100, 450], [100, 100, 100, 100, 450]],
+      ["Level", 50, [100, 100, 100, 100, 550], [100, 100, 100, 100, 550]],
+    ];
+    for (const [column, delta, expected, reported] of cases) {
+      test(`${column} by ${delta}px`, () => {
+        const onResize = recorder();
+        const onResizeEnd = recorder();
+        render(() => <Controlled onResize={onResize} onResizeEnd={onResizeEnd} />);
+        expect(widthsOf()).toEqual([100, 100, 100, 100, 500]);
+
+        resizeColumn(column, delta);
+
+        expect(widthsOf()).toEqual(expected);
+        expect(onResize.calls).toHaveLength(1);
+        expect(onResize.calls[0]).toEqual(byName(names, reported));
+        screen.getAllByRole("slider").forEach((each, at) => {
+          expect((each as HTMLInputElement).value).toBe(String(expected[at]));
+          expect(each.getAttribute("min")).toBe("75");
+          expect(each.getAttribute("max")).toBe(String(Number.MAX_SAFE_INTEGER));
+        });
+        expect(onResizeEnd.calls).toHaveLength(1);
+        expect(onResizeEnd.calls[0]).toEqual(byName(names, reported));
+      });
+    }
+
+    test("never under a minWidth, first column to last", () => {
+      const columns: Sized[] = [
+        { name: "Name", id: "name", width: "1fr", minWidth: 100 },
+        { name: "Type", id: "type", width: "1fr", minWidth: 100 },
+        { name: "Height", id: "height", minWidth: 100 },
+        { name: "Weight", id: "weight", minWidth: 100 },
+        { name: "Level", id: "level", width: "4fr", minWidth: 100 },
+      ];
+      render(() => <Controlled columns={columns} />);
+      resizeColumn("Name", -50);
+      expect(widthsOf()).toEqual([100, 114, 115, 114, 457]);
+      resizeColumn("Type", -50);
+      expect(widthsOf()).toEqual([100, 100, 117, 116, 467]);
+      resizeColumn("Height", -100);
+      expect(widthsOf()).toEqual([100, 100, 100, 120, 480]);
+      resizeColumn("Weight", -100);
+      expect(widthsOf()).toEqual([100, 100, 100, 100, 500]);
+      resizeColumn("Level", -500);
+      expect(widthsOf()).toEqual([100, 100, 100, 100, 100]);
+    });
+
+    test("never over a maxWidth, last column to first", () => {
+      const columns: Sized[] = [
+        { name: "Name", id: "name", width: "1fr", maxWidth: 150 },
+        { name: "Type", id: "type", width: "1fr", maxWidth: 150 },
+        { name: "Height", id: "height", maxWidth: 200 },
+        { name: "Weight", id: "weight", maxWidth: 200 },
+        { name: "Level", id: "level", width: "4fr", maxWidth: 500 },
+      ];
+      render(() => <Controlled columns={columns} />);
+      resizeColumn("Level", 150);
+      expect(widthsOf()).toEqual([113, 112, 113, 112, 500]);
+      resizeColumn("Weight", 150);
+      expect(widthsOf()).toEqual([113, 112, 113, 200, 500]);
+      resizeColumn("Height", 100);
+      expect(widthsOf()).toEqual([113, 112, 200, 200, 500]);
+      resizeColumn("Type", 100);
+      expect(widthsOf()).toEqual([113, 150, 200, 200, 500]);
+      resizeColumn("Name", 400);
+      expect(widthsOf()).toEqual([150, 150, 200, 200, 500]);
+      const max = [150, 150, 200, 200, 500];
+      screen.getAllByRole("slider").forEach((each, at) => {
+        expect(each.getAttribute("max")).toBe(String(max[at]));
+      });
+    });
+
+    test("the shares to the right keep their ratios, and the last column fixes the left", () => {
+      render(() => (
+        <Controlled
+          columns={DEFAULT.map((column) => ({
+            ...column,
+            width: column.id === "level" ? "4fr" : column.width,
+          }))}
+        />
+      ));
+      expect(widthsOf()).toEqual([113, 112, 113, 112, 450]);
+      resizeColumn("Name", -50);
+      expect(widthsOf()).toEqual([75, 118, 118, 118, 471]);
+      resizeColumn("Name", 38);
+      expect(widthsOf()).toEqual([113, 112, 113, 112, 450]);
+      resizeColumn("Level", -50);
+      expect(widthsOf()).toEqual([113, 112, 113, 112, 400]);
+    });
+
+    test("uncontrolled, a drag is kept and reported even when it moved nothing", () => {
+      const onResizeEnd = recorder();
+      render(() => (
+        <Resizable
+          columns={[
+            { name: "Name", id: "name" },
+            { name: "Type", id: "type", defaultWidth: "3fr" },
+            { name: "Level", id: "level" },
+            { name: "Height", id: "height", defaultWidth: "5fr" },
+          ]}
+          onResizeEnd={onResizeEnd}
+        />
+      ));
+      expect(widthsOf()).toEqual([90, 270, 90, 450]);
+      resizeColumn("Type", 0);
+      expect(widthsOf()).toEqual([90, 270, 90, 450]);
+      expect(onResizeEnd.calls[0]).toEqual(
+        byName(["Name", "Type", "Level", "Height"], [90, 270, "1fr", "5fr"]),
+      );
+      resizeColumn("Type", 30);
+      expect(widthsOf()).toEqual([90, 300, 85, 425]);
+    });
+
+    test("onResizeStart has the widths before the drag", () => {
+      const onResizeStart = recorder();
+      render(() => (
+        <Controlled
+          columns={DEFAULT.map((column) => ({
+            ...column,
+            width: column.id === "level" ? "4fr" : column.width,
+          }))}
+          onResizeStart={onResizeStart}
+        />
+      ));
+      resizeColumn("Height", -50);
+      expect(onResizeStart.calls).toHaveLength(1);
+      expect(onResizeStart.calls[0]).toEqual(
+        byName(["Name", "Type", "Height", "Weight", "Level"], [113, 112, 113, "1fr", "4fr"]),
+      );
+    });
+
+    test("a column taken away and put back", () => {
+      const [columns, setColumns] = createSignal<Sized[]>([
+        { name: "Name", id: "name", width: "1fr" },
+        { name: "Type", id: "type", width: "1fr" },
+        { name: "Height", id: "height" },
+        { name: "Weight", id: "weight" },
+        { name: "Level", id: "level", width: "4fr" },
+      ]);
+      render(() => <Resizable columns={columns()} />);
+      expect(widthsOf()).toEqual([113, 112, 113, 112, 450]);
+      setColumns(columns().filter((column) => column.id !== "weight"));
+      flush();
+      expect(widthsOf()).toEqual([129, 128, 129, 514]);
+    });
+
+    test("while a mouse drags, a layer carries the cursor over the page", () => {
+      render(() => <Resizable columns={UNCONTROLLED} />);
+      const handle = slider("Name").parentElement as HTMLElement;
+      expect(handle.getAttribute("role")).toBe("presentation");
+      pointer("pointerdown", handle, 0);
+      flush();
+      expect(document.querySelector("[data-resizer-cursor]")).toBeNull();
+      pointer("pointermove", handle, 10);
+      flush();
+      expect(document.querySelector("[data-resizer-cursor]")).not.toBeNull();
+      expect(handle.hasAttribute("data-resizing")).toBe(true);
+      expect(columnHeader("Name").hasAttribute("data-resizing")).toBe(true);
+      pointer("pointerup", handle, 10);
+      flush();
+      expect(document.querySelector("[data-resizer-cursor]")).toBeNull();
+      expect(handle.hasAttribute("data-resizing")).toBe(false);
+    });
+
+    test("a drag in a right-to-left table is mirrored", () => {
+      render(() => {
+        const localeProps = provideLocale(() => "ar-AE");
+        return (
+          <div {...localeProps}>
+            <Resizable columns={UNCONTROLLED} />
+          </div>
+        );
+      });
+      resizeColumn("Name", -50);
+      expect(widthsOf()[0]).toBe(150);
+    });
+  });
+
+  describe("the table's own width", () => {
+    test("leaves pixels alone", () => {
+      render(() => (
+        <Resizable
+          columns={[
+            { name: "Name", id: "name", width: 100 },
+            { name: "Type", id: "type", width: 100 },
+            { name: "Height", id: "height" },
+            { name: "Weight", id: "weight" },
+            { name: "Level", id: "level", width: 400 },
+          ]}
+        />
+      ));
+      expect(widthsOf()).toEqual([100, 100, 150, 150, 400]);
+      resizeTable(1000);
+      expect(widthsOf()).toEqual([100, 100, 200, 200, 400]);
+    });
+
+    test("scales percentages", () => {
+      render(() => (
+        <Resizable
+          columns={[
+            { name: "Name", id: "name", width: "20%" },
+            { name: "Type", id: "type", width: "20%" },
+            { name: "Height", id: "height" },
+            { name: "Weight", id: "weight" },
+            { name: "Level", id: "level", width: "40%" },
+          ]}
+        />
+      ));
+      expect(widthsOf()).toEqual([180, 180, 90, 90, 360]);
+      resizeTable(1000);
+      expect(widthsOf()).toEqual([200, 200, 100, 100, 400]);
+    });
+
+    test("shares out the rest after percentages", () => {
+      render(() => (
+        <Resizable
+          columns={[
+            { name: "Name", id: "name", width: "1fr" },
+            { name: "Type", id: "type", width: "20%" },
+            { name: "Height", id: "height", width: "20%" },
+            { name: "Weight", id: "weight" },
+            { name: "Level", id: "level", width: "4fr" },
+          ]}
+        />
+      ));
+      expect(widthsOf()).toEqual([90, 180, 180, 90, 360]);
+      resizeTable(1000);
+      expect(widthsOf()).toEqual([100, 200, 200, 100, 400]);
+    });
+  });
+
+  describe("the resizer", () => {
+    test("is a slider named by itself and its column, its value in pixels", () => {
+      render(() => <Resizable columns={UNCONTROLLED} />);
+      const input = slider("Type");
+      expect(input.getAttribute("type")).toBe("range");
+      expect(input.getAttribute("aria-label")).toBe("Resizer");
+      expect(input.getAttribute("aria-orientation")).toBe("horizontal");
+      expect(input.getAttribute("aria-valuetext")).toBe("100 pixels");
+      const ids = input.getAttribute("aria-labelledby")?.split(" ") ?? [];
+      expect(ids).toEqual([input.id, columnHeader("Type").id]);
+      expect(accessibleName(input)).toContain("Type");
+      // Hidden from sight, present for assistive technology.
+      expect(input.style.position).toBe("absolute");
+    });
+
+    test("says pixels in the reader's language", () => {
+      render(() => {
+        const localeProps = provideLocale(() => "de-DE");
+        return (
+          <div {...localeProps}>
+            <Resizable columns={UNCONTROLLED} />
+          </div>
+        );
+      });
+      expect(slider("Name").getAttribute("aria-valuetext")).toBe("100 Pixel");
+      expect(slider("Name").getAttribute("aria-label")).toBe("Größenanpassung");
+    });
+
+    test("says which way it can still go", () => {
+      render(() => (
+        <Resizable
+          columns={[
+            { name: "Name", id: "name", width: 75 },
+            { name: "Type", id: "type", width: 200, maxWidth: 200 },
+            { name: "Level", id: "level" },
+          ]}
+        />
+      ));
+      const direction = (name: string): string | null =>
+        (slider(name).parentElement as HTMLElement).getAttribute("data-resizable-direction");
+      expect(direction("Name")).toBe("left");
+      expect(direction("Type")).toBe("right");
+      expect(direction("Level")).toBe("both");
+    });
+
+    test("Enter starts a resize, the arrows resize by ten, and Escape ends it", () => {
+      const onResizeEnd = recorder();
+      render(() => (
+        <Resizable
+          columns={[
+            { name: "Foo", id: "name" },
+            { name: "Bar", id: "type", maxWidth: 200 },
+            { name: "Baz", id: "level", maxWidth: 200 },
+          ]}
+          onResizeEnd={onResizeEnd}
+        />
+      ));
+      const input = slider("Foo");
+      input.focus();
+      user.keyboard("{Enter}");
+      flush();
+      expect(columnHeader("Foo").hasAttribute("data-resizing")).toBe(true);
+      expect(widthsOf()).toEqual([500, 200, 200]);
+
+      user.keyboard("{ArrowRight}{ArrowRight}");
+      flush();
+      expect(input.value).toBe("520");
+      expect(widthsOf()).toEqual([520, 190, 190]);
+      user.keyboard("{ArrowLeft}{ArrowLeft}");
+      flush();
+      expect(widthsOf()).toEqual([500, 200, 200]);
+      user.keyboard("{ArrowUp}{ArrowUp}");
+      flush();
+      expect(widthsOf()).toEqual([520, 190, 190]);
+      user.keyboard("{ArrowDown}{ArrowDown}");
+      flush();
+      expect(widthsOf()).toEqual([500, 200, 200]);
+      // The grid's own arrows were off the whole time.
+      expect(document.activeElement).toBe(input);
+
+      user.keyboard("{Escape}");
+      flush();
+      expect(onResizeEnd.calls).toHaveLength(1);
+      expect(onResizeEnd.calls[0]).toEqual(
+        new Map<Key, ColumnSize>([
+          ["name", 500],
+          ["type", "1fr"],
+          ["level", "1fr"],
+        ]),
+      );
+      expect(columnHeader("Foo").hasAttribute("data-resizing")).toBe(false);
+      // Ended, the arrows are the grid's again and resize nothing.
+      user.keyboard("{ArrowRight}");
+      flush();
+      expect(widthsOf()).toEqual([500, 200, 200]);
+    });
+
+    test("Enter again, Space or Tab also end a resize", () => {
+      const onResizeEnd = recorder();
+      render(() => <Resizable columns={UNCONTROLLED} onResizeEnd={onResizeEnd} />);
+      const input = slider("Name");
+      input.focus();
+      for (const key of ["{Enter}", " ", "{Tab}"]) {
+        user.keyboard("{Enter}");
+        flush();
+        expect(columnHeader("Name").hasAttribute("data-resizing")).toBe(true);
+        input.focus();
+        user.keyboard(key);
+        flush();
+        expect(columnHeader("Name").hasAttribute("data-resizing")).toBe(false);
+        input.focus();
+      }
+      expect(onResizeEnd.calls).toHaveLength(3);
+    });
+
+    test("the arrows are mirrored in a right-to-left table", () => {
+      render(() => {
+        const directionProps = provideDirection(() => "rtl");
+        return (
+          <div {...directionProps}>
+            <Resizable columns={UNCONTROLLED} />
+          </div>
+        );
+      });
+      slider("Name").focus();
+      user.keyboard("{Enter}{ArrowLeft}");
+      flush();
+      expect(widthsOf()[0]).toBe(110);
+    });
+
+    test("a screen reader's own increment is a ten-pixel step", () => {
+      const onResize = recorder();
+      render(() => <Resizable columns={UNCONTROLLED} onResize={onResize} />);
+      const input = slider("Name");
+      input.value = "101";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      flush();
+      expect(widthsOf()[0]).toBe(110);
+      input.value = "109";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      flush();
+      expect(widthsOf()[0]).toBe(100);
+    });
+
+    test("a controlled table keeps the resize and the focus across its rebuilt headers", () => {
+      render(() => <Controlled />);
+      slider("Name").focus();
+      user.keyboard("{Enter}");
+      flush();
+      user.keyboard("{ArrowRight}");
+      flush();
+      expect(widthsOf()[0]).toBe(110);
+      expect(document.activeElement).toBe(slider("Name"));
+      user.keyboard("{ArrowRight}");
+      flush();
+      expect(widthsOf()[0]).toBe(120);
+      user.keyboard("{Escape}");
+      flush();
+      expect(columnHeader("Name").hasAttribute("data-resizing")).toBe(false);
+    });
+
+    test("from the column's menu: focus moves to the resizer, and back when it ends", async () => {
+      const onResizeEnd = recorder();
+      render(() => (
+        <ResizableTableContainer onResizeEnd={onResizeEnd}>
+          <Table aria-label="Monsters" columns={UNCONTROLLED} items={MONSTERS}>
+            <TableHeader>
+              {(column: Sized) => (
+                <Column>
+                  {(state: ColumnRenderState) => (
+                    <>
+                      <Button onPress={() => state.startResize()}>Resize {column.name}</Button>
+                      <ColumnResizer />
+                    </>
+                  )}
+                </Column>
+              )}
+            </TableHeader>
+            <TableBody>
+              {(monster: Monster) => (
+                <Row>{(column: Sized) => <Cell>{String(monster[column.id])}</Cell>}</Row>
+              )}
+            </TableBody>
+          </Table>
+        </ResizableTableContainer>
+      ));
+      user.click(screen.getByRole("button", { name: "Resize Name" }));
+      flush();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      flush();
+      const input = within(screen.getAllByRole("columnheader")[0] as HTMLElement).getByRole(
+        "slider",
+      );
+      expect(document.activeElement).toBe(input);
+      user.keyboard("{ArrowRight}");
+      flush();
+      expect(widthsOf()[0]).toBe(110);
+      user.keyboard("{Escape}");
+      flush();
+      expect(document.activeElement).toBe(screen.getAllByRole("columnheader")[0] as HTMLElement);
+      expect(onResizeEnd.calls).toHaveLength(1);
+    });
+
+    test("always visible and with nothing to start it, it says Enter starts a resize", () => {
+      function OwnResizer() {
+        const grid = useTable();
+        const column = useColumn();
+        const input = makeRef<HTMLInputElement>();
+        const state = grid.columnResize;
+        if (state === undefined) throw new Error("No resizable container");
+        const { inputProps, resizerProps } = tableColumnResize(
+          { column, "aria-label": "Resize" },
+          state,
+          input,
+        );
+        return (
+          <div {...resizerProps}>
+            <input {...inputProps} ref={input.set} />
+          </div>
+        );
+      }
+      render(() => (
+        <ResizableTableContainer>
+          <Table aria-label="Monsters" columns={UNCONTROLLED} items={MONSTERS}>
+            <TableHeader>
+              {(column: Sized) => (
+                <Column>
+                  {column.name}
+                  <OwnResizer />
+                </Column>
+              )}
+            </TableHeader>
+            <TableBody>
+              {(monster: Monster) => (
+                <Row>{(column: Sized) => <Cell>{String(monster[column.id])}</Cell>}</Row>
+              )}
+            </TableBody>
+          </Table>
+        </ResizableTableContainer>
+      ));
+      const input = slider("Name");
+      user.tab();
+      flush();
+      const described = (): string[] =>
+        (input.getAttribute("aria-describedby") ?? "")
+          .split(" ")
+          .filter((each) => each !== "")
+          .map((each) => document.getElementById(each)?.textContent ?? "");
+      expect(described()).toEqual(["Press Enter to start resizing"]);
+      input.focus();
+      user.keyboard("{Enter}");
+      flush();
+      expect(described()).toEqual([]);
+    });
+
+    test("starting a resize outside a container says what to do", () => {
+      let caught: unknown = null;
+      render(() => (
+        <Table aria-label="Monsters" columns={DEFAULT} items={MONSTERS}>
+          <TableHeader>
+            {(column: Sized) => (
+              <Column>
+                {(state: ColumnRenderState) => (
+                  <Button
+                    onPress={() => {
+                      try {
+                        state.startResize();
+                      } catch (error) {
+                        caught = error;
+                      }
+                    }}
+                  >
+                    {column.name}
+                  </Button>
+                )}
+              </Column>
+            )}
+          </TableHeader>
+          <TableBody>
+            {(monster: Monster) => (
+              <Row>{(column: Sized) => <Cell>{String(monster[column.id])}</Cell>}</Row>
+            )}
+          </TableBody>
+        </Table>
+      ));
+      user.click(screen.getByRole("button", { name: "Name" }));
+      expect(String(caught)).toContain("ResizableTableContainer");
+      expect(screen.getAllByRole("columnheader")[0]?.style.width).toBe("");
+    });
+  });
+
+  test("virtualised, rows are as wide as the columns when those overflow the viewport", () => {
+    render(() => (
+      <ResizableTableContainer>
+        <Virtualizer layout={listLayout({ rowHeight: 20 })}>
+          <Table
+            aria-label="Monsters"
+            columns={DEFAULT.map((column) => ({ ...column, width: 400 }))}
+            items={MONSTERS}
+            style={{ overflow: "auto" }}
+          >
+            <TableHeader>{(column: Sized) => <Column>{column.name}</Column>}</TableHeader>
+            <TableBody>
+              {(monster: Monster) => (
+                <Row>{(column: Sized) => <Cell>{String(monster[column.id])}</Cell>}</Row>
+              )}
+            </TableBody>
+          </Table>
+        </Virtualizer>
+      </ResizableTableContainer>
+    ));
+    const grid = screen.getByRole("grid");
+    Object.defineProperty(grid, "clientHeight", { value: 100, configurable: true });
+    grid.dispatchEvent(new Event("scroll"));
+    flush();
+    const body = screen.getAllByRole("row")[1] as HTMLElement;
+    expect(body.style.position).toBe("absolute");
+    expect(body.style.width).toBe("2000px");
   });
 });

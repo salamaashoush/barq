@@ -38,7 +38,8 @@ import {
   Show,
   untrack,
 } from "@barqjs/core";
-import { isServer } from "@barqjs/web";
+import { isServer, Portal } from "@barqjs/web";
+import { resizeObserver } from "@barqjs/primitives/observers";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import type {
   ItemAccessors,
@@ -89,6 +90,7 @@ import {
   contains,
   isScrollable,
   ownerDocument,
+  ownerWindow,
   PREVENT_FOCUS_ATTRIBUTE,
   targetElement,
 } from "./dom.ts";
@@ -100,9 +102,18 @@ import {
 } from "./grid-selection.ts";
 import { SelectionIndicatorProvider } from "./selection-indicator.tsx";
 import { SharedElementTransition } from "./shared-element-transition.tsx";
+import {
+  type ColumnSize,
+  type ColumnStaticSize,
+  type TableColumnResizeState,
+  tableColumnResizeState,
+} from "./table-column-layout.ts";
 import { collator, StringDictionary, stringFormatter, useLocale } from "./i18n.ts";
+import { description as descriptionFor } from "./interactions/description.ts";
 import { focusSafely } from "./interactions/focusable.ts";
-import { hover } from "./interactions/hover.ts";
+import { hover, type HoverEvent } from "./interactions/hover.ts";
+import { modality } from "./interactions/modality.ts";
+import { move } from "./interactions/move.ts";
 import { press, type ElementRef } from "./interactions/press.ts";
 import { visuallyHidden } from "./live.ts";
 import {
@@ -153,6 +164,12 @@ export interface TableColumnProps {
   allowsSorting?: boolean;
   /** This column's cells identify their row. */
   isRowHeader?: boolean;
+  /** Controls the width, inside a `<ResizableTableContainer>`. */
+  width?: ColumnSize | null;
+  /** Where the width starts, inside a `<ResizableTableContainer>`. */
+  defaultWidth?: ColumnSize | null;
+  minWidth?: ColumnStaticSize | null;
+  maxWidth?: ColumnStaticSize | null;
   [key: string]: unknown;
 }
 
@@ -618,13 +635,19 @@ export interface TableState<R, C> {
   disabledKeys: Accessor<Set<Key>>;
   sortDescriptor: Accessor<SortDescriptor | undefined>;
   showSelectionCheckboxes: Accessor<boolean>;
-  /** Sort by a column, flipping the direction when it is already the one. */
-  sort(column: Key): void;
+  /** Sort by a column in `direction`, or flipping it when it is already the one. */
+  sort(column: Key, direction?: "ascending" | "descending"): void;
   treeColumn?: Accessor<Key | null>;
   expandedKeys?: Accessor<Set<Key>>;
   /** Expand a collapsed row, or collapse an expanded one. */
   toggleKey?(key: Key): void;
   keyboardNavigationBehavior?: Accessor<TableKeyboardNavigationBehavior>;
+  /**
+   * Whether the arrows and typeahead are off, while a control in the table
+   * (a column being resized) has taken the keys for itself.
+   */
+  isKeyboardNavigationDisabled?: Accessor<boolean>;
+  setKeyboardNavigationDisabled?(disabled: boolean): void;
 }
 
 /**
@@ -698,6 +721,33 @@ function repairFocus<R, C>(
   );
 }
 
+const WIDTH_PROPS = new Set(["width", "defaultWidth", "minWidth", "maxWidth"]);
+
+/** Whether two records differ in nothing but their width options. */
+function sameButWidthIn(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
+  const left = a as Record<string, unknown>;
+  const right = b as Record<string, unknown>;
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+  for (const key of keys) {
+    if (!WIDTH_PROPS.has(key) && left[key] !== right[key]) return false;
+  }
+  return true;
+}
+
+/** Whether a rebuilt column is the same column with, at most, another width. */
+function sameButWidth<C>(kept: Node<C>, column: Node<C>): boolean {
+  return (
+    kept.textValue === column.textValue &&
+    kept.type === column.type &&
+    kept.childNodes.length === 0 &&
+    column.childNodes.length === 0 &&
+    sameButWidthIn(kept.value, column.value) &&
+    sameButWidthIn(kept.props, column.props)
+  );
+}
+
 function namedText(item: unknown): string | null {
   const record = item as Record<string, unknown> | null | undefined;
   const text = record?.textValue ?? record?.label ?? record?.name ?? record?.title;
@@ -719,12 +769,25 @@ export function tableState<R, C>(options: TableStateOptions<R, C>): TableState<R
   // Built apart from the flattening, so expanding a row keeps every node it
   // already had: a list keyed by node would otherwise rebuild each row, and
   // the cell holding focus with it.
+  // A column whose width is all that changed keeps its node, so its header and
+  // its cells are not built again: a table whose widths are controlled writes
+  // a new width on every step of a resize, and rebuilding the header would
+  // take the resizer being dragged out from under the pointer.
+  let previousColumns = new Map<Key, Node<C>>();
   const built = createMemo(() => {
     // Accessors are a value like any other prop, so a component hands them
     // over as a Cell around the object.
     const columns = [
       ...buildCollection(access(options.columns) ?? [], access(options.columnAccessors) ?? {}),
-    ];
+    ].map((column) => {
+      const kept = previousColumns.get(column.key);
+      if (kept === undefined || !sameButWidth(kept, column)) return column;
+      kept.value = column.value;
+      kept.props = column.props;
+      kept.index = column.index;
+      return kept;
+    });
+    previousColumns = new Map(columns.map((column) => [column.key, column]));
     const declared = columns.filter((column) => column.props?.isRowHeader === true);
     const headers = declared.length > 0 ? declared : columns.slice(0, 1);
 
@@ -789,9 +852,12 @@ export function tableState<R, C>(options: TableStateOptions<R, C>): TableState<R
   );
 
   repairFocus(collection, selectionManager, selection);
+  const [isKeyboardNavigationDisabled, setKeyboardNavigationDisabled] = createSignal(false);
 
   return {
     collection,
+    isKeyboardNavigationDisabled,
+    setKeyboardNavigationDisabled: (disabled) => setKeyboardNavigationDisabled(disabled),
     selectionManager,
     disabledKeys: selection.disabledKeys,
     treeColumn,
@@ -806,14 +872,15 @@ export function tableState<R, C>(options: TableStateOptions<R, C>): TableState<R
     sortDescriptor: () => access(options.sortDescriptor),
     showSelectionCheckboxes: () =>
       access(options.showSelectionCheckboxes) ?? selection.selectionMode() === "multiple",
-    sort: (column) => {
+    sort: (column, given) => {
       const current = access(options.sortDescriptor);
       // The same column again flips the direction; a different one starts
       // ascending, because that is what a first click on a column means.
       const direction =
-        current?.column === column && current.direction === "ascending"
+        given ??
+        (current?.column === column && current.direction === "ascending"
           ? "descending"
-          : "ascending";
+          : "ascending");
       options.onSortChange?.({ column, direction });
     },
   };
@@ -845,8 +912,12 @@ export interface TableResult {
   baseId: Accessor<string>;
 }
 
+/** Each table's id, keyed by its state, for the parts that name its headers. */
+const tableIds = new WeakMap<object, Accessor<string>>();
+
 export function table<R, C>(options: TableOptions, state: TableState<R, C>): TableResult {
   const baseId = id();
+  tableIds.set(state, baseId);
   const locale = useLocale();
   const search = collator({ usage: "search", sensitivity: "base" });
 
@@ -871,6 +942,11 @@ export function table<R, C>(options: TableOptions, state: TableState<R, C>): Tab
     // focus lands on would select cells.
     selectOnFocus: false,
   });
+  // While a control has the keys, the grid moves nothing and searches nothing.
+  const navigate = collectionProps.onKeyDown as ((event: KeyboardEvent) => void) | undefined;
+  collectionProps.onKeyDown = (event: KeyboardEvent): void => {
+    if (state.isKeyboardNavigationDisabled?.() !== true) navigate?.(event);
+  };
 
   const descriptionProps = highlightSelectionDescription({
     selectionManager: state.selectionManager,
@@ -1067,41 +1143,251 @@ export interface TableRowResult {
   hasChildRows: Accessor<boolean>;
 }
 
-const strings = new StringDictionary<"expand" | "collapse">({
-  "ar-AE": { expand: "تمديد", collapse: "طي" },
-  "bg-BG": { expand: "Разширяване", collapse: "Свиване" },
-  "cs-CZ": { expand: "Roztáhnout", collapse: "Sbalit" },
-  "da-DK": { expand: "Udvid", collapse: "Skjul" },
-  "de-DE": { expand: "Erweitern", collapse: "Reduzieren" },
-  "el-GR": { expand: "Ανάπτυξη", collapse: "Σύμπτυξη" },
-  "en-US": { expand: "Expand", collapse: "Collapse" },
-  "es-ES": { expand: "Ampliar", collapse: "Contraer" },
-  "et-EE": { expand: "Laienda", collapse: "Ahenda" },
-  "fi-FI": { expand: "Laajenna", collapse: "Pienennä" },
-  "fr-FR": { expand: "Développer", collapse: "Réduire" },
-  "he-IL": { expand: "הרחב", collapse: "כווץ" },
-  "hr-HR": { expand: "Proširi", collapse: "Sažmi" },
-  "hu-HU": { expand: "Kibontás", collapse: "Összecsukás" },
-  "it-IT": { expand: "Espandi", collapse: "Comprimi" },
-  "ja-JP": { expand: "展開", collapse: "折りたたむ" },
-  "ko-KR": { expand: "펼치기", collapse: "접기" },
-  "lt-LT": { expand: "Išskleisti", collapse: "Sutraukti" },
-  "lv-LV": { expand: "Izvērst", collapse: "Sakļaut" },
-  "nb-NO": { expand: "Utvid", collapse: "Skjul" },
-  "nl-NL": { expand: "Uitvouwen", collapse: "Samenvouwen" },
-  "pl-PL": { expand: "Rozwiń", collapse: "Zwiń" },
-  "pt-BR": { expand: "Expandir", collapse: "Recolher" },
-  "pt-PT": { expand: "Expandir", collapse: "Colapsar" },
-  "ro-RO": { expand: "Extindeți", collapse: "Restrângeți" },
-  "ru-RU": { expand: "Развернуть", collapse: "Свернуть" },
-  "sk-SK": { expand: "Rozbaliť", collapse: "Zbaliť" },
-  "sl-SI": { expand: "Razširi", collapse: "Strni" },
-  "sr-SP": { expand: "Proširi", collapse: "Skupi" },
-  "sv-SE": { expand: "Expandera", collapse: "Dölj" },
-  "tr-TR": { expand: "Genişlet", collapse: "Daralt" },
-  "uk-UA": { expand: "Розгорнути", collapse: "Згорнути" },
-  "zh-CN": { expand: "扩展", collapse: "折叠" },
-  "zh-TW": { expand: "展開", collapse: "收合" },
+type TableMessage = "expand" | "collapse" | "columnSize" | "resizerDescription" | "resizer";
+
+function asText(value: string | number | boolean | undefined): string {
+  return value === undefined ? "" : String(value);
+}
+
+const strings = new StringDictionary<TableMessage>({
+  "ar-AE": {
+    expand: "تمديد",
+    collapse: "طي",
+    columnSize: (v) => `${asText(v?.value)} بالبكسل`,
+    resizerDescription: "اضغط على مفتاح Enter لبدء تغيير الحجم",
+    resizer: "أداة تغيير الحجم",
+  },
+  "bg-BG": {
+    expand: "Разширяване",
+    collapse: "Свиване",
+    columnSize: (v) => `${asText(v?.value)} пиксела`,
+    resizerDescription: "Натиснете „Enter“, за да започнете да преоразмерявате",
+    resizer: "Преоразмерител",
+  },
+  "cs-CZ": {
+    expand: "Roztáhnout",
+    collapse: "Sbalit",
+    columnSize: (v) => `${asText(v?.value)} pixelů`,
+    resizerDescription: "Stisknutím klávesy Enter začnete měnit velikost",
+    resizer: "Změna velikosti",
+  },
+  "da-DK": {
+    expand: "Udvid",
+    collapse: "Skjul",
+    columnSize: (v) => `${asText(v?.value)} pixels`,
+    resizerDescription: "Tryk på Enter for at ændre størrelse",
+    resizer: "Størrelsesændring",
+  },
+  "de-DE": {
+    expand: "Erweitern",
+    collapse: "Reduzieren",
+    columnSize: (v) => `${asText(v?.value)} Pixel`,
+    resizerDescription: "Eingabetaste zum Starten der Größenänderung drücken",
+    resizer: "Größenanpassung",
+  },
+  "el-GR": {
+    expand: "Ανάπτυξη",
+    collapse: "Σύμπτυξη",
+    columnSize: (v) => `${asText(v?.value)} pixel`,
+    resizerDescription: "Πατήστε Enter για έναρξη της αλλαγής μεγέθους",
+    resizer: "Αλλαγή μεγέθους",
+  },
+  "en-US": {
+    expand: "Expand",
+    collapse: "Collapse",
+    columnSize: (v) => `${asText(v?.value)} pixels`,
+    resizerDescription: "Press Enter to start resizing",
+    resizer: "Resizer",
+  },
+  "es-ES": {
+    expand: "Ampliar",
+    collapse: "Contraer",
+    columnSize: (v) => `${asText(v?.value)} píxeles`,
+    resizerDescription: "Pulse Intro para empezar a redimensionar",
+    resizer: "Cambiador de tamaño",
+  },
+  "et-EE": {
+    expand: "Laienda",
+    collapse: "Ahenda",
+    columnSize: (v) => `${asText(v?.value)} pikslit`,
+    resizerDescription: "Suuruse muutmise alustamiseks vajutage klahvi Enter",
+    resizer: "Suuruse muutja",
+  },
+  "fi-FI": {
+    expand: "Laajenna",
+    collapse: "Pienennä",
+    columnSize: (v) => `${asText(v?.value)} pikseliä`,
+    resizerDescription: "Aloita koon muutos painamalla Enter-näppäintä",
+    resizer: "Koon muuttaja",
+  },
+  "fr-FR": {
+    expand: "Développer",
+    collapse: "Réduire",
+    columnSize: (v) => `${asText(v?.value)} pixels`,
+    resizerDescription: "Appuyez sur Entrée pour commencer le redimensionnement.",
+    resizer: "Redimensionneur",
+  },
+  "he-IL": {
+    expand: "הרחב",
+    collapse: "כווץ",
+    columnSize: (v) => `${asText(v?.value)} פיקסלים`,
+    resizerDescription: "הקש Enter כדי לשנות את הגודל",
+    resizer: "שינוי גודל",
+  },
+  "hr-HR": {
+    expand: "Proširi",
+    collapse: "Sažmi",
+    columnSize: (v) => `${asText(v?.value)} piksela`,
+    resizerDescription: "Pritisnite Enter da biste započeli promenu veličine",
+    resizer: "Promjena veličine",
+  },
+  "hu-HU": {
+    expand: "Kibontás",
+    collapse: "Összecsukás",
+    columnSize: (v) => `${asText(v?.value)} képpont`,
+    resizerDescription: "Nyomja le az Enter billentyűt az átméretezés megkezdéséhez",
+    resizer: "Átméretező",
+  },
+  "it-IT": {
+    expand: "Espandi",
+    collapse: "Comprimi",
+    columnSize: (v) => `${asText(v?.value)} pixel`,
+    resizerDescription: "Premi Invio per iniziare a ridimensionare",
+    resizer: "Ridimensionamento",
+  },
+  "ja-JP": {
+    expand: "展開",
+    collapse: "折りたたむ",
+    columnSize: (v) => `${asText(v?.value)} ピクセル`,
+    resizerDescription: "Enter キーを押してサイズ変更を開始",
+    resizer: "サイズ変更ツール",
+  },
+  "ko-KR": {
+    expand: "펼치기",
+    collapse: "접기",
+    columnSize: (v) => `${asText(v?.value)} 픽셀`,
+    resizerDescription: "크기 조정을 시작하려면 Enter를 누르세요.",
+    resizer: "크기 조정기",
+  },
+  "lt-LT": {
+    expand: "Išskleisti",
+    collapse: "Sutraukti",
+    columnSize: (v) => `${asText(v?.value)} piks.`,
+    resizerDescription: "Paspauskite „Enter“, kad pradėtumėte keisti dydį",
+    resizer: "Dydžio keitiklis",
+  },
+  "lv-LV": {
+    expand: "Izvērst",
+    collapse: "Sakļaut",
+    columnSize: (v) => `${asText(v?.value)} pikseļi`,
+    resizerDescription: "Nospiediet Enter, lai sāktu izmēru mainīšanu",
+    resizer: "Izmēra mainītājs",
+  },
+  "nb-NO": {
+    expand: "Utvid",
+    collapse: "Skjul",
+    columnSize: (v) => `${asText(v?.value)} piksler`,
+    resizerDescription: "Trykk på Enter for å starte størrelsesendring",
+    resizer: "Størrelsesendrer",
+  },
+  "nl-NL": {
+    expand: "Uitvouwen",
+    collapse: "Samenvouwen",
+    columnSize: (v) => `${asText(v?.value)} pixels`,
+    resizerDescription: "Druk op Enter om het formaat te wijzigen",
+    resizer: "Resizer",
+  },
+  "pl-PL": {
+    expand: "Rozwiń",
+    collapse: "Zwiń",
+    columnSize: (v) => `Liczba pikseli: ${asText(v?.value)}`,
+    resizerDescription: "Naciśnij Enter, aby rozpocząć zmienianie rozmiaru",
+    resizer: "Zmiana rozmiaru",
+  },
+  "pt-BR": {
+    expand: "Expandir",
+    collapse: "Recolher",
+    columnSize: (v) => `${asText(v?.value)} pixels`,
+    resizerDescription: "Pressione Enter para começar a redimensionar",
+    resizer: "Redimensionador",
+  },
+  "pt-PT": {
+    expand: "Expandir",
+    collapse: "Colapsar",
+    columnSize: (v) => `${asText(v?.value)} pixels`,
+    resizerDescription: "Prima Enter para iniciar o redimensionamento",
+    resizer: "Redimensionador",
+  },
+  "ro-RO": {
+    expand: "Extindeți",
+    collapse: "Restrângeți",
+    columnSize: (v) => `${asText(v?.value)} pixeli`,
+    resizerDescription: "Apăsați pe Enter pentru a începe redimensionarea",
+    resizer: "Instrument de redimensionare",
+  },
+  "ru-RU": {
+    expand: "Развернуть",
+    collapse: "Свернуть",
+    columnSize: (v) => `${asText(v?.value)} пикс.`,
+    resizerDescription: "Нажмите клавишу Enter для начала изменения размеров",
+    resizer: "Средство изменения размера",
+  },
+  "sk-SK": {
+    expand: "Rozbaliť",
+    collapse: "Zbaliť",
+    columnSize: (v) => `Počet pixelov: ${asText(v?.value)}`,
+    resizerDescription: "Stlačením klávesu Enter začnete zmenu veľkosti",
+    resizer: "Nástroj na zmenu veľkosti",
+  },
+  "sl-SI": {
+    expand: "Razširi",
+    collapse: "Strni",
+    columnSize: (v) => `${asText(v?.value)} slikovnih pik`,
+    resizerDescription: "Pritisnite tipko Enter da začnete spreminjati velikost",
+    resizer: "Spreminjanje velikosti",
+  },
+  "sr-SP": {
+    expand: "Proširi",
+    collapse: "Skupi",
+    columnSize: (v) => `${asText(v?.value)} piksela`,
+    resizerDescription: "Pritisnite Enter da biste započeli promenu veličine",
+    resizer: "Promena veličine",
+  },
+  "sv-SE": {
+    expand: "Expandera",
+    collapse: "Dölj",
+    columnSize: (v) => `${asText(v?.value)} pixlar`,
+    resizerDescription: "Tryck på Retur för att börja ändra storlek",
+    resizer: "Storleksändrare",
+  },
+  "tr-TR": {
+    expand: "Genişlet",
+    collapse: "Daralt",
+    columnSize: (v) => `${asText(v?.value)} piksel`,
+    resizerDescription: "Yeniden boyutlandırmak için Enter'a basın",
+    resizer: "Yeniden boyutlandırıcı",
+  },
+  "uk-UA": {
+    expand: "Розгорнути",
+    collapse: "Згорнути",
+    columnSize: (v) => `${asText(v?.value)} пікс.`,
+    resizerDescription: "Натисніть Enter, щоб почати зміну розміру",
+    resizer: "Засіб змінення розміру",
+  },
+  "zh-CN": {
+    expand: "扩展",
+    collapse: "折叠",
+    columnSize: (v) => `${asText(v?.value)} 像素`,
+    resizerDescription: "按 Enter 开始调整大小。",
+    resizer: "尺寸调整器",
+  },
+  "zh-TW": {
+    expand: "展開",
+    collapse: "收合",
+    columnSize: (v) => `${asText(v?.value)} 像素`,
+    resizerDescription: "按 Enter 鍵以開始調整大小",
+    resizer: "大小調整器",
+  },
 });
 
 export function tableRow<R, C>(options: TableRowOptions, state: TableState<R, C>): TableRowResult {
@@ -1370,6 +1656,8 @@ interface TableContextValue {
    * column stays, and its buttons say they are disabled.
    */
   allowsDragging: Accessor<boolean>;
+  /** The column widths, when the table is inside a `<ResizableTableContainer>`. */
+  columnResize?: TableColumnResizeState<TableState<unknown, unknown>> | undefined;
 }
 
 const TableContext = createContext<TableContextValue | null>(null);
@@ -1501,6 +1789,17 @@ export function Table<R, C>(props: TableComponentProps<R, C>) {
 
   const dragAndDrop = tableDragAndDrop(props.dragAndDropHooks, state, domRef, virtual);
   dropping.held = dragAndDrop;
+
+  // Inside a `<ResizableTableContainer>` the columns have widths of their own,
+  // laid out across the width the container measured.
+  const container = getContext(ResizableTableContainerContext) ?? null;
+  const columnResize =
+    container === null
+      ? undefined
+      : tableColumnResizeState(
+          { tableWidth: container.tableWidth },
+          state as TableState<unknown, unknown>,
+        );
   const hasDragHooks = (): boolean => dragAndDrop?.dragState !== undefined;
   const allowsDragging = (): boolean =>
     hasDragHooks() && dragAndDrop?.dragState?.isDisabled() !== true;
@@ -1513,6 +1812,7 @@ export function Table<R, C>(props: TableComponentProps<R, C>) {
     setFooterItems: (items) => setFooter({ read: items }),
     dragAndDrop,
     allowsDragging: hasDragHooks,
+    columnResize,
   };
 
   const { focusProps, isFocused, isFocusVisible } = focusRing();
@@ -1537,7 +1837,7 @@ export function Table<R, C>(props: TableComponentProps<R, C>) {
 
   return (
     <TableProvider value={value}>
-      <div {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
+      <div {...elementProps} ref={mergeRefs(domRef.set, props.ref, container?.tableRef.set)}>
         <SharedElementTransition>{props.children}</SharedElementTransition>
       </div>
       {dragAndDrop?.preview}
@@ -1806,22 +2106,57 @@ export function TableHeader<C>(props: TableHeaderComponentProps<C>) {
   );
 }
 
-export interface ColumnComponentProps extends StyleProps {
-  children?: Child;
+/** What a column header hands a function child. Every field follows the column. */
+export interface ColumnRenderState {
+  allowsSorting: Accessor<boolean>;
+  sortDirection: Accessor<"ascending" | "descending" | undefined>;
+  isFocused: Accessor<boolean>;
+  isFocusVisible: Accessor<boolean>;
+  isHovered: Accessor<boolean>;
+  isPressed: Accessor<boolean>;
+  /** Whether this column is being resized. */
+  isResizing: Accessor<boolean>;
+  /**
+   * Start resizing this column from the keyboard: what a "Resize column" item
+   * in the column's own menu calls. The column's `<ColumnResizer>` takes focus
+   * and the arrows resize until Enter, Escape or Tab.
+   */
+  startResize: () => void;
+  /** Sort by this column, in `direction` or the next one. */
+  sort: (direction?: "ascending" | "descending") => void;
+}
+
+export interface ColumnComponentProps extends Omit<StyleProps, "children"> {
+  /** The header's content, or a function of {@link ColumnRenderState}. */
+  children?: Child | ((column: ColumnRenderState) => Child);
   ref?: RefTarget<HTMLDivElement>;
 }
 
-/** One column header. Sortable when its column says so. */
+interface ColumnResizerContextValue {
+  column: Node<unknown>;
+  /** The column header, where focus returns when a resize started elsewhere ends. */
+  triggerRef: ElementRef;
+}
+
+const ColumnResizerContext = createContext<ColumnResizerContextValue | null>(null);
+
+/**
+ * One column header. Sortable when its column says so, and sized by the
+ * column's `width`, `defaultWidth`, `minWidth` and `maxWidth` when the table
+ * is inside a `<ResizableTableContainer>`.
+ */
 export function Column(props: ColumnComponentProps) {
   const domRef = makeRef<HTMLDivElement>();
   const grid = useTable();
   const column = useColumn();
+  const resize = grid.columnResize;
 
   const { columnHeaderProps, isFocused, isPressed, allowsSorting, sortDirection } =
     tableColumnHeader({ column, ref: domRef, baseId: grid.baseId }, grid.state);
 
   const { hoverProps, isHovered } = hover({});
   const { focusProps, isFocusVisible } = focusRing();
+  const isResizing = (): boolean => resize?.resizingColumn() === column.key;
 
   const elementProps = mergeProps(
     columnHeaderProps,
@@ -1837,15 +2172,64 @@ export function Column(props: ColumnComponentProps) {
       "data-focus-visible": isFocusVisible,
       "data-pressed": isPressed,
       "data-hovered": isHovered,
+      "data-resizing": isResizing,
       "data-testid": () => props["data-testid"],
+      style: () => withColumnWidth(resize, column.key, props.style),
     },
   );
 
+  const renderState: ColumnRenderState = {
+    allowsSorting,
+    sortDirection,
+    isFocused,
+    isFocusVisible,
+    isHovered,
+    isPressed,
+    isResizing,
+    startResize: () => {
+      if (resize === undefined) {
+        throw new Error(
+          "Wrap your <Table> in a <ResizableTableContainer> to enable column resizing",
+        );
+      }
+      resize.startResize(column.key);
+      grid.state.setKeyboardNavigationDisabled?.(true);
+    },
+    sort: (direction) => grid.state.sort(column.key, direction),
+  };
+  const resizer: ColumnResizerContextValue = { column, triggerRef: domRef };
+  const children = props.children;
+
   return (
     <div {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
-      {props.children}
+      {provide(
+        ColumnResizerContext,
+        () => resizer,
+        () =>
+          typeof children === "function" && children.length > 0
+            ? (children as (column: ColumnRenderState) => Child)(renderState)
+            : (children as unknown),
+      )}
     </div>
   );
+}
+
+/** The width of every column together, or 0 when the columns are not resizable. */
+function totalColumnWidth(resize: TableColumnResizeState | undefined): number {
+  if (resize === undefined) return 0;
+  let total = 0;
+  for (const width of resize.columnWidths().values()) total += width;
+  return total;
+}
+
+/** A style with the column's resized width in it, when the table has resizable columns. */
+function withColumnWidth(
+  resize: TableColumnResizeState | undefined,
+  key: Key,
+  style: Record<string, string | number | undefined> | undefined,
+): Record<string, string | number | undefined> | undefined {
+  if (resize === undefined) return style;
+  return { ...style, width: `${resize.getColumnWidth(key)}px` };
 }
 
 export interface TableBodyComponentProps<R> extends StyleProps {
@@ -2038,7 +2422,12 @@ export function Row<C>(props: RowComponentProps<C>) {
         const virtual = grid.virtual;
         if (virtual === null) return props.style;
         const info = virtual.layout.getLayoutInfo(row.key);
-        return info === null ? props.style : rowStyle(info);
+        if (info === null) return props.style;
+        // Resized columns wider than the viewport make the row wider too, so
+        // the table scrolls across to the last of them.
+        const total = totalColumnWidth(grid.columnResize);
+        const placed = rowStyle(info);
+        return total > info.rect.width ? { ...placed, width: `${total}px` } : placed;
       },
     },
   );
@@ -2254,6 +2643,7 @@ export function Cell(props: CellComponentProps) {
       "data-has-child-items": () => isTreeColumn() && rowState?.hasChildRows() === true,
       "data-level": () => (grid.state.collection().isTree ? row.level + 1 : undefined),
       "data-testid": () => props["data-testid"],
+      style: () => withColumnWidth(grid.columnResize, column.key, props.style),
     },
   );
 
@@ -2351,5 +2741,502 @@ export function TableLoadMoreItem(props: TableLoadMoreItemProps) {
         ) : null
       }
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Resizing columns
+// ---------------------------------------------------------------------------
+
+export interface TableColumnResizeOptions {
+  column: Node<unknown>;
+  /** The resizer's name. Read while resizing. */
+  "aria-label": MaybeAccessor<string>;
+  /**
+   * What started the resize, when something other than the resizer did: a
+   * column header's menu. Focus goes back there when the resize ends. Without
+   * one the resizer is assumed always visible, and a keyboard user starts a
+   * resize by pressing Enter on it, which its description says.
+   */
+  triggerRef?: ElementRef;
+  isDisabled?: MaybeAccessor<boolean | undefined>;
+  onResizeStart?: (widths: Map<Key, ColumnSize>) => void;
+  /** Every change in width, with every column's width. */
+  onResize?: (widths: Map<Key, ColumnSize>) => void;
+  onResizeEnd?: (widths: Map<Key, ColumnSize>) => void;
+}
+
+export interface TableColumnResizeResult {
+  /** For the visually hidden `<input type="range">` a screen reader adjusts. */
+  inputProps: DOMProps;
+  /** For the element a pointer drags. */
+  resizerProps: DOMProps;
+  isResizing: Accessor<boolean>;
+  /** Whether a mouse is dragging it, for a cursor laid over the whole page. */
+  isMouseResizing: Accessor<boolean>;
+}
+
+/**
+ * A column's resize handle.
+ *
+ * The handle a pointer drags is presentational; what a keyboard and a screen
+ * reader use is a visually hidden range input inside it, named by itself and
+ * the column, whose value is the width and whose text is "120 pixels". Enter
+ * on it starts a resize and turns the grid's own arrow keys off, so the arrows
+ * resize by ten pixels a press (Up and Down too, for a keyboard with no
+ * horizontal pair to spare) until Enter, Escape, Space or Tab ends it. In a
+ * right-to-left table the horizontal arrows and the drag are mirrored, so the
+ * key that points away from the column's start still widens it.
+ *
+ * A screen reader's own increment changes the input's value, and that is a
+ * ten-pixel step in the direction it went, whatever value it asked for.
+ */
+export function tableColumnResize(
+  options: TableColumnResizeOptions,
+  state: TableColumnResizeState<TableState<unknown, unknown>>,
+  ref: ElementRef,
+): TableColumnResizeResult {
+  const message = stringFormatter(strings);
+  const locale = useLocale();
+  const inputId = id();
+  const key = options.column.key;
+  const owner = state.tableState;
+  const baseId = tableIds.get(owner);
+  const isResizing = (): boolean => state.resizingColumn() === key;
+  const [isMouseResizing, setMouseResizing] = createSignal(false);
+  const isEditing = (): boolean => owner.isKeyboardNavigationDisabled?.() === true;
+
+  // Where the resize is as of the last event: the handlers of one gesture run
+  // one after another faster than a signal is flushed.
+  let resizing = false;
+  let lastSize: Map<Key, ColumnSize> | null = null;
+  let wasFocusedOnResizeStart = false;
+
+  const input = (): HTMLInputElement | null => (access(ref) as HTMLInputElement | null) ?? null;
+  const focusInput = (): void => {
+    const element = input();
+    if (element !== null) focusSafely(element);
+  };
+
+  const startResize = (): void => {
+    if (!resizing) {
+      lastSize = state.updateResizedColumns(key, state.getColumnWidth(key));
+      state.startResize(key);
+      owner.setKeyboardNavigationDisabled?.(true);
+      options.onResizeStart?.(lastSize);
+    }
+    resizing = true;
+  };
+
+  const resize = (width: number): void => {
+    const sizes = state.updateResizedColumns(key, width);
+    options.onResize?.(sizes);
+    lastSize = sizes;
+  };
+
+  const endResize = (): void => {
+    if (resizing) {
+      const sizes = lastSize ?? state.updateResizedColumns(key, state.getColumnWidth(key));
+      state.endResize();
+      owner.setKeyboardNavigationDisabled?.(false);
+      options.onResizeEnd?.(sizes);
+      resizing = false;
+      // Back to whatever started it, unless the resizer was where the user
+      // already was.
+      const trigger = access(options.triggerRef) as HTMLElement | null | undefined;
+      if (trigger !== null && trigger !== undefined && !wasFocusedOnResizeStart) {
+        focusSafely(trigger);
+      }
+    }
+    lastSize = null;
+  };
+
+  let dragged = 0;
+  const { moveProps } = move({
+    onMoveStart: (event) => {
+      dragged = state.getColumnWidth(key);
+      if (event.pointerType === "mouse") setMouseResizing(true);
+      startResize();
+    },
+    onMove: (event) => {
+      let deltaX = event.deltaX;
+      if (locale().direction === "rtl") deltaX *= -1;
+      if (event.pointerType === "keyboard") {
+        if (event.deltaY !== 0 && deltaX === 0) deltaX = event.deltaY * -1;
+        deltaX *= 10;
+      }
+      // Up and down alone, from a pointer, resize nothing.
+      if (deltaX !== 0) {
+        dragged += deltaX;
+        resize(dragged);
+      }
+    },
+    onMoveEnd: (event) => {
+      dragged = 0;
+      setMouseResizing(false);
+      if (
+        event.pointerType === "mouse" ||
+        (event.pointerType === "touch" && wasFocusedOnResizeStart)
+      ) {
+        endResize();
+      }
+    },
+  });
+  // The arrows move the column only while it is being resized; otherwise they
+  // are the grid's.
+  const { onKeyDown: moveKeyDown, ...pointerMoveProps } = moveProps as DOMProps & {
+    onKeyDown: (event: KeyboardEvent) => void;
+  };
+
+  const onKeyDown = (event: KeyboardEvent): void => {
+    switch (event.key) {
+      case "Enter":
+        event.preventDefault();
+        event.stopPropagation();
+        if (isEditing()) endResize();
+        else startResize();
+        return;
+      case "Escape":
+      case " ":
+      case "Tab":
+        // Ends a resize; otherwise the key is the table's.
+        if (!isEditing()) return;
+        if (event.key !== "Tab") event.preventDefault();
+        event.stopPropagation();
+        endResize();
+        return;
+      default:
+        if (isEditing()) moveKeyDown(event);
+    }
+  };
+
+  const { pressProps } = press({
+    preventFocusOnPress: true,
+    onPressStart: (event) => {
+      if (
+        event.ctrlKey ||
+        event.altKey ||
+        event.metaKey ||
+        event.shiftKey ||
+        event.pointerType === "keyboard"
+      ) {
+        return;
+      }
+      if (event.pointerType === "virtual" && state.resizingColumn() !== null) {
+        endResize();
+        return;
+      }
+      // A quick tap on a phone may never become a press, and a focused input
+      // is what lets blurring away end the resize.
+      focusInput();
+      // A screen reader's own pointer reaches the input directly, and starts
+      // the resize there.
+      if (event.pointerType !== "virtual") startResize();
+    },
+    onPress: (event) => {
+      if (
+        ((event.pointerType === "touch" && wasFocusedOnResizeStart) ||
+          event.pointerType === "mouse") &&
+        state.resizingColumn() !== null
+      ) {
+        endResize();
+      }
+    },
+  });
+
+  // A resize started elsewhere, from the column's menu, moves focus here. Twice:
+  // Android Chrome delivers a late click after touchend that would take it
+  // back, and VoiceOver on iOS misses a focus moved straight out of a menu.
+  if (!isServer) {
+    createEffect(
+      () => state.resizingColumn(),
+      (column, previous) => {
+        if (column === previous || column !== key) return undefined;
+        wasFocusedOnResizeStart = activeElement(ownerDocument(input())) === input();
+        startResize();
+        const soon = setTimeout(focusInput, 0);
+        const late = setTimeout(focusInput, 400);
+        return () => {
+          clearTimeout(soon);
+          clearTimeout(late);
+        };
+      },
+      { defer: true },
+    );
+  }
+
+  const how = modality();
+  const description = descriptionFor(() => {
+    let current: string | null = how();
+    if (current === "virtual" && typeof window !== "undefined" && "ontouchstart" in window) {
+      current = "touch";
+    }
+    const hasTrigger =
+      access(options.triggerRef) !== null && access(options.triggerRef) !== undefined;
+    return !hasTrigger && (current === "keyboard" || current === "virtual") && !isResizing()
+      ? message().format("resizerDescription")
+      : undefined;
+  });
+
+  const min = (): number => Math.floor(state.getColumnMinWidth(key));
+  const max = (): number => {
+    const value = Math.floor(state.getColumnMaxWidth(key));
+    return value === Number.POSITIVE_INFINITY ? Number.MAX_SAFE_INTEGER : value;
+  };
+  const value = (): number => Math.floor(state.getColumnWidth(key));
+
+  const onInput = (event: Event): void => {
+    const current = state.getColumnWidth(key);
+    const next = Number.parseFloat((event.target as HTMLInputElement).value);
+    resize(next > current ? current + 10 : current - 10);
+  };
+
+  const { visuallyHiddenProps } = visuallyHidden();
+
+  return {
+    isResizing,
+    isMouseResizing,
+    resizerProps: mergeProps(pointerMoveProps, pressProps, {
+      onKeyDown,
+      style: { touchAction: "none" },
+    }),
+    inputProps: mergeProps(
+      visuallyHiddenProps,
+      {
+        id: inputId,
+        onBlur: () => endResize(),
+        onInput,
+        disabled: () => access(options.isDisabled) === true || undefined,
+      },
+      description,
+      {
+        "aria-label": () => access(options["aria-label"]),
+        "aria-orientation": "horizontal",
+        "aria-labelledby": () =>
+          `${inputId()} ${columnHeaderIdFor(baseId?.() ?? "", options.column.key)}`,
+        "aria-valuetext": () => message().format("columnSize", { value: value() }),
+        type: "range",
+        min,
+        max,
+        value,
+      },
+    ),
+  };
+}
+
+interface ResizableTableContainerValue {
+  tableWidth: Accessor<number>;
+  /** Set by the table inside, which the width is measured from. */
+  tableRef: ReturnType<typeof makeRef<HTMLDivElement>>;
+  onResizeStart?: ((widths: Map<Key, ColumnSize>) => void) | undefined;
+  onResize?: ((widths: Map<Key, ColumnSize>) => void) | undefined;
+  onResizeEnd?: ((widths: Map<Key, ColumnSize>) => void) | undefined;
+}
+
+const ResizableTableContainerContext = createContext<ResizableTableContainerValue | null>(null);
+
+export interface ResizableTableContainerProps extends StyleProps {
+  children?: Child;
+  ref?: RefTarget<HTMLDivElement>;
+  /** A resize began, with every column's width. */
+  onResizeStart?: (widths: Map<Key, ColumnSize>) => void;
+  /**
+   * Every change in width, with every column's width: write them back to the
+   * columns' `width` to control them.
+   */
+  onResize?: (widths: Map<Key, ColumnSize>) => void;
+  /** A resize ended: the widths to keep for next time. */
+  onResizeEnd?: (widths: Map<Key, ColumnSize>) => void;
+}
+
+/**
+ * Lets the columns of the `<Table>` inside it be resized.
+ *
+ * It measures the width the columns are laid out across, and the table sizes
+ * every column header and cell from its column's `width`, `defaultWidth`,
+ * `minWidth` and `maxWidth` (pixels, `"25%"`, `"2fr"`). The width measured is
+ * that of the first element scrolling between the table and the container,
+ * because a scrollbar takes its share: the container itself for a table in
+ * document flow, the table for a virtualised one.
+ *
+ * ```tsx
+ * <ResizableTableContainer onResizeEnd={(widths) => save(widths)}>
+ *   <Table aria-label="Files" columns={COLUMNS} items={files()}>
+ *     <TableHeader>
+ *       {(column) => (
+ *         <Column>
+ *           {column.name}
+ *           <ColumnResizer />
+ *         </Column>
+ *       )}
+ *     </TableHeader>
+ *     ...
+ *   </Table>
+ * </ResizableTableContainer>
+ * ```
+ */
+export function ResizableTableContainer(props: ResizableTableContainerProps) {
+  const domRef = makeRef<HTMLDivElement>();
+  const tableRef = makeRef<HTMLDivElement>();
+  const [width, setWidth] = createSignal(0);
+
+  if (!isServer) {
+    const scrolling = (): HTMLElement | null => {
+      const container = domRef();
+      let element: HTMLElement | null = tableRef();
+      while (element !== null && element !== container && !isScrollable(element)) {
+        element = element.parentElement;
+      }
+      return element ?? container;
+    };
+    const measure = (element: HTMLElement): void => {
+      setWidth(element.clientWidth);
+    };
+    createEffect(
+      () => (domRef() === null ? null : scrolling()),
+      (element) => {
+        if (element !== null) measure(element);
+      },
+    );
+    resizeObserver(
+      () => (domRef() === null ? null : scrolling()),
+      (entry) => measure(entry.target as HTMLElement),
+      { box: "border-box" },
+    );
+  }
+
+  const value: ResizableTableContainerValue = {
+    tableWidth: width,
+    tableRef,
+    onResizeStart: (widths) => props.onResizeStart?.(widths),
+    onResize: (widths) => props.onResize?.(widths),
+    onResizeEnd: (widths) => props.onResizeEnd?.(widths),
+  };
+
+  const elementProps = mergeProps(
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    styleProps(cells(props)),
+    { "data-testid": () => props["data-testid"] },
+  );
+
+  return (
+    <div {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
+      {provide(
+        ResizableTableContainerContext,
+        () => value,
+        () => props.children as unknown,
+      )}
+    </div>
+  );
+}
+
+export interface ColumnResizerProps extends StyleProps {
+  /** What the handle draws. */
+  children?: Child;
+  /** @default "Resizer", in the reader's language */
+  "aria-label"?: string;
+  ref?: RefTarget<HTMLDivElement>;
+  onHoverStart?: (event: HoverEvent) => void;
+  onHoverEnd?: (event: HoverEvent) => void;
+  onHoverChange?: (isHovered: boolean) => void;
+}
+
+/**
+ * The handle that resizes the column it is rendered in.
+ *
+ * `data-resizable-direction` says which way it can still go, `left`, `right`
+ * or `both`, for a cursor: at its minimum width a column only grows, at its
+ * maximum only shrinks. While a mouse drags it, a transparent layer over the
+ * whole page carries the handle's cursor, so the cursor does not flicker back
+ * to an arrow each time the pointer outruns the handle.
+ */
+export function ColumnResizer(props: ColumnResizerProps) {
+  const grid = useTable();
+  const state = grid.columnResize;
+  if (state === undefined) {
+    throw new Error("Wrap your <Table> in a <ResizableTableContainer> to enable column resizing");
+  }
+  const owner = getContext(ColumnResizerContext);
+  if (owner === null || owner === undefined) {
+    throw new Error("A ColumnResizer must be rendered inside a Column.");
+  }
+  const container = getContext(ResizableTableContainerContext) ?? null;
+  const message = stringFormatter(strings);
+  const locale = useLocale();
+  const domRef = makeRef<HTMLDivElement>();
+  const inputRef = makeRef<HTMLInputElement>();
+  const options = fromProps(cells(props));
+  const key = owner.column.key;
+
+  const { resizerProps, inputProps, isResizing, isMouseResizing } = tableColumnResize(
+    {
+      column: owner.column,
+      "aria-label": () => props["aria-label"] ?? message().format("resizer"),
+      triggerRef: owner.triggerRef,
+      onResizeStart: container?.onResizeStart,
+      onResize: container?.onResize,
+      onResizeEnd: container?.onResizeEnd,
+    },
+    state,
+    inputRef,
+  );
+  const { focusProps, isFocused, isFocusVisible } = focusRing();
+  const { hoverProps, isHovered } = hover({
+    onHoverStart: options.onHoverStart,
+    onHoverEnd: options.onHoverEnd,
+    onHoverChange: options.onHoverChange,
+  });
+
+  const resizableDirection = (): "left" | "right" | "both" => {
+    const width = state.getColumnWidth(key);
+    const rtl = locale().direction === "rtl";
+    if (state.getColumnMinWidth(key) >= width) return rtl ? "right" : "left";
+    if (state.getColumnMaxWidth(key) <= width) return rtl ? "left" : "right";
+    return "both";
+  };
+
+  const elementProps = mergeProps(
+    filterDOMProps(options, { global: true }),
+    styleProps(cells(props)),
+    resizerProps,
+    hoverProps,
+    {
+      role: "presentation",
+      "data-hovered": isHovered,
+      "data-focused": isFocused,
+      "data-focus-visible": isFocusVisible,
+      "data-resizing": isResizing,
+      "data-resizable-direction": resizableDirection,
+      "data-testid": () => props["data-testid"],
+    },
+  );
+
+  // The handle's own cursor, which a stylesheet sets per direction.
+  const cursor = (): string => {
+    resizableDirection();
+    const element = domRef();
+    return element === null ? "" : ownerWindow(element).getComputedStyle(element).cursor;
+  };
+
+  return (
+    <div {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
+      {props.children}
+      <input {...mergeProps(inputProps, focusProps)} ref={inputRef.set} />
+      <Show when={isResizing() && isMouseResizing()}>
+        <Portal>
+          <div
+            data-resizer-cursor=""
+            style={{
+              position: "fixed",
+              top: "0",
+              left: "0",
+              bottom: "0",
+              right: "0",
+              cursor: cursor(),
+            }}
+          />
+        </Portal>
+      </Show>
+    </div>
   );
 }

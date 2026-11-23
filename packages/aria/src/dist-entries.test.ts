@@ -87,6 +87,7 @@ const ENTRIES = [
   "step-list",
   "switch",
   "table",
+  "table-column-layout",
   "tabs",
   "tag",
   "textarea",
