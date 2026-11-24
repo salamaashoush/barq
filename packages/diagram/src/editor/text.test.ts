@@ -8,7 +8,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { FONT_FAMILY, KEYS, MIME_TYPES, THEME } from "@excalidraw/common";
-import { isTextElement, normalizeText } from "@excalidraw/element";
+import { isArrowElement, isTextElement, normalizeText } from "@excalidraw/element";
 import type { Radians } from "@excalidraw/math";
 
 import type {
@@ -561,6 +561,30 @@ describe("text in containers", () => {
     expect(label.angle).toBe(0 as Radians);
     expect(label.x + label.width / 2).toBe(200);
     expect(h().scene.getElement("arrow")?.boundElements).toEqual([{ type: "text", id: label.id }]);
+  });
+
+  test("the text tool on a free arrow end binds a new text to it", async () => {
+    renderEditor();
+    const arrow = API.createElement({
+      type: "arrow",
+      id: "arrow",
+      x: 100,
+      y: 100,
+      width: 200,
+      height: 0,
+    });
+    API.loadElements([arrow]);
+    UI.clickTool("text");
+    mouse.moveTo(300, 100);
+    expect(h().state.textToolHover).toEqual({ type: "arrow", elementId: "arrow", anchor: "end" });
+    mouse.downAt(300, 100);
+    mouse.upAt(300, 100);
+    const editor = await textEditor();
+    UI.updateTextEditor(editor, "end");
+    UI.exitTextEditor(editor);
+    const label = onlyText();
+    const bound = h().scene.getElement("arrow");
+    expect(bound && isArrowElement(bound) ? bound.endBinding?.elementId : null).toBe(label.id);
   });
 
   test("the text tool highlights an empty shape near its centre, and labels it on click", async () => {
