@@ -15,8 +15,7 @@ import {
   fieldStyles,
 } from "../lib/field.tsx";
 import { type Customisable, parts } from "../lib/parts.ts";
-import { square } from "../lib/size.ts";
-import { fg, focus, layout, motion, rounded, space, target, tone } from "../style/index.ts";
+import { fg, focus, layout, motion, rounded, space, square, target, tone } from "../style/index.ts";
 import { useArcMessages } from "./messages.ts";
 
 /** A star in the tone, filled. */

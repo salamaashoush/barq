@@ -26,10 +26,20 @@ import {
   bindField,
   fieldStyles,
 } from "../lib/field.tsx";
-import { plainList } from "../lib/list.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
-import { square } from "../lib/size.ts";
-import { fg, focus, gap, layout, rounded, space, target, truncate, type } from "../style/index.ts";
+import {
+  fg,
+  focus,
+  gap,
+  layout,
+  plainList,
+  rounded,
+  space,
+  square,
+  target,
+  truncate,
+  type,
+} from "../style/index.ts";
 import { useArcMessages } from "./messages.ts";
 
 /** A colour as a caller holds it: `#7f00ff`, or `#7f00ff80` with alpha. */

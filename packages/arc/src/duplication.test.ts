@@ -15,7 +15,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 
@@ -201,6 +201,44 @@ describe("duplication", () => {
       expect(literals).toEqual([
         "var(--muted-foreground) is written at three.ts:3 and three.ts:4: use a colour role (fg, bg, edge, surface, interaction) from @barqjs/arc/style",
       ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("reads every family the style entry exports, and composes what moved into them", () => {
+    const families = [
+      ...readFileSync(join(root, "style/index.ts"), "utf8").matchAll(/from "\.\/([\w-]+)\.ts"/g),
+    ].map((match) => `style/${match[1] ?? ""}.ts`);
+    const places = modules()
+      .filter((path) => path.startsWith("style/"))
+      .flatMap((path) => placesIn(join(root, path), root, path));
+    const scanned = new Set(places.map((place) => place.file));
+    // `tokens.ts` holds values, not groups.
+    expect(families.filter((family) => !scanned.has(family))).toEqual(["style/tokens.ts"]);
+
+    const treatments = places.filter((place) => place.name !== undefined);
+    const dir = mkdtempSync(join(tmpdir(), "arc-duplication-"));
+    try {
+      const layer = relative(dir, join(root, "layer.ts"));
+      writeFileSync(
+        join(dir, "four.ts"),
+        `import { arcLayer as arc } from "${layer}";\n\n` +
+          `export const swatch = arc({ width: "calc(var(--spacing) * 6)", height: "calc(var(--spacing) * 6)" });\n` +
+          `export const items = arc({ margin: "0", padding: "0px", listStyle: "none" });\n`,
+      );
+      const found = report(
+        duplicates(
+          placesIn(join(dir, "four.ts"), root, "four.ts"),
+          uiGroups(ui, root, UI_GROUPS),
+          treatments,
+        ),
+      );
+      for (const treatment of ["square.x6", "plainList"]) {
+        expect(
+          found.some((one) => one.endsWith(`compose ${treatment} from @barqjs/arc/style`)),
+        ).toBe(true);
+      }
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

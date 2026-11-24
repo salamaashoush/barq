@@ -5,7 +5,6 @@ import { tokens } from "@barqjs/ui/theme/tokens";
 
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
-import { plainList } from "../lib/list.ts";
 import { navLink } from "../lib/nav.ts";
 import {
   fg,
@@ -15,6 +14,7 @@ import {
   interaction,
   layout,
   motion,
+  plainList,
   rounded,
   space,
   target,

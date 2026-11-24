@@ -4,9 +4,19 @@ import { tokens } from "@barqjs/ui/theme/tokens";
 
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
-import { plainList } from "../lib/list.ts";
-import { square } from "../lib/size.ts";
-import { bg, fg, gap, glyph, layout, rounded, space, tone as tones, type } from "../style/index.ts";
+import {
+  bg,
+  fg,
+  gap,
+  glyph,
+  layout,
+  plainList,
+  rounded,
+  space,
+  square,
+  tone as tones,
+  type,
+} from "../style/index.ts";
 import type { Tone } from "../theme/tokens.ts";
 import { FormattedDate, type Moment, RelativeTime } from "./format.tsx";
 

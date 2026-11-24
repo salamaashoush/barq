@@ -14,8 +14,7 @@ import { srOnly } from "@barqjs/ui/sr-only";
 
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
-import { plainList } from "../lib/list.ts";
-import { bg, tone as tones, type } from "../style/index.ts";
+import { bg, plainList, tone as tones, type } from "../style/index.ts";
 import type { Tone } from "../theme/tokens.ts";
 import { useArcMessages } from "./messages.ts";
 

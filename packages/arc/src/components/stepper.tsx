@@ -15,9 +15,6 @@ import { tokens } from "@barqjs/ui/theme/tokens";
 
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
-import { plainList } from "../lib/list.ts";
-import { square } from "../lib/size.ts";
-import { toneEdge } from "../lib/tone.ts";
 import {
   bg,
   edge,
@@ -27,8 +24,10 @@ import {
   glyph,
   layout,
   motion,
+  plainList,
   rounded,
   space,
+  square,
   target,
   tone as tones,
   type,
@@ -138,7 +137,7 @@ export const stepperStyles = variants({
       },
       invalid: {
         step: tones.danger,
-        marker: arc(bg.tone, fg.tone, toneEdge),
+        marker: arc(bg.tone, fg.tone, edge.tone),
         label: fg.tone,
       },
     },

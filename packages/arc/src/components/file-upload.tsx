@@ -33,17 +33,17 @@ import { on } from "@barqjs/ui/conditions";
 import { when } from "@barqjs/ui/shared-when";
 
 import { arcLayer as arc } from "../layer.ts";
-import { plainList } from "../lib/list.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
-import { toneEdge } from "../lib/tone.ts";
 import {
   bg,
+  edge,
   fg,
   focus,
   gap,
   glyph,
   layout,
   motion,
+  plainList,
   rounded,
   space,
   tone,
@@ -310,7 +310,7 @@ export const fileDropZoneStyles = variants({
         textAlign: "center",
       },
     ),
-    over: arc(tone.info, bg.tone, toneEdge),
+    over: arc(tone.info, bg.tone, edge.tone),
     icon: arc(fg.muted, glyph.md, { "& > svg": { width: space.x8, height: space.x8 } }),
     title: arc(type.label, { [on.coarse]: { display: "none" } }),
     hint: arc(type.meta),

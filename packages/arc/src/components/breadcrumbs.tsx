@@ -15,7 +15,6 @@ import type { UiProps } from "@barqjs/ui/props";
 import { srOnly } from "@barqjs/ui/sr-only";
 
 import { arcLayer as arc } from "../layer.ts";
-import { square } from "../lib/size.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
 import {
   bg,
@@ -23,9 +22,10 @@ import {
   fg,
   focus,
   glyph,
+  interaction,
   layout,
   rounded,
-  interaction,
+  square,
   truncate,
 } from "../style/index.ts";
 import { useArcMessages } from "./messages.ts";

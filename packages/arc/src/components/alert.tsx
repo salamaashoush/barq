@@ -10,7 +10,6 @@ import { on } from "@barqjs/ui/conditions";
 
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
-import { toneEdge } from "../lib/tone.ts";
 import {
   bg,
   edge,
@@ -50,7 +49,7 @@ export const alertStyles = variants({
       neutral: { root: tones.neutral },
     },
     kind: {
-      inline: { root: arc(edge.all, rounded.lg, toneEdge) },
+      inline: { root: arc(edge.all, rounded.lg, edge.tone) },
       banner: {
         root: arc(edge.bottom, layout.fill, {
           paddingInline: space.x4,

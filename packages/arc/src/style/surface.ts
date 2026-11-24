@@ -29,6 +29,8 @@ export const edge = {
     borderInlineStartColor: tokens.border,
   }),
   none: arc({ borderWidth: "0px" }),
+  /** In the tone an ancestor chose with `tone.*`, for a box drawn in it. */
+  tone: arc({ borderColor: "var(--arc-tone)" }),
 };
 
 /** Corners. */

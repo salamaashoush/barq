@@ -14,8 +14,7 @@ import { icon } from "@barqjs/ui/shared-icon";
 
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
-import { plainList } from "../lib/list.ts";
-import { fg, gap, layout, space, type } from "../style/index.ts";
+import { fg, gap, layout, plainList, space, type } from "../style/index.ts";
 import { useArcMessages } from "./messages.ts";
 
 /** A page's place in a pager's list, from 0, or a gap standing for the pages left out. */

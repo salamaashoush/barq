@@ -12,9 +12,8 @@ import {
 
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
-import { panelBody, panelFooter } from "../lib/panel.ts";
 import { openState } from "../lib/search-state.ts";
-import { edge, gap, layout, space, surface } from "../style/index.ts";
+import { edge, gap, layout, panel, space, surface } from "../style/index.ts";
 import { useArcMessages } from "./messages.ts";
 
 export const tearsheetStyles = variants({
@@ -46,14 +45,14 @@ export const tearsheetStyles = variants({
     title: arc({}),
     description: arc({}),
     main: arc(layout.row, layout.grow, layout.minZeroBlock, { alignItems: "stretch" }),
-    influencer: arc(panelBody, edge.start, surface.sunken, {
+    influencer: arc(panel.body, edge.start, surface.sunken, {
       order: "-1",
       flex: "0 0 18rem",
       padding: space.x4,
       [on.belowMd]: { display: "none" },
     }),
-    body: arc(panelBody, layout.minZero, { padding: space.x6 }),
-    footer: arc(panelFooter, {
+    body: arc(panel.body, layout.minZero, { padding: space.x6 }),
+    footer: arc(panel.footer, {
       margin: "0px",
       paddingInline: space.x4,
       paddingBlockStart: space.x4,

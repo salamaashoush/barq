@@ -13,9 +13,8 @@ import {
 
 import { arcLayer as arc } from "../layer.ts";
 import { type Classes, type Customisable, parts } from "../lib/parts.ts";
-import { panelBody, panelFooter } from "../lib/panel.ts";
 import { openState } from "../lib/search-state.ts";
-import { edge, gap, layout, space } from "../style/index.ts";
+import { edge, gap, layout, panel, space } from "../style/index.ts";
 import { useArcMessages } from "./messages.ts";
 
 export type DetailSheetSize = "sm" | "md" | "lg" | "xl";
@@ -26,8 +25,8 @@ export const detailSheetVariants = variants({
     header: arc(edge.bottom, { paddingInlineEnd: space.x12 }),
     title: arc({}),
     description: arc({}),
-    body: arc(panelBody, { padding: space.x4 }),
-    footer: panelFooter,
+    body: arc(panel.body, { padding: space.x4 }),
+    footer: panel.footer,
   },
   variants: {
     size: {
