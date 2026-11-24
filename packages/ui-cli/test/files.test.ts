@@ -34,12 +34,14 @@ describe("where a file goes", () => {
 });
 
 describe("where the newer types go", () => {
-  const typed = (path: string, type: RegistryFile["type"], target?: string): RegistryFile => ({
-    path,
-    type,
-    content: "",
-    ...(target === undefined ? {} : { target }),
-  });
+  function typed(path: string, type: RegistryFile["type"], target?: string): RegistryFile {
+    return {
+      path,
+      type,
+      content: "",
+      ...(target === undefined ? {} : { target }),
+    };
+  }
 
   test("a hook has a directory of its own", () => {
     expect(directoryFor(config, root, "registry:hook")).toBe("/project/hooks");

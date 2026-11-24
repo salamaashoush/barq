@@ -42,12 +42,17 @@ export interface AddOptions {
   readonly dryRun?: boolean;
 }
 
+export interface AppliedItems {
+  files: WrittenFile[];
+  config: Config;
+}
+
 export function applyItems(
   config: Config,
   root: string,
   items: readonly RegistryItem[],
   options: AddOptions = {},
-): { files: WrittenFile[]; config: Config } {
+): AppliedItems {
   const files: WrittenFile[] = [];
   const recorded: Record<string, Record<string, string>> = { ...config.items };
   const together = placed(items);

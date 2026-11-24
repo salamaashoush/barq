@@ -17,8 +17,9 @@ const styled = stdout.isTTY && process.env["NO_COLOR"] === undefined;
 
 type Style = (text: string) => string;
 
-const code = (open: string): Style =>
-  styled ? (text) => `${CSI}${open}m${text}${CSI}0m` : (text) => text;
+function code(open: string): Style {
+  return styled ? (text) => `${CSI}${open}m${text}${CSI}0m` : (text) => text;
+}
 
 export const dim: Style = code("2");
 export const bold: Style = code("1");

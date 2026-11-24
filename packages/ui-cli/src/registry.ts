@@ -34,10 +34,14 @@ export interface Source {
 /** Replaces the default registry, for a fork, a mirror or a local build. */
 export const REGISTRY_ENV = "BARQ_UI_REGISTRY";
 
+interface PackageManifest {
+  version: string;
+}
+
 export function ownVersion(): string {
   // `../package.json` from both `src/registry.ts` and the bundled `dist/index.js`.
   const manifest = new URL("../package.json", import.meta.url);
-  return (JSON.parse(readFileSync(manifest, "utf8")) as { version: string }).version;
+  return (JSON.parse(readFileSync(manifest, "utf8")) as PackageManifest).version;
 }
 
 export function defaultRegistry(): string {
@@ -66,12 +70,12 @@ function expand(value: string, where: string): string {
  */
 function fromPattern(endpoint: RegistryEndpoint, cwd: string, where: string): Source {
   const remote = /^https?:\/\//.test(endpoint.url);
-  const at = (name: string): string => {
+  function at(name: string): string {
     const filled = expand(endpoint.url, where).replaceAll("{name}", name);
     return remote ? filled : resolve(cwd, filled);
-  };
+  }
 
-  const get = async (name: string): Promise<unknown> => {
+  async function get(name: string): Promise<unknown> {
     const location = at(name);
     if (!remote) {
       if (!existsSync(location)) throw new Error(`no item named "${name}" at ${location}`);
@@ -86,7 +90,7 @@ function fromPattern(endpoint: RegistryEndpoint, cwd: string, where: string): So
       throw new Error(`${location} answered ${String(response.status)} ${response.statusText}`);
     }
     return await response.json();
-  };
+  }
 
   return {
     describe: endpoint.url,
@@ -124,7 +128,7 @@ export interface Registries {
 export function registriesFor(config: Config, cwd: string): Registries {
   const opened = new Map<string, Source>();
 
-  const source = (scope?: string): Source => {
+  function source(scope?: string): Source {
     const key = scope ?? "";
     const found = opened.get(key);
     if (found !== undefined) return found;
@@ -144,7 +148,7 @@ export function registriesFor(config: Config, cwd: string): Registries {
     }
     opened.set(key, made);
     return made;
-  };
+  }
 
   return {
     scopes: Object.keys(config.registries).toSorted(),
@@ -182,14 +186,14 @@ export async function resolveItems(
   const seen = new Set<string>();
   const out: RegistryItem[] = [];
 
-  const visit = async (address: string): Promise<void> => {
+  async function visit(address: string): Promise<void> {
     if (seen.has(address)) return;
     seen.add(address);
     const { source, name } = registries.locate(address);
     const item = await source.item(name);
     for (const dependency of item.registryDependencies) await visit(dependency);
     out.push(item.name === address ? item : { ...item, name: address });
-  };
+  }
 
   for (const address of addresses) await visit(address);
   return out;

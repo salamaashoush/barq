@@ -215,8 +215,9 @@ function strings(value: unknown, where: string): Record<string, string> {
 
 function cssVars(value: unknown, where: string): CssVars {
   const entry = record(value, where);
-  const mode = (name: "theme" | "light" | "dark"): Partial<CssVars> =>
-    entry[name] === undefined ? {} : { [name]: strings(entry[name], `${where}.${name}`) };
+  function mode(name: "theme" | "light" | "dark"): Partial<CssVars> {
+    return entry[name] === undefined ? {} : { [name]: strings(entry[name], `${where}.${name}`) };
+  }
   return { ...mode("theme"), ...mode("light"), ...mode("dark") };
 }
 

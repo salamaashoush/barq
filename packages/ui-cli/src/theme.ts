@@ -55,30 +55,34 @@ function rules(css: CssRules, indent: string): string {
     .join("\n");
 }
 
+export interface ItemCss {
+  readonly cssVars?: CssVars;
+  readonly css?: CssRules;
+}
+
 /**
  * What one more item's `cssVars` and `css` make of what the project has.
  *
  * Later wins, token by token and rule by rule, which is the cascade's own
  * answer and the one a person adding a second item over a first expects.
  */
-export function withItemCss(
-  choice: ThemeChoice,
-  added: { readonly cssVars?: CssVars; readonly css?: CssRules },
-): ThemeChoice {
+export function withItemCss(choice: ThemeChoice, added: ItemCss): ThemeChoice {
   // Upstream writes a token with or without its dashes; the theme module adds
   // them, so one spelling is kept.
-  const bare = (tokens: Readonly<Record<string, string>> | undefined): Record<string, string> =>
-    Object.fromEntries(
+  function bare(tokens: Readonly<Record<string, string>> | undefined): Record<string, string> {
+    return Object.fromEntries(
       Object.entries(tokens ?? {}).map(([token, value]) => [token.replace(/^--/, ""), value]),
     );
+  }
   const vars = added.cssVars;
   const merged: CssVars = {
     theme: { ...choice.cssVars?.theme, ...bare(vars?.theme) },
     light: { ...choice.cssVars?.light, ...bare(vars?.light) },
     dark: { ...choice.cssVars?.dark, ...bare(vars?.dark) },
   };
-  const some = (tokens: Readonly<Record<string, string>> | undefined): boolean =>
-    tokens !== undefined && Object.keys(tokens).length > 0;
+  function some(tokens: Readonly<Record<string, string>> | undefined): boolean {
+    return tokens !== undefined && Object.keys(tokens).length > 0;
+  }
   const kept: CssVars = {
     ...(some(merged.theme) ? { theme: merged.theme } : {}),
     ...(some(merged.light) ? { light: merged.light } : {}),

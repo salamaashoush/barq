@@ -24,7 +24,7 @@ import { stdout } from "node:process";
 import { fileURLToPath } from "node:url";
 
 import { applyItems, missingDependencies, type WrittenFile } from "./add.ts";
-import { CONFIG_FILE, findRoot, requireConfig, writeConfig } from "./config.ts";
+import { CONFIG_FILE, findRoot, requireConfig, writeConfig, type ProjectConfig } from "./config.ts";
 import { hashOf, placed, read, rewrite, targetOf, write } from "./files.ts";
 import { install, installCommand, installedPackages, packageManager } from "./project.ts";
 import {
@@ -133,11 +133,11 @@ function parse(argv: readonly string[]): Args {
   let viewing: string | true | undefined;
   let json = false;
 
-  const value = (index: number, flag: string): string => {
+  function value(index: number, flag: string): string {
     const next = argv[index];
     if (next === undefined) throw new Error(`${flag} needs a value`);
     return next;
-  };
+  }
 
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index] ?? "";
@@ -292,6 +292,10 @@ async function styles(source: Source): Promise<Option[]> {
     .map((name) => ({ value: name, label: name[0]?.toUpperCase() + name.slice(1) }));
 }
 
+interface StyleData {
+  css: string;
+}
+
 /**
  * The chosen style, copied into the project beside the theme: what the tool
  * writes is yours, and a style is ordinary CSS you may want to edit.
@@ -302,7 +306,7 @@ async function writeStyle(
   name: string,
   source: Source,
 ): Promise<string> {
-  const { css } = (await source.data(`style-${name}`)) as { css: string };
+  const { css } = (await source.data(`style-${name}`)) as StyleData;
   const target = targetOf(config, root, {
     path: "theme/style.css",
     type: "registry:theme",
@@ -328,10 +332,11 @@ async function init(args: Args): Promise<void> {
       args.cwd,
     );
     const table = await themes(source);
-    const options = (kind: ThemeDefinition["kind"]): Option[] =>
-      table
+    function options(kind: ThemeDefinition["kind"]): Option[] {
+      return table
         .filter((theme) => theme.kind === kind)
         .map((theme) => ({ value: theme.name, label: theme.title }));
+    }
 
     const path = args.path ?? (await prompt.question("Where do components go?", DEFAULT_PATHS.ui));
     // NONE first, and it is the default. This package's own look is shadcn's
@@ -447,6 +452,16 @@ function themeTarget(config: Config, root: string): string {
   return targetOf(config, root, { path: THEME_KEY, type: "registry:theme", content: "" });
 }
 
+interface ThemeWriteOptions {
+  overwrite: boolean;
+  dryRun: boolean;
+}
+
+interface ExtendedTheme {
+  config: Config;
+  file?: WrittenFile;
+}
+
 /**
  * What the items' `cssVars` and `css` make of the theme, written the way a
  * component is: replaced when the project has not touched `theme.ts`, kept when
@@ -459,8 +474,8 @@ async function extendTheme(
   config: Config,
   root: string,
   items: readonly RegistryItem[],
-  options: { overwrite: boolean; dryRun: boolean },
-): Promise<{ config: Config; file?: WrittenFile }> {
+  options: ThemeWriteOptions,
+): Promise<ExtendedTheme> {
   if (!items.some((item) => item.cssVars !== undefined || item.css !== undefined)) {
     return { config };
   }
@@ -716,7 +731,7 @@ async function list(args: Args): Promise<void> {
 }
 
 /** `list` works before `init`, against the default registry. */
-function requireConfigOrCwd(cwd: string): { root: string; config: Config } {
+function requireConfigOrCwd(cwd: string): ProjectConfig {
   try {
     return requireConfig(cwd);
   } catch {
@@ -837,7 +852,9 @@ async function info(args: Args): Promise<void> {
     return;
   }
 
-  const row = (label: string, value: string): void => say(`  ${label.padEnd(17)}${value}`);
+  function row(label: string, value: string): void {
+    say(`  ${label.padEnd(17)}${value}`);
+  }
   say(bold("Project"));
   row("root", facts.root);
   row("config", facts.config ?? dim(`none. \`barq-ui init\` writes ${CONFIG_FILE}`));

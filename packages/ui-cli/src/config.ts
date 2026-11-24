@@ -66,8 +66,13 @@ export function writeConfig(root: string, config: Config): void {
   writeFileSync(join(root, CONFIG_FILE), `${JSON.stringify(ordered, null, 2)}\n`);
 }
 
+export interface ProjectConfig {
+  root: string;
+  config: Config;
+}
+
 /** The config, or an error naming the command that would create one. */
-export function requireConfig(cwd: string): { root: string; config: Config } {
+export function requireConfig(cwd: string): ProjectConfig {
   const root = findRoot(cwd);
   if (root === undefined) {
     throw new Error(`no ${CONFIG_FILE} here or above. Run \`barq-ui init\` first.`);

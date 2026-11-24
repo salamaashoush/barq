@@ -27,6 +27,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
+import type { RegistryIndex, RegistryItem } from "../src/schema.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const cli = join(here, "../src/index.ts");
@@ -86,6 +87,35 @@ async function barq(cwd: string, ...args: string[]): Promise<Result> {
 
 function file(root: string, path: string): string {
   return readFileSync(join(root, path), "utf8");
+}
+
+interface SearchAnswer {
+  items: SearchHit[];
+  errors: string[];
+}
+
+interface SearchHit {
+  name: string;
+  type: string;
+  categories: string[];
+}
+
+interface InfoFacts {
+  root: string;
+  config: string;
+  registry: string;
+  paths: Record<string, string>;
+  theme: InfoTheme;
+  packageManager: string;
+  items: string[];
+}
+
+interface InfoTheme {
+  base: string;
+}
+
+interface PackageManifest {
+  version: string;
 }
 
 describe.if(ready)("barq-ui", () => {
@@ -360,9 +390,7 @@ describe.if(ready)("barq-ui", () => {
     const result = await barq(root, "build", "src/components");
     expect(result.code).toBe(0);
 
-    const index = JSON.parse(file(root, "registry/index.json")) as {
-      items: { name: string; registryDependencies: string[] }[];
-    };
+    const index = JSON.parse(file(root, "registry/index.json")) as RegistryIndex;
     expect(index.items.map((item) => item.name)).toContain("badge");
     expect(index.items.find((item) => item.name === "badge")?.registryDependencies).toContain(
       "slot",
@@ -400,10 +428,7 @@ describe.if(ready)("barq-ui", () => {
     const result = await barq(root, "build", "src/components");
     expect(result.code).toBe(0);
 
-    const item = JSON.parse(file(root, "registry/panel.json")) as {
-      dependencies: string[];
-      registryDependencies: string[];
-    };
+    const item = JSON.parse(file(root, "registry/panel.json")) as RegistryItem;
     expect(item.dependencies).toContain("@barqjs/css");
     expect(item.registryDependencies).toContain("badge");
   });
@@ -427,11 +452,7 @@ describe.if(ready)("barq-ui", () => {
     const result = await barq(root, "build", "src/components");
     expect(result.code).toBe(0);
 
-    const pricing = JSON.parse(file(root, "registry/pricing.json")) as {
-      type: string;
-      registryDependencies: string[];
-      files: { path: string; type: string }[];
-    };
+    const pricing = JSON.parse(file(root, "registry/pricing.json")) as RegistryItem;
     expect(pricing.type).toBe("registry:block");
     expect(pricing.files.map((each) => each.path)).toEqual([
       "blocks/pricing/components/tier.tsx",
@@ -440,7 +461,7 @@ describe.if(ready)("barq-ui", () => {
     // Its own two files import each other, and that is not a dependency.
     expect(pricing.registryDependencies).toEqual(["badge", "use-tier"]);
 
-    const hook = JSON.parse(file(root, "registry/use-tier.json")) as { type: string };
+    const hook = JSON.parse(file(root, "registry/use-tier.json")) as RegistryItem;
     expect(hook.type).toBe("registry:hook");
   });
 
@@ -500,9 +521,7 @@ describe.if(ready)("barq-ui", () => {
     expect(block).not.toContain("@container preview");
     expect(block).toContain("@media (width >= 48rem)");
 
-    const config = JSON.parse(file(root, "components.json")) as {
-      items: Record<string, Record<string, string>>;
-    };
+    const config = JSON.parse(file(root, "components.json")) as ComponentsJson;
     expect(Object.keys(config.items["login-01"] ?? {})).toEqual(["blocks/login-01.tsx"]);
   });
 
@@ -537,9 +556,7 @@ describe.if(ready)("barq-ui", () => {
 
   test("every block and every chart the registry lists can be added", async () => {
     await barq(root, "init", "--yes");
-    const listed = JSON.parse(file(ui, "registry/index.json")) as {
-      items: { name: string; type: string; files: string[] }[];
-    };
+    const listed = JSON.parse(file(ui, "registry/index.json")) as RegistryIndex;
     const blocks = listed.items.filter((item) => item.type === "registry:block");
     expect(blocks.length).toBeGreaterThanOrEqual(27);
 
@@ -610,9 +627,7 @@ describe.if(ready)("barq-ui", () => {
     const result = await barq(root, "add", "--all");
     expect(result.code).toBe(0);
 
-    const listed = JSON.parse(file(ui, "registry/index.json")) as {
-      items: { name: string; type: string; files: string[] }[];
-    };
+    const listed = JSON.parse(file(ui, "registry/index.json")) as RegistryIndex;
     for (const item of listed.items.filter((each) => each.type === "registry:ui")) {
       const name = (item.files[0] ?? "").split("/").at(-1) ?? "";
       expect(existsSync(join(root, "src/components/ui", name)), `${name} was not written`).toBe(
@@ -625,11 +640,7 @@ describe.if(ready)("barq-ui", () => {
   test("view prints an item as the registry serves it, before there is a project", async () => {
     const result = await barq(root, "view", "badge");
     expect(result.code).toBe(0);
-    const items = JSON.parse(result.out) as {
-      name: string;
-      type: string;
-      files: { path: string; content: string }[];
-    }[];
+    const items = JSON.parse(result.out) as RegistryItem[];
     expect(items).toHaveLength(1);
     expect(items[0]?.name).toBe("badge");
     expect(items[0]?.type).toBe("registry:ui");
@@ -662,10 +673,7 @@ describe.if(ready)("barq-ui", () => {
 
   test("search --json is the same answer as data", async () => {
     const result = await barq(root, "search", "charts", "--json");
-    const found = JSON.parse(result.out) as {
-      items: { name: string; type: string; categories: string[] }[];
-      errors: string[];
-    };
+    const found = JSON.parse(result.out) as SearchAnswer;
     expect(found.errors).toEqual([]);
     expect(found.items.map((item) => item.name)).toContain("chart-area");
     const area = found.items.find((item) => item.name === "chart-area");
@@ -686,23 +694,15 @@ describe.if(ready)("barq-ui", () => {
 
     const result = await barq(root, "info", "--json");
     expect(result.code).toBe(0);
-    const facts = JSON.parse(result.out) as {
-      root: string;
-      config: string;
-      registry: string;
-      paths: Record<string, string>;
-      theme: { base: string };
-      packageManager: string;
-      items: string[];
-    };
+    const facts = JSON.parse(result.out) as InfoFacts;
     expect(facts.config.endsWith("components.json")).toBe(true);
     expect(facts.registry).toBe(registry);
 
     const pinned = await spawn(root, ["info", "--json"], { BARQ_UI_REGISTRY: "" });
     const version = (
-      JSON.parse(readFileSync(join(here, "../package.json"), "utf8")) as { version: string }
+      JSON.parse(readFileSync(join(here, "../package.json"), "utf8")) as PackageManifest
     ).version;
-    expect((JSON.parse(pinned.out) as { registry: string }).registry).toBe(
+    expect((JSON.parse(pinned.out) as InfoFacts).registry).toBe(
       "https://raw.githubusercontent.com/salamaashoush/barq/refs/tags/" +
         `@barqjs/ui-cli@${version}/packages/ui/registry/{name}.json`,
     );
@@ -724,13 +724,18 @@ describe.if(ready)("barq-ui", () => {
   });
 });
 
+interface Recorder {
+  env: Record<string, string>;
+  log: string;
+}
+
 /**
  * A package manager that records what it was asked for and installs nothing.
  *
  * On `PATH` ahead of the real one, so the command the CLI runs is the command
  * the test reads, and no network is involved in finding out.
  */
-function recorder(root: string, name: string): { env: Record<string, string>; log: string } {
+function recorder(root: string, name: string): Recorder {
   const bin = join(root, ".bin");
   const log = join(root, "install.log");
   mkdirSync(bin, { recursive: true });
@@ -765,9 +770,9 @@ describe.if(ready)("installing what an item needs", () => {
 
   test("a barq package is installed at the release the components are from", async () => {
     const version = (
-      JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
-        version: string;
-      }
+      JSON.parse(
+        readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+      ) as PackageManifest
     ).version;
     writeFileSync(join(root, "pnpm-lock.yaml"), "");
     const pnpm = recorder(root, "pnpm");
@@ -843,6 +848,11 @@ describe.if(ready)("installing what an item needs", () => {
     expect(existsSync(pnpm.log)).toBe(false);
   });
 });
+
+interface ComponentsJson {
+  registries: Record<string, string>;
+  items: Record<string, Record<string, string>>;
+}
 
 describe.if(ready)("a registry of one's own, by its scope", () => {
   let root = "";
@@ -942,10 +952,7 @@ describe.if(ready)("a registry of one's own, by its scope", () => {
       'from "../components/blocks/widget/widget.tsx"',
     );
 
-    const config = JSON.parse(file(root, "components.json")) as {
-      registries: Record<string, string>;
-      items: Record<string, Record<string, string>>;
-    };
+    const config = JSON.parse(file(root, "components.json")) as ComponentsJson;
     expect(config.registries["@acme"]).toBe("./acme/{name}.json");
     // Under its whole address: a `widget` of the project's own registry would
     // otherwise be the same record.
@@ -1023,7 +1030,7 @@ describe.if(ready)("a registry of one's own, by its scope", () => {
     register({ "@acme": "./acme/{name}.json" });
 
     const viewed = await barq(root, "view", "@acme/widget");
-    const items = JSON.parse(viewed.out) as { name: string; categories: string[] }[];
+    const items = JSON.parse(viewed.out) as RegistryItem[];
     expect(items[0]?.name).toBe("@acme/widget");
     expect(items[0]?.categories).toEqual(["panels"]);
 

@@ -87,7 +87,11 @@ function typeOfPath(path: string): ItemType {
  */
 export type Placed = ReadonlyMap<string, RegistryFile>;
 
-export function placed(items: readonly { readonly files: readonly RegistryFile[] }[]): Placed {
+export interface ItemFiles {
+  readonly files: readonly RegistryFile[];
+}
+
+export function placed(items: readonly ItemFiles[]): Placed {
   const out = new Map<string, RegistryFile>();
   for (const item of items) for (const file of item.files) out.set(file.path, file);
   return out;
