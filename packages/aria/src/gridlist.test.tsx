@@ -265,6 +265,7 @@ describe("drag and drop", () => {
 
   function Animals(props: {
     label?: string;
+    labelledBy?: string;
     options?: Partial<DragAndDropOptions<Animal>>;
     disabledKeys?: Key[];
   }) {
@@ -274,7 +275,8 @@ describe("drag and drop", () => {
     });
     return (
       <GridList
-        aria-label={props.label ?? "Animals"}
+        aria-label={props.labelledBy === undefined ? (props.label ?? "Animals") : undefined}
+        aria-labelledby={props.labelledBy}
         items={ANIMALS}
         getTextValue={(animal: Animal) => animal.name}
         disabledKeys={props.disabledKeys}
@@ -435,6 +437,21 @@ describe("drag and drop", () => {
     press("Enter");
     await nextFrame();
     expect(onRootDrop).toHaveBeenCalledTimes(1);
+  });
+
+  test("a drop on a list named by a heading is named by that heading", async () => {
+    render(() => (
+      <>
+        <Animals label="From" />
+        <h3 id="to-heading">To</h3>
+        <Animals labelledBy="to-heading" options={{ onRootDrop: () => {} }} />
+      </>
+    ));
+    await startDrag();
+
+    const active = document.activeElement as HTMLElement;
+    expect(active.getAttribute("aria-label")).toBe("Drop on");
+    expect(active.getAttribute("aria-labelledby")).toBe(`${active.id} to-heading`);
   });
 
   test("with a handle, only the drag button starts a pointer drag", async () => {

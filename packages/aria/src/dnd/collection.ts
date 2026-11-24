@@ -1254,8 +1254,13 @@ export function dropIndicator(
       id: indicatorId,
       "aria-roledescription": () => strings().format("dropIndicator"),
       "aria-label": label,
-      "aria-labelledby": () =>
-        target.type === "root" ? `${indicatorId()} ${collection.id()}` : undefined,
+      "aria-labelledby": () => {
+        if (target.type !== "root") return undefined;
+        // A reference to an element named by aria-labelledby reads its whole
+        // text, every item in it, so the names it points to are taken instead.
+        const named = access(collection.ref)?.getAttribute("aria-labelledby");
+        return `${indicatorId()} ${named ?? collection.id()}`;
+      },
       "aria-hidden": ariaHidden,
       tabIndex: -1,
     },
