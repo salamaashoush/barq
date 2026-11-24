@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { createEffect, flush, createRoot, createSignal } from "@barqjs/core";
 import { debounce, leading, leadingAndTrailing, scheduled, throttle } from "./scheduled.ts";
 
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+function sleep(ms: number) {
+  return new Promise<void>((r) => setTimeout(r, ms));
+}
 
 /**
  * Wait for a condition rather than a duration.

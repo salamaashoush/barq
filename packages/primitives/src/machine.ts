@@ -78,7 +78,7 @@ export function machine<S extends string, E extends string, C = undefined>(
   const [context, setContext] = createSignal<C>(held as Exclude<C, Function>);
   let exit: Clear | undefined;
 
-  const resolve = (event: E, payload: unknown): Transition<S, C> | null => {
+  function resolve(event: E, payload: unknown): Transition<S, C> | null {
     const node = config.states[current];
     const target = node.on?.[event];
     if (target === undefined) return null;
@@ -87,14 +87,14 @@ export function machine<S extends string, E extends string, C = undefined>(
     const transition: Transition<S, C> = typeof target === "string" ? { to: target as S } : target;
     if (transition.guard !== undefined && !transition.guard(held, payload)) return null;
     return transition;
-  };
+  }
 
-  const enter = (next: S): void => {
+  function enter(next: S): void {
     exit?.();
     exit = undefined;
     const cleanup = config.states[next].enter?.(held);
     if (typeof cleanup === "function") exit = cleanup;
-  };
+  }
 
   onCleanup(() => exit?.());
   enter(config.initial);

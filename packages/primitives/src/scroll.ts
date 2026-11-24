@@ -50,10 +50,10 @@ export function scrollPosition(target: MaybeAccessor<Element | null | undefined>
   const [y, setY] = createSignal(present?.scrollTop ?? 0);
   if (isServer) return { x, y };
 
-  const read = (element: Element): void => {
+  function read(element: Element): void {
     setX(element.scrollLeft);
     setY(element.scrollTop);
-  };
+  }
 
   on(target, "scroll", (event) => read(event.currentTarget), { passive: true });
   createRenderEffect(

@@ -12,10 +12,14 @@ export type Clear = () => void;
 export type AnyFunction = (...args: never[]) => unknown;
 
 /** Does nothing, returns nothing. */
-export const noop = (): void => {};
+export function noop(): void {}
 
-export const trueFn = (): true => true;
-export const falseFn = (): false => false;
+export function trueFn(): true {
+  return true;
+}
+export function falseFn(): false {
+  return false;
+}
 
 /**
  * Read a {@link MaybeAccessor}.
@@ -121,6 +125,13 @@ export function microtask<Args extends unknown[]>(
   };
 }
 
+interface SharedEntry<T> {
+  count: number;
+  pinned: boolean;
+  value: T;
+  dispose: Clear;
+}
+
 /**
  * A root shared by every caller asking for the same key, created on the first
  * call for that key and disposed when the last owner that asked for it goes
@@ -135,7 +146,7 @@ export function microtask<Args extends unknown[]>(
  * value some later disposal can pull out from under it.
  */
 export function sharedKeyed<K, T>(factory: (key: K) => T): (key: K) => T {
-  const entries = new Map<K, { count: number; pinned: boolean; value: T; dispose: Clear }>();
+  const entries = new Map<K, SharedEntry<T>>();
 
   return (key: K): T => {
     let entry = entries.get(key);

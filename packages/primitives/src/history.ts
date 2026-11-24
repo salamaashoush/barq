@@ -83,7 +83,7 @@ export function history<T>(source: Signal<T>, options?: HistoryOptions): History
     { defer: true },
   );
 
-  const replay = (value: T): void => {
+  function replay(value: T): void {
     replaying = true;
     try {
       current = value;
@@ -91,7 +91,7 @@ export function history<T>(source: Signal<T>, options?: HistoryOptions): History
     } finally {
       replaying = false;
     }
-  };
+  }
 
   return {
     undo() {

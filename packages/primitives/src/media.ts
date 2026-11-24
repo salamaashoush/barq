@@ -58,6 +58,10 @@ export interface BreakpointState<K extends string> {
   current: Accessor<K | undefined>;
 }
 
+export interface BreakpointOptions {
+  watch?: "min" | "max";
+}
+
 /**
  * A set of named breakpoints as media queries.
  *
@@ -73,7 +77,7 @@ export interface BreakpointState<K extends string> {
  */
 export function breakpoints<K extends string>(
   definitions: Breakpoints<K>,
-  options?: { watch?: "min" | "max" },
+  options?: BreakpointOptions,
 ): BreakpointState<K> {
   const bound = options?.watch === "max" ? "max-width" : "min-width";
   const names = Object.keys(definitions) as K[];

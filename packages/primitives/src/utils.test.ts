@@ -21,7 +21,9 @@ describe("access", () => {
   });
 
   test("leaves a function that declares parameters alone", () => {
-    const handler = (e: unknown) => e;
+    function handler(e: unknown) {
+      return e;
+    }
     expect(access(handler)).toBe(handler);
   });
 
@@ -45,7 +47,9 @@ describe("access", () => {
 
 describe("asAccessor", () => {
   test("does not wrap what is already an accessor", () => {
-    const fn = () => 1;
+    function fn() {
+      return 1;
+    }
     expect(asAccessor(fn)).toBe(fn);
   });
 

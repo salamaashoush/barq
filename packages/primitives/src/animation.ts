@@ -33,10 +33,10 @@ export const easing = {
  * control points people actually paste in from a design tool.
  */
 export function cubicBezier(x1: number, y1: number, x2: number, y2: number): Easing {
-  const curve = (a: number, b: number, t: number): number => {
+  function curve(a: number, b: number, t: number): number {
     const inverse = 1 - t;
     return 3 * inverse * inverse * t * a + 3 * inverse * t * t * b + t * t * t;
-  };
+  }
 
   return (progress: number): number => {
     if (progress <= 0) return 0;
@@ -160,12 +160,12 @@ export function spring<T extends Animatable>(
   let position: Animatable = start;
   let last = 0;
 
-  const step = (current: number, goal: number, index: number): number => {
+  function step(current: number, goal: number, index: number): number {
     const force = (goal - current) * stiffness;
     const next = (velocity[index] as number) * damping + force;
     velocity[index] = next;
     return current + next;
-  };
+  }
 
   const loop = raf((timestamp) => {
     // A tab that was in the background hands back one enormous delta; a fixed

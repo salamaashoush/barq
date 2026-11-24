@@ -9,11 +9,25 @@ interface FakeObserver {
 }
 
 const instances: FakeObserver[] = [];
-let emitResize: (entries: { target: Element; contentRect?: unknown }[]) => void = () => {};
-let emitIntersection: (entries: { target: Element; isIntersecting: boolean }[]) => void = () => {};
+interface ResizeEntry {
+  target: Element;
+  contentRect?: unknown;
+}
+
+let emitResize: (entries: ResizeEntry[]) => void = () => {};
+interface IntersectionEntry {
+  target: Element;
+  isIntersecting: boolean;
+}
+
+let emitIntersection: (entries: IntersectionEntry[]) => void = () => {};
 
 const realResize = globalThis.ResizeObserver;
 const realIntersection = globalThis.IntersectionObserver;
+
+interface Targeted {
+  target: Element;
+}
 
 function fake(callbackSink: (emit: (entries: never[]) => void) => void) {
   return class {
@@ -25,7 +39,7 @@ function fake(callbackSink: (emit: (entries: never[]) => void) => void) {
       instances.push(this);
       callbackSink((entries) => {
         if (this.disconnected) return;
-        callback(entries.filter((e: { target: Element }) => this.targets.has(e.target)));
+        callback(entries.filter((e: Targeted) => this.targets.has(e.target)));
       });
     }
     observe(target: Element) {
@@ -64,7 +78,9 @@ afterEach(() => {
   globalThis.IntersectionObserver = realIntersection;
 });
 
-const el = () => document.createElement("div");
+function el() {
+  return document.createElement("div");
+}
 
 describe("resizeObserver", () => {
   test("shares one observer across targets and routes by target", () => {

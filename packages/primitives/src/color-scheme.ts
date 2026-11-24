@@ -183,6 +183,14 @@ function withoutTransitions(change: () => void): void {
   });
 }
 
+interface ServedSchemes {
+  __BARQ_SCHEME__?: Record<string, string | null>;
+}
+
+interface CookieStoreHost {
+  cookieStore?: EventTarget;
+}
+
 /**
  * A light, dark or system theme that is right on the first frame.
  *
@@ -223,12 +231,11 @@ export function colorScheme<T extends string = "light" | "dark">(
   // left its own choice in the head script: a prerendered page's server never
   // saw the cookie. The live answers take over once hydration is done.
   const hydrating = !isServer && isHydrating();
-  const served = hydrating
-    ? (window as { __BARQ_SCHEME__?: Record<string, string | null> }).__BARQ_SCHEME__?.[o.key]
-    : undefined;
+  const served = hydrating ? (window as ServedSchemes).__BARQ_SCHEME__?.[o.key] : undefined;
   const media = !isServer && o.system ? window.matchMedia(DARK) : null;
-  const osTheme = (): "light" | "dark" | undefined =>
-    media === null ? undefined : media.matches ? "dark" : "light";
+  function osTheme(): "light" | "dark" | undefined {
+    return media === null ? undefined : media.matches ? "dark" : "light";
+  }
 
   const [picked, setChoice] = createSignal<string>(
     served === undefined || served === null ? live : valid(served, o),
@@ -238,10 +245,10 @@ export function colorScheme<T extends string = "light" | "dark">(
     hydrating ? undefined : osTheme(),
   );
 
-  const resolved = (): T | undefined => {
+  function resolved(): T | undefined {
     const current = choice();
     return current === "system" ? (system() as T | undefined) : current;
-  };
+  }
 
   const scheme: ColorScheme<T> = {
     choice,
@@ -263,19 +270,19 @@ export function colorScheme<T extends string = "light" | "dark">(
   if (owner !== null) setContext(ColorSchemeContext, scheme as unknown as ColorScheme<string>);
   if (isServer) return scheme;
 
-  const wire = (): void => {
+  function wire(): void {
     if (media !== null) on(media, "change", (event) => setSystem(event.matches ? "dark" : "light"));
     // Another tab, or a response that set the cookie, changed the choice. The
     // cookie is the record, so it is read again rather than messaged about:
     // at once where the browser reports cookie changes, and in any case when
     // this tab is shown, which is the moment a stale theme would be seen.
-    const reread = (): void => {
+    function reread(): void {
       setChoice(valid(readCookie(document.cookie, o.key), o) as string);
-    };
+    }
     on(document, "visibilitychange", () => {
       if (document.visibilityState === "visible") reread();
     });
-    const cookies = (globalThis as { cookieStore?: EventTarget }).cookieStore;
+    const cookies = (globalThis as CookieStoreHost).cookieStore;
     if (cookies !== undefined) on(cookies, "change", reread);
     let first = true;
     createRenderEffect(resolved, (theme) => {
@@ -284,7 +291,7 @@ export function colorScheme<T extends string = "light" | "dark">(
       else withoutTransitions(() => apply(theme, o));
       first = false;
     });
-  };
+  }
 
   if (hydrating) {
     onHydrationEnd(() => {

@@ -9,7 +9,9 @@ export const fullscreenElement: () => Accessor<Element | null> = shared(() => {
     isServer ? null : (document.fullscreenElement ?? null),
   );
   if (isServer) return current;
-  const read = () => setCurrent(document.fullscreenElement ?? null);
+  function read() {
+    return setCurrent(document.fullscreenElement ?? null);
+  }
   on(document, "fullscreenchange", read);
   // Firefox and Safari still fire only their prefixed events on older builds,
   // and a missing listener is invisible: the state simply never updates.
@@ -39,28 +41,28 @@ export function fullscreen(target?: MaybeAccessor<Element | null | undefined>): 
   const current = fullscreenElement();
   const supported = !isServer && typeof document.exitFullscreen === "function";
 
-  const element = (): Element | null => {
+  function element(): Element | null {
     if (target === undefined) return isServer ? null : document.documentElement;
     return access(target) ?? null;
-  };
+  }
 
-  const active = () => {
+  function active() {
     const showing = current();
     if (showing === null) return false;
     const wanted = element();
     return wanted === null ? false : showing === wanted;
-  };
+  }
 
-  const enter = async (options?: FullscreenOptions): Promise<void> => {
+  async function enter(options?: FullscreenOptions): Promise<void> {
     const wanted = element();
     if (wanted === null) throw new Error("[barq] there is no element to make fullscreen");
     await wanted.requestFullscreen(options);
-  };
+  }
 
-  const exit = async (): Promise<void> => {
+  async function exit(): Promise<void> {
     if (isServer || document.fullscreenElement === null) return;
     await document.exitFullscreen();
-  };
+  }
 
   return {
     active,

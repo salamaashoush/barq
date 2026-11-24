@@ -7,6 +7,11 @@ export type SocketState = "closed" | "connecting" | "open" | "closing";
 /** What `WebSocket.send` accepts, named once so the queue cannot drift from it. */
 export type Sendable = Parameters<WebSocket["send"]>[0];
 
+export interface Heartbeat {
+  every: number;
+  message?: Sendable;
+}
+
 export interface SocketOptions {
   protocols?: string | readonly string[];
   /** Connect on creation. On by default. */
@@ -30,7 +35,7 @@ export interface SocketOptions {
    * Send a keepalive every N milliseconds while open. Off by default.
    * A proxy that drops idle sockets is the usual reason to want one.
    */
-  heartbeat?: { every: number; message?: Sendable };
+  heartbeat?: Heartbeat;
 }
 
 export interface Socket<T = string> {
@@ -93,19 +98,19 @@ export function websocket<T = string>(
   // write is not readable back until the next flush.
   let tries = 0;
 
-  const stopBeat = (): void => {
+  function stopBeat(): void {
     if (beat === undefined) return;
     clearInterval(beat);
     beat = undefined;
-  };
+  }
 
-  const allowed = (): boolean => {
+  function allowed(): boolean {
     if (retries === false || closedByUs || disposed) return false;
     if (retries === true) return true;
     return tries < retries;
-  };
+  }
 
-  const connect = (): void => {
+  function connect(): void {
     if (isServer || disposed || socket !== null) return;
     closedByUs = false;
     setState("connecting");
@@ -116,7 +121,9 @@ export function websocket<T = string>(
 
     // A handler for a socket that a newer one has replaced says nothing about
     // the connection this primitive now holds.
-    const stale = (): boolean => socket !== null && socket !== next;
+    function stale(): boolean {
+      return socket !== null && socket !== next;
+    }
 
     next.addEventListener("open", () => {
       if (stale()) return;
@@ -151,9 +158,9 @@ export function websocket<T = string>(
       setAttempts(tries);
       retryTimer = setTimeout(connect, wait);
     });
-  };
+  }
 
-  const close = (code = CLEAN, reason?: string): void => {
+  function close(code = CLEAN, reason?: string): void {
     closedByUs = true;
     if (retryTimer !== undefined) clearTimeout(retryTimer);
     retryTimer = undefined;
@@ -166,7 +173,7 @@ export function websocket<T = string>(
     }
     setState("closing");
     open.close(code, reason);
-  };
+  }
 
   tryCleanup(() => {
     disposed = true;

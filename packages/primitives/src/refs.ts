@@ -30,7 +30,7 @@ export type RefTarget<T> =
 export function mergeRefs<T>(...targets: RefTarget<T>[]): (element: T) => void {
   let undo: Clear[] = [];
 
-  const release = (): void => {
+  function release(): void {
     for (const fn of undo) fn();
     undo = [];
     for (const target of targets) {
@@ -38,7 +38,7 @@ export function mergeRefs<T>(...targets: RefTarget<T>[]): (element: T) => void {
         target.current = null;
       }
     }
-  };
+  }
 
   tryCleanup(release);
 
@@ -85,10 +85,10 @@ export function ref<T>(initial: T | null = null): Ref<T> {
   // code after the JSX reads the element before any flush has published it.
   let held = initial;
   const [version, setVersion] = createSignal(0, { equals: false, ownedWrite: true });
-  const read = (): T | null => {
+  function read(): T | null {
     version();
     return held;
-  };
+  }
   const accessor = read as Ref<T>;
   accessor.set = (next: T | null) => {
     if (Object.is(next, held)) return;

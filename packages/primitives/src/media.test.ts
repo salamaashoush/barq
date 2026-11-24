@@ -3,38 +3,42 @@ import { flush, createRoot, createSignal } from "@barqjs/core";
 import { hydrate } from "@barqjs/web";
 import { breakpoints, mediaQuery } from "./media.ts";
 
+interface MatchEvent {
+  matches: boolean;
+}
+
 interface FakeList {
   media: string;
   matches: boolean;
-  listeners: Set<(event: { matches: boolean }) => void>;
-  addEventListener: (type: string, handler: (event: { matches: boolean }) => void) => void;
-  removeEventListener: (type: string, handler: (event: { matches: boolean }) => void) => void;
+  listeners: Set<(event: MatchEvent) => void>;
+  addEventListener: (type: string, handler: (event: MatchEvent) => void) => void;
+  removeEventListener: (type: string, handler: (event: MatchEvent) => void) => void;
 }
 
 const lists = new Map<string, FakeList>();
 const realMatchMedia = window.matchMedia;
 
-function setMatches(query: string, matches: boolean): void {
-  const list = lists.get(query);
-  if (list === undefined) throw new Error(`nothing asked for ${query}`);
+function setMatches(media: string, matches: boolean): void {
+  const list = lists.get(media);
+  if (list === undefined) throw new Error(`nothing asked for ${media}`);
   list.matches = matches;
   for (const handler of list.listeners) handler({ matches });
 }
 
 beforeEach(() => {
   lists.clear();
-  window.matchMedia = ((query: string) => {
-    let list = lists.get(query);
+  window.matchMedia = ((media: string) => {
+    let list = lists.get(media);
     if (list === undefined) {
-      const listeners = new Set<(event: { matches: boolean }) => void>();
+      const listeners = new Set<(event: MatchEvent) => void>();
       list = {
-        media: query,
+        media,
         matches: false,
         listeners,
         addEventListener: (_type, handler) => listeners.add(handler),
         removeEventListener: (_type, handler) => listeners.delete(handler),
       };
-      lists.set(query, list);
+      lists.set(media, list);
     }
     return list;
   }) as unknown as typeof window.matchMedia;
@@ -45,7 +49,9 @@ afterEach(() => {
 });
 
 let unique = 0;
-const query = () => `(min-width: ${1000 + unique++}px)`;
+function query() {
+  return `(min-width: ${1000 + unique++}px)`;
+}
 
 describe("mediaQuery", () => {
   test("follows the list and shares one list per query", async () => {
@@ -73,7 +79,7 @@ describe("mediaQuery", () => {
     const container = document.createElement("div");
     container.textContent = "wide";
     const seen: boolean[] = [];
-    let read = (): boolean => false;
+    let read: () => boolean = () => false;
     const dispose = hydrate(() => {
       read = mediaQuery(q);
       seen.push(read());

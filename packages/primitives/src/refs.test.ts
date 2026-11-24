@@ -1,12 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { flush, createRoot, createSignal } from "@barqjs/core";
+import { flush, createRoot, createSignal, type RefObject } from "@barqjs/core";
 import { mergeRefs, onElement, ref } from "./refs.ts";
 
-const el = () => document.createElement("div");
+function el() {
+  return document.createElement("div");
+}
 
 describe("mergeRefs", () => {
   test("feeds a callback and a box from one ref", () => {
-    const box: { current: HTMLDivElement | null } = { current: null };
+    const box: RefObject<HTMLDivElement> = { current: null };
     const seen: HTMLDivElement[] = [];
     const target = el();
 
@@ -48,7 +50,7 @@ describe("mergeRefs", () => {
   });
 
   test("clears a box and runs cleanups when the owner disposes", () => {
-    const box: { current: HTMLDivElement | null } = { current: null };
+    const box: RefObject<HTMLDivElement> = { current: null };
     const target = el();
     let released = false;
 
@@ -75,7 +77,9 @@ describe("ref", () => {
       expect(box()).toBe(null);
       expect(box.current).toBe(null);
 
-      const track = () => seen.push(box());
+      function track() {
+        return seen.push(box());
+      }
       track();
       box.set(target);
       flush();

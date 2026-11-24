@@ -5,8 +5,13 @@ import { machine } from "./machine.ts";
 type State = "idle" | "loading" | "ready" | "failed";
 type Event = "FETCH" | "RESOLVED" | "REJECTED" | "RESET";
 
-const fetcher = () =>
-  machine<State, Event, { tries: number; last: string }>({
+interface FetchContext {
+  tries: number;
+  last: string;
+}
+
+function fetcher() {
+  return machine<State, Event, FetchContext>({
     initial: "idle",
     context: { tries: 0, last: "" },
     states: {
@@ -26,6 +31,11 @@ const fetcher = () =>
       },
     },
   });
+}
+
+interface Sender {
+  send?: (e: "GO" | "DONE") => boolean;
+}
 
 describe("machine", () => {
   test("moves on a handled event and ignores an unhandled one", () => {
@@ -131,7 +141,7 @@ describe("machine", () => {
   test("an enter that sends sees the state it was entered for", () => {
     const seen: string[] = [];
     const [dispose, built] = createRoot((d) => {
-      const m: { send?: (e: "GO" | "DONE") => boolean } = {};
+      const m: Sender = {};
       const instance = machine<"a" | "b" | "c", "GO" | "DONE">({
         initial: "a",
         states: {

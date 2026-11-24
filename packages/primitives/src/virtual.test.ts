@@ -12,10 +12,14 @@ function container(size = 400): HTMLDivElement {
   return el;
 }
 
-const scrollTo = (el: HTMLElement, top: number) => {
-  (el as unknown as { scrollTop: number }).scrollTop = top;
+interface Scrollable {
+  scrollTop: number;
+}
+
+function scrollTo(el: HTMLElement, top: number) {
+  (el as unknown as Scrollable).scrollTop = top;
   el.dispatchEvent(new Event("scroll"));
-};
+}
 
 describe("virtual, uniform rows", () => {
   test("renders a window with overscan and the full extent", () => {
@@ -81,7 +85,9 @@ describe("virtual, uniform rows", () => {
 });
 
 describe("virtual, ragged rows", () => {
-  const sizes = (index: number) => (index % 2 === 0 ? 10 : 30);
+  function sizes(index: number) {
+    return index % 2 === 0 ? 10 : 30;
+  }
 
   test("offsets come from the prefix sum", () => {
     const el = container();

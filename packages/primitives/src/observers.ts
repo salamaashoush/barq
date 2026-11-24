@@ -2,6 +2,16 @@ import { isServer } from "@barqjs/web";
 import { onCleanup, createRenderEffect, createRoot } from "@barqjs/core";
 import { type Clear, type MaybeAccessor, access } from "./utils.ts";
 
+interface Targeted {
+  target: Element;
+}
+
+interface RegistryObserver<O> {
+  observe: (target: Element, options?: O) => void;
+  unobserve: (target: Element) => void;
+  disconnect: () => void;
+}
+
 /**
  * Every observer in this module is shared.
  *
@@ -14,16 +24,12 @@ import { type Clear, type MaybeAccessor, access } from "./utils.ts";
  * The registry is torn down when its last target unsubscribes, so a page that
  * stops observing stops paying.
  */
-interface Registry<E extends { target: Element }, O> {
-  observer: {
-    observe: (target: Element, options?: O) => void;
-    unobserve: (target: Element) => void;
-    disconnect: () => void;
-  };
+interface Registry<E extends Targeted, O> {
+  observer: RegistryObserver<O>;
   targets: Map<Element, Set<(entry: E) => void>>;
 }
 
-function route<E extends { target: Element }>(
+function route<E extends Targeted>(
   targets: Map<Element, Set<(entry: E) => void>>,
   entries: readonly E[],
 ): void {
@@ -34,7 +40,7 @@ function route<E extends { target: Element }>(
   }
 }
 
-function subscribe<E extends { target: Element }, O>(
+function subscribe<E extends Targeted, O>(
   registries: Map<string, Registry<E, O>>,
   key: string,
   create: (targets: Map<Element, Set<(entry: E) => void>>) => Registry<E, O>["observer"],
@@ -195,11 +201,11 @@ export function mutationObserver(
 ): Clear {
   if (isServer) return () => {};
   return createRoot((dispose) => {
-    const bind = (node: Node): Clear => {
+    function bind(node: Node): Clear {
       const observer = new MutationObserver(handler);
       observer.observe(node, options);
       return () => observer.disconnect();
-    };
+    }
     if (typeof target === "function") {
       createRenderEffect(
         () => access(target),

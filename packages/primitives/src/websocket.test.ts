@@ -16,6 +16,18 @@ interface Fake {
 let sockets: Fake[] = [];
 const real = globalThis.WebSocket;
 
+interface DataEvent {
+  data: unknown;
+}
+
+interface CloseCode {
+  code: number;
+}
+
+interface SocketStates {
+  OPEN: number;
+}
+
 beforeEach(() => {
   sockets = [];
 
@@ -47,28 +59,30 @@ beforeEach(() => {
       flush();
     }
     deliver(data: unknown) {
-      const event = new Event("message") as Event & { data: unknown };
+      const event = new Event("message") as Event & DataEvent;
       event.data = data;
       this.dispatchEvent(event);
       flush();
     }
     drop(code: number) {
       this.readyState = 3;
-      const event = new Event("close") as Event & { code: number };
+      const event = new Event("close") as Event & CloseCode;
       event.code = code;
       this.dispatchEvent(event);
       flush();
     }
   }
   globalThis.WebSocket = FakeSocket as unknown as typeof WebSocket;
-  (globalThis.WebSocket as unknown as { OPEN: number }).OPEN = 1;
+  (globalThis.WebSocket as unknown as SocketStates).OPEN = 1;
 });
 
 afterEach(() => {
   globalThis.WebSocket = real;
 });
 
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+function sleep(ms: number) {
+  return new Promise<void>((r) => setTimeout(r, ms));
+}
 
 describe("websocket", () => {
   test("onMessage hears every message in order, two before a flush included", () => {
@@ -80,7 +94,7 @@ describe("websocket", () => {
       const socket = sockets[0] as Fake & EventTarget;
       socket.open();
       for (const data of ["a", "b"]) {
-        const event = new Event("message") as Event & { data: unknown };
+        const event = new Event("message") as Event & DataEvent;
         event.data = data;
         socket.dispatchEvent(event);
       }

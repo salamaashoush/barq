@@ -26,9 +26,9 @@ export function emitter<T = void>(): Emitter<T> {
   return {
     listen(handler) {
       handlers.add(handler);
-      const clear = (): void => {
+      function clear(): void {
         handlers.delete(handler);
-      };
+      }
       tryCleanup(clear);
       return clear;
     },

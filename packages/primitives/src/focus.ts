@@ -82,7 +82,7 @@ export function clickOutside(
 ): Clear {
   if (isServer) return () => {};
 
-  const outside = (event: Event): void => {
+  function outside(event: Event): void {
     const element = access(target);
     if (element === null || element === undefined) return;
     const hit = event.target;
@@ -92,7 +92,7 @@ export function clickOutside(
       if (other !== null && other !== undefined && other.contains(hit)) return;
     }
     handler(event);
-  };
+  }
 
   return createRoot((dispose) => {
     on(document, options?.events ?? ["pointerdown"], outside, { capture: true });

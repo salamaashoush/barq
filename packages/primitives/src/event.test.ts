@@ -4,7 +4,9 @@ import { createRoot, createSignal, createEffect, flush, getOwner } from "@barqjs
 import { eventSignal, on, onMap, once } from "./event.ts";
 import { owned } from "./utils.ts";
 
-const el = (): HTMLDivElement => document.createElement("div");
+function el(): HTMLDivElement {
+  return document.createElement("div");
+}
 
 describe("on", () => {
   test("binds and unbinds through the returned function", () => {

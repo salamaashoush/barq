@@ -2,6 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { createEffect, flush, createRoot } from "@barqjs/core";
 import { bus, emitter, trigger } from "./bus.ts";
 
+interface Subscription {
+  clear?: () => void;
+}
+
 describe("emitter", () => {
   test("delivers to every handler and unsubscribes on request", () => {
     const seen: string[] = [];
@@ -36,7 +40,7 @@ describe("emitter", () => {
   test("a handler unsubscribing mid-emit does not disturb the batch", () => {
     const events = emitter();
     const seen: string[] = [];
-    const off: { clear?: () => void } = {};
+    const off: Subscription = {};
     off.clear = events.listen(() => {
       seen.push("first");
       off.clear?.();

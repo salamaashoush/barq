@@ -35,10 +35,12 @@ export function elementSize<T extends Element>(
   return { width, height };
 }
 
-function boxOf(
-  entry: ResizeObserverEntry,
-  box: ResizeObserverBoxOptions | undefined,
-): { width: number; height: number } {
+interface BoxSize {
+  width: number;
+  height: number;
+}
+
+function boxOf(entry: ResizeObserverEntry, box: ResizeObserverBoxOptions | undefined): BoxSize {
   const sizes =
     box === "border-box"
       ? entry.borderBoxSize
@@ -69,6 +71,10 @@ export interface BoundsOptions {
   resize?: boolean;
 }
 
+export interface BoundsControl {
+  measure: () => void;
+}
+
 /**
  * An element's position and size in viewport coordinates.
  *
@@ -85,7 +91,7 @@ export interface BoundsOptions {
 export function bounds<T extends Element>(
   target: MaybeAccessor<T | null | undefined>,
   options?: BoundsOptions,
-): Bounds & { measure: () => void } {
+): Bounds & BoundsControl {
   // `measure` is the caller's to call, a component body included.
   const field = { ownedWrite: true };
   const [x, setX] = createSignal(0, field);
@@ -97,7 +103,7 @@ export function bounds<T extends Element>(
   const [bottom, setBottom] = createSignal(0, field);
   const [left, setLeft] = createSignal(0, field);
 
-  const read = (element: Element | null | undefined): void => {
+  function read(element: Element | null | undefined): void {
     if (element === null || element === undefined) return;
     const rect = element.getBoundingClientRect();
     setX(rect.x);
@@ -108,8 +114,10 @@ export function bounds<T extends Element>(
     setRight(rect.right);
     setBottom(rect.bottom);
     setLeft(rect.left);
-  };
-  const measure = (): void => read(untrack(() => access(target)));
+  }
+  function measure(): void {
+    return read(untrack(() => access(target)));
+  }
 
   if (!isServer) {
     resizeObserver(target, measure);
@@ -134,6 +142,10 @@ export interface VisibleOptions extends IntersectionObserverInit {
   once?: boolean;
 }
 
+interface PendingSubscription {
+  clear?: Clear;
+}
+
 /**
  * Whether an element intersects the viewport, through a shared
  * `IntersectionObserver`.
@@ -147,7 +159,7 @@ export function visible<T extends Element>(
 
   // A holder rather than the binding itself: an observer that reported
   // synchronously would reach the callback before the assignment completed.
-  const subscription: { clear?: Clear } = {};
+  const subscription: PendingSubscription = {};
   subscription.clear = intersectionObserver(
     target,
     (entry) => {

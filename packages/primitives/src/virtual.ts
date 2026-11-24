@@ -28,13 +28,18 @@ export interface VirtualOptions {
   axis?: "vertical" | "horizontal";
 }
 
+export interface VisibleRange {
+  start: number;
+  end: number;
+}
+
 export interface Virtual {
   /** The items to render, with their offsets. */
   items: Accessor<readonly VirtualItem[]>;
   /** The full scrollable extent, for the spacer element. */
   total: Accessor<number>;
   /** The index range currently rendered. */
-  range: Accessor<{ start: number; end: number }>;
+  range: Accessor<VisibleRange>;
   /** Scroll so that `index` is at the top (or left) of the viewport. */
   scrollTo: (index: number, behavior?: ScrollBehavior) => void;
   /** Measured viewport length along the axis. */
@@ -74,8 +79,12 @@ export function virtual(
   const measured = horizontal ? size.width : size.height;
   // Before the observer reports, the container has no measured size and every
   // range would be empty. A fallback keeps the first paint non-blank.
-  const viewport = () => measured() || 600;
-  const offset = () => (horizontal ? scroll.x() : scroll.y());
+  function viewport() {
+    return measured() || 600;
+  }
+  function offset() {
+    return horizontal ? scroll.x() : scroll.y();
+  }
 
   const uniform = typeof options.size !== "function";
 
@@ -97,7 +106,7 @@ export function virtual(
   });
 
   /** The first item whose END is past `at`. */
-  const indexAt = (at: number): number => {
+  function indexAt(at: number): number {
     const sums = untrack(offsets);
     if (sums === null) {
       const each = access(options.size as MaybeAccessor<number>);
@@ -111,7 +120,7 @@ export function virtual(
       else high = mid;
     }
     return low;
-  };
+  }
 
   const range = createMemo(() => {
     const count = access(options.count);
@@ -142,11 +151,11 @@ export function virtual(
     return out;
   });
 
-  const startOf = (index: number): number => {
+  function startOf(index: number): number {
     const sums = untrack(offsets);
     if (sums !== null) return sums[clamp(index, 0, sums.length - 1)] ?? 0;
     return index * access(options.size as MaybeAccessor<number>);
-  };
+  }
 
   return {
     items,

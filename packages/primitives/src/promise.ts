@@ -8,6 +8,10 @@ export class TimeoutError extends Error {
   }
 }
 
+export interface Cancellable {
+  cancel: Clear;
+}
+
 /**
  * A promise that resolves the first time `condition` reads truthy.
  *
@@ -20,7 +24,7 @@ export class TimeoutError extends Error {
  * const user = await until(currentUser);
  * ```
  */
-export function until<T>(condition: Accessor<T>): Promise<NonNullable<T>> & { cancel: Clear } {
+export function until<T>(condition: Accessor<T>): Promise<NonNullable<T>> & Cancellable {
   let cancel: Clear = () => {};
 
   const promise = new Promise<NonNullable<T>>((resolve, reject) => {

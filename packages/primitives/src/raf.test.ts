@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { flush, createRoot } from "@barqjs/core";
 import { raf } from "./raf.ts";
 
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+function sleep(ms: number) {
+  return new Promise<void>((r) => setTimeout(r, ms));
+}
 
 /** Wait for a condition rather than a duration; a loaded machine delivers frames late. */
 async function eventually(predicate: () => boolean, what: string, deadline = 2000): Promise<void> {

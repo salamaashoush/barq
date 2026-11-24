@@ -80,7 +80,7 @@ interface Probe {
   readClipboard: string;
 }
 
-const run = async (): Promise<Probe> => {
+async function run(): Promise<Probe> {
   const child = Bun.spawn(["bun", "run", probe], { stdout: "pipe", stderr: "pipe" });
   const [out, err, code] = await Promise.all([
     new Response(child.stdout).text(),
@@ -89,7 +89,7 @@ const run = async (): Promise<Probe> => {
   ]);
   if (code !== 0) throw new Error(`the probe exited ${code}\n${err}\n${out}`);
   return JSON.parse(out) as Probe;
-};
+}
 
 const probed = await run();
 

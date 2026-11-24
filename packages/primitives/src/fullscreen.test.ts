@@ -27,7 +27,7 @@ afterEach(() => {
 });
 
 /** An element whose `requestFullscreen` drives the same document state Chrome would. */
-const el = () => {
+function el() {
   const node = document.createElement("div");
   node.requestFullscreen = async () => {
     requested.push(node);
@@ -37,7 +37,7 @@ const el = () => {
   };
   document.body.append(node);
   return node;
-};
+}
 
 // The document element is a target too, for the no-argument form.
 document.documentElement.requestFullscreen = async () => {

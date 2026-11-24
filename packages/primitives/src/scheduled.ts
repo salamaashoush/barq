@@ -78,12 +78,12 @@ function trailing<Args extends unknown[]>(
   let id: ReturnType<typeof setTimeout> | undefined;
   let held: Args | undefined;
 
-  const run = (): void => {
+  function run(): void {
     id = undefined;
     const args = held as Args;
     held = undefined;
     callback(...args);
-  };
+  }
 
   const call = ((...args: Args) => {
     held = args;
@@ -130,12 +130,12 @@ export const scheduleIdle: Schedule = <Args extends unknown[]>(
   let id: ReturnType<typeof requestIdleCallback> | undefined;
   let held: Args | undefined;
 
-  const run = (): void => {
+  function run(): void {
     id = undefined;
     const args = held as Args;
     held = undefined;
     callback(...args);
-  };
+  }
 
   const call = ((...args: Args) => {
     held = args;

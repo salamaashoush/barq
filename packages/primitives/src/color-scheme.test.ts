@@ -11,12 +11,16 @@ import {
 
 const DARK = "(prefers-color-scheme: dark)";
 
+interface MatchEvent {
+  matches: boolean;
+}
+
 interface FakeList {
   media: string;
   matches: boolean;
-  listeners: Set<(event: { matches: boolean }) => void>;
-  addEventListener: (type: string, handler: (event: { matches: boolean }) => void) => void;
-  removeEventListener: (type: string, handler: (event: { matches: boolean }) => void) => void;
+  listeners: Set<(event: MatchEvent) => void>;
+  addEventListener: (type: string, handler: (event: MatchEvent) => void) => void;
+  removeEventListener: (type: string, handler: (event: MatchEvent) => void) => void;
 }
 
 const realMatchMedia = window.matchMedia;
@@ -40,14 +44,26 @@ function mount<T>(fn: () => T): T {
   });
 }
 
-const html = (): HTMLElement => document.documentElement;
+function html(): HTMLElement {
+  return document.documentElement;
+}
+
+interface HappyWindow {
+  happyDOM: HappyDom;
+}
+
+interface HappyDom {
+  setURL(url: string): void;
+}
+
+interface SchemeWindow {
+  __BARQ_SCHEME__?: unknown;
+}
 
 beforeEach(() => {
   // Cookies need an origin, and the shared setup leaves the page at about:blank.
-  (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(
-    "http://localhost:3000/",
-  );
-  const listeners = new Set<(event: { matches: boolean }) => void>();
+  (window as unknown as HappyWindow).happyDOM.setURL("http://localhost:3000/");
+  const listeners = new Set<(event: MatchEvent) => void>();
   systemDark = {
     media: DARK,
     matches: false,
@@ -61,7 +77,7 @@ beforeEach(() => {
   html().className = "";
   html().removeAttribute("data-mode");
   html().style.colorScheme = "";
-  delete (window as { __BARQ_SCHEME__?: unknown }).__BARQ_SCHEME__;
+  delete (window as SchemeWindow).__BARQ_SCHEME__;
 });
 
 afterEach(() => {
@@ -69,6 +85,10 @@ afterEach(() => {
   window.matchMedia = realMatchMedia;
   clearCookie();
 });
+
+interface ServedSchemeWindow {
+  __BARQ_SCHEME__?: Record<string, string>;
+}
 
 describe("colorScheme in the browser", () => {
   test("takes the choice from the cookie and writes the theme on <html>", () => {
@@ -164,7 +184,7 @@ describe("colorScheme in the browser", () => {
   });
 
   test("builds what the server built while the page hydrates, then takes the cookie's", async () => {
-    (window as { __BARQ_SCHEME__?: Record<string, string> }).__BARQ_SCHEME__ = {
+    (window as ServedSchemeWindow).__BARQ_SCHEME__ = {
       theme: "light",
     };
     document.cookie = "theme=dark; Path=/";
@@ -190,7 +210,7 @@ describe("colorScheme in the browser", () => {
 
   test("leaves system unknown while hydrating, so the markup matches a server that could not know", async () => {
     systemDark.matches = true;
-    (window as { __BARQ_SCHEME__?: Record<string, string> }).__BARQ_SCHEME__ = {
+    (window as ServedSchemeWindow).__BARQ_SCHEME__ = {
       theme: "system",
     };
     const container = document.createElement("div");
@@ -212,16 +232,16 @@ describe("colorScheme in the browser", () => {
 });
 
 describe("colorSchemeScript", () => {
-  const run = (source: string): void => {
+  function run(source: string): void {
     runInThisContext(source);
-  };
+  }
 
   test("puts the cookie's theme on <html> and records what the server chose", () => {
     document.cookie = "theme=dark; Path=/";
     run(colorSchemeScript(undefined, "light"));
     expect([...html().classList]).toEqual(["dark"]);
     expect(html().style.colorScheme).toBe("dark");
-    expect((window as { __BARQ_SCHEME__?: unknown }).__BARQ_SCHEME__).toEqual({ theme: "light" });
+    expect((window as SchemeWindow).__BARQ_SCHEME__).toEqual({ theme: "light" });
   });
 
   test("resolves system with no cookie at all", () => {

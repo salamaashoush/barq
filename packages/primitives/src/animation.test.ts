@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { flush, createRoot, createSignal } from "@barqjs/core";
 import { cubicBezier, easing, spring, tween } from "./animation.ts";
 
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+function sleep(ms: number) {
+  return new Promise<void>((r) => setTimeout(r, ms));
+}
 
 /**
  * Wait for a condition, not for a duration.

@@ -33,7 +33,7 @@ export function raf(callback: (timestamp: number) => void, rate?: MaybeAccessor<
   let id = 0;
   let previous = 0;
 
-  const frame = (timestamp: number): void => {
+  function frame(timestamp: number): void {
     id = requestAnimationFrame(frame);
     const limit = rate === undefined ? undefined : access(rate);
     if (limit !== undefined && limit > 0) {
@@ -45,23 +45,23 @@ export function raf(callback: (timestamp: number) => void, rate?: MaybeAccessor<
       previous = timestamp - ((timestamp - previous) % budget);
     }
     callback(timestamp);
-  };
+  }
 
-  const start = (): void => {
+  function start(): void {
     if (active) return;
     active = true;
     setRunning(true);
     previous = performance.now();
     id = requestAnimationFrame(frame);
-  };
+  }
 
-  const stop = (): void => {
+  function stop(): void {
     if (!active) return;
     active = false;
     setRunning(false);
     cancelAnimationFrame(id);
     id = 0;
-  };
+  }
 
   tryCleanup(stop);
   return { start, stop, running };

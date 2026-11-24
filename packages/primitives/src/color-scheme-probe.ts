@@ -2,7 +2,13 @@ import { createRequestEvent, esc, html as markup, renderToString } from "@barqjs
 import { provideRequestEvent } from "@barqjs/server/storage";
 import { colorScheme, useColorScheme } from "./color-scheme.ts";
 
-function page(cookie: string | null): { html: string; resolved: string | null; choice: string } {
+interface ProbedPage {
+  html: string;
+  resolved: string | null;
+  choice: string;
+}
+
+function page(cookie: string | null): ProbedPage {
   const headers = new Headers(cookie === null ? {} : { cookie });
   const event = createRequestEvent(new Request("http://localhost/", { headers }));
   let resolved: string | null = null;

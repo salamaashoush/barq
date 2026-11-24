@@ -76,6 +76,10 @@ const MODULES: Record<string, Record<string, unknown>> = {
   websocket,
 };
 
+interface ExportsManifest {
+  exports: Record<string, unknown>;
+}
+
 describe("the root entry", () => {
   test("re-exports every value every module exports", () => {
     const missing: string[] = [];
@@ -130,7 +134,7 @@ describe("the root entry", () => {
   test("the module list here matches the package's subpath exports", async () => {
     const manifest = (await Bun.file(
       new URL("../package.json", import.meta.url).pathname,
-    ).json()) as { exports: Record<string, unknown> };
+    ).json()) as ExportsManifest;
 
     const subpaths = Object.keys(manifest.exports)
       .filter((key) => key !== ".")

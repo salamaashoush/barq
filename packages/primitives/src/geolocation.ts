@@ -54,15 +54,16 @@ export function geolocation(options?: PositionOptions): Geolocation {
   const [watching, setWatching] = createSignal(false, { ownedWrite: true });
   let id: number | undefined;
 
-  const available = (): boolean =>
-    !isServer && typeof navigator !== "undefined" && navigator.geolocation !== undefined;
+  function available(): boolean {
+    return !isServer && typeof navigator !== "undefined" && navigator.geolocation !== undefined;
+  }
 
-  const stop = (): void => {
+  function stop(): void {
     if (id === undefined) return;
     navigator.geolocation.clearWatch(id);
     id = undefined;
     setWatching(false);
-  };
+  }
 
   tryCleanup(stop);
 

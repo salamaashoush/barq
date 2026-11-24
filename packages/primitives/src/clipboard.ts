@@ -34,7 +34,7 @@ export function clipboard(options?: ClipboardOptions): ClipboardHandle {
     if (timer !== undefined) clearTimeout(timer);
   });
 
-  const copy = async (text: string): Promise<void> => {
+  async function copy(text: string): Promise<void> {
     try {
       await writeClipboard(text);
       setError(undefined);
@@ -48,7 +48,7 @@ export function clipboard(options?: ClipboardOptions): ClipboardHandle {
       setCopied(false);
       throw failure;
     }
-  };
+  }
 
   return { copy, copied, error };
 }

@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { createEffect, flush, createRoot, createSignal } from "@barqjs/core";
 import { debounced, every, not, previous, selector, some, throttled, whenever } from "./derived.ts";
 
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+function sleep(ms: number) {
+  return new Promise<void>((r) => setTimeout(r, ms));
+}
 
 /** Wait for a condition rather than a duration; a loaded machine runs timers late. */
 async function eventually(predicate: () => boolean, what: string, deadline = 2000): Promise<void> {

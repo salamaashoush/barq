@@ -17,6 +17,10 @@ interface Fake {
 let streams: Fake[] = [];
 const real = globalThis.EventSource;
 
+interface SourceInit {
+  withCredentials?: boolean;
+}
+
 beforeEach(() => {
   streams = [];
   class FakeSource extends EventTarget implements Fake {
@@ -28,7 +32,7 @@ beforeEach(() => {
     readyState = 0;
     closed = false;
 
-    constructor(url: string, init?: { withCredentials?: boolean }) {
+    constructor(url: string, init?: SourceInit) {
       super();
       this.url = url;
       this.withCredentials = init?.withCredentials === true;
@@ -67,7 +71,13 @@ afterEach(() => {
   globalThis.EventSource = real;
 });
 
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
+interface IdMessage {
+  id: number;
+}
 
 describe("eventSource", () => {
   test("connects, reports state, and publishes unnamed events", () => {
@@ -87,7 +97,7 @@ describe("eventSource", () => {
   test("hands named events to their handlers, parsed, skipping what does not parse", () => {
     const seen: unknown[] = [];
     const [dispose, events] = createRoot(
-      (d) => [d, eventSource<{ id: number }>("/events", { parse: JSON.parse })] as const,
+      (d) => [d, eventSource<IdMessage>("/events", { parse: JSON.parse })] as const,
     );
     const stop = events.on("run.completed", (event) => seen.push(event.data));
     streams[0]!.open();

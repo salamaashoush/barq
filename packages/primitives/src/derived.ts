@@ -149,8 +149,9 @@ export function selector<T, K = T>(
   const subs = new Map<K, Signal<boolean>>();
   let value = untrack(source);
 
-  const matches = (key: K, against: T): boolean =>
-    equals === undefined ? (key as unknown as T) === against : equals(key, against);
+  function matches(key: K, against: T): boolean {
+    return equals === undefined ? (key as unknown as T) === against : equals(key, against);
+  }
 
   createRenderEffect(
     () => source(),

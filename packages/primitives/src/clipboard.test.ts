@@ -2,7 +2,9 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { createRoot } from "@barqjs/core";
 import { clipboard, readClipboard, writeClipboard } from "./clipboard.ts";
 
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+function sleep(ms: number) {
+  return new Promise<void>((r) => setTimeout(r, ms));
+}
 const real = navigator.clipboard;
 
 function stub(impl: Partial<Clipboard>): void {

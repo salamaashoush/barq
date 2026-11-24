@@ -42,9 +42,13 @@ export type EventOf<T, K extends EventTypeOf<T>> = EventMapOf<T>[K] extends Even
   ? EventMapOf<T>[K]
   : Event;
 
+export interface CurrentTarget<T> {
+  currentTarget: T;
+}
+
 /** A handler whose `currentTarget` is the element the listener was bound to. */
 export type EventHandler<T, K extends EventTypeOf<T>> = (
-  event: EventOf<T, K> & { currentTarget: T },
+  event: EventOf<T, K> & CurrentTarget<T>,
 ) => void;
 
 type Options = boolean | AddEventListenerOptions;
@@ -75,7 +79,9 @@ function bindAll(
   for (const type of types) bindOne(target, type, handler, options);
 }
 
-const isAccessor = (value: unknown): boolean => typeof value === "function";
+function isAccessor(value: unknown): boolean {
+  return typeof value === "function";
+}
 
 /**
  * Listen to an event, with the listener removed when the owning scope disposes

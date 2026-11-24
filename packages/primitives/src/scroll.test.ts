@@ -21,6 +21,10 @@ describe("windowScroll", () => {
   });
 });
 
+interface Scrollable {
+  scrollTop: number;
+}
+
 describe("scrollPosition", () => {
   test("reads the element at once and follows its scroll", () => {
     const box = document.createElement("div");
@@ -33,7 +37,7 @@ describe("scrollPosition", () => {
       expect(position.x()).toBe(5);
       expect(position.y()).toBe(7);
 
-      (box as unknown as { scrollTop: number }).scrollTop = 99;
+      (box as unknown as Scrollable).scrollTop = 99;
       box.dispatchEvent(new Event("scroll"));
       flush();
       expect(position.y()).toBe(99);

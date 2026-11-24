@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { flush, createRoot } from "@barqjs/core";
 import { activeElement, clickOutside, focusWithin, focused } from "./focus.ts";
 
-const mount = <T extends HTMLElement>(el: T): T => {
+function mount<T extends HTMLElement>(el: T): T {
   document.body.append(el);
   return el;
-};
+}
 
 describe("activeElement", () => {
   test("follows focus", () => {

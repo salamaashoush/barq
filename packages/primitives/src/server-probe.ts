@@ -59,9 +59,11 @@ import { elapsed, interval, now, timeout } from "./timer.ts";
 import { access, shared, sharedKeyed } from "./utils.ts";
 
 const fired: string[] = [];
-const note = (what: string) => (): void => {
-  fired.push(what);
-};
+function note(what: string) {
+  return (): void => {
+    fired.push(what);
+  };
+}
 
 const probe = runWithOwner(null, () =>
   createRoot((dispose) => {

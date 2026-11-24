@@ -20,16 +20,33 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, test } from "bun:test";
 
-const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
-  exports: Record<string, { import: string }>;
-};
+interface PackageManifest {
+  exports: Record<string, ExportEntry>;
+}
+
+interface ExportEntry {
+  import: string;
+}
+
+const manifest = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+) as PackageManifest;
 
 const ENTRIES = Object.values(manifest.exports).map((entry) => basename(entry.import, ".js"));
 
-const distOf = (entry: string): string =>
-  fileURLToPath(new URL(`../dist/${entry}.js`, import.meta.url));
+function distOf(entry: string): string {
+  return fileURLToPath(new URL(`../dist/${entry}.js`, import.meta.url));
+}
 
 const built = ENTRIES.every((entry) => existsSync(distOf(entry)));
+
+interface WindowSizeModule {
+  windowSize: () => unknown;
+}
+
+interface ResizeObserverModule {
+  resizeObserver: (target: Element, handler: () => void) => () => void;
+}
 
 describe.if(built)("the published entries share one runtime", () => {
   test("a name exported by two entries is the SAME binding in both", async () => {
@@ -56,12 +73,8 @@ describe.if(built)("the published entries share one runtime", () => {
   });
 
   test("a shared root reached through two entries is one root", async () => {
-    const root = (await import(distOf("index"))) as unknown as {
-      windowSize: () => unknown;
-    };
-    const element = (await import(distOf("element"))) as unknown as {
-      windowSize: () => unknown;
-    };
+    const root = (await import(distOf("index"))) as unknown as WindowSizeModule;
+    const element = (await import(distOf("element"))) as unknown as WindowSizeModule;
 
     expect(root.windowSize(), "the root barrel and ./element hold separate window listeners").toBe(
       element.windowSize(),
@@ -69,9 +82,7 @@ describe.if(built)("the published entries share one runtime", () => {
   });
 
   test("the observer registry is one registry", async () => {
-    const root = (await import(distOf("index"))) as unknown as {
-      resizeObserver: (target: Element, handler: () => void) => () => void;
-    };
+    const root = (await import(distOf("index"))) as unknown as ResizeObserverModule;
     const observers = (await import(distOf("observers"))) as typeof root;
 
     const seen: Element[] = [];

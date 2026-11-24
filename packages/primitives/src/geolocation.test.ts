@@ -5,24 +5,35 @@ import { geolocation } from "./geolocation.ts";
 type Success = (reading: unknown) => void;
 type Failure = (error: unknown) => void;
 
-const calls: { success: Success; failure: Failure; kind: "once" | "watch"; id: number }[] = [];
+interface PositionCall {
+  success: Success;
+  failure: Failure;
+  kind: "once" | "watch";
+  id: number;
+}
+
+const calls: PositionCall[] = [];
 
 /** The shape the API rejects with, with the constants the interface requires. */
-const denied = (code: number, message: string): GeolocationPositionError => ({
-  code,
-  message,
-  PERMISSION_DENIED: 1,
-  POSITION_UNAVAILABLE: 2,
-  TIMEOUT: 3,
-});
+function denied(code: number, message: string): GeolocationPositionError {
+  return {
+    code,
+    message,
+    PERMISSION_DENIED: 1,
+    POSITION_UNAVAILABLE: 2,
+    TIMEOUT: 3,
+  };
+}
 let cleared: number[] = [];
 let nextId = 1;
 const real = navigator.geolocation;
 
-const reading = (latitude: number) => ({
-  coords: { latitude, longitude: 2, accuracy: 5, altitude: null, heading: null, speed: null },
-  timestamp: 1000,
-});
+function reading(latitude: number) {
+  return {
+    coords: { latitude, longitude: 2, accuracy: 5, altitude: null, heading: null, speed: null },
+    timestamp: 1000,
+  };
+}
 
 beforeEach(() => {
   calls.length = 0;

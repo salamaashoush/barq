@@ -69,14 +69,14 @@ export function userIdle(options?: IdleOptions): Accessor<boolean> {
   const after = options?.after ?? 60_000;
   let timer: ReturnType<typeof setTimeout> | undefined;
 
-  const arm = (): void => {
+  function arm(): void {
     if (timer !== undefined) clearTimeout(timer);
     timer = setTimeout(() => setIdle(true), after);
-  };
-  const wake = (): void => {
+  }
+  function wake(): void {
     setIdle(false);
     arm();
-  };
+  }
 
   on(document, options?.events ?? ACTIVITY, wake, { passive: true });
   on(document, "visibilitychange", () => {
@@ -150,7 +150,7 @@ export const devicePixelRatio: () => Accessor<number> = shared(() => {
   // one it replaces, whose own scope is the thing being cleared.
   const owner = getOwner();
   let clear: Clear | undefined;
-  const watch = (): void => {
+  function watch(): void {
     clear?.();
     const list = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
     clear = runWithOwner(owner, () =>
@@ -159,7 +159,7 @@ export const devicePixelRatio: () => Accessor<number> = shared(() => {
         watch();
       }),
     );
-  };
+  }
   watch();
   tryCleanup(() => clear?.());
   return ratio;

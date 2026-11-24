@@ -7,6 +7,10 @@ let emitIntersection: (entries: unknown[]) => void = () => {};
 const realResize = globalThis.ResizeObserver;
 const realIntersection = globalThis.IntersectionObserver;
 
+interface Targeted {
+  target: Element;
+}
+
 function fake(sink: (emit: (entries: never[]) => void) => void) {
   return class {
     targets = new Set<Element>();
@@ -14,7 +18,7 @@ function fake(sink: (emit: (entries: never[]) => void) => void) {
     constructor(callback: (entries: never[]) => void) {
       sink((entries) => {
         if (this.disconnected) return;
-        callback(entries.filter((e: { target: Element }) => this.targets.has(e.target)));
+        callback(entries.filter((e: Targeted) => this.targets.has(e.target)));
       });
     }
     observe(target: Element) {
@@ -52,7 +56,9 @@ afterEach(() => {
   globalThis.IntersectionObserver = realIntersection;
 });
 
-const el = () => document.createElement("div");
+function el() {
+  return document.createElement("div");
+}
 
 describe("elementSize", () => {
   test("reads the content box and keeps the two axes independent", () => {

@@ -2,8 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { flush, createRoot } from "@barqjs/core";
 import { mouseInElement, mousePosition } from "./mouse.ts";
 
-const pointer = (type: string, init: Record<string, number>) =>
-  Object.assign(new Event(type, { bubbles: true }), init);
+function pointer(type: string, init: Record<string, number>) {
+  return Object.assign(new Event(type, { bubbles: true }), init);
+}
 
 describe("mousePosition", () => {
   test("follows pointer movement and shares one source", () => {

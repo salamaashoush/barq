@@ -2,8 +2,15 @@ import { describe, expect, test } from "bun:test";
 import { flush, createRoot } from "@barqjs/core";
 import { isKeyDown, keysDown, parseCombo, shortcut } from "./keyboard.ts";
 
-const key = (init: KeyboardEventInit & { key: string }, type = "keydown") =>
-  window.dispatchEvent(new KeyboardEvent(type, { bubbles: true, cancelable: true, ...init }));
+interface KeyInit {
+  key: string;
+}
+
+function key(init: KeyboardEventInit & KeyInit, type = "keydown") {
+  return window.dispatchEvent(
+    new KeyboardEvent(type, { bubbles: true, cancelable: true, ...init }),
+  );
+}
 flush();
 
 describe("keysDown", () => {

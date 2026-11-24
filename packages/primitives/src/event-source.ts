@@ -91,32 +91,32 @@ export function eventSource<T = string>(
   let disposed = false;
   let tries = 0;
 
-  const read = (event: MessageEvent<string>): StreamEvent<T> | undefined => {
+  function read(event: MessageEvent<string>): StreamEvent<T> | undefined {
     try {
       return { type: event.type, data: parse(event.data), lastEventId: event.lastEventId };
     } catch {
       return undefined;
     }
-  };
+  }
 
-  const deliver = (event: Event): void => {
+  function deliver(event: Event): void {
     if (event.target !== source) return;
     const received = read(event as MessageEvent<string>);
     if (received === undefined) return;
     for (const handler of handlers.get(event.type) ?? []) handler(received);
-  };
+  }
 
-  const bind = (target: EventSource, type: string): void => {
+  function bind(target: EventSource, type: string): void {
     if (type !== "message") target.addEventListener(type, deliver);
-  };
+  }
 
-  const allowed = (): boolean => {
+  function allowed(): boolean {
     if (retries === false || closedByUs || disposed) return false;
     if (retries === true) return true;
     return tries < retries;
-  };
+  }
 
-  const connect = (): void => {
+  function connect(): void {
     if (isServer || disposed || source !== null) return;
     closedByUs = false;
     setState("connecting");
@@ -157,9 +157,9 @@ export function eventSource<T = string>(
       setAttempts(tries);
       retryTimer = setTimeout(connect, wait);
     });
-  };
+  }
 
-  const close = (): void => {
+  function close(): void {
     closedByUs = true;
     if (retryTimer !== undefined) clearTimeout(retryTimer);
     retryTimer = undefined;
@@ -168,7 +168,7 @@ export function eventSource<T = string>(
     setRaw(null);
     setState("closed");
     open?.close();
-  };
+  }
 
   tryCleanup(() => {
     disposed = true;
