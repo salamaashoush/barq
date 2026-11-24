@@ -1,4 +1,4 @@
-import { LaserPointer } from "@excalidraw/laser-pointer";
+import * as laserPointer from "@excalidraw/laser-pointer";
 import {
   arrayToMap,
   DEFAULT_LASER_COLOR,
@@ -53,6 +53,15 @@ import { getLassoSelectedElementIds } from "./lasso/utils.ts";
 
 import type { AppState, Collaborator, SocketId } from "../types.ts";
 import type { DiagramEditor } from "./editor.ts";
+
+// The package's `main` is a CommonJS build whose exports Node cannot read by
+// name, and Node is what loads it when a dev server renders on the server:
+// `import { LaserPointer }` failed there and took the page down. Its `module`
+// build, which a bundler reads, has the named export and no default.
+const LaserPointer: typeof laserPointer.LaserPointer =
+  laserPointer.LaserPointer ??
+  (laserPointer as unknown as { default: typeof laserPointer }).default.LaserPointer;
+type LaserPointer = laserPointer.LaserPointer;
 
 export interface AnimatedTrailOptions {
   fill: (trail: AnimatedTrail) => string;

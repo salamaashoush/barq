@@ -12,7 +12,7 @@ import type {
   NonDeletedExcalidrawElement,
 } from "@excalidraw/element/types";
 import type { RoughCanvas } from "roughjs/bin/canvas";
-import rough from "roughjs/bin/rough";
+import rough from "roughjs";
 
 import { Fonts } from "./fonts/fonts.ts";
 import { renderStaticScene } from "./renderer/static-scene.ts";
