@@ -342,6 +342,12 @@ export {
   comboChartStyles,
 } from "./components/combo-chart.tsx";
 export {
+  ScatterChart,
+  type ScatterChartProps,
+  type ScatterChartSlots,
+  scatterChartStyles,
+} from "./components/scatter-chart.tsx";
+export {
   ARC_CONTRAST_DARK,
   ARC_CONTRAST_LIGHT,
   ARC_DARK,
