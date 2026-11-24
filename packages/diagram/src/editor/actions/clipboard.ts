@@ -27,12 +27,13 @@ import type { AppState } from "../../types.ts";
 import type { DiagramEditor } from "../editor.ts";
 import type { Action, ActionResult } from "../types.ts";
 
-const selectionForClipboard = (appState: AppState, editor: DiagramEditor) =>
-  editor.scene.getSelectedElements({
+function selectionForClipboard(appState: AppState, editor: DiagramEditor) {
+  return editor.scene.getSelectedElements({
     selectedElementIds: appState.selectedElementIds,
     includeBoundTextElement: true,
     includeElementsInFrames: true,
   });
+}
 
 /** Copies the selection, its frames' children and labels with it, in Excalidraw's clipboard format. */
 export const actionCopy: Action<ClipboardEvent> = {
@@ -101,12 +102,12 @@ export const actionCut: Action<ClipboardEvent> = {
   keyTest: (event) => event[KEYS.CTRL_OR_CMD] && event.key === KEYS.X,
 };
 
-const copyAsImage = async (
+async function copyAsImage(
   type: "png" | "svg",
   elements: readonly ExcalidrawElement[],
   appState: AppState,
   editor: DiagramEditor,
-): Promise<ActionResult> => {
+): Promise<ActionResult> {
   const { exportedElements, exportingFrame } = prepareElementsForExport(elements, appState, true);
   if (exportedElements.length === 0) {
     return {
@@ -146,7 +147,7 @@ const copyAsImage = async (
     };
   }
   return { appState, captureUpdate: CaptureUpdateAction.EVENTUALLY };
-};
+}
 
 /** Copies the selection (or everything) to the clipboard as SVG markup, through the export. */
 export const actionCopyAsSvg: Action = {

@@ -31,30 +31,42 @@ const YOUTUBE_EMBED = "https://www.youtube.com/embed/dQw4w9WgXcQ?enablejsapi=1";
 const SANDBOX =
   "allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation allow-downloads";
 
-const embeddable = (
+function embeddable(
   id: string,
   link: string | null,
   extra: Partial<ExcalidrawEmbeddableElement> = {},
-): ExcalidrawElement => ({
-  ...newEmbeddableElement({ type: "embeddable", x: 100, y: 100, width: 300, height: 150 }),
-  id,
-  link,
-  ...extra,
-});
+): ExcalidrawElement {
+  return {
+    ...newEmbeddableElement({ type: "embeddable", x: 100, y: 100, width: 300, height: 150 }),
+    id,
+    link,
+    ...extra,
+  };
+}
 
-const live = () => h().scene.getNonDeletedElements();
-const element = (id: string) => h().scene.getNonDeletedElement(id)!;
+function live() {
+  return h().scene.getNonDeletedElements();
+}
+function element(id: string) {
+  return h().scene.getNonDeletedElement(id)!;
+}
 
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-const settle = async (rounds = 6) => {
+async function settle(rounds = 6) {
   for (let index = 0; index < rounds; index++) await wait(0);
-};
+}
+
+interface Detachable {
+  detach: () => void;
+}
 
 /** A host's embeds, as `<DiagramEditor>` renders them: a container, its content and an iframe. */
-const mountEmbeds = () => {
+function mountEmbeds() {
   const editor = h();
-  const shown = new Map<string, EmbedParts & { detach: () => void }>();
+  const shown = new Map<string, EmbedParts & Detachable>();
   let list: readonly Embed[] = [];
   editor.onEmbedsChange((embeds) => {
     list = embeds;
@@ -94,12 +106,12 @@ const mountEmbeds = () => {
     container: (id: string) => shown.get(id)?.container,
     content: (id: string) => shown.get(id)?.content,
   };
-};
+}
 
-const mount = (options: Partial<Omit<DiagramEditorOptions, "container">> = {}) => {
+function mount(options: Partial<Omit<DiagramEditorOptions, "container">> = {}) {
   renderEditor(options);
   return mountEmbeds();
-};
+}
 
 describe("the embeddable tool", () => {
   test("a drag draws an empty embeddable, selected, with its link editor open", () => {
@@ -159,13 +171,13 @@ describe("the embeddable tool", () => {
 });
 
 describe("validateEmbeddable", () => {
-  const statusOf = (validateEmbeddable: unknown, link: string) => {
+  function statusOf(validateEmbeddable: unknown, link: string) {
     renderEditor({ host: { validateEmbeddable: validateEmbeddable as never } });
     API.setElements([embeddable("E", link)]);
     const status = h().embeds.embedsValidationStatus.get("E");
     unmountEditors();
     return status;
-  };
+  }
 
   test("Excalidraw's allow-list by default", () => {
     expect(statusOf(undefined, YOUTUBE)).toBe(true);
@@ -188,7 +200,9 @@ describe("validateEmbeddable", () => {
   });
 
   test("a function decides, falling back to the allow-list when it returns nothing", () => {
-    const decide = (link: string) => (link.includes("example.com") ? true : undefined);
+    function decide(link: string) {
+      return link.includes("example.com") ? true : undefined;
+    }
     expect(statusOf(decide, "https://example.com")).toBe(true);
     expect(statusOf(decide, YOUTUBE)).toBe(true);
     expect(statusOf(decide, "https://example.org")).toBe(false);
@@ -407,12 +421,13 @@ describe("activation", () => {
 });
 
 describe("fullscreen", () => {
-  const generated = () =>
-    ({
+  function generated() {
+    return {
       ...newIframeElement({ type: "iframe", x: 100, y: 100, width: 300, height: 150 }),
       id: "I",
       customData: { generationData: { status: "done", html: "<p>Hi</p>" } },
-    }) as ExcalidrawElement;
+    } as ExcalidrawElement;
+  }
 
   test("a generated page shows full screen, active, until fullscreen ends", async () => {
     mount();
@@ -449,12 +464,12 @@ describe("fullscreen", () => {
 });
 
 describe("pasted and dropped links", () => {
-  const paste = async (text: string, plain = false) => {
+  async function paste(text: string, plain = false) {
     h().container.focus();
     if (plain) h().clipboard.onPasteShortcut(new KeyboardEvent("keydown", { shiftKey: true }));
     document.dispatchEvent(createPasteEvent({ types: { [MIME_TYPES.text]: text } }));
     await settle();
-  };
+  }
 
   test("a pasted link the embeds allow becomes an embeddable at the pointer, selected", async () => {
     mount();

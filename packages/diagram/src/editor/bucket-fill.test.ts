@@ -13,9 +13,11 @@ import { API, Keyboard, h, mouse, renderEditor, unmountEditors } from "./test-ed
 
 afterEach(unmountEditors);
 
-const elements = () => h().scene.getNonDeletedElements();
+function elements() {
+  return h().scene.getNonDeletedElements();
+}
 
-const withBox = () => {
+function withBox() {
   renderEditor();
   const box = API.createElement({
     type: "rectangle",
@@ -31,7 +33,11 @@ const withBox = () => {
   expect(h().state.activeTool.type).toBe("bucketfill");
   // the bucket cursor, its paint in the colour it pours
   expect(h().interactiveCanvas.style.cursor).toContain(") 5 18, auto");
-};
+}
+
+interface IdRef {
+  id: string;
+}
 
 describe("bucket fill", () => {
   test("a click inside a shape fills it, above it, and the tool stays", () => {
@@ -39,7 +45,7 @@ describe("bucket fill", () => {
     mouse.clickAt(200, 175);
     expect(elements()).toHaveLength(2);
     // under the box's outline: its own background is transparent
-    const [fill, box] = elements() as [ExcalidrawLineElement, { id: string }];
+    const [fill, box] = elements() as [ExcalidrawLineElement, IdRef];
     expect(box.id).toBe("box");
     expect(fill.type).toBe("line");
     expect(fill.polygon).toBe(true);
@@ -92,7 +98,9 @@ describe("bucket fill", () => {
     Keyboard.keyPress("b");
     expect(h().state.currentItemBackgroundColor).not.toBe(first);
     Keyboard.keyDown(KEYS.ALT);
-    const overlay = () => h().container.querySelector("[data-testid=eye-dropper-overlay]");
+    function overlay() {
+      return h().container.querySelector("[data-testid=eye-dropper-overlay]");
+    }
     expect(overlay()).not.toBeNull();
     Keyboard.keyUp(KEYS.ALT);
     expect(overlay()).toBeNull();

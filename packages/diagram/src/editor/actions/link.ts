@@ -14,11 +14,11 @@ import type { LocalizedMessage } from "../../i18n.ts";
 import type { Action } from "../types.ts";
 
 /** The page's address with `?element=<id>`, which Excalidraw scrolls to when it opens. */
-const getElementLinkFromSelection = (id: string): string => {
+function getElementLinkFromSelection(id: string): string {
   const link = new URL(window.location.href);
   link.searchParams.set(ELEMENT_LINK_KEY, id);
   return link.toString();
-};
+}
 
 /** Opens the link editor over the selected element. Ctrl+K. */
 export const actionLink: Action = {

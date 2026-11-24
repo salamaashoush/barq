@@ -14,10 +14,13 @@ import { API, Keyboard, UI, h, mouse, renderEditor, unmountEditors } from "./tes
 afterEach(unmountEditors);
 
 /** Points as plain pairs, to compare with literals. */
-const plain = (points: readonly (readonly [number, number])[] | undefined) =>
-  (points ?? []).map(([x, y]) => [x, y]);
+function plain(points: readonly (readonly [number, number])[] | undefined) {
+  return (points ?? []).map(([x, y]) => [x, y]);
+}
 
-const elements = () => h().scene.getNonDeletedElements();
+function elements() {
+  return h().scene.getNonDeletedElements();
+}
 
 describe("drag to create", () => {
   for (const type of ["rectangle", "diamond", "ellipse"] as const) {
@@ -108,6 +111,10 @@ describe("drag to create", () => {
   });
 });
 
+interface PolygonFlag {
+  polygon: boolean;
+}
+
 describe("arrows and lines", () => {
   test("an arrow dragged out has two points and selects with its line editor", () => {
     renderEditor();
@@ -181,7 +188,7 @@ describe("arrows and lines", () => {
     mouse.moveTo(1, 1);
     mouse.clickAt(1, 1);
 
-    const [line] = elements() as (ExcalidrawLinearElement & { polygon: boolean })[];
+    const [line] = elements() as (ExcalidrawLinearElement & PolygonFlag)[];
     expect(h().state.multiElement).toBeNull();
     expect(line?.polygon).toBe(true);
     expect(plain(line?.points).at(-1)).toEqual(plain(line?.points)[0]);

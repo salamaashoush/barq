@@ -34,10 +34,11 @@ import { patchLinearEditor } from "../linear.ts";
 
 import type { AppState } from "../../types.ts";
 import type { Action } from "../types.ts";
+import type { Coords } from "../../types.ts";
 
 export interface FinalizeData {
   event: PointerEvent;
-  sceneCoords: { x: number; y: number };
+  sceneCoords: Coords;
   hitBoundText?: boolean;
 }
 

@@ -16,8 +16,9 @@ import type { ToolType } from "../types.ts";
 
 afterEach(unmountEditors);
 
-const rect = (id: string, x = 0) =>
-  API.createElement({ id, x, y: 0, width: 100, height: 100, backgroundColor: "#ffc9c9" });
+function rect(id: string, x = 0) {
+  return API.createElement({ id, x, y: 0, width: 100, height: 100, backgroundColor: "#ffc9c9" });
+}
 
 describe("api", () => {
   test("updateScene replaces the elements and merges the app state", () => {
@@ -120,11 +121,11 @@ describe("api", () => {
 });
 
 describe("announcements", () => {
-  const listen = () => {
+  function listen() {
     const messages: string[] = [];
     h().onAnnounce((message) => messages.push(message));
     return messages;
-  };
+  }
 
   test("tool changes", () => {
     renderEditor();
@@ -188,6 +189,14 @@ describe("text editing requests", () => {
     expect(h().state.editingTextElement).toBeNull();
   });
 });
+
+interface HappyDomWindow {
+  happyDOM: HappyDom;
+}
+
+interface HappyDom {
+  setURL(url: string): void;
+}
 
 describe("the rest of Excalidraw's imperative API", () => {
   test("isDestroyed turns true once the editor is gone, and its getters throw", () => {
@@ -358,7 +367,7 @@ describe("the rest of Excalidraw's imperative API", () => {
   test("setViewport to a link whose element is gone says so", () => {
     const { api } = renderEditor();
     const page = window.location.href;
-    const { happyDOM } = window as unknown as { happyDOM: { setURL(url: string): void } };
+    const { happyDOM } = window as unknown as HappyDomWindow;
     happyDOM.setURL("https://example.com/board");
     try {
       api.setViewport({ target: "https://example.com/board?element=missing", animation: false });

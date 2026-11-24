@@ -30,7 +30,7 @@ import type { ElementsMap, ExcalidrawElement } from "@excalidraw/element/types";
 
 import type { BoxSelectionMode } from "../../types.ts";
 
-export const getLassoSelectedElementIds = (input: {
+export interface LassoSelectionInput {
   lassoPath: GlobalPoint[];
   elements: readonly ExcalidrawElement[];
   elementsMap: ElementsMap;
@@ -39,9 +39,13 @@ export const getLassoSelectedElementIds = (input: {
   enclosedElements: Set<ExcalidrawElement["id"]>;
   simplifyDistance?: number;
   mode?: BoxSelectionMode;
-}): {
+}
+
+export interface LassoSelection {
   selectedElementIds: string[];
-} => {
+}
+
+export function getLassoSelectedElementIds(input: LassoSelectionInput): LassoSelection {
   const {
     lassoPath,
     elements,
@@ -123,17 +127,17 @@ export const getLassoSelectedElementIds = (input: {
   return {
     selectedElementIds: results,
   };
-};
+}
 
 /**
  * The bounds an element is clipped to by the frame containing it, or `null`
  * when the element isn't clipped at all.
  */
-const getFrameClipBounds = (
+function getFrameClipBounds(
   element: ExcalidrawElement,
   elementBounds: Bounds,
   elementsMap: ElementsMap,
-): Bounds | null => {
+): Bounds | null {
   const frame = getContainingFrame(element, elementsMap);
 
   if (!frame || !isFrameClippable(element, elementsMap)) {
@@ -148,10 +152,10 @@ const getFrameClipBounds = (
   }
 
   return elementOverlapsWithFrame(element, frame, elementsMap) ? frameBounds : null;
-};
+}
 
-const clipToBounds = (bounds: Bounds, clipBounds: Bounds | null): Bounds =>
-  clipBounds
+function clipToBounds(bounds: Bounds, clipBounds: Bounds | null): Bounds {
+  return clipBounds
     ? [
         Math.max(bounds[0], clipBounds[0]),
         Math.max(bounds[1], clipBounds[1]),
@@ -159,17 +163,18 @@ const clipToBounds = (bounds: Bounds, clipBounds: Bounds | null): Bounds =>
         Math.min(bounds[3], clipBounds[3]),
       ]
     : bounds;
+}
 
 /**
  * The segments taking part in the selection tests: the element's own outline
  * together with its label's, clipped to the element's containing frame.
  */
-const getSelectionSegments = (
+function getSelectionSegments(
   element: ExcalidrawElement,
   elementsMap: ElementsMap,
   elementsSegments: ElementsSegmentsMap,
   clipBounds: Bounds | null,
-): LineSegment<GlobalPoint>[] => {
+): LineSegment<GlobalPoint>[] {
   const elementSegments = elementsSegments.get(element.id) ?? [];
   const boundTextElement = getBoundTextElement(element, elementsMap);
   const boundTextSegments = boundTextElement ? elementsSegments.get(boundTextElement.id) : null;
@@ -179,12 +184,12 @@ const getSelectionSegments = (
     : elementSegments;
 
   return clipBounds ? clipSegmentsToBounds(segments, clipBounds) : segments;
-};
+}
 
-const clipSegmentsToBounds = (
+function clipSegmentsToBounds(
   segments: LineSegment<GlobalPoint>[],
   bounds: Bounds,
-): LineSegment<GlobalPoint>[] => {
+): LineSegment<GlobalPoint>[] {
   const [minX, minY, maxX, maxY] = bounds;
   const clipped: LineSegment<GlobalPoint>[] = [];
 
@@ -240,7 +245,7 @@ const clipSegmentsToBounds = (
   }
 
   return clipped;
-};
+}
 
 /**
  * In "contain" mode a group is only selected if every one of its members is,
@@ -249,10 +254,10 @@ const clipSegmentsToBounds = (
  * NOTE: currently we only support top-level group handling since we don't
  * support box selecting while editing the group/subgroup
  */
-const excludeIncompleteGroups = (
+function excludeIncompleteGroups(
   selectedElementIds: ExcalidrawElement["id"][],
   elementsMap: ElementsMap,
-): ExcalidrawElement["id"][] => {
+): ExcalidrawElement["id"][] {
   if (!selectedElementIds.some((id) => elementsMap.get(id)?.groupIds.length)) {
     return selectedElementIds;
   }
@@ -288,19 +293,22 @@ const excludeIncompleteGroups = (
 
     return !group || group.every((memberId) => selected.has(memberId));
   });
-};
+}
 
-const enclosureTest = (
+function enclosureTest(
   lassoPolygon: Polygon<GlobalPoint>,
   segments: LineSegment<GlobalPoint>[],
   elementBounds: Bounds,
   mode: BoxSelectionMode,
-): boolean => {
+): boolean {
   const quantifier = mode === "contain" ? "every" : "some";
 
-  const includesPoint = (point: GlobalPoint) =>
-    polygonIncludesPointNonZero(point, lassoPolygon) ||
-    (mode === "contain" && isPointOnPolygon(point, lassoPolygon));
+  function includesPoint(point: GlobalPoint) {
+    return (
+      polygonIncludesPointNonZero(point, lassoPolygon) ||
+      (mode === "contain" && isPointOnPolygon(point, lassoPolygon))
+    );
+  }
 
   // NOTE: elements without an outline (e.g. a single point freedraw dot) are
   // tested by the corners of their bounding box instead
@@ -309,27 +317,30 @@ const enclosureTest = (
   }
 
   return segments[quantifier]((segment) => segment[quantifier](includesPoint));
-};
+}
 
-const boundsCorners = ([minX, minY, maxX, maxY]: Bounds): GlobalPoint[] => [
-  pointFrom(minX, minY),
-  pointFrom(maxX, minY),
-  pointFrom(maxX, maxY),
-  pointFrom(minX, maxY),
-];
+function boundsCorners([minX, minY, maxX, maxY]: Bounds): GlobalPoint[] {
+  return [
+    pointFrom(minX, minY),
+    pointFrom(maxX, minY),
+    pointFrom(maxX, maxY),
+    pointFrom(minX, maxY),
+  ];
+}
 
-const isPointOnPolygon = (point: GlobalPoint, polygon: Polygon<GlobalPoint>): boolean =>
-  polygon.some(
+function isPointOnPolygon(point: GlobalPoint, polygon: Polygon<GlobalPoint>): boolean {
+  return polygon.some(
     (vertex, index) =>
       index > 0 && pointOnLineSegment(point, lineSegment<GlobalPoint>(polygon[index - 1]!, vertex)),
   );
+}
 
-const intersectionTest = (
+function intersectionTest(
   lassoPath: GlobalPoint[],
   element: ExcalidrawElement,
   elementsMap: ElementsMap,
   clipBounds: Bounds | null,
-): boolean => {
+): boolean {
   const lassoSegments = lassoPath
     .slice(1)
     .map((point: GlobalPoint, index) => lineSegment<GlobalPoint>(lassoPath[index]!, point))
@@ -339,13 +350,13 @@ const intersectionTest = (
 
   // hits on the part of the element clipped away by its frame are invisible,
   // hence they do not count as an intersection
-  const intersects = (target: ExcalidrawElement, lassoSegment: LineSegment<GlobalPoint>) => {
+  function intersects(target: ExcalidrawElement, lassoSegment: LineSegment<GlobalPoint>) {
     const hits = intersectElementWithLineSegment(target, elementsMap, lassoSegment, 0, !clipBounds);
 
     return clipBounds
       ? hits.some((hit) => pointInsideBoundsInclusive(hit, clipBounds))
       : hits.length > 0;
-  };
+  }
 
   return lassoSegments.some(
     (lassoSegment) =>
@@ -359,4 +370,4 @@ const intersectionTest = (
           lassoSegment,
         )),
   );
-};
+}

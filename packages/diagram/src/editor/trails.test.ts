@@ -13,15 +13,18 @@ import { API, Keyboard, UI, h, mouse, renderEditor, unmountEditors } from "./tes
 
 afterEach(unmountEditors);
 
-const live = () =>
-  h()
+function live() {
+  return h()
     .scene.getNonDeletedElements()
     .map((element) => element.id);
+}
 
-const rect = (id: string, x: number, y: number, extra: Record<string, unknown> = {}) => ({
-  ...API.createElement({ id, x, y, width: 50, height: 50, backgroundColor: "#ffc9c9" }),
-  ...extra,
-});
+function rect(id: string, x: number, y: number, extra: Record<string, unknown> = {}) {
+  return {
+    ...API.createElement({ id, x, y, width: 50, height: 50, backgroundColor: "#ffc9c9" }),
+    ...extra,
+  };
+}
 
 describe("the eraser", () => {
   test("E picks it, and 0, and the key again goes back", () => {
@@ -146,12 +149,12 @@ describe("the laser pointer", () => {
 });
 
 describe("the lasso", () => {
-  const loop = (points: [number, number][]) => {
+  function loop(points: [number, number][]) {
     const [first, ...rest] = points;
     mouse.downAt(...first!);
     for (const point of rest) mouse.moveTo(...point);
     mouse.upAt();
-  };
+  }
 
   test("selects what it encloses", () => {
     renderEditor();

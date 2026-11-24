@@ -17,102 +17,107 @@ import type { DiagramEditor } from "../editor.ts";
 import type { Action } from "../types.ts";
 
 /** Two or more units (elements or groups) are selected, none a frame. */
-const alignActionsPredicate = (appState: AppState, app: DiagramEditor) => {
+function alignActionsPredicate(appState: AppState, app: DiagramEditor) {
   const selectedElements = app.scene.getSelectedElements(appState);
   return (
     getSelectedElementsByGroup(selectedElements, app.scene.getNonDeletedElementsMap(), appState)
       .length > 1 && !selectedElements.some((el) => isFrameLikeElement(el))
   );
-};
+}
 
 /** Three or more units are selected, none a frame. */
-const distributeActionsPredicate = (appState: AppState, app: DiagramEditor) => {
+function distributeActionsPredicate(appState: AppState, app: DiagramEditor) {
   const selectedElements = app.scene.getSelectedElements(appState);
   return (
     getSelectedElementsByGroup(selectedElements, app.scene.getNonDeletedElementsMap(), appState)
       .length > 2 && !selectedElements.some((el) => isFrameLikeElement(el))
   );
-};
+}
 
-const withUpdated = (
+function withUpdated(
   elements: readonly ExcalidrawElement[],
   updatedElements: readonly ExcalidrawElement[],
   appState: AppState,
   app: DiagramEditor,
-) => {
+) {
   const updatedElementsMap = arrayToMap(updatedElements);
   return updateFrameMembershipOfSelectedElements(
     elements.map((element) => updatedElementsMap.get(element.id) ?? element),
     appState,
     app.elementApp,
   );
-};
+}
 
-const alignAction = (
+function alignAction(
   name: Action["name"],
   label: TranslationKey,
   announcement: string,
   alignment: Alignment,
   keyTest: Action["keyTest"],
-): Action => ({
-  name,
-  label,
-  announcement,
-  predicate: (_elements, appState, app) => alignActionsPredicate(appState, app),
-  perform: (elements, appState, _formData, app) => {
-    if (!alignActionsPredicate(appState, app)) {
-      return false;
-    }
-    const updated = alignElements(
-      app.scene.getSelectedElements(appState),
-      alignment,
-      app.scene,
-      appState,
-      app.renderEnvironment,
-    );
-    return {
-      appState,
-      elements: withUpdated(elements, updated, appState, app),
-      captureUpdate: CaptureUpdateAction.IMMEDIATELY,
-    };
-  },
-  keyTest,
-});
+): Action {
+  return {
+    name,
+    label,
+    announcement,
+    predicate: (_elements, appState, app) => alignActionsPredicate(appState, app),
+    perform: (elements, appState, _formData, app) => {
+      if (!alignActionsPredicate(appState, app)) {
+        return false;
+      }
+      const updated = alignElements(
+        app.scene.getSelectedElements(appState),
+        alignment,
+        app.scene,
+        appState,
+        app.renderEnvironment,
+      );
+      return {
+        appState,
+        elements: withUpdated(elements, updated, appState, app),
+        captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+      };
+    },
+    keyTest,
+  };
+}
 
-const distributeAction = (
+function distributeAction(
   name: Action["name"],
   label: TranslationKey,
   announcement: string,
   distribution: Distribution,
   keyTest: Action["keyTest"],
-): Action => ({
-  name,
-  label,
-  announcement,
-  predicate: (_elements, appState, app) => distributeActionsPredicate(appState, app),
-  perform: (elements, appState, _formData, app) => {
-    if (!distributeActionsPredicate(appState, app)) {
-      return false;
-    }
-    const updated = distributeElements(
-      app.scene.getSelectedElements(appState),
-      app.scene.getNonDeletedElementsMap(),
-      distribution,
-      appState,
-      app.scene,
-      app.renderEnvironment,
-    );
-    return {
-      appState,
-      elements: withUpdated(elements, updated, appState, app),
-      captureUpdate: CaptureUpdateAction.IMMEDIATELY,
-    };
-  },
-  keyTest,
-});
+): Action {
+  return {
+    name,
+    label,
+    announcement,
+    predicate: (_elements, appState, app) => distributeActionsPredicate(appState, app),
+    perform: (elements, appState, _formData, app) => {
+      if (!distributeActionsPredicate(appState, app)) {
+        return false;
+      }
+      const updated = distributeElements(
+        app.scene.getSelectedElements(appState),
+        app.scene.getNonDeletedElementsMap(),
+        distribution,
+        appState,
+        app.scene,
+        app.renderEnvironment,
+      );
+      return {
+        appState,
+        elements: withUpdated(elements, updated, appState, app),
+        captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+      };
+    },
+    keyTest,
+  };
+}
 
-const ctrlShift = (event: KeyboardEvent, key: string) =>
-  event[KEYS.CTRL_OR_CMD] && event.shiftKey && !event.altKey && event.key === key;
+function ctrlShift(event: KeyboardEvent, key: string) {
+  return event[KEYS.CTRL_OR_CMD] && event.shiftKey && !event.altKey && event.key === key;
+}
 
 /** Ctrl or Cmd+Shift+Up. */
 export const actionAlignTop = alignAction(

@@ -42,6 +42,7 @@ import type { LocalizedMessage } from "../i18n.ts";
 import type { EmbedsValidationStatus } from "../types.ts";
 import type { DiagramEditor } from "./editor.ts";
 import type { MagicGeneration } from "./magic-frame.ts";
+import type { Coords } from "../types.ts";
 
 /**
  * Excalidraw's `validateEmbeddable`: which links an embeddable shows. `true`
@@ -122,31 +123,36 @@ const embeddableLinkCache = new Map<ExcalidrawElement["id"], string>();
  * Whether pasted or dropped text is a link to embed, as Excalidraw tells:
  * allowed by `validateEmbeddable`, and a web address or a video.
  */
-export const isEmbeddableLink = (
+export function isEmbeddableLink(
   link: string,
   validateEmbeddable: ValidateEmbeddable | undefined,
-): boolean =>
-  embeddableURLValidator(link, validateEmbeddable) &&
-  (/^(http|https):\/\/[^\s/$.?#].[^\s]*$/.test(link) || getEmbedLink(link)?.type === "video");
+): boolean {
+  return (
+    embeddableURLValidator(link, validateEmbeddable) &&
+    (/^(http|https):\/\/[^\s/$.?#].[^\s]*$/.test(link) || getEmbedLink(link)?.type === "video")
+  );
+}
 
 /** Excalidraw's sandbox for an embeddable's link. */
-export const getDefaultEmbeddableSandbox = (link: string): string =>
-  `${getEmbedLink(toValidURL(link))?.sandbox?.allowSameOrigin ? "allow-same-origin " : ""}${EMBEDDABLE_SANDBOX}`;
+export function getDefaultEmbeddableSandbox(link: string): string {
+  return `${getEmbedLink(toValidURL(link))?.sandbox?.allowSameOrigin ? "allow-same-origin " : ""}${EMBEDDABLE_SANDBOX}`;
+}
 
-const escapeHTML = (text: string): string =>
-  text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+function escapeHTML(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
 
 /** Why a generated iframe shows no page, Excalidraw's words; `null` while it has one coming. */
-export const getGenerationError = (generation: MagicGeneration | null): string | null => {
+export function getGenerationError(generation: MagicGeneration | null): string | null {
   if (generation?.status === "done" || generation?.status === "pending") return null;
   if (generation?.status !== "error") return "No generation data";
   return generation.code === "ERR_GENERATION_INTERRUPTED"
     ? "Generation was interrupted..."
     : generation.message || "Generation failed";
-};
+}
 
 /** What a generated iframe shows: the page, what has streamed of it, or its error. */
-const generatedSrcdoc = (generation: MagicGeneration | null): string | null => {
+function generatedSrcdoc(generation: MagicGeneration | null): string | null {
   if (generation?.status === "done") return generation.html;
   if (generation?.status === "pending") return generation.partial ?? null;
   const message = getGenerationError(generation) ?? "";
@@ -159,7 +165,23 @@ const generatedSrcdoc = (generation: MagicGeneration | null): string | null => {
     <h1>Error!</h1>
     <h3>${escapeHTML(message)}</h3>
   `);
-};
+}
+
+export interface HandleHoverOptions {
+  hitElement: NonDeletedExcalidrawElement | null;
+  scenePointer: Coords;
+  moveEvent: PointerEvent;
+}
+
+interface PlayerInfo {
+  playerState?: unknown;
+}
+
+export interface InsertEmbeddableElementOptions {
+  sceneX: number;
+  sceneY: number;
+  link: string;
+}
 
 /**
  * Excalidraw's embeds: `embeddable` elements showing a web page whose link
@@ -507,15 +529,7 @@ export class EditorEmbeds {
   }
 
   /** Excalidraw's `handleIframeLikeElementHover`: whether the pointer is over an embed's centre. */
-  public handleHover({
-    hitElement,
-    scenePointer,
-    moveEvent,
-  }: {
-    hitElement: NonDeletedExcalidrawElement | null;
-    scenePointer: { x: number; y: number };
-    moveEvent: PointerEvent;
-  }): boolean {
+  public handleHover({ hitElement, scenePointer, moveEvent }: HandleHoverOptions): boolean {
     const { app } = this;
     if (
       hitElement &&
@@ -678,7 +692,7 @@ export class EditorEmbeds {
       }
       return;
     }
-    const info = data.info as { playerState?: unknown } | undefined;
+    const info = data.info as PlayerInfo | undefined;
     if (
       data.event === "infoDelivery" &&
       info &&
@@ -707,14 +721,14 @@ export class EditorEmbeds {
     const { app } = this;
     const iframe = this.iframes.get(element.id);
     if (!iframe) return;
-    const failed = (error: unknown) => {
+    function failed(error: unknown) {
       console.warn(error);
       app.batch(() =>
         app.setState({
           errorMessage: { key: "magicFrame.fullscreenFailed" } satisfies LocalizedMessage,
         }),
       );
-    };
+    }
     try {
       void Promise.resolve(iframe.requestFullscreen()).catch(failed);
     } catch (error) {
@@ -743,11 +757,7 @@ export class EditorEmbeds {
     sceneX,
     sceneY,
     link,
-  }: {
-    sceneX: number;
-    sceneY: number;
-    link: string;
-  }): NonDeleted<ExcalidrawEmbeddableElement> | undefined {
+  }: InsertEmbeddableElementOptions): NonDeleted<ExcalidrawEmbeddableElement> | undefined {
     const { app } = this;
     const [gridX, gridY] = getGridPoint(
       sceneX,

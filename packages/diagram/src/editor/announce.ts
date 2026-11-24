@@ -37,13 +37,15 @@ const TOOL_NAMES: Record<string, string> = {
   freedraw: "Draw",
 };
 
-const elementName = (type: string): LocalizedMessage => ({
-  key: `element.${type === "magicframe" ? "frame" : type}` as TranslationKey,
-  fallback: ELEMENT_NAMES[type] ?? type,
-});
+function elementName(type: string): LocalizedMessage {
+  return {
+    key: `element.${type === "magicframe" ? "frame" : type}` as TranslationKey,
+    fallback: ELEMENT_NAMES[type] ?? type,
+  };
+}
 
 /** What the live region says when the tool changes. */
-export const describeTool = (type: AppState["activeTool"]["type"]): Announcement => {
+export function describeTool(type: AppState["activeTool"]["type"]): Announcement {
   const name = TOOL_NAMES[type] ?? type;
   return {
     text: `${name} tool`,
@@ -52,13 +54,13 @@ export const describeTool = (type: AppState["activeTool"]["type"]): Announcement
       replacement: { tool: { key: `toolBar.${type}` as TranslationKey, fallback: name } },
     },
   };
-};
+}
 
 /** What the live region says when the selection changes. */
-export const describeSelection = (
+export function describeSelection(
   selected: readonly NonDeletedExcalidrawElement[],
   state: Pick<AppState, "selectedGroupIds" | "editingGroupId">,
-): Announcement => {
+): Announcement {
   const [first] = selected;
   if (!first) {
     return { text: "Nothing selected", message: { key: "editorA11y.nothingSelected" } };
@@ -92,7 +94,7 @@ export const describeSelection = (
     text: `${selected.length} elements selected`,
     message: { key: "editorA11y.elementsSelected", replacement: { count: selected.length } },
   };
-};
+}
 
 export const EDITING_GROUP: Announcement = {
   text: "Editing group",
@@ -100,7 +102,9 @@ export const EDITING_GROUP: Announcement = {
 };
 
 /** What an action's announcement says, translated by its name. */
-export const actionAnnouncement = (name: string, text: string): Announcement => ({
-  text,
-  message: { key: `editorA11y.announcements.${name}` as TranslationKey, fallback: text },
-});
+export function actionAnnouncement(name: string, text: string): Announcement {
+  return {
+    text,
+    message: { key: `editorA11y.announcements.${name}` as TranslationKey, fallback: text },
+  };
+}

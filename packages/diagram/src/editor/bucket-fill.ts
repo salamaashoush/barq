@@ -26,21 +26,25 @@ import { startEyeDropper } from "../ui/eye-dropper.ts";
 import type { LocalizedMessage } from "../i18n.ts";
 import type { Action } from "./types.ts";
 import type { DiagramEditor } from "./editor.ts";
+import type { Coords } from "../types.ts";
 
 /** The fill the bucket pours: the shared background colour, green where that is transparent. */
-export const getBucketFillBackgroundColor = (backgroundColor: string, theme?: Theme): string =>
-  isTransparent(backgroundColor)
+export function getBucketFillBackgroundColor(backgroundColor: string, theme?: Theme): string {
+  return isTransparent(backgroundColor)
     ? (COLOR_PALETTE.green[DEFAULT_ELEMENT_BACKGROUND_COLOR_INDEX] ?? "#b2f2bb")
     : applyDarkModeFilter(backgroundColor, theme === THEME.DARK);
+}
 
 const KEYBOARD_PICKS = BUCKET_FILL_BACKGROUND_PICKS.filter(
   (color) => color !== COLOR_PALETTE.white,
 );
 
-/** The bucket fill's colour, which the tool's panel, its eye dropper and B again set. */
-export const actionChangeBucketFillBackgroundColor: Action<{
+export interface BackgroundColorChange {
   currentItemBackgroundColor: string;
-}> = {
+}
+
+/** The bucket fill's colour, which the tool's panel, its eye dropper and B again set. */
+export const actionChangeBucketFillBackgroundColor: Action<BackgroundColorChange> = {
   name: "changeBucketFillBackgroundColor",
   label: "labels.changeBackground",
   announcement: "Fill colour changed",
@@ -50,10 +54,12 @@ export const actionChangeBucketFillBackgroundColor: Action<{
   }),
 };
 
-const toast = (key: LocalizedMessage["key"]) => ({
-  message: { key } satisfies LocalizedMessage,
-  duration: 3000,
-});
+function toast(key: LocalizedMessage["key"]) {
+  return {
+    message: { key } satisfies LocalizedMessage,
+    duration: 3000,
+  };
+}
 
 /**
  * Excalidraw's bucket fill tool (B): a click fills the closed region under
@@ -64,12 +70,12 @@ const toast = (key: LocalizedMessage["key"]) => ({
  * the scene as it was. Alt held opens an eye dropper for the colour.
  */
 export class BucketFill {
-  private pending: { x: number; y: number } | null = null;
+  private pending: Coords | null = null;
   private stopEyeDropper: (() => void) | null = null;
 
   public constructor(private readonly app: DiagramEditor) {}
 
-  public handlePointerDown(scenePointer: { x: number; y: number }): void {
+  public handlePointerDown(scenePointer: Coords): void {
     this.pending = scenePointer;
   }
 
@@ -145,7 +151,7 @@ export class BucketFill {
     this.app.store.scheduleCapture();
   }
 
-  private fill(scenePointer: { x: number; y: number }): void {
+  private fill(scenePointer: Coords): void {
     const { app } = this;
     const { state } = app;
     const backgroundColor = getBucketFillBackgroundColor(state.currentItemBackgroundColor);

@@ -32,10 +32,10 @@ import type { AppState } from "../../types.ts";
 import type { DiagramEditor } from "../editor.ts";
 import type { Action } from "../types.ts";
 
-const allElementsInSameGroup = (
+function allElementsInSameGroup(
   elements: readonly ExcalidrawElement[],
   editingGroupId: AppState["editingGroupId"],
-) => {
+) {
   const [first] = elements;
   if (elements.length >= 2 && first) {
     const editingGroupIndex = editingGroupId ? first.groupIds.indexOf(editingGroupId) : -1;
@@ -48,9 +48,9 @@ const allElementsInSameGroup = (
     }
   }
   return false;
-};
+}
 
-const enableActionGroup = (appState: AppState, app: DiagramEditor) => {
+function enableActionGroup(appState: AppState, app: DiagramEditor) {
   const selectedElements = app.scene.getSelectedElements({
     selectedElementIds: appState.selectedElementIds,
     includeBoundTextElement: false,
@@ -60,7 +60,7 @@ const enableActionGroup = (appState: AppState, app: DiagramEditor) => {
     !allElementsInSameGroup(selectedElements, appState.editingGroupId) &&
     !frameAndChildrenSelectedTogether(selectedElements)
   );
-};
+}
 
 /** Groups the selection. Ctrl or Cmd+G. */
 export const actionGroup: Action = {
@@ -151,6 +151,10 @@ export const actionGroup: Action = {
     !event.shiftKey && event[KEYS.CTRL_OR_CMD] && event.key.toLowerCase() === KEYS.G,
 };
 
+interface SelectedIdSet {
+  [key: ExcalidrawElement["id"]]: true;
+}
+
 /** Ungroups the selected groups. Ctrl or Cmd+Shift+G. */
 export const actionUngroup: Action = {
   name: "ungroup",
@@ -202,7 +206,7 @@ export const actionUngroup: Action = {
 
     // bound text is never selected on its own
     updateAppState.selectedElementIds = Object.entries(updateAppState.selectedElementIds).reduce(
-      (acc: { [key: ExcalidrawElement["id"]]: true }, [id, selected]) => {
+      (acc: SelectedIdSet, [id, selected]) => {
         if (selected && !boundTextElementIds.includes(id)) {
           acc[id] = true;
         }

@@ -13,19 +13,29 @@ import type { ExcalidrawTextElement } from "@excalidraw/element/types";
 
 afterEach(unmountEditors);
 
-const rect = (id: string, x = 0, y = 0, size = 100) =>
-  API.createElement({ id, x, y, width: size, height: size });
+function rect(id: string, x = 0, y = 0, size = 100) {
+  return API.createElement({ id, x, y, width: size, height: size });
+}
 
-const free = (id: string, x: number, y: number) => ({
-  ...newTextElement({ x, y, text: "label" }),
-  id,
-});
+function free(id: string, x: number, y: number) {
+  return {
+    ...newTextElement({ x, y, text: "label" }),
+    id,
+  };
+}
 
-const element = (id: string) => h().scene.getElement(id)!;
-const text = (id: string) => element(id) as ExcalidrawTextElement;
-const selected = () => Object.keys(h().state.selectedElementIds).toSorted();
-const selectIds = (...ids: string[]) =>
-  API.setSelectedElements(ids.map((id) => h().scene.getNonDeletedElement(id)!));
+function element(id: string) {
+  return h().scene.getElement(id)!;
+}
+function text(id: string) {
+  return element(id) as ExcalidrawTextElement;
+}
+function selected() {
+  return Object.keys(h().state.selectedElementIds).toSorted();
+}
+function selectIds(...ids: string[]) {
+  return API.setSelectedElements(ids.map((id) => h().scene.getNonDeletedElement(id)!));
+}
 
 describe("toggleWrap", () => {
   test("binds a text to the empty container selected with it", () => {

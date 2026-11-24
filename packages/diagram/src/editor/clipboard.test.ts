@@ -22,19 +22,25 @@ afterEach(unmountEditors);
 const SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20"/></svg>';
 
-const rect = (id: string, x: number, y: number, extra: Partial<ExcalidrawElement> = {}) =>
-  ({ ...API.createElement({ id, x, y, width: 50, height: 50 }), ...extra }) as ExcalidrawElement;
+function rect(id: string, x: number, y: number, extra: Partial<ExcalidrawElement> = {}) {
+  return {
+    ...API.createElement({ id, x, y, width: 50, height: 50 }),
+    ...extra,
+  } as ExcalidrawElement;
+}
 
-const live = () => h().scene.getNonDeletedElements();
+function live() {
+  return h().scene.getNonDeletedElements();
+}
 
 /** Waits for the async work a paste or drop starts (file reads, image decoding). */
-const settle = async (rounds = 6) => {
+async function settle(rounds = 6) {
   for (let index = 0; index < rounds; index++) {
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
-};
+}
 
-const clipboardEvent = (type: "copy" | "cut") => {
+function clipboardEvent(type: "copy" | "cut") {
   const event = new ClipboardEvent(type, {
     clipboardData: new DataTransfer(),
     bubbles: true,
@@ -42,14 +48,21 @@ const clipboardEvent = (type: "copy" | "cut") => {
   });
   document.dispatchEvent(event);
   return event;
-};
+}
 
-const paste = async (types: Parameters<typeof createPasteEvent>[0]) => {
+async function paste(types: Parameters<typeof createPasteEvent>[0]) {
   document.dispatchEvent(createPasteEvent(types));
   await settle();
-};
+}
 
-const focusEditor = () => h().container.focus();
+function focusEditor() {
+  return h().container.focus();
+}
+
+interface CopiedElements {
+  type: string;
+  elements: ExcalidrawElement[];
+}
 
 describe("copy and cut", () => {
   test("Ctrl+C copies the selection, with its label, in Excalidraw's format", () => {
@@ -59,10 +72,9 @@ describe("copy and cut", () => {
     focusEditor();
     const event = clipboardEvent("copy");
     expect(event.defaultPrevented).toBe(true);
-    const copied = JSON.parse(event.clipboardData!.getData(MIME_TYPES.excalidrawClipboard)) as {
-      type: string;
-      elements: ExcalidrawElement[];
-    };
+    const copied = JSON.parse(
+      event.clipboardData!.getData(MIME_TYPES.excalidrawClipboard),
+    ) as CopiedElements;
     expect(copied.type).toBe(EXPORT_DATA_TYPES.excalidrawClipboard);
     expect(copied.elements.map((element) => element.id)).toEqual(["a"]);
     expect(event.clipboardData!.getData(MIME_TYPES.text)).toBe(
@@ -204,11 +216,14 @@ describe("paste", () => {
   });
 });
 
+interface DropInit {
+  clientX?: number;
+  clientY?: number;
+  shiftKey?: boolean;
+}
+
 describe("dropping files", () => {
-  const drop = async (
-    files: File[],
-    init: { clientX?: number; clientY?: number; shiftKey?: boolean } = {},
-  ) => {
+  async function drop(files: File[], init: DropInit = {}) {
     const dataTransfer = new DataTransfer();
     for (const file of files) dataTransfer.items.add(file);
     const event = new DragEvent("drop", { bubbles: true, cancelable: true });
@@ -220,7 +235,7 @@ describe("dropping files", () => {
     h().container.dispatchEvent(event);
     await settle();
     return event;
-  };
+  }
 
   test("images dropped go where they are dropped, several on a grid", async () => {
     renderEditor();
@@ -298,7 +313,7 @@ describe("the image tool", () => {
 });
 
 describe("cropping", () => {
-  const loadImage = async () => {
+  async function loadImage() {
     const dataURL = `data:${MIME_TYPES.svg};base64,${btoa(
       '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"></svg>',
     )}` as DataURL;
@@ -323,7 +338,7 @@ describe("cropping", () => {
     });
     h().addMissingFiles([file]);
     await h().loadImage(file.id);
-  };
+  }
 
   test("Enter on an image opens the crop editor, and Escape closes it", async () => {
     renderEditor();

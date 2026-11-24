@@ -12,12 +12,16 @@ import { API, Keyboard, h, renderEditor, unmountEditors } from "./test-editor.ts
 
 afterEach(unmountEditors);
 
-const live = () => h().scene.getNonDeletedElements();
+function live() {
+  return h().scene.getNonDeletedElements();
+}
 
-const next = () =>
-  Keyboard.withModifierKeys({ alt: true, shift: true }, () => Keyboard.keyPress("."));
-const previous = () =>
-  Keyboard.withModifierKeys({ alt: true, shift: true }, () => Keyboard.keyPress(","));
+function next() {
+  return Keyboard.withModifierKeys({ alt: true, shift: true }, () => Keyboard.keyPress("."));
+}
+function previous() {
+  return Keyboard.withModifierKeys({ alt: true, shift: true }, () => Keyboard.keyPress(","));
+}
 
 test("Alt+Shift+. and , switch a shape through rectangle, diamond and ellipse", () => {
   renderEditor();

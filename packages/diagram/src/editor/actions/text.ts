@@ -48,12 +48,12 @@ const FONT_SIZE_RELATIVE_INCREASE_STEP = 0.1;
  * The elements with `callback` applied to the selected ones and the text being
  * edited, sticky notes kept valid. Excalidraw's `changeProperty`.
  */
-export const changeProperty = (
+export function changeProperty(
   elements: readonly ExcalidrawElement[],
   appState: AppState,
   callback: (element: NonDeletedExcalidrawElement) => ExcalidrawElement,
   includeBoundText = false,
-): ExcalidrawElement[] => {
+): ExcalidrawElement[] {
   const selectedElementIds = arrayToMap(
     getSelectedElements(elements, appState, { includeBoundTextElement: includeBoundText }),
   );
@@ -64,14 +64,14 @@ export const changeProperty = (
     }
     return element;
   });
-};
+}
 
 /** A free text keeps the point its alignment pins, and its vertical centre, as its font resizes. */
-const offsetElementAfterFontResize = (
+function offsetElementAfterFontResize(
   prevElement: ExcalidrawTextElement,
   nextElement: ExcalidrawTextElement,
   editor: DiagramEditor,
-): ExcalidrawTextElement => {
+): ExcalidrawTextElement {
   if (isBoundToContainer(nextElement) || !nextElement.autoResize) {
     return nextElement;
   }
@@ -83,15 +83,15 @@ const offsetElementAfterFontResize = (
           (prevElement.width - nextElement.width) / (prevElement.textAlign === "center" ? 2 : 1),
     y: prevElement.y + (prevElement.height - nextElement.height) / 2,
   });
-};
+}
 
-const changeFontSize = (
+function changeFontSize(
   elements: readonly ExcalidrawElement[],
   appState: AppState,
   editor: DiagramEditor,
   getNewFontSize: (element: ExcalidrawTextElement) => number,
   fallbackValue?: ExcalidrawTextElement["fontSize"],
-): ActionResult => {
+): ActionResult {
   const newFontSizes = new Set<number>();
   const elementsMap = editor.scene.getNonDeletedElementsMap();
 
@@ -137,7 +137,7 @@ const changeFontSize = (
     },
     captureUpdate: CaptureUpdateAction.IMMEDIATELY,
   };
-};
+}
 
 /** Sets the font size of the selected text, and of text drawn next. */
 export const actionChangeFontSize: Action<ExcalidrawTextElement["fontSize"]> = {
@@ -217,7 +217,7 @@ export type ChangeFontFamilyData = Partial<
 const HOVER_PREVIEW_MAX_TEXTS = 200;
 const HOVER_PREVIEW_MAX_CHARS = 5000;
 
-const tooMuchToPreview = (elements: readonly ExcalidrawElement[], appState: AppState): boolean => {
+function tooMuchToPreview(elements: readonly ExcalidrawElement[], appState: AppState): boolean {
   const texts = getSelectedElements(elements, appState, { includeBoundTextElement: true }).filter(
     isTextElement,
   );
@@ -228,7 +228,7 @@ const tooMuchToPreview = (elements: readonly ExcalidrawElement[], appState: AppS
     if (chars > HOVER_PREVIEW_MAX_CHARS) return true;
   }
   return false;
-};
+}
 
 /**
  * The font family: of the selected text, and of text drawn next. A hovered
@@ -300,7 +300,7 @@ export const actionChangeFontFamily: Action<FontFamilyValues | ChangeFontFamilyD
       true,
     );
 
-    const redraw = () => {
+    function redraw() {
       for (const element of changed) {
         const latest = editor.scene.getElement(element.id);
         if (latest && isTextElement(latest)) {
@@ -312,7 +312,7 @@ export const actionChangeFontFamily: Action<FontFamilyValues | ChangeFontFamilyD
           );
         }
       }
-    };
+    }
     const fontSet = editor.ownerDocument.fonts as FontFaceSet | undefined;
     const fontString = `10px ${getFontFamilyString({ fontFamily: nextFontFamily })}`;
     const chars = [...new Set(changed.flatMap((element) => Array.from(element.originalText)))].join(
@@ -408,13 +408,14 @@ export const actionChangeVerticalAlign: Action<VerticalAlign> = {
 };
 
 /** The selected free texts (a label follows its container). */
-const getSelectedFreeTexts = (
+function getSelectedFreeTexts(
   elements: readonly ExcalidrawElement[],
   appState: Readonly<AppState>,
-) =>
-  getSelectedElements(elements, appState).filter(
+) {
+  return getSelectedElements(elements, appState).filter(
     (element) => isTextElement(element) && !isBoundToContainer(element),
   );
+}
 
 /**
  * Room past its text for a text made to keep its width: one exactly as wide
@@ -423,11 +424,11 @@ const getSelectedFreeTexts = (
  */
 const KEPT_TEXT_WIDTH_SLACK = 1;
 
-const toggleTextAutoResize = (
+function toggleTextAutoResize(
   text: ExcalidrawTextElement,
   autoResize: boolean,
   editor: DiagramEditor,
-): ExcalidrawTextElement => {
+): ExcalidrawTextElement {
   const font = getFontString(text);
   const width = autoResize
     ? null
@@ -449,12 +450,13 @@ const toggleTextAutoResize = (
   // the point the alignment pins stays where it is on the canvas, the box
   // turning about its centre
   const anchor = getTextAnchorRatios(text);
-  const getAnchorOffset = (boxWidth: number, boxHeight: number) =>
-    pointRotateRads(
+  function getAnchorOffset(boxWidth: number, boxHeight: number) {
+    return pointRotateRads(
       pointFrom<GlobalPoint>(boxWidth * (anchor.x - 0.5), boxHeight * (anchor.y - 0.5)),
       pointFrom<GlobalPoint>(0, 0),
       text.angle,
     );
+  }
   const [offsetX, offsetY] = getAnchorOffset(text.width, text.height);
   const [nextOffsetX, nextOffsetY] = getAnchorOffset(nextWidth, metrics.height);
 
@@ -466,11 +468,12 @@ const toggleTextAutoResize = (
     y: text.y + (text.height - metrics.height) / 2 + offsetY - nextOffsetY,
     text: nextText,
   });
-};
+}
 
 /** Alt+W, in the canvas and in the text editor. */
-export const isTextAutoResizeShortcut = (event: KeyboardEvent): boolean =>
-  event.altKey && !event[KEYS.CTRL_OR_CMD] && !event.shiftKey && matchKey(event, KEYS.W);
+export function isTextAutoResizeShortcut(event: KeyboardEvent): boolean {
+  return event.altKey && !event[KEYS.CTRL_OR_CMD] && !event.shiftKey && matchKey(event, KEYS.W);
+}
 
 /**
  * Toggles auto-resizing of the given text (the one being edited), or else of

@@ -15,12 +15,15 @@ import { API, Keyboard, h, mouse, renderEditor, unmountEditors } from "./test-ed
 afterEach(unmountEditors);
 
 /** Points as plain pairs, to compare with literals. */
-const plain = (points: readonly (readonly [number, number])[] | undefined) =>
-  (points ?? []).map(([x, y]) => [x, y]);
+function plain(points: readonly (readonly [number, number])[] | undefined) {
+  return (points ?? []).map(([x, y]) => [x, y]);
+}
 
-const line = () => h().scene.getElement("L") as ExcalidrawLinearElement;
+function line() {
+  return h().scene.getElement("L") as ExcalidrawLinearElement;
+}
 
-const setup = () => {
+function setup() {
   renderEditor();
   API.loadElements([
     API.createElement({
@@ -39,7 +42,7 @@ const setup = () => {
   ]);
   mouse.clickAt(150, 100);
   expect(API.getSelectedElement().id).toBe("L");
-};
+}
 
 describe("line editor", () => {
   test("Enter opens it on a line, Escape closes it and keeps the line selected", () => {

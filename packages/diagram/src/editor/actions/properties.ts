@@ -62,13 +62,13 @@ type Primitive = string | number | boolean | bigint | symbol | null | undefined;
  * common value (or `defaultValue(true)` when they differ), or the default for
  * new elements. Excalidraw's `getFormValue`.
  */
-export const getFormValue = <T extends Primitive>(
+export function getFormValue<T extends Primitive>(
   elements: readonly ExcalidrawElement[],
   editor: Pick<DiagramEditor, "state" | "scene">,
   getValue: (element: ExcalidrawElement) => T,
   elementPredicate: true | ((element: ExcalidrawElement) => boolean),
   defaultValue: (isSomeElementSelected: boolean) => T,
-): T => {
+): T {
   const { editingTextElement } = editor.state;
   const editing = editingTextElement ? getValue(editingTextElement) : null;
   if (editing) {
@@ -84,20 +84,21 @@ export const getFormValue = <T extends Primitive>(
   const targets =
     elementPredicate === true ? selected : selected.filter((each) => elementPredicate(each));
   return reduceToCommonValue(targets, getValue) ?? defaultValue(true);
-};
+}
 
 /** The elements a property change reaches: the edited text, the one being drawn, or the selection. */
-export const getTargetElements = (
+export function getTargetElements(
   elements: readonly NonDeletedExcalidrawElement[],
   appState: Pick<AppState, "selectedElementIds" | "editingTextElement" | "newElement">,
-): readonly ExcalidrawElement[] =>
-  appState.editingTextElement
+): readonly ExcalidrawElement[] {
+  return appState.editingTextElement
     ? [appState.editingTextElement]
     : appState.newElement
       ? [appState.newElement]
       : hasSelectedIds(appState.selectedElementIds)
         ? getSelectedElements(elements, appState, { includeBoundTextElement: true })
         : [];
+}
 
 export interface ColorChange extends Partial<AppState> {
   color?: string;

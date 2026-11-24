@@ -48,9 +48,9 @@ const SNAP_DISTANCE = 8;
 const VISIBLE_GAPS_LIMIT_PER_AXIS = 99999;
 
 // snap distance with zoom value taken into consideration
-export const getSnapDistance = (zoomValue: number) => {
+export function getSnapDistance(zoomValue: number) {
   return SNAP_DISTANCE / zoomValue;
-};
+}
 
 type Vector2D = {
   x: number;
@@ -128,17 +128,17 @@ export const SnapCache = {
 
 // -----------------------------------------------------------------------------
 
-export const isGridModeEnabled = (app: SnapApp): boolean => app.state.gridModeEnabled;
+export function isGridModeEnabled(app: SnapApp): boolean {
+  return app.state.gridModeEnabled;
+}
 
-export const isSnappingEnabled = ({
-  event,
-  app,
-  selectedElements,
-}: {
+export interface IsSnappingEnabledOptions {
   app: SnapApp;
   event: KeyboardModifiersObject;
   selectedElements: readonly NonDeletedExcalidrawElement[];
-}) => {
+}
+
+export function isSnappingEnabled({ event, app, selectedElements }: IsSnappingEnabledOptions) {
   if (event) {
     // Allow snapping for lasso tool when dragging selected elements
     // but not during lasso selection phase
@@ -157,28 +157,26 @@ export const isSnappingEnabled = ({
     return false;
   }
   return app.state.objectsSnapModeEnabled;
-};
+}
 
-export const areRoughlyEqual = (a: number, b: number, precision = 0.01) => {
+export function areRoughlyEqual(a: number, b: number, precision = 0.01) {
   return Math.abs(a - b) <= precision;
-};
+}
 
-export const getElementsCorners = (
+export interface GetElementsCornersOptions {
+  omitCenter?: boolean;
+  boundingBoxCorners?: boolean;
+  dragOffset?: Vector2D;
+}
+
+export function getElementsCorners(
   elements: readonly NonDeletedExcalidrawElement[],
   elementsMap: ElementsMap,
-  {
-    omitCenter,
-    boundingBoxCorners,
-    dragOffset,
-  }: {
-    omitCenter?: boolean;
-    boundingBoxCorners?: boolean;
-    dragOffset?: Vector2D;
-  } = {
+  { omitCenter, boundingBoxCorners, dragOffset }: GetElementsCornersOptions = {
     omitCenter: false,
     boundingBoxCorners: false,
   },
-): GlobalPoint[] => {
+): GlobalPoint[] {
   let result: GlobalPoint[] = [];
 
   if (elements.length === 1) {
@@ -272,21 +270,23 @@ export const getElementsCorners = (
   }
 
   return result.map((p) => pointFrom(round(p[0]), round(p[1])));
-};
+}
 
-const getReferenceElements = (
+function getReferenceElements(
   elements: readonly NonDeletedExcalidrawElement[],
   selectedElements: readonly ExcalidrawElement[],
   appState: AppState,
   elementsMap: ElementsMap,
-) => getVisibleAndNonSelectedElements(elements, selectedElements, appState, elementsMap);
+) {
+  return getVisibleAndNonSelectedElements(elements, selectedElements, appState, elementsMap);
+}
 
-export const getVisibleGaps = (
+export function getVisibleGaps(
   elements: readonly NonDeletedExcalidrawElement[],
   selectedElements: readonly NonDeletedExcalidrawElement[],
   appState: AppState,
   elementsMap: ElementsMap,
-) => {
+) {
   const referenceElements: ExcalidrawElement[] = getReferenceElements(
     elements,
     selectedElements,
@@ -379,9 +379,9 @@ export const getVisibleGaps = (
     horizontalGaps,
     verticalGaps,
   };
-};
+}
 
-const getGapSnaps = (
+function getGapSnaps(
   selectedElements: readonly NonDeletedExcalidrawElement[],
   dragOffset: Vector2D,
   app: SnapApp,
@@ -389,7 +389,7 @@ const getGapSnaps = (
   nearestSnapsX: Snaps,
   nearestSnapsY: Snaps,
   minOffset: Vector2D,
-): void => {
+): void {
   if (!isSnappingEnabled({ app, event, selectedElements })) {
     return;
   }
@@ -548,23 +548,23 @@ const getGapSnaps = (
       }
     }
   }
-};
+}
 
-export const getReferenceSnapPoints = (
+export function getReferenceSnapPoints(
   elements: readonly NonDeletedExcalidrawElement[],
   selectedElements: readonly NonDeletedExcalidrawElement[],
   appState: AppState,
   elementsMap: ElementsMap,
-) => {
+) {
   const referenceElements = getReferenceElements(elements, selectedElements, appState, elementsMap);
   return getMaximumGroups(referenceElements, elementsMap)
     .filter(
       (elementsGroup) => !(elementsGroup.length === 1 && isBoundToContainer(elementsGroup[0]!)),
     )
     .flatMap((elementGroup) => getElementsCorners(elementGroup, elementsMap));
-};
+}
 
-const getPointSnaps = (
+function getPointSnaps(
   selectedElements: readonly NonDeletedExcalidrawElement[],
   selectionSnapPoints: GlobalPoint[],
   app: SnapApp,
@@ -572,7 +572,7 @@ const getPointSnaps = (
   nearestSnapsX: Snaps,
   nearestSnapsY: Snaps,
   minOffset: Vector2D,
-): void => {
+): void {
   if (
     !isSnappingEnabled({ app, event, selectedElements }) ||
     (selectedElements.length === 0 && selectionSnapPoints.length === 0)
@@ -618,15 +618,15 @@ const getPointSnaps = (
       }
     }
   }
-};
+}
 
-export const snapDraggedElements = (
+export function snapDraggedElements(
   elements: ExcalidrawElement[],
   dragOffset: Vector2D,
   app: SnapApp,
   event: KeyboardModifiersObject,
   elementsMap: ElementsMap,
-) => {
+) {
   const appState = app.state;
   const selectedElements = getSelectedElements(elements, appState);
   if (!isSnappingEnabled({ app, event, selectedElements }) || selectedElements.length === 0) {
@@ -714,14 +714,14 @@ export const snapDraggedElements = (
     snapOffset,
     snapLines: [...pointSnapLines, ...gapSnapLines],
   };
-};
+}
 
-const round = (x: number) => {
+function round(x: number) {
   const decimalPlaces = 6;
   return Math.round(x * 10 ** decimalPlaces) / 10 ** decimalPlaces;
-};
+}
 
-const dedupePoints = (points: GlobalPoint[]): GlobalPoint[] => {
+function dedupePoints(points: GlobalPoint[]): GlobalPoint[] {
   const map = new Map<string, GlobalPoint>();
 
   for (const point of points) {
@@ -733,11 +733,15 @@ const dedupePoints = (points: GlobalPoint[]): GlobalPoint[] => {
   }
 
   return Array.from(map.values());
-};
+}
 
-const createPointSnapLines = (nearestSnapsX: Snaps, nearestSnapsY: Snaps): PointSnapLine[] => {
-  const snapsX = {} as { [key: string]: GlobalPoint[] };
-  const snapsY = {} as { [key: string]: GlobalPoint[] };
+interface PointsByKey {
+  [key: string]: GlobalPoint[];
+}
+
+function createPointSnapLines(nearestSnapsX: Snaps, nearestSnapsY: Snaps): PointSnapLine[] {
+  const snapsX = {} as PointsByKey;
+  const snapsY = {} as PointsByKey;
 
   if (nearestSnapsX.length > 0) {
     for (const snap of nearestSnapsX) {
@@ -794,9 +798,9 @@ const createPointSnapLines = (nearestSnapsX: Snaps, nearestSnapsY: Snaps): Point
         return line;
       }),
     );
-};
+}
 
-const dedupeGapSnapLines = (gapSnapLines: GapSnapLine[]) => {
+function dedupeGapSnapLines(gapSnapLines: GapSnapLine[]) {
   const map = new Map<string, GapSnapLine>();
 
   for (const gapSnapLine of gapSnapLines) {
@@ -811,13 +815,13 @@ const dedupeGapSnapLines = (gapSnapLines: GapSnapLine[]) => {
   }
 
   return Array.from(map.values());
-};
+}
 
-const createGapSnapLines = (
+function createGapSnapLines(
   selectedElements: readonly NonDeletedExcalidrawElement[],
   dragOffset: Vector2D,
   gapSnaps: GapSnap[],
-): GapSnapLine[] => {
+): GapSnapLine[] {
   const [minX, minY, maxX, maxY] = getDraggedElementsBounds(
     selectedElements,
     dragOffset,
@@ -962,9 +966,9 @@ const createGapSnapLines = (
       };
     }),
   );
-};
+}
 
-export const snapResizingElements = (
+export function snapResizingElements(
   // use the latest elements to create snap lines
   selectedElements: readonly NonDeletedExcalidrawElement[],
   // while using the original elements to appy dragOffset to calculate snaps
@@ -973,7 +977,7 @@ export const snapResizingElements = (
   event: KeyboardModifiersObject,
   dragOffset: Vector2D,
   transformHandle: MaybeTransformHandleType,
-) => {
+) {
   if (
     !isSnappingEnabled({ event, selectedElements, app }) ||
     selectedElements.length === 0 ||
@@ -1091,16 +1095,16 @@ export const snapResizingElements = (
     snapOffset,
     snapLines: pointSnapLines,
   };
-};
+}
 
-export const snapNewElement = (
+export function snapNewElement(
   newElement: NonDeletedExcalidrawElement,
   app: SnapApp,
   event: KeyboardModifiersObject,
   origin: Vector2D,
   dragOffset: Vector2D,
   elementsMap: ElementsMap,
-) => {
+) {
   if (!isSnappingEnabled({ event, selectedElements: [newElement], app })) {
     return {
       snapOffset: { x: 0, y: 0 },
@@ -1155,15 +1159,15 @@ export const snapNewElement = (
     snapOffset,
     snapLines: pointSnapLines,
   };
-};
+}
 
-export const getSnapLinesAtPointer = (
+export function getSnapLinesAtPointer(
   elements: readonly NonDeletedExcalidrawElement[],
   app: SnapApp,
   pointer: Vector2D,
   event: KeyboardModifiersObject,
   elementsMap: ElementsMap,
-) => {
+) {
   if (!isSnappingEnabled({ event, selectedElements: [], app })) {
     return {
       originOffset: { x: 0, y: 0 },
@@ -1228,9 +1232,9 @@ export const getSnapLinesAtPointer = (
     },
     snapLines: [...verticalSnapLines, ...horizontalSnapLines],
   };
-};
+}
 
-export const isActiveToolNonLinearSnappable = (activeToolType: AppState["activeTool"]["type"]) => {
+export function isActiveToolNonLinearSnappable(activeToolType: AppState["activeTool"]["type"]) {
   return (
     activeToolType === TOOL_TYPE.rectangle ||
     activeToolType === TOOL_TYPE.ellipse ||
@@ -1240,4 +1244,4 @@ export const isActiveToolNonLinearSnappable = (activeToolType: AppState["activeT
     activeToolType === TOOL_TYPE.image ||
     activeToolType === TOOL_TYPE.text
   );
-};
+}

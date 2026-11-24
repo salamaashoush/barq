@@ -26,27 +26,31 @@ import type {
 
 afterEach(unmountEditors);
 
-const socket = (id: string) => id as SocketId;
+function socket(id: string) {
+  return id as SocketId;
+}
 
-const collaborators = (entries: Record<string, Collaborator>) =>
-  new Map(Object.entries(entries).map(([id, collaborator]) => [socket(id), collaborator]));
+function collaborators(entries: Record<string, Collaborator>) {
+  return new Map(Object.entries(entries).map(([id, collaborator]) => [socket(id), collaborator]));
+}
 
-const rect = (id: string, x: number, y: number) =>
-  API.createElement({ id, x, y, width: 50, height: 50 });
+function rect(id: string, x: number, y: number) {
+  return API.createElement({ id, x, y, width: 50, height: 50 });
+}
 
 /** What the interactive canvas draws next frame, from a clean slate. */
-const drawInteractive = () => {
+function drawInteractive() {
   const context = contextOf(h().interactiveCanvas);
   context.calls.splice(0);
   h().render();
   return context;
-};
+}
 
-const followIntents = (): OnUserFollowedPayload[] => {
+function followIntents(): OnUserFollowedPayload[] {
   const intents: OnUserFollowedPayload[] = [];
   h().api.onUserFollow((payload) => intents.push(payload));
   return intents;
-};
+}
 
 const alice = { socketId: socket("alice"), username: "Alice" };
 
@@ -178,23 +182,32 @@ describe("updateScene with collaborators", () => {
   });
 });
 
+interface LaserTrailsView {
+  collabTrails: Map<SocketId, CollabTrail>;
+}
+
+interface CollabTrail {
+  hasCurrentTrail: boolean;
+}
+
 describe("a collaborator's laser", () => {
-  const laser = (button: "down" | "up", x: number, y: number, laserColor?: string) =>
-    API.updateScene({
+  function laser(button: "down" | "up", x: number, y: number, laserColor?: string) {
+    return API.updateScene({
       collaborators: collaborators({
         alice: { username: "Alice", button, pointer: { x, y, tool: "laser", laserColor } },
       }),
     });
+  }
 
-  const trails = () => [...h().container.querySelectorAll("svg path")];
+  function trails() {
+    return [...h().container.querySelectorAll("svg path")];
+  }
 
   // whether the collaborator's trail is being drawn, rather than fading
-  const drawing = (id: string): boolean | undefined =>
-    (
-      h().laserTrails as unknown as {
-        collabTrails: Map<SocketId, { hasCurrentTrail: boolean }>;
-      }
-    ).collabTrails.get(socket(id))?.hasCurrentTrail;
+  function drawing(id: string): boolean | undefined {
+    return (h().laserTrails as unknown as LaserTrailsView).collabTrails.get(socket(id))
+      ?.hasCurrentTrail;
+  }
 
   test("draws a trail as their pointer goes down and moves, and ends it as it goes up", async () => {
     renderEditor();
@@ -249,15 +262,19 @@ describe("a collaborator's laser", () => {
   });
 });
 
+interface PressedPointers {
+  pointersDown: number;
+}
+
 describe("onPointerUpdate", () => {
-  const record = () => {
-    const payloads: (PointerUpdatePayload & { pointersDown: number })[] = [];
+  function record() {
+    const payloads: (PointerUpdatePayload & PressedPointers)[] = [];
     // the pointers down as each update went out: the map is the editor's own
     h().api.onPointerUpdate((payload) =>
       payloads.push({ ...payload, pointersDown: payload.pointersMap.size }),
     );
     return payloads;
-  };
+  }
 
   test("reports the pointer in scene coordinates as it moves, presses and releases", () => {
     renderEditor();
@@ -434,12 +451,21 @@ describe("following a collaborator", () => {
   });
 });
 
+interface HiddenTarget {
+  hidden: boolean;
+}
+
+interface ScheduledTimer {
+  run: () => void;
+  delay: number;
+}
+
 describe("createIdleDetector", () => {
-  const fakeWindow = () => {
-    const document = new EventTarget() as EventTarget & { hidden: boolean };
+  function fakeWindow() {
+    const document = new EventTarget() as EventTarget & HiddenTarget;
     document.hidden = false;
-    const timeouts = new Map<number, { run: () => void; delay: number }>();
-    const intervals = new Map<number, { run: () => void; delay: number }>();
+    const timeouts = new Map<number, ScheduledTimer>();
+    const intervals = new Map<number, ScheduledTimer>();
     let next = 1;
     const ownerWindow = {
       document,
@@ -460,7 +486,7 @@ describe("createIdleDetector", () => {
       timeouts,
       intervals,
     };
-  };
+  }
 
   test("active while the pointer moves, idle after a minute without, away while hidden", () => {
     const { ownerWindow, document, timeouts, intervals } = fakeWindow();

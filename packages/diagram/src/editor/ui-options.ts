@@ -56,36 +56,51 @@ export interface CanvasActions {
   saveAsImage?: boolean;
 }
 
+export interface ToolOptions {
+  image?: boolean;
+}
+
 /** Excalidraw's `UIOptions`, as an app passes it. */
 export interface UIOptions {
   canvasActions?: CanvasActions;
-  tools?: { image?: boolean };
+  tools?: ToolOptions;
   dockedSidebarBreakpoint?: number;
   /** Decides the layout from the editor's size: a phone's, a tablet's (compact) or a desktop's. */
   getFormFactor?: (editorWidth: number, editorHeight: number) => EditorInterface["formFactor"];
 }
 
+export type ResolvedCanvasActions = {
+  changeViewBackgroundColor: boolean;
+  clearCanvas: boolean;
+  export: false | ExportOpts;
+  loadScene: boolean;
+  saveToActiveFile: boolean;
+  toggleTheme: boolean;
+  saveAsImage: boolean;
+};
+
+export interface ResolvedTools {
+  image: boolean;
+}
+
 /** `UIOptions` with every default filled in. */
 export interface ResolvedUIOptions {
-  canvasActions: {
-    changeViewBackgroundColor: boolean;
-    clearCanvas: boolean;
-    export: false | ExportOpts;
-    loadScene: boolean;
-    saveToActiveFile: boolean;
-    toggleTheme: boolean;
-    saveAsImage: boolean;
-  };
-  tools: { image: boolean };
+  canvasActions: ResolvedCanvasActions;
+  tools: ResolvedTools;
   dockedSidebarBreakpoint?: number;
   getFormFactor?: (editorWidth: number, editorHeight: number) => EditorInterface["formFactor"];
 }
 
+export interface ThemeHost {
+  theme?: Theme;
+  onThemeChange?: unknown;
+}
+
 /** Fills in Excalidraw's defaults, as its `<Excalidraw>` does before rendering. */
-export const resolveUIOptions = (
+export function resolveUIOptions(
   options: UIOptions | undefined,
-  host: { theme?: Theme; onThemeChange?: unknown } = {},
-): ResolvedUIOptions => {
+  host: ThemeHost = {},
+): ResolvedUIOptions {
   const given = options?.canvasActions;
   const exportOpts = given?.export;
   const toggleTheme = given?.toggleTheme ?? null;
@@ -109,7 +124,11 @@ export const resolveUIOptions = (
     },
     tools: { image: options?.tools?.image ?? true },
   };
-};
+}
+
+export interface LinkOpenDetail {
+  nativeEvent: MouseEvent | PointerEvent;
+}
 
 /**
  * What the host decides for the editor, which actions read as Excalidraw's
@@ -172,10 +191,7 @@ export interface EditorHost {
     data: OnDuplicateData,
   ) => ExcalidrawElement[] | void | false;
   /** Excalidraw's `onLinkOpen`: an element's link opened; `preventDefault()` keeps the editor from opening it. */
-  onLinkOpen?: (
-    element: NonDeletedExcalidrawElement,
-    event: CustomEvent<{ nativeEvent: MouseEvent | PointerEvent }>,
-  ) => void;
+  onLinkOpen?: (element: NonDeletedExcalidrawElement, event: CustomEvent<LinkOpenDetail>) => void;
   /** Excalidraw's `onPointerDown` on the canvas. */
   onPointerDown?: (activeTool: AppState["activeTool"], pointerDownState: PointerDownState) => void;
   /** Excalidraw's `onPointerUp` after a press on the canvas. */
@@ -192,31 +208,34 @@ export interface EditorHost {
   ui?: boolean | UIConfig;
 }
 
-export const defaultEditorHost = (): EditorHost => ({
-  UIOptions: resolveUIOptions(undefined),
-  viewModeControlled: false,
-  zenModeControlled: false,
-  aiEnabled: true,
-  isCollaborating: false,
-  userToFollow: null,
-  handleKeyboardGlobally: false,
-  detectScroll: true,
-  renderScrollbars: false,
-});
+export function defaultEditorHost(): EditorHost {
+  return {
+    UIOptions: resolveUIOptions(undefined),
+    viewModeControlled: false,
+    zenModeControlled: false,
+    aiEnabled: true,
+    isCollaborating: false,
+    userToFollow: null,
+    handleKeyboardGlobally: false,
+    detectScroll: true,
+    renderScrollbars: false,
+  };
+}
 
 /** Whether the default UI renders: not with `ui` `false` or `{ enabled }`. */
-export const isDefaultUIEnabled = (ui: boolean | UIConfig | undefined): boolean =>
-  ui !== false && !(typeof ui === "object" && "enabled" in ui);
+export function isDefaultUIEnabled(ui: boolean | UIConfig | undefined): boolean {
+  return ui !== false && !(typeof ui === "object" && "enabled" in ui);
+}
 
 /** Whether a default UI control renders under `ui`. */
-export const isUIControlEnabled = (
+export function isUIControlEnabled(
   control: UIControl,
   ui: boolean | UIConfig | undefined,
-): boolean => {
+): boolean {
   if (typeof ui === "object") {
     return "enabled" in ui
       ? (ui.enabled as Partial<Record<UIControl, boolean>>)[control] === true
       : (ui.disabled as Partial<Record<UIControl, boolean>>)[control] !== true;
   }
   return ui !== false;
-};
+}

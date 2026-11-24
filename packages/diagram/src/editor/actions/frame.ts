@@ -35,10 +35,10 @@ import type { AppState } from "../../types.ts";
 import type { DiagramEditor } from "../editor.ts";
 import type { Action, ActionResult } from "../types.ts";
 
-const isSingleFrameSelected = (appState: AppState, editor: DiagramEditor): boolean => {
+function isSingleFrameSelected(appState: AppState, editor: DiagramEditor): boolean {
   const selectedElements = editor.scene.getSelectedElements(appState);
   return selectedElements.length === 1 && isFrameLikeElement(selectedElements[0] ?? null);
-};
+}
 
 /** Selects the selected frame's children instead of it. */
 export const actionSelectAllElementsInFrame: Action = {
@@ -106,10 +106,10 @@ const FRAME_PADDING = 16;
  * selection holds (with any of its children), or, with no frame selected,
  * the frame whose children are all selected.
  */
-export const getFrameToUnwrap = (
+export function getFrameToUnwrap(
   selectedElements: readonly ExcalidrawElement[],
   elementsMap: ElementsMap,
-): ExcalidrawFrameLikeElement | null => {
+): ExcalidrawFrameLikeElement | null {
   const elements = selectedElements.filter((element) => !isBoundToContainer(element));
   const frames = elements.filter((element) => isFrameLikeElement(element));
   if (frames.length > 1) {
@@ -132,15 +132,15 @@ export const getFrameToUnwrap = (
     (element) => !element.isDeleted && !isBoundToContainer(element),
   );
   return children.length === selectedChildren.length ? frame : null;
-};
+}
 
 /** Removes the frame, its children selected in its place. */
-export const unwrapFrame = (
+export function unwrapFrame(
   elements: readonly ExcalidrawElement[],
   appState: AppState,
   frame: ExcalidrawFrameLikeElement,
   editor: DiagramEditor,
-): ActionResult => {
+): ActionResult {
   const children = getNonDeletedElements(getFrameChildren(elements, frame.id));
   removeAllElementsFromFrame(elements, frame);
   editor.scene.mutateElement(frame, { isDeleted: true });
@@ -156,25 +156,28 @@ export const unwrapFrame = (
     },
     captureUpdate: CaptureUpdateAction.IMMEDIATELY,
   };
-};
+}
 
-const padBounds = ([x1, y1, x2, y2]: Bounds, padding: number) => ({
-  x: x1 - padding,
-  y: y1 - padding,
-  width: x2 - x1 + padding * 2,
-  height: y2 - y1 + padding * 2,
-});
+function padBounds([x1, y1, x2, y2]: Bounds, padding: number) {
+  return {
+    x: x1 - padding,
+    y: y1 - padding,
+    width: x2 - x1 + padding * 2,
+    height: y2 - y1 + padding * 2,
+  };
+}
 
 /** The deselected elements framed with the selection: within its bounds, or out by the padding. */
-const getElementsFramedWithSelection = (
+function getElementsFramedWithSelection(
   selectedElements: readonly NonDeletedExcalidrawElement[],
   selectionBounds: Bounds,
   editor: DiagramEditor,
-): ExcalidrawElement[] => {
+): ExcalidrawElement[] {
   const elementsMap = editor.scene.getNonDeletedElementsMap();
   const selected = new Set<ExcalidrawElement>(selectedElements);
-  const overlapsSelection = (element: ExcalidrawElement) =>
-    doBoundsIntersect(getElementBounds(element, elementsMap), selectionBounds);
+  function overlapsSelection(element: ExcalidrawElement) {
+    return doBoundsIntersect(getElementBounds(element, elementsMap), selectionBounds);
+  }
   return getElementsInNewFrame(
     editor.scene.getNonDeletedElements(),
     newFrameElement(padBounds(selectionBounds, FRAME_PADDING)),
@@ -188,15 +191,15 @@ const getElementsFramedWithSelection = (
     const group = groupId ? getElementsInGroup(elementsMap, groupId) : [element];
     return group.some(overlapsSelection) ? group : [];
   });
-};
+}
 
 /** Wraps the selection in a new frame, with what lies within it; edge to edge on an image. */
-export const wrapInFrame = (
+export function wrapInFrame(
   elements: readonly ExcalidrawElement[],
   appState: AppState,
   selectedElements: NonDeletedExcalidrawElement[],
   editor: DiagramEditor,
-): ActionResult => {
+): ActionResult {
   const elementsMap = editor.scene.getNonDeletedElementsMap();
   const selectionBounds = getCommonBounds(selectedElements, elementsMap);
   const children = new Set<ExcalidrawElement>([
@@ -244,7 +247,7 @@ export const wrapInFrame = (
     },
     captureUpdate: CaptureUpdateAction.IMMEDIATELY,
   };
-};
+}
 
 /** Wraps the selection in a frame, or unwraps the frame it is all of. */
 export const actionWrapSelectionInFrame: Action = {

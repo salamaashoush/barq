@@ -17,6 +17,20 @@ type StateChangeListener = {
   once: boolean;
 };
 
+export interface ObserveOnce {
+  once: boolean;
+}
+
+export interface PredicateSubscription {
+  predicate: (appState: AppState) => boolean;
+  callback: (appState: AppState) => void;
+  once?: boolean;
+}
+
+export interface PredicateWait {
+  predicate: (appState: AppState) => boolean;
+}
+
 /**
  * Excalidraw's `onStateChange`: a key, keys or a selector and a callback
  * called when what they read changes (the subscription's unsubscribe
@@ -27,31 +41,28 @@ export type OnStateChange = {
   <K extends keyof AppState>(
     prop: K,
     callback: (value: AppState[K], appState: AppState) => void,
-    opts?: { once: boolean },
+    opts?: ObserveOnce,
   ): () => void;
   <K extends keyof AppState>(prop: K): Promise<AppState[K]>;
   (
     prop: (keyof AppState)[],
     callback: (appState: AppState, appState2: AppState) => void,
-    opts?: { once: boolean },
+    opts?: ObserveOnce,
   ): () => void;
   (prop: (keyof AppState)[]): Promise<AppState>;
   <T>(
     prop: (appState: AppState) => T,
     callback: (value: T, appState: AppState) => void,
-    opts?: { once: boolean },
+    opts?: ObserveOnce,
   ): () => void;
   <T>(prop: (appState: AppState) => T): Promise<T>;
-  (opts: {
-    predicate: (appState: AppState) => boolean;
-    callback: (appState: AppState) => void;
-    once?: boolean;
-  }): () => void;
-  (opts: { predicate: (appState: AppState) => boolean }): Promise<AppState>;
+  (opts: PredicateSubscription): () => void;
+  (opts: PredicateWait): Promise<AppState>;
 };
 
-const isPredicateOptions = (arg: StateChangeArg): arg is StateChangePredicateOptions =>
-  typeof arg === "object" && !Array.isArray(arg) && "predicate" in arg;
+function isPredicateOptions(arg: StateChangeArg): arg is StateChangePredicateOptions {
+  return typeof arg === "object" && !Array.isArray(arg) && "predicate" in arg;
+}
 
 /** Excalidraw's `AppStateObserver`: the editor flushes it once per commit with the state before. */
 export class AppStateObserver {
@@ -62,7 +73,7 @@ export class AppStateObserver {
   public readonly onStateChange: OnStateChange = ((
     propOrOpts: StateChangeArg,
     callback?: (value: never, appState: AppState) => void,
-    opts?: { once: boolean },
+    opts?: ObserveOnce,
   ) => {
     let predicate: StateChangeListener["predicate"];
     let getValue: StateChangeListener["getValue"];

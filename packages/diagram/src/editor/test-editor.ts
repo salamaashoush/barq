@@ -52,25 +52,32 @@ export const WIDTH = 1024;
 export const HEIGHT = 768;
 
 let current: DiagramEditor | null = null;
-const mounted: { editor: DiagramEditor; container: HTMLElement }[] = [];
+interface MountedEditor {
+  editor: DiagramEditor;
+  container: HTMLElement;
+}
+
+const mounted: MountedEditor[] = [];
 
 /** The editor under test, mounted by `renderEditor`. */
-export const h = (): DiagramEditor => {
+export function h(): DiagramEditor {
   if (current === null) throw new Error("renderEditor() first");
   return current;
-};
+}
 
-/** Mounts an editor in a 1024 by 768 container at the origin of the page. */
-export const renderEditor = ({
-  textEditor = true,
-  ...options
-}: Partial<Omit<DiagramEditorOptions, "container">> & {
+export interface TextEditorOption {
   /** Answers text edit requests with a textarea, as `<DiagramEditor>` does. */
   textEditor?: boolean;
-} = {}): DiagramEditor => {
-  const container = document.createElement("div");
-  container.tabIndex = 0;
-  container.getBoundingClientRect = () =>
+}
+
+/** Mounts an editor in a 1024 by 768 container at the origin of the page. */
+export function renderEditor({
+  textEditor: answerTextEdits = true,
+  ...options
+}: Partial<Omit<DiagramEditorOptions, "container">> & TextEditorOption = {}): DiagramEditor {
+  const root = document.createElement("div");
+  root.tabIndex = 0;
+  root.getBoundingClientRect = () =>
     ({
       x: 0,
       y: 0,
@@ -83,16 +90,16 @@ export const renderEditor = ({
     }) as DOMRect;
   const canvas = document.createElement("canvas");
   const newElementCanvas = document.createElement("canvas");
-  const interactiveCanvas = document.createElement("canvas");
+  const interactiveLayer = document.createElement("canvas");
   const svgLayer = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  container.append(canvas, newElementCanvas, interactiveCanvas, svgLayer);
-  document.body.append(container);
+  root.append(canvas, newElementCanvas, interactiveLayer, svgLayer);
+  document.body.append(root);
   const UIOptions = options.host?.UIOptions ?? resolveUIOptions(undefined);
   const editor = new DiagramEditor({
-    container,
+    container: root,
     canvas,
     newElementCanvas,
-    interactiveCanvas,
+    interactiveCanvas: interactiveLayer,
     svgLayer,
     ...options,
     // laid out as a desktop's, which 1024 by 768 would not be by its size alone
@@ -101,22 +108,22 @@ export const renderEditor = ({
       UIOptions: { ...UIOptions, getFormFactor: UIOptions.getFormFactor ?? (() => "desktop") },
     },
   });
-  if (textEditor) {
-    mountTextEditor(editor, container);
+  if (answerTextEdits) {
+    mountTextEditor(editor, root);
   }
-  mountFrameNames(editor, container);
-  mounted.push({ editor, container });
+  mountFrameNames(editor, root);
+  mounted.push({ editor, container: root });
   current = editor;
   Keyboard.reset();
   Pointer.resetAll();
   return editor;
-};
+}
 
 /**
  * A host's text editor: a textarea in a box over the canvases for each
  * request, removed when the edit ends.
  */
-const mountTextEditor = (editor: DiagramEditor, host: HTMLElement): void => {
+function mountTextEditor(editor: DiagramEditor, host: HTMLElement): void {
   const box = document.createElement("div");
   box.style.cssText = "position:absolute;inset:0;overflow:hidden;pointer-events:none";
   host.append(box);
@@ -127,11 +134,16 @@ const mountTextEditor = (editor: DiagramEditor, host: HTMLElement): void => {
     request.attach(textarea);
   });
   editor.onTextEditEnd(() => box.replaceChildren());
-};
+}
+
+interface ShownFrameName {
+  element: HTMLElement;
+  detach: () => void;
+}
 
 /** A host's frame names: an element per frame, placed by the editor. */
-const mountFrameNames = (editor: DiagramEditor, host: HTMLElement): void => {
-  const shown = new Map<string, { element: HTMLElement; detach: () => void }>();
+function mountFrameNames(editor: DiagramEditor, host: HTMLElement): void {
+  const shown = new Map<string, ShownFrameName>();
   editor.onFrameNamesChange((frames) => {
     const ids = new Set(frames.map((frame) => frame.id));
     for (const [id, { element, detach }] of shown) {
@@ -154,36 +166,42 @@ const mountFrameNames = (editor: DiagramEditor, host: HTMLElement): void => {
       entry.element.dataset.editing = String(frame.editing);
     }
   });
-};
+}
 
 /** The element showing a frame's name. */
-export const getFrameName = (frameId: string): HTMLElement | null =>
-  h().container.querySelector<HTMLElement>(`[data-frame-name="${frameId}"]`);
+export function getFrameName(frameId: string): HTMLElement | null {
+  return h().container.querySelector<HTMLElement>(`[data-frame-name="${frameId}"]`);
+}
 
 /** The open text editor's textarea, or `null`. */
-export const getTextEditor = (): HTMLTextAreaElement | null =>
-  h().container.querySelector<HTMLTextAreaElement>("textarea[data-type=wysiwyg]");
+export function getTextEditor(): HTMLTextAreaElement | null {
+  return h().container.querySelector<HTMLTextAreaElement>("textarea[data-type=wysiwyg]");
+}
 
 /** The open text editor, once it has focus (a task after it opens). */
-export const textEditor = async (): Promise<HTMLTextAreaElement> => {
+export async function textEditor(): Promise<HTMLTextAreaElement> {
   await new Promise((resolve) => setTimeout(resolve, 0));
   const textarea = getTextEditor();
   if (!textarea) throw new Error("no text editor is open");
   return textarea;
-};
+}
 
 /** Destroys the editors `renderEditor` mounted. */
-export const unmountEditors = (): void => {
-  for (const { editor, container } of mounted.splice(0)) {
+export function unmountEditors(): void {
+  for (const { editor, container: root } of mounted.splice(0)) {
     editor.destroy();
-    container.remove();
+    root.remove();
   }
   current = null;
-};
+}
 
-const interactiveCanvas = () => h().interactiveCanvas;
+function interactiveCanvas() {
+  return h().interactiveCanvas;
+}
 
-const container = () => h().container;
+function container() {
+  return h().container;
+}
 
 let altKey = false;
 let shiftKey = false;
@@ -196,12 +214,14 @@ export interface KeyboardModifiers {
   ctrl?: boolean;
 }
 
-const modifierFlags = () => ({
-  altKey,
-  shiftKey,
-  ctrlKey: KEYS.CTRL_OR_CMD === "ctrlKey" ? ctrlKey : false,
-  metaKey: KEYS.CTRL_OR_CMD === "metaKey" ? ctrlKey : false,
-});
+function modifierFlags() {
+  return {
+    altKey,
+    shiftKey,
+    ctrlKey: KEYS.CTRL_OR_CMD === "ctrlKey" ? ctrlKey : false,
+    metaKey: KEYS.CTRL_OR_CMD === "metaKey" ? ctrlKey : false,
+  };
+}
 
 const CODE_OF_KEY: Record<string, string> = {
   "[": "BracketLeft",
@@ -214,11 +234,11 @@ const CODE_OF_KEY: Record<string, string> = {
   ",": "Comma",
 };
 
-const codeOf = (key: string): string => {
+function codeOf(key: string): string {
   if (/^[a-z]$/i.test(key)) return `Key${key.toUpperCase()}`;
   if (/^[0-9]$/.test(key)) return `Digit${key}`;
   return CODE_OF_KEY[key] ?? key;
-};
+}
 
 export const Keyboard = {
   reset(): void {
@@ -306,7 +326,7 @@ export const Keyboard = {
 };
 
 /** A wheel event on the editor; happy-dom's `WheelEvent` drops the keys and the pointer from its init. */
-export const wheel = (init: WheelEventInit): WheelEvent => {
+export function wheel(init: WheelEventInit): WheelEvent {
   const event = new WheelEvent("wheel", { ...init, bubbles: true, cancelable: true });
   for (const key of ["ctrlKey", "metaKey", "shiftKey", "clientX", "clientY", "buttons"] as const) {
     Object.defineProperty(event, key, {
@@ -315,10 +335,10 @@ export const wheel = (init: WheelEventInit): WheelEvent => {
   }
   container().dispatchEvent(event);
   return event;
-};
+}
 
 /** Where a click selects an element: its top edge's middle, or its points' centre. */
-const getElementPointForSelection = (element: ExcalidrawElement): [number, number] => {
+function getElementPointForSelection(element: ExcalidrawElement): [number, number] {
   const { x, y, width, angle } = element;
   const target = pointFrom<GlobalPoint>(
     x + (isLinearElement(element) || isFreeDrawElement(element) ? 0 : width / 2),
@@ -336,7 +356,7 @@ const getElementPointForSelection = (element: ExcalidrawElement): [number, numbe
   }
   const point = pointRotateRads(target, center, angle);
   return [point[0], point[1]];
-};
+}
 
 export class Pointer {
   public clientX = 0;
@@ -453,8 +473,8 @@ export class Pointer {
    * release (Windows).
    */
   public contextMenuAt(x: number, y: number, order: "press" | "release" = "press"): void {
-    const menu = () =>
-      interactiveCanvas().dispatchEvent(
+    function menu() {
+      return interactiveCanvas().dispatchEvent(
         new MouseEvent("contextmenu", {
           clientX: x,
           clientY: y,
@@ -464,6 +484,7 @@ export class Pointer {
           ...modifierFlags(),
         }),
       );
+    }
     this.downAt(x, y, 2);
     if (order === "press") menu();
     this.upAt(x, y, 2);
@@ -502,12 +523,12 @@ export class Pointer {
 
 export const mouse = new Pointer("mouse");
 
-const transform = (
+function transform(
   element: ExcalidrawElement | ExcalidrawElement[],
   handle: TransformHandleType,
   mouseMove: [deltaX: number, deltaY: number],
   keyboardModifiers: KeyboardModifiers = {},
-): void => {
+): void {
   const elements = Array.isArray(element) ? element : [element];
   API.setSelectedElements(elements as NonDeletedExcalidrawElement[]);
   const { zoom } = h().state;
@@ -542,13 +563,13 @@ const transform = (
     mouse.move(mouseMove[0], mouseMove[1]);
     mouse.up();
   });
-};
+}
 
 /** A live view of an element: its props are read from the scene each time. */
 export type Proxied<T extends ExcalidrawElement> = T & { get(): T };
 
-const proxy = <T extends ExcalidrawElement>(element: T): Proxied<T> =>
-  new Proxy({} as Proxied<T>, {
+function proxy<T extends ExcalidrawElement>(element: T): Proxied<T> {
+  return new Proxy({} as Proxied<T>, {
     get(_target, prop) {
       const latest = h().scene.getElementsMapIncludingDeleted().get(element.id) as T | undefined;
       if (prop === "get") {
@@ -557,8 +578,20 @@ const proxy = <T extends ExcalidrawElement>(element: T): Proxied<T> =>
       return latest === undefined ? undefined : (latest as Record<PropertyKey, unknown>)[prop];
     },
   });
+}
 
 type DrawingTool = "rectangle" | "diamond" | "ellipse" | "arrow" | "line" | "freedraw";
+
+interface DrawnElementOptions {
+  position?: number;
+  x?: number;
+  y?: number;
+  size?: number;
+  width?: number;
+  height?: number;
+  angle?: number;
+  points?: LocalPoint[];
+}
 
 export const UI = {
   /** Types into the text editor: its value becomes `value`, as one input. */
@@ -592,16 +625,7 @@ export const UI = {
       height = width,
       angle = 0,
       points: initialPoints,
-    }: {
-      position?: number;
-      x?: number;
-      y?: number;
-      size?: number;
-      width?: number;
-      height?: number;
-      angle?: number;
-      points?: LocalPoint[];
-    } = {},
+    }: DrawnElementOptions = {},
   ): Proxied<
     T extends "arrow"
       ? ExcalidrawArrowElement

@@ -38,38 +38,40 @@ import type { Action } from "./types.ts";
 
 afterEach(unmountEditors);
 
-const texts = (): NonDeleted<ExcalidrawTextElement>[] =>
-  h()
+function texts(): NonDeleted<ExcalidrawTextElement>[] {
+  return h()
     .scene.getNonDeletedElements()
     .flatMap((element) => (isTextElement(element) ? [element] : []));
+}
 
-const onlyText = () => {
+function onlyText() {
   const [text] = texts();
   if (!text || texts().length !== 1) throw new Error(`expected 1 text, got ${texts().length}`);
   return text;
-};
+}
 
-const keyDownIn = (
+function keyDownIn(
   textarea: HTMLTextAreaElement,
   key: string,
   init: KeyboardEventInit = {},
-): KeyboardEvent => {
+): KeyboardEvent {
   const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...init });
   textarea.dispatchEvent(event);
   return event;
-};
+}
 
-const createText = async (x: number, y: number, value: string) => {
+async function createText(x: number, y: number, value: string) {
   UI.clickTool("text");
   mouse.clickAt(x, y);
   const editor = await textEditor();
   UI.updateTextEditor(editor, value);
   UI.exitTextEditor(editor);
   return onlyText();
-};
+}
 
-const run = <T>(action: Action<T>, value: T) =>
-  h().batch(() => h().actionManager.executeAction(action, value));
+function run<T>(action: Action<T>, value: T) {
+  return h().batch(() => h().actionManager.executeAction(action, value));
+}
 
 describe("creating text", () => {
   test("the text tool opens an editor centred on the click", async () => {
@@ -299,10 +301,10 @@ describe("editing text", () => {
 });
 
 /** A text element, as a copied one would be, without an editor. */
-const createLabel = async (): Promise<ExcalidrawElement> => {
+async function createLabel(): Promise<ExcalidrawElement> {
   const { newTextElement } = await import("@excalidraw/element");
   return newTextElement({ x: 0, y: 0, text: "label" });
-};
+}
 
 describe("right-to-left text", () => {
   test("Arabic is written and measured as typed", async () => {
@@ -431,8 +433,8 @@ describe("font size, family and alignment", () => {
 });
 
 describe("text in containers", () => {
-  const filledRect = () =>
-    API.createElement({
+  function filledRect() {
+    return API.createElement({
       id: "box",
       x: 100,
       y: 100,
@@ -440,6 +442,7 @@ describe("text in containers", () => {
       height: 100,
       backgroundColor: "#ffc9c9",
     });
+  }
 
   test("a double-click in a filled shape binds a centred label to it", async () => {
     renderEditor();

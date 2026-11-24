@@ -16,6 +16,7 @@ import type { isOverScrollBars } from "../scene/scrollbars.ts";
 import type { DiagramEditor } from "./editor.ts";
 import type { TranslationKey } from "../i18n.ts";
 import type { AppState, BinaryFiles } from "../types.ts";
+import type { Coords } from "../types.ts";
 
 /**
  * What `@excalidraw/element` calls `app`: Excalidraw's whole `App` class by
@@ -38,56 +39,68 @@ export type ReactCanvasPointerEvent = Parameters<
 /** What `@excalidraw/element`'s `Store` is constructed with. */
 export type StoreApp = ConstructorParameters<typeof Store>[0];
 
-/** A pointer interaction, from its pointer down to its pointer up. Excalidraw's, key for key. */
-export type PointerDownState = Readonly<{
+export interface PointerDownStateFields {
   /** Where the pointer went down, in scene coordinates. */
-  origin: Readonly<{ x: number; y: number }>;
+  origin: Readonly<Coords>;
   /** `origin` on the grid, when the grid is on. */
-  originInGrid: Readonly<{ x: number; y: number }>;
+  originInGrid: Readonly<Coords>;
   scrollbars: ReturnType<typeof isOverScrollBars>;
-  lastCoords: { x: number; y: number };
+  lastCoords: Coords;
   /** The elements as they were at pointer down. */
   originalElements: Map<string, NonDeleted<ExcalidrawElement>>;
-  resize: {
-    handleType: MaybeTransformHandleType;
-    isResizing: boolean;
-    offset: { x: number; y: number };
-    arrowDirection: "origin" | "end";
-    /** The selection's centre at pointer down, which rotation turns around. */
-    center: { x: number; y: number };
-  };
-  hit: {
-    element: NonDeleted<ExcalidrawElement> | null;
-    allHitElements: NonDeleted<ExcalidrawElement>[];
-    wasAddedToSelection: boolean;
-    /** What an alt-click selects instead: the unit below the selected one. */
-    cycleTarget: NonDeleted<ExcalidrawElement> | null;
-    hasBeenDuplicated: boolean;
-    advancedListMarkers: readonly ListMarkerAdvance[];
-    editedTextId: ExcalidrawTextElement["id"] | null;
-    hasHitCommonBoundingBoxOfSelectedElements: boolean;
-    /** The pointer went down on the selected arrow's label. */
-    arrowLabel: boolean;
-  };
+  resize: PointerDownResize;
+  hit: PointerDownHit;
   withCmdOrCtrl: boolean;
-  drag: {
-    hasOccurred: boolean;
-    offset: { x: number; y: number } | null;
-    /** `origin`, until an alt-drag duplicates and restarts the drag from there. */
-    origin: { x: number; y: number };
-    lastOffset: { x: number; y: number };
-    blockDragging: boolean;
-  };
-  eventListeners: {
-    onMove: null | ((event: PointerEvent) => void);
-    onUp: null | ((event: PointerEvent) => void);
-    onKeyDown: null | ((event: KeyboardEvent) => void);
-    onKeyUp: null | ((event: KeyboardEvent) => void);
-  };
-  boxSelection: {
-    hasOccurred: boolean;
-  };
-}>;
+  drag: PointerDownDrag;
+  eventListeners: PointerDownListeners;
+  boxSelection: PointerDownBoxSelection;
+}
+
+export interface PointerDownResize {
+  handleType: MaybeTransformHandleType;
+  isResizing: boolean;
+  offset: Coords;
+  arrowDirection: "origin" | "end";
+  /** The selection's centre at pointer down, which rotation turns around. */
+  center: Coords;
+}
+
+export interface PointerDownHit {
+  element: NonDeleted<ExcalidrawElement> | null;
+  allHitElements: NonDeleted<ExcalidrawElement>[];
+  wasAddedToSelection: boolean;
+  /** What an alt-click selects instead: the unit below the selected one. */
+  cycleTarget: NonDeleted<ExcalidrawElement> | null;
+  hasBeenDuplicated: boolean;
+  advancedListMarkers: readonly ListMarkerAdvance[];
+  editedTextId: ExcalidrawTextElement["id"] | null;
+  hasHitCommonBoundingBoxOfSelectedElements: boolean;
+  /** The pointer went down on the selected arrow's label. */
+  arrowLabel: boolean;
+}
+
+export interface PointerDownDrag {
+  hasOccurred: boolean;
+  offset: Coords | null;
+  /** `origin`, until an alt-drag duplicates and restarts the drag from there. */
+  origin: Coords;
+  lastOffset: Coords;
+  blockDragging: boolean;
+}
+
+export interface PointerDownListeners {
+  onMove: null | ((event: PointerEvent) => void);
+  onUp: null | ((event: PointerEvent) => void);
+  onKeyDown: null | ((event: KeyboardEvent) => void);
+  onKeyUp: null | ((event: KeyboardEvent) => void);
+}
+
+export interface PointerDownBoxSelection {
+  hasOccurred: boolean;
+}
+
+/** A pointer interaction, from its pointer down to its pointer up. Excalidraw's, key for key. */
+export type PointerDownState = Readonly<PointerDownStateFields>;
 
 /** What an action asks of the editor; `false` cancels it. */
 export type ActionResult =

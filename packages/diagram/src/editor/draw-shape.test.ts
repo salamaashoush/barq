@@ -12,10 +12,12 @@ import { API, Keyboard, h, mouse, renderEditor, unmountEditors } from "./test-ed
 
 afterEach(unmountEditors);
 
-const elements = () => h().scene.getNonDeletedElements();
+function elements() {
+  return h().scene.getNonDeletedElements();
+}
 
 /** Moves the pressed pointer through `points`, a few steps between each. */
-const strokeThrough = (points: readonly (readonly [number, number])[]): void => {
+function strokeThrough(points: readonly (readonly [number, number])[]): void {
   const [first, ...rest] = points;
   if (!first) return;
   mouse.downAt(first[0], first[1]);
@@ -27,43 +29,47 @@ const strokeThrough = (points: readonly (readonly [number, number])[]): void => 
     [px, py] = [x, y];
   }
   mouse.upAt(px, py);
-};
+}
 
-const segment = (
+function segment(
   from: readonly [number, number],
   to: readonly [number, number],
   steps: number,
-): [number, number][] =>
-  Array.from({ length: steps + 1 }, (_, index) => [
+): [number, number][] {
+  return Array.from({ length: steps + 1 }, (_, index) => [
     from[0] + ((to[0] - from[0]) * index) / steps,
     from[1] + ((to[1] - from[1]) * index) / steps,
   ]);
+}
 
 /** A V-headed arrow: the shaft, then both arms of the head drawn back from the tip. */
-const arrowPath = (x1: number, y1: number, x2: number, y2: number): [number, number][] => {
+function arrowPath(x1: number, y1: number, x2: number, y2: number): [number, number][] {
   const tip: [number, number] = [x2, y2];
   const length = Math.hypot(x2 - x1, y2 - y1);
   const ux = (x2 - x1) / length;
   const uy = (y2 - y1) / length;
   const head = length * 0.3;
   const angle = Math.PI / 6;
-  const arm = (sign: number): [number, number] => [
-    x2 - head * (ux * Math.cos(angle) - sign * uy * Math.sin(angle)),
-    y2 - head * (uy * Math.cos(angle) + sign * ux * Math.sin(angle)),
-  ];
+  function arm(sign: number): [number, number] {
+    return [
+      x2 - head * (ux * Math.cos(angle) - sign * uy * Math.sin(angle)),
+      y2 - head * (uy * Math.cos(angle) + sign * ux * Math.sin(angle)),
+    ];
+  }
   return [
     ...segment([x1, y1], tip, 20),
     ...segment(tip, arm(1), 8),
     ...segment(arm(1), tip, 8),
     ...segment(tip, arm(-1), 8),
   ];
-};
+}
 
-const circle = (cx: number, cy: number, r: number): [number, number][] =>
-  Array.from({ length: 41 }, (_, index) => {
+function circle(cx: number, cy: number, r: number): [number, number][] {
+  return Array.from({ length: 41 }, (_, index) => {
     const angle = (index / 40) * Math.PI * 2;
     return [cx + Math.cos(angle) * r, cy + Math.sin(angle) * r];
   });
+}
 
 describe("autoshape", () => {
   test("Shift+X picks it, and a sketched box becomes a rectangle", () => {

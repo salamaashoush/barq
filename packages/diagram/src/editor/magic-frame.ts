@@ -18,13 +18,21 @@ import type {
 import type { LocalizedMessage } from "../i18n.ts";
 import type { DiagramEditor } from "./editor.ts";
 
-/** Excalidraw's `GenerateDiagramToCode`: the app's wireframe-to-code backend. */
-export type GenerateDiagramToCode = (props: {
+export interface DiagramToCodeInput {
   frame: NonDeleted<ExcalidrawMagicFrameElement>;
   children: readonly NonDeletedExcalidrawElement[];
   /** Called with the reply so far, as it streams, to show it as it comes. */
   onPartial?: (html: string) => void;
-}) => Promise<{ html: string }> | { html: string };
+}
+
+export interface GeneratedHtml {
+  html: string;
+}
+
+/** Excalidraw's `GenerateDiagramToCode`: the app's wireframe-to-code backend. */
+export type GenerateDiagramToCode = (
+  props: DiagramToCodeInput,
+) => Promise<GeneratedHtml> | GeneratedHtml;
 
 /** The app's `<DiagramToCodePlugin>`: without it the magic frame is not offered. */
 export interface DiagramToCodeOptions {
@@ -38,10 +46,11 @@ const GAP = 30;
 const WRAP_PADDING = 50;
 
 /** The page a reply is, from its doctype to its closing tag when it has both. */
-const pageOf = (html: string): string =>
-  html.includes("<!DOCTYPE html>") && html.includes("</html>")
+function pageOf(html: string): string {
+  return html.includes("<!DOCTYPE html>") && html.includes("</html>")
     ? html.slice(html.indexOf("<!DOCTYPE html>"), html.indexOf("</html>") + "</html>".length)
     : html;
+}
 
 /**
  * Excalidraw's magic frame ("wireframe to code"): a frame whose contents the

@@ -56,29 +56,44 @@ import type {
 
 afterEach(unmountEditors);
 
-const rect = (id: string, x = 0, y = 0, size = 100) =>
-  API.createElement({ id, x, y, width: size, height: size });
+function rect(id: string, x = 0, y = 0, size = 100) {
+  return API.createElement({ id, x, y, width: size, height: size });
+}
 
-const filled = (id: string, x = 0, y = 0, size = 100) =>
-  API.createElement({ id, x, y, width: size, height: size, backgroundColor: "#ffc9c9" });
+function filled(id: string, x = 0, y = 0, size = 100) {
+  return API.createElement({ id, x, y, width: size, height: size, backgroundColor: "#ffc9c9" });
+}
 
-const element = (id: string) => h().scene.getElement(id)!;
+function element(id: string) {
+  return h().scene.getElement(id)!;
+}
 
-const selectIds = (...ids: string[]) =>
-  API.setSelectedElements(ids.map((id) => h().scene.getNonDeletedElement(id)!));
+function selectIds(...ids: string[]) {
+  return API.setSelectedElements(ids.map((id) => h().scene.getNonDeletedElement(id)!));
+}
 
-const menuNames = (): string[] =>
-  ((h().state.contextMenu?.items ?? []) as ContextMenuItem[]).map((item) =>
+function menuNames(): string[] {
+  return ((h().state.contextMenu?.items ?? []) as ContextMenuItem[]).map((item) =>
     item === CONTEXT_MENU_SEPARATOR ? "|" : item.name,
   );
+}
 
-const enabledMenuNames = (): string[] =>
-  ((h().state.contextMenu?.items ?? []) as ContextMenuItem[])
+function enabledMenuNames(): string[] {
+  return ((h().state.contextMenu?.items ?? []) as ContextMenuItem[])
     .filter(
       (item): item is Exclude<ContextMenuItem, typeof CONTEXT_MENU_SEPARATOR> =>
         item !== CONTEXT_MENU_SEPARATOR && h().actionManager.isActionEnabled(item),
     )
     .map((item) => item.name);
+}
+
+interface FreedrawStroke {
+  strokeOptions?: StrokeVariability;
+}
+
+interface StrokeVariability {
+  variability: string;
+}
 
 describe("properties", () => {
   test("stroke and background colours reach the selection and the defaults", () => {
@@ -162,14 +177,15 @@ describe("properties", () => {
     renderEditor();
     API.loadElements([rect("A"), rect("B", 200)]);
     selectIds("A", "B");
-    const strokeStyle = () =>
-      getFormValue(
+    function strokeStyle() {
+      return getFormValue(
         h().scene.getElementsIncludingDeleted(),
         h(),
         (each) => each.strokeStyle,
         true,
         (hasSelection) => (hasSelection ? null : h().state.currentItemStrokeStyle),
       );
+    }
     expect(strokeStyle()).toBe("solid");
     selectIds("A");
     API.executeAction(actionChangeStrokeStyle, "dashed");
@@ -183,7 +199,7 @@ describe("properties", () => {
     API.loadElements([stroke]);
     selectIds("F");
     API.executeAction(actionChangeFreedrawMode, "variable");
-    const freedraw = element("F") as unknown as { strokeOptions?: { variability: string } };
+    const freedraw = element("F") as unknown as FreedrawStroke;
     expect(freedraw.strokeOptions?.variability).toBe("variable");
     expect(h().state.currentItemStrokeVariability).toBe("variable");
   });
@@ -246,10 +262,12 @@ describe("styles", () => {
 });
 
 describe("bound text", () => {
-  const free = (id: string, x: number, y: number) => ({
-    ...newTextElement({ x, y, text: "label" }),
-    id,
-  });
+  function free(id: string, x: number, y: number) {
+    return {
+      ...newTextElement({ x, y, text: "label" }),
+      id,
+    };
+  }
 
   test("binds a text to a shape, unbinds it, and wraps a free text in a rectangle", () => {
     renderEditor();

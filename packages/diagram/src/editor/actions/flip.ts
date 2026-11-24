@@ -27,12 +27,12 @@ import type { Action } from "../types.ts";
 
 type FlipDirection = "horizontal" | "vertical";
 
-const flipElements = (
+function flipElements(
   selectedElements: NonDeleted<ExcalidrawElement>[],
   elementsMap: NonDeletedSceneElementsMap,
   direction: FlipDirection,
   editor: DiagramEditor,
-): ExcalidrawElement[] => {
+): ExcalidrawElement[] {
   // arrows bound at an end only swap their heads: moving them would unbind them
   if (
     selectedElements.every(
@@ -76,14 +76,14 @@ const flipElements = (
     editor.scene.mutateElement(element, { x: element.x + dx, y: element.y + dy });
   }
   return selectedElements;
-};
+}
 
-const flipSelectedElements = (
+function flipSelectedElements(
   elements: readonly ExcalidrawElement[],
   appState: Readonly<AppState>,
   direction: FlipDirection,
   editor: DiagramEditor,
-): ExcalidrawElement[] => {
+): ExcalidrawElement[] {
   const selectedElements = getSelectedElements(getNonDeletedElements(elements), appState, {
     includeBoundTextElement: true,
     includeElementsInFrames: true,
@@ -92,28 +92,31 @@ const flipSelectedElements = (
     flipElements(selectedElements, editor.scene.getNonDeletedElementsMap(), direction, editor),
   );
   return elements.map((element) => updated.get(element.id) ?? element);
-};
+}
 
-const flipAction = (
+function flipAction(
   name: "flipHorizontal" | "flipVertical",
   direction: FlipDirection,
   keyTest: Action["keyTest"],
-): Action => ({
-  name,
-  label: direction === "horizontal" ? "labels.flipHorizontal" : "labels.flipVertical",
-  announcement: direction === "horizontal" ? "Flipped horizontally" : "Flipped vertically",
-  predicate: (_elements, appState, editor) => editor.scene.getSelectedElements(appState).length > 0,
-  perform: (elements, appState, _formData, editor) => ({
-    elements: updateFrameMembershipOfSelectedElements(
-      flipSelectedElements(elements, appState, direction, editor),
+): Action {
+  return {
+    name,
+    label: direction === "horizontal" ? "labels.flipHorizontal" : "labels.flipVertical",
+    announcement: direction === "horizontal" ? "Flipped horizontally" : "Flipped vertically",
+    predicate: (_elements, appState, editor) =>
+      editor.scene.getSelectedElements(appState).length > 0,
+    perform: (elements, appState, _formData, editor) => ({
+      elements: updateFrameMembershipOfSelectedElements(
+        flipSelectedElements(elements, appState, direction, editor),
+        appState,
+        editor.elementApp,
+      ),
       appState,
-      editor.elementApp,
-    ),
-    appState,
-    captureUpdate: CaptureUpdateAction.IMMEDIATELY,
-  }),
-  keyTest,
-});
+      captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+    }),
+    keyTest,
+  };
+}
 
 /** Shift+H. */
 export const actionFlipHorizontal = flipAction(

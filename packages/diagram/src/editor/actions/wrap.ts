@@ -71,23 +71,25 @@ interface LastWrap {
 
 const lastWraps = new WeakMap<DiagramEditor, LastWrap>();
 
-const rebind = (
+function rebind(
   binding: FixedPointBinding | null,
   fromId: ExcalidrawElement["id"],
   toId: ExcalidrawElement["id"],
-) => (binding?.elementId === fromId ? { ...binding, elementId: toId } : binding);
+) {
+  return binding?.elementId === fromId ? { ...binding, elementId: toId } : binding;
+}
 
 /**
  * Frees the containers' texts, the containers staying selected with them,
  * except the `created` ones, which go, their arrows moving onto the texts.
  */
-const unwrap = (
+function unwrap(
   editor: DiagramEditor,
   elements: readonly ExcalidrawElement[],
   appState: Readonly<AppState>,
   containers: readonly NonDeletedExcalidrawElement[],
   created: ReadonlySet<ExcalidrawElement["id"]> | undefined,
-): ActionResult => {
+): ActionResult {
   const { scene } = editor;
   const elementsMap = scene.getNonDeletedElementsMap();
   const freed: NonDeletedExcalidrawElement[] = [];
@@ -159,22 +161,27 @@ const unwrap = (
     appState: { ...appState, ...selection },
     captureUpdate: CaptureUpdateAction.IMMEDIATELY,
   };
-};
+}
+
+interface UnwrappedPair {
+  entry: UnwrappedContainer;
+  text: ExcalidrawTextElement;
+}
 
 /**
  * Puts the unwrapped texts back into their containers as they sat in them,
  * the removed containers coming back with their arrows; `null` when any of
  * them is gone.
  */
-const rewrap = (
+function rewrap(
   editor: DiagramEditor,
   appState: Readonly<AppState>,
   unwrapped: readonly UnwrappedContainer[],
-): ActionResult | null => {
+): ActionResult | null {
   const { scene } = editor;
   const allElementsMap = scene.getElementsMapIncludingDeleted();
 
-  const pairs: { entry: UnwrappedContainer; text: ExcalidrawTextElement }[] = [];
+  const pairs: UnwrappedPair[] = [];
   for (const entry of unwrapped) {
     const container = allElementsMap.get(entry.containerId);
     const text = allElementsMap.get(entry.textId);
@@ -287,7 +294,7 @@ const rewrap = (
     appState: { ...appState, ...selection },
     captureUpdate: CaptureUpdateAction.IMMEDIATELY,
   };
-};
+}
 
 /**
  * Wraps the selection in what fits it, or unwraps it, containers before
@@ -297,11 +304,11 @@ const rewrap = (
  * anything else is framed. While the selection it left stands, the next
  * toggle takes the containers it made or freed back. Excalidraw's `App.wrap`.
  */
-export const toggleWrap = (
+export function toggleWrap(
   editor: DiagramEditor,
   elements: readonly ExcalidrawElement[],
   appState: Readonly<AppState>,
-): ActionResult => {
+): ActionResult {
   const stored = lastWraps.get(editor);
   const last = stored?.selectedElementIds === appState.selectedElementIds ? stored : null;
   lastWraps.delete(editor);
@@ -356,7 +363,7 @@ export const toggleWrap = (
   }
 
   return false;
-};
+}
 
 /** Wraps the selection in a container or a frame, or unwraps it. W. */
 export const actionToggleWrap: Action = {

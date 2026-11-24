@@ -20,7 +20,9 @@ import {
 
 afterEach(unmountEditors);
 
-const scroll = () => [h().state.scrollX, h().state.scrollY];
+function scroll() {
+  return [h().state.scrollX, h().state.scrollY];
+}
 
 describe("panning", () => {
   test("dragging with space held pans and draws nothing", () => {

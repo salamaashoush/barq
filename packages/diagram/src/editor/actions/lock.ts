@@ -13,7 +13,9 @@ import type { ExcalidrawElement } from "@excalidraw/element/types";
 import type { AppState } from "../../types.ts";
 import type { Action } from "../types.ts";
 
-const shouldLock = (elements: readonly ExcalidrawElement[]) => elements.every((el) => !el.locked);
+function shouldLock(elements: readonly ExcalidrawElement[]) {
+  return elements.every((el) => !el.locked);
+}
 
 /**
  * Locks the selection, or unlocks it when all of it is locked. A selection of

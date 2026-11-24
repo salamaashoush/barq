@@ -10,18 +10,19 @@ import { API, Keyboard, UI, h, mouse, renderEditor, unmountEditors } from "./tes
 
 afterEach(unmountEditors);
 
-const filled = (id: string, x: number, y: number, width = 100, height = width) =>
-  API.createElement({ id, x, y, width, height, backgroundColor: "#ffc9c9" });
+function filled(id: string, x: number, y: number, width = 100, height = width) {
+  return API.createElement({ id, x, y, width, height, backgroundColor: "#ffc9c9" });
+}
 
-const position = (id: string) => {
+function position(id: string) {
   const element = h().scene.getElement(id)!;
   return [element.x, element.y];
-};
+}
 
-const box = (id: string) => {
+function box(id: string) {
   const element = h().scene.getElement(id)!;
   return [element.x, element.y, element.width, element.height];
-};
+}
 
 describe("moving", () => {
   test("dragging an element moves it, and is one undo step", () => {

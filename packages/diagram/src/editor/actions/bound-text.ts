@@ -52,11 +52,11 @@ import type { Action, ActionResult } from "../types.ts";
  * Frees a container's text where it was drawn, at its width, the container
  * going back to the height it had before the text grew it.
  */
-export const unbindTextFromContainer = (
+export function unbindTextFromContainer(
   container: ExcalidrawElement,
   boundTextElement: ExcalidrawTextElementWithContainer,
   editor: DiagramEditor,
-): void => {
+): void {
   const { scene } = editor;
   const originalContainerHeight = getOriginalContainerHeightFromCache(container.id);
   resetOriginalContainerCache(container.id);
@@ -81,7 +81,7 @@ export const unbindTextFromContainer = (
   } else if (originalContainerHeight) {
     scene.mutateElement(container, { height: originalContainerHeight });
   }
-};
+}
 
 export const actionUnbindText: Action = {
   name: "unbindText",
@@ -117,21 +117,19 @@ export const actionUnbindText: Action = {
 };
 
 /** A note and its label share one ink: the text's, unless it is transparent. */
-export const getStickyNoteInk = (
-  textElement: ExcalidrawTextElement,
-  container: ExcalidrawElement,
-) =>
-  isStickyNoteElement(container)
+export function getStickyNoteInk(textElement: ExcalidrawTextElement, container: ExcalidrawElement) {
+  return isStickyNoteElement(container)
     ? isTransparent(textElement.strokeColor)
       ? container.strokeColor
       : textElement.strokeColor
     : null;
+}
 
-export const pushTextAboveContainer = (
+export function pushTextAboveContainer(
   elements: readonly ExcalidrawElement[],
   container: ExcalidrawElement,
   textElement: ExcalidrawTextElement,
-): ExcalidrawElement[] => {
+): ExcalidrawElement[] {
   const updated = elements.slice();
   updated.splice(
     updated.findIndex((each) => each.id === textElement.id),
@@ -140,13 +138,13 @@ export const pushTextAboveContainer = (
   updated.splice(updated.findIndex((each) => each.id === container.id) + 1, 0, textElement);
   syncMovedIndices(updated, arrayToMap([container, textElement]));
   return updated;
-};
+}
 
-export const pushContainerBelowText = (
+export function pushContainerBelowText(
   elements: readonly ExcalidrawElement[],
   container: ExcalidrawElement,
   textElement: ExcalidrawTextElement,
-): ExcalidrawElement[] => {
+): ExcalidrawElement[] {
   const updated = elements.slice();
   updated.splice(
     updated.findIndex((each) => each.id === container.id),
@@ -159,15 +157,15 @@ export const pushContainerBelowText = (
   );
   syncMovedIndices(updated, arrayToMap([container, textElement]));
   return updated;
-};
+}
 
-export const bindTextToContainer = (
+export function bindTextToContainer(
   elements: readonly ExcalidrawElement[],
   appState: Readonly<AppState>,
   textElement: ExcalidrawTextElement,
   container: NonDeleted<ExcalidrawTextContainer>,
   editor: DiagramEditor,
-): ActionResult => {
+): ActionResult {
   const stickyInk = getStickyNoteInk(textElement, container);
   editor.scene.mutateElement(textElement, {
     containerId: container.id,
@@ -203,7 +201,7 @@ export const bindTextToContainer = (
     },
     captureUpdate: CaptureUpdateAction.IMMEDIATELY,
   };
-};
+}
 
 /** Makes a selected text the label of the selected shape or arrow, which has none. */
 export const actionBindText: Action = {
@@ -241,12 +239,12 @@ export const actionBindText: Action = {
   },
 };
 
-export const wrapTextsInContainers = (
+export function wrapTextsInContainers(
   elements: readonly ExcalidrawElement[],
   appState: Readonly<AppState>,
   textElements: readonly ExcalidrawTextElement[],
   editor: DiagramEditor,
-): ActionResult => {
+): ActionResult {
   let updated: readonly ExcalidrawElement[] = elements.slice();
   const containerIds: Record<string, true> = {};
 
@@ -312,7 +310,7 @@ export const wrapTextsInContainers = (
     appState: { ...appState, selectedElementIds: containerIds },
     captureUpdate: CaptureUpdateAction.IMMEDIATELY,
   };
-};
+}
 
 /** Puts each selected free text in a rectangle of its own, as its label. */
 export const actionWrapTextInContainer: Action = {

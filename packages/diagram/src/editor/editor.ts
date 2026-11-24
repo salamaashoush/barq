@@ -311,6 +311,7 @@ import type {
   PointerDownState,
   ReactCanvasPointerEvent,
 } from "./types.ts";
+import type { Coords } from "../types.ts";
 
 /** What `onChange` hands over: Excalidraw's `onChange` arguments. */
 export type DiagramChangeListener = (
@@ -341,6 +342,25 @@ export interface SceneData {
   captureUpdate?: (typeof CaptureUpdateAction)[keyof typeof CaptureUpdateAction];
 }
 
+export interface ToolChoice {
+  type: ToolType;
+  locked?: boolean;
+}
+
+export interface ScrollToContentOptions {
+  fit?: ViewportFit;
+}
+
+export interface HistoryApi {
+  clear(): void;
+}
+
+export interface ToggleSidebarOptions {
+  name: SidebarName | null;
+  tab?: SidebarTabName;
+  force?: boolean;
+}
+
 /**
  * What a page can do with a mounted editor, under the names of Excalidraw's
  * imperative API, so code written against `excalidrawAPI` ports as it is.
@@ -353,11 +373,11 @@ export interface DiagramEditorApi {
   getFiles(): BinaryFiles;
   /** Adds the files the scene does not have yet, and draws the images that show them. */
   addFiles(files: readonly BinaryFileData[]): void;
-  setActiveTool(tool: { type: ToolType; locked?: boolean }): void;
-  scrollToContent(target?: readonly ExcalidrawElement[], opts?: { fit?: ViewportFit }): void;
+  setActiveTool(tool: ToolChoice): void;
+  scrollToContent(target?: readonly ExcalidrawElement[], opts?: ScrollToContentOptions): void;
   resetScene(): void;
   refresh(): void;
-  history: { clear(): void };
+  history: HistoryApi;
   /** Subscribes to every change; returns the unsubscribe. */
   onChange(listener: DiagramChangeListener): () => void;
   /** Subscribes to the pointer as it moves, presses and releases, as `onPointerUpdate` is called. */
@@ -421,7 +441,7 @@ export interface DiagramEditorApi {
    * Opens a sidebar (on a tab), or closes it when it is open there; `force`
    * opens or closes it outright. Returns whether it is open.
    */
-  toggleSidebar(opts: { name: SidebarName | null; tab?: SidebarTabName; force?: boolean }): boolean;
+  toggleSidebar(opts: ToggleSidebarOptions): boolean;
   /** The layout of the moment: the form factor, touch, and whether a sidebar fits. */
   getEditorInterface(): EditorInterface;
   /** Which parts of frames draw (the frames stay interactive); for view mode. */
@@ -461,8 +481,13 @@ export interface DiagramEditorApi {
   onEvent: EditorLifecycleEvents["on"];
 }
 
+export interface MountItemPayload {
+  excalidrawAPI: DiagramEditorApi;
+  container: HTMLElement;
+}
+
 export type DiagramEditorEventMap = {
-  "editor:mount": [payload: { excalidrawAPI: DiagramEditorApi; container: HTMLElement }];
+  "editor:mount": [payload: MountItemPayload];
   "editor:initialize": [api: DiagramEditorApi];
   "editor:unmount": [];
 };
@@ -478,6 +503,10 @@ type EditorLifecycleEvents = AppEventBus<
   typeof editorLifecycleEventBehavior
 >;
 
+export interface InitialEditorState {
+  viewport?: Omit<SetViewportOptions, "animation">;
+}
+
 export interface DiagramEditorOptions {
   /** The focusable element the canvases sit in: it takes the keyboard and is measured for the viewport. */
   container: HTMLElement;
@@ -491,7 +520,7 @@ export interface DiagramEditorOptions {
   svgLayer?: SVGSVGElement | null;
   initialData?: DiagramScene | null;
   /** Excalidraw's `initialState`: the viewport the initial scene opens at, as `setViewport` takes it. */
-  initialState?: { viewport?: Omit<SetViewportOptions, "animation"> };
+  initialState?: InitialEditorState;
   theme?: Theme;
   viewModeEnabled?: boolean;
   gridModeEnabled?: boolean;
@@ -531,16 +560,16 @@ const CONTROL_KEYS = new Set<string>([
 ]);
 
 /** Whether the event happened in the editor's own UI rather than on the canvas. */
-const isFromEditorUI = (event: Event): boolean => {
+function isFromEditorUI(event: Event): boolean {
   const target = event.target as Element | null;
   return (
     typeof target?.closest === "function" && target.closest(`[${EDITOR_UI_ATTRIBUTE}]`) !== null
   );
-};
+}
 
 interface Gesture {
-  pointers: Map<number, { x: number; y: number }>;
-  lastCenter: { x: number; y: number } | null;
+  pointers: Map<number, Coords>;
+  lastCenter: Coords | null;
   initialDistance: number | null;
   initialScale: number | null;
 }
@@ -559,18 +588,115 @@ const DEFAULT_EDITOR_INTERFACE: EditorInterface = {
 /** The size a shape inserted from the keyboard takes, in scene units. */
 const KEYBOARD_SHAPE_SIZE = 100;
 
-const getCenter = (pointers: Map<number, { x: number; y: number }>) => {
+function getCenter(pointers: Map<number, Coords>) {
   const all = [...pointers.values()];
   return {
     x: all.reduce((sum, each) => sum + each.x, 0) / all.length,
     y: all.reduce((sum, each) => sum + each.y, 0) / all.length,
   };
-};
+}
 
-const getDistance = (pointers: Map<number, { x: number; y: number }>) => {
+function getDistance(pointers: Map<number, Coords>) {
   const [a, b] = [...pointers.values()];
   return a === undefined || b === undefined ? 0 : Math.hypot(a.x - b.x, a.y - b.y);
-};
+}
+
+interface FrameNameBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  zoom: number;
+  versionNonce: number;
+}
+
+interface SelectionColorCache {
+  theme: AppState["theme"];
+  color: string;
+}
+
+interface SecondaryPress {
+  x: number;
+  y: number;
+  moved: boolean;
+  menuAsked: boolean;
+}
+
+export interface PasteOrLibraryOptions {
+  elements: readonly ExcalidrawElement[];
+  files: BinaryFiles | null;
+  position: ClientPoint | "cursor" | "center";
+  retainSeed?: boolean;
+  preserveFrameChildrenOrder?: boolean;
+}
+
+export interface ClientPoint {
+  clientX: number;
+  clientY: number;
+}
+
+export interface AddedFiles {
+  addedFiles: BinaryFiles;
+}
+
+interface ToolIdentity {
+  type: string;
+  customType?: string | null;
+}
+
+export interface RenderOverrideState {
+  overrides: ElementRenderOverrides;
+  offsets: ElementRenderOffsets;
+}
+
+export interface StandardToolChoice {
+  type: ToolType;
+}
+
+export interface CustomToolChoice {
+  type: "custom";
+  customType: string;
+}
+
+export interface ToolChoiceFlags {
+  locked?: boolean;
+  fromSelection?: boolean;
+}
+
+export interface SetActiveToolOptions {
+  keepSelection?: boolean;
+  toggle?: boolean;
+}
+
+export interface TranslateViewportOptions {
+  zoomPreConstrained?: boolean;
+  preserveScrollConstraintsSnapBack?: boolean;
+}
+
+export interface ContextMenuPointer {
+  clientX: number;
+  clientY: number;
+  pointerType?: string;
+  button?: number;
+}
+
+export interface HitOptions {
+  includeBoundTextElement?: boolean;
+  includeLockedElements?: boolean;
+}
+
+export interface AllHitElements {
+  allHitElements: NonDeleted<ExcalidrawElement>[];
+}
+
+export interface PreferSelected {
+  preferSelected?: boolean;
+}
+
+export interface FrameAtCoordsOptions {
+  excludeElementIds?: AppState["selectedElementIds"];
+  currentFrameId?: ExcalidrawElement["frameId"];
+}
 
 /**
  * Excalidraw's editor, without React: the scene, the app state, the store and
@@ -673,10 +799,7 @@ export class DiagramEditor {
       bindBindingElementToFixedPoint(arrow, text, startOrEnd, fixedPoint, this.scene);
     },
     /** A text bound to an endpoint is placed by the binding: only its width is dragged out. */
-    maybeDragNewText: (
-      newElementBeingDrawn: ExcalidrawElement,
-      pointerCoords: { x: number; y: number },
-    ): boolean => {
+    maybeDragNewText: (newElementBeingDrawn: ExcalidrawElement, pointerCoords: Coords): boolean => {
       if (
         !isTextElement(newElementBeingDrawn) ||
         !isEndpointBoundText(newElementBeingDrawn, this.scene.getNonDeletedElementsMap())
@@ -696,7 +819,7 @@ export class DiagramEditor {
   };
 
   public lastPointerMoveEvent: PointerEvent | null = null;
-  public lastPointerMoveCoords: { x: number; y: number } | null = null;
+  public lastPointerMoveCoords: Coords | null = null;
   public lastPointerDownEvent: PointerEvent | null = null;
   public lastPointerUpEvent: PointerEvent | null = null;
   /** The last pointer up came within a double tap's time of the one before. */
@@ -740,10 +863,7 @@ export class DiagramEditor {
   private readonly frameNameElements = new Map<string, HTMLElement>();
   private frameNamesKey = "";
   private frameNames: readonly FrameName[] = [];
-  private readonly frameNameBounds = new Map<
-    string,
-    { x: number; y: number; width: number; height: number; zoom: number; versionNonce: number }
-  >();
+  private readonly frameNameBounds = new Map<string, FrameNameBox>();
   private readonly listeners: (() => void)[] = [];
   private readonly resize: ResizeObserver | null = null;
   private readonly gesture: Gesture = {
@@ -768,26 +888,25 @@ export class DiagramEditor {
   private animationState: InteractiveSceneRenderAnimationState | undefined;
   private lastFrameTime = 0;
   private pendingPointerUp: ((event: PointerEvent | null) => void) | null = null;
-  private lastCompletedCanvasClicks: { x: number; y: number }[] = [];
+  private lastCompletedCanvasClicks: Coords[] = [];
   private lastPosition = { x: 0, y: 0 };
   private spaceHeld = false;
   private panTeardown: (() => void) | null = null;
   private isDraggingScrollBar = false;
   private resetCacheIgnoreZoom: number | null = null;
   private newElementCanvasDrawn = false;
-  private cachedSelectionColor: { theme: AppState["theme"]; color: string } | null = null;
+  private cachedSelectionColor: SelectionColorCache | null = null;
   private destroyed = false;
   /**
    * A secondary-button press: a pan when it drags, the context menu when it
    * does not. Browsers send `contextmenu` with the press (macOS, Linux) or
    * after the release (Windows); either way the menu opens once, on release.
    */
-  private secondaryPress: { x: number; y: number; moved: boolean; menuAsked: boolean } | null =
-    null;
+  private secondaryPress: SecondaryPress | null = null;
   private consumeNextContextMenu = false;
   private didTapTwice = false;
   private tappedTwiceTimer = 0;
-  private firstTapPosition: { x: number; y: number } | null = null;
+  private firstTapPosition: Coords | null = null;
   private touchTimeout = 0;
   private invalidateContextMenu = false;
 
@@ -1058,7 +1177,9 @@ export class DiagramEditor {
       this.batch(() => this.handleCanvasPointerDown(event));
     };
     const onDoubleClick = () => this.batch(() => this.setState({ editingFrame: frameId }));
-    const onContextMenu = (event: Event) => event.preventDefault();
+    function onContextMenu(event: Event) {
+      return event.preventDefault();
+    }
     element.addEventListener("pointerdown", onPointerDown);
     element.addEventListener("dblclick", onDoubleClick);
     element.addEventListener("contextmenu", onContextMenu);
@@ -1272,7 +1393,7 @@ export class DiagramEditor {
   }
 
   /** Where the pointer last was over the editor, in client coordinates; what is pasted goes there. */
-  public get lastViewportPosition(): { x: number; y: number } {
+  public get lastViewportPosition(): Coords {
     return this.lastPosition;
   }
 
@@ -1281,13 +1402,7 @@ export class DiagramEditor {
    * middle of the view): duplicated with new ids, placed on the grid and in
    * the frame there, selected, and undoable as one.
    */
-  public addElementsFromPasteOrLibrary(opts: {
-    elements: readonly ExcalidrawElement[];
-    files: BinaryFiles | null;
-    position: { clientX: number; clientY: number } | "cursor" | "center";
-    retainSeed?: boolean;
-    preserveFrameChildrenOrder?: boolean;
-  }): void {
+  public addElementsFromPasteOrLibrary(opts: PasteOrLibraryOptions): void {
     const elements = restoreElements(opts.elements, null, { deleteInvisibleElements: true });
     const clientX =
       typeof opts.position === "object"
@@ -1544,7 +1659,7 @@ export class DiagramEditor {
   private async loadFileToCanvas(
     file: File,
     fileHandle: FileSystemFileHandle | null,
-    insertPosition?: { clientX: number; clientY: number },
+    insertPosition?: ClientPoint,
   ): Promise<void> {
     const elements = this.scene.getElementsIncludingDeleted();
     let loaded: Awaited<ReturnType<typeof loadSceneOrLibraryFromBlob>> | undefined;
@@ -1639,7 +1754,7 @@ export class DiagramEditor {
   public addMissingFiles(
     files: BinaryFiles | readonly BinaryFileData[],
     replace = false,
-  ): { addedFiles: BinaryFiles } {
+  ): AddedFiles {
     const nextFiles: BinaryFiles = replace ? {} : { ...this.files };
     const addedFiles: BinaryFiles = {};
     const list: readonly BinaryFileData[] = Array.isArray(files)
@@ -1840,8 +1955,8 @@ export class DiagramEditor {
   }
 
   private static isSameTool(
-    a: { type: string; customType?: string | null } | null | undefined,
-    b: { type: string; customType?: string | null } | null | undefined,
+    a: ToolIdentity | null | undefined,
+    b: ToolIdentity | null | undefined,
   ): boolean {
     return (
       a?.type === b?.type &&
@@ -1891,23 +2006,12 @@ export class DiagramEditor {
   }
 
   /** The overrides the static layer draws with. */
-  public get renderOverrides(): {
-    overrides: ElementRenderOverrides;
-    offsets: ElementRenderOffsets;
-  } {
+  public get renderOverrides(): RenderOverrideState {
     return { overrides: this.elementRenderOverrides, offsets: this.elementRenderOffsets };
   }
 
   /** Excalidraw's `toggleSidebar`; whether the sidebar is open after. */
-  public toggleSidebar({
-    name,
-    tab,
-    force,
-  }: {
-    name: SidebarName | null;
-    tab?: SidebarTabName;
-    force?: boolean;
-  }): boolean {
+  public toggleSidebar({ name, tab, force }: ToggleSidebarOptions): boolean {
     const nextName =
       force === undefined
         ? this.state.openSidebar?.name === name && this.state.openSidebar?.tab === tab
@@ -2474,11 +2578,8 @@ export class DiagramEditor {
   // tools
 
   public setActiveTool(
-    tool: ({ type: ToolType } | { type: "custom"; customType: string }) & {
-      locked?: boolean;
-      fromSelection?: boolean;
-    },
-    opts: { keepSelection?: boolean; toggle?: boolean } = {},
+    tool: (StandardToolChoice | CustomToolChoice) & ToolChoiceFlags,
+    opts: SetActiveToolOptions = {},
   ): void {
     if (tool.type !== "custom" && !isEditorTool(tool.type)) {
       console.warn(`DiagramEditor: the "${String(tool.type)}" tool is not available`);
@@ -2623,7 +2724,7 @@ export class DiagramEditor {
    */
   public translateViewport(
     update: Partial<ViewportState> | ((state: AppState) => Partial<ViewportState> | null),
-    opts?: { zoomPreConstrained?: boolean; preserveScrollConstraintsSnapBack?: boolean },
+    opts?: TranslateViewportOptions,
   ): boolean {
     return this.viewport.translate(update, opts);
   }
@@ -2631,7 +2732,7 @@ export class DiagramEditor {
   /** Fits `target` (every element by default) in the viewport. */
   public scrollToContent(
     target: readonly ExcalidrawElement[] = this.scene.getNonDeletedElements(),
-    opts: { fit?: ViewportFit } = {},
+    opts: ScrollToContentOptions = {},
   ): void {
     this.requestUnfollow();
     const fitted = fitToContent(this.state, target, opts.fit ?? "scale-down");
@@ -2740,12 +2841,7 @@ export class DiagramEditor {
    * Opens the context menu for the element under the point, selecting it
    * (locked ones too, for the menu to unlock them), or for the canvas.
    */
-  public openContextMenu(pointer: {
-    clientX: number;
-    clientY: number;
-    pointerType?: string;
-    button?: number;
-  }): void {
+  public openContextMenu(pointer: ContextMenuPointer): void {
     if (
       (pointer.pointerType === "touch" ||
         (pointer.pointerType === "pen" && pointer.button !== POINTER_BUTTON.SECONDARY)) &&
@@ -2867,7 +2963,7 @@ export class DiagramEditor {
   public getElementsAtPosition(
     x: number,
     y: number,
-    opts?: { includeBoundTextElement?: boolean; includeLockedElements?: boolean },
+    opts?: HitOptions,
   ): NonDeleted<ExcalidrawElement>[] {
     const iframeLikes: Ordered<NonDeleted<ExcalidrawIframeLikeElement>>[] = [];
     const elements = this.scene
@@ -2893,10 +2989,7 @@ export class DiagramEditor {
   public getElementAtPosition(
     x: number,
     y: number,
-    opts?: (
-      | { includeBoundTextElement?: boolean; includeLockedElements?: boolean }
-      | { allHitElements: NonDeleted<ExcalidrawElement>[] }
-    ) & { preferSelected?: boolean },
+    opts?: (HitOptions | AllHitElements) & PreferSelected,
   ): NonDeleted<ExcalidrawElement> | null {
     const allHitElements =
       opts && "allHitElements" in opts
@@ -2952,11 +3045,8 @@ export class DiagramEditor {
   }
 
   public getTopLayerFrameAtSceneCoords(
-    sceneCoords: { x: number; y: number },
-    opts?: {
-      excludeElementIds?: AppState["selectedElementIds"];
-      currentFrameId?: ExcalidrawElement["frameId"];
-    },
+    sceneCoords: Coords,
+    opts?: FrameAtCoordsOptions,
   ): NonDeleted<ExcalidrawFrameLikeElement> | null {
     const elementsMap = this.scene.getNonDeletedElementsMap();
     const framesUnderCursor = this.scene
@@ -3781,7 +3871,7 @@ export class DiagramEditor {
 
   /** The element whose link icon is at a scene point, above whatever is hit there. */
   public getElementLinkAtPosition(
-    scenePointer: Readonly<{ x: number; y: number }>,
+    scenePointer: Readonly<Coords>,
     hitElementMightBeLocked: NonDeletedExcalidrawElement | null,
   ): NonDeletedExcalidrawElement | undefined {
     if (hitElementMightBeLocked?.locked) {
@@ -3818,10 +3908,7 @@ export class DiagramEditor {
    * `onLinkOpen` first, which may `preventDefault()`, then a new tab, or this
    * one for a link to the page itself. Whether the click was a link's.
    */
-  private maybeHandleElementLinkClick(
-    event: PointerEvent,
-    scenePointer: { x: number; y: number },
-  ): boolean {
+  private maybeHandleElementLinkClick(event: PointerEvent, scenePointer: Coords): boolean {
     if (this.editorInterface.isTouchScreen) {
       const hitElement = this.getElementAtPosition(scenePointer.x, scenePointer.y, {
         includeLockedElements: true,
@@ -3864,7 +3951,7 @@ export class DiagramEditor {
     }
   }
 
-  private isHittingLink(element: NonDeletedExcalidrawElement, point: { x: number; y: number }) {
+  private isHittingLink(element: NonDeletedExcalidrawElement, point: Coords) {
     return isPointHittingLink(
       element,
       this.scene.getNonDeletedElementsMap(),
@@ -4773,7 +4860,7 @@ export class DiagramEditor {
   private maybeDragArrowLabel(
     linearElementEditor: LinearElementEditor,
     pointerDownState: PointerDownState,
-    pointerCoords: { x: number; y: number },
+    pointerCoords: Coords,
   ): boolean {
     if (!pointerDownState.hit.arrowLabel) {
       return false;
@@ -6043,7 +6130,7 @@ export class DiagramEditor {
   }
 
   /** Marks what the eraser's trail touches, faded until the pointer goes up. */
-  private handleEraser(event: PointerEvent, scenePointer: { x: number; y: number }): void {
+  private handleEraser(event: PointerEvent, scenePointer: Coords): void {
     this.elementsPendingErasure = new Set(
       this.eraserTrail.addPointToPathAndErase(scenePointer.x, scenePointer.y, event.altKey),
     );

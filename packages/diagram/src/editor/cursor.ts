@@ -22,16 +22,27 @@ const BUCKET_FILL_PATHS = [
 ];
 
 /** Excalidraw's bucket cursor, its paint in the colour it pours. */
-const bucketFillCursor = (color: string): string => {
+function bucketFillCursor(color: string): string {
   const paths = BUCKET_FILL_PATHS.map(
     (path, index) => `<path d="${path}" ${index < 2 ? `fill="${color}"` : ""} />`,
   ).join("");
   return `url(data:${MIME_TYPES.svg},${encodeURIComponent(
     `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke-linecap="round" stroke-linejoin="round"><g stroke="#fff" fill="#fff" stroke-width="5">${paths}</g><g stroke="#1b1b1f" stroke-width="1.25">${paths}</g></svg>`,
   )}) 5 18, auto`;
-};
+}
 
 const ERASER_CURSOR_SIZE = 20;
+
+interface ToolCursorKey {
+  type: AppState["activeTool"]["type"];
+  theme?: AppState["theme"];
+  bucketFillColor?: string;
+}
+
+interface EraserCursor {
+  theme: AppState["theme"];
+  url: string;
+}
 
 /**
  * The interactive canvas' cursor, set imperatively as Excalidraw's
@@ -39,12 +50,8 @@ const ERASER_CURSOR_SIZE = 20;
  * (move, resize, a point to grab) over what is under the pointer.
  */
 export class EditorCursor {
-  private toolCursorMemo: {
-    type: AppState["activeTool"]["type"];
-    theme?: AppState["theme"];
-    bucketFillColor?: string;
-  } | null = null;
-  private eraserCursor: { theme: AppState["theme"]; url: string } | null = null;
+  private toolCursorMemo: ToolCursorKey | null = null;
+  private eraserCursor: EraserCursor | null = null;
 
   public constructor(
     private readonly canvas: HTMLCanvasElement,

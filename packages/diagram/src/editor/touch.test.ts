@@ -11,24 +11,26 @@ import { API, Pointer, h, mouse, renderEditor, unmountEditors } from "./test-edi
 
 afterEach(unmountEditors);
 
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 /** Sends a touch event at the interactive canvas with the fingers still down. */
-const touch = (type: "touchstart" | "touchend" | "touchmove", fingers: [number, number][]) => {
+function touch(type: "touchstart" | "touchend" | "touchmove", fingers: [number, number][]) {
   const canvas = h().interactiveCanvas;
   const touches = fingers.map(
     ([clientX, clientY], identifier) => new Touch({ identifier, target: canvas, clientX, clientY }),
   );
   canvas.dispatchEvent(new TouchEvent(type, { touches, bubbles: true, cancelable: true }));
-};
+}
 
 /** A one-finger tap as a touch screen sends it: pointer and touch events interleaved. */
-const tap = (finger: Pointer, x: number, y: number) => {
+function tap(finger: Pointer, x: number, y: number) {
   finger.downAt(x, y);
   touch("touchstart", [[x, y]]);
   finger.upAt(x, y);
   touch("touchend", []);
-};
+}
 
 describe("double tap", () => {
   test("a second tap near the first writes text there and clears the selection", () => {

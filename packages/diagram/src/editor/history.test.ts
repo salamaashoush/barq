@@ -11,11 +11,12 @@ import { API, Keyboard, UI, h, mouse, renderEditor, unmountEditors } from "./tes
 
 afterEach(unmountEditors);
 
-const filled = (id: string, x: number, y = 0) =>
-  API.createElement({ id, x, y, width: 100, height: 100, backgroundColor: "#ffc9c9" });
+function filled(id: string, x: number, y = 0) {
+  return API.createElement({ id, x, y, width: 100, height: 100, backgroundColor: "#ffc9c9" });
+}
 
-const snapshot = () =>
-  h()
+function snapshot() {
+  return h()
     .scene.getNonDeletedElements()
     .map(({ id, x, y, width, height, angle, groupIds, locked }) => ({
       id,
@@ -27,8 +28,9 @@ const snapshot = () =>
       groupIds,
       locked,
     }));
+}
 
-const roundTrip = (change: () => void) => {
+function roundTrip(change: () => void) {
   const before = snapshot();
   change();
   const after = snapshot();
@@ -37,7 +39,7 @@ const roundTrip = (change: () => void) => {
   expect(snapshot()).toEqual(before);
   Keyboard.redo();
   expect(snapshot()).toEqual(after);
-};
+}
 
 describe("round trips", () => {
   test("drawing", () => {
@@ -59,14 +61,15 @@ describe("round trips", () => {
     roundTrip(() => UI.rotate(h().scene.getElement("A")!, [100, 100]));
   });
 
-  const ctrl = (key: string, shift = false) =>
-    Keyboard.withModifierKeys({ ctrl: true, shift }, () => Keyboard.keyPress(key));
+  function ctrl(key: string, shift = false) {
+    return Keyboard.withModifierKeys({ ctrl: true, shift }, () => Keyboard.keyPress(key));
+  }
 
-  const setup = () => {
+  function setup() {
     renderEditor();
     API.loadElements([filled("A", 0), filled("B", 200)]);
     mouse.clickAt(50, 50);
-  };
+  }
 
   test("deleting", () => {
     setup();
@@ -88,10 +91,11 @@ describe("round trips", () => {
 
   test("restacking", () => {
     setup();
-    const order = () =>
-      h()
+    function order() {
+      return h()
         .scene.getNonDeletedElements()
         .map((element) => element.id);
+    }
     Keyboard.withModifierKeys({ ctrl: true }, () => Keyboard.codePress(CODES.BRACKET_RIGHT));
     expect(order()).toEqual(["B", "A"]);
     Keyboard.undo();

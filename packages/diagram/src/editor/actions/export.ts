@@ -73,10 +73,13 @@ export const actionExportWithDarkMode: Action<AppState["exportWithDarkMode"]> = 
 };
 
 /** The file name: the scene's, the host's, or "Untitled" and the date. Excalidraw's `getName`. */
-export const getName = (editor: DiagramEditor): string =>
-  editor.state.name ||
-  editor.host.name ||
-  `${editor.host.untitledName ?? "Untitled"}-${getDateTime()}`;
+export function getName(editor: DiagramEditor): string {
+  return (
+    editor.state.name ||
+    editor.host.name ||
+    `${editor.host.untitledName ?? "Untitled"}-${getDateTime()}`
+  );
+}
 
 /** The image export dialog, with its preview and settings. Ctrl+Shift+E. */
 export const actionToggleImageExport: Action = {
@@ -120,21 +123,28 @@ export const actionToggleJSONExport: Action = {
 /** One save at a time: a second Ctrl+S while the picker is open does nothing. */
 let exportInProgress = false;
 
-const isAbort = (error: unknown): boolean => error instanceof Error && error.name === "AbortError";
+function isAbort(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+interface JSONExportPreparation {
+  abortController: AbortController;
+  data: Promise<JSONExportData>;
+}
 
 /**
  * The scene a save writes, once the host's `onExport` has had its say: it may
  * hold the save while it finishes something (images loading), showing a
  * progress toast; the files are read after it, as they may have changed.
  */
-const prepareDataForJSONExport = (
+function prepareDataForJSONExport(
   elements: readonly ExcalidrawElement[],
   appState: AppState,
   editor: DiagramEditor,
-): { abortController: AbortController; data: Promise<JSONExportData> } => {
+): JSONExportPreparation {
   const abortController = new AbortController();
   const { signal } = abortController;
-  const progress = (value: number | null | undefined, message?: string): void => {
+  function progress(value: number | null | undefined, message?: string): void {
     editor.batch(() =>
       editor.setState({
         toast: {
@@ -144,7 +154,7 @@ const prepareDataForJSONExport = (
         },
       }),
     );
-  };
+  }
   const data = (async (): Promise<JSONExportData> => {
     const onExport = editor.host.onExport;
     if (onExport) {
@@ -175,9 +185,9 @@ const prepareDataForJSONExport = (
     return { elements, appState, files: editor.getFiles() };
   })();
   return { abortController, data };
-};
+}
 
-const saveFailed = (error: unknown, abortController: AbortController): ActionResult => {
+function saveFailed(error: unknown, abortController: AbortController): ActionResult {
   abortController.abort();
   if (isAbort(error)) {
     console.warn(error);
@@ -185,7 +195,7 @@ const saveFailed = (error: unknown, abortController: AbortController): ActionRes
     console.error(error);
   }
   return { captureUpdate: CaptureUpdateAction.NEVER, appState: { toast: null } };
-};
+}
 
 /**
  * Saves to the file the scene came from (an image file too, its scene embedded
@@ -321,10 +331,20 @@ export type OnExportProgress = {
   progress?: number;
 };
 
+export interface ExportedScene {
+  elements: readonly ExcalidrawElement[];
+  appState: AppState;
+  files: BinaryFiles;
+}
+
+export interface ExportSignal {
+  signal: AbortSignal;
+}
+
 export type OnExport = (
   type: "json",
-  data: { elements: readonly ExcalidrawElement[]; appState: AppState; files: BinaryFiles },
-  options: { signal: AbortSignal },
+  data: ExportedScene,
+  options: ExportSignal,
 ) => void | Promise<void> | AsyncGenerator<OnExportProgress, void>;
 
 /**
@@ -332,12 +352,12 @@ export type OnExport = (
  * image export dialog; a failure goes to `errorMessage`. A PNG or SVG with the
  * scene embedded becomes the file Ctrl+S saves to. Excalidraw's `onExportImage`.
  */
-export const exportImage = async (
+export async function exportImage(
   editor: DiagramEditor,
   type: ExportCanvasType,
   elements: readonly NonDeletedExcalidrawElement[],
   exportingFrame: NonDeleted<ExcalidrawFrameLikeElement> | null,
-): Promise<boolean> => {
+): Promise<boolean> {
   let fileHandle: FileSystemFileHandle | null = null;
   try {
     fileHandle = await exportCanvas(type, elements, editor.state, editor.getFiles(), {
@@ -362,4 +382,4 @@ export const exportImage = async (
     editor.batch(() => editor.setState({ fileHandle: handle }));
   }
   return true;
-};
+}

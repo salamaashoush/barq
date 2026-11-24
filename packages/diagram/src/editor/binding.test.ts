@@ -13,15 +13,15 @@ import { API, Keyboard, h, mouse, renderEditor, unmountEditors } from "./test-ed
 
 afterEach(unmountEditors);
 
-const setup = () => {
+function setup() {
   renderEditor();
   API.loadElements([
     API.createElement({ id: "A", x: 0, y: 0, width: 100, height: 100 }),
     API.createElement({ id: "B", x: 300, y: 0, width: 100, height: 100 }),
   ]);
-};
+}
 
-const drawArrow = (from: [number, number], to: [number, number]) => {
+function drawArrow(from: [number, number], to: [number, number]) {
   Keyboard.keyPress("a");
   mouse.downAt(...from);
   mouse.moveTo((from[0] + to[0]) / 2, (from[1] + to[1]) / 2);
@@ -29,9 +29,11 @@ const drawArrow = (from: [number, number], to: [number, number]) => {
   mouse.upAt(...to);
   const elements = h().scene.getNonDeletedElements();
   return elements[elements.length - 1] as ExcalidrawArrowElement;
-};
+}
 
-const arrow = (id: string) => h().scene.getElement(id) as ExcalidrawArrowElement;
+function arrow(id: string) {
+  return h().scene.getElement(id) as ExcalidrawArrowElement;
+}
 
 describe("binding", () => {
   test("an arrow drawn from one shape to another binds both ends", () => {

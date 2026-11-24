@@ -62,7 +62,7 @@ type ConstrainableState = Pick<
   "scrollX" | "scrollY" | "zoom" | "width" | "height" | "scrollConstraints"
 >;
 
-const isSetViewportRect = (target: unknown): target is SetViewportRect => {
+function isSetViewportRect(target: unknown): target is SetViewportRect {
   if (!target || typeof target !== "object" || Array.isArray(target)) {
     return false;
   }
@@ -73,12 +73,12 @@ const isSetViewportRect = (target: unknown): target is SetViewportRect => {
     (rect.width === undefined || typeof rect.width === "number") &&
     (rect.height === undefined || typeof rect.height === "number")
   );
-};
+}
 
-const getElementsFromId = (id: string, elementsMap: NonDeletedSceneElementsMap) => {
+function getElementsFromId(id: string, elementsMap: NonDeletedSceneElementsMap) {
   const element = elementsMap.get(id);
   return element ? [element] : getElementsInGroup(elementsMap, id);
-};
+}
 
 type ResolvedViewportTarget = {
   /** `null` for an unknown id or link, or elements all deleted. */
@@ -86,11 +86,11 @@ type ResolvedViewportTarget = {
   type: "element" | "area" | "link";
 };
 
-const resolveViewportTarget = (
+function resolveViewportTarget(
   target: SetViewportOptions["target"],
   elementsMap: NonDeletedSceneElementsMap,
   appState: Pick<AppState, "width" | "height">,
-): ResolvedViewportTarget => {
+): ResolvedViewportTarget {
   if (typeof target === "string") {
     const isLink = isElementLink(target);
     const type = isLink ? ("link" as const) : ("element" as const);
@@ -133,9 +133,9 @@ const resolveViewportTarget = (
     return { bounds: null, type: "element" };
   }
   return { bounds: getCommonBounds(elements, elementsMap), type: "element" };
-};
+}
 
-const resolveOverscroll = (overscroll: boolean | number | undefined): number => {
+function resolveOverscroll(overscroll: boolean | number | undefined): number {
   if (overscroll === false) {
     return 0;
   }
@@ -143,17 +143,25 @@ const resolveOverscroll = (overscroll: boolean | number | undefined): number => 
     return DEFAULT_OVERSCROLL;
   }
   return Math.max(overscroll, 0);
-};
+}
+
+interface OffsetsOption {
+  offsets?: Offsets;
+}
+
+interface ConstrainedViewport {
+  scrollConstraints: ScrollConstraints | null;
+}
 
 /**
  * The viewport landing on `bounds`, and the scroll lock to install with it,
  * or `scrollConstraints: null` to lift a previous one.
  */
-const getConstrainedTargetViewport = (
+function getConstrainedTargetViewport(
   appState: AppState,
   bounds: Bounds,
-  { fit, offsets, lock }: Pick<SetViewportOptions, "fit" | "lock"> & { offsets?: Offsets },
-): Viewport & { scrollConstraints: ScrollConstraints | null } => {
+  { fit, offsets, lock }: Pick<SetViewportOptions, "fit" | "lock"> & OffsetsOption,
+): Viewport & ConstrainedViewport {
   const { appState: fitted } = zoomToFitBounds({
     bounds,
     appState,
@@ -181,22 +189,20 @@ const getConstrainedTargetViewport = (
     ...constrainScrollState({ ...appState, ...viewport, scrollConstraints }),
     scrollConstraints,
   };
-};
+}
+
+interface InterpolateViewportOptions {
+  from: Viewport;
+  target: Viewport;
+  factor: number;
+}
 
 /**
  * The viewport between `from` (0) and `target` (1) at an eased `factor`: the
  * zoom geometric, and the scroll blended with the weight the zoom implies,
  * so every scene point travels a straight line on the screen.
  */
-const interpolateViewport = ({
-  from,
-  target,
-  factor,
-}: {
-  from: Viewport;
-  target: Viewport;
-  factor: number;
-}): Viewport => {
+function interpolateViewport({ from, target, factor }: InterpolateViewportOptions): Viewport {
   if (factor >= 1) {
     return { ...target };
   }
@@ -217,9 +223,9 @@ const interpolateViewport = ({
       zoom,
     zoom: { value: zoom },
   };
-};
+}
 
-const resolveAnimationDuration = (animation: SetViewportOptions["animation"]): number | null => {
+function resolveAnimationDuration(animation: SetViewportOptions["animation"]): number | null {
   if (animation === false) {
     return null;
   }
@@ -227,12 +233,34 @@ const resolveAnimationDuration = (animation: SetViewportOptions["animation"]): n
     return DEFAULT_SCROLL_ANIMATION_DURATION;
   }
   return animation.duration ?? DEFAULT_SCROLL_ANIMATION_DURATION;
-};
+}
 
 type TranslateUpdate =
   | Partial<AppState>
   | null
   | ((prevState: Readonly<AppState>) => Partial<AppState> | null);
+
+interface ViewportTransition {
+  target: Viewport & Pick<AppState, "scrollConstraints">;
+}
+
+interface MeasuredUI {
+  side: "left" | "right";
+  offset: number;
+}
+
+export interface GestureDependencies {
+  isGestureActive: () => boolean;
+}
+
+interface AnimationElapsed {
+  elapsed: number;
+}
+
+export interface TranslateOptions {
+  zoomPreConstrained?: boolean;
+  preserveScrollConstraintsSnapBack?: boolean;
+}
 
 /**
  * Excalidraw's `AppViewport`: `setViewport` and its animation and locks, the
@@ -241,12 +269,8 @@ type TranslateUpdate =
  * gesture is over.
  */
 export class EditorViewport {
-  private activeTransition: { target: Viewport & Pick<AppState, "scrollConstraints"> } | null =
-    null;
-  private readonly uiLastMeasured = new Map<
-    ViewportUIName,
-    { side: "left" | "right"; offset: number }
-  >();
+  private activeTransition: ViewportTransition | null = null;
+  private readonly uiLastMeasured = new Map<ViewportUIName, MeasuredUI>();
   private activeExternalGestures = 0;
   // one editor's own: two editors on a page never cancel each other's
   public readonly scrollToContentAnimationKey = Symbol("scrollToContentAnimation");
@@ -254,7 +278,7 @@ export class EditorViewport {
 
   public constructor(
     private readonly app: DiagramEditor,
-    private readonly dependencies: { isGestureActive: () => boolean },
+    private readonly dependencies: GestureDependencies,
   ) {}
 
   public get isAnimating(): boolean {
@@ -394,7 +418,7 @@ export class EditorViewport {
     opts: Omit<SetViewportOptions, "animation">,
     elementsMap: NonDeletedSceneElementsMap,
     appState: AppState,
-  ): (Viewport & { scrollConstraints: ScrollConstraints | null }) | null {
+  ): (Viewport & ConstrainedViewport) | null {
     const { bounds } = resolveViewportTarget(opts.target, elementsMap, appState);
     if (!bounds) {
       return null;
@@ -470,7 +494,7 @@ export class EditorViewport {
       this.app.setState({ scrollConstraints: null });
     }
 
-    startAnimation<{ elapsed: number }>(
+    startAnimation<AnimationElapsed>(
       this.scrollToContentAnimationKey,
       ({ deltaTime, state }) => {
         const elapsed = (state?.elapsed ?? 0) + deltaTime;
@@ -504,10 +528,7 @@ export class EditorViewport {
    * which springs back after a pause. Refused while an animated
    * `setViewport` into a lock is under way.
    */
-  public translate(
-    update: TranslateUpdate,
-    opts?: { zoomPreConstrained?: boolean; preserveScrollConstraintsSnapBack?: boolean },
-  ): boolean {
+  public translate(update: TranslateUpdate, opts?: TranslateOptions): boolean {
     if (this.isLockedTransitionPending) {
       return false;
     }
@@ -597,7 +618,7 @@ export class EditorViewport {
     // of each frame, which a zoom may move meanwhile
     const overscrollX = (state.scrollX - target.scrollX) * state.zoom.value;
     const overscrollY = (state.scrollY - target.scrollY) * state.zoom.value;
-    startAnimation<{ elapsed: number }>(
+    startAnimation<AnimationElapsed>(
       this.snapBackAnimationKey,
       ({ deltaTime, state: animation }) => {
         const elapsed = (animation?.elapsed ?? 0) + deltaTime;

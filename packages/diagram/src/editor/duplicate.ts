@@ -33,17 +33,22 @@ type Duplication = Pick<
   | "duplicateIdToOrigId"
 >;
 
+export interface DuplicatedElements {
+  elements: ExcalidrawElement[];
+  duplicatedElements: NonDeletedExcalidrawElement[];
+}
+
 /**
  * Hands a duplication to the host's `onDuplicate`, if any, and folds what it
  * returned back in: the next elements, and the duplicates it did not veto.
  */
-export const runOnDuplicate = (
+export function runOnDuplicate(
   editor: DiagramEditor,
   duplication: Duplication,
   nextElements: ExcalidrawElement[],
   prevElements: readonly ExcalidrawElement[],
-): { elements: ExcalidrawElement[]; duplicatedElements: NonDeletedExcalidrawElement[] } =>
-  reconcileDuplicatedElements(
+): DuplicatedElements {
+  return reconcileDuplicatedElements(
     editor.host.onDuplicate?.(nextElements, prevElements, {
       duplicateElements: duplication.duplicateElementsMap,
       originalElements: duplication.origElementsMap,
@@ -53,17 +58,18 @@ export const runOnDuplicate = (
     nextElements,
     duplication.duplicatedElements,
   );
+}
 
 /**
  * Duplicates the selection being dragged (alt-drag): the originals go back to
  * where the drag started, and the drag continues with the duplicates.
  * Excalidraw's `AppDuplicate.duplicateDraggedSelection`.
  */
-export const duplicateDraggedSelection = (
+export function duplicateDraggedSelection(
   editor: DiagramEditor,
   pointerDownState: PointerDownState,
   event: PointerEvent,
-): void => {
+): void {
   pointerDownState.hit.hasBeenDuplicated = true;
 
   const elements = editor.scene.getElementsIncludingDeleted();
@@ -184,29 +190,29 @@ export const duplicateDraggedSelection = (
 
   editor.maybeCacheVisibleGaps(event, selectedElements, true);
   editor.maybeCacheReferenceSnapPoints(event, selectedElements, true);
-};
+}
 
 /**
  * Runs `update` once what is pending is committed, capturing what it
  * changes (when it returns `true`) as an undo step of its own.
  */
-const afterCommit = (editor: DiagramEditor, update: () => boolean): void => {
+function afterCommit(editor: DiagramEditor, update: () => boolean): void {
   editor.afterNextCommit(() => {
     if (update()) {
       editor.store.scheduleCapture();
     }
   });
-};
+}
 
 /**
  * Advances the duplicated texts' list markers (`1.` to `2.`) once the
  * duplication is committed, as an undo step of its own, so that undo
  * reverts the markers first.
  */
-export const advanceListMarkers = (
+export function advanceListMarkers(
   editor: DiagramEditor,
   duplicatedElements: readonly ExcalidrawElement[],
-): void => {
+): void {
   afterCommit(editor, () => {
     const duplicates = duplicatedElements.flatMap(
       (element) => editor.scene.getNonDeletedElement(element.id) ?? [],
@@ -215,13 +221,13 @@ export const advanceListMarkers = (
       advanceDuplicatedListMarkers(duplicates, editor.scene, editor.renderEnvironment).length > 0
     );
   });
-};
+}
 
-const editDuplicatedText = (
+function editDuplicatedText(
   editor: DiagramEditor,
   elementId: ExcalidrawTextElement["id"],
   listItem: ListMarkerAdvance | null,
-): void => {
+): void {
   const element = editor.scene.getNonDeletedElement(elementId);
   if (
     !element ||
@@ -239,7 +245,11 @@ const editDuplicatedText = (
     textElement: element,
     initialSelection: { start: listItem?.contentStart ?? 0, end: element.originalText.length },
   });
-};
+}
+
+export interface DuplicateCommitOptions {
+  editText: boolean;
+}
 
 /**
  * On an alt-drag's drop: the list markers advanced with the drag go back,
@@ -248,11 +258,11 @@ const editDuplicatedText = (
  * is then edited with that text selected, or else the duplicate of the text
  * whose edit the drag ended.
  */
-export const commitDraggedDuplicates = (
+export function commitDraggedDuplicates(
   editor: DiagramEditor,
   { hit }: PointerDownState,
-  { editText }: { editText: boolean },
-): void => {
+  { editText }: DuplicateCommitOptions,
+): void {
   const advances = hit.advancedListMarkers;
   const [advance] = advances;
   const listItem =
@@ -260,14 +270,14 @@ export const commitDraggedDuplicates = (
       ? advance
       : null;
   const textToEditId = !editText ? null : listItem ? listItem.elementId : hit.editedTextId;
-  const editTextOnceCommitted = () => {
+  function editTextOnceCommitted() {
     if (textToEditId) {
       afterCommit(editor, () => {
         editDuplicatedText(editor, textToEditId, listItem);
         return false;
       });
     }
-  };
+  }
   if (!advances.length) {
     editTextOnceCommitted();
     return;
@@ -278,4 +288,4 @@ export const commitDraggedDuplicates = (
     editTextOnceCommitted();
     return true;
   });
-};
+}

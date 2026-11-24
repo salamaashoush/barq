@@ -7,9 +7,9 @@ import type {
 } from "../types.ts";
 
 /** Validated and copied before it is used, so a rejected snapshot changes nothing. */
-export const copyElementRenderOverrides = (
+export function copyElementRenderOverrides(
   overrides: ElementRenderOverrides | null,
-): ElementRenderOverrides => {
+): ElementRenderOverrides {
   const copy = new Map<string, ElementRenderOverride>();
   for (const [id, value] of overrides ?? []) {
     const { opacity, offset } = value;
@@ -29,17 +29,17 @@ export const copyElementRenderOverrides = (
     });
   }
   return copy;
-};
+}
 
 /**
  * The offsets of a snapshot, `previous` itself when they are the same: the
  * visible set is memoized on this map, so a fade never measures the viewport
  * again.
  */
-export const getElementRenderOffsets = (
+export function getElementRenderOffsets(
   overrides: ElementRenderOverrides,
   previous: ElementRenderOffsets,
-): ElementRenderOffsets => {
+): ElementRenderOffsets {
   let offsetCount = 0;
   let changed = false;
   for (const [id, { offset }] of overrides) {
@@ -63,4 +63,4 @@ export const getElementRenderOffsets = (
     }
   }
   return next;
-};
+}

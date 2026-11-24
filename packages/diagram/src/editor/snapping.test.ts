@@ -11,10 +11,10 @@ import { API, Keyboard, UI, h, mouse, renderEditor, unmountEditors } from "./tes
 
 afterEach(unmountEditors);
 
-const setup = (objectsSnapModeEnabled = true) => {
+function setup(objectsSnapModeEnabled = true) {
   renderEditor();
   API.setAppState({ objectsSnapModeEnabled });
-};
+}
 
 describe("dragging", () => {
   test("lands on another element's edge, and shows the line", () => {

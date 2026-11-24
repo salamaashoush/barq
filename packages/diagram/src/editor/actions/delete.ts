@@ -24,21 +24,22 @@ import type { AppState } from "../../types.ts";
 import type { DiagramEditor } from "../editor.ts";
 import type { Action } from "../types.ts";
 
-const deleteSelectedElements = (
+function deleteSelectedElements(
   elements: readonly ExcalidrawElement[],
   appState: AppState,
   app: DiagramEditor,
   /** a deleted frame takes its children along, rather than leaving them */
   withFrameChildren: boolean,
-) => {
+) {
   const framesToBeDeleted = new Set(
     getSelectedElements(
       elements.filter((el) => isFrameLikeElement(el)),
       appState,
     ).map((el) => el.id),
   );
-  const isChildOfDeletedFrame = (el: ExcalidrawElement) =>
-    !!el.frameId && framesToBeDeleted.has(el.frameId);
+  function isChildOfDeletedFrame(el: ExcalidrawElement) {
+    return !!el.frameId && framesToBeDeleted.has(el.frameId);
+  }
 
   const selectedElementIds: Record<ExcalidrawElement["id"], true> = {};
   const elementsMap = app.scene.getNonDeletedElementsMap();
@@ -143,12 +144,12 @@ const deleteSelectedElements = (
       ),
     },
   };
-};
+}
 
-const handleGroupEditingState = (
+function handleGroupEditingState(
   appState: AppState,
   elements: readonly ExcalidrawElement[],
-): AppState => {
+): AppState {
   if (appState.editingGroupId) {
     const [sibling] = getElementsInGroup(getNonDeletedElements(elements), appState.editingGroupId);
     if (sibling) {
@@ -156,13 +157,17 @@ const handleGroupEditingState = (
     }
   }
   return appState;
-};
+}
+
+export interface FrameChildrenFlag {
+  withFrameChildren?: boolean;
+}
 
 /**
  * Deletes the selection, or the line editor's selected points. Delete or
  * Backspace.
  */
-export const actionDeleteSelected: Action<{ withFrameChildren?: boolean }> = {
+export const actionDeleteSelected: Action<FrameChildrenFlag> = {
   name: "deleteSelectedElements",
   label: "labels.delete",
   announcement: "Deleted",

@@ -61,10 +61,12 @@ export const actionToggleObjectsSnapMode: Action = {
 };
 
 /** Where a zoom from the keyboard centres: the middle of the viewport. */
-const viewportCentre = (appState: AppState) => ({
-  viewportX: appState.width / 2 + appState.offsetLeft,
-  viewportY: appState.height / 2 + appState.offsetTop,
-});
+function viewportCentre(appState: AppState) {
+  return {
+    viewportX: appState.width / 2 + appState.offsetLeft,
+    viewportY: appState.height / 2 + appState.offsetTop,
+  };
+}
 
 /** A point in client coordinates a zoom keeps where it is, as the text editor's caret. */
 export interface ZoomAnchor {
@@ -72,16 +74,18 @@ export interface ZoomAnchor {
   viewportY: number;
 }
 
-const zoomTo = (appState: AppState, nextZoom: number, anchor: ZoomAnchor | null): ActionResult => ({
-  appState: {
-    ...appState,
-    ...getViewportForZoomWithScrollConstraints(
-      { ...(anchor ?? viewportCentre(appState)), nextZoom: getNormalizedZoom(nextZoom) },
-      appState,
-    ),
-  },
-  captureUpdate: CaptureUpdateAction.EVENTUALLY,
-});
+function zoomTo(appState: AppState, nextZoom: number, anchor: ZoomAnchor | null): ActionResult {
+  return {
+    appState: {
+      ...appState,
+      ...getViewportForZoomWithScrollConstraints(
+        { ...(anchor ?? viewportCentre(appState)), nextZoom: getNormalizedZoom(nextZoom) },
+        appState,
+      ),
+    },
+    captureUpdate: CaptureUpdateAction.EVENTUALLY,
+  };
+}
 
 /** Ctrl or Cmd (or Shift) with =. */
 export const actionZoomIn: Action<ZoomAnchor> = {
@@ -138,16 +142,18 @@ export const actionResetZoom: Action<ZoomAnchor> = {
     (event[KEYS.CTRL_OR_CMD] || event.shiftKey),
 };
 
-const getScrollConstraintsBounds = (
+function getScrollConstraintsBounds(
   scrollConstraints: NonNullable<AppState["scrollConstraints"]>,
-): Bounds => [
-  scrollConstraints.x,
-  scrollConstraints.y,
-  scrollConstraints.x + scrollConstraints.width,
-  scrollConstraints.y + scrollConstraints.height,
-];
+): Bounds {
+  return [
+    scrollConstraints.x,
+    scrollConstraints.y,
+    scrollConstraints.x + scrollConstraints.width,
+    scrollConstraints.y + scrollConstraints.height,
+  ];
+}
 
-const fitTo = (bounds: Bounds, appState: AppState, fit: "scale-down" | "contain"): ActionResult => {
+function fitTo(bounds: Bounds, appState: AppState, fit: "scale-down" | "contain"): ActionResult {
   const result = zoomToFitBounds({ bounds, appState, fit });
   return {
     ...result,
@@ -155,18 +161,19 @@ const fitTo = (bounds: Bounds, appState: AppState, fit: "scale-down" | "contain"
     appState: { ...result.appState, ...constrainScrollState(result.appState) },
     captureUpdate: CaptureUpdateAction.EVENTUALLY,
   };
-};
+}
 
-const selectionBounds = (
+function selectionBounds(
   elements: Parameters<Action["perform"]>[0],
   appState: AppState,
   selected: readonly ExcalidrawElement[],
-): Bounds =>
-  selected.length
+): Bounds {
+  return selected.length
     ? getCommonBounds(selected)
     : appState.scrollConstraints
       ? getScrollConstraintsBounds(appState.scrollConstraints)
       : getCommonBounds(getNonDeletedElements(elements));
+}
 
 /** Fits every element, never past 100%. Shift+1. */
 export const actionZoomToFit: Action = {

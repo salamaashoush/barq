@@ -23,10 +23,13 @@ import {
 
 afterEach(unmountEditors);
 
-const live = () => h().scene.getNonDeletedElements();
+function live() {
+  return h().scene.getNonDeletedElements();
+}
 
-const rect = (id: string, x: number, y: number) =>
-  API.createElement({ id, x, y, width: 100, height: 60 }) as ExcalidrawElement;
+function rect(id: string, x: number, y: number) {
+  return API.createElement({ id, x, y, width: 100, height: 60 }) as ExcalidrawElement;
+}
 
 describe("flowcharts", () => {
   test("Ctrl+→ previews a linked node, added when Ctrl is let go", () => {
@@ -128,7 +131,9 @@ describe("sticky notes", () => {
 });
 
 describe("list markers", () => {
-  const listText = () => ({ ...newTextElement({ x: 100, y: 100, text: "1. first" }), id: "item" });
+  function listText() {
+    return { ...newTextElement({ x: 100, y: 100, text: "1. first" }), id: "item" };
+  }
 
   test("Ctrl+D advances a duplicated item's marker, as an undo step of its own", () => {
     renderEditor();

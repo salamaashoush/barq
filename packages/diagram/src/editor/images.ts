@@ -46,10 +46,15 @@ export interface ImageOptions {
   maxFileSizeBytes: number;
 }
 
-const getImageFileDimensions = async (
+interface ImageDimensions {
+  width: number;
+  height: number;
+}
+
+async function getImageFileDimensions(
   file: File,
   ownerWindow: Window & typeof globalThis,
-): Promise<{ width: number; height: number }> => {
+): Promise<ImageDimensions> {
   const url = ownerWindow.URL;
   let objectURL: string | null = null;
   let imageSource: string;
@@ -63,39 +68,44 @@ const getImageFileDimensions = async (
   }
   return new Promise((resolve, reject) => {
     const image = getRenderEnvironment().createImage();
-    const cleanup = () => {
+    function cleanup() {
       image.removeEventListener("load", onLoad);
       image.removeEventListener("error", onError);
       if (objectURL) {
         url.revokeObjectURL(objectURL);
       }
-    };
-    const onLoad = () => {
+    }
+    function onLoad() {
       cleanup();
       resolve({
         width: image.naturalWidth || image.width,
         height: image.naturalHeight || image.height,
       });
-    };
-    const onError = () => {
+    }
+    function onError() {
       cleanup();
       reject(new Error("the image could not be decoded"));
-    };
+    }
     image.addEventListener("load", onLoad);
     image.addEventListener("error", onError);
     image.src = imageSource;
   });
-};
+}
+
+export interface ResizeImageFileOptions {
+  outputType?: typeof MIME_TYPES.jpg;
+  maxWidthOrHeight: number;
+}
 
 /**
  * An image file no larger than `maxWidthOrHeight` on its longest side,
  * resized with pica (loaded only when one has to be); an SVG as it is.
  */
-export const resizeImageFile = async (
+export async function resizeImageFile(
   file: File,
-  opts: { outputType?: typeof MIME_TYPES.jpg; maxWidthOrHeight: number },
+  opts: ResizeImageFileOptions,
   ownerWindow: Window & typeof globalThis = window,
-): Promise<File> => {
+): Promise<File> {
   if (file.type === MIME_TYPES.svg) {
     return file;
   }
@@ -127,10 +137,10 @@ export const resizeImageFile = async (
     file.name,
     { type: opts.outputType || file.type },
   );
-};
+}
 
 /** Fetches an image from a URL, as pasted HTML's images are. */
-export const imageURLToFile = async (imageUrl: string, filename = ""): Promise<File> => {
+export async function imageURLToFile(imageUrl: string, filename = ""): Promise<File> {
   let response: Response;
   try {
     response = await fetch(imageUrl);
@@ -145,7 +155,13 @@ export const imageURLToFile = async (imageUrl: string, filename = ""): Promise<F
     return new File([blob], filename, { type: blob.type });
   }
   throw new Error("Error: unsupported file type", { cause: "UNSUPPORTED" });
-};
+}
+
+export interface ImagePlaceholderOptions {
+  sceneX: number;
+  sceneY: number;
+  addToFrameUnderCursor?: boolean;
+}
 
 /**
  * Images: inserted from files (a picker, a drop, a paste), placed on a grid
@@ -162,11 +178,7 @@ export class EditorImages {
     sceneX,
     sceneY,
     addToFrameUnderCursor = true,
-  }: {
-    sceneX: number;
-    sceneY: number;
-    addToFrameUnderCursor?: boolean;
-  }): NonDeleted<ExcalidrawImageElement> {
+  }: ImagePlaceholderOptions): NonDeleted<ExcalidrawImageElement> {
     const app = this.app;
     const [gridX, gridY] = getGridPoint(
       sceneX,
@@ -411,19 +423,20 @@ export class EditorImages {
 }
 
 /** Opens the browser's file picker for files of these types; an empty list when cancelled. */
-const pickFiles = (ownerDocument: Document, accept: readonly string[]): Promise<File[]> =>
-  new Promise((resolve) => {
+function pickFiles(ownerDocument: Document, accept: readonly string[]): Promise<File[]> {
+  return new Promise((resolve) => {
     const input = ownerDocument.createElement("input");
     input.type = "file";
     input.multiple = true;
     input.accept = accept.join(",");
     input.style.display = "none";
-    const done = (files: File[]) => {
+    function done(files: File[]) {
       input.remove();
       resolve(files);
-    };
+    }
     input.addEventListener("change", () => done([...(input.files ?? [])]), { once: true });
     input.addEventListener("cancel", () => done([]), { once: true });
     ownerDocument.body.append(input);
     input.click();
   });
+}

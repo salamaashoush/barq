@@ -12,58 +12,70 @@ import { renderEditor, unmountEditors } from "./test-editor.ts";
 
 import type { LibraryItem, LibraryItems } from "../types.ts";
 
-const fixture = async (): Promise<Blob> =>
-  new Blob(
+async function fixture(): Promise<Blob> {
+  return new Blob(
     [await Bun.file(`${import.meta.dir}/../fixtures/fixture_library.excalidrawlib`).text()],
     {
       type: MIME_TYPES.excalidrawlib,
     },
   );
+}
 
-const item = (id: string, name?: string): LibraryItem => ({
-  id,
-  status: "unpublished",
-  created: 1,
-  name,
-  elements: [
-    {
-      type: "rectangle",
-      id: `${id}-rect`,
-      x: 0,
-      y: 0,
-      width: 10,
-      height: 10,
-      angle: 0,
-      strokeColor: "#000",
-      backgroundColor: "transparent",
-      fillStyle: "solid",
-      strokeWidth: 1,
-      strokeStyle: "solid",
-      roughness: 1,
-      opacity: 100,
-      groupIds: [],
-      frameId: null,
-      roundness: null,
-      seed: 1,
-      version: 1,
-      versionNonce: 1,
-      isDeleted: false,
-      boundElements: null,
-      updated: 1,
-      link: null,
-      locked: false,
-      index: null,
-    } as never,
-  ],
-});
+function item(id: string, name?: string): LibraryItem {
+  return {
+    id,
+    status: "unpublished",
+    created: 1,
+    name,
+    elements: [
+      {
+        type: "rectangle",
+        id: `${id}-rect`,
+        x: 0,
+        y: 0,
+        width: 10,
+        height: 10,
+        angle: 0,
+        strokeColor: "#000",
+        backgroundColor: "transparent",
+        fillStyle: "solid",
+        strokeWidth: 1,
+        strokeStyle: "solid",
+        roughness: 1,
+        opacity: 100,
+        groupIds: [],
+        frameId: null,
+        roundness: null,
+        seed: 1,
+        version: 1,
+        versionNonce: 1,
+        isDeleted: false,
+        boundElements: null,
+        updated: 1,
+        link: null,
+        locked: false,
+        index: null,
+      } as never,
+    ],
+  };
+}
 
-const settle = async () => {
+async function settle() {
   for (let i = 0; i < 6; i++) await new Promise((resolve) => setTimeout(resolve, 0));
-};
+}
+
+interface HappyDomWindow {
+  happyDOM: HappyDom;
+}
+
+interface HappyDom {
+  setURL(url: string): void;
+}
 
 /** happy-dom's page is `about:blank`, whose history keeps no hash: the page gets an address. */
-const setPageUrl = (url: string): void =>
-  (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM.setURL(url);
+function setPageUrl(url: string): void {
+  return (window as unknown as HappyDomWindow).happyDOM.setURL(url);
+}
 
 beforeEach(() => setPageUrl("http://localhost/"));
 
@@ -122,6 +134,10 @@ describe("Library", () => {
     expect(editor.api.id).toBe(editor.id);
   });
 });
+
+interface SavedLibrary {
+  libraryItems: LibraryItems;
+}
 
 describe("handleLibrary", () => {
   test("parses the install URL, current and legacy", () => {
@@ -212,7 +228,7 @@ describe("handleLibrary", () => {
     let stored: LibraryItems = [item("stored")];
     const adapter = {
       load: () => ({ libraryItems: stored }),
-      save: ({ libraryItems }: { libraryItems: LibraryItems }) => {
+      save: ({ libraryItems }: SavedLibrary) => {
         stored = libraryItems;
         saved.push(libraryItems);
       },

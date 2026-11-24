@@ -42,10 +42,17 @@ import { imageURLToFile } from "./images.ts";
 import type { ClipboardData, ParsedDataTransferFile, PastedMixedContent } from "../clipboard.ts";
 import type { BinaryFiles, Offsets } from "../types.ts";
 import type { DiagramEditor } from "./editor.ts";
+import type { Coords } from "../types.ts";
 
 /** A paste with Shift (Ctrl+Shift+V): text as one element, elements without formatting. */
 let isPlainPasteFlag = false;
 let plainPasteTimer = 0;
+
+interface MixedContentPasteOptions {
+  isPlainPaste: boolean;
+  sceneX: number;
+  sceneY: number;
+}
 
 /**
  * The clipboard, Excalidraw's `AppClipboard`: cut and copy through their
@@ -135,7 +142,7 @@ export class EditorClipboard {
     event.preventDefault();
   };
 
-  private getPastePosition(): { x: number; y: number } {
+  private getPastePosition(): Coords {
     const { x, y } = this.app.lastViewportPosition;
     return viewportCoordsToSceneCoords({ clientX: x, clientY: y }, this.app.state);
   }
@@ -285,7 +292,7 @@ export class EditorClipboard {
 
   private async addElementsFromMixedContentPaste(
     mixedContent: PastedMixedContent,
-    { isPlainPaste, sceneX, sceneY }: { isPlainPaste: boolean; sceneX: number; sceneY: number },
+    { isPlainPaste, sceneX, sceneY }: MixedContentPasteOptions,
   ): Promise<void> {
     if (!isPlainPaste && mixedContent.some((node) => node.type === "imageUrl")) {
       const imageURLs = mixedContent
@@ -360,7 +367,7 @@ export class EditorClipboard {
     const LINE_GAP = 10;
     const lines = isPlainPaste ? [text] : text.split("\n");
 
-    const createTextElements = (maxTextWidth: number): ExcalidrawTextElement[] => {
+    function createTextElements(maxTextWidth: number): ExcalidrawTextElement[] {
       let currentY = y;
       return lines.reduce((acc: ExcalidrawTextElement[], line, index) => {
         const originalText = normalizeText(line).trim();
@@ -393,10 +400,10 @@ export class EditorClipboard {
         }
         return acc;
       }, []);
-    };
+    }
 
     // wrapped to fit the view, all of it is moved into view
-    const pasteWithin = (offsets: Required<Offsets>): ExcalidrawTextElement[] => {
+    function pasteWithin(offsets: Required<Offsets>): ExcalidrawTextElement[] {
       const textElements = createTextElements(app.text.getMaxTextWidth(offsets));
       const scroll =
         textElements.length && textElements.some((element) => !element.autoResize)
@@ -424,7 +431,7 @@ export class EditorClipboard {
           frameId: topLayerFrame ? topLayerFrame.id : null,
         });
       });
-    };
+    }
 
     const textElements = pasteWithin(app.text.getTextViewportOffsets());
     if (textElements.length === 0) {

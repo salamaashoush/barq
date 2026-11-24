@@ -10,12 +10,13 @@ import { API, Keyboard, UI, h, mouse, renderEditor, unmountEditors } from "./tes
 
 afterEach(unmountEditors);
 
-const selectedIds = () =>
-  API.getSelectedElements()
+function selectedIds() {
+  return API.getSelectedElements()
     .map((element) => element.id)
     .toSorted();
+}
 
-const threeRectangles = () => {
+function threeRectangles() {
   const a = API.createElement({
     id: "A",
     x: 0,
@@ -42,7 +43,7 @@ const threeRectangles = () => {
   });
   API.setElements([a, b, c]);
   return [a, b, c] as const;
-};
+}
 
 describe("clicking", () => {
   test("a click selects, a click on empty canvas deselects", () => {
@@ -218,7 +219,9 @@ describe("keyboard", () => {
   test("Tab moves through the elements and then out of the editor", () => {
     renderEditor();
     threeRectangles();
-    const tab = () => Keyboard.keyPress(KEYS.TAB);
+    function tab() {
+      return Keyboard.keyPress(KEYS.TAB);
+    }
     expect(tab().defaultPrevented).toBe(true);
     expect(selectedIds()).toEqual(["A"]);
     tab();

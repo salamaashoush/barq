@@ -29,16 +29,20 @@ import {
 
 afterEach(unmountEditors);
 
-const rect = (id: string, x: number, y: number, extra: Partial<ExcalidrawElement> = {}) =>
-  ({
+function rect(id: string, x: number, y: number, extra: Partial<ExcalidrawElement> = {}) {
+  return {
     ...API.createElement({ id, x, y, width: 50, height: 50, backgroundColor: "#ffc9c9" }),
     ...extra,
-  }) as ExcalidrawElement;
+  } as ExcalidrawElement;
+}
 
-const frame = (id: string, x: number, y: number, width = 300, height = 200) =>
-  ({ ...newFrameElement({ x, y, width, height }), id }) as ExcalidrawElement;
+function frame(id: string, x: number, y: number, width = 300, height = 200) {
+  return { ...newFrameElement({ x, y, width, height }), id } as ExcalidrawElement;
+}
 
-const get = (id: string) => h().scene.getElement(id);
+function get(id: string) {
+  return h().scene.getElement(id);
+}
 
 describe("the frame tool", () => {
   test("F draws a frame that takes in what it is drawn around", () => {
@@ -104,6 +108,10 @@ describe("the frame tool", () => {
   });
 });
 
+interface NamedFrame {
+  name?: string | null;
+}
+
 describe("frame names", () => {
   test("each frame's name is shown over the canvas, above the frame", () => {
     renderEditor();
@@ -142,7 +150,7 @@ describe("frame names", () => {
     h().renameFrame("f", "  Launch  ");
     h().endFrameNameEdit();
     expect(h().state.editingFrame).toBeNull();
-    expect((get("f") as { name?: string | null }).name).toBe("Launch");
+    expect((get("f") as NamedFrame).name).toBe("Launch");
     expect(getFrameName("f")?.textContent).toBe("Launch");
   });
 
@@ -153,7 +161,7 @@ describe("frame names", () => {
     expect(h().state.editingFrame).toBe("f");
     h().renameFrame("f", "   ");
     h().endFrameNameEdit();
-    expect((get("f") as { name?: string | null }).name).toBeNull();
+    expect((get("f") as NamedFrame).name).toBeNull();
     expect(getFrameName("f")?.textContent).toBe("Frame");
   });
 

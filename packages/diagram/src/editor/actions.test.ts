@@ -12,27 +12,37 @@ import { API, Keyboard, UI, h, mouse, renderEditor, unmountEditors } from "./tes
 
 afterEach(unmountEditors);
 
-const filled = (id: string, x: number, y = 0, width = 100, height = width) =>
-  API.createElement({ id, x, y, width, height, backgroundColor: "#ffc9c9" });
+function filled(id: string, x: number, y = 0, width = 100, height = width) {
+  return API.createElement({ id, x, y, width, height, backgroundColor: "#ffc9c9" });
+}
 
-const ids = () =>
-  h()
+function ids() {
+  return h()
     .scene.getNonDeletedElements()
     .map((element) => element.id);
-const selectedIds = () =>
-  API.getSelectedElements()
+}
+function selectedIds() {
+  return API.getSelectedElements()
     .map((element) => element.id)
     .toSorted();
-const at = (id: string): readonly [x: number, y: number] => {
+}
+function at(id: string): readonly [x: number, y: number] {
   const element = h().scene.getElement(id)!;
   return [element.x, element.y];
-};
+}
 
-const ctrl = (key: string, modifiers: { shift?: boolean; alt?: boolean } = {}) =>
-  Keyboard.withModifierKeys({ ctrl: true, ...modifiers }, () => Keyboard.keyPress(key));
+interface ExtraModifiers {
+  shift?: boolean;
+  alt?: boolean;
+}
 
-const ctrlCode = (code: string, modifiers: { shift?: boolean; alt?: boolean } = {}) =>
-  Keyboard.withModifierKeys({ ctrl: true, ...modifiers }, () => Keyboard.codePress(code));
+function ctrl(key: string, modifiers: ExtraModifiers = {}) {
+  return Keyboard.withModifierKeys({ ctrl: true, ...modifiers }, () => Keyboard.keyPress(key));
+}
+
+function ctrlCode(code: string, modifiers: ExtraModifiers = {}) {
+  return Keyboard.withModifierKeys({ ctrl: true, ...modifiers }, () => Keyboard.codePress(code));
+}
 
 describe("delete", () => {
   test("Delete and Backspace remove the selection", () => {
@@ -179,11 +189,11 @@ describe("lock", () => {
 });
 
 describe("align and distribute", () => {
-  const setup = () => {
+  function setup() {
     renderEditor();
     API.loadElements([filled("A", 0, 0, 100), filled("B", 200, 50, 50), filled("C", 300, 200, 60)]);
     ctrl("a");
-  };
+  }
 
   test("Ctrl+Shift with an arrow aligns to that side", () => {
     setup();

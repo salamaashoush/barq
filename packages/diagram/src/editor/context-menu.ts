@@ -55,10 +55,10 @@ export type ContextMenuItem = typeof CONTEXT_MENU_SEPARATOR | Action;
  * in its order. Entries whose predicate fails are left out where the menu
  * is drawn, and with them separators that would stand next to each other.
  */
-export const getContextMenuItems = (
+export function getContextMenuItems(
   type: "canvas" | "element",
   viewModeEnabled: boolean,
-): readonly ContextMenuItem[] => {
+): readonly ContextMenuItem[] {
   if (type === "canvas") {
     if (viewModeEnabled) {
       return [
@@ -143,9 +143,12 @@ export const getContextMenuItems = (
     CONTEXT_MENU_SEPARATOR,
     actionDeleteSelected as Action,
   ];
-};
+}
 
 /** Whether a value in `appState.contextMenu.items` is a menu entry. */
-export const isContextMenuItem = (value: unknown): value is ContextMenuItem =>
-  value === CONTEXT_MENU_SEPARATOR ||
-  (typeof value === "object" && value !== null && "perform" in value && "name" in value);
+export function isContextMenuItem(value: unknown): value is ContextMenuItem {
+  return (
+    value === CONTEXT_MENU_SEPARATOR ||
+    (typeof value === "object" && value !== null && "perform" in value && "name" in value)
+  );
+}

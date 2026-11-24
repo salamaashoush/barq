@@ -35,7 +35,7 @@ export type TextToolTarget =
   /** creates free text at the pointer */
   | { type: "free" };
 
-const toHoverState = (target: TextToolTarget): AppState["textToolHover"] => {
+function toHoverState(target: TextToolTarget): AppState["textToolHover"] {
   switch (target.type) {
     case "endpoint":
       return {
@@ -54,9 +54,9 @@ const toHoverState = (target: TextToolTarget): AppState["textToolHover"] => {
     default:
       return null;
   }
-};
+}
 
-const isSameHover = (a: AppState["textToolHover"], b: AppState["textToolHover"]): boolean => {
+function isSameHover(a: AppState["textToolHover"], b: AppState["textToolHover"]): boolean {
   if (a === b) {
     return true;
   }
@@ -64,7 +64,12 @@ const isSameHover = (a: AppState["textToolHover"], b: AppState["textToolHover"])
     return false;
   }
   return a.type !== "arrow" || b.type !== "arrow" || a.anchor === b.anchor;
-};
+}
+
+interface PendingText {
+  containerId: ExcalidrawElement["id"];
+  origin: ScenePoint;
+}
 
 /**
  * The text tool's pointer interaction, Excalidraw's `AppTextTool`.
@@ -80,7 +85,7 @@ const isSameHover = (a: AppState["textToolHover"], b: AppState["textToolHover"])
  */
 export class TextTool {
   /** A click on an empty container's centre, decided on the pointer's way out. */
-  private pending: { containerId: ExcalidrawElement["id"]; origin: ScenePoint } | null = null;
+  private pending: PendingText | null = null;
 
   /** The modifiers the hover was last resolved with. */
   private lastModifiers: Modifiers = { ctrlKey: false, metaKey: false };

@@ -90,6 +90,12 @@ import { patchLinearEditor } from "./linear.ts";
 import type { AppState } from "../types.ts";
 import type { DiagramEditor } from "./editor.ts";
 import type { PointerDownState, ReactPointerEvent } from "./types.ts";
+import type { Coords, ElementIdSet } from "../types.ts";
+
+export interface TransformHandleHit {
+  element?: NonDeletedExcalidrawElement;
+  transformHandleType: TransformHandleType;
+}
 
 /**
  * The selection tool's selection: what a pointer down selects, what a click
@@ -140,10 +146,7 @@ export class SelectionTool {
    * last move (so that it comes back at once after a drag past its edge),
    * scaled to the image's pixels and along its rotated edges.
    */
-  private moveCropRegion(
-    pointerDownState: PointerDownState,
-    dragOffset: { x: number; y: number },
-  ): boolean {
+  private moveCropRegion(pointerDownState: PointerDownState, dragOffset: Coords): boolean {
     if (!this.app.state.croppingElementId) {
       return false;
     }
@@ -645,13 +648,7 @@ export class SelectionTool {
       event[KEYS.CTRL_OR_CMD] ? null : this.app.getEffectiveGridSize(),
     );
 
-    const frameElementsOffsetsMap = new Map<
-      string,
-      {
-        x: number;
-        y: number;
-      }
-    >();
+    const frameElementsOffsetsMap = new Map<string, Coords>();
 
     selectedFrames.forEach((frame) => {
       const elementsInFrame = getFrameChildren(this.app.scene.getNonDeletedElements(), frame.id);
@@ -764,7 +761,7 @@ export class SelectionTool {
   handleSelectionDragOnPointerMove = (
     event: PointerEvent,
     pointerDownState: PointerDownState,
-    pointerCoords: { x: number; y: number },
+    pointerCoords: Coords,
   ): boolean => {
     const hasHitASelectedElement = pointerDownState.hit.allHitElements.some((element) =>
       this.app.selection.isASelectedElement(element),
@@ -1136,10 +1133,7 @@ export class SelectionTool {
     sceneX: number,
     sceneY: number,
     pointerType: PointerType,
-  ): {
-    element?: NonDeletedExcalidrawElement;
-    transformHandleType: TransformHandleType;
-  } | null {
+  ): TransformHandleHit | null {
     const { state, editorInterface } = this.app;
     if (state.openDialog?.name === "elementLinkSelector") {
       return null;
@@ -1246,9 +1240,7 @@ export class SelectionTool {
           // when hitElement is part of a selected frame, deselect the frame
           // to avoid frame and containing elements selected simultaneously
           this.app.setState((prevState) => {
-            const nextSelectedElementIds: {
-              [id: string]: true;
-            } = {
+            const nextSelectedElementIds: ElementIdSet = {
               ...prevState.selectedElementIds,
               [hitElement.id]: true,
             };

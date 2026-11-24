@@ -43,12 +43,18 @@ export type LibraryPersistedData = { libraryItems: LibraryItems };
 
 export type LibraryAdapterSource = "load" | "save";
 
+export interface LibraryLoadMetadata {
+  source: LibraryAdapterSource;
+}
+
+export interface LoadedLibrary {
+  libraryItems: LibraryItems_anyVersion;
+}
+
 /** Where a library is kept, Excalidraw's `LibraryPersistenceAdapter`. */
 export interface LibraryPersistenceAdapter {
   /** The data `save` last stored; `source` says whether it is read to save or to show. */
-  load(metadata: {
-    source: LibraryAdapterSource;
-  }): MaybePromise<{ libraryItems: LibraryItems_anyVersion } | null>;
+  load(metadata: LibraryLoadMetadata): MaybePromise<LoadedLibrary | null>;
   /** Stores the data as it is. Throws when it cannot. */
   save(libraryData: LibraryPersistedData): MaybePromise<void>;
 }
@@ -56,7 +62,7 @@ export interface LibraryPersistenceAdapter {
 /** A store a library moves out of once, Excalidraw's `LibraryMigrationAdapter`. */
 export interface LibraryMigrationAdapter {
   /** The legacy data, `null` when there is nothing to move. */
-  load(): MaybePromise<{ libraryItems: LibraryItems_anyVersion } | null>;
+  load(): MaybePromise<LoadedLibrary | null>;
   /** Empties the legacy store once its data has moved. */
   clear(): MaybePromise<void>;
 }
@@ -83,15 +89,18 @@ class AbortError extends Error {
   }
 }
 
-const cloneLibraryItems = (libraryItems: LibraryItems): LibraryItems => cloneJSON(libraryItems);
+function cloneLibraryItems(libraryItems: LibraryItems): LibraryItems {
+  return cloneJSON(libraryItems);
+}
 
-const getLibraryItemHash = (item: LibraryItem): string =>
-  `${item.id}:${item.name ?? ""}:${hashElementsVersion(item.elements)}`;
+function getLibraryItemHash(item: LibraryItem): string {
+  return `${item.id}:${item.name ?? ""}:${hashElementsVersion(item.elements)}`;
+}
 
-const createLibraryUpdate = (
+function createLibraryUpdate(
   prevLibraryItems: LibraryItems,
   nextLibraryItems: LibraryItems,
-): LibraryUpdate => {
+): LibraryUpdate {
   const nextItemsMap = arrayToMap(nextLibraryItems);
   const update: LibraryUpdate = {
     deletedItems: new Map(),
@@ -113,13 +122,21 @@ const createLibraryUpdate = (
     }
   }
   return update;
-};
+}
 
 /**
  * Every library's changes, for `handleLibrary` to persist: one emitter for
  * the page, as Excalidraw's, so a persistence outlives an editor remounting.
  */
 const onLibraryUpdateEmitter = new Emitter<[update: LibraryUpdate, libraryItems: LibraryItems]>();
+
+export interface UpdateLibraryOptions {
+  libraryItems: LibraryItemsSource;
+  merge?: boolean;
+  prompt?: boolean;
+  openLibraryMenu?: boolean;
+  defaultStatus?: "unpublished" | "published";
+}
 
 /**
  * An editor's library, Excalidraw's `Library`: its items, changed through a
@@ -222,13 +239,7 @@ export class Library {
     merge = false,
     openLibraryMenu = false,
     defaultStatus = "unpublished",
-  }: {
-    libraryItems: LibraryItemsSource;
-    merge?: boolean;
-    prompt?: boolean;
-    openLibraryMenu?: boolean;
-    defaultStatus?: "unpublished" | "published";
-  }): Promise<LibraryItems> => {
+  }: UpdateLibraryOptions): Promise<LibraryItems> => {
     if (openLibraryMenu) {
       this.host.setState({
         openSidebar: { name: DEFAULT_SIDEBAR.name, tab: LIBRARY_SIDEBAR_TAB },
@@ -292,16 +303,21 @@ export class Library {
   }
 }
 
+export interface LibraryUrlTokens {
+  libraryUrl: string;
+  idToken: string | null;
+}
+
 /** The library a page was opened to install, from `#addLibrary=` (or the legacy `?addLibrary=`). */
-export const parseLibraryTokensFromUrl = (
+export function parseLibraryTokensFromUrl(
   location: Pick<Location, "hash" | "search"> = window.location,
-): { libraryUrl: string; idToken: string | null } | null => {
+): LibraryUrlTokens | null {
   const libraryUrl =
     new URLSearchParams(location.hash.slice(1)).get(URL_HASH_KEYS.addLibrary) ??
     new URLSearchParams(location.search).get(URL_QUERY_KEYS.addLibrary);
   const idToken = libraryUrl ? new URLSearchParams(location.hash.slice(1)).get("token") : null;
   return libraryUrl ? { libraryUrl, idToken } : null;
-};
+}
 
 class AdapterTransaction {
   public static readonly queue = new Queue();
@@ -311,10 +327,10 @@ class AdapterTransaction {
     source: LibraryAdapterSource,
     queued = true,
   ): Promise<LibraryItems> {
-    const task = async (): Promise<LibraryItems> => {
+    async function task(): Promise<LibraryItems> {
       const data = await adapter.load({ source });
       return restoreLibraryItems(data?.libraryItems ?? [], "published");
-    };
+    }
     return queued ? AdapterTransaction.queue.push(task) : task();
   }
 
@@ -340,10 +356,10 @@ let librarySaveCounter = 0;
  * Applies an update to the stored items rather than overwriting them, so
  * items another editor stored, or that never reached this one, are kept.
  */
-const persistLibraryUpdate = async (
+async function persistLibraryUpdate(
   adapter: LibraryPersistenceAdapter,
   update: LibraryUpdate,
-): Promise<LibraryItems> => {
+): Promise<LibraryItems> {
   try {
     librarySaveCounter++;
     return await AdapterTransaction.run(adapter, async (transaction) => {
@@ -374,14 +390,18 @@ const persistLibraryUpdate = async (
   } finally {
     librarySaveCounter--;
   }
-};
+}
+
+export interface AppStatePatch {
+  appState?: Partial<AppState>;
+}
 
 /** The part of the editor's API `handleLibrary` drives. */
 export interface LibraryApi {
   /** The editor's token, which a library site sends back to install without asking. */
   readonly id: string;
   updateLibrary: Library["updateLibrary"];
-  updateScene(scene: { appState?: Partial<AppState> }): void;
+  updateScene(scene: AppStatePatch): void;
 }
 
 export interface HandleLibraryOptions {
@@ -403,18 +423,12 @@ export interface HandleLibraryOptions {
  * `adapter` (moving it out of `migrationAdapter` first) and saves each change
  * back. The returned function stops it.
  */
-export const handleLibrary = (opts: HandleLibraryOptions): (() => void) => {
+export function handleLibrary(opts: HandleLibraryOptions): () => void {
   const view = opts.window ?? window;
   const api = opts.excalidrawAPI;
   let isLibraryLoaded = false;
 
-  const importLibraryFromURL = async ({
-    libraryUrl,
-    idToken,
-  }: {
-    libraryUrl: string;
-    idToken: string | null;
-  }): Promise<void> => {
+  async function importLibraryFromURL({ libraryUrl, idToken }: LibraryUrlTokens): Promise<void> {
     const libraryPromise = (async () => {
       const url = toValidURL(decodeURIComponent(libraryUrl));
       validateLibraryUrl(url, opts.validateLibraryUrl);
@@ -452,9 +466,9 @@ export const handleLibrary = (opts: HandleLibraryOptions): (() => void) => {
         view.history.replaceState({}, APP_NAME, `?${query.toString()}`);
       }
     }
-  };
+  }
 
-  const onHashChange = (event: HashChangeEvent): void => {
+  function onHashChange(event: HashChangeEvent): void {
     event.preventDefault();
     const tokens = parseLibraryTokensFromUrl(view.location);
     if (tokens) {
@@ -463,7 +477,7 @@ export const handleLibrary = (opts: HandleLibraryOptions): (() => void) => {
       view.history.replaceState({}, "", event.oldURL);
       void importLibraryFromURL(tokens);
     }
-  };
+  }
 
   const tokens = parseLibraryTokensFromUrl(view.location);
   if (tokens) {
@@ -536,11 +550,11 @@ export const handleLibrary = (opts: HandleLibraryOptions): (() => void) => {
     }
   });
 
-  const onUnload = (event: BeforeUnloadEvent): void => {
+  function onUnload(event: BeforeUnloadEvent): void {
     if (librarySaveCounter) {
       preventUnload(event);
     }
-  };
+  }
 
   view.addEventListener("hashchange", onHashChange);
   view.addEventListener("beforeunload", onUnload);
@@ -551,4 +565,4 @@ export const handleLibrary = (opts: HandleLibraryOptions): (() => void) => {
     lastSavedLibraryItemsHash = 0;
     librarySaveCounter = 0;
   };
-};
+}

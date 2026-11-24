@@ -70,14 +70,16 @@ import { textWysiwyg } from "./wysiwyg.ts";
 import type { AppState, Offsets } from "../types.ts";
 import type { DiagramEditor } from "./editor.ts";
 import type { SubmitHandler } from "./wysiwyg.ts";
+import type { Coords } from "../types.ts";
 
 /** The scene point in the (rotated) text's own axes. */
-const unrotatePoint = (point: Readonly<{ x: number; y: number }>, text: ExcalidrawTextElement) =>
-  pointRotateRads(
+function unrotatePoint(point: Readonly<Coords>, text: ExcalidrawTextElement) {
+  return pointRotateRads(
     pointFrom<GlobalPoint>(point.x, point.y),
     pointFrom<GlobalPoint>(text.x + text.width / 2, text.y + text.height / 2),
     (text.angle * -1) as Radians,
   );
+}
 
 /**
  * A text to edit, handed to the host: it makes a textarea, puts it in a box
@@ -94,12 +96,63 @@ export interface TextEditRequest {
   attach(textarea: HTMLTextAreaElement): void;
 }
 
+interface SelectionRange {
+  start: number;
+  end: number;
+}
+
 interface TextWysiwygOptions {
   isExistingElement?: boolean;
   /** `null` to select the whole text rather than place the caret */
-  initialCaretSceneCoords?: { x: number; y: number } | null;
+  initialCaretSceneCoords?: Coords | null;
   /** a range of the text to select; takes precedence over the caret */
-  initialSelection?: { start: number; end: number } | null;
+  initialSelection?: SelectionRange | null;
+}
+
+export interface TextEditPosition {
+  sceneX: number;
+  sceneY: number;
+}
+
+interface TextSubmit {
+  viaKeyboard: boolean;
+  nextOriginalText: string;
+}
+
+export interface TextResizeHandleHit {
+  element: NonDeleted<ExcalidrawTextElement>;
+  transformHandleType: "e" | "w";
+}
+
+interface ContainerHit {
+  container: NonDeleted<ExcalidrawTextContainer>;
+  area: number;
+}
+
+export interface StartTextEditingOptions {
+  sceneX: number;
+  sceneY: number;
+  /** whether to insert at the container's centre when near it */
+  insertAtParentCenter?: boolean;
+  container?: ExcalidrawTextContainer | null;
+  autoEdit?: boolean;
+  initialCaretSceneCoords?: Coords;
+  initialSelection?: SelectionRange;
+  /** creates the text as this arrow endpoint's label, where the binding puts it */
+  arrowEndpoint?: ArrowEndpoint | null;
+  /**
+   * the text to edit: an element for that one, `null` to always create,
+   * `undefined` to resolve it (a selected text, a selected or passed
+   * arrow's label, else the text at the point)
+   */
+  textElement?: NonDeleted<ExcalidrawTextElement> | null;
+}
+
+export interface SnappedTextPosition {
+  viewportX: number;
+  viewportY: number;
+  elementCenterX: number;
+  elementCenterY: number;
 }
 
 /**
@@ -172,7 +225,7 @@ export class EditorText {
       initialCaretSceneCoords = null,
       initialSelection = null,
     }: TextWysiwygOptions,
-    request: { sceneX: number; sceneY: number } = { sceneX: element.x, sceneY: element.y },
+    request: TextEditPosition = { sceneX: element.x, sceneY: element.y },
   ): void {
     const app = this.app;
     const elementsMap = app.scene.getElementsMapIncludingDeleted();
@@ -254,13 +307,7 @@ export class EditorText {
     };
 
     let ended = false;
-    const onSubmit = ({
-      viaKeyboard,
-      nextOriginalText,
-    }: {
-      viaKeyboard: boolean;
-      nextOriginalText: string;
-    }) => {
+    const onSubmit = ({ viaKeyboard, nextOriginalText }: TextSubmit) => {
       if (ended) return;
       ended = true;
       this.textWysiwygSubmitHandler = null;
@@ -318,7 +365,7 @@ export class EditorText {
     };
 
     let attached = false;
-    const attach = (textarea: HTMLTextAreaElement) => {
+    const attach: (textarea: HTMLTextAreaElement) => void = (textarea) => {
       if (attached || ended || app.isDestroyed) {
         return;
       }
@@ -396,7 +443,7 @@ export class EditorText {
    */
   public getSelectedTextEditingContainerAtPosition(
     hitElement: NonDeletedExcalidrawElement | null,
-    sceneCoords: { x: number; y: number },
+    sceneCoords: Coords,
   ): ExcalidrawTextContainer | null | undefined {
     const selectedElements = this.app.scene.getSelectedElements(this.app.state);
     const [selectedElement] = selectedElements;
@@ -429,7 +476,7 @@ export class EditorText {
 
   public isHittingTextAutoResizeHandle = (
     selectedElements: NonDeleted<ExcalidrawElement>[],
-    point: Readonly<{ x: number; y: number }>,
+    point: Readonly<Coords>,
   ): boolean => {
     const activeTextElement = getActiveTextElement(
       selectedElements,
@@ -452,7 +499,7 @@ export class EditorText {
   /** A press on the auto-resize handle: the text grows with its content again. */
   public handleTextAutoResizeHandlePointerDown = (
     selectedElements: NonDeleted<ExcalidrawElement>[],
-    point: Readonly<{ x: number; y: number }>,
+    point: Readonly<Coords>,
     target?: ExcalidrawElement | null,
   ): boolean => {
     const activeTextElement =
@@ -477,9 +524,7 @@ export class EditorText {
    * from the text's edge out to as far past the box drawn around a wrapped
    * text as the box is from the text. Dragging it sets where the text wraps.
    */
-  public getEditedTextResizeHandleAt = (
-    point: Readonly<{ x: number; y: number }>,
-  ): { element: NonDeleted<ExcalidrawTextElement>; transformHandleType: "e" | "w" } | null => {
+  public getEditedTextResizeHandleAt = (point: Readonly<Coords>): TextResizeHandleHit | null => {
     const element = this.getEditedTextResizableFromSides();
     if (!element) {
       return null;
@@ -505,7 +550,7 @@ export class EditorText {
    * nearest edge. The browser shows the canvas' cursor as it is when the
    * pointer gets there, and what the canvas then sets a frame later.
    */
-  public primeCursorAroundEditedText = (point: Readonly<{ x: number; y: number }>): void => {
+  public primeCursorAroundEditedText = (point: Readonly<Coords>): void => {
     const element = this.getEditedTextResizableFromSides();
     if (!element) {
       return;
@@ -558,8 +603,9 @@ export class EditorText {
     const { ownerWindow } = app;
     const originalElement = deepCopyElement(element);
     const originalElements = new Map([[element.id, originalElement]]);
-    const getGridSize = (pointerEvent: PointerEvent) =>
-      pointerEvent[KEYS.CTRL_OR_CMD] ? null : app.getEffectiveGridSize();
+    function getGridSize(pointerEvent: PointerEvent) {
+      return pointerEvent[KEYS.CTRL_OR_CMD] ? null : app.getEffectiveGridSize();
+    }
     const [originInGridX, originInGridY] = getGridPoint(origin.x, origin.y, getGridSize(event));
     const [offsetX, offsetY] = getResizeOffsetXY(
       transformHandleType,
@@ -578,7 +624,7 @@ export class EditorText {
       // a pointer that is gone already
     }
 
-    const stop = () => {
+    function stop() {
       ownerWindow.removeEventListener("pointermove", onPointerMove, true);
       ownerWindow.removeEventListener("pointerup", onPointerUp, true);
       ownerWindow.removeEventListener("pointercancel", onPointerUp, true);
@@ -586,10 +632,10 @@ export class EditorText {
       if (app.state.snapLines.length) {
         app.setState({ snapLines: [] });
       }
-    };
+    }
 
-    const onPointerMove = (moveEvent: PointerEvent) =>
-      app.batch(() => {
+    function onPointerMove(moveEvent: PointerEvent) {
+      return app.batch(() => {
         // the editor may have been closed from the keyboard
         if (app.state.editingTextElement?.id !== element.id) {
           stop();
@@ -639,14 +685,16 @@ export class EditorText {
           app.renderEnvironment,
         );
       });
+    }
 
-    const onPointerUp = () =>
-      app.batch(() => {
+    function onPointerUp() {
+      return app.batch(() => {
         stop();
         if (!dragged && app.state.editingTextElement?.id === element.id) {
           onClick();
         }
       });
+    }
 
     ownerWindow.addEventListener("pointermove", onPointerMove, true);
     ownerWindow.addEventListener("pointerup", onPointerUp, true);
@@ -668,7 +716,7 @@ export class EditorText {
   ): NonDeleted<ExcalidrawTextContainer> | null {
     const elements = this.app.scene.getNonDeletedElements();
     const elementsMap = this.app.scene.getNonDeletedElementsMap();
-    const hits: { container: NonDeleted<ExcalidrawTextContainer>; area: number }[] = [];
+    const hits: ContainerHit[] = [];
     for (let index = elements.length - 1; index >= 0; --index) {
       const element = elements[index];
       if (!element || isFrameLikeElement(element) || this.app.isClippedByFrameAt(x, y, element)) {
@@ -727,24 +775,7 @@ export class EditorText {
     initialSelection,
     arrowEndpoint,
     textElement,
-  }: {
-    sceneX: number;
-    sceneY: number;
-    /** whether to insert at the container's centre when near it */
-    insertAtParentCenter?: boolean;
-    container?: ExcalidrawTextContainer | null;
-    autoEdit?: boolean;
-    initialCaretSceneCoords?: { x: number; y: number };
-    initialSelection?: { start: number; end: number };
-    /** creates the text as this arrow endpoint's label, where the binding puts it */
-    arrowEndpoint?: ArrowEndpoint | null;
-    /**
-     * the text to edit: an element for that one, `null` to always create,
-     * `undefined` to resolve it (a selected text, a selected or passed
-     * arrow's label, else the text at the point)
-     */
-    textElement?: NonDeleted<ExcalidrawTextElement> | null;
-  }): void => {
+  }: StartTextEditingOptions): void => {
     const app = this.app;
     if (!app.hasTextEditor()) {
       return;
@@ -923,9 +954,7 @@ export class EditorText {
     y: number,
     appState: AppState,
     container?: ExcalidrawTextContainer | null,
-  ):
-    | { viewportX: number; viewportY: number; elementCenterX: number; elementCenterY: number }
-    | undefined {
+  ): SnappedTextPosition | undefined {
     if (!container) {
       return undefined;
     }

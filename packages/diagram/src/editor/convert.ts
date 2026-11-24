@@ -66,29 +66,32 @@ const CONVERTIBLE_GENERIC_TYPES: ReadonlySet<ConvertibleGenericTypes> = new Set(
 
 const CONVERTIBLE_LINEAR_TYPES: ReadonlySet<ConvertibleLinearTypes> = new Set(LINEAR_TYPES);
 
-const isConvertibleGenericType = (elementType: string): elementType is ConvertibleGenericTypes =>
-  CONVERTIBLE_GENERIC_TYPES.has(elementType as ConvertibleGenericTypes);
+function isConvertibleGenericType(elementType: string): elementType is ConvertibleGenericTypes {
+  return CONVERTIBLE_GENERIC_TYPES.has(elementType as ConvertibleGenericTypes);
+}
 
-const isConvertibleLinearType = (elementType: string): elementType is ConvertibleLinearTypes =>
-  elementType === "arrow" || CONVERTIBLE_LINEAR_TYPES.has(elementType as ConvertibleLinearTypes);
+function isConvertibleLinearType(elementType: string): elementType is ConvertibleLinearTypes {
+  return (
+    elementType === "arrow" || CONVERTIBLE_LINEAR_TYPES.has(elementType as ConvertibleLinearTypes)
+  );
+}
 
 type CacheKey = string & { _brand: "CacheKey" };
 
-const FONT_SIZE_CONVERSION_CACHE = new Map<
-  ExcalidrawElement["id"],
-  {
-    fontSize: number;
-  }
->();
+interface FontSizeEntry {
+  fontSize: number;
+}
+
+const FONT_SIZE_CONVERSION_CACHE = new Map<ExcalidrawElement["id"], FontSizeEntry>();
 
 const LINEAR_ELEMENT_CONVERSION_CACHE = new Map<CacheKey, ExcalidrawLinearElement>();
 
-export const adjustBoundTextSize = (
+export function adjustBoundTextSize(
   container: ExcalidrawTextContainer,
   boundText: ExcalidrawTextElementWithContainer,
   scene: Scene,
   renderEnvironment?: RenderEnvironment,
-) => {
+) {
   const maxWidth = getBoundTextMaxWidth(container, boundText);
   const maxHeight = getBoundTextMaxHeight(container, boundText);
 
@@ -128,22 +131,20 @@ export const adjustBoundTextSize = (
   });
 
   redrawTextBoundingBox(boundText, container, scene, renderEnvironment);
-};
+}
 
 type ConversionType = "generic" | "linear" | null;
 
-export const convertElementTypes = (
+export interface ConvertElementTypesOptions {
+  conversionType: ConversionType;
+  nextType?: ConvertibleTypes;
+  direction?: "left" | "right";
+}
+
+export function convertElementTypes(
   app: DiagramEditor,
-  {
-    conversionType,
-    nextType,
-    direction = "right",
-  }: {
-    conversionType: ConversionType;
-    nextType?: ConvertibleTypes;
-    direction?: "left" | "right";
-  },
-): boolean => {
+  { conversionType, nextType, direction = "right" }: ConvertElementTypesOptions,
+): boolean {
   if (!conversionType) {
     return false;
   }
@@ -323,11 +324,11 @@ export const convertElementTypes = (
   }
 
   return true;
-};
+}
 
-export const getConversionTypeFromElements = (
+export function getConversionTypeFromElements(
   elements: readonly ExcalidrawElement[],
-): ConversionType => {
+): ConversionType {
   if (elements.length === 0) {
     return null;
   }
@@ -348,44 +349,51 @@ export const getConversionTypeFromElements = (
   }
 
   return null;
-};
+}
 
-const isEligibleLinearElement = (element: ExcalidrawElement) => {
+function isEligibleLinearElement(element: ExcalidrawElement) {
   return (
     isLinearElement(element) &&
     (!isArrowElement(element) || (!isArrowBoundToElement(element) && !hasBoundTextElement(element)))
   );
-};
+}
 
-const toCacheKey = (elementId: ExcalidrawElement["id"], convertitleType: ConvertibleTypes) => {
+function toCacheKey(elementId: ExcalidrawElement["id"], convertitleType: ConvertibleTypes) {
   return `${elementId}:${convertitleType}` as CacheKey;
-};
+}
 
-export const filterGenericConvetibleElements = <T extends ExcalidrawElement>(
+export function filterGenericConvetibleElements<T extends ExcalidrawElement>(
   elements: readonly T[],
-) =>
-  elements.filter((element) => isConvertibleGenericType(element.type)) as Array<
+) {
+  return elements.filter((element) => isConvertibleGenericType(element.type)) as unknown as Array<
     T extends NonDeletedExcalidrawElement
       ? NonDeleted<ExcalidrawRectangleElement | ExcalidrawDiamondElement | ExcalidrawEllipseElement>
       : ExcalidrawRectangleElement | ExcalidrawDiamondElement | ExcalidrawEllipseElement
   >;
+}
 
-export const filterLinearConvertibleElements = <T extends ExcalidrawElement>(
+export function filterLinearConvertibleElements<T extends ExcalidrawElement>(
   elements: readonly T[],
-) =>
-  elements.filter((element) =>
+) {
+  return elements.filter((element) =>
     isEligibleLinearElement(element),
-  ) as (T extends NonDeletedExcalidrawElement
+  ) as unknown as (T extends NonDeletedExcalidrawElement
     ? NonDeleted<ExcalidrawLinearElement>
     : ExcalidrawLinearElement)[];
+}
 
 const THRESHOLD = 20;
-const isVert = (a: LocalPoint, b: LocalPoint) => a[0] === b[0];
-const isHorz = (a: LocalPoint, b: LocalPoint) => a[1] === b[1];
-const dist = (a: LocalPoint, b: LocalPoint) =>
-  isVert(a, b) ? Math.abs(a[1] - b[1]) : Math.abs(a[0] - b[0]);
+function isVert(a: LocalPoint, b: LocalPoint) {
+  return a[0] === b[0];
+}
+function isHorz(a: LocalPoint, b: LocalPoint) {
+  return a[1] === b[1];
+}
+function dist(a: LocalPoint, b: LocalPoint) {
+  return isVert(a, b) ? Math.abs(a[1] - b[1]) : Math.abs(a[0] - b[0]);
+}
 
-const convertLineToElbow = (line: ExcalidrawLinearElement): LocalPoint[] => {
+function convertLineToElbow(line: ExcalidrawLinearElement): LocalPoint[] {
   // 1. build an *orthogonal* route, snapping offsets < SNAP
   const ortho: LocalPoint[] = [line.points[0]!];
   const src = sanitizePoints(line.points);
@@ -466,9 +474,9 @@ const convertLineToElbow = (line: ExcalidrawLinearElement): LocalPoint[] => {
   }
   clean.push(trimmed[trimmed.length - 1]!);
   return clean;
-};
+}
 
-const sanitizePoints = (points: readonly LocalPoint[]): LocalPoint[] => {
+function sanitizePoints(points: readonly LocalPoint[]): LocalPoint[] {
   if (points.length === 0) {
     return [];
   }
@@ -485,7 +493,7 @@ const sanitizePoints = (points: readonly LocalPoint[]): LocalPoint[] => {
   }
 
   return sanitized;
-};
+}
 
 /**
  * Converts an element to a new type, adding or removing properties as needed
@@ -497,11 +505,11 @@ const sanitizePoints = (points: readonly LocalPoint[]): LocalPoint[] => {
  * - switching between linear elements
  *   e.g. elbow arrow -> line
  */
-const convertElementType = (
+function convertElementType(
   element: Exclude<NonDeletedExcalidrawElement, ExcalidrawSelectionElement>,
   targetType: ConvertibleTypes,
   app: DiagramEditor,
-): NonDeletedExcalidrawElement => {
+): NonDeletedExcalidrawElement {
   if (!isValidConversion(element.type, targetType)) {
     if (!isProdEnv()) {
       throw Error(`Invalid conversion from ${element.type} to ${targetType}.`);
@@ -586,12 +594,12 @@ const convertElementType = (
   assertNever(targetType, `unhandled conversion type: ${String(targetType)}`);
 
   return element;
-};
+}
 
-const isValidConversion = (
+function isValidConversion(
   startType: string,
   targetType: ConvertibleTypes,
-): startType is ConvertibleTypes => {
+): startType is ConvertibleTypes {
   if (isConvertibleGenericType(startType) && isConvertibleGenericType(targetType)) {
     return true;
   }
@@ -603,4 +611,4 @@ const isValidConversion = (
   // NOTE: add more conversions when needed
 
   return false;
-};
+}

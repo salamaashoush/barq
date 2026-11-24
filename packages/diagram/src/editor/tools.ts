@@ -42,14 +42,16 @@ export const TOGGLE_TOOLS: readonly (ToolType | "custom")[] = (
   Object.keys(TOOLS) as EditorToolType[]
 ).filter((type) => (TOOLS[type] as ToolConfig).toggle === true);
 
-export const isEditorTool = (type: string): type is EditorToolType => Object.hasOwn(TOOLS, type);
+export function isEditorTool(type: string): type is EditorToolType {
+  return Object.hasOwn(TOOLS, type);
+}
 
 /** The tool a key (without modifiers but shift) activates, or `null`. */
-export const findToolByKey = (
+export function findToolByKey(
   key: string,
   state: Pick<AppState, "preferredSelectionTool">,
   shiftKey = false,
-): EditorToolType | null => {
+): EditorToolType | null {
   // a capital letter without shift is CapsLock
   const lowerKey = key.toLowerCase();
   for (const type of Object.keys(TOOLS) as EditorToolType[]) {
@@ -68,4 +70,4 @@ export const findToolByKey = (
     }
   }
   return null;
-};
+}

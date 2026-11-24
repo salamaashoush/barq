@@ -27,6 +27,7 @@ import type { CaptureUpdateActionType } from "@excalidraw/element";
 
 import type { AppState, InteractiveCanvasAppState } from "../types.ts";
 import type { DiagramEditor } from "./editor.ts";
+import type { Coords } from "../types.ts";
 
 export const selectGroupsForSelectedElements = (function () {
   type SelectGroupsReturnType = Pick<
@@ -38,12 +39,12 @@ export const selectGroupsForSelectedElements = (function () {
   let lastElements: readonly NonDeletedExcalidrawElement[] | null = null;
   let lastReturnValue: SelectGroupsReturnType | null = null;
 
-  const _selectGroups = (
+  function _selectGroups(
     selectedElements: readonly NonDeletedExcalidrawElement[],
     elements: readonly NonDeletedExcalidrawElement[],
     appState: Pick<AppState, "selectedElementIds" | "editingGroupId">,
     prevAppState: InteractiveCanvasAppState,
-  ): SelectGroupsReturnType => {
+  ): SelectGroupsReturnType {
     if (
       lastReturnValue !== undefined &&
       elements === lastElements &&
@@ -117,13 +118,13 @@ export const selectGroupsForSelectedElements = (function () {
     };
 
     return lastReturnValue;
-  };
+  }
 
   /**
    * When you select an element, you often want to actually select the whole group it's in, unless
    * you're currently editing that group.
    */
-  const select = (
+  function select(
     appState: Pick<AppState, "selectedElementIds" | "editingGroupId">,
     elements: readonly NonDeletedExcalidrawElement[],
     prevAppState: InteractiveCanvasAppState,
@@ -134,7 +135,7 @@ export const selectGroupsForSelectedElements = (function () {
     app: Pick<DiagramEditor, "scene"> | null,
   ): Mutable<
     Pick<InteractiveCanvasAppState, "selectedGroupIds" | "editingGroupId" | "selectedElementIds">
-  > => {
+  > {
     const selectedElements = app
       ? app.scene.getSelectedElements({
           selectedElementIds: appState.selectedElementIds,
@@ -152,7 +153,7 @@ export const selectGroupsForSelectedElements = (function () {
     }
 
     return _selectGroups(selectedElements, elements, appState, prevAppState);
-  };
+  }
 
   select.clearCache = () => {
     lastElements = null;
@@ -167,11 +168,11 @@ export const selectGroupsForSelectedElements = (function () {
  * The line editor of a lone selected line or arrow (with its labels) —
  * the current one if it's already that element's.
  */
-const getLinearElementEditor = (
+function getLinearElementEditor(
   targetElements: readonly NonDeletedExcalidrawElement[],
   allElements: readonly NonDeletedExcalidrawElement[],
   appState: Pick<AppState, "selectedLinearElement">,
-) => {
+) {
   const linears = targetElements.filter(isLinearElement);
   const [linear] = linears;
   if (linears.length === 1 && linear) {
@@ -190,35 +191,37 @@ const getLinearElementEditor = (
   }
 
   return null;
-};
+}
 
 /**
  * The selection state with the line editor of what it selects: of a lone
  * selected line or arrow, once groups are expanded.
  */
-const withLinearElementEditor = <T extends Pick<AppState, "selectedElementIds">>(
+function withLinearElementEditor<T extends Pick<AppState, "selectedElementIds">>(
   selectionState: T,
   allElements: readonly NonDeletedExcalidrawElement[],
   appState: Pick<AppState, "selectedLinearElement">,
-) => ({
-  ...selectionState,
-  selectedLinearElement: getLinearElementEditor(
-    getSelectedElements(allElements, selectionState),
-    allElements,
-    appState,
-  ),
-});
+) {
+  return {
+    ...selectionState,
+    selectedLinearElement: getLinearElementEditor(
+      getSelectedElements(allElements, selectionState),
+      allElements,
+      appState,
+    ),
+  };
+}
 
 /**
  * The frames that selecting the elements selects through their groups (those
  * selected along with them, within the edited group) — of the elements
  * neither frames nor in frames.
  */
-const getFramesSelectedViaGroups = (
+function getFramesSelectedViaGroups(
   elements: readonly ExcalidrawElement[],
   allElements: readonly NonDeletedExcalidrawElement[],
   editingGroupId: AppState["editingGroupId"],
-) => {
+) {
   const groupIds = new Set<GroupId>();
   for (const element of elements) {
     if (isFrameLikeElement(element) || element.frameId) {
@@ -245,7 +248,7 @@ const getFramesSelectedViaGroups = (
     }
   }
   return frameIds;
-};
+}
 
 /**
  * The selection of the given elements alone, with their groups (within the
@@ -257,12 +260,12 @@ const getFramesSelectedViaGroups = (
  *   editing their innermost group if they share it (and no group otherwise)
  *   — as Ctrl+click does
  */
-export const getSelectionStateForElements = (
+export function getSelectionStateForElements(
   targetElements: readonly NonDeletedExcalidrawElement[],
   allElements: readonly NonDeletedExcalidrawElement[],
   appState: AppState,
   deep = false,
-) => {
+) {
   const elements = targetElements.filter((element) => !isBoundToContainer(element));
 
   let editingGroupId = appState.editingGroupId;
@@ -304,7 +307,7 @@ export const getSelectionStateForElements = (
     allElements,
     appState,
   );
-};
+}
 
 /**
  * The selection with the given elements added, with their groups (within the
@@ -318,11 +321,11 @@ export const getSelectionStateForElements = (
  *
  * @param allElements the (non-deleted) elements the selection is in
  */
-export const getSelectionStateAddingElements = (
+export function getSelectionStateAddingElements(
   targetElements: readonly NonDeletedExcalidrawElement[],
   allElements: readonly NonDeletedExcalidrawElement[],
   appState: AppState,
-) => {
+) {
   const elements = targetElements.filter((element) => !isBoundToContainer(element));
 
   let nextSelectedElementIds: Record<ExcalidrawElement["id"], true> = {
@@ -411,7 +414,7 @@ export const getSelectionStateAddingElements = (
     allElements,
     appState,
   );
-};
+}
 
 /**
  * The selection with the given elements removed — with the group they're
@@ -420,11 +423,11 @@ export const getSelectionStateAddingElements = (
  *
  * @param allElements the (non-deleted) elements the selection is in
  */
-export const getSelectionStateRemovingElements = (
+export function getSelectionStateRemovingElements(
   targetElements: readonly NonDeletedExcalidrawElement[],
   allElements: readonly NonDeletedExcalidrawElement[],
   appState: AppState,
-) => {
+) {
   const nextSelectedElementIds = { ...appState.selectedElementIds };
   const removedGroupIds = new Set<string>();
   for (const element of targetElements) {
@@ -455,7 +458,7 @@ export const getSelectionStateRemovingElements = (
     allElements,
     appState,
   );
-};
+}
 
 /** elements, or their ids — one or many */
 export type ElementsOrIds =
@@ -657,7 +660,7 @@ export class EditorSelection {
   }
 
   isHittingCommonBoundingBoxOfSelectedElements(
-    point: Readonly<{ x: number; y: number }>,
+    point: Readonly<Coords>,
     selectedElements: readonly ExcalidrawElement[],
   ): boolean {
     if (selectedElements.length < 2) {

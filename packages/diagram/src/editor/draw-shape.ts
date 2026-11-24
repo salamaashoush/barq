@@ -25,6 +25,7 @@ import { AnimatedTrail } from "./trails.ts";
 
 import type { AppState } from "../types.ts";
 import type { DiagramEditor } from "./editor.ts";
+import type { Coords } from "../types.ts";
 
 /** The autoshape tool's stroke: a soft trail the sketch is recognised from. */
 export class DrawShapeTrail extends AnimatedTrail {
@@ -79,7 +80,7 @@ export class DrawShape {
     return this.gestureInProgress;
   }
 
-  public handlePointerDown(origin: { x: number; y: number }, finalize: () => void): void {
+  public handlePointerDown(origin: Coords, finalize: () => void): void {
     if (this.gestureInProgress) {
       finalize();
     }
@@ -88,7 +89,7 @@ export class DrawShape {
   }
 
   /** Whether the move went to the sketch. */
-  public handlePointerMove(pointerCoords: { x: number; y: number }): boolean {
+  public handlePointerMove(pointerCoords: Coords): boolean {
     return convertToShapeHandlePointerMoveFromPointerDown(this.app.elementApp, pointerCoords);
   }
 

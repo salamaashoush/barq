@@ -70,10 +70,10 @@ export const actionSelectAll: Action = {
   keyTest: (event) => event[KEYS.CTRL_OR_CMD] && event.key.toLowerCase() === KEYS.A,
 };
 
-const getNextActiveTool = (
+function getNextActiveTool(
   appState: Readonly<AppState>,
   app: DiagramEditor,
-): AppState["activeTool"] => {
+): AppState["activeTool"] {
   if (TOGGLE_TOOLS.includes(appState.activeTool.type)) {
     return updateActiveTool(appState, {
       ...(appState.activeTool.lastActiveTool ?? { type: app.state.preferredSelectionTool.type }),
@@ -81,14 +81,14 @@ const getNextActiveTool = (
     });
   }
   return updateActiveTool(appState, { type: app.state.preferredSelectionTool.type });
-};
+}
 
 /** The group around the edited one, which Escape steps out to. */
-const getParentEditingGroupId = (
+function getParentEditingGroupId(
   appState: Readonly<AppState>,
   app: DiagramEditor,
   selectedElementIds: AppState["selectedElementIds"],
-): GroupId | null => {
+): GroupId | null {
   const { editingGroupId } = appState;
   if (!editingGroupId) {
     return null;
@@ -110,7 +110,7 @@ const getParentEditingGroupId = (
     }
   }
   return null;
-};
+}
 
 /**
  * Escape: steps out of the edited group, selecting it, or clears the

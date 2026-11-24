@@ -11,12 +11,13 @@ import type { ExcalidrawNonSelectionElement, NonDeleted } from "@excalidraw/elem
 
 import type { ToolType } from "../types.ts";
 import type { DiagramEditor } from "./editor.ts";
+import type { Coords } from "../types.ts";
 
 type DraggedElement = NonDeleted<ExcalidrawNonSelectionElement>;
 
 interface DraggableTool {
   /** The element a drop creates, centred on the pointer. */
-  createElement: (editor: DiagramEditor, center: { x: number; y: number }) => DraggedElement;
+  createElement: (editor: DiagramEditor, center: Coords) => DraggedElement;
   /** What the tool does once its element is on the canvas. */
   onDrop?: (editor: DiagramEditor, element: DraggedElement) => void;
 }
@@ -60,6 +61,12 @@ const DRAGGABLE_TOOLS: Partial<Record<ToolType, DraggableTool>> = {
 /** How translucent the preview is while it is dragged. */
 export const TOOL_DRAG_PREVIEW_OPACITY = 0.5;
 
+interface ArmedDrag {
+  pointerId: number;
+  clientX: number;
+  clientY: number;
+}
+
 /**
  * Dragging a tool out of the toolbar onto the canvas, Excalidraw's
  * `AppToolDrag`. The button arms on pointer down and the drag starts once the
@@ -71,7 +78,7 @@ export class ToolDrag {
   /** The element under the pointer while dragging. */
   public preview: DraggedElement | null = null;
 
-  private armed: { pointerId: number; clientX: number; clientY: number } | null = null;
+  private armed: ArmedDrag | null = null;
   private tool: DraggableTool | null = null;
   private readonly listeners: (() => void)[] = [];
 

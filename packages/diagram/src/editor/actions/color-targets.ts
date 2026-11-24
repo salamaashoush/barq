@@ -73,9 +73,12 @@ const DEFAULT_KEYS: Record<ColorProperty, Record<"regular" | "sticky", ColorDefa
 // their keys
 const STICKY_NOTE_EXCLUDED_COLORS: readonly string[] = [COLOR_PALETTE.transparent];
 
-const isStickyNoteColorTarget = (element: ExcalidrawElement, elementsMap: ElementsMap) =>
-  isStickyNoteElement(element) ||
-  (isTextElement(element) && isStickyNoteBoundText(element, elementsMap));
+function isStickyNoteColorTarget(element: ExcalidrawElement, elementsMap: ElementsMap) {
+  return (
+    isStickyNoteElement(element) ||
+    (isTextElement(element) && isStickyNoteBoundText(element, elementsMap))
+  );
+}
 
 /**
  * Who a stroke or background pick colours: the selected elements that take
@@ -84,16 +87,17 @@ const isStickyNoteColorTarget = (element: ExcalidrawElement, elementsMap: Elemen
  * domain. Excalidraw's `resolveColorTarget`, resolved from the state the
  * action runs against.
  */
-export const resolveColorTarget = (
+export function resolveColorTarget(
   appState: ColorTargetAppState,
   elements: readonly ExcalidrawElement[],
   property: ColorProperty,
-): ColorTarget => {
+): ColorTarget {
   const selecting = hasSelectedIds(appState.selectedElementIds);
   const elementsMap =
     selecting || appState.editingTextElement ? arrayToMap(elements) : new Map<string, never>();
-  const supports = (element: ExcalidrawElement) =>
-    property === "strokeColor" ? hasStrokeColor(element.type) : hasBackground(element.type);
+  function supports(element: ExcalidrawElement) {
+    return property === "strokeColor" ? hasStrokeColor(element.type) : hasBackground(element.type);
+  }
 
   const targets: ExcalidrawElement[] = selecting
     ? getSelectedElements(elements, appState, {
@@ -152,13 +156,13 @@ export const resolveColorTarget = (
           : "elementBackground",
     excludedColors: kind === "sticky" ? STICKY_NOTE_EXCLUDED_COLORS : undefined,
   };
-};
+}
 
 /** The current-item defaults a picked colour sets. */
-export const getColorTargetAppStateUpdates = (
+export function getColorTargetAppStateUpdates(
   target: ColorTarget,
   color: string,
-): Partial<AppState> => {
+): Partial<AppState> {
   const updates: Partial<AppState> = {};
   for (const key of target.appStateKeys) {
     updates[key] =
@@ -169,4 +173,4 @@ export const getColorTargetAppStateUpdates = (
           : color;
   }
   return updates;
-};
+}

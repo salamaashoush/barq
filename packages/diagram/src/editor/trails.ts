@@ -54,13 +54,16 @@ import { getLassoSelectedElementIds } from "./lasso/utils.ts";
 import type { AppState, Collaborator, SocketId } from "../types.ts";
 import type { DiagramEditor } from "./editor.ts";
 
+interface LaserPointerModule {
+  default: typeof laserPointer;
+}
+
 // The package's `main` is a CommonJS build whose exports Node cannot read by
 // name, and Node is what loads it when a dev server renders on the server:
 // `import { LaserPointer }` failed there and took the page down. Its `module`
 // build, which a bundler reads, has the named export and no default.
 const LaserPointer: typeof laserPointer.LaserPointer =
-  laserPointer.LaserPointer ??
-  (laserPointer as unknown as { default: typeof laserPointer }).default.LaserPointer;
+  laserPointer.LaserPointer ?? (laserPointer as unknown as LaserPointerModule).default.LaserPointer;
 type LaserPointer = laserPointer.LaserPointer;
 
 export interface AnimatedTrailOptions {
@@ -224,13 +227,13 @@ export class AnimatedTrail {
   }
 }
 
-const decay =
-  (decayTime: number, decayLength: number): LaserPointerOptions["sizeMapping"] =>
-  (c) => {
+function decay(decayTime: number, decayLength: number): LaserPointerOptions["sizeMapping"] {
+  return (c) => {
     const t = Math.max(0, 1 - (performance.now() - c.pressure) / decayTime);
     const l = (decayLength - Math.min(decayLength, c.totalLength - c.currentIndex)) / decayLength;
     return Math.min(easeOut(l), easeOut(t));
   };
+}
 
 /** The laser pointer's trails: the user's own, and each collaborator's. */
 export class LaserTrails {
@@ -320,12 +323,12 @@ export class LaserTrails {
 }
 
 /** Whether the eraser's last segment touches the element. */
-const eraserTest = (
+function eraserTest(
   pathSegment: LineSegment<GlobalPoint>,
   element: ExcalidrawElement,
   elementsMap: ElementsMap,
   zoom: number,
-): boolean => {
+): boolean {
   const lastPoint = pathSegment[1];
   // a cheap bounds test first
   const threshold = isFreeDrawElement(element) ? 15 : element.strokeWidth / 2;
@@ -396,7 +399,7 @@ const eraserTest = (
         true,
       ).length > 0)
   );
-};
+}
 
 /**
  * The eraser's trail, and what it marks for erasure as it goes: whole groups,

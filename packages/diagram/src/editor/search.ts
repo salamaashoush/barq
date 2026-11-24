@@ -16,27 +16,29 @@ import type {
 
 import type { SearchMatch } from "../types.ts";
 
+export interface MatchPreview {
+  indexInSearchQuery: number;
+  previewText: string;
+  moreBefore: boolean;
+  moreAfter: boolean;
+}
+
 /** One match of the search on the canvas, Excalidraw's `SearchMatchItem`. */
 export interface SearchMatchItem {
   element: ExcalidrawTextElement | ExcalidrawFrameLikeElement;
   searchQuery: string;
   /** Where the match starts in the element's text. */
   index: number;
-  preview: {
-    indexInSearchQuery: number;
-    previewText: string;
-    moreBefore: boolean;
-    moreAfter: boolean;
-  };
+  preview: MatchPreview;
   matchedLines: SearchMatch["matchedLines"];
 }
 
 /** The words around a match, as the search's result list shows them. */
-export const getMatchPreview = (
+export function getMatchPreview(
   text: string,
   index: number,
   searchQuery: string,
-): SearchMatchItem["preview"] => {
+): SearchMatchItem["preview"] {
   const WORDS_BEFORE = 2;
   const WORDS_AFTER = 5;
   const MAX_ALLOWED_CHARS = 20;
@@ -69,10 +71,10 @@ export const getMatchPreview = (
     moreBefore: startWordIndex > 0,
     moreAfter: wordsAfter.length > numberOfWordsToTake,
   };
-};
+}
 
 /** The wrapped text with the spaces wrapping took out put back, so its offsets match the original's. */
-const normalizeWrappedText = (wrappedText: string, originalText: string): string => {
+function normalizeWrappedText(wrappedText: string, originalText: string): string {
   const wrappedLines = wrappedText.split("\n");
   const normalizedLines: string[] = [];
   let originalIndex = 0;
@@ -89,22 +91,24 @@ const normalizeWrappedText = (wrappedText: string, originalText: string): string
     originalIndex += currentLine.length;
   }
   return normalizedLines.join("\n");
-};
+}
+
+interface LineIndexRange {
+  line: string;
+  startIndex: number;
+  endIndex: number;
+  lineNumber: number;
+}
 
 /** Where a match in a text element sits, line by line, from the element's corner. */
-const getMatchedLines = (
+function getMatchedLines(
   textElement: ExcalidrawTextElement,
   searchQuery: string,
   index: number,
   renderEnvironment?: RenderEnvironment,
-): SearchMatch["matchedLines"] => {
+): SearchMatch["matchedLines"] {
   const lines = normalizeWrappedText(textElement.text, textElement.originalText).split("\n");
-  const lineIndexRanges: {
-    line: string;
-    startIndex: number;
-    endIndex: number;
-    lineNumber: number;
-  }[] = [];
+  const lineIndexRanges: LineIndexRange[] = [];
   let currentIndex = 0;
   let lineNumber = 0;
   for (const line of lines) {
@@ -157,16 +161,16 @@ const getMatchedLines = (
     }
   }
   return matchedLines;
-};
+}
 
 /** Where a match in a frame's name sits, above the frame, at the zoom it is drawn at. */
-const getMatchInFrame = (
+function getMatchInFrame(
   frame: ExcalidrawFrameLikeElement,
   searchQuery: string,
   index: number,
   zoomValue: number,
   renderEnvironment?: RenderEnvironment,
-): SearchMatch["matchedLines"] => {
+): SearchMatch["matchedLines"] {
   const text = frame.name ?? getDefaultFrameName(frame);
   const matchedText = text.slice(index, index + searchQuery.length);
   const prefixText = text.slice(0, index);
@@ -191,25 +195,33 @@ const getMatchInFrame = (
       showOnCanvas: offsetX + width <= frame.width * zoomValue,
     },
   ];
-};
+}
 
-const escapeSpecialCharacters = (text: string): string =>
-  text.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&");
+function escapeSpecialCharacters(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&");
+}
+
+export interface SearchSceneOptions {
+  zoom: number;
+  visibleIds: ReadonlySet<string>;
+  renderEnvironment?: RenderEnvironment;
+}
+
+export interface SearchSceneResult {
+  matches: SearchMatchItem[];
+  focusIndex: number | null;
+}
 
 /**
  * Every match of `searchQuery` on the canvas, case-insensitive: frames' names
  * first, then texts, each top to bottom. `focusIndex` is the first match in
  * view, which the search starts from.
  */
-export const searchScene = (
+export function searchScene(
   searchQuery: string,
   elements: readonly NonDeletedExcalidrawElement[],
-  opts: {
-    zoom: number;
-    visibleIds: ReadonlySet<string>;
-    renderEnvironment?: RenderEnvironment;
-  },
-): { matches: SearchMatchItem[]; focusIndex: number | null } => {
+  opts: SearchSceneOptions,
+): SearchSceneResult {
   if (!searchQuery) {
     return { matches: [], focusIndex: null };
   }
@@ -265,10 +277,10 @@ export const searchScene = (
   const matches = [...frameMatches, ...textMatches];
   const focusIndex = matches.findIndex((match) => opts.visibleIds.has(match.element.id));
   return { matches, focusIndex };
-};
+}
 
 /** The match as a text element of its own, to bring into view. */
-export const matchAsElement = (match: SearchMatchItem): ExcalidrawTextElement => {
+export function matchAsElement(match: SearchMatchItem): ExcalidrawTextElement {
   const [line] = match.matchedLines;
   return newTextElement({
     text: match.searchQuery,
@@ -281,4 +293,4 @@ export const matchAsElement = (match: SearchMatchItem): ExcalidrawTextElement =>
       ? FONT_FAMILY.Assistant
       : match.element.fontFamily,
   });
-};
+}

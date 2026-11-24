@@ -26,7 +26,7 @@ type FlowchartOperation =
   | { type: "committed"; nodes: PendingExcalidrawElements }
   | { type: "navigationEnded" };
 
-const getLinkDirectionFromKey = (key: string): LinkDirection => {
+function getLinkDirectionFromKey(key: string): LinkDirection {
   switch (key) {
     case KEYS.ARROW_UP:
       return "up";
@@ -37,7 +37,7 @@ const getLinkDirectionFromKey = (key: string): LinkDirection => {
     default:
       return "right";
   }
-};
+}
 
 /**
  * Flowcharts from the keyboard, Excalidraw's `AppFlowchart`: Ctrl with an
