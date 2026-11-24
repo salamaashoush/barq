@@ -1,0 +1,29 @@
+{
+  "commandPalette": {
+    "categories": {
+      "app": "التطبيق",
+      "export": "التصدير",
+      "editor": "المحرر",
+      "tools": "الأدوات",
+      "elements": "العناصر",
+      "links": "الروابط",
+      "library": "المكتبة"
+    }
+  },
+  "editorA11y": {
+    "label": "محرر المخططات",
+    "roleDescription": "محرر مخططات",
+    "text": "النص",
+    "frameName": "اسم الإطار",
+    "keyboardHelp": {
+      "tools": "الأدوات: V للتحديد، R للمستطيل، D للمعين، O للقطع الناقص، A للسهم، L للخط، P للرسم الحر، T للنص، E للممحاة، K لمؤشر الليزر، H لليد.",
+      "draw": "يرسم Enter شكل الأداة، ويُبقي Q الأداة نشطة.",
+      "navigate": "يتنقل Tab وShift+Tab بين العناصر، ويحدد Ctrl+A الكل، ويلغي Escape التحديد.",
+      "edit": "تحرك مفاتيح الأسهم التحديد، وأبعد مع Shift. يحذف Delete، ويكرر Ctrl+D، ويجمع Ctrl+G ويفك Ctrl+Shift+G التجميع، ويقفل Ctrl+Shift+L، ويعيد Ctrl+[ وCtrl+] ترتيب الطبقات.",
+      "align": "يحاذي Ctrl+Shift مع مفتاح سهم، ويوسّط Alt+Shift+H وAlt+Shift+V، ويوزع Alt+H وAlt+V.",
+      "text": "يكتب Enter أو النقر المزدوج داخل الشكل أو يحرر النص؛ وينهيه Escape أو Ctrl+Enter. يغيّر Ctrl+Shift+< و> حجم النص، ويجعله Alt+W يتمدد أو يلتف.",
+      "view": "يتراجع Ctrl+Z، ويعيد Ctrl+Shift+Z. يكبّر Ctrl+= ويصغّر Ctrl+-، ويلائم Shift+1، ويُظهر Ctrl+' الشبكة، ويمرر Page Up وPage Down.",
+      "help": "يسرد ? كل الاختصارات، ويفتح Ctrl+/ لوحة الأوامر."
+    }
+  }
+}

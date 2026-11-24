@@ -136,18 +136,16 @@ const SVG_LAYER_STYLE =
 
 const TEXT_EDITOR_STYLE = "position:absolute;inset:0;overflow:hidden;pointer-events:none";
 
-const KEYBOARD_HELP =
-  "Tools: V select, R rectangle, D diamond, O ellipse, A arrow, L line, P draw, T text, " +
-  "E eraser, K laser pointer, H hand; " +
-  "Enter draws the tool's shape, Q keeps the tool. " +
-  "Tab and Shift+Tab move through the elements, Ctrl+A selects all, Escape deselects. " +
-  "Arrow keys move the selection, with Shift further. Delete removes, Ctrl+D duplicates, " +
-  "Ctrl+G groups and Ctrl+Shift+G ungroups, Ctrl+Shift+L locks, Ctrl+[ and Ctrl+] restack. " +
-  "Ctrl+Shift with an arrow key aligns, Alt+Shift+H and Alt+Shift+V centre, Alt+H and Alt+V distribute. " +
-  "Enter or a double-click writes in a shape or edits text; Escape or Ctrl+Enter ends it. " +
-  "Ctrl+Shift+< and > size text, Alt+W makes it grow or wrap. " +
-  "Ctrl+Z undoes, Ctrl+Shift+Z redoes. Ctrl+= and Ctrl+- zoom, Shift+1 fits, Ctrl+' shows the grid, " +
-  "Page Up and Page Down scroll.";
+const KEYBOARD_HELP = [
+  "editorA11y.keyboardHelp.tools",
+  "editorA11y.keyboardHelp.draw",
+  "editorA11y.keyboardHelp.navigate",
+  "editorA11y.keyboardHelp.edit",
+  "editorA11y.keyboardHelp.align",
+  "editorA11y.keyboardHelp.text",
+  "editorA11y.keyboardHelp.view",
+  "editorA11y.keyboardHelp.help",
+] as const;
 
 function schemeTheme(): () => Theme | undefined {
   try {
@@ -339,8 +337,8 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
       ref={attach}
       class={props.class}
       role="application"
-      aria-roledescription="diagram editor"
-      aria-label={props.label ?? "Diagram editor"}
+      aria-roledescription={ui.t("editorA11y.roleDescription")}
+      aria-label={props.label ?? ui.t("editorA11y.label")}
       aria-describedby={helpId}
       aria-keyshortcuts="V R D O A L P H Q Enter Tab Escape Delete Control+A Control+D Control+G Control+Shift+G Control+Z Control+Shift+Z"
       tabIndex={0}
@@ -364,7 +362,7 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
             >
               <Show when={frame().editing} fallback={frame().title}>
                 <input
-                  aria-label="Frame name"
+                  aria-label={ui.t("editorA11y.frameName")}
                   value={frame().title}
                   size={frame().title.length + 1}
                   dir="auto"
@@ -393,7 +391,7 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
         <Show when={textEdit()} keyed>
           {(request) => (
             <textarea
-              aria-label="Text"
+              aria-label={ui.t("editorA11y.text")}
               style="pointer-events:auto"
               ref={(textarea: HTMLTextAreaElement) =>
                 // attached once in its box, which clips it with the canvases
@@ -404,7 +402,7 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
         </Show>
       </div>
       <div id={helpId} style={SR_ONLY}>
-        {KEYBOARD_HELP}
+        {KEYBOARD_HELP.map((key) => ui.t(key)).join(" ")}
       </div>
       <div role="status" aria-live="polite" aria-atomic="true" style={SR_ONLY}>
         {announcement()}

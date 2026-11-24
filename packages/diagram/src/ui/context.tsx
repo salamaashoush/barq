@@ -43,8 +43,8 @@ export interface DiagramUI {
   isEnabled: <T>(action: Action<T>) => boolean;
   /** An action's name in a menu, translated. */
   label: <T>(action: Action<T>) => string;
-  /** A shortcut, written for the platform, in the language's key names. */
-  shortcut: (name: ShortcutName) => string;
+  /** A shortcut, written for the platform, in the language's key names; `index` picks one of several. */
+  shortcut: (name: ShortcutName, index?: number) => string;
   /** Gives the keyboard back to the canvas. */
   focusCanvas: () => void;
 }
@@ -105,7 +105,8 @@ export const createDiagramUI = (options: {
     },
     // the platform's key names once the page runs: a server knows no platform,
     // and the markup it sent is what hydrates
-    shortcut: (name) => getShortcutFromShortcutName(name, t, 0, store.ready() && isDarwin),
+    shortcut: (name, index = 0) =>
+      getShortcutFromShortcutName(name, t, index, store.ready() && isDarwin),
     focusCanvas: () => store.editor?.focusContainer(),
   };
 };

@@ -106,7 +106,8 @@ embeds.
 - done: Excalidraw's 57 locale files, `langCode`, right to left for Arabic, Persian and Hebrew (`panels.test.tsx`, `diagram-editor.test.tsx`)
 - done: `UIOptions` canvas actions and image tool, `renderTopLeftUI`, `renderTopRightUI`, `renderCustomStats`, `aiEnabled`, `excalidrawAPI` (`panels.test.tsx`)
 - done: server render of the UI in its language, hydrated without a mismatch (`diagram-editor.test.tsx`)
-- pending (3b): help and shortcuts dialog; the help button and `?` open `openDialog: help`, which nothing draws yet
+- done: help dialog with every shortcut, from `?`, the help button and the main menu (`dialogs.test.tsx`)
+- done: barq's own strings (the palette's categories, the keyboard help) in `locales/barq/`, laid over Excalidraw's locale as it loads (`dialogs.test.tsx`)
 - pending (3b): image export and JSON export dialogs, save and load (`saveToActiveFile`, `saveFileToDisk`, `loadScene`); their menu entries are disabled
 - pending (3b): library sidebar, its trigger, add to library (context menu and palette)
 - pending (3b): search menu (Ctrl+F); its menu entry is disabled

@@ -4,12 +4,32 @@
  * `en` is bundled as the fallback every other language falls back to, key by
  * key, as Excalidraw's `t` does. Each of the others is its own chunk, fetched
  * the first time its code is asked for and kept for the life of the page.
+ *
+ * `locales/barq/` holds the strings barq's UI has and Excalidraw's does not,
+ * under the same paths: a language's file there is laid over its Excalidraw
+ * file as it loads, so they translate the same way, key by key.
  */
 
-import fallbackLangData from "./locales/en.json";
+import excalidrawEnglish from "./locales/en.json";
+import barqEnglish from "./locales/barq/en.json";
 import percentages from "./locales/percentages.json";
 
 export type LocaleData = Record<string, unknown>;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** `base` with `overlay`'s keys added, nested objects merged. */
+const overlay = (base: LocaleData, over: LocaleData): LocaleData => {
+  const merged: LocaleData = { ...base };
+  for (const [key, value] of Object.entries(over)) {
+    const current = merged[key];
+    merged[key] = isRecord(current) && isRecord(value) ? overlay(current, value) : value;
+  }
+  return merged;
+};
+
+const fallbackLangData = overlay(excalidrawEnglish, barqEnglish);
 
 type NestedKeyOf<T, Prefix extends string = ""> = {
   [K in keyof T & string]: T[K] extends string
@@ -19,8 +39,10 @@ type NestedKeyOf<T, Prefix extends string = ""> = {
       : never;
 }[keyof T & string];
 
-/** A path into Excalidraw's English locale, such as `"toolBar.rectangle"`. */
-export type TranslationKey = NestedKeyOf<typeof fallbackLangData>;
+/** A path into the English locale, Excalidraw's or barq's, such as `"toolBar.rectangle"`. */
+export type TranslationKey =
+  | NestedKeyOf<typeof excalidrawEnglish>
+  | NestedKeyOf<typeof barqEnglish>;
 
 export interface Language {
   code: string;
@@ -149,6 +171,11 @@ const LOADERS: Record<string, () => Promise<{ default: LocaleData }>> = {
   "zh-TW": () => import("./locales/zh-TW.json"),
 };
 
+// barq's own strings in a language, laid over Excalidraw's as it loads
+const OVERLAY_LOADERS: Record<string, () => Promise<{ default: LocaleData }>> = {
+  "ar-SA": () => import("./locales/barq/ar-SA.json"),
+};
+
 /** Every language code there is a locale file for, `en` first. */
 export const localeCodes: readonly string[] = ["en", ...Object.keys(LOADERS)];
 
@@ -174,11 +201,13 @@ export const loadLanguage = (code: string): Promise<LocaleData> => {
   if (inFlight) return inFlight;
   const loader = LOADERS[code];
   if (!loader) return Promise.resolve(fallbackLangData);
-  const promise = loader().then(
-    (module) => {
-      loaded.set(code, module.default);
+  const own = OVERLAY_LOADERS[code];
+  const promise = Promise.all([loader(), own?.()]).then(
+    ([module, barq]) => {
+      const data = barq ? overlay(module.default, barq.default) : module.default;
+      loaded.set(code, data);
       pending.delete(code);
-      return module.default;
+      return data;
     },
     (error: unknown) => {
       pending.delete(code);

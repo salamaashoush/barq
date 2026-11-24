@@ -19,11 +19,8 @@ import type { ActionName, Action } from "../editor/types.ts";
 import type { TranslationKey } from "../i18n.ts";
 import type { ToolType } from "../types.ts";
 
-/**
- * Excalidraw's categories, in its order. It names them in English in every
- * language; its locale has no strings for them.
- */
-const CATEGORIES = ["App", "Export", "Editor", "Tools", "Elements", "Links"] as const;
+/** Excalidraw's categories, in its order, named from barq's strings: Excalidraw's locale has none. */
+const CATEGORIES = ["app", "export", "editor", "tools", "elements", "links"] as const;
 type Category = (typeof CATEGORIES)[number];
 
 interface Command {
@@ -157,7 +154,7 @@ export function CommandPalette() {
           (tool) => ({
             key: `tool:${tool}`,
             label: capitalizeString(t(`toolBar.${tool}` as TranslationKey)),
-            category: "Tools" as const,
+            category: "tools" as const,
             shortcut: "",
             keywords: ["toolbar"],
             perform: () => {
@@ -169,7 +166,7 @@ export function CommandPalette() {
       tools.push({
         key: "tool:lock",
         label: t("toolBar.lock"),
-        category: "Tools",
+        category: "tools",
         shortcut: ui.shortcut("toolLock"),
         keywords: [],
         perform: () => editor.batch(() => editor.toggleLock()),
@@ -180,24 +177,24 @@ export function CommandPalette() {
       editor.batch(() => editor.setState({ openPopup: popup }));
     const panelShown = editor.scene.getSelectedElements(editor.state).length > 0;
     const extra: (Command | null)[] = [
-      fromAction(actionToggleTheme as Action, "App"),
-      fromAction(actionClearCanvas, "Editor"),
+      fromAction(actionToggleTheme as Action, "app"),
+      fromAction(actionClearCanvas, "editor"),
       ui.isEnabled(actionChangeViewBackgroundColor)
         ? {
             key: "action:changeViewBackgroundColor",
             label: t("labels.canvasBackground"),
-            category: "Editor",
+            category: "editor",
             shortcut: "",
             keywords: ["color", "background"],
             perform: openPopup("canvasBackground"),
           }
         : null,
-      fromAction(actionToggleShapeSwitch, "Elements"),
+      fromAction(actionToggleShapeSwitch, "elements"),
       panelShown && !viewMode
         ? {
             key: "action:changeStrokeColor",
             label: t("labels.changeStroke"),
-            category: "Elements",
+            category: "elements",
             shortcut: "",
             keywords: ["color", "outline"],
             perform: openPopup("elementStroke"),
@@ -207,7 +204,7 @@ export function CommandPalette() {
         ? {
             key: "action:changeBackgroundColor",
             label: t("labels.changeBackground"),
-            category: "Elements",
+            category: "elements",
             shortcut: "",
             keywords: ["color", "fill"],
             perform: openPopup("elementBackground"),
@@ -216,11 +213,11 @@ export function CommandPalette() {
     ];
     return [
       ...extra.filter((command): command is Command => command !== null),
-      ...named(EXPORT_ACTIONS, "Export"),
-      ...named(EDITOR_ACTIONS, "Editor"),
+      ...named(EXPORT_ACTIONS, "export"),
+      ...named(EDITOR_ACTIONS, "editor"),
       ...tools,
-      ...named(ELEMENT_ACTIONS, "Elements"),
-      ...named(LINK_ACTIONS, "Links"),
+      ...named(ELEMENT_ACTIONS, "elements"),
+      ...named(LINK_ACTIONS, "links"),
     ];
   });
 
@@ -249,7 +246,7 @@ export function CommandPalette() {
         <CommandEmpty>{t("commandPalette.search.noMatch")}</CommandEmpty>
         <For each={grouped()}>
           {(group: { category: Category; commands: Command[] }) => (
-            <CommandGroup heading={group.category}>
+            <CommandGroup heading={t(`commandPalette.categories.${group.category}`)}>
               <For each={group.commands}>
                 {(command: Command) => (
                   <CommandItem

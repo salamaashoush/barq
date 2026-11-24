@@ -202,7 +202,7 @@ the theme and the toast stack the editor's toasts go to.
     renderTopRightUI={() => <Button onPress={share}>Share</Button>}
     excalidrawAPI={(api) => (editor = api)}
   />
-</ArcProvider>;
+</ArcProvider>
 ```
 
 - the toolbar, top centre: every tool with its key, the tool lock, the hand

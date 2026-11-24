@@ -1,0 +1,29 @@
+{
+  "commandPalette": {
+    "categories": {
+      "app": "App",
+      "export": "Export",
+      "editor": "Editor",
+      "tools": "Tools",
+      "elements": "Elements",
+      "links": "Links",
+      "library": "Library"
+    }
+  },
+  "editorA11y": {
+    "label": "Diagram editor",
+    "roleDescription": "diagram editor",
+    "text": "Text",
+    "frameName": "Frame name",
+    "keyboardHelp": {
+      "tools": "Tools: V select, R rectangle, D diamond, O ellipse, A arrow, L line, P draw, T text, E eraser, K laser pointer, H hand.",
+      "draw": "Enter draws the tool's shape, Q keeps the tool.",
+      "navigate": "Tab and Shift+Tab move through the elements, Ctrl+A selects all, Escape deselects.",
+      "edit": "Arrow keys move the selection, with Shift further. Delete removes, Ctrl+D duplicates, Ctrl+G groups and Ctrl+Shift+G ungroups, Ctrl+Shift+L locks, Ctrl+[ and Ctrl+] restack.",
+      "align": "Ctrl+Shift with an arrow key aligns, Alt+Shift+H and Alt+Shift+V centre, Alt+H and Alt+V distribute.",
+      "text": "Enter or a double-click writes in a shape or edits text; Escape or Ctrl+Enter ends it. Ctrl+Shift+< and > size text, Alt+W makes it grow or wrap.",
+      "view": "Ctrl+Z undoes, Ctrl+Shift+Z redoes. Ctrl+= and Ctrl+- zoom, Shift+1 fits, Ctrl+' shows the grid, Page Up and Page Down scroll.",
+      "help": "? lists every shortcut, Ctrl+/ opens the command palette."
+    }
+  }
+}
