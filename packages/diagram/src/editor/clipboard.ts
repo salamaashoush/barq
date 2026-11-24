@@ -18,6 +18,7 @@ import {
   wrapText,
 } from "@excalidraw/element";
 
+import { errorMessageOf, type LocalizedMessage } from "../i18n.ts";
 import type { ExcalidrawElementSkeleton } from "@excalidraw/element";
 import type { ExcalidrawElement, ExcalidrawTextElement } from "@excalidraw/element/types";
 
@@ -223,12 +224,10 @@ export class EditorClipboard {
             return {
               errorMessage:
                 cause === "FETCH_ERROR"
-                  ? "Couldn't fetch the image."
+                  ? ({ key: "errors.failedToFetchImage" } satisfies LocalizedMessage)
                   : cause === "UNSUPPORTED"
-                    ? "Unsupported file type."
-                    : error instanceof Error
-                      ? error.message
-                      : String(error),
+                    ? ({ key: "errors.unsupportedFileType" } satisfies LocalizedMessage)
+                    : errorMessageOf(error, { key: "errors.imageInsertError" }),
             };
           }
         }),

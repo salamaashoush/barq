@@ -246,3 +246,21 @@ export const isLocalizedMessage = (value: unknown): value is LocalizedMessage =>
   typeof value === "object" &&
   value !== null &&
   typeof (value as { key?: unknown }).key === "string";
+
+/** An error whose message the UI shows translated: its own message is the English. */
+export class LocalizedError extends Error {
+  public constructor(
+    public readonly localized: LocalizedMessage,
+    options?: ErrorOptions,
+  ) {
+    super(translate(undefined, localized.key, localized.replacement), options);
+  }
+}
+
+/** What an error puts in `errorMessage`: a translatable message when it has one. */
+export const errorMessageOf = (error: unknown, fallback: LocalizedMessage): unknown =>
+  error instanceof LocalizedError
+    ? error.localized
+    : error instanceof Error && error.message
+      ? error.message
+      : fallback;

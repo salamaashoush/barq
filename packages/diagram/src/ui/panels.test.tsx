@@ -332,3 +332,41 @@ describe("keyboard", () => {
     expect(document.activeElement?.getAttribute("role")).toBe("application");
   });
 });
+
+describe("performance", () => {
+  test("a drag, a pan and a zoom change nothing in the UI but the zoom level", async () => {
+    const { api, region } = await mountEditor({
+      initialData: { elements: [rectangle("A", 100, 100), rectangle("B", 300, 100)] },
+    });
+    await select(api, "A");
+    const ui = region.querySelector("[data-testid=editor-ui]")!;
+    const changed: string[] = [];
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        const target =
+          record.target instanceof Element ? record.target : record.target.parentElement;
+        changed.push(target?.getAttribute("data-testid") ?? target?.tagName ?? "?");
+      }
+    });
+    observer.observe(ui, { subtree: true, childList: true, attributes: true, characterData: true });
+
+    pointer(canvas(region), "pointerdown", 150, 150);
+    for (let step = 1; step <= 20; step++) {
+      pointer(canvas(region), "pointermove", 150 + step * 5, 150 + step * 3);
+      await settle();
+    }
+    pointer(canvas(region), "pointerup", 250, 210);
+    await settle();
+    expect(element(api, "A").x).toBe(200);
+    for (let step = 0; step < 10; step++) {
+      region.dispatchEvent(
+        new WheelEvent("wheel", { deltaX: 10, deltaY: 10, bubbles: true, cancelable: true }),
+      );
+      await settle();
+    }
+    observer.disconnect();
+    // the pointer up commits the move: the hint and the history may follow once
+    expect(changed.length).toBeLessThanOrEqual(4);
+    expect(changed).not.toContain("properties-panel");
+  });
+});

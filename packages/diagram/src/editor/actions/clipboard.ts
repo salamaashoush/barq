@@ -28,6 +28,7 @@ import {
   readSystemClipboard,
 } from "../../clipboard.ts";
 import { canvasToBlob } from "../../data/blob.ts";
+import { errorMessageOf } from "../../i18n.ts";
 import { exportScene, getExportConfigFromAppState } from "../../scene/export.ts";
 import { actionDeleteSelected } from "./delete.ts";
 
@@ -56,7 +57,7 @@ export const actionCopy: Action<ClipboardEvent> = {
         captureUpdate: CaptureUpdateAction.EVENTUALLY,
         appState: {
           ...appState,
-          errorMessage: error instanceof Error ? error.message : String(error),
+          errorMessage: errorMessageOf(error, { key: "errors.copyToSystemClipboardFailed" }),
         },
       };
     }
@@ -81,7 +82,7 @@ export const actionPaste: Action = {
       }
       return {
         captureUpdate: CaptureUpdateAction.EVENTUALLY,
-        appState: { ...appState, errorMessage: "Couldn't read the clipboard." },
+        appState: { ...appState, errorMessage: { key: "errors.asyncPasteFailedOnRead" } },
       };
     }
     try {
@@ -90,7 +91,7 @@ export const actionPaste: Action = {
       console.error(error);
       return {
         captureUpdate: CaptureUpdateAction.EVENTUALLY,
-        appState: { ...appState, errorMessage: "Couldn't paste what the clipboard holds." },
+        appState: { ...appState, errorMessage: { key: "errors.asyncPasteFailedOnParse" } },
       };
     }
     return { captureUpdate: CaptureUpdateAction.EVENTUALLY };
@@ -183,8 +184,8 @@ const copyAsImage = async (
         ...appState,
         errorMessage:
           error instanceof Error && error.name === "CANVAS_POSSIBLY_TOO_BIG"
-            ? "The canvas is too big to copy."
-            : "Couldn't copy to the clipboard.",
+            ? { key: "canvasError.canvasTooBig" }
+            : { key: "errors.copyToSystemClipboardFailed" },
       },
       captureUpdate: CaptureUpdateAction.EVENTUALLY,
     };

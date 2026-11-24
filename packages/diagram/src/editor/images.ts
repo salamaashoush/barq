@@ -18,6 +18,7 @@ import {
 } from "@excalidraw/element";
 import { getRenderEnvironment } from "@excalidraw/element/renderEnvironment";
 
+import { LocalizedError, errorMessageOf } from "../i18n.ts";
 import type {
   ExcalidrawImageElement,
   FileId,
@@ -233,7 +234,7 @@ export class EditorImages {
     const app = this.app;
     let imageFile = file;
     if (!isSupportedImageFile(imageFile)) {
-      throw new Error("Unsupported file type.");
+      throw new LocalizedError({ key: "errors.unsupportedFileType" });
     }
     const mimeType = imageFile.type as BinaryFileData["mimeType"];
     app.cursor.set("wait");
@@ -243,14 +244,14 @@ export class EditorImages {
         imageFile = SVGStringToFile(normalizeSVG(await imageFile.text()), imageFile.name);
       } catch (error) {
         console.warn(error);
-        throw new Error("Couldn't insert the SVG image.", { cause: error });
+        throw new LocalizedError({ key: "errors.svgImageInsertError" }, { cause: error });
       }
     }
 
     // the id is the original's digest, before any resizing, so it is portable
     const fileId = await generateIdFromFile(imageFile);
     if (!fileId) {
-      throw new Error("Couldn't insert the image.");
+      throw new LocalizedError({ key: "errors.imageInsertError" });
     }
 
     const existingFileData = app.getFiles()[fileId];
@@ -320,12 +321,12 @@ export class EditorImages {
       placeholders.map(async (placeholder, index) => {
         try {
           const file = imageFiles[index];
-          if (!file) throw new Error("Couldn't insert the image.");
+          if (!file) throw new LocalizedError({ key: "errors.imageInsertError" });
           return await this.initializeImage(placeholder, await normalizeFile(file));
         } catch (error) {
           app.batch(() =>
             app.setState({
-              errorMessage: error instanceof Error ? error.message : "Couldn't insert the image.",
+              errorMessage: errorMessageOf(error, { key: "errors.imageInsertError" }),
             }),
           );
           const removed: ExcalidrawImageElement = placeholder;

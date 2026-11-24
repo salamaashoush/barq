@@ -168,6 +168,7 @@ import type { GlobalPoint, LocalPoint } from "@excalidraw/math";
 
 import { getDefaultAppState, isEraserActive, isHandToolActive } from "../app-state.ts";
 import { parseDataTransferEvent } from "../clipboard.ts";
+import { errorMessageOf } from "../i18n.ts";
 import {
   dataURLToString,
   getDataURL_sync,
@@ -1067,7 +1068,9 @@ export class DiagramEditor {
           // an image without a scene is inserted as an image
           if (!(error instanceof Error) || error.name !== "EncodingError") {
             if (!(error instanceof ImageSceneDataError)) {
-              this.batch(() => this.setState({ errorMessage: "Couldn't load an invalid file." }));
+              this.batch(() =>
+                this.setState({ errorMessage: { key: "alerts.couldNotLoadInvalidFile" } }),
+              );
               return;
             }
           }
@@ -1123,7 +1126,9 @@ export class DiagramEditor {
         }
       } catch (error) {
         this.batch(() =>
-          this.setState({ errorMessage: error instanceof Error ? error.message : String(error) }),
+          this.setState({
+            errorMessage: errorMessageOf(error, { key: "errors.importLibraryError" }),
+          }),
         );
       }
       return;
@@ -1155,8 +1160,8 @@ export class DiagramEditor {
           isLoading: false,
           errorMessage:
             error instanceof ImageSceneDataError
-              ? "Couldn't restore the scene from this image file."
-              : "Couldn't load an invalid file.",
+              ? { key: "alerts.cannotRestoreFromImage" }
+              : { key: "alerts.couldNotLoadInvalidFile" },
         }),
       );
       return;
