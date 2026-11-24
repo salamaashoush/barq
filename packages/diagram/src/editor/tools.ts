@@ -5,6 +5,8 @@ import type { AppState, ToolType } from "../types.ts";
 interface ToolConfig {
   /** Letter shortcuts, the first the one to show. */
   letterKey?: string | readonly string[];
+  /** Whether `letterKey` needs Shift held. */
+  shiftKey?: boolean;
   numericKey?: string;
   /** Activating the tool again switches back to the tool before it. */
   toggle?: boolean;
@@ -21,6 +23,9 @@ export const TOOLS = {
   line: { letterKey: KEYS.L, numericKey: KEYS["6"] },
   freedraw: { letterKey: [KEYS.P, KEYS.X], numericKey: KEYS["7"] },
   text: { letterKey: KEYS.T, numericKey: KEYS["8"] },
+  eraser: { letterKey: KEYS.E, numericKey: KEYS["0"], toggle: true },
+  laser: { letterKey: KEYS.K },
+  lasso: {},
 } satisfies Partial<Record<ToolType, ToolConfig>>;
 
 export type EditorToolType = keyof typeof TOOLS;
@@ -37,19 +42,21 @@ export const findToolByKey = (
   key: string,
   state: Pick<AppState, "preferredSelectionTool">,
   shiftKey = false,
-): EditorToolType | "lasso" | null => {
-  if (shiftKey) {
-    return null;
-  }
+): EditorToolType | null => {
   // a capital letter without shift is CapsLock
   const lowerKey = key.toLowerCase();
   for (const type of Object.keys(TOOLS) as EditorToolType[]) {
-    const { letterKey, numericKey } = TOOLS[type] as ToolConfig;
+    const { letterKey, numericKey, shiftKey: requiresShift } = TOOLS[type] as ToolConfig;
+    // shift-bound tools need shift, the others its absence
+    if (shiftKey !== Boolean(requiresShift)) {
+      continue;
+    }
     if (
       (numericKey !== undefined && key === numericKey) ||
       (letterKey !== undefined &&
         (typeof letterKey === "string" ? letterKey === lowerKey : letterKey.includes(lowerKey)))
     ) {
+      // the selection key picks the preferred selection tool, lasso or not
       return type === "selection" ? state.preferredSelectionTool.type : type;
     }
   }

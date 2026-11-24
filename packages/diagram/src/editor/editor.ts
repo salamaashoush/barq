@@ -75,6 +75,7 @@ import {
   isArrowElement,
   isBindableElement,
   isBindingElement,
+  isBoundToContainer,
   isBindingElementType,
   isBindingEnabled,
   isBoundToElementNotIn,
@@ -95,6 +96,8 @@ import {
   LinearElementEditor,
   makeNextSelectedElementIds,
   maybeHandleArrowPointlikeDrag,
+  mutateElement,
+  newElementWith,
   moveFrameArrows,
   newArrowElement,
   newElement,
@@ -133,7 +136,7 @@ import type {
 } from "@excalidraw/element/types";
 import type { GlobalPoint, LocalPoint } from "@excalidraw/math";
 
-import { getDefaultAppState, isHandToolActive } from "../app-state.ts";
+import { getDefaultAppState, isEraserActive, isHandToolActive } from "../app-state.ts";
 import { restore } from "../data/restore.ts";
 import { fitToContent, wheelNavigation, type ViewportState } from "../navigation.ts";
 import { getSelectionColor } from "../renderer/helpers.ts";
@@ -166,6 +169,7 @@ import {
   snapNewElement,
 } from "./snapping.ts";
 import { EditorText } from "./text.ts";
+import { EraserTrail, LaserTrails, LassoTrail } from "./trails.ts";
 import { TextTool } from "./text-tool.ts";
 import { TOGGLE_TOOLS, findToolByKey, isEditorTool } from "./tools.ts";
 import { patchLinearEditor } from "./linear.ts";
@@ -238,6 +242,8 @@ export interface DiagramEditorOptions {
   newElementCanvas: HTMLCanvasElement;
   /** The selection, handles and hover, above both; it takes the pointer. */
   interactiveCanvas: HTMLCanvasElement;
+  /** An SVG over the canvases the laser, eraser and lasso draw their trails in. */
+  svgLayer?: SVGSVGElement | null;
   initialData?: DiagramScene | null;
   theme?: Theme;
   viewModeEnabled?: boolean;
@@ -301,6 +307,11 @@ export class DiagramEditor {
   public readonly cursor: EditorCursor;
   public readonly text: EditorText;
   public readonly textTool: TextTool;
+  public readonly laserTrails: LaserTrails;
+  public readonly eraserTrail: EraserTrail;
+  public readonly lassoTrail: LassoTrail;
+  /** What the eraser has marked, erased on pointer up. */
+  public elementsPendingErasure = new Set<ExcalidrawElement["id"]>();
   public readonly renderEnvironment: RenderEnvironment;
   public readonly ownerWindow: Window & typeof globalThis;
   public readonly ownerDocument: Document;
@@ -474,6 +485,14 @@ export class DiagramEditor {
     this.cursor = new EditorCursor(interactiveCanvas, () => this.state);
     this.text = new EditorText(this);
     this.textTool = new TextTool(this);
+    this.laserTrails = new LaserTrails(this);
+    this.eraserTrail = new EraserTrail(this);
+    this.lassoTrail = new LassoTrail(this);
+    if (options.svgLayer) {
+      this.laserTrails.start(options.svgLayer);
+      this.eraserTrail.start(options.svgLayer);
+      this.lassoTrail.start(options.svgLayer);
+    }
 
     this.api = {
       updateScene: (scene) => this.batch(() => this.updateScene(scene)),
@@ -591,6 +610,25 @@ export class DiagramEditor {
     return this.destroyed;
   }
 
+  /** The elements in the viewport, as the canvas draws them. */
+  public get visibleElements(): readonly NonDeletedExcalidrawElement[] {
+    const { state } = this;
+    return this.sceneCanvas.renderer.getRenderableElements({
+      zoom: state.zoom,
+      offsetLeft: state.offsetLeft,
+      offsetTop: state.offsetTop,
+      scrollX: state.scrollX,
+      scrollY: state.scrollY,
+      height: state.height,
+      width: state.width,
+      editingTextElement: state.editingTextElement,
+      newElement: state.newElement,
+      selectedElements: this.scene.getSelectedElements(state),
+      selectedElementsAreBeingDragged: state.selectedElementsAreBeingDragged,
+      frameToHighlight: state.frameToHighlight,
+    }).visibleElements;
+  }
+
   /** The scene's fonts, which load the faces text needs and measure it again. */
   public get fonts() {
     return this.sceneCanvas.fonts;
@@ -703,6 +741,22 @@ export class DiagramEditor {
     ) {
       // the scene moved under a still pointer
       this.textTool.refresh();
+    }
+    if (isEraserActive(prevState) && !isEraserActive(this.state)) {
+      this.eraserTrail.endPath();
+    }
+    if (Object.keys(this.state.selectedElementIds).length && isEraserActive(this.state)) {
+      this._state = {
+        ...this._state,
+        activeTool: updateActiveTool(this._state, { type: "selection" }),
+      };
+      this.committedState = this._state;
+    }
+    if (
+      (this.state.activeTool.type === "eraser" || this.state.activeTool.type === "laser") &&
+      prevState.theme !== this.state.theme
+    ) {
+      this.cursor.applyForTool();
     }
     if (this.state.viewModeEnabled && !prevState.viewModeEnabled) {
       // nothing is edited in view mode
@@ -914,6 +968,20 @@ export class DiagramEditor {
         this.store.scheduleCapture();
       }
 
+      if (nextActiveTool.type === "lasso") {
+        return {
+          ...commonResets,
+          activeTool: nextActiveTool,
+          ...(opts.keepSelection
+            ? {}
+            : {
+                selectedElementIds: makeNextSelectedElementIds({}, prevState),
+                selectedGroupIds: makeNextSelectedElementIds({}, prevState),
+                editingGroupId: null,
+                multiElement: null,
+              }),
+        };
+      }
       if (nextActiveTool.type !== "selection") {
         return {
           ...commonResets,
@@ -1492,6 +1560,27 @@ export class DiagramEditor {
       cursorButton: "down",
     });
 
+    // a pen's eraser end erases for as long as it is pressed
+    if (event.button === POINTER_BUTTON.ERASER && this.state.activeTool.type !== "eraser") {
+      this.setState({
+        activeTool: updateActiveTool(this.state, {
+          type: "eraser",
+          lastActiveTool: this.state.activeTool,
+        }),
+      });
+      const offUp = this.addWindowListener("pointerup", () => {
+        offUp();
+        if (isEraserActive(this.state)) {
+          this.setState({
+            activeTool: updateActiveTool(this.state, {
+              ...(this.state.activeTool.lastActiveTool ?? { type: "selection" }),
+              lastActiveTool: null,
+            }),
+          });
+        }
+      });
+    }
+
     // only the main button and touch
     if (event.button !== POINTER_BUTTON.MAIN && event.button !== POINTER_BUTTON.TOUCH) {
       return;
@@ -1528,13 +1617,49 @@ export class DiagramEditor {
     const allowOnPointerDown =
       !this.state.penMode ||
       event.pointerType !== "touch" ||
-      this.state.activeTool.type === "selection";
+      this.state.activeTool.type === "selection" ||
+      this.state.activeTool.type === "lasso" ||
+      this.state.activeTool.type === "text" ||
+      this.state.activeTool.type === "image";
     if (!allowOnPointerDown) {
       return;
     }
 
     const toolType = this.state.activeTool.type;
-    if (toolType === "text") {
+    if (toolType === "lasso") {
+      const hitSelectedElement =
+        pointerDownState.hit.element &&
+        this.selection.isASelectedElement(pointerDownState.hit.element);
+      const shouldForceLassoReselect =
+        event.altKey && event[KEYS.CTRL_OR_CMD] && !pointerDownState.resize.handleType;
+      const shouldStartLassoSelection =
+        shouldForceLassoReselect ||
+        (!pointerDownState.hit.hasHitCommonBoundingBoxOfSelectedElements &&
+          !pointerDownState.resize.handleType &&
+          !hitSelectedElement);
+      if (shouldStartLassoSelection) {
+        if (!this.lassoTrail.hasCurrentTrail) {
+          this.lassoTrail.startPath(
+            pointerDownState.origin.x,
+            pointerDownState.origin.y,
+            event.shiftKey,
+          );
+        }
+        // on a desktop the lasso's press does not drag what it selects
+        pointerDownState.drag.blockDragging = this.editorInterface.formFactor === "desktop";
+      }
+      // on a phone or tablet, a hit is selected at once
+      if (
+        this.editorInterface.formFactor !== "desktop" &&
+        pointerDownState.hit.element &&
+        !hitSelectedElement
+      ) {
+        this.selection.add(pointerDownState.hit.element);
+        pointerDownState.hit.wasAddedToSelection = true;
+      }
+    } else if (toolType === "laser") {
+      this.laserTrails.startPath(pointerDownState.lastCoords.x, pointerDownState.lastCoords.y);
+    } else if (toolType === "text") {
       this.textTool.handlePointerDown(event, pointerDownState);
     } else if (toolType === "arrow" || toolType === "line") {
       this.handleLinearElementOnPointerDown(event, toolType, pointerDownState);
@@ -1547,6 +1672,10 @@ export class DiagramEditor {
       toolType === "selection"
     ) {
       this.createGenericElementOnPointerDown(toolType, pointerDownState);
+    }
+
+    if (toolType === "eraser") {
+      this.eraserTrail.startPath(pointerDownState.lastCoords.x, pointerDownState.lastCoords.y);
     }
 
     const onPointerMove = (moveEvent: PointerEvent) =>
@@ -2183,6 +2312,15 @@ export class DiagramEditor {
       return;
     }
 
+    if (isEraserActive(this.state)) {
+      this.handleEraser(event, pointerCoords);
+      return;
+    }
+
+    if (this.state.activeTool.type === "laser") {
+      this.laserTrails.addPointToPath(pointerCoords.x, pointerCoords.y);
+    }
+
     const [gridX, gridY] = getGridPoint(
       pointerCoords.x,
       pointerCoords.y,
@@ -2292,7 +2430,33 @@ export class DiagramEditor {
     if (this.state.selectionElement) {
       pointerDownState.lastCoords.x = pointerCoords.x;
       pointerDownState.lastCoords.y = pointerCoords.y;
+      if (event.altKey) {
+        // alt turns the box into a lasso
+        this.setActiveTool(
+          { type: "lasso", fromSelection: true },
+          { keepSelection: event.shiftKey },
+        );
+        this.lassoTrail.startPath(
+          pointerDownState.origin.x,
+          pointerDownState.origin.y,
+          event.shiftKey,
+        );
+        this.setState({ selectionElement: null });
+        return;
+      }
       this.maybeDragNewGenericElement(pointerDownState, event);
+    } else if (this.state.activeTool.type === "lasso") {
+      if (!event.altKey && this.state.activeTool.fromSelection) {
+        // letting go of alt turns it back into a box
+        this.setActiveTool({ type: "selection" });
+        this.createGenericElementOnPointerDown("selection", pointerDownState);
+        pointerDownState.lastCoords.x = pointerCoords.x;
+        pointerDownState.lastCoords.y = pointerCoords.y;
+        this.maybeDragNewGenericElement(pointerDownState, event);
+        this.lassoTrail.endPath();
+      } else {
+        this.lassoTrail.addPointToLasso(pointerCoords.x, pointerCoords.y, event.shiftKey);
+      }
     } else {
       // read on every move: the state changes under the drag
       const newElementBeingDrawn = this.state.newElement;
@@ -2429,6 +2593,9 @@ export class DiagramEditor {
       snapLines: updateStable(prevState.snapLines, []),
       originSnapOffset: null,
     }));
+
+    // the tool may have changed mid-drag: the lasso always ends
+    this.lassoTrail.endPath();
 
     SnapCache.setReferenceSnapPoints(null);
     SnapCache.setVisibleGaps(null);
@@ -2754,6 +2921,30 @@ export class DiagramEditor {
       }
     }
 
+    const pointerStart = this.lastPointerDownEvent;
+    const pointerEnd = this.lastPointerUpEvent ?? this.lastPointerMoveEvent;
+    if (isEraserActive(this.state) && pointerStart && pointerEnd) {
+      this.eraserTrail.endPath();
+      const draggedDistance = pointDistance(
+        pointFrom(pointerStart.clientX, pointerStart.clientY),
+        pointFrom(pointerEnd.clientX, pointerEnd.clientY),
+      );
+      // a click erases what it is on
+      if (draggedDistance === 0) {
+        const scenePointer = viewportCoordsToSceneCoords(
+          { clientX: pointerEnd.clientX, clientY: pointerEnd.clientY },
+          this.state,
+        );
+        for (const hit of this.getElementsAtPosition(scenePointer.x, scenePointer.y)) {
+          this.elementsPendingErasure.add(hit.id);
+        }
+      }
+      this.eraseElements();
+      return;
+    } else if (this.elementsPendingErasure.size) {
+      this.restoreReadyToEraseElements();
+    }
+
     if (this.selectionTool.handleSelectionOnPointerUp(childEvent, pointerDownState, elementsMap)) {
       return;
     }
@@ -2819,7 +3010,19 @@ export class DiagramEditor {
       );
     }
 
-    if (childEvent.type === "pointerup" && !this.isToolLocked() && activeTool.type !== "freedraw") {
+    if (activeTool.type === "laser") {
+      this.laserTrails.endPath();
+      return;
+    }
+
+    if (
+      // only a genuine pointer up is a click of the tool, which reverts it
+      childEvent.type === "pointerup" &&
+      !this.isToolLocked() &&
+      activeTool.type !== "freedraw" &&
+      // a lasso reverts only when it came from the selection tool's alt
+      (activeTool.type !== "lasso" || activeTool.fromSelection)
+    ) {
       this.setState(
         (prevState) => ({
           newElement: null,
@@ -3387,6 +3590,69 @@ export class DiagramEditor {
     });
   }
 
+  /** Marks what the eraser's trail touches, faded until the pointer goes up. */
+  private handleEraser(event: PointerEvent, scenePointer: { x: number; y: number }): void {
+    this.elementsPendingErasure = new Set(
+      this.eraserTrail.addPointToPathAndErase(scenePointer.x, scenePointer.y, event.altKey),
+    );
+    this.scheduleRender(true);
+  }
+
+  private restoreReadyToEraseElements(): void {
+    this.elementsPendingErasure = new Set();
+    this.scheduleRender(true);
+  }
+
+  /** Deletes what the eraser marked, a frame's children and labels with it, in one undo step. */
+  private eraseElements(): void {
+    let didChange = false;
+    const elementsMap = this.scene.getElementsMapIncludingDeleted();
+    // a binding is held on both ends: the deleted one goes from the other
+    for (const id of this.elementsPendingErasure) {
+      const element = this.scene.getElement(id);
+      if (isBindingElement(element)) {
+        for (const binding of [element.startBinding, element.endBinding]) {
+          const bindable = binding ? this.scene.getElement(binding.elementId) : null;
+          if (bindable) {
+            mutateElement(bindable, elementsMap, {
+              boundElements: (bindable.boundElements ?? []).filter(
+                (bound) => bound.id !== element.id,
+              ),
+            });
+          }
+        }
+      } else if (isBindableElement(element)) {
+        for (const bound of element.boundElements ?? []) {
+          if (bound.type !== "arrow") continue;
+          const arrow = this.scene.getElement(bound.id);
+          if (!arrow || !isArrowElement(arrow)) continue;
+          if (arrow.startBinding?.elementId === element.id) {
+            mutateElement(arrow, elementsMap, { startBinding: null });
+          }
+          if (arrow.endBinding?.elementId === element.id) {
+            mutateElement(arrow, elementsMap, { endBinding: null });
+          }
+        }
+      }
+    }
+    const elements = this.scene.getElementsIncludingDeleted().map((element) => {
+      if (
+        this.elementsPendingErasure.has(element.id) ||
+        (element.frameId && this.elementsPendingErasure.has(element.frameId)) ||
+        (isBoundToContainer(element) && this.elementsPendingErasure.has(element.containerId))
+      ) {
+        didChange = true;
+        return newElementWith(element, { isDeleted: true });
+      }
+      return element;
+    });
+    this.elementsPendingErasure = new Set();
+    if (didChange) {
+      this.store.scheduleCapture();
+      this.scene.replaceAllElements(elements);
+    }
+  }
+
   /**
    * An alt-press on the text being edited, once it ended the edit, is handed
    * to the canvas, for the text to be alt-dragged (duplicated) as on it.
@@ -3454,7 +3720,7 @@ export class DiagramEditor {
       !this.state.selectedElementsAreBeingDragged
     ) {
       const shape = findToolByKey(event.key, this.state, event.shiftKey);
-      if (this.state.viewModeEnabled && shape !== "hand") {
+      if (this.state.viewModeEnabled && shape !== "hand" && shape !== "laser") {
         return;
       }
       if (shape) {
@@ -3469,7 +3735,11 @@ export class DiagramEditor {
                   : ARROW_TYPE.sharp,
           });
         }
-        this.setActiveTool({ type: shape }, { toggle: true });
+        if (shape === "lasso" && this.state.activeTool.type === "laser") {
+          this.setActiveTool({ type: this.state.preferredSelectionTool.type });
+        } else {
+          this.setActiveTool({ type: shape }, { toggle: true });
+        }
         event.stopPropagation();
         event.preventDefault();
         return;
@@ -3840,8 +4110,14 @@ export class DiagramEditor {
   // ---------------------------------------------------------------------------
   // rendering
 
-  /** Draws on the next frame; many calls in one frame draw once. */
-  public scheduleRender(): void {
+  /**
+   * Draws on the next frame; many calls in one frame draw once. `invalidate`
+   * redraws the scene too when nothing its key covers changed.
+   */
+  public scheduleRender(invalidate = false): void {
+    if (invalidate) {
+      this.lastStaticKey = null;
+    }
     if (this.frame !== null || this.destroyed) return;
     this.frame = this.ownerWindow.requestAnimationFrame((time) => {
       this.frame = null;
@@ -3881,6 +4157,7 @@ export class DiagramEditor {
       this.renderable = this.sceneCanvas.render(state, scale, {
         selectedElements,
         renderGrid: state.gridModeEnabled,
+        elementsPendingErasure: this.elementsPendingErasure,
       });
     }
     const renderable = this.renderable;
@@ -3962,6 +4239,9 @@ export class DiagramEditor {
     if (this.destroyed) return;
     this.maybeCleanupAfterMissingPointerUp(null);
     this.text.destroy();
+    this.laserTrails.stop();
+    this.eraserTrail.stop();
+    this.lassoTrail.stop();
     this.destroyed = true;
     if (this.frame !== null) this.ownerWindow.cancelAnimationFrame(this.frame);
     this.resize?.disconnect();

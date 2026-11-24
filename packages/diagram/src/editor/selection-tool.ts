@@ -319,6 +319,16 @@ export class SelectionTool {
           // == deep selection ==
           // on CMD/CTRL, drill down to hit element regardless of groups etc.
           if (event[KEYS.CTRL_OR_CMD]) {
+            if (event.altKey) {
+              // Ctrl+Alt starts a lasso instead
+              this.app.lassoTrail.startPath(
+                pointerDownState.origin.x,
+                pointerDownState.origin.y,
+                event.shiftKey,
+              );
+              this.app.setActiveTool({ type: "lasso", fromSelection: true });
+              return false;
+            }
             if (!this.app.state.selectedElementIds[hitElement.id]) {
               pointerDownState.hit.wasAddedToSelection = true;
             }
@@ -586,6 +596,26 @@ export class SelectionTool {
       // Marking that click was used for dragging to check
       // if elements should be deselected on pointerup
       pointerDownState.drag.hasOccurred = true;
+
+      // a lasso being drawn does not drag what it selects (on a phone or a
+      // tablet a hit element drags at once)
+      if (
+        this.app.state.activeTool.type === "lasso" &&
+        this.app.lassoTrail.hasCurrentTrail &&
+        !(this.app.editorInterface.formFactor !== "desktop" && pointerDownState.hit.element) &&
+        !this.app.state.activeTool.fromSelection
+      ) {
+        return true;
+      }
+
+      // dragging the selection with the lasso tool ends its trail
+      if (
+        this.app.state.activeTool.type === "lasso" &&
+        selectedElements.length > 0 &&
+        !this.app.state.activeTool.fromSelection
+      ) {
+        this.app.lassoTrail.endPath();
+      }
 
       // prevent dragging even if we're no longer holding cmd/ctrl otherwise
       // it would have weird results (stuff jumping all over the screen)

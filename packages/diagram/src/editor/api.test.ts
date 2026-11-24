@@ -65,7 +65,7 @@ describe("api", () => {
     const warn = console.warn;
     console.warn = () => {};
     try {
-      api.setActiveTool({ type: "laser" });
+      api.setActiveTool({ type: "embeddable" });
     } finally {
       console.warn = warn;
     }

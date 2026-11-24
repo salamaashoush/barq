@@ -83,13 +83,15 @@ export const renderEditor = ({
   const canvas = document.createElement("canvas");
   const newElementCanvas = document.createElement("canvas");
   const interactiveCanvas = document.createElement("canvas");
-  container.append(canvas, newElementCanvas, interactiveCanvas);
+  const svgLayer = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  container.append(canvas, newElementCanvas, interactiveCanvas, svgLayer);
   document.body.append(container);
   const editor = new DiagramEditor({
     container,
     canvas,
     newElementCanvas,
     interactiveCanvas,
+    svgLayer,
     ...options,
   });
   if (textEditor) {

@@ -105,7 +105,8 @@ What it does, and the keys Excalidraw gives each:
 
 - tools: selection `V` or `1`, rectangle `R` or `2`, diamond `D` or `3`,
   ellipse `O` or `4`, arrow `A` or `5` (again to change its kind), line `L`
-  or `6`, freedraw `P`, `X` or `7`, text `T` or `8`, hand `H`; `Q` keeps the tool after
+  or `6`, freedraw `P`, `X` or `7`, text `T` or `8`, eraser `E` or `0`,
+  laser pointer `K`, hand `H`; `Q` keeps the tool after
   drawing; shift draws equal sides and alt draws from the centre;
 - lines and arrows are drawn by dragging, or click by click and ended with
   Enter or Escape; a line closed on its first point becomes a polygon; Enter
@@ -133,6 +134,13 @@ What it does, and the keys Excalidraw gives each:
   from there, a drag with the text tool sets the width, and Alt+W toggles
   between the two; Ctrl+Shift+`<` and `>` size it; right-to-left lines and
   an IME's composition are the browser's own;
+- the eraser erases what its trail crosses when the pointer goes up (a
+  group whole, a shape with its label), alt taking back what it crosses
+  again, and a pen's eraser end erases too; the laser pointer draws a
+  fading trail, in view mode as well; the lasso selects what it encloses
+  (or crosses, in overlap mode), alt turns a box selection into one and
+  Ctrl+Alt on an element starts one; the trails are drawn in an SVG over
+  the canvases;
 - Ctrl+Z undoes, Ctrl+Shift+Z or Ctrl+Y redoes;
 - space-drag, the middle button and the hand tool pan; ctrl-wheel and a
   pinch zoom; Ctrl+`=`, `-` and `0` zoom, Shift+1 fits; Ctrl+`'` shows the
@@ -159,7 +167,8 @@ With nothing selected the arrow keys pan.
 
 `@barqjs/diagram/editor` exports the editor itself, `DiagramEditor`, which
 imports nothing of barq: give it a focusable container and three canvases
-(the scene, the element being drawn, and the selection on top) and it is the
+(the scene, the element being drawn, and the selection on top), and an SVG
+over them for the laser, eraser and lasso trails (`svgLayer`), and it is the
 same editor, with `api`, `state`, `onAnnounce` and `onTextEditRequest`. Its
 state changes at once; the store, history and `onChange` follow once per
 input event, and the canvases draw once a frame, so a drag mutates the

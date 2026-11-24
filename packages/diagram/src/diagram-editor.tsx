@@ -42,8 +42,12 @@ const SR_ONLY =
 
 const CANVAS_STYLE = "position:absolute;inset:0;display:block";
 
+const SVG_LAYER_STYLE =
+  "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible";
+
 const KEYBOARD_HELP =
-  "Tools: V select, R rectangle, D diamond, O ellipse, A arrow, L line, P draw, T text, H hand; " +
+  "Tools: V select, R rectangle, D diamond, O ellipse, A arrow, L line, P draw, T text, " +
+  "E eraser, K laser pointer, H hand; " +
   "Enter draws the tool's shape, Q keeps the tool. " +
   "Tab and Shift+Tab move through the elements, Ctrl+A selects all, Escape deselects. " +
   "Arrow keys move the selection, with Shift further. Delete removes, Ctrl+D duplicates, " +
@@ -97,6 +101,7 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
       canvas,
       newElementCanvas,
       interactiveCanvas,
+      svgLayer: host.querySelector("svg"),
       initialData: untrack(() => props.initialData),
       theme: untrack(theme),
       viewModeEnabled: untrack(() => props.viewModeEnabled),
@@ -172,6 +177,7 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
       <canvas aria-hidden="true" style={CANVAS_STYLE} />
       <canvas aria-hidden="true" style={`${CANVAS_STYLE};pointer-events:none`} />
       <canvas aria-hidden="true" style={CANVAS_STYLE} />
+      <svg aria-hidden="true" style={SVG_LAYER_STYLE} />
       <Show when={textEdit()} keyed>
         {(request) => (
           <textarea

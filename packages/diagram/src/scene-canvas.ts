@@ -22,6 +22,10 @@ import type { AppState, BinaryFiles, ImageCache } from "./types.ts";
 export interface SceneCanvasFrame {
   selectedElements: readonly NonDeletedExcalidrawElement[];
   renderGrid: boolean;
+  /** What the eraser has marked, drawn faded until it erases or lets go. */
+  elementsPendingErasure?: ReadonlySet<NonDeletedExcalidrawElement["id"]>;
+  /** The flowchart nodes a key press would add, drawn as a preview. */
+  pendingFlowchartNodes?: NonDeletedExcalidrawElement[] | null;
 }
 
 /** The elements a frame draws, which the editor's other layers draw from too. */
@@ -147,8 +151,8 @@ export class SceneCanvas {
         renderLinks: false,
         isExporting: false,
         embedsValidationStatus: new Map(),
-        elementsPendingErasure: new Set(),
-        pendingFlowchartNodes: null,
+        elementsPendingErasure: new Set(frame?.elementsPendingErasure),
+        pendingFlowchartNodes: frame?.pendingFlowchartNodes ?? null,
         theme: appState.theme,
       },
     });
