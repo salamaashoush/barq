@@ -67,6 +67,7 @@ import {
 import { useArcMessages } from "./messages.ts";
 import { EmptyState } from "./empty-state.tsx";
 import { maybeRouter } from "./link.ts";
+import { afterLayer } from "../lib/pseudo.ts";
 import { Pager } from "./pager.tsx";
 import { SelectionBar, type SelectionAction } from "./selection-bar.tsx";
 
@@ -304,7 +305,7 @@ export const dataTableStyles = variants({
       },
     ),
     checkbox: arc({ paddingInlineEnd: "0px" }),
-    resizer: arc({
+    resizer: arc(afterLayer, {
       position: "absolute",
       insetBlock: "0px",
       insetInlineEnd: "0px",
@@ -312,8 +313,6 @@ export const dataTableStyles = variants({
       cursor: "col-resize",
       touchAction: "none",
       "::after": {
-        content: '""',
-        position: "absolute",
         insetBlock: "25%",
         insetInlineEnd: "0px",
         width: "1px",

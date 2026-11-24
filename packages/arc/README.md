@@ -554,6 +554,13 @@ import { ResponsiveTabs } from "@barqjs/arc";
 - `StatGroup`: `StatCard`s read together, two across a narrow container,
   three across a middling one and `columns` across a wide one; `joined` draws
   them as one strip with a rule between each, `separate` as cards apart.
+- `Tile`: a card for one thing in a collection, with an `eyebrow`, a title, a
+  `description`, a `footer`, `actions` and `media` on top or at the start,
+  full bleed. With `href` or `onPress` its title is the link or the button,
+  stretched over the whole tile so a screen reader hears one name while the
+  `actions` stay controls of their own; with `selected` a checkbox named by
+  the title holds the choice and a press anywhere on the tile toggles it.
+  (ui's `Card` is the plain container.)
 
 ## Inputs and pickers
 
