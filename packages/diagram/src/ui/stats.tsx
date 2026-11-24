@@ -29,8 +29,11 @@ import { degreesToRadians, pointFrom, pointRotateRads, radiansToDegrees } from "
 import { actionToggleStats } from "../editor/actions/toggles.ts";
 import { getNormalizedGridStep } from "../scene/normalize.ts";
 import { useDiagramUI } from "./context.tsx";
+import { gap, glyph, interaction, layout, space, type } from "@barqjs/arc/style";
+import { tokens } from "@barqjs/ui/theme/tokens";
+
 import { diagramLayer as d } from "./layer.ts";
-import { iconButton, panel, textInput } from "./styles.ts";
+import { bare, captionHeading, grid, iconButton, panel, textInput } from "./styles.ts";
 
 import type {
   ExcalidrawElement,
@@ -42,49 +45,39 @@ import type { AppState } from "../types.ts";
 import type { Degrees } from "@excalidraw/math";
 import type { DiagramEditor } from "../editor/editor.ts";
 
-const header = d({ display: "flex", alignItems: "center", justifyContent: "space-between" });
-const title = d({ margin: "0", fontSize: "var(--text-sm)", fontWeight: "600" });
-const subtitle = d({
-  margin: "0",
-  fontSize: "var(--text-xs)",
-  color: "var(--muted-foreground)",
-});
-const grid = d({
-  display: "grid",
+const header = d(layout.row, layout.between);
+const title = d(type.sm, type.strong, layout.flush);
+const subtitle = d(type.meta, layout.flush);
+
+const statsGrid = d(grid, {
   gridTemplateColumns: "1fr 1fr",
-  gap: "6px 8px",
+  rowGap: space.x1_5,
+  columnGap: space.x2,
   alignItems: "center",
-  "& dt": { color: "var(--muted-foreground)" },
+  "& dt": { color: tokens.mutedForeground },
   "& dd": { margin: "0", textAlign: "end", fontVariantNumeric: "tabular-nums" },
 });
-const fields = d({ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" });
-const field = d({
-  display: "flex",
-  alignItems: "center",
-  gap: "6px",
-  "& span": { minWidth: "14px", color: "var(--muted-foreground)" },
+const fields = d(grid, gap[1.5], { gridTemplateColumns: "1fr 1fr" });
+const field = d(layout.row, gap[1.5], {
+  "& span": { minWidth: "14px", color: tokens.mutedForeground },
 });
 
-const sectionToggle = d({
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  width: "100%",
-  padding: "0",
-  border: "none",
-  background: "none",
-  color: "inherit",
-  font: "inherit",
-  cursor: "pointer",
-  "& svg": { width: "14px", height: "14px", transition: "transform 120ms" },
-  "&[aria-expanded=false] svg": { transform: "rotate(-90deg)" },
-});
-const heading = d({
-  gridColumn: "1 / -1",
-  margin: "0",
-  fontSize: "var(--text-xs)",
-  fontWeight: "600",
-});
+const sectionToggle = d(
+  layout.row,
+  layout.between,
+  layout.fill,
+  bare,
+  interaction.pressable,
+  glyph.sm,
+  {
+    padding: "0",
+    "& > svg": { transition: "transform 120ms" },
+    "&[aria-expanded=false] > svg": { transform: "rotate(-90deg)" },
+  },
+);
+
+const heading = d(captionHeading, { gridColumn: "1 / -1" });
+
 const scrub = d({ cursor: "ew-resize", touchAction: "none", userSelect: "none" });
 
 const MIN_SIZE = 1;
@@ -556,7 +549,7 @@ export function StatsPanel() {
           testId="stats-general-toggle"
         />
         <Show when={(panels() & STATS_PANELS.generalStats) !== 0}>
-          <dl class={grid}>
+          <dl class={statsGrid}>
             <h4 class={heading}>{t("stats.scene")}</h4>
             <dt>{t("stats.shapes")}</dt>
             <dd data-testid="stats-shapes">{scene()?.shapes ?? 0}</dd>
@@ -566,7 +559,7 @@ export function StatsPanel() {
             <dd>{scene()?.height ?? 0}</dd>
           </dl>
           <Show when={store.state("gridModeEnabled")}>
-            <dl class={grid}>
+            <dl class={statsGrid}>
               <h4 class={heading}>{t("stats.canvas")}</h4>
             </dl>
             <NumberField
@@ -594,7 +587,7 @@ export function StatsPanel() {
           />
           <Show when={(panels() & STATS_PANELS.elementProperties) !== 0}>
             <Show when={selection()!.uncropped}>
-              <dl class={grid} data-testid="stats-uncropped">
+              <dl class={statsGrid} data-testid="stats-uncropped">
                 <h4 class={heading}>{t("labels.unCroppedDimension")}</h4>
                 <dt>{t("stats.width")}</dt>
                 <dd>{selection()!.uncropped!.width}</dd>
@@ -613,7 +606,7 @@ export function StatsPanel() {
               </h4>
             </Show>
             <Show when={!selection()!.single}>
-              <dl class={grid}>
+              <dl class={statsGrid}>
                 <dt>{t("stats.shapes")}</dt>
                 <dd>{selection()!.count}</dd>
               </dl>

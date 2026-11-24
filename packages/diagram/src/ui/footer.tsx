@@ -12,14 +12,14 @@ import { actionResetZoom, actionZoomIn, actionZoomOut } from "../editor/actions/
 import { actionToggleMinimap, actionShortcuts } from "../editor/actions/toggles.ts";
 import { useDiagramUI } from "./context.tsx";
 import { iconButton, island } from "./styles.ts";
+import { space, type } from "@barqjs/arc/style";
+
 import { diagramLayer as d } from "./layer.ts";
 
-const zoomLevel = d({
+const zoomLevel = d(iconButton, type.xs, type.numeric, {
   // a fixed width: the level changing at every wheel step moves nothing else
   width: "56px",
-  paddingInline: "6px",
-  fontVariantNumeric: "tabular-nums",
-  fontSize: "var(--text-xs)",
+  paddingInline: space.x1_5,
 });
 
 /** Bottom start: the zoom out, the level (which resets it) and zoom in; undo and redo; the minimap toggle. */
@@ -52,7 +52,7 @@ export function FooterStart() {
         </button>
         <button
           type="button"
-          class={`${iconButton} ${zoomLevel}`}
+          class={zoomLevel}
           aria-label={`${t("buttons.resetZoom")}: ${level()}`}
           title={`${t("buttons.resetZoom")} — ${ui.shortcut("resetZoom")}`}
           aria-keyshortcuts="Control+0"

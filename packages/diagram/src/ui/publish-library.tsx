@@ -12,6 +12,7 @@ import {
 import { Input } from "@barqjs/ui/input";
 import { Textarea } from "@barqjs/ui/textarea";
 import {
+  COLOR_WHITE,
   EDITOR_LS_KEYS,
   EXPORT_DATA_TYPES,
   MIME_TYPES,
@@ -23,8 +24,10 @@ import {
 import { CanvasError } from "../errors.ts";
 import { exportToCanvas, exportToSvg } from "../export.ts";
 import { useDiagramUI } from "./context.tsx";
+import { edge, fg, gap, layout, rounded, space, type } from "@barqjs/arc/style";
+
 import { diagramLayer as d } from "./layer.ts";
-import { iconButton } from "./styles.ts";
+import { fitted, grid, iconButton, scrolls } from "./styles.ts";
 
 import type { ExportedLibraryData } from "../data/types.ts";
 import type { DiagramEditor } from "../editor/editor.ts";
@@ -56,51 +59,24 @@ const NOTE_LINKS = {
   noteLicense: "https://github.com/excalidraw/excalidraw-libraries/blob/main/LICENSE",
 } as const;
 
-const content = d({ maxWidth: "min(720px, calc(100vw - 2rem))", width: "100%" });
+const content = d(layout.fill, { maxWidth: "min(720px, calc(100vw - 2rem))" });
 
-const scroll = d({
-  display: "flex",
-  flexDirection: "column",
-  gap: "12px",
-  maxHeight: "min(70vh, 640px)",
-  overflowY: "auto",
-});
+const scroll = d(layout.column, gap[3], scrolls, { maxHeight: "min(70vh, 640px)" });
 
-const note = d({ margin: "0", fontSize: "var(--text-sm)" });
+const note = d(layout.flush, type.sm);
 
-const itemsGrid = d({
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))",
-  gap: "12px",
-});
+const itemsGrid = d(grid, gap[3], { gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" });
 
-const card = d({
-  position: "relative",
-  display: "flex",
-  flexDirection: "column",
-  gap: "6px",
-  padding: "8px",
-  borderRadius: "var(--radius)",
-  border: "1px solid var(--border)",
+const card = d(layout.relative, layout.column, gap[1.5], rounded.md, edge.all, {
+  padding: space.x2,
   "& [data-remove]": { position: "absolute", top: "2px", insetInlineEnd: "2px" },
 });
 
-const cardPreview = d({
-  display: "flex",
-  justifyContent: "center",
-  alignItems: "center",
-  height: "96px",
-  "& svg": { maxWidth: "100%", maxHeight: "100%", width: "auto", height: "auto" },
-});
+const cardPreview = d(layout.centre, fitted, { height: "96px" });
 
-const field = d({
-  display: "flex",
-  flexDirection: "column",
-  gap: "4px",
-  fontSize: "var(--text-sm)",
-});
+const field = d(layout.column, gap[1], type.sm);
 
-const error = d({ color: "var(--destructive)", fontSize: "var(--text-xs)" });
+const error = d(fg.danger, type.xs);
 
 /** A note with its `<link>…</link>` part as a link. */
 function Note(props: { text: string; href?: string }) {
@@ -157,7 +133,7 @@ const generatePreviewImage = async (
   canvas.height = rows.length * BOX_SIZE + (rows.length + 1) * (BOX_PADDING * 2) - BOX_PADDING * 2;
   const context = canvas.getContext("2d");
   if (!context) throw new Error("No 2D context for the library preview");
-  context.fillStyle = "#fff";
+  context.fillStyle = COLOR_WHITE;
   context.fillRect(0, 0, canvas.width, canvas.height);
   for (const [index, item] of libraryItems.entries()) {
     const itemCanvas = await exportToCanvas({

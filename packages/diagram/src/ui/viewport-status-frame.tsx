@@ -1,9 +1,21 @@
 import { type Child, Show, createUniqueId } from "@barqjs/core";
 import { X } from "@barqjs/lucide/icons/x";
-import { focus, layout, rounded, type } from "@barqjs/arc/style";
+import {
+  bg,
+  edge,
+  focus,
+  gap,
+  glyph,
+  interaction,
+  layout,
+  rounded,
+  space,
+  type,
+} from "@barqjs/arc/style";
 
 import { useDiagramUI } from "./context.tsx";
 import { diagramLayer as d } from "./layer.ts";
+import { absolute, bare, cover, labelPadding, noPointer, pinned, takesPointer } from "./styles.ts";
 
 /**
  * Excalidraw's `viewportStatusFrame`: a coloured frame around the canvas and
@@ -27,19 +39,14 @@ export type ViewportStatusFrame = {
   border: false | string;
 };
 
-const border = d({
-  position: "absolute",
-  inset: "0",
+const border = d(pinned, cover, {
   boxSizing: "border-box",
-  pointerEvents: "none",
   borderWidth: "4px",
   borderStyle: "solid",
   zIndex: "1",
 });
 
-const badge = d(type.meta, rounded.md, layout.row, {
-  position: "relative",
-  pointerEvents: "auto",
+const badge = d(type.meta, rounded.md, layout.row, layout.relative, takesPointer, {
   overflow: "hidden",
   backgroundColor: "var(--viewport-status-badge-background)",
   color: "var(--brand-ink, var(--primary-foreground))",
@@ -48,37 +55,30 @@ const badge = d(type.meta, rounded.md, layout.row, {
   "&[data-clickable]:active": { transform: "scale(0.96)" },
 });
 
-const badgeAction = d(focus.visible, {
-  position: "absolute",
-  inset: "0",
-  margin: "0",
-  border: "0",
+const badgeAction = d(focus.visible, absolute, cover, layout.flush, edge.none, bg.transparent, {
   padding: "0",
-  background: "transparent",
   cursor: "inherit",
 });
 
-const badgeLabel = d(layout.row, {
-  position: "relative",
-  gap: "4px",
-  paddingBlock: "4px",
-  paddingInline: "8px",
+const badgeLabel = d(layout.row, layout.relative, noPointer, gap[1], glyph.md, labelPadding, {
   whiteSpace: "pre-wrap",
-  pointerEvents: "none",
-  "& svg": { width: "16px", height: "16px" },
 });
 
-const badgeClose = d(rounded.sm, focus.visible, layout.inlineCentre, {
-  position: "relative",
-  marginInlineEnd: "8px",
-  padding: "0",
-  border: "none",
-  background: "transparent",
-  color: "inherit",
-  cursor: "pointer",
-  "&:hover": { backgroundColor: "color-mix(in srgb, currentColor 20%, transparent)" },
-  "& svg": { display: "block", width: "16px", height: "16px" },
-});
+const badgeClose = d(
+  rounded.sm,
+  focus.visible,
+  layout.inlineCentre,
+  layout.relative,
+  bare,
+  interaction.pressable,
+  glyph.md,
+  {
+    marginInlineEnd: space.x2,
+    padding: "0",
+    "&:hover": { backgroundColor: "color-mix(in srgb, currentColor 20%, transparent)" },
+    "& > svg": { display: "block" },
+  },
+);
 
 export function ViewportStatusBorder(props: { border: string }) {
   return (

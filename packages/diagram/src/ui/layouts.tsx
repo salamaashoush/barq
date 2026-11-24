@@ -6,17 +6,18 @@ import { SlidersHorizontal } from "@barqjs/lucide/icons/sliders-horizontal";
 import { Undo2 } from "@barqjs/lucide/icons/undo-2";
 import { Button } from "@barqjs/ui/button";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@barqjs/ui/drawer";
-import { Popover, PopoverContent, PopoverTrigger } from "@barqjs/ui/popover";
 import { Toggle } from "@barqjs/ui/toggle";
 
 import { actionToggleViewMode } from "../editor/actions/toggles.ts";
 import { useDiagramUI } from "./context.tsx";
+import { bg, gap, layout, space } from "@barqjs/arc/style";
+
 import { diagramLayer as d } from "./layer.ts";
 import { MainMenuButton } from "./main-menu.tsx";
 import { PropertiesPanel, createPropertiesVisible } from "./properties.tsx";
 import { SidebarTrigger } from "./sidebar.tsx";
 import { StatsPanel } from "./stats.tsx";
-import { iconButton, island } from "./styles.ts";
+import { acrossWidth, iconButton, island, noPointer, passThrough, pinned } from "./styles.ts";
 import { PhoneToolbar } from "./toolbar.tsx";
 import { ViewportStatusBadge } from "./viewport-status-frame.tsx";
 
@@ -48,88 +49,32 @@ export function PenModeButton() {
   );
 }
 
-const compactPanel = d({ maxHeight: "min(70vh, 560px)", boxShadow: "none", padding: "4px" });
-
-/**
- * The properties panel on a tablet, where the canvas has no room to spare for
- * it: a button at the top start that opens it in a popover.
- */
-export function CompactProperties() {
-  const ui = useDiagramUI();
-  const visible = createPropertiesVisible(ui);
-  const [open, setOpen] = createSignal(false);
-  return (
-    <Show when={visible()}>
-      <Popover isOpen={open()} onOpenChange={setOpen}>
-        <PopoverTrigger>
-          <Button
-            variant="ghost"
-            size="icon"
-            class={`${iconButton} ${island}`}
-            aria-label={ui.t("headings.selectedShapeActions")}
-            title={ui.t("headings.selectedShapeActions")}
-            data-testid="compact-properties"
-          >
-            <SlidersHorizontal aria-hidden="true" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent side="right" align="start">
-          <PropertiesPanel class={compactPanel} />
-        </PopoverContent>
-      </Popover>
-    </Show>
-  );
-}
-
-const topBar = d({
-  position: "absolute",
-  top: "8px",
-  insetInline: "8px",
-  display: "flex",
-  justifyContent: "space-between",
+// the phone's bars, a little closer to the edges than the larger layouts' islands
+const phoneInset = d({ insetInline: space.x2 });
+const topBar = d(pinned, phoneInset, layout.row, layout.between, gap[2], {
+  top: space.x2,
   alignItems: "flex-start",
-  gap: "8px",
-  pointerEvents: "none",
-  "& > *": { display: "flex", gap: "8px", alignItems: "flex-start" },
+  "& > *": { display: "flex", gap: space.x2, alignItems: "flex-start" },
 });
-const topBarEnd = d({ flexDirection: "column", alignItems: "flex-end" });
+const topBarEnd = d(layout.column, { alignItems: "flex-end" });
 // pinned just inside the status frame's border, over the top bar's middle
-const statusBadgeRow = d({
-  position: "absolute",
-  top: "12px",
-  insetInline: "0",
-  display: "flex",
-  justifyContent: "center",
-  pointerEvents: "none",
-  zIndex: "1",
-});
-const topBarRow = d({ display: "flex", gap: "8px" });
+const statusBadgeRow = d(pinned, acrossWidth, layout.centre, { top: space.x3, zIndex: "1" });
+const topBarRow = d(layout.row, gap[2]);
 
-const bottomBar = d({
-  position: "absolute",
-  bottom: "8px",
-  insetInline: "8px",
-  display: "flex",
-  flexDirection: "column",
+const bottomBar = d(pinned, passThrough, phoneInset, layout.column, gap[1.5], {
+  bottom: space.x2,
   alignItems: "center",
-  gap: "6px",
-  pointerEvents: "none",
-  "& > *": { pointerEvents: "auto" },
 });
-const actionsRow = d({
-  display: "flex",
+const actionsRow = d(noPointer, passThrough, layout.row, layout.between, gap[1.5], {
   alignSelf: "stretch",
-  justifyContent: "space-between",
-  gap: "6px",
-  pointerEvents: "none",
-  "& > *": { pointerEvents: "auto" },
 });
-const phonePanel = d({
+const phonePanel = d(bg.transparent, {
   width: "auto",
   boxShadow: "none",
-  padding: "0 16px 16px",
+  paddingTop: "0",
+  paddingInline: space.x4,
+  paddingBottom: space.x4,
   maxHeight: "60vh",
-  backgroundColor: "transparent",
 });
 
 /**

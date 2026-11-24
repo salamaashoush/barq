@@ -6,11 +6,11 @@ import { CONTEXT_MENU_SEPARATOR, isContextMenuItem } from "../editor/context-men
 import { useDiagramUI } from "./context.tsx";
 import { isShortcutName } from "./shortcuts.ts";
 import { diagramLayer as d } from "./layer.ts";
-import { menuCheck, menuItem, menuShortcut, menuSurface } from "./styles.ts";
+import { floating, menuCheck, menuItem, menuShortcut, menuSurface } from "./styles.ts";
 
 import type { Action } from "../editor/types.ts";
 
-const placed = d({ position: "absolute", zIndex: "4" });
+const placedMenu = d(floating, menuSurface);
 
 /** How far from the container's edges the menu stays. */
 const VIEWPORT_MARGIN = 8;
@@ -87,7 +87,7 @@ export function ContextMenu() {
               surface = element;
               queueMicrotask(() => fitInside(element, store.state("width"), store.state("height")));
             }}
-            class={`${placed} ${menuSurface}`}
+            class={placedMenu}
             style={position()}
             data-diagram-ui=""
             data-testid="context-menu"

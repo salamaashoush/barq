@@ -3,7 +3,9 @@ import { ChevronDown } from "@barqjs/lucide/icons/chevron-down";
 import { ChevronUp } from "@barqjs/lucide/icons/chevron-up";
 import { Frame } from "@barqjs/lucide/icons/frame";
 import { Text } from "@barqjs/lucide/icons/text";
+import { focus, gap, glyph, interaction, layout, rounded, truncate, type } from "@barqjs/arc/style";
 import { Input } from "@barqjs/ui/input";
+import { tokens } from "@barqjs/ui/theme/tokens";
 import { KEYS } from "@excalidraw/common";
 import { isElementCompletelyInViewport, isFrameLikeElement } from "@excalidraw/element";
 
@@ -11,7 +13,7 @@ import { type SearchMatchItem, matchAsElement, searchScene } from "../editor/sea
 import { fitToContent } from "../navigation.ts";
 import { useDiagramUI } from "./context.tsx";
 import { diagramLayer as d } from "./layer.ts";
-import { iconButton } from "./styles.ts";
+import { bare, captionHeading, hoverTint, iconButton, listReset, scrolls } from "./styles.ts";
 
 import type { DiagramEditor } from "../editor/editor.ts";
 
@@ -21,62 +23,32 @@ const SEARCH_DEBOUNCE = 350;
 /** Below this size on screen a focused match is zoomed to, to be read. */
 const FONT_SIZE_LEGIBILITY_THRESHOLD = 14;
 
-const container = d({
-  display: "flex",
-  flexDirection: "column",
-  gap: "8px",
-  minHeight: "0",
-  flex: "1",
-});
+const container = d(layout.column, gap[2], layout.minZeroBlock, layout.grow);
 
-const count = d({
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  minHeight: "32px",
-  fontSize: "var(--text-xs)",
-  color: "var(--muted-foreground)",
-});
+const count = d(layout.row, layout.between, type.meta, { minHeight: "32px" });
 
-const results = d({
-  display: "flex",
-  flexDirection: "column",
-  gap: "8px",
-  overflowY: "auto",
-  minHeight: "0",
-});
+const results = d(layout.column, gap[2], scrolls, layout.minZeroBlock);
 
-const groupTitle = d({
-  display: "flex",
-  alignItems: "center",
-  gap: "6px",
-  margin: "0",
-  fontSize: "var(--text-xs)",
-  fontWeight: "600",
-  "& svg": { width: "14px", height: "14px" },
-});
+const groupTitle = d(layout.row, gap[1.5], captionHeading, glyph.sm);
 
-const list = d({ margin: "0", padding: "0", listStyle: "none" });
+const list = d(listReset);
 
-const resultItem = d({
-  display: "block",
-  width: "100%",
-  padding: "6px 8px",
-  border: "none",
-  borderRadius: "var(--radius)",
-  background: "transparent",
-  color: "inherit",
-  font: "inherit",
-  fontSize: "var(--text-sm)",
-  textAlign: "start",
-  cursor: "pointer",
-  whiteSpace: "nowrap",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  "&:hover": { backgroundColor: "var(--accent)" },
-  "&[aria-current=true]": { backgroundColor: "var(--accent)" },
-  "&:focus-visible": { outline: "2px solid var(--ring)" },
-});
+const resultItem = d(
+  layout.fill,
+  truncate,
+  rounded.md,
+  bare,
+  type.sm,
+  interaction.pressable,
+  hoverTint,
+  focus.visible,
+  {
+    display: "block",
+    padding: "6px 8px",
+    textAlign: "start",
+    "&[aria-current=true]": { backgroundColor: tokens.accent },
+  },
+);
 
 /**
  * Excalidraw's search, the sidebar's search tab: the canvas's texts and
@@ -98,15 +70,15 @@ export function SearchMenu(props: { editor: DiagramEditor }) {
   let searchedNonce: number | undefined;
   let searchedQuery: string | null = null;
 
-  const publish = (items: readonly SearchMatchItem[], focus: number | null): void => {
+  const publish = (items: readonly SearchMatchItem[], focused: number | null): void => {
     editor.batch(() =>
       editor.setState({
         searchMatches: items.length
           ? {
-              focusedId: focus === null ? null : (items[focus]?.element.id ?? null),
+              focusedId: focused === null ? null : (items[focused]?.element.id ?? null),
               matches: items.map((item, index) => ({
                 id: item.element.id,
-                focus: index === focus,
+                focus: index === focused,
                 matchedLines: item.matchedLines,
               })),
             }
@@ -142,7 +114,7 @@ export function SearchMenu(props: { editor: DiagramEditor }) {
     }
   };
 
-  const focus = (index: number | null): void => {
+  const focusMatch = (index: number | null): void => {
     setFocusIndex(index);
     publish(matches(), index);
     if (index !== null) reveal(matches()[index]);
@@ -177,7 +149,7 @@ export function SearchMenu(props: { editor: DiagramEditor }) {
     const total = matches().length;
     if (total === 0) return;
     const current = focusIndex();
-    focus(current === null ? 0 : (current + direction + total) % total);
+    focusMatch(current === null ? 0 : (current + direction + total) % total);
   };
 
   // the scene changed under the results: searched again, the focus kept where it can be
@@ -186,7 +158,7 @@ export function SearchMenu(props: { editor: DiagramEditor }) {
       queueMicrotask(() => {
         const keep = focusIndex();
         run(searchedQuery ?? "");
-        if (keep !== null && keep < matches().length) focus(keep);
+        if (keep !== null && keep < matches().length) focusMatch(keep);
       });
     }
   });
@@ -224,7 +196,7 @@ export function SearchMenu(props: { editor: DiagramEditor }) {
           type="button"
           class={resultItem}
           aria-current={focusIndex() === itemProps.index}
-          onClick={() => focus(itemProps.index)}
+          onClick={() => focusMatch(itemProps.index)}
           ref={(button: HTMLButtonElement) => {
             if (focusIndex() === itemProps.index) button.scrollIntoView?.({ block: "nearest" });
           }}

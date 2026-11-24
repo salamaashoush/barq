@@ -29,68 +29,46 @@ import {
 } from "../editor/actions/export.ts";
 import { exportScene, getExportConfigFromAppState } from "../scene/export.ts";
 import { useDiagramUI } from "./context.tsx";
-import { layout, surface } from "@barqjs/arc/style";
+import { gap, layout, rounded, space, surface } from "@barqjs/arc/style";
+import { tokens } from "@barqjs/ui/theme/tokens";
 
 import { diagramLayer as d } from "./layer.ts";
-import { textInput } from "./styles.ts";
+import { centredText, chequered, dialogContent, grid, textInput } from "./styles.ts";
 
 import type { ExportCanvasType } from "../data/files.ts";
 import type { AppState } from "../types.ts";
 
-const imageContent = d({
-  maxWidth: "min(960px, calc(100vw - 2rem))",
-  width: "100%",
-  maxHeight: "calc(100vh - 2rem)",
-  overflowY: "auto",
-});
+const imageContent = d(dialogContent, { maxWidth: "min(960px, calc(100vw - 2rem))" });
 
-const imageLayout = d({
-  display: "grid",
+const imageLayout = d(grid, gap[6], {
   gridTemplateColumns: "minmax(0, 1fr) minmax(240px, 300px)",
-  gap: "24px",
   "@media (max-width: 640px)": { gridTemplateColumns: "minmax(0, 1fr)" },
 });
 
-const preview = d({
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
+const preview = d(layout.centre, rounded.md, chequered, {
   minHeight: "240px",
   height: "min(50vh, 400px)",
-  padding: "12px",
-  borderRadius: "var(--radius)",
+  padding: space.x3,
   // transparent shows as a chequerboard, as an image editor shows it
-  backgroundImage:
-    "linear-gradient(45deg, rgb(0 0 0 / 0.05) 25%, transparent 25%), linear-gradient(-45deg, rgb(0 0 0 / 0.05) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgb(0 0 0 / 0.05) 75%), linear-gradient(-45deg, transparent 75%, rgb(0 0 0 / 0.05) 75%)",
+  "--checker": "rgb(0 0 0 / 0.05)",
   backgroundSize: "16px 16px",
   backgroundPosition: "0 0, 0 8px, 8px -8px, -8px 0",
   "& canvas": { maxWidth: "100%", maxHeight: "100%", boxShadow: "0 1px 4px rgb(0 0 0 / 0.15)" },
 });
 
-const settings = d({ display: "flex", flexDirection: "column", gap: "12px" });
+const settings = d(layout.column, gap[3]);
 
-const setting = d({
-  display: "flex",
+const setting = d(layout.row, layout.between, gap[3]);
+
+const buttons = d(layout.row, layout.wrap, gap[2], { marginTop: space.x2 });
+
+const cards = d(grid, gap[4], { gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" });
+
+const card = d(surface.bordered, layout.column, centredText, gap[2], {
   alignItems: "center",
-  justifyContent: "space-between",
-  gap: "12px",
-});
-
-const buttons = d({ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "8px" });
-
-const cards = d({
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: "16px",
-});
-
-const card = d(surface.bordered, layout.column, {
-  alignItems: "center",
-  textAlign: "center",
-  gap: "8px",
-  padding: "16px",
+  padding: space.x4,
   "& h3": { margin: "0", fontSize: "var(--text-base)" },
-  "& p": { margin: "0", color: "var(--muted-foreground)" },
+  "& p": { margin: "0", color: tokens.mutedForeground },
   "& > svg": { width: "32px", height: "32px" },
 });
 

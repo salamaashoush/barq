@@ -3,6 +3,7 @@ import { LibraryBig } from "@barqjs/lucide/icons/library-big";
 import { Pin } from "@barqjs/lucide/icons/pin";
 import { Search } from "@barqjs/lucide/icons/search";
 import { X } from "@barqjs/lucide/icons/x";
+import { Sheet, SheetContent } from "@barqjs/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@barqjs/ui/tabs";
 import {
   CANVAS_SEARCH_TAB,
@@ -13,12 +14,12 @@ import {
 } from "@excalidraw/common";
 
 import { useDiagramUI } from "./context.tsx";
-import { layout, surface, type } from "@barqjs/arc/style";
+import { gap, layout, space, surface, type } from "@barqjs/arc/style";
 
 import { diagramLayer as d } from "./layer.ts";
 import { LibraryMenu } from "./library-menu.tsx";
 import { SearchMenu } from "./search-menu.tsx";
-import { iconButton, island } from "./styles.ts";
+import { floating, iconButton, island, takesPointer } from "./styles.ts";
 
 import type { DiagramEditor } from "../editor/editor.ts";
 
@@ -29,27 +30,36 @@ const SIDEBAR_MARGIN = 12;
 /** What the rest of the UI gives up while the sidebar is docked beside it. */
 export const DOCKED_SIDEBAR_INSET = SIDEBAR_WIDTH + SIDEBAR_MARGIN;
 
-const panel = d(surface.elevated, layout.column, type.sm, {
-  position: "absolute",
-  top: `${SIDEBAR_MARGIN}px`,
-  bottom: `${SIDEBAR_MARGIN}px`,
-  insetInlineEnd: `${SIDEBAR_MARGIN}px`,
-  zIndex: "4",
-  gap: "8px",
-  width: `${SIDEBAR_WIDTH}px`,
-  maxWidth: `calc(100% - ${SIDEBAR_MARGIN * 2}px)`,
-  padding: "8px",
-  pointerEvents: "auto",
-  fontFamily: "var(--font-sans)",
-});
+// SIDEBAR_WIDTH and SIDEBAR_MARGIN, written out for the compiler
+const sidebarWidth = d({ width: "304px" });
 
-const tabs = d({ display: "flex", flexDirection: "column", gap: "8px", flex: "1", minHeight: "0" });
+const panel = d(
+  surface.elevated,
+  layout.column,
+  type.sm,
+  type.sans,
+  floating,
+  gap[2],
+  takesPointer,
+  sidebarWidth,
+  {
+    top: "12px",
+    bottom: "12px",
+    insetInlineEnd: "12px",
+    maxWidth: "calc(100% - 24px)",
+    padding: space.x2,
+  },
+);
 
-const header = d({ display: "flex", alignItems: "center", gap: "4px" });
+const phonePanel = d(sidebarWidth, gap[2], { maxWidth: "100%", padding: space.x2 });
 
-const tabPanel = d({ display: "flex", flexDirection: "column", flex: "1", minHeight: "0" });
+const tabs = d(layout.column, gap[2], layout.grow, layout.minZeroBlock);
 
-const headerButtons = d({ display: "flex", gap: "2px", marginInlineStart: "auto" });
+const header = d(layout.row, gap[1]);
+
+const tabPanel = d(layout.column, layout.grow, layout.minZeroBlock);
+
+const headerButtons = d(layout.row, gap[0.5], layout.pushEnd);
 
 /** Whether the default sidebar is open and docked beside the canvas, taking its room from the UI. */
 export const isSidebarDocked = (
@@ -94,14 +104,94 @@ export function SidebarTrigger() {
   );
 }
 
-function SidebarPanel(props: { editor: DiagramEditor }) {
+function SidebarTabs(props: { editor: DiagramEditor; docked: boolean; canFit: boolean }) {
   const ui = useDiagramUI();
   const t = ui.t;
   const store = ui.store;
   const editor = props.editor;
   const tab = () => store.state("openSidebar")?.tab ?? DEFAULT_SIDEBAR.defaultTab;
+  return (
+    <Tabs
+      class={tabs}
+      value={tab()}
+      onValueChange={(value: string) =>
+        editor.batch(() =>
+          editor.setState({ openSidebar: { name: DEFAULT_SIDEBAR.name, tab: value } }),
+        )
+      }
+    >
+      <div class={header}>
+        <TabsList aria-label={capitalizeString(t("toolBar.library"))}>
+          <TabsTrigger
+            value={CANVAS_SEARCH_TAB}
+            aria-label={t("search.title")}
+            data-testid="sidebar-tab-search"
+          >
+            <Search aria-hidden="true" />
+          </TabsTrigger>
+          <TabsTrigger
+            value={LIBRARY_SIDEBAR_TAB}
+            aria-label={capitalizeString(t("toolBar.library"))}
+            data-testid="sidebar-tab-library"
+          >
+            <LibraryBig aria-hidden="true" />
+          </TabsTrigger>
+        </TabsList>
+        <div class={headerButtons}>
+          <Show when={props.canFit && tab() !== CANVAS_SEARCH_TAB}>
+            <button
+              type="button"
+              class={iconButton}
+              aria-label={t("labels.sidebarLock")}
+              title={t("labels.sidebarLock")}
+              aria-pressed={props.docked}
+              onClick={() =>
+                editor.batch(() =>
+                  editor.setState({
+                    defaultSidebarDockedPreference: !editor.state.defaultSidebarDockedPreference,
+                  }),
+                )
+              }
+              data-testid="sidebar-dock"
+            >
+              <Pin aria-hidden="true" />
+            </button>
+          </Show>
+          <button
+            type="button"
+            class={iconButton}
+            aria-label={t("buttons.close")}
+            title={t("buttons.close")}
+            onClick={() => {
+              closeSidebar(editor);
+              editor.focusContainer();
+            }}
+            data-testid="sidebar-close"
+          >
+            <X aria-hidden="true" />
+          </button>
+        </div>
+      </div>
+      <TabsContent value={LIBRARY_SIDEBAR_TAB} class={tabPanel}>
+        <LibraryMenu editor={editor} />
+      </TabsContent>
+      <TabsContent value={CANVAS_SEARCH_TAB} class={tabPanel}>
+        <SearchMenu editor={editor} />
+      </TabsContent>
+    </Tabs>
+  );
+}
+
+const closeSidebar = (editor: DiagramEditor): void => {
+  editor.batch(() => editor.setState({ openSidebar: null }));
+};
+
+function SidebarPanel(props: { editor: DiagramEditor }) {
+  const ui = useDiagramUI();
+  const store = ui.store;
+  const editor = props.editor;
   // the search always docks, as Excalidraw's does
-  const forceDocked = () => tab() === CANVAS_SEARCH_TAB;
+  const forceDocked = () => store.state("openSidebar")?.tab === CANVAS_SEARCH_TAB;
   const docked = () => forceDocked() || store.state("defaultSidebarDockedPreference");
   const canFit = () => {
     store.state("width");
@@ -109,13 +199,9 @@ function SidebarPanel(props: { editor: DiagramEditor }) {
   };
   let panelElement: HTMLElement | undefined;
 
-  const close = (): void => {
-    editor.batch(() => editor.setState({ openSidebar: null }));
-  };
-
   const closeUnlessDocked = (): boolean => {
     if (docked() && canFit()) return false;
-    close();
+    closeSidebar(editor);
     return true;
   };
 
@@ -144,89 +230,53 @@ function SidebarPanel(props: { editor: DiagramEditor }) {
       ref={(element: HTMLElement) => {
         panelElement = element;
       }}
-      aria-label={capitalizeString(t("toolBar.library"))}
+      aria-label={capitalizeString(ui.t("toolBar.library"))}
       lang={ui.langCode()}
       dir={ui.rtl() ? "rtl" : "ltr"}
       data-diagram-ui=""
       data-docked={docked() && canFit() ? "" : undefined}
       data-testid="default-sidebar"
     >
-      <Tabs
-        class={tabs}
-        value={tab()}
-        onValueChange={(value: string) =>
-          editor.batch(() =>
-            editor.setState({ openSidebar: { name: DEFAULT_SIDEBAR.name, tab: value } }),
-          )
-        }
-      >
-        <div class={header}>
-          <TabsList aria-label={capitalizeString(t("toolBar.library"))}>
-            <TabsTrigger
-              value={CANVAS_SEARCH_TAB}
-              aria-label={t("search.title")}
-              data-testid="sidebar-tab-search"
-            >
-              <Search aria-hidden="true" />
-            </TabsTrigger>
-            <TabsTrigger
-              value={LIBRARY_SIDEBAR_TAB}
-              aria-label={capitalizeString(t("toolBar.library"))}
-              data-testid="sidebar-tab-library"
-            >
-              <LibraryBig aria-hidden="true" />
-            </TabsTrigger>
-          </TabsList>
-          <div class={headerButtons}>
-            <Show when={canFit() && !forceDocked()}>
-              <button
-                type="button"
-                class={iconButton}
-                aria-label={t("labels.sidebarLock")}
-                title={t("labels.sidebarLock")}
-                aria-pressed={docked()}
-                onClick={() =>
-                  editor.batch(() =>
-                    editor.setState({
-                      defaultSidebarDockedPreference: !editor.state.defaultSidebarDockedPreference,
-                    }),
-                  )
-                }
-                data-testid="sidebar-dock"
-              >
-                <Pin aria-hidden="true" />
-              </button>
-            </Show>
-            <button
-              type="button"
-              class={iconButton}
-              aria-label={t("buttons.close")}
-              title={t("buttons.close")}
-              onClick={() => {
-                close();
-                editor.focusContainer();
-              }}
-              data-testid="sidebar-close"
-            >
-              <X aria-hidden="true" />
-            </button>
-          </div>
-        </div>
-        <TabsContent value={LIBRARY_SIDEBAR_TAB} class={tabPanel}>
-          <LibraryMenu editor={editor} />
-        </TabsContent>
-        <TabsContent value={CANVAS_SEARCH_TAB} class={tabPanel}>
-          <SearchMenu editor={editor} />
-        </TabsContent>
-      </Tabs>
+      <SidebarTabs editor={editor} docked={docked()} canFit={canFit()} />
     </aside>
+  );
+}
+
+/**
+ * The sidebar on a phone, where it cannot dock: Excalidraw's overlay at the
+ * editor's end, the full height, closed by a press outside it or Escape.
+ */
+function PhoneSidebar(props: { editor: DiagramEditor }) {
+  const ui = useDiagramUI();
+  const editor = props.editor;
+  return (
+    <Sheet
+      isOpen
+      onOpenChange={(isOpen: boolean) => {
+        if (!isOpen) closeSidebar(editor);
+      }}
+    >
+      <SheetContent
+        side={ui.rtl() ? "left" : "right"}
+        showCloseButton={false}
+        class={phonePanel}
+        aria-label={capitalizeString(ui.t("toolBar.library"))}
+        lang={ui.langCode()}
+        dir={ui.rtl() ? "rtl" : "ltr"}
+        data-diagram-ui=""
+        data-testid="default-sidebar"
+      >
+        <SidebarTabs editor={editor} docked={false} canFit={false} />
+      </SheetContent>
+    </Sheet>
   );
 }
 
 /**
  * Excalidraw's default sidebar, at the editor's end: the search and the
  * library as tabs, a pin to dock it beside the canvas where it fits, and a
- * close button. Undocked it closes on a press on the canvas or Escape.
+ * close button. Undocked it closes on a press on the canvas or Escape. On a
+ * phone it is a sheet over the editor.
  */
 export function DefaultSidebar() {
   const ui = useDiagramUI();
@@ -234,7 +284,14 @@ export function DefaultSidebar() {
   const open = () => store.state("openSidebar")?.name === DEFAULT_SIDEBAR.name;
   return (
     <Show when={open() && store.editor}>
-      {(editor: () => DiagramEditor) => <SidebarPanel editor={editor()} />}
+      {(editor: () => DiagramEditor) => (
+        <Show
+          when={store.editorInterface().formFactor === "phone"}
+          fallback={<SidebarPanel editor={editor()} />}
+        >
+          <PhoneSidebar editor={editor()} />
+        </Show>
+      )}
     </Show>
   );
 }

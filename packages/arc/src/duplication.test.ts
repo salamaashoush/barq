@@ -22,13 +22,14 @@ import { dirname, join, relative } from "node:path";
 import { Glob } from "bun";
 
 import {
-  type Duplicate,
-  type Literal,
-  type Place,
+  type AllowedLiteral,
+  type AllowedPair,
+  UI_GROUPS,
   duplicates,
   literalsIn,
   placesIn,
-  treatmentFor,
+  repeatedLiterals as repeated,
+  report as reported,
   uiGroups,
 } from "./test-duplication.ts";
 
@@ -42,15 +43,10 @@ const TREATMENT_MODULES = ["style/", "theme/", "code/style.ts", "code/editor-the
  * Pairs whose repetition belongs to each component, with the reason. Empty is
  * the goal; an entry has to say why composing a treatment would be wrong.
  */
-const ALLOWED: readonly { readonly between: readonly [string, string]; readonly why: string }[] =
-  [];
+const ALLOWED: readonly AllowedPair[] = [];
 
 /** Literals one component writes for several of its own parts' states, with the reason. */
-const ALLOWED_LITERALS: readonly {
-  readonly value: string;
-  readonly file: string;
-  readonly why: string;
-}[] = [
+const ALLOWED_LITERALS: readonly AllowedLiteral[] = [
   {
     value: "var(--border)",
     file: "components/data-table.tsx",
@@ -75,64 +71,12 @@ function modules(): string[] {
     .toSorted();
 }
 
-const UI_GROUPS = [
-  "shared-box.ts",
-  "shared-contrast.ts",
-  "shared-icon.ts",
-  "shared-ring-slot.ts",
-  "shared-ring.ts",
-  "shared-text.ts",
-  "shared-touch.ts",
-  "shared-when.ts",
-];
-
-function where(place: Place): string {
-  return place.line === 0 ? place.file : `${place.file}:${String(place.line)} (${place.label})`;
+function report(found: Parameters<typeof reported>[0]): string[] {
+  return reported(found, TREATMENT_MODULES, ALLOWED);
 }
 
-function advice(found: Duplicate): string {
-  const { first, second } = found;
-  const treatment = [first, second].find(
-    (place) =>
-      place.file.startsWith("@barqjs/ui") ||
-      TREATMENT_MODULES.some((prefix) => place.file.startsWith(prefix)),
-  );
-  return treatment?.name === undefined
-    ? "move the group into @barqjs/arc/style and compose it from both"
-    : `compose ${treatment.name} from ${treatment.file.startsWith("@barqjs/ui") ? treatment.file : "@barqjs/arc/style"}`;
-}
-
-function report(found: readonly Duplicate[]): string[] {
-  return found
-    .filter(
-      (one) =>
-        !ALLOWED.some(
-          (allowed) =>
-            allowed.between.includes(one.first.file) && allowed.between.includes(one.second.file),
-        ),
-    )
-    .map(
-      (one) =>
-        `${where(one.first)} and ${where(one.second)} both write ${one.shared.join("; ")}: ${advice(one)}`,
-    );
-}
-
-function repeatedLiterals(literals: readonly Literal[]): string[] {
-  const byValue = new Map<string, Literal[]>();
-  for (const one of literals) byValue.set(one.value, [...(byValue.get(one.value) ?? []), one]);
-  const out: string[] = [];
-  for (const [value, found] of byValue) {
-    if (found.length < 2) continue;
-    const files = new Set(found.map((one) => one.file));
-    const allowed = ALLOWED_LITERALS.find((one) => one.value === value);
-    if (allowed !== undefined && files.size === 1 && files.has(allowed.file)) continue;
-    const [first, second] = found;
-    out.push(
-      `${value} is written at ${first?.file ?? ""}:${String(first?.line)} and ${second?.file ?? ""}:${String(second?.line)}` +
-        `${found.length > 2 ? ` and ${String(found.length - 2)} more` : ""}: use ${treatmentFor(value)}`,
-    );
-  }
-  return out;
+function repeatedLiterals(literals: Parameters<typeof repeated>[0]): string[] {
+  return repeated(literals, ALLOWED_LITERALS);
 }
 
 describe("duplication", () => {

@@ -30,9 +30,35 @@ import { fileOpen } from "../data/filesystem.ts";
 import { saveLibraryAsJSON } from "../data/files.ts";
 import { exportToSvg } from "../export.ts";
 import { useDiagramUI } from "./context.tsx";
+import {
+  bg,
+  edge,
+  fg,
+  focus,
+  gap,
+  interaction,
+  layout,
+  rounded,
+  space,
+  truncate,
+  type,
+} from "@barqjs/arc/style";
+
 import { diagramLayer as d } from "./layer.ts";
 import { PublishLibraryDialog } from "./publish-library.tsx";
-import { iconButton, menuItem, menuSurface } from "./styles.ts";
+import {
+  captionHeading,
+  centredText,
+  fitted,
+  grid,
+  hoverTint,
+  iconButton,
+  inherits,
+  listReset,
+  menuItem,
+  menuSurface,
+  scrolls,
+} from "./styles.ts";
 
 import type { NonDeleted, ExcalidrawElement } from "@excalidraw/element/types";
 import type { ExcalidrawLibraryIds } from "../data/types.ts";
@@ -43,56 +69,27 @@ import type { LibraryItem, LibraryItems } from "../types.ts";
 /** Where the browse button takes the reader: Excalidraw's public library site, which installs back by URL. */
 export const LIBRARY_URL = "https://libraries.excalidraw.com";
 
-const container = d({
-  display: "flex",
-  flexDirection: "column",
-  gap: "8px",
-  minHeight: "0",
-  flex: "1",
-});
+const container = d(layout.column, gap[2], layout.minZeroBlock, layout.grow);
 
-const header = d({ display: "flex", alignItems: "center", gap: "4px" });
+const header = d(layout.row, gap[1]);
 
-const counter = d({
+const counter = d(type.xs, centredText, rounded.full, {
   minWidth: "18px",
-  paddingInline: "4px",
-  borderRadius: "9px",
-  textAlign: "center",
-  fontSize: "var(--text-xs)",
+  paddingInline: space.x1,
   backgroundColor: "var(--brand, var(--primary))",
   color: "var(--brand-ink, var(--primary-foreground))",
 });
 
-const items = d({
-  display: "flex",
-  flexDirection: "column",
-  gap: "8px",
-  overflowY: "auto",
-  minHeight: "0",
-  flex: "1",
-});
+const items = d(container, scrolls);
 
-const sectionHeading = d({
-  margin: "0",
-  fontSize: "var(--text-xs)",
-  fontWeight: "600",
-  color: "var(--muted-foreground)",
-});
+const sectionHeading = d(captionHeading, fg.muted);
 
-const grid = d({
-  display: "grid",
+const libraryGrid = d(grid, gap[1.5], listReset, {
   gridTemplateColumns: "repeat(4, 1fr)",
-  gap: "6px",
-  margin: "0",
-  padding: "0",
-  listStyle: "none",
   "&[data-named]": { gridTemplateColumns: "repeat(2, 1fr)" },
 });
 
-const unit = d({
-  position: "relative",
-  display: "flex",
-  flexDirection: "column",
+const unit = d(layout.column, layout.relative, {
   "& > [data-slot=checkbox]": {
     position: "absolute",
     top: "4px",
@@ -104,48 +101,34 @@ const unit = d({
   "@media (pointer: coarse)": { "& > [data-slot=checkbox]": { opacity: "1" } },
 });
 
-const preview = d({
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  aspectRatio: "1",
-  width: "100%",
-  padding: "6px",
-  border: "1px solid var(--border)",
-  borderRadius: "var(--radius)",
-  background: "transparent",
-  color: "inherit",
-  cursor: "pointer",
-  "& svg": { maxWidth: "100%", maxHeight: "100%", width: "auto", height: "auto" },
-  "&:hover": { backgroundColor: "var(--accent)" },
-  "&:focus-visible": { outline: "2px solid var(--ring)", outlineOffset: "1px" },
-  "[data-selected] > &": { borderColor: "var(--brand, var(--primary))" },
-  "&[data-pending]": { borderStyle: "dashed" },
-});
+const preview = d(
+  layout.centre,
+  layout.fill,
+  edge.all,
+  rounded.md,
+  inherits,
+  bg.transparent,
+  hoverTint,
+  interaction.pressable,
+  focus.visible,
+  fitted,
+  {
+    aspectRatio: "1",
+    padding: space.x1_5,
+    "[data-selected] > &": { borderColor: "var(--brand, var(--primary))" },
+    "&[data-pending]": { borderStyle: "dashed" },
+  },
+);
 
-const itemName = d({
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-  fontSize: "var(--text-xs)",
-  textAlign: "center",
-});
+const itemName = d(truncate, type.xs, centredText);
 
-const hint = d({
-  margin: "0",
-  fontSize: "var(--text-xs)",
-  color: "var(--muted-foreground)",
-});
+const hint = d(type.meta, layout.flush);
 
-const browse = d({
+const browse = d(rounded.md, centredText, bg.muted, hoverTint, {
   display: "block",
-  padding: "8px",
-  borderRadius: "var(--radius)",
-  textAlign: "center",
+  padding: space.x2,
   color: "inherit",
-  backgroundColor: "var(--muted)",
   textDecoration: "none",
-  "&:hover": { backgroundColor: "var(--accent)" },
 });
 
 const deburr = (text: string): string => text.normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -293,10 +276,10 @@ export function LibraryMenu(props: { editor: DiagramEditor }) {
 
   const addPending = (): void => {
     const elements = pending();
-    for (const type of LIBRARY_DISABLED_TYPES) {
-      if (elements.some((element) => element.type === type)) {
+    for (const disabled of LIBRARY_DISABLED_TYPES) {
+      if (elements.some((element) => element.type === disabled)) {
         editor.batch(() =>
-          editor.setState({ errorMessage: { key: `errors.libraryElementTypeError.${type}` } }),
+          editor.setState({ errorMessage: { key: `errors.libraryElementTypeError.${disabled}` } }),
         );
         return;
       }
@@ -544,7 +527,7 @@ export function LibraryMenu(props: { editor: DiagramEditor }) {
                   </div>
                 }
               >
-                <ul class={grid} aria-label={t("labels.personalLib")}>
+                <ul class={libraryGrid} aria-label={t("labels.personalLib")}>
                   <Show when={pending().length > 0}>
                     <li class={unit}>
                       <button
@@ -567,7 +550,7 @@ export function LibraryMenu(props: { editor: DiagramEditor }) {
               </Show>
               <Show when={published().length > 0}>
                 <h3 class={sectionHeading}>{t("labels.excalidrawLib")}</h3>
-                <ul class={grid} aria-label={t("labels.excalidrawLib")}>
+                <ul class={libraryGrid} aria-label={t("labels.excalidrawLib")}>
                   <For each={published()} keyed={(item) => item.id}>
                     {(item) => <Unit item={item()} />}
                   </For>
@@ -588,7 +571,7 @@ export function LibraryMenu(props: { editor: DiagramEditor }) {
               </div>
             }
           >
-            <ul class={grid} data-named="" aria-label={t("library.search.heading")}>
+            <ul class={libraryGrid} data-named="" aria-label={t("library.search.heading")}>
               <For each={filtered()} keyed={(item) => item.id}>
                 {(item) => <Unit item={item()} showName />}
               </For>

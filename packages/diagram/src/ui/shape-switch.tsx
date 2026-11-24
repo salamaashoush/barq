@@ -20,13 +20,13 @@ import {
 import { useDiagramUI } from "./context.tsx";
 import { ArrowElbow, ArrowRound, ArrowSharp } from "./icons.tsx";
 import { diagramLayer as d } from "./layer.ts";
-import { iconButton, island } from "./styles.ts";
+import { floating, iconButton, island } from "./styles.ts";
 
 import type { Child } from "@barqjs/core";
 import type { ConvertibleTypes } from "@excalidraw/element/types";
 import type { TranslationKey } from "../i18n.ts";
 
-const panel = d({ position: "absolute", zIndex: "4" });
+const panel = d(island, floating);
 
 const GAP = 12;
 
@@ -113,7 +113,7 @@ export function ShapeSwitchPanel() {
   return (
     <Show when={state()}>
       <div
-        class={`${island} ${panel}`}
+        class={panel}
         style={{ left: state()!.left, top: state()!.top }}
         role="group"
         aria-label={t("toolBar.convertElementType")}

@@ -8,46 +8,34 @@ import type { ChartType, NonDeletedExcalidrawElement } from "@excalidraw/element
 import { isSpreadsheetValidForChartType, renderSpreadsheet } from "../charts/index.ts";
 import { exportScene } from "../scene/export.ts";
 import { useDiagramUI } from "./context.tsx";
+import { bg, edge, focus, gap, interaction, layout, rounded, space } from "@barqjs/arc/style";
+
 import { diagramLayer as d } from "./layer.ts";
-import { iconButton } from "./styles.ts";
+import { fitted, grid, hoverTint, iconButton, inherits } from "./styles.ts";
 
 import type { Spreadsheet } from "../charts/index.ts";
 import type { TranslationKey } from "../i18n.ts";
 
-const content = d({ maxWidth: "min(760px, calc(100vw - 2rem))", width: "100%" });
+const content = d(layout.fill, { maxWidth: "min(760px, calc(100vw - 2rem))" });
 
-const titleRow = d({ display: "flex", alignItems: "center", gap: "8px" });
+const titleRow = d(layout.row, gap[2]);
 
-const choices = d({
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
-  gap: "12px",
-});
+const choices = d(grid, gap[3], { gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" });
 
-const choice = d({
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "stretch",
-  gap: "8px",
-  padding: "8px",
-  border: "1px solid var(--border)",
-  borderRadius: "var(--radius)",
-  background: "transparent",
-  color: "inherit",
-  font: "inherit",
-  cursor: "pointer",
-  "&:hover": { backgroundColor: "var(--accent)" },
-  "&:focus-visible": { outline: "2px solid var(--ring)", outlineOffset: "2px" },
-});
+const choice = d(
+  layout.column,
+  gap[2],
+  edge.all,
+  rounded.md,
+  inherits,
+  bg.transparent,
+  hoverTint,
+  interaction.pressable,
+  focus.visible,
+  { alignItems: "stretch", padding: space.x2 },
+);
 
-const preview = d({
-  height: "160px",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  overflow: "hidden",
-  "& svg": { maxWidth: "100%", maxHeight: "100%", width: "auto", height: "auto" },
-});
+const preview = d(layout.centre, fitted, { height: "160px", overflow: "hidden" });
 
 const CHART_LABELS: Record<ChartType, TranslationKey> = {
   bar: "labels.chartType_bar",

@@ -5,72 +5,65 @@ import { FolderOpen } from "@barqjs/lucide/icons/folder-open";
 import { actionLoadScene } from "../editor/actions/export.ts";
 import { actionShortcuts } from "../editor/actions/toggles.ts";
 import { useDiagramUI } from "./context.tsx";
+import { bg, edge, fg, gap, interaction, layout, rounded, space, type } from "@barqjs/arc/style";
+import { tokens } from "@barqjs/ui/theme/tokens";
+
 import { diagramLayer as d } from "./layer.ts";
+import {
+  absolute,
+  centredText,
+  controlGlyph,
+  cover,
+  noPointer,
+  pinned,
+  ringed,
+  takesPointer,
+} from "./styles.ts";
 
 const HAND_FONT = "Excalifont, Xiaolai, var(--font-sans)";
 
-const decor = d({
-  pointerEvents: "none",
-  color: "var(--muted-foreground)",
-  fontFamily: HAND_FONT,
+const decor = d(noPointer, fg.muted, { fontFamily: HAND_FONT });
+
+const center = d(pinned, cover, layout.centre, layout.column, gap[6], centredText, {
+  padding: space.x4,
 });
 
-const center = d({
-  position: "absolute",
-  inset: "0",
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: "24px",
-  padding: "16px",
-  pointerEvents: "none",
-  textAlign: "center",
-});
+const logo = d(decor, fg.default, { fontSize: "2.25rem" });
 
-const logo = d({ fontSize: "2.25rem", color: "var(--foreground)" });
+const centerHeading = d(decor, { fontSize: "1.25rem", maxWidth: "28rem", lineHeight: "1.4" });
 
-const centerHeading = d({ fontSize: "1.25rem", maxWidth: "28rem", lineHeight: "1.4" });
+const menu = d(layout.column, gap[0.5], takesPointer, { minWidth: "min(20rem, 100%)" });
 
-const menu = d({
-  display: "flex",
-  flexDirection: "column",
-  gap: "2px",
-  minWidth: "min(20rem, 100%)",
-  pointerEvents: "auto",
-});
-
-const menuItem = d({
-  display: "flex",
-  alignItems: "center",
-  gap: "12px",
-  padding: "10px 12px",
-  border: "none",
-  borderRadius: "var(--radius)",
-  background: "transparent",
-  color: "var(--muted-foreground)",
-  font: "inherit",
-  fontFamily: "var(--font-sans)",
-  fontSize: "var(--text-sm)",
-  textDecoration: "none",
-  cursor: "pointer",
-  "& svg": { width: "18px", height: "18px", flexShrink: "0" },
-  "&:hover, &:focus-visible": {
-    backgroundColor: "var(--accent)",
-    color: "var(--foreground)",
-    outline: "none",
+const menuItem = d(
+  layout.row,
+  gap[3],
+  rounded.md,
+  edge.none,
+  bg.transparent,
+  fg.muted,
+  type.sans,
+  type.sm,
+  interaction.pressable,
+  controlGlyph,
+  ringed,
+  {
+    padding: "10px 12px",
+    textDecoration: "none",
+    "& svg": { flexShrink: "0" },
+    "&:hover, &:focus-visible": {
+      backgroundColor: tokens.accent,
+      color: tokens.foreground,
+      outline: "none",
+    },
+    "@media (pointer: coarse)": { minHeight: "44px" },
   },
-  "&:focus-visible": { boxShadow: "0 0 0 2px var(--ring)" },
-  "@media (pointer: coarse)": { minHeight: "44px" },
-});
+);
 
 const menuText = d({ flexGrow: "1", textAlign: "start" });
-const menuShortcut = d({ fontSize: "var(--text-xs)" });
 
-const hint = d({
-  position: "absolute",
-  display: "flex",
-  gap: "6px",
+const menuShortcut = d(type.xs);
+
+const hint = d(decor, absolute, layout.row, gap[1.5], {
   fontSize: "1rem",
   lineHeight: "1.3",
   "& svg": { flexShrink: "0", overflow: "visible" },
@@ -78,16 +71,17 @@ const hint = d({
   "[dir=rtl] & svg": { transform: "scaleX(-1)" },
 });
 
-const menuHint = d({ top: "64px", insetInlineStart: "28px", alignItems: "flex-start" });
-const toolbarHint = d({
+const menuHint = d(hint, { top: "64px", insetInlineStart: "28px", alignItems: "flex-start" });
+
+const toolbarHint = d(hint, layout.column, {
   top: "64px",
   insetInlineStart: "50%",
   transform: "translateX(-50%)",
-  flexDirection: "column",
   alignItems: "center",
   "[dir=rtl] &": { transform: "translateX(50%)" },
 });
-const helpHint = d({ bottom: "64px", insetInlineEnd: "28px", alignItems: "flex-end" });
+
+const helpHint = d(hint, { bottom: "64px", insetInlineEnd: "28px", alignItems: "flex-end" });
 
 /** Leaves room for the hints only where the editor has it, as Excalidraw hides them on small screens. */
 const roomy = (ui: ReturnType<typeof useDiagramUI>, needsWidth: boolean): boolean =>
@@ -114,7 +108,7 @@ function MenuHint(props: { children?: Child }) {
   const ui = useDiagramUI();
   return (
     <Show when={roomy(ui, true)}>
-      <div class={`${decor} ${hint} ${menuHint}`} data-testid="welcome-menu-hint">
+      <div class={menuHint} data-testid="welcome-menu-hint">
         <Arrow width={38} height={60} path="M30 58 C 8 48, 4 24, 12 4 M6 12 L12 4 L19 10" />
         <div style="max-width:160px;padding-top:36px">
           {props.children ?? ui.t("welcomeScreen.defaults.menuHint")}
@@ -129,7 +123,7 @@ function ToolbarHint(props: { children?: Child }) {
   const ui = useDiagramUI();
   return (
     <Show when={roomy(ui, false) && !ui.store.state("viewModeEnabled")}>
-      <div class={`${decor} ${hint} ${toolbarHint}`} data-testid="welcome-toolbar-hint">
+      <div class={toolbarHint} data-testid="welcome-toolbar-hint">
         <Arrow width={40} height={40} path="M20 38 C 22 26, 18 14, 20 2 M14 9 L20 2 L26 9" />
         <div>{props.children ?? ui.t("welcomeScreen.defaults.toolbarHint")}</div>
       </div>
@@ -142,7 +136,7 @@ function HelpHint(props: { children?: Child }) {
   const ui = useDiagramUI();
   return (
     <Show when={roomy(ui, true)}>
-      <div class={`${decor} ${hint} ${helpHint}`} data-testid="welcome-help-hint">
+      <div class={helpHint} data-testid="welcome-help-hint">
         <div style="padding-bottom:28px">
           {props.children ?? ui.t("welcomeScreen.defaults.helpHint")}
         </div>
@@ -154,12 +148,12 @@ function HelpHint(props: { children?: Child }) {
 
 /** Excalidraw's `WelcomeScreen.Center.Logo`: the host's mark above the heading. */
 function Logo(props: { children?: Child }) {
-  return <div class={`${decor} ${logo}`}>{props.children}</div>;
+  return <div class={logo}>{props.children}</div>;
 }
 
 function Heading(props: { children?: Child }) {
   return (
-    <div class={`${decor} ${centerHeading}`} data-testid="welcome-heading">
+    <div class={centerHeading} data-testid="welcome-heading">
       {props.children}
     </div>
   );
@@ -313,7 +307,7 @@ export const WelcomeScreen = Object.assign(
   },
 );
 
-const layer = d({ position: "absolute", inset: "0", pointerEvents: "none" });
+const layer = d(pinned, cover);
 
 /** The welcome screen when the editor is empty and waiting, Excalidraw's `renderWelcomeScreen`. */
 export function WelcomeScreenLayer(props: { content: true | Child }) {

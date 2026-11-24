@@ -42,7 +42,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@barqjs/ui/dropdown-menu";
-import { tone } from "@barqjs/arc/style";
+import { edge, gap, layout, rounded, space, tone } from "@barqjs/arc/style";
 import { Button } from "@barqjs/ui/button";
 import { Popover, PopoverAnchor, PopoverContent } from "@barqjs/ui/popover";
 import { DEFAULT_CANVAS_BACKGROUND_PICKS, THEME } from "@excalidraw/common";
@@ -73,24 +73,20 @@ import { UserList } from "./user-list.tsx";
 
 import type { ShortcutName } from "./shortcuts.ts";
 
-const swatchDot = d({
-  width: "16px",
-  height: "16px",
-  flexShrink: "0",
-  borderRadius: "4px",
-  border: "1px solid var(--border)",
-});
+const swatchDot = d(layout.noShrink, rounded.xs, edge.all, { width: "16px", height: "16px" });
 
-const pickerBox = d({ padding: "12px", display: "flex", flexDirection: "column", gap: "8px" });
+const pickerBox = d(layout.column, gap[2], { padding: space.x3 });
 
-const backupChoices = d({ display: "flex", flexWrap: "wrap", gap: "8px" });
+const backupChoices = d(layout.row, layout.wrap, gap[2]);
 
-const collaboratorsSection = d({
-  paddingInline: "8px",
+const collaboratorsSection = d(fieldset, {
+  paddingInline: space.x2,
   "& svg": { width: "16px", height: "16px" },
 });
 
-const activeCollab = d(tone.success, { "&[data-active]": { color: "var(--arc-tone-foreground)" } });
+const activeCollab = d(menuItem, tone.success, {
+  "&[data-active]": { color: "var(--arc-tone-foreground)" },
+});
 
 /** Excalidraw's `<bold>` and `<br></br>` markup in a translated string, as elements. */
 function RichText(props: { text: string }) {
@@ -307,7 +303,7 @@ function LiveCollaborationTrigger(props: { onSelect: () => void; isCollaborating
   const ui = useDiagramUI();
   return (
     <DropdownMenuItem
-      class={`${menuItem} ${activeCollab}`}
+      class={activeCollab}
       onAction={() => props.onSelect()}
       data-active={props.isCollaborating ? "" : undefined}
       data-testid="collab-button"
@@ -490,7 +486,7 @@ export function MainMenuButton(props: { items?: Child }) {
                     ui.store.state("collaborators").size > 0
                   }
                 >
-                  <fieldset class={`${fieldset} ${collaboratorsSection}`}>
+                  <fieldset class={collaboratorsSection}>
                     <legend class={legend}>{t("labels.collaborators")}</legend>
                     <UserList mobile />
                   </fieldset>

@@ -15,8 +15,10 @@ import { useDiagramUI } from "./context.tsx";
 import { previewColorOnSelection } from "./editor-keys.tsx";
 import { startEyeDropper } from "./eye-dropper.ts";
 import { TopPicksMenu, TopPicksTip, createTopPicksDnD } from "./top-picks.tsx";
+import { fg, focus, gap, layout, space, type } from "@barqjs/arc/style";
+
 import { diagramLayer as d } from "./layer.ts";
-import { iconButton, swatch, swatchFill, textInput } from "./styles.ts";
+import { grid, iconButton, pinned, rule, swatch, swatchFill, textInput } from "./styles.ts";
 
 import type { ColorPaletteCustom, ColorTuple } from "@excalidraw/common";
 import type { ExcalidrawElement } from "@excalidraw/element/types";
@@ -61,10 +63,10 @@ const isCustomColor = (color: string, palette: ColorPaletteCustom): boolean =>
 /** The custom colours the scene uses most, five at most. */
 export const getMostUsedCustomColors = (
   elements: readonly ExcalidrawElement[],
-  type: "elementBackground" | "elementStroke",
+  pickerType: "elementBackground" | "elementStroke",
   palette: ColorPaletteCustom,
 ): string[] => {
-  const key = type === "elementBackground" ? "backgroundColor" : "strokeColor";
+  const key = pickerType === "elementBackground" ? "backgroundColor" : "strokeColor";
   const counts = new Map<string, number>();
   for (const element of elements) {
     if (element.isDeleted) continue;
@@ -101,41 +103,23 @@ const arrowIndex = (key: string, current: number | null, length: number): number
   }
 };
 
-const row = d({ display: "flex", flexWrap: "wrap", gap: "6px" });
-const grid = d({
-  display: "grid",
-  gridTemplateColumns: "repeat(5, 24px)",
-  gap: "6px",
-});
-const heading = d({
-  fontSize: "var(--text-xs)",
-  color: "var(--muted-foreground)",
-  marginBlock: "6px 4px",
-});
-const content = d({
-  display: "flex",
-  flexDirection: "column",
-  gap: "2px",
-  width: "196px",
-  padding: "12px",
-  outline: "none",
-});
-const hotkey = d({
-  position: "absolute",
-  insetInlineEnd: "1px",
-  bottom: "0",
-  fontSize: "8px",
-  lineHeight: "1",
-  pointerEvents: "none",
-});
-const hexRow = d({ display: "flex", alignItems: "center", gap: "4px", marginTop: "4px" });
-const hexPrefix = d({ color: "var(--muted-foreground)" });
-const pickerRow = d({ display: "flex", alignItems: "center", gap: "6px" });
-const swatchDivider = d({
-  width: "1px",
-  height: "20px",
-  backgroundColor: "var(--border)",
-});
+const row = d(layout.row, layout.wrap, gap[1.5]);
+const paletteGrid = d(grid, gap[1.5], { gridTemplateColumns: "repeat(5, 24px)" });
+const heading = d(type.meta, { marginBlockStart: space.x1_5, marginBlockEnd: space.x1 });
+const content = d(layout.column, gap[0.5], focus.none, { width: "196px", padding: space.x3 });
+const hotkey = d(pinned, { insetInlineEnd: "1px", bottom: "0", fontSize: "8px", lineHeight: "1" });
+const hexRow = d(layout.row, gap[1], { marginTop: space.x1 });
+const hexPrefix = d(fg.muted);
+const pickerRow = d(layout.row, gap[1.5]);
+const swatchDivider = d(rule, { height: "20px" });
+
+/**
+ * Whether a press outside a compact properties popover closes it: not when it
+ * lands on another of the column's triggers, which opens its own popover in
+ * the same press, as Excalidraw's switch from one to the next.
+ */
+export const closesOnPressOutside = (element: Element): boolean =>
+  element.closest("[data-properties-trigger]") === null;
 
 export interface ColorPickerProps {
   type: ColorPickerType;
@@ -156,6 +140,8 @@ export interface ColorPickerProps {
   excludedColors?: readonly string[];
   /** The scene, for the custom colours it uses most. */
   elements?: readonly ExcalidrawElement[];
+  /** The trigger alone, its popover beside it, as Excalidraw's compact properties show it. */
+  compact?: boolean;
   "data-testid"?: string;
 }
 
@@ -169,15 +155,13 @@ export interface ColorPickerProps {
 export function ColorPicker(props: ColorPickerProps) {
   const ui = useDiagramUI();
   const t = ui.t;
-  const [ownOpen, setOwnOpen] = createSignal(false);
-  // the command palette opens a picker through the editor's `openPopup`
-  const open = (): boolean => ownOpen() || ui.store.state("openPopup") === props.type;
+  // open while the editor's `openPopup` names it, as Excalidraw's: the keys
+  // and the command palette open it there too, and opening one popup closes another
+  const open = (): boolean => ui.store.state("openPopup") === props.type;
   const setOpen = (next: boolean): void => {
-    setOwnOpen(next);
     const editor = ui.store.editor;
-    if (!next && editor?.state.openPopup === props.type) {
-      editor.batch(() => editor.setState({ openPopup: null }));
-    }
+    if (!editor || next === (editor.state.openPopup === props.type)) return;
+    editor.batch(() => editor.setState({ openPopup: next ? props.type : null }));
   };
   const [section, setSection] = createSignal<Section | null>(null);
 
@@ -371,40 +355,42 @@ export function ColorPicker(props: ColorPickerProps) {
 
   return (
     <div class={pickerRow} data-testid={props["data-testid"]}>
-      <TopPicksMenu
-        customizable={props.customizableTopPicks !== undefined}
-        customized={customPicks() !== null}
-        resetLabel={t("colorPicker.resetTopPicks")}
-        onReset={() => setTopPicks(null)}
-      >
-        <div
-          class={row}
-          role="group"
-          aria-label={props.label}
-          ref={(element: HTMLDivElement) => dnd.setStrip(element)}
+      <Show when={props.compact !== true}>
+        <TopPicksMenu
+          customizable={props.customizableTopPicks !== undefined}
+          customized={customPicks() !== null}
+          resetLabel={t("colorPicker.resetTopPicks")}
+          onReset={() => setTopPicks(null)}
         >
-          <For each={topPicks().filter((color) => !isExcluded(color))}>
-            {(color: string, index: () => number) => (
-              <button
-                type="button"
-                class={swatch}
-                aria-label={colorName(color)}
-                aria-pressed={props.color === color}
-                title={colorName(color)}
-                onClick={() => props.onChange(color)}
-                onPointerDown={dnd.onPointerDown(color, index())}
-                data-top-pick-index={index()}
-                data-drop-target={dnd.dragging()?.overIndex === index() ? "" : undefined}
-                data-duplicate={dnd.dragging()?.duplicateIndex === index() ? "" : undefined}
-                data-testid={`color-top-pick-${color}`}
-              >
-                <span class={swatchFill} style={{ background: color }} />
-              </button>
-            )}
-          </For>
-        </div>
-      </TopPicksMenu>
-      <div class={swatchDivider} aria-hidden="true" />
+          <div
+            class={row}
+            role="group"
+            aria-label={props.label}
+            ref={(element: HTMLDivElement) => dnd.setStrip(element)}
+          >
+            <For each={topPicks().filter((color) => !isExcluded(color))}>
+              {(color: string, index: () => number) => (
+                <button
+                  type="button"
+                  class={swatch}
+                  aria-label={colorName(color)}
+                  aria-pressed={props.color === color}
+                  title={colorName(color)}
+                  onClick={() => props.onChange(color)}
+                  onPointerDown={dnd.onPointerDown(color, index())}
+                  data-top-pick-index={index()}
+                  data-drop-target={dnd.dragging()?.overIndex === index() ? "" : undefined}
+                  data-duplicate={dnd.dragging()?.duplicateIndex === index() ? "" : undefined}
+                  data-testid={`color-top-pick-${color}`}
+                >
+                  <span class={swatchFill} style={{ background: color }} />
+                </button>
+              )}
+            </For>
+          </div>
+        </TopPicksMenu>
+        <div class={swatchDivider} aria-hidden="true" />
+      </Show>
       <Popover isOpen={open()} onOpenChange={setOpen}>
         <PopoverTrigger>
           <Button
@@ -414,12 +400,17 @@ export function ColorPicker(props: ColorPickerProps) {
             aria-label={`${props.label}: ${props.color === null ? "" : colorName(props.color)}`}
             aria-haspopup="dialog"
             title={props.label}
+            data-properties-trigger={props.compact === true ? "" : undefined}
             data-testid={`${props.type}-picker-trigger`}
           >
             <span class={swatchFill} style={{ background: props.color ?? "transparent" }} />
           </Button>
         </PopoverTrigger>
-        <PopoverContent side="bottom" align="start">
+        <PopoverContent
+          side={props.compact === true ? "right" : "bottom"}
+          align="start"
+          shouldCloseOnInteractOutside={props.compact === true ? closesOnPressOutside : undefined}
+        >
           <div
             ref={(element: HTMLDivElement) => {
               contentElement = element;
@@ -456,7 +447,7 @@ export function ColorPicker(props: ColorPickerProps) {
             <Show when={props.palette !== null}>
               <div class={heading}>{t("colorPicker.colors")}</div>
               <div
-                class={grid}
+                class={paletteGrid}
                 data-section="baseColors"
                 role="group"
                 aria-label={t("colorPicker.colors")}

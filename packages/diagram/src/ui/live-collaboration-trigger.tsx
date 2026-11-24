@@ -2,25 +2,26 @@ import { Show } from "@barqjs/core";
 import { Share2 } from "@barqjs/lucide/icons/share-2";
 import { Button } from "@barqjs/ui/button";
 import { bg, fg, layout, tone, type } from "@barqjs/arc/style";
+import { tokens } from "@barqjs/ui/theme/tokens";
 import { MQ_MIN_WIDTH_DESKTOP } from "@excalidraw/common";
 
 import { useDiagramUI } from "./context.tsx";
 import { diagramLayer as d } from "./layer.ts";
+import { absolute, takesPointer } from "./styles.ts";
 
 // a session under way is green, as Excalidraw's, and so is the count
-const trigger = d(tone.success, {
-  position: "relative",
-  flexShrink: "0",
-  pointerEvents: "auto",
+// the tone `tone.success` sets, which the active trigger fills and edges in
+const TONE = "var(--arc-tone)";
+
+const trigger = d(tone.success, layout.relative, layout.noShrink, takesPointer, {
   "&[data-active], &[data-active]:hover": {
-    backgroundColor: "var(--arc-tone)",
-    borderColor: "var(--arc-tone)",
-    color: "var(--background)",
+    backgroundColor: TONE,
+    borderColor: TONE,
+    color: tokens.background,
   },
 });
 
-const count = d(type.meta, layout.inlineCentre, bg.tone, fg.tone, {
-  position: "absolute",
+const count = d(type.meta, layout.inlineCentre, bg.tone, fg.tone, absolute, {
   insetInlineEnd: "-5px",
   bottom: "-5px",
   minWidth: "1em",

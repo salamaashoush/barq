@@ -8,15 +8,40 @@ import { Button } from "@barqjs/ui/button";
 import { Input } from "@barqjs/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@barqjs/ui/popover";
 import { Tooltip, TooltipContent } from "@barqjs/ui/tooltip";
-import { focus, layout, rounded, surface, type } from "@barqjs/arc/style";
+import {
+  bg,
+  edge,
+  fg,
+  focus,
+  gap,
+  glyph,
+  interaction,
+  layout,
+  rounded,
+  space,
+  surface,
+  truncate,
+  type,
+} from "@barqjs/arc/style";
 import { keyframes } from "@barqjs/css";
+import { tokens } from "@barqjs/ui/theme/tokens";
 import { COLOR_CHARCOAL_BLACK, COLOR_VOICE_CALL } from "@excalidraw/common";
 
 import { getClientColor, getNameInitial } from "../clients.ts";
 import { actionGoToCollaborator } from "../editor/actions/navigate.ts";
 import { useDiagramUI } from "./context.tsx";
 import { diagramLayer as d } from "./layer.ts";
-import { menuItem } from "./styles.ts";
+import {
+  absolute,
+  bare,
+  centredText,
+  hoverTint,
+  labelPadding,
+  menuItem,
+  noPointer,
+  passThrough,
+  scrolls,
+} from "./styles.ts";
 
 import type { Collaborator, SocketId } from "../types.ts";
 
@@ -51,106 +76,77 @@ const sameList = (a: readonly ListedCollaborator[], b: readonly ListedCollaborat
     return other !== undefined && SHOWN_KEYS.every((key) => each[key] === other[key]);
   });
 
-const wrapper = d({
-  display: "flex",
-  flex: "1 1 auto",
-  minWidth: "0",
-  justifyContent: "flex-end",
-  alignItems: "center",
-  pointerEvents: "none",
-});
+const wrapper = d(layout.row, layout.growAuto, layout.minZero, layout.end, noPointer);
 
-const row = d({
-  display: "flex",
+const row = d(layout.row, layout.end, gap[1.5], passThrough, {
   flexWrap: "nowrap",
-  justifyContent: "flex-end",
-  alignItems: "center",
-  gap: "6px",
-  padding: "4px",
-  "& > *": { pointerEvents: "auto" },
+  padding: space.x1,
 });
 
-const avatarButton = d(rounded.full, focus.visible, {
-  position: "relative",
-  display: "flex",
-  flex: "0 0 auto",
-  padding: "0",
-  border: "none",
-  background: "transparent",
-  cursor: "pointer",
-  "&:active": { transform: "scale(0.94)" },
-  "&[data-current-user]": { cursor: "auto" },
-});
+const avatarButton = d(
+  rounded.full,
+  focus.visible,
+  layout.relative,
+  layout.row,
+  layout.noShrink,
+  bare,
+  interaction.pressable,
+  {
+    padding: "0",
+    "&:active": { transform: "scale(0.94)" },
+    "&[data-current-user]": { cursor: "auto" },
+  },
+);
 
 const avatar = d({
   fontWeight: "700",
   "[data-followed] > &, &[data-followed]": {
-    boxShadow: "0 0 0 2px var(--background), 0 0 0 3px var(--brand, var(--primary))",
+    "--followed-gap": tokens.background,
+    boxShadow: "0 0 0 2px var(--followed-gap), 0 0 0 3px var(--brand, var(--primary))",
   },
 });
 
 const avatarInitial = d({ color: COLOR_CHARCOAL_BLACK });
 
-const cornerStatus = d({
-  position: "absolute",
-  display: "flex",
-  insetInlineEnd: "-4px",
-  bottom: "-4px",
-  "& svg": { width: "14px", height: "14px" },
-});
+const cornerStatus = d(absolute, layout.row, glyph.sm, { insetInlineEnd: "-4px", bottom: "-4px" });
 
-const pill = d(rounded.full, focus.visible, layout.row, {
-  gap: "0",
-  height: "auto",
-  padding: "0",
-  paddingInlineEnd: "4px",
-  border: "1px solid var(--border)",
-  backgroundColor: "var(--muted)",
-  color: "var(--muted-foreground)",
-  cursor: "pointer",
-  "&:hover": { backgroundColor: "var(--accent)" },
-  "& > svg": { width: "15px", height: "15px" },
-});
+const pill = d(
+  rounded.full,
+  focus.visible,
+  layout.row,
+  gap[0],
+  edge.all,
+  bg.muted,
+  fg.muted,
+  hoverTint,
+  interaction.pressable,
+  {
+    height: "auto",
+    paddingBlock: "0",
+    paddingInlineStart: "0",
+    paddingInlineEnd: space.x1,
+    "& > svg": { width: "15px", height: "15px" },
+  },
+);
 
-const menu = d(surface.elevated, layout.column, {
-  width: "15rem",
-  padding: "8px",
-  gap: "4px",
-});
+const menu = d(surface.elevated, layout.column, gap[1], { width: "15rem", padding: space.x2 });
 
-const list = d(layout.column, {
-  maxHeight: "50vh",
-  overflowY: "auto",
-  padding: "2px",
-  gap: "2px",
-});
+const list = d(layout.column, scrolls, gap[0.5], { maxHeight: "50vh", padding: space.x0_5 });
 
-const hint = d(type.meta, { padding: "4px 8px" });
+const hint = d(type.meta, labelPadding);
 
-const empty = d(type.meta, { padding: "8px", textAlign: "center" });
+const empty = d(type.meta, centredText, { padding: space.x2 });
 
-const collaboratorRow = d({
-  width: "100%",
-  border: "none",
-  background: "transparent",
-  color: "inherit",
-  font: "inherit",
+const collaboratorRow = d(menuItem, layout.fill, bare, {
   textAlign: "start",
   "&[data-current-user]": { pointerEvents: "none" },
 });
 
-const name = d(layout.fill, {
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-});
+const name = d(layout.fill, truncate);
 
-const statusIcons = d(layout.row, layout.pushEnd, {
-  flex: "0 0 auto",
+const statusIcons = d(layout.row, layout.pushEnd, layout.noShrink, layout.end, gap[1], {
   minWidth: "2.25rem",
-  gap: "4px",
-  justifyContent: "flex-end",
-  "& [data-muted]": { color: "var(--destructive)" },
+  "& [data-muted]": { color: tokens.destructive },
 });
 
 const speakingPulse = keyframes`
@@ -158,10 +154,7 @@ const speakingPulse = keyframes`
   50% { transform: scaleY(2); }
 `;
 
-const speaking = d({
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
+const speaking = d(layout.row, layout.between, {
   width: "1rem",
   height: "1rem",
   paddingInline: "3px",
@@ -170,22 +163,18 @@ const speaking = d({
     width: "2px",
     height: "0.4rem",
     backgroundColor: COLOR_VOICE_CALL,
-    animation: `${speakingPulse} 1s ease-in-out infinite`,
+    animationName: speakingPulse,
+    animationDuration: "1s",
+    animationTimingFunction: "ease-in-out",
+    animationIterationCount: "infinite",
   },
-  "& > span:nth-of-type(1)": { animationDelay: "-0.45s" },
-  "& > span:nth-of-type(2)": { animationDelay: "-0.9s" },
-  "& > span:nth-of-type(3)": { animationDelay: "-0.15s" },
 });
 
-const divider = d({ height: "1px", marginBlock: "4px", backgroundColor: "var(--border)" });
+const divider = d({ height: "1px", marginBlock: space.x1, backgroundColor: tokens.border });
 
-const mobileList = d(layout.column, { gap: "8px", marginBlock: "8px" });
+const mobileList = d(layout.column, gap[2], { marginBlock: space.x2 });
 
-const mobileAvatars = d({
-  display: "flex",
-  flexWrap: "wrap",
-  alignItems: "center",
-  gap: "6px",
+const mobileAvatars = d(layout.row, layout.wrap, gap[1.5], {
   "& > [data-current-user]": { order: "-1" },
 });
 
@@ -259,9 +248,9 @@ function CallStatus(props: { collaborator: Collaborator }) {
           title={ui.t("userList.hint.isSpeaking")}
           data-testid="collaborator-speaking"
         >
-          <span />
-          <span />
-          <span />
+          <span style={{ animationDelay: "-0.45s" }} />
+          <span style={{ animationDelay: "-0.9s" }} />
+          <span style={{ animationDelay: "-0.15s" }} />
         </span>
       </Show>
     </Show>
@@ -313,7 +302,7 @@ function CollaboratorEntry(props: {
     >
       <button
         type="button"
-        class={`${menuItem} ${collaboratorRow}`}
+        class={collaboratorRow}
         aria-pressed={current() ? undefined : props.isBeingFollowed}
         disabled={current()}
         data-current-user={current() ? "" : undefined}

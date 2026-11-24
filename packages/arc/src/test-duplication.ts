@@ -50,7 +50,16 @@ function resolve(specifier: string, from: string, bareFrom: string): string | un
  */
 function compile(file: string, bareFrom: string, depth: number, exportsAsked = false): Compiled {
   const source = readFileSync(file, "utf8");
-  const base = { filename: file, strictCss: true, sourcemap: true, cssExports: exportsAsked };
+  // Without `fold` a group bound to a name stays one binding: folded, each
+  // `class={name}` becomes its own copy of the classes in a template, and every
+  // use of one group would read as the group written again.
+  const base = {
+    filename: file,
+    strictCss: true,
+    sourcemap: true,
+    cssExports: exportsAsked,
+    passes: [["fold", "off"]],
+  };
   let out = native.transform(source, base);
   if (depth <= 0) return out;
   const cssImports: string[][] = [];
@@ -412,4 +421,86 @@ export function treatmentFor(value: string): string {
   if (step !== null) return `space.x${(step[1] ?? "").replace(".", "_")} from @barqjs/arc/style`;
   if (value.includes("--radius")) return "rounded.* or radius.* from @barqjs/arc/style";
   return "a colour role (fg, bg, edge, surface, interaction) from @barqjs/arc/style";
+}
+
+/** ui's `lib/shared-*.ts`, the groups every package composes rather than writes. */
+export const UI_GROUPS = [
+  "shared-box.ts",
+  "shared-contrast.ts",
+  "shared-icon.ts",
+  "shared-ring-slot.ts",
+  "shared-ring.ts",
+  "shared-text.ts",
+  "shared-touch.ts",
+  "shared-when.ts",
+];
+
+/** A pair whose repetition belongs to each, with the reason. */
+export interface AllowedPair {
+  readonly between: readonly [string, string];
+  readonly why: string;
+}
+
+/** A literal one module writes for several of its own parts' states, with the reason. */
+export interface AllowedLiteral {
+  readonly value: string;
+  readonly file: string;
+  readonly why: string;
+}
+
+function shownAt(place: Place): string {
+  return place.line === 0 ? place.file : `${place.file}:${String(place.line)} (${place.label})`;
+}
+
+function advice(found: Duplicate, treatmentModules: readonly string[]): string {
+  const { first, second } = found;
+  const treatment = [first, second].find(
+    (place) =>
+      place.file.startsWith("@barqjs/ui") ||
+      treatmentModules.some((prefix) => place.file.startsWith(prefix)),
+  );
+  return treatment?.name === undefined
+    ? "move the group into @barqjs/arc/style and compose it from both"
+    : `compose ${treatment.name} from ${treatment.file.startsWith("@barqjs/ui") ? treatment.file : "@barqjs/arc/style"}`;
+}
+
+/** Each duplicate as a line naming both places and what to compose instead. */
+export function report(
+  found: readonly Duplicate[],
+  treatmentModules: readonly string[],
+  allowed: readonly AllowedPair[] = [],
+): string[] {
+  return found
+    .filter(
+      (one) =>
+        !allowed.some(
+          (pair) => pair.between.includes(one.first.file) && pair.between.includes(one.second.file),
+        ),
+    )
+    .map(
+      (one) =>
+        `${shownAt(one.first)} and ${shownAt(one.second)} both write ${one.shared.join("; ")}: ${advice(one, treatmentModules)}`,
+    );
+}
+
+/** Each value written more than once, with where and what to use instead. */
+export function repeatedLiterals(
+  literals: readonly Literal[],
+  allowed: readonly AllowedLiteral[] = [],
+): string[] {
+  const byValue = new Map<string, Literal[]>();
+  for (const one of literals) byValue.set(one.value, [...(byValue.get(one.value) ?? []), one]);
+  const out: string[] = [];
+  for (const [value, found] of byValue) {
+    if (found.length < 2) continue;
+    const files = new Set(found.map((one) => one.file));
+    const exempt = allowed.find((one) => one.value === value);
+    if (exempt !== undefined && files.size === 1 && files.has(exempt.file)) continue;
+    const [first, second] = found;
+    out.push(
+      `${value} is written at ${first?.file ?? ""}:${String(first?.line)} and ${second?.file ?? ""}:${String(second?.line)}` +
+        `${found.length > 2 ? ` and ${String(found.length - 2)} more` : ""}: use ${treatmentFor(value)}`,
+    );
+  }
+  return out;
 }

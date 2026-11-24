@@ -5,13 +5,18 @@ import { DiagramUIContext, type DiagramUI, useDiagramUI } from "./context.tsx";
 import { ContextMenu } from "./context-menu.tsx";
 import { FooterEnd, FooterStart } from "./footer.tsx";
 import { MainMenuButton } from "./main-menu.tsx";
-import { PropertiesPanel } from "./properties.tsx";
+import { CompactPropertiesPanel, PropertiesPanel } from "./properties.tsx";
 import {
+  acrossWidth,
   bottomEnd,
   bottomStart,
   iconButton,
   island,
   layerUI,
+  noPointer,
+  passThrough,
+  pinned,
+  startEdge,
   topCenter,
   topEnd,
   topStart,
@@ -36,56 +41,32 @@ import {
 } from "./sidebar.tsx";
 import { StatsPanel } from "./stats.tsx";
 import { EditorToasts } from "./toasts.tsx";
+import { gap, layout, space } from "@barqjs/arc/style";
+
 import { diagramLayer as d } from "./layer.ts";
 import { actionToggleViewMode, actionToggleZenMode } from "../editor/actions/toggles.ts";
 import { Pencil } from "@barqjs/lucide/icons/pencil";
 import { Zap } from "@barqjs/lucide/icons/zap";
 import { WelcomeScreenLayer } from "./welcome-screen.tsx";
-import { CompactProperties, PenModeButton, PhoneChrome } from "./layouts.tsx";
+import { PenModeButton, PhoneChrome } from "./layouts.tsx";
 import { Button } from "@barqjs/ui/button";
 import { UserList } from "./user-list.tsx";
 import { ViewportStatusBadge, ViewportStatusBorder } from "./viewport-status-frame.tsx";
 
-const scrollBack = d({
-  position: "absolute",
+const scrollBack = d(pinned, passThrough, acrossWidth, layout.column, gap[2], {
   bottom: "60px",
-  insetInline: "0",
-  display: "flex",
-  flexDirection: "column",
   alignItems: "center",
-  gap: "8px",
-  "& > *": { pointerEvents: "auto" },
 });
 // the user list reaches back to the middle, beside the toolbar
 const topEndWide = d({ insetInlineStart: "50%" });
-const topEndRow = d({
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "flex-end",
-  gap: "8px",
-  alignSelf: "stretch",
-  minWidth: "0",
-});
-const toolbarAnchor = d({ position: "relative", pointerEvents: "none" });
-const bottomStack = d({
-  position: "absolute",
-  bottom: "12px",
-  insetInlineStart: "12px",
-  display: "flex",
-  flexDirection: "column",
+const topEndRow = d(layout.row, layout.end, gap[2], layout.minZero, { alignSelf: "stretch" });
+const toolbarAnchor = d(layout.relative, noPointer);
+const bottomStack = d(pinned, layout.column, gap[2], startEdge, {
+  bottom: space.x3,
   alignItems: "flex-start",
-  gap: "8px",
-  pointerEvents: "none",
   "& > *": { position: "static" },
 });
-const bottomCenter = d({
-  position: "absolute",
-  bottom: "12px",
-  insetInline: "0",
-  display: "flex",
-  justifyContent: "center",
-  "& > *": { pointerEvents: "auto" },
-});
+const bottomCenter = d(pinned, passThrough, acrossWidth, layout.centre, { bottom: space.x3 });
 
 export interface EditorUIProps {
   ui: DiagramUI;
@@ -195,7 +176,7 @@ function Layout(props: { mainMenu?: () => Child; welcomeScreen?: true | Child })
             <Show when={!zen()}>
               <MainMenuButton items={props.mainMenu} />
               <Show when={compact()} fallback={<PropertiesPanel />}>
-                <CompactProperties />
+                <CompactPropertiesPanel />
               </Show>
             </Show>
           </div>

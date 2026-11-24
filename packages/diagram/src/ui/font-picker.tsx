@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createSignal } from "@barqjs/core";
+import { For, Show, createMemo } from "@barqjs/core";
 import { Radio, RadioGroup } from "@barqjs/aria/radio";
 import { Code } from "@barqjs/lucide/icons/code";
 import { Pencil } from "@barqjs/lucide/icons/pencil";
@@ -19,7 +19,10 @@ import { getBoundTextElement, isTextElement, newElementWith } from "@excalidraw/
 import { actionChangeFontFamily } from "../editor/actions/text.ts";
 import { getFormValue } from "../editor/actions/properties.ts";
 import { Fonts } from "../fonts/fonts.ts";
+import { closesOnPressOutside } from "./color-picker.tsx";
 import { useDiagramUI } from "./context.tsx";
+import { layout, rounded, space } from "@barqjs/arc/style";
+
 import { diagramLayer as d } from "./layer.ts";
 import { iconButton, radioChoice, radioGroupRow } from "./styles.ts";
 import { TopPicksMenu, TopPicksTip, createTopPicksDnD } from "./top-picks.tsx";
@@ -56,10 +59,8 @@ const list = d({
   width: "220px",
   "& [cmdk-list], & [data-slot=command-list]": { maxHeight: "280px" },
 });
-const badge = d({
-  marginInlineStart: "auto",
-  paddingInline: "6px",
-  borderRadius: "9999px",
+const badge = d(layout.pushEnd, rounded.full, {
+  paddingInline: space.x1_5,
   fontSize: "10px",
   backgroundColor: "var(--danger-subtle)",
   color: "var(--danger-foreground)",
@@ -69,13 +70,12 @@ const badge = d({
  * Excalidraw's font picker: the three defaults as radios, and the other
  * fonts in a list searched by typing, the scene's own first.
  */
-export function FontPicker() {
+export function FontPicker(props: { compact?: boolean } = {}) {
   const ui = useDiagramUI();
   const t = ui.t;
   const store = ui.store;
-  const [ownOpen, setOwnOpen] = createSignal(false);
-  // Shift+F opens it through the editor's `openPopup`
-  const open = (): boolean => ownOpen() || store.state("openPopup") === "fontFamily";
+  // open while the editor's `openPopup` names it, as Excalidraw's: Shift+F opens it there too
+  const open = (): boolean => store.state("openPopup") === "fontFamily";
   // the selection as it was when the list opened, which a hover previews on and a close restores
   let cached = new Map<string, ExcalidrawElement>();
   let picked = false;
@@ -100,10 +100,8 @@ export function FontPicker() {
         resetAll: true,
       });
     }
-    setOwnOpen(next);
-    if (!next && editor?.state.openPopup === "fontFamily") {
-      editor.batch(() => editor.setState({ openPopup: null }));
-    }
+    if (!editor || next === (editor.state.openPopup === "fontFamily")) return;
+    editor.batch(() => editor.setState({ openPopup: next ? "fontFamily" : null }));
   };
   const hover = (label: string): void => {
     const font = [...fonts().scene, ...fonts().available].find((entry) => entry.label === label);
@@ -187,47 +185,49 @@ export function FontPicker() {
 
   return (
     <div class={radioGroupRow}>
-      <TopPicksMenu
-        customizable
-        customized={customPicks() !== null}
-        resetLabel={t("fontList.resetTopPicks")}
-        onReset={() => setTopPicks(null)}
-      >
-        <div class={radioGroupRow} ref={(element: HTMLDivElement) => dnd.setStrip(element)}>
-          <RadioGroup
-            aria-label={t("labels.fontFamily")}
-            value={isDefault() ? String(selected()) : null}
-            orientation="horizontal"
-            onChange={(value: string) => ui.run(actionChangeFontFamily, Number(value))}
-            class={radioGroupRow}
-          >
-            <For each={topPicks()}>
-              {(value: FontFamilyValues, index: () => number) => {
-                const Icon = fontIcon(value);
-                return (
-                  <Radio
-                    value={String(value)}
-                    aria-label={pickLabel(value)}
-                    elementType="span"
-                    class={radioChoice}
-                    data-testid={pickTestId(value)}
-                  >
-                    <span
-                      title={pickLabel(value)}
-                      onPointerDown={dnd.onPointerDown(value, index())}
-                      data-top-pick-index={index()}
-                      data-drop-target={dnd.dragging()?.overIndex === index() ? "" : undefined}
-                      data-duplicate={dnd.dragging()?.duplicateIndex === index() ? "" : undefined}
+      <Show when={props.compact !== true}>
+        <TopPicksMenu
+          customizable
+          customized={customPicks() !== null}
+          resetLabel={t("fontList.resetTopPicks")}
+          onReset={() => setTopPicks(null)}
+        >
+          <div class={radioGroupRow} ref={(element: HTMLDivElement) => dnd.setStrip(element)}>
+            <RadioGroup
+              aria-label={t("labels.fontFamily")}
+              value={isDefault() ? String(selected()) : null}
+              orientation="horizontal"
+              onChange={(value: string) => ui.run(actionChangeFontFamily, Number(value))}
+              class={radioGroupRow}
+            >
+              <For each={topPicks()}>
+                {(value: FontFamilyValues, index: () => number) => {
+                  const Icon = fontIcon(value);
+                  return (
+                    <Radio
+                      value={String(value)}
+                      aria-label={pickLabel(value)}
+                      elementType="span"
+                      class={radioChoice}
+                      data-testid={pickTestId(value)}
                     >
-                      <Icon aria-hidden="true" />
-                    </span>
-                  </Radio>
-                );
-              }}
-            </For>
-          </RadioGroup>
-        </div>
-      </TopPicksMenu>
+                      <span
+                        title={pickLabel(value)}
+                        onPointerDown={dnd.onPointerDown(value, index())}
+                        data-top-pick-index={index()}
+                        data-drop-target={dnd.dragging()?.overIndex === index() ? "" : undefined}
+                        data-duplicate={dnd.dragging()?.duplicateIndex === index() ? "" : undefined}
+                      >
+                        <Icon aria-hidden="true" />
+                      </span>
+                    </Radio>
+                  );
+                }}
+              </For>
+            </RadioGroup>
+          </div>
+        </TopPicksMenu>
+      </Show>
       <Popover isOpen={open()} onOpenChange={setOpen}>
         <PopoverTrigger>
           <Button
@@ -235,14 +235,21 @@ export function FontPicker() {
             size="icon"
             class={iconButton}
             aria-label={`${t("labels.fontFamily")}: ${selected() === null ? "" : getFontFamilyLabel(selected()!)}`}
-            title={t("labels.fontFamily")}
+            title={props.compact === true ? t("labels.showFonts") : t("labels.fontFamily")}
             data-active={!isDefault() && selected() !== null ? "" : undefined}
+            data-properties-trigger={props.compact === true ? "" : undefined}
             data-testid="font-family-show-fonts"
           >
-            <span aria-hidden="true">…</span>
+            <Show when={props.compact === true} fallback={<span aria-hidden="true">…</span>}>
+              <Type aria-hidden="true" />
+            </Show>
           </Button>
         </PopoverTrigger>
-        <PopoverContent side="bottom" align="start">
+        <PopoverContent
+          side={props.compact === true ? "right" : "bottom"}
+          align="start"
+          shouldCloseOnInteractOutside={props.compact === true ? closesOnPressOutside : undefined}
+        >
           <Command label={t("labels.fontFamily")} class={list} loop onValueChange={hover}>
             <CommandInput placeholder={t("quickSearch.placeholder")} />
             <CommandList>

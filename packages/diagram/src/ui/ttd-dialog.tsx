@@ -35,83 +35,53 @@ import {
 } from "../ttd/mermaid-error.ts";
 import { TextToDiagramSession, getLastAssistantMessage } from "../ttd/session.ts";
 import { useDiagramUI } from "./context.tsx";
+import { bg, edge, fg, gap, layout, rounded, space, type } from "@barqjs/arc/style";
+
 import { diagramLayer as d } from "./layer.ts";
 import { getShortcutKey } from "./shortcuts.ts";
-import { iconButton, menuItem, menuSurface } from "./styles.ts";
+import {
+  dialogContent,
+  fitted,
+  grid,
+  iconButton,
+  menuItem,
+  menuSurface,
+  scrolls,
+} from "./styles.ts";
 
 import type { BinaryFiles } from "../types.ts";
 import type { ChatMessage, TextToDiagramOptions } from "../ttd/types.ts";
 import type { DiagramUI } from "./context.tsx";
 
-const content = d({
-  maxWidth: "min(1200px, calc(100vw - 2rem))",
-  width: "100%",
-  maxHeight: "calc(100vh - 2rem)",
-  overflowY: "auto",
-});
+const content = d(dialogContent, { maxWidth: "min(1200px, calc(100vw - 2rem))" });
 
-const panels = d({
-  display: "grid",
+const panels = d(grid, gap[4], {
   gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-  gap: "16px",
   minHeight: "360px",
 });
 
-const panel = d({ display: "flex", flexDirection: "column", gap: "8px", minWidth: "0" });
+const panel = d(layout.column, gap[2], layout.minZero);
 
-const editorArea = d({
-  flex: "1",
-  minHeight: "300px",
-  fontFamily: "var(--font-mono)",
-  fontSize: "var(--text-sm)",
-  resize: "none",
-});
+const editorArea = d(layout.grow, type.mono, type.sm, { minHeight: "300px", resize: "none" });
 
-const previewBox = d({
-  position: "relative",
-  flex: "1",
+const previewBox = d(layout.relative, layout.grow, layout.centre, edge.all, rounded.md, fitted, {
   minHeight: "300px",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
   overflow: "hidden",
-  borderRadius: "var(--radius)",
-  border: "1px solid var(--border)",
-  "& canvas": { maxWidth: "100%", maxHeight: "100%" },
 });
 
-const errorText = d({
-  color: "var(--destructive)",
-  fontSize: "var(--text-sm)",
-  whiteSpace: "pre-wrap",
-  margin: "0",
-});
+const errorText = d(fg.danger, type.sm, layout.flush, { whiteSpace: "pre-wrap" });
 
-const muted = d({
-  color: "var(--muted-foreground)",
-  fontSize: "var(--text-sm)",
-  margin: "0",
-});
+const muted = d(fg.muted, type.sm, layout.flush);
 
-const actions = d({ display: "flex", gap: "8px", justifyContent: "flex-end", flexWrap: "wrap" });
+const actions = d(layout.row, layout.end, layout.wrap, gap[2]);
 
-const log = d({
-  display: "flex",
-  flexDirection: "column",
-  gap: "12px",
-  flex: "1",
+const log = d(layout.column, gap[3], layout.grow, scrolls, {
   minHeight: "240px",
   maxHeight: "50vh",
-  overflowY: "auto",
 });
 
-const message = d({
-  display: "flex",
-  flexDirection: "column",
-  gap: "4px",
-  padding: "8px",
-  borderRadius: "var(--radius)",
-  backgroundColor: "var(--muted)",
+const message = d(layout.column, gap[1], rounded.md, bg.muted, {
+  padding: space.x2,
   "& pre": {
     margin: "0",
     whiteSpace: "pre-wrap",
@@ -120,9 +90,9 @@ const message = d({
   },
 });
 
-const role = d({ fontWeight: "600", fontSize: "var(--text-xs)" });
+const role = d(type.xs, type.strong);
 
-const headerRow = d({ display: "flex", alignItems: "center", justifyContent: "space-between" });
+const headerRow = d(layout.row, layout.between);
 
 /** The Mermaid documentation pages the description's tags link to. */
 const SYNTAX_PAGES: Record<string, string> = {

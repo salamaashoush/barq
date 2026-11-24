@@ -6,6 +6,8 @@ import {
   ContextMenuTrigger,
 } from "@barqjs/ui/context-menu";
 
+import { type } from "@barqjs/arc/style";
+
 import { diagramLayer as d } from "./layer.ts";
 import { menuItem, menuSurface } from "./styles.ts";
 
@@ -183,9 +185,7 @@ export function createTopPicksDnD<T>(options: {
   };
 }
 
-const tip = d({
-  fontSize: "var(--text-xs)",
-  color: "var(--muted-foreground)",
+const tip = d(type.meta, {
   "& button": {
     padding: "0",
     border: "none",

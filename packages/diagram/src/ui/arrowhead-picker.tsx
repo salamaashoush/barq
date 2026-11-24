@@ -5,8 +5,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@barqjs/ui/popover";
 
 import { useDiagramUI } from "./context.tsx";
 import { Arrowhead as ArrowheadIcon, type ArrowheadGlyph } from "./icons.tsx";
+import { gap, space } from "@barqjs/arc/style";
+
 import { diagramLayer as d } from "./layer.ts";
-import { iconButton, radioChoice } from "./styles.ts";
+import { grid, iconButton, radioChoice } from "./styles.ts";
 
 import type { Arrowhead } from "@excalidraw/element/types";
 
@@ -34,11 +36,9 @@ const ARROWHEADS: readonly ArrowheadOption[] = [
   { value: "cardinality_zero_or_many", key: null },
 ];
 
-const grid = d({
-  display: "grid",
+const arrowheadGrid = d(grid, gap[1], {
   gridTemplateColumns: "repeat(4, 32px)",
-  gap: "4px",
-  padding: "8px",
+  padding: space.x2,
 });
 
 /**
@@ -96,7 +96,7 @@ export function ArrowheadPicker(props: {
             value={current()}
             orientation="horizontal"
             onChange={(value: string) => pick(value as ArrowheadGlyph)}
-            class={grid}
+            class={arrowheadGrid}
           >
             <For each={ARROWHEADS}>
               {(option: ArrowheadOption) => (

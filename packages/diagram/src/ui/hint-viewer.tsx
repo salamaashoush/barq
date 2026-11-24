@@ -10,25 +10,19 @@ import {
 
 import { useDiagramUI } from "./context.tsx";
 import { getShortcutKey } from "./shortcuts.ts";
+import { gap, layout, space, type } from "@barqjs/arc/style";
+
 import { diagramLayer as d } from "./layer.ts";
+import { acrossWidth, centredText, pinned } from "./styles.ts";
 
 import type { Translate } from "../i18n.ts";
 import type { DiagramEditor } from "../editor/editor.ts";
 
-const hint = d({
-  position: "absolute",
+const hint = d(pinned, acrossWidth, layout.column, gap[0.5], centredText, type.meta, {
   top: "calc(100% + 6px)",
-  insetInline: "0",
-  display: "flex",
-  flexDirection: "column",
   alignItems: "center",
-  gap: "2px",
-  textAlign: "center",
-  fontSize: "var(--text-xs)",
-  color: "var(--muted-foreground)",
-  pointerEvents: "none",
   "& span": {
-    paddingInline: "6px",
+    paddingInline: space.x1_5,
     borderRadius: "4px",
     backgroundColor: "color-mix(in oklab, var(--background) 80%, transparent)",
   },

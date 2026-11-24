@@ -20,46 +20,29 @@ import {
 } from "@excalidraw/common";
 
 import { useDiagramUI } from "./context.tsx";
+import { fg, gap, layout, space, truncate } from "@barqjs/arc/style";
+
 import { diagramLayer as d } from "./layer.ts";
-import { iconButton, island, textInput } from "./styles.ts";
+import { acrossWidth, floating, iconButton, island, takesPointer, textInput } from "./styles.ts";
 
 import type { NonDeletedExcalidrawElement } from "@excalidraw/element/types";
 import type { DiagramEditor } from "../editor/editor.ts";
 
-const popup = d({
-  position: "absolute",
-  zIndex: "4",
-  maxWidth: "min(360px, calc(100% - 16px))",
-  gap: "4px",
-});
-const linkText = d({
-  flex: "1",
-  minWidth: "0",
-  paddingInline: "6px",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-  color: "var(--link, var(--primary))",
-});
-const emptyText = d({
-  flex: "1",
-  paddingInline: "6px",
-  color: "var(--muted-foreground)",
-});
-const dialog = d({
-  position: "absolute",
-  zIndex: "4",
-  top: "12px",
-  insetInline: "0",
+const popup = d(island, floating, gap[1], { maxWidth: "min(360px, calc(100% - 16px))" });
+
+const linkText = d(layout.grow, layout.minZero, truncate, fg.link, { paddingInline: space.x1_5 });
+
+const emptyText = d(layout.grow, fg.muted, { paddingInline: space.x1_5 });
+
+const dialog = d(island, floating, acrossWidth, layout.column, gap[2], takesPointer, {
+  top: space.x3,
   marginInline: "auto",
   width: "min(420px, calc(100% - 24px))",
-  pointerEvents: "auto",
-  flexDirection: "column",
   alignItems: "stretch",
-  gap: "8px",
-  padding: "12px",
+  padding: space.x3,
 });
-const dialogRow = d({ display: "flex", gap: "8px", justifyContent: "flex-end" });
+
+const dialogRow = d(layout.row, layout.end, gap[2]);
 
 /** The link an element link points at, as Excalidraw scrolls to it: the element, or the group. */
 const scrollToElementLink = (editor: DiagramEditor, link: string): boolean => {
@@ -141,7 +124,7 @@ export function HyperlinkPopup() {
 
   return (
     <Show when={element() && position()}>
-      <div class={`${island} ${popup}`} style={position()!} data-testid="hyperlink-popup">
+      <div class={popup} style={position()!} data-testid="hyperlink-popup">
         <Show
           when={mode() === "editor"}
           fallback={
@@ -312,7 +295,7 @@ export function ElementLinkDialog() {
   return (
     <Show when={dialogState()}>
       <div
-        class={`${island} ${dialog}`}
+        class={dialog}
         role="dialog"
         aria-label={t("elementLink.title")}
         onKeyDown={(event: KeyboardEvent) => {

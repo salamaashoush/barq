@@ -4,70 +4,39 @@ import { isDarwin, isFirefox, isWindows } from "@excalidraw/common";
 
 import { actionShortcuts, actionToggleTheme } from "../editor/actions/toggles.ts";
 import { useDiagramUI } from "./context.tsx";
-import { layout, surface } from "@barqjs/arc/style";
+import { bg, fg, gap, layout, rounded, space, surface, type } from "@barqjs/arc/style";
+import { tokens } from "@barqjs/ui/theme/tokens";
 
 import { diagramLayer as d } from "./layer.ts";
+import { dialogContent, grid } from "./styles.ts";
 import { getShortcutKey } from "./shortcuts.ts";
 
 import type { TranslationKey } from "../i18n.ts";
 
-const content = d({
-  maxWidth: "min(1000px, calc(100vw - 2rem))",
-  width: "100%",
-  maxHeight: "calc(100vh - 2rem)",
-  overflowY: "auto",
-});
+const content = d(dialogContent, { maxWidth: "min(1000px, calc(100vw - 2rem))" });
 
-const sections = d({
-  display: "grid",
+const sections = d(grid, gap[4], {
   gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-  gap: "16px",
   alignItems: "start",
 });
 
-const island = d(surface.bordered, layout.column, {
-  gap: "2px",
-  padding: "12px",
-  "& h3": {
-    margin: "0 0 6px",
-    fontSize: "var(--text-sm)",
-    fontWeight: "600",
-  },
+const island = d(surface.bordered, layout.column, gap[0.5], {
+  padding: space.x3,
+  "& h3": { margin: "0 0 6px", fontSize: "var(--text-sm)", fontWeight: "600" },
 });
 
-const row = d({
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "12px",
-  paddingBlock: "4px",
-  fontSize: "var(--text-sm)",
-  "& + &": { borderTop: "1px solid var(--border)" },
+const row = d(layout.row, layout.between, gap[3], type.sm, {
+  paddingBlock: space.x1,
+  "& + &": { borderTopWidth: "1px", borderTopStyle: "solid", borderTopColor: tokens.border },
 });
 
-const keys = d({
-  display: "flex",
-  flexWrap: "wrap",
-  justifyContent: "flex-end",
-  alignItems: "center",
-  gap: "4px",
-  flexShrink: "0",
-  color: "var(--muted-foreground)",
-  fontSize: "var(--text-xs)",
-});
+const keys = d(layout.row, layout.wrap, layout.end, layout.noShrink, gap[1], type.meta);
 
-const key = d({
-  display: "inline-flex",
-  alignItems: "center",
+const key = d(layout.inlineCentre, rounded.xs, type.xs, fg.default, bg.muted, {
   minWidth: "20px",
-  justifyContent: "center",
-  paddingInline: "6px",
-  paddingBlock: "2px",
-  borderRadius: "4px",
+  paddingInline: space.x1_5,
+  paddingBlock: space.x0_5,
   fontFamily: "inherit",
-  fontSize: "var(--text-xs)",
-  color: "var(--foreground)",
-  backgroundColor: "var(--muted)",
   boxShadow: "inset 0 -1px 0 var(--border)",
 });
 

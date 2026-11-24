@@ -4,6 +4,8 @@ import { getCommonBounds, getElementAbsoluteCoords } from "@excalidraw/element";
 
 import { actionToggleMinimap } from "../editor/actions/toggles.ts";
 import { useDiagramUI } from "./context.tsx";
+import { interaction } from "@barqjs/arc/style";
+
 import { diagramLayer as d } from "./layer.ts";
 import { island } from "./styles.ts";
 
@@ -13,10 +15,9 @@ const WIDTH = 200;
 const HEIGHT = 130;
 const PADDING = 8;
 
-const surface = d({
+const minimapIsland = d(island, interaction.pressable, {
   padding: "0",
   overflow: "hidden",
-  cursor: "pointer",
   touchAction: "none",
   "& canvas": { display: "block" },
 });
@@ -145,7 +146,7 @@ export function Minimap() {
           );
         };
         return (
-          <div class={`${island} ${surface}`} data-testid="minimap">
+          <div class={minimapIsland} data-testid="minimap">
             <canvas
               ref={(element: HTMLCanvasElement) => {
                 canvas = element;

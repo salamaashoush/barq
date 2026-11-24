@@ -1,4 +1,11 @@
-import { KEYS, THEME, isColorDark, removeDarkModeFilter, rgbToHex } from "@excalidraw/common";
+import {
+  COLOR_WHITE,
+  KEYS,
+  THEME,
+  isColorDark,
+  removeDarkModeFilter,
+  rgbToHex,
+} from "@excalidraw/common";
 
 import type { DiagramEditor } from "../editor/editor.ts";
 
@@ -37,7 +44,7 @@ export const startEyeDropper = (
     "position:absolute;inset:0;z-index:5;cursor:crosshair;touch-action:none;outline:none";
   const preview = document.createElement("div");
   preview.setAttribute("aria-hidden", "true");
-  preview.style.cssText = `position:absolute;width:${PREVIEW_SIZE}px;height:${PREVIEW_SIZE}px;border-radius:6px;box-shadow:0 0 0 1px rgb(0 0 0 / 0.2), 0 2px 6px rgb(0 0 0 / 0.2);pointer-events:none;display:none`;
+  preview.style.cssText = `position:absolute;width:${PREVIEW_SIZE}px;height:${PREVIEW_SIZE}px;border-radius:6px;--shade:rgb(0 0 0 / 0.2);box-shadow:0 0 0 1px var(--shade), 0 2px 6px var(--shade);pointer-events:none;display:none`;
   overlay.append(preview);
   container.append(overlay);
   overlay.focus();
@@ -93,7 +100,7 @@ export const startEyeDropper = (
         : y + PREVIEW_GAP;
     preview.style.display = "";
     preview.style.background = color;
-    preview.style.outline = `2px solid ${isColorDark(color) ? "#fff" : "#222"}`;
+    preview.style.outline = `2px solid ${isColorDark(color) ? COLOR_WHITE : "#222"}`;
     preview.style.left = `${left}px`;
     preview.style.top = `${top}px`;
     if (holding) {

@@ -11,7 +11,7 @@ import { Copy } from "@barqjs/lucide/icons/copy";
 import { Maximize } from "@barqjs/lucide/icons/maximize";
 import { WandSparkles } from "@barqjs/lucide/icons/wand-sparkles";
 import { Spinner } from "@barqjs/ui/spinner";
-import { sceneCoordsToViewportCoords } from "@excalidraw/common";
+import { COLOR_WHITE, sceneCoordsToViewportCoords } from "@excalidraw/common";
 
 import type {
   ExcalidrawEmbeddableElement,
@@ -23,8 +23,10 @@ import type {
 import { copyTextToSystemClipboard } from "../clipboard.ts";
 import { type Embed, getGenerationError } from "../editor/embeds.ts";
 import { useDiagramUI } from "./context.tsx";
+import { fg, gap, layout, space, type } from "@barqjs/arc/style";
+
 import { diagramLayer as d } from "./layer.ts";
-import { iconButton, island } from "./styles.ts";
+import { absolute, atTopLeft, centredText, iconButton, island, pinned } from "./styles.ts";
 
 import type { DiagramEditor } from "../editor/editor.ts";
 import type { LocalizedMessage, Translate } from "../i18n.ts";
@@ -39,57 +41,40 @@ export type RenderEmbeddable = (
   appState: AppState,
 ) => Child | null | undefined;
 
-const content = d({
-  position: "relative",
-  width: "100%",
+const content = d(layout.relative, layout.fill, {
   height: "100%",
   borderRadius: "var(--embeddable-radius)",
   "& > *": { borderRadius: "var(--embeddable-radius)" },
   "& iframe": { display: "block", width: "100%", height: "100%", border: "0" },
 });
 
-const hint = d({
-  position: "absolute",
+/** A label over an embed, as Excalidraw draws it whatever the theme. */
+const overEmbed = d(pinned, {
   zIndex: "1",
+  borderRadius: "12px",
+  backgroundColor: "rgba(0, 0, 0, 0.5)",
+  color: COLOR_WHITE,
+});
+
+const hint = d(overEmbed, layout.nowrap, {
   top: "50%",
   left: "50%",
   transform: "translate(-50%, -50%)",
   padding: "1rem 1.6rem",
-  borderRadius: "12px",
-  backgroundColor: "rgba(0, 0, 0, 0.5)",
-  color: "#fff",
   fontWeight: "700",
   letterSpacing: "0.6px",
-  whiteSpace: "nowrap",
-  pointerEvents: "none",
 });
 
-const generating = d({
-  position: "absolute",
-  zIndex: "1",
+const generating = d(overEmbed, layout.row, gap[2], {
   bottom: "1rem",
   right: "1rem",
-  display: "flex",
-  alignItems: "center",
-  gap: "0.5rem",
   padding: "0.375rem 0.75rem",
-  borderRadius: "12px",
-  backgroundColor: "rgba(0, 0, 0, 0.5)",
-  color: "#fff",
   fontSize: "0.875rem",
-  pointerEvents: "none",
 });
 
-const notice = d({
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  width: "100%",
+const notice = d(layout.centre, layout.fill, centredText, type.sm, fg.danger, {
   height: "100%",
-  padding: "16px",
-  textAlign: "center",
-  fontSize: "var(--text-sm)",
-  color: "var(--destructive)",
+  padding: space.x4,
 });
 
 const IFRAME_ALLOW =
@@ -221,7 +206,7 @@ export function EmbedLayer(props: {
   );
 }
 
-const canvasButtons = d({ position: "absolute", top: "0", left: "0", gap: "4px" });
+const canvasButtons = d(island, gap[1], atTopLeft, absolute);
 
 interface Buttons {
   kind: "generate" | "generated";
@@ -315,7 +300,7 @@ export function MagicFrameButtons() {
     <Show when={buttons()}>
       {(current: () => Buttons) => (
         <div
-          class={`${island} ${canvasButtons}`}
+          class={canvasButtons}
           style={{ transform: `translate(${current().left + 8}px, ${current().top}px)` }}
         >
           <Show
