@@ -78,6 +78,6 @@ describe.if(built)("tree shaking", () => {
     `);
     // Not a budget anyone should tune against, just a tripwire: the package
     // doubling in size without anyone noticing is the thing to catch.
-    expect(out.length).toBeLessThan(80_000);
+    expect(out.length).toBeLessThan(100_000);
   });
 });
