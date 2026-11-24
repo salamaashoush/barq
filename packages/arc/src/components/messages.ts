@@ -207,6 +207,26 @@ export interface ArcMessages {
   exitPictureInPicture: string;
   fullscreen: string;
   exitFullscreen: string;
+  recordAudio: string;
+  recordVideo: string;
+  microphone: string;
+  camera: string;
+  recorderIntro: (device: string) => string;
+  turnOn: (device: string) => string;
+  permissionDenied: (device: string) => string;
+  permissionHelp: (device: string) => string;
+  deviceMissing: (device: string) => string;
+  recordingUnsupported: string;
+  chooseDevice: (device: string) => string;
+  cameraPreview: string;
+  startRecording: string;
+  stopRecording: string;
+  recordingStarted: string;
+  recordedFor: (duration: string) => string;
+  recordingPreview: string;
+  recordAgain: string;
+  useRecording: string;
+  attachFailed: string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -411,6 +431,27 @@ export const ENGLISH: ArcMessages = {
   exitPictureInPicture: "Exit picture in picture",
   fullscreen: "Full screen",
   exitFullscreen: "Exit full screen",
+  recordAudio: "Record audio",
+  recordVideo: "Record video",
+  microphone: "microphone",
+  camera: "camera",
+  recorderIntro: (device) => `Recording uses your ${device}. Nothing is kept until you use it.`,
+  turnOn: (device) => `Turn on the ${device}`,
+  permissionDenied: (device) => `The ${device} is blocked`,
+  permissionHelp: (device) =>
+    `Allow the ${device} for this site in the browser's address bar or settings, then try again.`,
+  deviceMissing: (device) => `No ${device} was found`,
+  recordingUnsupported: "This browser cannot record here",
+  chooseDevice: (device) => `Choose a ${device}`,
+  cameraPreview: "Camera preview",
+  startRecording: "Record",
+  stopRecording: "Stop",
+  recordingStarted: "Recording",
+  recordedFor: (duration) => `Recorded ${duration}`,
+  recordingPreview: "Recording",
+  recordAgain: "Record again",
+  useRecording: "Use recording",
+  attachFailed: "The recording could not be used. Try again.",
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");

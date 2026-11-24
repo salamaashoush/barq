@@ -677,6 +677,17 @@ import { CommentThreadList } from "@barqjs/arc";
   `durationText` is the time as `Duration` writes it, for a label of an
   app's own.
 
+- `ClipRecorder`: an audio or video clip recorded in the page. Nothing is
+  asked of the browser until the reader presses the button that turns the
+  microphone or the camera on; a refusal says how to allow it and offers to
+  try again, and a missing device says so. Then a device to choose, the
+  camera live or a level meter, an optional `countdown`, and a timer against
+  `maxDuration`, where it stops by itself. The clip plays back in a
+  `MediaPlayer` with Record again and, with `onAttach`, Use, pending until
+  the caller's promise settles. The tracks stop as soon as a recording ends
+  and when the recorder unmounts, and a status line tells a screen reader
+  when recording starts and how long the clip is.
+
 ui's `Carousel` swipes under a finger, steps with the arrows in the reading
 direction and has `CarouselPrevious` and `CarouselNext`; `CarouselDots` adds
 the slide picker, a button per slide with the current one marked.

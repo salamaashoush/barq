@@ -198,6 +198,13 @@ export {
   commentsStyles,
 } from "./components/comments.tsx";
 export {
+  ClipRecorder,
+  type ClipRecorderProps,
+  type RecordedClip,
+  type RecorderStatus,
+  clipRecorderStyles,
+} from "./components/clip-recorder.tsx";
+export {
   type MediaChapter,
   type MediaCue,
   MediaPlayer,
