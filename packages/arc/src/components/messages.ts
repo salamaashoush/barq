@@ -227,6 +227,19 @@ export interface ArcMessages {
   recordAgain: string;
   useRecording: string;
   attachFailed: string;
+  versionHistory: string;
+  versions: string;
+  currentVersion: string;
+  previousVersion: string;
+  preview: string;
+  compare: string;
+  compareWith: string;
+  restore: string;
+  restoreHeading: (version: string) => string;
+  restoreDescription: string;
+  restoreFailed: string;
+  noVersions: string;
+  nothingToCompare: string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -452,6 +465,19 @@ export const ENGLISH: ArcMessages = {
   recordAgain: "Record again",
   useRecording: "Use recording",
   attachFailed: "The recording could not be used. Try again.",
+  versionHistory: "Version history",
+  versions: "Versions",
+  currentVersion: "Current",
+  previousVersion: "The version before",
+  preview: "Preview",
+  compare: "Compare",
+  compareWith: "Compare with",
+  restore: "Restore",
+  restoreHeading: (version) => `Restore ${version}?`,
+  restoreDescription: "It becomes the current version. The current one stays in the history.",
+  restoreFailed: "The version could not be restored. Try again.",
+  noVersions: "No versions yet",
+  nothingToCompare: "There is nothing to compare it with.",
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");

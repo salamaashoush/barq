@@ -214,6 +214,14 @@ export {
   mediaPlayerStyles,
 } from "./components/media-player.tsx";
 export {
+  type VersionBase,
+  type VersionEntry,
+  VersionHistory,
+  type VersionHistoryProps,
+  type VersionView,
+  versionHistoryStyles,
+} from "./components/version-history.tsx";
+export {
   PersonAvatar,
   type PersonAvatarProps,
   personAvatarStyles,

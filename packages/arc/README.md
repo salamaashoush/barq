@@ -661,6 +661,16 @@ import { CommentThreadList } from "@barqjs/arc";
   handler that returns a promise holds the comment pending until it settles,
   a reply that fails stays with Retry and Discard, and an edit, a delete, a
   reaction or a resolve that fails is taken back and said so.
+- `VersionHistory`: the saved states of something, newest first, on arc's
+  `List`: each with its author's avatar, a `label` or the author's name, a
+  `summary`, a `RelativeTime` and Current on the one in use. The chosen one
+  is previewed with `renderPreview`, or compared against the current version
+  or the one before it, two previews side by side unless `renderCompare`
+  draws the compare (`CodeDiff` from `@barqjs/arc/code` for text). Restore
+  asks through `confirm()`, stays pending while the caller's promise runs and
+  says so if it fails. Loading rows, an empty state and `onLoadMore` come
+  from the list, and the detail sits beside it across a wide container and
+  under it across a narrow one.
 - `PersonAvatar`: one person's photo, or their initials while it loads or when
   it fails, which `AvatarStack` and the comments draw.
 
