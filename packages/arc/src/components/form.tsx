@@ -35,6 +35,7 @@ import { arcLayer as arc } from "../layer.ts";
 import type { Customisable } from "../lib/parts.ts";
 import { layout } from "../style/index.ts";
 import { useArcMessages } from "./messages.ts";
+import { CheckboxCards, RadioCards } from "./choice-cards.tsx";
 import { ColorField, ColorPicker, ColorSwatches } from "./color.tsx";
 import { DateRangeField } from "./date-range-field.tsx";
 import { CurrencyField, PercentField, UnitField } from "./number-fields.tsx";
@@ -661,6 +662,8 @@ const arcFieldComponents = {
   PhoneField,
   RangeSlider,
   Rating,
+  RadioCards,
+  CheckboxCards,
 };
 
 const arcFormComponents = { SubmitButton, FormError };
