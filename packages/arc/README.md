@@ -297,8 +297,7 @@ if (await confirm({ title: "Delete the check?", tone: "danger", confirmLabel: "D
 - `PageHeader`: the page's `<h1>`, a line about it, what sits above it and the
   actions beside it.
 - `StatCard`: one number, what it counts, how it moved in a tone, and an
-  optional sparkline drawn as inline SVG, with its numbers in words for a
-  screen reader.
+  optional `Sparkline` with its numbers in words for a screen reader.
 - `Status`: a state in a word and a tone, as a dot, a tinted pill or a filled
   one, with an optional pulse that stops under reduced motion.
 - `confirm()`: a promise for the reader's answer, drawn by one `<ConfirmHost />`
@@ -481,6 +480,31 @@ and agrees between the server and the hydrating page.
 `relativeTimeFormatter` and `relativeUnit` in `@barqjs/aria/i18n` are the same
 reading for an app's own text.
 
+## Navigation
+
+```tsx
+import { ResponsiveTabs } from "@barqjs/arc";
+
+<ResponsiveTabs aria-label="Project" items={[{ id: "checks", label: "Checks", count: 12 }]}>
+  {(tab) => <ProjectPanel id={tab.id} />}
+</ResponsiveTabs>;
+```
+
+- `ResponsiveTabs`: tabs from data that stay usable as the room narrows, on
+  ui's tabs and `@barqjs/aria`'s tab list. With `overflow="menu"` the tabs
+  that do not fit go into a More menu, the last first, the selected one
+  always kept in the row; with `"scroll"` the row scrolls under a finger with
+  a button at each end while there is more that way. An item takes an `icon`,
+  a `count`, `isDisabled` and an `href`; `children` draws the selected tab's
+  panel. The server writes every tab; the browser folds after hydrating.
+
+## Data display
+
+- `Indicator`: a count or a dot in a tone, on its own or pinned to the top
+  corner at the reading direction's end of what it wraps. The count is in the
+  locale's digits and capped at `max` (`99+`); pinned, it carries words for a
+  screen reader, `label` or arc's "3 new".
+
 ## Inputs and pickers
 
 ```tsx
@@ -639,6 +663,66 @@ ui's `ToggleGroup` is the toggle button group: single or multiple, on
   whose target is not on the page is passed by. `useTourProgress(key)`
   remembers in `localStorage` whether a tour was seen and where it was left,
   so it shows once and a reload resumes it.
+
+## Charts
+
+```tsx
+import { ComboChart, DonutChart, Gauge } from "@barqjs/arc";
+
+<DonutChart
+  label="Checks by state"
+  data={[
+    { key: "up", label: "Up", value: 42, tone: "success" },
+    { key: "down", label: "Down", value: 3, tone: "danger" },
+  ]}
+  centreLabel="checks"
+/>;
+
+<ComboChart
+  label="Runs and failure rate"
+  data={days}
+  x="day"
+  bars={[{ key: "runs", label: "Runs" }]}
+  lines={[{ key: "rate", label: "Failure rate", tone: "danger" }]}
+  dualAxis
+/>;
+
+<Gauge label="Storage" value={72} thresholds={[{ value: 80, tone: "warning" }]} />;
+```
+
+The charts `@barqjs/ui` lacks, drawn the way its `ChartBars` and
+`ChartLines` are: TanStack Charts inside ui's `ChartContainer`, so a series is
+`--color-<key>` and a theme or a `tone` restyles it with no rebuild, the
+server writes the drawing and the browser adopts it, and ui's `ChartTooltip`
+and `ChartLegend` work beside every one. The arrow keys walk the points, and
+the tooltip, a live region, reads each. Every chart's numbers are also a
+table captioned with its `label`, which `table` keeps for a screen reader
+(`"hidden"`, the default), puts behind a button (`"toggle"`) or shows
+(`"visible"`); the numbers are written in the locale with `formatOptions`.
+The drawing takes its box's width and its aspect ratio's height, or
+`height`; a chart is not mirrored right to left, its table and legend are.
+
+- `DonutChart`: part of a whole, with the total or `centreValue` in the hole
+  and each slice's share in the table.
+- `ComboChart`: bars, grouped or `stacked`, and lines over the same columns;
+  with `dualAxis` the lines read a second scale at the end.
+- `ScatterChart`: two measures a point per record, coloured by a `group`
+  field; with `size`, bubbles whose area follows a third.
+- `FunnelChart`: stages centred on one line, narrowing toward the outcome,
+  each with its value and its share of the first written at its end.
+- `Heatmap`: a number over two categories as cells in `steps` shades from
+  the muted fill to a tone, with a key from fewer to more.
+- `Gauge`: one reading against its range, a meter on `@barqjs/aria` whose
+  name, range and reading a screen reader hears, its tone changing at each of
+  `thresholds`.
+- `Sparkline`: a trend with no axes, as a line, an area or bars, its numbers
+  in words; `domain` keeps a column of them on one scale. `StatCard` draws
+  its trend with one.
+- `ChartDataTable`: the table every chart draws, on its own beside one of
+  ui's charts.
+
+ui's `ChartBars` and `ChartLines` already have a legend and a tooltip, so arc
+adds no presets over them; `ComboChart` covers stacked bars.
 
 ## Code
 
