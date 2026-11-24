@@ -239,6 +239,8 @@ export {
 export {
   AXIS_FONT_SIZE,
   Chart,
+  CHART_AXIS,
+  CHART_THEME,
   ChartBars,
   type ChartConfig,
   type ChartConfigEntry,
@@ -246,6 +248,7 @@ export {
   ChartContainer,
   type ChartContainerProps,
   type ChartDefinition,
+  type ChartFocus,
   chartHover,
   ChartLegend,
   ChartLegendContent,
@@ -256,6 +259,7 @@ export {
   type ChartPayloadItem,
   type ChartPlotProps,
   type ChartProps,
+  type ChartScope,
   type ChartSeries,
   ChartStyle,
   type ChartStyleProps,
@@ -266,6 +270,7 @@ export {
   type ChartTooltipIndicator,
   type ChartTooltipPopupProps,
   type ChartTooltipProps,
+  useChart,
 } from "./ui/chart.tsx";
 export { Checkbox, type CheckboxProps } from "./ui/checkbox.tsx";
 export {

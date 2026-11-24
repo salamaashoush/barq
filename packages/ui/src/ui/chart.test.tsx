@@ -3,8 +3,16 @@ import { flush } from "@barqjs/core";
 import { render, tick, user } from "@barqjs/testing";
 
 import { rulesFor } from "../test-rules.ts";
+import { createMemo } from "@barqjs/core";
+import { defineChart, dot as dots } from "@tanstack/charts";
+import { scaleLinear } from "@tanstack/charts/scales/linear";
+
 import {
   AXIS_FONT_SIZE,
+  CHART_AXIS,
+  CHART_THEME,
+  Chart,
+  useChart,
   ChartBars,
   ChartContainer,
   ChartLegend,
@@ -671,6 +679,60 @@ describe("ChartTooltip", () => {
     const rules = rulesFor(popup()?.className ?? "");
     expect(rules).toContain("pointer-events: none");
     expect(rules).toContain("position: absolute");
+  });
+
+  test("a plot of the caller's own reports its focus to the same tooltip", async () => {
+    function Dots() {
+      const scope = useChart();
+      const definition = createMemo(() =>
+        defineChart({
+          marks: [
+            dots(
+              [
+                { x: 1, y: 2 },
+                { x: 3, y: 4 },
+              ],
+              { x: "x", y: "y" },
+            ),
+          ],
+          scales: {
+            x: { scale: scaleLinear, axis: CHART_AXIS },
+            y: { scale: scaleLinear, axis: CHART_AXIS },
+          },
+          theme: CHART_THEME,
+        }),
+      );
+      return (
+        <Chart
+          definition={definition()}
+          ariaLabel="Dots"
+          onFocusGroupChange={(points) => {
+            const first = points[0];
+            scope.setFocus(
+              first === undefined
+                ? null
+                : {
+                    label: "Point",
+                    payload: [{ dataKey: "desktop", name: "desktop", value: 7 }],
+                    x: first.x,
+                    y: first.y,
+                  },
+            );
+          }}
+        />
+      );
+    }
+    render(() => (
+      <ChartContainer config={KEYED}>
+        <Dots />
+        <ChartTooltip />
+      </ChartContainer>
+    ));
+    const drawing = await mounted();
+    drawing.focus();
+    flush();
+    expect(popup()?.getAttribute("data-state")).toBe("open");
+    expect(document.querySelector('[data-slot="chart-tooltip-row"]')?.textContent).toBe("Desktop7");
   });
 
   test("outside a container it says what is wrong", () => {

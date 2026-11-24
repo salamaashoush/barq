@@ -222,7 +222,7 @@ export const AXIS_FONT_SIZE = 10;
  * style switch without being rebuilt: nothing here holds a colour, only the
  * name of one.
  */
-const THEME = {
+export const CHART_THEME = {
   foreground: "var(--foreground)",
   muted: "var(--muted-foreground)",
   grid: "var(--border)",
@@ -297,7 +297,7 @@ export interface ChartPayloadItem {
   readonly type?: string;
 }
 
-interface ChartFocus {
+export interface ChartFocus {
   readonly label: string;
   readonly payload: readonly ChartPayloadItem[];
   /** Where the focused point is, in px from the container's top left. */
@@ -305,7 +305,7 @@ interface ChartFocus {
   readonly y: number;
 }
 
-interface ChartValue {
+export interface ChartScope {
   readonly config: () => readonly Series[];
   readonly focus: Accessor<ChartFocus | null>;
   readonly setFocus: (focus: ChartFocus | null) => void;
@@ -317,9 +317,14 @@ interface ChartValue {
   readonly watch: (cursor: Accessor<boolean>) => () => void;
 }
 
-const ChartContext = createContext<ChartValue | null>(null);
+const ChartContext = createContext<ChartScope | null>(null);
 
-function useChart(): ChartValue {
+/**
+ * The container's scope, for a plot drawn with a definition of the caller's
+ * own: its config, and the focus it reports so a `<ChartTooltip>` beside it
+ * reads that plot as it reads `ChartBars`.
+ */
+export function useChart(): ChartScope {
   const value = getContext(ChartContext);
   if (value === null || value === undefined) {
     throw new Error("This must be rendered inside a <ChartContainer>.");
@@ -392,7 +397,7 @@ export function ChartContainer(props: ChartContainerProps) {
   const [watchers, setWatchers] = createSignal<readonly Accessor<boolean>[]>([], {
     ownedWrite: true,
   });
-  const value: ChartValue = {
+  const value: ChartScope = {
     config: series,
     focus,
     setFocus: (next) => setFocus(() => next),
@@ -442,7 +447,7 @@ export function ChartContainer(props: ChartContainerProps) {
  * context rather than under it: every plot then threw `props.config is not a
  * function`, because it was reading a `props` the provider never gave it.
  */
-function ChartProvider(props: { value: ChartValue; children?: Child }) {
+function ChartProvider(props: { value: ChartScope; children?: Child }) {
   return provide(
     ChartContext,
     () => props.value,
@@ -709,7 +714,7 @@ function focusOf(points: readonly ChartPoint[], origin: ChartOrigin): ChartFocus
  * Grouped by column, because a tooltip compares the series at one position.
  * Without a tooltip nothing changes: focus stays the nearest single point.
  */
-function focusOptions(scope: ChartValue): { focus?: "group-x"; focusRing?: boolean } {
+function focusOptions(scope: ChartScope): { focus?: "group-x"; focusRing?: boolean } {
   return scope.isWatched() ? { focus: "group-x", focusRing: scope.hasCursor() } : {};
 }
 
@@ -734,7 +739,7 @@ function colorScale(config: readonly Series[]): {
  */
 const TICK_LABELS = { fontSize: AXIS_FONT_SIZE, thin: true } as const;
 
-const AXIS = { tickLabels: TICK_LABELS } as const;
+export const CHART_AXIS = { tickLabels: TICK_LABELS } as const;
 
 /** A column per datum, one bar per series, side by side. */
 export function ChartBars(props: ChartPlotProps) {
@@ -754,11 +759,11 @@ export function ChartBars(props: ChartPlotProps) {
         }),
       ],
       scales: {
-        x: { scale: scaleBand, axis: AXIS },
-        y: { scale: scaleLinear, nice: true, grid: true, axis: AXIS },
+        x: { scale: scaleBand, axis: CHART_AXIS },
+        y: { scale: scaleLinear, nice: true, grid: true, axis: CHART_AXIS },
       },
       color: colorScale(config()),
-      theme: THEME,
+      theme: CHART_THEME,
       ...focusOptions(scope),
     }),
   );
@@ -791,11 +796,11 @@ export function ChartLines(props: ChartPlotProps & { area?: boolean }) {
             ]
           : [line],
       scales: {
-        x: { scale: scalePoint, axis: AXIS },
-        y: { scale: scaleLinear, nice: true, grid: true, axis: AXIS },
+        x: { scale: scalePoint, axis: CHART_AXIS },
+        y: { scale: scaleLinear, nice: true, grid: true, axis: CHART_AXIS },
       },
       color: colorScale(config()),
-      theme: THEME,
+      theme: CHART_THEME,
       ...focusOptions(scope),
     });
   });

@@ -822,6 +822,8 @@
       ],
       "exports": [
         "AXIS_FONT_SIZE",
+        "CHART_AXIS",
+        "CHART_THEME",
         "Chart",
         "ChartBars",
         "ChartConfig",
@@ -830,6 +832,7 @@
         "ChartContainer",
         "ChartContainerProps",
         "ChartDefinition",
+        "ChartFocus",
         "ChartLegend",
         "ChartLegendContent",
         "ChartLegendContentProps",
@@ -839,6 +842,7 @@
         "ChartPayloadItem",
         "ChartPlotProps",
         "ChartProps",
+        "ChartScope",
         "ChartSeries",
         "ChartStyle",
         "ChartStyleProps",
@@ -849,7 +853,8 @@
         "ChartTooltipIndicator",
         "ChartTooltipPopupProps",
         "ChartTooltipProps",
-        "chartHover"
+        "chartHover",
+        "useChart"
       ]
     },
     {
