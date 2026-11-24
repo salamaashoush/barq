@@ -21,3 +21,4 @@ arc gains the composites several products each built by hand, and aria the parts
 - arc `Wizard`: steps over one form on `Stepper`, each checked before it is left, a summary step, the step in the URL and resumable drafts.
 - aria's `filter()` gains `matches`, where a substring matches in the locale's own way, and a slider takes `getValueLabel` for a value a number format cannot say, such as a playback position.
 - primitives' `websocket` gains `onMessage`, every message in order, where `message` holds only the latest as of a flush.
+- aria's `GridList` with drag and drop hydrates the server's rows instead of rebuilding them.

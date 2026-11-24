@@ -1126,7 +1126,10 @@ export function GridListItem(props: GridListItemComponentProps) {
 
   const rowValue: GridListRowValue = { key: node.key, state: list.state };
 
-  const row = (
+  // Built where it is inserted: written as a value, its template would claim
+  // the next server node while hydrating, which under drag and drop is the
+  // drop indicator's marker before it, not the row.
+  const row = () => (
     <div {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
       <div {...gridCellProps}>
         <SelectionIndicatorProvider isSelected={isSelected()}>
@@ -1139,7 +1142,7 @@ export function GridListItem(props: GridListItemComponentProps) {
       </div>
     </div>
   );
-  if (dnd === null) return row;
+  if (dnd === null) return row();
 
   const { visuallyHiddenProps } = visuallyHidden();
   const on = dnd.on;
@@ -1163,7 +1166,7 @@ export function GridListItem(props: GridListItemComponentProps) {
           </div>
         </Show>
       )}
-      {row}
+      {row()}
       <For each={dnd.after()}>
         {(target: ItemDropTarget) => (
           <Show when={dnd.collection.shouldRenderIndicator(target)}>
