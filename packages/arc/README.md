@@ -609,6 +609,40 @@ import { ResponsiveTabs } from "@barqjs/arc";
   aria's `dragAndDrop()`, rows drag to reorder or into another, by pointer,
   touch or a drag button the keyboard reaches.
 
+## Collaboration
+
+```tsx
+import { CommentThreadList } from "@barqjs/arc";
+
+<CommentThreadList
+  threads={threads()}
+  currentUser={me}
+  mentionables={members()}
+  onCreate={(draft) => api.comment(draft)}
+  onReply={(thread, draft) => api.reply(thread, draft)}
+  onResolve={(thread, resolved) => api.resolve(thread, resolved)}
+  onAnchorPress={(thread) => scrollTo(thread.anchor)}
+/>;
+```
+
+- `CommentThreadList`, `CommentThread` and `CommentComposer`: the comments on
+  a document or a record. A thread is an article holding the comment that
+  started it and its replies, each with the author's avatar, a `RelativeTime`,
+  "(edited)", a dot while unread and its reactions as toggle chips. The quote
+  it was started on sits above it as a button to `onAnchorPress`, or says the
+  passage has changed once `detached`. Its author edits a comment in place
+  (Mod+Enter saves, Escape cancels) and deletes it after `confirm()`; a thread
+  resolves and reopens, dimmed while resolved. The list filters open, resolved
+  and all with their counts, narrows to one `anchor` behind a chip that lets
+  it go, and starts a thread with `onCreate`. The composer sends on Mod+Enter
+  and offers `mentionables` after an `@`, chosen with the arrows and Enter,
+  each drawn as a mention in the comment. Every change shows at once: a
+  handler that returns a promise holds the comment pending until it settles,
+  a reply that fails stays with Retry and Discard, and an edit, a delete, a
+  reaction or a resolve that fails is taken back and said so.
+- `PersonAvatar`: one person's photo, or their initials while it loads or when
+  it fails, which `AvatarStack` and the comments draw.
+
 ## Media
 
 - `Image`: a picture that holds its place, loads when it is near and fails

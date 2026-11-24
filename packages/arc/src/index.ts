@@ -180,6 +180,29 @@ export {
   useCommands,
 } from "./components/command-menu.tsx";
 export {
+  type CommentAnchor,
+  CommentComposer,
+  type CommentComposerProps,
+  type CommentData,
+  type CommentDraft,
+  type CommentFilter,
+  type CommentHandlers,
+  type CommentPerson,
+  type CommentReaction,
+  CommentThread,
+  type CommentThreadData,
+  CommentThreadList,
+  type CommentThreadListProps,
+  type CommentThreadProps,
+  type Mentionables,
+  commentsStyles,
+} from "./components/comments.tsx";
+export {
+  PersonAvatar,
+  type PersonAvatarProps,
+  personAvatarStyles,
+} from "./components/person-avatar.tsx";
+export {
   HighlightMatches,
   type HighlightMatchesProps,
   type MatchRange,

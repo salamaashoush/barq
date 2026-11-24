@@ -156,6 +156,40 @@ export interface ArcMessages {
   chartLess: string;
   chartMore: string;
   shareOfFirst: (share: string) => string;
+  comments: string;
+  comment: string;
+  newComment: string;
+  commentPlaceholder: string;
+  reply: string;
+  replyPlaceholder: string;
+  editComment: string;
+  edit: string;
+  delete: string;
+  edited: string;
+  sending: string;
+  sendFailed: string;
+  editFailed: string;
+  deleteFailed: string;
+  retry: string;
+  you: string;
+  commentActions: (author: string) => string;
+  deleteCommentHeading: string;
+  deleteCommentDescription: string;
+  reactions: string;
+  addReaction: string;
+  reactedWith: (emoji: string, count: number, who: string | undefined) => string;
+  mentionSuggestions: string;
+  threadBy: (author: string) => string;
+  threadOn: (anchor: string) => string;
+  showAnchor: (anchor: string) => string;
+  detachedAnchor: string;
+  resolve: string;
+  reopen: string;
+  resolved: string;
+  openThreads: string;
+  resolvedThreads: string;
+  allThreads: string;
+  noComments: string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -308,6 +342,41 @@ export const ENGLISH: ArcMessages = {
   chartLess: "Less",
   chartMore: "More",
   shareOfFirst: (share) => `${share} of the first stage`,
+  comments: "Comments",
+  comment: "Comment",
+  newComment: "New comment",
+  commentPlaceholder: "Add a comment, @ to mention",
+  reply: "Reply",
+  replyPlaceholder: "Reply, @ to mention",
+  editComment: "Edit comment",
+  edit: "Edit",
+  delete: "Delete",
+  edited: "(edited)",
+  sending: "Sending…",
+  sendFailed: "Not sent",
+  editFailed: "The change was not saved",
+  deleteFailed: "It could not be deleted",
+  retry: "Retry",
+  you: "You",
+  commentActions: (author) => `Actions for ${author}'s comment`,
+  deleteCommentHeading: "Delete the comment?",
+  deleteCommentDescription: "It is removed for everyone, and cannot be brought back.",
+  reactions: "Reactions",
+  addReaction: "Add a reaction",
+  reactedWith: (emoji, count, who) =>
+    `${emoji}, ${count === 1 ? "1 reaction" : `${String(count)} reactions`}${who === undefined ? "" : ` from ${who}`}`,
+  mentionSuggestions: "People to mention",
+  threadBy: (author) => `Thread by ${author}`,
+  threadOn: (anchor) => `On “${anchor}”`,
+  showAnchor: (anchor) => `Show “${anchor}”`,
+  detachedAnchor: "What this was on has changed",
+  resolve: "Resolve",
+  reopen: "Reopen",
+  resolved: "Resolved",
+  openThreads: "Open",
+  resolvedThreads: "Resolved",
+  allThreads: "All",
+  noComments: "No comments yet",
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");

@@ -1,15 +1,7 @@
 import { For, Show } from "@barqjs/core";
 import { variants } from "@barqjs/css";
 import { listFormatter, numberFormatter } from "@barqjs/aria/i18n";
-import {
-  Avatar,
-  AvatarBadge,
-  AvatarFallback,
-  AvatarGroup,
-  AvatarGroupCount,
-  AvatarImage,
-  type AvatarSize,
-} from "@barqjs/ui/avatar";
+import { AvatarBadge, AvatarGroup, AvatarGroupCount, type AvatarSize } from "@barqjs/ui/avatar";
 import { srOnly } from "@barqjs/ui/sr-only";
 
 import { arcLayer as arc } from "../layer.ts";
@@ -17,6 +9,9 @@ import { type Customisable, parts } from "../lib/parts.ts";
 import { bg, plainList, tone as tones, type } from "../style/index.ts";
 import type { Tone } from "../theme/tokens.ts";
 import { useArcMessages } from "./messages.ts";
+import { PersonAvatar } from "./person-avatar.tsx";
+
+export { initials } from "./person-avatar.tsx";
 
 export type Presence = "online" | "away" | "busy" | "offline";
 
@@ -33,17 +28,6 @@ export interface Person {
   /** A photo. Left out, or failing to load, the initials of `name`. */
   src?: string;
   presence?: Presence;
-}
-
-/** The initials a person's avatar falls back to: the first letters of the first and last words. */
-export function initials(name: string): string {
-  const words = name
-    .trim()
-    .split(/\s+/u)
-    .filter((one) => one !== "");
-  const first = words[0]?.[0] ?? "";
-  const last = words.length > 1 ? (words.at(-1)?.[0] ?? "") : "";
-  return (first + last).toLocaleUpperCase();
 }
 
 export const avatarStackStyles = variants({
@@ -113,16 +97,13 @@ export function AvatarStack(props: AvatarStackProps) {
     >
       <For each={() => shown()}>
         {(person: Person) => (
-          <Avatar
+          <PersonAvatar
+            person={person}
             class={cls().avatar}
-            data-slot="avatar-stack-avatar"
+            slot="avatar-stack-avatar"
             role="listitem"
             size={props.size}
           >
-            <Show when={person.src !== undefined}>
-              <AvatarImage src={person.src} alt="" />
-            </Show>
-            <AvatarFallback aria-hidden="true">{initials(person.name)}</AvatarFallback>
             <span class={cls().hint} data-slot="avatar-stack-name">
               {person.presence === undefined
                 ? person.name
@@ -135,7 +116,7 @@ export function AvatarStack(props: AvatarStackProps) {
                 data-presence={person.presence}
               />
             </Show>
-          </Avatar>
+          </PersonAvatar>
         )}
       </For>
       <Show when={rest() > 0}>
