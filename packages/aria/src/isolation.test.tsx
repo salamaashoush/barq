@@ -29,7 +29,9 @@ const VEG: Named[] = [
   { id: "leek", name: "Leek" },
   { id: "onion", name: "Onion" },
 ];
-const named = (item: Named): string => item.name;
+function named(item: Named): string {
+  return item.name;
+}
 
 describe("two side by side", () => {
   test("CheckboxGroup", () => {

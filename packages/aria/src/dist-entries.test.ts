@@ -105,6 +105,14 @@ const ENTRIES = [
   "virtualizer",
 ] as const;
 
+interface PackageManifest {
+  exports: Record<string, ExportEntry>;
+}
+
+interface ExportEntry {
+  barq?: string;
+}
+
 /**
  * Where an entry actually lives, out of the export map rather than guessed.
  *
@@ -114,14 +122,19 @@ const ENTRIES = [
  */
 const manifest = JSON.parse(
   readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8"),
-) as { exports: Record<string, { barq?: string }> };
+) as PackageManifest;
 
-const entryOf = (entry: string): string => {
+function entryOf(entry: string): string {
   const key = entry === "index" ? "." : `./${entry}`;
   const source = manifest.exports[key]?.barq;
   if (source === undefined) throw new Error(`${key} is not in the export map`);
   return fileURLToPath(new URL(`../${source}`, import.meta.url));
-};
+}
+
+interface AnnouncerModule {
+  announce: (message: string) => void;
+  destroyAnnouncer: () => void;
+}
 
 describe("the published entries share one runtime", () => {
   test("a name exported by two entries is the SAME binding in both", async () => {
@@ -148,10 +161,7 @@ describe("the published entries share one runtime", () => {
   });
 
   test("the announcer reached through two entries is one region", async () => {
-    const root = (await import(entryOf("index"))) as unknown as {
-      announce: (message: string) => void;
-      destroyAnnouncer: () => void;
-    };
+    const root = (await import(entryOf("index"))) as unknown as AnnouncerModule;
     const live = (await import(entryOf("live"))) as typeof root;
 
     // Counted as a DELTA. Other suites in this process announce and do not

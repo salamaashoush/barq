@@ -126,8 +126,11 @@ export function dialog(options: DialogOptions = {}): DialogResult {
   onSettled(() => {
     setSettled(true);
   });
-  const labelled = (): string | undefined =>
-    access(options["aria-labelledby"]) ?? (titled() > 0 || !settled() ? titleId() : undefined);
+  function labelled(): string | undefined {
+    return (
+      access(options["aria-labelledby"]) ?? (titled() > 0 || !settled() ? titleId() : undefined)
+    );
+  }
 
   return {
     titleProps: { id: titleId },
@@ -300,6 +303,10 @@ export interface ModalComponentProps extends StyleProps, OverlayOptions {
   ref?: RefTarget<HTMLDivElement>;
 }
 
+interface DirectionOption {
+  dir?: MaybeAccessor<string | undefined>;
+}
+
 /**
  * A modal: contained focus, an inert page behind it, no scrolling, and Escape.
  *
@@ -309,7 +316,7 @@ export interface ModalComponentProps extends StyleProps, OverlayOptions {
  */
 /** A `dir` the caller wrote on the component, which wins over the one in scope. */
 function callerDirection(options: object): string | undefined {
-  return access((options as { dir?: MaybeAccessor<string | undefined> }).dir);
+  return access((options as DirectionOption).dir);
 }
 
 export function Modal(props: ModalComponentProps) {
@@ -592,8 +599,9 @@ export function Popover(props: PopoverComponentProps) {
   const trigger = usePopoverTrigger();
   const own = overlayTriggerState(options);
   // The trigger in scope owns the state, unless this popover was told its own.
-  const fromTrigger = (): boolean =>
-    trigger !== null && props.isOpen === undefined && props.defaultOpen === undefined;
+  function fromTrigger(): boolean {
+    return trigger !== null && props.isOpen === undefined && props.defaultOpen === undefined;
+  }
   const state: OverlayTriggerState = {
     isOpen: () => (fromTrigger() ? (trigger?.state.isOpen() ?? false) : own.isOpen()),
     setOpen: (open) => {
@@ -604,10 +612,13 @@ export function Popover(props: PopoverComponentProps) {
     close: () => state.setOpen(false),
     toggle: () => state.setOpen(!state.isOpen()),
   };
-  const containsFocus = (): boolean =>
-    (props.shouldContainFocus ?? access(trigger?.shouldContainFocus)) !== false;
+  function containsFocus(): boolean {
+    return (props.shouldContainFocus ?? access(trigger?.shouldContainFocus)) !== false;
+  }
   const locale = useLocale();
-  const placement = (): Placement => props.placement ?? "bottom";
+  function placement(): Placement {
+    return props.placement ?? "bottom";
+  }
 
   const arrowRef = makeRef<Element>();
   const position = overlayPosition({
@@ -687,10 +698,11 @@ export function Popover(props: PopoverComponentProps) {
   );
 
   const target = usePortalTarget();
-  const mount = (): Element | null =>
-    nested
+  function mount(): Element | null {
+    return nested
       ? ((access(group) as Element | null) ?? portalContainer(target))
       : portalContainer(target);
+  }
 
   const gate = presence({ isOpen: state.isOpen, ref: domRef });
   const placed: PopoverPlacement = {
@@ -945,11 +957,13 @@ export function popoverStateProps(): DOMProps {
   };
 }
 
-function PopoverGroupProvider(props: {
+interface PopoverGroupProviderProps {
   value: ElementRef;
   placed: PopoverPlacement;
   children?: Child;
-}) {
+}
+
+function PopoverGroupProvider(props: PopoverGroupProviderProps) {
   return provide(
     PopoverGroupContext,
     () => props.value,

@@ -101,6 +101,7 @@ import {
   mergeProps,
   type StyleProps,
   styleProps,
+  type ProviderProps,
 } from "./utils.ts";
 
 // ---------------------------------------------------------------------------
@@ -247,6 +248,11 @@ function fieldOf(value: DateValue, type: Exclude<EditableType, "hour" | "dayPeri
     default:
       return "hour" in value ? value[type] : null;
   }
+}
+
+interface SegmentLimits {
+  min: number;
+  max: number;
 }
 
 /**
@@ -463,7 +469,7 @@ class Fields {
     return zoned;
   }
 
-  limits(type: EditableType): { min: number; max: number } {
+  limits(type: EditableType): SegmentLimits {
     switch (type) {
       case "era":
         return { min: 0, max: this.calendar.getEras().length - 1 };
@@ -591,6 +597,11 @@ const PAGE: Partial<Record<SegmentType, number>> = {
   second: 15,
 };
 
+interface FieldShape {
+  granularity: Granularity;
+  timeZone: string | undefined;
+}
+
 export function dateFieldState<T extends DateValue = DateValue>(
   options: DateFieldStateOptions<T>,
 ): DateFieldState {
@@ -599,9 +610,15 @@ export function dateFieldState<T extends DateValue = DateValue>(
   const plainNumber = numberFormatter({ useGrouping: false });
   const twoDigits = numberFormatter({ useGrouping: false, minimumIntegerDigits: 2 });
 
-  const maxGranularity = (): "year" | "hour" => access(options.maxGranularity) ?? "year";
-  const isDisabled = (): boolean => access(options.isDisabled) === true;
-  const isReadOnly = (): boolean => access(options.isReadOnly) === true;
+  function maxGranularity(): "year" | "hour" {
+    return access(options.maxGranularity) ?? "year";
+  }
+  function isDisabled(): boolean {
+    return access(options.isDisabled) === true;
+  }
+  function isReadOnly(): boolean {
+    return access(options.isReadOnly) === true;
+  }
 
   const [value, setValueRaw] = controllable<DateValue | null>(
     () => access(options.value),
@@ -613,7 +630,7 @@ export function dateFieldState<T extends DateValue = DateValue>(
   // The value, or what stands in for it, decides the granularity and the
   // zone. Emptied, a field keeps the last ones it had, or its segments would
   // change shape under the user who cleared it.
-  let lastShape: { granularity: Granularity; timeZone: string | undefined } = {
+  let lastShape: FieldShape = {
     granularity: "day",
     timeZone: undefined,
   };
@@ -628,9 +645,15 @@ export function dateFieldState<T extends DateValue = DateValue>(
     }
     return lastShape;
   });
-  const granularity = (): Granularity => access(options.granularity) ?? shape().granularity;
-  const valueZone = (): string | undefined => shape().timeZone;
-  const timeZone = (): string => valueZone() ?? "UTC";
+  function granularity(): Granularity {
+    return access(options.granularity) ?? shape().granularity;
+  }
+  function valueZone(): string | undefined {
+    return shape().timeZone;
+  }
+  function timeZone(): string {
+    return valueZone() ?? "UTC";
+  }
 
   // What the locale says about the calendar and the clock, read from a format
   // that has both.
@@ -649,16 +672,16 @@ export function dateFieldState<T extends DateValue = DateValue>(
     () => (options.createCalendar ?? createCalendar)(resolved().calendar as CalendarIdentifier),
     { equals: isEqualCalendar },
   );
-  const hourCycle = (): HourCycle => {
+  function hourCycle(): HourCycle {
     const cycle = resolved().hourCycle;
     return cycle ?? (access(options.hourCycle) === 12 ? "h12" : "h23");
-  };
+  }
 
   /** The value as the field edits it, in the calendar it is drawn in. */
-  const calendarValue = (): DateValue | null => {
+  function calendarValue(): DateValue | null {
     const current = value();
     return current === null ? null : toCalendar(current, calendar());
-  };
+  }
 
   /** The segments the field shows, which are the ones that must be filled. */
   const shown = createMemo((): EditableType[] => {
@@ -686,7 +709,9 @@ export function dateFieldState<T extends DateValue = DateValue>(
   });
 
   /** What edits are made over: the value, or the placeholder while there is none. */
-  const basis = (): DateValue => calendarValue() ?? placeholder();
+  function basis(): DateValue {
+    return calendarValue() ?? placeholder();
+  }
 
   /**
    * What the user has typed, which is what the segments show.
@@ -699,23 +724,28 @@ export function dateFieldState<T extends DateValue = DateValue>(
   /** The value this field last reported, so it is not mistaken for one from outside. */
   let emitted: DateValue | null | undefined;
 
-  const show = (next: Fields): void => {
+  function show(next: Fields): void {
     live = next;
     setDisplay(next);
-  };
+  }
 
   /** A value from the field, reported in the calendar the caller's value is in. */
-  const write = (next: DateValue | null): void => {
+  function write(next: DateValue | null): void {
     const model =
       untrack(value) ?? access(options.defaultValue) ?? access(options.placeholderValue);
     const reported =
       next === null ? null : toCalendar(next, model?.calendar ?? new GregorianCalendar());
     emitted = reported;
     setValueRaw(reported);
-  };
+  }
 
-  const fresh = (current: DateValue | null): Fields =>
-    new Fields(calendar(), hourCycle(), current === null ? null : toCalendar(current, calendar()));
+  function fresh(current: DateValue | null): Fields {
+    return new Fields(
+      calendar(),
+      hourCycle(),
+      current === null ? null : toCalendar(current, calendar()),
+    );
+  }
 
   /**
    * The fields shown, and the value reported when they make one.
@@ -724,7 +754,7 @@ export function dateFieldState<T extends DateValue = DateValue>(
    * A whole one that names a day its month lacks reports nothing yet: the
    * user may be about to change the month.
    */
-  const apply = (next: Fields): void => {
+  function apply(next: Fields): void {
     if (isDisabled() || isReadOnly()) return;
     show(next);
     const types = shown();
@@ -736,7 +766,7 @@ export function dateFieldState<T extends DateValue = DateValue>(
     if (!next.matches(whole, types)) return;
     const current = calendarValue();
     if (current === null || current.compare(whole) !== 0) write(whole);
-  };
+  }
 
   if (!isServer) {
     // A value arriving from OUTSIDE fills the field, and one taken away
@@ -758,10 +788,14 @@ export function dateFieldState<T extends DateValue = DateValue>(
     );
   }
 
-  const isComplete = (): boolean => display().isComplete(shown());
+  function isComplete(): boolean {
+    return display().isComplete(shown());
+  }
 
   const displayValue = createMemo(() => display().toValue(basis()));
-  const dateValue = (): Date => displayValue().toDate(timeZone());
+  function dateValue(): Date {
+    return displayValue().toDate(timeZone());
+  }
 
   const format = createMemo(() => {
     const parts: Intl.DateTimeFormatOptions = {
@@ -852,26 +886,28 @@ export function dateFieldState<T extends DateValue = DateValue>(
     return list;
   });
 
-  const isEditableType = (type: SegmentType): type is EditableType =>
-    (EDITABLE as readonly string[]).includes(type);
+  function isEditableType(type: SegmentType): type is EditableType {
+    return (EDITABLE as readonly string[]).includes(type);
+  }
 
-  const step = (type: SegmentType, amount: number): void => {
+  function step(type: SegmentType, amount: number): void {
     if (!isEditableType(type)) return;
     apply(live.cycle(type, amount, basis(), shown()));
-  };
+  }
 
   /** A format for a value said in words, in the calendar and zone the field formats in. */
-  const wordsFormat = (fieldOptions: Intl.DateTimeFormatOptions): Intl.DateTimeFormat =>
-    dateFormatter(
+  function wordsFormat(fieldOptions: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
+    return dateFormatter(
       { ...fieldOptions, calendar: calendar().identifier, timeZone: timeZone() },
       locale,
     )();
+  }
 
   /**
    * How a bound is said in an error. A zoned one names its zone, which the
    * date and time styles cannot be combined with, so it is spelled out.
    */
-  const boundOptions = (): Intl.DateTimeFormatOptions => {
+  function boundOptions(): Intl.DateTimeFormatOptions {
     const zoned = valueZone() !== undefined;
     if (maxGranularity() === "hour") {
       return { hour: "numeric", minute: "2-digit", timeZoneName: zoned ? "short" : undefined };
@@ -880,9 +916,9 @@ export function dateFieldState<T extends DateValue = DateValue>(
     if (!zoned) return { dateStyle: "medium", timeStyle: "short" };
     const parts = { year: "numeric", month: "short", day: "numeric" } as const;
     return { ...parts, hour: "numeric", minute: "2-digit", timeZoneName: "short" };
-  };
+  }
 
-  const rangeValidation = (): ValidationResult | undefined => {
+  function rangeValidation(): ValidationResult | undefined {
     const current = value();
     if (current === null) return undefined;
 
@@ -925,7 +961,7 @@ export function dateFieldState<T extends DateValue = DateValue>(
         valid: false,
       },
     };
-  };
+  }
 
   return {
     value,
@@ -1052,10 +1088,10 @@ export function dateField(options: DateFieldOptions, state: DateFieldState): Dat
     errorMessageProps,
   } = field({ ...options, isInvalid, errorMessage, labelElementType: "span" });
 
-  const focusFirst = (): void => {
+  function focusFirst(): void {
     const group = access(options.ref) as HTMLElement | null;
     group?.querySelector<HTMLElement>(SEGMENT_SELECTOR)?.focus();
-  };
+  }
 
   if (options.inputRef !== undefined && !isServer) {
     formReset(options.inputRef, state.defaultValue, (next) => state.setValue(next));
@@ -1066,7 +1102,9 @@ export function dateField(options: DateFieldOptions, state: DateFieldState): Dat
     );
   }
 
-  const isNative = (): boolean => behavior() === "native";
+  function isNative(): boolean {
+    return behavior() === "native";
+  }
 
   return {
     labelProps,
@@ -1127,17 +1165,20 @@ export interface DateSegmentResult {
 }
 
 export function dateSegment(options: DateSegmentOptions, state: DateFieldState): DateSegmentResult {
-  const segment = (): DateSegment => options.segment();
+  function segment(): DateSegment {
+    return options.segment();
+  }
   const locale = useLocale();
   const messages = stringFormatter(FIELD_STRINGS);
   const parser = numberParser({ maximumFractionDigits: 0 });
   const { startsWith } = filter({ sensitivity: "base" });
   /** A format in the calendar and zone the field is drawn in. */
-  const fieldFormat = (format: Intl.DateTimeFormatOptions): Intl.DateTimeFormat =>
-    dateFormatter(
+  function fieldFormat(format: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
+    return dateFormatter(
       { ...format, calendar: state.calendar().identifier, timeZone: state.timeZone() },
       locale,
     )();
+  }
   const periods = dateFormatter({ hour: "numeric", hour12: true });
 
   /**
@@ -1176,13 +1217,16 @@ export function dateSegment(options: DateSegmentOptions, state: DateFieldState):
   /** Where among the field's segments this one was when it took focus, while it has it. */
   let focusedAt = -1;
 
-  const isEditable = (): boolean =>
-    segment().isEditable && !state.isDisabled() && !state.isReadOnly();
+  function isEditable(): boolean {
+    return segment().isEditable && !state.isDisabled() && !state.isReadOnly();
+  }
 
-  const element = (): HTMLElement | null => access(options.ref) as HTMLElement | null;
+  function element(): HTMLElement | null {
+    return access(options.ref) as HTMLElement | null;
+  }
 
   /** The next or previous editable segment: on screen in a right-to-left locale, in the DOM otherwise. */
-  const moveFocus = (by: 1 | -1): void => {
+  function moveFocus(by: 1 | -1): void {
     const self = element();
     const container = self?.closest('[role="group"]');
     if (self === null || self === undefined || container === null || container === undefined) {
@@ -1204,18 +1248,22 @@ export function dateSegment(options: DateSegmentOptions, state: DateFieldState):
       }
     }
     closest?.focus();
-  };
+  }
 
-  const dayPeriodText = (hour: number): string =>
-    periods()
-      .formatToParts(new Date(2000, 0, 1, hour))
-      .find((part) => part.type === "dayPeriod")?.value ?? "";
+  function dayPeriodText(hour: number): string {
+    return (
+      periods()
+        .formatToParts(new Date(2000, 0, 1, hour))
+        .find((part) => part.type === "dayPeriod")?.value ?? ""
+    );
+  }
 
-  const matchesPeriod = (marker: string, key: string): boolean =>
-    marker !== "" && key !== "" && startsWith(marker, key);
+  function matchesPeriod(marker: string, key: string): boolean {
+    return marker !== "" && key !== "" && startsWith(marker, key);
+  }
 
   /** A character typed into the segment, from a key or from a virtual keyboard. */
-  const type = (key: string): void => {
+  function type(key: string): void {
     if (!isEditable()) return;
     const current = segment();
 
@@ -1254,10 +1302,10 @@ export function dateSegment(options: DateSegmentOptions, state: DateFieldState):
     } else {
       entered = next;
     }
-  };
+  }
 
   /** One digit taken off the end; an empty segment hands the key to the one before. */
-  const backspace = (): void => {
+  function backspace(): void {
     const current = segment();
     if (current.isPlaceholder) {
       moveFocus(-1);
@@ -1278,9 +1326,9 @@ export function dateSegment(options: DateSegmentOptions, state: DateFieldState):
       state.setSegment(current.type, parsed);
     }
     entered = rest;
-  };
+  }
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     const current = segment();
     if (current.type === "literal") return;
     // A modified key belongs to something else: Alt+ArrowDown opens a date
@@ -1347,12 +1395,12 @@ export function dateSegment(options: DateSegmentOptions, state: DateFieldState):
     // keyboard's keydown carries no key, and its character arrives there.
     event.preventDefault();
     type(event.key);
-  };
+  }
 
   /** What the content-editable segment's text was before a composition changed it. */
   let composed = "";
 
-  const onBeforeInput = (event: InputEvent): void => {
+  function onBeforeInput(event: InputEvent): void {
     const self = element();
     if (self === null) return;
     // The segment's text is the state's to write, never the browser's.
@@ -1370,9 +1418,9 @@ export function dateSegment(options: DateSegmentOptions, state: DateFieldState):
       default:
         if (event.data !== null) type(event.data);
     }
-  };
+  }
 
-  const onInput = (event: InputEvent): void => {
+  function onInput(event: InputEvent): void {
     if (event.inputType !== "insertCompositionText") return;
     const self = element();
     // A composition cannot be cancelled, so what it wrote is undone here.
@@ -1385,7 +1433,7 @@ export function dateSegment(options: DateSegmentOptions, state: DateFieldState):
     ) {
       type(data);
     }
-  };
+  }
 
   if (!isServer) {
     // A selection spread across the segment makes Android's composition
@@ -1398,7 +1446,7 @@ export function dateSegment(options: DateSegmentOptions, state: DateFieldState):
         // Collapsing fires another `selectionchange`, which some engines
         // dispatch at once, so the listener must not answer its own.
         let collapsing = false;
-        const collapse = (): void => {
+        function collapse(): void {
           const selection = document.getSelection();
           if (
             collapsing ||
@@ -1415,7 +1463,7 @@ export function dateSegment(options: DateSegmentOptions, state: DateFieldState):
           } finally {
             collapsing = false;
           }
-        };
+        }
         document.addEventListener("selectionchange", collapse);
         return () => document.removeEventListener("selectionchange", collapse);
       },
@@ -1445,7 +1493,7 @@ export function dateSegment(options: DateSegmentOptions, state: DateFieldState):
     );
   }
 
-  const name = (): string => {
+  function name(): string {
     const kind = segment().type;
     if (kind === "literal") return "";
     try {
@@ -1457,9 +1505,9 @@ export function dateSegment(options: DateSegmentOptions, state: DateFieldState):
       // an older engine does not have.
     }
     return messages().format(kind);
-  };
+  }
 
-  const valueText = (): string | undefined => {
+  function valueText(): string | undefined {
     const current = segment();
     if (current.isPlaceholder) return messages().format("empty");
     const at = state.dateValue();
@@ -1472,20 +1520,24 @@ export function dateSegment(options: DateSegmentOptions, state: DateFieldState):
       return fieldFormat({ hour: "numeric", hour12: twelve }).format(at);
     }
     return current.text;
-  };
+  }
 
-  const isLiteral = (): boolean => segment().type === "literal";
+  function isLiteral(): boolean {
+    return segment().type === "literal";
+  }
 
   // VoiceOver on iOS cannot focus a spin button, so there it is a text box. So
   // is the zone, which is text and has no number to spin.
-  const asTextbox = (): boolean => isIOS() || segment().type === "timeZoneName";
+  function asTextbox(): boolean {
+    return isIOS() || segment().type === "timeZoneName";
+  }
 
-  const isNumeric = (): boolean => {
+  function isNumeric(): boolean {
     const kind = segment().type;
     return kind !== "dayPeriod" && kind !== "era" && kind !== "timeZoneName";
-  };
+  }
 
-  const numericDirection = (): Record<string, string> => {
+  function numericDirection(): Record<string, string> {
     const style: Record<string, string> = { "caret-color": "transparent" };
     if (locale().direction === "rtl") {
       // A placeholder is laid out by the bidirectional algorithm differently
@@ -1495,40 +1547,42 @@ export function dateSegment(options: DateSegmentOptions, state: DateFieldState):
       if (isNumeric()) style.direction = "ltr";
     }
     return style;
-  };
+  }
 
-  const isSpinButton = (): boolean => !isLiteral() && !asTextbox();
+  function isSpinButton(): boolean {
+    return !isLiteral() && !asTextbox();
+  }
 
   // On the first editable segment only, unless the value is invalid: moving
   // between segments would otherwise read the description again at each one.
-  const describedBy = (): string | undefined => {
+  function describedBy(): string | undefined {
     if (isLiteral()) return undefined;
     const first = state.segments().find((each) => each.isEditable);
     return access(options.isInvalid) === true || first?.type === segment().type
       ? access(options["aria-describedby"])
       : undefined;
-  };
+  }
 
   // The field's label goes on every segment, because VoiceOver on iOS does not
   // announce the group around them: a lone "day" could belong to any field.
   // The segment's own aria-label leads its aria-labelledby, so it is read as
   // "day, Departure".
   const segmentId = id();
-  const fieldLabelledBy = (): string | undefined => {
+  function fieldLabelledBy(): string | undefined {
     const given = access(options["aria-labelledby"])?.trim();
     return given === undefined || given === "" ? undefined : given;
-  };
-  const ariaLabel = (): string | undefined => {
+  }
+  function ariaLabel(): string | undefined {
     if (isLiteral()) return undefined;
     const given = access(options["aria-label"]);
     const label = given === undefined || given === "" ? "" : `, ${given}`;
     return `${name()}${label}${fieldLabelledBy() === undefined ? "" : ", "}`;
-  };
-  const ariaLabelledBy = (): string | undefined => {
+  }
+  function ariaLabelledBy(): string | undefined {
     const given = fieldLabelledBy();
     if (isLiteral() || given === undefined) return undefined;
     return [...new Set([segmentId(), ...given.split(/\s+/)])].join(" ");
-  };
+  }
 
   return {
     segmentProps: {
@@ -1600,7 +1654,7 @@ export function useDateField(): DateFieldContextValue {
   return value;
 }
 
-function DateFieldProvider(props: { value: DateFieldContextValue; children?: Child }) {
+function DateFieldProvider(props: ProviderProps<DateFieldContextValue>) {
   return provide(
     DateFieldContext,
     () => props.value,
@@ -1812,13 +1866,16 @@ function DateSegmentPart(props: DateSegmentPartProps) {
   const { state, describedBy, label, labelledBy, isInvalid } = useDateField();
   const index = props.index;
 
-  const segment = (): DateSegment =>
-    state.segments()[index] ?? {
-      type: "literal",
-      text: "",
-      isPlaceholder: false,
-      isEditable: false,
-    };
+  function segment(): DateSegment {
+    return (
+      state.segments()[index] ?? {
+        type: "literal",
+        text: "",
+        isPlaceholder: false,
+        isEditable: false,
+      }
+    );
+  }
 
   const { segmentProps } = dateSegment(
     {
@@ -1890,34 +1947,37 @@ export function TimeField<T extends TimeValue = Time>(
   props: TimeFieldComponentProps<T> & CallSite<TimeFieldComponentProps<T>>,
 ) {
   const day = today(getLocalTimeZone());
-  const onDay = (
+  function onDay(
     time: TimeValue | null | undefined,
     date: DateValue = day,
-  ): DateValue | null | undefined =>
-    time === null || time === undefined
+  ): DateValue | null | undefined {
+    return time === null || time === undefined
       ? time
       : "day" in time
         ? time
         : toCalendarDateTime(date, time);
+  }
 
-  const placeholder = (): TimeValue => props.placeholderValue ?? new Time();
+  function placeholder(): TimeValue {
+    return props.placeholderValue ?? new Time();
+  }
   /** The day the time stands on, when the caller gave one. */
-  const standing = (): DateValue | undefined => {
+  function standing(): DateValue | undefined {
     const model = props.value ?? placeholder();
     return "day" in model ? model : undefined;
-  };
-  const defaultZone = (): string | undefined => {
+  }
+  function defaultZone(): string | undefined {
     const given = props.defaultValue;
     return given !== null && given !== undefined && "timeZone" in given
       ? given.timeZone
       : undefined;
-  };
+  }
   /** A whole value is reported whole; a time alone is reported as a time. */
-  const reported = (value: DateValue | null): MappedTimeValue<T> | null => {
+  function reported(value: DateValue | null): MappedTimeValue<T> | null {
     if (value === null || !("hour" in value)) return null;
     const whole = standing() !== undefined || defaultZone() !== undefined;
     return (whole ? value : toTime(value)) as MappedTimeValue<T>;
-  };
+  }
 
   const state = dateFieldState({
     value: () => onDay(props.value),

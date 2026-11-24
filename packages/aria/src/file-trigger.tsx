@@ -64,12 +64,12 @@ export interface FileTriggerComponentProps extends Omit<
 export function FileTrigger(props: FileTriggerComponentProps) {
   const inputRef = makeRef<HTMLInputElement>();
 
-  const open = (): void => {
+  function open(): void {
     const input = inputRef();
     if (input === null) return;
     if (input.value !== "") input.value = "";
     input.click();
-  };
+  }
 
   const value: FileTriggerValue = { open };
 

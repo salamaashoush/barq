@@ -2427,9 +2427,7 @@ export function ComboboxValue(props: ComboboxValueProps) {
     return <>{render(chosen, 0)}</>;
   }
 
-  const one: () => Child = () => {
-    return render(root.values()[0] ?? null, 0);
-  };
+  const one: () => Child = () => render(root.values()[0] ?? null, 0);
   return <>{one()}</>;
 }
 
@@ -3032,9 +3030,7 @@ export function ComboboxChip(props: ComboboxChipProps) {
 
   const chip = staticItem(chips.registry, { textValue: "" });
   const [isFocused, setFocused] = createSignal(false);
-  const index: () => number = () => {
-    return chips.registry.keys().indexOf(chip.key);
-  };
+  const index: () => number = () => chips.registry.keys().indexOf(chip.key);
 
   function remove(): void {
     const at = index();

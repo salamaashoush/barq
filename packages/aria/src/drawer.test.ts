@@ -12,7 +12,9 @@ import {
   snapPointOffset,
 } from "./drawer.ts";
 
-const at = (x: number, y: number) => ({ x, y });
+function at(x: number, y: number) {
+  return { x, y };
+}
 
 describe("drawerDrag", () => {
   test("starts at rest", () => {
@@ -200,8 +202,13 @@ describe("drawerDrag", () => {
   });
 });
 
+interface ScrollerOptions {
+  top?: number;
+  extent?: number;
+}
+
 /** An element that reports the scroll geometry happy-dom will not. */
-function scroller(options: { top?: number; extent?: number } = {}): HTMLElement {
+function scroller(options: ScrollerOptions = {}): HTMLElement {
   const element = document.createElement("div");
   Object.defineProperty(element, "scrollTop", { value: options.top ?? 0 });
   Object.defineProperty(element, "scrollHeight", { value: options.extent ?? 0 });
@@ -266,6 +273,11 @@ describe("canDragFrom", () => {
   });
 });
 
+interface Clock {
+  now: () => number;
+  advance: (ms: number) => void;
+}
+
 describe("snap points", () => {
   test("a fraction is of the viewport and a string is pixels", () => {
     expect(snapPointExtent(0.5, 800)).toBe(400);
@@ -282,7 +294,7 @@ describe("snap points", () => {
   });
 
   /** A clock the test moves, so a velocity is a number rather than a race. */
-  function clock(): { now: () => number; advance: (ms: number) => void } {
+  function clock(): Clock {
     let current = 1000;
     return { now: () => current, advance: (ms) => (current += ms) };
   }
@@ -618,14 +630,20 @@ describe("the page behind", () => {
   });
 });
 
+interface DrawerSetup {
+  drawer: HTMLElement;
+  field: HTMLInputElement;
+  viewport: EventTarget & ViewportHeight;
+  stop: () => void;
+  restore: () => void;
+}
+
+interface ViewportHeight {
+  height: number;
+}
+
 describe("drawerKeyboard", () => {
-  function setup(fixed: boolean): {
-    drawer: HTMLElement;
-    field: HTMLInputElement;
-    viewport: EventTarget & { height: number };
-    stop: () => void;
-    restore: () => void;
-  } {
+  function setup(fixed: boolean): DrawerSetup {
     const original = Object.getOwnPropertyDescriptor(window, "visualViewport");
     const viewport = Object.assign(new EventTarget(), { height: window.innerHeight });
     Object.defineProperty(window, "visualViewport", { configurable: true, value: viewport });

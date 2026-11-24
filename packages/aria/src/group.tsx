@@ -64,11 +64,15 @@ function isTrue(value: boolean | "true" | "false" | undefined): boolean {
 }
 
 export function group(options: GroupOptions = {}): GroupResult {
-  const isDisabled = (): boolean =>
-    access(options.isDisabled) ?? isTrue(access(options["aria-disabled"]));
-  const isInvalid = (): boolean =>
-    access(options.isInvalid) ?? isTrue(access(options["aria-invalid"]));
-  const isReadOnly = (): boolean => access(options.isReadOnly) === true;
+  function isDisabled(): boolean {
+    return access(options.isDisabled) ?? isTrue(access(options["aria-disabled"]));
+  }
+  function isInvalid(): boolean {
+    return access(options.isInvalid) ?? isTrue(access(options["aria-invalid"]));
+  }
+  function isReadOnly(): boolean {
+    return access(options.isReadOnly) === true;
+  }
 
   const { hoverProps, isHovered } = hover({
     isDisabled,

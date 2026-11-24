@@ -59,7 +59,11 @@ function Links() {
   );
 }
 
-function Field(props: { label: string }) {
+interface FieldProps {
+  label: string;
+}
+
+function Field(props: FieldProps) {
   return (
     <label>
       {props.label}
@@ -82,7 +86,12 @@ function NavAndMain(props: LandmarkProps = {}) {
   );
 }
 
-function f6(options: { shiftKey?: boolean; altKey?: boolean } = {}): void {
+interface F6Options {
+  shiftKey?: boolean;
+  altKey?: boolean;
+}
+
+function f6(options: F6Options = {}): void {
   user.keyDown("F6", options);
   flush();
 }
@@ -409,16 +418,18 @@ describe("landmark", () => {
 
   test("a landmark added around existing ones comes before them", () => {
     const [wrapped, setWrapped] = createSignal(false);
-    const Contained = () => (
-      <div>
-        <Navigation>
-          <Links />
-        </Navigation>
-        <Region>
-          <Field label="Last Name" />
-        </Region>
-      </div>
-    );
+    function Contained() {
+      return (
+        <div>
+          <Navigation>
+            <Links />
+          </Navigation>
+          <Region>
+            <Field label="Last Name" />
+          </Region>
+        </div>
+      );
+    }
     render(() => (
       <Show when={wrapped()} fallback={<Contained />}>
         <Main>
@@ -467,10 +478,10 @@ describe("landmark", () => {
   test("wrapping forward announces itself, and a page that cancels it keeps focus", () => {
     render(() => <NavAndMain />);
     const heard: unknown[] = [];
-    const listener = (event: Event): void => {
+    function listener(event: Event): void {
       event.preventDefault();
       heard.push((event as CustomEvent).detail);
-    };
+    }
     window.addEventListener("barq-landmark-navigation", listener);
     restore.push(() => window.removeEventListener("barq-landmark-navigation", listener));
 
@@ -486,10 +497,10 @@ describe("landmark", () => {
   test("wrapping backward announces itself too", () => {
     render(() => <NavAndMain />);
     const heard: unknown[] = [];
-    const listener = (event: Event): void => {
+    function listener(event: Event): void {
       event.preventDefault();
       heard.push((event as CustomEvent).detail);
-    };
+    }
     window.addEventListener("barq-landmark-navigation", listener);
     restore.push(() => window.removeEventListener("barq-landmark-navigation", listener));
 
@@ -644,10 +655,10 @@ describe("landmark", () => {
 describe("createLandmarkController", () => {
   test("keeps F6 listened for with no landmark on the page", () => {
     const heard: unknown[] = [];
-    const listener = (event: Event): void => {
+    function listener(event: Event): void {
       event.preventDefault();
       heard.push((event as CustomEvent).detail);
-    };
+    }
     window.addEventListener("barq-landmark-navigation", listener);
     restore.push(() => window.removeEventListener("barq-landmark-navigation", listener));
 
@@ -719,17 +730,23 @@ describe("createLandmarkController", () => {
   });
 });
 
+interface LandmarkManager {
+  version: number;
+  createLandmarkController: unknown;
+  registerLandmark: unknown;
+}
+
+interface VersionedManager {
+  version: number;
+}
+
 describe("one manager per document", () => {
   const key = Symbol.for("barq-landmark-manager");
   type Holder = Record<symbol, unknown>;
 
   test("the manager lives on the document", () => {
     const controller = createLandmarkController();
-    const manager = (document as unknown as Holder)[key] as {
-      version: number;
-      createLandmarkController: unknown;
-      registerLandmark: unknown;
-    };
+    const manager = (document as unknown as Holder)[key] as LandmarkManager;
     expect(typeof manager.version).toBe("number");
     expect(typeof manager.createLandmarkController).toBe("function");
     expect(typeof manager.registerLandmark).toBe("function");
@@ -744,7 +761,7 @@ describe("one manager per document", () => {
     ));
     const controller = createLandmarkController();
     const holder = document as unknown as Holder;
-    const original = holder[key] as { version: number };
+    const original = holder[key] as VersionedManager;
 
     const calls: string[] = [];
     let unregistered = 0;

@@ -101,6 +101,7 @@ import {
   mergeProps,
   type StyleProps,
   styleProps,
+  type ProviderProps,
 } from "./utils.ts";
 
 export interface ListBoxOptions extends FieldOptions {
@@ -188,11 +189,11 @@ export function listBox(options: ListBoxOptions, state: ListState<unknown>): Lis
 
   // Nothing inside a listbox can select a link under toggle selection, since
   // checkboxes are not allowed in one, so there a link always overrides.
-  const linkBehavior = (): LinkBehavior => {
+  function linkBehavior(): LinkBehavior {
     const behavior = access(options.selectionBehavior) ?? "toggle";
     const given = access(options.linkBehavior) ?? (behavior === "replace" ? "action" : "override");
     return behavior === "toggle" && given === "action" ? "override" : given;
-  };
+  }
 
   const search = collator({ usage: "search", sensitivity: "base" });
   const keyboardDelegate =
@@ -338,16 +339,24 @@ export function option(options: OptionOptions, state: ListState<unknown>): Optio
   const descriptionId = id();
   const data = listData.get(state);
 
-  const node = (): Node<unknown> | null => state.collection().getItem(options.key);
-  const ownAction = (): unknown => node()?.props?.onAction;
-  const shouldSelectOnPressUp = (): boolean | undefined =>
-    access(options.shouldSelectOnPressUp) ?? data?.shouldSelectOnPressUp();
-  const shouldFocusOnHover = (): boolean | undefined =>
-    access(options.shouldFocusOnHover) ?? data?.shouldFocusOnHover();
-  const shouldUseVirtualFocus = (): boolean | undefined =>
-    access(options.shouldUseVirtualFocus) ?? data?.shouldUseVirtualFocus();
-  const isVirtualized = (): boolean | undefined =>
-    access(options.isVirtualized) ?? data?.isVirtualized();
+  function node(): Node<unknown> | null {
+    return state.collection().getItem(options.key);
+  }
+  function ownAction(): unknown {
+    return node()?.props?.onAction;
+  }
+  function shouldSelectOnPressUp(): boolean | undefined {
+    return access(options.shouldSelectOnPressUp) ?? data?.shouldSelectOnPressUp();
+  }
+  function shouldFocusOnHover(): boolean | undefined {
+    return access(options.shouldFocusOnHover) ?? data?.shouldFocusOnHover();
+  }
+  function shouldUseVirtualFocus(): boolean | undefined {
+    return access(options.shouldUseVirtualFocus) ?? data?.shouldUseVirtualFocus();
+  }
+  function isVirtualized(): boolean | undefined {
+    return access(options.isVirtualized) ?? data?.isVirtualized();
+  }
 
   const item = selectableItem({
     key: options.key,
@@ -421,16 +430,18 @@ export interface ListBoxSectionOptions {
   "aria-label"?: MaybeAccessor<string | undefined>;
 }
 
-export function listBoxSection(options: ListBoxSectionOptions): {
+export interface ListBoxSectionResult {
   itemProps: DOMProps;
   headingProps: DOMProps;
   groupProps: DOMProps;
-} {
+}
+
+export function listBoxSection(options: ListBoxSectionOptions): ListBoxSectionResult {
   const headingId = id();
-  const hasHeading = (): boolean => {
+  function hasHeading(): boolean {
     const heading = access(options.heading);
     return heading !== undefined && heading !== null && heading !== "";
-  };
+  }
 
   return {
     // The `<li>` wrapping the section is not itself an option.
@@ -495,7 +506,7 @@ const ItemRenderContext = createContext<ItemRender | null>(null);
  * carries the enclosing component's scope, which is outside the one the
  * binding was installed on, so every `<Option>` would look past it.
  */
-export function ListBoxProvider(props: Incoming<{ value: ListBoxContextValue; children?: Child }>) {
+export function ListBoxProvider(props: Incoming<ProviderProps<ListBoxContextValue>>) {
   return provide(
     ListBoxContext,
     () => props.value(),
@@ -623,16 +634,20 @@ export function useSectionHeading(): Accessor<string> | null {
   return heading.id;
 }
 
-function StaticSection(sectionProps: {
+interface StaticSectionSlot {
   of: Incoming<SectionComponentProps>;
   registry: StaticCollection;
-}) {
+}
+
+function StaticSection(sectionProps: StaticSectionSlot) {
   const props = sectionProps.of;
   const list = useListBox();
   const section = staticItem(sectionProps.registry, { type: "section", textValue: "" });
   const headingId = id();
   const [isNamed, setNamed] = createSignal(false, { ownedWrite: true });
-  const hasTitle = (): boolean => props.title?.() !== undefined;
+  function hasTitle(): boolean {
+    return props.title?.() !== undefined;
+  }
   const heading: SectionHeading = { id: headingId, name: setNamed };
 
   return (
@@ -738,6 +753,10 @@ export interface ListBoxComponentProps<T> extends StyleProps, ItemAccessors<T> {
   dragAndDropHooks?: DragAndDropHooks;
 }
 
+interface HeldDragAndDrop {
+  held?: CollectionDragAndDrop;
+}
+
 /**
  * ```tsx
  * <ListBox
@@ -776,7 +795,7 @@ export function ListBox<T>(props: ListBoxComponentProps<T>) {
   // Inside a `<Virtualizer>` the list renders a WINDOW of its collection, and
   // the layout — not the DOM — answers what is above, below and a page away.
   const virtual = useVirtualizer();
-  const dropping: { held?: CollectionDragAndDrop } = {};
+  const dropping: HeldDragAndDrop = {};
   virtual?.attach(
     state.collection,
     domRef,
@@ -786,8 +805,9 @@ export function ListBox<T>(props: ListBoxComponentProps<T>) {
 
   // A press selects on release in a draggable list, so that pressing one of
   // several selected items to drag them all does not first select only it.
-  const shouldSelectOnPressUp = (): boolean | undefined =>
-    dragAndDrop?.dragState !== undefined ? true : props.shouldSelectOnPressUp;
+  function shouldSelectOnPressUp(): boolean | undefined {
+    return dragAndDrop?.dragState !== undefined ? true : props.shouldSelectOnPressUp;
+  }
 
   const { listBoxProps, labelProps, descriptionProps, errorMessageProps, baseId } = listBox(
     {
@@ -835,10 +855,18 @@ export function ListBox<T>(props: ListBoxComponentProps<T>) {
   }
 
   const { focusProps, isFocused, isFocusVisible } = focusRing();
-  const isEmpty = (): boolean => state.collection().size === 0;
-  const layout = (): "stack" | "grid" => props.layout ?? "stack";
-  const orientation = (): "horizontal" | "vertical" => props.orientation ?? "vertical";
-  const isDropTarget = (): boolean => dragAndDrop?.isRootDropTarget() === true;
+  function isEmpty(): boolean {
+    return state.collection().size === 0;
+  }
+  function layout(): "stack" | "grid" {
+    return props.layout ?? "stack";
+  }
+  function orientation(): "horizontal" | "vertical" {
+    return props.orientation ?? "vertical";
+  }
+  function isDropTarget(): boolean {
+    return dragAndDrop?.isRootDropTarget() === true;
+  }
 
   // Focus entering and leaving is the list's, heard through `listBox`, rather
   // than each element's own focus and blur.
@@ -870,14 +898,14 @@ export function ListBox<T>(props: ListBoxComponentProps<T>) {
   const render = cells(props).children;
 
   /** The whole collection, or the window of it the virtualiser says is on screen. */
-  const rows = (): Node<T>[] => {
+  function rows(): Node<T>[] {
     if (virtual === null) return [...state.collection()];
     const collection = state.collection();
     return virtual
       .visible()
       .map((info: LayoutInfo) => collection.getItem(info.key))
       .filter((node: Node<T> | null): node is Node<T> => node !== null);
-  };
+  }
 
   provideItemRender(render as unknown as (item: unknown) => Child);
 
@@ -891,14 +919,14 @@ export function ListBox<T>(props: ListBoxComponentProps<T>) {
     state: anyState,
   };
   const renderEmpty = callback(cells(props).renderEmptyState);
-  const emptyState = (): Child => {
+  function emptyState(): Child {
     if (!isEmpty() || renderEmpty === undefined) return null;
     return (
       <li role="option" style={{ display: "contents" }}>
         {renderEmpty(renderState)}
       </li>
     );
-  };
+  }
 
   return (
     <>
@@ -925,14 +953,22 @@ export function ListBox<T>(props: ListBoxComponentProps<T>) {
   );
 }
 
+interface AutocompleteIdOptions {
+  id?: MaybeAccessor<string | undefined>;
+}
+
+interface AutocompleteId {
+  id?: MaybeAccessor<string>;
+}
+
 /**
  * What an enclosing autocomplete asks of the list: its id, a name, virtual
  * focus, no typeahead of its own. The caller's own name and id come first.
  */
 function autocompleteOptions(
   auto: ReturnType<typeof useAutocompleteCollection>,
-  options: ListBoxOptions & { id?: MaybeAccessor<string | undefined> },
-): Partial<ListBoxOptions> & { id?: MaybeAccessor<string> } {
+  options: ListBoxOptions & AutocompleteIdOptions,
+): Partial<ListBoxOptions> & AutocompleteId {
   if (auto === null) return {};
   const given = auto.collectionProps;
   const own = options.id;
@@ -1057,8 +1093,11 @@ export function Option(props: OptionComponentProps) {
   );
 
   const dnd = optionDragAndDrop(list, node.key, domRef, hasAction);
-  const isDraggable = (): boolean =>
-    dnd?.collection.dragState !== undefined && !list.state.selectionManager().isDisabled(node.key);
+  function isDraggable(): boolean {
+    return (
+      dnd?.collection.dragState !== undefined && !list.state.selectionManager().isDisabled(node.key)
+    );
+  }
   const { hoverProps, isHovered } = hover({
     isDisabled: () => !allowsSelection() && !hasAction() && !isDraggable(),
     onHoverStart: options.onHoverStart,
@@ -1067,7 +1106,9 @@ export function Option(props: OptionComponentProps) {
   });
   const { keyboardProps } = keyboard({ onKeyDown: options.onKeyDown, onKeyUp: options.onKeyUp });
   const { focusProps } = focused({ onFocusChange: options.onFocusChange });
-  const selectionMode = (): SelectionMode => list.state.selectionManager().selectionMode;
+  function selectionMode(): SelectionMode {
+    return list.state.selectionManager().selectionMode;
+  }
 
   const elementProps = mergeProps(
     optionProps,
@@ -1175,19 +1216,23 @@ function optionDragAndDrop(
   };
 }
 
+interface DropLayout {
+  orientation: Accessor<"horizontal" | "vertical" | undefined>;
+  layoutDelegate: LayoutDelegate | undefined;
+  virtual: VirtualizerValue | null;
+}
+
 function listBoxDragAndDrop(
   hooks: DragAndDropHooks | undefined,
   state: ListState<unknown>,
   domRef: Accessor<HTMLUListElement | null>,
-  layout: {
-    orientation: Accessor<"horizontal" | "vertical" | undefined>;
-    layoutDelegate: LayoutDelegate | undefined;
-    virtual: VirtualizerValue | null;
-  },
+  layout: DropLayout,
 ): CollectionDragAndDrop | undefined {
   if (hooks === undefined) return undefined;
   const locale = useLocale();
-  const direction = (): "ltr" | "rtl" => locale().direction;
+  function direction(): "ltr" | "rtl" {
+    return locale().direction;
+  }
   const collection = state.collection as Accessor<Collection<unknown>>;
 
   const dragAndDrop = collectionDragAndDrop({
@@ -1215,8 +1260,12 @@ function listBoxDragAndDrop(
   return dragAndDrop;
 }
 
+interface DropIndicatorSlot {
+  of: Incoming<DropIndicatorProps>;
+}
+
 /** A drop indicator in a listbox: an option, so it is in the listbox's own children. */
-function ListBoxDropIndicator(indicator: { of: Incoming<DropIndicatorProps> }) {
+function ListBoxDropIndicator(indicator: DropIndicatorSlot) {
   const props = indicator.of;
   const { dragAndDropHooks, dropState } = useDragAndDropContext();
   if (dragAndDropHooks?.dropIndicator === undefined || dropState === undefined) {
@@ -1225,10 +1274,10 @@ function ListBoxDropIndicator(indicator: { of: Incoming<DropIndicatorProps> }) {
 
   const domRef = makeRef<HTMLLIElement>();
   const virtual = useVirtualizer();
-  const indicatorStyle = (): Record<string, string> | undefined => {
+  function indicatorStyle(): Record<string, string> | undefined {
     const target = props.target();
     return target.type === "item" ? dropIndicatorStyle(virtual, target) : undefined;
-  };
+  }
   const { dropIndicatorProps, isDropTarget, isHidden } = dragAndDropHooks.dropIndicator(
     { target: props.target() },
     dropState,
@@ -1285,7 +1334,9 @@ export function ListBoxLoadMoreItem(props: ListBoxLoadMoreItemProps) {
       : staticItem(list.staticItems, { type: "loader", textValue: "" });
   const key = written === null ? useItemNode().key : written.key;
   const sentinel = makeRef<HTMLDivElement>();
-  const isLoading = (): boolean => props.isLoading === true && props.children !== undefined;
+  function isLoading(): boolean {
+    return props.isLoading === true && props.children !== undefined;
+  }
 
   loadMoreSentinel(
     {

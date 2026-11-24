@@ -44,18 +44,18 @@ export function label(options: LabelOptions): LabelResult {
   const fieldId = id(options.id);
   const labelId = id();
 
-  const hasLabel = (): boolean => {
+  function hasLabel(): boolean {
     const value = access(options.label);
     return value !== undefined && value !== null && value !== false && value !== "";
-  };
+  }
 
-  const labelledBy = (): string | undefined => {
+  function labelledBy(): string | undefined {
     const given = access(options["aria-labelledby"]);
     if (!hasLabel()) return given;
     // Both: the visible label first, then whatever else was named, which is
     // the order a screen reader reads them in.
     return given === undefined ? labelId() : `${labelId()} ${given}`;
-  };
+  }
 
   return {
     labelProps: {
@@ -106,26 +106,28 @@ export function field(options: FieldOptions): FieldResult {
   const descriptionId = id();
   const errorMessageId = id();
 
-  const present = (value: MaybeAccessor<unknown>): boolean => {
+  function present(value: MaybeAccessor<unknown>): boolean {
     const resolved = access(value);
     return resolved !== undefined && resolved !== null && resolved !== false && resolved !== "";
-  };
+  }
 
-  const ids = (...parts: (string | undefined)[]): string | undefined => {
+  function ids(...parts: (string | undefined)[]): string | undefined {
     const given = parts.filter((part): part is string => part !== undefined);
     return given.length === 0 ? undefined : given.join(" ");
-  };
+  }
 
-  const descriptionIds = (): string | undefined =>
-    ids(
+  function descriptionIds(): string | undefined {
+    return ids(
       present(options.description) ? descriptionId() : undefined,
       present(options.errorMessage) && access(options.isInvalid) === true
         ? errorMessageId()
         : undefined,
     );
+  }
 
-  const describedBy = (): string | undefined =>
-    ids(descriptionIds(), access(options["aria-describedby"]));
+  function describedBy(): string | undefined {
+    return ids(descriptionIds(), access(options["aria-describedby"]));
+  }
 
   return {
     labelProps,

@@ -127,15 +127,18 @@ export function disclosureGroupState(
     options.onExpandedChange,
   );
 
-  const allowsMultiple = (): boolean => access(options.allowsMultiple) === true;
+  function allowsMultiple(): boolean {
+    return access(options.allowsMultiple) === true;
+  }
   const expandedKeys = createMemo((): Set<Key> => {
     const keys = stored();
     if (allowsMultiple() || keys.size <= 1) return keys;
     const [first] = keys;
     return new Set([first as Key]);
   });
-  const isLocked = (key: Key): boolean =>
-    !allowsMultiple() && access(options.isCollapsible) === false && expandedKeys().has(key);
+  function isLocked(key: Key): boolean {
+    return !allowsMultiple() && access(options.isCollapsible) === false && expandedKeys().has(key);
+  }
 
   return {
     expandedKeys,
@@ -177,7 +180,9 @@ export interface DisclosureResult {
 export function disclosure(options: DisclosureOptions, state: DisclosureState): DisclosureResult {
   const triggerId = id();
   const panelId = id();
-  const isDisabled = (): boolean => access(options.isDisabled) === true;
+  function isDisabled(): boolean {
+    return access(options.isDisabled) === true;
+  }
 
   if (!isServer) {
     /**
@@ -192,7 +197,7 @@ export function disclosure(options: DisclosureOptions, state: DisclosureState): 
       () => access(options.panelRef) as HTMLElement | null,
       (panel) => {
         if (panel === null) return undefined;
-        const onBeforeMatch = (): void => {
+        const onBeforeMatch: () => void = () => {
           panel.setAttribute("hidden", "until-found");
           state.expand();
         };
@@ -222,12 +227,13 @@ export function disclosure(options: DisclosureOptions, state: DisclosureState): 
 
         const first = previous === null;
         previous = expanded;
-        const hide = (): void => panel.setAttribute("hidden", "until-found");
-        const size = (width: string, height: string): void => {
+        const hide: () => void = () => panel.setAttribute("hidden", "until-found");
+        const size: (width: string, height: string) => void = (width, height) => {
           panel.style.setProperty("--disclosure-panel-width", width);
           panel.style.setProperty("--disclosure-panel-height", height);
         };
-        const measured = (): void => size(`${panel.scrollWidth}px`, `${panel.scrollHeight}px`);
+        const measured: () => void = () =>
+          size(`${panel.scrollWidth}px`, `${panel.scrollHeight}px`);
 
         if (expanded) {
           panel.removeAttribute("hidden");
@@ -422,9 +428,9 @@ export function DisclosureButton(props: DisclosureButtonComponentProps) {
   );
 
   const group = value.group;
-  const enlist = (element: HTMLButtonElement | null): void => {
+  function enlist(element: HTMLButtonElement | null): void {
     if (element !== null && group !== undefined) headerGroups.set(element, group);
-  };
+  }
 
   return (
     <button {...elementProps} ref={mergeRefs(domRef.set, enlist, props.ref)}>
@@ -567,17 +573,20 @@ export function DisclosureGroup<T>(props: DisclosureGroupComponentProps<T>) {
   });
 
   const items = cells(props).items;
-  const collection = (): ListCollection<T> =>
-    buildCollection(items?.() ?? [], cells(props) as unknown as ItemAccessors<T>);
+  function collection(): ListCollection<T> {
+    return buildCollection(items?.() ?? [], cells(props) as unknown as ItemAccessors<T>);
+  }
 
   const locale = useLocale();
-  const orientation = (): "vertical" | "horizontal" => props.orientation ?? "vertical";
+  function orientation(): "vertical" | "horizontal" {
+    return props.orientation ?? "vertical";
+  }
   const group: DisclosureGroupContextValue = { state, orientation };
 
   const owner = getOwner();
   if (owner !== null) install(owner, DisclosureGroupContext, () => group);
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     const root = event.currentTarget as Element | null;
     const from = (event.target as Element | null)?.closest("button") ?? null;
     if (root === null || from === null || headerGroups.get(from) !== group) return;
@@ -609,7 +618,7 @@ export function DisclosureGroup<T>(props: DisclosureGroupComponentProps<T>) {
 
     event.preventDefault();
     headers[next]?.focus();
-  };
+  }
 
   const elementProps = mergeProps(
     filterDOMProps(fromProps(cells(props)), { global: true }),
@@ -672,7 +681,9 @@ export function DisclosureGroupItem(props: Incoming<DisclosureGroupItemComponent
   const group = useDisclosureGroup();
   const node = getContext(DisclosureNodeContext) ?? null;
   const generated = id();
-  const key = (): Key => node?.key ?? props.id?.() ?? generated();
+  function key(): Key {
+    return node?.key ?? props.id?.() ?? generated();
+  }
 
   const state: DisclosureState = {
     isExpanded: () => group.state.expandedKeys().has(key()),
@@ -689,8 +700,11 @@ export function DisclosureGroupItem(props: Incoming<DisclosureGroupItemComponent
     toggle: () => group.state.toggleKey(key()),
   };
 
-  const isDisabled = (): boolean =>
-    props.isDisabled?.() === true || group.state.isDisabled() || node?.props?.isDisabled === true;
+  function isDisabled(): boolean {
+    return (
+      props.isDisabled?.() === true || group.state.isDisabled() || node?.props?.isDisabled === true
+    );
+  }
 
   const { buttonProps, panelProps } = disclosure({ panelRef, isDisabled }, state);
 

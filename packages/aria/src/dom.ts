@@ -349,11 +349,12 @@ export function isElementVisible(element: Element, child?: Element): boolean {
   );
 }
 
+export interface FocusableOptions {
+  skipVisibilityCheck?: boolean;
+}
+
 /** Whether focus can be moved to the element programmatically. */
-export function isFocusable(
-  element: Element,
-  options?: { skipVisibilityCheck?: boolean },
-): boolean {
+export function isFocusable(element: Element, options?: FocusableOptions): boolean {
   return (
     element.matches(FOCUSABLE_SELECTOR) &&
     !isInert(element) &&
@@ -491,10 +492,10 @@ function installTransitionListeners(): void {
   if (transitionListenersInstalled || typeof document === "undefined") return;
   transitionListenersInstalled = true;
 
-  const install = (): void => {
+  function install(): void {
     document.body.addEventListener("transitionrun", onTransitionRun);
     document.body.addEventListener("transitionend", onTransitionEnd);
-  };
+  }
 
   if (document.readyState !== "loading") install();
   else document.addEventListener("DOMContentLoaded", install, { once: true });
@@ -586,7 +587,9 @@ export function scrollIntoView(
   const root = ownerDocument(view).scrollingElement ?? ownerDocument(view).documentElement;
   const isRoot = view === root;
 
-  const number = (value: string): number => Number.parseFloat(value) || 0;
+  function number(value: string): number {
+    return Number.parseFloat(value) || 0;
+  }
 
   const viewTop = isRoot ? 0 : bounds.top;
   const viewBottom = isRoot ? view.clientHeight : bounds.bottom;
@@ -652,6 +655,10 @@ export function scrollIntoView(
   }
 }
 
+export interface ScrollIntoViewportOptions {
+  containingElement?: Element | null;
+}
+
 /**
  * Scroll the element into the viewport, without scrolling the page when the
  * page's own scrolling has been prevented.
@@ -661,7 +668,7 @@ export function scrollIntoView(
  */
 export function scrollIntoViewport(
   target: Element | null,
-  options: { containingElement?: Element | null } = {},
+  options: ScrollIntoViewportOptions = {},
 ): void {
   if (target === null || !target.isConnected) return;
 

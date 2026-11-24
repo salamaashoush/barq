@@ -19,7 +19,11 @@ import {
   stubRects,
 } from "./test-dnd.ts";
 
-function Draggable(props: { options?: Partial<DragOptions> }) {
+interface DraggableProps {
+  options?: Partial<DragOptions>;
+}
+
+function Draggable(props: DraggableProps) {
   const { dragProps } = drag({
     getItems: () => [{ "text/plain": "hello world" }],
     ...props.options,
@@ -37,7 +41,12 @@ async function textOf(event: DropEvent): Promise<string> {
   return item.getText("text/plain");
 }
 
-function Labelled(props: { children?: Child; onDrop?: (event: DropEvent) => void }) {
+interface LabelledProps {
+  children?: Child;
+  onDrop?: (event: DropEvent) => void;
+}
+
+function Labelled(props: LabelledProps) {
   return (
     <DropZone data-testid="zone" onDrop={props.onDrop}>
       <DropZoneLabel>Drop files here</DropZoneLabel>
@@ -54,6 +63,10 @@ afterEach(async () => {
   }
   await nextFrame();
 });
+
+interface Restorable {
+  mockRestore(): void;
+}
 
 describe("DropZone", () => {
   test("renders its children and forwards what it has no opinion about", () => {
@@ -97,7 +110,7 @@ describe("DropZone", () => {
   });
 
   describe("with a pointer", () => {
-    let rects: { mockRestore(): void };
+    let rects: Restorable;
     beforeEach(() => {
       const rect = { left: 0, top: 0, right: 100, bottom: 50, x: 0, y: 0, width: 100, height: 50 };
       rects = stubRects(() => ({

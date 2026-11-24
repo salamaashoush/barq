@@ -616,7 +616,9 @@ function last(walker: FocusWalker): Element | null {
 }
 
 function managerForScope(nodes: ScopeNodes): FocusManager {
-  const scopeOf = (): Element[] | null => nodes.current;
+  function scopeOf(): Element[] | null {
+    return nodes.current;
+  }
 
   return {
     focusNext(options = {}) {
@@ -693,7 +695,9 @@ export function createFocusManager(
   ref: MaybeAccessor<Element | null | undefined>,
   defaults: FocusWalkerOptions = {},
 ): FocusManager {
-  const rootOf = (): Element | null => (access(ref) as Element | null) ?? null;
+  function rootOf(): Element | null {
+    return (access(ref) as Element | null) ?? null;
+  }
 
   return {
     focusNext(options = {}) {
@@ -834,7 +838,9 @@ export function focusScope(options: FocusScopeOptions = {}): FocusScopeResult {
     ownedWrite: true,
   });
 
-  const stopEvent = (event: Event): void => event.stopPropagation();
+  function stopEvent(event: Event): void {
+    return event.stopPropagation();
+  }
 
   if (isServer) {
     return {
@@ -857,7 +863,7 @@ export function focusScope(options: FocusScopeOptions = {}): FocusScopeResult {
    * scope beside its parent rather than under it, and focus restoration then
    * refuses to run because the disposing scope is not the active one.
    */
-  const parentOf = (): ScopeNode => {
+  function parentOf(): ScopeNode {
     let found = parentContext?.node ?? scopeTree.root;
     if (
       scopeTree.get(found.nodes) !== undefined &&
@@ -868,7 +874,7 @@ export function focusScope(options: FocusScopeOptions = {}): FocusScopeResult {
       if (active !== undefined) found = active;
     }
     return found;
-  };
+  }
 
   parentOf().add(node);
   scopeTree.register(node);
@@ -880,7 +886,7 @@ export function focusScope(options: FocusScopeOptions = {}): FocusScopeResult {
     },
   );
 
-  const startRef = (element: Element | null): void => {
+  function startRef(element: Element | null): void {
     if (element !== null && nodes.start === null) {
       setRestoreTo(activeElement(ownerDocument(element)) as HTMLElement | SVGElement | null);
       const now = parentOf();
@@ -890,11 +896,11 @@ export function focusScope(options: FocusScopeOptions = {}): FocusScopeResult {
       }
     }
     nodes.start = element;
-  };
+  }
 
-  const endRef = (element: Element | null): void => {
+  function endRef(element: Element | null): void {
     nodes.end = element;
-  };
+  }
 
   // The sentinels are siblings only once the fragment holding them has been
   // inserted, which is after the refs have run.
@@ -963,7 +969,7 @@ function containFocus(nodes: ScopeNodes, options: FocusScopeOptions): void {
 
       const doc = ownerDocument(scope?.[0]);
 
-      const onKeyDown = (event: KeyboardEvent): void => {
+      function onKeyDown(event: KeyboardEvent): void {
         if (
           event.key !== "Tab" ||
           event.altKey ||
@@ -998,9 +1004,9 @@ function containFocus(nodes: ScopeNodes, options: FocusScopeOptions): void {
           focusElement(next, true);
           if (next instanceof ownerWindow(next).HTMLInputElement) next.select();
         }
-      };
+      }
 
-      const onFocus = (event: Event): void => {
+      function onFocus(event: Event): void {
         const target = targetElement(event);
         if (
           (activeScope === null || isAncestorScope(activeScope, nodes)) &&
@@ -1024,9 +1030,9 @@ function containFocus(nodes: ScopeNodes, options: FocusScopeOptions): void {
         } else if (shouldContainFocus(nodes)) {
           focusedNode = target ?? undefined;
         }
-      };
+      }
 
-      const onBlur = (event: Event): void => {
+      function onBlur(event: Event): void {
         // Firefox does not put focus back without the frame.
         if (frame !== undefined) cancelAnimationFrame(frame);
         frame = requestAnimationFrame(() => {
@@ -1055,7 +1061,7 @@ function containFocus(nodes: ScopeNodes, options: FocusScopeOptions): void {
             focusElement(firstInScope(activeScope.current));
           }
         });
-      };
+      }
 
       doc.addEventListener("keydown", onKeyDown as EventListener, false);
       doc.addEventListener("focusin", onFocus, false);
@@ -1086,12 +1092,12 @@ function trackActiveScope(nodes: ScopeNodes, options: FocusScopeOptions): void {
 
       const doc = ownerDocument(scope?.[0]);
 
-      const onFocus = (event: Event): void => {
+      function onFocus(event: Event): void {
         const target = targetElement(event);
         if (target === null) return;
         if (isInScope(target, nodes.current)) activeScope = nodes;
         else if (!isInAnyChildScope(target)) activeScope = null;
-      };
+      }
 
       doc.addEventListener("focusin", onFocus, false);
       for (const element of scope ?? []) element.addEventListener("focusin", onFocus, false);
@@ -1135,14 +1141,14 @@ function restoreFocusOnDispose(
 
       const doc = ownerDocument(scope?.[0]);
 
-      const onFocus = (): void => {
+      function onFocus(): void {
         if (
           (activeScope === null || isAncestorScope(activeScope, nodes)) &&
           isInScope(activeElement(doc), nodes.current)
         ) {
           activeScope = nodes;
         }
-      };
+      }
 
       doc.addEventListener("focusin", onFocus, false);
       for (const element of scope ?? []) element.addEventListener("focusin", onFocus, false);
@@ -1164,7 +1170,7 @@ function restoreFocusOnDispose(
 
       const doc = ownerDocument(nodes.current?.[0]);
 
-      const onKeyDown = (event: KeyboardEvent): void => {
+      function onKeyDown(event: KeyboardEvent): void {
         if (
           event.key !== "Tab" ||
           event.altKey ||
@@ -1212,7 +1218,7 @@ function restoreFocusOnDispose(
             focusElement(target, true);
           }
         }
-      };
+      }
 
       doc.addEventListener("keydown", onKeyDown as EventListener, true);
       return () => doc.removeEventListener("keydown", onKeyDown as EventListener, true);
@@ -1241,7 +1247,7 @@ function restoreFocusOnDispose(
    * trigger unreachable — invisible under happy-dom, where removing the focused
    * element leaves `activeElement` where it was.
    */
-  const restore = (previous: Element[] | null): void => {
+  function restore(previous: Element[] | null): void {
     if (access(options.restoreFocus) !== true) return;
 
     const doc = ownerDocument(previous?.[0] ?? nodes.current?.[0]);
@@ -1292,7 +1298,7 @@ function restoreFocusOnDispose(
         at = at.parent;
       }
     });
-  };
+  }
 
   tryCleanup(() => restore(null));
 }
@@ -1347,7 +1353,9 @@ export interface FocusRingResult {
  * ```
  */
 export function focusRing(options: FocusRingOptions = {}): FocusRingResult {
-  const within = (): boolean => access(options.within) === true;
+  function within(): boolean {
+    return access(options.within) === true;
+  }
 
   const visible = focusVisible({
     isTextInput: access(options.isTextInput),
@@ -1360,7 +1368,9 @@ export function focusRing(options: FocusRingOptions = {}): FocusRingResult {
   const element = focused({ isDisabled: within });
   const subtree = focusWithin({ isDisabled: () => !within() });
 
-  const isFocused = (): boolean => (within() ? subtree.isFocusWithin() : element.isFocused());
+  function isFocused(): boolean {
+    return within() ? subtree.isFocusWithin() : element.isFocused();
+  }
 
   return {
     isFocused,

@@ -154,7 +154,9 @@ function combine(date: DateValue, time: TimeValue): DateValue {
   return toCalendarDateTime(date, time);
 }
 
-const hasTimeIn = (granularity: Granularity): boolean => granularity !== "day";
+function hasTimeIn(granularity: Granularity): boolean {
+  return granularity !== "day";
+}
 
 /** The two times of a range, either of which may not be set yet. */
 interface TimeRange {
@@ -185,36 +187,44 @@ export function datePickerState<T extends DateValue = DateValue>(
   const [pendingDate, setPendingDate] = createSignal<DateValue | null>(null);
   const [pendingTime, setPendingTime] = createSignal<TimeValue | null>(null);
 
-  const granularity = (): Granularity =>
-    access(options.granularity) ?? defaultGranularity(value() ?? access(options.placeholderValue));
-  const hasTime = (): boolean => hasTimeIn(granularity());
+  function granularity(): Granularity {
+    return (
+      access(options.granularity) ?? defaultGranularity(value() ?? access(options.placeholderValue))
+    );
+  }
+  function hasTime(): boolean {
+    return hasTimeIn(granularity());
+  }
 
-  const dateValue = (): DateValue | null => value() ?? pendingDate();
-  const timeValue = (): TimeValue | null => {
+  function dateValue(): DateValue | null {
+    return value() ?? pendingDate();
+  }
+  function timeValue(): TimeValue | null {
     const current = value();
     return current !== null && "hour" in current ? current : pendingTime();
-  };
-  const stand = (): DateValue | null | undefined =>
-    access(options.defaultValue) ?? access(options.placeholderValue);
+  }
+  function stand(): DateValue | null | undefined {
+    return access(options.defaultValue) ?? access(options.placeholderValue);
+  }
 
-  const commit = (date: DateValue, time: TimeValue): void => {
+  function commit(date: DateValue, time: TimeValue): void {
     setValue(combine(date, time));
     setPendingDate(null);
     setPendingTime(null);
-  };
+  }
 
-  const shouldClose = (): boolean => {
+  function shouldClose(): boolean {
     const given = options.shouldCloseOnSelect ?? true;
     return typeof given === "function" ? given() : given;
-  };
+  }
 
-  const setOpen = (isOpen: boolean): void => {
+  function setOpen(isOpen: boolean): void {
     const date = untrack(pendingDate);
     if (!isOpen && untrack(value) === null && date !== null && untrack(hasTime)) {
       commit(date, untrack(pendingTime) ?? placeholderTime(stand()));
     }
     overlay.setOpen(isOpen);
-  };
+  }
 
   return {
     ...overlay,
@@ -358,11 +368,17 @@ function opensOnAltArrow(
   overlay.setOpen(true);
 }
 
+interface PickerFieldProps {
+  labelledBy?: string;
+  describedBy?: string;
+  children?: Child;
+}
+
 // ---------------------------------------------------------------------------
 // Components
 // ---------------------------------------------------------------------------
 
-function PickerField(props: { labelledBy?: string; describedBy?: string; children?: Child }) {
+function PickerField(props: PickerFieldProps) {
   return provide(
     PickerFieldContext,
     () => ({ labelledBy: () => props.labelledBy, describedBy: () => props.describedBy }),
@@ -670,8 +686,9 @@ export function DateRangePicker<T extends DateValue = DateValue>(
     () => props.defaultValue ?? null,
     (next) => props.onChange?.(next as DateRange<MappedDateValue<T>> | null),
   );
-  const granularity = (): Granularity =>
-    props.granularity ?? defaultGranularity(value()?.start ?? props.placeholderValue);
+  function granularity(): Granularity {
+    return props.granularity ?? defaultGranularity(value()?.start ?? props.placeholderValue);
+  }
 
   const overlay = overlayTriggerState({
     isOpen: () => props.isOpen,
@@ -682,7 +699,9 @@ export function DateRangePicker<T extends DateValue = DateValue>(
   const buttonId = id();
   const dialogId = id();
 
-  const isDisabled = (): boolean => props.isDisabled === true;
+  function isDisabled(): boolean {
+    return props.isDisabled === true;
+  }
 
   const check = callback<
     [DateRange<MappedDateValue<T>> | null],
@@ -715,11 +734,15 @@ export function DateRangePicker<T extends DateValue = DateValue>(
     "aria-describedby": () => props["aria-describedby"],
     labelElementType: "span",
   });
-  const labelId = (): string | undefined =>
-    access(labelProps.id as MaybeAccessor<string | undefined>);
-  const labelledBy = (): string | undefined =>
-    access(labelledProps["aria-labelledby"] as MaybeAccessor<string | undefined>) ??
-    access(labelledProps.id as MaybeAccessor<string | undefined>);
+  function labelId(): string | undefined {
+    return access(labelProps.id as MaybeAccessor<string | undefined>);
+  }
+  function labelledBy(): string | undefined {
+    return (
+      access(labelledProps["aria-labelledby"] as MaybeAccessor<string | undefined>) ??
+      access(labelledProps.id as MaybeAccessor<string | undefined>)
+    );
+  }
 
   const trigger = button(
     {
@@ -742,7 +765,7 @@ export function DateRangePicker<T extends DateValue = DateValue>(
    * One end changed. The other is kept, so the range is edited rather than
    * reset, and each end keeps the time typed into it.
    */
-  const setEnd = (which: "start" | "end", date: DateValue | null): void => {
+  function setEnd(which: "start" | "end", date: DateValue | null): void {
     const current = value();
     if (date === null) {
       setValue(null);
@@ -754,42 +777,48 @@ export function DateRangePicker<T extends DateValue = DateValue>(
       return;
     }
     setValue(which === "start" ? { start: date, end: other } : { start: other, end: date });
-  };
+  }
 
   // The range drawn and the times set so far, while the other half is still
   // to come: with a time, a range drawn in the calendar waits with the
   // calendar open for the two times beside it.
   const [pendingDates, setPendingDates] = createSignal<DateRange<DateValue> | null>(null);
   const [pendingTimes, setPendingTimes] = createSignal<TimeRange | null>(null);
-  const hasTime = (): boolean => hasTimeIn(granularity());
-  const dateRange = (): DateRange<DateValue> | null => value() ?? pendingDates();
-  const timeRange = (): TimeRange | null => {
+  function hasTime(): boolean {
+    return hasTimeIn(granularity());
+  }
+  function dateRange(): DateRange<DateValue> | null {
+    return value() ?? pendingDates();
+  }
+  function timeRange(): TimeRange | null {
     const current = value();
     if (current !== null && "hour" in current.start && "hour" in current.end) {
       return { start: current.start, end: current.end };
     }
     return pendingTimes();
-  };
-  const placeholder = (): TimeValue => placeholderTime(props.placeholderValue);
+  }
+  function placeholder(): TimeValue {
+    return placeholderTime(props.placeholderValue);
+  }
 
-  const commit = (dates: DateRange<DateValue>, times: TimeRange): void => {
+  function commit(dates: DateRange<DateValue>, times: TimeRange): void {
     setValue({
       start: combine(dates.start, times.start ?? placeholder()),
       end: combine(dates.end, times.end ?? placeholder()),
     });
     setPendingDates(null);
     setPendingTimes(null);
-  };
+  }
 
-  const setOpen = (isOpen: boolean): void => {
+  function setOpen(isOpen: boolean): void {
     const dates = untrack(pendingDates);
     if (!isOpen && untrack(value) === null && dates !== null && untrack(hasTime)) {
       commit(dates, untrack(pendingTimes) ?? { start: null, end: null });
     }
     overlay.setOpen(isOpen);
-  };
+  }
 
-  const setDateRange = (range: DateRange<DateValue> | null): void => {
+  function setDateRange(range: DateRange<DateValue> | null): void {
     const close = props.shouldCloseOnSelect ?? !untrack(hasTime);
     if (range === null) {
       setValue(null);
@@ -803,9 +832,9 @@ export function DateRangePicker<T extends DateValue = DateValue>(
       setValue(range);
     }
     if (close) setOpen(false);
-  };
+  }
 
-  const setTime = (which: "start" | "end", time: TimeValue | null): void => {
+  function setTime(which: "start" | "end", time: TimeValue | null): void {
     const was = untrack(timeRange);
     const times: TimeRange =
       which === "start"
@@ -814,7 +843,7 @@ export function DateRangePicker<T extends DateValue = DateValue>(
     const dates = untrack(dateRange);
     if (dates !== null && times.start !== null && times.end !== null) commit(dates, times);
     else setPendingTimes(times);
-  };
+  }
 
   const elementProps = mergeProps(
     labelledProps,

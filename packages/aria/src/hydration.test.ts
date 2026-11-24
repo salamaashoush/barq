@@ -30,9 +30,15 @@ import { join } from "node:path";
 import { renderAndHydrate } from "@barqjs/testing";
 
 const require_ = createRequire(import.meta.url);
-const native = require_("@barqjs/compiler") as {
-  transform(code: string, options?: Record<string, unknown>): { code: string };
-};
+interface Native {
+  transform(code: string, options?: Record<string, unknown>): Transformed;
+}
+
+interface Transformed {
+  code: string;
+}
+
+const native = require_("@barqjs/compiler") as Native;
 
 const SRC = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 const CORE = new URL("../node_modules/@barqjs/core/src/index.ts", import.meta.url).pathname;
@@ -157,14 +163,14 @@ function idsIn(html: string): string[] {
  */
 function normaliseIds(html: string): string {
   const seen = new Map<string, string>();
-  const number = (id: string): string => {
+  function number(id: string): string {
     let known = seen.get(id);
     if (known === undefined) {
       known = `#${seen.size}`;
       seen.set(id, known);
     }
     return known;
-  };
+  }
 
   return html.replaceAll(
     /\b(id|for|data-collection|aria-labelledby|aria-describedby|aria-controls|aria-activedescendant)="([^"]*)"/g,

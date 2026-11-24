@@ -432,6 +432,10 @@ describe("SearchField, keys", () => {
   });
 });
 
+interface FruitsProps {
+  onAction?: (key: Key) => void;
+}
+
 describe("a field inside an Autocomplete", () => {
   interface Fruit {
     id: string;
@@ -447,7 +451,7 @@ describe("a field inside an Autocomplete", () => {
   const contains: AutocompleteFilter = (textValue, inputValue) =>
     textValue.toLowerCase().includes(inputValue.toLowerCase());
 
-  function Fruits(props: { onAction?: (key: Key) => void }) {
+  function Fruits(props: FruitsProps) {
     return (
       <ListBox items={FRUITS} getTextValue={(fruit: Fruit) => fruit.name} onAction={props.onAction}>
         {(fruit: Fruit) => <Option>{fruit.name}</Option>}
@@ -455,8 +459,9 @@ describe("a field inside an Autocomplete", () => {
     );
   }
 
-  const names = (): string[] =>
-    screen.getAllByRole("option").map((option) => option.textContent ?? "");
+  function names(): string[] {
+    return screen.getAllByRole("option").map((option) => option.textContent ?? "");
+  }
 
   test("a SearchField filters the list and controls it", () => {
     const changes: string[] = [];

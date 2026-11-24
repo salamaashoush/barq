@@ -344,6 +344,11 @@ function first(keys: Set<Key>): Key | undefined {
   return keys.values().next().value;
 }
 
+interface AnnouncedSelection {
+  selection: SelectionValue;
+  focused: boolean;
+}
+
 /**
  * Announce a change to a grid's selection made from inside the grid.
  *
@@ -357,12 +362,13 @@ export function gridSelectionAnnouncement(
 ): void {
   if (isServer) return;
   const message = stringFormatter(gridSelectionStrings);
-  const rowText = (key: Key): string | undefined =>
-    options.getRowText?.(key) ?? state.collection().getItem(key)?.textValue;
+  function rowText(key: Key): string | undefined {
+    return options.getRowText?.(key) ?? state.collection().getItem(key)?.textValue;
+  }
 
   let last: SelectionValue = untrack(() => state.selectionManager().rawSelection);
 
-  const announceChange = (): void => {
+  function announceChange(): void {
     const manager = state.selectionManager();
     const selection = manager.rawSelection;
     if (!manager.isFocused || selection === last) {
@@ -393,7 +399,9 @@ export function gridSelectionAnnouncement(
     // The count, unless the change was the first row of a selection: there
     // the row's name already says everything the count would.
     if (manager.selectionMode === "multiple") {
-      const several = (value: SelectionValue): boolean => value === "all" || value.size > 1;
+      function several(value: SelectionValue): boolean {
+        return value === "all" || value.size > 1;
+      }
       if (messages.length === 0 || several(selection) || several(last)) {
         messages.push(
           selection === "all"
@@ -405,10 +413,10 @@ export function gridSelectionAnnouncement(
 
     if (messages.length > 0) announce(messages.join(" "));
     last = selection;
-  };
+  }
 
   createEffect(
-    (previous?: { selection: SelectionValue; focused: boolean }) => {
+    (previous?: AnnouncedSelection) => {
       const manager = state.selectionManager();
       const selection = manager.rawSelection;
       const focused = manager.isFocused;
@@ -446,14 +454,14 @@ export function highlightSelectionDescription(
   const how = modality();
   // No modality yet is a page nobody has touched, which on a touch device
   // will be touched.
-  const shouldLongPress = (): boolean => {
+  function shouldLongPress(): boolean {
     const current = how();
     return (
       (current === "pointer" || current === "virtual" || current === null) &&
       typeof window !== "undefined" &&
       "ontouchstart" in window
     );
-  };
+  }
 
   return description(() => {
     const manager = options.selectionManager();

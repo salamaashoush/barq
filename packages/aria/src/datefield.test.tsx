@@ -22,7 +22,7 @@ import {
 import { DateField, TimeField } from "./datefield.tsx";
 import { provideLocale } from "./i18n.ts";
 
-function Departure(props: {
+interface DepartureProps {
   value?: DateValue | null;
   defaultValue?: DateValue | null;
   granularity?: "day" | "hour" | "minute" | "second";
@@ -30,7 +30,9 @@ function Departure(props: {
   isReadOnly?: boolean;
   name?: string;
   onChange?: (value: DateValue | null) => void;
-}) {
+}
+
+function Departure(props: DepartureProps) {
   return (
     <DateField
       label="Departure"
@@ -291,7 +293,9 @@ describe("TimeField", () => {
 });
 
 describe("a segment's name", () => {
-  const names = (): string[] => segments().map((element) => accessibleName(element));
+  function names(): string[] {
+    return segments().map((element) => accessibleName(element));
+  }
 
   test("each segment is named by its part and then by the field's label", () => {
     render(() => <Departure />);
@@ -329,7 +333,9 @@ describe("a segment's name", () => {
 });
 
 describe("a segment's description", () => {
-  const described = (): string[] => segments().map((element) => accessibleDescription(element));
+  function described(): string[] {
+    return segments().map((element) => accessibleDescription(element));
+  }
 
   test("the first segment reads the field's description and the rest do not", () => {
     render(() => (
@@ -432,7 +438,12 @@ describe("a date outside minValue or maxValue", () => {
   });
 });
 
-function InLocale(props: { tag: string; children?: Child }) {
+interface LocaleProps {
+  tag: string;
+  children?: Child;
+}
+
+function InLocale(props: LocaleProps) {
   const localeProps = provideLocale(() => props.tag);
   return <div {...localeProps}>{props.children}</div>;
 }
@@ -725,11 +736,13 @@ describe("a DateField in a form", () => {
   });
 });
 
+interface JapaneseProps {
+  defaultValue: DateValue;
+  onChange?: (value: DateValue | null) => void;
+}
+
 describe("a calendar with eras", () => {
-  function Japanese(props: {
-    defaultValue: DateValue;
-    onChange?: (value: DateValue | null) => void;
-  }) {
+  function Japanese(props: JapaneseProps) {
     return (
       <InLocale tag="en-US-u-ca-japanese">
         <DateField label="Date" defaultValue={props.defaultValue} onChange={props.onChange} />
@@ -856,7 +869,9 @@ describe("a calendar with eras", () => {
 });
 
 describe("a value in a time zone", () => {
-  const zoned = (text: string) => parseZonedDateTime(text);
+  function zoned(text: string) {
+    return parseZonedDateTime(text);
+  }
 
   test("shows its zone as a segment that reads out and cannot be edited", () => {
     render(() => (

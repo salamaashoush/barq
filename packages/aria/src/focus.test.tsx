@@ -5,7 +5,13 @@ import { render, screen, tick, user } from "@barqjs/testing";
 import { createFocusManager, focusRing, focusScope, focusableWalker } from "./focus.ts";
 import { setInteractionModality } from "./interactions/modality.ts";
 
-function Trap(props: { autoFocus?: boolean; contain?: boolean; restoreFocus?: boolean }) {
+interface TrapProps {
+  autoFocus?: boolean;
+  contain?: boolean;
+  restoreFocus?: boolean;
+}
+
+function Trap(props: TrapProps) {
   const scope = focusScope({
     contain: cells(props).contain,
     restoreFocus: cells(props).restoreFocus,
@@ -236,6 +242,10 @@ describe("focusRing", () => {
   });
 });
 
+interface LateProps {
+  open: boolean;
+}
+
 /**
  * A scope whose sentinels arrive after its effects do.
  *
@@ -249,7 +259,7 @@ describe("focusRing", () => {
  * refs had run.
  */
 describe("a scope whose content appears later", () => {
-  function Late(props: { open: boolean }) {
+  function Late(props: LateProps) {
     const scope = focusScope({ contain: true, autoFocus: true });
     return (
       <>

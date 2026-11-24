@@ -50,12 +50,15 @@ import {
   stubRects,
 } from "./test-dnd.ts";
 import { mergeProps } from "./utils.ts";
+import type { ClipboardDetails } from "./dnd/clipboard.ts";
 
-function Draggable(props: {
+interface DraggableProps {
   options?: Partial<DragOptions>;
   children?: Child;
   renderPreview?: (items: unknown) => void;
-}) {
+}
+
+function Draggable(props: DraggableProps) {
   const { dragProps, isDragging } = drag({
     getItems: () => [{ "text/plain": "hello world" }],
     ...props.options,
@@ -67,7 +70,12 @@ function Draggable(props: {
   );
 }
 
-function Droppable(props: { options?: Partial<DropOptions>; children?: Child }) {
+interface DroppableProps {
+  options?: Partial<DropOptions>;
+  children?: Child;
+}
+
+function Droppable(props: DroppableProps) {
   const domRef = makeRef<HTMLDivElement>();
   const { dropProps, isDropTarget } = drop({ ref: domRef, ...props.options });
   const { buttonProps } = button({ elementType: "div" }, domRef);
@@ -84,7 +92,11 @@ function Droppable(props: { options?: Partial<DropOptions>; children?: Child }) 
 
 const RECT = { left: 0, top: 0, right: 100, bottom: 50, x: 0, y: 0, width: 100, height: 50 };
 
-function mockRects(): { mockRestore(): void } {
+interface Restorable {
+  mockRestore(): void;
+}
+
+function mockRects(): Restorable {
   return stubRects(() => ({
     ...RECT,
     toJSON: () => RECT,
@@ -97,7 +109,7 @@ async function textOf(event: DropEvent, type = "text/plain"): Promise<string> {
   return item.getText(type);
 }
 
-let rects: { mockRestore(): void };
+let rects: Restorable;
 
 beforeEach(() => {
   rects = mockRects();
@@ -113,6 +125,11 @@ afterEach(async () => {
   rects.mockRestore();
   restoreRects();
 });
+
+interface PreviewOffset {
+  x?: number;
+  y?: number;
+}
 
 describe("native drag and drop", () => {
   test("drags and drops", async () => {
@@ -492,20 +509,19 @@ describe("native drag and drop", () => {
   });
 
   describe("drag preview", () => {
-    function previewDraggable(
-      result: { x?: number; y?: number },
-      size = { width: 20, height: 21 },
-    ) {
+    function previewDraggable(result: PreviewOffset, size = { width: 20, height: 21 }) {
       const node = document.createElement("div");
       spyOn(node, "getBoundingClientRect").mockImplementation(() => ({
         ...RECT,
         ...size,
         toJSON: () => size,
       }));
-      const preview = (
+      function preview(
         _items: unknown,
         callback: (node: HTMLElement | null, x?: number, y?: number) => void,
-      ): void => callback(node, result.x, result.y);
+      ): void {
+        return callback(node, result.x, result.y);
+      }
       render(() => <Draggable options={{ preview }} />);
       return node;
     }
@@ -862,8 +878,12 @@ describe("screen reader", () => {
   });
 });
 
+interface CopyableProps {
+  options?: ClipboardOptions;
+}
+
 describe("clipboard", () => {
-  function Copyable(props: { options?: ClipboardOptions }) {
+  function Copyable(props: CopyableProps) {
     const { clipboardProps } = clipboard({
       getItems: () => [{ "text/plain": "hello world" }],
       ...props.options,
@@ -905,9 +925,7 @@ describe("clipboard", () => {
 
   test("cuts only with onCut, and says which action it was", () => {
     const onCut = mock();
-    const getItems = mock((details: { action: "cut" | "copy" }) => [
-      { "text/plain": details.action },
-    ]);
+    const getItems = mock((details: ClipboardDetails) => [{ "text/plain": details.action }]);
     render(() => <Copyable options={{ onCut, getItems }} />);
     const element = screen.getByRole("button");
     user.focus(element);
@@ -1124,9 +1142,12 @@ describe("ListDropTargetDelegate", () => {
     const container = mountList();
     const collection = buildCollection<unknown>(ITEMS);
     const delegate = new ListDropTargetDelegate(() => collection, container);
-    const any = (): boolean => true;
-    const betweenOnly = (target: DropTarget): boolean =>
-      target.type === "item" && target.dropPosition !== "on";
+    function any(): boolean {
+      return true;
+    }
+    function betweenOnly(target: DropTarget): boolean {
+      return target.type === "item" && target.dropPosition !== "on";
+    }
 
     expect(delegate.getDropTargetFromPoint(50, 25, any)).toEqual({
       type: "item",
@@ -1187,13 +1208,15 @@ describe("droppableCollectionState", () => {
   }
 
   const types = getTypes([{ "text/plain": "salama" }]);
-  const event = (target: DropTarget, isInternal: boolean, draggingKeys = new Set<Key>(["a"])) => ({
-    target,
-    types,
-    allowedOperations: ["move", "copy"] as ("move" | "copy")[],
-    isInternal,
-    draggingKeys,
-  });
+  function event(target: DropTarget, isInternal: boolean, draggingKeys = new Set<Key>(["a"])) {
+    return {
+      target,
+      types,
+      allowedOperations: ["move", "copy"] as ("move" | "copy")[],
+      isInternal,
+      draggingKeys,
+    };
+  }
 
   test("after one item and before the next are the same target", () => {
     const state = stateWith({ onReorder: () => {} });
@@ -1313,10 +1336,12 @@ const EVERY_PARENT = [
   "reports-1AB",
 ];
 
-function treeOf(expanded: string[] = EVERY_PARENT): {
+interface TreeSource {
   collection: () => TreeCollection<unknown>;
   expandedKeys: () => Set<Key>;
-} {
+}
+
+function treeOf(expanded: string[] = EVERY_PARENT): TreeSource {
   let result: ReturnType<typeof treeOf> | undefined;
   createRoot(() => {
     const state = treeState<Row>({ items: ROWS, defaultExpandedKeys: expanded });
@@ -1388,27 +1413,28 @@ describe("drop target keyboard navigation in a tree", () => {
   const collection = tree.collection();
 
   function walkTree(
-    delegate: ListKeyboardDelegate,
+    keyboard: ListKeyboardDelegate,
     key: "up" | "down" | "left" | "right",
     rtl = false,
   ): DropTarget[] {
     const targets: DropTarget[] = [];
     let target: DropTarget | null = null;
     do {
-      target = navigateDropTarget(delegate, collection, target, key, rtl);
+      target = navigateDropTarget(keyboard, collection, target, key, rtl);
       if (target !== null) targets.push(target);
     } while (target !== null);
     return targets;
   }
 
-  const delegate = (orientation: "horizontal" | "vertical", direction: "ltr" | "rtl") =>
-    new ListKeyboardDelegate({
+  function delegate(orientation: "horizontal" | "vertical", direction: "ltr" | "rtl") {
+    return new ListKeyboardDelegate({
       collection: () => collection,
       ref: null,
       disabledBehavior: () => "selection",
       orientation,
       direction,
     });
+  }
 
   test("forward and backward vertically, through every level", () => {
     expect(walkTree(delegate("vertical", "ltr"), "down")).toEqual(TREE_TARGETS);
@@ -1445,16 +1471,27 @@ describe("drop target keyboard navigation in a tree", () => {
   });
 });
 
+interface FixedTarget {
+  delegate: TargetDelegate;
+  answer: DropTarget;
+}
+
+interface TargetDelegate {
+  getDropTargetFromPoint(): DropTarget;
+}
+
 describe("TreeDropTargetDelegate", () => {
   /** A flat delegate that answers whatever the test last told it to. */
-  function fixed(): { delegate: { getDropTargetFromPoint(): DropTarget }; answer: DropTarget } {
+  function fixed(): FixedTarget {
     const holder = {
       answer: { type: "root" } as DropTarget,
       delegate: { getDropTargetFromPoint: () => holder.answer },
     };
     return holder;
   }
-  const any = (): boolean => true;
+  function any(): boolean {
+    return true;
+  }
 
   test("before a row reads as after the row above it", () => {
     const base = fixed();
@@ -1490,7 +1527,9 @@ describe("TreeDropTargetDelegate", () => {
     const base = fixed();
     const delegate = new TreeDropTargetDelegate(base.delegate, treeOf());
     base.answer = { type: "item", key: "project-5C", dropPosition: "after" };
-    const at = (x: number) => delegate.getDropTargetFromPoint(x, 500, any);
+    function at(x: number) {
+      return delegate.getDropTargetFromPoint(x, 500, any);
+    }
     expect(at(100)).toEqual({ type: "item", key: "project-5C", dropPosition: "after" });
     expect(at(80)).toEqual({ type: "item", key: "project-5", dropPosition: "after" });
     expect(at(60)).toEqual({ type: "item", key: "projects", dropPosition: "after" });
@@ -1505,7 +1544,9 @@ describe("TreeDropTargetDelegate", () => {
     const base = fixed();
     const delegate = new TreeDropTargetDelegate(base.delegate, treeOf(), "rtl");
     base.answer = { type: "item", key: "project-5C", dropPosition: "after" };
-    const at = (x: number) => delegate.getDropTargetFromPoint(x, 500, any);
+    function at(x: number) {
+      return delegate.getDropTargetFromPoint(x, 500, any);
+    }
     expect(at(100)).toEqual({ type: "item", key: "project-5C", dropPosition: "after" });
     expect(at(120)).toEqual({ type: "item", key: "project-5", dropPosition: "after" });
   });
@@ -1514,8 +1555,9 @@ describe("TreeDropTargetDelegate", () => {
     const base = fixed();
     const delegate = new TreeDropTargetDelegate(base.delegate, treeOf());
     base.answer = { type: "item", key: "project-5C", dropPosition: "after" };
-    const notProject5 = (target: DropTarget): boolean =>
-      !(target.type === "item" && target.key === "project-5");
+    function notProject5(target: DropTarget): boolean {
+      return !(target.type === "item" && target.key === "project-5");
+    }
     expect(delegate.getDropTargetFromPoint(100, 500, notProject5)).toEqual(base.answer);
     expect(delegate.getDropTargetFromPoint(80, 500, notProject5)).toEqual({
       type: "item",

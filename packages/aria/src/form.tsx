@@ -60,13 +60,13 @@ export function Form(props: FormComponentProps) {
   provideValidationErrors(() => props.validationErrors ?? {});
   provideValidationBehavior(() => props.validationBehavior);
 
-  const onSubmit = (event: SubmitEvent): void => {
+  function onSubmit(event: SubmitEvent): void {
     const handler = props.onSubmit;
     if (handler === undefined) return;
     // Both calling a handler and navigating is doing the thing twice.
     event.preventDefault();
     handler(new FormData(event.currentTarget as HTMLFormElement), event);
-  };
+  }
 
   const elementProps = mergeProps(
     filterDOMProps(fromProps(cells(props)), { global: true }),

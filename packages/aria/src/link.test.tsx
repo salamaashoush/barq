@@ -21,8 +21,16 @@ function clientRouter(navigations: Navigation[]): Router {
   };
 }
 
+interface HappyWindow {
+  happyDOM?: HappyDom;
+}
+
+interface HappyDom {
+  setURL(url: string): void;
+}
+
 /** A client router only takes a same-origin navigation, and `about:blank` has no origin. */
-const page = window as Window & { happyDOM?: { setURL(url: string): void } };
+const page = window as Window & HappyWindow;
 
 describe("Link: the router", () => {
   beforeEach(() => page.happyDOM?.setURL("http://localhost:3000/"));
@@ -133,8 +141,13 @@ describe("Link: callbacks", () => {
   });
 });
 
+interface SlottedProps {
+  log: string[];
+  children?: Child;
+}
+
 describe("Link: in a trigger's place", () => {
-  function Slotted(props: { log: string[]; children?: Child }) {
+  function Slotted(props: SlottedProps) {
     return provide(
       createContext(0),
       () => 1,

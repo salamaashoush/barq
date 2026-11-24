@@ -2,10 +2,11 @@ import { afterEach, describe, expect, test } from "bun:test";
 
 import { announce, destroyAnnouncer } from "./live.ts";
 
-const said = (): string[] =>
-  [...document.querySelectorAll('[data-barq-live-announcer] [role="log"] > div')].map(
+function said(): string[] {
+  return [...document.querySelectorAll('[data-barq-live-announcer] [role="log"] > div')].map(
     (entry) => entry.textContent ?? "",
   );
+}
 
 afterEach(destroyAnnouncer);
 

@@ -714,9 +714,7 @@ function GroupButton(props: ActionGroupItemComponentProps) {
   const options = fromProps(cells(props));
   const slot = triggerSlot();
   const item = actionGroupItem({ key: node.key }, group.state);
-  const isDisabled: () => boolean = () => {
-    return group.isDisabled() || item.isDisabled();
-  };
+  const isDisabled: () => boolean = () => group.isDisabled() || item.isDisabled();
 
   const { buttonProps, isPressed } = button(
     mergeProps(slot.props, options, {

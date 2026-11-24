@@ -162,6 +162,11 @@ interface WeekInfo {
   minimalDays?: number;
 }
 
+interface WeekInfoSource {
+  getWeekInfo?: () => WeekInfo;
+  weekInfo?: WeekInfo;
+}
+
 /**
  * What `Intl.Locale` knows about a locale's week, or nothing.
  *
@@ -171,7 +176,7 @@ interface WeekInfo {
 function weekInfo(locale: string): WeekInfo | undefined {
   if (typeof Intl.Locale !== "function") return undefined;
   try {
-    const info: { getWeekInfo?: () => WeekInfo; weekInfo?: WeekInfo } = new Intl.Locale(locale);
+    const info: WeekInfoSource = new Intl.Locale(locale);
     return typeof info.getWeekInfo === "function" ? info.getWeekInfo() : info.weekInfo;
   } catch {
     // A tag the engine will not take.
@@ -208,8 +213,9 @@ function weekNumber(
   const date = toCalendarDate(value);
   // The day of the new year the first week always holds is the one
   // `minimalDays` from its start; the week is the one around it.
-  const firstWeekOf = (day: CalendarDate): CalendarDate =>
-    startOfWeek(startOfYear(day).add({ days: minimalDays - 1 }), locale, firstDayOfWeek);
+  function firstWeekOf(day: CalendarDate): CalendarDate {
+    return startOfWeek(startOfYear(day).add({ days: minimalDays - 1 }), locale, firstDayOfWeek);
+  }
 
   let first = firstWeekOf(date.add({ years: 1 }));
   if (date.compare(first) < 0) {

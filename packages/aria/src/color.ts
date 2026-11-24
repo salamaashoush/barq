@@ -1397,9 +1397,8 @@ export function parseColor(value: string): Color {
   }
   if (tokens.length !== 3) throw notAColour(value);
 
-  const read: (at: 0 | 1 | 2) => number = (at) => {
-    return argument(tokens[at] ?? "", syntax.args[at], modern, value);
-  };
+  const read: (at: 0 | 1 | 2) => number = (at) =>
+    argument(tokens[at] ?? "", syntax.args[at], modern, value);
   const alpha = alphaToken === undefined ? 1 : alphaArgument(alphaToken, modern, value);
   return make(syntax.space, [read(0), read(1), read(2)], alpha, 0);
 }

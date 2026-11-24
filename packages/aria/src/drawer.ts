@@ -43,6 +43,7 @@
 import { createSignal, type Accessor } from "@barqjs/core";
 
 import { access, type MaybeAccessor } from "./utils.ts";
+import type { Point } from "./virtualizer.tsx";
 
 export type DrawerDirection = "top" | "bottom" | "left" | "right";
 
@@ -125,8 +126,8 @@ export interface DrawerDrag {
   readonly offset: Accessor<number>;
   readonly isDragging: Accessor<boolean>;
   /** `size` is the drawer's extent along the axis, which the threshold is of. */
-  start(point: { readonly x: number; readonly y: number }, size: number): void;
-  move(point: { readonly x: number; readonly y: number }): void;
+  start(point: Readonly<Point>, size: number): void;
+  move(point: Readonly<Point>): void;
   /** Ends the drag, and answers whether it closed the drawer. */
   end(): boolean;
   /** Ends it where it started: a cancelled pointer took no decision. */
@@ -148,8 +149,13 @@ export interface DrawerDrag {
   cycle(): void;
 }
 
+interface Axis {
+  vertical: boolean;
+  sign: number;
+}
+
 /** Along which axis the drawer moves, and which way counts as closing. */
-function axisOf(direction: DrawerDirection): { vertical: boolean; sign: number } {
+function axisOf(direction: DrawerDirection): Axis {
   return {
     vertical: direction === "top" || direction === "bottom",
     // A bottom drawer closes downward, so a growing y is a growing offset.
@@ -174,26 +180,34 @@ export function drawerDrag(options: DrawerDragOptions = {}): DrawerDrag {
   let lastOffset = 0;
   let chosen: DrawerSnapPoint | null | undefined;
 
-  const now = (): number => (options.now ?? Date.now)();
-  const direction = (): DrawerDirection => access(options.direction) ?? "bottom";
-  const dismissible = (): boolean => access(options.dismissible) !== false;
-  const points = (): readonly DrawerSnapPoint[] => access(options.snapPoints) ?? [];
+  function now(): number {
+    return (options.now ?? Date.now)();
+  }
+  function direction(): DrawerDirection {
+    return access(options.direction) ?? "bottom";
+  }
+  function dismissible(): boolean {
+    return access(options.dismissible) !== false;
+  }
+  function points(): readonly DrawerSnapPoint[] {
+    return access(options.snapPoints) ?? [];
+  }
 
-  const viewport = (): number => {
+  function viewport(): number {
     if (options.viewport !== undefined) return options.viewport();
     if (typeof window === "undefined") return 0;
     return axisOf(direction()).vertical ? window.innerHeight : window.innerWidth;
-  };
+  }
 
   // The offset is where the pointer IS, and the gesture paints from it in the
   // same handler that moved it, so a read answers from the gesture's copy and
   // the signal is only what tells a reader to look again.
-  const offset = (): number => {
+  function offset(): number {
     trackOffset();
     return lastOffset;
-  };
+  }
 
-  const activeSnapPoint = (): DrawerSnapPoint | null => {
+  function activeSnapPoint(): DrawerSnapPoint | null {
     trackSnap();
     const all = points();
     if (all.length === 0) return null;
@@ -201,36 +215,38 @@ export function drawerDrag(options: DrawerDragOptions = {}): DrawerDrag {
     if (held !== undefined) return held;
     if (chosen !== undefined && (chosen === null || all.includes(chosen))) return chosen;
     return all[0] ?? null;
-  };
+  }
 
-  const activeSnapIndex = (): number | null => {
+  function activeSnapIndex(): number | null {
     const active = activeSnapPoint();
     if (active === null) return null;
     const index = points().indexOf(active);
     return index < 0 ? null : index;
-  };
+  }
 
-  const offsets = (): number[] => {
+  function offsets(): number[] {
     trackSize();
     const extent = viewport();
     return points().map((point) => snapPointOffset(point, extent, size));
-  };
+  }
 
-  const rest = (): number => {
+  function rest(): number {
     trackSize();
     const active = activeSnapPoint();
     return active === null ? 0 : snapPointOffset(active, viewport(), size);
-  };
+  }
 
-  const position = (): number => rest() + offset();
+  function position(): number {
+    return rest() + offset();
+  }
 
-  const progress = (): number => {
+  function progress(): number {
     trackSize();
     if (size <= 0) return 0;
     return Math.min(1, Math.max(0, position() / size));
-  };
+  }
 
-  const overlayOpacity = (): number => {
+  function overlayOpacity(): number {
     const all = offsets();
     if (all.length === 0) return 1 - progress();
     const fadeFrom = access(options.fadeFromIndex) ?? all.length - 1;
@@ -238,52 +254,52 @@ export function drawerDrag(options: DrawerDragOptions = {}): DrawerDrag {
     const clear = fadeFrom > 0 ? (all[fadeFrom - 1] ?? size) : size;
     if (clear <= opaque) return position() <= opaque ? 1 : 0;
     return Math.min(1, Math.max(0, (clear - position()) / (clear - opaque)));
-  };
+  }
 
-  const setActiveSnapPoint = (point: DrawerSnapPoint | null): void => {
+  function setActiveSnapPoint(point: DrawerSnapPoint | null): void {
     if (point === activeSnapPoint()) return;
     chosen = point;
     setSnap(point);
     options.onSnapPointChange?.(point);
-  };
+  }
 
-  const raw = (point: { x: number; y: number }): number => {
+  function raw(point: Point): number {
     const { vertical, sign } = axisOf(direction());
     const moved = vertical ? point.y - from.y : point.x - from.x;
     return moved * sign;
-  };
+  }
 
   /** A pull toward open: free while a larger snap point is ahead, damped past the last. */
-  const towardOpen = (moved: number): number => {
+  function towardOpen(moved: number): number {
     const all = offsets();
     if (all.length === 0) return moved / DAMPING;
     const room = rest() - Math.min(...all);
     return -moved <= room ? moved : -room + (moved + room) / DAMPING;
-  };
+  }
 
-  const settle = (): void => {
+  function settle(): void {
     isDragging = false;
     lastOffset = 0;
     setDragging(false);
     setOffset(0);
-  };
+  }
 
-  const close = (): boolean => {
+  function close(): boolean {
     settle();
     options.onRelease?.(false);
     options.onClose?.();
     return true;
-  };
+  }
 
-  const stay = (point?: DrawerSnapPoint): boolean => {
+  function stay(point?: DrawerSnapPoint): boolean {
     settle();
     if (point !== undefined) setActiveSnapPoint(point);
     options.onRelease?.(true);
     return false;
-  };
+  }
 
   /** Which snap point a release between them means, or `null` for closing. */
-  const landing = (): DrawerSnapPoint | null => {
+  function landing(): DrawerSnapPoint | null {
     const all = points();
     const at = offsets();
     const index = activeSnapIndex();
@@ -312,7 +328,7 @@ export function drawerDrag(options: DrawerDragOptions = {}): DrawerDrag {
       }
     }
     return all[nearest] as DrawerSnapPoint;
-  };
+  }
 
   return {
     offset,
@@ -445,6 +461,11 @@ function along(direction: DrawerDirection, distance: string): string {
     : `translate3d(${distance}, 0, 0)`;
 }
 
+export interface BackgroundStyle {
+  transform: string;
+  borderRadius: string;
+}
+
 /**
  * What the page behind a drawer looks like, `progress` of the way to closed.
  *
@@ -456,7 +477,7 @@ export function drawerBackgroundStyle(
   direction: DrawerDirection,
   viewportWidth: number,
   progress: number,
-): { transform: string; borderRadius: string } {
+): BackgroundStyle {
   const resting = viewportWidth > 0 ? (viewportWidth - WINDOW_OFFSET) / viewportWidth : 1;
   const scale = Math.min(resting + progress * (1 - resting), 1);
   const shift = Math.max(0, BACKGROUND_SHIFT - progress * BACKGROUND_SHIFT);
@@ -535,11 +556,14 @@ export function drawerBackground(options: DrawerBackgroundOptions = {}): DrawerB
   let restoring: ReturnType<typeof setTimeout> | undefined;
   const duration = options.duration ?? 500;
 
-  const direction = (): DrawerDirection => access(options.direction) ?? "bottom";
-  const width = (): number =>
-    options.viewport?.() ?? (typeof window === "undefined" ? 0 : window.innerWidth);
+  function direction(): DrawerDirection {
+    return access(options.direction) ?? "bottom";
+  }
+  function width(): number {
+    return options.viewport?.() ?? (typeof window === "undefined" ? 0 : window.innerWidth);
+  }
 
-  const paint = (progress: number, animated: boolean): void => {
+  function paint(progress: number, animated: boolean): void {
     if (wrapper === null) return;
     const style = drawerBackgroundStyle(direction(), width(), progress);
     wrapper.style.transitionProperty = animated ? "transform, border-radius" : "none";
@@ -547,7 +571,7 @@ export function drawerBackground(options: DrawerBackgroundOptions = {}): DrawerB
     wrapper.style.transitionTimingFunction = SETTLE_EASE;
     wrapper.style.transform = style.transform;
     wrapper.style.borderRadius = style.borderRadius;
-  };
+  }
 
   return {
     open() {
@@ -645,12 +669,12 @@ export function drawerKeyboard(
   if (view === null || viewport === null || viewport === undefined) return () => {};
 
   let resting: number | null = null;
-  const restore = (): void => {
+  function restore(): void {
     element.style.height = "";
     element.style.bottom = "";
-  };
+  }
 
-  const onResize = (): void => {
+  const onResize: () => void = () => {
     const keyboard = Math.max(0, view.innerHeight - viewport.height);
     const focused = element.ownerDocument.activeElement;
     if (keyboard === 0 || !takesText(focused) || !element.contains(focused)) {

@@ -109,7 +109,9 @@ export function DropZone(props: DropZoneProps) {
   const zoneRef = makeRef<HTMLDivElement>();
   const buttonRef = makeRef<HTMLButtonElement>();
   const options = fromProps(cells(props));
-  const isDisabled = (): boolean => props.isDisabled === true;
+  function isDisabled(): boolean {
+    return props.isDisabled === true;
+  }
   const message = stringFormatter(strings);
 
   const { dropProps, dropButtonProps, isDropTarget } = drop({
@@ -134,15 +136,17 @@ export function DropZone(props: DropZoneProps) {
   }
 
   const buttonId = id();
-  const ariaLabel = (): string => props["aria-label"] ?? message().format("dropzoneLabel");
+  function ariaLabel(): string {
+    return props["aria-label"] ?? message().format("dropzoneLabel");
+  }
   // The button names itself AND points at the visible label, so a screen
   // reader reads both: "DropZone, Drop files here".
-  const ariaLabelledBy = (): string | undefined => {
+  function ariaLabelledBy(): string | undefined {
     const ids = [isNamed() ? textId() : undefined, props["aria-labelledby"]].filter(
       (each): each is string => each !== undefined && each !== "",
     );
     return ids.length === 0 ? undefined : [buttonId(), ...ids].join(" ");
-  };
+  }
 
   const { buttonProps } = button({ ...dropButtonProps, isDisabled }, buttonRef);
   const { hoverProps, isHovered } = hover({
@@ -161,7 +165,7 @@ export function DropZone(props: DropZoneProps) {
 
   // A click on the zone's own surface focuses its button; a click on
   // something focusable inside it leaves focus there.
-  const onClick = (event: MouseEvent): void => {
+  function onClick(event: MouseEvent): void {
     const zone = zoneRef();
     let target = event.target instanceof Element ? event.target : null;
     while (target !== null && contains(zone, target)) {
@@ -173,7 +177,7 @@ export function DropZone(props: DropZoneProps) {
       }
       target = target.parentElement;
     }
-  };
+  }
 
   const elementProps = mergeProps(
     filterDOMProps(options, { global: true, id: false }),

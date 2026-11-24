@@ -47,13 +47,15 @@ const FILES: File[] = [
   { id: "photos", name: "Photos" },
 ];
 
-function Files(props: {
+interface FilesProps {
   selectionMode?: "none" | "single" | "multiple";
   keyboardNavigationBehavior?: "arrow" | "tab";
   onSelectionChange?: (keys: "all" | Set<Key>) => void;
   onAction?: (key: Key) => void;
   withButtons?: boolean;
-}) {
+}
+
+function Files(props: FilesProps) {
   return (
     <GridList
       aria-label="Files"
@@ -263,12 +265,13 @@ describe("drag and drop", () => {
     { id: "kangaroo", name: "Kangaroo" },
   ];
 
-  function Animals(props: {
+  interface AnimalsProps {
     label?: string;
     labelledBy?: string;
     options?: Partial<DragAndDropOptions<Animal>>;
     disabledKeys?: Key[];
-  }) {
+  }
+  function Animals(props: AnimalsProps) {
     const { dragAndDropHooks } = dragAndDrop<Animal>({
       getItems: (keys) => [...keys].map((key) => ({ "text/plain": String(key) })),
       ...props.options,
@@ -292,11 +295,13 @@ describe("drag and drop", () => {
     );
   }
 
-  const indicator = (target: DropTarget) => (
-    <DropIndicator target={target} class="indicator">
-      Test
-    </DropIndicator>
-  );
+  function indicator(target: DropTarget) {
+    return (
+      <DropIndicator target={target} class="indicator">
+        Test
+      </DropIndicator>
+    );
+  }
 
   function press(key: string) {
     user.keyDown(key);
@@ -484,8 +489,12 @@ describe("drag and drop", () => {
   });
 });
 
+interface EditableProps {
+  onSelectionChange?: (keys: "all" | Set<Key>) => void;
+}
+
 describe("tab navigation keeps a row's controls to themselves", () => {
-  function Editable(props: { onSelectionChange?: (keys: "all" | Set<Key>) => void }) {
+  function Editable(props: EditableProps) {
     return (
       <GridList
         aria-label="Files"
@@ -619,6 +628,10 @@ describe("pointer focus inside a row", () => {
   });
 });
 
+interface Named {
+  name: string;
+}
+
 describe("keys and layout", () => {
   test("Page Down and Page Up reach the ends of a list that does not scroll", () => {
     render(() => <Files />);
@@ -703,7 +716,7 @@ describe("keys and layout", () => {
   test("a row's id is a single token even when its key is not", () => {
     render(() => (
       <GridList aria-label="Cities" items={[{ id: "New York", name: "New York" }]}>
-        {(city: { name: string }) => <GridListItem>{city.name}</GridListItem>}
+        {(city: Named) => <GridListItem>{city.name}</GridListItem>}
       </GridList>
     ));
     expect(rows()[0]?.id).toMatch(/^[A-Za-z][\w:.-]*$/);
@@ -808,7 +821,7 @@ describe("item events and actions", () => {
           }),
           () => (
             <GridList aria-label="Pages" items={LINKS}>
-              {(page: { name: string }) => <GridListItem>{page.name}</GridListItem>}
+              {(page: Named) => <GridListItem>{page.name}</GridListItem>}
             </GridList>
           ),
         ) as never,
@@ -826,11 +839,13 @@ describe("item events and actions", () => {
   });
 });
 
+interface CheckedProps {
+  selectionBehavior?: "toggle" | "replace";
+  onSelectionChange?: (keys: "all" | Set<Key>) => void;
+}
+
 describe("a selection checkbox", () => {
-  function Checked(props: {
-    selectionBehavior?: "toggle" | "replace";
-    onSelectionChange?: (keys: "all" | Set<Key>) => void;
-  }) {
+  function Checked(props: CheckedProps) {
     return (
       <GridList
         aria-label="Files"
@@ -961,6 +976,14 @@ describe("a selection indicator", () => {
   });
 });
 
+interface PlainProps {
+  selectionMode?: "single" | "multiple";
+  selectionBehavior?: "toggle" | "replace";
+  selectedKeys?: Iterable<Key>;
+  onAction?: (key: Key) => void;
+  withCheckboxes?: boolean;
+}
+
 describe("selection announcements", () => {
   const PLAIN: File[] = [
     { id: "notes", name: "Notes" },
@@ -974,13 +997,7 @@ describe("selection announcements", () => {
     Reflect.deleteProperty(window, "ontouchstart");
   });
 
-  function Plain(props: {
-    selectionMode?: "single" | "multiple";
-    selectionBehavior?: "toggle" | "replace";
-    selectedKeys?: Iterable<Key>;
-    onAction?: (key: Key) => void;
-    withCheckboxes?: boolean;
-  }) {
+  function Plain(props: PlainProps) {
     return (
       <GridList
         aria-label="Files"
@@ -1019,7 +1036,9 @@ describe("selection announcements", () => {
 
   test("the count follows once more than one row is selected", async () => {
     render(() => <Plain withCheckboxes />);
-    const boxes = (): HTMLElement[] => screen.getAllByRole("checkbox");
+    function boxes(): HTMLElement[] {
+      return screen.getAllByRole("checkbox");
+    }
     user.click(boxes()[1] as HTMLElement);
     flush();
     expect(await said()).toBe("Budget selected.");
@@ -1148,7 +1167,9 @@ describe("selection announcements", () => {
         </div>
       );
     });
-    const boxes = (): HTMLElement[] => screen.getAllByRole("checkbox");
+    function boxes(): HTMLElement[] {
+      return screen.getAllByRole("checkbox");
+    }
     user.click(boxes()[0] as HTMLElement);
     flush();
     user.click(boxes()[1] as HTMLElement);
@@ -1194,12 +1215,13 @@ describe("loading more", () => {
     { id: "loader", name: "Loading", kind: "loader" },
   ];
 
-  function Loading(props: {
+  interface LoadingProps {
     items?: Entry[];
     isLoading?: boolean;
     onLoadMore?: () => void;
     renderEmptyState?: (grid: GridListRenderState) => Child;
-  }) {
+  }
+  function Loading(props: LoadingProps) {
     return (
       <GridList
         aria-label="Files"

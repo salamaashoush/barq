@@ -15,17 +15,24 @@ import { CalendarDate, CalendarDateTime, parseZonedDateTime, type DateValue } fr
 import { DatePicker, DateRangePicker } from "./datepicker.tsx";
 import { provideLocale } from "./i18n.ts";
 
-function InLocale(props: { tag: string; children?: Child }) {
+interface LocaleProps {
+  tag: string;
+  children?: Child;
+}
+
+function InLocale(props: LocaleProps) {
   const localeProps = provideLocale(() => props.tag);
   return <div {...localeProps}>{props.children}</div>;
 }
 
-function Departure(props: {
+interface DepartureProps {
   value?: DateValue | null;
   granularity?: "day" | "minute";
   isDisabled?: boolean;
   onChange?: (value: DateValue | null) => void;
-}) {
+}
+
+function Departure(props: DepartureProps) {
   return (
     <DatePicker
       label="Departure"
@@ -184,8 +191,12 @@ describe("DatePicker", () => {
   });
 });
 
+interface StayProps {
+  onChange?: (value: DateRange<DateValue> | null) => void;
+}
+
 describe("DateRangePicker", () => {
-  function Stay(props: { onChange?: (value: DateRange<DateValue> | null) => void }) {
+  function Stay(props: StayProps) {
     return (
       <DateRangePicker
         label="Stay"
@@ -270,8 +281,9 @@ describe("a date picker with a range", () => {
 });
 
 describe("a date picker's description", () => {
-  const described = (): string[] =>
-    screen.getAllByRole("spinbutton").map((element) => accessibleDescription(element));
+  function described(): string[] {
+    return screen.getAllByRole("spinbutton").map((element) => accessibleDescription(element));
+  }
 
   test("reaches the first segment of the field inside, and not the field's group", () => {
     render(() => (
@@ -540,8 +552,9 @@ describe("a date picker in a zone or another calendar", () => {
 
 describe("a date picker with a time", () => {
   /** The time field beside the calendar, and one of its segments. */
-  const timeSegment = (name: string): HTMLElement =>
-    within(screen.getByRole("group", { name: "Time" })).getByRole("spinbutton", { name });
+  function timeSegment(name: string): HTMLElement {
+    return within(screen.getByRole("group", { name: "Time" })).getByRole("spinbutton", { name });
+  }
 
   test("choosing a day keeps the calendar open, with a time field beside it", async () => {
     const changes: (DateValue | null)[] = [];
@@ -666,8 +679,11 @@ describe("a date picker with a time", () => {
         }
       />
     ));
-    const startTime = (name: string): HTMLElement =>
-      within(screen.getByRole("group", { name: "Start time" })).getByRole("spinbutton", { name });
+    function startTime(name: string): HTMLElement {
+      return within(screen.getByRole("group", { name: "Start time" })).getByRole("spinbutton", {
+        name,
+      });
+    }
 
     user.click(screen.getByRole("button", { name: /Calendar/ }));
     await tick();
@@ -703,8 +719,9 @@ describe("a date picker with a time", () => {
         }
       />
     ));
-    const time = (group: string, name: string): HTMLElement =>
-      within(screen.getByRole("group", { name: group })).getByRole("spinbutton", { name });
+    function time(group: string, name: string): HTMLElement {
+      return within(screen.getByRole("group", { name: group })).getByRole("spinbutton", { name });
+    }
 
     user.click(screen.getByRole("button", { name: /Calendar/ }));
     await tick();

@@ -10,7 +10,12 @@ import {
   DisclosurePanel,
 } from "./disclosure.tsx";
 
-function Details(props: { defaultExpanded?: boolean; onExpandedChange?: (open: boolean) => void }) {
+interface DetailsProps {
+  defaultExpanded?: boolean;
+  onExpandedChange?: (open: boolean) => void;
+}
+
+function Details(props: DetailsProps) {
   return (
     <Disclosure defaultExpanded={props.defaultExpanded} onExpandedChange={props.onExpandedChange}>
       <DisclosureButton>Details</DisclosureButton>
@@ -134,12 +139,12 @@ describe("Disclosure", () => {
     const changes: boolean[] = [];
     render(() => <Details onExpandedChange={(open) => changes.push(open)} />);
     trigger().focus();
-    const hold = (): void => {
+    function hold(): void {
       user.keyDown("Enter");
       for (let count = 0; count < 3; count++) user.keyDown("Enter", { repeat: true });
       user.keyUp("Enter");
       flush();
-    };
+    }
 
     hold();
     expect(changes).toEqual([true]);
@@ -216,11 +221,13 @@ const SECTIONS: Section[] = [
   { id: "three", name: "Three", body: "Third" },
 ];
 
-function Accordion(props: {
+interface AccordionProps {
   allowsMultiple?: boolean;
   defaultExpandedKeys?: Iterable<Key>;
   onExpandedChange?: (keys: Set<Key>) => void;
-}) {
+}
+
+function Accordion(props: AccordionProps) {
   return (
     <DisclosureGroup
       items={SECTIONS}
@@ -401,14 +408,16 @@ describe("a panel the stylesheet animates shut", () => {
   });
 });
 
+interface WrittenProps {
+  isCollapsible?: boolean;
+  orientation?: "vertical" | "horizontal";
+  dir?: "ltr" | "rtl";
+  defaultExpandedKeys?: Iterable<Key>;
+  disabledSecond?: boolean;
+}
+
 describe("DisclosureGroup, written out rather than taken from items", () => {
-  function Written(props: {
-    isCollapsible?: boolean;
-    orientation?: "vertical" | "horizontal";
-    dir?: "ltr" | "rtl";
-    defaultExpandedKeys?: Iterable<Key>;
-    disabledSecond?: boolean;
-  }) {
+  function Written(props: WrittenProps) {
     return (
       <DisclosureGroup
         isCollapsible={props.isCollapsible}
@@ -432,7 +441,9 @@ describe("DisclosureGroup, written out rather than taken from items", () => {
     );
   }
 
-  const button = (name: string): HTMLElement => screen.getByRole("button", { name });
+  function button(name: string): HTMLElement {
+    return screen.getByRole("button", { name });
+  }
 
   test("each section is keyed by its own id", () => {
     render(() => <Written defaultExpandedKeys={["two"]} />);

@@ -71,6 +71,15 @@ const RTL_LANGUAGES = new Set([
   "yi",
 ]);
 
+interface TextInfoSource {
+  getTextInfo?: () => TextInfo;
+  textInfo?: TextInfo;
+}
+
+interface TextInfo {
+  direction: string;
+}
+
 /**
  * Whether the locale is read right to left.
  *
@@ -81,10 +90,7 @@ const RTL_LANGUAGES = new Set([
 export function isRTL(tag: string): boolean {
   if (typeof Intl.Locale === "function") {
     const locale = new Intl.Locale(tag).maximize();
-    const info = locale as Intl.Locale & {
-      getTextInfo?: () => { direction: string };
-      textInfo?: { direction: string };
-    };
+    const info = locale as Intl.Locale & TextInfoSource;
     const textInfo = typeof info.getTextInfo === "function" ? info.getTextInfo() : info.textInfo;
     if (textInfo !== undefined) return textInfo.direction === "rtl";
     if (locale.script !== undefined) return RTL_SCRIPTS.has(locale.script);
@@ -118,9 +124,9 @@ let languageListeners = 0;
 
 function watchLanguage(): () => void {
   if (isServer || typeof window === "undefined") return () => {};
-  const update = (): void => {
+  function update(): void {
     setBrowserLocale(defaultLocale());
-  };
+  }
   if (languageListeners === 0) window.addEventListener("languagechange", update);
   languageListeners++;
   return () => {
@@ -173,6 +179,11 @@ export function useLocale(): Accessor<Locale> {
   };
 }
 
+export interface ProvidedLocale {
+  lang: Accessor<string>;
+  dir: Accessor<"ltr" | "rtl">;
+}
+
 /**
  * Declare the locale for a subtree.
  *
@@ -185,14 +196,11 @@ export function useLocale(): Accessor<Locale> {
  * <div {...localeProps}>{props.children}</div>
  * ```
  */
-export function provideLocale(tag: MaybeAccessor<string>): {
-  lang: Accessor<string>;
-  dir: Accessor<"ltr" | "rtl">;
-} {
-  const value = (): Locale => {
+export function provideLocale(tag: MaybeAccessor<string>): ProvidedLocale {
+  function value(): Locale {
     const resolved = access(tag);
     return { locale: resolved, direction: isRTL(resolved) ? "rtl" : "ltr" };
-  };
+  }
 
   const owner = getOwner();
   if (owner !== null) {
@@ -232,6 +240,10 @@ export function declaredDirection(): Accessor<ReadingDirection | undefined> {
   return () => (declared === null || declared === undefined ? undefined : declared());
 }
 
+export interface ProvidedDirection {
+  dir: Accessor<ReadingDirection>;
+}
+
 /**
  * Declare the direction for a subtree, leaving the locale as it is.
  *
@@ -243,10 +255,10 @@ export function declaredDirection(): Accessor<ReadingDirection | undefined> {
  * <div {...directionProps}>{props.children}</div>
  * ```
  */
-export function provideDirection(direction: MaybeAccessor<ReadingDirection>): {
-  dir: Accessor<ReadingDirection>;
-} {
-  const value = (): ReadingDirection => access(direction);
+export function provideDirection(direction: MaybeAccessor<ReadingDirection>): ProvidedDirection {
+  function value(): ReadingDirection {
+    return access(direction);
+  }
 
   const owner = getOwner();
   if (owner !== null) install(owner, DirectionContext, () => value);
@@ -312,7 +324,9 @@ export interface Filter {
 export function filter(options?: Intl.CollatorOptions): Filter {
   const search = collator({ usage: "search", ...options });
 
-  const compare = (a: string, b: string): boolean => search().compare(a, b) === 0;
+  function compare(a: string, b: string): boolean {
+    return search().compare(a, b) === 0;
+  }
 
   return {
     startsWith(text, substring) {
@@ -697,15 +711,17 @@ const UNITS: readonly (readonly [Intl.RelativeTimeFormatUnit, number])[] = [
   ["second", 1000],
 ];
 
+export interface RelativeUnit {
+  value: number;
+  unit: Intl.RelativeTimeFormatUnit;
+}
+
 /**
  * A span of time as the one unit a person would say it in: 90 minutes is
  * "2 hours", 36 hours is "2 days". `milliseconds` is signed, the past
  * negative, which is what `Intl.RelativeTimeFormat` takes.
  */
-export function relativeUnit(milliseconds: number): {
-  value: number;
-  unit: Intl.RelativeTimeFormatUnit;
-} {
+export function relativeUnit(milliseconds: number): RelativeUnit {
   const size = Math.abs(milliseconds);
   for (const [unit, span] of UNITS) {
     if (size >= span || unit === "second") {

@@ -42,7 +42,9 @@ describe("dragAndDrop", () => {
   });
 
   test("the hooks carry the caller's options into the collection's state", () => {
-    const getItems = (keys: Set<Key>) => [...keys].map((key) => ({ "text/plain": String(key) }));
+    function getItems(keys: Set<Key>) {
+      return [...keys].map((key) => ({ "text/plain": String(key) }));
+    }
     const { dragAndDropHooks } = dragAndDrop({
       getItems,
       onReorder: () => {},
@@ -99,6 +101,12 @@ describe("DropIndicator", () => {
   });
 });
 
+interface Photograph {
+  node: HTMLElement | null;
+  x?: number;
+  y?: number;
+}
+
 describe("DragPreview", () => {
   test("renders synchronously for the photograph, and leaves a frame later", async () => {
     let renderer: DragPreviewRenderer | null = null;
@@ -113,14 +121,14 @@ describe("DragPreview", () => {
     ));
     expect(container.textContent).toBe("");
 
-    let photographed: { node: HTMLElement | null; x?: number; y?: number } | null = null;
+    let photographed: Photograph | null = null;
     (renderer as DragPreviewRenderer | null)?.(
       [{ "text/plain": "salama" }, { "text/plain": "acme" }],
       (node, x, y) => {
         photographed = { node, x, y };
       },
     );
-    const shot = photographed as { node: HTMLElement | null; x?: number; y?: number } | null;
+    const shot = photographed as Photograph | null;
     expect(shot?.node?.textContent).toBe("2 items");
     expect(shot?.node?.style.position).toBe("fixed");
     expect(shot?.x).toBeUndefined();

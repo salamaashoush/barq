@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { renderToString } from "@barqjs/server";
-import { type Child, Show, createSignal, isDev, onSettled, flush } from "@barqjs/core";
+import { Show, createSignal, isDev, onSettled, flush, type ParentProps } from "@barqjs/core";
 import { accessibleName, ariaViolations, render, screen, tick, user } from "@barqjs/testing";
 import { Button } from "./button.tsx";
 import { ref } from "@barqjs/primitives/refs";
@@ -28,7 +28,12 @@ async function settle(): Promise<void> {
   await tick();
 }
 
-function Confirm(props: { isOpen: boolean; onOpenChange?: (open: boolean) => void }) {
+interface ConfirmProps {
+  isOpen: boolean;
+  onOpenChange?: (open: boolean) => void;
+}
+
+function Confirm(props: ConfirmProps) {
   return (
     <>
       <button type="button">before</button>
@@ -230,8 +235,12 @@ describe("Dialog", () => {
   });
 });
 
+interface DescriptionProps {
+  children?: unknown;
+}
+
 /** What a design system's `<DialogDescription>` is, minus the styling. */
-function Description(props: { children?: unknown }) {
+function Description(props: DescriptionProps) {
   const described = useDialogDescription();
   return <p id={described?.id()}>{props.children as never}</p>;
 }
@@ -404,8 +413,12 @@ describe("what a design system puts on the underlay", () => {
   });
 });
 
+interface AnchoredProps {
+  label: string;
+}
+
 describe("PortalProvider", () => {
-  function Anchored(props: { label: string }) {
+  function Anchored(props: AnchoredProps) {
     const triggerRef = ref<HTMLElement>();
     return (
       <>
@@ -440,8 +453,12 @@ describe("PortalProvider", () => {
   });
 });
 
+interface CardProps {
+  shouldContainFocus?: boolean;
+}
+
 describe("a popover that leaves focus alone", () => {
-  function Card(props: { shouldContainFocus?: boolean }) {
+  function Card(props: CardProps) {
     const triggerRef = ref<HTMLElement>();
     const [open, setOpen] = createSignal(false);
     return (
@@ -537,8 +554,12 @@ describe("an overlay opened as soon as the page settles", () => {
   });
 });
 
+interface PanelProps {
+  autoFocus?: boolean;
+}
+
 describe("a Modal that is not modal", () => {
-  function Panel(props: { autoFocus?: boolean }) {
+  function Panel(props: PanelProps) {
     const [open, setOpen] = createSignal(true);
     return (
       <>
@@ -593,8 +614,12 @@ function hiddenBy(node: Element | null): Element | null {
   return null;
 }
 
+interface NestedProps {
+  isModal?: boolean;
+}
+
 describe("a popover inside a modal", () => {
-  function Nested(props: { isModal?: boolean }) {
+  function Nested(props: NestedProps) {
     const triggerRef = ref<HTMLElement>();
     const [open, setOpen] = createSignal(false);
     return (
@@ -657,8 +682,13 @@ describe("a popover inside a modal", () => {
   });
 });
 
+interface SizesProps {
+  isModal?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}
+
 describe("the dismiss button", () => {
-  function Sizes(props: { isModal?: boolean; onOpenChange?: (open: boolean) => void }) {
+  function Sizes(props: SizesProps) {
     const triggerRef = ref<HTMLElement>();
     return (
       <>
@@ -802,7 +832,7 @@ describe("a popover's arrow", () => {
 });
 
 describe("a popover under a trigger it did not build", () => {
-  function Preview(props: { children?: Child }) {
+  function Preview(props: ParentProps) {
     const triggerRef = ref<HTMLElement>();
     const state = overlayTriggerState({});
     return (
@@ -851,6 +881,10 @@ describe("a popover under a trigger it did not build", () => {
   });
 });
 
+interface AppModule {
+  App: () => unknown;
+}
+
 describe("a dialog's title", () => {
   test("a titled dialog does not warn", async () => {
     const warned: unknown[] = [];
@@ -873,7 +907,7 @@ describe("a dialog's title", () => {
   });
 
   test("a design system's own heading names it through useDialogTitle", async () => {
-    function Title(props: { children?: Child }) {
+    function Title(props: ParentProps) {
       const title = useDialogTitle();
       return <h2 id={title?.id as () => string}>{props.children}</h2>;
     }
@@ -887,7 +921,7 @@ describe("a dialog's title", () => {
   });
 
   test("a server-rendered dialog with a title heading is named by it", async () => {
-    const mod = await ssrModule<{ App: () => unknown }>(`
+    const mod = await ssrModule<AppModule>(`
       import { Dialog, Heading } from "${SRC}/dialog.tsx";
       export function App() {
         return <Dialog><Heading slot="title">Delete?</Heading><p>Body</p></Dialog>;
@@ -901,9 +935,15 @@ describe("a dialog's title", () => {
 });
 
 const ssrRequire = createRequire(import.meta.url);
-const compiler = ssrRequire("@barqjs/compiler") as {
-  transform(code: string, options?: Record<string, unknown>): { code: string };
-};
+interface Compiler {
+  transform(code: string, options?: Record<string, unknown>): Transformed;
+}
+
+interface Transformed {
+  code: string;
+}
+
+const compiler = ssrRequire("@barqjs/compiler") as Compiler;
 const SRC = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 const SSR_OUT = join(SRC, "..", "node_modules", ".barq-ssr-fixtures");
 let ssrSequence = 0;
@@ -925,7 +965,7 @@ async function ssrModule<T>(source: string): Promise<T> {
 }
 
 describe("a popover that focus leaves", () => {
-  function Page(props: { children?: Child }) {
+  function Page(props: ParentProps) {
     const triggerRef = ref<HTMLElement>();
     const state = overlayTriggerState({ defaultOpen: true });
     return (

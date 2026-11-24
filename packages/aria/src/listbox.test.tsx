@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { flush, type Child, Show, createSignal, provide } from "@barqjs/core";
+import { flush, type Child, Show, createSignal, provide, type ParentProps } from "@barqjs/core";
 import { ref as makeRef, mergeRefs } from "@barqjs/primitives/refs";
 import {
   accessibleName,
@@ -54,13 +54,15 @@ const FRUITS: Fruit[] = [
   { id: "date", name: "Date" },
 ];
 
-// Every prop is a Cell inside a component, so a value is read with `?.()`.
-function Fruits(props: {
+interface FruitsProps {
   selectionMode?: "none" | "single" | "multiple";
   onSelectionChange?: (keys: "all" | Set<Key>) => void;
   disallowEmptySelection?: boolean;
   shouldFocusWrap?: boolean;
-}) {
+}
+
+// Every prop is a Cell inside a component, so a value is read with `?.()`.
+function Fruits(props: FruitsProps) {
   return (
     <ListBox
       label="Fruit"
@@ -279,6 +281,16 @@ describe("ListBox", () => {
   });
 });
 
+interface GroupLike {
+  options?: unknown[];
+}
+
+interface GroupedValue {
+  id: string;
+  name: string;
+  options?: unknown[];
+}
+
 describe("a section", () => {
   const GROUPS = [
     {
@@ -298,11 +310,9 @@ describe("a section", () => {
         items={GROUPS}
         aria-label="Produce"
         selectionMode="single"
-        getChildren={(group: { options?: unknown[] }) =>
-          group.options as { id: string; name: string; options?: unknown[] }[] | undefined
-        }
+        getChildren={(group: GroupLike) => group.options as GroupedValue[] | undefined}
       >
-        {(value: { id: string; name: string; options?: unknown[] }) =>
+        {(value: GroupedValue) =>
           value.options === undefined ? (
             <Option>{value.name}</Option>
           ) : (
@@ -349,17 +359,19 @@ describe("a section", () => {
   });
 });
 
+interface WrittenProps {
+  onSelectionChange?: (keys: "all" | Set<Key>) => void;
+  showBanana?: boolean;
+  hideDate?: boolean;
+  onAction?: () => void;
+}
+
 /**
  * The same listbox with its options WRITTEN rather than rendered from data.
  * Each one says what it is, and the collection is whatever rendered.
  */
 describe("a listbox whose options are its children", () => {
-  function Written(props: {
-    onSelectionChange?: (keys: "all" | Set<Key>) => void;
-    showBanana?: boolean;
-    hideDate?: boolean;
-    onAction?: () => void;
-  }) {
+  function Written(props: WrittenProps) {
     return (
       <ListBox label="Fruit" selectionMode="single" onSelectionChange={props.onSelectionChange}>
         <Option value="apple" onAction={props.onAction}>
@@ -458,7 +470,7 @@ describe("a listbox whose options are its children", () => {
     expect(document.activeElement?.textContent).toBe("Banana");
   });
 
-  function Heading(props: { children?: Child }) {
+  function Heading(props: ParentProps) {
     const headingId = useSectionHeading();
     return (
       <li role="presentation" id={headingId?.()}>
@@ -524,6 +536,23 @@ describe("a listbox whose options are its children", () => {
   });
 });
 
+interface DragKeys {
+  altKey?: boolean;
+}
+
+interface DragKeysEvent {
+  keys: Set<Key>;
+}
+
+interface InsertEvent {
+  items: unknown[];
+  target: KeyTarget;
+}
+
+interface KeyTarget {
+  key: Key;
+}
+
 describe("drag and drop", () => {
   interface Animal {
     id: string;
@@ -536,7 +565,7 @@ describe("drag and drop", () => {
     { id: "kangaroo", name: "Kangaroo" },
   ];
 
-  function Animals(props: {
+  interface AnimalsProps {
     label?: string;
     options?: Partial<DragAndDropOptions<Animal>>;
     selectionMode?: "none" | "single" | "multiple";
@@ -544,7 +573,8 @@ describe("drag and drop", () => {
     orientation?: "horizontal" | "vertical";
     items?: Animal[];
     onAction?: () => void;
-  }) {
+  }
+  function Animals(props: AnimalsProps) {
     const { dragAndDropHooks } = dragAndDrop<Animal>({
       getItems: (keys) => [...keys].map((key) => ({ "text/plain": String(key) })),
       ...props.options,
@@ -564,15 +594,17 @@ describe("drag and drop", () => {
     );
   }
 
-  const indicator = (
+  function indicator(
     target: Parameters<NonNullable<DragAndDropOptions["renderDropIndicator"]>>[0],
-  ) => (
-    <DropIndicator target={target} class="indicator">
-      Test
-    </DropIndicator>
-  );
+  ) {
+    return (
+      <DropIndicator target={target} class="indicator">
+        Test
+      </DropIndicator>
+    );
+  }
 
-  async function startDrag(option: HTMLElement, options: { altKey?: boolean } = {}) {
+  async function startDrag(option: HTMLElement, options: DragKeys = {}) {
     user.keyDown("Enter", { target: option, ...options });
     user.keyUp("Enter", { target: option, ...options });
     await nextFrame();
@@ -688,7 +720,7 @@ describe("drag and drop", () => {
   });
 
   test("Escape cancels", async () => {
-    const onDragEnd = mock((_event: { keys: Set<Key> }) => {});
+    const onDragEnd = mock((_event: DragKeysEvent) => {});
     const onReorder = mock();
     render(() => <Animals options={{ onReorder, onDragEnd }} />);
     const cat = screen.getAllByRole("option")[0] as HTMLElement;
@@ -757,7 +789,7 @@ describe("drag and drop", () => {
       { id: "lion", name: "Lion" },
       { id: "tiger", name: "Tiger" },
     ]);
-    const onInsert = mock(async (event: { items: unknown[]; target: { key: Key } }) => {
+    const onInsert = mock(async (event: InsertEvent) => {
       expect(event.target.key).toBe("lion");
       setAnimals((current) => [...current, { id: "cat-copy", name: "Cat copy" }]);
     });
@@ -796,7 +828,7 @@ describe("drag and drop", () => {
   });
 
   test("drags every selected option, and drops after the selection", async () => {
-    const onDragStart = mock((_event: { keys: Set<Key> }) => {});
+    const onDragStart = mock((_event: DragKeysEvent) => {});
     const onReorder = mock((_event: DroppableCollectionReorderEvent) => {});
     render(() => <Animals selectionMode="multiple" options={{ onDragStart, onReorder }} />);
     const [cat, dog] = screen.getAllByRole("option");
@@ -1480,6 +1512,11 @@ describe("a selection indicator", () => {
   });
 });
 
+interface ExampleProps {
+  label?: string;
+  onAction?: (key: Key) => void;
+}
+
 describe("inside an autocomplete", () => {
   function Search() {
     const auto = useAutocompleteInput();
@@ -1499,10 +1536,11 @@ describe("inside an autocomplete", () => {
     );
   }
 
-  const contains = (textValue: string, inputValue: string): boolean =>
-    textValue.toLowerCase().includes(inputValue.toLowerCase());
+  function contains(textValue: string, inputValue: string): boolean {
+    return textValue.toLowerCase().includes(inputValue.toLowerCase());
+  }
 
-  function Example(props: { label?: string; onAction?: (key: Key) => void }) {
+  function Example(props: ExampleProps) {
     return (
       <Autocomplete filter={contains}>
         <Search />
@@ -1518,7 +1556,9 @@ describe("inside an autocomplete", () => {
     );
   }
 
-  const field = (): HTMLInputElement => screen.getByRole<HTMLInputElement>("searchbox");
+  function field(): HTMLInputElement {
+    return screen.getByRole<HTMLInputElement>("searchbox");
+  }
 
   test("the field filters the options and controls the list", () => {
     render(() => <Example />);
@@ -1557,6 +1597,10 @@ describe("inside an autocomplete", () => {
   });
 });
 
+interface ManyProps {
+  isLoading?: boolean;
+}
+
 describe("loading more", () => {
   interface Entry {
     id: string;
@@ -1570,12 +1614,13 @@ describe("loading more", () => {
     { id: "loader", name: "Loading", kind: "loader" },
   ];
 
-  function Loading(props: {
+  interface LoadingProps {
     items?: Entry[];
     isLoading?: boolean;
     onLoadMore?: () => void;
     renderEmptyState?: (list: ListBoxRenderState) => Child;
-  }) {
+  }
+  function Loading(props: LoadingProps) {
     return (
       <ListBox
         aria-label="Fruit"
@@ -1742,7 +1787,7 @@ describe("loading more", () => {
       flush();
     }
 
-    function Many(props: { isLoading?: boolean }) {
+    function Many(props: ManyProps) {
       return (
         <Virtualizer layout={listLayout({ rowHeight: 20, loaderHeight: 30 })} overscan={0}>
           <Loading items={MANY} isLoading={props.isLoading} />

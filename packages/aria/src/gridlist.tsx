@@ -120,6 +120,7 @@ import {
   mergeProps,
   type StyleProps,
   styleProps,
+  type ProviderProps,
 } from "./utils.ts";
 
 // ---------------------------------------------------------------------------
@@ -186,8 +187,12 @@ const gridData = new WeakMap<ListState<unknown>, GridListData>();
 export function gridList(options: GridListOptions, state: ListState<unknown>): GridListResult {
   const baseId = id(options.id);
   const locale = useLocale();
-  const isEmpty = (): boolean => state.collection().size === 0;
-  const linkBehavior = (): LinkBehavior => access(options.linkBehavior) ?? "action";
+  function isEmpty(): boolean {
+    return state.collection().size === 0;
+  }
+  function linkBehavior(): LinkBehavior {
+    return access(options.linkBehavior) ?? "action";
+  }
 
   const search = collator({ usage: "search", sensitivity: "base" });
   const keyboardDelegate =
@@ -218,7 +223,9 @@ export function gridList(options: GridListOptions, state: ListState<unknown>): G
     linkBehavior,
   });
 
-  const hasAction = (): boolean => access(options.hasAction) ?? options.onAction !== undefined;
+  function hasAction(): boolean {
+    return access(options.hasAction) ?? options.onAction !== undefined;
+  }
   const descriptionProps = highlightSelectionDescription({
     selectionManager: state.selectionManager,
     hasItemActions: hasAction,
@@ -388,15 +395,32 @@ export function gridListItem(
   const locale = useLocale();
   const data = gridData.get(state);
   const key = options.key;
-  const manager = (): SelectionManager => state.selectionManager();
-  const node = (): Node<unknown> | null => state.collection().getItem(key);
-  const baseId = (): string => access(options.baseId) ?? data?.baseId() ?? "";
-  const rowId = (): string => rowIdFor(baseId(), key);
-  const behavior = (): KeyboardNavigationBehavior =>
-    access(options.keyboardNavigationBehavior) ?? data?.keyboardNavigationBehavior() ?? "arrow";
-  const focusMode = (): GridListFocusMode => access(options.focusMode) ?? "row";
-  const allowsArrows = (): boolean => access(options.allowsArrowNavigation) === true;
-  const ownAction = (): unknown => node()?.props?.onAction;
+  function manager(): SelectionManager {
+    return state.selectionManager();
+  }
+  function node(): Node<unknown> | null {
+    return state.collection().getItem(key);
+  }
+  function baseId(): string {
+    return access(options.baseId) ?? data?.baseId() ?? "";
+  }
+  function rowId(): string {
+    return rowIdFor(baseId(), key);
+  }
+  function behavior(): KeyboardNavigationBehavior {
+    return (
+      access(options.keyboardNavigationBehavior) ?? data?.keyboardNavigationBehavior() ?? "arrow"
+    );
+  }
+  function focusMode(): GridListFocusMode {
+    return access(options.focusMode) ?? "row";
+  }
+  function allowsArrows(): boolean {
+    return access(options.allowsArrowNavigation) === true;
+  }
+  function ownAction(): unknown {
+    return node()?.props?.onAction;
+  }
 
   const item = selectableItem({
     key,
@@ -424,13 +448,15 @@ export function gridListItem(
     onPressChange: options.onPressChange,
   });
 
-  const row = (): HTMLElement | null => (access(options.ref) as HTMLElement | null) ?? null;
+  function row(): HTMLElement | null {
+    return (access(options.ref) as HTMLElement | null) ?? null;
+  }
 
-  const lastFocusable = (element: HTMLElement): HTMLElement | null => {
+  function lastFocusable(element: HTMLElement): HTMLElement | null {
     const walker = focusableWalker(element);
     walker.currentNode = element;
     return walker.last() as HTMLElement | null;
-  };
+  }
 
   // Set when the arrow keys walk off the end of the row back onto it, which
   // is the one way onto a child-focused row that must not move on again.
@@ -444,7 +470,7 @@ export function gridListItem(
    * to decide before they do. Under tab navigation the control keeps them,
    * unless the row allows arrow navigation from its controls.
    */
-  const onKeyDownCapture = (event: KeyboardEvent): void => {
+  function onKeyDownCapture(event: KeyboardEvent): void {
     if (behavior() !== "arrow" && !allowsArrows()) return;
     const element = row();
     if (element === null) return;
@@ -506,7 +532,7 @@ export function gridListItem(
         }),
       );
     }
-  };
+  }
 
   /**
    * Under tab navigation a key typed into a control in the row is the
@@ -517,7 +543,7 @@ export function gridListItem(
    * Answers whether it stopped the event, so the row's own press does not see
    * it either: Space in a field would otherwise select the row.
    */
-  const onKeyDown = (event: KeyboardEvent): boolean => {
+  function onKeyDown(event: KeyboardEvent): boolean {
     if (behavior() !== "tab") return false;
     const element = row();
     if (element === null || !contains(element, targetElement(event))) return false;
@@ -539,17 +565,17 @@ export function gridListItem(
       }
     }
     return false;
-  };
+  }
 
-  const focusFirstChild = (element: HTMLElement): void => {
+  function focusFirstChild(element: HTMLElement): void {
     const walker = focusableWalker(element, { tabbable: true });
     const first = walker.nextNode() as HTMLElement | null;
     if (first === null) return;
     focusSafely(first);
     scrollIntoViewport(first, { containingElement: scrollParents(element)[0] ?? null });
-  };
+  }
 
-  const onFocusIn = (event: FocusEvent): void => {
+  function onFocusIn(event: FocusEvent): void {
     const element = row();
     if (element === null) return;
     if (targetElement(event) !== element) {
@@ -566,7 +592,7 @@ export function gridListItem(
     requestAnimationFrame(() => {
       if (activeElement(ownerDocument(element)) === element) focusFirstChild(element);
     });
-  };
+  }
 
   const rowProps = mergeProps(item.itemProps, {
     role: "row",
@@ -612,15 +638,17 @@ export interface GridListSelectionCheckboxOptions {
   key: Key;
 }
 
+export interface SelectionCheckboxProps {
+  id: Accessor<string>;
+  "aria-label": Accessor<string>;
+  "aria-labelledby": Accessor<string>;
+  isSelected: Accessor<boolean>;
+  isDisabled: Accessor<boolean>;
+  onChange: () => void;
+}
+
 export interface GridListSelectionCheckboxResult {
-  checkboxProps: {
-    id: Accessor<string>;
-    "aria-label": Accessor<string>;
-    "aria-labelledby": Accessor<string>;
-    isSelected: Accessor<boolean>;
-    isDisabled: Accessor<boolean>;
-    onChange: () => void;
-  };
+  checkboxProps: SelectionCheckboxProps;
 }
 
 /**
@@ -680,7 +708,7 @@ export function useRowNode(): Node<unknown> {
 }
 
 /** Make `<GridListItem>` usable inside something that is not a `<GridList>`. */
-export function GridListProvider(props: { value: GridListContextValue; children?: Child }) {
+export function GridListProvider(props: ProviderProps<GridListContextValue>) {
   return provide(
     GridListContext,
     () => props.value,
@@ -747,6 +775,10 @@ export interface GridListComponentProps<T> extends StyleProps, ItemAccessors<T> 
   dragAndDropHooks?: DragAndDropHooks;
 }
 
+interface HeldDragAndDrop {
+  held?: CollectionDragAndDrop;
+}
+
 /**
  * ```tsx
  * <GridList aria-label="Files" items={files()} selectionMode="multiple">
@@ -772,7 +804,7 @@ export function GridList<T>(props: GridListComponentProps<T>) {
   // Inside a `<Virtualizer>` the list renders a WINDOW of its collection, and
   // the layout — not the DOM — answers what is above, below and a page away.
   const virtual = useVirtualizer();
-  const dropping: { held?: CollectionDragAndDrop } = {};
+  const dropping: HeldDragAndDrop = {};
   virtual?.attach(
     state.collection,
     domRef,
@@ -780,7 +812,9 @@ export function GridList<T>(props: GridListComponentProps<T>) {
     () => dropping.held?.persistedKeys() ?? [],
   );
 
-  const isEmpty = (): boolean => state.collection().size === 0;
+  function isEmpty(): boolean {
+    return state.collection().size === 0;
+  }
   // Whether the empty state holds a Tab stop, so the grid need not be one.
   const [emptyStateIsTabbable, setEmptyStateIsTabbable] = createSignal(false);
   if (!isServer) {
@@ -821,9 +855,15 @@ export function GridList<T>(props: GridListComponentProps<T>) {
   };
 
   const { focusProps, isFocused, isFocusVisible } = focusRing();
-  const layout = (): "stack" | "grid" => props.layout ?? "stack";
-  const orientation = (): "horizontal" | "vertical" => props.orientation ?? "vertical";
-  const isDropTarget = (): boolean => dragAndDrop?.isRootDropTarget() === true;
+  function layout(): "stack" | "grid" {
+    return props.layout ?? "stack";
+  }
+  function orientation(): "horizontal" | "vertical" {
+    return props.orientation ?? "vertical";
+  }
+  function isDropTarget(): boolean {
+    return dragAndDrop?.isRootDropTarget() === true;
+  }
 
   const elementProps = mergeProps(
     gridProps,
@@ -845,14 +885,14 @@ export function GridList<T>(props: GridListComponentProps<T>) {
   );
 
   /** The whole collection, or the window of it the virtualiser says is on screen. */
-  const rows = (): Node<T>[] => {
+  function rows(): Node<T>[] {
     if (virtual === null) return [...state.collection()];
     const collection = state.collection();
     return virtual
       .visible()
       .map((info: LayoutInfo) => collection.getItem(info.key))
       .filter((node: Node<T> | null): node is Node<T> => node !== null);
-  };
+  }
 
   const renderState: GridListRenderState = {
     isEmpty,
@@ -864,7 +904,7 @@ export function GridList<T>(props: GridListComponentProps<T>) {
     state: anyState,
   };
   const renderEmpty = callback(cells(props).renderEmptyState);
-  const emptyState = (): Child => {
+  function emptyState(): Child {
     if (!isEmpty() || renderEmpty === undefined) return null;
     return (
       <div role="row" aria-rowindex={1} style={{ display: "contents" }}>
@@ -873,7 +913,7 @@ export function GridList<T>(props: GridListComponentProps<T>) {
         </div>
       </div>
     );
-  };
+  }
 
   return (
     <GridListProvider value={value}>
@@ -903,7 +943,9 @@ function gridListDragAndDrop(
   if (hooks === undefined) return undefined;
   const layoutDelegate = virtual?.layout;
   const locale = useLocale();
-  const direction = (): "ltr" | "rtl" => locale().direction;
+  function direction(): "ltr" | "rtl" {
+    return locale().direction;
+  }
   const collection = state.collection as Accessor<Collection<unknown>>;
 
   const dragAndDrop = collectionDragAndDrop({
@@ -929,11 +971,15 @@ function gridListDragAndDrop(
   return dragAndDrop;
 }
 
+interface DropIndicatorSlot {
+  of: Incoming<DropIndicatorProps>;
+}
+
 /**
  * A drop indicator in a grid list: a row, so the grid's structure holds, with
  * the focusable target a visually hidden button inside its cell.
  */
-function GridListDropIndicator(indicator: { of: Incoming<DropIndicatorProps> }) {
+function GridListDropIndicator(indicator: DropIndicatorSlot) {
   const props = indicator.of;
   const { dragAndDropHooks, dropState } = useDragAndDropContext();
   if (dragAndDropHooks?.dropIndicator === undefined || dropState === undefined) {
@@ -942,10 +988,10 @@ function GridListDropIndicator(indicator: { of: Incoming<DropIndicatorProps> }) 
 
   const buttonRef = makeRef<HTMLDivElement>();
   const virtual = useVirtualizer();
-  const placed = (): Record<string, string> | undefined => {
+  function placed(): Record<string, string> | undefined {
     const target = props.target();
     return target.type === "item" ? dropIndicatorStyle(virtual, target) : undefined;
-  };
+  }
   const { visuallyHiddenProps } = visuallyHidden();
   const { dropIndicatorProps, isDropTarget, isHidden } = dragAndDropHooks.dropIndicator(
     { target: props.target() },
@@ -1079,8 +1125,11 @@ export function GridListItem(props: GridListItemComponentProps) {
     list.state,
   );
 
-  const isDraggable = (): boolean =>
-    dnd?.collection.dragState !== undefined && !list.state.selectionManager().isDisabled(node.key);
+  function isDraggable(): boolean {
+    return (
+      dnd?.collection.dragState !== undefined && !list.state.selectionManager().isDisabled(node.key)
+    );
+  }
   const { hoverProps, isHovered } = hover({
     isDisabled: () => !allowsSelection() && !hasAction() && !isDraggable(),
     onHoverStart: options.onHoverStart,
@@ -1092,7 +1141,9 @@ export function GridListItem(props: GridListItemComponentProps) {
   const { focusProps: withinProps, isFocusVisible: isFocusVisibleWithin } = focusRing({
     within: true,
   });
-  const selectionMode = (): SelectionMode => list.state.selectionManager().selectionMode;
+  function selectionMode(): SelectionMode {
+    return list.state.selectionManager().selectionMode;
+  }
 
   const elementProps = mergeProps(
     rowProps,
@@ -1129,19 +1180,21 @@ export function GridListItem(props: GridListItemComponentProps) {
   // Built where it is inserted: written as a value, its template would claim
   // the next server node while hydrating, which under drag and drop is the
   // drop indicator's marker before it, not the row.
-  const row = () => (
-    <div {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
-      <div {...gridCellProps}>
-        <SelectionIndicatorProvider isSelected={isSelected()}>
-          {provide(
-            GridListRowContext,
-            () => rowValue,
-            () => props.children as unknown,
-          )}
-        </SelectionIndicatorProvider>
+  function row() {
+    return (
+      <div {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
+        <div {...gridCellProps}>
+          <SelectionIndicatorProvider isSelected={isSelected()}>
+            {provide(
+              GridListRowContext,
+              () => rowValue,
+              () => props.children as unknown,
+            )}
+          </SelectionIndicatorProvider>
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
   if (dnd === null) return row();
 
   const { visuallyHiddenProps } = visuallyHidden();
@@ -1342,7 +1395,9 @@ export function GridListLoadMoreItem(props: GridListLoadMoreItemProps) {
   const virtual = useVirtualizer();
   const options = fromProps(cells(props));
   const sentinel = makeRef<HTMLDivElement>();
-  const isLoading = (): boolean => props.isLoading === true && props.children !== undefined;
+  function isLoading(): boolean {
+    return props.isLoading === true && props.children !== undefined;
+  }
 
   loadMoreSentinel(
     {
@@ -1387,16 +1442,18 @@ export function GridListLoadMoreItem(props: GridListLoadMoreItemProps) {
   );
 }
 
+interface RowDropIndicator {
+  indicator: ReturnType<NonNullable<DragAndDropHooks["dropIndicator"]>>;
+  ref: ReturnType<typeof makeRef<HTMLDivElement>>;
+}
+
 interface RowDragAndDrop {
   collection: CollectionDragAndDrop;
   itemProps: DOMProps;
   before: ItemDropTarget;
   after: Accessor<ItemDropTarget[]>;
   /** The target for a drop ON the row, focusable apart from the row's own controls. */
-  on: {
-    indicator: ReturnType<NonNullable<DragAndDropHooks["dropIndicator"]>>;
-    ref: ReturnType<typeof makeRef<HTMLDivElement>>;
-  } | null;
+  on: RowDropIndicator | null;
 }
 
 /**

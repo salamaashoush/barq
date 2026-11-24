@@ -70,23 +70,27 @@ export interface LinkResult {
 }
 
 export function link(options: LinkOptions, ref?: ElementRef): LinkResult {
-  const elementType = (): string => access(options.elementType) ?? "a";
-  const isDisabled = (): boolean => access(options.isDisabled) === true;
+  function elementType(): string {
+    return access(options.elementType) ?? "a";
+  }
+  function isDisabled(): boolean {
+    return access(options.isDisabled) === true;
+  }
 
   const { pressProps, isPressed } = press({ ...options, ref });
   const { focusableProps } = focusable(options, ref);
   const navigate = router();
   // The href a client router renders for the path: a base path, a locale
   // prefix. The click still hands the router the path it was given.
-  const routedHref = (): string | undefined => {
+  function routedHref(): string | undefined {
     const href = access(options.href);
     return href === undefined ? undefined : navigate.href(href);
-  };
+  }
   // The link's `data-*` shape, for an element that is not an anchor: none on
   // an anchor, which has the real attributes, and none while disabled, which
   // must not navigate.
-  const synthetic = (): Record<string, unknown> =>
-    elementType() === "a" || isDisabled()
+  function synthetic(): Record<string, unknown> {
+    return elementType() === "a" || isDisabled()
       ? {}
       : syntheticLinkProps(
           {
@@ -99,6 +103,7 @@ export function link(options: LinkOptions, ref?: ElementRef): LinkResult {
           },
           navigate,
         );
+  }
 
   const roleProps: DOMProps = {
     // Anything that is not an `<a href>` has to say what it is, and be
@@ -153,6 +158,10 @@ export interface SeparatorOptions {
   "aria-labelledby"?: MaybeAccessor<string | undefined>;
 }
 
+export interface SeparatorResult {
+  separatorProps: DOMProps;
+}
+
 /**
  * A divider between groups of content.
  *
@@ -160,7 +169,7 @@ export interface SeparatorOptions {
  * written for it. Anything else needs both — and `aria-orientation` only when
  * it is vertical, since horizontal is the role's default.
  */
-export function separator(options: SeparatorOptions): { separatorProps: DOMProps } {
+export function separator(options: SeparatorOptions): SeparatorResult {
   const domProps = filterDOMProps(options, { labelable: true });
 
   if ((access(options.elementType) ?? "hr") === "hr") return { separatorProps: domProps };
@@ -223,22 +232,30 @@ export function progressBar(options: ProgressBarOptions): ProgressBarResult {
     labelElementType: "span",
   });
 
-  const min = (): number => access(options.minValue) ?? 0;
-  const max = (): number => access(options.maxValue) ?? 100;
-  const value = (): number => clamp(access(options.value) ?? 0, min(), max());
-  const isIndeterminate = (): boolean => access(options.isIndeterminate) === true;
+  function min(): number {
+    return access(options.minValue) ?? 0;
+  }
+  function max(): number {
+    return access(options.maxValue) ?? 100;
+  }
+  function value(): number {
+    return clamp(access(options.value) ?? 0, min(), max());
+  }
+  function isIndeterminate(): boolean {
+    return access(options.isIndeterminate) === true;
+  }
 
-  const percentage = (): number => {
+  function percentage(): number {
     const range = max() - min();
     return range === 0 ? 0 : (value() - min()) / range;
-  };
+  }
 
-  const valueText = (): string | undefined => {
+  function valueText(): string | undefined {
     if (isIndeterminate()) return undefined;
     const given = access(options.valueLabel);
     if (given !== undefined) return given;
     return format().format(formatOptions.style === "percent" ? percentage() : value());
-  };
+  }
 
   return {
     percentage,
@@ -316,8 +333,9 @@ export function Link(props: LinkComponentProps) {
   // Button.
   const slot = triggerSlot();
   const options = mergeProps(fromProps(cells(props)), slot.props) as LinkOptions;
-  const elementType = (): "a" | "span" =>
-    props.href !== undefined && props.isDisabled !== true ? "a" : "span";
+  function elementType(): "a" | "span" {
+    return props.href !== undefined && props.isDisabled !== true ? "a" : "span";
+  }
 
   const { linkProps, isPressed } = link({ ...options, elementType }, domRef);
   const { hoverProps, isHovered } = hover({

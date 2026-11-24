@@ -31,7 +31,14 @@
  * to a parent frame.
  */
 
-import { type Accessor, createEffect, createSignal, isDev, untrack } from "@barqjs/core";
+import {
+  type Accessor,
+  createEffect,
+  createSignal,
+  isDev,
+  untrack,
+  type RefObject,
+} from "@barqjs/core";
 import { tryCleanup } from "@barqjs/primitives/utils";
 import { isServer } from "@barqjs/web";
 import { contains, targetElement } from "./dom.ts";
@@ -109,7 +116,7 @@ interface LandmarkManagerApi {
  */
 interface Landmark {
   /** Compared by identity: the same handle registering again is an update. */
-  ref: { readonly current: HTMLElement | null };
+  ref: Readonly<RefObject<HTMLElement>>;
   role: LandmarkRole;
   label?: string | undefined;
   lastFocused?: HTMLElement | undefined;
@@ -337,8 +344,9 @@ class LandmarkManager implements LandmarkManagerApi {
     let disposed = false;
     this.#controllers++;
     this.#setupIfNeeded();
-    const from = (options?: LandmarkControllerOptions): Element =>
-      options?.from ?? document.activeElement ?? document.body;
+    function from(options?: LandmarkControllerOptions): Element {
+      return options?.from ?? document.activeElement ?? document.body;
+    }
     return {
       navigate: (direction, options) =>
         !disposed && this.navigate(from(options), direction === "backward"),
@@ -425,8 +433,9 @@ export function createLandmarkController(): LandmarkController {
  */
 export function landmark(options: LandmarkOptions): LandmarkResult {
   const [isLandmarkFocused, setLandmarkFocused] = createSignal(false);
-  const label = (): string | undefined =>
-    access(options["aria-label"]) ?? access(options["aria-labelledby"]);
+  function label(): string | undefined {
+    return access(options["aria-label"]) ?? access(options["aria-labelledby"]);
+  }
 
   if (!isServer) {
     // A newer copy of the package can replace the manager from inside its own

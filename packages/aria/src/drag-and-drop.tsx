@@ -254,14 +254,33 @@ export interface DragPreviewProps {
   ref?: RefTarget<DragPreviewRenderer>;
 }
 
-function isPositioned(value: unknown): value is { element: Child; x: number; y: number } {
+interface PositionedPreview {
+  element: Child;
+  x: number;
+  y: number;
+}
+
+interface HasX {
+  x?: unknown;
+}
+
+interface HasY {
+  y?: unknown;
+}
+
+function isPositioned(value: unknown): value is PositionedPreview {
   return (
     typeof value === "object" &&
     value !== null &&
     "element" in value &&
-    typeof (value as { x?: unknown }).x === "number" &&
-    typeof (value as { y?: unknown }).y === "number"
+    typeof (value as HasX).x === "number" &&
+    typeof (value as HasY).y === "number"
   );
+}
+
+interface PreviewOffset {
+  x?: number;
+  y?: number;
 }
 
 /**
@@ -274,13 +293,13 @@ function isPositioned(value: unknown): value is { element: Child; x: number; y: 
 export function DragPreview(props: DragPreviewProps) {
   const container = makeRef<HTMLDivElement>();
   const [items, setItems] = createSignal<DragItem[] | null>(null, { ownedWrite: true });
-  let offset: { x?: number; y?: number } = {};
+  let offset: PreviewOffset = {};
   let frame: number | undefined;
 
   // Built where it is inserted rather than in a memo: what the caller renders
   // binds its own text and attributes, and those bindings have to belong to
   // the insertion that shows them.
-  const content = (): Child => {
+  function content(): Child {
     const dragged = items();
     if (dragged === null) return null;
     // A render function written inline arrives as itself, one passed by name
@@ -294,7 +313,7 @@ export function DragPreview(props: DragPreviewProps) {
     }
     offset = {};
     return result;
-  };
+  }
 
   const renderer: DragPreviewRenderer = (dragged, deliver) => {
     if (frame !== undefined) cancelAnimationFrame(frame);
@@ -443,8 +462,9 @@ export function draggableItemSlotProps(
   const onDragStart = dragProps.onDragStart as ((event: DragEvent) => void) | undefined;
   const onDrag = dragProps.onDrag as ((event: DragEvent) => void) | undefined;
   const onDragEnd = dragProps.onDragEnd as ((event: DragEvent) => void) | undefined;
-  const isFromDragButton = (event: DragEvent): boolean =>
-    contains(dragButtonRef(), event.target instanceof Node ? event.target : null);
+  function isFromDragButton(event: DragEvent): boolean {
+    return contains(dragButtonRef(), event.target instanceof Node ? event.target : null);
+  }
 
   return {
     itemProps: {
@@ -516,12 +536,16 @@ function dropNavigation(
   layout: MaybeAccessor<"stack" | "grid" | undefined>,
   orientation: MaybeAccessor<"horizontal" | "vertical" | undefined>,
 ): KeyboardDelegate {
-  const isVerticalStack = (): boolean =>
-    (access(layout) ?? "stack") === "stack" && (access(orientation) ?? "vertical") === "vertical";
-  const horizontal = (
+  function isVerticalStack(): boolean {
+    return (
+      (access(layout) ?? "stack") === "stack" && (access(orientation) ?? "vertical") === "vertical"
+    );
+  }
+  function horizontal(
     method: ((key: Key) => Key | null) | undefined,
-  ): ((key: Key) => Key | null) | undefined =>
-    method === undefined || isVerticalStack() ? undefined : method;
+  ): ((key: Key) => Key | null) | undefined {
+    return method === undefined || isVerticalStack() ? undefined : method;
+  }
   return {
     getKeyBelow: delegate.getKeyBelow?.bind(delegate),
     getKeyAbove: delegate.getKeyAbove?.bind(delegate),
