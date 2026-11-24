@@ -313,7 +313,10 @@ if (await confirm({ title: "Delete the check?", tone: "danger", confirmLabel: "D
   router follows, while a button in a cell stays a button. It draws skeleton
   rows while loading, an `EmptyState` when empty, pages or loads more as the
   end comes into view, keeps its header stuck, and renders only the rows on
-  screen with `virtualRowHeight`.
+  screen with `virtualRowHeight`. `getSubRows` makes it a tree grid: a parent
+  opens and closes on the button in its `treeColumn` cell or with the arrows
+  in the reading direction, each level indented, and `expandedKeys` holds
+  which are open.
 
   ```tsx
   <DataTable

@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { createSignal, flush } from "@barqjs/core";
+import { type Child, createSignal, flush } from "@barqjs/core";
+import { provideLocale } from "@barqjs/aria/i18n";
 import type { ColumnVisibilityState, SortingState } from "@barqjs/table";
-import { ariaViolations, render, screen, tick, user, waitFor } from "@barqjs/testing";
+import { ariaViolations, render, screen, tick, user, waitFor, within } from "@barqjs/testing";
 import { renderRoute } from "@barqjs/testing/router";
 
+import { hydrates } from "../test-arc.ts";
 import { ConfirmHost } from "./confirm.tsx";
 import { type DataTableColumn, DataTable } from "./data-table.tsx";
 
@@ -646,5 +648,113 @@ describe("DataTable over a long list", () => {
     expect(grid.getAttribute("aria-rowcount")).toBe("301");
     const after = bodyRows().map((row) => [row.textContent, row.style.top]);
     for (const entry of before) expect(after).toContainEqual(entry);
+  });
+});
+
+describe("DataTable as a tree", () => {
+  interface Team {
+    id: string;
+    name: string;
+    size: number;
+    teams?: Team[];
+  }
+  const TEAMS: Team[] = [
+    {
+      id: "eng",
+      name: "Engineering",
+      size: 40,
+      teams: [
+        { id: "web", name: "Web", size: 12 },
+        { id: "api", name: "API", size: 9 },
+      ],
+    },
+    { id: "ops", name: "Operations", size: 7 },
+  ];
+  const TEAM_COLUMNS: DataTableColumn<Team>[] = [
+    { accessorKey: "name", header: "Team" },
+    { accessorKey: "size", header: "People", align: "end" },
+  ];
+  const names = (): string[] =>
+    [...document.querySelectorAll('[data-slot="data-table-row"]')].map(
+      (row) => row.querySelector('[data-slot="data-table-cell"]')?.textContent ?? "",
+    );
+
+  test("a tree grid whose parents open on their button, a level per depth", async () => {
+    const opened: string[][] = [];
+    render(() => (
+      <DataTable
+        label="Teams"
+        columns={TEAM_COLUMNS}
+        data={TEAMS}
+        getRowId={(team) => team.id}
+        getSubRows={(team) => team.teams}
+        onExpandedChange={(keys) => opened.push([...keys])}
+      />
+    ));
+    await settle();
+    expect(screen.getByRole("treegrid", { name: "Teams" })).toBeDefined();
+    expect(names()).toEqual(["Engineering", "Operations"]);
+    const eng = screen.getAllByRole("row")[1] as HTMLElement;
+    expect(eng.getAttribute("aria-expanded")).toBe("false");
+    user.click(within(eng).getByRole("button", { hidden: true }));
+    await settle();
+    expect(names()).toEqual(["Engineering", "Web", "API", "Operations"]);
+    expect(opened.at(-1)).toEqual(["eng"]);
+    const web = screen.getAllByRole("row")[2] as HTMLElement;
+    expect(web.getAttribute("aria-level")).toBe("2");
+    expect(web.querySelector('[data-slot="data-table-tree"]')?.getAttribute("style")).toContain(
+      "--arc-row-depth: 1",
+    );
+    expect(await ariaViolations(document.body)).toEqual([]);
+  });
+
+  test("the arrows open and close a parent from its tree cell, in the reading direction", async () => {
+    function Arabic(props: { children?: Child }) {
+      provideLocale("ar-EG");
+      return <div dir="rtl">{props.children}</div>;
+    }
+    render(() => (
+      <Arabic>
+        <DataTable
+          label="Teams"
+          columns={TEAM_COLUMNS}
+          data={TEAMS}
+          getRowId={(team) => team.id}
+          getSubRows={(team) => team.teams}
+          defaultExpandedKeys={["eng"]}
+        />
+      </Arabic>
+    ));
+    await settle();
+    expect(names()).toEqual(["Engineering", "Web", "API", "Operations"]);
+    user.tab();
+    await user.keyboard("{ArrowRight}");
+    await settle();
+    expect(names()).toEqual(["Engineering", "Operations"]);
+    await user.keyboard("{ArrowLeft}");
+    await settle();
+    expect(names()).toEqual(["Engineering", "Web", "API", "Operations"]);
+  });
+
+  test("hydrates what the server wrote, open", async () => {
+    const result = await hydrates(`
+      import { DataTable } from "<arc>";
+      const data = [{ id: "a", name: "Alpha", teams: [{ id: "b", name: "Beta" }] }];
+      export function Page() {
+        return (
+          <DataTable
+            label="Teams"
+            columns={[{ accessorKey: "name", header: "Team" }]}
+            data={data}
+            getRowId={(team) => team.id}
+            getSubRows={(team) => team.teams}
+            defaultExpandedKeys={["a"]}
+          />
+        );
+      }
+    `);
+    expect(result.container.querySelector('[role="treegrid"]')).not.toBeNull();
+    expect(result.container.textContent).toContain("Beta");
+    result.unmount();
   });
 });

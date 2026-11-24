@@ -12,6 +12,7 @@ import {
   type SortDescriptor,
   Table,
   TableBody,
+  TableExpandButton,
   TableHeader,
   TableLoadMoreItem,
   useRow,
@@ -21,6 +22,7 @@ import type { ColumnSize } from "@barqjs/aria/table-column-layout";
 import { Virtualizer, listLayout } from "@barqjs/aria/virtualizer";
 import { ArrowDown } from "@barqjs/lucide/icons/arrow-down";
 import { ArrowUp } from "@barqjs/lucide/icons/arrow-up";
+import { ChevronRight } from "@barqjs/lucide/icons/chevron-right";
 import { ChevronsUpDown } from "@barqjs/lucide/icons/chevrons-up-down";
 import { mediaQuery } from "@barqjs/primitives/media";
 import type { RouterState } from "@barqjs/router";
@@ -42,6 +44,7 @@ import {
   tableFeatures,
 } from "@barqjs/table";
 import { Checkbox } from "@barqjs/ui/checkbox";
+import { icon } from "@barqjs/ui/shared-icon";
 import { Skeleton } from "@barqjs/ui/skeleton";
 import { Spinner } from "@barqjs/ui/spinner";
 
@@ -61,12 +64,14 @@ import {
   rounded,
   space,
   interaction,
+  square,
   surface,
   type,
 } from "../style/index.ts";
 import { useArcMessages } from "./messages.ts";
 import { EmptyState } from "./empty-state.tsx";
 import { maybeRouter } from "./link.ts";
+import { bareButton } from "../lib/bare.ts";
 import { afterLayer } from "../lib/pseudo.ts";
 import { Pager } from "./pager.tsx";
 import { SelectionBar, type SelectionAction } from "./selection-bar.tsx";
@@ -183,6 +188,18 @@ export interface DataTableProps<T extends RowData> extends Customisable<Slots> {
   /** Called when a row is pressed or Enter is pressed on it. */
   onRowAction?: (row: T) => void;
 
+  /**
+   * A row's own rows: the table becomes a tree, each parent opening and
+   * closing with the arrows on its `treeColumn` cell or the button there.
+   */
+  getSubRows?: (row: T) => readonly T[] | undefined;
+  /** The column whose cells open their row. @default the first column */
+  treeColumn?: string;
+  /** The rows open. Leave it out and the table keeps its own. */
+  expandedKeys?: Iterable<string>;
+  defaultExpandedKeys?: Iterable<string>;
+  onExpandedChange?: (keys: Set<string>) => void;
+
   pagination?: DataTablePagination;
   /** Asked for the next page when the end of the rows comes into reach. */
   onLoadMore?: () => void;
@@ -218,7 +235,13 @@ interface ColumnItem {
 }
 
 type RowItem =
-  | { id: string; kind: "row"; row: TableRow<DataTableFeatures, RowData> }
+  | {
+      id: string;
+      kind: "row";
+      row: TableRow<DataTableFeatures, RowData>;
+      /** Its own rows, in a tree. */
+      children?: RowItem[];
+    }
   | { id: string; kind: "skeleton" }
   | { id: string; kind: "loader" };
 
@@ -324,6 +347,23 @@ export const dataTableStyles = variants({
     }),
     skeleton: arc({ height: space.x3_5, width: "min(100%, 6rem)" }),
     loader: arc(layout.centre, gap[2], fg.muted, { padding: space.x3 }),
+    tree: arc(layout.row, layout.minZero, gap[1], {
+      paddingInlineStart: "calc(var(--spacing) * 5 * var(--arc-row-depth, 0))",
+    }),
+    expand: arc(
+      bareButton,
+      layout.inlineCentre,
+      layout.noShrink,
+      rounded.sm,
+      fg.muted,
+      glyph.sm,
+      motion.transform,
+      square.x5,
+      {
+        "[data-expanded] > svg": { rotate: "90deg" },
+      },
+    ),
+    expandSpacer: arc(layout.noShrink, square.x5),
     empty: arc({ padding: space.x6 }),
     pagination: arc(layout.row, layout.end, gap[2], edge.top, fg.muted, type.sm, cellPad),
     page: arc(type.numeric),
@@ -414,6 +454,10 @@ export function DataTable<T extends RowData>(props: DataTableProps<T>) {
     columns: props.columns as ColumnDef<DataTableFeatures, T>[],
     data: (props.data ?? []) as T[],
     getRowId: (item: T) => props.getRowId(item),
+    getSubRows:
+      props.getSubRows === undefined
+        ? undefined
+        : (item: T) => props.getSubRows?.(item),
     manualSorting: props.manualSorting === true,
     manualPagination: props.pagination === undefined || props.pagination.pageCount !== undefined,
     pageCount: props.pagination?.pageCount,
@@ -508,18 +552,30 @@ export function DataTable<T extends RowData>(props: DataTableProps<T>) {
         kind: "skeleton" as const,
       }));
     }
-    const rows: RowItem[] = table.getRowModel().rows.map((tableRow) => ({
+    const rowItem = (tableRow: TableRow<DataTableFeatures, RowData>): RowItem => ({
       id: tableRow.id,
       kind: "row" as const,
-      row: tableRow as unknown as TableRow<DataTableFeatures, RowData>,
-    }));
+      row: tableRow,
+      children:
+        props.getSubRows === undefined || tableRow.subRows.length === 0
+          ? undefined
+          : tableRow.subRows.map((sub) => rowItem(sub)),
+    });
+    const rows: RowItem[] = table
+      .getRowModel()
+      .rows.map((tableRow) => rowItem(tableRow as unknown as TableRow<DataTableFeatures, RowData>));
     if (props.onLoadMore !== undefined && hasMore()) rows.push({ id: LOADER, kind: "loader" });
     return rows;
   });
 
   const rowsById = createMemo(() => {
     const found = new Map<string, T>();
-    for (const item of items()) if (item.kind === "row") found.set(item.id, item.row.original as T);
+    const add = (item: RowItem): void => {
+      if (item.kind !== "row") return;
+      found.set(item.id, item.row.original as T);
+      for (const child of item.children ?? []) add(child);
+    };
+    for (const item of items()) add(item);
     return found;
   });
 
@@ -554,6 +610,10 @@ export function DataTable<T extends RowData>(props: DataTableProps<T>) {
   };
 
   const pageCount = (): number => table.getPageCount();
+  const treeColumn = (): string | undefined =>
+    props.getSubRows === undefined
+      ? undefined
+      : (props.treeColumn ?? columns().find((column) => column.id !== SELECT)?.id);
   const router = linkRouter(maybeRouter());
 
   const gridElement = () => (
@@ -565,6 +625,7 @@ export function DataTable<T extends RowData>(props: DataTableProps<T>) {
         getKey: (item: RowItem) => item.id,
         getTextValue: (item: RowItem) => (item.kind === "row" ? rowText(item.row, columns()) : ""),
         getType: (item: RowItem) => (item.kind === "loader" ? "loader" : "item"),
+        getChildren: (item: RowItem) => (item.kind === "row" ? item.children : undefined),
         getProps: (item: RowItem) =>
           item.kind === "row" && props.rowHref !== undefined
             ? { href: props.rowHref(item.row.original as T) }
@@ -583,6 +644,12 @@ export function DataTable<T extends RowData>(props: DataTableProps<T>) {
               const record = rowsById().get(String(key));
               if (record !== undefined) props.onRowAction?.(record);
             }
+      }
+      treeColumn={treeColumn()}
+      expandedKeys={props.expandedKeys}
+      defaultExpandedKeys={props.defaultExpandedKeys}
+      onExpandedChange={(keys: Set<Key>) =>
+        props.onExpandedChange?.(new Set([...keys].map(String)))
       }
       class={cls().grid}
       data-slot="data-table-grid"
@@ -625,7 +692,13 @@ export function DataTable<T extends RowData>(props: DataTableProps<T>) {
               data-skeleton={item.kind === "skeleton" ? "" : undefined}
             >
               {(column: ColumnItem) => (
-                <BodyCell item={item} column={column} labels={labels()} classes={cls()} />
+                <BodyCell
+                  item={item}
+                  column={column}
+                  labels={labels()}
+                  classes={cls()}
+                  isTreeColumn={column.id === treeColumn()}
+                />
               )}
             </Row>
           )
@@ -795,6 +868,7 @@ interface BodyCellProps {
   column: ColumnItem;
   labels: Required<DataTableLabels>;
   classes: Slots;
+  isTreeColumn: boolean;
 }
 
 function BodyCell(props: BodyCellProps) {
@@ -821,13 +895,34 @@ function BodyCell(props: BodyCellProps) {
     );
   }
   const found = item.row.getAllCellsByColumnId()[column.id];
+  const content = found === undefined ? null : <FlexRender cell={found} />;
   return (
     <Cell
       class={props.classes.cell}
       data-slot="data-table-cell"
       data-align={column.options.align ?? "start"}
     >
-      {found === undefined ? null : <FlexRender cell={found} />}
+      {props.isTreeColumn ? (
+        <span
+          class={props.classes.tree}
+          data-slot="data-table-tree"
+          style={{ "--arc-row-depth": String(item.row.depth) }}
+        >
+          <Show
+            when={(item.children?.length ?? 0) > 0}
+            fallback={
+              <span class={props.classes.expandSpacer} data-slot="data-table-expand-spacer" />
+            }
+          >
+            <TableExpandButton class={props.classes.expand} data-slot="data-table-expand">
+              <ChevronRight class={icon.directional} aria-hidden="true" />
+            </TableExpandButton>
+          </Show>
+          {content}
+        </span>
+      ) : (
+        content
+      )}
     </Cell>
   );
 }
