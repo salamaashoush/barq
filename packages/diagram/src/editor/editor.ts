@@ -8,6 +8,7 @@ import {
   arrayToMap,
   FRAME_STYLE,
   MIME_TYPES,
+  MQ_RIGHT_SIDEBAR_MIN_WIDTH,
   THEME,
   getFontString,
   sceneCoordsToViewportCoords,
@@ -35,6 +36,7 @@ import {
   isSelectionLikeTool,
   isShallowEqual,
   isWritableElement,
+  randomId,
   shouldMaintainAspectRatio,
   shouldResizeFromCenter,
   shouldRotateWithDiscreteAngle,
@@ -179,6 +181,7 @@ import {
 } from "../data/blob.ts";
 import { distributeLibraryItemsOnSquareGrid } from "../data/library.ts";
 import { parseLibraryJSON } from "../data/blob.ts";
+import { Library } from "./library.ts";
 import { restoreElements } from "../data/restore.ts";
 import { ImageSceneDataError } from "../errors.ts";
 import { restore } from "../data/restore.ts";
@@ -232,7 +235,7 @@ import { getContextMenuItems } from "./context-menu.ts";
 import { TOOL_DRAG_PREVIEW_OPACITY, ToolDrag } from "./tool-drag.ts";
 import { defaultEditorHost, type EditorHost } from "./ui-options.ts";
 
-import type { DiagramScene } from "../data/types.ts";
+import type { DiagramScene, ExcalidrawLibraryIds } from "../data/types.ts";
 import type { InteractiveSceneRenderAnimationState, ScrollBars } from "../scene/types.ts";
 import type {
   AppState,
@@ -240,6 +243,7 @@ import type {
   BinaryFiles,
   FrameNameBounds,
   KeyboardModifiersObject,
+  LibraryItems,
   NullableGridSize,
   ToolType,
 } from "../types.ts";
@@ -299,6 +303,10 @@ export interface DiagramEditorApi {
   history: { clear(): void };
   /** Subscribes to every change; returns the unsubscribe. */
   onChange(listener: DiagramChangeListener): () => void;
+  /** The editor's token, which a library site sends back to install a library without asking. */
+  readonly id: string;
+  /** Excalidraw's `updateLibrary`: replaces or merges the library's items, from items or a file. */
+  updateLibrary: Library["updateLibrary"];
 }
 
 export interface DiagramEditorOptions {
@@ -415,6 +423,8 @@ export class DiagramEditor {
   public readonly lassoTrail: LassoTrail;
   /** A tool dragged out of the toolbar onto the canvas. */
   public readonly toolDrag: ToolDrag;
+  public readonly library: Library;
+  public readonly id = randomId();
   public readonly drawShape: DrawShape;
   public readonly bucketFill: BucketFill;
   /** What the eraser has marked, erased on pointer up. */
@@ -621,6 +631,11 @@ export class DiagramEditor {
     this.eraserTrail = new EraserTrail(this);
     this.lassoTrail = new LassoTrail(this);
     this.toolDrag = new ToolDrag(this);
+    this.library = new Library({
+      ownerWindow: this.ownerWindow,
+      setState: (state) => this.batch(() => this.setState(state)),
+      focusContainer: () => this.focusContainer(),
+    });
     this.drawShape = new DrawShape(this);
     this.bucketFill = new BucketFill(this);
     if (options.svgLayer) {
@@ -642,6 +657,8 @@ export class DiagramEditor {
       refresh: () => this.batch(() => this.refresh()),
       history: { clear: () => this.history.clear() },
       onChange: (listener) => this.changeEmitter.on(listener),
+      id: this.id,
+      updateLibrary: (opts) => this.library.updateLibrary(opts),
     };
 
     this.measure();
@@ -1032,11 +1049,20 @@ export class DiagramEditor {
     }
     this.store.scheduleCapture();
     this.setState(
-      getSelectionStateForElements(
-        excludeElementsInFramesFromSelection(duplicatedElements),
-        this.scene.getNonDeletedElements(),
-        this.state,
-      ),
+      {
+        // a docked sidebar stays open as its items are placed
+        openSidebar:
+          this.state.openSidebar &&
+          this.state.defaultSidebarDockedPreference &&
+          this.canFitSidebar()
+            ? this.state.openSidebar
+            : null,
+        ...getSelectionStateForElements(
+          excludeElementsInFramesFromSelection(duplicatedElements),
+          this.scene.getNonDeletedElements(),
+          this.state,
+        ),
+      },
       () => {
         if (opts.files) {
           void this.addNewImagesToImageCache();
@@ -1111,10 +1137,14 @@ export class DiagramEditor {
       return;
     }
 
+    const libraryIds = dataTransferList.getData(MIME_TYPES.excalidrawlibIds);
     const libraryData = dataTransferList.getData(MIME_TYPES.excalidrawlib);
-    if (libraryData) {
+    if (libraryIds || libraryData) {
       try {
-        const libraryItems = parseLibraryJSON(libraryData).map((item) => ({
+        const dropped = libraryIds
+          ? await this.getLibraryItemsById(libraryIds)
+          : parseLibraryJSON(libraryData ?? "");
+        const libraryItems = dropped.map((item) => ({
           ...item,
           elements: duplicateElements({
             type: "everything",
@@ -1147,6 +1177,42 @@ export class DiagramEditor {
     }
   }
 
+  /** The library's items a drag out of the sidebar carries, by their ids. */
+  private async getLibraryItemsById(data: string): Promise<LibraryItems> {
+    const { itemIds } = JSON.parse(data) as ExcalidrawLibraryIds;
+    const items = await this.library.getLatestLibrary();
+    return items.filter((item) => itemIds.includes(item.id));
+  }
+
+  /**
+   * Library items placed in the middle of the view, each a copy of its own:
+   * a click in the sidebar or the command palette.
+   */
+  public insertLibraryItems(items: LibraryItems): void {
+    const copies = items.map((item) => ({
+      ...item,
+      elements: duplicateElements({
+        type: "everything",
+        elements: item.elements,
+        randomizeSeed: true,
+        preserveFrameChildrenOrder: true,
+      }).duplicatedElements,
+    }));
+    this.addElementsFromPasteOrLibrary({
+      elements: distributeLibraryItemsOnSquareGrid(copies),
+      position: "center",
+      files: null,
+    });
+  }
+
+  /** Whether the sidebar fits beside the canvas, and can be docked. */
+  public canFitSidebar(): boolean {
+    return (
+      this.state.width >=
+      (this.host.UIOptions.dockedSidebarBreakpoint ?? MQ_RIGHT_SIDEBAR_MIN_WIDTH)
+    );
+  }
+
   /** A dropped scene or library file: the scene replaced (or added to at the drop with Shift). */
   private async loadFileToCanvas(
     file: File,
@@ -1172,6 +1238,15 @@ export class DiagramEditor {
               : { key: "alerts.couldNotLoadInvalidFile" },
         }),
       );
+      return;
+    }
+    if (loaded?.type === MIME_TYPES.excalidrawlib) {
+      await this.library
+        .updateLibrary({ libraryItems: file, merge: true, openLibraryMenu: true })
+        .catch((error: unknown) => {
+          console.error(error);
+          this.batch(() => this.setState({ errorMessage: { key: "errors.importLibraryError" } }));
+        });
       return;
     }
     if (!loaded || loaded.type !== MIME_TYPES.excalidraw) {
@@ -1489,6 +1564,11 @@ export class DiagramEditor {
   }
 
   private loadScene(data: DiagramScene | null): void {
+    if (data?.libraryItems) {
+      this.library
+        .updateLibrary({ libraryItems: data.libraryItems, merge: true })
+        .catch((error: unknown) => console.error(error));
+    }
     const restored = restore(data, null, null, { repairBindings: true });
     const { width, height, offsetLeft, offsetTop, theme, viewModeEnabled, gridModeEnabled } =
       this.state;
@@ -5439,6 +5519,7 @@ export class DiagramEditor {
     if (this.destroyed) return;
     this.maybeCleanupAfterMissingPointerUp(null);
     this.toolDrag.cancel();
+    this.library.destroy();
     this.text.destroy();
     this.clipboard.clearPlainPaste();
     this.flowchart.clear();

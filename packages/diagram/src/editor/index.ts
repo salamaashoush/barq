@@ -13,6 +13,13 @@ export type {
   TextEditRequest,
 } from "./editor.ts";
 export { History, HistoryDelta } from "./history.ts";
+export { Library, handleLibrary, parseLibraryTokensFromUrl } from "./library.ts";
+export type {
+  HandleLibraryOptions,
+  LibraryPersistenceAdapter,
+  LibraryMigrationAdapter,
+  LibraryState,
+} from "./library.ts";
 export {
   actionChangeFontFamily,
   actionChangeFontSize,

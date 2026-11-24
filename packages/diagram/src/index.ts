@@ -10,6 +10,17 @@ export { DiagramViewer } from "./viewer.tsx";
 export { DiagramEditor } from "./diagram-editor.tsx";
 export type { DiagramEditorProps } from "./diagram-editor.tsx";
 export { MainMenu } from "./ui/main-menu.tsx";
+export { useHandleLibrary } from "./ui/use-handle-library.ts";
+export { handleLibrary, parseLibraryTokensFromUrl } from "./editor/library.ts";
+export type {
+  HandleLibraryOptions,
+  LibraryAdapterSource,
+  LibraryItemsSource,
+  LibraryMigrationAdapter,
+  LibraryPersistedData,
+  LibraryPersistenceAdapter,
+  LibraryUpdate,
+} from "./editor/library.ts";
 export type { RenderSlot } from "./ui/context.tsx";
 export type { CanvasActions, ExportOpts as UIExportOpts, UIOptions } from "./editor/ui-options.ts";
 export { defaultLang, isRTLLanguage, languages, loadLanguage, localeCodes } from "./i18n.ts";

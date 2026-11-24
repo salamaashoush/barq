@@ -65,5 +65,11 @@ export type ExcalidrawLibraryIds = {
   itemIds: LibraryItem["id"][];
 };
 
-/** A scene to show or edit: a parsed `.excalidraw` file, or what `loadFromBlob` or `restore` returns. */
-export type DiagramScene = Pick<ImportedDataState, "elements" | "appState" | "files">;
+/**
+ * A scene to show or edit: a parsed `.excalidraw` file, or what `loadFromBlob`
+ * or `restore` returns. The editor adds `libraryItems` to its library.
+ */
+export type DiagramScene = Pick<
+  ImportedDataState,
+  "elements" | "appState" | "files" | "libraryItems"
+>;

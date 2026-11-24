@@ -54,10 +54,12 @@ import {
   actionWrapSelectionInFrame,
 } from "./frame.ts";
 import { actionGroup, actionUngroup } from "./group.ts";
+import { actionAddToLibrary } from "./library.ts";
 import { actionTogglePolygon, actionToggleLinearEditor } from "./linear-editor.ts";
 import { actionCopyElementLink, actionLink, actionLinkToElement } from "./link.ts";
 import { actionToggleElementLock, actionUnlockAllElements } from "./lock.ts";
 import { propertyActions } from "./properties.ts";
+import { actionToggleSearchMenu } from "./search.ts";
 import { actionDeselect, actionSelectAll } from "./select.ts";
 import { actionCopyStyles, actionPasteStyles } from "./styles.ts";
 import {
@@ -179,4 +181,6 @@ export const editorActions: readonly Action[] = [
   actionSaveFileToDisk,
   actionLoadScene,
   actionToggleWrap,
+  actionAddToLibrary,
+  actionToggleSearchMenu,
 ];

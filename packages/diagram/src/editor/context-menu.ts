@@ -22,6 +22,7 @@ import {
   actionWrapSelectionInFrame,
 } from "./actions/frame.ts";
 import { actionGroup, actionUngroup } from "./actions/group.ts";
+import { actionAddToLibrary } from "./actions/library.ts";
 import { actionToggleLinearEditor } from "./actions/linear-editor.ts";
 import { actionCopyElementLink, actionLink } from "./actions/link.ts";
 import { actionToggleElementLock, actionUnlockAllElements } from "./actions/lock.ts";
@@ -123,6 +124,7 @@ export const getContextMenuItems = (
     actionWrapTextInContainer,
     actionUngroup,
     CONTEXT_MENU_SEPARATOR,
+    actionAddToLibrary,
     actionSendBackward,
     actionBringForward,
     actionSendToBack,
