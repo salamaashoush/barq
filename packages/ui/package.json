@@ -61,6 +61,11 @@
       "barq": "./src/theme/layers.ts",
       "bun": "./src/theme/layers.ts"
     },
+    "./theme/tokens": {
+      "types": "./src/theme/tokens.ts",
+      "barq": "./src/theme/tokens.ts",
+      "bun": "./src/theme/tokens.ts"
+    },
     "./atoms": {
       "types": "./src/lib/atoms.ts",
       "barq": "./src/lib/atoms.ts",
