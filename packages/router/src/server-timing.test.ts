@@ -11,8 +11,14 @@ import { describe, expect, test } from "bun:test";
 import type { AnyRouteDefinition } from "./route.ts";
 import { createPageHandler } from "./server.ts";
 
-const document = ({ body, seed }: { body: string; seed: string }): string =>
-  `<!doctype html><html><head><title>salama</title></head><body>${body}${seed}</body></html>`;
+interface DocumentParts {
+  body: string;
+  seed: string;
+}
+
+function document({ body, seed }: DocumentParts): string {
+  return `<!doctype html><html><head><title>salama</title></head><body>${body}${seed}</body></html>`;
+}
 
 const table: AnyRouteDefinition[] = [{ path: "/", component: (() => null) as never }] as never;
 

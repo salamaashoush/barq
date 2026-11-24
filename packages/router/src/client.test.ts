@@ -37,12 +37,16 @@ async function bootUnrendered(options: StartClientOptions): Promise<RouterState>
   }
 }
 
+interface ChildrenProps {
+  children: unknown;
+}
+
 function table(seen: string[]): AnyRouteDefinition[] {
   return [
     {
       id: "__root__",
       path: "/",
-      component: ((props: { children: unknown }) => {
+      component: ((props: ChildrenProps) => {
         seen.push("root");
         return (props.children as () => unknown)();
       }) as never,

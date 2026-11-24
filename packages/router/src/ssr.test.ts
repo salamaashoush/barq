@@ -24,28 +24,46 @@ import {
   withRouterOverrides,
 } from "./ssr.ts";
 
-const tick = (ms = 0) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+function tick(ms = 0) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
 
 function get(path: string): Request {
   return new Request(`https://example.com${path}`);
 }
 
-const document = ({ body, seed }: { body: string; seed: string }): string =>
-  `<!doctype html><html><body><div id="app">${body}</div>${seed}</body></html>`;
+interface DocumentParts {
+  body: string;
+  seed: string;
+}
+
+function document({ body, seed }: DocumentParts): string {
+  return `<!doctype html><html><body><div id="app">${body}</div>${seed}</body></html>`;
+}
+
+interface ContextArgs {
+  context: Record<string, unknown>;
+}
+
+interface DataContextProps {
+  data: () => unknown;
+  context: () => Record<string, unknown>;
+}
 
 /** A page that prints what its loader read out of the router context. */
-const whoTable = (wait = 0): AnyRouteDefinition[] =>
-  [
+function whoTable(wait = 0): AnyRouteDefinition[] {
+  return [
     {
       path: "/who",
-      loader: async ({ context }: { context: Record<string, unknown> }) => {
+      loader: async ({ context }: ContextArgs) => {
         await tick(wait);
         return `${String(context.site)}:${String(context.visitor)}`;
       },
-      component: (props: { data: () => unknown; context: () => Record<string, unknown> }) =>
+      component: (props: DataContextProps) =>
         ssrHtml(`<main>${esc(props.data())}|${esc(props.context().visitor)}</main>`),
     },
   ] as never;
+}
 
 /**
  * Run the scripts a page carries the router's payload in, in document order.
@@ -170,25 +188,42 @@ describe("getRouter", () => {
   });
 });
 
+interface DataProps {
+  data: () => unknown;
+}
+
+interface TaggedPayload {
+  at: Date;
+  tags: Set<string>;
+}
+
+interface StreamedPayload {
+  first: string[];
+  later: AsyncIterable<string[]>;
+}
+
 describe("dehydrate and hydrate", () => {
-  const table = (): AnyRouteDefinition[] =>
-    [
+  function table(): AnyRouteDefinition[] {
+    return [
       {
         path: "/",
         loader: async () => {
           await tick(3);
           return "loaded";
         },
-        component: (props: { data: () => unknown }) => ssrHtml(`<main>${esc(props.data())}</main>`),
+        component: (props: DataProps) => ssrHtml(`<main>${esc(props.data())}</main>`),
       },
     ] as never;
+  }
 
-  const config = (seen: unknown[]): Pick<RouterConfig, "dehydrate" | "hydrate"> => ({
-    dehydrate: () => ({ at: new Date(86_400_000), tags: new Set(["a", "b"]) }),
-    hydrate: (dehydrated: unknown) => {
-      seen.push(dehydrated);
-    },
-  });
+  function config(seen: unknown[]): Pick<RouterConfig, "dehydrate" | "hydrate"> {
+    return {
+      dehydrate: () => ({ at: new Date(86_400_000), tags: new Set(["a", "b"]) }),
+      hydrate: (dehydrated: unknown) => {
+        seen.push(dehydrated);
+      },
+    };
+  }
 
   for (const stream of [false, true]) {
     test(`the payload crosses to hydrate with its types intact (stream=${stream})`, async () => {
@@ -219,7 +254,7 @@ describe("dehydrate and hydrate", () => {
       state.dispose();
 
       expect(seen).toHaveLength(1);
-      const payload = seen[0] as { at: Date; tags: Set<string> };
+      const payload = seen[0] as TaggedPayload;
       expect(payload.at).toBeInstanceOf(Date);
       expect(payload.at.getTime()).toBe(86_400_000);
       expect([...payload.tags]).toEqual(["a", "b"]);
@@ -253,7 +288,7 @@ describe("dehydrate and hydrate", () => {
           loaded = "yes";
           return "loaded";
         },
-        component: (props: { data: () => unknown }) => ssrHtml(`<main>${esc(props.data())}</main>`),
+        component: (props: DataProps) => ssrHtml(`<main>${esc(props.data())}</main>`),
       },
     ] as never;
     for (const stream of [false, true]) {
@@ -316,7 +351,7 @@ describe("dehydrate and hydrate", () => {
     expect(carrying.length).toBeGreaterThan(1);
 
     runScripts(chunks.join(""));
-    const payload = takeDehydrated()?.value as { first: string[]; later: AsyncIterable<string[]> };
+    const payload = takeDehydrated()?.value as StreamedPayload;
     expect(payload.first).toEqual(["now"]);
     const later: string[][] = [];
     for await (const batch of payload.later) later.push(batch);
@@ -333,7 +368,7 @@ describe("dehydrate and hydrate", () => {
           await tick(3);
           return "loaded";
         },
-        component: (props: { data: () => unknown }) => ssrHtml(`<main>${esc(props.data())}</main>`),
+        component: (props: DataProps) => ssrHtml(`<main>${esc(props.data())}</main>`),
       },
     ] as never;
     const handler = createPageHandler({
@@ -364,7 +399,7 @@ describe("dehydrate and hydrate", () => {
           await tick(1);
           return "loaded";
         },
-        component: (props: { data: () => unknown }) => ssrHtml(`<main>${esc(props.data())}</main>`),
+        component: (props: DataProps) => ssrHtml(`<main>${esc(props.data())}</main>`),
       },
     ] as never;
     let serving: ReturnType<typeof createRouter> | undefined;
@@ -404,12 +439,12 @@ describe("dehydrate and hydrate", () => {
 
 describe("Wrap and InnerWrap", () => {
   const order: string[] = [];
-  const wrapper =
-    (name: string) =>
-    (props: WrapProps): unknown => {
+  function wrapper(name: string) {
+    return (props: WrapProps): unknown => {
       order.push(name);
       return props.children();
     };
+  }
 
   test("the string backend builds the routes inside both, outermost first", async () => {
     order.length = 0;
@@ -512,9 +547,14 @@ describe("Wrap and InnerWrap", () => {
   });
 });
 
+interface ServedPage {
+  html: string;
+  ran: string[];
+}
+
 describe("a functional ssr", () => {
-  const table = (ran: string[]): AnyRouteDefinition[] =>
-    [
+  function table(ran: string[]): AnyRouteDefinition[] {
+    return [
       {
         path: "/docs/$kind",
         ssr: async ({ params, search }: Parameters<SsrDecider>[0]) => {
@@ -531,11 +571,12 @@ describe("a functional ssr", () => {
           return "loaded";
         },
         pendingComponent: () => ssrHtml("<i>pending</i>"),
-        component: (props: { data: () => unknown }) => ssrHtml(`<main>${esc(props.data())}</main>`),
+        component: (props: DataProps) => ssrHtml(`<main>${esc(props.data())}</main>`),
       },
     ] as never;
+  }
 
-  const served = async (path: string): Promise<{ html: string; ran: string[] }> => {
+  async function served(path: string): Promise<ServedPage> {
     const ran: string[] = [];
     const handler = createPageHandler({
       routeTree: table(ran),
@@ -544,7 +585,7 @@ describe("a functional ssr", () => {
       document,
     });
     return { html: await (await handler(get(path))).text(), ran };
-  };
+  }
 
   test("answering nothing leaves the route rendered on the server", async () => {
     const { html, ran } = await served("/docs/page");
@@ -568,6 +609,10 @@ describe("a functional ssr", () => {
   });
 });
 
+interface ChildrenProps {
+  children: unknown;
+}
+
 test("a shell is the root route with nothing under it run", async () => {
   const ran: string[] = [];
   const handler = createPageHandler({
@@ -575,8 +620,7 @@ test("a shell is the root route with nothing under it run", async () => {
       {
         id: "__root__",
         path: "/",
-        component: (props: { children: unknown }) =>
-          ssrHtml(`<nav>site</nav>${esc(props.children)}`),
+        component: (props: ChildrenProps) => ssrHtml(`<nav>site</nav>${esc(props.children)}`),
         children: [
           {
             path: "",
@@ -585,8 +629,7 @@ test("a shell is the root route with nothing under it run", async () => {
               return "home";
             },
             pendingComponent: () => ssrHtml("<i>starting</i>"),
-            component: (props: { data: () => unknown }) =>
-              ssrHtml(`<main>${esc(props.data())}</main>`),
+            component: (props: DataProps) => ssrHtml(`<main>${esc(props.data())}</main>`),
           },
         ],
       },

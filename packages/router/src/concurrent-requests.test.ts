@@ -15,7 +15,9 @@ import { expect, test } from "bun:test";
 import { HeadContent } from "./components.ts";
 import { createPageHandler, renderRoutes } from "./server.ts";
 
-const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+function tick() {
+  return new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
 
 function get(path: string): Request {
   return new Request(`https://example.com${path}`);
@@ -44,6 +46,34 @@ function detached<T>(key: string, fetch: () => Promise<T>): () => T {
   return runWithOwner(null, () => createRoot(() => createMemo(fetch, { key })));
 }
 
+interface ChildrenProps {
+  children: unknown;
+}
+
+interface IdParamsArgs {
+  params: IdParams;
+}
+
+interface IdParams {
+  id: string;
+}
+
+interface TitleHeadArgs {
+  loaderData: OptionalTitle | undefined;
+}
+
+interface OptionalTitle {
+  title?: string;
+}
+
+interface DataProps {
+  data: () => unknown;
+}
+
+interface TitleData {
+  title: string;
+}
+
 function usersHandler(
   gates: Record<string, Gate>,
   stream: boolean,
@@ -53,17 +83,17 @@ function usersHandler(
       {
         id: "__root__",
         path: "/",
-        shellComponent: (props: { children: unknown }) =>
+        shellComponent: (props: ChildrenProps) =>
           ssrHtml(
             `<html><head>${esc(HeadContent())}</head>` +
               `<body>${esc(props.children)}</body></html>`,
           ),
-        component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
+        component: (props: ChildrenProps) => ssrHtml(esc(props.children)),
         children: [
           {
             id: "/users/$id",
             path: "users/$id",
-            loader: async ({ params }: { params: { id: string } }) => {
+            loader: async ({ params }: IdParamsArgs) => {
               const mine = gates[params.id];
               mine.entered = true;
               await mine.opened;
@@ -72,11 +102,11 @@ function usersHandler(
               detached("detail", async () => `detail-of-${params.id}`);
               return { title: `private-${params.id}` };
             },
-            head: ({ loaderData }: { loaderData: { title?: string } | undefined }) => ({
+            head: ({ loaderData }: TitleHeadArgs) => ({
               meta: [{ title: loaderData?.title ?? "MISSING" }],
             }),
-            component: (props: { data: () => unknown }) =>
-              ssrHtml(`<main>${esc((props.data() as { title: string })?.title)}</main>`),
+            component: (props: DataProps) =>
+              ssrHtml(`<main>${esc((props.data() as TitleData)?.title)}</main>`),
           },
         ],
       },
@@ -126,11 +156,12 @@ test("a finished request is not left current for whatever runs next", async () =
   // Two reads under one key, made outside any render by two different callers.
   // Neither belongs to a request, so neither may answer for the other.
   let fetches = 0;
-  const visitor = (name: string) =>
-    detached("visitor", async () => {
+  function visitor(name: string) {
+    return detached("visitor", async () => {
       fetches++;
       return name;
     });
+  }
   const one = visitor("salama");
   await settle();
   const other = visitor("guest");

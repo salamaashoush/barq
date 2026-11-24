@@ -71,7 +71,7 @@ import {
 import type { JSX as CoreJSX } from "@barqjs/web/jsx-runtime";
 import type { NavigateOptionsFor, ToPath } from "./register.ts";
 import { type MatchRouteOptions, type RouterState, createRouter } from "./router.ts";
-import { type Route, type RouteProps } from "./route.ts";
+import { type Route, type RouteProps, type ShellDeclaration } from "./route.ts";
 import { NotFound, errorFallbackFor } from "./errors.ts";
 import {
   type LinkState,
@@ -163,6 +163,13 @@ function linkBackend(): LinkBackend | null {
   return read(LinkBackendContext)();
 }
 
+export interface HeadClientAssets {
+  readonly scripts?: readonly string[];
+  readonly css?: readonly string[];
+  /** The build's atoms, linked after every stylesheet in {@link css}. */
+  readonly atoms?: string;
+}
+
 /**
  * How `<HeadContent />` and `<Scripts />` reach the resolved tags.
  *
@@ -181,12 +188,7 @@ export interface HeadAssets {
   readonly matches: readonly import("./head.ts").MatchAssets[];
   readonly nonce?: string;
   /** What the client build emitted: the entry scripts and its CSS. */
-  readonly clientAssets?: {
-    readonly scripts?: readonly string[];
-    readonly css?: readonly string[];
-    /** The build's atoms, linked after every stylesheet in {@link css}. */
-    readonly atoms?: string;
-  };
+  readonly clientAssets?: HeadClientAssets;
   /** The `crossorigin` an asset is fetched with, by href, as `transformAssets` decided. */
   readonly crossOrigin?: (href: string) => string | undefined;
   /**
@@ -287,7 +289,7 @@ export const HeadAssetsContext: Context<HeadAssets | null> = createContext<HeadA
 export function HeadContent(_props?: Record<string, never>): JSXElement {
   const assets = read(HeadAssetsContext)();
   if (assets === null) return null;
-  const list = (): readonly ManagedTag[] =>
+  const list: () => readonly ManagedTag[] = () =>
     resolveHead(assets.matches, {
       nonce: assets.nonce,
       preloads: assets.preloads,
@@ -367,6 +369,14 @@ function escapeHeadAttribute(value: string): string {
     .replaceAll(">", "&gt;");
 }
 
+interface DocumentAssets {
+  preloads: string[];
+  css: string[];
+  atoms: string | undefined;
+  inlineCss: InlineCss;
+  lateCss: string;
+}
+
 /**
  * The DOM backend's `HeadAssets`, and the reason `installHead` is gone.
  *
@@ -401,13 +411,7 @@ function escapeHeadAttribute(value: string): string {
  * and the attribute is what the server wrote, and only the second one round
  * trips into a tag that claims the node it came from.
  */
-function assetsFromDocument(): {
-  preloads: string[];
-  css: string[];
-  atoms: string | undefined;
-  inlineCss: InlineCss;
-  lateCss: string;
-} {
+function assetsFromDocument(): DocumentAssets {
   const preloads: string[] = [];
   const css: string[] = [];
   let atoms: string | undefined;
@@ -509,22 +513,24 @@ const served =
     ? { preloads: [], css: [], atoms: undefined, inlineCss: NO_CSS, lateCss: "" }
     : assetsFromDocument();
 
+export interface ClientHeadAssetsOptions {
+  readonly clientAssets?: HeadAssets["clientAssets"];
+  readonly preloads?: readonly string[];
+  readonly nonce?: string;
+  /**
+   * The framework's sheet. Defaults to what the SERVER wrote, read back out
+   * of the document — `<HeadContent />` is a keyed list and the claim takes
+   * `<head>`'s children whole, so a tag the server produced and the client
+   * does not is reconciled away, and that one took the document with it.
+   */
+  readonly inlineCss?: InlineCss;
+  /** What the boot already resolved, so the first render claims. */
+  readonly initial?: readonly import("./head.ts").MatchAssets[];
+}
+
 export function clientHeadAssets(
   state: RouterState,
-  options: {
-    readonly clientAssets?: HeadAssets["clientAssets"];
-    readonly preloads?: readonly string[];
-    readonly nonce?: string;
-    /**
-     * The framework's sheet. Defaults to what the SERVER wrote, read back out
-     * of the document — `<HeadContent />` is a keyed list and the claim takes
-     * `<head>`'s children whole, so a tag the server produced and the client
-     * does not is reconciled away, and that one took the document with it.
-     */
-    readonly inlineCss?: InlineCss;
-    /** What the boot already resolved, so the first render claims. */
-    readonly initial?: readonly import("./head.ts").MatchAssets[];
-  } = {},
+  options: ClientHeadAssetsOptions = {},
 ): HeadAssets {
   const [resolved, setResolved] = createSignal<readonly import("./head.ts").MatchAssets[]>(
     options.initial ?? [],
@@ -656,6 +662,12 @@ export function clientHeadAssets(
   };
 }
 
+export interface DocumentProps {
+  readonly state: unknown;
+  readonly head?: unknown;
+  readonly children: unknown;
+}
+
 /**
  * The DOCUMENT, on the client: the root route's shell with the app inside it.
  *
@@ -670,11 +682,7 @@ export function clientHeadAssets(
  * for exactly this reason: a cold `lazy()` here throws `NotReadyError` from a
  * position with no boundary above it and the whole page fails.
  */
-export function Document(props: {
-  readonly state: unknown;
-  readonly head?: unknown;
-  readonly children: unknown;
-}): JSXElement {
+export function Document(props: DocumentProps): JSXElement {
   const state = readSlot(props.state, "Document.state") as RouterState;
   const shell = shellComponentOf(state.config.routeTree);
   const assets = clientHeadAssets(state, {
@@ -702,6 +710,10 @@ export function Document(props: {
   );
 }
 
+export interface ShellProps {
+  children: unknown;
+}
+
 /**
  * The root route's `shellComponent`, or `undefined` for a table without one.
  *
@@ -710,11 +722,9 @@ export function Document(props: {
  */
 function shellComponentOf(
   routes: readonly unknown[],
-): ((props: { children: unknown }) => unknown) | undefined {
-  const declared = (routes[0] as { shellComponent?: unknown } | undefined)?.shellComponent;
-  return typeof declared === "function"
-    ? (declared as (props: { children: unknown }) => unknown)
-    : undefined;
+): ((props: ShellProps) => unknown) | undefined {
+  const declared = (routes[0] as ShellDeclaration | undefined)?.shellComponent;
+  return typeof declared === "function" ? (declared as (props: ShellProps) => unknown) : undefined;
 }
 
 /** What the shell was handed, or `null` where there is no shell. */
@@ -765,6 +775,10 @@ export function useRouter(): RouterState {
  */
 export const NOT_FOUND = "404 - Not Found";
 
+interface ReadyHook {
+  ready?: () => void;
+}
+
 /**
  * A code-split component's tracked readiness probe, when it has one.
  *
@@ -773,7 +787,7 @@ export const NOT_FOUND = "404 - Not Found";
  * module landing wake the boundary that parked on it.
  */
 function readyOf(component: unknown): void {
-  const ready = (component as { ready?: () => void } | undefined)?.ready;
+  const ready = (component as ReadyHook | undefined)?.ready;
   if (typeof ready === "function") ready();
 }
 
@@ -791,7 +805,9 @@ export function renderDepth(
   parent: Node | null,
   anchor: Node | null,
 ): Node | Node[] | null {
-  const routeAt = (): Route | null => state.chain()[depth] ?? null;
+  function routeAt(): Route | null {
+    return state.chain()[depth] ?? null;
+  }
 
   /**
    * What this depth's region is keyed on.
@@ -805,16 +821,16 @@ export function renderDepth(
    * `===`: two runs returning `{ id: "2" }` are different objects and would
    * rebuild on every navigation, which is the opposite of what was asked for.
    */
-  const keyAt = (): unknown => {
+  function keyAt(): unknown {
     const route = routeAt();
     const deps = route?.definition.remountDeps;
     if (route === null || deps === undefined) return route;
     return `${route.id}\u0000${JSON.stringify(
       deps({ routeId: route.id, params: state.params() as never, search: state.validSearch() }),
     )}`;
-  };
+  }
 
-  const body = (): unknown => {
+  function body(): unknown {
     const route = untrack(routeAt);
     if (route === null) {
       // The not-found goes where the MATCHED route would have gone, which with
@@ -859,7 +875,7 @@ export function renderDepth(
     // reactivity. A body that reads `useParams()` directly would otherwise
     // subscribe the enclosing block and rebuild the whole route on a parameter
     // change. Measured: two builds for one navigation within the same route.
-    const content = (): unknown => {
+    function content(): unknown {
       // TRACKED, and outside the `untrack` below on purpose. A code-split route
       // is a `lazy()`, and reading its cell inside `untrack` subscribes to
       // nothing — so the `NotReadyError` parks this depth's boundary and the
@@ -879,7 +895,7 @@ export function renderDepth(
           (component as unknown as Invoked)(routeProps(state, depth, route, children)),
         );
       });
-    };
+    }
 
     // An `Errored` per depth, INSIDE the `Loading`, matching what the string
     // backend emits. Without it a loader that rejects on the client after
@@ -927,7 +943,7 @@ export function renderDepth(
       // `blocking` reload moves it too, for the same reason.
       () => `${state.location().pathname} ${state.blockingReloads()}`,
     );
-  };
+  }
 
   // HYDRATE on all three, and `renderRoutes` writes the same three ranges in
   // the same order. Without it the string backend still wrote its boundary
@@ -1144,10 +1160,19 @@ function ClientOnlyImpl(props: Incoming<ClientOnlyProps>): JSXElement {
  * invokes the next depth; anything else is a value and is returned. That is
  * what lets `<ClientOnly>` take JSX children and a JSX fallback.
  */
-const place = (slot: unknown) => (): unknown =>
-  typeof slot === "function" ? (slot as () => unknown)() : (slot ?? null);
+function place(slot: unknown) {
+  return (): unknown => (typeof slot === "function" ? (slot as () => unknown)() : (slot ?? null));
+}
 
-function loadChildren(): Promise<{ default: (props: { children?: unknown }) => unknown }> {
+interface ChildrenModule {
+  default: (props: OptionalChildrenProps) => unknown;
+}
+
+interface OptionalChildrenProps {
+  children?: unknown;
+}
+
+function loadChildren(): Promise<ChildrenModule> {
   return Promise.resolve({ default: (props) => place(props.children)() });
 }
 
@@ -1283,8 +1308,8 @@ export interface MatchRouteProps extends MatchRouteOptions {
  */
 function MatchRouteImpl(props: Incoming<MatchRouteProps>): JSXElement {
   const state = useRouter();
-  const matched = (): Record<string, string> | false =>
-    state.matchRoute({
+  function matched(): Record<string, string> | false {
+    return state.matchRoute({
       to: readSlot(props.to, "MatchRoute.to") as string,
       params:
         props.params === undefined
@@ -1301,6 +1326,7 @@ function MatchRouteImpl(props: Incoming<MatchRouteProps>): JSXElement {
           ? undefined
           : Boolean(readSlot(props.includeSearch, "MatchRoute.includeSearch")),
     });
+  }
 
   const body: Block<unknown> = (): unknown => {
     const found = matched();
@@ -1315,7 +1341,9 @@ function MatchRouteImpl(props: Incoming<MatchRouteProps>): JSXElement {
 
   // An INDEX into the arms: a boolean key selects `bodies[false]`, which is
   // `undefined`, and the region renders nothing.
-  const arm = (): number => (matched() === false ? 0 : 1);
+  function arm(): number {
+    return matched() === false ? 0 : 1;
+  }
   const bodies = [block(() => null), block(body)];
   const backend = linkBackend();
   if (backend?.branch !== undefined) return backend.branch(arm(), bodies) as JSXElement;
@@ -1334,6 +1362,10 @@ export interface RouterProps {
   readonly afterEach?: RouterState["config"]["afterEach"];
 }
 
+interface RouterProviderProps {
+  state: RouterState;
+}
+
 /**
  * Render an ALREADY-BUILT router state.
  *
@@ -1341,7 +1373,7 @@ export interface RouterProps {
  * `onLoaderError` and read the answer back, and the app renders that state
  * rather than making a second one.
  */
-function RouterProviderImpl(props: Incoming<{ state: RouterState }>): unknown {
+function RouterProviderImpl(props: Incoming<RouterProviderProps>): unknown {
   const state = readSlot(props.state, "RouterProvider.state") as RouterState;
   void state.start();
   return routed(state);
@@ -1474,7 +1506,7 @@ export type LinkProps<To extends string = string, From extends string = string> 
 const notFoundTemplate = template(`<p>${NOT_FOUND}</p>`);
 
 /** A fuzzy not-found has nothing to retry, so its `reset` does nothing. */
-const NOOP_RESET = (): void => {};
+function NOOP_RESET(): void {}
 
 /**
  * The error a route's `notFoundComponent` is handed for an unmatched LOCATION.
@@ -1528,7 +1560,9 @@ function anchorElement(props: Incoming<NavLinkProps>, activeClass: string | null
   // Read inside the effect, not captured at construction: a surviving `<Link>`
   // under a layout must re-resolve when the location moves, or it points at the
   // path it was built under forever.
-  const target = (): string => resolveTo(state, props);
+  function target(): string {
+    return resolveTo(state, props);
+  }
 
   bindProp(element, setAttr, "href", () => linkAttrHref(state, target()));
   if (props.class !== undefined || link.tracksActive) {
@@ -1701,11 +1735,11 @@ export function createLink(
 ): <const To extends string = string, const From extends string = string>(
   props: LinkProps<To, From>,
 ) => JSXElement {
-  const created = (props: Incoming<LinkProps>): unknown => {
+  function created(props: Incoming<LinkProps>): unknown {
     const link = linkElementProps(useRouter(), props, null);
     link.children = props.children;
     return component(link);
-  };
+  }
   return created as never;
 }
 
@@ -1740,9 +1774,7 @@ function RedirectImpl(props: Incoming<RedirectProps>): null {
 type Authored<P> = (props: P) => JSXElement;
 
 export const Router = RouterImpl as unknown as Authored<RouterProps>;
-export const RouterProvider = RouterProviderImpl as unknown as Authored<{
-  state: RouterState;
-}>;
+export const RouterProvider = RouterProviderImpl as unknown as Authored<RouterProviderProps>;
 export const Link = LinkImpl as unknown as <
   const To extends string = string,
   const From extends string = string,

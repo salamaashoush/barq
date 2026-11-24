@@ -19,8 +19,9 @@ const both = createServerFn()
   .validator("unchecked")
   .handler(async () => "ok");
 
-const lookup = (id: string) =>
-  ({ "fn#guarded": guarded, "fn#bare": bare, "fn#both": both })[id] as never;
+function lookup(id: string) {
+  return { "fn#guarded": guarded, "fn#bare": bare, "fn#both": both }[id] as never;
+}
 
 group("verifyRouteChains", () => {
   const routes: AnyRouteDefinition[] = [

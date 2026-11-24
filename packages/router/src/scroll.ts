@@ -123,10 +123,14 @@ function write(all: Record<string, Entry>): void {
   }
 }
 
+interface ScrollContainer {
+  id: string;
+  get: () => Offsets;
+  set: (to: Offsets) => void;
+}
+
 /** Every element that opted in, plus the window. */
-function containers(
-  behavior?: ScrollBehavior,
-): { id: string; get: () => Offsets; set: (to: Offsets) => void }[] {
+function containers(behavior?: ScrollBehavior): ScrollContainer[] {
   const out = [
     {
       id: "window",
@@ -170,18 +174,17 @@ function toTopElements(
   return out;
 }
 
+export interface RestoreOptions {
+  readonly reset?: boolean;
+  /** This navigation's answer, over the configured one. */
+  readonly hashScrollIntoView?: boolean | ScrollIntoViewOptions;
+}
+
 export interface ScrollRestoration {
   /** Remember where the CURRENT page is, before leaving it. */
   save(location: Location): void;
   /** Put the new page where it was, or at the top, or at its hash. */
-  restore(
-    location: Location,
-    options?: {
-      readonly reset?: boolean;
-      /** This navigation's answer, over the configured one. */
-      readonly hashScrollIntoView?: boolean | ScrollIntoViewOptions;
-    },
-  ): void;
+  restore(location: Location, options?: RestoreOptions): void;
   dispose(): void;
 }
 
@@ -220,7 +223,7 @@ export function scrollRestoration(options: ScrollOptions = {}): ScrollRestoratio
 
     restore(location, to) {
       const saved = to?.reset === true ? undefined : read()[keyOf(location)];
-      const apply = (): void => {
+      function apply(): void {
         if (saved !== undefined) {
           for (const container of containers(options.behavior)) {
             const at = saved[container.id];
@@ -248,7 +251,7 @@ export function scrollRestoration(options: ScrollOptions = {}): ScrollRestoratio
         for (const element of toTopElements(options.toTop)) {
           element.scrollTo?.(0, 0);
         }
-      };
+      }
 
       // BEFORE the next paint. The old router restored after
       // `await transition.finished`, i.e. at the END of the view transition, so
@@ -308,6 +311,28 @@ function makeTransitionsInert(): void {
 
 let inFlight = false;
 
+export interface ViewTransitionTypes {
+  readonly types?: readonly string[];
+}
+
+interface MaybeTransitionDocument {
+  startViewTransition?: unknown;
+}
+
+interface ViewTransitionDocument {
+  startViewTransition: (update: (() => void) | ViewTransitionUpdate) => ViewTransitionHandle;
+}
+
+interface ViewTransitionUpdate {
+  update: () => void;
+  types: readonly string[];
+}
+
+interface ViewTransitionHandle {
+  updateCallbackDone: Promise<void>;
+  finished: Promise<void>;
+}
+
 /**
  * Run a DOM commit inside a view transition when one is available and wanted.
  *
@@ -329,11 +354,11 @@ let inFlight = false;
  */
 export async function withViewTransition(
   commit: () => void,
-  options?: Omit<ViewTransitionOptions, "types"> & { readonly types?: readonly string[] },
+  options?: Omit<ViewTransitionOptions, "types"> & ViewTransitionTypes,
 ): Promise<void> {
   const supported =
     typeof document !== "undefined" &&
-    typeof (document as { startViewTransition?: unknown }).startViewTransition === "function";
+    typeof (document as MaybeTransitionDocument).startViewTransition === "function";
 
   // `inFlight` first: it is the cheapest check, and the convention test reads a
   // module-level mutable AFTER a `||` as a resolver falling back to one. This is
@@ -353,16 +378,9 @@ export async function withViewTransition(
   makeTransitionsInert();
   inFlight = true;
   try {
-    const start = (
-      document as unknown as {
-        startViewTransition: (
-          update: (() => void) | { update: () => void; types: readonly string[] },
-        ) => {
-          updateCallbackDone: Promise<void>;
-          finished: Promise<void>;
-        };
-      }
-    ).startViewTransition.bind(document);
+    const start = (document as unknown as ViewTransitionDocument).startViewTransition.bind(
+      document,
+    );
     const types = options.types;
     let transition: ReturnType<typeof start>;
     if (types === undefined || types.length === 0) {

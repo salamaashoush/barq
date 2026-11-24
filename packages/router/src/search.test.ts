@@ -87,12 +87,14 @@ describe("validateSearch", () => {
 });
 
 describe("search middlewares", () => {
-  const run = (
+  function run(
     middlewares: Parameters<typeof applySearchMiddleware>[0],
     current: Record<string, unknown>,
     intent: Record<string, unknown>,
     defaults = new Map<string, unknown>(),
-  ): Record<string, unknown> => applySearchMiddleware(middlewares, current, intent, defaults);
+  ): Record<string, unknown> {
+    return applySearchMiddleware(middlewares, current, intent, defaults);
+  }
 
   test("with no middleware the caller's intent is the whole answer", () => {
     expect(run([], { keep: "1" }, { fresh: "2" })).toEqual({ fresh: "2" });

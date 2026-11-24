@@ -39,6 +39,10 @@ export interface RenderChannel {
   hold(work: Promise<void>): void;
 }
 
+interface UnrefTimer {
+  unref?: () => void;
+}
+
 export function createRenderChannel(nonce?: string): RenderChannel {
   const attr = nonce === undefined ? "" : ` nonce="${escapeAttribute(nonce)}"`;
   const scripts: string[] = [];
@@ -47,17 +51,18 @@ export function createRenderChannel(nonce?: string): RenderChannel {
   let wake: (() => void) | null = null;
   let written: Promise<void> = Promise.resolve();
 
-  const injectScript = (script: string): void => {
+  function injectScript(script: string): void {
     scripts.push(`<script${attr}>${script}</script>`);
     const waiter = wake;
     wake = null;
     waiter?.();
-  };
+  }
 
-  const queued = (body: string): string =>
-    `(window.${ROUTER_DEHYDRATED_GLOBAL}=window.${ROUTER_DEHYDRATED_GLOBAL}||[]).push(function(){${body}})`;
+  function queued(body: string): string {
+    return `(window.${ROUTER_DEHYDRATED_GLOBAL}=window.${ROUTER_DEHYDRATED_GLOBAL}||[]).push(function(){${body}})`;
+  }
 
-  const carry = async (value: unknown): Promise<void> => {
+  async function carry(value: unknown): Promise<void> {
     if (value === undefined) return;
     const encoder = createSeedEncoder();
     await new Promise<void>((settled) => {
@@ -72,7 +77,7 @@ export function createRenderChannel(nonce?: string): RenderChannel {
       // when the client asks, after its serialization adapters are registered.
       injectScript(`${encoder.header};${queued(`return ${initial}.value`)}`);
     });
-  };
+  }
 
   return {
     serverSsr: {
@@ -111,7 +116,7 @@ export function createRenderChannel(nonce?: string): RenderChannel {
       let timer: ReturnType<typeof setTimeout> | undefined;
       const deadline = new Promise<void>((resolve) => {
         timer = setTimeout(resolve, SETTLE_TIMEOUT);
-        (timer as { unref?: () => void }).unref?.();
+        (timer as UnrefTimer).unref?.();
       });
       await Promise.race([written, deadline]);
       clearTimeout(timer);

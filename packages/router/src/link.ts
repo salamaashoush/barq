@@ -78,13 +78,15 @@ function updated(slot: unknown, current: unknown): unknown {
   return typeof once === "function" ? (once as (given: unknown) => unknown)(current) : once;
 }
 
-const flag = (slot: unknown, name: string): boolean | undefined =>
-  slot === undefined ? undefined : Boolean(readSlot(slot, name));
+function flag(slot: unknown, name: string): boolean | undefined {
+  return slot === undefined ? undefined : Boolean(readSlot(slot, name));
+}
 
 /** A link's props as the navigation they describe. */
 export function linkNavigation(state: RouterState, props: Props): NavigateOptions {
-  const given = (slot: unknown, name: string): unknown =>
-    slot === undefined ? undefined : readSlot(slot, name);
+  function given(slot: unknown, name: string): unknown {
+    return slot === undefined ? undefined : readSlot(slot, name);
+  }
   return {
     to: readSlot(props.to, "Link.to") as string,
     from: given(props.from, "Link.from") as string | undefined,
@@ -193,36 +195,44 @@ export function linkState(state: RouterState, props: Props, activeClass: string 
   // Read inside the effect, not captured at construction: a surviving `<Link>`
   // under a layout must re-resolve when the location moves, or it points at the
   // path it was built under forever.
-  const target = (): BuiltLocation => state.buildLocation(linkNavigation(state, props));
+  function target(): BuiltLocation {
+    return state.buildLocation(linkNavigation(state, props));
+  }
   const tracksActive =
     activeClass !== null ||
     props.activeProps !== undefined ||
     props.inactiveProps !== undefined ||
     props.activeOptions !== undefined;
 
-  const isActive = (): boolean =>
-    tracksActive &&
-    linkIsActive(
-      state,
-      target().href,
-      flag(props.end, "NavLink.end") ?? false,
-      props.activeOptions === undefined
-        ? undefined
-        : (readSlot(props.activeOptions, "NavLink.activeOptions") as ActiveOptions),
+  function isActive(): boolean {
+    return (
+      tracksActive &&
+      linkIsActive(
+        state,
+        target().href,
+        flag(props.end, "NavLink.end") ?? false,
+        props.activeOptions === undefined
+          ? undefined
+          : (readSlot(props.activeOptions, "NavLink.activeOptions") as ActiveOptions),
+      )
     );
-  const isDisabled = (): boolean => flag(props.disabled, "Link.disabled") === true;
+  }
+  function isDisabled(): boolean {
+    return flag(props.disabled, "Link.disabled") === true;
+  }
 
-  const record = (slot: unknown, name: string): Attributes => {
+  function record(slot: unknown, name: string): Attributes {
     if (slot === undefined) return {};
     const read = readSlot(slot, name);
     return ((typeof read === "function" ? (read as () => unknown)() : read) ?? {}) as Attributes;
-  };
-  const current = (): Attributes =>
-    isActive()
+  }
+  function current(): Attributes {
+    return isActive()
       ? record(props.activeProps, "NavLink.activeProps")
       : record(props.inactiveProps, "NavLink.inactiveProps");
+  }
 
-  const className = (): string => {
+  function className(): string {
     const own = props.class === undefined ? "" : (readSlot(props.class, "Link.class") as string);
     const named =
       activeClass === null || !isActive()
@@ -231,12 +241,12 @@ export function linkState(state: RouterState, props: Props, activeClass: string 
           ? activeClass
           : (readSlot(props.activeClass, "NavLink.activeClass") as string);
     return `${own ?? ""} ${named} ${current().class ?? ""}`.replace(/\s+/g, " ").trim();
-  };
+  }
 
-  const stateAttributes = (): Attributes => {
+  function stateAttributes(): Attributes {
     const { class: _class, ...rest } = current();
     return rest;
-  };
+  }
   const stateAttributeNames = untrack(() => [
     ...new Set([
       ...Object.keys(record(props.activeProps, "NavLink.activeProps")),
@@ -272,28 +282,29 @@ export function linkBehavior(
 
   // The strategy is read WHEN A LISTENER FIRES, so a link whose prop moves acts
   // on what it now says.
-  const strategy = (): PreloadStrategy =>
-    props.preload === undefined
+  function strategy(): PreloadStrategy {
+    return props.preload === undefined
       ? // The router's answer when the link does not give one. `false` still,
         // unless a project turned preloading on for every link at once.
         (state.config.defaults?.preload ?? false)
       : ((readSlot(props.preload, "Link.preload") as PreloadStrategy) ?? false);
+  }
 
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const warm = (): void => {
+  function warm(): void {
     if (target().external) return;
     void state.preloadRoute(linkNavigation(state, props));
-  };
-  const onLeave = (): void => {
+  }
+  function onLeave(): void {
     clearTimeout(timer);
     timer = undefined;
-  };
+  }
   // Cleared on UNMOUNT as well as on leave. The old router cleared only on
   // `mouseleave`, so unmounting inside the hover window still fired a preload
   // against a disposed scope.
   onCleanup(onLeave);
 
-  const onIntent = (): void => {
+  function onIntent(): void {
     if (strategy() !== "intent" || timer !== undefined) return;
     const delay =
       props.preloadDelay === undefined
@@ -303,15 +314,15 @@ export function linkBehavior(
       timer = undefined;
       warm();
     }, delay);
-  };
+  }
 
-  const onTouch = (): void => {
+  function onTouch(): void {
     if (strategy() !== "intent") return;
     onLeave();
     warm();
-  };
+  }
 
-  const onClick = (event: MouseEvent): void => {
+  function onClick(event: MouseEvent): void {
     if (isDisabled()) {
       // Refused entirely: no navigation and no document load either.
       event.preventDefault();
@@ -330,7 +341,7 @@ export function linkBehavior(
     if (flag(props.reloadDocument, "Link.reloadDocument") === true) return;
     event.preventDefault();
     void state.navigate(linkNavigation(state, props));
-  };
+  }
 
   return { ...link, strategy, warm, onClick, onIntent, onLeave, onTouch };
 }
@@ -379,9 +390,9 @@ export function linkElementProps(
     onBlur: link.onLeave,
     onTouchStart: link.onTouch,
   };
-  const live = (name: string, get: () => unknown): void => {
+  function live(name: string, get: () => unknown): void {
     Object.defineProperty(out, name, { get, enumerable: true });
-  };
+  }
   for (const name of Object.keys(props)) {
     if (LINK_OWN_PROPS.has(name)) continue;
     const slot = (props as Record<string, unknown>)[name];

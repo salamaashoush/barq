@@ -55,22 +55,27 @@ declare module "#barq-start-entry" {
 declare module "virtual:barq-route-assets" {
   const routeAssets: Readonly<Record<string, readonly string[]>>;
   const routeCss: Readonly<Record<string, readonly string[]>>;
+  interface ModuleAssetFiles {
+    readonly js: readonly string[];
+    readonly css: readonly string[];
+  }
+
   /** Module URL -> what a `lazy()` of it needs, for the renderer's `manifest`. */
-  const moduleAssets: Readonly<
-    Record<string, { readonly js: readonly string[]; readonly css: readonly string[] }>
-  >;
+  const moduleAssets: Readonly<Record<string, ModuleAssetFiles>>;
   export { moduleAssets, routeAssets, routeCss };
   export default routeAssets;
 }
 
 /** What the client build emitted, for the server half to place in the document. */
 declare module "virtual:barq-client-assets" {
-  const clientAssets: {
+  interface ClientAssets {
     readonly scripts?: readonly string[];
     readonly css?: readonly string[];
     readonly atoms?: string;
     readonly preload?: readonly string[];
-  };
+  }
+
+  const clientAssets: ClientAssets;
   export { clientAssets };
   export default clientAssets;
 }

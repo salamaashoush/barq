@@ -16,18 +16,24 @@ import { memoryHistory } from "./history.ts";
 import type { AnyRouteDefinition, RouteProps } from "./route.ts";
 import { type RouterState, createRouter } from "./router.ts";
 
-const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+function tick(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
 
 afterEach(() => {
   document.body.innerHTML = "";
 });
 
-const page =
-  (labelText: string) =>
-  (_props: RouteProps): Node =>
-    document.createTextNode(labelText);
+function page(labelText: string) {
+  return (_props: RouteProps): Node => document.createTextNode(labelText);
+}
 
-function mount(state: RouterState, open = true): { host: HTMLElement; dispose: () => void } {
+interface Mounted {
+  host: HTMLElement;
+  dispose: () => void;
+}
+
+function mount(state: RouterState, open = true): Mounted {
   const host = document.createElement("div");
   document.body.append(host);
   const dispose = render(

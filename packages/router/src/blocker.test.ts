@@ -19,13 +19,20 @@ import { useBlocker } from "./hooks.ts";
 import type { AnyRouteDefinition, RouteProps } from "./route.ts";
 import { type RouterState, createRouter } from "./router.ts";
 
-const tick = (ms = 0) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+function tick(ms = 0) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
 
 afterEach(() => {
   document.body.innerHTML = "";
 });
 
-function mountState(state: RouterState): { host: HTMLElement; dispose: () => void } {
+interface Mounted {
+  host: HTMLElement;
+  dispose: () => void;
+}
+
+function mountState(state: RouterState): Mounted {
   const host = document.createElement("div");
   document.body.appendChild(host);
   const dispose = render(
@@ -39,22 +46,23 @@ function mountState(state: RouterState): { host: HTMLElement; dispose: () => voi
   return { host, dispose };
 }
 
-const page =
-  (label: string, body: () => unknown = () => null) =>
-  (_props: RouteProps): Node => {
+function page(label: string, body: () => unknown = () => null) {
+  return (_props: RouteProps): Node => {
     const node = document.createElement("section");
     node.append(label);
     const extra = body();
     if (extra !== null && extra !== undefined) insert(node, extra);
     return node;
   };
+}
 
-const table = (form: (props: RouteProps) => Node = page("form")): AnyRouteDefinition[] =>
-  [
+function table(form: (props: RouteProps) => Node = page("form")): AnyRouteDefinition[] {
+  return [
     { path: "/", component: page("home") },
     { path: "/form/$id", component: form },
     { path: "/done", component: page("done") },
   ] as never;
+}
 
 describe("a blocker and `navigate`", () => {
   test("shouldBlockFn is told where from, where to, and how", async () => {
@@ -238,10 +246,10 @@ describe("a blocker and the back button", () => {
     window.history.go = (delta: number) => {
       goes.push(delta);
     };
-    const land = (entry: unknown, url: string): void => {
+    function land(entry: unknown, url: string): void {
       window.history.replaceState(entry, "", url);
       window.dispatchEvent(new PopStateEvent("popstate", { state: entry }));
-    };
+    }
 
     try {
       let refuse = true;
@@ -280,11 +288,11 @@ describe("a blocker and the back button", () => {
 });
 
 describe("a blocker and the tab", () => {
-  const closing = (): boolean => {
+  function closing(): boolean {
     const event = new Event("beforeunload", { cancelable: true });
     window.dispatchEvent(event);
     return event.defaultPrevented;
-  };
+  }
 
   test("`enableBeforeUnload` asks the browser to confirm, for as long as the blocker lives", () => {
     const state = createRouter({
@@ -328,11 +336,13 @@ describe("a blocker and the tab", () => {
   });
 });
 
+interface DialogSetup {
+  state: RouterState;
+  resolver: () => BlockerResolver;
+}
+
 describe("withResolver", () => {
-  const withDialog = (): {
-    state: RouterState;
-    resolver: () => BlockerResolver;
-  } => {
+  function withDialog(): DialogSetup {
     let resolver: Cell<BlockerResolver> | undefined;
     const state = createRouter({
       routeTree: table(
@@ -348,7 +358,7 @@ describe("withResolver", () => {
       history: memoryHistory({ initial: ["/form/7"] }),
     });
     return { state, resolver: () => (resolver as Cell<BlockerResolver>)() };
-  };
+  }
 
   test("a blocked navigation waits on the resolver, and `proceed` lets it through", async () => {
     const { state, resolver } = withDialog();

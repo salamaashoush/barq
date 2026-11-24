@@ -57,6 +57,10 @@ export function searchRecord(search: URLSearchParams): Record<string, unknown> {
   return out;
 }
 
+interface ValidatedValue {
+  value: Record<string, unknown>;
+}
+
 /** Run one route's validator over the search it inherits. */
 export function validateSearch(
   validator: SearchValidator | undefined,
@@ -78,7 +82,7 @@ export function validateSearch(
         result.issues,
       );
     }
-    return (result as { value: Record<string, unknown> }).value;
+    return (result as ValidatedValue).value;
   }
 
   if (typeof validator === "object" && "parse" in validator) {
@@ -156,11 +160,11 @@ export function applySearchMiddleware(
   intent: Record<string, unknown>,
   defaults: ReadonlyMap<string, unknown>,
 ): Record<string, unknown> {
-  const step = (index: number, search: Record<string, unknown>): Record<string, unknown> => {
+  function step(index: number, search: Record<string, unknown>): Record<string, unknown> {
     const middleware = middlewares[index];
     if (middleware === undefined) return intent;
     return middleware({ search, defaults, next: (next) => step(index + 1, next) });
-  };
+  }
   return step(0, current);
 }
 
@@ -175,7 +179,7 @@ export function applySearchMiddleware(
  */
 export function toSearchString(search: Record<string, unknown>): string {
   const params = new URLSearchParams();
-  const write = (key: string, value: unknown): void => {
+  function write(key: string, value: unknown): void {
     if (value === undefined || value === null || value === "") return;
     if (typeof value === "string") {
       params.append(key, value);
@@ -186,7 +190,7 @@ export function toSearchString(search: Record<string, unknown>): string {
       return;
     }
     params.append(key, JSON.stringify(value) ?? "");
-  };
+  }
   for (const [key, value] of Object.entries(search)) {
     if (Array.isArray(value)) {
       for (const item of value as unknown[]) write(key, item);

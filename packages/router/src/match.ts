@@ -11,7 +11,14 @@
 import { type Cell, createMemo, untrack } from "@barqjs/core";
 
 import { type RouteMatchInfo, useRouteMatch, useRouter } from "./components.ts";
-import type { NavigateFn, RegisteredRouteTree, RouteId, RoutesOf } from "./register.ts";
+import type { RouteTypes } from "./file-route.ts";
+import type {
+  DeclaredRouteTypes,
+  NavigateFn,
+  RegisteredRouteTree,
+  RouteId,
+  RoutesOf,
+} from "./register.ts";
 import type { Route } from "./route.ts";
 import { type RouteMatch, type RouterState, sameShape } from "./router.ts";
 
@@ -40,12 +47,17 @@ export type Thrown<Value, Throw extends boolean> = Throw extends false ? Value |
 /** Where a hook with no `from` reads: the match rendering it, or the deepest. */
 export type Anchor = "nearest" | "leaf";
 
+interface LocatedMatch {
+  readonly match: RouteMatch;
+  readonly index: number;
+}
+
 function locate(
   state: RouterState,
   near: RouteMatchInfo | null,
   from: string | undefined,
   anchor: Anchor,
-): { readonly match: RouteMatch; readonly index: number } | undefined {
+): LocatedMatch | undefined {
   const all = state.matches();
   let index = all.length - 1;
   if (from !== undefined) index = all.findIndex((match) => match.routeId === from);
@@ -113,10 +125,14 @@ export function matchCell<Value, Selected = Value>(
   });
 }
 
+export interface MatchesSelector<Selected> {
+  readonly select?: (matches: readonly RouteMatch[]) => Selected;
+}
+
 /** The matches on one side of the nearest one, for `useChildMatches` and `useParentMatches`. */
 export function matchesCell<Selected = readonly RouteMatch[]>(
   side: "all" | "children" | "parents",
-  options: { readonly select?: (matches: readonly RouteMatch[]) => Selected } | undefined,
+  options: MatchesSelector<Selected> | undefined,
 ): Cell<Selected> {
   const state = useRouter();
   const near = useRouteMatch();
@@ -145,21 +161,22 @@ export function loaderCell<Data, Selected = Data>(
   const near = useRouteMatch();
   const from = options?.from;
   const select = options?.select;
-  const route = (): Route | undefined =>
-    from === undefined
+  function route(): Route | undefined {
+    return from === undefined
       ? (near?.route ?? state.chain().at(-1))
       : state.chain().find((candidate) => candidate.id === from);
+  }
   if (from !== undefined && options?.shouldThrow !== false && untrack(route) === undefined) {
     throw new Error(
       `[barq-router] \`useLoaderData({ from: ${JSON.stringify(from)} })\` was called while the route ${JSON.stringify(from)} is not matched by the current URL, so it has no loader data to read. ` +
         "Call it from a component rendered under that route, or pass `shouldThrow: false` to read `undefined` instead.",
     );
   }
-  const data = (): Data => {
+  function data(): Data {
     const found = route();
     if (found === undefined) return undefined as Data;
     return state.dataFor(found, state.params(), near?.blocking ?? false)() as Data;
-  };
+  }
   if (select === undefined) return data as unknown as Cell<Selected>;
   return createMemo(
     () => select(data()),
@@ -205,14 +222,9 @@ export interface RouteApi<
 export type RouteApiOf<Tree, Id extends string> = Id extends keyof RoutesOf<Tree>
   ? [RoutesOf<Tree>[Id]] extends [never]
     ? RouteApi<Id>
-    : RoutesOf<Tree>[Id] extends {
-          readonly types?: {
-            readonly loaderData: infer Data;
-            readonly params: infer Params;
-            readonly search: infer Search;
-            readonly loaderDeps: infer Deps;
-          };
-        }
+    : RoutesOf<Tree>[Id] extends DeclaredRouteTypes<
+          RouteTypes<infer Data, infer Params, infer Deps, infer Search>
+        >
       ? RouteApi<Id, Data, Params, Search, Deps>
       : RouteApi<Id>
   : RouteApi<Id>;
@@ -238,14 +250,19 @@ export function getRouteApi<const Id extends string>(id: Id): RouteApiOf<Registe
     useNavigate: () => {
       const state = useRouter();
       const origin: string = id;
-      const navigate = (to: unknown, options?: object): Promise<void> =>
-        typeof to === "string"
+      function navigate(to: unknown, options?: object): Promise<void> {
+        return typeof to === "string"
           ? state.navigate(to, { from: origin, ...options })
           : state.navigate({ from: origin, ...(to as object) });
+      }
       return navigate;
     },
   };
   return api as never;
+}
+
+export interface AwaitedOptions<T> {
+  readonly promise: Promise<T>;
 }
 
 /**
@@ -255,7 +272,7 @@ export function getRouteApi<const Id extends string>(id: Id): RouteApiOf<Registe
  * boundary, and a rejection reaches the nearest error boundary: the hook form
  * of `<Await>`. The promise comes back beside it, as TanStack's does.
  */
-export function useAwaited<T>(options: { readonly promise: Promise<T> }): [Cell<T>, Promise<T>] {
+export function useAwaited<T>(options: AwaitedOptions<T>): [Cell<T>, Promise<T>] {
   const promise = options.promise;
   return [createMemo(async () => await promise), promise];
 }

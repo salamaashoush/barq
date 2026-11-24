@@ -88,7 +88,7 @@ import { settle } from "@barqjs/core";
 import { setAsyncSession } from "@barqjs/core/internal";
 
 import { isNavigable } from "./path.ts";
-import { type TransformAssets, createAssetTransform } from "./assets.ts";
+import { type ClientAssets, type TransformAssets, createAssetTransform } from "./assets.ts";
 import {
   type EarlyHintsEvent,
   type ResponseLinkHeader,
@@ -104,6 +104,7 @@ import {
   type RouteHandlers,
   type RouteMethod,
   type RouteServer,
+  type ShellDeclaration,
   ROOT_ROUTE_ID,
   flattenRoutes,
   preloadMatched,
@@ -126,6 +127,7 @@ import {
   NOT_FOUND,
   RouteMatchContext,
   RouterContext,
+  type ShellProps,
   entryScripts,
   linkAttrHref,
   routePropsFor,
@@ -144,6 +146,10 @@ import {
  * with each depth's `children` a Block the layout may place where it likes.
  */
 type Invoked = (props: unknown) => unknown;
+
+interface DefaultExport {
+  default: unknown;
+}
 
 /**
  * `<Link>` and `<NavLink>`, as bytes.
@@ -180,7 +186,7 @@ const linkBackend = {
     return ssrHtml(`<a ${attributes}>${esc(children)}</a>`);
   },
   /** `<ClientOnly>`: the server half of the `clientOnly` the client builds. */
-  clientOnly: (load: () => Promise<{ default: unknown }>, fallback: Block<unknown>): unknown =>
+  clientOnly: (load: () => Promise<DefaultExport>, fallback: Block<unknown>): unknown =>
     ssrClientOnly(load)({ fallback }),
   /** `<MatchRoute>`: the arm the server matched, in the region the client claims. */
   branch: (arm: number, bodies: readonly Block<unknown>[]): unknown =>
@@ -212,7 +218,7 @@ const linkBackend = {
 };
 
 /** A not-found for an unmatched LOCATION has nothing to retry. */
-const NOOP_RESET = (): void => {};
+function NOOP_RESET(): void {}
 
 /**
  * The error a route's `notFoundComponent` is handed for an unmatched location.
@@ -238,8 +244,8 @@ export function renderRoutes(state: RouterState): unknown {
   // what the branch buys is that the two halves write and claim the same shape.
   // Without it the DOM side claimed a range the string side never wrote, and
   // the mismatch surfaced as `not-hydratable` on every page.
-  const at = (depth: number): unknown =>
-    ssrBranch(
+  function at(depth: number): unknown {
+    return ssrBranch(
       null,
       null,
       () => chain[depth] ?? null,
@@ -262,12 +268,13 @@ export function renderRoutes(state: RouterState): unknown {
       },
       HYDRATE,
     );
+  }
 
   // A depth past the end of the chain is still a RANGE, because `renderDepth`
   // builds one there too — a leaf's `children` Block is invoked by any layout
   // that places it, and on that side the empty answer comes from inside the
   // branch rather than instead of it.
-  const bodyAt = (depth: number): unknown => {
+  function bodyAt(depth: number): unknown {
     const route = chain[depth];
     if (route === undefined) {
       // AN UNMATCHED LOCATION, at depth 0, renders what the DOM path renders.
@@ -310,11 +317,11 @@ export function renderRoutes(state: RouterState): unknown {
     // hooks work in a component that is rendered on BOTH sides — which is every
     // component. Without it a layout using `<Outlet />` rendered its own markup
     // and then nothing.
-    const inMatch = (fallback: Block<unknown>, body: () => unknown): unknown => {
+    function inMatch(fallback: Block<unknown>, body: () => unknown): unknown {
       const match = { state, depth, route, children: fallback, blocking: true };
       return provide(RouteMatchContext, cell(match), body);
-    };
-    const content = (): unknown => {
+    }
+    function content(): unknown {
       // As on the DOM path: a refused parameter throws inside this depth's
       // error boundary rather than out of the render, and the path is checked
       // before the search.
@@ -336,7 +343,7 @@ export function renderRoutes(state: RouterState): unknown {
       return inMatch(children, () =>
         (component as unknown as Invoked)(routePropsFor(state, depth, route, children, true)),
       );
-    };
+    }
 
     // An error boundary INSIDE the loading one, and the nesting is the whole
     // point rather than a style choice.
@@ -388,7 +395,7 @@ export function renderRoutes(state: RouterState): unknown {
       },
       HYDRATE,
     );
-  };
+  }
 
   const { Wrap, InnerWrap } = state.options;
   if (Wrap === undefined && InnerWrap === undefined) return at(0);
@@ -597,14 +604,7 @@ export interface PageHandlerOptions extends SharedRouterOptions {
    * through the same components a route's do, rather than through a template
    * the application has to assemble in the right order.
    */
-  readonly clientAssets?: {
-    readonly scripts?: readonly string[];
-    readonly css?: readonly string[];
-    /** The build's atoms, linked after every other stylesheet. */
-    readonly atoms?: string;
-    /** What the entry imports on its way to hydrating, preloaded beside the route chain. */
-    readonly preload?: readonly string[];
-  };
+  readonly clientAssets?: ClientAssets;
   /**
    * Answer a crawler with the WHOLE page instead of a stream.
    *
@@ -911,6 +911,11 @@ async function runRouteHandlers(
 /** One request's options: the nonce settled for it. */
 type PageOptions = Omit<PageHandlerOptions, "nonce"> & { readonly nonce?: string };
 
+interface ProjectedRoute {
+  route: Route;
+  ssr: boolean;
+}
+
 export function createPageHandler(
   configured: PageHandlerOptions,
 ): (request: Request) => Promise<Response> {
@@ -963,7 +968,7 @@ export function createPageHandler(
     const draft = createResponseDraft();
     const context: Record<string, unknown> = {};
 
-    const answerPage = async (): Promise<Response> => {
+    async function answerPage(): Promise<Response> {
       // AFTER the handlers, so an API route still answers, and before the method
       // gate, so a POST to a path with no handler is a 404 rather than a 405 for
       // a page that does not exist here.
@@ -1034,7 +1039,9 @@ export function createPageHandler(
       let answer: Response | null = null;
       // Read through a call: `answer` is written by the router's callbacks, which
       // the checker cannot see from here.
-      const answered = (): Response | null => answer;
+      function answered(): Response | null {
+        return answer;
+      }
       // `notFound()` is an ANSWER, not a failure: the page still renders (its
       // `notFoundComponent` does), and what changes is the status. Tracked
       // separately from `answer` for that reason — turning it into a `Response`
@@ -1043,12 +1050,13 @@ export function createPageHandler(
       let missingHeaders: HeadersInit | undefined;
       // The request's router, for the redirects that need one to be resolved.
       let router: RouterState | null = null;
-      const answerFor = (error: unknown): Response | null =>
-        asResponse(error, (redirect) =>
+      function answerFor(error: unknown): Response | null {
+        return asResponse(error, (redirect) =>
           router === null || redirect.options === undefined
             ? redirect.to
             : linkAttrHref(router, router.buildLocation(redirect.options).href),
         );
+      }
       const shared: Partial<Record<keyof SharedRouterOptions, unknown>> = {};
       for (const key of SHARED_ROUTER_OPTIONS) {
         if (options[key] !== undefined) shared[key] = options[key];
@@ -1125,11 +1133,11 @@ export function createPageHandler(
         // failed to import. The request's whole router state leaked with it:
         // its history subscription, its loader cache, every in-flight cell.
         let disposed = false;
-        const dispose = (): void => {
+        function dispose(): void {
           if (disposed) return;
           disposed = true;
           state.dispose();
-        };
+        }
         // `beforeLoad` runs BEFORE the shell, which is the whole reason it is a
         // separate phase from the loader: here the status is still open, so a
         // `throw redirect(...)` becomes a real 302 and a `throw notFound()` a
@@ -1261,7 +1269,7 @@ export function createPageHandler(
           // client refetching everything the server had already fetched.
           const session = Symbol("page-session");
           const modes = untrack(state.ssrModes);
-          const projected: { route: Route; ssr: boolean }[] = [];
+          const projected: ProjectedRoute[] = [];
           for (const [depth, route] of chain.entries()) {
             // `ssr: false` means NOTHING of this route runs on the server, so
             // its head runs (theirs does too) but its loader must not be
@@ -1367,8 +1375,9 @@ export function createPageHandler(
           };
           // The whole document when a shell is declared, the app's markup when
           // it is not — and the `document()` template then wraps it.
-          const root = (): unknown =>
-            shell === undefined ? options.app(state) : renderShell(state, shell, headAssets);
+          function root(): unknown {
+            return shell === undefined ? options.app(state) : renderShell(state, shell, headAssets);
+          }
           // A streamed response is not finished when this function returns it:
           // `renderToStream` hands back its `readable` before a byte of the body
           // exists, and the boundaries resume against this state afterwards.
@@ -1439,12 +1448,12 @@ export function createPageHandler(
             true,
             crossOrigin,
           );
-          const placeEntry = (document: string): string => {
+          function placeEntry(document: string): string {
             const at = document.indexOf("</head>");
             return at === -1
               ? document + entry
               : document.slice(0, at) + entry + document.slice(at);
-          };
+          }
           const rendering = renderToStream(() => root() as never, {
             signal: request.signal,
             nonce: options.nonce,
@@ -1516,7 +1525,7 @@ export function createPageHandler(
           throw error;
         }
       })();
-    };
+    }
 
     // The PRERENDER REFUSAL reaches a handler too. A build mints the
     // `Request`, so `getRequest()` inside one would answer with the build
@@ -1656,6 +1665,31 @@ function redirectScript(answer: Response | null, nonce: string | undefined): str
   );
 }
 
+interface RuntimeRequest {
+  runtime?: RequestRuntime;
+}
+
+interface RequestRuntime {
+  node?: NodeRuntime;
+}
+
+interface NodeRuntime {
+  req?: NodeRequest;
+  res?: NodeResponse;
+}
+
+interface NodeRequest {
+  httpVersionMajor?: number;
+}
+
+interface NodeResponse {
+  writeEarlyHints?: (hints: EarlyHintsHeaders) => void;
+}
+
+interface EarlyHintsHeaders {
+  link: string[];
+}
+
 /**
  * Node's 103, for a request that carries its Node response over HTTP/2 or
  * later; nothing elsewhere. Browsers act on a 103 only on those versions, and
@@ -1663,16 +1697,7 @@ function redirectScript(answer: Response | null, nonce: string | undefined): str
  * the answer.
  */
 function writeEarlyHints(links: readonly string[], request: Request): void {
-  const node = (
-    request as {
-      runtime?: {
-        node?: {
-          req?: { httpVersionMajor?: number };
-          res?: { writeEarlyHints?: (hints: { link: string[] }) => void };
-        };
-      };
-    }
-  ).runtime?.node;
+  const node = (request as RuntimeRequest).runtime?.node;
   if ((node?.req?.httpVersionMajor ?? 1) < 2) return;
   try {
     node?.res?.writeEarlyHints?.({ link: [...links] });
@@ -1910,12 +1935,16 @@ export function createStartHandler(extra: Partial<PageHandlerOptions> = {}): Sta
   // arrive before any page has been rendered, and it must not find the
   // registry empty because nothing had asked for a page yet.
   let manifest: Promise<unknown> | undefined;
-  const mountManifest = (): Promise<unknown> =>
+  function mountManifest(): Promise<unknown> {
     // With the project's `src/start.ts`, whose import is what registers the
     // application's global middleware for a call as well as for a page.
-    (manifest ??= Promise.all([import("virtual:barq-server-fns"), import("#barq-start-entry")]));
+    return (manifest ??= Promise.all([
+      import("virtual:barq-server-fns"),
+      import("#barq-start-entry"),
+    ]));
+  }
   mountOnDemand(mountManifest);
-  const app = (): Promise<PageHandlerOptions> => {
+  function app(): Promise<PageHandlerOptions> {
     parts ??= (async (): Promise<PageHandlerOptions> => {
       const [entry, { routeAssets, routeCss, moduleAssets }, { clientAssets }] = await Promise.all([
         import("#barq-router-entry"),
@@ -1933,11 +1962,11 @@ export function createStartHandler(extra: Partial<PageHandlerOptions> = {}): Sta
       };
     })();
     return parts;
-  };
+  }
 
-  const createFetch = (
+  function createFetch(
     more: Partial<PageHandlerOptions> = {},
-  ): ((request: Request) => Promise<Response>) => {
+  ): (request: Request) => Promise<Response> {
     let handler: ((request: Request) => Promise<Response>) | undefined;
     return async (request: Request): Promise<Response> => {
       if (handler === undefined) {
@@ -1951,7 +1980,7 @@ export function createStartHandler(extra: Partial<PageHandlerOptions> = {}): Sta
       }
       return handler(request);
     };
-  };
+  }
 
   return {
     fetch: createFetch(),
@@ -1997,6 +2026,11 @@ async function decideSsr(
   }
 }
 
+interface RouterEntry {
+  readonly config?: RouterConfig;
+  readonly getRouter?: () => RouterState | Promise<RouterState>;
+}
+
 /**
  * What a project's `src/router.ts` says, as the handler's options.
  *
@@ -2005,10 +2039,9 @@ async function decideSsr(
  * every request is matched with; that router serves nothing, and what belongs
  * to it alone stays behind.
  */
-async function entryOptions(entry: {
-  readonly config?: RouterConfig;
-  readonly getRouter?: () => RouterState | Promise<RouterState>;
-}): Promise<Pick<PageHandlerOptions, "routeTree" | "getRouter" | "context">> {
+async function entryOptions(
+  entry: RouterEntry,
+): Promise<Pick<PageHandlerOptions, "routeTree" | "getRouter" | "context">> {
   if (entry.getRouter === undefined) {
     if (entry.config === undefined) {
       throw new Error(
@@ -2160,9 +2193,9 @@ function wrapStream(
       controller.enqueue(encoder.encode(await shellOf(options, head, url)));
       const reader = stream.getReader();
       reading = reader;
-      const inject = (markup: string): void => {
+      function inject(markup: string): void {
         if (markup !== "") controller.enqueue(encoder.encode(markup));
-      };
+      }
       try {
         await relay(reader, channel, (chunk) => controller.enqueue(chunk), inject);
       } finally {
@@ -2242,10 +2275,12 @@ export function chainVerifier(
  */
 export function renderShell(
   state: RouterState,
-  shell: ((props: { children: unknown }) => unknown) | undefined,
+  shell: ((props: ShellProps) => unknown) | undefined,
   assets: HeadAssets,
 ): unknown {
-  const body = (): unknown => renderRoutes(state);
+  function body(): unknown {
+    return renderRoutes(state);
+  }
   if (shell === undefined) return body();
   // THE CHILDREN ARE BUILT FIRST, and the shell is wrapped around the result.
   //
@@ -2272,7 +2307,7 @@ export function renderShell(
   // and `lang` and `dir` are the attributes every localised application has to
   // set there. It reads the same state `renderRoutes` provides at depth 0, so
   // the two cannot disagree.
-  const build = (): unknown => {
+  const build: () => unknown = () => {
     const rendered = body();
     return shell({ children: () => rendered });
   };
@@ -2289,7 +2324,7 @@ export function renderShell(
  */
 async function lateTitle(
   state: RouterState,
-  projected: readonly { route: Route; ssr: boolean }[],
+  projected: readonly ProjectedRoute[],
   params: Readonly<Record<string, string>>,
   session: symbol,
   nonce: string | undefined,
@@ -2367,11 +2402,9 @@ async function settleLoader(
  */
 function shellComponentOf(
   routes: readonly AnyRouteDefinition[],
-): ((props: { children: unknown }) => unknown) | undefined {
-  const declared = (routes[0] as { shellComponent?: unknown } | undefined)?.shellComponent;
-  return typeof declared === "function"
-    ? (declared as (props: { children: unknown }) => unknown)
-    : undefined;
+): ((props: ShellProps) => unknown) | undefined {
+  const declared = (routes[0] as ShellDeclaration | undefined)?.shellComponent;
+  return typeof declared === "function" ? (declared as (props: ShellProps) => unknown) : undefined;
 }
 
 /** `document()`, refused rather than defaulted when a table declares neither. */
@@ -2459,10 +2492,10 @@ function shellStream(
     async start(controller) {
       const reader = stream.getReader();
       reading = reader;
-      const inject = (markup: string): void => {
+      function inject(markup: string): void {
         if (markup !== "") controller.enqueue(encoder.encode(markup));
-      };
-      const forward = async (value: Uint8Array): Promise<void> => {
+      }
+      async function forward(value: Uint8Array): Promise<void> {
         if (!first) {
           controller.enqueue(value);
           return;
@@ -2481,7 +2514,7 @@ function shellStream(
           head = head.slice(0, cut);
         }
         controller.enqueue(encoder.encode(finishShell(head)));
-      };
+      }
       try {
         await relay(reader, channel, forward, inject);
       } finally {

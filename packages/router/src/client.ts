@@ -47,6 +47,15 @@ export interface StartClientOptions {
   readonly container?: HTMLElement | Document;
 }
 
+interface AdapterGlobals {
+  __BARQ_ADAPTERS__?: Map<string, (value: never) => unknown>;
+  __BARQ_SEED__?: SeedDrain;
+}
+
+interface SeedDrain {
+  drain: () => void;
+}
+
 /**
  * Boot the client and hydrate the document.
  *
@@ -77,10 +86,7 @@ export interface StartClientOptions {
  */
 function installSerializationAdapters(adapters: readonly AnySerializationAdapter[]): void {
   if (adapters.length > 0) registerSerializationAdapters(adapters);
-  const holder = globalThis as unknown as {
-    __BARQ_ADAPTERS__?: Map<string, (value: never) => unknown>;
-    __BARQ_SEED__?: { drain: () => void };
-  };
+  const holder = globalThis as unknown as AdapterGlobals;
   if (holder.__BARQ_ADAPTERS__ !== undefined) {
     // A frame a route's loader returned is named in the seed by its address.
     // Only the seed names one, so the codec, which reads server-function
@@ -112,9 +118,12 @@ export async function startClient(options: StartClientOptions = {}): Promise<Rou
   // push, and it is the only thing that reads `window.location` at all. A
   // router given a `basepath` over a history without one matched
   // `/app/about` as `/app/about` and found nothing.
-  const historyFor = (config: RouterConfig): RouterState["history"] =>
-    options.history ??
-    browserHistory(config.basepath === undefined ? undefined : { base: config.basepath });
+  function historyFor(config: RouterConfig): RouterState["history"] {
+    return (
+      options.history ??
+      browserHistory(config.basepath === undefined ? undefined : { base: config.basepath })
+    );
+  }
   const { config, getRouter } = entry;
   // The application's `createStart({ defaultSsr })` wins over the router's, on
   // this side as on the server, so both agree on what was rendered there.

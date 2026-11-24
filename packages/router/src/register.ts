@@ -74,29 +74,53 @@ export interface RouteTreeTypes {
  */
 type Unregistered<Tree> = [Tree] extends [never] ? true : false;
 
+interface TreeIds<Id extends string> {
+  id: Id;
+}
+
+interface TreePaths<Path extends string> {
+  fullPaths: Path;
+}
+
+interface TreeRoutes<Routes> {
+  fileRoutesById: Routes;
+}
+
+interface RouteTreeRegistration<Tree> {
+  routeTree: Tree;
+}
+
+export interface DeclaredRouteTypes<Types> {
+  readonly types?: Types;
+}
+
+interface SearchType<Search> {
+  readonly search: Search;
+}
+
 export type IdsOf<Tree> =
   Unregistered<Tree> extends true
     ? string
-    : [Tree] extends [{ id: infer Id extends string }]
+    : [Tree] extends [TreeIds<infer Id extends string>]
       ? Id
       : string;
 export type PathsOf<Tree> =
   Unregistered<Tree> extends true
     ? string
-    : [Tree] extends [{ fullPaths: infer Path extends string }]
+    : [Tree] extends [TreePaths<infer Path extends string>]
       ? Path
       : string;
 export type RoutesOf<Tree> =
   Unregistered<Tree> extends true
     ? Record<string, never>
-    : [Tree] extends [{ fileRoutesById: infer Routes }]
+    : [Tree] extends [TreeRoutes<infer Routes>]
       ? Routes
       : Record<string, never>;
 /** See `ToPath` for why this admits any string. */
 export type ToPathOf<Tree> = PathsOf<Tree> | IdsOf<Tree> | (string & Record<never, never>);
 
 /** What the application registered, or `never` when nothing did. */
-export type RegisteredRouteTree = Register extends { routeTree: infer Tree } ? Tree : never;
+export type RegisteredRouteTree = Register extends RouteTreeRegistration<infer Tree> ? Tree : never;
 
 /**
  * Every route id in the application, layouts included.
@@ -140,12 +164,16 @@ export type ToPath = ToPathOf<RegisteredRouteTree>;
 
 type Simplify<T> = { [K in keyof T]: T[K] } & Record<never, never>;
 
+interface SplatParams {
+  _splat?: string;
+}
+
 type SegmentParams<Segment extends string> = Segment extends "$"
-  ? { _splat?: string }
+  ? SplatParams
   : Segment extends `${string}{-$${infer Name}}${string}`
     ? { [K in Name]?: string | number }
     : Segment extends `${string}{$}${string}`
-      ? { _splat?: string }
+      ? SplatParams
       : Segment extends `${string}{$${infer Name}}${string}`
         ? { [K in Name]: string | number }
         : Segment extends `$${infer Name}`
@@ -204,26 +232,31 @@ export type ResolveRelativePath<From extends string, To extends string> = string
 export type SearchOfRoute<Tree, Id> = Id extends keyof RoutesOf<Tree>
   ? [RoutesOf<Tree>[Id]] extends [never]
     ? Record<string, unknown>
-    : RoutesOf<Tree>[Id] extends { readonly types?: { readonly search: infer Search } }
+    : RoutesOf<Tree>[Id] extends DeclaredRouteTypes<SearchType<infer Search>>
       ? Search
       : Record<string, unknown>
   : Record<string, unknown>;
 
+interface AnyParamsOption {
+  readonly params?: ToOptions["params"];
+}
+
+interface OptionalParamsOption<Path extends string> {
+  readonly params?:
+    | true
+    | ParamsOfPath<Path>
+    | Updater<Record<string, unknown>, ParamsOfPath<Path>>;
+}
+
+interface RequiredParamsOption<Path extends string> {
+  readonly params: true | ParamsOfPath<Path> | Updater<Record<string, unknown>, ParamsOfPath<Path>>;
+}
+
 type ParamsOption<Path extends string> = string extends Path
-  ? { readonly params?: ToOptions["params"] }
+  ? AnyParamsOption
   : object extends PathParams<Path>
-    ? {
-        readonly params?:
-          | true
-          | ParamsOfPath<Path>
-          | Updater<Record<string, unknown>, ParamsOfPath<Path>>;
-      }
-    : {
-        readonly params:
-          | true
-          | ParamsOfPath<Path>
-          | Updater<Record<string, unknown>, ParamsOfPath<Path>>;
-      };
+    ? OptionalParamsOption<Path>
+    : RequiredParamsOption<Path>;
 
 /**
  * `ToOptions`, with `params` and `search` narrowed by where it goes.

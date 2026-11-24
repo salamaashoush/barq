@@ -119,10 +119,10 @@ export function staticHints(
   styles: readonly string[],
   crossOrigin?: (href: string) => string | undefined,
 ): EarlyHint[] {
-  const cross = (href: string) => {
+  function cross(href: string) {
     const value = crossOrigin?.(href);
     return value === undefined ? {} : { crossOrigin: value as EarlyHint["crossOrigin"] };
-  };
+  }
   return [
     ...scripts.map((href): EarlyHint => ({
       href,
@@ -134,15 +134,19 @@ export function staticHints(
   ];
 }
 
-/** One request's hints across both phases, each link sent once. */
-export function createEarlyHints(options: {
+export interface EarlyHintsOptions {
   readonly onEarlyHints?: (event: EarlyHintsEvent) => void;
   readonly responseLinkHeader?: ResponseLinkHeader;
-}): {
+}
+
+export interface EarlyHintsCollector {
   collect(phase: EarlyHintsPhase, hints: readonly EarlyHint[]): void;
   /** The `Link` values the page's response carries, in collection order. */
   headerLinks(): string[];
-} {
+}
+
+/** One request's hints across both phases, each link sent once. */
+export function createEarlyHints(options: EarlyHintsOptions): EarlyHintsCollector {
   const sent = new Set<string>();
   const entries: LinkHeaderEntry[] = [];
   return {

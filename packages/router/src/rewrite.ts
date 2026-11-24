@@ -9,11 +9,15 @@
 import { type History, type Location, addBase, href, parseLocation } from "./history.ts";
 import { leavesTheApp } from "./path.ts";
 
+export interface RewriteInput {
+  url: URL;
+}
+
 /**
  * One direction of a URL rewrite. Handed a `URL` it may mutate and return, or
  * answer with a replacement; `undefined` leaves the URL as it was mutated.
  */
-export type LocationRewriteFunction = (options: { url: URL }) => undefined | string | URL;
+export type LocationRewriteFunction = (options: RewriteInput) => undefined | string | URL;
 
 /**
  * A two-way mapping between the URL a browser shows and the one the router
@@ -71,6 +75,12 @@ export function rewriteHref(
   return url.origin === origin ? `${url.pathname}${url.search}${url.hash}` : url.href;
 }
 
+export interface PublicHrefOptions {
+  readonly rewrite?: LocationRewrite;
+  readonly origin?: string;
+  readonly base?: string;
+}
+
 /**
  * A target, as the BROWSER must see it.
  *
@@ -80,18 +90,16 @@ export function rewriteHref(
  * are the strings that leave for the browser, so they carry both: the rewrite's
  * `output` first, and the base outside it.
  */
-export function publicHref(
-  to: string,
-  options: {
-    readonly rewrite?: LocationRewrite;
-    readonly origin?: string;
-    readonly base?: string;
-  },
-): string {
+export function publicHref(to: string, options: PublicHrefOptions): string {
   if (leavesTheApp(to)) return to;
   const written = rewriteHref(options.rewrite?.output, to, options.origin);
   const base = options.base ?? "";
   return base === "" || leavesTheApp(written) ? written : addBase(written, base);
+}
+
+interface LastRewrite {
+  from: Location;
+  to: Location;
 }
 
 /**
@@ -103,8 +111,8 @@ export function rewriteHistory(
   rewrite: LocationRewrite,
   origin: string = defaultOrigin(),
 ): History {
-  let last: { from: Location; to: Location } | null = null;
-  const read = (location: Location): Location => {
+  let last: LastRewrite | null = null;
+  function read(location: Location): Location {
     if (rewrite.input === undefined) return location;
     if (last?.from === location) return last.to;
     const mapped = parseLocation(
@@ -114,7 +122,7 @@ export function rewriteHistory(
     const to = { ...mapped, key: location.key };
     last = { from: location, to };
     return to;
-  };
+  }
   return {
     current: () => read(inner.current()),
     go: (delta) => inner.go(delta),

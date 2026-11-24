@@ -123,6 +123,10 @@ describe("what a redirect may name", () => {
   });
 });
 
+interface ErrorProps {
+  error: () => Error;
+}
+
 /**
  * `onCatch` — the route's own notification that its boundary caught.
  *
@@ -131,12 +135,13 @@ describe("what a redirect may name", () => {
  * reaches a crash reporter.
  */
 describe("onCatch", () => {
-  const chainOf = (...defs: Record<string, unknown>[]) =>
-    defs.map((definition, at) => ({
+  function chainOf(...defs: Record<string, unknown>[]) {
+    return defs.map((definition, at) => ({
       id: `/r${at}`,
       fullPath: `/r${at}`,
       definition,
     })) as never as Parameters<typeof errorFallbackFor>[0];
+  }
 
   test("with no errorComponent anywhere, development shows the error and production nothing", () => {
     const logged = console.error;
@@ -242,7 +247,7 @@ describe("onCatch", () => {
   test("a redirect renders nothing, even under an errorComponent", () => {
     const rendered: string[] = [];
     const chain = chainOf({
-      errorComponent: (props: { error: () => Error }) => rendered.push(props.error().message),
+      errorComponent: (props: ErrorProps) => rendered.push(props.error().message),
     });
     const shown = errorFallbackFor(chain, 0, () => ({}))(
       () => new Redirect("/login"),

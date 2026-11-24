@@ -19,8 +19,12 @@ import {
 
 describe("createFileRoute", () => {
   test("the argument is the route id, and the options are carried verbatim", () => {
-    const loader = (): string => "x";
-    const component = (): null => null;
+    function loader(): string {
+      return "x";
+    }
+    function component(): null {
+      return null;
+    }
     const Route = createFileRoute("/posts/$postId")({ loader, component });
 
     expect(Route.id).toBe("/posts/$postId");
@@ -42,19 +46,21 @@ describe("createFileRoute", () => {
     interface Post {
       readonly title: string;
     }
-    const fetchPost = async (id: string): Promise<Post> => ({ title: id });
+    async function fetchPost(id: string): Promise<Post> {
+      return { title: id };
+    }
     const Route = createFileRoute("/posts/$postId")({
       loader: ({ params }) => fetchPost(params.postId),
     });
     const Declared = createFileRoute<Post>("/drafts/$postId")({
       loader: ({ params }) => fetchPost(params.postId),
     });
-    const typed = (): void => {
+    function typed(): void {
       const post: Post = Route.useLoaderData()();
       const title: string = Route.useLoaderData({ select: (data) => data.title })();
       const draft: Post = Declared.useLoaderData()();
       void [post, title, draft];
-    };
+    }
     expect(typeof typed).toBe("function");
   });
 
@@ -72,6 +78,10 @@ describe("createFileRoute", () => {
   });
 });
 
+type UserContext = {
+  user: string;
+};
+
 describe("createRootRoute", () => {
   test("the root takes the reserved id, which the root INDEX cannot collide with", () => {
     expect(createRootRoute({}).id).toBe(ROOT_ROUTE_ID);
@@ -80,14 +90,16 @@ describe("createRootRoute", () => {
   });
 
   test("a shell is a root-route option, and only the root has one", () => {
-    const shellComponent = (): null => null;
+    function shellComponent(): null {
+      return null;
+    }
     expect(createRootRoute({ shellComponent }).options.shellComponent).toBe(shellComponent);
   });
 
   test("createRootRouteWithContext is curried and produces the same root", () => {
     // Curried for the reason theirs is: TypeScript has no partial type-argument
     // inference, so the context has to be named in a call that infers nothing else.
-    const Route = createRootRouteWithContext<{ user: string }>()({
+    const Route = createRootRouteWithContext<UserContext>()({
       context: () => ({ user: "ada" }),
     });
     expect(Route.id).toBe(ROOT_ROUTE_ID);

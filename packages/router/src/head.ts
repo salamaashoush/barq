@@ -82,6 +82,10 @@ export interface HeadResult {
   readonly styles?: readonly HeadContentTag[];
 }
 
+export interface NonceOptions {
+  readonly nonce?: string;
+}
+
 /**
  * What `head` is handed — `AssetFnContextOptions` (`route.ts:1194-1241`).
  *
@@ -93,7 +97,7 @@ export interface HeadContext<Params = Record<string, string>, Data = unknown> {
   readonly loaderData: Data | undefined;
   readonly matches: readonly unknown[];
   readonly match: unknown;
-  readonly ssr?: { readonly nonce?: string };
+  readonly ssr?: NonceOptions;
 }
 
 export type Head<Params = Record<string, string>, Data = unknown> = (
@@ -184,6 +188,11 @@ function push(out: ManagedTag[], seen: Set<string>, identity: string, tag: Manag
   out.push(tag);
 }
 
+interface KeyedTag {
+  identity: string;
+  tag: ManagedTag;
+}
+
 /**
  * One tag per identity: the DEEPEST route's attributes, at the SHALLOWEST
  * route's position.
@@ -194,7 +203,7 @@ function push(out: ManagedTag[], seen: Set<string>, identity: string, tag: Manag
  * cascade order. Keeping the first position and the last attributes is the only
  * combination that gives both.
  */
-function collapse(entries: readonly { identity: string; tag: ManagedTag }[]): ManagedTag[] {
+function collapse(entries: readonly KeyedTag[]): ManagedTag[] {
   const at = new Map<string, number>();
   const out: ManagedTag[] = [];
   for (const entry of entries) {
@@ -219,6 +228,51 @@ function attrsOf(source: Readonly<Record<string, unknown>>, nonce?: string): Man
   return out;
 }
 
+export interface ResolveHeadOptions {
+  readonly nonce?: string;
+  /**
+   * The matched chain's module preloads, and the client build's stylesheets.
+   *
+   * FRAMEWORK-OWNED and in the SAME list as the route's own tags, which is
+   * TanStack's shape: `buildTagsFromMatches` returns one array holding the
+   * route meta, the manifest's preloads, the route links, the manifest CSS,
+   * the styles and the head scripts
+   * (`react-router/src/headContentUtils.tsx:180-187`). One list is what lets
+   * `<HeadContent />` be the only thing that writes to `<head>` — and that is
+   * what a hydrated document needs, because the claim on an element takes its
+   * children WHOLE and reconciles away anything the tree did not produce.
+   */
+  readonly preloads?: readonly string[];
+  readonly css?: readonly string[];
+  /**
+   * The build's atoms, linked after {@link css}. An atom and a `css` block
+   * class are both 0-1-0, so the later stylesheet wins the property, and the
+   * atom is the one a caller passed to override. Marked, so a stylesheet a
+   * chunk links after the first paint goes in front of it.
+   */
+  readonly atoms?: string;
+  /** The `crossorigin` a preload or stylesheet is fetched with, by href. */
+  readonly crossOrigin?: (href: string) => string | undefined;
+  /**
+   * The framework's own stylesheet, as TEXT rather than as an href.
+   *
+   * A production build emits `.css` assets and {@link css} links them. A dev
+   * server has no bundle to emit one from, so the compiler hands each module
+   * its rules instead and this is where the collected sheet goes. Without it
+   * a server-rendered dev page arrived with every class in its markup and no
+   * stylesheet of any kind, which is the flash a server render exists to
+   * remove — measured at 23 classes and zero stylesheets on the reference
+   * application.
+   *
+   * In two halves around {@link atoms}: the rules that are not atoms in
+   * front of the build's compiled atoms, so those beat them, and the atoms
+   * after, so they beat the build's blocks. Both before a route's own
+   * `styles`, so a route can still say something about a rule this sheet
+   * defines.
+   */
+  readonly inlineCss?: InlineCss;
+}
+
 /**
  * The matched chain's head, merged — `useTags`'s algorithm.
  *
@@ -229,50 +283,7 @@ function attrsOf(source: Readonly<Record<string, unknown>>, nonce?: string): Man
  */
 export function resolveHead(
   matches: readonly MatchAssets[],
-  options?: {
-    readonly nonce?: string;
-    /**
-     * The matched chain's module preloads, and the client build's stylesheets.
-     *
-     * FRAMEWORK-OWNED and in the SAME list as the route's own tags, which is
-     * TanStack's shape: `buildTagsFromMatches` returns one array holding the
-     * route meta, the manifest's preloads, the route links, the manifest CSS,
-     * the styles and the head scripts
-     * (`react-router/src/headContentUtils.tsx:180-187`). One list is what lets
-     * `<HeadContent />` be the only thing that writes to `<head>` — and that is
-     * what a hydrated document needs, because the claim on an element takes its
-     * children WHOLE and reconciles away anything the tree did not produce.
-     */
-    readonly preloads?: readonly string[];
-    readonly css?: readonly string[];
-    /**
-     * The build's atoms, linked after {@link css}. An atom and a `css` block
-     * class are both 0-1-0, so the later stylesheet wins the property, and the
-     * atom is the one a caller passed to override. Marked, so a stylesheet a
-     * chunk links after the first paint goes in front of it.
-     */
-    readonly atoms?: string;
-    /** The `crossorigin` a preload or stylesheet is fetched with, by href. */
-    readonly crossOrigin?: (href: string) => string | undefined;
-    /**
-     * The framework's own stylesheet, as TEXT rather than as an href.
-     *
-     * A production build emits `.css` assets and {@link css} links them. A dev
-     * server has no bundle to emit one from, so the compiler hands each module
-     * its rules instead and this is where the collected sheet goes. Without it
-     * a server-rendered dev page arrived with every class in its markup and no
-     * stylesheet of any kind, which is the flash a server render exists to
-     * remove — measured at 23 classes and zero stylesheets on the reference
-     * application.
-     *
-     * In two halves around {@link atoms}: the rules that are not atoms in
-     * front of the build's compiled atoms, so those beat them, and the atoms
-     * after, so they beat the build's blocks. Both before a route's own
-     * `styles`, so a route can still say something about a rule this sheet
-     * defines.
-     */
-    readonly inlineCss?: InlineCss;
-  },
+  options?: ResolveHeadOptions,
 ): ManagedTag[] {
   const nonce = options?.nonce;
   const meta: ManagedTag[] = [];
@@ -319,9 +330,9 @@ export function resolveHead(
   if (title !== undefined) meta.push(title);
   meta.reverse();
 
-  const links: { identity: string; tag: ManagedTag }[] = [];
-  const styles: { identity: string; tag: ManagedTag }[] = [];
-  const scripts: { identity: string; tag: ManagedTag }[] = [];
+  const links: KeyedTag[] = [];
+  const styles: KeyedTag[] = [];
+  const scripts: KeyedTag[] = [];
   for (const match of matches) {
     for (const link of match.links ?? []) {
       links.push({
@@ -407,7 +418,7 @@ export function resolveHead(
 /** The BODY scripts, from each match's `scripts`. Never deduplicated — see `Scripts`. */
 export function resolveScripts(
   matches: readonly MatchAssets[],
-  options?: { readonly nonce?: string },
+  options?: NonceOptions,
 ): ManagedTag[] {
   const out: ManagedTag[] = [];
   for (const match of matches) {
@@ -420,6 +431,22 @@ export function resolveScripts(
     }
   }
   return out;
+}
+
+export interface ProjectedMatch<Params, Data> {
+  readonly params: Params;
+  readonly loaderData: Data | undefined;
+  readonly definition: ProjectedDefinition<Params, Data>;
+}
+
+export interface ProjectedDefinition<Params, Data> {
+  readonly head?: Head<Params, Data> | HeadResult;
+  readonly scripts?: BodyScripts<Params, Data>;
+}
+
+export interface ProjectHeadOptions {
+  readonly nonce?: string;
+  readonly onError?: (error: unknown) => void;
 }
 
 /**
@@ -435,15 +462,8 @@ export function resolveScripts(
  * which is what a `console.error` and a rendered page buys over a 500.
  */
 export async function projectHead<Params, Data>(
-  matches: readonly {
-    readonly params: Params;
-    readonly loaderData: Data | undefined;
-    readonly definition: {
-      readonly head?: Head<Params, Data> | HeadResult;
-      readonly scripts?: BodyScripts<Params, Data>;
-    };
-  }[],
-  options?: { readonly nonce?: string; readonly onError?: (error: unknown) => void },
+  matches: readonly ProjectedMatch<Params, Data>[],
+  options?: ProjectHeadOptions,
 ): Promise<MatchAssets[]> {
   return await Promise.all(
     matches.map(async (match): Promise<MatchAssets> => {

@@ -22,18 +22,25 @@ import { createPageHandler, renderRoutes } from "./server.ts";
 
 afterEach(clearStart);
 
-const document = ({ body, seed }: { body: string; seed: string }): string =>
-  `<!doctype html><html><body><div id="app">${body}</div>${seed}</body></html>`;
+interface DocumentParts {
+  body: string;
+  seed: string;
+}
+
+function document({ body, seed }: DocumentParts): string {
+  return `<!doctype html><html><body><div id="app">${body}</div>${seed}</body></html>`;
+}
 
 function request(path: string, init?: RequestInit): Request {
   return new Request(`https://example.com${path}`, init);
 }
 
-const named = (order: string[], name: string, context?: Record<string, unknown>) =>
-  createMiddleware({ type: "request" }).server(({ next }) => {
+function named(order: string[], name: string, context?: Record<string, unknown>) {
+  return createMiddleware({ type: "request" }).server(({ next }) => {
     order.push(name);
     return next(context === undefined ? undefined : { context });
   });
+}
 
 function handlerFor(routeTree: readonly RouteDefinition[], stream = false) {
   return createPageHandler({ routeTree, stream, app: renderRoutes, document });
@@ -82,6 +89,10 @@ test("a server route runs global, then inherited, then its own, then the handler
   expect(order).toEqual(["global", "layout", "route"]);
 });
 
+interface UnknownData {
+  data: unknown;
+}
+
 test("a page runs the global request middleware once, and a loader reads what it contributed", async () => {
   const order: string[] = [];
   createStart(() => ({ requestMiddleware: [named(order, "global", { visitor: "salama" })] }));
@@ -92,7 +103,7 @@ test("a page runs the global request middleware once, and a loader reads what it
         {
           path: "/",
           loader: async () => String(getGlobalStartContext().visitor),
-          component: fromCells((props: Incoming<{ data: unknown }>) =>
+          component: fromCells((props: Incoming<UnknownData>) =>
             ssrHtml(`<main>${esc(props.data())}</main>`),
           ),
         },

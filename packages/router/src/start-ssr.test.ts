@@ -13,13 +13,28 @@ import { createPageHandler, renderRoutes } from "./server.ts";
 
 afterEach(clearStart);
 
-const document = ({ body, seed }: { body: string; seed: string }): string =>
-  `<!doctype html><html><body><div id="app">${body}</div>${seed}</body></html>`;
+interface DocumentParts {
+  body: string;
+  seed: string;
+}
 
-const served = async (
+function document({ body, seed }: DocumentParts): string {
+  return `<!doctype html><html><body><div id="app">${body}</div>${seed}</body></html>`;
+}
+
+interface ServedPage {
+  html: string;
+  ran: string[];
+}
+
+interface DataProps {
+  data: () => unknown;
+}
+
+async function served(
   defaultSsr?: boolean | "data-only",
   routeSsr?: boolean | "data-only",
-): Promise<{ html: string; ran: string[] }> => {
+): Promise<ServedPage> {
   const ran: string[] = [];
   const routeTree = [
     {
@@ -30,7 +45,7 @@ const served = async (
         return "salama";
       },
       pendingComponent: () => ssrHtml("<i>pending</i>"),
-      component: (props: { data: () => unknown }) => ssrHtml(`<main>${esc(props.data())}</main>`),
+      component: (props: DataProps) => ssrHtml(`<main>${esc(props.data())}</main>`),
     },
   ] as AnyRouteDefinition[];
   const handler = createPageHandler({
@@ -42,7 +57,7 @@ const served = async (
   });
   const html = await (await handler(new Request("https://example.com/notes"))).text();
   return { html, ran };
-};
+}
 
 test("with nothing declared, every route renders on the server", async () => {
   const { html, ran } = await served();

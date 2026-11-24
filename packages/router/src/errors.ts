@@ -131,6 +131,10 @@ export class Redirect extends Error implements RedirectLike {
   }
 }
 
+export interface ThrowingAnswer {
+  readonly throw: true;
+}
+
 /**
  * `throw redirect("/login")`, or TanStack's `throw redirect({ to: "/login" })`.
  *
@@ -140,7 +144,7 @@ export class Redirect extends Error implements RedirectLike {
  */
 export function redirect(to: string, status?: number): never;
 export function redirect<const To extends string = ".", const From extends string = string>(
-  options: NavigateOptionsFor<To, From> & RedirectAnswer & { readonly throw: true },
+  options: NavigateOptionsFor<To, From> & RedirectAnswer & ThrowingAnswer,
 ): never;
 export function redirect<const To extends string = ".", const From extends string = string>(
   options: NavigateOptionsFor<To, From> & RedirectAnswer,
@@ -212,7 +216,7 @@ export interface NotFoundOptions {
  * the error, as theirs does, and throws by itself only when `throw` is set.
  */
 export function notFound(message?: string): never;
-export function notFound(options: NotFoundOptions & { readonly throw: true }): never;
+export function notFound(options: NotFoundOptions & ThrowingAnswer): never;
 export function notFound(options: NotFoundOptions): NotFound;
 export function notFound(message?: string | NotFoundOptions): NotFound {
   const made = new NotFound(message);
@@ -229,7 +233,7 @@ export function notFound(message?: string | NotFoundOptions): NotFound {
  * `cause` carries whatever the parse threw, so a schema's own issues survive.
  */
 export class PathParamError extends Error {
-  constructor(message: string, options?: { cause?: unknown }) {
+  constructor(message: string, options?: ErrorOptions) {
     super(message, options);
     this.name = "PathParamError";
   }
@@ -369,12 +373,12 @@ function watchUnload(): void {
   });
 }
 
+interface NamedError {
+  readonly name?: unknown;
+}
+
 function isAbortError(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    (error as { readonly name?: unknown }).name === "AbortError"
-  );
+  return typeof error === "object" && error !== null && (error as NamedError).name === "AbortError";
 }
 
 /** An abort the browser raised because the page is going away, which no route caused. */

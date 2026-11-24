@@ -65,7 +65,12 @@ function row(label: string, value: () => string): HTMLElement {
   return line;
 }
 
-function RouterDevtoolsImpl(props: { state?: () => unknown; open?: () => unknown }): Node {
+interface RouterDevtoolsImplProps {
+  state?: () => unknown;
+  open?: () => unknown;
+}
+
+function RouterDevtoolsImpl(props: RouterDevtoolsImplProps): Node {
   // `useRouter` throws when there is no provider above, so it is only reached
   // when nothing was handed over.
   const state = (props.state === undefined ? useRouter() : props.state()) as RouterState;
@@ -87,7 +92,9 @@ function RouterDevtoolsImpl(props: { state?: () => unknown; open?: () => unknown
   body.style.display = open ? "block" : "none";
   panel.append(body);
 
-  const label = (): string => `barq router — ${state.chain().length} matched ${open ? "▾" : "▸"}`;
+  function label(): string {
+    return `barq router — ${state.chain().length} matched ${open ? "▾" : "▸"}`;
+  }
   insert(header, label);
   listen(header, "click", () => {
     open = !open;

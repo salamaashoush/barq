@@ -18,18 +18,20 @@ import type { AnyRouteDefinition } from "./route.ts";
 import { createRouter } from "./router.ts";
 import { createPageHandler, renderRoutes } from "./server.ts";
 
-const locale = (prefix: string): LocationRewrite => ({
-  input: ({ url }) => {
-    if (url.pathname === prefix || url.pathname.startsWith(`${prefix}/`)) {
-      url.pathname = url.pathname.slice(prefix.length) || "/";
-    }
-    return url;
-  },
-  output: ({ url }) => {
-    url.pathname = `${prefix}${url.pathname === "/" ? "" : url.pathname}`;
-    return url;
-  },
-});
+function locale(prefix: string): LocationRewrite {
+  return {
+    input: ({ url }) => {
+      if (url.pathname === prefix || url.pathname.startsWith(`${prefix}/`)) {
+        url.pathname = url.pathname.slice(prefix.length) || "/";
+      }
+      return url;
+    },
+    output: ({ url }) => {
+      url.pathname = `${prefix}${url.pathname === "/" ? "" : url.pathname}`;
+      return url;
+    },
+  };
+}
 
 const table = [
   { path: "/", component: (() => null) as never },
@@ -147,10 +149,34 @@ describe("a router with a rewrite", () => {
   });
 });
 
+interface DocumentParts {
+  body: string;
+  seed: string;
+}
+
+interface LocationArgs {
+  location: PathLocation;
+}
+
+interface PathLocation {
+  pathname: string;
+}
+
+interface IdParamsArgs {
+  params: IdParams;
+}
+
+interface IdParams {
+  id: string;
+}
+
 describe("the page handler with a rewrite", () => {
-  const document = ({ body, seed }: { body: string; seed: string }): string =>
-    `<!doctype html><html><head><title>t</title></head><body>${body}${seed}</body></html>`;
-  const get = (path: string): Request => new Request(`https://example.com${path}`);
+  function document({ body, seed }: DocumentParts): string {
+    return `<!doctype html><html><head><title>t</title></head><body>${body}${seed}</body></html>`;
+  }
+  function get(path: string): Request {
+    return new Request(`https://example.com${path}`);
+  }
 
   test("the request is matched after `input`, under the base", async () => {
     const handler = createPageHandler({
@@ -173,7 +199,7 @@ describe("the page handler with a rewrite", () => {
         {
           path: "/about",
           component: (() => ssrHtml("<main>about</main>")) as never,
-          loader: ({ location }: { location: { pathname: string } }) => {
+          loader: ({ location }: LocationArgs) => {
             seen.push(location.pathname);
             return null;
           },
@@ -199,7 +225,7 @@ describe("the page handler with a rewrite", () => {
         {
           path: "/old/$id",
           component: (() => null) as never,
-          beforeLoad: ({ params }: { params: { id: string } }) => {
+          beforeLoad: ({ params }: IdParamsArgs) => {
             throw redirect({
               to: "/posts/$id",
               params: { id: params.id },

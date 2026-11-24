@@ -23,7 +23,9 @@ import {
   withViewTransition,
 } from "./scroll.ts";
 
-const at = (url: string) => parseLocation(url);
+function at(url: string) {
+  return parseLocation(url);
+}
 
 beforeEach(() => {
   globalThis.sessionStorage?.clear();
@@ -36,11 +38,12 @@ afterEach(() => {
 });
 
 /** `requestAnimationFrame` is where `restore` does its work. */
-const nextFrame = (): Promise<void> =>
-  new Promise((resolve) => {
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => {
     if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => resolve());
     else setTimeout(resolve, 0);
   });
+}
 
 describe("scrollKey", () => {
   test("includes the HASH, so two anchors on one page do not share a slot", () => {
@@ -161,6 +164,14 @@ describe("scrollRestoration", () => {
   });
 });
 
+interface TransitionDocument {
+  startViewTransition: unknown;
+}
+
+interface MaybeTransitionDocument {
+  startViewTransition?: unknown;
+}
+
 describe("withViewTransition", () => {
   test("commits plainly when nothing is asking for a transition", async () => {
     let committed = 0;
@@ -180,9 +191,7 @@ describe("withViewTransition", () => {
     // animation, including the scroll restore and the loading flag.
     let resolveFinished: (() => void) | null = null;
     let committed = 0;
-    (document as unknown as { startViewTransition: unknown }).startViewTransition = (
-      callback: () => void,
-    ) => {
+    (document as unknown as TransitionDocument).startViewTransition = (callback: () => void) => {
       callback();
       return {
         updateCallbackDone: Promise.resolve(),
@@ -198,13 +207,13 @@ describe("withViewTransition", () => {
       expect(resolveFinished).not.toBeNull();
     } finally {
       (resolveFinished as unknown as () => void)();
-      delete (document as unknown as { startViewTransition?: unknown }).startViewTransition;
+      delete (document as unknown as MaybeTransitionDocument).startViewTransition;
     }
   });
 
   test("a hidden tab commits plainly, because its promises may never settle", async () => {
     let started = 0;
-    (document as unknown as { startViewTransition: unknown }).startViewTransition = () => {
+    (document as unknown as TransitionDocument).startViewTransition = () => {
       started++;
       return {
         updateCallbackDone: new Promise<void>(() => {}),
@@ -223,10 +232,22 @@ describe("withViewTransition", () => {
         Object.defineProperty(Document.prototype, "visibilityState", realVisibility);
       }
       Reflect.deleteProperty(document, "visibilityState");
-      delete (document as unknown as { startViewTransition?: unknown }).startViewTransition;
+      delete (document as unknown as MaybeTransitionDocument).startViewTransition;
     }
   });
 });
+
+interface ScrollableMain {
+  scrollTo: (x: number, y: number) => void;
+}
+
+interface ScrollablePane {
+  scrollTo: () => void;
+}
+
+interface ScrollTarget {
+  scrollIntoView: () => void;
+}
 
 /**
  * The two scroll options a project may need: what a position is filed under,
@@ -268,7 +289,7 @@ describe("scroll options", () => {
     main.className = "pane";
     document.body.append(main);
     let scrolledTo: unknown;
-    (main as unknown as { scrollTo: (x: number, y: number) => void }).scrollTo = (x, y) => {
+    (main as unknown as ScrollableMain).scrollTo = (x, y) => {
       scrolledTo = { x, y };
     };
 
@@ -282,7 +303,7 @@ describe("scroll options", () => {
   test("a lookup function works as well as a selector", async () => {
     const pane = document.createElement("div");
     let hit = false;
-    (pane as unknown as { scrollTo: () => void }).scrollTo = () => {
+    (pane as unknown as ScrollablePane).scrollTo = () => {
       hit = true;
     };
     const restoration = scrollRestoration({ toTop: [() => pane] });
@@ -297,13 +318,13 @@ describe("scroll options", () => {
     const target = document.createElement("div");
     target.id = "api";
     let intoView = false;
-    (target as unknown as { scrollIntoView: () => void }).scrollIntoView = () => {
+    (target as unknown as ScrollTarget).scrollIntoView = () => {
       intoView = true;
     };
     document.body.append(target);
     let paneScrolled = false;
     const pane = document.createElement("div");
-    (pane as unknown as { scrollTo: () => void }).scrollTo = () => {
+    (pane as unknown as ScrollablePane).scrollTo = () => {
       paneScrolled = true;
     };
 
@@ -316,15 +337,20 @@ describe("scroll options", () => {
   });
 });
 
+interface ScrollRecorder {
+  calls: unknown[][];
+  restore: () => void;
+}
+
 describe("TanStack's scroll options", () => {
-  const scrolls = (): { calls: unknown[][]; restore: () => void } => {
+  function scrolls(): ScrollRecorder {
     const calls: unknown[][] = [];
     const real = window.scrollTo;
     window.scrollTo = (...given: unknown[]) => {
       calls.push(given);
     };
     return { calls, restore: () => (window.scrollTo = real) };
-  };
+  }
 
   test("`behavior` is how a reset and a restore move", async () => {
     const window_ = scrolls();
@@ -409,11 +435,11 @@ describe("TanStack's scroll options", () => {
 
     let seen: unknown = "unset";
     let byElement: unknown = "unset";
-    const read = (): null => {
+    function read(): null {
       seen = useElementScrollRestoration({ id: "feed" });
       byElement = useElementScrollRestoration({ getElement: () => panel });
       return null;
-    };
+    }
     const state = createRouter({
       routeTree: [
         { path: "/", component: (() => null) as never },
@@ -449,19 +475,38 @@ describe("TanStack's scroll options", () => {
   });
 });
 
+interface TransitionRecorder {
+  started: unknown[];
+  restore: () => void;
+}
+
+interface TransitionUpdate {
+  update: () => void;
+}
+
+interface TransitionTypes {
+  types: string[];
+}
+
+interface TransitionAsk {
+  from: string | undefined;
+  to: string;
+  pathChanged: boolean;
+}
+
 describe("view transition types", () => {
-  const transitions = (typed: boolean): { started: unknown[]; restore: () => void } => {
+  function transitions(typed: boolean): TransitionRecorder {
     const started: unknown[] = [];
-    const doc = document as unknown as { startViewTransition?: unknown };
+    const doc = document as unknown as MaybeTransitionDocument;
     const real = doc.startViewTransition;
-    doc.startViewTransition = (given: (() => void) | { update: () => void }) => {
+    doc.startViewTransition = (given: (() => void) | TransitionUpdate) => {
       if (typeof given !== "function" && !typed) throw new TypeError("not a function");
       started.push(given);
       (typeof given === "function" ? given : given.update)();
       return { updateCallbackDone: Promise.resolve(), finished: Promise.resolve() };
     };
     return { started, restore: () => (doc.startViewTransition = real) };
-  };
+  }
 
   test("types are handed to the browser with the update", async () => {
     const browser = transitions(true);
@@ -469,7 +514,7 @@ describe("view transition types", () => {
       let committed = 0;
       await withViewTransition(() => committed++, { enabled: true, types: ["slide", "forward"] });
       expect(committed).toBe(1);
-      expect((browser.started[0] as { types: string[] }).types).toEqual(["slide", "forward"]);
+      expect((browser.started[0] as TransitionTypes).types).toEqual(["slide", "forward"]);
     } finally {
       browser.restore();
     }
@@ -490,7 +535,7 @@ describe("view transition types", () => {
   test("the router resolves a `types` function per navigation, and `false` skips the transition", async () => {
     const browser = transitions(true);
     try {
-      const asked: { from: string | undefined; to: string; pathChanged: boolean }[] = [];
+      const asked: TransitionAsk[] = [];
       const state = createRouter({
         routeTree: [
           { path: "/", component: (() => null) as never },
@@ -512,7 +557,7 @@ describe("view transition types", () => {
       await state.navigate("/a");
       await nextFrame();
       expect(asked).toEqual([{ from: "/", to: "/a", pathChanged: true }]);
-      expect((browser.started[0] as { types: string[] }).types).toEqual(["fade"]);
+      expect((browser.started[0] as TransitionTypes).types).toEqual(["fade"]);
 
       await state.navigate("/b");
       await nextFrame();
@@ -522,7 +567,7 @@ describe("view transition types", () => {
       // One navigation's own answer wins over the router's.
       await state.navigate({ to: "/a", viewTransition: { types: ["back"] } });
       await nextFrame();
-      expect((browser.started[1] as { types: string[] }).types).toEqual(["back"]);
+      expect((browser.started[1] as TransitionTypes).types).toEqual(["back"]);
       state.dispose();
     } finally {
       browser.restore();

@@ -168,6 +168,15 @@ export interface MatcherOptions {
   readonly caseSensitive?: boolean;
 }
 
+interface LayoutPrefix<T> {
+  route: FlatRoute<T>;
+  depth: number;
+}
+
+interface PathedRoute {
+  fullPath: string;
+}
+
 export function createMatcher<T>(
   routes: readonly FlatRoute<T>[],
   options: MatcherOptions = {},
@@ -176,7 +185,9 @@ export function createMatcher<T>(
   // Folded once per segment on the way in AND on the way out, so the trie's
   // keys and the lookup agree. `toLowerCase` on a string that is already lower
   // returns the same string, so the sensitive path pays one comparison.
-  const fold = (segment: string): string => (sensitive ? segment : segment.toLowerCase());
+  function fold(segment: string): string {
+    return sensitive ? segment : segment.toLowerCase();
+  }
   const root = node<T>();
 
   for (const route of routes) {
@@ -249,13 +260,13 @@ export function createMatcher<T>(
    * candidate, so a failed branch costs no allocation to undo — the entry is
    * simply overwritten by the next attempt.
    */
-  const walk = (
+  function walk(
     current: TrieNode<T>,
     segments: readonly string[],
     index: number,
     values: (string | null)[],
     names: (string | null)[],
-  ): FlatRoute<T> | null => {
+  ): FlatRoute<T> | null {
     if (index === segments.length) {
       if (current.leaf !== null) return current.leaf;
       // An OPTIONAL that consumed nothing is still a route: `/posts/detail`
@@ -354,7 +365,7 @@ export function createMatcher<T>(
     }
 
     return null;
-  };
+  }
 
   /**
    * Layouts rather than leaves, and over CHAINS rather than the trie.
@@ -367,14 +378,14 @@ export function createMatcher<T>(
    * Linear over the table, which is right for what this is: it runs only when
    * nothing matched, and a miss is not the path to optimise.
    */
-  const deepestLayoutPrefix = (pathname: string): { route: FlatRoute<T>; depth: number } | null => {
+  function deepestLayoutPrefix(pathname: string): LayoutPrefix<T> | null {
     const segments = splitPath(pathname);
-    let best: { route: FlatRoute<T>; depth: number } | null = null;
+    let best: LayoutPrefix<T> | null = null;
     for (const route of routes) {
       // The LAST element of a chain is the leaf; everything before it is a
       // layout the leaf renders inside.
       for (let at = 0; at < route.chain.length - 1; at++) {
-        const ancestor = route.chain[at] as { fullPath: string };
+        const ancestor = route.chain[at] as PathedRoute;
         const owned = splitPath(ancestor.fullPath);
         if (owned.length === 0 || owned.length >= segments.length) continue;
         let matches = true;
@@ -391,7 +402,7 @@ export function createMatcher<T>(
       }
     }
     return best;
-  };
+  }
 
   return {
     routes,

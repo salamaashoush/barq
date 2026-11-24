@@ -17,18 +17,24 @@ import type { AnyRouteDefinition, RouteProps } from "./route.ts";
 import { type RouteMatch, type RouterState, createRouteMask, createRouter } from "./router.ts";
 import { retainSearchParams } from "./search.ts";
 
-const tick = (ms = 0) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+function tick(ms = 0) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
 
-const page =
-  (label: string) =>
-  (_props: RouteProps): Node =>
-    document.createTextNode(label);
+function page(label: string) {
+  return (_props: RouteProps): Node => document.createTextNode(label);
+}
 
 afterEach(() => {
   document.body.innerHTML = "";
 });
 
-function mountState(state: RouterState): { host: HTMLElement; dispose: () => void } {
+interface Mounted {
+  host: HTMLElement;
+  dispose: () => void;
+}
+
+function mountState(state: RouterState): Mounted {
   const host = document.createElement("div");
   document.body.appendChild(host);
   const dispose = render(
@@ -42,7 +48,35 @@ function mountState(state: RouterState): { host: HTMLElement; dispose: () => voi
   return { host, dispose };
 }
 
-const routes = (table: unknown[]): AnyRouteDefinition[] => table as never;
+function routes(table: unknown[]): AnyRouteDefinition[] {
+  return table as never;
+}
+
+interface ContextArgs {
+  context: Record<string, unknown>;
+}
+
+interface PathLocation {
+  pathname: string;
+}
+
+interface IdParams {
+  id: string;
+}
+
+interface SeenLoad {
+  preload: boolean;
+  cause: string;
+  routeId: string;
+}
+
+interface LoadCause {
+  preload: boolean;
+  cause: string;
+  routeId: string;
+  abortController: AbortController;
+  buildLocation: RouterState["buildLocation"];
+}
 
 describe("router context", () => {
   test("`createRouter({ context })` is what every beforeLoad and loader starts from", async () => {
@@ -53,7 +87,7 @@ describe("router context", () => {
         {
           id: "layout",
           path: "/app",
-          beforeLoad: ({ context }: { context: Record<string, unknown> }) => {
+          beforeLoad: ({ context }: ContextArgs) => {
             seen.push(context);
             return { tenant: "acme" };
           },
@@ -62,7 +96,7 @@ describe("router context", () => {
               id: "leaf",
               path: "$id",
               component: page("leaf"),
-              loader: ({ context }: { context: Record<string, unknown> }) => {
+              loader: ({ context }: ContextArgs) => {
                 seen.push(context);
                 return "data";
               },
@@ -108,20 +142,20 @@ describe("router context", () => {
       history: memoryHistory({ initial: ["/app/7?tab=a"] }),
     });
     await state.load();
-    expect((given.location as { pathname: string }).pathname).toBe("/app/7");
+    expect((given.location as PathLocation).pathname).toBe("/app/7");
     expect(typeof given.navigate).toBe("function");
     expect(given.abortController).toBeInstanceOf(AbortController);
     expect((given.abortController as AbortController).signal).toBe(given.signal as AbortSignal);
     expect(given.preload).toBe(false);
     expect(given.cause).toBe("enter");
-    expect((given.route as { id: string }).id).toBe("leaf");
+    expect((given.route as IdParams).id).toBe("leaf");
     expect(given.params).toEqual({ id: "7" });
     expect(state.matches().at(-1)?.loaderData).toBe("child of parent-data");
     state.dispose();
   });
 
   test("beforeLoad is told whether it is a preload, and is handed navigate and buildLocation", async () => {
-    const seen: { preload: boolean; cause: string; routeId: string }[] = [];
+    const seen: SeenLoad[] = [];
     let built = "";
     const state = createRouter({
       routeTree: routes([
@@ -129,13 +163,7 @@ describe("router context", () => {
         {
           path: "/posts/$id",
           component: page("post"),
-          beforeLoad: (context: {
-            preload: boolean;
-            cause: string;
-            routeId: string;
-            abortController: AbortController;
-            buildLocation: RouterState["buildLocation"];
-          }) => {
+          beforeLoad: (context: LoadCause) => {
             seen.push({ preload: context.preload, cause: context.cause, routeId: context.routeId });
             built = context.buildLocation({ to: "/posts/$id", params: { id: "9" } }).href;
             expect(context.abortController).toBeInstanceOf(AbortController);
@@ -168,8 +196,13 @@ describe("buildLocation", () => {
       search: { middlewares: [retainSearchParams(["ref"])] },
     },
   ]);
-  const at = (initial: string, extra: Record<string, unknown> = {}): RouterState =>
-    createRouter({ routeTree: table, history: memoryHistory({ initial: [initial] }), ...extra });
+  function at(initial: string, extra: Record<string, unknown> = {}): RouterState {
+    return createRouter({
+      routeTree: table,
+      history: memoryHistory({ initial: [initial] }),
+      ...extra,
+    });
+  }
 
   test("a route id with params is interpolated, and the query and hash are written", () => {
     const state = at("/");
@@ -388,6 +421,18 @@ describe("navigate, object form", () => {
   });
 });
 
+interface StatusAnswer {
+  status: number;
+}
+
+interface IdParamsArgs {
+  params: IdParams;
+}
+
+interface DataProps {
+  data: () => unknown;
+}
+
 describe("redirect and notFound, options form", () => {
   test("`redirect({...})` returns the redirect, and throws only when asked", () => {
     const made = redirect({ to: "/posts/$id", params: { id: "7" }, search: { tab: "a" } });
@@ -408,7 +453,7 @@ describe("redirect and notFound, options form", () => {
       thrown = error;
     }
     expect(isRedirect(thrown)).toBe(true);
-    expect((thrown as { status: number }).status).toBe(302);
+    expect((thrown as StatusAnswer).status).toBe(302);
   });
 
   test("`notFound({...})` returns the error with its data, route and headers", () => {
@@ -431,7 +476,7 @@ describe("redirect and notFound, options form", () => {
         {
           path: "/posts/$id",
           component: page("post"),
-          loader: ({ params }: { params: { id: string } }) =>
+          loader: ({ params }: IdParamsArgs) =>
             params.id === "404" ? notFound({ data: "no such post" }) : `post ${params.id}`,
         },
       ]),
@@ -459,7 +504,7 @@ describe("redirect and notFound, options form", () => {
         {
           path: "/old/$id",
           component: page("old"),
-          beforeLoad: ({ params }: { params: { id: string } }) => {
+          beforeLoad: ({ params }: IdParamsArgs) => {
             throw redirect({
               to: "/posts/$id",
               params: { id: params.id },
@@ -490,7 +535,7 @@ describe("redirect and notFound, options form", () => {
             insert(node, () => props.children);
             return node;
           },
-          notFoundComponent: (props: { data: () => unknown }) => {
+          notFoundComponent: (props: DataProps) => {
             seen.push(props.data());
             return document.createTextNode("layout says missing");
           },
@@ -520,9 +565,15 @@ describe("redirect and notFound, options form", () => {
   });
 });
 
+interface ErrorProps {
+  error: () => Error;
+}
+
 describe("router defaults, TanStack's names", () => {
   test("the `default*` options land on `defaults`, which is what a route falls back to", () => {
-    const pending = (): null => null;
+    function pending(): null {
+      return null;
+    }
     const state = createRouter({
       routeTree: routes([{ path: "/", component: page("home") }]),
       history: memoryHistory({ initial: ["/"] }),
@@ -561,7 +612,7 @@ describe("router defaults, TanStack's names", () => {
         },
       ]),
       history: memoryHistory({ initial: ["/"] }),
-      defaultErrorComponent: ((props: { error: () => Error }) =>
+      defaultErrorComponent: ((props: ErrorProps) =>
         document.createTextNode(`default: ${props.error().message}`)) as never,
       defaultOnCatch: (error) => caught.push(error.message),
     });
@@ -676,14 +727,16 @@ describe("router defaults, TanStack's names", () => {
 
   test("`onError` is told about a loader failure, and not about a redirect or a notFound", async () => {
     const told: string[] = [];
-    const failing = (id: string, thrown: () => unknown): Record<string, unknown> => ({
-      path: `/${id}`,
-      component: page(id),
-      onError: (error: unknown) => told.push(`${id}: ${(error as Error).message}`),
-      loader: () => {
-        throw thrown();
-      },
-    });
+    function failing(id: string, thrown: () => unknown): Record<string, unknown> {
+      return {
+        path: `/${id}`,
+        component: page(id),
+        onError: (error: unknown) => told.push(`${id}: ${(error as Error).message}`),
+        loader: () => {
+          throw thrown();
+        },
+      };
+    }
     const state = createRouter({
       routeTree: routes([
         { path: "/", component: page("home") },
@@ -712,7 +765,7 @@ describe("router defaults, TanStack's names", () => {
           component: fromCells((props: Incoming<RouteProps>) =>
             document.createTextNode(String(props.data())),
           ),
-          errorComponent: (props: { error: () => Error }) => {
+          errorComponent: (props: ErrorProps) => {
             shown.push(props.error().message);
             return document.createTextNode("failed");
           },
@@ -741,15 +794,17 @@ describe("router defaults, TanStack's names", () => {
 
   test("loaders that redirect to each other stop at the bound, with the error", async () => {
     const runs: string[] = [];
-    const bouncing = (from: string, to: string): Record<string, unknown> => ({
-      path: from,
-      component: page(from),
-      loader: async () => {
-        runs.push(from);
-        await tick(1);
-        throw redirect({ to });
-      },
-    });
+    function bouncing(from: string, to: string): Record<string, unknown> {
+      return {
+        path: from,
+        component: page(from),
+        loader: async () => {
+          runs.push(from);
+          await tick(1);
+          throw redirect({ to });
+        },
+      };
+    }
     const errors: string[] = [];
     const error = spyOn(console, "error").mockImplementation((...args: unknown[]) => {
       errors.push(args.join(" "));
@@ -810,14 +865,16 @@ describe("router defaults, TanStack's names", () => {
 
   test("`onError` is told about a Response thrown by `beforeLoad` and by a loader alike", async () => {
     const told: string[] = [];
-    const refusing = (id: string, phase: "beforeLoad" | "loader"): Record<string, unknown> => ({
-      path: `/${id}`,
-      component: page(id),
-      onError: (error: unknown) => told.push(`${id}: ${(error as Response).status}`),
-      [phase]: () => {
-        throw new Response("sign in first", { status: 401 });
-      },
-    });
+    function refusing(id: string, phase: "beforeLoad" | "loader"): Record<string, unknown> {
+      return {
+        path: `/${id}`,
+        component: page(id),
+        onError: (error: unknown) => told.push(`${id}: ${(error as Response).status}`),
+        [phase]: () => {
+          throw new Response("sign in first", { status: 401 });
+        },
+      };
+    }
     const state = createRouter({
       routeTree: routes([
         { path: "/", component: page("home") },
@@ -838,19 +895,20 @@ describe("router defaults, TanStack's names", () => {
 });
 
 describe("the router instance", () => {
-  const slow = (ran: string[]): AnyRouteDefinition[] =>
-    routes([
+  function slow(ran: string[]): AnyRouteDefinition[] {
+    return routes([
       { path: "/", component: page("home") },
       {
         path: "/posts/$id",
         component: page("post"),
-        loader: async ({ params }: { params: { id: string } }) => {
+        loader: async ({ params }: IdParamsArgs) => {
           ran.push(params.id);
           await tick(10);
           return `post ${params.id}`;
         },
       },
     ]);
+  }
 
   test("`load` resolves once the chain's loaders have, and `matches` say what they loaded", async () => {
     const ran: string[] = [];
@@ -982,6 +1040,10 @@ describe("the router instance", () => {
   });
 });
 
+interface SignalArgs {
+  signal: AbortSignal;
+}
+
 describe("what a loader's cache does over time", () => {
   test("an entry older than `gcTime` is collected on the next navigation, and a younger one is kept", async () => {
     const ran: string[] = [];
@@ -1005,11 +1067,11 @@ describe("what a loader's cache does over time", () => {
     ]);
     const state = createRouter({ routeTree: table, history: memoryHistory({ initial: ["/"] }) });
     const { dispose } = mountState(state);
-    const go = async (to: string): Promise<void> => {
+    async function go(to: string): Promise<void> {
       await state.navigate(to);
       flush();
       await tick(5);
-    };
+    }
     await go("/short");
     await go("/long");
     await go("/");
@@ -1026,10 +1088,10 @@ describe("what a loader's cache does over time", () => {
     const signals: AbortSignal[] = [];
     const finish: (() => void)[] = [];
     let started = Promise.withResolvers<void>();
-    const nextRun = async (): Promise<void> => {
+    async function nextRun(): Promise<void> {
       await started.promise;
       started = Promise.withResolvers<void>();
-    };
+    }
     const state = createRouter({
       routeTree: routes([
         { path: "/", component: page("home") },
@@ -1037,7 +1099,7 @@ describe("what a loader's cache does over time", () => {
           path: "/slow",
           component: page("slow"),
           gcTime: 0,
-          loader: async ({ signal }: { signal: AbortSignal }) => {
+          loader: async ({ signal }: SignalArgs) => {
             signals.push(signal);
             const answer = Promise.withResolvers<void>();
             finish.push(answer.resolve);

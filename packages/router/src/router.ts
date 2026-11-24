@@ -81,9 +81,11 @@ import {
   validateSearch,
 } from "./search.ts";
 
-const NOOP = (): void => {};
+function NOOP(): void {}
 const NO_SEARCH = new URLSearchParams();
-const NO_LOADER = async (): Promise<unknown> => undefined;
+async function NO_LOADER(): Promise<unknown> {
+  return undefined;
+}
 
 /** How a cell is read: called, or through `untrack`. */
 type Reader = <T>(cell: () => T) => T;
@@ -208,7 +210,13 @@ export function resolveSsr(
   return out;
 }
 
-const bump = (n: number): number => n + 1;
+function bump(n: number): number {
+  return n + 1;
+}
+
+interface SettledValue {
+  value: unknown;
+}
 
 /** One cached loader result, and everything the reload policy reads. */
 interface Entry {
@@ -239,7 +247,7 @@ interface Entry {
    * clone and a non-success leaves the old match renderable
    * (`load-client.ts:694-700`).
    */
-  settled: { value: unknown } | null;
+  settled: SettledValue | null;
   /** The error from the most recent failed load, if the last one failed. */
   error: unknown;
   cause: LoadCause;
@@ -294,6 +302,10 @@ export function depsKey(value: unknown): string {
   return `{${names.map((name) => `${JSON.stringify(name)}:${depsKey(record[name])}`).join(",")}}`;
 }
 
+interface UpdaterMethod<Current, Next> {
+  update(current: Current): Next;
+}
+
 /**
  * A function of the current value.
  *
@@ -302,7 +314,7 @@ export function depsKey(value: unknown): string {
  * current value is typed wider, and one written against a route's own search
  * fits where it is typed narrower.
  */
-export type Updater<Current, Next> = { update(current: Current): Next }["update"];
+export type Updater<Current, Next> = UpdaterMethod<Current, Next>["update"];
 
 type RecordUpdater = Updater<Record<string, unknown>, Record<string, unknown>>;
 
@@ -367,6 +379,11 @@ export interface NavigateOptions extends ToOptions {
   readonly unmaskOnReload?: boolean;
 }
 
+export interface MaskedLocation {
+  readonly href: string;
+  readonly unmaskOnReload?: boolean;
+}
+
 /** What `buildLocation` answers with. */
 export interface BuiltLocation extends Location {
   /** `pathname + search + hash`, or the whole url when it leaves the application. */
@@ -374,7 +391,7 @@ export interface BuiltLocation extends Location {
   /** The target is outside the application, so only a document load reaches it. */
   readonly external: boolean;
   /** What the address bar shows instead, when a `mask` was given. */
-  readonly maskedLocation?: { readonly href: string; readonly unmaskOnReload?: boolean };
+  readonly maskedLocation?: MaskedLocation;
 }
 
 /**
@@ -517,12 +534,16 @@ export interface RouteMask {
   readonly unmaskOnReload?: boolean;
 }
 
+export interface RouteTreeHint {
+  readonly routeTree?: unknown;
+}
+
 /**
  * TanStack's `createRouteMask`: a typed way to write one {@link RouteMask}.
  *
  * `routeTree` is accepted because theirs takes it for inference, and dropped.
  */
-export function createRouteMask(mask: RouteMask & { readonly routeTree?: unknown }): RouteMask {
+export function createRouteMask(mask: RouteMask & RouteTreeHint): RouteMask {
   const { routeTree: _routeTree, ...rest } = mask;
   return rest;
 }
@@ -654,6 +675,12 @@ function changeInfo(from: Location | null, to: Location): Omit<RouterEvent, "typ
   };
 }
 
+export interface GuardContext {
+  readonly from: Location;
+  readonly to: Location;
+  readonly params: Record<string, string>;
+}
+
 /**
  * A guard runs before the location commits.
  *
@@ -664,11 +691,16 @@ function changeInfo(from: Location | null, to: Location): Omit<RouterEvent, "typ
  * boundary" — and the difference here is that `@barqjs/start` gives the place
  * where the check does belong.
  */
-export type Guard = (context: {
+export type Guard = (context: GuardContext) => boolean | string | Promise<boolean | string>;
+
+export interface BlockerContext {
   readonly from: Location;
   readonly to: Location;
-  readonly params: Record<string, string>;
-}) => boolean | string | Promise<boolean | string>;
+  /** The same two places as TanStack's `shouldBlockFn` describes them. */
+  readonly current: BlockerLocation;
+  readonly next: BlockerLocation;
+  readonly action: HistoryAction;
+}
 
 /**
  * Asked before a navigation commits. Return `true` to BLOCK it.
@@ -682,14 +714,7 @@ export type Guard = (context: {
  * UX, like `beforeEnter` and unlike `middleware`: it runs on the client only,
  * and nothing about it reaches a server function.
  */
-export type Blocker = (context: {
-  readonly from: Location;
-  readonly to: Location;
-  /** The same two places as TanStack's `shouldBlockFn` describes them. */
-  readonly current: BlockerLocation;
-  readonly next: BlockerLocation;
-  readonly action: HistoryAction;
-}) => boolean | void | Promise<boolean | void>;
+export type Blocker = (context: BlockerContext) => boolean | void | Promise<boolean | void>;
 
 /** How a navigation was asked for. `BACK` and `FORWARD` are the browser's own buttons. */
 export type HistoryAction = "PUSH" | "REPLACE" | "BACK" | "FORWARD" | "GO";
@@ -963,6 +988,23 @@ export function searchKey(search: URLSearchParams): string {
   return pairs.toSorted().join("&");
 }
 
+export interface LoadOptions {
+  readonly sync?: boolean;
+}
+
+export interface ClearCacheOptions {
+  readonly filter?: (match: RouteMatch) => boolean;
+}
+
+export interface RunBeforeLoadOptions {
+  readonly server?: boolean;
+}
+
+export interface InvalidateOptions {
+  readonly filter?: (match: RouteMatch) => boolean;
+  readonly sync?: boolean;
+}
+
 export interface RouterState {
   readonly location: Cell<Location>;
   readonly match: Cell<Match<Route> | null>;
@@ -1098,11 +1140,11 @@ export interface RouterState {
    * Fresh entries stay fresh and stale ones revalidate. `sync` also waits for a
    * background reload, which otherwise carries on behind the promise.
    */
-  load(options?: { readonly sync?: boolean }): Promise<void>;
+  load(options?: LoadOptions): Promise<void>;
   /** Resolves once the loaders the current chain has started have settled. */
   settled(): Promise<void>;
   /** Drop cached loader results that are not on screen, optionally only some. */
-  clearCache(options?: { readonly filter?: (match: RouteMatch) => boolean }): void;
+  clearCache(options?: ClearCacheOptions): void;
   /** Warm the cache for a destination, described the way `navigate` takes it. */
   preloadRoute(options: NavigateOptions): Promise<readonly RouteMatch[] | undefined>;
   /**
@@ -1139,7 +1181,7 @@ export interface RouterState {
   runBeforeLoad(
     to: Location,
     candidate: Match<Route> | null,
-    options?: { readonly server?: boolean },
+    options?: RunBeforeLoadOptions,
   ): Promise<BeforeLoadResult>;
   /**
    * Adopt a context the SERVER already produced, without re-running `beforeLoad`.
@@ -1229,11 +1271,59 @@ export interface RouterState {
    * Ask cached loaders again, all of them or the ones `filter` picks. `sync`
    * resolves once the reloads have settled.
    */
-  invalidate(options?: {
-    readonly filter?: (match: RouteMatch) => boolean;
-    readonly sync?: boolean;
-  }): Promise<void>;
+  invalidate(options?: InvalidateOptions): Promise<void>;
   dispose(): void;
+}
+
+interface MaskTarget {
+  to: string;
+  unmaskOnReload: boolean;
+}
+
+interface ParsedParams {
+  readonly slices: readonly Record<string, unknown>[];
+  readonly failures: readonly (PathParamError | null)[];
+}
+
+interface ValidatedSearch {
+  readonly slices: readonly Record<string, unknown>[];
+  readonly defaults: ReadonlyMap<string, unknown>;
+  readonly failures: readonly (SearchParamError | null)[];
+}
+
+interface LoaderKey {
+  seedKey: string;
+  deps: unknown;
+}
+
+interface MemoizedMatch {
+  params: unknown;
+  search: unknown;
+  blocking: boolean;
+  reader: Cell<unknown>;
+  entry: Entry;
+}
+
+interface BeforeLoadRunOptions {
+  readonly server?: boolean;
+  readonly preload?: boolean;
+}
+
+interface MatchInputs {
+  readonly raw: Readonly<Record<string, string>>;
+  readonly params: Readonly<Record<string, unknown>>;
+  readonly search: URLSearchParams;
+  readonly valid: Record<string, unknown>;
+  readonly context: Record<string, unknown>;
+  readonly paramsError?: unknown;
+  readonly searchError?: unknown;
+  /** A cached entry to describe as it stands, whatever the location says. */
+  readonly entry?: Entry;
+}
+
+interface RedirectTarget {
+  readonly to: string;
+  readonly options?: NavigateOptions;
 }
 
 export function createRouter<Dehydrated = unknown>(
@@ -1266,7 +1356,7 @@ export function createRouter<Dehydrated = unknown>(
         );
 
   /** The URL a target should SHOW, when a mask claims it. */
-  const maskFor = (target: Location): { to: string; unmaskOnReload: boolean } | null => {
+  function maskFor(target: Location): MaskTarget | null {
     if (maskTable === null) return null;
     const hit = maskTable.match(target.pathname);
     const mask = hit?.route.chain[0];
@@ -1280,7 +1370,7 @@ export function createRouter<Dehydrated = unknown>(
       to: interpolate(mask.to, filled) + (shown === undefined ? "" : writeSearch(shown)),
       unmaskOnReload: mask.unmaskOnReload ?? config.unmaskOnReload ?? false,
     };
-  };
+  }
   const defaults: RouteDefaults = config.defaults ?? {};
   // A history the CALLER built already knows its own base; one built here is
   // told. Both spellings therefore work, and neither has to repeat the other.
@@ -1301,7 +1391,7 @@ export function createRouter<Dehydrated = unknown>(
       : rewriteHistory(givenHistory, config.rewrite, origin);
 
   /** The query as a record and back, through the application's pair when it gave one. */
-  const readSearch = (forSearch: URLSearchParams | string): Record<string, unknown> => {
+  function readSearch(forSearch: URLSearchParams | string): Record<string, unknown> {
     if (config.parseSearch === undefined) {
       return searchRecord(
         typeof forSearch === "string" ? new URLSearchParams(forSearch) : forSearch,
@@ -1309,12 +1399,12 @@ export function createRouter<Dehydrated = unknown>(
     }
     const text = typeof forSearch === "string" ? forSearch : forSearch.toString();
     return config.parseSearch(text === "" || text.startsWith("?") ? text : `?${text}`);
-  };
-  const writeSearch = (record: Record<string, unknown>): string => {
+  }
+  function writeSearch(record: Record<string, unknown>): string {
     if (config.stringifySearch === undefined) return toSearchString(record);
     const text = config.stringifySearch(record);
     return text === "" || text.startsWith("?") ? text : `?${text}`;
-  };
+  }
   const matcher = createMatcher(flattenRoutes(config.routeTree), {
     caseSensitive: config.caseSensitive,
   });
@@ -1372,13 +1462,10 @@ export function createRouter<Dehydrated = unknown>(
    * A failure is STORED rather than thrown. This runs inside a `computed` read
    * during a render, and throwing would take the page rather than the route.
    */
-  const parseChain = (
+  function parseChain(
     forChain: readonly Route[],
     raw: Readonly<Record<string, string>>,
-  ): {
-    readonly slices: readonly Record<string, unknown>[];
-    readonly failures: readonly (PathParamError | null)[];
-  } => {
+  ): ParsedParams {
     const slices: Record<string, unknown>[] = [];
     const failures: (PathParamError | null)[] = [];
     let merged: Record<string, unknown> = raw;
@@ -1413,7 +1500,7 @@ export function createRouter<Dehydrated = unknown>(
       }
     }
     return { slices, failures };
-  };
+  }
 
   /**
    * The chain an UNMATCHED location renders.
@@ -1460,11 +1547,7 @@ export function createRouter<Dehydrated = unknown>(
   /** Nothing matched, so the chain above is the root standing in. */
   const missed = createMemo<boolean>(() => match() === null);
 
-  const validated = createMemo<{
-    readonly slices: readonly Record<string, unknown>[];
-    readonly defaults: ReadonlyMap<string, unknown>;
-    readonly failures: readonly (SearchParamError | null)[];
-  }>(() => {
+  const validated = createMemo<ValidatedSearch>(() => {
     const raw = readSearch(search());
     const slices: Record<string, unknown>[] = [];
     const failures: (SearchParamError | null)[] = [];
@@ -1542,7 +1625,9 @@ export function createRouter<Dehydrated = unknown>(
 
   const entries = new Map<string, Entry>();
   const limit = config.cacheSize ?? DEFAULT_CACHE_SIZE;
-  const now = (): number => Date.now();
+  function now(): number {
+    return Date.now();
+  }
 
   /**
    * The key an entry is filed under, and the key its value is SEEDED under.
@@ -1552,18 +1637,18 @@ export function createRouter<Dehydrated = unknown>(
    * seed key — the server always renders at generation 0 and a client that has
    * invalidated since would look for a key the server never wrote.
    */
-  const keyOf = (
+  function keyOf(
     route: Route,
     forRaw: Readonly<Record<string, string>>,
     forSearch: URLSearchParams,
-  ): { seedKey: string; deps: unknown } => {
+  ): LoaderKey {
     const project = route.definition.loaderDeps;
     if (project === undefined) {
       return { seedKey: loaderKey(route.id, forRaw, searchKey(forSearch)), deps: undefined };
     }
     const deps = project({ search: forSearch });
     return { seedKey: loaderKey(route.id, forRaw, depsKey(deps)), deps };
-  };
+  }
 
   /**
    * Build one entry.
@@ -1588,7 +1673,7 @@ export function createRouter<Dehydrated = unknown>(
    * Together: no inherited context, no pinned parent, and a `dispose` the router
    * owns.
    */
-  const mint = (
+  function mint(
     route: Route,
     forParams: Readonly<Record<string, string>>,
     forSearch: URLSearchParams,
@@ -1608,18 +1693,18 @@ export function createRouter<Dehydrated = unknown>(
      * location: a preload's own chain, segments and target.
      */
     lane?: Lane,
-  ): Entry => {
+  ): Entry {
     const loader = route.definition.loader;
     let entry!: Entry;
 
     const cell = runWithOwner(null, () =>
       createRoot<Cell<unknown>>((disposeScope) => {
         let controller: AbortController | null = null;
-        const abort = (reason: string): void => {
+        function abort(reason: string): void {
           const live = controller;
           controller = null;
           if (live !== null) live.abort(reason);
-        };
+        }
 
         entry = {
           key: seedKey,
@@ -1649,17 +1734,17 @@ export function createRouter<Dehydrated = unknown>(
         // One promise per stretch of work, begun by whichever comes first of a
         // reload being asked for and the run it leads to, so a waiter that
         // arrives between the two is waiting on the right one.
-        const begin = (): void => {
+        function begin(): void {
           if (entry.done !== NOOP) return;
           entry.running = new Promise<void>((resolve) => {
             entry.done = resolve;
           });
-        };
-        const finish = (): void => {
+        }
+        function finish(): void {
           const done = entry.done;
           entry.done = NOOP;
           done();
-        };
+        }
         // A memo is computed where it is declared, and its body reads
         // `entry`, so the entry exists first. An entry is minted when its
         // data is asked for — a read, or an explicit preload — which is when
@@ -1766,7 +1851,7 @@ export function createRouter<Dehydrated = unknown>(
     entries.set(seedKey, entry);
     evict();
     return entry;
-  };
+  }
 
   /**
    * The ceiling, which is not the sweep.
@@ -1776,7 +1861,7 @@ export function createRouter<Dehydrated = unknown>(
    * nothing can drop keeps the map above `limit`, which is correct: a bound that
    * hangs the page is not a bound worth having.
    */
-  const evict = (): void => {
+  function evict(): void {
     if (entries.size <= limit) return;
     const live = liveKeys();
     for (const [key, entry] of entries) {
@@ -1784,15 +1869,15 @@ export function createRouter<Dehydrated = unknown>(
       if (live.has(key) || entry.inFlight) continue;
       collect(key, entry);
     }
-  };
+  }
 
-  const liveKeys = (): Set<string> => {
+  function liveKeys(): Set<string> {
     const keys = new Set<string>();
     const forRaw = untrack(rawParams);
     const forSearch = untrack(search);
     for (const route of untrack(chain)) keys.add(keyOf(route, forRaw, forSearch).seedKey);
     return keys;
-  };
+  }
 
   /**
    * Collect on navigation, which is TanStack's shape and the right one — a
@@ -1802,7 +1887,7 @@ export function createRouter<Dehydrated = unknown>(
    * what makes `gcTime` mean something rather than decorate a Map that grows
    * forever. That is only safe under the settled-and-unmatched rule.
    */
-  const sweep = (): void => {
+  function sweep(): void {
     const live = liveKeys();
     const at = now();
     for (const [key, entry] of entries) {
@@ -1814,10 +1899,10 @@ export function createRouter<Dehydrated = unknown>(
       if (at - entry.updatedAt < budget) continue;
       collect(key, entry);
     }
-  };
+  }
 
   /** Whether a cached entry should be asked again, and the three-way that decides. */
-  const shouldReload = (entry: Entry, forParams: Readonly<Record<string, string>>): boolean => {
+  function shouldReload(entry: Entry, forParams: Readonly<Record<string, string>>): boolean {
     if (entry.inFlight) return false;
     // A redirect is an instruction rather than a result. Kept, a return to the
     // route read it again and went nowhere, and a cycle of loaders never met
@@ -1839,14 +1924,14 @@ export function createRouter<Dehydrated = unknown>(
       ? (definition.preloadStaleTime ?? defaults.preloadStaleTime ?? DEFAULT_PRELOAD_STALE_TIME)
       : (definition.staleTime ?? defaults.staleTime ?? DEFAULT_STALE_TIME);
     return now() - entry.updatedAt >= budget;
-  };
+  }
 
-  const acquire = (
+  function acquire(
     route: Route,
     forRaw: Readonly<Record<string, string>>,
     forParams: Readonly<Record<string, string>>,
     cause: LoadCause,
-  ): Entry => {
+  ): Entry {
     const forSearch = untrack(search);
     const { seedKey, deps } = keyOf(route, forRaw, forSearch);
     const existing = entries.get(seedKey);
@@ -1860,7 +1945,7 @@ export function createRouter<Dehydrated = unknown>(
       existing.cause = cause;
     }
     return existing;
-  };
+  }
 
   /**
    * The read one route depth gets, and the mode is a property of the READ.
@@ -1884,9 +1969,9 @@ export function createRouter<Dehydrated = unknown>(
    * It is not a patch either: `staleReloadMode` governs a RELOAD of a settled
    * value, and on the server every value is cold.
    */
-  const readerFor = (entry: Entry, blocking: boolean): Cell<unknown> => {
+  function readerFor(entry: Entry, blocking: boolean): Cell<unknown> {
     const mode = entry.route.definition.staleReloadMode ?? defaults.staleReloadMode ?? "background";
-    const held = (): boolean => {
+    function held(): boolean {
       const minimum = entry.route.definition.pendingMinMs ?? defaults.pendingMinMs ?? 0;
       if (minimum === 0 || entry.shownAt === 0) return false;
       // Read the signal so this re-evaluates when the hold expires.
@@ -1896,7 +1981,7 @@ export function createRouter<Dehydrated = unknown>(
       if (remaining <= 0) return false;
       setTimeout(() => setHold(bump), remaining);
       return true;
-    };
+    }
     const plain: Cell<unknown> = () => {
       // A settled value that arrived while the fallback was still being held
       // keeps throwing until the hold expires, so a skeleton that appeared does
@@ -1923,7 +2008,7 @@ export function createRouter<Dehydrated = unknown>(
         throw error;
       }
     };
-  };
+  }
 
   /**
    * Memoised per MATCH rather than rebuilt per read.
@@ -1936,10 +2021,7 @@ export function createRouter<Dehydrated = unknown>(
    * `params` is a `computed`, so its identity is stable for as long as the match
    * is — which makes an identity compare the whole of the invalidation rule.
    */
-  const memo = new Map<
-    Route,
-    { params: unknown; search: unknown; blocking: boolean; reader: Cell<unknown>; entry: Entry }
-  >();
+  const memo = new Map<Route, MemoizedMatch>();
 
   /**
    * Take one entry out of the cache, and out of the per-route memo with it.
@@ -1949,17 +2031,17 @@ export function createRouter<Dehydrated = unknown>(
    * same across a navigation away and back. Leaving it behind made a collected
    * entry the one a returning route read: its loader was never asked again.
    */
-  const collect = (key: string, entry: Entry): void => {
+  function collect(key: string, entry: Entry): void {
     entry.dispose();
     entries.delete(key);
     if (memo.get(entry.route)?.entry === entry) memo.delete(entry.route);
-  };
+  }
 
-  const dataFor = (
+  function dataFor(
     route: Route,
     forParams: Readonly<Record<string, string>>,
     blocking = false,
-  ): Cell<unknown> => {
+  ): Cell<unknown> {
     // THE SEARCH IS IN THE MEMO KEY, and leaving it out was a live bug that
     // only `structuralSharing` exposed: a loader is keyed on the search as well
     // as the params, and the memo compared params alone. It happened to
@@ -1991,7 +2073,7 @@ export function createRouter<Dehydrated = unknown>(
     const reader = readerFor(entry, blocking);
     memo.set(route, { params: forParams, search: forSearch, blocking, reader, entry });
     return reader;
-  };
+  }
 
   // `ownedWrite`: `start()` is called from the provider's body, and it writes
   // the context the first render's loaders are handed.
@@ -2016,28 +2098,29 @@ export function createRouter<Dehydrated = unknown>(
   let started = false;
   let releaseContexts = NOOP;
   let contextsReady: Promise<void> | null = null;
-  const armContexts = (): void => {
+  function armContexts(): void {
     contextsReady = new Promise<void>((resolve) => {
       releaseContexts = resolve;
     });
-  };
-  const settleContexts = (next: readonly Record<string, unknown>[]): void => {
+  }
+  function settleContexts(next: readonly Record<string, unknown>[]): void {
     writeContexts(next);
     releaseContexts();
     releaseContexts = NOOP;
     contextsReady = null;
-  };
-  const chainNeedsContext = (routes: readonly Route[]): boolean =>
-    routes.some(
+  }
+  function chainNeedsContext(routes: readonly Route[]): boolean {
+    return routes.some(
       (route) =>
         route.definition.beforeLoad !== undefined || route.definition.context !== undefined,
     );
+  }
 
-  const runBeforeLoad = async (
+  async function runBeforeLoad(
     to: Location,
     candidate: Match<Route> | null,
-    options?: { readonly server?: boolean; readonly preload?: boolean },
-  ): Promise<BeforeLoadResult> => {
+    options?: BeforeLoadRunOptions,
+  ): Promise<BeforeLoadResult> {
     const modes = resolveSsr(
       candidate?.route.chain ?? [],
       defaults.ssr ?? true,
@@ -2097,7 +2180,7 @@ export function createRouter<Dehydrated = unknown>(
       produced.push(own ?? undefined);
     }
     return { contexts: out, produced };
-  };
+  }
 
   /**
    * The same merge as `runBeforeLoad`, with the async half replaced by what the
@@ -2107,7 +2190,7 @@ export function createRouter<Dehydrated = unknown>(
    * the point: on hydration the context is available in the same tick the
    * router mounts, so the first render sees it rather than an empty object.
    */
-  const hydrateContexts = (to: Location, produced: BeforeLoadSeed["produced"]): void => {
+  function hydrateContexts(to: Location, produced: BeforeLoadSeed["produced"]): void {
     const candidate = matcher.match(unmask(to));
     const out: Record<string, unknown>[] = [];
     let merged: Record<string, unknown> = rootContext;
@@ -2137,7 +2220,7 @@ export function createRouter<Dehydrated = unknown>(
       out.push(merged);
     }
     settleContexts(out);
-  };
+  }
 
   /**
    * The server's handoff, taken ONCE.
@@ -2147,15 +2230,15 @@ export function createRouter<Dehydrated = unknown>(
    * request that is over. TanStack's handoff is hydration-only for the same
    * reason.
    */
-  const takeContextSeed = (): BeforeLoadSeed | null => {
+  function takeContextSeed(): BeforeLoadSeed | null {
     const holder = globalThis as Record<string, unknown>;
     const seed = holder[ROUTE_CONTEXT_GLOBAL] as BeforeLoadSeed | undefined;
     if (seed === undefined) return null;
     delete holder[ROUTE_CONTEXT_GLOBAL];
     return seed;
-  };
+  }
 
-  const buildSearch = (to: string): string => {
+  function buildSearch(to: string): string {
     const cut = to.search(/[?#]/);
     const pathPart = cut === -1 ? to : to.slice(0, cut);
     const rest = cut === -1 ? "" : to.slice(cut);
@@ -2170,7 +2253,7 @@ export function createRouter<Dehydrated = unknown>(
       untrack,
     );
     return built === query ? to : `${pathPart}${built}${hash}`;
-  };
+  }
 
   /**
    * The query a location being built ends up with: the caller's intent, run
@@ -2179,12 +2262,12 @@ export function createRouter<Dehydrated = unknown>(
    * `intent` is a record to write, or `null` when the caller wrote the query as
    * text, which is then left exactly as written unless a middleware has a say.
    */
-  const searchFor = (
+  function searchFor(
     pathname: string,
     intent: Record<string, unknown> | null,
     query: string,
     read: Reader,
-  ): string => {
+  ): string {
     const candidate = matcher.match(pathname);
     const middlewares: SearchMiddleware[] = [];
     for (const route of candidate?.route.chain ?? []) {
@@ -2199,17 +2282,17 @@ export function createRouter<Dehydrated = unknown>(
         read(validated).defaults,
       ),
     );
-  };
+  }
 
   /** A route id or pattern as a concrete path, filled from the current params. */
-  const concrete = (path: string, read: Reader): string => {
+  function concrete(path: string, read: Reader): string {
     if (!/(^|\/)\$|\{-?\$/.test(path)) return path;
     try {
       return interpolate(path, read(rawParams));
     } catch {
       return path;
     }
-  };
+  }
 
   /**
    * `params.stringify`, for every route on the way to the destination.
@@ -2226,10 +2309,10 @@ export function createRouter<Dehydrated = unknown>(
    * `parse` refuses the same value on the way back in, with a boundary, if the
    * link is ever followed.
    */
-  const stringifyParams = (
+  function stringifyParams(
     forChain: readonly Route[] | undefined,
     values: Record<string, unknown>,
-  ): Record<string, string> => {
+  ): Record<string, string> {
     let out: Record<string, unknown> = values;
     for (const route of forChain ?? []) {
       const stringify = route.definition.params?.stringify;
@@ -2241,13 +2324,13 @@ export function createRouter<Dehydrated = unknown>(
       }
     }
     return out as Record<string, string>;
-  };
+  }
 
   /**
    * `read` is how the current location is read: tracked for a `<Link>`, whose
    * href follows it, and `untrack` for a navigation, which asks once.
    */
-  const locate = (options: ToOptions, read: Reader): BuiltLocation => {
+  function locate(options: ToOptions, read: Reader): BuiltLocation {
     const outside = options.href ?? (leavesTheApp(options.to ?? ".") ? options.to : undefined);
     if (outside !== undefined) {
       return {
@@ -2274,10 +2357,11 @@ export function createRouter<Dehydrated = unknown>(
 
     const destination = matcher.routes.find((route) => route.id === pathPart);
     const given = options.params;
-    const next = (): Record<string, unknown> =>
-      given === undefined || given === true
+    function next(): Record<string, unknown> {
+      return given === undefined || given === true
         ? read(rawParams)
         : { ...read(rawParams), ...(typeof given === "function" ? given(read(params)) : given) };
+    }
     // A route id is tried first and falls through to path resolution, so
     // `to: "/users/$id"` with `params` builds `/users/7` while `to: "/users/7"`
     // is taken as it stands.
@@ -2349,24 +2433,13 @@ export function createRouter<Dehydrated = unknown>(
                 : { href: locate(mask, read).href, unmaskOnReload: mask.unmaskOnReload },
           }),
     };
-  };
+  }
 
-  const buildLocation = (options: ToOptions = {}): BuiltLocation => locate(options, track);
+  function buildLocation(options: ToOptions = {}): BuiltLocation {
+    return locate(options, track);
+  }
 
-  const matchOf = (
-    route: Route,
-    at: {
-      readonly raw: Readonly<Record<string, string>>;
-      readonly params: Readonly<Record<string, unknown>>;
-      readonly search: URLSearchParams;
-      readonly valid: Record<string, unknown>;
-      readonly context: Record<string, unknown>;
-      readonly paramsError?: unknown;
-      readonly searchError?: unknown;
-      /** A cached entry to describe as it stands, whatever the location says. */
-      readonly entry?: Entry;
-    },
-  ): RouteMatch => {
+  function matchOf(route: Route, at: MatchInputs): RouteMatch {
     const { seedKey, deps } =
       at.entry === undefined
         ? keyOf(route, at.raw, at.search)
@@ -2374,24 +2447,24 @@ export function createRouter<Dehydrated = unknown>(
     const entry =
       at.entry ?? (route.definition.loader === undefined ? undefined : entries.get(seedKey));
     let failure: unknown = at.paramsError ?? at.searchError ?? undefined;
-    let status: RouteMatch["status"] = failure === undefined ? "success" : "error";
+    let matchStatus: RouteMatch["status"] = failure === undefined ? "success" : "error";
     let loaderData: unknown;
-    const failed = (error: unknown): void => {
+    function failed(error: unknown): void {
       failure = error;
-      status = isNotFound(error) ? "notFound" : "error";
-    };
+      matchStatus = isNotFound(error) ? "notFound" : "error";
+    }
     if (failure === undefined && route.definition.loader !== undefined) {
-      if (entry === undefined) status = "pending";
+      if (entry === undefined) matchStatus = "pending";
       else if (entry.settled !== null) loaderData = entry.settled.value;
       else if (entry.error !== undefined) failed(entry.error);
-      else if (entry.inFlight) status = "pending";
+      else if (entry.inFlight) matchStatus = "pending";
       else {
         // Neither run nor failed: the value came from the server's seed, which
         // answers the read without the loader ever being entered.
         try {
           loaderData = untrack(entry.cell);
         } catch (error) {
-          if (error instanceof NotReadyError) status = "pending";
+          if (error instanceof NotReadyError) matchStatus = "pending";
           else failed(error);
         }
       }
@@ -2412,7 +2485,7 @@ export function createRouter<Dehydrated = unknown>(
       loaderData,
       loaderDeps: deps,
       context: at.context,
-      status,
+      status: matchStatus,
       isFetching: entry?.inFlight === true ? "loader" : false,
       error: failure,
       paramsError: at.paramsError ?? undefined,
@@ -2422,9 +2495,9 @@ export function createRouter<Dehydrated = unknown>(
       staticData: route.definition.staticData ?? {},
       definition: route.definition,
     };
-  };
+  }
 
-  const matches = (): readonly RouteMatch[] => {
+  function matches(): readonly RouteMatch[] {
     loads();
     const raw = rawParams();
     const forSearch = search();
@@ -2442,14 +2515,14 @@ export function createRouter<Dehydrated = unknown>(
         searchError: searched.failures[depth] ?? undefined,
       }),
     );
-  };
+  }
 
-  const parentMatch = async (
+  async function parentMatch(
     route: Route,
     forSearch: URLSearchParams,
     cause: LoadCause,
     lane?: Lane,
-  ): Promise<RouteMatch | undefined> => {
+  ): Promise<RouteMatch | undefined> {
     const laneChain = lane?.chain ?? untrack(chain);
     const at = laneChain.indexOf(route);
     const parent = at > 0 ? laneChain[at - 1] : undefined;
@@ -2480,9 +2553,9 @@ export function createRouter<Dehydrated = unknown>(
       valid: readSearch(forSearch),
       context,
     });
-  };
+  }
 
-  const primeChain = (server = false): void => {
+  function primeChain(server = false): void {
     // A loader started while a write is still staged reads it, and is asked
     // again when the write is published: two fetches for one navigation.
     flush();
@@ -2505,17 +2578,19 @@ export function createRouter<Dehydrated = unknown>(
         // to catch it, and `onLoaderError` has already fired.
       }
     }
-  };
+  }
 
   /** The merged context as of one route's depth in the current chain. */
-  const contextAt = (route: Route): Record<string, unknown> => {
+  function contextAt(route: Route): Record<string, unknown> {
     const at = untrack(chain).indexOf(route);
     return untrack(contexts)[at] ?? rootContext;
-  };
+  }
 
   /** `enter` the first time a route appears in the chain, `stay` while it stays. */
   let previous: readonly Route[] = [];
-  const causeFor = (route: Route): LoadCause => (previous.includes(route) ? "stay" : "enter");
+  function causeFor(route: Route): LoadCause {
+    return previous.includes(route) ? "stay" : "enter";
+  }
 
   /**
    * `onLeave`, then `onStay` or `onEnter` — TanStack's order and their rule
@@ -2527,16 +2602,18 @@ export function createRouter<Dehydrated = unknown>(
    * across a navigation today, and a chain rebuilt from a fresh match would not
    * be — an id is what the author named and what a hook is written against.
    */
-  const runLifecycle = (before: readonly Route[], after: readonly Route[]): void => {
+  function runLifecycle(before: readonly Route[], after: readonly Route[]): void {
     const stayed = new Set(after.map((route) => route.id));
     const had = new Set(before.map((route) => route.id));
     const forParams = untrack(params);
-    const told = (route: Route): RouteLifecycle => ({
-      routeId: route.id,
-      fullPath: route.fullPath,
-      params: forParams,
-      staticData: route.definition.staticData ?? {},
-    });
+    function told(route: Route): RouteLifecycle {
+      return {
+        routeId: route.id,
+        fullPath: route.fullPath,
+        params: forParams,
+        staticData: route.definition.staticData ?? {},
+      };
+    }
     for (const route of before) {
       if (!stayed.has(route.id)) route.definition.onLeave?.(told(route));
     }
@@ -2544,7 +2621,7 @@ export function createRouter<Dehydrated = unknown>(
       const hook = had.has(route.id) ? route.definition.onStay : route.definition.onEnter;
       hook?.(told(route));
     }
-  };
+  }
 
   /**
    * The reload decision happens ONCE PER NAVIGATION, not once per read.
@@ -2556,7 +2633,7 @@ export function createRouter<Dehydrated = unknown>(
    * conclusion from the other end — its reload decision lives in the load lane,
    * which a navigation enters and a render does not.
    */
-  const revalidate = (): void => {
+  function revalidate(): void {
     const forRaw = untrack(rawParams);
     const forParams = untrack(params);
     const forSearch = untrack(search);
@@ -2567,7 +2644,7 @@ export function createRouter<Dehydrated = unknown>(
       if (shouldReload(entry, forParams)) entry.reload();
     }
     previous = untrack(chain);
-  };
+  }
 
   // Handed from `navigate` to the subscription, because the location is what
   // commits and the context has to land with it rather than after it.
@@ -2584,7 +2661,7 @@ export function createRouter<Dehydrated = unknown>(
    */
   let newestEntry = 0;
 
-  const accept = (next: Location): void => {
+  function accept(next: Location): void {
     noteIdle();
     committedIndex = history.depth?.() ?? 0;
     const asked = pendingNavigate;
@@ -2622,7 +2699,7 @@ export function createRouter<Dehydrated = unknown>(
      * `blocking` reload rendered its OLD data instead of its fallback. The test
      * for `staleReloadMode: "blocking"` is what said so.
      */
-    const commit = (): void => {
+    function commit(): void {
       // BEFORE the location moves, which is the whole difference between this
       // and `onLoad`: a listener here still sees the page being left.
       emit("onBeforeRouteMount", untrack(location), next);
@@ -2669,13 +2746,13 @@ export function createRouter<Dehydrated = unknown>(
       // without this a transition animates old-to-old. The deleted router had
       // this line and it is the one thing about its transitions worth keeping.
       flush();
-    };
+    }
 
     // AFTER the commit and not after the animation: `withViewTransition` awaits
     // `updateCallbackDone`, so this runs once the DOM is written rather than
     // once it has finished animating. Awaiting `finished` is what made the old
     // router's page visibly jump when the animation had already played.
-    const restoreScroll = async (): Promise<void> => {
+    async function restoreScroll(): Promise<void> {
       /**
        * The chunk FIRST, and the commit only once it is here.
        *
@@ -2742,11 +2819,11 @@ export function createRouter<Dehydrated = unknown>(
         hashScrollIntoView: asked?.hashScrollIntoView,
       });
       emit("onRendered", leaving, next);
-    };
+    }
     void restoreScroll();
 
     for (const hook of config.afterEach ?? []) hook(next);
-  };
+  }
 
   /** Where the history was when the location on screen was accepted. */
   let committedIndex = history.depth?.() ?? 0;
@@ -2778,7 +2855,7 @@ export function createRouter<Dehydrated = unknown>(
     void answerPop(next, delta);
   });
 
-  const answerPop = async (landed: Location, delta: number): Promise<void> => {
+  async function answerPop(landed: Location, delta: number): Promise<void> {
     const mine = ++popAsks;
     const refused = await isBlocked(untrack(location), landed, delta < 0 ? "BACK" : "FORWARD");
     if (mine !== popAsks) return;
@@ -2788,9 +2865,9 @@ export function createRouter<Dehydrated = unknown>(
     }
     undoing = committedIndex;
     history.go(-delta);
-  };
+  }
 
-  const runGuards = async (to: Location): Promise<boolean | string> => {
+  async function runGuards(to: Location): Promise<boolean | string> {
     const from = untrack(location);
     const candidate = matcher.match(unmask(to));
     const context = { from, to, params: candidate?.params ?? {} };
@@ -2808,11 +2885,11 @@ export function createRouter<Dehydrated = unknown>(
       if (verdict !== true && verdict !== undefined) return verdict;
     }
     return true;
-  };
+  }
 
   const blockers = new Map<Blocker, BlockOptions | undefined>();
 
-  const blockerLocation = (at: Location): BlockerLocation => {
+  function blockerLocation(at: Location): BlockerLocation {
     const hit = matcher.match(unmask(at));
     return {
       routeId: hit?.route.id ?? "__notFound__",
@@ -2821,18 +2898,14 @@ export function createRouter<Dehydrated = unknown>(
       params: hit?.params ?? {},
       search: readSearch(at.search),
     };
-  };
+  }
 
   /**
    * Every registered blocker is asked, in registration order, and the FIRST
    * refusal ends it. A snapshot, so a blocker that unregisters another while it
    * is being asked does not break the iteration.
    */
-  const isBlocked = async (
-    from: Location,
-    to: Location,
-    action: HistoryAction,
-  ): Promise<boolean> => {
+  async function isBlocked(from: Location, to: Location, action: HistoryAction): Promise<boolean> {
     if (blockers.size === 0) return false;
     const context = {
       from,
@@ -2845,9 +2918,9 @@ export function createRouter<Dehydrated = unknown>(
       if (await blocker(context)) return true;
     }
     return false;
-  };
+  }
 
-  const onBeforeUnload = (event: BeforeUnloadEvent): void => {
+  function onBeforeUnload(event: BeforeUnloadEvent): void {
     for (const options of blockers.values()) {
       const enabled = options?.enableBeforeUnload;
       if (typeof enabled === "function" ? enabled() : enabled === true) {
@@ -2857,9 +2930,9 @@ export function createRouter<Dehydrated = unknown>(
         return;
       }
     }
-  };
+  }
   let unloadGuarded = false;
-  const guardUnload = (): void => {
+  function guardUnload(): void {
     if (typeof window === "undefined") return;
     const wanted = Array.from(blockers.values()).some(
       (options) =>
@@ -2869,7 +2942,7 @@ export function createRouter<Dehydrated = unknown>(
     unloadGuarded = wanted;
     if (wanted) window.addEventListener("beforeunload", onBeforeUnload, { capture: true });
     else window.removeEventListener("beforeunload", onBeforeUnload, { capture: true });
-  };
+  }
 
   const listeners = new Map<RouterEventType, Set<RouterListener>>();
 
@@ -2881,7 +2954,7 @@ export function createRouter<Dehydrated = unknown>(
    * navigation it was only watching. A snapshot of the set, so a listener that
    * unsubscribes another while being called does not break the iteration.
    */
-  const emit = (type: RouterEventType, from: Location | null, to: Location): void => {
+  function emit(type: RouterEventType, from: Location | null, to: Location): void {
     const set = listeners.get(type);
     if (set === undefined || set.size === 0) return;
     const event: RouterEvent = { type, ...changeInfo(from, to) };
@@ -2898,26 +2971,33 @@ export function createRouter<Dehydrated = unknown>(
         );
       }
     }
-  };
+  }
 
   const [navigating, setNavigating] = createSignal(0);
   const [committing, setCommitting] = createSignal(0, { ownedWrite: true });
-  const status = (): "pending" | "idle" =>
-    navigating() > 0 || committing() > 0 || matches().some((found) => found.status === "pending")
+  function status(): "pending" | "idle" {
+    return navigating() > 0 ||
+      committing() > 0 ||
+      matches().some((found) => found.status === "pending")
       ? "pending"
       : "idle";
+  }
   /** The last location seen idle, kept for as long as the router is not. */
   let resolved: Location | undefined;
-  const noteIdle = (): void => {
+  function noteIdle(): void {
     if (untrack(status) === "idle") resolved = untrack(location);
-  };
-  const resolvedLocation = (): Location | undefined => {
+  }
+  function resolvedLocation(): Location | undefined {
     const at = location();
     if (status() === "idle") resolved = at;
     return resolved;
-  };
-  const isLoading = (): boolean => status() === "pending";
-  const isTransitioning = (): boolean => committing() > 0;
+  }
+  function isLoading(): boolean {
+    return status() === "pending";
+  }
+  function isTransitioning(): boolean {
+    return committing() > 0;
+  }
   const scroll: ScrollRestoration =
     config.scrollRestoration === false
       ? { save: () => {}, restore: () => {}, dispose: () => {} }
@@ -2941,7 +3021,7 @@ export function createRouter<Dehydrated = unknown>(
   let pendingRedirects = 0;
   let arrivedRedirects = 0;
 
-  const run = async (asked: NavigateOptions, redirects: number): Promise<void> => {
+  async function run(asked: NavigateOptions, redirects: number): Promise<void> {
     noteIdle();
     setNavigating(untrack(navigating) + 1);
     try {
@@ -2949,7 +3029,7 @@ export function createRouter<Dehydrated = unknown>(
     } finally {
       setNavigating(untrack(navigating) - 1);
     }
-  };
+  }
 
   const navigate = ((to: string | NavigateOptions, options?: NavigateOptions) =>
     run(typeof to === "string" ? { ...options, to } : to, 0)) as NavigateFn;
@@ -2959,11 +3039,7 @@ export function createRouter<Dehydrated = unknown>(
    * against one bound. A redirect thrown in process still has the navigation it
    * described; one off the wire has `to`.
    */
-  const follow = async (
-    answer: { readonly to: string; readonly options?: NavigateOptions },
-    redirects: number,
-    who: string,
-  ): Promise<void> => {
+  async function follow(answer: RedirectTarget, redirects: number, who: string): Promise<void> {
     if (redirects >= MAX_REDIRECTS) {
       console.error(
         `[barq-router] This navigation was redirected more than ${MAX_REDIRECTS} times and was abandoned at ${JSON.stringify(answer.to)}. ` +
@@ -2977,9 +3053,9 @@ export function createRouter<Dehydrated = unknown>(
         : { ...answer.options, replace: true, ignoreBlocker: true },
       redirects + 1,
     );
-  };
+  }
 
-  const attemptNavigate = async (asked: NavigateOptions, redirects: number): Promise<void> => {
+  async function attemptNavigate(asked: NavigateOptions, redirects: number): Promise<void> {
     // Middlewares run on the way OUT, while the location is being built, so a
     // retained key is present in it rather than patched on afterwards.
     const target = locate(asked, untrack);
@@ -3065,10 +3141,10 @@ export function createRouter<Dehydrated = unknown>(
         ...(survives ? { [MASK_SESSION]: MASK_KEY } : {}),
       },
     });
-  };
+  }
 
   /** The loaders of the chain on screen that are still running. */
-  const settleChain = async (reloads: boolean): Promise<void> => {
+  async function settleChain(reloads: boolean): Promise<void> {
     // A navigation's location write is held with the loaders it starts, so the
     // committed chain is still the page being left until they land. `latest`
     // reads the chain being loaded, which is the one to wait for.
@@ -3082,10 +3158,10 @@ export function createRouter<Dehydrated = unknown>(
       if (reloads || entry.settled === null) waits.push(entry.running);
     }
     await Promise.all(waits);
-  };
+  }
 
-  const entryMatch = (entry: Entry): RouteMatch =>
-    matchOf(entry.route, {
+  function entryMatch(entry: Entry): RouteMatch {
+    return matchOf(entry.route, {
       raw: entry.raw,
       params: entry.params,
       search: NO_SEARCH,
@@ -3093,10 +3169,11 @@ export function createRouter<Dehydrated = unknown>(
       context: rootContext,
       entry,
     });
+  }
 
-  const preloadLocation = async (
+  async function preloadLocation(
     target: BuiltLocation,
-  ): Promise<readonly RouteMatch[] | undefined> => {
+  ): Promise<readonly RouteMatch[] | undefined> {
     if (target.external) return undefined;
     const candidate = matcher.match(target.pathname);
     if (candidate === null) return undefined;
@@ -3169,7 +3246,7 @@ export function createRouter<Dehydrated = unknown>(
         context: produced[depth] ?? rootContext,
       });
     });
-  };
+  }
 
   const api: RouterState = {
     location,
@@ -3274,7 +3351,9 @@ export function createRouter<Dehydrated = unknown>(
       // The FIRST chain enters too. Nothing has left, so this is `onEnter` for
       // every depth — TanStack runs the same pass as matches load, and without
       // it a hook only ever fired from the second navigation onwards.
-      const enter = (): void => runLifecycle([], untrack(chain));
+      function enter(): void {
+        return runLifecycle([], untrack(chain));
+      }
       try {
         settleContexts((await runBeforeLoad(here, candidate)).contexts);
         enter();

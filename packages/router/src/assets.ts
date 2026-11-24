@@ -58,14 +58,18 @@ export type TransformAssets =
   | (TransformAssetsCaching & { readonly transform: string | TransformAssetsFn })
   | (TransformAssetsCaching & { readonly createTransform: CreateTransformAssetsFn });
 
+export interface ClientAssets {
+  readonly scripts?: readonly string[];
+  readonly css?: readonly string[];
+  /** The build's atoms, linked after every other stylesheet. */
+  readonly atoms?: string;
+  /** What the entry imports on its way to hydrating, preloaded beside the route chain. */
+  readonly preload?: readonly string[];
+}
+
 /** The page handler's asset inputs, the shape `transformAssets` rewrites. */
 export interface PageAssets {
-  readonly clientAssets?: {
-    readonly scripts?: readonly string[];
-    readonly css?: readonly string[];
-    readonly atoms?: string;
-    readonly preload?: readonly string[];
-  };
+  readonly clientAssets?: ClientAssets;
   readonly routeAssets?: Readonly<Record<string, readonly string[]>>;
   readonly routeCss?: Readonly<Record<string, readonly string[]>>;
   readonly moduleAssets?: AssetManifest;
@@ -80,11 +84,13 @@ function prefixed(prefix: string): TransformAssetsFn {
   return ({ url }) => (prefix === "" || /^[a-z][a-z\d+.-]*:/i.test(url) ? url : `${prefix}${url}`);
 }
 
-function factoryOf(option: TransformAssets): {
+interface AssetTransformFactory {
   create: CreateTransformAssetsFn;
   cache: boolean;
   warmup: boolean;
-} {
+}
+
+function factoryOf(option: TransformAssets): AssetTransformFactory {
   if (typeof option === "string" || typeof option === "function") {
     const transform = typeof option === "string" ? prefixed(option) : option;
     return { create: () => transform, cache: true, warmup: false };
@@ -107,6 +113,11 @@ function factoryOf(option: TransformAssets): {
   return { create: () => transform, cache, warmup };
 }
 
+interface TransformedHref {
+  href: string;
+  crossOrigin?: AssetCrossOrigin;
+}
+
 /**
  * Every URL the inputs name, rewritten once each. A module manifest given as a
  * function is wrapped and rewritten as it is asked, since its URLs are not
@@ -116,9 +127,9 @@ async function rewrite(
   assets: PageAssets,
   transform: TransformAssetsFn,
 ): Promise<TransformedAssets> {
-  const done = new Map<string, Promise<{ href: string; crossOrigin?: AssetCrossOrigin }>>();
+  const done = new Map<string, Promise<TransformedHref>>();
   const crossOrigin = new Map<string, AssetCrossOrigin>();
-  const one = (url: string, kind: AssetKind) => {
+  function one(url: string, kind: AssetKind) {
     const key = `${kind}\n${url}`;
     let pending = done.get(key);
     if (pending === undefined) {
@@ -131,23 +142,25 @@ async function rewrite(
       done.set(key, pending);
     }
     return pending;
-  };
-  const list = async (urls: readonly string[] | undefined, kind: AssetKind) =>
-    urls === undefined
+  }
+  async function list(urls: readonly string[] | undefined, kind: AssetKind) {
+    return urls === undefined
       ? undefined
       : await Promise.all(urls.map(async (url) => (await one(url, kind)).href));
-  const table = async (
+  }
+  async function table(
     map: Readonly<Record<string, readonly string[]>> | undefined,
     kind: AssetKind,
-  ): Promise<Record<string, readonly string[]> | undefined> =>
-    map === undefined
+  ): Promise<Record<string, readonly string[]> | undefined> {
+    return map === undefined
       ? undefined
       : Object.fromEntries(
           await Promise.all(
             Object.entries(map).map(async ([id, urls]) => [id, (await list(urls, kind)) ?? []]),
           ),
         );
-  const moduleEntry = async (entry: ModuleAssets): Promise<ModuleAssets> => {
+  }
+  async function moduleEntry(entry: ModuleAssets): Promise<ModuleAssets> {
     const js =
       entry.js === undefined ? [] : await Promise.all(entry.js.map((url) => one(url, "script")));
     const css =
@@ -164,7 +177,7 @@ async function rewrite(
         ? {}
         : { crossOrigin: { ...entry.crossOrigin, script, stylesheet } }),
     };
-  };
+  }
 
   const client = assets.clientAssets;
   const [scripts, css, atoms, preload, routeAssets, routeCss] = await Promise.all([
@@ -184,13 +197,13 @@ async function rewrite(
     // entry's first answer is the build's own URLs and every later one is
     // rewritten.
     const cache = new Map<string, ModuleAssets>();
-    const now = (url: string, kind: AssetKind) => {
+    function now(url: string, kind: AssetKind) {
       const result = transform({ url, kind });
       if (typeof result === "object" && "then" in result) return undefined;
       const resolved = typeof result === "string" ? { href: result } : result;
       if (resolved.crossOrigin !== undefined) crossOrigin.set(resolved.href, resolved.crossOrigin);
       return resolved;
-    };
+    }
     moduleAssets = (moduleUrl) => {
       const known = cache.get(moduleUrl);
       if (known !== undefined) return known;
@@ -246,12 +259,12 @@ export function createAssetTransform(
     return async (request) => rewrite(assets, await create({ warmup: false, request }));
   }
   let cached: Promise<TransformedAssets> | undefined;
-  const start = (context: CreateTransformAssetsContext): Promise<TransformedAssets> => {
+  function start(context: CreateTransformAssetsContext): Promise<TransformedAssets> {
     cached = Promise.resolve(create(context)).then((transform) => rewrite(assets, transform));
     // A failed transform is not cached: the next request tries again.
     cached.catch(() => (cached = undefined));
     return cached;
-  };
+  }
   if (warmup) void start({ warmup: true }).catch((error: unknown) => console.error(error));
   return (request) => cached ?? start({ warmup: false, request });
 }

@@ -30,16 +30,18 @@ const table = [
   { path: "/posts/$id", component: (() => null) as never },
 ] as never as AnyRouteDefinition[];
 
-const at = (initial: string, trailingSlash?: "always" | "never" | "preserve") =>
-  createRouter({
+function at(initial: string, trailingSlash?: "always" | "never" | "preserve") {
+  return createRouter({
     routeTree: table,
     history: memoryHistory({ initial: [initial] }),
     trailingSlash,
   });
+}
 
 /** Props reach these functions already read, so a plain object stands in. */
-const href = (state: ReturnType<typeof at>, props: Record<string, unknown>): string =>
-  linkHref(state, props as never);
+function href(state: ReturnType<typeof at>, props: Record<string, unknown>): string {
+  return linkHref(state, props as never);
+}
 
 describe("what a link addresses", () => {
   test("a hash rides into the href", () => {
@@ -172,20 +174,46 @@ describe("navigate honours the policy", () => {
   });
 });
 
+interface IdParamsArgs {
+  params: IdParams;
+}
+
+interface IdParams {
+  id: string;
+}
+
+interface MountedRouter {
+  state: RouterState;
+  host: HTMLElement;
+  dispose: () => void;
+}
+
+interface MountedAnchor {
+  state: RouterState;
+  element: HTMLAnchorElement;
+  dispose: () => void;
+}
+
+interface ChildrenProps {
+  children: unknown;
+}
+
 /**
  * Everything below renders a real anchor under a real provider, because what it
  * checks is what a click, a hover and a location change DO.
  */
 describe("a rendered link", () => {
-  const tick = (ms = 0) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+  function tick(ms = 0) {
+    return new Promise<void>((resolve) => setTimeout(resolve, ms));
+  }
 
   afterEach(() => {
     document.body.innerHTML = "";
   });
 
   const loads: string[] = [];
-  const routes = (home: () => unknown): AnyRouteDefinition[] =>
-    [
+  function routes(home: () => unknown): AnyRouteDefinition[] {
+    return [
       {
         path: "/",
         component: home,
@@ -193,19 +221,17 @@ describe("a rendered link", () => {
       {
         path: "/posts/$id",
         component: () => document.createTextNode("post"),
-        loader: ({ params }: { params: { id: string } }) => {
+        loader: ({ params }: IdParamsArgs) => {
           loads.push(params.id);
           return params.id;
         },
       },
       { path: "/feed", component: () => document.createTextNode("feed") },
     ] as never;
+  }
 
   /** The home route renders `home`, so whatever it builds is under the provider. */
-  const mounted = (
-    home: () => unknown,
-    config: Record<string, unknown> = {},
-  ): { state: RouterState; host: HTMLElement; dispose: () => void } => {
+  function mounted(home: () => unknown, config: Record<string, unknown> = {}): MountedRouter {
     loads.length = 0;
     const state = createRouter({
       routeTree: routes(home),
@@ -223,34 +249,35 @@ describe("a rendered link", () => {
     );
     flush();
     return { state, host, dispose };
-  };
+  }
 
   /** Props as the compiler hands them over: each one an accessor. */
-  const cells = (props: Record<string, unknown>): Record<string, unknown> =>
-    Object.fromEntries(
+  function cells(props: Record<string, unknown>): Record<string, unknown> {
+    return Object.fromEntries(
       Object.entries(props).map(([name, value]) => [
         name,
         name.startsWith("on") ? value : () => value,
       ]),
     );
+  }
 
-  const anchor = (
+  function anchor(
     props: Record<string, unknown>,
     component: unknown = Link,
     config?: Record<string, unknown>,
-  ): { state: RouterState; element: HTMLAnchorElement; dispose: () => void } => {
+  ): MountedAnchor {
     const { state, host, dispose } = mounted(
       () => (component as (p: unknown) => Node)(cells({ children: "go", ...props })),
       config,
     );
     return { state, element: host.querySelector("a") as HTMLAnchorElement, dispose };
-  };
+  }
 
-  const click = (element: Element): MouseEvent => {
+  function click(element: Element): MouseEvent {
     const event = new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 });
     element.dispatchEvent(event);
     return event;
-  };
+  }
 
   test("a click commits the location its href shows: params, search updater and hash", async () => {
     const { state, element, dispose } = anchor({
@@ -333,7 +360,7 @@ describe("a rendered link", () => {
           id: "__root__",
           path: "/",
           // A layout, so the link SURVIVES the navigation it is watching.
-          component: (props: { children: unknown }) => {
+          component: (props: ChildrenProps) => {
             const nav = document.createElement("nav");
             nav.append(
               (Link as never as (p: unknown) => Node)(

@@ -54,6 +54,11 @@ export const ROUTER_DEHYDRATED_GLOBAL = "__BARQ_ROUTER__";
 
 type Overrides = Partial<RouterConfig> | ((provided: RouterConfig) => Partial<RouterConfig>);
 
+interface PendingOverrides {
+  overrides: Overrides | null;
+  taken: boolean;
+}
+
 /**
  * The configuration the next `createRouter` call is given on top of its own.
  *
@@ -63,7 +68,7 @@ type Overrides = Partial<RouterConfig> | ((provided: RouterConfig) => Partial<Ro
  * so it never outlives the frame that set it and one request cannot read
  * another's.
  */
-const pending: { overrides: Overrides | null; taken: boolean } = { overrides: null, taken: false };
+const pending: PendingOverrides = { overrides: null, taken: false };
 
 /**
  * Call `build`, handing `overrides` to the `createRouter` it calls.
@@ -124,6 +129,10 @@ export function wrapWith(component: WrapComponent | undefined, build: () => unkn
 
 type Queued = () => unknown;
 
+export interface DehydratedValue {
+  readonly value: unknown;
+}
+
 /**
  * Take the server's dehydrated payload, if the page carries one.
  *
@@ -133,9 +142,7 @@ type Queued = () => unknown;
  * payload; each one after it settles something the payload left pending. What
  * arrives once this has run is applied on arrival.
  */
-export function takeDehydrated(
-  late?: (value: unknown) => void,
-): { readonly value: unknown } | null {
+export function takeDehydrated(late?: (value: unknown) => void): DehydratedValue | null {
   const holder = globalThis as Record<string, unknown>;
   const queue = holder[ROUTER_DEHYDRATED_GLOBAL] as Queued[] | undefined;
   if (!Array.isArray(queue) || queue.length === 0) {

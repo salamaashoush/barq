@@ -36,7 +36,9 @@ import type {
 } from "./register.ts";
 
 /** Compile-time only: the value is never read, the ASSIGNMENT is the assertion. */
-const assertType = <T>(value: T): T => value;
+function assertType<T>(value: T): T {
+  return value;
+}
 
 /** `true` when `Value` is not a `Type`: what a call that should not compile is handed. */
 type Refused<Value, Type> = [Value] extends [Type] ? false : true;
@@ -47,10 +49,22 @@ type RedirectOptionsFor<To extends string> = Parameters<typeof redirect<To, stri
 /** The options `linkOptions` takes for a destination, read off its signature. */
 type LinkOptionsFor<To extends string> = Parameters<typeof linkOptions<To, string>>[0];
 
+interface PostsRoutes {
+  "/posts": PostsRoute;
+}
+
+interface PostsRoute {
+  options: PostsRouteOptions;
+}
+
+interface PostsRouteOptions {
+  loader: () => 1;
+}
+
 interface Tree {
   id: "__root__" | "/" | "/posts" | "/posts/$postId";
   fullPaths: "/" | "/posts/$postId";
-  fileRoutesById: { "/posts": { options: { loader: () => 1 } } };
+  fileRoutesById: PostsRoutes;
 }
 
 describe("a registered route tree narrows", () => {
@@ -109,6 +123,60 @@ describe("nothing registered degrades to `string`, not to `never`", () => {
   });
 });
 
+interface PostIdParams {
+  postId: string | number;
+}
+
+interface TwoParams {
+  one: string | number;
+  two: string | number;
+}
+
+interface BarePostTarget {
+  to: "/posts/$postId";
+}
+
+interface MisnamedParamsTarget {
+  to: "/posts/$postId";
+  params: IdParams;
+}
+
+interface IdParams {
+  id: string;
+}
+
+interface RelativePostTarget {
+  from: "/posts";
+  to: "./$postId";
+}
+
+interface PostSearch {
+  page: number;
+  tab: string;
+}
+
+interface StringPageTarget {
+  to: "/posts/$postId";
+  params: PostIdParam;
+  search: PageDeps;
+}
+
+interface PostIdParam {
+  postId: string;
+}
+
+interface PageDeps {
+  page: string;
+}
+
+interface TitleData {
+  title: string;
+}
+
+type UserContext = {
+  user: string;
+};
+
 /**
  * Typed navigation: what `to` says decides what `params` and `search` may be.
  *
@@ -125,10 +193,14 @@ describe("`to` types the rest of a navigation", () => {
   });
   const HomeRoute = createFileRoute("/")({});
 
+  interface TypedRoutes {
+    "/": typeof HomeRoute;
+    "/posts/$postId": typeof PostRoute;
+  }
   interface Typed {
     id: "/" | "/posts/$postId";
     fullPaths: "/" | "/posts/$postId";
-    fileRoutesById: { "/": typeof HomeRoute; "/posts/$postId": typeof PostRoute };
+    fileRoutesById: TypedRoutes;
   }
   type Options<To extends string, From extends string = string> = NavigateOptionsFor<
     To,
@@ -143,10 +215,8 @@ describe("`to` types the rest of a navigation", () => {
     : false;
 
   test("a pattern's parameters are read off the pattern", () => {
-    assertType<Same<ParamsOfPath<"/posts/$postId">, { postId: string | number }>>(true);
-    assertType<
-      Same<ParamsOfPath<"/a/$one/b/$two">, { one: string | number; two: string | number }>
-    >(true);
+    assertType<Same<ParamsOfPath<"/posts/$postId">, PostIdParams>>(true);
+    assertType<Same<ParamsOfPath<"/a/$one/b/$two">, TwoParams>>(true);
     // Optional and splat segments are optional keys.
     assertType<ParamsOfPath<"/docs/{-$version}/guide">>({});
     assertType<ParamsOfPath<"/docs/{-$version}/guide">>({ version: "2" });
@@ -178,11 +248,9 @@ describe("`to` types the rest of a navigation", () => {
       params: (current) => ({ postId: String(current.postId) }),
     });
     // The pattern has a parameter and nothing fills it.
-    assertType<Refused<{ to: "/posts/$postId" }, Options<"/posts/$postId">>>(true);
+    assertType<Refused<BarePostTarget, Options<"/posts/$postId">>>(true);
     // `id` is not what the pattern calls it.
-    assertType<
-      Refused<{ to: "/posts/$postId"; params: { id: string } }, Options<"/posts/$postId">>
-    >(true);
+    assertType<Refused<MisnamedParamsTarget, Options<"/posts/$postId">>>(true);
     // No parameter, so nothing to give.
     assertType<Options<"/">>({ to: "/" });
     assertType<Options<"/">>({ to: "/", replace: true, hash: "top", resetScroll: false });
@@ -196,13 +264,13 @@ describe("`to` types the rest of a navigation", () => {
       params: { postId: "7" },
     });
     // `/posts` + `./$postId` needs `postId`.
-    assertType<Refused<{ from: "/posts"; to: "./$postId" }, Options<"./$postId", "/posts">>>(true);
+    assertType<Refused<RelativePostTarget, Options<"./$postId", "/posts">>>(true);
     assertType<Options<"..", "/posts/$postId">>({ from: "/posts/$postId", to: ".." });
     expect(true).toBe(true);
   });
 
   test("`search` takes the shape the destination's validateSearch produces", () => {
-    assertType<Same<SearchOfRoute<Typed, "/posts/$postId">, { page: number; tab: string }>>(true);
+    assertType<Same<SearchOfRoute<Typed, "/posts/$postId">, PostSearch>>(true);
     assertType<Same<SearchOfRoute<Typed, "/">, Record<string, unknown>>>(true);
     assertType<Same<SearchOfRoute<Typed, "/elsewhere">, Record<string, unknown>>>(true);
     assertType<Same<SearchOfRoute<never, "/x">, Record<string, unknown>>>(true);
@@ -214,12 +282,7 @@ describe("`to` types the rest of a navigation", () => {
       search: { page: 2 },
     });
     // `page` is a number in this route's search.
-    assertType<
-      Refused<
-        { to: "/posts/$postId"; params: { postId: string }; search: { page: string } },
-        Options<"/posts/$postId">
-      >
-    >(true);
+    assertType<Refused<StringPageTarget, Options<"/posts/$postId">>>(true);
     assertType<Options<"/posts/$postId", "/posts/$postId">>({
       from: "/posts/$postId",
       to: "/posts/$postId",
@@ -245,47 +308,48 @@ describe("`to` types the rest of a navigation", () => {
 
   test("nothing registered: `to` still types `params`, and any path is still writable", () => {
     const navigate = (async () => {}) as NavigateFn;
-    const typed = (): unknown[] => [
-      navigate({ to: "/posts/$postId", params: { postId: "7" }, search: { tab: "a" } }),
-      navigate({ to: "/about", search: (current) => ({ ...current, page: 2 }) }),
-      navigate("/posts/7", { replace: true }),
-      navigate({ to: "..", from: "/posts/$postId" }),
-    ];
+    function typed(): unknown[] {
+      return [
+        navigate({ to: "/posts/$postId", params: { postId: "7" }, search: { tab: "a" } }),
+        navigate({ to: "/about", search: (current) => ({ ...current, page: 2 }) }),
+        navigate("/posts/7", { replace: true }),
+        navigate({ to: "..", from: "/posts/$postId" }),
+      ];
+    }
     // The pattern has a parameter and nothing fills it.
-    assertType<Refused<{ to: "/posts/$postId" }, NavigateOptionsFor<"/posts/$postId">>>(true);
+    assertType<Refused<BarePostTarget, NavigateOptionsFor<"/posts/$postId">>>(true);
     expect(typeof typed).toBe("function");
   });
 
   test("redirect and linkOptions check the same way", () => {
-    const typed = (): unknown[] => [
-      redirect({ to: "/posts/$postId", params: { postId: "7" }, statusCode: 301 }),
-      linkOptions({ to: "/posts/$postId", params: { postId: "7" } }),
-    ];
+    function typed(): unknown[] {
+      return [
+        redirect({ to: "/posts/$postId", params: { postId: "7" }, statusCode: 301 }),
+        linkOptions({ to: "/posts/$postId", params: { postId: "7" } }),
+      ];
+    }
     // Both take the navigation's own options, so a pattern with a parameter
     // and nothing filling it is refused by each.
-    assertType<Refused<{ to: "/posts/$postId" }, RedirectOptionsFor<"/posts/$postId">>>(true);
-    assertType<Refused<{ to: "/posts/$postId" }, LinkOptionsFor<"/posts/$postId">>>(true);
+    assertType<Refused<BarePostTarget, RedirectOptionsFor<"/posts/$postId">>>(true);
+    assertType<Refused<BarePostTarget, LinkOptionsFor<"/posts/$postId">>>(true);
     expect(typeof typed).toBe("function");
   });
 
   test("a file route's hooks carry what its options said", () => {
-    const typed = (): void => {
+    function typed(): void {
       const search = PostRoute.useSearch();
       const page: number = search().page;
       const tab = PostRoute.useSearch({ select: (value) => value.tab });
       const text: string = tab();
-      const Data = createFileRoute<{ title: string }>("/x")({});
+      const Data = createFileRoute<TitleData>("/x")({});
       const title: string = Data.useLoaderData({ select: (data) => data.title })();
       void [page, text, title];
-    };
+    }
     expect(typeof typed).toBe("function");
   });
 
   test("getRouteApi's hooks are typed from the registered route", () => {
-    const typed = (
-      api: RouteApiOf<Typed, "/posts/$postId">,
-      loose: RouteApiOf<never, "/x">,
-    ): void => {
+    function typed(api: RouteApiOf<Typed, "/posts/$postId">, loose: RouteApiOf<never, "/x">): void {
       const page: number = api.useSearch()().page;
       const tab: string = api.useSearch({ select: (search) => search.tab })();
       const id: "/posts/$postId" = api.id;
@@ -295,12 +359,12 @@ describe("`to` types the rest of a navigation", () => {
       // A route nothing registered still has an api; it is just not a typed one.
       const data: unknown = loose.useLoaderData()();
       void [page, tab, id, data];
-    };
+    }
     expect(typeof typed).toBe("function");
   });
 
   test("createRootRouteWithContext types the context the tree is handed", () => {
-    const Root = createRootRouteWithContext<{ user: string }>()({
+    const Root = createRootRouteWithContext<UserContext>()({
       beforeLoad: ({ context }) => {
         const user: string = context.user;
         // The router's context has no `tenant`.

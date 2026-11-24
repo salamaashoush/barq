@@ -34,13 +34,20 @@ import { getRouteApi, useAwaited } from "./match.ts";
 import type { AnyRouteDefinition, RouteProps } from "./route.ts";
 import { type RouteMatch, type RouterState, createRouter } from "./router.ts";
 
-const tick = (ms = 0) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+function tick(ms = 0) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
 
 afterEach(() => {
   document.body.innerHTML = "";
 });
 
-function mountState(state: RouterState): { host: HTMLElement; dispose: () => void } {
+interface Mounted {
+  host: HTMLElement;
+  dispose: () => void;
+}
+
+function mountState(state: RouterState): Mounted {
   const host = document.createElement("div");
   document.body.appendChild(host);
   const dispose = render(
@@ -55,21 +62,23 @@ function mountState(state: RouterState): { host: HTMLElement; dispose: () => voi
 }
 
 /** A layout that places its child, and runs `body` under its own match first. */
-const layout =
-  (body: () => void = () => {}) =>
-  (props: RouteProps): Node => {
+function layout(body: () => void = () => {}) {
+  return (props: RouteProps): Node => {
     body();
     const node = document.createElement("div");
     insert(node, () => props.children);
     return node;
   };
+}
 
-/** A leaf whose only content is one hole, counted. */
-function probe<T>(read: () => Cell<T>): {
+interface Probe<T> {
   component: (props: RouteProps) => Node;
   runs: () => number;
   value: () => T;
-} {
+}
+
+/** A leaf whose only content is one hole, counted. */
+function probe<T>(read: () => Cell<T>): Probe<T> {
   let runs = 0;
   let cell: Cell<T> | undefined;
   return {
@@ -87,8 +96,25 @@ function probe<T>(read: () => Cell<T>): {
   };
 }
 
-const routes = (leaf: (props: RouteProps) => Node, body?: () => void): AnyRouteDefinition[] =>
-  [
+interface SearchArgs {
+  search: URLSearchParams;
+}
+
+interface DepsLoaderArgs {
+  params: IdParams;
+  deps: NumericPageDeps;
+}
+
+interface IdParams {
+  id: string;
+}
+
+interface NumericPageDeps {
+  page: number;
+}
+
+function routes(leaf: (props: RouteProps) => Node, body?: () => void): AnyRouteDefinition[] {
+  return [
     {
       id: "__root__",
       path: "/",
@@ -110,10 +136,10 @@ const routes = (leaf: (props: RouteProps) => Node, body?: () => void): AnyRouteD
                 tab: String(input.tab ?? "info"),
                 page: Number(input.page ?? 1),
               }),
-              loaderDeps: ({ search }: { search: URLSearchParams }) => ({
+              loaderDeps: ({ search }: SearchArgs) => ({
                 page: Number(search.get("page") ?? 1),
               }),
-              loader: ({ params, deps }: { params: { id: string }; deps: { page: number } }) => ({
+              loader: ({ params, deps }: DepsLoaderArgs) => ({
                 title: `post ${params.id}`,
                 page: deps.page,
               }),
@@ -124,12 +150,19 @@ const routes = (leaf: (props: RouteProps) => Node, body?: () => void): AnyRouteD
       ],
     },
   ] as never;
+}
+
+interface MountedRouter {
+  state: RouterState;
+  host: HTMLElement;
+  dispose: () => void;
+}
 
 async function at(
   initial: string,
   leaf: (props: RouteProps) => Node,
   body?: () => void,
-): Promise<{ state: RouterState; host: HTMLElement; dispose: () => void }> {
+): Promise<MountedRouter> {
   const state = createRouter({
     routeTree: routes(leaf, body),
     history: memoryHistory({ initial: [initial] }),
@@ -142,13 +175,13 @@ async function at(
   return { state, ...mounted };
 }
 
-const go = async (state: RouterState, to: string): Promise<void> => {
+async function go(state: RouterState, to: string): Promise<void> {
   await state.navigate(to);
   await state.load();
   flush();
   await tick(5);
   flush();
-};
+}
 
 describe("useMatches", () => {
   test("answers with MATCHES, outermost first, each carrying what its route resolved", async () => {
@@ -189,8 +222,9 @@ describe("useMatches", () => {
   test("useChildMatches and useParentMatches are relative to the route rendering the caller", async () => {
     let children: Cell<readonly string[]> | undefined;
     let parents: Cell<readonly string[]> | undefined;
-    const ids = (matches: readonly RouteMatch[]): readonly string[] =>
-      matches.map((match) => match.routeId);
+    function ids(matches: readonly RouteMatch[]): readonly string[] {
+      return matches.map((match) => match.routeId);
+    }
     const { dispose } = await at(
       "/posts/7",
       () => document.createTextNode("leaf"),
@@ -266,6 +300,15 @@ describe("useMatch", () => {
   });
 });
 
+type TabSearch = {
+  tab: string;
+  page: number;
+};
+
+interface TitleData {
+  title: string;
+}
+
 describe("the value hooks take `from` and `select`", () => {
   test("useParams: a selected param re-runs its reader when it changes and not when the query does", async () => {
     const seen = probe(() => useParams({ from: "/posts/$id", select: (params) => params.id }));
@@ -284,7 +327,7 @@ describe("the value hooks take `from` and `select`", () => {
     const seen = probe(() =>
       useSearch({
         from: "/posts/$id",
-        select: (search: { tab: string; page: number }) => search.page,
+        select: (search: TabSearch) => search.page,
       }),
     );
     const { state, dispose } = await at("/posts/7?page=2", seen.component);
@@ -299,11 +342,11 @@ describe("the value hooks take `from` and `select`", () => {
 
   test("useLoaderData and useLoaderDeps read the named route's own", async () => {
     let data: Cell<string> | undefined;
-    let deps: Cell<{ page: number }> | undefined;
+    let deps: Cell<NumericPageDeps> | undefined;
     const { state, dispose } = await at("/posts/7?page=4", () => {
       data = useLoaderData({
         from: "/posts/$id",
-        select: (loaded: { title: string }) => loaded.title,
+        select: (loaded: TitleData) => loaded.title,
       });
       deps = useLoaderDeps({ from: "/posts/$id" });
       return document.createTextNode("leaf");
@@ -316,9 +359,9 @@ describe("the value hooks take `from` and `select`", () => {
   });
 
   test("useLoaderData with no `from` is the route rendering the caller", async () => {
-    let data: Cell<{ title: string }> | undefined;
+    let data: Cell<TitleData> | undefined;
     const { dispose } = await at("/posts/7", () => {
-      data = useLoaderData<{ title: string }>();
+      data = useLoaderData<TitleData>();
       return document.createTextNode("leaf");
     });
     expect(data?.().title).toBe("post 7");
@@ -492,7 +535,7 @@ describe("a file route's own hooks", () => {
     const { dispose } = await at("/posts/7?page=5", () => {
       search = Route.useSearch();
       deps = Route.useLoaderDeps();
-      title = Route.useLoaderData({ select: (data) => (data as { title: string }).title });
+      title = Route.useLoaderData({ select: (data) => (data as TitleData).title });
       match = Route.useMatch({ select: (found) => found?.routeId });
       return document.createTextNode("leaf");
     });

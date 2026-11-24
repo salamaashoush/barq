@@ -16,7 +16,9 @@ import {
   styleText,
 } from "./head.ts";
 
-const html = (matches: readonly MatchAssets[]): string => renderTags(resolveHead(matches));
+function html(matches: readonly MatchAssets[]): string {
+  return renderTags(resolveHead(matches));
+}
 
 describe("meta", () => {
   test("title lives inside meta, and the DEEPEST match wins", () => {
@@ -223,21 +225,33 @@ describe("render", () => {
   });
 });
 
+interface NamedHeadArgs {
+  params: IdParams;
+  loaderData: NamedData | undefined;
+}
+
+interface IdParams {
+  id: string;
+}
+
+interface NamedData {
+  name: string;
+}
+
 describe("projectHead", () => {
-  const match = (definition: Record<string, unknown>, loaderData?: unknown) => ({
-    params: { id: "7" },
-    loaderData,
-    definition: definition as never,
-  });
+  function match(definition: Record<string, unknown>, loaderData?: unknown) {
+    return {
+      params: { id: "7" },
+      loaderData,
+      definition: definition as never,
+    };
+  }
 
   test("head is handed params and loaderData, as TanStack's is", async () => {
     const assets = await projectHead([
       match(
         {
-          head: (context: {
-            params: { id: string };
-            loaderData: { name: string } | undefined;
-          }) => ({
+          head: (context: NamedHeadArgs) => ({
             meta: [{ title: `${context.loaderData?.name} #${context.params.id}` }],
           }),
         },

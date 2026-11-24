@@ -18,16 +18,25 @@ import { memoryHistory } from "./history.ts";
 import type { AnyRouteDefinition, RouteProps } from "./route.ts";
 import { createRouter } from "./router.ts";
 
-const tick = (ms = 0) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+function tick(ms = 0) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
 
-const routes = (table: unknown[]): AnyRouteDefinition[] => table as never;
+function routes(table: unknown[]): AnyRouteDefinition[] {
+  return table as never;
+}
 
 afterEach(() => {
   window.dispatchEvent(new Event("pageshow"));
   document.body.innerHTML = "";
 });
 
-function capturing<T>(body: () => T): { value: T; logged: string[] } {
+interface Captured<T> {
+  value: T;
+  logged: string[];
+}
+
+function capturing<T>(body: () => T): Captured<T> {
   const logged: string[] = [];
   const original = console.error;
   console.error = (...args: unknown[]) => {
@@ -40,15 +49,18 @@ function capturing<T>(body: () => T): { value: T; logged: string[] } {
   }
 }
 
-const abortError = (): DOMException => new DOMException("The operation was aborted.", "AbortError");
+function abortError(): DOMException {
+  return new DOMException("The operation was aborted.", "AbortError");
+}
 
 describe("an AbortError the browser raises as it unloads the page", () => {
-  const chainOf = (...defs: Record<string, unknown>[]) =>
-    defs.map((definition, at) => ({
+  function chainOf(...defs: Record<string, unknown>[]) {
+    return defs.map((definition, at) => ({
       id: `/r${at}`,
       fullPath: `/r${at}`,
       definition,
     })) as never as Parameters<typeof errorFallbackFor>[0];
+  }
 
   test("is neither logged nor reported once the page is hidden", () => {
     const caught: unknown[] = [];
@@ -115,16 +127,20 @@ describe("an AbortError the browser raises as it unloads the page", () => {
   });
 });
 
+interface SignalArgs {
+  signal: AbortSignal;
+}
+
 describe("a loader run the router aborts", () => {
   test("is not told to onError or onLoaderError, logs nothing, and the newer run is shown", async () => {
     const told: unknown[] = [];
     let runs = 0;
     const answers: (() => void)[] = [];
     let started = Promise.withResolvers<void>();
-    const nextRun = async (): Promise<void> => {
+    async function nextRun(): Promise<void> {
       await started.promise;
       started = Promise.withResolvers<void>();
-    };
+    }
     const state = createRouter({
       routeTree: routes([
         {
@@ -133,7 +149,7 @@ describe("a loader run the router aborts", () => {
             document.createTextNode(String(props.data())),
           ),
           onError: (error: unknown) => told.push(error),
-          loader: ({ signal }: { signal: AbortSignal }) => {
+          loader: ({ signal }: SignalArgs) => {
             const run = ++runs;
             return new Promise((resolve, reject) => {
               answers.push(() => resolve(`run ${run}`));
@@ -191,7 +207,7 @@ describe("a loader run the router aborts", () => {
           path: "/",
           component: () => document.createTextNode("home"),
           onError: (error: unknown) => told.push(error),
-          loader: ({ signal }: { signal: AbortSignal }) =>
+          loader: ({ signal }: SignalArgs) =>
             new Promise((_, reject) => {
               signal.addEventListener("abort", () => {
                 reject(signal.reason);

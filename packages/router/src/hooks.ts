@@ -12,7 +12,14 @@ import { type BlockerResolver, type UseBlockerOptions, blockWith } from "./block
 import { useRouter } from "./components.ts";
 import { isRedirect } from "./errors.ts";
 import type { Location } from "./history.ts";
-import { type MatchHookOptions, type Thrown, loaderCell, matchCell, matchesCell } from "./match.ts";
+import {
+  type MatchHookOptions,
+  type MatchesSelector,
+  type Thrown,
+  loaderCell,
+  matchCell,
+  matchesCell,
+} from "./match.ts";
 import type { NavigateFn } from "./register.ts";
 import { type ScrollPosition, savedScrollPosition, scrollKey } from "./scroll.ts";
 import {
@@ -23,14 +30,14 @@ import {
   sameShape,
 } from "./router.ts";
 
+export interface LocationSelector<Selected> {
+  readonly select: (location: Location) => Selected;
+}
+
 /** The current location, or a memoized part of it. */
 export function useLocation(): Cell<Location>;
-export function useLocation<Selected>(options: {
-  readonly select: (location: Location) => Selected;
-}): Cell<Selected>;
-export function useLocation(options?: {
-  readonly select: (location: Location) => unknown;
-}): Cell<unknown> {
+export function useLocation<Selected>(options: LocationSelector<Selected>): Cell<Selected>;
+export function useLocation(options?: LocationSelector<unknown>): Cell<unknown> {
   const state = useRouter();
   if (options === undefined) return state.location;
   return createMemo(() => options.select(state.location()), { equals: sameShape });
@@ -68,6 +75,10 @@ export function useSearch<
   return matchCell("useSearch", options, "leaf", (match) => match.search as S);
 }
 
+export interface NavigateDefaults {
+  readonly from?: string;
+}
+
 /**
  * `navigate`, in both forms: `navigate("/posts/7")` and TanStack's
  * `navigate({ to: "/posts/$id", params: { id: "7" } })`.
@@ -75,14 +86,15 @@ export function useSearch<
  * `from` here is the default for every call, so a component can navigate
  * relatively without repeating where it is.
  */
-export function useNavigate(defaults?: { readonly from?: string }): NavigateFn {
+export function useNavigate(defaults?: NavigateDefaults): NavigateFn {
   const state = useRouter();
   const from = defaults?.from;
   if (from === undefined) return state.navigate;
-  const navigate = (to: unknown, options?: object): Promise<void> =>
-    typeof to === "string"
+  function navigate(to: unknown, options?: object): Promise<void> {
+    return typeof to === "string"
       ? state.navigate(to, { from, ...options })
       : state.navigate({ from, ...(to as object) });
+  }
   return navigate;
 }
 
@@ -220,6 +232,10 @@ export interface RouterStateValue extends RouterSnapshot {
   readonly isNavigating: boolean;
 }
 
+export interface RouterStateSelector<Selected> {
+  readonly select: (state: RouterStateValue) => Selected;
+}
+
 /**
  * The router's state as ONE reactive value, for a component that wants several
  * pieces of it without subscribing to each separately.
@@ -232,25 +248,27 @@ export interface RouterStateValue extends RouterSnapshot {
  * route depth, and each match's `isFetching` says which.
  */
 export function useRouterState(): Cell<RouterStateValue>;
-export function useRouterState<Selected>(options: {
-  readonly select: (state: RouterStateValue) => Selected;
-}): Cell<Selected>;
-export function useRouterState(options?: {
-  readonly select: (state: RouterStateValue) => unknown;
-}): Cell<unknown> {
+export function useRouterState<Selected>(options: RouterStateSelector<Selected>): Cell<Selected>;
+export function useRouterState(options?: RouterStateSelector<unknown>): Cell<unknown> {
   const state = useRouter();
-  const value = (): RouterStateValue => ({
-    status: state.status(),
-    isLoading: state.isLoading(),
-    isTransitioning: state.isTransitioning(),
-    matches: state.matches(),
-    location: state.location(),
-    resolvedLocation: state.resolvedLocation(),
-    params: state.params(),
-    isNavigating: state.isNavigating(),
-  });
+  function value(): RouterStateValue {
+    return {
+      status: state.status(),
+      isLoading: state.isLoading(),
+      isTransitioning: state.isTransitioning(),
+      matches: state.matches(),
+      location: state.location(),
+      resolvedLocation: state.resolvedLocation(),
+      params: state.params(),
+      isNavigating: state.isNavigating(),
+    };
+  }
   if (options === undefined) return value;
   return createMemo(() => options.select(value()), { equals: sameShape });
+}
+
+export interface WithResolver {
+  readonly withResolver: true;
 }
 
 /**
@@ -265,9 +283,7 @@ export function useRouterState(options?: {
  * `reset` while a navigation is waiting on an answer.
  */
 export function useBlocker(blocker: Blocker): () => void;
-export function useBlocker(
-  options: UseBlockerOptions & { readonly withResolver: true },
-): Cell<BlockerResolver>;
+export function useBlocker(options: UseBlockerOptions & WithResolver): Cell<BlockerResolver>;
 export function useBlocker(options: UseBlockerOptions): void;
 export function useBlocker(given: Blocker | UseBlockerOptions): unknown {
   const state = useRouter();
@@ -288,24 +304,30 @@ export function useCanGoBack(): Cell<boolean> {
 }
 
 /** The matched chain as TanStack's `RouteMatch`es, outermost first. */
-export function useMatches<Selected = readonly RouteMatch[]>(options?: {
-  readonly select?: (matches: readonly RouteMatch[]) => Selected;
-}): Cell<Selected> {
+export function useMatches<Selected = readonly RouteMatch[]>(
+  options?: MatchesSelector<Selected>,
+): Cell<Selected> {
   return matchesCell("all", options);
 }
 
 /** The matches BELOW the route rendering the caller. */
-export function useChildMatches<Selected = readonly RouteMatch[]>(options?: {
-  readonly select?: (matches: readonly RouteMatch[]) => Selected;
-}): Cell<Selected> {
+export function useChildMatches<Selected = readonly RouteMatch[]>(
+  options?: MatchesSelector<Selected>,
+): Cell<Selected> {
   return matchesCell("children", options);
 }
 
 /** The matches ABOVE the route rendering the caller. */
-export function useParentMatches<Selected = readonly RouteMatch[]>(options?: {
-  readonly select?: (matches: readonly RouteMatch[]) => Selected;
-}): Cell<Selected> {
+export function useParentMatches<Selected = readonly RouteMatch[]>(
+  options?: MatchesSelector<Selected>,
+): Cell<Selected> {
   return matchesCell("parents", options);
+}
+
+export interface ElementScrollRestorationOptions {
+  readonly id?: string;
+  readonly getElement?: () => Element | null | undefined;
+  readonly getKey?: (location: Location) => string;
 }
 
 /**
@@ -315,11 +337,9 @@ export function useParentMatches<Selected = readonly RouteMatch[]>(options?: {
  * `id` is the container's `data-scroll-id`; `getElement` reads the id off an
  * element that carries one.
  */
-export function useElementScrollRestoration(options: {
-  readonly id?: string;
-  readonly getElement?: () => Element | null | undefined;
-  readonly getKey?: (location: Location) => string;
-}): ScrollPosition | undefined {
+export function useElementScrollRestoration(
+  options: ElementScrollRestorationOptions,
+): ScrollPosition | undefined {
   const state = useRouter();
   const config = state.config;
   const keyOf =
@@ -353,9 +373,9 @@ export function useSearchParams(): [
   (next: Record<string, string> | ((current: URLSearchParams) => Record<string, string>)) => void,
 ] {
   const state = useRouter();
-  const set = (
+  function set(
     next: Record<string, string> | ((current: URLSearchParams) => Record<string, string>),
-  ): void => {
+  ): void {
     const current = state.search();
     const record = typeof next === "function" ? next(current) : next;
     const kept = new URLSearchParams();
@@ -373,6 +393,6 @@ export function useSearchParams(): [
       replace: true,
       resetScroll: true,
     });
-  };
+  }
   return [state.search, set];
 }

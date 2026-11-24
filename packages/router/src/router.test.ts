@@ -40,14 +40,21 @@ import {
 import type { AnyRouteDefinition, RouteProps } from "./route.ts";
 import { type RouterEvent, type RouterState, createRouter, unmask } from "./router.ts";
 
-const tick = (ms = 0) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+function tick(ms = 0) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
 
 afterEach(() => {
   document.body.innerHTML = "";
 });
 
+interface Mounted {
+  host: HTMLElement;
+  dispose: () => void;
+}
+
 /** Mount a `<Router>` and hand back the host plus a disposer. */
-function mount(props: Parameters<typeof Router>[0]): { host: HTMLElement; dispose: () => void } {
+function mount(props: Parameters<typeof Router>[0]): Mounted {
   const host = document.createElement("div");
   document.body.appendChild(host);
   const dispose = render(
@@ -66,7 +73,7 @@ function mount(props: Parameters<typeof Router>[0]): { host: HTMLElement; dispos
 }
 
 /** Mount an already-built state, for tests that need to drive it directly. */
-function mountState(state: RouterState): { host: HTMLElement; dispose: () => void } {
+function mountState(state: RouterState): Mounted {
   const host = document.createElement("div");
   document.body.appendChild(host);
   const dispose = render(
@@ -97,12 +104,13 @@ function visibleText(node: Node): string {
   return out;
 }
 
-const text = (value: string) => (): Node => document.createTextNode(value);
+function text(value: string) {
+  return (): Node => document.createTextNode(value);
+}
 
-const page =
-  (label: string) =>
-  (_props: RouteProps): Node =>
-    document.createTextNode(label);
+function page(label: string) {
+  return (_props: RouteProps): Node => document.createTextNode(label);
+}
 
 describe("mounting and navigation", () => {
   const routes: AnyRouteDefinition[] = [
@@ -185,11 +193,11 @@ describe("params", () => {
             const node = document.createTextNode("");
             // A render effect would be the compiled form; reading once per
             // build plus once per change is enough to show the identity.
-            const update = () => {
+            function update() {
               const id = props.params().id;
               seen.push(id);
               node.textContent = id;
-            };
+            }
             update();
             return node;
           }),
@@ -208,6 +216,18 @@ describe("params", () => {
   });
 });
 
+interface IdParamsArgs {
+  params: IdParams;
+}
+
+interface IdParams {
+  id: string;
+}
+
+interface SearchArgs {
+  search: URLSearchParams;
+}
+
 describe("loaders", () => {
   test("resolve into the route, once per key", async () => {
     let calls = 0;
@@ -216,7 +236,7 @@ describe("loaders", () => {
       routeTree: [
         {
           path: "/u/$id",
-          loader: async ({ params }: { params: { id: string } }) => {
+          loader: async ({ params }: IdParamsArgs) => {
             calls++;
             await tick();
             return `user ${params.id}`;
@@ -258,7 +278,7 @@ describe("loaders", () => {
       routeTree: [
         {
           path: "/posts",
-          loader: async ({ search }: { search: URLSearchParams }) => {
+          loader: async ({ search }: SearchArgs) => {
             const page_ = search.get("page") ?? "0";
             seen.push(page_);
             await tick();
@@ -359,6 +379,14 @@ describe("loaders", () => {
   });
 });
 
+interface PageDepsArgs {
+  deps: PageDeps;
+}
+
+interface PageDeps {
+  page: string;
+}
+
 describe("loaderDeps and the reload policy", () => {
   /** The compiled shape: the read goes in `insert`, which is a tracked effect. */
   const span = fromCells((props: Incoming<RouteProps>): Node => {
@@ -377,10 +405,10 @@ describe("loaderDeps and the reload policy", () => {
         {
           path: "/list",
           staleTime: Number.POSITIVE_INFINITY,
-          loaderDeps: ({ search }: { search: URLSearchParams }) => ({
+          loaderDeps: ({ search }: SearchArgs) => ({
             page: search.get("page") ?? "1",
           }),
-          loader: async ({ deps }: { deps: { page: string } }) => {
+          loader: async ({ deps }: PageDepsArgs) => {
             seen.push(deps.page);
             await tick();
             return `page ${deps.page}`;
@@ -464,7 +492,7 @@ describe("loaderDeps and the reload policy", () => {
   });
 
   test("shouldReload overrides staleTime in BOTH directions", async () => {
-    const run = async (shouldReload: unknown): Promise<number> => {
+    async function run(shouldReload: unknown): Promise<number> {
       let calls = 0;
       const history = memoryHistory({ initial: ["/x"] });
       const { dispose } = mount({
@@ -495,7 +523,7 @@ describe("loaderDeps and the reload policy", () => {
       flush();
       dispose();
       return calls;
-    };
+    }
 
     // Fresh forever, and `true` reloads anyway.
     expect(await run(true)).toBe(2);
@@ -750,14 +778,22 @@ describe("loaderDeps and the reload policy", () => {
   });
 });
 
+interface ErrorProps {
+  error: () => Error;
+}
+
+type CounterSearch = {
+  n: number;
+};
+
 describe("validateSearch", () => {
-  const showSearch = (props: RouteProps): Node => {
+  function showSearch(props: RouteProps): Node {
     const node = document.createElement("span");
     const state = useRouter();
     void props;
     insert(node, () => JSON.stringify(state.validSearch()));
     return node;
-  };
+  }
 
   test("a validator types its own slice and unknown keys survive", async () => {
     const history = memoryHistory({ initial: ["/list?page=3&ref=hn"] });
@@ -779,11 +815,11 @@ describe("validateSearch", () => {
 
   test("a child's validator sees its ancestors' validated output", async () => {
     const history = memoryHistory({ initial: ["/app/x?page=2"] });
-    const wrap = (props: RouteProps): Node => {
+    function wrap(props: RouteProps): Node {
       const node = document.createElement("div");
       insert(node, () => props.children);
       return node;
-    };
+    }
     const { host, dispose } = mount({
       routeTree: [
         {
@@ -819,7 +855,7 @@ describe("validateSearch", () => {
             if (Number.isNaN(Number(input.page))) throw new Error("page must be a number");
             return { page: Number(input.page) };
           },
-          errorComponent: (props: { error: () => Error }) => {
+          errorComponent: (props: ErrorProps) => {
             const node = document.createElement("b");
             insert(node, () => props.error().message);
             return node;
@@ -843,7 +879,7 @@ describe("validateSearch", () => {
           validateSearch: (input: Record<string, unknown>) => ({ n: Number(input.n) + 1 }),
           component: () => {
             const node = document.createElement("span");
-            const s = useSearch<{ n: number }>();
+            const s = useSearch<CounterSearch>();
             insert(node, () => String(s().n));
             return node;
           },
@@ -888,6 +924,21 @@ describe("validateSearch", () => {
     dispose();
   });
 });
+
+interface ContextArgs {
+  context: Record<string, unknown>;
+}
+
+interface GivenArgs {
+  params: Record<string, string>;
+  search: URLSearchParams;
+  location: PathLocation;
+  context: Record<string, unknown>;
+}
+
+interface PathLocation {
+  pathname: string;
+}
 
 describe("beforeLoad and route context", () => {
   const span = fromCells((props: Incoming<RouteProps>): Node => {
@@ -936,16 +987,16 @@ describe("beforeLoad and route context", () => {
   test("beforeLoad runs outermost-first and each one sees the ones above it", async () => {
     const order: string[] = [];
     const history = memoryHistory({ initial: ["/a/b/c"] });
-    const wrap = (props: RouteProps): Node => {
+    function wrap(props: RouteProps): Node {
       const node = document.createElement("div");
       insert(node, () => props.children);
       return node;
-    };
+    }
     const { dispose } = mount({
       routeTree: [
         {
           path: "/a",
-          beforeLoad: async ({ context }: { context: Record<string, unknown> }) => {
+          beforeLoad: async ({ context }: ContextArgs) => {
             order.push(`a saw ${JSON.stringify(context)}`);
             return { a: 1 };
           },
@@ -953,7 +1004,7 @@ describe("beforeLoad and route context", () => {
           children: [
             {
               path: "b",
-              beforeLoad: async ({ context }: { context: Record<string, unknown> }) => {
+              beforeLoad: async ({ context }: ContextArgs) => {
                 order.push(`b saw ${JSON.stringify(context)}`);
                 return { b: 2 };
               },
@@ -961,7 +1012,7 @@ describe("beforeLoad and route context", () => {
               children: [
                 {
                   path: "c",
-                  beforeLoad: ({ context }: { context: Record<string, unknown> }) => {
+                  beforeLoad: ({ context }: ContextArgs) => {
                     order.push(`c saw ${JSON.stringify(context)}`);
                   },
                   component: span,
@@ -1173,12 +1224,7 @@ describe("beforeLoad and route context", () => {
     await tick();
     await settle();
     flush();
-    const given = seen as unknown as {
-      params: Record<string, string>;
-      search: URLSearchParams;
-      location: { pathname: string };
-      context: Record<string, unknown>;
-    };
+    const given = seen as unknown as GivenArgs;
     expect(given.params).toEqual({ id: "7" });
     expect(given.search.get("q")).toBe("hi");
     expect(given.location.pathname).toBe("/app/7");
@@ -1234,7 +1280,7 @@ describe("beforeLoad and route context", () => {
           children: [
             {
               path: "$id",
-              loader: async ({ context }: { context: Record<string, unknown> }) => {
+              loader: async ({ context }: ContextArgs) => {
                 seen = context;
                 await tick();
                 return "ok";
@@ -1276,7 +1322,7 @@ describe("errorComponent on the DOM backend", () => {
             throw new Error("loader said no");
           },
           pendingComponent: page("loading"),
-          errorComponent: (props: { error: () => Error }) => {
+          errorComponent: (props: ErrorProps) => {
             const node = document.createElement("p");
             insert(node, () => props.error().message);
             return node;
@@ -1314,7 +1360,7 @@ describe("errorComponent on the DOM backend", () => {
             insert(node, () => "generic");
             return node;
           },
-          notFoundComponent: (props: { error: () => Error }) => {
+          notFoundComponent: (props: ErrorProps) => {
             const node = document.createElement("p");
             insert(node, () => props.error().message);
             return node;
@@ -1505,18 +1551,36 @@ describe("Link", () => {
   });
 });
 
+interface MountedLink {
+  state: RouterState;
+  element: HTMLElement;
+  dispose: () => void;
+}
+
+interface RouteComponent {
+  component: unknown;
+}
+
+interface IntersectionEntry {
+  isIntersecting: boolean;
+}
+
+interface IntersectionGlobal {
+  IntersectionObserver: unknown;
+}
+
 describe("Link preload", () => {
   /**
    * Eight bugs the deleted `packages/extra/src/router.ts` had here, each one
    * confirmed against `git show 1991691:` before this was written. Every test
    * below is one of them.
    */
-  const table = (calls: string[]): AnyRouteDefinition[] =>
-    [
+  function table(calls: string[]): AnyRouteDefinition[] {
+    return [
       { path: "/", component: page("home") },
       {
         path: "/users/$id",
-        loader: async ({ params }: { params: { id: string } }) => {
+        loader: async ({ params }: IdParamsArgs) => {
           calls.push(params.id);
           await tick();
           return `user ${params.id}`;
@@ -1526,7 +1590,7 @@ describe("Link preload", () => {
       },
       {
         path: "/list",
-        loader: async ({ search }: { search: URLSearchParams }) => {
+        loader: async ({ search }: SearchArgs) => {
           calls.push(`page=${search.get("page") ?? "?"}`);
           await tick();
           return "list";
@@ -1535,15 +1599,13 @@ describe("Link preload", () => {
         component: page("list"),
       },
     ] as never;
+  }
 
   /** The link is rendered as the home route's component, so it is UNDER the provider. */
-  const link = (
-    props: Record<string, unknown>,
-    calls: string[],
-  ): { state: RouterState; element: HTMLElement; dispose: () => void } => {
+  function link(props: Record<string, unknown>, calls: string[]): MountedLink {
     const history = memoryHistory({ initial: ["/"] });
     const routes = table(calls);
-    (routes[0] as { component: unknown }).component = () =>
+    (routes[0] as RouteComponent).component = () =>
       (Link as never as (p: unknown) => Node)({
         to: () => props.to,
         preload: () => props.preload,
@@ -1552,7 +1614,7 @@ describe("Link preload", () => {
     const state = createRouter({ routeTree: routes, history });
     const { host, dispose } = mountState(state);
     return { state, element: host.querySelector("a") as HTMLElement, dispose };
-  };
+  }
 
   /**
    * The CHUNK, not only the loader.
@@ -1647,11 +1709,11 @@ describe("Link preload", () => {
 
   test("an IntersectionObserver is built for `viewport`, for nothing else, and warms on sight", async () => {
     const seen: string[] = [];
-    let fire: ((entries: { isIntersecting: boolean }[]) => void) | null = null;
+    let fire: ((entries: IntersectionEntry[]) => void) | null = null;
     let disconnected = 0;
     const real = globalThis.IntersectionObserver;
     class Spy {
-      constructor(callback: (entries: { isIntersecting: boolean }[]) => void) {
+      constructor(callback: (entries: IntersectionEntry[]) => void) {
         seen.push("constructed");
         fire = callback;
       }
@@ -1660,7 +1722,7 @@ describe("Link preload", () => {
         disconnected++;
       }
     }
-    (globalThis as { IntersectionObserver: unknown }).IntersectionObserver = Spy;
+    (globalThis as IntersectionGlobal).IntersectionObserver = Spy;
     try {
       const calls: string[] = [];
       const off = link({ to: "/users/7" }, calls);
@@ -1671,20 +1733,20 @@ describe("Link preload", () => {
       expect(seen).toEqual(["constructed"]);
 
       // Not visible yet: nothing is warmed, and the observer stays.
-      (fire as unknown as (e: { isIntersecting: boolean }[]) => void)([{ isIntersecting: false }]);
+      (fire as unknown as (e: IntersectionEntry[]) => void)([{ isIntersecting: false }]);
       await tick();
       expect(calls).toEqual([]);
       expect(disconnected).toBe(0);
 
       // Visible: warmed once, and it stops watching.
-      (fire as unknown as (e: { isIntersecting: boolean }[]) => void)([{ isIntersecting: true }]);
+      (fire as unknown as (e: IntersectionEntry[]) => void)([{ isIntersecting: true }]);
       await tick();
       await settle();
       expect(calls).toEqual(["7"]);
       expect(disconnected).toBe(1);
       on.dispose();
     } finally {
-      (globalThis as { IntersectionObserver: unknown }).IntersectionObserver = real;
+      (globalThis as IntersectionGlobal).IntersectionObserver = real;
     }
   });
 
@@ -1759,6 +1821,10 @@ describe("NavLink", () => {
   });
 });
 
+interface NavigatingHost {
+  navigate?: unknown;
+}
+
 describe("guards", () => {
   test("a redirect from beforeEach lands, and the refused route never shows", async () => {
     const history = memoryHistory();
@@ -1773,7 +1839,7 @@ describe("guards", () => {
     });
 
     const state = { navigated: false };
-    const navigate = (host as unknown as { navigate?: unknown }).navigate;
+    const navigate = (host as unknown as NavigatingHost).navigate;
     void navigate;
     void state;
 
@@ -2408,6 +2474,10 @@ describe("useSearchParams", () => {
 
 void text;
 
+type DefaultExport = {
+  default: unknown;
+};
+
 /**
  * Navigating to a CODE-SPLIT route.
  *
@@ -2426,13 +2496,13 @@ void text;
  * a defect the front door FOUND rather than one it introduced.
  */
 test("navigating to a lazy() route reveals it once the module lands", async () => {
-  const Home = () => {
+  function Home() {
     const n = document.createElement("p");
     n.textContent = "home";
     return n;
-  };
-  let landed!: (m: { default: unknown }) => void;
-  const Later = lazy(() => new Promise<{ default: unknown }>((r) => (landed = r)));
+  }
+  let landed!: (m: DefaultExport) => void;
+  const Later = lazy(() => new Promise<DefaultExport>((r) => (landed = r)));
 
   const routes: AnyRouteDefinition[] = [
     { path: "/", id: "/", component: Home as never },
@@ -2562,7 +2632,7 @@ describe("start() latches", () => {
     { path: "/users/$id", component: (() => null) as never },
   ] as never as AnyRouteDefinition[];
 
-  const runsOf = async (initial: string): Promise<number> => {
+  async function runsOf(initial: string): Promise<number> {
     let ran = 0;
     const counted = table.map((route) => ({
       ...route,
@@ -2579,7 +2649,7 @@ describe("start() latches", () => {
     // one did the whole of `start()` again.
     for (let at = 0; at < 10; at++) await state.start();
     return ran;
-  };
+  }
 
   test("a matched location starts once", async () => {
     expect(await runsOf("/users/7")).toBe(1);
@@ -2599,6 +2669,11 @@ describe("start() latches", () => {
   });
 });
 
+interface EnteredMatch {
+  staticData: unknown;
+  routeId: string;
+}
+
 /**
  * `onEnter` / `onStay` / `onLeave`, and `staticData`.
  *
@@ -2608,14 +2683,16 @@ describe("start() latches", () => {
  */
 describe("route lifecycle", () => {
   const log: string[] = [];
-  const hooks = (id: string) => ({
-    onEnter: () => log.push(`enter:${id}`),
-    onStay: () => log.push(`stay:${id}`),
-    onLeave: () => log.push(`leave:${id}`),
-  });
+  function hooks(id: string) {
+    return {
+      onEnter: () => log.push(`enter:${id}`),
+      onStay: () => log.push(`stay:${id}`),
+      onLeave: () => log.push(`leave:${id}`),
+    };
+  }
 
-  const tree = (): AnyRouteDefinition[] =>
-    [
+  function tree(): AnyRouteDefinition[] {
+    return [
       {
         path: "/shop",
         component: (() => null) as never,
@@ -2628,6 +2705,7 @@ describe("route lifecycle", () => {
       },
       { path: "/away", component: (() => null) as never, ...hooks("away") },
     ] as never;
+  }
 
   test("the first chain enters, a sibling swap keeps the layout", async () => {
     log.length = 0;
@@ -2655,7 +2733,7 @@ describe("route lifecycle", () => {
         path: "/shop",
         component: (() => null) as never,
         staticData: { title: "Shop" },
-        onEnter: (match: { staticData: unknown; routeId: string }) => seen.push(match.staticData),
+        onEnter: (match: EnteredMatch) => seen.push(match.staticData),
         children: [{ path: "", component: (() => null) as never }],
       },
     ] as never as AnyRouteDefinition[];
@@ -2668,6 +2746,14 @@ describe("route lifecycle", () => {
   });
 });
 
+interface NumericIdParamsArgs {
+  params: NumericIdParams;
+}
+
+interface NumericIdParams {
+  id: number;
+}
+
 /**
  * `params.parse` and `params.stringify` — the two directions of a path
  * parameter a route does not want to work in as a string.
@@ -2679,7 +2765,7 @@ describe("params.parse / params.stringify", () => {
       {
         path: "/posts/$id",
         params: { parse: (p: Record<string, string>) => ({ id: Number(p.id) }) },
-        loader: ({ params }: { params: { id: number } }) => {
+        loader: ({ params }: NumericIdParamsArgs) => {
           seen.push(params.id);
           return params.id * 2;
         },
@@ -2729,7 +2815,7 @@ describe("params.parse / params.stringify", () => {
       {
         path: "/posts/$id",
         params: { parse: (p: Record<string, string>) => ({ id: Number(p.id) }) },
-        beforeLoad: ({ params }: { params: { id: number } }) => {
+        beforeLoad: ({ params }: NumericIdParamsArgs) => {
           seen.push(params.id);
           return {};
         },
@@ -2798,7 +2884,7 @@ describe("params.parse / params.stringify", () => {
           },
         },
         component: (() => null) as never,
-        errorComponent: ((props: { error: () => Error }) =>
+        errorComponent: ((props: ErrorProps) =>
           document.createTextNode(`refused: ${props.error().message}`)) as never,
       },
     ] as never as AnyRouteDefinition[];
@@ -2883,6 +2969,14 @@ describe("params.parse / params.stringify", () => {
   });
 });
 
+interface RowsProps {
+  data: () => RowsData;
+}
+
+interface RowsData {
+  rows: Promise<unknown>;
+}
+
 /**
  * `<Await>` on the DOM backend.
  *
@@ -2892,24 +2986,26 @@ describe("params.parse / params.stringify", () => {
  * promise a loader returns, so there is nothing to tag.
  */
 describe("Await", () => {
-  const later = <T>(value: T, ms = 5): Promise<T> =>
-    new Promise((resolve) => setTimeout(() => resolve(value), ms));
+  function later<T>(value: T, ms = 5): Promise<T> {
+    return new Promise((resolve) => setTimeout(() => resolve(value), ms));
+  }
 
-  const tableWith = (rows: () => Promise<unknown>): AnyRouteDefinition[] =>
-    [
+  function tableWith(rows: () => Promise<unknown>): AnyRouteDefinition[] {
+    return [
       {
         path: "/report",
         loader: () => ({ summary: "ready now", rows: rows() }),
-        component: ((props: { data: () => { rows: Promise<unknown> } }) =>
+        component: ((props: RowsProps) =>
           (Await as never as (p: unknown) => unknown)({
             promise: () => props.data().rows,
             fallback: () => document.createTextNode("waiting"),
             children: (value: () => unknown) => document.createTextNode(`rows: ${String(value())}`),
           })) as never,
-        errorComponent: ((props: { error: () => Error }) =>
+        errorComponent: ((props: ErrorProps) =>
           document.createTextNode(`caught ${props.error().message}`)) as never,
       },
     ] as never;
+  }
 
   test("the fallback shows, then the settled value replaces it", async () => {
     const state = createRouter({
@@ -2946,20 +3042,26 @@ describe("Await", () => {
   });
 });
 
+interface WrappedCall<Out> {
+  call: () => Promise<Out>;
+  state: RouterState;
+  dispose: () => void;
+}
+
 /**
  * `useServerFn` — the four lines every caller of a redirecting server function
  * writes, written once.
  */
 describe("useServerFn", () => {
   /** What `fn` threw, as a value. `redirect` and `notFound` both throw. */
-  const thrownBy = (fn: () => never): unknown => {
+  function thrownBy(fn: () => never): unknown {
     try {
       fn();
     } catch (error) {
       return error;
     }
     throw new Error("it did not throw");
-  };
+  }
 
   /**
    * Mount a route whose component wraps `fn`, and hand the wrapper back.
@@ -2967,10 +3069,7 @@ describe("useServerFn", () => {
    * The hook resolves through the SCOPE chain, so the call has to happen inside
    * a route component — which is where an application makes it too.
    */
-  const wrapped = <Out>(
-    fn: () => Promise<Out>,
-    initial = "/",
-  ): { call: () => Promise<Out>; state: RouterState; dispose: () => void } => {
+  function wrapped<Out>(fn: () => Promise<Out>, initial = "/"): WrappedCall<Out> {
     let call!: () => Promise<Out>;
     let state!: RouterState;
     const table = [
@@ -2986,7 +3085,7 @@ describe("useServerFn", () => {
     ] as never as AnyRouteDefinition[];
     const mounted = mount({ routeTree: table, history: memoryHistory({ initial: [initial] }) });
     return { call, state, dispose: mounted.dispose };
-  };
+  }
 
   test("a THROWN redirect navigates instead of rejecting", async () => {
     const { call, state, dispose } = wrapped(async () => {
@@ -3072,13 +3171,14 @@ describe("routeMasks", () => {
     { path: "/albums/$album/$id", component: (() => null) as never },
   ] as never as AnyRouteDefinition[];
 
-  const at = (masks: Parameters<typeof createRouter>[0]["routeMasks"], extra = {}) =>
-    createRouter({
+  function at(masks: Parameters<typeof createRouter>[0]["routeMasks"], extra = {}) {
+    return createRouter({
       routeTree: table,
       history: memoryHistory({ initial: ["/feed"] }),
       routeMasks: masks,
       ...extra,
     });
+  }
 
   test("a matching navigation shows the mask and renders the target", async () => {
     const state = at([{ from: "/photos/$id", to: "/feed" }]);
@@ -3129,7 +3229,9 @@ describe("routeMasks", () => {
    * is exactly what a reload does.
    */
   describe("unmaskOnReload", () => {
-    const entryOf = (state: RouterState) => state.history.current();
+    function entryOf(state: RouterState) {
+      return state.history.current();
+    }
 
     test("off by default: the real location survives a reload", async () => {
       const state = at([{ from: "/photos/$id", to: "/feed" }]);
@@ -3179,8 +3281,9 @@ describe("router events", () => {
     { path: "/b", component: (() => null) as never },
   ] as never as AnyRouteDefinition[];
 
-  const at = (initial = "/") =>
-    createRouter({ routeTree: table, history: memoryHistory({ initial: [initial] }) });
+  function at(initial = "/") {
+    return createRouter({ routeTree: table, history: memoryHistory({ initial: [initial] }) });
+  }
 
   test("the six fire in order, once each", async () => {
     const state = at();
@@ -3350,8 +3453,9 @@ describe("matchRoute", () => {
     },
   ] as never as AnyRouteDefinition[];
 
-  const at = (initial: string) =>
-    createRouter({ routeTree: table, history: memoryHistory({ initial: [initial] }) });
+  function at(initial: string) {
+    return createRouter({ routeTree: table, history: memoryHistory({ initial: [initial] }) });
+  }
 
   test("a route id matches and hands back what it captured", async () => {
     const state = at("/posts/7");
@@ -3446,12 +3550,13 @@ describe("structuralSharing", () => {
     { path: "/posts/$id", component: (() => null) as never },
   ] as never as AnyRouteDefinition[];
 
-  const at = (initial: string, on = true) =>
-    createRouter({
+  function at(initial: string, on = true) {
+    return createRouter({
       routeTree: table,
       history: memoryHistory({ initial: [initial] }),
       structuralSharing: on,
     });
+  }
 
   test("params keep their identity when nothing about them moved", async () => {
     const state = at("/posts/7");
@@ -3505,7 +3610,7 @@ describe("structuralSharing", () => {
       routeTree: [
         {
           path: "/list",
-          loader: async ({ search }: { search: URLSearchParams }) => {
+          loader: async ({ search }: SearchArgs) => {
             runs++;
             await tick();
             return search.get("page") ?? "1";
@@ -3545,6 +3650,10 @@ describe("structuralSharing", () => {
   });
 });
 
+interface RawParamsArgs {
+  params: Record<string, string>;
+}
+
 describe("remountDeps", () => {
   /**
    * A route is ONE component across every location it matches, so a parameter
@@ -3552,8 +3661,8 @@ describe("remountDeps", () => {
    * route says the opposite — an editor for a different document must not
    * inherit the previous one's half-typed state.
    */
-  const tableWith = (remountDeps?: (o: { params: Record<string, string> }) => unknown) =>
-    [
+  function tableWith(remountDeps?: (o: RawParamsArgs) => unknown) {
+    return [
       {
         path: "/posts/$id",
         remountDeps,
@@ -3564,6 +3673,7 @@ describe("remountDeps", () => {
       },
       { path: "/", component: (() => null) as never },
     ] as never as AnyRouteDefinition[];
+  }
 
   let built = 0;
 

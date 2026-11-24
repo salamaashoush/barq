@@ -47,7 +47,9 @@ import {
 } from "./server.ts";
 import type { AnyRouteDefinition } from "./route.ts";
 
-const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+function tick() {
+  return new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
 
 /** What `body` printed through `console.error`, which it does on purpose. */
 async function printedErrors(body: () => Promise<void>): Promise<unknown[][]> {
@@ -60,13 +62,22 @@ async function printedErrors(body: () => Promise<void>): Promise<unknown[][]> {
   }
 }
 
-const refusedRedirect = (to: string): string =>
-  `[barq-router] A redirect to ${JSON.stringify(to)} was refused, because only a path or an \`http(s)\` URL is a valid target. ` +
-  "A target such as `javascript:` or `data:` can run as script in the browser, which is cross-site scripting. " +
-  "Validate the value passed to `redirect()` before using it, especially when it comes from the request.";
+function refusedRedirect(to: string): string {
+  return (
+    `[barq-router] A redirect to ${JSON.stringify(to)} was refused, because only a path or an \`http(s)\` URL is a valid target. ` +
+    "A target such as `javascript:` or `data:` can run as script in the browser, which is cross-site scripting. " +
+    "Validate the value passed to `redirect()` before using it, especially when it comes from the request."
+  );
+}
 
-const document = ({ body, seed }: { body: string; seed: string }): string =>
-  `<!doctype html><html><head><title>t</title></head><body>${body}${seed}</body></html>`;
+interface DocumentParts {
+  body: string;
+  seed: string;
+}
+
+function document({ body, seed }: DocumentParts): string {
+  return `<!doctype html><html><head><title>t</title></head><body>${body}${seed}</body></html>`;
+}
 
 const baseTable: AnyRouteDefinition[] = [
   { path: "/", component: (() => null) as never },
@@ -170,6 +181,10 @@ describe("guards", () => {
   });
 });
 
+interface DataProps {
+  data: () => unknown;
+}
+
 describe("the request is ambient for the whole render", () => {
   test("a route loader's server function can read it", async () => {
     // `withRequest` has exactly one other call site — `handleServerFn` — so
@@ -192,8 +207,7 @@ describe("the request is ambient for the whole render", () => {
         {
           path: "/",
           loader: () => whoami(),
-          component: (props: { data: () => unknown }) =>
-            ssrHtml(`<b>${esc(String(props.data()))}</b>`),
+          component: (props: DataProps) => ssrHtml(`<b>${esc(String(props.data()))}</b>`),
         },
       ] as never,
       app: (state) => ssrHtml(`<main>${esc(renderRoutes(state))}</main>`),
@@ -213,12 +227,12 @@ describe("the request is ambient for the whole render", () => {
     // 200. `onLoaderError` is how the answer reaches the handler, and it is a
     // per-request callback rather than an ambient slot, because a module-level
     // one hands one request's answer to another.
-    const guard = async (next: () => Promise<unknown>): Promise<unknown> => {
+    async function guard(next: () => Promise<unknown>): Promise<unknown> {
       if (!(getRequest().headers.get("authorization") ?? "").startsWith("Bearer ")) {
         throw new Response("unauthorized", { status: 401 });
       }
       return next();
-    };
+    }
     const load = createServerFn()
       .middleware([guard])
       .validator("unchecked")
@@ -228,8 +242,7 @@ describe("the request is ambient for the whole render", () => {
       {
         path: "/",
         loader: () => load(),
-        component: (props: { data: () => unknown }) =>
-          ssrHtml(`<b>${esc(String(props.data()))}</b>`),
+        component: (props: DataProps) => ssrHtml(`<b>${esc(String(props.data()))}</b>`),
       },
     ] as never;
 
@@ -253,10 +266,10 @@ describe("the request is ambient for the whole render", () => {
     expect(await ok.text()).toContain("<b>private</b>");
   });
 
-  const refusingPage = (delay: number) => {
-    const guard = async (): Promise<unknown> => {
+  function refusingPage(delay: number) {
+    async function guard(): Promise<unknown> {
       throw new Response("unauthorized", { status: 401 });
-    };
+    }
     const load = createServerFn()
       .middleware([guard])
       .validator("unchecked")
@@ -269,14 +282,13 @@ describe("the request is ambient for the whole render", () => {
             if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
             return load();
           },
-          component: (props: { data: () => unknown }) =>
-            ssrHtml(`<b>${esc(String(props.data()))}</b>`),
+          component: (props: DataProps) => ssrHtml(`<b>${esc(String(props.data()))}</b>`),
         },
       ] as never,
       app: (state) => ssrHtml(`<main>${esc(renderRoutes(state))}</main>`),
       document,
     });
-  };
+  }
 
   test("a streamed page refused before its shell flushed answers with the refusal", async () => {
     const handler = refusingPage(0);
@@ -311,15 +323,17 @@ describe("redirect() from a loader", () => {
   // the browser, which does follow them, bounds a cycle of 302s itself.
   test("loaders that redirect to each other answer one hop per request", async () => {
     const runs: string[] = [];
-    const bouncing = (from: string, to: string, delay: number) => ({
-      path: from,
-      loader: async () => {
-        runs.push(from);
-        if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
-        redirect(to);
-      },
-      component: (props: { data: () => unknown }) => ssrHtml(`<b>${esc(String(props.data()))}</b>`),
-    });
+    function bouncing(from: string, to: string, delay: number) {
+      return {
+        path: from,
+        loader: async () => {
+          runs.push(from);
+          if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+          redirect(to);
+        },
+        component: (props: DataProps) => ssrHtml(`<b>${esc(String(props.data()))}</b>`),
+      };
+    }
     for (const [stream, delay] of [
       [false, 0],
       [true, 0],
@@ -420,6 +434,15 @@ describe("the document", () => {
   });
 });
 
+interface DataChildrenProps {
+  data: () => unknown;
+  children: unknown;
+}
+
+interface DisposableState {
+  dispose: () => void;
+}
+
 /**
  * Five defects found by probe, each on a shipped path and each with nothing in
  * this suite that would have caught it. They are written here before the fixes,
@@ -428,7 +451,9 @@ describe("the document", () => {
 describe("P6 defects", () => {
   /** Distinct ids per test: a dropped loader keeps running after its response. */
   let seq = 0;
-  const fresh = (): string => `p6-${seq++}`;
+  function fresh(): string {
+    return `p6-${seq++}`;
+  }
 
   test("B2 — a non-streamed page renders EVERY depth's loader, not just the first", async () => {
     // `renderPage` renders the page twice in string mode. Pass 1 the layout
@@ -447,7 +472,7 @@ describe("P6 defects", () => {
           await tick();
           return "LAYOUT";
         },
-        component: (props: { data: () => unknown; children: unknown }) =>
+        component: (props: DataChildrenProps) =>
           ssrHtml(
             // `esc` passes an `SsrHtml` through unescaped; `String()`-ing it
             // first turns the child's markup into text.
@@ -463,8 +488,7 @@ describe("P6 defects", () => {
               await tick();
               return "LEAF";
             },
-            component: (props: { data: () => unknown }) =>
-              ssrHtml(`<main>${esc(String(props.data()))}</main>`),
+            component: (props: DataProps) => ssrHtml(`<main>${esc(String(props.data()))}</main>`),
           },
         ],
       },
@@ -504,8 +528,7 @@ describe("P6 defects", () => {
           await tick();
           redirect("/login");
         },
-        component: (props: { data: () => unknown }) =>
-          ssrHtml(`<main>${esc(String(props.data()))}</main>`),
+        component: (props: DataProps) => ssrHtml(`<main>${esc(String(props.data()))}</main>`),
       },
     ] as never;
 
@@ -557,8 +580,7 @@ describe("P6 defects", () => {
           order.push("loader settled");
           return "LATE";
         },
-        component: (props: { data: () => unknown }) =>
-          ssrHtml(`<main>${esc(String(props.data()))}</main>`),
+        component: (props: DataProps) => ssrHtml(`<main>${esc(String(props.data()))}</main>`),
       },
     ] as never;
 
@@ -566,7 +588,7 @@ describe("P6 defects", () => {
       routeTree: table,
       app: (state) => {
         const dispose = state.dispose.bind(state);
-        (state as unknown as { dispose: () => void }).dispose = () => {
+        (state as unknown as DisposableState).dispose = () => {
           order.push("dispose");
           dispose();
         };
@@ -588,6 +610,14 @@ describe("P6 defects", () => {
   });
 });
 
+interface ErrorProps {
+  error: () => Error;
+}
+
+interface ChildrenProps {
+  children: unknown;
+}
+
 /**
  * An error boundary per route depth, on the STRING backend.
  *
@@ -599,12 +629,12 @@ describe("P6 defects", () => {
  */
 describe("errorComponent and notFoundComponent", () => {
   let seq = 0;
-  const table = (
+  function table(
     id: string,
     thrown: () => never,
     extra: Record<string, unknown>,
-  ): AnyRouteDefinition[] =>
-    [
+  ): AnyRouteDefinition[] {
+    return [
       {
         id,
         path: "/thing/$id",
@@ -612,13 +642,13 @@ describe("errorComponent and notFoundComponent", () => {
           await tick();
           thrown();
         },
-        component: (props: { data: () => unknown }) =>
-          ssrHtml(`<main>${esc(String(props.data()))}</main>`),
+        component: (props: DataProps) => ssrHtml(`<main>${esc(String(props.data()))}</main>`),
         ...extra,
       },
     ] as never;
+  }
 
-  const render = async (routes: AnyRouteDefinition[], stream: boolean): Promise<string> => {
+  async function render(routes: AnyRouteDefinition[], stream: boolean): Promise<string> {
     const handler = createPageHandler({
       routeTree: routes,
       stream,
@@ -626,7 +656,7 @@ describe("errorComponent and notFoundComponent", () => {
       document,
     });
     return (await handler(get("/thing/7"))).text();
-  };
+  }
 
   test("a rejected loader renders the route's errorComponent, in both modes", async () => {
     for (const stream of [false, true]) {
@@ -638,7 +668,7 @@ describe("errorComponent and notFoundComponent", () => {
             throw markSafeError(new Error("the database is on fire"));
           },
           {
-            errorComponent: (props: { error: () => Error }) =>
+            errorComponent: (props: ErrorProps) =>
               ssrHtml(`<p class="boom">${esc(props.error().message)}</p>`),
           },
         ),
@@ -653,7 +683,7 @@ describe("errorComponent and notFoundComponent", () => {
     const body = await render(
       table(id, () => notFound("no such thing"), {
         errorComponent: () => ssrHtml("<p>generic failure</p>"),
-        notFoundComponent: (props: { error: () => Error }) =>
+        notFoundComponent: (props: ErrorProps) =>
           ssrHtml(`<p class="missing">${esc(props.error().message)}</p>`),
       }),
       false,
@@ -676,8 +706,7 @@ describe("errorComponent and notFoundComponent", () => {
   test("notFound() answers 404 when the status is still open", async () => {
     const id = `s${seq++}`;
     const routes = table(id, () => notFound("gone"), {
-      notFoundComponent: (props: { error: () => Error }) =>
-        ssrHtml(`<p>${esc(props.error().message)}</p>`),
+      notFoundComponent: (props: ErrorProps) => ssrHtml(`<p>${esc(props.error().message)}</p>`),
     });
     const handler = createPageHandler({
       routeTree: routes,
@@ -697,9 +726,9 @@ describe("errorComponent and notFoundComponent", () => {
       {
         id: `${id}-layout`,
         path: "/app",
-        errorComponent: (props: { error: () => Error }) =>
+        errorComponent: (props: ErrorProps) =>
           ssrHtml(`<p class="layout-caught">${esc(props.error().message)}</p>`),
-        component: (props: { children: unknown }) =>
+        component: (props: ChildrenProps) =>
           ssrHtml(`<div>${esc((props.children as () => unknown)())}</div>`),
         children: [
           {
@@ -709,8 +738,7 @@ describe("errorComponent and notFoundComponent", () => {
               await tick();
               throw markSafeError(new Error("leaf failed"));
             },
-            component: (props: { data: () => unknown }) =>
-              ssrHtml(`<main>${esc(String(props.data()))}</main>`),
+            component: (props: DataProps) => ssrHtml(`<main>${esc(String(props.data()))}</main>`),
           },
         ],
       },
@@ -746,7 +774,7 @@ describe("modulepreload for the matched chain", () => {
     {
       id: "layout",
       path: "/app",
-      component: (props: { children: unknown }) =>
+      component: (props: ChildrenProps) =>
         ssrHtml(`<div>${esc((props.children as () => unknown)())}</div>`),
       children: [{ id: "leaf", path: "$id", component: () => ssrHtml("<main>x</main>") }],
     },
@@ -796,6 +824,11 @@ describe("modulepreload for the matched chain", () => {
   });
 });
 
+interface RenderedBody {
+  body: string;
+  ran: string[];
+}
+
 /**
  * Selective SSR.
  *
@@ -804,11 +837,11 @@ describe("modulepreload for the matched chain", () => {
  */
 describe("ssr: boolean | 'data-only'", () => {
   let seq = 0;
-  const build = (
+  function build(
     layoutSsr: boolean | "data-only" | undefined,
     leafSsr: boolean | "data-only" | undefined,
     ran: string[],
-  ): AnyRouteDefinition[] => {
+  ): AnyRouteDefinition[] {
     const id = `s${seq++}`;
     return [
       {
@@ -821,7 +854,7 @@ describe("ssr: boolean | 'data-only'", () => {
           return "LAYOUT";
         },
         pendingComponent: () => ssrHtml("<i>layout-skeleton</i>"),
-        component: (props: { data: () => unknown; children: unknown }) =>
+        component: (props: DataChildrenProps) =>
           ssrHtml(
             `<header>${esc(String(props.data()))}</header>${esc((props.children as () => unknown)())}`,
           ),
@@ -836,18 +869,17 @@ describe("ssr: boolean | 'data-only'", () => {
               return "LEAF";
             },
             pendingComponent: () => ssrHtml("<i>leaf-skeleton</i>"),
-            component: (props: { data: () => unknown }) =>
-              ssrHtml(`<main>${esc(String(props.data()))}</main>`),
+            component: (props: DataProps) => ssrHtml(`<main>${esc(String(props.data()))}</main>`),
           },
         ],
       },
     ] as never;
-  };
+  }
 
-  const render = async (
+  async function render(
     layoutSsr: boolean | "data-only" | undefined,
     leafSsr: boolean | "data-only" | undefined,
-  ): Promise<{ body: string; ran: string[] }> => {
+  ): Promise<RenderedBody> {
     const ran: string[] = [];
     const handler = createPageHandler({
       routeTree: build(layoutSsr, leafSsr, ran),
@@ -857,7 +889,7 @@ describe("ssr: boolean | 'data-only'", () => {
     });
     const body = await (await handler(get("/app/7"))).text();
     return { body, ran };
-  };
+  }
 
   test("the default renders everything", async () => {
     const { body, ran } = await render(undefined, undefined);
@@ -909,6 +941,23 @@ describe("ssr: boolean | 'data-only'", () => {
   });
 });
 
+interface SummaryRowsProps {
+  data: () => SummaryRows;
+}
+
+interface SummaryRows {
+  summary: string;
+  rows: unknown;
+}
+
+interface RowsProps {
+  data: () => RowsData;
+}
+
+interface RowsData {
+  rows: unknown;
+}
+
 /**
  * A loader returning a value with a promise still inside it.
  *
@@ -926,8 +975,8 @@ describe("ssr: boolean | 'data-only'", () => {
  * no tag, so a `defer()` here would be identity with a symbol on it.
  */
 describe("Await", () => {
-  const table = (fallback: unknown) =>
-    [
+  function table(fallback: unknown) {
+    return [
       {
         id: "awaited",
         path: "/report",
@@ -935,7 +984,7 @@ describe("Await", () => {
           summary: "ready now",
           rows: new Promise((resolve) => setTimeout(() => resolve("the slow part"), 10)),
         }),
-        component: (props: { data: () => { summary: string; rows: unknown } }) =>
+        component: (props: SummaryRowsProps) =>
           ssrHtml(
             `<main>${esc(props.data().summary)}</main>` +
               esc(
@@ -949,8 +998,9 @@ describe("Await", () => {
           ),
       },
     ] as never;
+  }
 
-  const render = async (stream: boolean, fallback: unknown = () => ssrHtml("<p>waiting</p>")) => {
+  async function render(stream: boolean, fallback: unknown = () => ssrHtml("<p>waiting</p>")) {
     const handler = createPageHandler({
       routeTree: table(fallback),
       stream,
@@ -958,7 +1008,7 @@ describe("Await", () => {
       document,
     });
     return (await handler(get("/report"))).text();
-  };
+  }
 
   test("streamed: the fallback flushes first and the value follows", async () => {
     const body = await render(true);
@@ -991,13 +1041,13 @@ describe("Await", () => {
             setTimeout(() => reject(markSafeError(new Error("the slow part failed"))), 5),
           ),
         }),
-        component: (props: { data: () => { rows: unknown } }) =>
+        component: (props: RowsProps) =>
           (Await as never as (p: unknown) => unknown)({
             promise: () => props.data().rows,
             fallback: () => ssrHtml("<p>waiting</p>"),
             children: (value: () => unknown) => ssrHtml(`<p>${esc(String(value()))}</p>`),
           }),
-        errorComponent: ((props: { error: () => Error }) =>
+        errorComponent: ((props: ErrorProps) =>
           ssrHtml(`<p id="boom">caught ${esc(props.error().message)}</p>`)) as never,
       },
     ] as never;
@@ -1012,6 +1062,14 @@ describe("Await", () => {
   });
 });
 
+interface SummaryProps {
+  data: () => SummaryData;
+}
+
+interface SummaryData {
+  summary: string;
+}
+
 describe("deferred loader data", () => {
   const routes = [
     {
@@ -1022,12 +1080,11 @@ describe("deferred loader data", () => {
         // Deliberately not awaited.
         rows: new Promise((resolve) => setTimeout(() => resolve("the slow part"), 10)),
       }),
-      component: (props: { data: () => { summary: string } }) =>
-        ssrHtml(`<main>${esc(props.data().summary)}</main>`),
+      component: (props: SummaryProps) => ssrHtml(`<main>${esc(props.data().summary)}</main>`),
     },
   ] as never;
 
-  const render = async (stream: boolean): Promise<string> => {
+  async function render(stream: boolean): Promise<string> {
     const handler = createPageHandler({
       routeTree: routes,
       stream,
@@ -1035,7 +1092,7 @@ describe("deferred loader data", () => {
       document,
     });
     return (await handler(get("/report"))).text();
-  };
+  }
 
   test("streamed: the page renders without waiting, and the slow part follows", async () => {
     const body = await render(true);
@@ -1055,6 +1112,15 @@ describe("deferred loader data", () => {
   });
 });
 
+interface ContextProps {
+  context: () => Record<string, unknown>;
+}
+
+interface RenderedContext {
+  body: string;
+  context: string;
+}
+
 /**
  * The hydration handoff for the route context.
  *
@@ -1065,7 +1131,7 @@ describe("deferred loader data", () => {
  */
 describe("beforeLoad does not run twice on hydration", () => {
   let seq = 0;
-  const table = (ran: string[]): AnyRouteDefinition[] => {
+  function table(ran: string[]): AnyRouteDefinition[] {
     const id = `h${seq++}`;
     return [
       {
@@ -1080,16 +1146,13 @@ describe("beforeLoad does not run twice on hydration", () => {
           await tick();
           return { token: "abc" };
         },
-        component: (props: { context: () => Record<string, unknown> }) =>
+        component: (props: ContextProps) =>
           ssrHtml(`<main>${esc(JSON.stringify(props.context()))}</main>`),
       },
     ] as never;
-  };
+  }
 
-  const render = async (
-    ran: string[],
-    stream: boolean,
-  ): Promise<{ body: string; context: string }> => {
+  async function render(ran: string[], stream: boolean): Promise<RenderedContext> {
     let context = "";
     const handler = createPageHandler({
       routeTree: table(ran),
@@ -1102,7 +1165,7 @@ describe("beforeLoad does not run twice on hydration", () => {
     });
     const body = await (await handler(get("/app"))).text();
     return { body, context };
-  };
+  }
 
   test("the server's beforeLoad result reaches the document, in both modes", async () => {
     for (const stream of [false, true]) {
@@ -1145,6 +1208,16 @@ describe("beforeLoad does not run twice on hydration", () => {
   });
 });
 
+type TokenContext = {
+  token: string;
+};
+
+type LeafContext = {
+  tenant: string;
+  token: string;
+  at: Date;
+};
+
 /**
  * The round trip, end to end.
  *
@@ -1167,8 +1240,8 @@ describe("the context handoff, server to client", () => {
           // rather than what `JSON.stringify` would.
           return { token: "abc", at: new Date(0) };
         },
-        component: (props: { context: () => Record<string, unknown> }) =>
-          ssrHtml(`<main>${esc((props.context() as { token: string }).token)}</main>`),
+        component: (props: ContextProps) =>
+          ssrHtml(`<main>${esc((props.context() as TokenContext).token)}</main>`),
       },
     ] as never;
 
@@ -1198,11 +1271,7 @@ describe("the context handoff, server to client", () => {
       });
       await state.start();
       // The server's value, carried — and `beforeLoad` did not run again.
-      const leaf = state.contexts()[state.contexts().length - 1] as {
-        tenant: string;
-        token: string;
-        at: Date;
-      };
+      const leaf = state.contexts()[state.contexts().length - 1] as LeafContext;
       expect(ran).toEqual(["server"]);
       expect(leaf.tenant).toBe("acme");
       expect(leaf.token).toBe("abc");
@@ -1213,6 +1282,22 @@ describe("the context handoff, server to client", () => {
     }
   });
 });
+
+interface NameData {
+  name: string;
+}
+
+interface CallCount {
+  calls: number;
+}
+
+interface IdParamsArgs {
+  params: IdParams;
+}
+
+interface IdParams {
+  id: string;
+}
 
 /**
  * The seam the front door sits on: SSR through the page handler, then hydrate
@@ -1243,21 +1328,22 @@ describe("hydration", () => {
     children: unknown;
   }
   interface Data {
-    data: () => { name: string } | undefined;
+    data: () => NameData | undefined;
   }
 
-  const table = (ssr: boolean, ran: { calls: number }): AnyRouteDefinition[] => {
-    const Root = (props: Kids): unknown =>
-      ssr
+  function table(ssr: boolean, ran: CallCount): AnyRouteDefinition[] {
+    function Root(props: Kids): unknown {
+      return ssr
         ? ssrHtml(`<div>shell:<!--[-->${esc(props.children)}<!--]--></div>`)
         : ((): unknown => {
             const node = shellTemplate();
             insert(node, props.children as never);
             return node;
           })();
+    }
 
-    const Leaf = (props: Data): unknown =>
-      ssr
+    function Leaf(props: Data): unknown {
+      return ssr
         ? ssrHtml(`<b>${esc(() => props.data()?.name)}</b>`)
         : ((): unknown => {
             const node = boldTemplate();
@@ -1269,6 +1355,7 @@ describe("hydration", () => {
             );
             return node;
           })();
+    }
 
     return [
       {
@@ -1278,7 +1365,7 @@ describe("hydration", () => {
           {
             path: "users/$id",
             component: Leaf as never,
-            loader: async ({ params }: { params: { id: string } }) => {
+            loader: async ({ params }: IdParamsArgs) => {
               ran.calls++;
               await tick();
               return { name: `Ada ${params.id}` };
@@ -1287,7 +1374,7 @@ describe("hydration", () => {
         ],
       },
     ] as never;
-  };
+  }
 
   test("a page the handler rendered is CLAIMED by the client router", async () => {
     const ran = { calls: 0 };
@@ -1455,17 +1542,17 @@ describe("chainVerifier", () => {
  * title in tree order.
  */
 describe("shellComponent", () => {
-  const table = (head?: unknown, scripts?: unknown): AnyRouteDefinition[] =>
-    [
+  function table(head?: unknown, scripts?: unknown): AnyRouteDefinition[] {
+    return [
       {
         id: "__root__",
         path: "/",
-        shellComponent: (props: { children: unknown }) =>
+        shellComponent: (props: ChildrenProps) =>
           ssrHtml(
             `<html lang="en"><head>${esc(HeadContent())}</head>` +
               `<body><div id="app">${esc(props.children)}</div>${esc(Scripts())}</body></html>`,
           ),
-        component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
+        component: (props: ChildrenProps) => ssrHtml(esc(props.children)),
         head: { meta: [{ title: "Site" }, { name: "description", content: "site" }] },
         children: [
           {
@@ -1478,8 +1565,9 @@ describe("shellComponent", () => {
         ],
       },
     ] as never;
+  }
 
-  const render = async (routes: AnyRouteDefinition[], extra = {}): Promise<string> => {
+  async function render(routes: AnyRouteDefinition[], extra = {}): Promise<string> {
     const handler = createPageHandler({
       routeTree: routes,
       app: (s) => renderRoutes(s),
@@ -1487,7 +1575,7 @@ describe("shellComponent", () => {
       ...extra,
     });
     return (await handler(get("/page"))).text();
-  };
+  }
 
   test("the document is the shell, doctype and all — no `document` needed", async () => {
     const body = await render(table());
@@ -1555,7 +1643,7 @@ describe("shellComponent", () => {
       {
         id: "__root__",
         path: "/",
-        shellComponent: (props: { children: unknown }) => {
+        shellComponent: (props: ChildrenProps) => {
           const at = useLocation();
           const rtl = at().pathname.startsWith("/ar");
           return ssrHtml(
@@ -1563,17 +1651,17 @@ describe("shellComponent", () => {
               `<body>${esc(props.children)}</body></html>`,
           );
         },
-        component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
+        component: (props: ChildrenProps) => ssrHtml(esc(props.children)),
         children: [
           { id: "/$locale", path: "$locale", component: () => ssrHtml("<main>page</main>") },
         ],
       },
     ] as never;
 
-    const serve = async (path: string): Promise<string> => {
+    async function serve(path: string): Promise<string> {
       const handler = createPageHandler({ routeTree: localised, app: (s) => renderRoutes(s) });
       return (await handler(get(path))).text();
-    };
+    }
 
     expect(await serve("/ar")).toContain('<html lang="ar" dir="rtl">');
     expect(await serve("/en")).toContain('<html lang="en" dir="ltr">');
@@ -1644,19 +1732,19 @@ describe("crawlers are answered with the whole page", () => {
     {
       id: "__root__",
       path: "/",
-      shellComponent: (props: { children: unknown }) =>
+      shellComponent: (props: ChildrenProps) =>
         ssrHtml(
           `<html><head>${esc(HeadContent())}</head><body>${esc(props.children)}</body></html>`,
         ),
-      component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
+      component: (props: ChildrenProps) => ssrHtml(esc(props.children)),
       children: [{ id: "/p", path: "p", component: () => ssrHtml("<main>p</main>") }],
     },
   ] as never as AnyRouteDefinition[];
 
-  const fetchAs = async (agent: string, extra = {}): Promise<Response> => {
+  async function fetchAs(agent: string, extra = {}): Promise<Response> {
     const handler = createPageHandler({ routeTree: routes, app: (s) => renderRoutes(s), ...extra });
     return handler(new Request("http://x/p", { headers: { "user-agent": agent } }));
-  };
+  }
 
   test("a bot takes the BUFFERED arm, so nothing is a placeholder", async () => {
     // TanStack's whole answer to "late head does not reach a crawler" is this
@@ -1679,6 +1767,10 @@ describe("crawlers are answered with the whole page", () => {
   });
 });
 
+interface BodyParts {
+  body: string;
+}
+
 /**
  * The SHELL and hydration — the question a JSX document raises and a string
  * template never did.
@@ -1689,16 +1781,21 @@ describe("crawlers are answered with the whole page", () => {
  * client never builds and the server's markup would be evicted.
  */
 describe("shell and hydration", () => {
-  const leaf = (): unknown => ssrHtml("<b>leaf</b>");
-  const layout = (props: { children: unknown }): unknown => ssrHtml(esc(props.children));
+  function leaf(): unknown {
+    return ssrHtml("<b>leaf</b>");
+  }
+  function layout(props: ChildrenProps): unknown {
+    return ssrHtml(esc(props.children));
+  }
 
-  const inside = (document_: string): string =>
-    document_.slice(
+  function inside(document_: string): string {
+    return document_.slice(
       document_.indexOf('<div id="app">') + '<div id="app">'.length,
       document_.lastIndexOf("</div>"),
     );
+  }
 
-  const render = async (routes: AnyRouteDefinition[], extra = {}): Promise<string> => {
+  async function render(routes: AnyRouteDefinition[], extra = {}): Promise<string> {
     const handler = createPageHandler({
       routeTree: routes,
       stream: false,
@@ -1706,7 +1803,7 @@ describe("shell and hydration", () => {
       ...extra,
     });
     return (await handler(get("/page"))).text();
-  };
+  }
 
   test("the markup inside #app is byte-identical with and without a shell", async () => {
     const children = [{ id: "/page", path: "page", component: leaf as never }];
@@ -1714,7 +1811,7 @@ describe("shell and hydration", () => {
       {
         id: "__root__",
         path: "/",
-        shellComponent: (props: { children: unknown }) =>
+        shellComponent: (props: ChildrenProps) =>
           ssrHtml(
             `<html><head></head><body><div id="app">${esc(props.children)}</div></body></html>`,
           ),
@@ -1724,7 +1821,7 @@ describe("shell and hydration", () => {
     ] as never);
     const withTemplate = await render(
       [{ id: "__root__", path: "/", component: layout as never, children }] as never,
-      { document: (parts: { body: string }) => `<div id="app">${parts.body}</div>` },
+      { document: (parts: BodyParts) => `<div id="app">${parts.body}</div>` },
     );
 
     // The claim walk sees the same bytes either way, so a shell cannot be what
@@ -1745,17 +1842,17 @@ describe("shell and hydration", () => {
  * contributed to.
  */
 describe("the head lane stops where the render does", () => {
-  const table = (layoutSsr: boolean | undefined): AnyRouteDefinition[] =>
-    [
+  function table(layoutSsr: boolean | undefined): AnyRouteDefinition[] {
+    return [
       {
         id: "__root__",
         path: "/",
-        shellComponent: (props: { children: unknown }) =>
+        shellComponent: (props: ChildrenProps) =>
           ssrHtml(
             `<html><head>${esc(HeadContent())}</head>` +
               `<body>${esc(props.children)}</body></html>`,
           ),
-        component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
+        component: (props: ChildrenProps) => ssrHtml(esc(props.children)),
         head: { meta: [{ name: "root", content: "yes" }] },
         children: [
           {
@@ -1763,7 +1860,7 @@ describe("the head lane stops where the render does", () => {
             path: "app",
             ssr: layoutSsr,
             head: { meta: [{ name: "layout", content: "yes" }] },
-            component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
+            component: (props: ChildrenProps) => ssrHtml(esc(props.children)),
             children: [
               {
                 id: "/app/",
@@ -1776,15 +1873,16 @@ describe("the head lane stops where the render does", () => {
         ],
       },
     ] as never;
+  }
 
-  const headOf = async (layoutSsr: boolean | undefined): Promise<string> => {
+  async function headOf(layoutSsr: boolean | undefined): Promise<string> {
     const handler = createPageHandler({
       routeTree: table(layoutSsr),
       stream: false,
       app: (state) => renderRoutes(state),
     });
     return (await handler(get("/app"))).text();
-  };
+  }
 
   test("every route contributes when the whole chain is server-rendered", async () => {
     const body = await headOf(undefined);
@@ -1828,13 +1926,13 @@ describe("the head lane stops where the render does", () => {
  * the next request.
  */
 describe("a failure before the render, and what the handler does with it", () => {
-  const handlerFor = (preload: () => unknown) =>
-    createPageHandler({
+  function handlerFor(preload: () => unknown) {
+    return createPageHandler({
       routeTree: [
         {
           id: "__root__",
           path: "/",
-          component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
+          component: (props: ChildrenProps) => ssrHtml(esc(props.children)),
           children: [
             {
               id: "/boom",
@@ -1848,6 +1946,7 @@ describe("a failure before the render, and what the handler does with it", () =>
       app: (state) => renderRoutes(state),
       document,
     });
+  }
 
   test("a chunk that REJECTS is the route's own problem, and the page still answers", async () => {
     // `preloadMatched` uses `allSettled` deliberately: refusing to hydrate the
@@ -1881,12 +1980,12 @@ describe("a failure before the render, and what the handler does with it", () =>
         {
           id: "__root__",
           path: "/",
-          shellComponent: (props: { children: unknown }) =>
+          shellComponent: (props: ChildrenProps) =>
             ssrHtml(
               `<html><head>${esc(HeadContent())}</head>` +
                 `<body>${esc(props.children)}</body></html>`,
             ),
-          component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
+          component: (props: ChildrenProps) => ssrHtml(esc(props.children)),
           head: { meta: [{ name: "root", content: "yes" }] },
           children: [
             {
@@ -1927,13 +2026,13 @@ describe("a failure before the render, and what the handler does with it", () =>
  * verdict and the other returns data.
  */
 describe("the response a page render drafts", () => {
-  const page = (definition: Partial<AnyRouteDefinition>) =>
-    createPageHandler({
+  function page(definition: Partial<AnyRouteDefinition>) {
+    return createPageHandler({
       routeTree: [
         {
           id: "__root__",
           path: "/",
-          component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
+          component: (props: ChildrenProps) => ssrHtml(esc(props.children)),
           children: [
             {
               id: "/x",
@@ -1941,7 +2040,7 @@ describe("the response a page render drafts", () => {
               // READS `data`, because a loader runs on read — a component that
               // ignores it never triggers one, and the test would be asserting
               // against a loader that had not run.
-              component: (props: { data: () => unknown }) =>
+              component: (props: DataProps) =>
                 ssrHtml(`<main>${esc(String(props.data() ?? "x"))}</main>`),
               ...definition,
             },
@@ -1952,6 +2051,7 @@ describe("the response a page render drafts", () => {
       app: (state) => renderRoutes(state),
       document,
     });
+  }
 
   test("a loader's `setCookie` and `setResponseHeader` reach the document", async () => {
     const handler = page({
@@ -2023,6 +2123,18 @@ describe("the response a page render drafts", () => {
   });
 });
 
+interface RawParamsArgs {
+  params: Record<string, string>;
+}
+
+interface RequestArgs {
+  request: Request;
+}
+
+interface ContextArgs {
+  context: Record<string, unknown>;
+}
+
 /**
  * API routes — `server: { handlers }` on an ordinary route.
  *
@@ -2031,13 +2143,13 @@ describe("the response a page render drafts", () => {
  * endpoint.
  */
 describe("a route's own HTTP handlers", () => {
-  const api = (server: unknown, extra: Partial<AnyRouteDefinition> = {}) =>
-    createPageHandler({
+  function api(server: unknown, extra: Partial<AnyRouteDefinition> = {}) {
+    return createPageHandler({
       routeTree: [
         {
           id: "__root__",
           path: "/",
-          component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
+          component: (props: ChildrenProps) => ssrHtml(esc(props.children)),
           children: [
             {
               id: "/api/users/$id",
@@ -2053,17 +2165,16 @@ describe("a route's own HTTP handlers", () => {
       app: (state) => renderRoutes(state),
       document,
     });
+  }
 
-  const send = (
-    handler: (r: Request) => Promise<Response>,
-    method: string,
-    path = "/api/users/7",
-  ) => handler(new Request(`http://localhost${path}`, { method }));
+  function send(handler: (r: Request) => Promise<Response>, method: string, path = "/api/users/7") {
+    return handler(new Request(`http://localhost${path}`, { method }));
+  }
 
   test("the method picks the handler, and params are the route's", async () => {
     const handler = api({
       handlers: {
-        GET: ({ params }: { params: Record<string, string> }) => Response.json({ id: params.id }),
+        GET: ({ params }: RawParamsArgs) => Response.json({ id: params.id }),
         POST: () => new Response("made", { status: 201 }),
       },
     });
@@ -2082,7 +2193,7 @@ describe("a route's own HTTP handlers", () => {
     const handler = api({
       handlers: {
         GET: () => Response.json("get"),
-        ANY: ({ request }: { request: Request }) => new Response(request.method),
+        ANY: ({ request }: RequestArgs) => new Response(request.method),
       },
     });
     expect(await (await send(handler, "GET")).json()).toBe("get");
@@ -2123,7 +2234,7 @@ describe("a route's own HTTP handlers", () => {
   test("a handler that returns nothing falls through to the page", async () => {
     const handler = api({
       handlers: {
-        GET: ({ request }: { request: Request }) =>
+        GET: ({ request }: RequestArgs) =>
           request.headers.get("accept") === "application/json"
             ? Response.json({ json: true })
             : undefined,
@@ -2163,7 +2274,7 @@ describe("a route's own HTTP handlers", () => {
           id: "__root__",
           path: "/",
           server: { middleware: [outer] },
-          component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
+          component: (props: ChildrenProps) => ssrHtml(esc(props.children)),
           children: [
             {
               id: "/api",
@@ -2171,8 +2282,7 @@ describe("a route's own HTTP handlers", () => {
               server: {
                 middleware: [inner],
                 handlers: {
-                  GET: ({ context }: { context: Record<string, unknown> }) =>
-                    Response.json(context),
+                  GET: ({ context }: ContextArgs) => Response.json(context),
                 },
               },
             },
@@ -2265,12 +2375,14 @@ describe("a route's own HTTP handlers", () => {
      * that the check is called, that it is called before the handler, and that
      * the route's own options steer it.
      */
-    const post = (headers: Record<string, string>) => {
+    function post(headers: Record<string, string>) {
       const request = new Request("http://localhost/api/users/7", { method: "POST" });
       Object.defineProperty(request, "headers", { value: new Headers(headers) });
       return request;
-    };
-    const handler = () => api({ handlers: { POST: () => Response.json({ done: true }) } });
+    }
+    function handler() {
+      return api({ handlers: { POST: () => Response.json({ done: true }) } });
+    }
 
     test("a browser POSTing from another origin is refused, and reaches nothing", async () => {
       let ran = false;
@@ -2350,7 +2462,7 @@ describe("a route's own HTTP handlers", () => {
         {
           id: "__root__",
           path: "/",
-          component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
+          component: (props: ChildrenProps) => ssrHtml(esc(props.children)),
           children: [
             {
               id: "/api",
@@ -2399,12 +2511,12 @@ describe("a route's own HTTP handlers", () => {
  * the refusal is barq's.
  */
 describe("a redirect target has to be navigable", () => {
-  const table = (to: string, from: "beforeLoad" | "loader") =>
-    [
+  function table(to: string, from: "beforeLoad" | "loader") {
+    return [
       {
         id: "__root__",
         path: "/",
-        component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
+        component: (props: ChildrenProps) => ssrHtml(esc(props.children)),
         children: [
           {
             id: "/x",
@@ -2420,14 +2532,15 @@ describe("a redirect target has to be navigable", () => {
                     throw redirect(to);
                   },
                 }),
-            component: (props: { data: () => unknown }) =>
+            component: (props: DataProps) =>
               ssrHtml(`<main>${esc(String(props.data() ?? "x"))}</main>`),
           },
         ],
       },
     ] as never;
+  }
 
-  const render = async (to: string, from: "beforeLoad" | "loader") => {
+  async function render(to: string, from: "beforeLoad" | "loader") {
     const handler = createPageHandler({
       routeTree: table(to, from),
       stream: false,
@@ -2435,7 +2548,7 @@ describe("a redirect target has to be navigable", () => {
       document,
     });
     return handler(get("/x"));
-  };
+  }
 
   test("an ordinary path and an http(s) URL still redirect", async () => {
     for (const to of ["/dashboard", "//cdn.example/x", "https://auth.example/oauth"]) {
@@ -2477,6 +2590,18 @@ describe("a redirect target has to be navigable", () => {
   });
 });
 
+interface TitleData {
+  title: string;
+}
+
+interface TitleHeadArgs {
+  loaderData: OptionalTitle | undefined;
+}
+
+interface OptionalTitle {
+  title?: string;
+}
+
 /**
  * `head: ({ loaderData })` — and the wait it costs, which is the point.
  *
@@ -2492,17 +2617,17 @@ describe("loaderData in head", () => {
   // so which comes first is an order of events rather than a race of clocks.
   let gate: Promise<void> | null = null;
   let settled = false;
-  const table = (head: unknown) =>
-    [
+  function table(head: unknown) {
+    return [
       {
         id: "__root__",
         path: "/",
-        shellComponent: (props: { children: unknown }) =>
+        shellComponent: (props: ChildrenProps) =>
           ssrHtml(
             `<html><head>${esc(HeadContent())}</head>` +
               `<body>${esc(props.children)}</body></html>`,
           ),
-        component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
+        component: (props: ChildrenProps) => ssrHtml(esc(props.children)),
         children: [
           {
             id: "/post",
@@ -2513,14 +2638,15 @@ describe("loaderData in head", () => {
               return { title: "FROM THE LOADER" };
             },
             head,
-            component: (props: { data: () => unknown }) =>
-              ssrHtml(`<main>${esc((props.data() as { title: string })?.title)}</main>`),
+            component: (props: DataProps) =>
+              ssrHtml(`<main>${esc((props.data() as TitleData)?.title)}</main>`),
           },
         ],
       },
     ] as never;
+  }
 
-  const render = async (head: unknown, stream: boolean) => {
+  async function render(head: unknown, stream: boolean) {
     const handler = createPageHandler({
       routeTree: table(head),
       stream,
@@ -2529,11 +2655,13 @@ describe("loaderData in head", () => {
     const response = await handler(get("/post"));
     const body = await response.text();
     return { body, title: /<title[^>]*>([^<]*)<\/title>/.exec(body)?.[1] ?? "NONE" };
-  };
+  }
 
-  const fnHead = ({ loaderData }: { loaderData: { title?: string } | undefined }) => ({
-    meta: [{ title: loaderData?.title ?? "MISSING" }],
-  });
+  function fnHead({ loaderData }: TitleHeadArgs) {
+    return {
+      meta: [{ title: loaderData?.title ?? "MISSING" }],
+    };
+  }
 
   for (const stream of [false, true]) {
     test(`a function head reads the loader (stream=${stream})`, async () => {
@@ -2608,12 +2736,12 @@ describe("loaderData in head", () => {
         {
           id: "__root__",
           path: "/",
-          shellComponent: (props: { children: unknown }) =>
+          shellComponent: (props: ChildrenProps) =>
             ssrHtml(
               `<html><head>${esc(HeadContent())}</head>` +
                 `<body>${esc(props.children)}</body></html>`,
             ),
-          component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
+          component: (props: ChildrenProps) => ssrHtml(esc(props.children)),
           children: [
             {
               id: "/x",
@@ -2623,7 +2751,7 @@ describe("loaderData in head", () => {
                 ran = true;
                 return { title: "LEAKED" };
               },
-              head: ({ loaderData }: { loaderData: { title?: string } | undefined }) => ({
+              head: ({ loaderData }: TitleHeadArgs) => ({
                 meta: [{ title: loaderData?.title ?? "none" }],
               }),
               component: () => ssrHtml("<main>x</main>"),
@@ -2723,14 +2851,13 @@ describe("a cancelled response", () => {
     {
       id: "__root__",
       path: "/",
-      component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
+      component: (props: ChildrenProps) => ssrHtml(esc(props.children)),
       children: [
         {
           id: "/slow",
           path: "slow",
           loader: () => new Promise((resolve) => setTimeout(() => resolve("late"), 200)),
-          component: (props: { data: () => unknown }) =>
-            ssrHtml(`<main>${esc(String(props.data()))}</main>`),
+          component: (props: DataProps) => ssrHtml(`<main>${esc(String(props.data()))}</main>`),
         },
       ],
     },
@@ -2773,12 +2900,12 @@ describe("a cancelled response", () => {
  * mismatch looks like.
  */
 describe("MatchRoute", () => {
-  const table = (to: string, fuzzy?: boolean) =>
-    [
+  function table(to: string, fuzzy?: boolean) {
+    return [
       {
         id: "__root__",
         path: "/",
-        component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
+        component: (props: ChildrenProps) => ssrHtml(esc(props.children)),
         children: [
           {
             id: "/posts/$id",
@@ -2794,8 +2921,9 @@ describe("MatchRoute", () => {
         ],
       },
     ] as never;
+  }
 
-  const render = async (to: string, fuzzy?: boolean): Promise<string> => {
+  async function render(to: string, fuzzy?: boolean): Promise<string> {
     const handler = createPageHandler({
       routeTree: table(to, fuzzy),
       stream: false,
@@ -2803,7 +2931,7 @@ describe("MatchRoute", () => {
       document,
     });
     return (await handler(get("/posts/7"))).text();
-  };
+  }
 
   test("a match renders its children with the captured params", async () => {
     expect(await render("/posts/$id")).toContain("<b>on 7</b>");
@@ -2822,6 +2950,27 @@ describe("MatchRoute", () => {
   });
 });
 
+interface NumericIdParamsArgs {
+  params: NumericIdParams;
+}
+
+interface NumericIdParams {
+  id: number;
+}
+
+interface DataParamsProps {
+  data: () => unknown;
+  params: () => unknown;
+}
+
+interface DoubledData {
+  doubled: number;
+}
+
+interface UnknownIdParams {
+  id: unknown;
+}
+
 /**
  * `params.parse` on the server render, which is the half a router test cannot
  * see: the component, the loader and the `head` all read the parsed value, and
@@ -2832,11 +2981,11 @@ describe("params.parse on the server", () => {
     {
       id: "__root__",
       path: "/",
-      shellComponent: (props: { children: unknown }) =>
+      shellComponent: (props: ChildrenProps) =>
         ssrHtml(
           `<html><head>${esc(HeadContent())}</head><body>${esc(props.children)}</body></html>`,
         ),
-      component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
+      component: (props: ChildrenProps) => ssrHtml(esc(props.children)),
       children: [
         {
           id: "/posts/$id",
@@ -2848,16 +2997,16 @@ describe("params.parse on the server", () => {
               return { id };
             },
           },
-          head: ({ params }: { params: { id: number } }) => ({
+          head: ({ params }: NumericIdParamsArgs) => ({
             meta: [{ title: `post ${params.id * 2}` }],
           }),
-          loader: ({ params }: { params: { id: number } }) => ({ doubled: params.id * 2 }),
-          component: (props: { data: () => unknown; params: () => unknown }) =>
+          loader: ({ params }: NumericIdParamsArgs) => ({ doubled: params.id * 2 }),
+          component: (props: DataParamsProps) =>
             ssrHtml(
-              `<main>${esc(String((props.data() as { doubled: number })?.doubled))}` +
-                `:${esc(String((props.params() as { id: unknown }).id))}</main>`,
+              `<main>${esc(String((props.data() as DoubledData)?.doubled))}` +
+                `:${esc(String((props.params() as UnknownIdParams).id))}</main>`,
             ),
-          errorComponent: ((props: { error: () => Error }) =>
+          errorComponent: ((props: ErrorProps) =>
             ssrHtml(`<p>refused ${esc(props.error().message)}</p>`)) as never,
         },
       ],
@@ -3015,14 +3164,15 @@ describe("notFoundMode", () => {
     },
   ] as never;
 
-  const handlerFor = (mode?: "root" | "fuzzy") =>
-    createPageHandler({
+  function handlerFor(mode?: "root" | "fuzzy") {
+    return createPageHandler({
       routeTree: nested,
       notFoundMode: mode,
       stream: false,
       app: (state) => renderRoutes(state),
       document,
     });
+  }
 
   test("fuzzy uses the deepest layout's own notFoundComponent", async () => {
     const response = await handlerFor()(get("/shop/nope"));
@@ -3079,25 +3229,42 @@ describe("ClientOnly", () => {
   });
 });
 
+interface UserContextArgs {
+  context: UserContext;
+}
+
+interface UserContext {
+  user: string;
+}
+
+interface GreetingContextArgs {
+  context: GreetingContext;
+}
+
+interface GreetingContext {
+  user: string;
+  greeting: string;
+}
+
 /**
  * The router options that mean the same on the server: the context every route
  * starts from, TanStack's `default*` names, and what an options-form
  * `notFound` says about the response.
  */
 describe("router options on the server", () => {
-  const leaf = (props: { data: () => unknown }): unknown =>
-    ssrHtml(`<main>${esc(String(props.data()))}</main>`);
+  function leaf(props: DataProps): unknown {
+    return ssrHtml(`<main>${esc(String(props.data()))}</main>`);
+  }
 
   test("`context` is what beforeLoad and the loader start from", async () => {
     const handler = createPageHandler({
       routeTree: [
         {
           path: "/who",
-          beforeLoad: ({ context }: { context: { user: string } }) => ({
+          beforeLoad: ({ context }: UserContextArgs) => ({
             greeting: `hello ${context.user}`,
           }),
-          loader: ({ context }: { context: { user: string; greeting: string } }) =>
-            `${context.greeting} from ${context.user}`,
+          loader: ({ context }: GreetingContextArgs) => `${context.greeting} from ${context.user}`,
           component: leaf,
         },
       ] as never,
@@ -3127,9 +3294,9 @@ describe("router options on the server", () => {
           component: leaf,
         },
       ] as never,
-      defaultErrorComponent: ((props: { error: () => Error }) =>
+      defaultErrorComponent: ((props: ErrorProps) =>
         ssrHtml(`<p>default error: ${esc(props.error().message)}</p>`)) as never,
-      defaultNotFoundComponent: ((props: { data: () => unknown }) =>
+      defaultNotFoundComponent: ((props: DataProps) =>
         ssrHtml(`<p>default missing: ${esc(String(props.data()))}</p>`)) as never,
       stream: false,
       app: (state) => renderRoutes(state),
@@ -3173,16 +3340,20 @@ describe("router options on the server", () => {
 
 describe("createServerEntry", () => {
   test("keeps the handler's halves and adds the code around every request", async () => {
-    const page = async (): Promise<Response> => new Response("page");
+    async function page(): Promise<Response> {
+      return new Response("page");
+    }
     const handler = {
       fetch: page,
       createFetch: () => page,
       verifyChains: async () => "",
     };
-    const around = async (
+    async function around(
       request: Request,
       next: (request: Request) => Promise<Response>,
-    ): Promise<Response> => next(request);
+    ): Promise<Response> {
+      return next(request);
+    }
     const entry = createServerEntry(handler, around);
     expect(entry.around).toBe(around);
     expect(entry.fetch).toBe(page);

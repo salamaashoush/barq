@@ -157,9 +157,9 @@ describe("browserHistory", () => {
 });
 
 describe("hashHistory", () => {
-  const at = (hash: string): void => {
+  function at(hash: string): void {
     window.history.replaceState(null, "", `/${hash}`);
-  };
+  }
 
   test("reads the route out of the hash, and an empty hash is the root", () => {
     at("");

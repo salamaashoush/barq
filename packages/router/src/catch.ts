@@ -43,10 +43,10 @@ function caughtRegion(
 ): unknown {
   // A function-valued attribute reaches a compiled component wrapped in an
   // accessor, so the first call may answer with the function itself.
-  const resetKey = (): unknown => {
+  function resetKey(): unknown {
     const first = (props.getResetKey as unknown as () => unknown)();
     return typeof first === "function" ? (first as () => unknown)() : first;
-  };
+  }
   let clear: (() => void) | null = null;
   const errorFallback = ((error: () => Error, reset: () => void): unknown => {
     const thrown = error();
@@ -84,7 +84,9 @@ function caughtRegion(
   return boundary(null, null, "error", errorFallback, content, HYDRATE);
 }
 
-const EMPTY_PARAMS = (): Record<string, string> => ({});
+function EMPTY_PARAMS(): Record<string, string> {
+  return {};
+}
 
 export const CatchBoundary = caughtRegion as unknown as (props: CatchBoundaryProps) => JSXElement;
 
@@ -95,6 +97,10 @@ export interface CatchNotFoundProps {
   readonly children?: unknown;
 }
 
+interface ShownError {
+  readonly error: Cell<Error>;
+}
+
 /**
  * TanStack's `<CatchNotFound>`: catches a `notFound()` thrown below it and
  * nothing else, so an ordinary failure still reaches the error boundary above.
@@ -103,10 +109,10 @@ function CatchNotFoundImpl(props: Incoming<CatchNotFoundProps>): unknown {
   // The path is the reset key, as theirs is: a not-found is about a location,
   // and leaving that location is what makes it stale.
   const state = read(RouterContext)();
-  const shown = (given: { readonly error: Cell<Error> }): unknown => {
+  function shown(given: ShownError): unknown {
     const fallback = componentSlot(props.fallback) as ((error: Cell<Error>) => unknown) | undefined;
     return fallback === undefined ? null : fallback(given.error);
-  };
+  }
   return caughtRegion(
     {
       getResetKey: (): string => `not-found-${state.location().pathname}`,

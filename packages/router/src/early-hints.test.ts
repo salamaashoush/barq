@@ -4,13 +4,17 @@ import { expect, test } from "bun:test";
 import type { AnyRouteDefinition } from "./route.ts";
 import { createPageHandler, renderRoutes } from "./server.ts";
 
+interface ChildrenProps {
+  children: unknown;
+}
+
 const routes = [
   {
     id: "__root__",
     path: "/",
-    shellComponent: (props: { children: unknown }) =>
+    shellComponent: (props: ChildrenProps) =>
       ssrHtml(`<html><head></head><body>${esc(props.children)}</body></html>`),
-    component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
+    component: (props: ChildrenProps) => ssrHtml(esc(props.children)),
     children: [{ id: "/orders", path: "orders", component: () => ssrHtml("<main>orders</main>") }],
   },
 ] as never as AnyRouteDefinition[];
@@ -43,20 +47,29 @@ test("the page's early hints reach the host before the render, and ride the Link
   expect(await response.text()).toContain("<main>orders</main>");
 });
 
+interface SentHints {
+  version: number;
+  hints: EarlyHintsHeaders;
+}
+
+interface EarlyHintsHeaders {
+  link: string[];
+}
+
 test("a Node response over HTTP/2 is sent a 103 when the host gave no hook, and HTTP/1.1 is not", async () => {
   const handler = createPageHandler({
     routeTree: routes,
     app: (state) => renderRoutes(state),
     ...assets,
   });
-  const sent: { version: number; hints: { link: string[] } }[] = [];
+  const sent: SentHints[] = [];
   for (const version of [2, 1]) {
     const request = Object.assign(new Request("https://example.com/orders"), {
       runtime: {
         node: {
           req: { httpVersionMajor: version },
           res: {
-            writeEarlyHints: (hints: { link: string[] }) => sent.push({ version, hints }),
+            writeEarlyHints: (hints: EarlyHintsHeaders) => sent.push({ version, hints }),
           },
         },
       },
@@ -88,8 +101,13 @@ const withHead = [
   },
 ] as never as AnyRouteDefinition[];
 
+interface CollectedPhase {
+  phase: string;
+  links: readonly string[];
+}
+
 test("what the routes' head declared follows as the dynamic phase, each link once", async () => {
-  const phases: { phase: string; links: readonly string[] }[] = [];
+  const phases: CollectedPhase[] = [];
   const handler = createPageHandler({
     routeTree: withHead,
     app: (state) => renderRoutes(state),

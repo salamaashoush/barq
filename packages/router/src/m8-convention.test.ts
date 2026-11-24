@@ -33,10 +33,12 @@ const ROUTER = ["components.ts", "router.ts", "hooks.ts", "history.ts", "matcher
   .join("\n");
 
 const INDEX = readFileSync(join(SRC, "index.ts"), "utf8");
-const PKG = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as {
+interface PackageManifest {
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
-};
+}
+
+const PKG = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as PackageManifest;
 
 /**
  * Every source module with its comments stripped, so a row can say "and nowhere
@@ -247,7 +249,7 @@ describe("the nine workarounds are deletions", () => {
     expect(ROUTER).not.toMatch(/const currentLocation = state\.location\(\)/);
     // Read per binding evaluation, so a surviving link re-resolves when the
     // location moves.
-    expect(ROUTER).toContain("const target = (): string => resolveTo(state, props)");
+    expect(ROUTER).toContain("function target(): string {\n    return resolveTo(state, props);");
     // Both components resolve the same way, because `NavLink` is `Link`'s
     // `anchorElement` with an extra binding rather than a second copy — the old
     // pair were two near-identical bodies and the duplication is what let one
@@ -335,11 +337,15 @@ describe("the four bugs the review did not name", () => {
   });
 });
 
+interface BlockCheck {
+  isBlock(v: unknown): boolean;
+}
+
 describe("the convention, from the other side", () => {
   // Replaces "router.tsx is still authored on the pre-M3 convention", which
   // enumerated seven `(props)` declarations.
   test("every component this package exports takes its scope first", async () => {
-    const core = (await import("@barqjs/core")) as { isBlock(v: unknown): boolean };
+    const core = (await import("@barqjs/core")) as BlockCheck;
     const router = await import("./components.ts");
 
     const components = {

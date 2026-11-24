@@ -24,14 +24,17 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-const call = (component: unknown, props: Record<string, unknown>): unknown =>
-  (component as (given: unknown) => unknown)(props);
+function call(component: unknown, props: Record<string, unknown>): unknown {
+  return (component as (given: unknown) => unknown)(props);
+}
 
-function mounted(home: () => unknown): {
+interface MountedRouter {
   state: RouterState;
   host: HTMLElement;
   dispose: () => void;
-} {
+}
+
+function mounted(home: () => unknown): MountedRouter {
   const state = createRouter({
     routeTree: [
       {
@@ -147,6 +150,10 @@ describe("<CatchBoundary>", () => {
   });
 });
 
+interface ErrorData {
+  data?: unknown;
+}
+
 describe("<CatchNotFound>", () => {
   test("catches a notFound() thrown below it, and hands the fallback the error", () => {
     const caught: unknown[] = [];
@@ -154,7 +161,7 @@ describe("<CatchNotFound>", () => {
       call(CatchNotFound, {
         onCatch: () => (error: Error) => caught.push(error.name),
         fallback: () => (error: () => Error) =>
-          document.createTextNode(`missing: ${String((error() as { data?: unknown }).data)}`),
+          document.createTextNode(`missing: ${String((error() as ErrorData).data)}`),
         children: () => {
           throw notFound({ data: "row 7" });
         },
@@ -179,9 +186,15 @@ describe("<CatchNotFound>", () => {
   });
 });
 
+interface DocumentParts {
+  body: string;
+  seed: string;
+}
+
 describe("on the string backend", () => {
-  const document = ({ body, seed }: { body: string; seed: string }): string =>
-    `<!doctype html><html><head><title>t</title></head><body>${body}${seed}</body></html>`;
+  function document({ body, seed }: DocumentParts): string {
+    return `<!doctype html><html><head><title>t</title></head><body>${body}${seed}</body></html>`;
+  }
 
   test("the server writes the fallback for a region that threw, and the page around it", async () => {
     const handler = createPageHandler({

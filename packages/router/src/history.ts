@@ -28,6 +28,11 @@ export interface Location {
 
 export type NavigationAction = "push" | "replace" | "pop";
 
+export interface PushOptions {
+  replace?: boolean;
+  state?: unknown;
+}
+
 export interface History {
   current(): Location;
   go(delta: number): void;
@@ -42,13 +47,15 @@ export interface History {
    * which is the only answer a browser makes available.
    */
   depth?(): number;
-  push(to: string, options?: { replace?: boolean; state?: unknown }): void;
+  push(to: string, options?: PushOptions): void;
   /** Returns an unsubscribe. */
   subscribe(listener: (location: Location, action: NavigationAction) => void): () => void;
 }
 
 let keys = 0;
-const nextKey = (): string => `k${keys++}`;
+function nextKey(): string {
+  return `k${keys++}`;
+}
 
 /** Split a full `path?query#hash` into its three pieces. */
 export function parseLocation(url: string, state: unknown = null): Location {
@@ -126,12 +133,12 @@ export function memoryHistory(options: MemoryHistoryOptions = {}): History {
   let index = options.index ?? stack.length - 1;
   const listeners = new Set<(location: Location, action: NavigationAction) => void>();
 
-  const emit = (action: NavigationAction): void => {
+  function emit(action: NavigationAction): void {
     const location = stack[index];
     // A snapshot, not the live Set: a listener that subscribes another during
     // an emit must not have it called in the same emit.
     for (const listener of Array.from(listeners)) listener(location, action);
-  };
+  }
 
   return {
     current: () => stack[index],
@@ -230,12 +237,14 @@ export function hashHistory(options: HashHistoryOptions = {}): History {
   });
 }
 
-function windowHistory(options: {
+interface WindowHistoryOptions {
   event: "popstate" | "hashchange";
   read: () => Location;
   url: (location: Location) => string;
   signal: AbortSignal | undefined;
-}): History {
+}
+
+function windowHistory(options: WindowHistoryOptions): History {
   const { read, url } = options;
   const listeners = new Set<(location: Location, action: NavigationAction) => void>();
 
@@ -246,12 +255,12 @@ function windowHistory(options: {
   // for the real question. An entry nothing here wrote reads as the first.
   let seen = indexOf(window.history.state) ?? 0;
 
-  const emit = (location: Location, action: NavigationAction): void => {
+  function emit(location: Location, action: NavigationAction): void {
     current = location;
     // A snapshot, not the live Set: a listener that subscribes another during
     // an emit must not have it called in the same emit.
     for (const listener of Array.from(listeners)) listener(location, action);
-  };
+  }
 
   window.addEventListener(
     options.event,

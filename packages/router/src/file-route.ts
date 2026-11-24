@@ -44,6 +44,10 @@ import { type RouteMatch, sameShape } from "./router.ts";
 
 export { ROOT_ROUTE_ID };
 
+export interface ShellChildProps {
+  readonly children: Child;
+}
+
 /**
  * What a root route may declare that no other route may.
  *
@@ -62,7 +66,14 @@ export interface RootRouteOptions<
    * gives: `{props.children}` is the entire shell pattern and has to typecheck,
    * and a Block declares a parameter that `Child` does not admit.
    */
-  readonly shellComponent?: (props: { readonly children: Child }) => unknown;
+  readonly shellComponent?: (props: ShellChildProps) => unknown;
+}
+
+export interface RouteTypes<Data, Params, Deps, Search> {
+  readonly loaderData: Data;
+  readonly params: Params;
+  readonly search: Search;
+  readonly loaderDeps: Deps;
 }
 
 /**
@@ -86,12 +97,7 @@ export interface FileRoute<
    * Never set. It is how this route's types reach whatever reads `Register`:
    * a `<Link to>` typing its `search`, `getRouteApi` typing its hooks.
    */
-  readonly types?: {
-    readonly loaderData: Data;
-    readonly params: Params;
-    readonly search: Search;
-    readonly loaderDeps: Deps;
-  };
+  readonly types?: RouteTypes<Data, Params, Deps, Search>;
   /** This route's loader value. Reading it is what STARTS the loader. */
   useLoaderData<Selected = Data>(options?: Selecting<Data, Selected>): Cell<Selected>;
   useParams<Selected = Params>(options?: Selecting<Params, Selected>): Cell<Selected>;
@@ -116,6 +122,13 @@ export interface Selecting<Value, Selected> {
   readonly select?: (value: Value) => Selected;
 }
 
+interface MatchedRoute {
+  readonly state: import("./router.ts").RouterState;
+  readonly depth: number;
+  readonly route: import("./route.ts").Route | null;
+  readonly blocking: boolean;
+}
+
 /**
  * A hook called from the wrong route's component.
  *
@@ -123,12 +136,7 @@ export interface Selecting<Value, Selected> {
  * sibling module reads as correct and would silently hand back the OTHER route's
  * data, which is the failure mode `from:` exists to prevent in TanStack.
  */
-function matchFor(id: string): {
-  readonly state: import("./router.ts").RouterState;
-  readonly depth: number;
-  readonly route: import("./route.ts").Route | null;
-  readonly blocking: boolean;
-} {
+function matchFor(id: string): MatchedRoute {
   const match = useRouteMatch();
   if (match === null) {
     throw new Error(
@@ -158,18 +166,18 @@ function matchFor(id: string): {
  */
 function hooksFor<Data, Params>(id: string): Omit<FileRoute<Data, Params>, "id" | "options"> {
   /** `read`, through `select` when one was given, and then memoized by content. */
-  const selected = <Value, Selected>(
+  function selected<Value, Selected>(
     state: import("./router.ts").RouterState,
     read: () => Value,
     options: Selecting<Value, Selected> | undefined,
-  ): Cell<Selected> => {
+  ): Cell<Selected> {
     const select = options?.select;
     if (select === undefined) return read as unknown as Cell<Selected>;
     return createMemo(
       () => select(read()),
       state.config.structuralSharing === false ? undefined : { equals: sameShape },
     );
-  };
+  }
   const hooks = {
     useLoaderData: (options?: Selecting<unknown, unknown>) => {
       const match = matchFor(id);
@@ -216,10 +224,11 @@ function hooksFor<Data, Params>(id: string): Omit<FileRoute<Data, Params>, "id" 
     },
     useNavigate: () => {
       const match = matchFor(id);
-      const navigate = (to: unknown, options?: object): Promise<void> =>
-        typeof to === "string"
+      function navigate(to: unknown, options?: object): Promise<void> {
+        return typeof to === "string"
           ? match.state.navigate(to, { from: id, ...options })
           : match.state.navigate({ from: id, ...(to as object) });
+      }
       return navigate as NavigateFn;
     },
   };
@@ -272,6 +281,22 @@ export function createRootRoute<
   } as never;
 }
 
+export interface RootContextHooks<Context extends Record<string, unknown>, Params> {
+  readonly context?: (
+    options: Omit<import("./route.ts").BeforeLoadContext<Params>, "context"> &
+      ProvidedContext<Context>,
+  ) => Record<string, unknown>;
+  /** Handed the router's context with what `context()` added to it. */
+  readonly beforeLoad?: (
+    options: Omit<import("./route.ts").BeforeLoadContext<Params>, "context"> &
+      ProvidedContext<Context>,
+  ) => Record<string, unknown> | void | Promise<Record<string, unknown> | void>;
+}
+
+export interface ProvidedContext<Context extends Record<string, unknown>> {
+  readonly context: Context;
+}
+
 /**
  * The root route, with the type of the context the ROUTER supplies.
  *
@@ -289,19 +314,8 @@ export function createRootRouteWithContext<Context extends Record<string, unknow
   Deps = undefined,
   Search = Record<string, unknown>,
 >(
-  options?: Omit<RootRouteOptions<Data, Params, Deps, Search>, "context" | "beforeLoad"> & {
-    readonly context?: (
-      options: Omit<import("./route.ts").BeforeLoadContext<Params>, "context"> & {
-        readonly context: Context;
-      },
-    ) => Record<string, unknown>;
-    /** Handed the router's context with what `context()` added to it. */
-    readonly beforeLoad?: (
-      options: Omit<import("./route.ts").BeforeLoadContext<Params>, "context"> & {
-        readonly context: Context;
-      },
-    ) => Record<string, unknown> | void | Promise<Record<string, unknown> | void>;
-  },
+  options?: Omit<RootRouteOptions<Data, Params, Deps, Search>, "context" | "beforeLoad"> &
+    RootContextHooks<Context, Params>,
 ) => FileRoute<Data, Params, Deps, RootRouteOptions<Data, Params, Deps, Search>, Search> {
   return (options) => createRootRoute(options as RootRouteOptions<never, never, never>) as never;
 }

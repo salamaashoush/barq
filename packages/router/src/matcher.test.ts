@@ -19,14 +19,17 @@ import {
   flattenRoutes,
 } from "./route.ts";
 
-const noop = (): null => null;
+function noop(): null {
+  return null;
+}
 
 function matcherFor(table: readonly AnyRouteDefinition[]) {
   return createMatcher(flattenRoutes(table));
 }
 
-const leaf = (path: string): AnyRouteDefinition =>
-  ({ path, component: noop as never }) as AnyRouteDefinition;
+function leaf(path: string): AnyRouteDefinition {
+  return { path, component: noop as never } as AnyRouteDefinition;
+}
 
 describe("matching", () => {
   test("static, parameter and splat", () => {
@@ -220,7 +223,9 @@ describe("conflicts are refused, not resolved by declaration order", () => {
 describe("cost", () => {
   test("a miss returns null and position does not decide cost", () => {
     const many: AnyRouteDefinition[] = [];
-    const pathOfIndex = (i: number) => `/s${i % 37}/u${i}`;
+    function pathOfIndex(i: number) {
+      return `/s${i % 37}/u${i}`;
+    }
     for (let i = 0; i < 500; i++) many.push(leaf(`${pathOfIndex(i)}/$a/$b`));
     const m = matcherFor(many);
 
@@ -410,7 +415,9 @@ describe("what a route component is handed, as types", () => {
       ? true
       : false
     : false;
-  const assertType = <T extends true>(proof: T): T => proof;
+  function assertType<T extends true>(proof: T): T {
+    return proof;
+  }
 
   interface Data {
     readonly title: string;

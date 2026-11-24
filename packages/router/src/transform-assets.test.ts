@@ -12,16 +12,20 @@ import { HeadContent, Scripts } from "./components.ts";
 import type { AnyRouteDefinition } from "./route.ts";
 import { createPageHandler, renderRoutes } from "./server.ts";
 
+interface ChildrenProps {
+  children: unknown;
+}
+
 const routes = [
   {
     id: "__root__",
     path: "/",
-    shellComponent: (props: { children: unknown }) =>
+    shellComponent: (props: ChildrenProps) =>
       ssrHtml(
         `<html><head>${esc(HeadContent())}</head>` +
           `<body>${esc(props.children)}${esc(Scripts())}</body></html>`,
       ),
-    component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
+    component: (props: ChildrenProps) => ssrHtml(esc(props.children)),
     children: [
       {
         id: "/orders",
@@ -39,10 +43,10 @@ const assets = {
   routeCss: { "/orders": ["/assets/orders.css"] },
 };
 
-const page = async (
+async function page(
   transformAssets: Parameters<typeof createPageHandler>[0]["transformAssets"],
   request = new Request("https://example.com/orders"),
-) => {
+) {
   const handler = createPageHandler({
     routeTree: routes,
     app: (state) => renderRoutes(state),
@@ -53,7 +57,7 @@ const page = async (
   });
   const response = await handler(request);
   return { html: await response.text(), link: response.headers.get("link") ?? "" };
-};
+}
 
 test("a prefix moves every asset the build emitted, and leaves a route's own link alone", async () => {
   const { html, link } = await page("https://cdn.example.com");

@@ -62,8 +62,9 @@ const IDLE: BlockerResolver = {
   reset: undefined,
 };
 
-const answer = (given: boolean | (() => boolean) | undefined, fallback: boolean): boolean =>
-  given === undefined ? fallback : typeof given === "function" ? given() : given;
+function answer(given: boolean | (() => boolean) | undefined, fallback: boolean): boolean {
+  return given === undefined ? fallback : typeof given === "function" ? given() : given;
+}
 
 /**
  * Register `options` with the router for as long as the calling scope lives.
@@ -113,12 +114,14 @@ export interface BlockProps extends UseBlockerOptions {
 }
 
 /** A prop that arrives as the value or as the compiler's accessor around it. */
-const unwrap = (slot: unknown): unknown =>
-  typeof slot === "function" ? (slot as () => unknown)() : slot;
+function unwrap(slot: unknown): unknown {
+  return typeof slot === "function" ? (slot as () => unknown)() : slot;
+}
 
 function BlockImpl(props: Incoming<BlockProps>): unknown {
-  const flagOf = (slot: unknown): (() => boolean) | undefined =>
-    slot === undefined ? undefined : (): boolean => Boolean(unwrap(slot));
+  function flagOf(slot: unknown): (() => boolean) | undefined {
+    return slot === undefined ? undefined : (): boolean => Boolean(unwrap(slot));
+  }
   const resolver = blockWith(useRouter(), {
     // A function-valued attribute reaches a compiled component wrapped in an
     // accessor, so the first call may answer with the function itself.

@@ -81,24 +81,7 @@ export type InvokedRouteComponent<Data = unknown, Params = Record<string, string
   props: RouteProps<Data, Params>,
 ) => JSXElement;
 
-/**
- * A loader is an ORDINARY isomorphic function that may CALL a server function.
- * It is not itself one.
- *
- * TanStack's shape, and their docs are explicit about it: "Route `loader`s are
- * isomorphic - they run on both server and client, not just the server." The
- * consequence is the one that matters here — the loader body ships to the
- * client by design, so anything that must not must live behind a
- * `createServerFn()` the loader calls, in a module of its own. `BARQ012`
- * enforces the module split; nothing enforces what goes inside the loader.
- *
- * AUTHORIZATION DOES NOT BELONG HERE. A loader runs on the client on every
- * navigation after the first, and the server function it calls is a separately
- * reachable endpoint. The check belongs on that function's middleware. This is
- * the hole every surveyed framework documents instead of closing, TanStack
- * included: "A route guard is not a data authorization boundary."
- */
-export type Loader<Data = unknown, Params = Record<string, string>, Deps = undefined> = (context: {
+export interface LoaderContext<Params, Deps> {
   readonly params: Params;
   /**
    * The query, and it is ABSENT when the route declares `loaderDeps`.
@@ -135,7 +118,28 @@ export type Loader<Data = unknown, Params = Record<string, string>, Deps = undef
    */
   readonly parentMatchPromise: Promise<import("./router.ts").RouteMatch | undefined>;
   readonly route: Route;
-}) => Data | Promise<Data>;
+}
+
+/**
+ * A loader is an ORDINARY isomorphic function that may CALL a server function.
+ * It is not itself one.
+ *
+ * TanStack's shape, and their docs are explicit about it: "Route `loader`s are
+ * isomorphic - they run on both server and client, not just the server." The
+ * consequence is the one that matters here — the loader body ships to the
+ * client by design, so anything that must not must live behind a
+ * `createServerFn()` the loader calls, in a module of its own. `BARQ012`
+ * enforces the module split; nothing enforces what goes inside the loader.
+ *
+ * AUTHORIZATION DOES NOT BELONG HERE. A loader runs on the client on every
+ * navigation after the first, and the server function it calls is a separately
+ * reachable endpoint. The check belongs on that function's middleware. This is
+ * the hole every surveyed framework documents instead of closing, TanStack
+ * included: "A route guard is not a data authorization boundary."
+ */
+export type Loader<Data = unknown, Params = Record<string, string>, Deps = undefined> = (
+  context: LoaderContext<Params, Deps>,
+) => Data | Promise<Data>;
 
 /** What `beforeLoad` and `context` are handed. */
 export interface BeforeLoadContext<Params = Record<string, string>> {
@@ -161,6 +165,25 @@ export interface ReloadContext<Params = Record<string, string>, Deps = undefined
   readonly cause: import("./router.ts").LoadCause;
   /** When the value last settled, as a millisecond timestamp. */
   readonly updatedAt: number;
+}
+
+export interface ParamsCodec {
+  readonly parse?: (params: Record<string, string>) => Record<string, unknown>;
+  readonly stringify?: (params: Record<string, unknown>) => Record<string, string>;
+}
+
+export interface SearchMiddlewares {
+  readonly middlewares?: readonly import("./search.ts").SearchMiddleware[];
+}
+
+export interface LoaderDepsOptions {
+  readonly search: URLSearchParams;
+}
+
+export interface RemountDepsOptions<Params, Search> {
+  readonly routeId: string;
+  readonly params: Params;
+  readonly search: Search;
 }
 
 export interface RouteDefinition<
@@ -265,18 +288,13 @@ export interface RouteDefinition<
    * throws is swallowed: it happens while a link is being rendered, where there
    * is no boundary and no user waiting on an answer.
    */
-  readonly params?: {
-    readonly parse?: (params: Record<string, string>) => Record<string, unknown>;
-    readonly stringify?: (params: Record<string, unknown>) => Record<string, string>;
-  };
+  readonly params?: ParamsCodec;
   /**
    * Runs when a location is BUILT — a `<Link>` href, a `navigate` — and never
    * on the way in. That is TanStack's placement (`router.ts:2006`, one call
    * site) and it is the right one: an inbound URL is a fact, not an intent.
    */
-  readonly search?: {
-    readonly middlewares?: readonly import("./search.ts").SearchMiddleware[];
-  };
+  readonly search?: SearchMiddlewares;
   /**
    * A synchronous contribution to the route context, merged parent-to-child.
    *
@@ -397,7 +415,7 @@ export interface RouteDefinition<
    * exchange, `search` leaves the loader's context, because a narrow key with a
    * broad read is the same bug in a smaller box.
    */
-  readonly loaderDeps?: (options: { readonly search: URLSearchParams }) => Deps;
+  readonly loaderDeps?: (options: LoaderDepsOptions) => Deps;
   /**
    * How long a cached result stays fresh, in milliseconds. Default 0 — a
    * navigation revalidates.
@@ -510,11 +528,7 @@ export interface RouteDefinition<
    * `({ params }) => params.id` is the whole of the common case. TanStack's
    * option and their four arguments.
    */
-  readonly remountDeps?: (options: {
-    readonly routeId: string;
-    readonly params: Params;
-    readonly search: Search;
-  }) => unknown;
+  readonly remountDeps?: (options: RemountDepsOptions<Params, Search>) => unknown;
   /**
    * Called when this route ENTERS the matched chain, STAYS in it across a
    * navigation, or LEAVES it.
@@ -551,12 +565,16 @@ export type Validated<Value> =
   | { readonly status: "success"; readonly value: Value }
   | { readonly status: "error"; readonly error: unknown };
 
-/** TanStack's functional `ssr`: what of this route runs on the server, for this request. */
-export type SsrDecider = (context: {
+export interface SsrDeciderContext {
   readonly params: Validated<Record<string, unknown>>;
   readonly search: Validated<Record<string, unknown>>;
   readonly location: import("./history.ts").Location;
-}) => boolean | "data-only" | void | Promise<boolean | "data-only" | void>;
+}
+
+/** TanStack's functional `ssr`: what of this route runs on the server, for this request. */
+export type SsrDecider = (
+  context: SsrDeciderContext,
+) => boolean | "data-only" | void | Promise<boolean | "data-only" | void>;
 
 /** What a lifecycle hook is told about the route it concerns. */
 export interface RouteLifecycle<Params = Record<string, string>> {
@@ -615,6 +633,12 @@ export type RouteHandlers<
   Record<RouteMethod, RouteHandler<Params, Context> | RouteHandlerEntry<Params, Context>>
 >;
 
+export interface HandlersFactory<Params, Chain extends readonly Middleware[]> {
+  readonly createHandlers: (
+    handlers: RouteHandlers<Params, ChainContribution<Chain>["context"]>,
+  ) => RouteHandlers<Params, ChainContribution<Chain>["context"]>;
+}
+
 export interface RouteServer<
   Params = Record<string, string>,
   Chain extends readonly Middleware[] = readonly Middleware[],
@@ -636,11 +660,9 @@ export interface RouteServer<
    */
   readonly handlers?:
     | RouteHandlers<Params, ChainContribution<Chain>["context"]>
-    | ((options: {
-        readonly createHandlers: (
-          handlers: RouteHandlers<Params, ChainContribution<Chain>["context"]>,
-        ) => RouteHandlers<Params, ChainContribution<Chain>["context"]>;
-      }) => RouteHandlers<Params, ChainContribution<Chain>["context"]>);
+    | ((
+        options: HandlersFactory<Params, Chain>,
+      ) => RouteHandlers<Params, ChainContribution<Chain>["context"]>);
   /**
    * Refuse a state-changing request a BROWSER made from another origin.
    * Default `true`.
@@ -707,12 +729,12 @@ export function flattenRoutes(table: readonly AnyRouteDefinition[]): FlatRoute<R
   const out: FlatRoute<Route>[] = [];
   const seen = new Set<string>();
 
-  const visit = (
+  function visit(
     definitions: readonly AnyRouteDefinition[],
     parentPath: string,
     parentChain: readonly Route[],
     parentCase: readonly (boolean | undefined)[],
-  ): void => {
+  ): void {
     for (const definition of definitions) {
       const fullPath = joinPattern(parentPath, definition.path);
       const id = definition.id ?? fullPath;
@@ -756,7 +778,7 @@ export function flattenRoutes(table: readonly AnyRouteDefinition[]): FlatRoute<R
         ...(sensitive.some((flag) => flag !== undefined) ? { sensitive } : {}),
       });
     }
-  };
+  }
 
   visit(table, "", [], []);
   return out;
@@ -789,6 +811,15 @@ export async function preloadMatched(chain: readonly Route[]): Promise<void> {
   await Promise.allSettled(pendingChunks(chain));
 }
 
+export interface ShellDeclaration {
+  shellComponent?: unknown;
+}
+
+interface LazyChunk {
+  preload?: () => Promise<void>;
+  loaded?: () => boolean;
+}
+
 /**
  * The chunks this chain is still waiting on, or an EMPTY array when it is not.
  *
@@ -807,15 +838,13 @@ export function pendingChunks(chain: readonly Route[]): readonly Promise<void>[]
     // boundary above it and the whole page fails. Measured as
     // "Async value is not ready yet" on the first prerender after the document
     // became JSX.
-    const declared = matched.definition as { shellComponent?: unknown };
+    const declared = matched.definition as ShellDeclaration;
     for (const candidate of [
       matched.definition.component,
       matched.definition.pendingComponent,
       declared.shellComponent,
     ]) {
-      const chunk = candidate as
-        | { preload?: () => Promise<void>; loaded?: () => boolean }
-        | undefined;
+      const chunk = candidate as LazyChunk | undefined;
       if (typeof chunk?.preload !== "function") continue;
       // A `lazy()` that predates `loaded` answers `undefined`, which reads as
       // "still pending" and costs the wait it always cost.
