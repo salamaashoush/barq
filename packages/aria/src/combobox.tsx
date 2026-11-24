@@ -39,6 +39,7 @@ import {
   install,
   isBlock,
   createSignal,
+  flush,
   onCleanup,
   onSettled,
   provide,
@@ -1073,7 +1074,10 @@ export function comboBox(options: ComboBoxOptions, state: ComboBoxState<unknown>
     const input = event.target as HTMLInputElement;
     state.setInputValue(input.value);
     // The field has already changed itself; a controlled owner that declined
-    // re-renders nothing, so the DOM has to be put back by hand.
+    // re-renders nothing, so the DOM has to be put back by hand. Read after
+    // the flush: before it the text reads as it was before the keystroke, and
+    // writing that back throws the caret to the start.
+    flush();
     if (input.value !== state.inputValue()) input.value = state.inputValue();
   };
 
@@ -1957,7 +1961,10 @@ function createComboboxRoot<V>(props: Incoming<ComboboxRootProps<V>>): ComboboxR
     if (text === "" && !isMultiple() && hasOuterInput() && values().length > 0) setRaw(null);
     setOpen(true);
     // The field has already changed itself; a controlled owner that declined
-    // re-renders nothing, so the DOM has to be put back by hand.
+    // re-renders nothing, so the DOM has to be put back by hand. Read after
+    // the flush: before it the text reads as it was before the keystroke, and
+    // writing that back throws the caret to the start.
+    flush();
     if (input.value !== inputValue()) input.value = inputValue();
   };
 

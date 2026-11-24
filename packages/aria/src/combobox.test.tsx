@@ -82,6 +82,33 @@ function type(text: string): void {
   flush();
 }
 
+/** A browser's own edit: the value changes, then `input` fires, with no flush between. */
+function edit(element: HTMLInputElement, text: string): void {
+  Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), "value")?.set?.call(
+    element,
+    text,
+  );
+  element.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+/**
+ * Every value written to `element` from script, after a browser's own edit:
+ * a write of the text from before the keystroke moves the caret to the start.
+ */
+function writesTo(element: HTMLInputElement): string[] {
+  const writes: string[] = [];
+  const own = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), "value");
+  Object.defineProperty(element, "value", {
+    configurable: true,
+    get: () => own?.get?.call(element) as string,
+    set: (next: string) => {
+      writes.push(next);
+      own?.set?.call(element, next);
+    },
+  });
+  return writes;
+}
+
 describe("ComboBox", () => {
   test("is a named combobox with nothing open", () => {
     render(() => <Picker />);
@@ -293,6 +320,15 @@ describe("ComboBox", () => {
     type("bzzz");
     flush();
     expect(screen.queryByRole("listbox")).toBeNull();
+  });
+
+  test("a keystroke is never undone by the text from before it", () => {
+    render(() => <Picker />);
+    const element = input();
+    const writes = writesTo(element);
+    edit(element, "a");
+    expect(writes).toEqual([]);
+    expect(element.value).toBe("a");
   });
 
   test("the input reports what was typed", async () => {
@@ -793,6 +829,17 @@ describe("a combobox written as parts", () => {
     expect(typed.at(-1)).toBe("re");
     // Nothing is highlighted until an arrow says so.
     expect(activeOption()).toBeNull();
+  });
+
+  test("a keystroke is never undone by the text from before it", async () => {
+    render(() => <Inline />);
+    user.focus(field());
+    const element = field();
+    const writes = writesTo(element);
+    edit(element, "r");
+    await settle();
+    expect(writes).toEqual([]);
+    expect(element.value).toBe("r");
   });
 
   test("autoHighlight highlights the first match as the text changes", async () => {
