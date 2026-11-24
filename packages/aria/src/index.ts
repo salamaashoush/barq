@@ -129,6 +129,7 @@ export {
   type Assertiveness,
   clearAnnouncer,
   destroyAnnouncer,
+  pruneAnnouncements,
   visuallyHidden,
   type VisuallyHiddenOptions,
   type VisuallyHiddenResult,
