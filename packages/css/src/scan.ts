@@ -1,10 +1,15 @@
+export interface Delimiter {
+  end: number;
+  found: string;
+}
+
 /**
  * The next `;`, `{` or `}` that is not inside a string, a comment, or brackets.
  *
  * Brackets are why this is a scanner rather than a `split`: `url(a;b)` and
  * `:is(a, b)` both carry a delimiter that ends nothing.
  */
-export function scan(source: string, from: number): { end: number; found: string } {
+export function scan(source: string, from: number): Delimiter {
   let depth = 0;
   for (let index = from; index < source.length; index++) {
     const character = source[index];

@@ -524,7 +524,9 @@ function retire(entry: Entry, rules: string, tier: number): void {
     }
   }
   if (adopted === null) return;
-  const keep = (part: Part): boolean => part.text === "" || !drop.has(part.id);
+  function keep(part: Part): boolean {
+    return part.text === "" || !drop.has(part.id);
+  }
   const layers = new Map<string, Part[]>();
   for (const [name, held] of adopted.layers) layers.set(name, held.filter(keep));
   adopted = { top: adopted.top.filter(keep), layers };
@@ -891,7 +893,7 @@ function distinct(classes: Map<string, string>, part: Part): void {
 function partsOf(entry: Entry): Part[] {
   if (entry.parts !== null) return entry.parts;
   const parts: Part[] = [];
-  const add = (layer: string, text: string, closed: boolean): void => {
+  function add(layer: string, text: string, closed: boolean): void {
     // The runtime knows an atom's tier from its condition. A compiled
     // stylesheet is text, so the tier is read back off each rule.
     const named = closed ? atomNamed(text) : null;
@@ -912,10 +914,10 @@ function partsOf(entry: Entry): Part[] {
       atom,
       id: `${layer}\u0000${text}`,
     });
-  };
-  const addUnits = (layer: string, statement: string): void => {
+  }
+  function addUnits(layer: string, statement: string): void {
     for (const unit of splitUnits(statement)) add(layer, unit.text, true);
-  };
+  }
   // A byte order mark means nothing inside a `<style>`, and in front of the
   // first rule it would travel with it.
   const rules = entry.rules.startsWith("\uFEFF") ? entry.rules.slice(1) : entry.rules;
@@ -1000,13 +1002,18 @@ function isGroup(rule: string): boolean {
   );
 }
 
+interface AtomGroup {
+  name: string | null;
+  list: string[];
+}
+
 /** A rule as one rule per atom its selector list names and one for every other branch. */
 function byAtom(rule: string): Unit[] {
   if (rule[0] === "@" || !rule.endsWith("}")) return [{ text: rule, atom: false }];
   const open = rule.indexOf("{");
   if (open < 0) return [{ text: rule, atom: false }];
   const body = rule.slice(open);
-  const groups: { name: string | null; list: string[] }[] = [];
+  const groups: AtomGroup[] = [];
   for (const branch of branches(rule.slice(0, open))) {
     const name = classIn(branch);
     const held = groups.find((group) => group.name === name);
@@ -1229,6 +1236,11 @@ function orderAtoms(list: Part[]): void {
   list.splice(0, list.length, ...blocks, ...atoms);
 }
 
+interface SplitStatements {
+  closed: string[];
+  tail: string;
+}
+
 /**
  * A blob of CSS as its top-level statements, and whatever never closed.
  *
@@ -1241,7 +1253,7 @@ function orderAtoms(list: Part[]): void {
  * statements. Left joined to the rule after them, the pair is one statement in
  * a sheet read back from a server and two in the registry that wrote it.
  */
-function statements(text: string): { closed: string[]; tail: string } {
+function statements(text: string): SplitStatements {
   const closed: string[] = [];
   let from = 0;
   let depth = 0;

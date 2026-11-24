@@ -30,7 +30,9 @@ function rules(sheet: string): string[] {
   return out;
 }
 
-const count = (text: string, needle: string): number => text.split(needle).length - 1;
+function count(text: string, needle: string): number {
+  return text.split(needle).length - 1;
+}
 
 beforeEach(() => {
   resetCss();
@@ -85,8 +87,12 @@ interface Render {
   late: (() => string) | undefined;
 }
 
+interface CssHost {
+  enter(render: Render | null): void;
+}
+
 /** What a host installs: the first read of the sheet in a render is its head. */
-function host(): { enter(render: Render | null): void } {
+function host(): CssHost {
   let current: Render | null = null;
   setCssSink(
     Object.assign((): boolean => current !== null, {
@@ -181,8 +187,13 @@ function painted(): string {
   return (document.getElementById("barq-css")?.textContent ?? "") + paintedAtoms();
 }
 
+interface ServedSheets {
+  head: string;
+  late: string;
+}
+
 /** A server's sheets, written into the document the client then loads. */
-function serve(render: () => void, body: () => void): { head: string; late: string } {
+function serve(render: () => void, body: () => void): ServedSheets {
   resetCss();
   const requests = host();
   const page: Render = { head: false, late: undefined };
@@ -212,11 +223,12 @@ function serve(render: () => void, body: () => void): { head: string; late: stri
 }
 
 /** A theme as `installArcTheme` writes one: a layer around a `:root` block and a dark one. */
-const THEME = (spacing: string): string =>
-  `@layer barq.theme {\n:root {\n  --spacing: ${spacing};\n  --primary: red;\n}\n.dark {\n  --primary: blue;\n}\n[data-density="compact"] {\n  --spacing: 0.2rem;\n}\n}`;
+function THEME(spacing: string): string {
+  return `@layer barq.theme {\n:root {\n  --spacing: ${spacing};\n  --primary: red;\n}\n.dark {\n  --primary: blue;\n}\n[data-density="compact"] {\n  --spacing: 0.2rem;\n}\n}`;
+}
 
 describe("the sheet > hydration", () => {
-  const application = (): void => {
+  function application(): void {
     globalCss`
       body {
         margin: 0;
@@ -225,7 +237,7 @@ describe("the sheet > hydration", () => {
     atoms({ color: "red", width: { "@media (min-width: 600px)": 2, ":hover": 3 } });
     layer("barq.adopt")({ display: "flex", gap: { "@media print": 0 } });
     registerCss("/m/card.tsx", ".bcard{color:red}@layer barq.adopt{.a-top_z{top:0}}");
-  };
+  }
 
   test("registering what the server sent rewrites nothing", () => {
     const { head, late } = serve(application, () => {

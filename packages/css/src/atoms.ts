@@ -679,10 +679,10 @@ export function canonical(condition: string): string {
   let out = "";
   let depth = 0;
   let space = false;
-  const gap = (): void => {
+  function gap(): void {
     if (space && out !== "" && !out.endsWith("(") && !out.endsWith(" ")) out += " ";
     space = false;
-  };
+  }
   for (let at = 0; at < chars.length;) {
     const c = chars[at] ?? "";
     if (/\s/.test(c)) {
@@ -1130,7 +1130,7 @@ function propsOf(
 ): Props {
   const applied = new Map<string, string>();
   let vars: Record<string, string | number> | undefined;
-  const take = (style: PropInput | readonly PropInput[]): void => {
+  function take(style: PropInput | readonly PropInput[]): void {
     if (isList(style)) {
       for (const item of style) take(item);
     } else if (isDynamic(style)) {
@@ -1148,7 +1148,7 @@ function propsOf(
     } else if (objects !== null) {
       objects(applied, style);
     }
-  };
+  }
   for (const style of styles) take(style);
   const merged = joined(applied);
   return vars === undefined ? { class: merged } : { class: merged, style: vars };

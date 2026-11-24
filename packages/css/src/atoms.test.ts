@@ -20,8 +20,9 @@ beforeEach(() => {
   resetCss();
 });
 
-const properties = (classes: string): string[] =>
-  classes.split(" ").map((name) => name.slice(2, name.lastIndexOf("_")));
+function properties(classes: string): string[] {
+  return classes.split(" ").map((name) => name.slice(2, name.lastIndexOf("_")));
+}
 
 describe("atoms > a logical property against a physical one", () => {
   test("the later key takes the axis", () => {

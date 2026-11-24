@@ -51,6 +51,11 @@ export type VariantMatch<G extends Axes> = {
   readonly [K in keyof G]?: Arm<G[K]> | readonly Arm<G[K]>[] | null | undefined;
 };
 
+export interface VariantCompound<G extends VariantGroups> {
+  readonly when: VariantMatch<G>;
+  readonly use: string;
+}
+
 export interface VariantSpec<G extends VariantGroups> {
   /** Always applied, first, so a variant can override it. */
   readonly base?: string;
@@ -60,10 +65,7 @@ export interface VariantSpec<G extends VariantGroups> {
    * A class applied only when every named variant matches — the combination a
    * design system needs once the axes stop being independent.
    */
-  readonly compound?: readonly {
-    readonly when: VariantMatch<G>;
-    readonly use: string;
-  }[];
+  readonly compound?: readonly VariantCompound<G>[];
 }
 
 export type VariantFn<G extends VariantGroups> = (props?: VariantSelection<G>) => string;
@@ -72,6 +74,11 @@ export type VariantFn<G extends VariantGroups> = (props?: VariantSelection<G>) =
 export type SlotClasses<S extends string> = { readonly [K in S]?: string };
 
 export type SlotGroups<S extends string> = Record<string, Record<string, SlotClasses<S>>>;
+
+export interface SlotCompound<S extends string, G extends SlotGroups<S>> {
+  readonly when: VariantMatch<G>;
+  readonly use: SlotClasses<S>;
+}
 
 /**
  * {@link VariantSpec} for a component made of several elements: each arm names
@@ -82,10 +89,7 @@ export interface SlotSpec<S extends string, G extends SlotGroups<S>> {
   readonly slots: { readonly [K in S]: string };
   readonly variants?: G;
   readonly defaults?: { readonly [K in keyof G]?: Arm<G[K]> };
-  readonly compound?: readonly {
-    readonly when: VariantMatch<G>;
-    readonly use: SlotClasses<S>;
-  }[];
+  readonly compound?: readonly SlotCompound<S, G>[];
 }
 
 export type SlotFn<S extends string, G extends SlotGroups<S>> = (props?: VariantSelection<G>) => {
@@ -120,6 +124,19 @@ interface Compound {
   readonly use: unknown;
 }
 
+interface ErasedSpec {
+  readonly base?: string;
+  readonly slots?: Record<string, string>;
+  readonly variants?: Axes;
+  readonly defaults?: Selection;
+  readonly compound?: readonly Compound[];
+}
+
+interface NumberedSelections {
+  select: (props: Selection | undefined) => number;
+  chosen: (selection: number) => Record<string, string | undefined>;
+}
+
 /**
  * A spec's selections, numbered.
  *
@@ -128,13 +145,7 @@ interface Compound {
  * hand. Numbered rather than spelled, because two selections can spell the
  * same text however the arms are joined and no two share a number.
  */
-function selections(
-  groups: Axes,
-  defaults: Selection | undefined,
-): {
-  select: (props: Selection | undefined) => number;
-  chosen: (selection: number) => Record<string, string | undefined>;
-} {
+function selections(groups: Axes, defaults: Selection | undefined): NumberedSelections {
   const axes: Axis[] = [];
   let stride = 1;
   for (const name of Object.keys(groups)) {
@@ -222,13 +233,7 @@ export function variants<G extends VariantGroups>(spec: VariantSpec<G>): Variant
 export function variants<S extends string, G extends SlotGroups<S>>(
   spec: SlotSpec<S, G>,
 ): SlotFn<S, G>;
-export function variants(spec: {
-  readonly base?: string;
-  readonly slots?: Record<string, string>;
-  readonly variants?: Axes;
-  readonly defaults?: Selection;
-  readonly compound?: readonly Compound[];
-}): unknown {
+export function variants(spec: ErasedSpec): unknown {
   const groups = spec.variants ?? {};
   const { select, chosen } = selections(groups, spec.defaults);
   const { slots } = spec;
@@ -236,7 +241,7 @@ export function variants(spec: {
   // Base first, then the axes, then the compounds — and merged, so the later
   // one wins per property rather than both applying. `part` picks one slot's
   // class out of an arm, or takes the arm whole when there are no slots.
-  const compose = (selection: number, part: (arm: unknown) => unknown, base?: string): string => {
+  function compose(selection: number, part: (arm: unknown) => unknown, base?: string): string {
     const arms = chosen(selection);
     const out: unknown[] = [base];
     for (const group in groups) {
@@ -247,7 +252,7 @@ export function variants(spec: {
       if (matches(rule.when, arms)) out.push(part(rule.use));
     }
     return atoms(...out.filter((name) => typeof name === "string"));
-  };
+  }
 
   // A component re-rendering asks for the same selection over and over, and
   // merging it again each time is the whole cost.

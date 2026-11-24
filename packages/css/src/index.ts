@@ -151,14 +151,14 @@ function emit(source: string, scope: string, conditions: string[], out: string[]
   const open = conditions.map((condition) => `${condition}{`).join("");
   const close = "}".repeat(conditions.length);
   let pending: string[] = [];
-  const flush = (): void => {
+  function flush(): void {
     // `globalCss` starts with no scope, and a declaration outside any rule
     // there has no selector to be written under.
     if (pending.length > 0 && scope !== "") {
       out.push(`${open}${scope}{${pending.join(";")}}${close}`);
     }
     pending = [];
-  };
+  }
 
   let index = 0;
   while (index < source.length) {

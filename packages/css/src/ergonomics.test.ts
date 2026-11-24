@@ -292,7 +292,9 @@ describe("layer", () => {
 
   test("and each writes the rule its unlayered helper writes, inside the layer", () => {
     const ui = layer("barq.probe2");
-    const body = (): string => layerBody(collectCss(), "barq.probe2");
+    function body(): string {
+      return layerBody(collectCss(), "barq.probe2");
+    }
     const group = ui.create({ a: { zIndex: 42 } }).a;
     expect(body()).toContain(`.${group}{z-index:42}`);
     expect(ruleFor(create({ a: { zIndex: 42 } }).a)).toContain("{z-index:42}");
