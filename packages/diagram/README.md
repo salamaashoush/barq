@@ -106,8 +106,8 @@ What it does, and the keys Excalidraw gives each:
 - tools: selection `V` or `1`, rectangle `R` or `2`, diamond `D` or `3`,
   ellipse `O` or `4`, arrow `A` or `5` (again to change its kind), line `L`
   or `6`, freedraw `P`, `X` or `7`, text `T` or `8`, eraser `E` or `0`,
-  laser pointer `K`, frame `F`, image `9` (a file picker), hand `H`; `Q`
-  keeps the tool after
+  laser pointer `K`, frame `F`, image `9` (a file picker), sticky note
+  `N`, hand `H`; `Q` keeps the tool after
   drawing; shift draws equal sides and alt draws from the centre;
 - lines and arrows are drawn by dragging, or click by click and ended with
   Enter or Escape; a line closed on its first point becomes a polygon; Enter
@@ -163,6 +163,17 @@ What it does, and the keys Excalidraw gives each:
 - a dropped `.excalidraw` file, or a PNG or SVG with a scene, replaces the
   scene (Shift adds it where it is dropped), and a library's items are
   added where they are dropped;
+- a sticky note is a click (a square of the default size) or a drag
+  (proportional unless Shift), and opens for writing; its text shrinks to
+  fit before the note grows;
+- Ctrl with an arrow key adds a flowchart node linked from the selected
+  shape, another with each press, when Ctrl is let go (Escape cancels);
+  Alt with an arrow key moves along the links;
+- Ctrl+D and an alt-drag advance a duplicated list item's marker (`1.` to
+  `2.`), an undo step of its own, and an alt-drag then edits the item's text;
+- Alt+Shift+`.` and Alt+Shift+`,` switch the selected shapes' type: a
+  rectangle, diamond or ellipse to the next, a line or arrow through line,
+  sharp, curved and elbow arrow;
 - Ctrl+Z undoes, Ctrl+Shift+Z or Ctrl+Y redoes;
 - space-drag, the middle button and the hand tool pan; ctrl-wheel and a
   pinch zoom; Ctrl+`=`, `-` and `0` zoom, Shift+1 fits; Ctrl+`'` shows the
@@ -182,7 +193,10 @@ selection and each action. Every action has a key, and three keys Excalidraw
 does not have make it reachable without a pointer: Enter with a drawing tool
 draws its shape in the middle of the viewport; Tab and Shift+Tab move the
 selection through the elements, a group as one stop, and past the last let
-focus leave the editor; Alt+Shift+H and Alt+Shift+V centre the selection.
+focus leave the editor (Excalidraw's Tab switches the selected shape's type,
+which is Alt+Shift+`.` and Alt+Shift+`,` here: with Tab on the switch, a
+selected rectangle would keep Tab in the editor, and the elements would have
+no keyboard order); Alt+Shift+H and Alt+Shift+V centre the selection.
 With nothing selected the arrow keys pan.
 
 ### Without barq

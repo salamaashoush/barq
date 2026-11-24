@@ -10,6 +10,8 @@ import {
 
 import { getSelectionStateForElements } from "../selection.ts";
 
+import { advanceListMarkers } from "../duplicate.ts";
+
 import type { Action } from "../types.ts";
 
 /**
@@ -58,6 +60,8 @@ export const actionDuplicateSelection: Action = {
         };
       },
     });
+
+    advanceListMarkers(app, duplicatedElements);
 
     return {
       elements: syncMovedIndices(elementsWithDuplicates, arrayToMap(duplicatedElements)),

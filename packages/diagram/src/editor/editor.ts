@@ -1,6 +1,7 @@
 import {
   ARROW_TYPE,
   CURSOR_TYPE,
+  DEFAULT_STICKY_NOTE_SIZE,
   arrayToMap,
   FRAME_STYLE,
   MIME_TYPES,
@@ -123,6 +124,9 @@ import {
   newElement,
   newFreeDrawElement,
   newMagicFrameElement,
+  newStickyNoteElement,
+  getStickyNoteMinSize,
+  isStickyNoteElement,
   newLinearElement,
   removeArrowsWithoutEndInFrame,
   removeElementsFromFrame,
@@ -209,6 +213,9 @@ import {
   snapNewElement,
 } from "./snapping.ts";
 import { EditorClipboard } from "./clipboard.ts";
+import { convertElementTypes, getConversionTypeFromElements } from "./convert.ts";
+import { commitDraggedDuplicates } from "./duplicate.ts";
+import { EditorFlowchart } from "./flowchart.ts";
 import { EditorImages } from "./images.ts";
 import { EditorText } from "./text.ts";
 import { EraserTrail, LaserTrails, LassoTrail } from "./trails.ts";
@@ -361,6 +368,7 @@ export class DiagramEditor {
   public readonly textTool: TextTool;
   public readonly images: EditorImages;
   public readonly clipboard: EditorClipboard;
+  public readonly flowchart: EditorFlowchart;
   public readonly laserTrails: LaserTrails;
   public readonly eraserTrail: EraserTrail;
   public readonly lassoTrail: LassoTrail;
@@ -549,6 +557,7 @@ export class DiagramEditor {
     this.textTool = new TextTool(this);
     this.images = new EditorImages(this);
     this.clipboard = new EditorClipboard(this);
+    this.flowchart = new EditorFlowchart(this);
     this.laserTrails = new LaserTrails(this);
     this.eraserTrail = new EraserTrail(this);
     this.lassoTrail = new LassoTrail(this);
@@ -863,6 +872,11 @@ export class DiagramEditor {
   public afterNextCommit(callback: () => void): void {
     this.afterCommit.push(callback);
     this.requestCommit();
+  }
+
+  /** The pointers down on the canvas. */
+  public get pointerCount(): number {
+    return this.gesture.pointers.size;
   }
 
   /** Whether the viewport is being navigated: space held, a drag-pan, a scrollbar, the hand tool. */
@@ -1590,7 +1604,7 @@ export class DiagramEditor {
   }
 
   private getCurrentItemRoundness(
-    elementType: "selection" | "rectangle" | "diamond" | "ellipse",
+    elementType: "selection" | "rectangle" | "stickynote" | "diamond" | "ellipse",
   ): ExcalidrawElement["roundness"] {
     return this.state.currentItemRoundness === "round"
       ? {
@@ -2266,6 +2280,7 @@ export class DiagramEditor {
       toolType === "rectangle" ||
       toolType === "diamond" ||
       toolType === "ellipse" ||
+      toolType === "stickynote" ||
       toolType === "selection"
     ) {
       this.createGenericElementOnPointerDown(toolType, pointerDownState);
@@ -2724,7 +2739,7 @@ export class DiagramEditor {
   }
 
   private createGenericElementOnPointerDown(
-    elementType: ExcalidrawGenericElement["type"],
+    elementType: ExcalidrawGenericElement["type"] | "stickynote",
     pointerDownState: PointerDownState,
   ): void {
     const [gridX, gridY] = getGridPoint(
@@ -2733,13 +2748,17 @@ export class DiagramEditor {
       this.lastPointerDownEvent?.[KEYS.CTRL_OR_CMD] ? null : this.getEffectiveGridSize(),
     );
     const topLayerFrame = this.getTopLayerFrameAtSceneCoords({ x: gridX, y: gridY });
-
-    const element = newElement({
-      type: elementType,
+    const baseElementAttributes = {
       x: gridX,
       y: gridY,
-      strokeColor: this.state.currentItemStrokeColor,
-      backgroundColor: this.state.currentItemBackgroundColor,
+      strokeColor:
+        elementType === "stickynote"
+          ? this.state.currentItemStickynoteStrokeColor
+          : this.state.currentItemStrokeColor,
+      backgroundColor:
+        elementType === "stickynote"
+          ? this.state.currentItemStickynoteBackgroundColor
+          : this.state.currentItemBackgroundColor,
       fillStyle: this.state.currentItemFillStyle,
       strokeWidth: this.getCurrentItemStrokeWidth(elementType),
       strokeStyle: this.state.currentItemStrokeStyle,
@@ -2748,7 +2767,11 @@ export class DiagramEditor {
       roundness: this.getCurrentItemRoundness(elementType),
       locked: false,
       frameId: topLayerFrame ? topLayerFrame.id : null,
-    });
+    } as const;
+    const element =
+      elementType === "stickynote"
+        ? newStickyNoteElement({ type: "stickynote", ...baseElementAttributes })
+        : newElement({ type: elementType, ...baseElementAttributes });
 
     if (element.type === "selection") {
       this.setState({ selectionElement: element });
@@ -2855,7 +2878,12 @@ export class DiagramEditor {
         y: gridY,
         width: Math.abs(pointerDownState.originInGrid.x - gridX),
         height: Math.abs(pointerDownState.originInGrid.y - gridY),
-        shouldMaintainAspectRatio: shouldMaintainAspectRatio(event),
+        // images and sticky notes are proportional unless Shift frees them;
+        // other shapes are free unless Shift constrains them
+        shouldMaintainAspectRatio:
+          isImageElement(newElementBeingDrawn) || isStickyNoteElement(newElementBeingDrawn)
+            ? !shouldMaintainAspectRatio(event)
+            : shouldMaintainAspectRatio(event),
         shouldResizeFromCenter: shouldResizeFromCenter(event),
         zoom: this.state.zoom.value,
         scene: this.scene,
@@ -3192,6 +3220,13 @@ export class DiagramEditor {
 
     this.textTool.handlePointerUp(childEvent, pointerDownState);
 
+    if (pointerDownState.hit.hasBeenDuplicated) {
+      // a replay by the missing-pointer-up cleanup edits nothing
+      commitDraggedDuplicates(this, pointerDownState, {
+        editText: childEvent.type === "pointerup",
+      });
+    }
+
     const {
       newElement: newElementAtUp,
       resizingElement,
@@ -3450,6 +3485,71 @@ export class DiagramEditor {
       }
       this.cursor.reset();
       this.text.handleTextWysiwyg(newElementAtUp, { isExistingElement: true });
+    }
+
+    if (newElementAtUp && isStickyNoteElement(newElementAtUp)) {
+      // under the drag threshold a click: the default square, centred on the
+      // pointer; a drag keeps its size, snapped up to the minimum now, growing
+      // away from where it started as the drag did
+      const zoom = this.state.zoom.value;
+      const isClick =
+        newElementAtUp.width * zoom < DRAGGING_THRESHOLD &&
+        newElementAtUp.height * zoom < DRAGGING_THRESHOLD;
+      let nextGeometry;
+      if (isClick) {
+        const size = DEFAULT_STICKY_NOTE_SIZE;
+        const [x, y] = getGridPoint(
+          pointerDownState.origin.x - size / 2,
+          pointerDownState.origin.y - size / 2,
+          childEvent[KEYS.CTRL_OR_CMD] ? null : this.getEffectiveGridSize(),
+        );
+        nextGeometry = { x, y, width: size, height: size };
+      } else {
+        // a line at the font's ceiling must fit, or the first keystroke grows it
+        const minSize = getStickyNoteMinSize({
+          fontSize: this.state.currentItemFontSize,
+          fontFamily: this.state.currentItemFontFamily,
+        });
+        let width = Math.max(newElementAtUp.width, minSize.width);
+        let height = Math.max(newElementAtUp.height, minSize.height);
+        if (!shouldMaintainAspectRatio(childEvent)) {
+          // a plain drag is proportional (Shift frees it)
+          width = height = Math.max(width, height);
+        }
+        const { originInGrid } = pointerDownState;
+        nextGeometry = {
+          x: newElementAtUp.x < originInGrid.x ? originInGrid.x - width : newElementAtUp.x,
+          y: newElementAtUp.y < originInGrid.y ? originInGrid.y - height : newElementAtUp.y,
+          width,
+          height,
+        };
+      }
+      this.scene.mutateElement(
+        newElementAtUp,
+        { ...nextGeometry, baseHeight: nextGeometry.height },
+        { informMutation: false, isDragging: false },
+      );
+      this.store.scheduleCapture();
+      this.scene.triggerUpdate();
+      if (activeTool.locked) {
+        this.setState((prevState) => ({
+          newElement: null,
+          selectedElementIds: makeNextSelectedElementIds({}, prevState),
+        }));
+        this.cursor.applyForTool();
+        return;
+      }
+      this.cursor.reset();
+      this.setState({
+        newElement: null,
+        activeTool: updateActiveTool(this.state, { type: this.state.preferredSelectionTool.type }),
+      });
+      this.text.startTextEditing({
+        sceneX: newElementAtUp.x + newElementAtUp.width / 2,
+        sceneY: newElementAtUp.y + newElementAtUp.height / 2,
+        container: newElementAtUp,
+      });
+      return;
     }
 
     if (
@@ -4395,6 +4495,32 @@ export class DiagramEditor {
         this.startImageCropping(onlySelected);
         return;
       }
+      // Excalidraw's shape switch, its Tab and Shift+Tab: Tab moves through
+      // the elements here instead, which no selection can trap it in
+      if (
+        event.altKey &&
+        event.shiftKey &&
+        !event[KEYS.CTRL_OR_CMD] &&
+        (event.code === "Period" || event.code === "Comma")
+      ) {
+        const conversionType = getConversionTypeFromElements(selectedElements);
+        if (conversionType) {
+          event.preventDefault();
+          if (
+            convertElementTypes(this, {
+              conversionType,
+              direction: event.code === "Comma" ? "left" : "right",
+            })
+          ) {
+            this.store.scheduleCapture();
+          }
+          return;
+        }
+      }
+
+      if (this.flowchart.handleKeyEvent(event)) {
+        return;
+      }
     }
 
     if (this.actionManager.handleKeyDown(event)) {
@@ -4756,6 +4882,8 @@ export class DiagramEditor {
       maybeHandleArrowPointlikeDrag({ app: this.elementApp, event });
     }
 
+    this.flowchart.handleKeyEvent(event);
+
     if (isArrowKey(event.key)) {
       bindOrUnbindBindingElements(
         this.scene.getSelectedElements(this.state).filter(isArrowElement),
@@ -4855,6 +4983,7 @@ export class DiagramEditor {
         selectedElements,
         renderGrid: state.gridModeEnabled,
         elementsPendingErasure: this.elementsPendingErasure,
+        pendingFlowchartNodes: this.flowchart.pendingNodes,
       });
     }
     const renderable = this.renderable;
@@ -4938,6 +5067,7 @@ export class DiagramEditor {
     this.maybeCleanupAfterMissingPointerUp(null);
     this.text.destroy();
     this.clipboard.clearPlainPaste();
+    this.flowchart.clear();
     this.laserTrails.stop();
     this.eraserTrail.stop();
     this.lassoTrail.stop();

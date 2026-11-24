@@ -203,6 +203,8 @@ const CODE_OF_KEY: Record<string, string> = {
   "-": "Minus",
   "'": "Quote",
   " ": "Space",
+  ".": "Period",
+  ",": "Comma",
 };
 
 const codeOf = (key: string): string => {

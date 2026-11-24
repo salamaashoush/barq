@@ -23,6 +23,7 @@ export const TOOLS = {
   line: { letterKey: KEYS.L, numericKey: KEYS["6"] },
   freedraw: { letterKey: [KEYS.P, KEYS.X], numericKey: KEYS["7"] },
   text: { letterKey: KEYS.T, numericKey: KEYS["8"] },
+  stickynote: { letterKey: KEYS.N },
   image: { numericKey: KEYS["9"] },
   eraser: { letterKey: KEYS.E, numericKey: KEYS["0"], toggle: true },
   frame: { letterKey: KEYS.F },
