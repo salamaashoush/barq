@@ -759,6 +759,7 @@ export class DiagramEditor {
   private afterCommit: (() => void)[] = [];
   private frame: number | null = null;
   private renderPending = false;
+  private inputDepth = 0;
   private readonly renderTask = new MessageChannel();
   private lastStaticKey: string | null = null;
   private renderable: RenderableElements | null = null;
@@ -922,9 +923,6 @@ export class DiagramEditor {
     this.cursor.reset();
     this.renderTask.port1.addEventListener("message", this.onRenderTask);
     this.renderTask.port1.start();
-    // the scene is drawn as the editor mounts, in the frame that shows it
-    this.renderPending = false;
-    this.render(this.ownerWindow.performance.now());
     this.listen();
 
     this.resize =
@@ -3043,7 +3041,7 @@ export class DiagramEditor {
       handler: (event: HTMLElementEventMap[K]) => void,
       options?: AddEventListenerOptions,
     ) => {
-      const wrapped = (event: HTMLElementEventMap[K]) => this.batch(() => handler(event));
+      const wrapped = (event: HTMLElementEventMap[K]) => this.handleInput(() => handler(event));
       target.addEventListener(type, wrapped, options);
       this.listeners.push(() => target.removeEventListener(type, wrapped, options));
     };
@@ -3063,7 +3061,7 @@ export class DiagramEditor {
       if (!this.host.handleKeyboardGlobally) this.handleKeyDown(event);
     });
     const onDocumentKeyDown = (event: KeyboardEvent) => {
-      if (this.host.handleKeyboardGlobally) this.batch(() => this.handleKeyDown(event));
+      if (this.host.handleKeyboardGlobally) this.handleInput(() => this.handleKeyDown(event));
     };
     this.ownerDocument.addEventListener("keydown", onDocumentKeyDown);
     this.listeners.push(() => this.ownerDocument.removeEventListener("keydown", onDocumentKeyDown));
@@ -3111,11 +3109,21 @@ export class DiagramEditor {
     });
   }
 
+  /** Runs an input event's handler, whose draw is then a task rather than a frame. */
+  private handleInput(handler: () => void): void {
+    this.inputDepth++;
+    try {
+      this.batch(handler);
+    } finally {
+      this.inputDepth--;
+    }
+  }
+
   private addWindowListener<K extends keyof WindowEventMap>(
     type: K,
     handler: (event: WindowEventMap[K]) => void,
   ): () => void {
-    const wrapped = (event: WindowEventMap[K]) => this.batch(() => handler(event));
+    const wrapped = (event: WindowEventMap[K]) => this.handleInput(() => handler(event));
     this.ownerWindow.addEventListener(type, wrapped);
     return () => this.ownerWindow.removeEventListener(type, wrapped);
   }
@@ -6652,19 +6660,29 @@ export class DiagramEditor {
   // rendering
 
   /**
-   * Draws once the current task is done; many calls before then draw once.
-   * `invalidate` redraws the scene too when nothing its key covers changed.
+   * Draws on the next frame, or once the input event being handled is done;
+   * many calls before then draw once. `invalidate` redraws the scene too
+   * when nothing its key covers changed.
    *
-   * The draw runs in a task of its own, as Excalidraw's does in React's
-   * scheduler, not in an animation frame: canvases drawn inside a frame are
-   * flushed during its commit, which blocks the main thread while the
-   * compositor takes them, about 0.6 ms a frame on a 1280 by 1024 editor.
+   * An input's draw runs in a task of its own, as Excalidraw's does in
+   * React's scheduler: canvases drawn inside a frame are flushed during its
+   * commit, which blocks the main thread while the compositor takes them,
+   * about 0.6 ms a frame on a 1280 by 1024 editor. The rest wait for a frame,
+   * so what a mount or an API call changes in several steps draws once.
    */
   public scheduleRender(invalidate = false): void {
     if (invalidate) {
       this.lastStaticKey = null;
     }
-    if (this.renderPending || this.frame !== null || this.destroyed) return;
+    if (this.inputDepth === 0) {
+      this.scheduleAnimationFrame();
+      return;
+    }
+    if (this.renderPending || this.destroyed) return;
+    if (this.frame !== null) {
+      this.ownerWindow.cancelAnimationFrame(this.frame);
+      this.frame = null;
+    }
     this.renderPending = true;
     this.renderTask.port2.postMessage(null);
   }
