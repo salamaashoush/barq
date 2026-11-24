@@ -60,6 +60,11 @@ function modifiers(event: Modifiers): Modifiers {
   };
 }
 
+interface PagePoint {
+  pageX: number;
+  pageY: number;
+}
+
 /**
  * Move handling for one element.
  *
@@ -72,21 +77,16 @@ export function move(options: MoveOptions): MoveResult {
   const listeners = globalListeners();
   const state = {
     didMove: false,
-    last: null as { pageX: number; pageY: number } | null,
+    last: null as PagePoint | null,
     id: null as number | null,
   };
 
-  const start = (): void => {
+  function start(): void {
     disableTextSelection();
     state.didMove = false;
-  };
+  }
 
-  const emit = (
-    event: Modifiers,
-    pointerType: PointerType,
-    deltaX: number,
-    deltaY: number,
-  ): void => {
+  function emit(event: Modifiers, pointerType: PointerType, deltaX: number, deltaY: number): void {
     if (deltaX === 0 && deltaY === 0) return;
 
     if (!state.didMove) {
@@ -94,17 +94,17 @@ export function move(options: MoveOptions): MoveResult {
       options.onMoveStart?.({ type: "movestart", pointerType, ...modifiers(event) });
     }
     options.onMove?.({ type: "move", pointerType, deltaX, deltaY, ...modifiers(event) });
-  };
+  }
 
-  const end = (event: Modifiers, pointerType: PointerType): void => {
+  function end(event: Modifiers, pointerType: PointerType): void {
     restoreTextSelection();
     if (state.didMove) options.onMoveEnd?.({ type: "moveend", pointerType, ...modifiers(event) });
-  };
+  }
 
   const moveProps: DOMProps = {};
 
   if (typeof PointerEvent !== "undefined") {
-    const onPointerMove = (raw: Event): void => {
+    function onPointerMove(raw: Event): void {
       const event = raw as PointerEvent;
       if (event.pointerId !== state.id) return;
       const pointerType = (event.pointerType || "mouse") as PointerType;
@@ -115,15 +115,15 @@ export function move(options: MoveOptions): MoveResult {
         event.pageY - (state.last?.pageY ?? 0),
       );
       state.last = { pageX: event.pageX, pageY: event.pageY };
-    };
+    }
 
-    const onPointerUp = (raw: Event): void => {
+    function onPointerUp(raw: Event): void {
       const event = raw as PointerEvent;
       if (event.pointerId !== state.id) return;
       end(event, (event.pointerType || "mouse") as PointerType);
       state.id = null;
       listeners.removeAll();
-    };
+    }
 
     moveProps.onPointerDown = (event: PointerEvent): void => {
       if (event.button !== 0 || state.id !== null) return;
@@ -139,7 +139,7 @@ export function move(options: MoveOptions): MoveResult {
       listeners.add(view, "pointercancel", onPointerUp, false);
     };
   } else {
-    const onMouseMove = (raw: Event): void => {
+    function onMouseMove(raw: Event): void {
       const event = raw as MouseEvent;
       if (event.button !== 0) return;
       emit(
@@ -149,14 +149,14 @@ export function move(options: MoveOptions): MoveResult {
         event.pageY - (state.last?.pageY ?? 0),
       );
       state.last = { pageX: event.pageX, pageY: event.pageY };
-    };
+    }
 
-    const onMouseUp = (raw: Event): void => {
+    function onMouseUp(raw: Event): void {
       const event = raw as MouseEvent;
       if (event.button !== 0) return;
       end(event, "mouse");
       listeners.removeAll();
-    };
+    }
 
     moveProps.onMouseDown = (event: MouseEvent): void => {
       if (event.button !== 0) return;
@@ -170,15 +170,15 @@ export function move(options: MoveOptions): MoveResult {
       listeners.add(view, "mouseup", onMouseUp, false);
     };
 
-    const findTouch = (event: TouchEvent): Touch | undefined => {
+    function findTouch(event: TouchEvent): Touch | undefined {
       for (let i = 0; i < event.changedTouches.length; i++) {
         const touch = event.changedTouches[i];
         if (touch !== undefined && touch.identifier === state.id) return touch;
       }
       return undefined;
-    };
+    }
 
-    const onTouchMove = (raw: Event): void => {
+    function onTouchMove(raw: Event): void {
       const event = raw as TouchEvent;
       const touch = findTouch(event);
       if (touch === undefined) return;
@@ -189,15 +189,15 @@ export function move(options: MoveOptions): MoveResult {
         touch.pageY - (state.last?.pageY ?? 0),
       );
       state.last = { pageX: touch.pageX, pageY: touch.pageY };
-    };
+    }
 
-    const onTouchEnd = (raw: Event): void => {
+    function onTouchEnd(raw: Event): void {
       const event = raw as TouchEvent;
       if (findTouch(event) === undefined) return;
       end(event, "touch");
       state.id = null;
       listeners.removeAll();
-    };
+    }
 
     moveProps.onTouchStart = (event: TouchEvent): void => {
       const touch = event.changedTouches[0];
@@ -216,11 +216,11 @@ export function move(options: MoveOptions): MoveResult {
     };
   }
 
-  const keyboardMove = (event: KeyboardEvent, deltaX: number, deltaY: number): void => {
+  function keyboardMove(event: KeyboardEvent, deltaX: number, deltaY: number): void {
     start();
     emit(event, "keyboard", deltaX, deltaY);
     end(event, "keyboard");
-  };
+  }
 
   moveProps.onKeyDown = (event: KeyboardEvent): void => {
     switch (event.key) {

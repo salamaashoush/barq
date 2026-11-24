@@ -104,9 +104,11 @@ export function hover(options: HoverOptions): HoverResult {
 
   if (!isServer) tryCleanup(trackEmulatedMouseEvents());
 
-  const isDisabled = (): boolean => access(options.isDisabled) === true;
+  function isDisabled(): boolean {
+    return access(options.isDisabled) === true;
+  }
 
-  const triggerHoverEnd = (target: Element | null, pointerType: PointerType | ""): void => {
+  function triggerHoverEnd(target: Element | null, pointerType: PointerType | ""): void {
     const element = target ?? state.target;
     state.pointerType = "";
     state.target = null;
@@ -123,9 +125,9 @@ export function hover(options: HoverOptions): HoverResult {
     });
     options.onHoverChange?.(false);
     setHovered(false);
-  };
+  }
 
-  const triggerHoverStart = (event: Event, pointerType: PointerType): void => {
+  function triggerHoverStart(event: Event, pointerType: PointerType): void {
     state.pointerType = pointerType;
     const currentTarget = event.currentTarget as Element | null;
     if (
@@ -167,7 +169,7 @@ export function hover(options: HoverOptions): HoverResult {
     });
     options.onHoverChange?.(true);
     setHovered(true);
-  };
+  }
 
   const hoverProps: DOMProps = {};
 

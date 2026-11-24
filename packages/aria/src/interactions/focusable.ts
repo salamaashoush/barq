@@ -77,10 +77,10 @@ export function focusable(options: FocusableOptions, ref?: ElementRef): Focusabl
     );
   }
 
-  const tabIndex = (): number | undefined => {
+  function tabIndex(): number | undefined {
     if (access(options.isDisabled) === true) return undefined;
     return access(options.excludeFromTabOrder) === true ? -1 : 0;
-  };
+  }
 
   return { focusableProps: mergeProps(focusProps, keyboardProps, { tabIndex }) };
 }

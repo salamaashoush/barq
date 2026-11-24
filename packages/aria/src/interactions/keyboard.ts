@@ -67,6 +67,11 @@ export function createEventHandler<E extends Event>(
   };
 }
 
+export interface ShortcutOutcome {
+  shouldContinuePropagation: boolean;
+  shouldPreventDefault: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Shortcuts
 // ---------------------------------------------------------------------------
@@ -77,10 +82,7 @@ export function createEventHandler<E extends Event>(
  */
 export type KeyboardShortcutAction = (
   event: BaseEvent<KeyboardEvent>,
-) =>
-  | void
-  | boolean
-  | Partial<{ shouldContinuePropagation: boolean; shouldPreventDefault: boolean }>;
+) => void | boolean | Partial<ShortcutOutcome>;
 
 /** Shortcut strings (`"Mod+s"`, `"Control+Shift+a"`, `"Escape"`) to what they do. */
 export type KeyboardShortcutBindings = Record<string, KeyboardShortcutAction>;
@@ -254,7 +256,9 @@ export interface KeyboardResult {
  * ```
  */
 export function keyboard(options: KeyboardOptions = {}): KeyboardResult {
-  const enabled = (): boolean => access(options.isDisabled) !== true;
+  function enabled(): boolean {
+    return access(options.isDisabled) !== true;
+  }
   let down: ((event: KeyboardEvent) => void) | undefined;
   let up: ((event: KeyboardEvent) => void) | undefined;
 

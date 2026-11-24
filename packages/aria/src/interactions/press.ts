@@ -329,6 +329,10 @@ function installPressableStyle(doc: Document): void {
   doc.head.prepend(style);
 }
 
+interface LinkClickMark {
+  [LINK_CLICKED]?: boolean;
+}
+
 /**
  * Press handling for one element.
  *
@@ -354,10 +358,14 @@ export function press(options: PressOptions): PressResult {
     defaultKeyboardClickEvent: null,
   };
 
-  const isDisabled = (): boolean => access(options.isDisabled) === true;
-  const allowTextSelection = (): boolean => access(options.allowTextSelectionOnPress) === true;
+  function isDisabled(): boolean {
+    return access(options.isDisabled) === true;
+  }
+  function allowTextSelection(): boolean {
+    return access(options.allowTextSelectionOnPress) === true;
+  }
 
-  const triggerPressStart = (original: EventLike, pointerType: PointerType): boolean => {
+  function triggerPressStart(original: EventLike, pointerType: PointerType): boolean {
     if (isDisabled() || state.didFirePressStart) return false;
 
     let stopPropagation = true;
@@ -373,13 +381,13 @@ export function press(options: PressOptions): PressResult {
     state.didFirePressStart = true;
     setPressed(true);
     return stopPropagation;
-  };
+  }
 
-  const triggerPressEnd = (
+  function triggerPressEnd(
     original: EventLike,
     pointerType: PointerType,
     wasPressed = true,
-  ): boolean => {
+  ): boolean {
     if (!state.didFirePressStart) return false;
 
     state.didFirePressStart = false;
@@ -402,9 +410,9 @@ export function press(options: PressOptions): PressResult {
 
     state.isTriggeringEvent = false;
     return stopPropagation;
-  };
+  }
 
-  const triggerPressUp = (original: EventLike, pointerType: PointerType): boolean => {
+  function triggerPressUp(original: EventLike, pointerType: PointerType): boolean {
     if (isDisabled()) return false;
     if (options.onPressUp === undefined) return true;
 
@@ -413,9 +421,9 @@ export function press(options: PressOptions): PressResult {
     options.onPressUp(event);
     state.isTriggeringEvent = false;
     return event.shouldStopPropagation;
-  };
+  }
 
-  const cancel = (original: EventLike): void => {
+  function cancel(original: EventLike): void {
     if (!state.isPressed || state.target === null) return;
 
     if (state.didFirePressStart && state.pointerType !== null) {
@@ -429,16 +437,16 @@ export function press(options: PressOptions): PressResult {
     if (!allowTextSelection()) restoreTextSelection(state.target);
     for (const dispose of state.disposables) dispose();
     state.disposables = [];
-  };
+  }
 
-  const cancelOnPointerExit = (original: EventLike): void => {
+  function cancelOnPointerExit(original: EventLike): void {
     if (access(options.shouldCancelOnPointerExit) === true) cancel(original);
-  };
+  }
 
-  const triggerClick = (event: MouseEvent): void => {
+  function triggerClick(event: MouseEvent): void {
     if (isDisabled()) return;
     options.onClick?.(event);
-  };
+  }
 
   /**
    * The click a keyboard or touch activation would have produced.
@@ -446,19 +454,19 @@ export function press(options: PressOptions): PressResult {
    * The platform fires one for a `button` activated by Enter, and third-party
    * code passing `onClick` rather than `onPress` has no other way to hear it.
    */
-  const triggerSyntheticClick = (source: Event, target: Element): void => {
+  function triggerSyntheticClick(source: Event, target: Element): void {
     if (isDisabled() || options.onClick === undefined) return;
     const event = new MouseEvent("click", source);
     Object.defineProperty(event, "target", { value: target });
     Object.defineProperty(event, "currentTarget", { value: target });
     options.onClick(event);
-  };
+  }
 
   // ---------------------------------------------------------------------
   // Keyboard
   // ---------------------------------------------------------------------
 
-  const onKeyUp = (event: KeyboardEvent): void => {
+  function onKeyUp(event: KeyboardEvent): void {
     if (state.isPressed && state.target !== null && isActivationKey(event, state.target)) {
       const target = targetElement(event);
       if (shouldPreventDefaultKeyboard(target ?? state.target, event)) event.preventDefault();
@@ -474,7 +482,7 @@ export function press(options: PressOptions): PressResult {
 
       // A key other than Enter on an element whose role is `link` means the
       // browser will not follow it, so this has to.
-      const marked = event as KeyboardEvent & { [LINK_CLICKED]?: boolean };
+      const marked = event as KeyboardEvent & LinkClickMark;
       if (
         event.key !== "Enter" &&
         isAnchorLink(state.target) &&
@@ -500,9 +508,9 @@ export function press(options: PressOptions): PressResult {
         state.target?.dispatchEvent(new KeyboardEvent("keyup", recordedEvent));
       }
     }
-  };
+  }
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     const currentTarget = event.currentTarget as Element | null;
     if (currentTarget === null) return;
 
@@ -532,7 +540,7 @@ export function press(options: PressOptions): PressResult {
     // and a child's own keyboard handler may stop propagation before this
     // element would have heard it.
     const origin = currentTarget;
-    const pressUp = (keyUp: Event): void => {
+    function pressUp(keyUp: Event): void {
       const keyboardEvent = keyUp as KeyboardEvent;
       if (
         isActivationKey(keyboardEvent, origin) &&
@@ -543,20 +551,20 @@ export function press(options: PressOptions): PressResult {
         triggerPressUp(retarget(state.target, keyboardEvent), "keyboard");
       }
       onKeyUp(keyboardEvent);
-    };
+    }
 
     listeners.add(ownerDocument(currentTarget), "keyup", pressUp, true);
 
     if (stopPropagation) event.stopPropagation();
 
     if (event.metaKey && isMac()) state.metaKeyEvents?.set(event.key, event);
-  };
+  }
 
   // ---------------------------------------------------------------------
   // Click
   // ---------------------------------------------------------------------
 
-  const onClick = (event: MouseEvent): void => {
+  function onClick(event: MouseEvent): void {
     const currentTarget = event.currentTarget as Element | null;
     if (currentTarget !== null && !contains(currentTarget, targetElement(event))) return;
     if (event.button !== 0 || state.isTriggeringEvent || isOpeningLink()) return;
@@ -596,13 +604,13 @@ export function press(options: PressOptions): PressResult {
 
     state.defaultKeyboardClickEvent = null;
     if (stopPropagation) event.stopPropagation();
-  };
+  }
 
   // ---------------------------------------------------------------------
   // Pointer
   // ---------------------------------------------------------------------
 
-  const onPointerUpGlobal = (event: Event): void => {
+  function onPointerUpGlobal(event: Event): void {
     const pointer = event as PointerEvent;
     if (
       pointer.pointerId !== state.activePointerId ||
@@ -648,13 +656,13 @@ export function press(options: PressOptions): PressResult {
 
     // Ignore the pointerleave iOS fires before the click.
     state.isOverTarget = false;
-  };
+  }
 
-  const onPointerCancelGlobal = (event: Event): void => {
+  function onPointerCancelGlobal(event: Event): void {
     cancel(event as PointerEvent);
-  };
+  }
 
-  const onPointerDown = (event: PointerEvent): void => {
+  function onPointerDown(event: PointerEvent): void {
     const currentTarget = event.currentTarget as Element | null;
     if (event.button !== 0 || currentTarget === null) return;
     if (!contains(currentTarget, targetElement(event))) return;
@@ -694,9 +702,9 @@ export function press(options: PressOptions): PressResult {
     }
 
     if (stopPropagation) event.stopPropagation();
-  };
+  }
 
-  const onMouseDown = (event: MouseEvent): void => {
+  function onMouseDown(event: MouseEvent): void {
     const currentTarget = event.currentTarget as Element | null;
     if (currentTarget === null || !contains(currentTarget, targetElement(event))) return;
     if (event.button !== 0) return;
@@ -707,9 +715,9 @@ export function press(options: PressOptions): PressResult {
     }
 
     event.stopPropagation();
-  };
+  }
 
-  const onPointerUp = (event: PointerEvent): void => {
+  function onPointerUp(event: PointerEvent): void {
     const currentTarget = event.currentTarget as Element | null;
     if (currentTarget === null || !contains(currentTarget, targetElement(event))) return;
     // iOS reports a zero-sized pointerup, so the type recorded at pointerdown
@@ -720,9 +728,9 @@ export function press(options: PressOptions): PressResult {
     if (event.button === 0 && !state.isPressed) {
       triggerPressUp(event, state.pointerType ?? (event.pointerType as PointerType));
     }
-  };
+  }
 
-  const onPointerEnter = (event: PointerEvent): void => {
+  function onPointerEnter(event: PointerEvent): void {
     if (
       event.pointerId === state.activePointerId &&
       state.target !== null &&
@@ -732,9 +740,9 @@ export function press(options: PressOptions): PressResult {
       state.isOverTarget = true;
       triggerPressStart(retarget(state.target, event), state.pointerType);
     }
-  };
+  }
 
-  const onPointerLeave = (event: PointerEvent): void => {
+  function onPointerLeave(event: PointerEvent): void {
     if (
       event.pointerId === state.activePointerId &&
       state.target !== null &&
@@ -745,20 +753,20 @@ export function press(options: PressOptions): PressResult {
       triggerPressEnd(retarget(state.target, event), state.pointerType, false);
       cancelOnPointerExit(event);
     }
-  };
+  }
 
-  const onDragStart = (event: DragEvent): void => {
+  function onDragStart(event: DragEvent): void {
     const currentTarget = event.currentTarget as Element | null;
     if (currentTarget === null || !contains(currentTarget, targetElement(event))) return;
     // WebKit fires no pointercancel when a drag starts; the others do.
     cancel(event);
-  };
+  }
 
   // ---------------------------------------------------------------------
   // Touch, for engines without pointer events
   // ---------------------------------------------------------------------
 
-  const onScrollWhilePressed = (): void => {
+  function onScrollWhilePressed(): void {
     if (!state.isPressed || state.target === null) return;
     cancel({
       currentTarget: state.target,
@@ -767,9 +775,9 @@ export function press(options: PressOptions): PressResult {
       metaKey: false,
       altKey: false,
     });
-  };
+  }
 
-  const onTouchStart = (event: TouchEvent): void => {
+  function onTouchStart(event: TouchEvent): void {
     const currentTarget = event.currentTarget as Element | null;
     if (currentTarget === null || !contains(currentTarget, targetElement(event))) return;
 
@@ -786,9 +794,9 @@ export function press(options: PressOptions): PressResult {
 
     if (triggerPressStart(fromTouchEvent(state.target, event), "touch")) event.stopPropagation();
     listeners.add(ownerWindow(currentTarget), "scroll", onScrollWhilePressed, true);
-  };
+  }
 
-  const onTouchMove = (event: TouchEvent): void => {
+  function onTouchMove(event: TouchEvent): void {
     const currentTarget = event.currentTarget as Element | null;
     if (currentTarget === null || !contains(currentTarget, targetElement(event))) return;
     if (!state.isPressed) {
@@ -817,9 +825,9 @@ export function press(options: PressOptions): PressResult {
     }
 
     if (stopPropagation) event.stopPropagation();
-  };
+  }
 
-  const onTouchEnd = (event: TouchEvent): void => {
+  function onTouchEnd(event: TouchEvent): void {
     const currentTarget = event.currentTarget as Element | null;
     if (currentTarget === null || !contains(currentTarget, targetElement(event))) return;
     if (!state.isPressed) {
@@ -845,14 +853,14 @@ export function press(options: PressOptions): PressResult {
     state.isOverTarget = false;
     if (state.target !== null && !allowTextSelection()) restoreTextSelection(state.target);
     listeners.removeAll();
-  };
+  }
 
-  const onTouchCancel = (event: TouchEvent): void => {
+  function onTouchCancel(event: TouchEvent): void {
     const currentTarget = event.currentTarget as Element | null;
     if (currentTarget === null || !contains(currentTarget, targetElement(event))) return;
     event.stopPropagation();
     if (state.isPressed) cancel(fromTouchEvent(state.target as Element, event));
-  };
+  }
 
   // ---------------------------------------------------------------------
 

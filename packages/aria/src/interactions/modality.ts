@@ -34,7 +34,11 @@ export type ModalityHandler = (modality: Modality, event: ModalityEvent) => void
 let currentModality: Modality | null = null;
 let currentPointerType: PointerType = "keyboard";
 const handlers = new Set<ModalityHandler>();
-const trackedWindows = new Map<Window, { focus: (options?: FocusOptions) => void }>();
+interface TrackedFocus {
+  focus: (options?: FocusOptions) => void;
+}
+
+const trackedWindows = new Map<Window, TrackedFocus>();
 
 let hasEventBeforeFocus = false;
 let hasBlurredWindowRecently = false;
@@ -207,9 +211,9 @@ export function trackModality(element?: Element | null): () => void {
   if (isServer || typeof window === "undefined") return () => {};
 
   const doc = ownerDocument(element);
-  const setup = (): void => {
+  function setup(): void {
     setupModalityListeners(element);
-  };
+  }
 
   if (doc.readyState !== "loading") {
     setup();
@@ -347,15 +351,16 @@ export function getPointerType(): PointerType {
   return currentPointerType;
 }
 
+export interface ModalityOptions {
+  isTextInput?: boolean;
+}
+
 /**
  * Subscribe to modality changes. Returns the unsubscribe.
  *
  * `isTextInput` narrows to the two keys that should raise a ring on a field.
  */
-export function onModalityChange(
-  fn: ModalityHandler,
-  options: { isTextInput?: boolean } = {},
-): () => void {
+export function onModalityChange(fn: ModalityHandler, options: ModalityOptions = {}): () => void {
   const handler: ModalityHandler = (next, event) => {
     if (!shouldReportKeyboardFocus(options.isTextInput === true, next, event)) return;
     fn(next, event);
@@ -407,15 +412,18 @@ export function modality(): Accessor<Modality | null> {
   return current;
 }
 
+export interface FocusVisibleOptions {
+  isTextInput?: boolean;
+  autoFocus?: boolean;
+}
+
 /**
  * Whether a focus ring should be visible for the page, as a signal.
  *
  * This is the global answer. A component wants {@link focusRing} in
  * `../focus.ts`, which combines it with whether the element is focused at all.
  */
-export function focusVisible(
-  options: { isTextInput?: boolean; autoFocus?: boolean } = {},
-): Accessor<boolean> {
+export function focusVisible(options: FocusVisibleOptions = {}): Accessor<boolean> {
   const [current, setCurrent] = createSignal(options.autoFocus === true || isFocusVisible());
   if (isServer) return current;
 

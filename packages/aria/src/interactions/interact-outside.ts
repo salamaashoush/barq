@@ -64,20 +64,20 @@ export function interactOutside(options: InteractOutsideOptions): void {
     (doc) => {
       if (doc === null) return undefined;
 
-      const onPointerDown = (event: Event): void => {
+      function onPointerDown(event: Event): void {
         if (options.onInteractOutside === undefined) return;
         if (!isOutside(event, access(options.ref))) return;
         options.onInteractOutsideStart?.(event as PointerEvent);
         state.isPointerDown = true;
-      };
+      }
 
       if (typeof PointerEvent !== "undefined") {
-        const onClick = (event: Event): void => {
+        function onClick(event: Event): void {
           if (state.isPointerDown && isOutside(event, access(options.ref))) {
             options.onInteractOutside?.(event as PointerEvent);
           }
           state.isPointerDown = false;
-        };
+        }
 
         // Capturing: a handler in between may stop propagation, and a combobox
         // that closes on selection removes the element before the bubble phase.
@@ -90,22 +90,22 @@ export function interactOutside(options: InteractOutsideOptions): void {
         };
       }
 
-      const onMouseUp = (event: Event): void => {
+      function onMouseUp(event: Event): void {
         if (state.ignoreEmulatedMouseEvents) {
           state.ignoreEmulatedMouseEvents = false;
         } else if (state.isPointerDown && isOutside(event, access(options.ref))) {
           options.onInteractOutside?.(event as PointerEvent);
         }
         state.isPointerDown = false;
-      };
+      }
 
-      const onTouchEnd = (event: Event): void => {
+      function onTouchEnd(event: Event): void {
         state.ignoreEmulatedMouseEvents = true;
         if (state.isPointerDown && isOutside(event, access(options.ref))) {
           options.onInteractOutside?.(event as PointerEvent);
         }
         state.isPointerDown = false;
-      };
+      }
 
       doc.addEventListener("mousedown", onPointerDown, true);
       doc.addEventListener("mouseup", onMouseUp, true);

@@ -14,9 +14,9 @@ interface PressableProps {
 // Inside a component every prop is a Cell (`Incoming`), so a value option is
 // read with `props.x?.()` and forwarded as the Cell itself.
 function Pressable(props: PressableProps) {
-  const log = (entry: string): void => {
+  function log(entry: string): void {
     props.log.push(entry);
-  };
+  }
 
   const { pressProps, isPressed } = press({
     isDisabled: cells(props).isDisabled,
@@ -39,10 +39,17 @@ function Pressable(props: PressableProps) {
   );
 }
 
-function setup(options: { shouldCancelOnPointerExit?: boolean; isDisabled?: boolean } = {}): {
+interface SetupOptions {
+  shouldCancelOnPointerExit?: boolean;
+  isDisabled?: boolean;
+}
+
+interface PressSetup {
   log: string[];
   button: HTMLElement;
-} {
+}
+
+function setup(options: SetupOptions = {}): PressSetup {
   const log: string[] = [];
   render(() => (
     <Pressable

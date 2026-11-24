@@ -37,7 +37,7 @@ export interface LinkModifiers {
  */
 export interface RouterConfig {}
 
-export type RouterOptions = RouterConfig extends { routerOptions: infer O } ? O : unknown;
+export type RouterOptions = RouterConfig extends Record<"routerOptions", infer O> ? O : unknown;
 
 export interface Router {
   /** Whether navigation is the browser's, rather than a client router's. */
@@ -169,6 +169,15 @@ function withSyntheticLink(target: Element, open: (link: HTMLAnchorElement) => v
   }
 }
 
+export interface LinkAttributes {
+  href?: string;
+  target?: string;
+  rel?: string;
+  download?: boolean | string;
+  ping?: string;
+  referrerPolicy?: string;
+}
+
 /**
  * The `data-*` attributes that make a non-anchor element behave as a link.
  *
@@ -176,14 +185,7 @@ function withSyntheticLink(target: Element, open: (link: HTMLAnchorElement) => v
  * computes these again later, outside the scope that provides it.
  */
 export function syntheticLinkProps(
-  props: {
-    href?: string;
-    target?: string;
-    rel?: string;
-    download?: boolean | string;
-    ping?: string;
-    referrerPolicy?: string;
-  },
+  props: LinkAttributes,
   active: Router = router(),
 ): Record<string, unknown> {
   return {

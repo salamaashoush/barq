@@ -37,6 +37,7 @@ export function preventFocus(target: Element | null): (() => void) | undefined {
   const view = ownerWindow(element);
   const previous = activeElement(view.document) as HTMLElement | SVGElement | null;
   if (previous === null || (previous as Element) === element) return undefined;
+  const restoreTo = previous;
 
   // Listen on the target's own root: a focus event inside a shadow root never
   // reaches the window.
@@ -44,49 +45,51 @@ export function preventFocus(target: Element | null): (() => void) | undefined {
   const root: EventTarget =
     targetRoot !== undefined && targetRoot !== null && isShadowRoot(targetRoot) ? targetRoot : view;
 
-  const movingToTarget = (node: Element | null): boolean =>
-    node === element || (node !== null && contains(element, node));
-  const leavingPrevious = (node: Element | null): boolean =>
-    node === (previous as Element) || (node !== null && contains(previous, node));
+  function movingToTarget(node: Element | null): boolean {
+    return node === element || (node !== null && contains(element, node));
+  }
+  function leavingPrevious(node: Element | null): boolean {
+    return node === (previous as Element) || (node !== null && contains(previous, node));
+  }
 
   setIgnoringFocus(true);
   let restoring = false;
 
-  const onBlur = (event: Event): void => {
+  function onBlur(event: Event): void {
     if (leavingPrevious(targetElement(event)) || restoring) event.stopImmediatePropagation();
-  };
+  }
 
-  const onFocusOut = (event: Event): void => {
+  function onFocusOut(event: Event): void {
     if (!leavingPrevious(targetElement(event)) && !restoring) return;
     event.stopImmediatePropagation();
     // With no focusable ancestor there will be no focus event to react to, so
     // the restore has to happen here.
     if (element === null && !restoring) {
       restoring = true;
-      focusWithoutScrolling(previous);
+      focusWithoutScrolling(restoreTo);
       cleanup();
     }
-  };
+  }
 
-  const onFocus = (event: Event): void => {
+  function onFocus(event: Event): void {
     if (movingToTarget(targetElement(event)) || restoring) event.stopImmediatePropagation();
-  };
+  }
 
-  const onFocusIn = (event: Event): void => {
+  function onFocusIn(event: Event): void {
     if (!movingToTarget(targetElement(event)) && !restoring) return;
     event.stopImmediatePropagation();
     if (restoring) return;
     restoring = true;
-    focusWithoutScrolling(previous);
+    focusWithoutScrolling(restoreTo);
     cleanup();
-  };
+  }
 
   root.addEventListener("blur", onBlur, true);
   root.addEventListener("focusout", onFocusOut, true);
   root.addEventListener("focusin", onFocusIn, true);
   root.addEventListener("focus", onFocus, true);
 
-  const cleanup = (): void => {
+  function cleanup(): void {
     cancelAnimationFrame(frame);
     root.removeEventListener("blur", onBlur, true);
     root.removeEventListener("focusout", onFocusOut, true);
@@ -94,7 +97,7 @@ export function preventFocus(target: Element | null): (() => void) | undefined {
     root.removeEventListener("focus", onFocus, true);
     setIgnoringFocus(false);
     restoring = false;
-  };
+  }
 
   // One frame is the ceiling: the focus either moved by then or is not coming.
   const frame = requestAnimationFrame(cleanup);

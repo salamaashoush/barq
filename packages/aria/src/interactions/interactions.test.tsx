@@ -17,6 +17,11 @@ import { interactOutside } from "./interact-outside.ts";
 import { description } from "./description.ts";
 import { mergeProps } from "../utils.ts";
 
+interface HoverableProps {
+  log: string[];
+  isDisabled?: boolean;
+}
+
 describe("hover", () => {
   // A touch anywhere on the page mutes hover for half a second, so that the
   // mouse events a browser makes up after a tap are not taken for a mouse. A
@@ -25,7 +30,7 @@ describe("hover", () => {
     await new Promise((resolve) => setTimeout(resolve, 510));
   });
 
-  function Hoverable(props: { log: string[]; isDisabled?: boolean }) {
+  function Hoverable(props: HoverableProps) {
     const { hoverProps, isHovered } = hover({
       isDisabled: cells(props).isDisabled,
       onHoverStart: (e) => props.log.push(`start:${e.pointerType}`),
@@ -86,8 +91,12 @@ describe("hover", () => {
   });
 });
 
+interface LogProps {
+  log: string[];
+}
+
 describe("focused", () => {
-  function Field(props: { log: string[] }) {
+  function Field(props: LogProps) {
     const { focusProps, isFocused } = focused({
       onFocus: () => props.log.push("focus"),
       onBlur: () => props.log.push("blur"),
@@ -178,10 +187,10 @@ describe("focusWithin, when a handler passes focus on", () => {
       });
       // A collection does this: focus that lands on the list goes to an item,
       // in the same turn and after this hook has heard the first arrival.
-      const forward = (event: FocusEvent): void => {
+      function forward(event: FocusEvent): void {
         if (event.target !== event.currentTarget) return;
         (event.currentTarget as HTMLElement).querySelector("button")?.focus();
-      };
+      }
       return (
         <div
           data-testid="list"
@@ -294,8 +303,18 @@ function withPlatform(platform: string, run: () => void): void {
   }
 }
 
+interface KeyboardFieldProps {
+  options: KeyboardOptions;
+  outer?: string[];
+}
+
+interface KeyboardSetup {
+  outer: string[];
+  target: HTMLElement;
+}
+
 describe("keyboard: shortcuts", () => {
-  function Field(props: { options: KeyboardOptions; outer?: string[] }) {
+  function Field(props: KeyboardFieldProps) {
     const { keyboardProps } = keyboard(props.options);
     return (
       <div onKeyDown={(e: KeyboardEvent) => props.outer?.push(e.key)}>
@@ -306,7 +325,7 @@ describe("keyboard: shortcuts", () => {
     );
   }
 
-  function setup(options: KeyboardOptions): { outer: string[]; target: HTMLElement } {
+  function setup(options: KeyboardOptions): KeyboardSetup {
     const outer: string[] = [];
     render(() => <Field options={options} outer={outer} />);
     const target = screen.getByRole("button");
@@ -536,7 +555,7 @@ describe("keyboard: shortcuts", () => {
 });
 
 describe("move", () => {
-  function Slider(props: { log: string[] }) {
+  function Slider(props: LogProps) {
     const { moveProps } = move({
       onMoveStart: () => props.log.push("start"),
       onMove: (e) => props.log.push(`move:${e.deltaX},${e.deltaY}`),

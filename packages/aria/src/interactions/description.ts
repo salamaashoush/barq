@@ -15,7 +15,12 @@ import { tryCleanup } from "@barqjs/primitives/utils";
 import { access, type DOMProps, type MaybeAccessor } from "../utils.ts";
 
 let nextId = 0;
-const nodes = new Map<string, { count: number; element: Element }>();
+interface DescriptionNode {
+  count: number;
+  element: Element;
+}
+
+const nodes = new Map<string, DescriptionNode>();
 
 function acquire(text: string): string {
   let entry = nodes.get(text);

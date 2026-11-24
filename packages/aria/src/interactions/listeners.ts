@@ -50,12 +50,12 @@ export function globalListeners(): GlobalListeners {
     registered.delete(listener);
   };
 
-  const removeAll = (): void => {
+  function removeAll(): void {
     // A copy, because `remove` deletes from the map being walked.
     for (const [key, entry] of Array.from(registered)) {
       remove(entry.target, entry.type, key, entry.options);
     }
-  };
+  }
 
   tryCleanup(removeAll);
 

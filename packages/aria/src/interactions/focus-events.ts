@@ -33,6 +33,11 @@ export interface FocusResult {
   isFocused: Accessor<boolean>;
 }
 
+interface DisabledBlurWatch {
+  arm: (event: FocusEvent) => void;
+  disconnect: () => void;
+}
+
 /**
  * A blur for a control that was disabled while focused.
  *
@@ -40,18 +45,15 @@ export interface FocusResult {
  * first `focusout`, which every engine but Firefox fires on its own, and the
  * observer then never gets the chance to fire a second one.
  */
-function watchDisabledBlur(onBlur: (event: FocusEvent) => void): {
-  arm: (event: FocusEvent) => void;
-  disconnect: () => void;
-} {
+function watchDisabledBlur(onBlur: (event: FocusEvent) => void): DisabledBlurWatch {
   const state = { isFocused: false, observer: null as MutationObserver | null };
 
-  const disconnect = (): void => {
+  function disconnect(): void {
     state.observer?.disconnect();
     state.observer = null;
-  };
+  }
 
-  const arm = (event: FocusEvent): void => {
+  function arm(event: FocusEvent): void {
     const target = targetElement(event);
     if (
       !(target instanceof HTMLButtonElement) &&
@@ -83,7 +85,7 @@ function watchDisabledBlur(onBlur: (event: FocusEvent) => void): {
       target.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: related }));
     });
     state.observer.observe(target, { attributes: true, attributeFilter: ["disabled"] });
-  };
+  }
 
   return { arm, disconnect };
 }
@@ -99,17 +101,17 @@ function watchDisabledBlur(onBlur: (event: FocusEvent) => void): {
 export function focused(options: FocusOptions = {}): FocusResult {
   const [isFocused, setIsFocused] = createSignal(false);
 
-  const onBlur = (event: FocusEvent): void => {
+  function onBlur(event: FocusEvent): void {
     if (targetElement(event) !== event.currentTarget && event.currentTarget !== null) return;
     setIsFocused(false);
     options.onBlur?.(event);
     options.onFocusChange?.(false);
-  };
+  }
 
   const disabledBlur = watchDisabledBlur(onBlur);
   tryCleanup(disabledBlur.disconnect);
 
-  const onFocus = (event: FocusEvent): void => {
+  function onFocus(event: FocusEvent): void {
     // A handler chained before this one may already have moved focus.
     const target = targetElement(event);
     const active = activeElement(ownerDocument(target));
@@ -119,9 +121,11 @@ export function focused(options: FocusOptions = {}): FocusResult {
     options.onFocus?.(event);
     options.onFocusChange?.(true);
     disabledBlur.arm(event);
-  };
+  }
 
-  const enabled = (): boolean => access(options.isDisabled) !== true;
+  function enabled(): boolean {
+    return access(options.isDisabled) !== true;
+  }
 
   return {
     isFocused,
@@ -161,13 +165,13 @@ export function focusWithin(options: FocusWithinOptions = {}): FocusWithinResult
   // the next flush, and a handler that passes focus on to a child sends a
   // second arrival before then, which the signal would report as the first.
   let within = false;
-  const setWithin = (next: boolean): void => {
+  function setWithin(next: boolean): void {
     within = next;
     setIsFocusWithin(next);
-  };
+  }
   const listeners = globalListeners();
 
-  const onBlur = (event: FocusEvent): void => {
+  function onBlur(event: FocusEvent): void {
     const currentTarget = event.currentTarget as Element | null;
     if (currentTarget === null || !contains(currentTarget, targetElement(event))) return;
 
@@ -179,9 +183,9 @@ export function focusWithin(options: FocusWithinOptions = {}): FocusWithinResult
     listeners.removeAll();
     options.onBlurWithin?.(event);
     options.onFocusWithinChange?.(false);
-  };
+  }
 
-  const onFocus = (event: FocusEvent): void => {
+  function onFocus(event: FocusEvent): void {
     const currentTarget = event.currentTarget as Element | null;
     if (currentTarget === null || !contains(currentTarget, targetElement(event))) return;
 
@@ -208,9 +212,11 @@ export function focusWithin(options: FocusWithinOptions = {}): FocusWithinResult
       },
       { capture: true },
     );
-  };
+  }
 
-  const enabled = (): boolean => access(options.isDisabled) !== true;
+  function enabled(): boolean {
+    return access(options.isDisabled) !== true;
+  }
 
   return {
     isFocusWithin,

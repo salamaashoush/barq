@@ -13,10 +13,15 @@ import { createEffect } from "@barqjs/core";
 import { access, type MaybeAccessor } from "../utils.ts";
 import type { ElementRef } from "./press.ts";
 
+export interface ScrollDelta {
+  deltaX: number;
+  deltaY: number;
+}
+
 export interface ScrollWheelOptions {
   ref: ElementRef;
   isDisabled?: MaybeAccessor<boolean | undefined>;
-  onScroll?: (delta: { deltaX: number; deltaY: number }) => void;
+  onScroll?: (delta: ScrollDelta) => void;
 }
 
 export function scrollWheel(options: ScrollWheelOptions): void {
@@ -28,13 +33,13 @@ export function scrollWheel(options: ScrollWheelOptions): void {
     (element) => {
       if (element === null || element === undefined) return undefined;
 
-      const onWheel = (event: WheelEvent): void => {
+      function onWheel(event: WheelEvent): void {
         // Control held is a zoom gesture, which belongs to the browser.
         if (event.ctrlKey) return;
         event.preventDefault();
         event.stopPropagation();
         options.onScroll?.({ deltaX: event.deltaX, deltaY: event.deltaY });
-      };
+      }
 
       element.addEventListener("wheel", onWheel as EventListener, { passive: false });
       return () => element.removeEventListener("wheel", onWheel as EventListener);

@@ -80,11 +80,11 @@ export function longPressHandlers(options: LongPressOptions): LongPressHandlers 
   const listeners = globalListeners();
   let timer: ReturnType<typeof setTimeout> | undefined;
 
-  const accepts = (event: PressEvent): boolean => {
+  function accepts(event: PressEvent): boolean {
     const wanted = access(options.pointerType);
     if (wanted !== undefined) return event.pointerType === wanted;
     return event.pointerType === "mouse" || event.pointerType === "touch";
-  };
+  }
 
   const described = description(() => {
     if (options.onLongPress === undefined || access(options.isDisabled) === true) return undefined;
