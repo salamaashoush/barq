@@ -305,12 +305,17 @@ const userCard = css`
 
 const USER = { name: "salama", email: "m@example.com", initials: "SA" };
 
+interface NavLink {
+  readonly title: string;
+  readonly url: string;
+}
+
 interface NavItem {
   readonly title: string;
   readonly url: string;
   readonly icon: typeof SquareTerminal;
   readonly isActive?: boolean;
-  readonly items: readonly { readonly title: string; readonly url: string }[];
+  readonly items: readonly NavLink[];
 }
 
 const NAV_MAIN: readonly NavItem[] = [

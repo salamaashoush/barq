@@ -249,10 +249,15 @@ const swatch = css`
 
 const USER = { name: "salama", email: "m@example.com", initials: "SA" };
 
+interface CalendarItem {
+  readonly name: string;
+  readonly active: boolean;
+}
+
 interface CalendarGroup {
   readonly name: string;
   readonly open: boolean;
-  readonly items: readonly { readonly name: string; readonly active: boolean }[];
+  readonly items: readonly CalendarItem[];
 }
 
 const CALENDARS: readonly CalendarGroup[] = [

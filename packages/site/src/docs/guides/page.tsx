@@ -34,7 +34,9 @@ function components(): readonly RailEntry[] {
 
 export function GuidePage(): Child {
   const params = useParams();
-  const guide = (): Guide | undefined => guideNamed(params().page ?? "");
+  function guide(): Guide | undefined {
+    return guideNamed(params().page ?? "");
+  }
   const Body = dynamic(() => guide()?.body);
 
   return (

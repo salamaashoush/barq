@@ -49,12 +49,12 @@ const glyph = css`
 export default function CommandDialogDemo() {
   const [open, setOpen] = createSignal(false);
 
-  const down = (event: KeyboardEvent): void => {
+  function down(event: KeyboardEvent): void {
     if (event.key === "j" && (event.metaKey || event.ctrlKey)) {
       event.preventDefault();
       setOpen(!open());
     }
-  };
+  }
   let listening = false;
   onSettled(() => {
     document.addEventListener("keydown", down);

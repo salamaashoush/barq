@@ -14,9 +14,9 @@ async function settle(): Promise<void> {
   flush();
 }
 
-const toasts = (): HTMLElement[] => [
-  ...document.querySelectorAll<HTMLElement>('[data-slot="toast"]'),
-];
+function toasts(): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>('[data-slot="toast"]')];
+}
 
 describe("the sonner examples", () => {
   afterEach(() => {

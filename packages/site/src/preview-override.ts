@@ -50,10 +50,10 @@ export function previewOverride<T extends object>(): PreviewOverride<T> {
   const [value, setValue] = createSignal<Partial<T> | null>(null);
   let timer: ReturnType<typeof setTimeout> | undefined;
 
-  const cancel = (): void => {
+  function cancel(): void {
     if (timer !== undefined) clearTimeout(timer);
     timer = undefined;
-  };
+  }
 
   return {
     value,

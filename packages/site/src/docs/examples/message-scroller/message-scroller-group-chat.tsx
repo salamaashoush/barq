@@ -147,7 +147,11 @@ const hint = css`
   color: var(--muted-foreground);
 `;
 
-function GroupChatRow(props: { item: GroupChatItem }) {
+interface GroupChatRowProps {
+  item: GroupChatItem;
+}
+
+function GroupChatRow(props: GroupChatRowProps) {
   const item = props.item;
   if (item.type === "event") {
     return (
@@ -182,12 +186,13 @@ function GroupChatRow(props: { item: GroupChatItem }) {
 
 export default function MessageScrollerGroupChat() {
   const [turn, setTurn] = createSignal<Turn>("idle");
-  const items = (): GroupChatItem[] =>
-    turn() === "message"
+  function items(): GroupChatItem[] {
+    return turn() === "message"
       ? [...initialItems, omarMarker, omarMessage]
       : turn() === "marker"
         ? [...initialItems, omarMarker]
         : initialItems;
+  }
 
   return (
     <MessageScrollerProvider>

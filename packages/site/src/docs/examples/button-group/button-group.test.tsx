@@ -21,8 +21,9 @@ async function settle(): Promise<void> {
   flush();
 }
 
-const checked = (name: string): string | null =>
-  screen.getByRole("menuitemradio", { name }).getAttribute("aria-checked");
+function checked(name: string): string | null {
+  return screen.getByRole("menuitemradio", { name }).getAttribute("aria-checked");
+}
 
 describe("the button group examples", () => {
   test("every example is claimed from the server's markup", async () => {

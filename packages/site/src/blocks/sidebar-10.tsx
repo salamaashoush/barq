@@ -335,24 +335,28 @@ const TEAMS: readonly Team[] = [
   { id: "evil-corp", name: "Evil Corp.", logo: Command, plan: "Free", shortcut: "⌘3" },
 ];
 
-const NAV_MAIN: readonly {
+interface MainNavItem {
   readonly id: string;
   readonly name: string;
   readonly icon: Icon;
   readonly active?: boolean;
-}[] = [
+}
+
+const NAV_MAIN: readonly MainNavItem[] = [
   { id: "search", name: "Search", icon: Search },
   { id: "ask", name: "Ask AI", icon: Sparkles },
   { id: "home", name: "Home", icon: House, active: true },
   { id: "inbox", name: "Inbox", icon: Inbox },
 ];
 
-const NAV_SECONDARY: readonly {
+interface SecondaryNavItem {
   readonly id: string;
   readonly name: string;
   readonly icon: Icon;
   readonly badge?: string;
-}[] = [
+}
+
+const NAV_SECONDARY: readonly SecondaryNavItem[] = [
   { id: "calendar", name: "Calendar", icon: Calendar },
   { id: "settings", name: "Settings", icon: Settings2 },
   { id: "templates", name: "Templates", icon: Blocks },
@@ -374,11 +378,17 @@ const FAVORITES = [
   { id: "habits", name: "Daily Habit Tracker & Goal Setting", icon: CircleCheck },
 ];
 
+interface WorkspacePage {
+  readonly id: string;
+  readonly name: string;
+  readonly icon: Icon;
+}
+
 interface Workspace {
   readonly id: string;
   readonly name: string;
   readonly icon: Icon;
-  readonly pages: readonly { readonly id: string; readonly name: string; readonly icon: Icon }[];
+  readonly pages: readonly WorkspacePage[];
 }
 
 const WORKSPACES: readonly Workspace[] = [
@@ -586,9 +596,13 @@ function NavFavorites() {
   );
 }
 
+interface WorkspaceRowProps {
+  workspace: Workspace;
+}
+
 // A component per row: the open state has to belong to the row, and a signal
 // held by the loop would be shared by all five.
-function WorkspaceRow(props: { workspace: Workspace }) {
+function WorkspaceRow(props: WorkspaceRowProps) {
   const workspace = props.workspace;
 
   return (

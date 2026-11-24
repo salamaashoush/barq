@@ -8,7 +8,9 @@ import CardRtl from "./card-rtl.tsx";
 import CardSmall from "./card-small.tsx";
 import CardSpacing from "./card-spacing.tsx";
 
-const card = (): HTMLElement => document.querySelector('[data-slot="card"]') as HTMLElement;
+function card(): HTMLElement {
+  return document.querySelector('[data-slot="card"]') as HTMLElement;
+}
 
 describe("the card examples", () => {
   test("every example is claimed from the server's markup", async () => {

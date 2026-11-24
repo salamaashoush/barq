@@ -10,7 +10,9 @@ function Reads() {
   return <output>{direction()}</output>;
 }
 
-const frame = (): HTMLElement => document.querySelector('[data-slot="preview"]') as HTMLElement;
+function frame(): HTMLElement {
+  return document.querySelector('[data-slot="preview"]') as HTMLElement;
+}
 
 describe("the preview card's direction toggle", () => {
   test("starts left to right, on the element and in scope", () => {

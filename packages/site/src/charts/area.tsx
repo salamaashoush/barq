@@ -5,9 +5,15 @@ import { scalePoint } from "@tanstack/charts/scales/point";
 import { curveNatural, curveStep } from "d3-shape";
 import { ChartLegend, type ChartConfig, type ChartDefinition } from "@barqjs/ui";
 
-import { BARE_AXIS, ChartCard, DESKTOP, DESKTOP_MOBILE, MONTH_AXIS, MONTHS } from "./shared.tsx";
-
-import type { Child } from "@barqjs/core";
+import {
+  BARE_AXIS,
+  ChartCard,
+  DESKTOP,
+  DESKTOP_MOBILE,
+  MONTH_AXIS,
+  MONTHS,
+  type ChartEntry,
+} from "./shared.tsx";
 
 const NATURAL = d3Curve(curveNatural);
 const STEP = d3Curve(curveStep);
@@ -29,7 +35,12 @@ function rows(keys: readonly string[], data: readonly Record<string, unknown>[] 
   );
 }
 
-function palette(config: ChartConfig): { domain: readonly string[]; range: readonly string[] } {
+interface Palette {
+  domain: readonly string[];
+  range: readonly string[];
+}
+
+function palette(config: ChartConfig): Palette {
   return {
     domain: config.map((series) => series.key),
     range: config.map((series) => `var(--color-${series.key})`),
@@ -39,6 +50,16 @@ function palette(config: ChartConfig): { domain: readonly string[]; range: reado
 const X = { scale: scalePoint, axis: MONTH_AXIS } as const;
 const Y_HIDDEN = { scale: scaleLinear, nice: true, grid: true, axis: false } as const;
 
+interface AreaOptions {
+  config: ChartConfig;
+  data?: readonly Record<string, unknown>[];
+  curve?: typeof NATURAL;
+  fillOpacity?: number;
+  stacked?: boolean;
+  expand?: boolean;
+  yAxis?: boolean;
+}
+
 /**
  * One area chart, in the shape every one of upstream's is.
  *
@@ -47,15 +68,7 @@ const Y_HIDDEN = { scale: scaleLinear, nice: true, grid: true, axis: false } as 
  * one `<Area>` with both `fill` and `stroke`, which is recharts deciding for
  * you; here the layering is written down.
  */
-function areaChart(options: {
-  config: ChartConfig;
-  data?: readonly Record<string, unknown>[];
-  curve?: typeof NATURAL;
-  fillOpacity?: number;
-  stacked?: boolean;
-  expand?: boolean;
-  yAxis?: boolean;
-}): ChartDefinition {
+function areaChart(options: AreaOptions): ChartDefinition {
   const keys = options.config.map((series) => series.key);
   const data = rows(keys, options.data);
   const shared = {
@@ -115,176 +128,175 @@ const THREE: ChartConfig = [
 const RANGE = "January - June 2024";
 const TREND = "Trending up by 5.2% this month";
 
-export const AREA_CHARTS: readonly { name: string; description: string; component: () => Child }[] =
-  [
-    {
-      name: "chart-area-default",
-      description: "A simple area chart",
-      component: () => (
-        <ChartCard
-          title="Area Chart"
-          description="Showing total visitors for the last 6 months"
-          config={DESKTOP}
-          definition={areaChart({ config: DESKTOP, curve: NATURAL })}
-          ariaLabel="Visitors for the last six months"
-          trend={TREND}
-          footnote={RANGE}
-        />
-      ),
-    },
-    {
-      name: "chart-area-linear",
-      description: "A linear area chart",
-      component: () => (
-        <ChartCard
-          title="Area Chart - Linear"
-          description="Showing total visitors for the last 6 months"
-          config={DESKTOP}
-          definition={areaChart({ config: DESKTOP })}
-          ariaLabel="Visitors for the last six months"
-          trend={TREND}
-          footnote={RANGE}
-        />
-      ),
-    },
-    {
-      name: "chart-area-step",
-      description: "A step area chart",
-      component: () => (
-        <ChartCard
-          title="Area Chart - Step"
-          description="Showing total visitors for the last 6 months"
-          config={DESKTOP}
-          definition={areaChart({ config: DESKTOP, curve: STEP })}
-          ariaLabel="Visitors for the last six months"
-          trend={TREND}
-          footnote={RANGE}
-        />
-      ),
-    },
-    {
-      name: "chart-area-stacked",
-      description: "A stacked area chart",
-      component: () => (
-        <ChartCard
-          title="Area Chart - Stacked"
-          description="Showing total visitors for the last 6 months"
-          config={DESKTOP_MOBILE}
-          definition={areaChart({ config: DESKTOP_MOBILE, curve: NATURAL, stacked: true })}
-          ariaLabel="Desktop and mobile visitors, stacked"
-          trend={TREND}
-          footnote={RANGE}
-        />
-      ),
-    },
-    {
-      name: "chart-area-stacked-expand",
-      description: "A stacked area chart with expand stacking",
-      component: () => (
-        <ChartCard
-          title="Area Chart - Stacked Expanded"
-          description="Showing total visitors for the last 6 months"
-          config={THREE}
-          definition={areaChart({
-            config: THREE,
-            data: EXPAND,
-            curve: NATURAL,
-            stacked: true,
-            expand: true,
-            fillOpacity: 0.4,
-          })}
-          ariaLabel="Share of visitors by device"
-          trend={TREND}
-          footnote={RANGE}
-        />
-      ),
-    },
-    {
-      name: "chart-area-legend",
-      description: "An area chart with a legend",
-      component: () => (
-        <ChartCard
-          title="Area Chart - Legend"
-          description="Showing total visitors for the last 6 months"
-          config={DESKTOP_MOBILE}
-          definition={areaChart({ config: DESKTOP_MOBILE, curve: NATURAL, stacked: true })}
-          ariaLabel="Desktop and mobile visitors, stacked"
-          trend={TREND}
-          footnote={RANGE}
-        >
-          <ChartLegend />
-        </ChartCard>
-      ),
-    },
-    {
-      name: "chart-area-axes",
-      description: "An area chart with axes",
-      component: () => (
-        <ChartCard
-          title="Area Chart - Axes"
-          description="Showing total visitors for the last 6 months"
-          config={DESKTOP_MOBILE}
-          definition={areaChart({
-            config: DESKTOP_MOBILE,
-            curve: NATURAL,
-            stacked: true,
-            yAxis: true,
-          })}
-          ariaLabel="Desktop and mobile visitors, with both axes"
-          trend={TREND}
-          footnote={RANGE}
-        />
-      ),
-    },
-    {
-      name: "chart-area-gradient",
-      description: "An area chart with gradient fill",
-      component: () => (
-        <ChartCard
-          title="Area Chart - Gradient"
-          description="Showing total visitors for the last 6 months"
-          config={DESKTOP_MOBILE}
-          definition={gradientArea()}
-          ariaLabel="Desktop and mobile visitors, filled with a gradient"
-          trend={TREND}
-          footnote={RANGE}
-        />
-      ),
-    },
-    {
-      name: "chart-area-icons",
-      description: "An area chart with icons",
-      component: () => (
-        <ChartCard
-          title="Area Chart - Icons"
-          description="Showing total visitors for the last 6 months"
-          config={DESKTOP_MOBILE}
-          definition={areaChart({ config: DESKTOP_MOBILE, curve: NATURAL, stacked: true })}
-          ariaLabel="Desktop and mobile visitors, stacked"
-          trend={TREND}
-          footnote={RANGE}
-        >
-          <ChartLegend />
-        </ChartCard>
-      ),
-    },
-    {
-      name: "chart-area-interactive",
-      description: "An interactive area chart",
-      component: () => (
-        <ChartCard
-          title="Area Chart - Interactive"
-          description="Showing total visitors for the last 6 months"
-          config={DESKTOP_MOBILE}
-          definition={areaChart({ config: DESKTOP_MOBILE, curve: NATURAL, stacked: true })}
-          ariaLabel="Desktop and mobile visitors, stacked"
-          height={300}
-          trend={TREND}
-          footnote={RANGE}
-        />
-      ),
-    },
-  ];
+export const AREA_CHARTS: readonly ChartEntry[] = [
+  {
+    name: "chart-area-default",
+    description: "A simple area chart",
+    component: () => (
+      <ChartCard
+        title="Area Chart"
+        description="Showing total visitors for the last 6 months"
+        config={DESKTOP}
+        definition={areaChart({ config: DESKTOP, curve: NATURAL })}
+        ariaLabel="Visitors for the last six months"
+        trend={TREND}
+        footnote={RANGE}
+      />
+    ),
+  },
+  {
+    name: "chart-area-linear",
+    description: "A linear area chart",
+    component: () => (
+      <ChartCard
+        title="Area Chart - Linear"
+        description="Showing total visitors for the last 6 months"
+        config={DESKTOP}
+        definition={areaChart({ config: DESKTOP })}
+        ariaLabel="Visitors for the last six months"
+        trend={TREND}
+        footnote={RANGE}
+      />
+    ),
+  },
+  {
+    name: "chart-area-step",
+    description: "A step area chart",
+    component: () => (
+      <ChartCard
+        title="Area Chart - Step"
+        description="Showing total visitors for the last 6 months"
+        config={DESKTOP}
+        definition={areaChart({ config: DESKTOP, curve: STEP })}
+        ariaLabel="Visitors for the last six months"
+        trend={TREND}
+        footnote={RANGE}
+      />
+    ),
+  },
+  {
+    name: "chart-area-stacked",
+    description: "A stacked area chart",
+    component: () => (
+      <ChartCard
+        title="Area Chart - Stacked"
+        description="Showing total visitors for the last 6 months"
+        config={DESKTOP_MOBILE}
+        definition={areaChart({ config: DESKTOP_MOBILE, curve: NATURAL, stacked: true })}
+        ariaLabel="Desktop and mobile visitors, stacked"
+        trend={TREND}
+        footnote={RANGE}
+      />
+    ),
+  },
+  {
+    name: "chart-area-stacked-expand",
+    description: "A stacked area chart with expand stacking",
+    component: () => (
+      <ChartCard
+        title="Area Chart - Stacked Expanded"
+        description="Showing total visitors for the last 6 months"
+        config={THREE}
+        definition={areaChart({
+          config: THREE,
+          data: EXPAND,
+          curve: NATURAL,
+          stacked: true,
+          expand: true,
+          fillOpacity: 0.4,
+        })}
+        ariaLabel="Share of visitors by device"
+        trend={TREND}
+        footnote={RANGE}
+      />
+    ),
+  },
+  {
+    name: "chart-area-legend",
+    description: "An area chart with a legend",
+    component: () => (
+      <ChartCard
+        title="Area Chart - Legend"
+        description="Showing total visitors for the last 6 months"
+        config={DESKTOP_MOBILE}
+        definition={areaChart({ config: DESKTOP_MOBILE, curve: NATURAL, stacked: true })}
+        ariaLabel="Desktop and mobile visitors, stacked"
+        trend={TREND}
+        footnote={RANGE}
+      >
+        <ChartLegend />
+      </ChartCard>
+    ),
+  },
+  {
+    name: "chart-area-axes",
+    description: "An area chart with axes",
+    component: () => (
+      <ChartCard
+        title="Area Chart - Axes"
+        description="Showing total visitors for the last 6 months"
+        config={DESKTOP_MOBILE}
+        definition={areaChart({
+          config: DESKTOP_MOBILE,
+          curve: NATURAL,
+          stacked: true,
+          yAxis: true,
+        })}
+        ariaLabel="Desktop and mobile visitors, with both axes"
+        trend={TREND}
+        footnote={RANGE}
+      />
+    ),
+  },
+  {
+    name: "chart-area-gradient",
+    description: "An area chart with gradient fill",
+    component: () => (
+      <ChartCard
+        title="Area Chart - Gradient"
+        description="Showing total visitors for the last 6 months"
+        config={DESKTOP_MOBILE}
+        definition={gradientArea()}
+        ariaLabel="Desktop and mobile visitors, filled with a gradient"
+        trend={TREND}
+        footnote={RANGE}
+      />
+    ),
+  },
+  {
+    name: "chart-area-icons",
+    description: "An area chart with icons",
+    component: () => (
+      <ChartCard
+        title="Area Chart - Icons"
+        description="Showing total visitors for the last 6 months"
+        config={DESKTOP_MOBILE}
+        definition={areaChart({ config: DESKTOP_MOBILE, curve: NATURAL, stacked: true })}
+        ariaLabel="Desktop and mobile visitors, stacked"
+        trend={TREND}
+        footnote={RANGE}
+      >
+        <ChartLegend />
+      </ChartCard>
+    ),
+  },
+  {
+    name: "chart-area-interactive",
+    description: "An interactive area chart",
+    component: () => (
+      <ChartCard
+        title="Area Chart - Interactive"
+        description="Showing total visitors for the last 6 months"
+        config={DESKTOP_MOBILE}
+        definition={areaChart({ config: DESKTOP_MOBILE, curve: NATURAL, stacked: true })}
+        ariaLabel="Desktop and mobile visitors, stacked"
+        height={300}
+        trend={TREND}
+        footnote={RANGE}
+      />
+    ),
+  },
+];
 
 /**
  * The gradient fill, as a resource the spec declares.

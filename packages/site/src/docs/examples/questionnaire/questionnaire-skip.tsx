@@ -30,8 +30,9 @@ const frame = css`
   max-width: 28rem;
 `;
 
-const answer = (entry: FormDataEntryValue | null, none = "None"): string =>
-  typeof entry === "string" && entry !== "" ? entry : none;
+function answer(entry: FormDataEntryValue | null, none = "None"): string {
+  return typeof entry === "string" && entry !== "" ? entry : none;
+}
 
 export default function QuestionnaireSkipExample() {
   const [constraintStatus, setConstraintStatus] =

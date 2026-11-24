@@ -5,7 +5,9 @@ import { render, screen, user } from "@barqjs/testing";
 import { Sidebar14 } from "./sidebar-14.tsx";
 import { hydrateBlock } from "./test-harness.ts";
 
-const sidebar = (): HTMLElement => document.querySelector('[data-slot="sidebar"]') as HTMLElement;
+function sidebar(): HTMLElement {
+  return document.querySelector('[data-slot="sidebar"]') as HTMLElement;
+}
 
 describe("sidebar-14", () => {
   test("the table of contents is on the right, after the page it describes", () => {

@@ -174,17 +174,18 @@ export function ComponentPreview(props: PreviewProps) {
   const [open, setOpen] = createSignal(false);
   const [copied, setCopied] = createSignal(false);
   const [rtl, setRtl] = createSignal(false);
-  const dir = (): "ltr" | "rtl" | undefined =>
-    props.rtl === true ? undefined : rtl() ? "rtl" : "ltr";
+  function dir(): "ltr" | "rtl" | undefined {
+    return props.rtl === true ? undefined : rtl() ? "rtl" : "ltr";
+  }
 
-  const onCopy = (): void => {
+  function onCopy(): void {
     const source = props.code ?? "";
     if (source === "") return;
     void navigator.clipboard?.writeText(source).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
-  };
+  }
 
   return (
     <div class={`${card} ${codeSurface}`} data-slot="component-preview" data-not-typeset>

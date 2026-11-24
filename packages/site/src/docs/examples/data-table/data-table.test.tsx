@@ -12,17 +12,21 @@ async function settle(): Promise<void> {
   flush();
 }
 
-const rows = (): Element[] => [
-  ...document.querySelectorAll('[data-slot="table-body"] [data-slot="table-row"]'),
-];
+function rows(): Element[] {
+  return [...document.querySelectorAll('[data-slot="table-body"] [data-slot="table-row"]')];
+}
 
-const cells = (row: Element | undefined): string[] =>
-  [...(row?.querySelectorAll('[data-slot="table-cell"]') ?? [])].map(
+function cells(row: Element | undefined): string[] {
+  return [...(row?.querySelectorAll('[data-slot="table-cell"]') ?? [])].map(
     (cell) => cell.textContent ?? "",
   );
+}
 
-const headers = (): string[] =>
-  [...document.querySelectorAll('[data-slot="table-head"]')].map((head) => head.textContent ?? "");
+function headers(): string[] {
+  return [...document.querySelectorAll('[data-slot="table-head"]')].map(
+    (head) => head.textContent ?? "",
+  );
+}
 
 describe("the data table examples", () => {
   test("every example is claimed from the server's markup", async () => {

@@ -29,10 +29,11 @@ const panel = css`
   padding: 0;
 `;
 
-const short = (date: CalendarDate): string =>
-  date
+function short(date: CalendarDate): string {
+  return date
     .toDate(getLocalTimeZone())
     .toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
+}
 
 const from = new CalendarDate(new Date().getFullYear(), 1, 20);
 

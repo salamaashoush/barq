@@ -5,13 +5,16 @@ import { render, screen, user } from "@barqjs/testing";
 import { Sidebar05 } from "./sidebar-05.tsx";
 import { hydrateBlock } from "./test-harness.ts";
 
-const sidebar = (): HTMLElement => document.querySelector('[data-slot="sidebar"]') as HTMLElement;
+function sidebar(): HTMLElement {
+  return document.querySelector('[data-slot="sidebar"]') as HTMLElement;
+}
 
 describe("sidebar-05", () => {
   test("only the second section starts open", () => {
     render(() => <Sidebar05 />);
-    const expanded = (name: string): string | null =>
-      screen.getByRole("button", { name }).getAttribute("aria-expanded");
+    function expanded(name: string): string | null {
+      return screen.getByRole("button", { name }).getAttribute("aria-expanded");
+    }
 
     expect(expanded("Getting Started")).toBe("false");
     expect(expanded("Build Your Application")).toBe("true");

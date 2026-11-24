@@ -5,8 +5,9 @@ import { render, screen, user } from "@barqjs/testing";
 import { Dashboard01 } from "./dashboard-01.tsx";
 import { hydrateBlock } from "./test-harness.ts";
 
-const sidebar = (root: ParentNode): HTMLElement =>
-  root.querySelector('[data-slot="sidebar"]') as HTMLElement;
+function sidebar(root: ParentNode): HTMLElement {
+  return root.querySelector('[data-slot="sidebar"]') as HTMLElement;
+}
 
 describe("dashboard-01", () => {
   test("the four stat cards, the chart and the table are all on the page", () => {

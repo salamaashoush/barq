@@ -46,6 +46,19 @@ const frame = css`
   width: 100%;
 `;
 
+interface TooltipPoint {
+  datum: unknown;
+}
+
+interface SeriesValue {
+  series: string;
+  value: number;
+}
+
+interface MonthRow {
+  month?: string;
+}
+
 const definition = defineChart({
   marks: [barY(bars, { x: "month", y: "value", color: "series", layout: group(), radius: 4 })],
   scales: {
@@ -73,12 +86,12 @@ const definition = defineChart({
   },
   tooltip: {
     use: tooltip,
-    format: (point: { datum: unknown }) => {
-      const row = point.datum as { series: string; value: number };
+    format: (point: TooltipPoint) => {
+      const row = point.datum as SeriesValue;
       return `${labels[row.series] ?? row.series}: ${String(row.value)}`;
     },
-    formatGroup: (points: readonly { datum: unknown }[]) => {
-      const row = points[0]?.datum as { month?: string } | undefined;
+    formatGroup: (points: readonly TooltipPoint[]) => {
+      const row = points[0]?.datum as MonthRow | undefined;
       return months[row?.month ?? ""] ?? "";
     },
   },

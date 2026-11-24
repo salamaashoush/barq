@@ -10,8 +10,9 @@ import ToggleGroupOutline from "./toggle-group-outline.tsx";
 import ToggleGroupRtl from "./toggle-group-rtl.tsx";
 import ToggleGroupVertical from "./toggle-group-vertical.tsx";
 
-const pressed = (name: string): string | null =>
-  screen.getByRole("button", { name }).getAttribute("aria-pressed");
+function pressed(name: string): string | null {
+  return screen.getByRole("button", { name }).getAttribute("aria-pressed");
+}
 
 describe("the toggle group examples", () => {
   test("every example is claimed from the server's markup", async () => {

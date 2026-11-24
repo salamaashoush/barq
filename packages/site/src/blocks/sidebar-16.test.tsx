@@ -5,7 +5,9 @@ import { render, screen, tick, user } from "@barqjs/testing";
 import { Sidebar16 } from "./sidebar-16.tsx";
 import { hydrateBlock } from "./test-harness.ts";
 
-const sidebar = (): HTMLElement => document.querySelector('[data-slot="sidebar"]') as HTMLElement;
+function sidebar(): HTMLElement {
+  return document.querySelector('[data-slot="sidebar"]') as HTMLElement;
+}
 
 async function settle(): Promise<void> {
   flush();

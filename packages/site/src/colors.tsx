@@ -150,9 +150,17 @@ function propertyOf(token: string): string {
 
 const TOKENS = Object.keys(tokens).filter((token) => token !== "radius");
 
-function Swatch(props: { token: string; value: string; ink: string }) {
+interface SwatchProps {
+  token: string;
+  value: string;
+  ink: string;
+}
+
+function Swatch(props: SwatchProps) {
   const [copied, setCopied] = createSignal(false);
-  const property = (): string => propertyOf(props.token);
+  function property(): string {
+    return propertyOf(props.token);
+  }
 
   return (
     <button
@@ -176,6 +184,10 @@ function Swatch(props: { token: string; value: string; ink: string }) {
   );
 }
 
+interface FamilyProps {
+  theme: ThemeDefinition;
+}
+
 /**
  * A family's swatches, painted from the theme DATA rather than the page.
  *
@@ -183,9 +195,10 @@ function Swatch(props: { token: string; value: string; ink: string }) {
  * definition — otherwise all eight sections would print the same colours and
  * the page would say nothing.
  */
-function Family(props: { theme: ThemeDefinition }) {
-  const shown = (): readonly string[] =>
-    TOKENS.filter((token) => props.theme.light[propertyOf(token).slice(2)] !== undefined);
+function Family(props: FamilyProps) {
+  function shown(): readonly string[] {
+    return TOKENS.filter((token) => props.theme.light[propertyOf(token).slice(2)] !== undefined);
+  }
 
   return (
     <div class={section}>

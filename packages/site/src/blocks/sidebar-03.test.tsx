@@ -5,7 +5,9 @@ import { render, screen, user } from "@barqjs/testing";
 import { Sidebar03 } from "./sidebar-03.tsx";
 import { hydrateBlock } from "./test-harness.ts";
 
-const sidebar = (): HTMLElement => document.querySelector('[data-slot="sidebar"]') as HTMLElement;
+function sidebar(): HTMLElement {
+  return document.querySelector('[data-slot="sidebar"]') as HTMLElement;
+}
 
 describe("sidebar-03", () => {
   test("each section is a link with its pages in a submenu under it", () => {

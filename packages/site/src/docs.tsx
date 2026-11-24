@@ -301,7 +301,7 @@ export function slugOf(label: string): string {
     .replace(/^-|-$/g, "");
 }
 
-export function DocsPage(props: {
+export interface DocsPageProps {
   title: string;
   lede?: string;
   /** The right-hand column: the headings on THIS page, as anchors. */
@@ -313,7 +313,9 @@ export function DocsPage(props: {
   /** Beside the title — upstream's previous/next pair. */
   actions?: Child;
   children?: Child;
-}) {
+}
+
+export function DocsPage(props: DocsPageProps) {
   return (
     <div class={wrapper}>
       <div class={shell}>

@@ -75,6 +75,15 @@ const prose = css`
   }
 `;
 
+interface ProseProps {
+  text: string;
+}
+
+interface ProsePart {
+  text: string;
+  code: boolean;
+}
+
 /**
  * A note's inline code, which is the only markdown a note uses.
  *
@@ -83,23 +92,26 @@ const prose = css`
  * the page. Backticks are all this handles: a note that wants a link or a bold
  * span is a note that wants to be a section.
  */
-function Prose(props: { text: string }) {
-  const parts = (): readonly { text: string; code: boolean }[] =>
-    props.text
+function Prose(props: ProseProps) {
+  function parts(): readonly ProsePart[] {
+    return props.text
       .split("`")
       .map((text, at) => ({ text, code: at % 2 === 1 }))
       .filter((part) => part.text !== "");
+  }
 
   return (
     <For each={parts}>
-      {(part: { text: string; code: boolean }) =>
-        part.code ? <code>{part.text}</code> : part.text
-      }
+      {(part: ProsePart) => (part.code ? <code>{part.text}</code> : part.text)}
     </For>
   );
 }
 
-function DemoSection(props: { demo: Demo }) {
+interface DemoSectionProps {
+  demo: Demo;
+}
+
+function DemoSection(props: DemoSectionProps) {
   const Example = dynamic(() => props.demo.component);
   return (
     <>
@@ -149,14 +161,25 @@ function sectionsFor(entry: ComponentDoc): readonly DocsSection[] {
   ];
 }
 
-function neighbours(slug: string): { previous?: ComponentDoc; next?: ComponentDoc } {
+interface Neighbours {
+  previous?: ComponentDoc;
+  next?: ComponentDoc;
+}
+
+function neighbours(slug: string): Neighbours {
   const at = COMPONENTS.findIndex((entry) => entry.slug === slug);
   if (at === -1) return {};
   return { previous: COMPONENTS[at - 1], next: COMPONENTS[at + 1] };
 }
 
-function Actions(props: { slug: string }) {
-  const around = (): { previous?: ComponentDoc; next?: ComponentDoc } => neighbours(props.slug);
+interface ActionsProps {
+  slug: string;
+}
+
+function Actions(props: ActionsProps) {
+  function around(): Neighbours {
+    return neighbours(props.slug);
+  }
   return (
     <div class={nav}>
       {() =>
@@ -181,12 +204,24 @@ function Actions(props: { slug: string }) {
   );
 }
 
-function Found(props: { entry: ComponentDoc }) {
-  const entry = (): ComponentDoc => props.entry;
-  const hero = (): Demo | undefined => entry().demos[0];
+interface FoundProps {
+  entry: ComponentDoc;
+}
+
+function Found(props: FoundProps) {
+  function entry(): ComponentDoc {
+    return props.entry;
+  }
+  function hero(): Demo | undefined {
+    return entry().demos[0];
+  }
   const Hero = dynamic(() => hero()?.component);
-  const rest = (): readonly Demo[] => entry().demos.slice(1);
-  const around = (): { previous?: ComponentDoc; next?: ComponentDoc } => neighbours(entry().slug);
+  function rest(): readonly Demo[] {
+    return entry().demos.slice(1);
+  }
+  function around(): Neighbours {
+    return neighbours(entry().slug);
+  }
 
   return (
     <DocsPage
@@ -258,7 +293,9 @@ function Found(props: { entry: ComponentDoc }) {
 
 export function ComponentDocPage(): Child {
   const params = useParams();
-  const entry = (): ComponentDoc | undefined => docNamed(params().name ?? "");
+  function entry(): ComponentDoc | undefined {
+    return docNamed(params().name ?? "");
+  }
 
   return (
     <>

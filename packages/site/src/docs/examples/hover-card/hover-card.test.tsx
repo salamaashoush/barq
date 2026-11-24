@@ -13,9 +13,13 @@ async function settle(): Promise<void> {
   flush();
 }
 
-const after = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+function after(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-const card = (): HTMLElement | null => document.querySelector('[data-slot="hover-card-content"]');
+function card(): HTMLElement | null {
+  return document.querySelector('[data-slot="hover-card-content"]');
+}
 
 describe("the hover card examples", () => {
   test("every example is claimed from the server's markup", async () => {

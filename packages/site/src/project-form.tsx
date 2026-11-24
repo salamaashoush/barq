@@ -62,19 +62,27 @@ const PANES: readonly Pane[] = [
   { id: "css", name: "CSS", text: (params) => themeCss(selectionOf(params)) },
 ];
 
-export function ProjectForm(props: { design: Design }) {
+export interface ProjectFormProps {
+  design: Design;
+}
+
+export function ProjectForm(props: ProjectFormProps) {
   const [open, setOpen] = createSignal(false);
   const [showing, setShowing] = createSignal("command");
   const [took, setTook] = createSignal(false);
 
-  const paneOf = (id: string): Pane => PANES.find((pane) => pane.id === id) ?? PANES[0]!;
-  const text = (): string => paneOf(showing()).text(props.design.params());
+  function paneOf(id: string): Pane {
+    return PANES.find((pane) => pane.id === id) ?? PANES[0]!;
+  }
+  function text(): string {
+    return paneOf(showing()).text(props.design.params());
+  }
 
-  const copy = (): void => {
+  function copy(): void {
     void navigator.clipboard.writeText(text());
     setTook(true);
     setTimeout(() => setTook(false), 2000);
-  };
+  }
 
   return (
     <Dialog isOpen={open()} onOpenChange={(next: boolean) => setOpen(next)}>

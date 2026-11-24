@@ -335,6 +335,12 @@ const TEAM = [
   { id: "alan", who: "AT", name: "Alan Turing", role: "Member" },
 ];
 
+interface ShowcaseEntry {
+  id: string;
+  name: string;
+  current?: boolean;
+}
+
 export function Showcase() {
   return (
     <div class={page} data-slot="showcase">
@@ -700,7 +706,7 @@ export function Showcase() {
                 <>
                   <div class={navGroup}>{group.name}</div>
                   <For each={() => group.items}>
-                    {(entry: { id: string; name: string; current?: boolean }) => (
+                    {(entry: ShowcaseEntry) => (
                       <a
                         class={navItem}
                         href="#"

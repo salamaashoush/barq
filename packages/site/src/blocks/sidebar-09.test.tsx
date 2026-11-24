@@ -5,10 +5,15 @@ import { render, screen, tick, user } from "@barqjs/testing";
 import { Sidebar09 } from "./sidebar-09.tsx";
 import { hydrateBlock } from "./test-harness.ts";
 
-const shell = (): HTMLElement =>
-  document.querySelector('[data-slot="sidebar"][data-state]') as HTMLElement;
-const folder = (): string => document.querySelector('[data-slot="mail-folder"]')?.textContent ?? "";
-const mails = (): Element[] => [...document.querySelectorAll('[data-slot="mail"]')];
+function shell(): HTMLElement {
+  return document.querySelector('[data-slot="sidebar"][data-state]') as HTMLElement;
+}
+function folder(): string {
+  return document.querySelector('[data-slot="mail-folder"]')?.textContent ?? "";
+}
+function mails(): Element[] {
+  return [...document.querySelectorAll('[data-slot="mail"]')];
+}
 
 describe("sidebar-09", () => {
   test("an icon rail and a mail list share one sidebar", () => {

@@ -3,9 +3,7 @@ import { scaleLinear } from "@tanstack/charts/scales/linear";
 import { pie, polar, radialArc, radialText } from "@tanstack/charts/polar";
 import { ChartLegend, type ChartConfig, type ChartDefinition } from "@barqjs/ui";
 
-import { ChartCard, palette, THEME } from "./shared.tsx";
-
-import type { Child } from "@barqjs/core";
+import { ChartCard, palette, THEME, type ChartEntry } from "./shared.tsx";
 
 const RANGE = "January - June 2024";
 const TREND = "Trending up by 5.2% this month";
@@ -54,11 +52,13 @@ function allocate(): ReturnType<typeof pie<(typeof BROWSERS)[number]>> {
   return pie(BROWSERS, { value: "visitors" });
 }
 
-function paintOf(options: SliceOptions): {
+interface SlicePaint {
   stroke: string;
   strokeWidth: number;
   innerRadius?: number;
-} {
+}
+
+function paintOf(options: SliceOptions): SlicePaint {
   return {
     stroke: options.stroke ?? "var(--background)",
     strokeWidth: options.strokeWidth ?? 2,
@@ -121,8 +121,12 @@ function slices(options: SliceOptions): ChartDefinition {
   });
 }
 
+interface LabelPlacement {
+  where: "inside" | "outside";
+}
+
 /** The same, with each slice named — inside it or out past the rim. */
-function labelledSlices(options: SliceOptions & { where: "inside" | "outside" }): ChartDefinition {
+function labelledSlices(options: SliceOptions & LabelPlacement): ChartDefinition {
   const allocated = allocate();
   const paint = paintOf(options);
 
@@ -157,173 +161,172 @@ function labelledSlices(options: SliceOptions & { where: "inside" | "outside" })
   });
 }
 
-export const PIE_CHARTS: readonly { name: string; description: string; component: () => Child }[] =
-  [
-    {
-      name: "chart-pie-simple",
-      description: "A simple pie chart",
-      component: () => (
-        <ChartCard
-          title="Pie Chart"
-          description={RANGE}
-          config={BROWSER_CONFIG}
-          definition={slices({})}
-          ariaLabel="Visitors by browser"
-          trend={TREND}
-          footnote={VISITORS}
-        />
-      ),
-    },
-    {
-      name: "chart-pie-separator-none",
-      description: "A pie chart with no separator",
-      component: () => (
-        <ChartCard
-          title="Pie Chart - Separator None"
-          description={RANGE}
-          config={BROWSER_CONFIG}
-          definition={slices({ stroke: "none", strokeWidth: 0 })}
-          ariaLabel="Visitors by browser"
-          trend={TREND}
-          footnote={VISITORS}
-        />
-      ),
-    },
-    {
-      name: "chart-pie-label",
-      description: "A pie chart with a label",
-      component: () => (
-        <ChartCard
-          title="Pie Chart - Label"
-          description={RANGE}
-          config={BROWSER_CONFIG}
-          definition={labelledSlices({ where: "outside" })}
-          ariaLabel="Visitors by browser, each slice named"
-          trend={TREND}
-          footnote={VISITORS}
-        />
-      ),
-    },
-    {
-      name: "chart-pie-label-list",
-      description: "A pie chart with a label list",
-      component: () => (
-        <ChartCard
-          title="Pie Chart - Label List"
-          description={RANGE}
-          config={BROWSER_CONFIG}
-          definition={labelledSlices({ where: "inside" })}
-          ariaLabel="Visitors by browser, named inside each slice"
-          trend={TREND}
-          footnote={VISITORS}
-        />
-      ),
-    },
-    {
-      name: "chart-pie-label-custom",
-      description: "A pie chart with a custom label",
-      component: () => (
-        <ChartCard
-          title="Pie Chart - Custom Label"
-          description={RANGE}
-          config={BROWSER_CONFIG}
-          definition={labelledSlices({ where: "inside", stroke: "none", strokeWidth: 0 })}
-          ariaLabel="Visitors by browser, named inside each slice"
-          trend={TREND}
-          footnote={VISITORS}
-        />
-      ),
-    },
-    {
-      name: "chart-pie-donut",
-      description: "A donut chart",
-      component: () => (
-        <ChartCard
-          title="Pie Chart - Donut"
-          description={RANGE}
-          config={BROWSER_CONFIG}
-          definition={slices({ innerRadius: 60 })}
-          ariaLabel="Visitors by browser"
-          trend={TREND}
-          footnote={VISITORS}
-        />
-      ),
-    },
-    {
-      name: "chart-pie-donut-active",
-      description: "A donut chart with an active sector",
-      component: () => (
-        <ChartCard
-          title="Pie Chart - Donut Active"
-          description={RANGE}
-          config={BROWSER_CONFIG}
-          definition={slices({ innerRadius: 60, strokeWidth: 5, callOut: "safari" })}
-          ariaLabel="Visitors by browser, with Safari called out"
-          trend={TREND}
-          footnote={VISITORS}
-        />
-      ),
-    },
-    {
-      name: "chart-pie-donut-text",
-      description: "A donut chart with text",
-      component: () => (
-        <ChartCard
-          title="Pie Chart - Donut with Text"
-          description={RANGE}
-          config={BROWSER_CONFIG}
-          definition={slices({ innerRadius: 60, strokeWidth: 5 })}
-          ariaLabel={`Visitors by browser, ${String(TOTAL)} in total`}
-          trend={TREND}
-          footnote={VISITORS}
-        />
-      ),
-    },
-    {
-      name: "chart-pie-stacked",
-      description: "A pie chart with stacked sections",
-      component: () => (
-        <ChartCard
-          title="Pie Chart - Stacked"
-          description={RANGE}
-          config={BROWSER_CONFIG}
-          definition={slices({ innerRadius: 70 })}
-          ariaLabel="Visitors by browser"
-          trend={TREND}
-          footnote={VISITORS}
-        />
-      ),
-    },
-    {
-      name: "chart-pie-legend",
-      description: "A pie chart with a legend",
-      component: () => (
-        <ChartCard
-          title="Pie Chart - Legend"
-          description={RANGE}
-          config={BROWSER_CONFIG}
-          definition={slices({})}
-          ariaLabel="Visitors by browser"
-          trend={TREND}
-          footnote={VISITORS}
-        >
-          <ChartLegend />
-        </ChartCard>
-      ),
-    },
-    {
-      name: "chart-pie-interactive",
-      description: "An interactive pie chart",
-      component: () => (
-        <ChartCard
-          title="Pie Chart - Interactive"
-          description={RANGE}
-          config={BROWSER_CONFIG}
-          definition={slices({ innerRadius: 60, strokeWidth: 5, callOut: "chrome" })}
-          ariaLabel="Visitors by browser, with Chrome called out"
-          trend={TREND}
-          footnote={VISITORS}
-        />
-      ),
-    },
-  ];
+export const PIE_CHARTS: readonly ChartEntry[] = [
+  {
+    name: "chart-pie-simple",
+    description: "A simple pie chart",
+    component: () => (
+      <ChartCard
+        title="Pie Chart"
+        description={RANGE}
+        config={BROWSER_CONFIG}
+        definition={slices({})}
+        ariaLabel="Visitors by browser"
+        trend={TREND}
+        footnote={VISITORS}
+      />
+    ),
+  },
+  {
+    name: "chart-pie-separator-none",
+    description: "A pie chart with no separator",
+    component: () => (
+      <ChartCard
+        title="Pie Chart - Separator None"
+        description={RANGE}
+        config={BROWSER_CONFIG}
+        definition={slices({ stroke: "none", strokeWidth: 0 })}
+        ariaLabel="Visitors by browser"
+        trend={TREND}
+        footnote={VISITORS}
+      />
+    ),
+  },
+  {
+    name: "chart-pie-label",
+    description: "A pie chart with a label",
+    component: () => (
+      <ChartCard
+        title="Pie Chart - Label"
+        description={RANGE}
+        config={BROWSER_CONFIG}
+        definition={labelledSlices({ where: "outside" })}
+        ariaLabel="Visitors by browser, each slice named"
+        trend={TREND}
+        footnote={VISITORS}
+      />
+    ),
+  },
+  {
+    name: "chart-pie-label-list",
+    description: "A pie chart with a label list",
+    component: () => (
+      <ChartCard
+        title="Pie Chart - Label List"
+        description={RANGE}
+        config={BROWSER_CONFIG}
+        definition={labelledSlices({ where: "inside" })}
+        ariaLabel="Visitors by browser, named inside each slice"
+        trend={TREND}
+        footnote={VISITORS}
+      />
+    ),
+  },
+  {
+    name: "chart-pie-label-custom",
+    description: "A pie chart with a custom label",
+    component: () => (
+      <ChartCard
+        title="Pie Chart - Custom Label"
+        description={RANGE}
+        config={BROWSER_CONFIG}
+        definition={labelledSlices({ where: "inside", stroke: "none", strokeWidth: 0 })}
+        ariaLabel="Visitors by browser, named inside each slice"
+        trend={TREND}
+        footnote={VISITORS}
+      />
+    ),
+  },
+  {
+    name: "chart-pie-donut",
+    description: "A donut chart",
+    component: () => (
+      <ChartCard
+        title="Pie Chart - Donut"
+        description={RANGE}
+        config={BROWSER_CONFIG}
+        definition={slices({ innerRadius: 60 })}
+        ariaLabel="Visitors by browser"
+        trend={TREND}
+        footnote={VISITORS}
+      />
+    ),
+  },
+  {
+    name: "chart-pie-donut-active",
+    description: "A donut chart with an active sector",
+    component: () => (
+      <ChartCard
+        title="Pie Chart - Donut Active"
+        description={RANGE}
+        config={BROWSER_CONFIG}
+        definition={slices({ innerRadius: 60, strokeWidth: 5, callOut: "safari" })}
+        ariaLabel="Visitors by browser, with Safari called out"
+        trend={TREND}
+        footnote={VISITORS}
+      />
+    ),
+  },
+  {
+    name: "chart-pie-donut-text",
+    description: "A donut chart with text",
+    component: () => (
+      <ChartCard
+        title="Pie Chart - Donut with Text"
+        description={RANGE}
+        config={BROWSER_CONFIG}
+        definition={slices({ innerRadius: 60, strokeWidth: 5 })}
+        ariaLabel={`Visitors by browser, ${String(TOTAL)} in total`}
+        trend={TREND}
+        footnote={VISITORS}
+      />
+    ),
+  },
+  {
+    name: "chart-pie-stacked",
+    description: "A pie chart with stacked sections",
+    component: () => (
+      <ChartCard
+        title="Pie Chart - Stacked"
+        description={RANGE}
+        config={BROWSER_CONFIG}
+        definition={slices({ innerRadius: 70 })}
+        ariaLabel="Visitors by browser"
+        trend={TREND}
+        footnote={VISITORS}
+      />
+    ),
+  },
+  {
+    name: "chart-pie-legend",
+    description: "A pie chart with a legend",
+    component: () => (
+      <ChartCard
+        title="Pie Chart - Legend"
+        description={RANGE}
+        config={BROWSER_CONFIG}
+        definition={slices({})}
+        ariaLabel="Visitors by browser"
+        trend={TREND}
+        footnote={VISITORS}
+      >
+        <ChartLegend />
+      </ChartCard>
+    ),
+  },
+  {
+    name: "chart-pie-interactive",
+    description: "An interactive pie chart",
+    component: () => (
+      <ChartCard
+        title="Pie Chart - Interactive"
+        description={RANGE}
+        config={BROWSER_CONFIG}
+        definition={slices({ innerRadius: 60, strokeWidth: 5, callOut: "chrome" })}
+        ariaLabel="Visitors by browser, with Chrome called out"
+        trend={TREND}
+        footnote={VISITORS}
+      />
+    ),
+  },
+];

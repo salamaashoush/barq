@@ -8,12 +8,16 @@ import { flush, type JSXElement } from "@barqjs/core";
 
 import { SceneNode, render } from "./snippets/custom-renderers/renderer.ts";
 
-const native = createRequire(import.meta.url)("@barqjs/compiler") as {
-  transform(
-    code: string,
-    options: Record<string, unknown>,
-  ): { code: string; diagnostics: unknown[] };
-};
+interface NativeCompiler {
+  transform(code: string, options: Record<string, unknown>): Transformed;
+}
+
+interface Transformed {
+  code: string;
+  diagnostics: unknown[];
+}
+
+const native = createRequire(import.meta.url)("@barqjs/compiler") as NativeCompiler;
 
 const snippets = fileURLToPath(new URL("./snippets/custom-renderers/", import.meta.url));
 // Under the site's own node_modules so the compiled module resolves `@barqjs/core`

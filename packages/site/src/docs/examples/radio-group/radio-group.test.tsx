@@ -9,12 +9,15 @@ import RadioGroupDisabled from "./radio-group-disabled.tsx";
 import RadioGroupInvalid from "./radio-group-invalid.tsx";
 import RadioGroupRtl from "./radio-group-rtl.tsx";
 
-const radio = (id: string): HTMLInputElement => document.getElementById(id) as HTMLInputElement;
-const chosen = (): string[] =>
-  screen
+function radio(id: string): HTMLInputElement {
+  return document.getElementById(id) as HTMLInputElement;
+}
+function chosen(): string[] {
+  return screen
     .getAllByRole<HTMLInputElement>("radio")
     .filter((one) => one.checked)
     .map((one) => one.value);
+}
 
 describe("the radio group examples", () => {
   test("every example is claimed from the server's markup", async () => {

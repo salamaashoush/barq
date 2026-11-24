@@ -79,8 +79,9 @@ import { demos as sidebarDemos } from "./examples/sidebar/index.ts";
 import { demos as messageScrollerDemos } from "./examples/message-scroller/index.ts";
 import type { ComponentDoc } from "./registry.ts";
 
-const importLine = (names: string, from: string): string =>
-  `import { ${names} } from "@barqjs/ui/${from}";`;
+function importLine(names: string, from: string): string {
+  return `import { ${names} } from "@barqjs/ui/${from}";`;
+}
 
 export const COMPONENTS: readonly ComponentDoc[] = [
   {

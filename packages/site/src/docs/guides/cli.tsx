@@ -127,21 +127,32 @@ export const sections: readonly DocsSection[] = [
   { id: "namespaces", label: "Namespaced registries" },
 ];
 
-function Text(props: { text: string }) {
+interface TextProps {
+  text: string;
+}
+
+interface ProsePart {
+  text: string;
+  code: boolean;
+}
+
+function Text(props: TextProps) {
   const parts = props.text
     .split("`")
     .map((text, at) => ({ text, code: at % 2 === 1 }))
     .filter((part) => part.text !== "");
   return (
     <For each={() => parts}>
-      {(part: { text: string; code: boolean }) =>
-        part.code ? <code>{part.text}</code> : <span>{part.text}</span>
-      }
+      {(part: ProsePart) => (part.code ? <code>{part.text}</code> : <span>{part.text}</span>)}
     </For>
   );
 }
 
-function Options(props: { options: readonly Option[] }) {
+interface OptionsProps {
+  options: readonly Option[];
+}
+
+function Options(props: OptionsProps) {
   return (
     <ul>
       <For each={() => props.options}>

@@ -10,8 +10,12 @@ import CheckboxRtl from "./checkbox-rtl.tsx";
 import CheckboxStates from "./checkbox-states.tsx";
 import CheckboxTable from "./checkbox-table.tsx";
 
-const box = (id: string): HTMLInputElement => document.getElementById(id) as HTMLInputElement;
-const boxes = (): HTMLInputElement[] => screen.getAllByRole<HTMLInputElement>("checkbox");
+function box(id: string): HTMLInputElement {
+  return document.getElementById(id) as HTMLInputElement;
+}
+function boxes(): HTMLInputElement[] {
+  return screen.getAllByRole<HTMLInputElement>("checkbox");
+}
 
 describe("the checkbox examples", () => {
   test("every example is claimed from the server's markup", async () => {
@@ -65,7 +69,9 @@ describe("the checkbox examples", () => {
 
   test("the header box selects every row and a row's box selects its row", async () => {
     render(() => <CheckboxTable />);
-    const selected = (): number => document.querySelectorAll('tr[data-state="selected"]').length;
+    function selected(): number {
+      return document.querySelectorAll('tr[data-state="selected"]').length;
+    }
     expect(boxes().map((one) => one.checked)).toEqual([false, true, false, false, false]);
     expect(selected()).toBe(1);
 

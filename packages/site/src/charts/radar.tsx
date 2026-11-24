@@ -12,9 +12,16 @@ import { scalePoint } from "@tanstack/charts/scales/point";
 import { curveLinearClosed } from "d3-shape";
 import { ChartLegend, type ChartConfig, type ChartDefinition } from "@barqjs/ui";
 
-import { ChartCard, DESKTOP, DESKTOP_MOBILE, MONTHS, palette, rows, THEME } from "./shared.tsx";
-
-import type { Child } from "@barqjs/core";
+import {
+  ChartCard,
+  DESKTOP,
+  DESKTOP_MOBILE,
+  MONTHS,
+  palette,
+  rows,
+  THEME,
+  type ChartEntry,
+} from "./shared.tsx";
 
 /**
  * A radar polygon is a CLOSED path, and the curve is what closes it.
@@ -42,14 +49,16 @@ const TREND = "Trending up by 5.2% this month";
 const ANGLE = { scale: scalePoint } as const;
 const RADIUS = { scale: scaleLinear, nice: true } as const;
 
-function radar(options: {
+interface RadarOptions {
   config: ChartConfig;
   fill?: boolean;
   points?: boolean;
   grid?: "polygon" | "circle" | "none";
   gridFill?: boolean;
   labels?: boolean;
-}): ChartDefinition {
+}
+
+function radar(options: RadarOptions): ChartDefinition {
   const data = rows(options.config, MONTHS);
   const grid = options.grid ?? "polygon";
   const shared = { angle: "x", radius: "value", z: "series", color: "series" } as const;
@@ -87,11 +96,7 @@ function radar(options: {
 
 const CARD = { trend: TREND, footnote: RANGE } as const;
 
-export const RADAR_CHARTS: readonly {
-  name: string;
-  description: string;
-  component: () => Child;
-}[] = [
+export const RADAR_CHARTS: readonly ChartEntry[] = [
   {
     name: "chart-radar-default",
     description: "A radar chart",

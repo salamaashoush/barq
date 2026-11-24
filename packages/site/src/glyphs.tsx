@@ -20,8 +20,13 @@ const glyph = ui({
   height: "calc(var(--spacing) * 4)",
 });
 
+interface OutlineProps {
+  children?: unknown;
+  round?: boolean;
+}
+
 /** `stroke` only, and the same weight upstream draws every one of them at. */
-function Outline(props: { children?: unknown; round?: boolean }) {
+function Outline(props: OutlineProps) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -51,8 +56,12 @@ const STYLE_PATHS: Readonly<Record<string, string>> = {
 
 const ROUNDED = new Set(["nova", "mira", "luma", "rhea"]);
 
+export interface StyleGlyphProps {
+  name: string;
+}
+
 /** A style's own shape. `maia` is a circle and `sera` a rectangle, so those two are elements. */
-export function StyleGlyph(props: { name: string }) {
+export function StyleGlyph(props: StyleGlyphProps) {
   if (props.name === "maia") {
     return (
       <Outline round>
@@ -111,6 +120,10 @@ const letters = ui({
   lineHeight: "1",
 });
 
+export interface FontGlyphProps {
+  stack?: string;
+}
+
 /**
  * `Aa`, set in the font it is offering.
  *
@@ -118,7 +131,7 @@ const letters = ui({
  * is the only part of the trigger that changes family: the label beside it
  * stays in the chrome's font, or the row would reflow on every hover.
  */
-export function FontGlyph(props: { stack?: string }) {
+export function FontGlyph(props: FontGlyphProps) {
   return (
     <span class={letters} style={{ "font-family": props.stack ?? "inherit" }} aria-hidden="true">
       Aa

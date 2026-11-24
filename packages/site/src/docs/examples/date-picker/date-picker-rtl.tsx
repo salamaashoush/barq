@@ -28,8 +28,9 @@ const panel = css`
   padding: 0;
 `;
 
-const long = (date: CalendarDate): string =>
-  date.toDate(getLocalTimeZone()).toLocaleDateString("ar-EG", { dateStyle: "long" });
+function long(date: CalendarDate): string {
+  return date.toDate(getLocalTimeZone()).toLocaleDateString("ar-EG", { dateStyle: "long" });
+}
 
 export default function DatePickerRtl() {
   provideLocale("ar-EG");

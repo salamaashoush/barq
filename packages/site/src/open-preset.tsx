@@ -62,20 +62,29 @@ export function parsePreset(input: string): Params | null {
   return write(params) === "" ? null : params;
 }
 
-export function OpenPreset(props: { design: Design; class?: string }) {
+export interface OpenPresetProps {
+  design: Design;
+  class?: string;
+}
+
+export function OpenPreset(props: OpenPresetProps) {
   const [open, setOpen] = createSignal(false);
   const [input, setInput] = createSignal("");
 
-  const parsed = (): Params | null => parsePreset(input());
-  const invalid = (): boolean => input().trim() !== "" && parsed() === null;
+  function parsed(): Params | null {
+    return parsePreset(input());
+  }
+  function invalid(): boolean {
+    return input().trim() !== "" && parsed() === null;
+  }
 
-  const submit = (): void => {
+  function submit(): void {
     const next = parsed();
     if (next === null) return;
     props.design.set(next);
     setInput("");
     setOpen(false);
-  };
+  }
 
   return (
     <Dialog

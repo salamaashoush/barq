@@ -44,8 +44,9 @@ const full = css`
   width: 100%;
 `;
 
-const answer = (entry: FormDataEntryValue | null, none = "None"): string =>
-  typeof entry === "string" && entry !== "" ? entry : none;
+function answer(entry: FormDataEntryValue | null, none = "None"): string {
+  return typeof entry === "string" && entry !== "" ? entry : none;
+}
 
 export default function QuestionnaireCard() {
   function handleSubmit(event: SubmitEvent) {

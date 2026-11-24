@@ -442,7 +442,12 @@ const ROWS = [
   },
 ];
 
-function NavGroup(props: { label?: string; items: typeof NAV_MAIN }) {
+interface NavGroupProps {
+  label?: string;
+  items: typeof NAV_MAIN;
+}
+
+function NavGroup(props: NavGroupProps) {
   return (
     <SidebarGroup>
       {props.label === undefined ? null : <SidebarGroupLabel>{props.label}</SidebarGroupLabel>}
@@ -464,14 +469,19 @@ function NavGroup(props: { label?: string; items: typeof NAV_MAIN }) {
   );
 }
 
+interface SectionEntry {
+  id: string;
+  name: string;
+}
+
 export function Dashboard01() {
   const [range, setRange] = createSignal("90d");
   const [page, setPage] = createSignal(1);
 
-  const shown = (): typeof VISITORS => {
+  function shown(): typeof VISITORS {
     const keep = range() === "7d" ? 3 : range() === "30d" ? 6 : VISITORS.length;
     return VISITORS.slice(-keep);
-  };
+  }
 
   return (
     <SidebarProvider class={blockFillsPreview}>
@@ -691,7 +701,7 @@ export function Dashboard01() {
                   defaultSelectedKey="10"
                   aria-label="Rows per page"
                 >
-                  {(entry: { id: string; name: string }) => <SelectItem>{entry.name}</SelectItem>}
+                  {(entry: SectionEntry) => <SelectItem>{entry.name}</SelectItem>}
                 </Select>
                 <span>Page {String(page())} of 5</span>
                 <Button
@@ -721,6 +731,10 @@ export function Dashboard01() {
   );
 }
 
+interface CardContentChartProps {
+  data: typeof VISITORS;
+}
+
 /**
  * The chart, in a component of its own.
  *
@@ -728,7 +742,7 @@ export function Dashboard01() {
  * call inline in the card would rebuild it on every range change, which is what
  * made the legend flicker.
  */
-function CardContentChart(props: { data: typeof VISITORS }) {
+function CardContentChart(props: CardContentChartProps) {
   return (
     <div class={padded}>
       <ChartContainer config={CHART_CONFIG} class={chartBox}>

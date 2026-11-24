@@ -10,9 +10,9 @@ import AvatarGroupCountIconExample from "./avatar-group-count-icon.tsx";
 import AvatarRtl from "./avatar-rtl.tsx";
 import AvatarSizeExample from "./avatar-size.tsx";
 
-const slots = (name: string): readonly Element[] => [
-  ...document.querySelectorAll(`[data-slot="${name}"]`),
-];
+function slots(name: string): readonly Element[] {
+  return [...document.querySelectorAll(`[data-slot="${name}"]`)];
+}
 
 async function settle(): Promise<void> {
   flush();

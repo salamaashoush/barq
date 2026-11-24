@@ -5,8 +5,9 @@ import { render, screen, tick, user } from "@barqjs/testing";
 import { Sidebar07 } from "./sidebar-07.tsx";
 import { hydrateBlock } from "./test-harness.ts";
 
-const sidebar = (root: ParentNode): HTMLElement =>
-  root.querySelector('[data-slot="sidebar"]') as HTMLElement;
+function sidebar(root: ParentNode): HTMLElement {
+  return root.querySelector('[data-slot="sidebar"]') as HTMLElement;
+}
 
 describe("sidebar-07", () => {
   test("the two groups, the breadcrumb and the team are on the page", () => {

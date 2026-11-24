@@ -123,12 +123,14 @@ export default function MessageScrollerAnchoring() {
   const [anchorRole, setAnchorRole] = createSignal<AnchorRole>("user");
   const [messages, setMessages] = createSignal<ChatMessage[]>([]);
   const [messageIndex, setMessageIndex] = createSignal(0);
-  const nextMessage = (): ChatMessage | undefined => scriptedMessages[messageIndex()];
+  function nextMessage(): ChatMessage | undefined {
+    return scriptedMessages[messageIndex()];
+  }
 
-  const reset = (): void => {
+  function reset(): void {
     setMessages([]);
     setMessageIndex(0);
-  };
+  }
 
   return (
     <div class={shell}>

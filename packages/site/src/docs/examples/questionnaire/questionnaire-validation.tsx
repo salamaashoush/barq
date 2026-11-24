@@ -34,8 +34,17 @@ interface Answers {
   readonly audience: "team" | "public";
 }
 
+interface ValidationInput {
+  answers: Answers;
+}
+
+interface ValidationResult {
+  errors: Errors;
+  first: ItemName;
+}
+
 /** The schema: both answers present, and a public answer is a complete one. */
-function validate(data: FormData): { answers: Answers } | { errors: Errors; first: ItemName } {
+function validate(data: FormData): ValidationInput | ValidationResult {
   const detail = data.get("detail");
   const audience = data.get("audience");
   const errors: Errors = {};

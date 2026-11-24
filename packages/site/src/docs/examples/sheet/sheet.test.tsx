@@ -14,7 +14,9 @@ async function settle(): Promise<void> {
   flush();
 }
 
-const content = (): HTMLElement | null => document.querySelector('[data-slot="sheet-content"]');
+function content(): HTMLElement | null {
+  return document.querySelector('[data-slot="sheet-content"]');
+}
 
 describe("the sheet examples", () => {
   test("every example is claimed from the server's markup", async () => {

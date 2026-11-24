@@ -5,7 +5,9 @@ import { render, screen, tick, user } from "@barqjs/testing";
 import { Sidebar06 } from "./sidebar-06.tsx";
 import { hydrateBlock } from "./test-harness.ts";
 
-const sidebar = (): HTMLElement => document.querySelector('[data-slot="sidebar"]') as HTMLElement;
+function sidebar(): HTMLElement {
+  return document.querySelector('[data-slot="sidebar"]') as HTMLElement;
+}
 
 describe("sidebar-06", () => {
   test("each section is a menu button, and its pages open beside it", async () => {

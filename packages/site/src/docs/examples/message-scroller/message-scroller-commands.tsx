@@ -108,11 +108,12 @@ const paragraph = css`
   white-space: pre-wrap;
 `;
 
-const split = (text: string): string[] =>
-  text
+function split(text: string): string[] {
+  return text
     .split(/\n\s*\n/)
     .map((part) => part.trim())
     .filter(Boolean);
+}
 
 const menu = css`
   width: calc(var(--spacing) * 64);
@@ -126,8 +127,9 @@ const clamp = css`
   -webkit-line-clamp: 1;
 `;
 
-const trimmed = (message: ChatMessage): string =>
-  message.text.length > 42 ? `${message.text.slice(0, 39)}...` : message.text;
+function trimmed(message: ChatMessage): string {
+  return message.text.length > 42 ? `${message.text.slice(0, 39)}...` : message.text;
+}
 
 function CommandMenu() {
   const { scrollToMessage } = useMessageScroller();

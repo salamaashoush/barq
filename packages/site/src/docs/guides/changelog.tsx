@@ -105,16 +105,23 @@ export const sections: readonly DocsSection[] = MONTHS.map((month) => ({
   label: month.label,
 }));
 
-function Text(props: { text: string }) {
+interface TextProps {
+  text: string;
+}
+
+interface ProsePart {
+  text: string;
+  code: boolean;
+}
+
+function Text(props: TextProps) {
   const parts = props.text
     .split("`")
     .map((text, at) => ({ text, code: at % 2 === 1 }))
     .filter((part) => part.text !== "");
   return (
     <For each={() => parts}>
-      {(part: { text: string; code: boolean }) =>
-        part.code ? <code>{part.text}</code> : <span>{part.text}</span>
-      }
+      {(part: ProsePart) => (part.code ? <code>{part.text}</code> : <span>{part.text}</span>)}
     </For>
   );
 }

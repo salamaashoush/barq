@@ -23,6 +23,10 @@ import "@barqjs/ui/theme/base.ts";
 import "../theme.ts";
 import { SiteLayout } from "../site.tsx";
 
+interface ShellProps {
+  children: Child;
+}
+
 /**
  * The document.
  *
@@ -35,7 +39,7 @@ import { SiteLayout } from "../site.tsx";
  * nothing to answer with, and the theme's dark rule is a plain `.dark` class
  * that matches any element. `SiteLayout` carries it, one element in.
  */
-function Shell(props: { children: Child }) {
+function Shell(props: ShellProps) {
   return (
     <html lang="en">
       <head>

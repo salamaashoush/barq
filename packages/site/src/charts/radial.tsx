@@ -4,9 +4,7 @@ import { scaleBand } from "@tanstack/charts/scales/band";
 import { scaleLinear } from "@tanstack/charts/scales/linear";
 import { ChartLegend, type ChartConfig, type ChartDefinition } from "@barqjs/ui";
 
-import { ChartCard, palette, THEME } from "./shared.tsx";
-
-import type { Child } from "@barqjs/core";
+import { ChartCard, palette, THEME, type ChartEntry } from "./shared.tsx";
 
 const RANGE = "January - June 2024";
 const TREND = "Trending up by 5.2% this month";
@@ -30,6 +28,12 @@ const BROWSER_CONFIG: ChartConfig = [
 
 const TOTAL = BROWSERS.reduce((sum, row) => sum + row.visitors, 0);
 
+interface RingOptions {
+  grid?: boolean;
+  startAngle?: number;
+  endAngle?: number;
+}
+
 /**
  * A ring per row, its length the value.
  *
@@ -39,11 +43,7 @@ const TOTAL = BROWSERS.reduce((sum, row) => sum + row.visitors, 0);
  * gauge shape instead — one band, a radius that grows — and having both named
  * is why neither needs a `layout` prop to say which it meant.
  */
-function rings(options: {
-  grid?: boolean;
-  startAngle?: number;
-  endAngle?: number;
-}): ChartDefinition {
+function rings(options: RingOptions): ChartDefinition {
   return defineChart({
     marks: [
       polar({
@@ -73,11 +73,7 @@ function rings(options: {
 
 const CARD = { trend: TREND, footnote: VISITORS } as const;
 
-export const RADIAL_CHARTS: readonly {
-  name: string;
-  description: string;
-  component: () => Child;
-}[] = [
+export const RADIAL_CHARTS: readonly ChartEntry[] = [
   {
     name: "chart-radial-simple",
     description: "A radial chart",

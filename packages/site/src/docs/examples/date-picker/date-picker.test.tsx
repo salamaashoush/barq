@@ -16,12 +16,13 @@ async function settle(): Promise<void> {
   flush();
 }
 
-const day = (name: number): HTMLElement =>
-  screen
+function day(name: number): HTMLElement {
+  return screen
     .getAllByRole("button")
     .find(
       (button) => button.closest('[role="grid"]') !== null && button.textContent === String(name),
     ) as HTMLElement;
+}
 
 describe("the date picker examples", () => {
   test("every example is claimed from the server's markup", async () => {

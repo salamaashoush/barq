@@ -35,11 +35,17 @@ const submitted = css`
   white-space: pre-wrap;
 `;
 
-const between = (label: string, low: number, high: number) => (input: { value: string }) => {
-  if (input.value.length < low) return `${label} must be at least ${low} characters.`;
-  if (input.value.length > high) return `${label} must be at most ${high} characters.`;
-  return undefined;
-};
+interface TextValue {
+  value: string;
+}
+
+function between(label: string, low: number, high: number) {
+  return (input: TextValue) => {
+    if (input.value.length < low) return `${label} must be at least ${low} characters.`;
+    if (input.value.length > high) return `${label} must be at most ${high} characters.`;
+    return undefined;
+  };
+}
 
 export default function BugReport() {
   const [sent, setSent] = createSignal("");

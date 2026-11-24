@@ -34,8 +34,8 @@ interface Framed {
  * and a hydration root that is a bare range is a shape the page never
  * produces: the preview card is always its parent.
  */
-const frame = (slug: string): string =>
-  [
+function frame(slug: string): string {
+  return [
     'import { dynamic } from "@barqjs/web";',
     `import { demos } from ${JSON.stringify(join(examples, slug, "index.ts"))};`,
     "export const framed = demos.map((demo) => {",
@@ -44,6 +44,15 @@ const frame = (slug: string): string =>
     "});",
     "",
   ].join("\n");
+}
+
+interface BuildOutput {
+  text(): Promise<string>;
+}
+
+interface FramedModule {
+  framed: readonly Framed[];
+}
 
 async function half(workspace: string, slug: string, ssr: boolean): Promise<readonly Framed[]> {
   const side = ssr ? "ssr" : "dom";
@@ -66,8 +75,8 @@ async function half(workspace: string, slug: string, ssr: boolean): Promise<read
   }
 
   const built = join(workspace, `built-${side}.mjs`);
-  writeFileSync(built, await (result.outputs[0] as { text(): Promise<string> }).text());
-  return ((await import(built)) as { framed: readonly Framed[] }).framed;
+  writeFileSync(built, await (result.outputs[0] as BuildOutput).text());
+  return ((await import(built)) as FramedModule).framed;
 }
 
 /**

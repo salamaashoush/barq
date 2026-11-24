@@ -499,6 +499,11 @@ const heading = css`
   margin: 0 0 0.75rem;
 `;
 
+interface SectionProps {
+  title?: string;
+  children?: Child;
+}
+
 /**
  * One component's section, anchored so the docs rail can land on it.
  *
@@ -506,8 +511,10 @@ const heading = css`
  * links and headings are two lists drifts the moment one gains an entry, and
  * the drift is a link that silently scrolls nowhere.
  */
-function Section(props: { title?: string; children?: Child }) {
-  const id = (): string => slugOf(props.title ?? "");
+function Section(props: SectionProps) {
+  function id(): string {
+    return slugOf(props.title ?? "");
+  }
   return (
     <section data-section={props.title} id={id} class={anchor}>
       <h2 class={heading}>{props.title}</h2>
@@ -598,6 +605,16 @@ const FRUITS = [
   { id: "banana", name: "Banana" },
   { id: "cherry", name: "Cherry" },
 ];
+
+interface ProduceGroup {
+  options?: unknown[];
+}
+
+interface ProduceNode {
+  id: string;
+  name: string;
+  options?: unknown[];
+}
 
 export function Gallery() {
   const [progress] = createSignal(62);
@@ -847,11 +864,9 @@ export function Gallery() {
             items={PRODUCE}
             aria-label="Produce"
             placeholder="Pick one"
-            getChildren={(group: { options?: unknown[] }) =>
-              group.options as { id: string; name: string; options?: unknown[] }[] | undefined
-            }
+            getChildren={(group: ProduceGroup) => group.options as ProduceNode[] | undefined}
           >
-            {(value: { id: string; name: string; options?: unknown[] }) =>
+            {(value: ProduceNode) =>
               value.options === undefined ? (
                 <SelectItem>{value.name}</SelectItem>
               ) : (
@@ -1724,6 +1739,11 @@ export function Designer() {
   );
 }
 
+interface PreviewPortalProps {
+  target: Element | null;
+  children?: Child;
+}
+
 /**
  * Where the preview's own overlays go.
  *
@@ -1733,7 +1753,7 @@ export function Designer() {
  * overlays — without it a dialog opened inside the preview portals to the body,
  * outside the scoped theme, and paints in the page's colours.
  */
-function PreviewPortal(props: { target: Element | null; children?: Child }) {
+function PreviewPortal(props: PreviewPortalProps) {
   providePortalTarget(() => props.target);
   return <>{props.children}</>;
 }

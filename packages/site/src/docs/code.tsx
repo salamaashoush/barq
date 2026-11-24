@@ -69,7 +69,12 @@ const title = css`
   color: var(--code-foreground);
 `;
 
-function useCopy(): { copied: () => boolean; onCopy: (value: string) => void } {
+interface CopyState {
+  copied: () => boolean;
+  onCopy: (value: string) => void;
+}
+
+function useCopy(): CopyState {
   const [copied, setCopied] = createSignal(false);
   return {
     copied,
@@ -82,7 +87,12 @@ function useCopy(): { copied: () => boolean; onCopy: (value: string) => void } {
   };
 }
 
-export function CodeBlock(props: { code: string; title?: string }) {
+export interface CodeBlockProps {
+  code: string;
+  title?: string;
+}
+
+export function CodeBlock(props: CodeBlockProps) {
   const { copied, onCopy } = useCopy();
   return (
     <figure class={figure} data-not-typeset>
@@ -107,14 +117,22 @@ export function CodeBlock(props: { code: string; title?: string }) {
   );
 }
 
+export interface CodeTokensProps {
+  code: string;
+}
+
 /**
  * A snippet's tokens, coloured. The preview panel renders the same ones.
  *
  * The palette and the `data-token` rules live on whichever `<pre>` holds it,
  * so a panel that wants a different one only redeclares the properties.
  */
-export function CodeTokens(props: { code: string }) {
+export function CodeTokens(props: CodeTokensProps) {
   return <Highlighted tokens={codeTokens(props.code)} />;
+}
+
+interface HighlightedProps {
+  tokens: readonly Token[];
 }
 
 /**
@@ -125,7 +143,7 @@ export function CodeTokens(props: { code: string }) {
  * but a row that is bare text gives the hydration walk no node to claim, and
  * every row the server wrote after it is reported as unclaimed.
  */
-function Highlighted(props: { tokens: readonly Token[] }) {
+function Highlighted(props: HighlightedProps) {
   return (
     <For each={() => props.tokens}>
       {(token: Token) => (
@@ -167,18 +185,22 @@ const MANAGERS = [
   { id: "bun", run: "bunx --bun" },
 ] as const;
 
+export interface CommandTabsProps {
+  command: string;
+}
+
 /**
  * `npx shadcn@latest add <name>` across the four, which is what upstream's
  * install block shows first. Ours runs `@barqjs/ui-cli`, the package whose
  * `barq-ui` command writes these components into a project: a runner given the
  * bare `barq-ui` would look for a package of that name.
  */
-export function CommandTabs(props: { command: string }) {
+export function CommandTabs(props: CommandTabsProps) {
   const [picked, setPicked] = createSignal<string>("pnpm");
-  const line = (): string => {
+  function line(): string {
     const manager = MANAGERS.find((entry) => entry.id === picked()) ?? MANAGERS[0];
     return `${manager.run} ${props.command}`;
-  };
+  }
   const { copied, onCopy } = useCopy();
 
   return (

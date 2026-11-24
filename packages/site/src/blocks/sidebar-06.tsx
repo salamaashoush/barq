@@ -243,7 +243,11 @@ const NAV_MAIN: readonly NavSection[] = [
   },
 ];
 
-function NavMain(props: { items: readonly NavSection[] }) {
+interface NavMainProps {
+  items: readonly NavSection[];
+}
+
+function NavMain(props: NavMainProps) {
   const sidebar = useSidebar();
 
   return (

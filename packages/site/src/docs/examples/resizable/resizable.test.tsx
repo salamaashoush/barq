@@ -8,7 +8,9 @@ import ResizableHandleDemo from "./resizable-handle.tsx";
 import ResizableRtl from "./resizable-rtl.tsx";
 import ResizableVertical from "./resizable-vertical.tsx";
 
-const value = (handle: HTMLElement): number => Number(handle.getAttribute("aria-valuenow"));
+function value(handle: HTMLElement): number {
+  return Number(handle.getAttribute("aria-valuenow"));
+}
 
 describe("the resizable examples", () => {
   test("every example is claimed from the server's markup", async () => {

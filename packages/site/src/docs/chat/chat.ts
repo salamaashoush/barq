@@ -22,9 +22,18 @@ export interface ChatTransport {
   readonly delayMs: number;
 }
 
+export interface MessageOptions {
+  id?: string;
+}
+
+export interface ScriptedReply {
+  reply: ChatMessage;
+  wait: number;
+}
+
 export interface ScriptedChat {
-  user(text: string, options?: { id?: string }): ScriptedChat;
-  assistant(text: string, options?: { id?: string }): ScriptedChat;
+  user(text: string, options?: MessageOptions): ScriptedChat;
+  assistant(text: string, options?: MessageOptions): ScriptedChat;
   sleep(ms: number): ScriptedChat;
   /** Every message, or the first `exchanges` user turns with their replies. */
   get(exchanges?: number): ChatMessage[];
@@ -32,7 +41,7 @@ export interface ScriptedChat {
   next(messages: readonly ChatMessage[]): ChatMessage | undefined;
   transport(options: ChatTransport): ChatTransport;
   /** The reply that follows a user message, and how long to wait before it. */
-  replyTo(message: ChatMessage): { reply: ChatMessage; wait: number } | undefined;
+  replyTo(message: ChatMessage): ScriptedReply | undefined;
 }
 
 export function createChat(): ScriptedChat {
@@ -86,16 +95,19 @@ export interface UseChat {
   readonly setMessages: (messages: readonly ChatMessage[]) => void;
 }
 
-const wait = (ms: number): Promise<void> =>
-  new Promise((resolve) => {
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+}
 
-export function useChat(options: {
+export interface UseChatOptions {
   chat: ScriptedChat;
   messages: readonly ChatMessage[];
   transport: ChatTransport;
-}): UseChat {
+}
+
+export function useChat(options: UseChatOptions): UseChat {
   const [messages, setList] = createSignal<readonly ChatMessage[]>(options.messages);
   const [status, setStatus] = createSignal<ChatStatus>("ready");
   // A reset or an unmount while a reply is streaming abandons that reply.
@@ -104,13 +116,13 @@ export function useChat(options: {
     generation++;
   });
 
-  const setMessages = (next: readonly ChatMessage[]): void => {
+  function setMessages(next: readonly ChatMessage[]): void {
     generation++;
     setList(next);
     setStatus("ready");
-  };
+  }
 
-  const sendMessage = async (message: ChatMessage): Promise<void> => {
+  async function sendMessage(message: ChatMessage): Promise<void> {
     const run = ++generation;
     setList([...messages(), message]);
     setStatus("submitted");
@@ -140,7 +152,7 @@ export function useChat(options: {
       if (run !== generation) return;
     }
     setStatus("ready");
-  };
+  }
 
   return { messages, status, sendMessage, setMessages };
 }

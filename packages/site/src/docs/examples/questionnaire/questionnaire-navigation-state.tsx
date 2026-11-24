@@ -35,8 +35,9 @@ const pending = css`
   }
 `;
 
-const answer = (entry: FormDataEntryValue | null, none = "None"): string =>
-  typeof entry === "string" && entry !== "" ? entry : none;
+function answer(entry: FormDataEntryValue | null, none = "None"): string {
+  return typeof entry === "string" && entry !== "" ? entry : none;
+}
 
 export default function QuestionnaireNavigationState() {
   const [item, setItem] = createSignal<ItemName>("permission");
@@ -44,7 +45,9 @@ export default function QuestionnaireNavigationState() {
     permission: "unanswered",
     verification: "unanswered",
   });
-  const unanswered = (): boolean => statuses()[item()] === "unanswered";
+  function unanswered(): boolean {
+    return statuses()[item()] === "unanswered";
+  }
 
   function setStatus(name: ItemName, status: QuestionnaireItemStatus) {
     setStatuses({ ...statuses(), [name]: status });

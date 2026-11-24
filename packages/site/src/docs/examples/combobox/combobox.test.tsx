@@ -17,11 +17,12 @@ async function settle(): Promise<void> {
   flush();
 }
 
-const options = (): string[] =>
-  screen
+function options(): string[] {
+  return screen
     .getAllByRole("option")
     .filter((option) => !option.closest("[hidden]"))
     .map((option) => option.textContent ?? "");
+}
 
 describe("the combobox examples", () => {
   test("every example is claimed from the server's markup", async () => {
@@ -76,10 +77,11 @@ describe("the combobox examples", () => {
 
   test("a chip is added for each choice and starts with the first", async () => {
     render(() => <ComboboxMultiple />);
-    const chips = (): string[] =>
-      [...document.querySelectorAll('[data-slot="combobox-chip"]')].map(
+    function chips(): string[] {
+      return [...document.querySelectorAll('[data-slot="combobox-chip"]')].map(
         (chip) => chip.firstChild?.textContent ?? "",
       );
+    }
     expect(chips()).toEqual(["Next.js"]);
     await user.click(screen.getByRole("combobox", { name: "Frameworks" }));
     await settle();

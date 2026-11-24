@@ -12,7 +12,9 @@ async function settle(): Promise<void> {
   flush();
 }
 
-const toasts = (): Element[] => [...document.querySelectorAll('[data-slot="toast"]')];
+function toasts(): Element[] {
+  return [...document.querySelectorAll('[data-slot="toast"]')];
+}
 
 describe("the toast examples", () => {
   test("every example is claimed from the server's markup", async () => {

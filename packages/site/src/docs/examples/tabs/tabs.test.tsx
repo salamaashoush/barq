@@ -11,8 +11,9 @@ import TabsLine from "./tabs-line.tsx";
 import TabsRtl from "./tabs-rtl.tsx";
 import TabsVertical from "./tabs-vertical.tsx";
 
-const selected = (name: string): string | null =>
-  screen.getByRole("tab", { name }).getAttribute("aria-selected");
+function selected(name: string): string | null {
+  return screen.getByRole("tab", { name }).getAttribute("aria-selected");
+}
 
 describe("the tabs examples", () => {
   test("every example is claimed from the server's markup", async () => {

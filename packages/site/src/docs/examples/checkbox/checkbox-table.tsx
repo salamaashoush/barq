@@ -35,18 +35,20 @@ const tableData: readonly Member[] = [
 export default function CheckboxTable() {
   const [selectedRows, setSelectedRows] = createSignal<ReadonlySet<string>>(new Set(["1"]));
 
-  const selectAll = (): boolean => selectedRows().size === tableData.length;
+  function selectAll(): boolean {
+    return selectedRows().size === tableData.length;
+  }
 
-  const handleSelectAll = (checked: boolean): void => {
+  function handleSelectAll(checked: boolean): void {
     setSelectedRows(checked ? new Set(tableData.map((row) => row.id)) : new Set<string>());
-  };
+  }
 
-  const handleSelectRow = (id: string, checked: boolean): void => {
+  function handleSelectRow(id: string, checked: boolean): void {
     const next = new Set(selectedRows());
     if (checked) next.add(id);
     else next.delete(id);
     setSelectedRows(next);
-  };
+  }
 
   return (
     <Table>

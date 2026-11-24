@@ -40,6 +40,16 @@ interface Answer {
   readonly errors: readonly string[];
 }
 
+interface Served {
+  code: number;
+  errors: string;
+  answers: readonly Answer[];
+}
+
+interface BuildOutput {
+  text(): Promise<string>;
+}
+
 /**
  * Every path through the page handler, in a process that has no DOM at all.
  *
@@ -51,11 +61,7 @@ interface Answer {
  * and an error nothing caught halts the engine for good, so the halt is lifted
  * between pages or one bad page would hide every failure after it.
  */
-async function serve(paths: readonly string[]): Promise<{
-  code: number;
-  errors: string;
-  answers: readonly Answer[];
-}> {
+async function serve(paths: readonly string[]): Promise<Served> {
   const workspace = mkdtempSync(join(modules, "barq-site-routes-"));
   try {
     const entry = join(workspace, "handler.ts");
@@ -89,10 +95,7 @@ async function serve(paths: readonly string[]): Promise<{
       ],
     });
     if (!result.success) throw new AggregateError(result.logs, "the route table did not build");
-    writeFileSync(
-      join(workspace, "handler.mjs"),
-      await (result.outputs[0] as { text(): Promise<string> }).text(),
-    );
+    writeFileSync(join(workspace, "handler.mjs"), await (result.outputs[0] as BuildOutput).text());
     writeFileSync(
       join(workspace, "serve.mjs"),
       [

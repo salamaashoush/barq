@@ -27,13 +27,22 @@ function copiedPath(file: string): string {
 }
 
 const byName = new Map<string, string>();
-for (const item of index.items as readonly { files: string[]; exports?: string[] }[]) {
+
+interface CopiedItem {
+  files: string[];
+  exports?: string[];
+}
+for (const item of index.items as readonly CopiedItem[]) {
   for (const name of item.exports ?? []) byName.set(name, item.files[0] as string);
 }
 
 const bySubpath = new Map<string, string>();
+
+interface BarqExport {
+  barq?: string;
+}
 for (const [key, value] of Object.entries(manifest.exports as Record<string, unknown>)) {
-  const target = (value as { barq?: string }).barq;
+  const target = (value as BarqExport).barq;
   if (target !== undefined) bySubpath.set(key.slice(2), target.replace(/^\.\/src\//, ""));
 }
 

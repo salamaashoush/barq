@@ -140,7 +140,11 @@ const TREE: readonly TreeItem[] = [
 
 const OPEN = new Set(["components", "ui"]);
 
-function Tree(props: { item: TreeItem }) {
+interface TreeProps {
+  item: TreeItem;
+}
+
+function Tree(props: TreeProps) {
   const item = props.item;
   const [first, ...items] = typeof item === "string" ? [item] : item;
   const name = typeof first === "string" ? first : "";

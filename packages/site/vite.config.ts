@@ -3,7 +3,9 @@ import { fileURLToPath } from "node:url";
 import barq from "@barqjs/vite";
 import { defineConfig } from "vite";
 
-const from = (path: string): string => fileURLToPath(new URL(path, import.meta.url));
+function from(path: string): string {
+  return fileURLToPath(new URL(path, import.meta.url));
+}
 
 /**
  * The site: what ui.shadcn.com is, over `@barqjs/ui`, rendered on the server.

@@ -24,11 +24,11 @@ export default function ModeToggle() {
     setDark(localStorage.getItem(KEY) === "dark");
   });
 
-  const toggle = (): void => {
+  function toggle(): void {
     const next = !dark();
     setDark(next);
     localStorage.setItem(KEY, next ? "dark" : "light");
-  };
+  }
 
   return (
     <div class={`${surface} ${dark() ? "dark" : ""}`} data-slot="mode">

@@ -11,10 +11,15 @@ import SliderRange from "./slider-range.tsx";
 import SliderRtl from "./slider-rtl.tsx";
 import SliderVertical from "./slider-vertical.tsx";
 
-const thumbs = (): HTMLInputElement[] => screen.getAllByRole<HTMLInputElement>("slider");
-const values = (): string[] => thumbs().map((thumb) => thumb.value);
-const track = (): HTMLElement =>
-  document.querySelector('[data-slot="slider-track"]') as HTMLElement;
+function thumbs(): HTMLInputElement[] {
+  return screen.getAllByRole<HTMLInputElement>("slider");
+}
+function values(): string[] {
+  return thumbs().map((thumb) => thumb.value);
+}
+function track(): HTMLElement {
+  return document.querySelector('[data-slot="slider-track"]') as HTMLElement;
+}
 
 describe("the slider examples", () => {
   test("every example is claimed from the server's markup", async () => {

@@ -6,7 +6,9 @@ import { render, screen, user } from "@barqjs/testing";
 import { Sidebar04 } from "./sidebar-04.tsx";
 import { hydrateBlock } from "./test-harness.ts";
 
-const sidebar = (): HTMLElement => document.querySelector('[data-slot="sidebar"]') as HTMLElement;
+function sidebar(): HTMLElement {
+  return document.querySelector('[data-slot="sidebar"]') as HTMLElement;
+}
 
 describe("sidebar-04", () => {
   test("the sidebar floats, and has no rail", () => {

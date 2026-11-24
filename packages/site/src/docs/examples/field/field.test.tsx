@@ -22,7 +22,9 @@ async function settle(): Promise<void> {
   flush();
 }
 
-const checkbox = (id: string): HTMLInputElement => document.getElementById(id) as HTMLInputElement;
+function checkbox(id: string): HTMLInputElement {
+  return document.getElementById(id) as HTMLInputElement;
+}
 
 describe("the field examples", () => {
   test("every example is claimed from the server's markup", async () => {

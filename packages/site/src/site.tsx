@@ -596,12 +596,14 @@ const headerActions = css`
   }
 `;
 
-export function PageHeader(props: {
+export interface PageHeaderProps {
   title: string;
   lede?: string;
   actions?: Child;
   children?: Child;
-}) {
+}
+
+export function PageHeader(props: PageHeaderProps) {
   return (
     <section class={headerSection}>
       <div class={wrapper}>
@@ -627,6 +629,12 @@ const shell = css`
   gap: calc(var(--spacing) * 8);
 `;
 
+export interface PageProps {
+  title: string;
+  lede?: string;
+  children?: Child;
+}
+
 /**
  * A page: their `PageHeader` over its body.
  *
@@ -634,7 +642,7 @@ const shell = css`
  * header the front page does, so this is that header and the content under it
  * rather than a heading each page styles itself.
  */
-export function Page(props: { title: string; lede?: string; children?: Child }) {
+export function Page(props: PageProps) {
   return (
     <>
       <PageHeader title={props.title} lede={props.lede}>

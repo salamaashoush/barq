@@ -27,8 +27,9 @@ const result = css`
   color: var(--muted-foreground);
 `;
 
-const answer = (entry: FormDataEntryValue | null): string =>
-  typeof entry === "string" ? entry : "None";
+function answer(entry: FormDataEntryValue | null): string {
+  return typeof entry === "string" ? entry : "None";
+}
 
 export default function QuestionnaireFreeform() {
   const [saved, setSaved] = createSignal("");

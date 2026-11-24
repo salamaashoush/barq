@@ -87,11 +87,12 @@ const paragraph = css`
   white-space: pre-wrap;
 `;
 
-const split = (text: string): string[] =>
-  text
+function split(text: string): string[] {
+  return text
     .split(/\n\s*\n/)
     .map((part) => part.trim())
     .filter(Boolean);
+}
 
 const status = css`
   justify-content: center;
@@ -102,7 +103,12 @@ const status = css`
   color: var(--muted-foreground);
 `;
 
-function scrollStatus(edges: { start: boolean; end: boolean }): string {
+interface ScrollEdges {
+  start: boolean;
+  end: boolean;
+}
+
+function scrollStatus(edges: ScrollEdges): string {
   if (edges.start && edges.end) return "You can scroll both ways.";
   if (edges.end) return "You are at the top. You can only scroll down.";
   if (edges.start) return "You are at the bottom. You can only scroll up.";

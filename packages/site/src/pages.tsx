@@ -86,7 +86,9 @@ const full = css`
  */
 export function BlockPage() {
   const params = useParams();
-  const block = (): BlockEntry | undefined => blockNamed(params().name ?? "");
+  function block(): BlockEntry | undefined {
+    return blockNamed(params().name ?? "");
+  }
   const Found = dynamic(() => block()?.component);
 
   return (

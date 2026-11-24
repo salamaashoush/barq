@@ -7,8 +7,9 @@ import ScrollAreaDemo from "./scroll-area-demo.tsx";
 import ScrollAreaHorizontalDemo from "./scroll-area-horizontal-demo.tsx";
 import ScrollAreaRtl from "./scroll-area-rtl.tsx";
 
-const slot = (name: string): HTMLElement =>
-  document.querySelector(`[data-slot="${name}"]`) as HTMLElement;
+function slot(name: string): HTMLElement {
+  return document.querySelector(`[data-slot="${name}"]`) as HTMLElement;
+}
 
 /** happy-dom measures nothing, so the horizontal geometry is declared. */
 function measure(size: number, content: number): HTMLElement {

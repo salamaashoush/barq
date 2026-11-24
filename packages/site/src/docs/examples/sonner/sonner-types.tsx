@@ -7,6 +7,10 @@ const row = css`
   gap: calc(var(--spacing) * 2);
 `;
 
+interface Saved {
+  name: string;
+}
+
 export default function SonnerTypes() {
   return (
     <div class={row}>
@@ -34,11 +38,11 @@ export default function SonnerTypes() {
       <Button
         variant="outline"
         onPress={() => {
-          void toast.promise<{ name: string }>(
+          void toast.promise<Saved>(
             () => new Promise((resolve) => setTimeout(() => resolve({ name: "Event" }), 2000)),
             {
               loading: "Loading...",
-              success: (data: { name: string }) => `${data.name} has been created`,
+              success: (data: Saved) => `${data.name} has been created`,
               error: "Error",
             },
           );

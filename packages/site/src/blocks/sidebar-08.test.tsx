@@ -5,7 +5,9 @@ import { render, screen, tick, user } from "@barqjs/testing";
 import { Sidebar08 } from "./sidebar-08.tsx";
 import { hydrateBlock } from "./test-harness.ts";
 
-const shell = (): HTMLElement => document.querySelector('[data-slot="sidebar"]') as HTMLElement;
+function shell(): HTMLElement {
+  return document.querySelector('[data-slot="sidebar"]') as HTMLElement;
+}
 
 describe("sidebar-08", () => {
   test("the inset sidebar carries the three groups and the user", () => {

@@ -16,7 +16,9 @@ async function settle(): Promise<void> {
   flush();
 }
 
-const content = (): HTMLElement | null => document.querySelector('[data-slot="dialog-content"]');
+function content(): HTMLElement | null {
+  return document.querySelector('[data-slot="dialog-content"]');
+}
 
 async function press(name: string): Promise<void> {
   await user.click(screen.getByRole("button", { name }));

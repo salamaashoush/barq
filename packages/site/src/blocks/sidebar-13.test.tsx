@@ -5,7 +5,9 @@ import { render, screen, tick, user } from "@barqjs/testing";
 import { Sidebar13 } from "./sidebar-13.tsx";
 import { hydrateBlock } from "./test-harness.ts";
 
-const dialog = (): Element | null => document.querySelector('[data-slot="dialog-content"]');
+function dialog(): Element | null {
+  return document.querySelector('[data-slot="dialog-content"]');
+}
 
 async function settle(): Promise<void> {
   flush();

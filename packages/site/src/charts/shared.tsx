@@ -23,6 +23,13 @@ export const THEME = {
   background: "transparent",
 } as const;
 
+export interface ChartEntry {
+  readonly name: string;
+  readonly description: string;
+  /** The chart's own component, rendered through `dynamic` rather than called. */
+  readonly component: () => Child;
+}
+
 export interface Row {
   readonly x: string;
   readonly series: string;
@@ -51,11 +58,13 @@ export function rows(
   );
 }
 
-/** The colour scale, as the series NAMES rather than the colours behind them. */
-export function palette(config: ChartConfig): {
+export interface Palette {
   domain: readonly string[];
   range: readonly string[];
-} {
+}
+
+/** The colour scale, as the series NAMES rather than the colours behind them. */
+export function palette(config: ChartConfig): Palette {
   return {
     domain: config.map((series) => series.key),
     range: config.map((series) => `var(--color-${series.key})`),
@@ -86,7 +95,9 @@ export const DESKTOP_MOBILE: ChartConfig = [
 ];
 
 /** `January` as `Jan`, which is upstream's `tickFormatter` on every one. */
-export const short = (value: unknown): string => String(value).slice(0, 3);
+export function short(value: unknown): string {
+  return String(value).slice(0, 3);
+}
 
 /**
  * The axis shadcn draws: labels, and nothing else.

@@ -5,9 +5,9 @@ import { render, screen, tick, user } from "@barqjs/testing";
 import { Sidebar15 } from "./sidebar-15.tsx";
 import { hydrateBlock } from "./test-harness.ts";
 
-const sidebars = (): HTMLElement[] => [
-  ...document.querySelectorAll<HTMLElement>('[data-slot="sidebar"]'),
-];
+function sidebars(): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>('[data-slot="sidebar"]')];
+}
 
 async function settle(): Promise<void> {
   flush();
@@ -51,7 +51,9 @@ describe("sidebar-15", () => {
     expect(calendar.querySelector('[role="grid"]')).not.toBeNull();
     // `hidden`: the right sidebar is `display: none` below 64rem of preview,
     // and nothing here gives the preview a width.
-    const list = (name: string): HTMLElement => screen.getByRole("button", { name, hidden: true });
+    function list(name: string): HTMLElement {
+      return screen.getByRole("button", { name, hidden: true });
+    }
     expect(list("My Calendars").getAttribute("aria-expanded")).toBe("true");
     expect(list("Other").getAttribute("aria-expanded")).toBe("false");
   });

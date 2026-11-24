@@ -5,7 +5,9 @@ import { render, screen, tick, user } from "@barqjs/testing";
 import { Sidebar12 } from "./sidebar-12.tsx";
 import { hydrateBlock } from "./test-harness.ts";
 
-const sidebar = (): HTMLElement => document.querySelector('[data-slot="sidebar"]') as HTMLElement;
+function sidebar(): HTMLElement {
+  return document.querySelector('[data-slot="sidebar"]') as HTMLElement;
+}
 
 async function settle(): Promise<void> {
   flush();
@@ -38,11 +40,12 @@ describe("sidebar-12", () => {
 
   test("the first two calendars of a list are ticked", () => {
     render(() => <Sidebar12 />);
-    const ticked = (name: string): string | null | undefined =>
-      screen
+    function ticked(name: string): string | null | undefined {
+      return screen
         .getByRole("button", { name })
         .querySelector("[data-active]")
         ?.getAttribute("data-active");
+    }
     expect(ticked("Personal")).toBe("true");
     expect(ticked("Work")).toBe("true");
     expect(ticked("Family")).toBe("false");

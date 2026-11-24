@@ -32,11 +32,13 @@ async function close(): Promise<void> {
   expect(screen.queryAllByRole("menu")).toHaveLength(0);
 }
 
-const labels = (role: string): (string | null | undefined)[] =>
-  screen.getAllByRole(role).map((item) => item.firstChild?.textContent);
+function labels(role: string): (string | null | undefined)[] {
+  return screen.getAllByRole(role).map((item) => item.firstChild?.textContent);
+}
 
-const checked = (role: string, name: string): string | null =>
-  screen.getByRole(role, { name }).getAttribute("aria-checked");
+function checked(role: string, name: string): string | null {
+  return screen.getByRole(role, { name }).getAttribute("aria-checked");
+}
 
 describe("the dropdown menu examples", () => {
   test("every example is claimed from the server's markup", async () => {

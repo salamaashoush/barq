@@ -13,9 +13,8 @@ import {
   rows,
   THEME,
   type Row,
+  type ChartEntry,
 } from "./shared.tsx";
-
-import type { Child } from "@barqjs/core";
 
 /** `radius={8}` on every one of upstream's single-series bars. */
 const RADIUS = 8;
@@ -68,8 +67,13 @@ const SIGNED = [
   { month: "June", visitors: 214 },
 ];
 
+interface SimpleBarOptions {
+  config: ChartConfig;
+  radius?: number;
+}
+
 /** One series, one column each, with upstream's corner. */
-function simpleBars(options: { config: ChartConfig; radius?: number }): ChartDefinition {
+function simpleBars(options: SimpleBarOptions): ChartDefinition {
   const data = rows(options.config, MONTHS);
   return defineChart({
     marks: [
@@ -166,162 +170,161 @@ const BROWSER_LABELS: Record<string, string> = Object.fromEntries(
   BROWSER_CONFIG.map((series) => [series.key, series.label]),
 );
 
-export const BAR_CHARTS: readonly { name: string; description: string; component: () => Child }[] =
-  [
-    {
-      name: "chart-bar-default",
-      description: "A bar chart",
-      component: () => (
-        <ChartCard
-          title="Bar Chart"
-          description={RANGE}
-          config={DESKTOP}
-          definition={simpleBars({ config: DESKTOP })}
-          ariaLabel="Visitors by month"
-          trend={TREND}
-          footnote={VISITORS}
-        />
-      ),
-    },
-    {
-      name: "chart-bar-horizontal",
-      description: "A horizontal bar chart",
-      component: () => (
-        <ChartCard
-          title="Bar Chart - Horizontal"
-          description={RANGE}
-          config={DESKTOP}
-          definition={horizontalMonths()}
-          ariaLabel="Visitors by month, horizontally"
-          trend={TREND}
-          footnote={VISITORS}
-        />
-      ),
-    },
-    {
-      name: "chart-bar-multiple",
-      description: "A multiple bar chart",
-      component: () => (
-        <ChartCard
-          title="Bar Chart - Multiple"
-          description={RANGE}
-          config={DESKTOP_MOBILE}
-          definition={groupedBars(4)}
-          ariaLabel="Desktop and mobile visitors, side by side"
-          trend={TREND}
-          footnote={VISITORS}
-        />
-      ),
-    },
-    {
-      name: "chart-bar-stacked",
-      description: "A stacked bar chart with a legend",
-      component: () => (
-        <ChartCard
-          title="Bar Chart - Stacked + Legend"
-          description={RANGE}
-          config={DESKTOP_MOBILE}
-          definition={stackedBars()}
-          ariaLabel="Desktop and mobile visitors, stacked"
-          trend={TREND}
-          footnote={VISITORS}
-        >
-          <ChartLegend />
-        </ChartCard>
-      ),
-    },
-    {
-      name: "chart-bar-label",
-      description: "A bar chart with a label",
-      component: () => (
-        <ChartCard
-          title="Bar Chart - Label"
-          description={RANGE}
-          config={DESKTOP}
-          definition={labelledBars()}
-          ariaLabel="Visitors by month, with each value written above its bar"
-          trend={TREND}
-          footnote={VISITORS}
-        />
-      ),
-    },
-    {
-      name: "chart-bar-label-custom",
-      description: "A bar chart with a custom label",
-      component: () => (
-        <ChartCard
-          title="Bar Chart - Custom Label"
-          description={RANGE}
-          config={DESKTOP_MOBILE}
-          definition={customLabelBars()}
-          ariaLabel="Visitors by month, labelled inside each bar"
-          trend={TREND}
-          footnote={VISITORS}
-        />
-      ),
-    },
-    {
-      name: "chart-bar-mixed",
-      description: "A mixed bar chart",
-      component: () => (
-        <ChartCard
-          title="Bar Chart - Mixed"
-          description={RANGE}
-          config={BROWSER_CONFIG}
-          definition={mixedBrowsers()}
-          ariaLabel="Visitors by browser"
-          trend={TREND}
-          footnote={VISITORS}
-        />
-      ),
-    },
-    {
-      name: "chart-bar-active",
-      description: "A bar chart with an active bar",
-      component: () => (
-        <ChartCard
-          title="Bar Chart - Active"
-          description={RANGE}
-          config={BROWSER_CONFIG}
-          definition={activeBars()}
-          ariaLabel="Visitors by browser, with the largest called out"
-          trend={TREND}
-          footnote={VISITORS}
-        />
-      ),
-    },
-    {
-      name: "chart-bar-negative",
-      description: "A bar chart with negative values",
-      component: () => (
-        <ChartCard
-          title="Bar Chart - Negative"
-          description={RANGE}
-          config={DESKTOP_MOBILE}
-          definition={negativeBars()}
-          ariaLabel="Change in visitors by month, above and below zero"
-          trend={TREND}
-          footnote={VISITORS}
-        />
-      ),
-    },
-    {
-      name: "chart-bar-interactive",
-      description: "An interactive bar chart",
-      component: () => (
-        <ChartCard
-          title="Bar Chart - Interactive"
-          description="Showing total visitors for the last 3 months"
-          config={DESKTOP_MOBILE}
-          definition={groupedBars(4)}
-          ariaLabel="Desktop and mobile visitors"
-          height={250}
-          trend={TREND}
-          footnote={VISITORS}
-        />
-      ),
-    },
-  ];
+export const BAR_CHARTS: readonly ChartEntry[] = [
+  {
+    name: "chart-bar-default",
+    description: "A bar chart",
+    component: () => (
+      <ChartCard
+        title="Bar Chart"
+        description={RANGE}
+        config={DESKTOP}
+        definition={simpleBars({ config: DESKTOP })}
+        ariaLabel="Visitors by month"
+        trend={TREND}
+        footnote={VISITORS}
+      />
+    ),
+  },
+  {
+    name: "chart-bar-horizontal",
+    description: "A horizontal bar chart",
+    component: () => (
+      <ChartCard
+        title="Bar Chart - Horizontal"
+        description={RANGE}
+        config={DESKTOP}
+        definition={horizontalMonths()}
+        ariaLabel="Visitors by month, horizontally"
+        trend={TREND}
+        footnote={VISITORS}
+      />
+    ),
+  },
+  {
+    name: "chart-bar-multiple",
+    description: "A multiple bar chart",
+    component: () => (
+      <ChartCard
+        title="Bar Chart - Multiple"
+        description={RANGE}
+        config={DESKTOP_MOBILE}
+        definition={groupedBars(4)}
+        ariaLabel="Desktop and mobile visitors, side by side"
+        trend={TREND}
+        footnote={VISITORS}
+      />
+    ),
+  },
+  {
+    name: "chart-bar-stacked",
+    description: "A stacked bar chart with a legend",
+    component: () => (
+      <ChartCard
+        title="Bar Chart - Stacked + Legend"
+        description={RANGE}
+        config={DESKTOP_MOBILE}
+        definition={stackedBars()}
+        ariaLabel="Desktop and mobile visitors, stacked"
+        trend={TREND}
+        footnote={VISITORS}
+      >
+        <ChartLegend />
+      </ChartCard>
+    ),
+  },
+  {
+    name: "chart-bar-label",
+    description: "A bar chart with a label",
+    component: () => (
+      <ChartCard
+        title="Bar Chart - Label"
+        description={RANGE}
+        config={DESKTOP}
+        definition={labelledBars()}
+        ariaLabel="Visitors by month, with each value written above its bar"
+        trend={TREND}
+        footnote={VISITORS}
+      />
+    ),
+  },
+  {
+    name: "chart-bar-label-custom",
+    description: "A bar chart with a custom label",
+    component: () => (
+      <ChartCard
+        title="Bar Chart - Custom Label"
+        description={RANGE}
+        config={DESKTOP_MOBILE}
+        definition={customLabelBars()}
+        ariaLabel="Visitors by month, labelled inside each bar"
+        trend={TREND}
+        footnote={VISITORS}
+      />
+    ),
+  },
+  {
+    name: "chart-bar-mixed",
+    description: "A mixed bar chart",
+    component: () => (
+      <ChartCard
+        title="Bar Chart - Mixed"
+        description={RANGE}
+        config={BROWSER_CONFIG}
+        definition={mixedBrowsers()}
+        ariaLabel="Visitors by browser"
+        trend={TREND}
+        footnote={VISITORS}
+      />
+    ),
+  },
+  {
+    name: "chart-bar-active",
+    description: "A bar chart with an active bar",
+    component: () => (
+      <ChartCard
+        title="Bar Chart - Active"
+        description={RANGE}
+        config={BROWSER_CONFIG}
+        definition={activeBars()}
+        ariaLabel="Visitors by browser, with the largest called out"
+        trend={TREND}
+        footnote={VISITORS}
+      />
+    ),
+  },
+  {
+    name: "chart-bar-negative",
+    description: "A bar chart with negative values",
+    component: () => (
+      <ChartCard
+        title="Bar Chart - Negative"
+        description={RANGE}
+        config={DESKTOP_MOBILE}
+        definition={negativeBars()}
+        ariaLabel="Change in visitors by month, above and below zero"
+        trend={TREND}
+        footnote={VISITORS}
+      />
+    ),
+  },
+  {
+    name: "chart-bar-interactive",
+    description: "An interactive bar chart",
+    component: () => (
+      <ChartCard
+        title="Bar Chart - Interactive"
+        description="Showing total visitors for the last 3 months"
+        config={DESKTOP_MOBILE}
+        definition={groupedBars(4)}
+        ariaLabel="Desktop and mobile visitors"
+        height={250}
+        trend={TREND}
+        footnote={VISITORS}
+      />
+    ),
+  },
+];
 
 /** `<LabelList position="top" offset={12} className="fill-foreground" />`. */
 function labelledBars(): ChartDefinition {
@@ -345,6 +348,10 @@ function labelledBars(): ChartDefinition {
   });
 }
 
+interface MonthRow {
+  month: string;
+}
+
 /**
  * The label INSIDE the bar, which upstream draws in `var(--background)`.
  *
@@ -359,7 +366,7 @@ function customLabelBars(): ChartDefinition {
       text(MONTHS, {
         x: () => 0,
         y: "month",
-        text: (row: { month: string }) => row.month.slice(0, 3),
+        text: (row: MonthRow) => row.month.slice(0, 3),
         dx: 8,
         fontSize: 12,
         fill: "var(--background)",
@@ -376,6 +383,10 @@ function customLabelBars(): ChartDefinition {
     },
     theme: THEME,
   });
+}
+
+interface BrowserRow {
+  browser: string;
 }
 
 /**
@@ -399,11 +410,11 @@ function activeBars(): ChartDefinition {
         // `fillOpacity` is one number for the whole mark, so the called-out bar
         // mixes its own colour with the surface instead: same picture, and the
         // paint stays a per-datum channel the way upstream's `shape` prop is.
-        fill: (row: { browser: string }) =>
+        fill: (row: BrowserRow) =>
           row.browser === largest.browser
             ? `color-mix(in oklab, var(--color-${row.browser}) 80%, transparent)`
             : `var(--color-${row.browser})`,
-        stroke: (row: { browser: string }) =>
+        stroke: (row: BrowserRow) =>
           row.browser === largest.browser ? `var(--color-${row.browser})` : "none",
         strokeWidth: 2,
         strokeDasharray: "4",
@@ -429,6 +440,10 @@ function activeBars(): ChartDefinition {
   });
 }
 
+interface VisitorsRow {
+  visitors: number;
+}
+
 /**
  * Above and below zero, coloured by sign.
  *
@@ -444,8 +459,8 @@ function negativeBars(): ChartDefinition {
       text(data, {
         x: "month",
         y: "visitors",
-        text: (row: { month: string }) => row.month.slice(0, 3),
-        dy: (row: { visitors: number }) => (row.visitors > 0 ? -8 : 16),
+        text: (row: MonthRow) => row.month.slice(0, 3),
+        dy: (row: VisitorsRow) => (row.visitors > 0 ? -8 : 16),
         fontSize: 12,
         fill: "var(--foreground)",
         anchor: "middle",

@@ -8,8 +8,9 @@ import AccordionDisabled from "./accordion-disabled.tsx";
 import AccordionMultiple from "./accordion-multiple.tsx";
 import AccordionRtl from "./accordion-rtl.tsx";
 
-const expanded = (name: string): string | null =>
-  screen.getByRole("button", { name }).getAttribute("aria-expanded");
+function expanded(name: string): string | null {
+  return screen.getByRole("button", { name }).getAttribute("aria-expanded");
+}
 
 describe("the accordion examples", () => {
   test("every example is claimed from the server's markup", async () => {

@@ -13,7 +13,9 @@ import ShimmerOnce from "./shimmer-once.tsx";
 import ShimmerRtl from "./shimmer-rtl.tsx";
 import ShimmerSpread from "./shimmer-spread.tsx";
 
-const shimmering = (): HTMLElement[] => [...document.querySelectorAll<HTMLElement>(`.${shimmer}`)];
+function shimmering(): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>(`.${shimmer}`)];
+}
 
 describe("the shimmer examples", () => {
   test("every example is claimed from the server's markup", async () => {

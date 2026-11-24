@@ -355,8 +355,12 @@ function grouped(options: readonly Option[]): Row[] {
 }
 
 export function Picker(props: PickerProps) {
-  const current = (): Option | undefined => optionOf(props.options, props.value);
-  const rows = (): Row[] => grouped(props.options);
+  function current(): Option | undefined {
+    return optionOf(props.options, props.value);
+  }
+  function rows(): Row[] {
+    return grouped(props.options);
+  }
 
   return (
     <div class={group} data-slot="picker">

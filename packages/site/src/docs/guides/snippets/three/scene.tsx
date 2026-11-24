@@ -1,7 +1,11 @@
 import { createSignal } from "@barqjs/core";
 import { useFrame, type ThreeEvent } from "@barqjs/three";
 
-export default function Box(props: { x: () => number }) {
+export interface BoxProps {
+  x: () => number;
+}
+
+export default function Box(props: BoxProps) {
   const [hovered, setHovered] = createSignal(false);
   const [clicked, setClicked] = createSignal(false);
   const [angle, setAngle] = createSignal(0);

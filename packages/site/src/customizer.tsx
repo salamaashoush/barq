@@ -172,15 +172,27 @@ function radiusIsFixed(style: string): boolean {
   return style === "lyra" || style === "sera";
 }
 
-export function Customizer(props: { design: Design }) {
+export interface CustomizerProps {
+  design: Design;
+}
+
+export function Customizer(props: CustomizerProps) {
   const [searching, setSearching] = createSignal(false);
   const [resetting, setResetting] = createSignal(false);
-  const now = (): Params => props.design.params();
-  const set = (next: Partial<Params>): void => props.design.set(next);
-  const preview = (next: Partial<Params>): void => props.design.preview(next);
-  const clear = (): void => props.design.clearPreview();
+  function now(): Params {
+    return props.design.params();
+  }
+  function set(next: Partial<Params>): void {
+    props.design.set(next);
+  }
+  function preview(next: Partial<Params>): void {
+    props.design.preview(next);
+  }
+  function clear(): void {
+    props.design.clearPreview();
+  }
 
-  const shuffle = (): void => {
+  function shuffle(): void {
     set({
       style: pick(STYLES),
       baseColor: pick(BASE_COLORS),
@@ -190,10 +202,14 @@ export function Customizer(props: { design: Design }) {
       font: pick(FONTS),
       fontHeading: pick(HEADING_FONTS),
     });
-  };
+  }
 
-  const toggleDark = (): void => set({ dark: !now().dark });
-  const toggleRtl = (): void => set({ rtl: !now().rtl });
+  function toggleDark(): void {
+    set({ dark: !now().dark });
+  }
+  function toggleRtl(): void {
+    set({ rtl: !now().rtl });
+  }
 
   /**
    * What the heading glyph is set in.
@@ -202,10 +218,11 @@ export function Customizer(props: { design: Design }) {
    * showing the browser's default: the point of the control is seeing the shape
    * the headings will actually have.
    */
-  const headingStack = (): string | undefined =>
-    now().fontHeading === "inherit"
+  function headingStack(): string | undefined {
+    return now().fontHeading === "inherit"
       ? optionOf(FONTS, now().font)?.css
       : optionOf(HEADING_FONTS, now().fontHeading)?.css;
+  }
 
   return (
     <Card size="sm" class={ui(card, "dark")} data-slot="customizer">
@@ -348,6 +365,10 @@ export function Customizer(props: { design: Design }) {
   );
 }
 
+interface CopyPresetProps {
+  design: Design;
+}
+
 /**
  * The command that reproduces what is on the screen, on the clipboard.
  *
@@ -355,14 +376,14 @@ export function Customizer(props: { design: Design }) {
  * decode. There is no server here, so the honest equivalent is the command
  * itself: it is longer, and it is the thing you were going to run anyway.
  */
-function CopyPreset(props: { design: Design }) {
+function CopyPreset(props: CopyPresetProps) {
   const [took, setTook] = createSignal(false);
 
-  const copy = (): void => {
+  function copy(): void {
     void navigator.clipboard.writeText(commandFor(props.design.params()));
     setTook(true);
     setTimeout(() => setTook(false), 2000);
-  };
+  }
 
   return (
     <Button

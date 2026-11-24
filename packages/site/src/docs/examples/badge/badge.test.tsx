@@ -9,7 +9,9 @@ import BadgeRtl from "./badge-rtl.tsx";
 import BadgeWithSpinner from "./badge-spinner.tsx";
 import BadgeVariants from "./badge-variants.tsx";
 
-const badges = (): readonly Element[] => [...document.querySelectorAll('[data-slot="badge"]')];
+function badges(): readonly Element[] {
+  return [...document.querySelectorAll('[data-slot="badge"]')];
+}
 
 describe("the badge examples", () => {
   test("every example is claimed from the server's markup", async () => {

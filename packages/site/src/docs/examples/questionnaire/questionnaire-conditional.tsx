@@ -21,16 +21,19 @@ const frame = css`
   max-width: 28rem;
 `;
 
-const answer = (entry: FormDataEntryValue | null, none = "None"): string =>
-  typeof entry === "string" && entry !== "" ? entry : none;
+function answer(entry: FormDataEntryValue | null, none = "None"): string {
+  return typeof entry === "string" && entry !== "" ? entry : none;
+}
 
 export default function QuestionnaireConditional() {
   const [runtime, setRuntime] = createSignal("local");
-  const items = () => [
-    { name: "runtime", required: true },
-    { disabled: runtime() !== "cloud", name: "environment", required: true },
-    { name: "approval", required: true },
-  ];
+  function items() {
+    return [
+      { name: "runtime", required: true },
+      { disabled: runtime() !== "cloud", name: "environment", required: true },
+      { name: "approval", required: true },
+    ];
+  }
 
   function handleSubmit(event: SubmitEvent) {
     event.preventDefault();

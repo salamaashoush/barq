@@ -15,10 +15,11 @@ async function settle(): Promise<void> {
   flush();
 }
 
-const boxes = (): string[] =>
-  [...document.querySelectorAll('[data-slot="input-otp-slot"]')].map(
+function boxes(): string[] {
+  return [...document.querySelectorAll('[data-slot="input-otp-slot"]')].map(
     (slot) => slot.textContent ?? "",
   );
+}
 
 describe("the input OTP examples", () => {
   test("every example is claimed from the server's markup", async () => {

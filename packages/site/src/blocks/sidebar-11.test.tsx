@@ -5,13 +5,16 @@ import { render, screen, user } from "@barqjs/testing";
 import { Sidebar11 } from "./sidebar-11.tsx";
 import { hydrateBlock } from "./test-harness.ts";
 
-const shell = (): HTMLElement => document.querySelector('[data-slot="sidebar"]') as HTMLElement;
+function shell(): HTMLElement {
+  return document.querySelector('[data-slot="sidebar"]') as HTMLElement;
+}
 // By text rather than by role: a folder inside a collapsed one is out of the
 // accessibility tree, and its own state is still what the test is about.
-const folder = (name: string): HTMLElement =>
-  [
+function folder(name: string): HTMLElement {
+  return [
     ...document.querySelectorAll<HTMLElement>('[data-slot="sidebar-menu-button"][aria-expanded]'),
   ].find((button) => button.textContent === name) as HTMLElement;
+}
 
 describe("sidebar-11", () => {
   test("the changes carry their state, and the tree its files", () => {

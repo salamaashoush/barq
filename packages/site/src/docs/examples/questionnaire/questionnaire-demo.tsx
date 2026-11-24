@@ -32,11 +32,13 @@ const result = css`
   color: var(--muted-foreground);
 `;
 
-const answer = (entry: FormDataEntryValue | null): string =>
-  typeof entry === "string" ? entry : "None";
+function answer(entry: FormDataEntryValue | null): string {
+  return typeof entry === "string" ? entry : "None";
+}
 
-const answers = (entries: readonly FormDataEntryValue[]): string =>
-  entries.filter((entry) => typeof entry === "string").join(", ") || "None";
+function answers(entries: readonly FormDataEntryValue[]): string {
+  return entries.filter((entry) => typeof entry === "string").join(", ") || "None";
+}
 
 export default function QuestionnaireDemo() {
   const [saved, setSaved] = createSignal("");

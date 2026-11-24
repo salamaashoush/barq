@@ -46,8 +46,9 @@ const time = css`
   }
 `;
 
-const long = (date: CalendarDate): string =>
-  date.toDate(getLocalTimeZone()).toLocaleDateString("en-US", { dateStyle: "long" });
+function long(date: CalendarDate): string {
+  return date.toDate(getLocalTimeZone()).toLocaleDateString("en-US", { dateStyle: "long" });
+}
 
 export default function DatePickerTime() {
   const [open, setOpen] = createSignal(false);

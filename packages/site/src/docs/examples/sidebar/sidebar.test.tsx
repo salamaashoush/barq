@@ -15,8 +15,9 @@ async function settle(): Promise<void> {
   flush();
 }
 
-const state = (): string | null | undefined =>
-  document.querySelector('[data-slot="sidebar"]')?.getAttribute("data-state");
+function state(): string | null | undefined {
+  return document.querySelector('[data-slot="sidebar"]')?.getAttribute("data-state");
+}
 
 describe("the sidebar examples", () => {
   test("every example is claimed from the server's markup", async () => {

@@ -20,9 +20,16 @@ import { fileURLToPath } from "node:url";
  * have no business going through a second transform.
  */
 const require_ = createRequire(import.meta.url);
-const native = require_("@barqjs/compiler") as {
-  transform(code: string, options?: Record<string, unknown>): { code: string; css?: string };
-};
+
+interface NativeCompiler {
+  transform(code: string, options?: Record<string, unknown>): Transformed;
+}
+
+interface Transformed {
+  code: string;
+  css?: string;
+}
+const native = require_("@barqjs/compiler") as NativeCompiler;
 
 const source = fileURLToPath(new URL("..", import.meta.url));
 const ownTs = new RegExp(`^${source.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}.*\\.ts$`);
@@ -31,16 +38,33 @@ type Loaded = { contents: string; loader: "ts" | "tsx" };
 
 type Raw = { contents: string; loader: "js" };
 
+interface LoadFilter {
+  filter: RegExp;
+}
+
+interface LoadArgs {
+  path: string;
+}
+
+interface NamespacedFilter {
+  filter: RegExp;
+  namespace: string;
+}
+
+interface ResolveArgs {
+  path: string;
+  importer: string;
+}
+
+interface Resolved {
+  path: string;
+  namespace: string;
+}
+
 interface Build {
-  onLoad(filter: { filter: RegExp }, load: (args: { path: string }) => Loaded): void;
-  onLoad(
-    filter: { filter: RegExp; namespace: string },
-    load: (args: { path: string }) => Raw,
-  ): void;
-  onResolve(
-    filter: { filter: RegExp },
-    resolve: (args: { path: string; importer: string }) => { path: string; namespace: string },
-  ): void;
+  onLoad(filter: LoadFilter, load: (args: LoadArgs) => Loaded): void;
+  onLoad(filter: NamespacedFilter, load: (args: LoadArgs) => Raw): void;
+  onResolve(filter: LoadFilter, resolve: (args: ResolveArgs) => Resolved): void;
 }
 
 /**
@@ -62,6 +86,12 @@ function expandGlobs(code: string, importer: string): string {
   });
 }
 
+export interface BarqPluginOptions {
+  ssr?: boolean;
+  hydratable?: boolean;
+  every?: boolean;
+}
+
 /**
  * One source, lowered for the DOM or for the string backend.
  *
@@ -69,11 +99,11 @@ function expandGlobs(code: string, importer: string): string {
  * a test does not inherit it, so the hydration harness builds its two halves
  * with this and the suite's own loader is the DOM one.
  */
-export function barqPlugin(options: { ssr?: boolean; hydratable?: boolean; every?: boolean }) {
+export function barqPlugin(options: BarqPluginOptions) {
   return {
     name: options.ssr === true ? "barq-ssr" : "barq-dom",
     setup(build: Build) {
-      const load = (args: { path: string }): Loaded => {
+      function load(args: LoadArgs): Loaded {
         const result = native.transform(expandGlobs(readFileSync(args.path, "utf8"), args.path), {
           filename: args.path,
           strictCss: true,
@@ -92,7 +122,7 @@ export function barqPlugin(options: { ssr?: boolean; hydratable?: boolean; every
         // checkout resolved. A demo then showed the other checkout's code.
         const contents = `${compiled}\n// ${args.path}\n`;
         return { contents, loader: args.path.endsWith(".tsx") ? "tsx" : "ts" };
-      };
+      }
 
       // `./example.tsx?raw` is the file's text, as it is under Vite: a demo's
       // code panel shows the module it runs. The resolved path carries a

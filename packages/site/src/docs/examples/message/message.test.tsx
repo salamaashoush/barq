@@ -6,10 +6,11 @@ import MessageActionsDemo from "./message-actions.tsx";
 import MessageDemo from "./message-demo.tsx";
 import MessageGroupDemo from "./message-group.tsx";
 
-const aligns = (): (string | null)[] =>
-  [...document.querySelectorAll('[data-slot="message"]')].map((message) =>
+function aligns(): (string | null)[] {
+  return [...document.querySelectorAll('[data-slot="message"]')].map((message) =>
     message.getAttribute("data-align"),
   );
+}
 
 describe("the message examples", () => {
   test("every example is claimed from the server's markup", async () => {

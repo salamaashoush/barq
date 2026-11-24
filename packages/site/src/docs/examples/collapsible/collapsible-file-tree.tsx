@@ -118,7 +118,11 @@ const file = css`
   color: var(--foreground);
 `;
 
-function TreeItem(props: { item: FileTreeItem }) {
+interface TreeItemProps {
+  item: FileTreeItem;
+}
+
+function TreeItem(props: TreeItemProps) {
   const item = props.item;
   if ("items" in item) {
     return (

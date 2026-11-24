@@ -10,8 +10,9 @@ import ToggleRtl from "./toggle-rtl.tsx";
 import ToggleSizes from "./toggle-sizes.tsx";
 import ToggleText from "./toggle-text.tsx";
 
-const pressed = (name: string): string | null =>
-  screen.getByRole("button", { name }).getAttribute("aria-pressed");
+function pressed(name: string): string | null {
+  return screen.getByRole("button", { name }).getAttribute("aria-pressed");
+}
 
 describe("the toggle examples", () => {
   test("every example is claimed from the server's markup", async () => {

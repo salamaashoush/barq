@@ -25,8 +25,9 @@ async function close(): Promise<void> {
   expect(screen.queryAllByRole("menu")).toHaveLength(0);
 }
 
-const checked = (role: string, name: string): string | null =>
-  screen.getByRole(role, { name }).getAttribute("aria-checked");
+function checked(role: string, name: string): string | null {
+  return screen.getByRole(role, { name }).getAttribute("aria-checked");
+}
 
 describe("the menubar examples", () => {
   test("every example is claimed from the server's markup", async () => {

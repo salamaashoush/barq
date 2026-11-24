@@ -15,9 +15,8 @@ import {
   rows,
   THEME,
   type Row,
+  type ChartEntry,
 } from "./shared.tsx";
-
-import type { Child } from "@barqjs/core";
 
 const NATURAL = d3Curve(curveNatural);
 const STEP = d3Curve(curveStep);
@@ -46,6 +45,12 @@ const BROWSER_CONFIG: ChartConfig = [
   { key: "other", label: "Other", color: "var(--chart-5)" },
 ];
 
+interface LineOptions {
+  config: ChartConfig;
+  curve?: typeof NATURAL;
+  points?: "none" | "filled" | "hollow";
+}
+
 /**
  * One path per series, at upstream's own curve and weight.
  *
@@ -54,11 +59,7 @@ const BROWSER_CONFIG: ChartConfig = [
  * their own radius and paint, which is what makes `dots-custom` a fourth line
  * of code rather than a component swapped into a prop.
  */
-function lines(options: {
-  config: ChartConfig;
-  curve?: typeof NATURAL;
-  points?: "none" | "filled" | "hollow";
-}): ChartDefinition {
+function lines(options: LineOptions): ChartDefinition {
   const data = rows(options.config, MONTHS);
   const shared = {
     x: "x" as const,
@@ -158,157 +159,156 @@ function colouredDots(): ChartDefinition {
   });
 }
 
-export const LINE_CHARTS: readonly { name: string; description: string; component: () => Child }[] =
-  [
-    {
-      name: "chart-line-default",
-      description: "A line chart",
-      component: () => (
-        <ChartCard
-          title="Line Chart"
-          description={RANGE}
-          config={DESKTOP}
-          definition={lines({ config: DESKTOP, curve: NATURAL })}
-          ariaLabel="Visitors by month"
-          trend={TREND}
-          footnote={VISITORS}
-        />
-      ),
-    },
-    {
-      name: "chart-line-linear",
-      description: "A linear line chart",
-      component: () => (
-        <ChartCard
-          title="Line Chart - Linear"
-          description={RANGE}
-          config={DESKTOP}
-          definition={lines({ config: DESKTOP })}
-          ariaLabel="Visitors by month"
-          trend={TREND}
-          footnote={VISITORS}
-        />
-      ),
-    },
-    {
-      name: "chart-line-step",
-      description: "A step line chart",
-      component: () => (
-        <ChartCard
-          title="Line Chart - Step"
-          description={RANGE}
-          config={DESKTOP}
-          definition={lines({ config: DESKTOP, curve: STEP })}
-          ariaLabel="Visitors by month"
-          trend={TREND}
-          footnote={VISITORS}
-        />
-      ),
-    },
-    {
-      name: "chart-line-multiple",
-      description: "A multiple line chart",
-      component: () => (
-        <ChartCard
-          title="Line Chart - Multiple"
-          description={RANGE}
-          config={DESKTOP_MOBILE}
-          definition={lines({ config: DESKTOP_MOBILE, curve: MONOTONE })}
-          ariaLabel="Desktop and mobile visitors"
-          trend={TREND}
-          footnote={VISITORS}
-        />
-      ),
-    },
-    {
-      name: "chart-line-dots",
-      description: "A line chart with dots",
-      component: () => (
-        <ChartCard
-          title="Line Chart - Dots"
-          description={RANGE}
-          config={DESKTOP}
-          definition={lines({ config: DESKTOP, curve: NATURAL, points: "filled" })}
-          ariaLabel="Visitors by month, with a dot at each"
-          trend={TREND}
-          footnote={VISITORS}
-        />
-      ),
-    },
-    {
-      name: "chart-line-dots-custom",
-      description: "A line chart with custom dots",
-      component: () => (
-        <ChartCard
-          title="Line Chart - Custom Dots"
-          description={RANGE}
-          config={DESKTOP}
-          definition={lines({ config: DESKTOP, curve: NATURAL, points: "hollow" })}
-          ariaLabel="Visitors by month, with a hollow dot at each"
-          trend={TREND}
-          footnote={VISITORS}
-        />
-      ),
-    },
-    {
-      name: "chart-line-dots-colors",
-      description: "A line chart with dots and colors",
-      component: () => (
-        <ChartCard
-          title="Line Chart - Dots Colors"
-          description={RANGE}
-          config={BROWSER_CONFIG}
-          definition={colouredDots()}
-          ariaLabel="Visitors by browser, one colour each"
-          trend={TREND}
-          footnote={VISITORS}
-        />
-      ),
-    },
-    {
-      name: "chart-line-label",
-      description: "A line chart with labels",
-      component: () => (
-        <ChartCard
-          title="Line Chart - Label"
-          description={RANGE}
-          config={DESKTOP}
-          definition={labelledLine()}
-          ariaLabel="Visitors by month, with each value written above its point"
-          trend={TREND}
-          footnote={VISITORS}
-        />
-      ),
-    },
-    {
-      name: "chart-line-label-custom",
-      description: "A line chart with custom labels",
-      component: () => (
-        <ChartCard
-          title="Line Chart - Custom Label"
-          description={RANGE}
-          config={DESKTOP}
-          definition={labelledLine()}
-          ariaLabel="Visitors by month, with each value written above its point"
-          trend={TREND}
-          footnote={VISITORS}
-        />
-      ),
-    },
-    {
-      name: "chart-line-interactive",
-      description: "An interactive line chart",
-      component: () => (
-        <ChartCard
-          title="Line Chart - Interactive"
-          description="Showing total visitors for the last 3 months"
-          config={DESKTOP_MOBILE}
-          definition={lines({ config: DESKTOP_MOBILE, curve: MONOTONE })}
-          ariaLabel="Desktop and mobile visitors"
-          height={250}
-          trend={TREND}
-          footnote={VISITORS}
-        />
-      ),
-    },
-  ];
+export const LINE_CHARTS: readonly ChartEntry[] = [
+  {
+    name: "chart-line-default",
+    description: "A line chart",
+    component: () => (
+      <ChartCard
+        title="Line Chart"
+        description={RANGE}
+        config={DESKTOP}
+        definition={lines({ config: DESKTOP, curve: NATURAL })}
+        ariaLabel="Visitors by month"
+        trend={TREND}
+        footnote={VISITORS}
+      />
+    ),
+  },
+  {
+    name: "chart-line-linear",
+    description: "A linear line chart",
+    component: () => (
+      <ChartCard
+        title="Line Chart - Linear"
+        description={RANGE}
+        config={DESKTOP}
+        definition={lines({ config: DESKTOP })}
+        ariaLabel="Visitors by month"
+        trend={TREND}
+        footnote={VISITORS}
+      />
+    ),
+  },
+  {
+    name: "chart-line-step",
+    description: "A step line chart",
+    component: () => (
+      <ChartCard
+        title="Line Chart - Step"
+        description={RANGE}
+        config={DESKTOP}
+        definition={lines({ config: DESKTOP, curve: STEP })}
+        ariaLabel="Visitors by month"
+        trend={TREND}
+        footnote={VISITORS}
+      />
+    ),
+  },
+  {
+    name: "chart-line-multiple",
+    description: "A multiple line chart",
+    component: () => (
+      <ChartCard
+        title="Line Chart - Multiple"
+        description={RANGE}
+        config={DESKTOP_MOBILE}
+        definition={lines({ config: DESKTOP_MOBILE, curve: MONOTONE })}
+        ariaLabel="Desktop and mobile visitors"
+        trend={TREND}
+        footnote={VISITORS}
+      />
+    ),
+  },
+  {
+    name: "chart-line-dots",
+    description: "A line chart with dots",
+    component: () => (
+      <ChartCard
+        title="Line Chart - Dots"
+        description={RANGE}
+        config={DESKTOP}
+        definition={lines({ config: DESKTOP, curve: NATURAL, points: "filled" })}
+        ariaLabel="Visitors by month, with a dot at each"
+        trend={TREND}
+        footnote={VISITORS}
+      />
+    ),
+  },
+  {
+    name: "chart-line-dots-custom",
+    description: "A line chart with custom dots",
+    component: () => (
+      <ChartCard
+        title="Line Chart - Custom Dots"
+        description={RANGE}
+        config={DESKTOP}
+        definition={lines({ config: DESKTOP, curve: NATURAL, points: "hollow" })}
+        ariaLabel="Visitors by month, with a hollow dot at each"
+        trend={TREND}
+        footnote={VISITORS}
+      />
+    ),
+  },
+  {
+    name: "chart-line-dots-colors",
+    description: "A line chart with dots and colors",
+    component: () => (
+      <ChartCard
+        title="Line Chart - Dots Colors"
+        description={RANGE}
+        config={BROWSER_CONFIG}
+        definition={colouredDots()}
+        ariaLabel="Visitors by browser, one colour each"
+        trend={TREND}
+        footnote={VISITORS}
+      />
+    ),
+  },
+  {
+    name: "chart-line-label",
+    description: "A line chart with labels",
+    component: () => (
+      <ChartCard
+        title="Line Chart - Label"
+        description={RANGE}
+        config={DESKTOP}
+        definition={labelledLine()}
+        ariaLabel="Visitors by month, with each value written above its point"
+        trend={TREND}
+        footnote={VISITORS}
+      />
+    ),
+  },
+  {
+    name: "chart-line-label-custom",
+    description: "A line chart with custom labels",
+    component: () => (
+      <ChartCard
+        title="Line Chart - Custom Label"
+        description={RANGE}
+        config={DESKTOP}
+        definition={labelledLine()}
+        ariaLabel="Visitors by month, with each value written above its point"
+        trend={TREND}
+        footnote={VISITORS}
+      />
+    ),
+  },
+  {
+    name: "chart-line-interactive",
+    description: "An interactive line chart",
+    component: () => (
+      <ChartCard
+        title="Line Chart - Interactive"
+        description="Showing total visitors for the last 3 months"
+        config={DESKTOP_MOBILE}
+        definition={lines({ config: DESKTOP_MOBILE, curve: MONOTONE })}
+        ariaLabel="Desktop and mobile visitors"
+        height={250}
+        trend={TREND}
+        footnote={VISITORS}
+      />
+    ),
+  },
+];

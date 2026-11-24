@@ -8,9 +8,9 @@ import SkeletonForm from "./skeleton-form.tsx";
 import SkeletonRtl from "./skeleton-rtl.tsx";
 import SkeletonTable from "./skeleton-table.tsx";
 
-const skeletons = (within: ParentNode = document): Element[] => [
-  ...within.querySelectorAll('[data-slot="skeleton"]'),
-];
+function skeletons(within: ParentNode = document): Element[] {
+  return [...within.querySelectorAll('[data-slot="skeleton"]')];
+}
 
 describe("the skeleton examples", () => {
   test("every example is claimed from the server's markup", async () => {

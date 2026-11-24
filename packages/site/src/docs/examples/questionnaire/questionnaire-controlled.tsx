@@ -51,8 +51,9 @@ const bottom = css`
   margin-top: auto;
 `;
 
-const answer = (entry: FormDataEntryValue | null, none = "None"): string =>
-  typeof entry === "string" && entry !== "" ? entry : none;
+function answer(entry: FormDataEntryValue | null, none = "None"): string {
+  return typeof entry === "string" && entry !== "" ? entry : none;
+}
 
 export default function QuestionnaireControlled() {
   const [item, setItem] = createSignal("scope");

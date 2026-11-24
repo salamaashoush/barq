@@ -50,7 +50,12 @@ const footer = css`
   padding-top: calc(var(--spacing) * 2);
 `;
 
-function ProfileForm(props: { class?: string; id: string }) {
+interface ProfileFormProps {
+  class?: string;
+  id: string;
+}
+
+function ProfileForm(props: ProfileFormProps) {
   return (
     <form class={`${form} ${props.class ?? ""}`}>
       <div class={row}>

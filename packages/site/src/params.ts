@@ -301,6 +301,11 @@ export function wearStyleOn(element: HTMLElement | null, name: string, still: ()
   });
 }
 
+export interface SiteParams {
+  params: Accessor<Params>;
+  set(next: Partial<Params>): void;
+}
+
 /**
  * The theme the SITE wears, from the same URL the designer writes.
  *
@@ -330,11 +335,11 @@ export function wearStyleOn(element: HTMLElement | null, name: string, still: ()
  * explicit `?style=` asks for. Both are attributes on `<html>`, and `dark` is
  * written by the SERVER into the markup rather than toggled on hydration.
  */
-export function installSite(): { params: Accessor<Params>; set(next: Partial<Params>): void } {
+export function installSite(): SiteParams {
   const here = useLocation();
   const [current, setCurrent] = createSignal<Params>(read(here().search));
 
-  const apply = (now: Params): void => {
+  function apply(now: Params): void {
     if (typeof document === "undefined") return;
     const root = document.documentElement;
     root.classList.toggle("dark", now.dark);
@@ -352,7 +357,7 @@ export function installSite(): { params: Accessor<Params>; set(next: Partial<Par
       now.style === DEFAULTS.style ? NONE : now.style,
       () => current().style === now.style,
     );
-  };
+  }
 
   // The front page's card panel, which upstream marks `theme-neutral`. Scoped,
   // so it is a rule ABOUT an element rather than the document's own theme, and
@@ -386,17 +391,21 @@ export function design(): Design {
     read(typeof location === "undefined" ? "" : location.search),
   );
   const hovered = previewOverride<Params>();
-  const previewed = (): Params => ({ ...committed(), ...hovered.value() });
+  function previewed(): Params {
+    return { ...committed(), ...hovered.value() };
+  }
 
   let host: HTMLElement | null = null;
 
-  const wearStyle = (name: string): void =>
+  function wearStyle(name: string): void {
     wearStyleOn(host, name, () => previewed().style === name);
+  }
 
-  const themePreview = (now: Params): void =>
+  function themePreview(now: Params): void {
     installTheme({ ...selectionOf(now), scope: PREVIEW_SCOPE });
+  }
 
-  const apply = (now: Params): void => {
+  function apply(now: Params): void {
     themePreview(now);
     // BOTH, and they are different claims. The preview wears the theme being
     // configured; the page around it wears the fixed one and only follows the
@@ -411,7 +420,7 @@ export function design(): Design {
       document.documentElement.classList.toggle("dark", now.dark);
     }
     wearStyle(now.style);
-  };
+  }
 
   // The chrome first, so the page has tokens before the preview overrides them
   // inside its own subtree. Two scopes, never one: `:root` matches `<html>` and
@@ -430,10 +439,10 @@ export function design(): Design {
   // committed choice and the hovered one — reach the page the same way.
   createEffect(previewed, apply);
 
-  const writeUrl = (now: Params): void => {
+  function writeUrl(now: Params): void {
     if (typeof history === "undefined") return;
     history.replaceState(null, "", `${location.pathname}${write(now)}`);
-  };
+  }
 
   // Back and Forward are real here — the router owns the path and every block
   // is a route — so the search has to be read back on one too: `retainSearchParams`

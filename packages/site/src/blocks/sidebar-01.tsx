@@ -231,7 +231,12 @@ const NAV_MAIN: readonly NavSection[] = [
   },
 ];
 
-function VersionSwitcher(props: { versions: readonly string[]; defaultVersion: string }) {
+interface VersionSwitcherProps {
+  versions: readonly string[];
+  defaultVersion: string;
+}
+
+function VersionSwitcher(props: VersionSwitcherProps) {
   const [selected, setSelected] = createSignal(props.defaultVersion);
 
   return (

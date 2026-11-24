@@ -4,7 +4,16 @@ import { scaleLinear } from "@tanstack/charts/scales/linear";
 import { tooltip } from "@tanstack/charts/tooltip";
 import { ChartLegend, type ChartDefinition } from "@barqjs/ui";
 
-import { ChartCard, DESKTOP_MOBILE, MONTH_AXIS, MONTHS, palette, rows, THEME } from "./shared.tsx";
+import {
+  ChartCard,
+  DESKTOP_MOBILE,
+  MONTH_AXIS,
+  MONTHS,
+  palette,
+  rows,
+  THEME,
+  type ChartEntry,
+} from "./shared.tsx";
 
 import type { Child } from "@barqjs/core";
 
@@ -22,6 +31,25 @@ const MONEY = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 0,
 });
 
+interface StackedTooltipOptions {
+  format?: (value: number, series: string) => string;
+  label?: ((x: string) => string) | false;
+  indicator?: boolean;
+}
+
+interface TooltipPoint {
+  datum: unknown;
+}
+
+interface SeriesValue {
+  series: string;
+  value: number;
+}
+
+interface XRow {
+  x?: string;
+}
+
 /**
  * Every one of upstream's nine tooltip pages is the same stacked bar chart.
  *
@@ -36,11 +64,7 @@ const MONEY = new Intl.NumberFormat("en-US", {
  * `content` render prop and a pile of `hideLabel` / `hideIndicator` /
  * `indicator="line"` flags to reach the same nine.
  */
-function stacked(options: {
-  format?: (value: number, series: string) => string;
-  label?: ((x: string) => string) | false;
-  indicator?: boolean;
-}): ChartDefinition {
+function stacked(options: StackedTooltipOptions): ChartDefinition {
   const data = rows(DESKTOP_MOBILE, MONTHS);
   const label = options.label;
 
@@ -58,8 +82,8 @@ function stacked(options: {
     tooltip: {
       use: tooltip,
       ...(options.indicator === false ? { className: "no-indicator" } : {}),
-      format: (point: { datum: unknown }) => {
-        const row = point.datum as { series: string; value: number };
+      format: (point: TooltipPoint) => {
+        const row = point.datum as SeriesValue;
         const name = LABELS[row.series] ?? row.series;
         return options.format === undefined
           ? `${name}: ${String(row.value)}`
@@ -71,7 +95,7 @@ function stacked(options: {
           ? {}
           : {
               formatGroup: (points) => {
-                const row = points[0]?.datum as { x?: string } | undefined;
+                const row = points[0]?.datum as XRow | undefined;
                 return label(row?.x ?? "");
               },
             }),
@@ -100,11 +124,7 @@ function card(title: string, definition: ChartDefinition): Child {
   );
 }
 
-export const TOOLTIP_CHARTS: readonly {
-  name: string;
-  description: string;
-  component: () => Child;
-}[] = [
+export const TOOLTIP_CHARTS: readonly ChartEntry[] = [
   {
     name: "chart-tooltip-default",
     description: "The default tooltip",

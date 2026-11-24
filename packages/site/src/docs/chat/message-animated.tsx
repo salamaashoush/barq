@@ -28,20 +28,25 @@ const still = css`
   }
 `;
 
-/** A chat row: the bubble, its paragraphs, and an entrance for the user's own. */
-export function MessageAnimated(props: {
+export interface MessageAnimatedProps {
   message: ChatMessage;
   scrollAnchor?: boolean;
   animation?: MessageAnimation;
   userVariant?: BubbleVariant;
   assistantVariant?: BubbleVariant;
-}) {
-  const isUser = (): boolean => props.message.role === "user";
-  const parts = (): string[] =>
-    props.message.text
+}
+
+/** A chat row: the bubble, its paragraphs, and an entrance for the user's own. */
+export function MessageAnimated(props: MessageAnimatedProps) {
+  function isUser(): boolean {
+    return props.message.role === "user";
+  }
+  function parts(): string[] {
+    return props.message.text
       .split(/\n\s*\n/)
       .map((part) => part.trim())
       .filter(Boolean);
+  }
 
   return (
     <MessageScrollerItem

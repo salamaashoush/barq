@@ -29,8 +29,9 @@ const items = [
   { name: "tests", required: true },
 ];
 
-const answer = (entry: FormDataEntryValue | null, none = "None"): string =>
-  typeof entry === "string" && entry !== "" ? entry : none;
+function answer(entry: FormDataEntryValue | null, none = "None"): string {
+  return typeof entry === "string" && entry !== "" ? entry : none;
+}
 
 export default function QuestionnaireDialog() {
   const [open, setOpen] = createSignal(false);

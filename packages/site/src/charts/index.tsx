@@ -12,14 +12,12 @@ import { RADAR_CHARTS } from "./radar.tsx";
 import { RADIAL_CHARTS } from "./radial.tsx";
 import { TOOLTIP_CHARTS } from "./tooltip.tsx";
 import { Page } from "../site.tsx";
+import type { ChartEntry } from "./shared.tsx";
 
-import type { Child } from "@barqjs/core";
-
-export interface ChartEntry {
-  readonly name: string;
-  readonly description: string;
-  /** The chart's own component, rendered through `dynamic` rather than called. */
-  readonly component: () => Child;
+export interface ChartType {
+  type: string;
+  label: string;
+  charts: readonly ChartEntry[];
 }
 
 /**
@@ -29,11 +27,7 @@ export interface ChartEntry {
  * split and because sixty charts on one page is sixty live hosts measuring
  * sixty containers.
  */
-export const CHART_TYPES: readonly {
-  type: string;
-  label: string;
-  charts: readonly ChartEntry[];
-}[] = [
+export const CHART_TYPES: readonly ChartType[] = [
   { type: "area", label: "Area", charts: AREA_CHARTS },
   { type: "bar", label: "Bar", charts: BAR_CHARTS },
   { type: "line", label: "Line", charts: LINE_CHARTS },
@@ -64,9 +58,12 @@ const grid = css`
 export function ChartsPage() {
   const params = useParams();
   const here = useLocation();
-  const type = (): string => params().type ?? "area";
-  const found = (): (typeof CHART_TYPES)[number] | undefined =>
-    CHART_TYPES.find((each) => each.type === type());
+  function type(): string {
+    return params().type ?? "area";
+  }
+  function found(): (typeof CHART_TYPES)[number] | undefined {
+    return CHART_TYPES.find((each) => each.type === type());
+  }
 
   return (
     <Page

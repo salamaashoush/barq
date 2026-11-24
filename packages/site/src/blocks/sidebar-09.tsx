@@ -475,12 +475,12 @@ function AppSidebar() {
   const [mails, setMails] = createSignal<readonly Mail[]>(MAILS);
 
   // Upstream's stand-in for a mailbox per folder: a different handful each time.
-  const open = (item: (typeof NAV_MAIN)[number]): void => {
+  function open(item: (typeof NAV_MAIN)[number]): void {
     setActive(item);
     const shuffled = MAILS.toSorted(() => Math.random() - 0.5);
     setMails(shuffled.slice(0, Math.max(5, Math.floor(Math.random() * 10) + 1)));
     sidebar.setOpen(true);
-  };
+  }
 
   return (
     <Sidebar collapsible="icon" class={outer}>

@@ -463,13 +463,15 @@ const TEAMS: readonly Team[] = [
   { id: "evil-corp", name: "Evil Corp.", logo: Command, shortcut: "⌘3" },
 ];
 
-/** The menu's rows: every team, then the one row that is not a team. */
-const NAV_MAIN: readonly {
+interface MainNavItem {
   readonly title: string;
   readonly url: string;
   readonly icon: Icon;
   readonly isActive?: boolean;
-}[] = [
+}
+
+/** The menu's rows: every team, then the one row that is not a team. */
+const NAV_MAIN: readonly MainNavItem[] = [
   { title: "Search", url: "#", icon: Search },
   { title: "Ask AI", url: "#", icon: Sparkles },
   { title: "Home", url: "#", icon: House, isActive: true },
@@ -564,10 +566,15 @@ const WORKSPACES: readonly Workspace[] = [
   },
 ];
 
+interface CalendarItem {
+  readonly name: string;
+  readonly active: boolean;
+}
+
 interface CalendarGroup {
   readonly name: string;
   readonly open: boolean;
-  readonly items: readonly { readonly name: string; readonly active: boolean }[];
+  readonly items: readonly CalendarItem[];
 }
 
 const CALENDARS: readonly CalendarGroup[] = [
@@ -725,8 +732,12 @@ function NavFavorites() {
   );
 }
 
+interface WorkspaceRowProps {
+  workspace: Workspace;
+}
+
 /** A component per row, so each row owns the signal its chevron toggles. */
-function WorkspaceRow(props: { workspace: Workspace }) {
+function WorkspaceRow(props: WorkspaceRowProps) {
   const workspace = props.workspace;
   const WorkspaceIcon = workspace.icon;
 

@@ -25,11 +25,12 @@ interface Entry {
   readonly children?: readonly Entry[];
 }
 
-function entriesFor(
-  section: string,
-  key: keyof Params,
-  options: readonly { value: string; label: string }[],
-): Entry {
+interface ActionOption {
+  value: string;
+  label: string;
+}
+
+function entriesFor(section: string, key: keyof Params, options: readonly ActionOption[]): Entry {
   return {
     id: section,
     name: section,
@@ -71,12 +72,12 @@ export interface ActionMenuProps {
  * that already has four.
  */
 export function ActionMenu(props: ActionMenuProps) {
-  const run = (key: Key): void => {
+  function run(key: Key): void {
     const apply = BY_KEY.get(String(key));
     if (apply === undefined) return;
     props.design.set(apply);
     props.onOpenChange(false);
-  };
+  }
 
   return (
     <CommandDialog

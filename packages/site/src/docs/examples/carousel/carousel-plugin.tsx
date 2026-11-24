@@ -50,11 +50,11 @@ function autoplay(delay: number) {
   let api: CarouselApi | undefined;
   let timer: ReturnType<typeof setInterval> | undefined;
 
-  const stop = (): void => {
+  function stop(): void {
     clearInterval(timer);
     timer = undefined;
-  };
-  const reset = (): void => {
+  }
+  function reset(): void {
     stop();
     if (api === undefined) return;
     timer = setInterval(() => {
@@ -62,7 +62,7 @@ function autoplay(delay: number) {
       if (api.canScrollNext()) api.scrollNext();
       else api.scrollTo(0);
     }, delay);
-  };
+  }
   const plugin: CarouselPlugin[number] = {
     name: "autoplay",
     options: {},

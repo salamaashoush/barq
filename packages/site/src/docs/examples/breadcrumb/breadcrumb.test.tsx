@@ -16,8 +16,9 @@ async function settle(): Promise<void> {
   flush();
 }
 
-const items = (): readonly (string | null)[] =>
-  screen.getAllByRole("menuitem").map((item) => item.textContent);
+function items(): readonly (string | null)[] {
+  return screen.getAllByRole("menuitem").map((item) => item.textContent);
+}
 
 async function close(trigger: Element): Promise<void> {
   await user.keyboard("{Escape}");

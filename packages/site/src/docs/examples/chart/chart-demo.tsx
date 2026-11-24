@@ -62,8 +62,9 @@ const total: Record<Series, number> = {
   mobile: chartData.reduce((sum, row) => sum + row.mobile, 0),
 };
 
-const day = (value: string, year?: "numeric"): string =>
-  new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", year });
+function day(value: string, year?: "numeric"): string {
+  return new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", year });
+}
 
 const card = css`
   padding-block: 0 calc(var(--spacing) * 4);
@@ -157,6 +158,18 @@ const plot = css`
   width: 100%;
 `;
 
+interface TooltipPoint {
+  datum: unknown;
+}
+
+interface ValueRow {
+  value: number;
+}
+
+interface DateRow {
+  date?: string;
+}
+
 export default function ChartDemo() {
   const [activeChart, setActiveChart] = createSignal<Series>("desktop");
 
@@ -189,12 +202,12 @@ export default function ChartDemo() {
       },
       tooltip: {
         use: tooltip,
-        format: (point: { datum: unknown }) => {
-          const row = point.datum as { value: number };
+        format: (point: TooltipPoint) => {
+          const row = point.datum as ValueRow;
           return `Page Views: ${row.value.toLocaleString()}`;
         },
-        formatGroup: (points: readonly { datum: unknown }[]) => {
-          const row = points[0]?.datum as { date?: string } | undefined;
+        formatGroup: (points: readonly TooltipPoint[]) => {
+          const row = points[0]?.datum as DateRow | undefined;
           return row?.date === undefined ? "" : day(row.date, "numeric");
         },
       },

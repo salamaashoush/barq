@@ -106,9 +106,9 @@ const plot = css`
 export default function DrawerRtl() {
   const [goal, setGoal] = createSignal(350);
 
-  const adjust = (adjustment: number): void => {
+  function adjust(adjustment: number): void {
     setGoal(Math.max(200, Math.min(400, goal() + adjustment)));
-  };
+  }
 
   return (
     <DirectionProvider dir="rtl">

@@ -15,11 +15,12 @@ async function settle(): Promise<void> {
   flush();
 }
 
-const visible = (): string[] =>
-  screen
+function visible(): string[] {
+  return screen
     .getAllByRole("option")
     .filter((option) => !option.hidden)
     .map((option) => option.textContent ?? "");
+}
 
 describe("the command examples", () => {
   test("every example is claimed from the server's markup", async () => {

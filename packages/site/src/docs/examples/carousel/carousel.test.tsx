@@ -8,9 +8,12 @@ import CarouselDemo from "./carousel-demo.tsx";
 import CarouselOrientation from "./carousel-orientation.tsx";
 import CarouselRtl from "./carousel-rtl.tsx";
 
-const status = (): string | undefined =>
-  [...document.querySelectorAll("div")].find((one) => one.textContent?.startsWith("Slide "))
-    ?.textContent ?? undefined;
+function status(): string | undefined {
+  return (
+    [...document.querySelectorAll("div")].find((one) => one.textContent?.startsWith("Slide "))
+      ?.textContent ?? undefined
+  );
+}
 
 async function settle(): Promise<void> {
   flush();

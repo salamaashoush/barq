@@ -111,11 +111,12 @@ const paragraph = css`
   white-space: pre-wrap;
 `;
 
-const split = (text: string): string[] =>
-  text
+function split(text: string): string[] {
+  return text
     .split(/\n\s*\n/)
     .map((part) => part.trim())
     .filter(Boolean);
+}
 
 const footer = css`
   flex-direction: column;
@@ -136,8 +137,12 @@ const hint = css`
 
 export default function MessageScrollerLoadHistory() {
   const [visibleCount, setVisibleCount] = createSignal(INITIAL_VISIBLE_COUNT);
-  const visibleMessages = (): ChatMessage[] => history.slice(-visibleCount());
-  const canLoadHistory = (): boolean => visibleCount() < history.length;
+  function visibleMessages(): ChatMessage[] {
+    return history.slice(-visibleCount());
+  }
+  function canLoadHistory(): boolean {
+    return visibleCount() < history.length;
+  }
 
   return (
     <MessageScrollerProvider>

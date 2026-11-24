@@ -4,7 +4,12 @@ import { anchor, type DocsSection } from "../../docs.tsx";
 import { CodeBlock, CommandTabs } from "../code.tsx";
 import tokens from "./snippets/theming/tokens.tsx?raw";
 
-export const TOKENS: readonly { readonly name: string; readonly does: string }[] = [
+export interface Token {
+  readonly name: string;
+  readonly does: string;
+}
+
+export const TOKENS: readonly Token[] = [
   { name: "--background", does: "The page, and the text on it in `--foreground`." },
   { name: "--card", does: "A card's surface, with `--card-foreground`." },
   { name: "--popover", does: "A menu's or a popover's surface, with `--popover-foreground`." },
@@ -33,16 +38,23 @@ export const sections: readonly DocsSection[] = [
   { id: "styles", label: "Component styles" },
 ];
 
-function Text(props: { text: string }) {
+interface TextProps {
+  text: string;
+}
+
+interface ProsePart {
+  text: string;
+  code: boolean;
+}
+
+function Text(props: TextProps) {
   const parts = props.text
     .split("`")
     .map((text, at) => ({ text, code: at % 2 === 1 }))
     .filter((part) => part.text !== "");
   return (
     <For each={() => parts}>
-      {(part: { text: string; code: boolean }) =>
-        part.code ? <code>{part.text}</code> : <span>{part.text}</span>
-      }
+      {(part: ProsePart) => (part.code ? <code>{part.text}</code> : <span>{part.text}</span>)}
     </For>
   );
 }

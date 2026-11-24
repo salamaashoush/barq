@@ -17,13 +17,19 @@ async function settle(): Promise<void> {
   flush();
 }
 
-const after = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+function after(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 let scope: ParentNode = document;
 
-const items = (): Element[] => [...scope.querySelectorAll('[data-slot="message-scroller-item"]')];
+function items(): Element[] {
+  return [...scope.querySelectorAll('[data-slot="message-scroller-item"]')];
+}
 
-const rows = (): (string | null)[] => items().map((row) => row.getAttribute("data-message-id"));
+function rows(): (string | null)[] {
+  return items().map((row) => row.getAttribute("data-message-id"));
+}
 
 describe("the message scroller examples", () => {
   test("every example is claimed from the server's markup", async () => {
@@ -71,8 +77,12 @@ describe("the message scroller examples", () => {
     scope = render(() => <MessageScrollerDemo />).container;
     await user.click(screen.getByRole("button", { name: "Send" }));
     await settle();
-    const log = (): Element | null => scope.querySelector('[role="log"]');
-    const busy = (): boolean => log()?.getAttribute("aria-busy") === "true";
+    function log(): Element | null {
+      return scope.querySelector('[role="log"]');
+    }
+    function busy(): boolean {
+      return log()?.getAttribute("aria-busy") === "true";
+    }
     expect(log()?.getAttribute("aria-busy")).toBe("true");
     for (let waited = 0; busy() && waited < 8000; waited += 100) {
       await after(100);

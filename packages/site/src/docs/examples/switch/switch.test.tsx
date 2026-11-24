@@ -10,10 +10,12 @@ import SwitchInvalid from "./switch-invalid.tsx";
 import SwitchRtl from "./switch-rtl.tsx";
 import SwitchSizes from "./switch-sizes.tsx";
 
-const control = (id: string): HTMLInputElement => document.getElementById(id) as HTMLInputElement;
-const tracks = (): HTMLElement[] => [
-  ...document.querySelectorAll<HTMLElement>('span[data-slot="switch"]'),
-];
+function control(id: string): HTMLInputElement {
+  return document.getElementById(id) as HTMLInputElement;
+}
+function tracks(): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>('span[data-slot="switch"]')];
+}
 
 describe("the switch examples", () => {
   test("every example is claimed from the server's markup", async () => {

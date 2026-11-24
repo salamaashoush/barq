@@ -52,12 +52,12 @@ export default function InputGroupButtonExample() {
   const [isCopied, setIsCopied] = createSignal(false);
   const [isFavorite, setIsFavorite] = createSignal(false);
 
-  const copy = (): void => {
+  function copy(): void {
     void navigator.clipboard.writeText("https://example.com/salama").then(() => {
       setIsCopied(true);
       setTimeout(() => setIsCopied(false), 2000);
     });
-  };
+  }
 
   return (
     <div class={frame}>

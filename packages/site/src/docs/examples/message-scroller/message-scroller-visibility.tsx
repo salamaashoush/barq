@@ -108,11 +108,12 @@ const paragraph = css`
   white-space: pre-wrap;
 `;
 
-const split = (text: string): string[] =>
-  text
+function split(text: string): string[] {
+  return text
     .split(/\n\s*\n/)
     .map((part) => part.trim())
     .filter(Boolean);
+}
 
 const rail = css`
   position: absolute;
@@ -193,13 +194,16 @@ const clamp = css`
   -webkit-line-clamp: 1;
 `;
 
-const trimmed = (message: ChatMessage): string =>
-  message.text.length > 42 ? `${message.text.slice(0, 39)}...` : message.text;
+function trimmed(message: ChatMessage): string {
+  return message.text.length > 42 ? `${message.text.slice(0, 39)}...` : message.text;
+}
 
 function TranscriptOutline() {
   const { scrollToMessage } = useMessageScroller();
   const visibility = useMessageScrollerVisibility();
-  const current = (): string | null => visibility().currentAnchorId;
+  function current(): string | null {
+    return visibility().currentAnchorId;
+  }
 
   return (
     <HoverCard openDelay={0} closeDelay={0}>

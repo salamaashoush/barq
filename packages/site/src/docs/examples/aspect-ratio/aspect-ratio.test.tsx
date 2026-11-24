@@ -7,10 +7,10 @@ import AspectRatioPortrait from "./aspect-ratio-portrait.tsx";
 import AspectRatioRtl from "./aspect-ratio-rtl.tsx";
 import AspectRatioSquare from "./aspect-ratio-square.tsx";
 
-const ratio = (): number => {
+function ratio(): number {
   const box = document.querySelector<HTMLElement>('[data-slot="aspect-ratio"]');
   return Number(box?.style.getPropertyValue("--barq-aspect-ratio"));
-};
+}
 
 describe("the aspect ratio examples", () => {
   test("every example is claimed from the server's markup", async () => {

@@ -89,16 +89,18 @@ export function MainMenu(props: MainMenuProps) {
     typeof navigator !== "undefined" &&
     /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
 
-  const entries = (): Entry[] => [
-    { id: "search", name: "Search…", keys: mac ? "⌘K" : "Ctrl+K" },
-    { id: "shuffle", name: "Shuffle", keys: "R" },
-    { id: "dark", name: "Light/Dark", keys: "D" },
-    { id: "rtl", name: "LTR/RTL" },
-    { id: "copy", name: "Copy CSS", keys: mac ? "⌘C" : "Ctrl+C" },
-    { id: "reset", name: "Reset", keys: "⇧R", first: true },
-  ];
+  function entries(): Entry[] {
+    return [
+      { id: "search", name: "Search…", keys: mac ? "⌘K" : "Ctrl+K" },
+      { id: "shuffle", name: "Shuffle", keys: "R" },
+      { id: "dark", name: "Light/Dark", keys: "D" },
+      { id: "rtl", name: "LTR/RTL" },
+      { id: "copy", name: "Copy CSS", keys: mac ? "⌘C" : "Ctrl+C" },
+      { id: "reset", name: "Reset", keys: "⇧R", first: true },
+    ];
+  }
 
-  const run = (key: Key): void => {
+  function run(key: Key): void {
     if (key === "shuffle") props.onShuffle();
     else if (key === "dark") props.onToggleDark();
     else if (key === "rtl") props.onToggleRtl();
@@ -110,7 +112,7 @@ export function MainMenu(props: MainMenuProps) {
         await navigator.clipboard.writeText(themeCss(selectionOf(props.design.params())));
       });
     }
-  };
+  }
 
   return (
     <DropdownMenu>

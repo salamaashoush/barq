@@ -3325,7 +3325,6 @@
       "type": "registry:block",
       "title": "Chart Area",
       "dependencies": [
-        "@barqjs/core",
         "@tanstack/charts",
         "d3-shape"
       ],
@@ -3345,7 +3344,6 @@
       "type": "registry:block",
       "title": "Chart Bar",
       "dependencies": [
-        "@barqjs/core",
         "@tanstack/charts"
       ],
       "registryDependencies": [
@@ -3364,7 +3362,6 @@
       "type": "registry:block",
       "title": "Chart Line",
       "dependencies": [
-        "@barqjs/core",
         "@tanstack/charts",
         "d3-shape"
       ],
@@ -3384,7 +3381,6 @@
       "type": "registry:block",
       "title": "Chart Pie",
       "dependencies": [
-        "@barqjs/core",
         "@tanstack/charts"
       ],
       "registryDependencies": [
@@ -3403,7 +3399,6 @@
       "type": "registry:block",
       "title": "Chart Radar",
       "dependencies": [
-        "@barqjs/core",
         "@tanstack/charts",
         "d3-shape"
       ],
@@ -3423,7 +3418,6 @@
       "type": "registry:block",
       "title": "Chart Radial",
       "dependencies": [
-        "@barqjs/core",
         "@tanstack/charts"
       ],
       "registryDependencies": [

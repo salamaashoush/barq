@@ -13,8 +13,9 @@ import QuestionnaireProgressExample from "./questionnaire-progress.tsx";
 import QuestionnaireSkipExample from "./questionnaire-skip.tsx";
 import QuestionnaireValidation from "./questionnaire-validation.tsx";
 
-const toastText = (): string | null | undefined =>
-  document.querySelector('[data-slot="toast"]')?.textContent;
+function toastText(): string | null | undefined {
+  return document.querySelector('[data-slot="toast"]')?.textContent;
+}
 
 describe("the questionnaire examples", () => {
   afterEach(() => {
@@ -85,10 +86,13 @@ describe("the questionnaire examples", () => {
   test("the custom progress fills one segment per checkpoint reached", async () => {
     render(() => <QuestionnaireProgressExample />);
     const bar = screen.getByRole("progressbar");
-    const segments = (): Element[] => [...(bar.firstElementChild?.children ?? [])];
+    function segments(): Element[] {
+      return [...(bar.firstElementChild?.children ?? [])];
+    }
     // Reached segments share the first one's class, which is always reached.
-    const reached = (): boolean[] =>
-      segments().map((each) => each.className === segments()[0]?.className);
+    function reached(): boolean[] {
+      return segments().map((each) => each.className === segments()[0]?.className);
+    }
     expect(bar.textContent).toBe("Checkpoint 1 of 4");
     expect(bar.getAttribute("aria-valuetext")).toBe("Question 1 of 4");
     expect(segments()).toHaveLength(4);

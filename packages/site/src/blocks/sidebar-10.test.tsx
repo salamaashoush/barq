@@ -5,9 +5,12 @@ import { render, screen, tick, user } from "@barqjs/testing";
 import { Sidebar10 } from "./sidebar-10.tsx";
 import { hydrateBlock } from "./test-harness.ts";
 
-const shell = (): HTMLElement =>
-  document.querySelector('[data-slot="sidebar"][data-state]') as HTMLElement;
-const panel = (): Element | null => document.querySelector('[data-slot="popover-content"]');
+function shell(): HTMLElement {
+  return document.querySelector('[data-slot="sidebar"][data-state]') as HTMLElement;
+}
+function panel(): Element | null {
+  return document.querySelector('[data-slot="popover-content"]');
+}
 
 async function settle(): Promise<void> {
   flush();

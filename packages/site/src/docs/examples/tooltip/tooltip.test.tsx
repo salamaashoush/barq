@@ -15,7 +15,9 @@ async function settle(): Promise<void> {
   flush();
 }
 
-const tip = (): HTMLElement | null => document.querySelector('[data-slot="tooltip-content"]');
+function tip(): HTMLElement | null {
+  return document.querySelector('[data-slot="tooltip-content"]');
+}
 
 describe("the tooltip examples", () => {
   test("every example is claimed from the server's markup", async () => {

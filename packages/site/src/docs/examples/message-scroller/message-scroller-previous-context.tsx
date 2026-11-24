@@ -178,8 +178,12 @@ const end = css`
 export default function MessageScrollerPreviousContext() {
   const chat = useChat({ chat: script, messages: initialMessages, transport });
   const [peek, setPeek] = createSignal(DEFAULT_PEEK);
-  const next = (): ChatMessage | undefined => script.next(chat.messages());
-  const isBusy = (): boolean => chat.status() === "submitted" || chat.status() === "streaming";
+  function next(): ChatMessage | undefined {
+    return script.next(chat.messages());
+  }
+  function isBusy(): boolean {
+    return chat.status() === "submitted" || chat.status() === "streaming";
+  }
 
   return (
     <MessageScrollerProvider scrollMargin={24} scrollPreviousItemPeek={peek()}>

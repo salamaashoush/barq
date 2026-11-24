@@ -208,12 +208,17 @@ const TEAMS = [
   { id: "evil", name: "Evil Corp.", plan: "Free", shortcut: "\u23183" },
 ];
 
+interface NavSubItem {
+  readonly id: string;
+  readonly name: string;
+}
+
 interface NavItem {
   readonly id: string;
   readonly name: string;
   readonly icon: typeof SquareTerminal;
   readonly open?: boolean;
-  readonly items: readonly { readonly id: string; readonly name: string }[];
+  readonly items: readonly NavSubItem[];
 }
 
 const NAV: readonly NavItem[] = [
@@ -268,7 +273,11 @@ const PROJECTS = [
   { id: "travel", name: "Travel", icon: MapIcon },
 ];
 
-function NavRow(props: { item: NavItem }) {
+interface NavRowProps {
+  item: NavItem;
+}
+
+function NavRow(props: NavRowProps) {
   const item = props.item;
   const Icon = item.icon;
 
@@ -287,7 +296,7 @@ function NavRow(props: { item: NavItem }) {
           <CollapsibleContent>
             <SidebarMenuSub>
               <For each={() => item.items}>
-                {(sub: { id: string; name: string }) => (
+                {(sub: NavSubItem) => (
                   <SidebarMenuSubItem>
                     <SidebarMenuSubButton href="#">
                       <span>{sub.name}</span>

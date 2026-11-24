@@ -9,12 +9,17 @@ import { createRoot, type RootState } from "@barqjs/three";
 import * as THREE from "three";
 
 const require_ = createRequire(import.meta.url);
-const native = require_("@barqjs/compiler") as {
-  transform(
-    code: string,
-    options: Record<string, unknown>,
-  ): { code: string; diagnostics: unknown[]; warnings: string[] };
-};
+
+interface NativeCompiler {
+  transform(code: string, options: Record<string, unknown>): Transformed;
+}
+
+interface Transformed {
+  code: string;
+  diagnostics: unknown[];
+  warnings: string[];
+}
+const native = require_("@barqjs/compiler") as NativeCompiler;
 
 const snippets = fileURLToPath(new URL("./snippets/three/", import.meta.url));
 const threePackage = fileURLToPath(new URL("../../../../three/", import.meta.url));
@@ -27,12 +32,27 @@ const out = fileURLToPath(
 
 afterAll(() => rmSync(out, { recursive: true, force: true }));
 
+interface BarqManifest {
+  boundaries: Boundary[];
+  intrinsics: Intrinsics[];
+}
+
+interface Boundary {
+  name: string;
+  target: string;
+  moduleSource: string;
+}
+
+interface Intrinsics {
+  tags: string;
+  claimUnknown?: boolean;
+  target: string;
+  moduleSource: string;
+}
+
 interface Manifest {
   name: string;
-  barq: {
-    boundaries: { name: string; target: string; moduleSource: string }[];
-    intrinsics: { tags: string; claimUnknown?: boolean; target: string; moduleSource: string }[];
-  };
+  barq: BarqManifest;
 }
 
 /** What `@barqjs/vite` reads from the package: its boundary and its tags. */
@@ -62,16 +82,22 @@ function compile(name: string): string {
   return compiled.code;
 }
 
-interface SceneModule {
-  default: (props: { x: () => number }) => JSXElement;
+interface DefaultProps {
+  x: () => number;
 }
 
-const fakeRenderer = () => ({
-  domElement: document.createElement("canvas"),
-  render() {},
-  setSize() {},
-  setPixelRatio() {},
-});
+interface SceneModule {
+  default: (props: DefaultProps) => JSXElement;
+}
+
+function fakeRenderer() {
+  return {
+    domElement: document.createElement("canvas"),
+    render() {},
+    setSize() {},
+    setPixelRatio() {},
+  };
+}
 
 test("the page on the three.js guide compiles its canvas's children for the scene", () => {
   const code = compile("app.tsx");

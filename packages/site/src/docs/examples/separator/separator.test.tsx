@@ -8,8 +8,9 @@ import SeparatorMenu from "./separator-menu.tsx";
 import SeparatorRtl from "./separator-rtl.tsx";
 import SeparatorVertical from "./separator-vertical.tsx";
 
-const orientations = (): (string | null)[] =>
-  screen.getAllByRole("separator").map((rule) => rule.getAttribute("data-orientation"));
+function orientations(): (string | null)[] {
+  return screen.getAllByRole("separator").map((rule) => rule.getAttribute("data-orientation"));
+}
 
 describe("the separator examples", () => {
   test("every example is claimed from the server's markup", async () => {

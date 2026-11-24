@@ -50,7 +50,12 @@ const messages: ChatMessage[] = [
   },
 ];
 
-const positions: { value: Position; label: string }[] = [
+interface PositionOption {
+  value: Position;
+  label: string;
+}
+
+const positions: PositionOption[] = [
   { value: "start", label: "start" },
   { value: "end", label: "end" },
   { value: "last-anchor", label: "last-anchor" },
@@ -112,11 +117,12 @@ const paragraph = css`
   white-space: pre-wrap;
 `;
 
-const split = (text: string): string[] =>
-  text
+function split(text: string): string[] {
+  return text
     .split(/\n\s*\n/)
     .map((part) => part.trim())
     .filter(Boolean);
+}
 
 const footer = css`
   align-items: center;
@@ -128,7 +134,11 @@ const full = css`
   width: 100%;
 `;
 
-function OpeningPositionScroller(props: { position: Position }) {
+interface OpeningPositionScrollerProps {
+  position: Position;
+}
+
+function OpeningPositionScroller(props: OpeningPositionScrollerProps) {
   const { scrollToEnd, scrollToMessage, scrollToStart } = useMessageScroller();
   let frame = 0;
   onSettled(() => {

@@ -113,10 +113,17 @@ const end = css`
 export default function MessageScrollerAnimation() {
   const chat = useChat({ chat: script, messages: initialMessages, transport });
   const [presetId, setPresetId] = createSignal<MessageAnimation["id"]>("fade");
-  const next = (): ChatMessage | undefined => script.next(chat.messages());
-  const isBusy = (): boolean => chat.status() === "submitted" || chat.status() === "streaming";
-  const preset = (): MessageAnimation =>
-    MESSAGE_ANIMATIONS.find((animation) => animation.id === presetId()) ?? MESSAGE_ANIMATIONS[0];
+  function next(): ChatMessage | undefined {
+    return script.next(chat.messages());
+  }
+  function isBusy(): boolean {
+    return chat.status() === "submitted" || chat.status() === "streaming";
+  }
+  function preset(): MessageAnimation {
+    return (
+      MESSAGE_ANIMATIONS.find((animation) => animation.id === presetId()) ?? MESSAGE_ANIMATIONS[0]
+    );
+  }
 
   return (
     <div class={shell}>

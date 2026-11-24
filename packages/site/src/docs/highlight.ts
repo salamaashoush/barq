@@ -202,9 +202,9 @@ function endOfString(source: string, start: number): number {
  */
 export function shellTokens(source: string): readonly Token[] {
   const out: Token[] = [];
-  const push = (text: string, kind: TokenKind): void => {
+  function push(text: string, kind: TokenKind): void {
     if (text !== "") out.push({ text, kind });
-  };
+  }
 
   for (const line of source.split("\n")) {
     if (out.length > 0) push("\n", "plain");
@@ -231,15 +231,15 @@ export function shellTokens(source: string): readonly Token[] {
 /** TypeScript with JSX, scanned. */
 export function codeTokens(source: string): readonly Token[] {
   const out: Token[] = [];
-  const push = (text: string, kind: TokenKind): void => {
+  function push(text: string, kind: TokenKind): void {
     if (text !== "") out.push({ text, kind });
-  };
+  }
 
   let at = 0;
   let plain = 0;
-  const flush = (to: number): void => {
+  function flush(to: number): void {
     push(source.slice(plain, to), "plain");
-  };
+  }
 
   while (at < source.length) {
     const character = source[at] ?? "";

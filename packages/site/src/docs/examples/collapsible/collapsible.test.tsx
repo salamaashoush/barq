@@ -55,7 +55,9 @@ describe("the collapsible examples", () => {
   test("the settings button reveals the second row of fields and swaps its icon", async () => {
     render(() => <CollapsibleSettings />);
     const toggle = screen.getByRole("button", { name: "More radius fields" });
-    const icon = (): string | null | undefined => toggle.querySelector("svg")?.innerHTML;
+    function icon(): string | null | undefined {
+      return toggle.querySelector("svg")?.innerHTML;
+    }
     const before = icon();
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     await user.click(toggle);

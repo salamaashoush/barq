@@ -11,7 +11,13 @@ import {
   navigationMenuTriggerStyle,
 } from "@barqjs/ui";
 
-const components: { title: string; href: string; description: string }[] = [
+interface ComponentLink {
+  title: string;
+  href: string;
+  description: string;
+}
+
+const components: ComponentLink[] = [
   {
     title: "حوار التنبيه",
     href: "/docs/components/alert-dialog",
@@ -93,7 +99,13 @@ const summary = css`
   color: var(--muted-foreground);
 `;
 
-function ListItem(props: { title: string; href: string; children?: Child }) {
+interface ListItemProps {
+  title: string;
+  href: string;
+  children?: Child;
+}
+
+function ListItem(props: ListItemProps) {
   return (
     <li>
       <NavigationMenuLink href={props.href}>

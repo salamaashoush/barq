@@ -3,11 +3,12 @@ import { describe, expect, test } from "bun:test";
 import { CATALOG } from "./catalog.ts";
 import { serverRender } from "./test-harness.ts";
 
-const component = (name: string): string =>
-  name
+function component(name: string): string {
+  return name
     .split("-")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join("");
+}
 
 describe("on a server with no DOM", () => {
   for (const block of CATALOG) {

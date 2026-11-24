@@ -22,12 +22,21 @@ const modules = fileURLToPath(new URL("../../../node_modules/", import.meta.url)
 
 type Page = () => never;
 
-const frame = (slug: string): string =>
-  [
+function frame(slug: string): string {
+  return [
     `import { Body } from ${JSON.stringify(join(guides, `${slug}.tsx`))};`,
     'export const page = () => <div data-slot="guide"><Body /></div>;',
     "",
   ].join("\n");
+}
+
+interface BuildOutput {
+  text(): Promise<string>;
+}
+
+interface PageModule {
+  page: Page;
+}
 
 async function half(workspace: string, slug: string, ssr: boolean): Promise<Page> {
   const side = ssr ? "ssr" : "dom";
@@ -50,8 +59,8 @@ async function half(workspace: string, slug: string, ssr: boolean): Promise<Page
   }
 
   const built = join(workspace, `built-${side}.mjs`);
-  writeFileSync(built, await (result.outputs[0] as { text(): Promise<string> }).text());
-  return ((await import(built)) as { page: Page }).page;
+  writeFileSync(built, await (result.outputs[0] as BuildOutput).text());
+  return ((await import(built)) as PageModule).page;
 }
 
 /** The caller unmounts: the container is live, so a test can press what the server wrote. */

@@ -19,8 +19,12 @@ const slider = css`
 
 export default function FieldSlider() {
   const [value, setValue] = createSignal([200, 800]);
-  const lowest = (): number | undefined => value()[0];
-  const highest = (): number | undefined => value()[1];
+  function lowest(): number | undefined {
+    return value()[0];
+  }
+  function highest(): number | undefined {
+    return value()[1];
+  }
 
   return (
     <Field class={field}>

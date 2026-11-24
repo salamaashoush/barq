@@ -1,8 +1,13 @@
 import { type Child, type Incoming, createSignal } from "@barqjs/core";
 import { dynamic } from "@barqjs/web";
 
+interface CommentProps {
+  cid: number;
+  children: Child;
+}
+
 // The page's own component for each comment: its state survives an update.
-function Comment(props: { cid: number; children: Child }) {
+function Comment(props: CommentProps) {
   const [open, setOpen] = createSignal(true);
   return (
     <section data-cid={props.cid}>
@@ -14,11 +19,20 @@ function Comment(props: { cid: number; children: Child }) {
   );
 }
 
-export default function StoryPage(props: { story: () => unknown }) {
+export interface StoryPageProps {
+  story: () => unknown;
+}
+
+interface CommentSlotProps {
+  cid: number;
+  children: Child;
+}
+
+export default function StoryPage(props: StoryPageProps) {
   const Story = dynamic(() => props.story as (props: Record<string, unknown>) => Node);
   return (
     <Story
-      comment={(slot: Incoming<{ cid: number; children: Child }>) => (
+      comment={(slot: Incoming<CommentSlotProps>) => (
         <Comment cid={slot.cid()}>{slot.children}</Comment>
       )}
     >

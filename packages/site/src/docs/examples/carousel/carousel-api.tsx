@@ -57,13 +57,13 @@ export default function CarouselApiDemo() {
   const [current, setCurrent] = createSignal(0);
   const [count, setCount] = createSignal(0);
 
-  const connect = (api: CarouselApi): void => {
+  function connect(api: CarouselApi): void {
     setCount(api.scrollSnapList().length);
     setCurrent(api.selectedScrollSnap() + 1);
     api.on("select", () => {
       setCurrent(api.selectedScrollSnap() + 1);
     });
-  };
+  }
 
   return (
     <div class={frame}>

@@ -15,8 +15,11 @@ async function settle(): Promise<void> {
   flush();
 }
 
-const area = (at = 0): HTMLElement =>
-  document.querySelectorAll<HTMLElement>('[data-slot="context-menu-trigger"]')[at] as HTMLElement;
+function area(at = 0): HTMLElement {
+  return document.querySelectorAll<HTMLElement>('[data-slot="context-menu-trigger"]')[
+    at
+  ] as HTMLElement;
+}
 
 async function open(at = 0): Promise<void> {
   user.rightClick(area(at), { clientX: 40, clientY: 30 });
@@ -29,8 +32,9 @@ async function close(): Promise<void> {
   expect(screen.queryAllByRole("menu")).toHaveLength(0);
 }
 
-const checked = (role: string, name: string): string | null =>
-  screen.getByRole(role, { name }).getAttribute("aria-checked");
+function checked(role: string, name: string): string | null {
+  return screen.getByRole(role, { name }).getAttribute("aria-checked");
+}
 
 describe("the context menu examples", () => {
   test("every example is claimed from the server's markup", async () => {

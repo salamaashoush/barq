@@ -20,9 +20,9 @@ import ScrollFadeOverflow from "./scroll-fade-overflow.tsx";
 import ScrollFadeRtl from "./scroll-fade-rtl.tsx";
 import ScrollFadeSize from "./scroll-fade-size.tsx";
 
-const faded = (name: string): HTMLElement[] => [
-  ...document.querySelectorAll<HTMLElement>(`.${name}`),
-];
+function faded(name: string): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>(`.${name}`)];
+}
 
 /** The declarations of every class on the element, which is what the example itself wrote. */
 function rules(element: HTMLElement | undefined): string {

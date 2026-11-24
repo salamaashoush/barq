@@ -5,8 +5,9 @@ import { render, user } from "@barqjs/testing";
 import { hydrateExamples } from "../test-harness.ts";
 import CalendarBasic from "./calendar-basic.tsx";
 
-const caption = (): string | null | undefined =>
-  document.querySelector('[data-slot="calendar-caption-label"]')?.textContent;
+function caption(): string | null | undefined {
+  return document.querySelector('[data-slot="calendar-caption-label"]')?.textContent;
+}
 
 describe("the calendar examples", () => {
   test("every example is claimed from the server's markup", async () => {

@@ -56,10 +56,11 @@ describe("the site's accessor attributes", () => {
   test("the designer's preview switcher presses the view shown, and follows a press", async () => {
     const page = await renderRoute({ routeTree, path: "/create" });
     const switcher = page.container.querySelector('[data-slot="preview-switcher"]')!;
-    const pressed = (): string[] =>
-      [...switcher.querySelectorAll('[aria-pressed="true"]')].map(
+    function pressed(): string[] {
+      return [...switcher.querySelectorAll('[aria-pressed="true"]')].map(
         (element) => element.textContent ?? "",
       );
+    }
     expect(pressed()).toHaveLength(1);
     const other = switcher.querySelector<HTMLElement>('[aria-pressed="false"]')!;
     expect(other.getAttribute("data-active")).toBe("false");

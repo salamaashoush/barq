@@ -235,12 +235,17 @@ const trailing = css`
 
 const USER = { name: "salama", email: "m@example.com", initials: "SA" };
 
+interface NavSubItem {
+  readonly id: string;
+  readonly name: string;
+}
+
 interface NavItem {
   readonly id: string;
   readonly name: string;
   readonly icon: typeof SquareTerminal;
   readonly open?: boolean;
-  readonly items: readonly { readonly id: string; readonly name: string }[];
+  readonly items: readonly NavSubItem[];
 }
 
 const NAV_MAIN: readonly NavItem[] = [
@@ -300,9 +305,13 @@ const PROJECTS = [
   { id: "travel", name: "Travel", icon: MapIcon },
 ];
 
+interface NavRowProps {
+  item: NavItem;
+}
+
 // A component per row: the open state has to belong to the row, and a signal
 // held by the loop would be shared by all four.
-function NavRow(props: { item: NavItem }) {
+function NavRow(props: NavRowProps) {
   const item = props.item;
 
   return (

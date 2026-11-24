@@ -26,8 +26,9 @@ const result = css`
   color: var(--muted-foreground);
 `;
 
-const answers = (entries: readonly FormDataEntryValue[]): string =>
-  entries.filter((entry) => typeof entry === "string").join(", ") || "None";
+function answers(entries: readonly FormDataEntryValue[]): string {
+  return entries.filter((entry) => typeof entry === "string").join(", ") || "None";
+}
 
 export default function QuestionnaireMultiple() {
   const [saved, setSaved] = createSignal("");

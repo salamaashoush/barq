@@ -25,6 +25,14 @@ const modules = fileURLToPath(new URL("../../node_modules/", import.meta.url));
 
 type Component = () => never;
 
+interface BuildOutput {
+  text(): Promise<string>;
+}
+
+interface PageModule {
+  Page: Component;
+}
+
 async function half(
   workspace: string,
   file: string,
@@ -52,9 +60,15 @@ async function half(
   }
 
   const built = join(workspace, `built-${side}.mjs`);
-  writeFileSync(built, await (result.outputs[0] as { text(): Promise<string> }).text());
-  const mod = (await import(built)) as { Page: Component };
+  writeFileSync(built, await (result.outputs[0] as BuildOutput).text());
+  const mod = (await import(built)) as PageModule;
   return mod.Page;
+}
+
+export interface ServerRender {
+  code: number;
+  html: string;
+  errors: string;
 }
 
 /**
@@ -67,10 +81,7 @@ async function half(
  * real server down. The effects a render schedules run after the markup is
  * returned, which is why the child waits before it reports.
  */
-export async function serverRender(
-  file: string,
-  component: string,
-): Promise<{ code: number; html: string; errors: string }> {
+export async function serverRender(file: string, component: string): Promise<ServerRender> {
   const workspace = mkdtempSync(join(modules, "barq-site-blocks-"));
   try {
     const entry = join(workspace, "probe-ssr.ts");
@@ -90,7 +101,7 @@ export async function serverRender(
     }
     writeFileSync(
       join(workspace, "built-ssr.mjs"),
-      await (result.outputs[0] as { text(): Promise<string> }).text(),
+      await (result.outputs[0] as BuildOutput).text(),
     );
     writeFileSync(
       join(workspace, "render.mjs"),
