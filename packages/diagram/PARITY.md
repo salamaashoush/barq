@@ -2,8 +2,9 @@
 
 Excalidraw's editor (`@excalidraw/excalidraw` on `@excalidraw/element`
 0.18.0-2c3dcc0), feature by feature: **done** names the test that drives it,
-**pending** names the phase that owns it. Phase 3 is the UI chrome on
-`@barqjs/arc` (toolbar, panels, menus, dialogs); phase 4 is collaboration and
+**pending** names the phase that owns it. Phase 3a is the UI on
+`@barqjs/arc` and `@barqjs/ui` (toolbar, panels, menus, pickers); 3b is the
+dialogs, the library and the remaining tools; phase 4 is collaboration and
 embeds.
 
 ## Data, rendering, export
@@ -24,11 +25,11 @@ embeds.
 - done: frame tool, membership on draw and drop (`frame.test.ts`)
 - done: image tool with a file picker (`clipboard.test.ts`)
 - done: sticky note tool, click and drag sizing (`flowchart.test.ts`)
-- pending (3): autoshape tool (`App.drawshape.ts`, Shift+X)
-- pending (3): bucket fill tool (`App.bucketFill.ts`, B)
-- pending (4): embeddable and iframe tool, `actionLink` embeds
-- pending (3): magic frame (AI); the element draws and hit-tests, the tool is not exposed
-- pending (3): toolbar drag-to-place (`App.toolDrag.ts`)
+- pending (3b): autoshape tool (`App.drawshape.ts`, Shift+X); its toolbar entry is there, disabled
+- pending (3b): bucket fill tool (`App.bucketFill.ts`, B); its toolbar entry and panel are there
+- pending (4): embeddable and iframe tool, `actionLink` embeds; its toolbar entry is there, disabled
+- pending (3b): magic frame (AI); the element draws and hit-tests, its toolbar entry is disabled
+- done: toolbar drag-to-place of the sticky note (`editor-ui.test.tsx`)
 
 ## Selection and transforms
 
@@ -38,11 +39,11 @@ embeds.
 - done: binding, elbow arrows, line editor (`binding.test.ts`, `linear.test.ts`)
 - done: lock and unlock (`actions.test.ts`)
 - done: Tab element navigation, Alt+Shift+. and , shape switch (`convert.test.ts`, `navigation.test.ts`)
-- pending (3): flip horizontal and vertical (Shift+H, Shift+V; `actionFlip`)
-- pending (3): copy and paste styles (Ctrl+Alt+C, Ctrl+Alt+V)
-- pending (3): polygon toggle for closed lines (`togglePolygon`)
-- pending (3): arrow binding and midpoint snapping toggles (`arrowBinding`, `midpointSnapping`)
-- pending (3): the shape switch's popup panel (`ConvertElementTypePopup`)
+- done: flip horizontal and vertical, Shift+H and Shift+V (`ui-actions.test.ts`)
+- done: copy and paste styles, Ctrl+Alt+C and Ctrl+Alt+V (`ui-actions.test.ts`)
+- done: polygon toggle for closed lines, and a fill closing them (`ui-actions.test.ts`)
+- done: arrow binding and midpoint snapping toggles (`ui-actions.test.ts`, `editor-ui.test.tsx`)
+- done: the shape switch's panel, opened by Alt+Shift+. and , (`panels.test.tsx`)
 
 ## Text
 
@@ -54,8 +55,8 @@ embeds.
 - done: IME composition guards, RTL caret placement, Tab indent (`text.test.ts`)
 - done: undo as one step per edit (`text.test.ts`)
 - done: paste of copied elements into the textarea as text (`text.test.ts`)
-- pending (3): bind text to container, unbind, wrap text in container (`actionBoundText`, context menu)
-- pending (3): font picker, colour and property panels feeding the text actions
+- done: bind text to container, unbind, wrap text in container (`ui-actions.test.ts`)
+- done: font picker, font size, text and vertical alignment in the panel (`editor-ui.test.tsx`)
 
 ## Frames
 
@@ -75,9 +76,9 @@ embeds.
 - done: plain text, Ctrl+Shift+V, HTML text and images, SVG markup, image files, Mermaid (`clipboard.test.ts`)
 - done: copy as PNG (Shift+Alt+C), as SVG, as text (`clipboard.test.ts`)
 - done: drop of scenes (replace, or add with Shift), images, library data (`clipboard.test.ts`)
-- pending (3): pasted spreadsheets as charts (needs the charts dialog)
+- pending (3b): pasted spreadsheets as charts (needs the charts dialog)
 - pending (4): pasted URLs as embeddables
-- pending (3): toasts for paste hints and errors (`errorMessage` is set)
+- done: toasts for `toast` and `errorMessage`, translated (`panels.test.tsx`)
 
 ## Flowcharts and lists
 
@@ -88,16 +89,38 @@ embeds.
 
 - done: pan, wheel, pinch, zoom keys, fit, scroll constraints, grid (`navigation.test.ts`, `actions.test.ts`)
 - done: undo and redo through the store (`history.test.ts`)
-- pending (3): minimap, zen mode, view mode toggle action, stats panel, theme toggle action
-- pending (3): clear canvas, change view background, project name
+- done: minimap, zen mode, view mode, stats panel with editing, theme toggle (`panels.test.tsx`, `ui-actions.test.ts`)
+- done: clear canvas with confirmation, canvas background, project name (`ui-actions.test.ts`, `editor-ui.test.tsx`)
 
-## UI chrome (phase 3)
+## UI
 
-- pending (3): toolbar, properties panel, main menu, context menu, command palette
-- pending (3): help dialog, image export dialog, library sidebar, add to library
-- pending (3): search menu, hints, hyperlinks and element links (`hyperlink`, `copyElementLink`, `linkToElement`)
-- pending (3): eye dropper, colour pickers, font picker, Mermaid and text-to-diagram dialogs
-- pending (3): save and load actions (`saveToActiveFile`, `saveFileToDisk`, `loadScene`)
+- done: toolbar with every tool, key hints, tool lock, hand, extra tools menu (`editor-ui.test.tsx`)
+- done: properties panel: stroke, background, fill, stroke width and style, sloppiness, edges, arrow type, arrowheads, opacity, pressure (`editor-ui.test.tsx`, `ui-actions.test.ts`)
+- done: layers, align and distribute, duplicate, delete, group, link, crop and line editor buttons (`editor-ui.test.tsx`)
+- done: colour picker: quick picks, palette, shades, hex code, keyboard, eye dropper (`panels.test.tsx`, `editor-ui.test.tsx`)
+- done: main menu with app slots (`mainMenu`, `MainMenu`), context menu for canvas, element and selection, Shift+F10 (`editor-ui.test.tsx`, `ui-actions.test.ts`)
+- done: command palette, Ctrl+/ and Ctrl+Shift+P (`panels.test.tsx`)
+- done: footer zoom, undo and redo, help button, scroll back to content (`editor-ui.test.tsx`, `panels.test.tsx`)
+- done: hyperlink popup and editor, element link editor, copy link to element (`panels.test.tsx`, `ui-actions.test.ts`)
+- done: hints under the toolbar (`panels.test.tsx`)
+- done: Excalidraw's 57 locale files, `langCode`, right to left for Arabic, Persian and Hebrew (`panels.test.tsx`, `diagram-editor.test.tsx`)
+- done: `UIOptions` canvas actions and image tool, `renderTopLeftUI`, `renderTopRightUI`, `renderCustomStats`, `aiEnabled`, `excalidrawAPI` (`panels.test.tsx`)
+- done: server render of the UI in its language, hydrated without a mismatch (`diagram-editor.test.tsx`)
+- pending (3b): help and shortcuts dialog; the help button and `?` open `openDialog: help`, which nothing draws yet
+- pending (3b): image export and JSON export dialogs, save and load (`saveToActiveFile`, `saveFileToDisk`, `loadScene`); their menu entries are disabled
+- pending (3b): library sidebar, its trigger, add to library (context menu and palette)
+- pending (3b): search menu (Ctrl+F); its menu entry is disabled
+- pending (3b): Mermaid and text-to-diagram dialog; their extra tools entries are disabled
+- pending (3b): welcome screen and its hints
+- pending (3b): colour and font top picks customised by dragging, and reset
+- pending (3b): font picker previews a font on hover
+- pending (3b): command palette's recently used commands and library items
+- pending (3b): stats panel's uncropped image size, group rows and scene version
+- pending (3b): pen mode button for a detected pen; compact and phone layouts of the panels
+- pending (3b): `toggleWrap` (W), Excalidraw's wrap of free text at a set width
+- pending (3b): eye dropper's Alt to pick for the other colour
+
+Not carried over: the main menu's links to Excalidraw's own social accounts.
 
 ## Collaboration (phase 4)
 

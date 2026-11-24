@@ -19,8 +19,9 @@ bun add @barqjs/diagram
 bun add -d @barqjs/vite
 ```
 
-`@barqjs/core`, `@barqjs/web`, `@barqjs/server` and `@barqjs/primitives` are
-peer dependencies. The package ships its TypeScript source under the `barq`
+`@barqjs/core`, `@barqjs/web`, `@barqjs/server`, `@barqjs/primitives`, and for
+the editor's UI `@barqjs/ui`, `@barqjs/aria`, `@barqjs/css` and
+`@barqjs/lucide`, are peer dependencies. The package ships its TypeScript source under the `barq`
 export condition, and `@barqjs/vite` compiles it for the DOM or the server
 with the rest of the application. `@excalidraw/mermaid-to-excalidraw` is an
 optional peer dependency, needed only by `@barqjs/diagram/mermaid`.
@@ -92,7 +93,7 @@ let api: DiagramEditorApi | undefined;
 />;
 ```
 
-`api` is Excalidraw's `excalidrawAPI` under its names: `updateScene`,
+`api` (or `excalidrawAPI`) is Excalidraw's imperative API under its names: `updateScene`,
 `getSceneElements`, `getSceneElementsIncludingDeleted`, `getAppState`,
 `getFiles`, `setActiveTool`, `scrollToContent`, `resetScene`, `refresh`,
 `history.clear` and `onChange`. `updateScene`'s `captureUpdate` says how a
@@ -184,6 +185,49 @@ What it does, and the keys Excalidraw gives each:
   off.
 
 Ctrl is Cmd on macOS.
+
+### The UI
+
+`<DiagramEditor>` draws Excalidraw's UI over the canvas, on `@barqjs/ui`'s
+components and arc's theme tokens, so light, dark and an app's brand all
+reach it. Render it inside `<ArcProvider>` from `@barqjs/arc`, which installs
+the theme and the toast stack the editor's toasts go to.
+
+```tsx
+<ArcProvider>
+  <DiagramEditor
+    initialData={loadFromBlob(file, null, null)}
+    langCode="ar-SA"
+    UIOptions={{ canvasActions: { loadScene: false, export: false, saveAsImage: false } }}
+    renderTopRightUI={() => <Button onPress={share}>Share</Button>}
+    excalidrawAPI={(api) => (editor = api)}
+  />
+</ArcProvider>;
+```
+
+- the toolbar, top centre: every tool with its key, the tool lock, the hand
+  and the extra tools; the sticky note can be dragged out onto the canvas;
+- the properties panel, top start, for the selection or the tool about to
+  draw: colours (a palette, shades, a hex code and an eye dropper), fill,
+  stroke, sloppiness, edges, arrows, fonts, alignment, opacity, layers,
+  align and distribute;
+- the main menu, top start, whose entries an app replaces with `mainMenu`,
+  a function returning `MainMenu` parts (`MainMenu.DefaultItems.Help`,
+  `MainMenu.Item`, `MainMenu.Separator`, ...);
+- the context menu (a right click, the menu key or Shift+F10), the command
+  palette (Ctrl+/ or Ctrl+Shift+P), the stats panel (Alt+/), the minimap,
+  the hints under the toolbar, the link popup (Ctrl+K), the element link
+  editor and the shape switch's panel;
+- zoom, undo and redo at the bottom start, help at the bottom end.
+
+`langCode` is one of Excalidraw's locale codes; each language loads when
+first asked for (`loadLanguage` loads one ahead, which a server render that
+should arrive in it does on both sides). Arabic, Persian and Hebrew lay the
+UI out right to left. `UIOptions`, `onThemeChange`, `zenModeEnabled`,
+`renderTopLeftUI`, `renderTopRightUI`, `renderCustomStats`, `aiEnabled` and
+`generateLinkForSelection` are Excalidraw's props; `ui={false}` draws the
+canvas alone. The UI reads the editor once per change, outside gestures, so
+a drag, a pan or a zoom re-renders nothing but the zoom level.
 
 ### Accessibility
 
@@ -331,8 +375,9 @@ uses (`wheelNavigation`, `keyboardNavigation`, `PointerNavigation`,
   `exportToCanvas`, `restore` and `convertToExcalidrawElements` take the same
   arguments and return the same things.
 - `<Excalidraw viewModeEnabled>` for showing a scene is `<DiagramViewer>`,
-  `<Excalidraw>` for editing one is `<DiagramEditor>`, and `excalidrawAPI` is
-  `api`.
+  and `<Excalidraw>` for editing one is `<DiagramEditor>`, which takes
+  `excalidrawAPI` (or `api`), `langCode`, `UIOptions`, `theme` and
+  `aiEnabled` as they are.
 - `window.EXCALIDRAW_ASSET_PATH` works as before; `setFontAssetPath` says it
   without a global.
 

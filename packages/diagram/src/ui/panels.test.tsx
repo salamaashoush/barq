@@ -383,3 +383,33 @@ describe("performance", () => {
     expect(changed).not.toContain("properties-panel");
   });
 });
+
+describe("colour picker", () => {
+  test("letters pick palette colours, arrows step, and the eye dropper picks off the canvas", async () => {
+    const { api } = await mountEditor({ initialData: { elements: [rectangle("A", 100, 100)] } });
+    await select(api, "A");
+    await user.click(screen.getByTestId("elementStroke-picker-trigger"));
+    await settle();
+    const dialog = screen.getByRole("dialog", { name: "Color picker" });
+    key(dialog, { key: "w", code: "KeyW" });
+    await settle();
+    const picked = element(api, "A").strokeColor;
+    expect(picked).not.toBe("#1e1e1e");
+    key(dialog, { key: "ArrowRight", code: "ArrowRight" });
+    await settle();
+    expect(element(api, "A").strokeColor).not.toBe(picked);
+    const hex = within(dialog).getByRole<HTMLInputElement>("textbox", { name: "Hex code" });
+    hex.value = "2f9e44";
+    hex.dispatchEvent(new Event("change", { bubbles: true }));
+    await settle();
+    expect(element(api, "A").strokeColor).toBe("#2f9e44");
+
+    key(dialog, { key: "i", code: "KeyI" });
+    await settle();
+    const overlay = screen.getByTestId("eye-dropper-overlay");
+    pointer(overlay, "pointerdown", 500, 500);
+    await settle();
+    expect(screen.queryByTestId("eye-dropper-overlay")).toBeNull();
+    expect(element(api, "A").strokeColor).toMatch(/^#[0-9a-f]{6}$/);
+  });
+});
