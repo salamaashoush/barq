@@ -630,6 +630,51 @@ import { ResponsiveTabs } from "@barqjs/arc";
   aria's `dragAndDrop()`, rows drag to reorder or into another, by pointer,
   touch or a drag button the keyboard reaches.
 
+## Signing in
+
+```tsx
+import { AuthLayout, SignInForm } from "@barqjs/arc";
+
+<AuthLayout brand={<Logo />} aside={<Showcase />} footer={<LegalLinks />}>
+  <SignInForm
+    providers={<Button variant="outline" onPress={github}>Continue with GitHub</Button>}
+    forgotHref="/forgot"
+    onMagicLink={(email) => api.sendLink(email)}
+    onPasskey={() => webauthn.get()}
+    onSubmit={(values) => api.signIn(values)}
+    footer={<Link href="/sign-up">Create an account</Link>}
+  />
+</AuthLayout>;
+```
+
+The screens a signed-out reader meets, each composed from arc's form fields
+and from slots, so a product adds its own providers, links and words rather
+than forking one. A form's `onSubmit` answers with `ServerErrors`, which land
+on the fields they name and above the form.
+
+- `AuthLayout`: the brand above a column holding the form, an `aside` beside
+  it on a wide screen and gone on a narrow one, and a `footer`; `wide` for a
+  consent screen or a long flow.
+- `SignInForm`: an email and a password, `providers` above with "or"
+  between, "Remember me", a `forgotHref` link, `onMagicLink` (the password
+  gives way to "Send link", then "Check your inbox") and `onPasskey`, the
+  WebAuthn call left to the app.
+- `SignUpForm`: a name, an email, a password held to its `rules` with a
+  `PasswordStrength` under it and a confirmation, and `terms` to agree to; with
+  `verifyEmail` it says where the confirmation went.
+- `ForgotPasswordForm`, answered the same whether or not the account exists,
+  and `ResetPasswordForm`, a new password held to the rules and confirmed,
+  then a link to sign in.
+- `TwoFactorForm`: a one-time code on ui's `InputOTP`, sent as soon as it is
+  whole, with `autocomplete="one-time-code"`; a recovery code instead, a new
+  code with `onResend`, and a passkey with `onPasskey`.
+- `RecoveryCodes`: the codes left to right, copied together or downloaded as
+  a file, and `onConfirm` once the reader says they are saved.
+- `PasskeyPrompt`: what a passkey is, one button that runs `onAuthenticate`,
+  Retry when it fails, and `onFallback` for another way.
+- `PasswordStrength`, `passwordStrength` and `defaultPasswordRules` on their
+  own, for a password field of an app's own.
+
 ## Collaboration
 
 ```tsx

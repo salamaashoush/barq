@@ -240,6 +240,71 @@ export interface ArcMessages {
   restoreFailed: string;
   noVersions: string;
   nothingToCompare: string;
+  or: string;
+  signIn: string;
+  signUp: string;
+  email: string;
+  password: string;
+  fullName: string;
+  rememberMe: string;
+  forgotPassword: string;
+  emailInvalid: string;
+  passwordRequired: string;
+  nameRequired: string;
+  passwordWeak: string;
+  passwordsDiffer: string;
+  confirmPassword: string;
+  termsRequired: string;
+  emailMeLink: string;
+  usePassword: string;
+  sendLink: string;
+  linkFailed: string;
+  checkInbox: string;
+  linkSent: (email: string) => string;
+  confirmSent: (email: string) => string;
+  resetSent: (email: string) => string;
+  signInWithPasskey: string;
+  passkeyFailed: string;
+  forgotPasswordHeading: string;
+  forgotPasswordDescription: string;
+  sendResetLink: string;
+  resetPassword: string;
+  newPassword: string;
+  setPassword: string;
+  passwordChanged: string;
+  passwordLength: (count: number) => string;
+  passwordLetter: string;
+  passwordDigit: string;
+  passwordStrength: string;
+  passwordRules: string;
+  strengthNone: string;
+  strengthWeak: string;
+  strengthFair: string;
+  strengthGood: string;
+  strengthStrong: string;
+  met: string;
+  notMet: string;
+  twoFactorHeading: string;
+  twoFactorDescription: string;
+  recoveryDescription: string;
+  verificationCode: string;
+  recoveryCode: string;
+  verify: string;
+  useRecoveryCode: string;
+  useCode: string;
+  resendCode: string;
+  codeResent: string;
+  usePasskeyInstead: string;
+  somethingWentWrong: string;
+  recoveryCodes: string;
+  recoveryCodesDescription: string;
+  copyCodes: string;
+  download: string;
+  savedCodes: string;
+  passkeyHeading: string;
+  passkeyDescription: string;
+  usePasskey: string;
+  useAnotherWay: string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -478,6 +543,73 @@ export const ENGLISH: ArcMessages = {
   restoreFailed: "The version could not be restored. Try again.",
   noVersions: "No versions yet",
   nothingToCompare: "There is nothing to compare it with.",
+  or: "or",
+  signIn: "Sign in",
+  signUp: "Create an account",
+  email: "Email",
+  password: "Password",
+  fullName: "Full name",
+  rememberMe: "Remember me",
+  forgotPassword: "Forgot password?",
+  emailInvalid: "Enter an email address",
+  passwordRequired: "Enter your password",
+  nameRequired: "Enter your name",
+  passwordWeak: "The password does not meet every rule",
+  passwordsDiffer: "The passwords do not match",
+  confirmPassword: "Confirm password",
+  termsRequired: "Agree to continue",
+  emailMeLink: "Email me a link",
+  usePassword: "Use a password",
+  sendLink: "Send link",
+  linkFailed: "The link could not be sent. Try again.",
+  checkInbox: "Check your inbox",
+  linkSent: (email) => `We sent a sign-in link to ${email}.`,
+  confirmSent: (email) => `We sent a link to ${email} to confirm the address.`,
+  resetSent: (email) => `If ${email} has an account, we sent it a link to choose a new password.`,
+  signInWithPasskey: "Sign in with a passkey",
+  passkeyFailed: "The passkey did not work. Try again or use another way.",
+  forgotPasswordHeading: "Reset your password",
+  forgotPasswordDescription:
+    "Enter your email and we will send you a link to choose a new password.",
+  sendResetLink: "Send reset link",
+  resetPassword: "Choose a new password",
+  newPassword: "New password",
+  setPassword: "Set password",
+  passwordChanged: "Your password is changed",
+  passwordLength: (count) => `At least ${String(count)} characters`,
+  passwordLetter: "A letter",
+  passwordDigit: "A number",
+  passwordStrength: "Password strength",
+  passwordRules: "Password rules",
+  strengthNone: "None",
+  strengthWeak: "Weak",
+  strengthFair: "Fair",
+  strengthGood: "Good",
+  strengthStrong: "Strong",
+  met: "met",
+  notMet: "not met",
+  twoFactorHeading: "Two-step verification",
+  twoFactorDescription: "Enter the code from your authenticator app.",
+  recoveryDescription: "Enter one of the recovery codes you saved.",
+  verificationCode: "Verification code",
+  recoveryCode: "Recovery code",
+  verify: "Verify",
+  useRecoveryCode: "Use a recovery code",
+  useCode: "Use a verification code",
+  resendCode: "Send a new code",
+  codeResent: "A new code is on its way.",
+  usePasskeyInstead: "Use a passkey instead",
+  somethingWentWrong: "Something went wrong. Try again.",
+  recoveryCodes: "Recovery codes",
+  recoveryCodesDescription:
+    "Each code signs you in once if you lose your device. Keep them somewhere safe.",
+  copyCodes: "Copy codes",
+  download: "Download",
+  savedCodes: "I have saved these codes",
+  passkeyHeading: "Use your passkey",
+  passkeyDescription: "Confirm it is you with your fingerprint, face or screen lock.",
+  usePasskey: "Use passkey",
+  useAnotherWay: "Use another way",
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");
