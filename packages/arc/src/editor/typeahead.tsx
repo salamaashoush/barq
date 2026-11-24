@@ -23,7 +23,6 @@ import { SquareCode } from "@barqjs/lucide/icons/square-code";
 import { SquarePlay } from "@barqjs/lucide/icons/square-play";
 import { Table } from "@barqjs/lucide/icons/table";
 import { dropdownMenuVariants } from "@barqjs/ui/dropdown-menu";
-import { $insertNodeToNearestRoot } from "@lexical/utils";
 import { $createTextNode, type LexicalEditor } from "lexical";
 
 import { type EmojiDataset, type EmojiSource, loadEmoji, searchEmoji } from "../chat/emoji-data.ts";
@@ -35,6 +34,7 @@ import { type Customisable, parts } from "../lib/parts.ts";
 import { fg, gap, glyph, layout, space, truncate, type, zIndex } from "../style/index.ts";
 import { type AnyBlock, labelOf } from "./blocks.tsx";
 import {
+  $insertBlock,
   OPEN_EMBED_DIALOG_COMMAND,
   OPEN_IMAGE_DIALOG_COMMAND,
   TEXT_BLOCK_TYPES,
@@ -453,7 +453,7 @@ export function editorCommands(
       keywords: block.keywords,
       description:
         block.description === undefined ? undefined : labelOf(block.description, messages),
-      run: (editor) => editor.update(() => void $insertNodeToNearestRoot(block.$create())),
+      run: (editor) => editor.update(() => void $insertBlock(block.$create())),
     });
   }
   return commands;

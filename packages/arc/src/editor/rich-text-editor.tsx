@@ -16,7 +16,6 @@ import { Minus } from "@barqjs/lucide/icons/minus";
 import { SquarePlay } from "@barqjs/lucide/icons/square-play";
 import { Table } from "@barqjs/lucide/icons/table";
 import type { JSX } from "@barqjs/web";
-import { $insertNodeToNearestRoot } from "@lexical/utils";
 import {
   type AnyLexicalExtensionArgument,
   COMMAND_PRIORITY_LOW,
@@ -49,6 +48,7 @@ import {
 } from "../style/index.ts";
 import { type AnyBlock, labelOf } from "./blocks.tsx";
 import {
+  $insertBlock,
   type Mark,
   type TextBlockType,
   OPEN_EMBED_DIALOG_COMMAND,
@@ -388,7 +388,7 @@ function EditorTools(props: {
         id: block.type,
         label: labelOf(block.label, words),
         icon: block.icon,
-        onInsert: () => editor.update(() => void $insertNodeToNearestRoot(block.$create())),
+        onInsert: () => editor.update(() => void $insertBlock(block.$create())),
       });
     }
     return actions;

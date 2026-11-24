@@ -3,13 +3,13 @@ import { useLexicalEditor } from "@barqjs/lexical";
 import { Button } from "@barqjs/ui/button";
 import { Field, FieldError, FieldLabel } from "@barqjs/ui/field";
 import { Input } from "@barqjs/ui/input";
-import { $insertNodeToNearestRoot } from "@lexical/utils";
 import { DRAG_DROP_PASTE } from "@lexical/rich-text";
 import { COMMAND_PRIORITY_LOW } from "lexical";
 
 import { FileDropZone } from "../components/file-upload.tsx";
 import { useArcMessages } from "../components/messages.ts";
 import { ResponsiveOverlay } from "../components/responsive-overlay.tsx";
+import { $insertBlock } from "./commands.ts";
 import { useRegistration } from "./hooks.ts";
 import {
   type EmbedProvider,
@@ -29,7 +29,7 @@ export function useInsertImages(): (files: readonly File[]) => void {
     const items = uploads.queue.add(images);
     editor.update(() => {
       for (const item of items) {
-        $insertNodeToNearestRoot(
+        $insertBlock(
           ImageBlock.$create({
             src: item.preview ?? "",
             alt: item.file.name.replace(/\.[^.]+$/, ""),
@@ -104,7 +104,7 @@ export function EmbedDialog(props: MediaDialogProps & { providers: readonly Embe
     props.onOpenChange(false);
     setAddress("");
     editor.update(() => {
-      $insertNodeToNearestRoot(EmbedBlock.$create(embed));
+      $insertBlock(EmbedBlock.$create(embed));
     });
   };
   return (

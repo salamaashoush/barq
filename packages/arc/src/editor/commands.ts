@@ -28,6 +28,7 @@ import {
   $getSelection,
   $isElementNode,
   $isNodeSelection,
+  $isParagraphNode,
   $isRangeSelection,
   $isRootOrShadowRoot,
   type ElementFormatType,
@@ -111,7 +112,8 @@ export const NO_FORMAT: SelectionFormat = {
   rtl: false,
 };
 
-function blockOf(node: LexicalNode): TextBlockType | null {
+/** The text style of the block `node` is in: a list's type, a heading's level; `null` for a table or a block of an app's. */
+export function $textBlockOf(node: LexicalNode): TextBlockType | null {
   const list = $getNearestNodeOfType(node, ListNode);
   if ($isListNode(list)) return list.getListType();
   const top = $findMatchingParent(node, (one) => {
@@ -125,7 +127,7 @@ function blockOf(node: LexicalNode): TextBlockType | null {
   }
   if ($isQuoteNode(block)) return "quote";
   if ($isCodeNode(block)) return "code";
-  return $isElementNode(block) ? "paragraph" : null;
+  return $isParagraphNode(block) ? "paragraph" : null;
 }
 
 /** The selection's format, read inside an editor state read. */
@@ -139,7 +141,7 @@ export function $selectionFormat(): SelectionFormat {
   const block = $findMatchingParent(anchor, (one) => $isElementNode(one) && !one.isInline());
   const inTable = $findMatchingParent(anchor, (one) => one.getType() === "tablecell") !== null;
   return {
-    block: blockOf(anchor),
+    block: $textBlockOf(anchor),
     marks: {
       bold: selection.hasFormat("bold"),
       italic: selection.hasFormat("italic"),
@@ -216,9 +218,28 @@ export function insertTable(editor: LexicalEditor, rows = 3, columns = 3): void 
   });
 }
 
+/**
+ * Puts a block where the caret is: in place of the empty paragraph it is in,
+ * or after the block it is in, so a block chosen on an empty line leaves no
+ * empty line behind.
+ */
+export function $insertBlock<T extends LexicalNode>(node: T): T {
+  const selection = $getSelection();
+  if ($isRangeSelection(selection) && selection.isCollapsed()) {
+    const top = selection.anchor.getNode().getTopLevelElement();
+    if ($isParagraphNode(top) && top.getTextContentSize() === 0 && top.getChildrenSize() === 0) {
+      top.replace(node);
+      if (node.getNextSibling() === null) node.insertAfter($createParagraphNode());
+      node.selectNext();
+      return node;
+    }
+  }
+  return $insertNodeToNearestRoot(node);
+}
+
 export function insertDivider(editor: LexicalEditor): void {
   editor.update(() => {
-    $insertNodeToNearestRoot($createHorizontalRuleNode());
+    $insertBlock($createHorizontalRuleNode());
   });
 }
 

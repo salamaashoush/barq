@@ -114,3 +114,9 @@ export {
   chatComposerStyles,
 } from "./chat-composer.tsx";
 export { RichCommentComposer } from "./comment-composer.tsx";
+export {
+  BlockEditor,
+  type BlockEditorProps,
+  blockEditorStyles,
+  moveBlock,
+} from "./block-editor.tsx";

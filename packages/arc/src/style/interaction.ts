@@ -22,5 +22,7 @@ export const interaction = arc.create({
     "@media (hover: hover)": { ":hover": { color: tokens.foreground } },
   },
   pressable: { cursor: "pointer" },
+  /** A part a pointer or a finger drags: the grab cursor, and no scrolling or zooming under the finger. */
+  draggable: { cursor: "grab", touchAction: "none" },
   invalid: { "[data-invalid]": { borderColor: tokens.destructive } },
 });

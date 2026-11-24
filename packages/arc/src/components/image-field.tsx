@@ -14,7 +14,18 @@ import { ToggleGroup, ToggleGroupItem } from "@barqjs/ui/toggle-group";
 
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
-import { bg, edge, focus, gap, layout, place, rounded, space, type } from "../style/index.ts";
+import {
+  bg,
+  edge,
+  focus,
+  gap,
+  interaction,
+  layout,
+  place,
+  rounded,
+  space,
+  type,
+} from "../style/index.ts";
 import {
   FileDropZone,
   type FileRejection,
@@ -114,10 +125,8 @@ export const imageFieldStyles = variants({
     actions: arc(layout.row, layout.wrap, gap[2]),
     progress: arc(layout.column, gap[1], type.meta, { minWidth: "10rem" }),
     cropper: arc(layout.column, gap[3]),
-    stage: arc(layout.relative, rounded.md, bg.muted, focus.visible, {
+    stage: arc(layout.relative, rounded.md, bg.muted, focus.visible, interaction.draggable, {
       overflow: "hidden",
-      touchAction: "none",
-      cursor: "grab",
       width: "100%",
       maxHeight: "60dvh",
     }),
