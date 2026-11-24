@@ -8,6 +8,14 @@ export {
   type NavSubItem,
 } from "./components/app-shell.tsx";
 export {
+  Chip,
+  type ChipProps,
+  type ChipSize,
+  type ChipSlots,
+  type ChipVariant,
+  chipVariants,
+} from "./components/chip.tsx";
+export {
   CommandMenu,
   commandMenuStyles,
   type CommandMenuAction,

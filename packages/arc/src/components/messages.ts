@@ -56,6 +56,7 @@ export interface ArcMessages {
   noMatches: string;
   searchTimeZones: string;
   trend: (count: string, first: string, last: string, lowest: string, highest: string) => string;
+  remove: string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -108,6 +109,7 @@ export const ENGLISH: ArcMessages = {
   searchTimeZones: "Search time zones",
   trend: (count, first, last, lowest, highest) =>
     `Trend over ${count} values, from ${first} to ${last}; lowest ${lowest}, highest ${highest}`,
+  remove: "Remove",
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");

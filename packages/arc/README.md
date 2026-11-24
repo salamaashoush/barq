@@ -399,6 +399,22 @@ if (await confirm({ title: "Delete the check?", tone: "danger", confirmLabel: "D
   `staticData.crumb` or given as items. A narrow trail folds its middle steps
   behind a button that shows them.
 
+## Inputs and pickers
+
+```tsx
+import { Chip } from "@barqjs/arc";
+
+<Chip selected={remote()} onSelectedChange={setRemote}>Remote</Chip>;
+<Chip onRemove={() => drop("design")}>Design</Chip>;
+```
+
+- `Chip`: a compact label that is plain, an action (`onPress`), held on or
+  off as a filter (`selected`), or removable (`onRemove`). A filter chip is a
+  toggle button that draws a check as well as its fill, so its state never
+  rests on colour; the remove button is its own stop, named "Remove" and the
+  chip's words. `tone`, `variant` (`outline` or `subtle`) and `size`
+  (`sm` or `md`), and `chipVariants` is the shape every tag in arc wears.
+
 ## Code
 
 ```tsx
