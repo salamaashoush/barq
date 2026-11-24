@@ -16,7 +16,7 @@ import { focusable, type FocusableOptions } from "./interactions/focusable.ts";
 import { hover, type HoverEvent } from "./interactions/hover.ts";
 import { press, type ElementRef, type PressEvent } from "./interactions/press.ts";
 import { ProgressBarContext } from "./progress-bar-context.ts";
-import { announce } from "./live.ts";
+import { announce, pruneAnnouncements } from "./live.ts";
 import { SelectionIndicatorProvider } from "./selection-indicator.tsx";
 import { controllable } from "./utils.ts";
 import {
@@ -375,6 +375,9 @@ export function Button(props: ButtonComponentProps) {
       if (focused && pending !== wasPending) {
         withdrawals.push(announce({ "aria-labelledby": by }, "assertive"));
       }
+      // The progress bar shown while pending goes with it, and the
+      // announcement that named it must not be left pointing at nothing.
+      if (wasPending && !pending) queueMicrotask(pruneAnnouncements);
       wasPending = pending;
     },
   );

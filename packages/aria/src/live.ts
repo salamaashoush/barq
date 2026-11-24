@@ -95,6 +95,15 @@ class Announcer {
     };
   }
 
+  /** Take out every entry named by an element that is no longer in the document. */
+  prune(): void {
+    if (this.node === null) return;
+    for (const entry of this.node.querySelectorAll("[aria-labelledby]")) {
+      const ids = (entry.getAttribute("aria-labelledby") ?? "").split(/\s+/u);
+      if (ids.some((id) => id !== "" && document.getElementById(id) === null)) entry.remove();
+    }
+  }
+
   clear(assertiveness?: Assertiveness): void {
     if (this.node === null) return;
     if (assertiveness === undefined || assertiveness === "assertive") {
@@ -161,6 +170,15 @@ export function announce(
     withdrawn = true;
     withdraw?.();
   };
+}
+
+/**
+ * Take out the announcements made by reference whose element has gone: one
+ * named a part shown only for a moment, such as a pending button's progress
+ * bar, and would otherwise point at nothing until its timeout.
+ */
+export function pruneAnnouncements(): void {
+  announcer?.prune();
 }
 
 /** Drop everything queued, for one politeness level or both. */

@@ -358,6 +358,33 @@ describe("Button: isPending", () => {
     expect(naming()).toBe(0);
   });
 
+  test("once pending ends, nothing announced names the progress bar that went with it", async () => {
+    clearAnnouncer();
+    const [pending, setPending] = createSignal(false);
+    render(() => (
+      <Button aria-label="Save" isPending={pending()}>
+        {pending() ? <ProgressBar aria-label="Saving" isIndeterminate /> : null}
+      </Button>
+    ));
+    const button = screen.getByRole("button");
+    const dangling = (): string[] =>
+      Array.from(document.querySelectorAll("[aria-live] [aria-labelledby]"))
+        .flatMap((entry) => (entry.getAttribute("aria-labelledby") ?? "").split(" "))
+        .filter((id) => document.getElementById(id) === null);
+
+    button.focus();
+    setPending(true);
+    flush();
+    expect(document.querySelectorAll("[aria-live] [aria-labelledby]")).toHaveLength(1);
+
+    setPending(false);
+    flush();
+    await Promise.resolve();
+    expect(dangling()).toEqual([]);
+    expect(document.querySelectorAll("[aria-live] [aria-labelledby]")).toHaveLength(1);
+    clearAnnouncer();
+  });
+
   test("an unfocused button announces nothing", () => {
     clearAnnouncer();
     const [pending, setPending] = createSignal(false);
