@@ -87,7 +87,14 @@ export interface Binding<T> extends Wiring {
   name: () => string | undefined;
 }
 
-function wiring(errors: () => string[], isInvalid: () => boolean): Wiring {
+/** A caller's `errorMessage` as the list the frame shows. */
+export function errorsOf(given: string | readonly string[] | undefined): string[] {
+  if (given === undefined) return [];
+  return (typeof given === "string" ? [given] : [...given]).filter((one) => one !== "");
+}
+
+/** Ids for a field's parts, and the describedby that names its description and its error. */
+export function fieldWiring(errors: () => string[], isInvalid: () => boolean): Wiring {
   const id = createUniqueId();
   const ids = {
     control: `${id}-control`,
@@ -125,7 +132,7 @@ export function formControl<T>(): Binding<T> & { field: ReturnType<typeof useArc
   const errors = createMemo((): string[] => messagesOf(field().state.meta.errors));
   const isInvalid = (): boolean => field().state.meta.isTouched && errors().length > 0;
   return {
-    ...wiring(errors, isInvalid),
+    ...fieldWiring(errors, isInvalid),
     field,
     value: () => field().state.value,
     change: (value: T): void => {
@@ -152,14 +159,10 @@ export function bindField<T>(props: FieldValueProps<T>, empty: T): Binding<T> {
     () => props.defaultValue ?? empty,
     (next) => props.onChange?.(next),
   );
-  const errors = (): string[] => {
-    const given = props.errorMessage;
-    if (given === undefined) return [];
-    return (typeof given === "string" ? [given] : [...given]).filter((one) => one !== "");
-  };
+  const errors = (): string[] => errorsOf(props.errorMessage);
   const isInvalid = (): boolean => props.isInvalid === true || errors().length > 0;
   return {
-    ...wiring(errors, isInvalid),
+    ...fieldWiring(errors, isInvalid),
     value,
     change: (next: T) => setValue(next),
     blur: () => props.onBlur?.(),

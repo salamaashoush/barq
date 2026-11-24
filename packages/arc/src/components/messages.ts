@@ -57,6 +57,9 @@ export interface ArcMessages {
   searchTimeZones: string;
   trend: (count: string, first: string, last: string, lowest: string, highest: string) => string;
   remove: string;
+  showAll: (count: number) => string;
+  showLess: string;
+  clearAll: string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -110,6 +113,9 @@ export const ENGLISH: ArcMessages = {
   trend: (count, first, last, lowest, highest) =>
     `Trend over ${count} values, from ${first} to ${last}; lowest ${lowest}, highest ${highest}`,
   remove: "Remove",
+  showAll: (count) => `Show all (${String(count)})`,
+  showLess: "Show less",
+  clearAll: "Clear all",
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");

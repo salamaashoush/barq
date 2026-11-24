@@ -414,6 +414,13 @@ import { Chip } from "@barqjs/arc";
   rests on colour; the remove button is its own stop, named "Remove" and the
   chip's words. `tone`, `variant` (`outline` or `subtle`) and `size`
   (`sm` or `md`), and `chipVariants` is the shape every tag in arc wears.
+- `TagGroup`: tags in a row that wraps, on `@barqjs/aria`'s tag group: one
+  Tab stop, the arrows moving in the reading direction, Delete removing the
+  focused or selected tags, and focus kept on the group when the last one
+  goes. `onRemove` gives each tag a remove button, `selectionMode` makes them
+  selectable, `maxVisible` shows a few with a button for the rest,
+  `onClearAll` adds Clear all, and `label`, `description` and
+  `errorMessage` frame it as a field.
 
 ## Code
 

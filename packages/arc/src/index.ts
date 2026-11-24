@@ -16,6 +16,12 @@ export {
   chipVariants,
 } from "./components/chip.tsx";
 export {
+  TagGroup,
+  type TagGroupProps,
+  type TagGroupSlots,
+  tagGroupStyles,
+} from "./components/tag-group.tsx";
+export {
   CommandMenu,
   commandMenuStyles,
   type CommandMenuAction,
