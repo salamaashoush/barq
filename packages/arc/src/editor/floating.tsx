@@ -10,7 +10,7 @@ import {
 } from "@barqjs/aria/overlays";
 import { ref as makeRef } from "@barqjs/primitives/refs";
 import { mediaQuery } from "@barqjs/primitives/media";
-import { useLexicalEditor } from "@barqjs/lexical";
+import { useLexicalEditor, useLexicalEditorState } from "@barqjs/lexical";
 import { ExternalLink } from "@barqjs/lucide/icons/external-link";
 import { Link } from "@barqjs/lucide/icons/link";
 import { Pencil } from "@barqjs/lucide/icons/pencil";
@@ -55,7 +55,9 @@ import {
   shortcutLabel,
   toggleMark,
 } from "./commands.ts";
+import { labelOf } from "./blocks.tsx";
 import { isSafeUrl } from "./document.ts";
+import { type EditorToolbarItem, editorExtensions } from "./extension.ts";
 import { editorSignal, useRegistration } from "./hooks.ts";
 import { markIcon, markLabel, markShortcut, useSelectionFormat } from "./toolbar.tsx";
 
@@ -119,6 +121,7 @@ export function FloatingFormatToolbar(props: FloatingFormatToolbarProps) {
   const [dismissed, setDismissed] = editorSignal(false);
   const barRef = makeRef<HTMLDivElement>();
   const target = usePortalTarget();
+  const extra = editorExtensions(editor).flatMap((extension) => extension.floating ?? []);
 
   const read = (): void => {
     const active = editor.getRootElement()?.ownerDocument.activeElement ?? null;
@@ -223,9 +226,33 @@ export function FloatingFormatToolbar(props: FloatingFormatToolbarProps) {
                 <Link />
               </IconButton>
             </Show>
+            <For each={extra}>{(item: EditorToolbarItem) => <FloatingItem item={item} />}</For>
           </Toolbar>
         </div>
       </Portal>
+    </Show>
+  );
+}
+
+/** An extension's button over selected text, offered where its `$shown` reads true. */
+function FloatingItem(props: { item: EditorToolbarItem }) {
+  const editor = useLexicalEditor();
+  const messages = useArcMessages();
+  const shown = useLexicalEditorState(() => props.item.$shown?.() ?? true);
+  const pressed = useLexicalEditorState(() => props.item.$pressed?.() ?? false);
+  return (
+    <Show when={shown()}>
+      <IconButton
+        label={labelOf(props.item.label, messages())}
+        shortcut={
+          props.item.shortcut === undefined ? undefined : shortcutLabel(props.item.shortcut)
+        }
+        size="sm"
+        isPressed={props.item.$pressed === undefined ? undefined : pressed()}
+        onPress={() => props.item.run(editor)}
+      >
+        {props.item.icon()}
+      </IconButton>
     </Show>
   );
 }

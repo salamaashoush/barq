@@ -156,7 +156,7 @@ describe("SlashCommandMenu", () => {
       [...document.querySelectorAll('[data-slot="typeahead-heading"]')].map(
         (one) => one.textContent,
       ),
-    ).toEqual(["Basic", "Media"]);
+    ).toEqual(["Basic", "Media", "Layout"]);
     await typeText(editor, "heading 2");
     expect(options()[0]).toBe("Heading 2");
     expect(document.querySelector('[data-slot="typeahead-heading"]')).toBeNull();

@@ -1,4 +1,5 @@
-import { type Child, For, Show, createMemo } from "@barqjs/core";
+import { type Child, For, Show, createMemo, createUniqueId } from "@barqjs/core";
+import { useLocale } from "@barqjs/aria/i18n";
 import { type JSX, dynamic } from "@barqjs/web";
 import {
   IS_BOLD,
@@ -395,9 +396,10 @@ function orderOf(nodes: readonly StoredNode[]): (type: string) => readonly Store
 function renderContext(
   nodes: readonly StoredNode[],
   extensions: readonly EditorExtension[],
-  messages: ArcMessages,
+  reader: { messages: ArcMessages; id: string; locale: string },
   base: Omit<RenderContext, "blocks" | "renderers" | "scope">,
 ): RenderContext {
+  const numbers = new Intl.NumberFormat(reader.locale);
   const nodesOf = orderOf(nodes);
   const context: RenderContext = {
     ...base,
@@ -410,7 +412,9 @@ function renderContext(
     scope: {
       editing: base.editing === true,
       slots: base.slots,
-      messages,
+      messages: reader.messages,
+      id: reader.id,
+      formatNumber: (value) => numbers.format(value),
       children: (node) => <Children nodes={(node as StoredNode).children} context={context} />,
       ordinal: (node) => nodesOf(node.type).indexOf(node) + 1,
       nodesOf,
@@ -427,14 +431,21 @@ export function EditorDocument(
   props: ExtensionOptions & { value?: DocumentValue; markdown?: string },
 ) {
   const messages = useArcMessages();
+  const locale = useLocale();
+  const id = createUniqueId();
   const options = (): ExtensionOptions => ({ preset: props.preset, extensions: props.extensions });
   const nodes = createMemo(() => storedNodes(props.value, props.markdown, options()));
   const context = (): RenderContext =>
-    renderContext(nodes(), documentEditorExtensions(options()), messages(), {
-      slots: documentStyles(),
-      headingOffset: 0,
-      editing: true,
-    });
+    renderContext(
+      nodes(),
+      documentEditorExtensions(options()),
+      { messages: messages(), id, locale: locale().locale },
+      {
+        slots: documentStyles(),
+        headingOffset: 0,
+        editing: true,
+      },
+    );
   return (
     <Show when={nodes().length > 0}>
       <Children nodes={nodes()} context={context()} />
@@ -459,17 +470,24 @@ export function EditorDocument(
  */
 export function RichTextRenderer(props: RichTextRendererProps) {
   const messages = useArcMessages();
+  const locale = useLocale();
+  const id = createUniqueId();
   const options = (): ExtensionOptions => ({ preset: props.preset, extensions: props.extensions });
   const extensions = createMemo(() => documentEditorExtensions(options()));
   const nodes = createMemo(() => storedNodes(props.value, props.markdown, options()));
   const cls = () => parts({ ...documentStyles(), root: "" }, props.classes);
   const context = (): RenderContext =>
-    renderContext(nodes(), extensions(), messages(), {
-      slots: cls(),
-      headingOffset: props.headingOffset ?? 0,
-      renderMention: props.renderMention,
-      linkHref: props.linkHref,
-    });
+    renderContext(
+      nodes(),
+      extensions(),
+      { messages: messages(), id, locale: locale().locale },
+      {
+        slots: cls(),
+        headingOffset: props.headingOffset ?? 0,
+        renderMention: props.renderMention,
+        linkHref: props.linkHref,
+      },
+    );
   return (
     <div
       class={arc(

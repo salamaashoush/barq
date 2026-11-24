@@ -47,7 +47,12 @@ import {
   documentExtensions,
   markdownTransformers,
 } from "./document.ts";
-import { commandsOf, editorExtensions } from "./extension.ts";
+import {
+  type EditorExtension,
+  commandsOf,
+  editorExtensions,
+  provideEditorMessages,
+} from "./extension.ts";
 import { useRegistration } from "./hooks.ts";
 import { EditorDocument } from "./renderer.tsx";
 import { editableText } from "./theme.ts";
@@ -67,6 +72,8 @@ export const richTextEditorStyles = variants({
     content: arc(editableText, {
       minBlockSize: "var(--editor-min-height, auto)",
       padding: space.x3,
+      // Footnotes number themselves in reading order from this counter.
+      counterReset: "arc-footnote",
     }),
     placeholder: arc(fg.faint, truncate, place.passive, {
       insetBlockStart: space.x3,
@@ -166,9 +173,8 @@ function heights(
 }
 
 /** What every extension the editor holds mounts: its panels, dialogs and listeners. */
-export function ExtensionPlugins() {
-  const editor = useLexicalEditor();
-  const plugins = editorExtensions(editor).flatMap((extension) => extension.plugins ?? []);
+export function ExtensionPlugins(props: { extensions: readonly EditorExtension[] }) {
+  const plugins = untrack(() => props.extensions.flatMap((extension) => extension.plugins ?? []));
   return <For each={plugins}>{(Plugin: () => JSX.Element) => <Plugin />}</For>;
 }
 
@@ -179,6 +185,7 @@ export function EditorBridge(props: {
   onEditor?: (editor: LexicalEditor) => void;
 }) {
   const editor = useLexicalEditor();
+  provideEditorMessages(editor, useArcMessages());
   untrack(() => props.onEditor?.(editor));
   createEffect(
     () => props.readOnly === true,
@@ -196,19 +203,28 @@ export function EditorBridge(props: {
   return null;
 }
 
-function Footer(props: { cls: Slots; maxLength?: number; autosave?: AutosaveOptions }) {
-  const editor = useLexicalEditor();
-  const footers = editorExtensions(editor).flatMap((extension) =>
-    extension.footer === undefined ? [] : [extension.footer],
+function Footer(props: {
+  cls: Slots;
+  maxLength?: number;
+  autosave?: AutosaveOptions;
+  extensions: readonly EditorExtension[];
+}) {
+  const footers = untrack(() =>
+    props.extensions.flatMap((extension) =>
+      extension.footer === undefined ? [] : [extension.footer],
+    ),
   );
   const messages = useArcMessages();
   const counter = useCharacterCount(() => props.maxLength);
   const autosave = props.autosave === undefined ? undefined : useEditorAutosave(props.autosave);
   let wasOver = false;
-  createEffect(counter.over, (over) => {
-    if (over && !wasOver) announce(messages().charactersOver(-counter.remaining()), "polite");
-    wasOver = over;
-  });
+  createEffect(
+    () => (counter.over() ? messages().charactersOver(-counter.remaining()) : null),
+    (over) => {
+      if (over !== null && !wasOver) announce(over, "polite");
+      wasOver = over !== null;
+    },
+  );
   const status = (): string => {
     switch (autosave?.status()) {
       case "pending":
@@ -375,13 +391,18 @@ export function RichTextEditor(props: RichTextEditorProps) {
           resolved.some((extension) => extension.footer !== undefined)
         }
       >
-        <Footer cls={cls()} maxLength={props.maxLength} autosave={props.autosave} />
+        <Footer
+          cls={cls()}
+          maxLength={props.maxLength}
+          autosave={props.autosave}
+          extensions={resolved}
+        />
       </Show>
       <Show when={props.floatingToolbar !== false}>
         <FloatingFormatToolbar />
       </Show>
       <LinkEditor />
-      <ExtensionPlugins />
+      <ExtensionPlugins extensions={resolved} />
       <EditorBridge readOnly={props.readOnly} onChange={props.onChange} onEditor={props.onEditor} />
       {props.children}
     </>

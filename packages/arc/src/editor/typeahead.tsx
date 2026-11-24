@@ -344,7 +344,7 @@ export function editorCommands(
   editor: LexicalEditor | null,
   place: CommandPlace = "slash",
 ): SlashCommand[] {
-  return commandsOf(extensions, editor, place).map((command) => ({
+  const commands = commandsOf(extensions, editor, place).map((command) => ({
     id: command.id,
     label: labelOf(command.label, messages),
     group: command.group === undefined ? messages.basicBlocks : labelOf(command.group, messages),
@@ -355,6 +355,9 @@ export function editorCommands(
     shortcut: command.shortcut === undefined ? undefined : shortcutLabel(command.shortcut),
     run: command.run,
   }));
+  // A group's commands sit together, the groups in the order they are first met.
+  const groups = [...new Set(commands.map((command) => command.group))];
+  return commands.toSorted((a, b) => groups.indexOf(a.group) - groups.indexOf(b.group));
 }
 
 export interface SlashCommandMenuProps extends Customisable<Slots> {

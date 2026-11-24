@@ -10,7 +10,7 @@ import type {
   RangeSelection,
 } from "lexical";
 
-import type { ArcMessages } from "../components/messages.ts";
+import { type ArcMessages, ENGLISH } from "../components/messages.ts";
 import type { AnyBlock, BlockLabel } from "./blocks.tsx";
 import type { DocumentSlots } from "./theme.ts";
 
@@ -57,6 +57,19 @@ export interface EditorToolbarItem {
   priority?: number;
 }
 
+/** A choice a block's menu offers for the block it is open on: a callout's tone, a set of columns' layout. */
+export interface BlockMenuChoice {
+  id: string;
+  label: Label;
+  /** Read for the block the menu is open on: its options and the one it has, or `null` where it does not apply. */
+  $read: (block: LexicalNode) => {
+    value: string;
+    options: readonly { value: string; label: Label }[];
+  } | null;
+  /** Inside an update: gives the block the option. */
+  $choose: (block: LexicalNode, value: string) => void;
+}
+
 /** A key an extension answers, by key or, for digits and punctuation, by the key's place. */
 export interface EditorKeyBinding {
   /** `"Mod+Alt+F"`, `"Mod+Shift+\\"`: Mod is Command on a Mac, Control elsewhere. */
@@ -79,6 +92,10 @@ export interface RenderScope {
   editing: boolean;
   slots: DocumentSlots;
   messages: ArcMessages;
+  /** Unique to this drawing of the document, for the ids its parts link between. */
+  id: string;
+  /** A number the document draws itself, as a footnote's, in the reader's digits. */
+  formatNumber: (value: number) => string;
   /** The node's children, drawn. */
   children: (node: StoredNode) => Child;
   /** Where the node stands among the document's nodes of its type, counted from one in reading order. */
@@ -134,6 +151,8 @@ export interface EditorExtension {
   /** Over selected text, after the marks. */
   readonly floating?: readonly EditorToolbarItem[];
   readonly keys?: readonly EditorKeyBinding[];
+  /** In a block's menu, for the blocks each applies to. */
+  readonly blockMenu?: readonly BlockMenuChoice[];
   readonly paste?: readonly PasteRule[];
   /** Markdown it reads and writes; a function is handed every rule, for a block that holds markdown of its own. */
   readonly markdown?:
@@ -217,6 +236,18 @@ export function provideEditorExtensions(
 /** The extensions an editor was built from, resolved. */
 export function editorExtensions(editor: LexicalEditor): readonly EditorExtension[] {
   return registry.get(editor) ?? [];
+}
+
+const wordsByEditor = new WeakMap<LexicalEditor, () => ArcMessages>();
+
+/** Gives an editor the reader's words, for an extension's listener or key that has no component to read them from. */
+export function provideEditorMessages(editor: LexicalEditor, messages: () => ArcMessages): void {
+  wordsByEditor.set(editor, messages);
+}
+
+/** The reader's words in an editor, arc's English until its UI has mounted. */
+export function editorMessages(editor: LexicalEditor): ArcMessages {
+  return wordsByEditor.get(editor)?.() ?? ENGLISH;
 }
 
 const loads = new WeakMap<EditorExtension, Promise<unknown>>();

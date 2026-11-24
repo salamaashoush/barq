@@ -1,3 +1,5 @@
+import { calloutExtension } from "./callout.tsx";
+import { columnsExtension } from "./columns.tsx";
 import {
   autoLinkExtension,
   dividerExtension,
@@ -8,6 +10,9 @@ import {
   tableExtension,
 } from "./core.tsx";
 import type { EditorExtension } from "./extension.ts";
+import { footnoteExtension } from "./footnote.tsx";
+import { PageBreakBlock } from "./page-break.tsx";
+import { toggleExtension } from "./toggle.tsx";
 
 /**
  * A document: rich text, tables, dividers, images, embeds and mentions,
@@ -21,6 +26,11 @@ export const documentPreset: readonly EditorExtension[] = [
   imageExtension,
   embedExtension(),
   mentionExtension,
+  calloutExtension,
+  columnsExtension,
+  toggleExtension,
+  PageBreakBlock,
+  footnoteExtension,
 ];
 
 /** A message: rich text, links, images and mentions, nothing laid out as a page. */

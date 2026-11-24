@@ -68,6 +68,8 @@ import {
   textBlockLabel,
   toggleMark,
 } from "./commands.ts";
+import { labelOf } from "./blocks.tsx";
+import { type EditorToolbarItem, editorExtensions } from "./extension.ts";
 import { editorSignal, useRegistration } from "./hooks.ts";
 
 /** A group of the toolbar's controls, which goes into the More menu whole. */
@@ -250,11 +252,14 @@ export function EditorToolbar(props: EditorToolbarProps) {
   const format = useSelectionFormat();
   const history = useHistoryState();
   const cls = (): Slots => parts(editorToolbarStyles(), props.classes);
-  const tools = createMemo((): EditorTool[] =>
-    (props.tools ?? DEFAULT_TOOLS).filter(
+  const extra = editorExtensions(editor).flatMap((extension) => extension.toolbar ?? []);
+  const extraById = new Map(extra.map((item) => [`extension:${item.id}`, item]));
+  const tools = createMemo((): string[] => [
+    ...(props.tools ?? DEFAULT_TOOLS).filter(
       (tool) => tool !== "insert" || (props.insert?.length ?? 0) > 0,
     ),
-  );
+    ...extraById.keys(),
+  ]);
 
   const wrapperRef = makeRef<HTMLDivElement>();
   const groupRef = makeRef<HTMLDivElement>();
@@ -264,10 +269,11 @@ export function EditorToolbar(props: EditorToolbarProps) {
     isCollapsing: () => true,
     orientation: () => "horizontal",
     keys: tools,
-    priority: (key: Key) => PRIORITY[key as EditorTool],
+    priority: (key: Key) =>
+      PRIORITY[key as EditorTool] ?? extraById.get(String(key))?.priority ?? 2,
   });
-  const shown = (): EditorTool[] => tools().filter((tool) => !hidden().has(tool));
-  const folded = (): EditorTool[] => tools().filter((tool) => hidden().has(tool));
+  const shown = (): string[] => tools().filter((tool) => !hidden().has(tool));
+  const folded = (): string[] => tools().filter((tool) => hidden().has(tool));
 
   const block = (): TextBlockType | null => format().block;
   const align = (): ElementFormatType => alignmentOf(format().align, format().rtl);
@@ -282,12 +288,14 @@ export function EditorToolbar(props: EditorToolbarProps) {
     return current === null ? messages().textStyle : textBlockLabel(current, messages());
   };
 
-  const group = (tool: EditorTool, index: () => number): Child => (
+  const group = (tool: string, index: () => number): Child => (
     <div class={cls().group} data-slot="editor-toolbar-group" data-tool={tool}>
       <Show when={index() > 0}>
         <ToolbarSeparator />
       </Show>
-      {tool === "history" ? (
+      {extraById.has(tool) ? (
+        <ExtensionTool item={extraById.get(tool)!} disabled={disabled()} />
+      ) : tool === "history" ? (
         <>
           <IconButton
             label={messages().undo}
@@ -444,7 +452,7 @@ export function EditorToolbar(props: EditorToolbarProps) {
     >
       <div ref={wrapperRef.set} class={cls().room} data-slot="editor-toolbar">
         <div ref={groupRef.set} class={cls().row}>
-          <For each={shown()}>{(tool: EditorTool, index: () => number) => group(tool, index)}</For>
+          <For each={shown()}>{(tool: string, index: () => number) => group(tool, index)}</For>
           <Show when={folded().length > 0}>
             <DropdownMenu>
               <DropdownMenuTrigger>
@@ -461,13 +469,14 @@ export function EditorToolbar(props: EditorToolbarProps) {
               </DropdownMenuTrigger>
               <DropdownMenuContent aria-label={messages().formatting} align="end">
                 <For each={folded()}>
-                  {(tool: EditorTool, index: () => number) => (
+                  {(tool: string, index: () => number) => (
                     <>
                       <Show when={index() > 0}>
                         <DropdownMenuSeparator />
                       </Show>
                       <FoldedTool
                         tool={tool}
+                        item={extraById.get(tool)}
                         format={format()}
                         align={align()}
                         canUndo={history.canUndo()}
@@ -527,9 +536,29 @@ function AlignmentItems(props: {
   );
 }
 
+/** An extension's button, pressed as its `$pressed` reads the selection. */
+function ExtensionTool(props: { item: EditorToolbarItem; disabled: boolean }) {
+  const editor = useLexicalEditor();
+  const messages = useArcMessages();
+  const pressed = useLexicalEditorState(() => props.item.$pressed?.() ?? false);
+  return (
+    <IconButton
+      label={labelOf(props.item.label, messages())}
+      shortcut={props.item.shortcut === undefined ? undefined : shortcutLabel(props.item.shortcut)}
+      size="sm"
+      isPressed={props.item.$pressed === undefined ? undefined : pressed()}
+      isDisabled={props.disabled}
+      onPress={() => props.item.run(editor)}
+    >
+      {props.item.icon()}
+    </IconButton>
+  );
+}
+
 /** A group that no longer fits, as menu items. */
 function FoldedTool(props: {
-  tool: EditorTool;
+  tool: string;
+  item?: EditorToolbarItem;
   format: SelectionFormat;
   align: ElementFormatType;
   canUndo: boolean;
@@ -540,6 +569,15 @@ function FoldedTool(props: {
   const editor = useLexicalEditor();
   const messages = useArcMessages();
   const tool = props.tool;
+  const extra = props.item;
+  if (extra !== undefined) {
+    return (
+      <DropdownMenuItem onSelect={() => extra.run(editor)}>
+        {extra.icon()}
+        {labelOf(extra.label, messages())}
+      </DropdownMenuItem>
+    );
+  }
   if (tool === "history") {
     return (
       <>

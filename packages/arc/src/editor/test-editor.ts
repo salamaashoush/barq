@@ -58,3 +58,47 @@ export function capture(): { get: () => LexicalEditor; set: (editor: LexicalEdit
     },
   };
 }
+
+/**
+ * A page rendered by a real server process and hydrated here: `jsx` is the
+ * page's markup, written with what `imports` brings from the editor entry.
+ * Hydration claims the server's markup with no mismatch and no rebuild.
+ */
+export async function hydratesFromServer(
+  imports: string,
+  jsx: string,
+): Promise<{ container: HTMLElement; dispose: () => void }> {
+  const { serverProcess, halves } = await import("../ssr-harness.ts");
+  const { resetChildIds } = await import("@barqjs/core");
+  const { hydrate } = await import("@barqjs/web");
+  const entry = JSON.stringify(new URL("./index.ts", import.meta.url).pathname);
+  const { code, html, errors } = await serverProcess(`
+    import { renderToStringAsync } from "@barqjs/server";
+    import { ${imports} } from ${entry};
+    export async function page() {
+      return await renderToStringAsync(() => (${jsx}));
+    }
+  `);
+  if (code !== 0) throw new Error(errors);
+  const { client } = await halves(`
+    import { ${imports} } from ${entry};
+    export function Page() {
+      return ${jsx};
+    }
+  `);
+  const container = document.body.appendChild(document.createElement("div"));
+  container.innerHTML = html;
+  resetChildIds();
+  const dispose = hydrate(client, container);
+  if (hydrate.report.mismatches.length > 0 || hydrate.report.recovered) {
+    throw new Error(`hydration did not claim the server's page: ${JSON.stringify(hydrate.report)}`);
+  }
+  await settle();
+  return {
+    container,
+    dispose: () => {
+      dispose();
+      container.remove();
+    },
+  };
+}

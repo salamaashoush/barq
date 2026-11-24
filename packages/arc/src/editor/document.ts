@@ -76,9 +76,18 @@ export function markdownTransformers(options: DocumentOptions = {}): Transformer
   return all;
 }
 
+/** The document's theme with each extension's laid over it; two classes for one key are both kept. */
 function mergeThemes(base: EditorThemeClasses, extensions: readonly EditorExtension[]) {
   const theme: EditorThemeClasses = { ...base };
-  for (const extension of extensions) Object.assign(theme, extension.theme);
+  for (const extension of extensions) {
+    for (const [key, value] of Object.entries(extension.theme ?? {})) {
+      const before: unknown = theme[key];
+      theme[key] =
+        typeof before === "string" && typeof value === "string" && before !== ""
+          ? `${before} ${value}`
+          : value;
+    }
+  }
   return theme;
 }
 

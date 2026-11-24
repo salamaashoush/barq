@@ -571,6 +571,72 @@ export interface ArcMessages {
   remoteCursor: (name: string) => string;
   saving: string;
   saveFailed: string;
+  layoutBlocks: string;
+  callout: string;
+  calloutTone: string;
+  calloutToneName: (tone: "neutral" | "info" | "success" | "warning" | "danger") => string;
+  twoColumns: string;
+  threeColumns: string;
+  columnLayout: string;
+  columnLayoutName: (shares: readonly number[]) => string;
+  toggle: string;
+  toggleTitle: string;
+  toggleExpanded: string;
+  toggleCollapsed: string;
+  pageBreak: string;
+  footnote: string;
+  footnotes: string;
+  addFootnote: string;
+  footnoteHint: string;
+  removeFootnote: string;
+  footnoteReference: (number: string) => string;
+  backToReference: (number: string) => string;
+  findAndReplace: string;
+  findText: string;
+  replaceWith: string;
+  previousMatch: string;
+  nextMatch: string;
+  matchCase: string;
+  wholeWords: string;
+  matchCount: (current: number, total: number) => string;
+  replaceOne: string;
+  replaceAll: string;
+  wordCount: (count: number) => string;
+  readingTime: (minutes: number) => string;
+  outline: string;
+  outlineEmpty: string;
+  focusMode: string;
+  leaveFocusMode: string;
+  wordDocument: string;
+  readingWordDocument: string;
+  wordDocumentRead: string;
+  wordPicturesSkipped: (count: number) => string;
+  wordDocumentFailed: string;
+  textTracks: string;
+  audioDescription: string;
+  captionsHint: string;
+  addCaptionLine: string;
+  captionStart: (line: number) => string;
+  captionEnd: (line: number) => string;
+  captionText: (line: number) => string;
+  removeCaptionLine: (line: number) => string;
+  captionsLanguage: string;
+  captionsEmpty: string;
+  uploadCaptions: string;
+  saveCaptions: string;
+  captionsTimeProblem: string;
+  captionsSaveFailed: string;
+  draftCaptions: string;
+  draftWaiting: string;
+  drafting: (percent: number) => string;
+  useDraft: string;
+  draftNote: string;
+  draftFailed: string;
+  descriptionsHelp: string;
+  descriptionAddAt: (time: string) => string;
+  descriptionsHint: string;
+  descriptionsSkipped: (count: number) => string;
+  transcriptHint: string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -1165,6 +1231,85 @@ export const ENGLISH: ArcMessages = {
   remoteCursor: (name) => `${name}'s cursor`,
   saving: "Saving…",
   saveFailed: "Not saved",
+  layoutBlocks: "Layout",
+  callout: "Callout",
+  calloutTone: "Tone",
+  calloutToneName: (tone) =>
+    ({
+      neutral: "Neutral",
+      info: "Information",
+      success: "Success",
+      warning: "Warning",
+      danger: "Danger",
+    })[tone],
+  twoColumns: "2 columns",
+  threeColumns: "3 columns",
+  columnLayout: "Columns",
+  columnLayoutName: (shares) => shares.join(" : "),
+  toggle: "Toggle",
+  toggleTitle: "Toggle heading",
+  toggleExpanded: "Expanded",
+  toggleCollapsed: "Collapsed",
+  pageBreak: "Page break",
+  footnote: "Footnote",
+  footnotes: "Footnotes",
+  addFootnote: "Add a footnote",
+  footnoteHint: "What the note says",
+  removeFootnote: "Remove footnote",
+  footnoteReference: (number) => `Footnote ${number}`,
+  backToReference: (number) => `Back to footnote ${number} in the text`,
+  findAndReplace: "Find and replace",
+  findText: "Find",
+  replaceWith: "Replace with",
+  previousMatch: "Previous match",
+  nextMatch: "Next match",
+  matchCase: "Match case",
+  wholeWords: "Whole words",
+  matchCount: (current, total) => `${String(current)} of ${String(total)}`,
+  replaceOne: "Replace",
+  replaceAll: "Replace all",
+  wordCount: (count) => (count === 1 ? "1 word" : `${String(count)} words`),
+  readingTime: (minutes) => `${String(minutes)} min read`,
+  outline: "Outline",
+  outlineEmpty: "No headings yet",
+  focusMode: "Focus mode",
+  leaveFocusMode: "Leave focus mode",
+  wordDocument: "Word document",
+  readingWordDocument: "Reading the Word document…",
+  wordDocumentRead: "Imported",
+  wordPicturesSkipped: (count) =>
+    count === 1
+      ? "Imported; 1 picture was left out"
+      : `Imported; ${String(count)} pictures were left out`,
+  wordDocumentFailed: "The Word document could not be read",
+  textTracks: "Captions, description and transcript",
+  audioDescription: "Audio description",
+  captionsHint: "Each line shows from its start to its end. A new line starts where the player is.",
+  addCaptionLine: "Add a line",
+  captionStart: (line) => `Start of line ${String(line)}`,
+  captionEnd: (line) => `End of line ${String(line)}`,
+  captionText: (line) => `Words of line ${String(line)}`,
+  removeCaptionLine: (line) => `Remove line ${String(line)}`,
+  captionsLanguage: "Language",
+  captionsEmpty: "No lines yet. Play the recording and add a line where the words start.",
+  uploadCaptions: "Upload WebVTT",
+  saveCaptions: "Save captions",
+  captionsTimeProblem: "Each line needs a start and an end, the end after the start",
+  captionsSaveFailed: "The captions could not be saved",
+  draftCaptions: "Draft from speech",
+  draftWaiting: "Waiting to draft…",
+  drafting: (percent) => `Drafting… ${String(percent)}%`,
+  useDraft: "Use the draft",
+  draftNote: "A draft from speech: check each line against the recording before saving.",
+  draftFailed: "The draft could not be made",
+  descriptionsHelp: "Each line is a time and what the picture shows from then.",
+  descriptionAddAt: (time) => `Add at ${time}`,
+  descriptionsHint: "0:05 A map of the river appears",
+  descriptionsSkipped: (count) =>
+    count === 1
+      ? "1 line has no time and is left out"
+      : `${String(count)} lines have no time and are left out`,
+  transcriptHint: "Everything the recording says, written out",
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");

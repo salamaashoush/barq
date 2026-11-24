@@ -56,7 +56,9 @@ import {
   shortcutLabel,
   textBlockLabel,
 } from "./commands.ts";
-import { editorExtensions } from "./extension.ts";
+import { labelOf } from "./blocks.tsx";
+import { $rootBlockOf } from "./containers.tsx";
+import { type BlockMenuChoice, type Label, editorExtensions } from "./extension.ts";
 import { editorSignal, useRegistration } from "./hooks.ts";
 import { RichTextEditor, type RichTextEditorProps } from "./rich-text-editor.tsx";
 import { type SlashCommand, SlashCommandMenu, editorCommands } from "./typeahead.tsx";
@@ -101,6 +103,14 @@ interface ActiveBlock {
   count: number;
   /** A text block's type, which Turn into offers to change. */
   text: TextBlockType | null;
+  /** What the extensions' block menus offer this block, each with what it has now. */
+  choices: readonly OfferedChoice[];
+}
+
+interface OfferedChoice {
+  choice: BlockMenuChoice;
+  value: string;
+  options: readonly { value: string; label: Label }[];
 }
 
 /** A node and everything under it as JSON, children included, for a copy. */
@@ -308,6 +318,7 @@ function BlockHandles(props: { cls: Slots }) {
   let dragged = false;
   let pinned = false;
 
+  const blockMenu = editorExtensions(editor).flatMap((extension) => extension.blockMenu ?? []);
   const measure = (key: NodeKey): ActiveBlock | null => {
     const element = editor.getElementByKey(key);
     const body = scroller();
@@ -322,6 +333,10 @@ function BlockHandles(props: { cls: Slots }) {
         index: node.getIndexWithinParent(),
         count: $getRoot().getChildrenSize(),
         text: $textBlockOf(node),
+        choices: blockMenu.flatMap((choice) => {
+          const offered = choice.$read(node);
+          return offered === null ? [] : [{ choice, ...offered }];
+        }),
       };
     });
   };
@@ -335,7 +350,7 @@ function BlockHandles(props: { cls: Slots }) {
     editor.read(() => {
       const selection = $getSelection();
       return $isRangeSelection(selection)
-        ? (selection.anchor.getNode().getTopLevelElement()?.getKey() ?? null)
+        ? ($rootBlockOf(selection.anchor.getNode())?.getKey() ?? null)
         : null;
     });
 
@@ -584,6 +599,35 @@ function BlockHandles(props: { cls: Slots }) {
                         </DropdownMenuRadioGroup>
                         <DropdownMenuSeparator />
                       </Show>
+                      <For each={current().choices}>
+                        {(offered: OfferedChoice) => (
+                          <>
+                            <DropdownMenuLabel>
+                              {labelOf(offered.choice.label, messages())}
+                            </DropdownMenuLabel>
+                            <DropdownMenuRadioGroup
+                              value={offered.value}
+                              onValueChange={(value: string) => {
+                                const key = current().key;
+                                editor.update(() => {
+                                  const node = $getNodeByKey(key);
+                                  if (node !== null) offered.choice.$choose(node, value);
+                                });
+                                follow(key);
+                              }}
+                            >
+                              <For each={offered.options}>
+                                {(option: { value: string; label: Label }) => (
+                                  <DropdownMenuRadioItem value={option.value}>
+                                    {labelOf(option.label, messages())}
+                                  </DropdownMenuRadioItem>
+                                )}
+                              </For>
+                            </DropdownMenuRadioGroup>
+                            <DropdownMenuSeparator />
+                          </>
+                        )}
+                      </For>
                       <DropdownMenuItem onSelect={() => duplicate(editor, current().key)}>
                         {messages().duplicate}
                       </DropdownMenuItem>

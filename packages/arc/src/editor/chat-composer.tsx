@@ -56,7 +56,12 @@ import {
   type,
 } from "../style/index.ts";
 import { $selectionFormat } from "./commands.ts";
-import { type DocumentValue, documentExtensions, markdownTransformers } from "./document.ts";
+import {
+  type DocumentValue,
+  documentEditorExtensions,
+  documentExtensions,
+  markdownTransformers,
+} from "./document.ts";
 import type { EditorExtension } from "./extension.ts";
 import { chatPreset } from "./presets.ts";
 import { EditorDocument } from "./renderer.tsx";
@@ -452,7 +457,9 @@ function Composer(props: ChatComposerProps & { cls: Slots; queue?: UploadQueueAp
         </Show>
       </div>
       <SendKeys send={send} cancel={props.onCancel} modEnter={props.sendOn === "mod-enter"} />
-      <ExtensionPlugins />
+      <ExtensionPlugins
+        extensions={documentEditorExtensions({ preset: props.preset ?? chatPreset })}
+      />
       <FloatingFormatToolbar />
       <LinkEditor />
       <Show when={props.mentions !== undefined}>

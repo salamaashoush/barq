@@ -246,6 +246,30 @@ export const ImageBlock: Block<ImageData> = defineBlock<ImageData>({
     regExp: IMAGE_LINE,
     data: (match) => ({ alt: match[1] ?? "", src: match[2] ?? "", caption: match[3] }),
   },
+  fromHtml: {
+    img: (element) => {
+      const src = element.getAttribute("src") ?? "";
+      const uploadId = element.dataset.uploadId;
+      if (src === "" && uploadId === undefined) return null;
+      const width = Number(element.getAttribute("width"));
+      const height = Number(element.getAttribute("height"));
+      return {
+        src,
+        alt: element.getAttribute("alt") ?? "",
+        ...(width > 0 ? { width } : {}),
+        ...(height > 0 ? { height } : {}),
+        ...(uploadId === undefined ? {} : { uploadId }),
+      };
+    },
+  },
+  toHtml: (data) => {
+    const image = document.createElement("img");
+    image.src = data.src;
+    image.alt = data.alt;
+    if (data.width !== undefined) image.width = data.width;
+    if (data.height !== undefined) image.height = data.height;
+    return image;
+  },
 });
 
 export interface EmbedData {
@@ -272,7 +296,7 @@ export const DEFAULT_EMBED_PROVIDERS: readonly EmbedProvider[] = [
       const id =
         host === "youtu.be"
           ? url.pathname.slice(1)
-          : host === "youtube.com" || host === "m.youtube.com"
+          : host === "youtube.com" || host === "m.youtube.com" || host === "youtube-nocookie.com"
             ? (url.searchParams.get("v") ?? /^\/(?:embed|shorts)\/([\w-]+)/.exec(url.pathname)?.[1])
             : undefined;
       return id !== undefined && id !== null && /^[\w-]{6,}$/.test(id)
@@ -340,6 +364,15 @@ export const EmbedBlock: Block<EmbedData> = defineBlock<EmbedData>({
   component: EmbedView,
   insertable: false,
   toMarkdown: (data) => (data.url === "" ? null : `[${data.title}](${data.url})`),
+  fromHtml: {
+    iframe: (element) => resolveEmbed(element.getAttribute("src") ?? ""),
+  },
+  toHtml: (data) => {
+    const link = document.createElement("a");
+    link.href = data.url;
+    link.textContent = data.title;
+    return link;
+  },
 });
 
 /** Every image still on its way whose upload finished: its URL replaces the preview. */

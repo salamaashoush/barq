@@ -11,6 +11,8 @@ import {
 import { type ElementTransformer } from "@lexical/markdown";
 import {
   $getNodeByKey,
+  type DOMConversionMap,
+  type DOMExportOutput,
   type ElementFormatType,
   type Klass,
   type LexicalEditor,
@@ -65,6 +67,13 @@ export interface BlockDefinition<Data> {
   toMarkdown?(data: Data): string | null;
   /** A whole line of markdown that becomes this block on import and as it is typed. */
   fromMarkdown?: { regExp: RegExp; data: (match: string[]) => Data | null };
+  /**
+   * Elements read into this block from pasted or imported HTML, by tag name:
+   * the block's data, or `null` to leave the element to another reader.
+   */
+  fromHtml?: Readonly<Record<string, (element: HTMLElement) => Data | null>>;
+  /** The block as HTML, for a copy and an HTML export. */
+  toHtml?: (data: Data) => HTMLElement;
 }
 
 export type SerializedBlockNode<Data> = Spread<{ data: Data }, SerializedDecoratorBlockNode>;
@@ -85,7 +94,8 @@ export class BlockNode extends DecoratorBlockNode {
 
   updateFromJSON(json: LexicalUpdateJSON<SerializedBlockNode<unknown>>): this {
     const node = super.updateFromJSON(json).getWritable();
-    node.__data = json.data;
+    // A block stored before it had data keeps the data it was made with.
+    if (json.data !== undefined) node.__data = json.data;
     return node;
   }
 
@@ -231,6 +241,27 @@ export function defineBlock<Data>(definition: BlockDefinition<Data>): Block<Data
 
     static importJSON(json: SerializedBlockNode<Data>): DefinedBlockNode {
       return new DefinedBlockNode(definition.defaultData()).updateFromJSON(json);
+    }
+
+    static importDOM(): DOMConversionMap | null {
+      const readers = definition.fromHtml;
+      if (readers === undefined) return null;
+      const map: DOMConversionMap = {};
+      for (const [tag, read] of Object.entries(readers)) {
+        map[tag] = (element: HTMLElement) => {
+          const data = read(element);
+          return data === null
+            ? null
+            : { conversion: () => ({ node: new DefinedBlockNode(data) }), priority: 1 };
+        };
+      }
+      return map;
+    }
+
+    exportDOM(editor: LexicalEditor): DOMExportOutput {
+      return definition.toHtml === undefined
+        ? super.exportDOM(editor)
+        : { element: definition.toHtml(this.getLatest().__data as Data) };
     }
 
     getDefinition(): BlockDefinition<unknown> {
