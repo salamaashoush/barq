@@ -83,6 +83,32 @@ describe("SideNav", () => {
     view.unmount();
   });
 
+  test("links to one page by its search mark only the one whose search holds", async () => {
+    const sections: NavGroup[] = [
+      {
+        items: [
+          { label: "Profile", to: "/settings", search: { section: "profile" } },
+          { label: "Security", to: "/settings", search: { section: "security" } },
+        ],
+      },
+    ];
+    const view = await renderRoute({
+      routeTree: [
+        {
+          path: "/settings",
+          component: () => <SideNav aria-label="Settings" navigation={sections} />,
+        },
+      ],
+      path: "/settings?section=security",
+    });
+    const current = screen
+      .getAllByRole("link")
+      .filter((link) => link.getAttribute("aria-current") === "page")
+      .map((link) => link.textContent);
+    expect(current).toEqual(["Security"]);
+    view.unmount();
+  });
+
   test("Tab walks the links, each with a finger's room", async () => {
     const view = await renderRoute({ routeTree: tree(), path: "/settings/profile" });
     user.tab();

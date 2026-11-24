@@ -1,5 +1,6 @@
-import { type Child, Show, untrack } from "@barqjs/core";
+import { type Child, Show, createEffect, provide, untrack } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
+import { RouterContext } from "@barqjs/aria/interactions";
 import { type ColorSchemeOptions, colorScheme } from "@barqjs/primitives/color-scheme";
 import { Toaster, type ToasterProps } from "@barqjs/ui/sonner";
 
@@ -10,10 +11,29 @@ import {
   installArcTheme,
 } from "../theme/index.ts";
 import { ConfirmHost, type ConfirmHostProps } from "./confirm.tsx";
+import { linkRouter, maybeRouter } from "./link.ts";
 import { type ArcMessages, provideArcMessages } from "./messages.ts";
 
+interface Look {
+  readonly theme: ArcThemeSelection | undefined;
+  readonly density: Density | undefined;
+  readonly contrast: "high" | "system" | undefined;
+}
+
+function install({ theme, density, contrast }: Look): void {
+  if (theme !== undefined) {
+    installArcTheme({
+      ...theme,
+      ...(density === undefined ? {} : { density }),
+      ...(contrast === undefined ? {} : { contrast }),
+    });
+  } else if (density !== undefined) {
+    installArcDensity(density);
+  }
+}
+
 export interface ArcProviderProps {
-  /** Installed when the provider renders, replacing any theme installed before. */
+  /** Installed when the provider renders and whenever it changes, replacing any theme installed before. */
   theme?: ArcThemeSelection;
   /** Light, dark and system, right on the first paint; `false` when the app manages it. */
   colorScheme?: ColorSchemeOptions | false;
@@ -46,18 +66,15 @@ export interface ArcProviderProps {
  * ```
  */
 export function ArcProvider(props: ArcProviderProps) {
-  const theme = untrack(() => props.theme);
-  const density = untrack(() => props.density);
-  const contrast = untrack(() => props.contrast);
-  if (theme !== undefined) {
-    installArcTheme({
-      ...theme,
-      ...(density === undefined ? {} : { density }),
-      ...(contrast === undefined ? {} : { contrast }),
-    });
-  } else if (density !== undefined) {
-    installArcDensity(density);
-  }
+  const look = (): Look => ({
+    theme: props.theme,
+    density: props.density,
+    contrast: props.contrast,
+  });
+  // During render, so a server's inlined sheet carries it, and again whenever
+  // a prop changes, so a theme picker reaches the page without a remount.
+  install(untrack(look));
+  createEffect(look, install);
   provideArcMessages(() => props.messages);
   const schemeOptions = untrack(() => props.colorScheme);
   const scheme = schemeOptions === false ? undefined : colorScheme(schemeOptions ?? {});
@@ -70,9 +87,21 @@ export function ArcProvider(props: ArcProviderProps) {
     return scheme.resolved() === "dark" ? "dark" : "light";
   };
 
+  // An `href` on any of ui's or arc's links goes through the app's router,
+  // when there is one, instead of loading the page again.
+  const router = linkRouter(maybeRouter());
+  const children = (): Child =>
+    router === undefined
+      ? props.children
+      : provide(
+          RouterContext,
+          () => router,
+          () => props.children,
+        );
+
   return (
     <>
-      {props.children}
+      {children()}
       <Show when={props.toaster !== false}>
         <Toaster {...(props.toaster === false ? {} : props.toaster)} theme={toastTheme()} />
       </Show>

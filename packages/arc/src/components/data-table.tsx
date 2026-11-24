@@ -1,7 +1,7 @@
 import { type Child, Show, createMemo, provide, untrack } from "@barqjs/core";
 import { variants } from "@barqjs/css";
 import { controllable } from "@barqjs/aria/utils";
-import { RouterContext, type Router } from "@barqjs/aria/interactions";
+import { RouterContext } from "@barqjs/aria/interactions";
 import type { Key } from "@barqjs/aria/collections";
 import {
   Cell,
@@ -25,7 +25,6 @@ import { ArrowUp } from "@barqjs/lucide/icons/arrow-up";
 import { ChevronRight } from "@barqjs/lucide/icons/chevron-right";
 import { ChevronsUpDown } from "@barqjs/lucide/icons/chevrons-up-down";
 import { mediaQuery } from "@barqjs/primitives/media";
-import type { RouterState } from "@barqjs/router";
 import {
   type ColumnDef,
   type Header,
@@ -72,7 +71,7 @@ import {
 } from "../style/index.ts";
 import { useArcMessages } from "./messages.ts";
 import { EmptyState } from "./empty-state.tsx";
-import { maybeRouter } from "./link.ts";
+import { linkRouter, maybeRouter } from "./link.ts";
 import { Pager } from "./pager.tsx";
 import { SelectionBar, type SelectionAction } from "./selection-bar.tsx";
 
@@ -371,21 +370,6 @@ export const dataTableStyles = variants({
 type Slots = ReturnType<typeof dataTableStyles>;
 
 /** The router a row link navigates through: the app's, when there is one. */
-function linkRouter(state: RouterState | undefined): Router | undefined {
-  if (state === undefined) return undefined;
-  return {
-    isNative: false,
-    open: (_target, modifiers, href) => {
-      if (modifiers.metaKey || modifiers.ctrlKey || modifiers.shiftKey) {
-        window.open(href, "_blank", "noopener");
-        return;
-      }
-      void state.navigate(href);
-    },
-    href: (href) => href,
-  };
-}
-
 /**
  * A list of records as a grid: sortable, selectable, resizable and paged,
  * driven by `@barqjs/table` and read by `@barqjs/aria`'s table.
@@ -890,7 +874,9 @@ function BodyCell(props: BodyCellProps) {
     );
   }
   const found = item.row.getAllCellsByColumnId()[column.id];
-  const content = found === undefined ? null : <FlexRender cell={found} />;
+  // Built inside the cell rather than before it: a hydrating component claims
+  // the server's next node as it is built, which before the cell is the cell.
+  const content = () => (found === undefined ? null : <FlexRender cell={found} />);
   return (
     <Cell
       class={props.classes.cell}
@@ -913,10 +899,10 @@ function BodyCell(props: BodyCellProps) {
               <ChevronRight class={icon.directional} aria-hidden="true" />
             </TableExpandButton>
           </Show>
-          {content}
+          {content()}
         </span>
       ) : (
-        content
+        content()
       )}
     </Cell>
   );

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child, createSignal, flush } from "@barqjs/core";
+import { type Child, DEV, createSignal, flush } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import type { ColumnVisibilityState, SortingState } from "@barqjs/table";
 import { ariaViolations, render, screen, tick, user, waitFor, within } from "@barqjs/testing";
@@ -223,6 +223,17 @@ describe("DataTable selection", () => {
     expect(bodyRows().every((row) => row.getAttribute("aria-selected") === "true")).toBe(true);
     expect(screen.getByRole("status").textContent).toBe("3 selected");
     expect(await ariaViolations(document.body)).toEqual([]);
+  });
+
+  test("a row's checkbox selects it with no untracked read", async () => {
+    render(() => <Selecting />);
+    await settle();
+    const capture = DEV.diagnostics.capture();
+    await user.click(screen.getByRole("checkbox", { name: "Select INV-002" }));
+    await settle();
+    expect(bodyRows()[1]?.getAttribute("aria-selected")).toBe("true");
+    const strict = capture.stop().filter((event) => event.code === "STRICT_READ_UNTRACKED");
+    expect(strict).toEqual([]);
   });
 
   test("Space on a row selects it, and the bar's clear button lets go", async () => {
@@ -755,6 +766,30 @@ describe("DataTable as a tree", () => {
     `);
     expect(result.container.querySelector('[role="treegrid"]')).not.toBeNull();
     expect(result.container.textContent).toContain("Beta");
+    result.unmount();
+  });
+});
+
+describe("DataTable on a server", () => {
+  test("hydrates a cell that renders a component of its own", async () => {
+    const result = await hydrates(`
+      import { DataTable, Status } from "<arc>";
+      const data = [{ id: "a", number: "INV-001", state: "Paid" }];
+      export function Page() {
+        return (
+          <DataTable
+            label="Invoices"
+            columns={[
+              { accessorKey: "number", header: "Number" },
+              { accessorKey: "state", header: "State", cell: (context) => <Status tone="success">{context.row.original.state}</Status> },
+            ]}
+            data={data}
+            getRowId={(invoice) => invoice.id}
+          />
+        );
+      }
+    `);
+    expect(result.container.querySelector('[data-slot="status"]')?.textContent).toBe("Paid");
     result.unmount();
   });
 });
