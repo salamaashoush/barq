@@ -197,24 +197,103 @@ export const actionIncreaseFontSize: Action = {
  * Sets the font family of the selected text, and of text drawn next; the text
  * is measured again once the family's faces for its characters have loaded.
  */
-export const actionChangeFontFamily: Action<FontFamilyValues> = {
+/**
+ * What the font picker sends: a family picked, or one hovered to preview on
+ * the selection (`cachedElements` holding the selection as it was when the
+ * picker opened, which `resetAll` puts back), and the picker's state.
+ */
+export type ChangeFontFamilyData = Partial<
+  Pick<
+    AppState,
+    "openPopup" | "currentItemFontFamily" | "currentHoveredFontFamily" | "fontTopPicks"
+  >
+> & {
+  cachedElements?: ReadonlyMap<string, ExcalidrawElement>;
+  resetAll?: true;
+  resetContainers?: true;
+};
+
+/** Past these, a hovered font is not drawn on the selection: the redraw would lag the pointer. */
+const HOVER_PREVIEW_MAX_TEXTS = 200;
+const HOVER_PREVIEW_MAX_CHARS = 5000;
+
+const tooMuchToPreview = (elements: readonly ExcalidrawElement[], appState: AppState): boolean => {
+  const texts = getSelectedElements(elements, appState, { includeBoundTextElement: true }).filter(
+    isTextElement,
+  );
+  if (texts.length > HOVER_PREVIEW_MAX_TEXTS) return true;
+  let chars = 0;
+  for (const text of texts) {
+    chars += text.originalText.length;
+    if (chars > HOVER_PREVIEW_MAX_CHARS) return true;
+  }
+  return false;
+};
+
+/**
+ * The font family: of the selected text, and of text drawn next. A hovered
+ * family previews on the selection without an undo step, and the selection
+ * goes back as it was when the picker closes without a pick.
+ */
+export const actionChangeFontFamily: Action<FontFamilyValues | ChangeFontFamilyData> = {
   name: "changeFontFamily",
   label: "labels.fontFamily",
   announcement: "Font changed",
   perform: (elements, appState, value, editor) => {
     invariant(value, "actionChangeFontFamily: value must be defined");
+    const data: ChangeFontFamilyData =
+      typeof value === "number" ? { currentItemFontFamily: value } : value;
+    const { cachedElements, resetAll, resetContainers, ...nextAppState } = data;
+
+    if (resetAll) {
+      return {
+        elements: changeProperty(
+          elements,
+          appState,
+          (element) => {
+            const cached = cachedElements?.get(element.id);
+            return cached
+              ? newElementWith(element, { ...cached } as Partial<typeof element>)
+              : element;
+          },
+          true,
+        ),
+        appState: { ...appState, ...nextAppState },
+        captureUpdate: CaptureUpdateAction.NEVER,
+      };
+    }
+
+    const { currentItemFontFamily, currentHoveredFontFamily } = data;
+    const nextFontFamily = currentItemFontFamily ?? currentHoveredFontFamily ?? null;
+    const picked = currentItemFontFamily !== undefined && currentItemFontFamily !== null;
+    const result = {
+      appState: { ...appState, ...nextAppState },
+      captureUpdate: picked ? CaptureUpdateAction.IMMEDIATELY : CaptureUpdateAction.EVENTUALLY,
+    };
+    if (nextFontFamily === null || (!picked && tooMuchToPreview(elements, appState))) {
+      return result;
+    }
+
     const changed: ExcalidrawTextElement[] = [];
     const nextElements = changeProperty(
       elements,
       appState,
       (oldElement) => {
-        if (!isTextElement(oldElement)) {
+        if (!isTextElement(oldElement) || (!picked && oldElement.fontFamily === nextFontFamily)) {
           return oldElement;
         }
         const newElement: ExcalidrawTextElement = newElementWith(oldElement, {
-          fontFamily: value,
-          lineHeight: getLineHeight(value),
+          fontFamily: nextFontFamily,
+          lineHeight: getLineHeight(nextFontFamily),
         });
+        if (resetContainers && oldElement.containerId) {
+          // the container back as it was, for the preview to grow it from there
+          const cachedContainer = cachedElements?.get(oldElement.containerId);
+          const container = editor.scene.getContainerElement(oldElement);
+          if (cachedContainer && container) {
+            editor.scene.mutateElement(container, { ...cachedContainer });
+          }
+        }
         changed.push(newElement);
         return newElement;
       },
@@ -235,7 +314,7 @@ export const actionChangeFontFamily: Action<FontFamilyValues> = {
       }
     };
     const fontSet = editor.ownerDocument.fonts as FontFaceSet | undefined;
-    const fontString = `10px ${getFontFamilyString({ fontFamily: value })}`;
+    const fontString = `10px ${getFontFamilyString({ fontFamily: nextFontFamily })}`;
     const chars = [...new Set(changed.flatMap((element) => Array.from(element.originalText)))].join(
       "",
     );
@@ -252,9 +331,12 @@ export const actionChangeFontFamily: Action<FontFamilyValues> = {
     }
 
     return {
+      ...result,
       elements: nextElements,
-      appState: { ...appState, currentItemFontFamily: value },
-      captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+      appState: {
+        ...result.appState,
+        currentItemFontFamily: picked ? nextFontFamily : appState.currentItemFontFamily,
+      },
     };
   },
 };

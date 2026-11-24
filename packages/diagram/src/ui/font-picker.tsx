@@ -14,7 +14,7 @@ import {
 import { Button } from "@barqjs/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@barqjs/ui/popover";
 import { FONT_FAMILY, getFontFamilyString } from "@excalidraw/common";
-import { getBoundTextElement, isTextElement } from "@excalidraw/element";
+import { getBoundTextElement, isTextElement, newElementWith } from "@excalidraw/element";
 
 import { actionChangeFontFamily } from "../editor/actions/text.ts";
 import { getFormValue } from "../editor/actions/properties.ts";
@@ -23,7 +23,7 @@ import { useDiagramUI } from "./context.tsx";
 import { diagramLayer as d } from "./layer.ts";
 import { iconButton, radioChoice, radioGroupRow } from "./styles.ts";
 
-import type { FontFamilyValues } from "@excalidraw/element/types";
+import type { ExcalidrawElement, FontFamilyValues } from "@excalidraw/element/types";
 import type { TranslationKey } from "../i18n.ts";
 
 /** The three fonts Excalidraw offers beside its list. */
@@ -72,7 +72,47 @@ export function FontPicker() {
   const ui = useDiagramUI();
   const t = ui.t;
   const store = ui.store;
-  const [open, setOpen] = createSignal(false);
+  const [ownOpen, setOwnOpen] = createSignal(false);
+  // Shift+F opens it through the editor's `openPopup`
+  const open = (): boolean => ownOpen() || store.state("openPopup") === "fontFamily";
+  // the selection as it was when the list opened, which a hover previews on and a close restores
+  let cached = new Map<string, ExcalidrawElement>();
+  let picked = false;
+  const setOpen = (next: boolean): void => {
+    const editor = store.editor;
+    if (next && !open() && editor) {
+      cached = new Map();
+      picked = false;
+      const editing = editor.state.editingTextElement;
+      const elements = editing
+        ? [editor.scene.getElement(editing.id) ?? editing]
+        : editor.scene.getSelectedElements({
+            selectedElementIds: editor.state.selectedElementIds,
+            includeBoundTextElement: true,
+          });
+      for (const element of elements) cached.set(element.id, newElementWith(element, {}, true));
+    }
+    if (!next && open() && editor && !picked) {
+      ui.run(actionChangeFontFamily, {
+        currentHoveredFontFamily: null,
+        cachedElements: cached,
+        resetAll: true,
+      });
+    }
+    setOwnOpen(next);
+    if (!next && editor?.state.openPopup === "fontFamily") {
+      editor.batch(() => editor.setState({ openPopup: null }));
+    }
+  };
+  const hover = (label: string): void => {
+    const font = [...fonts().scene, ...fonts().available].find((entry) => entry.label === label);
+    if (!font || !open()) return;
+    ui.run(actionChangeFontFamily, {
+      currentHoveredFontFamily: font.value,
+      cachedElements: cached,
+      resetContainers: true,
+    });
+  };
 
   const selected = createMemo((): FontFamilyValues | null => {
     store.selection();
@@ -111,8 +151,13 @@ export function FontPicker() {
   });
 
   const choose = (fontFamily: FontFamilyValues): void => {
+    picked = true;
     setOpen(false);
-    ui.run(actionChangeFontFamily, fontFamily);
+    ui.run(actionChangeFontFamily, {
+      currentItemFontFamily: fontFamily,
+      currentHoveredFontFamily: null,
+      openPopup: null,
+    });
   };
 
   const isDefault = () => DEFAULT_FONTS.some((font) => font.value === selected());
@@ -160,7 +205,7 @@ export function FontPicker() {
           </Button>
         </PopoverTrigger>
         <PopoverContent side="bottom" align="start">
-          <Command label={t("labels.fontFamily")} class={list} loop>
+          <Command label={t("labels.fontFamily")} class={list} loop onValueChange={hover}>
             <CommandInput placeholder={t("quickSearch.placeholder")} />
             <CommandList>
               <CommandEmpty>{t("fontList.empty")}</CommandEmpty>

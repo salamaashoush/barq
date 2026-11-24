@@ -12,6 +12,7 @@ import {
 } from "@excalidraw/common";
 
 import { useDiagramUI } from "./context.tsx";
+import { previewColorOnSelection } from "./editor-keys.tsx";
 import { startEyeDropper } from "./eye-dropper.ts";
 import { diagramLayer as d } from "./layer.ts";
 import { iconButton, swatch, swatchFill, textInput } from "./styles.ts";
@@ -241,6 +242,11 @@ export function ColorPicker(props: ColorPickerProps) {
       eyeDropper();
       return true;
     }
+    // held, Alt picks with the eye dropper until it is let go
+    if (event.key === KEYS.ALT && !event.repeat) {
+      eyeDropper(true);
+      return true;
+    }
     if (!palette) return false;
     const found = current();
     if (event.key === KEYS.TAB) {
@@ -318,11 +324,19 @@ export function ColorPicker(props: ColorPickerProps) {
     return false;
   };
 
-  const eyeDropper = (): void => {
+  const eyeDropper = (keepOpenOnAlt = false): void => {
     const editor = ui.store.editor;
     if (!editor) return;
     setOpen(false);
+    const property =
+      props.type === "elementStroke"
+        ? "strokeColor"
+        : props.type === "elementBackground"
+          ? "backgroundColor"
+          : null;
     startEyeDropper(editor, {
+      keepOpenOnAlt,
+      onChange: property ? (color) => previewColorOnSelection(editor, property, color) : undefined,
       onSelect: (color) => props.onChange(color),
     });
   };

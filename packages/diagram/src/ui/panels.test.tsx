@@ -426,6 +426,7 @@ describe("colour picker", () => {
     await settle();
     const overlay = screen.getByTestId("eye-dropper-overlay");
     pointer(overlay, "pointerdown", 500, 500);
+    pointer(overlay, "pointerup", 500, 500);
     await settle();
     expect(screen.queryByTestId("eye-dropper-overlay")).toBeNull();
     expect(element(api, "A").strokeColor).toMatch(/^#[0-9a-f]{6}$/);

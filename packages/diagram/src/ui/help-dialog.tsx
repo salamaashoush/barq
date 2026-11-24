@@ -157,6 +157,7 @@ export function HelpDialog() {
             <Shortcut label={label("toolBar.frame")} shortcuts={["F"]} />
             <Shortcut label={label("toolBar.laser")} shortcuts={["K"]} />
             <Shortcut label={label("toolBar.bucketfill")} shortcuts={["B"]} />
+            <Shortcut label={label("labels.eyeDropper")} shortcuts={["I", "Shift+S", "Shift+G"]} />
             <Shortcut
               label={label("helpDialog.editLineArrowPoints")}
               shortcuts={[k("CtrlOrCmd+Enter")]}
@@ -297,6 +298,9 @@ export function HelpDialog() {
             <Shortcut label={label("labels.toggleAutoResize")} shortcuts={[k("Alt+W")]} />
             <Shortcut label={label("labels.flipHorizontal")} shortcuts={[k("Shift+H")]} />
             <Shortcut label={label("labels.flipVertical")} shortcuts={[k("Shift+V")]} />
+            <Shortcut label={label("labels.showStroke")} shortcuts={["S"]} />
+            <Shortcut label={label("labels.showBackground")} shortcuts={["G"]} />
+            <Shortcut label={label("labels.showFonts")} shortcuts={["Shift+F"]} />
             <Shortcut
               label={label("labels.decreaseFontSize")}
               shortcuts={[k("CtrlOrCmd+Shift+<")]}
