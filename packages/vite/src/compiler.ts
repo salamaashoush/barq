@@ -514,9 +514,15 @@ interface FoldedModule {
   css: string;
   /** The stylesheets of the files it folded a value out of, by file. */
   carried: Map<string, string>;
+  /**
+   * Every file its rows were read from, itself and what it folded against,
+   * with the modification time each had: a value it took from a token file
+   * is stale once that file changes, though this file has not.
+   */
+  stamps: ReadonlyMap<string, number>;
 }
 
-const NOTHING_FOLDED: FoldedModule = { rows: [], css: "", carried: new Map() };
+const NOTHING_FOLDED: FoldedModule = { rows: [], css: "", carried: new Map(), stamps: new Map() };
 
 /**
  * The name the atoms' own asset is emitted under, which is how the router and
@@ -1567,6 +1573,17 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
        * tree nor acyclic. A file that will not resolve contributes nothing and
        * the fold declines exactly as it would have.
        */
+      const unchanged = async (stamps: ReadonlyMap<string, number>): Promise<boolean> => {
+        for (const [file, at] of stamps) {
+          try {
+            if ((await stat(file)).mtimeMs !== at) return false;
+          } catch {
+            return false;
+          }
+        }
+        return true;
+      };
+
       const exportsOf = async (
         dependency: string,
         depth: number,
@@ -1574,14 +1591,14 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
       ): Promise<FoldedModule> => {
         if (depth <= 0 || seen.has(dependency)) return NOTHING_FOLDED;
         seen.add(dependency);
-        let key = dependency;
+        let modified: number;
         try {
-          key = `${dependency}:${(await stat(dependency)).mtimeMs}`;
+          modified = (await stat(dependency)).mtimeMs;
         } catch {
           return NOTHING_FOLDED;
         }
-        const hit = exportsByFile.get(key);
-        if (hit !== undefined) return hit;
+        const hit = exportsByFile.get(dependency);
+        if (hit !== undefined && (await unchanged(hit.stamps))) return hit;
 
         let source: string;
         try {
@@ -1592,14 +1609,21 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
         let folded = NOTHING_FOLDED;
         try {
           const carried = new Map<string, string>();
-          const out = await compileWithImports(source, dependency, depth - 1, seen, carried, {
-            cssExports: true,
-          });
-          folded = { rows: out.cssExports ?? [], css: out.css ?? "", carried };
+          const stamps = new Map([[dependency, modified]]);
+          const out = await compileWithImports(
+            source,
+            dependency,
+            depth - 1,
+            seen,
+            carried,
+            { cssExports: true },
+            stamps,
+          );
+          folded = { rows: out.cssExports ?? [], css: out.css ?? "", carried, stamps };
         } catch {
           folded = NOTHING_FOLDED;
         }
-        exportsByFile.set(key, folded);
+        exportsByFile.set(dependency, folded);
         return folded;
       };
 
@@ -1678,6 +1702,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
         seen: Set<string>,
         carried: Map<string, string>,
         extra: { cssExports?: boolean } = {},
+        stamps?: Map<string, number>,
       ): Promise<NativeResult> => {
         const base = {
           moduleSource: compilerOptions.moduleSource,
@@ -1744,7 +1769,8 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
             // A watched dependency, so editing the token file retransforms
             // every module that folded against it.
             this.addWatchFile?.(dependency);
-            const { rows } = await exportsOf(dependency, depth, new Set(seen));
+            const { rows, stamps: read } = await exportsOf(dependency, depth, new Set(seen));
+            for (const [one, at] of read) stamps?.set(one, at);
             let answered = false;
             for (const row of rows) {
               if (row[1] === "from" || (name !== "*" && row[0] !== name)) continue;

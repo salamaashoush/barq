@@ -5,7 +5,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type TransformResult, parseAst } from "vite";
@@ -749,6 +749,25 @@ export const a = app(shared.ring, { color: colours.brand, padding: colours.gap.m
     expect(code).toContain(`import "${join(DIR, "shared.ts")}.barq.css"`);
     expect(code).not.toContain(`${join(DIR, "other.ts")}.barq.css`);
     expect(code).not.toContain(`${join(DIR, "style.ts")}.barq.css`);
+  });
+
+  test("a value read through a barrel is read again once the file behind it changes", async () => {
+    writeFileSync(join(DIR, "ink.ts"), `export const ink = { fg: "red" } as const;\n`);
+    writeFileSync(join(DIR, "inks.ts"), `export { ink } from "./ink.ts";\n`);
+    const PAGE = `import { layer } from "@barqjs/css";
+import { ink } from "./inks.ts";
+const app = layer("app");
+export const a = app({ color: ink.fg });
+`;
+    const plugin = barqVitePlugin();
+    await transform(plugin, PAGE, withResolver(), "inked.tsx");
+    expect(sheetOf(plugin, "inked.tsx")).toContain("{color:red}");
+    // The barrel is untouched: only what it re-exports changed, a second later.
+    writeFileSync(join(DIR, "ink.ts"), `export const ink = { fg: "blue" } as const;\n`);
+    const later = new Date(Date.now() + 2000);
+    utimesSync(join(DIR, "ink.ts"), later, later);
+    await transform(plugin, PAGE, withResolver(), "inked.tsx");
+    expect(sheetOf(plugin, "inked.tsx")).toContain("{color:blue}");
   });
 
   test("its own rules and the folded ones share ONE import of registerCss", async () => {
