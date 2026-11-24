@@ -348,7 +348,7 @@ export function stepListState<T>(options: StepListStateOptions<T>): StepListStat
 
   const order = createMemo(() => orderOf(list.collection() as Collection<unknown>));
 
-  const isCompleted = (step: Key | null | undefined): boolean => {
+  function isCompleted(step: Key | null | undefined): boolean {
     if (step === undefined || step === null) return false;
     const last = lastCompletedStep();
     if (last === null) return false;
@@ -356,26 +356,30 @@ export function stepListState<T>(options: StepListStateOptions<T>): StepListStat
     const at = index.get(step);
     const through = index.get(last);
     return at !== undefined && through !== undefined && at <= through;
-  };
+  }
 
-  const isDisabled = (): boolean => access(options.isDisabled) === true;
-  const isReadOnly = (): boolean => access(options.isReadOnly) === true;
+  function isDisabled(): boolean {
+    return access(options.isDisabled) === true;
+  }
+  function isReadOnly(): boolean {
+    return access(options.isReadOnly) === true;
+  }
 
-  const isSelectable = (step: Key): boolean => {
+  function isSelectable(step: Key): boolean {
     if (isDisabled() || isReadOnly()) return false;
     if (list.disabledKeys().has(step)) return false;
     if (isCompleted(step)) return true;
     return isCompleted(order().previous.get(step)) || step === list.collection().getFirstKey();
-  };
+  }
 
-  const firstOpenStep = (collection: ListCollection<T>, disabled: Set<Key>): Key | null => {
+  function firstOpenStep(collection: ListCollection<T>, disabled: Set<Key>): Key | null {
     let key = collection.getFirstKey();
     while (key !== null && key !== collection.getLastKey()) {
       if (!disabled.has(key) && !isCompleted(key)) break;
       key = collection.getKeyAfter(key);
     }
     return key;
-  };
+  }
 
   if (!isServer) {
     createEffect(
@@ -528,9 +532,15 @@ export function stepListItem(
 ): StepListItemResult {
   const { key } = options;
   const message = stringFormatter(stepListStrings);
-  const isSelectable = (): boolean => state.isSelectable(key);
-  const isSelected = (): boolean => state.selectedKey() === key;
-  const isCompleted = (): boolean => state.isCompleted(key);
+  function isSelectable(): boolean {
+    return state.isSelectable(key);
+  }
+  function isSelected(): boolean {
+    return state.selectedKey() === key;
+  }
+  function isCompleted(): boolean {
+    return state.isCompleted(key);
+  }
 
   const { itemProps, isPressed, isFocused } = selectableItem({
     key,
@@ -663,7 +673,12 @@ export function StepList<T>(props: StepListComponentProps<T>) {
   );
 }
 
-function StepListProvider(props: { state: StepListState<unknown>; children?: Child }) {
+interface StepListProviderProps {
+  state: StepListState<unknown>;
+  children?: Child;
+}
+
+function StepListProvider(props: StepListProviderProps) {
   return provide(
     StepListContext,
     () => props.state,
@@ -697,7 +712,7 @@ export function StepListItem(props: StepListItemComponentProps) {
   const markerId = id();
   const stateId = id();
   const labelId = id();
-  const isDisabled = (): boolean => state.isDisabled() || state.disabledKeys().has(node.key);
+  const isDisabled: () => boolean = () => state.isDisabled() || state.disabledKeys().has(node.key);
 
   const { hoverProps, isHovered } = hover({
     isDisabled: () => !step.isSelectable() || step.isSelected(),

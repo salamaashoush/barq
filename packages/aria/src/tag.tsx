@@ -65,6 +65,7 @@ import {
   mergeProps,
   type StyleProps,
   styleProps,
+  type ProviderProps,
 } from "./utils.ts";
 
 // ---------------------------------------------------------------------------
@@ -136,7 +137,9 @@ export function tagGroup(options: TagGroupOptions, state: ListState<unknown>): T
     );
   }
 
-  const isEmpty = (): boolean => state.collection().size === 0;
+  function isEmpty(): boolean {
+    return state.collection().size === 0;
+  }
 
   return {
     baseId,
@@ -338,8 +341,12 @@ export function tag(options: TagOptions, state: ListState<unknown>): TagResult {
   const buttonId = id();
   const message = stringFormatter(strings);
   const how = modality();
-  const rowId = (): string => tagIdFor(access(options.baseId), options.key);
-  const node = (): Node<unknown> | null => state.collection().getItem(options.key);
+  function rowId(): string {
+    return tagIdFor(access(options.baseId), options.key);
+  }
+  function node(): Node<unknown> | null {
+    return state.collection().getItem(options.key);
+  }
 
   const item = selectableItem({
     key: options.key,
@@ -352,14 +359,16 @@ export function tag(options: TagOptions, state: ListState<unknown>): TagResult {
     onAction: () => options.onAction?.(options.key),
   });
 
-  const allowsRemoving = (): boolean => options.onRemove !== undefined;
+  function allowsRemoving(): boolean {
+    return options.onRemove !== undefined;
+  }
 
   /**
    * Delete on a tag that is one of SEVERAL selected removes them all: the
    * selection is what the user pointed at. The button is on one tag, and
    * removes that one.
    */
-  const removeFromKeyboard = (): void => {
+  function removeFromKeyboard(): void {
     if (item.isDisabled()) return;
     const manager = state.selectionManager();
     if (manager.isSelected(options.key)) {
@@ -367,14 +376,14 @@ export function tag(options: TagOptions, state: ListState<unknown>): TagResult {
       return;
     }
     options.onRemove?.(new Set([options.key]));
-  };
+  }
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     if (!allowsRemoving() || item.isDisabled()) return;
     if (event.key !== "Delete" && event.key !== "Backspace") return;
     event.preventDefault();
     removeFromKeyboard();
-  };
+  }
 
   // Delete is the only way to remove a tag without a pointer, and nothing on
   // screen says so; a pointer user has the button and needs no hint.
@@ -447,7 +456,7 @@ export function useTagNode(): Node<unknown> {
   return node;
 }
 
-function TagGroupProvider(props: { value: TagGroupContextValue; children?: Child }) {
+function TagGroupProvider(props: ProviderProps<TagGroupContextValue>) {
   return provide(
     TagGroupContext,
     () => props.value,

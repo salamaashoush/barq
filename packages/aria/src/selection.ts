@@ -53,6 +53,11 @@ import { press, type ElementRef, type PressEvent } from "./interactions/press.ts
 import { isAppleDevice, isMac } from "./platform.ts";
 import { access, chain, id, mergeProps, type DOMProps, type MaybeAccessor } from "./utils.ts";
 
+export interface NonContiguousModifierEvent {
+  altKey?: boolean;
+  ctrlKey?: boolean;
+}
+
 /**
  * The modifier that adds to a selection without extending it.
  *
@@ -60,15 +65,17 @@ import { access, chain, id, mergeProps, type DOMProps, type MaybeAccessor } from
  * its place there; Alt with Space has one on Windows and Linux, so it cannot
  * be used everywhere.
  */
-export function isNonContiguousSelectionModifier(event: {
-  altKey?: boolean;
-  ctrlKey?: boolean;
-}): boolean {
+export function isNonContiguousSelectionModifier(event: NonContiguousModifierEvent): boolean {
   return isAppleDevice() ? event.altKey === true : event.ctrlKey === true;
 }
 
+export interface CtrlKeyEvent {
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+}
+
 /** The platform's "select several" modifier. */
-export function isCtrlKeyPressed(event: { ctrlKey?: boolean; metaKey?: boolean }): boolean {
+export function isCtrlKeyPressed(event: CtrlKeyEvent): boolean {
   return isMac() ? event.metaKey === true : event.ctrlKey === true;
 }
 
@@ -437,15 +444,15 @@ export function typeSelect(options: TypeSelectOptions): TypeSelectResult {
 
   tryCleanup(() => clearTimeout(state.timeout));
 
-  const restartTimer = (): void => {
+  function restartTimer(): void {
     clearTimeout(state.timeout);
     state.timeout = setTimeout(() => {
       state.search = "";
       state.startKey = null;
     }, TYPEAHEAD_TIMEOUT);
-  };
+  }
 
-  const jump = (): boolean => {
+  function jump(): boolean {
     const manager = options.selectionManager();
     // After the item that was focused when the search began, so a longer
     // prefix can still land on the item a shorter one reached.
@@ -456,9 +463,9 @@ export function typeSelect(options: TypeSelectOptions): TypeSelectResult {
     manager.setFocusedKey(key);
     options.onTypeSelect?.(key);
     return true;
-  };
+  }
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     const character = characterFor(event.key);
     const currentTarget = event.currentTarget as Element | null;
     if (
@@ -493,7 +500,7 @@ export function typeSelect(options: TypeSelectOptions): TypeSelectResult {
     }
 
     restartTimer();
-  };
+  }
 
   /**
    * A Space typed MID-SEARCH is a search character, not "select the focused
@@ -502,14 +509,14 @@ export function typeSelect(options: TypeSelectOptions): TypeSelectResult {
    * It is claimed in the CAPTURE phase, before the selection handler in the
    * bubble phase sees it.
    */
-  const onKeyDownCapture = (event: KeyboardEvent): void => {
+  function onKeyDownCapture(event: KeyboardEvent): void {
     if (state.search.length === 0 || event.key !== " ") return;
     event.preventDefault();
     event.stopPropagation();
     state.search += " ";
     jump();
     restartTimer();
-  };
+  }
 
   return { typeSelectProps: { onKeyDown, onKeyDownCapture } };
 }
@@ -594,6 +601,11 @@ function isSelectionKey(key: string | undefined): boolean {
   return key === " ";
 }
 
+interface SelectPointerEvent {
+  pointerType?: string;
+  shiftKey?: boolean;
+}
+
 /**
  * One item in a selectable collection.
  *
@@ -608,39 +620,58 @@ export function selectableItem(options: SelectableItemOptions): SelectableItemRe
   const collectionId = collectionIds.get(options.selectionManager);
   const navigate = router();
 
-  const manager = (): SelectionManager => options.selectionManager();
-  const linkBehavior = (): LinkBehavior => access(options.linkBehavior) ?? "action";
-  const virtualFocus = (): boolean => access(options.shouldUseVirtualFocus) === true;
+  function manager(): SelectionManager {
+    return options.selectionManager();
+  }
+  function linkBehavior(): LinkBehavior {
+    return access(options.linkBehavior) ?? "action";
+  }
+  function virtualFocus(): boolean {
+    return access(options.shouldUseVirtualFocus) === true;
+  }
 
-  const isDisabled = (): boolean =>
-    access(options.isDisabled) === true || manager().isDisabled(options.key);
+  function isDisabled(): boolean {
+    return access(options.isDisabled) === true || manager().isDisabled(options.key);
+  }
 
-  const isLinkOverride = (): boolean =>
-    manager().isLink(options.key) && linkBehavior() === "override";
+  function isLinkOverride(): boolean {
+    return manager().isLink(options.key) && linkBehavior() === "override";
+  }
 
-  const hasLinkAction = (): boolean =>
-    manager().isLink(options.key) && linkBehavior() !== "selection" && linkBehavior() !== "none";
+  function hasLinkAction(): boolean {
+    return (
+      manager().isLink(options.key) && linkBehavior() !== "selection" && linkBehavior() !== "none"
+    );
+  }
 
-  const allowsSelection = (): boolean =>
-    !isDisabled() && manager().canSelectItem(options.key) && !isLinkOverride();
+  function allowsSelection(): boolean {
+    return !isDisabled() && manager().canSelectItem(options.key) && !isLinkOverride();
+  }
 
-  const declaresAction = (): boolean => access(options.hasAction) ?? options.onAction !== undefined;
+  function declaresAction(): boolean {
+    return access(options.hasAction) ?? options.onAction !== undefined;
+  }
 
-  const allowsActions = (): boolean => (declaresAction() || hasLinkAction()) && !isDisabled();
+  function allowsActions(): boolean {
+    return (declaresAction() || hasLinkAction()) && !isDisabled();
+  }
 
-  const hasPrimaryAction = (): boolean => {
+  function hasPrimaryAction(): boolean {
     if (!allowsActions()) return false;
     return manager().selectionBehavior === "replace"
       ? !allowsSelection()
       : !allowsSelection() || manager().isEmpty;
-  };
+  }
 
-  const hasSecondaryAction = (): boolean =>
-    allowsActions() && allowsSelection() && manager().selectionBehavior === "replace";
+  function hasSecondaryAction(): boolean {
+    return allowsActions() && allowsSelection() && manager().selectionBehavior === "replace";
+  }
 
-  const hasAction = (): boolean => hasPrimaryAction() || hasSecondaryAction();
+  function hasAction(): boolean {
+    return hasPrimaryAction() || hasSecondaryAction();
+  }
 
-  const select = (event: PressEvent | { pointerType?: string; shiftKey?: boolean }): void => {
+  function select(event: PressEvent | SelectPointerEvent): void {
     const active = manager();
     const pointerType = (event as PressEvent).pointerType;
 
@@ -690,9 +721,9 @@ export function selectableItem(options: SelectableItemOptions): SelectableItemRe
     }
 
     active.replaceSelection(options.key);
-  };
+  }
 
-  const performAction = (event: PressEvent): void => {
+  function performAction(event: PressEvent): void {
     const element = access(options.ref) as Element | null;
     if (declaresAction() && options.onAction !== undefined) {
       options.onAction();
@@ -702,7 +733,7 @@ export function selectableItem(options: SelectableItemOptions): SelectableItemRe
       const props = manager().getItemProps(options.key);
       navigate.open(element, event, props?.href as string);
     }
-  };
+  }
 
   // Focus the item when it becomes the focused key.
   createEffect(
@@ -734,14 +765,16 @@ export function selectableItem(options: SelectableItemOptions): SelectableItemRe
   let longPressWasEnabled = false;
   let hadPrimaryActionOnPressStart = false;
 
-  const longPressEnabled = (): boolean => hasAction() && allowsSelection();
+  function longPressEnabled(): boolean {
+    return hasAction() && allowsSelection();
+  }
 
   const pressOptions: Parameters<typeof press>[0] = {
     ref: options.ref,
     preventFocusOnPress: virtualFocus,
   };
 
-  const onPressStartCommon = (event: PressEvent): void => {
+  function onPressStartCommon(event: PressEvent): void {
     modality = event.pointerType;
     longPressWasEnabled = longPressEnabled();
     hadPrimaryActionOnPressStart = hasPrimaryAction();
@@ -749,7 +782,7 @@ export function selectableItem(options: SelectableItemOptions): SelectableItemRe
       manager().setFocused(true);
       manager().setFocusedKey(options.key);
     }
-  };
+  }
 
   if (access(options.shouldSelectOnPressUp) === true) {
     pressOptions.onPressStart = (event) => {
@@ -845,7 +878,9 @@ export function selectableItem(options: SelectableItemOptions): SelectableItemRe
     },
   });
 
-  const isFocused = (): boolean => manager().isFocused && manager().focusedKey === options.key;
+  function isFocused(): boolean {
+    return manager().isFocused && manager().focusedKey === options.key;
+  }
 
   const focusProps: DOMProps = {
     tabIndex: () => {
@@ -867,27 +902,27 @@ export function selectableItem(options: SelectableItemOptions): SelectableItemRe
     },
   };
 
-  const onDoubleClick = (event: MouseEvent): void => {
+  function onDoubleClick(event: MouseEvent): void {
     if (!hasSecondaryAction() || modality !== "mouse") return;
     event.stopPropagation();
     event.preventDefault();
     performAction(event as unknown as PressEvent);
-  };
+  }
 
   // A long press that selects must not also start a native drag.
-  const onDragStartCapture = (event: DragEvent): void => {
+  function onDragStartCapture(event: DragEvent): void {
     if (modality === "touch" && longPressWasEnabled) event.preventDefault();
-  };
+  }
 
   // A link's navigation is ours to time, so the browser's is cancelled. The
   // click the router dispatches to open it bubbles through here too, and that
   // one is let through.
-  const onClick = (event: MouseEvent): void => {
+  function onClick(event: MouseEvent): void {
     if (linkBehavior() === "none" || !manager().isLink(options.key)) return;
     if (!isOpeningLink()) event.preventDefault();
-  };
+  }
 
-  const linkData = (name: string): (() => unknown) => {
+  function linkData(name: string): () => unknown {
     return () => {
       if (linkBehavior() === "none") return undefined;
       const props = manager().getItemProps(options.key);
@@ -895,7 +930,7 @@ export function selectableItem(options: SelectableItemOptions): SelectableItemRe
       if (name === "href") return navigate.href(props.href as string);
       return props[name];
     };
-  };
+  }
 
   const itemProps = mergeProps(
     focusProps,
@@ -933,14 +968,14 @@ export function selectableItem(options: SelectableItemOptions): SelectableItemRe
    * walk finds that container first, which is why it comes before the
    * `data-key` test.
    */
-  const isChildInteraction = (target: Element, element: Element | null): boolean => {
+  function isChildInteraction(target: Element, element: Element | null): boolean {
     let at: Element | null = target;
     while (at !== null && at !== element) {
       if (at.hasAttribute("data-collection")) return true;
       at = at.parentElement;
     }
     return isTabbable(target) && !target.hasAttribute("data-key");
-  };
+  }
 
   const basePointerDown = itemProps.onPointerDown as ((event: PointerEvent) => void) | undefined;
   itemProps.onPointerDown = (event: PointerEvent): void => {
@@ -1012,22 +1047,29 @@ export function selectableCollection(
   const collectionId = id();
   collectionIds.set(options.selectionManager, collectionId);
 
-  const manager = (): SelectionManager => options.selectionManager();
-  const virtualFocus = (): boolean => access(options.shouldUseVirtualFocus) === true;
-  const wraps = (): boolean => access(options.shouldFocusWrap) === true;
-  const scrollElement = (): HTMLElement | null =>
-    (access(options.scrollRef ?? options.ref) as HTMLElement | null) ?? null;
+  function manager(): SelectionManager {
+    return options.selectionManager();
+  }
+  function virtualFocus(): boolean {
+    return access(options.shouldUseVirtualFocus) === true;
+  }
+  function wraps(): boolean {
+    return access(options.shouldFocusWrap) === true;
+  }
+  function scrollElement(): HTMLElement | null {
+    return (access(options.scrollRef ?? options.ref) as HTMLElement | null) ?? null;
+  }
 
-  const selectOnFocus = (): boolean => {
+  function selectOnFocus(): boolean {
     const declared = access(options.selectOnFocus);
     return declared ?? manager().selectionBehavior === "replace";
-  };
+  }
 
-  const navigateToKey = (
+  function navigateToKey(
     event: KeyboardEvent,
     key: Key | null | undefined,
     childFocus?: "first" | "last",
-  ): void => {
+  ): void {
     if (key === null || key === undefined) return;
     const active = manager();
 
@@ -1053,9 +1095,9 @@ export function selectableCollection(
     else if (selectOnFocus() && !isNonContiguousSelectionModifier(event)) {
       active.replaceSelection(key);
     }
-  };
+  }
 
-  const onKeyDown = (event: BaseEvent<KeyboardEvent>): void => {
+  function onKeyDown(event: BaseEvent<KeyboardEvent>): void {
     const currentTarget = event.currentTarget as Element | null;
     if (currentTarget === null || !contains(currentTarget, targetElement(event))) {
       event.continuePropagation();
@@ -1214,14 +1256,14 @@ export function selectableCollection(
 
     // Everything not handled keeps bubbling: a dialog above still sees Escape.
     event.continuePropagation();
-  };
+  }
 
   // The scroll position is restored when focus returns, so tabbing away and
   // back does not jump the list to the focused item.
   const scrollPosition = { top: 0, left: 0 };
   createEffect(scrollElement, (element) => {
     if (element === null) return undefined;
-    const onScroll = (): void => {
+    const onScroll: () => void = () => {
       scrollPosition.top = element.scrollTop;
       scrollPosition.left = element.scrollLeft;
     };
@@ -1229,7 +1271,7 @@ export function selectableCollection(
     return () => element.removeEventListener("scroll", onScroll);
   });
 
-  const onFocus = (event: FocusEvent): void => {
+  function onFocus(event: FocusEvent): void {
     const active = manager();
     const currentTarget = event.currentTarget as Element | null;
 
@@ -1245,11 +1287,11 @@ export function selectableCollection(
     const how = getInteractionModality();
     active.setFocused(true);
 
-    const focusKey = (key: Key | null | undefined): void => {
+    function focusKey(key: Key | null | undefined): void {
       if (key === null || key === undefined) return;
       active.setFocusedKey(key);
       if (selectOnFocus() && !active.isSelected(key)) active.replaceSelection(key);
-    };
+    }
 
     if (active.focusedKey === null) {
       // Which end to enter at: `relatedTarget` is where focus came FROM, so a
@@ -1282,15 +1324,15 @@ export function selectableCollection(
         if (how === "keyboard") scrollIntoViewport(element, { containingElement: container });
       }
     }
-  };
+  }
 
-  const onBlur = (event: FocusEvent): void => {
+  function onBlur(event: FocusEvent): void {
     const currentTarget = event.currentTarget as Element | null;
     // Moving between two items inside the collection is not leaving it.
     if (currentTarget !== null && !contains(currentTarget, event.relatedTarget as Element | null)) {
       manager().setFocused(false);
     }
-  };
+  }
 
   // Bring the focused item into view when it changes by keyboard.
   let lastFocusedKey: Key | null = manager().focusedKey;
@@ -1380,10 +1422,10 @@ export function selectableCollection(
     () => access(options.ref) as HTMLElement | null,
     (container) => {
       if (container === null) return undefined;
-      const onRestore = (event: Event): void => {
+      function onRestore(event: Event): void {
         event.preventDefault();
         manager().setFocused(true);
-      };
+      }
       container.addEventListener("barq-focus-scope-restore", onRestore);
       return () => container.removeEventListener("barq-focus-scope-restore", onRestore);
     },
@@ -1447,8 +1489,12 @@ export interface SelectableListOptions extends Omit<
   orientation?: MaybeAccessor<Orientation | undefined>;
 }
 
+export interface SelectableListResult {
+  listProps: DOMProps;
+}
+
 /** A selectable collection with the default list navigation. */
-export function selectableList(options: SelectableListOptions): { listProps: DOMProps } {
+export function selectableList(options: SelectableListOptions): SelectableListResult {
   // `base` sensitivity, so typing "e" matches "É": a typeahead the user cannot
   // reach without an accented keyboard is no typeahead.
   const search = collator({ usage: "search", sensitivity: "base" });

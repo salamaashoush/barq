@@ -41,12 +41,14 @@ interface Fruit {
   children?: Fruit[];
 }
 
-function Item(props: {
+interface ItemProps {
   node: Node<unknown>;
   state: ListState<unknown>;
   linkBehavior?: LinkBehavior;
   withField?: boolean;
-}) {
+}
+
+function Item(props: ItemProps) {
   const ref = makeRef<HTMLDivElement>();
   const { itemProps } = selectableItem({
     key: props.node.key,
@@ -62,12 +64,14 @@ function Item(props: {
   );
 }
 
-function List(props: {
+interface ListProps {
   items: Fruit[];
   selectionMode?: SelectionMode;
   linkBehavior?: LinkBehavior;
   withFields?: boolean;
-}) {
+}
+
+function List(props: ListProps) {
   const ref = makeRef<HTMLDivElement>();
   const state = listState<Fruit>({
     items: () => props.items,
@@ -178,23 +182,28 @@ describe("finding an item's element", () => {
   });
 });
 
+interface AnchorVisit {
+  href: string | null;
+  prevented: boolean;
+}
+
 describe("link items", () => {
   const LINKS: Fruit[] = [
     { id: "docs", name: "Docs", href: "/docs" },
     { id: "blog", name: "Blog", href: "/blog" },
   ];
 
-  let stop = (): void => {};
+  let stop: () => void = () => {};
   afterEach(() => stop());
 
-  function watchAnchors(): { href: string | null; prevented: boolean }[] {
-    const seen: { href: string | null; prevented: boolean }[] = [];
-    const listener = (event: Event): void => {
+  function watchAnchors(): AnchorVisit[] {
+    const seen: AnchorVisit[] = [];
+    function listener(event: Event): void {
       const target = event.target;
       if (target instanceof HTMLAnchorElement) {
         seen.push({ href: target.getAttribute("href"), prevented: event.defaultPrevented });
       }
-    };
+    }
     // Bubble phase on the document, so every handler on the way up has had
     // its say about the default.
     document.addEventListener("click", listener);
@@ -368,8 +377,9 @@ describe("bringing an item into view on iPadOS", () => {
     view.style.direction = "rtl";
     view.append(item);
     document.body.append(view);
-    const box = (left: number, right: number): DOMRect =>
-      ({ top: 0, bottom: 20, left, right, width: right - left, height: 20 }) as DOMRect;
+    function box(left: number, right: number): DOMRect {
+      return { top: 0, bottom: 20, left, right, width: right - left, height: 20 } as DOMRect;
+    }
     view.getBoundingClientRect = () => box(0, 100);
     item.getBoundingClientRect = () => box(0, 20);
     Object.defineProperty(view, "offsetWidth", { value: 100, configurable: true });

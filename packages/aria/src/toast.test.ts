@@ -603,11 +603,11 @@ describe("toastSwipe, a change of mind", () => {
 });
 
 describe("toastSwipe.track", () => {
-  const down = (target: Element, init: PointerEventInit = {}): PointerEvent => {
+  function down(target: Element, init: PointerEventInit = {}): PointerEvent {
     const event = new PointerEvent("pointerdown", { bubbles: true, button: 0, ...init });
     Object.defineProperty(event, "target", { value: target });
     return event;
-  };
+  }
 
   test("follows the pointer on the window, so a toast dragged from under it keeps moving", () => {
     const thrown: string[] = [];

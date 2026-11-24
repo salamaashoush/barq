@@ -54,9 +54,9 @@ export function formReset<T>(
       const form = element?.form;
       if (form === null || form === undefined) return undefined;
 
-      const handle = (event: Event): void => {
+      function handle(event: Event): void {
         if (!event.defaultPrevented) onReset(access(initial) as T);
-      };
+      }
       form.addEventListener("reset", handle);
       return () => form.removeEventListener("reset", handle);
     },
@@ -127,8 +127,12 @@ export function toggle(
   state: ToggleState,
   ref: ElementRef<HTMLInputElement>,
 ): ToggleResult {
-  const isDisabled = (): boolean => access(options.isDisabled) === true;
-  const isReadOnly = (): boolean => access(options.isReadOnly) === true;
+  function isDisabled(): boolean {
+    return access(options.isDisabled) === true;
+  }
+  function isReadOnly(): boolean {
+    return access(options.isReadOnly) === true;
+  }
 
   // The validation state lives here rather than in `toggleState`: a toggle's
   // VALUE is a boolean either way, and a `<ToggleButton>` built on the same
@@ -148,19 +152,26 @@ export function toggle(
     name: options.name,
     state: options.validationState,
   });
-  const isNative = (): boolean => behavior() === "native";
-  const isRequired = (): boolean => access(options.isRequired) === true;
+  function isNative(): boolean {
+    return behavior() === "native";
+  }
+  function isRequired(): boolean {
+    return access(options.isRequired) === true;
+  }
 
   const descriptionId = id();
   const errorMessageId = id();
-  const describedBy = (): string | undefined =>
-    [
-      present(access(options.description)) ? descriptionId() : undefined,
-      isInvalid() && present(errorMessage()) ? errorMessageId() : undefined,
-      access(options["aria-describedby"]),
-    ]
-      .filter((part): part is string => part !== undefined)
-      .join(" ") || undefined;
+  function describedBy(): string | undefined {
+    return (
+      [
+        present(access(options.description)) ? descriptionId() : undefined,
+        isInvalid() && present(errorMessage()) ? errorMessageId() : undefined,
+        access(options["aria-describedby"]),
+      ]
+        .filter((part): part is string => part !== undefined)
+        .join(" ") || undefined
+    );
+  }
 
   formValidation(
     {
@@ -228,7 +239,7 @@ export function toggle(
 
   formReset(ref, state.isSelected(), (value) => state.setSelected(value));
 
-  const onChange = (event: Event): void => {
+  function onChange(event: Event): void {
     // The label carries the press props, so a change would be seen twice.
     event.stopPropagation();
     const input = event.target as HTMLInputElement;
@@ -240,7 +251,7 @@ export function toggle(
     // without this the checkbox shows a state the component does not hold.
     input.checked = state.isSelected();
     validation.commitValidation();
-  };
+  }
 
   return {
     descriptionProps: { id: descriptionId },

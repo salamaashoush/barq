@@ -4,7 +4,7 @@ import { accessibleName, expectNoAriaViolations, render, screen, user } from "@b
 import { provideDirection } from "./i18n.ts";
 import { Slider, SliderFill, SliderThumb, SliderTrack } from "./slider.tsx";
 
-function Volume(props: {
+interface VolumeProps {
   defaultValue?: number | number[];
   minValue?: number;
   maxValue?: number;
@@ -16,7 +16,9 @@ function Volume(props: {
   onChangeEnd?: (value: number[]) => void;
   isInverted?: boolean;
   minStepsBetweenThumbs?: number;
-}) {
+}
+
+function Volume(props: VolumeProps) {
   return (
     <Slider
       label="Volume"
@@ -398,12 +400,14 @@ describe("Slider, enabled after it was built", () => {
   });
 });
 
+interface FilledProps {
+  defaultValue: number | number[];
+  offset?: number;
+  orientation?: "horizontal" | "vertical";
+}
+
 describe("SliderFill", () => {
-  function Filled(props: {
-    defaultValue: number | number[];
-    offset?: number;
-    orientation?: "horizontal" | "vertical";
-  }) {
+  function Filled(props: FilledProps) {
     return (
       <Slider label="Volume" defaultValue={props.defaultValue} orientation={props.orientation}>
         <SliderTrack>
@@ -418,7 +422,9 @@ describe("SliderFill", () => {
     );
   }
 
-  const fill = (): HTMLElement => screen.getByTestId("fill");
+  function fill(): HTMLElement {
+    return screen.getByTestId("fill");
+  }
 
   test("covers the track from the minimum to the thumb", () => {
     render(() => <Filled defaultValue={30} />);

@@ -51,6 +51,10 @@ export class MockFileSystemFileEntry {
   }
 }
 
+export interface DirectoryReader {
+  readEntries(resolve: (entries: unknown[]) => void): void;
+}
+
 export class MockFileSystemDirectoryEntry {
   isFile = false;
   isDirectory = true;
@@ -62,7 +66,7 @@ export class MockFileSystemDirectoryEntry {
     this.entries = entries;
   }
 
-  createReader(): { readEntries(resolve: (entries: unknown[]) => void): void } {
+  createReader(): DirectoryReader {
     let entries = this.entries;
     return {
       readEntries(resolve) {
@@ -94,11 +98,22 @@ export class MockDataTransferItemList {
   }
 }
 
+export interface DragImage {
+  node: Element;
+  x: number;
+  y: number;
+}
+
+export interface TransferEntry {
+  type: string;
+  data: unknown;
+}
+
 export class MockDataTransfer {
   items = new MockDataTransferItemList();
   dropEffect: DataTransfer["dropEffect"] = "none";
   effectAllowed: DataTransfer["effectAllowed"] = "all";
-  dragImage: { node: Element; x: number; y: number } | undefined;
+  dragImage: DragImage | undefined;
 
   setDragImage(node: Element, x: number, y: number): void {
     this.dragImage = { node, x, y };
@@ -121,7 +136,7 @@ export class MockDataTransfer {
   }
 
   /** The entries, as plain `{ type, data }` pairs, for comparing. */
-  entries(): { type: string; data: unknown }[] {
+  entries(): TransferEntry[] {
     return this.items.items.map((item) => ({ type: item.type, data: item.data }));
   }
 }
@@ -190,6 +205,10 @@ type RectStub = (this: HTMLElement) => Omit<DOMRect, "toJSON"> | Record<string, 
 
 const installedRects = new Set<() => void>();
 
+export interface Restorable {
+  mockRestore(): void;
+}
+
 /**
  * Stub `getBoundingClientRect` on every HTML element, and undo it exactly.
  *
@@ -197,7 +216,7 @@ const installedRects = new Set<() => void>();
  * restore leaves an own copy on `HTMLElement.prototype`, which then shadows any
  * stub another test file puts on `Element.prototype` later in the same run.
  */
-export function stubRects(stub: RectStub): { mockRestore(): void } {
+export function stubRects(stub: RectStub): Restorable {
   const proto = HTMLElement.prototype;
   const own = Object.getOwnPropertyDescriptor(proto, "getBoundingClientRect");
   Object.defineProperty(proto, "getBoundingClientRect", {
@@ -208,11 +227,11 @@ export function stubRects(stub: RectStub): { mockRestore(): void } {
       return { ...rect, toJSON: () => rect };
     },
   });
-  const restore = (): void => {
+  function restore(): void {
     if (!installedRects.delete(restore)) return;
     if (own === undefined) delete (proto as Partial<HTMLElement>).getBoundingClientRect;
     else Object.defineProperty(proto, "getBoundingClientRect", own);
-  };
+  }
   installedRects.add(restore);
   return { mockRestore: restore };
 }

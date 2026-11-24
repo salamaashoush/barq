@@ -36,12 +36,14 @@ const FRUITS: Fruit[] = [
   { id: "date", name: "Date" },
 ];
 
-function Picker(props: {
+interface PickerProps {
   defaultSelectedKey?: Key | null;
   name?: string;
   isDisabled?: boolean;
   onSelectionChange?: (key: Key | null) => void;
-}) {
+}
+
+function Picker(props: PickerProps) {
   return (
     <Select
       label="Fruit"
@@ -317,8 +319,17 @@ describe("a select's description", () => {
   });
 });
 
+interface RequiredProps {
+  validationBehavior?: "aria" | "native";
+  name?: string;
+}
+
+interface Named {
+  name: string;
+}
+
 describe("a select in a form", () => {
-  function Required(props: { validationBehavior?: "aria" | "native"; name?: string }) {
+  function Required(props: RequiredProps) {
     return (
       <form>
         <Select
@@ -393,9 +404,9 @@ describe("a select in a form", () => {
           items={GROUPS}
           name="food"
           defaultSelectedKey="leek"
-          getTextValue={(item: { name: string }) => item.name}
+          getTextValue={(item: Named) => item.name}
         >
-          {(item: { name: string }) => <Option>{item.name}</Option>}
+          {(item: Named) => <Option>{item.name}</Option>}
         </Select>
       </form>
     ));
@@ -481,6 +492,19 @@ describe("two selects side by side", () => {
   });
 });
 
+interface PartsProps {
+  selectedKey?: Key | null;
+  defaultSelectedKey?: Key | null;
+  name?: string;
+  isDisabled?: boolean;
+  isRequired?: boolean;
+  dir?: "ltr" | "rtl";
+  position?: "item-aligned" | "popper";
+  "aria-label"?: string;
+  onSelectionChange?: (key: Key | null) => void;
+  onOpenChange?: (isOpen: boolean) => void;
+}
+
 /**
  * The same select written as parts: a root, a trigger, and a content whose
  * options are its children.
@@ -499,18 +523,7 @@ describe("a select written as parts", () => {
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
   }
 
-  function Parts(props: {
-    selectedKey?: Key | null;
-    defaultSelectedKey?: Key | null;
-    name?: string;
-    isDisabled?: boolean;
-    isRequired?: boolean;
-    dir?: "ltr" | "rtl";
-    position?: "item-aligned" | "popper";
-    "aria-label"?: string;
-    onSelectionChange?: (key: Key | null) => void;
-    onOpenChange?: (isOpen: boolean) => void;
-  }) {
+  function Parts(props: PartsProps) {
     return (
       <>
         <label for="fruit">Fruit</label>

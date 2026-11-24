@@ -25,7 +25,12 @@ async function settle(): Promise<void> {
   flush();
 }
 
-function Example(props: { queue: ToastQueue; label?: string }) {
+interface ExampleProps {
+  queue: ToastQueue;
+  label?: string;
+}
+
+function Example(props: ExampleProps) {
   return (
     <>
       <ToastRegion queue={props.queue} aria-label={props.label} data-testid="region">

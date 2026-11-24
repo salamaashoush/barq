@@ -24,8 +24,12 @@ function valueOf(...segments: TokenFieldSegment[]): TokenFieldValue {
   return new TokenFieldValue(segments);
 }
 
-const text = (value: string): TokenFieldSegment => ({ type: "text", text: value });
-const mention = (name: string): TokenFieldSegment => ({ type: "token", text: name, value: name });
+function text(value: string): TokenFieldSegment {
+  return { type: "text", text: value };
+}
+function mention(name: string): TokenFieldSegment {
+  return { type: "token", text: name, value: name };
+}
 
 describe("TokenFieldValue", () => {
   test("inserting text puts the caret after it", () => {

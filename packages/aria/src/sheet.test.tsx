@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, onTestFinished, spyOn, test } from "bun:test";
-import { createSignal, type Child } from "@barqjs/core";
+import { createSignal, type Child, type ParentProps } from "@barqjs/core";
 import { render, screen, tick, user } from "@barqjs/testing";
 
 import { Button } from "./button.tsx";
@@ -210,12 +210,24 @@ function Standalone(props: Omit<SheetOverlayProps, "children">) {
   );
 }
 
-function Arabic(props: { children?: Child }) {
+function Arabic(props: ParentProps) {
   provideLocale("ar-AE");
   return <>{props.children}</>;
 }
 
 const PARTS = ["overlay", "sheet", "backdrop"] as const;
+
+interface Restorable {
+  mockRestore(): void;
+}
+
+interface NestedProps {
+  childContent?: Omit<SheetContentProps, "children">;
+}
+
+interface CssSupports {
+  supports: (condition: string) => boolean;
+}
 
 describe("Sheet", () => {
   test("renders a modal dialog named by its title, inside the sheet, inside the overlay", async () => {
@@ -306,7 +318,7 @@ describe("Sheet", () => {
 
   test("hands the sheet's state to children callbacks and to useSheet", async () => {
     const seen: Record<string, unknown>[] = [];
-    const snapshot = (from: string, sheet: SheetRenderState): void => {
+    function snapshot(from: string, sheet: SheetRenderState): void {
       seen.push({
         from,
         position: sheet.position(),
@@ -315,7 +327,7 @@ describe("Sheet", () => {
         hasDescendants: sheet.hasDescendants(),
         isExpanded: sheet.isExpanded(),
       });
-    };
+    }
     function Reader() {
       const sheet = useSheet();
       if (sheet !== null) snapshot("useSheet", sheet);
@@ -433,7 +445,7 @@ describe("Sheet", () => {
   });
 
   describe("entrance", () => {
-    let rect: { mockRestore(): void } | undefined;
+    let rect: Restorable | undefined;
 
     function contentAt(box: Partial<DOMRect>): void {
       const original = HTMLElement.prototype.getBoundingClientRect;
@@ -857,7 +869,7 @@ describe("Sheet", () => {
   });
 
   describe("stacking", () => {
-    function Nested(props: { childContent?: Omit<SheetContentProps, "children"> }) {
+    function Nested(props: NestedProps) {
       return (
         <Fixture
           overlay={{ "data-testid": "parent-overlay" }}
@@ -888,9 +900,12 @@ describe("Sheet", () => {
       );
     }
 
-    const timelineOf = (dialog: Element): string => (dialog as HTMLElement).style.viewTimelineName;
-    const timelineScope = (): string =>
-      document.documentElement.style.getPropertyValue("timeline-scope");
+    function timelineOf(dialog: Element): string {
+      return (dialog as HTMLElement).style.viewTimelineName;
+    }
+    function timelineScope(): string {
+      return document.documentElement.style.getPropertyValue("timeline-scope");
+    }
 
     test("does not hide a nested sheet while it enters", async () => {
       render(() => <Nested />);
@@ -1141,10 +1156,9 @@ describe("Sheet", () => {
     test("without view timelines it plays over a fixed time while entering and leaving", async () => {
       // happy-dom hands out a new `CSS` on every read, so the method is
       // replaced where they all find it.
-      const supports = spyOn(
-        Object.getPrototypeOf(CSS) as { supports: (condition: string) => boolean },
-        "supports",
-      ).mockReturnValue(false);
+      const supports = spyOn(Object.getPrototypeOf(CSS) as CssSupports, "supports").mockReturnValue(
+        false,
+      );
       onTestFinished(() => supports.mockRestore());
       render(() => <Fixture sheet={{ swipeAnimation: "acmeSheet" }} />);
       await openSheet();

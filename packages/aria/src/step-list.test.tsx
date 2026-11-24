@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child, createRoot, createSignal, flush } from "@barqjs/core";
+import { createRoot, createSignal, flush, type ParentProps } from "@barqjs/core";
 import { ref as makeRef } from "@barqjs/primitives/refs";
 import {
   accessibleName,
@@ -80,9 +80,12 @@ describe("StepList", () => {
       for (const each of ids) expect(document.getElementById(each)).not.toBeNull();
     }
 
-    const stateOf = (link: HTMLElement): string =>
-      document.getElementById((link.getAttribute("aria-labelledby") ?? "").split(" ")[1] ?? "")
-        ?.textContent ?? "";
+    function stateOf(link: HTMLElement): string {
+      return (
+        document.getElementById((link.getAttribute("aria-labelledby") ?? "").split(" ")[1] ?? "")
+          ?.textContent ?? ""
+      );
+    }
     expect(stateOf(all[2] as HTMLElement)).toContain("Current");
     expect(stateOf(all[0] as HTMLElement)).toContain("Completed");
     expect(stateOf(all[3] as HTMLElement)).toContain("Not");
@@ -317,7 +320,7 @@ describe("StepList", () => {
   });
 
   test("the list's name and the step states are localised", () => {
-    function German(props: { children?: Child }) {
+    function German(props: ParentProps) {
       const localeProps = provideLocale(() => "de-DE");
       return <div {...localeProps}>{props.children}</div>;
     }

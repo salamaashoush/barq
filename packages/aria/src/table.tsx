@@ -143,6 +143,7 @@ import {
   mergeProps,
   type StyleProps,
   styleProps,
+  type ProviderProps,
 } from "./utils.ts";
 
 // ---------------------------------------------------------------------------
@@ -217,6 +218,12 @@ export interface TableCollectionOptions {
   tree?: Map<Key, TableRowPosition>;
 }
 
+export interface CellPosition<R, C> {
+  row: Node<R>;
+  column: Node<C>;
+  index: number;
+}
+
 export class TableCollection<R, C> implements Collection<R> {
   readonly columns: Node<C>[];
   /** Every row that can be reached: the body's, expanded ones' children, then the footer's. */
@@ -227,7 +234,7 @@ export class TableCollection<R, C> implements Collection<R> {
   #itemCount: number;
   #rowIndex = new Map<Key, number>();
   #columnIndex = new Map<Key, number>();
-  #cells = new Map<Key, { row: Node<R>; column: Node<C>; index: number }>();
+  #cells = new Map<Key, CellPosition<R, C>>();
 
   constructor(rows: Node<R>[], columns: Node<C>[], options: TableCollectionOptions = {}) {
     this.rows = rows;
@@ -296,7 +303,7 @@ export class TableCollection<R, C> implements Collection<R> {
    * Looked up rather than split: splitting gives back strings, and a row or
    * column keyed by a number would then name no cell at all.
    */
-  parseCellKey(key: Key): { row: Node<R>; column: Node<C>; index: number } | null {
+  parseCellKey(key: Key): CellPosition<R, C> | null {
     return this.#cells.get(key) ?? null;
   }
 
@@ -375,6 +382,11 @@ export interface TableKeyboardDelegateOptions<R, C> {
   layoutDelegate?: LayoutDelegate;
 }
 
+export interface GridCoordinates {
+  rowAt: number;
+  columnAt: number;
+}
+
 /**
  * Two-dimensional navigation over cells and column headers.
  *
@@ -412,7 +424,7 @@ export class TableKeyboardDelegate<R, C> implements KeyboardDelegate {
   }
 
   /** Where a key stands: a column header, or a cell at (row, column). */
-  #locate(key: Key): { rowAt: number; columnAt: number } | null {
+  #locate(key: Key): GridCoordinates | null {
     const collection = this.#collection;
     const columnAt = collection.columnIndexOf(key);
     if (columnAt >= 0) return { rowAt: -1, columnAt };
@@ -655,6 +667,12 @@ export interface TableState<R, C> {
   setKeyboardNavigationDisabled?(disabled: boolean): void;
 }
 
+interface TableRepair<R, C> {
+  current: TableCollection<R, C>;
+  repair: boolean;
+  next: Key | null;
+}
+
 /**
  * Move the roving focus off a row that is gone.
  *
@@ -674,7 +692,7 @@ function repairFocus<R, C>(
   let previous: TableCollection<R, C> | null = null;
 
   createRenderEffect(
-    (): { current: TableCollection<R, C>; repair: boolean; next: Key | null } => {
+    (): TableRepair<R, C> => {
       const current = collection();
       const focused = selection.focusedKey();
       if (focused === null || previous === null || current.getItem(focused) !== null) {
@@ -683,7 +701,7 @@ function repairFocus<R, C>(
 
       const old = previous;
       const manager = selectionManager();
-      const columnKey = (): Key | null => {
+      const columnKey: () => Key | null = () => {
         const cell = old.parseCellKey(focused);
         const at = cell?.index ?? Math.max(0, old.columnIndexOf(focused));
         const kept = cell === null ? null : current.columnIndexOf(cell.column.key);
@@ -701,11 +719,14 @@ function repairFocus<R, C>(
 
       const rowKey = old.parseCellKey(focused)?.row.key ?? focused;
       const from = old.rowIndexOf(rowKey);
-      const survives = (row: Node<R> | undefined): row is Node<R> =>
-        row !== undefined &&
-        row.type === "item" &&
-        current.rowIndexOf(row.key) >= 0 &&
-        !manager.isDisabled(row.key);
+      function survives(row: Node<R> | undefined): row is Node<R> {
+        return (
+          row !== undefined &&
+          row.type === "item" &&
+          current.rowIndexOf(row.key) >= 0 &&
+          !manager.isDisabled(row.key)
+        );
+      }
 
       let row: Node<R> | undefined;
       for (let at = from + 1; at < old.rows.length && row === undefined; at++) {
@@ -762,14 +783,17 @@ function namedText(item: unknown): string | null {
 export function tableState<R, C>(options: TableStateOptions<R, C>): TableState<R, C> {
   const selection = multipleSelectionState(options);
 
-  const toSet = (keys: Iterable<Key> | undefined): Set<Key> | undefined =>
-    keys === undefined ? undefined : new Set(keys);
+  function toSet(keys: Iterable<Key> | undefined): Set<Key> | undefined {
+    return keys === undefined ? undefined : new Set(keys);
+  }
   const [expandedKeys, setExpandedKeys] = controllable<Set<Key>>(
     () => toSet(access(options.expandedKeys)),
     () => toSet(access(options.defaultExpandedKeys)) ?? new Set(),
     options.onExpandedChange,
   );
-  const treeColumn = (): Key | null => access(options.treeColumn) ?? null;
+  function treeColumn(): Key | null {
+    return access(options.treeColumn) ?? null;
+  }
 
   // Built apart from the flattening, so expanding a row keeps every node it
   // already had: a list keyed by node would otherwise rebuild each row, and
@@ -830,7 +854,7 @@ export function tableState<R, C>(options: TableStateOptions<R, C>): TableState<R
     const expanded = isTree ? expandedKeys() : new Set<Key>();
     const tree = isTree ? new Map<Key, TableRowPosition>() : undefined;
     const rows: Node<R>[] = [];
-    const visit = (siblings: Node<R>[]): void => {
+    function visit(siblings: Node<R>[]): void {
       // A loader among the siblings is not one of them.
       const items = siblings.filter((node) => node.type === "item");
       for (const node of siblings) {
@@ -843,7 +867,7 @@ export function tableState<R, C>(options: TableStateOptions<R, C>): TableState<R
         });
         if (expanded.has(node.key)) visit(node.childNodes);
       }
-    };
+    }
     visit(body);
 
     const footerStart = rows.length;
@@ -962,7 +986,7 @@ export function table<R, C>(options: TableOptions, state: TableState<R, C>): Tab
   // What the table is sorted by, as its description: a user tabbing in hears
   // it. A change to it is announced, since nothing focused changed with it.
   const message = stringFormatter(strings);
-  const sortDescription = (): string | undefined => {
+  function sortDescription(): string | undefined {
     const descriptor = state.sortDescriptor();
     if (descriptor === undefined) return undefined;
     const name =
@@ -972,7 +996,7 @@ export function table<R, C>(options: TableOptions, state: TableState<R, C>): Tab
       descriptor.direction === "ascending" ? "ascendingSort" : "descendingSort",
       { columnName: name },
     );
-  };
+  }
   const sortDescriptionProps = descriptionFor(sortDescription);
   if (!isServer) {
     createEffect(
@@ -1007,6 +1031,11 @@ export function table<R, C>(options: TableOptions, state: TableState<R, C>): Tab
   };
 }
 
+interface FocusPlace {
+  props: DOMProps;
+  isFocused: Accessor<boolean>;
+}
+
 /**
  * Focus for something that is a PLACE, not a value.
  *
@@ -1026,10 +1055,12 @@ function focusPlace(
   ref: ElementRef,
   manager: Accessor<SelectionManager>,
   focusMode: () => "cell" | "child" = () => "cell",
-): { props: DOMProps; isFocused: Accessor<boolean> } {
-  const isFocused = (): boolean => manager().isFocused && manager().focusedKey === key;
+): FocusPlace {
+  function isFocused(): boolean {
+    return manager().isFocused && manager().focusedKey === key;
+  }
 
-  const enter = (element: HTMLElement): void => {
+  function enter(element: HTMLElement): void {
     // Focus already on something inside is where the user put it.
     const active = activeElement(ownerDocument(element));
     if (active !== element && contains(element, active)) return;
@@ -1044,7 +1075,7 @@ function focusPlace(
       }
     }
     if (activeElement(ownerDocument(element)) !== element) focusSafely(element);
-  };
+  }
 
   if (!isServer) {
     createEffect(
@@ -1109,17 +1140,19 @@ export function tableColumnHeader<R, C>(
   options: TableColumnHeaderOptions,
   state: TableState<R, C>,
 ): TableColumnHeaderResult {
-  const allowsSorting = (): boolean => options.column.props?.allowsSorting === true;
+  function allowsSorting(): boolean {
+    return options.column.props?.allowsSorting === true;
+  }
 
-  const sortDirection = (): "ascending" | "descending" | undefined => {
+  function sortDirection(): "ascending" | "descending" | undefined {
     const descriptor = state.sortDescriptor();
     return descriptor?.column === options.column.key ? descriptor.direction : undefined;
-  };
+  }
 
   const place = focusPlace(options.column.key, options.ref, state.selectionManager);
-  const sortByColumn = (): void => {
+  function sortByColumn(): void {
     state.sort(options.column.key);
-  };
+  }
   const { pressProps, isPressed } = press({
     ref: options.ref,
     isDisabled: () => !allowsSorting(),
@@ -1616,12 +1649,20 @@ const strings = new StringDictionary<TableMessage>({
 });
 
 export function tableRow<R, C>(options: TableRowOptions, state: TableState<R, C>): TableRowResult {
-  const manager = (): SelectionManager => state.selectionManager();
+  function manager(): SelectionManager {
+    return state.selectionManager();
+  }
   const message = stringFormatter(strings);
   const key = options.row.key;
-  const position = (): TableRowPosition | null => state.collection().rowPosition(key);
-  const hasChildRows = (): boolean => position()?.hasChildRows === true;
-  const isExpanded = (): boolean => hasChildRows() && state.expandedKeys?.().has(key) === true;
+  function position(): TableRowPosition | null {
+    return state.collection().rowPosition(key);
+  }
+  function hasChildRows(): boolean {
+    return position()?.hasChildRows === true;
+  }
+  function isExpanded(): boolean {
+    return hasChildRows() && state.expandedKeys?.().has(key) === true;
+  }
 
   const item = selectableItem({
     key,
@@ -1633,11 +1674,12 @@ export function tableRow<R, C>(options: TableRowOptions, state: TableState<R, C>
     shouldSelectOnPressUp: options.shouldSelectOnPressUp,
   });
 
-  const rowHeaderIds = (): string =>
-    state
+  function rowHeaderIds(): string {
+    return state
       .collection()
       .rowHeaderColumns.map((column) => cellIdFor(access(options.baseId), key, column.key))
       .join(" ");
+  }
 
   const expandButtonId = id();
 
@@ -1739,20 +1781,27 @@ export function tableCell<R, C>(
 ): TableCellResult {
   const key = cellKeyFor(options.row.key, options.column.key);
   const locale = useLocale();
-  const manager = (): SelectionManager => state.selectionManager();
-  const behavior = (): TableKeyboardNavigationBehavior =>
-    state.keyboardNavigationBehavior?.() ?? "arrow";
-  const focusMode = (): "cell" | "child" =>
-    access(options.focusMode) ?? (behavior() === "tab" ? "cell" : "child");
+  function manager(): SelectionManager {
+    return state.selectionManager();
+  }
+  function behavior(): TableKeyboardNavigationBehavior {
+    return state.keyboardNavigationBehavior?.() ?? "arrow";
+  }
+  function focusMode(): "cell" | "child" {
+    return access(options.focusMode) ?? (behavior() === "tab" ? "cell" : "child");
+  }
 
-  const isRowHeader = (): boolean =>
-    state.collection().rowHeaderColumns.some((column) => column.key === options.column.key);
+  function isRowHeader(): boolean {
+    return state.collection().rowHeaderColumns.some((column) => column.key === options.column.key);
+  }
 
   // Focus only. What a press on a cell MEANS is the row's business, and the
   // row has its own `selectableItem` for it.
   const place = focusPlace(key, options.ref, state.selectionManager, focusMode);
 
-  const cellElement = (): HTMLElement | null => (access(options.ref) as HTMLElement | null) ?? null;
+  function cellElement(): HTMLElement | null {
+    return (access(options.ref) as HTMLElement | null) ?? null;
+  }
 
   /**
    * The expand and collapse keys, in the cell of the tree column.
@@ -1761,7 +1810,7 @@ export function tableCell<R, C>(
    * with the one pointing back out, and from a closed or childless row that
    * one goes up to the parent. Only then does the arrow move between cells.
    */
-  const expansionKey = (event: KeyboardEvent): boolean => {
+  function expansionKey(event: KeyboardEvent): boolean {
     if (state.treeColumn?.() !== options.column.key) return false;
     const position = state.collection().rowPosition(options.row.key);
     if (position === null || manager().isDisabled(options.row.key)) return false;
@@ -1784,7 +1833,7 @@ export function tableCell<R, C>(
     if (parent === undefined || state.collection().rowIndexOf(parent) < 0) return false;
     manager().setFocusedKey(cellKeyFor(parent, options.column.key));
     return true;
-  };
+  }
 
   /**
    * Left and right walk the controls inside the cell before they leave it.
@@ -1793,7 +1842,7 @@ export function tableCell<R, C>(
    * at its first control; under `cell` focus it goes back to the cell. At
    * either end the key is left to the grid, which moves to the next cell.
    */
-  const onKeyDownCapture = (event: KeyboardEvent): void => {
+  function onKeyDownCapture(event: KeyboardEvent): void {
     const element = cellElement();
     if (element === null || !contains(element, targetElement(event))) return;
     if (expansionKey(event)) {
@@ -1818,7 +1867,7 @@ export function tableCell<R, C>(
     event.preventDefault();
     event.stopPropagation();
     focusSafely(target);
-  };
+  }
 
   /**
    * With Tab navigation the keys typed into a control in the cell are the
@@ -1826,7 +1875,7 @@ export function tableCell<R, C>(
    * typeahead. Tab itself stays inside the cell while there is somewhere in
    * it to go, and leaves the grid otherwise.
    */
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     if (behavior() !== "tab") return;
     const element = cellElement();
     const target = targetElement(event);
@@ -1846,7 +1895,7 @@ export function tableCell<R, C>(
     const walker = focusableWalker(element, { tabbable: true });
     if (active !== null && contains(element, active)) walker.currentNode = active;
     if (walker.nextNode() !== null) event.stopPropagation();
-  };
+  }
 
   return {
     isFocused: place.isFocused,
@@ -1914,7 +1963,7 @@ export function useColumn(): Node<unknown> {
   return node;
 }
 
-function TableProvider(props: { value: TableContextValue; children?: Child }) {
+function TableProvider(props: ProviderProps<TableContextValue>) {
   return provide(
     TableContext,
     () => props.value,
@@ -1959,6 +2008,14 @@ export interface TableComponentProps<R, C> extends StyleProps {
   dragAndDropHooks?: DragAndDropHooks;
 }
 
+interface RowsReader {
+  read: Accessor<Iterable<unknown> | undefined>;
+}
+
+interface HeldDragAndDrop {
+  held?: CollectionDragAndDrop;
+}
+
 /**
  * ```tsx
  * <Table aria-label="Files" columns={COLUMNS} items={files()}
@@ -1976,7 +2033,7 @@ export function Table<R, C>(props: TableComponentProps<R, C>) {
 
   // Boxed, because the footer hands over an accessor and a signal holding a
   // function would call it. `ownedWrite`: the footer writes from its body.
-  const [footer, setFooter] = createSignal<{ read: Accessor<Iterable<unknown> | undefined> }>(
+  const [footer, setFooter] = createSignal<RowsReader>(
     { read: () => undefined },
     { ownedWrite: true },
   );
@@ -1993,11 +2050,13 @@ export function Table<R, C>(props: TableComponentProps<R, C>) {
   // layout — not the DOM — answers what is above, below and a page away. Only
   // the BODY is windowed: the header is one row and always on screen.
   const virtual = useVirtualizer();
-  const dropping: { held?: CollectionDragAndDrop } = {};
+  const dropping: HeldDragAndDrop = {};
   // The layout places ROWS, and focus is on a cell: a cell is wherever its row
   // is, or the layout would know nothing of it, the focused row would not be
   // kept rendered, and Page Down would have no rectangle to measure from.
-  const rowKeyOf = (key: Key): Key => state.collection().parseCellKey(key)?.row.key ?? key;
+  function rowKeyOf(key: Key): Key {
+    return state.collection().parseCellKey(key)?.row.key ?? key;
+  }
   virtual?.attach(
     () => rowsOnly(state.collection()),
     domRef,
@@ -2041,9 +2100,12 @@ export function Table<R, C>(props: TableComponentProps<R, C>) {
           { tableWidth: container.tableWidth },
           state as TableState<unknown, unknown>,
         );
-  const hasDragHooks = (): boolean => dragAndDrop?.dragState !== undefined;
-  const allowsDragging = (): boolean =>
-    hasDragHooks() && dragAndDrop?.dragState?.isDisabled() !== true;
+  function hasDragHooks(): boolean {
+    return dragAndDrop?.dragState !== undefined;
+  }
+  function allowsDragging(): boolean {
+    return hasDragHooks() && dragAndDrop?.dragState?.isDisabled() !== true;
+  }
 
   const value: TableContextValue = {
     state,
@@ -2166,25 +2228,29 @@ function tableDragAndDrop(
   if (hooks === undefined) return undefined;
   const layoutDelegate = virtual?.layout;
   const locale = useLocale();
-  const direction = (): "ltr" | "rtl" => locale().direction;
+  function direction(): "ltr" | "rtl" {
+    return locale().direction;
+  }
   const body = createMemo(
     () => new TableBodyRows(state.collection()) as unknown as Collection<unknown>,
   );
-  const expandedKeys = (): Set<Key> => state.expandedKeys?.() ?? new Set<Key>();
-  const hasChildren = (key: Key): boolean => {
+  function expandedKeys(): Set<Key> {
+    return state.expandedKeys?.() ?? new Set<Key>();
+  }
+  function hasChildren(key: Key): boolean {
     const node = body().getItem(key);
     return node !== null && node.type === "item" && node.hasChildNodes;
-  };
+  }
 
   // Rows do not take focus here, cells do: a row is focused as its cell in
   // the column focus was last in, or else its first.
-  const focusKeyFor = (rowKey: Key): Key => {
+  function focusKeyFor(rowKey: Key): Key {
     const collection = state.collection();
     const focused = state.selectionManager().focusedKey;
     const cell = focused === null ? null : collection.parseCellKey(focused);
     const column = cell?.column.key ?? collection.columns[0]?.key;
     return column === undefined ? rowKey : cellKeyFor(rowKey, column);
-  };
+  }
 
   const result: CollectionDragAndDrop = collectionDragAndDrop({
     virtual,
@@ -2230,8 +2296,12 @@ function tableDragAndDrop(
   return result;
 }
 
+interface DropIndicatorSlot {
+  of: Incoming<DropIndicatorProps>;
+}
+
 /** A drop indicator in a table: a row whose one cell spans every column. */
-function TableDropIndicator(indicator: { of: Incoming<DropIndicatorProps> }) {
+function TableDropIndicator(indicator: DropIndicatorSlot) {
   const props = indicator.of;
   const grid = useTable();
   const { dragAndDropHooks, dropState } = useDragAndDropContext();
@@ -2248,9 +2318,11 @@ function TableDropIndicator(indicator: { of: Incoming<DropIndicatorProps> }) {
     dropState,
     buttonRef,
   );
-  const level = (): number =>
+  const level: () => number = () =>
     target.type === "item" ? (dropState.collection().getItem(target.key)?.level ?? 0) + 1 : 1;
-  const isTree = (): boolean => grid.state.collection().isTree;
+  function isTree(): boolean {
+    return grid.state.collection().isTree;
+  }
 
   return (
     <Show when={!isHidden()}>
@@ -2397,7 +2469,9 @@ export function Column(props: ColumnComponentProps) {
 
   const { hoverProps, isHovered } = hover({});
   const { focusProps, isFocusVisible } = focusRing();
-  const isResizing = (): boolean => resize?.resizingColumn() === column.key;
+  function isResizing(): boolean {
+    return resize?.resizingColumn() === column.key;
+  }
 
   const elementProps = mergeProps(
     columnHeaderProps,
@@ -2483,8 +2557,9 @@ export interface TableBodyComponentProps<R> extends StyleProps {
 /** Rows of one part of the table, or the window of them the virtualiser says is on screen. */
 function rowsOf(grid: TableContextValue, part: "body" | "footer"): Node<unknown>[] {
   const collection = grid.state.collection();
-  const inPart = (row: Node<unknown>): boolean =>
-    collection.rowIndexOf(row.key) < collection.footerStart === (part === "body");
+  function inPart(row: Node<unknown>): boolean {
+    return collection.rowIndexOf(row.key) < collection.footerStart === (part === "body");
+  }
   const virtual = grid.virtual;
   if (virtual === null) return part === "body" ? collection.bodyRows : collection.footerRows;
   return virtual
@@ -2515,8 +2590,9 @@ function renderRows(rows: () => Node<unknown>[], render: (item: never) => Child)
 export function TableBody<R>(props: TableBodyComponentProps<R>) {
   const grid = useTable();
   const render = props.children;
-  const isEmpty = (): boolean =>
-    grid.state.collection().bodyRows.every((row) => row.type !== "item");
+  function isEmpty(): boolean {
+    return grid.state.collection().bodyRows.every((row) => row.type !== "item");
+  }
 
   const droppable = grid.dragAndDrop?.dropState !== undefined;
 
@@ -2734,16 +2810,18 @@ export function Row<C>(props: RowComponentProps<C>) {
   );
 }
 
+interface RowDropIndicator {
+  indicator: ReturnType<NonNullable<DragAndDropHooks["dropIndicator"]>>;
+  ref: ReturnType<typeof makeRef<HTMLDivElement>>;
+}
+
 interface RowDragAndDrop {
   collection: CollectionDragAndDrop;
   itemProps: DOMProps;
   before: ItemDropTarget;
   after: Accessor<ItemDropTarget[]>;
   /** The target for a drop ON the row: rows here take no focus, so it is a row of its own. */
-  on: {
-    indicator: ReturnType<NonNullable<DragAndDropHooks["dropIndicator"]>>;
-    ref: ReturnType<typeof makeRef<HTMLDivElement>>;
-  } | null;
+  on: RowDropIndicator | null;
 }
 
 /**
@@ -2864,7 +2942,9 @@ export function Cell(props: CellComponentProps) {
   const { focusProps, isFocusVisible } = focusRing();
   const { hoverProps, isHovered } = hover({});
   const rowState = getContext(RowStateContext) ?? null;
-  const isTreeColumn = (): boolean => grid.state.treeColumn?.() === column.key;
+  function isTreeColumn(): boolean {
+    return grid.state.treeColumn?.() === column.key;
+  }
 
   const elementProps = mergeProps(
     gridCellProps,
@@ -2925,9 +3005,15 @@ export function TableLoadMoreItem(props: TableLoadMoreItemProps) {
   const row = useRow();
   const options = fromProps(cells(props));
   const sentinel = makeRef<HTMLDivElement>();
-  const level = (): number => row.level + 1;
-  const isTree = (): boolean => grid.state.collection().isTree;
-  const isLoading = (): boolean => props.isLoading === true && props.children !== undefined;
+  function level(): number {
+    return row.level + 1;
+  }
+  function isTree(): boolean {
+    return grid.state.collection().isTree;
+  }
+  function isLoading(): boolean {
+    return props.isLoading === true && props.children !== undefined;
+  }
 
   loadMoreSentinel(
     {
@@ -3017,6 +3103,10 @@ export interface TableColumnResizeResult {
   isMouseResizing: Accessor<boolean>;
 }
 
+interface KeyDownHandler {
+  onKeyDown: (event: KeyboardEvent) => void;
+}
+
 /**
  * A column's resize handle.
  *
@@ -3043,9 +3133,13 @@ export function tableColumnResize(
   const key = options.column.key;
   const owner = state.tableState;
   const baseId = tableIds.get(owner);
-  const isResizing = (): boolean => state.resizingColumn() === key;
+  function isResizing(): boolean {
+    return state.resizingColumn() === key;
+  }
   const [isMouseResizing, setMouseResizing] = createSignal(false);
-  const isEditing = (): boolean => owner.isKeyboardNavigationDisabled?.() === true;
+  function isEditing(): boolean {
+    return owner.isKeyboardNavigationDisabled?.() === true;
+  }
 
   // Where the resize is as of the last event: the handlers of one gesture run
   // one after another faster than a signal is flushed.
@@ -3053,13 +3147,15 @@ export function tableColumnResize(
   let lastSize: Map<Key, ColumnSize> | null = null;
   let wasFocusedOnResizeStart = false;
 
-  const input = (): HTMLInputElement | null => (access(ref) as HTMLInputElement | null) ?? null;
-  const focusInput = (): void => {
+  function input(): HTMLInputElement | null {
+    return (access(ref) as HTMLInputElement | null) ?? null;
+  }
+  function focusInput(): void {
     const element = input();
     if (element !== null) focusSafely(element);
-  };
+  }
 
-  const startResize = (): void => {
+  function startResize(): void {
     if (!resizing) {
       lastSize = state.updateResizedColumns(key, state.getColumnWidth(key));
       state.startResize(key);
@@ -3067,15 +3163,15 @@ export function tableColumnResize(
       options.onResizeStart?.(lastSize);
     }
     resizing = true;
-  };
+  }
 
-  const resize = (width: number): void => {
+  function resize(width: number): void {
     const sizes = state.updateResizedColumns(key, width);
     options.onResize?.(sizes);
     lastSize = sizes;
-  };
+  }
 
-  const endResize = (): void => {
+  function endResize(): void {
     if (resizing) {
       const sizes = lastSize ?? state.updateResizedColumns(key, state.getColumnWidth(key));
       state.endResize();
@@ -3090,7 +3186,7 @@ export function tableColumnResize(
       }
     }
     lastSize = null;
-  };
+  }
 
   let dragged = 0;
   const { moveProps } = move({
@@ -3125,11 +3221,9 @@ export function tableColumnResize(
   });
   // The arrows move the column only while it is being resized; otherwise they
   // are the grid's.
-  const { onKeyDown: moveKeyDown, ...pointerMoveProps } = moveProps as DOMProps & {
-    onKeyDown: (event: KeyboardEvent) => void;
-  };
+  const { onKeyDown: moveKeyDown, ...pointerMoveProps } = moveProps as DOMProps & KeyDownHandler;
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     switch (event.key) {
       case "Enter":
         event.preventDefault();
@@ -3149,7 +3243,7 @@ export function tableColumnResize(
       default:
         if (isEditing()) moveKeyDown(event);
     }
-  };
+  }
 
   const { pressProps } = press({
     preventFocusOnPress: true,
@@ -3219,18 +3313,22 @@ export function tableColumnResize(
       : undefined;
   });
 
-  const min = (): number => Math.floor(state.getColumnMinWidth(key));
-  const max = (): number => {
-    const value = Math.floor(state.getColumnMaxWidth(key));
-    return value === Number.POSITIVE_INFINITY ? Number.MAX_SAFE_INTEGER : value;
-  };
-  const value = (): number => Math.floor(state.getColumnWidth(key));
+  function min(): number {
+    return Math.floor(state.getColumnMinWidth(key));
+  }
+  function max(): number {
+    const widest = Math.floor(state.getColumnMaxWidth(key));
+    return widest === Number.POSITIVE_INFINITY ? Number.MAX_SAFE_INTEGER : widest;
+  }
+  function value(): number {
+    return Math.floor(state.getColumnWidth(key));
+  }
 
-  const onInput = (event: Event): void => {
+  function onInput(event: Event): void {
     const current = state.getColumnWidth(key);
     const next = Number.parseFloat((event.target as HTMLInputElement).value);
     resize(next > current ? current + 10 : current - 10);
-  };
+  }
 
   const { visuallyHiddenProps } = visuallyHidden();
 
@@ -3322,17 +3420,17 @@ export function ResizableTableContainer(props: ResizableTableContainerProps) {
   const [width, setWidth] = createSignal(0);
 
   if (!isServer) {
-    const scrolling = (): HTMLElement | null => {
+    function scrolling(): HTMLElement | null {
       const container = domRef();
       let element: HTMLElement | null = tableRef();
       while (element !== null && element !== container && !isScrollable(element)) {
         element = element.parentElement;
       }
       return element ?? container;
-    };
-    const measure = (element: HTMLElement): void => {
+    }
+    function measure(element: HTMLElement): void {
       setWidth(element.clientWidth);
-    };
+    }
     createEffect(
       () => (domRef() === null ? null : scrolling()),
       (element) => {
@@ -3428,7 +3526,7 @@ export function ColumnResizer(props: ColumnResizerProps) {
     onHoverChange: options.onHoverChange,
   });
 
-  const resizableDirection = (): "left" | "right" | "both" => {
+  const resizableDirection: () => "left" | "right" | "both" = () => {
     const width = state.getColumnWidth(key);
     const rtl = locale().direction === "rtl";
     if (state.getColumnMinWidth(key) >= width) return rtl ? "right" : "left";
@@ -3453,11 +3551,11 @@ export function ColumnResizer(props: ColumnResizerProps) {
   );
 
   // The handle's own cursor, which a stylesheet sets per direction.
-  const cursor = (): string => {
+  function cursor(): string {
     resizableDirection();
     const element = domRef();
     return element === null ? "" : ownerWindow(element).getComputedStyle(element).cursor;
-  };
+  }
 
   return (
     <div {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>

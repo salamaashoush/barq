@@ -18,7 +18,9 @@ import {
 } from "./splitter.ts";
 
 const free: PanelConstraints = { minSize: 0, maxSize: 100, collapsedSize: 0, collapsible: false };
-const panel = (over: Partial<PanelConstraints> = {}): PanelConstraints => ({ ...free, ...over });
+function panel(over: Partial<PanelConstraints> = {}): PanelConstraints {
+  return { ...free, ...over };
+}
 
 describe("parseSize and toPercentage", () => {
   test("a bare number and a percent string are both percentages", () => {
@@ -84,14 +86,14 @@ describe("defaultLayout and validateLayout", () => {
 });
 
 describe("adjustLayoutByDelta", () => {
-  const move = (
+  function move(
     delta: number,
     initialLayout: number[],
     constraints: PanelConstraints[],
     pivot: readonly [number, number] = [0, 1],
     trigger: "keyboard" | "pointer" | "imperative" = "pointer",
-  ): number[] =>
-    adjustLayoutByDelta({
+  ): number[] {
+    return adjustLayoutByDelta({
       delta,
       initialLayout,
       prevLayout: initialLayout,
@@ -99,6 +101,7 @@ describe("adjustLayoutByDelta", () => {
       pivot,
       trigger,
     });
+  }
 
   test("moves one panel into its neighbour and keeps the total", () => {
     expect(move(10, [30, 70], [panel(), panel()])).toEqual([40, 60]);
@@ -152,7 +155,11 @@ describe("adjustLayoutByDelta", () => {
   });
 });
 
-function memoryStorage(): SplitterStorage & { data: Map<string, string> } {
+interface MemoryStorage {
+  data: Map<string, string>;
+}
+
+function memoryStorage(): SplitterStorage & MemoryStorage {
   const data = new Map<string, string>();
   return {
     data,
@@ -167,10 +174,15 @@ interface Events {
   expanded: string[];
 }
 
+interface BuiltSplitter {
+  state: SplitterState;
+  events: Events;
+}
+
 function build(
   panels: Partial<SplitterPanelOptions>[],
   options: Partial<SplitterStateOptions> = {},
-): { state: SplitterState; events: Events } {
+): BuiltSplitter {
   const events: Events = { resized: [], collapsed: [], expanded: [] };
   // Under a root, as a component would: the direction is read from the scope.
   const state = createRoot(() => {
@@ -358,7 +370,7 @@ describe("splitterState", () => {
   });
 
   test("a panel that leaves gives its share back", () => {
-    let remove = (): void => {};
+    let remove: () => void = () => {};
     const state = createRoot(() => {
       const made = splitterState({ ref: () => null });
       made.registerPanel({ id: "a", ref: () => null, defaultSize: 20 });

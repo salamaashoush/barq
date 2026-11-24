@@ -63,8 +63,15 @@ describe("Switch", () => {
   });
 });
 
+interface InALabelProps {
+  onChange?: (on: boolean) => void;
+  isDisabled?: boolean;
+}
+
 describe("Switch, with nothing of its own to say", () => {
-  const control = (): HTMLInputElement => screen.getByRole<HTMLInputElement>("switch");
+  function control(): HTMLInputElement {
+    return screen.getByRole<HTMLInputElement>("switch");
+  }
 
   test("with label content it is the label", () => {
     render(() => <Switch>Wi-Fi</Switch>);
@@ -88,7 +95,7 @@ describe("Switch, with nothing of its own to say", () => {
     expect(control().parentElement?.getAttribute("data-state")).toBe("checked");
   });
 
-  function InALabel(props: { onChange?: (on: boolean) => void; isDisabled?: boolean }) {
+  function InALabel(props: InALabelProps) {
     return (
       <label>
         <span data-testid="text">Wi-Fi</span>

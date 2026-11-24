@@ -18,14 +18,16 @@ async function settle(): Promise<void> {
   flush();
 }
 
-function Row(props: {
+interface RowProps {
   of: StaticCollection;
   id?: string;
   textValue?: string;
   isDisabled?: boolean;
   isHidden?: boolean;
   children?: Child;
-}) {
+}
+
+function Row(props: RowProps) {
   const item = staticItem(props.of, {
     key: props.id,
     textValue: () => props.textValue,
@@ -39,7 +41,13 @@ function Row(props: {
   );
 }
 
-function Group(props: { of: StaticCollection; id: string; children?: Child }) {
+interface GroupProps {
+  of: StaticCollection;
+  id: string;
+  children?: Child;
+}
+
+function Group(props: GroupProps) {
   const section = staticItem(props.of, { key: props.id, type: "section", textValue: "" });
   return (
     <li ref={section.ref}>

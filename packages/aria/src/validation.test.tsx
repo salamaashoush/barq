@@ -370,6 +370,10 @@ describe("a switch validates", () => {
   });
 });
 
+interface Named {
+  name: string;
+}
+
 describe("every field validates", () => {
   test("a checkbox group", () => {
     render(() => (
@@ -421,9 +425,9 @@ describe("every field validates", () => {
         items={[{ id: "apple", name: "Apple" }]}
         defaultSelectedKey="apple"
         validate={(key: Key | Key[] | null) => (key === "apple" ? "Not apples" : null)}
-        getTextValue={(fruit: { name: string }) => fruit.name}
+        getTextValue={(fruit: Named) => fruit.name}
       >
-        {(fruit: { name: string }) => <Option>{fruit.name}</Option>}
+        {(fruit: Named) => <Option>{fruit.name}</Option>}
       </Select>
     ));
 
@@ -439,9 +443,9 @@ describe("every field validates", () => {
         items={[{ id: "apple", name: "Apple" }]}
         defaultSelectedKey="apple"
         validate={(key: Key | null) => (key === "apple" ? "Not apples" : null)}
-        getTextValue={(fruit: { name: string }) => fruit.name}
+        getTextValue={(fruit: Named) => fruit.name}
       >
-        {(fruit: { name: string }) => <Option>{fruit.name}</Option>}
+        {(fruit: Named) => <Option>{fruit.name}</Option>}
       </ComboBox>
     ));
 
@@ -509,9 +513,9 @@ describe("a select validates NATIVELY, not only in aria", () => {
         defaultSelectedKey="apple"
         validationBehavior="native"
         validate={(key: Key | Key[] | null) => (key === "apple" ? "Not apples" : null)}
-        getTextValue={(fruit: { name: string }) => fruit.name}
+        getTextValue={(fruit: Named) => fruit.name}
       >
-        {(fruit: { name: string }) => <Option>{fruit.name}</Option>}
+        {(fruit: Named) => <Option>{fruit.name}</Option>}
       </Select>
     ));
     flush();
@@ -531,9 +535,9 @@ describe("a select validates NATIVELY, not only in aria", () => {
         defaultSelectedKey="apple"
         validationBehavior="native"
         validate={(_key: Key | Key[] | null) => null}
-        getTextValue={(fruit: { name: string }) => fruit.name}
+        getTextValue={(fruit: Named) => fruit.name}
       >
-        {(fruit: { name: string }) => <Option>{fruit.name}</Option>}
+        {(fruit: Named) => <Option>{fruit.name}</Option>}
       </Select>
     ));
     flush();

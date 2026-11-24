@@ -9,8 +9,18 @@ import {
   thumbSize,
 } from "./scroller.ts";
 
+interface ViewportOptions {
+  height?: number;
+  content?: number;
+  top?: number;
+}
+
+interface ScrollTarget {
+  top: number;
+}
+
 /** A viewport with the geometry happy-dom will not measure. */
-function viewport(options: { height?: number; content?: number; top?: number } = {}): HTMLElement {
+function viewport(options: ViewportOptions = {}): HTMLElement {
   const element = document.createElement("div");
   const inner = document.createElement("div");
   element.append(inner);
@@ -24,7 +34,7 @@ function viewport(options: { height?: number; content?: number; top?: number } =
     },
   });
   Object.defineProperty(element, "scrollTo", {
-    value: (to: { top: number }) => {
+    value: (to: ScrollTarget) => {
       top = to.top;
       element.dispatchEvent(new Event("scroll"));
     },
@@ -32,10 +42,14 @@ function viewport(options: { height?: number; content?: number; top?: number } =
   return element;
 }
 
-const scrollTo = (element: HTMLElement, top: number): void => {
-  (element as unknown as { scrollTop: number }).scrollTop = top;
+interface Scrollable {
+  scrollTop: number;
+}
+
+function scrollTo(element: HTMLElement, top: number): void {
+  (element as unknown as Scrollable).scrollTop = top;
   element.dispatchEvent(new Event("scroll"));
-};
+}
 
 describe("messageScroller", () => {
   test("attach is usable as a ref: it measures while a scope is being built", () => {
@@ -197,11 +211,14 @@ interface Box {
   readonly scroll: (to: number) => void;
 }
 
+interface OverflowOptions {
+  size: number;
+  content: number;
+  at?: number;
+}
+
 /** A viewport that overflows on one axis, with the geometry declared. */
-function overflowing(
-  axis: "vertical" | "horizontal",
-  options: { size: number; content: number; at?: number },
-): Box {
+function overflowing(axis: "vertical" | "horizontal", options: OverflowOptions): Box {
   const element = document.createElement("div");
   let at = options.at ?? 0;
   const [client, offset, scroll, position] =
@@ -241,7 +258,7 @@ function track(axis: "vertical" | "horizontal", length: number, start = 0): HTML
   return element;
 }
 
-const pointer = (type: string, at: number, target?: Element): PointerEvent => {
+function pointer(type: string, at: number, target?: Element): PointerEvent {
   const event = new PointerEvent(type, {
     clientX: at,
     clientY: at,
@@ -252,7 +269,7 @@ const pointer = (type: string, at: number, target?: Element): PointerEvent => {
   });
   if (target !== undefined) Object.defineProperty(event, "target", { value: target });
   return event;
-};
+}
 
 describe("scrollbar geometry", () => {
   const sizes = { content: 1000, viewport: 200, track: 200, paddingStart: 0, paddingEnd: 0 };
@@ -304,6 +321,10 @@ describe("scrollbar geometry", () => {
     expect(scrollPositionAt(100, 20, fits)).toBe(0);
   });
 });
+
+interface ScrollbarVisibility {
+  isVisible: () => boolean;
+}
 
 describe("scrollbar", () => {
   test("it reports overflow, the thumb and how far through the content it is", () => {
@@ -418,14 +439,16 @@ describe("scrollbar", () => {
   });
 
   describe("when it shows", () => {
-    const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+    function wait(ms: number): Promise<void> {
+      return new Promise((resolve) => setTimeout(resolve, ms));
+    }
     /** Waits for it rather than for a length of time, which a busy machine stretches. */
-    const gone = async (bar: { isVisible: () => boolean }): Promise<void> => {
+    async function gone(bar: ScrollbarVisibility): Promise<void> {
       for (let tries = 0; tries < 200 && bar.isVisible(); tries++) {
         await wait(10);
         flush();
       }
-    };
+    }
 
     test("auto: whenever there is something to scroll", () => {
       const bar = scrollbar({ type: "auto" });
@@ -569,11 +592,18 @@ function transcript(height: number) {
 
   const heights = new Map<Element, number>();
   let top = 0;
-  const rows = (): Element[] => [...content.children].filter((child) => child !== spacer);
-  const room = (): number => (spacer.hidden ? 0 : Number.parseFloat(spacer.style.height || "0"));
-  const total = (): number =>
-    rows().reduce((sum, row) => sum + (heights.get(row) ?? 0), 0) + room();
-  const most = (): number => Math.max(0, total() - height);
+  function rows(): Element[] {
+    return [...content.children].filter((child) => child !== spacer);
+  }
+  function room(): number {
+    return spacer.hidden ? 0 : Number.parseFloat(spacer.style.height || "0");
+  }
+  function total(): number {
+    return rows().reduce((sum, entry) => sum + (heights.get(entry) ?? 0), 0) + room();
+  }
+  function most(): number {
+    return Math.max(0, total() - height);
+  }
 
   Object.defineProperty(view, "clientHeight", { get: () => height });
   Object.defineProperty(view, "scrollHeight", { get: () => Math.max(total(), height) });
@@ -584,14 +614,14 @@ function transcript(height: number) {
     },
   });
   Object.defineProperty(view, "scrollTo", {
-    value: (to: { top: number }) => {
+    value: (to: ScrollTarget) => {
       view.scrollTop = to.top;
       view.dispatchEvent(new Event("scroll"));
     },
   });
   view.getBoundingClientRect = () => ({ top: 0, bottom: height, height }) as DOMRect;
 
-  const row = (id: string, size: number, anchor = false): HTMLElement => {
+  function row(id: string, size: number, anchor = false): HTMLElement {
     const element = document.createElement("div");
     element.dataset.messageId = id;
     element.dataset.scrollAnchor = anchor ? "true" : "false";
@@ -607,7 +637,7 @@ function transcript(height: number) {
       return { top: y, bottom: y + tall, height: tall } as DOMRect;
     };
     return element;
-  };
+  }
 
   return {
     view,
@@ -636,16 +666,20 @@ function transcript(height: number) {
 }
 
 /** Long enough for the mutation observer, and for a frame after it. */
-const settled = async (): Promise<void> => {
+async function settled(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 5));
   await new Promise((resolve) => requestAnimationFrame(resolve));
   flush();
-};
+}
+
+interface WiredScroller {
+  scroller: ReturnType<typeof messageScroller>;
+}
 
 function wired(
   height: number,
   options: Parameters<typeof messageScroller>[0] = {},
-): ReturnType<typeof transcript> & { scroller: ReturnType<typeof messageScroller> } {
+): ReturnType<typeof transcript> & WiredScroller {
   const model = transcript(height);
   const scroller = messageScroller(options);
   scroller.attachContent(model.content);
@@ -1030,6 +1064,18 @@ describe("messageScroller: which ways there is somewhere to go", () => {
   });
 });
 
+interface FakeObserverRecord {
+  options: IntersectionObserverInit | undefined;
+  observed: Set<Element>;
+  report: (entries: IntersectionEntry[]) => void;
+  disconnected: boolean;
+}
+
+interface IntersectionEntry {
+  target: Element;
+  isIntersecting: boolean;
+}
+
 describe("messageScroller: what is on screen", () => {
   const real = globalThis.IntersectionObserver;
 
@@ -1076,16 +1122,11 @@ describe("messageScroller: what is on screen", () => {
   });
 
   test("by the observer where there is one, with the top edge moved to the reading line", async () => {
-    const made: {
-      options: IntersectionObserverInit | undefined;
-      observed: Set<Element>;
-      report: (entries: { target: Element; isIntersecting: boolean }[]) => void;
-      disconnected: boolean;
-    }[] = [];
+    const made: FakeObserverRecord[] = [];
     class Fake {
       readonly record;
       constructor(
-        callback: (entries: { target: Element; isIntersecting: boolean }[]) => void,
+        callback: (entries: IntersectionEntry[]) => void,
         options?: IntersectionObserverInit,
       ) {
         this.record = {

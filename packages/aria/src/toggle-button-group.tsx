@@ -26,7 +26,14 @@ import {
   type ToggleGroupSelectionMode,
   type ToggleGroupState,
 } from "./togglegroup.ts";
-import { filterDOMProps, fromProps, mergeProps, type StyleProps, styleProps } from "./utils.ts";
+import {
+  filterDOMProps,
+  fromProps,
+  mergeProps,
+  type StyleProps,
+  styleProps,
+  type ProviderProps,
+} from "./utils.ts";
 
 interface ToggleButtonGroupValue {
   state: ToggleGroupState;
@@ -118,7 +125,7 @@ export function ToggleButtonGroup(props: ToggleButtonGroupComponentProps) {
   );
 }
 
-function GroupProvider(props: { value: ToggleButtonGroupValue; children?: Child }) {
+function GroupProvider(props: ProviderProps<ToggleButtonGroupValue>) {
   return provide(
     ToggleButtonGroupContext,
     () => props.value,
@@ -154,7 +161,7 @@ export function ToggleButtonGroupItem(props: ToggleButtonGroupItemComponentProps
     group.state,
   );
 
-  const onChange = (next: boolean): void => {
+  const onChange: (next: boolean) => void = (next) => {
     // Releasing the only pressed item would leave the group empty.
     if (!next && group.disallowEmptySelection() && group.state.selectedKeys().length <= 1) return;
     item.onChange(next);

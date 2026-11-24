@@ -21,12 +21,14 @@ const FILTERS: Filter[] = [
   { id: "seville", name: "Seville" },
 ];
 
-function Filters(props: {
+interface FiltersProps {
   items?: Filter[];
   selectionMode?: "none" | "single" | "multiple";
   onRemove?: (keys: Set<Key>) => void;
   onSelectionChange?: (keys: "all" | Set<Key>) => void;
-}) {
+}
+
+function Filters(props: FiltersProps) {
   return (
     <TagGroup
       label="Cities"
@@ -237,6 +239,11 @@ describe("removing", () => {
   });
 });
 
+interface AnchorVisit {
+  href: string | null;
+  prevented: boolean;
+}
+
 describe("acting on a tag", () => {
   test("pressing a tag calls onAction with its key", () => {
     const acted: Key[] = [];
@@ -252,12 +259,12 @@ describe("acting on a tag", () => {
   });
 
   test("a tag with an href is a link that is followed", () => {
-    const seen: { href: string | null; prevented: boolean }[] = [];
-    const listener = (event: Event): void => {
+    const seen: AnchorVisit[] = [];
+    function listener(event: Event): void {
       if (event.target instanceof HTMLAnchorElement) {
         seen.push({ href: event.target.getAttribute("href"), prevented: event.defaultPrevented });
       }
-    };
+    }
     document.addEventListener("click", listener);
     try {
       render(() => (
@@ -298,13 +305,14 @@ describe("a selection indicator", () => {
         )}
       </TagGroup>
     ));
-    const shown = (role: string): (string | null)[] =>
-      screen
+    function shown(role: string): (string | null)[] {
+      return screen
         .queryAllByTestId("indicator")
         .map(
           (element: Element) =>
             element.closest(`[role="${role}"]`)?.getAttribute("data-key") ?? null,
         );
+    }
     expect(shown("row")).toEqual(["madrid"]);
   });
 });

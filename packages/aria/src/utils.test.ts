@@ -28,8 +28,12 @@ describe("mergeProps", () => {
   });
 
   test("only chains keys that look like handlers", () => {
-    const a = (): string => "a";
-    const b = (): string => "b";
+    function a(): string {
+      return "a";
+    }
+    function b(): string {
+      return "b";
+    }
     // `only` is lower case after `on`, so it is an accessor, not a handler.
     const merged = mergeProps({ only: a }, { only: b });
 
@@ -73,10 +77,10 @@ describe("mergeProps", () => {
 
   test("nothing is called during the merge", () => {
     let reads = 0;
-    const counted = (): string => {
+    function counted(): string {
       reads++;
       return "x";
-    };
+    }
 
     const merged = mergeProps({ "aria-label": counted }, { role: "button" });
 
@@ -122,12 +126,13 @@ describe("id", () => {
   });
 
   test("the same owner tree produces the same ids twice, which is what hydration needs", () => {
-    const run = (): string[] =>
-      createRoot((dispose) => {
+    function run(): string[] {
+      return createRoot((dispose) => {
         const ids = [id()(), id()()];
         dispose();
         return ids;
       });
+    }
 
     // Two roots are different owners, so the ids differ between runs; what has
     // to hold is that the SHAPE is deterministic — the second id follows the

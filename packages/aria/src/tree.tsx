@@ -176,7 +176,7 @@ function structure<T>(roots: Node<T>[]): TreeStructure<T> {
   const setSizes = new Map<Key, number>();
   let itemCount = 0;
 
-  const link = (siblings: Node<T>[], level: number, parentKey: Key | undefined): void => {
+  function link(siblings: Node<T>[], level: number, parentKey: Key | undefined): void {
     const size = siblings.filter((node) => node.type === "item").length;
     let index = 0;
     let previous: Node<T> | null = null;
@@ -196,7 +196,7 @@ function structure<T>(roots: Node<T>[]): TreeStructure<T> {
       link(node.childNodes, node.type === "section" ? level : level + 1, node.key);
       previous = node;
     }
-  };
+  }
   link(roots, 0, undefined);
 
   return { roots, keyMap, setSizes, itemCount };
@@ -432,6 +432,12 @@ function rangeDelegate<T>(collection: Accessor<TreeCollection<T>>): LayoutDelega
   };
 }
 
+interface TreeRepair<T> {
+  current: TreeCollection<T>;
+  repair: boolean;
+  next: Key | null;
+}
+
 /**
  * Expansion, selection and roving focus over a tree of items.
  *
@@ -474,7 +480,7 @@ export function treeState<T>(options: TreeStateOptions<T>): TreeState<T> {
 
   let previous: TreeCollection<T> | null = null;
   createRenderEffect(
-    (): { current: TreeCollection<T>; repair: boolean; next: Key | null } => {
+    (): TreeRepair<T> => {
       const current = collection();
       const focusedKey = selection.focusedKey();
       if (focusedKey === null || previous === null) {
@@ -487,10 +493,10 @@ export function treeState<T>(options: TreeStateOptions<T>): TreeState<T> {
       }
 
       const manager = selectionManager();
-      const usable = (key: Key): boolean => {
+      function usable(key: Key): boolean {
         const node = current.getItem(key);
         return node !== null && node.type === "item" && current.isShowing(key);
-      };
+      }
       let next: Key | null = null;
       for (let key = previous.getKeyAfter(focusedKey); key !== null && next === null;) {
         if (usable(key) && !manager.isDisabled(key)) next = key;
@@ -556,7 +562,9 @@ export interface TreeResult {
 
 export function tree(options: TreeOptions, state: TreeState<unknown>): TreeResult {
   const baseId = id();
-  const isEmpty = (): boolean => state.collection().size === 0;
+  function isEmpty(): boolean {
+    return state.collection().size === 0;
+  }
 
   const { listProps } = selectableList({
     ...options,
@@ -674,6 +682,15 @@ export interface TreeItemOptions {
   onPressChange?: (isPressed: boolean) => void;
 }
 
+export interface TreeCheckboxProps {
+  id: Accessor<string>;
+  "aria-label": Accessor<string>;
+  "aria-labelledby": Accessor<string>;
+  isSelected: Accessor<boolean>;
+  isDisabled: Accessor<boolean>;
+  onChange: () => void;
+}
+
 export interface TreeItemResult {
   rowProps: DOMProps;
   gridCellProps: DOMProps;
@@ -681,14 +698,7 @@ export interface TreeItemResult {
   /** For the button that expands and collapses the row; see {@link TreeItemExpandButton}. */
   expandButtonProps: ButtonOptions & DOMProps;
   /** For a checkbox that selects the row; see {@link TreeItemSelectionCheckbox}. */
-  checkboxProps: {
-    id: Accessor<string>;
-    "aria-label": Accessor<string>;
-    "aria-labelledby": Accessor<string>;
-    isSelected: Accessor<boolean>;
-    isDisabled: Accessor<boolean>;
-    onChange: () => void;
-  };
+  checkboxProps: TreeCheckboxProps;
   /** Report that a description is rendered, for the row's name to include it. Returns the undo. */
   registerDescription(): () => void;
   isSelected: Accessor<boolean>;
@@ -707,15 +717,26 @@ export function treeItem(options: TreeItemOptions, state: TreeState<unknown>): T
   const locale = useLocale();
   const message = stringFormatter(strings);
   const key = options.key;
-  const manager = (): SelectionManager => state.selectionManager();
+  function manager(): SelectionManager {
+    return state.selectionManager();
+  }
   // The collection is rebuilt by every expansion; the node only when the items change.
   const node = createMemo(() => state.collection().getItem(key));
-  const rowId = (): string => rowIdFor(access(options.baseId), key);
-  const behavior = (): KeyboardNavigationBehavior =>
-    access(options.keyboardNavigationBehavior) ?? "arrow";
-  const focusMode = (): TreeFocusMode => access(options.focusMode) ?? "row";
-  const allowsArrows = (): boolean => access(options.allowsArrowNavigation) === true;
-  const row = (): HTMLElement | null => (access(options.ref) as HTMLElement | null) ?? null;
+  function rowId(): string {
+    return rowIdFor(access(options.baseId), key);
+  }
+  function behavior(): KeyboardNavigationBehavior {
+    return access(options.keyboardNavigationBehavior) ?? "arrow";
+  }
+  function focusMode(): TreeFocusMode {
+    return access(options.focusMode) ?? "row";
+  }
+  function allowsArrows(): boolean {
+    return access(options.allowsArrowNavigation) === true;
+  }
+  function row(): HTMLElement | null {
+    return (access(options.ref) as HTMLElement | null) ?? null;
+  }
 
   const hasChildItems = createMemo(
     () =>
@@ -724,15 +745,22 @@ export function treeItem(options: TreeItemOptions, state: TreeState<unknown>): T
       (node()?.childNodes.length ?? 0) > 0,
   );
   const isExpanded = createMemo(() => hasChildItems() && state.expandedKeys().has(key));
-  const treeHasAction = (): boolean => access(options.hasAction) ?? options.onAction !== undefined;
-  const ownAction = (): unknown => node()?.props?.onAction;
+  function treeHasAction(): boolean {
+    return access(options.hasAction) ?? options.onAction !== undefined;
+  }
+  function ownAction(): unknown {
+    return node()?.props?.onAction;
+  }
 
   // With nothing else for a press to do, pressing a parent row opens it.
-  const togglesOnAction = (): boolean =>
-    !treeHasAction() &&
-    !manager().isLink(key) &&
-    manager().selectionMode === "none" &&
-    hasChildItems();
+  function togglesOnAction(): boolean {
+    return (
+      !treeHasAction() &&
+      !manager().isLink(key) &&
+      manager().selectionMode === "none" &&
+      hasChildItems()
+    );
+  }
 
   const item = selectableItem({
     key,
@@ -759,11 +787,7 @@ export function treeItem(options: TreeItemOptions, state: TreeState<unknown>): T
   const descriptionId = id();
 
   /** Expand, collapse or step to the parent, if the key asks for one of those. */
-  const handleExpansionKeys = (
-    event: KeyboardEvent,
-    active: Element,
-    element: Element,
-  ): boolean => {
+  function handleExpansionKeys(event: KeyboardEvent, active: Element, element: Element): boolean {
     if (!allowsArrows() && active !== element) return false;
     if (manager().focusedKey !== key) return false;
     const rtl = locale().direction === "rtl";
@@ -793,19 +817,19 @@ export function treeItem(options: TreeItemOptions, state: TreeState<unknown>): T
       return true;
     }
     return false;
-  };
+  }
 
-  const lastFocusable = (element: HTMLElement): HTMLElement | null => {
+  function lastFocusable(element: HTMLElement): HTMLElement | null {
     const walker = focusableWalker(element);
     walker.currentNode = element;
     return walker.last() as HTMLElement | null;
-  };
+  }
 
   /**
    * Captured, not bubbled: a control inside the row would otherwise see the
    * arrow keys first, a menu button taking Down and a text field taking Left.
    */
-  const onKeyDownCapture = (event: KeyboardEvent): void => {
+  function onKeyDownCapture(event: KeyboardEvent): void {
     if (behavior() !== "arrow" && !allowsArrows()) return;
     const element = row();
     if (element === null || !contains(element, targetElement(event))) return;
@@ -862,10 +886,10 @@ export function treeItem(options: TreeItemOptions, state: TreeState<unknown>): T
         }),
       );
     }
-  };
+  }
 
   /** Answers whether it stopped the event, so the row's own press does not see it. */
-  const onKeyDown = (event: KeyboardEvent): boolean => {
+  function onKeyDown(event: KeyboardEvent): boolean {
     const element = row();
     if (element === null || !contains(element, targetElement(event))) return false;
     const active = activeElement(ownerDocument(element));
@@ -890,22 +914,22 @@ export function treeItem(options: TreeItemOptions, state: TreeState<unknown>): T
       }
     }
     return false;
-  };
+  }
 
-  const focusFirstChild = (element: HTMLElement): boolean => {
+  function focusFirstChild(element: HTMLElement): boolean {
     const walker = focusableWalker(element, { tabbable: true });
     const first = walker.nextNode() as HTMLElement | null;
     if (first === null) return false;
     focusSafely(first);
     scrollIntoViewport(first, { containingElement: scrollParents(element)[0] ?? null });
     return true;
-  };
+  }
 
   // Set when the arrow keys walk off the end of the row back onto it, which
   // is the one way onto a child-focused row that must not move on again.
   let standOnRow = false;
 
-  const onFocusIn = (event: FocusEvent): void => {
+  function onFocusIn(event: FocusEvent): void {
     const element = row();
     if (element === null) return;
     if (targetElement(event) !== element) {
@@ -920,18 +944,20 @@ export function treeItem(options: TreeItemOptions, state: TreeState<unknown>): T
     // Arriving from its own child is `selectableItem` focusing the row it
     // knows about; the child is the row's stand-in, so focus goes back.
     focusFirstChild(element);
-  };
+  }
 
   const navigate = router();
-  const linkData = (name: string): (() => unknown) => {
+  function linkData(name: string): () => unknown {
     return () => {
       const props = node()?.props;
       if (props?.href === undefined || !item.hasAction()) return undefined;
       return name === "href" ? navigate.href(props.href as string) : props[name];
     };
-  };
+  }
 
-  const parentLevelSize = (): number => state.collection().setSizeOf(key);
+  function parentLevelSize(): number {
+    return state.collection().setSizeOf(key);
+  }
 
   const rowProps = mergeProps(item.itemProps, {
     role: "row",
@@ -1110,8 +1136,12 @@ export interface TreeComponentProps<T> extends StyleProps, ItemAccessors<T> {
 
 const NO_ROWS: Node<unknown>[] = [];
 
+interface TreeRowProps {
+  node: Node<unknown>;
+}
+
 /** A row followed, while it is expanded, by its descendants. */
-function TreeRow(props: { node: Node<unknown> }) {
+function TreeRow(props: TreeRowProps) {
   const root = useTree();
   const node = props.node;
   const owner = getOwner();
@@ -1126,8 +1156,16 @@ function TreeRow(props: { node: Node<unknown> }) {
   );
 }
 
-function TreeRows(props: { nodes: Node<unknown>[] }) {
+interface TreeRowsProps {
+  nodes: Node<unknown>[];
+}
+
+function TreeRows(props: TreeRowsProps) {
   return <For each={props.nodes}>{(node: Node<unknown>) => <TreeRow node={node} />}</For>;
+}
+
+interface HeldDragAndDrop {
+  held?: CollectionDragAndDrop;
 }
 
 /**
@@ -1158,7 +1196,7 @@ export function Tree<T>(props: TreeComponentProps<T>) {
   });
   const anyState = state as unknown as TreeState<unknown>;
 
-  const dropping: { held?: CollectionDragAndDrop } = {};
+  const dropping: HeldDragAndDrop = {};
   virtual?.attach(
     state.collection,
     domRef,
@@ -1166,7 +1204,9 @@ export function Tree<T>(props: TreeComponentProps<T>) {
     () => dropping.held?.persistedKeys() ?? [],
   );
 
-  const isEmpty = (): boolean => state.collection().size === 0;
+  function isEmpty(): boolean {
+    return state.collection().size === 0;
+  }
   const [emptyStateIsTabbable, setEmptyStateIsTabbable] = createSignal(false);
   if (!isServer) {
     createEffect(
@@ -1194,12 +1234,17 @@ export function Tree<T>(props: TreeComponentProps<T>) {
   );
 
   const { focusProps, isFocused, isFocusVisible } = focusRing();
-  const selectionMode = (): SelectionMode => state.selectionManager().selectionMode;
+  function selectionMode(): SelectionMode {
+    return state.selectionManager().selectionMode;
+  }
   const dragAndDrop = treeDragAndDrop(props.dragAndDropHooks, anyState, domRef, virtual);
   dropping.held = dragAndDrop;
-  const isDropTarget = (): boolean => dragAndDrop?.isRootDropTarget() === true;
-  const allowsDragging = (): boolean =>
-    dragAndDrop?.dragState !== undefined && !dragAndDrop.dragState.isDisabled();
+  function isDropTarget(): boolean {
+    return dragAndDrop?.isRootDropTarget() === true;
+  }
+  function allowsDragging(): boolean {
+    return dragAndDrop?.dragState !== undefined && !dragAndDrop.dragState.isDisabled();
+  }
 
   const value: TreeContextValue = {
     state: anyState,
@@ -1230,14 +1275,14 @@ export function Tree<T>(props: TreeComponentProps<T>) {
     },
   );
 
-  const windowed = (): Node<unknown>[] => {
+  function windowed(): Node<unknown>[] {
     if (virtual === null) return NO_ROWS;
     const collection = state.collection();
     return virtual
       .visible()
       .map((info: LayoutInfo) => collection.getItem(info.key) as Node<unknown> | null)
       .filter((node: Node<unknown> | null): node is Node<unknown> => node !== null);
-  };
+  }
 
   const renderState: TreeRenderState = {
     isFocused,
@@ -1291,12 +1336,14 @@ function treeDragAndDrop(
   if (hooks === undefined) return undefined;
   const layoutDelegate = virtual?.layout;
   const locale = useLocale();
-  const direction = (): "ltr" | "rtl" => locale().direction;
+  function direction(): "ltr" | "rtl" {
+    return locale().direction;
+  }
   const collection = state.collection as Accessor<Collection<unknown>>;
-  const hasChildren = (key: Key): boolean => {
+  function hasChildren(key: Key): boolean {
     const node = state.collection().getItem(key);
     return node !== null && (node.hasChildNodes || node.props?.hasChildItems === true);
-  };
+  }
 
   const result: CollectionDragAndDrop = collectionDragAndDrop({
     virtual,
@@ -1341,8 +1388,12 @@ function treeDragAndDrop(
   return result;
 }
 
+interface DropIndicatorSlot {
+  of: Incoming<DropIndicatorProps>;
+}
+
 /** A drop indicator in a tree: a row at the level of the row it is beside. */
-function TreeDropIndicator(indicator: { of: Incoming<DropIndicatorProps> }) {
+function TreeDropIndicator(indicator: DropIndicatorSlot) {
   const props = indicator.of;
   const { dragAndDropHooks, dropState } = useDragAndDropContext();
   if (dragAndDropHooks?.dropIndicator === undefined || dropState === undefined) {
@@ -1358,7 +1409,7 @@ function TreeDropIndicator(indicator: { of: Incoming<DropIndicatorProps> }) {
     dropState,
     buttonRef,
   );
-  const level = (): number =>
+  const level: () => number = () =>
     target.type === "item" ? (dropState.collection().getItem(target.key)?.level ?? 0) + 1 : 1;
 
   return (
@@ -1493,7 +1544,9 @@ export function TreeItem(props: TreeItemComponentProps) {
   const root = useTree();
   const node = useTreeNode();
   const options = fromProps(cells(props));
-  const focusMode = (): TreeFocusMode => props.focusMode ?? "row";
+  function focusMode(): TreeFocusMode {
+    return props.focusMode ?? "row";
+  }
   const dnd = treeRowDragAndDrop(root, node.key);
 
   measureRow(root.virtual, node.key, domRef);
@@ -1547,14 +1600,17 @@ export function TreeItem(props: TreeItemComponentProps) {
   const [standInFocused, setStandInFocused] = createSignal(false);
   // Read from the document rather than the event: the row's own focus
   // handler may already have moved focus on to the child by now.
-  const trackStandIn = (): void => {
+  function trackStandIn(): void {
     const element = domRef();
     if (element === null || focusMode() !== "child") return;
     const first = focusableWalker(element, { tabbable: true }).nextNode();
     setStandInFocused(activeElement(ownerDocument(element)) === first);
-  };
-  const rowFocusVisible = (): boolean =>
-    isFocusVisible() || (focusMode() === "child" && isFocusVisibleWithin() && standInFocused());
+  }
+  function rowFocusVisible(): boolean {
+    return (
+      isFocusVisible() || (focusMode() === "child" && isFocusVisibleWithin() && standInFocused())
+    );
+  }
 
   // Memos: the selection manager is rebuilt by every expansion, and a part
   // drawn on one of these would otherwise be rebuilt with it.
@@ -1620,17 +1676,19 @@ export function TreeItem(props: TreeItemComponentProps) {
 
   // Built where it is placed, after the drop targets before it: a hydrating
   // element claims the server's next node as it is built.
-  const row = () => (
-    <div {...mergeProps(elementProps, dnd?.itemProps)} ref={mergeRefs(domRef.set, props.ref)}>
-      <div {...item.gridCellProps}>
-        {provide(
-          TreeItemContext,
-          () => context,
-          () => props.children as unknown,
-        )}
+  function row() {
+    return (
+      <div {...mergeProps(elementProps, dnd?.itemProps)} ref={mergeRefs(domRef.set, props.ref)}>
+        <div {...item.gridCellProps}>
+          {provide(
+            TreeItemContext,
+            () => context,
+            () => props.children as unknown,
+          )}
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
   if (dnd === null) return row();
 
   const { visuallyHiddenProps } = visuallyHidden();
@@ -1686,6 +1744,12 @@ export function TreeItem(props: TreeItemComponentProps) {
   );
 }
 
+interface TreeRowDropIndicator {
+  indicator: ReturnType<NonNullable<DragAndDropHooks["dropIndicator"]>>;
+  ref: ReturnType<typeof makeRef<HTMLDivElement>>;
+  activateRef: ReturnType<typeof makeRef<HTMLDivElement>>;
+}
+
 interface TreeRowDragAndDrop {
   collection: CollectionDragAndDrop;
   itemProps: DOMProps;
@@ -1693,11 +1757,7 @@ interface TreeRowDragAndDrop {
   before: ItemDropTarget;
   after: Accessor<ItemDropTarget[]>;
   /** The target for a drop ON the row, apart from the row's own controls. */
-  on: {
-    indicator: ReturnType<NonNullable<DragAndDropHooks["dropIndicator"]>>;
-    ref: ReturnType<typeof makeRef<HTMLDivElement>>;
-    activateRef: ReturnType<typeof makeRef<HTMLDivElement>>;
-  } | null;
+  on: TreeRowDropIndicator | null;
 }
 
 /**
@@ -1994,8 +2054,12 @@ export function TreeLoadMoreItem(props: TreeLoadMoreItemProps) {
   const node = useTreeNode();
   const sentinel = makeRef<HTMLDivElement>();
   const options = fromProps(cells(props));
-  const level = (): number => node.level + 1;
-  const isLoading = (): boolean => props.isLoading === true && props.children !== undefined;
+  function level(): number {
+    return node.level + 1;
+  }
+  function isLoading(): boolean {
+    return props.isLoading === true && props.children !== undefined;
+  }
 
   loadMoreSentinel(
     {

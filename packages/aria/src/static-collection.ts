@@ -121,16 +121,16 @@ export function staticCollection(): StaticCollection {
   // The map is the state; the signal only says it changed. Items register from
   // component bodies, which is an owned scope, hence `ownedWrite`.
   const [version, setVersion] = createSignal(0, { ownedWrite: true });
-  const changed = (): void => {
+  function changed(): void {
     setVersion((current) => current + 1);
-  };
+  }
 
   const ordered = createMemo((): Registration[] => {
     version();
     return [...registered.values()].toSorted(byDocument);
   });
 
-  const entryOf = (registration: Registration, all: Registration[]): StaticEntry => {
+  function entryOf(registration: Registration, all: Registration[]): StaticEntry {
     const entry: StaticEntry = {
       key: registration.key,
       type: registration.type,
@@ -144,10 +144,11 @@ export function staticCollection(): StaticCollection {
         .map((child) => entryOf(child, all));
     }
     return entry;
-  };
+  }
 
-  const isShown = (registration: Registration): boolean =>
-    access(registration.options.isHidden) !== true;
+  function isShown(registration: Registration): boolean {
+    return access(registration.options.isHidden) !== true;
+  }
 
   const entries = createMemo((): StaticEntry[] => {
     const all = ordered();

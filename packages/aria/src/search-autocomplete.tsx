@@ -438,10 +438,10 @@ function delayedLoading(
   if (isServer) return shown;
 
   let timer: ReturnType<typeof setTimeout> | null = null;
-  const stop = (): void => {
+  function stop(): void {
     if (timer !== null) clearTimeout(timer);
     timer = null;
-  };
+  }
   onCleanup(stop);
 
   createEffect(
@@ -481,7 +481,9 @@ export function SearchAutocomplete<T>(props: SearchAutocompleteComponentProps<T>
   const popoverRef = makeRef<HTMLDivElement>();
   const options = fromProps(cells(props) as unknown as Incoming<Record<string, unknown>>);
   const message = stringFormatter(searchAutocompleteStrings);
-  const isAsync = (): boolean => props.loadingState !== undefined;
+  function isAsync(): boolean {
+    return props.loadingState !== undefined;
+  }
 
   const state = searchAutocompleteState<T>({
     ...(options as SearchAutocompleteStateOptions<T>),
@@ -518,12 +520,16 @@ export function SearchAutocomplete<T>(props: SearchAutocompleteComponentProps<T>
   const { hoverProps, isHovered } = hover({ isDisabled: () => props.isDisabled });
   const { focusProps, isFocused, isFocusVisible } = focusRing({ isTextInput: true });
 
-  const isLoading = (): boolean =>
-    props.loadingState === "loading" || props.loadingState === "filtering";
+  function isLoading(): boolean {
+    return props.loadingState === "loading" || props.loadingState === "filtering";
+  }
   const loadingShown = delayedLoading(isLoading, state.inputValue);
-  const showsLoading = (): boolean =>
-    loadingShown() &&
-    (state.isOpen() || props.menuTrigger === "manual" || props.loadingState === "loading");
+  function showsLoading(): boolean {
+    return (
+      loadingShown() &&
+      (state.isOpen() || props.menuTrigger === "manual" || props.loadingState === "loading")
+    );
+  }
 
   const inputElementProps = mergeProps(inputProps, hoverProps, focusProps, {
     "data-hovered": isHovered,
@@ -535,7 +541,9 @@ export function SearchAutocomplete<T>(props: SearchAutocompleteComponentProps<T>
     "data-invalid": isInvalid,
   });
 
-  const loadingLabel = (): string => message().format("loading");
+  function loadingLabel(): string {
+    return message().format("loading");
+  }
 
   return (
     <div

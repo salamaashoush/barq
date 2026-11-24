@@ -65,11 +65,13 @@ function scrollTo(element: HTMLElement, top: number): void {
   flush();
 }
 
-function Cities(props: {
+interface CitiesProps {
   overscan?: number;
   selectionMode?: "none" | "single" | "multiple";
   onSelectionChange?: (keys: "all" | Set<Key>) => void;
-}) {
+}
+
+function Cities(props: CitiesProps) {
   return (
     <Virtualizer layout={listLayout({ rowHeight: ROW })} overscan={props.overscan ?? 0}>
       <ListBox
@@ -414,6 +416,10 @@ describe("a virtualised grid list", () => {
   });
 });
 
+interface Named {
+  name: string;
+}
+
 describe("a virtualised table", () => {
   interface Row_ {
     id: string;
@@ -428,7 +434,7 @@ describe("a virtualised table", () => {
     render(() => (
       <Virtualizer layout={listLayout({ rowHeight: ROW })}>
         <Table aria-label="Cities" columns={COLUMNS} items={ROWS}>
-          <TableHeader>{(column: { name: string }) => <Column>{column.name}</Column>}</TableHeader>
+          <TableHeader>{(column: Named) => <Column>{column.name}</Column>}</TableHeader>
           <TableBody>{(row: Row_) => <Row>{() => <Cell>{row.name}</Cell>}</Row>}</TableBody>
         </Table>
       </Virtualizer>
@@ -585,6 +591,11 @@ describe("a container the page scrolls", () => {
   });
 });
 
+interface DropTargetLike {
+  type: string;
+  dropPosition?: string;
+}
+
 describe("a list layout as a place to drop", () => {
   function laidOut(rowHeight = ROW) {
     const layout = listLayout({ rowHeight });
@@ -597,7 +608,9 @@ describe("a list layout as a place to drop", () => {
 
   test("a point near a row's edge is between rows, and its middle is on it", () => {
     const layout = laidOut();
-    const any = (): boolean => true;
+    function any(): boolean {
+      return true;
+    }
     // The window is scrolled by 40, so a point 5 down is at 45: row c2, top edge.
     expect(layout.getDropTargetFromPoint(10, 5, any)).toEqual({
       type: "item",
@@ -619,8 +632,9 @@ describe("a list layout as a place to drop", () => {
 
   test("where a drop on a row is refused, the nearer half decides", () => {
     const layout = laidOut();
-    const between = (target: { type: string; dropPosition?: string }): boolean =>
-      target.type === "item" && target.dropPosition !== "on";
+    function between(target: DropTargetLike): boolean {
+      return target.type === "item" && target.dropPosition !== "on";
+    }
     expect(layout.getDropTargetFromPoint(10, 8, between)).toMatchObject({
       key: "c2",
       dropPosition: "before",
@@ -652,10 +666,14 @@ describe("a list layout as a place to drop", () => {
   });
 });
 
+interface SortableProps {
+  onReorder: (event: DroppableCollectionReorderEvent) => void;
+}
+
 describe("dropping into a virtualised listbox", () => {
   afterEach(restoreRects);
 
-  function Sortable(props: { onReorder: (event: DroppableCollectionReorderEvent) => void }) {
+  function Sortable(props: SortableProps) {
     const { dragAndDropHooks } = dragAndDrop<City>({
       getItems: (keys) => [...keys].map((key) => ({ "text/plain": String(key) })),
       onReorder: props.onReorder,

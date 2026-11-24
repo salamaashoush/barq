@@ -17,13 +17,15 @@ function after(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms + 15));
 }
 
-function Saver(props: {
+interface SaverProps {
   delay?: number;
   closeDelay?: number;
   trigger?: "hover" | "focus";
   isDisabled?: boolean;
   shouldCloseOnPress?: boolean;
-}) {
+}
+
+function Saver(props: SaverProps) {
   return (
     <TooltipTrigger
       delay={props.delay ?? 20}
@@ -326,17 +328,19 @@ describe("how a tooltip says it opened", () => {
   });
 });
 
+interface ToolbarProps {
+  delay?: number;
+  skipDelay?: number;
+  closeDelay?: number;
+  isContentHoverable?: boolean;
+}
+
 describe("TooltipProvider", () => {
   beforeEach(() => {
     resetTooltipWarmup();
   });
 
-  function Toolbar(props: {
-    delay?: number;
-    skipDelay?: number;
-    closeDelay?: number;
-    isContentHoverable?: boolean;
-  }) {
+  function Toolbar(props: ToolbarProps) {
     return (
       <TooltipProvider
         delay={props.delay}
@@ -355,8 +359,12 @@ describe("TooltipProvider", () => {
     );
   }
 
-  const save = (): HTMLElement => screen.getByRole("button", { name: "Save" });
-  const undo = (): HTMLElement => screen.getByRole("button", { name: "Undo" });
+  function save(): HTMLElement {
+    return screen.getByRole("button", { name: "Save" });
+  }
+  function undo(): HTMLElement {
+    return screen.getByRole("button", { name: "Undo" });
+  }
 
   test("every tooltip inside waits as long as the provider says", async () => {
     render(() => <Toolbar delay={40} closeDelay={0} />);

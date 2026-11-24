@@ -60,6 +60,7 @@ import {
   mergeProps,
   type StyleProps,
   styleProps,
+  type ProviderProps,
 } from "./utils.ts";
 
 const PAUSE_POINTER = "pointer";
@@ -91,7 +92,9 @@ export function toastRegion<D>(
   options: ToastRegionOptions,
   queue: ToastQueue<D>,
 ): ToastRegionResult {
-  const count = (): number => queue.toasts().length;
+  function count(): number {
+    return queue.toasts().length;
+  }
 
   const { hoverProps, isHovered } = hover({
     onHoverStart: () => queue.pause(PAUSE_POINTER),
@@ -103,13 +106,13 @@ export function toastRegion<D>(
   // Which toast, by its place in the list, holds focus; -1 for none.
   let focusedIndex = -1;
 
-  const giveBack = (): void => {
+  function giveBack(): void {
     const element = lastFocused;
     lastFocused = null;
     if (element === null || !element.isConnected) return;
     if (getInteractionModality() === "pointer") focusWithoutScrolling(element);
     else element.focus();
-  };
+  }
 
   const { focusWithinProps } = focusWithin({
     onFocusWithin: (event) => {
@@ -123,10 +126,10 @@ export function toastRegion<D>(
     },
   });
 
-  const toastElements = (): HTMLElement[] => {
+  function toastElements(): HTMLElement[] {
     const region = untrack(() => access(options.ref)) as HTMLElement | null;
     return region === null ? [] : [...region.querySelectorAll<HTMLElement>('[role="alertdialog"]')];
-  };
+  }
 
   if (!isServer) {
     let previous: readonly ToastId[] = untrack(() => queue.toasts().map((each) => each.id));
@@ -366,7 +369,7 @@ export function ToastRegion<D>(props: ToastRegionComponentProps<D>) {
   );
 }
 
-function RegionProvider(props: { value: RegionValue; children?: Child }) {
+function RegionProvider(props: ProviderProps<RegionValue>) {
   return provide(
     RegionContext,
     () => props.value,
@@ -498,7 +501,7 @@ export function ToastRoot<D>(props: ToastRootComponentProps<D>) {
   );
 }
 
-function ToastRootProvider(props: { value: ToastValue; children?: Child }) {
+function ToastRootProvider(props: ProviderProps<ToastValue>) {
   return provide(
     ToastRootContext,
     () => props.value,

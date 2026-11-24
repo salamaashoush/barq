@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { createContext, flush, getContext, provide, createSignal, type Child } from "@barqjs/core";
+import {
+  createContext,
+  flush,
+  getContext,
+  provide,
+  createSignal,
+  type ParentProps,
+} from "@barqjs/core";
 import { accessibleName, expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
 import type { Key } from "./collections.ts";
 import { provideDirection } from "./i18n.ts";
@@ -29,12 +36,14 @@ const SECTIONS: Section[] = [
   { id: "notes", name: "Notes", body: "Odds and ends" },
 ];
 
-function Sections(props: {
+interface SectionsProps {
   keyboardActivation?: "automatic" | "manual";
   orientation?: "horizontal" | "vertical";
   defaultSelectedKey?: Key;
   onSelectionChange?: (key: Key) => void;
-}) {
+}
+
+function Sections(props: SectionsProps) {
   return (
     <Tabs
       items={SECTIONS}
@@ -66,7 +75,7 @@ function Sections(props: {
 describe("a panel is a scope", () => {
   const Ctx = createContext<string | null>(null);
 
-  function Provider(props: { children?: Child }) {
+  function Provider(props: ParentProps) {
     return provide(
       Ctx,
       () => "provided",
@@ -287,7 +296,7 @@ describe("Tabs", () => {
   });
 });
 
-function Settings(props: {
+interface SettingsProps {
   value?: string;
   defaultValue?: string;
   onValueChange?: (value: string) => void;
@@ -295,7 +304,9 @@ function Settings(props: {
   activationMode?: "automatic" | "manual";
   dir?: "ltr" | "rtl";
   forceMount?: boolean;
-}) {
+}
+
+function Settings(props: SettingsProps) {
   return (
     <ValueTabs
       value={props.value}
@@ -516,7 +527,7 @@ describe("tabs that name themselves", () => {
   });
 
   test("a direction declared above is the one it follows", () => {
-    function Mirrored(props: { children?: Child }) {
+    function Mirrored(props: ParentProps) {
       const directionProps = provideDirection("rtl");
       return <div {...directionProps}>{props.children}</div>;
     }
@@ -608,6 +619,15 @@ describe("tabs that name themselves", () => {
   });
 });
 
+interface AnchorVisit {
+  href: string | null;
+  prevented: boolean;
+}
+
+interface Named {
+  name: string;
+}
+
 describe("tabs that are links", () => {
   const PAGES = [
     { id: "home", name: "Home", href: "/home" },
@@ -615,18 +635,18 @@ describe("tabs that are links", () => {
   ];
 
   test("a tab with an href is an anchor and is followed", () => {
-    const seen: { href: string | null; prevented: boolean }[] = [];
-    const listener = (event: Event): void => {
+    const seen: AnchorVisit[] = [];
+    function listener(event: Event): void {
       if (event.target instanceof HTMLAnchorElement) {
         seen.push({ href: event.target.getAttribute("href"), prevented: event.defaultPrevented });
       }
-    };
+    }
     document.addEventListener("click", listener);
     try {
       render(() => (
         <Tabs items={PAGES}>
-          <TabList aria-label="Site">{(page: { name: string }) => <Tab>{page.name}</Tab>}</TabList>
-          <TabPanel>{(page: { name: string }) => <p>{page.name}</p>}</TabPanel>
+          <TabList aria-label="Site">{(page: Named) => <Tab>{page.name}</Tab>}</TabList>
+          <TabPanel>{(page: Named) => <p>{page.name}</p>}</TabPanel>
         </Tabs>
       ));
 
@@ -723,13 +743,14 @@ describe("a selection indicator", () => {
         <TabPanel>{(section: Section) => <p>{section.body}</p>}</TabPanel>
       </Tabs>
     ));
-    const shown = (role: string): (string | null)[] =>
-      screen
+    function shown(role: string): (string | null)[] {
+      return screen
         .queryAllByTestId("indicator")
         .map(
           (element: Element) =>
             element.closest(`[role="${role}"]`)?.getAttribute("data-key") ?? null,
         );
+    }
     expect(shown("tab"), "the tab never told its indicator it was selected").toEqual(["founding"]);
 
     user.click(screen.getByRole("tab", { name: "Today" }));

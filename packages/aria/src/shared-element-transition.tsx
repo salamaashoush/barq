@@ -111,8 +111,12 @@ export interface SharedElementResult {
 
 type StyleRecord = Record<string, string>;
 
+interface MaybeAnimatable {
+  getAnimations?: () => Animation[];
+}
+
 function animationsOf(element: HTMLElement): Animation[] {
-  const source = element as HTMLElement & { getAnimations?: () => Animation[] };
+  const source = element as HTMLElement & MaybeAnimatable;
   return typeof source.getAnimations === "function" ? source.getAnimations() : [];
 }
 
@@ -133,27 +137,31 @@ export function sharedElement(
   options: SharedElementOptions,
   scope: SharedElementScope,
 ): SharedElementResult {
-  const name = (): string => access(options.name);
-  const isVisible = (): boolean => access(options.isVisible) !== false;
+  function name(): string {
+    return access(options.name);
+  }
+  function isVisible(): boolean {
+    return access(options.isVisible) !== false;
+  }
   const [phase, setPhase] = createSignal<SharedElementPhase>(
     untrack(isVisible) ? "visible" : "hidden",
     { ownedWrite: true },
   );
   const self: LiveElement = { name, element: options.ref, isVisible };
 
-  const record = (element: HTMLElement | null): void => {
+  function record(element: HTMLElement | null): void {
     if (element === null || !element.isConnected || element.hasAttribute("data-exiting")) return;
     const snapshot = snapshotOf(element);
     if (snapshot !== null) scope.snapshots.set(untrack(name), snapshot);
-  };
+  }
 
   /** Whether the element a snapshot came from is still mounted and still shown. */
-  const stays = (source: HTMLElement): boolean => {
+  function stays(source: HTMLElement): boolean {
     for (const other of scope.live) {
       if (other !== self && untrack(other.element) === source) return untrack(other.isVisible);
     }
     return false;
-  };
+  }
 
   if (!isServer) {
     // An element whose PARENT unmounts it is gone from the document by the

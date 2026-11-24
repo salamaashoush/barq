@@ -416,25 +416,37 @@ export interface TableColumnResizeState<S = unknown> {
   tableState: S;
 }
 
+export interface ColumnResizeStateOptions {
+  collection: Accessor<ColumnSource>;
+}
+
+export interface ColumnSource {
+  readonly columns: readonly Node<unknown>[];
+}
+
 /**
  * Column widths for a table that lets its columns be resized.
  *
  * The table's columns are collection nodes whose props carry each one's
  * `width`, `defaultWidth`, `minWidth` and `maxWidth`.
  */
-export function tableColumnResizeState<
-  S extends { collection: Accessor<{ readonly columns: readonly Node<unknown>[] }> },
->(options: TableColumnResizeStateOptions, state: S): TableColumnResizeState<S> {
+export function tableColumnResizeState<S extends ColumnResizeStateOptions>(
+  options: TableColumnResizeStateOptions,
+  state: S,
+): TableColumnResizeState<S> {
   const layout = new TableColumnLayout(options);
-  const columns = (): Node<unknown>[] => [...state.collection().columns];
+  function columns(): Node<unknown>[] {
+    return [...state.collection().columns];
+  }
   const [resizingColumn, setResizingColumn] = createSignal<Key | null>(null);
 
   const split = createMemo(() => layout.splitColumnsIntoControlledAndUncontrolled(columns()));
 
   // What the uncontrolled columns were dragged to. A column added or taken
   // away starts them over from their defaults, as a fresh table would.
-  const keysOf = (nodes: Node<unknown>[]): string =>
-    nodes.map((node) => String(node.key)).join("\u0000");
+  function keysOf(nodes: Node<unknown>[]): string {
+    return nodes.map((node) => String(node.key)).join("\u0000");
+  }
   let lastKeys = keysOf(untrack(columns));
   let dragged: Map<Key, ColumnSize | null | undefined> | null = null;
   const [draggedVersion, setDraggedVersion] = createSignal(0);

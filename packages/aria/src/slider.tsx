@@ -138,17 +138,27 @@ function asArray(value: number | number[] | undefined): number[] | undefined {
 }
 
 export function sliderState(options: SliderStateOptions): SliderState {
-  const min = (): number => access(options.minValue) ?? DEFAULT_MIN;
-  const max = (): number => access(options.maxValue) ?? DEFAULT_MAX;
-  const step = (): number => access(options.step) ?? DEFAULT_STEP;
-  const isDisabled = (): boolean => access(options.isDisabled) === true;
+  function min(): number {
+    return access(options.minValue) ?? DEFAULT_MIN;
+  }
+  function max(): number {
+    return access(options.maxValue) ?? DEFAULT_MAX;
+  }
+  function step(): number {
+    return access(options.step) ?? DEFAULT_STEP;
+  }
+  function isDisabled(): boolean {
+    return access(options.isDisabled) === true;
+  }
 
-  const pageSize = (): number => {
+  function pageSize(): number {
     const size = (max() - min()) / 10;
     return Math.max(snapValueToStep(size, 0, size + step(), step()), step());
-  };
+  }
 
-  const gap = (): number => Math.max(access(options.minStepsBetweenThumbs) ?? 0, 0) * step();
+  function gap(): number {
+    return Math.max(access(options.minStepsBetweenThumbs) ?? 0, 0) * step();
+  }
 
   /**
    * Every thumb snapped to the step, and penned in by its neighbours.
@@ -156,26 +166,28 @@ export function sliderState(options: SliderStateOptions): SliderState {
    * In order, each against the one already placed below it, so two values that
    * arrive closer than the gap are opened out upwards rather than crossing.
    */
-  const restrict = (values: number[]): number[] => {
+  function restrict(given: number[]): number[] {
     const out: number[] = [];
-    values.forEach((value, index) => {
+    given.forEach((value, index) => {
       const lower = index === 0 ? min() : (out[index - 1] as number) + gap();
-      const upper = max() - (values.length - 1 - index) * gap();
+      const upper = max() - (given.length - 1 - index) * gap();
       out.push(snapValueToStep(value, Math.min(lower, upper), upper, step()));
     });
     return out;
-  };
+  }
 
-  const controlled = (): number[] | undefined => {
+  function controlled(): number[] | undefined {
     const given = asArray(access(options.value));
     return given === undefined ? undefined : restrict(given);
-  };
+  }
 
   const [internal, setInternal] = createSignal<number[]>(
     controlled() ?? restrict(asArray(access(options.defaultValue)) ?? [min()]),
   );
 
-  const values = (): number[] => controlled() ?? internal();
+  function values(): number[] {
+    return controlled() ?? internal();
+  }
 
   // What the LAST write produced, so a gesture reads its own change back
   // rather than the value a controlled owner has not caught up with yet.
@@ -183,11 +195,11 @@ export function sliderState(options: SliderStateOptions): SliderState {
 
   const initial = values();
 
-  const setValues = (next: number[]): void => {
+  function setValues(next: number[]): void {
     live = next;
     if (controlled() === undefined) setInternal(next);
     options.onChange?.(next);
-  };
+  }
 
   const [dragging, setDragging] = createSignal<boolean[]>(
     new Array<boolean>(values().length).fill(false),
@@ -199,14 +211,18 @@ export function sliderState(options: SliderStateOptions): SliderState {
   const editable: boolean[] = new Array(values().length).fill(true);
   const [focused, setFocused] = createSignal<number | undefined>(undefined);
 
-  const getThumbMinValue = (index: number): number =>
-    index === 0 ? min() : (values()[index - 1] as number) + gap();
-  const getThumbMaxValue = (index: number): number =>
-    index === values().length - 1 ? max() : (values()[index + 1] as number) - gap();
+  function getThumbMinValue(index: number): number {
+    return index === 0 ? min() : (values()[index - 1] as number) + gap();
+  }
+  function getThumbMaxValue(index: number): number {
+    return index === values().length - 1 ? max() : (values()[index + 1] as number) - gap();
+  }
 
-  const isThumbEditable = (index: number): boolean => editable[index] !== false;
+  function isThumbEditable(index: number): boolean {
+    return editable[index] !== false;
+  }
 
-  const updateValue = (index: number, value: number): void => {
+  function updateValue(index: number, value: number): void {
     if (isDisabled() || !isThumbEditable(index)) return;
     const snapped = snapValueToStep(
       value,
@@ -218,9 +234,9 @@ export function sliderState(options: SliderStateOptions): SliderState {
     const next = [...live];
     next[index] = snapped;
     setValues(next);
-  };
+  }
 
-  const updateDragging = (index: number, isDragging: boolean): void => {
+  function updateDragging(index: number, isDragging: boolean): void {
     if (isDisabled() || !isThumbEditable(index)) return;
     const current = liveDragging;
     const wasDragging = current[index] === true;
@@ -234,13 +250,13 @@ export function sliderState(options: SliderStateOptions): SliderState {
     // `onChangeEnd` fires once the whole gesture is over, not once per thumb:
     // a two-thumb drag is one interaction.
     if (wasDragging && !next.some(Boolean)) options.onChangeEnd?.(live);
-  };
+  }
 
   const format = createMemo(() => numberFormatter(access(options.formatOptions))());
   const locale = useLocale();
   let listFormat: Intl.ListFormat | null = null;
 
-  const getFormattedValue = (value: number | number[] = values()): string => {
+  function getFormattedValue(value: number | number[] = values()): string {
     const list = Array.isArray(value) ? value : [value];
     if (list.length === 0) return "";
     const label = options.getValueLabel;
@@ -251,15 +267,17 @@ export function sliderState(options: SliderStateOptions): SliderState {
     if (list.length === 1) return (label as (value: number) => string)(list[0] as number);
     if (listFormat === null) listFormat = new Intl.ListFormat(locale().locale, { type: "unit" });
     return listFormat.format(list.map((entry) => label?.(entry) ?? format().format(entry)));
-  };
+  }
 
-  const getValuePercent = (value: number): number => (value - min()) / (max() - min());
+  function getValuePercent(value: number): number {
+    return (value - min()) / (max() - min());
+  }
 
-  const getPercentValue = (percent: number): number => {
+  function getPercentValue(percent: number): number {
     const raw = percent * (max() - min()) + min();
     const rounded = Math.round((raw - min()) / step()) * step() + min();
     return clamp(rounded, min(), max());
-  };
+  }
 
   return {
     values,
@@ -345,8 +363,12 @@ export function slider(options: SliderOptions, state: SliderState): SliderResult
   const locale = useLocale();
   const listeners = globalListeners();
 
-  const isVertical = (): boolean => state.orientation() === "vertical";
-  const flipped = (): boolean => runsBackwards(state, locale().direction === "rtl");
+  function isVertical(): boolean {
+    return state.orientation() === "vertical";
+  }
+  function flipped(): boolean {
+    return runsBackwards(state, locale().direction === "rtl");
+  }
 
   const { labelProps, fieldProps } = useLabelHook({
     ...options,
@@ -359,12 +381,12 @@ export function slider(options: SliderOptions, state: SliderState): SliderResult
   let position: number | null = null;
   let pointer: number | null | undefined;
 
-  const trackSize = (): number => {
+  function trackSize(): number {
     const track = access(options.trackRef) as Element | null;
     if (track === null) return 0;
     const box = track.getBoundingClientRect();
     return isVertical() ? box.height : box.width;
-  };
+  }
 
   const { moveProps } = move({
     onMoveStart: () => {
@@ -394,7 +416,7 @@ export function slider(options: SliderOptions, state: SliderState): SliderResult
   });
 
   /** The thumb a press at this point should pick up. */
-  const closestThumb = (value: number): number => {
+  function closestThumb(value: number): number {
     const values = state.values();
     const split = values.findIndex((entry) => value - entry < 0);
     if (split === 0) return 0;
@@ -404,9 +426,9 @@ export function slider(options: SliderOptions, state: SliderState): SliderResult
     // Stacked on top of each other: take the upper one, so a range that has
     // collapsed to a point can still be opened out.
     return Math.abs(before - value) < Math.abs(after - value) ? split - 1 : split;
-  };
+  }
 
-  const onUpTrack = (event: Event): void => {
+  function onUpTrack(event: Event): void {
     const identifier =
       (event as PointerEvent).pointerId ??
       (event as TouchEvent).changedTouches?.[0]?.identifier ??
@@ -417,14 +439,14 @@ export function slider(options: SliderOptions, state: SliderState): SliderResult
       draggingIndex = null;
     }
     listeners.removeAll();
-  };
+  }
 
-  const onDownTrack = (
+  function onDownTrack(
     event: Event,
     identifier: number | undefined,
     clientX: number,
     clientY: number,
-  ): void => {
+  ): void {
     const track = access(options.trackRef) as Element | null;
     if (track === null || access(options.isDisabled) === true) return;
     if (state.values().some((_, index) => state.isThumbDragging(index))) return;
@@ -455,7 +477,7 @@ export function slider(options: SliderOptions, state: SliderState): SliderResult
       listeners.add(view, "touchend", onUpTrack);
       listeners.add(view, "pointerup", onUpTrack);
     }
-  };
+  }
 
   return {
     baseId,
@@ -542,18 +564,28 @@ export function sliderThumb(options: SliderThumbOptions, state: SliderState): Sl
   const locale = useLocale();
   const listeners = globalListeners();
 
-  const isVertical = (): boolean => state.orientation() === "vertical";
-  const reversed = (): boolean => locale().direction === "rtl";
-  const flipped = (): boolean => runsBackwards(state, reversed());
-  const isDisabled = (): boolean => access(options.isDisabled) === true || state.isDisabled();
-  const isFocused = (): boolean => state.focusedThumb() === index;
+  function isVertical(): boolean {
+    return state.orientation() === "vertical";
+  }
+  function reversed(): boolean {
+    return locale().direction === "rtl";
+  }
+  function flipped(): boolean {
+    return runsBackwards(state, reversed());
+  }
+  function isDisabled(): boolean {
+    return access(options.isDisabled) === true || state.isDisabled();
+  }
+  function isFocused(): boolean {
+    return state.focusedThumb() === index;
+  }
 
   state.setThumbEditable(index, !isDisabled());
 
-  const focusInput = (): void => {
+  function focusInput(): void {
     const input = access(options.inputRef) as HTMLInputElement | null;
     if (input !== null) focusWithoutScrolling(input);
-  };
+  }
 
   if (!isServer) {
     // The state decides which thumb is focused — the track hands focus to the
@@ -622,7 +654,7 @@ export function sliderThumb(options: SliderThumbOptions, state: SliderState): Sl
 
   let pointer: number | undefined;
 
-  const onUp = (event: Event): void => {
+  function onUp(event: Event): void {
     const identifier =
       (event as PointerEvent).pointerId ??
       (event as TouchEvent).changedTouches?.[0]?.identifier ??
@@ -631,9 +663,9 @@ export function sliderThumb(options: SliderThumbOptions, state: SliderState): Sl
     focusInput();
     state.setThumbDragging(index, false);
     listeners.removeAll();
-  };
+  }
 
-  const onDown = (identifier?: number): void => {
+  function onDown(identifier?: number): void {
     focusInput();
     pointer = identifier;
     state.setThumbDragging(index, true);
@@ -643,7 +675,7 @@ export function sliderThumb(options: SliderThumbOptions, state: SliderState): Sl
     listeners.add(view, "mouseup", onUp);
     listeners.add(view, "touchend", onUp);
     listeners.add(view, "pointerup", onUp);
-  };
+  }
 
   formReset(
     options.inputRef,
@@ -651,7 +683,7 @@ export function sliderThumb(options: SliderThumbOptions, state: SliderState): Sl
     (value) => state.setThumbValue(index, value),
   );
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     // The native range input has no page step and no Home/End of its own on
     // every engine, so those four are ours.
     switch (event.key) {
@@ -682,12 +714,12 @@ export function sliderThumb(options: SliderThumbOptions, state: SliderState): Sl
       default:
         return;
     }
-  };
+  }
 
-  const thumbPercent = (): number => {
+  function thumbPercent(): number {
     const percent = state.getThumbPercent(index);
     return flipped() ? 1 - percent : percent;
-  };
+  }
 
   // Bound once and asked on every event, so a slider enabled after it was
   // built answers a drag on its thumb.
@@ -833,6 +865,10 @@ export interface SliderComponentProps extends StyleProps {
   onChangeEnd?: (value: number[]) => void;
 }
 
+interface MaybeIdentified {
+  id?: unknown;
+}
+
 /**
  * ```tsx
  * <Slider label="Volume" defaultValue={30} onChange={([v]) => volume.set(v)} />
@@ -860,16 +896,21 @@ export function Slider(props: SliderComponentProps) {
   // The caller's `id` is the first thumb's, because the thumb is what a
   // `<label for>` elsewhere on the page can name and focus: on the group it
   // pointed at a `<div>`, which a label reaches neither way.
-  const firstThumbId = (): string | undefined => props.id;
-  const { id: _, ...groupOptions } = options as unknown as SliderOptions & { id?: unknown };
+  function firstThumbId(): string | undefined {
+    return props.id;
+  }
+  const { id: _, ...groupOptions } = options as unknown as SliderOptions & MaybeIdentified;
   const { labelProps, groupProps, trackProps, outputProps, baseId } = slider(
     { ...groupOptions, trackRef, firstThumbId },
     state,
   );
-  const ownName = (): boolean =>
-    props.label !== undefined ||
-    props["aria-label"] !== undefined ||
-    props["aria-labelledby"] !== undefined;
+  function ownName(): boolean {
+    return (
+      props.label !== undefined ||
+      props["aria-label"] !== undefined ||
+      props["aria-labelledby"] !== undefined
+    );
+  }
 
   // Named only by a `<label for>` on its first thumb, the group takes its name
   // from the same label. Asked once the slider is in the document, where the
@@ -1047,7 +1088,7 @@ export function SliderFill(props: SliderFillComponentProps) {
   const { hoverProps, isHovered } = hover({});
 
   /** Where it starts and how much it covers, as fractions of the track. */
-  const span = (): [number, number] => {
+  function span(): [number, number] {
     const values = state.values();
     let start: number;
     if (values.length > 1) {
@@ -1064,7 +1105,7 @@ export function SliderFill(props: SliderFillComponentProps) {
     const high = Math.max(start, end);
     const flipped = runsBackwards(state, locale().direction === "rtl");
     return [flipped ? 1 - high : low, high - low];
-  };
+  }
 
   const elementProps = mergeProps(
     hoverProps,

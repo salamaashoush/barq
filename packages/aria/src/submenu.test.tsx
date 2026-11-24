@@ -33,7 +33,11 @@ const ACTIONS: Action[] = [
   { id: "delete", name: "Delete" },
 ];
 
-function Actions(props: { onAction?: (key: Key) => void }) {
+interface ActionsProps {
+  onAction?: (key: Key) => void;
+}
+
+function Actions(props: ActionsProps) {
   return (
     <MenuTrigger>
       <MenuButton>Edit</MenuButton>
@@ -272,7 +276,7 @@ describe("a submenu trigger", () => {
 
 /** The same tree with every item written as a child. */
 describe("a submenu written as children", () => {
-  function Written(props: { onAction?: (key: Key) => void }) {
+  function Written(props: ActionsProps) {
     return (
       <MenuTrigger>
         <MenuButton>Edit</MenuButton>

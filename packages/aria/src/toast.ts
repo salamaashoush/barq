@@ -30,6 +30,7 @@ import { createSignal, type Accessor, type Child } from "@barqjs/core";
 import { isServer } from "@barqjs/web";
 
 import { access, type MaybeAccessor } from "./utils.ts";
+import type { Point } from "./virtualizer.tsx";
 
 export type ToastKind = "default" | "success" | "info" | "warning" | "error" | "loading";
 
@@ -107,10 +108,14 @@ export interface ToastQueueOptions {
   duration?: MaybeAccessor<number | undefined>;
 }
 
+export interface ToastAddOptions<I extends ToastId> {
+  readonly id?: I;
+}
+
 export interface ToastQueue<D = unknown> {
   readonly toasts: Accessor<readonly Toast<D>[]>;
   /** Adds one and returns its id, which is what an update needs. */
-  add<I extends ToastId = number>(options: ToastOptions<D> & { readonly id?: I }): I;
+  add<I extends ToastId = number>(options: ToastOptions<D> & ToastAddOptions<I>): I;
   /** Replaces one in place, keeping its position. Unknown ids are ignored. */
   update(id: ToastId, options: ToastOptions<D>): void;
   /** Takes one away, or every one when no id is given. */
@@ -200,28 +205,28 @@ export function toastQueue<D = unknown>(options: ToastQueueOptions = {}): ToastQ
   let measureLeave: ((id: ToastId) => number) | null = null;
   let nextId = 1;
 
-  const write = (next: (prev: readonly Toast<D>[]) => readonly Toast<D>[]): void => {
+  function write(next: (prev: readonly Toast<D>[]) => readonly Toast<D>[]): void {
     current = next(current);
     const settled = current;
     setToasts(() => settled);
-  };
+  }
 
-  const stop = (id: ToastId): void => {
+  function stop(id: ToastId): void {
     const timer = timers.get(id);
     if (timer !== undefined && timer.handle !== null) {
       clearTimeout(timer.handle);
       timer.handle = null;
     }
-  };
+  }
 
-  const drop = (id: ToastId): void => {
+  function drop(id: ToastId): void {
     const pending = leaving.get(id);
     if (pending !== undefined) clearTimeout(pending);
     leaving.delete(id);
     write((prev) => prev.filter((each) => each.id !== id));
-  };
+  }
 
-  const remove = (id: ToastId, byTimer = false): void => {
+  function remove(id: ToastId, byTimer = false): void {
     stop(id);
     timers.delete(id);
     const going = current.find((each) => each.id === id);
@@ -239,9 +244,9 @@ export function toastQueue<D = unknown>(options: ToastQueueOptions = {}): ToastQ
     }
     if (byTimer) going.onAutoClose?.();
     going.onDismiss?.();
-  };
+  }
 
-  const start = (id: ToastId): void => {
+  function start(id: ToastId): void {
     const timer = timers.get(id);
     // A toast raised while a server renders is drawn once and sent. A clock
     // there takes nothing away, and holds the process open until it runs out.
@@ -252,9 +257,9 @@ export function toastQueue<D = unknown>(options: ToastQueueOptions = {}): ToastQ
     if (!Number.isFinite(timer.remaining)) return;
     timer.startedAt = Date.now();
     timer.handle = setTimeout(() => remove(id, true), timer.remaining);
-  };
+  }
 
-  const clock = (toast: Toast<D>): void => {
+  function clock(toast: Toast<D>): void {
     stop(toast.id);
     timers.set(toast.id, {
       handle: null,
@@ -265,11 +270,13 @@ export function toastQueue<D = unknown>(options: ToastQueueOptions = {}): ToastQ
       runs: toast.kind !== "loading",
     });
     start(toast.id);
-  };
+  }
 
-  const fallbackDuration = (): number => access(options.duration) ?? DEFAULT_DURATION;
+  function fallbackDuration(): number {
+    return access(options.duration) ?? DEFAULT_DURATION;
+  }
 
-  const update = (id: ToastId, given: ToastOptions<D>): void => {
+  function update(id: ToastId, given: ToastOptions<D>): void {
     const before = current.find((each) => each.id === id);
     if (before === undefined) return;
     const pending = leaving.get(id);
@@ -287,9 +294,9 @@ export function toastQueue<D = unknown>(options: ToastQueueOptions = {}): ToastQ
     // bottom of the column and read as a second thing happening.
     write((prev) => prev.map((each) => (each.id === id ? next : each)));
     clock(next);
-  };
+  }
 
-  const add = <I extends ToastId = number>(given: ToastOptions<D> & { readonly id?: I }): I => {
+  function add<I extends ToastId = number>(given: ToastOptions<D> & ToastAddOptions<I>): I {
     if (given.id !== undefined && current.some((each) => each.id === given.id)) {
       update(given.id, given);
       return given.id;
@@ -316,9 +323,9 @@ export function toastQueue<D = unknown>(options: ToastQueueOptions = {}): ToastQ
     });
     clock(toast);
     return id as I;
-  };
+  }
 
-  const hold = (reason: string): void => {
+  function hold(reason: string): void {
     reasons.add(reason);
     if (isPaused) return;
     isPaused = true;
@@ -331,15 +338,15 @@ export function toastQueue<D = unknown>(options: ToastQueueOptions = {}): ToastQ
       timer.remaining = Math.max(0, timer.remaining - (now - timer.startedAt));
       stop(id);
     }
-  };
+  }
 
-  const release = (reason: string): void => {
+  function release(reason: string): void {
     reasons.delete(reason);
     if (!isPaused || reasons.size > 0) return;
     isPaused = false;
     setPaused(false);
     for (const id of timers.keys()) start(id);
-  };
+  }
 
   return {
     toasts,
@@ -367,7 +374,7 @@ export function toastQueue<D = unknown>(options: ToastQueueOptions = {}): ToastQ
       const watched = target ?? (typeof document === "undefined" ? undefined : document);
       if (watched === undefined) return () => {};
       // A toast that ran out in a background tab was never seen at all.
-      const sync = (): void => {
+      const sync: () => void = () => {
         if (watched.hidden) hold(HIDDEN);
         else release(HIDDEN);
       };
@@ -390,7 +397,7 @@ export function toastQueue<D = unknown>(options: ToastQueueOptions = {}): ToastQ
     ): ToastPromise<T> {
       const id = add({ ...messageOptions(messages.loading), kind: "loading" });
       const { finally: afterwards } = messages;
-      const settle = (kind: ToastKind, message: ToastMessage<D>): void => {
+      function settle(kind: ToastKind, message: ToastMessage<D>): void {
         const given = messageOptions(message);
         // The loading toast's lifetime was never used, so the outcome gets a
         // whole one rather than whatever "no clock" left behind. A message
@@ -400,8 +407,8 @@ export function toastQueue<D = unknown>(options: ToastQueueOptions = {}): ToastQ
           kind: given.kind ?? kind,
           duration: given.duration ?? fallbackDuration(),
         });
-      };
-      const run = async (): Promise<T> => {
+      }
+      async function run(): Promise<T> {
         try {
           const value = await (typeof work === "function" ? work() : work);
           settle(
@@ -422,7 +429,7 @@ export function toastQueue<D = unknown>(options: ToastQueueOptions = {}): ToastQ
         } finally {
           afterwards?.();
         }
-      };
+      }
       const result = run();
       // A caller that only wants the toast never awaits this, and a failure
       // it was already shown must not also surface as an unhandled rejection.
@@ -462,12 +469,12 @@ export interface ToastSwipeOptions {
 
 export interface ToastSwipe {
   /** Where the pointer has taken it, in px from where it rests. */
-  readonly offset: Accessor<{ readonly x: number; readonly y: number }>;
+  readonly offset: Accessor<Readonly<Point>>;
   readonly isSwiping: Accessor<boolean>;
   /** The way it was thrown, once it has been. */
   readonly direction: Accessor<ToastSwipeDirection | null>;
-  start(point: { readonly x: number; readonly y: number }): void;
-  move(point: { readonly x: number; readonly y: number }): void;
+  start(point: Readonly<Point>): void;
+  move(point: Readonly<Point>): void;
   /** Ends the swipe, and answers whether it threw the toast away. */
   end(): boolean;
   /** Ends it where it started: a cancelled pointer took no decision. */
@@ -512,43 +519,46 @@ function resisted(delta: number): number {
  */
 export function toastSwipe(options: ToastSwipeOptions): ToastSwipe {
   const rest = { x: 0, y: 0 } as const;
-  const [trackOffset, setOffset] = createSignal<{ readonly x: number; readonly y: number }>(rest);
+  const [trackOffset, setOffset] = createSignal<Readonly<Point>>(rest);
   const [swiping, setSwiping] = createSignal(false);
   const [direction, setDirection] = createSignal<ToastSwipeDirection | null>(null);
   // The gesture's own copies. A pointer stream is read in the tick it is
   // written, and a signal write is not published until the flush.
   let isSwiping = false;
   let from = { x: 0, y: 0 };
-  let at: { readonly x: number; readonly y: number } = rest;
+  let at: Readonly<Point> = rest;
   let axis: "x" | "y" | null = null;
   let startedAt = 0;
   // The furthest the pull went the way it is going, for telling a change of
   // mind from a wobble.
   let furthest = 0;
 
-  const offset = (): { readonly x: number; readonly y: number } => {
+  function offset(): Readonly<Point> {
     trackOffset();
     return at;
-  };
+  }
 
-  const place = (next: { readonly x: number; readonly y: number }): void => {
+  function place(next: Readonly<Point>): void {
     at = next;
     setOffset(next);
-  };
+  }
 
-  const allows = (way: ToastSwipeDirection): boolean => access(options.directions).includes(way);
+  function allows(way: ToastSwipeDirection): boolean {
+    return access(options.directions).includes(way);
+  }
 
-  const wayOf = (along: "x" | "y", amount: number): ToastSwipeDirection =>
-    along === "x" ? (amount > 0 ? "right" : "left") : amount > 0 ? "down" : "up";
+  function wayOf(along: "x" | "y", amount: number): ToastSwipeDirection {
+    return along === "x" ? (amount > 0 ? "right" : "left") : amount > 0 ? "down" : "up";
+  }
 
-  const reset = (): void => {
+  function reset(): void {
     isSwiping = false;
     axis = null;
     setSwiping(false);
     place(rest);
-  };
+  }
 
-  const start = (point: { readonly x: number; readonly y: number }): void => {
+  function start(point: Readonly<Point>): void {
     from = { x: point.x, y: point.y };
     axis = null;
     furthest = 0;
@@ -557,9 +567,9 @@ export function toastSwipe(options: ToastSwipeOptions): ToastSwipe {
     setDirection(null);
     setSwiping(true);
     place(rest);
-  };
+  }
 
-  const move = (point: { readonly x: number; readonly y: number }): void => {
+  function move(point: Readonly<Point>): void {
     if (!isSwiping) return;
     const dx = point.x - from.x;
     const dy = point.y - from.y;
@@ -575,9 +585,9 @@ export function toastSwipe(options: ToastSwipeOptions): ToastSwipe {
     const amount = !leavesAlong ? 0 : allows(wayOf(axis, delta)) ? delta : resisted(delta);
     furthest = Math.max(furthest, Math.abs(amount));
     place(axis === "x" ? { x: amount, y: 0 } : { x: 0, y: amount });
-  };
+  }
 
-  const end = (): boolean => {
+  function end(): boolean {
     if (!isSwiping) return false;
     const along = axis;
     const amount = along === "x" ? at.x : at.y;
@@ -608,20 +618,20 @@ export function toastSwipe(options: ToastSwipeOptions): ToastSwipe {
     }
     reset();
     return false;
-  };
+  }
 
   let tracking = false;
-  const onMove = (event: PointerEvent): void => {
+  function onMove(event: PointerEvent): void {
     move({ x: event.clientX, y: event.clientY });
-  };
-  const release = (): void => {
+  }
+  function release(): void {
     if (!tracking) return;
     tracking = false;
     window.removeEventListener("pointermove", onMove);
     window.removeEventListener("pointerup", onUp);
     window.removeEventListener("pointercancel", onCancel);
     options.onHold?.(false);
-  };
+  }
   function onUp(): void {
     release();
     end();

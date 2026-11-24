@@ -89,7 +89,9 @@ function joinTokens(a: unknown, b: unknown): string | undefined {
 }
 
 function combineTokens(a: unknown, b: unknown): unknown {
-  const empty = (value: unknown): boolean => value === undefined || value === null || value === "";
+  function empty(value: unknown): boolean {
+    return value === undefined || value === null || value === "";
+  }
   if (empty(a)) return b;
   if (empty(b)) return a;
   if (typeof a === "function" || typeof b === "function") {
@@ -143,6 +145,10 @@ export function mergeProps(...sources: (DOMProps | null | undefined)[]): Record<
   return result;
 }
 
+interface IdGroupMember {
+  set: (next: string) => void;
+}
+
 // ---------------------------------------------------------------------------
 // Identifiers
 // ---------------------------------------------------------------------------
@@ -155,7 +161,7 @@ export function mergeProps(...sources: (DOMProps | null | undefined)[]): Record<
  * removed when the last holder's scope disposes, and a component that never
  * disposes was going to hold its id anyway.
  */
-const idGroups = new Map<string, { set: (next: string) => void }[]>();
+const idGroups = new Map<string, IdGroupMember[]>();
 
 /**
  * A stable, SSR-safe identifier.
@@ -179,10 +185,10 @@ export function id(given?: MaybeAccessor<string | undefined>): Accessor<string> 
   // again.
   let now = generated;
   const [track, publish] = createSignal(generated, { ownedWrite: true });
-  const current = (): string => {
+  function current(): string {
     track();
     return now;
-  };
+  }
   const entry = {
     set: (next: string): void => {
       now = next;
@@ -249,17 +255,19 @@ export function mergeIds(
   return b;
 }
 
+export interface LabelPropsInput {
+  "aria-label"?: MaybeAccessor<string | undefined>;
+  "aria-labelledby"?: MaybeAccessor<string | undefined>;
+  defaultLabel?: MaybeAccessor<string | undefined>;
+}
+
 /**
  * `aria-labelledby`/`aria-label` for a widget whose label lives elsewhere.
  *
  * Returns nothing when neither is given, so a caller can spread the result
  * unconditionally without writing an empty `aria-labelledby`.
  */
-export function labelProps(props: {
-  "aria-label"?: MaybeAccessor<string | undefined>;
-  "aria-labelledby"?: MaybeAccessor<string | undefined>;
-  defaultLabel?: MaybeAccessor<string | undefined>;
-}): DOMProps {
+export function labelProps(props: LabelPropsInput): DOMProps {
   return {
     "aria-label": () => access(props["aria-label"]) ?? access(props.defaultLabel),
     "aria-labelledby": () => access(props["aria-labelledby"]),
@@ -463,6 +471,10 @@ export function toFixedNumber(value: number, digits: number, base = 10): number 
 /** The two halves of a piece of state a component may or may not own. */
 export type Controllable<T> = [Accessor<T>, (next: T | ((previous: T) => T)) => void];
 
+interface PendingValue<T> {
+  value: T;
+}
+
 /**
  * State the caller may control, and owns when it does.
  *
@@ -480,7 +492,9 @@ export function controllable<T>(
   defaultValue: MaybeAccessor<T>,
   onChange?: (value: T) => void,
 ): Controllable<T> {
-  const isControlled = (): boolean => access(value) !== undefined;
+  function isControlled(): boolean {
+    return access(value) !== undefined;
+  }
   const [internal, setInternal] = createSignal<T>(
     (access(value) ?? access(defaultValue)) as Exclude<T, Function>,
   );
@@ -488,20 +502,20 @@ export function controllable<T>(
   // What the LAST setter call produced, kept only long enough for a second
   // call in the same event to compose from it. A controlled parent has not
   // re-run by then, so the prop still reads as the value before the first call.
-  let pending: { value: T } | null = null;
+  let pending: PendingValue<T> | null = null;
   let scheduled = false;
 
-  const read = (): T => {
+  function read(): T {
     const controlled = access(value);
     return controlled !== undefined ? (controlled as T) : internal();
-  };
+  }
 
-  const currentUntracked = (): T => {
+  function currentUntracked(): T {
     if (pending !== null) return pending.value;
     return untrack(read);
-  };
+  }
 
-  const set = (next: T | ((previous: T) => T)): void => {
+  function set(next: T | ((previous: T) => T)): void {
     const previous = currentUntracked();
     const resolved = typeof next === "function" ? (next as (previous: T) => T)(previous) : next;
     if (Object.is(previous, resolved)) return;
@@ -519,7 +533,7 @@ export function controllable<T>(
     // continues from where the caller left it rather than from its default.
     if (!isControlled()) setInternal(() => resolved);
     onChange?.(resolved);
-  };
+  }
 
   return [read, set];
 }
@@ -693,8 +707,12 @@ export interface PartRender {
  */
 export type RenderPart<State = void> = (part: PartRender, state: State) => Child;
 
+interface MaybeRefProps {
+  ref?: RefTarget<Element | null>;
+}
+
 export function partRender(props: DOMProps): PartRender {
-  const { ref, ...rest } = props as DOMProps & { ref?: RefTarget<Element | null> };
+  const { ref, ...rest } = props as DOMProps & MaybeRefProps;
   return { props: asRecord(rest), ref: mergeRefs<Element | null>(ref) };
 }
 
@@ -777,17 +795,19 @@ export interface StyleProps extends GlobalEvents {
   readonly [attribute: `data-${string}`]: unknown;
 }
 
+export interface StyleAccessors {
+  class?: () => string | undefined;
+  className?: () => string | undefined;
+  style?: () => Record<string, string | number | undefined> | undefined;
+}
+
 /**
  * The presentation props, passed through untouched.
  *
  * `class` and `className` are both accepted because both are written in the
  * wild; barq maps them to the same attribute.
  */
-export function styleProps(props: {
-  class?: () => string | undefined;
-  className?: () => string | undefined;
-  style?: () => Record<string, string | number | undefined> | undefined;
-}): DOMProps {
+export function styleProps(props: StyleAccessors): DOMProps {
   const out: DOMProps = {};
   // A key is only present when the caller GAVE it. Returning `style: () => …`
   // unconditionally made this the last word on `style` in every merge that

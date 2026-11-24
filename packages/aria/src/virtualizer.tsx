@@ -284,7 +284,7 @@ export class ListLayout extends Layout {
   /** In collection order, so a visible range is a slice rather than a scan. */
   #order: LayoutInfo[] = [];
   /** A measured height, and the width it was measured at. */
-  #measured = new Map<Key, { height: number; width: number }>();
+  #measured = new Map<Key, Size>();
   #width = 0;
   #contentHeight = 0;
   /** The loaders whose loading row is showing. */
@@ -340,7 +340,7 @@ export class ListLayout extends Layout {
       y += height + this.#options.gap;
     };
 
-    const walk = (nodes: Iterable<Node<unknown>>, parentKey: Key | null): void => {
+    function walk(nodes: Iterable<Node<unknown>>, parentKey: Key | null): void {
       for (const node of nodes) {
         if (node.type === "section") {
           place(node, parentKey, true);
@@ -349,7 +349,7 @@ export class ListLayout extends Layout {
           place(node, parentKey, false);
         }
       }
-    };
+    }
 
     walk(context.collection, null);
 
@@ -570,7 +570,9 @@ export function virtualizer(options: VirtualizerOptions): VirtualizerState {
   const [size, writeSize] = createSignal<Size>({ width: 0, height: 0 });
   const [revision, setRevision] = createSignal(0);
 
-  const overscan = (): number => access(options.overscan) ?? 1;
+  function overscan(): number {
+    return access(options.overscan) ?? 1;
+  }
 
   /**
    * What of the container is on screen: its own scroll position, clipped to
@@ -583,7 +585,7 @@ export function virtualizer(options: VirtualizerOptions): VirtualizerState {
    * only their scroll positions, which can render up to a viewport more than
    * is shown and never less.
    */
-  const read = (element: HTMLElement): void => {
+  function read(element: HTMLElement): void {
     const view = ownerWindow(element);
     const bounds = element.getBoundingClientRect();
     const offsetX = bounds.left < 0 ? -bounds.left : 0;
@@ -598,7 +600,7 @@ export function virtualizer(options: VirtualizerOptions): VirtualizerState {
     const known = untrack(size);
     if (box.width !== known.width || box.height !== known.height) writeSize(box);
     if (!rectEquals(next, untrack(visibleRect))) writeVisibleRect(next);
-  };
+  }
 
   if (!isServer) {
     createEffect(
@@ -606,22 +608,23 @@ export function virtualizer(options: VirtualizerOptions): VirtualizerState {
       (element) => {
         if (element === null) return undefined;
 
-        const measure = (): void => read(element);
-        measure();
+        const remeasure: () => void = () => read(element);
+        remeasure();
         // Captured at the window, so the page or any scroller around the
         // container moving it is seen as well as the container's own scroll.
-        const onScroll = (event: Event): void => {
+        function onScroll(event: Event): void {
           const target = event.target;
           if (target instanceof Node && !contains(target, element)) return;
-          measure();
-        };
+          remeasure();
+        }
         const stopScroll = addEvent(propagationTargets(element), "scroll", onScroll, {
           capture: true,
           passive: true,
         });
-        const stopResize = addEvent(ownerWindow(element), "resize", measure);
+        const stopResize = addEvent(ownerWindow(element), "resize", remeasure);
 
-        const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+        const observer =
+          typeof ResizeObserver === "undefined" ? null : new ResizeObserver(remeasure);
         observer?.observe(element);
 
         return () => {
@@ -646,7 +649,7 @@ export function virtualizer(options: VirtualizerOptions): VirtualizerState {
   let lastRect = rect(0, 0, 0, 0);
   let lastCollection: Collection<unknown> | null = null;
   let lastRevision = -1;
-  const laidOut = (): Layout => {
+  function laidOut(): Layout {
     // A measurement that corrected an estimate moves every row below it, so
     // the layout is redone for it as for a new collection.
     const measured = revision();
@@ -668,9 +671,9 @@ export function virtualizer(options: VirtualizerOptions): VirtualizerState {
     lastRect = sized;
     lastRevision = measured;
     return options.layout;
-  };
+  }
 
-  const visible = (): LayoutInfo[] => {
+  function visible(): LayoutInfo[] {
     const layout = laidOut();
     const area = visibleRect();
     const margin = area.height * overscan();
@@ -690,17 +693,19 @@ export function virtualizer(options: VirtualizerOptions): VirtualizerState {
       if (info !== null) found.push(info);
     }
     return found;
-  };
+  }
 
-  const contentSize = (): Size => laidOut().getContentSize();
+  function contentSize(): Size {
+    return laidOut().getContentSize();
+  }
 
-  const measure = (key: Key, measured: Size): void => {
+  function measure(key: Key, measured: Size): void {
     if (options.layout.updateItemSize?.(key, measured) === true) setRevision((n) => n + 1);
-  };
+  }
 
-  const setLoading = (key: Key, isLoading: boolean): void => {
+  function setLoading(key: Key, isLoading: boolean): void {
     if (options.layout.updateLoaderState?.(key, isLoading) === true) setRevision((n) => n + 1);
-  };
+  }
 
   return { visible, contentSize, visibleRect, measure, setLoading, layout: options.layout };
 }
@@ -792,7 +797,7 @@ export function measureRow(
     (element) => {
       if (element === null) return undefined;
 
-      const report = (): void => {
+      const report: () => void = () => {
         virtual.measure(key, { width: element.offsetWidth, height: element.offsetHeight });
       };
       report();
@@ -813,6 +818,22 @@ export interface VirtualizerComponentProps {
   /** Always rendered, wherever they are. The focused row is added anyway. */
   persistedKeys?: Iterable<Key>;
   children?: Child;
+}
+
+interface CollectionReader {
+  read: Accessor<Collection<unknown>>;
+}
+
+interface RefHolder {
+  ref: ElementRef;
+}
+
+interface FocusedKeyReader {
+  read: Accessor<Key | null>;
+}
+
+interface KeysReader {
+  read: Accessor<Iterable<Key>>;
 }
 
 /**
@@ -836,19 +857,16 @@ export function Virtualizer(props: Incoming<VirtualizerComponentProps>) {
   // `ownedWrite` because the collection attaches from its own component body,
   // which is the only place it knows what to hand over.
   const ATTACHED = { ownedWrite: true } as const;
-  const [collection, setCollection] = createSignal<{ read: Accessor<Collection<unknown>> }>(
+  const [collection, setCollection] = createSignal<CollectionReader>(
     { read: () => new ListCollection<unknown>([]) },
     ATTACHED,
   );
-  const [scrollRef, setScrollRef] = createSignal<{ ref: ElementRef } | null>(null, ATTACHED);
-  const [focusedKey, setFocusedKey] = createSignal<{ read: Accessor<Key | null> }>(
+  const [scrollRef, setScrollRef] = createSignal<RefHolder | null>(null, ATTACHED);
+  const [focusedKey, setFocusedKey] = createSignal<FocusedKeyReader>(
     { read: () => null },
     ATTACHED,
   );
-  const [kept, setKept] = createSignal<{ read: Accessor<Iterable<Key>> }>(
-    { read: () => [] },
-    ATTACHED,
-  );
+  const [kept, setKept] = createSignal<KeysReader>({ read: () => [] }, ATTACHED);
   const layout = props.layout();
 
   const state = virtualizer({

@@ -122,7 +122,13 @@ describe("toggleGroupState", () => {
   });
 });
 
-function Item(props: { state: ToggleGroupState; value: string; isDisabled?: boolean }) {
+interface ItemProps {
+  state: ToggleGroupState;
+  value: string;
+  isDisabled?: boolean;
+}
+
+function Item(props: ItemProps) {
   const domRef = makeRef<HTMLButtonElement>();
   const item = toggleGroupItem(
     { value: () => props.value, isDisabled: () => props.isDisabled, ref: domRef },
@@ -181,7 +187,9 @@ function Inner(props: GroupProps) {
   );
 }
 
-const named = (name: string): HTMLElement => screen.getByRole("button", { name });
+function named(name: string): HTMLElement {
+  return screen.getByRole("button", { name });
+}
 
 describe("toggleGroup", () => {
   test("is a named group of pressable buttons with one tab stop", () => {

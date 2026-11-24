@@ -10,7 +10,11 @@ function after(ms = 0): Promise<void> {
 
 const MOVES = { "transition-property": "translate", "transition-duration": "0ms" };
 
-function Tabs(props: { selected: string }) {
+interface TabsProps {
+  selected: string;
+}
+
+function Tabs(props: TabsProps) {
   return (
     <SharedElementTransition>
       <For each={["salama", "acme", "example"]}>

@@ -22,9 +22,15 @@ import { join } from "node:path";
 import { renderToString } from "@barqjs/server";
 
 const require_ = createRequire(import.meta.url);
-const native = require_("@barqjs/compiler") as {
-  transform(code: string, options?: Record<string, unknown>): { code: string };
-};
+interface Native {
+  transform(code: string, options?: Record<string, unknown>): Transformed;
+}
+
+interface Transformed {
+  code: string;
+}
+
+const native = require_("@barqjs/compiler") as Native;
 
 const SRC = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 const CORE = new URL("../node_modules/@barqjs/core/src/index.ts", import.meta.url).pathname;
@@ -56,9 +62,13 @@ async function ssrModule<T>(source: string): Promise<T> {
   return (await import(file)) as T;
 }
 
+interface FieldModule {
+  Field: (props: unknown) => unknown;
+}
+
 describe("a labelled field", () => {
   test("the label names the control, on the server", async () => {
-    const mod = await ssrModule<{ Field: (props: unknown) => unknown }>(`
+    const mod = await ssrModule<FieldModule>(`
       import { field } from "${SRC}/label.ts";
 
       export function Field() {
@@ -90,7 +100,7 @@ describe("a labelled field", () => {
   });
 
   test("an invalid field says so and points at the message", async () => {
-    const mod = await ssrModule<{ Field: (props: unknown) => unknown }>(`
+    const mod = await ssrModule<FieldModule>(`
       import { field } from "${SRC}/label.ts";
 
       export function Field() {
@@ -116,9 +126,13 @@ describe("a labelled field", () => {
   });
 });
 
+interface ListModule {
+  List: (props: unknown) => unknown;
+}
+
 describe("a listbox", () => {
   test("the roles and the selection are in the markup, not added on the client", async () => {
-    const mod = await ssrModule<{ List: (props: unknown) => unknown }>(`
+    const mod = await ssrModule<ListModule>(`
       import { listState } from "${SRC}/collections.ts";
       import { listBox, option, optionIdFor } from "${SRC}/listbox.tsx";
       import { ref } from "@barqjs/primitives/refs";
@@ -162,7 +176,7 @@ describe("a listbox", () => {
   });
 
   test("an option's id is derived, so anything can name it before it exists", async () => {
-    const mod = await ssrModule<{ List: (props: unknown) => unknown }>(`
+    const mod = await ssrModule<ListModule>(`
       import { listState } from "${SRC}/collections.ts";
       import { listBox, option, optionIdFor } from "${SRC}/listbox.tsx";
       import { ref } from "@barqjs/primitives/refs";

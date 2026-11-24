@@ -39,7 +39,9 @@ export function stubIntersections(): Intersections {
     }
   } as unknown as typeof IntersectionObserver;
 
-  const live = (): Observed[] => observers.filter((observer) => observer.targets.length > 0);
+  function live(): Observed[] {
+    return observers.filter((observer) => observer.targets.length > 0);
+  }
   return {
     live,
     fire: () => {

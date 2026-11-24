@@ -82,13 +82,15 @@ const FILES: File_[] = [
   { id: "photos", name: "Photos", size: "9 MB", modified: "March" },
 ];
 
-function Files(props: {
+interface FilesProps {
   selectionMode?: "none" | "single" | "multiple";
   sortDescriptor?: SortDescriptor;
   onSortChange?: (descriptor: SortDescriptor) => void;
   onSelectionChange?: (keys: "all" | Set<Key>) => void;
   onAction?: (key: Key) => void;
-}) {
+}
+
+function Files(props: FilesProps) {
   return (
     <Table
       aria-label="Files"
@@ -579,11 +581,13 @@ describe("deleting the row that holds focus", () => {
   });
 });
 
-/** The files, with a control or two in the "modified" column. */
-function WithControls(props: {
+interface WithControlsProps {
   keyboardNavigationBehavior?: "arrow" | "tab";
   twoButtons?: boolean;
-}) {
+}
+
+/** The files, with a control or two in the "modified" column. */
+function WithControls(props: WithControlsProps) {
   return (
     <Table
       aria-label="Files"
@@ -723,6 +727,14 @@ describe("Home and End", () => {
   });
 });
 
+interface Named {
+  name: string;
+}
+
+interface Identified {
+  id: string;
+}
+
 describe("typeahead over rows with no name of their own", () => {
   interface Entry {
     id: string;
@@ -743,10 +755,10 @@ describe("typeahead over rows with no name of their own", () => {
   function Entries() {
     return (
       <Table aria-label="Entries" columns={ENTRY_COLUMNS} items={ENTRIES}>
-        <TableHeader>{(column: { name: string }) => <Column>{column.name}</Column>}</TableHeader>
+        <TableHeader>{(column: Named) => <Column>{column.name}</Column>}</TableHeader>
         <TableBody>
           {(entry: Entry) => (
-            <Row>{(column: { id: string }) => <Cell>{String(entry[column.id])}</Cell>}</Row>
+            <Row>{(column: Identified) => <Cell>{String(entry[column.id])}</Cell>}</Row>
           )}
         </TableBody>
       </Table>
@@ -888,6 +900,10 @@ describe("a footer", () => {
   });
 });
 
+interface FoldersProps {
+  onExpandedChange?: (keys: Set<Key>) => void;
+}
+
 describe("rows that nest", () => {
   interface Folder {
     id: string;
@@ -912,7 +928,7 @@ describe("rows that nest", () => {
     { id: "music", name: "Music", size: "", modified: "Never" },
   ];
 
-  function Folders(props: { onExpandedChange?: (keys: Set<Key>) => void }) {
+  function Folders(props: FoldersProps) {
     return (
       <Table
         aria-label="Folders"
@@ -1041,16 +1057,25 @@ describe("a selection indicator", () => {
         </TableBody>
       </Table>
     ));
-    const shown = (role: string): (string | null)[] =>
-      screen
+    function shown(role: string): (string | null)[] {
+      return screen
         .queryAllByTestId("indicator")
         .map(
           (element: Element) =>
             element.closest(`[role="${role}"]`)?.getAttribute("data-key") ?? null,
         );
+    }
     expect(shown("row")).toEqual(["budget"]);
   });
 });
+
+interface HitOptions {
+  altKey?: boolean;
+}
+
+interface DragKeysEvent {
+  keys: Set<Key>;
+}
 
 describe("drag and drop", () => {
   interface Entry {
@@ -1155,14 +1180,16 @@ describe("drag and drop", () => {
     );
   }
 
-  const indicator = (target: DropTarget) => (
-    <DropIndicator target={target} class="indicator">
-      Test
-    </DropIndicator>
-  );
+  function indicator(target: DropTarget) {
+    return (
+      <DropIndicator target={target} class="indicator">
+        Test
+      </DropIndicator>
+    );
+  }
 
   /** One key, down and up, with no click on a focused button. */
-  function hit(key: string, options: { altKey?: boolean } = {}): void {
+  function hit(key: string, options: HitOptions = {}): void {
     user.keyDown(key, options);
     user.keyUp(key, options);
   }
@@ -1229,7 +1256,7 @@ describe("drag and drop", () => {
   });
 
   test("with a handle, only the drag button starts a pointer drag", async () => {
-    const onDragStart = mock((_event: { keys: Set<Key> }) => {});
+    const onDragStart = mock((_event: DragKeysEvent) => {});
     render(() => <Draggable options={{ pointerDragSource: "handle", onDragStart }} />);
     const games = rowOf(screen.getByRole("grid"), "1");
     const handle = within(games).getByRole("button", { name: "Drag Games" });
@@ -1388,12 +1415,13 @@ describe("drag and drop", () => {
     expect(focusedLabel()).toBe("Drop on");
 
     const names = ["Games", "Program Files", "bootmgr"];
-    const between = (at: number): string =>
-      at === 0
+    function between(at: number): string {
+      return at === 0
         ? `Insert before ${names[0]}`
         : at === names.length
           ? `Insert after ${names[at - 1]}`
           : `Insert between ${names[at - 1]} and ${names[at]}`;
+    }
 
     for (let at = 0; at <= names.length; at++) {
       hit("ArrowDown");
@@ -1679,7 +1707,9 @@ describe("selection announcements", () => {
     return announcements().at(-1);
   }
 
-  const body = (): HTMLElement[] => screen.getAllByRole("row").slice(1);
+  function body(): HTMLElement[] {
+    return screen.getAllByRole("row").slice(1);
+  }
 
   test("the selected or deselected row is named", async () => {
     render(() => <Files selectionMode="multiple" />);
@@ -1813,16 +1843,18 @@ describe("selection announcements", () => {
   });
 });
 
+interface LoadingProps {
+  items?: File_[];
+  isLoading?: boolean;
+  onLoadMore?: () => void;
+  treeColumn?: string;
+  defaultExpandedKeys?: Key[];
+}
+
 describe("loading more", () => {
   const LOADER: File_ = { id: "loader", name: "Loading", size: "", modified: "", kind: "loader" };
 
-  function Loading(props: {
-    items?: File_[];
-    isLoading?: boolean;
-    onLoadMore?: () => void;
-    treeColumn?: string;
-    defaultExpandedKeys?: Key[];
-  }) {
+  function Loading(props: LoadingProps) {
     return (
       <Table
         aria-label="Files"
@@ -1992,6 +2024,10 @@ describe("loading more", () => {
   });
 });
 
+interface Targeted {
+  target: Element;
+}
+
 describe("column resizing", () => {
   interface Sized {
     id: string;
@@ -2033,7 +2069,7 @@ describe("column resizing", () => {
 
   let tableWidth = 900;
   const realWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
-  let observed: ((entries: { target: Element }[]) => void) | null = null;
+  let observed: ((entries: Targeted[]) => void) | null = null;
   const RealObserver = globalThis.ResizeObserver;
 
   beforeEach(() => {
@@ -2045,7 +2081,7 @@ describe("column resizing", () => {
     observed = null;
     const targets: Element[] = [];
     globalThis.ResizeObserver = class {
-      constructor(callback: (entries: { target: Element }[]) => void) {
+      constructor(callback: (entries: Targeted[]) => void) {
         observed = (entries) =>
           callback(entries.length > 0 ? entries : targets.map((target) => ({ target })));
       }
@@ -2070,7 +2106,10 @@ describe("column resizing", () => {
     onResizeEnd?: (widths: Map<Key, ColumnSize>) => void;
   }
 
-  function Resizable(props: ResizeHandlers & { columns: Sized[] }) {
+  interface ResizableProps {
+    columns: Sized[];
+  }
+  function Resizable(props: ResizeHandlers & ResizableProps) {
     return (
       <ResizableTableContainer
         onResizeStart={props.onResizeStart}
@@ -2096,9 +2135,14 @@ describe("column resizing", () => {
     );
   }
 
+  interface ControlledProps {
+    columns?: Sized[];
+  }
   /** Widths written back to the columns from `onResize`, as a controlled table does. */
-  function Controlled(props: ResizeHandlers & { columns?: Sized[] }) {
-    const given = (): Sized[] => props.columns ?? DEFAULT;
+  function Controlled(props: ResizeHandlers & ControlledProps) {
+    function given(): Sized[] {
+      return props.columns ?? DEFAULT;
+    }
     const [widths, setWidths] = createSignal(
       new Map<Key, ColumnSize>(
         given()
@@ -2127,9 +2171,9 @@ describe("column resizing", () => {
   /** A handler that keeps what it was called with. It declares its parameter, as a handler must. */
   function recorder(): Recorder {
     const calls: Map<Key, ColumnSize>[] = [];
-    const handler = (widths: Map<Key, ColumnSize>): void => {
+    function handler(widths: Map<Key, ColumnSize>): void {
       calls.push(widths);
-    };
+    }
     return Object.assign(handler, { calls });
   }
 
@@ -2586,8 +2630,9 @@ describe("column resizing", () => {
           ]}
         />
       ));
-      const direction = (name: string): string | null =>
-        (slider(name).parentElement as HTMLElement).getAttribute("data-resizable-direction");
+      function direction(name: string): string | null {
+        return (slider(name).parentElement as HTMLElement).getAttribute("data-resizable-direction");
+      }
       expect(direction("Name")).toBe("left");
       expect(direction("Type")).toBe("right");
       expect(direction("Level")).toBe("both");
@@ -2791,11 +2836,12 @@ describe("column resizing", () => {
       const input = slider("Name");
       user.tab();
       flush();
-      const described = (): string[] =>
-        (input.getAttribute("aria-describedby") ?? "")
+      function described(): string[] {
+        return (input.getAttribute("aria-describedby") ?? "")
           .split(" ")
           .filter((each) => each !== "")
           .map((each) => document.getElementById(each)?.textContent ?? "");
+      }
       expect(described()).toEqual(["Press Enter to start resizing"]);
       input.focus();
       user.keyboard("{Enter}");
@@ -2869,11 +2915,15 @@ describe("column resizing", () => {
   });
 });
 
+interface SortedProps {
+  initial?: SortDescriptor;
+}
+
 describe("sorting, told to a screen reader", () => {
   beforeEach(() => destroyAnnouncer());
   afterEach(() => destroyAnnouncer());
 
-  function Sorted(props: { initial?: SortDescriptor }) {
+  function Sorted(props: SortedProps) {
     const [sort, setSort] = createSignal<SortDescriptor | undefined>(props.initial);
     return (
       <Files

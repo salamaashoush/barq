@@ -52,8 +52,12 @@ export function textArea(options: TextAreaOptions = {}): TextAreaResult {
     () => access(options.defaultValue) ?? "",
     options.onChange,
   );
-  const isDisabled = (): boolean => access(options.isDisabled) === true;
-  const isInvalid = (): boolean => access(options.isInvalid) === true;
+  function isDisabled(): boolean {
+    return access(options.isDisabled) === true;
+  }
+  function isInvalid(): boolean {
+    return access(options.isInvalid) === true;
+  }
 
   const { hoverProps, isHovered } = hover({
     isDisabled,
@@ -66,13 +70,13 @@ export function textArea(options: TextAreaOptions = {}): TextAreaResult {
     autoFocus: options.autoFocus,
   });
 
-  const onInput = (event: Event): void => {
+  function onInput(event: Event): void {
     const element = event.target as HTMLTextAreaElement;
     setValue(element.value);
     // A controlled owner that declined re-renders nothing on a value that did
     // not move, so the element is put back by hand.
     if (element.value !== value()) element.value = value();
-  };
+  }
 
   return {
     value,

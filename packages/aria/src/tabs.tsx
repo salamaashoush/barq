@@ -100,7 +100,7 @@ export interface TabListState<T> extends SingleSelectListState<T> {
  * removed.
  */
 export function tabListState<T>(options: TabListStateOptions<T>): TabListState<T> {
-  const firstEnabled = (collection: Collection<T>, disabled: Set<Key>): Key | null => {
+  function firstEnabled(collection: Collection<T>, disabled: Set<Key>): Key | null {
     let key = collection.getFirstKey();
     const last = collection.getLastKey();
     while (
@@ -118,7 +118,7 @@ export function tabListState<T>(options: TabListStateOptions<T>): TabListState<T
       return collection.getFirstKey();
     }
     return key;
-  };
+  }
 
   // Worked out BEFORE the state exists, not repaired afterwards: a default is
   // not a choice, and putting it in through the setter would report a
@@ -349,12 +349,17 @@ export interface TabResult {
 }
 
 export function tab(options: TabOptions, state: TabListState<unknown>): TabResult {
-  const node = (): Node<unknown> | null => state.collection().getItem(options.key);
+  function node(): Node<unknown> | null {
+    return state.collection().getItem(options.key);
+  }
 
-  const isDisabled = (): boolean =>
-    access(options.isDisabled) === true ||
-    state.isDisabled() ||
-    state.selectionManager().isDisabled(options.key);
+  function isDisabled(): boolean {
+    return (
+      access(options.isDisabled) === true ||
+      state.isDisabled() ||
+      state.selectionManager().isDisabled(options.key)
+    );
+  }
 
   const item = selectableItem({
     key: options.key,
@@ -369,7 +374,9 @@ export function tab(options: TabOptions, state: TabListState<unknown>): TabResul
     linkBehavior: "selection",
   });
 
-  const isSelected = (): boolean => state.selectedKey() === options.key;
+  function isSelected(): boolean {
+    return state.selectedKey() === options.key;
+  }
 
   return {
     isSelected,
@@ -408,7 +415,9 @@ export interface TabPanelResult {
 }
 
 export function tabPanel(options: TabPanelOptions, state: TabListState<unknown>): TabPanelResult {
-  const key = (): Key | null => access(options.key) ?? state.selectedKey();
+  function key(): Key | null {
+    return access(options.key) ?? state.selectedKey();
+  }
   const focusable = hasTabbableChild(options.ref, key);
 
   return {
@@ -704,11 +713,15 @@ export function TabPanel<T>(props: TabPanelComponentProps<T>) {
   );
 }
 
+interface MaybeAnimatable {
+  getAnimations?: () => Animation[];
+}
+
 /** Wait out the enter animations a stylesheet started on `element`. */
 function afterEnterAnimations(element: Element, done: () => void): () => void {
   let cancelled = false;
   const frame = requestAnimationFrame(() => {
-    const source = element as Element & { getAnimations?: () => Animation[] };
+    const source = element as Element & MaybeAnimatable;
     const running = typeof source.getAnimations === "function" ? source.getAnimations() : [];
     let left = running.length;
     if (left === 0) {
@@ -716,10 +729,10 @@ function afterEnterAnimations(element: Element, done: () => void): () => void {
       return;
     }
     // Finished or cancelled, each one counts once.
-    const settle = (): void => {
+    function settle(): void {
       left--;
       if (left === 0 && !cancelled) done();
-    };
+    }
     for (const animation of running) {
       animation.addEventListener("finish", settle, { once: true });
       animation.addEventListener("cancel", settle, { once: true });
@@ -731,14 +744,23 @@ function afterEnterAnimations(element: Element, done: () => void): () => void {
   };
 }
 
-function OnePanel<T>(panel: { node: Node<unknown>; of: Incoming<TabPanelComponentProps<T>> }) {
+interface OnePanelSlot<T> {
+  node: Node<unknown>;
+  of: Incoming<TabPanelComponentProps<T>>;
+}
+
+function OnePanel<T>(panel: OnePanelSlot<T>) {
   const props = panel.of;
   const key = panel.node.key;
   const domRef = makeRef<HTMLDivElement>();
   const tabs = useTabs();
 
-  const isSelected = (): boolean => tabs.state.selectedKey() === key;
-  const isMounted = (): boolean => isSelected() || props.shouldForceMount?.() === true;
+  function isSelected(): boolean {
+    return tabs.state.selectedKey() === key;
+  }
+  function isMounted(): boolean {
+    return isSelected() || props.shouldForceMount?.() === true;
+  }
   const gate = presence({ isOpen: isSelected, ref: domRef });
   const [isEntering, setEntering] = createSignal(false);
 
@@ -786,14 +808,14 @@ function OnePanel<T>(panel: { node: Node<unknown>; of: Incoming<TabPanelComponen
 
   // Either a render function, which `callback` hands back as it is, or the
   // content itself, which it reads out of its Cell.
-  const renderPanel = (item: T | undefined): Child => {
+  function renderPanel(item: T | undefined): Child {
     const content = callback(
       props.children as unknown as MaybeAccessor<((item: T | undefined) => Child) | undefined>,
     ) as unknown;
     return typeof content === "function"
       ? (content as (item: T | undefined) => Child)(item)
       : (content as Child);
-  };
+  }
 
   return (
     <Show when={isMounted() || gate.isPresent()}>
@@ -907,8 +929,12 @@ export function ValueTabs(props: ValueTabsComponentProps) {
   let first: string | null = null;
   const [adopted, setAdopted] = createSignal<string | null>(null, { ownedWrite: true });
 
-  const value = (): string | null => chosen() ?? adopted();
-  const orientation = (): Orientation => props.orientation ?? "horizontal";
+  function value(): string | null {
+    return chosen() ?? adopted();
+  }
+  function orientation(): Orientation {
+    return props.orientation ?? "horizontal";
+  }
 
   declareDirection(cells(props).dir);
 
@@ -957,7 +983,7 @@ export function ValueTabList(props: ValueTabListComponentProps) {
   const tabs = requireValueTabs();
   const direction = useDirection();
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
     const list = event.currentTarget as HTMLElement;
     const from = event.target as HTMLElement;
@@ -977,12 +1003,12 @@ export function ValueTabList(props: ValueTabListComponentProps) {
     const enabled = stops.filter((stop) => stop.getAttribute("aria-disabled") !== "true");
     if (enabled.length === 0) return;
 
-    const step = (by: 1 | -1): HTMLElement | undefined => {
+    function step(by: 1 | -1): HTMLElement | undefined {
       const next = at + by;
       if (next >= 0 && next < stops.length) return stops[next];
       if (props.loop === false) return undefined;
       return by === 1 ? stops[0] : stops[stops.length - 1];
-    };
+    }
 
     let target: HTMLElement | undefined;
     if (event.key === "Home") target = enabled[0];
@@ -998,7 +1024,7 @@ export function ValueTabList(props: ValueTabListComponentProps) {
     // it after a full loop is not a move.
     if (target === undefined || target === from) return;
     target.focus();
-  };
+  }
 
   const elementProps = mergeProps(
     filterDOMProps(fromProps(cells(props)), { global: true, labelable: true }),
@@ -1030,17 +1056,21 @@ export interface ValueTabComponentProps extends StyleProps {
 export function ValueTab(props: ValueTabComponentProps) {
   const tabs = requireValueTabs();
 
-  const isSelected = (): boolean => tabs.value() === props.value;
-  const isDisabled = (): boolean => tabs.isDisabled() || props.isDisabled === true;
+  function isSelected(): boolean {
+    return tabs.value() === props.value;
+  }
+  function isDisabled(): boolean {
+    return tabs.isDisabled() || props.isDisabled === true;
+  }
 
   if (!untrack(isDisabled)) tabs.adopt(untrack(() => props.value));
 
   const { hoverProps, isHovered } = hover({ isDisabled });
   const { focusProps, isFocused, isFocusVisible } = focusRing();
 
-  const select = (): void => {
+  function select(): void {
     if (!isDisabled()) tabs.select(props.value);
-  };
+  }
 
   const elementProps = mergeProps(
     hoverProps,
@@ -1096,7 +1126,9 @@ export function ValueTabPanel(props: ValueTabPanelComponentProps) {
   const domRef = makeRef<HTMLDivElement>();
   const tabs = requireValueTabs();
 
-  const isSelected = (): boolean => tabs.value() === props.value;
+  function isSelected(): boolean {
+    return tabs.value() === props.value;
+  }
   const focusable = hasTabbableChild(domRef, () => (isSelected() ? props.value : null));
 
   const elementProps = mergeProps(

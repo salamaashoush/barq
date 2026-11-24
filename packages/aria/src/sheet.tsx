@@ -75,6 +75,7 @@ import {
   provideTriggerSlot,
   type DOMProps,
   type StyleProps,
+  type ProviderProps,
 } from "./utils.ts";
 
 export type SheetPosition = "bottom" | "top" | "left" | "right" | "center";
@@ -394,7 +395,7 @@ export function useSheet(): SheetRenderState | null {
   return getContext(SheetContext)?.state ?? null;
 }
 
-function SheetProvider(props: { value: SheetContextValue; children?: Child }) {
+function SheetProvider(props: ProviderProps<SheetContextValue>) {
   return provide(
     SheetContext,
     () => props.value,
@@ -559,9 +560,12 @@ export function SheetOverlay(props: SheetOverlayProps) {
   const target = usePortalTarget();
   const locale = useLocale();
 
-  const own = (): boolean =>
-    props.isOpen !== undefined || props.defaultOpen !== undefined || trigger === null;
-  const current = (): OverlayTriggerState => (own() || trigger === null ? local : trigger.state);
+  function own(): boolean {
+    return props.isOpen !== undefined || props.defaultOpen !== undefined || trigger === null;
+  }
+  function current(): OverlayTriggerState {
+    return own() || trigger === null ? local : trigger.state;
+  }
   const state: OverlayTriggerState = {
     isOpen: () => current().isOpen(),
     setOpen: (open) => current().setOpen(open),
@@ -667,13 +671,18 @@ function measureViewport(doc: Document): ViewportBox {
   };
 }
 
+interface SheetOverlayBodyProps {
+  shared: OverlayShared;
+  children?: Child | RenderChildren;
+}
+
 /**
  * Everything that exists only while the sheet is on screen.
  *
  * A component of its own because the focus scope has to be created with the
  * content it contains: disposing this subtree is what puts focus back.
  */
-function SheetOverlayBody(props: { shared: OverlayShared; children?: Child | RenderChildren }) {
+function SheetOverlayBody(props: SheetOverlayBodyProps) {
   const shared = props.shared;
   const overlayRef = makeRef<HTMLDivElement>();
   const modalRef = makeRef<HTMLDivElement>();
@@ -743,7 +752,7 @@ function SheetOverlayBody(props: { shared: OverlayShared; children?: Child | Ren
     "data-has-descendants": () => (descendants().length > 0 ? "" : undefined),
   };
 
-  const viewportExtent = (element: Element, config: SwipeConfig): number => {
+  function viewportExtent(element: Element, config: SwipeConfig): number {
     const view = ownerWindow(element);
     return config.axis === "y"
       ? view.innerHeight +
@@ -751,9 +760,9 @@ function SheetOverlayBody(props: { shared: OverlayShared; children?: Child | Ren
             calcToPx(viewportPadding(config.after, config.axis), ownerDocument(element)),
           )
       : view.innerWidth;
-  };
+  }
 
-  const enter = (): void => {
+  function enter(): void {
     const overlay = overlayRef();
     if (overlay === null) return;
     const scroller = overlay.querySelector<HTMLElement>("[data-sheet-scroll]");
@@ -766,7 +775,7 @@ function SheetOverlayBody(props: { shared: OverlayShared; children?: Child | Ren
     const extent = viewportExtent(overlay, config);
     const view = ownerWindow(overlay);
 
-    const scrollToRest = (smooth: boolean): void => {
+    const scrollToRest: (smooth: boolean) => void = (smooth) => {
       if (initial === null) {
         scrollAlongAxis(scroller, config.axis, (config.enteredScroll / 100) * extent, smooth);
       } else {
@@ -790,7 +799,7 @@ function SheetOverlayBody(props: { shared: OverlayShared; children?: Child | Ren
       !reduceMotion(view) &&
       skipOffscreenTravel(scroller, content, config.axis, extent);
 
-    const start = (): void => {
+    const start: () => void = () => {
       if (disposed || attempt !== enters) return;
       scrollToRest(true);
       // Listened for only once the smooth scroll has begun, so the jump's own
@@ -806,17 +815,17 @@ function SheetOverlayBody(props: { shared: OverlayShared; children?: Child | Ren
     // at the jumped-to position.
     if (config.enteredScroll === 0 || skipped) view.requestAnimationFrame(start);
     else start();
-  };
+  }
 
-  const entered = (): void => {
+  function entered(): void {
     setEntering(false);
     const content = overlayRef()?.querySelector<HTMLElement>("[data-sheet-content]") ?? null;
     if (content !== null && !contains(content, activeElement(ownerDocument(content)))) {
       focusWithoutScrolling(content);
     }
-  };
+  }
 
-  const exit = (): Promise<void> => {
+  function exit(): Promise<void> {
     enters++;
     const overlay = overlayRef();
     if (overlay === null) return Promise.resolve();
@@ -857,7 +866,7 @@ function SheetOverlayBody(props: { shared: OverlayShared; children?: Child | Ren
     }
 
     return Promise.all([motion, animations]).then(() => undefined);
-  };
+  }
 
   shared.attach({ enter, exit });
   onCleanup(() => {
@@ -923,11 +932,11 @@ function SheetOverlayBody(props: { shared: OverlayShared; children?: Child | Ren
       doc,
     );
 
-    const resize = (): void => {
+    function resize(): void {
       const visual = view.visualViewport;
       if (visual !== null && visual.scale > 1) return;
       setViewport(measureViewport(doc));
-    };
+    }
     const resizes: EventTarget = view.visualViewport ?? view;
     resizes.addEventListener("resize", resize);
     setViewport(measureViewport(doc));
@@ -941,9 +950,9 @@ function SheetOverlayBody(props: { shared: OverlayShared; children?: Child | Ren
     };
   });
 
-  const setModal = (element: HTMLDivElement | null): void => {
+  function setModal(element: HTMLDivElement | null): void {
     modalRef.set(element);
-  };
+  }
 
   const value: SheetContextValue = {
     config: shared.config,
@@ -964,7 +973,7 @@ function SheetOverlayBody(props: { shared: OverlayShared; children?: Child | Ren
     triggers: shared.triggers,
   };
 
-  const style = (): Style => {
+  function style(): Style {
     const box = viewport();
     return {
       // Absolute rather than fixed, or iOS Safari clips it.
@@ -983,7 +992,7 @@ function SheetOverlayBody(props: { shared: OverlayShared; children?: Child | Ren
       "--page-width": box === null ? undefined : `${box.pageWidth}px`,
       "--page-height": box === null ? undefined : `${box.pageHeight}px`,
     };
-  };
+  }
 
   const elementProps = mergeProps(shared.domProps, dataProps, {
     class: shared.className,
@@ -1001,6 +1010,11 @@ function SheetOverlayBody(props: { shared: OverlayShared; children?: Child | Ren
   );
 }
 
+interface SwipeRange {
+  start?: number;
+  end?: number;
+}
+
 // ---------------------------------------------------------------------------
 // Swipe animations
 // ---------------------------------------------------------------------------
@@ -1012,13 +1026,13 @@ interface SwipeAnimationProps {
    * The snap points, by index, between which it plays.
    * @default the whole of the sheet's travel
    */
-  swipeAnimationRange?: { start?: number; end?: number };
+  swipeAnimationRange?: SwipeRange;
 }
 
 function swipeAnimationStyle(
   sheet: SheetContextValue,
   animation: string | undefined,
-  range: { start?: number; end?: number } | undefined,
+  range: SwipeRange | undefined,
 ): Style {
   if (animation === undefined || animation === "") return {};
   const direction = sheet.swipeDirection();
@@ -1086,33 +1100,42 @@ export function Sheet(props: SheetProps) {
   const stageRef = makeRef<HTMLDivElement>();
   const config = sheet.config;
 
-  const viewport = (): string => (config().axis === "y" ? "100dvh" : "100dvw");
-  const isTransitioning = (): boolean => sheet.isEntering() || sheet.isExiting();
-  const hasSnapPoints = (): boolean =>
-    (sheet.snapPoints()?.length ?? 0) > 0 && config().before !== config().after;
+  function viewport(): string {
+    return config().axis === "y" ? "100dvh" : "100dvw";
+  }
+  function isTransitioning(): boolean {
+    return sheet.isEntering() || sheet.isExiting();
+  }
+  function hasSnapPoints(): boolean {
+    return (sheet.snapPoints()?.length ?? 0) > 0 && config().before !== config().after;
+  }
   // Enter and exit still need the room to leave, so the clamp holds only while
   // the sheet is at rest.
-  const isClamped = (): boolean => sheet.preventDismissal() && !isTransitioning();
+  function isClamped(): boolean {
+    return sheet.preventDismissal() && !isTransitioning();
+  }
 
   const travel = snapPointTravel(stageRef, sheet.modal, config, () =>
     sheet.preventDismissal() && hasSnapPoints() ? (sheet.snapPoints() ?? []).join(" ") : null,
   );
   // At least 1px, so there is still somewhere to scroll and the browser still
   // bounces when there is nowhere to snap to.
-  const clampedTravel = (): string => `${hasSnapPoints() ? Math.max(1, travel()) : 1}px`;
+  function clampedTravel(): string {
+    return `${hasSnapPoints() ? Math.max(1, travel()) : 1}px`;
+  }
 
-  const stageStart = (): string => {
+  function stageStart(): string {
     const { after, axis } = config();
     return isClamped() && after
       ? clampedTravel()
       : `calc(${viewport()} + ${viewportPadding(after, axis)})`;
-  };
-  const endMarker = (): string => {
+  }
+  function endMarker(): string {
     const { before, after } = config();
     if (isClamped() && before && after) return `calc(${stageStart()} + ${viewport()} + 1px)`;
     if (isClamped() && before) return `calc(${clampedTravel()} + ${viewport()})`;
     return `calc(${stageStart()} + ${viewport()}${before && after ? ` + ${viewport()}` : ""})`;
-  };
+  }
 
   // The clamped geometry moves the stage. The scroll position moves with it,
   // so the sheet stays where it was on screen.
@@ -1133,14 +1156,15 @@ export function Sheet(props: SheetProps) {
     },
   );
 
-  const overscrollInset = (): string | undefined =>
-    props.overscrollPadding === true && sheet.position() === sheet.swipeDirection()
+  function overscrollInset(): string | undefined {
+    return props.overscrollPadding === true && sheet.position() === sheet.swipeDirection()
       ? config().axis === "y"
         ? "100vh"
         : "100vw"
       : undefined;
+  }
 
-  const ownStyle = (): Style => {
+  function ownStyle(): Style {
     const style: Style = {
       position: "relative",
       pointerEvents: sheet.isNonModal() ? "auto" : undefined,
@@ -1173,9 +1197,9 @@ export function Sheet(props: SheetProps) {
       }
     }
     return style;
-  };
+  }
 
-  const scrollerStyle = (): Style => {
+  function scrollerStyle(): Style {
     const { axis, containerOffset } = config();
     const view = typeof window === "undefined" ? null : window;
     const scrollX = view === null ? 0 : untrack(() => view.scrollX);
@@ -1198,9 +1222,9 @@ export function Sheet(props: SheetProps) {
       // The scroll geometry is physical whatever the reading direction.
       direction: "ltr",
     };
-  };
+  }
 
-  const stageStyle = (): Style => {
+  function stageStyle(): Style {
     const { axis } = config();
     const [x, y] = POSITION_ALIGNMENT[sheet.position()];
     return {
@@ -1214,9 +1238,9 @@ export function Sheet(props: SheetProps) {
       alignItems: axis === "y" ? x : y,
       justifyContent: axis === "y" ? y : x,
     };
-  };
+  }
 
-  const markersStyle = (): Style => {
+  function markersStyle(): Style {
     const inset = overscrollInset();
     return {
       position: "absolute",
@@ -1224,7 +1248,7 @@ export function Sheet(props: SheetProps) {
       ...(inset === undefined ? null : { [sheet.position()]: inset }),
       pointerEvents: "none",
     };
-  };
+  }
 
   const elementProps = mergeProps(
     sheet.modalProps,
@@ -1284,9 +1308,15 @@ export function Sheet(props: SheetProps) {
   );
 }
 
+interface SnapPointProps {
+  point: SheetSnapPoint;
+  align: "start" | "end" | "none";
+  axis: Axis;
+}
+
 /** A full viewport long, so its start or end edge lands on the snap position. */
-function SnapPoint(props: { point: SheetSnapPoint; align: "start" | "end" | "none"; axis: Axis }) {
-  const style = (): Style => {
+function SnapPoint(props: SnapPointProps) {
+  function style(): Style {
     const offset = toLength(props.point);
     const main = props.axis === "y" ? "dvh" : "dvw";
     return {
@@ -1297,9 +1327,16 @@ function SnapPoint(props: { point: SheetSnapPoint; align: "start" | "end" | "non
       width: props.axis === "x" ? `100${main}` : "1px",
       height: props.axis === "y" ? `100${main}` : "1px",
     };
-  };
+  }
   const elementProps: DOMProps = { style };
   return <div {...elementProps} />;
+}
+
+interface DetentPointProps {
+  point: SheetSnapPoint;
+  axis: Axis;
+  after: boolean;
+  isInitial: boolean;
 }
 
 /**
@@ -1310,13 +1347,8 @@ function SnapPoint(props: { point: SheetSnapPoint; align: "start" | "end" | "non
  * The point is an inset rather than part of the margin, which is what makes a
  * percentage one of the sheet's size.
  */
-function DetentPoint(props: {
-  point: SheetSnapPoint;
-  axis: Axis;
-  after: boolean;
-  isInitial: boolean;
-}) {
-  const style = (): Style => {
+function DetentPoint(props: DetentPointProps) {
+  function style(): Style {
     const viewport = props.axis === "y" ? "100dvh" : "100dvw";
     const offset = toLength(props.point);
     const edge: Style =
@@ -1334,7 +1366,7 @@ function DetentPoint(props: {
       scrollSnapAlign: props.after ? "start" : "end",
       ...edge,
     };
-  };
+  }
   const elementProps: DOMProps = {
     "data-sheet-detent": "",
     "data-sheet-initial": () => (props.isInitial ? "" : undefined),
@@ -1364,7 +1396,7 @@ function snapPointTravel(
     ([points, stageElement, sheetElement, axis, after]) => {
       if (points === null || stageElement === null || sheetElement === null) return undefined;
 
-      const measure = (): void => {
+      const measure: () => void = () => {
         const stageSize = axis === "y" ? stageElement.clientHeight : stageElement.clientWidth;
         let max = 0;
         for (const marker of sheetElement.querySelectorAll<HTMLElement>("[data-sheet-detent]")) {
@@ -1440,7 +1472,7 @@ export interface SheetContentProps extends Omit<DialogComponentProps, "children"
 export function SheetContent(props: SheetContentProps) {
   const sheet = useSheetContext("SheetContent");
 
-  const style = (): Style => {
+  function style(): Style {
     const { axis, before, after } = sheet.config();
     const viewport = axis === "y" ? "100dvh" : "100dvw";
     return {
@@ -1451,7 +1483,7 @@ export function SheetContent(props: SheetContentProps) {
       viewTimelineAxis: axis,
       viewTimelineInset: before && !after ? `${viewport} 0` : `0 ${viewport}`,
     };
-  };
+  }
 
   return (
     <Dialog {...omit(props, "children", "style")} style={style()} data-sheet-content="">

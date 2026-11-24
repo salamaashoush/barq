@@ -50,6 +50,7 @@ import type {
   Node,
   SelectionMode,
   SelectionValue,
+  Size,
 } from "./collections.ts";
 import { listState, type ListState } from "./collections.ts";
 import { PREVENT_FOCUS_ATTRIBUTE } from "./dom.ts";
@@ -96,6 +97,7 @@ import {
   mergeProps,
   type StyleProps,
   styleProps,
+  type ProviderProps,
 } from "./utils.ts";
 
 // ---------------------------------------------------------------------------
@@ -145,8 +147,12 @@ export function selectState<T>(options: SelectStateOptions<T>): SelectState<T> {
   const [strategy, setStrategy] = createSignal<FocusStrategy | null>(null);
   const [isFocused, setIsFocused] = createSignal(false);
 
-  const mode = (): SelectionMode => access(options.selectionMode) ?? "single";
-  const closesOnSelect = (): boolean => access(options.shouldCloseOnSelect) ?? mode() === "single";
+  function mode(): SelectionMode {
+    return access(options.selectionMode) ?? "single";
+  }
+  function closesOnSelect(): boolean {
+    return access(options.shouldCloseOnSelect) ?? mode() === "single";
+  }
 
   const list = listState<T>({
     ...options,
@@ -173,9 +179,11 @@ export function selectState<T>(options: SelectStateOptions<T>): SelectState<T> {
     },
   });
 
-  const selectedKey = (): Key | null => list.selectionManager().firstSelectedKey;
+  function selectedKey(): Key | null {
+    return list.selectionManager().firstSelectedKey;
+  }
 
-  const selectedItems = (): Node<T>[] => {
+  function selectedItems(): Node<T>[] {
     const collection = list.collection();
     const keys = list.selectionManager().selectedKeys;
     const items: Node<T>[] = [];
@@ -184,22 +192,24 @@ export function selectState<T>(options: SelectStateOptions<T>): SelectState<T> {
       if (item !== null) items.push(item);
     }
     return items;
-  };
+  }
 
-  const setValue = (value: Key | Key[] | null): void => {
-    const keys = value === null ? [] : Array.isArray(value) ? value : [value];
+  function setValue(next: Key | Key[] | null): void {
+    const keys = next === null ? [] : Array.isArray(next) ? next : [next];
     list.selectionManager().setSelectedKeys(new Set(keys));
-  };
+  }
 
-  const value = (): Key | Key[] | null =>
-    mode() === "single" ? selectedKey() : [...list.selectionManager().selectedKeys];
+  function value(): Key | Key[] | null {
+    return mode() === "single" ? selectedKey() : [...list.selectionManager().selectedKeys];
+  }
 
   // Read once: what a form reset goes back to is where it STARTED, not
   // wherever the caller's default happens to point by then.
   const initial = value();
 
-  const hasItems = (): boolean =>
-    list.collection().size !== 0 || access(options.allowsEmptyCollection) === true;
+  function hasItems(): boolean {
+    return list.collection().size !== 0 || access(options.allowsEmptyCollection) === true;
+  }
 
   return {
     ...list,
@@ -315,13 +325,13 @@ export function select(options: SelectOptions, state: SelectState<unknown>): Sel
   // With only an `aria-label`, the label lives on the trigger itself, and the
   // value's id in `aria-labelledby` would replace it: the trigger joins the
   // list so it keeps its own name.
-  const labelledBy = (): string | undefined => {
+  function labelledBy(): string | undefined {
     const given = access(fieldProps["aria-labelledby"] as MaybeAccessor<string | undefined>);
     if (given !== undefined) return given;
     return access(fieldProps["aria-label"] as MaybeAccessor<string | undefined>) === undefined
       ? undefined
       : triggerId();
-  };
+  }
 
   /**
    * Left and right step through the values WITHOUT opening.
@@ -329,7 +339,7 @@ export function select(options: SelectOptions, state: SelectState<unknown>): Sel
    * A native select does this, and it is the only way to change one from the
    * keyboard without looking at the list.
    */
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     if (access(options.isDisabled) === true) return;
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
     if (state.selectionManager().selectionMode === "multiple") return;
@@ -343,7 +353,7 @@ export function select(options: SelectOptions, state: SelectState<unknown>): Sel
           ? (delegate.getKeyAbove?.(current) ?? null)
           : (delegate.getKeyBelow?.(current) ?? null);
     if (next !== null) state.setSelectedKey(next);
-  };
+  }
 
   return {
     descriptionProps,
@@ -394,6 +404,10 @@ export function select(options: SelectOptions, state: SelectState<unknown>): Sel
   };
 }
 
+interface TypeSelectResult {
+  typeSelectProps: DOMProps;
+}
+
 /**
  * Typing on the closed trigger, which picks the match as a native select does.
  *
@@ -403,13 +417,15 @@ export function select(options: SelectOptions, state: SelectState<unknown>): Sel
 function singleTypeSelect(
   delegate: KeyboardDelegate,
   state: SelectState<unknown>,
-): { typeSelectProps: DOMProps } {
+): TypeSelectResult {
   const { typeSelectProps } = typeSelect({
     keyboardDelegate: delegate,
     selectionManager: state.selectionManager,
     onTypeSelect: (key) => state.setSelectedKey(key),
   });
-  const isSingle = (): boolean => state.selectionManager().selectionMode !== "multiple";
+  function isSingle(): boolean {
+    return state.selectionManager().selectionMode !== "multiple";
+  }
   const onKeyDown = typeSelectProps.onKeyDown as (event: KeyboardEvent) => void;
   const onKeyDownCapture = typeSelectProps.onKeyDownCapture as (event: KeyboardEvent) => void;
   return {
@@ -424,6 +440,11 @@ function singleTypeSelect(
   };
 }
 
+interface HiddenControlPresence {
+  isNeeded: Accessor<boolean>;
+  placed: () => void;
+}
+
 /**
  * Whether a select's hidden control belongs in the page: with a `name`, with
  * `form`, or inside a form, where a required select with no name still has to
@@ -436,7 +457,7 @@ function hiddenControlPresence(
   triggerRef: Accessor<HTMLElement | null>,
   name: Accessor<string | undefined>,
   form: Accessor<string | undefined>,
-): { isNeeded: Accessor<boolean>; placed: () => void } {
+): HiddenControlPresence {
   const [isInsideForm, setInsideForm] = createSignal(false);
   return {
     isNeeded: () => name() !== undefined || form() !== undefined || isInsideForm(),
@@ -531,14 +552,14 @@ export function hiddenSelect(
     },
   );
 
-  const onChange = (event: Event): void => {
+  function onChange(event: Event): void {
     const element = event.currentTarget as HTMLSelectElement;
     if (element.multiple) {
       state.setValue([...element.selectedOptions].map((option) => option.value));
     } else {
       state.setValue(element.value === "" ? null : element.value);
     }
-  };
+  }
 
   return {
     containerProps: {
@@ -621,7 +642,9 @@ const ITEM_TEXT_ATTRIBUTE = "data-barq-item-text";
  */
 export function SelectValue(props: SelectValueComponentProps) {
   const picker = useSelect();
-  const placeholder = (): string => props.placeholder ?? picker.placeholder() ?? "";
+  function placeholder(): string {
+    return props.placeholder ?? picker.placeholder() ?? "";
+  }
 
   const elementProps = mergeProps(
     picker.valueProps,
@@ -633,7 +656,7 @@ export function SelectValue(props: SelectValueComponentProps) {
     },
   );
 
-  const chosen = (): Child => {
+  function chosen(): Child {
     const selected = picker.state.selectedItem();
     if (selected === null) return placeholder();
     const drawn = picker.parts?.registry
@@ -643,7 +666,7 @@ export function SelectValue(props: SelectValueComponentProps) {
       return selected.textValue;
     }
     return [...drawn.childNodes].map((node) => node.cloneNode(true));
-  };
+  }
 
   if (props.children === undefined) {
     return (
@@ -999,12 +1022,16 @@ interface SelectParts {
   placed: () => void;
 }
 
-function useSelectParts(part: string): SelectContextValue & { parts: SelectParts } {
+interface PartsHolder {
+  parts: SelectParts;
+}
+
+function useSelectParts(part: string): SelectContextValue & PartsHolder {
   const picker = useSelect();
   if (picker.parts === undefined) {
     throw new Error(`A ${part} must be rendered inside a SelectRoot.`);
   }
-  return picker as SelectContextValue & { parts: SelectParts };
+  return picker as SelectContextValue & PartsHolder;
 }
 
 export interface SelectTriggerOptions {
@@ -1113,7 +1140,9 @@ export function SelectRoot(props: SelectRootComponentProps) {
   const selectRef = makeRef<HTMLSelectElement>();
   const registry = staticCollection();
   const baseId = id();
-  const isDisabled = (): boolean => props.isDisabled === true;
+  function isDisabled(): boolean {
+    return props.isDisabled === true;
+  }
 
   const state = selectState<StaticEntry>({
     items: registry.entries,
@@ -1237,11 +1266,13 @@ export interface SelectTriggerComponentProps extends StyleProps {
 export function SelectTrigger(props: SelectTriggerComponentProps) {
   const picker = useSelectParts("SelectTrigger");
   const { parts, state } = picker;
-  const isDisabled = (): boolean => parts.isDisabled() || props.isDisabled === true;
-  const isInvalid = (): boolean => {
+  function isDisabled(): boolean {
+    return parts.isDisabled() || props.isDisabled === true;
+  }
+  function isInvalid(): boolean {
     const given = props["aria-invalid"];
     return given === undefined ? parts.isInvalid() : given === true || given === "true";
-  };
+  }
 
   const options = fromProps(cells(props));
   const { buttonProps, isPressed } = button(
@@ -1309,11 +1340,16 @@ export interface ItemAlignmentBoxes {
   /** The part of the option that holds its text. */
   itemText: Box | null;
   /** The viewport the list has to stay inside. */
-  boundary: { width: number; height: number };
+  boundary: Size;
   /** How far from the viewport's edges it must stay. @default 12 */
   padding?: number;
   /** @default "ltr" */
   direction?: "ltr" | "rtl";
+}
+
+export interface ItemAlignedOffset {
+  offset: number;
+  crossOffset: number;
 }
 
 /**
@@ -1328,9 +1364,7 @@ export interface ItemAlignmentBoxes {
  * same height. Horizontally the option's text starts where the value's does,
  * which is what makes the list read as the trigger unfolding.
  */
-export function itemAlignedPosition(
-  boxes: ItemAlignmentBoxes,
-): { offset: number; crossOffset: number } | null {
+export function itemAlignedPosition(boxes: ItemAlignmentBoxes): ItemAlignedOffset | null {
   const { trigger, content, item, boundary } = boxes;
   const padding = boxes.padding ?? 12;
   const value = boxes.value ?? trigger;
@@ -1378,7 +1412,7 @@ function useSelectContent(part: string): SelectContentValue {
   return value;
 }
 
-function SelectContentProvider(props: { value: SelectContentValue; children?: Child }) {
+function SelectContentProvider(props: ProviderProps<SelectContentValue>) {
   return provide(
     SelectContentContext,
     () => props.value,
@@ -1441,18 +1475,18 @@ export function SelectContent(props: SelectContentComponentProps) {
 
   const [isMounted, setMounted] = createSignal(false, { ownedWrite: true });
   const [edges, setEdges] = createSignal({ up: false, down: false });
-  const [aligned, setAligned] = createSignal<{ offset: number; crossOffset: number } | null>(null);
+  const [aligned, setAligned] = createSignal<ItemAlignedOffset | null>(null);
 
-  const measure = (): void => {
+  function measure(): void {
     const viewport = viewportRef();
     if (viewport === null) return;
     const up = viewport.scrollTop > 0;
     const down = Math.ceil(viewport.scrollTop) < viewport.scrollHeight - viewport.clientHeight;
     const current = edges();
     if (current.up !== up || current.down !== down) setEdges({ up, down });
-  };
+  }
 
-  const align = (): void => {
+  function align(): void {
     if (props.position !== "item-aligned") return;
     const trigger = parts.triggerRef();
     const content = contentRef();
@@ -1472,7 +1506,7 @@ export function SelectContent(props: SelectContentComponentProps) {
         direction: parts.dir() ?? locale().direction,
       }),
     );
-  };
+  }
 
   const registering: SelectContentValue = {
     isRegistering: true,
@@ -1691,23 +1725,23 @@ export function SelectScrollButton(props: SelectScrollButtonComponentProps) {
   const isUp = props.direction === "up";
   let timer: ReturnType<typeof setInterval> | undefined;
 
-  const stop = (): void => {
+  function stop(): void {
     clearInterval(timer);
     timer = undefined;
-  };
+  }
 
-  const step = (): void => {
+  function step(): void {
     const viewport = content.viewportRef();
     if (viewport === null) return;
     const row = viewport.querySelector<HTMLElement>('[role="option"]')?.offsetHeight ?? 0;
     const distance = row > 0 ? row : 32;
     viewport.scrollTop += isUp ? -distance : distance;
     content.measure();
-  };
+  }
 
-  const start = (): void => {
+  function start(): void {
     if (timer === undefined) timer = setInterval(step, SCROLL_INTERVAL);
-  };
+  }
 
   onCleanup(stop);
 
@@ -1732,12 +1766,18 @@ export function SelectScrollButton(props: SelectScrollButtonComponentProps) {
   );
 }
 
+interface ScrollButtonProps {
+  elementProps: DOMProps;
+  onLeave: () => void;
+  children?: Child;
+}
+
 /**
  * Its own component so that leaving the document stops the timer: the button
  * goes the moment the list reaches its end, with the pointer still over it and
  * no `pointerleave` to say so.
  */
-function ScrollButton(props: { elementProps: DOMProps; onLeave: () => void; children?: Child }) {
+function ScrollButton(props: ScrollButtonProps) {
   onCleanup(() => props.onLeave());
   return <div {...props.elementProps}>{props.children}</div>;
 }

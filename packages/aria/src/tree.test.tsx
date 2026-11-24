@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { type Child, createSignal, flush, provide } from "@barqjs/core";
+import { type Child, createSignal, flush, provide, type ParentProps } from "@barqjs/core";
 import {
   accessibleName,
   expectNoAriaViolations,
@@ -146,7 +146,12 @@ interface FilesProps {
   renderEmptyState?: (tree: TreeRenderState) => Child;
 }
 
-function Content(props: { folder: Folder; withControls?: boolean }) {
+interface ContentProps {
+  folder: Folder;
+  withControls?: boolean;
+}
+
+function Content(props: ContentProps) {
   return (
     <TreeItemContent>
       {(item: TreeItemRenderState) => (
@@ -219,7 +224,11 @@ function focusedName(): string | null | undefined {
   return document.activeElement?.getAttribute("aria-label");
 }
 
-function press(key: string, options: { shiftKey?: boolean } = {}): void {
+interface PressOptions {
+  shiftKey?: boolean;
+}
+
+function press(key: string, options: PressOptions = {}): void {
   user.keyboard(`{${key}}`, options);
   flush();
 }
@@ -368,7 +377,7 @@ describe("the expand button", () => {
   });
 
   test("is translated with the locale in scope", () => {
-    function German(props: { children?: Child }) {
+    function German(props: ParentProps) {
       provideLocale("de-DE");
       return <>{props.children}</>;
     }
@@ -490,7 +499,7 @@ describe("keyboard", () => {
   });
 
   test("in a right-to-left page the arrows trade places", () => {
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar-AE");
       return <>{props.children}</>;
     }
@@ -1134,8 +1143,13 @@ describe("item events", () => {
   });
 });
 
+interface DescribedProps {
+  showDescription: boolean;
+  label?: string;
+}
+
 describe("descriptions", () => {
-  function Described(props: { showDescription: boolean; label?: string }) {
+  function Described(props: DescribedProps) {
     return (
       <Tree aria-label="Files" items={[{ id: "projects", name: "Projects" }]}>
         {() => (
@@ -1172,11 +1186,13 @@ describe("descriptions", () => {
   });
 });
 
+interface EditableProps {
+  selectionMode?: "none" | "multiple";
+  onSelectionChange?: (keys: "all" | Set<Key>) => void;
+}
+
 describe("Tab navigation", () => {
-  function Editable(props: {
-    selectionMode?: "none" | "multiple";
-    onSelectionChange?: (keys: "all" | Set<Key>) => void;
-  }) {
+  function Editable(props: EditableProps) {
     return (
       <>
         <input aria-label="Before" />
@@ -1278,8 +1294,13 @@ describe("Tab navigation", () => {
   });
 });
 
+interface ActionsProps {
+  behavior?: KeyboardNavigationBehavior;
+  allowsArrows?: boolean;
+}
+
 describe("focusMode", () => {
-  function Actions(props: { behavior?: KeyboardNavigationBehavior; allowsArrows?: boolean }) {
+  function Actions(props: ActionsProps) {
     return (
       <Tree
         aria-label="Actions"
@@ -1302,8 +1323,9 @@ describe("focusMode", () => {
     );
   }
 
-  const action = (name: string): HTMLElement =>
-    screen.getByRole("button", { name: `${name} action` });
+  function action(name: string): HTMLElement {
+    return screen.getByRole("button", { name: `${name} action` });
+  }
 
   test("focus arriving on the row moves on to its first control", () => {
     render(() => <Actions behavior="tab" />);
@@ -1553,6 +1575,18 @@ describe("sections", () => {
   });
 });
 
+interface LoadingProps {
+  isLoading?: boolean;
+  onLoadMore?: () => void;
+  items?: Folder[];
+  renderEmptyState?: (tree: TreeRenderState) => Child;
+}
+
+interface ObserverRecord {
+  callback: IntersectionObserverCallback;
+  targets: Element[];
+}
+
 describe("loading more", () => {
   const LOADING: Folder[] = [
     { id: "photos", name: "Photos" },
@@ -1568,12 +1602,7 @@ describe("loading more", () => {
     { id: "root-loader", name: "Loading", kind: "loader" },
   ];
 
-  function Loading(props: {
-    isLoading?: boolean;
-    onLoadMore?: () => void;
-    items?: Folder[];
-    renderEmptyState?: (tree: TreeRenderState) => Child;
-  }) {
+  function Loading(props: LoadingProps) {
     return (
       <Tree
         aria-label="Loading"
@@ -1638,7 +1667,7 @@ describe("loading more", () => {
 
   test("the sentinel asks for more when it comes into reach, loading or not", () => {
     const real = globalThis.IntersectionObserver;
-    const observers: { callback: IntersectionObserverCallback; targets: Element[] }[] = [];
+    const observers: ObserverRecord[] = [];
     globalThis.IntersectionObserver = class {
       readonly targets: Element[] = [];
       constructor(callback: IntersectionObserverCallback) {
@@ -1674,13 +1703,13 @@ describe("loading more", () => {
       expect(live).toHaveLength(1);
       expect(loads).toBe(0);
 
-      const fire = (): void => {
+      function fire(): void {
         const observer = observers.findLast((candidate) => candidate.targets.length > 0);
         observer?.callback(
           [{ isIntersecting: true } as IntersectionObserverEntry],
           {} as IntersectionObserver,
         );
-      };
+      }
       fire();
       expect(loads).toBe(1);
 
@@ -1837,6 +1866,14 @@ describe("a virtualised tree", () => {
   });
 });
 
+interface HitOptions {
+  altKey?: boolean;
+}
+
+interface DragKeysEvent {
+  keys: Set<Key>;
+}
+
 describe("drag and drop", () => {
   interface DnDProps {
     label?: string;
@@ -1890,14 +1927,16 @@ describe("drag and drop", () => {
     );
   }
 
-  const indicator = (target: DropTarget) => (
-    <DropIndicator target={target} class="indicator">
-      Test
-    </DropIndicator>
-  );
+  function indicator(target: DropTarget) {
+    return (
+      <DropIndicator target={target} class="indicator">
+        Test
+      </DropIndicator>
+    );
+  }
 
   /** One key, down and up, with no activation of a focused button. */
-  function hit(key: string, options: { altKey?: boolean } = {}): void {
+  function hit(key: string, options: HitOptions = {}): void {
     user.keyDown(key, options);
     user.keyUp(key, options);
   }
@@ -1969,7 +2008,7 @@ describe("drag and drop", () => {
   });
 
   test("with a handle, only the drag button starts a pointer drag", async () => {
-    const onDragStart = mock((_event: { keys: Set<Key> }) => {});
+    const onDragStart = mock((_event: DragKeysEvent) => {});
     render(() => <Draggable options={{ pointerDragSource: "handle", onDragStart }} />);
     const projects = rowOf(screen.getByRole("treegrid"), "projects");
     const handle = within(projects).getByRole("button", { name: "Drag Projects" });
@@ -2388,7 +2427,9 @@ describe("selection announcements", () => {
 
   test("a row selected and deselected is named, and the count follows past one", async () => {
     render(() => <Files selectionMode="multiple" withControls />);
-    const box = (name: string): HTMLElement => within(row(name)).getByRole("checkbox");
+    function box(name: string): HTMLElement {
+      return within(row(name)).getByRole("checkbox");
+    }
     user.click(box("Projects"));
     flush();
     expect(await said()).toBe("Projects selected.");

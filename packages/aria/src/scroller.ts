@@ -42,10 +42,10 @@ import { createSignal, type Accessor } from "@barqjs/core";
 
 import { access, type MaybeAccessor } from "./utils.ts";
 
-const pixels = (value: string): number => {
+function pixels(value: string): number {
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : 0;
-};
+}
 
 /** How far from the end still counts as being at it, in px. */
 const TOLERANCE = 8;
@@ -162,7 +162,24 @@ export interface MessageScroller {
   readonly measure: () => void;
 }
 
-const isAnchor = (element: HTMLElement): boolean => element.dataset.scrollAnchor === "true";
+function isAnchor(element: HTMLElement): boolean {
+  return element.dataset.scrollAnchor === "true";
+}
+
+interface ReadingAnchor {
+  element: HTMLElement;
+  top: number;
+}
+
+interface QueuedScroll {
+  messageId: string;
+  options?: MessageScrollerScrollOptions;
+}
+
+interface Padding {
+  start: number;
+  end: number;
+}
 
 export function messageScroller(options: MessageScrollerOptions = {}): MessageScroller {
   // `ownedWrite`: `attach` is what a viewport's `ref` is given, so it measures,
@@ -201,8 +218,8 @@ export function messageScroller(options: MessageScrollerOptions = {}): MessageSc
   // arrives, not again every time something else in the list changes.
   let known = new WeakSet<HTMLElement>();
   let held: HTMLElement | null = null;
-  let reading: { element: HTMLElement; top: number } | null = null;
-  let queued: { messageId: string; options?: MessageScrollerScrollOptions } | null = null;
+  let reading: ReadingAnchor | null = null;
+  let queued: QueuedScroll | null = null;
   let opened = false;
   let lastTop = 0;
   let preserve: MaybeAccessor<boolean | undefined> = true;
@@ -213,46 +230,56 @@ export function messageScroller(options: MessageScrollerOptions = {}): MessageSc
   let intersections: IntersectionObserver | null = null;
   let visibilityFrame: number | null = null;
 
-  const tolerance = (): number => access(options.tolerance) ?? TOLERANCE;
-  const follows = (): boolean => access(options.follow) !== false;
-  const peek = (): number => access(options.scrollPreviousItemPeek) ?? PEEK;
-  const margin = (): number => access(options.scrollMargin) ?? 0;
+  function tolerance(): number {
+    return access(options.tolerance) ?? TOLERANCE;
+  }
+  function follows(): boolean {
+    return access(options.follow) !== false;
+  }
+  function peek(): number {
+    return access(options.scrollPreviousItemPeek) ?? PEEK;
+  }
+  function margin(): number {
+    return access(options.scrollMargin) ?? 0;
+  }
 
-  const contentOf = (): HTMLElement | null => {
+  function contentOf(): HTMLElement | null {
     if (content !== null) return content;
     const first = viewport?.firstElementChild;
     return first instanceof HTMLElement ? first : null;
-  };
+  }
 
-  const itemsOf = (parent: HTMLElement): HTMLElement[] => {
+  function itemsOf(parent: HTMLElement): HTMLElement[] {
     const out: HTMLElement[] = [];
     for (const child of parent.children) {
       if (child instanceof HTMLElement && child !== spacer) out.push(child);
     }
     return out;
-  };
+  }
 
-  const padding = (element: HTMLElement | null): { start: number; end: number } => {
+  function padding(element: HTMLElement | null): Padding {
     if (element === null) return { start: 0, end: 0 };
     const style = getComputedStyle(element);
     return {
       start: pixels(style.paddingBlockStart || style.paddingTop),
       end: pixels(style.paddingBlockEnd || style.paddingBottom),
     };
-  };
+  }
 
   /** Where a row sits in the scrolled content, and where it sits on screen. */
-  const topOf = (element: HTMLElement, box: HTMLElement): number =>
-    element.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop;
-  const screenTopOf = (element: HTMLElement, box: HTMLElement): number =>
-    element.getBoundingClientRect().top - box.getBoundingClientRect().top;
+  function topOf(element: HTMLElement, box: HTMLElement): number {
+    return element.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop;
+  }
+  function screenTopOf(element: HTMLElement, box: HTMLElement): number {
+    return element.getBoundingClientRect().top - box.getBoundingClientRect().top;
+  }
 
   /**
    * Where the rows end, which is not where the content does: the spacer below
    * them is room made for an anchored turn, and a short transcript's column is
    * stretched to fill the viewport.
    */
-  const rowsEnd = (parent: HTMLElement, box: HTMLElement): number => {
+  function rowsEnd(parent: HTMLElement, box: HTMLElement): number {
     const inset = padding(parent);
     const origin = box.getBoundingClientRect().top;
     let bottom = inset.start + inset.end;
@@ -263,12 +290,13 @@ export function messageScroller(options: MessageScrollerOptions = {}): MessageSc
       );
     }
     return bottom;
-  };
+  }
 
-  const distance = (element: HTMLElement): number =>
-    element.scrollHeight - spacerHeight - element.clientHeight - element.scrollTop;
+  function distance(element: HTMLElement): number {
+    return element.scrollHeight - spacerHeight - element.clientHeight - element.scrollTop;
+  }
 
-  const measure = (): void => {
+  function measure(): void {
     if (viewport === null) return;
     const near = tolerance();
     const room = viewport.scrollHeight - spacerHeight - viewport.clientHeight;
@@ -282,9 +310,9 @@ export function messageScroller(options: MessageScrollerOptions = {}): MessageSc
       published = { start, end };
       setEdges(published);
     }
-  };
+  }
 
-  const resizeSpacer = (height: number): void => {
+  function resizeSpacer(height: number): void {
     if (spacer === null) return;
     const next = Math.max(0, Math.ceil(height));
     if (next === spacerHeight) return;
@@ -297,7 +325,7 @@ export function messageScroller(options: MessageScrollerOptions = {}): MessageSc
     const style = parent === null ? null : getComputedStyle(parent);
     const gap = style === null ? 0 : pixels(style.rowGap === "normal" ? style.gap : style.rowGap);
     spacer.style.marginTop = next > 0 && gap > 0 ? `${String(-gap)}px` : "";
-  };
+  }
 
   /**
    * The flag is for the ANIMATION and an instant jump has none. A smooth
@@ -306,7 +334,7 @@ export function messageScroller(options: MessageScrollerOptions = {}): MessageSc
    * where this call is taking them. A jump lands and whatever event follows
    * finds it there.
    */
-  const glide = (behavior: ScrollBehavior): void => {
+  function glide(behavior: ScrollBehavior): void {
     if (behavior !== "smooth") return;
     isAutoscrolling = true;
     setAutoscrolling(true);
@@ -319,9 +347,9 @@ export function messageScroller(options: MessageScrollerOptions = {}): MessageSc
       setAutoscrolling(false);
       measure();
     }, SMOOTH);
-  };
+  }
 
-  const computeVisibility = (): MessageScrollerVisibilityState => {
+  function computeVisibility(): MessageScrollerVisibilityState {
     const parent = contentOf();
     if (viewport === null || parent === null) return NOTHING_VISIBLE;
     const box = viewport.getBoundingClientRect();
@@ -348,9 +376,9 @@ export function messageScroller(options: MessageScrollerOptions = {}): MessageSc
 
     if (visible.length === 0 && current === null) return NOTHING_VISIBLE;
     return { currentAnchorId: current, visibleMessageIds: visible };
-  };
+  }
 
-  const scheduleVisibility = (): void => {
+  function scheduleVisibility(): void {
     if (watchers === 0 || visibilityFrame !== null) return;
     visibilityFrame = requestAnimationFrame(() => {
       visibilityFrame = null;
@@ -363,10 +391,10 @@ export function messageScroller(options: MessageScrollerOptions = {}): MessageSc
         before.visibleMessageIds.every((id, at) => id === next.visibleMessageIds[at]);
       if (!same) setSeenNow(next);
     });
-  };
+  }
 
   /** The row to hold still when older ones arrive above: the first one on screen. */
-  const captureReading = (): void => {
+  function captureReading(): void {
     const parent = contentOf();
     if (viewport === null || parent === null || messages.size === 0) {
       reading = null;
@@ -383,7 +411,7 @@ export function messageScroller(options: MessageScrollerOptions = {}): MessageSc
       }
     }
     reading = null;
-  };
+  }
 
   /**
    * Put the row being read back where it was.
@@ -392,7 +420,7 @@ export function messageScroller(options: MessageScrollerOptions = {}): MessageSc
    * where the browser's own scroll anchoring already held the row and only
    * corrects where it did not, without asking which engine this is.
    */
-  const restoreReading = (): void => {
+  function restoreReading(): void {
     if (viewport === null || reading === null || !reading.element.isConnected) return;
     const moved = screenTopOf(reading.element, viewport) - reading.top;
     if (Math.abs(moved) <= EPSILON) return;
@@ -401,7 +429,7 @@ export function messageScroller(options: MessageScrollerOptions = {}): MessageSc
     reading.top = screenTopOf(reading.element, viewport);
     measure();
     scheduleVisibility();
-  };
+  }
 
   function toEnd(behavior: ScrollBehavior = "smooth"): boolean {
     if (viewport === null) return false;
@@ -428,12 +456,12 @@ export function messageScroller(options: MessageScrollerOptions = {}): MessageSc
     return true;
   }
 
-  const targetFor = (
+  function targetFor(
     element: HTMLElement,
     box: HTMLElement,
     align: MessageScrollerScrollAlign,
     space: number,
-  ): number => {
+  ): number {
     const top = topOf(element, box);
     const height = element.getBoundingClientRect().height;
     const inset = padding(contentOf());
@@ -451,7 +479,7 @@ export function messageScroller(options: MessageScrollerOptions = {}): MessageSc
       return bottom - box.clientHeight + inset.end + space;
     }
     return top - inset.start - space;
-  };
+  }
 
   /**
    * Bring a row to an edge, making room below the rows if there is not enough.
@@ -460,11 +488,11 @@ export function messageScroller(options: MessageScrollerOptions = {}): MessageSc
    * the top so the end of the previous one stays readable, and it is kept
    * there while its reply grows underneath.
    */
-  const toElement = (
+  function toElement(
     element: HTMLElement,
     given: MessageScrollerScrollOptions = {},
     hold = false,
-  ): boolean => {
+  ): boolean {
     const parent = contentOf();
     if (viewport === null || parent === null || !parent.contains(element)) return false;
     const space = (given.scrollMargin ?? margin()) + (hold ? peek() : 0);
@@ -482,23 +510,23 @@ export function messageScroller(options: MessageScrollerOptions = {}): MessageSc
     measure();
     scheduleVisibility();
     return true;
-  };
+  }
 
-  const applied = (): void => {
+  function applied(): void {
     opened = true;
     setPending(false);
-  };
+  }
 
-  const flushQueued = (): boolean => {
+  function flushQueued(): boolean {
     if (queued === null) return false;
     const element = messages.get(queued.messageId);
     if (element === undefined || !toElement(element, queued.options)) return false;
     queued = null;
     applied();
     return true;
-  };
+  }
 
-  const open = (): boolean => {
+  function open(): boolean {
     const position = access(options.defaultScrollPosition);
     if (position === undefined || opened || itemCount === 0) return false;
     let handled: boolean;
@@ -519,10 +547,10 @@ export function messageScroller(options: MessageScrollerOptions = {}): MessageSc
     }
     if (handled) applied();
     return handled;
-  };
+  }
 
   /** The content grew, shrank or was re-laid out, with the same rows in it. */
-  const follow = (): void => {
+  function follow(): void {
     measure();
     if (mode === "following" && follows()) {
       toEnd("auto");
@@ -539,10 +567,10 @@ export function messageScroller(options: MessageScrollerOptions = {}): MessageSc
       return;
     }
     scheduleVisibility();
-  };
+  }
 
   /** A row was added, removed or replaced. The order of the cases is load-bearing. */
-  const reconcile = (): void => {
+  function reconcile(): void {
     const parent = contentOf();
     if (parent === null) return;
     const items = itemsOf(parent);
@@ -581,9 +609,9 @@ export function messageScroller(options: MessageScrollerOptions = {}): MessageSc
     }
 
     follow();
-  };
+  }
 
-  const onScroll = (): void => {
+  function onScroll(): void {
     measure();
     if (viewport === null) return;
     const top = viewport.scrollTop;
@@ -601,9 +629,9 @@ export function messageScroller(options: MessageScrollerOptions = {}): MessageSc
     }
     scheduleVisibility();
     captureReading();
-  };
+  }
 
-  const watch = (): void => {
+  function watch(): void {
     if (viewport === null) return;
     observer?.disconnect();
     mutations?.disconnect();
@@ -637,18 +665,18 @@ export function messageScroller(options: MessageScrollerOptions = {}): MessageSc
       });
       mutations.observe(viewport, { childList: true, subtree: true, characterData: true });
     }
-  };
+  }
 
-  const unwatchVisibility = (): void => {
+  function unwatchVisibility(): void {
     if (visibilityFrame !== null) cancelAnimationFrame(visibilityFrame);
     visibilityFrame = null;
     intersections?.disconnect();
     intersections = null;
     onScreen.clear();
     setSeenNow(NOTHING_VISIBLE);
-  };
+  }
 
-  const observeVisibility = (): void => {
+  function observeVisibility(): void {
     if (viewport === null || watchers === 0) return;
     if (typeof IntersectionObserver !== "undefined" && intersections === null) {
       intersections = new IntersectionObserver(
@@ -674,7 +702,7 @@ export function messageScroller(options: MessageScrollerOptions = {}): MessageSc
       for (const element of messages.values()) intersections.observe(element);
     }
     scheduleVisibility();
-  };
+  }
 
   return {
     isAtEnd: atEnd,
@@ -831,25 +859,22 @@ const MIN_THUMB = 18;
 const SCROLL_END = 100;
 const HIDE_DELAY = 600;
 
-const scale = (
+function scale(
   value: number,
   from: readonly [number, number],
   to: readonly [number, number],
-): number => {
+): number {
   if (from[0] === from[1] || to[0] === to[1]) return to[0];
   const clamped = Math.min(Math.max(value, from[0]), from[1]);
   return to[0] + ((to[1] - to[0]) / (from[1] - from[0])) * (clamped - from[0]);
-};
+}
 
-const scrollRange = (
-  sizes: ScrollbarSizes,
-  direction: "ltr" | "rtl",
-): readonly [number, number] => {
+function scrollRange(sizes: ScrollbarSizes, direction: "ltr" | "rtl"): readonly [number, number] {
   const most = Math.max(0, sizes.content - sizes.viewport);
   // Right to left the position starts at zero and counts DOWN, which is what
   // every engine has reported since they agreed on it.
   return direction === "ltr" ? [0, most] : [-most, 0];
-};
+}
 
 /** How long the thumb is, in px. */
 export function thumbSize(sizes: ScrollbarSizes, minimum: number = MIN_THUMB): number {
@@ -913,6 +938,10 @@ export interface ScrollbarTrackProps {
   readonly onPointerLeave: (event: PointerEvent) => void;
 }
 
+export interface ThumbProps {
+  readonly onPointerDown: (event: PointerEvent) => void;
+}
+
 export interface Scrollbar {
   /** Whether the content is longer than the viewport on this axis. */
   readonly hasOverflow: Accessor<boolean>;
@@ -932,7 +961,7 @@ export interface Scrollbar {
   readonly hoverStart: () => void;
   readonly hoverEnd: () => void;
   readonly trackProps: ScrollbarTrackProps;
-  readonly thumbProps: { readonly onPointerDown: (event: PointerEvent) => void };
+  readonly thumbProps: ThumbProps;
 }
 
 export function scrollbar(options: ScrollbarOptions = {}): Scrollbar {
@@ -961,13 +990,20 @@ export function scrollbar(options: ScrollbarOptions = {}): Scrollbar {
   let scrollTimer: ReturnType<typeof setTimeout> | null = null;
   let restore: (() => void) | null = null;
 
-  const vertical = (): boolean => (access(options.orientation) ?? "vertical") === "vertical";
-  const direction = (): "ltr" | "rtl" =>
-    vertical() ? "ltr" : (access(options.direction) ?? "ltr");
-  const minimum = (): number => access(options.minThumbSize) ?? MIN_THUMB;
-  const hideDelay = (): number => access(options.hideDelay) ?? HIDE_DELAY;
+  function vertical(): boolean {
+    return (access(options.orientation) ?? "vertical") === "vertical";
+  }
+  function direction(): "ltr" | "rtl" {
+    return vertical() ? "ltr" : (access(options.direction) ?? "ltr");
+  }
+  function minimum(): number {
+    return access(options.minThumbSize) ?? MIN_THUMB;
+  }
+  function hideDelay(): number {
+    return access(options.hideDelay) ?? HIDE_DELAY;
+  }
 
-  const sizes = (): ScrollbarSizes | null => {
+  function sizes(): ScrollbarSizes | null {
     if (viewport === null || track === null) return null;
     const style = getComputedStyle(track);
     return vertical()
@@ -985,14 +1021,14 @@ export function scrollbar(options: ScrollbarOptions = {}): Scrollbar {
           paddingStart: pixels(style.paddingLeft),
           paddingEnd: pixels(style.paddingRight),
         };
-  };
+  }
 
-  const position = (): number => {
+  function position(): number {
     if (viewport === null) return 0;
     return vertical() ? viewport.scrollTop : viewport.scrollLeft;
-  };
+  }
 
-  const measure = (): void => {
+  function measure(): void {
     const measured = sizes();
     if (measured === null) return;
     const most = measured.content - measured.viewport;
@@ -1000,15 +1036,15 @@ export function scrollbar(options: ScrollbarOptions = {}): Scrollbar {
     setSize(thumbSize(measured, minimum()));
     setOffset(thumbOffset(position(), measured, direction(), minimum()));
     setValue(most > 0 ? Math.round((Math.min(Math.abs(position()), most) / most) * 100) : 0);
-  };
+  }
 
-  const clear = (timer: ReturnType<typeof setTimeout> | null): null => {
+  function clear(timer: ReturnType<typeof setTimeout> | null): null {
     if (timer !== null) clearTimeout(timer);
     return null;
-  };
+  }
 
   /** Still for long enough, and then gone unless something is holding it. */
-  const settle = (): void => {
+  function settle(): void {
     scrollTimer = clear(scrollTimer);
     scrollTimer = setTimeout(() => {
       scrollTimer = setTimeout(() => {
@@ -1016,24 +1052,24 @@ export function scrollbar(options: ScrollbarOptions = {}): Scrollbar {
         if (!isDragging && !isOver) setScrolling(false);
       }, hideDelay());
     }, SCROLL_END);
-  };
+  }
 
-  const onScroll = (): void => {
+  function onScroll(): void {
     measure();
     setScrolling(true);
     settle();
-  };
+  }
 
-  const watch = (): void => {
+  function watch(): void {
     if (observer === null || viewport === null) return;
     observer.disconnect();
     observer.observe(viewport);
     for (const child of viewport.children) {
       if (child !== track) observer.observe(child);
     }
-  };
+  }
 
-  const moveTo = (event: PointerEvent): void => {
+  function moveTo(event: PointerEvent): void {
     const measured = sizes();
     if (measured === null || viewport === null) return;
     const pointer = (vertical() ? event.clientY : event.clientX) - trackStart;
@@ -1042,9 +1078,9 @@ export function scrollbar(options: ScrollbarOptions = {}): Scrollbar {
     if (vertical()) viewport.scrollTop = next;
     else viewport.scrollLeft = next;
     measure();
-  };
+  }
 
-  const release = (event: PointerEvent): void => {
+  function release(event: PointerEvent): void {
     if (!isDragging) return;
     isDragging = false;
     grab = 0;
@@ -1055,7 +1091,7 @@ export function scrollbar(options: ScrollbarOptions = {}): Scrollbar {
     restore?.();
     restore = null;
     settle();
-  };
+  }
 
   return {
     hasOverflow: overflow,

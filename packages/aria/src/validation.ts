@@ -90,9 +90,13 @@ export function provideValidationErrors(errors: MaybeAccessor<ValidationErrors>)
   if (owner !== null) install(owner, FormValidationContext, () => access(errors));
 }
 
+interface ValidationBehaviorValue {
+  behavior?: ValidationBehavior;
+}
+
 // Wrapped in an object, because a context whose default IS `undefined` cannot
 // tell "nobody provided one" from "somebody provided undefined".
-const ValidationBehaviorContext = createContext<{ behavior?: ValidationBehavior }>({});
+const ValidationBehaviorContext = createContext<ValidationBehaviorValue>({});
 
 /**
  * One behaviour for every field inside a form.
@@ -164,30 +168,31 @@ export function formValidationState<T>(
 ): FormValidationState {
   // The field's own, then the form's, then the default.
   const inherited = useValidationBehavior();
-  const behavior = (): ValidationBehavior =>
-    access(options.validationBehavior) ?? inherited ?? "aria";
+  function behavior(): ValidationBehavior {
+    return access(options.validationBehavior) ?? inherited ?? "aria";
+  }
 
   /** What the caller said, which nothing else can argue with. */
-  const controlled = (): ValidationResult | null => {
+  function controlled(): ValidationResult | null {
     const invalid = access(options.isInvalid);
     if (invalid === undefined) return null;
     return { isInvalid: invalid, validationErrors: [], validationDetails: CUSTOM };
-  };
+  }
 
-  const client = (): ValidationResult | null => {
+  function client(): ValidationResult | null {
     const validate = options.validate;
     if (validate === undefined) return null;
     const value = access(options.value) as T;
     if (value === null || value === undefined) return null;
     const errors = validate(value);
     return resultFor(errors === true ? [] : asArray(errors));
-  };
+  }
 
-  const builtin = (): ValidationResult | null => {
+  function builtin(): ValidationResult | null {
     const found = options.builtinValidation?.();
     if (found === undefined || found.validationDetails.valid) return null;
     return found;
-  };
+  }
 
   // The CELL, read once here where there is an owner. Reading the context on
   // every call would throw from an event handler, which is where a commit
@@ -207,7 +212,7 @@ export function formValidationState<T>(
     return false;
   });
 
-  const server = (): ValidationResult | null => {
+  function server(): ValidationResult | null {
     const errors = serverErrors() ?? {};
     if (serverCleared()) return null;
 
@@ -217,7 +222,7 @@ export function formValidationState<T>(
       ? name.flatMap((entry) => asArray(errors[entry]))
       : asArray(errors[name]);
     return resultFor(messages);
-  };
+  }
 
   /** What has been found but not yet shown, under `"native"`. */
   let pending: ValidationResult = VALID_RESULT;
@@ -226,21 +231,24 @@ export function formValidationState<T>(
   let committed: ValidationResult = VALID_RESULT;
   let queued = false;
 
-  const show = (result: ValidationResult): void => {
+  function show(result: ValidationResult): void {
     if (sameResult(committed, result)) return;
     committed = result;
     setShown(result);
-  };
+  }
 
-  const commitNow = (): void => show(client() ?? builtin() ?? pending);
+  function commitNow(): void {
+    return show(client() ?? builtin() ?? pending);
+  }
 
-  const realtimeValidation = (): ValidationResult =>
-    controlled() ?? server() ?? client() ?? builtin() ?? VALID_RESULT;
+  function realtimeValidation(): ValidationResult {
+    return controlled() ?? server() ?? client() ?? builtin() ?? VALID_RESULT;
+  }
 
-  const displayValidation = (): ValidationResult => {
+  function displayValidation(): ValidationResult {
     if (behavior() === "native") return controlled() ?? server() ?? shown();
     return controlled() ?? server() ?? client() ?? builtin() ?? shown();
-  };
+  }
 
   return {
     realtimeValidation,
@@ -329,20 +337,24 @@ export function fieldValidation<T>(options: FieldValidationOptions<T>): FieldVal
 
   const state = options.state ?? formValidationState<T>(options);
 
-  const behavior = (): ValidationBehavior | undefined =>
-    access(options.validationBehavior) ?? inherited;
+  function behavior(): ValidationBehavior | undefined {
+    return access(options.validationBehavior) ?? inherited;
+  }
 
-  const isInvalid = (): boolean =>
-    access(options.isInvalid) === true || state.displayValidation().isInvalid;
+  function isInvalid(): boolean {
+    return access(options.isInvalid) === true || state.displayValidation().isInvalid;
+  }
 
-  const errors = (): string[] => state.displayValidation().validationErrors;
+  function errors(): string[] {
+    return state.displayValidation().validationErrors;
+  }
 
-  const errorMessage = (): unknown => {
+  function errorMessage(): unknown {
     const given = access(options.errorMessage);
     if (given !== undefined && given !== null && given !== "") return given;
     const found = errors();
     return found.length === 0 ? undefined : found.join(" ");
-  };
+  }
 
   return { state, behavior, isInvalid, errors, errorMessage };
 }
@@ -407,9 +419,11 @@ export function formValidation(
 ): void {
   if (isServer) return;
 
-  const isNative = (): boolean => access(options.validationBehavior) === "native";
+  function isNative(): boolean {
+    return access(options.validationBehavior) === "native";
+  }
 
-  const sync = (element: ValidatableElement, found: ValidationResult): void => {
+  function sync(element: ValidatableElement, found: ValidationResult): void {
     if (typeof element.setCustomValidity !== "function") return;
     if ((element as HTMLInputElement).disabled) return;
 
@@ -421,7 +435,7 @@ export function formValidation(
     if (!element.hasAttribute("title")) element.title = "";
 
     if (!found.isInvalid) state.updateValidation(nativeValidity(element));
-  };
+  }
 
   createEffect(
     () => {
@@ -439,7 +453,7 @@ export function formValidation(
     (element) => {
       if (element === null) return undefined;
 
-      const onInvalid = (event: Event): void => {
+      const onInvalid: (event: Event) => void = (event) => {
         // Only when nothing is being shown yet: committing over a server error
         // the user has not fixed would replace it with the browser's message.
         if (!state.displayValidation().isInvalid) state.commitValidation();
@@ -463,16 +477,16 @@ export function formValidation(
       // `type="email"`) without changing anything the page's own validation
       // reads, and then nothing re-runs the effect above. Read it again here,
       // so the commit that follows is not of the value before the edit.
-      const onInput = (): void => {
+      const onInput: () => void = () => {
         if (isNative()) sync(element, state.realtimeValidation());
       };
-      const onChange = (): void => {
+      function onChange(): void {
         onInput();
         state.commitValidation();
-      };
-      const onReset = (event: Event): void => {
+      }
+      function onReset(event: Event): void {
         if (!event.defaultPrevented) state.resetValidation();
-      };
+      }
 
       element.addEventListener("invalid", onInvalid);
       // In the capture phase, so they read the edit before the control's own

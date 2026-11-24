@@ -153,20 +153,24 @@ export function tooltipTriggerState(options: TooltipTriggerStateOptions = {}): T
   const [isInstant, setInstant] = createSignal(false);
   const key = nextTooltip++;
 
-  const delay = (): number => access(options.delay) ?? WARM_UP;
-  const closeDelay = (): number => access(options.closeDelay) ?? COOL_DOWN;
+  function delay(): number {
+    return access(options.delay) ?? WARM_UP;
+  }
+  function closeDelay(): number {
+    return access(options.closeDelay) ?? COOL_DOWN;
+  }
 
   let closeTimer: ReturnType<typeof setTimeout> | null = null;
 
-  const closeOthers = (): void => {
-    for (const [other, hide] of openTooltips) {
+  function closeOthers(): void {
+    for (const [other, close] of openTooltips) {
       if (other === key) continue;
-      hide(true);
+      close(true);
       openTooltips.delete(other);
     }
-  };
+  }
 
-  const show = (instant: boolean): void => {
+  function show(instant: boolean): void {
     closeTimer = clearTimer(closeTimer);
     closeOthers();
     openTooltips.set(key, hide);
@@ -175,9 +179,9 @@ export function tooltipTriggerState(options: TooltipTriggerStateOptions = {}): T
     overlay.open();
     warmUpTimer = clearTimer(warmUpTimer);
     coolDownTimer = clearTimer(coolDownTimer);
-  };
+  }
 
-  const hide = (immediate?: boolean): void => {
+  function hide(immediate?: boolean): void {
     if (immediate === true || closeDelay() <= 0) {
       closeTimer = clearTimer(closeTimer);
       overlay.close();
@@ -206,9 +210,9 @@ export function tooltipTriggerState(options: TooltipTriggerStateOptions = {}): T
       coolDownTimer = null;
       warm = false;
     }, window);
-  };
+  }
 
-  const warmUp = (): void => {
+  function warmUp(): void {
     closeOthers();
     openTooltips.set(key, hide);
 
@@ -227,7 +231,7 @@ export function tooltipTriggerState(options: TooltipTriggerStateOptions = {}): T
       setInstant(false);
       show(false);
     }, delay());
-  };
+  }
 
   if (!isServer) {
     onCleanup(() => {
@@ -360,19 +364,19 @@ export function tooltipTrigger(
   let hovered = false;
   let focused = false;
 
-  const showIfEngaged = (): void => {
+  function showIfEngaged(): void {
     if (hovered || focused) state.open(focused);
-  };
+  }
 
-  const hideIfIdle = (immediate?: boolean): void => {
+  function hideIfIdle(immediate?: boolean): void {
     if (!hovered && !focused) state.close(immediate);
-  };
+  }
 
-  const forget = (immediate: boolean): void => {
+  function forget(immediate: boolean): void {
     focused = false;
     hovered = false;
     hideIfIdle(immediate);
-  };
+  }
 
   // Escape closes it wherever focus is. A trigger pressed and then escaped
   // keeps DOM focus, so without this the tooltip stays under the pointer with
@@ -382,11 +386,11 @@ export function tooltipTrigger(
       () => (state.isOpen() ? ownerDocument(access(options.ref) as Element | null) : null),
       (doc) => {
         if (doc === null) return undefined;
-        const onKeyDown = (event: KeyboardEvent): void => {
+        function onKeyDown(event: KeyboardEvent): void {
           if (event.key !== "Escape") return;
           event.stopPropagation();
           state.close(true);
-        };
+        }
         doc.addEventListener("keydown", onKeyDown, true);
         return () => doc.removeEventListener("keydown", onKeyDown, true);
       },
@@ -429,10 +433,10 @@ export function tooltipTrigger(
   );
   const { tabIndex: _tabIndex, ...focusHandlers } = focusableProps;
 
-  const dismissOnPress = (): void => {
+  function dismissOnPress(): void {
     if (access(options.shouldCloseOnPress) === false) return;
     forget(true);
-  };
+  }
 
   return {
     triggerProps: mergeProps(focusHandlers, hoverProps, {
@@ -570,8 +574,9 @@ export function TooltipTrigger(props: TooltipTriggerComponentProps) {
   const triggerRef = makeRef<HTMLElement>();
   const options = fromProps(cells(props));
   const group = useTooltipGroup();
-  const isContentHoverable = (): boolean =>
-    (props.isContentHoverable ?? group?.isContentHoverable()) !== false;
+  function isContentHoverable(): boolean {
+    return (props.isContentHoverable ?? group?.isContentHoverable()) !== false;
+  }
   const state = tooltipTriggerState({
     ...options,
     delay: () => props.delay ?? group?.delay(),
@@ -642,7 +647,9 @@ export function Tooltip(props: TooltipComponentProps) {
   const domRef = makeRef<HTMLDivElement>();
   const trigger = useTooltipTrigger();
   const locale = useLocale();
-  const placement = (): Placement => props.placement ?? "top";
+  function placement(): Placement {
+    return props.placement ?? "top";
+  }
 
   const arrowRef = makeRef<Element>();
   const position = overlayPosition({

@@ -89,11 +89,22 @@ function inDocumentOrder(a: Element, b: Element): number {
   return 0;
 }
 
+interface PlacedItem {
+  key: string;
+  element: Element;
+}
+
 export function toggleGroupState(options: ToggleGroupStateOptions = {}): ToggleGroupState {
-  const selectionMode = (): ToggleGroupSelectionMode => access(options.selectionMode) ?? "single";
-  const isDisabled = (): boolean => access(options.isDisabled) === true;
+  function selectionMode(): ToggleGroupSelectionMode {
+    return access(options.selectionMode) ?? "single";
+  }
+  function isDisabled(): boolean {
+    return access(options.isDisabled) === true;
+  }
   const [isYielding, setYielding] = createSignal(false);
-  const isRoving = (): boolean => access(options.rovingFocus) !== false && !isYielding();
+  function isRoving(): boolean {
+    return access(options.rovingFocus) !== false && !isYielding();
+  }
 
   const [selectedKeys, setSelectedKeys] = controllable<readonly string[]>(
     () => access(options.selectedKeys),
@@ -109,17 +120,19 @@ export function toggleGroupState(options: ToggleGroupStateOptions = {}): ToggleG
   // only place it knows its value.
   let keys: readonly string[] = [];
   const [version, bump] = createSignal(0, { equals: false, ownedWrite: true });
-  const order = (): readonly string[] => {
+  function order(): readonly string[] {
     version();
     return keys;
-  };
-  const setOrder = (next: readonly string[]): void => {
+  }
+  function setOrder(next: readonly string[]): void {
     keys = next;
     bump(0);
-  };
+  }
   const [focusedKey, setFocusedKey] = createSignal<string | null>(null);
 
-  const usable = (key: string): boolean => records.get(key)?.isDisabled() !== true;
+  function usable(key: string): boolean {
+    return records.get(key)?.isDisabled() !== true;
+  }
 
   if (!isServer) {
     createEffect(
@@ -128,7 +141,7 @@ export function toggleGroupState(options: ToggleGroupStateOptions = {}): ToggleG
         return { current, elements: current.map((key) => records.get(key)?.element() ?? null) };
       },
       ({ current, elements }) => {
-        const placed: { key: string; element: Element }[] = [];
+        const placed: PlacedItem[] = [];
         for (const [index, key] of current.entries()) {
           const element = elements[index] ?? null;
           // Not all built yet, or not in one tree yet: the registration order
@@ -144,7 +157,7 @@ export function toggleGroupState(options: ToggleGroupStateOptions = {}): ToggleG
     );
   }
 
-  const setSelected = (key: string, next: boolean): void => {
+  function setSelected(key: string, next: boolean): void {
     if (isDisabled()) return;
     const held = selectedKeys();
     const has = held.includes(key);
@@ -152,7 +165,7 @@ export function toggleGroupState(options: ToggleGroupStateOptions = {}): ToggleG
     if (!next) setSelectedKeys(held.filter((each) => each !== key));
     else if (selectionMode() === "multiple") setSelectedKeys([...held, key]);
     else setSelectedKeys([key]);
-  };
+  }
 
   return {
     selectionMode,
@@ -240,7 +253,9 @@ export function toggleGroup(
   state: ToggleGroupState,
 ): ToggleGroupResult {
   const scoped = useDirection();
-  const direction = (): ReadingDirection => access(options.direction) ?? scoped();
+  function direction(): ReadingDirection {
+    return access(options.direction) ?? scoped();
+  }
 
   if (!isServer && options.ref !== undefined) {
     const { ref } = options;
@@ -253,7 +268,7 @@ export function toggleGroup(
     );
   }
 
-  const intentOf = (key: string): Intent | null => {
+  function intentOf(key: string): Intent | null {
     if (key === "Home") return "first";
     if (key === "End") return "last";
     const orientation = access(options.orientation);
@@ -269,9 +284,9 @@ export function toggleGroup(
       if (key === on) return "next";
     }
     return null;
-  };
+  }
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     if (!state.isRoving()) return;
     // With a modifier these are the browser's or the page's: Alt+Left is back.
     if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
@@ -298,12 +313,12 @@ export function toggleGroup(
     event.preventDefault();
     const target = items[to];
     if (target !== undefined && to !== at) focusWithoutScrolling(target);
-  };
+  }
 
-  const onFocusIn = (event: FocusEvent): void => {
+  function onFocusIn(event: FocusEvent): void {
     const key = state.keyOf(targetElement(event));
     if (key !== null) state.setFocusedKey(key);
-  };
+  }
 
   return {
     groupProps: mergeProps(filterDOMProps(options, { labelable: true }), {
@@ -344,8 +359,12 @@ export function toggleGroupItem(
   options: ToggleGroupItemOptions,
   state: ToggleGroupState,
 ): ToggleGroupItemResult {
-  const value = (): string => access(options.value);
-  const isDisabled = (): boolean => state.isDisabled() || access(options.isDisabled) === true;
+  function value(): string {
+    return access(options.value);
+  }
+  function isDisabled(): boolean {
+    return state.isDisabled() || access(options.isDisabled) === true;
+  }
 
   // While the component is built rather than in an effect: a server render
   // runs no effects, and its markup has to name the tab stop too.

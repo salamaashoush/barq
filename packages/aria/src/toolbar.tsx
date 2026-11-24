@@ -56,9 +56,13 @@ export function toolbar(options: ToolbarOptions): ToolbarResult {
   const manager = createFocusManager(options.ref);
   const [nested, setNested] = createSignal(false);
 
-  const orientation = (): Orientation => access(options.orientation) ?? "horizontal";
+  function orientation(): Orientation {
+    return access(options.orientation) ?? "horizontal";
+  }
   // Left and right follow the WRITING direction; up and down never do.
-  const flipped = (): boolean => locale().direction === "rtl" && orientation() === "horizontal";
+  function flipped(): boolean {
+    return locale().direction === "rtl" && orientation() === "horizontal";
+  }
 
   if (!isServer) {
     createEffect(
@@ -72,7 +76,7 @@ export function toolbar(options: ToolbarOptions): ToolbarResult {
 
   let lastFocused: HTMLElement | null = null;
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     // A key from a portalled subtree — a menu the toolbar opened — is not the
     // toolbar's to act on, whatever the DOM says about where it bubbled.
     const target = targetElement(event);
@@ -103,16 +107,16 @@ export function toolbar(options: ToolbarOptions): ToolbarResult {
     // A nested action group must not move focus a second time for one key.
     event.stopPropagation();
     event.preventDefault();
-  };
+  }
 
-  const onBlur = (event: FocusEvent): void => {
+  function onBlur(event: FocusEvent): void {
     const current = event.currentTarget as Element;
     if (contains(current, event.relatedTarget as Element | null)) return;
     if (lastFocused !== null) return;
     lastFocused = targetElement(event) as HTMLElement | null;
-  };
+  }
 
-  const onFocus = (event: FocusEvent): void => {
+  function onFocus(event: FocusEvent): void {
     const current = event.currentTarget as Element;
     if (lastFocused === null) return;
     // Only when focus came from OUTSIDE: moving between two controls inside
@@ -124,7 +128,7 @@ export function toolbar(options: ToolbarOptions): ToolbarResult {
     // since: whatever the browser landed on stands.
     if (getInteractionModality() === "keyboard" && lastFocused.isConnected) lastFocused.focus();
     lastFocused = null;
-  };
+  }
 
   return {
     toolbarProps: mergeProps(filterDOMProps(options, { labelable: true }), {

@@ -70,6 +70,7 @@ import {
   mergeProps,
   type StyleProps,
   styleProps,
+  type ProviderProps,
 } from "./utils.ts";
 
 // ---------------------------------------------------------------------------
@@ -479,6 +480,11 @@ export interface TokenFieldState<V extends TokenFieldValue = TokenFieldValue> {
   setComposing(isComposing: boolean): void;
 }
 
+interface StagedValue<V extends TokenFieldValue> {
+  base: V;
+  next: V;
+}
+
 export function tokenFieldState<V extends TokenFieldValue = TokenFieldValue>(
   options: TokenFieldStateOptions<V> = {},
 ): TokenFieldState<V> {
@@ -492,7 +498,7 @@ export function tokenFieldState<V extends TokenFieldValue = TokenFieldValue>(
   // A write is published at the next flush. Two edits in one tick — an input
   // and the caret move it causes — must build on each other, not both on the
   // value from before the first.
-  let staged: { base: V; next: V } | null = null;
+  let staged: StagedValue<V> | null = null;
 
   return {
     value,
@@ -756,9 +762,14 @@ function scrollCaretIntoView(root: HTMLElement): void {
   }
 }
 
+interface MaybeSegment {
+  type?: unknown;
+  text?: unknown;
+}
+
 function isValidSegment(segment: unknown): segment is TokenFieldSegment {
   if (typeof segment !== "object" || segment === null) return false;
-  const candidate = segment as { type?: unknown; text?: unknown };
+  const candidate = segment as MaybeSegment;
   return (
     (candidate.type === "text" || candidate.type === "token") && typeof candidate.text === "string"
   );
@@ -859,6 +870,16 @@ type ModifiableSelection = Selection & {
   modify?: (alter: "move" | "extend", direction: "left" | "right", granularity: string) => void;
 };
 
+interface CaretDocument {
+  caretPositionFromPoint?: (x: number, y: number) => CaretPoint | null;
+  caretRangeFromPoint?: (x: number, y: number) => Range | null;
+}
+
+interface CaretPoint {
+  offsetNode: Node;
+  offset: number;
+}
+
 export function tokenField<V extends TokenFieldValue>(
   options: TokenFieldOptions,
   state: TokenFieldState<V>,
@@ -870,10 +891,18 @@ export function tokenField<V extends TokenFieldValue>(
   );
   const words = createMemo(() => new Intl.Segmenter(locale().locale, { granularity: "word" }));
 
-  const element = (): HTMLElement | null => (access(ref) as HTMLElement | null) ?? null;
-  const isDisabled = (): boolean => access(options.isDisabled) === true;
-  const isReadOnly = (): boolean => access(options.isReadOnly) === true;
-  const multiline = (): boolean => access(options.allowsNewlines) === true;
+  function element(): HTMLElement | null {
+    return (access(ref) as HTMLElement | null) ?? null;
+  }
+  function isDisabled(): boolean {
+    return access(options.isDisabled) === true;
+  }
+  function isReadOnly(): boolean {
+    return access(options.isReadOnly) === true;
+  }
+  function multiline(): boolean {
+    return access(options.allowsNewlines) === true;
+  }
 
   let dropPosition: Position | null = null;
   let transferred: TokenFieldSegment[] | null = null;
@@ -881,35 +910,35 @@ export function tokenField<V extends TokenFieldValue>(
   // composing is known to have come from outside.
   let expected: TokenFieldValue | null = null;
 
-  const apply = (edit: (value: V) => TokenFieldValue): void => {
+  function apply(edit: (value: V) => TokenFieldValue): void {
     state.setValue((value) => {
       const next = edit(value) as V;
       expected = next;
       return next;
     });
-  };
+  }
 
   let stopTracking: (() => void) | null = null;
-  const startComposition = (): void => {
+  function startComposition(): void {
     const root = element();
     // Android sometimes starts twice without ending in between.
     if (stopTracking === null && root !== null) stopTracking = trackMutations(root);
     state.setComposing(true);
-  };
-  const stopComposition = (): void => {
+  }
+  function stopComposition(): void {
     stopTracking?.();
     stopTracking = null;
     state.setComposing(false);
-  };
+  }
   onCleanup(() => {
     stopTracking?.();
     stopTracking = null;
   });
 
-  const editAt = (
+  function editAt(
     event: InputEvent,
     root: HTMLElement,
-  ): [Position, Position, AbstractRange] | null => {
+  ): [Position, Position, AbstractRange] | null {
     let range: AbstractRange | undefined = (event as InputWithRanges).getTargetRanges?.()[0];
     if (range === undefined) {
       const selection = selectionOf(root);
@@ -918,9 +947,9 @@ export function tokenField<V extends TokenFieldValue>(
     }
     const [start, end] = rangeToPositions(root, range);
     return [start, end, range];
-  };
+  }
 
-  const onBeforeInput = (event: InputEvent): void => {
+  function onBeforeInput(event: InputEvent): void {
     const root = element();
     if (root === null) return;
     // Android sometimes skips `compositionend` before an ordinary input.
@@ -1057,9 +1086,9 @@ export function tokenField<V extends TokenFieldValue>(
     }
 
     event.preventDefault();
-  };
+  }
 
-  const writeClipboard = (event: ClipboardEvent | DragEvent): void => {
+  function writeClipboard(event: ClipboardEvent | DragEvent): void {
     const root = element();
     if (root === null) return;
     if ("clipboardData" in event) event.preventDefault();
@@ -1071,26 +1100,20 @@ export function tokenField<V extends TokenFieldValue>(
     transfer?.setData(CLIPBOARD_MIME_TYPE, JSON.stringify(slice.segments));
     transfer?.setData("text/plain", slice.toString());
     if (event.type === "cut") apply((value) => value.replaceRange(start, end, "", false));
-  };
+  }
 
-  const onPasteCapture = (event: ClipboardEvent): void => {
+  function onPasteCapture(event: ClipboardEvent): void {
     // Safari hands `beforeinput` only the plain text, so the tokens are read here.
     const data = event.clipboardData;
     if (data !== null && [...data.types].includes(CLIPBOARD_MIME_TYPE)) {
       transferred = parseSegments(data.getData(CLIPBOARD_MIME_TYPE));
     }
-  };
+  }
 
-  const onDrop = (event: DragEvent): void => {
+  function onDrop(event: DragEvent): void {
     const root = element();
     if (root === null) return;
-    const doc = root.ownerDocument as Document & {
-      caretPositionFromPoint?: (
-        x: number,
-        y: number,
-      ) => { offsetNode: Node; offset: number } | null;
-      caretRangeFromPoint?: (x: number, y: number) => Range | null;
-    };
+    const doc = root.ownerDocument as Document & CaretDocument;
     if (typeof doc.caretPositionFromPoint === "function") {
       const position = doc.caretPositionFromPoint(event.clientX, event.clientY);
       if (position !== null) dropPosition = getPosition(root, position.offsetNode, position.offset);
@@ -1102,9 +1125,9 @@ export function tokenField<V extends TokenFieldValue>(
     if (data !== null && [...data.types].includes(CLIPBOARD_MIME_TYPE)) {
       transferred = parseSegments(data.getData(CLIPBOARD_MIME_TYPE));
     }
-  };
+  }
 
-  const onBlur = (event: FocusEvent): void => {
+  function onBlur(event: FocusEvent): void {
     // A blur the page dispatched itself is not the user leaving.
     if (!event.isTrusted) return;
     const root = element();
@@ -1118,9 +1141,9 @@ export function tokenField<V extends TokenFieldValue>(
       selection.removeAllRanges();
       state.setValue((value) => value.withSelectedRange(new SelectedRange(value.caretPosition)));
     }
-  };
+  }
 
-  const onMouseDown = (event: MouseEvent): void => {
+  function onMouseDown(event: MouseEvent): void {
     // A triple click selects the line, tokens included; some browsers stop at a token.
     if (event.detail !== 3) return;
     const root = element();
@@ -1132,12 +1155,12 @@ export function tokenField<V extends TokenFieldValue>(
     if (start === null || end === null) return;
     event.preventDefault();
     setTokenFieldSelection(root, new SelectedRange(start, end), true);
-  };
+  }
 
   if (!isServer) {
     createEffect(element, (root) => {
       if (root === null) return undefined;
-      const onCompositionStart = (): void => {
+      const onCompositionStart: () => void = () => {
         startComposition();
         const selection = selectionOf(root);
         if (selection === null || selection.rangeCount === 0) return;
@@ -1198,7 +1221,7 @@ export function tokenField<V extends TokenFieldValue>(
     createEffect(element, (root) => {
       if (root === null) return undefined;
       const doc = ownerDocument(root);
-      const onSelectionChange = (): void => {
+      const onSelectionChange: () => void = () => {
         const marked = root as HTMLElement & Marked;
         if (marked[PROGRAMMATIC] === true) {
           marked[PROGRAMMATIC] = false;
@@ -1222,11 +1245,11 @@ export function tokenField<V extends TokenFieldValue>(
   }
 
   /** Move the caret as the browser would, but past a token in one step. */
-  const moveSelection = (
+  function moveSelection(
     direction: "left" | "right",
     granularity: "character" | "word",
     extend = false,
-  ): boolean => {
+  ): boolean {
     const root = element();
     const selection: ModifiableSelection | null = root === null ? null : selectionOf(root);
     if (
@@ -1254,9 +1277,9 @@ export function tokenField<V extends TokenFieldValue>(
       const to = getPosition(root, selection.focusNode, selection.focusOffset);
       if (!isSamePosition(from, to)) return true;
     }
-  };
+  }
 
-  const toLineEdge = (direction: TokenDirection): boolean => {
+  function toLineEdge(direction: TokenDirection): boolean {
     const root = element();
     const selection = root === null ? null : getTokenFieldSelection(root);
     if (root === null || selection === null) return false;
@@ -1267,14 +1290,14 @@ export function tokenField<V extends TokenFieldValue>(
     if (boundary === null) return false;
     setTokenFieldSelection(root, new SelectedRange(boundary), true);
     return true;
-  };
+  }
 
-  const history = (step: "undo" | "redo"): boolean => {
+  function history(step: "undo" | "redo"): boolean {
     // The browser's own undo is the one that knows about the composition.
     if (untrack(state.isComposing)) return false;
     apply((value) => (step === "undo" ? value.undo() : value.redo()));
     return true;
-  };
+  }
 
   const word = isMac() ? "Alt" : "Control";
   const shortcuts: KeyboardShortcutBindings = {
@@ -1362,7 +1385,7 @@ export function token(ref: ElementRef<HTMLElement>): TokenResult {
       (element) => {
         if (element === null) return undefined;
         const doc = ownerDocument(element);
-        const onSelectionChange = (): void => {
+        const onSelectionChange: () => void = () => {
           const selection = selectionOf(element);
           const range =
             selection === null || selection.rangeCount === 0 ? null : selection.getRangeAt(0);
@@ -1399,6 +1422,10 @@ export function token(ref: ElementRef<HTMLElement>): TokenResult {
   };
 }
 
+interface AdoptingRoot {
+  adoptedStyleSheets?: CSSStyleSheet[];
+}
+
 /**
  * Hide the browser's highlight of a selected token, which `user-select: all`
  * draws over the token's own styling. A nearly transparent colour, because
@@ -1406,9 +1433,7 @@ export function token(ref: ElementRef<HTMLElement>): TokenResult {
  */
 function insertSelectionStyle(element: Element): (() => void) | undefined {
   if (typeof CSSStyleSheet !== "function") return undefined;
-  const root = element.getRootNode() as (Document | ShadowRoot) & {
-    adoptedStyleSheets?: CSSStyleSheet[];
-  };
+  const root = element.getRootNode() as (Document | ShadowRoot) & AdoptingRoot;
   if (root.adoptedStyleSheets === undefined) return undefined;
   const marker = Symbol.for("barq.tokenfield.selectionStyle");
   if (
@@ -1551,7 +1576,7 @@ export function TokenField<V extends TokenFieldValue = TokenFieldValue>(
   );
 }
 
-function TokenInputProvider(props: { value: TokenInputValue; children?: Child }) {
+function TokenInputProvider(props: ProviderProps<TokenInputValue>) {
   return provide(
     TokenInputContext,
     () => props.value,

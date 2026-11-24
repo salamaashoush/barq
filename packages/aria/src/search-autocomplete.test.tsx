@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child, createRoot, createSignal, flush } from "@barqjs/core";
+import { createRoot, createSignal, flush, type ParentProps } from "@barqjs/core";
 import { ref as makeRef } from "@barqjs/primitives/refs";
 import {
   accessibleName,
@@ -450,7 +450,7 @@ describe("SearchAutocomplete's clear button and Escape", () => {
   });
 
   test("the clear button's text is in the page's language", () => {
-    function German(props: { children?: Child }) {
+    function German(props: ParentProps) {
       const localeProps = provideLocale(() => "de-DE");
       return <div {...localeProps}>{props.children}</div>;
     }
@@ -464,7 +464,9 @@ describe("SearchAutocomplete's clear button and Escape", () => {
 });
 
 describe("SearchAutocomplete loadingState", () => {
-  const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+  function wait(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
 
   test("no indicator while the list is closed", async () => {
     render(() => <Search loadingState="filtering" />);
@@ -677,7 +679,9 @@ describe("searchAutocomplete", () => {
         { label: "test label", inputRef, listBoxRef },
         state,
       );
-      const read = (value: unknown): unknown => (typeof value === "function" ? value() : value);
+      function read(value: unknown): unknown {
+        return typeof value === "function" ? value() : value;
+      }
       expect(read(labelProps.id)).toBeTruthy();
       expect(read(inputProps["aria-labelledby"])).toBe(read(labelProps.id));
       expect(read(inputProps.role)).toBe("combobox");

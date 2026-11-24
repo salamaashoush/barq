@@ -1,24 +1,26 @@
-import type { Accessor, Child, Incoming } from "@barqjs/core";
+import type { Accessor, Child, Incoming, ParentProps } from "@barqjs/core";
 import { mergeRefs, type Ref, type RefTarget } from "@barqjs/primitives/refs";
 
 import { HIDDEN_INPUT_STYLE, pressesInput, type ToggleElementType } from "./toggle.ts";
 import { access, type DOMProps, mergeProps } from "./utils.ts";
 
-/**
- * A toggle's own element with its hidden input inside, the children after it.
- * A `<span>` forwards a press on itself to the input, which a `<label>` does
- * without being asked.
- */
-export function toggleInput(parts: {
+export interface ToggleInputParts {
   elementType: ToggleElementType;
   outerProps: DOMProps;
   inputProps: DOMProps;
   focusProps: DOMProps;
   inputRef: Ref<HTMLInputElement>;
   ref: RefTarget<HTMLInputElement> | undefined;
-  children: Incoming<{ children?: Child }>["children"];
+  children: Incoming<ParentProps>["children"];
   isDisabled: Accessor<boolean>;
-}) {
+}
+
+/**
+ * A toggle's own element with its hidden input inside, the children after it.
+ * A `<span>` forwards a press on itself to the input, which a `<label>` does
+ * without being asked.
+ */
+export function toggleInput(parts: ToggleInputParts) {
   const { inputProps, focusProps, inputRef, ref, children } = parts;
   if (parts.elementType === "span") {
     const onClick = pressesInput(() => access(inputRef), parts.isDisabled);
@@ -51,6 +53,14 @@ function present(value: unknown): boolean {
   return value !== undefined && value !== null && value !== false && value !== "";
 }
 
+export interface HelpTextParts {
+  descriptionProps: DOMProps;
+  errorMessageProps: DOMProps;
+  description: Accessor<unknown>;
+  /** What the error says, or nothing while the control is valid. */
+  errorMessage: Accessor<unknown>;
+}
+
 /**
  * A toggle with its help text and its error after it.
  *
@@ -58,16 +68,7 @@ function present(value: unknown): boolean {
  * would be read once as the name and again as the description. Nothing is
  * rendered for either while it has nothing to say.
  */
-export function withHelpText(
-  control: Child,
-  parts: {
-    descriptionProps: DOMProps;
-    errorMessageProps: DOMProps;
-    description: Accessor<unknown>;
-    /** What the error says, or nothing while the control is valid. */
-    errorMessage: Accessor<unknown>;
-  },
-) {
+export function withHelpText(control: Child, parts: HelpTextParts) {
   return (
     <>
       {control}

@@ -133,31 +133,39 @@ export function textField(
 
   formReset(ref as ElementRef<HTMLInputElement>, access(options.defaultValue) ?? "", setValue);
 
-  const isDisabled = (): boolean => access(options.isDisabled) === true;
-  const isReadOnly = (): boolean => access(options.isReadOnly) === true;
-  const isRequired = (): boolean => access(options.isRequired) === true;
-  const isNative = (): boolean => behavior() === "native";
+  function isDisabled(): boolean {
+    return access(options.isDisabled) === true;
+  }
+  function isReadOnly(): boolean {
+    return access(options.isReadOnly) === true;
+  }
+  function isRequired(): boolean {
+    return access(options.isRequired) === true;
+  }
+  function isNative(): boolean {
+    return behavior() === "native";
+  }
 
   // A blur commits only what was edited, as `change` would: tabbing through a
   // field the server rejected has fixed nothing, and must not clear the error.
   let focusedValue: string | null = null;
-  const onFocus = (): void => {
+  function onFocus(): void {
     focusedValue = value();
-  };
-  const onBlur = (): void => {
+  }
+  function onBlur(): void {
     const edited = focusedValue !== null && focusedValue !== value();
     focusedValue = null;
     if (edited) validation.commitValidation();
-  };
+  }
 
-  const onInput = (event: Event): void => {
+  function onInput(event: Event): void {
     const input = event.target as HTMLInputElement;
     setValue(input.value);
     // The field has already changed itself. When the component is controlled
     // and its owner declined, or it is read-only, nothing re-renders on a
     // value that did not move, so the DOM has to be put back by hand.
     if (input.value !== value()) input.value = value();
-  };
+  }
 
   return {
     value,
@@ -230,15 +238,15 @@ export function searchField(
 ): SearchFieldResult {
   const result = textField({ ...options, type: () => access(options.type) ?? "search" }, ref);
 
-  const clear = (): void => {
+  function clear(): void {
     if (access(options.isReadOnly) === true || access(options.isDisabled) === true) return;
     result.setValue("");
     const input = access(ref) as HTMLInputElement | null;
     if (input !== null) input.value = "";
     options.onClear?.();
-  };
+  }
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     if (access(options.isReadOnly) === true || access(options.isDisabled) === true) return;
     if (event.key === "Enter") {
       // Without a handler of its own, Enter is the form's: it submits.
@@ -257,7 +265,7 @@ export function searchField(
       event.stopPropagation();
       clear();
     }
-  };
+  }
 
   const { buttonProps } = button({
     isDisabled: () => access(options.isDisabled) === true || access(options.isReadOnly) === true,
