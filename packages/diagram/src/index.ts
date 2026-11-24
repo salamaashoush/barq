@@ -2,11 +2,20 @@
  * `@barqjs/diagram`: Excalidraw's scenes in barq. The element model is
  * `@excalidraw/element`; this package carries the rest of what Excalidraw's
  * React package does around it, without React: restoring and serializing
- * scenes, the canvas and SVG renderers, export, fonts, and a read-only viewer.
+ * scenes, the canvas and SVG renderers, export, fonts, a read-only viewer and
+ * an editor.
  */
 
 export { DiagramViewer } from "./viewer.tsx";
-export type { DiagramScene, DiagramViewerApi, DiagramViewerProps } from "./viewer.tsx";
+export { DiagramEditor } from "./diagram-editor.tsx";
+export type { DiagramEditorProps } from "./diagram-editor.tsx";
+export type {
+  DiagramChangeListener,
+  DiagramEditorApi,
+  SceneData,
+  TextEditRequest,
+} from "./editor/editor.ts";
+export type { DiagramViewerApi, DiagramViewerProps } from "./viewer.tsx";
 
 export { SceneCanvas } from "./scene-canvas.ts";
 export {
@@ -62,6 +71,7 @@ export {
   validateLibraryUrl,
 } from "./data/library.ts";
 export type {
+  DiagramScene,
   ExportedDataState,
   ExportedLibraryData,
   ImportedDataState,

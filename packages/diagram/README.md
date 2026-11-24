@@ -6,8 +6,8 @@ shape generation are Excalidraw's own framework-free packages
 (`@excalidraw/element`, `@excalidraw/math`, `@excalidraw/common`), used as
 they are. This package carries the rest of what Excalidraw's React package
 does around them, without React: restoring and serializing scenes, the canvas
-and SVG renderers, export, fonts, and a read-only viewer that renders on the
-server.
+and SVG renderers, export, fonts, a read-only viewer that renders on the
+server, and an editor.
 
 An `.excalidraw` file, or a PNG or SVG exported with its scene, opens here
 unchanged, and what this package writes opens in Excalidraw.
@@ -70,6 +70,90 @@ background included.
 `api` receives `getSceneElements()`, `getAppState()` and `getFiles()` under
 Excalidraw's names, with `scrollToContent()`, `zoomIn()`, `zoomOut()`,
 `resetZoom()` and `refresh()`.
+
+## The editor
+
+`DiagramEditor` is Excalidraw's editor: draw, select, move, resize, rotate,
+bind arrows, group, lock, align, undo and redo, on the same element model.
+
+```tsx
+import { DiagramEditor, type DiagramEditorApi, serializeAsJSON } from "@barqjs/diagram";
+
+let api: DiagramEditorApi | undefined;
+
+<DiagramEditor
+  initialData={scene}
+  label="Release plan"
+  height={600}
+  api={(editor) => (api = editor)}
+  onChange={(elements, appState, files) =>
+    save(serializeAsJSON(elements, appState, files, "local"))
+  }
+/>;
+```
+
+`api` is Excalidraw's `excalidrawAPI` under its names: `updateScene`,
+`getSceneElements`, `getSceneElementsIncludingDeleted`, `getAppState`,
+`getFiles`, `setActiveTool`, `scrollToContent`, `resetScene`, `refresh`,
+`history.clear` and `onChange`. `updateScene`'s `captureUpdate` says how a
+change is undone, as in Excalidraw: `"IMMEDIATELY"`, `"EVENTUALLY"` or
+`"NEVER"`. `theme` (or the `colorScheme()` above), `viewModeEnabled` and
+`gridModeEnabled` follow their props. On the server it renders the empty
+region, which hydrates into the editor.
+
+What it does, and the keys Excalidraw gives each:
+
+- tools: selection `V` or `1`, rectangle `R` or `2`, diamond `D` or `3`,
+  ellipse `O` or `4`, arrow `A` or `5` (again to change its kind), line `L`
+  or `6`, freedraw `P`, `X` or `7`, hand `H`; `Q` keeps the tool after
+  drawing; shift draws equal sides and alt draws from the centre;
+- lines and arrows are drawn by dragging, or click by click and ended with
+  Enter or Escape; a line closed on its first point becomes a polygon; Enter
+  (Ctrl+Enter on an arrow) or a double-click opens the line editor, where
+  points drag, midpoints add points and Delete removes them;
+- arrows bind to the shapes they start and end on, and follow them;
+- selection by click, shift-click, a box, and alt-click through overlapping
+  elements; a click selects a whole group, a double-click enters it and
+  Escape leaves it; Ctrl+A selects everything;
+- the selection moves by dragging (shift keeps one axis, alt duplicates) and
+  by the arrow keys (shift for five pixels, a grid cell on the grid); its
+  handles resize (shift keeps the ratio, alt resizes from the centre) and
+  rotate (shift in steps of 15°);
+- Delete, Ctrl+D duplicates, Ctrl+`[` and `]` restack (with shift, or alt on
+  macOS, to the back and front), Ctrl+G groups and Ctrl+Shift+G ungroups,
+  Ctrl+Shift+L locks (and unlocks everything with nothing selected),
+  Ctrl+Shift with an arrow aligns, Alt+H and Alt+V distribute;
+- Ctrl+Z undoes, Ctrl+Shift+Z or Ctrl+Y redoes;
+- space-drag, the middle button and the hand tool pan; ctrl-wheel and a
+  pinch zoom; Ctrl+`=`, `-` and `0` zoom, Shift+1 fits; Ctrl+`'` shows the
+  grid, which elements snap to.
+
+Ctrl is Cmd on macOS.
+
+### Accessibility
+
+The editor is a focusable `application` region with a name (`label`) and a
+description of its keys. A polite live region announces the active tool, the
+selection and each action. Every action has a key, and three keys Excalidraw
+does not have make it reachable without a pointer: Enter with a drawing tool
+draws its shape in the middle of the viewport; Tab and Shift+Tab move the
+selection through the elements, a group as one stop, and past the last let
+focus leave the editor; Alt+Shift+H and Alt+Shift+V centre the selection.
+With nothing selected the arrow keys pan.
+
+### Without barq
+
+`@barqjs/diagram/editor` exports the editor itself, `DiagramEditor`, which
+imports nothing of barq: give it a focusable container and three canvases
+(the scene, the element being drawn, and the selection on top) and it is the
+same editor, with `api`, `state`, `onAnnounce` and `onTextEditRequest`. Its
+state changes at once; the store, history and `onChange` follow once per
+input event, and the canvases draw once a frame, so a drag mutates the
+dragged elements and redraws without anything reactive in between.
+
+Text editing is left to the host: a double-click, or Enter on text or a
+shape, calls `onTextEditRequest` with the scene point and the shape a text
+editor should open on.
 
 ## Server rendering
 
@@ -176,7 +260,8 @@ uses (`wheelNavigation`, `keyboardNavigation`, `PointerNavigation`,
   `exportToCanvas`, `restore` and `convertToExcalidrawElements` take the same
   arguments and return the same things.
 - `<Excalidraw viewModeEnabled>` for showing a scene is `<DiagramViewer>`,
-  and `excalidrawAPI` is `api`.
+  `<Excalidraw>` for editing one is `<DiagramEditor>`, and `excalidrawAPI` is
+  `api`.
 - `window.EXCALIDRAW_ASSET_PATH` works as before; `setFontAssetPath` says it
   without a global.
 

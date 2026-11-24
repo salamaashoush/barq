@@ -11,7 +11,7 @@ import type {
 
 import { getDefaultAppState } from "./app-state.ts";
 import { restore } from "./data/restore.ts";
-import type { ImportedDataState } from "./data/types.ts";
+import type { DiagramScene } from "./data/types.ts";
 import {
   PointerNavigation,
   type ViewportState,
@@ -23,9 +23,6 @@ import {
 import { SceneCanvas } from "./scene-canvas.ts";
 import type { AppState, BinaryFiles } from "./types.ts";
 import type { ViewportFit } from "./viewport.ts";
-
-/** A scene to show: a parsed `.excalidraw` file, or what `loadFromBlob` or `restore` returns. */
-export type DiagramScene = Pick<ImportedDataState, "elements" | "appState" | "files">;
 
 /** What a page can do with a viewer once it is mounted; Excalidraw's API names. */
 export interface DiagramViewerApi {

@@ -5,7 +5,7 @@ import { Fonts } from "./fonts/fonts.ts";
 import { restoreElements } from "./data/restore.ts";
 import { exportScene } from "./scene/export.ts";
 import { createSvgDocument } from "./svg-document.ts";
-import type { DiagramScene } from "./viewer.tsx";
+import type { DiagramScene } from "./data/types.ts";
 
 export interface SvgStringOptions {
   theme?: Theme;
