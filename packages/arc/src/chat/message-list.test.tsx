@@ -3,6 +3,7 @@ import { type Child, createSignal, flush } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user } from "@barqjs/testing";
 
+import { serverProcess } from "../ssr-harness.ts";
 import { hydrates, settle } from "../test-arc.ts";
 import { type MessageListApi, MessageList } from "./message-list.tsx";
 import type { ChatMessage } from "./model.ts";
@@ -345,6 +346,64 @@ describe("MessageList", () => {
     ] as const;
     for (const [name, cls] of pairs) expect(slot(name).classList.contains(cls)).toBe(true);
     expect(slot("message-list").classList.contains("mine")).toBe(true);
+  });
+
+  test("a server writes the newest rows, at the foot of the estimated space above them", async () => {
+    const { code, html, errors } = await serverProcess(`
+      import { renderToStringAsync } from "@barqjs/server";
+      import { MessageList } from ${JSON.stringify(new URL("./index.ts", import.meta.url).pathname)};
+      const messages = Array.from({ length: 200 }, (_, n) => ({
+        id: "m" + n,
+        author: { id: n % 2 === 0 ? "a" : "b", name: n % 2 === 0 ? "Alex" : "Sam" },
+        createdAt: new Date(Date.UTC(2026, 4, 10, 8, 0) + n * 60000),
+        body: "Message " + n,
+      }));
+      export async function page() {
+        return await renderToStringAsync(() => (
+          <MessageList messages={messages} timeZone="UTC" now={new Date("2026-05-10T12:00:00Z")} serverRows={10} />
+        ));
+      }
+    `);
+    expect(errors).toBe("");
+    expect(code).toBe(0);
+    const bodies = [...html.matchAll(/Message (\d+)/gu)].map((match) => Number(match[1]));
+    expect(bodies).toEqual([190, 191, 192, 193, 194, 195, 196, 197, 198, 199]);
+    // The rows above are space by estimate, 64px each, with the day's line.
+    const rows = /<div[^>]*data-slot="message-list-rows"[^>]*>/u.exec(html)?.[0] ?? "";
+    expect(rows).toContain("data-seeded");
+    expect(rows).toContain(`padding-block-start: ${String(191 * 64)}px`);
+    // Laid out bottom up, so the browser opens it at the newest with no script.
+    const viewport = /<div[^>]*data-slot="message-list-viewport"[^>]*>/u.exec(html)?.[0] ?? "";
+    expect(viewport).toContain("flex-direction: column-reverse");
+    expect(html).toContain("<article");
+  });
+
+  test("hydrated, the server's rows are measured where they stand and the list scrolls from them", async () => {
+    const result = await hydrates(`
+      import { MessageList } from ${JSON.stringify(new URL("./index.ts", import.meta.url).pathname)};
+      const messages = Array.from({ length: 60 }, (_, n) => ({
+        id: "m" + n,
+        author: { id: n % 2 === 0 ? "a" : "b", name: n % 2 === 0 ? "Alex" : "Sam" },
+        createdAt: new Date(Date.UTC(2026, 4, 10, 8, 0) + n * 60000),
+        body: "Message " + n,
+      }));
+      export function Page() {
+        return <MessageList messages={messages} timeZone="UTC" now={new Date("2026-05-10T12:00:00Z")} serverRows={12} />;
+      }
+    `);
+    const newest = result.container.querySelector('[data-key="m59"]');
+    expect(slot("message-list-rows").hasAttribute("data-seeded")).toBe(true);
+    expect(articles()).toHaveLength(12);
+    heights.set("m59", 90);
+    const viewport = await laidOut();
+    expect(slot("message-list-rows").hasAttribute("data-seeded")).toBe(false);
+    expect(slot("message-list-viewport").style.flexDirection).toBe("");
+    // The same element, now placed by the layout at the measured height.
+    expect(result.container.querySelector('[data-key="m59"]')).toBe(newest);
+    expect(rowTop("m59")).toBe(rowsHeight() - 90);
+    expect(rowTop("m58")).toBe(rowsHeight() - 90 - 40);
+    expect(atBottom(viewport)).toBe(true);
+    result.unmount();
   });
 
   test("a server's markup is hydrated in place", async () => {

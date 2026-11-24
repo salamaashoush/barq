@@ -1318,7 +1318,11 @@ first opens. Rich message content is drawn by `RichTextRenderer` from
   row, the window resizing) the list keeps its place: at the newest message
   if the reader was there, otherwise with the first row on screen where it
   was. It asks for older pages as the top comes within a screen, and away
-  from the end Jump to latest counts what has arrived. Runs of one author
+  from the end Jump to latest counts what has arrived. A server writes the
+  newest rows (`serverRows`, a tall window's worth by default) at the foot
+  of the estimated space above them, in a viewport laid out bottom up so the
+  page opens on them before any script; once hydrated, the browser measures
+  those rows where they stand and hands them to the virtualizer in place. Runs of one author
   are grouped, each day has a line and the first unread a New line, which
   the list opens at. Messages are a feed of articles, one Tab stop: the
   arrows and Page Up and Page Down move between them, Home and End go to

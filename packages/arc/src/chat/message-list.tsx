@@ -114,6 +114,12 @@ export interface MessageListProps extends MessageHandlers, Customisable<Slots> {
   groupWithin?: number;
   /** A row's height before it has been measured, in px. @default 64 */
   estimatedRowHeight?: number;
+  /**
+   * How many rows, back from the newest, a server draws and a hydrating page
+   * keeps until the browser has measured them. @default as many estimated
+   * rows as fill 1600px
+   */
+  serverRows?: number;
   /** @default "plain" */
   appearance?: "plain" | "bubble";
   /** One message, in place of `MessageItem`; spread `item` onto the article it draws. */
@@ -169,6 +175,8 @@ const HANDLER_KEYS = [
 ] as const satisfies readonly (keyof MessageHandlers)[];
 
 const FIVE_MINUTES = 5 * 60 * 1000;
+/** What a server's rows fill by estimate: a tall window's height and some. */
+const SERVER_HEIGHT = 1600;
 /** How near the end still counts as at it, in px. */
 const TOLERANCE = 8;
 
@@ -287,6 +295,18 @@ export function MessageList(props: MessageListProps) {
     return messageKeys().at(-1) ?? null;
   };
 
+  // A server, and a page hydrating its markup, know no heights: they draw the
+  // newest rows in flow at the foot of the estimated space above them, and the
+  // viewport is laid out bottom up so it opens on them with no script. Once the
+  // browser has a viewport, those rows are measured where they stand and the
+  // virtualizer takes over with the same rows at the same place.
+  const [seeded, setSeeded] = createSignal(true, { ownedWrite: true });
+  const seedKeys = createMemo((): Key[] => {
+    const all = rows();
+    const count = props.serverRows ?? Math.ceil(SERVER_HEIGHT / (props.estimatedRowHeight ?? 64));
+    return all.slice(Math.max(0, all.length - count)).map((row) => row.key);
+  });
+
   const virtual = virtualizer({
     layout: layoutFor,
     collection,
@@ -337,10 +357,26 @@ export function MessageList(props: MessageListProps) {
     props.onLoadOlder?.();
   };
 
+  /** Measure the server's rows where they stand and give the list to the virtualizer. */
+  const handOver = (element: HTMLElement): void => {
+    if (viewportHeight() <= 0) return;
+    height();
+    for (const row of element.querySelectorAll<HTMLElement>('[data-slot="message-list-row"]')) {
+      const key = row.dataset.key;
+      if (key !== undefined)
+        virtual.measure(key, { width: row.offsetWidth, height: row.offsetHeight });
+    }
+    setSeeded(false);
+  };
+
   /** Put the list back where the reader was, after the layout moved under them. */
   const restore = (): void => {
     const element = viewport();
     if (element === null) return;
+    if (seeded()) {
+      handOver(element);
+      return;
+    }
     if (!opened && rows().length > 0) {
       opened = true;
       const marker = layoutFor.getLayoutInfo("unread");
@@ -362,7 +398,7 @@ export function MessageList(props: MessageListProps) {
 
   const onScroll = (): void => {
     const element = viewport();
-    if (element === null) return;
+    if (element === null || untrack(seeded)) return;
     pinned = element.scrollTop >= bottomOf(element) - TOLERANCE;
     capture(element);
     publish(pinned);
@@ -371,7 +407,7 @@ export function MessageList(props: MessageListProps) {
 
   if (!isServer) {
     createEffect(
-      () => [height(), viewportHeight(), collection()] as const,
+      () => [height(), viewportHeight(), collection(), seeded()] as const,
       () => restore(),
     );
   }
@@ -518,6 +554,12 @@ export function MessageList(props: MessageListProps) {
   for (const name of HANDLER_KEYS) {
     Object.defineProperty(handlers, name, { enumerable: true, get: () => props[name] });
   }
+  /** Where the first of the server's rows sits, by the estimates of the rows above it. */
+  const seedTop = (): number => {
+    height();
+    const top = seedKeys()[0];
+    return top === undefined ? 0 : (layoutFor.getLayoutInfo(top)?.rect.y ?? 0);
+  };
   const placed = createMemo(
     () => new Map<Key, LayoutInfo>(virtual.visible().map((info) => [info.key, info])),
   );
@@ -534,6 +576,7 @@ export function MessageList(props: MessageListProps) {
         ref={viewport.set}
         class={cls().viewport}
         data-slot="message-list-viewport"
+        style={{ flexDirection: seeded() ? "column-reverse" : undefined }}
         onScroll={onScroll}
         onKeyDown={onKeyDown}
         onFocusIn={(event: FocusEvent) => {
@@ -559,9 +602,14 @@ export function MessageList(props: MessageListProps) {
               role="feed"
               aria-label={label()}
               aria-busy={props.isLoadingOlder === true ? "true" : "false"}
-              style={{ height: `${String(height())}px` }}
+              data-seeded={seeded() ? "" : undefined}
+              style={
+                seeded()
+                  ? { paddingBlockStart: `${String(seedTop())}px` }
+                  : { height: `${String(height())}px` }
+              }
             >
-              <For each={() => virtual.visible().map((info) => info.key)}>
+              <For each={() => (seeded() ? seedKeys() : virtual.visible().map((info) => info.key))}>
                 {(key: Key) => {
                   const row = (): Row | undefined =>
                     collection().getItem(key)?.value as Row | undefined;
@@ -574,7 +622,11 @@ export function MessageList(props: MessageListProps) {
                       data-slot="message-list-row"
                       data-key={String(key)}
                       data-kind={row()?.kind}
-                      style={{ top: `${String(placed().get(key)?.rect.y ?? 0)}px` }}
+                      style={
+                        seeded()
+                          ? { position: "relative" }
+                          : { top: `${String(placed().get(key)?.rect.y ?? 0)}px` }
+                      }
                     >
                       <Switch>
                         <Match when={row()?.kind === "day"}>
