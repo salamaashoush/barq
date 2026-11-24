@@ -590,6 +590,13 @@ import { ResponsiveTabs } from "@barqjs/arc";
   shows `fallback`, an icon and "Image unavailable" in arc's words, keeping
   the image's name. One the browser already had when the page hydrated shows
   at once.
+- `Gallery` and `Lightbox`: pictures in a grid as many across as fit
+  (`minItemWidth`), each thumbnail a button named by its image that opens the
+  lightbox at itself. The lightbox is a modal dialog over the whole screen:
+  the arrows and the buttons at either side step through in the reading
+  direction, Home and End go to the ends, a swipe does the same under a
+  finger, `+` and `-`, the zoom buttons or a double press zoom, a zoomed
+  image drags to pan, and "Image 2 of 5" is announced as it changes.
 
 ## Inputs and pickers
 

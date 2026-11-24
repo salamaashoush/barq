@@ -501,3 +501,12 @@ export {
   type TreeViewProps,
   treeViewStyles,
 } from "./components/tree-view.tsx";
+export {
+  Gallery,
+  type GalleryImage,
+  type GalleryProps,
+  Lightbox,
+  type LightboxProps,
+  galleryStyles,
+  lightboxStyles,
+} from "./components/gallery.tsx";
