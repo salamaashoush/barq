@@ -36,6 +36,13 @@ export {
   timesBetween,
 } from "./components/time-field.tsx";
 export {
+  type DateRange,
+  DateRangeField,
+  type DateRangeFieldProps,
+  type DateRangePreset,
+  commonRangePresets,
+} from "./components/date-range-field.tsx";
+export {
   CommandMenu,
   commandMenuStyles,
   type CommandMenuAction,

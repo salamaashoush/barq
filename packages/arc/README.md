@@ -434,6 +434,11 @@ import { Chip } from "@barqjs/arc";
   Both are `field.TimeField` and `field.TimePicker` in a form, and stand
   alone with `value` or `defaultValue`. Segments grow to a finger's height
   under a coarse pointer, `DateField`'s as well.
+- `DateRangeField`: a start and an end day from two months of calendar, on
+  `@barqjs/ui`'s `DateRangePicker`, with `presets` above it, or `"common"`
+  for today and the last 7, 30 and 90 days in arc's words. Its trigger is
+  named by the label and then the range it shows, and with `name` a plain
+  form posts an ISO interval, `2026-03-01/2026-03-07`.
 
 ## Code
 

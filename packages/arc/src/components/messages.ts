@@ -64,6 +64,11 @@ export interface ArcMessages {
   duplicateTag: (tag: string) => string;
   tooManyTags: (max: number) => string;
   chooseTime: string;
+  pickDates: string;
+  chooseDates: string;
+  presets: string;
+  today: string;
+  lastDays: (days: number) => string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -124,6 +129,11 @@ export const ENGLISH: ArcMessages = {
   duplicateTag: (tag) => `${tag} is already added`,
   tooManyTags: (max) => `No more than ${String(max)}`,
   chooseTime: "Choose a time",
+  pickDates: "Pick dates",
+  chooseDates: "Choose a range of dates",
+  presets: "Presets",
+  today: "Today",
+  lastDays: (days) => `Last ${String(days)} days`,
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");
