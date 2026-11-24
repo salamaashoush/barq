@@ -348,6 +348,13 @@ export {
   scatterChartStyles,
 } from "./components/scatter-chart.tsx";
 export {
+  FunnelChart,
+  type FunnelChartProps,
+  type FunnelChartSlots,
+  type FunnelStage,
+  funnelChartStyles,
+} from "./components/funnel-chart.tsx";
+export {
   ARC_CONTRAST_DARK,
   ARC_CONTRAST_LIGHT,
   ARC_DARK,
