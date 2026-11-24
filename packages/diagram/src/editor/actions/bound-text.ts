@@ -52,7 +52,7 @@ import type { Action, ActionResult } from "../types.ts";
  * Frees a container's text where it was drawn, at its width, the container
  * going back to the height it had before the text grew it.
  */
-const unbindTextFromContainer = (
+export const unbindTextFromContainer = (
   container: ExcalidrawElement,
   boundTextElement: ExcalidrawTextElementWithContainer,
   editor: DiagramEditor,
@@ -117,14 +117,17 @@ export const actionUnbindText: Action = {
 };
 
 /** A note and its label share one ink: the text's, unless it is transparent. */
-const getStickyNoteInk = (textElement: ExcalidrawTextElement, container: ExcalidrawElement) =>
+export const getStickyNoteInk = (
+  textElement: ExcalidrawTextElement,
+  container: ExcalidrawElement,
+) =>
   isStickyNoteElement(container)
     ? isTransparent(textElement.strokeColor)
       ? container.strokeColor
       : textElement.strokeColor
     : null;
 
-const pushTextAboveContainer = (
+export const pushTextAboveContainer = (
   elements: readonly ExcalidrawElement[],
   container: ExcalidrawElement,
   textElement: ExcalidrawTextElement,
@@ -139,7 +142,7 @@ const pushTextAboveContainer = (
   return updated;
 };
 
-const pushContainerBelowText = (
+export const pushContainerBelowText = (
   elements: readonly ExcalidrawElement[],
   container: ExcalidrawElement,
   textElement: ExcalidrawTextElement,
@@ -158,7 +161,7 @@ const pushContainerBelowText = (
   return updated;
 };
 
-const bindTextToContainer = (
+export const bindTextToContainer = (
   elements: readonly ExcalidrawElement[],
   appState: Readonly<AppState>,
   textElement: ExcalidrawTextElement,
@@ -238,7 +241,7 @@ export const actionBindText: Action = {
   },
 };
 
-const wrapTextsInContainers = (
+export const wrapTextsInContainers = (
   elements: readonly ExcalidrawElement[],
   appState: Readonly<AppState>,
   textElements: readonly ExcalidrawTextElement[],

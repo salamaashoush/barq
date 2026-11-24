@@ -198,7 +198,8 @@ export type ActionName =
   | "changeExportScale"
   | "changeExportBackground"
   | "changeExportEmbedScene"
-  | "exportWithDarkMode";
+  | "exportWithDarkMode"
+  | "toggleWrap";
 
 /** What an action is called in a menu: a translation key, or one chosen from the state. */
 export type ActionLabel =

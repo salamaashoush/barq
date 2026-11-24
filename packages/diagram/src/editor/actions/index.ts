@@ -44,6 +44,7 @@ import {
   actionToggleImageExport,
   actionToggleJSONExport,
 } from "./export.ts";
+import { actionToggleWrap } from "./wrap.ts";
 import { actionFinalize } from "./finalize.ts";
 import { actionFlipHorizontal, actionFlipVertical } from "./flip.ts";
 import {
@@ -177,4 +178,5 @@ export const editorActions: readonly Action[] = [
   actionSaveToActiveFile,
   actionSaveFileToDisk,
   actionLoadScene,
+  actionToggleWrap,
 ];

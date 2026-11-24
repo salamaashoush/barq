@@ -56,6 +56,7 @@ const SHORTCUTS = {
   toggleShortcuts: ["?"],
   searchMenu: ["CtrlOrCmd+F"],
   wrapSelectionInFrame: [],
+  toggleWrap: ["W"],
   autoResize: ["Alt+W"],
   toolLock: ["Q"],
   undo: ["CtrlOrCmd+Z"],

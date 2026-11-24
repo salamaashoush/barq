@@ -120,7 +120,7 @@ embeds.
 - pending (3b): command palette's recently used commands and library items
 - pending (3b): stats panel's uncropped image size, group rows and scene version
 - pending (3b): pen mode button for a detected pen; compact and phone layouts of the panels
-- pending (3b): `toggleWrap` (W), Excalidraw's wrap of free text at a set width
+- done: `toggleWrap` (W): a text into a container, texts into new containers and back, labels freed and rewrapped, shapes in and out of a frame (`wrap.test.ts`)
 - pending (3b): eye dropper's Alt to pick for the other colour
 
 Not carried over: the main menu's links to Excalidraw's own social accounts.

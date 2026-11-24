@@ -39,6 +39,7 @@ const ELEMENT_ACTIONS: readonly ActionName[] = [
   "copy",
   "deleteSelectedElements",
   "wrapSelectionInFrame",
+  "toggleWrap",
   "copyStyles",
   "pasteStyles",
   "bringToFront",

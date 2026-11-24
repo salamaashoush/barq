@@ -292,6 +292,7 @@ export function HelpDialog() {
             />
             <Shortcut label={label("labels.group")} shortcuts={[k("CtrlOrCmd+G")]} />
             <Shortcut label={label("labels.ungroup")} shortcuts={[k("CtrlOrCmd+Shift+G")]} />
+            <Shortcut label={label("labels.toggleWrap")} shortcuts={["W"]} />
             <Shortcut label={label("labels.toggleAutoResize")} shortcuts={[k("Alt+W")]} />
             <Shortcut label={label("labels.flipHorizontal")} shortcuts={[k("Shift+H")]} />
             <Shortcut label={label("labels.flipVertical")} shortcuts={[k("Shift+V")]} />
