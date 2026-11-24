@@ -113,3 +113,4 @@ export {
   type ComposedMessage,
   chatComposerStyles,
 } from "./chat-composer.tsx";
+export { RichCommentComposer } from "./comment-composer.tsx";

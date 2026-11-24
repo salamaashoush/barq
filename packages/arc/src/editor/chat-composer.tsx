@@ -140,8 +140,14 @@ export interface ChatComposerProps extends Customisable<Slots> {
   defaultValue?: DocumentValue;
   /** What it opens with, as markdown. */
   defaultMarkdown?: string;
-  /** Leaves an edit, by Escape or Cancel. */
+  /** Adds a Cancel button, and Escape cancels: leaving an edit, a reply. */
   onCancel?: () => void;
+  /** Which key sends: Enter, or Mod+Enter with Enter a new paragraph, as a comment wants. @default "enter" */
+  sendOn?: "enter" | "mod-enter";
+  /** The send button's words, a button of words rather than the arrow: "Comment", "Reply". */
+  submitLabel?: string;
+  /** Fills the empty document when it opens, as a Lexical `$` function. */
+  initialContent?: () => void;
   /** Who `@` offers. */
   mentions?: MentionSource;
   /** What `/` offers. None without it. */
@@ -177,8 +183,11 @@ function inBlock(editor: LexicalEditor): boolean {
   });
 }
 
-/** Enter sends, Shift+Enter breaks the line, Escape cancels an edit; an open typeahead takes them first. */
-function SendKeys(props: { send: () => void; cancel?: () => void }) {
+/**
+ * Enter sends (or Mod+Enter, with plain Enter a new paragraph), Shift+Enter
+ * breaks the line, Escape cancels; an open typeahead takes them first.
+ */
+function SendKeys(props: { send: () => void; cancel?: () => void; modEnter: boolean }) {
   const editor = useLexicalEditor();
   const menuOpen = (): boolean => editor.getRootElement()?.hasAttribute("aria-controls") === true;
   useRegistration(() =>
@@ -187,7 +196,11 @@ function SendKeys(props: { send: () => void; cancel?: () => void }) {
         KEY_ENTER_COMMAND,
         (event) => {
           if (event === null || event.shiftKey || event.isComposing || menuOpen()) return false;
-          if (inBlock(editor)) return false;
+          if (props.modEnter) {
+            if (!(event.metaKey || event.ctrlKey)) return false;
+          } else if (inBlock(editor)) {
+            return false;
+          }
           event.preventDefault();
           props.send();
           return true;
@@ -395,7 +408,7 @@ function Composer(props: ChatComposerProps & { cls: Slots; queue?: UploadQueueAp
               : messages().charactersLeft(counter.remaining())}
           </span>
         </Show>
-        <Show when={editing()}>
+        <Show when={props.onCancel !== undefined}>
           <Button variant="ghost" size="sm" onPress={() => props.onCancel?.()}>
             {messages().cancel}
           </Button>
@@ -404,7 +417,7 @@ function Composer(props: ChatComposerProps & { cls: Slots; queue?: UploadQueueAp
           when={!editing() && (props.sendActions?.length ?? 0) > 0}
           fallback={
             <Show
-              when={editing()}
+              when={editing() || props.submitLabel !== undefined}
               fallback={
                 <IconButton
                   label={sendLabel()}
@@ -419,7 +432,7 @@ function Composer(props: ChatComposerProps & { cls: Slots; queue?: UploadQueueAp
               }
             >
               <Button size="sm" class={props.cls.send} isDisabled={!canSend()} onPress={send}>
-                {messages().save}
+                {props.submitLabel ?? messages().save}
               </Button>
             </Show>
           }
@@ -437,7 +450,7 @@ function Composer(props: ChatComposerProps & { cls: Slots; queue?: UploadQueueAp
           </SplitButton>
         </Show>
       </div>
-      <SendKeys send={send} cancel={editing() ? props.onCancel : undefined} />
+      <SendKeys send={send} cancel={props.onCancel} modEnter={props.sendOn === "mod-enter"} />
       <EditorShortcuts />
       <FloatingFormatToolbar />
       <LinkEditor />
@@ -492,6 +505,7 @@ export function ChatComposer(props: ChatComposerProps) {
   const cls = (): Slots => parts(chatComposerStyles(), props.classes);
   const extensions = untrack(() => documentExtensions({ tables: false }));
   const editorState = untrack(() => {
+    if (props.initialContent !== undefined) return props.initialContent;
     if (props.defaultValue !== undefined) {
       return typeof props.defaultValue === "string"
         ? props.defaultValue

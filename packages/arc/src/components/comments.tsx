@@ -1,5 +1,6 @@
 import { type Child, For, Show, createSignal, createUniqueId } from "@barqjs/core";
 import { variants } from "@barqjs/css";
+import type { JSX } from "@barqjs/web";
 import { filter as localeFilter } from "@barqjs/aria/i18n";
 import { Check } from "@barqjs/lucide/icons/check";
 import { Ellipsis } from "@barqjs/lucide/icons/ellipsis";
@@ -116,6 +117,13 @@ export interface CommentHandlers {
   reactions?: readonly string[];
   /** A comment's body, for rich text; plain text with its mentions marked otherwise. */
   renderBody?: (comment: CommentData) => Child;
+  /**
+   * What a comment is written in: `CommentComposer`'s text box by default, or
+   * `RichCommentComposer` from `@barqjs/arc/editor` for formatting and rich
+   * mentions, which the main entry leaves out so a page without it loads no
+   * editor.
+   */
+  composer?: (props: CommentComposerProps) => JSX.Element;
   /** The moment times are measured from on the server and while hydrating. */
   now?: Moment;
 }
@@ -421,6 +429,7 @@ interface CommentItemProps {
 }
 
 function CommentItem(props: CommentItemProps) {
+  const Composer = props.handlers.composer ?? CommentComposer;
   const messages = useArcMessages();
   const nameId = createUniqueId();
   const [editing, setEditing] = createSignal(false);
@@ -525,7 +534,7 @@ function CommentItem(props: CommentItemProps) {
               </div>
             }
           >
-            <CommentComposer
+            <Composer
               label={messages().editComment}
               submitLabel={messages().save}
               defaultValue={comment().body}
@@ -611,6 +620,7 @@ function optimistic(outcome: Outcome, settle: (failed: boolean) => void): void {
  * marked, with Retry and Discard.
  */
 export function CommentThread(props: CommentThreadProps) {
+  const Composer = props.composer ?? CommentComposer;
   const messages = useArcMessages();
   const cls = (): Slots => parts(commentsStyles({ resolved: resolved() }), props.classes);
   const headingId = createUniqueId();
@@ -873,7 +883,7 @@ export function CommentThread(props: CommentThreadProps) {
               </Button>
             }
           >
-            <CommentComposer
+            <Composer
               label={messages().reply}
               placeholder={messages().replyPlaceholder}
               submitLabel={messages().reply}
@@ -927,6 +937,7 @@ export interface CommentThreadListProps extends CommentHandlers, Customisable<Sl
  * ```
  */
 export function CommentThreadList(props: CommentThreadListProps) {
+  const Composer = props.composer ?? CommentComposer;
   const messages = useArcMessages();
   const cls = (): Slots => parts(commentsStyles(), props.classes);
   const [ownFilter, setOwnFilter] = createSignal<CommentFilter>(props.defaultFilter ?? "open", {
@@ -1049,7 +1060,7 @@ export function CommentThreadList(props: CommentThreadListProps) {
         </ul>
       </Show>
       <Show when={props.onCreate !== undefined}>
-        <CommentComposer
+        <Composer
           label={messages().newComment}
           placeholder={messages().commentPlaceholder}
           mentionables={props.mentionables}
