@@ -22,6 +22,23 @@ test("a filter matches without diacritics", () => {
   });
 });
 
+test("a filter says where it matched, folding case and diacritics", () => {
+  createRoot((dispose) => {
+    const match = filter({ sensitivity: "base" });
+    expect(match.matches("Résumé and resume", "resume")).toEqual([
+      [0, 6],
+      [11, 17],
+    ]);
+    expect(match.matches("aaaa", "aa")).toEqual([
+      [0, 2],
+      [2, 4],
+    ]);
+    expect(match.matches("Apple", "z")).toEqual([]);
+    expect(match.matches("Apple", "")).toEqual([]);
+    dispose();
+  });
+});
+
 test("parses plain numbers", () => {
   const p = new NumberParser("en-US");
   expect(p.parse("10")).toBe(10);

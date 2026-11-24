@@ -294,6 +294,12 @@ export interface Filter {
   startsWith: (text: string, substring: string) => boolean;
   endsWith: (text: string, substring: string) => boolean;
   contains: (text: string, substring: string) => boolean;
+  /**
+   * Where `substring` matches in `text`, as `[start, end)` offsets into the
+   * text normalised to NFC, left to right and never overlapping: what a
+   * search result marks.
+   */
+  matches: (text: string, substring: string) => [number, number][];
 }
 
 /**
@@ -333,6 +339,23 @@ export function filter(options?: Intl.CollatorOptions): Filter {
         if (compare(needle, normalised.slice(at, at + needle.length))) return true;
       }
       return false;
+    },
+
+    matches(text, substring) {
+      const found: [number, number][] = [];
+      if (substring.length === 0) return found;
+      const normalised = text.normalize("NFC");
+      const needle = substring.normalize("NFC");
+      let at = 0;
+      while (at + needle.length <= normalised.length) {
+        if (compare(needle, normalised.slice(at, at + needle.length))) {
+          found.push([at, at + needle.length]);
+          at += needle.length;
+        } else {
+          at++;
+        }
+      }
+      return found;
     },
   };
 }
