@@ -16,7 +16,7 @@ import type { SocketId } from "../types.ts";
 import type { SocketUpdateData } from "./data.ts";
 import type { CollabTransport, StoredScene } from "./transport.ts";
 
-const recording = () => {
+function recording() {
   const sent: SocketUpdateData[] = [];
   const saved: StoredScene[] = [];
   const saveWaiters: Array<() => void> = [];
@@ -41,23 +41,26 @@ const recording = () => {
     },
   };
   /** The next save, as a promise: encryption settles on the event loop, not the faked timers. */
-  const nextSave = () => new Promise<void>((resolve) => saveWaiters.push(resolve));
+  function nextSave() {
+    return new Promise<void>((resolve) => saveWaiters.push(resolve));
+  }
   return { transport, sent, saved, nextSave };
-};
+}
 
-const scenes = (sent: readonly SocketUpdateData[]) =>
-  sent.flatMap((data) =>
+function scenes(sent: readonly SocketUpdateData[]) {
+  return sent.flatMap((data) =>
     data.type === WS_SUBTYPES.UPDATE || data.type === WS_SUBTYPES.INIT
       ? [data.payload.elements.map((element) => element.id).join()]
       : [],
   );
+}
 
 /** A thousand turns of the event loop, which fake timers leave alone. */
-const settle = async () => {
+async function settle() {
   for (let turn = 0; turn < 1000; turn++) {
     await new Promise((resolve) => setImmediate(resolve));
   }
-};
+}
 
 let alice: Peer | null = null;
 
@@ -123,12 +126,13 @@ describe("pacing", () => {
     const { transport, sent } = recording();
     jest.useFakeTimers();
     alice = await joinRoom(await newRoom(), transport, { username: "Alice", existingRoom: false });
-    const cursors = () =>
-      sent.flatMap((data) =>
+    function cursors() {
+      return sent.flatMap((data) =>
         data.type === WS_SUBTYPES.MOUSE_LOCATION ? [data.payload.pointer.x] : [],
       );
-    const move = (x: number, pointerId = 1, type = "pointermove") =>
-      alice!.editor.interactiveCanvas.dispatchEvent(
+    }
+    function move(x: number, pointerId = 1, type = "pointermove") {
+      return alice!.editor.interactiveCanvas.dispatchEvent(
         new PointerEvent(type, {
           clientX: x,
           clientY: 100,
@@ -138,6 +142,7 @@ describe("pacing", () => {
           cancelable: true,
         }),
       );
+    }
 
     move(100);
     move(110);

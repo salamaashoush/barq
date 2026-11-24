@@ -29,33 +29,45 @@ export interface Peer {
 }
 
 /** Waits for a condition the network settles, failing with what was expected. */
-export const until = async (
+export async function until(
   condition: () => boolean,
   what = "the condition",
   timeout = 3000,
-): Promise<void> => {
+): Promise<void> {
   const start = Date.now();
   while (!condition()) {
     if (Date.now() - start > timeout) throw new Error(`timed out waiting for ${what}`);
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
-};
+}
 
-export const sleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
+export function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-export const newRoom = async (): Promise<{ roomId: string; roomKey: string }> => ({
-  roomId: `room-${crypto.randomUUID()}`,
-  roomKey: await generateEncryptionKey(),
-});
+export interface RoomLink {
+  roomId: string;
+  roomKey: string;
+}
+
+export async function newRoom(): Promise<RoomLink> {
+  return {
+    roomId: `room-${crypto.randomUUID()}`,
+    roomKey: await generateEncryptionKey(),
+  };
+}
+
+export interface JoinOptions {
+  username: string;
+}
 
 /** An editor joined to a room: the first starts it with its scene, the rest join it. */
-export const joinRoom = async (
-  room: { roomId: string; roomKey: string },
+export async function joinRoom(
+  room: RoomLink,
   transport: CollabTransport,
-  options: Partial<CollaborationOptions> & { username: string },
+  options: Partial<CollaborationOptions> & JoinOptions,
   elements: readonly ExcalidrawElement[] = [],
-): Promise<Peer> => {
+): Promise<Peer> {
   const editor = renderEditor();
   if (elements.length) {
     editor.api.updateScene({ elements, captureUpdate: "NEVER" });
@@ -72,45 +84,48 @@ export const joinRoom = async (
   await session.ready;
   await until(() => session.getState().status === "connected", "the connection");
   return { editor, session };
-};
+}
 
-export const rect = (id: string, x: number, y = x): ExcalidrawElement =>
-  API.createElement({ id, x, y, width: 50, height: 50 });
+export function rect(id: string, x: number, y = x): ExcalidrawElement {
+  return API.createElement({ id, x, y, width: 50, height: 50 });
+}
 
-export const element = (peer: Peer, id: string): ExcalidrawElement | undefined =>
-  peer.editor.api.getSceneElementsIncludingDeleted().find((each) => each.id === id);
+export function element(peer: Peer, id: string): ExcalidrawElement | undefined {
+  return peer.editor.api.getSceneElementsIncludingDeleted().find((each) => each.id === id);
+}
 
-export const ids = (peer: Peer): string[] =>
-  peer.editor.api.getSceneElements().map((each) => each.id);
+export function ids(peer: Peer): string[] {
+  return peer.editor.api.getSceneElements().map((each) => each.id);
+}
 
 /** Replaces an element in a peer's scene as an edit does: undoable, a new version. */
-export const edit = (
+export function edit(
   peer: Peer,
   id: string,
   update: (element: ExcalidrawElement) => ExcalidrawElement,
-): void => {
+): void {
   peer.editor.api.updateScene({
     elements: peer.editor.api
       .getSceneElementsIncludingDeleted()
       .map((each) => (each.id === id ? update(each) : each)),
     captureUpdate: "IMMEDIATELY",
   });
-};
+}
 
-export const add = (peer: Peer, ...elements: ExcalidrawElement[]): void => {
+export function add(peer: Peer, ...elements: ExcalidrawElement[]): void {
   peer.editor.api.updateScene({
     elements: [...peer.editor.api.getSceneElementsIncludingDeleted(), ...elements],
     captureUpdate: "IMMEDIATELY",
   });
-};
+}
 
 /** A pointer event on a peer's interactive canvas, at a client point. */
-export const pointer = (
+export function pointer(
   peer: Peer,
   type: "pointermove" | "pointerdown" | "pointerup",
   x: number,
   y: number,
-): void => {
+): void {
   peer.editor.interactiveCanvas.dispatchEvent(
     new PointerEvent(type, {
       clientX: x,
@@ -123,13 +138,13 @@ export const pointer = (
       cancelable: true,
     }),
   );
-};
+}
 
 const ONE_PIXEL_PNG =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" as DataURL;
 
 /** An image placed on a peer's canvas with its file, pending upload as a new one is. */
-export const addImage = (peer: Peer, id: string, fileId: string): BinaryFileData => {
+export function addImage(peer: Peer, id: string, fileId: string): BinaryFileData {
   const file: BinaryFileData = {
     id: fileId as FileId,
     mimeType: "image/png",
@@ -150,28 +165,30 @@ export const addImage = (peer: Peer, id: string, fileId: string): BinaryFileData
     id,
   });
   return file;
-};
+}
 
 /** Whether bytes carry a text in the clear. */
-export const containsText = (bytes: Uint8Array, text: string): boolean =>
-  new TextDecoder("latin1").decode(bytes).includes(text);
+export function containsText(bytes: Uint8Array, text: string): boolean {
+  return new TextDecoder("latin1").decode(bytes).includes(text);
+}
 
 export type Join = (
-  room: { roomId: string; roomKey: string },
-  options: Partial<CollaborationOptions> & { username: string },
+  room: RoomLink,
+  options: Partial<CollaborationOptions> & JoinOptions,
   elements?: readonly ExcalidrawElement[],
 ) => Promise<Peer>;
 
-const socketOf = (peer: Peer): SocketId => {
+function socketOf(peer: Peer): SocketId {
   const { socketId } = peer.session.getState();
   if (!socketId) throw new Error("not connected");
   return socketId;
-};
+}
 
-const collaborator = (peer: Peer, of: Peer): Collaborator | undefined =>
-  peer.editor.api.getAppState().collaborators.get(socketOf(of));
+function collaborator(peer: Peer, of: Peer): Collaborator | undefined {
+  return peer.editor.api.getAppState().collaborators.get(socketOf(of));
+}
 
-const follow = (follower: Peer, followed: Peer): void => {
+function follow(follower: Peer, followed: Peer): void {
   const user = collaborator(follower, followed);
   follower.editor.batch(() =>
     follower.editor.actionManager.executeAction(actionGoToCollaborator, {
@@ -179,12 +196,14 @@ const follow = (follower: Peer, followed: Peer): void => {
       socketId: socketOf(followed),
     }),
   );
-};
+}
 
 /** Whether a viewport shows a scene rectangle, centred, the way following fits it. */
-const showsBounds = (peer: Peer, bounds: SceneBounds): boolean => {
+function showsBounds(peer: Peer, bounds: SceneBounds): boolean {
   const [x1, y1, x2, y2] = getVisibleSceneBounds(peer.editor.api.getAppState());
-  const close = (a: number, b: number) => Math.abs(a - b) < 1;
+  function close(a: number, b: number) {
+    return Math.abs(a - b) < 1;
+  }
   return (
     close((x1 + x2) / 2, (bounds[0] + bounds[2]) / 2) &&
     close((y1 + y2) / 2, (bounds[1] + bounds[3]) / 2) &&
@@ -193,18 +212,22 @@ const showsBounds = (peer: Peer, bounds: SceneBounds): boolean => {
     x2 >= bounds[2] - 1 &&
     y2 >= bounds[3] - 1
   );
-};
+}
 
-const scrollTo = (peer: Peer, scrollX: number, scrollY: number): void => {
+function scrollTo(peer: Peer, scrollX: number, scrollY: number): void {
   peer.editor.batch(() => peer.editor.setState({ scrollX, scrollY }));
-};
+}
+
+interface VisibilityDocument {
+  hidden?: boolean;
+}
 
 /**
  * What a session does over any transport: the scene both ways and
  * reconciled, cursors, laser, selections and idle states, following, and
  * images with their files.
  */
-export const describeCollaboration = (join: Join): void => {
+export function describeCollaboration(join: Join): void {
   describe("the scene", () => {
     test("a joining editor gets the room's scene, and edits go both ways", async () => {
       const room = await newRoom();
@@ -369,7 +392,7 @@ export const describeCollaboration = (join: Join): void => {
         );
         expect(collaborator(bob, alice)?.username).toBe("Alice");
       } finally {
-        delete (document as { hidden?: boolean }).hidden;
+        delete (document as VisibilityDocument).hidden;
         if (hidden) Object.defineProperty(Document.prototype, "hidden", hidden);
       }
     });
@@ -476,4 +499,4 @@ export const describeCollaboration = (join: Join): void => {
       expect(bob.editor.api.getFiles()["never-uploaded"]).toBeUndefined();
     });
   });
-};
+}

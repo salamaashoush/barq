@@ -20,9 +20,9 @@ export type SyncableExcalidrawElement = OrderedExcalidrawElement & {
 };
 
 /** Whether an element is sent: not invisibly small, and deleted only for a day. */
-export const isSyncableElement = (
+export function isSyncableElement(
   element: OrderedExcalidrawElement,
-): element is SyncableExcalidrawElement => {
+): element is SyncableExcalidrawElement {
   if (element.isDeleted) {
     if (element.updated > Date.now() - DELETED_ELEMENT_TIMEOUT) {
       return true;
@@ -30,11 +30,13 @@ export const isSyncableElement = (
     return false;
   }
   return !isInvisiblySmallElement(element);
-};
+}
 
-export const getSyncableElements = (
+export function getSyncableElements(
   elements: readonly OrderedExcalidrawElement[],
-): SyncableExcalidrawElement[] => elements.filter(isSyncableElement);
+): SyncableExcalidrawElement[] {
+  return elements.filter(isSyncableElement);
+}
 
 /** The messages of a session, Excalidraw's `WS_SUBTYPES`. */
 export const WS_SUBTYPES = {
@@ -46,48 +48,66 @@ export const WS_SUBTYPES = {
   USER_VISIBLE_SCENE_BOUNDS: "USER_VISIBLE_SCENE_BOUNDS",
 } as const;
 
+export interface InvalidResponseMessage {
+  type: typeof WS_SUBTYPES.INVALID_RESPONSE;
+}
+
+export interface SceneInitMessage {
+  type: typeof WS_SUBTYPES.INIT;
+  payload: ScenePayload;
+}
+
+export interface ScenePayload {
+  elements: readonly OrderedExcalidrawElement[];
+}
+
+export interface SceneUpdateMessage {
+  type: typeof WS_SUBTYPES.UPDATE;
+  payload: ScenePayload;
+}
+
+export interface MouseLocationMessage {
+  type: typeof WS_SUBTYPES.MOUSE_LOCATION;
+  payload: MouseLocationPayload;
+}
+
+export interface MouseLocationPayload {
+  socketId: SocketId;
+  pointer: Pick<CollaboratorPointer, "x" | "y" | "tool">;
+  button: "down" | "up";
+  selectedElementIds: AppState["selectedElementIds"];
+  username: string;
+}
+
+export interface VisibleSceneBoundsMessage {
+  type: typeof WS_SUBTYPES.USER_VISIBLE_SCENE_BOUNDS;
+  payload: VisibleSceneBoundsPayload;
+}
+
+export interface VisibleSceneBoundsPayload {
+  socketId: SocketId;
+  username: string;
+  sceneBounds: SceneBounds;
+}
+
+export interface IdleStatusMessage {
+  type: typeof WS_SUBTYPES.IDLE_STATUS;
+  payload: IdleStatusPayload;
+}
+
+export interface IdleStatusPayload {
+  socketId: SocketId;
+  userState: UserIdleState;
+  username: string;
+}
+
 export type SocketUpdateDataSource = {
-  INVALID_RESPONSE: {
-    type: typeof WS_SUBTYPES.INVALID_RESPONSE;
-  };
-  SCENE_INIT: {
-    type: typeof WS_SUBTYPES.INIT;
-    payload: {
-      elements: readonly OrderedExcalidrawElement[];
-    };
-  };
-  SCENE_UPDATE: {
-    type: typeof WS_SUBTYPES.UPDATE;
-    payload: {
-      elements: readonly OrderedExcalidrawElement[];
-    };
-  };
-  MOUSE_LOCATION: {
-    type: typeof WS_SUBTYPES.MOUSE_LOCATION;
-    payload: {
-      socketId: SocketId;
-      pointer: Pick<CollaboratorPointer, "x" | "y" | "tool">;
-      button: "down" | "up";
-      selectedElementIds: AppState["selectedElementIds"];
-      username: string;
-    };
-  };
-  USER_VISIBLE_SCENE_BOUNDS: {
-    type: typeof WS_SUBTYPES.USER_VISIBLE_SCENE_BOUNDS;
-    payload: {
-      socketId: SocketId;
-      username: string;
-      sceneBounds: SceneBounds;
-    };
-  };
-  IDLE_STATUS: {
-    type: typeof WS_SUBTYPES.IDLE_STATUS;
-    payload: {
-      socketId: SocketId;
-      userState: UserIdleState;
-      username: string;
-    };
-  };
+  INVALID_RESPONSE: InvalidResponseMessage;
+  SCENE_INIT: SceneInitMessage;
+  SCENE_UPDATE: SceneUpdateMessage;
+  MOUSE_LOCATION: MouseLocationMessage;
+  USER_VISIBLE_SCENE_BOUNDS: VisibleSceneBoundsMessage;
+  IDLE_STATUS: IdleStatusMessage;
 };
 
 /** Any message a client receives. */
@@ -102,10 +122,15 @@ export type SocketUpdateData = Exclude<
 const MESSAGE_TYPES = new Set<string>(Object.values(WS_SUBTYPES));
 const IDLE_STATES = new Set<string>(Object.values(UserIdleState));
 
+interface UncheckedMessage {
+  type?: unknown;
+  payload?: unknown;
+}
+
 /** Whether a decrypted value has a message's shape, rather than trusting it to. */
-export const isSocketUpdateData = (value: unknown): value is SocketUpdateData => {
+export function isSocketUpdateData(value: unknown): value is SocketUpdateData {
   if (typeof value !== "object" || value === null) return false;
-  const { type, payload } = value as { type?: unknown; payload?: unknown };
+  const { type, payload } = value as UncheckedMessage;
   if (typeof type !== "string" || !MESSAGE_TYPES.has(type)) return false;
   if (type === WS_SUBTYPES.INVALID_RESPONSE) return false;
   if (typeof payload !== "object" || payload === null) return false;
@@ -127,7 +152,7 @@ export const isSocketUpdateData = (value: unknown): value is SocketUpdateData =>
     default:
       return false;
   }
-};
+}
 
 /** A room, as a collaboration link carries it. */
 export interface CollaborationLinkData {
@@ -138,17 +163,17 @@ export interface CollaborationLinkData {
 
 const RE_COLLAB_LINK = /^#room=([a-zA-Z0-9_-]+),([a-zA-Z0-9_-]+)$/;
 
-export const isCollaborationLink = (link: string): boolean => {
+export function isCollaborationLink(link: string): boolean {
   const hash = new URL(link).hash;
   return RE_COLLAB_LINK.test(hash);
-};
+}
 
 /**
  * The room a link's `#room=id,key` names, or `null` for a link without
  * one; a key that is not a room key's 22 characters throws, with
  * `alerts.invalidEncryptionKey` to show.
  */
-export const getCollaborationLinkData = (link: string): CollaborationLinkData | null => {
+export function getCollaborationLinkData(link: string): CollaborationLinkData | null {
   const hash = new URL(link).hash;
   const match = hash.match(RE_COLLAB_LINK);
   if (!match?.[1] || !match[2]) {
@@ -158,10 +183,10 @@ export const getCollaborationLinkData = (link: string): CollaborationLinkData | 
     throw new LocalizedError({ key: "alerts.invalidEncryptionKey" });
   }
   return { roomId: match[1], roomKey: match[2] };
-};
+}
 
 /** A new room: a random id, and a new AES-GCM key. */
-export const generateCollaborationLinkData = async (): Promise<CollaborationLinkData> => {
+export async function generateCollaborationLinkData(): Promise<CollaborationLinkData> {
   const buffer = new Uint8Array(ROOM_ID_BYTES);
   globalThis.crypto.getRandomValues(buffer);
   const roomId = bytesToHexString(buffer);
@@ -172,13 +197,13 @@ export const generateCollaborationLinkData = async (): Promise<CollaborationLink
   }
 
   return { roomId, roomKey };
-};
+}
 
 /** The link to a room on a page, the page's address by default. */
-export const getCollaborationLink = (
+export function getCollaborationLink(
   data: CollaborationLinkData,
   page: string | URL = globalThis.location.href,
-): string => {
+): string {
   const url = new URL(page);
   return `${url.origin}${url.pathname}#room=${data.roomId},${data.roomKey}`;
-};
+}

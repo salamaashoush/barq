@@ -26,7 +26,11 @@ type ElementLike = {
 
 type Cache = Record<string, ExcalidrawElement | undefined>;
 
-const createElement = (opts: { uid: string } | ElementLike) => {
+interface ElementUid {
+  uid: string;
+}
+
+function createElement(opts: ElementUid | ElementLike) {
   let uid: string;
   let id: string;
   let version: number | null;
@@ -46,9 +50,9 @@ const createElement = (opts: { uid: string } | ElementLike) => {
     version,
     versionNonce: versionNonce || randomInteger(),
   };
-};
+}
 
-const idsToElements = (ids: (Id | ElementLike)[], cache: Cache = {}) => {
+function idsToElements(ids: (Id | ElementLike)[], cache: Cache = {}) {
   return syncInvalidIndices(
     ids.reduce((acc, _uid) => {
       const { uid, id, version, versionNonce } = createElement(
@@ -66,13 +70,13 @@ const idsToElements = (ids: (Id | ElementLike)[], cache: Cache = {}) => {
       return acc;
     }, [] as ExcalidrawElement[]),
   );
-};
+}
 
-const test = (
+function test(
   local: (Id | ElementLike)[],
   remote: (Id | ElementLike)[],
   target: `${string}:${"L" | "R"}`[],
-) => {
+) {
   const cache: Cache = {};
   const _local = idsToElements(local, cache);
   const _remote = idsToElements(remote, cache);
@@ -116,7 +120,7 @@ const test = (
       {} as AppState,
     ).map((x) => x.id),
   ).toEqual(reconciledIds);
-};
+}
 
 describe("elements reconciliation", () => {
   it("reconcileElements()", () => {
@@ -254,7 +258,7 @@ describe("elements reconciliation", () => {
   });
 
   it("test identical elements reconciliation", () => {
-    const testIdentical = (local: ElementLike[], remote: ElementLike[], expected: Id[]) => {
+    function testIdentical(local: ElementLike[], remote: ElementLike[], expected: Id[]) {
       const ret = reconcileElements(
         local as unknown as OrderedExcalidrawElement[],
         remote as unknown as RemoteExcalidrawElement[],
@@ -266,7 +270,7 @@ describe("elements reconciliation", () => {
       }
 
       expect(ret.map((x) => x.id)).toEqual(expected);
-    };
+    }
 
     // identical id/version/versionNonce/index
     // -------------------------------------------------------------------------

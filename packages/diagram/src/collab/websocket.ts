@@ -45,39 +45,48 @@ type ServerFrame =
   | { type: "snapshot-error"; request: number; message: string }
   | { type: "error"; message: string };
 
-type Reply = Extract<ServerFrame, { request: number }>;
+interface NumberedRequest {
+  request: number;
+}
+
+type Reply = Extract<ServerFrame, NumberedRequest>;
 
 const HEADER_LENGTH_BYTES = 4;
 
 /** Above this many unsent bytes, a volatile message is dropped rather than queued. */
 const VOLATILE_BUFFER_LIMIT = 256 * 1024;
 
-const encodeFrame = (header: ClientFrame, body?: Uint8Array): Uint8Array<ArrayBuffer> => {
+function encodeFrame(header: ClientFrame, body?: Uint8Array): Uint8Array<ArrayBuffer> {
   const json = new TextEncoder().encode(JSON.stringify(header));
   const frame = new Uint8Array(HEADER_LENGTH_BYTES + json.byteLength + (body?.byteLength ?? 0));
   new DataView(frame.buffer).setUint32(0, json.byteLength);
   frame.set(json, HEADER_LENGTH_BYTES);
   if (body) frame.set(body, HEADER_LENGTH_BYTES + json.byteLength);
   return frame;
-};
+}
 
-const decodeFrame = (data: ArrayBuffer): { header: ServerFrame; body: Uint8Array<ArrayBuffer> } => {
+interface DecodedFrame {
+  header: ServerFrame;
+  body: Uint8Array<ArrayBuffer>;
+}
+
+function decodeFrame(data: ArrayBuffer): DecodedFrame {
   const bytes = new Uint8Array(data);
   const length = new DataView(data).getUint32(0);
   const header = JSON.parse(
     new TextDecoder().decode(bytes.subarray(HEADER_LENGTH_BYTES, HEADER_LENGTH_BYTES + length)),
   ) as ServerFrame;
   return { header, body: bytes.slice(HEADER_LENGTH_BYTES + length) };
-};
+}
 
-const toArrayBuffer = async (data: unknown): Promise<ArrayBuffer | null> => {
+async function toArrayBuffer(data: unknown): Promise<ArrayBuffer | null> {
   if (data instanceof ArrayBuffer) return data;
   if (ArrayBuffer.isView(data)) {
     return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
   }
   if (typeof Blob !== "undefined" && data instanceof Blob) return data.arrayBuffer();
   return null;
-};
+}
 
 export interface WebSocketTransportOptions {
   /** The room server's address, a route answering with `createWebSocketRooms`' hooks. */
@@ -95,43 +104,44 @@ export interface WebSocketTransportOptions {
   reconnectDelay?: number | false;
 }
 
+interface PendingRequest {
+  resolve: (reply: ReplyFrame) => void;
+  reject: (error: Error) => void;
+}
+
+interface ReplyFrame {
+  header: Reply;
+  body: Uint8Array<ArrayBuffer>;
+}
+
 /**
  * A transport through a room server over a WebSocket, as Excalidraw's
  * socket.io portal: the server relays sealed messages to the room, the
  * followed side's viewport to its followers, and keeps the room's sealed
  * files and scene.
  */
-export const createWebSocketTransport = (options: WebSocketTransportOptions): CollabTransport => {
+export function createWebSocketTransport(options: WebSocketTransportOptions): CollabTransport {
   const Socket = options.WebSocket ?? globalThis.WebSocket;
   const timeout = options.timeout ?? 30_000;
   let socket: WebSocket | null = null;
   let cipher: CollabCipher | null = null;
   let handlers: CollabTransportHandlers | null = null;
   let nextRequest = 1;
-  const pending = new Map<
-    number,
-    {
-      resolve: (reply: { header: Reply; body: Uint8Array<ArrayBuffer> }) => void;
-      reject: (error: Error) => void;
-    }
-  >();
+  const pending = new Map<number, PendingRequest>();
   // frames are handled one after another: a broadcast decrypts before the
   // frames after it are seen, so the room's order holds
   let incoming: Promise<void> = Promise.resolve();
   // sealed side by side, sent in the order they were given
   let outgoing: Promise<void> = Promise.resolve();
 
-  const send = (header: ClientFrame, body?: Uint8Array): boolean => {
+  function send(header: ClientFrame, body?: Uint8Array): boolean {
     if (!socket || socket.readyState !== Socket.OPEN) return false;
     socket.send(encodeFrame(header, body));
     return true;
-  };
+  }
 
-  const request = (
-    header: ClientFrame & { request: number },
-    body?: Uint8Array,
-  ): Promise<{ header: Reply; body: Uint8Array<ArrayBuffer> }> =>
-    new Promise((resolve, reject) => {
+  function request(header: ClientFrame & NumberedRequest, body?: Uint8Array): Promise<ReplyFrame> {
+    return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         pending.delete(header.request);
         reject(new Error(`the room server did not answer ${header.type} in time`));
@@ -151,13 +161,14 @@ export const createWebSocketTransport = (options: WebSocketTransportOptions): Co
         pending.delete(header.request);
       }
     });
+  }
 
-  const rejectPending = (error: Error): void => {
+  function rejectPending(error: Error): void {
     for (const { reject } of pending.values()) reject(error);
     pending.clear();
-  };
+  }
 
-  const handle = async (frame: { header: ServerFrame; body: Uint8Array<ArrayBuffer> }) => {
+  async function handle(frame: DecodedFrame) {
     const { header, body } = frame;
     const to = handlers;
     if (!to) return;
@@ -198,14 +209,14 @@ export const createWebSocketTransport = (options: WebSocketTransportOptions): Co
         waiting?.resolve({ header, body });
       }
     }
-  };
+  }
 
   let roomId = "";
   let closed = false;
   let retry: ReturnType<typeof setTimeout> | null = null;
   let attempts = 0;
 
-  const open = (): void => {
+  function open(): void {
     const opened = new Socket(options.url, options.protocols);
     opened.binaryType = "arraybuffer";
     socket = opened;
@@ -245,7 +256,7 @@ export const createWebSocketTransport = (options: WebSocketTransportOptions): Co
         Math.min(30_000, delay * 2 ** attempts++),
       );
     });
-  };
+  }
 
   return {
     connect(room, nextHandlers) {
@@ -357,4 +368,4 @@ export const createWebSocketTransport = (options: WebSocketTransportOptions): Co
       }
     },
   };
-};
+}

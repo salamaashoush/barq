@@ -26,7 +26,12 @@ import { Room, type Awareness } from "./test-yjs.ts";
 import { createYjsTransport } from "./yjs.ts";
 
 const rooms = new Map<string, Room>();
-const peers: Array<Peer & { doc: Y.Doc; awareness: Awareness }> = [];
+interface YjsPeerParts {
+  doc: Y.Doc;
+  awareness: Awareness;
+}
+
+const peers: Array<Peer & YjsPeerParts> = [];
 
 afterEach(async () => {
   await Promise.all(peers.splice(0).map((peer) => peer.session.stop()));
@@ -34,7 +39,7 @@ afterEach(async () => {
   rooms.clear();
 });
 
-const joinWith = async (...args: Parameters<Join>) => {
+async function joinWith(...args: Parameters<Join>) {
   const [room, options, elements] = args;
   let shared = rooms.get(room.roomId);
   if (!shared) {
@@ -47,7 +52,7 @@ const joinWith = async (...args: Parameters<Join>) => {
   const joined = { ...peer, doc, awareness };
   peers.push(joined);
   return joined;
-};
+}
 
 const join: Join = joinWith;
 
@@ -111,8 +116,9 @@ describe("the Y.Doc", () => {
     // an older copy lands in the map over Alice's, as a stale replica's might
     const stale = await cipher.encrypt({ ...current, version: 1, x: 999 });
     bob.doc.transact(() => bob.doc.getMap<Uint8Array>("elements").set("r1", stale));
-    const isStale = (sealed: Uint8Array | undefined) =>
-      sealed !== undefined && sealed.join() === stale.join();
+    function isStale(sealed: Uint8Array | undefined) {
+      return sealed !== undefined && sealed.join() === stale.join();
+    }
     expect(isStale(elements.get("r1"))).toBe(true);
     await until(() => !isStale(elements.get("r1")), "Alice's copy written back");
     expect(await cipher.decrypt(elements.get("r1")!)).toMatchObject({ id: "r1", x: 10 });

@@ -64,18 +64,23 @@ const join: Join = async (room, options, elements) => {
 
 describeCollaboration(join);
 
+interface SentFrame {
+  header: Record<string, unknown>;
+  body: Uint8Array;
+}
+
 /** A peer of the room server without the key, as the server itself is: it sees what the server sees. */
-const eavesdrop = async (roomId: string) => {
-  const frames: { header: Record<string, unknown>; body: Uint8Array }[] = [];
+async function eavesdrop(roomId: string) {
+  const frames: SentFrame[] = [];
   const socket = new WebSocket(url);
   socket.binaryType = "arraybuffer";
-  const send = (header: object) => {
+  function send(header: object) {
     const json = new TextEncoder().encode(JSON.stringify(header));
     const frame = new Uint8Array(4 + json.byteLength);
     new DataView(frame.buffer).setUint32(0, json.byteLength);
     frame.set(json, 4);
     socket.send(frame);
-  };
+  }
   socket.addEventListener("message", (event) => {
     const bytes = new Uint8Array(event.data as ArrayBuffer);
     const length = new DataView(bytes.buffer).getUint32(0);
@@ -89,7 +94,11 @@ const eavesdrop = async (roomId: string) => {
     send,
     close: () => socket.close(),
   };
-};
+}
+
+interface StatusField {
+  status?: string;
+}
 
 describe("the room server", () => {
   test("relays and keeps ciphertext only: the scene, the presence and the files", async () => {
@@ -127,7 +136,7 @@ describe("the room server", () => {
     const alice = await join(room, { username: "Alice", existingRoom: false }, [rect("r1", 10)]);
     const file = addImage(alice, "img", "file-stored");
     await until(
-      () => (element(alice, "img") as { status?: string } | undefined)?.status === "saved",
+      () => (element(alice, "img") as StatusField | undefined)?.status === "saved",
       "the image saved",
     );
     await alice.session.stop();
@@ -146,12 +155,12 @@ describe("the room server", () => {
     const alice = await join(room, { username: "Alice", existingRoom: false });
     addImage(alice, "img", "file-2");
     await until(
-      () => (element(alice, "img") as { status?: string } | undefined)?.status === "saved",
+      () => (element(alice, "img") as StatusField | undefined)?.status === "saved",
       "the image saved",
     );
     await alice.session.stop();
     expect(alice.session.getState().status).toBe("closed");
-    expect((element(alice, "img") as { status?: string }).status).toBe("pending");
+    expect((element(alice, "img") as StatusField).status).toBe("pending");
     expect(alice.editor.api.getAppState().collaborators.size).toBe(0);
   });
 });

@@ -94,6 +94,16 @@ export interface CollaborationState {
   viewportStatusFrame: ViewportStatusFrame | null;
 }
 
+export interface FetchImageFilesOptions {
+  elements: readonly OrderedExcalidrawElement[];
+  forceFetchFiles?: boolean;
+}
+
+export interface FetchImageFilesResult {
+  loadedFiles: BinaryFileData[];
+  erroredFiles: Map<FileId, true>;
+}
+
 /** A live session: an editor bound to a room through a transport. */
 export interface Collaboration {
   readonly roomId: string;
@@ -111,21 +121,28 @@ export interface Collaboration {
    * client does not; with `forceFetchFiles`, also the errored and the ones
    * pending for over ten seconds.
    */
-  fetchImageFiles(opts: {
-    elements: readonly OrderedExcalidrawElement[];
-    forceFetchFiles?: boolean;
-  }): Promise<{ loadedFiles: BinaryFileData[]; erroredFiles: Map<FileId, true> }>;
+  fetchImageFiles(opts: FetchImageFilesOptions): Promise<FetchImageFilesResult>;
   /** Saves the scene to the room, uploads what is pending, and leaves. */
   stop(): Promise<void>;
 }
 
-const defaultFollowingFrame = (user: UserToFollow, unfollow: () => void): ViewportStatusFrame => ({
-  border: "var(--brand, var(--primary))",
-  label: { label: `Following ${user.username}`, onClose: unfollow },
-});
+function defaultFollowingFrame(user: UserToFollow, unfollow: () => void): ViewportStatusFrame {
+  return {
+    border: "var(--brand, var(--primary))",
+    label: { label: `Following ${user.username}`, onClose: unfollow },
+  };
+}
 
 class AbortError extends Error {
   public override name = "AbortError";
+}
+
+interface InitializeRoomOptions {
+  fetchScene: boolean;
+}
+
+interface RelayBoundsOptions {
+  force: boolean;
 }
 
 class CollaborationSession implements Collaboration {
@@ -210,14 +227,15 @@ class CollaborationSession implements Collaboration {
             maxBytes: options.maxFileBytes ?? FILE_UPLOAD_MAX_BYTES,
           }),
         );
-        const pick = (ids: readonly FileId[]) =>
-          ids.reduce((acc: Map<FileId, BinaryFileData>, id) => {
+        function pick(ids: readonly FileId[]) {
+          return ids.reduce((acc: Map<FileId, BinaryFileData>, id) => {
             const fileData = addedFiles.get(id);
             if (fileData) {
               acc.set(id, fileData);
             }
             return acc;
           }, new Map());
+        }
         return { savedFiles: pick(savedFiles), erroredFiles: pick(erroredFiles) };
       },
     });
@@ -438,7 +456,7 @@ class CollaborationSession implements Collaboration {
     }
   }
 
-  private async initializeRoom({ fetchScene }: { fetchScene: boolean }): Promise<void> {
+  private async initializeRoom({ fetchScene }: InitializeRoomOptions): Promise<void> {
     this.clearInitializationTimer();
     if (this.socketInitialized || this.stopped) return;
     this.socketInitialized = true;
@@ -580,10 +598,7 @@ class CollaborationSession implements Collaboration {
     updateStaleImageStatuses({ api: this.api, erroredFiles });
   }, LOAD_IMAGES_TIMEOUT);
 
-  public async fetchImageFiles(opts: {
-    elements: readonly OrderedExcalidrawElement[];
-    forceFetchFiles?: boolean;
-  }): Promise<{ loadedFiles: BinaryFileData[]; erroredFiles: Map<FileId, true> }> {
+  public async fetchImageFiles(opts: FetchImageFilesOptions): Promise<FetchImageFilesResult> {
     const unfetchedImages = opts.elements
       .filter(isInitializedImageElement)
       .filter(
@@ -780,7 +795,7 @@ class CollaborationSession implements Collaboration {
     }
   }
 
-  private relayVisibleSceneBounds(props?: { force: boolean }): void {
+  private relayVisibleSceneBounds(props?: RelayBoundsOptions): void {
     if (this.socketId && (this.followedBy.size > 0 || props?.force)) {
       const data: SocketUpdateDataSource["USER_VISIBLE_SCENE_BOUNDS"] = {
         type: WS_SUBTYPES.USER_VISIBLE_SCENE_BOUNDS,
@@ -967,5 +982,6 @@ class CollaborationSession implements Collaboration {
  * stored for whoever joins an empty room. Everything leaves encrypted with
  * the room key.
  */
-export const createCollaboration = (options: CollaborationOptions): Collaboration =>
-  new CollaborationSession(options);
+export function createCollaboration(options: CollaborationOptions): Collaboration {
+  return new CollaborationSession(options);
+}

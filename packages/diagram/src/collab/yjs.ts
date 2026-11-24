@@ -62,21 +62,30 @@ interface Presence {
   sceneBounds?: SceneBounds | null;
 }
 
-const base64 = (bytes: Uint8Array): string => btoa(toByteString(bytes));
+function base64(bytes: Uint8Array): string {
+  return btoa(toByteString(bytes));
+}
 
-const fromBase64 = (text: string): Uint8Array<ArrayBuffer> => {
+function fromBase64(text: string): Uint8Array<ArrayBuffer> {
   const binary = atob(text);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes;
-};
+}
 
-const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
+function same(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
 
 interface Written {
   version: number;
   versionNonce: number;
   data: Uint8Array;
+}
+
+interface ElementVersion {
+  version: number;
+  versionNonce: number;
 }
 
 /**
@@ -91,7 +100,7 @@ interface Written {
  * Excalidraw's rule (the higher version, then the lower nonce), so every
  * replica converges on the copy reconciliation picks.
  */
-export const createYjsTransport = (options: YjsTransportOptions): CollabTransport => {
+export function createYjsTransport(options: YjsTransportOptions): CollabTransport {
   const { doc, awareness } = options;
   const elements = doc.getMap<Uint8Array>(options.elementsMap ?? "elements");
   const files = doc.getMap<Uint8Array>(options.filesMap ?? "files");
@@ -103,7 +112,7 @@ export const createYjsTransport = (options: YjsTransportOptions): CollabTranspor
   let handlers: CollabTransportHandlers | null = null;
   let presence: Presence = { following: null, sceneBounds: null };
   /** The (version, nonce) of each element's copy in the map, as far as this client knows. */
-  const known = new Map<string, { version: number; versionNonce: number }>();
+  const known = new Map<string, ElementVersion>();
   /** This client's own last copy of each element, written again should it lose a race. */
   const written = new Map<string, Written>();
   const seen = new Map<number, Presence>();
@@ -111,21 +120,23 @@ export const createYjsTransport = (options: YjsTransportOptions): CollabTranspor
   let followers: SocketId[] = [];
   // decrypted one after another, so they reach the session in order
   let queue: Promise<void> = Promise.resolve();
-  const enqueue = (task: () => Promise<void>): void => {
+  function enqueue(task: () => Promise<void>): void {
     queue = queue.then(task).catch((error: unknown) => console.error(error));
-  };
+  }
 
-  const deliver = (data: SocketUpdateDataIncoming): void => handlers?.onMessage(data);
+  function deliver(data: SocketUpdateDataIncoming): void {
+    return handlers?.onMessage(data);
+  }
 
-  const publishPresence = (): void => {
+  function publishPresence(): void {
     const snapshot = { ...presence };
     enqueue(async () => {
       if (!cipher || !handlers) return;
       awareness.setLocalStateField(field, base64(await cipher.encrypt(snapshot)));
     });
-  };
+  }
 
-  const decryptElement = async (data: Uint8Array): Promise<OrderedExcalidrawElement | null> => {
+  async function decryptElement(data: Uint8Array): Promise<OrderedExcalidrawElement | null> {
     try {
       const element = (await cipher?.decrypt(data)) as OrderedExcalidrawElement | undefined;
       return element && typeof element === "object" && typeof element.id === "string"
@@ -136,16 +147,16 @@ export const createYjsTransport = (options: YjsTransportOptions): CollabTranspor
       deliver({ type: WS_SUBTYPES.INVALID_RESPONSE });
       return null;
     }
-  };
+  }
 
-  const wins = (
-    mine: { version: number; versionNonce: number },
-    theirs: { version: number; versionNonce: number },
-  ): boolean =>
-    mine.version > theirs.version ||
-    (mine.version === theirs.version && mine.versionNonce < theirs.versionNonce);
+  function wins(mine: ElementVersion, theirs: ElementVersion): boolean {
+    return (
+      mine.version > theirs.version ||
+      (mine.version === theirs.version && mine.versionNonce < theirs.versionNonce)
+    );
+  }
 
-  const onElements = (event: Y.YMapEvent<Uint8Array>, transaction: Y.Transaction): void => {
+  function onElements(event: Y.YMapEvent<Uint8Array>, transaction: Y.Transaction): void {
     if (transaction.origin === origin) return;
     const ids = [...(event.keysChanged as Set<string>)].filter((id) => elements.has(id));
     const values = ids.map((id) => [id, elements.get(id)!] as const);
@@ -172,16 +183,16 @@ export const createYjsTransport = (options: YjsTransportOptions): CollabTranspor
         deliver({ type: WS_SUBTYPES.UPDATE, payload: { elements: received } });
       }
     });
-  };
+  }
 
-  const roomPeers = (): SocketId[] => {
+  function roomPeers(): SocketId[] {
     const ids = [...awareness.getStates()]
       .filter(([id, state]) => id !== awareness.clientID && typeof state[field] === "string")
       .map(([id]) => String(id) as SocketId);
     return [selfId, ...ids].toSorted();
-  };
+  }
 
-  const onAwareness = ({ added, updated, removed }: AwarenessChanges): void => {
+  function onAwareness({ added, updated, removed }: AwarenessChanges): void {
     const states = awareness.getStates();
     const changed = [...added, ...updated]
       .filter((id) => id !== awareness.clientID)
@@ -267,7 +278,7 @@ export const createYjsTransport = (options: YjsTransportOptions): CollabTranspor
         handlers.onFollowersChange(followers);
       }
     });
-  };
+  }
 
   return {
     connect(room, nextHandlers) {
@@ -418,4 +429,4 @@ export const createYjsTransport = (options: YjsTransportOptions): CollabTranspor
       return { loadedFiles, erroredFiles };
     },
   };
-};
+}

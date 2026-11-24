@@ -61,6 +61,15 @@ export interface CollabTransportHandlers {
   onDisconnect(error?: Error): void;
 }
 
+export interface RoomConnection {
+  roomId: string;
+  cipher: CollabCipher;
+}
+
+export interface BroadcastOptions {
+  volatile: boolean;
+}
+
 /**
  * What carries a collaboration session between clients, Excalidraw's
  * socket.io room behind one interface: `createWebSocketTransport` relays
@@ -68,14 +77,14 @@ export interface CollabTransportHandlers {
  * and the presence in its awareness.
  */
 export interface CollabTransport {
-  connect(room: { roomId: string; cipher: CollabCipher }, handlers: CollabTransportHandlers): void;
+  connect(room: RoomConnection, handlers: CollabTransportHandlers): void;
   close(): void;
   /**
    * Sends to everyone else in the room; a volatile message (a pointer, an
    * idle state) may be dropped. `USER_VISIBLE_SCENE_BOUNDS` goes to the
    * clients following this one only.
    */
-  broadcast(data: SocketUpdateData, options: { volatile: boolean }): Promise<void>;
+  broadcast(data: SocketUpdateData, options: BroadcastOptions): Promise<void>;
   /** Starts or stops following a client, for them to send their viewport. */
   follow(payload: OnUserFollowedPayload): void;
   saveFiles(files: readonly EncodedFile[]): Promise<SaveFilesResult>;
@@ -91,7 +100,7 @@ export interface CollabTransport {
 }
 
 /** A cipher on a room key, `generateEncryptionKey`'s 22 characters. */
-export const createRoomCipher = (roomKey: string): CollabCipher => {
+export function createRoomCipher(roomKey: string): CollabCipher {
   let encryptKey: Promise<CryptoKey> | null = null;
   let decryptKey: Promise<CryptoKey> | null = null;
   return {
@@ -114,4 +123,4 @@ export const createRoomCipher = (roomKey: string): CollabCipher => {
       return JSON.parse(new TextDecoder("utf-8").decode(new Uint8Array(decrypted))) as unknown;
     },
   };
-};
+}

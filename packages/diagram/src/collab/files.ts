@@ -23,6 +23,31 @@ type FileVersion = Required<BinaryFileData>["version"];
 /** A file's load as the session sees it, for a host that shows progress. */
 export type FileLoadingStatus = "loading" | "loaded" | "error";
 
+export interface FileManagerOptions {
+  getFiles: (fileIds: FileId[]) => Promise<LoadedFiles>;
+  saveFiles: (data: AddedFiles) => Promise<SavedFiles>;
+  onFileStatusChange?: (updates: Array<[FileId, FileLoadingStatus]>) => void;
+}
+
+export interface LoadedFiles {
+  loadedFiles: BinaryFileData[];
+  erroredFiles: Map<FileId, true>;
+}
+
+export interface AddedFiles {
+  addedFiles: Map<FileId, BinaryFileData>;
+}
+
+export interface SavedFiles {
+  savedFiles: Map<FileId, BinaryFileData>;
+  erroredFiles: Map<FileId, BinaryFileData>;
+}
+
+export interface SaveFilesOptions {
+  elements: readonly ExcalidrawElement[];
+  files: BinaryFiles;
+}
+
 /**
  * Excalidraw's `FileManager`: which files are saved, being saved, being
  * fetched or failed, so each is uploaded once per version and fetched once.
@@ -41,21 +66,7 @@ export class FileManager {
   private readonly _saveFiles;
   private readonly _onFileStatusChange;
 
-  public constructor({
-    getFiles,
-    saveFiles,
-    onFileStatusChange,
-  }: {
-    getFiles: (fileIds: FileId[]) => Promise<{
-      loadedFiles: BinaryFileData[];
-      erroredFiles: Map<FileId, true>;
-    }>;
-    saveFiles: (data: { addedFiles: Map<FileId, BinaryFileData> }) => Promise<{
-      savedFiles: Map<FileId, BinaryFileData>;
-      erroredFiles: Map<FileId, BinaryFileData>;
-    }>;
-    onFileStatusChange?: (updates: Array<[FileId, FileLoadingStatus]>) => void;
-  }) {
+  public constructor({ getFiles, saveFiles, onFileStatusChange }: FileManagerOptions) {
     this._getFiles = getFiles;
     this._saveFiles = saveFiles;
     this._onFileStatusChange = onFileStatusChange;
@@ -85,16 +96,7 @@ export class FileManager {
     return file.version ?? 1;
   };
 
-  public saveFiles = async ({
-    elements,
-    files,
-  }: {
-    elements: readonly ExcalidrawElement[];
-    files: BinaryFiles;
-  }): Promise<{
-    savedFiles: Map<FileId, BinaryFileData>;
-    erroredFiles: Map<FileId, BinaryFileData>;
-  }> => {
+  public saveFiles = async ({ elements, files }: SaveFilesOptions): Promise<SavedFiles> => {
     const addedFiles: Map<FileId, BinaryFileData> = new Map();
 
     for (const element of elements) {
@@ -134,12 +136,7 @@ export class FileManager {
     }
   };
 
-  public getFiles = async (
-    ids: FileId[],
-  ): Promise<{
-    loadedFiles: BinaryFileData[];
-    erroredFiles: Map<FileId, true>;
-  }> => {
+  public getFiles = async (ids: FileId[]): Promise<LoadedFiles> => {
     if (!ids.length) {
       return {
         loadedFiles: [],
@@ -219,16 +216,18 @@ export class FileManager {
   }
 }
 
-/** Compresses and encrypts files with the room key, refusing one over `maxBytes`. */
-export const encodeFilesForUpload = async ({
-  files,
-  maxBytes,
-  encryptionKey,
-}: {
+export interface EncodeFilesForUploadOptions {
   files: Map<FileId, BinaryFileData>;
   maxBytes: number;
   encryptionKey: string | CryptoKey;
-}): Promise<EncodedFile[]> => {
+}
+
+/** Compresses and encrypts files with the room key, refusing one over `maxBytes`. */
+export async function encodeFilesForUpload({
+  files,
+  maxBytes,
+  encryptionKey,
+}: EncodeFilesForUploadOptions): Promise<EncodedFile[]> {
   const processedFiles: EncodedFile[] = [];
 
   for (const [id, fileData] of files) {
@@ -258,13 +257,13 @@ export const encodeFilesForUpload = async ({
   }
 
   return processedFiles;
-};
+}
 
 /** Decrypts and decompresses a downloaded file, as `loadFilesFromFirebase` does. */
-export const decodeFileFromDownload = async (
+export async function decodeFileFromDownload(
   file: EncodedFile,
   decryptionKey: string | CryptoKey,
-): Promise<BinaryFileData> => {
+): Promise<BinaryFileData> {
   const { data, metadata } = await decompressData(file.buffer, {
     decryptionKey,
   });
@@ -279,13 +278,15 @@ export const decodeFileFromDownload = async (
     created: created || Date.now(),
     lastRetrieved: created || Date.now(),
   };
-};
+}
 
-/** Marks the images whose files failed to load as errored. */
-export const updateStaleImageStatuses = (params: {
+export interface StaleImageStatusOptions {
   api: Pick<DiagramEditorApi, "updateScene" | "getSceneElementsIncludingDeleted">;
   erroredFiles: Map<FileId, true>;
-}): void => {
+}
+
+/** Marks the images whose files failed to load as errored. */
+export function updateStaleImageStatuses(params: StaleImageStatusOptions): void {
   if (!params.erroredFiles.size) {
     return;
   }
@@ -300,4 +301,4 @@ export const updateStaleImageStatuses = (params: {
     }),
     captureUpdate: "NEVER",
   });
-};
+}
