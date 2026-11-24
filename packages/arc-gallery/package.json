@@ -1,0 +1,40 @@
+{
+  "name": "@barqjs/arc-gallery",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Every @barqjs/arc component working, in one app: the design system's showcase and the base for its visual regression tests",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 4700 --strictPort",
+    "build": "vite build",
+    "preview": "PORT=4700 bun dist/server/serve.js",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test --timeout 120000"
+  },
+  "dependencies": {
+    "@barqjs/arc": "workspace:*",
+    "@barqjs/aria": "workspace:*",
+    "@barqjs/core": "workspace:*",
+    "@barqjs/css": "workspace:*",
+    "@barqjs/db": "workspace:*",
+    "@barqjs/diagram": "workspace:*",
+    "@barqjs/form": "workspace:*",
+    "@barqjs/lexical": "workspace:*",
+    "@barqjs/lucide": "workspace:*",
+    "@barqjs/primitives": "workspace:*",
+    "@barqjs/router": "workspace:*",
+    "@barqjs/server": "workspace:*",
+    "@barqjs/start": "workspace:*",
+    "@barqjs/table": "workspace:*",
+    "@barqjs/ui": "workspace:*",
+    "@barqjs/web": "workspace:*",
+    "yjs": "^13.6.33"
+  },
+  "devDependencies": {
+    "@barqjs/compiler": "workspace:*",
+    "@barqjs/vite": "workspace:*",
+    "@types/bun": "^1.4.4",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8"
+  }
+}
