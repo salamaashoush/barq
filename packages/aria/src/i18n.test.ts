@@ -5,6 +5,8 @@ import {
   filter,
   provideDirection,
   provideLocale,
+  relativeTimeFormatter,
+  relativeUnit,
   useDirection,
   useLocale,
 } from "./i18n.ts";
@@ -125,4 +127,22 @@ test("a direction signal moves every reader", () => {
   flush();
   expect(read()).toBe("rtl");
   dispose();
+});
+
+test("a span of time is written in the one unit a person would say", () => {
+  expect(relativeUnit(-30 * 1000)).toEqual({ value: -30, unit: "second" });
+  expect(relativeUnit(-90 * 60 * 1000)).toEqual({ value: -2, unit: "hour" });
+  expect(relativeUnit(36 * 60 * 60 * 1000)).toEqual({ value: 2, unit: "day" });
+  expect(relativeUnit(-400 * 24 * 60 * 60 * 1000)).toEqual({ value: -1, unit: "year" });
+  expect(relativeUnit(-200)).toEqual({ value: 0, unit: "second" });
+});
+
+test("a relative time is formatted in the locale in scope", () => {
+  createRoot((dispose) => {
+    provideLocale("de-DE");
+    const format = relativeTimeFormatter({ numeric: "auto" });
+    expect(format().format(-1, "day")).toBe("gestern");
+    expect(format().resolvedOptions().locale).toBe("de-DE");
+    dispose();
+  });
 });

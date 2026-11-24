@@ -651,6 +651,48 @@ export function dateFormatter(
   return () => dateFormatters(locale().locale, options);
 }
 
+const relativeTimeFormatters = memoised(
+  (locale: string, options?: Intl.RelativeTimeFormatOptions) =>
+    new Intl.RelativeTimeFormat(locale, options),
+);
+
+/** An `Intl.RelativeTimeFormat` for the locale in scope, cached. */
+export function relativeTimeFormatter(
+  options?: Intl.RelativeTimeFormatOptions,
+  locale: Accessor<Locale> = useLocale(),
+): Accessor<Intl.RelativeTimeFormat> {
+  return () => relativeTimeFormatters(locale().locale, options);
+}
+
+const UNITS: readonly (readonly [Intl.RelativeTimeFormatUnit, number])[] = [
+  ["year", 365 * 24 * 60 * 60 * 1000],
+  ["month", 30 * 24 * 60 * 60 * 1000],
+  ["week", 7 * 24 * 60 * 60 * 1000],
+  ["day", 24 * 60 * 60 * 1000],
+  ["hour", 60 * 60 * 1000],
+  ["minute", 60 * 1000],
+  ["second", 1000],
+];
+
+/**
+ * A span of time as the one unit a person would say it in: 90 minutes is
+ * "2 hours", 36 hours is "2 days". `milliseconds` is signed, the past
+ * negative, which is what `Intl.RelativeTimeFormat` takes.
+ */
+export function relativeUnit(milliseconds: number): {
+  value: number;
+  unit: Intl.RelativeTimeFormatUnit;
+} {
+  const size = Math.abs(milliseconds);
+  for (const [unit, span] of UNITS) {
+    if (size >= span || unit === "second") {
+      const value = Math.round(size / span);
+      return { value: value === 0 ? 0 : Math.sign(milliseconds) * value, unit };
+    }
+  }
+  return { value: 0, unit: "second" };
+}
+
 const listFormatters = memoised(
   (locale: string, options?: Intl.ListFormatOptions) => new Intl.ListFormat(locale, options),
 );
