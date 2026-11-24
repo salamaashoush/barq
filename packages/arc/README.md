@@ -503,6 +503,13 @@ import { ResponsiveTabs } from "@barqjs/arc";
   `href`, or a button held by `selectedKey`; its `count` or `dot` is an
   `Indicator` on the icon and part of its name ("Inbox, 3 new"). It hides from
   `hideFrom` up (`md`), where `AppShell`'s sidebar takes over.
+- `Stepper`: where a reader is in a task of several steps, on `@barqjs/aria`'s
+  step list. Each step is a link named by its number, its state in words and
+  its label, reachable once the step before it is done (`lastCompletedStep`),
+  each its own Tab stop and the arrows moving between them. A done step shows
+  a check; an `invalid` one an alert in the danger tone and "Has errors"; an
+  `optional` one says so. Horizontal or vertical; across a narrow container
+  a horizontal one keeps the markers and the current step's label.
 
 ## Data display
 

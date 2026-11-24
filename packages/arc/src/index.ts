@@ -449,3 +449,4 @@ export {
   type BottomNavigationProps,
   bottomNavigationStyles,
 } from "./components/bottom-navigation.tsx";
+export { type StepItem, Stepper, type StepperProps, stepperStyles } from "./components/stepper.tsx";
