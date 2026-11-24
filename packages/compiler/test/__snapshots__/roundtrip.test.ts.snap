@@ -884,6 +884,7 @@ function Row(props: {
 export default function ComponentForwardedHandlerTuple() {
   const _el$2 = _tmpl$2();
   const _el$3 = _el$2.firstChild;
+  _$insert(_el$3, () => picked());
   _$insert(_el$2, _$createComponent(Row, {
     on: _k$1,
     handler: () => pick,
@@ -891,7 +892,6 @@ export default function ComponentForwardedHandlerTuple() {
     long: _$cell(() => "long"),
     short: _$cell(() => "short")
   }));
-  _$insert(_el$3, () => picked());
   return _el$2;
 }
 export const events = [(root: HTMLElement): void => {
@@ -957,13 +957,13 @@ function Chip(props: {
 export default function ComponentFunctionProps() {
   const _el$2 = _tmpl$2();
   const _el$3 = _el$2.firstChild;
+  _$insert(_el$3, n);
   _$insert(_el$2, _$createComponent(Chip, {
     cb: _$cell([bump, 2]),
     legacy: _$cell(function() {
       return "legacy";
     })
   }));
-  _$insert(_el$3, n);
   return _el$2;
 }
 export const events = [(root: HTMLElement): void => {
@@ -2082,12 +2082,12 @@ export const [live, setLive] = createSignal(0, { ownedWrite: true });
 export default function ControlFlowShowCleanupBody() {
   const _el$1 = _tmpl$1();
   const _el$2 = _el$1.firstChild;
+  _$insert(_el$2, () => live());
   _$branch(_el$1, null, () => on() ? 1 : 0, [null, _$block(() => {
     setLive(untrack(live) + 1);
     onCleanup(() => setLive(untrack(live) - 1));
     return _tmpl$2();
   })]);
-  _$insert(_el$2, () => live());
   return _el$1;
 }
 export const steps = [
@@ -5905,10 +5905,10 @@ exports[`emitted code snapshots table-root-shapes 1`] = `
 import { createSignal, bindEffect as _$bindEffect } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<table class="shapes"><colgroup></colgroup><thead></thead><tbody class="cells"><tr></tr></tbody></table>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<caption class="cap">totals</caption>\`);
-const _tmpl$3 = /* @__PURE__ */ _$template(\`<tfoot class="foot"><tr><td>total</td></tr></tfoot>\`);
-const _tmpl$4 = /* @__PURE__ */ _$template(\`<col class="wide">\`);
-const _tmpl$5 = /* @__PURE__ */ _$template(\`<tr class="hrow"><th scope="col">head</th></tr>\`);
-const _tmpl$6 = /* @__PURE__ */ _$template(\`<td class="cell">7</td>\`);
+const _tmpl$3 = /* @__PURE__ */ _$template(\`<col class="wide">\`);
+const _tmpl$4 = /* @__PURE__ */ _$template(\`<tr class="hrow"><th scope="col">head</th></tr>\`);
+const _tmpl$5 = /* @__PURE__ */ _$template(\`<td class="cell">7</td>\`);
+const _tmpl$6 = /* @__PURE__ */ _$template(\`<tfoot class="foot"><tr><td>total</td></tr></tfoot>\`);
 export const [revision, setRevision] = createSignal(1);
 /**
 * Every table-scoped tag as a template ROOT, one per hole.
@@ -5937,10 +5937,10 @@ export default function TableRootShapes() {
     _$setAttr(_el$1, "data-rev", _v$, _p$);
   });
   _$insert(_el$1, _tmpl$2(), _el$2);
-  _$insert(_el$1, _tmpl$3());
-  _$insert(_el$2, _tmpl$4());
-  _$insert(_el$3, _tmpl$5());
-  _$insert(_el$5, _tmpl$6());
+  _$insert(_el$2, _tmpl$3());
+  _$insert(_el$3, _tmpl$4());
+  _$insert(_el$5, _tmpl$5());
+  _$insert(_el$1, _tmpl$6());
   return _el$1;
 }
 export const steps = [() => setRevision(2), () => setRevision(3)];

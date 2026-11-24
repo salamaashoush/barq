@@ -439,6 +439,24 @@ impl<'a> Lower<'a, '_> {
         // A spread on a `<select>` cannot move: its `multiple` has to precede
         // the options marked `selected`. It stays, holding its value and
         // selected index for a `SpreadSelection` among the writes that follow.
+        // The children were built a level at a time, so the inserts stand in
+        // breadth-first order. Run them in document order instead, the order
+        // the server writes them in: an insert builds components, each takes
+        // the next child id of the owner, and a deeper hole run after a later
+        // sibling's gave the browser ids one off from the server's.
+        let order = document_order(&build.unit.skeleton);
+        build.insert_patches.sort_by_key(|patch| {
+            patch.op.slot().map_or(u32::MAX, |slot| {
+                build
+                    .unit
+                    .skeleton
+                    .nodes
+                    .iter()
+                    .position(|node| matches!(node, SkelNode::Slot(own) if *own == slot))
+                    .map_or(u32::MAX, |node| order[node])
+            })
+        });
+
         let mut unit = build.unit;
         let mut grouped = Vec::new();
         let mut selecting: Vec<Patch> = Vec::new();
@@ -1224,4 +1242,19 @@ impl<'a> VisitMut<'a> for Lower<'a, '_> {
         }
         walk_jsx_attribute_value(self, it);
     }
+}
+
+/// Each node's place in a depth-first walk of the skeleton, by `NodeId`.
+fn document_order(skeleton: &crate::ir::Skeleton<'_>) -> Vec<u32> {
+    let mut order = vec![u32::MAX; skeleton.nodes.len()];
+    let mut next = 0;
+    let mut stack: Vec<NodeId> = (skeleton.roots.0..skeleton.roots.1).rev().collect();
+    while let Some(node) = stack.pop() {
+        order[node as usize] = next;
+        next += 1;
+        if let SkelNode::Element(element) = &skeleton.nodes[node as usize] {
+            stack.extend((element.children.0..element.children.1).rev());
+        }
+    }
+    order
 }

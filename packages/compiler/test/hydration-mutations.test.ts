@@ -390,11 +390,12 @@ describe("hydrating a page the compiler never made hydratable", () => {
     cold.remove();
 
     expect(report.recovered).toBe(true);
-    // Either detector is acceptable and both are honest: the subtree check
-    // reaches it first on a page with any structure — the server's `<main>` has
-    // the hole's own nodes where a hydratable render would have a range — and
-    // the claimed-nothing check is what catches a page with none.
-    expect(["structure", "not-hydratable"]).toContain(report.mismatches[0]?.kind);
+    // Any of three detectors is acceptable and each is honest. The first hole
+    // in document order, the `<h1>`'s text, finds no range marker where a
+    // hydratable render writes one; the subtree check finds the hole's own
+    // nodes where a range would be; the claimed-nothing check catches a page
+    // with no structure at all.
+    expect(["range", "structure", "not-hydratable"]).toContain(report.mismatches[0]?.kind);
     expect(hydrated).toBe(coldShape);
     expect(claim.percent).toBe(0);
   });

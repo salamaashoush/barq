@@ -97,3 +97,52 @@ describe("an id made on the server and again on the client", () => {
     }
   });
 });
+
+/**
+ * A hole nested deeper than a later sibling's. The children are lowered a
+ * level at a time, so the later sibling's insert used to run first in the
+ * browser while the server wrote them in document order: each component took
+ * the other's child id, and the field's id came out one off.
+ */
+const NESTED = `
+import { Show, createSignal, createUniqueId } from "@barqjs/core";
+const [open] = createSignal(true);
+const [compare] = createSignal(false);
+function Field() {
+  const id = createUniqueId();
+  return <p><label for={id}>name</label><input id={id} /></p>;
+}
+function Action() {
+  createUniqueId();
+  return <button type="button">Restore</button>;
+}
+export default function Page() {
+  return (
+    <section>
+      <div><div><Show when={open()}><Action /></Show></div></div>
+      <Show when={compare()} fallback={<div><Field /></div>}><p>compare</p></Show>
+    </section>
+  );
+}`;
+
+test("a hole nested deeper than a later sibling's makes the server's id", async () => {
+  const core = await import("@barqjs/core");
+  const web = await import("@barqjs/web");
+  const server = await import("@barqjs/server");
+  const compiled = await compileText(NESTED, "unique-id-nested");
+  const rendered = await server.renderPage((() =>
+    (compiled.ssr.default as unknown as () => unknown)()) as never);
+  const page = host(rendered.html);
+  core.resetChildIds();
+  const written = ids(page);
+  const dispose = web.hydrate(compiled.dom.default as never, page);
+  core.flush();
+  try {
+    expect(written).toHaveLength(1);
+    expect(ids(page)).toEqual(written);
+    expect(page.querySelector("label")?.htmlFor).toBe(written[0]);
+  } finally {
+    dispose();
+    page.remove();
+  }
+});
