@@ -8,6 +8,8 @@ import {
   onSettled,
   provide,
   createSignal,
+  For,
+  Show,
   type Accessor,
   type Child,
 } from "@barqjs/core";
@@ -25,6 +27,8 @@ import { uiProps } from "../lib/slot.ts";
 import type { UiProps } from "../lib/props.ts";
 import { Button, type ButtonProps } from "./button.tsx";
 import { srOnly } from "./sr-only.ts";
+import { ring } from "../lib/shared-ring.ts";
+import { touch } from "../lib/shared-touch.ts";
 
 const ui = layer("barq.ui");
 
@@ -129,8 +133,13 @@ export interface CarouselValue {
   readonly api: Accessor<CarouselApi | null>;
   readonly canScrollPrev: Accessor<boolean>;
   readonly canScrollNext: Accessor<boolean>;
+  /** The snap point in view, from 0. */
+  readonly selectedIndex: Accessor<number>;
+  /** How many snap points: one per slide, or fewer when several fit in view. */
+  readonly snapCount: Accessor<number>;
   readonly scrollPrev: () => void;
   readonly scrollNext: () => void;
+  readonly scrollTo: (index: number) => void;
   readonly attach: (element: HTMLElement | null) => void;
 }
 
@@ -200,6 +209,8 @@ export function Carousel(props: CarouselProps) {
   const [api, writeApi] = createSignal<CarouselApi | null>(null, attached);
   const [canScrollPrev, setCanScrollPrev] = createSignal(false, attached);
   const [canScrollNext, setCanScrollNext] = createSignal(false, attached);
+  const [selectedIndex, setSelectedIndex] = createSignal(0, attached);
+  const [snapCount, setSnapCount] = createSignal(0, attached);
   let instance: CarouselApi | null = null;
   let node: HTMLElement | null = null;
   let mounted = false;
@@ -248,6 +259,8 @@ export function Carousel(props: CarouselProps) {
     const update = (): void => {
       setCanScrollPrev(made.canScrollPrev());
       setCanScrollNext(made.canScrollNext());
+      setSelectedIndex(made.selectedScrollSnap());
+      setSnapCount(made.scrollSnapList().length);
     };
     // `reInit` too: a slide added or a container resized changes both answers,
     // and a `next` button that stays disabled after the second slide arrives
@@ -302,8 +315,11 @@ export function Carousel(props: CarouselProps) {
     api,
     canScrollPrev,
     canScrollNext,
+    selectedIndex,
+    snapCount,
     scrollPrev: () => instance?.scrollPrev(),
     scrollNext: () => instance?.scrollNext(),
+    scrollTo: (index) => instance?.scrollTo(index),
     attach,
   };
 
@@ -441,5 +457,82 @@ export function CarouselNext(props: CarouselButtonProps) {
       <ArrowRight />
       <span class={srOnly}>{props.label ?? "Next slide"}</span>
     </Button>
+  );
+}
+
+const dots = ui({
+  display: "flex",
+  justifyContent: "center",
+  gap: "calc(var(--spacing) * 1)",
+  paddingTop: "calc(var(--spacing) * 3)",
+});
+
+const dot = ui(touch.target, ring.focus, {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  minWidth: "calc(var(--spacing) * 6)",
+  minHeight: "calc(var(--spacing) * 6)",
+  padding: "0px",
+  borderWidth: "0px",
+  borderRadius: "calc(infinity * 1px)",
+  backgroundColor: "transparent",
+  cursor: "pointer",
+  "::before": {
+    content: '""',
+    width: "calc(var(--spacing) * 2)",
+    height: "calc(var(--spacing) * 2)",
+    borderRadius: "calc(infinity * 1px)",
+    backgroundColor: "var(--muted-foreground)",
+    opacity: "0.4",
+  },
+  "[aria-current]::before": { opacity: "1", backgroundColor: "var(--foreground)" },
+  "@media (forced-colors: active)": {
+    "::before": { backgroundColor: "CanvasText" },
+    "[aria-current]::before": { backgroundColor: "Highlight" },
+  },
+});
+
+export interface CarouselDotsProps extends UiProps {
+  /** Names each dot. @default "Slide 2 of 5" */
+  label?: (index: number, count: number) => string;
+}
+
+/**
+ * A button per snap point, the one in view marked current: the slide picker
+ * the carousel pattern asks for beside the arrows, and a way to jump.
+ *
+ * ```tsx
+ * <Carousel>
+ *   <CarouselContent>…</CarouselContent>
+ *   <CarouselDots />
+ * </Carousel>
+ * ```
+ *
+ * Nothing is drawn while there is only one snap point. Each dot is a finger's
+ * size under a coarse pointer, however small it is drawn.
+ */
+export function CarouselDots(props: CarouselDotsProps) {
+  const carousel = useCarousel();
+  const name = (index: number, count: number): string =>
+    props.label?.(index, count) ?? `Slide ${String(index + 1)} of ${String(count)}`;
+
+  return (
+    <Show when={carousel.snapCount() > 1}>
+      <div {...uiProps("carousel-dots", dots, cells(props))} role={props.role ?? "group"}>
+        <For each={() => Array.from({ length: carousel.snapCount() }, (_, index) => index)}>
+          {(index: number) => (
+            <button
+              type="button"
+              class={dot}
+              data-slot="carousel-dot"
+              aria-label={name(index, carousel.snapCount())}
+              aria-current={carousel.selectedIndex() === index ? "true" : undefined}
+              onClick={() => carousel.scrollTo(index)}
+            />
+          )}
+        </For>
+      </div>
+    </Show>
   );
 }

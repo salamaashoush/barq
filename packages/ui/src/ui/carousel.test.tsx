@@ -7,6 +7,7 @@ import { rulesFor } from "../test-rules.ts";
 import {
   Carousel,
   CarouselContent,
+  CarouselDots,
   CarouselItem,
   CarouselNext,
   CarouselPrevious,
@@ -383,5 +384,84 @@ describe("Carousel, right to left", () => {
     render(() => <Three />);
     const rules = rulesFor(at("carousel-previous")?.className ?? "");
     expect(rules).toMatch(/dir\(rtl\)[^}]*> svg\{rotate: 180deg\}/);
+  });
+});
+
+describe("CarouselDots", () => {
+  function Dotted(props: {
+    setApi?: (api: CarouselApi) => void;
+    label?: (index: number, count: number) => string;
+  }) {
+    return (
+      <Carousel setApi={props.setApi}>
+        <CarouselContent>
+          <CarouselItem>One</CarouselItem>
+          <CarouselItem>Two</CarouselItem>
+          <CarouselItem>Three</CarouselItem>
+        </CarouselContent>
+        <CarouselDots label={props.label} />
+      </Carousel>
+    );
+  }
+
+  /** happy-dom measures nothing, so the engine is told the three snap points it would find. */
+  function threeSnaps(api: CarouselApi): { selected: number } {
+    const shown = { selected: 0 };
+    Object.defineProperty(api, "scrollSnapList", { value: () => [0, -0.5, -1] });
+    Object.defineProperty(api, "selectedScrollSnap", { value: () => shown.selected });
+    return shown;
+  }
+
+  test("draws nothing while there is one snap point", async () => {
+    render(() => <Dotted />);
+    await tick();
+    flush();
+    expect(at("carousel-dots")).toBeNull();
+  });
+
+  test("a button per snap point, the one in view current, a press jumping to it", async () => {
+    const seen: CarouselApi[] = [];
+    render(() => <Dotted setApi={(api) => seen.push(api)} />);
+    await tick();
+    const api = seen[0] as CarouselApi;
+    const state = threeSnaps(api);
+    const asked: number[] = [];
+    const original = api.scrollTo.bind(api);
+    Object.defineProperty(api, "scrollTo", {
+      value: (index: number) => {
+        asked.push(index);
+        state.selected = index;
+        original(index);
+      },
+    });
+    api.reInit();
+    flush();
+    const dots = [...document.querySelectorAll('[data-slot="carousel-dot"]')] as HTMLElement[];
+    expect(dots.map((one) => one.getAttribute("aria-label"))).toEqual([
+      "Slide 1 of 3",
+      "Slide 2 of 3",
+      "Slide 3 of 3",
+    ]);
+    expect(dots[0]?.getAttribute("aria-current")).toBe("true");
+    await user.click(dots[2] as HTMLElement);
+    api.reInit();
+    flush();
+    expect(asked).toEqual([2]);
+    expect(
+      [...document.querySelectorAll('[data-slot="carousel-dot"]')][2]?.getAttribute("aria-current"),
+    ).toBe("true");
+  });
+
+  test("names its dots in the caller's words", async () => {
+    const seen: CarouselApi[] = [];
+    render(() => (
+      <Dotted setApi={(api) => seen.push(api)} label={(index, count) => `${index + 1}/${count}`} />
+    ));
+    await tick();
+    const api = seen[0] as CarouselApi;
+    threeSnaps(api);
+    api.reInit();
+    flush();
+    expect(at("carousel-dot")?.getAttribute("aria-label")).toBe("1/3");
   });
 });

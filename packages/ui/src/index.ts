@@ -226,6 +226,8 @@ export {
   type CarouselApi,
   type CarouselButtonProps,
   CarouselContent,
+  CarouselDots,
+  type CarouselDotsProps,
   CarouselItem,
   CarouselNext,
   type CarouselOptions,
