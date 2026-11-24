@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { LanguageSupport, StreamLanguage } from "@codemirror/language";
 
+import { importGraph } from "../test-graph.ts";
 import { highlightHtml } from "./highlight.ts";
 import {
   isKnownLanguage,
@@ -102,37 +102,11 @@ describe("the language registry", () => {
   });
 });
 
-/**
- * Every static import a module makes, and the modules it reaches, inside this
- * package; and every package specifier on the way, with how it is imported.
- */
-function importGraph(entry: string): Map<string, Set<string>> {
-  const transpiler = new Bun.Transpiler({ loader: "tsx" });
-  const kinds = new Map<string, Set<string>>();
-  const seen = new Set<string>();
-  const visit = (file: string): void => {
-    if (seen.has(file)) return;
-    seen.add(file);
-    const source = readFileSync(file, "utf8");
-    for (const one of transpiler.scanImports(source)) {
-      if (one.path.startsWith(".")) {
-        if (one.kind !== "dynamic-import") visit(join(dirname(file), one.path));
-        continue;
-      }
-      const set = kinds.get(one.path) ?? new Set<string>();
-      set.add(one.kind);
-      kinds.set(one.path, set);
-    }
-  };
-  visit(entry);
-  return kinds;
-}
-
 describe("what an app pays for", () => {
   const src = dirname(dirname(fileURLToPath(import.meta.url)));
 
   test("arc's main entry reaches no CodeMirror at all", () => {
-    const graph = importGraph(join(src, "index.ts"));
+    const graph = importGraph(join(src, "index.ts")).packages;
     const codemirror = [...graph.keys()].filter(
       (name) => name.startsWith("@codemirror/") || name.startsWith("@lezer/"),
     );
@@ -140,7 +114,7 @@ describe("what an app pays for", () => {
   });
 
   test("the code entry imports every language only on demand", () => {
-    const graph = importGraph(join(src, "code", "index.ts"));
+    const graph = importGraph(join(src, "code", "index.ts")).packages;
     const languages = [...graph.entries()].filter(([name]) => name.startsWith("@codemirror/lang-"));
     expect(languages.length).toBe(9);
     for (const [, kinds] of languages) expect([...kinds]).toEqual(["dynamic-import"]);
