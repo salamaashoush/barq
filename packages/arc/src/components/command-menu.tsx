@@ -11,6 +11,11 @@ import {
   CommandShortcut,
 } from "@barqjs/ui/command";
 import { isServer } from "@barqjs/web";
+import { variants } from "@barqjs/css";
+
+import { arcLayer as arc } from "../layer.ts";
+import { type Customisable, parts } from "../lib/parts.ts";
+import { useArcMessages } from "./messages.ts";
 
 import type { NavIcon } from "./app-shell.tsx";
 import type { LinkTarget } from "./link.ts";
@@ -101,7 +106,21 @@ function merged(...lists: (readonly CommandMenuGroup[])[]): CommandMenuGroup[] {
   return [...byHeading].map(([heading, actions]) => ({ heading, actions }));
 }
 
-export interface CommandMenuProps {
+export const commandMenuStyles = variants({
+  slots: {
+    root: arc({}),
+    input: arc({}),
+    list: arc({}),
+    empty: arc({}),
+    group: arc({}),
+    item: arc({}),
+    shortcut: arc({}),
+  },
+});
+
+type Slots = ReturnType<typeof commandMenuStyles>;
+
+export interface CommandMenuProps extends Customisable<Slots> {
   /** The palette's own groups. Registered ones join them, under their headings. */
   groups?: readonly CommandMenuGroup[];
   /** The combo that opens and closes it, `false` for none. @default "mod+k" */
@@ -136,6 +155,8 @@ export interface CommandMenuProps {
  */
 export function CommandMenu(props: CommandMenuProps) {
   const router = useRouter();
+  const messages = useArcMessages();
+  const cls = (): Slots => parts(commandMenuStyles(), props.classes);
   const isOpen = (): boolean => props.open ?? opened();
   const setOpen = (next: boolean): void => {
     if (props.open === undefined) setOpened(next);
@@ -164,17 +185,23 @@ export function CommandMenu(props: CommandMenuProps) {
     <CommandDialog
       isOpen={isOpen()}
       onOpenChange={setOpen}
-      title={props.title ?? "Command menu"}
-      description={props.description ?? "Search for a page or an action."}
+      class={arc(cls().root, props.class, props.className)}
+      title={props.title ?? messages().commandMenu}
+      description={props.description ?? messages().commandMenuDescription}
     >
-      <CommandInput placeholder={props.placeholder ?? "Type a command or search..."} />
-      <CommandList>
-        <CommandEmpty>{props.empty ?? "No results found."}</CommandEmpty>
+      <CommandInput
+        class={cls().input}
+        placeholder={props.placeholder ?? messages().commandPlaceholder}
+      />
+      <CommandList class={cls().list}>
+        <CommandEmpty class={cls().empty}>{props.empty ?? messages().noResults}</CommandEmpty>
         <For each={groups()}>
           {(group: CommandMenuGroup) => (
-            <CommandGroup heading={group.heading}>
+            <CommandGroup class={cls().group} heading={group.heading}>
               <For each={group.actions}>
-                {(action: CommandMenuAction) => <ActionItem action={action} run={run} />}
+                {(action: CommandMenuAction) => (
+                  <ActionItem action={action} run={run} classes={cls()} />
+                )}
               </For>
             </CommandGroup>
           )}
@@ -187,6 +214,7 @@ export function CommandMenu(props: CommandMenuProps) {
 function ActionItem(props: {
   action: CommandMenuAction;
   run: (action: CommandMenuAction) => void;
+  classes: Slots;
 }) {
   const action = props.action;
   const run = props.run;
@@ -196,13 +224,14 @@ function ActionItem(props: {
       value={action.label}
       keywords={action.keywords === undefined ? undefined : [...action.keywords]}
       disabled={action.disabled === true}
+      class={props.classes.item}
       data-slot="command-menu-item"
       onSelect={() => run(action)}
     >
       {Icon === undefined ? null : <Icon />}
       <span>{action.label}</span>
       <Show when={action.keys}>
-        <CommandShortcut>{action.keys}</CommandShortcut>
+        <CommandShortcut class={props.classes.shortcut}>{action.keys}</CommandShortcut>
       </Show>
     </CommandItem>
   );

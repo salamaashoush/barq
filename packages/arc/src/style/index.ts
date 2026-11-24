@@ -166,6 +166,12 @@ export const layout = arc.create({
   relative: { position: "relative" },
 });
 
+/** An icon a part draws beside its text, sized and kept from shrinking. */
+export const glyph = arc.create({
+  sm: { "& > svg": { width: space.x3_5, height: space.x3_5, flexShrink: "0" } },
+  md: { "& > svg": { width: space.x4, height: space.x4, flexShrink: "0" } },
+});
+
 /** Space between children, on the spacing scale. */
 export const gap = arc.create({
   0: { gap: space.x0 },
@@ -304,6 +310,8 @@ export const tone = arc.create({
 export const edge = {
   /** All four, on ui's `box.border`. */
   all: arc(box.border, { borderColor: "var(--border)" }),
+  /** The width and the colour, keeping whatever style the element has: a dashed frame stays dashed. */
+  frame: arc({ borderWidth: "1px", borderColor: "var(--border)" }),
   /** An input's edge, which is a different token. */
   input: arc(box.border, { borderColor: "var(--input)" }),
   top: arc({
@@ -335,6 +343,11 @@ export const rounded = arc.create({
   inherit: { borderRadius: "inherit" },
 });
 
+/** Lift off the page. */
+export const elevation = arc.create({
+  raised: { boxShadow: "0 10px 15px -3px var(--shadow-color, rgb(0 0 0 / 0.1))" },
+});
+
 /** Surfaces: a box with a fill, an edge and a corner that belong together. */
 export const surface = {
   /** A card's: its fill and text, an edge, the large corner. */
@@ -347,11 +360,7 @@ export const surface = {
   /** The edge alone, in the large corner. */
   bordered: arc(edge.all, rounded.lg),
   /** Over the page: a popover's fill, an edge and a shadow. */
-  elevated: arc(edge.all, rounded.lg, {
-    backgroundColor: "var(--popover)",
-    color: "var(--popover-foreground)",
-    boxShadow: "0 10px 15px -3px var(--shadow-color, rgb(0 0 0 / 0.1))",
-  }),
+  elevated: arc(edge.all, rounded.lg, bg.popover, fg.popover, elevation.raised),
   /** The scrim behind a modal. */
   overlay: arc({ backgroundColor: "var(--overlay)" }),
 };

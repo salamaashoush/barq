@@ -11,31 +11,32 @@ import {
 import type { UiProps } from "@barqjs/ui/props";
 
 import { arcLayer as arc } from "../layer.ts";
+import { type Customisable, parts } from "../lib/parts.ts";
+import { edge, gap, layout } from "../style/index.ts";
 
 export type EmptyStateVariant = "plain" | "outline";
 
 export const emptyStateVariants = variants({
-  base: arc({}),
+  slots: {
+    root: arc({}),
+    header: arc({}),
+    media: arc({}),
+    title: arc({}),
+    description: arc({}),
+    actions: arc(layout.wrap, layout.centre, gap[2], { flexDirection: "row" }),
+  },
   variants: {
     variant: {
-      plain: arc({}),
-      outline: arc({
-        borderWidth: "1px",
-        borderColor: "var(--border)",
-      }),
+      plain: {},
+      outline: { root: arc(edge.frame) },
     },
   },
   defaults: { variant: "plain" },
 });
 
-const actions = arc({
-  flexDirection: "row",
-  flexWrap: "wrap",
-  justifyContent: "center",
-  gap: "calc(var(--spacing) * 2)",
-});
+type Slots = ReturnType<typeof emptyStateVariants>;
 
-export interface EmptyStateProps extends UiProps {
+export interface EmptyStateProps extends Omit<UiProps, "class" | "className">, Customisable<Slots> {
   /** What would be here, drawn in a muted square: `<Inbox />`. */
   icon?: Child;
   /** Not `title`, which is the attribute every element takes. */
@@ -60,24 +61,27 @@ export interface EmptyStateProps extends UiProps {
  * ```
  */
 export function EmptyState(props: EmptyStateProps) {
+  const cls = (): Slots => parts(emptyStateVariants({ variant: props.variant }), props.classes);
   return (
     <Empty
       {...props}
       data-slot={props["data-slot"] ?? "empty-state"}
       data-variant={props.variant ?? "plain"}
-      class={arc(emptyStateVariants({ variant: props.variant }), props.class, props.className)}
+      class={arc(cls().root, props.class, props.className)}
     >
-      <EmptyHeader>
+      <EmptyHeader class={cls().header}>
         <Show when={props.icon}>
-          <EmptyMedia variant="icon">{props.icon}</EmptyMedia>
+          <EmptyMedia variant="icon" class={cls().media}>
+            {props.icon}
+          </EmptyMedia>
         </Show>
-        <EmptyTitle>{props.heading}</EmptyTitle>
+        <EmptyTitle class={cls().title}>{props.heading}</EmptyTitle>
         <Show when={props.description}>
-          <EmptyDescription>{props.description}</EmptyDescription>
+          <EmptyDescription class={cls().description}>{props.description}</EmptyDescription>
         </Show>
       </EmptyHeader>
       <Show when={props.actions}>
-        <EmptyContent class={actions}>{props.actions}</EmptyContent>
+        <EmptyContent class={cls().actions}>{props.actions}</EmptyContent>
       </Show>
     </Empty>
   );

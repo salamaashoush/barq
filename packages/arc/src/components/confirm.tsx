@@ -1,4 +1,5 @@
 import { type Child, Show, createSignal } from "@barqjs/core";
+import { variants } from "@barqjs/css";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -9,6 +10,27 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@barqjs/ui/alert-dialog";
+
+import { arcLayer as arc } from "../layer.ts";
+import { type Customisable, parts } from "../lib/parts.ts";
+import { useArcMessages } from "./messages.ts";
+
+/** The parts of the dialog `confirm()` draws, for `classes` on the host. */
+export const confirmStyles = variants({
+  slots: {
+    root: arc({}),
+    header: arc({}),
+    title: arc({}),
+    description: arc({}),
+    footer: arc({}),
+    cancel: arc({}),
+    action: arc({}),
+  },
+});
+
+type Slots = ReturnType<typeof confirmStyles>;
+
+export type ConfirmHostProps = Customisable<Slots>;
 
 export interface ConfirmOptions {
   title: Child;
@@ -57,7 +79,9 @@ export function confirm(options: ConfirmOptions): Promise<boolean> {
 }
 
 /** Where `confirm()` draws its dialog. One per page. */
-export function ConfirmHost() {
+export function ConfirmHost(props: ConfirmHostProps) {
+  const messages = useArcMessages();
+  const cls = (): Slots => parts(confirmStyles(), props.classes);
   const answer = (value: boolean): void => {
     const asked = pending();
     if (asked === null) return;
@@ -71,22 +95,25 @@ export function ConfirmHost() {
         if (!isOpen) answer(false);
       }}
     >
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{pending()?.title}</AlertDialogTitle>
+      <AlertDialogContent class={arc(cls().root, props.class, props.className)}>
+        <AlertDialogHeader class={cls().header}>
+          <AlertDialogTitle class={cls().title}>{pending()?.title}</AlertDialogTitle>
           <Show when={pending()?.description}>
-            <AlertDialogDescription>{pending()?.description}</AlertDialogDescription>
+            <AlertDialogDescription class={cls().description}>
+              {pending()?.description}
+            </AlertDialogDescription>
           </Show>
         </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel onPress={() => answer(false)}>
-            {pending()?.cancelLabel ?? "Cancel"}
+        <AlertDialogFooter class={cls().footer}>
+          <AlertDialogCancel class={cls().cancel} onPress={() => answer(false)}>
+            {pending()?.cancelLabel ?? messages().cancel}
           </AlertDialogCancel>
           <AlertDialogAction
+            class={cls().action}
             variant={pending()?.tone === "danger" ? "destructive" : "default"}
             onPress={() => answer(true)}
           >
-            {pending()?.confirmLabel ?? "Continue"}
+            {pending()?.confirmLabel ?? messages().continue}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

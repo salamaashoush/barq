@@ -1,7 +1,6 @@
-import { type Child, Show, createSignal, untrack } from "@barqjs/core";
+import { type Child, Show, untrack } from "@barqjs/core";
 import { variants } from "@barqjs/css";
 import { useDirection } from "@barqjs/aria/i18n";
-import { useSearchParams } from "@barqjs/router";
 import type { UiProps } from "@barqjs/ui/props";
 import {
   Sheet,
@@ -13,54 +12,46 @@ import {
 } from "@barqjs/ui/sheet";
 
 import { arcLayer as arc } from "../layer.ts";
+import { type Classes, type Customisable, parts } from "../lib/parts.ts";
+import { openState } from "../lib/search-state.ts";
+import { edge, gap, layout, space } from "../style/index.ts";
+import { useArcMessages } from "./messages.ts";
 
 export type DetailSheetSize = "sm" | "md" | "lg" | "xl";
 
 export const detailSheetVariants = variants({
-  base: arc({
-    width: "100%",
-    gap: "0px",
-  }),
+  slots: {
+    root: arc(layout.fill, gap[0]),
+    header: arc(edge.bottom, { paddingInlineEnd: space.x12 }),
+    title: arc({}),
+    description: arc({}),
+    body: arc(layout.column, layout.minZeroBlock, layout.grow, gap[4], {
+      overflowY: "auto",
+      overscrollBehavior: "contain",
+      padding: space.x4,
+    }),
+    footer: arc(layout.wrap, layout.end, edge.top, {
+      flexDirection: "row",
+      paddingBlockEnd: "max(calc(var(--spacing) * 4), env(safe-area-inset-bottom))",
+    }),
+  },
   variants: {
     size: {
-      sm: arc({ maxWidth: "24rem" }),
-      md: arc({ maxWidth: "32rem" }),
-      lg: arc({ maxWidth: "42rem" }),
-      xl: arc({ maxWidth: "56rem" }),
+      sm: { root: arc({ maxWidth: "24rem" }) },
+      md: { root: arc({ maxWidth: "32rem" }) },
+      lg: { root: arc({ maxWidth: "42rem" }) },
+      xl: { root: arc({ maxWidth: "56rem" }) },
     },
   },
   defaults: { size: "md" },
 });
 
-const header = arc({
-  borderBlockEndWidth: "1px",
-  borderBlockEndStyle: "solid",
-  borderColor: "var(--border)",
-  paddingInlineEnd: "calc(var(--spacing) * 12)",
-});
+type Slots = ReturnType<typeof detailSheetVariants>;
 
-const body = arc({
-  display: "flex",
-  minHeight: "0px",
-  flex: "1",
-  flexDirection: "column",
-  gap: "calc(var(--spacing) * 4)",
-  overflowY: "auto",
-  overscrollBehavior: "contain",
-  padding: "calc(var(--spacing) * 4)",
-});
+export type DetailSheetClasses = Classes<Slots>;
 
-const footer = arc({
-  flexDirection: "row",
-  flexWrap: "wrap",
-  justifyContent: "flex-end",
-  borderBlockStartWidth: "1px",
-  borderBlockStartStyle: "solid",
-  borderColor: "var(--border)",
-  paddingBlockEnd: "max(calc(var(--spacing) * 4), env(safe-area-inset-bottom))",
-});
-
-export interface DetailSheetProps extends UiProps {
+export interface DetailSheetProps
+  extends Omit<UiProps, "class" | "className">, Customisable<Slots> {
   /** Names the sheet. Not `title`, which is the attribute every element takes. */
   heading: Child;
   description?: Child;
@@ -78,7 +69,7 @@ export interface DetailSheetProps extends UiProps {
    * a record's detail has a link of its own and the back button closes it.
    */
   param?: string;
-  /** @default "Close" */
+  /** @default the provider's `close` message, "Close" */
   closeLabel?: string;
 }
 
@@ -99,29 +90,14 @@ export interface DetailSheetProps extends UiProps {
  */
 export function DetailSheet(props: DetailSheetProps) {
   const direction = useDirection();
-  const param = untrack(() => props.param);
-  const url = param === undefined ? undefined : useSearchParams();
-  const [own, setOwn] = createSignal(untrack(() => props.defaultOpen) ?? false);
-
-  const isOpen = (): boolean => {
-    if (url !== undefined && param !== undefined) return url[0]().has(param);
-    return props.open ?? own();
-  };
-
-  const setOpen = (next: boolean): void => {
-    if (url !== undefined && param !== undefined) {
-      if (!next) {
-        url[1]((current) => {
-          const kept: Record<string, string> = {};
-          for (const [key, value] of current) if (key !== param) kept[key] = value;
-          return kept;
-        });
-      }
-    } else if (props.open === undefined) {
-      setOwn(next);
-    }
-    props.onOpenChange?.(next);
-  };
+  const messages = useArcMessages();
+  const { isOpen, setOpen } = openState({
+    param: untrack(() => props.param),
+    open: () => props.open,
+    defaultOpen: untrack(() => props.defaultOpen),
+    onOpenChange: (next) => props.onOpenChange?.(next),
+  });
+  const cls = (): Slots => parts(detailSheetVariants({ size: props.size }), props.classes);
 
   const side = (): "left" | "right" => {
     const end = (props.side ?? "end") === "end";
@@ -133,22 +109,22 @@ export function DetailSheet(props: DetailSheetProps) {
       <SheetContent
         {...props}
         side={side()}
-        closeLabel={props.closeLabel}
+        closeLabel={props.closeLabel ?? messages().close}
         data-slot={props["data-slot"] ?? "detail-sheet"}
         data-size={props.size ?? "md"}
-        class={arc(detailSheetVariants({ size: props.size }), props.class, props.className)}
+        class={arc(cls().root, props.class, props.className)}
       >
-        <SheetHeader class={header}>
-          <SheetTitle>{props.heading}</SheetTitle>
+        <SheetHeader class={cls().header}>
+          <SheetTitle class={cls().title}>{props.heading}</SheetTitle>
           <Show when={props.description}>
-            <SheetDescription>{props.description}</SheetDescription>
+            <SheetDescription class={cls().description}>{props.description}</SheetDescription>
           </Show>
         </SheetHeader>
-        <div class={body} data-slot="detail-sheet-body">
+        <div class={cls().body} data-slot="detail-sheet-body">
           {props.children}
         </div>
         <Show when={props.footer}>
-          <SheetFooter class={footer}>{props.footer}</SheetFooter>
+          <SheetFooter class={cls().footer}>{props.footer}</SheetFooter>
         </Show>
       </SheetContent>
     </Sheet>

@@ -1,8 +1,23 @@
 import { type Child, For, Show, createSignal } from "@barqjs/core";
+import { variants } from "@barqjs/css";
 import { X } from "@barqjs/lucide/icons/x";
 import { Button } from "@barqjs/ui/button";
 
 import { arcLayer as arc } from "../layer.ts";
+import { type Customisable, parts } from "../lib/parts.ts";
+import {
+  bg,
+  edge,
+  elevation,
+  fg,
+  gap,
+  layout,
+  rounded,
+  space,
+  type,
+  zIndex,
+} from "../style/index.ts";
+import { useArcMessages } from "./messages.ts";
 import { type ConfirmOptions, confirm } from "./confirm.tsx";
 
 /** Something done to every selected row at once. */
@@ -18,7 +33,7 @@ export interface SelectionAction<T> {
   onAction: (rows: readonly T[]) => void | Promise<unknown>;
 }
 
-export interface SelectionBarProps<T> {
+export interface SelectionBarProps<T> extends Customisable<Slots> {
   count: number;
   /** What is selected, handed to every action. */
   rows: readonly T[];
@@ -34,46 +49,42 @@ export interface SelectionBarProps<T> {
   floating?: boolean;
 }
 
-const dock = arc({
-  pointerEvents: "none",
-  position: "sticky",
-  insetBlockEnd: "calc(var(--spacing) * 4)",
-  zIndex: "var(--z-sticky, 10)",
-  display: "flex",
-  justifyContent: "center",
-  marginBlockStart: "calc(var(--spacing) * 3)",
-});
-
-const bar = arc({
-  pointerEvents: "auto",
-  display: "flex",
-  maxWidth: "100%",
-  flexWrap: "wrap",
-  alignItems: "center",
-  gap: "calc(var(--spacing) * 1)",
-  borderWidth: "1px",
-  borderStyle: "solid",
-  borderColor: "var(--border)",
-  borderRadius: "calc(var(--radius) * 1.4)",
-  backgroundColor: "var(--popover)",
-  color: "var(--popover-foreground)",
-  padding: "calc(var(--spacing) * 1.5)",
-  paddingInlineStart: "calc(var(--spacing) * 3)",
-  fontSize: "var(--text-sm)",
-  '[data-floating="true"]': {
-    boxShadow: "0 10px 15px -3px var(--shadow-color, rgb(0 0 0 / 0.1))",
+export const selectionBarStyles = variants({
+  slots: {
+    dock: arc(layout.row, {
+      pointerEvents: "none",
+      position: "sticky",
+      insetBlockEnd: space.x4,
+      zIndex: zIndex.sticky,
+      justifyContent: "center",
+      marginBlockStart: space.x3,
+    }),
+    root: arc(
+      edge.all,
+      rounded.lg,
+      bg.popover,
+      fg.popover,
+      layout.row,
+      layout.wrap,
+      gap[1],
+      type.sm,
+      {
+        pointerEvents: "auto",
+        maxWidth: "100%",
+        padding: space.x1_5,
+        paddingInlineStart: space.x3,
+      },
+    ),
+    count: arc(type.medium, type.numeric, { marginInlineEnd: space.x1_5 }),
+    action: arc({}),
+    clear: arc({}),
+  },
+  variants: {
+    floating: { true: { root: elevation.raised }, false: {} },
   },
 });
 
-const count = arc({
-  marginInlineEnd: "calc(var(--spacing) * 1.5)",
-  fontWeight: "var(--font-weight-medium)",
-  fontVariantNumeric: "tabular-nums",
-});
-
-const danger = arc({
-  color: "var(--destructive)",
-});
+type Slots = ReturnType<typeof selectionBarStyles>;
 
 /**
  * How many rows are selected, what can be done to them, and a way to let go.
@@ -93,6 +104,9 @@ const danger = arc({
  */
 export function SelectionBar<T>(props: SelectionBarProps<T>) {
   const [pending, setPending] = createSignal<SelectionAction<T> | null>(null);
+  const messages = useArcMessages();
+  const cls = (): Slots =>
+    parts(selectionBarStyles({ floating: props.floating === true }), props.classes);
 
   const run = async (action: SelectionAction<T>): Promise<void> => {
     const rows = props.rows;
@@ -108,21 +122,21 @@ export function SelectionBar<T>(props: SelectionBarProps<T>) {
 
   const content = () => (
     <div
-      class={bar}
+      class={props.floating === true ? cls().root : arc(cls().root, props.class, props.className)}
       role="group"
-      aria-label={props.label ?? "Selection"}
+      aria-label={props.label ?? messages().selection}
       data-slot="selection-bar"
       data-floating={props.floating === true ? "true" : "false"}
     >
-      <span class={count} role="status" data-slot="selection-bar-count">
-        {(props.selectedLabel ?? ((n: number) => `${String(n)} selected`))(props.count)}
+      <span class={cls().count} role="status" data-slot="selection-bar-count">
+        {(props.selectedLabel ?? messages().selected)(props.count)}
       </span>
       <For each={() => props.actions}>
         {(action: SelectionAction<T>) => (
           <Button
             variant="ghost"
             size="sm"
-            class={action.tone === "danger" ? danger : undefined}
+            class={action.tone === "danger" ? arc(cls().action, fg.danger) : cls().action}
             isPending={pending() === action}
             isDisabled={pending() !== null && pending() !== action}
             data-slot="selection-bar-action"
@@ -136,7 +150,8 @@ export function SelectionBar<T>(props: SelectionBarProps<T>) {
       <Button
         variant="ghost"
         size="icon-sm"
-        aria-label={props.clearLabel ?? "Clear selection"}
+        aria-label={props.clearLabel ?? messages().clearSelection}
+        class={cls().clear}
         isDisabled={pending() !== null}
         data-slot="selection-bar-clear"
         onPress={() => props.onClear()}
@@ -148,7 +163,7 @@ export function SelectionBar<T>(props: SelectionBarProps<T>) {
 
   return (
     <Show when={props.floating === true} fallback={content()}>
-      <div class={dock} data-slot="selection-bar-dock">
+      <div class={arc(cls().dock, props.class, props.className)} data-slot="selection-bar-dock">
         {content()}
       </div>
     </Show>

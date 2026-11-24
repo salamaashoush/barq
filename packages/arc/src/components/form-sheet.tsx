@@ -1,10 +1,14 @@
-import { type Child, Show, createSignal, createUniqueId, provide, untrack } from "@barqjs/core";
+import { type Child, Show, createUniqueId, provide, untrack } from "@barqjs/core";
+import { variants } from "@barqjs/css";
 import { type AnyFormApi, useSelector } from "@barqjs/form";
-import { useSearchParams } from "@barqjs/router";
 import { Button } from "@barqjs/ui/button";
 
 import { arcLayer as arc } from "../layer.ts";
-import { DetailSheet, type DetailSheetSize } from "./detail-sheet.tsx";
+import { type Customisable, parts } from "../lib/parts.ts";
+import { openState } from "../lib/search-state.ts";
+import { gap, layout } from "../style/index.ts";
+import { DetailSheet, type DetailSheetClasses, type DetailSheetSize } from "./detail-sheet.tsx";
+import { useArcMessages } from "./messages.ts";
 import { arcFormContext } from "./form.tsx";
 import { maybeRouter } from "./link.ts";
 import {
@@ -13,7 +17,7 @@ import {
   confirmDiscard,
 } from "./unsaved-changes-guard.tsx";
 
-export interface FormSheetProps {
+export interface FormSheetProps extends Customisable<Slots & DetailSheetClasses> {
   /** The form, from `useArcForm`. */
   form: AnyFormApi;
   /** Names the sheet and its form. */
@@ -38,14 +42,18 @@ export interface FormSheetProps {
   closeOnSubmit?: boolean;
   /** What closing with unsaved changes asks. */
   discard?: DiscardLabels;
-  class?: string;
 }
 
-const body = arc({
-  display: "flex",
-  flexDirection: "column",
-  gap: "calc(var(--spacing) * 5)",
+export const formSheetStyles = variants({
+  slots: {
+    root: arc({}),
+    form: arc(layout.column, gap[5]),
+    cancel: arc({}),
+    submit: arc({}),
+  },
 });
+
+type Slots = ReturnType<typeof formSheetStyles>;
 
 /**
  * A form in a sheet: its fields in the body, Save and Cancel at the foot.
@@ -66,10 +74,15 @@ const body = arc({
 export function FormSheet(props: FormSheetProps) {
   const form = untrack(() => props.form);
   const formId = createUniqueId();
-  const param = untrack(() => props.param);
-  const url = param === undefined ? undefined : useSearchParams();
   const hasRouter = maybeRouter() !== undefined;
-  const [own, setOwn] = createSignal(untrack(() => props.defaultOpen) ?? false);
+  const messages = useArcMessages();
+  const { isOpen, setOpen } = openState({
+    param: untrack(() => props.param),
+    open: () => props.open,
+    defaultOpen: untrack(() => props.defaultOpen),
+    onOpenChange: (next) => props.onOpenChange?.(next),
+  });
+  const cls = (): Slots => parts(formSheetStyles(), props.classes);
 
   const state = useSelector(form.store, (current) => ({
     isDirty: current.isDirty,
@@ -77,30 +90,10 @@ export function FormSheet(props: FormSheetProps) {
     canSubmit: current.canSubmit,
   }));
 
-  const isOpen = (): boolean => {
-    if (url !== undefined && param !== undefined) return url[0]().has(param);
-    return props.open ?? own();
-  };
-
-  const setOpen = (next: boolean): void => {
-    if (url !== undefined && param !== undefined) {
-      if (!next) {
-        url[1]((current) => {
-          const kept: Record<string, string> = {};
-          for (const [key, value] of current) if (key !== param) kept[key] = value;
-          return kept;
-        });
-      }
-    } else if (props.open === undefined) {
-      setOwn(next);
-    }
-    props.onOpenChange?.(next);
-  };
-
   const requestClose = async (): Promise<void> => {
     if (state().isSubmitting) return;
     if (state().isDirty) {
-      if (!(await confirmDiscard(props.discard))) return;
+      if (!(await confirmDiscard(props.discard, messages()))) return;
       form.reset();
     }
     setOpen(false);
@@ -122,7 +115,8 @@ export function FormSheet(props: FormSheetProps) {
         heading={props.heading}
         description={props.description}
         size={props.size}
-        class={props.class}
+        class={arc(cls().root, props.class, props.className)}
+        classes={props.classes}
         data-slot="form-sheet"
         footer={
           <>
@@ -130,9 +124,10 @@ export function FormSheet(props: FormSheetProps) {
               variant="outline"
               isDisabled={state().isSubmitting}
               onPress={() => void requestClose()}
+              class={cls().cancel}
               data-slot="form-sheet-cancel"
             >
-              {props.cancelLabel ?? "Cancel"}
+              {props.cancelLabel ?? messages().cancel}
             </Button>
             <Button
               type="submit"
@@ -140,16 +135,17 @@ export function FormSheet(props: FormSheetProps) {
               variant={props.tone === "danger" ? "destructive" : "default"}
               isPending={state().isSubmitting}
               isDisabled={!state().canSubmit}
+              class={cls().submit}
               data-slot="form-sheet-submit"
             >
-              {props.submitLabel ?? "Save"}
+              {props.submitLabel ?? messages().save}
             </Button>
           </>
         }
       >
         <form
           id={formId}
-          class={body}
+          class={cls().form}
           noValidate
           data-slot="form-sheet-form"
           onSubmit={(event: Event) => {

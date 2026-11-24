@@ -1,3 +1,4 @@
+import { variants } from "@barqjs/css";
 import { Monitor } from "@barqjs/lucide/icons/monitor";
 import { Moon } from "@barqjs/lucide/icons/moon";
 import { Sun } from "@barqjs/lucide/icons/sun";
@@ -10,6 +11,16 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@barqjs/ui/dropdown-menu";
+
+import { arcLayer as arc } from "../layer.ts";
+import { type Customisable, parts } from "../lib/parts.ts";
+import { type ArcMessages, useArcMessages } from "./messages.ts";
+
+export const themeToggleStyles = variants({
+  slots: { root: arc({}), content: arc({}), item: arc({}) },
+});
+
+type Slots = ReturnType<typeof themeToggleStyles>;
 
 type Choice = SchemeChoice<"light" | "dark">;
 
@@ -24,7 +35,7 @@ export interface ThemeToggleLabels {
   system?: string;
 }
 
-export interface ThemeToggleProps {
+export interface ThemeToggleProps extends Customisable<Slots> {
   labels?: ThemeToggleLabels;
   /** @default "ghost" */
   variant?: ButtonVariant;
@@ -32,7 +43,6 @@ export interface ThemeToggleProps {
   size?: ButtonSize;
   /** @default "end" */
   align?: "start" | "center" | "end";
-  class?: string;
 }
 
 /**
@@ -52,8 +62,10 @@ export interface ThemeToggleProps {
 export function ThemeToggle(props: ThemeToggleProps) {
   const scheme = useColorScheme();
   const choice = (): Choice => scheme.choice();
-  const text = (name: keyof ThemeToggleLabels, fallback: string): string =>
-    props.labels?.[name] ?? fallback;
+  const messages = useArcMessages();
+  const cls = (): Slots => parts(themeToggleStyles(), props.classes);
+  const text = (name: keyof ThemeToggleLabels & keyof ArcMessages): string =>
+    props.labels?.[name] ?? messages()[name];
 
   return (
     <DropdownMenu>
@@ -61,8 +73,8 @@ export function ThemeToggle(props: ThemeToggleProps) {
         <Button
           variant={props.variant ?? "ghost"}
           size={props.size ?? "icon"}
-          class={props.class}
-          aria-label={text("theme", "Theme")}
+          class={arc(cls().root, props.class, props.className)}
+          aria-label={text("theme")}
           data-slot="theme-toggle"
           data-choice={choice()}
         >
@@ -75,14 +87,24 @@ export function ThemeToggle(props: ThemeToggleProps) {
           )}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align={props.align ?? "end"} aria-label={text("theme", "Theme")}>
+      <DropdownMenuContent
+        class={cls().content}
+        align={props.align ?? "end"}
+        aria-label={text("theme")}
+      >
         <DropdownMenuRadioGroup
           value={choice()}
           onValueChange={(value: string) => scheme.set(value as Choice)}
         >
-          <DropdownMenuRadioItem value="light">{text("light", "Light")}</DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="dark">{text("dark", "Dark")}</DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="system">{text("system", "System")}</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem class={cls().item} value="light">
+            {text("light")}
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem class={cls().item} value="dark">
+            {text("dark")}
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem class={cls().item} value="system">
+            {text("system")}
+          </DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>
