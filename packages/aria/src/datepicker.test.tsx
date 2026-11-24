@@ -269,6 +269,76 @@ describe("a date picker with a range", () => {
   });
 });
 
+describe("a date picker's description", () => {
+  const described = (): string[] =>
+    screen.getAllByRole("spinbutton").map((element) => accessibleDescription(element));
+
+  test("reaches the first segment of the field inside, and not the field's group", () => {
+    render(() => (
+      <>
+        <span id="trip-note">Local time</span>
+        <DatePicker
+          label="Departure"
+          description="When the train leaves"
+          aria-describedby="trip-note"
+          placeholderValue={new CalendarDate(2026, 3, 8)}
+        />
+      </>
+    ));
+
+    expect(described()).toEqual(["When the train leaves Local time", "", ""]);
+    const [picker, field] = screen.getAllByRole("group");
+    const group = accessibleDescription(picker as HTMLElement);
+    expect(group).toContain("When the train leaves");
+    expect(group).toContain("Local time");
+    expect(field?.hasAttribute("aria-describedby")).toBe(false);
+  });
+
+  test("an invalid picker describes every segment, with its error", () => {
+    render(() => (
+      <DatePicker
+        label="Departure"
+        description="When the train leaves"
+        errorMessage="No trains that day"
+        isInvalid
+        placeholderValue={new CalendarDate(2026, 3, 8)}
+      />
+    ));
+
+    expect(described()).toEqual(
+      Array.from({ length: 3 }, () => "When the train leaves No trains that day"),
+    );
+  });
+
+  test("a range picker describes the first segment of each end", () => {
+    render(() => (
+      <DateRangePicker
+        label="Stay"
+        description="Nights at the hotel"
+        placeholderValue={new CalendarDate(2026, 3, 8)}
+      />
+    ));
+
+    expect(described()).toEqual(["Nights at the hotel", "", "", "Nights at the hotel", "", ""]);
+    expect(screen.getByRole("group", { name: "Start date" }).hasAttribute("aria-describedby")).toBe(
+      false,
+    );
+  });
+
+  test("a reversed range describes every segment with the range's error", () => {
+    render(() => (
+      <DateRangePicker
+        label="Stay"
+        defaultValue={{ start: new CalendarDate(2026, 3, 9), end: new CalendarDate(2026, 3, 8) }}
+      />
+    ));
+
+    expect(described()).toEqual(
+      Array.from({ length: 6 }, () => "The start date is after the end date."),
+    );
+  });
+});
+
 describe("opening from the keyboard", () => {
   test("Alt+ArrowDown in the field opens the calendar and leaves the date alone", async () => {
     const changes: (DateValue | null)[] = [];

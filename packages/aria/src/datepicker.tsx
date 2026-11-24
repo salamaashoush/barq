@@ -310,6 +310,8 @@ export function datePicker(options: DatePickerOptions, state: DatePickerState): 
     fieldProps: {
       "aria-labelledby": () =>
         access(labelledProps["aria-labelledby"] as MaybeAccessor<string | undefined>) ?? groupId(),
+      "aria-describedby": () =>
+        access(labelledProps["aria-describedby"] as MaybeAccessor<string | undefined>),
     },
     buttonProps: {
       id: buttonId,
@@ -360,10 +362,10 @@ function opensOnAltArrow(
 // Components
 // ---------------------------------------------------------------------------
 
-function PickerField(props: { labelledBy?: string; children?: Child }) {
+function PickerField(props: { labelledBy?: string; describedBy?: string; children?: Child }) {
   return provide(
     PickerFieldContext,
-    () => ({ labelledBy: () => props.labelledBy }),
+    () => ({ labelledBy: () => props.labelledBy, describedBy: () => props.describedBy }),
     () => props.children as unknown,
   );
 }
@@ -419,6 +421,7 @@ export interface DatePickerComponentProps<T extends DateValue = DateValue> exten
   placement?: Placement;
   "aria-label"?: string;
   "aria-labelledby"?: string;
+  "aria-describedby"?: string;
   ref?: RefTarget<HTMLDivElement>;
   onChange?: (value: NoInfer<MappedDateValue<T>> | null) => void;
   onOpenChange?: (isOpen: boolean) => void;
@@ -487,6 +490,7 @@ export function DatePicker<T extends DateValue = DateValue>(
       isInvalid: () => props.isInvalid,
       "aria-label": () => props["aria-label"],
       "aria-labelledby": () => props["aria-labelledby"],
+      "aria-describedby": () => props["aria-describedby"],
     },
     state,
   );
@@ -526,6 +530,7 @@ export function DatePicker<T extends DateValue = DateValue>(
             picker instead. */}
         <PickerField
           labelledBy={access(fieldProps["aria-labelledby"] as MaybeAccessor<string | undefined>)}
+          describedBy={access(fieldProps["aria-describedby"] as MaybeAccessor<string | undefined>)}
         >
           <DateField
             value={state.value()}
@@ -707,6 +712,7 @@ export function DateRangePicker<T extends DateValue = DateValue>(
     isInvalid,
     "aria-label": () => props["aria-label"],
     "aria-labelledby": () => props["aria-labelledby"],
+    "aria-describedby": () => props["aria-describedby"],
     labelElementType: "span",
   });
   const labelId = (): string | undefined =>
@@ -834,7 +840,12 @@ export function DateRangePicker<T extends DateValue = DateValue>(
     <>
       <span {...labelProps}>{props.label}</span>
       <div {...elementProps} ref={mergeRefs(groupRef.set, props.ref)}>
-        <PickerField labelledBy={labelledBy()}>
+        <PickerField
+          labelledBy={labelledBy()}
+          describedBy={access(
+            labelledProps["aria-describedby"] as MaybeAccessor<string | undefined>,
+          )}
+        >
           <DateField
             aria-label={messages().format("startDate")}
             value={value()?.start ?? null}

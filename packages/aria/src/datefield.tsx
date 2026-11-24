@@ -1610,13 +1610,16 @@ function DateFieldProvider(props: { value: DateFieldContextValue; children?: Chi
 
 export interface PickerFieldValue {
   labelledBy: Accessor<string | undefined>;
+  describedBy: Accessor<string | undefined>;
 }
 
 /**
- * The label of a date picker, for the segments of the field inside it.
+ * The label, description and error of a date picker, for the segments of the
+ * field inside it.
  *
- * Not `aria-labelledby` on that field: that names its group too, and a group
- * inside the picker's group, named the same, is read out twice.
+ * Not `aria-labelledby` and `aria-describedby` on that field: those name and
+ * describe its group too, and a group inside the picker's group, saying the
+ * same, is read out twice.
  */
 export const PickerFieldContext = createContext<PickerFieldValue | null>(null);
 
@@ -1770,7 +1773,7 @@ function FieldBody(incoming: FieldBodyProps) {
     <DateFieldProvider
       value={{
         state,
-        describedBy,
+        describedBy: () => joinIds(describedBy(), picker?.describedBy()),
         label,
         labelledBy: () => joinIds(labelledBy(), picker?.labelledBy()),
         isInvalid,
