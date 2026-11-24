@@ -281,7 +281,7 @@ own sizes.
 1. **Extension architecture and the first blocks** (this phase): the API,
    presets, callouts, columns, toggles, footnotes, page breaks, find and
    replace, document status, paste rules and clipboard, HTML and Word
-   import, captions. About 7,000 lines, landed.
+   import, captions. About 8,800 lines with tests, landed.
 2. **Formatting and the block shell** (about 3,500): superscript and
    subscript, colours and highlight, sizes, clear formatting, the floating
    bar's remaining modes, turn into for containers, Mod+D and Alt+Shift
