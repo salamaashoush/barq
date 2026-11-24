@@ -5,7 +5,8 @@ import { type AnyRouteDefinition, Outlet, type RouteMatch } from "@barqjs/router
 import { ariaViolations, screen, user, waitFor } from "@barqjs/testing";
 import { renderRoute } from "@barqjs/testing/router";
 
-import { Breadcrumbs, type Crumb } from "./breadcrumbs.tsx";
+import { layout } from "../style/index.ts";
+import { Breadcrumbs, type Crumb, breadcrumbsStyles } from "./breadcrumbs.tsx";
 
 function Layout() {
   return (
@@ -59,6 +60,13 @@ function trail(): string[] {
 }
 
 describe("Breadcrumbs", () => {
+  test("takes its parent's width, being a query container", () => {
+    const root = new Set(breadcrumbsStyles().root.split(" "));
+    for (const part of [...layout.container.split(" "), ...layout.fill.split(" ")]) {
+      expect(root.has(part)).toBe(true);
+    }
+  });
+
   test("reads the trail from the matched routes, each step a link but the page itself", async () => {
     const view = await renderRoute({ routeTree: tree, path: "/projects/acme/settings" });
     const nav = screen.getByRole("navigation", { name: "Breadcrumb" });

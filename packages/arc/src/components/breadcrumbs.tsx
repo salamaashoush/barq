@@ -59,7 +59,9 @@ function routeCrumbs(matches: readonly RouteMatch[]): Crumb[] {
 
 export const breadcrumbsStyles = variants({
   slots: {
-    root: arc(layout.minZero, layout.container, {
+    // A query container takes no width from what it holds, so it takes its
+    // parent's: in a flex row, such as AppShell's top bar, it collapsed to nothing.
+    root: arc(layout.minZero, layout.container, layout.fill, {
       "& [data-slot=breadcrumb-list]": { flexWrap: "nowrap" },
       "& [data-slot=breadcrumbs-more]": { display: "none" },
       [on.cqBelowMd]: {
