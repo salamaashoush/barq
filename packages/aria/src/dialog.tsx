@@ -544,6 +544,11 @@ export interface PopoverComponentProps extends StyleProps {
   /** @default true */
   isDismissable?: boolean;
   isKeyboardDismissDisabled?: boolean;
+  /**
+   * Veto the dismissal a press outside would cause, for that press's target.
+   * A press it vetoes reaches its target, as if the popover were not open.
+   */
+  shouldCloseOnInteractOutside?: (element: Element) => boolean;
   /** Hide the rest of the page from assistive technology. @default false */
   isModal?: boolean;
   /**
@@ -634,6 +639,8 @@ export function Popover(props: PopoverComponentProps) {
       onClose: state.close,
       isDismissable: () => props.isDismissable !== false,
       isKeyboardDismissDisabled: () => props.isKeyboardDismissDisabled === true,
+      shouldCloseOnInteractOutside: (element) =>
+        props.shouldCloseOnInteractOutside?.(element) ?? true,
       // Focus was never moved in, so Escape arrives wherever it already was.
       shouldCloseOnEscapeAnywhere: () => !containsFocus(),
       shouldCloseOnBlur: true,

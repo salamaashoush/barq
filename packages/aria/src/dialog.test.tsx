@@ -981,3 +981,41 @@ describe("a popover that focus leaves", () => {
     expect(screen.queryByRole("button", { name: "Deeper" })).not.toBeNull();
   });
 });
+
+describe("Popover's veto of an outside press", () => {
+  test("a vetoed press reaches its target and leaves the popover open; any other closes it", async () => {
+    const triggerRef = ref<HTMLButtonElement>();
+    const pressed: string[] = [];
+    render(() => {
+      const state = overlayTriggerState({ defaultOpen: true });
+      return (
+        <>
+          <button type="button" ref={triggerRef.set}>
+            Open
+          </button>
+          {providePopoverTrigger({ triggerRef, state }, () => (
+            <Popover
+              aria-label="Options"
+              shouldCloseOnInteractOutside={(element) => element.closest("[data-keep]") === null}
+            >
+              <button type="button">Inside</button>
+            </Popover>
+          ))}
+          <button type="button" data-keep="" onClick={() => pressed.push("kept")}>
+            Kept
+          </button>
+        </>
+      );
+    });
+    await settle();
+
+    user.click(screen.getByRole("button", { name: "Kept" }));
+    await settle();
+    expect(pressed).toEqual(["kept"]);
+    expect(screen.queryByRole("button", { name: "Inside" })).not.toBeNull();
+
+    user.click(document.body);
+    await settle();
+    expect(screen.queryByRole("button", { name: "Inside" })).toBeNull();
+  });
+});

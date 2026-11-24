@@ -123,7 +123,13 @@ export interface PopoverContentProps
     UiProps,
     Pick<
       PopoverComponentProps,
-      "offset" | "crossOffset" | "shouldFlip" | "containerPadding" | "isModal" | "isNested"
+      | "offset"
+      | "crossOffset"
+      | "shouldFlip"
+      | "containerPadding"
+      | "isModal"
+      | "isNested"
+      | "shouldCloseOnInteractOutside"
     > {
   /** Which edge of the trigger it sits on. @default "bottom" */
   side?: Side;
