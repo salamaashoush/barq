@@ -41,10 +41,15 @@ let sequence = 0;
 
 type Result = InfiniteQueryResult & { fetchNextPage: () => Promise<void> };
 
-const infinite = (input: unknown, config: unknown): Result =>
-  (useLiveInfiniteQuery as (input: unknown, config: unknown) => Result)(input, config);
+function infinite(input: unknown, config: unknown): Result {
+  return (useLiveInfiniteQuery as (input: unknown, config: unknown) => Result)(input, config);
+}
 
-function makeSource<T extends { id: string }>(
+interface KeyedRow {
+  id: string;
+}
+
+function makeSource<T extends KeyedRow>(
   initialData: ReadonlyArray<T>,
   collectionId?: string,
 ): SourceHandle<T> {
@@ -54,11 +59,11 @@ function makeSource<T extends { id: string }>(
     getKey: (row) => row.id,
     initialData,
   });
-  const write = (type: "insert" | "update" | "delete", value: T): void => {
+  function write(type: "insert" | "update" | "delete", value: T): void {
     collection.utils.begin();
     collection.utils.write({ type, value });
     collection.utils.commit();
-  };
+  }
   return {
     collection,
     insert: (row) => write("insert", row),
@@ -76,8 +81,8 @@ async function settle(): Promise<void> {
 function observe(result: Result): InfiniteQueryObservation {
   return {
     status: result.status,
-    ids: result.data.map((row: { id: string }) => row.id),
-    pages: result.pages.map((page: Array<{ id: string }>) => page.map((row) => row.id)),
+    ids: result.data.map((row: KeyedRow) => row.id),
+    pages: result.pages.map((page: Array<KeyedRow>) => page.map((row) => row.id)),
     hasNextPage: result.hasNextPage,
   };
 }
@@ -145,12 +150,16 @@ function mount(build: QueryBuild, config: InfiniteQueryConfig = {}): InfiniteQue
   return makeHandle(result, dispose, log);
 }
 
+interface ParamBox<P> {
+  value: P;
+}
+
 function mountControllable<P>(
   build: (q: Builder, param: P) => unknown,
   initial: P,
   config: InfiniteQueryConfig = {},
 ) {
-  const [param, setParam] = createSignal<{ value: P }>({ value: initial });
+  const [param, setParam] = createSignal<ParamBox<P>>({ value: initial });
   const { result, dispose, log } = inRoot(() =>
     infinite((q: Builder) => build(q, param().value), config),
   );

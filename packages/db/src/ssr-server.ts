@@ -8,8 +8,12 @@
 import { renderPage, renderToStream } from "@barqjs/server";
 import { RESULT } from "./ssr-harness.ts";
 
+interface FetchCounts {
+  fetches: number;
+}
+
 interface Fixture {
-  counts: { fetches: number };
+  counts: FetchCounts;
   page: () => () => unknown;
 }
 

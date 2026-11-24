@@ -39,7 +39,7 @@ import {
   field,
   resume,
 } from "./binding.ts";
-import type { UseLiveQueryFlags } from "./live-query.ts";
+import type { NoCollectionUtils, UseLiveQueryFlags } from "./live-query.ts";
 import { serverAnswer } from "./seed.ts";
 
 export interface UseLiveInfiniteQueryConfig {
@@ -56,7 +56,7 @@ export interface UseLiveInfiniteQueryConfig {
 export interface UseLiveInfiniteQueryResult<
   TRow extends object,
   TKey extends string | number = string | number,
-  TCollection = Collection<TRow, TKey, {}>,
+  TCollection = Collection<TRow, TKey, NoCollectionUtils>,
 > extends UseLiveQueryFlags {
   /** Every row of every loaded page, in order. */
   readonly data: Array<TRow>;
@@ -244,11 +244,11 @@ export function useLiveInfiniteQuery(input: unknown, config: Config | (() => Con
       if (binding === undefined) return undefined;
       const { controller, warning } = binding.window;
       let live = true;
-      const publish = (): void => {
+      function publish(): void {
         if (!live) return;
         setTick((count) => count + 1);
         if (untrack(held) && settled(controller.getSnapshot().status)) setHeld(false);
-      };
+      }
       if (warning !== undefined) console.warn(warning);
       resume(binding.deferred);
       const unsubscribe = controller.subscribe(publish);
@@ -271,14 +271,14 @@ export function useLiveInfiniteQuery(input: unknown, config: Config | (() => Con
   const isFetchingNextPage = field(view, (snapshot) => snapshot.isFetchingNextPage);
   const collection = field(view, (snapshot) => snapshot.collection);
 
-  const fetchNextPage = (): Promise<void> => {
+  function fetchNextPage(): Promise<void> {
     // From a handler that has just changed what the query reads, the page
     // belongs to the new query: apply the staged writes before choosing.
     if (getOwner() === null) flush();
     const binding = untrack(resolution).binding;
     if (binding === undefined) return Promise.resolve();
     return fetchNextLiveQueryWindowPage(binding.window.controller);
-  };
+  }
 
   return {
     get data() {

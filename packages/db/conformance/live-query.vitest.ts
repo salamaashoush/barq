@@ -76,9 +76,15 @@ interface Result {
   readonly collection: AnyCollection | undefined;
 }
 
-const live = (input: unknown): Result => (useLiveQuery as (input: unknown) => Result)(input);
+function live(input: unknown): Result {
+  return (useLiveQuery as (input: unknown) => Result)(input);
+}
 
-function writer<T extends { id: string }>(collection: ReturnType<typeof controlledCollection<T>>) {
+interface KeyedRow {
+  id: string;
+}
+
+function writer<T extends KeyedRow>(collection: ReturnType<typeof controlledCollection<T>>) {
   return (type: "insert" | "update" | "delete", value: T): void => {
     collection.utils.begin();
     collection.utils.write({ type, value });
@@ -86,10 +92,14 @@ function writer<T extends { id: string }>(collection: ReturnType<typeof controll
   };
 }
 
-function makeSource<T extends { id: string }>(
+interface SourceOptions {
+  rowUpdateMode?: "full";
+}
+
+function makeSource<T extends KeyedRow>(
   initialData: ReadonlyArray<T>,
   collectionId?: string,
-  options?: { rowUpdateMode?: "full" },
+  options?: SourceOptions,
 ): SourceHandle<T> {
   const collection = controlledCollection<T>({
     id: collectionId ?? `conformance-barq-${sequence++}`,
@@ -106,7 +116,7 @@ function makeSource<T extends { id: string }>(
   };
 }
 
-function makeDeferredSource<T extends { id: string }>(): DeferredSourceHandle<T> {
+function makeDeferredSource<T extends KeyedRow>(): DeferredSourceHandle<T> {
   const collection = controlledCollection<T>({
     id: `conformance-barq-${sequence++}`,
     getKey: (row) => row.id,
@@ -127,7 +137,12 @@ function makeDeferredSource<T extends { id: string }>(): DeferredSourceHandle<T>
   };
 }
 
-function makePrecreated(build: QueryBuild, opts?: { startSync?: boolean; gcTime?: number }) {
+interface PrecreatedOptions {
+  startSync?: boolean;
+  gcTime?: number;
+}
+
+function makePrecreated(build: QueryBuild, opts?: PrecreatedOptions) {
   return {
     collection: createLiveQueryCollection({
       query: build as never,
@@ -171,7 +186,12 @@ function makeHandle(result: Result, dispose: () => void): LiveQueryHandle {
   };
 }
 
-function inRoot(build: () => Result): { result: Result; dispose: () => void } {
+interface RootedResult {
+  result: Result;
+  dispose: () => void;
+}
+
+function inRoot(build: () => Result): RootedResult {
   let result!: Result;
   let dispose!: () => void;
   withScopeSetup(
@@ -207,17 +227,25 @@ function mountDisabled(): LiveQueryHandle {
 
 const REJECTED = Symbol("rejected");
 
+interface ControllableOptions {
+  pool?: PooledLiveQueries;
+}
+
+interface ParamBox<P> {
+  value: P;
+}
+
 function mountControllable<P>(
   build: (q: Builder, param: P) => unknown,
   initial: P,
-  opts?: { pool?: PooledLiveQueries },
+  opts?: ControllableOptions,
 ): ControllableHandle<P> {
-  const [param, setParam] = createSignal<{ value: P }>({ value: initial });
+  const [param, setParam] = createSignal<ParamBox<P>>({ value: initial });
   const published = createPublicationLog();
-  const record = (result: Result): void => {
+  function record(result: Result): void {
     const shown = read(result);
     if (shown !== REJECTED) published.record(shown.data, shown.state);
-  };
+  }
   const { result, dispose } = inRoot(() => {
     const query =
       opts?.pool === undefined
@@ -250,8 +278,13 @@ function mountControllable<P>(
   };
 }
 
+interface ReadSnapshot {
+  data: unknown;
+  state: Result["state"];
+}
+
 /** A render that throws shows nothing; the suite reads the rejection through `current()`. */
-function read(result: Result): { data: unknown; state: Result["state"] } | typeof REJECTED {
+function read(result: Result): ReadSnapshot | typeof REJECTED {
   try {
     return { data: result.data, state: result.state };
   } catch {
@@ -275,9 +308,9 @@ const barqDriver: LiveQueryDriver = {
   makeSource,
   wrapSnapshotValue: inStore,
   makeDeferredSource,
-  makeLaggingSource: <T extends { id: string }>() =>
+  makeLaggingSource: <T extends KeyedRow>() =>
     makeLaggingSource<T>(createCollection, `conformance-barq-lagging-${sequence++}`),
-  makeSyncSource: <T extends { id: string }>(data: ReadonlyArray<T>) =>
+  makeSyncSource: <T extends KeyedRow>(data: ReadonlyArray<T>) =>
     makeSyncSource<T>(createCollection, `conformance-barq-health-${sequence++}`, data),
   makePrecreated,
   makeErrorSource: (kind) =>
@@ -334,10 +367,10 @@ it.each(["callback", "config", "collection"] as const)(
         ...barqDriver,
         name: "barq-local-only",
         snapshotSourceUsesDraft: true,
-        makeSource<T extends { id: string }>(
+        makeSource<T extends KeyedRow>(
           initialData: ReadonlyArray<T>,
           collectionId?: string,
-          options?: { rowUpdateMode?: "full" },
+          options?: SourceOptions,
         ) {
           const collection = createCollection(
             localOnlyCollectionOptions<T>({

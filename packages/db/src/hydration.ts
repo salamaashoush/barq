@@ -15,6 +15,11 @@ export interface HydrationBoundaryProps {
   children?: unknown;
 }
 
+interface HydrationBoundaryCells {
+  state: Cell<DehydratedDbState>;
+  children?: unknown;
+}
+
 /**
  * Put dehydrated DB state into the `DbClient` in scope before what is below
  * reads it.
@@ -25,13 +30,11 @@ export interface HydrationBoundaryProps {
  * screen, so it runs with no owner: those writes are theirs, not this
  * component's.
  */
-export const HydrationBoundary = ((props: {
-  state: Cell<DehydratedDbState>;
-  children?: unknown;
-}): unknown => {
+export const HydrationBoundary = ((props: HydrationBoundaryCells): unknown => {
   const client = useDbClient();
-  const state = (): DehydratedDbState =>
-    readSlot(props.state, "HydrationBoundary.state") as DehydratedDbState;
+  function state(): DehydratedDbState {
+    return readSlot(props.state, "HydrationBoundary.state") as DehydratedDbState;
+  }
 
   let hydrated = untrack(state);
   runWithOwner(null, () => client.hydrate(hydrated));

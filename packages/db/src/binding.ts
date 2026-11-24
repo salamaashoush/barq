@@ -36,10 +36,14 @@ function readInput(input: unknown): unknown {
     : input;
 }
 
+interface ClientCarrier {
+  client?: DbClient;
+}
+
 /** The per-query `client` a config object names, which wins over the provider's. */
 function clientOf(value: unknown): DbClient | undefined {
   if (value === null || typeof value !== "object" || isCollection(value)) return undefined;
-  return (value as { client?: DbClient }).client;
+  return (value as ClientCarrier).client;
 }
 
 /**
@@ -162,6 +166,10 @@ export class Rejected {
   constructor(readonly error: unknown) {}
 }
 
+interface BoxedValue<T> {
+  readonly value: T | Rejected;
+}
+
 /**
  * One field of a hook's view as its own dependency.
  *
@@ -175,7 +183,7 @@ export function field<TView extends object, T>(
   view: () => TView | Rejected,
   pick: (view: TView) => T,
 ): () => T {
-  const boxed = createMemo<{ readonly value: T | Rejected }>(
+  const boxed = createMemo<BoxedValue<T>>(
     () => {
       const value = view();
       return { value: value instanceof Rejected ? value : pick(value) };

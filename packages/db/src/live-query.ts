@@ -84,12 +84,14 @@ export interface UseLiveQueryFlags extends LiveQueryStatusFlags {
   readonly health: HealthNode | undefined;
 }
 
+export interface NoCollectionUtils {}
+
 /** An enabled query: it always has a Collection and a result. */
 export interface UseLiveQueryResult<
   TData,
   TRow extends object,
   TKey extends string | number,
-  TCollection = Collection<TRow, TKey, {}>,
+  TCollection = Collection<TRow, TKey, NoCollectionUtils>,
 > extends UseLiveQueryFlags {
   readonly data: TData;
   readonly state: Map<TKey, TRow>;
@@ -103,7 +105,7 @@ export interface UseConditionalLiveQueryResult<
   TData,
   TRow extends object,
   TKey extends string | number,
-  TCollection = Collection<TRow, TKey, {}>,
+  TCollection = Collection<TRow, TKey, NoCollectionUtils>,
 > extends UseLiveQueryFlags {
   readonly data: TData | undefined;
   readonly state: Map<TKey, TRow> | undefined;
@@ -255,11 +257,11 @@ function liveView(input: unknown, name: string): LiveView {
       if (binding === undefined) return undefined;
       const { observer } = binding;
       let live = true;
-      const publish = (): void => {
+      function publish(): void {
         if (!live) return;
         setTick((count) => count + 1);
         if (untrack(held) && settled(observer.getSnapshot().status)) setHeld(false);
-      };
+      }
       resume(binding.deferred);
       const unsubscribe = observer.subscribe(publish);
       // Starting the sync can move the result between the view's first read
@@ -436,7 +438,7 @@ export interface UseLiveSuspenseQueryResult<
   TData,
   TRow extends object,
   TKey extends string | number,
-  TCollection = Collection<TRow, TKey, {}>,
+  TCollection = Collection<TRow, TKey, NoCollectionUtils>,
 > {
   readonly data: TData;
   readonly state: Map<TKey, TRow>;
@@ -488,7 +490,7 @@ export function useLiveSuspenseQuery(input: unknown): unknown {
   // the rows; one before it is the boundary's.
   let ready: AnyCollection | undefined;
 
-  const gate = (): void => {
+  function gate(): void {
     const snapshot = current(live.view());
     if (!snapshot.isEnabled) {
       throw new Error(
@@ -507,7 +509,7 @@ export function useLiveSuspenseQuery(input: unknown): unknown {
     }
     // No source to name: the view read above is what brings this reader back.
     if (!readyOnce) throw new NotReadyError(undefined);
-  };
+  }
 
   const result = resultOf(live.view) as Record<string, unknown>;
   return {

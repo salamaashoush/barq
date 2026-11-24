@@ -332,6 +332,10 @@ describe("owner disposal", () => {
   });
 });
 
+interface IdRow {
+  id: string;
+}
+
 describe("suspense", () => {
   test("useLiveSuspenseQuery parks the Loading boundary until the first result", async () => {
     const { channelsCollection } = workspace();
@@ -362,7 +366,7 @@ describe("suspense", () => {
   });
 
   test("a failed first load reaches the Errored boundary", async () => {
-    const failing = createCollection<{ id: string }, string>({
+    const failing = createCollection<IdRow, string>({
       id: `failing-${crypto.randomUUID()}`,
       getKey: (row) => row.id,
       sync: {
@@ -447,18 +451,23 @@ describe("DbClient", () => {
   });
 });
 
+interface Note {
+  id: string;
+  text: string;
+}
+
 describe("paced mutations", () => {
   test("usePacedMutations applies at once and persists once per debounce window", async () => {
     const persisted: string[][] = [];
     const notes = createCollection(
-      localOnlyCollectionOptions<{ id: string; text: string }>({
+      localOnlyCollectionOptions<Note>({
         id: `notes-${crypto.randomUUID()}`,
         getKey: (note) => note.id,
         initialData: [{ id: "n", text: "" }],
       }),
     );
     const { edit, list } = mounted(() => ({
-      edit: usePacedMutations<string, { id: string; text: string }>({
+      edit: usePacedMutations<string, Note>({
         onMutate: (text) => {
           notes.update("n", (draft) => {
             draft.text = text;

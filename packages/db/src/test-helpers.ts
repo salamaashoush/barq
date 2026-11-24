@@ -11,17 +11,22 @@ export async function settle(ms = 15): Promise<void> {
   flush();
 }
 
+interface SubscriberChange {
+  subscriberCount: number;
+}
+
 interface Watched {
   readonly subscriberCount: number;
-  on(
-    event: "subscribers:change",
-    listener: (event: { subscriberCount: number }) => void,
-  ): () => void;
+  on(event: "subscribers:change", listener: (event: SubscriberChange) => void): () => void;
+}
+
+interface StatusChange {
+  status: string;
 }
 
 interface Staged {
   readonly status: string;
-  on(event: "status:change", listener: (event: { status: string }) => void): () => void;
+  on(event: "status:change", listener: (event: StatusChange) => void): () => void;
 }
 
 /** Resolves once `collection` reaches `status`, on the same chain {@link subscribers} waits out. */
@@ -66,10 +71,15 @@ export interface Message {
   created_at: string;
 }
 
+export interface ApiCalls {
+  channels: number;
+  messages: number;
+}
+
 export interface Api {
   channels: Channel[];
   messages: Message[];
-  calls: { channels: number; messages: number };
+  calls: ApiCalls;
 }
 
 /** An in-memory API, and how often each list endpoint was called. */
@@ -114,7 +124,9 @@ export function workspace(api: Api = server()): Workspace {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
-  const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 1));
+  function tick(): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, 1));
+  }
 
   const channelsCollection = createCollection(
     queryCollectionOptions<Channel>({

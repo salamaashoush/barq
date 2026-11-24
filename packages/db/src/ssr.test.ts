@@ -90,15 +90,40 @@ export const page = () => () => (
 
 const SHOWN = "general,random:readyrandomm3,m2:more";
 
+interface FetchCounts {
+  fetches: number;
+}
+
+interface ChannelApi {
+  channels: Array<ChannelRow>;
+}
+
+interface ChannelRow {
+  id: string;
+  workspace_id: string;
+  name: string;
+}
+
+interface ChannelsQuery {
+  status: string;
+  utils: RefetchUtils;
+}
+
+interface RefetchUtils {
+  refetch: () => Promise<void>;
+}
+
 interface ClientFixture {
-  counts: { fetches: number };
-  api: { channels: Array<{ id: string; workspace_id: string; name: string }> };
-  channels: { status: string; utils: { refetch: () => Promise<void> } };
+  counts: FetchCounts;
+  api: ChannelApi;
+  channels: ChannelsQuery;
   page: () => () => unknown;
 }
 
 let compiled: Compiled | undefined;
-const fixture = (): Compiled => (compiled ??= compile(PAGE, "round-trip"));
+function fixture(): Compiled {
+  return (compiled ??= compile(PAGE, "round-trip"));
+}
 
 let cleanup: (() => void) | undefined;
 
@@ -118,12 +143,19 @@ async function hydrated(container: HTMLElement): Promise<ClientFixture> {
   return module;
 }
 
+interface BufferedServe {
+  result: BufferedPage;
+  fetches: number;
+}
+
+interface BufferedPage {
+  html: string;
+  script: string;
+}
+
 test("a buffered page renders the server's rows and hydrates without a mismatch", async () => {
   unseeded();
-  const served = serve(fixture().ssr, "buffered") as {
-    result: { html: string; script: string };
-    fetches: number;
-  };
+  const served = serve(fixture().ssr, "buffered") as BufferedServe;
   expect(served.fetches).toBe(2);
 
   const container = mount();
@@ -154,12 +186,18 @@ test("a buffered page renders the server's rows and hydrates without a mismatch"
   );
 });
 
+interface StreamedServe {
+  result: StreamedPage;
+  fetches: number;
+}
+
+interface StreamedPage {
+  chunks: string[];
+}
+
 test("a streamed page delivers what settles after the shell and hydrates it", async () => {
   unseeded();
-  const served = serve(fixture().ssr, "streamed") as {
-    result: { chunks: string[] };
-    fetches: number;
-  };
+  const served = serve(fixture().ssr, "streamed") as StreamedServe;
   // The shell went out before the slower collection had answered.
   expect(served.result.chunks.length).toBeGreaterThan(1);
   expect(served.result.chunks[0]).toContain("wait-messages");
@@ -182,10 +220,7 @@ test("a streamed page delivers what settles after the shell and hydrates it", as
 
 test("hydrating before the stream has finished waits for the server's rows", async () => {
   unseeded();
-  const served = serve(fixture().ssr, "streamed") as {
-    result: { chunks: string[] };
-    fetches: number;
-  };
+  const served = serve(fixture().ssr, "streamed") as StreamedServe;
   const { chunks } = served.result;
   const settledFrom = chunks.findIndex((chunk) => chunk.includes("<template data-barq="));
   expect(settledFrom).toBeGreaterThan(0);

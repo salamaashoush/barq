@@ -37,6 +37,10 @@ interface SourceConfig<T extends object> {
   syncMode?: "eager" | "on-demand";
 }
 
+export interface ControlledUtils<T extends object> {
+  utils: SyncControls<T>;
+}
+
 /**
  * A source whose sync the caller drives. With `initialData` it writes those
  * rows and is ready as soon as it starts; without, it starts `loading` and
@@ -44,12 +48,12 @@ interface SourceConfig<T extends object> {
  */
 export function controlledOptions<T extends object>(
   config: SourceConfig<T>,
-): CollectionConfig<T> & { utils: SyncControls<T> } {
+): CollectionConfig<T> & ControlledUtils<T> {
   let params: Params<T> | undefined;
-  const live = (): Params<T> => {
+  function live(): Params<T> {
     if (params === undefined) throw new Error(`source ${config.id} has not started its sync`);
     return params;
-  };
+  }
   const utils: SyncControls<T> = {
     begin: () => live().begin(),
     write: (message) => live().write(message),
@@ -82,7 +86,7 @@ export function controlledOptions<T extends object>(
     autoIndex: config.autoIndex,
     defaultIndexType:
       config.defaultIndexType ?? (config.autoIndex === "eager" ? BTreeIndex : undefined),
-  } as CollectionConfig<T> & { utils: SyncControls<T> };
+  } as CollectionConfig<T> & ControlledUtils<T>;
   return withCollectionConfigFactory(options, () => controlledOptions(config));
 }
 
