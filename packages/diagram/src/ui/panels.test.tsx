@@ -23,13 +23,17 @@ import {
 
 setupUITests();
 
-const key = (target: Element, init: KeyboardEventInit) =>
-  target.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }));
+function key(target: Element, init: KeyboardEventInit) {
+  return target.dispatchEvent(
+    new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }),
+  );
+}
 
 const ctrl = navigator.platform.includes("Mac") ? { metaKey: true } : { ctrlKey: true };
 
-const element = (api: DiagramEditorApi, id: string) =>
-  api.getSceneElements().find((each) => each.id === id)!;
+function element(api: DiagramEditorApi, id: string) {
+  return api.getSceneElements().find((each) => each.id === id)!;
+}
 
 describe("command palette", () => {
   test("Ctrl+/ opens it, typing finds a command and Enter runs it", async () => {

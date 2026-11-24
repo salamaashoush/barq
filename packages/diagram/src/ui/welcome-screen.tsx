@@ -86,27 +86,40 @@ const toolbarHint = d(hint, layout.column, {
 const helpHint = d(hint, { bottom: "64px", insetInlineEnd: "28px", alignItems: "flex-end" });
 
 /** Leaves room for the hints only where the editor has it, as Excalidraw hides them on small screens. */
-const roomy = (ui: ReturnType<typeof useDiagramUI>, needsWidth: boolean): boolean =>
-  ui.store.state("height") >= 520 && (!needsWidth || ui.store.state("width") >= 900);
+function roomy(ui: ReturnType<typeof useDiagramUI>, needsWidth: boolean): boolean {
+  return ui.store.state("height") >= 520 && (!needsWidth || ui.store.state("width") >= 900);
+}
 
-const Arrow = (props: { path: string; width: number; height: number }) => (
-  <svg
-    aria-hidden="true"
-    width={props.width}
-    height={props.height}
-    viewBox={`0 0 ${props.width} ${props.height}`}
-    fill="none"
-    stroke="currentColor"
-    stroke-width="1.5"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  >
-    <path d={props.path} />
-  </svg>
-);
+interface ArrowProps {
+  path: string;
+  width: number;
+  height: number;
+}
+
+function Arrow(props: ArrowProps) {
+  return (
+    <svg
+      aria-hidden="true"
+      width={props.width}
+      height={props.height}
+      viewBox={`0 0 ${props.width} ${props.height}`}
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <path d={props.path} />
+    </svg>
+  );
+}
+
+interface ChildrenProps {
+  children?: Child;
+}
 
 /** The hint pointing at the main menu. */
-function MenuHint(props: { children?: Child }) {
+function MenuHint(props: ChildrenProps) {
   const ui = useDiagramUI();
   return (
     <Show when={roomy(ui, true)}>
@@ -121,7 +134,7 @@ function MenuHint(props: { children?: Child }) {
 }
 
 /** The hint pointing at the toolbar. */
-function ToolbarHint(props: { children?: Child }) {
+function ToolbarHint(props: ChildrenProps) {
   const ui = useDiagramUI();
   return (
     <Show when={roomy(ui, false) && !ui.store.state("viewModeEnabled")}>
@@ -134,7 +147,7 @@ function ToolbarHint(props: { children?: Child }) {
 }
 
 /** The hint pointing at the help button. */
-function HelpHint(props: { children?: Child }) {
+function HelpHint(props: ChildrenProps) {
   const ui = useDiagramUI();
   return (
     <Show when={roomy(ui, true)}>
@@ -149,11 +162,11 @@ function HelpHint(props: { children?: Child }) {
 }
 
 /** Excalidraw's `WelcomeScreen.Center.Logo`: the host's mark above the heading. */
-function Logo(props: { children?: Child }) {
+function Logo(props: ChildrenProps) {
   return <div class={logo}>{props.children}</div>;
 }
 
-function Heading(props: { children?: Child }) {
+function Heading(props: ChildrenProps) {
   return (
     <div class={centerHeading} data-testid="welcome-heading">
       {props.children}
@@ -161,7 +174,7 @@ function Heading(props: { children?: Child }) {
   );
 }
 
-function Menu(props: { children?: Child }) {
+function Menu(props: ChildrenProps) {
   return (
     <div class={menu} role="group" data-testid="welcome-menu">
       {props.children}
@@ -169,13 +182,15 @@ function Menu(props: { children?: Child }) {
   );
 }
 
-function MenuItem(props: {
+interface MenuItemProps {
   onSelect: () => void;
   icon?: Child;
   shortcut?: string | null;
   children?: Child;
   "data-testid"?: string;
-}) {
+}
+
+function MenuItem(props: MenuItemProps) {
   return (
     <button
       type="button"
@@ -192,12 +207,14 @@ function MenuItem(props: {
   );
 }
 
-function MenuItemLink(props: {
+interface MenuItemLinkProps {
   href: string;
   icon?: Child;
   shortcut?: string | null;
   children?: Child;
-}) {
+}
+
+function MenuItemLink(props: MenuItemLinkProps) {
   return (
     <a class={menuItem} href={props.href} target="_blank" rel="noopener">
       {props.icon}
@@ -240,7 +257,7 @@ function MenuItemLoadScene() {
 }
 
 /** The middle of the welcome screen: a heading and a menu, or the host's own parts. */
-function Center(props: { children?: Child }) {
+function Center(props: ChildrenProps) {
   const ui = useDiagramUI();
   return (
     <div class={center} data-testid="welcome-center">
@@ -280,7 +297,7 @@ function Center(props: { children?: Child }) {
  * </DiagramEditor>
  * ```
  */
-function WelcomeScreenRoot(props: { children?: Child }): JSX.Element {
+function WelcomeScreenRoot(props: ChildrenProps): JSX.Element {
   if (isHostChild()) {
     return hostSlot("welcomeScreen", {
       get children() {
@@ -317,16 +334,23 @@ export const WelcomeScreen = Object.assign(WelcomeScreenRoot, {
 
 const layer = d(pinned, cover);
 
+export interface WelcomeScreenLayerProps {
+  content: Child;
+}
+
 /** The welcome screen when the editor is empty and waiting, Excalidraw's `renderWelcomeScreen`. */
-export function WelcomeScreenLayer(props: { content: Child }) {
+export function WelcomeScreenLayer(props: WelcomeScreenLayerProps) {
   const ui = useDiagramUI();
   const store = ui.store;
-  const shown = () =>
-    store.ready() &&
-    store.sceneEmpty() &&
-    !store.state("isLoading") &&
-    !store.state("zenModeEnabled") &&
-    store.state("activeTool").type === store.state("preferredSelectionTool").type;
+  function shown() {
+    return (
+      store.ready() &&
+      store.sceneEmpty() &&
+      !store.state("isLoading") &&
+      !store.state("zenModeEnabled") &&
+      store.state("activeTool").type === store.state("preferredSelectionTool").type
+    );
+  }
   return (
     <Show when={shown()}>
       <div class={layer} data-testid="welcome-screen">

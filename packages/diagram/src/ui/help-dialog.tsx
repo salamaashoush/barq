@@ -40,21 +40,34 @@ const key = d(layout.inlineCentre, rounded.xs, type.xs, fg.default, bg.muted, {
   boxShadow: "inset 0 -1px 0 var(--border)",
 });
 
-const upperCaseSingleChars = (text: string): string =>
-  text.replace(/\b[a-z]\b/, (char) => char.toUpperCase());
+function upperCaseSingleChars(text: string): string {
+  return text.replace(/\b[a-z]\b/, (char) => char.toUpperCase());
+}
 
 /** One shortcut's keys, `+` between them, as Excalidraw splits `"Ctrl++"`. */
-const splitKeys = (shortcut: string): string[] =>
-  shortcut.endsWith("++") ? [...shortcut.slice(0, -2).split("+"), "+"] : shortcut.split("+");
+function splitKeys(shortcut: string): string[] {
+  return shortcut.endsWith("++") ? [...shortcut.slice(0, -2).split("+"), "+"] : shortcut.split("+");
+}
 
-function Shortcut(props: { label: string; shortcuts: readonly string[]; isOr?: boolean }) {
+interface ShortcutProps {
+  label: string;
+  shortcuts: readonly string[];
+  isOr?: boolean;
+}
+
+interface IndexedShortcut {
+  shortcut: string;
+  index: number;
+}
+
+function Shortcut(props: ShortcutProps) {
   const ui = useDiagramUI();
   return (
     <div class={row} role="listitem">
       <span>{props.label}</span>
       <span class={keys}>
         <For each={props.shortcuts.map((shortcut, index) => ({ shortcut, index }))}>
-          {(entry: { shortcut: string; index: number }) => (
+          {(entry: IndexedShortcut) => (
             <>
               <Show when={entry.index > 0 && props.isOr !== false}>
                 <span>{ui.t("helpDialog.or")}</span>
@@ -70,7 +83,13 @@ function Shortcut(props: { label: string; shortcuts: readonly string[]; isOr?: b
   );
 }
 
-function Island(props: { title: string; children?: Child; "data-testid"?: string }) {
+interface IslandProps {
+  title: string;
+  children?: Child;
+  "data-testid"?: string;
+}
+
+function Island(props: IslandProps) {
   return (
     <section class={island} aria-label={props.title} data-testid={props["data-testid"]}>
       <h3>{props.title}</h3>
@@ -89,11 +108,19 @@ export function HelpDialog() {
   const ui = useDiagramUI();
   const t = ui.t;
   const store = ui.store;
-  const open = () => store.state("openDialog")?.name === "help";
+  function open() {
+    return store.state("openDialog")?.name === "help";
+  }
   // the platform's modifiers once the page runs, as the toolbar's hints are
-  const darwin = () => store.ready() && isDarwin;
-  const k = (shortcut: string): string => getShortcutKey(shortcut, t, darwin());
-  const label = (path: TranslationKey): string => t(path);
+  function darwin() {
+    return store.ready() && isDarwin;
+  }
+  function k(shortcut: string): string {
+    return getShortcutKey(shortcut, t, darwin());
+  }
+  function label(path: TranslationKey): string {
+    return t(path);
+  }
 
   return (
     <Dialog

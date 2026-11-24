@@ -44,6 +44,11 @@ export async function settle(): Promise<void> {
   flush();
 }
 
+export interface MountedEditor {
+  api: DiagramEditorApi;
+  region: HTMLElement;
+}
+
 /**
  * Mounts the editor; `children`, a function so they are made where the
  * editor reads them, are its children (`MainMenu`, `WelcomeScreen`, ...).
@@ -51,7 +56,7 @@ export async function settle(): Promise<void> {
 export async function mountEditor(
   props: Partial<Omit<DiagramEditorProps, "children">> = {},
   children?: () => Child,
-): Promise<{ api: DiagramEditorApi; region: HTMLElement }> {
+): Promise<MountedEditor> {
   let api: DiagramEditorApi | undefined;
   render(() => (
     <DiagramEditor height={SIZE.height} {...props} api={(given) => (api = given)}>
@@ -64,8 +69,8 @@ export async function mountEditor(
   return { api, region };
 }
 
-export const pointer = (target: Element, type: string, x: number, y: number, button = 0) =>
-  target.dispatchEvent(
+export function pointer(target: Element, type: string, x: number, y: number, button = 0) {
+  return target.dispatchEvent(
     new PointerEvent(type, {
       pointerId: 1,
       pointerType: "mouse",
@@ -77,12 +82,14 @@ export const pointer = (target: Element, type: string, x: number, y: number, but
       cancelable: true,
     }),
   );
+}
 
-export const canvas = (region: HTMLElement): HTMLCanvasElement =>
-  region.querySelectorAll("canvas")[2]!;
+export function canvas(region: HTMLElement): HTMLCanvasElement {
+  return region.querySelectorAll("canvas")[2]!;
+}
 
-export const rectangle = (id: string, x: number, y: number, extra: Record<string, unknown> = {}) =>
-  ({
+export function rectangle(id: string, x: number, y: number, extra: Record<string, unknown> = {}) {
+  return {
     type: "rectangle",
     id,
     x,
@@ -92,11 +99,12 @@ export const rectangle = (id: string, x: number, y: number, extra: Record<string
     backgroundColor: "#ffc9c9",
     fillStyle: "solid",
     ...extra,
-  }) as never;
+  } as never;
+}
 
-export const select = async (api: DiagramEditorApi, ...ids: string[]) => {
+export async function select(api: DiagramEditorApi, ...ids: string[]) {
   api.updateScene({
     appState: { selectedElementIds: Object.fromEntries(ids.map((id) => [id, true])) },
   });
   await settle();
-};
+}

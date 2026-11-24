@@ -110,7 +110,7 @@ const SYNTAX_PAGES: Record<string, string> = {
 };
 
 /** A translation with `<tag>text</tag>` spans, each a link to Mermaid's syntax page for it. */
-const withSyntaxLinks = (text: string): Child[] => {
+function withSyntaxLinks(text: string): Child[] {
   const parts: Child[] = [];
   const pattern = /<(\w+)>(.*?)<\/\1>/g;
   let last = 0;
@@ -130,29 +130,29 @@ const withSyntaxLinks = (text: string): Child[] => {
   }
   parts.push(text.slice(last));
   return parts;
-};
+}
 
 const STORAGE_KEY = EDITOR_LS_KEYS.MERMAID_TO_EXCALIDRAW;
 
 const MERMAID_EXAMPLE =
   "flowchart TD\n A[Christmas] -->|Get money| B(Go shopping)\n B --> C{Let me think}\n C -->|One| D[Laptop]\n C -->|Two| E[iPhone]\n C -->|Three| F[Car]";
 
-const readSavedDefinition = (): string | null => {
+function readSavedDefinition(): string | null {
   try {
     const value = globalThis.localStorage?.getItem(STORAGE_KEY);
     return value ? (JSON.parse(value) as string) : null;
   } catch {
     return null;
   }
-};
+}
 
-const saveDefinition = (definition: string): void => {
+function saveDefinition(definition: string): void {
   try {
     globalThis.localStorage?.setItem(STORAGE_KEY, JSON.stringify(definition));
   } catch {
     // storage may be full or refused; the definition is only a convenience
   }
-};
+}
 
 interface Converted {
   elements: readonly NonDeletedExcalidrawElement[];
@@ -165,7 +165,7 @@ interface Converted {
  * tried again with single ones, as Excalidraw does, and the first error is
  * the one reported.
  */
-const convertMermaid = async (definition: string): Promise<Converted> => {
+async function convertMermaid(definition: string): Promise<Converted> {
   const { mermaidToExcalidraw } = await import("../mermaid.ts");
   try {
     return await mermaidToExcalidraw(definition, MERMAID_TO_EXCALIDRAW_CONFIG);
@@ -177,9 +177,9 @@ const convertMermaid = async (definition: string): Promise<Converted> => {
       throw error;
     }
   }
-};
+}
 
-const insertConverted = (ui: DiagramUI, converted: Converted): void => {
+function insertConverted(ui: DiagramUI, converted: Converted): void {
   const editor = ui.store.editor;
   if (!editor || converted.elements.length === 0) return;
   editor.batch(() => {
@@ -192,15 +192,15 @@ const insertConverted = (ui: DiagramUI, converted: Converted): void => {
     editor.setState({ openDialog: null });
   });
   editor.focusContainer();
-};
+}
 
 /** Draws converted elements into a box, the latest drawing winning. */
-const drawPreview = (
+function drawPreview(
   box: HTMLElement,
   converted: Converted,
   theme: "light" | "dark",
   isCurrent: () => boolean,
-): void => {
+): void {
   const { width, height } = box.getBoundingClientRect();
   void exportScene({
     type: "canvas",
@@ -218,10 +218,11 @@ const drawPreview = (
     },
     (error: unknown) => console.error("DiagramEditor: the Mermaid preview did not draw", error),
   );
-};
+}
 
-const errorMessage = (error: unknown): string =>
-  error instanceof Error ? error.message : typeof error === "string" ? error : "";
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : typeof error === "string" ? error : "";
+}
 
 const RENDER_DELAY = 300;
 const AUTO_FIX_DELAY = 500;
@@ -232,11 +233,11 @@ const AUTO_FIX_MAX_CANDIDATES = 30;
  * The first candidate Mermaid can read, searching the fixes of each fix a
  * few levels deep, as Excalidraw's auto-fix does; `null` when none parses.
  */
-const findAutoFix = async (
+async function findAutoFix(
   source: string,
   error: string,
   cancelled: () => boolean,
-): Promise<string | null> => {
+): Promise<string | null> {
   const seen = new Set([source]);
   const queue = getMermaidAutoFixCandidates(source, error).map((text) => ({ text, depth: 1 }));
   let tried = 0;
@@ -257,20 +258,29 @@ const findAutoFix = async (
     }
   }
   return null;
-};
+}
+
+interface MermaidTabProps {
+  initial?: string;
+}
+
+interface MermaidFix {
+  source: string;
+  fix: string | null;
+}
 
 /** The Mermaid tab: a definition, its preview as it is typed, and Insert (or Ctrl+Enter). */
-function MermaidTab(props: { initial?: string }) {
+function MermaidTab(props: MermaidTabProps) {
   const ui = useDiagramUI();
   const t = ui.t;
   const [text, setText] = createSignal(props.initial ?? readSavedDefinition() ?? MERMAID_EXAMPLE);
   const [error, setError] = createSignal<string | null>(null);
-  const [found, setAutoFix] = createSignal<{ source: string; fix: string | null } | null>(null);
+  const [found, setAutoFix] = createSignal<MermaidFix | null>(null);
   // a fix found for the text as it was, while it still is
-  const autoFix = (): string | null => {
+  function autoFix(): string | null {
     const result = found();
     return result && result.source === text() && error() !== null ? result.fix : null;
-  };
+  }
   const [box, setBox] = createSignal<HTMLDivElement | null>(null);
   let converted: Converted | null = null;
   let request = 0;
@@ -330,11 +340,11 @@ function MermaidTab(props: { initial?: string }) {
     return failure ? getMermaidErrorLineNumber(failure, text()) : null;
   });
 
-  const insert = (): void => {
+  function insert(): void {
     if (!converted) return;
     saveDefinition(text());
     insertConverted(ui, converted);
-  };
+  }
 
   return (
     <div class={panel}>
@@ -394,13 +404,24 @@ function MermaidTab(props: { initial?: string }) {
   );
 }
 
-const STRINGS = (ui: DiagramUI) => ({
-  promptTooShort: (min: number) => ui.t("chat.errors.promptTooShort", { min }),
-  promptTooLong: (max: number) => ui.t("chat.errors.promptTooLong", { max }),
-  requestFailed: ui.t("chat.errors.requestFailed"),
-  generationFailed: ui.t("chat.errors.generationFailed"),
-  mermaidParseError: ui.t("chat.errors.mermaidParseError"),
-});
+function STRINGS(ui: DiagramUI) {
+  return {
+    promptTooShort: (min: number) => ui.t("chat.errors.promptTooShort", { min }),
+    promptTooLong: (max: number) => ui.t("chat.errors.promptTooLong", { max }),
+    requestFailed: ui.t("chat.errors.requestFailed"),
+    generationFailed: ui.t("chat.errors.generationFailed"),
+    mermaidParseError: ui.t("chat.errors.mermaidParseError"),
+  };
+}
+
+interface TextToDiagramTabProps {
+  options: TextToDiagramOptions;
+  onViewAsMermaid: (definition: string) => void;
+}
+
+interface RateLimitRemaining {
+  rateLimitRemaining: number;
+}
 
 /**
  * The text-to-diagram tab: a chat with the app's backend, which answers in
@@ -408,10 +429,7 @@ const STRINGS = (ui: DiagramUI) => ({
  * any reply inserts. A reply Mermaid cannot read can be repaired by the
  * backend or edited in the Mermaid tab.
  */
-function TextToDiagramTab(props: {
-  options: TextToDiagramOptions;
-  onViewAsMermaid: (definition: string) => void;
-}) {
+function TextToDiagramTab(props: TextToDiagramTabProps) {
   const ui = useDiagramUI();
   const t = ui.t;
   const [version, setVersion] = createSignal(0);
@@ -426,24 +444,28 @@ function TextToDiagramTab(props: {
   void session.loadChats();
   onCleanup(() => session.dispose());
 
-  const history = () => {
+  function history() {
     version();
     return session.history;
-  };
-  const last = () => getLastAssistantMessage(history());
-  const generating = () => last()?.isGenerating === true;
-  const failure = () => {
+  }
+  function last() {
+    return getLastAssistantMessage(history());
+  }
+  function generating() {
+    return last()?.isGenerating === true;
+  }
+  function failure() {
     version();
     return session.error;
-  };
-  const rateLimits = () => {
+  }
+  function rateLimits() {
     version();
     return session.rateLimits;
-  };
-  const saved = () => {
+  }
+  function saved() {
     version();
     return session.savedChats;
-  };
+  }
 
   const [box, setBox] = createSignal<HTMLDivElement | null>(null);
   let preview: Converted | null = null;
@@ -478,25 +500,26 @@ function TextToDiagramTab(props: {
     },
   );
 
-  const insertMessage = (chat: ChatMessage): void => {
+  function insertMessage(chat: ChatMessage): void {
     const definition = chat.content ?? "";
     if (!definition.trim()) return;
     convertMermaid(definition).then(
       (result) => insertConverted(ui, result),
       (error: unknown) => console.error("DiagramEditor: the reply did not convert", error),
     );
-  };
+  }
 
-  const submit = (): void => {
+  function submit(): void {
     const prompt = session.history.currentPrompt;
     if (!prompt.trim() || session.isGenerating) return;
     void session.generate(prompt);
-  };
+  }
 
-  const warning = (chat: ChatMessage): string =>
-    chat.warningType === "messageLimitExceeded"
+  function warning(chat: ChatMessage): string {
+    return chat.warningType === "messageLimitExceeded"
       ? t("chat.rateLimit.messageLimit")
       : t("chat.rateLimit.generalRateLimit");
+  }
 
   return (
     <div class={panels} data-testid="ttd-chat">
@@ -663,7 +686,7 @@ function TextToDiagramTab(props: {
         />
         <div class={actions}>
           <Show when={rateLimits()}>
-            {(limits: () => { rateLimitRemaining: number }) => (
+            {(limits: () => RateLimitRemaining) => (
               <span class={muted}>
                 {t("chat.rateLimitRemaining", { count: limits().rateLimitRemaining })}
               </span>
@@ -737,12 +760,17 @@ export const TTDDialog = Object.assign(TTDDialogRoot, {
   WelcomeMessage: TTDWelcomeMessage,
 });
 
+export interface TTDDialogTriggerProps {
+  children?: Child;
+  icon?: Child;
+}
+
 /**
  * Excalidraw's `TTDDialogTrigger`, given to `<DiagramEditor>` as a child: the
  * extra tools' entry that opens the text-to-diagram dialog, with its label
  * (`children`) and icon.
  */
-export function TTDDialogTrigger(props: { children?: Child; icon?: Child }): JSX.Element {
+export function TTDDialogTrigger(props: TTDDialogTriggerProps): JSX.Element {
   return isHostChild()
     ? hostSlot("ttdDialogTrigger", {
         get children() {
@@ -775,33 +803,36 @@ export function TTDDialogBase() {
   const ui = useDiagramUI();
   const t = ui.t;
   const store = ui.store;
-  const dialog = () => {
+  function dialog() {
     const open = store.state("openDialog");
     return open?.name === "ttd" ? open : null;
-  };
-  const backend = () => (ui.host().aiEnabled ? (ui.host().textToDiagram ?? null) : null);
-  const tab = () =>
-    dialog()?.tab === "text-to-diagram" && backend() ? "text-to-diagram" : "mermaid";
+  }
+  function backend() {
+    return ui.host().aiEnabled ? (ui.host().textToDiagram ?? null) : null;
+  }
+  function tab() {
+    return dialog()?.tab === "text-to-diagram" && backend() ? "text-to-diagram" : "mermaid";
+  }
   const [handedOver, setHandedOver] = createSignal<string | undefined>(undefined);
 
-  const setTab = (next: "text-to-diagram" | "mermaid"): void => {
+  function setTab(next: "text-to-diagram" | "mermaid"): void {
     const editor = store.editor;
     editor?.batch(() => editor.setState({ openDialog: { name: "ttd", tab: next } }));
-  };
+  }
 
-  const close = (): void => {
+  function close(): void {
     const editor = store.editor;
     if (editor?.state.openDialog?.name === "ttd") {
       editor.batch(() => editor.setState({ openDialog: null }));
       editor.focusContainer();
     }
-  };
+  }
 
-  const viewAsMermaid = (definition: string): void => {
+  function viewAsMermaid(definition: string): void {
     saveDefinition(definition);
     setHandedOver(definition);
     setTab("mermaid");
-  };
+  }
 
   return (
     <Dialog

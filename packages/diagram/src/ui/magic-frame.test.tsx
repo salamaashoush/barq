@@ -18,17 +18,18 @@ setupUITests();
 
 const PAGE = "<!DOCTYPE html><html><body><button>Buy</button></body></html>";
 
-const pickMagicFrame = async () => {
+async function pickMagicFrame() {
   screen.getByTestId("toolbar-extra-tools").click();
   await settle();
   screen.getByTestId("toolbar-magicframe").click();
   await settle();
-};
+}
 
-const iframeOf = (api: DiagramEditorApi) =>
-  api.getSceneElements().find((element) => element.type === "iframe") as
+function iframeOf(api: DiagramEditorApi) {
+  return api.getSceneElements().find((element) => element.type === "iframe") as
     | ExcalidrawIframeElement
     | undefined;
+}
 
 describe("magic frame", () => {
   test("wraps the selection and shows the generated page beside it, streamed", async () => {

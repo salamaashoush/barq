@@ -11,14 +11,16 @@ import { screen, user, within } from "@barqjs/testing";
 import { mountEditor, rectangle, select, settle, setupUITests } from "./test-ui.tsx";
 
 import type { DiagramEditorApi } from "../index.ts";
+import type { Coords } from "../types.ts";
 
 setupUITests();
 
-const element = (api: DiagramEditorApi, id: string) =>
-  api.getSceneElements().find((each) => each.id === id)!;
+function element(api: DiagramEditorApi, id: string) {
+  return api.getSceneElements().find((each) => each.id === id)!;
+}
 
 /** Gives each quick pick its own box, a row of 24px squares from x = 0. */
-const layOutSlots = (strip: Element) => {
+function layOutSlots(strip: Element) {
   for (const slot of strip.querySelectorAll<HTMLElement>("[data-top-pick-index]")) {
     const index = Number(slot.dataset.topPickIndex);
     const left = index * 30;
@@ -34,14 +36,16 @@ const layOutSlots = (strip: Element) => {
         y: 0,
       }) as DOMRect;
   }
-};
+}
 
-const slotCentre = (index: number) => ({ x: index * 30 + 12, y: 12 });
+function slotCentre(index: number) {
+  return { x: index * 30 + 12, y: 12 };
+}
 
 /** A press on `source`, held past the drag's time threshold, carried to `to` and let go. */
-const drag = async (source: Element, to: { x: number; y: number }) => {
-  const fire = (target: EventTarget, type: string, x: number, y: number) =>
-    target.dispatchEvent(
+async function drag(source: Element, to: Coords) {
+  function fire(target: EventTarget, type: string, x: number, y: number) {
+    return target.dispatchEvent(
       new PointerEvent(type, {
         pointerId: 7,
         isPrimary: true,
@@ -52,6 +56,7 @@ const drag = async (source: Element, to: { x: number; y: number }) => {
         cancelable: true,
       }),
     );
+  }
   fire(source, "pointerdown", 500, 500);
   await new Promise((resolve) => setTimeout(resolve, 120));
   fire(window, "pointermove", 520, 520);
@@ -61,12 +66,13 @@ const drag = async (source: Element, to: { x: number; y: number }) => {
   // the drag's own click would come in this task; a later one is a click again
   await new Promise((resolve) => setTimeout(resolve, 0));
   await settle();
-};
+}
 
-const strokePicks = () =>
-  [
+function strokePicks() {
+  return [
     ...screen.getByTestId("stroke-color").querySelectorAll<HTMLElement>("[data-top-pick-index]"),
   ].map((slot) => slot.dataset.testid?.replace("color-top-pick-", ""));
+}
 
 describe("colour top picks", () => {
   test("a palette colour dragged onto a slot pins it there, and is not picked", async () => {

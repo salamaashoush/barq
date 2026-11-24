@@ -14,25 +14,29 @@ import type { DiagramEditorApi } from "../index.ts";
 
 setupUITests();
 
-const key = (target: Element, init: KeyboardEventInit) =>
-  target.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }));
+function key(target: Element, init: KeyboardEventInit) {
+  return target.dispatchEvent(
+    new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }),
+  );
+}
 
 const ctrl = navigator.platform.includes("Mac") ? { metaKey: true } : { ctrlKey: true };
 
-const element = (api: DiagramEditorApi, id: string) =>
-  api.getSceneElements().find((each) => each.id === id)!;
+function element(api: DiagramEditorApi, id: string) {
+  return api.getSceneElements().find((each) => each.id === id)!;
+}
 
-const openStats = async (region: HTMLElement) => {
+async function openStats(region: HTMLElement) {
   key(region, { key: "/", code: "Slash", altKey: true });
   await settle();
   return screen.getByRole("region", { name: "Canvas & Shape properties" });
-};
+}
 
-const type = async (input: HTMLInputElement, value: string) => {
+async function type(input: HTMLInputElement, value: string) {
   input.value = value;
   input.dispatchEvent(new Event("change", { bubbles: true }));
   await settle();
-};
+}
 
 describe("stats panel", () => {
   test("names the element's type, and a group of several", async () => {
@@ -97,10 +101,11 @@ describe("stats panel", () => {
     const panel = await openStats(region);
     await select(api, "A");
     const label = within(panel).getByTestId("stats-x-scrub");
-    const fire = (name: string, clientX: number) =>
-      label.dispatchEvent(
+    function fire(name: string, clientX: number) {
+      return label.dispatchEvent(
         new PointerEvent(name, { pointerId: 1, clientX, clientY: 0, button: 0, bubbles: true }),
       );
+    }
     fire("pointerdown", 0);
     fire("pointermove", 20);
     await settle();

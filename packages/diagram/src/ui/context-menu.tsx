@@ -17,6 +17,11 @@ const VIEWPORT_MARGIN = 8;
 
 type Entry = { kind: "separator"; key: string } | { kind: "action"; key: string; action: Action };
 
+interface MenuPosition {
+  top: number;
+  left: number;
+}
+
 /**
  * Excalidraw's context menu, for the canvas, an element or a selection: the
  * entries whose actions apply now, a tick on the toggles that are on, the
@@ -28,7 +33,9 @@ type Entry = { kind: "separator"; key: string } | { kind: "action"; key: string;
 export function ContextMenu() {
   const ui = useDiagramUI();
   const store = ui.store;
-  const menu = () => store.state("contextMenu");
+  function menu() {
+    return store.state("contextMenu");
+  }
 
   const entries = createMemo((): Entry[] => {
     const state = menu();
@@ -49,23 +56,23 @@ export function ContextMenu() {
     return kept;
   });
 
-  const close = (refocus = true): void => {
+  function close(refocus = true): void {
     const editor = store.editor;
     if (!editor) return;
     editor.batch(() => editor.setState({ contextMenu: null }));
     if (refocus) editor.focusContainer();
-  };
+  }
 
-  const run = (action: Action): void => {
+  function run(action: Action): void {
     close();
     ui.run(action);
-  };
+  }
 
   return (
     <Show when={menu()}>
-      {(state: () => { top: number; left: number }) => {
+      {(state: () => MenuPosition) => {
         let surface: HTMLDivElement | undefined;
-        const position = () => {
+        function position() {
           const { top, left } = state();
           const width = store.state("width");
           const height = store.state("height");
@@ -74,10 +81,10 @@ export function ContextMenu() {
             top: `${Math.max(VIEWPORT_MARGIN, Math.min(top, height - VIEWPORT_MARGIN))}px`,
             left: `${Math.max(VIEWPORT_MARGIN, Math.min(left, width - VIEWPORT_MARGIN))}px`,
           };
-        };
-        const onPointerDown = (event: PointerEvent): void => {
+        }
+        function onPointerDown(event: PointerEvent): void {
           if (surface && !surface.contains(event.target as Node)) close(false);
-        };
+        }
         const document = store.editor?.ownerDocument;
         document?.addEventListener("pointerdown", onPointerDown, true);
         onCleanup(() => document?.removeEventListener("pointerdown", onPointerDown, true));
@@ -137,7 +144,7 @@ export function ContextMenu() {
 }
 
 /** Moves the menu back inside the editor when it would cross an edge, as Excalidraw's popover fits. */
-const fitInside = (element: HTMLElement, width: number, height: number): void => {
+function fitInside(element: HTMLElement, width: number, height: number): void {
   const rect = element.getBoundingClientRect();
   const parent = element.offsetParent?.getBoundingClientRect();
   if (!parent || rect.width === 0) return;
@@ -149,4 +156,4 @@ const fitInside = (element: HTMLElement, width: number, height: number): void =>
   if (top + rect.height > height - VIEWPORT_MARGIN) {
     element.style.top = `${Math.max(VIEWPORT_MARGIN, height - rect.height - VIEWPORT_MARGIN)}px`;
   }
-};
+}

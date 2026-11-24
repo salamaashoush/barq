@@ -72,14 +72,16 @@ const card = d(surface.bordered, layout.column, centredText, gap[2], {
   "& > svg": { width: "32px", height: "32px" },
 });
 
-/** A setting's name beside its switch, the label naming the switch. */
-function SwitchSetting(props: {
+interface SwitchSettingProps {
   label: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
   description?: string;
   "data-testid"?: string;
-}) {
+}
+
+/** A setting's name beside its switch, the label naming the switch. */
+function SwitchSetting(props: SwitchSettingProps) {
   return (
     <label class={setting} title={props.description ?? props.label}>
       <span>{props.label}</span>
@@ -130,7 +132,9 @@ export function ImageExportDialog() {
   const ui = useDiagramUI();
   const t = ui.t;
   const store = ui.store;
-  const open = () => store.state("openDialog")?.name === "imageExport";
+  function open() {
+    return store.state("openDialog")?.name === "imageExport";
+  }
 
   // the scene as it was when the dialog opened: nothing behind it moves the export
   const snapshot = createMemo((): ExportSnapshot | null => {
@@ -143,16 +147,26 @@ export function ImageExportDialog() {
     }));
   });
 
-  const hasSelection = () => {
+  function hasSelection() {
     const taken = snapshot();
     return taken !== null && isSomeElementSelected(taken.elements, taken.appState);
-  };
+  }
   const [onlySelected, setOnlySelected] = createSignal<boolean | null>(null);
-  const exportSelectionOnly = () => onlySelected() ?? hasSelection();
-  const background = () => store.state("exportBackground");
-  const dark = () => store.state("exportWithDarkMode");
-  const embed = () => store.state("exportEmbedScene");
-  const scale = () => store.state("exportScale");
+  function exportSelectionOnly() {
+    return onlySelected() ?? hasSelection();
+  }
+  function background() {
+    return store.state("exportBackground");
+  }
+  function dark() {
+    return store.state("exportWithDarkMode");
+  }
+  function embed() {
+    return store.state("exportEmbedScene");
+  }
+  function scale() {
+    return store.state("exportScale");
+  }
   const [copied, setCopied] = createSignal(false);
   const [previewError, setPreviewError] = createSignal(false);
 
@@ -213,16 +227,16 @@ export function ImageExportDialog() {
     },
   );
 
-  const close = (): void => {
+  function close(): void {
     setOnlySelected(null);
     setCopied(false);
     const editor = store.editor;
     if (editor?.state.openDialog?.name === "imageExport") {
       editor.batch(() => editor.setState({ openDialog: null }));
     }
-  };
+  }
 
-  const run = async (type: ExportCanvasType): Promise<void> => {
+  async function run(type: ExportCanvasType): Promise<void> {
     const editor = store.editor;
     const target = exported();
     if (!editor || !target) return;
@@ -231,7 +245,7 @@ export function ImageExportDialog() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
-  };
+  }
 
   return (
     <Dialog isOpen={open()} onOpenChange={(isOpen: boolean) => !isOpen && close()}>
@@ -359,20 +373,22 @@ export function JSONExportDialog() {
   const ui = useDiagramUI();
   const t = ui.t;
   const store = ui.store;
-  const open = () => store.state("openDialog")?.name === "jsonExport";
-  const options = () => {
+  function open() {
+    return store.state("openDialog")?.name === "jsonExport";
+  }
+  function options() {
     const opts = ui.host().UIOptions.canvasActions.export;
     return opts === false ? null : opts;
-  };
+  }
 
-  const close = (): void => {
+  function close(): void {
     const editor = store.editor;
     if (editor?.state.openDialog?.name === "jsonExport") {
       editor.batch(() => editor.setState({ openDialog: null }));
     }
-  };
+  }
 
-  const exportToBackend = async (): Promise<void> => {
+  async function exportToBackend(): Promise<void> {
     const editor = store.editor;
     const opts = options();
     if (!editor || !opts?.onExportToBackend) return;
@@ -384,9 +400,9 @@ export function JSONExportDialog() {
         editor.setState({ errorMessage: error instanceof Error ? error.message : String(error) }),
       );
     }
-  };
+  }
 
-  const custom = () => {
+  function custom() {
     const opts = options();
     const editor = store.editor;
     if (!opts?.renderCustomUI || !editor) return null;
@@ -396,7 +412,7 @@ export function JSONExportDialog() {
       editor.state,
       editor.getFiles(),
     ) as ReturnType<typeof JSONExportDialog>;
-  };
+  }
 
   return (
     <Dialog isOpen={open()} onOpenChange={(isOpen: boolean) => !isOpen && close()}>

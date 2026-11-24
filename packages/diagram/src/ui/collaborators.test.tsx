@@ -21,24 +21,30 @@ import type {
   UserToFollow,
 } from "../index.ts";
 
-const region = () => document.querySelector<HTMLElement>("[role=application]")!;
+function region() {
+  return document.querySelector<HTMLElement>("[role=application]")!;
+}
 
 setupUITests();
 
-const socket = (id: string) => id as SocketId;
+function socket(id: string) {
+  return id as SocketId;
+}
 
-const people = (entries: Record<string, Collaborator>) =>
-  new Map(Object.entries(entries).map(([id, collaborator]) => [socket(id), collaborator]));
+function people(entries: Record<string, Collaborator>) {
+  return new Map(Object.entries(entries).map(([id, collaborator]) => [socket(id), collaborator]));
+}
 
-const join = async (api: DiagramEditorApi, entries: Record<string, Collaborator>) => {
+async function join(api: DiagramEditorApi, entries: Record<string, Collaborator>) {
   api.updateScene({ collaborators: people(entries) });
   await settle();
-};
+}
 
-const avatarNames = () =>
-  within(screen.getByTestId("user-list"))
+function avatarNames() {
+  return within(screen.getByTestId("user-list"))
     .queryAllByTestId("collaborator-avatar")
     .map((avatar) => avatar.getAttribute("aria-label"));
+}
 
 describe("the user list", () => {
   test("shows once there are collaborators, the named ones, the current user's menu last", async () => {
@@ -102,10 +108,11 @@ describe("the user list", () => {
     await settle();
     const menu = screen.getByTestId("user-list-menu");
     expect(within(menu).getByText("Click on user to follow")).toBeDefined();
-    const rows = () =>
-      within(menu)
+    function rows() {
+      return within(menu)
         .queryAllByTestId("collaborator-row")
         .map((row) => row.textContent?.trim());
+    }
     expect(rows()).toEqual(["MMe (You)", ...names.map((name) => `${name[0]}${name}`)]);
 
     const search = within(menu).getByTestId<HTMLInputElement>("user-list-search");

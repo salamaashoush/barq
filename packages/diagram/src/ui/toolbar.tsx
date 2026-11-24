@@ -54,7 +54,11 @@ import type { JSX } from "@barqjs/web";
 import type { TranslationKey } from "../i18n.ts";
 import type { ToolType } from "../types.ts";
 
-type ToolIcon = (props: { "aria-hidden": "true" }) => JSX.Element;
+type ToolIconProps = {
+  "aria-hidden": "true";
+};
+
+type ToolIcon = (props: ToolIconProps) => JSX.Element;
 
 const TOOL_ICONS: Record<string, ToolIcon> = {
   hand: Hand,
@@ -99,25 +103,27 @@ interface ToolConfig {
   shiftKey?: boolean;
 }
 
-const configOf = (type: string): ToolConfig => (TOOLS as Record<string, ToolConfig>)[type] ?? {};
+function configOf(type: string): ToolConfig {
+  return (TOOLS as Record<string, ToolConfig>)[type] ?? {};
+}
 
 /** A tool's letter, as written on its button: `R`, or `Shift+X`. */
-const toolLetter = (type: string, shiftName: string): string | undefined => {
+function toolLetter(type: string, shiftName: string): string | undefined {
   const { letterKey, shiftKey } = configOf(type);
   if (letterKey === undefined) return undefined;
   const letter = capitalizeString(typeof letterKey === "string" ? letterKey : (letterKey[0] ?? ""));
   return shiftKey === true ? `${shiftName}+${letter}` : letter;
-};
+}
 
 /** The keys that pick a tool, for its tooltip and `aria-keyshortcuts`: `R or 2`. */
-const toolShortcut = (type: string, or: string, shiftName: string): string => {
+function toolShortcut(type: string, or: string, shiftName: string): string {
   const letter = toolLetter(type, shiftName);
   const { numericKey } = configOf(type);
   if (letter !== undefined && numericKey !== undefined) return `${letter} ${or} ${numericKey}`;
   return letter ?? numericKey ?? "";
-};
+}
 
-const ariaShortcut = (type: string): string | undefined => {
+function ariaShortcut(type: string): string | undefined {
   const { letterKey, numericKey, shiftKey } = configOf(type);
   const letters =
     letterKey === undefined ? [] : typeof letterKey === "string" ? [letterKey] : letterKey;
@@ -128,9 +134,13 @@ const ariaShortcut = (type: string): string | undefined => {
     ...(numericKey === undefined ? [] : [numericKey]),
   ];
   return keys.length > 0 ? keys.join(" ") : undefined;
-};
+}
 
-function ToolGlyph(props: { type: string }) {
+interface ToolGlyphProps {
+  type: string;
+}
+
+function ToolGlyph(props: ToolGlyphProps) {
   const Icon = TOOL_ICONS[props.type] ?? Ellipsis;
   return <Icon aria-hidden="true" />;
 }
@@ -145,29 +155,35 @@ function ToolGlyph(props: { type: string }) {
 export function Toolbar() {
   const ui = useDiagramUI();
   const t = ui.t;
-  const activeTool = () => ui.store.state("activeTool");
-  const preferredSelection = () => ui.store.state("preferredSelectionTool").type;
+  function activeTool() {
+    return ui.store.state("activeTool");
+  }
+  function preferredSelection() {
+    return ui.store.state("preferredSelectionTool").type;
+  }
 
   const shownTools = createMemo((): readonly ToolType[] =>
     TOOLBAR_TOOLS.map((type) =>
       type === "selection" && preferredSelection() === "lasso" ? "lasso" : type,
     ),
   );
-  const pressed = (): string => {
+  function pressed(): string {
     const type = activeTool().type;
     return (shownTools() as readonly string[]).includes(type) ? type : "";
-  };
+  }
 
-  const select = (type: ToolType): void => {
+  function select(type: ToolType): void {
     const editor = ui.store.editor;
     if (!editor) return;
     if (editor.state.activeTool.type !== type) {
       editor.batch(() => editor.setActiveTool({ type }));
     }
     ui.focusCanvas();
-  };
+  }
 
-  const label = (type: string): string => capitalizeString(t(`toolBar.${type}` as TranslationKey));
+  function label(type: string): string {
+    return capitalizeString(t(`toolBar.${type}` as TranslationKey));
+  }
 
   return (
     <AriaToolbar aria-label={t("headings.shapes")} class={island} data-testid="toolbar">
@@ -199,7 +215,9 @@ export function Toolbar() {
       >
         <For each={shownTools()}>
           {(type: ToolType) => {
-            const shortcut = (): string => toolShortcut(type, t("helpDialog.or"), t("keys.shift"));
+            function shortcut(): string {
+              return toolShortcut(type, t("helpDialog.or"), t("keys.shift"));
+            }
             return (
               <ToggleGroupItem
                 value={type}
@@ -245,31 +263,38 @@ const EXTRA_TOOLS = [
   "lasso",
 ] as const;
 
-function ExtraTools(props: {
+interface ExtraToolsProps {
   select: (type: ToolType) => void;
   label: (type: string) => string;
   /** Tools the bar has no room for, listed first. */
   more?: readonly string[];
-}) {
+}
+
+function ExtraTools(props: ExtraToolsProps) {
   const ui = useDiagramUI();
   const t = ui.t;
-  const activeTool = () => ui.store.state("activeTool").type;
-  const preferredSelection = () => ui.store.state("preferredSelectionTool").type;
+  function activeTool() {
+    return ui.store.state("activeTool").type;
+  }
+  function preferredSelection() {
+    return ui.store.state("preferredSelectionTool").type;
+  }
 
-  const tools = (): readonly string[] =>
-    [...(props.more ?? []), ...EXTRA_TOOLS].filter(
+  function tools(): readonly string[] {
+    return [...(props.more ?? []), ...EXTRA_TOOLS].filter(
       (type) =>
         (type !== "image" || ui.host().UIOptions.tools.image) &&
         (type !== "lasso" || preferredSelection() !== "lasso"),
     );
+  }
   /** The extra tool in use, which the trigger shows instead of its dots. */
-  const selected = (): string | null => {
+  function selected(): string | null {
     const type = activeTool();
     if (type === "lasso" && preferredSelection() === "lasso") return null;
     // while collaborating the laser has its own button beside the toolbar
     if (type === "laser" && ui.host().isCollaborating) return null;
     return [...(props.more ?? []), ...EXTRA_TOOLS].includes(type) ? type : null;
-  };
+  }
 
   return (
     <DropdownMenu>
@@ -362,8 +387,12 @@ const PHONE_LINEAR = ["arrow", "line"] as const;
 export function PhoneToolbar() {
   const ui = useDiagramUI();
   const t = ui.t;
-  const activeTool = () => ui.store.state("activeTool");
-  const preferredSelection = () => ui.store.state("preferredSelectionTool").type;
+  function activeTool() {
+    return ui.store.state("activeTool");
+  }
+  function preferredSelection() {
+    return ui.store.state("preferredSelectionTool").type;
+  }
   const [lastShape, setLastShape] = createSignal<ToolType>("rectangle");
   const [lastLinear, setLastLinear] = createSignal<ToolType>("arrow");
 
@@ -389,12 +418,12 @@ export function PhoneToolbar() {
     ...PHONE_LINEAR.filter((type) => type !== linearSlot()),
     "stickynote",
   ]);
-  const pressed = (): string => {
+  function pressed(): string {
     const type = activeTool().type;
     return (shownTools() as readonly string[]).includes(type) ? type : "";
-  };
+  }
 
-  const select = (type: ToolType): void => {
+  function select(type: ToolType): void {
     const editor = ui.store.editor;
     if (!editor) return;
     if ((PHONE_SHAPES as readonly string[]).includes(type)) setLastShape(type);
@@ -402,9 +431,11 @@ export function PhoneToolbar() {
     if (editor.state.activeTool.type !== type) {
       editor.batch(() => editor.setActiveTool({ type }));
     }
-  };
+  }
 
-  const label = (type: string): string => capitalizeString(t(`toolBar.${type}` as TranslationKey));
+  function label(type: string): string {
+    return capitalizeString(t(`toolBar.${type}` as TranslationKey));
+  }
 
   return (
     <AriaToolbar aria-label={t("headings.shapes")} class={island} data-testid="phone-toolbar">

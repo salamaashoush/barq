@@ -41,30 +41,40 @@ const arrowheadGrid = d(grid, gap[1], {
   padding: space.x2,
 });
 
+export interface ArrowheadPickerProps {
+  position: "start" | "end";
+  value: Arrowhead | null;
+  onChange: (value: Arrowhead | null) => void;
+}
+
 /**
  * Excalidraw's arrowhead picker for one end: the end's arrowhead on a
  * button, and the fifteen in a popover, as radios the arrows move through
  * and a letter picks.
  */
-export function ArrowheadPicker(props: {
-  position: "start" | "end";
-  value: Arrowhead | null;
-  onChange: (value: Arrowhead | null) => void;
-}) {
+export function ArrowheadPicker(props: ArrowheadPickerProps) {
   const ui = useDiagramUI();
   const t = ui.t;
   const [open, setOpen] = createSignal(false);
   // drawn at the start, an arrowhead points the other way, mirrored again in RTL
-  const flip = (): boolean => (props.position === "start") !== ui.rtl();
-  const label = (value: ArrowheadGlyph): string => t(`labels.arrowhead_${value}`);
-  const current = (): ArrowheadGlyph => props.value ?? "none";
+  function flip(): boolean {
+    return (props.position === "start") !== ui.rtl();
+  }
+  function label(value: ArrowheadGlyph): string {
+    return t(`labels.arrowhead_${value}`);
+  }
+  function current(): ArrowheadGlyph {
+    return props.value ?? "none";
+  }
   // Excalidraw's own locale names the arrowheads but not the two ends; the
   // first picker is the start, as the arrow is drawn
-  const name = (): string => `${t("labels.arrowheads")} ${props.position === "start" ? 1 : 2}`;
-  const pick = (value: ArrowheadGlyph): void => {
+  function name(): string {
+    return `${t("labels.arrowheads")} ${props.position === "start" ? 1 : 2}`;
+  }
+  function pick(value: ArrowheadGlyph): void {
     setOpen(false);
     props.onChange(value === "none" ? null : value);
-  };
+  }
 
   return (
     <Popover isOpen={open()} onOpenChange={setOpen}>

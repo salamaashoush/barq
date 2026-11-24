@@ -16,16 +16,21 @@ import type { DiagramEditorApi } from "../index.ts";
 
 setupUITests();
 
-const key = (target: Element, init: KeyboardEventInit, type = "keydown") =>
-  target.dispatchEvent(new KeyboardEvent(type, { bubbles: true, cancelable: true, ...init }));
+function key(target: Element, init: KeyboardEventInit, type = "keydown") {
+  return target.dispatchEvent(
+    new KeyboardEvent(type, { bubbles: true, cancelable: true, ...init }),
+  );
+}
 
 const ctrl = navigator.platform.includes("Mac") ? { metaKey: true } : { ctrlKey: true };
 
-const element = (api: DiagramEditorApi, id: string) =>
-  api.getSceneElements().find((each) => each.id === id)!;
+function element(api: DiagramEditorApi, id: string) {
+  return api.getSceneElements().find((each) => each.id === id)!;
+}
 
-const text = (id: string, x: number, y: number) =>
-  ({ type: "text", id, x, y, text: "Hello", fontFamily: 5 }) as never;
+function text(id: string, x: number, y: number) {
+  return { type: "text", id, x, y, text: "Hello", fontFamily: 5 } as never;
+}
 
 describe("picker keys", () => {
   test("S and G open the colour pickers for the selection, Shift+F the font list", async () => {
@@ -128,6 +133,10 @@ describe("eye dropper", () => {
   });
 });
 
+interface FontFamilyField {
+  fontFamily: number;
+}
+
 describe("font preview", () => {
   test("the highlighted font previews on the text, and closing without a pick restores it", async () => {
     const { api } = await mountEditor({ initialData: { elements: [text("T", 300, 300)] } });
@@ -136,20 +145,20 @@ describe("font preview", () => {
     await settle();
     await user.type(screen.getByRole("combobox"), "Lilita");
     await settle();
-    expect((element(api, "T") as { fontFamily: number }).fontFamily).toBe(7);
+    expect((element(api, "T") as FontFamilyField).fontFamily).toBe(7);
     const undoable = api.getAppState();
     expect(undoable.currentItemFontFamily).not.toBe(7);
 
     await user.keyboard("{Escape}");
     await settle();
-    expect((element(api, "T") as { fontFamily: number }).fontFamily).toBe(5);
+    expect((element(api, "T") as FontFamilyField).fontFamily).toBe(5);
 
     await user.click(screen.getByTestId("font-family-show-fonts"));
     await settle();
     await user.type(screen.getByRole("combobox"), "Lilita");
     await user.keyboard("{Enter}");
     await settle();
-    expect((element(api, "T") as { fontFamily: number }).fontFamily).toBe(7);
+    expect((element(api, "T") as FontFamilyField).fontFamily).toBe(7);
     expect(api.getAppState().currentItemFontFamily).toBe(7);
   });
 });

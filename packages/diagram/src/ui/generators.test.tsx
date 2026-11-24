@@ -10,14 +10,18 @@ import { mountEditor, settle, setupUITests } from "./test-ui.tsx";
 
 setupUITests();
 
-const paste = async (region: HTMLElement, text: string) => {
+async function paste(region: HTMLElement, text: string) {
   region.focus();
   document.dispatchEvent(createPasteEvent({ types: { "text/plain": text } }));
   for (let round = 0; round < 6; round++) {
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
   await settle();
-};
+}
+
+interface TextContent {
+  text: string;
+}
 
 describe("pasted spreadsheets", () => {
   test("CSV cells open the chart dialog, and a bar chart is inserted", async () => {
@@ -40,7 +44,7 @@ describe("pasted spreadsheets", () => {
     );
     expect(bars).toHaveLength(3);
     const texts = elements.filter((element) => element.type === "text");
-    const labels: string[] = texts.map((text) => (text as { text: string }).text);
+    const labels: string[] = texts.map((text) => (text as TextContent).text);
     for (const label of ["Sales", "Jan", "Feb", "Mar"]) expect(labels).toContain(label);
     expect(new Set(elements.map((element) => element.groupIds.join())).size).toBe(1);
   });

@@ -36,11 +36,16 @@ export const COLOR_HOTKEYS = [
   ["z", "x", "c", "v", "b"],
 ].flat();
 
+export interface ColorNameAndShade {
+  colorName: string;
+  shade: number | null;
+}
+
 /** Which palette colour and shade a value is, or `null` for a custom one. */
-export const getColorNameAndShade = (
+export function getColorNameAndShade(
   palette: ColorPaletteCustom,
   color: string | null,
-): { colorName: string; shade: number | null } | null => {
+): ColorNameAndShade | null {
   if (!color) return null;
   for (const [colorName, value] of Object.entries(palette)) {
     if (Array.isArray(value)) {
@@ -51,21 +56,23 @@ export const getColorNameAndShade = (
     }
   }
   return null;
-};
+}
 
 /** A palette colour's shade, or nothing for a colour that has none. */
-const shadeOf = (value: ColorTuple | string | undefined, index: number): string | undefined =>
-  typeof value === "string" || value === undefined ? undefined : value[index];
+function shadeOf(value: ColorTuple | string | undefined, index: number): string | undefined {
+  return typeof value === "string" || value === undefined ? undefined : value[index];
+}
 
-const isCustomColor = (color: string, palette: ColorPaletteCustom): boolean =>
-  !Object.values(palette).flat().includes(color);
+function isCustomColor(color: string, palette: ColorPaletteCustom): boolean {
+  return !Object.values(palette).flat().includes(color);
+}
 
 /** The custom colours the scene uses most, five at most. */
-export const getMostUsedCustomColors = (
+export function getMostUsedCustomColors(
   elements: readonly ExcalidrawElement[],
   pickerType: "elementBackground" | "elementStroke",
   palette: ColorPaletteCustom,
-): string[] => {
+): string[] {
   const key = pickerType === "elementBackground" ? "backgroundColor" : "strokeColor";
   const counts = new Map<string, number>();
   for (const element of elements) {
@@ -78,10 +85,10 @@ export const getMostUsedCustomColors = (
     .toSorted((a, b) => b[1] - a[1])
     .map(([color]) => color)
     .slice(0, MAX_CUSTOM_COLORS_USED_IN_CANVAS);
-};
+}
 
 /** An arrow key's next index in a grid five wide. */
-const arrowIndex = (key: string, current: number | null, length: number): number | undefined => {
+function arrowIndex(key: string, current: number | null, length: number): number | undefined {
   const rows = Math.ceil(length / COLORS_PER_ROW);
   const index = current ?? -1;
   switch (key) {
@@ -101,7 +108,7 @@ const arrowIndex = (key: string, current: number | null, length: number): number
     default:
       return undefined;
   }
-};
+}
 
 const row = d(layout.row, layout.wrap, gap[1.5]);
 const paletteGrid = d(grid, gap[1.5], { gridTemplateColumns: "repeat(5, 24px)" });
@@ -118,8 +125,9 @@ const swatchDivider = d(rule, { height: "20px" });
  * lands on another of the column's triggers, which opens its own popover in
  * the same press, as Excalidraw's switch from one to the next.
  */
-export const closesOnPressOutside = (element: Element): boolean =>
-  element.closest("[data-properties-trigger]") === null;
+export function closesOnPressOutside(element: Element): boolean {
+  return element.closest("[data-properties-trigger]") === null;
+}
 
 export interface ColorPickerProps {
   type: ColorPickerType;
@@ -145,6 +153,12 @@ export interface ColorPickerProps {
   "data-testid"?: string;
 }
 
+interface IndexedSwatch {
+  name: string;
+  color: string;
+  index: number;
+}
+
 /**
  * Excalidraw's colour picker: the quick picks, and a popover with the custom
  * colours the scene uses, the palette, the shades of the colour, a hex code
@@ -157,29 +171,33 @@ export function ColorPicker(props: ColorPickerProps) {
   const t = ui.t;
   // open while the editor's `openPopup` names it, as Excalidraw's: the keys
   // and the command palette open it there too, and opening one popup closes another
-  const open = (): boolean => ui.store.state("openPopup") === props.type;
-  const setOpen = (next: boolean): void => {
+  function open(): boolean {
+    return ui.store.state("openPopup") === props.type;
+  }
+  function setOpen(next: boolean): void {
     const editor = ui.store.editor;
     if (!editor || next === (editor.state.openPopup === props.type)) return;
     editor.batch(() => editor.setState({ openPopup: next ? props.type : null }));
-  };
+  }
   const [section, setSection] = createSignal<Section | null>(null);
 
-  const customPicks = (): readonly string[] | null => {
+  function customPicks(): readonly string[] | null {
     const slot = props.customizableTopPicks;
     if (slot === undefined) return null;
     const picks = ui.store.state("colorTopPicks")[slot];
     return picks?.length ? picks : null;
-  };
-  const topPicks = (): readonly string[] => customPicks() ?? props.topPicks;
-  const setTopPicks = (picks: readonly string[] | null): void => {
+  }
+  function topPicks(): readonly string[] {
+    return customPicks() ?? props.topPicks;
+  }
+  function setTopPicks(picks: readonly string[] | null): void {
     const slot = props.customizableTopPicks;
     const editor = ui.store.editor;
     if (slot === undefined || !editor) return;
     editor.batch(() =>
       editor.setState({ colorTopPicks: { ...editor.state.colorTopPicks, [slot]: picks } }),
     );
-  };
+  }
   const dnd = createTopPicksDnD<string>({
     enabled: () => props.customizableTopPicks !== undefined,
     picks: topPicks,
@@ -187,13 +205,13 @@ export function ColorPicker(props: ColorPickerProps) {
   });
   let contentElement: HTMLDivElement | undefined;
 
-  const colorName = (color: string): string => {
+  function colorName(color: string): string {
     if (isTransparent(color)) return t("colors.transparent");
     const found = props.palette ? getColorNameAndShade(props.palette, color) : null;
     if (!found) return color;
     const name = t(`colors.${found.colorName}` as TranslationKey);
     return found.shade === null ? name : `${name} ${found.shade + 1}`;
-  };
+  }
 
   const customColors = createMemo((): string[] =>
     props.palette && props.type !== "canvasBackground" && props.elements
@@ -203,36 +221,40 @@ export function ColorPicker(props: ColorPickerProps) {
   const current = createMemo(() =>
     props.palette ? getColorNameAndShade(props.palette, props.color) : null,
   );
-  const activeShade = (): number => current()?.shade ?? 3;
-  const isExcluded = (color: string): boolean => props.excludedColors?.includes(color) ?? false;
+  function activeShade(): number {
+    return current()?.shade ?? 3;
+  }
+  function isExcluded(color: string): boolean {
+    return props.excludedColors?.includes(color) ?? false;
+  }
 
-  const paletteEntries = createMemo((): { name: string; color: string; index: number }[] =>
+  const paletteEntries = createMemo((): IndexedSwatch[] =>
     Object.entries(props.palette ?? {}).map(([name, value], index) => ({
       name,
       index,
       color: Array.isArray(value) ? (value[activeShade()] ?? value[0] ?? "") : (value as string),
     })),
   );
-  const shades = (): readonly string[] => {
+  function shades(): readonly string[] {
     const found = current();
     const value = found && props.palette ? props.palette[found.colorName] : undefined;
     return Array.isArray(value) ? value : [];
-  };
+  }
 
-  const pick = (color: string, from: Section): void => {
+  function pick(color: string, from: Section): void {
     setSection(from);
     props.onChange(color);
     queueMicrotask(() => focusActive());
-  };
+  }
 
-  const focusActive = (): void => {
+  function focusActive(): void {
     const active = contentElement?.querySelector<HTMLElement>(
       `[data-section="${section() ?? "baseColors"}"] [data-active]`,
     );
     active?.focus();
-  };
+  }
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     if (event[KEYS.CTRL_OR_CMD] || (event.target as HTMLElement).tagName === "INPUT") {
       if (event.key === KEYS.ESCAPE) setOpen(false);
       return;
@@ -242,9 +264,9 @@ export function ColorPicker(props: ColorPickerProps) {
       event.preventDefault();
       event.stopPropagation();
     }
-  };
+  }
 
-  const handleKey = (event: KeyboardEvent): boolean => {
+  function handleKey(event: KeyboardEvent): boolean {
     const palette = props.palette;
     if (event.key === KEYS.ESCAPE) {
       setOpen(false);
@@ -334,9 +356,9 @@ export function ColorPicker(props: ColorPickerProps) {
       }
     }
     return false;
-  };
+  }
 
-  const eyeDropper = (keepOpenOnAlt = false): void => {
+  function eyeDropper(keepOpenOnAlt = false): void {
     const editor = ui.store.editor;
     if (!editor) return;
     setOpen(false);
@@ -351,7 +373,7 @@ export function ColorPicker(props: ColorPickerProps) {
       onChange: property ? (color) => previewColorOnSelection(editor, property, color) : undefined,
       onSelect: (color) => props.onChange(color),
     });
-  };
+  }
 
   return (
     <div class={pickerRow} data-testid={props["data-testid"]}>
@@ -453,7 +475,7 @@ export function ColorPicker(props: ColorPickerProps) {
                 aria-label={t("colorPicker.colors")}
               >
                 <For each={paletteEntries()}>
-                  {(entry: { name: string; color: string; index: number }) => (
+                  {(entry: IndexedSwatch) => (
                     <Show when={!isExcluded(entry.color)} fallback={<span />}>
                       <SwatchButton
                         color={entry.color}
@@ -513,14 +535,16 @@ export function ColorPicker(props: ColorPickerProps) {
   );
 }
 
-function SwatchButton(props: {
+interface SwatchButtonProps {
   color: string;
   name: string;
   active: boolean;
   hint: string;
   onPick: () => void;
   onDragStart?: (event: PointerEvent) => void;
-}) {
+}
+
+function SwatchButton(props: SwatchButtonProps) {
   return (
     <button
       type="button"
@@ -549,16 +573,20 @@ function SwatchButton(props: {
   );
 }
 
-function HexInput(props: {
+interface HexInputProps {
   color: string | null;
   onChange: (color: string) => void;
   onEyeDropper: () => void;
-}) {
+}
+
+function HexInput(props: HexInputProps) {
   const ui = useDiagramUI();
   const t = ui.t;
   const [error, setError] = createSignal<string | null>(null);
-  const shown = (): string => (props.color ?? "").replace(/^#/, "");
-  const commit = (value: string): void => {
+  function shown(): string {
+    return (props.color ?? "").replace(/^#/, "");
+  }
+  function commit(value: string): void {
     const trimmed = value.trim().replace(/^#/, "");
     const normalized = normalizeInputColor(/^[0-9a-f]+$/i.test(trimmed) ? `#${trimmed}` : trimmed);
     if (normalized) {
@@ -569,7 +597,7 @@ function HexInput(props: {
     } else {
       setError(t("colorPicker.invalidColor"));
     }
-  };
+  }
   return (
     <div data-section="hex">
       <div class={hexRow}>

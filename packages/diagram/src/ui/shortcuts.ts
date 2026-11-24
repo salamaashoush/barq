@@ -3,8 +3,8 @@ import { isDarwin } from "@excalidraw/common";
 import type { Translate } from "../i18n.ts";
 
 /** A shortcut written for the platform, in the language's names for the keys. Excalidraw's `getShortcutKey`. */
-export const getShortcutKey = (shortcut: string, t: Translate, darwin = isDarwin): string =>
-  shortcut
+export function getShortcutKey(shortcut: string, t: Translate, darwin = isDarwin): string {
+  return shortcut
     .replace(/\b(Opt(?:ion)?|Alt)\b/i, darwin ? t("keys.option") : t("keys.alt"))
     .replace(/\bShift\b/i, t("keys.shift"))
     .replace(/\b(Enter|Return)\b/i, t("keys.enter"))
@@ -12,6 +12,7 @@ export const getShortcutKey = (shortcut: string, t: Translate, darwin = isDarwin
     .replace(/\b(Esc(?:ape)?)\b/i, t("keys.escape"))
     .replace(/\b(Space(?:bar)?)\b/i, t("keys.spacebar"))
     .replace(/\b(Del(?:ete)?)\b/i, t("keys.delete"));
+}
 
 const SHORTCUTS = {
   toggleTheme: ["Shift+Alt+D"],
@@ -65,17 +66,18 @@ const SHORTCUTS = {
 
 export type ShortcutName = keyof typeof SHORTCUTS;
 
-export const isShortcutName = (name: string): name is ShortcutName =>
-  Object.hasOwn(SHORTCUTS, name);
+export function isShortcutName(name: string): name is ShortcutName {
+  return Object.hasOwn(SHORTCUTS, name);
+}
 
 /** The shortcut of an action by its name, the first of several. Excalidraw's `getShortcutFromShortcutName`. */
-export const getShortcutFromShortcutName = (
+export function getShortcutFromShortcutName(
   name: ShortcutName,
   t: Translate,
   index = 0,
   darwin = isDarwin,
-): string => {
+): string {
   const shortcuts: readonly string[] = SHORTCUTS[name];
   const shortcut = shortcuts[index] ?? shortcuts[0];
   return shortcut === undefined ? "" : getShortcutKey(shortcut, t, darwin);
-};
+}

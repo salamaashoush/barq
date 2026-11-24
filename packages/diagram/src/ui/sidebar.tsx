@@ -95,17 +95,17 @@ interface SidebarState {
 
 const SidebarContext = createContext<SidebarState | null>(null);
 
-const useSidebar = (): SidebarState => {
+function useSidebar(): SidebarState {
   const sidebar = getContext(SidebarContext);
   if (sidebar === null || sidebar === undefined) {
     throw new Error("A Sidebar's parts are rendered inside its <Sidebar>.");
   }
   return sidebar;
-};
+}
 
-const setOpenSidebar = (editor: DiagramEditor, openSidebar: OpenSidebar): void => {
+function setOpenSidebar(editor: DiagramEditor, openSidebar: OpenSidebar): void {
   editor.batch(() => editor.setState({ openSidebar }));
-};
+}
 
 export interface SidebarProps {
   name: string;
@@ -122,34 +122,40 @@ export interface SidebarProps {
   "data-testid"?: string;
 }
 
-function SidebarPanel(props: SidebarProps & { editor: DiagramEditor }) {
+interface EditorProp {
+  editor: DiagramEditor;
+}
+
+function SidebarPanel(props: SidebarProps & EditorProp) {
   const ui = useDiagramUI();
   const store = ui.store;
   const editor = props.editor;
-  const canFit = () => {
+  function canFit() {
     store.state("width");
     return editor.canFitSidebar();
-  };
-  const docked = () => props.docked === true && canFit();
+  }
+  function docked() {
+    return props.docked === true && canFit();
+  }
   let panelElement: HTMLElement | undefined;
 
-  const closeUnlessDocked = (): boolean => {
+  function closeUnlessDocked(): boolean {
     if (docked()) return false;
     setOpenSidebar(editor, null);
     return true;
-  };
+  }
   // a press on the canvas closes a sidebar that is not docked
-  const onPointerDown = (event: PointerEvent): void => {
+  function onPointerDown(event: PointerEvent): void {
     const target = event.target as Element | null;
     if (!target || panelElement?.contains(target)) return;
     if (!editor.container.contains(target) || target.closest("[data-sidebar-trigger]")) return;
     closeUnlessDocked();
-  };
-  const onKeyDown = (event: KeyboardEvent): void => {
+  }
+  function onKeyDown(event: KeyboardEvent): void {
     if (event.key === KEYS.ESCAPE && !event.defaultPrevented) {
       closeUnlessDocked();
     }
-  };
+  }
   editor.container.addEventListener("pointerdown", onPointerDown, true);
   editor.container.addEventListener("keydown", onKeyDown);
   onCleanup(() => {
@@ -200,7 +206,7 @@ function SidebarPanel(props: SidebarProps & { editor: DiagramEditor }) {
  * The sidebar on a phone, where it cannot dock: Excalidraw's overlay at the
  * editor's end, the full height, closed by a press outside it or Escape.
  */
-function PhoneSidebar(props: SidebarProps & { editor: DiagramEditor }) {
+function PhoneSidebar(props: SidebarProps & EditorProp) {
   const ui = useDiagramUI();
   const editor = props.editor;
   const state: SidebarState = {
@@ -241,7 +247,9 @@ function PhoneSidebar(props: SidebarProps & { editor: DiagramEditor }) {
 function SidebarRoot(props: SidebarProps): JSX.Element {
   const ui = useDiagramUI();
   const store = ui.store;
-  const open = () => store.state("openSidebar")?.name === props.name;
+  function open() {
+    return store.state("openSidebar")?.name === props.name;
+  }
   createRenderEffect(
     () => store.state("openSidebar"),
     (next, previous) => {
@@ -272,8 +280,13 @@ function SidebarRoot(props: SidebarProps): JSX.Element {
   );
 }
 
+interface ClassedChildrenProps {
+  children?: Child;
+  class?: string;
+}
+
 /** The sidebar's head, Excalidraw's `Sidebar.Header`: what it holds, the pin where it docks, and close. */
-function SidebarHeader(props: { children?: Child; class?: string }) {
+function SidebarHeader(props: ClassedChildrenProps) {
   const ui = useDiagramUI();
   const t = ui.t;
   const sidebar = useSidebar();
@@ -313,10 +326,12 @@ function SidebarHeader(props: { children?: Child; class?: string }) {
 }
 
 /** The sidebar's tabs, Excalidraw's `Sidebar.Tabs`: the open one is `openSidebar.tab`. */
-function SidebarTabs(props: { children?: Child; class?: string }) {
+function SidebarTabs(props: ClassedChildrenProps) {
   const ui = useDiagramUI();
   const sidebar = useSidebar();
-  const tab = () => ui.store.state("openSidebar")?.tab;
+  function tab() {
+    return ui.store.state("openSidebar")?.tab;
+  }
   return (
     <Tabs
       class={props.class ? `${tabs} ${props.class}` : tabs}
@@ -330,8 +345,14 @@ function SidebarTabs(props: { children?: Child; class?: string }) {
   );
 }
 
+interface SidebarTabProps {
+  tab: string;
+  children?: Child;
+  class?: string;
+}
+
 /** A tab's content, Excalidraw's `Sidebar.Tab`. */
-function SidebarTab(props: { tab: string; children?: Child; class?: string }) {
+function SidebarTab(props: SidebarTabProps) {
   return (
     <TabsContent value={props.tab} class={props.class ? `${tabPanel} ${props.class}` : tabPanel}>
       {props.children}
@@ -339,19 +360,26 @@ function SidebarTab(props: { tab: string; children?: Child; class?: string }) {
   );
 }
 
+interface SidebarTabTriggersProps {
+  children?: Child;
+  "aria-label"?: string;
+}
+
 /** The tabs' buttons, Excalidraw's `Sidebar.TabTriggers`. */
-function SidebarTabTriggers(props: { children?: Child; "aria-label"?: string }) {
+function SidebarTabTriggers(props: SidebarTabTriggersProps) {
   const sidebar = useSidebar();
   return <TabsList aria-label={props["aria-label"] ?? sidebar.name}>{props.children}</TabsList>;
 }
 
-/** A tab's button, Excalidraw's `Sidebar.TabTrigger`. */
-function SidebarTabTrigger(props: {
+interface SidebarTabTriggerProps {
   tab: string;
   children?: Child;
   title?: string;
   "data-testid"?: string;
-}) {
+}
+
+/** A tab's button, Excalidraw's `Sidebar.TabTrigger`. */
+function SidebarTabTrigger(props: SidebarTabTriggerProps) {
   return (
     <TabsTrigger value={props.tab} aria-label={props.title} data-testid={props["data-testid"]}>
       {props.children}
@@ -374,7 +402,9 @@ export interface SidebarTriggerProps {
 function SidebarTriggerButton(props: SidebarTriggerProps) {
   const ui = useDiagramUI();
   const store = ui.store;
-  const open = () => store.state("openSidebar")?.name === props.name;
+  function open() {
+    return store.state("openSidebar")?.name === props.name;
+  }
   return (
     <div class={island}>
       <button
@@ -429,8 +459,12 @@ export const Sidebar = Object.assign(SidebarRoot, {
  */
 export function SidebarTrigger() {
   const ui = useDiagramUI();
-  const given = () => ui.host().slots.defaultSidebarTrigger;
-  const label = () => capitalizeString(ui.t("toolBar.library"));
+  function given() {
+    return ui.host().slots.defaultSidebarTrigger;
+  }
+  function label() {
+    return capitalizeString(ui.t("toolBar.library"));
+  }
   return (
     <SidebarTriggerButton
       name={DEFAULT_SIDEBAR.name}
@@ -446,20 +480,28 @@ export function SidebarTrigger() {
   );
 }
 
-function DefaultSidebarContent(props: DefaultSidebarProps & { editor: DiagramEditor }) {
+function DefaultSidebarContent(props: DefaultSidebarProps & EditorProp) {
   const ui = useDiagramUI();
   const t = ui.t;
   const store = ui.store;
   // the search always docks, as Excalidraw's does
-  const forceDocked = () => store.state("openSidebar")?.tab === CANVAS_SEARCH_TAB;
-  const docked = () =>
-    forceDocked() || (props.docked ?? store.state("defaultSidebarDockedPreference"));
+  function forceDocked() {
+    return store.state("openSidebar")?.tab === CANVAS_SEARCH_TAB;
+  }
+  function docked() {
+    return forceDocked() || (props.docked ?? store.state("defaultSidebarDockedPreference"));
+  }
   // `onDock={false}` takes the pin away, and so does `docked` without `onDock`
-  const dockable = () =>
-    !forceDocked() &&
-    props.onDock !== false &&
-    !(props.onDock === undefined && props.docked !== undefined);
-  const library = () => capitalizeString(t("toolBar.library"));
+  function dockable() {
+    return (
+      !forceDocked() &&
+      props.onDock !== false &&
+      !(props.onDock === undefined && props.docked !== undefined)
+    );
+  }
+  function library() {
+    return capitalizeString(t("toolBar.library"));
+  }
   return (
     <SidebarRoot
       name={DEFAULT_SIDEBAR.name}
@@ -540,7 +582,11 @@ function DefaultSidebarTrigger(props: HostSlots["defaultSidebarTrigger"]): JSX.E
     : null;
 }
 
-function DefaultSidebarTabTriggers(props: { children?: Child }): JSX.Element {
+interface ChildrenProps {
+  children?: Child;
+}
+
+function DefaultSidebarTabTriggers(props: ChildrenProps): JSX.Element {
   return isHostChild()
     ? hostSlot("defaultSidebarTabTriggers", {
         get children() {
@@ -571,7 +617,9 @@ function DefaultSidebarRoot(props: DefaultSidebarProps): JSX.Element {
     });
   }
   const ui = useDiagramUI();
-  const given = () => ui.host().slots.defaultSidebar;
+  function given() {
+    return ui.host().slots.defaultSidebar;
+  }
   return (
     <Show when={ui.store.editor}>
       {(editor: () => DiagramEditor) => (

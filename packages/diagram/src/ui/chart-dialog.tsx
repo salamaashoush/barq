@@ -46,10 +46,10 @@ const CHART_LABELS: Record<ChartType, TranslationKey> = {
 const CHART_TYPES: readonly ChartType[] = ["bar", "line", "radar"];
 
 /** Draws `elements` as an SVG into `box`, the latest call winning. */
-const usePreview = (
+function usePreview(
   elements: () => readonly NonDeletedExcalidrawElement[] | null,
   theme: () => "light" | "dark",
-) => {
+) {
   const [box, setBox] = createSignal<HTMLDivElement | null>(null);
   let request = 0;
   createEffect(
@@ -77,7 +77,7 @@ const usePreview = (
     },
   );
   return setBox;
-};
+}
 
 /**
  * Excalidraw's paste chart dialog: cells pasted from a spreadsheet, offered
@@ -88,22 +88,26 @@ export function ChartDialog() {
   const ui = useDiagramUI();
   const t = ui.t;
   const store = ui.store;
-  const dialog = () => {
+  function dialog() {
     const open = store.state("openDialog");
     return open?.name === "charts" ? open : null;
-  };
-  const spreadsheet = () => (dialog()?.data as Spreadsheet | undefined) ?? null;
-  const theme = () => store.state("theme");
+  }
+  function spreadsheet() {
+    return (dialog()?.data as Spreadsheet | undefined) ?? null;
+  }
+  function theme() {
+    return store.state("theme");
+  }
   const [colorSeed, setColorSeed] = createSignal(Math.random());
 
-  const close = (): void => {
+  function close(): void {
     const editor = store.editor;
     if (editor?.state.openDialog?.name === "charts") {
       editor.batch(() => editor.setState({ openDialog: null }));
     }
-  };
+  }
 
-  const insert = (elements: readonly NonDeletedExcalidrawElement[]): void => {
+  function insert(elements: readonly NonDeletedExcalidrawElement[]): void {
     const editor = store.editor;
     if (!editor) return;
     editor.batch(() => {
@@ -111,7 +115,7 @@ export function ChartDialog() {
       editor.setState({ openDialog: null });
     });
     editor.focusContainer();
-  };
+  }
 
   return (
     <Dialog

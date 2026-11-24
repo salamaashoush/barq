@@ -32,41 +32,47 @@ afterEach(() => {
   delete view.showSaveFilePicker;
 });
 
-const key = (target: Element, init: KeyboardEventInit) =>
-  target.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }));
+function key(target: Element, init: KeyboardEventInit) {
+  return target.dispatchEvent(
+    new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }),
+  );
+}
 
 const ctrl = navigator.platform.includes("Mac") ? { metaKey: true } : { ctrlKey: true };
 
 /** The work a library update and its drawings start, settled. */
-const drain = async () => {
+async function drain() {
   for (let round = 0; round < 4; round++) {
     await new Promise((resolve) => setTimeout(resolve, 0));
     await settle();
   }
-};
+}
 
-const libraryItem = (id: string, name?: string, x = 0): LibraryItem => ({
-  id,
-  status: "unpublished",
-  created: 1,
-  name,
-  elements: [rectangle(`${id}-shape`, x, 0)],
-});
+function libraryItem(id: string, name?: string, x = 0): LibraryItem {
+  return {
+    id,
+    status: "unpublished",
+    created: 1,
+    name,
+    elements: [rectangle(`${id}-shape`, x, 0)],
+  };
+}
 
-const openLibrary = async () => {
+async function openLibrary() {
   screen.getByTestId("sidebar-trigger").click();
   await drain();
   return screen.getByTestId("default-sidebar");
-};
+}
 
-const fixtureFile = async () =>
-  new File(
+async function fixtureFile() {
+  return new File(
     [await Bun.file(`${import.meta.dir}/../fixtures/fixture_library.excalidrawlib`).text()],
     "fixture.excalidrawlib",
     { type: MIME_TYPES.excalidrawlib },
   );
+}
 
-const contextMenuAt = async (region: HTMLElement, x: number, y: number) => {
+async function contextMenuAt(region: HTMLElement, x: number, y: number) {
   pointer(canvas(region), "pointerdown", x, y, 2);
   canvas(region).dispatchEvent(
     new MouseEvent("contextmenu", {
@@ -80,12 +86,13 @@ const contextMenuAt = async (region: HTMLElement, x: number, y: number) => {
   pointer(canvas(region), "pointerup", x, y, 2);
   await settle();
   return screen.getByTestId("context-menu");
-};
+}
 
-const items = (api: DiagramEditorApi): Promise<LibraryItems> =>
-  new Promise((resolve) => {
+function items(api: DiagramEditorApi): Promise<LibraryItems> {
+  return new Promise((resolve) => {
     void api.updateLibrary({ libraryItems: (current) => (resolve(current), current) });
   });
+}
 
 describe("adding to the library", () => {
   test("the context menu adds the selection, and onLibraryChange hears it", async () => {
@@ -131,6 +138,12 @@ describe("adding to the library", () => {
     expect(api.getSceneElements()).toHaveLength(before + 1);
   });
 });
+
+interface ExportedLibrary {
+  type: string;
+  version: number;
+  libraryItems: LibraryItems;
+}
 
 describe("the library sidebar", () => {
   test("opens from its trigger, adds the pending selection, and inserts an item on click", async () => {
@@ -219,11 +232,7 @@ describe("the library sidebar", () => {
     await user.click(screen.getByTestId("lib-dropdown--export"));
     await drain();
     expect(written).toHaveLength(1);
-    const exported = JSON.parse(await written[0]!.text()) as {
-      type: string;
-      version: number;
-      libraryItems: LibraryItems;
-    };
+    const exported = JSON.parse(await written[0]!.text()) as ExportedLibrary;
     expect(exported.type).toBe("excalidrawlib");
     expect(exported.version).toBe(2);
     expect(exported.libraryItems.map((item) => item.id)).toEqual(loaded.map((item) => item.id));
@@ -292,6 +301,15 @@ describe("the library sidebar", () => {
   });
 });
 
+interface SentRequest {
+  url: string;
+  body: FormData;
+}
+
+interface PublishedLibrary {
+  libraryItems: LibraryItems;
+}
+
 describe("publishing", () => {
   test("without an endpoint the library offers no publishing", async () => {
     await mountEditor({ initialData: { libraryItems: [libraryItem("a", "Arrow")] } });
@@ -305,7 +323,7 @@ describe("publishing", () => {
   });
 
   test("with an endpoint the selection is sent as Excalidraw's form and marked published", async () => {
-    const sent: { url: string; body: FormData }[] = [];
+    const sent: SentRequest[] = [];
     const fetchSpy = spyOn(window, "fetch").mockImplementation((async (
       url: string,
       init: RequestInit,
@@ -358,9 +376,9 @@ describe("publishing", () => {
     expect(sent[0]?.body.get("authorName")).toBe("Salama");
     expect(sent[0]?.body.get("previewImageType")).toBe("image/jpeg");
     expect((sent[0]!.body.get("previewImage") as File).type).toBe("image/jpeg");
-    const lib = JSON.parse(await (sent[0]!.body.get("excalidrawLib") as Blob).text()) as {
-      libraryItems: LibraryItems;
-    };
+    const lib = JSON.parse(
+      await (sent[0]!.body.get("excalidrawLib") as Blob).text(),
+    ) as PublishedLibrary;
     expect(lib.libraryItems.map((item) => item.name)).toEqual(["Arrow", "Box"]);
     expect(screen.getByTestId("publish-library-success")).toBeDefined();
     const after = await items(api);

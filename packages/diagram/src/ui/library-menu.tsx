@@ -131,15 +131,17 @@ const browse = d(rounded.md, centredText, bg.muted, hoverTint, {
   textDecoration: "none",
 });
 
-const deburr = (text: string): string => text.normalize("NFD").replace(/[̀-ͯ]/g, "");
+function deburr(text: string): string {
+  return text.normalize("NFD").replace(/[̀-ͯ]/g, "");
+}
 
 /** Each item's drawing, made once: an item's elements do not change under its id. */
 const svgCache = new Map<string, SVGSVGElement>();
 
-const itemSvg = async (
+async function itemSvg(
   id: string | null,
   elements: LibraryItem["elements"],
-): Promise<SVGSVGElement> => {
+): Promise<SVGSVGElement> {
   const cached = id === null ? undefined : svgCache.get(id);
   if (cached) return cached;
   const svg = await exportToSvg({
@@ -152,15 +154,20 @@ const itemSvg = async (
   svg.setAttribute("aria-hidden", "true");
   if (id !== null) svgCache.set(id, svg);
   return svg;
-};
+}
 
 /** Drops the drawings of items no longer in the library. */
-const forgetSvgs = (ids: readonly string[]): void => {
+function forgetSvgs(ids: readonly string[]): void {
   for (const id of ids) svgCache.delete(id);
-};
+}
+
+interface ItemPreviewProps {
+  id: string | null;
+  elements: LibraryItem["elements"];
+}
 
 /** An item's drawing, in an element of its own as it arrives. */
-function ItemPreview(props: { id: string | null; elements: LibraryItem["elements"] }) {
+function ItemPreview(props: ItemPreviewProps) {
   return (
     <span
       style="display:contents"
@@ -180,8 +187,17 @@ function ItemPreview(props: { id: string | null; elements: LibraryItem["elements
   );
 }
 
+export interface EditorProp {
+  editor: DiagramEditor;
+}
+
+interface LibraryUnitProps {
+  item: LibraryItem;
+  showName?: boolean;
+}
+
 /** The library's items as the sidebar's library tab shows and manages them, Excalidraw's `LibraryMenu`. */
-export function LibraryMenu(props: { editor: DiagramEditor }) {
+export function LibraryMenu(props: EditorProp) {
   const ui = useDiagramUI();
   const t = ui.t;
   const editor = props.editor;
@@ -199,9 +215,9 @@ export function LibraryMenu(props: { editor: DiagramEditor }) {
   let lastSelected: string | null = null;
   // whether Shift is down as a checkbox toggles, which its change does not say
   let shiftHeld = false;
-  const noteShift = (event: PointerEvent | KeyboardEvent): void => {
+  function noteShift(event: PointerEvent | KeyboardEvent): void {
     shiftHeld = event.shiftKey;
-  };
+  }
   editor.ownerDocument.addEventListener("pointerdown", noteShift, true);
   editor.ownerDocument.addEventListener("keydown", noteShift, true);
   onCleanup(() => {
@@ -219,14 +235,22 @@ export function LibraryMenu(props: { editor: DiagramEditor }) {
     });
   });
 
-  const libraryItems = () => state().libraryItems;
+  function libraryItems() {
+    return state().libraryItems;
+  }
   const unpublished = createMemo(() =>
     libraryItems().filter((item) => item.status !== "published"),
   );
   const published = createMemo(() => libraryItems().filter((item) => item.status === "published"));
-  const isEmpty = () => libraryItems().length === 0 && pending().length === 0;
-  const query = () => deburr(search().trim().toLowerCase());
-  const isSearching = () => !isEmpty() && query() !== "";
+  function isEmpty() {
+    return libraryItems().length === 0 && pending().length === 0;
+  }
+  function query() {
+    return deburr(search().trim().toLowerCase());
+  }
+  function isSearching() {
+    return !isEmpty() && query() !== "";
+  }
   const filtered = createMemo(() =>
     query() === ""
       ? []
@@ -235,10 +259,14 @@ export function LibraryMenu(props: { editor: DiagramEditor }) {
           return name.trim() !== "" && deburr(name.toLowerCase()).includes(query());
         }),
   );
-  const selectedItems = () => libraryItems().filter((item) => selected().includes(item.id));
-  const isSelected = (id: string) => selected().includes(id);
+  function selectedItems() {
+    return libraryItems().filter((item) => selected().includes(item.id));
+  }
+  function isSelected(id: string) {
+    return selected().includes(id);
+  }
 
-  const toggle = (id: string, shift: boolean): void => {
+  function toggle(id: string, shift: boolean): void {
     const current = selected();
     if (current.includes(id)) {
       lastSelected = null;
@@ -260,21 +288,21 @@ export function LibraryMenu(props: { editor: DiagramEditor }) {
       setSelected([...current, id]);
     }
     lastSelected = id;
-  };
+  }
 
-  const clearSelection = (): void => {
+  function clearSelection(): void {
     lastSelected = null;
     setSelected([]);
-  };
+  }
 
-  const insert = (id: string): void => {
+  function insert(id: string): void {
     const ids = isSelected(id) ? selected() : [id];
     const chosen = libraryItems().filter((item) => ids.includes(item.id));
     editor.batch(() => editor.insertLibraryItems(chosen));
     editor.focusContainer();
-  };
+  }
 
-  const addPending = (): void => {
+  function addPending(): void {
     const elements = pending();
     for (const disabled of LIBRARY_DISABLED_TYPES) {
       if (elements.some((element) => element.type === disabled)) {
@@ -294,9 +322,9 @@ export function LibraryMenu(props: { editor: DiagramEditor }) {
     library.setLibrary(nextItems).catch(() => {
       editor.batch(() => editor.setState({ errorMessage: { key: "alerts.errorAddingToLibrary" } }));
     });
-  };
+  }
 
-  const removeSelected = (): void => {
+  function removeSelected(): void {
     const ids = selected();
     library.setLibrary(libraryItems().filter((item) => !ids.includes(item.id))).catch(() => {
       editor.batch(() =>
@@ -305,14 +333,14 @@ export function LibraryMenu(props: { editor: DiagramEditor }) {
     });
     forgetSvgs(ids);
     clearSelection();
-  };
+  }
 
-  const reset = (): void => {
+  function reset(): void {
     forgetSvgs(libraryItems().map((item) => item.id));
     void library.resetLibrary();
-  };
+  }
 
-  const importLibrary = async (): Promise<void> => {
+  async function importLibrary(): Promise<void> {
     try {
       await library.updateLibrary({
         libraryItems: fileOpen({ description: "Excalidraw library files" }),
@@ -323,9 +351,9 @@ export function LibraryMenu(props: { editor: DiagramEditor }) {
       if (error instanceof Error && error.name === "AbortError") return;
       editor.batch(() => editor.setState({ errorMessage: { key: "errors.importLibraryError" } }));
     }
-  };
+  }
 
-  const exportLibrary = async (): Promise<void> => {
+  async function exportLibrary(): Promise<void> {
     const chosen = selected().length > 0 ? selectedItems() : await library.getLatestLibrary();
     try {
       await saveLibraryAsJSON(chosen);
@@ -335,22 +363,22 @@ export function LibraryMenu(props: { editor: DiagramEditor }) {
         editor.setState({ errorMessage: error instanceof Error ? error.message : String(error) }),
       );
     }
-  };
+  }
 
-  const onDragStart = (id: string, event: DragEvent): void => {
+  function onDragStart(id: string, event: DragEvent): void {
     const data: ExcalidrawLibraryIds = { itemIds: isSelected(id) ? [...selected()] : [id] };
     event.dataTransfer?.setData(MIME_TYPES.excalidrawlibIds, JSON.stringify(data));
-  };
+  }
 
-  const browseUrl = (): string => {
+  function browseUrl(): string {
     const view = editor.ownerWindow;
     const referrer = ui.host().libraryReturnUrl ?? view.location.origin + view.location.pathname;
     return `${LIBRARY_URL}?target=${view.name || "_blank"}&referrer=${referrer}&useHash=true&token=${
       editor.id
     }&theme=${ui.store.state("theme")}&version=${VERSIONS.excalidrawLibrary}`;
-  };
+  }
 
-  const Unit = (unitProps: { item: LibraryItem; showName?: boolean }) => {
+  function Unit(unitProps: LibraryUnitProps) {
     const item = unitProps.item;
     const name = item.name?.trim()
       ? item.name
@@ -391,18 +419,20 @@ export function LibraryMenu(props: { editor: DiagramEditor }) {
         />
       </li>
     );
-  };
+  }
 
-  const BrowseButton = () => (
-    <a
-      class={browse}
-      href={browseUrl()}
-      target="_excalidraw_libraries"
-      data-testid="library-browse"
-    >
-      {t("labels.libraries")}
-    </a>
-  );
+  function BrowseButton() {
+    return (
+      <a
+        class={browse}
+        href={browseUrl()}
+        target="_excalidraw_libraries"
+        data-testid="library-browse"
+      >
+        {t("labels.libraries")}
+      </a>
+    );
+  }
 
   return (
     <div

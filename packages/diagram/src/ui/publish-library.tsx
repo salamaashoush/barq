@@ -78,9 +78,16 @@ const field = d(layout.column, gap[1], type.sm);
 
 const error = d(fg.danger, type.xs);
 
+interface NoteProps {
+  text: string;
+  href?: string;
+}
+
 /** A note with its `<link>…</link>` part as a link. */
-function Note(props: { text: string; href?: string }) {
-  const parts = () => /^(.*)<link>(.*)<\/link>(.*)$/s.exec(props.text);
+function Note(props: NoteProps) {
+  function parts() {
+    return /^(.*)<link>(.*)<\/link>(.*)$/s.exec(props.text);
+  }
   return (
     <p class={note}>
       <Show when={props.href && parts()} fallback={props.text.replace(/<\/?link>/g, "")}>
@@ -98,30 +105,27 @@ function Note(props: { text: string; href?: string }) {
   );
 }
 
-const readStoredData = (): PublishLibraryData => {
+function readStoredData(): PublishLibraryData {
   try {
     const stored = localStorage.getItem(EDITOR_LS_KEYS.PUBLISH_LIBRARY);
     return stored ? { ...EMPTY, ...(JSON.parse(stored) as Partial<PublishLibraryData>) } : EMPTY;
   } catch {
     return EMPTY;
   }
-};
+}
 
-const storeData = (data: PublishLibraryData | null): void => {
+function storeData(data: PublishLibraryData | null): void {
   try {
     if (data) localStorage.setItem(EDITOR_LS_KEYS.PUBLISH_LIBRARY, JSON.stringify(data));
     else localStorage.removeItem(EDITOR_LS_KEYS.PUBLISH_LIBRARY);
   } catch {}
-};
+}
 
 /** The items side by side on white, Excalidraw's preview of a library it publishes. */
 const PREVIEW_MAX_SIDE = 5000;
 const PREVIEW_JPEG_QUALITY = 0.8;
 
-const generatePreviewImage = async (
-  libraryItems: LibraryItems,
-  document: Document,
-): Promise<Blob> => {
+async function generatePreviewImage(libraryItems: LibraryItems, document: Document): Promise<Blob> {
   const MAX_ITEMS_PER_ROW = 6;
   const BOX_SIZE = 128;
   const BOX_PADDING = Math.round(BOX_SIZE / 16);
@@ -175,20 +179,35 @@ const generatePreviewImage = async (
       PREVIEW_JPEG_QUALITY,
     );
   });
-};
+}
+
+export interface PublishLibraryDialogProps {
+  editor: DiagramEditor;
+  items: LibraryItems;
+  onClose: () => void;
+  onRemove: (id: string) => void;
+  onPublished: (ids: readonly string[]) => void;
+}
+
+interface PublishSuccess {
+  url: string;
+  authorName: string;
+}
+
+interface ErrorBody {
+  message?: string;
+}
+
+interface PublishedUrl {
+  url: string;
+}
 
 /**
  * Excalidraw's publish dialog: names for the selected items and the
  * library's details, sent as Excalidraw's form to the app's
  * `libraryPublishEndpoint`, which answers with the library's `url`.
  */
-export function PublishLibraryDialog(props: {
-  editor: DiagramEditor;
-  items: LibraryItems;
-  onClose: () => void;
-  onRemove: (id: string) => void;
-  onPublished: (ids: readonly string[]) => void;
-}) {
+export function PublishLibraryDialog(props: PublishLibraryDialogProps) {
   const ui = useDiagramUI();
   const t = ui.t;
   const [data, setData] = createSignal<PublishLibraryData>(readStoredData());
@@ -197,29 +216,32 @@ export function PublishLibraryDialog(props: {
   );
   const [errors, setErrors] = createSignal<Record<string, boolean>>({});
   const [submitting, setSubmitting] = createSignal(false);
-  const [success, setSuccess] = createSignal<{ url: string; authorName: string } | null>(null);
+  const [success, setSuccess] = createSignal<PublishSuccess | null>(null);
   const [failure, setFailure] = createSignal<string | null>(null);
 
-  const named = (): LibraryItem[] =>
-    props.items.map((item) => ({ ...item, name: names()[item.id] ?? item.name }));
+  function named(): LibraryItem[] {
+    return props.items.map((item) => ({ ...item, name: names()[item.id] ?? item.name }));
+  }
 
-  const saveNames = (): void => {
+  function saveNames(): void {
     const byId = new Map(named().map((item) => [item.id, item.name]));
     void props.editor.library.setLibrary((current) =>
       current.map((item) => (byId.has(item.id) ? { ...item, name: byId.get(item.id) } : item)),
     );
-  };
+  }
 
-  const close = (): void => {
+  function close(): void {
     saveNames();
     storeData(data());
     props.onClose();
-  };
+  }
 
-  const update = (key: keyof PublishLibraryData) => (event: Event) =>
-    setData({ ...data(), [key]: (event.currentTarget as HTMLInputElement).value });
+  function update(key: keyof PublishLibraryData) {
+    return (event: Event) =>
+      setData({ ...data(), [key]: (event.currentTarget as HTMLInputElement).value });
+  }
 
-  const submit = async (event: Event): Promise<void> => {
+  async function submit(event: Event): Promise<void> {
     event.preventDefault();
     const endpoint = ui.host().libraryPublishEndpoint;
     if (!endpoint) return;
@@ -257,10 +279,10 @@ export function PublishLibraryDialog(props: {
         body: formData,
       });
       if (!response.ok) {
-        const body = (await response.json().catch(() => null)) as { message?: string } | null;
+        const body = (await response.json().catch(() => null)) as ErrorBody | null;
         throw new Error(body?.message || response.statusText || "something went wrong");
       }
-      const { url } = (await response.json()) as { url: string };
+      const { url } = (await response.json()) as PublishedUrl;
       storeData(null);
       saveNames();
       setSuccess({ url, authorName: details.authorName });
@@ -271,30 +293,32 @@ export function PublishLibraryDialog(props: {
     } finally {
       setSubmitting(false);
     }
-  };
+  }
 
-  const fieldOf = (
+  function fieldOf(
     label: TranslationKey,
     key: keyof PublishLibraryData,
     placeholder: TranslationKey,
     required = false,
-  ) => (
-    <label class={field}>
-      <span>
-        {t(label)}
-        <Show when={required}>
-          <span aria-hidden="true"> *</span>
-        </Show>
-      </span>
-      <Input
-        name={key}
-        value={data()[key]}
-        required={required}
-        placeholder={t(placeholder)}
-        onInput={update(key)}
-      />
-    </label>
-  );
+  ) {
+    return (
+      <label class={field}>
+        <span>
+          {t(label)}
+          <Show when={required}>
+            <span aria-hidden="true"> *</span>
+          </Show>
+        </span>
+        <Input
+          name={key}
+          value={data()[key]}
+          required={required}
+          placeholder={t(placeholder)}
+          onInput={update(key)}
+        />
+      </label>
+    );
+  }
 
   return (
     <>

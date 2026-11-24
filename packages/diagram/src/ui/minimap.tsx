@@ -29,7 +29,7 @@ interface Frame {
 }
 
 /** The scene and the viewport, fitted into the minimap: where scene point (0, 0) lands and how small. */
-const frameOf = (editor: DiagramEditor): Frame => {
+function frameOf(editor: DiagramEditor): Frame {
   const { state } = editor;
   const elements = editor.scene.getNonDeletedElements();
   const zoom = state.zoom.value;
@@ -55,9 +55,9 @@ const frameOf = (editor: DiagramEditor): Frame => {
     originX: PADDING - minX * scale + (WIDTH - PADDING * 2 - (maxX - minX) * scale) / 2,
     originY: PADDING - minY * scale + (HEIGHT - PADDING * 2 - (maxY - minY) * scale) / 2,
   };
-};
+}
 
-const draw = (canvas: HTMLCanvasElement, editor: DiagramEditor): Frame => {
+function draw(canvas: HTMLCanvasElement, editor: DiagramEditor): Frame {
   const frame = frameOf(editor);
   const ratio = editor.ownerWindow.devicePixelRatio || 1;
   if (canvas.width !== WIDTH * ratio) canvas.width = WIDTH * ratio;
@@ -66,7 +66,9 @@ const draw = (canvas: HTMLCanvasElement, editor: DiagramEditor): Frame => {
   if (!context) return frame;
   const { state } = editor;
   const dark = state.theme === THEME.DARK;
-  const color = (value: string) => (dark ? applyDarkModeFilter(value) : value);
+  function color(value: string) {
+    return dark ? applyDarkModeFilter(value) : value;
+  }
   context.setTransform(ratio, 0, 0, ratio, 0, 0);
   context.fillStyle = color(state.viewBackgroundColor);
   context.fillRect(0, 0, WIDTH, HEIGHT);
@@ -96,7 +98,7 @@ const draw = (canvas: HTMLCanvasElement, editor: DiagramEditor): Frame => {
     (state.height / zoom) * frame.scale,
   );
   return frame;
-};
+}
 
 /**
  * Excalidraw's minimap: the whole scene with the viewport on it, above the
@@ -106,7 +108,9 @@ const draw = (canvas: HTMLCanvasElement, editor: DiagramEditor): Frame => {
 export function Minimap() {
   const ui = useDiagramUI();
   const store = ui.store;
-  const open = () => store.state("minimapEnabled") && ui.isEnabled(actionToggleMinimap);
+  function open() {
+    return store.state("minimapEnabled") && ui.isEnabled(actionToggleMinimap);
+  }
 
   return (
     <Show when={open()}>
@@ -115,13 +119,13 @@ export function Minimap() {
         let frame: Frame | null = null;
         let pending: number | null = null;
         const editor = store.editor;
-        const redraw = (): void => {
+        function redraw(): void {
           if (pending !== null || !editor || !canvas) return;
           pending = editor.ownerWindow.requestAnimationFrame(() => {
             pending = null;
             if (canvas && !editor.isDestroyed) frame = draw(canvas, editor);
           });
-        };
+        }
         // the minimap follows the scene and the viewport, outside the reactive graph
         const off = editor?.onChange(redraw);
         onCleanup(() => {
@@ -132,7 +136,7 @@ export function Minimap() {
           () => store.state("theme"),
           () => redraw(),
         );
-        const moveTo = (event: PointerEvent): void => {
+        function moveTo(event: PointerEvent): void {
           if (!editor || !canvas || !frame) return;
           const rect = canvas.getBoundingClientRect();
           const sceneX = (event.clientX - rect.left - frame.originX) / frame.scale;
@@ -144,7 +148,7 @@ export function Minimap() {
               scrollY: -(sceneY - editor.state.height / zoom / 2),
             }),
           );
-        };
+        }
         return (
           <div class={minimapIsland} data-testid="minimap">
             <canvas

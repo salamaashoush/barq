@@ -87,48 +87,45 @@ const MIN_SIZE = 1;
 /** Pixels of pointer travel per step when a label is dragged to scrub its value. */
 const SCRUB_SENSITIVITY = 2;
 const GRID_STEP_SIZE = 5;
-const round = (value: number): number => Math.round(value * 100) / 100;
+function round(value: number): number {
+  return Math.round(value * 100) / 100;
+}
 
 type Property = "x" | "y" | "width" | "height" | "angle" | "fontSize";
 
 /** The top left corner an element shows at, its rotation applied. */
-const topLeftOf = (element: NonDeletedExcalidrawElement): [number, number] => {
+function topLeftOf(element: NonDeletedExcalidrawElement): [number, number] {
   const center = pointFrom(element.x + element.width / 2, element.y + element.height / 2);
   const [x, y] = pointRotateRads(pointFrom(element.x, element.y), center, element.angle);
   return [x, y];
-};
+}
 
 /** Moves an element so its rotated top left corner is at the point, with its label and bindings. */
-const moveTo = (
-  editor: DiagramEditor,
-  element: NonDeletedExcalidrawElement,
-  x: number,
-  y: number,
-) => {
+function moveTo(editor: DiagramEditor, element: NonDeletedExcalidrawElement, x: number, y: number) {
   const [left, top] = topLeftOf(element);
   const dx = x - left;
   const dy = y - top;
   moveBy(editor, element, dx, dy);
-};
+}
 
-const moveBy = (
+function moveBy(
   editor: DiagramEditor,
   element: NonDeletedExcalidrawElement,
   dx: number,
   dy: number,
-) => {
+) {
   const { scene } = editor;
   scene.mutateElement(element, { x: element.x + dx, y: element.y + dy });
   const label = getBoundTextElement(element, scene.getNonDeletedElementsMap());
   if (label) scene.mutateElement(label, { x: label.x + dx, y: label.y + dy });
   updateBindings(element, scene, editor.state, { renderEnvironment: editor.renderEnvironment });
-};
+}
 
 /** The selection's units: each selected group as one, each element outside a group on its own. */
-const getAtomicUnits = (
+function getAtomicUnits(
   elements: readonly NonDeletedExcalidrawElement[],
   appState: AppState,
-): NonDeletedExcalidrawElement[][] => {
+): NonDeletedExcalidrawElement[][] {
   const units = getSelectedGroupIds(appState).map((groupId) =>
     getElementsInGroup(elements, groupId).filter(
       (element): element is NonDeletedExcalidrawElement =>
@@ -139,30 +136,30 @@ const getAtomicUnits = (
     if (!isInGroup(element)) units.push([element]);
   }
   return units.filter((unit) => unit.length > 0);
-};
+}
 
 /** A unit's top left: a group's box, or an element's rotated corner. */
-const unitTopLeft = (unit: readonly NonDeletedExcalidrawElement[]): [number, number] => {
+function unitTopLeft(unit: readonly NonDeletedExcalidrawElement[]): [number, number] {
   if (unit.length === 1) return topLeftOf(unit[0]!);
   const [x, y] = getCommonBounds(unit);
   return [x, y];
-};
+}
 
-const unitSize = (unit: readonly NonDeletedExcalidrawElement[]): [number, number] => {
+function unitSize(unit: readonly NonDeletedExcalidrawElement[]): [number, number] {
   const [x1, y1, x2, y2] = getCommonBounds(unit);
   const [only] = unit;
   return unit.length === 1 && only && !isArrowElement(only)
     ? [only.width, only.height]
     : [x2 - x1, y2 - y1];
-};
+}
 
 /** Scales a group from its top left so its box takes the width or height, keeping its proportions. */
-const resizeGroup = (
+function resizeGroup(
   editor: DiagramEditor,
   unit: readonly NonDeletedExcalidrawElement[],
   property: "width" | "height",
   value: number,
-): void => {
+): void {
   const [x1, y1, x2, y2] = getCommonBounds(unit);
   const current = property === "width" ? x2 - x1 : y2 - y1;
   if (current <= 0) return;
@@ -185,14 +182,14 @@ const resizeGroup = (
       redrawTextBoundingBox(label, element, editor.scene, editor.renderEnvironment);
     }
   }
-};
+}
 
-const resizeElement = (
+function resizeElement(
   editor: DiagramEditor,
   element: NonDeletedExcalidrawElement,
   property: "width" | "height",
   value: number,
-): void => {
+): void {
   const keepAspectRatio = isImageElement(element);
   const ratio = element.width / Math.max(element.height, MIN_SIZE);
   const width = Math.max(
@@ -213,14 +210,14 @@ const resizeElement = (
     property === "width" ? "e" : "s",
     { shouldMaintainAspectRatio: keepAspectRatio, renderEnvironment: editor.renderEnvironment },
   );
-};
+}
 
-const apply = (
+function apply(
   editor: DiagramEditor,
   property: Property,
   value: number,
   capture: "immediately" | "eventually" = "immediately",
-): void => {
+): void {
   const elements = editor.scene
     .getSelectedElements(editor.state)
     .filter((element) => !(isTextElement(element) && element.containerId));
@@ -283,9 +280,9 @@ const apply = (
       }
     }
   });
-};
+}
 
-const setFontSize = (editor: DiagramEditor, text: ExcalidrawTextElement, size: number): void => {
+function setFontSize(editor: DiagramEditor, text: ExcalidrawTextElement, size: number): void {
   const elementsMap = editor.scene.getNonDeletedElementsMap();
   const next = newElementWith(
     text,
@@ -298,14 +295,9 @@ const setFontSize = (editor: DiagramEditor, text: ExcalidrawTextElement, size: n
     editor.scene,
     editor.renderEnvironment,
   );
-};
+}
 
-/**
- * A number the stats panel edits: Enter or leaving the field applies it, the
- * arrows step it, and dragging its label scrubs it (by the step with Shift),
- * one undo step per drag. An empty field shows values that differ.
- */
-function NumberField(props: {
+interface NumberFieldProps {
   label: string;
   short: string;
   value: number | null;
@@ -313,14 +305,21 @@ function NumberField(props: {
   onCommit: (value: number) => void;
   onScrub?: (value: number, done: boolean) => void;
   testId: string;
-}) {
-  const commit = (input: HTMLInputElement): void => {
+}
+
+/**
+ * A number the stats panel edits: Enter or leaving the field applies it, the
+ * arrows step it, and dragging its label scrubs it (by the step with Shift),
+ * one undo step per drag. An empty field shows values that differ.
+ */
+function NumberField(props: NumberFieldProps) {
+  function commit(input: HTMLInputElement): void {
     const value = Number(input.value);
     if (input.value.trim() !== "" && Number.isFinite(value) && value !== props.value) {
       props.onCommit(value);
     }
-  };
-  const startScrub = (event: PointerEvent): void => {
+  }
+  function startScrub(event: PointerEvent): void {
     const onScrub = props.onScrub;
     const start = props.value;
     if (!onScrub || start === null || event.button !== 0) return;
@@ -329,19 +328,19 @@ function NumberField(props: {
     label.setPointerCapture?.(event.pointerId);
     const originX = event.clientX;
     let last = start;
-    const valueAt = (moveEvent: PointerEvent): number => {
+    const valueAt: (moveEvent: PointerEvent) => number = (moveEvent) => {
       const steps = Math.round((moveEvent.clientX - originX) / SCRUB_SENSITIVITY);
       const step = props.step ?? 1;
       const raw = start + steps;
       return moveEvent.shiftKey ? Math.round(raw / (step * 5)) * step * 5 : raw;
     };
-    const onMove = (moveEvent: PointerEvent): void => {
+    const onMove: (moveEvent: PointerEvent) => void = (moveEvent) => {
       const next = valueAt(moveEvent);
       if (next === last) return;
       last = next;
       onScrub(next, false);
     };
-    const onUp = (upEvent: PointerEvent): void => {
+    const onUp: (upEvent: PointerEvent) => void = (upEvent) => {
       label.removeEventListener("pointermove", onMove);
       label.removeEventListener("pointerup", onUp);
       label.removeEventListener("pointercancel", onUp);
@@ -350,7 +349,7 @@ function NumberField(props: {
     label.addEventListener("pointermove", onMove);
     label.addEventListener("pointerup", onUp);
     label.addEventListener("pointercancel", onUp);
-  };
+  }
   return (
     <label class={field}>
       <span
@@ -381,13 +380,15 @@ function NumberField(props: {
   );
 }
 
-/** A section's title, which folds it away, Excalidraw's `Collapsible`. */
-function SectionToggle(props: {
+interface SectionToggleProps {
   label: string;
   open: boolean;
   onToggle: () => void;
   testId: string;
-}) {
+}
+
+/** A section's title, which folds it away, Excalidraw's `Collapsible`. */
+function SectionToggle(props: SectionToggleProps) {
   return (
     <h3 class={subtitle}>
       <button
@@ -404,8 +405,16 @@ function SectionToggle(props: {
   );
 }
 
-const same = (values: readonly number[]): number | null =>
-  values.length > 0 && values.every((value) => value === values[0]) ? round(values[0]!) : null;
+function same(values: readonly number[]): number | null {
+  return values.length > 0 && values.every((value) => value === values[0])
+    ? round(values[0]!)
+    : null;
+}
+
+interface Size {
+  width: number;
+  height: number;
+}
 
 /**
  * Excalidraw's stats panel, "Canvas & Shape properties": the scene's shape
@@ -418,20 +427,27 @@ export function StatsPanel() {
   const ui = useDiagramUI();
   const t = ui.t;
   const store = ui.store;
-  const shown = () =>
-    store.state("stats").open &&
-    !store.state("zenModeEnabled") &&
-    !store.state("viewModeEnabled") &&
-    store.state("openDialog")?.name !== "elementLinkSelector";
-  const panels = () => store.state("stats").panels;
-  const togglePanel = (flag: number) => () => {
-    const editor = store.editor;
-    editor?.batch(() =>
-      editor.setState({
-        stats: { ...editor.state.stats, panels: editor.state.stats.panels ^ flag },
-      }),
+  function shown() {
+    return (
+      store.state("stats").open &&
+      !store.state("zenModeEnabled") &&
+      !store.state("viewModeEnabled") &&
+      store.state("openDialog")?.name !== "elementLinkSelector"
     );
-  };
+  }
+  function panels() {
+    return store.state("stats").panels;
+  }
+  function togglePanel(flag: number) {
+    return () => {
+      const editor = store.editor;
+      editor?.batch(() =>
+        editor.setState({
+          stats: { ...editor.state.stats, panels: editor.state.stats.panels ^ flag },
+        }),
+      );
+    };
+  }
 
   const scene = createMemo(() => {
     store.geometry();
@@ -504,7 +520,7 @@ export function StatsPanel() {
       single: false,
       type: null as ExcalidrawElement["type"] | null,
       heading: null as TranslationKey | null,
-      uncropped: null as { width: number; height: number } | null,
+      uncropped: null as Size | null,
       group: elementsAreInSameGroup(selected),
       x: same(corners.map(([x]) => x)),
       y: same(corners.map(([, y]) => y)),
@@ -516,19 +532,23 @@ export function StatsPanel() {
     };
   });
 
-  const commit = (property: Property) => (value: number) => {
-    const editor = store.editor;
-    if (editor) apply(editor, property, value);
-  };
-  const scrubbed = (property: Property) => (value: number, done: boolean) => {
-    const editor = store.editor;
-    if (editor) apply(editor, property, value, done ? "immediately" : "eventually");
-  };
-  const setGridStep = (value: number) => {
+  function commit(property: Property) {
+    return (value: number) => {
+      const editor = store.editor;
+      if (editor) apply(editor, property, value);
+    };
+  }
+  function scrubbed(property: Property) {
+    return (value: number, done: boolean) => {
+      const editor = store.editor;
+      if (editor) apply(editor, property, value, done ? "immediately" : "eventually");
+    };
+  }
+  function setGridStep(value: number) {
     const editor = store.editor;
     if (!editor || !value) return;
     editor.batch(() => editor.setState({ gridStep: getNormalizedGridStep(value) }));
-  };
+  }
 
   return (
     <Show when={shown()}>
@@ -672,14 +692,16 @@ export function StatsPanel() {
   );
 }
 
-/** A row of the stats panel, Excalidraw's `Stats.StatsRow`: `columns` cells, a section's `heading`. */
-function StatsRow(props: {
+interface StatsRowProps {
   children?: Child;
   columns?: number;
   heading?: boolean;
   class?: string;
   "data-testid"?: string;
-}) {
+}
+
+/** A row of the stats panel, Excalidraw's `Stats.StatsRow`: `columns` cells, a section's `heading`. */
+function StatsRow(props: StatsRowProps) {
   return (
     <div
       class={`${props.heading ? `${statsRow} ${heading}` : statsRow}${props.class ? ` ${props.class}` : ""}`}
@@ -691,13 +713,15 @@ function StatsRow(props: {
   );
 }
 
-/** Rows of the stats panel, Excalidraw's `Stats.StatsRows`, placed by `order`. */
-function StatsRows(props: {
+interface StatsRowsProps {
   children?: Child;
   order?: number;
   class?: string;
   "data-testid"?: string;
-}) {
+}
+
+/** Rows of the stats panel, Excalidraw's `Stats.StatsRows`, placed by `order`. */
+function StatsRows(props: StatsRowsProps) {
   return (
     <div
       class={props.class ? `${statsRows} ${props.class}` : statsRows}

@@ -114,7 +114,9 @@ function PropertiesDrawer() {
 
 function HistoryButtons() {
   const ui = useDiagramUI();
-  const history = () => ui.store.history();
+  function history() {
+    return ui.store.history();
+  }
   return (
     <div class={island} role="group" aria-label={ui.t("buttons.undo")}>
       <button
@@ -143,16 +145,24 @@ function HistoryButtons() {
   );
 }
 
+export interface PhoneChromeProps {
+  scrollBack: Child;
+}
+
 /**
  * Excalidraw's mobile UI: the main menu and the host's UI along the top, pen
  * mode and the library at its end, and along the bottom the properties, undo
  * and redo over the toolbar, every control a finger's size.
  */
-export function PhoneChrome(props: { scrollBack: Child }) {
+export function PhoneChrome(props: PhoneChromeProps) {
   const ui = useDiagramUI();
   const store = ui.store;
-  const zen = () => store.state("zenModeEnabled");
-  const viewMode = () => store.state("viewModeEnabled");
+  function zen() {
+    return store.state("zenModeEnabled");
+  }
+  function viewMode() {
+    return store.state("viewModeEnabled");
+  }
   return (
     <>
       <div class={topBar} data-testid="phone-top-bar">

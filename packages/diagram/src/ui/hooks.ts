@@ -28,11 +28,15 @@ export interface ExcalidrawAPIHandle {
  */
 export const ExcalidrawAPIContext = createContext<ExcalidrawAPIHandle | null>(null);
 
+export interface ChildrenProps {
+  children?: Child;
+}
+
 /**
  * Excalidraw's `ExcalidrawAPIProvider`: lets `useExcalidrawAPI` (and the
  * hooks on it) work outside the editor, for the `<DiagramEditor>` inside it.
  */
-export function ExcalidrawAPIProvider(props: { children?: Child }) {
+export function ExcalidrawAPIProvider(props: ChildrenProps) {
   const [api, setApi] = createSignal<DiagramEditorApi | null>(null);
   return provide(
     ExcalidrawAPIContext,
@@ -65,20 +69,26 @@ export function useStylesPanelMode(): Accessor<ReturnType<typeof deriveStylesPan
   return () => deriveStylesPanelMode(editorInterface());
 }
 
+export interface I18n {
+  t: Translate;
+  langCode: () => string;
+}
+
 /** Excalidraw's `useI18n`, inside the editor: the translator and the language. */
-export function useI18n(): { t: Translate; langCode: () => string } {
+export function useI18n(): I18n {
   const ui = useDiagramUI();
   return { t: ui.t, langCode: ui.langCode };
 }
 
 type StateSelector<T> = keyof AppState | (keyof AppState)[] | ((appState: AppState) => T);
 
-const select = <T>(selector: StateSelector<T>, appState: AppState): unknown =>
-  typeof selector === "function"
+function select<T>(selector: StateSelector<T>, appState: AppState): unknown {
+  return typeof selector === "function"
     ? selector(appState)
     : Array.isArray(selector)
       ? appState
       : appState[selector];
+}
 
 /**
  * Excalidraw's `useExcalidrawStateValue`: a key, keys (the whole state, when

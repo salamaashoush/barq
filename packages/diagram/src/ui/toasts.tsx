@@ -7,11 +7,11 @@ import { useDiagramUI } from "./context.tsx";
 import type { DiagramUI } from "./context.tsx";
 
 /** A message the editor set, as a string in the language of the moment. */
-const messageText = (ui: DiagramUI, message: unknown): string => {
+function messageText(ui: DiagramUI, message: unknown): string {
   if (isLocalizedMessage(message)) return ui.t(message.key, message.replacement, message.fallback);
   if (message instanceof Error) return message.message;
   return typeof message === "string" ? message : String(message);
-};
+}
 
 /**
  * The editor's `toast` and `errorMessage` as arc's toasts, on the toast stack

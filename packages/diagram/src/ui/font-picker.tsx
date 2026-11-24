@@ -30,24 +30,31 @@ import { TopPicksMenu, TopPicksTip, createTopPicksDnD } from "./top-picks.tsx";
 import type { ExcalidrawElement, FontFamilyValues } from "@excalidraw/element/types";
 import type { TranslationKey } from "../i18n.ts";
 
-/** The three fonts Excalidraw offers beside its list. */
-const DEFAULT_FONTS: readonly { value: FontFamilyValues; label: TranslationKey; testId: string }[] =
-  [
-    { value: FONT_FAMILY.Excalifont, label: "labels.handDrawn", testId: "font-family-hand-drawn" },
-    { value: FONT_FAMILY.Nunito, label: "labels.normal", testId: "font-family-normal" },
-    { value: FONT_FAMILY["Comic Shanns"], label: "labels.code", testId: "font-family-code" },
-  ];
+interface DefaultFont {
+  value: FontFamilyValues;
+  label: TranslationKey;
+  testId: string;
+}
 
-const fontIcon = (fontFamily: number) =>
-  fontFamily === FONT_FAMILY["Comic Shanns"] || fontFamily === FONT_FAMILY.Cascadia
+/** The three fonts Excalidraw offers beside its list. */
+const DEFAULT_FONTS: readonly DefaultFont[] = [
+  { value: FONT_FAMILY.Excalifont, label: "labels.handDrawn", testId: "font-family-hand-drawn" },
+  { value: FONT_FAMILY.Nunito, label: "labels.normal", testId: "font-family-normal" },
+  { value: FONT_FAMILY["Comic Shanns"], label: "labels.code", testId: "font-family-code" },
+];
+
+function fontIcon(fontFamily: number) {
+  return fontFamily === FONT_FAMILY["Comic Shanns"] || fontFamily === FONT_FAMILY.Cascadia
     ? Code
     : fontFamily === FONT_FAMILY.Excalifont || fontFamily === FONT_FAMILY.Virgil
       ? Pencil
       : Type;
+}
 
 /** A family's name as it is registered. */
-export const getFontFamilyLabel = (fontFamily: number): string =>
-  Object.entries(FONT_FAMILY).find(([, id]) => id === fontFamily)?.[0] ?? "Unknown";
+export function getFontFamilyLabel(fontFamily: number): string {
+  return Object.entries(FONT_FAMILY).find(([, id]) => id === fontFamily)?.[0] ?? "Unknown";
+}
 
 interface FontEntry {
   value: FontFamilyValues;
@@ -66,20 +73,31 @@ const badge = d(layout.pushEnd, rounded.full, {
   color: "var(--danger-foreground)",
 });
 
+export interface FontPickerProps {
+  compact?: boolean;
+}
+
+interface FontLists {
+  scene: FontEntry[];
+  available: FontEntry[];
+}
+
 /**
  * Excalidraw's font picker: the three defaults as radios, and the other
  * fonts in a list searched by typing, the scene's own first.
  */
-export function FontPicker(props: { compact?: boolean } = {}) {
+export function FontPicker(props: FontPickerProps = {}) {
   const ui = useDiagramUI();
   const t = ui.t;
   const store = ui.store;
   // open while the editor's `openPopup` names it, as Excalidraw's: Shift+F opens it there too
-  const open = (): boolean => store.state("openPopup") === "fontFamily";
+  function open(): boolean {
+    return store.state("openPopup") === "fontFamily";
+  }
   // the selection as it was when the list opened, which a hover previews on and a close restores
   let cached = new Map<string, ExcalidrawElement>();
   let picked = false;
-  const setOpen = (next: boolean): void => {
+  function setOpen(next: boolean): void {
     const editor = store.editor;
     if (next && !open() && editor) {
       cached = new Map();
@@ -102,8 +120,8 @@ export function FontPicker(props: { compact?: boolean } = {}) {
     }
     if (!editor || next === (editor.state.openPopup === "fontFamily")) return;
     editor.batch(() => editor.setState({ openPopup: next ? "fontFamily" : null }));
-  };
-  const hover = (label: string): void => {
+  }
+  function hover(label: string): void {
     const font = [...fonts().scene, ...fonts().available].find((entry) => entry.label === label);
     if (!font || !open()) return;
     ui.run(actionChangeFontFamily, {
@@ -111,7 +129,7 @@ export function FontPicker(props: { compact?: boolean } = {}) {
       cachedElements: cached,
       resetContainers: true,
     });
-  };
+  }
 
   const selected = createMemo((): FontFamilyValues | null => {
     store.selection();
@@ -131,7 +149,7 @@ export function FontPicker(props: { compact?: boolean } = {}) {
     );
   });
 
-  const fonts = createMemo((): { scene: FontEntry[]; available: FontEntry[] } => {
+  const fonts = createMemo((): FontLists => {
     // the scene's families when the list opens
     open();
     const all: FontEntry[] = [...Fonts.registered.entries()]
@@ -151,7 +169,7 @@ export function FontPicker(props: { compact?: boolean } = {}) {
     };
   });
 
-  const choose = (fontFamily: FontFamilyValues): void => {
+  function choose(fontFamily: FontFamilyValues): void {
     picked = true;
     setOpen(false);
     ui.run(actionChangeFontFamily, {
@@ -159,31 +177,37 @@ export function FontPicker(props: { compact?: boolean } = {}) {
       currentHoveredFontFamily: null,
       openPopup: null,
     });
-  };
+  }
 
-  const customPicks = (): readonly FontFamilyValues[] | null => {
+  function customPicks(): readonly FontFamilyValues[] | null {
     const picks = store.state("fontTopPicks");
     return picks?.length ? picks : null;
-  };
-  const topPicks = (): readonly FontFamilyValues[] =>
-    customPicks() ?? DEFAULT_FONTS.map((font) => font.value);
-  const setTopPicks = (picks: readonly FontFamilyValues[] | null): void => {
+  }
+  function topPicks(): readonly FontFamilyValues[] {
+    return customPicks() ?? DEFAULT_FONTS.map((font) => font.value);
+  }
+  function setTopPicks(picks: readonly FontFamilyValues[] | null): void {
     const editor = store.editor;
     editor?.batch(() => editor.setState({ fontTopPicks: picks }));
-  };
+  }
   const dnd = createTopPicksDnD<FontFamilyValues>({
     enabled: () => true,
     picks: topPicks,
     onChange: setTopPicks,
   });
-  const pickLabel = (value: FontFamilyValues): string => {
+  function pickLabel(value: FontFamilyValues): string {
     const known = DEFAULT_FONTS.find((font) => font.value === value);
     return known ? t(known.label) : getFontFamilyLabel(value);
-  };
-  const pickTestId = (value: FontFamilyValues): string =>
-    DEFAULT_FONTS.find((font) => font.value === value)?.testId ?? `font-family-pick-${value}`;
+  }
+  function pickTestId(value: FontFamilyValues): string {
+    return (
+      DEFAULT_FONTS.find((font) => font.value === value)?.testId ?? `font-family-pick-${value}`
+    );
+  }
 
-  const isDefault = () => topPicks().some((value) => value === selected());
+  function isDefault() {
+    return topPicks().some((value) => value === selected());
+  }
 
   return (
     <div class={radioGroupRow}>
@@ -295,12 +319,14 @@ export function FontPicker(props: { compact?: boolean } = {}) {
   );
 }
 
-function FontItem(props: {
+interface FontItemProps {
   font: FontEntry;
   selected: FontFamilyValues | null;
   onSelect: (font: FontFamilyValues) => void;
   onDragStart: (event: PointerEvent) => void;
-}) {
+}
+
+function FontItem(props: FontItemProps) {
   const ui = useDiagramUI();
   const Icon = fontIcon(props.font.value);
   return (

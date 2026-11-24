@@ -5,6 +5,10 @@ import { type HandleLibraryOptions, handleLibrary } from "../editor/library.ts";
 
 import type { DiagramEditorApi } from "../editor/editor.ts";
 
+export interface UseHandleLibraryOptions {
+  excalidrawAPI: Accessor<DiagramEditorApi | null | undefined>;
+}
+
 /**
  * Excalidraw's `useHandleLibrary`: once the editor's API is there, installs
  * the library an `#addLibrary=` URL names and keeps the library in
@@ -16,11 +20,9 @@ import type { DiagramEditorApi } from "../editor/editor.ts";
  * <DiagramEditor api={setApi} />;
  * ```
  */
-export const useHandleLibrary = (
-  opts: Omit<HandleLibraryOptions, "excalidrawAPI"> & {
-    excalidrawAPI: Accessor<DiagramEditorApi | null | undefined>;
-  },
-): void => {
+export function useHandleLibrary(
+  opts: Omit<HandleLibraryOptions, "excalidrawAPI"> & UseHandleLibraryOptions,
+): void {
   if (isServer) return;
   let stop: (() => void) | null = null;
   createRenderEffect(opts.excalidrawAPI, (api) => {
@@ -31,4 +33,4 @@ export const useHandleLibrary = (
     stop?.();
     stop = null;
   });
-};
+}

@@ -25,11 +25,11 @@ type ColorProperty = "strokeColor" | "backgroundColor";
  * dropper is held over the canvas, outside the history: the pick that
  * follows is the one undoable step.
  */
-export const previewColorOnSelection = (
+export function previewColorOnSelection(
   editor: DiagramEditor,
   property: ColorProperty,
   color: string,
-): void => {
+): void {
   const elements = editor.scene.getNonDeletedElements();
   const targets = getSelectedElements(elements, editor.state, {
     includeBoundTextElement: property === "strokeColor",
@@ -41,7 +41,7 @@ export const previewColorOnSelection = (
       editor.scene.mutateElement(element, getColorUpdate(element, property, color, elementsMap));
     }
   });
-};
+}
 
 /**
  * Picks a colour off the canvas for the selection's stroke or background (or
@@ -49,15 +49,16 @@ export const previewColorOnSelection = (
  * previews the colour on the selection, letting go applies it as one step.
  * Excalidraw's `openEyeDropper`.
  */
-export const openEyeDropper = (
+export function openEyeDropper(
   ui: DiagramUI,
   editor: DiagramEditor,
   type: "stroke" | "background",
-) => {
-  const propertyFor = (altKey: boolean): ColorProperty =>
-    (type === "background" && altKey) || (type === "stroke" && !altKey)
+) {
+  function propertyFor(altKey: boolean): ColorProperty {
+    return (type === "background" && altKey) || (type === "stroke" && !altKey)
       ? "strokeColor"
       : "backgroundColor";
+  }
   startEyeDropper(editor, {
     onChange: (color, { altKey }) => previewColorOnSelection(editor, propertyFor(altKey), color),
     onSelect: (color, event) => {
@@ -68,7 +69,7 @@ export const openEyeDropper = (
       ui.run(action, { color });
     },
   });
-};
+}
 
 /**
  * The keys Excalidraw gives its pickers, which open what the UI draws: S and
@@ -81,7 +82,7 @@ export function EditorKeys() {
     <Show when={ui.store.editor}>
       {(current: () => DiagramEditor) => {
         const editor = current();
-        const onKeyDown = (event: KeyboardEvent): void => {
+        function onKeyDown(event: KeyboardEvent): void {
           if (
             event.defaultPrevented ||
             event.ctrlKey ||
@@ -135,7 +136,7 @@ export function EditorKeys() {
             event.stopPropagation();
             editor.batch(() => editor.setState({ openPopup: "elementBackground" }));
           }
-        };
+        }
         editor.container.addEventListener("keydown", onKeyDown);
         onCleanup(() => editor.container.removeEventListener("keydown", onKeyDown));
         return null;

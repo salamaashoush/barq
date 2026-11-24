@@ -5,6 +5,11 @@ import type { DiagramToCodeOptions } from "../editor/magic-frame.ts";
 import type { TextToDiagramOptions } from "../ttd/types.ts";
 import type { CommandPaletteItem } from "./command-palette.tsx";
 
+export interface OpenSidebarRef {
+  name: string;
+  tab?: string;
+}
+
 /** The props a `<DefaultSidebar>` child passes, Excalidraw's. */
 export interface DefaultSidebarProps {
   /** More `Sidebar.Tab`s, after the search and the library. */
@@ -15,7 +20,33 @@ export interface DefaultSidebarProps {
   /** Hears the dock button; `false` takes the button away. */
   onDock?: ((docked: boolean) => void) | false;
   /** Hears the sidebar open, close or change tab. */
-  onStateChange?: (state: { name: string; tab?: string } | null) => void;
+  onStateChange?: (state: OpenSidebarRef | null) => void;
+}
+
+export interface MainMenuSlot {
+  children?: Child;
+  onSelect?: (event: Event) => void;
+}
+
+export interface ChildrenProps {
+  children?: Child;
+}
+
+export interface SidebarTriggerSlot {
+  icon?: Child;
+  title?: string;
+  children?: Child;
+  onToggle?: (open: boolean) => void;
+  class?: string;
+}
+
+export interface TtdTriggerSlot {
+  children?: Child;
+  icon?: Child;
+}
+
+export interface CommandPaletteSlot {
+  customCommandPaletteItems?: CommandPaletteItem[];
 }
 
 /**
@@ -23,22 +54,16 @@ export interface DefaultSidebarProps {
  * editor's UI, by where they go: Excalidraw's tunnels.
  */
 export interface HostSlots {
-  mainMenu: { children?: Child; onSelect?: (event: Event) => void };
-  welcomeScreen: { children?: Child };
-  footer: { children?: Child };
+  mainMenu: MainMenuSlot;
+  welcomeScreen: ChildrenProps;
+  footer: ChildrenProps;
   defaultSidebar: DefaultSidebarProps;
-  defaultSidebarTrigger: {
-    icon?: Child;
-    title?: string;
-    children?: Child;
-    onToggle?: (open: boolean) => void;
-    class?: string;
-  };
-  defaultSidebarTabTriggers: { children?: Child };
+  defaultSidebarTrigger: SidebarTriggerSlot;
+  defaultSidebarTabTriggers: ChildrenProps;
   ttdDialog: TextToDiagramOptions;
-  ttdDialogTrigger: { children?: Child; icon?: Child };
+  ttdDialogTrigger: TtdTriggerSlot;
   diagramToCode: DiagramToCodeOptions;
-  commandPalette: { customCommandPaletteItems?: CommandPaletteItem[] };
+  commandPalette: CommandPaletteSlot;
 }
 
 export type HostSlotName = keyof HostSlots;
@@ -57,14 +82,18 @@ interface SlotMarker<K extends HostSlotName = HostSlotName> {
 export const HostChildrenContext = createContext(false);
 
 /** Whether the component is a direct child of `<DiagramEditor>`, to hand over rather than render. */
-export const isHostChild = (): boolean => getContext(HostChildrenContext);
+export function isHostChild(): boolean {
+  return getContext(HostChildrenContext);
+}
 
 /** What a host child hands over to the UI. */
-export const hostSlot = <K extends HostSlotName>(name: K, props: HostSlots[K]): JSX.Element =>
-  ({ [SLOT]: name, props }) satisfies SlotMarker<K> as unknown as JSX.Element;
+export function hostSlot<K extends HostSlotName>(name: K, props: HostSlots[K]): JSX.Element {
+  return { [SLOT]: name, props } satisfies SlotMarker<K> as unknown as JSX.Element;
+}
 
-const isSlotMarker = (value: unknown): value is SlotMarker =>
-  typeof value === "object" && value !== null && SLOT in value;
+function isSlotMarker(value: unknown): value is SlotMarker {
+  return typeof value === "object" && value !== null && SLOT in value;
+}
 
 /** The children, sorted into what goes into the UI's places and what renders as it is. */
 export interface HostChildren {
@@ -72,7 +101,7 @@ export interface HostChildren {
   rest: unknown[];
 }
 
-export const collectHostChildren = (children: readonly unknown[]): HostChildren => {
+export function collectHostChildren(children: readonly unknown[]): HostChildren {
   const slots: Partial<Record<HostSlotName, unknown>> = {};
   const rest: unknown[] = [];
   for (const child of children) {
@@ -84,4 +113,4 @@ export const collectHostChildren = (children: readonly unknown[]): HostChildren 
     }
   }
   return { slots: slots as Partial<HostSlots>, rest };
-};
+}

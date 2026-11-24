@@ -39,6 +39,13 @@ export interface TopPicksDnD<T> {
   onPointerDown: (value: T, from?: number | null) => (event: PointerEvent) => void;
 }
 
+export interface CreateTopPicksDnDOptions<T> {
+  enabled: () => boolean;
+  picks: () => readonly T[];
+  onChange: (picks: T[]) => void;
+  equals?: (a: T, b: T) => boolean;
+}
+
 /**
  * Pinning values to a picker's quick picks by dragging, Excalidraw's
  * `useTopPicksDnD`: a value dropped on a slot of the strip replaces it, a
@@ -46,17 +53,12 @@ export interface TopPicksDnD<T> {
  * is not pinned twice, and Escape gives up. A ghost of what is dragged follows
  * the pointer; the press that started the drag is no click.
  */
-export function createTopPicksDnD<T>(options: {
-  enabled: () => boolean;
-  picks: () => readonly T[];
-  onChange: (picks: T[]) => void;
-  equals?: (a: T, b: T) => boolean;
-}): TopPicksDnD<T> {
+export function createTopPicksDnD<T>(options: CreateTopPicksDnDOptions<T>): TopPicksDnD<T> {
   const [dragging, setDragging] = createSignal<TopPicksDragState<T> | null>(null);
   let strip: HTMLElement | null = null;
   const equals = options.equals ?? ((a: T, b: T) => a === b);
 
-  const slotAt = (x: number, y: number): number | null => {
+  function slotAt(x: number, y: number): number | null {
     if (!strip) return null;
     for (const slot of strip.querySelectorAll<HTMLElement>("[data-top-pick-index]")) {
       const rect = slot.getBoundingClientRect();
@@ -65,9 +67,9 @@ export function createTopPicksDnD<T>(options: {
       }
     }
     return null;
-  };
+  }
 
-  const drop = (state: TopPicksDragState<T>): void => {
+  function drop(state: TopPicksDragState<T>): void {
     const { overIndex, from, value, duplicateIndex } = state;
     if (overIndex === null) return;
     const picks = [...options.picks()];
@@ -81,11 +83,10 @@ export function createTopPicksDnD<T>(options: {
       picks[overIndex] = value;
     }
     options.onChange(picks);
-  };
+  }
 
-  const onPointerDown =
-    (value: T, from: number | null = null) =>
-    (event: PointerEvent): void => {
+  function onPointerDown(value: T, from: number | null = null) {
+    return (event: PointerEvent): void => {
       if (!options.enabled() || event.button !== 0 || !event.isPrimary) return;
       const source = event.currentTarget as HTMLElement;
       const document = source.ownerDocument;
@@ -94,12 +95,12 @@ export function createTopPicksDnD<T>(options: {
       let ghost: HTMLElement | null = null;
       let state: TopPicksDragState<T> | null = null;
 
-      const place = (x: number, y: number): void => {
+      function place(x: number, y: number): void {
         if (!ghost) return;
         ghost.style.left = `${x}px`;
         ghost.style.top = `${y}px`;
-      };
-      const update = (x: number, y: number): void => {
+      }
+      function update(x: number, y: number): void {
         if (!state) return;
         const overIndex = slotAt(x, y);
         const pinnedAt = options.picks().findIndex((pick) => equals(pick, value));
@@ -113,8 +114,8 @@ export function createTopPicksDnD<T>(options: {
         };
         setDragging(state);
         place(x, y);
-      };
-      const activate = (x: number, y: number): void => {
+      }
+      function activate(x: number, y: number): void {
         ghost = source.cloneNode(true) as HTMLElement;
         ghost.removeAttribute("id");
         ghost.setAttribute("aria-hidden", "true");
@@ -123,8 +124,8 @@ export function createTopPicksDnD<T>(options: {
         document.body.append(ghost);
         state = { value, from, overIndex: null, duplicateIndex: null };
         update(x, y);
-      };
-      const finish = (): void => {
+      }
+      function finish(): void {
         view.removeEventListener("pointermove", onMove, true);
         view.removeEventListener("pointerup", onUp, true);
         view.removeEventListener("pointercancel", onCancel, true);
@@ -133,8 +134,8 @@ export function createTopPicksDnD<T>(options: {
         ghost = null;
         state = null;
         setDragging(null);
-      };
-      const onMove = (moveEvent: PointerEvent): void => {
+      }
+      function onMove(moveEvent: PointerEvent): void {
         if (moveEvent.pointerId !== event.pointerId) return;
         if (state) {
           moveEvent.preventDefault();
@@ -146,35 +147,38 @@ export function createTopPicksDnD<T>(options: {
         if (distance >= DRAG_THRESHOLD && held >= DRAG_TIME_THRESHOLD_MS) {
           activate(moveEvent.clientX, moveEvent.clientY);
         }
-      };
-      const onUp = (upEvent: PointerEvent): void => {
+      }
+      function onUp(upEvent: PointerEvent): void {
         if (upEvent.pointerId !== event.pointerId) return;
         const finished = state;
         if (finished) {
           // the press was a drag: a click that follows at once picks nothing
-          const suppress = (click: MouseEvent): void => {
+          function suppress(click: MouseEvent): void {
             click.preventDefault();
             click.stopPropagation();
-          };
+          }
           view.addEventListener("click", suppress, { capture: true, once: true });
           setTimeout(() => view.removeEventListener("click", suppress, true), 0);
           drop({ ...finished, overIndex: slotAt(upEvent.clientX, upEvent.clientY) });
         }
         finish();
-      };
-      const onCancel = (): void => finish();
-      const onKey = (keyEvent: KeyboardEvent): void => {
+      }
+      function onCancel(): void {
+        return finish();
+      }
+      function onKey(keyEvent: KeyboardEvent): void {
         if (keyEvent.key === "Escape" && state) {
           keyEvent.preventDefault();
           keyEvent.stopPropagation();
           finish();
         }
-      };
+      }
       view.addEventListener("pointermove", onMove, true);
       view.addEventListener("pointerup", onUp, true);
       view.addEventListener("pointercancel", onCancel, true);
       view.addEventListener("keydown", onKey, true);
     };
+  }
 
   return {
     dragging,
@@ -197,8 +201,14 @@ const tip = d(type.meta, {
   },
 });
 
+export interface TopPicksTipProps {
+  tip: string;
+  resetLabel: string;
+  onReset?: () => void;
+}
+
 /** The hint under a picker whose quick picks can be pinned, with a reset while they are. */
-export function TopPicksTip(props: { tip: string; resetLabel: string; onReset?: () => void }) {
+export function TopPicksTip(props: TopPicksTipProps) {
   return (
     <div class={tip} data-testid="top-picks-tip">
       {props.tip}
@@ -218,14 +228,16 @@ export function TopPicksTip(props: { tip: string; resetLabel: string; onReset?: 
   );
 }
 
-/** The quick picks with a context menu resetting them to the defaults, when they can be customised. */
-export function TopPicksMenu(props: {
+export interface TopPicksMenuProps {
   children: Child;
   customizable: boolean;
   customized: boolean;
   resetLabel: string;
   onReset: () => void;
-}) {
+}
+
+/** The quick picks with a context menu resetting them to the defaults, when they can be customised. */
+export function TopPicksMenu(props: TopPicksMenuProps) {
   return (
     <Show when={props.customizable} fallback={props.children}>
       <ContextMenu>

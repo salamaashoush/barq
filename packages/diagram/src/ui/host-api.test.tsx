@@ -35,13 +35,21 @@ import { mountEditor, select, settle, setupUITests } from "./test-ui.tsx";
 
 setupUITests();
 
-const key = (target: Element, init: KeyboardEventInit) =>
-  target.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }));
+function key(target: Element, init: KeyboardEventInit) {
+  return target.dispatchEvent(
+    new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }),
+  );
+}
+
+interface MountedHost {
+  excalidrawAPI: DiagramEditorApi;
+  container: HTMLElement;
+}
 
 describe("the lifecycle", () => {
   test("onMount, onExcalidrawAPI, onInitialize, onIncrement, then onUnmount and a null API", async () => {
     const heard: string[] = [];
-    let mounted: { excalidrawAPI: DiagramEditorApi; container: HTMLElement } | null = null;
+    let mounted: MountedHost | null = null;
     const [shown, setShown] = createSignal(true);
     render(() => (
       <Show when={shown()}>

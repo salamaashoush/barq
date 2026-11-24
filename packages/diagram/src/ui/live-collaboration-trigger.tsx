@@ -47,10 +47,15 @@ export interface LiveCollaborationTriggerProps {
  */
 export function LiveCollaborationTrigger(props: LiveCollaborationTriggerProps) {
   const ui = useDiagramUI();
-  const iconOnly = () =>
-    ui.store.editorInterface().formFactor !== "desktop" ||
-    ui.store.state("width") < MQ_MIN_WIDTH_DESKTOP;
-  const collaborators = () => ui.store.state("collaborators").size;
+  function iconOnly() {
+    return (
+      ui.store.editorInterface().formFactor !== "desktop" ||
+      ui.store.state("width") < MQ_MIN_WIDTH_DESKTOP
+    );
+  }
+  function collaborators() {
+    return ui.store.state("collaborators").size;
+  }
   return (
     <Button
       size={iconOnly() ? "icon" : "default"}

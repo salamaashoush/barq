@@ -48,18 +48,21 @@ afterEach(() => {
   coarse = false;
 });
 
-const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+function frame() {
+  return new Promise((resolve) => requestAnimationFrame(resolve));
+}
 
 /** The work a library update and its drawings start, settled. */
-const drain = async () => {
+async function drain() {
   for (let round = 0; round < 4; round++) {
     await new Promise((resolve) => setTimeout(resolve, 0));
     await settle();
   }
-};
+}
 
-const element = (api: DiagramEditorApi, id: string) =>
-  api.getSceneElements().find((each) => each.id === id)!;
+function element(api: DiagramEditorApi, id: string) {
+  return api.getSceneElements().find((each) => each.id === id)!;
+}
 
 describe("phone", () => {
   test("a narrow, touched editor puts the toolbar at the bottom and its targets at a finger's size", async () => {
@@ -181,16 +184,35 @@ describe("phone", () => {
   });
 });
 
+interface FreedrawVariability {
+  strokeOptions?: VariabilityOption;
+}
+
+interface VariabilityOption {
+  variability?: string;
+}
+
+interface ElbowFlag {
+  elbowed?: boolean;
+}
+
+interface FontSizeField {
+  fontSize?: number;
+}
+
 describe("tablet", () => {
-  const tablet = async (elements: unknown[]) => {
+  async function tablet(elements: unknown[]) {
     size = { width: 1024, height: 768 };
     return mountEditor({ height: 768, initialData: { elements: elements as never } });
-  };
-  const column = () => screen.getByTestId("compact-properties");
-  const buttons = () =>
-    [...column().querySelectorAll<HTMLElement>("button")].map(
+  }
+  function column() {
+    return screen.getByTestId("compact-properties");
+  }
+  function buttons() {
+    return [...column().querySelectorAll<HTMLElement>("button")].map(
       (button) => button.getAttribute("data-testid") ?? "",
     );
+  }
 
   test("the properties are a column of buttons at the top start, by what the selection takes", async () => {
     const { api } = await tablet([
@@ -253,9 +275,9 @@ describe("tablet", () => {
 
     await select(api, "F");
     expect(buttons()).toContain("compact-pressure");
-    const variability = () =>
-      (element(api, "F") as { strokeOptions?: { variability?: string } }).strokeOptions
-        ?.variability;
+    function variability() {
+      return (element(api, "F") as FreedrawVariability).strokeOptions?.variability;
+    }
     const before = variability();
     await user.click(screen.getByTestId("compact-pressure"));
     await settle();
@@ -312,7 +334,7 @@ describe("tablet", () => {
     expect(within(popover).getByRole("group", { name: "Arrowheads" })).toBeDefined();
     await user.click(within(popover).getByRole("radio", { name: "Elbow arrow" }));
     await settle();
-    expect((element(api, "L") as { elbowed?: boolean }).elbowed).toBe(true);
+    expect((element(api, "L") as ElbowFlag).elbowed).toBe(true);
 
     await select(api, "T");
     await user.click(screen.getByTestId("compact-textProperties"));
@@ -322,7 +344,7 @@ describe("tablet", () => {
     popover = screen.getByTestId("compactTextProperties-popover");
     await user.click(within(popover).getByRole("radio", { name: "Large" }));
     await settle();
-    expect((element(api, "T") as { fontSize?: number }).fontSize).toBe(28);
+    expect((element(api, "T") as FontSizeField).fontSize).toBe(28);
     expect(within(popover).getByTestId("text-align")).toBeDefined();
   });
 

@@ -86,7 +86,9 @@ export function EditorUI(props: EditorUIProps) {
 /** The laser pointer beside the toolbar while collaborating, Excalidraw's `LaserPointerButton`. */
 function LaserPointerButton() {
   const ui = useDiagramUI();
-  const active = () => ui.store.state("activeTool").type === "laser";
+  function active() {
+    return ui.store.state("activeTool").type === "laser";
+  }
   return (
     <div class={island}>
       <button
@@ -108,42 +110,66 @@ function LaserPointerButton() {
   );
 }
 
+interface ChildrenSlot {
+  children?: unknown;
+}
+
 function Layout() {
   const value = useDiagramUI();
-  const defaults = () => value.defaultUIEnabled();
-  const slots = () => value.host().slots;
+  function defaults() {
+    return value.defaultUIEnabled();
+  }
+  function slots() {
+    return value.host().slots;
+  }
   const locale = provideLocale(() => value.langCode());
-  const zen = () => value.store.state("zenModeEnabled");
-  const viewMode = () => value.store.state("viewModeEnabled");
-  const docked = () => {
+  function zen() {
+    return value.store.state("zenModeEnabled");
+  }
+  function viewMode() {
+    return value.store.state("viewModeEnabled");
+  }
+  function docked() {
     const name = value.dockedSidebar();
     return name !== null && value.store.state("openSidebar")?.name === name;
-  };
-  const editorInterface = () => value.store.editorInterface();
-  const phone = () => editorInterface().formFactor === "phone";
-  const collaborating = () => value.store.state("collaborators").size > 0;
-  const statusFrame = () => value.host().viewportStatusFrame;
-  const compact = () => editorInterface().formFactor === "tablet";
-  const scrollBackButton = () => (
-    <Show
-      when={
-        value.uiControlEnabled("scrollBackToContent") &&
-        value.store.state("scrolledOutside") &&
-        !zen()
-      }
-    >
-      <Button
-        variant="secondary"
-        onPress={() => {
-          const editor = value.store.editor;
-          editor?.batch(() => editor.scrollToContent());
-        }}
-        data-testid="scroll-back-to-content"
+  }
+  function editorInterface() {
+    return value.store.editorInterface();
+  }
+  function phone() {
+    return editorInterface().formFactor === "phone";
+  }
+  function collaborating() {
+    return value.store.state("collaborators").size > 0;
+  }
+  function statusFrame() {
+    return value.host().viewportStatusFrame;
+  }
+  function compact() {
+    return editorInterface().formFactor === "tablet";
+  }
+  function scrollBackButton() {
+    return (
+      <Show
+        when={
+          value.uiControlEnabled("scrollBackToContent") &&
+          value.store.state("scrolledOutside") &&
+          !zen()
+        }
       >
-        {value.t("buttons.scrollBackToContent")}
-      </Button>
-    </Show>
-  );
+        <Button
+          variant="secondary"
+          onPress={() => {
+            const editor = value.store.editor;
+            editor?.batch(() => editor.scrollToContent());
+          }}
+          data-testid="scroll-back-to-content"
+        >
+          {value.t("buttons.scrollBackToContent")}
+        </Button>
+      </Show>
+    );
+  }
   return (
     <>
       <div
@@ -157,9 +183,7 @@ function Layout() {
         data-testid="editor-ui"
       >
         <Show when={slots().welcomeScreen} keyed>
-          {(welcome: { children?: unknown }) => (
-            <WelcomeScreenLayer content={welcome.children as never} />
-          )}
+          {(welcome: ChildrenSlot) => <WelcomeScreenLayer content={welcome.children as never} />}
         </Show>
         <Show when={!phone()} fallback={<PhoneChrome scrollBack={scrollBackButton()} />}>
           <div class={topStart}>
@@ -228,7 +252,7 @@ function Layout() {
               </div>
             </div>
             <Show when={slots().footer} keyed>
-              {(footer: { children?: unknown }) => (
+              {(footer: ChildrenSlot) => (
                 <div class={bottomCenter} data-testid="footer-center">
                   {footer.children as never}
                 </div>

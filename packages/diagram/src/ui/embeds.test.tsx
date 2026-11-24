@@ -19,15 +19,28 @@ const YOUTUBE_EMBED = "https://www.youtube.com/embed/dQw4w9WgXcQ?enablejsapi=1";
 const SANDBOX =
   "allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation allow-downloads";
 
-const embeddable = (id: string, link: string | null, extra: Record<string, unknown> = {}) =>
-  ({ type: "embeddable", id, x: 100, y: 100, width: 300, height: 150, link, ...extra }) as never;
+function embeddable(id: string, link: string | null, extra: Record<string, unknown> = {}) {
+  return {
+    type: "embeddable",
+    id,
+    x: 100,
+    y: 100,
+    width: 300,
+    height: 150,
+    link,
+    ...extra,
+  } as never;
+}
 
-const key = (target: Element, init: KeyboardEventInit) =>
-  target.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }));
+function key(target: Element, init: KeyboardEventInit) {
+  return target.dispatchEvent(
+    new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }),
+  );
+}
 
 /** A hover, without a button pressed. */
-const hover = (target: Element, x: number, y: number) =>
-  target.dispatchEvent(
+function hover(target: Element, x: number, y: number) {
+  return target.dispatchEvent(
     new PointerEvent("pointermove", {
       pointerId: 1,
       pointerType: "mouse",
@@ -37,20 +50,25 @@ const hover = (target: Element, x: number, y: number) =>
       bubbles: true,
     }),
   );
+}
 
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-const embedOf = (id: string) =>
-  document.querySelector<HTMLElement>(`[data-testid="embeddable"][data-embed-id="${id}"]`);
+function embedOf(id: string) {
+  return document.querySelector<HTMLElement>(`[data-testid="embeddable"][data-embed-id="${id}"]`);
+}
 
 /** Draws on the next frame, as the browser would. */
-const frame = async () => {
+async function frame() {
   await wait(40);
   await settle();
-};
+}
 
-const element = (api: DiagramEditorApi, id: string) =>
-  api.getSceneElements().find((each) => each.id === id)!;
+function element(api: DiagramEditorApi, id: string) {
+  return api.getSceneElements().find((each) => each.id === id)!;
+}
 
 describe("the embeddable tool", () => {
   test("the toolbar's entry draws one, whose link editor embeds a YouTube video", async () => {

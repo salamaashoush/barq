@@ -59,7 +59,9 @@ export function ShapeSwitchPanel() {
   const ui = useDiagramUI();
   const t = ui.t;
   const store = ui.store;
-  const open = () => store.state("openPopup") === "convertElementType";
+  function open() {
+    return store.state("openPopup") === "convertElementType";
+  }
 
   const state = createMemo(() => {
     if (!open()) return null;

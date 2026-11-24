@@ -11,8 +11,11 @@ import { mountEditor, settle, setupUITests } from "./test-ui.tsx";
 
 setupUITests();
 
-const key = (target: Element, init: KeyboardEventInit) =>
-  target.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }));
+function key(target: Element, init: KeyboardEventInit) {
+  return target.dispatchEvent(
+    new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }),
+  );
+}
 
 const ctrl = navigator.platform.includes("Mac") ? { metaKey: true } : { ctrlKey: true };
 

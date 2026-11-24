@@ -29,9 +29,11 @@ const hint = d(pinned, acrossWidth, layout.column, gap[0.5], centredText, type.m
 });
 
 /** Excalidraw's `getHints`: what the tool or the selection does next, with its keys. */
-const getHints = (editor: DiagramEditor, t: Translate): readonly string[] => {
+function getHints(editor: DiagramEditor, t: Translate): readonly string[] {
   const state = editor.state;
-  const key = (...keys: string[]) => keys.map((each) => getShortcutKey(each, t)).join(" + ");
+  function key(...keys: string[]) {
+    return keys.map((each) => getShortcutKey(each, t)).join(" + ");
+  }
   const tool = state.activeTool.type;
   const selected = editor.scene.getSelectedElements(state);
   const [first] = selected;
@@ -148,7 +150,7 @@ const getHints = (editor: DiagramEditor, t: Translate): readonly string[] => {
     }
   }
   return [];
-};
+}
 
 /** The hint under the toolbar, Excalidraw's `HintViewer`, which the hints toggle turns off. */
 export function HintViewer() {

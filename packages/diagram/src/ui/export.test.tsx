@@ -23,7 +23,7 @@ afterEach(() => {
   delete view.showSaveFilePicker;
 });
 
-const memoryHandle = (name: string, initial: Blob[] = []) => {
+function memoryHandle(name: string, initial: Blob[] = []) {
   const written: Blob[] = [...initial];
   const handle = {
     kind: "file",
@@ -39,9 +39,9 @@ const memoryHandle = (name: string, initial: Blob[] = []) => {
     }),
   };
   return handle as typeof handle & FileSystemFileHandle;
-};
+}
 
-const usePickers = (save: ReturnType<typeof memoryHandle>, open = save) => {
+function usePickers(save: ReturnType<typeof memoryHandle>, open = save) {
   const calls = { save: 0, open: 0 };
   view.showSaveFilePicker = async () => {
     calls.save++;
@@ -52,30 +52,35 @@ const usePickers = (save: ReturnType<typeof memoryHandle>, open = save) => {
     return [open];
   };
   return calls;
-};
+}
 
-const key = (target: Element, init: KeyboardEventInit) =>
-  target.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }));
+function key(target: Element, init: KeyboardEventInit) {
+  return target.dispatchEvent(
+    new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }),
+  );
+}
 
 const ctrl = navigator.platform.includes("Mac") ? { metaKey: true } : { ctrlKey: true };
 
 /** Settles until `check` holds: a save or a load resolves over several tasks. */
-const until = async (check: () => boolean) => {
+async function until(check: () => boolean) {
   for (let round = 0; round < 40 && !check(); round++) {
     await settle();
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
   expect(check()).toBe(true);
-};
+}
 
-const openMenuItem = async (name: RegExp) => {
+async function openMenuItem(name: RegExp) {
   await user.click(screen.getByRole("button", { name: "Menu" }));
   await settle();
   await user.click(screen.getByRole("menuitem", { name }));
   await settle();
-};
+}
 
-const ids = (api: DiagramEditorApi) => api.getSceneElements().map((element) => element.id);
+function ids(api: DiagramEditorApi) {
+  return api.getSceneElements().map((element) => element.id);
+}
 
 describe("image export", () => {
   test("Ctrl+Shift+E previews the scene, its settings change the state, PNG saves it", async () => {
@@ -142,6 +147,10 @@ describe("image export", () => {
   });
 });
 
+interface IdRef {
+  id: string;
+}
+
 describe("save and load", () => {
   test("the export dialog saves to a file, and Ctrl+S saves to it again", async () => {
     const handle = memoryHandle("drawing.excalidraw");
@@ -162,7 +171,7 @@ describe("save and load", () => {
     api.updateScene({ elements: [...api.getSceneElements(), rectangle("B", 300, 100)] });
     await settle();
     key(region, { key: "s", code: "KeyS", ...ctrl });
-    let saved = { elements: [] as { id: string }[] };
+    let saved = { elements: [] as IdRef[] };
     for (let round = 0; round < 40 && saved.elements.length < 2; round++) {
       await settle();
       saved = JSON.parse(await handle.written[0]!.text());

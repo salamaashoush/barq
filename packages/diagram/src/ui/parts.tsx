@@ -38,13 +38,15 @@ export function Button(props: ButtonProps) {
   );
 }
 
-/** Excalidraw's `Ellipsify`: one line, cut with an ellipsis where it does not fit. */
-export function Ellipsify(props: {
+export interface EllipsifyProps {
   children?: Child;
   class?: string;
   title?: string;
   "data-testid"?: string;
-}) {
+}
+
+/** Excalidraw's `Ellipsify`: one line, cut with an ellipsis where it does not fit. */
+export function Ellipsify(props: EllipsifyProps) {
   return (
     <span
       class={props.class ? `${truncate} ${props.class}` : truncate}

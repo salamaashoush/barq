@@ -96,24 +96,26 @@ export function useDiagramUI(): DiagramUI {
   return ui;
 }
 
-/** The context value for a store and a translator. */
-export const createDiagramUI = (options: {
+export interface DiagramUIOptions {
   store: EditorStore;
   t: Translate;
   langCode: () => string;
   rtl: () => boolean;
   host: () => UIHost;
   hostChildren?: () => readonly unknown[];
-}): DiagramUI => {
+}
+
+/** The context value for a store and a translator. */
+export function createDiagramUI(options: DiagramUIOptions): DiagramUI {
   const { store, t } = options;
   const [dockedSidebar, setDocked] = createSignal<string | null>(null);
-  const resolveLabel = (label: ActionLabel | undefined): string => {
+  function resolveLabel(label: ActionLabel | undefined): string {
     if (label === undefined) return "";
     if (typeof label === "string") return t(label);
     const editor = store.editor;
     if (editor === null) return "";
     return t(label(editor.scene.getElementsIncludingDeleted(), editor.state, editor));
-  };
+  }
   return {
     ...options,
     run: (action, value = null) => {
@@ -155,4 +157,4 @@ export const createDiagramUI = (options: {
     },
     hostChildren: options.hostChildren ?? (() => []),
   };
-};
+}

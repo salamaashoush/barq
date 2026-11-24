@@ -80,6 +80,13 @@ const notice = d(layout.centre, layout.fill, centredText, type.sm, fg.danger, {
 const IFRAME_ALLOW =
   "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
 
+export interface EmbedLayerProps {
+  editor: DiagramEditor | null;
+  embeds: readonly Embed[];
+  t: Translate;
+  renderEmbeddable?: RenderEmbeddable;
+}
+
 /**
  * The embeds over the canvas, Excalidraw's `renderEmbeddables`: an iframe
  * for each embed the editor lists, placed by the editor as the viewport and
@@ -87,12 +94,7 @@ const IFRAME_ALLOW =
  * active one takes the pointer. A generated page that is still streaming
  * says so, and a failed one shows its error.
  */
-export function EmbedLayer(props: {
-  editor: DiagramEditor | null;
-  embeds: readonly Embed[];
-  t: Translate;
-  renderEmbeddable?: RenderEmbeddable;
-}) {
+export function EmbedLayer(props: EmbedLayerProps) {
   return (
     <For each={props.embeds} keyed={(embed: Embed) => embed.id}>
       {(embed: () => Embed) => {
@@ -104,7 +106,7 @@ export function EmbedLayer(props: {
         let scheduled = false;
         let disposed = false;
         // attached once its elements are all there, and again as the iframe comes and goes
-        const attach = (): void => {
+        function attach(): void {
           if (scheduled) return;
           scheduled = true;
           queueMicrotask(() => {
@@ -116,7 +118,7 @@ export function EmbedLayer(props: {
               detach = editor.attachEmbed(id, { container, content: box, iframe: frame });
             }
           });
-        };
+        }
         onCleanup(() => {
           disposed = true;
           detach?.();
@@ -128,10 +130,14 @@ export function EmbedLayer(props: {
           if (element.type !== "embeddable" || !props.renderEmbeddable || !editor) return null;
           return props.renderEmbeddable(element, editor.state) ?? null;
         });
-        const status = () =>
-          embed().element.type === "iframe" ? (embed().generation?.status ?? "error") : undefined;
-        const error = () =>
-          embed().element.type === "iframe" ? getGenerationError(embed().generation) : null;
+        function status() {
+          return embed().element.type === "iframe"
+            ? (embed().generation?.status ?? "error")
+            : undefined;
+        }
+        function error() {
+          return embed().element.type === "iframe" ? getGenerationError(embed().generation) : null;
+        }
 
         return (
           <div
@@ -216,7 +222,7 @@ interface Buttons {
 }
 
 /** The buttons beside a selected magic frame or generated page, read from the editor. */
-const readButtons = (editor: DiagramEditor, offerGenerate: boolean): Buttons | null => {
+function readButtons(editor: DiagramEditor, offerGenerate: boolean): Buttons | null {
   const { state } = editor;
   const selected = Object.keys(state.selectedElementIds);
   const [only] = selected;
@@ -239,7 +245,7 @@ const readButtons = (editor: DiagramEditor, offerGenerate: boolean): Buttons | n
     left: x - state.offsetLeft,
     top: y - state.offsetTop,
   };
-};
+}
 
 /**
  * Excalidraw's canvas buttons of the magic frame: "Convert to code" beside a
@@ -256,7 +262,7 @@ export function MagicFrameButtons() {
       if (!editor) return () => {};
       let scheduled = false;
       // written outside whatever commit announced the change
-      const update = (): void => {
+      const update: () => void = () => {
         if (scheduled) return;
         scheduled = true;
         queueMicrotask(() => {
@@ -271,14 +277,14 @@ export function MagicFrameButtons() {
     },
   );
 
-  const generate = (current: Buttons): void => {
+  function generate(current: Buttons): void {
     void ui.store.editor?.magicFrame.generate(
       current.element as NonDeleted<ExcalidrawMagicFrameElement>,
       "button",
     );
-  };
+  }
 
-  const copySource = (current: Buttons): void => {
+  function copySource(current: Buttons): void {
     const editor = ui.store.editor;
     const generation = editor?.magicFrame.getGeneration(
       current.element as NonDeleted<ExcalidrawIframeElement>,
@@ -294,7 +300,7 @@ export function MagicFrameButtons() {
         }),
       ),
     );
-  };
+  }
 
   return (
     <Show when={buttons()}>

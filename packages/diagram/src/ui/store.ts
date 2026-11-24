@@ -26,6 +26,11 @@ const DESKTOP_INTERFACE: EditorInterface = {
   isLandscape: true,
 };
 
+interface HistoryFlags {
+  canUndo: boolean;
+  canRedo: boolean;
+}
+
 /**
  * The editor's state for its UI, as signals. The editor changes its state
  * synchronously and commits once per input event; this reads it after each
@@ -39,7 +44,7 @@ export class EditorStore {
   private readonly readers = new Map<keyof AppState, Accessor<unknown>>();
   private readonly setSelection: (value: SelectionSnapshot) => void;
   private readonly setGeometry: (value: number) => void;
-  private readonly setHistory: (value: { canUndo: boolean; canRedo: boolean }) => void;
+  private readonly setHistory: (value: HistoryFlags) => void;
   private readonly setSceneEmpty: (value: boolean) => void;
   private readonly setEditorInterface: (value: EditorInterface) => void;
   private scheduled = false;
@@ -50,7 +55,7 @@ export class EditorStore {
   public readonly selection: Accessor<SelectionSnapshot>;
   /** Changes on every commit while the stats panel is open, so it follows a drag. */
   public readonly geometry: Accessor<number>;
-  public readonly history: Accessor<{ canUndo: boolean; canRedo: boolean }>;
+  public readonly history: Accessor<HistoryFlags>;
   /** Whether the scene has never had an element, deleted ones included: the welcome screen's cue. */
   public readonly sceneEmpty: Accessor<boolean>;
   /** The layout the editor's size asks for: a phone's, a tablet's or a desktop's, and whether it is touched. */

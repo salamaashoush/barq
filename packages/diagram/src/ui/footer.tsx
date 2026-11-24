@@ -34,9 +34,15 @@ export function FooterStart() {
     const value = ui.store.state("zoom").value;
     return previous !== undefined && ui.store.state("shouldCacheIgnoreZoom") ? previous : value;
   });
-  const history = () => ui.store.history();
-  const level = () => `${(zoom() * 100).toFixed(0)}%`;
-  const minimapOffered = () => ui.isEnabled(actionToggleMinimap);
+  function history() {
+    return ui.store.history();
+  }
+  function level() {
+    return `${(zoom() * 100).toFixed(0)}%`;
+  }
+  function minimapOffered() {
+    return ui.isEnabled(actionToggleMinimap);
+  }
 
   return (
     <>
@@ -142,11 +148,15 @@ export function FooterEnd() {
   );
 }
 
+export interface ChildrenProps {
+  children?: Child;
+}
+
 /**
  * Excalidraw's `Footer`, given to `<DiagramEditor>` as a child: what it holds
  * shows in the middle of the footer, between zoom and help.
  */
-export function Footer(props: { children?: Child }): JSX.Element {
+export function Footer(props: ChildrenProps): JSX.Element {
   return isHostChild() ? (
     hostSlot("footer", {
       get children() {

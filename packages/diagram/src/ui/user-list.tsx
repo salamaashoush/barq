@@ -69,12 +69,15 @@ const SHOWN_KEYS = [
   "isCurrentUser",
 ] as const;
 
-const sameList = (a: readonly ListedCollaborator[], b: readonly ListedCollaborator[]): boolean =>
-  a.length === b.length &&
-  a.every((each, index) => {
-    const other = b[index];
-    return other !== undefined && SHOWN_KEYS.every((key) => each[key] === other[key]);
-  });
+function sameList(a: readonly ListedCollaborator[], b: readonly ListedCollaborator[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((each, index) => {
+      const other = b[index];
+      return other !== undefined && SHOWN_KEYS.every((key) => each[key] === other[key]);
+    })
+  );
+}
 
 const wrapper = d(layout.row, layout.growAuto, layout.minZero, layout.end, noPointer);
 
@@ -178,15 +181,19 @@ const mobileAvatars = d(layout.row, layout.wrap, gap[1.5], {
   "& > [data-current-user]": { order: "-1" },
 });
 
-/** The collaborator's picture, or their initial on their colour. */
-function CollaboratorPicture(props: {
+interface CollaboratorPictureProps {
   socketId: SocketId;
   collaborator: Collaborator;
   size?: "default" | "sm";
   followed: boolean;
-}) {
+}
+
+/** The collaborator's picture, or their initial on their colour. */
+function CollaboratorPicture(props: CollaboratorPictureProps) {
   const [failed, setFailed] = createSignal(false);
-  const initial = () => getNameInitial(props.collaborator.username || "");
+  function initial() {
+    return getNameInitial(props.collaborator.username || "");
+  }
   return (
     <Avatar
       size={props.size ?? "default"}
@@ -217,8 +224,12 @@ function CollaboratorPicture(props: {
   );
 }
 
+interface CallStatusProps {
+  collaborator: Collaborator;
+}
+
 /** In a call: speaking, muted, or the microphone. */
-function CallStatus(props: { collaborator: Collaborator }) {
+function CallStatus(props: CallStatusProps) {
   const ui = useDiagramUI();
   return (
     <Show when={props.collaborator.isInCall}>
@@ -257,20 +268,26 @@ function CallStatus(props: { collaborator: Collaborator }) {
   );
 }
 
+interface CollaboratorEntryProps {
+  socketId: SocketId;
+  collaborator: Collaborator;
+  withName: boolean;
+  isBeingFollowed: boolean;
+}
+
 /**
  * A collaborator, Excalidraw's `actionGoToCollaborator` panel: an avatar on
  * its own, or a row with the name and status in the list; pressing it follows
  * them, or stops following them.
  */
-function CollaboratorEntry(props: {
-  socketId: SocketId;
-  collaborator: Collaborator;
-  withName: boolean;
-  isBeingFollowed: boolean;
-}) {
+function CollaboratorEntry(props: CollaboratorEntryProps) {
   const ui = useDiagramUI();
-  const follow = () => ui.run(actionGoToCollaborator, props.collaborator);
-  const current = () => props.collaborator.isCurrentUser === true;
+  function follow() {
+    return ui.run(actionGoToCollaborator, props.collaborator);
+  }
+  function current() {
+    return props.collaborator.isCurrentUser === true;
+  }
   return (
     <Show
       when={props.withName}
@@ -332,16 +349,24 @@ function CollaboratorEntry(props: {
   );
 }
 
+export interface UserListProps {
+  mobile?: boolean;
+}
+
 /**
  * Excalidraw's `UserList`: the collaborators' avatars at the top end, as many
  * as fit, the current user's last with a menu listing everyone (searchable
  * once there are many) and the host's `currentUserControls`. On a phone, every
  * avatar, in the main menu.
  */
-export function UserList(props: { mobile?: boolean }) {
+export function UserList(props: UserListProps) {
   const ui = useDiagramUI();
-  const userToFollow = () => ui.host().userToFollow?.socketId ?? null;
-  const controls = (): Child => ui.host().currentUserControls?.(props.mobile === true);
+  function userToFollow() {
+    return ui.host().userToFollow?.socketId ?? null;
+  }
+  function controls(): Child {
+    return ui.host().currentUserControls?.(props.mobile === true);
+  }
   const collaborators = createMemo(
     (): ListedCollaborator[] =>
       Array.from(ui.store.state("collaborators"), ([socketId, collaborator]) => ({
@@ -350,12 +375,16 @@ export function UserList(props: { mobile?: boolean }) {
       })).filter((collaborator) => collaborator.username?.trim()),
     { equals: sameList },
   );
-  const currentUser = () => collaborators().find((collaborator) => collaborator.isCurrentUser);
-  const others = () => collaborators().filter((collaborator) => !collaborator.isCurrentUser);
+  function currentUser() {
+    return collaborators().find((collaborator) => collaborator.isCurrentUser);
+  }
+  function others() {
+    return collaborators().filter((collaborator) => !collaborator.isCurrentUser);
+  }
 
   const [search, setSearch] = createSignal("");
   // the current user first, as Excalidraw orders the list
-  const filtered = () => {
+  function filtered() {
     const matching = collaborators().filter((collaborator) =>
       collaborator.username?.toLowerCase().includes(search()),
     );
@@ -363,11 +392,11 @@ export function UserList(props: { mobile?: boolean }) {
       ...matching.filter((collaborator) => collaborator.isCurrentUser),
       ...matching.filter((collaborator) => !collaborator.isCurrentUser),
     ];
-  };
+  }
 
   const [menuOpen, setMenuOpen] = createSignal(false);
   const [wrapperWidth, setWrapperWidth] = createSignal(DEFAULT_MAX_AVATARS * AVATAR_SLOT_WIDTH);
-  const measure = (element: HTMLElement): void => {
+  function measure(element: HTMLElement): void {
     // the user list reaches from the middle of the editor, where the toolbar
     // is, to the end: it may use what the toolbar's half leaves
     const toolbar = element
@@ -375,8 +404,8 @@ export function UserList(props: { mobile?: boolean }) {
       ?.querySelector<HTMLElement>("[data-testid=toolbar]");
     const toolbarHalf = toolbar ? toolbar.getBoundingClientRect().width / 2 + TOOLBAR_CLEARANCE : 0;
     setWrapperWidth(Math.max(0, element.getBoundingClientRect().width - toolbarHalf));
-  };
-  const observe = (element: HTMLElement): void => {
+  }
+  function observe(element: HTMLElement): void {
     // measured once in the page, outside the render that made it
     queueMicrotask(() => measure(element));
     const ownerWindow = element.ownerDocument.defaultView;
@@ -384,25 +413,27 @@ export function UserList(props: { mobile?: boolean }) {
     const observer = new ownerWindow.ResizeObserver(() => measure(element));
     observer.observe(element);
     onCleanup(() => observer.disconnect());
-  };
+  }
 
-  const shown = (): ListedCollaborator[] => {
+  function shown(): ListedCollaborator[] {
     const user = currentUser();
     const available = user ? wrapperWidth() - PILL_EXTRA_WIDTH : wrapperWidth();
     const totalSlots = Math.max(1, Math.min(8, Math.floor(available / AVATAR_SLOT_WIDTH)));
     const otherSlots = user ? Math.max(0, totalSlots - 1) : totalSlots;
     const visible = others().slice(0, otherSlots);
     return user ? [...visible, user] : visible;
-  };
+  }
 
-  const entry = (collaborator: ListedCollaborator, withName: boolean) => (
-    <CollaboratorEntry
-      socketId={collaborator.socketId}
-      collaborator={collaborator}
-      withName={withName}
-      isBeingFollowed={collaborator.socketId === userToFollow()}
-    />
-  );
+  function entry(collaborator: ListedCollaborator, withName: boolean) {
+    return (
+      <CollaboratorEntry
+        socketId={collaborator.socketId}
+        collaborator={collaborator}
+        withName={withName}
+        isBeingFollowed={collaborator.socketId === userToFollow()}
+      />
+    );
+  }
 
   return (
     <Show

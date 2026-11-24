@@ -55,7 +55,9 @@ export function HyperlinkPopup() {
   const ui = useDiagramUI();
   const t = ui.t;
   const store = ui.store;
-  const mode = () => store.state("showHyperlinkPopup");
+  function mode() {
+    return store.state("showHyperlinkPopup");
+  }
 
   const element = createMemo((): NonDeletedExcalidrawElement | null => {
     if (!mode() || store.state("viewModeEnabled")) return null;
@@ -85,7 +87,7 @@ export function HyperlinkPopup() {
     };
   });
 
-  const save = (value: string): void => {
+  function save(value: string): void {
     const target = element();
     const editor = store.editor;
     if (!target || !editor) return;
@@ -100,7 +102,7 @@ export function HyperlinkPopup() {
       editor.scene.mutateElement(target, { link });
       editor.setState({ showHyperlinkPopup: link ? "info" : false });
     });
-  };
+  }
 
   return (
     <Show when={element() && position()}>
@@ -221,10 +223,10 @@ export function ElementLinkDialog() {
   const ui = useDiagramUI();
   const t = ui.t;
   const store = ui.store;
-  const dialogState = () => {
+  function dialogState() {
     const open = store.state("openDialog");
     return open?.name === "elementLinkSelector" ? open : null;
-  };
+  }
   const [edited, setEdited] = createSignal<string | null | undefined>(undefined);
 
   const generated = createMemo((): string | null => {
@@ -244,13 +246,13 @@ export function ElementLinkDialog() {
     const open = dialogState();
     return open ? (store.editor?.scene.getNonDeletedElement(open.sourceElementId) ?? null) : null;
   });
-  const link = (): string | null => {
+  function link(): string | null {
     const value = edited();
     if (value !== undefined) return value;
     return generated() ?? source()?.link ?? null;
-  };
+  }
 
-  const close = (): void => {
+  function close(): void {
     setEdited(undefined);
     const editor = store.editor;
     const sourceElement = source();
@@ -259,8 +261,8 @@ export function ElementLinkDialog() {
       if (sourceElement) editor.selection.select(sourceElement);
     });
     ui.focusCanvas();
-  };
-  const confirm = (): void => {
+  }
+  function confirm(): void {
     const editor = store.editor;
     const sourceElement = source();
     if (editor && sourceElement) {
@@ -273,7 +275,7 @@ export function ElementLinkDialog() {
       });
     }
     close();
-  };
+  }
 
   return (
     <Show when={dialogState()}>

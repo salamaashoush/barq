@@ -17,24 +17,26 @@ import { useDiagramUI } from "./context.tsx";
 import { diagramLayer as d } from "./layer.ts";
 import { absolute, bare, cover, labelPadding, noPointer, pinned, takesPointer } from "./styles.ts";
 
+export interface ViewportStatusLabel {
+  label: Child;
+  icon?: Child;
+  /** The badge's background. @default the frame's colour, or the brand's */
+  background?: string;
+  /** The badge's text colour. @default the brand's ink */
+  color?: string;
+  /** Makes the badge a button. */
+  onClick?: () => void;
+  /** Adds a close button. */
+  onClose?: () => void;
+}
+
 /**
  * Excalidraw's `viewportStatusFrame`: a coloured frame around the canvas and
  * a badge saying why, as an app shows that it follows a collaborator.
  */
 export type ViewportStatusFrame = {
   /** The badge, at the bottom centre; at the top on a phone. */
-  label?: {
-    label: Child;
-    icon?: Child;
-    /** The badge's background. @default the frame's colour, or the brand's */
-    background?: string;
-    /** The badge's text colour. @default the brand's ink */
-    color?: string;
-    /** Makes the badge a button. */
-    onClick?: () => void;
-    /** Adds a close button. */
-    onClose?: () => void;
-  };
+  label?: ViewportStatusLabel;
   /** The frame's colour, or `false` for none. */
   border: false | string;
 };
@@ -80,7 +82,11 @@ const badgeClose = d(
   },
 );
 
-export function ViewportStatusBorder(props: { border: string }) {
+export interface ViewportStatusBorderProps {
+  border: string;
+}
+
+export function ViewportStatusBorder(props: ViewportStatusBorderProps) {
   return (
     <div
       class={border}
@@ -90,10 +96,12 @@ export function ViewportStatusBorder(props: { border: string }) {
   );
 }
 
-export function ViewportStatusBadge(props: {
+export interface ViewportStatusBadgeProps {
   label: NonNullable<ViewportStatusFrame["label"]>;
   border?: ViewportStatusFrame["border"];
-}) {
+}
+
+export function ViewportStatusBadge(props: ViewportStatusBadgeProps) {
   const ui = useDiagramUI();
   const labelId = createUniqueId();
   return (

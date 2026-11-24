@@ -175,11 +175,7 @@ interface Choice {
   testId?: string;
 }
 
-/**
- * One property as icon radios: a named radio group, the arrows moving the
- * choice. Nothing is checked when the selection mixes values.
- */
-function ChoiceGroup(props: {
+interface ChoiceGroupProps {
   label: string;
   /** No visible name, as Excalidraw shows none for the vertical alignment. */
   hideLabel?: boolean;
@@ -187,7 +183,13 @@ function ChoiceGroup(props: {
   choices: readonly Choice[];
   onChange: (value: string) => void;
   testId?: string;
-}) {
+}
+
+/**
+ * One property as icon radios: a named radio group, the arrows moving the
+ * choice. Nothing is checked when the selection mixes values.
+ */
+function ChoiceGroup(props: ChoiceGroupProps) {
   return (
     <RadioGroup
       aria-label={props.label}
@@ -215,15 +217,21 @@ function ChoiceGroup(props: {
   );
 }
 
-function ActionButton(props: {
+interface ActionButtonProps {
   action: Action;
   icon: () => Child;
   label?: string;
   testId?: string;
-}) {
+}
+
+function ActionButton(props: ActionButtonProps) {
   const ui = useDiagramUI();
-  const label = () => props.label ?? ui.label(props.action);
-  const shortcut = () => (isShortcutName(props.action.name) ? ui.shortcut(props.action.name) : "");
+  function label() {
+    return props.label ?? ui.label(props.action);
+  }
+  function shortcut() {
+    return isShortcutName(props.action.name) ? ui.shortcut(props.action.name) : "";
+  }
   return (
     <button
       type="button"
@@ -239,21 +247,25 @@ function ActionButton(props: {
   );
 }
 
-const nonDeleted = (editor: DiagramEditor): readonly NonDeletedExcalidrawElement[] =>
-  editor.scene.getNonDeletedElements();
+function nonDeleted(editor: DiagramEditor): readonly NonDeletedExcalidrawElement[] {
+  return editor.scene.getNonDeletedElements();
+}
 
 /**
  * Which properties the panel shows, for the active tool and the selection.
  * Excalidraw's `getShapeActionPredicates`.
  */
-const getShapeActionPredicates = (editor: DiagramEditor) => {
+function getShapeActionPredicates(editor: DiagramEditor) {
   const appState = editor.state;
   const elementsMap = editor.scene.getNonDeletedElementsMap();
   const targetElements = getTargetElements(nonDeleted(editor), appState);
   const tool = appState.activeTool.type;
-  const forToolOrSelection = (predicate: (type: ExcalidrawElement["type"]) => boolean) =>
-    predicate(tool as ExcalidrawElement["type"]) ||
-    targetElements.some((element) => predicate(element.type));
+  function forToolOrSelection(predicate: (type: ExcalidrawElement["type"]) => boolean) {
+    return (
+      predicate(tool as ExcalidrawElement["type"]) ||
+      targetElements.some((element) => predicate(element.type))
+    );
+  }
   const single = targetElements.length === 1;
   const [first, second] = targetElements;
   const boundContainer =
@@ -319,12 +331,12 @@ const getShapeActionPredicates = (editor: DiagramEditor) => {
       isLinearElement(first) &&
       !isElbowArrow(first),
   };
-};
+}
 
 type Predicates = ReturnType<typeof getShapeActionPredicates>;
 
 /** The editor, read so that what follows it follows the selection, the tool and the editing. */
-const trackedEditor = (store: DiagramUI["store"]): DiagramEditor | null => {
+function trackedEditor(store: DiagramUI["store"]): DiagramEditor | null {
   store.selection();
   store.state("activeTool");
   store.state("editingTextElement");
@@ -335,21 +347,24 @@ const trackedEditor = (store: DiagramUI["store"]): DiagramEditor | null => {
   store.state("selectedLinearElement");
   store.state("croppingElementId");
   return store.editor;
-};
+}
 
 /** Whether the properties panel has anything to show: a selection, or a tool about to draw. */
-export const createPropertiesVisible = (ui: DiagramUI): (() => boolean) =>
-  createMemo((): boolean => {
+export function createPropertiesVisible(ui: DiagramUI): () => boolean {
+  return createMemo((): boolean => {
     const editor = trackedEditor(ui.store);
     return editor !== null && showSelectedShapeActions(editor.state, nonDeleted(editor));
   });
+}
 
 /** What the panel shows and the values it shows, for every layout of it. */
 function createPropertiesModel(ui: DiagramUI) {
   const store = ui.store;
 
   // read so that the panel follows them; the editor is read for the values
-  const tracked = (): DiagramEditor | null => trackedEditor(store);
+  function tracked(): DiagramEditor | null {
+    return trackedEditor(store);
+  }
 
   const visible = createPropertiesVisible(ui);
   const predicates = createMemo((): Predicates | null => {
@@ -358,12 +373,12 @@ function createPropertiesModel(ui: DiagramUI) {
   });
 
   /** A property's value for the panel, Excalidraw's `getFormValue`, following the state. */
-  const formValue = <T extends string | number | boolean | null>(
+  function formValue<T extends string | number | boolean | null>(
     current: () => T,
     getValue: (element: ExcalidrawElement) => T,
     predicate: true | ((element: ExcalidrawElement) => boolean) = true,
-  ): (() => T | null) =>
-    createMemo(() => {
+  ): () => T | null {
+    return createMemo(() => {
       const editor = tracked();
       const fallback = current();
       if (editor === null) return fallback;
@@ -375,6 +390,7 @@ function createPropertiesModel(ui: DiagramUI) {
         (hasSelection) => (hasSelection ? null : fallback),
       );
     });
+  }
 
   const strokeTarget = createMemo(() => {
     const editor = tracked();
@@ -545,8 +561,8 @@ function createPropertiesModel(ui: DiagramUI) {
       (hasSelection) => (hasSelection ? null : VERTICAL_ALIGN.MIDDLE),
     );
   });
-  const arrowhead = (position: "start" | "end") =>
-    createMemo((): Arrowhead | null => {
+  function arrowhead(position: "start" | "end") {
+    return createMemo((): Arrowhead | null => {
       const editor = tracked();
       const fallback =
         position === "start"
@@ -566,6 +582,7 @@ function createPropertiesModel(ui: DiagramUI) {
         (hasSelection) => (hasSelection ? null : fallback),
       );
     });
+  }
   const startArrowhead = arrowhead("start");
   const endArrowhead = arrowhead("end");
   const opacity = formValue(
@@ -573,8 +590,12 @@ function createPropertiesModel(ui: DiagramUI) {
     (element) => element.opacity,
   );
 
-  const isSticky = () => strokeTarget()?.kind === "sticky";
-  const bucketFill = () => store.state("activeTool").type === "bucketfill";
+  function isSticky() {
+    return strokeTarget()?.kind === "sticky";
+  }
+  function bucketFill() {
+    return store.state("activeTool").type === "bucketfill";
+  }
 
   return {
     predicates,
@@ -613,7 +634,9 @@ function StrokeColorField(props: FieldProps) {
   const ui = useDiagramUI();
   const t = ui.t;
   const m = props.m;
-  const label = () => (m.isSticky() ? t("labels.textColor") : t("labels.stroke"));
+  function label() {
+    return m.isSticky() ? t("labels.textColor") : t("labels.stroke");
+  }
   return (
     <div class={fieldset}>
       <Show when={props.compact !== true}>
@@ -666,7 +689,11 @@ function BackgroundColorField(props: FieldProps) {
   );
 }
 
-function BucketFillColorField(props: { compact?: boolean }) {
+interface BucketFillColorFieldProps {
+  compact?: boolean;
+}
+
+function BucketFillColorField(props: BucketFillColorFieldProps) {
   const ui = useDiagramUI();
   const t = ui.t;
   return (
@@ -843,8 +870,9 @@ function PressureField(props: FieldProps) {
 /** The pressure as one button that switches between the two, Excalidraw's compact one. */
 function PressureCycle(props: FieldProps) {
   const ui = useDiagramUI();
-  const variable = () =>
-    (props.m.pressure() ?? ui.store.state("currentItemStrokeVariability")) === "variable";
+  function variable() {
+    return (props.m.pressure() ?? ui.store.state("currentItemStrokeVariability")) === "variable";
+  }
   return (
     <button
       type="button"
@@ -1132,7 +1160,11 @@ function LayersField() {
   );
 }
 
-function AlignField(props: { distribute: boolean }) {
+interface AlignFieldProps {
+  distribute: boolean;
+}
+
+function AlignField(props: AlignFieldProps) {
   const ui = useDiagramUI();
   return (
     <div class={fieldset} role="group" aria-label={ui.t("labels.align")}>
@@ -1191,28 +1223,36 @@ function AlignField(props: { distribute: boolean }) {
   );
 }
 
-const DuplicateButton = () => (
-  <ActionButton action={actionDuplicateSelection} icon={<Copy aria-hidden="true" />} />
-);
+function DuplicateButton() {
+  return <ActionButton action={actionDuplicateSelection} icon={<Copy aria-hidden="true" />} />;
+}
 
-const DeleteButton = () => (
-  <ActionButton action={actionDeleteSelected as Action} icon={<Trash2 aria-hidden="true" />} />
-);
+function DeleteButton() {
+  return (
+    <ActionButton action={actionDeleteSelected as Action} icon={<Trash2 aria-hidden="true" />} />
+  );
+}
 
-const LineEditorButton = () => (
-  <ActionButton action={actionToggleLinearEditor} icon={<PenLine aria-hidden="true" />} />
-);
+function LineEditorButton() {
+  return <ActionButton action={actionToggleLinearEditor} icon={<PenLine aria-hidden="true" />} />;
+}
+
+export interface PropertiesPanelProps {
+  class?: string;
+}
 
 /**
  * Excalidraw's properties panel for the selection, or for the tool about to
  * draw: each property the selected elements or the tool take, set on all of
  * them at once, showing their common value or none when they differ.
  */
-export function PropertiesPanel(props: { class?: string } = {}) {
+export function PropertiesPanel(props: PropertiesPanelProps = {}) {
   const ui = useDiagramUI();
   const t = ui.t;
   const m = createPropertiesModel(ui);
-  const bucketFill = () => m.bucketFill();
+  function bucketFill() {
+    return m.bucketFill();
+  }
 
   return (
     <Show when={m.predicates()}>
@@ -1316,24 +1356,28 @@ type CompactPopup = Extract<
   | "compactOtherProperties"
 >;
 
-/**
- * One button of the compact column and the popover it opens, open while the
- * editor's `openPopup` names it, so one closes as another opens.
- */
-function CompactPopover(props: {
+interface CompactPopoverProps {
   popup: CompactPopup;
   label: string;
   icon: Child;
   maxWidth?: string;
   children: Child;
-}) {
+}
+
+/**
+ * One button of the compact column and the popover it opens, open while the
+ * editor's `openPopup` names it, so one closes as another opens.
+ */
+function CompactPopover(props: CompactPopoverProps) {
   const ui = useDiagramUI();
-  const open = () => ui.store.state("openPopup") === props.popup;
-  const setOpen = (next: boolean): void => {
+  function open() {
+    return ui.store.state("openPopup") === props.popup;
+  }
+  function setOpen(next: boolean): void {
     const editor = ui.store.editor;
     if (!editor || next === (editor.state.openPopup === props.popup)) return;
     editor.batch(() => editor.setState({ openPopup: next ? props.popup : null }));
-  };
+  }
   return (
     <Popover isOpen={open()} onOpenChange={setOpen}>
       <PopoverTrigger>
@@ -1376,10 +1420,15 @@ export function CompactPropertiesPanel() {
   const ui = useDiagramUI();
   const t = ui.t;
   const m = createPropertiesModel(ui);
-  const tool = () => ui.store.state("activeTool").type;
-  const combinedShown = (shown: Predicates) =>
-    shown.hasSelection || !["selection", "eraser", "hand", "laser", "lasso"].includes(tool());
-  const arrowIcon = () => {
+  function tool() {
+    return ui.store.state("activeTool").type;
+  }
+  function combinedShown(shown: Predicates) {
+    return (
+      shown.hasSelection || !["selection", "eraser", "hand", "laser", "lasso"].includes(tool())
+    );
+  }
+  function arrowIcon() {
     const shape = m.arrowType();
     return shape === ARROW_TYPE.elbow ? (
       <Icons.ArrowElbow />
@@ -1388,7 +1437,7 @@ export function CompactPropertiesPanel() {
     ) : (
       <Icons.ArrowSharp />
     );
-  };
+  }
 
   return (
     <Show when={m.predicates()}>

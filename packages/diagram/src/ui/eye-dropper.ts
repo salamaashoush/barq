@@ -9,11 +9,15 @@ import {
 
 import type { DiagramEditor } from "../editor/editor.ts";
 
+export interface AltKeyEvent {
+  altKey: boolean;
+}
+
 export interface EyeDropperOptions {
   /** The colour picked, when the pointer goes up. */
   onSelect: (color: string, event: PointerEvent) => void;
   /** The colour under a held pointer, as it moves: a live preview. */
-  onChange?: (color: string, event: { altKey: boolean }) => void;
+  onChange?: (color: string, event: AltKeyEvent) => void;
   onCancel?: () => void;
   /** Stays open for another pick while Alt is held, and goes when it is let go. */
   keepOpenOnAlt?: boolean;
@@ -22,6 +26,11 @@ export interface EyeDropperOptions {
 const PREVIEW_SIZE = 28;
 const PREVIEW_GAP = 7;
 
+interface ClientPoint {
+  clientX: number;
+  clientY: number;
+}
+
 /**
  * Picks a colour off the canvas, Excalidraw's eye dropper: a layer over the
  * canvases takes the pointer, a swatch beside it shows the colour under it,
@@ -29,10 +38,7 @@ const PREVIEW_GAP = 7;
  * Escape gives up. In dark mode the colour is the one the element has, the
  * filter the canvas draws through taken back off.
  */
-export const startEyeDropper = (
-  editor: DiagramEditor,
-  options: EyeDropperOptions,
-): (() => void) => {
+export function startEyeDropper(editor: DiagramEditor, options: EyeDropperOptions): () => void {
   const document = editor.ownerDocument;
   const view = editor.ownerWindow;
   const container = editor.container;
@@ -51,7 +57,7 @@ export const startEyeDropper = (
 
   let holding = false;
 
-  const sample = (event: { clientX: number; clientY: number }): string | null => {
+  function sample(event: ClientPoint): string | null {
     const canvas = editor.canvas;
     const context = canvas.getContext("2d", { willReadFrequently: true });
     if (!context) return null;
@@ -68,12 +74,13 @@ export const startEyeDropper = (
     } catch {
       return null;
     }
-  };
+  }
 
-  const toApply = (color: string): string =>
-    editor.state.theme === THEME.DARK ? removeDarkModeFilter(color) : color;
+  function toApply(color: string): string {
+    return editor.state.theme === THEME.DARK ? removeDarkModeFilter(color) : color;
+  }
 
-  const stop = (): void => {
+  function stop(): void {
     holding = false;
     overlay.removeEventListener("pointerdown", onDown);
     overlay.removeEventListener("pointerup", onUp);
@@ -82,8 +89,8 @@ export const startEyeDropper = (
     view.removeEventListener("pointermove", onMove);
     view.removeEventListener("blur", onBlur);
     overlay.remove();
-  };
-  const onMove = (event: PointerEvent): void => {
+  }
+  function onMove(event: PointerEvent): void {
     const color = sample(event);
     if (!color) return;
     const rect = container.getBoundingClientRect();
@@ -106,14 +113,14 @@ export const startEyeDropper = (
     if (holding) {
       options.onChange?.(toApply(color), { altKey: event.altKey });
     }
-  };
-  const onDown = (event: PointerEvent): void => {
+  }
+  function onDown(event: PointerEvent): void {
     holding = true;
     // the canvas under it takes nothing; pointermove still has to arrive
     event.stopImmediatePropagation();
     onMove(event);
-  };
-  const onUp = (event: PointerEvent): void => {
+  }
+  function onUp(event: PointerEvent): void {
     event.preventDefault();
     event.stopImmediatePropagation();
     const color = sample(event);
@@ -129,8 +136,8 @@ export const startEyeDropper = (
       options.onCancel?.();
     }
     editor.focusContainer();
-  };
-  const onKey = (event: KeyboardEvent): void => {
+  }
+  function onKey(event: KeyboardEvent): void {
     if (event.key === KEYS.ESCAPE) {
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -138,17 +145,17 @@ export const startEyeDropper = (
       options.onCancel?.();
       editor.focusContainer();
     }
-  };
-  const onKeyUp = (event: KeyboardEvent): void => {
+  }
+  function onKeyUp(event: KeyboardEvent): void {
     if (options.keepOpenOnAlt === true && event.key === KEYS.ALT) {
       stop();
       options.onCancel?.();
     }
-  };
-  const onBlur = (): void => {
+  }
+  function onBlur(): void {
     stop();
     options.onCancel?.();
-  };
+  }
 
   overlay.addEventListener("pointerdown", onDown);
   overlay.addEventListener("pointerup", onUp);
@@ -157,4 +164,4 @@ export const startEyeDropper = (
   view.addEventListener("pointermove", onMove, { passive: true });
   view.addEventListener("blur", onBlur);
   return stop;
-};
+}

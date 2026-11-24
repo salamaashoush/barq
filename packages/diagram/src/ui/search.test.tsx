@@ -14,34 +14,43 @@ import type { DiagramEditorApi } from "../index.ts";
 
 setupUITests();
 
-const key = (target: Element, init: KeyboardEventInit) =>
-  target.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }));
+function key(target: Element, init: KeyboardEventInit) {
+  return target.dispatchEvent(
+    new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }),
+  );
+}
 
 const ctrl = navigator.platform.includes("Mac") ? { metaKey: true } : { ctrlKey: true };
 
-const text = (id: string, value: string, x: number, y: number) =>
-  ({ type: "text", id, x, y, text: value, originalText: value, fontSize: 20 }) as never;
+function text(id: string, value: string, x: number, y: number) {
+  return { type: "text", id, x, y, text: value, originalText: value, fontSize: 20 } as never;
+}
 
-const frame = (id: string, name: string, x: number, y: number) =>
-  ({ type: "frame", id, x, y, width: 300, height: 200, name }) as never;
+function frame(id: string, name: string, x: number, y: number) {
+  return { type: "frame", id, x, y, width: 300, height: 200, name } as never;
+}
 
-const scene = () => ({
-  elements: [
-    text("t1", "the release plan", 100, 100),
-    text("t2", "release notes", 100, 300),
-    frame("f1", "Release frame", 400, 100),
-    text("far", "release far away", 5000, 5000),
-  ],
-});
+function scene() {
+  return {
+    elements: [
+      text("t1", "the release plan", 100, 100),
+      text("t2", "release notes", 100, 300),
+      frame("f1", "Release frame", 400, 100),
+      text("far", "release far away", 5000, 5000),
+    ],
+  };
+}
 
 /** Types into the search and lets its pause pass. */
-const search = async (input: HTMLElement, value: string) => {
+async function search(input: HTMLElement, value: string) {
   await user.type(input, value);
   await new Promise((resolve) => setTimeout(resolve, 400));
   await settle();
-};
+}
 
-const matches = (api: DiagramEditorApi) => api.getAppState().searchMatches;
+function matches(api: DiagramEditorApi) {
+  return api.getAppState().searchMatches;
+}
 
 describe("search", () => {
   test("Ctrl+F opens it focused; matches are listed, frames first, and highlighted", async () => {

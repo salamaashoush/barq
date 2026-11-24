@@ -14,8 +14,11 @@ import { canvas, mountEditor, pointer, rectangle, settle, setupUITests } from ".
 
 setupUITests();
 
-const key = (target: Element, init: KeyboardEventInit) =>
-  target.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }));
+function key(target: Element, init: KeyboardEventInit) {
+  return target.dispatchEvent(
+    new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }),
+  );
+}
 
 describe("welcome screen", () => {
   test("shows Excalidraw's heading, menu and hints over an empty scene", async () => {

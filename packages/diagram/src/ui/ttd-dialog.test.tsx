@@ -20,22 +20,22 @@ beforeEach(() => localStorage.clear());
 const FLOW = "flowchart LR\n  A[Start] --> B[Ship]";
 
 /** Waits out the dialog's typing delay and the conversion after it. */
-const waitFor = async (check: () => boolean, rounds = 60) => {
+async function waitFor(check: () => boolean, rounds = 60) {
   for (let round = 0; round < rounds && !check(); round++) {
     await new Promise((resolve) => setTimeout(resolve, 25));
     await settle();
   }
-};
+}
 
-const type = (element: HTMLElement, value: string) => {
+function type(element: HTMLElement, value: string) {
   (element as HTMLTextAreaElement).value = value;
   element.dispatchEvent(new Event("input", { bubbles: true }));
-};
+}
 
-const openTTD = async (api: DiagramEditorApi, tab: "mermaid" | "text-to-diagram") => {
+async function openTTD(api: DiagramEditorApi, tab: "mermaid" | "text-to-diagram") {
   api.updateScene({ appState: { openDialog: { name: "ttd", tab } } });
   await settle();
-};
+}
 
 describe("Mermaid", () => {
   test("the toolbar's entry opens it; a definition previews and inserts as elements", async () => {
@@ -88,9 +88,9 @@ describe("Mermaid", () => {
 });
 
 /** A backend streaming `reply` in three pieces, recording what it was asked. */
-const streamingBackend = (replies: string[]) => {
+function streamingBackend(replies: string[]) {
   const requests: TextSubmitRequest[] = [];
-  const onTextSubmit = async (request: TextSubmitRequest): Promise<TextSubmitResult> => {
+  async function onTextSubmit(request: TextSubmitRequest): Promise<TextSubmitResult> {
     requests.push(request);
     const reply = replies.shift() ?? "";
     request.onStreamCreated?.();
@@ -100,9 +100,9 @@ const streamingBackend = (replies: string[]) => {
       request.onChunk?.(reply.slice(at, at + third));
     }
     return { generatedResponse: reply, error: null, rateLimit: 10, rateLimitRemaining: 9 };
-  };
+  }
   return { onTextSubmit, requests };
-};
+}
 
 describe("text to diagram", () => {
   test("a prompt streams a reply that previews and inserts, and the chat is kept", async () => {

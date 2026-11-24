@@ -50,6 +50,15 @@ const resultItem = d(
   },
 );
 
+export interface EditorProp {
+  editor: DiagramEditor;
+}
+
+interface IndexedMatch {
+  match: SearchMatchItem;
+  index: number;
+}
+
 /**
  * Excalidraw's search, the sidebar's search tab: the canvas's texts and
  * frames' names matching what is typed, highlighted on the canvas
@@ -57,7 +66,7 @@ const resultItem = d(
  * arrow step to the next match, Shift+Enter and the up arrow to the previous;
  * Escape closes the sidebar.
  */
-export function SearchMenu(props: { editor: DiagramEditor }) {
+export function SearchMenu(props: EditorProp) {
   const ui = useDiagramUI();
   const t = ui.t;
   const editor = props.editor;
@@ -70,7 +79,7 @@ export function SearchMenu(props: { editor: DiagramEditor }) {
   let searchedNonce: number | undefined;
   let searchedQuery: string | null = null;
 
-  const publish = (items: readonly SearchMatchItem[], focused: number | null): void => {
+  function publish(items: readonly SearchMatchItem[], focused: number | null): void {
     editor.batch(() =>
       editor.setState({
         searchMatches: items.length
@@ -85,9 +94,9 @@ export function SearchMenu(props: { editor: DiagramEditor }) {
           : null,
       }),
     );
-  };
+  }
 
-  const reveal = (match: SearchMatchItem | undefined): void => {
+  function reveal(match: SearchMatchItem | undefined): void {
     if (!match) return;
     const state = editor.state;
     const element = matchAsElement(match);
@@ -112,15 +121,15 @@ export function SearchMenu(props: { editor: DiagramEditor }) {
         editor.setState(fitToContent(state, [element], isTextTiny ? "contain" : "scale-down")),
       );
     }
-  };
+  }
 
-  const focusMatch = (index: number | null): void => {
+  function focusMatch(index: number | null): void {
     setFocusIndex(index);
     publish(matches(), index);
     if (index !== null) reveal(matches()[index]);
-  };
+  }
 
-  const run = (value: string): void => {
+  function run(value: string): void {
     const trimmed = value.trim();
     const visibleIds = new Set(editor.visibleElements.map((element) => element.id));
     const result = searchScene(trimmed, editor.scene.getNonDeletedElements(), {
@@ -135,22 +144,22 @@ export function SearchMenu(props: { editor: DiagramEditor }) {
     const index = result.focusIndex === null || result.focusIndex < 0 ? null : result.focusIndex;
     setFocusIndex(index);
     publish(result.matches, index);
-  };
+  }
 
-  const schedule = (value: string): void => {
+  function schedule(value: string): void {
     if (timer !== null) clearTimeout(timer);
     timer = setTimeout(() => {
       timer = null;
       run(value);
     }, SEARCH_DEBOUNCE);
-  };
+  }
 
-  const step = (direction: 1 | -1): void => {
+  function step(direction: 1 | -1): void {
     const total = matches().length;
     if (total === 0) return;
     const current = focusIndex();
     focusMatch(current === null ? 0 : (current + direction + total) % total);
-  };
+  }
 
   // the scene changed under the results: searched again, the focus kept where it can be
   const offChange = editor.onChange(() => {
@@ -171,23 +180,25 @@ export function SearchMenu(props: { editor: DiagramEditor }) {
     }
   });
 
-  const frameMatches = () =>
-    matches()
+  function frameMatches() {
+    return matches()
       .map((match, index) => ({ match, index }))
       .filter((entry) => isFrameLikeElement(entry.match.element));
-  const textMatches = () =>
-    matches()
+  }
+  function textMatches() {
+    return matches()
       .map((match, index) => ({ match, index }))
       .filter((entry) => !isFrameLikeElement(entry.match.element));
+  }
 
-  const countText = () => {
+  function countText() {
     const total = matches().length;
     const label = `${total} ${total === 1 ? t("search.singleResult") : t("search.multipleResults")}`;
     const index = focusIndex();
     return index === null ? label : `${index + 1} / ${label}`;
-  };
+  }
 
-  const Item = (itemProps: { match: SearchMatchItem; index: number }) => {
+  function Item(itemProps: IndexedMatch) {
     const preview = itemProps.match.preview;
     const length = itemProps.match.searchQuery.length;
     return (
@@ -215,7 +226,7 @@ export function SearchMenu(props: { editor: DiagramEditor }) {
         </button>
       </li>
     );
-  };
+  }
 
   return (
     <div class={container} data-testid="search-menu">
@@ -302,9 +313,7 @@ export function SearchMenu(props: { editor: DiagramEditor }) {
           </h3>
           <ul class={list} aria-label={t("search.frames")}>
             <For each={frameMatches()}>
-              {(entry: { match: SearchMatchItem; index: number }) => (
-                <Item match={entry.match} index={entry.index} />
-              )}
+              {(entry: IndexedMatch) => <Item match={entry.match} index={entry.index} />}
             </For>
           </ul>
         </Show>
@@ -315,9 +324,7 @@ export function SearchMenu(props: { editor: DiagramEditor }) {
           </h3>
           <ul class={list} aria-label={t("search.texts")}>
             <For each={textMatches()}>
-              {(entry: { match: SearchMatchItem; index: number }) => (
-                <Item match={entry.match} index={entry.index} />
-              )}
+              {(entry: IndexedMatch) => <Item match={entry.match} index={entry.index} />}
             </For>
           </ul>
         </Show>

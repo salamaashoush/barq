@@ -32,6 +32,11 @@ import type { ToolType } from "../types.ts";
 const CATEGORIES = ["app", "export", "editor", "tools", "elements", "links", "library"] as const;
 type Category = (typeof CATEGORIES)[number];
 
+export interface PerformContext {
+  actionManager: ActionManager;
+  event: Event | null;
+}
+
 /**
  * A command a host adds to the palette, Excalidraw's `CommandPaletteItem`.
  * `category` is one of the palette's (`"app"`, `"export"`, `"editor"`,
@@ -56,7 +61,7 @@ export interface CommandPaletteItem {
   /** `false` keeps it out of view mode. @default true */
   viewMode?: boolean;
   icon?: Child;
-  perform: (data: { actionManager: ActionManager; event: Event | null }) => void;
+  perform: (data: PerformContext) => void;
 }
 
 interface Command {
@@ -69,13 +74,15 @@ interface Command {
   perform: () => void;
 }
 
+export interface CommandPaletteProps {
+  customCommandPaletteItems?: CommandPaletteItem[];
+}
+
 /**
  * Excalidraw's `CommandPalette`, given to `<DiagramEditor>` as a child: its
  * `customCommandPaletteItems` join the palette's commands.
  */
-export function CommandPalette(props: {
-  customCommandPaletteItems?: CommandPaletteItem[];
-}): JSX.Element {
+export function CommandPalette(props: CommandPaletteProps): JSX.Element {
   if (isHostChild()) {
     return hostSlot("commandPalette", {
       get customCommandPaletteItems() {
@@ -180,28 +187,40 @@ const PALETTE_TOOLS: readonly ToolType[] = [
  */
 let lastUsedKey: string | null = null;
 
-export function CommandPaletteDialog(props: { customCommandPaletteItems?: CommandPaletteItem[] }) {
+interface CommandItemProps {
+  command: Command;
+  recent?: boolean;
+}
+
+interface CategoryCommands {
+  category: string;
+  commands: Command[];
+}
+
+export function CommandPaletteDialog(props: CommandPaletteProps) {
   const ui = useDiagramUI();
   const t = ui.t;
   const store = ui.store;
-  const open = () => store.state("openDialog")?.name === "commandPalette";
+  function open() {
+    return store.state("openDialog")?.name === "commandPalette";
+  }
   const [search, setSearch] = createSignal("");
   const [lastUsed, setLastUsed] = createSignal(lastUsedKey);
 
-  const close = (): void => {
+  function close(): void {
     setSearch("");
     const editor = store.editor;
     if (editor?.state.openDialog?.name === "commandPalette") {
       editor.batch(() => editor.setState({ openDialog: null }));
     }
-  };
+  }
 
   const commands = createMemo((): Command[] => {
     if (!open()) return [];
     const editor = store.editor;
     if (!editor) return [];
     const viewMode = editor.state.viewModeEnabled;
-    const fromAction = (action: Action | undefined, category: Category): Command | null => {
+    function fromAction(action: Action | undefined, category: Category): Command | null {
       if (!action) return null;
       if (viewMode && action.viewMode !== true) return null;
       if (!ui.isEnabled(action)) return null;
@@ -215,11 +234,15 @@ export function CommandPaletteDialog(props: { customCommandPaletteItems?: Comman
         keywords: action.keywords ?? [],
         perform: () => ui.run(action),
       };
-    };
-    const named = (names: readonly ActionName[], category: Category): Command[] =>
-      names
+    }
+    const named: (names: readonly ActionName[], category: Category) => Command[] = (
+      names,
+      category,
+    ) => {
+      return names
         .map((name) => fromAction(editor.actionManager.actions.get(name), category))
         .filter((command): command is Command => command !== null);
+    };
 
     const tools: Command[] = viewMode
       ? []
@@ -244,8 +267,9 @@ export function CommandPaletteDialog(props: { customCommandPaletteItems?: Comman
         keywords: [],
         perform: () => editor.batch(() => editor.toggleLock()),
       });
-      const openTTD = (tab: "text-to-diagram" | "mermaid") => () =>
-        editor.batch(() => editor.setState({ openDialog: { name: "ttd", tab } }));
+      const openTTD: (tab: "text-to-diagram" | "mermaid") => () => void = (tab) => {
+        return () => editor.batch(() => editor.setState({ openDialog: { name: "ttd", tab } }));
+      };
       if (ui.host().aiEnabled && ui.host().textToDiagram) {
         tools.push({
           key: "tool:textToDiagram",
@@ -266,8 +290,11 @@ export function CommandPaletteDialog(props: { customCommandPaletteItems?: Comman
       });
     }
 
-    const openPopup = (popup: "canvasBackground" | "elementStroke" | "elementBackground") => () =>
-      editor.batch(() => editor.setState({ openPopup: popup }));
+    const openPopup: (
+      popup: "canvasBackground" | "elementStroke" | "elementBackground",
+    ) => () => void = (popup) => {
+      return () => editor.batch(() => editor.setState({ openPopup: popup }));
+    };
     const panelShown = editor.scene.getSelectedElements(editor.state).length > 0;
     const toggleLibrary: Command | null = viewMode
       ? null
@@ -371,27 +398,29 @@ export function CommandPaletteDialog(props: { customCommandPaletteItems?: Comman
     return commands().find((command) => command.key === key) ?? null;
   });
 
-  const runCommand = (command: Command): void => {
+  function runCommand(command: Command): void {
     lastUsedKey = command.key;
     setLastUsed(command.key);
     close();
     ui.focusCanvas();
     command.perform();
-  };
+  }
 
-  const Item = (itemProps: { command: Command; recent?: boolean }) => (
-    <CommandItem
-      value={itemProps.recent ? `${itemProps.command.label} ` : itemProps.command.label}
-      keywords={[...itemProps.command.keywords]}
-      onSelect={() => runCommand(itemProps.command)}
-      data-testid={itemProps.recent ? `recent:${itemProps.command.key}` : itemProps.command.key}
-    >
-      <span>{itemProps.command.label}</span>
-      <Show when={itemProps.command.shortcut}>
-        <CommandShortcut>{itemProps.command.shortcut}</CommandShortcut>
-      </Show>
-    </CommandItem>
-  );
+  function Item(itemProps: CommandItemProps) {
+    return (
+      <CommandItem
+        value={itemProps.recent ? `${itemProps.command.label} ` : itemProps.command.label}
+        keywords={[...itemProps.command.keywords]}
+        onSelect={() => runCommand(itemProps.command)}
+        data-testid={itemProps.recent ? `recent:${itemProps.command.key}` : itemProps.command.key}
+      >
+        <span>{itemProps.command.label}</span>
+        <Show when={itemProps.command.shortcut}>
+          <CommandShortcut>{itemProps.command.shortcut}</CommandShortcut>
+        </Show>
+      </CommandItem>
+    );
+  }
 
   const grouped = createMemo(() => {
     const own = commands()
@@ -435,7 +464,7 @@ export function CommandPaletteDialog(props: { customCommandPaletteItems?: Comman
           )}
         </Show>
         <For each={grouped()}>
-          {(group: { category: string; commands: Command[] }) => (
+          {(group: CategoryCommands) => (
             <CommandGroup
               heading={
                 (CATEGORIES as readonly string[]).includes(group.category)

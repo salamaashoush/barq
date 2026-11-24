@@ -90,9 +90,15 @@ const activeCollab = d(menuItem, tone.success, {
   "&[data-active]": { color: "var(--arc-tone-foreground)" },
 });
 
+interface RichTextProps {
+  text: string;
+}
+
 /** Excalidraw's `<bold>` and `<br></br>` markup in a translated string, as elements. */
-function RichText(props: { text: string }) {
-  const parts = () => props.text.split(/(<bold>.*?<\/bold>|<br><\/br>)/g).filter(Boolean);
+function RichText(props: RichTextProps) {
+  function parts() {
+    return props.text.split(/(<bold>.*?<\/bold>|<br><\/br>)/g).filter(Boolean);
+  }
   return (
     <For each={parts()}>
       {(part: string) =>
@@ -108,8 +114,7 @@ function RichText(props: { text: string }) {
   );
 }
 
-/** One entry of the main menu, which an app adds as Excalidraw's `MainMenu.Item`. */
-function Item(props: {
+interface ItemProps {
   onSelect: () => void;
   icon?: Child;
   shortcut?: string;
@@ -117,7 +122,10 @@ function Item(props: {
   disabled?: boolean;
   destructive?: boolean;
   "data-testid"?: string;
-}) {
+}
+
+/** One entry of the main menu, which an app adds as Excalidraw's `MainMenu.Item`. */
+function Item(props: ItemProps) {
   return (
     <DropdownMenuItem
       class={menuItem}
@@ -135,8 +143,15 @@ function Item(props: {
   );
 }
 
+interface ItemLinkProps {
+  href: string;
+  icon?: Child;
+  children?: Child;
+  "data-testid"?: string;
+}
+
 /** A link in the main menu, Excalidraw's `MainMenu.ItemLink`. */
-function ItemLink(props: { href: string; icon?: Child; children?: Child; "data-testid"?: string }) {
+function ItemLink(props: ItemLinkProps) {
   return (
     <DropdownMenuItem
       class={menuItem}
@@ -151,7 +166,12 @@ function ItemLink(props: { href: string; icon?: Child; children?: Child; "data-t
   );
 }
 
-function Group(props: { title?: string; children?: Child }) {
+interface GroupProps {
+  title?: string;
+  children?: Child;
+}
+
+function Group(props: GroupProps) {
   return (
     <DropdownMenuGroup aria-label={props.title}>
       <Show when={props.title}>
@@ -285,7 +305,9 @@ function ClearCanvas() {
 
 function ToggleTheme() {
   const ui = useDiagramUI();
-  const dark = () => ui.store.state("theme") === THEME.DARK;
+  function dark() {
+    return ui.store.state("theme") === THEME.DARK;
+  }
   return (
     <Show when={ui.isEnabled(actionToggleTheme)}>
       <Item
@@ -300,8 +322,13 @@ function ToggleTheme() {
   );
 }
 
+interface LiveCollaborationTriggerProps {
+  onSelect: () => void;
+  isCollaborating: boolean;
+}
+
 /** Excalidraw's live collaboration entry, which an app adds to open its share dialog. */
-function LiveCollaborationTrigger(props: { onSelect: () => void; isCollaborating: boolean }) {
+function LiveCollaborationTrigger(props: LiveCollaborationTriggerProps) {
   const ui = useDiagramUI();
   return (
     <DropdownMenuItem
@@ -323,7 +350,9 @@ function LiveCollaborationTrigger(props: { onSelect: () => void; isCollaborating
 function ChangeCanvasBackground() {
   const ui = useDiagramUI();
   const menu = useMainMenu();
-  const color = () => ui.store.state("viewBackgroundColor");
+  function color() {
+    return ui.store.state("viewBackgroundColor");
+  }
   return (
     <Show when={ui.isEnabled(actionChangeViewBackgroundColor)}>
       <DropdownMenuSub>
@@ -362,6 +391,11 @@ function ChangeCanvasBackground() {
   );
 }
 
+interface MainMenuRootProps {
+  children?: Child;
+  onSelect?: (event: Event) => void;
+}
+
 /**
  * Excalidraw's `MainMenu`, given to `<DiagramEditor>` as a child: its
  * children replace the default entries (`MainMenu.DefaultItems` brings
@@ -378,7 +412,7 @@ function ChangeCanvasBackground() {
  * </DiagramEditor>
  * ```
  */
-function MainMenuRoot(props: { children?: Child; onSelect?: (event: Event) => void }): JSX.Element {
+function MainMenuRoot(props: MainMenuRootProps): JSX.Element {
   if (isHostChild()) {
     return hostSlot("mainMenu", {
       get children() {
@@ -448,20 +482,24 @@ function useMainMenu(): MainMenuState {
 /** The main menu's button, top start, and the menu it opens. */
 export function MainMenuButton() {
   const ui = useDiagramUI();
-  const host = () => ui.host().slots.mainMenu;
+  function host() {
+    return ui.host().slots.mainMenu;
+  }
   const t = ui.t;
   const [confirming, setConfirming] = createSignal(false);
   const [confirmingLoad, setConfirmingLoad] = createSignal(false);
   const [ownPicking, setOwnPicking] = createSignal(false);
   // the command palette opens the picker through the editor's `openPopup`
-  const picking = (): boolean => ownPicking() || ui.store.state("openPopup") === "canvasBackground";
-  const setPicking = (next: boolean): void => {
+  function picking(): boolean {
+    return ownPicking() || ui.store.state("openPopup") === "canvasBackground";
+  }
+  function setPicking(next: boolean): void {
     setOwnPicking(next);
     const editor = ui.store.editor;
     if (!next && editor?.state.openPopup === "canvasBackground") {
       editor.batch(() => editor.setState({ openPopup: null }));
     }
-  };
+  }
   const menu: MainMenuState = {
     confirmClear: () => setConfirming(true),
     confirmLoad: () => setConfirmingLoad(true),
