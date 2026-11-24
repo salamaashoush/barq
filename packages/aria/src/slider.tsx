@@ -893,6 +893,11 @@ export function Slider(props: SliderComponentProps) {
        */
       groupLabelId: () =>
         access(labelProps.id as MaybeAccessor<string | undefined>) ??
+        // The ids the slider is labelled by, themselves: a name is not
+        // followed through a second `aria-labelledby`, so pointing at the
+        // group would name each thumb by the group's text, its output and
+        // its other thumbs, rather than by the label.
+        props["aria-labelledby"] ??
         // A thumb labelled by a nameless group would lose the name its own
         // `<label for>` gives it: `aria-labelledby` wins over a label.
         (firstThumbId() !== undefined && !ownName()

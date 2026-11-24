@@ -459,3 +459,23 @@ describe("a range's thumbs named one by one", () => {
     expect(names).toEqual(["Minimum Price", "Maximum Price"]);
   });
 });
+
+describe("a slider labelled by an element elsewhere", () => {
+  test("its thumbs are named by that element, not by the group's text", () => {
+    render(() => (
+      <>
+        <span id="price-label">Price</span>
+        <Slider aria-labelledby="price-label" defaultValue={[20, 60]}>
+          <SliderTrack>
+            {(index: number) => (
+              <SliderThumb index={index} aria-label={index === 0 ? "Minimum" : "Maximum"} />
+            )}
+          </SliderTrack>
+        </Slider>
+      </>
+    ));
+    const names = screen.getAllByRole("slider").map((thumb) => accessibleName(thumb));
+    expect(names).toEqual(["Minimum Price", "Maximum Price"]);
+    expect(screen.getByRole("group", { name: "Price" })).toBeDefined();
+  });
+});
