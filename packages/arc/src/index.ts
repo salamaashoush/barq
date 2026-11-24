@@ -363,6 +363,14 @@ export {
   gaugeTone,
 } from "./components/gauge.tsx";
 export {
+  Heatmap,
+  type HeatmapProps,
+  type HeatmapSlots,
+  heatShade,
+  heatStep,
+  heatmapStyles,
+} from "./components/heatmap.tsx";
+export {
   ARC_CONTRAST_DARK,
   ARC_CONTRAST_LIGHT,
   ARC_DARK,
@@ -428,3 +436,10 @@ export {
   durationParts,
   formattedStyles,
 } from "./components/format.tsx";
+export { Indicator, type IndicatorProps, indicatorStyles } from "./components/indicator.tsx";
+export {
+  ResponsiveTabs,
+  type ResponsiveTabsProps,
+  type TabItem,
+  responsiveTabsStyles,
+} from "./components/responsive-tabs.tsx";

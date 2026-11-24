@@ -3,6 +3,7 @@ import { variants } from "@barqjs/css";
 import { meter } from "@barqjs/aria/link";
 import { CHART_THEME, Chart, type ChartDefinition } from "@barqjs/ui/chart";
 import type { RenderPart } from "@barqjs/ui/slot";
+import { tokens } from "@barqjs/ui/theme/tokens";
 import { defineChart } from "@tanstack/charts";
 import { pie, polar, radialArc } from "@tanstack/charts/polar";
 
@@ -10,7 +11,7 @@ import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts, rendered } from "../lib/parts.ts";
 import { gap, layout, type } from "../style/index.ts";
 import type { Tone } from "../theme/tokens.ts";
-import { chartCentreParts, chartNumbers } from "./chart-frame.tsx";
+import { chartCentreParts, chartNumbers, toneColour } from "./chart-frame.tsx";
 
 /** From `value` up, the gauge is drawn in `tone`. */
 export interface GaugeThreshold {
@@ -132,7 +133,7 @@ export function Gauge(props: GaugeProps) {
         }),
       ],
       scales: { x: null, y: null },
-      color: { domain: ["reading", "rest"], range: [`var(--${tone()})`, "var(--muted)"] },
+      color: { domain: ["reading", "rest"], range: [toneColour(tone()), tokens.muted] },
       theme: CHART_THEME,
       keyboard: false,
       pointer: false,

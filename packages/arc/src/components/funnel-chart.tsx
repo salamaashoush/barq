@@ -24,6 +24,7 @@ import {
   chartNumbers,
   chartTableParts,
   seriesConfig,
+  toneColour,
 } from "./chart-frame.tsx";
 import { useArcMessages } from "./messages.ts";
 
@@ -89,10 +90,8 @@ export function FunnelChart(props: FunnelChartProps) {
   const cls = (): FunnelChartSlots => parts(funnelChartStyles(), props.classes);
   const first = (): number => props.data[0]?.value ?? 0;
   const share = (value: number): string => percent(first() === 0 ? 0 : value / first());
-  const colour = (stage: FunnelStage): string | undefined =>
-    stage.color ??
-    (stage.tone === undefined ? undefined : `var(--${stage.tone})`) ??
-    (props.tone === undefined ? "var(--chart-1)" : `var(--${props.tone})`);
+  const colour = (stage: FunnelStage): string =>
+    stage.color ?? toneColour(stage.tone ?? props.tone);
 
   return (
     <ChartFrame

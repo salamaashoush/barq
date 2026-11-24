@@ -42,11 +42,14 @@ export interface ChartTableData {
   rows: readonly (readonly string[])[];
 }
 
+/** A tone's colour, or the theme's `--chart-N` ramp from the first. */
+export function toneColour(tone: Tone | undefined, at = 0): string {
+  return tone === undefined ? `var(--chart-${String((at % 5) + 1)})` : `var(--${tone})`;
+}
+
 /** The colour a series is drawn in. */
 export function seriesColour(series: TonedSeries, at: number): string {
-  if (series.color !== undefined) return series.color;
-  if (series.tone !== undefined) return `var(--${series.tone})`;
-  return `var(--chart-${String((at % 5) + 1)})`;
+  return series.color ?? toneColour(series.tone, at);
 }
 
 /** The series as ui's chart config, so ui's legend and tooltip name and colour them. */
