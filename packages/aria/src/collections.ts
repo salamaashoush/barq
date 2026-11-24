@@ -22,7 +22,14 @@
  * ```
  */
 
-import { type Accessor, createMemo, createRenderEffect, createSignal, isDev } from "@barqjs/core";
+import {
+  type Accessor,
+  createMemo,
+  createRenderEffect,
+  createSignal,
+  isDev,
+  untrack,
+} from "@barqjs/core";
 import { access, callback, controllable, type MaybeAccessor } from "./utils.ts";
 
 /** What identifies an item. */
@@ -533,23 +540,32 @@ interface SelectionManagerOptions {
  * the row that owns it.
  */
 export class SelectionManager {
-  collection: Collection<unknown>;
-
+  #collection: Collection<unknown> | Accessor<Collection<unknown>>;
   #state: MultipleSelectionState;
   #allowsCellSelection: boolean;
   #layoutDelegate: LayoutDelegate | null;
   #fullCollection: Collection<unknown> | null;
 
+  /**
+   * `collection` may be an accessor, read again on each use: a list's one
+   * manager then follows its items as they change, and an item reading the
+   * selection tracks only what it reads rather than every rebuild of the list.
+   */
   constructor(
-    collection: Collection<unknown>,
+    collection: Collection<unknown> | Accessor<Collection<unknown>>,
     state: MultipleSelectionState,
     options: SelectionManagerOptions = {},
   ) {
-    this.collection = collection;
+    this.#collection = collection;
     this.#state = state;
     this.#allowsCellSelection = options.allowsCellSelection ?? false;
     this.#layoutDelegate = options.layoutDelegate ?? null;
     this.#fullCollection = options.fullCollection ?? null;
+  }
+
+  get collection(): Collection<unknown> {
+    const collection = this.#collection;
+    return typeof collection === "function" ? collection() : collection;
   }
 
   get selectionMode(): SelectionMode {
@@ -585,9 +601,11 @@ export class SelectionManager {
   }
 
   setFocusedKey(key: Key | null, child?: FocusStrategy): void {
-    if (key === null || this.collection.getItem(key) !== null) {
-      this.#state.setFocusedKey(key, child);
-    }
+    untrack(() => {
+      if (key === null || this.collection.getItem(key) !== null) {
+        this.#state.setFocusedKey(key, child);
+      }
+    });
   }
 
   /** The selected keys, with "all" materialised. */
@@ -691,32 +709,34 @@ export class SelectionManager {
   }
 
   extendSelection(to: Key): void {
-    if (this.selectionMode === "none") return;
-    if (this.selectionMode === "single") {
-      this.replaceSelection(to);
-      return;
-    }
-
-    const mapped = this.#itemKey(to);
-    if (mapped === null) return;
-
-    const raw = this.#state.selectedKeys();
-    let next: Selection;
-
-    if (raw === "all") {
-      next = new Selection([mapped], mapped, mapped);
-    } else {
-      const anchor = raw.anchorKey ?? mapped;
-      next = new Selection(raw, anchor, mapped);
-      // Un-select what the previous extension covered, then select the new
-      // range: dragging back over a range has to shrink it.
-      for (const key of this.#keyRange(anchor, raw.currentKey ?? mapped)) next.delete(key);
-      for (const key of this.#keyRange(mapped, anchor)) {
-        if (this.canSelectItem(key)) next.add(key);
+    untrack(() => {
+      if (this.selectionMode === "none") return;
+      if (this.selectionMode === "single") {
+        this.replaceSelection(to);
+        return;
       }
-    }
 
-    this.#state.setSelectedKeys(next);
+      const mapped = this.#itemKey(to);
+      if (mapped === null) return;
+
+      const raw = this.#state.selectedKeys();
+      let next: Selection;
+
+      if (raw === "all") {
+        next = new Selection([mapped], mapped, mapped);
+      } else {
+        const anchor = raw.anchorKey ?? mapped;
+        next = new Selection(raw, anchor, mapped);
+        // Un-select what the previous extension covered, then select the new
+        // range: dragging back over a range has to shrink it.
+        for (const key of this.#keyRange(anchor, raw.currentKey ?? mapped)) next.delete(key);
+        for (const key of this.#keyRange(mapped, anchor)) {
+          if (this.canSelectItem(key)) next.add(key);
+        }
+      }
+
+      this.#state.setSelectedKeys(next);
+    });
   }
 
   #keyRange(from: Key, to: Key): Key[] {
@@ -755,50 +775,56 @@ export class SelectionManager {
   }
 
   toggleSelection(key: Key): void {
-    if (this.selectionMode === "none") return;
-    if (this.selectionMode === "single" && !this.isSelected(key)) {
-      this.replaceSelection(key);
-      return;
-    }
+    untrack(() => {
+      if (this.selectionMode === "none") return;
+      if (this.selectionMode === "single" && !this.isSelected(key)) {
+        this.replaceSelection(key);
+        return;
+      }
 
-    const mapped = this.#itemKey(key);
-    if (mapped === null) return;
+      const mapped = this.#itemKey(key);
+      if (mapped === null) return;
 
-    const raw = this.#state.selectedKeys();
-    const next = new Selection(raw === "all" ? this.#selectAllKeys() : raw);
-    if (next.has(mapped)) {
-      next.delete(mapped);
-    } else if (this.canSelectItem(mapped)) {
-      next.add(mapped);
-      next.anchorKey = mapped;
-      next.currentKey = mapped;
-    }
+      const raw = this.#state.selectedKeys();
+      const next = new Selection(raw === "all" ? this.#selectAllKeys() : raw);
+      if (next.has(mapped)) {
+        next.delete(mapped);
+      } else if (this.canSelectItem(mapped)) {
+        next.add(mapped);
+        next.anchorKey = mapped;
+        next.currentKey = mapped;
+      }
 
-    if (this.disallowEmptySelection && next.size === 0) return;
-    this.#state.setSelectedKeys(next);
+      if (this.disallowEmptySelection && next.size === 0) return;
+      this.#state.setSelectedKeys(next);
+    });
   }
 
   replaceSelection(key: Key): void {
-    if (this.selectionMode === "none") return;
-    const mapped = this.#itemKey(key);
-    if (mapped === null) return;
+    untrack(() => {
+      if (this.selectionMode === "none") return;
+      const mapped = this.#itemKey(key);
+      if (mapped === null) return;
 
-    this.#state.setSelectedKeys(
-      this.canSelectItem(mapped) ? new Selection([mapped], mapped, mapped) : new Selection(),
-    );
+      this.#state.setSelectedKeys(
+        this.canSelectItem(mapped) ? new Selection([mapped], mapped, mapped) : new Selection(),
+      );
+    });
   }
 
   setSelectedKeys(keys: Iterable<Key>): void {
-    if (this.selectionMode === "none") return;
+    untrack(() => {
+      if (this.selectionMode === "none") return;
 
-    const next = new Selection();
-    for (const key of keys) {
-      const mapped = this.#itemKey(key);
-      if (mapped === null) continue;
-      next.add(mapped);
-      if (this.selectionMode === "single") break;
-    }
-    this.#state.setSelectedKeys(next);
+      const next = new Selection();
+      for (const key of keys) {
+        const mapped = this.#itemKey(key);
+        if (mapped === null) continue;
+        next.add(mapped);
+        if (this.selectionMode === "single") break;
+      }
+      this.#state.setSelectedKeys(next);
+    });
   }
 
   #selectAllKeys(): Key[] {
@@ -826,19 +852,26 @@ export class SelectionManager {
   }
 
   selectAll(): void {
-    if (!this.isSelectAll && this.selectionMode === "multiple") this.#state.setSelectedKeys("all");
+    untrack(() => {
+      if (!this.isSelectAll && this.selectionMode === "multiple")
+        this.#state.setSelectedKeys("all");
+    });
   }
 
   clearSelection(): void {
-    const raw = this.#state.selectedKeys();
-    if (!this.disallowEmptySelection && (raw === "all" || raw.size > 0)) {
-      this.#state.setSelectedKeys(new Selection());
-    }
+    untrack(() => {
+      const raw = this.#state.selectedKeys();
+      if (!this.disallowEmptySelection && (raw === "all" || raw.size > 0)) {
+        this.#state.setSelectedKeys(new Selection());
+      }
+    });
   }
 
   toggleSelectAll(): void {
-    if (this.isSelectAll) this.clearSelection();
-    else this.selectAll();
+    untrack(() => {
+      if (this.isSelectAll) this.clearSelection();
+      else this.selectAll();
+    });
   }
 
   /**
@@ -848,24 +881,26 @@ export class SelectionManager {
    * `replace` would make multiple selection impossible for them.
    */
   select(key: Key, event?: { pointerType?: string }): void {
-    if (this.selectionMode === "none") return;
+    untrack(() => {
+      if (this.selectionMode === "none") return;
 
-    if (this.selectionMode === "single") {
-      if (this.isSelected(key) && !this.disallowEmptySelection) this.toggleSelection(key);
-      else this.replaceSelection(key);
-      return;
-    }
+      if (this.selectionMode === "single") {
+        if (this.isSelected(key) && !this.disallowEmptySelection) this.toggleSelection(key);
+        else this.replaceSelection(key);
+        return;
+      }
 
-    if (
-      this.selectionBehavior === "toggle" ||
-      event?.pointerType === "touch" ||
-      event?.pointerType === "virtual"
-    ) {
-      this.toggleSelection(key);
-      return;
-    }
+      if (
+        this.selectionBehavior === "toggle" ||
+        event?.pointerType === "touch" ||
+        event?.pointerType === "virtual"
+      ) {
+        this.toggleSelection(key);
+        return;
+      }
 
-    this.replaceSelection(key);
+      this.replaceSelection(key);
+    });
   }
 
   isSelectionEqual(other: Set<Key>): boolean {
@@ -949,12 +984,13 @@ export function listState<T>(options: ListStateOptions<T>): ListState<T> {
     return new ListCollection(options.filter(built));
   });
 
-  const selectionManager = createMemo(
-    () =>
-      new SelectionManager(collection() as Collection<unknown>, selection, {
-        layoutDelegate: options.layoutDelegate,
-      }),
-  );
+  // One manager for the list's life, reading the collection as it uses it.
+  // A manager per rebuild would re-run every option of a long list each time
+  // an item registered, since every option reads the manager.
+  const shared = new SelectionManager(collection, selection, {
+    layoutDelegate: options.layoutDelegate,
+  });
+  const selectionManager = (): SelectionManager => shared;
 
   // The search reads, so it is the compute; moving focus writes, so it is the
   // apply. In the render phase, so the repaired key is in place before any

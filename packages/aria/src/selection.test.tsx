@@ -7,7 +7,16 @@
  */
 
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import { For, flush, isDev } from "@barqjs/core";
+import {
+  DEV,
+  For,
+  createEffect,
+  createMemo,
+  createRoot,
+  createSignal,
+  flush,
+  isDev,
+} from "@barqjs/core";
 import { ref as makeRef } from "@barqjs/primitives/refs";
 import { render, screen, user } from "@barqjs/testing";
 import {
@@ -419,5 +428,57 @@ describe("bringing an item into view on iPadOS", () => {
         expect(scrolled()).toBe(-15);
       },
     );
+  });
+});
+
+describe("one manager for a list's life", () => {
+  test("a read of the focus or the mode is not run again when the items change", () => {
+    const [items, setItems] = createSignal<Fruit[]>(FRUIT);
+    let runs = 0;
+    const { state, focusedKey, dispose } = createRoot((disposeRoot) => {
+      const list = listState<Fruit>({ items, selectionMode: () => "single" });
+      const read = createMemo(() => {
+        runs++;
+        const manager = list.selectionManager();
+        return `${manager.selectionMode}:${String(manager.focusedKey)}`;
+      });
+      return { state: list, focusedKey: read, dispose: disposeRoot };
+    });
+    expect(focusedKey()).toBe("single:null");
+    const before = state.selectionManager();
+
+    setItems([...FRUIT, { id: "date", name: "Date" }]);
+    flush();
+    expect(focusedKey()).toBe("single:null");
+    expect(runs, "every option of a list re-ran its reads when an item joined").toBe(1);
+    expect(state.selectionManager()).toBe(before);
+    expect(state.selectionManager().collection.getItem("date")?.textValue).toBe("Date");
+
+    state.selectionManager().setFocusedKey("date");
+    flush();
+    expect(focusedKey()).toBe("single:date");
+    dispose();
+  });
+
+  test("a write from an effect's callback checks the key without reading the list untracked", () => {
+    const [target, setTarget] = createSignal<string | null>(null);
+    const capture = DEV.diagnostics.capture();
+    const { state, dispose } = createRoot((disposeRoot) => {
+      const list = listState<Fruit>({ items: FRUIT, selectionMode: () => "single" });
+      createEffect(target, (key) => {
+        if (key === null) return;
+        list.selectionManager().setFocusedKey(key);
+        list.selectionManager().replaceSelection(key);
+      });
+      return { state: list, dispose: disposeRoot };
+    });
+    flush();
+    setTarget("cherry");
+    flush();
+    expect(state.selectionManager().focusedKey).toBe("cherry");
+    expect(state.selectionManager().isSelected("cherry")).toBe(true);
+    const strict = capture.stop().filter((event) => event.code === "STRICT_READ_UNTRACKED");
+    expect(strict).toEqual([]);
+    dispose();
   });
 });
