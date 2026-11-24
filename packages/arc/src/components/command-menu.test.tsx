@@ -9,8 +9,10 @@ import { renderRoute } from "@barqjs/testing/router";
 
 import { layout } from "../style/index.ts";
 import { wears } from "../test-arc.ts";
+import { collectCss } from "@barqjs/css";
 import {
   CommandMenu,
+  commandMenuStyles,
   type CommandMenuGroup,
   type CommandResult,
   type CommandSource,
@@ -385,6 +387,14 @@ describe("CommandMenu sources", () => {
     expect(JSON.parse(localStorage.getItem("arc-test-recent") ?? "[]")).toHaveLength(1);
     view.unmount();
     localStorage.removeItem("arc-test-recent");
+  });
+
+  test("on a phone the palette takes the whole screen", () => {
+    const sheet = collectCss();
+    const root = commandMenuStyles().root.split(" ");
+    expect(
+      root.some((one) => sheet.includes(`@media (width < 40rem){.${one}{height:100dvh}`)),
+    ).toBe(true);
   });
 
   test("a result is a finger's height, and its meta sits at the reading end", async () => {

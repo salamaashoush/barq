@@ -12,6 +12,7 @@ import {
   CommandLoading,
   CommandShortcut,
 } from "@barqjs/ui/command";
+import { on } from "@barqjs/ui/conditions";
 import { Spinner } from "@barqjs/ui/spinner";
 import { srOnly } from "@barqjs/ui/sr-only";
 import { isServer } from "@barqjs/web";
@@ -173,9 +174,13 @@ const rowInset = arc({ paddingInline: space.x2 });
 
 export const commandMenuStyles = variants({
   slots: {
-    root: arc({}),
+    root: arc({
+      maxWidth: { default: undefined, [on.belowSm]: "100%" },
+      height: { default: undefined, [on.belowSm]: "100dvh" },
+      borderRadius: { default: undefined, [on.belowSm]: "0" },
+    }),
     input: arc({}),
-    list: arc({}),
+    list: arc({ maxHeight: { default: undefined, [on.belowSm]: "none" } }),
     empty: arc({}),
     group: arc({}),
     item: arc({}),
