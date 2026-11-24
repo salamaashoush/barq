@@ -276,6 +276,14 @@ Publishing sends selected items, named, with a preview to
 the library's named items, and the command run last first while nothing is
 typed.
 
+`welcomeScreen` puts Excalidraw's welcome screen over a scene that has never
+had an element while the selection tool is active: `true` for a heading, a
+menu (open a file, help) and hints pointing at the main menu, the toolbar and
+help, or a function returning `WelcomeScreen` parts, as Excalidraw's children
+are (`WelcomeScreen.Center`, `.Center.Logo`, `.Center.Heading`,
+`.Center.Menu`, `.Center.MenuItem`, `.Center.MenuItemLink`,
+`.Center.MenuItemHelp`, `.Center.MenuItemLoadScene`, `WelcomeScreen.Hints`).
+
 `langCode` is one of Excalidraw's locale codes; each language loads when
 first asked for (`loadLanguage` loads one ahead, which a server render that
 should arrive in it does on both sides). Arabic, Persian and Hebrew lay the

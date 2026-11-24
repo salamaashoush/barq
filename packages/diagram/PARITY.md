@@ -116,7 +116,7 @@ embeds.
 - done: publish dialog, to an app's `libraryPublishEndpoint` only (`library.test.tsx`)
 - done: search (Ctrl+F, the main menu), texts and frame names highlighted through `searchMatches`, stepping and bringing a match into view (`search.test.tsx`)
 - done: Mermaid and text-to-diagram dialog: Mermaid typed, previewed, auto-fixed and inserted; the chat streams from the app's `textToDiagram` backend, repairs, retries, stops and keeps its chats (`ttd-dialog.test.tsx`, `mermaid-error.test.ts`, `mermaid-auto-fix.test.ts`)
-- pending (3b): welcome screen and its hints
+- done: welcome screen with its hints, `welcomeScreen` and the `WelcomeScreen` parts (`welcome.test.tsx`)
 - done: colour and font quick picks pinned by dragging a palette colour or a font onto a slot, reordered by dragging a pick, reset from the strip's context menu or the picker's tip (`top-picks.test.tsx`)
 - done: font picker previews the highlighted font on the selection and restores it on close; Shift+F opens it (`pickers.test.tsx`)
 - done: command palette's recently used command, library items, library and search entries (`library.test.tsx`)

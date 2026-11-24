@@ -39,6 +39,7 @@ import { EditorToasts } from "./toasts.tsx";
 import { diagramLayer as d } from "./layer.ts";
 import { actionToggleViewMode, actionToggleZenMode } from "../editor/actions/toggles.ts";
 import { Pencil } from "@barqjs/lucide/icons/pencil";
+import { WelcomeScreenLayer } from "./welcome-screen.tsx";
 import { Button } from "@barqjs/ui/button";
 
 const scrollBack = d({
@@ -74,6 +75,8 @@ export interface EditorUIProps {
   ui: DiagramUI;
   /** The main menu's entries, replacing Excalidraw's defaults. */
   mainMenu?: () => Child;
+  /** The welcome screen over an empty scene, `true` for Excalidraw's. */
+  welcomeScreen?: true | (() => Child);
 }
 
 /**
@@ -87,11 +90,11 @@ export function EditorUI(props: EditorUIProps) {
   return provide(
     DiagramUIContext,
     () => props.ui,
-    () => <Layout mainMenu={props.mainMenu} />,
+    () => <Layout mainMenu={props.mainMenu} welcomeScreen={props.welcomeScreen} />,
   );
 }
 
-function Layout(props: { mainMenu?: () => Child }) {
+function Layout(props: { mainMenu?: () => Child; welcomeScreen?: true | (() => Child) }) {
   const value = useDiagramUI();
   const locale = provideLocale(() => value.langCode());
   const zen = () => value.store.state("zenModeEnabled");
@@ -118,6 +121,9 @@ function Layout(props: { mainMenu?: () => Child }) {
         data-diagram-ui=""
         data-testid="editor-ui"
       >
+        <Show when={props.welcomeScreen !== undefined}>
+          <WelcomeScreenLayer content={props.welcomeScreen ?? true} />
+        </Show>
         <div class={topStart}>
           {value.host().renderTopLeftUI?.(false, value.store.snapshot)}
           <Show when={!zen()}>

@@ -28,6 +28,7 @@ export class EditorStore {
   private readonly setSelection: (value: SelectionSnapshot) => void;
   private readonly setGeometry: (value: number) => void;
   private readonly setHistory: (value: { canUndo: boolean; canRedo: boolean }) => void;
+  private readonly setSceneEmpty: (value: boolean) => void;
   private scheduled = false;
   private disposed = false;
   private off: (() => void) | null = null;
@@ -37,6 +38,8 @@ export class EditorStore {
   /** Changes on every commit while the stats panel is open, so it follows a drag. */
   public readonly geometry: Accessor<number>;
   public readonly history: Accessor<{ canUndo: boolean; canRedo: boolean }>;
+  /** Whether the scene has never had an element, deleted ones included: the welcome screen's cue. */
+  public readonly sceneEmpty: Accessor<boolean>;
   /**
    * Whether the UI reads the editor yet: from its first commit on, never
    * during the render a hydration has to match with the server's.
@@ -63,6 +66,9 @@ export class EditorStore {
     );
     this.history = history;
     this.setHistory = setHistory;
+    const [sceneEmpty, setSceneEmpty] = createSignal(true);
+    this.sceneEmpty = sceneEmpty;
+    this.setSceneEmpty = setSceneEmpty;
     const [ready, setReady] = createSignal(false);
     this.ready = ready;
     this.setReady = setReady;
@@ -131,6 +137,7 @@ export class EditorStore {
       canUndo: !editor.history.isUndoStackEmpty,
       canRedo: !editor.history.isRedoStackEmpty,
     });
+    this.setSceneEmpty(editor.scene.getElementsIncludingDeleted().length === 0);
     this.setReady(true);
   }
 

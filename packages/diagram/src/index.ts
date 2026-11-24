@@ -10,6 +10,7 @@ export { DiagramViewer } from "./viewer.tsx";
 export { DiagramEditor } from "./diagram-editor.tsx";
 export type { DiagramEditorProps } from "./diagram-editor.tsx";
 export { MainMenu } from "./ui/main-menu.tsx";
+export { WelcomeScreen } from "./ui/welcome-screen.tsx";
 export { useHandleLibrary } from "./ui/use-handle-library.ts";
 export { handleLibrary, parseLibraryTokensFromUrl } from "./editor/library.ts";
 export type {

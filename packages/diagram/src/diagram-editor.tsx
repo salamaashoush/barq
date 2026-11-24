@@ -91,6 +91,11 @@ export interface DiagramEditorProps {
    * a function, called inside the menu, whose parts read the editor.
    */
   mainMenu?: () => Child;
+  /**
+   * Excalidraw's welcome screen over an empty scene: `true` for its heading,
+   * menu and hints, or a function returning `WelcomeScreen` parts.
+   */
+  welcomeScreen?: true | (() => Child);
   /** Excalidraw's `aiEnabled`: the text-to-diagram and wireframe entries. @default true */
   aiEnabled?: boolean;
   /**
@@ -451,7 +456,7 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
         {announcement()}
       </div>
       <Show when={props.ui !== false}>
-        <EditorUI ui={ui} mainMenu={props.mainMenu} />
+        <EditorUI ui={ui} mainMenu={props.mainMenu} welcomeScreen={props.welcomeScreen} />
       </Show>
     </div>
   );
