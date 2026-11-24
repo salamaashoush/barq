@@ -337,9 +337,9 @@ if (await confirm({ title: "Delete the check?", tone: "danger", confirmLabel: "D
 - `DataGrid`: records to edit like a spreadsheet, on `@barqjs/table`'s cell
   selection, as a `grid`. Each column has a `type` (`text`, `number`,
   `select` with `options`, `date`, `checkbox`) that picks its editor and how
-  a pasted value is read, and may `validate`, `freeze` at the reading start,
-  sit under a group's shared header, and `total` in the footer and in each
-  group's row (`groupBy`), which folds. The arrows move a cell in the reading
+  a pasted value is read, and may `validate`, stay `frozen` at the reading
+  start, sit under a group's shared header, and `total` in the footer and in
+  each group's row (`groupBy`), which folds. The arrows move a cell in the reading
   direction, Shift with them or a drag grows the range, Home and End go to a
   row's ends and Mod with them to the grid's; Enter or F2 edits (a typed
   character replaces), Enter saves and goes down, Tab saves and goes on,
