@@ -7,6 +7,7 @@ import {
   createUniqueId,
   untrack,
 } from "@barqjs/core";
+import { variants } from "@barqjs/css";
 import { type CalendarDate, type ZonedDateTime, now, toTimeZone } from "@barqjs/aria/date";
 import { DateField as AriaDateField } from "@barqjs/aria/datefield";
 import {
@@ -44,7 +45,13 @@ import { Select, SelectItem } from "@barqjs/ui/select";
 import { Switch } from "@barqjs/ui/switch";
 import { Textarea } from "@barqjs/ui/textarea";
 
+import { srOnly } from "@barqjs/ui/sr-only";
+import { when } from "@barqjs/ui/shared-when";
+
 import { arcLayer as arc } from "../layer.ts";
+import { type Customisable, parts } from "../lib/parts.ts";
+import { bg, edge, focus, interaction, layout, rounded, space, type } from "../style/index.ts";
+import { useArcMessages } from "./messages.ts";
 
 export const {
   fieldContext: arcFieldContext,
@@ -72,13 +79,25 @@ function messagesOf(errors: readonly unknown[]): string[] {
   return found;
 }
 
+export const fieldStyles = variants({
+  slots: {
+    root: arc({}),
+    label: arc({}),
+    content: arc({}),
+    description: arc({}),
+    error: arc({}),
+    control: arc({}),
+  },
+});
+
+type FieldSlots = ReturnType<typeof fieldStyles>;
+
 /** The labels and messages every field takes. */
-export interface ArcFieldProps {
+export interface ArcFieldProps extends Customisable<FieldSlots> {
   label: Child;
   description?: Child;
   isDisabled?: boolean;
   isRequired?: boolean;
-  class?: string;
 }
 
 /**
@@ -97,8 +116,8 @@ function control<T>() {
   const errors = createMemo((): string[] => messagesOf(field().state.meta.errors));
   const isInvalid = (): boolean => field().state.meta.isTouched && errors().length > 0;
   const describedBy = (hasDescription: boolean): string | undefined => {
-    const parts = [hasDescription ? ids.description : "", isInvalid() ? ids.error : ""];
-    const joined = parts.filter((part) => part !== "").join(" ");
+    const pieces = [hasDescription ? ids.description : "", isInvalid() ? ids.error : ""];
+    const joined = pieces.filter((part) => part !== "").join(" ");
     return joined === "" ? undefined : joined;
   };
   const change = (value: T): void => {
@@ -135,33 +154,38 @@ interface Wiring {
 
 interface FrameProps {
   of: Wiring;
+  /** The field's own props, for its class and its parts' classes. */
+  field: ArcFieldProps;
   label: Child;
   description?: Child;
   /** Beside the control rather than over it: a switch, a checkbox. */
   inline?: boolean;
   /** The control is named from the label's id: a group of segments has nothing for `<label for>`. */
   labelledById?: boolean;
-  class?: string;
   children?: Child;
 }
 
 /** `<Field>` with the label, the description and the error wired to the control's ids. */
 function Frame(props: FrameProps) {
   const of = props.of;
+  const cls = (): FieldSlots => parts(fieldStyles(), props.field.classes);
   const error = () => (
     <FieldError
+      class={cls().error}
       id={of.ids.error}
       errors={of.isInvalid() ? of.errors().map((message) => ({ message })) : []}
     />
   );
   const description = () => (
     <Show when={props.description !== undefined}>
-      <FieldDescription id={of.ids.description}>{props.description}</FieldDescription>
+      <FieldDescription class={cls().description} id={of.ids.description}>
+        {props.description}
+      </FieldDescription>
     </Show>
   );
   return (
     <Field
-      class={props.class}
+      class={arc(cls().root, props.field.class, props.field.className)}
       orientation={props.inline === true ? "horizontal" : "vertical"}
       isInvalid={of.isInvalid()}
       data-slot="arc-field"
@@ -171,6 +195,7 @@ function Frame(props: FrameProps) {
         fallback={
           <>
             <FieldLabel
+              class={cls().label}
               id={of.ids.label}
               for={props.labelledById === true ? undefined : of.ids.control}
             >
@@ -183,8 +208,8 @@ function Frame(props: FrameProps) {
         }
       >
         {props.children}
-        <FieldContent>
-          <FieldLabel id={of.ids.label} for={of.ids.control}>
+        <FieldContent class={cls().content}>
+          <FieldLabel class={cls().label} id={of.ids.label} for={of.ids.control}>
             {props.label}
           </FieldLabel>
           {description()}
@@ -207,8 +232,9 @@ export interface TextFieldProps extends ArcFieldProps {
 export function TextField(props: TextFieldProps) {
   const of = control<string>();
   return (
-    <Frame of={of} label={props.label} description={props.description} class={props.class}>
+    <Frame of={of} label={props.label} description={props.description} field={props}>
       <Input
+        class={props.classes?.control}
         id={of.ids.control}
         name={of.field().name}
         type={props.type ?? "text"}
@@ -238,11 +264,12 @@ export interface PasswordFieldProps extends ArcFieldProps {
 
 /** A password, with a button that shows what was typed. */
 export function PasswordField(props: PasswordFieldProps) {
+  const messages = useArcMessages();
   const of = control<string>();
   const [shown, setShown] = createSignal(false);
   return (
-    <Frame of={of} label={props.label} description={props.description} class={props.class}>
-      <InputGroup>
+    <Frame of={of} label={props.label} description={props.description} field={props}>
+      <InputGroup class={props.classes?.control}>
         <InputGroupInput
           id={of.ids.control}
           name={of.field().name}
@@ -260,7 +287,9 @@ export function PasswordField(props: PasswordFieldProps) {
           <InputGroupButton
             size="icon-xs"
             aria-label={
-              shown() ? (props.hideLabel ?? "Hide password") : (props.showLabel ?? "Show password")
+              shown()
+                ? (props.hideLabel ?? messages().hidePassword)
+                : (props.showLabel ?? messages().showPassword)
             }
             aria-pressed={shown()}
             isDisabled={props.isDisabled}
@@ -320,14 +349,14 @@ export function NumberField(props: NumberFieldProps) {
         <>
           {props.label}
           <Show when={props.unitLabel !== undefined}>
-            <span class={unitWords}>{` (${props.unitLabel ?? ""})`}</span>
+            <span class={srOnly}>{` (${props.unitLabel ?? ""})`}</span>
           </Show>
         </>
       }
       description={props.description}
-      class={props.class}
+      field={props}
     >
-      <InputGroup>
+      <InputGroup class={props.classes?.control}>
         {input()}
         <Show when={props.unit !== undefined}>
           <InputGroupAddon align="inline-end" aria-hidden="true">
@@ -339,15 +368,6 @@ export function NumberField(props: NumberFieldProps) {
   );
 }
 
-const unitWords = arc({
-  position: "absolute",
-  width: "1px",
-  height: "1px",
-  overflow: "hidden",
-  clipPath: "inset(50%)",
-  whiteSpace: "nowrap",
-});
-
 export interface TextareaFieldProps extends ArcFieldProps {
   rows?: number;
   placeholder?: string;
@@ -358,8 +378,9 @@ export interface TextareaFieldProps extends ArcFieldProps {
 export function TextareaField(props: TextareaFieldProps) {
   const of = control<string>();
   return (
-    <Frame of={of} label={props.label} description={props.description} class={props.class}>
+    <Frame of={of} label={props.label} description={props.description} field={props}>
       <Textarea
+        class={props.classes?.control}
         id={of.ids.control}
         name={of.field().name}
         value={of.field().state.value ?? ""}
@@ -381,8 +402,9 @@ export function TextareaField(props: TextareaFieldProps) {
 export function SwitchField(props: ArcFieldProps) {
   const of = control<boolean>();
   return (
-    <Frame of={of} label={props.label} description={props.description} class={props.class} inline>
+    <Frame of={of} label={props.label} description={props.description} field={props} inline>
       <Switch
+        class={props.classes?.control}
         id={of.ids.control}
         name={of.field().name}
         isSelected={of.field().state.value}
@@ -401,8 +423,9 @@ export function SwitchField(props: ArcFieldProps) {
 export function CheckboxField(props: ArcFieldProps) {
   const of = control<boolean>();
   return (
-    <Frame of={of} label={props.label} description={props.description} class={props.class} inline>
+    <Frame of={of} label={props.label} description={props.description} field={props} inline>
       <Checkbox
+        class={props.classes?.control}
         id={of.ids.control}
         name={of.field().name}
         isSelected={of.field().state.value}
@@ -433,16 +456,17 @@ export interface SelectFieldProps extends ArcFieldProps {
 
 /** One of a few values, from a list. Held as the option's `value`, or `null`. */
 export function SelectField(props: SelectFieldProps) {
+  const messages = useArcMessages();
   const of = control<string | null>();
   const items = () => props.options.map((option) => ({ id: option.value, ...option }));
   return (
-    <Frame of={of} label={props.label} description={props.description} class={props.class}>
+    <Frame of={of} label={props.label} description={props.description} field={props}>
       <Select
         items={items()}
         id={of.ids.control}
         name={of.field().name}
         value={of.field().state.value ?? undefined}
-        placeholder={props.placeholder ?? "Select"}
+        placeholder={props.placeholder ?? messages().selectPlaceholder}
         isDisabled={props.isDisabled}
         isRequired={props.isRequired}
         isInvalid={of.isInvalid()}
@@ -455,15 +479,13 @@ export function SelectField(props: SelectFieldProps) {
           of.change(value);
           of.blur();
         }}
-        class={fill}
+        class={arc(layout.fill, props.classes?.control)}
       >
         {(option: FieldOption) => <SelectItem>{option.label}</SelectItem>}
       </Select>
     </Frame>
   );
 }
-
-const fill = arc({ width: "100%" });
 
 export interface ComboboxFieldProps extends ArcFieldProps {
   options: readonly FieldOption[];
@@ -478,8 +500,9 @@ export function ComboboxField(props: ComboboxFieldProps) {
   const chosen = (): FieldOption | null =>
     props.options.find((option) => option.value === of.field().state.value) ?? null;
   return (
-    <Frame of={of} label={props.label} description={props.description} class={props.class}>
+    <Frame of={of} label={props.label} description={props.description} field={props}>
       <ComboboxOver
+        control={props.classes?.control}
         of={of}
         options={props.options}
         chosen={chosen()}
@@ -495,6 +518,7 @@ export function ComboboxField(props: ComboboxFieldProps) {
 
 interface ComboboxOverProps {
   of: Control<string | null>;
+  control?: string;
   options: readonly FieldOption[];
   chosen: FieldOption | null;
   placeholder?: string;
@@ -505,6 +529,7 @@ interface ComboboxOverProps {
 }
 
 function ComboboxOver(props: ComboboxOverProps) {
+  const messages = useArcMessages();
   const of = props.of;
   return (
     <Combobox
@@ -519,6 +544,7 @@ function ComboboxOver(props: ComboboxOverProps) {
       }}
     >
       <ComboboxInput
+        class={props.control}
         id={of.ids.control}
         placeholder={props.placeholder}
         disabled={props.isDisabled}
@@ -527,7 +553,7 @@ function ComboboxOver(props: ComboboxOverProps) {
         aria-describedby={of.describedBy(props.hasDescription)}
       />
       <ComboboxContent>
-        <ComboboxEmpty>{props.emptyLabel ?? "No matches"}</ComboboxEmpty>
+        <ComboboxEmpty>{props.emptyLabel ?? messages().noMatches}</ComboboxEmpty>
         <ComboboxList>
           {(option: FieldOption) => (
             <ComboboxItem value={option} disabled={option.isDisabled}>
@@ -556,6 +582,7 @@ export interface TimeZoneFieldProps extends ArcFieldProps {
  * Held as its IANA name.
  */
 export function TimeZoneField(props: TimeZoneFieldProps) {
+  const messages = useArcMessages();
   const of = control<string | null>();
   const options = createMemo((): FieldOption[] => {
     const zones = timeZones();
@@ -567,12 +594,13 @@ export function TimeZoneField(props: TimeZoneFieldProps) {
   const chosen = (): FieldOption | null =>
     options().find((option) => option.value === of.field().state.value) ?? null;
   return (
-    <Frame of={of} label={props.label} description={props.description} class={props.class}>
+    <Frame of={of} label={props.label} description={props.description} field={props}>
       <ComboboxOver
+        control={props.classes?.control}
         of={of}
         options={options()}
         chosen={chosen()}
-        placeholder={props.placeholder ?? "Search time zones"}
+        placeholder={props.placeholder ?? messages().searchTimeZones}
         isDisabled={props.isDisabled}
         isRequired={props.isRequired}
         hasDescription={props.description !== undefined}
@@ -581,58 +609,41 @@ export function TimeZoneField(props: TimeZoneFieldProps) {
   );
 }
 
-const segments = arc({
-  display: "flex",
-  minHeight: "calc(var(--spacing) * 8)",
-  width: "100%",
-  alignItems: "center",
-  gap: "1px",
-  borderRadius: "var(--radius)",
-  borderWidth: "1px",
-  borderStyle: "solid",
-  borderColor: "var(--input)",
-  backgroundColor: "transparent",
-  paddingInline: "calc(var(--spacing) * 2.5)",
-  fontSize: "var(--text-sm)",
-  fontVariantNumeric: "tabular-nums",
-  ":focus-within": {
-    borderColor: "var(--ring)",
-    boxShadow: "0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent)",
+const segments = arc(
+  layout.row,
+  layout.fill,
+  edge.input,
+  rounded.md,
+  bg.transparent,
+  type.sm,
+  type.numeric,
+  focus.within,
+  interaction.invalid,
+  when.disabledCursor,
+  {
+    minHeight: space.x8,
+    gap: "1px",
+    paddingInline: space.x2_5,
+    '& [role="spinbutton"]': {
+      borderRadius: "calc(var(--radius) * 0.5)",
+      paddingInline: "1px",
+      outline: "none",
+    },
+    '& [role="spinbutton"]:focus': {
+      backgroundColor: "var(--accent)",
+      color: "var(--accent-foreground)",
+    },
+    "& [data-placeholder]": { color: "var(--muted-foreground)" },
   },
-  "[data-invalid]": {
-    borderColor: "var(--destructive)",
-  },
-  "[data-disabled]": {
-    opacity: "50%",
-    cursor: "not-allowed",
-  },
-  '& [role="spinbutton"]': {
-    borderRadius: "calc(var(--radius) * 0.5)",
-    paddingInline: "1px",
-    outline: "none",
-  },
-  '& [role="spinbutton"]:focus': {
-    backgroundColor: "var(--accent)",
-    color: "var(--accent-foreground)",
-  },
-  "& [data-placeholder]": {
-    color: "var(--muted-foreground)",
-  },
-});
+);
 
 /** A day, typed segment by segment. Held as a `CalendarDate`, or `null`. */
 export function DateField(props: ArcFieldProps) {
   const of = control<CalendarDate | null>();
   return (
-    <Frame
-      of={of}
-      label={props.label}
-      description={props.description}
-      class={props.class}
-      labelledById
-    >
+    <Frame of={of} label={props.label} description={props.description} field={props} labelledById>
       <AriaDateField<CalendarDate>
-        class={segments}
+        class={arc(segments, props.classes?.control)}
         aria-labelledby={of.ids.label}
         aria-describedby={of.describedBy(props.description !== undefined)}
         value={of.field().state.value ?? null}
@@ -677,15 +688,9 @@ export function DateTimeField(props: DateTimeFieldProps) {
       ? undefined
       : now(props.timeZone).set({ minute: 0, second: 0, millisecond: 0 });
   return (
-    <Frame
-      of={of}
-      label={props.label}
-      description={props.description}
-      class={props.class}
-      labelledById
-    >
+    <Frame of={of} label={props.label} description={props.description} field={props} labelledById>
       <AriaDateField<ZonedDateTime>
-        class={segments}
+        class={arc(segments, props.classes?.control)}
         aria-labelledby={of.ids.label}
         aria-describedby={of.describedBy(props.description !== undefined)}
         value={shown()}
@@ -703,11 +708,14 @@ export function DateTimeField(props: DateTimeFieldProps) {
   );
 }
 
-export interface SubmitButtonProps {
+const rootOnly = variants({ slots: { root: arc({}) } });
+
+type RootSlots = ReturnType<typeof rootOnly>;
+
+export interface SubmitButtonProps extends Customisable<RootSlots> {
   children?: Child;
   /** @default "default" */
   variant?: ButtonVariant;
-  class?: string;
 }
 
 /**
@@ -715,6 +723,7 @@ export interface SubmitButtonProps {
  * holds an error it already showed.
  */
 export function SubmitButton(props: SubmitButtonProps) {
+  const messages = useArcMessages();
   const form = useArcFormContext();
   const state = form.useSelector((current) => ({
     canSubmit: current.canSubmit,
@@ -724,23 +733,28 @@ export function SubmitButton(props: SubmitButtonProps) {
     <Button
       type="submit"
       variant={props.variant ?? "default"}
-      class={props.class}
+      class={arc(props.classes?.root, props.class, props.className)}
       isPending={state().isSubmitting}
       isDisabled={!state().canSubmit}
       data-slot="submit-button"
     >
-      {props.children ?? "Save"}
+      {props.children ?? messages().save}
     </Button>
   );
 }
 
 /** What went wrong with the form as a whole: a form validator's error, or the server's. */
-export function FormError(props: { class?: string }) {
+export function FormError(props: Customisable<RootSlots>) {
   const form = useArcFormContext();
   const errors = form.useSelector((current) => messagesOf(current.errors));
   return (
     <Show when={errors().length > 0}>
-      <Alert variant="destructive" class={props.class} role="alert" data-slot="form-error">
+      <Alert
+        variant="destructive"
+        class={arc(props.classes?.root, props.class, props.className)}
+        role="alert"
+        data-slot="form-error"
+      >
         <CircleAlert aria-hidden="true" />
         <AlertDescription>
           <For each={errors()}>{(message: string) => <p>{message}</p>}</For>

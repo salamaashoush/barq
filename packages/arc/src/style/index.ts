@@ -138,6 +138,8 @@ export const layout = arc.create({
   wrap: { flexWrap: "wrap" },
   /** Takes the room left in its row or column. */
   grow: { flex: "1" },
+  /** Grows into the room left, from its own content size. */
+  growAuto: { flex: "1 1 auto" },
   noShrink: { flexShrink: "0" },
   /** Pushed to the end of its row, whatever the reading direction. */
   pushEnd: { marginInlineStart: "auto" },

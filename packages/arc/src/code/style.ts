@@ -1,4 +1,5 @@
 import { arcLayer as arc } from "../layer.ts";
+import { bg, edge, fg, focus, interaction, layout, motion, rounded, type } from "../style/index.ts";
 
 /**
  * The metrics and colours every code surface shares, as custom properties.
@@ -8,7 +9,7 @@ import { arcLayer as arc } from "../layer.ts";
  * editor that takes it over moves nothing. The colours are arc's tokens, so
  * light, dark and an app's own values follow the theme with no reconfigure.
  */
-export const codeSurface = arc({
+export const codeSurface = arc(type.mono, fg.default, {
   "--code-font-size": "0.8125rem",
   "--code-line-height": "1.25rem",
   "--code-pad-y": "0.5rem",
@@ -18,10 +19,8 @@ export const codeSurface = arc({
   "--code-gutter-pad-end": "0.25rem",
   "--code-gutter-width":
     "max(var(--code-gutter-min), calc(var(--code-digits, 2) * 1ch + var(--code-gutter-pad-start) + var(--code-gutter-pad-end)))",
-  fontFamily: "var(--font-mono)",
   fontSize: "var(--code-font-size)",
   lineHeight: "var(--code-line-height)",
-  color: "var(--foreground)",
   "& .tok-keyword": { color: "var(--code-keyword)" },
   "& .tok-string": { color: "var(--code-string)" },
   "& .tok-number": { color: "var(--code-number)" },
@@ -46,8 +45,7 @@ export const codeSurface = arc({
  * the text keeps its newlines, and a line number is generated content, which
  * a copy leaves out and a screen reader skips.
  */
-export const staticCode = arc({
-  margin: "0",
+export const staticCode = arc(layout.flush, {
   boxSizing: "border-box",
   minHeight: "var(--code-min-height, auto)",
   maxHeight: "var(--code-max-height, none)",
@@ -93,34 +91,27 @@ export const staticCode = arc({
 });
 
 /** The box an editor or a diff sits in: an input's border, focus ring and invalid state. */
-export const codeFrame = arc({
-  position: "relative",
-  display: "flex",
-  flexDirection: "column",
-  minWidth: "0px",
-  overflow: "hidden",
-  borderWidth: "1px",
-  borderStyle: "solid",
-  borderColor: "var(--input)",
-  borderRadius: "var(--radius)",
-  backgroundColor: "var(--background)",
-  transitionProperty: "border-color, box-shadow",
-  transitionDuration: "var(--duration-fast)",
-  "&:focus-within": {
-    borderColor: "var(--ring)",
-    boxShadow: "0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent)",
+export const codeFrame = arc(
+  layout.relative,
+  layout.column,
+  layout.minZero,
+  edge.input,
+  rounded.md,
+  bg.page,
+  focus.within,
+  interaction.invalid,
+  motion.colours,
+  {
+    overflow: "hidden",
+    "&[data-invalid]:focus-within": {
+      boxShadow: "0 0 0 3px color-mix(in oklab, var(--destructive) 20%, transparent)",
+    },
+    "&[data-readonly]": {
+      backgroundColor: "var(--sunken)",
+    },
+    "& > .cm-editor, & > [data-slot=code-editor-host] > .cm-editor": {
+      flex: "1 1 auto",
+      minHeight: "0px",
+    },
   },
-  "&[data-invalid]": {
-    borderColor: "var(--destructive)",
-  },
-  "&[data-invalid]:focus-within": {
-    boxShadow: "0 0 0 3px color-mix(in oklab, var(--destructive) 20%, transparent)",
-  },
-  "&[data-readonly]": {
-    backgroundColor: "var(--sunken)",
-  },
-  "& > .cm-editor, & > [data-slot=code-editor-host] > .cm-editor": {
-    flex: "1 1 auto",
-    minHeight: "0px",
-  },
-});
+);

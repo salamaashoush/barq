@@ -12,6 +12,8 @@ export interface ArcMessages {
   copied: string;
   copyFailed: string;
   copyCode: string;
+  original: string;
+  modified: string;
   breadcrumb: string;
   showFullPath: string;
   mainNavigation: string;
@@ -61,6 +63,8 @@ export const ENGLISH: ArcMessages = {
   copied: "Copied",
   copyFailed: "Could not copy",
   copyCode: "Copy code",
+  original: "Original",
+  modified: "Modified",
   breadcrumb: "Breadcrumb",
   showFullPath: "Show the full path",
   mainNavigation: "Main",

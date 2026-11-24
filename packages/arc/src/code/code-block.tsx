@@ -1,65 +1,54 @@
 import { Show, createUniqueId } from "@barqjs/core";
+import { variants } from "@barqjs/css";
 
 import { CopyButton } from "../components/copy-button.tsx";
 import { arcLayer as arc } from "../layer.ts";
+import { useArcMessages } from "../components/messages.ts";
+import { type Customisable, parts } from "../lib/parts.ts";
+import { bg, edge, gap, layout, rounded, space, truncate, type } from "../style/index.ts";
 import type { CodeLanguage } from "./languages.ts";
 import { codeVars } from "./options.ts";
 import { StaticCode } from "./static-code.tsx";
 import { codeSurface } from "./style.ts";
 
-const figure = arc({
-  position: "relative",
-  display: "flex",
-  flexDirection: "column",
-  minWidth: "0px",
-  margin: "0",
-  overflow: "hidden",
-  borderWidth: "1px",
-  borderStyle: "solid",
-  borderColor: "var(--border)",
-  borderRadius: "var(--radius)",
-  backgroundColor: "var(--sunken)",
-});
-
-const header = arc({
-  display: "flex",
-  alignItems: "center",
-  gap: "calc(var(--spacing) * 2)",
-  minHeight: "calc(var(--spacing) * 9)",
-  paddingInlineStart: "var(--code-pad-x)",
-  paddingInlineEnd: "calc(var(--spacing) * 1)",
-  borderBottomWidth: "1px",
-  borderBottomStyle: "solid",
-  borderBottomColor: "var(--border)",
-  fontFamily: "var(--font-sans)",
-  fontSize: "var(--text-xs)",
-  lineHeight: "var(--text-xs--line-height)",
-  color: "var(--muted-foreground)",
-});
-
-const caption = arc({
-  flex: "1 1 auto",
-  minWidth: "0px",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-});
-
-const floating = arc({
-  position: "absolute",
-  insetBlockStart: "calc(var(--spacing) * 1)",
-  insetInlineEnd: "calc(var(--spacing) * 1)",
-  zIndex: "1",
-});
-
-const body = arc({
-  ":focus-visible": {
-    outlineWidth: "2px",
-    outlineStyle: "solid",
-    outlineColor: "var(--ring)",
-    outlineOffset: "-2px",
+export const codeBlockStyles = variants({
+  slots: {
+    root: arc(
+      layout.relative,
+      layout.column,
+      layout.minZero,
+      layout.flush,
+      edge.all,
+      rounded.md,
+      bg.sunken,
+      {
+        overflow: "hidden",
+      },
+    ),
+    header: arc(layout.row, gap[2], edge.bottom, type.sans, type.meta, {
+      minHeight: space.x9,
+      paddingInlineStart: "var(--code-pad-x)",
+      paddingInlineEnd: space.x1,
+    }),
+    title: arc(layout.growAuto, layout.minZero, truncate),
+    copy: arc({
+      position: "absolute",
+      insetBlockStart: space.x1,
+      insetInlineEnd: space.x1,
+      zIndex: "1",
+    }),
+    body: arc({
+      ":focus-visible": {
+        outlineWidth: "2px",
+        outlineStyle: "solid",
+        outlineColor: "var(--ring)",
+        outlineOffset: "-2px",
+      },
+    }),
   },
 });
+
+type Slots = ReturnType<typeof codeBlockStyles>;
 
 export interface HighlightProps {
   code: string;
@@ -70,6 +59,7 @@ export interface HighlightProps {
   /** Wrap long lines instead of scrolling sideways. @default false */
   wrap?: boolean;
   class?: string;
+  className?: string;
 }
 
 /**
@@ -91,19 +81,19 @@ export function Highlight(props: HighlightProps) {
       language={props.language}
       lineNumbers={props.lineNumbers === true}
       wrap={props.wrap === true}
-      class={props.class === undefined ? codeSurface : `${codeSurface} ${props.class}`}
+      class={arc(codeSurface, props.class, props.className)}
     />
   );
 }
 
-export interface CodeBlockProps extends HighlightProps {
+export interface CodeBlockProps extends HighlightProps, Customisable<Slots> {
   /** Shown above the code, and names the figure. */
   filename?: string;
   /** Shown above the code when there is no filename. @default the language's name */
   label?: string;
   /** A button that copies the code. @default true */
   copyable?: boolean;
-  /** Names the copy button. @default "Copy code" */
+  /** Names the copy button. @default the provider's `copyCode`, "Copy code" */
   copyLabel?: string;
   /** A CSS length, or pixels. Past it the code scrolls. */
   maxHeight?: string | number;
@@ -127,10 +117,12 @@ export function CodeBlock(props: CodeBlockProps) {
     props.label ??
     (typeof props.language === "string" ? props.language : undefined);
   const copyable = (): boolean => props.copyable !== false;
+  const messages = useArcMessages();
+  const cls = (): Slots => parts(codeBlockStyles(), props.classes);
 
   return (
     <figure
-      class={[codeSurface, figure, props.class]}
+      class={arc(codeSurface, cls().root, props.class, props.className)}
       data-slot="code-block"
       aria-labelledby={title() === undefined ? undefined : captionId}
       style={codeVars({ maxHeight: props.maxHeight })}
@@ -139,18 +131,18 @@ export function CodeBlock(props: CodeBlockProps) {
         when={title() !== undefined}
         fallback={
           <Show when={copyable()}>
-            <span class={floating}>
-              <CopyButton value={props.code} label={props.copyLabel ?? "Copy code"} />
+            <span class={cls().copy} data-slot="code-block-copy">
+              <CopyButton value={props.code} label={props.copyLabel ?? messages().copyCode} />
             </span>
           </Show>
         }
       >
-        <figcaption class={header} data-slot="code-block-header">
-          <span id={captionId} class={caption} data-slot="code-block-title">
+        <figcaption class={cls().header} data-slot="code-block-header">
+          <span id={captionId} class={cls().title} data-slot="code-block-title">
             {title()}
           </span>
           <Show when={copyable()}>
-            <CopyButton value={props.code} label={props.copyLabel ?? "Copy code"} />
+            <CopyButton value={props.code} label={props.copyLabel ?? messages().copyCode} />
           </Show>
         </figcaption>
       </Show>
@@ -159,7 +151,7 @@ export function CodeBlock(props: CodeBlockProps) {
         language={props.language}
         lineNumbers={props.lineNumbers === true}
         wrap={props.wrap === true}
-        class={body}
+        class={cls().body}
         tabIndex={0}
       />
     </figure>

@@ -1,3 +1,4 @@
+import { variants } from "@barqjs/css";
 import {
   Show,
   createEffect,
@@ -33,20 +34,27 @@ import {
 } from "@codemirror/view";
 
 import { arcLayer as arc } from "../layer.ts";
+import { type Customisable, parts } from "../lib/parts.ts";
+import { layout } from "../style/index.ts";
 import { codeTheme } from "./editor-theme.ts";
 import { type CodeLanguage, loadLanguage, loadedLanguage } from "./languages.ts";
-import { type ExtensionSource, codeVars, extensionOf, fromCaller } from "./options.ts";
+import {
+  type ExtensionSource,
+  changeReport,
+  codeVars,
+  extensionOf,
+  fromCaller,
+} from "./options.ts";
 import { StaticCode } from "./static-code.tsx";
 import { codeFrame, codeSurface } from "./style.ts";
 
-const host = arc({
-  display: "flex",
-  flexDirection: "column",
-  flex: "1 1 auto",
-  minHeight: "0px",
+export const codeEditorStyles = variants({
+  slots: { root: arc({}), host: arc(layout.column, layout.growAuto, layout.minZeroBlock) },
 });
 
-export interface CodeEditorProps {
+type Slots = ReturnType<typeof codeEditorStyles>;
+
+export interface CodeEditorProps extends Customisable<Slots> {
   /** The document, controlled: a new value replaces what the editor holds. */
   value?: string;
   /** The first document of an editor that keeps its own. */
@@ -96,7 +104,6 @@ export interface CodeEditorProps {
    * effects made in it follow the component.
    */
   onView?: (view: EditorView) => void | (() => void);
-  class?: string;
 }
 
 /**
@@ -116,6 +123,7 @@ export interface CodeEditorProps {
  * properties, so a theme switch needs no reconfigure at all.
  */
 export function CodeEditor(props: CodeEditorProps) {
+  const cls = (): Slots => parts(codeEditorStyles(), props.classes);
   const owner = getOwner();
   const descriptionId = createUniqueId();
   const [mounted, setMounted] = createSignal(false, { ownedWrite: true });
@@ -124,20 +132,11 @@ export function CodeEditor(props: CodeEditorProps) {
   let disposed = false;
   let release: (() => void) | undefined;
 
-  // The document as the caller last knew it: what it passed in, or what was
-  // last reported to it. A value equal to this needs no write, and a change
-  // that ends equal to it needs no report.
-  let known = untrack(() => props.value ?? props.defaultValue ?? "");
-  let reporting = false;
-
-  const report = (): void => {
-    reporting = false;
-    if (view === undefined) return;
-    const doc = view.state.doc.toString();
-    if (doc === known) return;
-    known = doc;
-    props.onChange?.(doc);
-  };
+  const changes = changeReport(
+    untrack(() => props.value ?? props.defaultValue ?? ""),
+    () => view?.state.doc.toString(),
+    (doc) => props.onChange?.(doc),
+  );
 
   const attributes = (): Record<string, string> => {
     const values: Record<string, string> = {};
@@ -236,8 +235,8 @@ export function CodeEditor(props: CodeEditorProps) {
   createEffect(
     () => props.value,
     (value) => {
-      if (value === undefined || view === undefined || value === known) return;
-      known = value;
+      if (value === undefined || view === undefined || value === changes.known) return;
+      changes.known = value;
       if (value === view.state.doc.toString()) return;
       view.dispatch({
         changes: { from: 0, to: view.state.doc.length, insert: value },
@@ -247,12 +246,12 @@ export function CodeEditor(props: CodeEditorProps) {
   );
 
   const create = (parent: HTMLDivElement, loaded: CodeLanguage | undefined, support: Extension) => {
-    known = untrack(() => props.value) ?? known;
+    changes.known = untrack(() => props.value) ?? changes.known;
     language = loaded;
     view = new EditorView({
       parent,
       state: EditorState.create({
-        doc: known,
+        doc: changes.known,
         extensions: [
           history(),
           drawSelection(),
@@ -288,12 +287,7 @@ export function CodeEditor(props: CodeEditorProps) {
           codeTheme,
           languages.of(support),
           ...initials.map((initial) => initial()),
-          EditorView.updateListener.of((update) => {
-            if (!update.docChanged || reporting) return;
-            if (update.transactions.every((tr) => tr.annotation(fromCaller) === true)) return;
-            reporting = true;
-            queueMicrotask(report);
-          }),
+          changes.listener,
         ],
       }),
     });
@@ -321,7 +315,7 @@ export function CodeEditor(props: CodeEditorProps) {
   onCleanup(() => {
     disposed = true;
     // A change still waiting for its report is the caller's, even now.
-    if (reporting) report();
+    changes.flush();
     release?.();
     view?.destroy();
     view = undefined;
@@ -329,7 +323,7 @@ export function CodeEditor(props: CodeEditorProps) {
 
   return (
     <div
-      class={[codeSurface, codeFrame, props.class]}
+      class={arc(codeSurface, codeFrame, cls().root, props.class, props.className)}
       data-slot="code-editor"
       data-readonly={props.readOnly === true ? "" : undefined}
       data-invalid={props.invalid === true ? "" : undefined}
@@ -342,7 +336,7 @@ export function CodeEditor(props: CodeEditorProps) {
     >
       <Show when={!mounted()}>
         <StaticCode
-          code={props.value ?? known}
+          code={props.value ?? changes.known}
           language={props.language}
           lineNumbers={props.lineNumbers ?? true}
           wrap={props.wrap === true}
@@ -353,7 +347,7 @@ export function CodeEditor(props: CodeEditorProps) {
         ref={(node: HTMLDivElement) => {
           element = node;
         }}
-        class={host}
+        class={cls().host}
         data-slot="code-editor-host"
       />
       <Show when={props.description !== undefined}>

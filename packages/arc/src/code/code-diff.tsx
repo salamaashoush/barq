@@ -1,3 +1,4 @@
+import { variants } from "@barqjs/css";
 import { createEffect, onCleanup, onSettled, untrack } from "@barqjs/core";
 import { indentUnit } from "@codemirror/language";
 import {
@@ -10,26 +11,37 @@ import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { ChangeSet, Compartment, EditorState, type Extension } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers as lineNumberGutter } from "@codemirror/view";
 
+import { useArcMessages } from "../components/messages.ts";
 import { arcLayer as arc } from "../layer.ts";
+import { type Customisable, parts } from "../lib/parts.ts";
+import { layout as flow } from "../style/index.ts";
 import { codeTheme, diffChrome } from "./editor-theme.ts";
 import { type CodeLanguage, loadLanguage, loadedLanguage } from "./languages.ts";
-import { type ExtensionSource, codeVars, extensionOf, fromCaller } from "./options.ts";
+import {
+  type ExtensionSource,
+  changeReport,
+  codeVars,
+  extensionOf,
+  fromCaller,
+} from "./options.ts";
 import { codeFrame, codeSurface } from "./style.ts";
 
-const host = arc({
-  display: "flex",
-  flexDirection: "column",
-  flex: "1 1 auto",
-  minHeight: "var(--code-min-height, auto)",
-  maxHeight: "var(--code-max-height, none)",
-  overflow: "auto",
-  "& .cm-mergeView": {
-    flex: "1 1 auto",
-  },
-  "& .cm-mergeViewEditor + .cm-mergeViewEditor, & .cm-merge-revert + .cm-mergeViewEditor": {
-    borderInlineStart: "1px solid var(--border)",
+export const codeDiffStyles = variants({
+  slots: {
+    root: arc({}),
+    host: arc(flow.column, flow.growAuto, {
+      minHeight: "var(--code-min-height, auto)",
+      maxHeight: "var(--code-max-height, none)",
+      overflow: "auto",
+      "& .cm-mergeView": { flex: "1 1 auto" },
+      "& .cm-mergeViewEditor + .cm-mergeViewEditor, & .cm-merge-revert + .cm-mergeViewEditor": {
+        borderInlineStart: "1px solid var(--border)",
+      },
+    }),
   },
 });
+
+type Slots = ReturnType<typeof codeDiffStyles>;
 
 export type CodeDiffLayout = "split" | "unified";
 
@@ -40,7 +52,7 @@ export interface CollapseUnchanged {
   minSize?: number;
 }
 
-export interface CodeDiffProps {
+export interface CodeDiffProps extends Customisable<Slots> {
   /** The text before. */
   original: string;
   /** The text after, which an editable diff lets the user change. */
@@ -66,11 +78,10 @@ export interface CodeDiffProps {
   maxHeight?: string | number;
   /** More of CodeMirror, on both sides. */
   extensions?: ExtensionSource;
-  /** Names the original side. @default "Original" */
+  /** Names the original side. @default the provider's `original`, "Original" */
   originalLabel?: string;
-  /** Names the modified side, or the one editor of a unified diff. @default "Modified" */
+  /** Names the modified side, or the one editor of a unified diff. @default the provider's `modified` */
   modifiedLabel?: string;
-  class?: string;
 }
 
 function collapseOf(
@@ -107,11 +118,16 @@ interface Built {
  * again.
  */
 export function CodeDiff(props: CodeDiffProps) {
+  const cls = (): Slots => parts(codeDiffStyles(), props.classes);
+  const messages = useArcMessages();
   let element: HTMLDivElement | undefined;
   let built: Built | undefined;
   let disposed = false;
-  let known = untrack(() => props.modified);
-  let reporting = false;
+  const reporter = changeReport(
+    untrack(() => props.modified),
+    () => built?.modified.state.doc.toString(),
+    (doc) => props.onChange?.(doc),
+  );
 
   const languages = new Compartment();
   const editing = new Compartment();
@@ -121,15 +137,6 @@ export function CodeDiff(props: CodeDiffProps) {
   const extra = new Compartment();
   let language: CodeLanguage | undefined;
   let support: Extension = [];
-
-  const report = (): void => {
-    reporting = false;
-    if (built === undefined) return;
-    const doc = built.modified.state.doc.toString();
-    if (doc === known) return;
-    known = doc;
-    props.onChange?.(doc);
-  };
 
   const readOnly = (): boolean => props.readOnly !== false;
   // What a diff is built for and cannot be reconfigured to: a unified diff's
@@ -158,27 +165,22 @@ export function CodeDiff(props: CodeDiffProps) {
     EditorView.contentAttributes.of({ "aria-label": label }),
   ];
 
-  const listener = EditorView.updateListener.of((update) => {
-    if (!update.docChanged || reporting) return;
-    if (update.transactions.every((tr) => tr.annotation(fromCaller) === true)) return;
-    reporting = true;
-    queueMicrotask(report);
-  });
+  const listener = reporter.listener;
 
   const build = (parent: HTMLDivElement): Built => {
     const original = untrack(() => props.original);
-    known = untrack(() => props.modified);
+    reporter.known = untrack(() => props.modified);
     const layout = untrack(() => props.layout ?? "split");
     const collapse = untrack(() => collapseOf(props.collapseUnchanged));
-    const originalLabel = untrack(() => props.originalLabel ?? "Original");
-    const modifiedLabel = untrack(() => props.modifiedLabel ?? "Modified");
+    const originalLabel = untrack(() => props.originalLabel ?? messages().original);
+    const modifiedLabel = untrack(() => props.modifiedLabel ?? messages().modified);
     const editable = untrack(() => !readOnly());
     const builtFor = untrack(shape);
     if (layout === "unified") {
       const view = new EditorView({
         parent,
         state: EditorState.create({
-          doc: known,
+          doc: reporter.known,
           extensions: [
             side(modifiedLabel, editable),
             unifiedMergeView({
@@ -201,7 +203,7 @@ export function CodeDiff(props: CodeDiffProps) {
     const merge = new MergeView({
       parent,
       a: { doc: original, extensions: side(originalLabel, false) },
-      b: { doc: known, extensions: [side(modifiedLabel, editable), listener] },
+      b: { doc: reporter.known, extensions: [side(modifiedLabel, editable), listener] },
       gutter: true,
       ...(collapse === undefined ? {} : { collapseUnchanged: collapse }),
     });
@@ -227,7 +229,7 @@ export function CodeDiff(props: CodeDiffProps) {
   const mount = (): void => {
     const parent = element;
     if (parent === undefined || disposed) return;
-    if (reporting) report();
+    reporter.flush();
     built?.destroy();
     built = build(parent);
   };
@@ -298,8 +300,8 @@ export function CodeDiff(props: CodeDiffProps) {
   createEffect(
     () => props.modified,
     (modified) => {
-      if (built === undefined || modified === known) return;
-      known = modified;
+      if (built === undefined || modified === reporter.known) return;
+      reporter.known = modified;
       const view = built.modified;
       if (modified === view.state.doc.toString()) return;
       view.dispatch({
@@ -332,14 +334,14 @@ export function CodeDiff(props: CodeDiffProps) {
 
   onCleanup(() => {
     disposed = true;
-    if (reporting) report();
+    reporter.flush();
     built?.destroy();
     built = undefined;
   });
 
   return (
     <div
-      class={[codeSurface, codeFrame, props.class]}
+      class={arc(codeSurface, codeFrame, cls().root, props.class, props.className)}
       data-slot="code-diff"
       data-layout={props.layout ?? "split"}
       data-readonly={readOnly() ? "" : undefined}
@@ -353,7 +355,7 @@ export function CodeDiff(props: CodeDiffProps) {
         ref={(node: HTMLDivElement) => {
           element = node;
         }}
-        class={host}
+        class={cls().host}
         data-slot="code-diff-host"
       />
     </div>
