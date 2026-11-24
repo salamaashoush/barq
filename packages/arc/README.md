@@ -1385,6 +1385,14 @@ first opens. Rich message content is drawn by `RichTextRenderer` from
   `IncomingCall` says who is calling, aloud too, with Accept and Decline,
   and `CallBanner` shows a call going on in a conversation with its time,
   its people and Join.
+- `useMessageHistory`: a conversation's history over a TanStack DB
+  collection, through `@barqjs/db`'s live infinite query (an optional
+  peer, which only the chat entry imports): the newest page first and
+  older ones as the list asks, every loaded row live. `send` inserts
+  optimistically, so a message shows at once as sending and stays in place
+  with its reason, Retry and Discard if the collection's `onInsert`
+  refuses it; `receive` writes what a websocket pushes into the collection
+  as synced data, so a send's own echo lands on its row.
 - `AIChatPanel`: a conversation with an assistant: replies written out as
   markdown while they stream, the tools it calls with their state, input
   and result, a proposed change to Approve or Reject, sources, Stop,

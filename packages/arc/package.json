@@ -119,6 +119,7 @@
     "@barqjs/compiler": "workspace:*",
     "@barqjs/core": "workspace:*",
     "@barqjs/css": "workspace:*",
+    "@barqjs/db": "workspace:*",
     "@barqjs/form": "workspace:*",
     "@barqjs/lexical": "workspace:*",
     "@barqjs/lucide": "workspace:*",
@@ -139,6 +140,7 @@
     "@barqjs/aria": ">=0.2.0-next.3",
     "@barqjs/core": ">=0.2.0-next.3",
     "@barqjs/css": ">=0.2.0-next.3",
+    "@barqjs/db": ">=0.2.0-next.3",
     "@barqjs/form": ">=0.2.0-next.3",
     "@barqjs/lexical": ">=0.2.0-next.3",
     "@barqjs/lucide": ">=0.2.0-next.3",
@@ -151,6 +153,9 @@
     "yjs": ">=13.5.37"
   },
   "peerDependenciesMeta": {
+    "@barqjs/db": {
+      "optional": true
+    },
     "@barqjs/lexical": {
       "optional": true
     },

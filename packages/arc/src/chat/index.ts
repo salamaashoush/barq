@@ -72,3 +72,8 @@ export {
   type AIToolState,
   aiChatStyles,
 } from "./ai-chat.tsx";
+export {
+  type MessageHistory,
+  type MessageHistoryOptions,
+  useMessageHistory,
+} from "./message-history.ts";

@@ -17,6 +17,11 @@ describe("what an app pays for the chat suite", () => {
         (name) => name === "lexical" || name.startsWith("@lexical/"),
       ),
     ).toEqual([]);
+    expect(
+      [...graph.packages.keys()].filter(
+        (name) => name.startsWith("@barqjs/db") || name.startsWith("@tanstack/db"),
+      ),
+    ).toEqual([]);
   });
 
   test("the chat entry loads the emoji only when a picker asks", () => {
