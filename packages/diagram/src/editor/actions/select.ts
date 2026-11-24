@@ -17,6 +17,7 @@ import type {
   NonDeleted,
 } from "@excalidraw/element/types";
 
+import { hasSelectedIds } from "../../scene-canvas.ts";
 import { selectGroupsForSelectedElements } from "../selection.ts";
 import { TOGGLE_TOOLS } from "../tools.ts";
 
@@ -188,7 +189,8 @@ export const actionDeselect: Action = {
         appState.activeTool.type !== app.state.preferredSelectionTool.type ||
         !!appState.editingGroupId ||
         !!appState.selectedLinearElement ||
-        isSomeElementSelected(app.scene.getNonDeletedElements(), appState))
+        (hasSelectedIds(appState.selectedElementIds) &&
+          isSomeElementSelected(app.scene.getNonDeletedElements(), appState)))
     );
   },
 };

@@ -23,6 +23,7 @@ import {
 import type { ColorPaletteCustom, ColorTuple } from "@excalidraw/common";
 import type { ElementsMap, ExcalidrawElement } from "@excalidraw/element/types";
 
+import { hasSelectedIds } from "../../scene-canvas.ts";
 import type { AppState } from "../../types.ts";
 
 export type ColorProperty = "strokeColor" | "backgroundColor";
@@ -88,13 +89,17 @@ export const resolveColorTarget = (
   elements: readonly ExcalidrawElement[],
   property: ColorProperty,
 ): ColorTarget => {
-  const elementsMap = arrayToMap(elements);
+  const selecting = hasSelectedIds(appState.selectedElementIds);
+  const elementsMap =
+    selecting || appState.editingTextElement ? arrayToMap(elements) : new Map<string, never>();
   const supports = (element: ExcalidrawElement) =>
     property === "strokeColor" ? hasStrokeColor(element.type) : hasBackground(element.type);
 
-  const targets: ExcalidrawElement[] = getSelectedElements(elements, appState, {
-    includeBoundTextElement: property === "strokeColor",
-  }).filter(supports);
+  const targets: ExcalidrawElement[] = selecting
+    ? getSelectedElements(elements, appState, {
+        includeBoundTextElement: property === "strokeColor",
+      }).filter(supports)
+    : [];
   const editingText = appState.editingTextElement
     ? elementsMap.get(appState.editingTextElement.id)
     : undefined;

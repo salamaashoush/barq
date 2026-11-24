@@ -26,6 +26,24 @@ import type {
   ImageCache,
 } from "./types.ts";
 
+/**
+ * `Scene`, answering an empty selection without walking the scene. Its own
+ * cache holds one query, and the UI asks with and without bound text in
+ * turn, so each panel and action predicate walked every element.
+ */
+class SelectionScene extends Scene {
+  public override getSelectedElements(
+    opts: Parameters<Scene["getSelectedElements"]>[0],
+  ): NonDeletedExcalidrawElement[] {
+    return hasSelectedIds(opts.selectedElementIds) ? super.getSelectedElements(opts) : [];
+  }
+}
+
+export const hasSelectedIds = (selectedElementIds: Readonly<Record<string, boolean>>): boolean => {
+  for (const id in selectedElementIds) if (selectedElementIds[id]) return true;
+  return false;
+};
+
 /** What an editor draws beyond the scene: the selection, and the grid. */
 export interface SceneCanvasFrame {
   selectedElements: readonly NonDeletedExcalidrawElement[];
@@ -72,7 +90,7 @@ export class SceneCanvas {
     elements: readonly ExcalidrawElement[] = [],
     onInvalidate?: () => void,
   ) {
-    this.scene = new Scene(elements);
+    this.scene = new SelectionScene(elements);
     this.renderer = new Renderer(this.scene);
     this.fonts = new Fonts(this.scene, canvas.ownerDocument);
     this.rc = rough.canvas(canvas);

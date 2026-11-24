@@ -46,6 +46,7 @@ import type {
 } from "@excalidraw/element/types";
 import type { LocalPoint, Radians } from "@excalidraw/math";
 
+import { hasSelectedIds } from "../../scene-canvas.ts";
 import type { AppState } from "../../types.ts";
 import type { DiagramEditor } from "../editor.ts";
 import { patchLinearEditor } from "../linear.ts";
@@ -73,7 +74,10 @@ export const getFormValue = <T extends Primitive>(
   if (editing) {
     return editing;
   }
-  if (!isSomeElementSelected(getNonDeletedElements(elements), editor.state)) {
+  if (
+    !hasSelectedIds(editor.state.selectedElementIds) ||
+    !isSomeElementSelected(getNonDeletedElements(elements), editor.state)
+  ) {
     return defaultValue(false);
   }
   const selected = editor.scene.getSelectedElements(editor.state);
@@ -91,7 +95,9 @@ export const getTargetElements = (
     ? [appState.editingTextElement]
     : appState.newElement
       ? [appState.newElement]
-      : getSelectedElements(elements, appState, { includeBoundTextElement: true });
+      : hasSelectedIds(appState.selectedElementIds)
+        ? getSelectedElements(elements, appState, { includeBoundTextElement: true })
+        : [];
 
 export interface ColorChange extends Partial<AppState> {
   color?: string;
