@@ -215,7 +215,7 @@ export interface BlockEditorProps extends Omit<RichTextEditorProps, "variant"> {
  * arc's pieces with `defineBlock` or `defineEditorExtension`.
  *
  * ```tsx
- * <BlockEditor label="Lesson" extensions={[Quiz, Rating]} defaultValue={lesson.body} onChange={save} />
+ * <BlockEditor label="Page" extensions={[Quiz, Rating]} defaultValue={page.body} onChange={save} />
  * ```
  *
  * The gutter is at the start of the line, so it sits on the right in a

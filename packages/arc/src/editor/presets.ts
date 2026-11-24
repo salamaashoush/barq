@@ -10,6 +10,7 @@ import {
   tableExtension,
 } from "./core.tsx";
 import { documentStatusExtension } from "./document-status.tsx";
+import { wordImportExtension } from "./docx-import.tsx";
 import type { EditorExtension } from "./extension.ts";
 import { findExtension } from "./find-panel.tsx";
 import { footnoteExtension } from "./footnote.tsx";
@@ -37,6 +38,7 @@ export const documentPreset: readonly EditorExtension[] = [
   findExtension,
   documentStatusExtension,
   pasteExtension,
+  wordImportExtension,
 ];
 
 /** A message: rich text, links, images and mentions, nothing laid out as a page. */
