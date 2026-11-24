@@ -59,9 +59,7 @@ describe("bucket fill", () => {
     API.setAppState({ currentItemBackgroundColor: "#ffc9c9" });
     mouse.clickAt(200, 175);
     expect(elements()).toHaveLength(2);
-    expect(elements().find((element) => element.type === "line")?.backgroundColor).toBe(
-      "#ffc9c9",
-    );
+    expect(elements().find((element) => element.type === "line")?.backgroundColor).toBe("#ffc9c9");
   });
 
   test("the press alone pours nothing, and empty canvas stays quiet", () => {

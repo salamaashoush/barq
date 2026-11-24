@@ -169,7 +169,10 @@ export class BucketFill {
       return;
     }
 
-    if (hitElement && isRestylableFill({ hitElement, scenePoints: result.scenePoints, elementsMap })) {
+    if (
+      hitElement &&
+      isRestylableFill({ hitElement, scenePoints: result.scenePoints, elementsMap })
+    ) {
       this.restyle(hitElement);
       return;
     }
