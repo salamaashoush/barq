@@ -487,3 +487,10 @@ export {
 } from "./components/description-list.tsx";
 export { StatGroup, type StatGroupProps, statGroupStyles } from "./components/stat-group.tsx";
 export { Tile, type TileProps, tileStyles } from "./components/tile.tsx";
+export {
+  List,
+  ListItem,
+  type ListItemProps,
+  type ListProps,
+  listStyles,
+} from "./components/item-list.tsx";

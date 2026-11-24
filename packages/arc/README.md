@@ -561,6 +561,13 @@ import { ResponsiveTabs } from "@barqjs/arc";
   `actions` stay controls of their own; with `selected` a checkbox named by
   the title holds the choice and a press anywhere on the tile toggles it.
   (ui's `Card` is the plain container.)
+- `List` and `ListItem`: rows of things to scan, open and select, on
+  `@barqjs/aria`'s grid list: one Tab stop, the arrows between rows and into
+  a row's controls, type-ahead, `selectionMode`, and Enter for `onAction`.
+  A `ListItem` is ui's `Item` with `media`, a `title`, a `description`, quiet
+  `meta` at the end and `actions`. `virtual` draws only the rows on screen;
+  `onLoadMore` asks for more as the end comes into view, with a loading row
+  while `isLoadingMore`, and `empty` is what an empty list shows.
 
 ## Inputs and pickers
 
