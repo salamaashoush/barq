@@ -43,6 +43,27 @@ export {
   commonRangePresets,
 } from "./components/date-range-field.tsx";
 export {
+  ColorArea,
+  type ColorAreaProps,
+  ColorEditor,
+  type ColorEditorProps,
+  ColorField,
+  type ColorFieldProps,
+  ColorPicker,
+  type ColorPickerProps,
+  ColorSlider,
+  type ColorSliderProps,
+  ColorSwatches,
+  type ColorSwatchesProps,
+  type SwatchColor,
+  colorEditorStyles,
+  colorFieldStyles,
+  colorStyles,
+  colorSwatchesStyles,
+  colorValue,
+  readColor,
+} from "./components/color.tsx";
+export {
   CommandMenu,
   commandMenuStyles,
   type CommandMenuAction,

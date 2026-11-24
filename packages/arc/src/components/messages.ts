@@ -69,6 +69,11 @@ export interface ArcMessages {
   presets: string;
   today: string;
   lastDays: (days: number) => string;
+  colourArea: string;
+  colourSwatches: string;
+  hex: string;
+  pickFromScreen: string;
+  pickColour: string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -134,6 +139,11 @@ export const ENGLISH: ArcMessages = {
   presets: "Presets",
   today: "Today",
   lastDays: (days) => `Last ${String(days)} days`,
+  colourArea: "Colour",
+  colourSwatches: "Colour swatches",
+  hex: "Hex",
+  pickFromScreen: "Pick a colour from the screen",
+  pickColour: "Pick a colour",
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");

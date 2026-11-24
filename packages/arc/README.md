@@ -439,6 +439,22 @@ import { Chip } from "@barqjs/arc";
   for today and the last 7, 30 and 90 days in arc's words. Its trigger is
   named by the label and then the range it shows, and with `name` a plain
   form posts an ISO interval, `2026-03-01/2026-03-07`.
+- Colour, on `@barqjs/aria`'s colour behaviours, held as a hex string
+  (`#7f00ff`, or `#7f00ff80` with alpha):
+  - `ColorPicker`: a button showing the colour, named by the label and the
+    colour, opening a `ColorEditor`;
+  - `ColorField`: hex typed, committed on Enter or blur and stepped by the
+    arrows, with the colour drawn at its start;
+  - `ColorSwatches`: a set of swatches as a listbox, each named by its colour
+    in the locale's words unless given a label, the chosen one ringed;
+  - `ColorEditor`: an area, a hue slider, an alpha slider with `alpha`, a hex
+    field, the browser's eye dropper where there is one, and `swatches`, all
+    one colour;
+  - `ColorArea` and `ColorSlider` on their own, their thumbs a finger's size
+    under a coarse pointer.
+
+  The three fields are `field.ColorPicker`, `field.ColorField` and
+  `field.ColorSwatches` in a form.
 
 ## Code
 

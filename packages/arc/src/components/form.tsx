@@ -35,6 +35,7 @@ import { arcLayer as arc } from "../layer.ts";
 import type { Customisable } from "../lib/parts.ts";
 import { layout } from "../style/index.ts";
 import { useArcMessages } from "./messages.ts";
+import { ColorField, ColorPicker, ColorSwatches } from "./color.tsx";
 import { DateRangeField } from "./date-range-field.tsx";
 import { TagInput } from "./tag-input.tsx";
 import { TimeField, TimePicker } from "./time-field.tsx";
@@ -647,6 +648,9 @@ const arcFieldComponents = {
   TimeField,
   TimePicker,
   DateRangeField,
+  ColorField,
+  ColorPicker,
+  ColorSwatches,
 };
 
 const arcFormComponents = { SubmitButton, FormError };
