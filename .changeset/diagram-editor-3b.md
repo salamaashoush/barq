@@ -10,6 +10,7 @@
 - The image export dialog (Ctrl+Shift+E) previews the export and sets only selected, background, dark mode, the embedded scene and the scale, then saves a PNG or SVG or copies a PNG; the export dialog saves to disk and shows `onExportToBackend` and `renderCustomUI`.
 - W is Excalidraw's `toggleWrap`: it wraps the selection in a container or a frame, or unwraps it, and the next W takes it back.
 - The pickers' keys: S and G open the stroke and background pickers, Shift+F the font list, and I, Shift+G and Shift+S the eye dropper, which previews under a held pointer, picks the other colour with Alt and stays open while Alt is held in a picker. The font list previews the highlighted font on the selection. `actionChangeFontFamily` takes Excalidraw's preview data as well as a family.
+- The stats panel names the element's type, shows an image's uncropped size while cropping and a group's heading, edits several units each to the value typed, edits the grid's step, folds its sections, and scrubs a value when its label is dragged.
 - `exportCanvas`, `exportToClipboard`, `saveAsJSON`, `loadFromJSON`, `saveLibraryAsJSON`, `fileOpen`, `fileSave` and `muteFSAbortError` are exported under Excalidraw's names, with `isNativeFileSystemSupported`.
 - The autoshape tool (Shift+X) turns a sketch into a rectangle, diamond, ellipse, arrow or line; a sketched arrow binds to the shapes at its ends.
 - The bucket fill tool (B) fills the closed region under a click with a strokeless polygon, restyles a fill it made, and picks its colour with an eye dropper while Alt is held.

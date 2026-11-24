@@ -28,5 +28,9 @@
   },
   "charts": {
     "shuffleColors": "Shuffle colors"
+  },
+  "stats": {
+    "canvas": "Canvas",
+    "gridStep": "Grid step"
   }
 }

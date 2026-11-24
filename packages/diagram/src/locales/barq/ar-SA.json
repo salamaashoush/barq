@@ -28,5 +28,9 @@
   },
   "charts": {
     "shuffleColors": "تبديل الألوان عشوائيًا"
+  },
+  "stats": {
+    "canvas": "اللوحة",
+    "gridStep": "خطوة الشبكة"
   }
 }
