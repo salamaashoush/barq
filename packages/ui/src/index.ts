@@ -365,6 +365,7 @@ export {
   type DatePreset,
   DateRangePicker,
   type DateRangePickerProps,
+  type DateRangePreset,
 } from "./ui/date-picker.tsx";
 export {
   Dialog,
@@ -509,7 +510,7 @@ export {
   REGEXP_ONLY_DIGITS,
   REGEXP_ONLY_DIGITS_AND_CHARS,
 } from "./ui/input-otp.tsx";
-export { Input, type InputProps, type InputSize } from "./ui/input.tsx";
+export { Input, type InputProps, type InputSize, inputVariants } from "./ui/input.tsx";
 export {
   Item,
   ItemActions,
