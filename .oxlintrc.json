@@ -1,6 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxlint/configuration_schema.json",
   "plugins": ["typescript", "unicorn", "import", "promise"],
+  "jsPlugins": ["./.oxlint/barq.mts"],
   "categories": {
     "correctness": "error",
     "suspicious": "warn",
@@ -15,6 +16,17 @@
     // convention unreadable to keep a lint quiet. Everything else is fixed.
     "no-shadow": ["error", { "allow": ["scope", "owner", "element", "context"] }],
     "no-unmodified-loop-condition": "error",
+
+    // Every shape has a name a reader can find, and every function is a
+    // declaration. An arrow stays only where its variable carries a type
+    // annotation: a declaration cannot take one, and a closure reading a
+    // narrowed outer variable loses the narrowing once hoisted.
+    "barq/no-inline-types": "error",
+    "func-style": [
+      "error",
+      "declaration",
+      { "allowArrowFunctions": false, "allowTypeAnnotation": true }
+    ],
 
     // `globalCss\`…\`` is a statement, and that IS the API: the tag registers
     // the rules and returns nothing. `@barqjs/css`'s own README writes it that
