@@ -74,7 +74,9 @@ export const actionExportWithDarkMode: Action<AppState["exportWithDarkMode"]> = 
 
 /** The file name: the scene's, the host's, or "Untitled" and the date. Excalidraw's `getName`. */
 export const getName = (editor: DiagramEditor): string =>
-  editor.state.name || editor.host.name || `${editor.host.untitledName ?? "Untitled"}-${getDateTime()}`;
+  editor.state.name ||
+  editor.host.name ||
+  `${editor.host.untitledName ?? "Untitled"}-${getDateTime()}`;
 
 /** The image export dialog, with its preview and settings. Ctrl+Shift+E. */
 export const actionToggleImageExport: Action = {
@@ -147,7 +149,11 @@ const prepareDataForJSONExport = (
     const onExport = editor.host.onExport;
     if (onExport) {
       try {
-        const result = onExport("json", { elements, appState, files: editor.getFiles() }, { signal });
+        const result = onExport(
+          "json",
+          { elements, appState, files: editor.getFiles() },
+          { signal },
+        );
         if (result && typeof result === "object" && Symbol.asyncIterator in result) {
           for await (const update of result) {
             if (signal.aborted) break;
@@ -211,7 +217,10 @@ export const actionSaveToActiveFile: Action = {
           toast: {
             message:
               previousFileHandle && fileHandle?.name
-                ? { key: "toast.fileSavedToFilename", replacement: { filename: `"${fileHandle.name}"` } }
+                ? {
+                    key: "toast.fileSavedToFilename",
+                    replacement: { filename: `"${fileHandle.name}"` },
+                  }
                 : { key: "toast.fileSaved" },
             duration: 1500,
           },
@@ -237,7 +246,11 @@ export const actionSaveFileToDisk: Action = {
     exportInProgress = true;
     const { abortController, data } = prepareDataForJSONExport(elements, appState, editor);
     try {
-      const { fileHandle } = await saveAsJSON({ data, filename: getName(editor), fileHandle: null });
+      const { fileHandle } = await saveAsJSON({
+        data,
+        filename: getName(editor),
+        fileHandle: null,
+      });
       return {
         captureUpdate: CaptureUpdateAction.NEVER,
         appState: {

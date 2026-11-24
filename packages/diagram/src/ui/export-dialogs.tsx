@@ -361,7 +361,9 @@ export function ImageExportDialog() {
                   data-testid="export-clipboard"
                 >
                   {copied() ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
-                  {copied() ? t("toast.copyToClipboard") : t("imageExportDialog.button.copyPngToClipboard")}
+                  {copied()
+                    ? t("toast.copyToClipboard")
+                    : t("imageExportDialog.button.copyPngToClipboard")}
                 </Button>
               </Show>
             </div>

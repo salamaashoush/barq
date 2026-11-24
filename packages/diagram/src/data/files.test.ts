@@ -202,9 +202,15 @@ describe("image export", () => {
     const handle = memoryHandle("Release plan.excalidraw.png");
     const calls = usePickers(handle);
     const elements = scene();
-    const saved = await exportCanvas("png", elements, { ...appState(), exportEmbedScene: true }, {}, {
-      exportingFrame: null,
-    });
+    const saved = await exportCanvas(
+      "png",
+      elements,
+      { ...appState(), exportEmbedScene: true },
+      {},
+      {
+        exportingFrame: null,
+      },
+    );
     expect(saved).toBe(handle);
     expect((calls.save[0] as { suggestedName: string }).suggestedName).toBe(
       "Release plan.excalidraw.png",
@@ -220,9 +226,15 @@ describe("image export", () => {
   test("an SVG starts with the document preamble, and carries the scene when asked", async () => {
     const plain = memoryHandle("drawing.svg");
     usePickers(plain);
-    await exportCanvas("svg", scene(), { ...appState(), exportEmbedScene: false }, {}, {
-      exportingFrame: null,
-    });
+    await exportCanvas(
+      "svg",
+      scene(),
+      { ...appState(), exportEmbedScene: false },
+      {},
+      {
+        exportingFrame: null,
+      },
+    );
     const markup = await plain.written[0]!.text();
     expect(markup.startsWith(SVG_DOCUMENT_PREAMBLE)).toBe(true);
     expect(markup).toContain("<svg");
@@ -230,9 +242,15 @@ describe("image export", () => {
 
     const embedded = memoryHandle("drawing.excalidraw.svg");
     usePickers(embedded);
-    await exportCanvas("svg", scene(), { ...appState(), exportEmbedScene: true }, {}, {
-      exportingFrame: null,
-    });
+    await exportCanvas(
+      "svg",
+      scene(),
+      { ...appState(), exportEmbedScene: true },
+      {},
+      {
+        exportingFrame: null,
+      },
+    );
     const restored = await loadFromBlob(embedded.written[0]!, null, null);
     expect(restored.elements).toHaveLength(2);
   });

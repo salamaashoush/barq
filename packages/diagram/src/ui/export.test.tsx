@@ -93,8 +93,9 @@ describe("image export", () => {
     expect(ariaViolations(dialog)).toEqual([]);
 
     const onlySelected = within(dialog).getByRole("switch", { name: "Only selected" });
-    expect(onlySelected.getAttribute("aria-checked") ?? (onlySelected as HTMLInputElement).checked)
-      .toBeTruthy();
+    expect(
+      onlySelected.getAttribute("aria-checked") ?? (onlySelected as HTMLInputElement).checked,
+    ).toBeTruthy();
     await user.click(within(dialog).getByRole("switch", { name: "Background" }));
     await settle();
     expect(api.getAppState().exportBackground).toBe(false);
