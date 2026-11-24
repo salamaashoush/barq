@@ -31,14 +31,14 @@ export function parse(argv: readonly string[]): Args {
     -readonly [K in keyof Args]: Args[K];
   } = { yes: false, overwrite: false, offline: false, json: false, help: false };
 
-  const set = (key: "template" | "addOns" | "packageManager" | "ref", value: string): void => {
+  function set(key: "template" | "addOns" | "packageManager" | "ref", value: string): void {
     if (key === "addOns") {
       out.addOns = value
         .split(",")
         .map((name) => name.trim())
         .filter((name) => name !== "" && name !== "none");
     } else out[key] = value;
-  };
+  }
 
   for (let at = 0; at < argv.length; at++) {
     const arg = argv[at] ?? "";

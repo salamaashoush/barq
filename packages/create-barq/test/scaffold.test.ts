@@ -22,6 +22,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import type { RunResult } from "../src/project.ts";
 import { scaffold } from "../src/scaffold.ts";
 import { TEMPLATES, type Template } from "../src/templates.ts";
 
@@ -108,7 +109,7 @@ afterAll(() => {
   if (workspace !== "") rmSync(workspace, { recursive: true, force: true });
 });
 
-function run(directory: string, cmd: readonly string[]): { code: number; output: string } {
+function run(directory: string, cmd: readonly string[]): RunResult {
   const result = Bun.spawnSync({ cmd: [...cmd], cwd: directory, env: { ...process.env } });
   return {
     code: result.exitCode,
@@ -247,6 +248,15 @@ async function listening(child: Bun.Subprocess<"ignore", "pipe", "pipe">): Promi
   );
 }
 
+interface VersionedManifest {
+  version: string;
+}
+
+interface TemplateManifest {
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+}
+
 /**
  * The templates cannot drift from the packages they install.
  *
@@ -256,9 +266,11 @@ async function listening(child: Bun.Subprocess<"ignore", "pipe", "pipe">): Promi
  * without anybody noticing until a scaffolded project installs the wrong one.
  */
 describe("the templates and the workspace agree", () => {
-  const version = (name: string): string =>
-    (JSON.parse(readFileSync(join(PACKAGES, name, "package.json"), "utf8")) as { version: string })
-      .version;
+  function version(name: string): string {
+    return (
+      JSON.parse(readFileSync(join(PACKAGES, name, "package.json"), "utf8")) as VersionedManifest
+    ).version;
+  }
 
   test.each(TEMPLATES.map((template) => template.name))(
     "%s names the versions this repo publishes",
@@ -268,7 +280,7 @@ describe("the templates and the workspace agree", () => {
           join(fileURLToPath(new URL("../templates", import.meta.url)), name, "package.json"),
           "utf8",
         ),
-      ) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+      ) as TemplateManifest;
 
       const wrong: string[] = [];
       for (const group of [manifest.dependencies, manifest.devDependencies]) {

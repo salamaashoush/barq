@@ -4,19 +4,24 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { ADD_ONS } from "../src/addons.ts";
+import { ADD_ONS, type AddOn } from "../src/addons.ts";
 import { parse } from "../src/args.ts";
 import { addImport, execute } from "../src/project.ts";
 import { TEMPLATE_ROOT, TEMPLATES_ENV, load, manifestOf } from "../src/source.ts";
-import { TEMPLATES } from "../src/templates.ts";
+import { TEMPLATES, type Template } from "../src/templates.ts";
 
 const CLI = fileURLToPath(new URL("../src/index.ts", import.meta.url));
 const made: string[] = [];
-const scratch = (): string => {
+
+interface ScaffoldedManifest {
+  name: string;
+}
+
+function scratch(): string {
   const directory = mkdtempSync(join(tmpdir(), "create-barq-cli-"));
   made.push(directory);
   return directory;
-};
+}
 afterAll(() => {
   for (const directory of made) rmSync(directory, { recursive: true, force: true });
 });
@@ -150,9 +155,9 @@ describe("a project made without a prompt", () => {
     const cwd = scratch();
     const result = cli(cwd, ["app", "--yes", "--offline", "--no-install", "--no-git"]);
     expect(result.code, result.out).toBe(0);
-    const manifest = JSON.parse(readFileSync(join(cwd, "app", "package.json"), "utf8")) as {
-      name: string;
-    };
+    const manifest = JSON.parse(
+      readFileSync(join(cwd, "app", "package.json"), "utf8"),
+    ) as ScaffoldedManifest;
     expect(manifest.name).toBe("app");
     expect(existsSync(join(cwd, "app", "src", "routes", "__root.tsx"))).toBe(true);
     expect(existsSync(join(cwd, "app", ".gitignore"))).toBe(true);
@@ -176,13 +181,15 @@ describe("a project made without a prompt", () => {
   });
 
   test("the lists answer a tool as JSON", () => {
-    const templates = JSON.parse(cli(scratch(), ["--list-templates", "--json"]).out) as {
-      name: string;
-    }[];
+    const templates = JSON.parse(cli(scratch(), ["--list-templates", "--json"]).out) as Pick<
+      Template,
+      "name"
+    >[];
     expect(templates.map((row) => row.name)).toEqual(TEMPLATES.map((template) => template.name));
-    const addOns = JSON.parse(cli(scratch(), ["--list-add-ons", "--json"]).out) as {
-      name: string;
-    }[];
+    const addOns = JSON.parse(cli(scratch(), ["--list-add-ons", "--json"]).out) as Pick<
+      AddOn,
+      "name"
+    >[];
     expect(addOns.map((row) => row.name)).toEqual(ADD_ONS.map((addOn) => addOn.name));
   });
 });

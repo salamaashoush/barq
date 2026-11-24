@@ -27,11 +27,12 @@ export function execute(manager: PackageManager): readonly string[] {
   return ["npx", "--yes"];
 }
 
-export function run(
-  cwd: string,
-  command: readonly string[],
-  quiet = false,
-): { readonly code: number; readonly output: string } {
+export interface RunResult {
+  readonly code: number;
+  readonly output: string;
+}
+
+export function run(cwd: string, command: readonly string[], quiet = false): RunResult {
   const [program, ...args] = command;
   const result = spawnSync(program, args, {
     cwd,

@@ -61,6 +61,10 @@ export function toValidPackageName(name: string): string {
     .replace(/[^a-z\d\-~]+/g, "-");
 }
 
+interface NamedManifest {
+  name: string;
+}
+
 export function scaffold(options: ScaffoldOptions): void {
   const source = join(TEMPLATE_ROOT, options.template);
   if (options.files === undefined && !existsSync(source)) {
@@ -94,7 +98,7 @@ export function scaffold(options: ScaffoldOptions): void {
   }
 
   const manifestPath = join(options.target, "package.json");
-  const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as { name: string };
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as NamedManifest;
   manifest.name = options.packageName;
   writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 }

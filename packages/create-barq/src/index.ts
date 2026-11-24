@@ -55,10 +55,14 @@ Add-ons:
 ${ADD_ONS.map((a) => `  ${a.name.padEnd(12)}${a.description}`).join("\n")}
 `;
 
+interface VersionedManifest {
+  version: string;
+}
+
 function ownVersion(): string {
   // `../package.json` from both `src/index.ts` and the bundled `dist/index.js`.
   const manifest = new URL("../package.json", import.meta.url);
-  return (JSON.parse(readFileSync(manifest, "utf8")) as { version: string }).version;
+  return (JSON.parse(readFileSync(manifest, "utf8")) as VersionedManifest).version;
 }
 
 function list(args: Args): void {
