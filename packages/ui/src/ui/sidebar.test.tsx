@@ -273,6 +273,26 @@ describe("SidebarMenuButton tooltip", () => {
     expect(button().hasAttribute("aria-describedby")).toBe(false);
   });
 
+  test("outside a provider, in a page or a sheet, the button stands alone", async () => {
+    const pressed: string[] = [];
+    render(() => (
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton tooltip="Inbox" isActive onClick={() => pressed.push("inbox")}>
+            Inbox
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    ));
+    expect(button().dataset.active).toBe("true");
+    await user.hover(button());
+    await after(0);
+    flush();
+    expect(tip()).toBeNull();
+    await user.click(button());
+    expect(pressed).toEqual(["inbox"]);
+  });
+
   test("collapsing afterwards turns it on without a remount", async () => {
     render(() => (
       <SidebarProvider>

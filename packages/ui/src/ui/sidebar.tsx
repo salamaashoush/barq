@@ -1280,9 +1280,14 @@ export interface SidebarMenuButtonProps extends UiProps {
  * label is on screen and a tooltip repeating it would only be in the way, so it
  * is disabled rather than rendered and hidden: a disabled trigger writes no
  * `aria-describedby` either.
+ *
+ * A menu drawn outside a `SidebarProvider`, in a page or a sheet, is never an
+ * icon rail, so there the button stands alone with its tooltip off.
  */
 export function SidebarMenuButton(props: SidebarMenuButtonProps) {
-  const sidebar = useSidebar();
+  const sidebar = getContext(SidebarContext) ?? null;
+  const railed = (): boolean =>
+    sidebar !== null && sidebar.state() === "collapsed" && !sidebar.isMobile();
   const tip = (): TooltipContentProps | undefined => {
     const tooltip = props.tooltip;
     if (tooltip === undefined || tooltip === "") return undefined;
@@ -1294,7 +1299,7 @@ export function SidebarMenuButton(props: SidebarMenuButtonProps) {
       {tip() === undefined ? (
         <SidebarMenuControl {...props} />
       ) : (
-        <Tooltip delay={0} isDisabled={sidebar.state() !== "collapsed" || sidebar.isMobile()}>
+        <Tooltip delay={0} isDisabled={!railed()}>
           <SidebarMenuControl {...props} />
           <TooltipContent
             side={tip()?.side ?? "right"}
