@@ -52,8 +52,10 @@ export const messageListStyles = variants({
       // the browser's own anchoring would move it a second time.
       overflowAnchor: "none",
     }),
-    // A short conversation sits at the bottom, where the next message arrives.
-    stack: arc(layout.column, layout.end, { minBlockSize: "100%" }),
+    // A short conversation sits at the bottom, where the next message arrives;
+    // a long one keeps its height rather than shrinking to the viewport, or
+    // its rows would overflow upwards, out of reach of the scroll.
+    stack: arc(layout.column, layout.end, layout.noShrink, { minBlockSize: "100%" }),
     rows: arc(layout.relative, layout.noShrink, { inlineSize: "100%" }),
     row: arc(place.across, motion.colours, {
       "&[data-highlighted]": {
@@ -159,7 +161,7 @@ interface MessageRow {
   position: number;
 }
 
-type Row = DayRow | { kind: "unread"; key: string } | MessageRow;
+type Row = DayRow | { kind: "unread" | "start"; key: string } | MessageRow;
 
 const HANDLER_KEYS = [
   "currentUserId",
@@ -257,6 +259,11 @@ export function MessageList(props: MessageListProps) {
     let previous: ChatMessage | undefined;
     let previousDay = "";
     let position = 0;
+    // The conversation's start is a row like the rest, so the layout places
+    // and measures it and the scroll is in one set of coordinates.
+    if (props.hasOlder !== true && props.messages.length > 0) {
+      out.push({ kind: "start", key: "start" });
+    }
     for (const message of props.messages) {
       const key = dayKey(message.createdAt, props.timeZone);
       let broken = false;
@@ -614,11 +621,6 @@ export function MessageList(props: MessageListProps) {
           fallback={props.empty ?? <EmptyState heading={messages().noMessages} />}
         >
           <div class={cls().stack} data-slot="message-list-stack">
-            <Show when={props.hasOlder !== true}>
-              <p class={cls().start} data-slot="message-list-start">
-                {messages().conversationStart}
-              </p>
-            </Show>
             <div
               class={cls().rows}
               data-slot="message-list-rows"
@@ -661,6 +663,11 @@ export function MessageList(props: MessageListProps) {
                           >
                             {(row() as DayRow).label}
                           </div>
+                        </Match>
+                        <Match when={row()?.kind === "start"}>
+                          <p class={cls().start} data-slot="message-list-start">
+                            {messages().conversationStart}
+                          </p>
                         </Match>
                         <Match when={row()?.kind === "unread"}>
                           <div

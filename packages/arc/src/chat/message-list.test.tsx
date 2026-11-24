@@ -4,7 +4,7 @@ import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user } from "@barqjs/testing";
 
 import { serverProcess } from "../ssr-harness.ts";
-import { motion } from "../style/index.ts";
+import { layout, motion } from "../style/index.ts";
 import { hydrates, settle, wears } from "../test-arc.ts";
 import { type MessageListApi, MessageList } from "./message-list.tsx";
 import type { ChatMessage } from "./model.ts";
@@ -289,6 +289,19 @@ describe("MessageList", () => {
     expect(api?.scrollToMessage("nope")).toBe(false);
   });
 
+  test("the conversation's start is a row of the layout, and a long list keeps its height to scroll", async () => {
+    render(() => <MessageList messages={conversation(0, 40)} timeZone="UTC" />);
+    const viewport = await laidOut();
+    expect(atBottom(viewport)).toBe(true);
+    scrollViewport(viewport, 0);
+    await settle();
+    const start = document.querySelector('[data-slot="message-list-row"][data-kind="start"]');
+    expect(start?.getAttribute("data-key")).toBe("start");
+    expect(rowTop("start")).toBe(0);
+    // Shrunk to the viewport, the rows would overflow upwards, past the scroll's reach.
+    expect(wears(slot("message-list-stack"), layout.noShrink)).toBe(true);
+  });
+
   test("a jump brings a message to the middle, focuses it and marks it for a moment", async () => {
     let api: MessageListApi | undefined;
     render(() => (
@@ -397,10 +410,11 @@ describe("MessageList", () => {
     expect(code).toBe(0);
     const bodies = [...html.matchAll(/Message (\d+)/gu)].map((match) => Number(match[1]));
     expect(bodies).toEqual([190, 191, 192, 193, 194, 195, 196, 197, 198, 199]);
-    // The rows above are space by estimate, 64px each, with the day's line.
+    // The rows above are space by estimate, 64px each: the conversation's
+    // start, the day's line and the 190 older messages.
     const rows = /<div[^>]*data-slot="message-list-rows"[^>]*>/u.exec(html)?.[0] ?? "";
     expect(rows).toContain("data-seeded");
-    expect(rows).toContain(`padding-block-start: ${String(191 * 64)}px`);
+    expect(rows).toContain(`padding-block-start: ${String(192 * 64)}px`);
     // Laid out bottom up, so the browser opens it at the newest with no script.
     const viewport = /<div[^>]*data-slot="message-list-viewport"[^>]*>/u.exec(html)?.[0] ?? "";
     expect(viewport).toContain("flex-direction: column-reverse");
