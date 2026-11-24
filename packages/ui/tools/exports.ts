@@ -188,6 +188,9 @@ function main(): void {
     // The layer order alone, for a package that builds on these components
     // and writes rules of its own into a layer this declaration orders.
     "./theme/layers": entry("./src/theme/layers.ts"),
+    // The token object, for a package that composes these tokens into rules
+    // of its own and needs them folded at build time.
+    "./theme/tokens": entry("./src/theme/tokens.ts"),
     ...Object.fromEntries(
       [...lib, ...hooks, ...ui].map((module_) => [
         `./${module_.name}`,
