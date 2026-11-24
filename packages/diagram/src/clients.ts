@@ -23,7 +23,7 @@ function hashToInteger(id: string) {
   return hash;
 }
 
-export const getClientColor = (socketId: SocketId, collaborator: Collaborator | undefined) => {
+export function getClientColor(socketId: SocketId, collaborator: Collaborator | undefined) {
   // to get more even distribution in case `id` is not uniformly distributed to
   // begin with, we hash it
   const hash = Math.abs(hashToInteger(collaborator?.id || socketId));
@@ -34,14 +34,14 @@ export const getClientColor = (socketId: SocketId, collaborator: Collaborator | 
   const lightness = 83;
 
   return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
-};
+}
 
 /**
  * The collaborators as the interactive canvas draws them, Excalidraw's
  * `InteractiveCanvas` render config: whose selection each element is in, and
  * each shown cursor's place in the viewport, name, idle state and button.
  */
-export const getCollaboratorsRenderConfig = (
+export function getCollaboratorsRenderConfig(
   appState: Pick<
     InteractiveCanvasAppState,
     "collaborators" | "zoom" | "scrollX" | "scrollY" | "offsetLeft" | "offsetTop"
@@ -53,7 +53,7 @@ export const getCollaboratorsRenderConfig = (
   | "remoteSelectedElementIds"
   | "remotePointerUsernames"
   | "remotePointerUserStates"
-> => {
+> {
   const remotePointerButton: InteractiveCanvasRenderConfig["remotePointerButton"] = new Map();
   const remotePointerViewportCoords: InteractiveCanvasRenderConfig["remotePointerViewportCoords"] =
     new Map();
@@ -97,30 +97,32 @@ export const getCollaboratorsRenderConfig = (
     remotePointerUsernames,
     remotePointerUserStates,
   };
-};
+}
 
 /**
  * returns first char, capitalized
  */
-export const getNameInitial = (name?: string | null) => {
+export function getNameInitial(name?: string | null) {
   // first char can be a surrogate pair, hence using codePointAt
   const firstCodePoint = name?.trim()?.codePointAt(0);
   return (firstCodePoint ? String.fromCodePoint(firstCodePoint) : "?").toUpperCase();
-};
+}
 
-export const renderRemoteCursors = ({
-  context,
-  renderConfig,
-  appState,
-  normalizedWidth,
-  normalizedHeight,
-}: {
+export interface RenderRemoteCursorsOptions {
   context: CanvasRenderingContext2D;
   renderConfig: InteractiveCanvasRenderConfig;
   appState: InteractiveCanvasAppState;
   normalizedWidth: number;
   normalizedHeight: number;
-}) => {
+}
+
+export function renderRemoteCursors({
+  context,
+  renderConfig,
+  appState,
+  normalizedWidth,
+  normalizedHeight,
+}: RenderRemoteCursorsOptions) {
   // Paint remote pointers
   for (const [socketId, pointer] of renderConfig.remotePointerViewportCoords) {
     let { x, y } = pointer;
@@ -304,4 +306,4 @@ export const renderRemoteCursors = ({
     context.restore();
     context.closePath();
   }
-};
+}

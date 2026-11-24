@@ -28,6 +28,10 @@ class TestResizeObserver {
 
 const originalRect = HTMLElement.prototype.getBoundingClientRect;
 const originalObserver = window.ResizeObserver;
+interface ResizeObserverWindow {
+  ResizeObserver: unknown;
+}
+
 beforeEach(() => {
   size = { width: 800, height: 400 };
   HTMLElement.prototype.getBoundingClientRect = function rect(this: HTMLElement) {
@@ -41,7 +45,7 @@ beforeEach(() => {
       ...size,
     } as DOMRect;
   };
-  (window as { ResizeObserver: unknown }).ResizeObserver = TestResizeObserver;
+  (window as ResizeObserverWindow).ResizeObserver = TestResizeObserver;
 });
 
 const cleanups: (() => void)[] = [];
@@ -49,7 +53,7 @@ afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup();
   document.body.innerHTML = "";
   HTMLElement.prototype.getBoundingClientRect = originalRect;
-  (window as { ResizeObserver: unknown }).ResizeObserver = originalObserver;
+  (window as ResizeObserverWindow).ResizeObserver = originalObserver;
 });
 
 async function releaseFlow(): Promise<DiagramScene> {
@@ -61,9 +65,14 @@ async function releaseFlow(): Promise<DiagramScene> {
   );
 }
 
+interface MountedViewer {
+  api: DiagramViewerApi;
+  region: HTMLElement;
+}
+
 async function mount(
   view: (grab: (api: DiagramViewerApi) => void) => unknown,
-): Promise<{ api: DiagramViewerApi; region: HTMLElement }> {
+): Promise<MountedViewer> {
   const container = document.createElement("div");
   document.body.append(container);
   let api: DiagramViewerApi | undefined;
@@ -94,6 +103,10 @@ function zoomOf(api: DiagramViewerApi): number {
 function onScreen(api: DiagramViewerApi, x: number, y: number) {
   const { scrollX, scrollY, zoom } = api.getAppState();
   return { x: (x + scrollX) * zoom.value, y: (y + scrollY) * zoom.value };
+}
+
+interface PageProps {
+  grab: (api: DiagramViewerApi) => void;
 }
 
 describe("DiagramViewer", () => {
@@ -156,11 +169,11 @@ describe("DiagramViewer", () => {
     const scene = await releaseFlow();
     const { api, region } = await mount((grab) => <DiagramViewer scene={scene} api={grab} />);
     const fitted = api.getAppState();
-    const key = (init: KeyboardEventInit) => {
+    function key(init: KeyboardEventInit) {
       const event = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init });
       region.dispatchEvent(event);
       return event;
-    };
+    }
     expect(key({ key: "+", code: "Equal", shiftKey: true }).defaultPrevented).toBe(true);
     expect(zoomOf(api)).toBeCloseTo(fitted.zoom.value + 0.1, 6);
     key({ key: "-", code: "Minus" });
@@ -177,10 +190,11 @@ describe("DiagramViewer", () => {
   test("a drag pans and a pinch zooms", async () => {
     const scene = await releaseFlow();
     const { api, region } = await mount((grab) => <DiagramViewer scene={scene} api={grab} />);
-    const pointer = (type: string, pointerId: number, x: number, y: number) =>
-      region.dispatchEvent(
+    function pointer(type: string, pointerId: number, x: number, y: number) {
+      return region.dispatchEvent(
         new PointerEvent(type, { pointerId, clientX: x, clientY: y, button: 0, bubbles: true }),
       );
+    }
     const start = api.getAppState();
     pointer("pointerdown", 1, 100, 100);
     pointer("pointermove", 1, 160, 130);
@@ -221,7 +235,7 @@ describe("DiagramViewer", () => {
   test("follows the color scheme above it, and a theme prop wins", async () => {
     const scene = await releaseFlow();
     let set!: (choice: "light" | "dark") => void;
-    function Page(props: { grab: (api: DiagramViewerApi) => void }) {
+    function Page(props: PageProps) {
       const scheme = colorScheme({
         themes: ["light", "dark"],
         system: false,

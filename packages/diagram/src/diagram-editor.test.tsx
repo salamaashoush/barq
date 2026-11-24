@@ -26,9 +26,15 @@ afterEach(() => {
   HTMLElement.prototype.getBoundingClientRect = originalRect;
 });
 
+interface MountedEditor {
+  api: DiagramEditorApi;
+  region: HTMLElement;
+  status: HTMLElement;
+}
+
 async function mount(
   view: (grab: (api: DiagramEditorApi) => void) => unknown,
-): Promise<{ api: DiagramEditorApi; region: HTMLElement; status: HTMLElement }> {
+): Promise<MountedEditor> {
   const container = document.createElement("div");
   document.body.append(container);
   let api: DiagramEditorApi | undefined;
@@ -42,13 +48,13 @@ async function mount(
   return { api, region, status };
 }
 
-const settle = async () => {
+async function settle() {
   await new Promise((resolve) => setTimeout(resolve, 0));
   flush();
-};
+}
 
-const pointer = (canvas: Element, type: string, x: number, y: number) =>
-  canvas.dispatchEvent(
+function pointer(canvas: Element, type: string, x: number, y: number) {
+  return canvas.dispatchEvent(
     new PointerEvent(type, {
       pointerId: 1,
       pointerType: "mouse",
@@ -60,13 +66,22 @@ const pointer = (canvas: Element, type: string, x: number, y: number) =>
       cancelable: true,
     }),
   );
+}
 
-const key = (target: Element, init: KeyboardEventInit) => {
+function key(target: Element, init: KeyboardEventInit) {
   const down = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init });
   target.dispatchEvent(down);
   target.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, cancelable: true, ...init }));
   return down;
-};
+}
+
+interface NamedFrame {
+  name?: string | null;
+}
+
+interface PageProps {
+  grab: (api: DiagramEditorApi) => void;
+}
 
 describe("DiagramEditor", () => {
   test("is a named, described, focusable application over three hidden canvases", async () => {
@@ -157,7 +172,7 @@ describe("DiagramEditor", () => {
     input!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     await settle();
     expect(region.querySelector("input[aria-label='Frame name']")).toBeNull();
-    const frame = api.getSceneElements()[0] as { name?: string | null };
+    const frame = api.getSceneElements()[0] as NamedFrame;
     expect(frame.name).toBe("Launch");
     expect([...region.querySelectorAll("div")].some((div) => div.textContent === "Launch")).toBe(
       true,
@@ -191,7 +206,7 @@ describe("DiagramEditor", () => {
     const [grid, setGrid] = createSignal(false);
     const [viewMode, setViewMode] = createSignal(false);
     let setScheme!: (choice: "light" | "dark") => void;
-    function Page(props: { grab: (api: DiagramEditorApi) => void }) {
+    function Page(props: PageProps) {
       const scheme = colorScheme({
         themes: ["light", "dark"],
         system: false,
@@ -242,6 +257,15 @@ describe("DiagramEditor", () => {
   });
 });
 
+interface DomModule {
+  page: () => () => unknown;
+  handle: ApiHandle;
+}
+
+interface ApiHandle {
+  api: DiagramEditorApi | null;
+}
+
 test("the server renders the empty editor, and the browser hydrates it", async () => {
   const compiled = compile(
     `
@@ -269,10 +293,7 @@ export const page = () => () => (
   expect(container.querySelector("[role=status]")?.textContent).toBe("");
   const children = [...(region?.children ?? [])];
 
-  const module = (await import(`${compiled.dom}?${Math.random()}`)) as {
-    page: () => () => unknown;
-    handle: { api: DiagramEditorApi | null };
-  };
+  const module = (await import(`${compiled.dom}?${Math.random()}`)) as DomModule;
   resetChildIds();
   cleanups.push(hydrate(module.page() as never, container));
   flush();
@@ -313,10 +334,7 @@ export const page = () => () => (
     toolbar?.querySelector("[data-testid=toolbar-rectangle]")?.getAttribute("aria-label"),
   ).toBe("مستطيل");
 
-  const module = (await import(`${compiled.dom}?${Math.random()}`)) as {
-    page: () => () => unknown;
-    handle: { api: DiagramEditorApi | null };
-  };
+  const module = (await import(`${compiled.dom}?${Math.random()}`)) as DomModule;
   resetChildIds();
   cleanups.push(hydrate(module.page() as never, container));
   flush();
@@ -362,10 +380,7 @@ export const page = () => () => (
   container.innerHTML = served.html;
   expect(container.querySelector("[data-testid=welcome-screen]")).toBeNull();
 
-  const module = (await import(`${compiled.dom}?${Math.random()}`)) as {
-    page: () => () => unknown;
-    handle: { api: DiagramEditorApi | null };
-  };
+  const module = (await import(`${compiled.dom}?${Math.random()}`)) as DomModule;
   resetChildIds();
   cleanups.push(hydrate(module.page() as never, container));
   flush();

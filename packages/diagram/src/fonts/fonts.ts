@@ -34,11 +34,16 @@ import { FONT_FILES } from "./manifest.ts";
 /** warned once per process, not per export (e.g. on a server) */
 let warnedNoFontFaceSet = false;
 
+interface WorkerFonts {
+  fonts: FontFaceSet;
+}
+
 /** a worker's own font set (`WorkerGlobalScope.fonts`), if this is one */
-const getWorkerFontFaceSet = (): FontFaceSet | null =>
-  typeof self !== "undefined" && "fonts" in self
-    ? (self as unknown as { fonts: FontFaceSet }).fonts
+function getWorkerFontFaceSet(): FontFaceSet | null {
+  return typeof self !== "undefined" && "fonts" in self
+    ? (self as unknown as WorkerFonts).fonts
     : null;
+}
 
 export class Fonts {
   public static readonly loadedFontsCache = new Set<string>();
@@ -387,7 +392,7 @@ export class Fonts {
 
   private static init(): Map<number, RegisteredFamily> {
     const registered = new Map<number, RegisteredFamily>();
-    const add = (family: string, descriptors: readonly FontFaceDescriptor[]) => {
+    function add(family: string, descriptors: readonly FontFaceDescriptor[]) {
       const id = familyId(family)!;
       registered.set(id, {
         metadata: FONT_METADATA[id] ?? FONT_METADATA[FONT_FAMILY.Excalifont]!,
@@ -395,7 +400,7 @@ export class Fonts {
           ({ uri, descriptors: each }) => new DiagramFontFace(family, uri, each),
         ),
       });
-    };
+    }
     for (const [family, files] of Object.entries(FONT_FILES)) {
       add(
         family,

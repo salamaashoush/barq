@@ -16,12 +16,16 @@ import { renderEditor, unmountEditors } from "./editor/test-editor.ts";
 
 const REFERENCE = join(import.meta.dir, "fixtures/excalidraw-0.18.0-2c3dcc0");
 
-const read = (file: string): string => readFileSync(join(REFERENCE, `${file}.txt`), "utf8");
+function read(file: string): string {
+  return readFileSync(join(REFERENCE, `${file}.txt`), "utf8");
+}
 
-const own = (file: string): string => readFileSync(join(import.meta.dir, file), "utf8");
+function own(file: string): string {
+  return readFileSync(join(import.meta.dir, file), "utf8");
+}
 
 /** The names a module's `export { ... }`, `export type { ... }` and `export declare` give. */
-const exportNames = (source: string): string[] => {
+function exportNames(source: string): string[] {
   const names = new Set<string>();
   for (const [, list] of source.matchAll(/export (?:type )?\{([^}]*)\}/g)) {
     for (const part of list!.split(",")) {
@@ -38,10 +42,10 @@ const exportNames = (source: string): string[] => {
     names.add(name!);
   }
   return [...names];
-};
+}
 
 /** The members of `interface name { ... }`: names at its own depth, comments skipped. */
-const interfaceMembers = (source: string, name: string): string[] => {
+function interfaceMembers(source: string, name: string): string[] {
   const start = source.indexOf(`export interface ${name}`);
   if (start === -1) throw new Error(`no interface ${name}`);
   const body = source.slice(source.indexOf("{", start) + 1);
@@ -76,7 +80,7 @@ const interfaceMembers = (source: string, name: string): string[] => {
     }
   }
   return [...members];
-};
+}
 
 /** Excalidraw's names barq says another way, and why. */
 const EQUIVALENT_EXPORTS: Record<string, string> = {

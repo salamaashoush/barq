@@ -196,12 +196,18 @@ class TestPath2D {
   public constructor(public readonly path?: string) {}
 }
 
+interface CanvasPrototype {
+  getContext: (this: HTMLCanvasElement, type: string) => unknown;
+  toBlob: (this: HTMLCanvasElement, callback: (blob: Blob | null) => void, type?: string) => void;
+  toDataURL: (this: HTMLCanvasElement) => string;
+}
+
+interface Path2DGlobal {
+  Path2D?: unknown;
+}
+
 export function installCanvas(): void {
-  const proto = HTMLCanvasElement.prototype as unknown as {
-    getContext: (this: HTMLCanvasElement, type: string) => unknown;
-    toBlob: (this: HTMLCanvasElement, callback: (blob: Blob | null) => void, type?: string) => void;
-    toDataURL: (this: HTMLCanvasElement) => string;
-  };
+  const proto = HTMLCanvasElement.prototype as unknown as CanvasPrototype;
   proto.getContext = function getContext(type) {
     return type === "2d" ? contextOf(this) : null;
   };
@@ -209,5 +215,5 @@ export function installCanvas(): void {
     setTimeout(() => callback(new Blob([onePixelPng()], { type })), 0);
   };
   proto.toDataURL = () => `data:image/png;base64,${btoa(String.fromCharCode(...onePixelPng()))}`;
-  (globalThis as { Path2D?: unknown }).Path2D ??= TestPath2D;
+  (globalThis as Path2DGlobal).Path2D ??= TestPath2D;
 }

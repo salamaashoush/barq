@@ -14,7 +14,8 @@ import { hydrate } from "@barqjs/web";
 
 import { type Compiled, ENTRY, SCENE, compile, serve } from "./ssr-harness.ts";
 
-const page = (withSnapshot: boolean) => `
+function page(withSnapshot: boolean) {
+  return `
 import { readFileSync } from "node:fs"
 import { DiagramViewer, exportToSvgString } from ${JSON.stringify(ENTRY)}
 
@@ -30,6 +31,7 @@ export const page = () => () => (
   </main>
 )
 `;
+}
 
 let cleanup: (() => void) | undefined;
 afterEach(() => {
@@ -44,11 +46,21 @@ function host(): HTMLElement {
   return element;
 }
 
+interface DomModule {
+  page: () => () => unknown;
+  handle: SceneHandle;
+}
+
+interface SceneHandle {
+  api: SceneReader | null;
+}
+
+interface SceneReader {
+  getSceneElements(): readonly unknown[];
+}
+
 async function hydrateInto(container: HTMLElement, compiled: Compiled) {
-  const module = (await import(`${compiled.dom}?${Math.random()}`)) as {
-    page: () => () => unknown;
-    handle: { api: { getSceneElements(): readonly unknown[] } | null };
-  };
+  const module = (await import(`${compiled.dom}?${Math.random()}`)) as DomModule;
   resetChildIds();
   cleanup = hydrate(module.page() as never, container);
   flush();

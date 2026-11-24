@@ -99,28 +99,33 @@ function aspectRatio(elements: readonly ExcalidrawElement[], padding: number): s
  */
 export function DiagramViewer(props: DiagramViewerProps): JSX.Element {
   const fromScheme = schemeTheme();
-  const theme = (): Theme => props.theme ?? fromScheme() ?? THEME.LIGHT;
-  const padding = (): number => props.padding ?? 16;
+  function theme(): Theme {
+    return props.theme ?? fromScheme() ?? THEME.LIGHT;
+  }
+  function padding(): number {
+    return props.padding ?? 16;
+  }
   const descriptionId = createUniqueId();
 
-  const label = (): string => {
+  function label(): string {
     const named = props.scene?.appState?.name;
     return props.label ?? (typeof named === "string" && named !== "" ? named : "Diagram");
-  };
-  const description = (): string =>
-    props.description ?? getTextFromElements(sceneElements(props.scene), "\n");
+  }
+  function description(): string {
+    return props.description ?? getTextFromElements(sceneElements(props.scene), "\n");
+  }
 
-  const size = (): string => {
+  function size(): string {
     const height = props.height;
     if (height !== undefined) {
       return `height:${typeof height === "number" ? `${height}px` : height}`;
     }
     return `aspect-ratio:${aspectRatio(sceneElements(props.scene), padding())}`;
-  };
+  }
 
   let view: View | null = null;
 
-  const attach = (host: HTMLDivElement): (() => void) => {
+  function attach(host: HTMLDivElement): () => void {
     const created = new View(host, {
       theme: untrack(theme),
       fit: untrack(() => props.fit) ?? "contain",
@@ -134,7 +139,7 @@ export function DiagramViewer(props: DiagramViewerProps): JSX.Element {
       created.destroy();
       if (view === created) view = null;
     };
-  };
+  }
 
   if (!isServer) {
     createRenderEffect(theme, (next) => {

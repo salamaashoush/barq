@@ -61,10 +61,11 @@ describe("SceneCanvas", () => {
     view.render(viewport({ shouldCacheIgnoreZoom: false }), 1);
     // Text is rasterized into per-element canvases first; the recording
     // contexts of those are where fillText lands.
-    const writes = (text: string) =>
-      allContexts().find((context) =>
+    function writes(text: string) {
+      return allContexts().find((context) =>
         context.named("fillText").some((call) => call.args[0] === text),
       );
+    }
     const arabic = writes("مرحبا بالعالم");
     expect(arabic?.canvas.getAttribute("dir")).toBe("rtl");
     const texts = allContexts().flatMap((context) => context.named("fillText"));
@@ -103,10 +104,11 @@ describe("SceneCanvas", () => {
     const view = new SceneCanvas(canvas, scene.elements);
     view.render(viewport({ scrollX: -500, scrollY: 100 }), 1);
     const dataURL = Object.values(scene.files)[0]?.dataURL;
-    const drawsImage = () =>
-      allContexts()
+    function drawsImage() {
+      return allContexts()
         .flatMap((context) => context.named("drawImage"))
         .some((call) => call.args[0] instanceof HTMLImageElement && call.args[0].src === dataURL);
+    }
     expect(drawsImage()).toBe(false);
     await view.setFiles(scene.files);
     expect(view.imageCache.size).toBe(1);

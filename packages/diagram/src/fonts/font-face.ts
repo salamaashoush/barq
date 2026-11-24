@@ -21,9 +21,13 @@ export function setFontAssetPath(path: string | readonly string[] | null): void 
   assetPaths = path === null ? null : typeof path === "string" ? [path] : path;
 }
 
+interface AssetPathGlobal {
+  EXCALIDRAW_ASSET_PATH?: unknown;
+}
+
 function configuredAssetPaths(): readonly string[] {
   if (assetPaths !== null) return assetPaths;
-  const global = (globalThis as { EXCALIDRAW_ASSET_PATH?: unknown }).EXCALIDRAW_ASSET_PATH;
+  const global = (globalThis as AssetPathGlobal).EXCALIDRAW_ASSET_PATH;
   if (typeof global === "string") return [global];
   if (Array.isArray(global)) return global.filter((each) => typeof each === "string");
   return [];

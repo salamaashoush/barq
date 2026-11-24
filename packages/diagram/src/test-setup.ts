@@ -13,7 +13,9 @@ installCanvas();
 // `.ts` goes through the compiler for the UI's styles and for `@barqjs/ui`'s,
 // which the UI is built on: a `css` call in a `.ts` module is a class name
 // only once the compiler has folded it.
-const escape = (path: string): string => path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function escape(path: string): string {
+  return path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 const ui = dirname(Bun.resolveSync("@barqjs/ui/package.json", import.meta.dir));
 const arc = dirname(Bun.resolveSync("@barqjs/arc/package.json", import.meta.dir));
 const styled = new RegExp(

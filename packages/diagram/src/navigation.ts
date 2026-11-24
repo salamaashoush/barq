@@ -151,13 +151,16 @@ export function keyboardNavigation(
   if (code === "Digit1" && event.shiftKey && !event.altKey && !(event.ctrlKey || event.metaKey)) {
     return fitToContent(state, elements);
   }
-  const page = (size: number): number => (event.shiftKey ? size : size / 10) / state.zoom.value;
-  const pan = (dx: number, dy: number): ViewportState =>
-    constrain(state, {
+  function page(size: number): number {
+    return (event.shiftKey ? size : size / 10) / state.zoom.value;
+  }
+  function pan(dx: number, dy: number): ViewportState {
+    return constrain(state, {
       zoom: state.zoom,
       scrollX: state.scrollX + dx,
       scrollY: state.scrollY + dy,
     });
+  }
   switch (key) {
     case "ArrowLeft":
       return pan(page(state.width), 0);

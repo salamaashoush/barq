@@ -6,30 +6,39 @@ export interface Throttled<Args extends unknown[]> {
   flush(): void;
 }
 
+export interface ThrottleOptions {
+  leading?: boolean;
+  trailing?: boolean;
+}
+
+interface UnrefHandle {
+  unref?: () => void;
+}
+
 /**
  * lodash's `throttle`: runs at most once per `wait`, on the leading edge
  * and with the latest arguments on the trailing one, as Excalidraw's
  * collaboration paces its broadcasts.
  */
-export const throttle = <Args extends unknown[]>(
+export function throttle<Args extends unknown[]>(
   fn: (...args: Args) => unknown,
   wait: number,
-  { leading = true, trailing = true }: { leading?: boolean; trailing?: boolean } = {},
-): Throttled<Args> => {
+  { leading = true, trailing = true }: ThrottleOptions = {},
+): Throttled<Args> {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let pending: Args | null = null;
-  const run = (args: Args): void => {
+  function run(args: Args): void {
     void fn(...args);
-  };
+  }
 
   // a pending trailing call does not keep a server or a test runner alive
-  const schedule = (): ReturnType<typeof setTimeout> => {
+  function schedule(): ReturnType<typeof setTimeout> {
     const handle = setTimeout(onTimer, wait);
-    (handle as { unref?: () => void }).unref?.();
+    (handle as UnrefHandle).unref?.();
     return handle;
-  };
+  }
 
-  const onTimer = (): void => {
+  function onTimer(): void {
     timer = null;
     if (trailing && pending) {
       const args = pending;
@@ -39,9 +48,9 @@ export const throttle = <Args extends unknown[]>(
     } else {
       pending = null;
     }
-  };
+  }
 
-  const throttled = (...args: Args): void => {
+  function throttled(...args: Args): void {
     if (timer === null) {
       if (leading) {
         run(args);
@@ -52,7 +61,7 @@ export const throttle = <Args extends unknown[]>(
       return;
     }
     pending = args;
-  };
+  }
 
   throttled.cancel = (): void => {
     if (timer !== null) clearTimeout(timer);
@@ -71,4 +80,4 @@ export const throttle = <Args extends unknown[]>(
   };
 
   return throttled;
-};
+}

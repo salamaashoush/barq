@@ -14,14 +14,20 @@ import { compilerLoader } from "@barqjs/vite/internal";
 
 import { RESULT } from "./ssr-harness.ts";
 
-const escape = (path: string): string => path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function escape(path: string): string {
+  return path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 const ui = dirname(Bun.resolveSync("@barqjs/ui/package.json", import.meta.dir));
 const styled = new RegExp(`^(${escape(`${import.meta.dir}/ui`)}|${escape(ui)}/src)/.*\\.ts$`);
 
 plugin(compilerLoader({ transform: { ssr: true, hydratable: true, strictCss: true }, ts: styled }));
 
 const [modulePath = ""] = process.argv.slice(2);
-const fixture = (await import(modulePath)) as { page: () => () => unknown };
+interface PageModule {
+  page: () => () => unknown;
+}
+
+const fixture = (await import(modulePath)) as PageModule;
 const page = await renderPage(fixture.page() as never);
 
 process.stdout.write(RESULT + JSON.stringify({ html: page.html, script: page.script }));

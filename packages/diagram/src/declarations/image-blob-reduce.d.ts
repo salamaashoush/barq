@@ -3,17 +3,27 @@ declare module "image-blob-reduce" {
   import type { Pica, PicaResizeOptions } from "pica";
 
   namespace ImageBlobReduce {
+    interface ReducerContext {
+      pica: Pica;
+    }
+
+    interface ReducerEnv {
+      out_canvas: HTMLCanvasElement;
+      out_blob: Blob;
+    }
+
     interface ImageBlobReduce {
       toBlob(file: File, options: ImageBlobReduceOptions): Promise<Blob>;
-      _create_blob(
-        this: { pica: Pica },
-        env: { out_canvas: HTMLCanvasElement; out_blob: Blob },
-      ): Promise<unknown>;
+      _create_blob(this: ReducerContext, env: ReducerEnv): Promise<unknown>;
+    }
+
+    interface ReducerOptions {
+      pica?: Pica;
     }
 
     interface ImageBlobReduceStatic {
-      new (options?: { pica?: Pica }): ImageBlobReduce;
-      (options?: { pica?: Pica }): ImageBlobReduce;
+      new (options?: ReducerOptions): ImageBlobReduce;
+      (options?: ReducerOptions): ImageBlobReduce;
     }
 
     interface ImageBlobReduceOptions extends PicaResizeOptions {

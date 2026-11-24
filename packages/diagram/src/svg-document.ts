@@ -88,6 +88,11 @@ class StyleDeclaration {
   }
 }
 
+interface SvgClassList {
+  add: (...names: string[]) => void;
+  contains: (name: string) => boolean;
+}
+
 class SvgElement extends SvgNode {
   public readonly nodeType = 1;
   public readonly childNodes: SvgNode[] = [];
@@ -119,10 +124,7 @@ class SvgElement extends SvgNode {
     return this.childNodes.filter((node): node is SvgElement => node instanceof SvgElement);
   }
 
-  public get classList(): {
-    add: (...names: string[]) => void;
-    contains: (name: string) => boolean;
-  } {
+  public get classList(): SvgClassList {
     const names = (): string[] => (this.getAttribute("class") ?? "").split(/\s+/).filter(Boolean);
     return {
       add: (...added) => this.setAttribute("class", [...new Set([...names(), ...added])].join(" ")),
@@ -201,12 +203,13 @@ class SvgElement extends SvgNode {
 
   /** `#id`, a tag name, or `.class`: the selectors the renderer asks for. */
   public querySelector(selector: string): SvgElement | null {
-    const matches = (element: SvgElement): boolean =>
-      selector.startsWith("#")
+    function matches(element: SvgElement): boolean {
+      return selector.startsWith("#")
         ? element.id === selector.slice(1)
         : selector.startsWith(".")
           ? element.classList.contains(selector.slice(1))
           : element.tagName === selector;
+    }
     for (const child of this.children) {
       if (matches(child)) return child;
       const found = child.querySelector(selector);

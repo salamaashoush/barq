@@ -34,16 +34,13 @@ import type { GlobalPoint } from "@excalidraw/math";
 
 export type SocketId = string & { _brand: "SocketId" };
 
-export type Collaborator = Readonly<{
+export interface CollaboratorInfo {
   pointer?: CollaboratorPointer;
   button?: "up" | "down";
   selectedElementIds?: AppState["selectedElementIds"];
   username?: string | null;
   userState?: UserIdleState;
-  color?: {
-    background: string;
-    stroke: string;
-  };
+  color?: CollaboratorColor;
   /** The collaborator's avatar; their initials when absent. */
   avatarUrl?: string;
   /** Stable across a user's clients, where `socketId` is one per client. */
@@ -53,7 +50,14 @@ export type Collaborator = Readonly<{
   isInCall?: boolean;
   isSpeaking?: boolean;
   isMuted?: boolean;
-}>;
+}
+
+export interface CollaboratorColor {
+  background: string;
+  stroke: string;
+}
+
+export type Collaborator = Readonly<CollaboratorInfo>;
 
 export type CollaboratorPointer = {
   x: number;
@@ -129,11 +133,22 @@ export type OnUserFollowedPayload = {
   action: "FOLLOW" | "UNFOLLOW";
 };
 
+export interface PointerPosition {
+  x: number;
+  y: number;
+  tool: "pointer" | "laser";
+}
+
+export interface Coords {
+  x: number;
+  y: number;
+}
+
 /** What `onPointerUpdate` hands over: the pointer in scene coordinates, and the pointers down. */
 export type PointerUpdatePayload = {
-  pointer: { x: number; y: number; tool: "pointer" | "laser" };
+  pointer: PointerPosition;
   button: "down" | "up";
-  pointersMap: ReadonlyMap<number, Readonly<{ x: number; y: number }>>;
+  pointersMap: ReadonlyMap<number, Readonly<Coords>>;
 };
 
 type CommonCanvasAppState = {
@@ -152,53 +167,55 @@ type CommonCanvasAppState = {
   theme: AppState["theme"];
 };
 
-export type StaticCanvasAppState = Readonly<
-  CommonCanvasAppState & {
-    shouldCacheIgnoreZoom: AppState["shouldCacheIgnoreZoom"];
-    /** `null` is a transparent background. */
-    viewBackgroundColor: AppState["viewBackgroundColor"] | null;
-    exportScale: AppState["exportScale"];
-    selectedElementsAreBeingDragged: AppState["selectedElementsAreBeingDragged"];
-    gridSize: AppState["gridSize"];
-    gridStep: AppState["gridStep"];
-    frameRendering: AppState["frameRendering"];
-    currentHoveredFontFamily: AppState["currentHoveredFontFamily"];
-    hoveredElementIds: AppState["hoveredElementIds"];
-    suggestedBinding: AppState["suggestedBinding"];
-    croppingElementId: AppState["croppingElementId"];
-  }
->;
+export interface StaticCanvasAppStateFields {
+  shouldCacheIgnoreZoom: AppState["shouldCacheIgnoreZoom"];
+  /** `null` is a transparent background. */
+  viewBackgroundColor: AppState["viewBackgroundColor"] | null;
+  exportScale: AppState["exportScale"];
+  selectedElementsAreBeingDragged: AppState["selectedElementsAreBeingDragged"];
+  gridSize: AppState["gridSize"];
+  gridStep: AppState["gridStep"];
+  frameRendering: AppState["frameRendering"];
+  currentHoveredFontFamily: AppState["currentHoveredFontFamily"];
+  hoveredElementIds: AppState["hoveredElementIds"];
+  suggestedBinding: AppState["suggestedBinding"];
+  croppingElementId: AppState["croppingElementId"];
+}
+
+export type StaticCanvasAppState = Readonly<CommonCanvasAppState & StaticCanvasAppStateFields>;
+
+export interface InteractiveCanvasAppStateFields {
+  activeTool: AppState["activeTool"];
+  activeEmbeddable: AppState["activeEmbeddable"];
+  selectionElement: AppState["selectionElement"];
+  selectedGroupIds: AppState["selectedGroupIds"];
+  selectedLinearElement: AppState["selectedLinearElement"];
+  multiElement: AppState["multiElement"];
+  newElement: AppState["newElement"];
+  isBindingEnabled: AppState["isBindingEnabled"];
+  isMidpointSnappingEnabled: AppState["isMidpointSnappingEnabled"];
+  gridModeEnabled: AppState["gridModeEnabled"];
+  suggestedBinding: AppState["suggestedBinding"];
+  textToolHover: AppState["textToolHover"];
+  isRotating: AppState["isRotating"];
+  elementsToHighlight: AppState["elementsToHighlight"];
+  collaborators: AppState["collaborators"];
+  snapLines: AppState["snapLines"];
+  zenModeEnabled: AppState["zenModeEnabled"];
+  editingTextElement: AppState["editingTextElement"];
+  isCropping: AppState["isCropping"];
+  croppingElementId: AppState["croppingElementId"];
+  searchMatches: AppState["searchMatches"];
+  activeLockedId: AppState["activeLockedId"];
+  hoveredElementIds: AppState["hoveredElementIds"];
+  frameRendering: AppState["frameRendering"];
+  shouldCacheIgnoreZoom: AppState["shouldCacheIgnoreZoom"];
+  exportScale: AppState["exportScale"];
+  currentItemArrowType: AppState["currentItemArrowType"];
+}
 
 export type InteractiveCanvasAppState = Readonly<
-  CommonCanvasAppState & {
-    activeTool: AppState["activeTool"];
-    activeEmbeddable: AppState["activeEmbeddable"];
-    selectionElement: AppState["selectionElement"];
-    selectedGroupIds: AppState["selectedGroupIds"];
-    selectedLinearElement: AppState["selectedLinearElement"];
-    multiElement: AppState["multiElement"];
-    newElement: AppState["newElement"];
-    isBindingEnabled: AppState["isBindingEnabled"];
-    isMidpointSnappingEnabled: AppState["isMidpointSnappingEnabled"];
-    gridModeEnabled: AppState["gridModeEnabled"];
-    suggestedBinding: AppState["suggestedBinding"];
-    textToolHover: AppState["textToolHover"];
-    isRotating: AppState["isRotating"];
-    elementsToHighlight: AppState["elementsToHighlight"];
-    collaborators: AppState["collaborators"];
-    snapLines: AppState["snapLines"];
-    zenModeEnabled: AppState["zenModeEnabled"];
-    editingTextElement: AppState["editingTextElement"];
-    isCropping: AppState["isCropping"];
-    croppingElementId: AppState["croppingElementId"];
-    searchMatches: AppState["searchMatches"];
-    activeLockedId: AppState["activeLockedId"];
-    hoveredElementIds: AppState["hoveredElementIds"];
-    frameRendering: AppState["frameRendering"];
-    shouldCacheIgnoreZoom: AppState["shouldCacheIgnoreZoom"];
-    exportScale: AppState["exportScale"];
-    currentItemArrowType: AppState["currentItemArrowType"];
-  }
+  CommonCanvasAppState & InteractiveCanvasAppStateFields
 >;
 
 export type BoxSelectionMode = "contain" | "overlap";
@@ -255,6 +272,99 @@ export type OpenDialog =
   | { name: "elementLinkSelector"; sourceElementId: ExcalidrawElement["id"] }
   | { name: "charts"; data: unknown; rawText: string };
 
+export interface ContextMenuState {
+  items: readonly unknown[];
+  top: number;
+  left: number;
+}
+
+export interface ActiveEmbeddable {
+  element: NonDeletedExcalidrawElement;
+  state: "hover" | "active";
+}
+
+export interface SuggestedBinding {
+  element: NonDeleted<ExcalidrawBindableElement>;
+  midPoint?: GlobalPoint;
+}
+
+export interface TextHoverTarget {
+  type: "text";
+  elementId: ExcalidrawElement["id"];
+}
+
+export interface ContainerHoverTarget {
+  type: "container";
+  elementId: ExcalidrawElement["id"];
+}
+
+export interface ArrowHoverTarget {
+  type: "arrow";
+  elementId: ExcalidrawArrowElement["id"];
+  anchor: "start" | "end" | "label";
+}
+
+export interface FrameRendering {
+  enabled: boolean;
+  name: boolean;
+  outline: boolean;
+  clip: boolean;
+}
+
+export interface ActiveToolFlags {
+  lastActiveTool: ActiveTool | null;
+  locked: boolean;
+  fromSelection: boolean;
+}
+
+export interface PreferredSelectionTool {
+  type: "selection" | "lasso";
+  initialized: boolean;
+}
+
+export interface OpenSidebar {
+  name: SidebarName;
+  tab?: SidebarTabName;
+}
+
+export interface ElementIdSet {
+  [id: string]: true;
+}
+
+export interface Toast {
+  message: unknown;
+  closable?: boolean;
+  duration?: number;
+  /** A save's progress, from 0 to 1, while the host's `onExport` holds it. */
+  progress?: number | null;
+}
+
+export interface GroupIdSelection {
+  [groupId: string]: boolean;
+}
+
+export interface StatsPanelState {
+  open: boolean;
+  panels: number;
+}
+
+export interface SearchMatches {
+  focusedId: ExcalidrawElement["id"] | null;
+  matches: readonly SearchMatch[];
+}
+
+export interface GroupIdSet {
+  [groupId: string]: true;
+}
+
+export interface ColorTopPicks {
+  elementStroke: readonly string[] | null;
+  elementBackground: readonly string[] | null;
+  bucketFill: readonly string[] | null;
+  stickyNoteStroke: readonly string[] | null;
+  stickyNoteBackground: readonly string[] | null;
+}
+
 /**
  * Excalidraw's whole application state, key for key, so a `.excalidraw` file
  * and a live editor's state carry the same names. Fields Excalidraw types as
@@ -262,18 +372,11 @@ export type OpenDialog =
  * are `unknown` here: the scene never reads them.
  */
 export interface AppState {
-  contextMenu: {
-    items: readonly unknown[];
-    top: number;
-    left: number;
-  } | null;
+  contextMenu: ContextMenuState | null;
   showWelcomeScreen: boolean;
   isLoading: boolean;
   errorMessage: unknown;
-  activeEmbeddable: {
-    element: NonDeletedExcalidrawElement;
-    state: "hover" | "active";
-  } | null;
+  activeEmbeddable: ActiveEmbeddable | null;
   newElement: NonDeleted<ExcalidrawNonSelectionElement> | null;
   resizingElement: NonDeletedExcalidrawElement | null;
   multiElement: NonDeleted<ExcalidrawLinearElement> | null;
@@ -284,38 +387,15 @@ export interface AppState {
   isMidpointSnappingEnabled: boolean;
   showHints: boolean;
   inputDevice: InputDevice;
-  suggestedBinding: {
-    element: NonDeleted<ExcalidrawBindableElement>;
-    midPoint?: GlobalPoint;
-  } | null;
-  textToolHover:
-    | { type: "text"; elementId: ExcalidrawElement["id"] }
-    | { type: "container"; elementId: ExcalidrawElement["id"] }
-    | {
-        type: "arrow";
-        elementId: ExcalidrawArrowElement["id"];
-        anchor: "start" | "end" | "label";
-      }
-    | null;
+  suggestedBinding: SuggestedBinding | null;
+  textToolHover: TextHoverTarget | ContainerHoverTarget | ArrowHoverTarget | null;
   frameToHighlight: NonDeleted<ExcalidrawFrameLikeElement> | null;
-  frameRendering: {
-    enabled: boolean;
-    name: boolean;
-    outline: boolean;
-    clip: boolean;
-  };
+  frameRendering: FrameRendering;
   editingFrame: ExcalidrawFrameLikeElement["id"] | null;
   elementsToHighlight: readonly NonDeletedExcalidrawElement[] | null;
   editingTextElement: ExcalidrawTextElement | null;
-  activeTool: {
-    lastActiveTool: ActiveTool | null;
-    locked: boolean;
-    fromSelection: boolean;
-  } & ActiveTool;
-  preferredSelectionTool: {
-    type: "selection" | "lasso";
-    initialized: boolean;
-  };
+  activeTool: ActiveToolFlags & ActiveTool;
+  preferredSelectionTool: PreferredSelectionTool;
   penMode: boolean;
   penDetected: boolean;
   exportBackground: boolean;
@@ -362,22 +442,16 @@ export interface AppState {
     | "compactArrowProperties"
     | "convertElementType"
     | null;
-  openSidebar: { name: SidebarName; tab?: SidebarTabName } | null;
+  openSidebar: OpenSidebar | null;
   openDialog: OpenDialog;
   defaultSidebarDockedPreference: boolean;
   lastPointerDownWith: PointerType;
-  selectedElementIds: Readonly<{ [id: string]: true }>;
-  hoveredElementIds: Readonly<{ [id: string]: true }>;
-  previousSelectedElementIds: { [id: string]: true };
+  selectedElementIds: Readonly<ElementIdSet>;
+  hoveredElementIds: Readonly<ElementIdSet>;
+  previousSelectedElementIds: ElementIdSet;
   selectedElementsAreBeingDragged: boolean;
   shouldCacheIgnoreZoom: boolean;
-  toast: {
-    message: unknown;
-    closable?: boolean;
-    duration?: number;
-    /** A save's progress, from 0 to 1, while the host's `onExport` holds it. */
-    progress?: number | null;
-  } | null;
+  toast: Toast | null;
   zenModeEnabled: boolean;
   minimapEnabled: boolean;
   theme: Theme;
@@ -386,7 +460,7 @@ export interface AppState {
   gridModeEnabled: boolean;
   viewModeEnabled: boolean;
   /** Top-most selected groups, nested groups excluded. */
-  selectedGroupIds: { [groupId: string]: boolean };
+  selectedGroupIds: GroupIdSelection;
   editingGroupId: GroupId | null;
   width: number;
   height: number;
@@ -394,59 +468,45 @@ export interface AppState {
   offsetLeft: number;
   fileHandle: FileSystemFileHandle | null;
   collaborators: Map<SocketId, Collaborator>;
-  stats: {
-    open: boolean;
-    panels: number;
-  };
+  stats: StatsPanelState;
   showHyperlinkPopup: false | "info" | "editor";
   selectedLinearElement: LinearElementEditor | null;
   snapLines: readonly SnapLine[];
-  originSnapOffset: {
-    x: number;
-    y: number;
-  } | null;
+  originSnapOffset: Coords | null;
   objectsSnapModeEnabled: boolean;
   isCropping: boolean;
   croppingElementId: ExcalidrawElement["id"] | null;
-  searchMatches: Readonly<{
-    focusedId: ExcalidrawElement["id"] | null;
-    matches: readonly SearchMatch[];
-  }> | null;
+  searchMatches: Readonly<SearchMatches> | null;
   activeLockedId: string | null;
-  lockedMultiSelections: { [groupId: string]: true };
+  lockedMultiSelections: GroupIdSet;
   bindMode: BindMode;
-  colorTopPicks: {
-    elementStroke: readonly string[] | null;
-    elementBackground: readonly string[] | null;
-    bucketFill: readonly string[] | null;
-    stickyNoteStroke: readonly string[] | null;
-    stickyNoteBackground: readonly string[] | null;
-  };
+  colorTopPicks: ColorTopPicks;
   fontTopPicks: readonly FontFamilyValues[] | null;
+}
+
+export interface MatchedLine {
+  offsetX: number;
+  offsetY: number;
+  width: number;
+  height: number;
+  showOnCanvas: boolean;
 }
 
 export type SearchMatch = {
   id: string;
   focus: boolean;
-  matchedLines: {
-    offsetX: number;
-    offsetY: number;
-    width: number;
-    height: number;
-    showOnCanvas: boolean;
-  }[];
+  matchedLines: MatchedLine[];
 };
 
 export type NormalizedZoomValue = number & { _brand: "normalizedZoom" };
 
-export type Zoom = Readonly<{
+export interface ZoomLevel {
   value: NormalizedZoomValue;
-}>;
+}
 
-export type PointerCoords = Readonly<{
-  x: number;
-  y: number;
-}>;
+export type Zoom = Readonly<ZoomLevel>;
+
+export type PointerCoords = Readonly<Coords>;
 
 /** A version 1 library item: the elements alone. */
 export type LibraryItem_v1 = readonly NonDeleted<ExcalidrawElement>[];
@@ -464,34 +524,50 @@ export type LibraryItem = {
 export type LibraryItems = readonly LibraryItem[];
 export type LibraryItems_anyVersion = LibraryItems | LibraryItems_v1;
 
+export interface EnabledInteractions {
+  /** Element links show their icon and open when clicked, as in view mode. */
+  links?: boolean;
+  /** Embeds activate on hover and click, as in view mode. */
+  embeds?: boolean;
+  /** `links` and `embeds` together. */
+  interactiveContent?: boolean;
+  /**
+   * Panning and zooming (drag, wheel, pinch, the zoom keys), held to
+   * `scrollConstraints`; the editor takes the wheel back from the page.
+   */
+  navigation?: boolean;
+  /** The browser's own zoom over the editor, which is held back otherwise. */
+  browserZoom?: boolean;
+  /** Tools the pointer keeps driving while active; switching tools stays the host's. */
+  tools?: EnabledTools;
+}
+
+export interface EnabledTools {
+  /** The laser draws and `onPointerUpdate` keeps reporting. */
+  laser?: boolean;
+  /** A custom tool keeps `onPointerDown` and `onPointerUp` coming. */
+  custom?: boolean;
+}
+
 /**
  * Excalidraw's `InteractionConfig`: what stays enabled while the editor is
  * otherwise not interactive. Anything omitted or `false` is off.
  */
 export type InteractionConfig = {
-  enabled?: {
-    /** Element links show their icon and open when clicked, as in view mode. */
-    links?: boolean;
-    /** Embeds activate on hover and click, as in view mode. */
-    embeds?: boolean;
-    /** `links` and `embeds` together. */
-    interactiveContent?: boolean;
-    /**
-     * Panning and zooming (drag, wheel, pinch, the zoom keys), held to
-     * `scrollConstraints`; the editor takes the wheel back from the page.
-     */
-    navigation?: boolean;
-    /** The browser's own zoom over the editor, which is held back otherwise. */
-    browserZoom?: boolean;
-    /** Tools the pointer keeps driving while active; switching tools stays the host's. */
-    tools?: {
-      /** The laser draws and `onPointerUpdate` keeps reporting. */
-      laser?: boolean;
-      /** A custom tool keeps `onPointerDown` and `onPointerUp` coming. */
-      custom?: boolean;
-    };
-  };
+  enabled?: EnabledInteractions;
 };
+
+export interface EnabledUI {
+  /** Zoom out, the level (which resets it) and zoom in. */
+  zoom?: boolean;
+  /** The button shown once the viewport is away from every element. */
+  scrollBackToContent?: boolean;
+}
+
+export interface DisabledUI {
+  /** The minimap and every way to toggle it. */
+  minimap?: boolean;
+}
 
 /**
  * Excalidraw's `UIConfig`: the default controls kept while the rest of the
@@ -499,40 +575,36 @@ export type InteractionConfig = {
  */
 export type UIConfig =
   | {
-      enabled: {
-        /** Zoom out, the level (which resets it) and zoom in. */
-        zoom?: boolean;
-        /** The button shown once the viewport is away from every element. */
-        scrollBackToContent?: boolean;
-      };
+      enabled: EnabledUI;
     }
   | {
-      disabled: {
-        /** The minimap and every way to toggle it. */
-        minimap?: boolean;
-      };
+      disabled: DisabledUI;
     };
 
 export type UIControl = "zoom" | "scrollBackToContent" | "minimap";
 
-/** Excalidraw's `ImageOptions`: how inserted images are kept small. */
-export type ImageOptions = Partial<{
+export interface ImageLimits {
   maxWidthOrHeight: number;
   maxFileSizeBytes: number;
-}>;
+}
+
+/** Excalidraw's `ImageOptions`: how inserted images are kept small. */
+export type ImageOptions = Partial<ImageLimits>;
 
 /** A tool the host forces, Excalidraw's `activeTool` prop: any but the image tool. */
 export type ForcedActiveTool =
   | { type: Exclude<ToolType, "image"> }
   | { type: "custom"; customType: string };
 
-/** What a render may change about an element: never its geometry, content, bindings or style. */
-export type ElementRenderOverride = Readonly<{
+export interface ElementRenderOverrideFields {
   /** Absolute opacity, 0 to 100. */
   opacity?: number;
   /** Translation in scene units. A bound label follows its container's. */
-  offset?: Readonly<{ x: number; y: number }>;
-}>;
+  offset?: Readonly<Coords>;
+}
+
+/** What a render may change about an element: never its geometry, content, bindings or style. */
+export type ElementRenderOverride = Readonly<ElementRenderOverrideFields>;
 
 export type ElementRenderOverrides = ReadonlyMap<ExcalidrawElement["id"], ElementRenderOverride>;
 
@@ -542,13 +614,12 @@ export type ElementRenderOffsets = ReadonlyMap<
   NonNullable<ElementRenderOverride["offset"]>
 >;
 
-export type ImageCache = Map<
-  FileId,
-  {
-    image: HTMLImageElement | Promise<HTMLImageElement>;
-    mimeType: ValueOf<typeof IMAGE_MIME_TYPES>;
-  }
->;
+export interface CachedImage {
+  image: HTMLImageElement | Promise<HTMLImageElement>;
+  mimeType: ValueOf<typeof IMAGE_MIME_TYPES>;
+}
+
+export type ImageCache = Map<FileId, CachedImage>;
 
 export type FrameNameBounds = {
   x: number;
@@ -573,12 +644,14 @@ export type PendingExcalidrawElements = NonDeletedExcalidrawElement[];
 /** A grid size at run time; `null` is no grid. */
 export type NullableGridSize = (AppState["gridSize"] & MakeBrand<"NullableGridSize">) | null;
 
-export type Offsets = Partial<{
+export interface OffsetEdges {
   top: number;
   right: number;
   bottom: number;
   left: number;
-}>;
+}
+
+export type Offsets = Partial<OffsetEdges>;
 
 /**
  * The `data-viewport-ui` of a UI surface over the canvas, which
@@ -589,6 +662,11 @@ export type ViewportUIDock = "top" | "bottom" | "side";
 
 /** The `data-viewport-ui-name` of a surface that comes and goes, measured on its own and reserved while hidden. */
 export type ViewportUIName = "sidebar" | "stylesPanel" | "stats";
+
+export interface ReservedPanels {
+  stylesPanel?: boolean;
+  sidebar?: boolean;
+}
 
 /**
  * How `getViewportOffsets` measures the UI. Unlike `Offsets`, the horizontal
@@ -611,10 +689,7 @@ export type ViewportOffsetsOptions = {
    * shift as they come and go: their last measured size, or an estimate.
    * Not on a phone, where they cover the canvas.
    */
-  reserve?: {
-    stylesPanel?: boolean;
-    sidebar?: boolean;
-  };
+  reserve?: ReservedPanels;
 };
 
 /**

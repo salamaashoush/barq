@@ -4,6 +4,7 @@ import { pointFrom, pointRotateRads, type GlobalPoint, type Radians } from "@exc
 import type { EditorInterface } from "@excalidraw/common";
 
 import type { ExcalidrawTextElement } from "@excalidraw/element/types";
+import type { Coords } from "./types.ts";
 
 const TEXT_AUTO_RESIZE_HANDLE_GAP = 12;
 const TEXT_AUTO_RESIZE_HANDLE_LENGTH = 16;
@@ -11,14 +12,15 @@ const TEXT_AUTO_RESIZE_HANDLE_HITBOX_WIDTH = 10;
 const TEXT_AUTO_RESIZE_HANDLE_HITBOX_HEIGHT = TEXT_AUTO_RESIZE_HANDLE_LENGTH + 2;
 const MAX_HANDLE_HEIGHT_RATIO = 0.8;
 
-export const getTextBoxPadding = (zoomValue: number) =>
-  (DEFAULT_TRANSFORM_HANDLE_SPACING * 2) / zoomValue;
+export function getTextBoxPadding(zoomValue: number) {
+  return (DEFAULT_TRANSFORM_HANDLE_SPACING * 2) / zoomValue;
+}
 
-export const getTextAutoResizeHandle = (
+export function getTextAutoResizeHandle(
   textElement: ExcalidrawTextElement,
   zoomValue: number,
   formFactor: EditorInterface["formFactor"],
-) => {
+) {
   const padding = getTextBoxPadding(zoomValue);
 
   if (
@@ -56,14 +58,14 @@ export const getTextAutoResizeHandle = (
     hitboxWidth: TEXT_AUTO_RESIZE_HANDLE_HITBOX_WIDTH / zoomValue,
     hitboxHeight: TEXT_AUTO_RESIZE_HANDLE_HITBOX_HEIGHT / zoomValue,
   };
-};
+}
 
-export const isPointHittingTextAutoResizeHandle = (
-  point: Readonly<{ x: number; y: number }>,
+export function isPointHittingTextAutoResizeHandle(
+  point: Readonly<Coords>,
   textElement: ExcalidrawTextElement,
   zoomValue: number,
   formFactor: EditorInterface["formFactor"],
-) => {
+) {
   const handle = getTextAutoResizeHandle(textElement, zoomValue, formFactor);
 
   if (!handle) {
@@ -80,4 +82,4 @@ export const isPointHittingTextAutoResizeHandle = (
     Math.abs(unrotatedPoint[0] - handle.center[0]) <= handle.hitboxWidth / 2 &&
     Math.abs(unrotatedPoint[1] - handle.center[1]) <= handle.hitboxHeight / 2
   );
-};
+}

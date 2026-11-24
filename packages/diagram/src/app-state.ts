@@ -21,15 +21,15 @@ import type { AppState, InputDevice, NormalizedZoomValue } from "./types.ts";
  * Resolved lazily rather than at module scope: this module is pulled in by the
  * export pipeline, which must be importable outside a browser realm.
  */
-const getDefaultExportScale = () => {
+function getDefaultExportScale() {
   const devicePixelRatio = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
   return EXPORT_SCALES.includes(devicePixelRatio) ? devicePixelRatio : 1;
-};
+}
 
-export const getDefaultAppState = (): Omit<
+export function getDefaultAppState(): Omit<
   AppState,
   "offsetTop" | "offsetLeft" | "width" | "height"
-> => {
+> {
   return {
     showWelcomeScreen: false,
     theme: THEME.LIGHT,
@@ -150,21 +150,23 @@ export const getDefaultAppState = (): Omit<
     },
     fontTopPicks: null,
   };
-};
+}
+
+interface StorageKeepFlags {
+  /** whether to keep when storing to browser storage (localStorage/IDB) */
+  browser: boolean;
+  /** whether to keep when exporting to file/database */
+  export: boolean;
+  /** server (shareLink/collab/...) */
+  server: boolean;
+}
 
 /**
  * Config containing all AppState keys. Used to determine whether given state
  *  prop should be stripped when exporting to given storage type.
  */
 const APP_STATE_STORAGE_CONF = (<
-  Values extends {
-    /** whether to keep when storing to browser storage (localStorage/IDB) */
-    browser: boolean;
-    /** whether to keep when exporting to file/database */
-    export: boolean;
-    /** server (shareLink/collab/...) */
-    server: boolean;
-  },
+  Values extends StorageKeepFlags,
   T extends Record<keyof AppState, Values>,
 >(config: { [K in keyof T]: K extends keyof AppState ? T[K] : never }) => config)({
   showWelcomeScreen: { browser: true, export: false, server: false },
@@ -296,10 +298,10 @@ const APP_STATE_STORAGE_CONF = (<
   fontTopPicks: { browser: true, export: false, server: false },
 });
 
-const _clearAppStateForStorage = <ExportType extends "export" | "browser" | "server">(
+function _clearAppStateForStorage<ExportType extends "export" | "browser" | "server">(
   appState: Partial<AppState>,
   exportType: ExportType,
-) => {
+) {
   type ExportableKeys = {
     [
       K in keyof typeof APP_STATE_STORAGE_CONF
@@ -316,26 +318,31 @@ const _clearAppStateForStorage = <ExportType extends "export" | "browser" | "ser
     }
   }
   return stateForExport;
-};
+}
 
-export const clearAppStateForLocalStorage = (appState: Partial<AppState>) => {
+export function clearAppStateForLocalStorage(appState: Partial<AppState>) {
   return _clearAppStateForStorage(appState, "browser");
-};
+}
 
-export const cleanAppStateForExport = (appState: Partial<AppState>) => {
+export function cleanAppStateForExport(appState: Partial<AppState>) {
   return _clearAppStateForStorage(appState, "export");
-};
+}
 
-export const clearAppStateForDatabase = (appState: Partial<AppState>) => {
+export function clearAppStateForDatabase(appState: Partial<AppState>) {
   return _clearAppStateForStorage(appState, "server");
-};
+}
 
-export const isEraserActive = ({ activeTool }: { activeTool: AppState["activeTool"] }) =>
-  activeTool.type === "eraser";
+export interface ActiveToolState {
+  activeTool: AppState["activeTool"];
+}
 
-export const isHandToolActive = ({ activeTool }: { activeTool: AppState["activeTool"] }) => {
+export function isEraserActive({ activeTool }: ActiveToolState) {
+  return activeTool.type === "eraser";
+}
+
+export function isHandToolActive({ activeTool }: ActiveToolState) {
   return activeTool.type === "hand";
-};
+}
 
 /**
  * The device the wheel mappings follow for the given preference.
@@ -346,5 +353,6 @@ export const isHandToolActive = ({ activeTool }: { activeTool: AppState["activeT
  * it resolves to `trackpad` — the mapping the editor has always had, and the
  * default to keep until detection exists.
  */
-export const resolveInputDevice = (inputDevice: InputDevice): Exclude<InputDevice, "auto"> =>
-  inputDevice === "auto" ? "trackpad" : inputDevice;
+export function resolveInputDevice(inputDevice: InputDevice): Exclude<InputDevice, "auto"> {
+  return inputDevice === "auto" ? "trackpad" : inputDevice;
+}

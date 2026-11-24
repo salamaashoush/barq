@@ -16,18 +16,19 @@ import percentages from "./locales/percentages.json";
 
 export type LocaleData = Record<string, unknown>;
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 /** `base` with `overlay`'s keys added, nested objects merged. */
-const overlay = (base: LocaleData, over: LocaleData): LocaleData => {
+function overlay(base: LocaleData, over: LocaleData): LocaleData {
   const merged: LocaleData = { ...base };
   for (const [key, value] of Object.entries(over)) {
     const current = merged[key];
     merged[key] = isRecord(current) && isRecord(value) ? overlay(current, value) : value;
   }
   return merged;
-};
+}
 
 const fallbackLangData = overlay(excalidrawEnglish, barqEnglish);
 
@@ -110,9 +111,13 @@ export const languages: readonly Language[] = [
   ).toSorted((left, right) => (left.label > right.label ? 1 : -1)),
 ];
 
+interface LocaleModule {
+  default: LocaleData;
+}
+
 // Every locale file Excalidraw ships, each its own chunk. A literal import per
 // code (rather than one template) is what lets a bundler see and split them.
-const LOADERS: Record<string, () => Promise<{ default: LocaleData }>> = {
+const LOADERS: Record<string, () => Promise<LocaleModule>> = {
   "ar-SA": () => import("./locales/ar-SA.json"),
   "az-AZ": () => import("./locales/az-AZ.json"),
   "bg-BG": () => import("./locales/bg-BG.json"),
@@ -172,7 +177,7 @@ const LOADERS: Record<string, () => Promise<{ default: LocaleData }>> = {
 };
 
 // barq's own strings in a language, laid over Excalidraw's as it loads
-const OVERLAY_LOADERS: Record<string, () => Promise<{ default: LocaleData }>> = {
+const OVERLAY_LOADERS: Record<string, () => Promise<LocaleModule>> = {
   "ar-SA": () => import("./locales/barq/ar-SA.json"),
 };
 
@@ -182,19 +187,23 @@ export const localeCodes: readonly string[] = ["en", ...Object.keys(LOADERS)];
 const RTL_CODES = new Set(LANGUAGE_LABELS.filter((lang) => lang.rtl).map((lang) => lang.code));
 
 /** Whether Excalidraw lays the language out right to left. */
-export const isRTLLanguage = (code: string): boolean => RTL_CODES.has(code);
+export function isRTLLanguage(code: string): boolean {
+  return RTL_CODES.has(code);
+}
 
 const loaded = new Map<string, LocaleData>([["en", fallbackLangData]]);
 const pending = new Map<string, Promise<LocaleData>>();
 
 /** The language's strings when they have loaded, `undefined` before. */
-export const getLoadedLanguage = (code: string): LocaleData | undefined => loaded.get(code);
+export function getLoadedLanguage(code: string): LocaleData | undefined {
+  return loaded.get(code);
+}
 
 /**
  * Loads a language's strings, once. A code without a locale file resolves to
  * English, as a failed load does in Excalidraw.
  */
-export const loadLanguage = (code: string): Promise<LocaleData> => {
+export function loadLanguage(code: string): Promise<LocaleData> {
   const ready = loaded.get(code);
   if (ready) return Promise.resolve(ready);
   const inFlight = pending.get(code);
@@ -217,31 +226,34 @@ export const loadLanguage = (code: string): Promise<LocaleData> => {
   );
   pending.set(code, promise);
   return promise;
-};
+}
 
-const findPath = (data: unknown, parts: readonly string[]): string | undefined => {
+function findPath(data: unknown, parts: readonly string[]): string | undefined {
   let node = data;
   for (const part of parts) {
     if (node === null || typeof node !== "object") return undefined;
     node = (node as Record<string, unknown>)[part];
   }
   return typeof node === "string" ? node : undefined;
-};
+}
 
-export type TranslationReplacement = Readonly<
-  Record<string, string | number | { key: TranslationKey; fallback?: string }>
->;
+export interface TranslationRef {
+  key: TranslationKey;
+  fallback?: string;
+}
+
+export type TranslationReplacement = Readonly<Record<string, string | number | TranslationRef>>;
 
 /**
  * A key's text in `data`, English where `data` has none, with each
  * `{{name}}` filled from `replacement`. Excalidraw's `t`.
  */
-export const translate = (
+export function translate(
   data: LocaleData | undefined,
   path: TranslationKey,
   replacement?: TranslationReplacement | null,
   fallback?: string,
-): string => {
+): string {
   const parts = path.split(".");
   // an empty translation is an untranslated one, which English stands in for
   let translation =
@@ -263,7 +275,7 @@ export const translate = (
     }
   }
   return translation;
-};
+}
 
 export type Translate = (
   path: TranslationKey,
@@ -282,10 +294,17 @@ export interface LocalizedMessage {
   fallback?: string;
 }
 
-export const isLocalizedMessage = (value: unknown): value is LocalizedMessage =>
-  typeof value === "object" &&
-  value !== null &&
-  typeof (value as { key?: unknown }).key === "string";
+interface UncheckedTranslationRef {
+  key?: unknown;
+}
+
+export function isLocalizedMessage(value: unknown): value is LocalizedMessage {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as UncheckedTranslationRef).key === "string"
+  );
+}
 
 /** An error whose message the UI shows translated: its own message is the English. */
 export class LocalizedError extends Error {
@@ -298,9 +317,10 @@ export class LocalizedError extends Error {
 }
 
 /** What an error puts in `errorMessage`: a translatable message when it has one. */
-export const errorMessageOf = (error: unknown, fallback: LocalizedMessage): unknown =>
-  error instanceof LocalizedError
+export function errorMessageOf(error: unknown, fallback: LocalizedMessage): unknown {
+  return error instanceof LocalizedError
     ? error.localized
     : error instanceof Error && error.message
       ? error.message
       : fallback;
+}

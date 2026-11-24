@@ -11,6 +11,12 @@ import {
 } from "./scene/export.ts";
 import type { AppState, BinaryFiles } from "./types.ts";
 
+export interface ExportDimensions {
+  width: number;
+  height: number;
+  scale?: number;
+}
+
 /**
  * The options Excalidraw's `exportToCanvas`, `exportToBlob` and `exportToSvg`
  * take: the rendering settings ride on `appState` (`exportBackground`,
@@ -30,15 +36,17 @@ export interface ExportOpts {
    * scale is honoured: the canvas is that size times the returned `scale`,
    * or the largest scale that fits the returned box when there is none.
    */
-  getDimensions?: (
-    width: number,
-    height: number,
-  ) => { width: number; height: number; scale?: number };
+  getDimensions?: (width: number, height: number) => ExportDimensions;
   /** @default 10 */
   exportPadding?: number;
 }
 
-function toScene(opts: ExportOpts): { data: ExportSceneData; config: ExportSceneConfig } {
+interface ExportScene {
+  data: ExportSceneData;
+  config: ExportSceneConfig;
+}
+
+function toScene(opts: ExportOpts): ExportScene {
   const appState = { ...getDefaultAppState(), ...opts.appState };
   const { getDimensions } = opts;
   const fromAppState = getExportConfigFromAppState(appState);
@@ -71,14 +79,17 @@ export async function exportToCanvas(opts: ExportOpts): Promise<HTMLCanvasElemen
   return exportScene({ type: "canvas", data, config });
 }
 
+export interface BlobExportOptions {
+  mimeType?: string;
+  quality?: number;
+}
+
 /**
  * The scene as a PNG, or a JPEG when `mimeType` is `image/jpeg`. With
  * `appState.exportEmbedScene` the PNG carries the scene, and `loadFromBlob`
  * opens it again.
  */
-export async function exportToBlob(
-  opts: ExportOpts & { mimeType?: string; quality?: number },
-): Promise<Blob> {
+export async function exportToBlob(opts: ExportOpts & BlobExportOptions): Promise<Blob> {
   const { data, config } = toScene(opts);
   if (opts.mimeType === MIME_TYPES.jpg) {
     return exportScene({
@@ -94,16 +105,18 @@ export async function exportToBlob(
   });
 }
 
+export interface SvgExportOptions {
+  renderEmbeddables?: boolean;
+  skipInliningFonts?: true;
+  reuseImages?: boolean;
+}
+
 /**
  * The scene as an SVG element. Fonts are inlined unless `skipInliningFonts`;
  * with `appState.exportEmbedScene` the SVG carries the scene.
  */
 export async function exportToSvg(
-  opts: Omit<ExportOpts, "getDimensions"> & {
-    renderEmbeddables?: boolean;
-    skipInliningFonts?: true;
-    reuseImages?: boolean;
-  },
+  opts: Omit<ExportOpts, "getDimensions"> & SvgExportOptions,
 ): Promise<SVGSVGElement> {
   const { data, config } = toScene(opts);
   return exportScene({

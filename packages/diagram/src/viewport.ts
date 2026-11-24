@@ -30,23 +30,21 @@ import type {
   ViewportOffsets,
   Zoom,
 } from "./types.ts";
+import type { Coords } from "./types.ts";
 
 /**
  * The scene rectangle a viewport shows, `@excalidraw/element`'s, typed on the
  * fields it reads so a barq `AppState` passes as it is.
  */
-export const getVisibleSceneBounds = ({
+export function getVisibleSceneBounds({
   scrollX,
   scrollY,
   width,
   height,
   zoom,
-}: Pick<AppState, "scrollX" | "scrollY" | "width" | "height" | "zoom">): SceneBounds => [
-  -scrollX,
-  -scrollY,
-  -scrollX + width / zoom.value,
-  -scrollY + height / zoom.value,
-];
+}: Pick<AppState, "scrollX" | "scrollY" | "width" | "height" | "zoom">): SceneBounds {
+  return [-scrollX, -scrollY, -scrollX + width / zoom.value, -scrollY + height / zoom.value];
+}
 
 /** default rubberband overscroll give for scroll locks, in viewport px */
 export const DEFAULT_OVERSCROLL = 150;
@@ -77,6 +75,19 @@ export type SetViewportRect = {
   height?: number;
 };
 
+export interface ViewportLock {
+  /** Holds panning to the target box. */
+  scroll?: ScrollConstraints["lockScroll"];
+  /** Makes the resolved zoom the least zoom. */
+  zoom?: ScrollConstraints["lockZoom"];
+  /**
+   * How far past the lock a pan goes before it springs back, in screen
+   * pixels: `true` for `DEFAULT_OVERSCROLL`, `false` for none.
+   * @default true
+   */
+  overscroll?: boolean | number;
+}
+
 export type SetViewportOptions = {
   /**
    * What to show: a box or a rect in scene coordinates, elements (those in
@@ -85,18 +96,7 @@ export type SetViewportOptions = {
   target: Bounds | SetViewportRect | ExcalidrawElement | readonly ExcalidrawElement[] | string;
   /** @default "scale-down" */
   fit?: ViewportFit;
-  lock?: {
-    /** Holds panning to the target box. */
-    scroll?: ScrollConstraints["lockScroll"];
-    /** Makes the resolved zoom the least zoom. */
-    zoom?: ScrollConstraints["lockZoom"];
-    /**
-     * How far past the lock a pan goes before it springs back, in screen
-     * pixels: `true` for `DEFAULT_OVERSCROLL`, `false` for none.
-     * @default true
-     */
-    overscroll?: boolean | number;
-  };
+  lock?: ViewportLock;
   /** @default true, for 500ms */
   animation?: AnimationOptions | boolean;
   offsets?: ViewportOffsets;
@@ -111,7 +111,7 @@ export type SetViewportOptions = {
  * `overscroll` is pure rubberband give: it widens the allowed range by that
  * much on both sides of the resting position, regardless of the geometry.
  */
-const constrainScrollAxis = (
+function constrainScrollAxis(
   scroll: number,
   boxStart: number,
   boxSize: number,
@@ -119,7 +119,7 @@ const constrainScrollAxis = (
   offsetStart: number,
   offsetEnd: number,
   overscroll: number,
-): number => {
+): number {
   const max = -boxStart + offsetStart;
   const min = visibleSize - (boxStart + boxSize) - offsetEnd;
   if (min > max) {
@@ -128,7 +128,7 @@ const constrainScrollAxis = (
     return clamp(scroll, center - overscroll, center + overscroll);
   }
   return clamp(scroll, min - overscroll, max + overscroll);
-};
+}
 
 /**
  * Clamps a proposed scroll/zoom against the active lock (`scrollConstraints`).
@@ -136,10 +136,10 @@ const constrainScrollAxis = (
  * `overscroll` (screen px, zoom-independent) is rubberband give past the
  * resting clamp — pass 0 for a hard clamp.
  */
-export const constrainScrollState = (
+export function constrainScrollState(
   state: Pick<AppState, "scrollX" | "scrollY" | "zoom" | "width" | "height" | "scrollConstraints">,
   overscroll = 0,
-): Viewport => {
+): Viewport {
   const { scrollConstraints, width, height } = state;
 
   if (!scrollConstraints) {
@@ -185,13 +185,13 @@ export const constrainScrollState = (
     ),
     zoom: { value: zoomValue },
   };
-};
+}
 
 /** private helper. Use {@link getViewportForZoomWithScrollConstraints} instead */
-const getViewportForZoom = (
+function getViewportForZoom(
   { viewportX, viewportY, nextZoom }: ZoomOptions,
   appState: AppState,
-): Viewport => {
+): Viewport {
   const appLayerX = viewportX - appState.offsetLeft;
   const appLayerY = viewportY - appState.offsetTop;
 
@@ -212,7 +212,7 @@ const getViewportForZoom = (
       value: nextZoom,
     },
   };
-};
+}
 
 /**
  * Resolves a focal-point zoom against the active scroll constraints while
@@ -220,10 +220,10 @@ const getViewportForZoom = (
  * zoom and scroll-constraint snap-back compose without either visually
  * cancelling the other.
  */
-export const getViewportForZoomWithScrollConstraints = (
+export function getViewportForZoomWithScrollConstraints(
   opts: ZoomOptions,
   state: AppState,
-): Viewport => {
+): Viewport {
   const restingViewport = constrainScrollState(state);
   const overscrollX = (state.scrollX - restingViewport.scrollX) * state.zoom.value;
   const overscrollY = (state.scrollY - restingViewport.scrollY) * state.zoom.value;
@@ -247,12 +247,14 @@ export const getViewportForZoomWithScrollConstraints = (
     },
     state.scrollConstraints.overscroll,
   );
-};
+}
 
-const zoomValueToFitBoundsOnViewport = (
-  bounds: SceneBounds,
-  viewportDimensions: { width: number; height: number },
-) => {
+interface Size {
+  width: number;
+  height: number;
+}
+
+function zoomValueToFitBoundsOnViewport(bounds: SceneBounds, viewportDimensions: Size) {
   const [x1, y1, x2, y2] = bounds;
   const commonBoundsWidth = x2 - x1;
   const zoomValueForWidth = viewportDimensions.width / commonBoundsWidth;
@@ -261,17 +263,9 @@ const zoomValueToFitBoundsOnViewport = (
   const smallestZoomValue = Math.min(zoomValueForWidth, zoomValueForHeight);
 
   return Math.min(smallestZoomValue, 1);
-};
+}
 
-export const zoomToFitBounds = ({
-  bounds,
-  appState,
-  canvasOffsets,
-  fit = "scale-down",
-  minZoom = -Infinity,
-  maxZoom = Infinity,
-  steppedZoom = false,
-}: {
+export interface ZoomToFitBoundsOptions {
   bounds: SceneBounds;
   canvasOffsets?: Offsets;
   appState: Readonly<AppState>;
@@ -279,7 +273,17 @@ export const zoomToFitBounds = ({
   minZoom?: number;
   maxZoom?: number;
   steppedZoom?: boolean;
-}) => {
+}
+
+export function zoomToFitBounds({
+  bounds,
+  appState,
+  canvasOffsets,
+  fit = "scale-down",
+  minZoom = -Infinity,
+  maxZoom = Infinity,
+  steppedZoom = false,
+}: ZoomToFitBoundsOptions) {
   const [x1, y1, x2, y2] = bounds;
   const centerX = (x1 + x2) / 2;
   const centerY = (y1 + y2) / 2;
@@ -338,20 +342,20 @@ export const zoomToFitBounds = ({
     },
     captureUpdate: CaptureUpdateAction.EVENTUALLY,
   };
-};
+}
 
-const doBoundsExceedViewport = (appState: AppState, bounds: Bounds) => {
+function doBoundsExceedViewport(appState: AppState, bounds: Bounds) {
   const [x1, y1, x2, y2] = bounds;
   return (
     (x2 - x1) * appState.zoom.value > appState.width ||
     (y2 - y1) * appState.zoom.value > appState.height
   );
-};
+}
 
-export const getClosestElementBounds = (
+export function getClosestElementBounds(
   elements: readonly ExcalidrawElement[],
-  from: { x: number; y: number },
-): Bounds => {
+  from: Coords,
+): Bounds {
   const [first] = elements;
   if (first === undefined) {
     return [0, 0, 0, 0];
@@ -374,19 +378,21 @@ export const getClosestElementBounds = (
   });
 
   return getElementBounds(closestElement, elementsMap);
-};
+}
 
-export const centerScrollOn = ({
+export interface CenterScrollOnOptions {
+  scenePoint: PointerCoords;
+  viewportDimensions: Size;
+  zoom: Zoom;
+  offsets?: Offsets;
+}
+
+export function centerScrollOn({
   scenePoint,
   viewportDimensions,
   zoom,
   offsets,
-}: {
-  scenePoint: PointerCoords;
-  viewportDimensions: { height: number; width: number };
-  zoom: Zoom;
-  offsets?: Offsets;
-}) => {
+}: CenterScrollOnOptions) {
   let scrollX = (viewportDimensions.width - (offsets?.right ?? 0)) / 2 / zoom.value - scenePoint.x;
 
   scrollX += (offsets?.left ?? 0) / 2 / zoom.value;
@@ -400,7 +406,14 @@ export const centerScrollOn = ({
     scrollX,
     scrollY,
   };
-};
+}
+
+export interface ScrollBoundsIntoViewOptions {
+  bounds: Bounds;
+  appState: Pick<AppState, "scrollX" | "scrollY" | "zoom" | "width" | "height">;
+  offsets?: Offsets;
+  tooLarge?: "alignStart" | "leave";
+}
 
 /**
  * The scroll that brings `bounds` into the viewport — less `offsets` (screen
@@ -409,17 +422,12 @@ export const centerScrollOn = ({
  * don't fit, their start (left / top) is brought in instead, or, with
  * `tooLarge: "leave"`, that axis keeps its scroll.
  */
-export const scrollBoundsIntoView = ({
+export function scrollBoundsIntoView({
   bounds: [x1, y1, x2, y2],
   appState: { scrollX, scrollY, zoom, width, height },
   offsets,
   tooLarge = "alignStart",
-}: {
-  bounds: Bounds;
-  appState: Pick<AppState, "scrollX" | "scrollY" | "zoom" | "width" | "height">;
-  offsets?: Offsets;
-  tooLarge?: "alignStart" | "leave";
-}): Pick<AppState, "scrollX" | "scrollY"> | null => {
+}: ScrollBoundsIntoViewOptions): Pick<AppState, "scrollX" | "scrollY"> | null {
   const viewLeft = offsets?.left ?? 0;
   const viewRight = width - (offsets?.right ?? 0);
   const viewTop = offsets?.top ?? 0;
@@ -428,13 +436,7 @@ export const scrollBoundsIntoView = ({
     return null;
   }
   // how far (screen px) to move a span to bring it within [start, end]
-  const shift = (
-    spanStart: number,
-    spanEnd: number,
-    scroll: number,
-    start: number,
-    end: number,
-  ) => {
+  function shift(spanStart: number, spanEnd: number, scroll: number, start: number, end: number) {
     const screenStart = (spanStart + scroll) * zoom.value;
     const screenEnd = (spanEnd + scroll) * zoom.value;
     if (screenEnd - screenStart > end - start) {
@@ -447,7 +449,7 @@ export const scrollBoundsIntoView = ({
       return start - screenStart;
     }
     return 0;
-  };
+  }
   const dx = shift(x1, x2, scrollX, viewLeft, viewRight);
   const dy = shift(y1, y2, scrollY, viewTop, viewBottom);
   if (!dx && !dy) {
@@ -457,12 +459,17 @@ export const scrollBoundsIntoView = ({
     scrollX: scrollX + dx / zoom.value,
     scrollY: scrollY + dy / zoom.value,
   };
-};
+}
 
-export const getScrollToContentState = (
+export interface ScrollPosition {
+  scrollX: number;
+  scrollY: number;
+}
+
+export function getScrollToContentState(
   elements: readonly ExcalidrawElement[],
   appState: AppState,
-): { scrollX: number; scrollY: number } => {
+): ScrollPosition {
   elements = getVisibleElements(elements);
 
   if (!elements.length) {
@@ -494,4 +501,4 @@ export const getScrollToContentState = (
     viewportDimensions: { width: appState.width, height: appState.height },
     zoom: appState.zoom,
   });
-};
+}

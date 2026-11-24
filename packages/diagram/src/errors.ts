@@ -25,6 +25,18 @@ export class ImageSceneDataError extends Error {
   }
 }
 
+export interface RequestErrorInit {
+  message?: string;
+  status?: number;
+  data?: unknown;
+}
+
+export interface RequestErrorObject {
+  name: string;
+  status: number;
+  message: string;
+}
+
 /** A request that failed, with its HTTP status: a text-to-diagram backend's error. */
 export class RequestError extends Error {
   public status: number;
@@ -34,14 +46,14 @@ export class RequestError extends Error {
     message = "Something went wrong",
     status = 500,
     data,
-  }: { message?: string; status?: number; data?: unknown } = {}) {
+  }: RequestErrorInit = {}) {
     super(message);
     this.name = "RequestError";
     this.status = status;
     this.data = data;
   }
 
-  public toObject(): { name: string; status: number; message: string } {
+  public toObject(): RequestErrorObject {
     return { name: this.name, status: this.status, message: this.message };
   }
 }

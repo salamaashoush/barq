@@ -68,6 +68,32 @@ describe("Excalidraw's own exports", () => {
   });
 });
 
+interface ParsedScene {
+  type: string;
+  version: number;
+  appState: object;
+}
+
+interface StartBound {
+  startBinding: BindingRef;
+}
+
+interface BindingRef {
+  elementId: string;
+}
+
+interface EndBound {
+  endBinding: BindingRef;
+}
+
+interface ImageFileRef {
+  fileId: string;
+}
+
+interface FilesJson {
+  files: BinaryFiles;
+}
+
 describe("a .excalidraw file", () => {
   test("round-trips through serializeAsJSON unchanged", async () => {
     const file = await fixture("release-flow.excalidraw", MIME_TYPES.excalidraw);
@@ -77,7 +103,7 @@ describe("a .excalidraw file", () => {
     expect(first.appState.name).toBeNull();
 
     const json = serializeAsJSON(first.elements, first.appState, first.files, "local");
-    const parsed = JSON.parse(json) as { type: string; version: number; appState: object };
+    const parsed = JSON.parse(json) as ParsedScene;
     expect(parsed.type).toBe("excalidraw");
     expect(parsed.version).toBe(2);
     // Only what a file keeps: no viewport, no selection, no theme.
@@ -103,8 +129,8 @@ describe("a .excalidraw file", () => {
     const byId = new Map(elements.map((element) => [element.id, element]));
     const arrow = byId.get("go");
     expect(arrow).toMatchObject({ type: "arrow" });
-    expect((arrow as { startBinding: { elementId: string } }).startBinding.elementId).toBe("start");
-    expect((arrow as { endBinding: { elementId: string } }).endBinding.elementId).toBe("check");
+    expect((arrow as StartBound).startBinding.elementId).toBe("start");
+    expect((arrow as EndBound).endBinding.elementId).toBe("check");
     const label = elements.find(
       (element) => element.type === "text" && element.containerId === "start",
     );
@@ -121,15 +147,13 @@ describe("a .excalidraw file", () => {
       null,
     );
     const image = elements.find((element) => element.type === "image");
-    const fileId = (image as { fileId: string }).fileId;
+    const fileId = (image as ImageFileRef).fileId;
     expect(files[fileId]?.dataURL.startsWith("data:image/png;base64,")).toBe(true);
 
     const deleted = elements.map((element) =>
       element.type === "image" ? { ...element, isDeleted: true } : element,
     );
-    const json = JSON.parse(serializeAsJSON(deleted, appState, files, "local")) as {
-      files: BinaryFiles;
-    };
+    const json = JSON.parse(serializeAsJSON(deleted, appState, files, "local")) as FilesJson;
     expect(json.files).toEqual({});
   });
 

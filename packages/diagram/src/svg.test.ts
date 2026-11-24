@@ -55,6 +55,14 @@ async function releaseFlow() {
   );
 }
 
+interface SvgScenePayload {
+  elements: IdRef[];
+}
+
+interface IdRef {
+  id: string;
+}
+
 describe("exportToSvg", () => {
   test("the light export has the scene's structure", async () => {
     const scene = await releaseFlow();
@@ -96,14 +104,16 @@ describe("exportToSvg", () => {
       data: { ...scene, elements: getNonDeletedElements(scene.elements) },
       config: { theme: THEME.DARK, skipInliningFonts: true },
     });
-    const background = (svg: SVGSVGElement) =>
-      svg.querySelector(":scope > rect")?.getAttribute("fill");
+    function background(svg: SVGSVGElement) {
+      return svg.querySelector(":scope > rect")?.getAttribute("fill");
+    }
     expect(background(light)).toBe("#ffffff");
     expect(background(dark)).not.toBe("#ffffff");
-    const textFill = (svg: SVGSVGElement) =>
-      [...svg.querySelectorAll("text")]
+    function textFill(svg: SVGSVGElement) {
+      return [...svg.querySelectorAll("text")]
         .find((text) => text.textContent === "Release flow")
         ?.getAttribute("fill");
+    }
     expect(textFill(light)).toBe("#1e1e1e");
     expect(textFill(dark)).not.toBe("#1e1e1e");
     expect(structure(dark).split("\n").length).toBe(structure(light).split("\n").length);
@@ -131,9 +141,7 @@ describe("exportToSvg", () => {
       files: scene.files,
       skipInliningFonts: true,
     });
-    const payload = JSON.parse(decodeSvgBase64Payload({ svg: svg.outerHTML })) as {
-      elements: { id: string }[];
-    };
+    const payload = JSON.parse(decodeSvgBase64Payload({ svg: svg.outerHTML })) as SvgScenePayload;
     expect(payload.elements.map((element) => element.id)).toEqual(
       scene.elements.map((element) => element.id),
     );

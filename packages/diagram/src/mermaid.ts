@@ -3,6 +3,11 @@ import type { MermaidConfig } from "@excalidraw/mermaid-to-excalidraw";
 
 import type { BinaryFiles } from "./types.ts";
 
+export interface MermaidScene {
+  elements: ReturnType<typeof convertToExcalidrawElements>;
+  files: BinaryFiles;
+}
+
 /**
  * A Mermaid definition as scene elements, through
  * `@excalidraw/mermaid-to-excalidraw` and `convertToExcalidrawElements`. The
@@ -14,7 +19,7 @@ import type { BinaryFiles } from "./types.ts";
 export async function mermaidToExcalidraw(
   definition: string,
   config?: MermaidConfig,
-): Promise<{ elements: ReturnType<typeof convertToExcalidrawElements>; files: BinaryFiles }> {
+): Promise<MermaidScene> {
   const { parseMermaidToExcalidraw } = await import("@excalidraw/mermaid-to-excalidraw");
   const parsed = await parseMermaidToExcalidraw(definition, config);
   return {

@@ -13,15 +13,15 @@ export interface IdleDetectorOptions {
  * `IDLE_THRESHOLD`, away while the page is hidden and active again when it
  * shows. Returns the stop.
  */
-export const createIdleDetector = ({
+export function createIdleDetector({
   ownerWindow = window,
   onChange,
-}: IdleDetectorOptions): (() => void) => {
+}: IdleDetectorOptions): () => void {
   const document = ownerWindow.document;
   let idleTimeoutId: number | null = null;
   let activeIntervalId: number | null = null;
 
-  const clearTimers = (): void => {
+  function clearTimers(): void {
     if (idleTimeoutId !== null) {
       ownerWindow.clearTimeout(idleTimeoutId);
       idleTimeoutId = null;
@@ -30,19 +30,21 @@ export const createIdleDetector = ({
       ownerWindow.clearInterval(activeIntervalId);
       activeIntervalId = null;
     }
-  };
+  }
 
-  const reportActive = (): void => onChange(UserIdleState.ACTIVE);
+  function reportActive(): void {
+    return onChange(UserIdleState.ACTIVE);
+  }
 
-  const reportIdle = (): void => {
+  function reportIdle(): void {
     onChange(UserIdleState.IDLE);
     if (activeIntervalId !== null) {
       ownerWindow.clearInterval(activeIntervalId);
       activeIntervalId = null;
     }
-  };
+  }
 
-  const onPointerMove = (): void => {
+  function onPointerMove(): void {
     if (idleTimeoutId !== null) {
       ownerWindow.clearTimeout(idleTimeoutId);
     }
@@ -50,9 +52,9 @@ export const createIdleDetector = ({
     if (activeIntervalId === null) {
       activeIntervalId = ownerWindow.setInterval(reportActive, ACTIVE_THRESHOLD);
     }
-  };
+  }
 
-  const onVisibilityChange = (): void => {
+  function onVisibilityChange(): void {
     clearTimers();
     if (document.hidden) {
       onChange(UserIdleState.AWAY);
@@ -61,7 +63,7 @@ export const createIdleDetector = ({
       activeIntervalId = ownerWindow.setInterval(reportActive, ACTIVE_THRESHOLD);
       onChange(UserIdleState.ACTIVE);
     }
-  };
+  }
 
   document.addEventListener("pointermove", onPointerMove);
   document.addEventListener("visibilitychange", onVisibilityChange);
@@ -71,4 +73,4 @@ export const createIdleDetector = ({
     document.removeEventListener("visibilitychange", onVisibilityChange);
     clearTimers();
   };
-};
+}

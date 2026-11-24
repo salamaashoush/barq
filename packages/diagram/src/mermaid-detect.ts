@@ -44,5 +44,6 @@ const MERMAID_DIAGRAM_TYPES = [
 const MERMAID_DIAGRAM_TYPE = new RegExp(`^(?:${MERMAID_DIAGRAM_TYPES.join("|")})(-beta)?\\b`);
 
 /** heuristically checks whether the text may be a mermaid diagram definition */
-export const isMaybeMermaidDefinition = (text: string) =>
-  MERMAID_DIAGRAM_TYPE.test(text.replace(MERMAID_PREAMBLE, ""));
+export function isMaybeMermaidDefinition(text: string) {
+  return MERMAID_DIAGRAM_TYPE.test(text.replace(MERMAID_PREAMBLE, ""));
+}

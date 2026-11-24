@@ -39,10 +39,10 @@ class SelectionScene extends Scene {
   }
 }
 
-export const hasSelectedIds = (selectedElementIds: Readonly<Record<string, boolean>>): boolean => {
+export function hasSelectedIds(selectedElementIds: Readonly<Record<string, boolean>>): boolean {
   for (const id in selectedElementIds) if (selectedElementIds[id]) return true;
   return false;
-};
+}
 
 /** What an editor draws beyond the scene: the selection, and the grid. */
 export interface SceneCanvasFrame {
@@ -64,6 +64,11 @@ export interface SceneCanvasFrame {
 
 /** The elements a frame draws, which the editor's other layers draw from too. */
 export type RenderableElements = ReturnType<Renderer["getRenderableElements"]>;
+
+export interface LoadedImages {
+  updatedFiles: Map<FileId, true>;
+  erroredFiles: Map<FileId, true>;
+}
 
 /**
  * A scene drawn on a canvas at a viewport: the static layer of Excalidraw's
@@ -138,10 +143,7 @@ export class SceneCanvas {
    * Decodes the files' images into the cache, whatever shows them: an image
    * being inserted is not in the scene with its file yet.
    */
-  public async loadImages(
-    fileIds: readonly FileId[],
-    files: BinaryFiles,
-  ): Promise<{ updatedFiles: Map<FileId, true>; erroredFiles: Map<FileId, true> }> {
+  public async loadImages(fileIds: readonly FileId[], files: BinaryFiles): Promise<LoadedImages> {
     this.files = files;
     const result = await updateImageCache({
       fileIds: [...fileIds],

@@ -13,8 +13,12 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 
+interface TransformOutput {
+  code: string;
+}
+
 interface Native {
-  transform(code: string, options?: Record<string, unknown>): { code: string };
+  transform(code: string, options?: Record<string, unknown>): TransformOutput;
 }
 
 const native = createRequire(import.meta.url)("@barqjs/compiler") as Native;
@@ -45,14 +49,14 @@ export interface Compiled {
 export function compile(source: string, tag: string): Compiled {
   mkdirSync(GENERATED, { recursive: true });
   const id = `${tag}-${process.pid}-${Date.now().toString(36)}-${serial++}`;
-  const emit = (kind: "dom" | "ssr", options: Record<string, unknown>): string => {
+  function emit(kind: "dom" | "ssr", options: Record<string, unknown>): string {
     const file = join(GENERATED, `${id}.${kind}.ts`);
     const { code } = native.transform(source, { filename: `${tag}.tsx`, ...options });
     // The stamp keeps two generated modules from hashing alike in bun's
     // transpile cache, which is keyed by content.
     writeFileSync(file, `export const __module = ${JSON.stringify(`${id}.${kind}`)};\n${code}`);
     return file;
-  };
+  }
   return {
     dom: emit("dom", { hydratable: true, dev: true }),
     ssr: emit("ssr", { ssr: true, hydratable: true }),
@@ -71,7 +75,12 @@ function conditions(): string[] {
   return /[\\/]dev[^\\/]*$/.test(engine) ? ["--conditions=development"] : [];
 }
 
-export function serve(module: string): { html: string; script: string } {
+export interface ServedPage {
+  html: string;
+  script: string;
+}
+
+export function serve(module: string): ServedPage {
   const run = Bun.spawnSync(["bun", "run", ...conditions(), SERVER, module], {
     cwd: PACKAGE,
     stdout: "pipe",
@@ -83,5 +92,5 @@ export function serve(module: string): { html: string; script: string } {
   const out = run.stdout.toString();
   const marker = out.lastIndexOf(RESULT);
   if (marker === -1) throw new Error(`the server render printed no result:\n${out}`);
-  return JSON.parse(out.slice(marker + RESULT.length)) as { html: string; script: string };
+  return JSON.parse(out.slice(marker + RESULT.length)) as ServedPage;
 }

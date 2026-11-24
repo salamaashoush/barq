@@ -67,6 +67,15 @@ import type {
 
 type MaybePromise<T> = T | Promise<T>;
 
+export interface MountPayload {
+  excalidrawAPI: DiagramEditorApi;
+  container: HTMLElement;
+}
+
+export interface LinkOpenDetail {
+  nativeEvent: MouseEvent | PointerEvent;
+}
+
 export interface DiagramEditorProps {
   /**
    * The scene the editor opens with, read once: a scene, a promise of one or
@@ -96,7 +105,7 @@ export interface DiagramEditorProps {
   /** Excalidraw's `onExcalidrawAPI`: the API once the editor is mounted, and `null` once it is gone. */
   onExcalidrawAPI?: (api: DiagramEditorApi | null) => void;
   /** Excalidraw's `onMount`: the API and the editor's container, once mounted. */
-  onMount?: (payload: { excalidrawAPI: DiagramEditorApi; container: HTMLElement }) => void;
+  onMount?: (payload: MountPayload) => void;
   /** Excalidraw's `onUnmount`. */
   onUnmount?: () => void;
   /** Excalidraw's `onInitialize`: the initial scene is loaded. */
@@ -152,10 +161,7 @@ export interface DiagramEditorProps {
     data: OnDuplicateData,
   ) => ExcalidrawElement[] | void | false;
   /** Excalidraw's `onLinkOpen`: an element's link is opening; `preventDefault()` keeps it from the editor. */
-  onLinkOpen?: (
-    element: NonDeletedExcalidrawElement,
-    event: CustomEvent<{ nativeEvent: MouseEvent | PointerEvent }>,
-  ) => void;
+  onLinkOpen?: (element: NonDeletedExcalidrawElement, event: CustomEvent<LinkOpenDetail>) => void;
   /** Excalidraw's `onPointerDown` on the canvas. */
   onPointerDown?: (activeTool: AppState["activeTool"], pointerDownState: PointerDownState) => void;
   /** Excalidraw's `onPointerUp` after a press on the canvas. */
@@ -253,13 +259,13 @@ export interface DiagramEditorProps {
 }
 
 /** The state the UI shows before the editor exists, on the server and while the page hydrates. */
-const initialUIState = (
+function initialUIState(
   props: Pick<
     DiagramEditorProps,
     "initialData" | "viewModeEnabled" | "zenModeEnabled" | "gridModeEnabled"
   >,
   theme: Theme,
-): AppState => {
+): AppState {
   const data = props.initialData;
   const scene = data && typeof data === "object" && !(data instanceof Promise) ? data : null;
   const restored = scene?.appState ? restoreAppState(scene.appState, null) : getDefaultAppState();
@@ -270,14 +276,14 @@ const initialUIState = (
     zenModeEnabled: props.zenModeEnabled ?? restored.zenModeEnabled ?? false,
     gridModeEnabled: props.gridModeEnabled ?? restored.gridModeEnabled ?? false,
   };
-};
+}
 
-const applyImageOptions = (editor: Editor, options: ImageOptions | undefined): void => {
+function applyImageOptions(editor: Editor, options: ImageOptions | undefined): void {
   editor.images.options = {
     maxWidthOrHeight: options?.maxWidthOrHeight ?? DEFAULT_IMAGE_OPTIONS.maxWidthOrHeight,
     maxFileSizeBytes: options?.maxFileSizeBytes ?? DEFAULT_IMAGE_OPTIONS.maxFileSizeBytes,
   };
-};
+}
 
 const SR_ONLY =
   "position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0";
@@ -330,7 +336,9 @@ function schemeTheme(): () => Theme | undefined {
  */
 export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
   const fromScheme = schemeTheme();
-  const theme = (): Theme => props.theme ?? fromScheme() ?? THEME.LIGHT;
+  function theme(): Theme {
+    return props.theme ?? fromScheme() ?? THEME.LIGHT;
+  }
   const helpId = createUniqueId();
   const [announcement, setAnnouncement] = createSignal("");
   // the text being edited: a textarea over it while it is
@@ -342,15 +350,17 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
   // activated; the editor places each as the viewport moves
   const [embeds, setEmbeds] = createSignal<readonly Embed[]>([]);
 
-  const size = (): string => {
+  function size(): string {
     const height = props.height ?? 480;
     return `height:${typeof height === "number" ? `${height}px` : height}`;
-  };
+  }
 
   let editor: Editor | null = null;
 
   const store = new EditorStore(untrack(() => initialUIState(props, theme())));
-  const langCode = (): string => props.langCode ?? "en";
+  function langCode(): string {
+    return props.langCode ?? "en";
+  }
   // the strings of the language shown: the previous one stays until the next has loaded
   const [langData, setLangData] = createSignal<LocaleData | undefined>(
     getLoadedLanguage(untrack(langCode)),
@@ -358,13 +368,19 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
   const [shownLang, setShownLang] = createSignal(
     getLoadedLanguage(untrack(langCode)) ? untrack(langCode) : "en",
   );
-  const uiOptions = () =>
-    resolveUIOptions(props.UIOptions, { theme: props.theme, onThemeChange: props.onThemeChange });
+  function uiOptions() {
+    return resolveUIOptions(props.UIOptions, {
+      theme: props.theme,
+      onThemeChange: props.onThemeChange,
+    });
+  }
   const apiProvider = getContext(ExcalidrawAPIContext);
   // the children are read where they can find the editor's UI, and those
   // that go into the UI's places hand their props over
   // read once the UI they render with exists, which reads them back through these
-  const slots = () => hostGiven().slots;
+  function slots() {
+    return hostGiven().slots;
+  }
   const ui = createDiagramUI({
     hostChildren: () => hostGiven().rest,
     store,
@@ -413,41 +429,43 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
   );
   const hostGiven = createMemo(() => collectHostChildren(hostChildren?.toArray() ?? []));
 
-  const editorHost = () => ({
-    UIOptions: uiOptions(),
-    viewModeControlled: props.viewModeEnabled !== undefined,
-    zenModeControlled: props.zenModeEnabled !== undefined,
-    onThemeChange: props.onThemeChange,
-    aiEnabled: props.aiEnabled !== false,
-    diagramToCode: slots().diagramToCode,
-    generateLinkForSelection: props.generateLinkForSelection,
-    onExport: props.onExport,
-    name: props.name,
-    untitledName: ui.t("labels.untitled"),
-    validateEmbeddable: props.validateEmbeddable,
-    embeddableSandbox: props.embeddableSandbox,
-    isCollaborating: props.isCollaborating === true,
-    userToFollow: props.userToFollow ?? null,
-    onPointerUpdate: props.onPointerUpdate,
-    onScrollChange: props.onScrollChange,
-    onUserFollow: props.onUserFollow,
-    langCode: langCode(),
-    viewModeEnabled: props.viewModeEnabled,
-    interaction: props.interaction,
-    activeTool: props.activeTool,
-    onPaste: props.onPaste,
-    onDuplicate: props.onDuplicate,
-    onLinkOpen: props.onLinkOpen,
-    onPointerDown: props.onPointerDown,
-    onPointerUp: props.onPointerUp,
-    generateIdForFile: props.generateIdForFile,
-    handleKeyboardGlobally: props.handleKeyboardGlobally === true,
-    detectScroll: props.detectScroll !== false,
-    renderScrollbars: props.renderScrollbars === true,
-    ui: props.ui,
-  });
+  function editorHost() {
+    return {
+      UIOptions: uiOptions(),
+      viewModeControlled: props.viewModeEnabled !== undefined,
+      zenModeControlled: props.zenModeEnabled !== undefined,
+      onThemeChange: props.onThemeChange,
+      aiEnabled: props.aiEnabled !== false,
+      diagramToCode: slots().diagramToCode,
+      generateLinkForSelection: props.generateLinkForSelection,
+      onExport: props.onExport,
+      name: props.name,
+      untitledName: ui.t("labels.untitled"),
+      validateEmbeddable: props.validateEmbeddable,
+      embeddableSandbox: props.embeddableSandbox,
+      isCollaborating: props.isCollaborating === true,
+      userToFollow: props.userToFollow ?? null,
+      onPointerUpdate: props.onPointerUpdate,
+      onScrollChange: props.onScrollChange,
+      onUserFollow: props.onUserFollow,
+      langCode: langCode(),
+      viewModeEnabled: props.viewModeEnabled,
+      interaction: props.interaction,
+      activeTool: props.activeTool,
+      onPaste: props.onPaste,
+      onDuplicate: props.onDuplicate,
+      onLinkOpen: props.onLinkOpen,
+      onPointerDown: props.onPointerDown,
+      onPointerUp: props.onPointerUp,
+      generateIdForFile: props.generateIdForFile,
+      handleKeyboardGlobally: props.handleKeyboardGlobally === true,
+      detectScroll: props.detectScroll !== false,
+      renderScrollbars: props.renderScrollbars === true,
+      ui: props.ui,
+    };
+  }
 
-  const attach = (host: HTMLDivElement): (() => void) => {
+  function attach(host: HTMLDivElement): () => void {
     const [canvas, newElementCanvas, interactiveCanvas] = host.querySelectorAll("canvas");
     if (!canvas || !newElementCanvas || !interactiveCanvas) {
       throw new Error("DiagramEditor: the editor's canvases are missing");
@@ -558,7 +576,7 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
         if (apiProvider?.api() === created.api) apiProvider.setApi(null);
       });
     };
-  };
+  }
 
   if (!isServer) {
     createRenderEffect(theme, (next) => {
