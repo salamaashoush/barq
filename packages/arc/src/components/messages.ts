@@ -101,6 +101,7 @@ export interface ArcMessages {
   removeFile: (name: string) => string;
   moreOptions: string;
   moreActions: string;
+  dismiss: string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -198,6 +199,7 @@ export const ENGLISH: ArcMessages = {
   removeFile: (name) => `Remove ${name}`,
   moreOptions: "More options",
   moreActions: "More actions",
+  dismiss: "Dismiss",
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");

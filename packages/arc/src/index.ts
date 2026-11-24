@@ -150,6 +150,7 @@ export {
   useCompactOverlay,
 } from "./components/responsive-overlay.tsx";
 export { Tearsheet, type TearsheetProps, tearsheetStyles } from "./components/tearsheet.tsx";
+export { type AlertProps, Banner, InlineAlert, alertStyles } from "./components/alert.tsx";
 export {
   CommandMenu,
   commandMenuStyles,

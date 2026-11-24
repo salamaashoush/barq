@@ -553,6 +553,13 @@ ui's `ToggleGroup` is the toggle button group: single or multiple, on
   `breakpoint` or under a finger at any width. The same heading, body,
   footer and open state in each; a server and a hydrating page draw the wide
   one. `useCompactOverlay` is the same question for an app's own overlay.
+- `InlineAlert` and `Banner`: a message in a tone with its icon, a `title`,
+  `actions` and, with `onDismiss`, a button that hides it. `InlineAlert`
+  sits in the content with an edge and a corner; `Banner` runs across the
+  top of a page, its actions beside the message on a wide screen and under
+  it on a narrow one. A danger interrupts a screen reader and the other
+  tones wait their turn, which `live` overrides. (ui's `Alert` has the
+  default and destructive looks alone.)
 
 ## Code
 

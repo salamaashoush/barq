@@ -35,6 +35,7 @@ import { when } from "@barqjs/ui/shared-when";
 import { arcLayer as arc } from "../layer.ts";
 import { plainList } from "../lib/list.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
+import { toneEdge } from "../lib/tone.ts";
 import {
   bg,
   fg,
@@ -179,18 +180,16 @@ export function useUploadQueue(options: UploadQueueOptions): UploadQueueApi {
   return {
     items,
     add: (files) => {
-      const added = files.map(
-        (file): UploadItem => ({
-          id: `upload-${String(++uploads)}`,
-          file,
-          status: "queued",
-          progress: 0,
-          preview:
-            file.type.startsWith("image/") && typeof URL.createObjectURL === "function"
-              ? URL.createObjectURL(file)
-              : undefined,
-        }),
-      );
+      const added = files.map((file): UploadItem => ({
+        id: `upload-${String(++uploads)}`,
+        file,
+        status: "queued",
+        progress: 0,
+        preview:
+          file.type.startsWith("image/") && typeof URL.createObjectURL === "function"
+            ? URL.createObjectURL(file)
+            : undefined,
+      }));
       write([...current, ...added]);
       pump();
     },
@@ -311,7 +310,7 @@ export const fileDropZoneStyles = variants({
         textAlign: "center",
       },
     ),
-    over: arc(tone.info, bg.tone, { borderColor: "var(--arc-tone)" }),
+    over: arc(tone.info, bg.tone, toneEdge),
     icon: arc(fg.muted, glyph.md, { "& > svg": { width: space.x8, height: space.x8 } }),
     title: arc(type.label, { [on.coarse]: { display: "none" } }),
     hint: arc(type.meta),
@@ -366,7 +365,12 @@ export function FileDropZone(props: FileDropZoneProps) {
       maxSize: props.maxSize,
       maxFiles: props.multiple === false ? 1 : props.maxFiles,
     };
-    const { accepted, rejected } = checkFiles(files, limits, untrack(messages), untrack(locale).locale);
+    const { accepted, rejected } = checkFiles(
+      files,
+      limits,
+      untrack(messages),
+      untrack(locale).locale,
+    );
     setRejections(rejected);
     if (rejected.length > 0) {
       props.onReject?.(rejected);
