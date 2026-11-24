@@ -1,8 +1,12 @@
 import { createRequire } from "node:module";
 import { plugin } from "bun";
 
+interface Transformed {
+  code: string;
+}
+
 interface Native {
-  transform(code: string, options?: Record<string, unknown>): { code: string };
+  transform(code: string, options?: Record<string, unknown>): Transformed;
 }
 
 const globals = [typeof window, typeof document, typeof ResizeObserver];

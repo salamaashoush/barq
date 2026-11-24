@@ -67,11 +67,11 @@ function createVirtualizerBase<
   // state, and this signal only says "read it again".
   const [version, setVersion] = createSignal(0, { ownedWrite: true });
   let published = 0;
-  const publish = (): void => {
+  function publish(): void {
     setVersion(++published);
-  };
+  }
 
-  const resolve = (): VirtualizerOptions<TScrollElement, TItemElement> => {
+  function resolve(): VirtualizerOptions<TScrollElement, TItemElement> {
     const current = options();
     // Read here so a scroll element held in a signal re-applies the options
     // when it changes.
@@ -83,19 +83,19 @@ function createVirtualizerBase<
         current.onChange?.(instance, sync);
       },
     };
-  };
+  }
 
   const instance = new Virtualizer<TScrollElement, TItemElement>(untrack(resolve));
 
   // The core calls the caller's `estimateSize` and `getItemKey`, which may read
   // signals. Those reads are not dependencies of the mirror: `version` alone
   // says when the core has something new.
-  const mirror =
-    <T>(read: () => T) =>
-    (): T => {
+  function mirror<T>(read: () => T) {
+    return (): T => {
       version();
       return untrack(read);
     };
+  }
   const virtualItems = createProjection<Array<VirtualItem>>(
     mirror(() => instance.getVirtualItems()),
     [],
@@ -108,13 +108,16 @@ function createVirtualizerBase<
     { equals: sameRange },
   );
 
-  const getVirtualItems = (): Array<VirtualItem> => virtualItems;
-  const getTotalSize = (): number =>
-    getObserver() === null ? instance.getTotalSize() : totalSize();
+  function getVirtualItems(): Array<VirtualItem> {
+    return virtualItems;
+  }
+  function getTotalSize(): number {
+    return getObserver() === null ? instance.getTotalSize() : totalSize();
+  }
 
   // A ref runs while its element is being built, before it is in the document,
   // where it has no layout and its attributes may not be written yet.
-  const measureElement = (node: TItemElement | null): void => {
+  function measureElement(node: TItemElement | null): void {
     if (node === null || node.isConnected) {
       instance.measureElement(node);
       return;
@@ -122,7 +125,7 @@ function createVirtualizerBase<
     queueMicrotask(() => {
       if (node.isConnected) instance.measureElement(node);
     });
-  };
+  }
 
   const virtualizer = new Proxy(instance, {
     get(target, property) {

@@ -13,6 +13,7 @@ import { render } from "@barqjs/web";
 import { renderToString } from "@barqjs/server";
 import {
   type Range,
+  type Rect,
   type VirtualItem,
   type Virtualizer,
   type VirtualizerOptions,
@@ -24,7 +25,9 @@ import {
 type ElementVirtualizer = Virtualizer<HTMLDivElement, HTMLDivElement>;
 type ListOptions = Partial<VirtualizerOptions<HTMLDivElement, HTMLDivElement>>;
 
-const settle = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms));
+function settle(ms = 0) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 /**
  * happy-dom has no layout. An element's box is whatever its `data-height` and
@@ -61,7 +64,7 @@ class FakeResizeObserver {
     this.targets.clear();
   }
 
-  static resize(target: Element, size: { width: number; height: number }): void {
+  static resize(target: Element, size: Rect): void {
     target.setAttribute("data-width", String(size.width));
     target.setAttribute("data-height", String(size.height));
     for (const observer of FakeResizeObserver.instances) {
@@ -128,7 +131,11 @@ function translate(virtualizer: Virtualizer<never, never>, start: number): strin
   return virtualizer.options.horizontal ? `translateX(${start}px)` : `translateY(${start}px)`;
 }
 
-export function List(props: { options: ListOptions }): JSXElement {
+export interface ListProps {
+  options: ListOptions;
+}
+
+export function List(props: ListProps): JSXElement {
   let scroller: HTMLDivElement | null = null;
   const virtualizer = createVirtualizer<HTMLDivElement, HTMLDivElement>(() => ({
     count: 100,
@@ -138,7 +145,9 @@ export function List(props: { options: ListOptions }): JSXElement {
   }));
   current = virtualizer;
   const measure = measured ? virtualizer.measureElement : undefined;
-  const scrolling = () => virtualizer.isScrolling;
+  function scrolling() {
+    return virtualizer.isScrolling;
+  }
   return (
     <div
       ref={(el: HTMLDivElement) => (scroller = el)}
@@ -184,18 +193,20 @@ interface Mounted {
 }
 
 function inspect(host: HTMLDivElement, dispose: () => void): Mounted {
-  const rows = () => [...host.querySelectorAll<HTMLElement>(".row")];
-  const row = (index: number) => {
+  function rows() {
+    return [...host.querySelectorAll<HTMLElement>(".row")];
+  }
+  function row(index: number) {
     const found = host.querySelector<HTMLElement>(`.row[data-index="${index}"]`);
     if (found === null) throw new Error(`row ${index} is not rendered`);
     return found;
-  };
+  }
   let disposed = false;
-  const once = () => {
+  function once() {
     if (disposed) return;
     disposed = true;
     dispose();
-  };
+  }
   disposers.push(once);
   return {
     host,
@@ -229,8 +240,9 @@ function scroll(
   target.dispatchEvent(new Event("scroll"));
 }
 
-const sequence = (from: number, to: number) =>
-  Array.from({ length: to - from + 1 }, (_, i) => from + i);
+function sequence(from: number, to: number) {
+  return Array.from({ length: to - from + 1 }, (_, i) => from + i);
+}
 
 describe("fixed sizes", () => {
   test("only the visible window is in the document", async () => {
@@ -748,7 +760,11 @@ describe("reactive options", () => {
 
 let late: ElementVirtualizer;
 
-export function LateList(props: { open: boolean }): JSXElement {
+export interface LateListProps {
+  open: boolean;
+}
+
+export function LateList(props: LateListProps): JSXElement {
   const [scroller, setScroller] = createSignal<HTMLDivElement | null>(null, { ownedWrite: true });
   const virtualizer = createVirtualizer<HTMLDivElement, HTMLDivElement>({
     count: 100,
@@ -848,9 +864,11 @@ describe("dispose", () => {
 
 let page: Virtualizer<Window, HTMLLIElement>;
 
-export function Page(props: {
+export interface PageProps {
   options: Partial<VirtualizerOptions<Window, HTMLLIElement>>;
-}): JSXElement {
+}
+
+export function Page(props: PageProps): JSXElement {
   const virtualizer = createWindowVirtualizer<HTMLLIElement>(() => ({
     count: 1000,
     estimateSize: () => 100,
@@ -965,6 +983,12 @@ describe("the window virtualizer", () => {
   });
 });
 
+interface SsrResult {
+  globals: string[];
+  element: string;
+  window: string;
+}
+
 describe("server rendering", () => {
   test("the module imports and renders to a string with no DOM globals", async () => {
     const child = Bun.spawn([process.execPath, `${import.meta.dir}/fixtures/ssr-run.ts`], {
@@ -980,7 +1004,7 @@ describe("server rendering", () => {
     expect(errors).toBe("");
     expect(code).toBe(0);
 
-    const result = JSON.parse(output) as { globals: string[]; element: string; window: string };
+    const result = JSON.parse(output) as SsrResult;
     expect(result.globals).toEqual(["undefined", "undefined", "undefined"]);
     expect(result.element).toContain('style="height: 50000px;"');
     expect(result.element).toContain("Row 4");

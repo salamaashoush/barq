@@ -43,5 +43,9 @@ export function WindowList(): JSXElement {
   );
 }
 
-export const renderElementList = (): string => renderToString(() => <ElementList />);
-export const renderWindowList = (): string => renderToString(() => <WindowList />);
+export function renderElementList(): string {
+  return renderToString(() => <ElementList />);
+}
+export function renderWindowList(): string {
+  return renderToString(() => <WindowList />);
+}
