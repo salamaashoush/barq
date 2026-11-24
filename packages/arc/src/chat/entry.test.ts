@@ -12,7 +12,11 @@ describe("what an app pays for the chat suite", () => {
     const graph = importGraph(join(src, "index.ts"));
     expect([...graph.files].filter((file) => file.startsWith(chat))).toEqual([]);
     expect([...graph.packages.keys()].filter((name) => name.startsWith("emojibase"))).toEqual([]);
-    expect(graph.packages.has("@lezer/markdown")).toBe(false);
+    expect(
+      [...graph.packages.keys()].filter(
+        (name) => name === "lexical" || name.startsWith("@lexical/"),
+      ),
+    ).toEqual([]);
   });
 
   test("the chat entry loads the emoji only when a picker asks", () => {

@@ -56,6 +56,7 @@ import { PersonAvatar } from "../components/person-avatar.tsx";
 import { QUICK_REACTIONS, ReactionBar } from "../components/reactions.tsx";
 import { ResponsiveOverlay } from "../components/responsive-overlay.tsx";
 import { Toolbar } from "../components/toolbar.tsx";
+import { RichTextRenderer } from "../editor/renderer.tsx";
 import { EmojiPicker } from "./emoji-picker.tsx";
 import type { EmojiSource } from "./emoji-data.ts";
 import type { ChatAttachment, ChatMessage, MessageHandlers } from "./model.ts";
@@ -150,7 +151,8 @@ export interface MessageItemProps extends MessageHandlers, Customisable<Slots> {
 /**
  * One message in a conversation: the author's avatar, name and time, the
  * body, its attachments, its reactions and its thread, with the actions a
- * hover, focus or long press brings up.
+ * hover, focus or long press brings up. Rich `content` is drawn by
+ * `RichTextRenderer` from `@barqjs/arc/editor`.
  *
  * ```tsx
  * <MessageItem
@@ -222,7 +224,10 @@ export function MessageItem(props: MessageItemProps) {
 
   const body = (): Child => {
     if (props.editor !== undefined) return props.editor;
-    const content = props.renderBody?.(message()) ?? message().body;
+    const stored = message().content;
+    const content =
+      props.renderBody?.(message()) ??
+      (stored === undefined ? message().body : <RichTextRenderer value={stored} size="sm" />);
     if (content === undefined || content === "") return null;
     const attributes = { class: cls().body, "data-slot": "message-item-body" };
     if (props.renders?.body !== undefined) return rendered(props.renders.body, attributes, content);

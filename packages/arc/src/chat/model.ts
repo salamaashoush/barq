@@ -3,6 +3,7 @@ import type { Child } from "@barqjs/core";
 import type { Person } from "../components/avatar-stack.tsx";
 import type { Moment } from "../components/format.tsx";
 import type { Reaction } from "../components/reactions.tsx";
+import type { DocumentValue } from "../editor/document.ts";
 import type { EmojiSource } from "./emoji-data.ts";
 
 /** Someone who writes in a conversation. */
@@ -44,8 +45,8 @@ export interface ChatMessage {
   editedAt?: Moment;
   /** Plain text, written as it is with its line breaks. */
   body?: string;
-  /** Rich content, which `renderBody` draws. */
-  content?: unknown;
+  /** Rich content, what `RichTextEditor` and `ChatComposer` store, drawn by `RichTextRenderer`. */
+  content?: DocumentValue;
   attachments?: readonly ChatAttachment[];
   reactions?: readonly Reaction[];
   thread?: ThreadSummary;
@@ -62,7 +63,7 @@ export interface MessageHandlers {
   currentUserId?: string;
   /** Whether the reader may edit and delete a message. @default their own */
   canModify?: (message: ChatMessage) => boolean;
-  /** A message's body, for rich content: `RichTextRenderer`, markdown. @default its `body` as text */
+  /** A message's body drawn by the app. @default its `content` through `RichTextRenderer`, or its `body` as text */
   renderBody?: (message: ChatMessage) => Child;
   onReact?: (message: ChatMessage, emoji: string, add: boolean) => void;
   onReply?: (message: ChatMessage) => void;

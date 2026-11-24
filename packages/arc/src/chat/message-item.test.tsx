@@ -4,6 +4,7 @@ import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user, waitFor, within } from "@barqjs/testing";
 
 import { ConfirmHost } from "../components/confirm.tsx";
+import { markdownToDocument } from "../editor/document.ts";
 import { hydrates, settle } from "../test-arc.ts";
 import { MessageItem } from "./message-item.tsx";
 import type { ChatMessage } from "./model.ts";
@@ -247,6 +248,21 @@ describe("MessageItem", () => {
     expect(theirs?.getAttribute("data-align")).toBe("start");
     expect(own?.querySelector("strong")?.textContent).toContain("THE BUILD IS GREEN");
     expect(count("bubble")).toBe(2);
+  });
+
+  test("rich content is drawn by RichTextRenderer", () => {
+    render(() => (
+      <MessageItem
+        message={{
+          ...MESSAGE,
+          body: undefined,
+          content: markdownToDocument("Ship **today**, see [the plan](https://example.com)"),
+        }}
+      />
+    ));
+    const body = slot("message-item-body");
+    expect(body.querySelector("strong")?.textContent).toBe("today");
+    expect(body.querySelector("a")?.getAttribute("href")).toBe("https://example.com");
   });
 
   test("right to left in the locale's digits, and a class per part", () => {
