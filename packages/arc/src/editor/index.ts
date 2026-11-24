@@ -153,3 +153,21 @@ export {
   blockEditorStyles,
   moveBlock,
 } from "./block-editor.tsx";
+export {
+  type CaptionDraft,
+  type CaptionDrafts,
+  type TextTrack,
+  TextTracksEditor,
+  type TextTracksEditorProps,
+  textTracksStyles,
+} from "./text-tracks.tsx";
+export {
+  type Cue,
+  type Description,
+  formatCueTime,
+  mediaClock,
+  parseCueTime,
+  parseDescriptions,
+  parseVtt,
+  vttOf,
+} from "./vtt.ts";
