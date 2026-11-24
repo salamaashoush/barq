@@ -128,7 +128,7 @@ export interface OtpFieldOptions {
   pushPasswordManagerStrategy?: MaybeAccessor<OtpPasswordManagerStrategy | undefined>;
 }
 
-export interface OtpInputProps {
+export type OtpInputProps = {
   onInput(event: Event): void;
   onPaste(event: ClipboardEvent): void;
   onFocus(): void;
@@ -138,7 +138,7 @@ export interface OtpInputProps {
   onClick(): void;
   onMouseEnter(): void;
   onMouseLeave(): void;
-}
+};
 
 export interface OtpField {
   readonly value: Accessor<string>;
