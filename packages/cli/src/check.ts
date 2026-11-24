@@ -12,6 +12,8 @@ import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve, sep } from "node:path";
 
+import type { JsCode, RouteIdMismatch } from "@barqjs/compiler";
+
 export type Severity = "error" | "warning" | "note";
 
 export interface Edit {
@@ -40,11 +42,19 @@ export interface Finding {
   fix?: Edit[];
 }
 
+export interface CheckSummary {
+  errors: number;
+  warnings: number;
+  notes: number;
+  fixable: number;
+  fixed: number;
+}
+
 export interface CheckResult {
   version: 1;
   root: string;
   files: number;
-  summary: { errors: number; warnings: number; notes: number; fixable: number; fixed: number };
+  summary: CheckSummary;
   findings: Finding[];
 }
 
@@ -71,6 +81,20 @@ export interface CheckOptions {
   extraRoutes?: readonly string[];
 }
 
+interface BarqSettings {
+  check?: unknown;
+}
+
+interface ProjectManifest {
+  barq?: BarqSettings;
+}
+
+function strings(value: unknown): string[] | undefined {
+  return Array.isArray(value) && value.every((item) => typeof item === "string")
+    ? value
+    : undefined;
+}
+
 /**
  * What a project sets for every run, under `barq.check` in its `package.json`.
  * A flag on the command line replaces the field of the same name.
@@ -82,11 +106,9 @@ export function projectOptions(root: string): Partial<CheckOptions> {
   } catch {
     return {};
   }
-  const set = (manifest as { barq?: { check?: unknown } }).barq?.check;
+  const set = (manifest as ProjectManifest).barq?.check;
   if (typeof set !== "object" || set === null) return {};
   const { paths, routes, extraRoutes, levels } = set as Record<string, unknown>;
-  const strings = (value: unknown): string[] | undefined =>
-    Array.isArray(value) && value.every((item) => typeof item === "string") ? value : undefined;
   const out: Partial<CheckOptions> = {};
   const listed = strings(paths);
   if (listed !== undefined) out.paths = listed;
@@ -113,30 +135,34 @@ interface NativeDiagnostic {
   fix?: Edit[];
 }
 
+interface NativeTransformOptions {
+  filename: string;
+  root: string;
+  dev: boolean;
+  diagnostics: boolean;
+  sourceNames: boolean;
+  checks?: string[][];
+  routes?: string[];
+  cssImports?: string[][];
+  cssExports?: boolean;
+}
+
+interface NativeTransformResult {
+  diagnostics?: NativeDiagnostic[];
+  cssWanted?: string[][];
+  cssExports?: string[][];
+}
+
+interface NativeRouteTree {
+  patterns: string[];
+  warnings: string[];
+  mismatches: RouteIdMismatch[];
+}
+
 interface Native {
-  transform(
-    code: string,
-    options: {
-      filename: string;
-      root: string;
-      dev: boolean;
-      diagnostics: boolean;
-      sourceNames: boolean;
-      checks?: string[][];
-      routes?: string[];
-      cssImports?: string[][];
-      cssExports?: boolean;
-    },
-  ): { diagnostics?: NativeDiagnostic[]; cssWanted?: string[][]; cssExports?: string[][] };
-  diagnosticCodes(): { code: string; level: string; summary: string; docs: string }[];
-  routeTree(
-    root: string,
-    dir: string,
-  ): {
-    patterns: string[];
-    warnings: string[];
-    mismatches: { file: string; declared: string; expected: string }[];
-  };
+  transform(code: string, options: NativeTransformOptions): NativeTransformResult;
+  diagnosticCodes(): JsCode[];
+  routeTree(root: string, dir: string): NativeRouteTree;
 }
 
 let native: Native | undefined;
@@ -318,7 +344,12 @@ function about(file: string, severity: Severity, message: string): Finding {
  * The file routes, read the way the build reads them and written nowhere: the
  * patterns a link may name, and what the scan itself found wrong.
  */
-function routesOf(root: string, dir: string): { patterns?: string[]; findings: Finding[] } {
+interface FileRoutes {
+  patterns?: string[];
+  findings: Finding[];
+}
+
+function routesOf(root: string, dir: string): FileRoutes {
   if (!existsSync(join(root, dir))) return { findings: [] };
   const tree = compiler().routeTree(root, dir);
   return {
@@ -435,7 +466,9 @@ export function check(options: CheckOptions): CheckResult {
   let fixed = 0;
   for (const file of files) {
     let source: string | undefined;
-    const text = (): string => (source ??= readFileSync(file, "utf8"));
+    function text(): string {
+      return (source ??= readFileSync(file, "utf8"));
+    }
     if (!wanted(file, text)) continue;
     checked++;
     let found = findingsOf(file, root, text(), project);
@@ -453,8 +486,9 @@ export function check(options: CheckOptions): CheckResult {
     findings.push(...found);
   }
 
-  const count = (severity: Severity): number =>
-    findings.filter((finding) => finding.severity === severity).length;
+  function count(severity: Severity): number {
+    return findings.filter((finding) => finding.severity === severity).length;
+  }
   return {
     version: 1,
     root,
@@ -493,7 +527,9 @@ export interface Paint {
   bold(text: string): string;
 }
 
-const plural = (count: number, word: string): string => `${count} ${word}${count === 1 ? "" : "s"}`;
+function plural(count: number, word: string): string {
+  return `${count} ${word}${count === 1 ? "" : "s"}`;
+}
 
 /** The result for a person: one finding per block, then the count. */
 export function formatText(result: CheckResult, paint: Paint): string {

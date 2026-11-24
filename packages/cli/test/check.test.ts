@@ -95,8 +95,11 @@ export const Card = () => <p class={ui({ padding: 4 })}>salama</p>;
 `,
     });
     const result = check({ root });
-    const byFile = (file: string) =>
-      result.findings.filter((finding) => finding.file === file).map((finding) => finding.code);
+    function byFile(file: string) {
+      return result.findings
+        .filter((finding) => finding.file === file)
+        .map((finding) => finding.code);
+    }
     expect(byFile("src/page.ts")).toEqual(["BARQ017"]);
     expect(byFile("src/card.tsx")).toEqual([]);
     expect(
@@ -193,8 +196,9 @@ describe("check", () => {
 });
 
 describe("file routes", () => {
-  const route = (id: string, body: string): string =>
-    `import { Link, createFileRoute } from "@barqjs/router";\nexport const Route = createFileRoute("${id}")({ component: () => ${body} });\n`;
+  function route(id: string, body: string): string {
+    return `import { Link, createFileRoute } from "@barqjs/router";\nexport const Route = createFileRoute("${id}")({ component: () => ${body} });\n`;
+  }
 
   test("a link to a path no route file gives is reported, and one to a route is not", () => {
     const root = project({
@@ -331,8 +335,13 @@ describe("codes", () => {
   });
 });
 
+interface CommandOutcome {
+  status: number;
+  out: string;
+}
+
 describe("the command line", () => {
-  function run(argv: string[]): { status: number; out: string } {
+  function run(argv: string[]): CommandOutcome {
     let out = "";
     const status = main(argv, (text) => {
       out += text;

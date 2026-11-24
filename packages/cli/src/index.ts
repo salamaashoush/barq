@@ -74,13 +74,13 @@ export function parse(argv: readonly string[]): Parsed {
     maxWarnings: undefined,
     help: false,
   };
-  const value = (flag: string, index: number): string => {
+  function value(flag: string, index: number): string {
     const next = argv[index];
     if (next === undefined || next.startsWith("--")) {
       throw new UsageError(`\`${flag}\` takes a value, and none follows it.`);
     }
     return next;
-  };
+  }
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index] as string;
     switch (arg) {
@@ -135,10 +135,9 @@ export function parse(argv: readonly string[]): Parsed {
 
 function painter(): Paint {
   const styled = stdout.isTTY && process.env["NO_COLOR"] === undefined;
-  const code =
-    (open: string) =>
-    (text: string): string =>
-      styled ? `\u001B[${open}m${text}\u001B[0m` : text;
+  function code(open: string) {
+    return (text: string): string => (styled ? `\u001B[${open}m${text}\u001B[0m` : text);
+  }
   return {
     error: code("31"),
     warning: code("33"),
