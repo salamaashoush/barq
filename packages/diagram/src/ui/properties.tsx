@@ -112,6 +112,10 @@ import {
   actionSendBackward,
   actionSendToBack,
 } from "../editor/actions/zindex.ts";
+import {
+  actionChangeBucketFillBackgroundColor,
+  getBucketFillBackgroundColor,
+} from "../editor/bucket-fill.ts";
 import { ColorPicker } from "./color-picker.tsx";
 import { isShortcutName } from "./shortcuts.ts";
 import { useDiagramUI } from "./context.tsx";
@@ -573,17 +577,25 @@ export function PropertiesPanel() {
             when={!bucketFill()}
             fallback={
               <>
-                <ColorPicker
-                  type="elementBackground"
-                  label={t("labels.background")}
-                  color={store.state("currentItemBackgroundColor")}
-                  topPicks={BUCKET_FILL_BACKGROUND_PICKS}
-                  palette={DEFAULT_ELEMENT_BACKGROUND_COLOR_PALETTE}
-                  excludedColors={[COLOR_PALETTE.transparent]}
-                  onChange={(color) =>
-                    ui.run(actionChangeBackgroundColor, { currentItemBackgroundColor: color })
-                  }
-                />
+                <div class={fieldset}>
+                  <span class={legend} aria-hidden="true">
+                    {t("labels.background")}
+                  </span>
+                  <ColorPicker
+                    type="elementBackground"
+                    label={t("labels.background")}
+                    color={getBucketFillBackgroundColor(store.state("currentItemBackgroundColor"))}
+                    topPicks={BUCKET_FILL_BACKGROUND_PICKS}
+                    palette={DEFAULT_ELEMENT_BACKGROUND_COLOR_PALETTE}
+                    excludedColors={[COLOR_PALETTE.transparent]}
+                    onChange={(color) =>
+                      ui.run(actionChangeBucketFillBackgroundColor, {
+                        currentItemBackgroundColor: color,
+                      })
+                    }
+                    data-testid="bucket-fill-color"
+                  />
+                </div>
               </>
             }
           >

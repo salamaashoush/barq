@@ -156,6 +156,7 @@ export function HelpDialog() {
             <Shortcut label={label("toolBar.eraser")} shortcuts={["E", "0"]} />
             <Shortcut label={label("toolBar.frame")} shortcuts={["F"]} />
             <Shortcut label={label("toolBar.laser")} shortcuts={["K"]} />
+            <Shortcut label={label("toolBar.bucketfill")} shortcuts={["B"]} />
             <Shortcut
               label={label("helpDialog.editLineArrowPoints")}
               shortcuts={[k("CtrlOrCmd+Enter")]}

@@ -99,15 +99,9 @@ interface ToolConfig {
 }
 
 /** The tools this editor does not draw with yet; their entries stay, disabled. */
-const UNAVAILABLE_TOOLS = new Set<string>(["embeddable", "bucketfill", "magicframe"]);
+const UNAVAILABLE_TOOLS = new Set<string>(["embeddable", "magicframe"]);
 
-/** The extra tools' shortcuts, which `TOOLS` has not: they are Excalidraw's. */
-const EXTRA_SHORTCUTS: Record<string, ToolConfig> = {
-  bucketfill: { letterKey: "b" },
-};
-
-const configOf = (type: string): ToolConfig =>
-  (TOOLS as Record<string, ToolConfig>)[type] ?? EXTRA_SHORTCUTS[type] ?? {};
+const configOf = (type: string): ToolConfig => (TOOLS as Record<string, ToolConfig>)[type] ?? {};
 
 /** A tool's letter, as written on its button: `R`, or `Shift+X`. */
 const toolLetter = (type: string, shiftName: string): string | undefined => {

@@ -26,7 +26,7 @@ embeds.
 - done: image tool with a file picker (`clipboard.test.ts`)
 - done: sticky note tool, click and drag sizing (`flowchart.test.ts`)
 - done: autoshape tool, Shift+X: a sketch recognised as a shape, arrows bound, lines between shapes made arrows (`draw-shape.test.ts`)
-- pending (3b): bucket fill tool (`App.bucketFill.ts`, B); its toolbar entry and panel are there
+- done: bucket fill tool, B: fills the closed region clicked, restyles its own fills, B again cycles the colour, Alt holds an eye dropper (`bucket-fill.test.ts`)
 - pending (4): embeddable and iframe tool, `actionLink` embeds; its toolbar entry is there, disabled
 - pending (3b): magic frame (AI); the element draws and hit-tests, its toolbar entry is disabled
 - done: toolbar drag-to-place of the sticky note (`editor-ui.test.tsx`)

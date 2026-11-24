@@ -222,6 +222,7 @@ import { commitDraggedDuplicates } from "./duplicate.ts";
 import { EditorFlowchart } from "./flowchart.ts";
 import { EditorImages } from "./images.ts";
 import { EditorText } from "./text.ts";
+import { actionChangeBucketFillBackgroundColor, BucketFill } from "./bucket-fill.ts";
 import { DrawShape } from "./draw-shape.ts";
 import { EraserTrail, LaserTrails, LassoTrail } from "./trails.ts";
 import { TextTool } from "./text-tool.ts";
@@ -415,6 +416,7 @@ export class DiagramEditor {
   /** A tool dragged out of the toolbar onto the canvas. */
   public readonly toolDrag: ToolDrag;
   public readonly drawShape: DrawShape;
+  public readonly bucketFill: BucketFill;
   /** What the eraser has marked, erased on pointer up. */
   public elementsPendingErasure = new Set<ExcalidrawElement["id"]>();
   public readonly renderEnvironment: RenderEnvironment;
@@ -604,6 +606,7 @@ export class DiagramEditor {
     this.actionManager.registerAll([
       createUndoAction(this.history),
       createRedoAction(this.history),
+      actionChangeBucketFillBackgroundColor as Action,
     ]);
 
     this.selection = new EditorSelection(this);
@@ -619,6 +622,7 @@ export class DiagramEditor {
     this.lassoTrail = new LassoTrail(this);
     this.toolDrag = new ToolDrag(this);
     this.drawShape = new DrawShape(this);
+    this.bucketFill = new BucketFill(this);
     if (options.svgLayer) {
       this.drawShape.start(options.svgLayer);
       this.laserTrails.start(options.svgLayer);
@@ -1404,6 +1408,13 @@ export class DiagramEditor {
     ) {
       this.cursor.applyForTool();
     }
+    if (
+      this.state.activeTool.type === "bucketfill" &&
+      (prevState.currentItemBackgroundColor !== this.state.currentItemBackgroundColor ||
+        prevState.theme !== this.state.theme)
+    ) {
+      this.cursor.applyForTool();
+    }
     if (this.state.viewModeEnabled && !prevState.viewModeEnabled) {
       // nothing is edited in view mode
       queueMicrotask(() => this.text.textWysiwygSubmitHandler?.());
@@ -1775,6 +1786,8 @@ export class DiagramEditor {
     }
     // the browser's menu never opens over the canvas
     event.preventDefault();
+    // a long press that asks for a menu pours nothing
+    this.bucketFill.cancel();
     if (this.secondaryPress) {
       this.secondaryPress.menuAsked = true;
       return;
@@ -2527,6 +2540,8 @@ export class DiagramEditor {
       this.createFrameElementOnPointerDown(pointerDownState, toolType);
     } else if (toolType === "laser") {
       this.laserTrails.startPath(pointerDownState.lastCoords.x, pointerDownState.lastCoords.y);
+    } else if (toolType === "bucketfill") {
+      this.bucketFill.handlePointerDown(pointerDownState.origin);
     } else if (toolType === "autoshape") {
       this.drawShape.handlePointerDown(pointerDownState.lastCoords, () =>
         this.actionManager.executeAction(actionFinalize),
@@ -2587,6 +2602,7 @@ export class DiagramEditor {
   }
 
   private handleCanvasPointerCancel(event: PointerEvent): void {
+    this.bucketFill.cancel();
     this.removePointer(event);
     this.maybeCleanupAfterMissingPointerUp(event);
   }
@@ -3483,6 +3499,13 @@ export class DiagramEditor {
     this.removePointer(childEvent);
     pointerDownState.drag.blockDragging = false;
 
+    // only a genuine pointer up of the tool pours the fill its press armed
+    if (childEvent.type === "pointerup" && this.state.activeTool.type === "bucketfill") {
+      this.bucketFill.handlePointerUp();
+    } else {
+      this.bucketFill.cancel();
+    }
+
     this.textTool.handlePointerUp(childEvent, pointerDownState);
 
     if (pointerDownState.hit.hasBeenDuplicated) {
@@ -4043,6 +4066,8 @@ export class DiagramEditor {
       childEvent.type === "pointerup" &&
       !this.isToolLocked() &&
       activeTool.type !== "freedraw" &&
+      // the bucket stays for the next region, locked or not
+      activeTool.type !== "bucketfill" &&
       // a lasso reverts only when it came from the selection tool's alt
       (activeTool.type !== "lasso" || activeTool.fromSelection)
     ) {
@@ -4766,6 +4791,11 @@ export class DiagramEditor {
     }
 
     if (event.key === KEYS.ALT) {
+      if (this.state.activeTool.type === "bucketfill" && !event.repeat) {
+        this.bucketFill.openTemporaryEyeDropper();
+        event.preventDefault();
+        return;
+      }
       maybeHandleArrowPointlikeDrag({ app: this.elementApp, event });
     }
 
@@ -4857,7 +4887,9 @@ export class DiagramEditor {
                   : ARROW_TYPE.sharp,
           });
         }
-        if (shape === "lasso" && this.state.activeTool.type === "laser") {
+        if (shape === "bucketfill" && this.state.activeTool.type === "bucketfill") {
+          this.bucketFill.cycleBackgroundColor();
+        } else if (shape === "lasso" && this.state.activeTool.type === "laser") {
           this.setActiveTool({ type: this.state.preferredSelectionTool.type });
         } else {
           this.setActiveTool({ type: shape }, { toggle: true });
@@ -5168,6 +5200,7 @@ export class DiagramEditor {
     }
 
     if (event.key === KEYS.ALT) {
+      this.bucketFill.closeTemporaryEyeDropper();
       maybeHandleArrowPointlikeDrag({ app: this.elementApp, event });
     }
 
@@ -5411,6 +5444,7 @@ export class DiagramEditor {
     this.flowchart.clear();
     this.laserTrails.stop();
     this.drawShape.stop();
+    this.bucketFill.closeTemporaryEyeDropper();
     this.eraserTrail.stop();
     this.lassoTrail.stop();
     this.destroyed = true;

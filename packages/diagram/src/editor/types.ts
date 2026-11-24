@@ -154,6 +154,7 @@ export type ActionName =
   | "toggleLinearEditor"
   | "changeStrokeColor"
   | "changeBackgroundColor"
+  | "changeBucketFillBackgroundColor"
   | "changeFillStyle"
   | "changeStrokeWidth"
   | "changeSloppiness"

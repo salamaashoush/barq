@@ -1,6 +1,7 @@
 import { CURSOR_TYPE, MIME_TYPES, THEME } from "@excalidraw/common";
 
 import { isEraserActive, isHandToolActive } from "../app-state.ts";
+import { getBucketFillBackgroundColor } from "./bucket-fill.ts";
 
 import type { AppState } from "../types.ts";
 
@@ -14,6 +15,22 @@ const laserPointerCursorDark = `data:${MIME_TYPES.svg},${encodeURIComponent(
   `${laserPointerCursorSVGTag}${laserPointerCursorBackgroundSVG}${laserPointerCursorIconSVG}</svg>`,
 )}`;
 
+const BUCKET_FILL_PATHS = [
+  "M5 16l1.465 1.638a2 2 0 1 1 -3.015 .099l1.55 -1.737z",
+  "M13.737 9.737c2.299 -2.3 3.23 -5.095 2.081 -6.245c-1.15 -1.15 -3.945 -.217 -6.244 2.082c-2.3 2.299 -3.231 5.095 -2.082 6.244c1.15 1.15 3.946 .218 6.245 -2.081z",
+  "M7.492 11.818c.362 .362 .768 .676 1.208 .934l6.895 4.047c1.078 .557 2.255 -.075 3.692 -1.512c1.437 -1.437 2.07 -2.614 1.512 -3.692c-.372 -.718 -1.72 -3.017 -4.047 -6.895a6.015 6.015 0 0 0 -.934 -1.208",
+];
+
+/** Excalidraw's bucket cursor, its paint in the colour it pours. */
+const bucketFillCursor = (color: string): string => {
+  const paths = BUCKET_FILL_PATHS.map(
+    (path, index) => `<path d="${path}" ${index < 2 ? `fill="${color}"` : ""} />`,
+  ).join("");
+  return `url(data:${MIME_TYPES.svg},${encodeURIComponent(
+    `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke-linecap="round" stroke-linejoin="round"><g stroke="#fff" fill="#fff" stroke-width="5">${paths}</g><g stroke="#1b1b1f" stroke-width="1.25">${paths}</g></svg>`,
+  )}) 5 18, auto`;
+};
+
 const ERASER_CURSOR_SIZE = 20;
 
 /**
@@ -25,6 +42,7 @@ export class EditorCursor {
   private toolCursorMemo: {
     type: AppState["activeTool"]["type"];
     theme?: AppState["theme"];
+    bucketFillColor?: string;
   } | null = null;
   private eraserCursor: { theme: AppState["theme"]; url: string } | null = null;
 
@@ -53,7 +71,18 @@ export class EditorCursor {
       activeTool.type === "eraser" || activeTool.type === "laser"
         ? this.getState().theme
         : undefined;
-    if (this.toolCursorMemo?.type === activeTool.type && this.toolCursorMemo.theme === theme) {
+    const bucketFillColor =
+      activeTool.type === "bucketfill"
+        ? getBucketFillBackgroundColor(
+            this.getState().currentItemBackgroundColor,
+            this.getState().theme,
+          )
+        : undefined;
+    if (
+      this.toolCursorMemo?.type === activeTool.type &&
+      this.toolCursorMemo.theme === theme &&
+      this.toolCursorMemo.bucketFillColor === bucketFillColor
+    ) {
       return;
     }
     if (activeTool.type === "selection") {
@@ -66,12 +95,14 @@ export class EditorCursor {
       this.set(
         `url(${this.getState().theme === THEME.LIGHT ? laserPointerCursorLight : laserPointerCursorDark}), auto`,
       );
+    } else if (bucketFillColor !== undefined) {
+      this.set(bucketFillCursor(bucketFillColor));
     } else if (activeTool.type !== "image" && activeTool.type !== "custom") {
       this.set(CURSOR_TYPE.CROSSHAIR);
     } else {
       this.set(CURSOR_TYPE.AUTO);
     }
-    this.toolCursorMemo = { type: activeTool.type, theme };
+    this.toolCursorMemo = { type: activeTool.type, theme, bucketFillColor };
   }
 
   /** A small circle, light on dark or dark on light, drawn once per theme. */

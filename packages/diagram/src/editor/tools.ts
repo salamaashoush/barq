@@ -29,6 +29,7 @@ export const TOOLS = {
   frame: { letterKey: KEYS.F },
   laser: { letterKey: KEYS.K },
   autoshape: { letterKey: KEYS.X, shiftKey: true },
+  bucketfill: { letterKey: KEYS.B },
   lasso: {},
 } satisfies Partial<Record<ToolType, ToolConfig>>;
 
