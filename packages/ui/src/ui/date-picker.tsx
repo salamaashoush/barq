@@ -8,12 +8,12 @@ import {
 } from "@barqjs/aria/date";
 import { dateFormatter } from "@barqjs/aria/i18n";
 import { callback, controllable } from "@barqjs/aria/utils";
-import { cells, createSignal, Show } from "@barqjs/core";
+import { cells, createSignal, createUniqueId, Show } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 import { Calendar as CalendarIcon } from "@barqjs/lucide/icons/calendar";
 
 import "../theme/layers.ts";
-import { uiProps } from "../lib/slot.ts";
+import { omit, uiProps } from "../lib/slot.ts";
 import { Button } from "./button.tsx";
 import { Calendar, RangeCalendar, type CalendarCaptionLayout } from "./calendar.tsx";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "./input-group.tsx";
@@ -224,6 +224,21 @@ export function DatePicker(props: DatePickerProps) {
   );
 }
 
+/**
+ * A named shortcut to a range: the range itself, or a number of days ending
+ * today, so `7` is the last seven days with today the seventh.
+ */
+export interface DateRangePreset {
+  label: string;
+  value: DateRange | number;
+}
+
+function presetRange(preset: DateRangePreset): DateRange {
+  if (typeof preset.value !== "number") return preset.value;
+  const end = today(getLocalTimeZone());
+  return { start: end.subtract({ days: Math.max(0, preset.value - 1) }), end };
+}
+
 export interface DateRangePickerProps extends UiProps {
   value?: DateRange | null;
   defaultValue?: DateRange | null;
@@ -237,6 +252,14 @@ export interface DateRangePickerProps extends UiProps {
   disabled?: DateMatcher;
   /** How many months are drawn side by side. @default 2 */
   numberOfMonths?: number;
+  /** Shortcuts listed above the calendar: "Last 7 days", "This quarter". */
+  presets?: readonly DateRangePreset[];
+  /** What the list of presets says before one is chosen. @default "Select" */
+  presetsPlaceholder?: string;
+  /** Names the list of presets. @default "Presets" */
+  presetsLabel?: string;
+  /** Marks the trigger invalid, for a field showing an error about the range. */
+  isInvalid?: boolean;
   onChange?: (value: DateRange | null) => void;
 }
 
@@ -254,7 +277,12 @@ export function DateRangePicker(props: DateRangePickerProps) {
     () => props.defaultValue ?? null,
     (range) => props.onChange?.(range),
   );
+  const [isOpen, setOpen] = createSignal(false);
+  // Where the calendar is turned to, so a preset's start is a month in view.
+  const [focused, setFocused] = createSignal<CalendarDate | undefined>(undefined);
+  const presets = (): readonly DateRangePreset[] => props.presets ?? [];
   const format = dateFormatter(BOTH);
+  const triggerId = createUniqueId();
 
   const label = (): string => {
     const range = chosen();
@@ -263,37 +291,78 @@ export function DateRangePicker(props: DateRangePickerProps) {
     return range.end === range.start ? from : `${from} - ${readable(range.end, format())}`;
   };
 
+  // The trigger is the control, so the label and the description a field
+  // gives the picker name and describe the button and not the box around it:
+  // read as the label and then the range it shows.
+  const labelledBy = (): string | undefined =>
+    props["aria-labelledby"] === undefined ? undefined : `${props["aria-labelledby"]} ${triggerId}`;
+
   return (
-    <div {...uiProps("date-range-picker", rangeRoot, cells(props))}>
-      <Popover>
+    <div
+      {...uiProps(
+        "date-range-picker",
+        rangeRoot,
+        omit(cells(props), ["aria-labelledby", "aria-describedby", "aria-label"]),
+      )}
+    >
+      <Popover isOpen={isOpen()} onOpenChange={setOpen}>
         <PopoverTrigger>
           <Button
+            id={triggerId}
             data-slot="date-range-picker-trigger"
             class={ui(rangeTrigger, chosen() ? "" : empty)}
             variant="outline"
             isDisabled={props.isDisabled}
+            aria-labelledby={labelledBy()}
+            aria-describedby={props["aria-describedby"]}
+            aria-invalid={props.isInvalid === true ? true : undefined}
+            data-invalid={props.isInvalid === true ? "" : undefined}
           >
             <CalendarIcon />
             {label()}
           </Button>
         </PopoverTrigger>
         <PopoverContent
-          class={content}
+          class={presets().length > 0 ? presetContent : content}
           placement="bottom start"
           data-slot="date-range-picker-content"
         >
-          <RangeCalendar
-            aria-label={props["aria-label"] ?? "Choose a range of dates"}
-            value={chosen()}
-            minValue={props.minValue}
-            maxValue={props.maxValue}
-            isDateUnavailable={callback<[CalendarDate], boolean>(cells(props).isDateUnavailable)}
-            disabled={props.disabled}
-            numberOfMonths={props.numberOfMonths ?? 2}
-            isDisabled={props.isDisabled}
-            autoFocus
-            onChange={choose}
-          />
+          <Show when={presets().length > 0}>
+            <Select
+              items={presets()}
+              aria-label={props.presetsLabel ?? "Presets"}
+              placeholder={props.presetsPlaceholder ?? "Select"}
+              data-slot="date-range-picker-presets"
+              getKey={(preset: DateRangePreset) => preset.label}
+              getTextValue={(preset: DateRangePreset) => preset.label}
+              onSelectionChange={(key) => {
+                const preset = presets().find((one) => one.label === key);
+                if (preset === undefined) return;
+                const range = presetRange(preset);
+                setFocused(range.start);
+                choose(range);
+                setOpen(false);
+              }}
+            >
+              {(preset: DateRangePreset) => <SelectItem>{preset.label}</SelectItem>}
+            </Select>
+          </Show>
+          <div data-slot="date-range-picker-calendar" class={presets().length > 0 ? boxed : ""}>
+            <RangeCalendar
+              aria-label={props["aria-label"] ?? "Choose a range of dates"}
+              value={chosen()}
+              focusedValue={focused()}
+              minValue={props.minValue}
+              maxValue={props.maxValue}
+              isDateUnavailable={callback<[CalendarDate], boolean>(cells(props).isDateUnavailable)}
+              disabled={props.disabled}
+              numberOfMonths={props.numberOfMonths ?? 2}
+              isDisabled={props.isDisabled}
+              autoFocus
+              onFocusChange={setFocused}
+              onChange={choose}
+            />
+          </div>
         </PopoverContent>
       </Popover>
     </div>

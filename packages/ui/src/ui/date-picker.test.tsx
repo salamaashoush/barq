@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { CalendarDate, getLocalTimeZone, today } from "@barqjs/aria/date";
 import { flush, createSignal } from "@barqjs/core";
-import { render, screen, user } from "@barqjs/testing";
+import { accessibleName, render, screen, user } from "@barqjs/testing";
 
 import { rulesFor } from "../test-rules.ts";
 
@@ -272,6 +272,63 @@ describe("DateRangePicker, holding its own range", () => {
     await user.click(at("date-range-picker-trigger") as HTMLElement);
     await opened();
     expect(screen.getAllByRole("grid")).toHaveLength(1);
+  });
+});
+
+describe("DateRangePicker, with presets", () => {
+  test("a number of days is that many ending today, and the picker closes on it", async () => {
+    const chosen: string[] = [];
+    render(() => (
+      <DateRangePicker
+        presets={[
+          { label: "Last 7 days", value: 7 },
+          {
+            label: "Q1 2030",
+            value: { start: new CalendarDate(2030, 1, 1), end: new CalendarDate(2030, 3, 31) },
+          },
+        ]}
+        onChange={(range) => chosen.push(`${String(range?.start)}/${String(range?.end)}`)}
+      />
+    ));
+    const trigger = at("date-range-picker-trigger") as HTMLElement;
+    await user.click(trigger);
+    await opened();
+    await user.click(at("date-range-picker-presets") as HTMLElement);
+    await opened();
+    await user.click(screen.getByRole("option", { name: "Last 7 days" }));
+    await opened();
+
+    const end = today(getLocalTimeZone());
+    expect(chosen).toEqual([`${String(end.subtract({ days: 6 }))}/${String(end)}`]);
+    expect(at("date-range-picker-content")).toBeNull();
+
+    await user.click(trigger);
+    await opened();
+    await user.click(at("date-range-picker-presets") as HTMLElement);
+    await opened();
+    await user.click(screen.getByRole("option", { name: "Q1 2030" }));
+    await opened();
+    expect(trigger.textContent).toContain("Jan 01, 2030 - Mar 31, 2030");
+  });
+
+  test("a field's label and description name and describe the trigger", () => {
+    render(() => (
+      <>
+        <span id="period">Period</span>
+        <span id="hint">Inclusive.</span>
+        <DateRangePicker
+          aria-labelledby="period"
+          aria-describedby="hint"
+          isInvalid
+          defaultValue={{ start: new CalendarDate(2030, 1, 1), end: new CalendarDate(2030, 1, 2) }}
+        />
+      </>
+    ));
+    const trigger = at("date-range-picker-trigger") as HTMLElement;
+    expect(accessibleName(trigger)).toBe("Period Jan 01, 2030 - Jan 02, 2030");
+    expect(trigger.getAttribute("aria-describedby")).toBe("hint");
+    expect(trigger.getAttribute("aria-invalid")).toBe("true");
+    expect(at("date-range-picker")?.hasAttribute("aria-labelledby")).toBe(false);
   });
 });
 
