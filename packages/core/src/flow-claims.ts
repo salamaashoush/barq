@@ -129,7 +129,7 @@ function claimSite(
   // `WHOLE` is `hydration.ts`'s and `ir/region.rs`'s, riding the same integer
   // as `HYDRATE`: this range owns its parent element, so the string backend
   // wrote it no comments and the claim is every child of that parent. It is
-  // never set under `DETECT`, because the open comment is where the key goes.
+  // set under `DETECT` as well, so such a range has no key to reconcile.
   const range = claimWalk().claimAt(parent, anchor, flags & WHOLE);
   // `null` is "this position is not in the server's tree" — a region inside
   // something the client built. It claims nothing and builds cold, which is the

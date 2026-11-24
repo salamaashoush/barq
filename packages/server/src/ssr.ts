@@ -832,8 +832,9 @@ const HYDRATE = 1 << 2;
 const DETECT = 1 << 3;
 /**
  * The range is the only thing in its parent element, so the client reads its
- * extent off the parent and the comments are not written at all. Never set with
- * `DETECT`: the open comment is where the key goes.
+ * extent off the parent and the comments are not written at all. Set with
+ * `DETECT` too, so a dev and a production half agree on it; the key is then not
+ * written, having no open comment to go in.
  */
 const WHOLE = 1 << 4;
 

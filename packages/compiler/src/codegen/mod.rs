@@ -765,16 +765,18 @@ impl<'a, 'm> Emit<'a, 'm> {
         !flags.contains(crate::ir::TagFlags::PRESERVE_WS)
     }
 
-    /// The same question for a REGION, and one extra condition: not under
-    /// `detect`.
+    /// The same question for a REGION, answered the same way in every build.
     ///
-    /// A region's open comment is where the key goes, and the key is the whole
-    /// of what is left on the detection axis: the client cannot re-evaluate the
-    /// condition, so the server's choice has to be on the wire or it is lost. A
-    /// dev build therefore keeps the comments at every range,
-    /// sole-occupant or not, and pays for them; a production build drops them
-    /// wherever the client can read the extent off the parent, exactly as it
-    /// does at a hole.
+    /// Whether the comments exist is recovery, and `detect` must not move it.
+    /// The two halves of a page are compiled separately and need not share
+    /// `dev`: a dev client hydrating a production server's markup, or the
+    /// reverse, is told `WHOLE` by its own build and nothing else, so a
+    /// detecting build that kept the comments here expected `<!--[-->` where
+    /// the other half wrote none, and every sole-occupant `<Show>`, `<For>`
+    /// and `<Switch>` was rebuilt instead of claimed. The cost is the key: a
+    /// dev build has no open comment to spell it in at this position, and
+    /// detects a divergent arm structurally, as a production build does at
+    /// every range.
     ///
     /// Returns the flag bit rather than a bool because that is what the caller
     /// ORs into the region's flags, and a predicate that returned `true` into a
@@ -785,7 +787,7 @@ impl<'a, 'm> Emit<'a, 'm> {
         parent: crate::ir::NodeId,
         slot: crate::ir::SlotId,
     ) -> u8 {
-        if self.detect || !self.hole_owns_child_list(unit, parent, slot) {
+        if !self.hole_owns_child_list(unit, parent, slot) {
             return 0;
         }
         crate::ir::WHOLE

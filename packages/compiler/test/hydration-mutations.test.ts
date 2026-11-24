@@ -540,7 +540,8 @@ describe("hydrating a page the compiler never made hydratable", () => {
    * around nothing else here, because the `<h1>`'s hole and the `<li>`'s hole
    * each own their element and the `<ul>`'s list owns its own. `dev` on top of
    * it adds the KEY and nothing else, which is the whole of what detection puts
-   * on the wire.
+   * on the wire, so a dev half and a production half of one page agree on every
+   * comment but the key.
    */
   test("the three wires: none, recovery, recovery plus detection", async () => {
     const plain = wire((await compileText(SOURCE, "wire-plain", false)).ssr);
@@ -559,33 +560,26 @@ describe("hydrating a page the compiler never made hydratable", () => {
     expect(production).toContain("<ul><li>one</li>");
     expect(production.match(/<!--\[/g)?.length).toBe(1);
 
-    // Detection adds two things and they are both about the KEY. The branch's
-    // open comment gains the branch's key, and the list gets its comments BACK — a range
-    // that owns its element writes none in production, and a development build
-    // writes them anyway because the open comment is the only place a key can
-    // live. An `each` has no key, so the second is the axis paying for a
-    // uniform range shape rather than for information.
+    // Detection adds the KEY and nothing else. The branch's open comment gains
+    // the branch's key, and the list, which owns its element, stays without
+    // comments as it is in production. Which comments exist is recovery, and a
+    // client hydrating a server compiled with the other `dev` is told it by its
+    // own build alone; a list that got its comments back in development was
+    // claimed by a production client as if they were rows, and a development
+    // client found none where it expected them.
     // `1` rather than `true`: the key is the truthiness INDEX, because `Show`'s
     // default is non-keyed; only the keyed arm writes the value itself.
     expect(development).toContain("<!--[1-->");
-    expect(development).toContain("<ul><!--[--><li>one</li>");
-    expect(
-      development
-        .replace("<!--[1-->", "<!--[-->")
-        .replace("<ul><!--[-->", "<ul>")
-        .replace("<!--]--></ul>", "</ul>"),
-    ).toBe(production);
+    expect(development).toContain("<ul><li>one</li>");
+    expect(development.replace("<!--[1-->", "<!--[-->")).toBe(production);
 
     // And the numbers the wire split turns on, on this page: recovery costs one range,
-    // detection costs a key and a second range, and a build that hydrates
-    // nothing costs neither.
+    // detection costs a key, and a build that hydrates nothing costs neither.
     expect(production.length - plain.length).toBe("<!--[-->".length + "<!--]-->".length);
     // The key is one byte now — the truthiness index — where the keyed default
     // spelled the value and cost four. Detection got CHEAPER on this page by
     // flipping `Show`, which is a side effect of the flip and not its point.
-    expect(development.length - production.length).toBe(
-      "1".length + "<!--[-->".length + "<!--]-->".length,
-    );
+    expect(development.length - production.length).toBe("1".length);
   });
 });
 

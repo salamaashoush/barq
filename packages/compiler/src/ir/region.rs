@@ -41,9 +41,11 @@ pub const DETECT: u8 = 1 << 3;
 /// parent element's child list, so the string backend wrote it no boundary
 /// comments and the client's claim is every child of the parent.
 ///
-/// The same predicate a hole is measured by, and the same saving. It is set only
-/// in a build that is not detecting, because a range's open comment is where the
-/// key goes — see [`DETECT`].
+/// The same predicate a hole is measured by, and the same saving. It is set in
+/// a detecting build too, because it decides which comments exist and both
+/// halves of a page must agree on that whatever `dev` each was compiled with; a
+/// range written this way carries no key, so [`DETECT`] has nothing to compare
+/// there.
 pub const WHOLE: u8 = 1 << 4;
 
 /// `hydration.ts`'s `TAGGED`: this position has NO range on the wire, and the

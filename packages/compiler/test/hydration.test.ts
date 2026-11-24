@@ -371,8 +371,13 @@ describe("the claim payload", () => {
     // Development pays, and it is supposed to: that is where the detection is.
     // An axis that costs the same in both builds is not an axis.
     expect(development).toBeGreaterThan(production);
-    expect(page.development.raw).toBeGreaterThan(page.production.raw);
     expect(mixed.development.raw).toBeGreaterThan(mixed.production.raw);
+    // Except where there is no key to write. Every range on the sole-occupant
+    // page owns its element, so neither build writes its comments: which
+    // comments exist is recovery, which a development client hydrating a
+    // production server (or the reverse) has to agree on, and only the key
+    // rides the detection axis.
+    expect(page.development).toEqual(page.production);
   });
 });
 

@@ -4677,4 +4677,76 @@ export const Route = createFileRoute("/x")({ component: Page });
             assert!(!output.code.contains("__bq_click ="), "{}", output.code);
         }
     }
+
+    /// The trailing flags integer of every `_$<name>(…)` call in `code`.
+    fn region_flags(code: &str, name: &str) -> Vec<u8> {
+        let needle = format!("_${name}(");
+        let mut out = Vec::new();
+        for (start, _) in code.match_indices(&needle) {
+            let body = &code[start + needle.len()..];
+            let (mut depth, mut last_comma) = (0usize, 0usize);
+            for (i, c) in body.char_indices() {
+                match c {
+                    '(' | '[' | '{' => depth += 1,
+                    ',' if depth == 0 => last_comma = i + 1,
+                    ')' | ']' | '}' if depth > 0 => depth -= 1,
+                    ')' => {
+                        out.push(body[last_comma..i].trim().parse().expect("a flags integer"));
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        out
+    }
+
+    /// Which boundary comments exist is decided once, for both halves, and the
+    /// page's halves need not share `dev`. A sole-occupant region took `WHOLE`
+    /// in a production build only, so a development client expected
+    /// `<!--[-->` where a production server wrote none, and the reverse.
+    #[test]
+    fn a_sole_occupant_region_is_whole_in_a_detecting_build_too() {
+        let cases = [
+            ("branch", "<div><Show when={props.x}><span>y</span></Show></div>"),
+            ("each", "<ul><For each={props.xs}>{(x) => <li>{x}</li>}</For></ul>"),
+            ("branch", "<div><Switch><Match when={props.x}><b>one</b></Match></Switch></div>"),
+            (
+                "branch",
+                "<div><Show when={props.x}><p><Show when={props.y}><i>z</i></Show></p></Show></div>",
+            ),
+        ];
+        for (call, jsx) in cases {
+            let source = format!(
+                "import {{ Show, For, Switch, Match }} from \"@barqjs/core\";\n\
+                 export default function P(props) {{ return {jsx}; }}\n"
+            );
+            for ssr in [false, true] {
+                let build = |dev: bool| {
+                    let options = ResolvedOptions {
+                        ssr,
+                        dev,
+                        hydratable: true,
+                        ..ResolvedOptions::with_filename("P.tsx")
+                    };
+                    let code = compile(&source, &options)
+                        .unwrap_or_else(|d| panic!("{}", format_diagnostics(&d)))
+                        .code;
+                    region_flags(&code, call)
+                };
+                let (production, development) = (build(false), build(true));
+                assert!(!production.is_empty(), "{jsx}: no `{call}` call");
+                assert_eq!(production.len(), development.len(), "{jsx}");
+                for (p, d) in production.iter().zip(&development) {
+                    assert_ne!(p & crate::ir::WHOLE, 0, "{jsx} (ssr: {ssr}) is not WHOLE");
+                    assert_eq!(p & crate::ir::WHOLE, d & crate::ir::WHOLE, "{jsx} (ssr: {ssr})");
+                    assert_eq!(
+                        p & !crate::ir::DETECT,
+                        d & !crate::ir::DETECT,
+                        "{jsx} (ssr: {ssr})"
+                    );
+                }
+            }
+        }
+    }
 }
