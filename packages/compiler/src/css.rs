@@ -1433,9 +1433,11 @@ impl<'a> Css<'a, '_> {
                         atoms: Vec::new(),
                     })
                 }
-                // `styles.root`, a group `create` already produced; a class
-                // string; and a `const` in this module holding one.
+                // `styles.root` or `gap[2]`, a group `create` already
+                // produced; a class string; and a `const` in this module
+                // holding one.
                 Expression::StaticMemberExpression(_)
+                | Expression::ComputedMemberExpression(_)
                 | Expression::StringLiteral(_)
                 | Expression::Identifier(_) => self.known(expression).map(|atoms| Argument {
                     at,
@@ -6047,5 +6049,43 @@ mod runtime_mirror_tests {
         // And unresolved, the module says which import the fold needed.
         let alone = compile(source, &ResolvedOptions::with_filename("card.ts")).expect("compiles");
         assert_eq!(alone.css_wanted, vec![("./when.ts".to_string(), "when".to_string())]);
+    }
+
+    /// A group's member named by a number, `gap[4]`, is composed as `gap.md` is:
+    /// left to the runtime, the group around it stayed a call in every build.
+    #[test]
+    fn a_member_read_by_index_is_composed_like_one_read_by_name() {
+        let imports = |member: &str| {
+            vec![
+                vec![
+                    "./layer.ts".to_string(),
+                    "layer".to_string(),
+                    "layer".to_string(),
+                    String::new(),
+                    "app".to_string(),
+                ],
+                vec![
+                    "./gap.ts".to_string(),
+                    "gap".to_string(),
+                    "group".to_string(),
+                    member.to_string(),
+                    "a-row-gap_x a-column-gap_x".to_string(),
+                ],
+            ]
+        };
+        for (member, read) in [("4", "gap[4]"), ("4", "gap[\"4\"]"), ("0.5", "gap[0.5]")] {
+            let options = TransformOptions {
+                filename: Some("card.ts".to_string()),
+                css_imports: Some(imports(member)),
+                ..TransformOptions::default()
+            };
+            let source = format!(
+                "import {{ layer }} from \"./layer.ts\";\nimport {{ gap }} from \"./gap.ts\";\n\
+                 export const card = layer({read}, {{ color: \"red\" }});"
+            );
+            let out = compile(&source, &options.resolve()).expect("compiles");
+            assert!(!out.code.contains("layer("), "{read}: {}", out.code);
+            assert!(out.code.contains("a-row-gap_x a-column-gap_x"), "{read}: {}", out.code);
+        }
     }
 }
