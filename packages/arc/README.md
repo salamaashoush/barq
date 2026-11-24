@@ -991,6 +991,16 @@ ui's `ToggleGroup` is the toggle button group: single or multiple, on
   `breakpoint` or under a finger at any width. The same heading, body,
   footer and open state in each; a server and a hydrating page draw the wide
   one. `useCompactOverlay` is the same question for an app's own overlay.
+- `DockedPanels` and `DockedPanelToggle`: a page with one panel docked
+  beside it at a time (details, comments, an assistant), which the page
+  makes room for rather than sitting under. The panel is a named landmark,
+  not a dialog, so the page stays in reach; its edge is ui's resizable
+  handle, which the arrows move and Enter folds, and its width is
+  remembered under `storageKey`. A toggle is pressed while its panel is
+  open and carries its `count`; the close button or Escape inside the panel
+  closes it and gives focus back to its toggle. A panel's `footer` stays
+  pinned under its content. Below `breakpoint` (`lg`) or under a finger the
+  panel is a sheet over the page instead.
 - `InlineAlert` and `Banner`: a message in a tone with its icon, a `title`,
   `actions` and, with `onDismiss`, a button that hides it. `InlineAlert`
   sits in the content with an edge and a corner; `Banner` runs across the

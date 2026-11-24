@@ -304,6 +304,14 @@ export {
   useNotifications,
 } from "./components/notifications.tsx";
 export {
+  type DockedPanel,
+  DockedPanelToggle,
+  type DockedPanelToggleProps,
+  DockedPanels,
+  type DockedPanelsProps,
+  dockedPanelsStyles,
+} from "./components/docked-panels.tsx";
+export {
   HighlightMatches,
   type HighlightMatchesProps,
   type MatchRange,

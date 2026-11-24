@@ -329,6 +329,9 @@ export interface ArcMessages {
   allSettings: string;
   saved: string;
   dangerZone: string;
+  closePanel: (panel: string) => string;
+  resizePanel: string;
+  panelWithCount: (panel: string, count: number) => string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -658,6 +661,9 @@ export const ENGLISH: ArcMessages = {
   allSettings: "All settings",
   saved: "Saved",
   dangerZone: "Danger zone",
+  closePanel: (panel) => `Close ${panel}`,
+  resizePanel: "Resize the panel",
+  panelWithCount: (panel, count) => `${panel}, ${String(count)}`,
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");
