@@ -56,6 +56,18 @@ const SHELL = `
 `;
 
 describe("on the server", () => {
+  test("a page comes back once it is written, whatever it leaves running", async () => {
+    const { code, html, errors } = await serverProcess(`
+      export async function page() {
+        setInterval(() => {}, 1000);
+        return "<p>written</p>";
+      }
+    `);
+    expect(errors).toBe("");
+    expect(code).toBe(0);
+    expect(html).toBe("<p>written</p>");
+  });
+
   test("AppShell writes its navigation, the current item and the trail", async () => {
     const { code, html, errors } = await serverProcess(routed(["AppShell"], SHELL, "/projects"));
     expect(errors).toBe("");

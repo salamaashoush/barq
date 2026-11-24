@@ -113,12 +113,17 @@ export async function serverProcess(
 ): Promise<{ code: number; html: string; errors: string }> {
   const built = await bundle(source, true);
   const runner = join(workspace(), `run${String(probes++)}.mjs`);
+  // The page is done when `page()` resolves, so the process exits there rather
+  // than when its event loop drains. A form keeps one alive for five seconds:
+  // `@tanstack/form-core` announces each form to TanStack's devtools and, with
+  // no bus to answer, retries once a second five times.
   writeFileSync(
     runner,
     [
       `import { page } from ${JSON.stringify(built)};`,
       "const html = await page();",
-      "process.stdout.write(html);",
+      "await Bun.write(Bun.stdout, html);",
+      "process.exit(0);",
       "",
     ].join("\n"),
   );
