@@ -182,3 +182,88 @@ describe("the data layer on the server", () => {
     expect(html).toContain('type="submit"');
   });
 });
+
+describe("the inputs, actions and overlays on the server", () => {
+  test("fields, pickers and chips render with no DOM", async () => {
+    const jsx = `
+      <main>
+        <Chip onRemove={() => {}}>Design</Chip>
+        <TagGroup label="Cities" items={[{ id: "a", label: "Cairo" }]} onRemove={() => {}} />
+        <TagInput label="Hosts" defaultValue={["example.com"]} name="hosts" />
+        <TimePicker label="Starts" />
+        <DateRangeField label="Period" presets="common" />
+        <ColorPicker label="Brand" defaultValue="#7f00ff" />
+        <ColorSwatches label="Tag" colors={["#e11d48", "#2563eb"]} />
+        <CurrencyField label="Price" currency="USD" defaultValue={12.5} />
+        <PhoneField label="Phone" defaultValue="+442079460958" />
+        <Rating label="Score" defaultValue={3} />
+        <RangeSlider label="Price range" defaultValue={[20, 60]} />
+        <RadioCards label="Plan" options={[{ value: "a", label: "A" }]} />
+        <FileUpload upload={() => Promise.resolve()} accept={["image/*"]} />
+      </main>
+    `;
+    const names = [
+      "Chip",
+      "TagGroup",
+      "TagInput",
+      "TimePicker",
+      "DateRangeField",
+      "ColorPicker",
+      "ColorSwatches",
+      "CurrencyField",
+      "PhoneField",
+      "Rating",
+      "RangeSlider",
+      "RadioCards",
+      "FileUpload",
+    ];
+    const { code, html, errors } = await serverProcess(routed(names, jsx, "/"));
+    expect(errors).toBe("");
+    expect(code).toBe(0);
+    expect(html).toContain('aria-label="Remove"');
+    expect(html).toContain("Cairo");
+    expect(html).toContain('name="hosts"');
+    expect(html).toContain("$12.50");
+    expect(html).toContain("GB +44");
+    expect(html).toContain('data-slot="rating"');
+    expect(html).toContain('type="range"');
+    expect(html).toContain("Accepts image/*");
+  });
+
+  test("actions, alerts and overlays render with no DOM, closed", async () => {
+    const jsx = `
+      <main>
+        <IconButton label="Delete"><svg /></IconButton>
+        <SplitButton onPress={() => {}} actions={[{ id: "a", label: "Later", onAction: () => {} }]}>Send</SplitButton>
+        <ActionBar aria-label="Invoice" actions={[{ id: "a", label: "Send" }]} onAction={() => {}} />
+        <Toolbar aria-label="Tools" variant="docked"><IconButton label="Bold"><svg /></IconButton></Toolbar>
+        <Banner tone="warning" onDismiss={() => {}}>Maintenance tonight.</Banner>
+        <InlineAlert tone="danger" title="Failed">Try again.</InlineAlert>
+        <Tearsheet heading="Setup"><p>Body</p></Tearsheet>
+        <ResponsiveOverlay heading="Filters"><p>Body</p></ResponsiveOverlay>
+        <Tour steps={[{ target: "#x", title: "Hi" }]} defaultOpen />
+      </main>
+    `;
+    const names = [
+      "IconButton",
+      "SplitButton",
+      "ActionBar",
+      "Toolbar",
+      "Banner",
+      "InlineAlert",
+      "Tearsheet",
+      "ResponsiveOverlay",
+      "Tour",
+    ];
+    const { code, html, errors } = await serverProcess(routed(names, jsx, "/"));
+    expect(errors).toBe("");
+    expect(code).toBe(0);
+    expect(html).toContain('aria-label="Delete"');
+    expect(html).toContain('aria-label="More options"');
+    expect(html).toContain('role="toolbar"');
+    expect(html).toContain("Maintenance tonight.");
+    expect(html).toContain('role="alert"');
+    expect(html).not.toContain("Setup");
+    expect(html).not.toContain('data-slot="coachmark"');
+  });
+});
