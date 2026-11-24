@@ -185,9 +185,28 @@ export interface SliderProps extends SliderComponentProps {
   inverted?: boolean;
   /** Which end is the minimum, for this slider alone. Defaults to the direction in scope. */
   dir?: "ltr" | "rtl";
+  /**
+   * A name per thumb, `["Minimum", "Maximum"]` for a range: without them
+   * both thumbs of a range are announced as the slider's label alone.
+   */
+  thumbLabels?: readonly string[];
+  /** On the track, after its own classes. */
+  trackClass?: string;
+  /** On every thumb, after its own classes. */
+  thumbClass?: string;
 }
 
-const UPSTREAM = ["min", "max", "onValueChange", "onValueCommit", "disabled", "inverted"] as const;
+const UPSTREAM = [
+  "min",
+  "max",
+  "onValueChange",
+  "onValueCommit",
+  "disabled",
+  "inverted",
+  "thumbLabels",
+  "trackClass",
+  "thumbClass",
+] as const;
 
 /**
  * ```tsx
@@ -224,13 +243,23 @@ export function Slider(props: SliderProps) {
       }}
     >
       <SliderOutput data-slot="slider-output" class={output} />
-      <Fill />
+      <Fill
+        labels={props.thumbLabels}
+        trackClass={props.trackClass}
+        thumbClass={props.thumbClass}
+      />
     </AriaSlider>
   );
 }
 
+interface FillProps {
+  labels?: readonly string[];
+  trackClass?: string;
+  thumbClass?: string;
+}
+
 /** The track and its thumbs, reading the state the enclosing slider provides. */
-function Fill() {
+function Fill(props: FillProps) {
   const group = useSlider();
   const direction = useDirection();
   const mirrored = (): boolean => isMirrored(group, direction);
@@ -246,13 +275,18 @@ function Fill() {
   };
 
   return (
-    <SliderTrack data-slot="slider-track" class={ui(track, range)} style={bounds()}>
+    <SliderTrack
+      data-slot="slider-track"
+      class={ui(track, range, props.trackClass)}
+      style={bounds()}
+    >
       {(index: number) => (
         <SliderThumb
           index={index}
+          aria-label={props.labels?.[index]}
           data-slot="slider-thumb"
           data-orientation={orientationOf(group)}
-          class={ui(thumb, place)}
+          class={ui(thumb, place, props.thumbClass)}
           style={at(group, index, mirrored)}
         />
       )}

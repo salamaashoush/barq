@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { provideDirection } from "@barqjs/aria/i18n";
 import { flush, type Child } from "@barqjs/core";
-import { cleanup, render, screen, user } from "@barqjs/testing";
+import { accessibleName, cleanup, render, screen, user } from "@barqjs/testing";
 
 import { Label } from "./label.tsx";
 import { Slider } from "./slider.tsx";
@@ -169,5 +169,27 @@ describe("Slider, named by a label elsewhere", () => {
     ));
     const thumb = screen.getByRole<HTMLInputElement>("slider", { name: "Year" });
     expect(thumb.id).toBe("year");
+  });
+});
+
+describe("Slider, a range with a name per thumb", () => {
+  test("each thumb is named by its own label and the group's, and its parts take a class", () => {
+    render(() => (
+      <Slider
+        aria-label="Price"
+        defaultValue={[20, 60]}
+        thumbLabels={["Minimum", "Maximum"]}
+        trackClass="mine-track"
+        thumbClass="mine-thumb"
+      />
+    ));
+    const names = thumbs().map((each) => accessibleName(each));
+    expect(names).toEqual(["Minimum Price", "Maximum Price"]);
+    expect(
+      document.querySelector('[data-slot="slider-track"]')?.classList.contains("mine-track"),
+    ).toBe(true);
+    for (const one of document.querySelectorAll('[data-slot="slider-thumb"]')) {
+      expect(one.classList.contains("mine-thumb")).toBe(true);
+    }
   });
 });
