@@ -323,3 +323,53 @@ export const page = () => () => (
   ).toBe("مستطيل");
   expect(module.handle.api?.getAppState().theme).toBe("light");
 });
+
+test("the server renders the 3b UI (welcome screen, sidebar, dialogs) and the browser hydrates it", async () => {
+  const compiled = compile(
+    `
+import { DiagramEditor, WelcomeScreen } from ${JSON.stringify(ENTRY)}
+
+export const handle = { api: null }
+
+export const page = () => () => (
+  <main>
+    <DiagramEditor
+      label="Whiteboard"
+      name="Release plan"
+      welcomeScreen={
+        <WelcomeScreen.Center>
+          <WelcomeScreen.Center.Heading>Sketch it</WelcomeScreen.Center.Heading>
+        </WelcomeScreen.Center>
+      }
+      textToDiagram={{ onTextSubmit: async () => ({ generatedResponse: "" }) }}
+      onLibraryChange={() => {}}
+      api={(api) => (handle.api = api)}
+    />
+  </main>
+)
+`,
+    "editor-ui-3b",
+  );
+  const served = serve(compiled.ssr);
+  const container = document.createElement("div");
+  document.body.append(container);
+  container.innerHTML = served.html;
+  expect(container.querySelector("[data-testid=welcome-screen]")).toBeNull();
+
+  const module = (await import(`${compiled.dom}?${Math.random()}`)) as {
+    page: () => () => unknown;
+    handle: { api: DiagramEditorApi | null };
+  };
+  resetChildIds();
+  cleanups.push(hydrate(module.page() as never, container));
+  flush();
+  expect(hydrate.report.recovered).toBe(false);
+  expect(hydrate.report.mismatches).toEqual([]);
+  for (let round = 0; round < 4; round++) {
+    flush();
+    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  flush();
+  expect(container.querySelector("[data-testid=welcome-heading]")?.textContent).toBe("Sketch it");
+});

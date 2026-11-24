@@ -63,6 +63,28 @@ describe("barq's strings", () => {
     expect(within(palette).queryByText("Editor")).toBeNull();
   });
 
+  test("the live region speaks the language: tools, selections and actions", async () => {
+    await loadLanguage("ar-SA");
+    const { region } = await mountEditor({
+      langCode: "ar-SA",
+      initialData: {
+        elements: [{ type: "rectangle", id: "A", x: 0, y: 0, width: 50, height: 50 } as never],
+      },
+    });
+    await settle();
+    const live = region.querySelector("[role=status]")!;
+    key(region, { key: "r", code: "KeyR" });
+    await settle();
+    expect(live.textContent?.trim()).toBe("أداة مستطيل");
+    key(region, { key: "Escape", code: "Escape" });
+    key(region, { key: "a", code: "KeyA", ...ctrl });
+    await settle();
+    expect(live.textContent?.trim()).toBe("مستطيل محدد");
+    key(region, { key: "d", code: "KeyD", ...ctrl });
+    await settle();
+    expect(live.textContent?.trim()).toBe("نُسخ نسخة مكررة");
+  });
+
   test("English is the fallback, key by key", async () => {
     const { region } = await mountEditor();
     const help = document.getElementById(region.getAttribute("aria-describedby")!)!;

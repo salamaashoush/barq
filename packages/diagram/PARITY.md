@@ -107,7 +107,7 @@ embeds.
 - done: `UIOptions` canvas actions and image tool, `renderTopLeftUI`, `renderTopRightUI`, `renderCustomStats`, `aiEnabled`, `excalidrawAPI` (`panels.test.tsx`)
 - done: server render of the UI in its language, hydrated without a mismatch (`diagram-editor.test.tsx`)
 - done: help dialog with every shortcut, from `?`, the help button and the main menu (`dialogs.test.tsx`)
-- done: barq's own strings (the palette's categories, the keyboard help) in `locales/barq/`, laid over Excalidraw's locale as it loads (`dialogs.test.tsx`)
+- done: barq's own strings (the palette's categories, the keyboard help, the live region's announcements) in `locales/barq/`, laid over Excalidraw's locale as it loads (`dialogs.test.tsx`)
 - done: image export dialog: preview, only selected, background, dark mode, embedded scene, scale, PNG, SVG and copy as PNG; Ctrl+Shift+E (`export.test.tsx`, `files.test.ts`)
 - done: export dialog: save to disk, `onExportToBackend`, `renderCustomUI` (`export.test.tsx`)
 - done: save and load through the File System Access API with a download and file input fallback; `saveToActiveFile` (Ctrl+S, to the image a scene came from too), `saveFileToDisk` (Ctrl+Shift+S), `loadScene` (Ctrl+O) with the overwrite confirmation, `onExport` with its progress (`export.test.tsx`, `files.test.ts`)

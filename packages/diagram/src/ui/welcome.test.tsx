@@ -5,7 +5,9 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { ariaViolations, screen, user } from "@barqjs/testing";
+import { ariaViolations, render, screen, user } from "@barqjs/testing";
+
+import { DiagramEditor } from "../index.ts";
 
 import { WelcomeScreen } from "./welcome-screen.tsx";
 import { canvas, mountEditor, pointer, rectangle, settle, setupUITests } from "./test-ui.tsx";
@@ -67,23 +69,27 @@ describe("welcome screen", () => {
   });
 
   test("an app composes its own from the parts", async () => {
-    await mountEditor({
-      welcomeScreen: () => (
-        <>
-          <WelcomeScreen.Center>
-            <WelcomeScreen.Center.Logo>Acme</WelcomeScreen.Center.Logo>
-            <WelcomeScreen.Center.Heading>Sketch the release</WelcomeScreen.Center.Heading>
-            <WelcomeScreen.Center.Menu>
-              <WelcomeScreen.Center.MenuItemHelp />
-              <WelcomeScreen.Center.MenuItemLink href="https://example.com/docs">
-                Docs
-              </WelcomeScreen.Center.MenuItemLink>
-            </WelcomeScreen.Center.Menu>
-          </WelcomeScreen.Center>
-          <WelcomeScreen.Hints.ToolbarHint>Start here</WelcomeScreen.Hints.ToolbarHint>
-        </>
-      ),
-    });
+    render(() => (
+      <DiagramEditor
+        height={800}
+        welcomeScreen={
+          <>
+            <WelcomeScreen.Center>
+              <WelcomeScreen.Center.Logo>Acme</WelcomeScreen.Center.Logo>
+              <WelcomeScreen.Center.Heading>Sketch the release</WelcomeScreen.Center.Heading>
+              <WelcomeScreen.Center.Menu>
+                <WelcomeScreen.Center.MenuItemHelp />
+                <WelcomeScreen.Center.MenuItemLink href="https://example.com/docs">
+                  Docs
+                </WelcomeScreen.Center.MenuItemLink>
+              </WelcomeScreen.Center.Menu>
+            </WelcomeScreen.Center>
+            <WelcomeScreen.Hints.ToolbarHint>Start here</WelcomeScreen.Hints.ToolbarHint>
+          </>
+        }
+      />
+    ));
+    await settle();
     expect(screen.getByTestId("welcome-heading").textContent).toBe("Sketch the release");
     expect(screen.getByText("Acme")).toBeDefined();
     expect(screen.getByRole("link", { name: "Docs" }).getAttribute("href")).toBe(

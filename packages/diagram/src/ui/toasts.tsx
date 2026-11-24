@@ -8,7 +8,7 @@ import type { DiagramUI } from "./context.tsx";
 
 /** A message the editor set, as a string in the language of the moment. */
 const messageText = (ui: DiagramUI, message: unknown): string => {
-  if (isLocalizedMessage(message)) return ui.t(message.key, message.replacement);
+  if (isLocalizedMessage(message)) return ui.t(message.key, message.replacement, message.fallback);
   if (message instanceof Error) return message.message;
   return typeof message === "string" ? message : String(message);
 };

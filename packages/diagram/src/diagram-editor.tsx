@@ -93,9 +93,9 @@ export interface DiagramEditorProps {
   mainMenu?: () => Child;
   /**
    * Excalidraw's welcome screen over an empty scene: `true` for its heading,
-   * menu and hints, or a function returning `WelcomeScreen` parts.
+   * menu and hints, or the `WelcomeScreen` parts to show instead.
    */
-  welcomeScreen?: true | (() => Child);
+  welcomeScreen?: true | Child;
   /** Excalidraw's `aiEnabled`: the text-to-diagram and wireframe entries. @default true */
   aiEnabled?: boolean;
   /**
@@ -300,7 +300,8 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
     }
     const detachStore = store.attach(created);
     let repeat = false;
-    const offAnnounce = created.onAnnounce((message) => {
+    const offAnnounce = created.onAnnounce((english, localized) => {
+      const message = ui.t(localized.key, localized.replacement, localized.fallback ?? english);
       // written outside whatever is running: an announcement may come from
       // an API call made in an effect
       queueMicrotask(() => {

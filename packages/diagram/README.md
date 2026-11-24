@@ -288,7 +288,7 @@ draws, a finger pans) and shows its toggle beside the toolbar.
 `welcomeScreen` puts Excalidraw's welcome screen over a scene that has never
 had an element while the selection tool is active: `true` for a heading, a
 menu (open a file, help) and hints pointing at the main menu, the toolbar and
-help, or a function returning `WelcomeScreen` parts, as Excalidraw's children
+help, or the `WelcomeScreen` parts to show (as JSX), as Excalidraw's children
 are (`WelcomeScreen.Center`, `.Center.Logo`, `.Center.Heading`,
 `.Center.Menu`, `.Center.MenuItem`, `.Center.MenuItemLink`,
 `.Center.MenuItemHelp`, `.Center.MenuItemLoadScene`, `WelcomeScreen.Hints`).

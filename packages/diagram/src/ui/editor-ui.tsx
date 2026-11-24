@@ -77,7 +77,7 @@ export interface EditorUIProps {
   /** The main menu's entries, replacing Excalidraw's defaults. */
   mainMenu?: () => Child;
   /** The welcome screen over an empty scene, `true` for Excalidraw's. */
-  welcomeScreen?: true | (() => Child);
+  welcomeScreen?: true | Child;
 }
 
 /**
@@ -95,7 +95,7 @@ export function EditorUI(props: EditorUIProps) {
   );
 }
 
-function Layout(props: { mainMenu?: () => Child; welcomeScreen?: true | (() => Child) }) {
+function Layout(props: { mainMenu?: () => Child; welcomeScreen?: true | Child }) {
   const value = useDiagramUI();
   const locale = provideLocale(() => value.langCode());
   const zen = () => value.store.state("zenModeEnabled");

@@ -266,11 +266,11 @@ function Center(props: { children?: Child }) {
  * element while the selection tool is active: a heading and a menu in the
  * middle, and hints pointing at the main menu, the toolbar and help. An app
  * passes `welcomeScreen` to `<DiagramEditor>`: `true` for these defaults, or
- * a function returning `WelcomeScreen` parts.
+ * the `WelcomeScreen` parts to show.
  *
  * ```tsx
  * <DiagramEditor
- *   welcomeScreen={() => (
+ *   welcomeScreen={
  *     <>
  *       <WelcomeScreen.Center>
  *         <WelcomeScreen.Center.Logo><MyMark /></WelcomeScreen.Center.Logo>
@@ -282,7 +282,7 @@ function Center(props: { children?: Child }) {
  *       </WelcomeScreen.Center>
  *       <WelcomeScreen.Hints.ToolbarHint />
  *     </>
- *   )}
+ *   }
  * />
  * ```
  */
@@ -316,7 +316,7 @@ export const WelcomeScreen = Object.assign(
 const layer = d({ position: "absolute", inset: "0", pointerEvents: "none" });
 
 /** The welcome screen when the editor is empty and waiting, Excalidraw's `renderWelcomeScreen`. */
-export function WelcomeScreenLayer(props: { content: true | (() => Child) }) {
+export function WelcomeScreenLayer(props: { content: true | Child }) {
   const ui = useDiagramUI();
   const store = ui.store;
   const shown = () =>
@@ -328,7 +328,7 @@ export function WelcomeScreenLayer(props: { content: true | (() => Child) }) {
   return (
     <Show when={shown()}>
       <div class={layer} data-testid="welcome-screen">
-        {props.content === true ? <WelcomeScreen /> : props.content()}
+        {props.content === true ? <WelcomeScreen /> : props.content}
       </div>
     </Show>
   );

@@ -228,7 +228,9 @@ const findPath = (data: unknown, parts: readonly string[]): string | undefined =
   return typeof node === "string" ? node : undefined;
 };
 
-export type TranslationReplacement = Readonly<Record<string, string | number>>;
+export type TranslationReplacement = Readonly<
+  Record<string, string | number | { key: TranslationKey; fallback?: string }>
+>;
 
 /**
  * A key's text in `data`, English where `data` has none, with each
@@ -250,7 +252,12 @@ export const translate = (
   }
   if (replacement) {
     for (const key in replacement) {
-      const value = String(replacement[key]);
+      const given = replacement[key];
+      // a replacement that is a message itself is translated first: a tool's name in "{{tool}} tool"
+      const value =
+        typeof given === "object"
+          ? translate(data, given.key, null, given.fallback)
+          : String(given);
       // Excalidraw writes `toast.fileSavedToFilename`'s placeholder with single braces
       translation = translation.replace(`{{${key}}}`, value).replace(`{${key}}`, value);
     }
@@ -271,6 +278,8 @@ export type Translate = (
 export interface LocalizedMessage {
   key: TranslationKey;
   replacement?: TranslationReplacement;
+  /** The text when no locale has the key. */
+  fallback?: string;
 }
 
 export const isLocalizedMessage = (value: unknown): value is LocalizedMessage =>

@@ -171,7 +171,7 @@ import type { GlobalPoint, LocalPoint } from "@excalidraw/math";
 
 import { getDefaultAppState, isEraserActive, isHandToolActive } from "../app-state.ts";
 import { parseDataTransferEvent } from "../clipboard.ts";
-import { errorMessageOf } from "../i18n.ts";
+import { errorMessageOf, type LocalizedMessage } from "../i18n.ts";
 import {
   dataURLToString,
   getDataURL_sync,
@@ -202,7 +202,13 @@ import { ActionManager } from "./actions/manager.ts";
 import { actionFinalize } from "./actions/finalize.ts";
 import { actionToggleLinearEditor } from "./actions/linear-editor.ts";
 import { createRedoAction, createUndoAction, editorActions } from "./actions/index.ts";
-import { describeSelection, describeTool } from "./announce.ts";
+import {
+  type Announcement,
+  EDITING_GROUP,
+  actionAnnouncement,
+  describeSelection,
+  describeTool,
+} from "./announce.ts";
 import { EditorCursor } from "./cursor.ts";
 import { History } from "./history.ts";
 import {
@@ -530,7 +536,7 @@ export class DiagramEditor {
   private files: BinaryFiles = {};
   private readonly sceneCanvas: SceneCanvas;
   private readonly changeEmitter = new Emitter<Parameters<DiagramChangeListener>>();
-  private readonly announceEmitter = new Emitter<[message: string]>();
+  private readonly announceEmitter = new Emitter<[message: string, localized: LocalizedMessage]>();
   private readonly textEditEmitter = new Emitter<[request: TextEditRequest]>();
   private readonly textEditEndEmitter = new Emitter();
   private readonly frameNamesEmitter = new Emitter<[frames: readonly FrameName[]]>();
@@ -569,6 +575,7 @@ export class DiagramEditor {
   private isDraggingScrollBar = false;
   private resetCacheIgnoreZoom: number | null = null;
   private newElementCanvasDrawn = false;
+  private cachedSelectionColor: { theme: AppState["theme"]; color: string } | null = null;
   private destroyed = false;
   /**
    * A secondary-button press: a pan when it drags, the context menu when it
@@ -733,7 +740,11 @@ export class DiagramEditor {
   }
 
   /** Subscribes to what the live region should say: tool and selection changes, and actions. */
-  public onAnnounce(listener: (message: string) => void): () => void {
+  /**
+   * Subscribes to what the live region says: the English, and the message to
+   * translate it from (`LocalizedMessage`, its replacements messages too).
+   */
+  public onAnnounce(listener: (message: string, localized: LocalizedMessage) => void): () => void {
     return this.announceEmitter.on(listener);
   }
 
@@ -1539,12 +1550,12 @@ export class DiagramEditor {
     ) {
       this.announce(describeSelection(this.scene.getSelectedElements(state), state));
     } else if (prevState.editingGroupId !== state.editingGroupId && state.editingGroupId) {
-      this.announce("Editing group");
+      this.announce(EDITING_GROUP);
     }
   }
 
-  private announce(message: string): void {
-    this.announceEmitter.trigger(message);
+  private announce(announcement: Announcement): void {
+    this.announceEmitter.trigger(announcement.text, announcement.message);
   }
 
   // ---------------------------------------------------------------------------
@@ -1667,7 +1678,8 @@ export class DiagramEditor {
       }
       const announcement = action?.announcement;
       if (announcement) {
-        this.afterCommit.push(() => this.announce(announcement));
+        const name = action.name;
+        this.afterCommit.push(() => this.announce(actionAnnouncement(name, announcement)));
       }
     });
   }
@@ -5486,7 +5498,7 @@ export class DiagramEditor {
         remoteSelectedElementIds: new Map(),
         remotePointerUsernames: new Map(),
         remotePointerUserStates: new Map(),
-        selectionColor: getSelectionColor(container),
+        selectionColor: this.selectionColor(container),
         renderScrollbars: false,
         lastViewportPosition: this.lastPosition,
       },
@@ -5536,6 +5548,19 @@ export class DiagramEditor {
         theme: state.theme,
       },
     });
+  }
+
+  /**
+   * The selection's colour, from the container's `--color-selection`: read
+   * again only when the theme changes, as reading a computed style each frame
+   * would recompute the page's styles whenever anything had dirtied them.
+   */
+  private selectionColor(container: HTMLElement): string {
+    const theme = this.state.theme;
+    if (this.cachedSelectionColor?.theme !== theme) {
+      this.cachedSelectionColor = { theme, color: getSelectionColor(container) };
+    }
+    return this.cachedSelectionColor.color;
   }
 
   private sizeCanvas(canvas: HTMLCanvasElement, scale: number): void {
