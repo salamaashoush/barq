@@ -525,6 +525,12 @@ import { ResponsiveTabs } from "@barqjs/arc";
   `activeId` holds the mark instead, and `sticky` keeps the list in view
   beside the content. The links are plain anchors, so the browser scrolls,
   keeps the address and moves focus itself.
+- `SideNav`: a page's own navigation outside `AppShell`, a settings area's or
+  a record's sections, from the same `NavGroup` data, so a section moves
+  between the two unchanged. A named landmark of grouped router links, the
+  current one `aria-current="page"`, a badge read as its description, one
+  level of links below an item. Across a narrow container the groups run as
+  one row that scrolls sideways (`collapse="never"` keeps the column).
 
 ## Data display
 

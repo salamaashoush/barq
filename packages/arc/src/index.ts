@@ -464,3 +464,4 @@ export {
   type TocItem,
   tableOfContentsStyles,
 } from "./components/table-of-contents.tsx";
+export { SideNav, type SideNavProps, sideNavStyles } from "./components/side-nav.tsx";
