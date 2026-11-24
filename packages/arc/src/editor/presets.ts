@@ -9,7 +9,9 @@ import {
   richTextExtension,
   tableExtension,
 } from "./core.tsx";
+import { documentStatusExtension } from "./document-status.tsx";
 import type { EditorExtension } from "./extension.ts";
+import { findExtension } from "./find-panel.tsx";
 import { footnoteExtension } from "./footnote.tsx";
 import { PageBreakBlock } from "./page-break.tsx";
 import { toggleExtension } from "./toggle.tsx";
@@ -31,6 +33,8 @@ export const documentPreset: readonly EditorExtension[] = [
   toggleExtension,
   PageBreakBlock,
   footnoteExtension,
+  findExtension,
+  documentStatusExtension,
 ];
 
 /** A message: rich text, links, images and mentions, nothing laid out as a page. */

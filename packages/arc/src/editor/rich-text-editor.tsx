@@ -38,6 +38,7 @@ import {
   space,
   truncate,
   type,
+  zIndex,
 } from "../style/index.ts";
 import { labelOf } from "./blocks.tsx";
 import {
@@ -63,7 +64,15 @@ import { DEFAULT_TOOLS, type EditorTool, EditorToolbar, type InsertAction } from
 
 export const richTextEditorStyles = variants({
   slots: {
-    root: arc(layout.column, layout.relative, layout.minZero),
+    root: arc(layout.column, layout.relative, layout.minZero, {
+      // Focus mode: the editor alone over the page, its text in a readable column.
+      "&[data-focus-mode]": {
+        position: "fixed",
+        inset: "0",
+        zIndex: zIndex.overlay,
+        backgroundColor: tokens.background,
+      },
+    }),
     body: arc(layout.relative, layout.growAuto, layout.minZero, {
       overflowY: "auto",
       minBlockSize: "var(--editor-min-height, auto)",
@@ -74,6 +83,7 @@ export const richTextEditorStyles = variants({
       padding: space.x3,
       // Footnotes number themselves in reading order from this counter.
       counterReset: "arc-footnote",
+      "[data-focus-mode] &": { maxInlineSize: "72ch", marginInline: "auto", width: "100%" },
     }),
     placeholder: arc(fg.faint, truncate, place.passive, {
       insetBlockStart: space.x3,
