@@ -135,8 +135,8 @@ declaration lands on the class arc's own components already use.
 - `gap[0]` to `gap[12]`, and `space.x0` to `space.x16` for any other length
   on the same scale.
 - `type`: `title`, `heading`, `subheading`, `body`, `label`, `meta`,
-  `caption`, `stat`, `numeric`, `mono`, `sans`, and the sizes and weights on
-  their own. They start from ui's `text.sm`, `text.medium` and
+  `caption`, `stat`, `numeric`, `mono`, `sans`, `written` (text as it was
+  typed, its line breaks kept), and the sizes and weights on their own. They start from ui's `text.sm`, `text.medium` and
   `text.heading`, so a label is one class in ui and in arc.
 - Colour by role: `fg` (`default`, `muted`, `faint`, `link`, `danger`,
   `tone`, ...), `bg` (`page`, `card`, `popover`, `sunken`, `muted`, `tone`,
@@ -283,7 +283,9 @@ if (await confirm({ title: "Delete the check?", tone: "danger", confirmLabel: "D
   trigger, the trail and the actions. The navigation is data, each item a
   router link marked current while the location is under it. The sidebar
   collapses to its icons, opens as it was left (the server reads the same
-  cookie), and is a sheet on a narrow screen.
+  cookie), and is a sheet on a narrow screen. `sidebar` holds what is the
+  reader's own rather than a page to go to, below the navigation: a
+  `ConversationList`.
 - `ThemeToggle`: light, dark or system from a menu on one button, on the
   provider's `colorScheme`. Its icon shows the choice, which the server knows
   from the cookie, so the page hydrates without a flicker.
@@ -790,6 +792,17 @@ import { CommentThreadList } from "@barqjs/arc";
   under it across a narrow one.
 - `PersonAvatar`: one person's photo, or their initials while it loads or when
   it fails, which `AvatarStack` and the comments draw.
+- `ReactionBar`: the reactions on a comment or a message, a pressed chip per
+  emoji with its count and who reacted in words, and an add button whose
+  menu of `quick` emoji a `picker` replaces (the chat's `EmojiPicker`).
+- `PresenceDot` and `PresenceStatus`: whether someone is online, away, not
+  to be disturbed or offline, in a tone and a shape so colour is never the
+  only sign, `anchored` over an avatar's corner or beside a name in words;
+  the status they set, an emoji and a line, until it lapses at `expiresAt`
+  by itself. `PresenceProvider` keeps everyone's presence and who is typing
+  where from one socket (`websocket` in `@barqjs/primitives`), read with
+  `usePresence(userId)` and `useTyping(conversationId)`; each typing report
+  lapses when the next does not come, and going offline stops it.
 - `MemberInvite`, `PendingInvites` and `InviteLinks`: bringing people in.
   `MemberInvite` is an arc form: addresses typed or pasted as `TagInput`
   chips, each checked as it is added (`validateEmail` adds rules of the
@@ -1183,3 +1196,90 @@ page pays only for the languages it shows.
 The colours are the theme's `code-*` tokens and the metrics are custom
 properties (`--code-font-size`, `--code-line-height`, ...), so light, dark and
 an app's brand restyle a live editor with no reconfigure.
+
+## Chat
+
+```tsx
+import { ConversationList, EmojiPicker, MessageList, ThreadPanel } from "@barqjs/arc/chat";
+
+<MessageList
+  aria-label="#design"
+  messages={messages()}
+  unreadFrom={firstUnread()}
+  hasOlder={cursor() !== null}
+  isLoadingOlder={loading()}
+  onLoadOlder={loadOlder}
+  currentUserId={me.id}
+  onReact={(message, emoji, add) => react(message.id, emoji, add)}
+  onReply={(message) => openThread(message.id)}
+  linkTo={(message) => `/c/design/${message.id}`}
+/>;
+```
+
+The communication suite, in an entry of its own: an app that never shows a
+conversation carries none of it, and its emoji data loads only when a picker
+first opens. Rich message content is drawn by `RichTextRenderer` from
+`@barqjs/arc/editor`, where `ChatComposer` lives.
+
+- `MessageList`: a conversation that opens at its newest message and stays
+  there while new ones arrive, and draws only the rows on screen through
+  `@barqjs/aria`'s list layout and virtualizer, each measured as it renders.
+  Whatever moves the layout (older pages loaded above, an image growing a
+  row, the window resizing) the list keeps its place: at the newest message
+  if the reader was there, otherwise with the first row on screen where it
+  was. It asks for older pages as the top comes within a screen, and away
+  from the end Jump to latest counts what has arrived. Runs of one author
+  are grouped, each day has a line and the first unread a New line, which
+  the list opens at. Messages are a feed of articles, one Tab stop: the
+  arrows and Page Up and Page Down move between them, Home and End go to
+  the ends, Escape comes back out of a message's controls, and a new
+  message from someone else is announced. `controller` hands over
+  `scrollToLatest` and `scrollToMessage`.
+- `MessageItem`: one message on ui's `Message`: the author, the time,
+  edited and pinned; the body as text, rich `content`, or `renderBody`'s;
+  pictures in a `Gallery` that opens the `Lightbox`, audio and video in
+  `MediaPlayer`, other files as ui's `Attachment` cards that download; a
+  `ReactionBar` with the `EmojiPicker`; and a thread's reply count, its
+  people and its last reply. Its actions are a toolbar on hover or focus
+  (react, reply in thread, edit, and a menu to copy the link, pin and delete
+  after asking) and a sheet on a long press under a finger. A message still
+  sending is dimmed and says so; one refused says why with Retry and
+  Discard. `appearance="bubble"` puts the reader's own at the reading end.
+- `ThreadPanel`: a message's thread, the message, its replies counted and
+  listed as a `MessageList`, who is typing and a composer. In
+  `DockedPanels` it docks beside the conversation and is a sheet on a
+  phone.
+- `EmojiPicker`: every emoji in Unicode's groups and order, searched by
+  name and keyword, with the reader's recently used first, a skin tone
+  chosen once and remembered, and a row of categories that jumps to each and
+  marks the one in view. The search keeps focus while the arrows move
+  through the grid in the reading direction and Enter chooses. Only the rows
+  on screen are drawn. The data is emojibase's, which follows Unicode's
+  list and CLDR's names release by release as plain JSON in two dozen
+  languages; English is loaded by default, and `source` takes another
+  language's file or the app's own.
+- `TypingIndicator`: "Alex and Sam are typing", the names joined as the
+  locale joins a list, in a status that stays in the page.
+- `ConversationList`: channels and direct messages for `AppShell`'s
+  `sidebar`, in groups whose headings fold them. A channel shows `#` or a
+  lock, a direct message the person's avatar and presence; unread ones are
+  bold with their count, mentions in the danger tone, muted ones quiet and
+  counting only mentions, and a draft marked, each read after the name.
+- Calls: `CallStage` lays everyone out in a grid that adds columns with the
+  room it has, or puts whoever presents or speaks on stage over a strip of
+  the rest, by its own width so a side panel or a picture-in-picture
+  window (`compact`) lays out for itself. `ParticipantTile` plays the
+  `MediaStream` the app hands it (WebRTC stays in the app), mirrors the
+  reader's own camera, shows the avatar while the camera is off and says
+  muted, presenting, speaking and a poor connection; `renders.video` draws
+  the stream in an element of the app's. `CallControls` is one toolbar for
+  the microphone, the camera, the screen, a devices menu and Leave.
+  `IncomingCall` says who is calling, aloud too, with Accept and Decline,
+  and `CallBanner` shows a call going on in a conversation with its time,
+  its people and Join.
+- `AIChatPanel`: a conversation with an assistant: replies written out as
+  markdown while they stream, the tools it calls with their state, input
+  and result, a proposed change to Approve or Reject, sources, Stop,
+  Regenerate, a copy of each reply and suggestions while it is empty. Its
+  transcript is ui's `MessageScroller`; `composer` takes `ChatComposer` in
+  place of its own.
