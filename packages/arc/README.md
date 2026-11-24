@@ -211,3 +211,48 @@ if (await confirm({ title: "Delete the check?", tone: "danger", confirmLabel: "D
 - `Breadcrumbs`: where the page sits, read from the matched routes'
   `staticData.crumb` or given as items. A narrow trail folds its middle steps
   behind a button that shows them.
+
+## Code
+
+```tsx
+import { CodeBlock, CodeDiff, CodeEditor } from "@barqjs/arc/code";
+
+<CodeEditor label="Query" language="sql" value={query()} onChange={setQuery} />;
+
+<CodeDiff original={saved()} modified={draft()} language="json" layout="unified" />;
+
+<CodeBlock filename="vite.config.ts" language="typescript" code={config} lineNumbers />;
+```
+
+The code components are CodeMirror 6, in an entry of their own so an app that
+never imports them carries none of it. Each language loads on first use, so a
+page pays only for the languages it shows.
+
+- `CodeEditor`: an editor owned by the component and destroyed with it. `value`
+  makes the document the caller's and `defaultValue` leaves it the editor's;
+  `onChange` hears each tick's edits once, after them. `language`,
+  `readOnly`, `placeholder`, `lineNumbers`, `wrap`, `tabSize`, `minHeight`,
+  `maxHeight` and `extensions` (an extension, or an accessor it follows)
+  reconfigure the live editor. `label`, `labelledBy`, `description` and
+  `describedBy` name and describe it, `invalid` marks it, and Mod-Enter calls
+  `onSubmit`. `onView` hands over the `EditorView` for anything the props do
+  not reach, such as a language service in a worker. On a server, and until
+  its language loads, it is the code highlighted in a `<pre>` of the editor's
+  own metrics, which a hydrated page adopts and the editor then replaces
+  without moving a line.
+- `CodeDiff`: two texts compared with `@codemirror/merge`, side by side or
+  unified, unchanged stretches folded. Editable, the modified side reports
+  its changes as `CodeEditor` does.
+- `CodeBlock`: code to read and copy, with its file or language above it, a
+  `CopyButton`, and line numbers drawn by CSS so a copy leaves them out.
+  `Highlight` is the code alone. Both highlight with lezer and no editor, so
+  a server writes them highlighted and the browser adopts that markup without
+  loading the language.
+- Languages: `javascript`, `jsx`, `typescript`, `tsx`, `json`, `html`, `css`,
+  `markdown`, `python`, `xml`, `yaml` and `sql`, with aliases such as `ts`
+  and `yml`. `registerLanguage` adds an app's own, a legacy mode included, and
+  `language` also takes a `LanguageSupport` built by hand.
+
+The colours are the theme's `code-*` tokens and the metrics are custom
+properties (`--code-font-size`, `--code-line-height`, ...), so light, dark and
+an app's brand restyle a live editor with no reconfigure.
