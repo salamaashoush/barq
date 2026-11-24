@@ -645,21 +645,28 @@ export function virtualizer(options: VirtualizerOptions): VirtualizerState {
    */
   let lastRect = rect(0, 0, 0, 0);
   let lastCollection: Collection<unknown> | null = null;
+  let lastRevision = -1;
   const laidOut = (): Layout => {
-    revision();
+    // A measurement that corrected an estimate moves every row below it, so
+    // the layout is redone for it as for a new collection.
+    const measured = revision();
     const area = visibleRect();
     const box = size();
     const collection = options.collection();
     // The layout is asked about the container's box: the window clipping it
     // changes what is on screen, not where anything goes.
     const sized = rect(area.x, area.y, box.width, box.height);
-    const stale = collection !== lastCollection || options.layout.shouldInvalidate(sized, lastRect);
+    const stale =
+      collection !== lastCollection ||
+      measured !== lastRevision ||
+      options.layout.shouldInvalidate(sized, lastRect);
 
     if (stale) options.layout.update({ collection, visibleRect: area, size: box });
     else options.layout.setVisibleRect(area);
 
     lastCollection = collection;
     lastRect = sized;
+    lastRevision = measured;
     return options.layout;
   };
 
@@ -773,7 +780,11 @@ export function rowStyle(info: LayoutInfo): Record<string, string> {
  * observing every row to be told what it was told would cost more than the
  * virtualisation saves.
  */
-export function measureRow(virtual: VirtualizerValue | null, key: Key, ref: ElementRef): void {
+export function measureRow(
+  virtual: Pick<VirtualizerValue, "measure" | "shouldMeasure"> | null,
+  key: Key,
+  ref: ElementRef,
+): void {
   if (isServer || virtual === null) return;
 
   createEffect(

@@ -12,7 +12,7 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { flush, createSignal } from "@barqjs/core";
+import { flush, createRoot, createSignal } from "@barqjs/core";
 import { render, screen, user } from "@barqjs/testing";
 import type { Key, Node } from "./collections.ts";
 import { ListCollection } from "./collections.ts";
@@ -24,7 +24,9 @@ import { Cell, Column, Row, Table, TableBody, TableHeader } from "./table.tsx";
 import { fireDrag, MockDataTransfer, nextFrame, restoreRects, stubRects } from "./test-dnd.ts";
 import {
   listLayout,
+  measureRow,
   rectIntersects,
+  virtualizer,
   rectMaxY,
   rect,
   Virtualizer,
@@ -471,6 +473,64 @@ describe("a measured row after the width changes", () => {
     layout.update({ collection, visibleRect: rect(0, 0, 200, VIEWPORT) });
     layout.update({ collection, visibleRect: rect(0, 0, 120, VIEWPORT) });
     expect(layout.getLayoutInfo("c0")?.isEstimated).toBe(false);
+  });
+});
+
+describe("the virtualizer's state", () => {
+  test("a row measured after the layout was made moves the rows below it and the size", () => {
+    const items = ["a", "b", "c"].map(
+      (key): Node<unknown> => ({
+        type: "item",
+        key,
+        value: key,
+        textValue: key,
+        level: 0,
+        index: 0,
+        hasChildNodes: false,
+        childNodes: [],
+        props: {},
+      }),
+    );
+    const collection = new ListCollection<unknown>(items);
+    const [state, dispose] = createRoot((done) => [
+      virtualizer({
+        layout: listLayout({ estimatedRowHeight: 50 }),
+        collection: () => collection,
+        ref: () => null,
+      }),
+      done,
+    ]);
+    expect(state.contentSize().height).toBe(150);
+    state.measure("a", { width: 0, height: 20 });
+    flush();
+    expect(state.contentSize().height).toBe(120);
+    expect(state.layout.getLayoutInfo("b")?.rect.y).toBe(20);
+    dispose();
+  });
+});
+
+describe("measuring a row outside a <Virtualizer>", () => {
+  test("takes any measure and shouldMeasure, as a hand-built virtualised list holds them", () => {
+    const sizes: string[] = [];
+    const element = document.createElement("div");
+    document.body.append(element);
+    Object.defineProperty(element, "offsetHeight", { value: 72, configurable: true });
+    Object.defineProperty(element, "offsetWidth", { value: 300, configurable: true });
+    const dispose = createRoot((done) => {
+      measureRow(
+        {
+          shouldMeasure: () => true,
+          measure: (key, size) => sizes.push(`${String(key)}:${String(size.height)}`),
+        },
+        "row-1",
+        () => element,
+      );
+      return done;
+    });
+    flush();
+    expect(sizes).toEqual(["row-1:72"]);
+    dispose();
+    element.remove();
   });
 });
 
