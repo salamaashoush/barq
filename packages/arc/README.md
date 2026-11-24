@@ -351,6 +351,27 @@ if (await confirm({ title: "Delete the check?", tone: "danger", confirmLabel: "D
   />
   ```
 
+- `DataViews` and `ViewSwitcher`: the same records as a list, a board, a
+  table or a calendar, as the reader chooses. The switcher is a pressed
+  button per view on ui's toggle group, one Tab stop with the arrows in the
+  reading direction, icons alone with `iconOnly`; `DataViews` draws it beside
+  a `toolbar` and draws only the chosen view's `content`, over the data and
+  filters the caller holds, so switching keeps the search and the filters.
+  The view is the caller's, the switcher's own, or with `param` a search
+  parameter's, so a view has a link; an unknown one falls back to the first.
+
+  ```tsx
+  <DataViews
+    aria-label="Tasks"
+    param="view"
+    toolbar={<DataToolbar search={{ label: "Search tasks", param: "q" }} />}
+    views={[
+      { id: "list", label: "List", icon: List, content: () => <TaskList tasks={tasks()} /> },
+      { id: "board", label: "Board", icon: Kanban, content: () => <TaskBoard tasks={tasks()} /> },
+    ]}
+  />
+  ```
+
 - `SelectionBar`: how many rows are selected, in a live region, the actions
   for them, and a button that lets go. An action may ask through `confirm()`
   first, and holds the bar pending while it runs.

@@ -219,6 +219,16 @@ export {
   personAvatarStyles,
 } from "./components/person-avatar.tsx";
 export {
+  type DataView,
+  DataViews,
+  type DataViewsProps,
+  type ViewBinding,
+  type ViewOption,
+  ViewSwitcher,
+  type ViewSwitcherProps,
+  viewSwitcherStyles,
+} from "./components/view-switcher.tsx";
+export {
   HighlightMatches,
   type HighlightMatchesProps,
   type MatchRange,
