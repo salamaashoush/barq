@@ -90,6 +90,11 @@ export interface AppShellProps extends Omit<UiProps, "class" | "className">, Cus
   header?: Child;
   /** The foot of the sidebar: the account menu. */
   footer?: Child;
+  /**
+   * Below the navigation, in the sidebar's scrolling content: what is not a
+   * page to go to but a list of the reader's own, a `ConversationList`.
+   */
+  sidebar?: Child;
   /** The top bar's trail. Left out, the matched routes' `<Breadcrumbs />`. */
   trail?: Child;
   /** The top bar's end: search, notifications, the theme. */
@@ -233,6 +238,7 @@ export function AppShell(props: AppShellProps) {
               {(group: NavGroup) => <NavGroupView group={group} classes={cls()} />}
             </For>
           </nav>
+          {props.sidebar}
         </SidebarContent>
         <Show when={props.footer}>
           <SidebarFooter>{props.footer}</SidebarFooter>

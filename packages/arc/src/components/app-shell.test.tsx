@@ -97,6 +97,23 @@ describe("AppShell", () => {
     view.unmount();
   });
 
+  test("holds the caller's own lists below the navigation, in the sidebar's content", async () => {
+    const view = await renderRoute({
+      routeTree: tree({
+        sidebar: (
+          <ul aria-label="Channels">
+            <li>#general</li>
+          </ul>
+        ),
+      }),
+    });
+    const content = document.querySelector('[data-slot="sidebar-content"]') as HTMLElement;
+    const list = within(content).getByRole("list", { name: "Channels" });
+    const nav = screen.getByRole("navigation", { name: "Main" });
+    expect(nav.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    view.unmount();
+  });
+
   test("renders the navigation from data, groups named by their labels", async () => {
     const view = await renderRoute({ routeTree: tree() });
     const nav = screen.getByRole("navigation", { name: "Main" });

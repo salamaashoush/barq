@@ -33,3 +33,10 @@ export {
   messageListStyles,
 } from "./message-list.tsx";
 export { ThreadPanel, type ThreadPanelProps, threadPanelStyles } from "./thread-panel.tsx";
+export {
+  type Conversation,
+  type ConversationGroup,
+  ConversationList,
+  type ConversationListProps,
+  conversationListStyles,
+} from "./conversation-list.tsx";
