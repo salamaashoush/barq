@@ -2929,29 +2929,36 @@ mod tests {
 
     /// A child whose kind the analysis cannot see goes to the construct as
     /// written, and the construct decides it as Solid 2.0 does: `For` hands it
-    /// each row and `Repeat` each index. A `Repeat` with `from`, a `Show` and a
-    /// `Match` over one stay on their adapters, which call a `Repeat` child only
-    /// if it is a function and a `Show` or `Match` child only if it declares a
-    /// parameter.
+    /// each row and `Repeat` each index. A `Repeat` with `from` stays on its
+    /// adapter, which calls a child only if it is a function. A `Show` or
+    /// `Match` over one is still a region, and its arm decides the child with
+    /// `callSlot`, so the construct keeps the flags hydration claims it by.
     #[test]
     fn a_child_of_unknown_kind_is_decided_at_run_time() {
         let code = emit(
-            "import { For, Repeat, Show, createSignal } from \"@barqjs/core\";\n\
-             import { renderRow, cell, content } from \"./rows\";\n\
+            "import { For, Match, Repeat, Show, Switch, createSignal } from \"@barqjs/core\";\n\
+             import { renderRow, cell, content, Item, List } from \"./rows\";\n\
              const [rows] = createSignal([]);\n\
              export const A = () => <ul><For each={rows}>{renderRow}</For></ul>;\n\
              export const B = () => <ul><Repeat count={2} from={1}>{cell}</Repeat></ul>;\n\
              export const C = () => <p><Show when={rows}>{content}</Show></p>;\n\
              export const D = () => <ul><For each={rows}>{String}</For></ul>;\n\
-             export const E = () => <ul><For each={rows}>{globalThis.row}</For></ul>;\n",
+             export const E = () => <ul><For each={rows}>{globalThis.row}</For></ul>;\n\
+             export const F = () => <List>{(row) => <Item><Show when={row.on}>{row.label}</Show></Item>}</List>;\n\
+             export const G = () => <p><Switch><Match when={rows}>{content}</Match></Switch></p>;\n",
         )
         .code;
         assert!(code.contains("_$each(_el$1, null, rows, null, renderRow)"), "{code}");
         assert!(!code.contains("() => renderRow"), "{code}");
         assert!(code.contains("children: cell"), "{code}");
         assert!(!code.contains("() => cell"), "{code}");
-        assert!(code.contains("children: content"), "{code}");
+        assert!(code.contains("_$callSlot(content, _v$)"), "{code}");
+        assert!(code.contains("_$callSlot(row.label, _v$)"), "{code}");
+        assert!(!code.contains("children: content"), "{code}");
         assert!(!code.contains("() => content"), "{code}");
+        assert!(!code.contains("Show({"), "{code}");
+        assert!(!code.contains("createComponent(Show"), "{code}");
+        assert!(!code.contains("createComponent(Switch"), "{code}");
         assert!(code.contains("rows, null, String)"), "{code}");
         assert!(code.contains("rows, null, globalThis.row)"), "{code}");
     }

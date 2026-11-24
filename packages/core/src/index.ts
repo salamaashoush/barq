@@ -163,6 +163,11 @@ export {
  * compiled path has and must refuse a Block in one the same way.
  */
 export { bindEffect, bindPlain, bindSlot, readSlot } from "./signals.ts";
+/**
+ * A `Show` or `Match` child the compiler cannot see the kind of, decided as
+ * its arm is built: called if it declares a parameter, rendered otherwise.
+ */
+export { callSlot } from "./components.ts";
 export type { Block, Cell, Scope, Slot } from "./scope.ts";
 
 // The props model. `props` and `cell` are the two

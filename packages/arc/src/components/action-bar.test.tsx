@@ -111,4 +111,24 @@ describe("ActionBar", () => {
     expect(result.container.querySelector('[role="toolbar"]')).not.toBeNull();
     result.unmount();
   });
+
+  test("hydrates a label shown and a label withheld for an icon-only action", async () => {
+    const result = await hydrates(`
+      import { ActionBar } from "<arc>";
+      export function Page() {
+        return (
+          <ActionBar
+            aria-label="Bar"
+            overflow="wrap"
+            actions={[{ id: "a", label: "Copy" }, { id: "b", label: "Send", iconOnly: true }]}
+            onAction={() => {}}
+          />
+        );
+      }
+    `);
+    const actions = [...result.container.querySelectorAll('[data-slot="action-bar-action"]')];
+    expect(actions.map((one) => one.textContent)).toEqual(["Copy", ""]);
+    expect(actions[1]?.getAttribute("aria-label")).toBe("Send");
+    result.unmount();
+  });
 });

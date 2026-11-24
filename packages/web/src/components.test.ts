@@ -11,6 +11,8 @@ import {
   Match,
   Show,
   Switch,
+  block,
+  callSlot,
   createSignal,
   createEffect,
   createRoot,
@@ -19,6 +21,7 @@ import {
   flush,
 } from "@barqjs/core";
 import { childToNodes, insert } from "./dom.ts";
+import { branch } from "./dom-flow.ts";
 import type { Child } from "@barqjs/core";
 
 // Simple DOM setup for testing
@@ -1318,5 +1321,55 @@ describe("Memory and cleanup", () => {
     setTrigger(2);
     flush();
     expect(totalEffectRuns).toBe(4); // Should not increase
+  });
+});
+
+/**
+ * The arm the compiler emits for a `<Show>` whose lone child it cannot see the
+ * kind of, `{item.label}` inside a render callback: `(v) => callSlot(child, v)`
+ * under a `branch`, handed the `when` Cell. It decides the child as Solid 2.0
+ * does and as the `Show` adapter does.
+ */
+describe("a branch arm deciding a child of unknown kind", () => {
+  const arm = (child: unknown, when: () => unknown) =>
+    branch(container, null, () => (when() ? 1 : 0), [
+      null,
+      block(() => block((value: unknown) => callSlot(child, value))(when)),
+    ]);
+
+  test("text is rendered as it is", () => {
+    const [on, setOn] = createSignal(true);
+    createRoot(() => arm("Copy", on));
+    flush();
+    expect(container.textContent).toBe("Copy");
+    setOn(false);
+    flush();
+    expect(container.textContent).toBe("");
+  });
+
+  test("a function declaring a parameter is called once, untracked, with the condition", () => {
+    const [name, setName] = createSignal<string | null>("salama");
+    let calls = 0;
+    createRoot(() =>
+      arm((value: () => string) => {
+        calls++;
+        return document.createTextNode(`hi ${value()}`);
+      }, name),
+    );
+    flush();
+    expect(container.textContent).toBe("hi salama");
+    setName("acme");
+    flush();
+    expect(calls).toBe(1);
+  });
+
+  test("a function declaring none is content, read live", () => {
+    const [label, setLabel] = createSignal("Copy");
+    createRoot(() => arm(label, () => true));
+    flush();
+    expect(container.textContent).toBe("Copy");
+    setLabel("Send");
+    flush();
+    expect(container.textContent).toBe("Send");
   });
 });

@@ -65,7 +65,7 @@ impl Target {
     }
 }
 
-pub const HELPER_COUNT: usize = 69;
+pub const HELPER_COUNT: usize = 70;
 
 /// The module a helper is imported from.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -104,6 +104,7 @@ pub fn home(helper: Helper, target: Target) -> Home {
         | H::Cell
         | H::Block
         | H::ReadSlot
+        | H::CallSlot
         | H::Count
         | H::GetOwner
         | H::Untrack
@@ -403,6 +404,11 @@ pub enum Helper {
     /// `_$spreadSelection(el)` — the `value` and `selectedIndex` a spread on a
     /// `<select>` held, written after the options they name.
     SpreadSelection = 68,
+    /// `_$callSlot(child, v)` — a `Show` or `Match` child of unknown kind,
+    /// decided by Solid 2.0's rule when the arm is built: a Block is run, a
+    /// function declaring a parameter is called with the value, untracked,
+    /// and anything else is rendered. The adapters decide it the same way.
+    CallSlot = 69,
 }
 
 /// Whether evaluating `value` runs nothing that could make an owner: a name, a
@@ -504,6 +510,7 @@ const IMPORTED: [(Helper, &str); HELPER_COUNT] = [
     (Helper::BindPlain, "bindPlain"),
     (Helper::Labelled, "labelled"),
     (Helper::SpreadSelection, "spreadSelection"),
+    (Helper::CallSlot, "callSlot"),
 ];
 
 /// The name a helper is imported under, for a test that has to check the table

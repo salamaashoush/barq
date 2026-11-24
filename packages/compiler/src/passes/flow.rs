@@ -214,14 +214,12 @@ fn admits_element<'a>(shaper: &Shaper<'a, '_>, flow: Flow, element: &JSXElement<
     if !spread && required(flow).iter().any(|name| !seen.contains(name)) {
         return false;
     }
-    // A child of unknown kind is decided at run time, by the adapter, as Solid
-    // decides it: `Show` and `Match` call it only if it declares a parameter,
-    // and `Repeat` shifts its index into a call only if it is a function.
-    let decided_by_adapter = match flow {
-        Flow::Show | Flow::Match => true,
-        Flow::Repeat => seen.contains(&"from") || spread,
-        _ => false,
-    };
+    // `Repeat` shifts its index into a call only if a child of unknown kind is
+    // a function, and that question is the adapter's. `Show` and `Match` ask
+    // theirs inside the arm instead ([`decided_body_of`]): refused, they lost
+    // the hydration flags with the region, and a `<Show>` over `{row.label}`
+    // was rebuilt in the browser instead of claimed.
+    let decided_by_adapter = flow == Flow::Repeat && (seen.contains(&"from") || spread);
     if decided_by_adapter && runtime_callback_child(shaper, flow, element) {
         return false;
     }
@@ -721,7 +719,7 @@ fn show<'a>(
     // them it can prove are there. A slot off the source list is a member read
     // and may be nothing at all.
     let fallback = bag.take(shaper, "fallback").map(|attr| Slot::of(shaper, attr));
-    let content = match body_slot_of(shaper, kids, span) {
+    let content = match decided_body_of(shaper, kids, Flow::Show, span) {
         Some(body) => Some(Slot { value: body, maybe: false }),
         None => bag.take(shaper, "children").map(|attr| Slot::of(shaper, attr)),
     };
@@ -790,7 +788,7 @@ fn switch<'a>(
         let narrowed = dup(shaper, &cell);
         let test = read_of(shaper, cell, arm_span);
         statik &= is_static(shaper, &test, konst);
-        let body = body_slot_of(shaper, arm_kids, arm_span)
+        let body = decided_body_of(shaper, arm_kids, Flow::Match, arm_span)
             .map(|body| pass_value(shaper, body, narrowed, arm_span));
         tests.push((test, arm_span));
         bodies.push(body);
@@ -1045,6 +1043,38 @@ fn body_slot_of<'a>(
     span: Span,
 ) -> Option<Expression<'a>> {
     (!kids.is_empty()).then(|| body_slot(shaper, kids, span))
+}
+
+/// A `Show` or `Match` body, whose lone child may be one the analysis cannot
+/// see the kind of: an import, a parameter, or a member of one. Solid 2.0
+/// decides such a child when the arm is built, calling it if it declares a
+/// parameter and rendering it otherwise, so the arm does the same:
+/// `(v) => callSlot(child, v)`. The construct stays a region, and a region
+/// keeps the flags hydration claims it by.
+fn decided_body_of<'a>(
+    shaper: &mut Shaper<'a, '_>,
+    mut kids: Vec<Expression<'a>>,
+    flow: Flow,
+    span: Span,
+) -> Option<Expression<'a>> {
+    if !(kids.len() == 1 && shaper.callback_at_runtime(Some(flow), &kids[0])) {
+        return body_slot_of(shaper, kids, span);
+    }
+    let child = kids.pop()?;
+    let value = shaper.uids.temp();
+    let callee = shaper.helper(Helper::CallSlot, span);
+    let argument = shaper.ident(value, span);
+    let decided = call(shaper, callee, vec![child, argument], span);
+    let arrow = Expression::new_arrow_function_expression(
+        span,
+        false,
+        None,
+        params(shaper, &[value], span),
+        None,
+        ArrowFunctionBody::from(decided),
+        &shaper.ast,
+    );
+    Some(shaper.brand(arrow, span))
 }
 
 /// A body table: `[b0, b1, …]`, indexed by an integer key. An absent row is

@@ -131,7 +131,7 @@ export function ActionBar(props: ActionBarProps) {
                 {action.icon}
               </span>
             </Show>
-            {action.iconOnly === true ? null : action.label}
+            <Show when={action.iconOnly !== true}>{action.label}</Show>
           </ActionGroupItem>
         )}
       </ActionGroup>
