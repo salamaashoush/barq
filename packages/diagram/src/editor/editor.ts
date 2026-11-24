@@ -4,7 +4,6 @@ import {
   DEFAULT_STICKY_NOTE_SIZE,
   SCROLL_TIMEOUT,
   debounce,
-  getNearestScrollableContainer,
   arrayToMap,
   FRAME_STYLE,
   MIME_TYPES,
@@ -729,6 +728,8 @@ export class DiagramEditor {
     editorLifecycleEventBehavior,
   );
   private initialized = false;
+  /** Loads the initial scene, once the container is in the page. */
+  private pendingStart: (() => void) | null = null;
   private elementRenderOverrides: ElementRenderOverrides = new Map();
   /** The offsets of `elementRenderOverrides`, the same map while they do not change. */
   private elementRenderOffsets: ElementRenderOffsets = new Map();
@@ -918,8 +919,16 @@ export class DiagramEditor {
       onEvent: this.lifecycleEvents.on.bind(this.lifecycleEvents),
     };
 
-    this.measure();
-    this.batch(() => this.loadScene(options.initialData ?? null));
+    // A host's ref can hand over its container before the container is in the
+    // page, where it measures as nothing: the initial scene, its viewport and
+    // `editor:initialize` wait until it is there, as Excalidraw's wait for
+    // `componentDidMount`.
+    const start = (): void => {
+      this.measure();
+      this.batch(() => this.loadScene(options.initialData ?? null));
+    };
+    if (container.isConnected) start();
+    else this.pendingStart = start;
     this.cursor.reset();
     this.renderTask.port1.addEventListener("message", this.onRenderTask);
     this.renderTask.port1.start();
@@ -930,6 +939,7 @@ export class DiagramEditor {
         ? new this.ownerWindow.ResizeObserver(() => this.batch(() => this.refresh()))
         : null;
     this.resize?.observe(container);
+    if (this.pendingStart !== null) queueMicrotask(() => this.refresh());
     this.lifecycleEvents.emit("editor:mount", { excalidrawAPI: this.api, container });
   }
 
@@ -1979,7 +1989,7 @@ export class DiagramEditor {
 
   private didUpdate(prevState: AppState): void {
     // before the state listeners below hear of it
-    if (!this.initialized && !this.state.isLoading) {
+    if (!this.initialized && !this.state.isLoading && this.pendingStart === null) {
       this.initialized = true;
       this.lifecycleEvents.emit("editor:initialize", this.api);
     }
@@ -2630,6 +2640,13 @@ export class DiagramEditor {
 
   /** Measures the container again, after it moved or resized. */
   public refresh(): void {
+    if (this.destroyed) return;
+    const start = this.pendingStart;
+    if (start !== null) {
+      if (!this.options.container.isConnected) return;
+      this.pendingStart = null;
+      start();
+    }
     this.measure();
     this.scheduleRender();
   }
@@ -3094,15 +3111,18 @@ export class DiagramEditor {
     on(container, "keyup", (event) => this.onKeyUp(event));
     on(container, "wheel", (event) => this.onWheel(event), { passive: false });
     // the container's place in the page, which a scroll of the page moves, as
-    // Excalidraw follows it; a resize is the ResizeObserver's
-    const scrollable = getNearestScrollableContainer(container);
+    // Excalidraw follows it; a resize is the ResizeObserver's. Heard on the
+    // document as it is captured rather than on the nearest scrolling
+    // ancestor, which a container not yet in the page does not have: its
+    // ownerDocument is then the inert one it was built in.
     const onScroll = debounce(() => {
       if (this.host.detectScroll) this.batch(() => this.measure());
     }, SCROLL_TIMEOUT);
-    scrollable.addEventListener("scroll", onScroll, { passive: true });
+    const scrollOptions = { passive: true, capture: true };
+    this.ownerDocument.addEventListener("scroll", onScroll, scrollOptions);
     this.listeners.push(() => {
       onScroll.cancel();
-      scrollable.removeEventListener("scroll", onScroll);
+      this.ownerDocument.removeEventListener("scroll", onScroll, scrollOptions);
     });
     on(container, "focusout", (event) => {
       if (!container.contains(event.relatedTarget as Node | null)) this.onBlur();

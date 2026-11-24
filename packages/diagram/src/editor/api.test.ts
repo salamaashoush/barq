@@ -11,7 +11,7 @@ import { API, Keyboard, UI, h, mouse, renderEditor, unmountEditors } from "./tes
 import { createPasteEvent } from "../clipboard.ts";
 import { getScrollBars } from "../scene/scrollbars.ts";
 
-import type { TextEditRequest } from "./editor.ts";
+import { DiagramEditor, type TextEditRequest } from "./editor.ts";
 import type { ToolType } from "../types.ts";
 
 afterEach(unmountEditors);
@@ -753,6 +753,44 @@ describe("the host's options", () => {
     document.dispatchEvent(new Event("scroll"));
     await new Promise((resolve) => setTimeout(resolve, 150));
     expect(editor.state.offsetTop).toBe(-40);
+  });
+
+  test("a container built outside the page waits for it, then follows the page's scroll", async () => {
+    // A host's ref hands its container over before the container is inserted,
+    // while it still belongs to the inert document it was cloned from.
+    const inert = document.implementation.createHTMLDocument("");
+    inert.body.innerHTML = "<div><canvas></canvas><canvas></canvas><canvas></canvas><svg></svg></div>";
+    const container = inert.body.firstElementChild as HTMLDivElement;
+    expect(container.ownerDocument).not.toBe(document);
+    let top = 0;
+    container.getBoundingClientRect = () =>
+      (container.isConnected
+        ? { x: 0, y: top, left: 0, top, right: 1024, bottom: 768 + top, width: 1024, height: 768 }
+        : { x: 0, y: 0, left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 }) as DOMRect;
+    const [canvas, newElementCanvas, interactiveCanvas] = container.querySelectorAll("canvas");
+    const editor = new DiagramEditor({
+      container,
+      canvas: canvas as HTMLCanvasElement,
+      newElementCanvas: newElementCanvas as HTMLCanvasElement,
+      interactiveCanvas: interactiveCanvas as HTMLCanvasElement,
+      svgLayer: container.querySelector("svg"),
+      initialData: { elements: [rect("A", 3000)], appState: {}, files: {} },
+      host: { detectScroll: true },
+    });
+    const sizes: number[] = [];
+    editor.api.onEvent("editor:initialize", (api) => sizes.push(api.getAppState().width));
+    expect(sizes).toEqual([]);
+    document.body.append(container);
+    await Promise.resolve();
+    expect(sizes).toEqual([1024]);
+    expect(editor.api.getSceneElements().map((element) => element.id)).toEqual(["A"]);
+
+    top = -40;
+    document.dispatchEvent(new Event("scroll"));
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(editor.state.offsetTop).toBe(-40);
+    editor.destroy();
+    container.remove();
   });
 
   test("initialState.viewport opens the scene at its target", () => {
