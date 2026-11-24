@@ -99,6 +99,8 @@ export interface ArcMessages {
   retryUpload: (name: string) => string;
   cancelUpload: (name: string) => string;
   removeFile: (name: string) => string;
+  moreOptions: string;
+  moreActions: string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -194,6 +196,8 @@ export const ENGLISH: ArcMessages = {
   retryUpload: (name) => `Retry ${name}`,
   cancelUpload: (name) => `Cancel ${name}`,
   removeFile: (name) => `Remove ${name}`,
+  moreOptions: "More options",
+  moreActions: "More actions",
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");

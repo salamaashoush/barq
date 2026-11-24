@@ -507,6 +507,37 @@ import { Chip } from "@barqjs/arc";
     remove named after the file.
   - `FileUpload`: the zone and the queue together.
 
+## Actions
+
+```tsx
+import { ActionBar, IconButton, SplitButton, Toolbar } from "@barqjs/arc";
+
+<IconButton label="Delete" onPress={remove}><Trash2 /></IconButton>;
+<SplitButton onPress={send} actions={[{ id: "later", label: "Send later", onAction: schedule }]}>
+  Send
+</SplitButton>;
+```
+
+- `IconButton`: a button that is an icon, its `label` required: the label
+  names it and shows as a tooltip on hover and keyboard focus, with a
+  `shortcut` beside it. The tooltip only repeats the name, so a touch screen
+  loses nothing.
+- `SplitButton`: a default action and its alternatives in one control, two
+  buttons welded by ui's `ButtonGroup`, each its own stop; the arrow opens a
+  menu of `actions`, a destructive one drawn as such.
+- `ActionBar`: a page's or a record's actions in a row that keeps the most
+  important in view as it narrows, moving the rest into a More menu by
+  `priority`, on `@barqjs/aria`'s action group: one Tab stop, the arrows in
+  the reading direction, and ui's menu for what collapsed.
+- `Toolbar`: controls that Tab enters once, on `@barqjs/aria`'s toolbar, the
+  arrows moving between them and coming back to the last one used.
+  `floating` is a pill over the content; `docked` is a bar along a pane's
+  bottom that holds to the bottom of a compact screen, clear of the home
+  indicator. `ToolbarSeparator` divides it.
+
+ui's `ToggleGroup` is the toggle button group: single or multiple, on
+`@barqjs/aria`'s toggle group, with the arrows in the reading direction.
+
 ## Code
 
 ```tsx

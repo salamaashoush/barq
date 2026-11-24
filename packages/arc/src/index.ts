@@ -118,6 +118,31 @@ export {
   useUploadQueue,
 } from "./components/file-upload.tsx";
 export {
+  ActionBar,
+  type ActionBarProps,
+  type BarAction,
+  actionBarStyles,
+} from "./components/action-bar.tsx";
+export {
+  IconButton,
+  type IconButtonProps,
+  type IconButtonSize,
+  iconButtonStyles,
+} from "./components/icon-button.tsx";
+export {
+  type SplitAction,
+  SplitButton,
+  type SplitButtonProps,
+  splitButtonStyles,
+} from "./components/split-button.tsx";
+export {
+  Toolbar,
+  type ToolbarProps,
+  ToolbarSeparator,
+  type ToolbarSeparatorProps,
+  toolbarStyles,
+} from "./components/toolbar.tsx";
+export {
   CommandMenu,
   commandMenuStyles,
   type CommandMenuAction,
