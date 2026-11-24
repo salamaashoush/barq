@@ -331,3 +331,39 @@ describe("selection announcements", () => {
     ]);
   });
 });
+
+describe("a tag's parts", () => {
+  test("the cell and the remove button take a class, a slot and the button an icon", () => {
+    const removed: Key[] = [];
+    render(() => (
+      <TagGroup
+        label="Cities"
+        items={FILTERS}
+        onRemove={(keys) => removed.push(...keys)}
+        getTextValue={(filter: Filter) => filter.name}
+      >
+        {(filter: Filter) => (
+          <Tag
+            cellClass="cell"
+            removeClass="remove"
+            removeIcon={<svg data-testid="icon" aria-hidden="true" />}
+          >
+            {filter.name}
+          </Tag>
+        )}
+      </TagGroup>
+    ));
+    const cell = screen.getAllByRole("gridcell")[0] as HTMLElement;
+    expect(cell.className).toBe("cell");
+    expect(cell.getAttribute("data-slot")).toBe("tag-cell");
+    const remove = cell.querySelector("button") as HTMLButtonElement;
+    expect(remove.className).toBe("remove");
+    expect(remove.getAttribute("data-slot")).toBe("tag-remove");
+    expect(remove.textContent).toBe("");
+    expect(screen.getAllByTestId("icon")).toHaveLength(3);
+    expect(accessibleName(remove)).toBe("Remove Barcelona");
+    user.click(remove);
+    flush();
+    expect(removed).toEqual(["barcelona"]);
+  });
+});

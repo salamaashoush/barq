@@ -551,6 +551,12 @@ export interface TagComponentProps extends StyleProps {
   children?: Child;
   "aria-label"?: string;
   ref?: RefTarget<HTMLDivElement>;
+  /** On the cell inside the row, which holds the content and the remove button. */
+  cellClass?: string;
+  /** On the remove button. */
+  removeClass?: string;
+  /** What the remove button shows. Named by the button's label either way. @default "×" */
+  removeIcon?: Child;
 }
 
 /**
@@ -622,14 +628,19 @@ export function Tag(props: TagComponentProps) {
 
   return (
     <div {...elementProps} ref={mergeRefs(domRef.set, props.ref)}>
-      <div {...gridCellProps}>
+      <div {...gridCellProps} class={props.cellClass} data-slot="tag-cell">
         <SelectionIndicatorProvider isSelected={isSelected()}>
           {props.children}
         </SelectionIndicatorProvider>
         {() =>
           allowsRemoving() ? (
-            <button {...removeProps()} ref={buttonRef.set}>
-              <span aria-hidden="true">×</span>
+            <button
+              {...removeProps()}
+              class={props.removeClass}
+              data-slot="tag-remove"
+              ref={buttonRef.set}
+            >
+              {props.removeIcon ?? <span aria-hidden="true">×</span>}
             </button>
           ) : null
         }
