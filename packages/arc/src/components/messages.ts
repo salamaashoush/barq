@@ -439,6 +439,7 @@ export interface ArcMessages {
   muted: string;
   draft: string;
   privateConversation: string;
+  call: string;
   participants: (count: number) => string;
   microphoneOff: string;
   cameraOff: string;
@@ -1008,6 +1009,7 @@ export const ENGLISH: ArcMessages = {
   muted: "Muted",
   draft: "Draft",
   privateConversation: "Private",
+  call: "Call",
   participants: (count) => (count === 1 ? "1 participant" : `${String(count)} participants`),
   microphoneOff: "Microphone off",
   cameraOff: "Camera off",
