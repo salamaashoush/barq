@@ -107,6 +107,22 @@ export const chartFrameParts = {
   toggle: arc({ alignSelf: "flex-start" }),
 };
 
+/** A plot with a figure laid over its middle: a donut's total, a gauge's reading. */
+export const chartCentreParts = {
+  plot: arc(layout.relative, layout.column, layout.grow, layout.minZeroBlock),
+  centre: arc(layout.centre, layout.column, {
+    position: "absolute",
+    inset: "0",
+    margin: "auto",
+    inlineSize: "fit-content",
+    blockSize: "fit-content",
+    maxInlineSize: "50%",
+    textAlign: "center",
+  }),
+  centreValue: arc(type.stat),
+  centreLabel: arc(type.meta),
+};
+
 export const chartDataTableStyles = variants({ slots: chartTableParts });
 
 export type ChartTableSlots = ReturnType<typeof chartDataTableStyles>;

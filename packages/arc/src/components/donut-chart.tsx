@@ -14,12 +14,12 @@ import { pie, polar, radialArc } from "@tanstack/charts/polar";
 
 import { arcLayer as arc } from "../layer.ts";
 import { parts, rendered } from "../lib/parts.ts";
-import { layout, type } from "../style/index.ts";
 import type { Tone } from "../theme/tokens.ts";
 import {
   type ChartBaseProps,
   ChartFrame,
   type TonedSeries,
+  chartCentreParts,
   chartFrameParts,
   chartNumbers,
   chartTableParts,
@@ -37,26 +37,12 @@ export interface DonutSlice {
   color?: string;
 }
 
-/** The box the plot fills, which the centre is laid over. */
-const plotBox = arc(layout.relative, layout.column, layout.grow, layout.minZeroBlock);
-
 export const donutChartStyles = variants({
   slots: {
     ...chartFrameParts,
     ...chartTableParts,
     chart: arc(chartFrameParts.chart, { aspectRatio: "1", maxInlineSize: "24rem" }),
-    plot: plotBox,
-    centre: arc(layout.centre, layout.column, {
-      position: "absolute",
-      inset: "0",
-      margin: "auto",
-      inlineSize: "fit-content",
-      blockSize: "fit-content",
-      maxInlineSize: "50%",
-      textAlign: "center",
-    }),
-    centreValue: arc(type.stat),
-    centreLabel: arc(type.meta),
+    ...chartCentreParts,
   },
 });
 

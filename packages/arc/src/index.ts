@@ -355,6 +355,14 @@ export {
   funnelChartStyles,
 } from "./components/funnel-chart.tsx";
 export {
+  Gauge,
+  type GaugeProps,
+  type GaugeSlots,
+  type GaugeThreshold,
+  gaugeStyles,
+  gaugeTone,
+} from "./components/gauge.tsx";
+export {
   ARC_CONTRAST_DARK,
   ARC_CONTRAST_LIGHT,
   ARC_DARK,
