@@ -30,6 +30,15 @@ import type { RenderableElementsMap } from "./types.ts";
 
 import type { AppState, ElementRenderOffsets } from "../types.ts";
 
+/** The side of a culling cell, in scene units. */
+const INDEX_CELL = 512;
+/** An element covering more cells than this is tested on its own. */
+const INDEX_MAX_CELLS_PER_ELEMENT = 64;
+/** Below this many elements a walk is as quick as the grid. */
+const INDEX_MIN_ELEMENTS = 2000;
+/** Cells by their coordinates, packed into one number. */
+const cellKey = (cx: number, cy: number): number => cx * 1_048_576 + cy;
+
 type GetRenderableElementsOpts = {
   zoom: AppState["zoom"];
   offsetLeft: AppState["offsetLeft"];
@@ -187,7 +196,69 @@ export class Renderer {
     return set;
   }
 
+  /**
+   * The elements' bounds on a grid, for the viewport to find the ones it
+   * covers without testing every element: built once a scene state is asked
+   * for a second time, so a pan or a zoom over an unchanged scene reads a few
+   * cells, and a drag, which changes the scene every frame, keeps the walk.
+   */
+  private visibilityIndex: {
+    nonce: string;
+    elementsMap: NonDeletedElementsMap;
+    order: Map<string, number>;
+    cells: Map<number, NonDeletedExcalidrawElement[]>;
+    /** Elements too large for cells, tested every time. */
+    large: NonDeletedExcalidrawElement[];
+    bounds: Map<string, readonly [number, number, number, number]>;
+  } | null = null;
+
+  /** The scene state the last walk was for: asked for again, it gets its grid. */
+  private walkedNonce: string | null = null;
+
+  private indexFor(
+    nonce: string,
+    elementsMap: NonDeletedElementsMap,
+  ): NonNullable<Renderer["visibilityIndex"]> {
+    const current = this.visibilityIndex;
+    if (current && current.nonce === nonce && current.elementsMap === elementsMap) {
+      return current;
+    }
+    const order = new Map<string, number>();
+    const cells = new Map<number, NonDeletedExcalidrawElement[]>();
+    const large: NonDeletedExcalidrawElement[] = [];
+    const bounds = new Map<string, readonly [number, number, number, number]>();
+    let index = 0;
+    for (const element of elementsMap.values()) {
+      order.set(element.id, index++);
+      const [x1, y1, x2, y2] = getElementBounds(element, elementsMap);
+      bounds.set(element.id, [x1, y1, x2, y2]);
+      const cx1 = Math.floor(x1 / INDEX_CELL);
+      const cy1 = Math.floor(y1 / INDEX_CELL);
+      const cx2 = Math.floor(x2 / INDEX_CELL);
+      const cy2 = Math.floor(y2 / INDEX_CELL);
+      if (
+        !Number.isFinite(cx1 + cy1 + cx2 + cy2) ||
+        (cx2 - cx1 + 1) * (cy2 - cy1 + 1) > INDEX_MAX_CELLS_PER_ELEMENT
+      ) {
+        large.push(element);
+        continue;
+      }
+      for (let cx = cx1; cx <= cx2; cx++) {
+        for (let cy = cy1; cy <= cy2; cy++) {
+          const key = cellKey(cx, cy);
+          const cell = cells.get(key);
+          if (cell) cell.push(element);
+          else cells.set(key, [element]);
+        }
+      }
+    }
+    const built = { nonce, elementsMap, order, cells, large, bounds };
+    this.visibilityIndex = built;
+    return built;
+  }
+
   private getVisibleCanvasElements({
+    nonce,
     elementsMap,
     zoom,
     offsetLeft,
@@ -197,6 +268,7 @@ export class Renderer {
     height,
     width,
   }: {
+    nonce: string;
     elementsMap: NonDeletedElementsMap;
     zoom: AppState["zoom"];
     offsetLeft: AppState["offsetLeft"];
@@ -206,7 +278,6 @@ export class Renderer {
     height: AppState["height"];
     width: AppState["width"];
   }): readonly NonDeletedExcalidrawElement[] {
-    const visibleElements: NonDeletedExcalidrawElement[] = [];
     // `isElementInViewport`'s test, with the viewport's corners in scene
     // coordinates worked out once rather than twice for every element
     const view = { zoom, offsetLeft, offsetTop, scrollX, scrollY };
@@ -215,13 +286,46 @@ export class Renderer {
       { clientX: offsetLeft + width, clientY: offsetTop + height },
       view,
     );
-    for (const element of elementsMap.values()) {
-      const [x1, y1, x2, y2] = getElementBounds(element, elementsMap);
-      if (topLeft.x <= x2 && topLeft.y <= y2 && bottomRight.x >= x1 && bottomRight.y >= y1) {
-        visibleElements.push(element);
+    const inView = (x1: number, y1: number, x2: number, y2: number): boolean =>
+      topLeft.x <= x2 && topLeft.y <= y2 && bottomRight.x >= x1 && bottomRight.y >= y1;
+
+    const cx1 = Math.floor(topLeft.x / INDEX_CELL);
+    const cy1 = Math.floor(topLeft.y / INDEX_CELL);
+    const cx2 = Math.floor(bottomRight.x / INDEX_CELL);
+    const cy2 = Math.floor(bottomRight.y / INDEX_CELL);
+    const queried = (cx2 - cx1 + 1) * (cy2 - cy1 + 1);
+    const indexed =
+      this.visibilityIndex?.nonce === nonce && this.visibilityIndex.elementsMap === elementsMap;
+    const settled = indexed || this.walkedNonce === nonce;
+    this.walkedNonce = nonce;
+    // a small scene, a view over most of it, or a scene changing under a drag is walked as it is
+    if (!settled || elementsMap.size < INDEX_MIN_ELEMENTS || queried * 4 > elementsMap.size) {
+      const visibleElements: NonDeletedExcalidrawElement[] = [];
+      for (const element of elementsMap.values()) {
+        const [x1, y1, x2, y2] = getElementBounds(element, elementsMap);
+        if (inView(x1, y1, x2, y2)) visibleElements.push(element);
+      }
+      return visibleElements;
+    }
+
+    const index = this.indexFor(nonce, elementsMap);
+    const found = new Set<NonDeletedExcalidrawElement>();
+    const consider = (element: NonDeletedExcalidrawElement): void => {
+      if (found.has(element)) return;
+      const box = index.bounds.get(element.id);
+      if (box && inView(box[0], box[1], box[2], box[3])) found.add(element);
+    };
+    for (let cx = cx1; cx <= cx2; cx++) {
+      for (let cy = cy1; cy <= cy2; cy++) {
+        const cell = index.cells.get(cellKey(cx, cy));
+        if (cell) for (const element of cell) consider(element);
       }
     }
-    return visibleElements;
+    for (const element of index.large) consider(element);
+    // in the scene's order, which is the drawing order
+    return [...found].toSorted(
+      (a, b) => (index.order.get(a.id) ?? 0) - (index.order.get(b.id) ?? 0),
+    );
   }
 
   private getRenderableElementsMap({
@@ -327,6 +431,7 @@ export class Renderer {
       });
 
       const visibleElements = this.getVisibleCanvasElements({
+        nonce: canvasNonce,
         elementsMap,
         zoom,
         offsetLeft,
@@ -405,6 +510,8 @@ export class Renderer {
     cancelStaticSceneThrottle(staticCanvas);
     this._getRenderableElements.clear();
     this._getRenderableElementsMap.clear();
+    this.visibilityIndex = null;
+    this.walkedNonce = null;
     this._getVisibleElementsWithRenderOffsets.clear();
   }
 }
