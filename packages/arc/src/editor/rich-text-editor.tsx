@@ -23,6 +23,7 @@ import {
   KEY_DOWN_COMMAND,
   type LexicalEditor,
   type SerializedEditorState,
+  mergeRegister,
 } from "lexical";
 import { $convertFromMarkdownString } from "@lexical/markdown";
 
@@ -50,6 +51,8 @@ import { type AnyBlock, labelOf } from "./blocks.tsx";
 import {
   type Mark,
   type TextBlockType,
+  OPEN_EMBED_DIALOG_COMMAND,
+  OPEN_IMAGE_DIALOG_COMMAND,
   indent,
   insertDivider,
   insertTable,
@@ -329,6 +332,28 @@ function EditorTools(props: {
   const editor = useLexicalEditor();
   const messages = useArcMessages();
   const [dialog, setDialog] = createSignal<"image" | "embed" | null>(null, { ownedWrite: true });
+  useRegistration(() =>
+    mergeRegister(
+      editor.registerCommand(
+        OPEN_IMAGE_DIALOG_COMMAND,
+        () => {
+          if (!props.images) return false;
+          setDialog("image");
+          return true;
+        },
+        COMMAND_PRIORITY_LOW,
+      ),
+      editor.registerCommand(
+        OPEN_EMBED_DIALOG_COMMAND,
+        () => {
+          if (props.embeds === false) return false;
+          setDialog("embed");
+          return true;
+        },
+        COMMAND_PRIORITY_LOW,
+      ),
+    ),
+  );
   const insert = createMemo((): InsertAction[] => {
     const words = messages();
     const actions: InsertAction[] = [];

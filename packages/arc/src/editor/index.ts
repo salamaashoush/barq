@@ -15,6 +15,8 @@ export { CodeHighlightExtension } from "./code-highlight.ts";
 export {
   MARKS,
   type Mark,
+  OPEN_EMBED_DIALOG_COMMAND,
+  OPEN_IMAGE_DIALOG_COMMAND,
   OPEN_LINK_EDITOR_COMMAND,
   type SelectionFormat,
   TEXT_BLOCK_TYPES,
@@ -89,3 +91,18 @@ export {
   useHistoryState,
   useSelectionFormat,
 } from "./toolbar.tsx";
+export {
+  type EditorCommandOptions,
+  EmojiShortcuts,
+  type EmojiShortcutsProps,
+  type MentionCandidate,
+  type MentionSource,
+  MentionTypeahead,
+  type MentionTypeaheadProps,
+  type SlashCommand,
+  SlashCommandMenu,
+  type SlashCommandMenuProps,
+  TypeaheadOption,
+  editorCommands,
+  typeaheadStyles,
+} from "./typeahead.tsx";

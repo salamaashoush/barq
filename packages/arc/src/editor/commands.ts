@@ -225,6 +225,12 @@ export function insertDivider(editor: LexicalEditor): void {
 /** Asks the editor's link popover to open on the selection: Mod+K, the toolbar's Link. */
 export const OPEN_LINK_EDITOR_COMMAND: LexicalCommand<void> = createCommand("OPEN_LINK_EDITOR");
 
+/** Asks the editor to open its image dialog: the slash menu's Image. */
+export const OPEN_IMAGE_DIALOG_COMMAND: LexicalCommand<void> = createCommand("OPEN_IMAGE_DIALOG");
+
+/** Asks the editor to open its embed dialog: the slash menu's Embed. */
+export const OPEN_EMBED_DIALOG_COMMAND: LexicalCommand<void> = createCommand("OPEN_EMBED_DIALOG");
+
 /** A shortcut as the reader's keyboard writes it: `⌘B` on a Mac, `Ctrl+B` elsewhere. */
 export function shortcutLabel(keys: string): string {
   const mac = isMac();
