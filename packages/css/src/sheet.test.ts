@@ -211,6 +211,10 @@ function serve(render: () => void, body: () => void): { head: string; late: stri
   return { head, late };
 }
 
+/** A theme as `installArcTheme` writes one: a layer around a `:root` block and a dark one. */
+const THEME = (spacing: string): string =>
+  `@layer barq.theme {\n:root {\n  --spacing: ${spacing};\n  --primary: red;\n}\n.dark {\n  --primary: blue;\n}\n[data-density="compact"] {\n  --spacing: 0.2rem;\n}\n}`;
+
 describe("the sheet > hydration", () => {
   const application = (): void => {
     globalCss`
@@ -286,6 +290,23 @@ describe("the sheet > hydration", () => {
     const tall = atoms({ height: 5 });
     atoms({ zIndex: 4 });
     expect(painted()).not.toContain(tall);
+  });
+
+  test("an entry the server's render registered, replaced after hydration, leaves the late sheet", () => {
+    serve(application, () => {
+      registerCss("barq-arc:theme", THEME("0.25rem"));
+    });
+    expect(document.getElementById("barq-css-late")?.textContent).toContain("--spacing: 0.25rem");
+    // The hydrating render registers what the server did, then a control changes it.
+    registerCss("barq-arc:theme", THEME("0.25rem"));
+    // A hydration that renders `<body>` can leave a new element under the id.
+    const adopted = document.getElementById("barq-css-late");
+    adopted?.replaceWith(adopted.cloneNode(true));
+    registerCss("barq-arc:theme", THEME("0.2rem"));
+    expect(document.getElementById("barq-css-late")?.textContent).not.toContain(
+      "--spacing: 0.25rem",
+    );
+    expect(painted()).toContain("--spacing: 0.2rem");
   });
 
   test("a module replaced after hydration loses the rules only it had", () => {

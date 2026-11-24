@@ -469,7 +469,7 @@ function adopt(blocks: Element | null, atoms: Element | null): void {
   adoptLate();
 }
 
-/** The late sheet's rules count as held, and the element itself is never written. */
+/** The late sheet's rules count as held; the element is written only to drop a replaced entry's rules. */
 function adoptLate(): void {
   const element = document.getElementById(LATE_ID);
   if (element === null || element === late) return;
@@ -505,6 +505,24 @@ function retire(entry: Entry, rules: string, tier: number): void {
   const drop = new Set(gone.filter((name) => !kept.has(name)));
   if (drop.size === 0) return;
   for (const name of drop) served.delete(name);
+  // What a server's render registered is in the late sheet, at the end of the
+  // body, where it beats the head's copy of any rule: a theme the page swaps
+  // after hydration kept losing to the one the server rendered.
+  // Found again rather than remembered: a hydration can put a new element
+  // under the id, and writing the one adopted earlier changed nothing on the page.
+  const element = typeof document === "undefined" ? null : document.getElementById(LATE_ID);
+  if (element !== null) {
+    const held = partsOf({ rules: element.textContent ?? "", tier: 0, parts: null, mark: 0 });
+    if (held.some((part) => drop.has(part.id))) {
+      element.textContent = print(
+        arrange(
+          held.filter((part) => !drop.has(part.id)),
+          null,
+          false,
+        ),
+      );
+    }
+  }
   if (adopted === null) return;
   const keep = (part: Part): boolean => part.text === "" || !drop.has(part.id);
   const layers = new Map<string, Part[]>();
