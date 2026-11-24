@@ -10,6 +10,7 @@ import { type Customisable, parts } from "../lib/parts.ts";
 import { bg, fg, layout, rounded, space, tone as tones, type } from "../style/index.ts";
 import type { Tone } from "../theme/tokens.ts";
 import { useArcMessages } from "./messages.ts";
+import { statusVariants } from "./status.tsx";
 
 export const indicatorStyles = variants({
   slots: {
@@ -38,7 +39,7 @@ export const indicatorStyles = variants({
       md: { badge: arc(type.xs, { minWidth: space.x5, height: space.x5 }) },
     },
     dot: {
-      true: { badge: arc({ minWidth: space.x2, width: space.x2, height: space.x2 }) },
+      true: { badge: arc(statusVariants().dot, { minWidth: "0px" }) },
       false: { badge: arc({ paddingInline: space.x1 }) },
     },
     anchored: {
