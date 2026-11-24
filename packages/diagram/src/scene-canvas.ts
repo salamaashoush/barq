@@ -142,8 +142,10 @@ export class SceneCanvas {
     const height = Math.max(1, Math.round(appState.height * scale));
     if (this.canvas.width !== width) this.canvas.width = width;
     if (this.canvas.height !== height) this.canvas.height = height;
-    this.canvas.style.width = `${appState.width}px`;
-    this.canvas.style.height = `${appState.height}px`;
+    const cssWidth = `${appState.width}px`;
+    const cssHeight = `${appState.height}px`;
+    if (this.canvas.style.width !== cssWidth) this.canvas.style.width = cssWidth;
+    if (this.canvas.style.height !== cssHeight) this.canvas.style.height = cssHeight;
 
     const renderable = this.renderer.getRenderableElements({
       zoom: appState.zoom,

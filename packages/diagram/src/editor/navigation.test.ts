@@ -81,6 +81,19 @@ describe("zooming", () => {
     expect(100 / zoom.value - scrollY).toBeCloseTo(100);
   });
 
+  test("while the wheel zooms, elements draw from their cached bitmaps", async () => {
+    renderEditor();
+    wheel({ deltaY: -10, ctrlKey: true, clientX: 200, clientY: 100 });
+    expect(h().state.shouldCacheIgnoreZoom).toBe(true);
+    wheel({ deltaY: -10, ctrlKey: true, clientX: 200, clientY: 100 });
+    // crisp again once the zoom has paused
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    expect(h().state.shouldCacheIgnoreZoom).toBe(false);
+    // a pan leaves them as they are
+    wheel({ deltaX: 30, clientX: 200, clientY: 100 });
+    expect(h().state.shouldCacheIgnoreZoom).toBe(false);
+  });
+
   test("a two-finger pinch zooms and leaves the scene alone", () => {
     renderEditor();
     API.loadElements([API.createElement({ id: "A", x: 0, y: 0, backgroundColor: "#ffc9c9" })]);

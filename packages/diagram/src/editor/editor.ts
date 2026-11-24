@@ -2,6 +2,9 @@ import {
   ARROW_TYPE,
   CURSOR_TYPE,
   DEFAULT_STICKY_NOTE_SIZE,
+  SCROLL_TIMEOUT,
+  debounce,
+  getNearestScrollableContainer,
   arrayToMap,
   FRAME_STYLE,
   MIME_TYPES,
@@ -507,6 +510,8 @@ export class DiagramEditor {
   private spaceHeld = false;
   private panTeardown: (() => void) | null = null;
   private isDraggingScrollBar = false;
+  private resetCacheIgnoreZoom: number | null = null;
+  private newElementCanvasDrawn = false;
   private destroyed = false;
 
   public constructor(private readonly options: DiagramEditorOptions) {
@@ -1951,6 +1956,15 @@ export class DiagramEditor {
     onDocument("paste", (event) => void this.clipboard.pasteFromClipboard(event));
     on(container, "keyup", (event) => this.onKeyUp(event));
     on(container, "wheel", (event) => this.onWheel(event), { passive: false });
+    // the container's place in the page, which a scroll of the page moves, as
+    // Excalidraw follows it; a resize is the ResizeObserver's
+    const scrollable = getNearestScrollableContainer(container);
+    const onScroll = debounce(() => this.batch(() => this.measure()), SCROLL_TIMEOUT);
+    scrollable.addEventListener("scroll", onScroll, { passive: true });
+    this.listeners.push(() => {
+      onScroll.cancel();
+      scrollable.removeEventListener("scroll", onScroll);
+    });
     on(container, "focusout", (event) => {
       if (!container.contains(event.relatedTarget as Node | null)) this.onBlur();
     });
@@ -1978,11 +1992,14 @@ export class DiagramEditor {
     if (this.panTeardown !== null && (event.buttons & 4) === 0) {
       return;
     }
-    this.measure();
     const next = wheelNavigation(event, this.state);
     event.preventDefault();
     if (next !== null) {
-      this.setState(next);
+      if (next.zoom.value !== this.state.zoom.value) {
+        this.setState({ ...next, ...this.zoomingFromBitmaps() });
+      } else {
+        this.setState(next);
+      }
     }
   }
 
@@ -2029,9 +2046,28 @@ export class DiagramEditor {
           scrollY: zoomed.scrollY + deltaY / zoomed.zoom.value,
         };
       });
+      if (nextZoom !== initialScale) {
+        this.setState(this.zoomingFromBitmaps());
+      }
     } else {
       gesture.lastCenter = gesture.initialDistance = gesture.initialScale = null;
     }
+  }
+
+  /**
+   * While a wheel or a pinch zooms, elements are drawn from the bitmaps they
+   * were cached at, scaled, rather than rasterized again at every step;
+   * crisp again once the gesture has paused for 300ms, as in Excalidraw.
+   */
+  private zoomingFromBitmaps(): Pick<AppState, "shouldCacheIgnoreZoom"> {
+    if (this.resetCacheIgnoreZoom !== null) {
+      this.ownerWindow.clearTimeout(this.resetCacheIgnoreZoom);
+    }
+    this.resetCacheIgnoreZoom = this.ownerWindow.setTimeout(() => {
+      this.resetCacheIgnoreZoom = null;
+      this.batch(() => this.setState({ shouldCacheIgnoreZoom: false }));
+    }, 300);
+    return { shouldCacheIgnoreZoom: true };
   }
 
   private removePointer(event: PointerEvent): void {
@@ -2095,7 +2131,6 @@ export class DiagramEditor {
       }
     }
 
-    this.measure();
     const scenePointer = viewportCoordsToSceneCoords(event, this.state);
     this.lastPointerMoveCoords = { x: scenePointer.x, y: scenePointer.y };
 
@@ -4960,6 +4995,7 @@ export class DiagramEditor {
     const staticKey = [
       this.scene.getSceneNonce(),
       state.zoom.value,
+      state.shouldCacheIgnoreZoom,
       state.scrollX,
       state.scrollY,
       state.width,
@@ -4990,28 +5026,18 @@ export class DiagramEditor {
     const allElementsMap = this.scene.getNonDeletedElementsMap();
 
     const { newElementCanvas, interactiveCanvas, container } = this.options;
-    this.sizeCanvas(newElementCanvas, scale);
-    renderNewElementScene({
-      canvas: newElementCanvas,
-      rc: this.sceneCanvas.rc,
-      newElement: renderable.newElementCanvasElement,
-      elementsMap: renderable.elementsMap,
-      allElementsMap,
-      scale,
-      appState: state,
-      renderConfig: {
-        imageCache: this.sceneCanvas.imageCache,
-        isExporting: false,
-        scale,
-        renderEnvironment: this.renderEnvironment,
-        renderGrid: false,
-        canvasBackgroundColor: state.viewBackgroundColor,
-        embedsValidationStatus: new Map(),
-        elementsPendingErasure: new Set(),
-        pendingFlowchartNodes: null,
-        theme: state.theme,
-      },
-    });
+    // drawn only while something is drawn out, and cleared once after, as
+    // Excalidraw mounts this canvas only then
+    // and out of the page otherwise, a layer fewer to composite each frame
+    const previewElement = renderable.newElementCanvasElement;
+    if (previewElement || this.newElementCanvasDrawn) {
+      this.newElementCanvasDrawn = !!previewElement;
+      newElementCanvas.style.display = previewElement ? "" : "none";
+      this.sizeCanvas(newElementCanvas, scale);
+      this.drawNewElementCanvas(newElementCanvas, renderable, allElementsMap, scale);
+    } else if (newElementCanvas.style.display !== "none") {
+      newElementCanvas.style.display = "none";
+    }
 
     this.sizeCanvas(interactiveCanvas, scale);
     const deltaTime = this.lastFrameTime ? time - this.lastFrameTime : 0;
@@ -5052,14 +5078,48 @@ export class DiagramEditor {
     }
   }
 
+  private drawNewElementCanvas(
+    newElementCanvas: HTMLCanvasElement,
+    renderable: RenderableElements,
+    allElementsMap: ReturnType<DiagramEditor["scene"]["getNonDeletedElementsMap"]>,
+    scale: number,
+  ): void {
+    const state = this.state;
+    renderNewElementScene({
+      canvas: newElementCanvas,
+      rc: this.sceneCanvas.rc,
+      newElement: renderable.newElementCanvasElement,
+      elementsMap: renderable.elementsMap,
+      allElementsMap,
+      scale,
+      appState: state,
+      renderConfig: {
+        imageCache: this.sceneCanvas.imageCache,
+        isExporting: false,
+        scale,
+        renderEnvironment: this.renderEnvironment,
+        renderGrid: false,
+        canvasBackgroundColor: state.viewBackgroundColor,
+        embedsValidationStatus: new Map(),
+        elementsPendingErasure: new Set(),
+        pendingFlowchartNodes: null,
+        theme: state.theme,
+      },
+    });
+  }
+
   private sizeCanvas(canvas: HTMLCanvasElement, scale: number): void {
     const { width, height } = this.state;
     const pixelWidth = Math.max(1, Math.round(width * scale));
     const pixelHeight = Math.max(1, Math.round(height * scale));
     if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
     if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
-    canvas.style.width = `${width}px`;
-    canvas.style.height = `${height}px`;
+    // unchanged styles are not written: a write dirties style, which the
+    // next measure would then recompute
+    const cssWidth = `${width}px`;
+    const cssHeight = `${height}px`;
+    if (canvas.style.width !== cssWidth) canvas.style.width = cssWidth;
+    if (canvas.style.height !== cssHeight) canvas.style.height = cssHeight;
   }
 
   public destroy(): void {
@@ -5073,6 +5133,8 @@ export class DiagramEditor {
     this.lassoTrail.stop();
     this.destroyed = true;
     if (this.frame !== null) this.ownerWindow.cancelAnimationFrame(this.frame);
+    if (this.resetCacheIgnoreZoom !== null)
+      this.ownerWindow.clearTimeout(this.resetCacheIgnoreZoom);
     this.resize?.disconnect();
     for (const remove of this.listeners) remove();
     this.changeEmitter.clear();
