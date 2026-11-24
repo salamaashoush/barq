@@ -14,7 +14,6 @@ import { EditorView, keymap, lineNumbers as lineNumberGutter } from "@codemirror
 import { useArcMessages } from "../components/messages.ts";
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
-import { layout as flow } from "../style/index.ts";
 import { codeTheme, diffChrome } from "./editor-theme.ts";
 import { type CodeLanguage, loadLanguage, loadedLanguage } from "./languages.ts";
 import {
@@ -24,20 +23,12 @@ import {
   extensionOf,
   fromCaller,
 } from "./options.ts";
-import { codeFrame, codeSurface } from "./style.ts";
+import { codeFrame, codeSurface, diffHost } from "./style.ts";
 
 export const codeDiffStyles = variants({
   slots: {
     root: arc({}),
-    host: arc(flow.column, flow.growAuto, {
-      minHeight: "var(--code-min-height, auto)",
-      maxHeight: "var(--code-max-height, none)",
-      overflow: "auto",
-      "& .cm-mergeView": { flex: "1 1 auto" },
-      "& .cm-mergeViewEditor + .cm-mergeViewEditor, & .cm-merge-revert + .cm-mergeViewEditor": {
-        borderInlineStart: "1px solid var(--border)",
-      },
-    }),
+    host: arc(diffHost),
   },
 });
 

@@ -64,7 +64,6 @@ import {
   interaction,
   surface,
   type,
-  zIndex,
 } from "../style/index.ts";
 import { useArcMessages } from "./messages.ts";
 import { EmptyState } from "./empty-state.tsx";
@@ -237,10 +236,8 @@ export const dataTableStyles = variants({
       "[data-scrolls]": { overflow: "auto", overscrollBehavior: "contain" },
     }),
     grid: arc(layout.column, type.sm, focus.none, focus.inset, { minWidth: "min-content" }),
-    header: arc(surface.sunken, {
-      position: "sticky",
+    header: arc(surface.sunken, layout.sticky, {
       top: "var(--arc-data-table-sticky-top, 0px)",
-      zIndex: zIndex.sticky,
       boxShadow: "inset 0 -1px 0 var(--border)",
       '& > [role="row"]': {
         display: "grid",

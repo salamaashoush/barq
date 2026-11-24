@@ -16,6 +16,7 @@ import { on } from "@barqjs/ui/conditions";
 import { ring } from "@barqjs/ui/shared-ring";
 import { ringSlot } from "@barqjs/ui/shared-ring-slot";
 import { text } from "@barqjs/ui/shared-text";
+import { touch } from "@barqjs/ui/shared-touch";
 
 import { arcLayer as arc } from "../layer.ts";
 
@@ -123,51 +124,55 @@ export const zIndex: Stacking = {
   toast: "var(--z-toast, 60)",
 };
 
-/** Flow: rows, columns and what a child does inside one. */
-export const layout = arc.create({
-  /** Children side by side, centred on the cross axis. */
-  row: { display: "flex", alignItems: "center" },
-  /** The same, inside a line of text. */
-  inlineRow: { display: "inline-flex", alignItems: "center" },
-  column: { display: "flex", flexDirection: "column" },
-  /** Centred both ways. */
-  centre: { display: "flex", alignItems: "center", justifyContent: "center" },
-  inlineCentre: { display: "inline-flex", alignItems: "center", justifyContent: "center" },
-  between: { justifyContent: "space-between" },
-  end: { justifyContent: "flex-end" },
-  wrap: { flexWrap: "wrap" },
-  /** Takes the room left in its row or column. */
-  grow: { flex: "1" },
-  /** Grows into the room left, from its own content size. */
-  growAuto: { flex: "1 1 auto" },
-  noShrink: { flexShrink: "0" },
-  /** Pushed to the end of its row, whatever the reading direction. */
-  pushEnd: { marginInlineStart: "auto" },
-  /** Lets a flex or grid child shrink below its content, so text inside can truncate. */
-  minZero: { minWidth: "0px" },
-  minZeroBlock: { minHeight: "0px" },
-  fill: { width: "100%" },
-  /** Cut at the box with an ellipsis, where text that does not wrap runs out. */
-  clip: { overflow: "hidden", textOverflow: "ellipsis" },
-  nowrap: { whiteSpace: "nowrap" },
-  clamp2: {
-    display: "-webkit-box",
-    overflow: "hidden",
-    "-webkit-box-orient": "vertical",
-    "-webkit-line-clamp": "2",
-  },
-  clamp3: {
-    display: "-webkit-box",
-    overflow: "hidden",
-    "-webkit-box-orient": "vertical",
-    "-webkit-line-clamp": "3",
-  },
-  /** An element's own margin gone: a heading or a paragraph placed by its parent's gap. */
-  flush: { margin: "0" },
-  /** A query container, for what is laid out by `on.cq*`. */
-  container: { containerType: "inline-size" },
-  relative: { position: "relative" },
+/** The single declarations the layout treatments are made of. */
+const flow = arc.create({
+  flex: { display: "flex" },
+  inlineFlex: { display: "inline-flex" },
+  alignCentre: { alignItems: "center" },
+  justifyCentre: { justifyContent: "center" },
+  column: { flexDirection: "column" },
+  lineClamp: { display: "-webkit-box", overflow: "hidden", "-webkit-box-orient": "vertical" },
 });
+
+/** Flow: rows, columns and what a child does inside one. */
+export const layout = {
+  /** Children side by side, centred on the cross axis. */
+  row: arc(flow.flex, flow.alignCentre),
+  /** The same, inside a line of text. */
+  inlineRow: arc(flow.inlineFlex, flow.alignCentre),
+  column: arc(flow.flex, flow.column),
+  /** Centred both ways. */
+  centre: arc(flow.flex, flow.alignCentre, flow.justifyCentre),
+  inlineCentre: arc(flow.inlineFlex, flow.alignCentre, flow.justifyCentre),
+  between: arc({ justifyContent: "space-between" }),
+  end: arc({ justifyContent: "flex-end" }),
+  wrap: arc({ flexWrap: "wrap" }),
+  /** Takes the room left in its row or column. */
+  grow: arc({ flex: "1" }),
+  /** Grows into the room left, from its own content size. */
+  growAuto: arc({ flex: "1 1 auto" }),
+  noShrink: arc({ flexShrink: "0" }),
+  /** Pushed to the end of its row, whatever the reading direction. */
+  pushEnd: arc({ marginInlineStart: "auto" }),
+  /** Lets a flex or grid child shrink below its content, so text inside can truncate. */
+  minZero: arc({ minWidth: "0px" }),
+  minZeroBlock: arc({ minHeight: "0px" }),
+  fill: arc({ width: "100%" }),
+  /** Cut at the box with an ellipsis, where text that does not wrap runs out. */
+  clip: arc({ overflow: "hidden", textOverflow: "ellipsis" }),
+  nowrap: arc({ whiteSpace: "nowrap" }),
+  clamp2: arc(flow.lineClamp, { "-webkit-line-clamp": "2" }),
+  clamp3: arc(flow.lineClamp, { "-webkit-line-clamp": "3" }),
+  /** An element's own margin gone: a heading or a paragraph placed by its parent's gap. */
+  flush: arc({ margin: "0" }),
+  /** A query container, for what is laid out by `on.cq*`. */
+  container: arc({ containerType: "inline-size" }),
+  relative: arc({ position: "relative" }),
+  /** Held at the top of its scroller, over what scrolls under it. */
+  sticky: arc({ position: "sticky", zIndex: "var(--z-sticky, 10)" }),
+  /** Centred in its parent's width, no wider than the parent. */
+  centred: arc({ marginInline: "auto", width: "100%" }),
+};
 
 /** One line, cut with an ellipsis. */
 export const truncate = arc(layout.clip, layout.nowrap);
@@ -211,11 +216,11 @@ export const fg = arc.create({
 });
 
 /** A number or a title at display size, which `type.title` and `type.stat` share. */
-const display = arc({
-  margin: "0",
+const strong = arc({ fontWeight: "var(--font-weight-semibold)" });
+
+const display = arc(layout.flush, strong, {
   fontSize: "var(--text-2xl)",
   lineHeight: "var(--text-2xl--line-height)",
-  fontWeight: "var(--font-weight-semibold)",
   letterSpacing: "var(--tracking-tight)",
 });
 
@@ -234,19 +239,16 @@ export const type = {
   /** A page's title. */
   title: arc(text.heading, display, { textWrap: "balance" }),
   /** A section's or a panel's title. */
-  heading: arc(text.heading, {
-    margin: "0",
+  heading: arc(text.heading, layout.flush, strong, {
     fontSize: "var(--text-lg)",
     lineHeight: "var(--text-lg--line-height)",
-    fontWeight: "var(--font-weight-semibold)",
   }),
-  subheading: arc(text.medium, {
-    margin: "0",
+  subheading: arc(text.medium, layout.flush, {
     fontSize: "var(--text-base)",
     lineHeight: "var(--text-base--line-height)",
   }),
   /** Running text, wrapped for reading. */
-  body: arc(text.sm, { margin: "0", textWrap: "pretty" }),
+  body: arc(text.sm, layout.flush, { textWrap: "pretty" }),
   /** What names a control or a value. */
   label: arc(text.sm, text.medium),
   /** Small print beside something: a count, a time, a hint. */
@@ -262,7 +264,7 @@ export const type = {
   sm: arc(text.sm),
   xs: arc({ fontSize: "var(--text-xs)" }),
   medium: arc(text.medium),
-  strong: arc({ fontWeight: "var(--font-weight-semibold)" }),
+  strong: arc(strong),
   normal: arc({ fontWeight: "var(--font-weight-normal)" }),
 };
 
@@ -387,6 +389,15 @@ export const focus = {
       boxShadow: "0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent)",
     },
   }),
+  /** An outline inside the box on keyboard focus: a scrolling region a Tab reaches. */
+  outline: arc({
+    ":focus-visible": {
+      outlineWidth: "2px",
+      outlineStyle: "solid",
+      outlineColor: "var(--ring)",
+      outlineOffset: "-2px",
+    },
+  }),
   /** Takes the browser's own outline away, for a part that draws a ring instead. */
   none: arc(box.outline),
 };
@@ -434,14 +445,16 @@ export const motion = {
   }),
 };
 
-/**
- * Room for a finger, arc's way: ui's `touch` grows a control; these place a
- * part that is not one of ui's controls.
- */
-export const target = arc.create({
-  /** At least 24px under a fine pointer and 44px under a coarse one. */
-  size: {
-    minBlockSize: { default: "1.5rem", [on.coarse]: "2.75rem" },
-    minInlineSize: { default: "1.5rem", [on.coarse]: "2.75rem" },
-  },
+/** A pointer's minimum target, 24px. */
+const fine = arc.create({
+  size: { minBlockSize: "1.5rem", minInlineSize: "1.5rem" },
 });
+
+/**
+ * Room for a pointer on a part that is not one of ui's controls, which grow
+ * by themselves: 24px under a fine pointer, ui's 44px under a coarse one.
+ */
+export const target = {
+  /** At least 24px under a fine pointer and ui's 44px under a coarse one. */
+  size: arc(fine.size, touch.target),
+};

@@ -285,7 +285,7 @@ const JUSTIFY: Record<Justify, string> = {
 
 const grid = arc({ display: "grid" });
 
-const container = arc(layout.container, { marginInline: "auto", width: "100%" });
+const container = arc(layout.container, layout.centred);
 
 export type ContainerSize = Breakpoint | "full";
 

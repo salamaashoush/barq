@@ -116,14 +116,13 @@ export interface AppShellProps extends Omit<UiProps, "class" | "className">, Cus
 export const appShellStyles = variants({
   slots: {
     root: arc({}),
-    skip: arc(rounded.md, bg.page, fg.default, type.sm, {
+    skip: arc(rounded.md, bg.page, fg.default, type.sm, focus.visible, {
       position: "fixed",
       insetInlineStart: space.x2,
       top: space.x2,
       zIndex: zIndex.toast,
       paddingInline: space.x3,
       paddingBlock: space.x2,
-      boxShadow: "0 0 0 2px var(--ring)",
       translate: "0 calc(-100% - var(--spacing) * 4)",
       ":focus": { translate: "0 0" },
       ":focus-visible": { translate: "0 0" },

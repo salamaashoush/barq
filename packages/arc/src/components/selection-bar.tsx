@@ -5,18 +5,7 @@ import { Button } from "@barqjs/ui/button";
 
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
-import {
-  bg,
-  edge,
-  elevation,
-  fg,
-  gap,
-  layout,
-  rounded,
-  space,
-  type,
-  zIndex,
-} from "../style/index.ts";
+import { bg, edge, elevation, fg, gap, layout, rounded, space, type } from "../style/index.ts";
 import { useArcMessages } from "./messages.ts";
 import { type ConfirmOptions, confirm } from "./confirm.tsx";
 
@@ -51,11 +40,9 @@ export interface SelectionBarProps<T> extends Customisable<Slots> {
 
 export const selectionBarStyles = variants({
   slots: {
-    dock: arc(layout.row, {
+    dock: arc(layout.row, layout.sticky, {
       pointerEvents: "none",
-      position: "sticky",
       insetBlockEnd: space.x4,
-      zIndex: zIndex.sticky,
       justifyContent: "center",
       marginBlockStart: space.x3,
     }),

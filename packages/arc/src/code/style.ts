@@ -45,11 +45,15 @@ export const codeSurface = arc(type.mono, fg.default, {
  * the text keeps its newlines, and a line number is generated content, which
  * a copy leaves out and a screen reader skips.
  */
-export const staticCode = arc(layout.flush, {
-  boxSizing: "border-box",
+/** Between the sizes the caller set, scrolling past the larger. */
+const scroller = arc({
   minHeight: "var(--code-min-height, auto)",
   maxHeight: "var(--code-max-height, none)",
   overflow: "auto",
+});
+
+export const staticCode = arc(layout.flush, scroller, {
+  boxSizing: "border-box",
   paddingBlock: "var(--code-pad-y)",
   font: "inherit",
   whiteSpace: "pre",
@@ -115,3 +119,11 @@ export const codeFrame = arc(
     },
   },
 );
+
+/** Where a diff's editors sit: one column, a rule between the two sides. */
+export const diffHost = arc(layout.column, layout.growAuto, scroller, {
+  "& .cm-mergeView": { flex: "1 1 auto" },
+  "& .cm-mergeViewEditor + .cm-mergeViewEditor, & .cm-merge-revert + .cm-mergeViewEditor": {
+    borderInlineStart: "1px solid var(--border)",
+  },
+});
