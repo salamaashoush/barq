@@ -66,7 +66,7 @@ export {
 export {
   CurrencyField,
   type CurrencyFieldProps,
-  type FormattedNumberProps,
+  type FormattedFieldProps,
   PercentField,
   type PercentFieldProps,
   UnitField,
@@ -336,6 +336,12 @@ export {
   sparklineStyles,
 } from "./components/sparkline.tsx";
 export {
+  ComboChart,
+  type ComboChartProps,
+  type ComboChartSlots,
+  comboChartStyles,
+} from "./components/combo-chart.tsx";
+export {
   ARC_CONTRAST_DARK,
   ARC_CONTRAST_LIGHT,
   ARC_DARK,
@@ -384,3 +390,20 @@ export {
 export { Link, type LinkProps, isExternalHref, linkStyles } from "./components/text-link.tsx";
 export { Truncate, type TruncateProps, truncateStyles } from "./components/truncate.tsx";
 export { Shortcut, type ShortcutProps, keyLabel, shortcutStyles } from "./components/shortcut.tsx";
+export {
+  Bytes,
+  type BytesProps,
+  Currency,
+  type CurrencyProps,
+  Duration,
+  type DurationProps,
+  FormattedDate,
+  type FormattedDateProps,
+  FormattedNumber,
+  type FormattedNumberProps,
+  type Moment,
+  RelativeTime,
+  type RelativeTimeProps,
+  durationParts,
+  formattedStyles,
+} from "./components/format.tsx";

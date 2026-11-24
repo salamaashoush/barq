@@ -1,0 +1,177 @@
+import { describe, expect, test } from "bun:test";
+import { type Child, flush } from "@barqjs/core";
+import { provideLocale } from "@barqjs/aria/i18n";
+import { ariaViolations, render, screen, tick, user } from "@barqjs/testing";
+
+import { hydrates, wears } from "../test-arc.ts";
+import { ComboChart, comboChartStyles } from "./combo-chart.tsx";
+
+const DATA = [
+  { day: "Mon", runs: 120, rate: 0.02 },
+  { day: "Tue", runs: 180, rate: 0.05 },
+  { day: "Wed", runs: 150, rate: 0.01 },
+];
+
+const BARS = [{ key: "runs", label: "Runs" }];
+const LINES = [{ key: "rate", label: "Failure rate", tone: "danger" as const }];
+
+async function drawn(): Promise<SVGSVGElement> {
+  await tick();
+  flush();
+  return document.querySelector('[data-slot="combo-chart"] svg') as SVGSVGElement;
+}
+
+describe("ComboChart", () => {
+  test("draws a bar per column and a line over them, each in its series' colour", async () => {
+    render(() => <ComboChart label="Runs" data={DATA} x="day" bars={BARS} lines={LINES} />);
+    const svg = await drawn();
+    expect(svg.getAttribute("aria-label")).toBe("Runs");
+    const bars = [...svg.querySelectorAll("rect")].filter(
+      (rect) => rect.getAttribute("fill") === "var(--color-runs)",
+    );
+    expect(bars.length).toBe(3);
+    const strokes = [...svg.querySelectorAll("path")].map((path) => path.getAttribute("stroke"));
+    expect(strokes).toContain("var(--color-rate)");
+    const chart = document.querySelector('[data-slot="chart"]') as HTMLElement;
+    expect(chart.style.getPropertyValue("--color-rate")).toBe("var(--danger)");
+    expect(chart.style.getPropertyValue("--color-runs")).toBe("var(--chart-1)");
+  });
+
+  test("a second axis at the end carries the lines' own scale", async () => {
+    render(() => (
+      <ComboChart
+        label="Runs"
+        data={DATA}
+        x="day"
+        bars={BARS}
+        lines={LINES}
+        dualAxis
+        yLabel="Runs"
+        y2Label="Rate"
+      />
+    ));
+    const svg = await drawn();
+    const texts = [...svg.querySelectorAll("text")];
+    const at = (words: string): number =>
+      Number(texts.find((text) => text.textContent === words)?.getAttribute("x"));
+    expect(texts.map((text) => text.textContent)).toContain("Rate");
+    expect(at("0.050")).toBeGreaterThan(at("Tue"));
+    expect(at("180")).toBeLessThan(at("Mon"));
+  });
+
+  test("its numbers are a table, a row per column", async () => {
+    render(() => (
+      <ComboChart label="Runs" data={DATA} x="day" xLabel="Day" bars={BARS} lines={LINES} />
+    ));
+    await drawn();
+    const table = screen.getByRole("table", { name: "Runs" });
+    expect([...table.querySelectorAll("thead th")].map((th) => th.textContent)).toEqual([
+      "Day",
+      "Runs",
+      "Failure rate",
+    ]);
+    expect(table.querySelector("tbody tr")?.textContent).toBe("Mon1200.02");
+    expect(await ariaViolations(document.body)).toEqual([]);
+  });
+
+  test("the arrow keys walk the columns and the tooltip compares every series", async () => {
+    render(() => <ComboChart label="Runs" data={DATA} x="day" bars={BARS} lines={LINES} />);
+    const svg = await drawn();
+    svg.focus();
+    flush();
+    expect(document.querySelector('[data-slot="chart-tooltip-label"]')?.textContent).toBe("Mon");
+    const rows = () =>
+      [...document.querySelectorAll('[data-slot="chart-tooltip-row"]')].map(
+        (row) => row.textContent,
+      );
+    expect(rows()).toEqual(["Runs120", "Failure rate0.02"]);
+    user.keyDown("ArrowRight", { target: svg });
+    flush();
+    expect(document.querySelector('[data-slot="chart-tooltip-label"]')?.textContent).toBe("Tue");
+    expect(rows()).toEqual(["Runs180", "Failure rate0.05"]);
+  });
+
+  test("stacks its bars on request", async () => {
+    render(() => (
+      <ComboChart
+        label="Runs"
+        data={DATA}
+        x="day"
+        stacked
+        bars={[
+          { key: "runs", label: "Runs" },
+          { key: "rate", label: "Rate" },
+        ]}
+      />
+    ));
+    const svg = await drawn();
+    const first = (fill: string): Element | undefined =>
+      [...svg.querySelectorAll("rect")].find((rect) => rect.getAttribute("fill") === fill);
+    expect(first("var(--color-runs)")?.getAttribute("x")).toBe(
+      first("var(--color-rate)")?.getAttribute("x") ?? "",
+    );
+  });
+
+  test("writes its numbers in the reader's locale, right to left", async () => {
+    function Arabic(props: { children?: Child }) {
+      provideLocale("ar-EG");
+      return <div dir="rtl">{props.children}</div>;
+    }
+    render(() => (
+      <Arabic>
+        <ComboChart label="التشغيل" data={DATA} x="day" bars={BARS} />
+      </Arabic>
+    ));
+    await drawn();
+    expect(document.querySelector('[data-slot="chart-table-cell"]')?.textContent).toBe("١٢٠");
+  });
+
+  test("takes a class per part and a slot on every part", async () => {
+    render(() => (
+      <ComboChart
+        label="Runs"
+        data={DATA}
+        x="day"
+        bars={BARS}
+        class="mine"
+        table="visible"
+        classes={{ root: "r", chart: "c", plot: "p", table: "t", header: "h", cell: "x" }}
+      />
+    ));
+    await drawn();
+    const pairs: [string, string][] = [
+      ["combo-chart", "r"],
+      ["chart", "c"],
+      ["combo-chart-plot", "p"],
+      ["chart-table", "t"],
+      ["chart-table-header", "h"],
+      ["chart-table-cell", "x"],
+    ];
+    for (const [slot, name] of pairs) {
+      expect(document.querySelector(`[data-slot="${slot}"]`)?.classList.contains(name)).toBe(true);
+    }
+    const root = document.querySelector('[data-slot="combo-chart"]');
+    expect(root?.classList.contains("mine")).toBe(true);
+    expect(wears(root, comboChartStyles().root)).toBe(true);
+  });
+
+  test("hydrates what the server wrote", async () => {
+    const result = await hydrates(`
+      import { ComboChart } from "<arc>";
+      export function Page() {
+        return (
+          <ComboChart
+            label="Runs"
+            data={[{ day: "Mon", runs: 1, rate: 2 }, { day: "Tue", runs: 3, rate: 1 }]}
+            x="day"
+            bars={[{ key: "runs", label: "Runs" }]}
+            lines={[{ key: "rate", label: "Rate" }]}
+            dualAxis
+          />
+        );
+      }
+    `);
+    expect(result.container.querySelector("svg")?.getAttribute("aria-label")).toBe("Runs");
+    result.unmount();
+  });
+});
