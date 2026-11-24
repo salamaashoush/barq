@@ -18,7 +18,9 @@ import {
   type,
 } from "./index.ts";
 
-const classesOf = (group: string): string[] => group.split(" ");
+function classesOf(group: string): string[] {
+  return group.split(" ");
+}
 
 describe("arc's style", () => {
   test("composes ui's treatments rather than writing them again", () => {
