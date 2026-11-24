@@ -227,6 +227,7 @@ import { EditorImages } from "./images.ts";
 import { EditorText } from "./text.ts";
 import { actionChangeBucketFillBackgroundColor, BucketFill } from "./bucket-fill.ts";
 import { DrawShape } from "./draw-shape.ts";
+import { MagicFrame } from "./magic-frame.ts";
 import { EraserTrail, LaserTrails, LassoTrail } from "./trails.ts";
 import { TextTool } from "./text-tool.ts";
 import { TOGGLE_TOOLS, findToolByKey, isEditorTool } from "./tools.ts";
@@ -426,6 +427,7 @@ export class DiagramEditor {
   public readonly library: Library;
   public readonly id = randomId();
   public readonly drawShape: DrawShape;
+  public readonly magicFrame: MagicFrame;
   public readonly bucketFill: BucketFill;
   /** What the eraser has marked, erased on pointer up. */
   public elementsPendingErasure = new Set<ExcalidrawElement["id"]>();
@@ -637,6 +639,7 @@ export class DiagramEditor {
       focusContainer: () => this.focusContainer(),
     });
     this.drawShape = new DrawShape(this);
+    this.magicFrame = new MagicFrame(this);
     this.bucketFill = new BucketFill(this);
     if (options.svgLayer) {
       this.drawShape.start(options.svgLayer);

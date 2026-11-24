@@ -32,6 +32,7 @@ import { EditorStore } from "./ui/store.ts";
 
 import type { DiagramScene } from "./data/types.ts";
 import type { TextToDiagramOptions } from "./ttd/types.ts";
+import type { DiagramToCodeOptions } from "./editor/magic-frame.ts";
 import type {
   DiagramChangeListener,
   DiagramEditorApi,
@@ -97,6 +98,11 @@ export interface DiagramEditorProps {
    * dialog's chat tab is offered with it, when `aiEnabled`, and not without.
    */
   textToDiagram?: TextToDiagramOptions;
+  /**
+   * The app's wireframe-to-code backend, Excalidraw's `<DiagramToCodePlugin>`:
+   * the magic frame is offered with it, when `aiEnabled`, and not without.
+   */
+  diagramToCode?: DiagramToCodeOptions;
   /** Excalidraw's `generateLinkForSelection`, for the link "copy link to element" copies. */
   generateLinkForSelection?: (id: string, type: "element" | "group") => string;
   /** `false` renders the canvas alone, without the toolbar, the panels or the menus. @default true */
@@ -230,6 +236,7 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
       renderCustomStats: props.renderCustomStats,
       aiEnabled: props.aiEnabled !== false,
       textToDiagram: props.textToDiagram,
+      diagramToCode: props.diagramToCode,
       theme: props.theme,
       libraryReturnUrl: props.libraryReturnUrl,
       libraryPublishEndpoint: props.libraryPublishEndpoint,
@@ -242,6 +249,7 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
     zenModeControlled: props.zenModeEnabled !== undefined,
     onThemeChange: props.onThemeChange,
     aiEnabled: props.aiEnabled !== false,
+    diagramToCode: props.diagramToCode,
     generateLinkForSelection: props.generateLinkForSelection,
     onExport: props.onExport,
     name: props.name,

@@ -22,6 +22,7 @@ import { CommandPalette } from "./command-palette.tsx";
 import { EditorKeys } from "./editor-keys.tsx";
 import { ImageExportDialog, JSONExportDialog } from "./export-dialogs.tsx";
 import { HelpDialog } from "./help-dialog.tsx";
+import { MagicFrameLayer } from "./embeds.tsx";
 import { TTDDialog } from "./ttd-dialog.tsx";
 import { HintViewer } from "./hint-viewer.tsx";
 import { ElementLinkDialog, HyperlinkPopup } from "./hyperlink.tsx";
@@ -200,6 +201,7 @@ function Layout(props: { mainMenu?: () => Child }) {
         <HelpDialog />
         <ChartDialog />
         <TTDDialog />
+        <MagicFrameLayer />
         <ImageExportDialog />
         <JSONExportDialog />
         <EditorKeys />

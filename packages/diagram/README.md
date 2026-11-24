@@ -291,7 +291,10 @@ takes Excalidraw's `<TTDDialog>` props, `onTextSubmit` (given the messages,
 an `onChunk` to stream into and an abort `signal`, it resolves to the
 generated Mermaid or an error) and an optional `persistenceAdapter` that
 loads and saves the chats. Without it, or with `aiEnabled={false}`, the chat
-is not offered.
+is not offered. `diagramToCode` is the magic frame's backend, Excalidraw's
+`<DiagramToCodePlugin generate>`: given the frame, its children and an
+`onPartial` to stream into, it resolves to `{ html }`, which shows in a
+sandboxed iframe beside the frame (scripts run, with no access to the page).
 
 ### Accessibility
 

@@ -2,6 +2,7 @@ import type { NonDeletedExcalidrawElement, Theme } from "@excalidraw/element/typ
 
 import type { AppState, BinaryFiles } from "../types.ts";
 import type { OnExport } from "./actions/export.ts";
+import type { DiagramToCodeOptions } from "./magic-frame.ts";
 
 /** What the export dialog offers, Excalidraw's `ExportOpts`. */
 export interface ExportOpts {
@@ -99,6 +100,8 @@ export interface EditorHost {
   onThemeChange?: (theme: Theme) => void;
   /** Excalidraw's `aiEnabled`: the text-to-diagram and magic frame entries. */
   aiEnabled: boolean;
+  /** The app's wireframe-to-code backend; the magic frame generates only with it. */
+  diagramToCode?: DiagramToCodeOptions;
   /** Excalidraw's `generateLinkForSelection`, for "copy link to element". */
   generateLinkForSelection?: (id: string, type: "element" | "group") => string;
   /** Excalidraw's `onExport`: a save waits for it, showing its progress. */

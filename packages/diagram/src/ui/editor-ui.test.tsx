@@ -77,9 +77,8 @@ describe("toolbar", () => {
       "Laser pointerK",
       "Bucket fillB",
       "Lasso selection",
-      // text to diagram needs the app's backend
+      // text to diagram and the magic frame need the app's backends
       "Mermaid to Excalidraw",
-      "Wireframe to code",
     ]);
     await user.click(within(menu).getByRole("menuitem", { name: /Frame tool/ }));
     await settle();

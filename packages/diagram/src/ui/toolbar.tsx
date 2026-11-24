@@ -99,7 +99,7 @@ interface ToolConfig {
 }
 
 /** The tools this editor does not draw with yet; their entries stay, disabled. */
-const UNAVAILABLE_TOOLS = new Set<string>(["embeddable", "magicframe"]);
+const UNAVAILABLE_TOOLS = new Set<string>(["embeddable"]);
 
 const configOf = (type: string): ToolConfig => (TOOLS as Record<string, ToolConfig>)[type] ?? {};
 
@@ -290,6 +290,9 @@ function ExtraTools(props: { select: (type: ToolType) => void; label: (type: str
             ui.store.editor?.batch(() =>
               ui.store.editor?.setState({ openDialog: { name: "ttd", tab: "mermaid" } }),
             );
+          } else if (type === "magicframe") {
+            const editor = ui.store.editor;
+            editor?.batch(() => editor.magicFrame.onToolSelect());
           } else if (type === "textToDiagram") {
             ui.store.editor?.batch(() =>
               ui.store.editor?.setState({ openDialog: { name: "ttd", tab: "text-to-diagram" } }),
@@ -327,8 +330,8 @@ function ExtraTools(props: { select: (type: ToolType) => void; label: (type: str
           <Waypoints aria-hidden="true" />
           <span>{t("toolBar.mermaidToExcalidraw")}</span>
         </DropdownMenuItem>
-        <Show when={ui.host().aiEnabled}>
-          <DropdownMenuItem id="magicframe" class={menuItem} isDisabled>
+        <Show when={ui.host().aiEnabled && ui.host().diagramToCode}>
+          <DropdownMenuItem id="magicframe" class={menuItem} data-testid="toolbar-magicframe">
             <WandSparkles aria-hidden="true" />
             <span>{t("toolBar.magicframe")}</span>
           </DropdownMenuItem>

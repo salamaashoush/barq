@@ -28,7 +28,7 @@ embeds.
 - done: autoshape tool, Shift+X: a sketch recognised as a shape, arrows bound, lines between shapes made arrows (`draw-shape.test.ts`)
 - done: bucket fill tool, B: fills the closed region clicked, restyles its own fills, B again cycles the colour, Alt holds an eye dropper (`bucket-fill.test.ts`)
 - pending (4): embeddable and iframe tool, `actionLink` embeds; its toolbar entry is there, disabled
-- pending (3b): magic frame (AI); the element draws and hit-tests, its toolbar entry is disabled
+- done: magic frame, with `aiEnabled` and the app's `diagramToCode`: wraps the selection, generates HTML beside it into a sandboxed iframe (streamed), copies its source (`magic-frame.test.tsx`)
 - done: toolbar drag-to-place of the sticky note (`editor-ui.test.tsx`)
 
 ## Selection and transforms

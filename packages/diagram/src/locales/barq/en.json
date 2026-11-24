@@ -44,5 +44,10 @@
   "search": {
     "next": "Next match",
     "previous": "Previous match"
+  },
+  "magicFrame": {
+    "emptyFrame": "Cannot generate from an empty frame",
+    "noBackend": "No wireframe-to-code backend is set up",
+    "generated": "Generated code"
   }
 }
