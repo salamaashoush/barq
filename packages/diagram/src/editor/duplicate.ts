@@ -76,6 +76,10 @@ export const duplicateDraggedSelection = (
     const cloneId = origIdToDuplicateId.get(pointerDownState.hit.element.id);
     pointerDownState.hit.element = (cloneId && duplicateElementsMap.get(cloneId)) || null;
   }
+  if (pointerDownState.hit.editedTextId) {
+    const cloneId = origIdToDuplicateId.get(pointerDownState.hit.editedTextId);
+    pointerDownState.hit.editedTextId = (cloneId && duplicateElementsMap.get(cloneId)?.id) || null;
+  }
   pointerDownState.hit.allHitElements = pointerDownState.hit.allHitElements.flatMap((original) => {
     const cloneId = origIdToDuplicateId.get(original.id);
     const clone = cloneId && duplicateElementsMap.get(cloneId);
@@ -109,4 +113,7 @@ export const duplicateDraggedSelection = (
       });
     }
   }
+
+  editor.maybeCacheVisibleGaps(event, selectedElements, true);
+  editor.maybeCacheReferenceSnapPoints(event, selectedElements, true);
 };

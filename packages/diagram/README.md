@@ -126,7 +126,11 @@ What it does, and the keys Excalidraw gives each:
 - Ctrl+Z undoes, Ctrl+Shift+Z or Ctrl+Y redoes;
 - space-drag, the middle button and the hand tool pan; ctrl-wheel and a
   pinch zoom; Ctrl+`=`, `-` and `0` zoom, Shift+1 fits; Ctrl+`'` shows the
-  grid, which elements snap to.
+  grid, which elements snap to;
+- Alt+S snaps to objects instead: a drag, a resize or a new shape lands on
+  the corners, centres and equal gaps of the elements around it, with the
+  lines that show it; Ctrl turns it off for one gesture, or on when it is
+  off.
 
 Ctrl is Cmd on macOS.
 

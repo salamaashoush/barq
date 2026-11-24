@@ -139,13 +139,27 @@ import { EditorCursor } from "./cursor.ts";
 import { History } from "./history.ts";
 import { EditorSelection, selectGroupsForSelectedElements } from "./selection.ts";
 import { SelectionTool } from "./selection-tool.ts";
-import { snapNewElement } from "./snapping.ts";
+import {
+  getReferenceSnapPoints,
+  getSnapLinesAtPointer,
+  getVisibleGaps,
+  isActiveToolNonLinearSnappable,
+  isSnappingEnabled,
+  SnapCache,
+  snapNewElement,
+} from "./snapping.ts";
 import { TOGGLE_TOOLS, findToolByKey, isEditorTool } from "./tools.ts";
 import { patchLinearEditor } from "./linear.ts";
 
 import type { DiagramScene } from "../data/types.ts";
 import type { InteractiveSceneRenderAnimationState, ScrollBars } from "../scene/types.ts";
-import type { AppState, BinaryFiles, NullableGridSize, ToolType } from "../types.ts";
+import type {
+  AppState,
+  BinaryFiles,
+  KeyboardModifiersObject,
+  NullableGridSize,
+  ToolType,
+} from "../types.ts";
 import type { FinalizeData } from "./actions/finalize.ts";
 import type {
   Action,
@@ -1032,6 +1046,48 @@ export class DiagramEditor {
     return topLayerFrame;
   }
 
+  /** Caches the points the selection snaps to, unless cached; snapping is per drag. */
+  public maybeCacheReferenceSnapPoints(
+    event: KeyboardModifiersObject,
+    selectedElements: readonly NonDeletedExcalidrawElement[],
+    recomputeAnyways = false,
+  ): void {
+    if (
+      isSnappingEnabled({ event, app: this, selectedElements }) &&
+      (recomputeAnyways || !SnapCache.getReferenceSnapPoints())
+    ) {
+      SnapCache.setReferenceSnapPoints(
+        getReferenceSnapPoints(
+          this.scene.getNonDeletedElements(),
+          selectedElements,
+          this.state,
+          this.scene.getNonDeletedElementsMap(),
+        ),
+      );
+    }
+  }
+
+  /** Caches the gaps between visible elements the selection snaps into, unless cached. */
+  public maybeCacheVisibleGaps(
+    event: KeyboardModifiersObject,
+    selectedElements: readonly NonDeletedExcalidrawElement[],
+    recomputeAnyways = false,
+  ): void {
+    if (
+      isSnappingEnabled({ event, app: this, selectedElements }) &&
+      (recomputeAnyways || !SnapCache.getVisibleGaps())
+    ) {
+      SnapCache.setVisibleGaps(
+        getVisibleGaps(
+          this.scene.getNonDeletedElements(),
+          selectedElements,
+          this.state,
+          this.scene.getNonDeletedElementsMap(),
+        ),
+      );
+    }
+  }
+
   public updateFrameToHighlight(frameToHighlight: AppState["frameToHighlight"]): void {
     if (this.state.frameToHighlight !== frameToHighlight) {
       this.setState({ frameToHighlight });
@@ -1846,10 +1902,22 @@ export class DiagramEditor {
       event[KEYS.CTRL_OR_CMD] ? null : this.getEffectiveGridSize(),
     );
 
-    const { snapOffset, snapLines } = snapNewElement(newElementBeingDrawn, {
-      x: gridX - pointerDownState.originInGrid.x,
-      y: gridY - pointerDownState.originInGrid.y,
-    });
+    this.maybeCacheReferenceSnapPoints(event, [newElementBeingDrawn]);
+
+    const { snapOffset, snapLines } = snapNewElement(
+      newElementBeingDrawn,
+      this,
+      event,
+      {
+        x: pointerDownState.originInGrid.x + (this.state.originSnapOffset?.x ?? 0),
+        y: pointerDownState.originInGrid.y + (this.state.originSnapOffset?.y ?? 0),
+      },
+      {
+        x: gridX - pointerDownState.originInGrid.x,
+        y: gridY - pointerDownState.originInGrid.y,
+      },
+      this.scene.getNonDeletedElementsMap(),
+    );
     gridX += snapOffset.x;
     gridY += snapOffset.y;
     this.setState({ snapLines });
@@ -2182,6 +2250,9 @@ export class DiagramEditor {
       snapLines: updateStable(prevState.snapLines, []),
       originSnapOffset: null,
     }));
+
+    SnapCache.setReferenceSnapPoints(null);
+    SnapCache.setVisibleGaps(null);
 
     const hitElements = pointerDownState.hit.allHitElements;
     const sceneCoords = viewportCoordsToSceneCoords(
@@ -2603,7 +2674,29 @@ export class DiagramEditor {
       );
     }
 
-    if (
+    if (!this.state.newElement && isActiveToolNonLinearSnappable(this.state.activeTool.type)) {
+      // where a shape would start, snapped to the others
+      const { originOffset, snapLines } = getSnapLinesAtPointer(
+        this.scene.getNonDeletedElements(),
+        this,
+        { x: scenePointerX, y: scenePointerY },
+        event,
+        this.scene.getNonDeletedElementsMap(),
+      );
+      this.setState((prevState) => {
+        const nextSnapLines = updateStable(prevState.snapLines, snapLines);
+        const nextOriginOffset = prevState.originSnapOffset
+          ? updateStable(prevState.originSnapOffset, originOffset)
+          : originOffset;
+        if (
+          prevState.snapLines === nextSnapLines &&
+          prevState.originSnapOffset === nextOriginOffset
+        ) {
+          return null;
+        }
+        return { snapLines: nextSnapLines, originSnapOffset: nextOriginOffset };
+      });
+    } else if (
       !this.state.newElement &&
       !this.state.selectedElementsAreBeingDragged &&
       !this.state.selectionElement &&
@@ -3603,6 +3696,7 @@ export class DiagramEditor {
     this.announceEmitter.clear();
     this.textEditEmitter.clear();
     this.store.onDurableIncrementEmitter.clear();
+    SnapCache.destroy();
     this.sceneCanvas.destroy();
   }
 }

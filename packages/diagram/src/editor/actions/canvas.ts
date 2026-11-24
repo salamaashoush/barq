@@ -32,17 +32,40 @@ export const actionToggleGridMode: Action = {
   keyTest: (event) => event[KEYS.CTRL_OR_CMD] && event.code === CODES.QUOTE,
 };
 
+/** Snaps moved, resized and new elements to the others, instead of the grid. Alt+S. */
+export const actionToggleObjectsSnapMode: Action = {
+  name: "objectsSnapMode",
+  label: "Snapping to objects toggled",
+  perform(_elements, appState) {
+    return {
+      appState: {
+        ...appState,
+        objectsSnapModeEnabled: !appState.objectsSnapModeEnabled,
+        gridModeEnabled: false,
+      },
+      captureUpdate: CaptureUpdateAction.EVENTUALLY,
+    };
+  },
+  keyTest: (event) => !event[KEYS.CTRL_OR_CMD] && event.altKey && event.code === CODES.S,
+};
+
 /** Where a zoom from the keyboard centres: the middle of the viewport. */
 const viewportCentre = (appState: AppState) => ({
   viewportX: appState.width / 2 + appState.offsetLeft,
   viewportY: appState.height / 2 + appState.offsetTop,
 });
 
-const zoomTo = (appState: AppState, nextZoom: number): ActionResult => ({
+/** A point in client coordinates a zoom keeps where it is, as the text editor's caret. */
+export interface ZoomAnchor {
+  viewportX: number;
+  viewportY: number;
+}
+
+const zoomTo = (appState: AppState, nextZoom: number, anchor: ZoomAnchor | null): ActionResult => ({
   appState: {
     ...appState,
     ...getViewportForZoomWithScrollConstraints(
-      { ...viewportCentre(appState), nextZoom: getNormalizedZoom(nextZoom) },
+      { ...(anchor ?? viewportCentre(appState)), nextZoom: getNormalizedZoom(nextZoom) },
       appState,
     ),
   },
@@ -50,34 +73,40 @@ const zoomTo = (appState: AppState, nextZoom: number): ActionResult => ({
 });
 
 /** Ctrl or Cmd (or Shift) with =. */
-export const actionZoomIn: Action = {
+export const actionZoomIn: Action<ZoomAnchor> = {
   name: "zoomIn",
   label: "Zoomed in",
   viewMode: true,
-  perform: (_elements, appState) => zoomTo(appState, appState.zoom.value + ZOOM_STEP),
+  perform: (_elements, appState, anchor) =>
+    zoomTo(appState, appState.zoom.value + ZOOM_STEP, anchor),
   keyTest: (event) =>
     (event.code === CODES.EQUAL || event.code === CODES.NUM_ADD) &&
     (event[KEYS.CTRL_OR_CMD] || event.shiftKey),
 };
 
 /** Ctrl or Cmd (or Shift) with -. */
-export const actionZoomOut: Action = {
+export const actionZoomOut: Action<ZoomAnchor> = {
   name: "zoomOut",
   label: "Zoomed out",
   viewMode: true,
-  perform: (_elements, appState) => zoomTo(appState, appState.zoom.value - ZOOM_STEP),
+  perform: (_elements, appState, anchor) =>
+    zoomTo(appState, appState.zoom.value - ZOOM_STEP, anchor),
   keyTest: (event) =>
     (event.code === CODES.MINUS || event.code === CODES.NUM_SUBTRACT) &&
     (event[KEYS.CTRL_OR_CMD] || event.shiftKey),
 };
 
 /** Back to 100%, or to a zoom lock's floor. Ctrl or Cmd (or Shift) with 0. */
-export const actionResetZoom: Action = {
+export const actionResetZoom: Action<ZoomAnchor> = {
   name: "resetZoom",
   label: "Zoom reset",
   viewMode: true,
-  perform: (_elements, appState) =>
-    zoomTo(appState, appState.scrollConstraints?.lockZoom ? appState.scrollConstraints.zoom : 1),
+  perform: (_elements, appState, anchor) =>
+    zoomTo(
+      appState,
+      appState.scrollConstraints?.lockZoom ? appState.scrollConstraints.zoom : 1,
+      anchor,
+    ),
   keyTest: (event) =>
     (event.code === CODES.ZERO || event.code === CODES.NUM_ZERO) &&
     (event[KEYS.CTRL_OR_CMD] || event.shiftKey),

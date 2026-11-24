@@ -32,6 +32,7 @@ import {
   isFrameLikeElement,
   isImageElement,
   isLinearElement,
+  isTextElement,
   isNonDeletedElement,
   isSelectedViaGroup,
   isStickyNoteElement,
@@ -84,6 +85,35 @@ export class SelectionTool {
   };
 
   /**
+   * A press handed over from the text editor (`handOverTextEditorPress`)
+   * moves what was edited, the text or its container, and nothing beneath
+   * the editor: no handle, nor an arrow's point, midpoint or label.
+   *
+   * @returns `false` if the pointer down is not a handed-over press
+   */
+  private hitEditedElement = (pointerDownState: PointerDownState): boolean => {
+    const { editedTextId } = pointerDownState.hit;
+    const elementsMap = this.app.scene.getNonDeletedElementsMap();
+    const text = editedTextId ? this.app.scene.getElement(editedTextId) : null;
+    // gone, when emptied
+    const element =
+      text && isTextElement(text) ? elementsMap.get(text.containerId ?? text.id) : null;
+    if (!element) {
+      return false;
+    }
+    pointerDownState.hit.element = element;
+    pointerDownState.hit.allHitElements = [element];
+    if (this.app.state.selectedLinearElement) {
+      this.app.setState({
+        selectedLinearElement: isLinearElement(element)
+          ? new LinearElementEditor(element, elementsMap)
+          : null,
+      });
+    }
+    return true;
+  };
+
+  /**
    * @returns whether the pointer event has been completely handled
    */
   handleSelectionOnPointerDown = (
@@ -91,6 +121,10 @@ export class SelectionTool {
     pointerDownState: PointerDownState,
   ): boolean => {
     if (isSelectionLikeTool(this.app.state.activeTool.type)) {
+      if (this.hitEditedElement(pointerDownState)) {
+        return false;
+      }
+
       const elementsMap = this.app.scene.getNonDeletedElementsMap();
       const selectedElements = this.app.scene.getSelectedElements(this.app.state);
 
@@ -419,9 +453,15 @@ export class SelectionTool {
 
       const originalElements = [...pointerDownState.originalElements.values()];
 
+      this.app.maybeCacheReferenceSnapPoints(event, selectedElements);
+
       const { snapOffset, snapLines } = snapResizingElements(
+        selectedElements,
         getSelectedElements(originalElements, this.app.state),
+        this.app,
+        event,
         dragOffset,
+        transformHandleType,
       );
 
       resizeX += snapOffset.x;
@@ -582,7 +622,18 @@ export class SelectionTool {
           }
         }
 
-        const { snapOffset, snapLines } = snapDraggedElements(originalElements, dragOffset);
+        // the snap cache fills before the first drag, or the first move
+        // would not snap and the next would jump
+        this.app.maybeCacheVisibleGaps(event, selectedElements);
+        this.app.maybeCacheReferenceSnapPoints(event, selectedElements);
+
+        const { snapOffset, snapLines } = snapDraggedElements(
+          originalElements,
+          dragOffset,
+          this.app,
+          event,
+          this.app.scene.getNonDeletedElementsMap(),
+        );
 
         this.app.setState({ snapLines });
 
