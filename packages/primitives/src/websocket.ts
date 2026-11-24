@@ -37,6 +37,12 @@ export interface Socket<T = string> {
   state: Accessor<SocketState>;
   /** The last message received, as it arrived. */
   message: Accessor<T | undefined>;
+  /**
+   * Hear every message, in order, until the returned function is called.
+   * `message` holds only the latest as of a flush, so two that arrive
+   * together reach it as one; a feed that appends each needs this.
+   */
+  onMessage: (handler: (data: T) => void) => Clear;
   /** How many times this socket has reconnected. */
   attempts: Accessor<number>;
   /**
@@ -76,6 +82,7 @@ export function websocket<T = string>(
   const retries = options?.reconnect ?? true;
   const step = options?.backoff ?? 500;
   const queue: Sendable[] = [];
+  const listeners = new Set<(data: T) => void>();
 
   let socket: WebSocket | null = null;
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -127,7 +134,9 @@ export function websocket<T = string>(
     });
 
     next.addEventListener("message", (event: MessageEvent) => {
-      if (!stale()) setMessage(() => event.data as T);
+      if (stale()) return;
+      setMessage(() => event.data as T);
+      for (const listener of listeners) listener(event.data as T);
     });
 
     next.addEventListener("close", (event: CloseEvent) => {
@@ -180,6 +189,12 @@ export function websocket<T = string>(
   return {
     state,
     message,
+    onMessage(handler) {
+      listeners.add(handler);
+      return () => {
+        listeners.delete(handler);
+      };
+    },
     attempts,
     send(data) {
       if (socket !== null && socket.readyState === WebSocket.OPEN) socket.send(data);

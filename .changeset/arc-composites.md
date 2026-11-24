@@ -2,6 +2,7 @@
 "@barqjs/arc": minor
 "@barqjs/aria": minor
 "@barqjs/ui": patch
+"@barqjs/primitives": minor
 ---
 
 arc gains the composites several products each built by hand, and aria the parts they needed.
@@ -13,3 +14,4 @@ arc gains the composites several products each built by hand, and aria the parts
 - arc `DataViews` and `ViewSwitcher`: list, board, table and calendar views over the same data and filters, the chosen view in the URL. ui's `ToggleGroupItem` keeps a `data-slot` it is given.
 - arc `VersionHistory`: versions with their authors and times, a preview, a compare against the current version or the one before, and Restore through `confirm()`.
 - aria's `filter()` gains `matches`, where a substring matches in the locale's own way, and a slider takes `getValueLabel` for a value a number format cannot say, such as a playback position.
+- primitives' `websocket` gains `onMessage`, every message in order, where `message` holds only the latest as of a flush.

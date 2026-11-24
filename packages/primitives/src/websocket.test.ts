@@ -71,6 +71,29 @@ afterEach(() => {
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 describe("websocket", () => {
+  test("onMessage hears every message in order, two before a flush included", () => {
+    const [dispose, heard] = createRoot((d) => {
+      const connection = websocket("wss://example.test/feed");
+      const got: string[] = [];
+      const stop = connection.onMessage((data) => got.push(data));
+      flush();
+      const socket = sockets[0] as Fake & EventTarget;
+      socket.open();
+      for (const data of ["a", "b"]) {
+        const event = new Event("message") as Event & { data: unknown };
+        event.data = data;
+        socket.dispatchEvent(event);
+      }
+      flush();
+      expect(connection.message()).toBe("b");
+      stop();
+      socket.deliver("c");
+      return [d, got] as const;
+    });
+    expect(heard).toEqual(["a", "b"]);
+    dispose();
+  });
+
   test("connects, reports state and publishes messages", () => {
     const [dispose, socket] = createRoot((d) => {
       const connection = websocket("wss://example.test/feed");
