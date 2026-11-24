@@ -32,3 +32,4 @@ export {
   type RenderedMessage,
   messageListStyles,
 } from "./message-list.tsx";
+export { ThreadPanel, type ThreadPanelProps, threadPanelStyles } from "./thread-panel.tsx";
