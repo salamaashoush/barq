@@ -148,7 +148,10 @@ declaration lands on the class arc's own components already use.
 - State: `focus.visible` and `focus.slot` are ui's rings, `focus.inset` the
   same ring inside a cell, `focus.within` for a box made of parts, and
   `focus.outline` for a scrolling region; `interaction` covers hover, focus
-  within, selected, invalid and a pressable cursor.
+  within, selected, invalid, a pressable cursor and a part a finger drags.
+- `place`: a layer over its parent (`cover`, `passive` for one the pointer
+  passes through), `middle`, `fill`, `block`, `screen`, and the insets a
+  cell and a thin strip keep from their edges (`padded`, `paddedStrip`).
 - `motion.colours`, `motion.transform` and `motion.enter`, whose duration goes
   to nothing under reduced motion so a state still lands.
 - `target.size`: 24px under a fine pointer and 44px under a coarse one, for a
@@ -779,7 +782,11 @@ import { CommentThreadList } from "@barqjs/arc";
   each drawn as a mention in the comment. Every change shows at once: a
   handler that returns a promise holds the comment pending until it settles,
   a reply that fails stays with Retry and Discard, and an edit, a delete, a
-  reaction or a resolve that fails is taken back and said so.
+  reaction or a resolve that fails is taken back and said so. `composer`
+  swaps the text box for another: `RichCommentComposer` from
+  `@barqjs/arc/editor` writes comments with formatting and mention nodes,
+  hands back the same draft, and keeps the editor out of a page that does
+  not ask for it.
 - `VersionHistory`: the saved states of something, newest first, on arc's
   `List`: each with its author's avatar, a `label` or the author's name, a
   `summary`, a `RelativeTime` and Current on the one in use. The chosen one
@@ -1196,6 +1203,89 @@ page pays only for the languages it shows.
 The colours are the theme's `code-*` tokens and the metrics are custom
 properties (`--code-font-size`, `--code-line-height`, ...), so light, dark and
 an app's brand restyle a live editor with no reconfigure.
+
+## Rich text
+
+```tsx
+import {
+  BlockEditor,
+  ChatComposer,
+  MentionTypeahead,
+  RichTextEditor,
+  RichTextRenderer,
+  SlashCommandMenu,
+} from "@barqjs/arc/editor";
+
+<RichTextEditor
+  label="Description"
+  defaultMarkdown={task.description}
+  onChange={(value) => setDraft(value)}
+  upload={(file, { onProgress, signal }) => api.upload(file, onProgress, signal)}
+  maxLength={5000}
+  autosave={{ save: (value) => api.save(task.id, value) }}
+>
+  <MentionTypeahead source={(query, { signal }) => api.people(query, signal)} />
+  <SlashCommandMenu />
+</RichTextEditor>;
+
+<RichTextRenderer value={comment.body} size="sm" />;
+```
+
+The rich text suite is Lexical, through `@barqjs/lexical`, in an entry of its
+own: an app that never edits rich text loads none of it, and a test walks
+the import graph to keep it so. A document is Lexical's JSON, the same in
+the editor, the renderer and on a server.
+
+- `RichTextEditor`: a toolbar that shows what the selection already is (text
+  style, the marks, a link, lists, a quote and a code block, alignment,
+  indent, undo and redo, and Insert), on arc's `Toolbar`, folding whole
+  groups into a More menu as it narrows, the least used first; the marks
+  over selected text, below it on a touch screen where the system's menu is
+  above, which Alt+F10 reaches; a link popover on Mod+K that checks the
+  address; markdown typed (`# `, `- `, `**bold**`) and read and written;
+  code blocks highlighted as `CodeBlock` highlights them; tables, with a
+  button at the cell's corner for rows, columns and the header row; images
+  pasted, dropped or chosen through `FileDropZone`, each shown at once and
+  uploaded through arc's queue with its progress, retry and remove; embeds
+  from the sites `embeds` allows (YouTube and Vimeo by default); a counter
+  against `maxLength`, said once it is past it; a placeholder; `readOnly`;
+  `autosave`, which saves as typing pauses and on blur and says so; and
+  `collaborative`. Each block takes the direction of its own text, so
+  Arabic and English sit in one document each the right way round.
+- `MentionTypeahead`, `SlashCommandMenu` and `EmojiShortcuts`: what `@`, `/`
+  and `:` offer, on Lexical's typeahead with arc's menu: people from a list
+  or a server's debounced search with their avatars, inserted as a mention
+  node carrying the id; commands ranked as more is typed and grouped while
+  nothing is (the editor's own by default, `editorCommands` to build on);
+  and emoji by name from the chat entry's data.
+- `RichTextRenderer`: a document drawn without an editor, for a message
+  list or a comment: stored JSON or markdown, read by Lexical's headless
+  editor and drawn as plain elements under `Prose`, so a server writes it
+  whole and a hydrating page adopts it. `headingOffset`, `renderMention`
+  and `linkHref` fit it to the page it is on.
+- `BlockEditor`: a page-like document a block at a time. Beside the block
+  under the pointer or the caret sit a `+` that opens a searchable, grouped
+  picker and a grip that drags the block by pointer or by finger and opens
+  Turn into, Duplicate, Move up, Move down and Delete; Mod+Shift with the
+  arrows moves a block, each move announced. The gutter is at the start of
+  the line, on the right in a right-to-left document.
+- `defineBlock`: a block of an app's own, built from arc's pieces, which
+  the pickers offer and the document stores as `{ type, data }`; its
+  component draws it in the editor and, read-only, in the renderer, and
+  `toMarkdown` and `fromMarkdown` give it a line of markdown.
+- `ChatComposer`: a compact editor that sends on Enter (Shift+Enter breaks
+  the line, and Enter in a list, a quote or a code block stays there), with
+  mentions, commands, emoji and an `EmojiPicker` button, attachments
+  uploaded into a tray above the actions, the formatting toolbar on
+  request, `mode="edit"` for a message already sent, and `sendActions`
+  such as Schedule send beside Send. On a phone it keeps to a third of what
+  the keyboard leaves.
+- `EditorCollaboration`, from `@barqjs/arc/editor/collaboration`: a
+  `collaborative` editor on a shared Yjs document, the others' cursors in
+  arc's tones picked from their names. Yjs loads only with it.
+- `markdownToDocument`, `documentToMarkdown`, `documentToText` and
+  `createDocumentEditor` convert and read documents with no screen, with
+  mentions written `[@Name](mention:id)`.
 
 ## Chat
 
