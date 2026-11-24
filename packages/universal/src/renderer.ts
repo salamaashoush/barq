@@ -204,10 +204,15 @@ function asText(value: unknown): string {
 }
 
 export function createRenderer<N extends object>(ops: HostOps<N>): Renderer<N> {
-  const isTextNode = (node: N): boolean => ops.isTextNode(node);
-  const removeNode = (parent: N, node: N): void => ops.removeNode(parent, node);
-  const setProperty = (node: N, name: string, value: unknown, prev: unknown): void =>
-    ops.setProperty(node, name, value, prev);
+  function isTextNode(node: N): boolean {
+    return ops.isTextNode(node);
+  }
+  function removeNode(parent: N, node: N): void {
+    return ops.removeNode(parent, node);
+  }
+  function setProperty(node: N, name: string, value: unknown, prev: unknown): void {
+    return ops.setProperty(node, name, value, prev);
+  }
   const createSentinel =
     ops.createSentinel === undefined ? () => createTextNode("") : () => ops.createSentinel!();
   const createContainer =
@@ -338,7 +343,7 @@ export function createRenderer<N extends object>(ops: HostOps<N>): Renderer<N> {
    */
   function normalize(value: unknown, prev: readonly N[], scope: Scope | null): N[] {
     const out: N[] = [];
-    const visit = (child: unknown): void => {
+    function visit(child: unknown): void {
       if (child === null || child === undefined || typeof child === "boolean") return;
       if (typeof child === "function") {
         if (isBlock(child)) {
@@ -367,7 +372,7 @@ export function createRenderer<N extends object>(ops: HostOps<N>): Renderer<N> {
       } else {
         out.push(createTextNode(text));
       }
-    };
+    }
     visit(value);
     return out;
   }
@@ -386,7 +391,7 @@ export function createRenderer<N extends object>(ops: HostOps<N>): Renderer<N> {
     let written = false;
     let standing = false;
 
-    const write = (resolved: Resolved<N>): void => {
+    function write(resolved: Resolved<N>): void {
       if (typeof resolved !== "object") {
         const text = String(resolved);
         if (tail === null) {
@@ -408,7 +413,7 @@ export function createRenderer<N extends object>(ops: HostOps<N>): Renderer<N> {
       writeText(tail, "");
       const parent = parentOf(tail);
       current = parent === null ? resolved : placeInsert(parent, resolved, current, tail);
-    };
+    }
 
     effectUnder<Resolved<N>>(
       given,
@@ -791,7 +796,7 @@ export function createRenderer<N extends object>(ops: HostOps<N>): Renderer<N> {
   function ref(node: N, value: unknown): void {
     const owner = getOwner();
     const undo: (() => void)[] = [];
-    const one = (target: unknown): void => {
+    function one(target: unknown): void {
       refuseBlock(target, "A `ref`");
       if (typeof target === "function") {
         if (attachRef === undefined) {
@@ -822,7 +827,7 @@ export function createRenderer<N extends object>(ops: HostOps<N>): Renderer<N> {
           }),
         );
       }
-    };
+    }
     if (Array.isArray(value)) {
       for (const target of value) one(target);
     } else {
@@ -836,8 +841,9 @@ export function createRenderer<N extends object>(ops: HostOps<N>): Renderer<N> {
     });
   }
 
-  const isHandlerKey = (key: string): boolean =>
-    key.charCodeAt(0) === 111 && key.charCodeAt(1) === 110;
+  function isHandlerKey(key: string): boolean {
+    return key.charCodeAt(0) === 111 && key.charCodeAt(1) === 110;
+  }
 
   /**
    * A props object onto a node, diffed against what was last applied, with a
@@ -852,7 +858,7 @@ export function createRenderer<N extends object>(ops: HostOps<N>): Renderer<N> {
     const applied: Record<string, unknown> = {};
     let first = true;
 
-    const read = (): Record<string, unknown> => {
+    function read(): Record<string, unknown> {
       const next = typeof props === "function" ? props() : props;
       const resolved: Record<string, unknown> = {};
       for (const key in next) {
@@ -874,7 +880,7 @@ export function createRenderer<N extends object>(ops: HostOps<N>): Renderer<N> {
         resolved[key] = held;
       }
       return resolved;
-    };
+    }
 
     effectUnder<Record<string, unknown>>(given, "spread", read, (next) => {
       for (const key in applied) {
@@ -918,13 +924,13 @@ export function createRenderer<N extends object>(ops: HostOps<N>): Renderer<N> {
       let instance = NOTHING;
       let request = 0;
       const site: Site = { host, parent: null, anchor: null };
-      const clear = (): void => {
+      function clear(): void {
         if (instance !== NOTHING) {
           teardown(host, instance);
           instance = NOTHING;
         }
         site.parent = null;
-      };
+      }
       // An effect, so the mount happens once the pass that built the marker
       // has committed, and is held with the rest of a boundary's content while
       // the boundary shows its fallback.
@@ -937,7 +943,7 @@ export function createRenderer<N extends object>(ops: HostOps<N>): Renderer<N> {
         (requested) => {
           clear();
           const mine = ++request;
-          const mount = (): void => {
+          function mount(): void {
             if (mine !== request) return;
             if (requested !== null && requested !== undefined && typeof requested !== "object") {
               throw new TypeError(
@@ -951,7 +957,7 @@ export function createRenderer<N extends object>(ops: HostOps<N>): Renderer<N> {
             site.parent = into;
             nextActivation();
             instance = activate(given, site, block, NO_ARGS, 0, "portal");
-          };
+          }
           // A portal nothing owns has no scope to build under, and the engine
           // refuses one made from inside an effect's write.
           if (given === null) queueMicrotask(mount);

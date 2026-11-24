@@ -16,8 +16,9 @@ import { createTestHost, inner } from "./test-host.ts";
 const host = createTestHost();
 const r = createRenderer(host.ops);
 
-const shown = (make: () => unknown): JSXElement =>
-  Show({ when: () => true, children: block(make) } as never);
+function shown(make: () => unknown): JSXElement {
+  return Show({ when: () => true, children: block(make) } as never);
+}
 
 describe("an app that renders into the document and into a custom host", () => {
   test("a component inside a custom tree renders through the custom host", () => {

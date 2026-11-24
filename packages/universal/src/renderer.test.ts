@@ -11,6 +11,7 @@ import {
   getOwner,
   onCleanup,
   runWithOwner,
+  type RefObject,
 } from "@barqjs/core";
 import { createRenderer } from "./renderer.ts";
 import { TEXT, createTestHost, inner, serialize, type TestNode } from "./test-host.ts";
@@ -18,7 +19,9 @@ import { TEXT, createTestHost, inner, serialize, type TestNode } from "./test-ho
 const host = createTestHost();
 const r = createRenderer(host.ops);
 
-function mount(code: () => unknown): { root: TestNode; dispose: () => void } {
+interface Mounted { root: TestNode; dispose: () => void }
+
+function mount(code: () => unknown): Mounted {
   const root = host.root();
   const dispose = r.render(code as never, root);
   return { root, dispose };
@@ -73,7 +76,7 @@ describe("the node operations compiled code calls", () => {
         seen = target;
         return () => undone++;
       });
-      const holder: { current: TestNode | null } = { current: null };
+      const holder: RefObject<TestNode> = { current: null };
       r.setProp(node, "ref", holder);
       expect(holder.current).toBe(node);
       dispose();
@@ -120,7 +123,7 @@ describe("the node operations compiled code calls", () => {
     const node = custom.createElement("box");
     const seen: unknown[] = [];
     const released: unknown[] = [];
-    const holder: { current: unknown } = { current: null };
+    const holder: RefObject<unknown> = { current: null };
     createRoot((dispose) => {
       custom.setProp(node, "ref", (value: unknown) => {
         seen.push(value);
@@ -216,7 +219,7 @@ describe("insert", () => {
 describe("spread", () => {
   test("applies a props object, reads getters, passes handlers and skips children", () => {
     const [title, setTitle] = createSignal("a");
-    const handler = (): void => {};
+    function handler(): void {}
     const node = r.createElement("box");
     const dispose = createRoot((done) => {
       r.spread(node, { title, onPress: handler, children: "ignored", hidden: true });

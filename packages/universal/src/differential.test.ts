@@ -28,6 +28,8 @@ function random(seed: number): () => number {
   };
 }
 
+interface RenderedChildren { labels: string[]; nodes: object[] }
+
 /** What one side builds with: an element holding text, and the row's own pieces. */
 interface Side<N extends object> {
   root: N;
@@ -40,17 +42,17 @@ interface Side<N extends object> {
   ): void;
   branch(parent: N | null, key: Accessor<number>, bodies: unknown[]): unknown;
   /** Element children in order, as `tag:text`, and the nodes themselves. */
-  read(): { labels: string[]; nodes: object[] };
+  read(): RenderedChildren;
 }
 
 function domSide(): Side<Node> {
   const root = document.createElement("div");
-  const element = (tag: string, text?: string | Accessor<string>): Node => {
+  function element(tag: string, text?: string | Accessor<string>): Node {
     const node = document.createElement(tag);
     if (typeof text === "string") node.textContent = text;
     else if (text !== undefined) domInsert(node, text);
     return node;
-  };
+  }
   return {
     root,
     element,
@@ -74,12 +76,12 @@ function textOf(node: TestNode): string {
 
 function hostSide(): Side<TestNode> {
   const root = host.root("div");
-  const element = (tag: string, text?: string | Accessor<string>): TestNode => {
+  function element(tag: string, text?: string | Accessor<string>): TestNode {
     const node = r.createElement(tag);
     if (typeof text === "string") r.insertNode(node, r.createTextNode(text));
     else if (text !== undefined) r.insert(node, text);
     return node;
-  };
+  }
   return {
     root,
     element,
@@ -106,8 +108,12 @@ interface Item {
 /** One random edit of a list of distinct items, new ids drawn from `fresh`. */
 function edit(list: Item[], next: () => number, fresh: () => Item): Item[] {
   const out = list.slice();
-  const at = (): number => Math.floor(next() * (out.length + 1));
-  const pick = (): number => Math.floor(next() * out.length);
+  function at(): number {
+    return Math.floor(next() * (out.length + 1));
+  }
+  function pick(): number {
+    return Math.floor(next() * out.length);
+  }
   switch (Math.floor(next() * 10)) {
     case 0:
       out.splice(at(), 0, fresh());
@@ -168,20 +174,22 @@ function runList<N extends object>(
   const side = make();
   const next = random(seed);
   let counter = 0;
-  const fresh = (): Item => ({ id: counter++ });
+  function fresh(): Item {
+    return { id: counter++ };
+  }
   let list: Item[] = Array.from({ length: 5 }, fresh);
   const [items, setItems] = createSignal<Item[]>(list);
   const [open, setOpen] = createSignal<ReadonlySet<number>>(new Set());
   const frames: Frame[] = [];
   let previous = new Map<string, object>();
 
-  const snapshot = (): void => {
+  function snapshot(): void {
     const { labels, nodes } = side.read();
     frames.push({ labels, kept: labels.map((label, i) => previous.get(label) === nodes[i]) });
     previous = new Map(labels.map((label, i) => [label, nodes[i]]));
-  };
+  }
 
-  const row = (item: unknown): unknown => {
+  function row(item: unknown): unknown {
     if (mode === "index") {
       const read = item as Accessor<Item>;
       return side.element("li", () => `#${read().id}`);
@@ -196,7 +204,7 @@ function runList<N extends object>(
         block(() => [side.element("em", `open ${id}`), side.element("b", `${id}`)]),
       ]),
     ];
-  };
+  }
 
   const dispose = createRoot((done) => {
     const carrier =
@@ -232,11 +240,11 @@ function runBranch<N extends object>(make: () => Side<N>, seed: number, steps: n
   const [key, setKey] = createSignal(0);
   const frames: Frame[] = [];
   let previous = new Map<string, object>();
-  const snapshot = (): void => {
+  function snapshot(): void {
     const { labels, nodes } = side.read();
     frames.push({ labels, kept: labels.map((label, i) => previous.get(label) === nodes[i]) });
     previous = new Map(labels.map((label, i) => [label, nodes[i]]));
-  };
+  }
   const dispose = createRoot((done) => {
     side.branch(side.root, key, [
       block(() => side.element("a", "zero")),

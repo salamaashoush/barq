@@ -30,7 +30,9 @@ export const flow = (
   </stage>
 );
 
-function Badge(props: { label: Accessor<string>; count?: Accessor<number> }) {
+interface BadgeProps { label: Accessor<string>; count?: Accessor<number> }
+
+function Badge(props: BadgeProps) {
   return <badge label={props.label} count={props.count} />;
 }
 

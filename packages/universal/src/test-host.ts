@@ -33,21 +33,23 @@ export function createTestHost(): TestHost {
   let next = 0;
   const log: string[] = [];
 
-  const make = (tag: string, text = ""): TestNode => ({
-    id: next++,
-    tag,
-    text,
-    props: {},
-    parent: null,
-    children: [],
-  });
+  function make(tag: string, text = ""): TestNode {
+    return {
+      id: next++,
+      tag,
+      text,
+      props: {},
+      parent: null,
+      children: [],
+    };
+  }
 
-  const detach = (node: TestNode): void => {
+  function detach(node: TestNode): void {
     const parent = node.parent;
     if (parent === null) return;
     parent.children.splice(parent.children.indexOf(node), 1);
     node.parent = null;
-  };
+  }
 
   const ops: HostOps<TestNode> = {
     createElement: (tag) => make(tag),
