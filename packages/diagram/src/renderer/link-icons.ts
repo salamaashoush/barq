@@ -47,11 +47,11 @@ export type LinkImg = {
  */
 const linkImgs = new WeakMap<RenderEnvironment, Partial<Record<LinkImgSlot, LinkImg>>>();
 
-const settleLinkImg = (
+function settleLinkImg(
   entry: LinkImg,
   status: SettledLinkImgStatus,
   resolve: (status: SettledLinkImgStatus) => void,
-) => {
+) {
   // a host `createImage` may fire both handlers; the first settle wins, so a
   // late `onerror` can't undo a successful decode
   if (entry.status !== "decoding") {
@@ -59,9 +59,9 @@ const settleLinkImg = (
   }
   entry.status = status;
   resolve(status);
-};
+}
 
-const getLinkImg = (slot: LinkImgSlot, src: string, env: RenderEnvironment): LinkImg => {
+function getLinkImg(slot: LinkImgSlot, src: string, env: RenderEnvironment): LinkImg {
   let slots = linkImgs.get(env);
   const existing = slots?.[slot];
   if (existing) {
@@ -92,14 +92,16 @@ const getLinkImg = (slot: LinkImgSlot, src: string, env: RenderEnvironment): Lin
   slots[slot] = entry;
   img.src = src;
   return entry;
-};
+}
 
-export const getExternalLinkImg = (renderEnvironment: RenderEnvironment) =>
-  getLinkImg("external", EXTERNAL_LINK_SRC, renderEnvironment);
-export const getElementLinkImg = (renderEnvironment: RenderEnvironment) =>
-  getLinkImg("element", ELEMENT_LINK_SRC, renderEnvironment);
+export function getExternalLinkImg(renderEnvironment: RenderEnvironment) {
+  return getLinkImg("external", EXTERNAL_LINK_SRC, renderEnvironment);
+}
+export function getElementLinkImg(renderEnvironment: RenderEnvironment) {
+  return getLinkImg("element", ELEMENT_LINK_SRC, renderEnvironment);
+}
 
-export const startLinkImgDecoding = async (renderEnvironment: RenderEnvironment) => {
+export async function startLinkImgDecoding(renderEnvironment: RenderEnvironment) {
   const pending = [
     getExternalLinkImg(renderEnvironment),
     getElementLinkImg(renderEnvironment),
@@ -112,13 +114,13 @@ export const startLinkImgDecoding = async (renderEnvironment: RenderEnvironment)
   const statuses = await Promise.all(pending.map((entry) => entry.settled));
 
   return statuses.includes("decoded");
-};
+}
 
-export const getLinkHandleFromCoords = (
+export function getLinkHandleFromCoords(
   [x1, y1, x2, y2]: Bounds,
   angle: Radians,
   appState: Pick<AppState, "zoom">,
-): Bounds => {
+): Bounds {
   const size = DEFAULT_LINK_SIZE;
   const zoom = appState.zoom.value > 1 ? appState.zoom.value : 1;
   const linkWidth = size / zoom;
@@ -139,14 +141,14 @@ export const getLinkHandleFromCoords = (
     angle,
   );
   return [rotatedX - linkWidth / 2, rotatedY - linkHeight / 2, linkWidth, linkHeight];
-};
+}
 
-export const isPointHittingLinkIcon = (
+export function isPointHittingLinkIcon(
   element: NonDeletedExcalidrawElement,
   elementsMap: ElementsMap,
   appState: AppState,
   [x, y]: GlobalPoint,
-) => {
+) {
   const threshold = 4 / appState.zoom.value;
   const [x1, y1, x2, y2] = getElementAbsoluteCoords(element, elementsMap);
   const [linkX, linkY, linkWidth, linkHeight] = getLinkHandleFromCoords(
@@ -160,15 +162,15 @@ export const isPointHittingLinkIcon = (
     y > linkY - threshold &&
     y < linkY + linkHeight + threshold;
   return hitLink;
-};
+}
 
-export const isPointHittingLink = (
+export function isPointHittingLink(
   element: NonDeletedExcalidrawElement,
   elementsMap: ElementsMap,
   appState: AppState,
   [x, y]: GlobalPoint,
   isMobile: boolean,
-) => {
+) {
   if (!element.link || appState.selectedElementIds[element.id]) {
     return false;
   }
@@ -180,4 +182,4 @@ export const isPointHittingLink = (
     return true;
   }
   return isPointHittingLinkIcon(element, elementsMap, appState, pointFrom(x, y));
-};
+}

@@ -8,7 +8,7 @@
  * @param {Number} height The height of the rectangle
  * @param {Number} radius The corner radius
  */
-export const roundRect = (
+export function roundRect(
   context: CanvasRenderingContext2D,
   x: number,
   y: number,
@@ -16,7 +16,7 @@ export const roundRect = (
   height: number,
   radius: number,
   strokeColor?: string,
-) => {
+) {
   context.beginPath();
   context.moveTo(x + radius, y);
   context.lineTo(x + width - radius, y);
@@ -33,4 +33,4 @@ export const roundRect = (
     context.strokeStyle = strokeColor;
   }
   context.stroke();
-};
+}

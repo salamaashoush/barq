@@ -13,10 +13,10 @@ const SNAP_COLOR_DARK_ZEN = "#da5b5b";
 const SNAP_WIDTH = 1;
 const SNAP_CROSS_SIZE = 2;
 
-export const renderSnaps = (
+export function renderSnaps(
   context: CanvasRenderingContext2D,
   appState: InteractiveCanvasAppState,
-) => {
+) {
   if (!appState.snapLines.length) {
     return;
   }
@@ -54,13 +54,13 @@ export const renderSnaps = (
   }
 
   context.restore();
-};
+}
 
-const drawPointsSnapLine = (
+function drawPointsSnapLine(
   pointSnapLine: PointSnapLine,
   context: CanvasRenderingContext2D,
   appState: InteractiveCanvasAppState,
-) => {
+) {
   if (!appState.zenModeEnabled) {
     const firstPoint = pointSnapLine.points[0];
     const lastPoint = pointSnapLine.points[pointSnapLine.points.length - 1];
@@ -73,24 +73,24 @@ const drawPointsSnapLine = (
   for (const point of pointSnapLine.points) {
     drawCross(point, appState, context);
   }
-};
+}
 
-const drawPointerSnapLine = (
+function drawPointerSnapLine(
   pointerSnapLine: PointerSnapLine,
   context: CanvasRenderingContext2D,
   appState: InteractiveCanvasAppState,
-) => {
+) {
   drawCross(pointerSnapLine.points[0], appState, context);
   if (!appState.zenModeEnabled) {
     drawLine(pointerSnapLine.points[0], pointerSnapLine.points[1], context);
   }
-};
+}
 
-const drawCross = (
+function drawCross(
   [x, y]: LocalPoint | GlobalPoint,
   appState: InteractiveCanvasAppState,
   context: CanvasRenderingContext2D,
-) => {
+) {
   context.save();
   const size =
     (appState.zenModeEnabled ? SNAP_CROSS_SIZE * 1.5 : SNAP_CROSS_SIZE) / appState.zoom.value;
@@ -104,26 +104,26 @@ const drawCross = (
 
   context.stroke();
   context.restore();
-};
+}
 
-const drawLine = <Point extends LocalPoint | GlobalPoint>(
+function drawLine<Point extends LocalPoint | GlobalPoint>(
   from: Point,
   to: Point,
   context: CanvasRenderingContext2D,
-) => {
+) {
   context.beginPath();
   context.lineTo(from[0], from[1]);
   context.lineTo(to[0], to[1]);
   context.stroke();
-};
+}
 
-const drawGapLine = <Point extends LocalPoint | GlobalPoint>(
+function drawGapLine<Point extends LocalPoint | GlobalPoint>(
   from: Point,
   to: Point,
   direction: "horizontal" | "vertical",
   appState: InteractiveCanvasAppState,
   context: CanvasRenderingContext2D,
-) => {
+) {
   // a horizontal gap snap line
   // |–––––––||–––––––|
   // ^    ^   ^       ^
@@ -187,4 +187,4 @@ const drawGapLine = <Point extends LocalPoint | GlobalPoint>(
       drawLine(from, to, context);
     }
   }
-};
+}

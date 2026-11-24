@@ -6,10 +6,12 @@
 
 export type AnimationKey = string | symbol;
 
-export type Animation<R extends object> = (params: {
+export interface AnimationFrame<R extends object> {
   deltaTime: number;
   state?: R;
-}) => R | null | undefined;
+}
+
+export type Animation<R extends object> = (params: AnimationFrame<R>) => R | null | undefined;
 
 export type AnimationScheduler = Pick<Window, "requestAnimationFrame" | "cancelAnimationFrame">;
 
@@ -23,7 +25,7 @@ type AnimationRecord = {
 const scheduledFrames = new Map<AnimationScheduler, number>();
 const animations = new Map<AnimationKey, AnimationRecord>();
 
-const cancelScheduledFrameIfIdle = (scheduler: AnimationScheduler): boolean => {
+function cancelScheduledFrameIfIdle(scheduler: AnimationScheduler): boolean {
   for (const record of animations.values()) {
     if (record.scheduler === scheduler) {
       return false;
@@ -35,9 +37,9 @@ const cancelScheduledFrameIfIdle = (scheduler: AnimationScheduler): boolean => {
     scheduledFrames.delete(scheduler);
   }
   return true;
-};
+}
 
-const scheduleNextFrame = (scheduler: AnimationScheduler): void => {
+function scheduleNextFrame(scheduler: AnimationScheduler): void {
   if (scheduledFrames.has(scheduler)) {
     return;
   }
@@ -45,9 +47,9 @@ const scheduleNextFrame = (scheduler: AnimationScheduler): void => {
     scheduler,
     scheduler.requestAnimationFrame(() => tick(scheduler)),
   );
-};
+}
 
-const tick = (scheduler: AnimationScheduler): void => {
+function tick(scheduler: AnimationScheduler): void {
   scheduledFrames.delete(scheduler);
   // what a step starts runs from the next frame on, and each runs once a frame
   const records = [...animations].filter(([, record]) => record.scheduler === scheduler);
@@ -71,13 +73,13 @@ const tick = (scheduler: AnimationScheduler): void => {
   if (!cancelScheduledFrameIfIdle(scheduler)) {
     scheduleNextFrame(scheduler);
   }
-};
+}
 
-export const startAnimation = <R extends object>(
+export function startAnimation<R extends object>(
   key: AnimationKey,
   animation: Animation<R>,
   scheduler: AnimationScheduler,
-): void => {
+): void {
   if (animations.has(key)) {
     return;
   }
@@ -112,14 +114,16 @@ export const startAnimation = <R extends object>(
   }
   record.state = initialState;
   scheduleNextFrame(scheduler);
-};
+}
 
-export const isAnimationRunning = (key: AnimationKey): boolean => animations.has(key);
+export function isAnimationRunning(key: AnimationKey): boolean {
+  return animations.has(key);
+}
 
-export const cancelAnimation = (key: AnimationKey): void => {
+export function cancelAnimation(key: AnimationKey): void {
   const record = animations.get(key);
   animations.delete(key);
   if (record) {
     cancelScheduledFrameIfIdle(record.scheduler);
   }
-};
+}

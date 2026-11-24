@@ -97,6 +97,7 @@ import type {
   InteractiveSceneRenderConfig,
   RenderableElementsMap,
 } from "../scene/types.ts";
+import type { BindingHighlightAnimation } from "../scene/types.ts";
 
 // The interactive canvas used to be inverted in dark mode via a CSS filter
 // (`invert(93%) hue-rotate(180deg)`), which is prohibitively slow in browsers
@@ -127,13 +128,14 @@ const SEARCH_MATCH_COLOR = {
 } as const;
 
 /** maps a light-mode UI color to its dark-mode counterpart when in dark mode */
-const getThemedColor = (color: string, theme: InteractiveCanvasAppState["theme"]) =>
-  applyDarkModeFilter(color, theme === THEME.DARK);
+function getThemedColor(color: string, theme: InteractiveCanvasAppState["theme"]) {
+  return applyDarkModeFilter(color, theme === THEME.DARK);
+}
 
-const renderElbowArrowMidPointHighlight = (
+function renderElbowArrowMidPointHighlight(
   context: CanvasRenderingContext2D,
   appState: InteractiveCanvasAppState,
-) => {
+) {
   invariant(appState.selectedLinearElement, "selectedLinearElement is null");
 
   const { segmentMidPointHoveredCoords } = appState.selectedLinearElement;
@@ -141,13 +143,13 @@ const renderElbowArrowMidPointHighlight = (
   invariant(segmentMidPointHoveredCoords, "midPointCoords is null");
 
   highlightPoint(segmentMidPointHoveredCoords, context, appState);
-};
+}
 
-const renderLinearElementPointHighlight = (
+function renderLinearElementPointHighlight(
   context: CanvasRenderingContext2D,
   appState: InteractiveCanvasAppState,
   elementsMap: ElementsMap,
-) => {
+) {
   const { elementId, hoverPointIndex } = appState.selectedLinearElement!;
   if (
     appState.selectedLinearElement?.isEditing &&
@@ -169,14 +171,14 @@ const renderLinearElementPointHighlight = (
     elementsMap,
   );
   highlightPoint(point, context, appState);
-};
+}
 
 /** draws the point marker in scene coordinates */
-const highlightPoint = (
+function highlightPoint(
   point: LocalPoint | GlobalPoint,
   context: CanvasRenderingContext2D,
   appState: InteractiveCanvasAppState,
-) => {
+) {
   context.save();
   context.translate(appState.scrollX, appState.scrollY);
 
@@ -191,9 +193,9 @@ const highlightPoint = (
   );
 
   context.restore();
-};
+}
 
-const renderSingleLinearPoint = (
+function renderSingleLinearPoint(
   context: CanvasRenderingContext2D,
   appState: InteractiveCanvasAppState,
   point: GlobalPoint | LocalPoint,
@@ -201,7 +203,7 @@ const renderSingleLinearPoint = (
   isSelected: boolean,
   isPhantomPoint: boolean,
   isOverlappingPoint: boolean,
-) => {
+) {
   context.strokeStyle = getThemedColor("#5e5ad8", appState.theme);
   context.setLineDash([]);
   context.fillStyle = getThemedColor("rgba(255, 255, 255, 0.9)", appState.theme);
@@ -220,16 +222,16 @@ const renderSingleLinearPoint = (
     !isPhantomPoint,
     !isOverlappingPoint || isSelected,
   );
-};
+}
 
-const renderBindingHighlightForBindableElement_simple = (
+function renderBindingHighlightForBindableElement_simple(
   context: CanvasRenderingContext2D,
   suggestedBinding: NonNullable<AppState["suggestedBinding"]>,
   elementsMap: ElementsMap,
   appState: InteractiveCanvasAppState,
   pointerCoords: GlobalPoint | null,
   angleLocked = false,
-) => {
+) {
   const enclosingFrame =
     suggestedBinding.element.frameId && elementsMap.get(suggestedBinding.element.frameId);
   if (enclosingFrame && isFrameLikeElement(enclosingFrame)) {
@@ -463,17 +465,17 @@ const renderBindingHighlightForBindableElement_simple = (
       context.restore();
     }
   }
-};
+}
 
-const renderBindingHighlightForBindableElement_complex = (
+function renderBindingHighlightForBindableElement_complex(
   app: InteractiveSceneApp,
   context: CanvasRenderingContext2D,
   element: ExcalidrawBindableElement,
   allElementsMap: NonDeletedSceneElementsMap,
   appState: InteractiveCanvasAppState,
   deltaTime: number,
-  state?: { runtime: number },
-) => {
+  state?: BindingHighlightAnimation,
+) {
   const countdownInProgress = app.state.bindMode === "orbit" && app.bindModeHandler !== null;
 
   const remainingTime =
@@ -754,17 +756,17 @@ const renderBindingHighlightForBindableElement_complex = (
   return {
     runtime: (state?.runtime ?? 0) + deltaTime,
   };
-};
+}
 
-const renderBindingHighlightForBindableElement = (
+function renderBindingHighlightForBindableElement(
   app: InteractiveSceneApp,
   context: CanvasRenderingContext2D,
   suggestedBinding: AppState["suggestedBinding"],
   allElementsMap: NonDeletedSceneElementsMap,
   appState: InteractiveCanvasAppState,
   deltaTime: number,
-  state?: { runtime: number },
-) => {
+  state?: BindingHighlightAnimation,
+) {
   if (suggestedBinding === null) {
     return undefined;
   }
@@ -798,7 +800,7 @@ const renderBindingHighlightForBindableElement = (
   );
   context.restore();
   return undefined;
-};
+}
 
 type ElementSelectionBorder = {
   angle: number;
@@ -814,11 +816,11 @@ type ElementSelectionBorder = {
   padding?: number;
 };
 
-const renderSelectionBorder = (
+function renderSelectionBorder(
   context: CanvasRenderingContext2D,
   appState: InteractiveCanvasAppState,
   elementProperties: ElementSelectionBorder,
-) => {
+) {
   const { angle, x1, y1, x2, y2, selectionColors, cx, cy, dashed, activeEmbeddable } =
     elementProperties;
   const elementWidth = x2 - x1;
@@ -853,14 +855,14 @@ const renderSelectionBorder = (
     );
   }
   context.restore();
-};
+}
 
-const renderFrameHighlight = (
+function renderFrameHighlight(
   context: CanvasRenderingContext2D,
   appState: InteractiveCanvasAppState,
   frame: NonDeleted<ExcalidrawFrameLikeElement>,
   elementsMap: ElementsMap,
-) => {
+) {
   const [x1, y1, x2, y2] = getElementAbsoluteCoords(frame, elementsMap);
   const width = x2 - x1;
   const height = y2 - y1;
@@ -883,21 +885,26 @@ const renderFrameHighlight = (
     FRAME_STYLE.radius / appState.zoom.value,
   );
   context.restore();
-};
+}
 
-const renderElementsBoxHighlight = (
+interface BoxHighlightConfig {
+  colors?: string[];
+  dashed?: boolean;
+}
+
+function renderElementsBoxHighlight(
   context: CanvasRenderingContext2D,
   appState: InteractiveCanvasAppState,
   elements: readonly NonDeletedExcalidrawElement[],
-  config?: { colors?: string[]; dashed?: boolean },
-) => {
+  config?: BoxHighlightConfig,
+) {
   const { colors = [getThemedColor("rgb(0,118,255)", appState.theme)], dashed = false } =
     config || {};
   const individualElements = elements.filter((element) => element.groupIds.length === 0);
 
   const elementsInGroups = elements.filter((element) => element.groupIds.length > 0);
 
-  const getSelectionFromElements = (selectionElements: ExcalidrawElement[]) => {
+  function getSelectionFromElements(selectionElements: ExcalidrawElement[]) {
     const [x1, y1, x2, y2] = getCommonBounds(selectionElements);
     return {
       angle: 0,
@@ -911,12 +918,12 @@ const renderElementsBoxHighlight = (
       cy: y1 + (y2 - y1) / 2,
       activeEmbeddable: false,
     };
-  };
+  }
 
-  const getSelectionForGroupId = (groupId: GroupId) => {
+  function getSelectionForGroupId(groupId: GroupId) {
     const groupElements = getElementsInGroup(elements, groupId);
     return getSelectionFromElements(groupElements);
-  };
+  }
 
   Object.entries(selectGroupsFromGivenElements(elementsInGroups, appState))
     .filter(([, isSelected]) => isSelected)
@@ -924,14 +931,14 @@ const renderElementsBoxHighlight = (
     .map((groupId) => getSelectionForGroupId(groupId))
     .concat(individualElements.map((element) => getSelectionFromElements([element])))
     .forEach((selection) => renderSelectionBorder(context, appState, selection));
-};
+}
 
-const renderLinearPointHandles = (
+function renderLinearPointHandles(
   context: CanvasRenderingContext2D,
   appState: InteractiveCanvasAppState,
   element: NonDeleted<ExcalidrawLinearElement>,
   elementsMap: RenderableElementsMap,
-) => {
+) {
   if (!appState.selectedLinearElement) {
     return;
   }
@@ -1044,14 +1051,14 @@ const renderLinearPointHandles = (
   }
 
   context.restore();
-};
+}
 
-const renderFocusPointConnectionLine = (
+function renderFocusPointConnectionLine(
   context: CanvasRenderingContext2D,
   appState: InteractiveCanvasAppState,
   fromPoint: GlobalPoint,
   toPoint: GlobalPoint,
-) => {
+) {
   context.save();
   context.translate(appState.scrollX, appState.scrollY);
 
@@ -1065,15 +1072,15 @@ const renderFocusPointConnectionLine = (
   context.stroke();
 
   context.restore();
-};
+}
 
-const renderFocusPointCicle = (
+function renderFocusPointCicle(
   context: CanvasRenderingContext2D,
   appState: InteractiveCanvasAppState,
   point: GlobalPoint,
   radius: number,
   isHovered: boolean,
-) => {
+) {
   context.save();
   context.translate(appState.scrollX, appState.scrollY);
   context.strokeStyle = getThemedColor("rgba(134, 131, 226, 0.6)", appState.theme);
@@ -1086,21 +1093,23 @@ const renderFocusPointCicle = (
 
   fillCircle(context, point[0], point[1], radius / appState.zoom.value, true, true);
   context.restore();
-};
+}
 
-const renderFocusPointIndicator = ({
-  arrow,
-  appState,
-  type,
-  context,
-  elementsMap,
-}: {
+interface RenderFocusPointIndicatorOptions {
   arrow: NonDeleted<ExcalidrawArrowElement>;
   appState: InteractiveCanvasAppState;
   context: CanvasRenderingContext2D;
   elementsMap: NonDeletedSceneElementsMap;
   type: "start" | "end";
-}) => {
+}
+
+function renderFocusPointIndicator({
+  arrow,
+  appState,
+  type,
+  context,
+  elementsMap,
+}: RenderFocusPointIndicatorOptions) {
   const binding = type === "start" ? arrow.startBinding : arrow.endBinding;
   const bindableElement = binding?.elementId && elementsMap.get(binding.elementId);
 
@@ -1154,15 +1163,15 @@ const renderFocusPointIndicator = ({
 
     renderFocusPointCicle(context, appState, renderedFocusPoint, FOCUS_POINT_SIZE / 1.5, isHovered);
   }
-};
+}
 
-const renderTransformHandles = (
+function renderTransformHandles(
   context: CanvasRenderingContext2D,
   renderConfig: InteractiveCanvasRenderConfig,
   appState: InteractiveCanvasAppState,
   transformHandles: TransformHandles,
   angle: number,
-): void => {
+): void {
   Object.keys(transformHandles).forEach((key) => {
     const transformHandle = transformHandles[key as TransformHandleType];
     if (transformHandle !== undefined) {
@@ -1197,15 +1206,15 @@ const renderTransformHandles = (
       context.restore();
     }
   });
-};
+}
 
-const renderCropHandles = (
+function renderCropHandles(
   context: CanvasRenderingContext2D,
   renderConfig: InteractiveCanvasRenderConfig,
   appState: InteractiveCanvasAppState,
   croppingElement: ExcalidrawImageElement,
   elementsMap: ElementsMap,
-): void => {
+): void {
   const [x1, y1, , , cx, cy] = getElementAbsoluteCoords(croppingElement, elementsMap);
 
   const LINE_WIDTH = 3;
@@ -1281,14 +1290,14 @@ const renderCropHandles = (
   });
 
   context.restore();
-};
+}
 
-const renderTextBox = (
+function renderTextBox(
   text: ExcalidrawTextElement,
   context: CanvasRenderingContext2D,
   appState: InteractiveCanvasAppState,
   selectionColor: InteractiveCanvasRenderConfig["selectionColor"],
-) => {
+) {
   context.save();
   const padding = getTextBoxPadding(appState.zoom.value);
   const width = text.width + padding * 2;
@@ -1305,7 +1314,7 @@ const renderTextBox = (
   context.setLineDash([6 / appState.zoom.value, 4 / appState.zoom.value]);
   context.strokeRect(shiftX, shiftY, width, height);
   context.restore();
-};
+}
 
 /**
  * The text tool's hover affordance — what a click would act on (see
@@ -1318,13 +1327,13 @@ const renderTextBox = (
  * vanishing through channels no local event covers, e.g. a collaborator
  * deleting it.
  */
-const renderTextToolHover = (
+function renderTextToolHover(
   app: InteractiveSceneApp,
   context: CanvasRenderingContext2D,
   appState: InteractiveCanvasAppState,
   elementsMap: NonDeletedSceneElementsMap,
   selectionColor: InteractiveCanvasRenderConfig["selectionColor"],
-) => {
+) {
   const hover = appState.textToolHover!;
   const element = elementsMap.get(hover.elementId);
   if (!element || element.isDeleted) {
@@ -1378,15 +1387,15 @@ const renderTextToolHover = (
       }
     }
   }
-};
+}
 
-const renderResetAutoResizeHandle = (
+function renderResetAutoResizeHandle(
   text: ExcalidrawTextElement,
   context: CanvasRenderingContext2D,
   appState: InteractiveCanvasAppState,
   selectionColor: InteractiveCanvasRenderConfig["selectionColor"],
   formFactor: EditorInterface["formFactor"],
-) => {
+) {
   const autoResizeHandle = getTextAutoResizeHandle(text, appState.zoom.value, formFactor);
 
   if (!autoResizeHandle) {
@@ -1409,9 +1418,14 @@ const renderResetAutoResizeHandle = (
   );
   context.stroke();
   context.restore();
-};
+}
 
-const _renderInteractiveScene = ({
+interface InteractiveSceneRenderResult {
+  scrollBars?: ReturnType<typeof getScrollBars>;
+  animationState?: InteractiveSceneRenderConfig["animationState"];
+}
+
+function _renderInteractiveScene({
   app,
   canvas,
   elementsMap,
@@ -1424,10 +1438,7 @@ const _renderInteractiveScene = ({
   editorInterface,
   animationState,
   deltaTime,
-}: InteractiveSceneRenderConfig): {
-  scrollBars?: ReturnType<typeof getScrollBars>;
-  animationState?: typeof animationState;
-} => {
+}: InteractiveSceneRenderConfig): InteractiveSceneRenderResult {
   if (canvas === null) {
     return {};
   }
@@ -1689,7 +1700,7 @@ const _renderInteractiveScene = ({
         }
       }
 
-      const addSelectionForGroupId = (groupId: GroupId) => {
+      function addSelectionForGroupId(groupId: GroupId) {
         const groupElements = getElementsInGroup(elementsMap, groupId);
         const [x1, y1, x2, y2] = getCommonBounds(groupElements);
         selections.push({
@@ -1706,7 +1717,7 @@ const _renderInteractiveScene = ({
           cy: y1 + (y2 - y1) / 2,
           activeEmbeddable: false,
         });
-      };
+      }
 
       for (const groupId of getSelectedGroupIds(appState)) {
         // TODO: support multiplayer selected group IDs
@@ -1879,16 +1890,16 @@ const _renderInteractiveScene = ({
     scrollBars,
     animationState: nextAnimationState,
   };
-};
+}
 
 /**
  * Interactive scene is the ui-canvas where we render bounding boxes, selections
  * and other ui stuff.
  */
-export const renderInteractiveScene = <U extends typeof _renderInteractiveScene>(
+export function renderInteractiveScene<U extends typeof _renderInteractiveScene>(
   renderConfig: InteractiveSceneRenderConfig,
-): ReturnType<U> => {
+): ReturnType<U> {
   const ret = _renderInteractiveScene(renderConfig);
   renderConfig.callback(ret);
   return ret as ReturnType<U>;
-};
+}

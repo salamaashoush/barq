@@ -19,7 +19,7 @@ import type { NewElementSceneRenderConfig } from "../scene/types.ts";
  * scene under it is not redrawn on every pointer move. Excalidraw's
  * `renderNewElementScene`.
  */
-export const renderNewElementScene = ({
+export function renderNewElementScene({
   canvas,
   rc,
   newElement,
@@ -28,7 +28,7 @@ export const renderNewElementScene = ({
   scale,
   appState: unsnappedAppState,
   renderConfig,
-}: NewElementSceneRenderConfig): void => {
+}: NewElementSceneRenderConfig): void {
   if (!canvas) {
     return;
   }
@@ -68,4 +68,4 @@ export const renderNewElementScene = ({
   }
 
   context.restore();
-};
+}

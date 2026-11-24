@@ -9,18 +9,21 @@ export const DEFAULT_SELECTION_COLOR = "#6965db";
  * computed style of any element inside the editor container so that host
  * overrides are respected. Falls back to the default when unavailable.
  */
-export const getSelectionColor = (element: Element | null | undefined) =>
-  (element && getComputedStyle(element).getPropertyValue("--color-selection").trim()) ||
-  DEFAULT_SELECTION_COLOR;
+export function getSelectionColor(element: Element | null | undefined) {
+  return (
+    (element && getComputedStyle(element).getPropertyValue("--color-selection").trim()) ||
+    DEFAULT_SELECTION_COLOR
+  );
+}
 
-export const fillCircle = (
+export function fillCircle(
   context: CanvasRenderingContext2D,
   cx: number,
   cy: number,
   radius: number,
   stroke: boolean,
   fill = true,
-) => {
+) {
   context.beginPath();
   context.arc(cx, cy, radius, 0, Math.PI * 2);
   if (fill) {
@@ -29,7 +32,17 @@ export const fillCircle = (
   if (stroke) {
     context.stroke();
   }
-};
+}
+
+export interface ViewportTransform {
+  scrollX: number;
+  scrollY: number;
+  zoom: ZoomValue;
+}
+
+export interface ZoomValue {
+  value: number;
+}
 
 /**
  * The scroll the renderers draw at: the real one, rounded to whole device
@@ -42,12 +55,10 @@ export const fillCircle = (
  * stays under half a device pixel, so hit-testing and DOM overlays keep
  * using the real scroll. Identity when nothing needs to change.
  */
-export const snapScrollToDevicePixels = <
-  T extends { scrollX: number; scrollY: number; zoom: { value: number } },
->(
+export function snapScrollToDevicePixels<T extends ViewportTransform>(
   appState: T,
   scale: number,
-): T => {
+): T {
   // device pixels per scene unit
   const devicePixels = appState.zoom.value * scale;
   if (!(devicePixels > 0)) {
@@ -58,31 +69,33 @@ export const snapScrollToDevicePixels = <
   return scrollX === appState.scrollX && scrollY === appState.scrollY
     ? appState
     : { ...appState, scrollX, scrollY };
-};
+}
 
-export const getNormalizedCanvasDimensions = (
+export function getNormalizedCanvasDimensions(
   canvas: HTMLCanvasElement,
   scale: number,
-): [number, number] => {
+): [number, number] {
   // When doing calculations based on canvas width we should used normalized one
   return [canvas.width / scale, canvas.height / scale];
-};
+}
 
-export const bootstrapCanvas = ({
-  canvas,
-  scale,
-  normalizedWidth,
-  normalizedHeight,
-  theme,
-  viewBackgroundColor,
-}: {
+export interface BootstrapCanvasOptions {
   canvas: HTMLCanvasElement;
   scale: number;
   normalizedWidth: number;
   normalizedHeight: number;
   theme?: AppState["theme"];
   viewBackgroundColor?: StaticCanvasAppState["viewBackgroundColor"];
-}): CanvasRenderingContext2D => {
+}
+
+export function bootstrapCanvas({
+  canvas,
+  scale,
+  normalizedWidth,
+  normalizedHeight,
+  theme,
+  viewBackgroundColor,
+}: BootstrapCanvasOptions): CanvasRenderingContext2D {
   const context = canvas.getContext("2d")!;
 
   context.setTransform(1, 0, 0, 1, 0, 0);
@@ -117,9 +130,9 @@ export const bootstrapCanvas = ({
   }
 
   return context;
-};
+}
 
-export const strokeRectWithRotation_simple = (
+export function strokeRectWithRotation_simple(
   context: CanvasRenderingContext2D,
   x: number,
   y: number,
@@ -131,7 +144,7 @@ export const strokeRectWithRotation_simple = (
   fill: boolean = false,
   /** should account for zoom */
   radius: number = 0,
-) => {
+) {
   context.save();
   context.translate(cx, cy);
   context.rotate(angle);
@@ -147,4 +160,4 @@ export const strokeRectWithRotation_simple = (
     context.strokeRect(x - cx, y - cy, width, height);
   }
   context.restore();
-};
+}

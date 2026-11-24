@@ -54,9 +54,9 @@ import type { StaticCanvasAppState, Zoom } from "../types.ts";
  * must not blank the canvas or fail the export, the rest of the scene
  * survives it.
  */
-const logElementRenderError = (error: unknown, element: NonDeletedExcalidrawElement) => {
+function logElementRenderError(error: unknown, element: NonDeletedExcalidrawElement) {
   console.error(error, element.id, element.x, element.y, element.width, element.height);
-};
+}
 
 const GridLineColor = {
   [THEME.LIGHT]: {
@@ -69,7 +69,7 @@ const GridLineColor = {
   },
 } as const;
 
-const strokeGrid = (
+function strokeGrid(
   context: CanvasRenderingContext2D,
   /** grid cell pixel size */
   gridSize: number,
@@ -82,7 +82,7 @@ const strokeGrid = (
   width: number,
   height: number,
   scale: number,
-) => {
+) {
   const offsetX = (scrollX % gridSize) - gridSize;
   const offsetY = (scrollY % gridSize) - gridSize;
 
@@ -99,7 +99,7 @@ const strokeGrid = (
   // pixels, which is how the grid looked at every zoom but 100%. Thinner
   // lines (zoomed far out) keep their sub-pixel width: their lightness is
   // the point.
-  const snap = (position: number, maxWidthInCssPixels: number) => {
+  function snap(position: number, maxWidthInCssPixels: number) {
     // a line is `min(1 / zoom, max)` scene units wide; computed straight in
     // device pixels, so `(1 / zoom) × zoom` never lands just under 1
     const widthInDevicePixels = Math.min(scale, maxWidthInCssPixels * devicePixels);
@@ -112,7 +112,7 @@ const strokeGrid = (
       position: (Math.round(position * devicePixels - center) + center) / devicePixels,
       lineWidth: wholeWidth / devicePixels,
     };
-  };
+  }
 
   context.save();
 
@@ -154,14 +154,14 @@ const strokeGrid = (
     context.stroke();
   }
   context.restore();
-};
+}
 
-export const frameClip = (
+export function frameClip(
   frame: ExcalidrawFrameLikeElement,
   context: CanvasRenderingContext2D,
   renderConfig: StaticCanvasRenderConfig,
   appState: StaticCanvasAppState,
-) => {
+) {
   context.translate(frame.x + appState.scrollX, frame.y + appState.scrollY);
   context.beginPath();
   if (context.roundRect) {
@@ -171,21 +171,23 @@ export const frameClip = (
   }
   context.clip();
   context.translate(-(frame.x + appState.scrollX), -(frame.y + appState.scrollY));
-};
+}
 
 type LinkIconCanvasCacheType = "regularLink" | "elementLink";
 
 const linkIconCanvasCache = new WeakMap<RenderEnvironment, Map<string, HTMLCanvasElement>>();
 const LINK_ICON_CACHE_MAX_ENTRIES = 8;
 
-const getLinkIconCacheKey = (
+function getLinkIconCacheKey(
   type: LinkIconCanvasCacheType,
   canvasWidth: number,
   canvasHeight: number,
   backgroundColor: string,
-) => `${type}:${canvasWidth}x${canvasHeight}:${backgroundColor}`;
+) {
+  return `${type}:${canvasWidth}x${canvasHeight}:${backgroundColor}`;
+}
 
-const renderLinkIcon = (
+function renderLinkIcon(
   element: NonDeletedExcalidrawElement,
   context: CanvasRenderingContext2D,
   appState: StaticCanvasAppState,
@@ -194,7 +196,7 @@ const renderLinkIcon = (
   /** backing-store scale, see StaticCanvasRenderConfig["scale"] */
   scale: number,
   renderEnvironment: RenderEnvironment,
-) => {
+) {
   if (element.link && !appState.selectedElementIds[element.id]) {
     const [x1, y1, x2, y2] = getElementAbsoluteCoords(element, elementsMap);
     const [x, y, width, height] = getLinkHandleFromCoords(
@@ -273,8 +275,8 @@ const renderLinkIcon = (
     context.drawImage(linkCanvas, x - centerX, y - centerY, width, height);
     context.restore();
   }
-};
-const _renderStaticScene = ({
+}
+function _renderStaticScene({
   canvas,
   rc,
   elementsMap,
@@ -283,7 +285,7 @@ const _renderStaticScene = ({
   scale,
   appState: unsnappedAppState,
   renderConfig,
-}: StaticSceneRenderConfig) => {
+}: StaticSceneRenderConfig) {
   if (canvas === null) {
     return;
   }
@@ -347,8 +349,8 @@ const _renderStaticScene = ({
 
   const inFrameGroupsMap = new Map<string, boolean>();
 
-  const getRenderState = (element: ExcalidrawElement) =>
-    resolveElementRenderState(
+  function getRenderState(element: ExcalidrawElement) {
+    return resolveElementRenderState(
       element,
       elementsMap,
       {
@@ -358,11 +360,12 @@ const _renderStaticScene = ({
       },
       allElementsMap,
     );
+  }
 
-  const clipElementToFrame = (
+  function clipElementToFrame(
     element: NonDeletedExcalidrawElement,
     renderState: ElementRenderState,
-  ) => {
+  ) {
     if (
       !(element.frameId || appState.frameToHighlight?.id) ||
       !appState.frameRendering.enabled ||
@@ -377,8 +380,9 @@ const _renderStaticScene = ({
     }
     const frameState = getRenderState(targetFrame);
     const frame = getRenderElementWithPositionOverride(targetFrame, frameState.offset);
-    const isTranslated = (state: ElementRenderState) =>
-      state.offset.x !== 0 || state.offset.y !== 0;
+    function isTranslated(state: ElementRenderState) {
+      return state.offset.x !== 0 || state.offset.y !== 0;
+    }
     if (
       (element.frameId === frame.id && (isTranslated(renderState) || isTranslated(frameState))) ||
       shouldApplyFrameClip(
@@ -391,7 +395,7 @@ const _renderStaticScene = ({
     ) {
       frameClip(frame, context, renderConfig, appState);
     }
-  };
+  }
 
   // Paint visible elements
   visibleElements
@@ -509,16 +513,18 @@ const _renderStaticScene = ({
       logElementRenderError(error, element);
     }
   });
-};
+}
 
 type StaticSceneThrottle = ReturnType<typeof throttleRAF>;
 
-const staticSceneThrottles = new WeakMap<
-  HTMLCanvasElement,
-  { throttle: StaticSceneThrottle; ownerWindow: Window }
->();
+interface CanvasThrottle {
+  throttle: StaticSceneThrottle;
+  ownerWindow: Window;
+}
 
-const getStaticSceneThrottle = (canvas: HTMLCanvasElement) => {
+const staticSceneThrottles = new WeakMap<HTMLCanvasElement, CanvasThrottle>();
+
+function getStaticSceneThrottle(canvas: HTMLCanvasElement) {
   const ownerWindow = canvas.ownerDocument.defaultView ?? window;
   let entry = staticSceneThrottles.get(canvas);
   // the owner window is captured when the throttle is built, so a canvas
@@ -539,7 +545,7 @@ const getStaticSceneThrottle = (canvas: HTMLCanvasElement) => {
     staticSceneThrottles.set(canvas, entry);
   }
   return entry.throttle;
-};
+}
 
 /**
  * Throttled to animation framerate, one throttle per canvas. A shared
@@ -548,24 +554,24 @@ const getStaticSceneThrottle = (canvas: HTMLCanvasElement) => {
  * popout renders on the main window's rAF, which freezes while that window
  * is hidden.
  */
-export const renderStaticSceneThrottled = (config: StaticSceneRenderConfig) => {
+export function renderStaticSceneThrottled(config: StaticSceneRenderConfig) {
   getStaticSceneThrottle(config.canvas)(config);
-};
+}
 
 /** Drops the canvas' pending frame; the throttle itself is dropped with the
  * canvas. */
-export const cancelStaticSceneThrottle = (canvas: HTMLCanvasElement) => {
+export function cancelStaticSceneThrottle(canvas: HTMLCanvasElement) {
   staticSceneThrottles.get(canvas)?.throttle.cancel();
-};
+}
 
 /**
  * Static scene is the non-ui canvas where we render elements.
  */
-export const renderStaticScene = (renderConfig: StaticSceneRenderConfig, throttle?: boolean) => {
+export function renderStaticScene(renderConfig: StaticSceneRenderConfig, throttle?: boolean) {
   if (throttle) {
     renderStaticSceneThrottled(renderConfig);
     return;
   }
 
   _renderStaticScene(renderConfig);
-};
+}

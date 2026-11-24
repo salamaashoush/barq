@@ -54,7 +54,7 @@ import type { AppState, BinaryFiles } from "../types.ts";
 import type { Drawable } from "roughjs/bin/core";
 import type { RoughSVG } from "roughjs/bin/svg";
 
-const roughSVGDrawWithPrecision = (rsvg: RoughSVG, drawable: Drawable, precision?: number) => {
+function roughSVGDrawWithPrecision(rsvg: RoughSVG, drawable: Drawable, precision?: number) {
   if (typeof precision === "undefined") {
     return rsvg.draw(drawable);
   }
@@ -64,15 +64,15 @@ const roughSVGDrawWithPrecision = (rsvg: RoughSVG, drawable: Drawable, precision
     options: { ...drawable.options, fixedDecimalPlaceDigits: precision },
   };
   return rsvg.draw(pshape);
-};
+}
 
-const maybeWrapNodesInFrameClipPath = (
+function maybeWrapNodesInFrameClipPath(
   element: Readonly<NonDeletedExcalidrawElement>,
   root: SVGElement,
   nodes: SVGElement[],
   frameRendering: AppState["frameRendering"],
   elementsMap: RenderableElementsMap,
-) => {
+) {
   if (!frameRendering.enabled || !frameRendering.clip || !isFrameClippable(element, elementsMap)) {
     return null;
   }
@@ -85,9 +85,13 @@ const maybeWrapNodesInFrameClipPath = (
   }
 
   return null;
-};
+}
 
-const renderElementToSvg = (
+interface TypedElement {
+  type: string;
+}
+
+function renderElementToSvg(
   element: Readonly<NonDeletedExcalidrawElement>,
   elementsMap: RenderableElementsMap,
   rsvg: RoughSVG,
@@ -96,7 +100,7 @@ const renderElementToSvg = (
   offsetX: number,
   offsetY: number,
   renderConfig: SVGRenderConfig,
-) => {
+) {
   const offset = { x: offsetX, y: offsetY };
   const [x1, y1, x2, y2] = getElementAbsoluteCoords(element, elementsMap);
   let cx = (x2 - x1) / 2 - (element.x - x1);
@@ -133,12 +137,12 @@ const renderElementToSvg = (
     root = anchorTag;
   }
 
-  const addToRoot = (node: SVGElement, element: ExcalidrawElement) => {
+  function addToRoot(node: SVGElement, element: ExcalidrawElement) {
     if (isTestEnv()) {
       node.setAttribute("data-id", element.id);
     }
     root.appendChild(node);
-  };
+  }
 
   const opacity =
     ((getContainingFrame(element, elementsMap)?.opacity ?? 100) * element.opacity) / 10000;
@@ -150,8 +154,8 @@ const renderElementToSvg = (
       throw new Error("Selection rendering is not supported for SVG");
     }
     case "stickynote": {
-      const getPathData = (commands: StickyNotePathCommand[]) =>
-        commands
+      function getPathData(commands: StickyNotePathCommand[]) {
+        return commands
           .map((command) => {
             if (command.type === "move") {
               return `M ${command.point.x} ${command.point.y}`;
@@ -163,12 +167,9 @@ const renderElementToSvg = (
           })
           .join(" ")
           .concat(" Z");
+      }
 
-      const createPath = (
-        commands: StickyNotePathCommand[],
-        fill: string,
-        fillOpacity?: number,
-      ) => {
+      function createPath(commands: StickyNotePathCommand[], fill: string, fillOpacity?: number) {
         const path = svgRoot.ownerDocument.createElementNS(SVG_NS, "path");
         path.setAttribute("d", getPathData(commands));
         path.setAttribute("fill", fill);
@@ -177,7 +178,7 @@ const renderElementToSvg = (
         }
         path.setAttribute("stroke", "none");
         return path;
-      };
+      }
 
       const group = svgRoot.ownerDocument.createElementNS(SVG_NS, "g");
       group.setAttribute(
@@ -719,20 +720,20 @@ const renderElementToSvg = (
 
         addToRoot(g || node, element);
       } else {
-        throw new Error(`Unimplemented type ${(element as { type: string }).type}`);
+        throw new Error(`Unimplemented type ${(element as TypedElement).type}`);
       }
     }
   }
-};
+}
 
-export const renderSceneToSvg = (
+export function renderSceneToSvg(
   elements: readonly NonDeletedExcalidrawElement[],
   elementsMap: RenderableElementsMap,
   rsvg: RoughSVG,
   svgRoot: SVGElement,
   files: BinaryFiles,
   renderConfig: SVGRenderConfig,
-) => {
+) {
   if (!svgRoot) {
     return;
   }
@@ -802,4 +803,4 @@ export const renderSceneToSvg = (
         }
       }
     });
-};
+}
