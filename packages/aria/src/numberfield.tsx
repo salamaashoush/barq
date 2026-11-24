@@ -818,6 +818,8 @@ export interface NumberFieldComponentProps extends StyleProps {
   decrementIcon?: Child;
   "aria-label"?: string;
   "aria-labelledby"?: string;
+  /** Read after the field's own description and error, for a label and help drawn elsewhere. */
+  "aria-describedby"?: string;
   ref?: RefTarget<HTMLInputElement>;
   onChange?: (value: number) => void;
 }
@@ -860,6 +862,8 @@ export function NumberField(props: NumberFieldComponentProps) {
     {
       inputRef,
       label: () => props.label,
+      description: () => props.description,
+      errorMessage: () => props.errorMessage,
       name: () => props.name,
       form: () => props.form,
       validate: callback<[number], string | string[] | true | null | undefined>(
@@ -882,6 +886,7 @@ export function NumberField(props: NumberFieldComponentProps) {
       decrementAriaLabel: () => props.decrementAriaLabel,
       "aria-label": () => props["aria-label"],
       "aria-labelledby": () => props["aria-labelledby"],
+      "aria-describedby": () => props["aria-describedby"],
     },
     state,
   );

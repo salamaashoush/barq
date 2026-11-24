@@ -579,3 +579,18 @@ describe("a number field's parts", () => {
     expect(up.getAttribute("aria-label")).toBe("Increase Seats");
   });
 });
+
+describe("a number field described from outside", () => {
+  test("aria-describedby reaches the input, beside its own description", () => {
+    render(() => (
+      <>
+        <span id="help">Whole seats only.</span>
+        <NumberField label="Seats" description="Per team." aria-describedby="help" />
+      </>
+    ));
+    const input = screen.getByRole("textbox", { name: "Seats" });
+    const ids = (input.getAttribute("aria-describedby") ?? "").split(" ");
+    expect(ids).toContain("help");
+    expect(ids.map((id) => document.getElementById(id)?.textContent)).toContain("Per team.");
+  });
+});
