@@ -7,7 +7,17 @@
 import { describe, expect, test } from "bun:test";
 import { ariaViolations, screen, user, within } from "@barqjs/testing";
 
-import { canvas, mountEditor, pointer, rectangle, select, settle } from "./test-ui.tsx";
+import {
+  canvas,
+  mountEditor,
+  pointer,
+  rectangle,
+  select,
+  settle,
+  setupUITests,
+} from "./test-ui.tsx";
+
+setupUITests();
 
 describe("toolbar", () => {
   test("offers every tool with its key, and picking one hands the keyboard to the canvas", async () => {

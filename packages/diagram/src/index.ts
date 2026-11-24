@@ -12,13 +12,7 @@ export type { DiagramEditorProps } from "./diagram-editor.tsx";
 export { MainMenu } from "./ui/main-menu.tsx";
 export type { RenderSlot } from "./ui/context.tsx";
 export type { CanvasActions, ExportOpts as UIExportOpts, UIOptions } from "./editor/ui-options.ts";
-export {
-  defaultLang,
-  isRTLLanguage,
-  languages,
-  loadLanguage,
-  localeCodes,
-} from "./i18n.ts";
+export { defaultLang, isRTLLanguage, languages, loadLanguage, localeCodes } from "./i18n.ts";
 export type { Language, TranslationKey } from "./i18n.ts";
 export type {
   DiagramChangeListener,

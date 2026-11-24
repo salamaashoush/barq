@@ -161,7 +161,16 @@ export interface ColorPickerProps {
 export function ColorPicker(props: ColorPickerProps) {
   const ui = useDiagramUI();
   const t = ui.t;
-  const [open, setOpen] = createSignal(false);
+  const [ownOpen, setOwnOpen] = createSignal(false);
+  // the command palette opens a picker through the editor's `openPopup`
+  const open = (): boolean => ownOpen() || ui.store.state("openPopup") === props.type;
+  const setOpen = (next: boolean): void => {
+    setOwnOpen(next);
+    const editor = ui.store.editor;
+    if (!next && editor?.state.openPopup === props.type) {
+      editor.batch(() => editor.setState({ openPopup: null }));
+    }
+  };
   const [section, setSection] = createSignal<Section | null>(null);
   let contentElement: HTMLDivElement | undefined;
 

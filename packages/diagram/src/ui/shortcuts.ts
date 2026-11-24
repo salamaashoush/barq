@@ -3,12 +3,12 @@ import { isDarwin } from "@excalidraw/common";
 import type { Translate } from "../i18n.ts";
 
 /** A shortcut written for the platform, in the language's names for the keys. Excalidraw's `getShortcutKey`. */
-export const getShortcutKey = (shortcut: string, t: Translate): string =>
+export const getShortcutKey = (shortcut: string, t: Translate, darwin = isDarwin): string =>
   shortcut
-    .replace(/\b(Opt(?:ion)?|Alt)\b/i, isDarwin ? t("keys.option") : t("keys.alt"))
+    .replace(/\b(Opt(?:ion)?|Alt)\b/i, darwin ? t("keys.option") : t("keys.alt"))
     .replace(/\bShift\b/i, t("keys.shift"))
     .replace(/\b(Enter|Return)\b/i, t("keys.enter"))
-    .replace(/\b(Ctrl|Cmd|Command|CtrlOrCmd)\b/gi, isDarwin ? t("keys.cmd") : t("keys.ctrl"))
+    .replace(/\b(Ctrl|Cmd|Command|CtrlOrCmd)\b/gi, darwin ? t("keys.cmd") : t("keys.ctrl"))
     .replace(/\b(Esc(?:ape)?)\b/i, t("keys.escape"))
     .replace(/\b(Space(?:bar)?)\b/i, t("keys.spacebar"))
     .replace(/\b(Del(?:ete)?)\b/i, t("keys.delete"));
@@ -72,8 +72,9 @@ export const getShortcutFromShortcutName = (
   name: ShortcutName,
   t: Translate,
   index = 0,
+  darwin = isDarwin,
 ): string => {
   const shortcuts: readonly string[] = SHORTCUTS[name];
   const shortcut = shortcuts[index] ?? shortcuts[0];
-  return shortcut === undefined ? "" : getShortcutKey(shortcut, t);
+  return shortcut === undefined ? "" : getShortcutKey(shortcut, t, darwin);
 };

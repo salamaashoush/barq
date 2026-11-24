@@ -6,13 +6,54 @@ import { ContextMenu } from "./context-menu.tsx";
 import { FooterEnd, FooterStart } from "./footer.tsx";
 import { MainMenuButton } from "./main-menu.tsx";
 import { PropertiesPanel } from "./properties.tsx";
-import { bottomEnd, bottomStart, layerUI, topCenter, topEnd, topStart } from "./styles.ts";
+import {
+  bottomEnd,
+  bottomStart,
+  iconButton,
+  island,
+  layerUI,
+  topCenter,
+  topEnd,
+  topStart,
+} from "./styles.ts";
 import { Toolbar } from "./toolbar.tsx";
+import { CommandPalette } from "./command-palette.tsx";
+import { HintViewer } from "./hint-viewer.tsx";
+import { ElementLinkDialog, HyperlinkPopup } from "./hyperlink.tsx";
+import { Minimap } from "./minimap.tsx";
+import { ShapeSwitchPanel } from "./shape-switch.tsx";
+import { StatsPanel } from "./stats.tsx";
+import { EditorToasts } from "./toasts.tsx";
+import { diagramLayer as d } from "./layer.ts";
+import { actionToggleViewMode, actionToggleZenMode } from "../editor/actions/toggles.ts";
+import { Pencil } from "@barqjs/lucide/icons/pencil";
+import { Button } from "@barqjs/ui/button";
+
+const toolbarAnchor = d({ position: "relative", pointerEvents: "none" });
+const bottomStack = d({
+  position: "absolute",
+  bottom: "12px",
+  insetInlineStart: "12px",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "flex-start",
+  gap: "8px",
+  pointerEvents: "none",
+  "& > *": { position: "static" },
+});
+const bottomCenter = d({
+  position: "absolute",
+  bottom: "12px",
+  insetInline: "0",
+  display: "flex",
+  justifyContent: "center",
+  "& > *": { pointerEvents: "auto" },
+});
 
 export interface EditorUIProps {
   ui: DiagramUI;
   /** The main menu's entries, replacing Excalidraw's defaults. */
-  mainMenu?: Child;
+  mainMenu?: () => Child;
 }
 
 /**
@@ -30,7 +71,7 @@ export function EditorUI(props: EditorUIProps) {
   );
 }
 
-function Layout(props: { mainMenu?: Child }) {
+function Layout(props: { mainMenu?: () => Child }) {
   const value = useDiagramUI();
   const locale = provideLocale(() => value.langCode());
   const zen = () => value.store.state("zenModeEnabled");
@@ -52,19 +93,61 @@ function Layout(props: { mainMenu?: Child }) {
       </div>
       <Show when={!viewMode()}>
         <div class={topCenter}>
-          <Toolbar />
+          <div class={toolbarAnchor}>
+            <Toolbar />
+            <HintViewer />
+          </div>
         </div>
       </Show>
-      <div class={topEnd}>{value.host().renderTopRightUI?.(false, value.store.snapshot)}</div>
-      <Show when={!zen()}>
-        <div class={bottomStart}>
-          <FooterStart />
+      <div class={topEnd}>
+        {value.host().renderTopRightUI?.(false, value.store.snapshot)}
+        <StatsPanel />
+      </div>
+      <Show
+        when={!zen()}
+        fallback={
+          <div class={bottomCenter}>
+            <Button
+              variant="secondary"
+              onPress={() => value.run(actionToggleZenMode)}
+              data-testid="exit-zen-mode"
+            >
+              {value.t("buttons.exitZenMode")}
+            </Button>
+          </div>
+        }
+      >
+        <div class={bottomStack}>
+          <Minimap />
+          <div class={bottomStart}>
+            <FooterStart />
+          </div>
         </div>
         <div class={bottomEnd}>
+          <Show when={viewMode() && value.isEnabled(actionToggleViewMode)}>
+            <div class={island}>
+              <button
+                type="button"
+                class={iconButton}
+                aria-label={value.t("labels.viewMode")}
+                aria-pressed="true"
+                title={`${value.t("labels.viewMode")} — ${value.shortcut("viewMode")}`}
+                onClick={() => value.run(actionToggleViewMode)}
+                data-testid="exit-view-mode"
+              >
+                <Pencil aria-hidden="true" />
+              </button>
+            </div>
+          </Show>
           <FooterEnd />
         </div>
       </Show>
       <ContextMenu />
+      <ShapeSwitchPanel />
+      <HyperlinkPopup />
+      <ElementLinkDialog />
+      <CommandPalette />
+      <EditorToasts />
     </div>
   );
 }

@@ -58,7 +58,6 @@ import {
   hasStrokeWidth,
   isArrowElement,
   isElbowArrow,
-  isFrameLikeElement,
   isImageElement,
   isLineElement,
   isLinearElement,
@@ -1064,4 +1063,3 @@ export function PropertiesPanel() {
   );
 }
 
-void isFrameLikeElement;

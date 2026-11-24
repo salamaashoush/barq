@@ -2,7 +2,7 @@
 
 import { afterEach, beforeEach } from "bun:test";
 import { flush } from "@barqjs/core";
-import { render, tick } from "@barqjs/testing";
+import { cleanup, render, tick } from "@barqjs/testing";
 
 import { DiagramEditor, type DiagramEditorApi, type DiagramEditorProps } from "../index.ts";
 
@@ -11,23 +11,30 @@ const originalRect = Object.getOwnPropertyDescriptor(
   HTMLElement.prototype,
   "getBoundingClientRect",
 );
-beforeEach(() => {
-  HTMLElement.prototype.getBoundingClientRect = function () {
-    return {
-      x: 0,
-      y: 0,
-      left: 0,
-      top: 0,
-      right: SIZE.width,
-      bottom: SIZE.height,
-      ...SIZE,
-    } as DOMRect;
-  };
-});
-afterEach(() => {
-  if (originalRect)
-    Object.defineProperty(HTMLElement.prototype, "getBoundingClientRect", originalRect);
-});
+/**
+ * The region's size and the cleanup, for the file that calls it: hooks a
+ * shared module registers reach only the first test file that loads it.
+ */
+export function setupUITests(): void {
+  beforeEach(() => {
+    HTMLElement.prototype.getBoundingClientRect = function () {
+      return {
+        x: 0,
+        y: 0,
+        left: 0,
+        top: 0,
+        right: SIZE.width,
+        bottom: SIZE.height,
+        ...SIZE,
+      } as DOMRect;
+    };
+  });
+  afterEach(() => {
+    if (originalRect)
+      Object.defineProperty(HTMLElement.prototype, "getBoundingClientRect", originalRect);
+  });
+  afterEach(cleanup);
+}
 
 export async function settle(): Promise<void> {
   for (let round = 0; round < 3; round++) {

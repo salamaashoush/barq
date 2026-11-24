@@ -278,3 +278,48 @@ export const page = () => () => (
   expect(module.handle.api?.getSceneElements()).toEqual([]);
   expect(container.querySelector("footer")?.textContent).toBe("end");
 });
+
+test("the server renders the UI in its language, and the browser hydrates it as it is", async () => {
+  const compiled = compile(
+    `
+import { DiagramEditor, loadLanguage } from ${JSON.stringify(ENTRY)}
+
+await loadLanguage("ar-SA")
+
+export const handle = { api: null }
+
+export const page = () => () => (
+  <main>
+    <DiagramEditor label="Whiteboard" langCode="ar-SA" api={(api) => (handle.api = api)} />
+  </main>
+)
+`,
+    "editor-ui-rtl",
+  );
+  const served = serve(compiled.ssr);
+  const container = document.createElement("div");
+  document.body.append(container);
+  container.innerHTML = served.html;
+
+  const ui = container.querySelector<HTMLElement>("[data-testid=editor-ui]");
+  expect(ui?.getAttribute("dir")).toBe("rtl");
+  const toolbar = container.querySelector("[role=toolbar]");
+  expect(
+    toolbar?.querySelector("[data-testid=toolbar-rectangle]")?.getAttribute("aria-label"),
+  ).toBe("مستطيل");
+
+  const module = (await import(`${compiled.dom}?${Math.random()}`)) as {
+    page: () => () => unknown;
+    handle: { api: DiagramEditorApi | null };
+  };
+  resetChildIds();
+  cleanups.push(hydrate(module.page() as never, container));
+  flush();
+  expect(hydrate.report.recovered).toBe(false);
+  expect(hydrate.report.mismatches).toEqual([]);
+  expect(container.querySelector("[data-testid=editor-ui]")).toBe(ui);
+  expect(
+    container.querySelector("[data-testid=toolbar-rectangle]")?.getAttribute("aria-label"),
+  ).toBe("مستطيل");
+  expect(module.handle.api?.getAppState().theme).toBe("light");
+});

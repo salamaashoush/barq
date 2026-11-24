@@ -1,5 +1,7 @@
 import { type Child, createContext, getContext } from "@barqjs/core";
 
+import { isDarwin } from "@excalidraw/common";
+
 import { getShortcutFromShortcutName, type ShortcutName } from "./shortcuts.ts";
 
 import type { Theme } from "@excalidraw/element/types";
@@ -101,7 +103,9 @@ export const createDiagramUI = (options: {
       store.state("theme");
       return resolveLabel(action.label);
     },
-    shortcut: (name) => getShortcutFromShortcutName(name, t),
+    // the platform's key names once the page runs: a server knows no platform,
+    // and the markup it sent is what hydrates
+    shortcut: (name) => getShortcutFromShortcutName(name, t, 0, store.ready() && isDarwin),
     focusCanvas: () => store.editor?.focusContainer(),
   };
 };

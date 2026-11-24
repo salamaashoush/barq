@@ -1400,6 +1400,14 @@ export class DiagramEditor {
       queueMicrotask(() => this.text.textWysiwygSubmitHandler?.());
     }
 
+    if (
+      this.state.openPopup === "convertElementType" &&
+      getConversionTypeFromElements(this.scene.getSelectedElements(this.state)) === null
+    ) {
+      this._state = { ...this._state, openPopup: null };
+      this.committedState = this._state;
+    }
+
     this.updateFrameNames();
 
     this.store.commit(this.scene.getElementsMapIncludingDeleted(), this.state);
@@ -4717,6 +4725,16 @@ export class DiagramEditor {
     }
 
     if (!isInputLike(event.target)) {
+      if (
+        (event.key === KEYS.ESCAPE || event.key === KEYS.ENTER) &&
+        this.state.openPopup === "convertElementType"
+      ) {
+        // only the panel closes: no deselection, no text or line editing
+        event.preventDefault();
+        this.setState({ openPopup: null });
+        this.focusContainer();
+        return;
+      }
       if ((event.key === KEYS.ESCAPE || event.key === KEYS.ENTER) && this.state.croppingElementId) {
         this.finishImageCropping();
         return;
@@ -4751,6 +4769,8 @@ export class DiagramEditor {
           ) {
             this.store.scheduleCapture();
           }
+          // the shape switch's panel shows the types it steps through
+          this.setState({ openPopup: "convertElementType" });
           return;
         }
       }

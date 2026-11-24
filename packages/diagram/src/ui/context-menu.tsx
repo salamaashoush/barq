@@ -2,10 +2,7 @@ import { For, Show, createMemo, onCleanup } from "@barqjs/core";
 import { Menu, MenuItem } from "@barqjs/aria/menu";
 import { Check } from "@barqjs/lucide/icons/check";
 
-import {
-  CONTEXT_MENU_SEPARATOR,
-  isContextMenuItem,
-} from "../editor/context-menu.ts";
+import { CONTEXT_MENU_SEPARATOR, isContextMenuItem } from "../editor/context-menu.ts";
 import { useDiagramUI } from "./context.tsx";
 import { isShortcutName } from "./shortcuts.ts";
 import { diagramLayer as d } from "./layer.ts";

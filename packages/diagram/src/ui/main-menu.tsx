@@ -312,14 +312,14 @@ function ChangeCanvasBackground() {
  *
  * ```tsx
  * <DiagramEditor
- *   mainMenu={
+ *   mainMenu={() => (
  *     <>
  *       <MainMenu.DefaultItems.Help />
  *       <MainMenu.Item onSelect={share}>Share</MainMenu.Item>
  *       <MainMenu.Separator />
  *       <MainMenu.DefaultItems.ToggleTheme />
  *     </>
- *   }
+ *   )}
  * />
  * ```
  */
@@ -379,7 +379,16 @@ export function MainMenuButton(props: { items?: Child }) {
   const ui = useDiagramUI();
   const t = ui.t;
   const [confirming, setConfirming] = createSignal(false);
-  const [picking, setPicking] = createSignal(false);
+  const [ownPicking, setOwnPicking] = createSignal(false);
+  // the command palette opens the picker through the editor's `openPopup`
+  const picking = (): boolean => ownPicking() || ui.store.state("openPopup") === "canvasBackground";
+  const setPicking = (next: boolean): void => {
+    setOwnPicking(next);
+    const editor = ui.store.editor;
+    if (!next && editor?.state.openPopup === "canvasBackground") {
+      editor.batch(() => editor.setState({ openPopup: null }));
+    }
+  };
   const menu: MainMenuState = {
     confirmClear: () => setConfirming(true),
     openBackgroundPicker: () => setPicking(true),

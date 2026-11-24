@@ -83,8 +83,11 @@ export interface DiagramEditorProps {
   renderTopRightUI?: RenderSlot;
   /** Rendered in the stats panel, below the general stats. */
   renderCustomStats?: (elements: readonly unknown[], appState: AppState) => Child;
-  /** The main menu's entries in place of the defaults, built from `MainMenu`. */
-  mainMenu?: Child;
+  /**
+   * The main menu's entries in place of the defaults, built from `MainMenu`:
+   * a function, called inside the menu, whose parts read the editor.
+   */
+  mainMenu?: () => Child;
   /** Excalidraw's `aiEnabled`: the text-to-diagram and wireframe entries. @default true */
   aiEnabled?: boolean;
   /** Excalidraw's `generateLinkForSelection`, for the link "copy link to element" copies. */

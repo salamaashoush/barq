@@ -37,6 +37,12 @@ export class EditorStore {
   /** Changes on every commit while the stats panel is open, so it follows a drag. */
   public readonly geometry: Accessor<number>;
   public readonly history: Accessor<{ canUndo: boolean; canRedo: boolean }>;
+  /**
+   * Whether the UI reads the editor yet: from its first commit on, never
+   * during the render a hydration has to match with the server's.
+   */
+  public readonly ready: Accessor<boolean>;
+  private readonly setReady: (value: boolean) => void;
 
   /**
    * `initial` is what the UI shows before the editor exists: on the server,
@@ -57,11 +63,17 @@ export class EditorStore {
     );
     this.history = history;
     this.setHistory = setHistory;
+    const [ready, setReady] = createSignal(false);
+    this.ready = ready;
+    this.setReady = setReady;
   }
 
-  /** The editor, once it is mounted. */
+  /**
+   * The editor, once it is mounted. A computation reading it follows
+   * `ready`, so what it renders first matches the server's.
+   */
   public get editor(): DiagramEditor | null {
-    return this.current;
+    return this.ready() ? this.current : null;
   }
 
   /** Follows the mounted editor from now on; the returned function stops. */
@@ -119,6 +131,7 @@ export class EditorStore {
       canUndo: !editor.history.isUndoStackEmpty,
       canRedo: !editor.history.isRedoStackEmpty,
     });
+    this.setReady(true);
   }
 
   public dispose(): void {

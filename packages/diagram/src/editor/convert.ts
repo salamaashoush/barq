@@ -361,14 +361,18 @@ const toCacheKey = (elementId: ExcalidrawElement["id"], convertitleType: Convert
   return `${elementId}:${convertitleType}` as CacheKey;
 };
 
-const filterGenericConvetibleElements = <T extends ExcalidrawElement>(elements: readonly T[]) =>
+export const filterGenericConvetibleElements = <T extends ExcalidrawElement>(
+  elements: readonly T[],
+) =>
   elements.filter((element) => isConvertibleGenericType(element.type)) as Array<
     T extends NonDeletedExcalidrawElement
       ? NonDeleted<ExcalidrawRectangleElement | ExcalidrawDiamondElement | ExcalidrawEllipseElement>
       : ExcalidrawRectangleElement | ExcalidrawDiamondElement | ExcalidrawEllipseElement
   >;
 
-const filterLinearConvertibleElements = <T extends ExcalidrawElement>(elements: readonly T[]) =>
+export const filterLinearConvertibleElements = <T extends ExcalidrawElement>(
+  elements: readonly T[],
+) =>
   elements.filter((element) =>
     isEligibleLinearElement(element),
   ) as (T extends NonDeletedExcalidrawElement
