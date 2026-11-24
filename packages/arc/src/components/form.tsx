@@ -36,6 +36,7 @@ import { arcLayer as arc } from "../layer.ts";
 import type { Customisable } from "../lib/parts.ts";
 import { bg, edge, focus, interaction, layout, rounded, space, type } from "../style/index.ts";
 import { useArcMessages } from "./messages.ts";
+import { TagInput } from "./tag-input.tsx";
 
 import {
   type ArcFieldProps,
@@ -49,6 +50,7 @@ import {
 
 export {
   type ArcFieldProps,
+  type FieldValueProps,
   arcFieldContext,
   arcFormContext,
   fieldStyles,
@@ -667,6 +669,7 @@ const arcFieldComponents = {
   DateField,
   DateTimeField,
   TimeZoneField,
+  TagInput,
 };
 
 const arcFormComponents = { SubmitButton, FormError };

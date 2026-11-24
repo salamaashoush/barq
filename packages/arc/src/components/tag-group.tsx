@@ -38,6 +38,7 @@ export interface TagGroupProps<T>
   /** Names the group above it. Without one, give `aria-label`. */
   label?: Child;
   "aria-label"?: string;
+  "aria-labelledby"?: string;
   /** @default `item.id ?? item.key` */
   getKey?: (item: T) => Key;
   /** What a tag says and is named by. @default `item.label ?? item.name ?? String(item)` */
@@ -143,7 +144,7 @@ export function TagGroup<T>(props: TagGroupProps<T>) {
         getKey={props.getKey}
         getTextValue={text}
         aria-label={props["aria-label"]}
-        aria-labelledby={props.label === undefined ? undefined : of.ids.label}
+        aria-labelledby={props.label === undefined ? props["aria-labelledby"] : of.ids.label}
         aria-describedby={of.describedBy(props.description !== undefined)}
         selectionMode={props.selectionMode}
         selectedKeys={props.selectedKeys}

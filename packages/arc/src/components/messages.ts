@@ -60,6 +60,9 @@ export interface ArcMessages {
   showAll: (count: number) => string;
   showLess: string;
   clearAll: string;
+  added: (value: string) => string;
+  duplicateTag: (tag: string) => string;
+  tooManyTags: (max: number) => string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -116,6 +119,9 @@ export const ENGLISH: ArcMessages = {
   showAll: (count) => `Show all (${String(count)})`,
   showLess: "Show less",
   clearAll: "Clear all",
+  added: (value) => `Added ${value}`,
+  duplicateTag: (tag) => `${tag} is already added`,
+  tooManyTags: (max) => `No more than ${String(max)}`,
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");

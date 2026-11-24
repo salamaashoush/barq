@@ -22,6 +22,12 @@ export {
   tagGroupStyles,
 } from "./components/tag-group.tsx";
 export {
+  TagInput,
+  type TagInputProps,
+  type TagInputSlots,
+  tagInputStyles,
+} from "./components/tag-input.tsx";
+export {
   CommandMenu,
   commandMenuStyles,
   type CommandMenuAction,
@@ -100,6 +106,7 @@ export {
   DateField,
   DateTimeField,
   type DateTimeFieldProps,
+  type FieldValueProps,
   type FieldOption,
   FormError,
   NumberField,

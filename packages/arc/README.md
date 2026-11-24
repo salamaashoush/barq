@@ -421,6 +421,12 @@ import { Chip } from "@barqjs/arc";
   selectable, `maxVisible` shows a few with a button for the rest,
   `onClearAll` adds Clear all, and `label`, `description` and
   `errorMessage` frame it as a field.
+- `TagInput`: tags typed one at a time, each ended by Enter or a comma, and
+  a pasted list split into a tag per entry. A repeat, a tag past `maxTags` or
+  one `validate` refuses stays in the input with the reason under it, so
+  nothing typed is lost. Backspace in the empty input moves to the last tag,
+  where a second removes it. It is `field.TagInput` in a form, holds its own
+  value with `defaultValue`, and with `name` submits a hidden input per tag.
 
 ## Code
 
