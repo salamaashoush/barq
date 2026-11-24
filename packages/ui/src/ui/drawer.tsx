@@ -875,12 +875,7 @@ export function DrawerContent(props: DrawerContentProps) {
       data-state={state.isOpen() ? "open" : "closed"}
       onPointerDown={onPointerDown}
     >
-      <AriaDialog
-        {...values(named(cells(props)))}
-        id={overlayId()}
-        class={contents}
-        ref={section}
-      >
+      <AriaDialog {...values(named(cells(props)))} id={overlayId()} class={contents} ref={section}>
         <DrawerSurfaceProvider value={surface} onMount={mounted} onUnmount={unmounted}>
           <Show when={props.showHandle !== false && direction() === "bottom"}>
             <DrawerHandle />
