@@ -54,6 +54,7 @@ import {
   TableRowNode,
 } from "@lexical/table";
 import {
+  $createParagraphNode,
   $isParagraphNode,
   $isTextNode,
   COMMAND_PRIORITY_LOW,
@@ -84,6 +85,7 @@ import {
   type EmbedProvider,
   ImageBlock,
   editorUploads,
+  resolveEmbed,
 } from "./media.tsx";
 import { EmbedDialog, ImageDialog, ImagePaste } from "./media-insert.tsx";
 import { $createMentionNode, $isMentionNode, MentionNode } from "./mention-node.ts";
@@ -401,6 +403,28 @@ export function embedExtension(
         icon: () => <SquarePlay />,
         keywords: ["video", "youtube", "vimeo"],
         run: (editor) => editor.dispatchCommand(OPEN_EMBED_DIALOG_COMMAND, undefined),
+      },
+    ],
+    // An address a provider takes, pasted on an empty line, or a frame's
+    // embed code anywhere, becomes the embed.
+    paste: [
+      {
+        priority: 15,
+        $paste: (data, selection) => {
+          const text = data.getData("text/plain").trim();
+          const frame = /^<iframe\b[^>]*\ssrc=["']([^"']+)["']/i.exec(text);
+          const top = selection.anchor.getNode().getTopLevelElement();
+          const emptyLine = $isParagraphNode(top) && top.getTextContentSize() === 0;
+          const address = frame?.[1] ?? (emptyLine && !/\s/.test(text) ? text : null);
+          const embed = address === null ? null : resolveEmbed(address, providers);
+          if (embed === null || !selection.isCollapsed()) return false;
+          const block = EmbedBlock.$create(embed);
+          if (emptyLine && top !== null) top.replace(block);
+          else selection.insertNodes([block]);
+          if (block.getNextSibling() === null) block.insertAfter($createParagraphNode());
+          block.selectNext();
+          return true;
+        },
       },
     ],
     plugins: [

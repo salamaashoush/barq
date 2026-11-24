@@ -143,10 +143,34 @@ export class ToggleNode extends ElementNode {
     return new ToggleNode().updateFromJSON(json);
   }
 
+  /** HTML's `<details>`, its `<summary>` the title and the rest the content. */
   static importDOM(): DOMConversionMap {
     return {
       details: (element: HTMLElement) => ({
-        conversion: () => ({ node: new ToggleNode(element.hasAttribute("open")) }),
+        conversion: () => ({
+          node: new ToggleNode(element.hasAttribute("open")),
+          after: (children) => {
+            const title =
+              children.find((child): child is ToggleTitleNode => $isToggleTitleNode(child)) ??
+              $createToggleTitleNode();
+            const content = $createToggleContentNode();
+            let line: ElementNode | null = null;
+            for (const child of children) {
+              if (child === title) continue;
+              if ($isElementNode(child) && !child.isInline()) {
+                content.append(child);
+                line = null;
+              } else {
+                if (line === null) {
+                  line = $createParagraphNode();
+                  content.append(line);
+                }
+                line.append(child);
+              }
+            }
+            return [title, content];
+          },
+        }),
         priority: 1,
       }),
     };
@@ -218,6 +242,12 @@ export class ToggleNode extends ElementNode {
 export class ToggleTitleNode extends ElementNode {
   $config() {
     return this.config("toggle-title", { extends: ElementNode });
+  }
+
+  static importDOM(): DOMConversionMap {
+    return {
+      summary: () => ({ conversion: () => ({ node: new ToggleTitleNode() }), priority: 1 }),
+    };
   }
 
   createDOM(config: EditorConfig, editor: LexicalEditor): HTMLElement {

@@ -9,6 +9,7 @@ import {
 import {
   $getRoot,
   $getSelection,
+  $isParagraphNode,
   $isRangeSelection,
   type AnyLexicalExtensionArgument,
   COMMAND_PRIORITY_HIGH,
@@ -28,7 +29,9 @@ import {
   keysMatch,
   provideEditorExtensions,
   resolveExtensions,
+  transformersOf,
 } from "./extension.ts";
+import { $insertHtml } from "./html-import.ts";
 import { documentPreset } from "./presets.ts";
 import { editorTheme } from "./theme.ts";
 
@@ -61,19 +64,7 @@ export function documentBlocks(options: DocumentOptions = {}): AnyBlock[] {
  * holds, the most particular first.
  */
 export function markdownTransformers(options: DocumentOptions = {}): Transformer[] {
-  const all: Transformer[] = [];
-  const ranked = documentEditorExtensions(options)
-    .map((extension, index) => ({ extension, index }))
-    .toSorted(
-      (a, b) =>
-        (b.extension.markdownPriority ?? 0) - (a.extension.markdownPriority ?? 0) ||
-        a.index - b.index,
-    );
-  for (const { extension } of ranked) {
-    const rules = extension.markdown;
-    all.push(...(typeof rules === "function" ? rules(() => all) : (rules ?? [])));
-  }
-  return all;
+  return transformersOf(documentEditorExtensions(options));
 }
 
 /** The document's theme with each extension's laid over it; two classes for one key are both kept. */
@@ -228,6 +219,39 @@ export function documentToText(value: DocumentValue, options: DocumentOptions = 
   try {
     editor.setEditorState(editor.parseEditorState(value));
     return editor.read(() => $getRoot().getTextContent());
+  } finally {
+    editor.dispose();
+  }
+}
+
+/**
+ * HTML from another system as a document, read as a paste is: headings,
+ * lists, tables, links, pictures and embeds, and what each extension reads
+ * from it, a callout's `data-callout`, a `<details>`, a footnote's `<sup>`.
+ */
+export function htmlToDocument(html: string, options: DocumentOptions = {}): SerializedEditorState {
+  const editor = createDocumentEditor(options);
+  try {
+    const page = new DOMParser().parseFromString(html, "text/html");
+    editor.update(
+      () => {
+        const root = $getRoot();
+        root.clear();
+        root.selectEnd();
+        $insertHtml(editor, page);
+        // What is left of an empty start is not part of what was read.
+        const first = root.getFirstChild();
+        if (
+          $isParagraphNode(first) &&
+          first.getTextContentSize() === 0 &&
+          root.getChildrenSize() > 1
+        ) {
+          first.remove();
+        }
+      },
+      { discrete: true },
+    );
+    return editor.getEditorState().toJSON();
   } finally {
     editor.dispose();
   }

@@ -637,6 +637,9 @@ export interface ArcMessages {
   descriptionsHint: string;
   descriptionsSkipped: (count: number) => string;
   transcriptHint: string;
+  cut: string;
+  paste: string;
+  pasteAsText: string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -1310,6 +1313,9 @@ export const ENGLISH: ArcMessages = {
       ? "1 line has no time and is left out"
       : `${String(count)} lines have no time and are left out`,
   transcriptHint: "Everything the recording says, written out",
+  cut: "Cut",
+  paste: "Paste",
+  pasteAsText: "Paste as plain text",
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");

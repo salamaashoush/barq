@@ -13,6 +13,7 @@ import { documentStatusExtension } from "./document-status.tsx";
 import type { EditorExtension } from "./extension.ts";
 import { findExtension } from "./find-panel.tsx";
 import { footnoteExtension } from "./footnote.tsx";
+import { pasteExtension } from "./paste.ts";
 import { PageBreakBlock } from "./page-break.tsx";
 import { toggleExtension } from "./toggle.tsx";
 
@@ -35,6 +36,7 @@ export const documentPreset: readonly EditorExtension[] = [
   footnoteExtension,
   findExtension,
   documentStatusExtension,
+  pasteExtension,
 ];
 
 /** A message: rich text, links, images and mentions, nothing laid out as a page. */
@@ -45,6 +47,7 @@ export const chatPreset: readonly EditorExtension[] = [
   imageExtension,
   embedExtension(),
   mentionExtension,
+  pasteExtension,
 ];
 
 /** A comment on something: rich text, links and mentions. */
@@ -52,4 +55,5 @@ export const commentPreset: readonly EditorExtension[] = [
   richTextExtension,
   autoLinkExtension,
   mentionExtension,
+  pasteExtension,
 ];

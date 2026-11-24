@@ -279,6 +279,26 @@ export function commandsOf(
   );
 }
 
+/**
+ * Every markdown rule the extensions read and write, the most particular
+ * first: by `markdownPriority`, then in the extensions' order.
+ */
+export function transformersOf(extensions: readonly EditorExtension[]): Transformer[] {
+  const all: Transformer[] = [];
+  const ranked = extensions
+    .map((extension, index) => ({ extension, index }))
+    .toSorted(
+      (a, b) =>
+        (b.extension.markdownPriority ?? 0) - (a.extension.markdownPriority ?? 0) ||
+        a.index - b.index,
+    );
+  for (const { extension } of ranked) {
+    const rules = extension.markdown;
+    all.push(...(typeof rules === "function" ? rules(() => all) : (rules ?? [])));
+  }
+  return all;
+}
+
 /** Whether a key event is the binding's keys. */
 export function keysMatch(event: KeyboardEvent, keys: string): boolean {
   const steps = keys.split("+");

@@ -58,6 +58,7 @@ import {
 } from "./commands.ts";
 import { labelOf } from "./blocks.tsx";
 import { $rootBlockOf } from "./containers.tsx";
+import { $clipboardTarget, copyTarget, cutTarget, pasteAt } from "./paste.ts";
 import { type BlockMenuChoice, type Label, editorExtensions } from "./extension.ts";
 import { editorSignal, useRegistration } from "./hooks.ts";
 import { RichTextEditor, type RichTextEditorProps } from "./rich-text-editor.tsx";
@@ -628,6 +629,49 @@ function BlockHandles(props: { cls: Slots }) {
                           </>
                         )}
                       </For>
+                      <DropdownMenuItem
+                        onSelect={() =>
+                          void cutTarget(
+                            editor,
+                            editor.read(() => $clipboardTarget(current().key)),
+                          )
+                        }
+                      >
+                        {messages().cut}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={() =>
+                          void copyTarget(
+                            editor,
+                            editor.read(() => $clipboardTarget(current().key)),
+                          )
+                        }
+                      >
+                        {messages().copy}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={() =>
+                          void pasteAt(
+                            editor,
+                            editor.read(() => $clipboardTarget(current().key)),
+                            false,
+                          )
+                        }
+                      >
+                        {messages().paste}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={() =>
+                          void pasteAt(
+                            editor,
+                            editor.read(() => $clipboardTarget(current().key)),
+                            true,
+                          )
+                        }
+                      >
+                        {messages().pasteAsText}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
                       <DropdownMenuItem onSelect={() => duplicate(editor, current().key)}>
                         {messages().duplicate}
                       </DropdownMenuItem>
