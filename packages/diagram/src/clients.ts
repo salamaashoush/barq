@@ -3,6 +3,7 @@ import {
   COLOR_VOICE_CALL,
   COLOR_WHITE,
   UserIdleState,
+  sceneCoordsToViewportCoords,
 } from "@excalidraw/common";
 
 import { roundRect } from "./renderer/round-rect.ts";
@@ -33,6 +34,69 @@ export const getClientColor = (socketId: SocketId, collaborator: Collaborator | 
   const lightness = 83;
 
   return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+};
+
+/**
+ * The collaborators as the interactive canvas draws them, Excalidraw's
+ * `InteractiveCanvas` render config: whose selection each element is in, and
+ * each shown cursor's place in the viewport, name, idle state and button.
+ */
+export const getCollaboratorsRenderConfig = (
+  appState: Pick<
+    InteractiveCanvasAppState,
+    "collaborators" | "zoom" | "scrollX" | "scrollY" | "offsetLeft" | "offsetTop"
+  >,
+): Pick<
+  InteractiveCanvasRenderConfig,
+  | "remotePointerViewportCoords"
+  | "remotePointerButton"
+  | "remoteSelectedElementIds"
+  | "remotePointerUsernames"
+  | "remotePointerUserStates"
+> => {
+  const remotePointerButton: InteractiveCanvasRenderConfig["remotePointerButton"] = new Map();
+  const remotePointerViewportCoords: InteractiveCanvasRenderConfig["remotePointerViewportCoords"] =
+    new Map();
+  const remoteSelectedElementIds: InteractiveCanvasRenderConfig["remoteSelectedElementIds"] =
+    new Map();
+  const remotePointerUsernames: InteractiveCanvasRenderConfig["remotePointerUsernames"] = new Map();
+  const remotePointerUserStates: InteractiveCanvasRenderConfig["remotePointerUserStates"] =
+    new Map();
+
+  appState.collaborators.forEach((user, socketId) => {
+    if (user.selectedElementIds) {
+      for (const id of Object.keys(user.selectedElementIds)) {
+        const ids = remoteSelectedElementIds.get(id);
+        if (ids) {
+          ids.push(socketId);
+        } else {
+          remoteSelectedElementIds.set(id, [socketId]);
+        }
+      }
+    }
+    if (!user.pointer || user.pointer.renderCursor === false) {
+      return;
+    }
+    if (user.username) {
+      remotePointerUsernames.set(socketId, user.username);
+    }
+    if (user.userState) {
+      remotePointerUserStates.set(socketId, user.userState);
+    }
+    remotePointerViewportCoords.set(
+      socketId,
+      sceneCoordsToViewportCoords({ sceneX: user.pointer.x, sceneY: user.pointer.y }, appState),
+    );
+    remotePointerButton.set(socketId, user.button);
+  });
+
+  return {
+    remotePointerViewportCoords,
+    remotePointerButton,
+    remoteSelectedElementIds,
+    remotePointerUsernames,
+    remotePointerUserStates,
+  };
 };
 
 /**

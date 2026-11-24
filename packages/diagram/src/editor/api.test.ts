@@ -10,6 +10,7 @@ import { CaptureUpdateAction } from "@excalidraw/element";
 import { API, Keyboard, UI, h, mouse, renderEditor, unmountEditors } from "./test-editor.ts";
 
 import type { TextEditRequest } from "./editor.ts";
+import type { ToolType } from "../types.ts";
 
 afterEach(unmountEditors);
 
@@ -65,7 +66,7 @@ describe("api", () => {
     const warn = console.warn;
     console.warn = () => {};
     try {
-      api.setActiveTool({ type: "embeddable" });
+      api.setActiveTool({ type: "tape" as ToolType });
     } finally {
       console.warn = warn;
     }

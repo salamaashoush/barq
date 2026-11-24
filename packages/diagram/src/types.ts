@@ -124,6 +124,18 @@ export type UserToFollow = {
   username: string;
 };
 
+export type OnUserFollowedPayload = {
+  userToFollow: UserToFollow;
+  action: "FOLLOW" | "UNFOLLOW";
+};
+
+/** What `onPointerUpdate` hands over: the pointer in scene coordinates, and the pointers down. */
+export type PointerUpdatePayload = {
+  pointer: { x: number; y: number; tool: "pointer" | "laser" };
+  button: "down" | "up";
+  pointersMap: ReadonlyMap<number, Readonly<{ x: number; y: number }>>;
+};
+
 type CommonCanvasAppState = {
   zoom: AppState["zoom"];
   scrollX: AppState["scrollX"];

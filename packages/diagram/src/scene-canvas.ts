@@ -16,7 +16,7 @@ import rough from "roughjs/bin/rough";
 import { Fonts } from "./fonts/fonts.ts";
 import { renderStaticScene } from "./renderer/static-scene.ts";
 import { Renderer } from "./scene/renderer.ts";
-import type { AppState, BinaryFiles, ImageCache } from "./types.ts";
+import type { AppState, BinaryFiles, EmbedsValidationStatus, ImageCache } from "./types.ts";
 
 /** What an editor draws beyond the scene: the selection, and the grid. */
 export interface SceneCanvasFrame {
@@ -26,6 +26,8 @@ export interface SceneCanvasFrame {
   elementsPendingErasure?: ReadonlySet<NonDeletedExcalidrawElement["id"]>;
   /** The flowchart nodes a key press would add, drawn as a preview. */
   pendingFlowchartNodes?: NonDeletedExcalidrawElement[] | null;
+  /** Which embeddables' links validated: the others are drawn as placeholders. */
+  embedsValidationStatus?: EmbedsValidationStatus;
 }
 
 /** The elements a frame draws, which the editor's other layers draw from too. */
@@ -178,7 +180,7 @@ export class SceneCanvas {
         renderGrid: frame?.renderGrid ?? false,
         renderLinks: false,
         isExporting: false,
-        embedsValidationStatus: new Map(),
+        embedsValidationStatus: frame?.embedsValidationStatus ?? new Map(),
         elementsPendingErasure: new Set(frame?.elementsPendingErasure),
         pendingFlowchartNodes: frame?.pendingFlowchartNodes ?? null,
         theme: appState.theme,

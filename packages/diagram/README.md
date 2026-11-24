@@ -96,7 +96,9 @@ let api: DiagramEditorApi | undefined;
 `api` (or `excalidrawAPI`) is Excalidraw's imperative API under its names: `updateScene`,
 `getSceneElements`, `getSceneElementsIncludingDeleted`, `getAppState`,
 `getFiles`, `setActiveTool`, `scrollToContent`, `resetScene`, `refresh`,
-`history.clear` and `onChange`. `updateScene`'s `captureUpdate` says how a
+`history.clear`, `onChange`, and for collaboration `onPointerUpdate`,
+`onScrollChange` and `onUserFollow` (see [Collaboration](#collaboration)),
+each subscription returning its unsubscribe. `updateScene`'s `captureUpdate` says how a
 change is undone, as in Excalidraw: `"IMMEDIATELY"`, `"EVENTUALLY"` or
 `"NEVER"`. `theme` (or the `colorScheme()` above), `viewModeEnabled` and
 `gridModeEnabled` follow their props. On the server it renders the empty
@@ -108,8 +110,8 @@ What it does, and the keys Excalidraw gives each:
   ellipse `O` or `4`, arrow `A` or `5` (again to change its kind), line `L`
   or `6`, freedraw `P`, `X` or `7`, text `T` or `8`, eraser `E` or `0`,
   laser pointer `K`, frame `F`, image `9` (a file picker), sticky note
-  `N`, hand `H`; `Q` keeps the tool after
-  drawing; shift draws equal sides and alt draws from the centre;
+  `N`, web embed (the extra tools, no key), hand `H`; `Q` keeps the tool
+  after drawing; shift draws equal sides and alt draws from the centre;
 - lines and arrows are drawn by dragging, or click by click and ended with
   Enter or Escape; a line closed on its first point becomes a polygon; Enter
   (Ctrl+Enter on an arrow) or a double-click opens the line editor, where
@@ -154,7 +156,9 @@ What it does, and the keys Excalidraw gives each:
   of text writes a text per line (one with Ctrl+Shift+V), SVG markup or an
   image file inserts an image, HTML pastes its text or its images, and a
   Mermaid definition becomes a diagram when `@excalidraw/mermaid-to-excalidraw`
-  is installed; Shift+Alt+C copies the selection as a PNG, and
+  is installed; links the embeds allow, one per line (or an embed's
+  `<iframe>` code), paste as web embeds side by side, and other links as
+  text; Shift+Alt+C copies the selection as a PNG, and
   `actionCopyAsSvg` and `actionCopyText` copy it as SVG markup or text;
 - images come from the image tool's file picker, a paste or a drop, resized
   to at most 1440px and 4MB (`editor.images.options`), several on a grid;
@@ -162,8 +166,19 @@ What it does, and the keys Excalidraw gives each:
   image cache; Enter or a double-click on an image opens the crop editor,
   whose handles crop it and where a drag moves the image within its crop;
 - a dropped `.excalidraw` file, or a PNG or SVG with a scene, replaces the
-  scene (Shift adds it where it is dropped), and a library's items are
-  added where they are dropped;
+  scene (Shift adds it where it is dropped), a library's items are added
+  where they are dropped, and so is a web embed for a dropped link the
+  embeds allow;
+- a web embed is dragged out with its tool and opens its link editor
+  (Ctrl+K edits it again): a link the embeds allow shows its page in an
+  iframe over the canvas, YouTube, Vimeo and Google Drive videos at their
+  proportions, X, Reddit and GitHub gist posts as documents of their own;
+  any other link stays a placeholder, with Excalidraw's toast. A hover on
+  the middle third of an embed offers it, a click there (or a
+  double-click) activates it after a moment, playing or pausing a video,
+  and an active embed takes the pointer; Escape or a click away ends it. In
+  view mode a click anywhere on an embed activates it. The magic frame's
+  generated pages are embeds too, active once generated;
 - a sticky note is a click (a square of the default size) or a drag
   (proportional unless Shift), and opens for writing; its text shrinks to
   fit before the note grows;
@@ -311,7 +326,112 @@ loads and saves the chats. Without it, or with `aiEnabled={false}`, the chat
 is not offered. `diagramToCode` is the magic frame's backend, Excalidraw's
 `<DiagramToCodePlugin generate>`: given the frame, its children and an
 `onPartial` to stream into, it resolves to `{ html }`, which shows in a
-sandboxed iframe beside the frame (scripts run, with no access to the page).
+sandboxed iframe beside the frame (scripts run, with no access to the page),
+with buttons to copy its source and show it in full screen.
+
+`validateEmbeddable` is Excalidraw's: the links a web embed shows. Without it,
+Excalidraw's allow-list (YouTube, Vimeo, Google Drive, Figma, GitHub gists, X
+and Twitter, Reddit, Excalidraw links, StackBlitz, Val Town, Giphy, Microsoft
+Forms, Instagram); `true` or `false` for every link or none, hostnames and
+patterns (`["example.com", /^https:\/\/docs\./]`) for those alone, or a
+function deciding, which falls back to the allow-list when it returns
+`undefined`. `renderEmbeddable(element, appState)`, Excalidraw's too, shows
+what it returns in place of an embed's iframe. `embeddableSandbox` is the
+iframes' `sandbox`, one value or a function of the link; by default
+Excalidraw's, `allow-scripts allow-forms allow-popups
+allow-popups-to-escape-sandbox allow-presentation allow-downloads` with
+`allow-same-origin` for the sites it trusts with their own origin.
+
+```tsx
+<DiagramEditor
+  validateEmbeddable={["example.com", /^https:\/\/www\.youtube\.com\//]}
+  embeddableSandbox="allow-scripts allow-presentation"
+  renderEmbeddable={(element) =>
+    element.link?.startsWith("https://example.com/") ? <Preview url={element.link} /> : null
+  }
+/>
+```
+
+### Collaboration
+
+The editor is the collaborating half of Excalidraw's collaboration: it draws
+the others and reports the user, and a sync layer carries both between
+editors. `updateScene({ collaborators })` replaces the collaborators, a
+`Map` from each one's socket id to a `Collaborator` (`username`,
+`avatarUrl`, `color`, `pointer` with its `tool`, `button`,
+`selectedElementIds`, `userState`, `isCurrentUser`, `isInCall`,
+`isSpeaking`, `isMuted`). Each one's cursor is drawn with their name in
+their colour (held at the edge and dimmed when out of view, dimmed when
+`userState` is idle or away, none at all with `pointer.renderCursor:
+false`), what they selected is outlined in their colour, and a pointer
+whose `tool` is `"laser"` draws their laser trail while their button is
+down, in `pointer.laserColor` or theirs.
+
+What the user does goes out through props and API subscriptions alike:
+
+- `onPointerUpdate({ pointer: { x, y, tool }, button, pointersMap })` as the
+  pointer moves, presses and releases, in scene coordinates, `tool` being
+  `"laser"` with the laser pointer; `pointersMap` holds the pointers down
+  (a sync layer leaves a pinch out);
+- `onScrollChange(scrollX, scrollY, zoom)` as the viewport moves or zooms;
+- `onUserFollow({ userToFollow, action })`, `"FOLLOW"` or `"UNFOLLOW"`.
+
+As in Excalidraw, who is followed is the host's: `userToFollow` is a prop
+the editor reads and never sets. Pressing a collaborator (or running
+`actionGoToCollaborator` with one) asks to follow them, or to stop when
+they are the one followed; panning, zooming, a press on the canvas with
+any tool but the laser, and the followed user leaving `collaborators` ask
+to stop. The follower's viewport is moved by the host to the bounds the
+followed user's `getVisibleSceneBounds(appState)` gave, with
+`zoomToFitBounds`, which does not stop following:
+
+```tsx
+api.updateScene({
+  appState: zoomToFitBounds({ appState: api.getAppState(), bounds, fit: "contain" }).appState,
+});
+```
+
+The UI shows the collaborators at the top end, beside `renderTopRightUI`:
+as many avatars as fit, pressed to follow, the followed one ringed, and
+the current user's last, opening the list of everyone (searchable from
+eight people on, with their call state) and the host's
+`currentUserControls` below it. On a phone they are in the main menu.
+`viewportStatusFrame` frames the canvas in a colour with a badge, which
+is how an app shows that it follows someone; `isCollaborating` puts the
+laser pointer beside the toolbar. `LiveCollaborationTrigger` (and
+`MainMenu.DefaultItems.LiveCollaborationTrigger`) is Excalidraw's share
+button, with the number of collaborators on it.
+
+```tsx
+<DiagramEditor
+  isCollaborating={session.active()}
+  userToFollow={session.following()}
+  onUserFollow={({ userToFollow, action }) =>
+    session.follow(action === "FOLLOW" ? userToFollow : null)
+  }
+  onPointerUpdate={session.sendPointer}
+  onScrollChange={() => session.sendBounds()}
+  viewportStatusFrame={
+    session.following()
+      ? {
+          border: "var(--brand)",
+          label: {
+            label: `Following ${session.following()!.username}`,
+            onClose: () => session.follow(null),
+          },
+        }
+      : null
+  }
+  renderTopRightUI={() => (
+    <LiveCollaborationTrigger isCollaborating={session.active()} onSelect={openShareDialog} />
+  )}
+/>
+```
+
+`createIdleDetector({ onChange })` is Excalidraw's idle detection, which
+its app does: `UserIdleState.ACTIVE` every three seconds while the pointer
+moves, `IDLE` after a minute without, `AWAY` while the page is hidden; it
+returns the stop.
 
 ### Accessibility
 
@@ -353,6 +473,21 @@ in between. The text actions (`actionChangeFontSize`,
 `actionChangeFontFamily`, `actionChangeTextAlign`,
 `actionChangeVerticalAlign`, `actionTextAutoResize` and the size steps) run
 through `editor.actionManager.executeAction`.
+
+Embeds are the host's in the same way: `onEmbedsChange` lists the embeds to
+show (each with its element, the `src` or `srcdoc` to load, its `sandbox`
+and its hover or active `state`), the host renders an iframe in a container
+for each and gives them to `attachEmbed(id, { container, content, iframe })`,
+and the editor places the container over its element at the zoom, rotated
+and clipped by its frame, hidden out of view, taking the pointer only while
+active. `DiagramEditorOptions.host` (and `setHost`) takes
+`validateEmbeddable` and `embeddableSandbox`; `<DiagramEditor>` renders the
+embeds itself, with the canvas alone too.
+
+For collaboration the host options are the props' names: `isCollaborating`,
+`userToFollow` (changed with `setHost`), `onPointerUpdate`, `onScrollChange`
+and `onUserFollow`; `actionGoToCollaborator` is exported beside the text
+actions.
 
 ## Server rendering
 

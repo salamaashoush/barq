@@ -89,8 +89,10 @@ export const actionZoomIn: Action<ZoomAnchor> = {
   label: "buttons.zoomIn",
   announcement: "Zoomed in",
   viewMode: true,
-  perform: (_elements, appState, anchor) =>
-    zoomTo(appState, appState.zoom.value + ZOOM_STEP, anchor),
+  perform: (_elements, appState, anchor, app) => {
+    app.requestUnfollow();
+    return zoomTo(appState, appState.zoom.value + ZOOM_STEP, anchor);
+  },
   keyTest: (event) =>
     (event.code === CODES.EQUAL || event.code === CODES.NUM_ADD) &&
     (event[KEYS.CTRL_OR_CMD] || event.shiftKey),
@@ -102,8 +104,10 @@ export const actionZoomOut: Action<ZoomAnchor> = {
   label: "buttons.zoomOut",
   announcement: "Zoomed out",
   viewMode: true,
-  perform: (_elements, appState, anchor) =>
-    zoomTo(appState, appState.zoom.value - ZOOM_STEP, anchor),
+  perform: (_elements, appState, anchor, app) => {
+    app.requestUnfollow();
+    return zoomTo(appState, appState.zoom.value - ZOOM_STEP, anchor);
+  },
   keyTest: (event) =>
     (event.code === CODES.MINUS || event.code === CODES.NUM_SUBTRACT) &&
     (event[KEYS.CTRL_OR_CMD] || event.shiftKey),
@@ -115,12 +119,14 @@ export const actionResetZoom: Action<ZoomAnchor> = {
   label: "buttons.resetZoom",
   announcement: "Zoom reset",
   viewMode: true,
-  perform: (_elements, appState, anchor) =>
-    zoomTo(
+  perform: (_elements, appState, anchor, app) => {
+    app.requestUnfollow();
+    return zoomTo(
       appState,
       appState.scrollConstraints?.lockZoom ? appState.scrollConstraints.zoom : 1,
       anchor,
-    ),
+    );
+  },
   keyTest: (event) =>
     (event.code === CODES.ZERO || event.code === CODES.NUM_ZERO) &&
     (event[KEYS.CTRL_OR_CMD] || event.shiftKey),
@@ -162,14 +168,16 @@ export const actionZoomToFit: Action = {
   label: "helpDialog.zoomToFit",
   announcement: "Zoomed to fit",
   viewMode: true,
-  perform: (elements, appState) =>
-    fitTo(
+  perform: (elements, appState, _formData, app) => {
+    app.requestUnfollow();
+    return fitTo(
       appState.scrollConstraints
         ? getScrollConstraintsBounds(appState.scrollConstraints)
         : getCommonBounds(getNonDeletedElements(elements)),
       appState,
       "scale-down",
-    ),
+    );
+  },
   keyTest: (event) =>
     event.code === CODES.ONE && event.shiftKey && !event.altKey && !event[KEYS.CTRL_OR_CMD],
 };
@@ -180,12 +188,14 @@ export const actionZoomToFitSelectionInViewport: Action = {
   label: "labels.zoomToFitViewport",
   announcement: "Zoomed to selection",
   viewMode: true,
-  perform: (elements, appState, _formData, app) =>
-    fitTo(
+  perform: (elements, appState, _formData, app) => {
+    app.requestUnfollow();
+    return fitTo(
       selectionBounds(elements, appState, app.scene.getSelectedElements(appState)),
       appState,
       "scale-down",
-    ),
+    );
+  },
   keyTest: (event) =>
     event.code === CODES.TWO && event.shiftKey && !event.altKey && !event[KEYS.CTRL_OR_CMD],
 };
@@ -196,12 +206,14 @@ export const actionZoomToFitSelection: Action = {
   label: "helpDialog.zoomToSelection",
   announcement: "Zoomed to selection",
   viewMode: true,
-  perform: (elements, appState, _formData, app) =>
-    fitTo(
+  perform: (elements, appState, _formData, app) => {
+    app.requestUnfollow();
+    return fitTo(
       selectionBounds(elements, appState, app.scene.getSelectedElements(appState)),
       appState,
       "contain",
-    ),
+    );
+  },
   keyTest: (event) =>
     event.code === CODES.THREE && event.shiftKey && !event.altKey && !event[KEYS.CTRL_OR_CMD],
 };

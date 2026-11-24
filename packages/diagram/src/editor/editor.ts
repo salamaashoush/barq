@@ -37,6 +37,7 @@ import {
   isSelectionLikeTool,
   isShallowEqual,
   isWritableElement,
+  normalizeLink,
   randomId,
   shouldMaintainAspectRatio,
   shouldResizeFromCenter,
@@ -107,6 +108,7 @@ import {
   isElbowArrow,
   isEligibleFrameChildType,
   isFrameClippable,
+  isEmbeddableElement,
   isFrameLikeElement,
   isIframeLikeElement,
   isInvisiblySmallElement,
@@ -130,6 +132,7 @@ import {
   newElement,
   newFreeDrawElement,
   newMagicFrameElement,
+  newEmbeddableElement,
   newStickyNoteElement,
   getStickyNoteMinSize,
   isStickyNoteElement,
@@ -187,6 +190,7 @@ import { restoreElements } from "../data/restore.ts";
 import { ImageSceneDataError } from "../errors.ts";
 import { restore } from "../data/restore.ts";
 import { fitToContent, wheelNavigation, type ViewportState } from "../navigation.ts";
+import { getCollaboratorsRenderConfig } from "../clients.ts";
 import { getSelectionColor } from "../renderer/helpers.ts";
 import { renderInteractiveScene } from "../renderer/interactive-scene.ts";
 import { renderNewElementScene } from "../renderer/new-element-scene.ts";
@@ -235,6 +239,7 @@ import { EditorText } from "./text.ts";
 import { actionChangeBucketFillBackgroundColor, BucketFill } from "./bucket-fill.ts";
 import { DrawShape } from "./draw-shape.ts";
 import { MagicFrame } from "./magic-frame.ts";
+import { EditorEmbeds, isEmbeddableLink, type Embed, type EmbedParts } from "./embeds.ts";
 import { EraserTrail, LaserTrails, LassoTrail } from "./trails.ts";
 import { TextTool } from "./text-tool.ts";
 import { TOGGLE_TOOLS, findToolByKey, isEditorTool } from "./tools.ts";
@@ -249,11 +254,16 @@ import type {
   AppState,
   BinaryFileData,
   BinaryFiles,
+  Collaborator,
   FrameNameBounds,
   KeyboardModifiersObject,
   LibraryItems,
   NullableGridSize,
+  OnUserFollowedPayload,
+  PointerUpdatePayload,
+  SocketId,
   ToolType,
+  Zoom,
 } from "../types.ts";
 import type { FinalizeData } from "./actions/finalize.ts";
 import type { TextEditRequest } from "./text.ts";
@@ -286,6 +296,8 @@ export interface FrameName {
 export interface SceneData {
   elements?: readonly ExcalidrawElement[];
   appState?: Partial<AppState> | null;
+  /** The collaborators in place of the current ones: their cursors, selections and laser trails. */
+  collaborators?: Map<SocketId, Collaborator>;
   /**
    * `"IMMEDIATELY"` is undoable at once, `"NEVER"` never (remote updates,
    * loading a scene), `"EVENTUALLY"` with the next undoable change.
@@ -311,6 +323,12 @@ export interface DiagramEditorApi {
   history: { clear(): void };
   /** Subscribes to every change; returns the unsubscribe. */
   onChange(listener: DiagramChangeListener): () => void;
+  /** Subscribes to the pointer as it moves, presses and releases, as `onPointerUpdate` is called. */
+  onPointerUpdate(listener: (payload: PointerUpdatePayload) => void): () => void;
+  /** Subscribes to the viewport moving or zooming. */
+  onScrollChange(listener: (scrollX: number, scrollY: number, zoom: Zoom) => void): () => void;
+  /** Subscribes to requests to follow a collaborator, or to stop, from the user list and the viewport. */
+  onUserFollow(listener: (payload: OnUserFollowedPayload) => void): () => void;
   /** The editor's token, which a library site sends back to install a library without asking. */
   readonly id: string;
   /** Excalidraw's `updateLibrary`: replaces or merges the library's items, from items or a file. */
@@ -435,6 +453,7 @@ export class DiagramEditor {
   public readonly id = randomId();
   public readonly drawShape: DrawShape;
   public readonly magicFrame: MagicFrame;
+  public readonly embeds: EditorEmbeds;
   public readonly bucketFill: BucketFill;
   /** What the eraser has marked, erased on pointer up. */
   public elementsPendingErasure = new Set<ExcalidrawElement["id"]>();
@@ -536,6 +555,11 @@ export class DiagramEditor {
   private files: BinaryFiles = {};
   private readonly sceneCanvas: SceneCanvas;
   private readonly changeEmitter = new Emitter<Parameters<DiagramChangeListener>>();
+  private readonly pointerUpdateEmitter = new Emitter<[payload: PointerUpdatePayload]>();
+  private readonly scrollChangeEmitter = new Emitter<
+    [scrollX: number, scrollY: number, zoom: Zoom]
+  >();
+  private readonly userFollowEmitter = new Emitter<[payload: OnUserFollowedPayload]>();
   private readonly announceEmitter = new Emitter<[message: string, localized: LocalizedMessage]>();
   private readonly textEditEmitter = new Emitter<[request: TextEditRequest]>();
   private readonly textEditEndEmitter = new Emitter();
@@ -648,6 +672,7 @@ export class DiagramEditor {
     });
     this.drawShape = new DrawShape(this);
     this.magicFrame = new MagicFrame(this);
+    this.embeds = new EditorEmbeds(this);
     this.bucketFill = new BucketFill(this);
     if (options.svgLayer) {
       this.drawShape.start(options.svgLayer);
@@ -668,6 +693,9 @@ export class DiagramEditor {
       refresh: () => this.batch(() => this.refresh()),
       history: { clear: () => this.history.clear() },
       onChange: (listener) => this.changeEmitter.on(listener),
+      onPointerUpdate: (listener) => this.pointerUpdateEmitter.on(listener),
+      onScrollChange: (listener) => this.scrollChangeEmitter.on(listener),
+      onUserFollow: (listener) => this.userFollowEmitter.on(listener),
       id: this.id,
       updateLibrary: (opts) => this.library.updateLibrary(opts),
     };
@@ -766,6 +794,26 @@ export class DiagramEditor {
   public onFrameNamesChange(listener: (frames: readonly FrameName[]) => void): () => void {
     listener(this.frameNames);
     return this.frameNamesEmitter.on(listener);
+  }
+
+  /**
+   * Subscribes to the embeds to show, the list the host renders an iframe
+   * for: called when an embed comes into view the first time or goes, when
+   * its link or what it shows changes, and as it is hovered or activated;
+   * not as the viewport or the element moves, which the editor follows by
+   * placing the attached elements itself.
+   */
+  public onEmbedsChange(listener: (embeds: readonly Embed[]) => void): () => void {
+    return this.embeds.onChange(listener);
+  }
+
+  /**
+   * Gives the editor an embed's elements to place over it each frame: the
+   * container at the zoom, rotated and clipped by its frame, taking the
+   * pointer only while the embed is active.
+   */
+  public attachEmbed(id: string, parts: EmbedParts): () => void {
+    return this.embeds.attach(id, parts);
   }
 
   /**
@@ -972,6 +1020,10 @@ export class DiagramEditor {
   /** The pointers down on the canvas. */
   public get pointerCount(): number {
     return this.gesture.pointers.size;
+  }
+
+  public isSpaceHeld(): boolean {
+    return this.spaceHeld;
   }
 
   /** Whether the viewport is being navigated: space held, a drag-pan, a scrollbar, the hand tool. */
@@ -1189,6 +1241,22 @@ export class DiagramEditor {
 
     if (onlyFile) {
       await this.loadFileToCanvas(onlyFile.file, onlyFile.fileHandle, insertPosition);
+    }
+
+    // a dropped link the embeds allow becomes one
+    const text = dataTransferList.getData(MIME_TYPES.text);
+    if (text && isEmbeddableLink(text, this.host.validateEmbeddable)) {
+      this.batch(() => {
+        const embeddable = this.embeds.insertEmbeddableElement({
+          sceneX,
+          sceneY,
+          link: normalizeLink(text),
+        });
+        if (embeddable) {
+          this.store.scheduleCapture();
+          this.setState({ selectedElementIds: { [embeddable.id]: true } });
+        }
+      });
     }
   }
 
@@ -1479,6 +1547,8 @@ export class DiagramEditor {
       prevState.scrollX !== this.state.scrollX ||
       prevState.scrollY !== this.state.scrollY
     ) {
+      this.host.onScrollChange?.(this.state.scrollX, this.state.scrollY, this.state.zoom);
+      this.scrollChangeEmitter.trigger(this.state.scrollX, this.state.scrollY, this.state.zoom);
       // the scene moved under a still pointer
       this.textTool.refresh();
     }
@@ -1508,6 +1578,10 @@ export class DiagramEditor {
     if (this.state.viewModeEnabled && !prevState.viewModeEnabled) {
       // nothing is edited in view mode
       queueMicrotask(() => this.text.textWysiwygSubmitHandler?.());
+      if (this.state.activeEmbeddable) {
+        this._state = { ...this._state, activeEmbeddable: null };
+        this.committedState = this._state;
+      }
     }
 
     if (
@@ -1530,6 +1604,7 @@ export class DiagramEditor {
     }
 
     this.updateFrameNames();
+    this.embeds.update();
 
     this.store.commit(this.scene.getElementsMapIncludingDeleted(), this.state);
     this.changeEmitter.trigger(this.scene.getElementsIncludingDeleted(), this.state, this.files);
@@ -1612,8 +1687,11 @@ export class DiagramEditor {
     );
   }
 
-  /** Replaces elements or merges app state, recording the change as `captureUpdate` says. */
-  public updateScene({ elements, appState, captureUpdate }: SceneData): void {
+  /**
+   * Replaces elements, merges app state or replaces the collaborators,
+   * recording the change as `captureUpdate` says.
+   */
+  public updateScene({ elements, appState, collaborators, captureUpdate }: SceneData): void {
     if (captureUpdate) {
       this.store.scheduleMicroAction({
         action: captureUpdate,
@@ -1627,6 +1705,55 @@ export class DiagramEditor {
     if (elements) {
       this.scene.replaceAllElements(elements);
     }
+    if (collaborators) {
+      this.laserTrails.updateCollabTrails(collaborators);
+      this.setState({ collaborators });
+      // the followed user left, as Excalidraw's app stops following them
+      const { userToFollow } = this.host;
+      if (userToFollow && !collaborators.has(userToFollow.socketId)) {
+        this.requestUnfollow();
+      }
+    }
+  }
+
+  /** Asks the host to follow a collaborator or to stop, through `onUserFollow`. */
+  public emitUserFollowIntent(payload: OnUserFollowedPayload): void {
+    this.userFollowEmitter.trigger(payload);
+    this.host.onUserFollow?.(payload);
+  }
+
+  /** Asks to stop following, when a viewport change takes the view over from the followed user. */
+  public requestUnfollow(): void {
+    const { userToFollow } = this.host;
+    if (userToFollow) {
+      this.emitUserFollowIntent({ userToFollow, action: "UNFOLLOW" });
+    }
+  }
+
+  /** Reports the pointer at a client point to `onPointerUpdate`, in scene coordinates. */
+  public savePointer(x: number, y: number, button: "up" | "down"): void {
+    // a drag-pan reports once the viewport has settled, on its release
+    if (this.panTeardown !== null) {
+      return;
+    }
+    if (!x || !y) {
+      return;
+    }
+    const { x: sceneX, y: sceneY } = viewportCoordsToSceneCoords(
+      { clientX: x, clientY: y },
+      this.state,
+    );
+    const payload: PointerUpdatePayload = {
+      pointer: {
+        x: sceneX,
+        y: sceneY,
+        tool: this.state.activeTool.type === "laser" ? "laser" : "pointer",
+      },
+      button,
+      pointersMap: this.gesture.pointers,
+    };
+    this.host.onPointerUpdate?.(payload);
+    this.pointerUpdateEmitter.trigger(payload);
   }
 
   /** Clears the scene, the store and the history, keeping the theme. */
@@ -1717,7 +1844,7 @@ export class DiagramEditor {
     opts: { keepSelection?: boolean; toggle?: boolean } = {},
   ): void {
     if (!isEditorTool(tool.type)) {
-      console.warn(`DiagramEditor: the "${tool.type}" tool is not available`);
+      console.warn(`DiagramEditor: the "${String(tool.type)}" tool is not available`);
       return;
     }
     if (this.drawShape.hasPendingGesture()) {
@@ -1813,7 +1940,14 @@ export class DiagramEditor {
   }
 
   public getCurrentItemRoundness(
-    elementType: "selection" | "rectangle" | "stickynote" | "diamond" | "ellipse",
+    elementType:
+      | "selection"
+      | "rectangle"
+      | "stickynote"
+      | "diamond"
+      | "ellipse"
+      | "embeddable"
+      | "iframe",
   ): ExcalidrawElement["roundness"] {
     return this.state.currentItemRoundness === "round"
       ? {
@@ -1835,6 +1969,7 @@ export class DiagramEditor {
   public translateViewport(
     update: Partial<ViewportState> | ((state: AppState) => Partial<ViewportState> | null),
   ): void {
+    this.requestUnfollow();
     this.setState((state) => {
       const next = typeof update === "function" ? update(state) : update;
       if (!next) return null;
@@ -1847,6 +1982,7 @@ export class DiagramEditor {
     target: readonly ExcalidrawElement[] = this.scene.getNonDeletedElements(),
     opts: { fit?: ViewportFit } = {},
   ): void {
+    this.requestUnfollow();
     const fitted = fitToContent(this.state, target, opts.fit ?? "scale-down");
     this.setState(constrainScrollState({ ...this.state, ...fitted }));
   }
@@ -2289,6 +2425,7 @@ export class DiagramEditor {
     onDocument("copy", this.clipboard.onCopy);
     onDocument("cut", this.clipboard.onCut);
     onDocument("paste", (event) => void this.clipboard.pasteFromClipboard(event));
+    this.listeners.push(this.embeds.start());
     on(container, "keyup", (event) => this.onKeyUp(event));
     on(container, "wheel", (event) => this.onWheel(event), { passive: false });
     // the container's place in the page, which a scroll of the page moves, as
@@ -2335,6 +2472,7 @@ export class DiagramEditor {
     const next = wheelNavigation(event, this.state);
     event.preventDefault();
     if (next !== null) {
+      this.requestUnfollow();
       if (next.zoom.value !== this.state.zoom.value) {
         this.setState({ ...next, ...this.zoomingFromBitmaps() });
       } else {
@@ -2467,6 +2605,7 @@ export class DiagramEditor {
       offUp();
       if (!this.spaceHeld) this.cursor.reset();
       this.setState({ cursorButton: "up" });
+      this.savePointer(lastX, lastY, "up");
     };
     const offUp = this.addWindowListener("pointerup", (up) => {
       teardown();
@@ -2503,6 +2642,10 @@ export class DiagramEditor {
 
     // a pointer up may never have come (the user tabbed away)
     this.maybeCleanupAfterMissingPointerUp(event);
+    // the laser is a presentation aid, not an edit: it keeps following
+    if (this.state.activeTool.type !== "laser") {
+      this.requestUnfollow();
+    }
     this.focusContainer();
 
     if (this.state.contextMenu) {
@@ -2567,6 +2710,7 @@ export class DiagramEditor {
       lastPointerDownWith: event.pointerType as AppState["lastPointerDownWith"],
       cursorButton: "down",
     });
+    this.savePointer(event.clientX, event.clientY, "down");
 
     // a pen's eraser end erases for as long as it is pressed
     if (event.button === POINTER_BUTTON.ERASER && this.state.activeTool.type !== "eraser") {
@@ -2686,6 +2830,7 @@ export class DiagramEditor {
       toolType === "diamond" ||
       toolType === "ellipse" ||
       toolType === "stickynote" ||
+      toolType === "embeddable" ||
       toolType === "selection"
     ) {
       this.createGenericElementOnPointerDown(toolType, pointerDownState);
@@ -2750,10 +2895,14 @@ export class DiagramEditor {
     }
     const scenePointer = viewportCoordsToSceneCoords(event, this.state);
     this.lastPointerMoveCoords = { x: scenePointer.x, y: scenePointer.y };
+    const isEmbedClick = this.embeds.handleCenterClick();
     // the window listener ends the interaction; a pointer up the window does
     // not see (its listener is added on pointer down, after this one)
     if (this.pendingPointerUp) {
       this.pendingPointerUp(event);
+    }
+    if (!isEmbedClick && this.state.viewModeEnabled) {
+      this.setState({ activeEmbeddable: null, selectedElementIds: {} });
     }
   }
 
@@ -2841,9 +2990,10 @@ export class DiagramEditor {
     const offMove = this.addWindowListener("pointermove", (move) => {
       this.handlePointerMoveOverScrollbars(move, pointerDownState);
     });
-    const offUp = this.addWindowListener("pointerup", () => {
+    const offUp = this.addWindowListener("pointerup", (up) => {
       this.isDraggingScrollBar = false;
       this.setState({ cursorButton: "up" });
+      this.savePointer(up.clientX, up.clientY, "up");
       offMove();
       offUp();
     });
@@ -3145,7 +3295,7 @@ export class DiagramEditor {
   }
 
   private createGenericElementOnPointerDown(
-    elementType: ExcalidrawGenericElement["type"] | "stickynote",
+    elementType: ExcalidrawGenericElement["type"] | "stickynote" | "embeddable",
     pointerDownState: PointerDownState,
   ): void {
     const [gridX, gridY] = getGridPoint(
@@ -3175,9 +3325,11 @@ export class DiagramEditor {
       frameId: topLayerFrame ? topLayerFrame.id : null,
     } as const;
     const element =
-      elementType === "stickynote"
-        ? newStickyNoteElement({ type: "stickynote", ...baseElementAttributes })
-        : newElement({ type: elementType, ...baseElementAttributes });
+      elementType === "embeddable"
+        ? newEmbeddableElement({ type: "embeddable", ...baseElementAttributes })
+        : elementType === "stickynote"
+          ? newStickyNoteElement({ type: "stickynote", ...baseElementAttributes })
+          : newElement({ type: elementType, ...baseElementAttributes });
 
     if (element.type === "selection") {
       this.setState({ selectionElement: element });
@@ -3677,6 +3829,7 @@ export class DiagramEditor {
 
     SnapCache.setReferenceSnapPoints(null);
     SnapCache.setVisibleGaps(null);
+    this.savePointer(childEvent.clientX, childEvent.clientY, "up");
 
     const hitElements = pointerDownState.hit.allHitElements;
     const sceneCoords = viewportCoordsToSceneCoords(
@@ -4155,6 +4308,10 @@ export class DiagramEditor {
           { ...prevState.selectedElementIds, [newElementAtUp.id]: true },
           prevState,
         ),
+        showHyperlinkPopup:
+          isEmbeddableElement(newElementAtUp) && !newElementAtUp.link
+            ? "editor"
+            : prevState.showHyperlinkPopup,
       }));
     }
 
@@ -4215,6 +4372,7 @@ export class DiagramEditor {
 
   /** The hover: the cursor, line handles, binding suggestions, and the line being drawn point by point. */
   private handleCanvasPointerMove(event: PointerEvent): void {
+    this.savePointer(event.clientX, event.clientY, this.state.cursorButton);
     this.lastPointerMoveEvent = event;
     this.lastPosition = { x: event.clientX, y: event.clientY };
     const scenePointer = viewportCoordsToSceneCoords(event, this.state);
@@ -4372,7 +4530,9 @@ export class DiagramEditor {
 
     if (
       Boolean(event.buttons) ||
-      (this.state.activeTool.type !== "selection" &&
+      // the laser goes on, for its hover over an embed
+      (this.state.activeTool.type !== "laser" &&
+        this.state.activeTool.type !== "selection" &&
         this.state.activeTool.type !== "lasso" &&
         this.state.activeTool.type !== "text" &&
         this.state.activeTool.type !== "eraser")
@@ -4425,7 +4585,22 @@ export class DiagramEditor {
     });
     const hitElement = hitElementMightBeLocked?.locked ? null : hitElementMightBeLocked;
 
-    if (this.state.activeTool.type === "text") {
+    if (!isEraserActive(this.state)) {
+      this.embeds.handleHover({ hitElement, scenePointer, moveEvent: event });
+    }
+    if (this.state.activeTool.type === "laser") {
+      return;
+    }
+
+    if (
+      hitElement &&
+      (hitElement.link || isEmbeddableElement(hitElement)) &&
+      this.state.selectedElementIds[hitElement.id] &&
+      !this.state.contextMenu &&
+      !this.state.showHyperlinkPopup
+    ) {
+      this.setState({ showHyperlinkPopup: "info" });
+    } else if (this.state.activeTool.type === "text") {
       this.cursor.set(this.textTool.cursorFor(textToolTarget));
     } else if (
       !event[KEYS.CTRL_OR_CMD] &&
@@ -4735,6 +4910,16 @@ export class DiagramEditor {
             this,
           ),
         }));
+        return;
+      }
+    }
+
+    if (!this.state.viewModeEnabled) {
+      const hitElement = this.getElementAtPosition(sceneX, sceneY);
+      if (isIframeLikeElement(hitElement)) {
+        if (this.embeds.isInteractive(hitElement)) {
+          this.setState({ activeEmbeddable: { element: hitElement, state: "active" } });
+        }
         return;
       }
     }
@@ -5451,6 +5636,7 @@ export class DiagramEditor {
         selectedElements,
         renderGrid: state.gridModeEnabled,
         elementsPendingErasure: this.elementsPendingErasure,
+        embedsValidationStatus: this.embeds.embedsValidationStatus,
         pendingFlowchartNodes: this.flowchart.pendingNodes,
       });
     }
@@ -5493,11 +5679,7 @@ export class DiagramEditor {
       scale,
       appState: state,
       renderConfig: {
-        remotePointerViewportCoords: new Map(),
-        remotePointerButton: new Map(),
-        remoteSelectedElementIds: new Map(),
-        remotePointerUsernames: new Map(),
-        remotePointerUserStates: new Map(),
+        ...getCollaboratorsRenderConfig(state),
         selectionColor: this.selectionColor(container),
         renderScrollbars: false,
         lastViewportPosition: this.lastPosition,
@@ -5510,6 +5692,7 @@ export class DiagramEditor {
       deltaTime,
     });
     this.placeFrameNames();
+    this.embeds.place();
     const next = result.animationState;
     this.animationState = next;
     if (next && Object.values(next).some((value) => value !== undefined)) {
@@ -5542,7 +5725,7 @@ export class DiagramEditor {
         renderEnvironment: this.renderEnvironment,
         renderGrid: false,
         canvasBackgroundColor: state.viewBackgroundColor,
-        embedsValidationStatus: new Map(),
+        embedsValidationStatus: this.embeds.embedsValidationStatus,
         elementsPendingErasure: new Set(),
         pendingFlowchartNodes: null,
         theme: state.theme,
@@ -5597,6 +5780,9 @@ export class DiagramEditor {
     this.resize?.disconnect();
     for (const remove of this.listeners) remove();
     this.changeEmitter.clear();
+    this.pointerUpdateEmitter.clear();
+    this.scrollChangeEmitter.clear();
+    this.userFollowEmitter.clear();
     this.announceEmitter.clear();
     this.textEditEmitter.clear();
     this.textEditEndEmitter.clear();

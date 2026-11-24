@@ -138,6 +138,7 @@ export type ActionName =
   | "zoomToFit"
   | "zoomToFitSelection"
   | "zoomToFitSelectionInViewport"
+  | "goToCollaborator"
   | "group"
   | "ungroup"
   | "alignTop"

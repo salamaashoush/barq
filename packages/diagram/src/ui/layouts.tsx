@@ -18,6 +18,7 @@ import { SidebarTrigger } from "./sidebar.tsx";
 import { StatsPanel } from "./stats.tsx";
 import { iconButton, island } from "./styles.ts";
 import { PhoneToolbar } from "./toolbar.tsx";
+import { ViewportStatusBadge } from "./viewport-status-frame.tsx";
 
 /**
  * Pen mode, Excalidraw's `PenModeButton`: once a pen has drawn, the pen draws
@@ -92,6 +93,16 @@ const topBar = d({
   "& > *": { display: "flex", gap: "8px", alignItems: "flex-start" },
 });
 const topBarEnd = d({ flexDirection: "column", alignItems: "flex-end" });
+// pinned just inside the status frame's border, over the top bar's middle
+const statusBadgeRow = d({
+  position: "absolute",
+  top: "12px",
+  insetInline: "0",
+  display: "flex",
+  justifyContent: "center",
+  pointerEvents: "none",
+  zIndex: "1",
+});
 const topBarRow = d({ display: "flex", gap: "8px" });
 
 const bottomBar = d({
@@ -232,6 +243,13 @@ export function PhoneChrome(props: { mainMenu?: () => Child; scrollBack: Child }
           <StatsPanel />
         </div>
       </div>
+      <Show when={ui.host().viewportStatusFrame?.label} keyed>
+        {(label) => (
+          <div class={statusBadgeRow}>
+            <ViewportStatusBadge label={label} border={ui.host().viewportStatusFrame?.border} />
+          </div>
+        )}
+      </Show>
       <Show when={!viewMode() && !zen()}>
         <div class={bottomBar} data-testid="phone-bottom-bar">
           {props.scrollBack}

@@ -28,18 +28,28 @@ import {
 } from "./i18n.ts";
 import { createDiagramUI, type RenderSlot } from "./ui/context.tsx";
 import { EditorUI } from "./ui/editor-ui.tsx";
+import { EmbedLayer, type RenderEmbeddable } from "./ui/embeds.tsx";
 import { EditorStore } from "./ui/store.ts";
 
 import type { DiagramScene } from "./data/types.ts";
 import type { TextToDiagramOptions } from "./ttd/types.ts";
 import type { DiagramToCodeOptions } from "./editor/magic-frame.ts";
+import type { Embed, EmbeddableSandbox, ValidateEmbeddable } from "./editor/embeds.ts";
 import type {
   DiagramChangeListener,
   DiagramEditorApi,
   FrameName,
   TextEditRequest,
 } from "./editor/editor.ts";
-import type { AppState, LibraryItems } from "./types.ts";
+import type { ViewportStatusFrame } from "./ui/viewport-status-frame.tsx";
+import type {
+  AppState,
+  LibraryItems,
+  OnUserFollowedPayload,
+  PointerUpdatePayload,
+  UserToFollow,
+  Zoom,
+} from "./types.ts";
 
 type MaybePromise<T> = T | Promise<T>;
 
@@ -129,6 +139,44 @@ export interface DiagramEditorProps {
    * toast, so the host can finish what it is doing first (images loading).
    */
   onExport?: OnExport;
+  /**
+   * Excalidraw's `validateEmbeddable`: the links an embeddable shows, as
+   * hostnames, patterns, `true` for all or a function deciding; others stay
+   * a placeholder. @default Excalidraw's allow-list
+   */
+  validateEmbeddable?: ValidateEmbeddable;
+  /** Excalidraw's `renderEmbeddable`: what an embeddable shows instead of its iframe, when it returns something. */
+  renderEmbeddable?: RenderEmbeddable;
+  /**
+   * The `sandbox` of an embeddable's iframe, for every link or per link.
+   * @default Excalidraw's: `allow-scripts allow-forms allow-popups
+   * allow-popups-to-escape-sandbox allow-presentation allow-downloads`, with
+   * `allow-same-origin` for the sites it trusts
+   */
+  embeddableSandbox?: EmbeddableSandbox;
+  /** Excalidraw's `isCollaborating`: in a session, the laser pointer gets a button beside the toolbar. */
+  isCollaborating?: boolean;
+  /** Excalidraw's `onPointerUpdate`: the pointer as it moves, presses and releases, in scene coordinates. */
+  onPointerUpdate?: (payload: PointerUpdatePayload) => void;
+  /** Excalidraw's `onScrollChange`: the viewport moved or zoomed. */
+  onScrollChange?: (scrollX: number, scrollY: number, zoom: Zoom) => void;
+  /**
+   * Excalidraw's `onUserFollow`: a request to follow a collaborator (from the
+   * user list), or to stop (following again, or taking the viewport over).
+   */
+  onUserFollow?: (payload: OnUserFollowedPayload) => void;
+  /**
+   * Excalidraw's `userToFollow`, which the host owns: the editor marks this
+   * collaborator in the user list and asks to change it through `onUserFollow`.
+   */
+  userToFollow?: UserToFollow | null;
+  /** Excalidraw's `viewportStatusFrame`: a coloured frame around the canvas and a badge saying why. */
+  viewportStatusFrame?: ViewportStatusFrame | null;
+  /**
+   * Excalidraw's `currentUserControls`: below the collaborators, in the user
+   * list's menu on a desktop and in the main menu on a phone.
+   */
+  currentUserControls?: Child | ((isMobile: boolean) => Child);
 }
 
 /** The state the UI shows before the editor exists, on the server and while the page hydrates. */
@@ -210,6 +258,9 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
   // the frames' names: the list changes as frames come, go or are renamed;
   // the editor places each element as the viewport moves
   const [frameNames, setFrameNames] = createSignal<readonly FrameName[]>([]);
+  // the embeds shown: the list changes as they come, go, change or are
+  // activated; the editor places each as the viewport moves
+  const [embeds, setEmbeds] = createSignal<readonly Embed[]>([]);
 
   const size = (): string => {
     const height = props.height ?? 480;
@@ -245,6 +296,16 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
       theme: props.theme,
       libraryReturnUrl: props.libraryReturnUrl,
       libraryPublishEndpoint: props.libraryPublishEndpoint,
+      isCollaborating: props.isCollaborating === true,
+      userToFollow: props.userToFollow ?? null,
+      viewportStatusFrame: props.viewportStatusFrame ?? null,
+      // read where it renders: a node made here would be made again on each read
+      currentUserControls: (isMobile: boolean): Child => {
+        const given = props.currentUserControls;
+        return typeof given === "function"
+          ? (given as (isMobile: boolean) => Child)(isMobile)
+          : given;
+      },
     }),
   });
 
@@ -259,6 +320,13 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
     onExport: props.onExport,
     name: props.name,
     untitledName: ui.t("labels.untitled"),
+    validateEmbeddable: props.validateEmbeddable,
+    embeddableSandbox: props.embeddableSandbox,
+    isCollaborating: props.isCollaborating === true,
+    userToFollow: props.userToFollow ?? null,
+    onPointerUpdate: props.onPointerUpdate,
+    onScrollChange: props.onScrollChange,
+    onUserFollow: props.onUserFollow,
   });
 
   const attach = (host: HTMLDivElement): (() => void) => {
@@ -323,6 +391,7 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
       queueMicrotask(() => setTextEdit(request)),
     );
     const offTextEditEnd = created.onTextEditEnd(() => queueMicrotask(() => setTextEdit(null)));
+    const offEmbeds = created.onEmbedsChange((next) => queueMicrotask(() => setEmbeds(next)));
     const offFrameNames = created.onFrameNamesChange((frames) =>
       queueMicrotask(() => setFrameNames(frames)),
     );
@@ -336,6 +405,7 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
       offTextEdit();
       offTextEditEnd();
       offFrameNames();
+      offEmbeds();
       created.destroy();
       if (editor === created) editor = null;
     };
@@ -398,6 +468,12 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
       <canvas aria-hidden="true" style={`${CANVAS_STYLE};pointer-events:none`} />
       <canvas aria-hidden="true" style={CANVAS_STYLE} />
       <svg aria-hidden="true" style={SVG_LAYER_STYLE} />
+      <EmbedLayer
+        editor={editor}
+        embeds={embeds()}
+        t={ui.t}
+        renderEmbeddable={props.renderEmbeddable}
+      />
       <For each={frameNames()} keyed={(frame) => frame.id}>
         {(frame) => {
           let detach: (() => void) | undefined;

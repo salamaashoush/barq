@@ -152,7 +152,7 @@ export class MagicFrame {
       strokeWidth: app.getCurrentItemStrokeWidth("iframe"),
       strokeStyle: app.state.currentItemStrokeStyle,
       roughness: app.state.currentItemRoughness,
-      roundness: null,
+      roundness: app.getCurrentItemRoundness("iframe"),
       opacity: app.state.currentItemOpacity,
       locked: false,
       width: magicFrame.width,

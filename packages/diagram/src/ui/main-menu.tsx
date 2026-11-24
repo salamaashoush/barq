@@ -17,6 +17,7 @@ import { Save } from "@barqjs/lucide/icons/save";
 import { Search } from "@barqjs/lucide/icons/search";
 import { Sun } from "@barqjs/lucide/icons/sun";
 import { Trash2 } from "@barqjs/lucide/icons/trash-2";
+import { Users } from "@barqjs/lucide/icons/users";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,6 +42,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@barqjs/ui/dropdown-menu";
+import { tone } from "@barqjs/arc/style";
 import { Button } from "@barqjs/ui/button";
 import { Popover, PopoverAnchor, PopoverContent } from "@barqjs/ui/popover";
 import { DEFAULT_CANVAS_BACKGROUND_PICKS, THEME } from "@excalidraw/common";
@@ -58,7 +60,16 @@ import { actionShortcuts, actionToggleTheme } from "../editor/actions/toggles.ts
 import { ColorPicker } from "./color-picker.tsx";
 import { useDiagramUI } from "./context.tsx";
 import { diagramLayer as d } from "./layer.ts";
-import { iconButton, island, menuItem, menuShortcut, menuSurface } from "./styles.ts";
+import {
+  fieldset,
+  iconButton,
+  island,
+  legend,
+  menuItem,
+  menuShortcut,
+  menuSurface,
+} from "./styles.ts";
+import { UserList } from "./user-list.tsx";
 
 import type { ShortcutName } from "./shortcuts.ts";
 
@@ -73,6 +84,13 @@ const swatchDot = d({
 const pickerBox = d({ padding: "12px", display: "flex", flexDirection: "column", gap: "8px" });
 
 const backupChoices = d({ display: "flex", flexWrap: "wrap", gap: "8px" });
+
+const collaboratorsSection = d({
+  paddingInline: "8px",
+  "& svg": { width: "16px", height: "16px" },
+});
+
+const activeCollab = d(tone.success, { "&[data-active]": { color: "var(--arc-tone-foreground)" } });
 
 /** Excalidraw's `<bold>` and `<br></br>` markup in a translated string, as elements. */
 function RichText(props: { text: string }) {
@@ -284,6 +302,22 @@ function ToggleTheme() {
   );
 }
 
+/** Excalidraw's live collaboration entry, which an app adds to open its share dialog. */
+function LiveCollaborationTrigger(props: { onSelect: () => void; isCollaborating: boolean }) {
+  const ui = useDiagramUI();
+  return (
+    <DropdownMenuItem
+      class={`${menuItem} ${activeCollab}`}
+      onAction={() => props.onSelect()}
+      data-active={props.isCollaborating ? "" : undefined}
+      data-testid="collab-button"
+    >
+      <Users aria-hidden="true" />
+      <span>{ui.t("labels.liveCollaboration")}</span>
+    </DropdownMenuItem>
+  );
+}
+
 /**
  * The canvas background: Excalidraw's five quick picks as a submenu of
  * radio items, and its picker, which takes a hex code, from the last entry.
@@ -362,6 +396,7 @@ export const MainMenu = {
     ClearCanvas,
     ToggleTheme,
     ChangeCanvasBackground,
+    LiveCollaborationTrigger,
   },
 };
 
@@ -449,6 +484,17 @@ export function MainMenuButton(props: { items?: Child }) {
                 data-testid="main-menu"
               >
                 {props.items ?? <DefaultMainMenuItems />}
+                <Show
+                  when={
+                    ui.store.editorInterface().formFactor === "phone" &&
+                    ui.store.state("collaborators").size > 0
+                  }
+                >
+                  <fieldset class={`${fieldset} ${collaboratorsSection}`}>
+                    <legend class={legend}>{t("labels.collaborators")}</legend>
+                    <UserList mobile />
+                  </fieldset>
+                </Show>
               </DropdownMenuContent>
             </DropdownMenu>
           </PopoverAnchor>

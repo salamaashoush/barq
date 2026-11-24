@@ -8,6 +8,7 @@ import {
   getElementAbsoluteCoords,
   getLinkIdAndTypeFromSelection,
   isElementLink,
+  isEmbeddableElement,
   parseElementLinkFromURL,
 } from "@excalidraw/element";
 import {
@@ -84,7 +85,8 @@ const PADDING = 12;
  * Excalidraw's link popup above the selected element: the link, opened in a
  * new tab (an element link scrolls to its element instead), with buttons to
  * edit and remove it; Ctrl+K opens it as an input, Enter saves and Escape
- * leaves it as it was.
+ * leaves it as it was. An embeddable's link is edited, not removed, and
+ * shows only once it validates. Not shown in view mode.
  */
 export function HyperlinkPopup() {
   const ui = useDiagramUI();
@@ -93,7 +95,7 @@ export function HyperlinkPopup() {
   const mode = () => store.state("showHyperlinkPopup");
 
   const element = createMemo((): NonDeletedExcalidrawElement | null => {
-    if (!mode()) return null;
+    if (!mode() || store.state("viewModeEnabled")) return null;
     const [only, ...rest] = store
       .selection()
       .elements.filter((each) => !("containerId" in each && each.containerId));
@@ -127,6 +129,11 @@ export function HyperlinkPopup() {
     const link = value.trim() ? normalizeLink(value.trim()) : null;
     editor.batch(() => {
       editor.store.scheduleAction(CaptureUpdateAction.IMMEDIATELY);
+      if (isEmbeddableElement(target)) {
+        editor.embeds.submitLink(target, link);
+        editor.setState({ showHyperlinkPopup: "info" });
+        return;
+      }
       editor.scene.mutateElement(target, { link });
       editor.setState({ showHyperlinkPopup: link ? "info" : false });
     });
@@ -177,7 +184,7 @@ export function HyperlinkPopup() {
               >
                 <Pencil aria-hidden="true" />
               </button>
-              <Show when={element()!.link}>
+              <Show when={element()!.link && !isEmbeddableElement(element())}>
                 <button
                   type="button"
                   class={iconButton}

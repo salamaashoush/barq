@@ -12,6 +12,14 @@ export type {
   SceneData,
   TextEditRequest,
 } from "./editor.ts";
+export {
+  getDefaultEmbeddableSandbox,
+  isEmbeddableLink,
+  type Embed,
+  type EmbedParts,
+  type EmbeddableSandbox,
+  type ValidateEmbeddable,
+} from "./embeds.ts";
 export { History, HistoryDelta } from "./history.ts";
 export { Library, handleLibrary, parseLibraryTokensFromUrl } from "./library.ts";
 export type {
@@ -29,6 +37,7 @@ export {
   actionIncreaseFontSize,
   actionTextAutoResize,
 } from "./actions/text.ts";
+export { actionGoToCollaborator } from "./actions/navigate.ts";
 export { textWysiwyg } from "./wysiwyg.ts";
 export type { TextWysiwygOptions } from "./wysiwyg.ts";
 export type { Action, ActionName, ActionResult, PointerDownState } from "./types.ts";

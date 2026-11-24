@@ -10,8 +10,9 @@ import type { TextToDiagramOptions } from "../ttd/types.ts";
 import type { DiagramToCodeOptions } from "../editor/magic-frame.ts";
 import type { Action, ActionLabel, ActionName } from "../editor/types.ts";
 import type { ResolvedUIOptions } from "../editor/ui-options.ts";
-import type { AppState } from "../types.ts";
+import type { AppState, UserToFollow } from "../types.ts";
 import type { EditorStore } from "./store.ts";
+import type { ViewportStatusFrame } from "./viewport-status-frame.tsx";
 
 /** What a slot renders with: Excalidraw's `(isMobile, appState)`. */
 export type RenderSlot = (isMobile: boolean, appState: AppState) => Child;
@@ -34,6 +35,14 @@ export interface UIHost {
   libraryReturnUrl?: string;
   /** Where the library's publish dialog sends a library; without it the dialog is not offered. */
   libraryPublishEndpoint?: string;
+  /** Excalidraw's `isCollaborating`: the laser pointer gets a button beside the toolbar. */
+  isCollaborating: boolean;
+  /** The collaborator followed, whose avatar the user list marks. */
+  userToFollow: UserToFollow | null;
+  /** The frame around the canvas and its badge. */
+  viewportStatusFrame: ViewportStatusFrame | null;
+  /** Below the user list, in its menu on a desktop and in the main menu on a phone. */
+  currentUserControls?: (isMobile: boolean) => Child;
 }
 
 export interface DiagramUI {

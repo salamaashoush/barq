@@ -58,6 +58,7 @@ const getHints = (editor: DiagramEditor, t: Translate): readonly string[] => {
   }
   if (tool === "freedraw") return [t("hints.freeDraw")];
   if (tool === "text") return [t("hints.text")];
+  if (tool === "embeddable") return [t("hints.embeddable")];
   if (tool === "stickynote") return [t("hints.stickynote")];
   if (tool === "autoshape") return [t("hints.autoshape")];
 

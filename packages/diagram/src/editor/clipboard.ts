@@ -4,6 +4,8 @@ import {
   getFontString,
   getLineHeight,
   isWritableElement,
+  normalizeEOL,
+  normalizeLink,
   viewportCoordsToSceneCoords,
 } from "@excalidraw/common";
 import {
@@ -11,6 +13,7 @@ import {
   getCommonBounds,
   getLineHeightInPx,
   makeNextSelectedElementIds,
+  maybeParseEmbedSrc,
   measureText,
   newElementWith,
   newTextElement,
@@ -20,7 +23,12 @@ import {
 
 import { errorMessageOf, type LocalizedMessage } from "../i18n.ts";
 import type { ExcalidrawElementSkeleton } from "@excalidraw/element";
-import type { ExcalidrawElement, ExcalidrawTextElement } from "@excalidraw/element/types";
+import type {
+  ExcalidrawElement,
+  ExcalidrawEmbeddableElement,
+  ExcalidrawTextElement,
+  NonDeleted,
+} from "@excalidraw/element/types";
 
 import { parseClipboard, parseDataTransferEvent } from "../clipboard.ts";
 import { tryParseSpreadsheet } from "../charts/index.ts";
@@ -28,6 +36,7 @@ import { SVGStringToFile } from "../data/blob.ts";
 import { isMaybeMermaidDefinition, MERMAID_TO_EXCALIDRAW_CONFIG } from "../mermaid-detect.ts";
 import { scrollBoundsIntoView } from "../viewport.ts";
 import { actionCopy, actionCut } from "./actions/clipboard.ts";
+import { isEmbeddableLink } from "./embeds.ts";
 import { imageURLToFile } from "./images.ts";
 
 import type { ClipboardData, ParsedDataTransferFile, PastedMixedContent } from "../clipboard.ts";
@@ -41,7 +50,8 @@ let plainPasteTimer = 0;
 /**
  * The clipboard, Excalidraw's `AppClipboard`: cut and copy through their
  * actions, and paste, the data parsed and inserted as what it is: images or
- * SVG code, elements, a Mermaid definition, mixed HTML content, or text.
+ * SVG code, elements, a Mermaid definition, mixed HTML content, links to
+ * embed, or text.
  */
 export class EditorClipboard {
   public constructor(private readonly app: DiagramEditor) {}
@@ -216,6 +226,49 @@ export class EditorClipboard {
           `parsing pasted text as mermaid definition failed: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
+    }
+
+    // a link per line, every line one an embed allows: an embeddable each, side by side
+    const nonEmptyLines = normalizeEOL(data.text)
+      .split(/\n+/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .filter(
+        (line) =>
+          !/^<script\b[^>]*>\s*<\/script\b[^>]*>\s*$/i.test(line) ||
+          maybeParseEmbedSrc(line) !== line,
+      );
+    const embeddableUrls = nonEmptyLines
+      .map((line) => maybeParseEmbedSrc(line))
+      .filter((url) => isEmbeddableLink(url, app.host.validateEmbeddable));
+    if (
+      !isPlainPaste &&
+      embeddableUrls.length > 0 &&
+      embeddableUrls.length === nonEmptyLines.length
+    ) {
+      app.batch(() => {
+        const embeddables: NonDeleted<ExcalidrawEmbeddableElement>[] = [];
+        for (const url of embeddableUrls) {
+          const previous = embeddables[embeddables.length - 1];
+          const embeddable = app.embeds.insertEmbeddableElement({
+            sceneX: previous ? previous.x + previous.width + 20 : sceneX,
+            sceneY,
+            link: normalizeLink(url),
+          });
+          if (embeddable) {
+            embeddables.push(embeddable);
+          }
+        }
+        if (embeddables.length) {
+          app.store.scheduleCapture();
+          app.setState({
+            selectedElementIds: Object.fromEntries(
+              embeddables.map((embeddable) => [embeddable.id, true]),
+            ),
+          });
+        }
+      });
+      return;
     }
 
     app.batch(() => this.addTextFromPaste(data.text ?? "", isPlainPaste));

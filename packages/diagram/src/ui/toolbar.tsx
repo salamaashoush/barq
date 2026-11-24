@@ -98,9 +98,6 @@ interface ToolConfig {
   shiftKey?: boolean;
 }
 
-/** The tools this editor does not draw with yet; their entries stay, disabled. */
-const UNAVAILABLE_TOOLS = new Set<string>(["embeddable"]);
-
 const configOf = (type: string): ToolConfig => (TOOLS as Record<string, ToolConfig>)[type] ?? {};
 
 /** A tool's letter, as written on its button: `R`, or `Shift+X`. */
@@ -268,6 +265,8 @@ function ExtraTools(props: {
   const selected = (): string | null => {
     const type = activeTool();
     if (type === "lasso" && preferredSelection() === "lasso") return null;
+    // while collaborating the laser has its own button beside the toolbar
+    if (type === "laser" && ui.host().isCollaborating) return null;
     return [...(props.more ?? []), ...EXTRA_TOOLS].includes(type) ? type : null;
   };
 
@@ -312,7 +311,6 @@ function ExtraTools(props: {
             <DropdownMenuItem
               id={type}
               class={menuItem}
-              isDisabled={UNAVAILABLE_TOOLS.has(type)}
               data-selected={selected() === type ? "" : undefined}
               data-testid={`toolbar-${type}`}
             >

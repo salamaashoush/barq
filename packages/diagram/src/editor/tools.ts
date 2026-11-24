@@ -27,6 +27,7 @@ export const TOOLS = {
   image: { numericKey: KEYS["9"] },
   eraser: { letterKey: KEYS.E, numericKey: KEYS["0"], toggle: true },
   frame: { letterKey: KEYS.F },
+  embeddable: {},
   magicframe: {},
   laser: { letterKey: KEYS.K },
   autoshape: { letterKey: KEYS.X, shiftKey: true },

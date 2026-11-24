@@ -10,6 +10,11 @@ export { DiagramViewer } from "./viewer.tsx";
 export { DiagramEditor } from "./diagram-editor.tsx";
 export type { DiagramEditorProps } from "./diagram-editor.tsx";
 export { MainMenu } from "./ui/main-menu.tsx";
+export { LiveCollaborationTrigger } from "./ui/live-collaboration-trigger.tsx";
+export type { LiveCollaborationTriggerProps } from "./ui/live-collaboration-trigger.tsx";
+export type { ViewportStatusFrame } from "./ui/viewport-status-frame.tsx";
+export { createIdleDetector } from "./idle.ts";
+export type { IdleDetectorOptions } from "./idle.ts";
 export { WelcomeScreen } from "./ui/welcome-screen.tsx";
 export { useHandleLibrary } from "./ui/use-handle-library.ts";
 export { handleLibrary, parseLibraryTokensFromUrl } from "./editor/library.ts";
@@ -23,6 +28,8 @@ export type {
   LibraryUpdate,
 } from "./editor/library.ts";
 export type { RenderSlot } from "./ui/context.tsx";
+export type { RenderEmbeddable } from "./ui/embeds.tsx";
+export type { EmbeddableSandbox, ValidateEmbeddable } from "./editor/embeds.ts";
 export type { CanvasActions, ExportOpts as UIExportOpts, UIOptions } from "./editor/ui-options.ts";
 export { defaultLang, isRTLLanguage, languages, loadLanguage, localeCodes } from "./i18n.ts";
 export type { Language, TranslationKey } from "./i18n.ts";
@@ -146,6 +153,7 @@ export { CanvasError, ImageSceneDataError } from "./errors.ts";
 export {
   convertToExcalidrawElements,
   getCommonBounds,
+  getVisibleSceneBounds,
   getNonDeletedElements,
   getSceneVersion,
   getTextFromElements,
@@ -157,7 +165,7 @@ export {
   bumpVersion,
 } from "@excalidraw/element";
 export type { ExcalidrawElementSkeleton } from "@excalidraw/element";
-export { FONT_FAMILY, MIME_TYPES, THEME } from "@excalidraw/common";
+export { FONT_FAMILY, MIME_TYPES, THEME, UserIdleState } from "@excalidraw/common";
 export type {
   ExcalidrawElement,
   NonDeletedExcalidrawElement,
@@ -168,9 +176,15 @@ export type {
   AppState,
   BinaryFileData,
   BinaryFiles,
+  Collaborator,
+  CollaboratorPointer,
   DataURL,
   LibraryItem,
   LibraryItems,
   NormalizedZoomValue,
+  OnUserFollowedPayload,
+  PointerUpdatePayload,
+  SocketId,
+  UserToFollow,
   Zoom,
 } from "./types.ts";

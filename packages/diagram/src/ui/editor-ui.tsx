@@ -22,7 +22,7 @@ import { CommandPalette } from "./command-palette.tsx";
 import { EditorKeys } from "./editor-keys.tsx";
 import { ImageExportDialog, JSONExportDialog } from "./export-dialogs.tsx";
 import { HelpDialog } from "./help-dialog.tsx";
-import { MagicFrameLayer } from "./embeds.tsx";
+import { MagicFrameButtons } from "./embeds.tsx";
 import { TTDDialog } from "./ttd-dialog.tsx";
 import { HintViewer } from "./hint-viewer.tsx";
 import { ElementLinkDialog, HyperlinkPopup } from "./hyperlink.tsx";
@@ -39,17 +39,32 @@ import { EditorToasts } from "./toasts.tsx";
 import { diagramLayer as d } from "./layer.ts";
 import { actionToggleViewMode, actionToggleZenMode } from "../editor/actions/toggles.ts";
 import { Pencil } from "@barqjs/lucide/icons/pencil";
+import { Zap } from "@barqjs/lucide/icons/zap";
 import { WelcomeScreenLayer } from "./welcome-screen.tsx";
 import { CompactProperties, PenModeButton, PhoneChrome } from "./layouts.tsx";
 import { Button } from "@barqjs/ui/button";
+import { UserList } from "./user-list.tsx";
+import { ViewportStatusBadge, ViewportStatusBorder } from "./viewport-status-frame.tsx";
 
 const scrollBack = d({
   position: "absolute",
   bottom: "60px",
   insetInline: "0",
   display: "flex",
-  justifyContent: "center",
+  flexDirection: "column",
+  alignItems: "center",
+  gap: "8px",
   "& > *": { pointerEvents: "auto" },
+});
+// the user list reaches back to the middle, beside the toolbar
+const topEndWide = d({ insetInlineStart: "50%" });
+const topEndRow = d({
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "flex-end",
+  gap: "8px",
+  alignSelf: "stretch",
+  minWidth: "0",
 });
 const toolbarAnchor = d({ position: "relative", pointerEvents: "none" });
 const bottomStack = d({
@@ -95,6 +110,31 @@ export function EditorUI(props: EditorUIProps) {
   );
 }
 
+/** The laser pointer beside the toolbar while collaborating, Excalidraw's `LaserPointerButton`. */
+function LaserPointerButton() {
+  const ui = useDiagramUI();
+  const active = () => ui.store.state("activeTool").type === "laser";
+  return (
+    <div class={island}>
+      <button
+        type="button"
+        class={iconButton}
+        aria-label={ui.t("toolBar.laser")}
+        title={ui.t("toolBar.laser")}
+        aria-pressed={active()}
+        onClick={() => {
+          const editor = ui.store.editor;
+          editor?.batch(() => editor.setActiveTool({ type: "laser" }));
+          ui.focusCanvas();
+        }}
+        data-testid="collab-laser"
+      >
+        <Zap aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
 function Layout(props: { mainMenu?: () => Child; welcomeScreen?: true | Child }) {
   const value = useDiagramUI();
   const locale = provideLocale(() => value.langCode());
@@ -114,6 +154,8 @@ function Layout(props: { mainMenu?: () => Child; welcomeScreen?: true | Child })
   };
   const editorInterface = () => value.store.editorInterface();
   const phone = () => editorInterface().formFactor === "phone";
+  const collaborating = () => value.store.state("collaborators").size > 0;
+  const statusFrame = () => value.host().viewportStatusFrame;
   const compact = () => editorInterface().formFactor === "tablet";
   const scrollBackButton = () => (
     <Show when={value.store.state("scrolledOutside") && !zen()}>
@@ -164,13 +206,21 @@ function Layout(props: { mainMenu?: () => Child; welcomeScreen?: true | Child })
                 <Toolbar />
                 <HintViewer />
               </div>
+              <Show when={value.host().isCollaborating}>
+                <LaserPointerButton />
+              </Show>
             </div>
           </Show>
-          <div class={topEnd}>
-            {value.host().renderTopRightUI?.(false, value.store.snapshot)}
-            <Show when={!viewMode() && !docked()}>
-              <SidebarTrigger />
-            </Show>
+          <div class={collaborating() ? `${topEnd} ${topEndWide}` : topEnd}>
+            <div class={topEndRow}>
+              <Show when={collaborating()}>
+                <UserList />
+              </Show>
+              {value.host().renderTopRightUI?.(false, value.store.snapshot)}
+              <Show when={!viewMode() && !docked()}>
+                <SidebarTrigger />
+              </Show>
+            </div>
             <StatsPanel />
           </div>
           <Show
@@ -212,9 +262,17 @@ function Layout(props: { mainMenu?: () => Child; welcomeScreen?: true | Child })
               <FooterEnd />
             </div>
           </Show>
-          <Show when={value.store.state("scrolledOutside") && !zen()}>
-            <div class={scrollBack}>{scrollBackButton()}</div>
+          <Show when={(value.store.state("scrolledOutside") && !zen()) || statusFrame()?.label}>
+            <div class={scrollBack}>
+              {scrollBackButton()}
+              <Show when={statusFrame()?.label} keyed>
+                {(label) => <ViewportStatusBadge label={label} border={statusFrame()?.border} />}
+              </Show>
+            </div>
           </Show>
+        </Show>
+        <Show when={statusFrame()?.border} keyed>
+          {(border) => <ViewportStatusBorder border={border} />}
         </Show>
         <ContextMenu />
         <ShapeSwitchPanel />
@@ -224,7 +282,7 @@ function Layout(props: { mainMenu?: () => Child; welcomeScreen?: true | Child })
         <HelpDialog />
         <ChartDialog />
         <TTDDialog />
-        <MagicFrameLayer />
+        <MagicFrameButtons />
         <ImageExportDialog />
         <JSONExportDialog />
         <EditorKeys />

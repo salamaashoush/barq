@@ -59,6 +59,7 @@ import { actionTogglePolygon, actionToggleLinearEditor } from "./linear-editor.t
 import { actionCopyElementLink, actionLink, actionLinkToElement } from "./link.ts";
 import { actionToggleElementLock, actionUnlockAllElements } from "./lock.ts";
 import { propertyActions } from "./properties.ts";
+import { actionGoToCollaborator } from "./navigate.ts";
 import { actionToggleSearchMenu } from "./search.ts";
 import { actionDeselect, actionSelectAll } from "./select.ts";
 import { actionCopyStyles, actionPasteStyles } from "./styles.ts";
@@ -183,4 +184,5 @@ export const editorActions: readonly Action[] = [
   actionToggleWrap,
   actionAddToLibrary,
   actionToggleSearchMenu,
+  actionGoToCollaborator as Action,
 ];

@@ -27,8 +27,8 @@ collaboration and embeds, the only lines still pending.
 - done: sticky note tool, click and drag sizing (`flowchart.test.ts`)
 - done: autoshape tool, Shift+X: a sketch recognised as a shape, arrows bound, lines between shapes made arrows (`draw-shape.test.ts`)
 - done: bucket fill tool, B: fills the closed region clicked, restyles its own fills, B again cycles the colour, Alt holds an eye dropper (`bucket-fill.test.ts`)
-- pending (4): embeddable and iframe tool, `actionLink` embeds; its toolbar entry is there, disabled
-- done: magic frame, with `aiEnabled` and the app's `diagramToCode`: wraps the selection, generates HTML beside it into a sandboxed iframe (streamed), copies its source (`magic-frame.test.tsx`)
+- done: embeddable and iframe tool, `actionLink` embeds: the link editor validating with `validateEmbeddable`, live iframes over the canvas placed with the viewport, the centre click that activates them, `renderEmbeddable`, the iframes' `sandbox` (`embeddable.test.ts`, `embeds.test.tsx`)
+- done: magic frame, with `aiEnabled` and the app's `diagramToCode`: wraps the selection, generates HTML beside it into a sandboxed iframe (streamed), copies its source, shows it full screen (`magic-frame.test.tsx`, `embeddable.test.ts`)
 - done: toolbar drag-to-place of the sticky note (`editor-ui.test.tsx`)
 
 ## Selection and transforms
@@ -77,7 +77,7 @@ collaboration and embeds, the only lines still pending.
 - done: copy as PNG (Shift+Alt+C), as SVG, as text (`clipboard.test.ts`)
 - done: drop of scenes (replace, or add with Shift), images, library data (`clipboard.test.ts`)
 - done: pasted spreadsheets as bar, line and radar charts, or the plain text, in the paste chart dialog (`generators.test.tsx`, `charts.test.ts`)
-- pending (4): pasted URLs as embeddables
+- done: pasted and dropped URLs as embeddables (`embeddable.test.ts`)
 - done: toasts for `toast` and `errorMessage`, translated (`panels.test.tsx`)
 
 ## Flowcharts and lists
@@ -129,4 +129,10 @@ Not carried over: the main menu's links to Excalidraw's own social accounts.
 
 ## Collaboration (phase 4)
 
-- pending (4): remote pointers' laser trails are drawn (`LaserTrails.updateCollabTrails`), the collaborators state, follow mode (`goToCollaborator`)
+- done: the collaborators state through `updateScene({ collaborators })`: each one's cursor in their colour with their name, held at the viewport's edge and dimmed out of view, dimmed when idle or away, none with `renderCursor: false`; their selections outlined in their colour (`collaborators.test.ts`)
+- done: remote pointers' laser trails (`LaserTrails.updateCollabTrails`), in `laserColor` or the collaborator's colour, ended on release, gone when they leave (`collaborators.test.ts`)
+- done: `onPointerUpdate` (pointer and laser, move, press and release, in scene coordinates), `onScrollChange` and `onUserFollow`, as props and API subscriptions (`collaborators.test.ts`, `collaborators.test.tsx`)
+- done: follow mode with a host-owned `userToFollow`: `goToCollaborator` asks to follow or to stop, panning, zooming, a press with any tool but the laser and the followed user leaving ask to stop; the follower's viewport moved to `getVisibleSceneBounds` with `zoomToFitBounds` (`collaborators.test.ts`)
+- done: `UserList`: avatars as many as fit, the current user's menu of everyone, searchable from eight, call states, `currentUserControls`, the followed avatar marked; in the main menu on a phone (`collaborators.test.tsx`)
+- done: `viewportStatusFrame` (frame and badge, clickable and closable, at the top on a phone), `LiveCollaborationTrigger` with its count and `MainMenu.DefaultItems.LiveCollaborationTrigger`, `isCollaborating`'s laser button beside the toolbar (`collaborators.test.tsx`)
+- done: the idle detection Excalidraw's app does, as `createIdleDetector`: active, idle after `IDLE_THRESHOLD`, away while hidden (`collaborators.test.ts`)

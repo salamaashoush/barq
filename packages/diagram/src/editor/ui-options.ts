@@ -1,9 +1,17 @@
 import type { EditorInterface } from "@excalidraw/common";
 import type { NonDeletedExcalidrawElement, Theme } from "@excalidraw/element/types";
 
-import type { AppState, BinaryFiles } from "../types.ts";
+import type {
+  AppState,
+  BinaryFiles,
+  OnUserFollowedPayload,
+  PointerUpdatePayload,
+  UserToFollow,
+  Zoom,
+} from "../types.ts";
 import type { OnExport } from "./actions/export.ts";
 import type { DiagramToCodeOptions } from "./magic-frame.ts";
+import type { EmbeddableSandbox, ValidateEmbeddable } from "./embeds.ts";
 
 /** What the export dialog offers, Excalidraw's `ExportOpts`. */
 export interface ExportOpts {
@@ -115,6 +123,23 @@ export interface EditorHost {
   name?: string;
   /** What an unnamed scene's file is called before its date, translated. @default "Untitled" */
   untitledName?: string;
+  /** Excalidraw's `validateEmbeddable`: which links an embeddable shows. @default Excalidraw's allow-list */
+  validateEmbeddable?: ValidateEmbeddable;
+  /** The `sandbox` of an embeddable's iframe. @default Excalidraw's */
+  embeddableSandbox?: EmbeddableSandbox;
+  /** Excalidraw's `isCollaborating`: the laser pointer gets a button of its own beside the toolbar. */
+  isCollaborating: boolean;
+  /**
+   * The collaborator followed, Excalidraw's controlled `userToFollow`: the
+   * editor never sets it, it asks through `onUserFollow`.
+   */
+  userToFollow: UserToFollow | null;
+  /** Excalidraw's `onPointerUpdate`: the pointer as it moves, presses and releases, in scene coordinates. */
+  onPointerUpdate?: (payload: PointerUpdatePayload) => void;
+  /** Excalidraw's `onScrollChange`: the viewport moved or zoomed. */
+  onScrollChange?: (scrollX: number, scrollY: number, zoom: Zoom) => void;
+  /** Excalidraw's `onUserFollow`: a request to follow a collaborator, or to stop. */
+  onUserFollow?: (payload: OnUserFollowedPayload) => void;
 }
 
 export const defaultEditorHost = (): EditorHost => ({
@@ -122,4 +147,6 @@ export const defaultEditorHost = (): EditorHost => ({
   viewModeControlled: false,
   zenModeControlled: false,
   aiEnabled: true,
+  isCollaborating: false,
+  userToFollow: null,
 });
