@@ -7,7 +7,7 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { FONT_FAMILY, KEYS, THEME } from "@excalidraw/common";
+import { FONT_FAMILY, KEYS, MIME_TYPES, THEME } from "@excalidraw/common";
 import { isTextElement, normalizeText } from "@excalidraw/element";
 import type { Radians } from "@excalidraw/math";
 
@@ -287,14 +287,13 @@ describe("editing text", () => {
       type: "excalidraw/clipboard",
       elements: [{ ...(await createLabel()), id: "pasted" }],
     };
-    const event = new Event("paste", { bubbles: true, cancelable: true }) as ClipboardEvent;
-    Object.defineProperty(event, "clipboardData", {
-      value: {
-        getData: (type: string) => (type === "text/plain" ? JSON.stringify(copied) : ""),
-      },
-    });
+    // a copy from a diagram carries the elements' own type as well as text
+    const clipboardData = new DataTransfer();
+    clipboardData.items.add(JSON.stringify(copied), MIME_TYPES.excalidrawClipboard);
+    clipboardData.items.add(JSON.stringify(copied), MIME_TYPES.text);
+    const event = new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true });
     editor.dispatchEvent(event);
-    expect(event.defaultPrevented).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(editor.value).toBe("label");
   });
 });

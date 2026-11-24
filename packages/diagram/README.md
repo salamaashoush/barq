@@ -106,7 +106,8 @@ What it does, and the keys Excalidraw gives each:
 - tools: selection `V` or `1`, rectangle `R` or `2`, diamond `D` or `3`,
   ellipse `O` or `4`, arrow `A` or `5` (again to change its kind), line `L`
   or `6`, freedraw `P`, `X` or `7`, text `T` or `8`, eraser `E` or `0`,
-  laser pointer `K`, frame `F`, hand `H`; `Q` keeps the tool after
+  laser pointer `K`, frame `F`, image `9` (a file picker), hand `H`; `Q`
+  keeps the tool after
   drawing; shift draws equal sides and alt draws from the centre;
 - lines and arrows are drawn by dragging, or click by click and ended with
   Enter or Escape; a line closed on its first point becomes a polygon; Enter
@@ -147,6 +148,21 @@ What it does, and the keys Excalidraw gives each:
   edits it; `actionWrapSelectionInFrame` frames the selection (or unwraps
   the frame it is all of), and the frame actions select or release its
   children;
+- Ctrl+C, Ctrl+X and Ctrl+V copy, cut and paste elements in Excalidraw's
+  clipboard format (as text too, so they paste into Excalidraw); a paste
+  of text writes a text per line (one with Ctrl+Shift+V), SVG markup or an
+  image file inserts an image, HTML pastes its text or its images, and a
+  Mermaid definition becomes a diagram when `@excalidraw/mermaid-to-excalidraw`
+  is installed; Shift+Alt+C copies the selection as a PNG, and
+  `actionCopyAsSvg` and `actionCopyText` copy it as SVG markup or text;
+- images come from the image tool's file picker, a paste or a drop, resized
+  to at most 1440px and 4MB (`editor.images.options`), several on a grid;
+  their files go in the scene's files and their decoded images in the
+  image cache; Enter or a double-click on an image opens the crop editor,
+  whose handles crop it and where a drag moves the image within its crop;
+- a dropped `.excalidraw` file, or a PNG or SVG with a scene, replaces the
+  scene (Shift adds it where it is dropped), and a library's items are
+  added where they are dropped;
 - Ctrl+Z undoes, Ctrl+Shift+Z or Ctrl+Y redoes;
 - space-drag, the middle button and the hand tool pan; ctrl-wheel and a
   pinch zoom; Ctrl+`=`, `-` and `0` zoom, Shift+1 fits; Ctrl+`'` shows the

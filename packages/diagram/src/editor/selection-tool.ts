@@ -12,7 +12,13 @@ import {
 } from "@excalidraw/common";
 import {
   addElementsToFrame,
+  cropElement,
   dragSelectedElements,
+  getElementAbsoluteCoords,
+  getUncroppedWidthAndHeight,
+  isInitializedImageElement,
+  uncropElementSides,
+  updateBoundElements,
   getCommonBounds,
   getCommonFrameId,
   getElementsInGroup,
@@ -42,13 +48,25 @@ import {
   removeArrowsWithoutEndInFrame,
   updateFrameMembershipOfSelectedElements,
 } from "@excalidraw/element";
-import { pointDistance, pointFrom } from "@excalidraw/math";
+import {
+  clamp,
+  pointDistance,
+  pointFrom,
+  pointRotateRads,
+  vector,
+  vectorDot,
+  vectorFromPoint,
+  vectorNormalize,
+  vectorSubtract,
+} from "@excalidraw/math";
 
 import { snapDraggedElements, snapResizingElements } from "./snapping.ts";
 
 import type { TransformHandleType } from "@excalidraw/element";
+import type { GlobalPoint } from "@excalidraw/math";
 import type {
   ExcalidrawElement,
+  ExcalidrawImageElement,
   NonDeleted,
   NonDeletedExcalidrawElement,
   NonDeletedSceneElementsMap,
@@ -115,6 +133,78 @@ export class SelectionTool {
   };
 
   /**
+   * Moves the cropped image within its crop by what the drag moved since the
+   * last move (so that it comes back at once after a drag past its edge),
+   * scaled to the image's pixels and along its rotated edges.
+   */
+  private moveCropRegion(
+    pointerDownState: PointerDownState,
+    dragOffset: { x: number; y: number },
+  ): boolean {
+    if (!this.app.state.croppingElementId) {
+      return false;
+    }
+    const elementsMap = this.app.scene.getNonDeletedElementsMap();
+    const croppingElement = elementsMap.get(this.app.state.croppingElementId);
+    if (
+      !croppingElement ||
+      !isImageElement(croppingElement) ||
+      croppingElement.crop === null ||
+      pointerDownState.hit.element !== croppingElement
+    ) {
+      return false;
+    }
+    const crop = croppingElement.crop;
+    const image =
+      isInitializedImageElement(croppingElement) &&
+      this.app.imageCache.get(croppingElement.fileId)?.image;
+    if (!image || image instanceof Promise) {
+      return false;
+    }
+    const uncroppedSize = getUncroppedWidthAndHeight(croppingElement);
+    const { lastOffset } = pointerDownState.drag;
+    const instantDragOffset = vector(dragOffset.x - lastOffset.x, dragOffset.y - lastOffset.y);
+    pointerDownState.drag.lastOffset = dragOffset;
+    instantDragOffset[0] *= image.naturalWidth / uncroppedSize.width;
+    instantDragOffset[1] *= image.naturalHeight / uncroppedSize.height;
+
+    const [x1, y1, x2, y2, cx, cy] = getElementAbsoluteCoords(croppingElement, elementsMap);
+    const center = pointFrom<GlobalPoint>(cx, cy);
+    const topLeft = vectorFromPoint(
+      pointRotateRads(pointFrom<GlobalPoint>(x1, y1), center, croppingElement.angle),
+    );
+    const topRight = vectorFromPoint(
+      pointRotateRads(pointFrom<GlobalPoint>(x2, y1), center, croppingElement.angle),
+    );
+    const bottomLeft = vectorFromPoint(
+      pointRotateRads(pointFrom<GlobalPoint>(x1, y2), center, croppingElement.angle),
+    );
+    const topEdge = vectorNormalize(vectorSubtract(topRight, topLeft));
+    const leftEdge = vectorNormalize(vectorSubtract(bottomLeft, topLeft));
+    // the drag decomposed along the image's edges
+    const offsetVector = vector(
+      vectorDot(instantDragOffset, topEdge),
+      vectorDot(instantDragOffset, leftEdge),
+    );
+    this.app.scene.mutateElement(croppingElement, {
+      crop: {
+        ...crop,
+        x: clamp(
+          crop.x - offsetVector[0] * Math.sign(croppingElement.scale[0]),
+          0,
+          image.naturalWidth - crop.width,
+        ),
+        y: clamp(
+          crop.y - offsetVector[1] * Math.sign(croppingElement.scale[1]),
+          0,
+          image.naturalHeight - crop.height,
+        ),
+      },
+    });
+    return true;
+  }
+
+  /**
    * @returns whether the pointer event has been completely handled
    */
   handleSelectionOnPointerDown = (
@@ -136,7 +226,8 @@ export class SelectionTool {
         event.pointerType as PointerType,
       );
       if (transformHandle) {
-        if (transformHandle.element) {
+        // in the crop editor, the handles crop the image rather than resize it
+        if (transformHandle.element && !this.app.state.croppingElementId) {
           this.app.setState({ resizingElement: transformHandle.element });
         }
         pointerDownState.resize.handleType = transformHandle.transformHandleType;
@@ -263,6 +354,13 @@ export class SelectionTool {
             this.app.getElementAtPosition(pointerDownState.origin.x, pointerDownState.origin.y);
         }
 
+        if (
+          this.app.state.croppingElementId &&
+          pointerDownState.hit.element?.id !== this.app.state.croppingElementId
+        ) {
+          this.app.finishImageCropping();
+        }
+
         // For overlapped elements one position may hit
         // multiple elements
         pointerDownState.hit.allHitElements = unlockedHitElements;
@@ -377,10 +475,128 @@ export class SelectionTool {
     return false;
   };
 
+  /** In the crop editor, a handle drags the crop instead of the size. */
+  maybeHandleCrop = (
+    pointerDownState: PointerDownState,
+    event: MouseEvent | KeyboardEvent,
+  ): boolean => {
+    if (!this.app.state.croppingElementId) {
+      return false;
+    }
+    const transformHandleType = pointerDownState.resize.handleType;
+    const pointerCoords = pointerDownState.lastCoords;
+    const [x, y] = getGridPoint(
+      pointerCoords.x - pointerDownState.resize.offset.x,
+      pointerCoords.y - pointerDownState.resize.offset.y,
+      event[KEYS.CTRL_OR_CMD] ? null : this.app.getEffectiveGridSize(),
+    );
+    const croppingElement = this.app.scene
+      .getNonDeletedElementsMap()
+      .get(this.app.state.croppingElementId);
+    if (
+      !transformHandleType ||
+      transformHandleType === "rotation" ||
+      !croppingElement ||
+      !isImageElement(croppingElement)
+    ) {
+      return false;
+    }
+    const croppingAtStateStart = pointerDownState.originalElements.get(croppingElement.id);
+    const image =
+      isInitializedImageElement(croppingElement) &&
+      this.app.imageCache.get(croppingElement.fileId)?.image;
+    if (
+      croppingAtStateStart &&
+      isImageElement(croppingAtStateStart) &&
+      image &&
+      !(image instanceof Promise)
+    ) {
+      const [gridX, gridY] = getGridPoint(
+        pointerCoords.x,
+        pointerCoords.y,
+        event[KEYS.CTRL_OR_CMD] ? null : this.app.getEffectiveGridSize(),
+      );
+      const dragOffset = {
+        x: gridX - pointerDownState.originInGrid.x,
+        y: gridY - pointerDownState.originInGrid.y,
+      };
+      this.app.maybeCacheReferenceSnapPoints(event, [croppingElement]);
+      const { snapOffset, snapLines } = snapResizingElements(
+        [croppingElement],
+        [croppingAtStateStart],
+        this.app,
+        event,
+        dragOffset,
+        transformHandleType,
+      );
+      this.app.scene.mutateElement(
+        croppingElement,
+        cropElement(
+          croppingAtStateStart,
+          this.app.scene.getNonDeletedElementsMap(),
+          transformHandleType,
+          image.naturalWidth,
+          image.naturalHeight,
+          x + snapOffset.x,
+          y + snapOffset.y,
+          {
+            shouldMaintainAspectRatio: shouldMaintainAspectRatio(event),
+            shouldResizeFromCenter: shouldResizeFromCenter(event),
+          },
+        ),
+      );
+      updateBoundElements(croppingElement, this.app.scene, {
+        renderEnvironment: this.app.renderEnvironment,
+      });
+      this.app.setState({ isCropping: true, snapLines });
+    }
+    return true;
+  };
+
+  /**
+   * In the crop editor, a double-click on a handle uncrops its side (a
+   * corner's two), and with `mirrored` the opposite ones too.
+   *
+   * @returns whether the double-click was handled
+   */
+  maybeUncropSides = (
+    image: NonDeleted<ExcalidrawImageElement>,
+    sceneX: number,
+    sceneY: number,
+    mirrored: boolean,
+  ): boolean => {
+    const handle =
+      image.id === this.app.state.croppingElementId &&
+      this.getTransformHandleAt([image], sceneX, sceneY, this.app.state.lastPointerDownWith)
+        ?.transformHandleType;
+    if (!handle || handle === "rotation") {
+      return false;
+    }
+    const updates = uncropElementSides(
+      image,
+      this.app.scene.getNonDeletedElementsMap(),
+      handle,
+      mirrored,
+    );
+    if (updates) {
+      this.app.store.scheduleCapture();
+      this.app.scene.mutateElement(image, updates);
+      updateBoundElements(image, this.app.scene, {
+        renderEnvironment: this.app.renderEnvironment,
+      });
+    }
+    return true;
+  };
+
   maybeHandleResize = (
     pointerDownState: PointerDownState,
     event: MouseEvent | KeyboardEvent,
   ): boolean => {
+    // in the crop editor, the handles crop the image
+    if (this.app.state.croppingElementId) {
+      return this.maybeHandleCrop(pointerDownState, event);
+    }
+
     const selectedElements = this.app.scene.getSelectedElements(this.app.state);
     const selectedFrames = selectedElements.filter(isFrameLikeElement);
 
@@ -651,6 +867,11 @@ export class SelectionTool {
           if (lockY) {
             dragOffset.y = 0;
           }
+        }
+
+        // in the crop editor, a drag on the image moves it within its crop
+        if (this.moveCropRegion(pointerDownState, dragOffset)) {
+          return true;
         }
 
         // the snap cache fills before the first drag, or the first move
@@ -999,7 +1220,12 @@ export class SelectionTool {
       this.app.state.activeTool.type === "selection"
     ) {
       // when inside line editor, shift selects points instead
-      if (childEvent.shiftKey && !this.app.state.selectedLinearElement?.isEditing) {
+      if (
+        childEvent.shiftKey &&
+        !this.app.state.selectedLinearElement?.isEditing &&
+        // in the crop editor, the image stays the selection
+        hitElement.id !== this.app.state.croppingElementId
+      ) {
         if (this.app.state.selectedElementIds[hitElement.id]) {
           if (
             isSelectedViaGroup(this.app.state, hitElement) ||
@@ -1140,7 +1366,7 @@ export class SelectionTool {
    * is selected, and the linear editor is not open.
    */
   private getCyclableSelectedUnit(): string | null {
-    if (this.app.state.selectedLinearElement?.isEditing) {
+    if (this.app.state.selectedLinearElement?.isEditing || this.app.state.croppingElementId) {
       return null;
     }
     const selectedUnits = new Set(

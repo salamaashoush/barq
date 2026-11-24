@@ -65,6 +65,15 @@ export class ActionManager {
       value,
       this.editor,
     );
+    if (result instanceof Promise) {
+      // a clipboard action resolves later, outside the event that ran it
+      void result.then(
+        (resolved) => this.editor.batch(() => this.updater(resolved, action as Action)),
+        (error: unknown) =>
+          console.error(`DiagramEditor: the "${action.name}" action failed`, error),
+      );
+      return;
+    }
     this.updater(result, action as Action);
   }
 }

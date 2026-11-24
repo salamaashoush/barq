@@ -141,9 +141,7 @@ describe("DiagramEditor", () => {
       appState: {},
       files: {},
     };
-    const { api, region } = await mount((grab) => (
-      <DiagramEditor api={grab} initialData={scene} />
-    ));
+    const { api, region } = await mount((grab) => <DiagramEditor api={grab} initialData={scene} />);
     await settle();
     api.refresh();
     await settle();

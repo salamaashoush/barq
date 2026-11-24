@@ -1,7 +1,9 @@
 import {
   ARROW_TYPE,
   CURSOR_TYPE,
+  arrayToMap,
   FRAME_STYLE,
+  MIME_TYPES,
   THEME,
   getFontString,
   sceneCoordsToViewportCoords,
@@ -50,6 +52,13 @@ import {
   getTextBindingForArrowEndpoint,
   getUnboundArrowEndpointAtPoint,
   getContainerCenter,
+  getContainerElement,
+  duplicateElements,
+  excludeElementsInFramesFromSelection,
+  filterElementsEligibleAsFrameChildren,
+  redrawTextBoundingBox,
+  syncInvalidIndices,
+  syncMovedIndices,
   getMinTextElementWidth,
   hasBoundTextElement,
   isEndpointBoundText,
@@ -100,6 +109,9 @@ import {
   isPointInElement,
   isSimpleArrow,
   isTextElement,
+  isImageElement,
+  isInitializedImageElement,
+  normalizeSVG,
   isUsingAdaptiveRadius,
   LinearElementEditor,
   makeNextSelectedElementIds,
@@ -132,10 +144,12 @@ import type {
   ExcalidrawElement,
   ExcalidrawFrameLikeElement,
   ExcalidrawGenericElement,
+  ExcalidrawImageElement,
   ExcalidrawIframeLikeElement,
   ExcalidrawLinearElement,
   ExcalidrawTextContainer,
   ExcalidrawTextElement,
+  FileId,
   FixedPoint,
   NonDeleted,
   NonDeletedExcalidrawElement,
@@ -146,6 +160,19 @@ import type {
 import type { GlobalPoint, LocalPoint } from "@excalidraw/math";
 
 import { getDefaultAppState, isEraserActive, isHandToolActive } from "../app-state.ts";
+import { parseDataTransferEvent } from "../clipboard.ts";
+import {
+  dataURLToString,
+  getDataURL_sync,
+  isSupportedImageFile,
+  loadFromBlob,
+  loadSceneOrLibraryFromBlob,
+  normalizeFile,
+} from "../data/blob.ts";
+import { distributeLibraryItemsOnSquareGrid } from "../data/library.ts";
+import { parseLibraryJSON } from "../data/blob.ts";
+import { restoreElements } from "../data/restore.ts";
+import { ImageSceneDataError } from "../errors.ts";
 import { restore } from "../data/restore.ts";
 import { fitToContent, wheelNavigation, type ViewportState } from "../navigation.ts";
 import { getSelectionColor } from "../renderer/helpers.ts";
@@ -166,7 +193,11 @@ import { createRedoAction, createUndoAction, editorActions } from "./actions/ind
 import { describeSelection, describeTool } from "./announce.ts";
 import { EditorCursor } from "./cursor.ts";
 import { History } from "./history.ts";
-import { EditorSelection, selectGroupsForSelectedElements } from "./selection.ts";
+import {
+  EditorSelection,
+  getSelectionStateForElements,
+  selectGroupsForSelectedElements,
+} from "./selection.ts";
 import { SelectionTool } from "./selection-tool.ts";
 import {
   getReferenceSnapPoints,
@@ -177,6 +208,8 @@ import {
   SnapCache,
   snapNewElement,
 } from "./snapping.ts";
+import { EditorClipboard } from "./clipboard.ts";
+import { EditorImages } from "./images.ts";
 import { EditorText } from "./text.ts";
 import { EraserTrail, LaserTrails, LassoTrail } from "./trails.ts";
 import { TextTool } from "./text-tool.ts";
@@ -187,6 +220,7 @@ import type { DiagramScene } from "../data/types.ts";
 import type { InteractiveSceneRenderAnimationState, ScrollBars } from "../scene/types.ts";
 import type {
   AppState,
+  BinaryFileData,
   BinaryFiles,
   FrameNameBounds,
   KeyboardModifiersObject,
@@ -325,6 +359,8 @@ export class DiagramEditor {
   public readonly cursor: EditorCursor;
   public readonly text: EditorText;
   public readonly textTool: TextTool;
+  public readonly images: EditorImages;
+  public readonly clipboard: EditorClipboard;
   public readonly laserTrails: LaserTrails;
   public readonly eraserTrail: EraserTrail;
   public readonly lassoTrail: LassoTrail;
@@ -511,6 +547,8 @@ export class DiagramEditor {
     this.cursor = new EditorCursor(interactiveCanvas, () => this.state);
     this.text = new EditorText(this);
     this.textTool = new TextTool(this);
+    this.images = new EditorImages(this);
+    this.clipboard = new EditorClipboard(this);
     this.laserTrails = new LaserTrails(this);
     this.eraserTrail = new EraserTrail(this);
     this.lassoTrail = new LassoTrail(this);
@@ -841,6 +879,350 @@ export class DiagramEditor {
     return this.files;
   }
 
+  /** Where the pointer last was over the editor, in client coordinates; what is pasted goes there. */
+  public get lastViewportPosition(): { x: number; y: number } {
+    return this.lastPosition;
+  }
+
+  /**
+   * Pasted elements, or a library's, at a client point (the pointer, or the
+   * middle of the view): duplicated with new ids, placed on the grid and in
+   * the frame there, selected, and undoable as one.
+   */
+  public addElementsFromPasteOrLibrary(opts: {
+    elements: readonly ExcalidrawElement[];
+    files: BinaryFiles | null;
+    position: { clientX: number; clientY: number } | "cursor" | "center";
+    retainSeed?: boolean;
+    preserveFrameChildrenOrder?: boolean;
+  }): void {
+    const elements = restoreElements(opts.elements, null, { deleteInvisibleElements: true });
+    const clientX =
+      typeof opts.position === "object"
+        ? opts.position.clientX
+        : opts.position === "cursor"
+          ? this.lastPosition.x
+          : this.state.width / 2 + this.state.offsetLeft;
+    const clientY =
+      typeof opts.position === "object"
+        ? opts.position.clientY
+        : opts.position === "cursor"
+          ? this.lastPosition.y
+          : this.state.height / 2 + this.state.offsetTop;
+    const { x, y } = viewportCoordsToSceneCoords({ clientX, clientY }, this.state);
+
+    const [minX, minY, maxX, maxY] = getCommonBounds(elements);
+    const [gridX, gridY] = getGridPoint(
+      x - Math.abs(maxX - minX) / 2,
+      y - Math.abs(maxY - minY) / 2,
+      this.getEffectiveGridSize(),
+    );
+    const { duplicatedElements } = duplicateElements({
+      type: "everything",
+      elements: elements.map((element) =>
+        newElementWith(element, { x: element.x + gridX - minX, y: element.y + gridY - minY }),
+      ),
+      randomizeSeed: !opts.retainSeed,
+      preserveFrameChildrenOrder: opts.preserveFrameChildrenOrder,
+    });
+    let nextElements: ExcalidrawElement[] = [
+      ...this.scene.getElementsIncludingDeleted(),
+      ...duplicatedElements,
+    ];
+    syncMovedIndices(nextElements, arrayToMap(duplicatedElements));
+    const topLayerFrame = this.getTopLayerFrameAtSceneCoords({ x, y });
+    if (topLayerFrame) {
+      nextElements = addElementsToFrame(
+        nextElements,
+        filterElementsEligibleAsFrameChildren(duplicatedElements, topLayerFrame),
+        topLayerFrame,
+      );
+    }
+    this.scene.replaceAllElements(nextElements);
+
+    for (const pasted of duplicatedElements) {
+      if (isTextElement(pasted) && isBoundToContainer(pasted)) {
+        redrawTextBoundingBox(
+          pasted,
+          getContainerElement(pasted, this.scene.getElementsMapIncludingDeleted()),
+          this.scene,
+          this.renderEnvironment,
+        );
+      }
+    }
+    if (opts.files) {
+      this.addMissingFiles(opts.files);
+    }
+    this.store.scheduleCapture();
+    this.setState(
+      getSelectionStateForElements(
+        excludeElementsInFramesFromSelection(duplicatedElements),
+        this.scene.getNonDeletedElements(),
+        this.state,
+      ),
+      () => {
+        if (opts.files) {
+          void this.addNewImagesToImageCache();
+        }
+      },
+    );
+    this.setActiveTool({ type: this.state.preferredSelectionTool.type }, { keepSelection: true });
+  }
+
+  /**
+   * A drop: a scene file (replacing the scene, or added at the drop with
+   * Shift), images, a library's items, or a PNG or SVG carrying a scene.
+   */
+  public async handleDrop(event: DragEvent): Promise<void> {
+    if (this.state.viewModeEnabled) {
+      return;
+    }
+    const { shiftKey, clientX, clientY } = event;
+    const insertPosition = shiftKey ? { clientX, clientY } : undefined;
+    const { x: sceneX, y: sceneY } = viewportCoordsToSceneCoords(event, this.state);
+    const dataTransferList = await parseDataTransferEvent(event);
+    const fileItems = dataTransferList.getFiles();
+
+    const [onlyFile] = fileItems;
+    if (fileItems.length === 1 && onlyFile) {
+      const { file, fileHandle } = onlyFile;
+      if (file.type === MIME_TYPES.png || file.type === MIME_TYPES.svg) {
+        let dropped: Awaited<ReturnType<typeof loadFromBlob>> | undefined;
+        try {
+          dropped = await loadFromBlob(
+            file,
+            this.state,
+            this.scene.getElementsIncludingDeleted(),
+            fileHandle,
+          );
+        } catch (error) {
+          // an image without a scene is inserted as an image
+          if (!(error instanceof Error) || error.name !== "EncodingError") {
+            if (!(error instanceof ImageSceneDataError)) {
+              this.batch(() => this.setState({ errorMessage: "Couldn't load an invalid file." }));
+              return;
+            }
+          }
+        }
+        if (dropped) {
+          const scene = dropped;
+          this.batch(() => {
+            if (insertPosition) {
+              this.addElementsFromPasteOrLibrary({
+                elements: scene.elements,
+                files: scene.files,
+                position: insertPosition,
+                retainSeed: true,
+                preserveFrameChildrenOrder: true,
+              });
+              return;
+            }
+            this.replaceSceneFromFile(scene);
+          });
+          return;
+        }
+      }
+    }
+
+    const imageFiles = fileItems
+      .map((item) => item.file)
+      .filter((file) => isSupportedImageFile(file));
+    if (imageFiles.length > 0) {
+      await this.images.insertImages(imageFiles, sceneX, sceneY);
+      return;
+    }
+
+    const libraryData = dataTransferList.getData(MIME_TYPES.excalidrawlib);
+    if (libraryData) {
+      try {
+        const libraryItems = parseLibraryJSON(libraryData).map((item) => ({
+          ...item,
+          elements: duplicateElements({
+            type: "everything",
+            elements: item.elements,
+            randomizeSeed: true,
+            preserveFrameChildrenOrder: true,
+          }).duplicatedElements,
+        }));
+        if (libraryItems.length) {
+          this.batch(() =>
+            this.addElementsFromPasteOrLibrary({
+              elements: distributeLibraryItemsOnSquareGrid(libraryItems),
+              position: event,
+              files: null,
+            }),
+          );
+        }
+      } catch (error) {
+        this.batch(() =>
+          this.setState({ errorMessage: error instanceof Error ? error.message : String(error) }),
+        );
+      }
+      return;
+    }
+
+    if (onlyFile) {
+      await this.loadFileToCanvas(onlyFile.file, onlyFile.fileHandle, insertPosition);
+    }
+  }
+
+  /** A dropped scene or library file: the scene replaced (or added to at the drop with Shift). */
+  private async loadFileToCanvas(
+    file: File,
+    fileHandle: FileSystemFileHandle | null,
+    insertPosition?: { clientX: number; clientY: number },
+  ): Promise<void> {
+    const elements = this.scene.getElementsIncludingDeleted();
+    let loaded: Awaited<ReturnType<typeof loadSceneOrLibraryFromBlob>> | undefined;
+    try {
+      loaded = await loadSceneOrLibraryFromBlob(
+        await normalizeFile(file),
+        this.state,
+        elements,
+        fileHandle,
+      );
+    } catch (error) {
+      this.batch(() =>
+        this.setState({
+          isLoading: false,
+          errorMessage:
+            error instanceof ImageSceneDataError
+              ? "Couldn't restore the scene from this image file."
+              : "Couldn't load an invalid file.",
+        }),
+      );
+      return;
+    }
+    if (!loaded || loaded.type !== MIME_TYPES.excalidraw) {
+      return;
+    }
+    const scene = loaded.data;
+    this.batch(() => {
+      if (insertPosition) {
+        this.addElementsFromPasteOrLibrary({
+          elements: scene.elements,
+          files: scene.files,
+          position: insertPosition,
+          retainSeed: true,
+          preserveFrameChildrenOrder: true,
+        });
+        return;
+      }
+      this.replaceSceneFromFile(scene);
+    });
+  }
+
+  /** The scene replaced by a dropped one, undoable. */
+  private replaceSceneFromFile(scene: ReturnType<typeof restore>): void {
+    const elements = this.scene.getElementsIncludingDeleted();
+    // the old elements' indices are kept, for undo not to duplicate them
+    syncInvalidIndices(elements.concat(scene.elements));
+    this.store.scheduleMicroAction({
+      action: CaptureUpdateAction.NEVER,
+      elements,
+      appState: undefined,
+    });
+    this.syncActionResult({
+      elements: scene.elements,
+      appState: { ...scene.appState, isLoading: false },
+      files: scene.files,
+      captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+    });
+    void this.addNewImagesToImageCache();
+  }
+
+  /** The decoded images of the scene's files, by file id. */
+  public get imageCache() {
+    return this.sceneCanvas.imageCache;
+  }
+
+  /**
+   * Adds the files the scene does not have yet (all of them with `replace`),
+   * an SVG's normalized; returns the ones added.
+   */
+  public addMissingFiles(
+    files: BinaryFiles | readonly BinaryFileData[],
+    replace = false,
+  ): { addedFiles: BinaryFiles } {
+    const nextFiles: BinaryFiles = replace ? {} : { ...this.files };
+    const addedFiles: BinaryFiles = {};
+    const list: readonly BinaryFileData[] = Array.isArray(files)
+      ? (files as readonly BinaryFileData[])
+      : Object.values(files as BinaryFiles);
+    for (const fileData of list) {
+      if (nextFiles[fileData.id]) {
+        continue;
+      }
+      addedFiles[fileData.id] = fileData;
+      nextFiles[fileData.id] = fileData;
+      if (fileData.mimeType === MIME_TYPES.svg) {
+        try {
+          const restoredDataURL = getDataURL_sync(
+            normalizeSVG(dataURLToString(fileData.dataURL)),
+            MIME_TYPES.svg,
+          );
+          if (fileData.dataURL !== restoredDataURL) {
+            // a new version, for persistence to update its copy
+            fileData.version = (fileData.version ?? 1) + 1;
+            fileData.dataURL = restoredDataURL;
+          }
+        } catch (error) {
+          console.error(error);
+        }
+      }
+    }
+    this.files = nextFiles;
+    this.sceneDirty = true;
+    this.requestCommit();
+    return { addedFiles };
+  }
+
+  /**
+   * Decodes the file's image into the cache and returns it; an image that
+   * does not decode marks the elements showing it as errored.
+   */
+  public async loadImage(fileId: FileId): Promise<HTMLImageElement | null> {
+    const cached = this.imageCache.get(fileId);
+    if (!cached) {
+      const { erroredFiles } = await this.sceneCanvas.loadImages([fileId], this.files);
+      if (erroredFiles.size) {
+        this.markErroredImages(erroredFiles);
+        return null;
+      }
+    }
+    return (await this.imageCache.get(fileId)?.image) ?? null;
+  }
+
+  /** Decodes the images the scene shows that are not cached yet. */
+  public async addNewImagesToImageCache(): Promise<void> {
+    const fileIds = this.scene
+      .getNonDeletedElements()
+      .filter(isInitializedImageElement)
+      .map((element) => element.fileId)
+      .filter((fileId) => !this.imageCache.has(fileId) && this.files[fileId]);
+    if (fileIds.length === 0) return;
+    const { erroredFiles } = await this.sceneCanvas.loadImages(fileIds, this.files);
+    if (erroredFiles.size) {
+      this.markErroredImages(erroredFiles);
+    }
+  }
+
+  private markErroredImages(erroredFiles: ReadonlyMap<FileId, true>): void {
+    if (this.destroyed) return;
+    this.batch(() => {
+      this.store.scheduleAction(CaptureUpdateAction.NEVER);
+      this.scene.replaceAllElements(
+        this.scene
+          .getElementsIncludingDeleted()
+          .map((element) =>
+            isInitializedImageElement(element) && erroredFiles.has(element.fileId)
+              ? newElementWith(element, { status: "error" })
+              : element,
+          ),
+      );
+    });
+  }
+
   public getEffectiveGridSize = (): NullableGridSize =>
     (this.state.gridModeEnabled ? this.state.gridSize : null) as NullableGridSize;
 
@@ -1133,6 +1515,9 @@ export class DiagramEditor {
           ? updateActiveTool(this.state, { ...tool, lastActiveTool: this.state.activeTool })
           : updateActiveTool(this.state, tool);
 
+    if (nextActiveTool.type === "image") {
+      void this.images.openImagePicker();
+    }
     if (nextActiveTool.type === "hand") {
       this.cursor.set(CURSOR_TYPE.GRAB);
     } else if (!this.spaceHeld) {
@@ -1533,6 +1918,23 @@ export class DiagramEditor {
     on(interactiveCanvas, "click", (event) => this.handleCanvasClick(event));
     on(interactiveCanvas, "contextmenu", (event) => event.preventDefault());
     on(container, "keydown", (event) => this.onKeyDown(event));
+    // a dropped file never makes the page navigate to it
+    on(container, "dragover", (event) => event.preventDefault());
+    on(container, "drop", (event) => {
+      event.preventDefault();
+      void this.handleDrop(event);
+    });
+    const onDocument = <K extends "copy" | "cut" | "paste">(
+      type: K,
+      handler: (event: DocumentEventMap[K]) => void,
+    ) => {
+      const document = this.ownerDocument;
+      document.addEventListener(type, handler);
+      this.listeners.push(() => document.removeEventListener(type, handler));
+    };
+    onDocument("copy", this.clipboard.onCopy);
+    onDocument("cut", this.clipboard.onCut);
+    onDocument("paste", (event) => void this.clipboard.pasteFromClipboard(event));
     on(container, "keyup", (event) => this.onKeyUp(event));
     on(container, "wheel", (event) => this.onWheel(event), { passive: false });
     on(container, "focusout", (event) => {
@@ -2793,10 +3195,12 @@ export class DiagramEditor {
     const {
       newElement: newElementAtUp,
       resizingElement,
+      croppingElementId,
       multiElement,
       activeTool,
       isResizing,
       isRotating,
+      isCropping,
     } = this.state;
 
     // the state as the pointer went up: Excalidraw reads it through the
@@ -3157,6 +3561,15 @@ export class DiagramEditor {
           ),
         });
       }
+    }
+
+    // a click outside the image being cropped ends the crop
+    if (
+      !croppingElementId ||
+      (!hitElement && !isCropping && !pointerDownState.resize.handleType) ||
+      (hitElement && hitElement.id !== croppingElementId)
+    ) {
+      this.finishImageCropping();
     }
 
     const pointerStart = this.lastPointerDownEvent;
@@ -3717,8 +4130,9 @@ export class DiagramEditor {
     if (
       this.state.editingTextElement ||
       !this.shouldHandleBrowserCanvasDoubleClick(event.type) ||
-      // alt-clicks cycle the selection
-      event.altKey ||
+      // alt-clicks cycle the selection (in the crop editor, alt mirrors the
+      // sides a double-click uncrops)
+      (event.altKey && !this.state.croppingElementId) ||
       // a double-click with the line tool would both create text and draw
       this.state.multiElement ||
       this.state.activeTool.type !== this.state.preferredSelectionTool.type
@@ -3765,6 +4179,13 @@ export class DiagramEditor {
       ) {
         return;
       }
+    }
+
+    if (selectedElements.length === 1 && selected && isImageElement(selected)) {
+      if (!this.selectionTool.maybeUncropSides(selected, sceneX, sceneY, event.altKey)) {
+        this.startImageCropping(selected);
+      }
+      return;
     }
 
     this.cursor.reset();
@@ -3826,6 +4247,19 @@ export class DiagramEditor {
       insertAtParentCenter: !event.altKey,
       container,
     });
+  }
+
+  /** Opens the crop editor on the image: its handles crop it, a drag moves it within its crop. */
+  public startImageCropping(image: ExcalidrawImageElement): void {
+    this.store.scheduleCapture();
+    this.setState({ croppingElementId: image.id });
+  }
+
+  public finishImageCropping(): void {
+    if (this.state.croppingElementId) {
+      this.store.scheduleCapture();
+      this.setState({ croppingElementId: null });
+    }
   }
 
   /** Marks what the eraser's trail touches, faded until the pointer goes up. */
@@ -3937,8 +4371,30 @@ export class DiagramEditor {
       return;
     }
 
+    if (event[KEYS.CTRL_OR_CMD] && event.key.toLowerCase() === KEYS.V) {
+      this.clipboard.onPasteShortcut(event);
+    }
+
     if (event.key === KEYS.ALT) {
       maybeHandleArrowPointlikeDrag({ app: this.elementApp, event });
+    }
+
+    if (!isInputLike(event.target)) {
+      if ((event.key === KEYS.ESCAPE || event.key === KEYS.ENTER) && this.state.croppingElementId) {
+        this.finishImageCropping();
+        return;
+      }
+      const selectedElements = this.scene.getSelectedElements(this.state);
+      const [onlySelected] = selectedElements;
+      if (
+        selectedElements.length === 1 &&
+        onlySelected &&
+        isImageElement(onlySelected) &&
+        event.key === KEYS.ENTER
+      ) {
+        this.startImageCropping(onlySelected);
+        return;
+      }
     }
 
     if (this.actionManager.handleKeyDown(event)) {
@@ -4481,6 +4937,7 @@ export class DiagramEditor {
     if (this.destroyed) return;
     this.maybeCleanupAfterMissingPointerUp(null);
     this.text.destroy();
+    this.clipboard.clearPlainPaste();
     this.laserTrails.stop();
     this.eraserTrail.stop();
     this.lassoTrail.stop();

@@ -18,6 +18,15 @@ import {
   actionZoomToFitSelection,
   actionZoomToFitSelectionInViewport,
 } from "./canvas.ts";
+import {
+  actionCopy,
+  actionCopyAsPng,
+  actionCopyAsSvg,
+  actionCopyText,
+  actionCut,
+  actionPaste,
+  actionToggleCropEditor,
+} from "./clipboard.ts";
 import { actionDeleteSelected } from "./delete.ts";
 import { actionDuplicateSelection } from "./duplicate.ts";
 import { actionFinalize } from "./finalize.ts";
@@ -94,4 +103,11 @@ export const editorActions: readonly Action[] = [
   actionRemoveAllElementsFromFrame,
   actionUpdateFrameRendering,
   actionWrapSelectionInFrame,
+  actionCopy as Action,
+  actionCut as Action,
+  actionPaste,
+  actionCopyAsPng,
+  actionCopyAsSvg,
+  actionCopyText,
+  actionToggleCropEditor,
 ];

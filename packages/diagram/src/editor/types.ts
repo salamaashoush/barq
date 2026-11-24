@@ -106,6 +106,13 @@ export type ActionName =
   | "selectAll"
   | "gridMode"
   | "objectsSnapMode"
+  | "copy"
+  | "cut"
+  | "paste"
+  | "copyAsPng"
+  | "copyAsSvg"
+  | "copyText"
+  | "cropEditor"
   | "selectAllElementsInFrame"
   | "removeAllElementsFromFrame"
   | "updateFrameRendering"
@@ -157,7 +164,7 @@ export interface Action<TData = unknown> {
     appState: Readonly<AppState>,
     formData: TData | null,
     editor: DiagramEditor,
-  ) => ActionResult;
+  ) => ActionResult | Promise<ActionResult>;
   keyPriority?: number;
   keyTest?: (
     event: KeyboardEvent,

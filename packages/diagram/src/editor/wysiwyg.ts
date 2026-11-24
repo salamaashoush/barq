@@ -41,7 +41,6 @@ import {
 import { clamp as clampNumber, pointFrom, pointRotateRads } from "@excalidraw/math";
 
 import type {
-  ExcalidrawElement,
   ExcalidrawTextContainer,
   ExcalidrawTextElement,
   ExcalidrawTextElementWithContainer,
@@ -49,6 +48,11 @@ import type {
 } from "@excalidraw/element/types";
 import type { Radians } from "@excalidraw/math";
 
+import {
+  parseClipboard,
+  parseDataTransferEvent,
+  parseDataTransferEventMimeTypes,
+} from "../clipboard.ts";
 import { actionResetZoom, actionZoomIn, actionZoomOut } from "./actions/canvas.ts";
 import {
   actionDecreaseFontSize,
@@ -57,6 +61,7 @@ import {
   isTextAutoResizeShortcut,
 } from "./actions/text.ts";
 
+import type { ParsedDataTranferList } from "../clipboard.ts";
 import type { ZoomAnchor } from "./actions/canvas.ts";
 import type { DiagramEditor } from "./editor.ts";
 
@@ -666,31 +671,36 @@ export const textWysiwyg = ({
     editable.dispatchEvent(new ownerWindow.Event("input"));
   };
 
-  const onPaste = (event: ClipboardEvent): void => {
-    const data = event.clipboardData;
-    if (!data) {
-      return;
-    }
+  const onPaste = async (event: ClipboardEvent): Promise<void> => {
+    // the types are read in the event's task, to cancel it there
+    const mimeTypes = parseDataTransferEventMimeTypes(event);
+    let dataList: ParsedDataTranferList | null = null;
+
     // elements copied from a diagram paste as their text only
-    const elementsData =
-      data.getData(MIME_TYPES.excalidrawClipboard) || data.getData(MIME_TYPES.excalidraw);
-    const plain = data.getData(MIME_TYPES.text);
-    const copied = elementsData || (plain.includes('"type":"excalidraw/clipboard"') ? plain : "");
-    if (copied) {
+    if (mimeTypes.has(MIME_TYPES.excalidrawClipboard) || mimeTypes.has(MIME_TYPES.excalidraw)) {
       event.preventDefault();
+      dataList = await parseDataTransferEvent(event);
       try {
-        const parsed = JSON.parse(copied) as { elements?: readonly ExcalidrawElement[] };
-        const text = parsed.elements ? getTextFromElements(parsed.elements) : "";
-        if (text) {
-          insertAtSelection(text);
+        const parsed = await parseClipboard(dataList);
+        if (parsed.elements) {
+          const text = getTextFromElements(parsed.elements);
+          if (text) {
+            insertAtSelection(text);
+          }
         }
+        // elements without text paste nothing
+        return;
       } catch {
         console.warn("DiagramEditor: the pasted elements could not be read");
       }
-      return;
     }
 
-    const text = normalizeText(plain);
+    dataList = dataList ?? (await parseDataTransferEvent(event));
+    const textItem = dataList.findByType(MIME_TYPES.text);
+    if (!textItem) {
+      return;
+    }
+    const text = normalizeText(textItem.value);
     if (!text) {
       return;
     }
@@ -714,6 +724,8 @@ export const textWysiwyg = ({
       editable.style.width = `${width}px`;
     }
   };
+
+  const onPasteEvent = (event: ClipboardEvent): void => void onPaste(event);
 
   const onInput = (): void => {
     followsScene = false;
@@ -933,7 +945,7 @@ export const textWysiwyg = ({
     blurSubmits = false;
     editable.removeEventListener("input", onInput);
     editable.removeEventListener("keydown", onKeyDown);
-    editable.removeEventListener("paste", onPaste);
+    editable.removeEventListener("paste", onPasteEvent);
     editable.removeEventListener("pointerdown", stopPointerDown);
     editable.removeEventListener("blur", onEditableBlur);
     editable.removeEventListener("pointermove", onEditablePointerMove);
@@ -1148,7 +1160,7 @@ export const textWysiwyg = ({
 
   const stopPointerDown = (event: PointerEvent): void => event.stopPropagation();
   editable.addEventListener("pointerdown", stopPointerDown);
-  editable.addEventListener("paste", onPaste);
+  editable.addEventListener("paste", onPasteEvent);
   editable.addEventListener("input", onInput);
   editable.addEventListener("keydown", onKeyDown);
   editable.addEventListener("blur", onEditableBlur);

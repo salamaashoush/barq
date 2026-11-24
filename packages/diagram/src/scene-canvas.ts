@@ -98,6 +98,32 @@ export class SceneCanvas {
     this.scene.triggerUpdate();
   }
 
+  /**
+   * Decodes the files' images into the cache, whatever shows them: an image
+   * being inserted is not in the scene with its file yet.
+   */
+  public async loadImages(
+    fileIds: readonly FileId[],
+    files: BinaryFiles,
+  ): Promise<{ updatedFiles: Map<FileId, true>; erroredFiles: Map<FileId, true> }> {
+    this.files = files;
+    const result = await updateImageCache({
+      fileIds: [...fileIds],
+      files,
+      imageCache: this.imageCache,
+      createImage: () => getRenderEnvironment().createImage(),
+    });
+    if (result.updatedFiles.size > 0) {
+      for (const element of this.elements) {
+        if (isInitializedImageElement(element) && result.updatedFiles.has(element.fileId)) {
+          ShapeCache.delete(element);
+        }
+      }
+      this.scene.triggerUpdate();
+    }
+    return result;
+  }
+
   public async loadFonts(): Promise<void> {
     const loaded = await this.fonts.loadSceneFonts();
     if (loaded.length > 0) this.fonts.onLoaded(loaded);
