@@ -20,6 +20,7 @@ import { ToggleGroup, ToggleGroupItem } from "@barqjs/ui/toggle-group";
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
 import {
+  control,
   edge,
   fg,
   focus,
@@ -141,11 +142,7 @@ export const commentsStyles = variants({
       paddingInlineStart: space.x2,
       textAlign: "start",
     }),
-    anchorButton: arc(focus.visible, interaction.pressable, rounded.xs, target.size, {
-      background: "none",
-      border: "none",
-      font: "inherit",
-    }),
+    anchorButton: arc(control.bare, focus.visible, rounded.xs, target.size),
     detached: arc(layout.row, gap[1.5], type.meta, glyph.sm, { fontStyle: "italic" }),
     comments: arc(plainList, layout.column, gap[3]),
     comment: arc({}),

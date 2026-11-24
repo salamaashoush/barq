@@ -190,6 +190,23 @@ export interface ArcMessages {
   resolvedThreads: string;
   allThreads: string;
   noComments: string;
+  mediaControls: string;
+  seek: string;
+  timeOf: (time: string, total: string) => string;
+  mute: string;
+  unmute: string;
+  volume: string;
+  chapters: string;
+  chapterNow: (title: string) => string;
+  playbackSpeed: string;
+  normalSpeed: string;
+  captions: string;
+  captionsOff: string;
+  transcript: string;
+  pictureInPicture: string;
+  exitPictureInPicture: string;
+  fullscreen: string;
+  exitFullscreen: string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -377,6 +394,23 @@ export const ENGLISH: ArcMessages = {
   resolvedThreads: "Resolved",
   allThreads: "All",
   noComments: "No comments yet",
+  mediaControls: "Media controls",
+  seek: "Seek",
+  timeOf: (time, total) => `${time} of ${total}`,
+  mute: "Mute",
+  unmute: "Unmute",
+  volume: "Volume",
+  chapters: "Chapters",
+  chapterNow: (title) => `Chapter: ${title}`,
+  playbackSpeed: "Playback speed",
+  normalSpeed: "Normal",
+  captions: "Captions",
+  captionsOff: "Off",
+  transcript: "Transcript",
+  pictureInPicture: "Picture in picture",
+  exitPictureInPicture: "Exit picture in picture",
+  fullscreen: "Full screen",
+  exitFullscreen: "Exit full screen",
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");

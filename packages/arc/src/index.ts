@@ -198,6 +198,15 @@ export {
   commentsStyles,
 } from "./components/comments.tsx";
 export {
+  type MediaChapter,
+  type MediaCue,
+  MediaPlayer,
+  type MediaPlayerProps,
+  type MediaSource,
+  type MediaTrack,
+  mediaPlayerStyles,
+} from "./components/media-player.tsx";
+export {
   PersonAvatar,
   type PersonAvatarProps,
   personAvatarStyles,
@@ -466,7 +475,9 @@ export {
   type Moment,
   RelativeTime,
   type RelativeTimeProps,
+  type DurationTextOptions,
   durationParts,
+  durationText,
   formattedStyles,
 } from "./components/format.tsx";
 export { Indicator, type IndicatorProps, indicatorStyles } from "./components/indicator.tsx";

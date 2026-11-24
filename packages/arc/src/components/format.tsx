@@ -330,6 +330,37 @@ export interface DurationProps extends FormattedProps {
   units?: number;
 }
 
+export interface DurationTextOptions {
+  /** @default "short" */
+  length?: DurationProps["length"];
+  /** @default 2 */
+  units?: number;
+  /** With `"digital"`, `"auto"` leaves the hours out while there are none: `01:05`. @default "always" */
+  hours?: "always" | "auto";
+}
+
+/** What `Duration` writes, for a label or an attribute of an app's own. */
+export function durationText(
+  milliseconds: number,
+  locale: string,
+  options: DurationTextOptions = {},
+): string {
+  const seconds = Math.floor(Math.abs(milliseconds) / 1000);
+  if (options.length === "digital") {
+    return new Intl.DurationFormat(locale, {
+      style: "digital",
+      hoursDisplay: options.hours ?? "always",
+    }).format({
+      hours: Math.floor(seconds / 3600),
+      minutes: Math.floor(seconds / 60) % 60,
+      seconds: seconds % 60,
+    });
+  }
+  return new Intl.DurationFormat(locale, { style: options.length ?? "short" }).format(
+    durationParts(milliseconds, options.units ?? 2),
+  );
+}
+
 /**
  * How long something took, written in the locale by `Intl.DurationFormat`.
  *
@@ -340,20 +371,8 @@ export interface DurationProps extends FormattedProps {
  */
 export function Duration(props: DurationProps) {
   const locale = useLocale();
-  const text = (): string => {
-    const seconds = Math.floor(Math.abs(props.value) / 1000);
-    const value =
-      props.length === "digital"
-        ? {
-            hours: Math.floor(seconds / 3600),
-            minutes: Math.floor(seconds / 60) % 60,
-            seconds: seconds % 60,
-          }
-        : durationParts(props.value, props.units ?? 2);
-    return new Intl.DurationFormat(locale().locale, { style: props.length ?? "short" }).format(
-      value,
-    );
-  };
+  const text = (): string =>
+    durationText(props.value, locale().locale, { length: props.length, units: props.units });
   const cls = (): Slots =>
     parts(formattedStyles({ numeric: props.numeric !== false }), props.classes);
   return (

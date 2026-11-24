@@ -660,6 +660,23 @@ import { CommentThreadList } from "@barqjs/arc";
   finger, `+` and `-`, the zoom buttons or a double press zoom, a zoomed
   image drags to pan, and "Image 2 of 5" is announced as it changes.
 
+- `MediaPlayer`: audio or video on the browser's own element, with
+  controls every reader can use. The seek bar is a slider said as "1 minute,
+  5 seconds of 3 minutes, 20 seconds"; volume, speed, captions (each of the
+  `tracks`, or off) and `chapters` are menus beside it, with the current
+  chapter named, and `transcript` lines under the media follow it, the
+  spoken one marked and kept in view until the reader scrolls, each a button
+  that seeks to itself. Picture in picture and full screen appear where the
+  browser has them. With focus inside, Space or K plays and pauses, J and L
+  jump ten seconds, the arrows seek five and change the volume, M mutes, C
+  turns captions on and off, F goes full screen, Home and End go to the ends
+  and a digit to a tenth of the way. A tap on the picture plays or pauses and
+  two on either side jump. The controls run left to right on a right-to-left
+  page, as a timeline does, while their menus follow the page, and the
+  volume slider gives way to the mute button under a finger.
+  `durationText` is the time as `Duration` writes it, for a label of an
+  app's own.
+
 ui's `Carousel` swipes under a finger, steps with the arrows in the reading
 direction and has `CarouselPrevious` and `CarouselNext`; `CarouselDots` adds
 the slide picker, a button per slide with the current one marked.
