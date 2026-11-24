@@ -455,7 +455,7 @@ describe("a range's thumbs named one by one", () => {
         </SliderTrack>
       </Slider>
     ));
-    const names = screen.getAllByRole("slider").map((thumb) => accessibleName(thumb));
+    const names = screen.getAllByRole("slider").map((input) => accessibleName(input));
     expect(names).toEqual(["Minimum Price", "Maximum Price"]);
   });
 });
@@ -474,7 +474,7 @@ describe("a slider labelled by an element elsewhere", () => {
         </Slider>
       </>
     ));
-    const names = screen.getAllByRole("slider").map((thumb) => accessibleName(thumb));
+    const names = screen.getAllByRole("slider").map((input) => accessibleName(input));
     expect(names).toEqual(["Minimum Price", "Maximum Price"]);
     expect(screen.getByRole("group", { name: "Price" })).toBeDefined();
   });
