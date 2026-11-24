@@ -15,7 +15,12 @@ import {
 
 afterEach(unmountAll);
 
-function Badge(props: { value: number; tone?: string }) {
+interface BadgeProps {
+  value: number;
+  tone?: string;
+}
+
+function Badge(props: BadgeProps) {
   return (
     <b class="badge" data-tone={props.tone ?? "plain"}>
       {props.value}
@@ -111,6 +116,10 @@ function FunctionForm() {
   );
 }
 
+interface IdContext {
+  id: string;
+}
+
 describe("column templates", () => {
   test("string, function and component templates render in header, cell and footer", () => {
     const view = mount(() => <Markup />);
@@ -136,7 +145,7 @@ describe("column templates", () => {
     expect(flexRender(null, {})).toBeNull();
     expect(flexRender("plain", {})).toBe("plain");
     expect(flexRender(7, {})).toBe(7);
-    expect(flexRender((context: { id: string }) => `id:${context.id}`, { id: "a" })).toBe("id:a");
+    expect(flexRender((context: IdContext) => `id:${context.id}`, { id: "a" })).toBe("id:a");
   });
 
   test("table.FlexRender is FlexRender", () => {

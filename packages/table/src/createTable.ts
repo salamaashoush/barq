@@ -57,11 +57,12 @@ export function createTable<TFeatures extends TableFeatures, TData extends RowDa
 
   let applied = untrack(resolved);
 
-  const merge = (
+  function merge(
     defaults: TableOptions<TFeatures, TData>,
     options: TableOptions<TFeatures, TData>,
-  ): TableOptions<TFeatures, TData> =>
-    mergeDescriptors(defaults, options) as TableOptions<TFeatures, TData>;
+  ): TableOptions<TFeatures, TData> {
+    return mergeDescriptors(defaults, options) as TableOptions<TFeatures, TData>;
+  }
 
   const table = constructTable(
     mergeDescriptors({ mergeOptions: merge }, applied) as TableOptions<TFeatures, TData>,

@@ -36,9 +36,15 @@ const columns: Array<ColumnDef<Features, Person>> = [
   { accessorKey: "team" },
 ];
 
-const names = (view: Mounted): string[] => view.text("li .name");
+function names(view: Mounted): string[] {
+  return view.text("li .name");
+}
 
-function Rows(props: { table: BarqTable<Features, Person> }) {
+interface TableProps {
+  table: BarqTable<Features, Person>;
+}
+
+function Rows(props: TableProps) {
   const table = props.table;
   return (
     <ul>
@@ -293,6 +299,10 @@ describe("external atoms", () => {
   });
 });
 
+interface Watched {
+  subs?: object;
+}
+
 describe("granularity and lifetime", () => {
   test("a computation follows the slice it read and nothing else", () => {
     const runs = { sorting: 0, pagination: 0 };
@@ -337,7 +347,9 @@ describe("granularity and lifetime", () => {
 
   test("disposing the owner releases an external atom", () => {
     const selection = createAtom<RowSelectionState>({});
-    const watched = (): boolean => (selection as unknown as { subs?: object }).subs !== undefined;
+    function watched(): boolean {
+      return (selection as unknown as Watched).subs !== undefined;
+    }
     const dispose = createRoot((disposeRoot) => {
       createTable({ features, columns, data: people, atoms: { rowSelection: selection } });
       return disposeRoot;
@@ -349,7 +361,7 @@ describe("granularity and lifetime", () => {
 });
 
 describe("row identity", () => {
-  function Body(props: { table: BarqTable<Features, Person> }) {
+  function Body(props: TableProps) {
     const table = props.table;
     return (
       <table>
@@ -372,15 +384,17 @@ describe("row identity", () => {
     );
   }
 
-  const rowNodes = (view: Mounted): Map<string, Element> =>
-    new Map(
+  function rowNodes(view: Mounted): Map<string, Element> {
+    return new Map(
       [...view.host.querySelectorAll("tbody tr")].map((node) => [
         node.getAttribute("data-id")!,
         node,
       ]),
     );
-  const order = (view: Mounted): string[] =>
-    [...view.host.querySelectorAll("tbody tr")].map((node) => node.getAttribute("data-id")!);
+  }
+  function order(view: Mounted): string[] {
+    return [...view.host.querySelectorAll("tbody tr")].map((node) => node.getAttribute("data-id")!);
+  }
 
   test("a sort moves the existing rows instead of building new ones", () => {
     let table!: BarqTable<Features, Person>;
@@ -476,12 +490,12 @@ describe("scale", () => {
     );
     // The two functions `auto` resolves these columns to, counted.
     let comparisons = 0;
-    const counted =
-      (sort: SortFn<Features, Person>): SortFn<Features, Person> =>
-      (a, b, id) => {
+    function counted(sort: SortFn<Features, Person>): SortFn<Features, Person> {
+      return (a, b, id) => {
         comparisons++;
         return sort(a, b, id);
       };
+    }
     const countedColumns: Array<ColumnDef<Features, Person>> = [
       { accessorKey: "name", sortFn: counted(sortFn_alphanumeric) },
       { accessorKey: "age", sortFn: counted(sortFn_basic) },

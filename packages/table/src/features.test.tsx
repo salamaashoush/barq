@@ -44,7 +44,11 @@ const columns: Array<ColumnDef<Features, Person>> = [
 
 let table: BarqTable<Features, Person>;
 
-function Grid(props: { options?: Partial<TableOptions<Features, Person>> }) {
+interface GridProps {
+  options?: Partial<TableOptions<Features, Person>>;
+}
+
+function Grid(props: GridProps) {
   table = createTable(() => ({
     features,
     columns,
@@ -162,18 +166,26 @@ function Grid(props: { options?: Partial<TableOptions<Features, Person>> }) {
   );
 }
 
-const grid = (options?: Partial<TableOptions<Features, Person>>): Mounted =>
-  mount(() => <Grid options={options} />);
+function grid(options?: Partial<TableOptions<Features, Person>>): Mounted {
+  return mount(() => <Grid options={options} />);
+}
 
-const names = (view: Mounted): string[] => view.text('tbody td[data-col="name"]');
-const testid = (view: Mounted, id: string): HTMLElement => view.one(`[data-testid="${id}"]`);
-const field = (view: Mounted, id: string): HTMLInputElement => testid(view, id) as HTMLInputElement;
-const button = (view: Mounted, id: string): HTMLButtonElement =>
-  testid(view, id) as HTMLButtonElement;
-const run = (action: () => void): void => {
+function names(view: Mounted): string[] {
+  return view.text('tbody td[data-col="name"]');
+}
+function testid(view: Mounted, id: string): HTMLElement {
+  return view.one(`[data-testid="${id}"]`);
+}
+function field(view: Mounted, id: string): HTMLInputElement {
+  return testid(view, id) as HTMLInputElement;
+}
+function button(view: Mounted, id: string): HTMLButtonElement {
+  return testid(view, id) as HTMLButtonElement;
+}
+function run(action: () => void): void {
   action();
   flush();
-};
+}
 
 describe("sorting", () => {
   test("a header click cycles ascending, descending, unsorted", () => {
@@ -332,11 +344,14 @@ describe("row selection", () => {
 });
 
 describe("column state", () => {
-  const headers = (view: Mounted): string[] =>
-    [...view.host.querySelectorAll("thead th[data-col]")].map(
+  function headers(view: Mounted): string[] {
+    return [...view.host.querySelectorAll("thead th[data-col]")].map(
       (node) => node.getAttribute("data-col") ?? "",
     );
-  const firstRow = (view: Mounted): string[] => view.text("tbody tr:first-child td[data-col]");
+  }
+  function firstRow(view: Mounted): string[] {
+    return view.text("tbody tr:first-child td[data-col]");
+  }
 
   test("visibility hides the header and every cell of the column", () => {
     const view = grid();

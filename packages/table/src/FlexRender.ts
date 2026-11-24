@@ -69,9 +69,10 @@ export function renderSlots<
     if (cell) {
       const current = mode?.() ?? NORMAL;
       if (current === PLACEHOLDER) return null;
-      const def = cell.column.columnDef as typeof cell.column.columnDef & {
+      interface AggregatedColumnDef {
         aggregatedCell?: typeof cell.column.columnDef.cell;
-      };
+      }
+      const def = cell.column.columnDef as typeof cell.column.columnDef & AggregatedColumnDef;
       const template = current === AGGREGATED ? (def.aggregatedCell ?? def.cell) : def.cell;
       return flexRender(template as never, cell.getContext());
     }

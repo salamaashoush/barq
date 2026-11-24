@@ -27,13 +27,15 @@ export type Person = {
   reports?: Person[];
 };
 
-export const person = (id: number, name: string, age: number, team: string): Person => ({
-  id: String(id),
-  name,
-  age,
-  team,
-  email: `${name}@example.com`,
-});
+export function person(id: number, name: string, age: number, team: string): Person {
+  return {
+    id: String(id),
+    name,
+    age,
+    team,
+    email: `${name}@example.com`,
+  };
+}
 
 export const people: Person[] = [
   person(1, "salama", 30, "core"),

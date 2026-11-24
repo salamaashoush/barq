@@ -26,7 +26,11 @@ function RowCount() {
   return <output data-testid="count">{table.getRowModel().rows.length}</output>;
 }
 
-function Shout(props: { mark?: string }) {
+interface ShoutProps {
+  mark?: string;
+}
+
+function Shout(props: ShoutProps) {
   const cell = useCellContext<string>();
   return <strong>{cell.getValue().toUpperCase() + (props.mark ?? "")}</strong>;
 }
@@ -70,7 +74,11 @@ const columns = helper.columns([
   helper.display({ id: "team", cell: ({ row }) => row.original.team }),
 ]);
 
-function App(props: { rows?: Person[] }) {
+interface AppProps {
+  rows?: Person[];
+}
+
+function App(props: AppProps) {
   const table = createAppTable<Person>(() => ({ columns, data: props.rows ?? people }));
   return (
     <table.AppTable>
@@ -196,7 +204,7 @@ describe("createTableHook", () => {
   });
 
   test("a context reader outside its provider says which provider is missing", () => {
-    const failure = (read: () => unknown): string => {
+    function failure(read: () => unknown): string {
       let message = "";
       mount(() => {
         try {
@@ -207,7 +215,7 @@ describe("createTableHook", () => {
         return null;
       });
       return message;
-    };
+    }
     expect(failure(useTableContext)).toContain(
       "`useTableContext` must be used within an `AppTable`",
     );

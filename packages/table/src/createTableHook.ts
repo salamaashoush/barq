@@ -45,13 +45,17 @@ export type ComponentType<TProps> = (props: TProps) => JSXElement;
 // component accepts being typed as one that is never called.
 type Components = Record<string, ComponentType<never>>;
 
+export interface FlexRenderApi {
+  FlexRender: () => JSXElement;
+}
+
 export type AppCellContext<
   TFeatures extends TableFeatures,
   TData extends RowData,
   TValue extends CellData,
   TCellComponents extends Components,
 > = {
-  cell: Cell<TFeatures, TData, TValue> & TCellComponents & { FlexRender: () => JSXElement };
+  cell: Cell<TFeatures, TData, TValue> & TCellComponents & FlexRenderApi;
   column: Column<TFeatures, TData, TValue>;
   getValue: CellContext<TFeatures, TData, TValue>["getValue"];
   renderValue: CellContext<TFeatures, TData, TValue>["renderValue"];
@@ -66,7 +70,7 @@ export type AppHeaderContext<
   THeaderComponents extends Components,
 > = {
   column: Column<TFeatures, TData, TValue>;
-  header: Header<TFeatures, TData, TValue> & THeaderComponents & { FlexRender: () => JSXElement };
+  header: Header<TFeatures, TData, TValue> & THeaderComponents & FlexRenderApi;
   table: Table<TFeatures, TData>;
 };
 
@@ -107,6 +111,10 @@ export type AppGroupColumnDef<
   columns?: ReadonlyArray<ColumnDef<TFeatures, TData>>;
 };
 
+export interface IdentifiedColumn {
+  id: string;
+}
+
 export type AppColumnHelper<
   TFeatures extends TableFeatures,
   TData extends RowData,
@@ -123,9 +131,8 @@ export type AppColumnHelper<
   >(
     accessor: TAccessor,
     column: TAccessor extends AccessorFn<TData>
-      ? AppColumnDefBase<TFeatures, TData, TValue, TCellComponents, THeaderComponents> & {
-          id: string;
-        }
+      ? AppColumnDefBase<TFeatures, TData, TValue, TCellComponents, THeaderComponents> &
+          IdentifiedColumn
       : AppColumnDefBase<TFeatures, TData, TValue, TCellComponents, THeaderComponents>,
   ) => TAccessor extends AccessorFn<TData>
     ? AccessorFnColumnDef<TFeatures, TData, TValue>
@@ -173,9 +180,7 @@ export interface AppCellProps<
   TCellComponents extends Components,
 > {
   cell: Cell<TFeatures, TData, TValue>;
-  children: (
-    cell: Cell<TFeatures, TData, TValue> & TCellComponents & { FlexRender: () => JSXElement },
-  ) => JSXElement;
+  children: (cell: Cell<TFeatures, TData, TValue> & TCellComponents & FlexRenderApi) => JSXElement;
 }
 
 export interface AppHeaderProps<
@@ -186,7 +191,7 @@ export interface AppHeaderProps<
 > {
   header: Header<TFeatures, TData, TValue>;
   children: (
-    header: Header<TFeatures, TData, TValue> & THeaderComponents & { FlexRender: () => JSXElement },
+    header: Header<TFeatures, TData, TValue> & THeaderComponents & FlexRenderApi,
   ) => JSXElement;
 }
 
@@ -256,9 +261,33 @@ export interface CreateTableHookResult<
     THeaderComponents
   >;
   useCellContext: <TValue extends CellData = CellData>() => Cell<TFeatures, RowData, TValue> &
-    TCellComponents & { FlexRender: () => JSXElement };
+    TCellComponents &
+    FlexRenderApi;
   useHeaderContext: <TValue extends CellData = CellData>() => Header<TFeatures, RowData, TValue> &
-    THeaderComponents & { FlexRender: () => JSXElement };
+    THeaderComponents &
+    FlexRenderApi;
+}
+
+interface AppTableSlotProps {
+  children?: unknown;
+}
+
+interface AppCellSlotProps<
+  TFeatures extends TableFeatures,
+  TCellComponents extends Components,
+  TData extends RowData,
+> {
+  cell: () => Cell<TFeatures, TData>;
+  children: AppCellProps<TFeatures, TData, CellData, TCellComponents>["children"];
+}
+
+interface AppHeaderSlotProps<
+  TFeatures extends TableFeatures,
+  THeaderComponents extends Components,
+  TData extends RowData,
+> {
+  header: () => Header<TFeatures, TData>;
+  children: AppHeaderProps<TFeatures, TData, CellData, THeaderComponents>["children"];
 }
 
 /**
@@ -328,10 +357,12 @@ export function createTableHook<
   }
 
   function useCellContext<TValue extends CellData = CellData>(): Cell<TFeatures, RowData, TValue> &
-    TCellComponents & { FlexRender: () => JSXElement } {
+    TCellComponents &
+    FlexRenderApi {
     try {
       return read(CellContext)() as Cell<TFeatures, RowData, TValue> &
-        TCellComponents & { FlexRender: () => JSXElement };
+        TCellComponents &
+        FlexRenderApi;
     } catch (cause) {
       throw new Error(
         "`useCellContext` must be used within an `AppCell` component. " +
@@ -346,10 +377,12 @@ export function createTableHook<
     RowData,
     TValue
   > &
-    THeaderComponents & { FlexRender: () => JSXElement } {
+    THeaderComponents &
+    FlexRenderApi {
     try {
       return read(HeaderContext)() as Header<TFeatures, RowData, TValue> &
-        THeaderComponents & { FlexRender: () => JSXElement };
+        THeaderComponents &
+        FlexRenderApi;
     } catch (cause) {
       throw new Error(
         "`useHeaderContext` must be used within an `AppHeader` or `AppFooter` component.",
@@ -358,15 +391,22 @@ export function createTableHook<
     }
   }
 
-  const CellFlexRender = (): JSXElement => renderSlots({ cell: constant(useCellContext()) });
-  const HeaderFlexRender = (): JSXElement => renderSlots({ header: constant(useHeaderContext()) });
-  const FooterFlexRender = (): JSXElement => renderSlots({ footer: constant(useHeaderContext()) });
+  function CellFlexRender(): JSXElement {
+    return renderSlots({ cell: constant(useCellContext()) });
+  }
+  function HeaderFlexRender(): JSXElement {
+    return renderSlots({ header: constant(useHeaderContext()) });
+  }
+  function FooterFlexRender(): JSXElement {
+    return renderSlots({ footer: constant(useHeaderContext()) });
+  }
 
   function createAppTable<TData extends TRow>(
     tableOptions: MaybeAccessor<Omit<TableOptions<TFeatures, TData>, "features">>,
   ): AppBarqTable<TFeatures, TData, TTableComponents, TCellComponents, THeaderComponents> {
-    const withDefaults = (options: object): TableOptions<TFeatures, TData> =>
-      mergeDescriptors(defaultTableOptions, options) as TableOptions<TFeatures, TData>;
+    function withDefaults(options: object): TableOptions<TFeatures, TData> {
+      return mergeDescriptors(defaultTableOptions, options) as TableOptions<TFeatures, TData>;
+    }
 
     const table = createTable<TFeatures, TData>(
       typeof tableOptions === "function"
@@ -374,35 +414,30 @@ export function createTableHook<
         : withDefaults(tableOptions),
     );
 
-    const AppTable = (props: { children?: unknown }): unknown =>
-      provide(TableContext, constant(table), () => {
+    function AppTable(props: AppTableSlotProps): unknown {
+      return provide(TableContext, constant(table), () => {
         const children = props.children;
         return typeof children === "function" ? (children as () => unknown)() : children;
       });
+    }
 
-    const AppCell = (props: {
-      cell: () => Cell<TFeatures, TData>;
-      children: AppCellProps<TFeatures, TData, CellData, TCellComponents>["children"];
-    }): unknown => {
+    function AppCell(props: AppCellSlotProps<TFeatures, TCellComponents, TData>): unknown {
       const extended = Object.assign(
         readSlot(props.cell, "AppCell.cell") as Cell<TFeatures, TData>,
         { FlexRender: CellFlexRender, ...cellComponents },
-      ) as Cell<TFeatures, TData> & TCellComponents & { FlexRender: () => JSXElement };
+      ) as Cell<TFeatures, TData> & TCellComponents & FlexRenderApi;
       return provide(CellContext, constant(extended), () => props.children(extended));
-    };
+    }
 
-    const headerSlot =
-      (origin: string, Render: () => JSXElement) =>
-      (props: {
-        header: () => Header<TFeatures, TData>;
-        children: AppHeaderProps<TFeatures, TData, CellData, THeaderComponents>["children"];
-      }): unknown => {
+    function headerSlot(origin: string, Render: () => JSXElement) {
+      return (props: AppHeaderSlotProps<TFeatures, THeaderComponents, TData>): unknown => {
         const extended = Object.assign(readSlot(props.header, origin) as Header<TFeatures, TData>, {
           FlexRender: Render,
           ...headerComponents,
-        }) as Header<TFeatures, TData> & THeaderComponents & { FlexRender: () => JSXElement };
+        }) as Header<TFeatures, TData> & THeaderComponents & FlexRenderApi;
         return provide(HeaderContext, constant(extended), () => props.children(extended));
       };
+    }
 
     return Object.assign(table, {
       AppTable,

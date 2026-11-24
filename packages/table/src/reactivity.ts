@@ -14,7 +14,7 @@ import type { TableAtomOptions, TableReactivityBindings } from "@tanstack/table-
 export function barqReactivity(): TableReactivityBindings {
   const subscriptions = new Set<Subscription>();
 
-  const tracked = <T>(atom: ReadonlyAtom<T>): (() => T) => {
+  function tracked<T>(atom: ReadonlyAtom<T>): () => T {
     // The first notification can arrive while the component that owns the
     // table is still being built, which the engine's development build treats
     // as a write inside an owned scope unless the signal opts in.
@@ -24,7 +24,7 @@ export function barqReactivity(): TableReactivityBindings {
       version();
       return atom.get();
     };
-  };
+  }
 
   return {
     createOptionsStore: true,
