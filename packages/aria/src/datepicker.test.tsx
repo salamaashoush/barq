@@ -55,6 +55,28 @@ describe("DatePicker", () => {
     expect(trigger()).not.toBeNull();
   });
 
+  test("each segment is named by its part and the picker's label, the field's group by neither", () => {
+    render(() => <Departure />);
+
+    expect(screen.getAllByRole("spinbutton").map((element) => accessibleName(element))).toEqual([
+      "month, Departure",
+      "day, Departure",
+      "year, Departure",
+    ]);
+    expect(screen.getAllByRole("group").map((element) => accessibleName(element))).toEqual([
+      "Departure",
+      "",
+    ]);
+  });
+
+  test("a picker named by aria-label names its segments with it", () => {
+    render(() => <DatePicker aria-label="Departure" />);
+
+    expect(accessibleName(screen.getAllByRole("spinbutton")[0] as HTMLElement)).toBe(
+      "month, Departure",
+    );
+  });
+
   test("the button says a dialog opens, and is named with the field", () => {
     render(() => <Departure />);
 
@@ -66,9 +88,9 @@ describe("DatePicker", () => {
   test("the field shows the value", () => {
     render(() => <Departure value={new CalendarDate(2024, 3, 7)} />);
 
-    expect(segment("month").textContent).toBe("03");
-    expect(segment("day").textContent).toBe("07");
-    expect(segment("year").textContent).toBe("2024");
+    expect(segment("month, Departure").textContent).toBe("03");
+    expect(segment("day, Departure").textContent).toBe("07");
+    expect(segment("year, Departure").textContent).toBe("2024");
   });
 
   test("pressing the button opens a dialog with a calendar in it", async () => {
@@ -100,7 +122,7 @@ describe("DatePicker", () => {
     const changes: (DateValue | null)[] = [];
     render(() => <Departure onChange={(value) => changes.push(value)} />);
 
-    user.focus(segment("month"));
+    user.focus(segment("month, Departure"));
     for (const key of ["3", "7", "2", "0", "2", "4"]) {
       user.keyDown(key);
       flush();
@@ -188,6 +210,19 @@ describe("DateRangePicker", () => {
     expect(screen.getByRole("group", { name: "End date" })).not.toBeNull();
   });
 
+  test("each segment names its end and the picker", () => {
+    render(() => <Stay />);
+
+    expect(screen.getAllByRole("spinbutton").map((element) => accessibleName(element))).toEqual([
+      "month, Start date, Stay",
+      "day, Start date, Stay",
+      "year, Start date, Stay",
+      "month, End date, Stay",
+      "day, End date, Stay",
+      "year, End date, Stay",
+    ]);
+  });
+
   test("drawing a range in the calendar fills both fields", async () => {
     const ranges: string[][] = [];
     render(() => (
@@ -245,7 +280,7 @@ describe("opening from the keyboard", () => {
       />
     ));
 
-    user.focus(segment("month"));
+    user.focus(segment("month, Departure"));
     user.keyDown("ArrowDown", { altKey: true });
     await tick();
 
@@ -379,7 +414,7 @@ describe("a date picker in a zone or another calendar", () => {
       />
     ));
 
-    expect(screen.getByRole("textbox", { name: "time zone" }).textContent).toBe("EST");
+    expect(screen.getByRole("textbox", { name: "time zone, Call" }).textContent).toBe("EST");
     user.click(trigger());
     await tick();
     user.click(screen.getByRole("button", { name: /^Sunday, March 10, 2024/ }));
@@ -387,7 +422,7 @@ describe("a date picker in a zone or another calendar", () => {
 
     expect(changes.at(-1)?.toString()).toBe("2024-03-10T09:30:00-04:00[America/New_York]");
     // The field's own zone, not the time field's beside the calendar.
-    expect(screen.getAllByRole("textbox", { name: "time zone" })[0]?.textContent).toBe("EDT");
+    expect(screen.getAllByRole("textbox", { name: "time zone, Call" })[0]?.textContent).toBe("EDT");
   });
 
   test("a day chosen with no value yet takes the placeholder's time and zone", async () => {
@@ -422,7 +457,7 @@ describe("a date picker in a zone or another calendar", () => {
       </InLocale>
     ));
 
-    expect(segment("era")).not.toBeNull();
+    expect(segment("era, Date")).not.toBeNull();
     user.click(trigger());
     await tick();
     expect(screen.getByRole("heading").textContent).toBe("February Reiwa 6");
@@ -450,14 +485,14 @@ describe("a date picker with a time", () => {
 
     user.click(trigger());
     await tick();
-    expect(timeSegment("hour").textContent).toBe("08");
+    expect(timeSegment("hour, Time").textContent).toBe("08");
 
     user.click(screen.getByRole("button", { name: /^Monday, February 4, 2019/ }));
     flush();
     expect(screen.getByRole("dialog")).not.toBeNull();
     expect(changes.map(String)).toEqual(["2019-02-04T08:45:00"]);
 
-    user.focus(timeSegment("hour"));
+    user.focus(timeSegment("hour, Time"));
     user.keyDown("ArrowUp");
     flush();
     expect(screen.getByRole("dialog")).not.toBeNull();
@@ -476,12 +511,12 @@ describe("a date picker with a time", () => {
     expect(day.closest('[role="gridcell"]')?.getAttribute("aria-selected")).toBe("true");
     expect(changes).toEqual([]);
 
-    user.focus(timeSegment("hour"));
+    user.focus(timeSegment("hour, Time"));
     user.keyDown("ArrowUp");
     flush();
     expect(changes).toEqual([]);
 
-    user.focus(timeSegment("minute"));
+    user.focus(timeSegment("minute, Time"));
     user.keyDown("ArrowUp");
     flush();
     expect(changes.map(String)).toEqual(["2024-03-15T00:00:00"]);
@@ -510,9 +545,9 @@ describe("a date picker with a time", () => {
 
     user.click(trigger());
     await tick();
-    user.focus(timeSegment("hour"));
+    user.focus(timeSegment("hour, Time"));
     user.keyDown("ArrowUp");
-    user.focus(timeSegment("minute"));
+    user.focus(timeSegment("minute, Time"));
     user.keyDown("ArrowUp");
     user.keyDown("ArrowUp");
     flush();
@@ -573,9 +608,9 @@ describe("a date picker with a time", () => {
     expect(ranges).toEqual([]);
 
     // One end's time is not the range's.
-    user.focus(startTime("hour"));
+    user.focus(startTime("hour, Start time"));
     user.keyDown("ArrowUp");
-    user.focus(startTime("minute"));
+    user.focus(startTime("minute, Start time"));
     user.keyDown("ArrowUp");
     flush();
     expect(ranges).toEqual([]);
@@ -606,9 +641,9 @@ describe("a date picker with a time", () => {
     user.click(screen.getByRole("button", { name: /^Monday, March 11, 2024/ }));
     user.click(screen.getByRole("button", { name: /^Friday, March 15, 2024/ }));
     for (const group of ["Start time", "End time"]) {
-      user.focus(time(group, "hour"));
+      user.focus(time(group, `hour, ${group}`));
       user.keyDown("ArrowUp");
-      user.focus(time(group, "minute"));
+      user.focus(time(group, `minute, ${group}`));
       user.keyDown("ArrowUp");
       flush();
     }

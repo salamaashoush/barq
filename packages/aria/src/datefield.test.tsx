@@ -88,67 +88,67 @@ describe("DateField", () => {
   test("a value fills every segment", () => {
     render(() => <Departure value={new CalendarDate(2024, 3, 7)} />);
 
-    expect(segment("month").textContent).toBe("03");
-    expect(segment("day").textContent).toBe("07");
-    expect(segment("year").textContent).toBe("2024");
-    expect(segment("month").hasAttribute("data-placeholder")).toBe(false);
+    expect(segment("month, Departure").textContent).toBe("03");
+    expect(segment("day, Departure").textContent).toBe("07");
+    expect(segment("year, Departure").textContent).toBe("2024");
+    expect(segment("month, Departure").hasAttribute("data-placeholder")).toBe(false);
   });
 
   test("each segment is a spin button with its own range", () => {
     render(() => <Departure value={new CalendarDate(2024, 3, 7)} />);
 
-    expect(segment("month").getAttribute("aria-valuemin")).toBe("1");
-    expect(segment("month").getAttribute("aria-valuemax")).toBe("12");
-    expect(segment("month").getAttribute("aria-valuenow")).toBe("3");
+    expect(segment("month, Departure").getAttribute("aria-valuemin")).toBe("1");
+    expect(segment("month, Departure").getAttribute("aria-valuemax")).toBe("12");
+    expect(segment("month, Departure").getAttribute("aria-valuenow")).toBe("3");
     // February 2024 has 29 days; March has 31.
-    expect(segment("day").getAttribute("aria-valuemax")).toBe("31");
+    expect(segment("day, Departure").getAttribute("aria-valuemax")).toBe("31");
   });
 
   test("the arrows cycle within the segment", () => {
     render(() => <Departure defaultValue={new CalendarDate(2024, 12, 7)} />);
 
-    user.focus(segment("month"));
+    user.focus(segment("month, Departure"));
     user.keyDown("ArrowUp");
     flush();
 
     // January of the SAME year: the user is editing the month.
-    expect(segment("month").textContent).toBe("01");
-    expect(segment("year").textContent).toBe("2024");
+    expect(segment("month, Departure").textContent).toBe("01");
+    expect(segment("year, Departure").textContent).toBe("2024");
   });
 
   test("typing a digit that can only mean one thing moves on", () => {
     render(() => <Departure />);
 
-    user.focus(segment("month"));
+    user.focus(segment("month, Departure"));
     user.keyDown("4");
     flush();
 
-    expect(segment("month").textContent).toBe("04");
+    expect(segment("month, Departure").textContent).toBe("04");
     // No month starts with 4 that is not 4, so the day is next.
-    expect(document.activeElement).toBe(segment("day"));
+    expect(document.activeElement).toBe(segment("day, Departure"));
   });
 
   test("typing a digit that could start a longer number waits", () => {
     render(() => <Departure />);
 
-    user.focus(segment("month"));
+    user.focus(segment("month, Departure"));
     user.keyDown("1");
     flush();
 
-    expect(segment("month").textContent).toBe("01");
+    expect(segment("month, Departure").textContent).toBe("01");
     // 1, 10, 11 and 12 all begin with it.
-    expect(document.activeElement).toBe(segment("month"));
+    expect(document.activeElement).toBe(segment("month, Departure"));
 
     user.keyDown("2");
     flush();
-    expect(segment("month").textContent).toBe("12");
+    expect(segment("month, Departure").textContent).toBe("12");
   });
 
   test("the value only exists once every segment is filled", () => {
     const changes: (DateValue | null)[] = [];
     render(() => <Departure onChange={(value) => changes.push(value)} />);
 
-    user.focus(segment("month"));
+    user.focus(segment("month, Departure"));
     user.keyDown("3");
     flush();
     user.keyDown("7");
@@ -173,25 +173,25 @@ describe("DateField", () => {
       />
     ));
 
-    user.focus(segment("day"));
+    user.focus(segment("day, Departure"));
     user.keyDown("Backspace");
     flush();
 
-    expect(segment("day").getAttribute("data-placeholder")).toBe("");
+    expect(segment("day, Departure").getAttribute("data-placeholder")).toBe("");
     expect(changes.at(-1)).toBeNull();
   });
 
   test("the arrows move between segments", () => {
     render(() => <Departure value={new CalendarDate(2024, 3, 7)} />);
 
-    user.focus(segment("month"));
+    user.focus(segment("month, Departure"));
     user.keyDown("ArrowRight");
     flush();
-    expect(document.activeElement).toBe(segment("day"));
+    expect(document.activeElement).toBe(segment("day, Departure"));
 
     user.keyDown("ArrowLeft");
     flush();
-    expect(document.activeElement).toBe(segment("month"));
+    expect(document.activeElement).toBe(segment("month, Departure"));
   });
 
   test("a granularity of minutes adds the time segments", () => {
@@ -236,11 +236,11 @@ describe("DateField", () => {
       />
     ));
 
-    user.focus(segment("month"));
+    user.focus(segment("month, Departure"));
     user.keyDown("ArrowUp");
     flush();
 
-    expect(segment("month").textContent).toBe("03");
+    expect(segment("month, Departure").textContent).toBe("03");
     expect(changes).toEqual([]);
   });
 
@@ -282,11 +282,49 @@ describe("TimeField", () => {
       />
     ));
 
-    user.focus(screen.getByRole("spinbutton", { name: "minute" }));
+    user.focus(screen.getByRole("spinbutton", { name: "minute, Starts" }));
     user.keyDown("ArrowUp");
     flush();
 
     expect(changes.at(-1)?.toString()).toBe("14:31:00");
+  });
+});
+
+describe("a segment's name", () => {
+  const names = (): string[] => segments().map((element) => accessibleName(element));
+
+  test("each segment is named by its part and then by the field's label", () => {
+    render(() => <Departure />);
+
+    expect(names()).toEqual(["month, Departure", "day, Departure", "year, Departure"]);
+    const label = screen.getByText("Departure");
+    for (const element of segments()) {
+      expect(element.getAttribute("aria-labelledby")).toBe(`${element.id} ${label.id}`);
+    }
+  });
+
+  test("an aria-label on the field follows the part", () => {
+    render(() => <DateField aria-label="Departure" />);
+
+    expect(names()).toEqual(["month, Departure", "day, Departure", "year, Departure"]);
+    expect(segments()[0]?.hasAttribute("aria-labelledby")).toBe(false);
+  });
+
+  test("an aria-labelledby on the field is read after a visible label", () => {
+    render(() => (
+      <>
+        <span id="trip">Trip</span>
+        <TimeField label="Starts" aria-labelledby="trip" value={new Time(14, 30)} />
+      </>
+    ));
+
+    expect(names()).toEqual(["hour, Starts Trip", "minute, Starts Trip", "AM/PM, Starts Trip"]);
+  });
+
+  test("a field with no label is named by its parts alone", () => {
+    render(() => <DateField />);
+
+    expect(names()).toEqual(["month", "day", "year"]);
   });
 });
 
@@ -408,8 +446,8 @@ function beforeInput(element: Element, inputType: string, data: string | null = 
 describe("editing on a touch device", () => {
   test("an editable segment is content-editable, a disabled or read-only one is not", () => {
     render(() => <Departure />);
-    expect(segment("month").getAttribute("contenteditable")).toBe("true");
-    expect(segment("month").getAttribute("inputmode")).toBe("numeric");
+    expect(segment("month, Departure").getAttribute("contenteditable")).toBe("true");
+    expect(segment("month, Departure").getAttribute("inputmode")).toBe("numeric");
 
     render(() => <Departure isReadOnly />);
     const readOnly = screen.getAllByRole("spinbutton").at(-1) as HTMLElement;
@@ -420,14 +458,14 @@ describe("editing on a touch device", () => {
     const changes: (DateValue | null)[] = [];
     render(() => <Departure onChange={(value) => changes.push(value)} />);
 
-    user.focus(segment("month"));
+    user.focus(segment("month, Departure"));
     // The keydown of a virtual keyboard carries no key; the character arrives
     // only in beforeinput, which the browser would otherwise write into the
     // segment's text.
-    expect(beforeInput(segment("month"), "insertText", "4")).toBe(false);
+    expect(beforeInput(segment("month, Departure"), "insertText", "4")).toBe(false);
     flush();
-    expect(segment("month").textContent).toBe("04");
-    expect(document.activeElement).toBe(segment("day"));
+    expect(segment("month, Departure").textContent).toBe("04");
+    expect(document.activeElement).toBe(segment("day, Departure"));
 
     for (const key of ["7", "2", "0", "2", "6"]) {
       beforeInput(document.activeElement as Element, "insertText", key);
@@ -438,10 +476,10 @@ describe("editing on a touch device", () => {
 
   test("a virtual keyboard's delete removes one digit", () => {
     render(() => <Departure defaultValue={new CalendarDate(2024, 12, 7)} />);
-    user.focus(segment("month"));
-    beforeInput(segment("month"), "deleteContentBackward");
+    user.focus(segment("month, Departure"));
+    beforeInput(segment("month, Departure"), "deleteContentBackward");
     flush();
-    expect(segment("month").textContent).toBe("01");
+    expect(segment("month, Departure").textContent).toBe("01");
   });
 
   test("on iOS a segment is a textbox, because VoiceOver cannot focus a spin button", () => {
@@ -463,15 +501,15 @@ describe("editing on a touch device", () => {
 describe("what a segment reads as", () => {
   test("a month reads as its number and its name", () => {
     render(() => <Departure value={new CalendarDate(2024, 3, 7)} />);
-    expect(segment("month").getAttribute("aria-valuetext")).toBe("03 – March");
-    expect(segment("day").getAttribute("aria-valuetext")).toBe("07");
+    expect(segment("month, Departure").getAttribute("aria-valuetext")).toBe("03 – March");
+    expect(segment("day, Departure").getAttribute("aria-valuetext")).toBe("07");
   });
 
   test("an hour reads as the hour of the day", () => {
     render(() => (
       <Departure granularity="minute" value={new CalendarDateTime(2024, 3, 7, 14, 30)} />
     ));
-    expect(segment("hour").getAttribute("aria-valuetext")).toBe("2 PM");
+    expect(segment("hour, Departure").getAttribute("aria-valuetext")).toBe("2 PM");
   });
 
   test("an empty field's placeholders are the locale's own", () => {
@@ -494,24 +532,24 @@ describe("Backspace", () => {
       />
     ));
 
-    user.focus(segment("year"));
+    user.focus(segment("year, Departure"));
     user.keyDown("Backspace");
     flush();
-    expect(segment("year").textContent).toBe("202");
+    expect(segment("year, Departure").textContent).toBe("202");
     expect(changes.at(-1)?.toString()).toBe("0202-12-07");
 
-    user.focus(segment("month"));
+    user.focus(segment("month, Departure"));
     user.keyDown("Backspace");
     flush();
-    expect(segment("month").textContent).toBe("01");
+    expect(segment("month, Departure").textContent).toBe("01");
   });
 
   test("on an empty segment moves back to the one before", () => {
     render(() => <Departure />);
-    user.focus(segment("day"));
+    user.focus(segment("day, Departure"));
     user.keyDown("Backspace");
     flush();
-    expect(document.activeElement).toBe(segment("month"));
+    expect(document.activeElement).toBe(segment("month, Departure"));
   });
 });
 
@@ -543,10 +581,10 @@ describe("the arrow keys between segments", () => {
 
   test("a modified arrow is not the segment's", () => {
     render(() => <Departure defaultValue={new CalendarDate(2024, 3, 7)} />);
-    user.focus(segment("month"));
+    user.focus(segment("month, Departure"));
     user.keyDown("ArrowDown", { altKey: true });
     flush();
-    expect(segment("month").textContent).toBe("03");
+    expect(segment("month, Departure").textContent).toBe("03");
   });
 });
 
@@ -609,7 +647,7 @@ describe("TimeField on its own", () => {
     const changes: (Time | null)[] = [];
     render(() => <TimeField label="Starts" onChange={(value) => changes.push(value)} />);
 
-    user.focus(segment("hour"));
+    user.focus(segment("hour, Starts"));
     for (const key of ["9", "3", "0", "p"]) {
       user.keyDown(key);
       flush();
@@ -637,11 +675,11 @@ describe("TimeField on its own", () => {
 
   test("an empty one counts from its placeholder", () => {
     render(() => <TimeField label="Starts" placeholderValue={new Time(14, 0)} />);
-    user.focus(segment("hour"));
+    user.focus(segment("hour, Starts"));
     user.keyDown("ArrowUp");
     flush();
-    expect(segment("hour").textContent).toBe("02");
-    expect(segment("AM/PM").textContent).toBe("PM");
+    expect(segment("hour, Starts").textContent).toBe("02");
+    expect(segment("AM/PM, Starts").textContent).toBe("PM");
   });
 });
 
@@ -664,7 +702,7 @@ describe("a DateField in a form", () => {
     ));
     const form = screen.getByTestId<HTMLFormElement>("form");
 
-    user.focus(segment("month"));
+    user.focus(segment("month, Due"));
     user.keyDown("ArrowUp");
     flush();
     expect(new FormData(form).get("due")).toBe("2026-04-10");
@@ -672,7 +710,7 @@ describe("a DateField in a form", () => {
     form.reset();
     flush();
     expect(new FormData(form).get("due")).toBe("2026-03-10");
-    expect(segment("month").textContent).toBe("03");
+    expect(segment("month, Due").textContent).toBe("03");
   });
 
   test("a date the page says is unavailable is invalid", () => {
@@ -705,8 +743,10 @@ describe("a calendar with eras", () => {
     const types = segments().map((element) => element.getAttribute("data-type"));
     expect(types).toEqual(["month", "day", "era", "year"]);
     // 2024 is the sixth year of Reiwa.
-    expect(segment("year").textContent).toBe("6");
-    expect(segment("era").getAttribute("aria-valuetext")).toBe(segment("era").textContent);
+    expect(segment("year, Date").textContent).toBe("6");
+    expect(segment("era, Date").getAttribute("aria-valuetext")).toBe(
+      segment("era, Date").textContent,
+    );
   });
 
   test("the arrows step the era, keeping the year of it", () => {
@@ -719,7 +759,7 @@ describe("a calendar with eras", () => {
       />
     ));
 
-    user.focus(segment("era"));
+    user.focus(segment("era, Date"));
     user.keyDown("ArrowUp");
     flush();
     expect(changes.at(-1)).toEqual(new CalendarDate(japanese, "reiwa", 5, 2, 3));
@@ -740,7 +780,7 @@ describe("a calendar with eras", () => {
       />
     ));
 
-    user.focus(segment("year"));
+    user.focus(segment("year, Date"));
     user.keyDown("ArrowDown");
     flush();
     expect(changes.at(-1)).toEqual(new CalendarDate(japanese, "heisei", 30, 12, 28));
@@ -756,7 +796,7 @@ describe("a calendar with eras", () => {
       />
     ));
 
-    user.focus(segment("era"));
+    user.focus(segment("era, Date"));
     user.keyDown("h");
     flush();
     expect(changes.at(-1)).toEqual(new CalendarDate(japanese, "heisei", 5, 2, 3));
@@ -771,7 +811,7 @@ describe("a calendar with eras", () => {
       />
     ));
 
-    user.focus(segment("day"));
+    user.focus(segment("day, Date"));
     user.keyDown("ArrowUp");
     flush();
     expect(changes.at(-1)?.calendar.identifier).toBe("gregory");
@@ -781,7 +821,7 @@ describe("a calendar with eras", () => {
   test("a Gregorian year before the common era shows its era, and loses it with it", async () => {
     render(() => <Departure defaultValue={new CalendarDate("BC", 2020, 2, 3)} />);
 
-    const era = segment("era");
+    const era = segment("era, Departure");
     expect(segments().at(-1)).toBe(era);
 
     user.focus(era);
@@ -789,9 +829,9 @@ describe("a calendar with eras", () => {
     flush();
     await tick();
 
-    expect(screen.queryByRole("spinbutton", { name: "era" })).toBeNull();
+    expect(screen.queryByRole("spinbutton", { name: "era, Departure" })).toBeNull();
     // The era went from under the focus, which moves back to the year.
-    expect(document.activeElement).toBe(segment("year"));
+    expect(document.activeElement).toBe(segment("year, Departure"));
   });
 
   test("a Hebrew leap year's thirteenth month can be reached", () => {
@@ -807,8 +847,8 @@ describe("a calendar with eras", () => {
       </InLocale>
     ));
 
-    expect(segment("month").getAttribute("aria-valuemax")).toBe("13");
-    user.focus(segment("month"));
+    expect(segment("month, Date").getAttribute("aria-valuemax")).toBe("13");
+    user.focus(segment("month, Date"));
     user.keyDown("ArrowUp");
     flush();
     expect(changes.at(-1)).toEqual(new CalendarDate(hebrew, 5784, 13, 1));
@@ -823,12 +863,12 @@ describe("a value in a time zone", () => {
       <DateField label="Call" defaultValue={zoned("2024-03-10T01:30[America/New_York]")} />
     ));
 
-    const zone = screen.getByRole("textbox", { name: "time zone" });
+    const zone = screen.getByRole("textbox", { name: "time zone, Call" });
     expect(zone.textContent).toBe("EST");
     expect(zone.getAttribute("aria-readonly")).toBe("true");
     expect(zone.getAttribute("contenteditable")).toBe("false");
     // A zoned value has a time, so the field asks for one without being told.
-    expect(screen.getByRole("spinbutton", { name: "minute" }).textContent).toBe("30");
+    expect(screen.getByRole("spinbutton", { name: "minute, Call" }).textContent).toBe("30");
   });
 
   test("stepping the hour across the spring change lands on the hour the clock shows", () => {
@@ -841,12 +881,12 @@ describe("a value in a time zone", () => {
       />
     ));
 
-    user.focus(screen.getByRole("spinbutton", { name: "hour" }));
+    user.focus(screen.getByRole("spinbutton", { name: "hour, Call" }));
     user.keyDown("ArrowUp");
     flush();
 
     expect(changes.at(-1)?.toString()).toBe("2024-03-10T03:30:00-04:00[America/New_York]");
-    expect(screen.getByRole("textbox", { name: "time zone" }).textContent).toBe("EDT");
+    expect(screen.getByRole("textbox", { name: "time zone, Call" }).textContent).toBe("EDT");
   });
 
   test("hideTimeZone leaves the zone out", () => {
@@ -857,7 +897,7 @@ describe("a value in a time zone", () => {
         defaultValue={zoned("2024-03-10T01:30[America/New_York]")}
       />
     ));
-    expect(screen.queryByRole("textbox", { name: "time zone" })).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "time zone, Call" })).toBeNull();
   });
 
   test("puts the whole zoned value into the form", () => {
@@ -882,7 +922,7 @@ describe("a value in a time zone", () => {
       />
     ));
 
-    user.focus(screen.getByRole("spinbutton", { name: "hour" }));
+    user.focus(screen.getByRole("spinbutton", { name: "hour, Time" }));
     for (const key of ["ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown", "ArrowDown"]) {
       user.keyDown(key);
       flush();
@@ -901,18 +941,18 @@ describe("a value in a time zone", () => {
     render(() => (
       <TimeField label="Time" defaultValue={zoned("2023-07-01T01:05-07:00[America/Los_Angeles]")} />
     ));
-    const minute = screen.getByRole("spinbutton", { name: "minute" });
+    const minute = screen.getByRole("spinbutton", { name: "minute, Time" });
 
     user.focus(minute);
     user.keyDown("Backspace");
     flush();
     expect(minute.getAttribute("aria-valuetext")).toBe("Empty");
-    expect(screen.getByRole("textbox", { name: "time zone" }).textContent).toBe("PDT");
+    expect(screen.getByRole("textbox", { name: "time zone, Time" }).textContent).toBe("PDT");
 
     user.keyDown("ArrowUp");
     flush();
     expect(minute.getAttribute("aria-valuetext")).toBe("00");
-    expect(screen.getByRole("textbox", { name: "time zone" }).textContent).toBe("PDT");
+    expect(screen.getByRole("textbox", { name: "time zone, Time" }).textContent).toBe("PDT");
   });
 
   test("an empty time field counting from a zoned placeholder steps through the repeated hour", () => {
@@ -922,7 +962,7 @@ describe("a value in a time zone", () => {
         placeholderValue={zoned("2021-11-07T01:45:00-07:00[America/Los_Angeles]")}
       />
     ));
-    const hour = screen.getByRole("spinbutton", { name: "hour" });
+    const hour = screen.getByRole("spinbutton", { name: "hour, Time" });
 
     user.focus(hour);
     const seen: (string | null)[] = [];

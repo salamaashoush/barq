@@ -291,7 +291,7 @@ describe("DateField and DateTimeField", () => {
     expect(rest.map((each) => each.hasAttribute("aria-describedby"))).toEqual(
       rest.map(() => false),
     );
-    const day = screen.getByRole("spinbutton", { name: /day/ });
+    const day = screen.getByRole("spinbutton", { name: "day, Due" });
     day.focus();
     await user.keyboard("{ArrowUp}");
     await settle();
@@ -316,7 +316,7 @@ describe("DateField and DateTimeField", () => {
       );
     });
     await settle();
-    const hour = screen.getByRole("spinbutton", { name: /hour/ });
+    const hour = screen.getByRole("spinbutton", { name: "hour, Starts" });
     expect(hour.getAttribute("aria-valuenow")).toBe("9");
     expect(screen.getByRole("group", { name: "Starts" }).textContent).toContain("GMT+9");
     hour.focus();

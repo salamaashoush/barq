@@ -32,6 +32,7 @@ import {
   createSignal,
   getOwner,
   install,
+  provide,
   Show,
   untrack,
 } from "@barqjs/core";
@@ -66,7 +67,7 @@ import {
   type OverlayTriggerStateOptions,
   type Placement,
 } from "./overlays.ts";
-import { DateField, type Granularity, TimeField } from "./datefield.tsx";
+import { DateField, type Granularity, PickerFieldContext, TimeField } from "./datefield.tsx";
 import {
   access,
   callback,
@@ -307,7 +308,8 @@ export function datePicker(options: DatePickerOptions, state: DatePickerState): 
         opensOnAltArrow(event, state, state.isDisabled() || state.isReadOnly()),
     }),
     fieldProps: {
-      "aria-labelledby": () => access(labelProps.id as MaybeAccessor<string | undefined>),
+      "aria-labelledby": () =>
+        access(labelledProps["aria-labelledby"] as MaybeAccessor<string | undefined>) ?? groupId(),
     },
     buttonProps: {
       id: buttonId,
@@ -357,6 +359,14 @@ function opensOnAltArrow(
 // ---------------------------------------------------------------------------
 // Components
 // ---------------------------------------------------------------------------
+
+function PickerField(props: { labelledBy?: string; children?: Child }) {
+  return provide(
+    PickerFieldContext,
+    () => ({ labelledBy: () => props.labelledBy }),
+    () => props.children as unknown,
+  );
+}
 
 interface DatePickerContextValue {
   state: DatePickerState;
@@ -459,6 +469,7 @@ export function DatePicker<T extends DateValue = DateValue>(
   const {
     labelProps,
     groupProps,
+    fieldProps,
     buttonProps,
     dialogProps,
     calendarProps,
@@ -511,30 +522,35 @@ export function DatePicker<T extends DateValue = DateValue>(
       <div {...elementProps} ref={mergeRefs(groupRef.set, props.ref)}>
         {/* Not labelled again: the group around it already carries the
             label, and naming both makes a screen reader say "Departure
-            group, Departure group". The segments name themselves. */}
-        <DateField
-          value={state.value()}
-          placeholderValue={props.placeholderValue}
-          minValue={props.minValue}
-          maxValue={props.maxValue}
-          isDateUnavailable={isDateUnavailable}
-          granularity={state.granularity()}
-          hourCycle={props.hourCycle}
-          hideTimeZone={props.hideTimeZone}
-          createCalendar={createCalendar}
-          isDisabled={props.isDisabled}
-          isReadOnly={props.isReadOnly}
-          isRequired={props.isRequired}
-          isInvalid={props.isInvalid}
-          validate={
-            validate === undefined
-              ? undefined
-              : (value: DateValue | null) => validate(value as MappedDateValue<T> | null)
-          }
-          validationBehavior={props.validationBehavior}
-          name={props.name}
-          onChange={(value) => state.setValue(value)}
-        />
+            group, Departure group". The segments take it through the
+            picker instead. */}
+        <PickerField
+          labelledBy={access(fieldProps["aria-labelledby"] as MaybeAccessor<string | undefined>)}
+        >
+          <DateField
+            value={state.value()}
+            placeholderValue={props.placeholderValue}
+            minValue={props.minValue}
+            maxValue={props.maxValue}
+            isDateUnavailable={isDateUnavailable}
+            granularity={state.granularity()}
+            hourCycle={props.hourCycle}
+            hideTimeZone={props.hideTimeZone}
+            createCalendar={createCalendar}
+            isDisabled={props.isDisabled}
+            isReadOnly={props.isReadOnly}
+            isRequired={props.isRequired}
+            isInvalid={props.isInvalid}
+            validate={
+              validate === undefined
+                ? undefined
+                : (value: DateValue | null) => validate(value as MappedDateValue<T> | null)
+            }
+            validationBehavior={props.validationBehavior}
+            name={props.name}
+            onChange={(value) => state.setValue(value)}
+          />
+        </PickerField>
         <button {...triggerElementProps} type="button" ref={triggerRef.set}>
           <span aria-hidden="true">📅</span>
         </button>
@@ -695,6 +711,9 @@ export function DateRangePicker<T extends DateValue = DateValue>(
   });
   const labelId = (): string | undefined =>
     access(labelProps.id as MaybeAccessor<string | undefined>);
+  const labelledBy = (): string | undefined =>
+    access(labelledProps["aria-labelledby"] as MaybeAccessor<string | undefined>) ??
+    access(labelledProps.id as MaybeAccessor<string | undefined>);
 
   const trigger = button(
     {
@@ -815,45 +834,47 @@ export function DateRangePicker<T extends DateValue = DateValue>(
     <>
       <span {...labelProps}>{props.label}</span>
       <div {...elementProps} ref={mergeRefs(groupRef.set, props.ref)}>
-        <DateField
-          aria-label={messages().format("startDate")}
-          value={value()?.start ?? null}
-          placeholderValue={props.placeholderValue}
-          minValue={props.minValue}
-          maxValue={props.maxValue}
-          isDateUnavailable={isDateUnavailable}
-          granularity={granularity()}
-          hourCycle={props.hourCycle}
-          hideTimeZone={props.hideTimeZone}
-          createCalendar={createCalendar}
-          isDisabled={props.isDisabled}
-          isReadOnly={props.isReadOnly}
-          isRequired={props.isRequired}
-          isInvalid={isInvalid() || undefined}
-          validationBehavior={props.validationBehavior}
-          name={props.startName}
-          onChange={(next) => setEnd("start", next)}
-        />
-        <span aria-hidden="true">–</span>
-        <DateField
-          aria-label={messages().format("endDate")}
-          value={value()?.end ?? null}
-          placeholderValue={props.placeholderValue}
-          minValue={props.minValue}
-          maxValue={props.maxValue}
-          isDateUnavailable={isDateUnavailable}
-          granularity={granularity()}
-          hourCycle={props.hourCycle}
-          hideTimeZone={props.hideTimeZone}
-          createCalendar={createCalendar}
-          isDisabled={props.isDisabled}
-          isReadOnly={props.isReadOnly}
-          isRequired={props.isRequired}
-          isInvalid={isInvalid() || undefined}
-          validationBehavior={props.validationBehavior}
-          name={props.endName}
-          onChange={(next) => setEnd("end", next)}
-        />
+        <PickerField labelledBy={labelledBy()}>
+          <DateField
+            aria-label={messages().format("startDate")}
+            value={value()?.start ?? null}
+            placeholderValue={props.placeholderValue}
+            minValue={props.minValue}
+            maxValue={props.maxValue}
+            isDateUnavailable={isDateUnavailable}
+            granularity={granularity()}
+            hourCycle={props.hourCycle}
+            hideTimeZone={props.hideTimeZone}
+            createCalendar={createCalendar}
+            isDisabled={props.isDisabled}
+            isReadOnly={props.isReadOnly}
+            isRequired={props.isRequired}
+            isInvalid={isInvalid() || undefined}
+            validationBehavior={props.validationBehavior}
+            name={props.startName}
+            onChange={(next) => setEnd("start", next)}
+          />
+          <span aria-hidden="true">–</span>
+          <DateField
+            aria-label={messages().format("endDate")}
+            value={value()?.end ?? null}
+            placeholderValue={props.placeholderValue}
+            minValue={props.minValue}
+            maxValue={props.maxValue}
+            isDateUnavailable={isDateUnavailable}
+            granularity={granularity()}
+            hourCycle={props.hourCycle}
+            hideTimeZone={props.hideTimeZone}
+            createCalendar={createCalendar}
+            isDisabled={props.isDisabled}
+            isReadOnly={props.isReadOnly}
+            isRequired={props.isRequired}
+            isInvalid={isInvalid() || undefined}
+            validationBehavior={props.validationBehavior}
+            name={props.endName}
+            onChange={(next) => setEnd("end", next)}
+          />
+        </PickerField>
         <button
           {...mergeProps(trigger.buttonProps, hoverProps, focusProps, {
             id: buttonId,

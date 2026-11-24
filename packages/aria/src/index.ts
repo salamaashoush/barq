@@ -715,6 +715,8 @@ export {
   type DateSegmentOptions,
   type DateSegmentResult,
   type Granularity,
+  PickerFieldContext,
+  type PickerFieldValue,
   type SegmentType,
   TimeField,
   type TimeFieldComponentProps,

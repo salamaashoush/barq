@@ -96,6 +96,7 @@ import {
   type DOMProps,
   filterDOMProps,
   fromProps,
+  id,
   type MaybeAccessor,
   mergeProps,
   type StyleProps,
@@ -1019,6 +1020,10 @@ export interface DateFieldResult {
   isInvalid: Accessor<boolean>;
   /** The ids the field is described by, for {@link dateSegment}. */
   describedBy: Accessor<string | undefined>;
+  /** The field's own `aria-label`, for {@link dateSegment}. */
+  label: Accessor<string | undefined>;
+  /** The ids the field is labelled by, for {@link dateSegment}. */
+  labelledBy: Accessor<string | undefined>;
 }
 
 const SEGMENT_SELECTOR = '[role="spinbutton"], [role="textbox"]';
@@ -1072,6 +1077,8 @@ export function dateField(options: DateFieldOptions, state: DateFieldState): Dat
     isInvalid,
     describedBy: () =>
       access(labelledProps["aria-describedby"] as MaybeAccessor<string | undefined>),
+    label: () => access(options["aria-label"]),
+    labelledBy: () => access(labelledProps["aria-labelledby"] as MaybeAccessor<string | undefined>),
     fieldProps: mergeProps(filterDOMProps(options, { labelable: true }), labelledProps, {
       // A group, because the segments are separate controls that together are
       // one field: `role="textbox"` would promise editing the whole string.
@@ -1108,6 +1115,10 @@ export interface DateSegmentOptions {
   ref: ElementRef;
   /** The field's {@link DateFieldResult.describedBy}. */
   "aria-describedby"?: MaybeAccessor<string | undefined>;
+  /** The field's {@link DateFieldResult.label}. */
+  "aria-label"?: MaybeAccessor<string | undefined>;
+  /** The field's {@link DateFieldResult.labelledBy}. */
+  "aria-labelledby"?: MaybeAccessor<string | undefined>;
   isInvalid?: MaybeAccessor<boolean | undefined>;
 }
 
@@ -1498,11 +1509,34 @@ export function dateSegment(options: DateSegmentOptions, state: DateFieldState):
       : undefined;
   };
 
+  // The field's label goes on every segment, because VoiceOver on iOS does not
+  // announce the group around them: a lone "day" could belong to any field.
+  // The segment's own aria-label leads its aria-labelledby, so it is read as
+  // "day, Departure".
+  const segmentId = id();
+  const fieldLabelledBy = (): string | undefined => {
+    const given = access(options["aria-labelledby"])?.trim();
+    return given === undefined || given === "" ? undefined : given;
+  };
+  const ariaLabel = (): string | undefined => {
+    if (isLiteral()) return undefined;
+    const given = access(options["aria-label"]);
+    const label = given === undefined || given === "" ? "" : `, ${given}`;
+    return `${name()}${label}${fieldLabelledBy() === undefined ? "" : ", "}`;
+  };
+  const ariaLabelledBy = (): string | undefined => {
+    const given = fieldLabelledBy();
+    if (isLiteral() || given === undefined) return undefined;
+    return [...new Set([segmentId(), ...given.split(/\s+/)])].join(" ");
+  };
+
   return {
     segmentProps: {
       role: () => (isLiteral() ? undefined : asTextbox() ? "textbox" : "spinbutton"),
       "aria-hidden": () => (isLiteral() ? true : undefined),
-      "aria-label": () => (isLiteral() ? undefined : name()),
+      id: segmentId,
+      "aria-label": ariaLabel,
+      "aria-labelledby": ariaLabelledBy,
       "aria-describedby": describedBy,
       "aria-valuenow": () => (isSpinButton() ? segment().value : undefined),
       "aria-valuemin": () => (isSpinButton() ? segment().minValue : undefined),
@@ -1551,6 +1585,8 @@ export function dateSegment(options: DateSegmentOptions, state: DateFieldState):
 interface DateFieldContextValue {
   state: DateFieldState;
   describedBy: Accessor<string | undefined>;
+  label: Accessor<string | undefined>;
+  labelledBy: Accessor<string | undefined>;
   isInvalid: Accessor<boolean>;
 }
 
@@ -1570,6 +1606,23 @@ function DateFieldProvider(props: { value: DateFieldContextValue; children?: Chi
     () => props.value,
     () => props.children as unknown,
   );
+}
+
+export interface PickerFieldValue {
+  labelledBy: Accessor<string | undefined>;
+}
+
+/**
+ * The label of a date picker, for the segments of the field inside it.
+ *
+ * Not `aria-labelledby` on that field: that names its group too, and a group
+ * inside the picker's group, named the same, is read out twice.
+ */
+export const PickerFieldContext = createContext<PickerFieldValue | null>(null);
+
+function joinIds(...given: (string | undefined)[]): string | undefined {
+  const present = given.filter((one) => one !== undefined && one !== "");
+  return present.length === 0 ? undefined : present.join(" ");
 }
 
 export interface DateFieldComponentProps<T extends DateValue = DateValue> extends StyleProps {
@@ -1668,6 +1721,7 @@ function FieldBody(incoming: FieldBodyProps) {
   const props = incoming.of;
   const domRef = makeRef<HTMLDivElement>();
   const inputRef = makeRef<HTMLInputElement>();
+  const picker = getContext(PickerFieldContext);
 
   const {
     labelProps,
@@ -1678,6 +1732,8 @@ function FieldBody(incoming: FieldBodyProps) {
     errors,
     isInvalid,
     describedBy,
+    label,
+    labelledBy,
   } = dateField(
     {
       ref: domRef,
@@ -1711,7 +1767,15 @@ function FieldBody(incoming: FieldBodyProps) {
   );
 
   return (
-    <DateFieldProvider value={{ state, describedBy, isInvalid }}>
+    <DateFieldProvider
+      value={{
+        state,
+        describedBy,
+        label,
+        labelledBy: () => joinIds(labelledBy(), picker?.labelledBy()),
+        isInvalid,
+      }}
+    >
       <span {...labelProps}>{() => props.label?.()}</span>
       <div {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
         {/* Keyed by INDEX, not by the segment: a new object every read would
@@ -1742,7 +1806,7 @@ interface DateSegmentPartProps {
 /** One segment. Its own component so it keeps its element as the value moves. */
 function DateSegmentPart(props: DateSegmentPartProps) {
   const domRef = makeRef<HTMLDivElement>();
-  const { state, describedBy, isInvalid } = useDateField();
+  const { state, describedBy, label, labelledBy, isInvalid } = useDateField();
   const index = props.index;
 
   const segment = (): DateSegment =>
@@ -1754,7 +1818,14 @@ function DateSegmentPart(props: DateSegmentPartProps) {
     };
 
   const { segmentProps } = dateSegment(
-    { segment, ref: domRef, "aria-describedby": describedBy, isInvalid },
+    {
+      segment,
+      ref: domRef,
+      "aria-describedby": describedBy,
+      "aria-label": label,
+      "aria-labelledby": labelledBy,
+      isInvalid,
+    },
     state,
   );
   const { hoverProps, isHovered } = hover({ isDisabled: state.isDisabled });
