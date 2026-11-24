@@ -47,7 +47,7 @@ describe("AIChatPanel", () => {
       <AIChatPanel messages={[QUESTION, reply()]} onSend={() => {}} onStop={() => {}} />
     ));
     expect(slot("ai-chat-generating").textContent).toBe("Writing a reply");
-    expect(screen.getByRole("log").getAttribute("aria-busy")).toBe("true");
+    expect(within(slot("ai-chat")).getByRole("log").getAttribute("aria-busy")).toBe("true");
     expect(screen.getByRole("button", { name: "Stop" })).toBeDefined();
     setReply({ ...reply(), parts: [{ type: "text", text: "Two checks **failed**:\n\n- login" }] });
     flush();
@@ -62,7 +62,7 @@ describe("AIChatPanel", () => {
     });
     await settle();
     expect((all("ai-chat-text").at(-1) as HTMLElement).querySelectorAll("li")).toHaveLength(2);
-    expect(screen.getByRole("log").getAttribute("aria-busy")).toBe("false");
+    expect(within(slot("ai-chat")).getByRole("log").getAttribute("aria-busy")).toBe("false");
     const sources = screen.getByRole("region", { name: "Sources" });
     expect(within(sources).getByRole("link", { name: "Run 42" }).getAttribute("href")).toBe(
       "https://example.com/runs/42",
