@@ -37,6 +37,7 @@ import {
   $insertBlock,
   OPEN_EMBED_DIALOG_COMMAND,
   OPEN_IMAGE_DIALOG_COMMAND,
+  OPEN_TABLE_DIALOG_COMMAND,
   TEXT_BLOCK_TYPES,
   type TextBlockType,
   insertDivider,
@@ -412,7 +413,10 @@ export function editorCommands(
       group: basic,
       icon: () => <Table />,
       keywords: ["grid"],
-      run: (editor) => insertTable(editor),
+      // The size picker where the editor has one, three by three otherwise.
+      run: (editor) => {
+        if (!editor.dispatchCommand(OPEN_TABLE_DIALOG_COMMAND, undefined)) insertTable(editor);
+      },
     });
   }
   commands.push({

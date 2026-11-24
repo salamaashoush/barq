@@ -254,6 +254,9 @@ export const OPEN_LINK_EDITOR_COMMAND: LexicalCommand<void> = createCommand("OPE
 /** Asks the editor to open its image dialog: the slash menu's Image. */
 export const OPEN_IMAGE_DIALOG_COMMAND: LexicalCommand<void> = createCommand("OPEN_IMAGE_DIALOG");
 
+/** Asks the editor to open its table size picker: the Insert menu's and the slash menu's Table. */
+export const OPEN_TABLE_DIALOG_COMMAND: LexicalCommand<void> = createCommand("OPEN_TABLE_DIALOG");
+
 /** Asks the editor to open its embed dialog: the slash menu's Embed. */
 export const OPEN_EMBED_DIALOG_COMMAND: LexicalCommand<void> = createCommand("OPEN_EMBED_DIALOG");
 

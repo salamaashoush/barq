@@ -328,13 +328,11 @@ export const dataTableStyles = variants({
       },
     ),
     checkbox: arc({ paddingInlineEnd: "0px" }),
-    resizer: arc(place.afterLayer, {
+    resizer: arc(place.afterLayer, interaction.resize, {
       position: "absolute",
       insetBlock: "0px",
       insetInlineEnd: "0px",
       width: space.x2,
-      cursor: "col-resize",
-      touchAction: "none",
       "::after": {
         insetBlock: "25%",
         insetInlineEnd: "0px",

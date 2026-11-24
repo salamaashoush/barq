@@ -43,6 +43,7 @@ interface StoredNode extends SerializedLexicalNode {
   language?: string | null;
   headerState?: number;
   colSpan?: number;
+  colWidths?: readonly number[];
   rowSpan?: number;
   mentionId?: string;
   mentionName?: string;
@@ -213,6 +214,15 @@ function Node(props: { node: StoredNode; context: RenderContext }): JSX.Element 
       return (
         <div class={context.slots.tableScroller}>
           <table class={context.slots.table}>
+            <Show when={(node.colWidths?.length ?? 0) > 0}>
+              <colgroup>
+                <For each={node.colWidths ?? []}>
+                  {(width: number) => (
+                    <col style={width > 0 ? { width: `${String(width)}px` } : undefined} />
+                  )}
+                </For>
+              </colgroup>
+            </Show>
             <tbody>
               <Children nodes={node.children} context={context} />
             </tbody>

@@ -26,6 +26,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@barqjs/ui/popover";
 import { tokens } from "@barqjs/ui/theme/tokens";
 import { Portal } from "@barqjs/web";
+import { $isListNode } from "@lexical/list";
 import {
   $createParagraphNode,
   $getNodeByKey,
@@ -62,7 +63,19 @@ import { type SlashCommand, SlashCommandMenu, editorCommands } from "./typeahead
 
 export const blockEditorStyles = variants({
   slots: {
-    content: arc({ paddingInlineStart: space.x14 }),
+    content: arc({
+      paddingInlineStart: space.x14,
+      // Over the empty block's start, so the caret stays where it is.
+      "& [data-placeholder]": { position: "relative" },
+      "& [data-placeholder]::before": {
+        content: "attr(data-placeholder)",
+        position: "absolute",
+        insetInlineStart: "0px",
+        color: tokens.mutedForeground,
+        pointerEvents: "none",
+        userSelect: "none",
+      },
+    }),
     gutter: arc(layout.row, gap[0.5], {
       position: "absolute",
       insetInlineStart: "0px",
@@ -172,6 +185,12 @@ function insertAfter(editor: LexicalEditor, key: NodeKey, command: SlashCommand)
 export interface BlockEditorProps extends Omit<RichTextEditorProps, "variant"> {
   /** Classes for the block editor's own parts. */
   blockClasses?: Customisable<Slots>["classes"];
+  /**
+   * What an empty block says it is for, faint: the caret's empty line, and
+   * every empty heading, quote, list item and code block. `false` for none.
+   * @default arc's words for each kind
+   */
+  blockPlaceholders?: false | Partial<Record<TextBlockType, string>>;
 }
 
 /**
@@ -200,6 +219,12 @@ export function BlockEditor(props: BlockEditorProps) {
       variant="plain"
       classes={{ ...props.classes, content: arc(cls().content, props.classes?.content) }}
     >
+      <Show when={props.blockPlaceholders !== false}>
+        <BlockPlaceholders
+          words={props.blockPlaceholders === false ? undefined : props.blockPlaceholders}
+          documentPlaceholder={props.placeholder !== undefined}
+        />
+      </Show>
       <BlockHandles
         cls={cls()}
         blocks={props.blocks ?? []}
@@ -215,6 +240,71 @@ export function BlockEditor(props: BlockEditorProps) {
       {props.children}
     </RichTextEditor>
   );
+}
+
+/** Marks each empty block with what it is for, as `data-placeholder`, which the content's style draws. */
+function BlockPlaceholders(props: {
+  words?: Partial<Record<TextBlockType, string>>;
+  documentPlaceholder: boolean;
+}) {
+  const editor = useLexicalEditor();
+  const messages = useArcMessages();
+  let marked = new Set<HTMLElement>();
+  const word = (block: TextBlockType): string => {
+    const all = messages();
+    const own: Record<TextBlockType, string> = {
+      paragraph: all.blockPlaceholder,
+      h1: all.headingLevel(1),
+      h2: all.headingLevel(2),
+      h3: all.headingLevel(3),
+      quote: all.quote,
+      code: all.codeBlock,
+      bullet: all.bulletList,
+      number: all.numberedList,
+      check: all.checkList,
+    };
+    return props.words?.[block] ?? own[block];
+  };
+  const mark = (): void => {
+    const wanted = editor.getEditorState().read(() => {
+      const out = new Map<NodeKey, string>();
+      const root = $getRoot();
+      const selection = $getSelection();
+      const caret =
+        $isRangeSelection(selection) && selection.isCollapsed() && editor.isEditable()
+          ? selection.anchor.getNode()
+          : null;
+      // The editor's own placeholder speaks for a document with nothing in it.
+      const lone = props.documentPlaceholder && root.getChildrenSize() === 1;
+      const consider = (node: LexicalNode): void => {
+        if (!$isElementNode(node) || node.getTextContentSize() > 0) return;
+        const block = $textBlockOf(node);
+        if (block === null) return;
+        const holdsCaret =
+          caret !== null && (caret.is(node) || caret.getParents().some((one) => one.is(node)));
+        if (block === "paragraph" && (!holdsCaret || lone)) return;
+        out.set(node.getKey(), word(block));
+      };
+      for (const child of root.getChildren()) {
+        if ($isListNode(child)) for (const item of child.getChildren()) consider(item);
+        else consider(child);
+      }
+      return out;
+    });
+    const next = new Set<HTMLElement>();
+    for (const [key, text] of wanted) {
+      const element = editor.getElementByKey(key);
+      if (element === null) continue;
+      if (element.dataset.placeholder !== text) element.dataset.placeholder = text;
+      next.add(element);
+    }
+    for (const element of marked) if (!next.has(element)) delete element.dataset.placeholder;
+    marked = next;
+  };
+  useRegistration(() =>
+    mergeRegister(editor.registerUpdateListener(mark), editor.registerEditableListener(mark)),
+  );
+  return null;
 }
 
 function BlockHandles(props: {

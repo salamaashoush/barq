@@ -28,6 +28,8 @@ describe("tables", () => {
     await settle();
     await user.click(screen.getByRole("menuitem", { name: "Table" }));
     await settle();
+    await user.click(screen.getByRole("button", { name: "3 by 3 table" }));
+    await settle();
     expect(content().querySelectorAll("tr")).toHaveLength(3);
     expect(content().querySelector("tr")?.querySelectorAll("th")).toHaveLength(3);
     editor.get().update(() => {

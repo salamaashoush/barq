@@ -24,5 +24,7 @@ export const interaction = arc.create({
   pressable: { cursor: "pointer" },
   /** A part a pointer or a finger drags: the grab cursor, and no scrolling or zooming under the finger. */
   draggable: { cursor: "grab", touchAction: "none" },
+  /** A column's edge a pointer or a finger drags to resize it, and no scrolling under the finger. */
+  resize: { cursor: "col-resize", touchAction: "none" },
   invalid: { "[data-invalid]": { borderColor: tokens.destructive } },
 });

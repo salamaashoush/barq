@@ -53,6 +53,7 @@ import {
   type TextBlockType,
   OPEN_EMBED_DIALOG_COMMAND,
   OPEN_IMAGE_DIALOG_COMMAND,
+  OPEN_TABLE_DIALOG_COMMAND,
   indent,
   insertDivider,
   insertTable,
@@ -78,6 +79,7 @@ import {
 import { EmbedDialog, ImageDialog, ImagePaste } from "./media-insert.tsx";
 import { type AutosaveOptions, useCharacterCount, useEditorAutosave } from "./state.ts";
 import { TableControls } from "./table-controls.tsx";
+import { TableDialog } from "./table-size.tsx";
 import { DEFAULT_TOOLS, type EditorTool, EditorToolbar, type InsertAction } from "./toolbar.tsx";
 
 export const richTextEditorStyles = variants({
@@ -327,7 +329,9 @@ function EditorTools(props: {
 }) {
   const editor = useLexicalEditor();
   const messages = useArcMessages();
-  const [dialog, setDialog] = createSignal<"image" | "embed" | null>(null, { ownedWrite: true });
+  const [dialog, setDialog] = createSignal<"image" | "embed" | "table" | null>(null, {
+    ownedWrite: true,
+  });
   useRegistration(() =>
     mergeRegister(
       editor.registerCommand(
@@ -335,6 +339,15 @@ function EditorTools(props: {
         () => {
           if (!props.images) return false;
           setDialog("image");
+          return true;
+        },
+        COMMAND_PRIORITY_LOW,
+      ),
+      editor.registerCommand(
+        OPEN_TABLE_DIALOG_COMMAND,
+        () => {
+          if (!props.tables) return false;
+          setDialog("table");
           return true;
         },
         COMMAND_PRIORITY_LOW,
@@ -358,7 +371,7 @@ function EditorTools(props: {
         id: "table",
         label: words.table,
         icon: () => <Table />,
-        onInsert: () => insertTable(editor),
+        onInsert: () => setDialog("table"),
       });
     }
     if (props.images) {
@@ -397,6 +410,13 @@ function EditorTools(props: {
   return (
     <>
       <EditorToolbar tools={props.tools} insert={insert()} />
+      <Show when={props.tables}>
+        <TableDialog
+          open={dialog() === "table"}
+          onOpenChange={(open) => setDialog(open ? "table" : null)}
+          onPick={(rows, columns) => insertTable(editor, rows, columns)}
+        />
+      </Show>
       <Show when={props.images}>
         <ImageDialog
           open={dialog() === "image"}

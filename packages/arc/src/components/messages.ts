@@ -523,6 +523,11 @@ export interface ArcMessages {
   charactersOver: (count: number) => string;
   characterCount: (count: number, max: number) => string;
   table: string;
+  chooseTableSize: string;
+  imageDetails: string;
+  altText: string;
+  altTextHint: string;
+  blockPlaceholder: string;
   tableSize: (rows: number, columns: number) => string;
   tableActions: string;
   insertRowBefore: string;
@@ -1112,6 +1117,11 @@ export const ENGLISH: ArcMessages = {
     count === 1 ? "1 character too many" : `${String(count)} characters too many`,
   characterCount: (count, max) => `${String(count)} of ${String(max)} characters`,
   table: "Table",
+  chooseTableSize: "Table size",
+  imageDetails: "Alt text and caption",
+  altText: "Alt text",
+  altTextHint: "What the picture shows, for someone who cannot see it",
+  blockPlaceholder: "Write, or press / for blocks",
   tableSize: (rows, columns) => `${String(rows)} by ${String(columns)} table`,
   tableActions: "Table actions",
   insertRowBefore: "Insert row above",

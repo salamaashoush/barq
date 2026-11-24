@@ -149,7 +149,8 @@ declaration lands on the class arc's own components already use.
 - State: `focus.visible` and `focus.slot` are ui's rings, `focus.inset` the
   same ring inside a cell, `focus.within` for a box made of parts, and
   `focus.outline` for a scrolling region; `interaction` covers hover, focus
-  within, selected, invalid, a pressable cursor and a part a finger drags.
+  within, selected, invalid, a pressable cursor, a part a finger drags
+  and a column edge dragged to resize (`interaction.resize`).
 - `place`: a layer over its parent (`cover`, `passive` for one the pointer
   passes through), `middle`, `fill`, `block`, `screen`, the insets a
   cell and a thin strip keep from their edges (`padded`, `paddedStrip`),
@@ -1246,10 +1247,14 @@ the editor, the renderer and on a server.
   over selected text, below it on a touch screen where the system's menu is
   above, which Alt+F10 reaches; a link popover on Mod+K that checks the
   address; markdown typed (`# `, `- `, `**bold**`) and read and written;
-  code blocks highlighted as `CodeBlock` highlights them; tables, with a
-  button at the cell's corner for rows, columns and the header row; images
+  code blocks highlighted as `CodeBlock` highlights them; tables, sized on
+  insert from a grid that lights up to the size (`TableSizePicker`, also
+  `/table`'s), with a button at the cell's corner for rows, columns and the
+  header row, and the column's edge beside the caret dragged, or moved with
+  the arrow keys, to resize it, the widths kept in the document; images
   pasted, dropped or chosen through `FileDropZone`, each shown at once and
-  uploaded through arc's queue with its progress, retry and remove; embeds
+  uploaded through arc's queue with its progress, retry and remove, and
+  their alt text and caption edited in a popover from a button under them; embeds
   from the sites `embeds` allows (YouTube and Vimeo by default); a counter
   against `maxLength`, said once it is past it; a placeholder; `readOnly`;
   `autosave`, which saves as typing pauses and on blur and says so; and
@@ -1275,7 +1280,10 @@ the editor, the renderer and on a server.
   picker and a grip that drags the block by pointer or by finger and opens
   Turn into, Duplicate, Move up, Move down and Delete; Mod+Shift with the
   arrows moves a block, each move announced. The gutter is at the start of
-  the line, on the right in a right-to-left document.
+  the line, on the right in a right-to-left document. An empty block says
+  what it is for, faint: the caret's empty line, and every empty heading,
+  quote, list item and code block; `blockPlaceholders` changes the words
+  or, `false`, turns them off.
 - `defineBlock`: a block of an app's own, built from arc's pieces, which
   the pickers offer and the document stores as `{ type, data }`; its
   component draws it in the editor and, read-only, in the renderer, and

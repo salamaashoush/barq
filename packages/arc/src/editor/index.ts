@@ -16,6 +16,7 @@ export {
   MARKS,
   type Mark,
   OPEN_EMBED_DIALOG_COMMAND,
+  OPEN_TABLE_DIALOG_COMMAND,
   OPEN_IMAGE_DIALOG_COMMAND,
   OPEN_LINK_EDITOR_COMMAND,
   type SelectionFormat,
@@ -81,6 +82,7 @@ export {
   useEditorAutosave,
 } from "./state.ts";
 export { TableControls, type TableControlsProps, tableControlsStyles } from "./table-controls.tsx";
+export { TableSizePicker, type TableSizePickerProps, tableSizeStyles } from "./table-size.tsx";
 export { type DocumentSlots, documentStyles, editorTheme } from "./theme.ts";
 export {
   DEFAULT_TOOLS,

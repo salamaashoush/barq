@@ -1,10 +1,14 @@
-import { Show, onCleanup } from "@barqjs/core";
+import { Show, createSignal, createUniqueId, onCleanup } from "@barqjs/core";
 import { useLexicalEditor } from "@barqjs/lexical";
 import { variants } from "@barqjs/css";
 import { Image as ImageIcon } from "@barqjs/lucide/icons/image";
+import { Pencil } from "@barqjs/lucide/icons/pencil";
 import { RotateCcw } from "@barqjs/lucide/icons/rotate-ccw";
 import { SquarePlay } from "@barqjs/lucide/icons/square-play";
 import { X } from "@barqjs/lucide/icons/x";
+import { Button } from "@barqjs/ui/button";
+import { Field, FieldDescription, FieldLabel } from "@barqjs/ui/field";
+import { Input } from "@barqjs/ui/input";
 import { Progress } from "@barqjs/ui/progress";
 import { $dfs } from "@lexical/utils";
 import type { LexicalEditor, NodeKey } from "lexical";
@@ -12,6 +16,7 @@ import type { LexicalEditor, NodeKey } from "lexical";
 import { IconButton } from "../components/icon-button.tsx";
 import { Image } from "../components/image.tsx";
 import { useArcMessages } from "../components/messages.ts";
+import { ResponsiveOverlay } from "../components/responsive-overlay.tsx";
 import type { UploadItem, UploadQueueApi } from "../components/file-upload.tsx";
 import { arcLayer as arc } from "../layer.ts";
 import { bg, fg, gap, layout, rounded, space, type } from "../style/index.ts";
@@ -30,6 +35,9 @@ export const mediaStyles = variants({
     }),
     error: arc(fg.danger),
     caption: arc(type.caption, fg.muted, { textAlign: "center" }),
+    // Below the picture while it is edited, where a finger and the keyboard reach it.
+    details: arc(layout.row, layout.end),
+    form: arc(layout.column, gap[3]),
     embed: arc(rounded.md, { width: "100%", aspectRatio: "16 / 9", border: "0" }),
   },
 });
@@ -123,10 +131,87 @@ function ImageView(props: BlockProps<ImageData>) {
           )}
         </Show>
       </div>
+      <Show when={props.editable && props.data.uploadId === undefined}>
+        <div class={cls().details} data-slot="editor-image-actions">
+          <ImageDetails data={props.data} setData={props.setData} />
+        </div>
+      </Show>
       <Show when={props.data.caption}>
         <figcaption class={cls().caption}>{props.data.caption}</figcaption>
       </Show>
     </figure>
+  );
+}
+
+/** A picture's alt text and caption, edited in a popover from a button over it. */
+function ImageDetails(props: { data: ImageData; setData: BlockProps<ImageData>["setData"] }) {
+  const messages = useArcMessages();
+  const formId = createUniqueId();
+  const altId = createUniqueId();
+  const captionId = createUniqueId();
+  const [open, setOpen] = createSignal(false, { ownedWrite: true });
+  const [alt, setAlt] = createSignal("", { ownedWrite: true });
+  const [caption, setCaption] = createSignal("", { ownedWrite: true });
+  const change = (next: boolean): void => {
+    if (next) {
+      setAlt(props.data.alt);
+      setCaption(props.data.caption ?? "");
+    }
+    setOpen(next);
+  };
+  return (
+    <ResponsiveOverlay
+      heading={messages().imageDetails}
+      desktop="popover"
+      open={open()}
+      onOpenChange={change}
+      trigger={
+        <IconButton
+          slot="editor-image-details"
+          label={messages().imageDetails}
+          size="sm"
+          tooltip={false}
+        >
+          <Pencil aria-hidden="true" />
+        </IconButton>
+      }
+      footer={
+        <Button type="submit" size="sm" form={formId}>
+          {messages().save}
+        </Button>
+      }
+    >
+      <form
+        id={formId}
+        class={mediaStyles().form}
+        onSubmit={(event: SubmitEvent) => {
+          event.preventDefault();
+          const text = caption().trim();
+          props.setData({ alt: alt().trim(), caption: text === "" ? undefined : text });
+          setOpen(false);
+        }}
+      >
+        <Field>
+          <FieldLabel for={altId}>{messages().altText}</FieldLabel>
+          <Input
+            id={altId}
+            autoFocus
+            value={alt()}
+            aria-describedby={`${altId}-hint`}
+            onInput={(event: Event) => setAlt((event.currentTarget as HTMLInputElement).value)}
+          />
+          <FieldDescription id={`${altId}-hint`}>{messages().altTextHint}</FieldDescription>
+        </Field>
+        <Field>
+          <FieldLabel for={captionId}>{messages().imageCaption}</FieldLabel>
+          <Input
+            id={captionId}
+            value={caption()}
+            onInput={(event: Event) => setCaption((event.currentTarget as HTMLInputElement).value)}
+          />
+        </Field>
+      </form>
+    </ResponsiveOverlay>
   );
 }
 
