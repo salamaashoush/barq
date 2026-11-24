@@ -1,11 +1,11 @@
 import { type Child, type JSXElement, cells } from "@barqjs/core";
-import type { DynamicStyle } from "@barqjs/css";
 import { type Breakpoint, breakpoints, on } from "@barqjs/ui/conditions";
 import type { UiProps } from "@barqjs/ui/props";
 import { type RenderPart, partRender, uiProps } from "@barqjs/ui/slot";
 
 import { arcLayer as arc } from "../layer.ts";
-import { layout } from "../style/index.ts";
+import { layout } from "../style/layout.ts";
+import { space } from "../style/tokens.ts";
 
 /** A step of the spacing scale: `4` is `calc(var(--spacing) * 4)`. */
 export type SpaceStep = 0 | 0.5 | 1 | 1.5 | 2 | 2.5 | 3 | 4 | 5 | 6 | 8 | 10 | 12 | 16;
@@ -27,242 +27,182 @@ export type Responsive<T> =
   | ({ readonly base?: T } & { readonly [K in ViewportStep]?: T })
   | ({ readonly base?: T } & { readonly [K in ContainerQueryStep]?: T });
 
+type Step = "base" | ViewportStep | ContainerQueryStep;
+
 const VIEWPORT: readonly ViewportStep[] = ["sm", "md", "lg", "xl", "2xl"];
 const CONTAINER: readonly ContainerQueryStep[] = ["cqSm", "cqMd", "cqLg", "cqXl"];
 
-/**
- * The value for each range a step covers, in the order the groups below take
- * them: the unconditional one, the five viewport ranges, the four container
- * ranges. A range that says what the base already says is left out, so the
- * base's one class covers it.
- *
- * Ranges rather than `min-width` steps because a dynamic group writes one rule
- * per condition and two `min-width` rules for one property both match a wide
- * screen; the stylesheet would decide between them by hash.
- */
-type Ranges = readonly [
-  string | undefined,
-  string | undefined,
-  string | undefined,
-  string | undefined,
-  string | undefined,
-  string | undefined,
-  string | undefined,
-  string | undefined,
-  string | undefined,
-  string | undefined,
-];
+/** What each step is called in the custom property it sets: `--arc-gap-md`, `--arc-gap-cq-md`. */
+const SUFFIX: Record<Step, string> = {
+  base: "base",
+  sm: "sm",
+  md: "md",
+  lg: "lg",
+  xl: "xl",
+  "2xl": "2xl",
+  cqSm: "cq-sm",
+  cqMd: "cq-md",
+  cqLg: "cq-lg",
+  cqXl: "cq-xl",
+};
 
-function ranges<T>(value: Responsive<T> | undefined, css: (value: T) => string): Ranges {
-  const out: (string | undefined)[] = Array.from({ length: 10 });
-  if (value === undefined) return out as unknown as Ranges;
-  if (typeof value !== "object" || value === null) {
-    out[0] = css(value);
-    return out as unknown as Ranges;
-  }
-  const steps = value as Partial<Record<"base" | ViewportStep | ContainerQueryStep, T>>;
-  const base = steps.base === undefined ? undefined : css(steps.base);
-  out[0] = base;
-  const walk = (names: readonly string[], offset: number): void => {
-    let current = base;
-    names.forEach((name, index) => {
-      const named = steps[name as ViewportStep];
-      if (named !== undefined) current = css(named);
-      out[offset + index] = current === base ? undefined : current;
-    });
-  };
-  walk(VIEWPORT, 1);
-  walk(CONTAINER, 6);
-  return out as unknown as Ranges;
+/**
+ * A responsive prop is a few fixed rules and a value per step set on the
+ * element, which is how Polaris and Primer lay a stack out.
+ *
+ * Each group below is one rule per step, each reading its step's custom
+ * property: `--arc-gap-base` with no condition, `--arc-gap-md` under
+ * `on.mdOnly`. The element is given the class of every step it has a value
+ * for and the property with that value, inline, so the stylesheet holds the
+ * same rules whatever value a page asks for, and a server-rendered element
+ * carries everything it needs in its own markup.
+ *
+ * Ranges rather than `min-width` steps, because two `min-width` rules for one
+ * property both match a wide screen and between two at-rules of one tier the
+ * stylesheet decides by hash. A step's value holds until a wider one names
+ * another, which `steps` works out, and a step that holds the base is left
+ * out, so the base's rule covers it. Each element sets every property it
+ * reads, so a value inherited from a stack around it is never read.
+ */
+const gapAt = arc.create({
+  base: { gap: "var(--arc-gap-base)" },
+  sm: { gap: { [on.smOnly]: "var(--arc-gap-sm)" } },
+  md: { gap: { [on.mdOnly]: "var(--arc-gap-md)" } },
+  lg: { gap: { [on.lgOnly]: "var(--arc-gap-lg)" } },
+  xl: { gap: { [on.xlOnly]: "var(--arc-gap-xl)" } },
+  "2xl": { gap: { [on["2xl"]]: "var(--arc-gap-2xl)" } },
+  cqSm: { gap: { [on.cqSmOnly]: "var(--arc-gap-cq-sm)" } },
+  cqMd: { gap: { [on.cqMdOnly]: "var(--arc-gap-cq-md)" } },
+  cqLg: { gap: { [on.cqLgOnly]: "var(--arc-gap-cq-lg)" } },
+  cqXl: { gap: { [on.cqXl]: "var(--arc-gap-cq-xl)" } },
+});
+
+const alignAt = arc.create({
+  base: { alignItems: "var(--arc-align-base)" },
+  sm: { alignItems: { [on.smOnly]: "var(--arc-align-sm)" } },
+  md: { alignItems: { [on.mdOnly]: "var(--arc-align-md)" } },
+  lg: { alignItems: { [on.lgOnly]: "var(--arc-align-lg)" } },
+  xl: { alignItems: { [on.xlOnly]: "var(--arc-align-xl)" } },
+  "2xl": { alignItems: { [on["2xl"]]: "var(--arc-align-2xl)" } },
+  cqSm: { alignItems: { [on.cqSmOnly]: "var(--arc-align-cq-sm)" } },
+  cqMd: { alignItems: { [on.cqMdOnly]: "var(--arc-align-cq-md)" } },
+  cqLg: { alignItems: { [on.cqLgOnly]: "var(--arc-align-cq-lg)" } },
+  cqXl: { alignItems: { [on.cqXl]: "var(--arc-align-cq-xl)" } },
+});
+
+const justifyAt = arc.create({
+  base: { justifyContent: "var(--arc-justify-base)" },
+  sm: { justifyContent: { [on.smOnly]: "var(--arc-justify-sm)" } },
+  md: { justifyContent: { [on.mdOnly]: "var(--arc-justify-md)" } },
+  lg: { justifyContent: { [on.lgOnly]: "var(--arc-justify-lg)" } },
+  xl: { justifyContent: { [on.xlOnly]: "var(--arc-justify-xl)" } },
+  "2xl": { justifyContent: { [on["2xl"]]: "var(--arc-justify-2xl)" } },
+  cqSm: { justifyContent: { [on.cqSmOnly]: "var(--arc-justify-cq-sm)" } },
+  cqMd: { justifyContent: { [on.cqMdOnly]: "var(--arc-justify-cq-md)" } },
+  cqLg: { justifyContent: { [on.cqLgOnly]: "var(--arc-justify-cq-lg)" } },
+  cqXl: { justifyContent: { [on.cqXl]: "var(--arc-justify-cq-xl)" } },
+});
+
+/** Equal columns, as a count: the property holds `3`, and the rule the track list. */
+const columnsAt = arc.create({
+  base: { gridTemplateColumns: "repeat(var(--arc-columns-base), minmax(0, 1fr))" },
+  sm: { gridTemplateColumns: { [on.smOnly]: "repeat(var(--arc-columns-sm), minmax(0, 1fr))" } },
+  md: { gridTemplateColumns: { [on.mdOnly]: "repeat(var(--arc-columns-md), minmax(0, 1fr))" } },
+  lg: { gridTemplateColumns: { [on.lgOnly]: "repeat(var(--arc-columns-lg), minmax(0, 1fr))" } },
+  xl: { gridTemplateColumns: { [on.xlOnly]: "repeat(var(--arc-columns-xl), minmax(0, 1fr))" } },
+  "2xl": {
+    gridTemplateColumns: { [on["2xl"]]: "repeat(var(--arc-columns-2xl), minmax(0, 1fr))" },
+  },
+  cqSm: {
+    gridTemplateColumns: { [on.cqSmOnly]: "repeat(var(--arc-columns-cq-sm), minmax(0, 1fr))" },
+  },
+  cqMd: {
+    gridTemplateColumns: { [on.cqMdOnly]: "repeat(var(--arc-columns-cq-md), minmax(0, 1fr))" },
+  },
+  cqLg: {
+    gridTemplateColumns: { [on.cqLgOnly]: "repeat(var(--arc-columns-cq-lg), minmax(0, 1fr))" },
+  },
+  cqXl: {
+    gridTemplateColumns: { [on.cqXl]: "repeat(var(--arc-columns-cq-xl), minmax(0, 1fr))" },
+  },
+});
+
+const padAt = arc.create({
+  base: { paddingInline: "var(--arc-padding-base)" },
+  sm: { paddingInline: { [on.smOnly]: "var(--arc-padding-sm)" } },
+  md: { paddingInline: { [on.mdOnly]: "var(--arc-padding-md)" } },
+  lg: { paddingInline: { [on.lgOnly]: "var(--arc-padding-lg)" } },
+  xl: { paddingInline: { [on.xlOnly]: "var(--arc-padding-xl)" } },
+  "2xl": { paddingInline: { [on["2xl"]]: "var(--arc-padding-2xl)" } },
+  cqSm: { paddingInline: { [on.cqSmOnly]: "var(--arc-padding-cq-sm)" } },
+  cqMd: { paddingInline: { [on.cqMdOnly]: "var(--arc-padding-cq-md)" } },
+  cqLg: { paddingInline: { [on.cqLgOnly]: "var(--arc-padding-cq-lg)" } },
+  cqXl: { paddingInline: { [on.cqXl]: "var(--arc-padding-cq-xl)" } },
+});
+
+/** Stacked below a step and side by side from it: one condition, so no variable. */
+const sideBySideFrom = arc.create({
+  sm: { flexDirection: { default: "column", [on.sm]: "row" } },
+  md: { flexDirection: { default: "column", [on.md]: "row" } },
+  lg: { flexDirection: { default: "column", [on.lg]: "row" } },
+  xl: { flexDirection: { default: "column", [on.xl]: "row" } },
+  "2xl": { flexDirection: { default: "column", [on["2xl"]]: "row" } },
+  cqSm: { flexDirection: { default: "column", [on.cqSm]: "row" } },
+  cqMd: { flexDirection: { default: "column", [on.cqMd]: "row" } },
+  cqLg: { flexDirection: { default: "column", [on.cqLg]: "row" } },
+  cqXl: { flexDirection: { default: "column", [on.cqXl]: "row" } },
+});
+
+/** Classes and the custom properties they read, as a layout component builds them up. */
+interface Drawn {
+  readonly classes: string[];
+  readonly style: Record<string, string>;
 }
 
-const spaceOf = (step: SpaceStep): string => `calc(var(--spacing) * ${String(step)})`;
+/**
+ * One responsive prop onto `into`: the base, and every step whose value is not
+ * the base's, each as its rule's class and its property's value.
+ *
+ * `token` turns a step's value into what the property holds, and is where a
+ * value that is not one of the system's tokens is refused, so a page cannot
+ * put a length the scale does not have into a stack's gap.
+ */
+function steps<T>(
+  into: Drawn,
+  name: string,
+  group: Record<Step, string>,
+  value: Responsive<T> | undefined,
+  token: (value: T) => string,
+): void {
+  const set = (step: Step, css: string): void => {
+    into.classes.push(group[step]);
+    into.style[`--arc-${name}-${SUFFIX[step]}`] = css;
+  };
+  if (value === undefined) return;
+  if (typeof value !== "object" || value === null) {
+    set("base", token(value));
+    return;
+  }
+  const given = value as Partial<Record<Step, T>>;
+  const base = given.base === undefined ? undefined : token(given.base);
+  if (base !== undefined) set("base", base);
+  const scale = CONTAINER.some((step) => given[step] !== undefined) ? CONTAINER : VIEWPORT;
+  let current = base;
+  for (const step of scale) {
+    const named = given[step];
+    if (named !== undefined) current = token(named);
+    if (current !== undefined && current !== base) set(step, current);
+  }
+}
 
-const gapAt = arc.dynamic(
-  (
-    base?: string,
-    sm?: string,
-    md?: string,
-    lg?: string,
-    xl?: string,
-    xxl?: string,
-    cqSm?: string,
-    cqMd?: string,
-    cqLg?: string,
-    cqXl?: string,
-  ) => ({
-    gap: {
-      default: base,
-      [on.smOnly]: sm,
-      [on.mdOnly]: md,
-      [on.lgOnly]: lg,
-      [on.xlOnly]: xl,
-      [on["2xl"]]: xxl,
-      [on.cqSmOnly]: cqSm,
-      [on.cqMdOnly]: cqMd,
-      [on.cqLgOnly]: cqLg,
-      [on.cqXl]: cqXl,
-    },
-  }),
-);
+function refuse(what: string, value: unknown): never {
+  throw new TypeError(`${String(value)} is not ${what}`);
+}
 
-const alignAt = arc.dynamic(
-  (
-    base?: string,
-    sm?: string,
-    md?: string,
-    lg?: string,
-    xl?: string,
-    xxl?: string,
-    cqSm?: string,
-    cqMd?: string,
-    cqLg?: string,
-    cqXl?: string,
-  ) => ({
-    alignItems: {
-      default: base,
-      [on.smOnly]: sm,
-      [on.mdOnly]: md,
-      [on.lgOnly]: lg,
-      [on.xlOnly]: xl,
-      [on["2xl"]]: xxl,
-      [on.cqSmOnly]: cqSm,
-      [on.cqMdOnly]: cqMd,
-      [on.cqLgOnly]: cqLg,
-      [on.cqXl]: cqXl,
-    },
-  }),
-);
-
-const justifyAt = arc.dynamic(
-  (
-    base?: string,
-    sm?: string,
-    md?: string,
-    lg?: string,
-    xl?: string,
-    xxl?: string,
-    cqSm?: string,
-    cqMd?: string,
-    cqLg?: string,
-    cqXl?: string,
-  ) => ({
-    justifyContent: {
-      default: base,
-      [on.smOnly]: sm,
-      [on.mdOnly]: md,
-      [on.lgOnly]: lg,
-      [on.xlOnly]: xl,
-      [on["2xl"]]: xxl,
-      [on.cqSmOnly]: cqSm,
-      [on.cqMdOnly]: cqMd,
-      [on.cqLgOnly]: cqLg,
-      [on.cqXl]: cqXl,
-    },
-  }),
-);
-
-type Direction = "row" | "column";
-
-const directionAt = arc.dynamic(
-  (
-    base?: Direction,
-    sm?: Direction,
-    md?: Direction,
-    lg?: Direction,
-    xl?: Direction,
-    xxl?: Direction,
-    cqSm?: Direction,
-    cqMd?: Direction,
-    cqLg?: Direction,
-    cqXl?: Direction,
-  ) => ({
-    flexDirection: {
-      default: base,
-      [on.smOnly]: sm,
-      [on.mdOnly]: md,
-      [on.lgOnly]: lg,
-      [on.xlOnly]: xl,
-      [on["2xl"]]: xxl,
-      [on.cqSmOnly]: cqSm,
-      [on.cqMdOnly]: cqMd,
-      [on.cqLgOnly]: cqLg,
-      [on.cqXl]: cqXl,
-    },
-  }),
-);
-
-const columnsAt = arc.dynamic(
-  (
-    base?: string,
-    sm?: string,
-    md?: string,
-    lg?: string,
-    xl?: string,
-    xxl?: string,
-    cqSm?: string,
-    cqMd?: string,
-    cqLg?: string,
-    cqXl?: string,
-  ) => ({
-    gridTemplateColumns: {
-      default: base,
-      [on.smOnly]: sm,
-      [on.mdOnly]: md,
-      [on.lgOnly]: lg,
-      [on.xlOnly]: xl,
-      [on["2xl"]]: xxl,
-      [on.cqSmOnly]: cqSm,
-      [on.cqMdOnly]: cqMd,
-      [on.cqLgOnly]: cqLg,
-      [on.cqXl]: cqXl,
-    },
-  }),
-);
-
-const padAt = arc.dynamic(
-  (
-    base?: string,
-    sm?: string,
-    md?: string,
-    lg?: string,
-    xl?: string,
-    xxl?: string,
-    cqSm?: string,
-    cqMd?: string,
-    cqLg?: string,
-    cqXl?: string,
-  ) => ({
-    paddingInline: {
-      default: base,
-      [on.smOnly]: sm,
-      [on.mdOnly]: md,
-      [on.lgOnly]: lg,
-      [on.xlOnly]: xl,
-      [on["2xl"]]: xxl,
-      [on.cqSmOnly]: cqSm,
-      [on.cqMdOnly]: cqMd,
-      [on.cqLgOnly]: cqLg,
-      [on.cqXl]: cqXl,
-    },
-  }),
-);
-
-type At = (...values: Ranges) => DynamicStyle;
-
-function at(group: At, values: Ranges): DynamicStyle {
-  return group(
-    values[0],
-    values[1],
-    values[2],
-    values[3],
-    values[4],
-    values[5],
-    values[6],
-    values[7],
-    values[8],
-    values[9],
-  );
+/** A step of the spacing scale as `space`'s token for it. */
+function spaceOf(step: SpaceStep): string {
+  const token = (space as Record<string, string>)[`x${String(step).replace(".", "_")}`];
+  return token ?? refuse("a step of arc's spacing scale", step);
 }
 
 export type Align = "start" | "center" | "end" | "stretch" | "baseline";
@@ -283,13 +223,33 @@ const JUSTIFY: Record<Justify, string> = {
   between: "space-between",
 };
 
+const alignOf = (value: Align): string =>
+  (Object.hasOwn(ALIGN, value) ? ALIGN[value] : undefined) ?? refuse("an alignment", value);
+
+const justifyOf = (value: Justify): string =>
+  (Object.hasOwn(JUSTIFY, value) ? JUSTIFY[value] : undefined) ?? refuse("a justification", value);
+
+function countOf(count: number): string {
+  return Number.isInteger(count) && count >= 1 ? String(count) : refuse("a column count", count);
+}
+
 const grid = arc({ display: "grid" });
+
+/** As many columns as fit, none narrower than the length the element sets. */
+const fitting = arc({
+  gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, var(--arc-min-item)), 1fr))",
+});
+
+/** A length in `rem`, `em`, `ch` or `px`, which is what `minItemWidth` takes. */
+export type Length = `${number}${"rem" | "em" | "ch" | "px"}`;
+
+const LENGTH = /^\d+(\.\d+)?(rem|em|ch|px)$/;
 
 const container = arc(layout.container, layout.centred);
 
-export type ContainerSize = Breakpoint | "full";
+const widest = arc({ maxWidth: "var(--arc-max-width)" });
 
-const widthOf = arc.dynamic((maxWidth: string) => ({ maxWidth }));
+export type ContainerSize = Breakpoint | "full";
 
 interface LayoutProps extends UiProps {
   /** Another element in this one's place, built from the props it is handed: a `<ul>`, a `<section>`. */
@@ -297,13 +257,9 @@ interface LayoutProps extends UiProps {
 }
 
 /** The element a layout component draws, or the caller's in its place. */
-function drawn(
-  slot: string,
-  styles: () => { class: string; style?: Record<string, string | number> },
-  props: LayoutProps,
-): JSXElement {
+function drawn(slot: string, styles: () => Drawn, props: LayoutProps): JSXElement {
   const given = cells(props);
-  const own = uiProps(slot, () => styles().class, given);
+  const own = uiProps(slot, () => styles().classes.join(" "), given);
   const style = (): Record<string, string | number> => {
     const out: Record<string, string | number> = { ...styles().style };
     for (const [name, value] of Object.entries(given.style?.() ?? {})) {
@@ -345,19 +301,13 @@ export function Stack(props: StackProps) {
     <>
       {drawn(
         "stack",
-        () =>
-          arc.props(
-            layout.column,
-            at(gapAt, ranges(props.gap ?? 4, spaceOf)),
-            at(
-              alignAt,
-              ranges(props.align, (value) => ALIGN[value]),
-            ),
-            at(
-              justifyAt,
-              ranges(props.justify, (value) => JUSTIFY[value]),
-            ),
-          ),
+        () => {
+          const out: Drawn = { classes: [layout.column], style: {} };
+          steps(out, "gap", gapAt, props.gap ?? 4, spaceOf);
+          steps(out, "align", alignAt, props.align, alignOf);
+          steps(out, "justify", justifyAt, props.justify, justifyOf);
+          return out;
+        },
         props,
       )}
     </>
@@ -391,30 +341,19 @@ export interface InlineProps extends LayoutProps {
  * ```
  */
 export function Inline(props: InlineProps) {
-  const direction = (): Responsive<Direction> | undefined =>
-    props.stackBelow === undefined ? undefined : { base: "column", [props.stackBelow]: "row" };
   return (
     <>
       {drawn(
         "inline",
-        () =>
-          arc.props(
-            layout.row,
-            props.wrap === false ? undefined : layout.wrap,
-            at(gapAt, ranges(props.gap ?? 2, spaceOf)),
-            at(
-              alignAt,
-              ranges(props.align, (value) => ALIGN[value]),
-            ),
-            at(
-              justifyAt,
-              ranges(props.justify, (value) => JUSTIFY[value]),
-            ),
-            at(
-              directionAt as unknown as At,
-              ranges(direction(), (value) => value),
-            ),
-          ),
+        () => {
+          const out: Drawn = { classes: [layout.row], style: {} };
+          if (props.wrap !== false) out.classes.push(layout.wrap);
+          if (props.stackBelow !== undefined) out.classes.push(sideBySideFrom[props.stackBelow]);
+          steps(out, "gap", gapAt, props.gap ?? 2, spaceOf);
+          steps(out, "align", alignAt, props.align, alignOf);
+          steps(out, "justify", justifyAt, props.justify, justifyOf);
+          return out;
+        },
         props,
       )}
     </>
@@ -425,10 +364,10 @@ export interface GridProps extends LayoutProps {
   /** Equal columns, per step. */
   columns?: Responsive<number>;
   /**
-   * As many columns as fit, none narrower than this CSS length; for cards
-   * that reflow with no breakpoint at all. Ignored when `columns` is given.
+   * As many columns as fit, none narrower than this length; for cards that
+   * reflow with no breakpoint at all. Ignored when `columns` is given.
    */
-  minItemWidth?: string;
+  minItemWidth?: Length;
   /** @default 4 */
   gap?: Responsive<SpaceStep>;
   align?: Responsive<Align>;
@@ -443,37 +382,23 @@ export interface GridProps extends LayoutProps {
  * ```
  */
 export function Grid(props: GridProps) {
-  const tracks = (): Responsive<string> | undefined => {
-    const columns = props.columns;
-    if (columns !== undefined) {
-      if (typeof columns === "number") return `repeat(${String(columns)}, minmax(0, 1fr))`;
-      const out: Record<string, string> = {};
-      for (const [step, count] of Object.entries(columns)) {
-        if (count !== undefined) out[step] = `repeat(${String(count)}, minmax(0, 1fr))`;
-      }
-      return out;
-    }
-    return props.minItemWidth === undefined
-      ? undefined
-      : `repeat(auto-fill, minmax(min(100%, ${props.minItemWidth}), 1fr))`;
-  };
   return (
     <>
       {drawn(
         "grid",
-        () =>
-          arc.props(
-            grid,
-            at(gapAt, ranges(props.gap ?? 4, spaceOf)),
-            at(
-              columnsAt,
-              ranges(tracks(), (value) => value),
-            ),
-            at(
-              alignAt,
-              ranges(props.align, (value) => ALIGN[value]),
-            ),
-          ),
+        () => {
+          const out: Drawn = { classes: [grid], style: {} };
+          steps(out, "gap", gapAt, props.gap ?? 4, spaceOf);
+          if (props.columns !== undefined) {
+            steps(out, "columns", columnsAt, props.columns, countOf);
+          } else if (props.minItemWidth !== undefined) {
+            const width = props.minItemWidth;
+            out.classes.push(fitting);
+            out.style["--arc-min-item"] = LENGTH.test(width) ? width : refuse("a length", width);
+          }
+          steps(out, "align", alignAt, props.align, alignOf);
+          return out;
+        },
         props,
       )}
     </>
@@ -502,12 +427,17 @@ export function Container(props: ContainerProps) {
     <>
       {drawn(
         "container",
-        () =>
-          arc.props(
-            container,
-            widthOf(props.size === "full" ? "none" : breakpoints[props.size ?? "xl"]),
-            at(padAt, ranges(props.padding ?? { base: 4, md: 6 }, spaceOf)),
-          ),
+        () => {
+          const size = props.size ?? "xl";
+          const out: Drawn = { classes: [container, widest], style: {} };
+          out.style["--arc-max-width"] =
+            size === "full"
+              ? "none"
+              : ((Object.hasOwn(breakpoints, size) ? breakpoints[size] : undefined) ??
+                refuse("a container size", size));
+          steps(out, "padding", padAt, props.padding ?? { base: 4, md: 6 }, spaceOf);
+          return out;
+        },
         props,
       )}
     </>
@@ -531,7 +461,10 @@ export function Center(props: CenterProps) {
     <>
       {drawn(
         "center",
-        () => arc.props(props.inline === true ? layout.inlineCentre : layout.centre),
+        () => ({
+          classes: [props.inline === true ? layout.inlineCentre : layout.centre],
+          style: {},
+        }),
         props,
       )}
     </>
