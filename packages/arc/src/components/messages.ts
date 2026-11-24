@@ -22,6 +22,13 @@ export interface ArcMessages {
   commandMenuDescription: string;
   commandPlaceholder: string;
   noResults: string;
+  recent: string;
+  searching: string;
+  searchingIn: (heading: string) => string;
+  noMatchesIn: (heading: string) => string;
+  searchFailed: (heading: string) => string;
+  showMoreIn: (heading: string) => string;
+  resultCount: (count: number) => string;
   continue: string;
   cancel: string;
   save: string;
@@ -166,6 +173,13 @@ export const ENGLISH: ArcMessages = {
   commandMenuDescription: "Search for a page or an action.",
   commandPlaceholder: "Type a command or search...",
   noResults: "No results found.",
+  recent: "Recent",
+  searching: "Searching…",
+  searchingIn: (heading) => `Searching ${heading}`,
+  noMatchesIn: (heading) => `No matches in ${heading}`,
+  searchFailed: (heading) => `${heading} could not be searched`,
+  showMoreIn: (heading) => `Show more ${heading}`,
+  resultCount: (count) => (count === 1 ? "1 result" : `${String(count)} results`),
   continue: "Continue",
   cancel: "Cancel",
   save: "Save",

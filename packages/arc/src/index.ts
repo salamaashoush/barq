@@ -171,10 +171,20 @@ export {
   type CommandMenuAction,
   type CommandMenuGroup,
   type CommandMenuProps,
+  type CommandResult,
+  type CommandResultPage,
+  type CommandSearchContext,
+  type CommandSource,
   openCommandMenu,
   registerCommands,
   useCommands,
 } from "./components/command-menu.tsx";
+export {
+  HighlightMatches,
+  type HighlightMatchesProps,
+  type MatchRange,
+  highlightMatchesStyles,
+} from "./components/highlight-matches.tsx";
 export {
   ConfirmHost,
   type ConfirmHostProps,

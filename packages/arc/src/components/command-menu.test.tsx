@@ -3,12 +3,17 @@ import { createSignal, flush } from "@barqjs/core";
 import { Folder } from "@barqjs/lucide/icons/folder";
 import { parseCombo } from "@barqjs/primitives/keyboard";
 import { type AnyRouteDefinition, Outlet } from "@barqjs/router";
-import { ariaViolations, screen, tick, user, waitFor } from "@barqjs/testing";
+import { ariaViolations, screen, tick, user, waitFor, within } from "@barqjs/testing";
+import { touch } from "@barqjs/ui/shared-touch";
 import { renderRoute } from "@barqjs/testing/router";
 
+import { layout } from "../style/index.ts";
+import { wears } from "../test-arc.ts";
 import {
   CommandMenu,
   type CommandMenuGroup,
+  type CommandResult,
+  type CommandSource,
   type CommandMenuProps,
   openCommandMenu,
   registerCommands,
@@ -203,5 +208,206 @@ describe("CommandMenu", () => {
     await settle();
     expect(screen.getByRole("dialog")).toBeDefined();
     shown.unmount();
+  });
+});
+
+interface Doc {
+  id: string;
+  title: string;
+  body: string;
+}
+
+const DOCS: Doc[] = Array.from({ length: 5 }, (_, index) => ({
+  id: `d${String(index + 1)}`,
+  title: `Report ${String(index + 1)}`,
+  body: `The quarterly report, part ${String(index + 1)}`,
+}));
+
+function docsSource(
+  calls: { query: string; cursor: unknown; signal: AbortSignal }[],
+  overrides: Partial<CommandSource> = {},
+): CommandSource {
+  return {
+    id: "docs",
+    heading: "Documents",
+    debounce: 5,
+    search: async (query, { signal, cursor }) => {
+      calls.push({ query, cursor, signal });
+      await Promise.resolve();
+      const start = typeof cursor === "number" ? cursor : 0;
+      const matched = DOCS.filter((doc) => doc.title.toLowerCase().includes(query.toLowerCase()));
+      const page = matched.slice(start, start + 2);
+      return {
+        results: page.map((doc) => ({
+          id: doc.id,
+          label: doc.title,
+          snippet: doc.body,
+          meta: "Doc",
+          to: "/projects",
+        })),
+        next: start + 2 < matched.length ? start + 2 : undefined,
+      };
+    },
+    ...overrides,
+  };
+}
+
+async function typeInto(text: string): Promise<void> {
+  const input = screen.getByRole("combobox");
+  input.focus();
+  await user.keyboard(text);
+  await settle();
+}
+
+function sourceGroup(name: string): HTMLElement {
+  return screen.getByRole("group", { name });
+}
+
+describe("CommandMenu sources", () => {
+  test("typing searches a source once the typing pauses, aborting the search it replaced", async () => {
+    const calls: { query: string; cursor: unknown; signal: AbortSignal }[] = [];
+    const view = await renderRoute({ routeTree: tree({ sources: [docsSource(calls)] }) });
+    openCommandMenu();
+    await settle();
+    await typeInto("r");
+    expect(screen.queryByRole("group", { name: "Documents" })).toBeNull();
+
+    await typeInto("ep");
+    expect(screen.getByRole("progressbar", { name: "Searching Documents" })).toBeDefined();
+    await waitFor(() => expect(calls.length).toBe(1));
+    expect(calls[0]?.query).toBe("rep");
+    await waitFor(() =>
+      expect(within(sourceGroup("Documents")).getAllByRole("option")).toHaveLength(3),
+    );
+    await settle();
+    const results = [...document.querySelectorAll('[data-slot="command-menu-result"]')];
+    expect(results.map((one) => one.querySelector("mark")?.textContent)).toEqual(["Rep", "Rep"]);
+    expect(results[0]?.textContent).toContain("The quarterly report, part 1");
+    expect(screen.getByRole("status").textContent).toBe("2 results");
+    expect(screen.queryByText("No results found.")).toBeNull();
+    expect(await ariaViolations(document.body)).toEqual([]);
+
+    await typeInto("or");
+    await waitFor(() => expect(calls.length).toBe(2));
+    expect(calls[1]?.query).toBe("repor");
+    view.unmount();
+  });
+
+  test("a search still out when the text changes is aborted, and its answer dropped", async () => {
+    const signals: AbortSignal[] = [];
+    const answers: ((results: CommandResult[]) => void)[] = [];
+    const slow: CommandSource = {
+      id: "slow",
+      heading: "Slow",
+      debounce: 1,
+      search: (_query, { signal }) => {
+        signals.push(signal);
+        return new Promise((resolve) => answers.push(resolve));
+      },
+    };
+    const view = await renderRoute({ routeTree: tree({ sources: [slow] }) });
+    openCommandMenu();
+    await settle();
+    await typeInto("ab");
+    await waitFor(() => expect(signals).toHaveLength(1));
+    await typeInto("c");
+    expect(signals[0]?.aborted).toBe(true);
+    answers[0]?.([{ id: "old", label: "Old answer" }]);
+    await waitFor(() => expect(signals).toHaveLength(2));
+    answers[1]?.([{ id: "new", label: "New abc" }]);
+    await waitFor(() => expect(screen.getByRole("option", { name: "New abc" })).toBeDefined());
+    expect(screen.queryByRole("option", { name: "Old answer" })).toBeNull();
+    view.unmount();
+    expect(signals[1]?.aborted).toBe(true);
+  });
+
+  test("Show more asks for the next page and adds it to the group", async () => {
+    const calls: { query: string; cursor: unknown; signal: AbortSignal }[] = [];
+    const view = await renderRoute({ routeTree: tree({ sources: [docsSource(calls)] }) });
+    openCommandMenu();
+    await settle();
+    await typeInto("report");
+    await waitFor(() => expect(screen.getByRole("option", { name: "Show more Documents" })));
+    await user.click(screen.getByRole("option", { name: "Show more Documents" }));
+    await settle();
+    await waitFor(() =>
+      expect(document.querySelectorAll('[data-slot="command-menu-result"]')).toHaveLength(4),
+    );
+    expect(calls.map((call) => call.cursor)).toEqual([undefined, 2]);
+    expect(screen.getByRole("dialog")).toBeDefined();
+    view.unmount();
+  });
+
+  test("each source says when it found nothing or failed, and the palette's empty waits for them", async () => {
+    const failing: CommandSource = {
+      id: "people",
+      heading: "People",
+      debounce: 5,
+      search: () => Promise.reject(new Error("down")),
+    };
+    const view = await renderRoute({
+      routeTree: tree({ sources: [docsSource([], { empty: "No documents" }), failing] }),
+    });
+    openCommandMenu();
+    await settle();
+    await typeInto("zz");
+    expect(screen.queryByText("No results found.")).toBeNull();
+    await waitFor(() => expect(screen.getByText("No documents")).toBeDefined());
+    await waitFor(() => expect(screen.getByText("People could not be searched")).toBeDefined());
+    await settle();
+    expect(screen.getByText("No results found.")).toBeDefined();
+    expect(await ariaViolations(document.body)).toEqual([]);
+    view.unmount();
+  });
+
+  test("a chosen result navigates, runs the source's onSelect and is offered again before typing", async () => {
+    localStorage.removeItem("arc-test-recent");
+    const chosen: string[] = [];
+    const source = docsSource([], { onSelect: (result) => chosen.push(result.id) });
+    const view = await renderRoute({
+      routeTree: tree({ sources: [source], recent: { key: "arc-test-recent", max: 3 } }),
+    });
+    openCommandMenu();
+    await settle();
+    await typeInto("report 2");
+    await waitFor(() => expect(screen.getByRole("option", { name: /Report 2/ })).toBeDefined());
+    user.tap(screen.getByRole("option", { name: /Report 2/ }));
+    await settle();
+    await waitFor(() => expect(view.state.location().pathname).toBe("/projects"));
+    expect(chosen).toEqual(["d2"]);
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    openCommandMenu();
+    await settle();
+    expect(screen.getByRole("combobox")).toHaveProperty("value", "");
+    const recent = sourceGroup("Recent");
+    expect(within(recent).getByRole("option").textContent).toContain("Report 2");
+    expect(JSON.parse(localStorage.getItem("arc-test-recent") ?? "[]")).toHaveLength(1);
+    view.unmount();
+    localStorage.removeItem("arc-test-recent");
+  });
+
+  test("a result is a finger's height, and its meta sits at the reading end", async () => {
+    const view = await renderRoute({
+      routeTree: tree({
+        sources: [docsSource([])],
+        classes: { result: "r", snippet: "s", meta: "m", label: "l", loading: "w" },
+      }),
+    });
+    openCommandMenu();
+    await settle();
+    await typeInto("report");
+    expect(document.querySelector('[data-slot="command-menu-loading"]')?.classList).toContain("w");
+    await waitFor(() =>
+      expect(document.querySelector('[data-slot="command-menu-result"]')).not.toBeNull(),
+    );
+    await settle();
+    const result = document.querySelector('[data-slot="command-menu-result"]') as HTMLElement;
+    expect(wears(result, touch.target)).toBe(true);
+    for (const cls of ["r", "s", "m", "l"]) {
+      expect(result.querySelector(`.${cls}`)).not.toBeNull();
+    }
+    expect(wears(result.querySelector(".m"), layout.pushEnd)).toBe(true);
+    view.unmount();
   });
 });

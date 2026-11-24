@@ -408,7 +408,35 @@ if (await confirm({ title: "Delete the check?", tone: "danger", confirmLabel: "D
   unmounts.
 - `CommandMenu`: the palette `Mod+K` opens, of places to go and things to do.
   A page adds its own actions with `useCommands` for as long as it is open,
-  and `registerCommands` adds them from outside any component.
+  and `registerCommands` adds them from outside any component. `sources`
+  search as the reader types, each once the typing pauses (`debounce`) and
+  past `minLength`, the search it replaced aborted through its `signal`. Each
+  source's results are a group of their own below the commands, the words
+  that matched marked in the label and the snippet, with its own searching,
+  nothing-found and failed rows and a Show more while it returns a `next`
+  cursor. `recent` keeps the results chosen and offers them before anything
+  is typed, and a status line tells a screen reader how many were found.
+
+  ```tsx
+  <CommandMenu
+    groups={PAGES}
+    recent={{ key: "palette-recent" }}
+    sources={[
+      {
+        id: "invoices",
+        heading: "Invoices",
+        search: async (query, { signal, cursor }) => {
+          const page = await api.invoices.search({ query, cursor }, { signal });
+          return { results: page.items.map(toResult), next: page.cursor };
+        },
+      },
+    ]}
+  />
+  ```
+
+- `HighlightMatches`: a text with what a search matched marked, each word of
+  `query` matched in the locale's own way ("resume" marks "Résumé"), or the
+  `ranges` a search service found.
 - `Breadcrumbs`: where the page sits, read from the matched routes'
   `staticData.crumb` or given as items. A narrow trail folds its middle steps
   behind a button that shows them.
