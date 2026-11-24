@@ -452,7 +452,7 @@ export function SignInForm(props: SignInFormProps) {
           </div>
         </Show>
         <Show when={props.footer !== undefined}>
-          <p class={cls().description}>{props.footer}</p>
+          <div class={cls().description}>{props.footer}</div>
         </Show>
       </Show>
     </section>
@@ -605,7 +605,7 @@ export function SignUpForm(props: SignUpFormProps) {
           </form>
         </form.AppForm>
         <Show when={props.footer !== undefined}>
-          <p class={cls().description}>{props.footer}</p>
+          <div class={cls().description}>{props.footer}</div>
         </Show>
       </Show>
     </section>
@@ -678,7 +678,7 @@ export function ForgotPasswordForm(props: ForgotPasswordFormProps) {
           </form>
         </form.AppForm>
         <Show when={props.footer !== undefined}>
-          <p class={cls().description}>{props.footer}</p>
+          <div class={cls().description}>{props.footer}</div>
         </Show>
       </Show>
     </section>

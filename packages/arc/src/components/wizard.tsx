@@ -231,7 +231,12 @@ export function Wizard(props: WizardProps) {
       }
     }
     await form.handleSubmit();
-    if (form.state.isSubmitSuccessful && resumeKey !== undefined && !isServer) {
+    if (
+      form.state.isSubmitSuccessful &&
+      form.state.isValid &&
+      resumeKey !== undefined &&
+      !isServer
+    ) {
       localStorage.removeItem(resumeKey);
     }
   };

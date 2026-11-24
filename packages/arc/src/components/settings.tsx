@@ -56,6 +56,7 @@ export const settingsStyles = variants({
       "&:first-of-type": { borderBlockStartWidth: "0" },
     }),
     rowText: arc(layout.column, gap[1], layout.minZero, layout.grow, { flexBasis: "16rem" }),
+    error: arc(type.caption, fg.danger, layout.flush),
     rowTitle: arc(type.label),
   },
 });
@@ -171,7 +172,9 @@ export function SettingsSection(props: SettingsSectionProps) {
     event.preventDefault();
     if (form === undefined) return;
     await form.handleSubmit();
-    if (form.state.isSubmitSuccessful) {
+    // A save the server refused still completes, its errors set on the form:
+    // resetting would wipe them and "Saved" would say the opposite.
+    if (form.state.isSubmitSuccessful && form.state.isValid) {
       form.reset(form.state.values);
       setSaved(true);
       clearTimeout(timer);
@@ -268,12 +271,16 @@ export function DangerZone(props: DangerZoneProps) {
   const messages = useArcMessages();
   const cls = (): Slots => parts(settingsStyles(), props.classes);
   const [running, setRunning] = createSignal<string | null>(null);
+  const [failed, setFailed] = createSignal<string | null>(null);
   const run = async (action: DangerAction): Promise<void> => {
     const sure = await confirm({ ...action.confirm, tone: "danger" });
     if (!sure) return;
+    setFailed(null);
     setRunning(action.id);
     try {
       await action.onAction();
+    } catch {
+      setFailed(action.id);
     } finally {
       setRunning(null);
     }
@@ -297,6 +304,11 @@ export function DangerZone(props: DangerZoneProps) {
                 <span class={cls().rowTitle}>{action.title}</span>
                 <Show when={action.description !== undefined}>
                   <p class={cls().description}>{action.description}</p>
+                </Show>
+                <Show when={failed() === action.id}>
+                  <p class={cls().error} role="alert" data-slot="danger-zone-error">
+                    {messages().actionFailed}
+                  </p>
                 </Show>
               </div>
               <Button

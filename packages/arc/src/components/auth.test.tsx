@@ -338,4 +338,21 @@ describe("the auth templates", () => {
     expect(result.container.querySelector("h1")?.textContent).toBe("Sign in");
     result.unmount();
   });
+
+  test("hydrate a footer that is a paragraph of its own", async () => {
+    const result = await hydrates(`
+      import { ForgotPasswordForm, SignInForm, SignUpForm, Text } from "<arc>";
+      export function Page() {
+        return (
+          <>
+            <SignInForm onSubmit={() => {}} footer={<Text size="sm">No account? <a href="/sign-up">Sign up</a></Text>} />
+            <SignUpForm onSubmit={() => {}} footer={<p>Have an account? <a href="/sign-in">Sign in</a></p>} />
+            <ForgotPasswordForm onSubmit={() => {}} footer={<p>Remembered it?</p>} />
+          </>
+        );
+      }
+    `);
+    expect(result.container.querySelectorAll("p p")).toHaveLength(0);
+    result.unmount();
+  });
 });

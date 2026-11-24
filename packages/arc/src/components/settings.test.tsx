@@ -10,7 +10,7 @@ import { touch } from "@barqjs/ui/shared-touch";
 
 import { hydrates, settle, wears } from "../test-arc.ts";
 import { ConfirmHost } from "./confirm.tsx";
-import { useArcForm } from "./form.tsx";
+import { setServerErrors, useArcForm } from "./form.tsx";
 import { DangerZone, SettingsLayout, SettingsSection, settingsStyles } from "./settings.tsx";
 
 const NAVIGATION = [
@@ -26,7 +26,11 @@ const NAVIGATION = [
 function Profile(props: { saved: string[] }) {
   const form = useArcForm(() => ({
     defaultValues: { name: "Salama Ashoush" },
-    onSubmit: ({ value }) => {
+    onSubmit: ({ value, formApi }) => {
+      if (value.name.endsWith("?")) {
+        setServerErrors(formApi, { fields: { name: "A name cannot end in a question mark" } });
+        return;
+      }
       props.saved.push(value.name);
     },
   }));
@@ -115,6 +119,22 @@ describe("SettingsSection", () => {
     view.unmount();
   });
 
+  test("a save the server refused keeps its errors and does not say it saved", async () => {
+    const saved: string[] = [];
+    const view = await renderRoute({ routeTree: tree(saved), path: "/settings/profile" });
+    const section = screen.getByRole("region", { name: "Profile" });
+    const name = within(section).getByRole("textbox", { name: "Name" });
+    await user.type(name, "?");
+    await settle();
+    await user.click(within(section).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(name.getAttribute("aria-invalid")).toBe("true"));
+    await settle();
+    expect(saved).toEqual([]);
+    expect(within(section).queryByRole("status")?.textContent ?? "").not.toBe("Saved");
+    expect(name.getAttribute("aria-invalid")).toBe("true");
+    view.unmount();
+  });
+
   test("leaving with unsaved changes asks first", async () => {
     const view = await renderRoute({ routeTree: tree([]), path: "/settings/profile" });
     await user.type(screen.getByRole("textbox", { name: "Name" }), "?");
@@ -161,6 +181,33 @@ describe("DangerZone", () => {
     await user.click(screen.getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(ran).toEqual(["delete"]));
     expect(await ariaViolations(document.body)).toEqual([]);
+  });
+
+  test("an action that fails says so beside it rather than escaping unhandled", async () => {
+    render(() => (
+      <>
+        <ConfirmHost />
+        <DangerZone
+          actions={[
+            {
+              id: "archive",
+              title: "Archive the workspace",
+              label: "Archive workspace",
+              confirm: { title: "Archive the workspace?", confirmLabel: "Archive" },
+              onAction: () => Promise.reject(new Error("invoices are open")),
+            },
+          ]}
+        />
+      </>
+    ));
+    await user.click(screen.getByRole("button", { name: "Archive workspace" }));
+    await settle();
+    await user.click(screen.getByRole("button", { name: "Archive" }));
+    const alert = await waitFor(() => screen.getByRole("alert"));
+    expect(alert.textContent).toBe("That did not work. Try again.");
+    expect(
+      screen.getByRole("button", { name: "Archive workspace" }).hasAttribute("data-pending"),
+    ).toBe(false);
   });
 });
 

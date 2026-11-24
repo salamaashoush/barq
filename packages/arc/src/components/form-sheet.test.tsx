@@ -6,7 +6,7 @@ import { renderRoute } from "@barqjs/testing/router";
 
 import { ConfirmHost } from "./confirm.tsx";
 import { FormSheet } from "./form-sheet.tsx";
-import { useArcForm } from "./form.tsx";
+import { setServerErrors, useArcForm } from "./form.tsx";
 
 async function settle(): Promise<void> {
   flush();
@@ -22,7 +22,11 @@ interface Edit {
 function Editor(props: Edit) {
   const form = useArcForm(() => ({
     defaultValues: { name: "Acme" },
-    onSubmit: ({ value }) => {
+    onSubmit: ({ value, formApi }) => {
+      if (props.fail === true) {
+        setServerErrors(formApi, { fields: { name: "Another customer has that name" } });
+        return;
+      }
       props.saved?.push(value.name);
     },
   }));
@@ -67,6 +71,21 @@ describe("FormSheet", () => {
     await waitFor(() => expect(saved).toEqual(["Acme Ltd"]));
     await settle();
     await waitFor(() => expect(sheet()).toBeNull());
+  });
+
+  test("stays open with the errors a refused submission set", async () => {
+    render(() => <Editor fail />);
+    await settle();
+    await user.type(screen.getByRole("textbox", { name: "Name" }), " Ltd");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    const input = await waitFor(() => {
+      const field = screen.getByRole("textbox", { name: "Name" });
+      expect(field.getAttribute("aria-invalid")).toBe("true");
+      return field;
+    });
+    await settle();
+    expect(sheet()).not.toBeNull();
+    expect(input.getAttribute("aria-invalid")).toBe("true");
   });
 
   test("an invalid form stays open with its submit disabled", async () => {

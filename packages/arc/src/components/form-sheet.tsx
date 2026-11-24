@@ -101,7 +101,11 @@ export function FormSheet(props: FormSheetProps) {
 
   const submit = async (): Promise<void> => {
     await form.handleSubmit();
-    if (form.state.isSubmitSuccessful && props.closeOnSubmit !== false) setOpen(false);
+    // A submission the server refused still completes; the errors it set on
+    // the form are what say it failed, and they have to stay in view.
+    if (form.state.isSubmitSuccessful && form.state.isValid && props.closeOnSubmit !== false) {
+      setOpen(false);
+    }
   };
 
   return (

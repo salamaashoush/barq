@@ -7,7 +7,7 @@ import { renderRoute } from "@barqjs/testing/router";
 import { touch } from "@barqjs/ui/shared-touch";
 
 import { hydrates, settle, wears } from "../test-arc.ts";
-import { useArcForm } from "./form.tsx";
+import { setServerErrors, useArcForm } from "./form.tsx";
 import { Wizard, type WizardStep } from "./wizard.tsx";
 
 const STEPS: WizardStep[] = [
@@ -31,7 +31,11 @@ function Project(props: {
 }) {
   const form = useArcForm(() => ({
     defaultValues: { name: "", lead: "" },
-    onSubmit: ({ value }) => {
+    onSubmit: ({ value, formApi }) => {
+      if (value.name === "Taken") {
+        setServerErrors(formApi, { form: "A project called Taken already exists" });
+        return;
+      }
       props.submitted?.push(value);
     },
   }));
@@ -133,6 +137,20 @@ describe("Wizard", () => {
     await press("Finish");
     await waitFor(() => expect(submitted).toEqual([{ name: "Atlas", lead: "Salama" }]));
     await waitFor(() => expect(localStorage.getItem("wizard-test")).toBeNull());
+  });
+
+  test("a submission the server refused keeps the saved draft", async () => {
+    const submitted: Values[] = [];
+    render(() => <Project submitted={submitted} resume="wizard-test" />);
+    await user.type(screen.getByRole("textbox", { name: "Project name" }), "Taken");
+    await press("Next");
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Lead" })).toBeDefined());
+    await press("Next");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Finish" })).toBeDefined());
+    await press("Finish");
+    await settle();
+    expect(submitted).toEqual([]);
+    expect(JSON.parse(localStorage.getItem("wizard-test") ?? "{}").values.name).toBe("Taken");
   });
 
   test("resumes at the step and with the values it was left at", async () => {
