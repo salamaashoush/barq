@@ -1094,7 +1094,8 @@
         "DatePickerProps",
         "DatePreset",
         "DateRangePicker",
-        "DateRangePickerProps"
+        "DateRangePickerProps",
+        "DateRangePreset"
       ]
     },
     {
@@ -1460,7 +1461,8 @@
       "exports": [
         "Input",
         "InputProps",
-        "InputSize"
+        "InputSize",
+        "inputVariants"
       ]
     },
     {

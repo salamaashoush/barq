@@ -595,7 +595,7 @@ function isHandle(target: EventTarget | null): boolean {
 }
 
 export function DrawerContent(props: DrawerContentProps) {
-  const { state } = family.use();
+  const { state, overlayId } = family.use();
   const drawer = useDrawer();
   const direction = (): DrawerDirection => props.direction ?? drawer.direction();
   const vertical = (): boolean => direction() === "top" || direction() === "bottom";
@@ -875,7 +875,12 @@ export function DrawerContent(props: DrawerContentProps) {
       data-state={state.isOpen() ? "open" : "closed"}
       onPointerDown={onPointerDown}
     >
-      <AriaDialog {...values(named(cells(props)))} class={contents} ref={section}>
+      <AriaDialog
+        {...values(named(cells(props)))}
+        id={overlayId()}
+        class={contents}
+        ref={section}
+      >
         <DrawerSurfaceProvider value={surface} onMount={mounted} onUnmount={unmounted}>
           <Show when={props.showHandle !== false && direction() === "bottom"}>
             <DrawerHandle />

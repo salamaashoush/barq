@@ -262,7 +262,7 @@ export interface SheetContentProps extends UiProps {
 }
 
 export function SheetContent(props: SheetContentProps) {
-  const { state, underlay } = family.use();
+  const { state, underlay, overlayId } = family.use();
 
   return (
     <Modal
@@ -278,7 +278,7 @@ export function SheetContent(props: SheetContentProps) {
       data-slot={props["data-slot"] ?? "sheet-content"}
       data-side={props.side ?? "right"}
     >
-      <AriaDialog {...values(named(cells(props)))} class={contents}>
+      <AriaDialog {...values(named(cells(props)))} id={overlayId()} class={contents}>
         {props.children}
         <Show when={props.showCloseButton !== false}>
           <button type="button" data-slot="sheet-close" class={close} onClick={() => state.close()}>

@@ -248,7 +248,7 @@ export interface DialogContentProps extends UiProps {
 }
 
 export function DialogContent(props: DialogContentProps) {
-  const { state, underlay } = family.use();
+  const { state, underlay, overlayId } = family.use();
 
   return (
     <Modal
@@ -263,7 +263,12 @@ export function DialogContent(props: DialogContentProps) {
       class={ui(content, props.class, props.className)}
       data-slot={props["data-slot"] ?? "dialog-content"}
     >
-      <AriaDialog {...values(named(cells(props)))} role={props.role ?? "dialog"} class={contents}>
+      <AriaDialog
+        {...values(named(cells(props)))}
+        id={overlayId()}
+        role={props.role ?? "dialog"}
+        class={contents}
+      >
         {props.children}
         <Show when={props.showCloseButton !== false}>
           <CornerClose label={props.closeLabel ?? "Close"} />

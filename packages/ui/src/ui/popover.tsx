@@ -141,12 +141,14 @@ export interface PopoverContentProps
 }
 
 export function PopoverContent(props: PopoverContentProps) {
-  const { state, triggerRef, anchorRef } = family.use();
+  const { state, triggerRef, anchorRef, overlayId, claimId } = family.use();
+  claimId(() => props.id);
   const target = (): HTMLElement | null => anchorRef() ?? triggerRef();
 
   return (
     <AriaPopover
       {...props}
+      id={overlayId()}
       triggerRef={target}
       isOpen={state.isOpen()}
       onOpenChange={state.setOpen}

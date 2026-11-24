@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { flush } from "@barqjs/core";
-import { render, screen, tick, user } from "@barqjs/testing";
+import { ariaViolations, render, screen, tick, user } from "@barqjs/testing";
 
 import { rulesFor } from "../test-rules.ts";
 
@@ -16,6 +16,8 @@ import {
   AlertDialogTrigger,
 } from "./alert-dialog.tsx";
 import { Button } from "./button.tsx";
+import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "./dialog.tsx";
+import { Drawer, DrawerContent, DrawerTitle, DrawerTrigger } from "./drawer.tsx";
 import {
   Popover,
   PopoverContent,
@@ -231,5 +233,87 @@ describe("Popover", () => {
     await user.keyboard("{Escape}");
     await settle();
     expect(document.querySelector('[data-slot="popover-content"]')).toBeNull();
+  });
+});
+
+describe("a trigger controls the overlay it opens", () => {
+  test("aria-controls names the element that is the overlay, in every family", async () => {
+    render(() => (
+      <>
+        <Popover>
+          <PopoverTrigger>
+            <Button>Popover</Button>
+          </PopoverTrigger>
+          <PopoverContent>Popover body</PopoverContent>
+        </Popover>
+        <Dialog>
+          <DialogTrigger>
+            <Button>Dialog</Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogTitle>Dialog title</DialogTitle>
+          </DialogContent>
+        </Dialog>
+        <Sheet>
+          <SheetTrigger>
+            <Button>Sheet</Button>
+          </SheetTrigger>
+          <SheetContent>
+            <SheetTitle>Sheet title</SheetTitle>
+          </SheetContent>
+        </Sheet>
+        <AlertDialog>
+          <AlertDialogTrigger>
+            <Button>Alert</Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogTitle>Alert title</AlertDialogTitle>
+          </AlertDialogContent>
+        </AlertDialog>
+        <Drawer>
+          <DrawerTrigger>
+            <Button>Drawer</Button>
+          </DrawerTrigger>
+          <DrawerContent>
+            <DrawerTitle>Drawer title</DrawerTitle>
+          </DrawerContent>
+        </Drawer>
+      </>
+    ));
+    for (const name of ["Popover", "Dialog", "Sheet", "Alert", "Drawer"]) {
+      const trigger = screen.getByRole("button", { name });
+      await user.click(trigger);
+      await settle();
+      const controlled = trigger.getAttribute("aria-controls") ?? "";
+      const overlay = document.getElementById(controlled);
+      expect(overlay).not.toBeNull();
+      expect(overlay?.textContent).toContain(name === "Alert" ? "Alert title" : name);
+      if (name === "Popover") {
+        const broken = (await ariaViolations(document.body)).filter(
+          (one) => one.rule === "aria-referenced-id-exists",
+        );
+        expect(broken).toEqual([]);
+      }
+      await user.keyboard("{Escape}");
+      await settle();
+    }
+  });
+});
+
+describe("a popover given an id of its own", () => {
+  test("keeps it, and the trigger's aria-controls names it", async () => {
+    render(() => (
+      <Popover>
+        <PopoverTrigger>
+          <Button>Open</Button>
+        </PopoverTrigger>
+        <PopoverContent id="details">Body</PopoverContent>
+      </Popover>
+    ));
+    const trigger = screen.getByRole("button", { name: "Open" });
+    await user.click(trigger);
+    await settle();
+    expect(trigger.getAttribute("aria-controls")).toBe("details");
+    expect(document.getElementById("details")?.textContent).toBe("Body");
   });
 });

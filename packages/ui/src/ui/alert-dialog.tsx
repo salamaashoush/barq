@@ -249,7 +249,7 @@ export interface AlertDialogContentProps extends UiProps {
 }
 
 export function AlertDialogContent(props: AlertDialogContentProps) {
-  const { state, underlay } = family.use();
+  const { state, underlay, overlayId } = family.use();
 
   return (
     <Modal
@@ -267,7 +267,12 @@ export function AlertDialogContent(props: AlertDialogContentProps) {
       data-slot={props["data-slot"] ?? "alert-dialog-content"}
       data-size={props.size ?? "default"}
     >
-      <AriaDialog {...values(named(cells(props)))} role="alertdialog" class={contents}>
+      <AriaDialog
+        {...values(named(cells(props)))}
+        id={overlayId()}
+        role="alertdialog"
+        class={contents}
+      >
         {props.children}
       </AriaDialog>
     </Modal>

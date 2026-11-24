@@ -51,6 +51,15 @@ export interface OverlayValue {
    */
   underlay: Accessor<DOMProps | null>;
   setUnderlay: (props: DOMProps | null) => void;
+  /** The trigger's ARIA and its press, wired to this overlay. */
+  triggerProps: DOMProps;
+  /**
+   * The id the trigger's `aria-controls` names while the overlay is open, for
+   * the content part to put on the element that is the overlay.
+   */
+  overlayId: Accessor<string>;
+  /** A content part given an id of its own names it here, and the trigger follows. */
+  claimId: (id: Accessor<string | undefined>) => void;
 }
 
 /**
@@ -117,8 +126,27 @@ export function overlayFamily(name: string, kind: OverlayKind = "dialog"): Overl
   function Root(props: OverlayRootProps) {
     const state = overlayTriggerState(fromProps(cells(props)));
     const [underlay, setUnderlay] = createSignal<DOMProps | null>(null, { ownedWrite: true });
+    // Here rather than in the trigger, so the content reads the same id the
+    // trigger's `aria-controls` names.
+    const { triggerProps, overlayProps } = overlayTrigger({ type: kind }, state);
+    const generated = overlayProps.id as Accessor<string>;
+    // An object around the accessor: a function given to a signal is read as
+    // a computation, not held as a value.
+    const [claimed, setClaimed] = createSignal<{ id: Accessor<string | undefined> } | null>(null, {
+      ownedWrite: true,
+    });
+    const overlayId = (): string => claimed()?.id() ?? generated();
     const value: OverlayValue = {
       state,
+      triggerProps: {
+        ...triggerProps,
+        "aria-controls": () => (state.isOpen() ? overlayId() : undefined),
+      },
+      overlayId,
+      claimId: (id) => {
+        setClaimed({ id });
+        onCleanup(() => setClaimed(null));
+      },
       triggerRef: makeRef<HTMLElement>(),
       anchorRef: makeRef<HTMLElement>(),
       underlay,
@@ -140,7 +168,7 @@ export function overlayFamily(name: string, kind: OverlayKind = "dialog"): Overl
 
   function Trigger(props: TriggerPartProps) {
     const value = use();
-    const { triggerProps } = overlayTrigger({ type: kind }, value.state);
+    const triggerProps = value.triggerProps;
 
     return (
       <TriggerPart
