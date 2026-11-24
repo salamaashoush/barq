@@ -411,6 +411,42 @@ if (await confirm({ title: "Delete the check?", tone: "danger", confirmLabel: "D
   `staticData.crumb` or given as items. A narrow trail folds its middle steps
   behind a button that shows them.
 
+## Typography
+
+```tsx
+import { Heading, Link, Prose, Text, Truncate } from "@barqjs/arc";
+
+<Heading level={2}>Billing</Heading>;
+<Text size="xs" color="muted" numeric>Updated 12:04</Text>;
+<Truncate lines={3}>{comment.body}</Truncate>;
+<Prose html={rendered} />;
+```
+
+- `Heading`: `level` is the element, `<h1>` to `<h6>`, and `size` (`xs` to
+  `3xl`) the look, defaulting to the level's own, so the outline stays right
+  whatever the design asks for. `3xl` steps down a size on a phone.
+- `Text`: running text on arc's scale, a `<p>` unless `as` says otherwise, in
+  a `size`, a `weight` and a `color` that is a role (`muted`, `faint`, `link`)
+  or a tone's foreground. `lines` cuts it with an ellipsis, `numeric` lines up
+  its figures and `mono` sets it in the code face.
+- `Code`: a name, a path or a command inside a sentence. A block to read and
+  copy is `CodeBlock`.
+- `Prose`: long-form text styled from its own elements, as markdown or a CMS
+  writes them, from children or from `html` already made safe. Its rules are
+  logical, so a quote's rule and a list's indent sit at the start of the line
+  either way; a code block reads left to right and a wide table scrolls in its
+  own box.
+- `Link`: a link in running text on `@barqjs/aria`'s link. An absolute URL
+  opens a new tab with `rel="noopener noreferrer"`, draws an arrow after its
+  words and tells a screen reader it opens a new tab, in arc's words.
+  `color` and `underline` (`always`, `hover`, `none`) set its look.
+- `Truncate`: text cut to `lines`, with Show more and Show less once it is
+  measured as cut, a press rather than a hover so a touch screen reads the
+  rest too. `expandable={false}` puts the whole text in the title instead.
+- `Shortcut`: keys pressed together as the reader's keyboard writes them,
+  each a ui `Kbd`: `Mod+K` is ⌘K on an Apple device and Ctrl+K elsewhere. The
+  server writes the PC names, which an Apple device swaps after hydrating.
+
 ## Inputs and pickers
 
 ```tsx
