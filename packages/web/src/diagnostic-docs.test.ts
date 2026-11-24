@@ -81,6 +81,10 @@ function runtimeFor(directory: string): string {
   return file;
 }
 
+interface RootsHolder {
+  roots: (() => void)[];
+}
+
 /** Load a compiled example against this checkout's runtime and mount what it exports. */
 async function run(source: string, name: string): Promise<string[]> {
   const directory = mkdtempSync(join(tmpdir(), "barq-diagnostic-docs-"));
@@ -98,7 +102,7 @@ async function run(source: string, name: string): Promise<string[]> {
   let printed: string[];
   const disposers: (() => void)[] = [];
   try {
-    const { roots } = (await import(runtime)) as { roots: (() => void)[] };
+    const { roots } = (await import(runtime)) as RootsHolder;
     disposers.push(() => {
       for (const dispose of roots) dispose();
     });

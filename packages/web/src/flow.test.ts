@@ -42,8 +42,13 @@ afterEach(() => {
   container.remove();
 });
 
+interface Mounted<T> {
+  root: Scope;
+  out: T;
+}
+
 /** A root scope with the container as its parent, as `render` opens one. */
-function mount<T>(build: (root: Scope) => T): { root: Scope; out: T } {
+function mount<T>(build: (root: Scope) => T): Mounted<T> {
   const root = rootScope();
   try {
     return { root, out: runWithOwner(root, () => build(root)) };
@@ -52,17 +57,21 @@ function mount<T>(build: (root: Scope) => T): { root: Scope; out: T } {
   }
 }
 
+interface CallCount {
+  calls: number;
+}
+
 /**
  * A Block that counts its own invocations and tags the node it builds, so a
  * second call at one slot is visible as a count AND as a second subtree.
  */
-function counted(label: string): Block<unknown> & { calls: number } {
+function counted(label: string): Block<unknown> & CallCount {
   const block = ((): Node => {
     block.calls++;
     const node = document.createElement("i");
     node.textContent = `${label}${block.calls}`;
     return node;
-  }) as Block<unknown> & { calls: number };
+  }) as Block<unknown> & CallCount;
   block.calls = 0;
   return block;
 }
@@ -214,9 +223,9 @@ describe("O3.7 / B4 — after disposal nothing is retained", () => {
     const body: Block<unknown> = (): Node => {
       const own = document.createElement("button");
       button = own;
-      const handler = (): void => {
+      function handler(): void {
         fired++;
-      };
+      }
       own.addEventListener("click", handler);
       onCleanup(() => own.removeEventListener("click", handler));
       return own;
@@ -397,7 +406,7 @@ describe("the flags — what they skip, on an exact count", () => {
   });
 
   test("flags on and flags off render identical DOM — the L3 differential, in miniature", () => {
-    const render = (flags: number): string => {
+    function render(flags: number): string {
       const host = document.createElement("div");
       const root = rootScope();
       runWithOwner(root, () => {
@@ -407,7 +416,7 @@ describe("the flags — what they skip, on an exact count", () => {
       const html = host.innerHTML;
       disposeScope(root);
       return html;
-    };
+    }
 
     const pessimal = render(0);
     expect(render(STATIC_KEY)).toBe(pessimal);
@@ -481,7 +490,9 @@ describe("O2 — a nested region is a child of the scope its Block was given", (
  * that it fires when the list IS the parent's children and never when it is not.
  */
 describe("emptying a list removes only what the list owns", () => {
-  const li = (): Node => document.createElement("li");
+  function li(): Node {
+    return document.createElement("li");
+  }
 
   test("a list that owns its parent is emptied", () => {
     const [items, setItems] = createSignal([1, 2, 3]);

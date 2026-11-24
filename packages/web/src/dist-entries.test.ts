@@ -17,7 +17,9 @@ import { describe, expect, test } from "bun:test";
 const ENTRIES = ["index", "host", "internal", "interp", "jsx-runtime"] as const;
 
 const DIST = fileURLToPath(new URL("../dist/", import.meta.url));
-const distOf = (entry: string): string => `${DIST}${entry}.js`;
+function distOf(entry: string): string {
+  return `${DIST}${entry}.js`;
+}
 
 const built = ENTRIES.every((entry) => existsSync(distOf(entry)));
 

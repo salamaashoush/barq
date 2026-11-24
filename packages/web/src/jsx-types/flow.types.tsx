@@ -88,10 +88,18 @@ export const forByKey = (
   </For>
 );
 
+export interface IdRow {
+  id: number;
+}
+
+export interface NamedRow {
+  name: string;
+}
+
 /** The item type is `each`'s: a callback that annotates less of it does not narrow the row. */
 export const forWithAnnotatedCallbacks = (
-  <For each={rows} keyed={(row: { id: number }) => row.id}>
-    {(row: () => { name: string }) => <li>{row().name}</li>}
+  <For each={rows} keyed={(row: IdRow) => row.id}>
+    {(row: () => NamedRow) => <li>{row().name}</li>}
   </For>
 );
 
@@ -215,7 +223,12 @@ export const loadingAndPortal = (
   </Loading>
 );
 
-function Badge(props: { label: string; tone?: "info" | "warn" }) {
+interface BadgeProps {
+  label: string;
+  tone?: "info" | "warn";
+}
+
+function Badge(props: BadgeProps) {
   return <span class={props.tone}>{props.label}</span>;
 }
 

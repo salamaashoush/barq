@@ -25,7 +25,12 @@ function click(node: Element): void {
   node.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
 }
 
-function listenersOn(target: EventTarget, type: string): { added: number; removed: number } {
+interface ListenerCounts {
+  added: number;
+  removed: number;
+}
+
+function listenersOn(target: EventTarget, type: string): ListenerCounts {
   const counts = { added: 0, removed: 0 };
   const add = target.addEventListener.bind(target);
   const remove = target.removeEventListener.bind(target);

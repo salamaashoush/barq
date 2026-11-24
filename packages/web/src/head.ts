@@ -84,14 +84,14 @@ export function useHead(input: HeadInput): void {
   if (typeof document === "undefined") return;
   let placed: Element[] = [];
   let restoreTitle: string | null = null;
-  const takeBack = (): void => {
+  function takeBack(): void {
     for (const element of placed) element.remove();
     placed = [];
     if (restoreTitle !== null) {
       document.title = restoreTitle;
       restoreTitle = null;
     }
-  };
+  }
   createRenderEffect(
     () => listOf(input),
     (list) => {

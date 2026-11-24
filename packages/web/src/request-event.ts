@@ -53,9 +53,13 @@ interface EventStorage {
   getStore(): RequestEvent | undefined;
 }
 
+interface RequestEventHost {
+  [REQUEST_EVENT]?: EventStorage;
+}
+
 /** The current request's event, or `undefined` outside one and in the browser. */
 export function getRequestEvent(): RequestEvent | undefined {
-  return (globalThis as { [REQUEST_EVENT]?: EventStorage })[REQUEST_EVENT]?.getStore();
+  return (globalThis as RequestEventHost)[REQUEST_EVENT]?.getStore();
 }
 
 /** A fresh, uncommitted response head. */
@@ -63,18 +67,22 @@ export function createResponseStub(): ResponseStub {
   return { status: undefined, statusText: undefined, headers: new Headers(), committed: false };
 }
 
+export interface WithResponse {
+  readonly response: ResponseStub;
+}
+
 /**
  * The event an HTTP handler runs a request under: the request, a `locals` bag,
  * and a fresh response head. `init` spreads over the defaults, so a framework
  * adds fields of its own, or a `response` it already holds.
  */
-export function createRequestEvent<T extends object = {}>(
+export function createRequestEvent<T extends object = object>(
   request: Request,
   init?: T,
-): RequestEvent & { readonly response: ResponseStub } & T {
-  return { request, locals: {}, response: createResponseStub(), ...init } as RequestEvent & {
-    readonly response: ResponseStub;
-  } & T;
+): RequestEvent & WithResponse & T {
+  return { request, locals: {}, response: createResponseStub(), ...init } as RequestEvent &
+    WithResponse &
+    T;
 }
 
 /**
@@ -122,12 +130,19 @@ interface HeaderDeclaration {
   readonly value: string;
   readonly append: boolean;
 }
+interface StatusLedger {
+  readonly base: StatusEntry;
+  readonly live: StatusEntry[];
+}
+
+interface HeaderLedger {
+  readonly base: string | string[] | null;
+  readonly live: HeaderDeclaration[];
+}
+
 interface Ledger {
-  status?: { readonly base: StatusEntry; readonly live: StatusEntry[] };
-  readonly headers: Map<
-    string,
-    { readonly base: string | string[] | null; readonly live: HeaderDeclaration[] }
-  >;
+  status?: StatusLedger;
+  readonly headers: Map<string, HeaderLedger>;
   /** A render that completed froze what it declared: its disposal retracts nothing. */
   frozen: boolean;
 }
@@ -196,13 +211,17 @@ export function httpStatus(code: number, text?: string): void {
   });
 }
 
+export interface HeaderOptions {
+  append?: boolean;
+}
+
 /**
  * Declare a response header for as long as the calling scope lives. `append`
  * adds a value beside the ones already there, which `set-cookie` needs. A
  * retraction replays the declarations still alive over what was there before
  * the first, so siblings dispose in any order without touching each other's.
  */
-export function httpHeader(name: string, value: string, options?: { append?: boolean }): void {
+export function httpHeader(name: string, value: string, options?: HeaderOptions): void {
   const response = getRequestEvent()?.response;
   if (response === undefined) return;
   if (response.committed === true) {
@@ -265,6 +284,11 @@ function reportLate(call: string, api: (...args: never[]) => unknown): void {
 
 const MUTATORS = ["set", "append", "delete"] as const;
 
+export interface CommitOptions {
+  readonly allowLateLocation?: boolean;
+  readonly event?: RequestEvent;
+}
+
 /**
  * Freeze a head: it has been derived for the wire. Its trace's `Server-Timing`
  * entries are the last thing written to it, so a name the application wrote
@@ -274,10 +298,7 @@ const MUTATORS = ["set", "append", "delete"] as const;
  * `allowLateLocation` keeps `headers.set("location")` open, for a stream whose
  * completion still honours a redirect declared after its shell, with a script.
  */
-export function commitResponseStub(
-  stub: ResponseStub,
-  options: { readonly allowLateLocation?: boolean; readonly event?: RequestEvent } = {},
-): ResponseStub {
+export function commitResponseStub(stub: ResponseStub, options: CommitOptions = {}): ResponseStub {
   if (stub.committed === true) return stub;
   const trace = traceForStub(stub, options.event);
   if (trace !== undefined) appendTraceServerTiming(stub.headers, trace);

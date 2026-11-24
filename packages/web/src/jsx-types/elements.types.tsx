@@ -11,15 +11,19 @@
  */
 
 import { createSignal } from "@barqjs/core";
-import type { FunctionMaybe } from "@barqjs/core";
+import type { FunctionMaybe, RefObject } from "@barqjs/core";
 import type { JSX } from "../index.ts";
 import { assertType } from "./assert.ts";
 import type { Equal } from "./assert.ts";
 
 const [on] = createSignal(false);
 const [label] = createSignal<string | undefined>("salama");
-const holder: { current: HTMLDivElement | null } = { current: null };
-declare const opened: (event: CustomEvent<{ id: number }>) => void;
+const holder: RefObject<HTMLDivElement> = { current: null };
+interface OpenedDetail {
+  id: number;
+}
+
+declare const opened: (event: CustomEvent<OpenedDetail>) => void;
 
 export const perElement = (
   <form method="post" enctype="multipart/form-data" novalidate>

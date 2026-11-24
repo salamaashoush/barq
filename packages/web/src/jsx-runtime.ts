@@ -22,6 +22,7 @@ import type {
   FunctionMaybe,
   JSXElement,
   Ref,
+  RefObject,
   StrictAccessor,
 } from "@barqjs/core";
 import type { AsDeclared, DeclaredCallSite } from "@barqjs/core/internal";
@@ -47,6 +48,22 @@ export type ComponentProps<T extends ValidComponent> = T extends (props: infer P
  * IntrinsicElementProps - get props for an intrinsic element
  */
 export type IntrinsicElementProps<K extends keyof JSX.IntrinsicElements> = JSX.IntrinsicElements[K];
+
+export interface EventTargets<T> {
+  currentTarget: T;
+  target: globalThis.Element;
+}
+
+export interface InputEventTargets<T> {
+  currentTarget: T;
+  target: T extends HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    ? T
+    : globalThis.Element;
+}
+
+export interface InnerHtml {
+  __html: string;
+}
 
 // JSX namespace for TypeScript
 export namespace JSX {
@@ -145,18 +162,13 @@ export namespace JSX {
   /**
    * Event handler with proper currentTarget typing
    */
-  export type EventHandler<T, E extends Event> = (
-    e: E & {
-      currentTarget: T;
-      target: globalThis.Element;
-    },
-  ) => void;
+  export type EventHandler<T, E extends Event> = (e: E & EventTargets<T>) => void;
 
   /**
    * Bound event handler - tuple of [handler, data] for passing data without closure
    */
   export interface BoundEventHandler<T, E extends Event> {
-    0: (data: unknown, e: E & { currentTarget: T; target: globalThis.Element }) => void;
+    0: (data: unknown, e: E & EventTargets<T>) => void;
     1: unknown;
   }
 
@@ -168,14 +180,7 @@ export namespace JSX {
   /**
    * Input event handler with proper target typing for form elements
    */
-  export type InputEventHandler<T, E extends Event> = (
-    e: E & {
-      currentTarget: T;
-      target: T extends HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-        ? T
-        : globalThis.Element;
-    },
-  ) => void;
+  export type InputEventHandler<T, E extends Event> = (e: E & InputEventTargets<T>) => void;
 
   export type InputEventHandlerUnion<T, E extends Event> =
     | InputEventHandler<T, E>
@@ -399,6 +404,8 @@ export namespace JSX {
 
   /** An attribute value: static, or an accessor the binding follows. Absent removes it. */
   type Attr<T> = FunctionMaybe<T | undefined>;
+
+  type OtherString = string & {};
 
   type BooleanAttribute = boolean | "";
   type EnumeratedPseudoBoolean = "false" | "true";
@@ -872,7 +879,7 @@ export namespace JSX {
     "aria-valuemin"?: Attr<number | string>;
     "aria-valuenow"?: Attr<number | string>;
     "aria-valuetext"?: Attr<string>;
-    role?: Attr<AriaRole | (string & {})>;
+    role?: Attr<AriaRole | OtherString>;
   }
 
   type AriaRole =
@@ -978,7 +985,7 @@ export namespace JSX {
     autofocus?: Attr<BooleanAttribute>;
     autoFocus?: Attr<BooleanAttribute>;
 
-    dangerouslySetInnerHTML?: { __html: string };
+    dangerouslySetInnerHTML?: InnerHtml;
     innerHTML?: Attr<string>;
     textContent?: Attr<string | number>;
 
@@ -1055,18 +1062,13 @@ export namespace JSX {
     "bind:group"?: Bindable<string>;
     "bind:files"?: Bindable<FileList | null>;
     "bind:open"?: Bindable<boolean>;
-    "bind:this"?: T | ((el: T) => void) | { current: T | null };
+    "bind:this"?: T | ((el: T) => void) | RefObject<T>;
     /**
      * Any other property, because that is the runtime's own rule: a `bind:` name
      * that is not one of the four special cases binds the property of that name
      * and reports on `change`.
      */
-    [key: `bind:${string}`]:
-      | Bindable<unknown>
-      | T
-      | ((el: T) => void)
-      | { current: T | null }
-      | undefined;
+    [key: `bind:${string}`]: Bindable<unknown> | T | ((el: T) => void) | RefObject<T> | undefined;
   }
 
   /** An element whose attributes this file cannot know. */
@@ -1138,7 +1140,7 @@ export namespace JSX {
     | "url"
     | "username"
     | "work"
-    | (string & {});
+    | OtherString;
   type HTMLDir = "ltr" | "rtl" | "auto";
   type HTMLFormEncType = "application/x-www-form-urlencoded" | "multipart/form-data" | "text/plain";
   type HTMLFormMethod = "post" | "get" | "dialog";
@@ -1179,14 +1181,14 @@ export namespace JSX {
 
   export interface AnchorHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
     xmlns?: Attr<string>;
-    download?: Attr<(string & {}) | EnumeratedAcceptsEmpty>;
+    download?: Attr<OtherString | EnumeratedAcceptsEmpty>;
     href?: Attr<string>;
     hreflang?: Attr<string>;
     ping?: Attr<string>;
     referrerpolicy?: Attr<HTMLReferrerPolicy>;
     referrerPolicy?: Attr<HTMLReferrerPolicy>;
     rel?: Attr<string>;
-    target?: Attr<"_self" | "_blank" | "_parent" | "_top" | (string & {})>;
+    target?: Attr<"_self" | "_blank" | "_parent" | "_top" | OtherString>;
     type?: Attr<string>;
     attributionsrc?: Attr<string>;
     /** @deprecated */
@@ -1206,14 +1208,14 @@ export namespace JSX {
   export interface AreaHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
     alt?: Attr<string>;
     coords?: Attr<string>;
-    download?: Attr<(string & {}) | EnumeratedAcceptsEmpty>;
+    download?: Attr<OtherString | EnumeratedAcceptsEmpty>;
     href?: Attr<string>;
     ping?: Attr<string>;
     referrerpolicy?: Attr<HTMLReferrerPolicy>;
     referrerPolicy?: Attr<HTMLReferrerPolicy>;
     rel?: Attr<string>;
     shape?: Attr<"rect" | "circle" | "poly" | "default">;
-    target?: Attr<"_self" | "_blank" | "_parent" | "_top" | (string & {})>;
+    target?: Attr<"_self" | "_blank" | "_parent" | "_top" | OtherString>;
     attributionsrc?: Attr<string>;
     /** @deprecated */
     nohref?: Attr<BooleanAttribute>;
@@ -1223,7 +1225,7 @@ export namespace JSX {
 
   export interface BaseHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
     href?: Attr<string>;
-    target?: Attr<"_self" | "_blank" | "_parent" | "_top" | (string & {})>;
+    target?: Attr<"_self" | "_blank" | "_parent" | "_top" | OtherString>;
   }
 
   export interface BdoHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
@@ -1247,15 +1249,15 @@ export namespace JSX {
     formMethod?: Attr<HTMLFormMethod>;
     formnovalidate?: Attr<BooleanAttribute>;
     formNoValidate?: Attr<BooleanAttribute>;
-    formtarget?: Attr<"_self" | "_blank" | "_parent" | "_top" | (string & {})>;
-    formTarget?: Attr<"_self" | "_blank" | "_parent" | "_top" | (string & {})>;
+    formtarget?: Attr<"_self" | "_blank" | "_parent" | "_top" | OtherString>;
+    formTarget?: Attr<"_self" | "_blank" | "_parent" | "_top" | OtherString>;
     name?: Attr<string>;
     popovertarget?: Attr<string>;
     popovertargetaction?: Attr<"hide" | "show" | "toggle">;
     type?: Attr<"submit" | "reset" | "button" | "menu">;
     value?: Attr<string | number>;
     command?: Attr<
-      "show-modal" | "close" | "show-popover" | "hide-popover" | "toggle-popover" | (string & {})
+      "show-modal" | "close" | "show-popover" | "hide-popover" | "toggle-popover" | OtherString
     >;
     commandfor?: Attr<string>;
   }
@@ -1352,7 +1354,7 @@ export namespace JSX {
     novalidate?: Attr<BooleanAttribute>;
     noValidate?: Attr<BooleanAttribute>;
     rel?: Attr<string>;
-    target?: Attr<"_self" | "_blank" | "_parent" | "_top" | (string & {})>;
+    target?: Attr<"_self" | "_blank" | "_parent" | "_top" | OtherString>;
     /** @deprecated */
     accept?: Attr<string>;
     action?: FunctionMaybe<string> | FormAction;
@@ -1367,7 +1369,7 @@ export namespace JSX {
     name?: Attr<string>;
     referrerpolicy?: Attr<HTMLReferrerPolicy>;
     referrerPolicy?: Attr<HTMLReferrerPolicy>;
-    sandbox?: Attr<HTMLIframeSandbox | (string & {})>;
+    sandbox?: Attr<HTMLIframeSandbox | OtherString>;
     src?: Attr<string>;
     srcdoc?: Attr<string>;
     width?: Attr<number | string>;
@@ -1567,7 +1569,7 @@ export namespace JSX {
     autoPlay?: Attr<BooleanAttribute>;
     controls?: Attr<BooleanAttribute>;
     controlslist?: Attr<
-      "nodownload" | "nofullscreen" | "noplaybackrate" | "noremoteplayback" | (string & {})
+      "nodownload" | "nofullscreen" | "noplaybackrate" | "noremoteplayback" | OtherString
     >;
     crossorigin?: Attr<HTMLCrossorigin>;
     crossOrigin?: Attr<HTMLCrossorigin>;
@@ -1601,7 +1603,7 @@ export namespace JSX {
       | "default-style"
       | "x-ua-compatible"
       | "refresh"
-      | (string & {})
+      | OtherString
     >;
     charset?: Attr<string>;
     charSet?: Attr<string>;
@@ -1712,7 +1714,7 @@ export namespace JSX {
     referrerpolicy?: Attr<HTMLReferrerPolicy>;
     referrerPolicy?: Attr<HTMLReferrerPolicy>;
     src?: Attr<string>;
-    type?: Attr<"importmap" | "module" | "speculationrules" | (string & {})>;
+    type?: Attr<"importmap" | "module" | "speculationrules" | OtherString>;
     attributionsrc?: Attr<string>;
     /** @deprecated */
     charset?: Attr<string>;

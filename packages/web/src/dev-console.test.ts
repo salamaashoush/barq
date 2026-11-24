@@ -111,7 +111,12 @@ const PROBE = `
   process.stdout.write(JSON.stringify({ isDev: core.isDev, lines }));
 `;
 
-async function resolveAs(conditions: string[]): Promise<{ isDev: boolean; lines: string[] }> {
+interface ResolvedConsole {
+  isDev: boolean;
+  lines: string[];
+}
+
+async function resolveAs(conditions: string[]): Promise<ResolvedConsole> {
   const spawned = Bun.spawn(["bun", ...conditions, "-e", PROBE], {
     cwd: PACKAGE,
     stdout: "pipe",
@@ -124,7 +129,7 @@ async function resolveAs(conditions: string[]): Promise<{ isDev: boolean; lines:
   ]);
   expect(stderr).toBe("");
   expect(code).toBe(0);
-  return JSON.parse(stdout) as { isDev: boolean; lines: string[] };
+  return JSON.parse(stdout) as ResolvedConsole;
 }
 
 describe("the entry a condition resolves to", () => {

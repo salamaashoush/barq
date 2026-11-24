@@ -29,8 +29,13 @@ interface Row {
   name: string;
 }
 
+interface ListProps<T> {
+  items: T[];
+  children: (item: T, index: number) => Child;
+}
+
 /** A children function that declares a parameter is called with it. */
-function List<T>(props: { items: T[]; children: (item: T, index: number) => Child }) {
+function List<T>(props: ListProps<T>) {
   assertType<Equal<typeof props.children, (item: T, index: number) => Child>>();
   return <ul>{props.items.map((item, index) => props.children(item, index))}</ul>;
 }
@@ -47,8 +52,13 @@ export const listInfersItsItem = (
   </List>
 );
 
+interface SlotProps {
+  value: Row;
+  children: Child | ((row: Row) => Child);
+}
+
 /** Content or a callback: the callback keeps its parameter, the content is read like any prop. */
-function Slot(props: { value: Row; children: Child | ((row: Row) => Child) }) {
+function Slot(props: SlotProps) {
   const children = props.children;
   assertType<Equal<typeof children, Child | ((row: Row) => Child)>>();
   return <div>{typeof children === "function" ? null : children}</div>;
@@ -68,23 +78,33 @@ export const slotTakesEither = (
   </div>
 );
 
-/** A generic wrapper forwards its props, callback children included, to the generic it wraps. */
-function Menu<T>(props: { items?: T[]; label?: string; children?: Child | ((item: T) => Child) }) {
-  return <ul aria-label={props.label} />;
-}
-
-export function MenuWrapper<T>(props: {
+export interface MenuProps<T> {
   items?: T[];
   label?: string;
   children?: Child | ((item: T) => Child);
-}) {
+}
+
+/** A generic wrapper forwards its props, callback children included, to the generic it wraps. */
+function Menu<T>(props: MenuProps<T>) {
+  return <ul aria-label={props.label} />;
+}
+
+export function MenuWrapper<T>(props: MenuProps<T>) {
   return <Menu<T> {...props} label="wrapped" />;
+}
+
+export interface OptionalChildren {
+  children?: Child;
+}
+
+export interface RowChildren {
+  children?: (row: Row) => Child;
 }
 
 /** Ordinary children stay an accessor, and an optional callback stays optional. */
 export function ChildrenStayReadable(
-  props: Incoming<{ children?: Child }>,
-  optional: Incoming<{ children?: (row: Row) => Child }>,
+  props: Incoming<OptionalChildren>,
+  optional: Incoming<RowChildren>,
 ): void {
   assertType<Equal<typeof props.children, Accessor<Child | undefined> | undefined>>();
   assertType<Equal<typeof optional.children, ((row: Row) => Child) | undefined>>();
@@ -92,7 +112,12 @@ export function ChildrenStayReadable(
   props.children?.(rows[0]);
 }
 
-function Button(props: { variant?: "primary" | "danger"; children?: Child }) {
+interface ButtonProps {
+  variant?: "primary" | "danger";
+  children?: Child;
+}
+
+function Button(props: ButtonProps) {
   return <button type="button">{props.children}</button>;
 }
 
@@ -104,12 +129,17 @@ export function Fancy(props: ComponentProps<typeof Button>) {
 
 assertType<Equal<ComponentProps<"a">, JSX.IntrinsicElements["a"]>>();
 
-function useTone(props: Incoming<{ text: string; tone?: "info" | "warn" }>): Accessor<string> {
+export interface TagProps {
+  text: string;
+  tone?: "info" | "warn";
+}
+
+function useTone(props: Incoming<TagProps>): Accessor<string> {
   return () => `${props.tone?.() ?? "info"}:${props.text()}`;
 }
 
 /** Declared props are values in the body, and `cells` is the record a hook that takes Cells reads. */
-export function Tag(props: { text: string; tone?: "info" | "warn" }) {
+export function Tag(props: TagProps) {
   assertType<Equal<typeof props.text, string>>();
   assertType<Equal<typeof props.tone, "info" | "warn" | undefined>>();
   const record = cells(props);
@@ -127,7 +157,7 @@ export function Tag(props: { text: string; tone?: "info" | "warn" }) {
 }
 
 /** `Component<P>` hands the body values and `cells` the Accessors; the call site writes values. */
-const Label: Component<{ text: string; tone?: "info" | "warn" }> = (props) => {
+const Label: Component<TagProps> = (props) => {
   assertType<Equal<typeof props.text, string>>();
   assertType<Equal<typeof props.tone, "info" | "warn" | undefined>>();
   const record = cells(props);
@@ -140,18 +170,30 @@ const Label: Component<{ text: string; tone?: "info" | "warn" }> = (props) => {
   return <span class={props.tone}>{props.text}</span>;
 };
 
-const Divider: VoidComponent<{ inset?: boolean }> = (props) => (
+interface DividerProps {
+  inset?: boolean;
+}
+
+const Divider: VoidComponent<DividerProps> = (props) => (
   <hr class={props.inset ? "inset" : undefined} />
 );
 
-const Card: ParentComponent<{ title: string }> = (props) => (
+interface CardProps {
+  title: string;
+}
+
+const Card: ParentComponent<CardProps> = (props) => (
   <section>
     <h2>{props.title}</h2>
     {props.children}
   </section>
 );
 
-const Each: FlowComponent<{ rows: Row[] }, (row: Row) => Child> = (props) => (
+interface EachProps {
+  rows: Row[];
+}
+
+const Each: FlowComponent<EachProps, (row: Row) => Child> = (props) => (
   <ul>{props.rows.map((row) => props.children(row))}</ul>
 );
 
@@ -160,11 +202,19 @@ function Group(props: ParentProps) {
   return <div>{props.children}</div>;
 }
 
-function Rule(props: VoidProps<{ label: string }>) {
+interface RuleProps {
+  label: string;
+}
+
+function Rule(props: VoidProps<RuleProps>) {
   return <hr aria-label={props.label} />;
 }
 
-function Frame(props: FlowProps<{ tone: "info" | "warn" }>) {
+interface FrameProps {
+  tone: "info" | "warn";
+}
+
+function Frame(props: FlowProps<FrameProps>) {
   return <div class={props.tone}>{props.children}</div>;
 }
 
@@ -207,7 +257,7 @@ export const helperRefusals = (
 const Theme = createContext<"light" | "dark">();
 
 /** `provide` answers with what a component returns, whatever its block built. */
-export function ThemeProvider(props: { children?: Child }): JSX.Element {
+export function ThemeProvider(props: OptionalChildren): JSX.Element {
   return provide(
     Theme,
     () => "dark" as const,
@@ -221,9 +271,24 @@ export const providerIsAComponent = (
   </ThemeProvider>
 );
 
-declare const defaults: { variant: "primary"; size: number };
-declare const given: { variant?: "primary" | "danger"; label: string; size?: number | undefined };
-declare const maybe: { extra: boolean } | undefined;
+interface Defaults {
+  variant: "primary";
+  size: number;
+}
+
+declare const defaults: Defaults;
+interface Given {
+  variant?: "primary" | "danger";
+  label: string;
+  size?: number | undefined;
+}
+
+declare const given: Given;
+interface Extra {
+  extra: boolean;
+}
+
+declare const maybe: Extra | undefined;
 
 /** With `undefined` as a value, an optional later key leaves either source's answer. */
 export function MergeKeepsUndefined(): void {
@@ -240,7 +305,13 @@ export function MergeKeepsUndefined(): void {
   assertType<Equal<(typeof dynamic)["label"], string>>();
 }
 
-export function OmitIsExact(props: Incoming<{ a: string; b?: number; c: boolean }>): void {
+export interface OmitSubject {
+  a: string;
+  b?: number;
+  c: boolean;
+}
+
+export function OmitIsExact(props: Incoming<OmitSubject>): void {
   const rest = omit(props, "a");
   assertType<Equal<keyof typeof rest, "b" | "c">>();
   const others = omit(props, "a", "b");
@@ -251,8 +322,13 @@ export function OmitIsExact(props: Incoming<{ a: string; b?: number; c: boolean 
   omit(props, "d");
 }
 
+interface UploadsProps {
+  upload: () => Promise<string>;
+  label: string;
+}
+
 /** From code the compiler does not see, a component is handed the record of Cells it reads. */
-function Uploads(props: { upload: () => Promise<string>; label: string }) {
+function Uploads(props: UploadsProps) {
   return <i>{props.label}</i>;
 }
 

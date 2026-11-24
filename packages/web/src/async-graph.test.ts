@@ -22,7 +22,9 @@ import {
 } from "@barqjs/core";
 import { render } from "./index.ts";
 
-const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+function tick() {
+  return new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
 
 describe("createAsync", () => {
   test(

@@ -95,10 +95,10 @@ test("rows that closed after they were built can still be reordered", () => {
 });
 
 test("a row holding a nested list that grew takes every nested row along when it moves", () => {
-  const group = (names: string[]) => {
+  function group(names: string[]) {
     const [members, setMembers] = createSignal(names);
     return { members, setMembers };
-  };
+  }
   const first = group(["ada"]);
   const second = group(["grace"]);
   const third = group(["edsger"]);

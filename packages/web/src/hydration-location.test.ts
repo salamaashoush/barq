@@ -31,14 +31,18 @@ export function Page() {
 }
 `;
 
-async function load(): Promise<{ Page: () => core.JSXElement }> {
+interface PageModule {
+  Page: () => core.JSXElement;
+}
+
+async function load(): Promise<PageModule> {
   const out = transform(SOURCE, { filename: FILE, dev: true, hydratable: true });
   const body = linkRuntime(out.code);
   const directory = mkdtempSync(join(tmpdir(), "barq-hydration-location-"));
   const file = join(directory, "page.js");
   writeFileSync(file, body);
   try {
-    return (await import(file)) as { Page: () => core.JSXElement };
+    return (await import(file)) as PageModule;
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

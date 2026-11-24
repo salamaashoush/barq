@@ -171,6 +171,21 @@ describe("createComponent", () => {
   });
 });
 
+interface DevMarked {
+  _name?: string;
+  _loc?: string;
+  _devElement?: unknown;
+}
+
+interface DevTagged {
+  _name?: string;
+  _devElement?: unknown;
+}
+
+interface DevNamed {
+  _name?: string;
+}
+
 describe("source positions", () => {
   function Row(): void {
     mountBuilt()();
@@ -190,7 +205,7 @@ describe("source positions", () => {
 
   test("a binding takes the name, the position and the element it was compiled with", () => {
     const element = document.createElement("li");
-    let made: { _name?: string; _loc?: string; _devElement?: unknown } | null = null;
+    let made: DevMarked | null = null;
     const capture = DEV.diagnostics.capture();
     createRoot((dispose) => {
       createComponent(
@@ -217,23 +232,24 @@ describe("source positions", () => {
     const [event] = capture.stop();
     expect(event?.ownerPath).toEqual(named ? ["<Row>", "li.title"] : undefined);
     expect(event?.loc).toBe(named ? "src/list.tsx:12:9" : undefined);
-    const tagged = made as { _name?: string; _devElement?: unknown } | null;
+    const tagged = made as DevTagged | null;
     expect(tagged?._devElement).toBe(named ? element : undefined);
   });
 
   test("only the first owner a binding makes is named, and none after it", () => {
     const names: (string | undefined)[] = [];
-    const read = (): void => {
-      names.push((getOwner() as { _name?: string } | null)?._name);
-    };
-    const effect = (): void =>
-      createRenderEffect(
+    function read(): void {
+      names.push((getOwner() as DevNamed | null)?._name);
+    }
+    function effect(): void {
+      return createRenderEffect(
         () => {
           read();
           return 1;
         },
         () => {},
       );
+    }
     createRoot((dispose) => {
       labelled("p.class", undefined, () => {
         effect();
@@ -253,7 +269,7 @@ describe("source positions", () => {
       labelled("p.id", undefined, () => {});
       createRenderEffect(
         () => {
-          name = (getOwner() as { _name?: string } | null)?._name;
+          name = (getOwner() as DevNamed | null)?._name;
           return 1;
         },
         () => {},

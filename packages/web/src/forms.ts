@@ -120,7 +120,7 @@ function textOffset(root: Node, node: Node, offset: number): number {
     return total;
   }
   let total = 0;
-  const walk = (current: Node): boolean => {
+  function walk(current: Node): boolean {
     if (current === node) {
       total += offset;
       return true;
@@ -133,7 +133,7 @@ function textOffset(root: Node, node: Node, offset: number): number {
       if (walk(child)) return true;
     }
     return false;
-  };
+  }
   walk(root);
   return total;
 }
@@ -141,7 +141,7 @@ function textOffset(root: Node, node: Node, offset: number): number {
 /** The inverse of `textOffset`: `(node, offset)` for a character position. */
 function positionAt(root: Node, target: number): [Node, number] {
   let remaining = target;
-  const walk = (current: Node): [Node, number] | null => {
+  function walk(current: Node): [Node, number] | null {
     if (current.nodeType === 3) {
       const length = (current as Text).data.length;
       if (remaining <= length) return [current, remaining];
@@ -153,14 +153,19 @@ function positionAt(root: Node, target: number): [Node, number] {
       if (found !== null) return found;
     }
     return null;
-  };
+  }
   return walk(root) ?? [root, root.childNodes.length];
+}
+
+interface SelectionRange {
+  start: number;
+  end: number;
 }
 
 interface Saved {
   readonly control: TextControl | null;
   readonly text: TextSelection | null;
-  readonly range: { start: number; end: number } | null;
+  readonly range: SelectionRange | null;
   readonly refocus: boolean;
 }
 
@@ -212,6 +217,10 @@ export function captureCaret(element: Element): Saved | null {
   };
 }
 
+interface ValueHolder {
+  value: string;
+}
+
 /**
  * Put the caret back where `captureCaret` found it, clamped to the text that is
  * now there. Focus is restored too: a write that detaches and replaces the
@@ -225,7 +234,7 @@ export function restoreCaret(element: Element, saved: Saved | null): void {
   }
   const { control, text } = saved;
   if (control !== null && text !== null) {
-    const length = (control as unknown as { value: string }).value.length;
+    const length = (control as unknown as ValueHolder).value.length;
     const start = Math.min(text.start, length);
     const end = Math.min(text.end, length);
     if (control.selectionStart !== start || control.selectionEnd !== end) {

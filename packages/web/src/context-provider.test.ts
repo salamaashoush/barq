@@ -17,11 +17,11 @@ import {
 import { render } from "./index.ts";
 import { compileModule } from "./test-compile.ts";
 
-const host = (): HTMLElement => {
+function host(): HTMLElement {
   const element = document.createElement("div");
   document.body.append(element);
   return element;
-};
+}
 
 afterEach(() => {
   document.body.textContent = "";
@@ -30,6 +30,10 @@ afterEach(() => {
 type View = Record<string, (props: object) => JSXElement> & {
   [key: string]: unknown;
 };
+
+interface NameSetter {
+  setName: (name: string) => void;
+}
 
 describe("a context as its own provider", () => {
   test("is a function with no `.Provider` beside it", () => {
@@ -74,7 +78,7 @@ describe("a context as its own provider", () => {
   });
 
   test("a signal given as `value` stays live", async () => {
-    const view = await compileModule<View & { setName: (name: string) => void }>(
+    const view = await compileModule<View & NameSetter>(
       `import { createContext, createSignal, useContext } from "@barqjs/core";
        const User = createContext<string>(undefined, "user");
        const [name, setName] = createSignal("salama");

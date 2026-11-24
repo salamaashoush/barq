@@ -22,7 +22,9 @@ import { fileURLToPath } from "node:url";
 
 import { afterAll, describe, expect, test } from "bun:test";
 
-const fromHere = (path: string): string => fileURLToPath(new URL(path, import.meta.url));
+function fromHere(path: string): string {
+  return fileURLToPath(new URL(path, import.meta.url));
+}
 
 const INDEX_DTS = fromHere("../dist/index.d.ts");
 const JSX_DTS = fromHere("../dist/jsx-runtime.d.ts");
@@ -39,8 +41,13 @@ afterAll(() => {
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
 });
 
+interface CheckResult {
+  ok: boolean;
+  output: string;
+}
+
 /** Typecheck one `.tsx` source against the BUILT declarations. */
-async function check(source: string): Promise<{ ok: boolean; output: string }> {
+async function check(source: string): Promise<CheckResult> {
   const dir = mkdtempSync(join(tmpdir(), "barq-dist-types-"));
   dirs.push(dir);
 

@@ -7,7 +7,9 @@ import { flush } from "@barqjs/core";
 import { render } from "./index.ts";
 import type { Child } from "@barqjs/core";
 
-const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+function tick() {
+  return new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
 
 /**
  * Wait for THIS module's import to land, and nothing else.
@@ -16,11 +18,11 @@ const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
  * process, so these two tests passed alone and timed out at 5 s inside the full
  * suite, waiting on work another file had left running.
  */
-const settled = async () => {
+async function settled() {
   await tick();
   await tick();
   flush();
-};
+}
 
 function mountWithFallback(component: (p: unknown) => Child) {
   const host = document.createElement("div");

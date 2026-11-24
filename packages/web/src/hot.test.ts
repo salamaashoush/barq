@@ -26,12 +26,16 @@ function label(text: () => string): HTMLElement {
   return node;
 }
 
+interface CountProps {
+  count: () => number;
+}
+
 test("an edit swaps the implementation in place and keeps the caller's state", () => {
   const context: HotContext = { data: {} };
   const [count, setCount] = createSignal(1);
   const disposed: string[] = [];
 
-  const first = hot(context, "Counter", (props: { count: () => number }) => {
+  const first = hot(context, "Counter", (props: CountProps) => {
     onCleanup(() => disposed.push("first"));
     return label(() => `first ${props.count()}`);
   });
@@ -43,7 +47,7 @@ test("an edit swaps the implementation in place and keeps the caller's state", (
   flush();
   expect(host.textContent).toBe("first 2");
 
-  const second = hot(context, "Counter", (props: { count: () => number }) =>
+  const second = hot(context, "Counter", (props: CountProps) =>
     label(() => `second ${props.count()}`),
   );
   expect(second).toBe(first);
@@ -71,7 +75,7 @@ test("two components of one module are replaced independently", () => {
 
 test("a component whose signature did not move keeps its instance and its state", () => {
   const context: HotContext = { data: {} };
-  const counter = (): HTMLElement => {
+  function counter(): HTMLElement {
     const [clicks, setClicks] = createSignal(0);
     const node = label(() => `clicks ${clicks()}`);
     node.addEventListener("click", () => {
@@ -79,7 +83,7 @@ test("a component whose signature did not move keeps its instance and its state"
       flush();
     });
     return node;
-  };
+  }
   const kept = hot(context, "Counter", counter, "same");
   const edited = hot(context, "Title", () => label(() => "title"), "one");
   runWithOwner(rootScope(), () => insert(host, [kept(), edited()]));

@@ -6,7 +6,9 @@ import { render } from "./index.ts";
 import type { Child } from "@barqjs/core";
 import { rooted } from "../../core/src/test-root.ts";
 
-const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+function tick() {
+  return new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
 
 describe("lazy with Solid's `{ export }` option", () => {
   test(

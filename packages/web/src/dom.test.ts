@@ -14,6 +14,7 @@ import {
   runWithOwner,
   flush,
   createSignal,
+  type RefObject,
 } from "@barqjs/core";
 import { disposeScope, thrownBy } from "@barqjs/core/internal";
 
@@ -32,6 +33,14 @@ afterEach(() => {
   unmount();
   container.remove();
 });
+
+interface MyComponentProps {
+  name: string;
+}
+
+interface WrapperProps {
+  children: unknown;
+}
 
 describe("element — one element by tag NAME (§3.13 items 1 and 4)", () => {
   // M9 deleted `createElement`. What replaces it is not a rename: `element`
@@ -91,18 +100,18 @@ describe("element — one element by tag NAME (§3.13 items 1 and 4)", () => {
   });
 
   test("handles component functions", () => {
-    const MyComponent = (props: { name: string }) => {
+    function MyComponent(props: MyComponentProps) {
       return element("span", { children: `Hello ${props.name}` });
-    };
+    }
 
     const el = createRoot(() => MyComponent({ name: "World" })) as HTMLSpanElement;
     expect(el.textContent).toBe("Hello World");
   });
 
   test("component receives children prop", () => {
-    const Wrapper = (props: { children: unknown }) => {
+    function Wrapper(props: WrapperProps) {
       return element("div", { class: "wrapper", children: props.children });
-    };
+    }
 
     const el = createRoot(() => Wrapper({ children: "content" })) as HTMLDivElement;
     expect(el.className).toBe("wrapper");
@@ -212,7 +221,7 @@ describe("Ref handling", () => {
     // M9 deleted the `useRef()` FACTORY — a ref is a writable binding
     // (B3) or a callback, and the box is one object literal. The `{current}`
     // SHAPE is still a ref the channel writes, which is what this asserts.
-    const ref: { current: HTMLDivElement | null } = { current: null };
+    const ref: RefObject<HTMLDivElement> = { current: null };
     const el = createRoot(() => element("div", { ref })) as HTMLDivElement;
 
     expect(ref.current).toBe(el);
@@ -759,12 +768,12 @@ describe("the { current } ref shape", () => {
   // `useRef()` returned `{ current: null }` and nothing else, so M9 deleted it
   // and left the SHAPE, which is what the ref channel actually writes.
   test("a fresh box starts null", () => {
-    const ref: { current: HTMLDivElement | null } = { current: null };
+    const ref: RefObject<HTMLDivElement> = { current: null };
     expect(ref.current).toBeNull();
   });
 
   test("current is set when attached to an element", () => {
-    const ref: { current: HTMLInputElement | null } = { current: null };
+    const ref: RefObject<HTMLInputElement> = { current: null };
     const el = createRoot(() => element("input", { ref })) as HTMLInputElement;
 
     expect(ref.current).toBe(el);
@@ -817,10 +826,10 @@ describe("Memory and cleanup", () => {
 
       // Wrap createElement to track effect runs
       const originalTitle = title;
-      const trackedTitle = () => {
+      function trackedTitle() {
         effectRuns++;
         return originalTitle();
-      };
+      }
 
       element("div", { title: trackedTitle });
     });
@@ -847,10 +856,10 @@ describe("Memory and cleanup", () => {
     createRoot((d) => {
       dispose = d;
 
-      const trackedText = () => {
+      function trackedText() {
         effectRuns++;
         return text();
-      };
+      }
 
       const el = element("div", { children: trackedText });
       container.appendChild(el);
@@ -878,10 +887,10 @@ describe("Memory and cleanup", () => {
     createRoot((d) => {
       dispose = d;
 
-      const trackedColor = () => {
+      function trackedColor() {
         effectRuns++;
         return color();
-      };
+      }
 
       const el = element("div", { style: { color: trackedColor } });
       container.appendChild(el);
@@ -973,10 +982,10 @@ describe("BUG: isSignalGetter false positive", () => {
     // This is testing potential bug where any function is treated as a signal
     let callCount = 0;
 
-    const callback = () => {
+    function callback() {
       callCount++;
       return "value";
-    };
+    }
 
     // If callback is incorrectly treated as a signal getter,
     // it will be wrapped in an effect and called
@@ -1112,7 +1121,9 @@ describe("spread — B4 and E2.2 on the one channel the corpus cannot reach", ()
     const [checked, setChecked] = createSignal(false);
     const host = document.createElement("div");
     container.appendChild(host);
-    const isFocused = (): string | undefined => (focused() ? "" : undefined);
+    function isFocused(): string | undefined {
+      return focused() ? "" : undefined;
+    }
     render(() => {
       const el = document.createElement("input");
       el.type = "checkbox";
@@ -1162,7 +1173,9 @@ describe("spread — B4 and E2.2 on the one channel the corpus cannot reach", ()
     flush();
     setTick(2);
     flush();
-    const changes = (spy: typeof added) => spy.mock.calls.filter((call) => call[0] === "change");
+    function changes(spy: typeof added) {
+      return spy.mock.calls.filter((call) => call[0] === "change");
+    }
     expect(changes(added)).toHaveLength(1);
     expect(changes(removed)).toHaveLength(0);
     el.dispatchEvent(new Event("change"));

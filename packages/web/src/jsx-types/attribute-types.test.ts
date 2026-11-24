@@ -22,7 +22,12 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-function typecheck(): { status: number; output: string } {
+interface TypecheckResult {
+  status: number;
+  output: string;
+}
+
+function typecheck(): TypecheckResult {
   const result = spawnSync("bunx", ["tsc", "--noEmit", "--pretty", "false", "-p", HERE], {
     cwd: join(HERE, "..", ".."),
     encoding: "utf8",

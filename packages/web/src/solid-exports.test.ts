@@ -22,12 +22,22 @@ afterEach(() => {
   document.body.textContent = "";
 });
 
+interface HeardError {
+  error: unknown;
+  context: ClientErrorContext;
+}
+
+interface BoomModule {
+  App: (props: object) => JSXElement;
+  boom: Error;
+}
+
 describe("configureClientErrors", () => {
   test("hears an error barq's <Errored> caught and rendered a fallback for", async () => {
-    const heard: { error: unknown; context: ClientErrorContext }[] = [];
+    const heard: HeardError[] = [];
     configureClientErrors({ onError: (error, context) => heard.push({ error, context }) });
 
-    const view = await compileModule<{ App: (props: object) => JSXElement; boom: Error }>(
+    const view = await compileModule<BoomModule>(
       `import { Errored } from "@barqjs/core";
        export const boom = new Error("salama's profile failed to load");
        function Profile() { throw boom; }

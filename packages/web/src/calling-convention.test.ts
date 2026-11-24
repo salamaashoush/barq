@@ -217,13 +217,17 @@ describe("a Provider binds on the scope its children run under", () => {
   });
 });
 
+interface CounterProps {
+  by: number;
+}
+
 describe("a component is a function of its props", () => {
   test("its reactive work is owned by the caller's scope and dies with it", () => {
     const [count, setCount] = createSignal(0);
     let runs = 0;
     let disposed = 0;
 
-    function Counter(props: { by: number }): number {
+    function Counter(props: CounterProps): number {
       onCleanup(() => disposed++);
       return count() * props.by;
     }

@@ -7,7 +7,9 @@ import { boundary, branch } from "./dom-flow.ts";
 import { render } from "./dom.ts";
 import { NotReadyError, block, createMemo, createRoot, createSignal } from "@barqjs/core";
 
-const tick = () => new Promise<void>((r) => setTimeout(r, 0));
+function tick() {
+  return new Promise<void>((r) => setTimeout(r, 0));
+}
 function deferred<T>() {
   let resolve!: (v: T) => void;
   const promise = new Promise<T>((r) => {

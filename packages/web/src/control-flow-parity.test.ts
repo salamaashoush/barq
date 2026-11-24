@@ -15,6 +15,11 @@ beforeEach(() => {
   document.body.appendChild(container);
 });
 
+interface TextItem {
+  id: number;
+  text: string;
+}
+
 describe("For keyed unification", () => {
   test("keyed={false} is positional (null keyOf, item accessor, static index)", () => {
     const [items, setItems] = createSignal(["a", "b"]);
@@ -53,8 +58,8 @@ describe("For keyed unification", () => {
     createRoot(() => {
       const el = For({
         each: () => items(),
-        keyed: cell((item: { id: number; text: string }) => item.id),
-        children: (item: () => { id: number; text: string }) => {
+        keyed: cell((item: TextItem) => item.id),
+        children: (item: () => TextItem) => {
           renders++;
           return element("li", { children: () => item().text }) as Node;
         },
@@ -119,15 +124,19 @@ describe("Repeat", () => {
   });
 });
 
+interface User {
+  name: string;
+}
+
 describe("Show keyed semantics", () => {
   test("default (non-keyed): children get an accessor; no re-render on truthy value change", () => {
-    const [user, setUser] = createSignal<{ name: string } | null>({ name: "John" });
+    const [user, setUser] = createSignal<User | null>({ name: "John" });
     let renders = 0;
 
     createRoot(() => {
       const el = Show({
         when: () => user(),
-        children: (u: () => { name: string }) => {
+        children: (u: () => User) => {
           renders++;
           return element("div", { children: () => u().name });
         },
@@ -155,14 +164,14 @@ describe("Show keyed semantics", () => {
   });
 
   test("keyed: children get the raw value and re-render on every value change", () => {
-    const [user, setUser] = createSignal<{ name: string } | null>({ name: "John" });
+    const [user, setUser] = createSignal<User | null>({ name: "John" });
     let renders = 0;
 
     createRoot(() => {
       const el = Show({
         when: () => user(),
         keyed: true,
-        children: (u: { name: string }) => {
+        children: (u: User) => {
           renders++;
           return element("div", { children: u.name });
         },
@@ -196,10 +205,10 @@ describe("dynamic — a component chosen at run time", () => {
 
   test("answers with a component, then nothing, and tears down what it built", () => {
     const cleanups: string[] = [];
-    const Badge = (props: Record<string, unknown>): Node => {
+    function Badge(props: Record<string, unknown>): Node {
       onCleanup(() => cleanups.push("badge"));
       return element("b", { children: props.label });
-    };
+    }
     const [which, setWhich] = createSignal<"badge" | "i" | "none">("badge");
     const Chosen = dynamic(() => (which() === "badge" ? Badge : which() === "i" ? "i" : null));
 

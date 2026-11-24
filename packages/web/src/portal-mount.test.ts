@@ -28,7 +28,9 @@ function tagged(tag: string, text: string): HTMLElement {
   return node;
 }
 
-const turn = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 5));
+function turn(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 5));
+}
 
 test("a portal inside a boundary that was pending when it was built mounts once the content shows", async () => {
   let arrive!: (value: string) => void;

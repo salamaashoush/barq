@@ -26,7 +26,9 @@ import { rooted } from "../../core/src/test-root.ts";
 import { boundary } from "./dom-flow.ts";
 import { insert, render } from "./dom.ts";
 
-const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+function tick() {
+  return new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
 
 describe("a component's frame", () => {
   test(
@@ -111,7 +113,10 @@ describe("a component's frame", () => {
       const MARK = Symbol("salama");
       const row = block((item: string) => document.createTextNode(`${item}:${useContext(Ctx)()}`));
       (row as unknown as Record<symbol, boolean>)[MARK] = true;
-      function Provides(props: { children: typeof row }): unknown {
+      interface ProvidesProps {
+        children: typeof row;
+      }
+      function Provides(props: ProvidesProps): unknown {
         install(getOwner()!, Ctx, () => "carried");
         return props.children;
       }

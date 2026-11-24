@@ -133,7 +133,7 @@ export function portal(
     let request = 0;
     const site: Site = { host: DOM_HOST, parent: null, anchor: null };
 
-    const clear = (): void => {
+    function clear(): void {
       if (instance !== NOTHING) {
         teardown(DOM_HOST, instance);
         instance = NOTHING;
@@ -145,7 +145,7 @@ export function portal(
       container?.parentNode?.removeChild(container);
       container = null;
       site.parent = null;
-    };
+    }
 
     // An EFFECT, not a render effect, and that is where the mount's timing
     // comes from. It runs once the pass that placed the marker has written the
@@ -164,7 +164,7 @@ export function portal(
       (requested) => {
         clear();
         const mine = ++request;
-        const mount = (): void => {
+        function mount(): void {
           // The marker IS the portal's lexical position, so a tree that was
           // never put in a document mounts nothing outside itself either.
           if (mine !== request || !marker.isConnected) return;
@@ -183,7 +183,7 @@ export function portal(
             registerDelegatedContainer(container, root);
             delegatingFor = root;
           }
-        };
+        }
         // A portal nothing owns has no scope to build under, and the engine
         // refuses one made from inside an effect's write. It mounts a turn
         // later, outside it, and only if it is still the one being asked for.

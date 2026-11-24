@@ -10,7 +10,9 @@ import { describe, expect, test } from "bun:test";
 
 import { hydrate, isHydrating, onHydrationEnd, render } from "./index.ts";
 
-const microtask = (): Promise<void> => Promise.resolve();
+function microtask(): Promise<void> {
+  return Promise.resolve();
+}
 
 describe("hydration state", () => {
   test("isHydrating is true only while the claim is live", () => {
@@ -43,7 +45,7 @@ describe("hydration state", () => {
   test("a render called while hydrating builds without claiming", () => {
     const overlay = document.createElement("div");
     let claiming = true;
-    let stop = (): void => {};
+    let stop: () => void = () => {};
     const dispose = hydrate(() => {
       stop = render(() => {
         claiming = isHydrating();

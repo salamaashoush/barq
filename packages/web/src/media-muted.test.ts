@@ -8,7 +8,12 @@ import { expect, test } from "bun:test";
 import { spread } from "./dom.ts";
 import { createSignal, flush, rootScope, runWithOwner } from "@barqjs/core";
 
-function recorded(tag: "audio" | "video"): { element: HTMLMediaElement; writes: boolean[] } {
+interface RecordedMedia {
+  element: HTMLMediaElement;
+  writes: boolean[];
+}
+
+function recorded(tag: "audio" | "video"): RecordedMedia {
   const element = document.createElement(tag);
   const writes: boolean[] = [];
   let held = false;

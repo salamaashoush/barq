@@ -12,7 +12,9 @@ import { rooted } from "../../core/src/test-root.ts";
 import { describe, expect, test } from "bun:test";
 import { Errored, Loading, Show, block, createMemo, createRoot } from "@barqjs/core";
 import { render } from "./dom.ts";
-const tick = () => new Promise<void>((r) => setTimeout(r, 0));
+function tick() {
+  return new Promise<void>((r) => setTimeout(r, 0));
+}
 function mk() {
   let settle: (v: string) => void = () => {};
   const value = createMemo(

@@ -281,9 +281,9 @@ describe("spread", () => {
 describe("[handler, data] delegation tuples", () => {
   test("delegated tuple calls handler with bound data", () => {
     const seen: unknown[] = [];
-    const handler = (data: unknown, e: Event) => {
+    function handler(data: unknown, e: Event) {
       seen.push([data, e.type]);
-    };
+    }
     const el = createRoot(() => element("button", { onClick: [handler, 42] })) as HTMLButtonElement;
     container.appendChild(el);
     el.click();
@@ -306,7 +306,9 @@ describe("[handler, data] delegation tuples", () => {
 describe("pre-hydration event replay", () => {
   test("captured clicks replay against the hydrated DOM", () => {
     let clicks = 0;
-    const makeApp = () => () => element("button", { onClick: () => clicks++, children: "go" });
+    function makeApp() {
+      return () => element("button", { onClick: () => clicks++, children: "go" });
+    }
 
     // Simulate the inline capture script's leftovers
     let stopCalled = false;
@@ -350,28 +352,30 @@ describe("pre-hydration event replay", () => {
  * sit at the same index.
  */
 describe("pre-hydration replay across a swap", () => {
-  const record = (over: Record<string, unknown>): Record<string, unknown> => ({
-    type: "click",
-    x: 10,
-    y: 10,
-    button: 0,
-    ctrlKey: false,
-    metaKey: false,
-    shiftKey: false,
-    altKey: false,
-    ...over,
-  });
+  function record(over: Record<string, unknown>): Record<string, unknown> {
+    return {
+      type: "click",
+      x: 10,
+      y: 10,
+      button: 0,
+      ctrlKey: false,
+      metaKey: false,
+      shiftKey: false,
+      altKey: false,
+      ...over,
+    };
+  }
 
   /** Hydration of an empty container: nothing claimed, nothing recovered. */
-  const replayInto = (queue: unknown[]): void => {
+  function replayInto(queue: unknown[]): void {
     const g = globalThis as Record<string, unknown>;
     g.__BARQ_EVTS__ = queue;
     g.__BARQ_EVTS_STOP__ = (): void => {};
     hydrate(() => element("i", { children: "" }), container);
-  };
+  }
 
   /** Where a body-relative child-index path lands, for a node already in place. */
-  const pathTo = (node: Node): number[] => {
+  function pathTo(node: Node): number[] {
     const path: number[] = [];
     let current: Node | null = node;
     while (current !== null && current !== document.body) {
@@ -382,7 +386,7 @@ describe("pre-hydration replay across a swap", () => {
       current = current.parentNode;
     }
     return path;
-  };
+  }
 
   test("the captured node is the target even when its path has shifted", () => {
     let clicks = 0;

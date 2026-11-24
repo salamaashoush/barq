@@ -23,7 +23,9 @@ import {
   isPending,
 } from "@barqjs/core";
 
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 // Past this many runs the binding stops reading, which ends a runaway loop so
 // the test can fail instead of hanging the runner.
@@ -37,6 +39,11 @@ beforeEach(() => {
 afterEach(() => container.remove());
 
 type Row = { name: string; skeleton?: boolean };
+
+interface VerdictView {
+  a: Record<string, boolean>;
+  b: string;
+}
 
 test("a rejected refetch reaches the error fallback and the flush returns", async () => {
   const [generation, setGeneration] = createSignal(0);
@@ -55,10 +62,10 @@ test("a rejected refetch reaches the error fallback and the flush returns", asyn
       { loadingValue: { name: "loading", skeleton: true } },
     );
 
-    const content = (): Node => {
+    function content(): Node {
       const el = document.createElement("h4");
       bindEffect(
-        (): { a: Record<string, boolean>; b: string } => {
+        (): VerdictView => {
           if (++runs > RUNAWAY) return { a: {}, b: "" };
           return {
             a: { row: true, stale: isPending(row) },
@@ -72,7 +79,7 @@ test("a rejected refetch reaches the error fallback and the flush returns", asyn
       );
       insert(el, () => row().name);
       return el;
-    };
+    }
 
     render(() => {
       const outer = document.createElement("div");

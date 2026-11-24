@@ -66,11 +66,15 @@ function withReadOnlySvgPrototype<T>(fn: () => T): T {
   }
 }
 
+interface ClassNameHolder {
+  className: unknown;
+}
+
 describe("SVG className is read-only in browsers", () => {
   test("the shim really is get-only (guards the test itself)", () => {
     const el = withReadOnlyClassName(svg("circle"));
     expect(() => {
-      (el as unknown as { className: unknown }).className = "boom";
+      (el as unknown as ClassNameHolder).className = "boom";
     }).toThrow();
     expect(el.getAttribute("class")).toBe(null);
   });
@@ -142,13 +146,13 @@ describe("SVG className is read-only in browsers", () => {
     withReadOnlySvgPrototype(() => {
       const el = svg("circle");
       expect(() => {
-        (el as unknown as { className: unknown }).className = "boom";
+        (el as unknown as ClassNameHolder).className = "boom";
       }).toThrow();
     });
     // and it is restored, so the shim cannot leak into later files
     const after = svg("circle");
-    (after as unknown as { className: unknown }).className = "plain";
-    expect(typeof (after as unknown as { className: unknown }).className).toBe("string");
+    (after as unknown as ClassNameHolder).className = "plain";
+    expect(typeof (after as unknown as ClassNameHolder).className).toBe("string");
   });
 
   test("HTML elements keep using the className property path", () => {

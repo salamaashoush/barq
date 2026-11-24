@@ -22,8 +22,13 @@ afterEach(() => {
   container.remove();
 });
 
+interface CountedInstalls<T> {
+  result: T;
+  installs: number;
+}
+
 /** Count the root container's registrations for one event type */
-function countInstalls<T>(type: string, fn: () => T): { result: T; installs: number } {
+function countInstalls<T>(type: string, fn: () => T): CountedInstalls<T> {
   const original = container.addEventListener.bind(container);
   let installs = 0;
   container.addEventListener = ((t: string, ...rest: unknown[]) => {
@@ -340,10 +345,10 @@ describe("a delegated handler runs under no owner", () => {
     delegateEvents(["click"]);
 
     const errors: unknown[] = [];
-    const onError = (event: Event): void => {
+    function onError(event: Event): void {
       errors.push(event);
       event.preventDefault();
-    };
+    }
     globalThis.addEventListener("error", onError);
     const printed = spyOn(console, "error").mockImplementation(() => {});
     let thrown: unknown = null;

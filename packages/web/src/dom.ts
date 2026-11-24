@@ -510,7 +510,9 @@ function toListener(value: DelegatedHandler): EventListener {
 
 function listenOn(container: Node, state: DelegatedContainer, type: string): void {
   if (state.listeners.has(type)) return;
-  const listener = (e: Event): void => dispatchDelegated(e, container, state);
+  function listener(e: Event): void {
+    return dispatchDelegated(e, container, state);
+  }
   state.listeners.set(type, listener);
   container.addEventListener(type, listener);
 }
@@ -863,6 +865,10 @@ export function setLive(element: Element, name: string, value: unknown): unknown
   return value;
 }
 
+interface ClassCache {
+  $$class?: string | null;
+}
+
 /**
  * The `class` channel, normalised from a string, array or object — and it emits
  * only the tokens it OWNS.
@@ -894,7 +900,7 @@ export function setLive(element: Element, name: string, value: unknown): unknown
 export function setClass(element: Element, _name: string, value: unknown, prev?: unknown): unknown {
   const className = classToString(value);
   if (className === prev) return prev;
-  const held = element as Element & { $$class?: string | null };
+  const held = element as Element & ClassCache;
   const owned = prev === undefined ? (held.$$class ?? null) : (prev as string | null);
   const current = element.getAttribute("class");
   held.$$class = className;
@@ -957,10 +963,14 @@ export function setStyle(element: Element, _name: string, value: unknown, prev?:
   return undefined;
 }
 
+interface HtmlProp {
+  __html?: string;
+}
+
 /** `dangerouslySetInnerHTML={{ __html }}`. */
 export function setHtml(element: Element, _name: string, value: unknown, prev?: unknown): unknown {
   if (!isObject(value)) return prev;
-  const html = (value as { __html?: string }).__html ?? "";
+  const html = (value as HtmlProp).__html ?? "";
   // A hydrating element already HAS these bytes, and `innerHTML =` would throw
   // away every node the server sent inside it — the same destruction the
   // sole-occupant `textContent` write does at a hole, in the one channel that
@@ -1015,7 +1025,7 @@ function refuseBlock(target: unknown, origin: string, returned = false): void {
 /** Every ref shape, returning whatever the callbacks handed back as cleanups. */
 function applyRefs(element: Element, value: unknown): (() => void)[] {
   const undo: (() => void)[] = [];
-  const one = (target: unknown): void => {
+  function one(target: unknown): void {
     refuseBlock(target, "A `ref`");
     if (isRefCallback(target)) {
       const back = target(element);
@@ -1028,7 +1038,7 @@ function applyRefs(element: Element, value: unknown): (() => void)[] {
     } else if (isObject(target) && "current" in target) {
       setProperty(target, "current", element);
     }
-  };
+  }
   if (isArray(value)) {
     for (const target of value) one(target);
   } else {
@@ -1058,6 +1068,11 @@ export function ref(element: Element, value: unknown): void {
   });
 }
 
+interface ActionSlots {
+  $$action?: unknown;
+  $$actionBound?: true;
+}
+
 /**
  * `<form action={…}>`: the handler-channel rule applied to the one attribute
  * that carries either kind of value.
@@ -1081,7 +1096,7 @@ export function ref(element: Element, value: unknown): void {
  * routes a throw to the enclosing boundary (E2 #6).
  */
 export function formAction(form: HTMLFormElement, value: unknown): void {
-  const el = form as HTMLFormElement & { $$action?: unknown; $$actionBound?: true };
+  const el = form as HTMLFormElement & ActionSlots;
   if (typeof value !== "function") {
     el.$$action = undefined;
     setAttr(form, "action", value);
@@ -1213,7 +1228,7 @@ export function bindProp(element: Element, write: Channel, name: string, value: 
   // would show until something in a channel started reading.
   const keyed = write === setStyle;
   const property = write === setDomProp;
-  const read = (): unknown => readOpaque(value(), name, property);
+  const read: () => unknown = () => readOpaque(value(), name, property);
   let prev: unknown;
   effectUnder(
     given,
@@ -1304,7 +1319,7 @@ export function bindValue(element: Element, name: string, type: string, value: u
   if (read === null || set === null) {
     diagnose("BIND_TARGET_NOT_WRITABLE", name, element.localName, typeof value);
   }
-  const write = (next: unknown): void => {
+  function write(next: unknown): void {
     if (name === "group") {
       writeLive(element, "checked", next === target.value);
       return;
@@ -1314,7 +1329,7 @@ export function bindValue(element: Element, name: string, type: string, value: u
     // — would throw where skipping is what the author meant.
     if (name === "files" && !(next !== null && typeof next === "object")) return;
     writeLive(element, name, next);
-  };
+  }
 
   if (read === null) {
     write(value);
@@ -1546,16 +1561,24 @@ export function styleToString(value: unknown): string | null {
  */
 export const SSR_HTML_BRAND: unique symbol = Symbol.for("barq.ssr.html");
 
-export function isSsrHtml(value: unknown): value is { readonly t: string } {
+export interface SsrHtml {
+  readonly t: string;
+}
+
+interface MaybeSsrHtml {
+  t?: unknown;
+}
+
+export function isSsrHtml(value: unknown): value is SsrHtml {
   return (
     typeof value === "object" &&
     value !== null &&
     (value as Record<symbol, unknown>)[SSR_HTML_BRAND] === true &&
-    typeof (value as { t?: unknown }).t === "string"
+    typeof (value as MaybeSsrHtml).t === "string"
   );
 }
 
-function ssrHtmlNodes(value: { readonly t: string }): Node[] {
+function ssrHtmlNodes(value: SsrHtml): Node[] {
   const holder = document.createElement("template");
   holder.innerHTML = value.t;
   return Array.from(holder.content.childNodes);
@@ -1604,7 +1627,7 @@ function drainFragment(fragment: DocumentFragment): Node[] {
 function normalizeChildToNodes(value: Child, prev: Node[], s: Scope | null): Node[] {
   const out: Node[] = [];
 
-  const visit = (child: Child): void => {
+  function visit(child: Child): void {
     if (child === null || child === undefined || typeof child === "boolean") return;
 
     if (child instanceof DocumentFragment) {
@@ -1656,7 +1679,7 @@ function normalizeChildToNodes(value: Child, prev: Node[], s: Scope | null): Nod
     } else {
       out.push(claimText(text) ?? document.createTextNode(text));
     }
-  };
+  }
 
   visit(value);
   return out;
@@ -1881,8 +1904,12 @@ function textNode(value: TextValue): Text {
   return (document as NumericText).createTextNode(value);
 }
 
+interface TextData {
+  data: TextValue;
+}
+
 function writeText(node: Text, value: TextValue): void {
-  (node as { data: TextValue }).data = value;
+  (node as TextData).data = value;
 }
 
 /**
@@ -2501,7 +2528,7 @@ export function spread(
   let holding = holdsSelection;
   let pending: Record<string, unknown> = {};
 
-  const applyOne = (key: string, value: unknown): void => {
+  function applyOne(key: string, value: unknown): void {
     // Events: delegated handlers swap by expando; direct ones re-listen
     const captured = captureTypeOf(key);
     if (captured !== null || (key[0] === "o" && key[1] === "n")) {
@@ -2563,10 +2590,11 @@ export function spread(
       value,
       applied[key],
     );
-  };
+  }
 
-  const isEventKey = (key: string): boolean =>
-    captureTypeOf(key) !== null || (key[0] === "o" && key[1] === "n");
+  function isEventKey(key: string): boolean {
+    return captureTypeOf(key) !== null || (key[0] === "o" && key[1] === "n");
+  }
 
   // The getter each user-mutable prop was last read through, beside the value
   // `applied` holds, so a run caused by a sibling can be told from one that
@@ -2579,7 +2607,7 @@ export function spread(
    * NOT getters, and they pass through as they are.
    */
   let liveSources: Record<string, unknown> = {};
-  const read = (): Record<string, unknown> => {
+  function read(): Record<string, unknown> {
     const next = typeof props === "function" ? props() : props;
     const resolved: Record<string, unknown> = {};
     liveSources = {};
@@ -2611,7 +2639,7 @@ export function spread(
       resolved[key] = key === "style" ? readKeys(held) : held;
     }
     return resolved;
-  };
+  }
 
   if (holding) {
     const releases = HELD_SELECTIONS.get(element) ?? [];
@@ -2721,7 +2749,7 @@ function liveHole(cell: (s: unknown) => Child, given: Scope | null): Node[] {
   let written = false;
   let standing = false;
 
-  const write = (resolved: Resolved): void => {
+  function write(resolved: Resolved): void {
     if (typeof resolved !== "object") {
       const text = String(resolved);
       if (tail === null) {
@@ -2743,7 +2771,7 @@ function liveHole(cell: (s: unknown) => Child, given: Scope | null): Node[] {
     if (tail.data !== "") tail.data = "";
     const parent = tail.parentNode;
     current = parent === null ? resolved : placeInsert(parent, resolved, current, tail);
-  };
+  }
 
   renderEffect<Resolved>(
     () => {
@@ -3040,6 +3068,11 @@ function atPath(path: readonly number[]): Node | null {
   return node;
 }
 
+interface CaptureGlobals {
+  __BARQ_EVTS__?: CapturedEvent[];
+  __BARQ_EVTS_STOP__?: () => void;
+}
+
 /**
  * Replay what the user did before the bundle arrived.
  *
@@ -3055,10 +3088,7 @@ function atPath(path: readonly number[]): Node | null {
  * `event.target.value` sees what the user typed), then the events.
  */
 function replayCapturedEvents(recovered: boolean): void {
-  const g = globalThis as {
-    __BARQ_EVTS__?: CapturedEvent[];
-    __BARQ_EVTS_STOP__?: () => void;
-  };
+  const g = globalThis as CaptureGlobals;
   g.__BARQ_EVTS_STOP__?.();
   const queue = g.__BARQ_EVTS__;
   g.__BARQ_EVTS__ = undefined;
@@ -3169,6 +3199,10 @@ function eventFor(rec: CapturedEvent): Event {
   });
 }
 
+interface SeedHost {
+  __BARQ_DATA__?: Record<string, unknown>;
+}
+
 /**
  * Claim-based hydration.
  *
@@ -3196,7 +3230,7 @@ function hydrateContainer(
 ): () => void {
   hydrate.report = { mismatches: [], claimed: 0, ranges: 0, built: 0, recovered: false };
   if (options?.data) {
-    const target = globalThis as { __BARQ_DATA__?: Record<string, unknown> };
+    const target = globalThis as SeedHost;
     target.__BARQ_DATA__ = { ...target.__BARQ_DATA__, ...options.data };
   }
 
@@ -3209,7 +3243,7 @@ function hydrateContainer(
   // was on the wire would show its fallback, which is a worse failure than the
   // mismatch that caused it. Recovery means "as if nothing happened", and the
   // id epoch is the other half of that.
-  const seeds = { ...(globalThis as { __BARQ_DATA__?: Record<string, unknown> }).__BARQ_DATA__ };
+  const seeds = { ...(globalThis as SeedHost).__BARQ_DATA__ };
   registerDelegatedRoot(container);
   claims = CLAIMS;
   installClaimEffect();
@@ -3263,7 +3297,7 @@ function hydrateContainer(
     // `render` clears the container — so the failure mode is a slower first
     // paint, never a tree half-built from two disagreeing sources.
     clear?.();
-    (globalThis as { __BARQ_DATA__?: Record<string, unknown> }).__BARQ_DATA__ = seeds;
+    (globalThis as SeedHost).__BARQ_DATA__ = seeds;
     resetChildIds();
     try {
       clear = mount(fn, container, false, options);
@@ -3418,7 +3452,7 @@ export function template(
 ): () => Node {
   let cached: Node | null = null;
 
-  const create = (): Node => {
+  function create(): Node {
     if (foreign !== false) {
       // A root that is foreign content by position is parsed inside the parent
       // that makes it so, and taken back out: `true` is `<svg>`, `2` `<math>`.
@@ -3445,7 +3479,7 @@ export function template(
       );
     }
     return node;
-  };
+  }
 
   return () => {
     if (!cached) {

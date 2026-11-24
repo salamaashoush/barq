@@ -18,11 +18,11 @@ afterEach(() => {
   document.body.textContent = "";
 });
 
-const host = (): HTMLElement => {
+function host(): HTMLElement {
   const element = document.createElement("div");
   document.body.append(element);
   return element;
-};
+}
 
 function reported(source: string): string[] {
   return transform(source, { filename: "/app/src/view.tsx", dev: true })
@@ -30,7 +30,9 @@ function reported(source: string): string[] {
     .filter((code) => code !== "");
 }
 
-const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+function tick(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
 
 interface Toggle {
   View: () => JSXElement;
@@ -38,12 +40,14 @@ interface Toggle {
 }
 
 describe("BARQ018: a component body decides once", () => {
-  const body = (choice: string): string => `import { Show, createSignal } from "@barqjs/core";
+  function body(choice: string): string {
+    return `import { Show, createSignal } from "@barqjs/core";
 const [on, setOn] = createSignal(false);
 export { setOn };
 export function View() {
   ${choice}
 }`;
+  }
   const once = body("if (!on()) return <p>off</p>;\n  return <p>on</p>;");
   const live = body("return <Show when={on()} fallback={<p>off</p>}><p>on</p></Show>;");
 
@@ -75,12 +79,14 @@ describe("BARQ020: a destructured store is a snapshot", () => {
     View: () => JSXElement;
     add: () => void;
   }
-  const body = (read: string): string => `import { createStore } from "@barqjs/core";
+  function body(read: string): string {
+    return `import { createStore } from "@barqjs/core";
 const [cart, setCart] = createStore({ count: 0 });
 export const add = () => setCart((draft) => { draft.count += 1; });
 export function View() {
   ${read}
 }`;
+  }
   const snapshot = body("const { count } = cart;\n  return <p>{count}</p>;");
   const live = body("return <p>{cart.count}</p>;");
 
@@ -111,9 +117,8 @@ describe("BARQ021: an async computation tracks only what it reads before its fir
     View: () => JSXElement;
     setUnit: (unit: string) => void;
   }
-  const body = (
-    compute: string,
-  ): string => `import { Loading, createMemo, createSignal } from "@barqjs/core";
+  function body(compute: string): string {
+    return `import { Loading, createMemo, createSignal } from "@barqjs/core";
 const [unit, setUnit] = createSignal("kg");
 export { setUnit };
 const load = () => new Promise<number>((resolve) => setTimeout(() => resolve(5), 0));
@@ -121,6 +126,7 @@ export function View() {
   const weight = createMemo(async () => { ${compute} });
   return <Loading fallback={<i>…</i>}><p>{weight()}</p></Loading>;
 }`;
+  }
   const late = body("const n = await load(); return `${n} ${unit()}`;");
   const early = body("const u = unit(); const n = await load(); return `${n} ${u}`;");
 
@@ -172,8 +178,8 @@ export function View() {
     const { View } = await compileModule<Counter>(source, "counter");
     // Under a root this test disposes either way, so a body that throws half
     // way leaves nothing behind for the next file.
-    const mount = (): string =>
-      createRoot((dispose) => {
+    function mount(): string {
+      return createRoot((dispose) => {
         try {
           const element = View() as unknown as HTMLElement;
           flush();
@@ -182,6 +188,7 @@ export function View() {
           dispose();
         }
       });
+    }
     if (ENGINE_DEV === undefined) {
       expect(mount()).toBe("1");
       return;

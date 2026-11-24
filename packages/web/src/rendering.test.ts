@@ -43,6 +43,15 @@ afterEach(() => {
   container.remove();
 });
 
+interface NamedItem {
+  id: number;
+  name: string;
+}
+
+interface ValueItem {
+  value: string;
+}
+
 // ============================================================================
 // Issue 1: For component doesn't update item when value changes (only index)
 // ============================================================================
@@ -59,7 +68,7 @@ describe("For component item updates", () => {
     const node = createRoot(() =>
       For({
         each: items,
-        children: (item: { id: number; name: string }, _index: () => number) => {
+        children: (item: NamedItem, _index: () => number) => {
           renderCount++;
           // In SolidJS, `item` is the actual value, not reactive
           // But the component should re-render when the item changes
@@ -93,7 +102,7 @@ describe("For component item updates", () => {
     const node = createRoot(() =>
       For({
         each: items,
-        children: (item: { value: string }) => {
+        children: (item: ValueItem) => {
           const span = document.createElement("span");
           span.textContent = item.value;
           return span;
@@ -157,6 +166,10 @@ function seededShuffle<T>(items: readonly T[], seed: number): T[] {
   return out;
 }
 
+interface IdItem {
+  id: number;
+}
+
 describe("LIS algorithm performance", () => {
   test("For should handle large list reordering efficiently", () => {
     // Create a large list
@@ -167,7 +180,7 @@ describe("LIS algorithm performance", () => {
     const node = createRoot(() =>
       For({
         each: items,
-        children: (item: { value: string }) => {
+        children: (item: ValueItem) => {
           const div = document.createElement("div");
           div.textContent = item.value;
           return div;
@@ -199,7 +212,7 @@ describe("LIS algorithm performance", () => {
     const node = createRoot(() =>
       For({
         each: items,
-        children: (item: { id: number }) => {
+        children: (item: IdItem) => {
           const div = document.createElement("div");
           div.dataset.id = String(item.id);
           return div;
@@ -327,9 +340,9 @@ describe("Loading component", () => {
 // ============================================================================
 describe("Errored", () => {
   test("Errored catches synchronous errors", () => {
-    const ThrowingComponent = () => {
+    function ThrowingComponent(): never {
       throw new Error("Test error");
-    };
+    }
 
     // The error arrives as an ACCESSOR, which is `Errored`'s signature and
     // Solid 2.0's. `ErrorBoundary` handed it over by value and went at M10.
@@ -351,10 +364,10 @@ describe("Errored", () => {
     const [throwSignal, setThrowSignal] = createSignal(true);
     let resetFn: (() => void) | null = null;
 
-    const MaybeThrow = () => {
+    function MaybeThrow() {
       if (throwSignal()) throw new Error("Intentional error");
       return element("div", { children: "Success" });
-    };
+    }
 
     const node = createRoot(() =>
       Errored({
@@ -970,6 +983,10 @@ describe("scope disposal", () => {
   });
 });
 
+interface TextProps {
+  text: string;
+}
+
 // ============================================================================
 // New Utilities: dynamic, omit, merge, children
 // ============================================================================
@@ -994,10 +1011,12 @@ describe("dynamic component", () => {
   });
 
   test("renders function components dynamically", () => {
-    const ComponentA = (props: { text: string }) =>
-      element("div", { class: "a", children: props.text });
-    const ComponentB = (props: { text: string }) =>
-      element("span", { class: "b", children: props.text });
+    function ComponentA(props: TextProps) {
+      return element("div", { class: "a", children: props.text });
+    }
+    function ComponentB(props: TextProps) {
+      return element("span", { class: "b", children: props.text });
+    }
 
     // signal(fn) creates a writable derived signal; wrap to store a function value
     const [current, setCurrent] = createSignal<typeof ComponentA>(() => ComponentA);
@@ -1028,7 +1047,7 @@ describe("dynamic component", () => {
    * use, throw from inside the construct itself.
    */
   test("renders a branded Block component, which is what the compiler emits", () => {
-    const Compiled = block((props: { text: string }) =>
+    const Compiled = block((props: TextProps) =>
       element("div", { class: "compiled", children: props.text }),
     );
     const [current] = createSignal<typeof Compiled>(() => Compiled);
@@ -1078,6 +1097,10 @@ describe("omit", () => {
   });
 });
 
+interface YHolder {
+  y: number;
+}
+
 describe("merge", () => {
   test("merges multiple props objects", () => {
     const a = { x: 1, y: 2 };
@@ -1098,7 +1121,7 @@ describe("merge", () => {
 
   test("handles undefined props gracefully", () => {
     const a = { x: 1 };
-    const b = undefined as { y: number } | undefined;
+    const b = undefined as YHolder | undefined;
     const c = { z: 3 };
     const result = merge(a, b, c);
 

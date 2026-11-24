@@ -123,11 +123,13 @@ export function claimElement(tag: string): Element | null {
   return walk === null ? null : walk.claimElement(tag);
 }
 
-export function withRangeTaken<T>(
-  range: Range,
-  body: () => T,
-  after?: Taken,
-): { value: T; taken: Node[]; held: Text[] } {
+export interface TakenRange<T> {
+  value: T;
+  taken: Node[];
+  held: Text[];
+}
+
+export function withRangeTaken<T>(range: Range, body: () => T, after?: Taken): TakenRange<T> {
   return walk === null
     ? { value: body(), taken: [], held: [] }
     : walk.withRangeTaken(range, body, after);
@@ -200,6 +202,11 @@ export function beginHydration(container: Node): void {
   });
 }
 
+interface ShellGlobals {
+  __BARQ_SHELL__?: number;
+  __BARQ_SHELL_WAIT__?: (() => void)[];
+}
+
 /**
  * Resolves once the server's shell and the scripts after it have been parsed:
  * the stream's own marker, or `DOMContentLoaded`, or at once when the parser is
@@ -208,7 +215,7 @@ export function beginHydration(container: Node): void {
  * read waits for this.
  */
 export function shellReady(): Promise<void> {
-  const global = globalThis as { __BARQ_SHELL__?: number; __BARQ_SHELL_WAIT__?: (() => void)[] };
+  const global = globalThis as ShellGlobals;
   if (
     typeof document === "undefined" ||
     document.readyState !== "loading" ||
@@ -222,6 +229,11 @@ export function shellReady(): Promise<void> {
   });
 }
 
+export interface LateClaim<T> {
+  value: T;
+  abandoned: HydrationMismatch | null;
+}
+
 /**
  * Claim server nodes that arrived after `hydrate` returned: a streamed
  * boundary's content, swapped in where the boundary's fallback was claimed.
@@ -232,10 +244,7 @@ export function shellReady(): Promise<void> {
  * a mismatch below hands `abandonClaim` comes back as `abandoned`, for the
  * caller to rebuild its own range rather than the page.
  */
-export function claimLate<T>(
-  container: Node,
-  work: () => T,
-): { value: T; abandoned: HydrationMismatch | null } {
+export function claimLate<T>(container: Node, work: () => T): LateClaim<T> {
   if (walk === null || session() !== null) return { value: work(), abandoned: null };
   const late: DomSession = {
     container,
@@ -362,7 +371,7 @@ function withRangeTakenWalk<T>(
    * text it stepped over included.
    */
   after?: Taken,
-): { value: T; taken: Node[]; held: Text[] } {
+): TakenRange<T> {
   const state = session();
   if (state === null) return { value: body(), taken: [], held: [] };
   const cursor = openCursor(range);
@@ -687,6 +696,11 @@ function holeWalk<T>(parent: Node | null, anchor: Node | null, build: () => T, m
   return value;
 }
 
+interface HoleClaim {
+  parent: Node;
+  close: Comment | null;
+}
+
 /**
  * What the build inside the last `hole` took in place, kept for the `insert`
  * that receives its value.
@@ -696,7 +710,7 @@ function holeWalk<T>(parent: Node | null, anchor: Node | null, build: () => T, m
  * is both "nothing here" and "a branch adopted its range". Only the cursor
  * knows which, and it closed when `hole` returned.
  */
-let holeTaken: ({ parent: Node; close: Comment | null } & Taken) | null = null;
+let holeTaken: (HoleClaim & Taken) | null = null;
 
 /** What the `hole` at this range took, once: the next caller gets none. */
 export function takenAtHole(range: Range): Taken {

@@ -308,8 +308,9 @@ function apply(op: Op, nodes: readonly Node[], slots: readonly Slot[]): void {
       // `undefined`, not `null`: `boundary` asks `on !== undefined` before it
       // opens the effect that reads it, and every other absent slot reads the
       // two the same way.
-      const at = (index: number | null): never =>
-        (index === null ? undefined : slots[index]) as never;
+      function at(index: number | null): never {
+        return (index === null ? undefined : slots[index]) as never;
+      }
       const flags = op[9];
       switch (op[3]) {
         case "branch":
@@ -335,6 +336,14 @@ function apply(op: Op, nodes: readonly Node[], slots: readonly Slot[]): void {
       fuse(op[1], nodes, slots);
       return;
   }
+}
+
+interface FusedRow {
+  node: number;
+  key: string;
+  diff: Diff;
+  chan: Chan;
+  read: () => unknown;
 }
 
 /**
@@ -376,13 +385,7 @@ function fuse(
     },
   );
 
-  function row(member: SetLive | SetOpaque): {
-    node: number;
-    key: string;
-    diff: Diff;
-    chan: Chan;
-    read: () => unknown;
-  } {
+  function row(member: SetLive | SetOpaque): FusedRow {
     if (member[0] === "setLive") {
       const [, node, key, slot, diff, chan] = member;
       const read = chan === "style" ? () => readKeys(slots[slot]()) : (): unknown => slots[slot]();
@@ -397,8 +400,9 @@ function fuse(
         : chan === "live"
           ? "always"
           : "identity";
-    const value = (): unknown =>
-      readOpaque((slots[slot]() as () => unknown)(), key, chan === "prop");
+    function value(): unknown {
+      return readOpaque((slots[slot]() as () => unknown)(), key, chan === "prop");
+    }
     const read = chan === "style" ? () => readKeys(value()) : value;
     return { node, key, diff, chan, read };
   }

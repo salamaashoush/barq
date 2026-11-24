@@ -11,7 +11,7 @@
  * refusal that stops firing is a rule that has quietly gone.
  */
 
-import { createMemo, createSignal } from "@barqjs/core";
+import { createMemo, createSignal, type RefObject } from "@barqjs/core";
 
 const name = createSignal("Ada");
 const agreed = createSignal(false);
@@ -21,7 +21,7 @@ const picked = createSignal<FileList | null>(null);
 const size = createSignal("s");
 const showing = createSignal(false);
 const draft = createSignal(() => name[0]());
-const element: { current: HTMLInputElement | null } = { current: null };
+const element: RefObject<HTMLInputElement> = { current: null };
 
 // Every channel the compiler resolves, on the element it resolves it for.
 export const accepted = (
@@ -48,7 +48,9 @@ export const accepted = (
 );
 
 const readOnly = createMemo(() => "Ada");
-const bare = (): string => "Ada";
+function bare(): string {
+  return "Ada";
+}
 
 export const refused = (
   <form>

@@ -13,11 +13,11 @@ afterEach(() => {
   document.body.textContent = "";
 });
 
-const host = (): HTMLElement => {
+function host(): HTMLElement {
   const element = document.createElement("div");
   document.body.append(element);
   return element;
-};
+}
 
 interface View {
   App: (props: object) => JSXElement;
@@ -54,6 +54,15 @@ export const App = () => (
     {count() > 1 ? <u>more</u> : null}
   </List>
 );`;
+
+interface ChildrenModule {
+  App: (props: object) => JSXElement;
+  got: unknown[];
+}
+
+interface HasLength {
+  length: number;
+}
 
 describe("children()", () => {
   test("resolves a component's children so it can iterate them", async () => {
@@ -93,7 +102,7 @@ describe("children()", () => {
   });
 
   test("a render callback among the children is returned untouched", async () => {
-    const view = await compileModule<{ App: (props: object) => JSXElement; got: unknown[] }>(
+    const view = await compileModule<ChildrenModule>(
       `import { children } from "@barqjs/core";
        export const got: unknown[] = [];
        function Probe(props) {
@@ -108,7 +117,7 @@ describe("children()", () => {
     flush();
     expect(view.got).toHaveLength(1);
     expect(typeof view.got[0]).toBe("function");
-    expect((view.got[0] as { length: number }).length).toBe(1);
+    expect((view.got[0] as HasLength).length).toBe(1);
     dispose();
   });
 });

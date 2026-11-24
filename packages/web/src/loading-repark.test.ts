@@ -12,8 +12,12 @@ import { expect, test } from "bun:test";
 import { Loading, Show, createMemo, createRoot, createSignal, flush } from "@barqjs/core";
 import { render } from "./dom.ts";
 
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
-const text = (value: string) => (): Node => document.createTextNode(value);
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+function text(value: string) {
+  return (): Node => document.createTextNode(value);
+}
 
 test("re-parking takes the arm a nested region swapped in", async () => {
   const container = document.createElement("div");

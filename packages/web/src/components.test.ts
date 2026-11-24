@@ -401,6 +401,16 @@ describe("Show component", () => {
   });
 });
 
+interface NamedItem {
+  id: number;
+  name: string;
+}
+
+interface ValueItem {
+  id: number;
+  v: string;
+}
+
 describe("For component", () => {
   test("renders list of items", () => {
     const [items] = createSignal(["a", "b", "c"]);
@@ -507,7 +517,7 @@ describe("For component", () => {
     const node = createRoot(() =>
       For({
         each: items,
-        children: (item: { id: number; name: string }) => {
+        children: (item: NamedItem) => {
           renderCount++;
           return document.createTextNode(item.name);
         },
@@ -709,7 +719,7 @@ describe("For component", () => {
     const node = createRoot(() =>
       For({
         each: items,
-        children: (item: { id: number; v: string }) => {
+        children: (item: ValueItem) => {
           renderCount++;
           const span = document.createElement("span");
           span.textContent = item.v;
@@ -757,7 +767,7 @@ describe("For component", () => {
     const node = createRoot(() =>
       For({
         each: items,
-        children: (item: { id: number; v: string }) => {
+        children: (item: ValueItem) => {
           renderCount++;
           const span = document.createElement("span");
           span.textContent = item.v;
@@ -1090,7 +1100,7 @@ describe("Switch/Match components", () => {
           Match({
             when: user,
             keyed: true,
-            children: (u: { id: number; name: string }) => {
+            children: (u: NamedItem) => {
               renderCount++;
               return document.createTextNode(u.name);
             },
@@ -1331,11 +1341,12 @@ describe("Memory and cleanup", () => {
  * does and as the `Show` adapter does.
  */
 describe("a branch arm deciding a child of unknown kind", () => {
-  const arm = (child: unknown, when: () => unknown) =>
-    branch(container, null, () => (when() ? 1 : 0), [
+  function arm(child: unknown, when: () => unknown) {
+    return branch(container, null, () => (when() ? 1 : 0), [
       null,
       block(() => block((value: unknown) => callSlot(child, value))(when)),
     ]);
+  }
 
   test("text is rendered as it is", () => {
     const [on, setOn] = createSignal(true);

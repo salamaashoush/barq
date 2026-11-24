@@ -1,3 +1,7 @@
+export interface TraceparentEntry {
+  readonly traceparent: string;
+}
+
 /**
  * Solid 2.0's trace context: the W3C `traceparent` / `tracestate` / `baggage`
  * half of the HTTP exchange, derived once per request and handed on, to the
@@ -31,7 +35,7 @@ export interface TraceContext {
    * in a document's head, and what a server function forwards downstream:
    * `fetch(url, { headers: { traceparent: entries.traceparent } })`.
    */
-  readonly entries: Readonly<Record<string, string>> & { readonly traceparent: string };
+  readonly entries: Readonly<Record<string, string>> & TraceparentEntry;
 }
 
 export interface TraceRecord {
@@ -44,9 +48,13 @@ const TRACEPARENT = /^([0-9a-f]{2})-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})(
 const ZERO_TRACE = "0".repeat(32);
 const ZERO_SPAN = "0".repeat(16);
 
-function parseTraceparent(
-  value: string | null,
-): { traceId: string; parentId: string; sampled: boolean } | undefined {
+interface Traceparent {
+  traceId: string;
+  parentId: string;
+  sampled: boolean;
+}
+
+function parseTraceparent(value: string | null): Traceparent | undefined {
   if (value === null) return undefined;
   const match = TRACEPARENT.exec(value.trim());
   if (match === null) return undefined;
@@ -77,8 +85,12 @@ function randomHex(bytes: number, zero: string): string {
  */
 const RECORDS = Symbol.for("barq.trace-records");
 
+interface RecordsHost {
+  [RECORDS]?: WeakMap<WeakKey, TraceRecord>;
+}
+
 function records(): WeakMap<WeakKey, TraceRecord> {
-  const holder = globalThis as { [RECORDS]?: WeakMap<WeakKey, TraceRecord> };
+  const holder = globalThis as RecordsHost;
   holder[RECORDS] ??= new WeakMap();
   return holder[RECORDS];
 }
@@ -109,8 +121,12 @@ export function traceFor(key: WeakKey, request: Request | undefined): TraceRecor
   return record;
 }
 
+export interface RequestCarrier {
+  readonly request?: Request;
+}
+
 /** The record for a request event, keyed on its `request`. */
-export function traceForEvent(event: { readonly request?: Request }): TraceRecord {
+export function traceForEvent(event: RequestCarrier): TraceRecord {
   return traceFor(event.request ?? event, event.request);
 }
 

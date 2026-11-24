@@ -62,7 +62,9 @@ function mounted(initial: string[], pair = false): (next: string[]) => void {
   };
 }
 
-const shown = (): string => [...list.children].map((node) => node.textContent).join(" ");
+function shown(): string {
+  return [...list.children].map((node) => node.textContent).join(" ");
+}
 
 test("appending a row places that row and touches no other", () => {
   const set = mounted(["a", "b", "c", "d"]);
@@ -113,10 +115,10 @@ test("rows of two nodes stay paired and in order through a change between shared
 
 test("any sequence of edits leaves the rows in the list's order", () => {
   let seed = 20261013;
-  const random = (bound: number): number => {
+  function random(bound: number): number {
     seed = (seed * 1103515245 + 12345) & 0x7fffffff;
     return seed % bound;
-  };
+  }
   let names = ["a", "b", "c", "d", "e", "f"];
   const set = mounted(names, true);
   let minted = 0;

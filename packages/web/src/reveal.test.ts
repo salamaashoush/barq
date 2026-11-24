@@ -14,7 +14,9 @@ beforeEach(() => {
   document.body.appendChild(container);
 });
 
-const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+function tick() {
+  return new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
 
 /** Async value resolved manually */
 function deferred<T>() {

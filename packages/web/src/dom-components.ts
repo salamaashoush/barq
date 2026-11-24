@@ -62,6 +62,18 @@ type DynamicAttributes<T> = T extends string
     ? JSX.LibraryManagedAttributes<T, ComponentProps<T>>
     : Record<string, unknown>;
 
+export interface NamedClientOnlyOptions<K> {
+  lazy?: boolean;
+  export: K;
+}
+
+export type ClientModule<T extends (props: never) => unknown> = { default: T };
+
+export interface ClientOnlyOptions {
+  lazy?: boolean;
+  export?: string;
+}
+
 /**
  * Solid 2.0's `clientOnly`: a dynamically imported component that renders only
  * in the browser. The server renders `props.fallback` and never starts the
@@ -85,29 +97,29 @@ type DynamicAttributes<T> = T extends string
  */
 export function clientOnly<M extends Record<string, unknown>, K extends keyof M & string>(
   fn: () => Promise<M>,
-  options: { lazy?: boolean; export: K },
+  options: NamedClientOnlyOptions<K>,
   moduleUrl?: string,
 ): ClientOnlyComponent<M[K]>;
 export function clientOnly<T extends (props: never) => unknown>(
-  fn: () => Promise<{ default: T }>,
-  options?: { lazy?: boolean; export?: string },
+  fn: () => Promise<ClientModule<T>>,
+  options?: ClientOnlyOptions,
   moduleUrl?: string,
 ): ClientOnlyComponent<T>;
 export function clientOnly(
   fn: () => Promise<Record<string, unknown>>,
-  options: { lazy?: boolean; export?: string } = {},
+  options: ClientOnlyOptions = {},
   _moduleUrl?: string,
 ): ClientOnlyComponent<(props: Record<string, unknown>) => JSXElement> {
   type Loaded = (props: unknown) => JSXElement;
   // One module for every instance, so a second instance neither imports again
   // nor waits on an import of its own.
   const [loaded, setLoaded] = createSignal<Loaded | undefined>(undefined);
-  const load = (): void => {
+  function load(): void {
     void fn().then((module) => {
       const picked = module[options.export ?? "default"] as Loaded;
       setLoaded(() => picked);
     });
-  };
+  }
   let started = options.lazy !== true;
   if (started) load();
   return (props) => {
@@ -130,9 +142,13 @@ export function clientOnly(
   };
 }
 
+export interface FallbackProps {
+  fallback?: JSX.Element;
+}
+
 /** What `clientOnly` returns: `T`'s props, and the `fallback` shown until it mounts. */
 export type ClientOnlyComponent<T> = (
-  props: (T extends (props: infer P) => unknown ? P : never) & Incoming<{ fallback?: JSX.Element }>,
+  props: (T extends (props: infer P) => unknown ? P : never) & Incoming<FallbackProps>,
 ) => JSXElement;
 
 export function Portal(props: PortalProps): JSXElement {
