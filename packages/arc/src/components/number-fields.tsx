@@ -13,42 +13,28 @@ import {
   Frame,
   bareInput,
   bindField,
+  boxedButton,
   fieldStyles,
   segmented,
 } from "../lib/field.tsx";
 import { type Customisable, parts } from "../lib/parts.ts";
-import {
-  bg,
-  edge,
-  fg,
-  focus,
-  glyph,
-  interaction,
-  layout,
-  rounded,
-  space,
-  target,
-  type,
-} from "../style/index.ts";
+import { fg, focus, glyph, interaction, layout, space, type } from "../style/index.ts";
 
 export const numberFieldStyles = variants({
   slots: {
     group: arc(segmented, { paddingInline: space.x0_5, gap: space.x0_5 }),
     input: arc(bareInput, type.numeric, { textAlign: "start" }),
     stepper: arc(
+      boxedButton,
       layout.inlineCentre,
       layout.noShrink,
-      rounded.sm,
-      edge.none,
-      bg.transparent,
       fg.muted,
       glyph.sm,
       focus.visible,
-      target.size,
       interaction.hover,
       interaction.pressable,
       when.disabled,
-      { alignSelf: "stretch", aspectRatio: "1", marginBlock: space.x0_5 },
+      { aspectRatio: "1" },
     ),
   },
   variants: {

@@ -74,6 +74,8 @@ export interface ArcMessages {
   hex: string;
   pickFromScreen: string;
   pickColour: string;
+  country: string;
+  invalidPhone: string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -144,6 +146,8 @@ export const ENGLISH: ArcMessages = {
   hex: "Hex",
   pickFromScreen: "Pick a colour from the screen",
   pickColour: "Pick a colour",
+  country: "Country",
+  invalidPhone: "Enter a phone number with its area code",
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");

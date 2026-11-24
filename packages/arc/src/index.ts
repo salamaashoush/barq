@@ -74,6 +74,15 @@ export {
   numberFieldStyles,
 } from "./components/number-fields.tsx";
 export {
+  CALLING_CODES,
+  PhoneField,
+  type PhoneFieldProps,
+  type PhoneNumber,
+  formatPhone,
+  parsePhone,
+  phoneFieldStyles,
+} from "./components/phone-field.tsx";
+export {
   CommandMenu,
   commandMenuStyles,
   type CommandMenuAction,

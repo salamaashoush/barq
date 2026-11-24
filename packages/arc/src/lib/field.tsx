@@ -123,6 +123,25 @@ export function fieldWiring(errors: () => string[], isInvalid: () => boolean): W
   return { ids, errors, isInvalid, describedBy };
 }
 
+/**
+ * A field's wiring with errors of the control's own before the form's or
+ * the caller's: a tag it refused, a number too short to dial.
+ */
+export function withOwnErrors(of: Wiring, own: () => string[]): Wiring {
+  const errors = (): string[] => [...own(), ...of.errors()];
+  const isInvalid = (): boolean => own().length > 0 || of.isInvalid();
+  return {
+    ids: of.ids,
+    errors,
+    isInvalid,
+    describedBy: (hasDescription: boolean): string | undefined => {
+      const ids = [hasDescription ? of.ids.description : "", isInvalid() ? of.ids.error : ""];
+      const joined = ids.filter((id) => id !== "").join(" ");
+      return joined === "" ? undefined : joined;
+    },
+  };
+}
+
 /** A server's word on a value goes once the value changes. */
 function retireServerError(api: AnyFieldApi): void {
   if (api.state.meta.errorMap.onServer !== undefined) {
@@ -226,6 +245,15 @@ export const bareInput = arc(layout.grow, layout.minZero, edge.none, bg.transpar
   font: "inherit",
   paddingInline: space.x1_5,
 });
+
+/** A button inside a box of segments or an input: the box's height, no edge of its own, a finger's room. */
+export const boxedButton = arc(rounded.sm, edge.none, bg.transparent, target.size, {
+  alignSelf: "stretch",
+  marginBlock: space.x0_5,
+});
+
+/** ui's select trigger as a boxed button: its own height and shadow given up to the box's. */
+export const boxedTrigger = arc(boxedButton, { height: "auto", boxShadow: "none" });
 
 export interface FrameProps {
   of: Wiring;

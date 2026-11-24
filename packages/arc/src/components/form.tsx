@@ -38,6 +38,7 @@ import { useArcMessages } from "./messages.ts";
 import { ColorField, ColorPicker, ColorSwatches } from "./color.tsx";
 import { DateRangeField } from "./date-range-field.tsx";
 import { CurrencyField, PercentField, UnitField } from "./number-fields.tsx";
+import { PhoneField } from "./phone-field.tsx";
 import { TagInput } from "./tag-input.tsx";
 import { TimeField, TimePicker } from "./time-field.tsx";
 
@@ -655,6 +656,7 @@ const arcFieldComponents = {
   CurrencyField,
   PercentField,
   UnitField,
+  PhoneField,
 };
 
 const arcFormComponents = { SubmitButton, FormError };

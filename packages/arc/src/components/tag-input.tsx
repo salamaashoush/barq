@@ -10,6 +10,7 @@ import {
   Frame,
   bareInput,
   bindField,
+  withOwnErrors,
 } from "../lib/field.tsx";
 import { type Customisable, parts } from "../lib/parts.ts";
 import {
@@ -122,18 +123,8 @@ export function TagInput(props: TagInputProps) {
   const same = (one: string, other: string): boolean =>
     props.caseInsensitive === false ? one === other : one.toLowerCase() === other.toLowerCase();
 
-  const errors = (): string[] => [...rejected(), ...of.errors()];
-  const isInvalid = (): boolean => rejected().length > 0 || of.isInvalid();
-  const wiring = {
-    ids: of.ids,
-    errors,
-    isInvalid,
-    describedBy: (hasDescription: boolean): string | undefined => {
-      const ids = [hasDescription ? of.ids.description : "", isInvalid() ? of.ids.error : ""];
-      const joined = ids.filter((id) => id !== "").join(" ");
-      return joined === "" ? undefined : joined;
-    },
-  };
+  const wiring = withOwnErrors(of, rejected);
+  const isInvalid = wiring.isInvalid;
 
   /** Adds what it can, returns what it could not with why. */
   const add = (entries: readonly string[]): string[] => {

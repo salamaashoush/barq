@@ -474,6 +474,13 @@ import { Chip } from "@barqjs/arc";
   digits, stepped by the arrows and by − and + buttons a finger can reach
   (`hideSteppers` leaves them out), and `field.CurrencyField` and the rest in
   a form.
+- `PhoneField`: a region, listed by its name in the locale with its calling
+  code, and the number as it is dialled there, held in E.164
+  (`+201001234567`). A number typed or pasted with a `+` picks its own
+  region; the input brings up the dial pad and the browser's autofill, and a
+  number too short or too long to dial says so when the field is left.
+  `parsePhone` and `formatPhone` are the same reading and writing on their
+  own.
 
 ## Code
 
