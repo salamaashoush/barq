@@ -443,3 +443,19 @@ describe("SliderFill", () => {
     expect(fill().getAttribute("data-orientation")).toBe("vertical");
   });
 });
+
+describe("a range's thumbs named one by one", () => {
+  test("each thumb's own label comes before the slider's", () => {
+    render(() => (
+      <Slider label="Price" defaultValue={[20, 60]}>
+        <SliderTrack>
+          {(index: number) => (
+            <SliderThumb index={index} aria-label={index === 0 ? "Minimum" : "Maximum"} />
+          )}
+        </SliderTrack>
+      </Slider>
+    ));
+    const names = screen.getAllByRole("slider").map((thumb) => accessibleName(thumb));
+    expect(names).toEqual(["Minimum Price", "Maximum Price"]);
+  });
+});

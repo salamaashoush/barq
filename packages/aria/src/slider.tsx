@@ -727,8 +727,17 @@ export function sliderThumb(options: SliderThumbOptions, state: SliderState): Sl
       "aria-required": () => access(options.isRequired) === true || undefined,
       "aria-invalid": () => access(options.isInvalid) === true || undefined,
       "aria-label": () => access(options["aria-label"]),
+      // A thumb's own `aria-label` ("Minimum") would lose to the group's
+      // `aria-labelledby` and both thumbs of a range would read as "Price".
+      // Naming the input itself first keeps both: "Minimum Price".
       "aria-labelledby": () =>
-        [access(options.groupLabelId), access(options["aria-labelledby"])]
+        [
+          access(options["aria-label"]) === undefined
+            ? undefined
+            : (access(options.id) ?? thumbId(access(options.baseId), index)),
+          access(options.groupLabelId),
+          access(options["aria-labelledby"]),
+        ]
           .filter(Boolean)
           .join(" ") || undefined,
       "aria-describedby": () => access(options["aria-describedby"]),
