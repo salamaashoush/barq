@@ -9,6 +9,7 @@ import { tokens } from "@barqjs/ui/theme/tokens";
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
 import { plainList } from "../lib/list.ts";
+import { navLink } from "../lib/nav.ts";
 import {
   bg,
   edge,
@@ -71,11 +72,10 @@ export const bottomNavigationStyles = variants({
       contrast.selected,
       bg.transparent,
       edge.none,
+      navLink,
       {
         paddingBlock: space.x2,
-        textDecorationLine: "none",
         WebkitTapHighlightColor: "transparent",
-        "[aria-current]": { color: tokens.foreground },
         "@media (hover: hover)": { ":hover": { color: tokens.foreground } },
       },
     ),

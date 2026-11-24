@@ -458,3 +458,9 @@ export {
   pageWindow,
   pagerStyles,
 } from "./components/pager.tsx";
+export {
+  TableOfContents,
+  type TableOfContentsProps,
+  type TocItem,
+  tableOfContentsStyles,
+} from "./components/table-of-contents.tsx";

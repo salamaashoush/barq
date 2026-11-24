@@ -518,6 +518,13 @@ import { ResponsiveTabs } from "@barqjs/arc";
   `pageSizes` a Rows per page select, `showEdges` first and last, and
   `getHref` makes every page a link. `DataTable` pages with it.
   `pageWindow` is the list it draws.
+- `TableOfContents`: the sections of a long page as `#id` links in a
+  navigation landmark, nested by level, the one being read marked
+  `aria-current="location"` as the page scrolls. The section that counts is
+  the last whose top has passed `offset` (a sticky header's height);
+  `activeId` holds the mark instead, and `sticky` keeps the list in view
+  beside the content. The links are plain anchors, so the browser scrolls,
+  keeps the address and moves focus itself.
 
 ## Data display
 
