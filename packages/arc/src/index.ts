@@ -665,10 +665,37 @@ export {
   AvatarStack,
   type AvatarStackProps,
   type Person,
-  type Presence,
   avatarStackStyles,
   initials,
 } from "./components/avatar-stack.tsx";
+export {
+  type CustomStatus,
+  type Presence,
+  PresenceDot,
+  type PresenceDotProps,
+  type PresenceEntry,
+  type PresenceEvent,
+  PresenceProvider,
+  type PresenceProviderProps,
+  PresenceStatus,
+  type PresenceStatusProps,
+  type PresenceStore,
+  type PresenceStoreOptions,
+  createPresenceStore,
+  presenceLabel,
+  presenceStyles,
+  statusHolds,
+  usePresence,
+  usePresenceStore,
+  useTyping,
+} from "./components/presence.tsx";
+export {
+  QUICK_REACTIONS,
+  type Reaction,
+  ReactionBar,
+  type ReactionBarProps,
+  reactionBarStyles,
+} from "./components/reactions.tsx";
 export {
   Timeline,
   type TimelineEvent,

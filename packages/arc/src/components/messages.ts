@@ -134,7 +134,7 @@ export interface ArcMessages {
   newCount: (count: string) => string;
   online: string;
   away: string;
-  busy: string;
+  doNotDisturb: string;
   offline: string;
   imageUnavailable: string;
   imageViewer: string;
@@ -396,6 +396,164 @@ export interface ArcMessages {
   groupOf: (value: string, count: number) => string;
   total: string;
   addRow: string;
+  statusUntil: (time: string) => string;
+  isTyping: (who: string, count: number) => string;
+  othersCount: (count: number) => string;
+  messageList: string;
+  newMessagesMarker: string;
+  jumpToLatest: string;
+  newMessagesCount: (count: number) => string;
+  loadingOlder: string;
+  newMessageFrom: (name: string, text: string) => string;
+  conversationStart: string;
+  noMessages: string;
+  messageActions: (author: string) => string;
+  replyInThread: string;
+  editMessage: string;
+  deleteMessage: string;
+  deleteMessageHeading: string;
+  deleteMessageDescription: string;
+  pinMessage: string;
+  unpinMessage: string;
+  pinned: string;
+  replyCount: (count: number) => string;
+  lastReply: string;
+  notSent: string;
+  attachments: string;
+  downloadFile: (name: string) => string;
+  openImage: (name: string) => string;
+  messageWithAttachments: (count: number) => string;
+  emojiPicker: string;
+  searchEmoji: string;
+  recentlyUsed: string;
+  skinTone: string;
+  skinToneName: (tone: number) => string;
+  emojiGroup: (key: string) => string;
+  emojiCategories: string;
+  noEmojiFound: string;
+  loadingEmoji: string;
+  thread: string;
+  conversations: string;
+  unreadCount: (count: number) => string;
+  mentionCount: (count: number) => string;
+  muted: string;
+  draft: string;
+  privateConversation: string;
+  participants: (count: number) => string;
+  microphoneOff: string;
+  cameraOff: string;
+  speaking: string;
+  presenting: (name: string) => string;
+  turnOffCamera: string;
+  turnOnCamera: string;
+  shareScreen: string;
+  stopSharing: string;
+  leaveCall: string;
+  devices: string;
+  speaker: string;
+  callControls: string;
+  incomingCall: (name: string) => string;
+  incomingVideoCall: string;
+  incomingVoiceCall: string;
+  accept: string;
+  decline: string;
+  callInProgress: string;
+  joinCall: string;
+  returnToCall: string;
+  poorConnection: string;
+  assistant: string;
+  messageAssistant: string;
+  send: string;
+  stopGenerating: string;
+  regenerate: string;
+  approve: string;
+  reject: string;
+  toolState: (name: string, state: string) => string;
+  toolInput: string;
+  toolOutput: string;
+  sources: string;
+  suggestions: string;
+  generating: string;
+  stoppedGenerating: string;
+  replyFailed: string;
+  editor: string;
+  formatting: string;
+  textStyle: string;
+  paragraph: string;
+  headingLevel: (level: number) => string;
+  quote: string;
+  codeBlock: string;
+  bulletList: string;
+  numberedList: string;
+  checkList: string;
+  bold: string;
+  italic: string;
+  underline: string;
+  strikethrough: string;
+  inlineCode: string;
+  link: string;
+  alignment: string;
+  alignStart: string;
+  alignCenter: string;
+  alignEnd: string;
+  justify: string;
+  indent: string;
+  outdent: string;
+  undo: string;
+  redo: string;
+  insert: string;
+  linkAddress: string;
+  linkPlaceholder: string;
+  invalidLink: string;
+  editLink: string;
+  removeLink: string;
+  openLink: string;
+  apply: string;
+  charactersLeft: (count: number) => string;
+  charactersOver: (count: number) => string;
+  characterCount: (count: number, max: number) => string;
+  table: string;
+  tableSize: (rows: number, columns: number) => string;
+  tableActions: string;
+  insertRowBefore: string;
+  insertRowAfter: string;
+  insertColumnBefore: string;
+  insertColumnAfter: string;
+  deleteRow: string;
+  deleteColumn: string;
+  deleteTable: string;
+  headerRow: string;
+  image: string;
+  imageAlt: string;
+  imageCaption: string;
+  embed: string;
+  embedAddress: string;
+  embedNotSupported: string;
+  divider: string;
+  uploadImage: string;
+  mentions: string;
+  blocks: string;
+  noMatchingBlocks: string;
+  emojiSuggestions: string;
+  blockActions: string;
+  dragBlock: string;
+  moveUp: string;
+  moveDown: string;
+  duplicate: string;
+  turnInto: string;
+  insertBlock: string;
+  searchBlocks: string;
+  blockMoved: (position: number, total: number) => string;
+  basicBlocks: string;
+  mediaBlocks: string;
+  message: string;
+  sendMessage: string;
+  newLineHint: string;
+  attachFiles: string;
+  scheduleSend: string;
+  saveChanges: string;
+  editingMessage: string;
+  remoteCursor: (name: string) => string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -526,7 +684,7 @@ export const ENGLISH: ArcMessages = {
   newCount: (count) => `${count} new`,
   online: "Online",
   away: "Away",
-  busy: "Busy",
+  doNotDisturb: "Do not disturb",
   offline: "Offline",
   imageUnavailable: "Image unavailable",
   imageViewer: "Image viewer",
@@ -792,6 +950,187 @@ export const ENGLISH: ArcMessages = {
   groupOf: (value, count) => `${value}, ${String(count)} rows`,
   total: "Total",
   addRow: "Add row",
+  statusUntil: (time) => `until ${time}`,
+  isTyping: (who, count) => (count === 1 ? `${who} is typing` : `${who} are typing`),
+  othersCount: (count) => (count === 1 ? "1 other" : `${String(count)} others`),
+  messageList: "Messages",
+  newMessagesMarker: "New",
+  jumpToLatest: "Jump to latest",
+  newMessagesCount: (count) => (count === 1 ? "1 new message" : `${String(count)} new messages`),
+  loadingOlder: "Loading earlier messages",
+  newMessageFrom: (name, text) => `${name}: ${text}`,
+  conversationStart: "This is the start of the conversation",
+  noMessages: "No messages yet",
+  messageActions: (author) => `Message from ${author}`,
+  replyInThread: "Reply in thread",
+  editMessage: "Edit message",
+  deleteMessage: "Delete message",
+  deleteMessageHeading: "Delete this message?",
+  deleteMessageDescription: "It is removed for everyone in the conversation.",
+  pinMessage: "Pin to conversation",
+  unpinMessage: "Unpin from conversation",
+  pinned: "Pinned",
+  replyCount: (count) => (count === 1 ? "1 reply" : `${String(count)} replies`),
+  lastReply: "Last reply",
+  notSent: "Not sent",
+  attachments: "Attachments",
+  downloadFile: (name) => `Download ${name}`,
+  openImage: (name) => `Open ${name}`,
+  messageWithAttachments: (count) =>
+    count === 1 ? "1 attachment" : `${String(count)} attachments`,
+  emojiPicker: "Choose an emoji",
+  searchEmoji: "Search emoji",
+  recentlyUsed: "Recently used",
+  skinTone: "Skin tone",
+  skinToneName: (tone) =>
+    ["Default", "Light", "Medium-light", "Medium", "Medium-dark", "Dark"][tone] ?? "Default",
+  emojiGroup: (key) =>
+    ({
+      "smileys-emotion": "Smileys & emotion",
+      "people-body": "People & body",
+      "animals-nature": "Animals & nature",
+      "food-drink": "Food & drink",
+      "travel-places": "Travel & places",
+      activities: "Activities",
+      objects: "Objects",
+      symbols: "Symbols",
+      flags: "Flags",
+    })[key] ?? key,
+  emojiCategories: "Emoji categories",
+  noEmojiFound: "No emoji found",
+  loadingEmoji: "Loading emoji",
+  thread: "Thread",
+  conversations: "Conversations",
+  unreadCount: (count) => `${String(count)} unread`,
+  mentionCount: (count) => (count === 1 ? "1 mention" : `${String(count)} mentions`),
+  muted: "Muted",
+  draft: "Draft",
+  privateConversation: "Private",
+  participants: (count) => (count === 1 ? "1 participant" : `${String(count)} participants`),
+  microphoneOff: "Microphone off",
+  cameraOff: "Camera off",
+  speaking: "Speaking",
+  presenting: (name) => `${name} is presenting`,
+  turnOffCamera: "Turn off camera",
+  turnOnCamera: "Turn on camera",
+  shareScreen: "Share screen",
+  stopSharing: "Stop sharing",
+  leaveCall: "Leave call",
+  devices: "Devices",
+  speaker: "Speaker",
+  callControls: "Call controls",
+  incomingCall: (name) => `${name} is calling`,
+  incomingVideoCall: "Incoming video call",
+  incomingVoiceCall: "Incoming voice call",
+  accept: "Accept",
+  decline: "Decline",
+  callInProgress: "Call in progress",
+  joinCall: "Join",
+  returnToCall: "Return to call",
+  poorConnection: "Poor connection",
+  assistant: "Assistant",
+  messageAssistant: "Message the assistant",
+  send: "Send",
+  stopGenerating: "Stop",
+  regenerate: "Regenerate",
+  approve: "Approve",
+  reject: "Reject",
+  toolState: (name, state) =>
+    ({
+      running: `Running ${name}`,
+      done: `Ran ${name}`,
+      error: `${name} failed`,
+      "awaiting-approval": `${name} needs your approval`,
+      approved: `${name} approved`,
+      rejected: `${name} rejected`,
+    })[state] ?? name,
+  toolInput: "Input",
+  toolOutput: "Result",
+  sources: "Sources",
+  suggestions: "Suggestions",
+  generating: "Writing a reply",
+  stoppedGenerating: "Stopped",
+  replyFailed: "The reply could not be finished",
+  editor: "Editor",
+  formatting: "Formatting",
+  textStyle: "Text style",
+  paragraph: "Text",
+  headingLevel: (level) => `Heading ${String(level)}`,
+  quote: "Quote",
+  codeBlock: "Code block",
+  bulletList: "Bulleted list",
+  numberedList: "Numbered list",
+  checkList: "Checklist",
+  bold: "Bold",
+  italic: "Italic",
+  underline: "Underline",
+  strikethrough: "Strikethrough",
+  inlineCode: "Code",
+  link: "Link",
+  alignment: "Alignment",
+  alignStart: "Align to the start",
+  alignCenter: "Centre",
+  alignEnd: "Align to the end",
+  justify: "Justify",
+  indent: "Indent",
+  outdent: "Outdent",
+  undo: "Undo",
+  redo: "Redo",
+  insert: "Insert",
+  linkAddress: "Link address",
+  linkPlaceholder: "https://example.com",
+  invalidLink: "Enter a web address, an email address or a path",
+  editLink: "Edit link",
+  removeLink: "Remove link",
+  openLink: "Open link",
+  apply: "Apply",
+  charactersLeft: (count) =>
+    count === 1 ? "1 character left" : `${String(count)} characters left`,
+  charactersOver: (count) =>
+    count === 1 ? "1 character too many" : `${String(count)} characters too many`,
+  characterCount: (count, max) => `${String(count)} of ${String(max)} characters`,
+  table: "Table",
+  tableSize: (rows, columns) => `${String(rows)} by ${String(columns)} table`,
+  tableActions: "Table actions",
+  insertRowBefore: "Insert row above",
+  insertRowAfter: "Insert row below",
+  insertColumnBefore: "Insert column before",
+  insertColumnAfter: "Insert column after",
+  deleteRow: "Delete row",
+  deleteColumn: "Delete column",
+  deleteTable: "Delete table",
+  headerRow: "Header row",
+  image: "Image",
+  imageAlt: "Alternative text",
+  imageCaption: "Caption",
+  embed: "Embed",
+  embedAddress: "Address to embed",
+  embedNotSupported: "That address cannot be embedded",
+  divider: "Divider",
+  uploadImage: "Upload an image",
+  mentions: "Mentions",
+  blocks: "Blocks",
+  noMatchingBlocks: "No matching blocks",
+  emojiSuggestions: "Emoji",
+  blockActions: "Block actions",
+  dragBlock: "Drag to move, or press for actions",
+  moveUp: "Move up",
+  moveDown: "Move down",
+  duplicate: "Duplicate",
+  turnInto: "Turn into",
+  insertBlock: "Insert a block",
+  searchBlocks: "Search blocks",
+  blockMoved: (position, total) => `Moved to ${String(position)} of ${String(total)}`,
+  basicBlocks: "Basic",
+  mediaBlocks: "Media",
+  message: "Message",
+  sendMessage: "Send message",
+  newLineHint: "Shift+Enter for a new line",
+  attachFiles: "Attach files",
+  scheduleSend: "Schedule send",
+  saveChanges: "Save changes",
+  editingMessage: "Editing message",
+  remoteCursor: (name) => `${name}'s cursor`,
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");

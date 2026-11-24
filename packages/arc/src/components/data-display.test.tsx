@@ -31,7 +31,7 @@ describe("AvatarStack", () => {
   const PEOPLE = [
     { name: "Salama Ashoush", presence: "online" as const },
     { name: "Ana Lima", src: "/ana.png" },
-    { name: "Ben", presence: "busy" as const },
+    { name: "Ben", presence: "dnd" as const },
     { name: "Chen Wu" },
     { name: "Dina Saad" },
   ];
@@ -44,12 +44,12 @@ describe("AvatarStack", () => {
     const items = within(list).getAllByRole("listitem");
     expect(items).toHaveLength(4);
     expect(items[0]?.textContent).toContain("Salama Ashoush, Online");
-    expect(items[2]?.textContent).toContain("Ben, Busy");
+    expect(items[2]?.textContent).toContain("Ben, Do not disturb");
     expect(slot("avatar-stack-count").textContent).toContain("+2");
     expect(slot("avatar-stack-count").textContent).toContain("2 more");
     expect(all("avatar-stack-presence").map((one) => one.getAttribute("data-presence"))).toEqual([
       "online",
-      "busy",
+      "dnd",
     ]);
     expect(await ariaViolations(document.body)).toEqual([]);
   });

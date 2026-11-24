@@ -5,7 +5,6 @@ import { Check } from "@barqjs/lucide/icons/check";
 import { Ellipsis } from "@barqjs/lucide/icons/ellipsis";
 import { Link2Off } from "@barqjs/lucide/icons/link-2-off";
 import { RotateCcw } from "@barqjs/lucide/icons/rotate-ccw";
-import { SmilePlus } from "@barqjs/lucide/icons/smile-plus";
 import { Button } from "@barqjs/ui/button";
 import {
   DropdownMenu,
@@ -44,20 +43,14 @@ import { IconButton } from "./icon-button.tsx";
 import { Indicator } from "./indicator.tsx";
 import { useArcMessages } from "./messages.ts";
 import { PersonAvatar } from "./person-avatar.tsx";
+import { QUICK_REACTIONS, type Reaction, ReactionBar } from "./reactions.tsx";
 
 /** Someone who writes or is mentioned in a comment. */
 export interface CommentPerson extends Person {
   id: string;
 }
 
-export interface CommentReaction {
-  emoji: string;
-  count: number;
-  /** The reader is one of the `count`. */
-  reacted?: boolean;
-  /** Who reacted, in words, for a screen reader and the title: "Salama and 2 others". */
-  label?: string;
-}
+export type CommentReaction = Reaction;
 
 export interface CommentData {
   id: string;
@@ -126,8 +119,6 @@ export interface CommentHandlers {
   /** The moment times are measured from on the server and while hydrating. */
   now?: Moment;
 }
-
-const REACTIONS = ["👍", "❤️", "🎉", "😄", "👀"] as const;
 
 const quiet = arc({ opacity: "0.6" });
 
@@ -442,7 +433,7 @@ function CommentItem(props: CommentItemProps) {
     own() && props.handlers.onEdit !== undefined && props.onRetry === undefined;
   const canDelete = (): boolean =>
     own() && props.handlers.onDelete !== undefined && props.onRetry === undefined;
-  const reactions = (): readonly string[] => props.handlers.reactions ?? REACTIONS;
+  const reactions = (): readonly string[] => props.handlers.reactions ?? QUICK_REACTIONS;
   const cls = (): Slots => props.classes;
   const pendingCls = (): string => commentsStyles({ pending: props.pending === true }).comment;
 
@@ -570,58 +561,17 @@ function CommentItem(props: CommentItemProps) {
               ((comment().reactions?.length ?? 0) > 0 || props.handlers.onReact !== undefined)
             }
           >
-            <div
+            <ReactionBar
               class={cls().reactions}
-              data-slot="comment-reactions"
-              role="group"
-              aria-label={messages().reactions}
-            >
-              <For each={comment().reactions ?? []}>
-                {(reaction: CommentReaction) => (
-                  <Chip
-                    size="sm"
-                    selected={reaction.reacted === true}
-                    isDisabled={props.handlers.onReact === undefined}
-                    onSelectedChange={(add) => props.onReact(reaction.emoji, add)}
-                  >
-                    <span aria-hidden="true">{`${reaction.emoji} ${String(reaction.count)}`}</span>
-                    <span class={srOnly}>
-                      {messages().reactedWith(reaction.emoji, reaction.count, reaction.label)}
-                    </span>
-                  </Chip>
-                )}
-              </For>
-              <Show when={props.handlers.onReact !== undefined}>
-                <DropdownMenu>
-                  <DropdownMenuTrigger>
-                    <IconButton
-                      label={messages().addReaction}
-                      variant="ghost"
-                      size="sm"
-                      tooltip={false}
-                    >
-                      <SmilePlus aria-hidden="true" />
-                    </IconButton>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent aria-label={messages().addReaction}>
-                    <For each={reactions()}>
-                      {(emoji: string) => (
-                        <DropdownMenuItem
-                          id={emoji}
-                          textValue={emoji}
-                          onAction={() => {
-                            const held = comment().reactions?.find((one) => one.emoji === emoji);
-                            if (held?.reacted !== true) props.onReact(emoji, true);
-                          }}
-                        >
-                          {emoji}
-                        </DropdownMenuItem>
-                      )}
-                    </For>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </Show>
-            </div>
+              slot="comment-reactions"
+              reactions={comment().reactions ?? []}
+              quick={reactions()}
+              onReact={
+                props.handlers.onReact === undefined
+                  ? undefined
+                  : (emoji: string, add: boolean) => props.onReact(emoji, add)
+              }
+            />
           </Show>
         </div>
       </article>

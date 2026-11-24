@@ -7,20 +7,13 @@ import { srOnly } from "@barqjs/ui/sr-only";
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
 import { bg, plainList, tone as tones, type } from "../style/index.ts";
-import type { Tone } from "../theme/tokens.ts";
 import { useArcMessages } from "./messages.ts";
 import { PersonAvatar } from "./person-avatar.tsx";
+import { PRESENCE_TONE, type Presence, presenceLabel } from "./presence.tsx";
 
 export { initials } from "./person-avatar.tsx";
 
-export type Presence = "online" | "away" | "busy" | "offline";
-
-const PRESENCE_TONE: Record<Presence, Tone> = {
-  online: "success",
-  away: "warning",
-  busy: "danger",
-  offline: "neutral",
-};
+export type { Presence } from "./presence.tsx";
 
 export interface Person {
   id?: string;
@@ -81,12 +74,6 @@ export function AvatarStack(props: AvatarStackProps) {
     return list().format(names);
   };
   const cls = (): Slots => parts(avatarStackStyles(), props.classes);
-  const words: Record<Presence, () => string> = {
-    online: () => messages().online,
-    away: () => messages().away,
-    busy: () => messages().busy,
-    offline: () => messages().offline,
-  };
   return (
     <AvatarGroup
       class={arc(cls().root, props.class, props.className)}
@@ -107,7 +94,7 @@ export function AvatarStack(props: AvatarStackProps) {
             <span class={cls().hint} data-slot="avatar-stack-name">
               {person.presence === undefined
                 ? person.name
-                : `${person.name}, ${words[person.presence]()}`}
+                : `${person.name}, ${presenceLabel(messages(), person.presence)}`}
             </span>
             <Show when={person.presence !== undefined}>
               <AvatarBadge
