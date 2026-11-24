@@ -193,4 +193,21 @@ describe("TreeView", () => {
     expect(result.container.querySelectorAll('[role="row"]')).toHaveLength(3);
     result.unmount();
   });
+
+  test("hydrates rows that drag, each with its drop targets around it", async () => {
+    const result = await hydrates(`
+      import { TreeView } from "<arc>";
+      import { dragAndDrop } from "@barqjs/aria/drag-and-drop";
+      const items = [{ id: "a", label: "Alpha", children: [{ id: "b", label: "Beta" }] }, { id: "c", label: "Gamma" }];
+      export function Page() {
+        const { dragAndDropHooks } = dragAndDrop({
+          getItems: (keys) => [...keys].map((key) => ({ "text/plain": String(key) })),
+          onMove: () => {},
+        });
+        return <TreeView aria-label="Things" items={items} defaultExpandedKeys={["a"]} dragAndDropHooks={dragAndDropHooks} />;
+      }
+    `);
+    expect(result.container.querySelectorAll('button[aria-label^="Drag"]')).toHaveLength(3);
+    result.unmount();
+  });
 });

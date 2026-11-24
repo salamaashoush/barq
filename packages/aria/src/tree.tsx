@@ -1618,7 +1618,9 @@ export function TreeItem(props: TreeItemComponentProps) {
     },
   );
 
-  const row = (
+  // Built where it is placed, after the drop targets before it: a hydrating
+  // element claims the server's next node as it is built.
+  const row = () => (
     <div {...mergeProps(elementProps, dnd?.itemProps)} ref={mergeRefs(domRef.set, props.ref)}>
       <div {...item.gridCellProps}>
         {provide(
@@ -1629,7 +1631,7 @@ export function TreeItem(props: TreeItemComponentProps) {
       </div>
     </div>
   );
-  if (dnd === null) return row;
+  if (dnd === null) return row();
 
   const { visuallyHiddenProps } = visuallyHidden();
   const on = dnd.on;
@@ -1672,7 +1674,7 @@ export function TreeItem(props: TreeItemComponentProps) {
           </div>
         </Show>
       )}
-      {row}
+      {row()}
       <For each={dnd.after()}>
         {(target: ItemDropTarget) => (
           <Show when={dnd.collection.shouldRenderIndicator(target)}>
