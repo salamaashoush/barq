@@ -60,7 +60,10 @@ import {
   vectorSubtract,
 } from "@excalidraw/math";
 
-import { snapDraggedElements, snapResizingElements } from "./snapping.ts";
+import { isSnappingEnabled, snapDraggedElements, snapResizingElements } from "./snapping.ts";
+
+/** A drag that does not snap: no offset, no lines. */
+const NO_SNAP = { snapOffset: { x: 0, y: 0 }, snapLines: [] } as const;
 
 import type { TransformHandleType } from "@excalidraw/element";
 import type { GlobalPoint } from "@excalidraw/math";
@@ -848,8 +851,6 @@ export class SelectionTool {
           y: pointerCoords.y - pointerDownState.drag.origin.y,
         };
 
-        const originalElements = [...pointerDownState.originalElements.values()];
-
         // We only drag in one direction if shift is pressed
         const lockDirection = event.shiftKey;
 
@@ -879,15 +880,25 @@ export class SelectionTool {
         this.app.maybeCacheVisibleGaps(event, selectedElements);
         this.app.maybeCacheReferenceSnapPoints(event, selectedElements);
 
-        const { snapOffset, snapLines } = snapDraggedElements(
-          originalElements,
-          dragOffset,
-          this.app,
+        // the scene's copies are gathered only when the drag snaps: a drag
+        // that does not would copy every element of the scene on each move
+        const { snapOffset, snapLines } = isSnappingEnabled({
+          app: this.app,
           event,
-          this.app.scene.getNonDeletedElementsMap(),
-        );
+          selectedElements,
+        })
+          ? snapDraggedElements(
+              [...pointerDownState.originalElements.values()],
+              dragOffset,
+              this.app,
+              event,
+              this.app.scene.getNonDeletedElementsMap(),
+            )
+          : NO_SNAP;
 
-        this.app.setState({ snapLines });
+        if (snapLines.length > 0 || this.app.state.snapLines.length > 0) {
+          this.app.setState({ snapLines });
+        }
 
         dragSelectedElements(
           pointerDownState,

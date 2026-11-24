@@ -2,11 +2,17 @@ import {
   getCommonFrameId,
   getFrameChildrenInsertionIndex,
   getContainerElement,
+  getElementBounds,
   isElementInViewport,
   isTextElement,
 } from "@excalidraw/element";
 
-import { arrayToMap, memoize, toBrandedType } from "@excalidraw/common";
+import {
+  arrayToMap,
+  memoize,
+  toBrandedType,
+  viewportCoordsToSceneCoords,
+} from "@excalidraw/common";
 
 import type {
   ExcalidrawElement,
@@ -201,22 +207,17 @@ export class Renderer {
     width: AppState["width"];
   }): readonly NonDeletedExcalidrawElement[] {
     const visibleElements: NonDeletedExcalidrawElement[] = [];
+    // `isElementInViewport`'s test, with the viewport's corners in scene
+    // coordinates worked out once rather than twice for every element
+    const view = { zoom, offsetLeft, offsetTop, scrollX, scrollY };
+    const topLeft = viewportCoordsToSceneCoords({ clientX: offsetLeft, clientY: offsetTop }, view);
+    const bottomRight = viewportCoordsToSceneCoords(
+      { clientX: offsetLeft + width, clientY: offsetTop + height },
+      view,
+    );
     for (const element of elementsMap.values()) {
-      if (
-        isElementInViewport(
-          element,
-          width,
-          height,
-          {
-            zoom,
-            offsetLeft,
-            offsetTop,
-            scrollX,
-            scrollY,
-          },
-          elementsMap,
-        )
-      ) {
+      const [x1, y1, x2, y2] = getElementBounds(element, elementsMap);
+      if (topLeft.x <= x2 && topLeft.y <= y2 && bottomRight.x >= x1 && bottomRight.y >= y1) {
         visibleElements.push(element);
       }
     }
@@ -288,6 +289,19 @@ export class Renderer {
     ] as readonly T[];
   }
 
+  /**
+   * The elements to draw, by the scene's list: a pan, a zoom or a drag (which
+   * moves elements in place) rebuilds no map; adding, removing or reordering
+   * elements gives the scene a new list, and the map follows.
+   */
+  private _getRenderableElementsMap = memoize(
+    (opts: {
+      elements: readonly NonDeletedExcalidrawElement[];
+      editingTextElement: AppState["editingTextElement"];
+      newElement: AppState["newElement"];
+    }) => this.getRenderableElementsMap(opts),
+  );
+
   private _getRenderableElements = memoize(
     ({
       canvasNonce,
@@ -306,10 +320,8 @@ export class Renderer {
     > & {
       canvasNonce: string;
     }) => {
-      const elements = this.scene.getNonDeletedElements();
-
-      const { elementsMap, newElementCanvasElement } = this.getRenderableElementsMap({
-        elements,
+      const { elementsMap, newElementCanvasElement } = this._getRenderableElementsMap({
+        elements: this.scene.getNonDeletedElements(),
         editingTextElement,
         newElement,
       });
@@ -392,6 +404,7 @@ export class Renderer {
   public destroy(staticCanvas: HTMLCanvasElement) {
     cancelStaticSceneThrottle(staticCanvas);
     this._getRenderableElements.clear();
+    this._getRenderableElementsMap.clear();
     this._getVisibleElementsWithRenderOffsets.clear();
   }
 }
