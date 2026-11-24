@@ -2879,6 +2879,21 @@ impl<'a> Css<'a, '_> {
             Expression::TemplateLiteral(template) if template.expressions.is_empty() => {
                 template.quasis.first().and_then(quasi_text).map(str::to_string)
             }
+            // `0 0 0 2px ${tokens.background}`: the text the runtime would
+            // join, once every interpolation is text here. Every part is read
+            // before giving up, so one pass asks for every import it needs.
+            Expression::TemplateLiteral(template) => {
+                let parts: Vec<Option<String>> =
+                    template.expressions.iter().map(|part| self.text_of(part)).collect();
+                let mut text = String::new();
+                for (index, quasi) in template.quasis.iter().enumerate() {
+                    text.push_str(quasi_text(quasi)?);
+                    if let Some(part) = parts.get(index) {
+                        text.push_str(part.as_deref()?);
+                    }
+                }
+                Some(text)
+            }
             Expression::Identifier(identifier) => {
                 let symbol =
                     self.scoping.get_reference(identifier.reference_id.get()?).symbol_id()?;

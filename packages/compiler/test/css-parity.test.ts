@@ -302,6 +302,15 @@ describe("css parity > a token", () => {
       `const vars = defineVars({ größe: "4px" });\nconst out = [vars, createTheme(vars, { größe: "8px" }), atoms({ width: vars.größe })];`,
     );
   });
+
+  test("folds where a template interpolates it", () => {
+    const { compiled } = agree(
+      `const vars = defineVars({ edge: "#111", step: 4 });
+       const ring = "2px";
+       const out = [vars, atoms({ boxShadow: \`0 0 0 \${ring} \${vars.edge}\`, margin: \`\${vars.step}px \${-1}px\` })];`,
+    );
+    expect(compiled.code).not.toMatch(/atoms\(/);
+  });
 });
 
 describe("css parity > the media tier", () => {
