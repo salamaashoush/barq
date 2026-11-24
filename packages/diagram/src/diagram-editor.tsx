@@ -38,7 +38,7 @@ import type {
   FrameName,
   TextEditRequest,
 } from "./editor/editor.ts";
-import type { AppState } from "./types.ts";
+import type { AppState, LibraryItems } from "./types.ts";
 
 type MaybePromise<T> = T | Promise<T>;
 
@@ -101,6 +101,16 @@ export interface DiagramEditorProps {
   generateLinkForSelection?: (id: string, type: "element" | "group") => string;
   /** `false` renders the canvas alone, without the toolbar, the panels or the menus. @default true */
   ui?: boolean;
+  /** Excalidraw's `onLibraryChange`: called with the library's items after each change. */
+  onLibraryChange?: (libraryItems: LibraryItems) => void;
+  /** Excalidraw's `libraryReturnUrl`: where the library site sends an installed library back to. @default the page's address */
+  libraryReturnUrl?: string;
+  /**
+   * Where the library's publish dialog posts a library, as Excalidraw's form
+   * (`excalidrawLib`, `previewImage`, `name`, `authorName`, ...), answering
+   * with `{ url }`. Without it the library offers no publishing.
+   */
+  libraryPublishEndpoint?: string;
   /** Excalidraw's `name`: what a saved file is called when the scene has no name. */
   name?: string;
   /**
@@ -221,6 +231,8 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
       aiEnabled: props.aiEnabled !== false,
       textToDiagram: props.textToDiagram,
       theme: props.theme,
+      libraryReturnUrl: props.libraryReturnUrl,
+      libraryPublishEndpoint: props.libraryPublishEndpoint,
     }),
   });
 
@@ -287,6 +299,10 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
     const offChange = created.onChange((elements, appState, files) => {
       untrack(() => props.onChange)?.(elements, appState, files);
     });
+    const offLibraryChange = created.library.onChange((items) => {
+      untrack(() => props.onLibraryChange)?.(items);
+    });
+    created.library.translate = (path, replacement) => ui.t(path, replacement);
     // written outside whatever is running, as the announcements are; the
     // keystrokes themselves never reach the graph
     const offTextEdit = created.onTextEditRequest((request) =>
@@ -302,6 +318,7 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
       detachStore();
       offAnnounce();
       offChange();
+      offLibraryChange();
       offTextEdit();
       offTextEditEnd();
       offFrameNames();

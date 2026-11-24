@@ -1,4 +1,4 @@
-import { For, Show, createMemo } from "@barqjs/core";
+import { For, Show, createMemo, createSignal } from "@barqjs/core";
 import {
   CommandDialog,
   CommandEmpty,
@@ -8,9 +8,10 @@ import {
   CommandList,
   CommandShortcut,
 } from "@barqjs/ui/command";
-import { capitalizeString } from "@excalidraw/common";
+import { DEFAULT_SIDEBAR, capitalizeString } from "@excalidraw/common";
 
 import { actionChangeViewBackgroundColor, actionClearCanvas } from "../editor/actions/canvas.ts";
+import { actionToggleSearchMenu } from "../editor/actions/search.ts";
 import { actionToggleTheme, actionToggleShapeSwitch } from "../editor/actions/toggles.ts";
 import { useDiagramUI } from "./context.tsx";
 import { isShortcutName } from "./shortcuts.ts";
@@ -20,7 +21,7 @@ import type { TranslationKey } from "../i18n.ts";
 import type { ToolType } from "../types.ts";
 
 /** Excalidraw's categories, in its order, named from barq's strings: Excalidraw's locale has none. */
-const CATEGORIES = ["app", "export", "editor", "tools", "elements", "links"] as const;
+const CATEGORIES = ["app", "export", "editor", "tools", "elements", "links", "library"] as const;
 type Category = (typeof CATEGORIES)[number];
 
 interface Command {
@@ -33,6 +34,7 @@ interface Command {
 }
 
 const ELEMENT_ACTIONS: readonly ActionName[] = [
+  "addToLibrary",
   "group",
   "ungroup",
   "cut",
@@ -119,13 +121,22 @@ const PALETTE_TOOLS: readonly ToolType[] = [
  * the canvas's settings, found by typing. Ctrl+/ or Ctrl+Shift+P opens it,
  * Enter runs the highlighted command and Escape closes it.
  */
+/**
+ * The command run last, by its key, shown first while nothing is typed: for
+ * the page's life, as Excalidraw keeps it.
+ */
+let lastUsedKey: string | null = null;
+
 export function CommandPalette() {
   const ui = useDiagramUI();
   const t = ui.t;
   const store = ui.store;
   const open = () => store.state("openDialog")?.name === "commandPalette";
+  const [search, setSearch] = createSignal("");
+  const [lastUsed, setLastUsed] = createSignal(lastUsedKey);
 
   const close = (): void => {
+    setSearch("");
     const editor = store.editor;
     if (editor?.state.openDialog?.name === "commandPalette") {
       editor.batch(() => editor.setState({ openDialog: null }));
@@ -205,8 +216,39 @@ export function CommandPalette() {
     const openPopup = (popup: "canvasBackground" | "elementStroke" | "elementBackground") => () =>
       editor.batch(() => editor.setState({ openPopup: popup }));
     const panelShown = editor.scene.getSelectedElements(editor.state).length > 0;
+    const toggleLibrary: Command | null = viewMode
+      ? null
+      : {
+          key: "app:library",
+          label: capitalizeString(t("toolBar.library")),
+          category: "app",
+          shortcut: "",
+          keywords: ["library", "sidebar"],
+          perform: () =>
+            editor.batch(() =>
+              editor.setState({
+                openSidebar: editor.state.openSidebar
+                  ? null
+                  : { name: DEFAULT_SIDEBAR.name, tab: DEFAULT_SIDEBAR.defaultTab },
+              }),
+            ),
+        };
+    const libraryItems: Command[] = viewMode
+      ? []
+      : editor.library.state.libraryItems
+          .filter((item) => item.name?.trim())
+          .map((item) => ({
+            key: `library:${item.id}`,
+            label: item.name ?? "",
+            category: "library",
+            shortcut: "",
+            keywords: [],
+            perform: () => editor.batch(() => editor.insertLibraryItems([item])),
+          }));
     const extra: (Command | null)[] = [
       fromAction(actionToggleTheme as Action, "app"),
+      toggleLibrary,
+      fromAction(actionToggleSearchMenu, "app"),
       fromAction(actionClearCanvas, "editor"),
       ui.isEnabled(actionChangeViewBackgroundColor)
         ? {
@@ -247,13 +289,44 @@ export function CommandPalette() {
       ...tools,
       ...named(ELEMENT_ACTIONS, "elements"),
       ...named(LINK_ACTIONS, "links"),
+      ...libraryItems,
     ];
   });
+
+  const recent = createMemo((): Command | null => {
+    const key = lastUsed();
+    if (key === null || search() !== "") return null;
+    return commands().find((command) => command.key === key) ?? null;
+  });
+
+  const runCommand = (command: Command): void => {
+    lastUsedKey = command.key;
+    setLastUsed(command.key);
+    close();
+    ui.focusCanvas();
+    command.perform();
+  };
+
+  const Item = (itemProps: { command: Command; recent?: boolean }) => (
+    <CommandItem
+      value={itemProps.recent ? `${itemProps.command.label} ` : itemProps.command.label}
+      keywords={[...itemProps.command.keywords]}
+      onSelect={() => runCommand(itemProps.command)}
+      data-testid={itemProps.recent ? `recent:${itemProps.command.key}` : itemProps.command.key}
+    >
+      <span>{itemProps.command.label}</span>
+      <Show when={itemProps.command.shortcut}>
+        <CommandShortcut>{itemProps.command.shortcut}</CommandShortcut>
+      </Show>
+    </CommandItem>
+  );
 
   const grouped = createMemo(() =>
     CATEGORIES.map((category) => ({
       category,
-      commands: commands().filter((command) => command.category === category),
+      commands: commands().filter(
+        (command) => command.category === category && command.key !== recent()?.key,
+      ),
     })).filter((group) => group.commands.length > 0),
   );
 
@@ -270,31 +343,24 @@ export function CommandPalette() {
       description={t("commandPalette.search.placeholder")}
       loop
     >
-      <CommandInput placeholder={t("commandPalette.search.placeholder")} />
+      <CommandInput
+        placeholder={t("commandPalette.search.placeholder")}
+        value={search()}
+        onValueChange={setSearch}
+      />
       <CommandList>
         <CommandEmpty>{t("commandPalette.search.noMatch")}</CommandEmpty>
+        <Show when={recent()} keyed>
+          {(command: Command) => (
+            <CommandGroup heading={t("commandPalette.recents")}>
+              <Item command={command} recent />
+            </CommandGroup>
+          )}
+        </Show>
         <For each={grouped()}>
           {(group: { category: Category; commands: Command[] }) => (
             <CommandGroup heading={t(`commandPalette.categories.${group.category}`)}>
-              <For each={group.commands}>
-                {(command: Command) => (
-                  <CommandItem
-                    value={command.label}
-                    keywords={[...command.keywords]}
-                    onSelect={() => {
-                      close();
-                      ui.focusCanvas();
-                      command.perform();
-                    }}
-                    data-testid={command.key}
-                  >
-                    <span>{command.label}</span>
-                    <Show when={command.shortcut}>
-                      <CommandShortcut>{command.shortcut}</CommandShortcut>
-                    </Show>
-                  </CommandItem>
-                )}
-              </For>
+              <For each={group.commands}>{(command: Command) => <Item command={command} />}</For>
             </CommandGroup>
           )}
         </For>

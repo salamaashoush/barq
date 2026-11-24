@@ -53,6 +53,7 @@ import {
   actionToggleImageExport,
   actionToggleJSONExport,
 } from "../editor/actions/export.ts";
+import { actionToggleSearchMenu } from "../editor/actions/search.ts";
 import { actionShortcuts, actionToggleTheme } from "../editor/actions/toggles.ts";
 import { ColorPicker } from "./color-picker.tsx";
 import { useDiagramUI } from "./context.tsx";
@@ -225,8 +226,7 @@ function SearchMenu() {
   const ui = useDiagramUI();
   return (
     <Item
-      onSelect={() => {}}
-      disabled
+      onSelect={() => ui.run(actionToggleSearchMenu)}
       icon={<Search aria-hidden="true" />}
       shortcut={shortcutOf("searchMenu")}
       data-testid="search-menu-button"

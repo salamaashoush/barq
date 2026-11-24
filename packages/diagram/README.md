@@ -231,6 +231,51 @@ is the file's name when the scene has none, and `onExport` (Excalidraw's) lets
 a save wait for the host, with a progress toast. `UIOptions.canvasActions`
 turns each of these off, entries and shortcuts both.
 
+The library button at the top end opens the sidebar on the library, and
+Ctrl+F (or the main menu's entry) on the search; undocked, a press on the
+canvas or Escape closes it, and where it fits beside the canvas (wider than
+`UIOptions.dockedSidebarBreakpoint`, 1229px by default) its pin docks it:
+
+- the library: the selection is added from the context menu, the command
+  palette or the sidebar's own button; a click on an item places it in the
+  middle of the view and a drag places it where it is dropped; the checkboxes
+  (Shift for a range) select items to export, remove or publish; its menu
+  opens a `.excalidrawlib`, exports the library, and resets it; the browse
+  button opens Excalidraw's public library site, which installs a library
+  back by URL;
+- the search: the canvas's texts and frames' names that contain what is
+  typed, highlighted on the canvas, the first in view focused; Enter and the
+  down arrow step on, Shift+Enter and the up arrow back, and a match out of
+  view or too small to read is brought into view.
+
+`initialData.libraryItems` joins the library, `onLibraryChange` hears each
+change, and the API's `updateLibrary` replaces or merges items (a list or a
+library file) as Excalidraw's does. `useHandleLibrary` (or `handleLibrary`
+without barq) installs the library an `#addLibrary=<url>&token=` address
+names, asking first unless the token is the editor's (`api.id`, which the
+browse button sends) and refusing URLs outside Excalidraw's library sites
+unless `validateLibraryUrl` lets them in, and keeps the library in an
+`adapter` (with a `migrationAdapter` to move it out of an older store):
+
+```tsx
+const [api, setApi] = createSignal<DiagramEditorApi | null>(null);
+useHandleLibrary({
+  excalidrawAPI: api,
+  adapter: {
+    load: () => JSON.parse(localStorage.getItem("library") ?? "null"),
+    save: (data) => localStorage.setItem("library", JSON.stringify(data)),
+  },
+});
+<DiagramEditor api={setApi} libraryReturnUrl="https://example.com/draw" />;
+```
+
+Publishing sends selected items, named, with a preview to
+`libraryPublishEndpoint` as Excalidraw's form (`excalidrawLib`,
+`previewImage`, `name`, `description`, `authorName`, ...), which answers
+`{ url }`; without the prop nothing is published. The command palette lists
+the library's named items, and the command run last first while nothing is
+typed.
+
 `langCode` is one of Excalidraw's locale codes; each language loads when
 first asked for (`loadLanguage` loads one ahead, which a server render that
 should arrive in it does on both sides). Arabic, Persian and Hebrew lay the

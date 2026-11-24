@@ -27,6 +27,10 @@ export interface UIHost {
   textToDiagram?: TextToDiagramOptions;
   /** A theme the host passes: the main menu offers no toggle unless `onThemeChange` listens. */
   theme?: Theme;
+  /** Excalidraw's `libraryReturnUrl`: where the library site sends an installed library back to. */
+  libraryReturnUrl?: string;
+  /** Where the library's publish dialog sends a library; without it the dialog is not offered. */
+  libraryPublishEndpoint?: string;
 }
 
 export interface DiagramUI {

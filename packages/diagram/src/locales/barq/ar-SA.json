@@ -36,5 +36,13 @@
   "chat": {
     "send": "إرسال",
     "stop": "إيقاف"
+  },
+  "library": {
+    "selectItem": "تحديد {{name}}",
+    "unnamedItem": "عنصر المكتبة {{number}}"
+  },
+  "search": {
+    "next": "التطابق التالي",
+    "previous": "التطابق السابق"
   }
 }

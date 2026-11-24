@@ -36,5 +36,13 @@
   "chat": {
     "send": "Send",
     "stop": "Stop"
+  },
+  "library": {
+    "selectItem": "Select {{name}}",
+    "unnamedItem": "Library item {{number}}"
+  },
+  "search": {
+    "next": "Next match",
+    "previous": "Previous match"
   }
 }

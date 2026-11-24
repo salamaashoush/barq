@@ -111,13 +111,15 @@ embeds.
 - done: image export dialog: preview, only selected, background, dark mode, embedded scene, scale, PNG, SVG and copy as PNG; Ctrl+Shift+E (`export.test.tsx`, `files.test.ts`)
 - done: export dialog: save to disk, `onExportToBackend`, `renderCustomUI` (`export.test.tsx`)
 - done: save and load through the File System Access API with a download and file input fallback; `saveToActiveFile` (Ctrl+S, to the image a scene came from too), `saveFileToDisk` (Ctrl+Shift+S), `loadScene` (Ctrl+O) with the overwrite confirmation, `onExport` with its progress (`export.test.tsx`, `files.test.ts`)
-- pending (3b): library sidebar, its trigger, add to library (context menu and palette)
-- pending (3b): search menu (Ctrl+F); its menu entry is disabled
+- done: library sidebar and its trigger, add to library (context menu, palette, the sidebar's button), insert by click and by drag, select with Shift ranges, remove and reset, `.excalidrawlib` import and export, browse, docking (`library.test.tsx`)
+- done: `#addLibrary=` install with the token and URL check, `useHandleLibrary` with a persistence and migration adapter, `onLibraryChange`, `updateLibrary`, `initialData.libraryItems`, dropped library files (`library.test.ts`, `library.test.tsx`)
+- done: publish dialog, to an app's `libraryPublishEndpoint` only (`library.test.tsx`)
+- done: search (Ctrl+F, the main menu), texts and frame names highlighted through `searchMatches`, stepping and bringing a match into view (`search.test.tsx`)
 - done: Mermaid and text-to-diagram dialog: Mermaid typed, previewed, auto-fixed and inserted; the chat streams from the app's `textToDiagram` backend, repairs, retries, stops and keeps its chats (`ttd-dialog.test.tsx`, `mermaid-error.test.ts`, `mermaid-auto-fix.test.ts`)
 - pending (3b): welcome screen and its hints
 - pending (3b): colour and font top picks customised by dragging, and reset
 - done: font picker previews the highlighted font on the selection and restores it on close; Shift+F opens it (`pickers.test.tsx`)
-- pending (3b): command palette's recently used commands and library items
+- done: command palette's recently used command, library items, library and search entries (`library.test.tsx`)
 - done: stats panel: the element's type, an image's uncropped size while cropping, a group's heading, several units edited each, the grid's step, folding sections, dragging a label to scrub a value (`stats.test.tsx`); a scene version is the host's to show through `renderCustomStats`, as excalidraw.com does
 - pending (3b): pen mode button for a detected pen; compact and phone layouts of the panels
 - done: `toggleWrap` (W): a text into a container, texts into new containers and back, labels freed and rewrapped, shapes in and out of a frame (`wrap.test.ts`)
