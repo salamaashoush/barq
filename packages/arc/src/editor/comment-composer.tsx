@@ -11,6 +11,7 @@ import type { CommentComposerProps, CommentPerson, Mentionables } from "../compo
 import { useArcMessages } from "../components/messages.ts";
 import { ChatComposer } from "./chat-composer.tsx";
 import { $createMentionNode, $isMentionNode } from "./mention-node.ts";
+import { commentPreset } from "./presets.ts";
 import type { MentionCandidate, MentionSource } from "./typeahead.tsx";
 
 function candidate(person: CommentPerson): MentionCandidate {
@@ -94,6 +95,7 @@ export function RichCommentComposer(props: CommentComposerProps) {
   ];
   return (
     <ChatComposer
+      preset={commentPreset}
       class={props.class}
       className={props.className}
       label={props.label}

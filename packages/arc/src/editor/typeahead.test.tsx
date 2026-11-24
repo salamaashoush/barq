@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { fileURLToPath } from "node:url";
 import { type Child } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
-import { ariaViolations, cleanup, render, waitFor } from "@barqjs/testing";
+import { ariaViolations, cleanup, render, screen, user, waitFor } from "@barqjs/testing";
 import type { JSX } from "@barqjs/web";
 import type { LexicalEditor } from "lexical";
 
@@ -166,12 +166,14 @@ describe("SlashCommandMenu", () => {
     expect(textOf(editor)).toBe("");
   });
 
-  test("a list, a quote and a table come from a word", async () => {
+  test("a list, a quote and a table come from a word, the table sized in the picker", async () => {
     const editor = await mount(() => <SlashCommandMenu />);
     await typeText(editor, "/table");
     keydown(root(), "Enter");
     await settle();
-    expect(root().querySelector("table")).not.toBeNull();
+    await user.click(screen.getByRole("button", { name: "2 by 3 table" }));
+    await settle();
+    expect(root().querySelectorAll("tr")).toHaveLength(2);
   });
 
   test("says when nothing matches, and a sentence after a slash closes it", async () => {

@@ -13,6 +13,35 @@ export {
 } from "./blocks.tsx";
 export { CodeHighlightExtension } from "./code-highlight.ts";
 export {
+  autoLinkExtension,
+  dividerExtension,
+  embedExtension,
+  imageExtension,
+  mentionExtension,
+  richTextExtension,
+  tableExtension,
+} from "./core.tsx";
+export {
+  type CommandPlace,
+  type DocxRules,
+  type EditorCommand,
+  type EditorExtension,
+  type EditorKeyBinding,
+  type EditorToolbarItem,
+  type Label,
+  type NodeRenderer,
+  type PasteRule,
+  type RenderScope,
+  type StoredNode,
+  customizeExtensions,
+  defineEditorExtension,
+  editorExtensions,
+  hasExtension,
+  loadExtension,
+  resolveExtensions,
+} from "./extension.ts";
+export { chatPreset, commentPreset, documentPreset } from "./presets.ts";
+export {
   MARKS,
   type Mark,
   OPEN_EMBED_DIALOG_COMMAND,
@@ -34,6 +63,8 @@ export {
   type DocumentOptions,
   type DocumentValue,
   createDocumentEditor,
+  documentBlocks,
+  documentEditorExtensions,
   documentExtensions,
   documentToMarkdown,
   documentToText,
@@ -95,7 +126,6 @@ export {
   useSelectionFormat,
 } from "./toolbar.tsx";
 export {
-  type EditorCommandOptions,
   EmojiShortcuts,
   type EmojiShortcutsProps,
   type MentionCandidate,

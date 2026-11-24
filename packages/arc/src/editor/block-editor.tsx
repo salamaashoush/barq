@@ -48,7 +48,6 @@ import { useArcMessages } from "../components/messages.ts";
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
 import { gap, interaction, layout, place, rounded, space, target, zIndex } from "../style/index.ts";
-import type { AnyBlock } from "./blocks.tsx";
 import {
   $textBlockOf,
   TEXT_BLOCK_TYPES,
@@ -57,6 +56,7 @@ import {
   shortcutLabel,
   textBlockLabel,
 } from "./commands.ts";
+import { editorExtensions } from "./extension.ts";
 import { editorSignal, useRegistration } from "./hooks.ts";
 import { RichTextEditor, type RichTextEditorProps } from "./rich-text-editor.tsx";
 import { type SlashCommand, SlashCommandMenu, editorCommands } from "./typeahead.tsx";
@@ -200,11 +200,11 @@ export interface BlockEditorProps extends Omit<RichTextEditorProps, "variant"> {
  * drags the block to a new place, by mouse or by finger, and opens its menu
  * when pressed: Turn into, Duplicate, Move up, Move down, Delete. Mod+Shift
  * with the arrows moves the caret's block, each move announced. `/` offers
- * the same blocks inline, and `blocks` adds an app's own, built from arc's
- * pieces with `defineBlock`.
+ * the same blocks inline, and `extensions` adds an app's own, built from
+ * arc's pieces with `defineBlock` or `defineEditorExtension`.
  *
  * ```tsx
- * <BlockEditor label="Lesson" blocks={[Quiz, Callout]} defaultValue={lesson.body} onChange={save} />
+ * <BlockEditor label="Lesson" extensions={[Quiz, Rating]} defaultValue={lesson.body} onChange={save} />
  * ```
  *
  * The gutter is at the start of the line, so it sits on the right in a
@@ -225,18 +225,8 @@ export function BlockEditor(props: BlockEditorProps) {
           documentPlaceholder={props.placeholder !== undefined}
         />
       </Show>
-      <BlockHandles
-        cls={cls()}
-        blocks={props.blocks ?? []}
-        images={props.upload !== undefined}
-        tables={props.tables !== false}
-      />
-      <SlashCommandMenu
-        blocks={props.blocks}
-        tables={props.tables}
-        images={props.upload !== undefined}
-        embeds={props.embeds !== false}
-      />
+      <BlockHandles cls={cls()} />
+      <SlashCommandMenu />
       {props.children}
     </RichTextEditor>
   );
@@ -307,12 +297,7 @@ function BlockPlaceholders(props: {
   return null;
 }
 
-function BlockHandles(props: {
-  cls: Slots;
-  blocks: readonly AnyBlock[];
-  images: boolean;
-  tables: boolean;
-}) {
+function BlockHandles(props: { cls: Slots }) {
   const editor = useLexicalEditor();
   const messages = useArcMessages();
   const [active, setActive] = editorSignal<ActiveBlock | null>(null);
@@ -425,11 +410,7 @@ function BlockHandles(props: {
   );
 
   const commands = createMemo(() =>
-    editorCommands(messages(), {
-      blocks: props.blocks,
-      images: props.images,
-      tables: props.tables,
-    }),
+    editorCommands(messages(), editorExtensions(editor), editor, "picker"),
   );
   const groups = createMemo(() => {
     const out = new Map<string, SlashCommand[]>();

@@ -9,19 +9,6 @@ import {
   basicTypeaheadTriggerMatch,
   useLexicalEditor,
 } from "@barqjs/lexical";
-import { Heading1 } from "@barqjs/lucide/icons/heading-1";
-import { Heading2 } from "@barqjs/lucide/icons/heading-2";
-import { Heading3 } from "@barqjs/lucide/icons/heading-3";
-import { Image as ImageIcon } from "@barqjs/lucide/icons/image";
-import { List } from "@barqjs/lucide/icons/list";
-import { ListChecks } from "@barqjs/lucide/icons/list-checks";
-import { ListOrdered } from "@barqjs/lucide/icons/list-ordered";
-import { Minus } from "@barqjs/lucide/icons/minus";
-import { Pilcrow } from "@barqjs/lucide/icons/pilcrow";
-import { Quote } from "@barqjs/lucide/icons/quote";
-import { SquareCode } from "@barqjs/lucide/icons/square-code";
-import { SquarePlay } from "@barqjs/lucide/icons/square-play";
-import { Table } from "@barqjs/lucide/icons/table";
 import { dropdownMenuVariants } from "@barqjs/ui/dropdown-menu";
 import { $createTextNode, type LexicalEditor } from "lexical";
 
@@ -32,19 +19,14 @@ import { type RemoteState, remoteSearch } from "../components/remote-search.ts";
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
 import { fg, gap, glyph, layout, space, truncate, type, zIndex } from "../style/index.ts";
-import { type AnyBlock, labelOf } from "./blocks.tsx";
+import { labelOf } from "./blocks.tsx";
+import { shortcutLabel } from "./commands.ts";
 import {
-  $insertBlock,
-  OPEN_EMBED_DIALOG_COMMAND,
-  OPEN_IMAGE_DIALOG_COMMAND,
-  OPEN_TABLE_DIALOG_COMMAND,
-  TEXT_BLOCK_TYPES,
-  type TextBlockType,
-  insertDivider,
-  insertTable,
-  setTextBlock,
-  textBlockLabel,
-} from "./commands.ts";
+  type CommandPlace,
+  type EditorExtension,
+  commandsOf,
+  editorExtensions,
+} from "./extension.ts";
 import { editorSignal } from "./hooks.ts";
 import { $createMentionNode } from "./mention-node.ts";
 
@@ -352,119 +334,31 @@ function rank(
   return 0;
 }
 
-const KEYWORDS: Record<TextBlockType, readonly string[]> = {
-  paragraph: ["text", "plain"],
-  h1: ["heading", "title"],
-  h2: ["heading", "subtitle"],
-  h3: ["heading"],
-  bullet: ["list", "unordered"],
-  number: ["list", "ordered"],
-  check: ["list", "todo", "task"],
-  quote: ["blockquote", "citation"],
-  code: ["snippet", "pre"],
-};
-
-const TEXT_ICONS: Record<TextBlockType, () => Child> = {
-  paragraph: () => <Pilcrow />,
-  h1: () => <Heading1 />,
-  h2: () => <Heading2 />,
-  h3: () => <Heading3 />,
-  bullet: () => <List />,
-  number: () => <ListOrdered />,
-  check: () => <ListChecks />,
-  quote: () => <Quote />,
-  code: () => <SquareCode />,
-};
-
-export interface EditorCommandOptions {
-  /** Blocks of an app's own, under their groups. */
-  blocks?: readonly AnyBlock[];
-  /** @default true */
-  tables?: boolean;
-  /** An image dialog to open: the editor uploads. @default false */
-  images?: boolean;
-  /** @default true */
-  embeds?: boolean;
-}
-
 /**
- * The commands an editor offers by default: each text style, a table, a
- * divider, an image and an embed where the editor takes them, and every
- * insertable block of the app's own.
+ * What an editor's extensions offer in a place, in the reader's words: the
+ * `/` menu's commands, the block picker's, the toolbar's Insert menu's.
  */
 export function editorCommands(
   messages: ArcMessages,
-  options: EditorCommandOptions = {},
+  extensions: readonly EditorExtension[],
+  editor: LexicalEditor | null,
+  place: CommandPlace = "slash",
 ): SlashCommand[] {
-  const basic = messages.basicBlocks;
-  const media = messages.mediaBlocks;
-  const commands: SlashCommand[] = TEXT_BLOCK_TYPES.map((block) => ({
-    id: block,
-    label: textBlockLabel(block, messages),
-    group: basic,
-    icon: TEXT_ICONS[block],
-    keywords: KEYWORDS[block],
-    run: (editor: LexicalEditor) => setTextBlock(editor, block),
+  return commandsOf(extensions, editor, place).map((command) => ({
+    id: command.id,
+    label: labelOf(command.label, messages),
+    group: command.group === undefined ? messages.basicBlocks : labelOf(command.group, messages),
+    icon: command.icon,
+    keywords: command.keywords,
+    description:
+      command.description === undefined ? undefined : labelOf(command.description, messages),
+    shortcut: command.shortcut === undefined ? undefined : shortcutLabel(command.shortcut),
+    run: command.run,
   }));
-  if (options.tables !== false) {
-    commands.push({
-      id: "table",
-      label: messages.table,
-      group: basic,
-      icon: () => <Table />,
-      keywords: ["grid"],
-      // The size picker where the editor has one, three by three otherwise.
-      run: (editor) => {
-        if (!editor.dispatchCommand(OPEN_TABLE_DIALOG_COMMAND, undefined)) insertTable(editor);
-      },
-    });
-  }
-  commands.push({
-    id: "divider",
-    label: messages.divider,
-    group: basic,
-    icon: () => <Minus />,
-    keywords: ["rule", "line", "hr"],
-    run: insertDivider,
-  });
-  if (options.images === true) {
-    commands.push({
-      id: "image",
-      label: messages.image,
-      group: media,
-      icon: () => <ImageIcon />,
-      keywords: ["picture", "photo", "upload"],
-      run: (editor) => editor.dispatchCommand(OPEN_IMAGE_DIALOG_COMMAND, undefined),
-    });
-  }
-  if (options.embeds !== false) {
-    commands.push({
-      id: "embed",
-      label: messages.embed,
-      group: media,
-      icon: () => <SquarePlay />,
-      keywords: ["video", "youtube", "vimeo"],
-      run: (editor) => editor.dispatchCommand(OPEN_EMBED_DIALOG_COMMAND, undefined),
-    });
-  }
-  for (const block of options.blocks ?? []) {
-    if (block.insertable === false) continue;
-    commands.push({
-      id: block.type,
-      label: labelOf(block.label, messages),
-      group: block.group === undefined ? basic : labelOf(block.group, messages),
-      icon: block.icon,
-      keywords: block.keywords,
-      description:
-        block.description === undefined ? undefined : labelOf(block.description, messages),
-      run: (editor) => editor.update(() => void $insertBlock(block.$create())),
-    });
-  }
-  return commands;
 }
 
-export interface SlashCommandMenuProps extends Customisable<Slots>, EditorCommandOptions {
-  /** What it offers. @default `editorCommands` for the options given */
+export interface SlashCommandMenuProps extends Customisable<Slots> {
+  /** What it offers. @default what the editor's extensions offer */
   commands?: readonly SlashCommand[];
   /** Names the listbox. @default arc's "Blocks" */
   "aria-label"?: string;
@@ -489,7 +383,9 @@ export function SlashCommandMenu(props: SlashCommandMenuProps) {
     allowWhitespace: true,
     punctuation: "\\/",
   });
-  const commands = createMemo(() => props.commands ?? editorCommands(messages(), props));
+  const commands = createMemo(
+    () => props.commands ?? editorCommands(messages(), editorExtensions(editor), editor, "slash"),
+  );
   const ranked = (typed: string): SlashCommand[] =>
     commands()
       .map((command, index) => ({

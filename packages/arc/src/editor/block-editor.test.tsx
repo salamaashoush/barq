@@ -177,7 +177,7 @@ describe("BlockEditor", () => {
         </button>
       ),
     });
-    const editor = await mount({ blocks: [Rating] });
+    const editor = await mount({ extensions: [Rating] });
     await caretIn(editor, 2);
     await user.click(screen.getByRole("button", { name: "Insert a block" }));
     await settle();
@@ -189,9 +189,9 @@ describe("BlockEditor", () => {
     await user.click(block);
     await settle();
     expect(screen.getByRole("button", { name: "1 stars" })).toBeDefined();
-    expect(documentToMarkdown(editor.getEditorState().toJSON(), { blocks: [Rating] })).toContain(
-      "Rated 1",
-    );
+    expect(
+      documentToMarkdown(editor.getEditorState().toJSON(), { extensions: [Rating] }),
+    ).toContain("Rated 1");
   });
 
   test("the gutter sits at the start of the line, so it is on the right in Arabic", async () => {

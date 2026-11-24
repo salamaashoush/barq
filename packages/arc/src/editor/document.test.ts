@@ -87,7 +87,7 @@ describe("a document without a screen", () => {
   });
 
   test("an app's block is read and written by its own markdown line", () => {
-    const options = { blocks: [NOTE] };
+    const options = { extensions: [NOTE] };
     const state = markdownToDocument("> [!note] Bring water", options);
     expect(state.root.children[0]).toMatchObject({
       type: "acme-note",

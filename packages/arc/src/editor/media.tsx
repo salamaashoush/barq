@@ -55,6 +55,8 @@ export interface ImageData {
 /** The upload queue an editor's images go through. */
 export interface EditorUploads {
   queue: UploadQueueApi;
+  /** The largest picture accepted, in bytes. */
+  maxSize?: number;
 }
 
 /**
@@ -71,7 +73,12 @@ export function provideEditorUploads(editor: LexicalEditor, uploads: EditorUploa
 }
 
 export function useEditorUploads(): EditorUploads | null {
-  return uploadsByEditor.get(useLexicalEditor()) ?? null;
+  return editorUploads(useLexicalEditor());
+}
+
+/** The queue `editor`'s images upload through, or `null` for an editor that takes none. */
+export function editorUploads(editor: LexicalEditor): EditorUploads | null {
+  return uploadsByEditor.get(editor) ?? null;
 }
 
 function ImageView(props: BlockProps<ImageData>) {

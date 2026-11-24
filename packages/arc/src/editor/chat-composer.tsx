@@ -57,10 +57,12 @@ import {
 } from "../style/index.ts";
 import { $selectionFormat } from "./commands.ts";
 import { type DocumentValue, documentExtensions, markdownTransformers } from "./document.ts";
+import type { EditorExtension } from "./extension.ts";
+import { chatPreset } from "./presets.ts";
 import { EditorDocument } from "./renderer.tsx";
 import { FloatingFormatToolbar, LinkEditor } from "./floating.tsx";
 import { useRegistration } from "./hooks.ts";
-import { EditorBridge, EditorShortcuts } from "./rich-text-editor.tsx";
+import { EditorBridge, ExtensionPlugins } from "./rich-text-editor.tsx";
 import { useCharacterCount } from "./state.ts";
 import { editableText } from "./theme.ts";
 import { EditorToolbar } from "./toolbar.tsx";
@@ -125,6 +127,8 @@ export interface ComposedMessage {
 }
 
 export interface ChatComposerProps extends Customisable<Slots> {
+  /** What the composer is built from. @default `chatPreset` */
+  preset?: readonly EditorExtension[];
   /** Names the text box. @default arc's "Message" */
   label?: string;
   placeholder?: string;
@@ -297,7 +301,7 @@ function Composer(props: ChatComposerProps & { cls: Slots; queue?: UploadQueueAp
 
   const send = (): void => {
     if (!untrack(canSend)) return;
-    const transformers = markdownTransformers({ tables: false });
+    const transformers = markdownTransformers({ preset: props.preset ?? chatPreset });
     const message: ComposedMessage = editor.read(() => ({
       value: editor.getEditorState().toJSON(),
       markdown: $convertToMarkdownString(transformers),
@@ -448,7 +452,7 @@ function Composer(props: ChatComposerProps & { cls: Slots; queue?: UploadQueueAp
         </Show>
       </div>
       <SendKeys send={send} cancel={props.onCancel} modEnter={props.sendOn === "mod-enter"} />
-      <EditorShortcuts />
+      <ExtensionPlugins />
       <FloatingFormatToolbar />
       <LinkEditor />
       <Show when={props.mentions !== undefined}>
@@ -500,7 +504,7 @@ function WithUploads(props: ChatComposerProps & { cls: Slots }) {
 export function ChatComposer(props: ChatComposerProps) {
   const messages = useArcMessages();
   const cls = (): Slots => parts(chatComposerStyles(), props.classes);
-  const extensions = untrack(() => documentExtensions({ tables: false }));
+  const extensions = untrack(() => documentExtensions({ preset: props.preset ?? chatPreset }));
   const editorState = untrack(() => {
     if (props.initialContent !== undefined) return props.initialContent;
     if (props.defaultValue !== undefined) {
@@ -510,7 +514,7 @@ export function ChatComposer(props: ChatComposerProps) {
     }
     const markdown = props.defaultMarkdown;
     if (markdown === undefined) return undefined;
-    const transformers = markdownTransformers({ tables: false });
+    const transformers = markdownTransformers({ preset: props.preset ?? chatPreset });
     return () => $convertFromMarkdownString(markdown, transformers);
   });
   return (

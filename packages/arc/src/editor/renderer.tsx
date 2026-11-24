@@ -10,26 +10,32 @@ import {
   IS_SUPERSCRIPT,
   IS_UNDERLINE,
   type SerializedEditorState,
-  type SerializedLexicalNode,
 } from "lexical";
 
 import { CodeBlock } from "../code/code-block.tsx";
+import { type ArcMessages, useArcMessages } from "../components/messages.ts";
 import { Link } from "../components/text-link.tsx";
 import { proseStyles } from "../components/typography.tsx";
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
-import type { AnyBlock, BlockDefinition } from "./blocks.tsx";
+import type { BlockDefinition } from "./blocks.tsx";
 import {
   type DocumentOptions,
   type DocumentValue,
   createDocumentEditor,
-  documentBlocks,
+  documentEditorExtensions,
   markdownToDocument,
 } from "./document.ts";
+import type {
+  EditorExtension,
+  NodeRenderer,
+  RenderScope,
+  StoredNode as AnyStoredNode,
+} from "./extension.ts";
 import { type DocumentSlots, documentStyles } from "./theme.ts";
 
-/** A node as stored, read loosely: every type of node a document holds. */
-interface StoredNode extends SerializedLexicalNode {
+/** A node as stored, read loosely, with the fields of the nodes drawn here typed. */
+interface StoredNode extends AnyStoredNode {
   children?: StoredNode[];
   text?: string;
   format?: number | string;
@@ -61,6 +67,8 @@ export interface RenderedMention {
 interface RenderContext {
   slots: DocumentSlots;
   blocks: ReadonlyMap<string, BlockDefinition<unknown>>;
+  renderers: ReadonlyMap<string, NodeRenderer>;
+  scope: RenderScope;
   headingOffset: number;
   renderMention?: (mention: RenderedMention) => Child;
   linkHref?: (url: string) => string;
@@ -302,6 +310,8 @@ function Node(props: { node: StoredNode; context: RenderContext }): JSX.Element 
     case "code-highlight":
       return <Text node={node} slots={context.slots} />;
     default: {
+      const renderer = context.renderers.get(node.type);
+      if (renderer !== undefined) return <>{renderer(node, context.scope)}</>;
       const definition = context.blocks.get(node.type);
       if (definition !== undefined) {
         const Component = definition.component;
@@ -322,7 +332,7 @@ function Node(props: { node: StoredNode; context: RenderContext }): JSX.Element 
 }
 
 export interface RichTextRendererProps
-  extends Customisable<DocumentSlots & { root: string }>, Pick<DocumentOptions, "blocks"> {
+  extends Customisable<DocumentSlots & { root: string }>, ExtensionOptions {
   /** A stored document: what `RichTextEditor` reported. */
   value?: DocumentValue;
   /** Markdown, read with the same rules the editor writes it with. */
@@ -339,16 +349,20 @@ export interface RichTextRendererProps
   linkHref?: (url: string) => string;
 }
 
+type ExtensionOptions = Pick<DocumentOptions, "preset" | "extensions">;
+
 function storedNodes(
   value: DocumentValue | undefined,
   markdown: string | undefined,
-  blocks?: readonly AnyBlock[],
+  options: ExtensionOptions,
 ): StoredNode[] {
-  if (markdown !== undefined) return markdownToDocument(markdown, { blocks }).root.children;
+  if (markdown !== undefined) {
+    return markdownToDocument(markdown, options).root.children;
+  }
   if (value === undefined) return [];
   // Read through an editor with the document's nodes, so a stored state
   // from an older version comes out in the shape it has today.
-  const editor = createDocumentEditor({ blocks });
+  const editor = createDocumentEditor(options);
   try {
     const state: SerializedEditorState = editor.parseEditorState(value).toJSON();
     return state.root.children;
@@ -357,20 +371,70 @@ function storedNodes(
   }
 }
 
+/** Where each node stands among its type's, counted in reading order as first asked. */
+function orderOf(nodes: readonly StoredNode[]): (type: string) => readonly StoredNode[] {
+  const byType = new Map<string, StoredNode[]>();
+  let walked = false;
+  const walk = (list: readonly StoredNode[]): void => {
+    for (const node of list) {
+      const same = byType.get(node.type) ?? [];
+      same.push(node);
+      byType.set(node.type, same);
+      if (node.children !== undefined) walk(node.children);
+    }
+  };
+  return (type) => {
+    if (!walked) {
+      walk(nodes);
+      walked = true;
+    }
+    return byType.get(type) ?? [];
+  };
+}
+
+function renderContext(
+  nodes: readonly StoredNode[],
+  extensions: readonly EditorExtension[],
+  messages: ArcMessages,
+  base: Omit<RenderContext, "blocks" | "renderers" | "scope">,
+): RenderContext {
+  const nodesOf = orderOf(nodes);
+  const context: RenderContext = {
+    ...base,
+    blocks: new Map(
+      extensions.flatMap((extension) =>
+        (extension.blocks ?? []).map((block) => [block.type, block.definition] as const),
+      ),
+    ),
+    renderers: new Map(extensions.flatMap((extension) => Object.entries(extension.render ?? {}))),
+    scope: {
+      editing: base.editing === true,
+      slots: base.slots,
+      messages,
+      children: (node) => <Children nodes={(node as StoredNode).children} context={context} />,
+      ordinal: (node) => nodesOf(node.type).indexOf(node) + 1,
+      nodesOf,
+    },
+  };
+  return context;
+}
+
 /**
  * A document's blocks as `RichTextEditor` draws them, with no editor: what a
  * server writes in the editable root for the editor to take over.
  */
 export function EditorDocument(
-  props: Pick<DocumentOptions, "blocks"> & { value?: DocumentValue; markdown?: string },
+  props: ExtensionOptions & { value?: DocumentValue; markdown?: string },
 ) {
-  const nodes = createMemo(() => storedNodes(props.value, props.markdown, props.blocks));
-  const context = (): RenderContext => ({
-    slots: documentStyles(),
-    blocks: new Map(documentBlocks(props.blocks).map((block) => [block.type, block.definition])),
-    headingOffset: 0,
-    editing: true,
-  });
+  const messages = useArcMessages();
+  const options = (): ExtensionOptions => ({ preset: props.preset, extensions: props.extensions });
+  const nodes = createMemo(() => storedNodes(props.value, props.markdown, options()));
+  const context = (): RenderContext =>
+    renderContext(nodes(), documentEditorExtensions(options()), messages(), {
+      slots: documentStyles(),
+      headingOffset: 0,
+      editing: true,
+    });
   return (
     <Show when={nodes().length > 0}>
       <Children nodes={nodes()} context={context()} />
@@ -394,15 +458,18 @@ export function EditorDocument(
  * app's blocks draw with their own components, read-only.
  */
 export function RichTextRenderer(props: RichTextRendererProps) {
-  const nodes = createMemo(() => storedNodes(props.value, props.markdown, props.blocks));
+  const messages = useArcMessages();
+  const options = (): ExtensionOptions => ({ preset: props.preset, extensions: props.extensions });
+  const extensions = createMemo(() => documentEditorExtensions(options()));
+  const nodes = createMemo(() => storedNodes(props.value, props.markdown, options()));
   const cls = () => parts({ ...documentStyles(), root: "" }, props.classes);
-  const context = (): RenderContext => ({
-    slots: cls(),
-    blocks: new Map(documentBlocks(props.blocks).map((block) => [block.type, block.definition])),
-    headingOffset: props.headingOffset ?? 0,
-    renderMention: props.renderMention,
-    linkHref: props.linkHref,
-  });
+  const context = (): RenderContext =>
+    renderContext(nodes(), extensions(), messages(), {
+      slots: cls(),
+      headingOffset: props.headingOffset ?? 0,
+      renderMention: props.renderMention,
+      linkHref: props.linkHref,
+    });
   return (
     <div
       class={arc(
@@ -414,6 +481,9 @@ export function RichTextRenderer(props: RichTextRendererProps) {
       data-slot="rich-text"
     >
       <Children nodes={nodes()} context={context()} />
+      <For each={extensions().filter((extension) => extension.renderEnd !== undefined)}>
+        {(extension: EditorExtension) => extension.renderEnd?.(context().scope)}
+      </For>
     </div>
   );
 }

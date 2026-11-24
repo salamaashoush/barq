@@ -1,293 +1,155 @@
-import {
-  $createHorizontalRuleNode,
-  $isHorizontalRuleNode,
-  HorizontalRuleExtension,
-  HorizontalRuleNode,
-  buildEditorFromExtensions,
-} from "@lexical/extension";
+import { buildEditorFromExtensions } from "@lexical/extension";
 import { HistoryExtension } from "@lexical/history";
-import {
-  AutoLinkExtension,
-  LinkExtension,
-  autoLinkEmailMatcher,
-  autoLinkUrlMatcher,
-} from "@lexical/link";
-import { CheckListExtension, ListExtension } from "@lexical/list";
 import {
   $convertFromMarkdownString,
   $convertToMarkdownString,
-  CHECK_LIST,
-  ELEMENT_TRANSFORMERS,
-  type ElementTransformer,
-  MULTILINE_ELEMENT_TRANSFORMERS,
-  TEXT_FORMAT_TRANSFORMERS,
-  TEXT_MATCH_TRANSFORMERS,
-  type TextMatchTransformer,
   type Transformer,
-  isTableRowDivider,
   registerMarkdownShortcuts,
 } from "@lexical/markdown";
-import { RichTextExtension } from "@lexical/rich-text";
-import {
-  $createTableCellNode,
-  $createTableNode,
-  $createTableRowNode,
-  $isTableCellNode,
-  $isTableNode,
-  $isTableRowNode,
-  TableCellHeaderStates,
-  TableCellNode,
-  TableExtension,
-  TableNode,
-  TableRowNode,
-} from "@lexical/table";
 import {
   $getRoot,
-  $isParagraphNode,
-  $isTextNode,
+  $getSelection,
+  $isRangeSelection,
   type AnyLexicalExtensionArgument,
+  COMMAND_PRIORITY_HIGH,
+  COMMAND_PRIORITY_LOW,
   type EditorThemeClasses,
-  type Klass,
+  KEY_DOWN_COMMAND,
   type LexicalEditor,
-  type LexicalNode,
+  PASTE_COMMAND,
   type SerializedEditorState,
-  configExtension,
   defineExtension,
+  mergeRegister,
 } from "lexical";
 
 import type { AnyBlock } from "./blocks.tsx";
-import { CodeHighlightExtension } from "./code-highlight.ts";
-import { EmbedBlock, ImageBlock } from "./media.tsx";
-import { $createMentionNode, $isMentionNode, MentionNode } from "./mention-node.ts";
+import {
+  type EditorExtension,
+  keysMatch,
+  provideEditorExtensions,
+  resolveExtensions,
+} from "./extension.ts";
+import { documentPreset } from "./presets.ts";
 import { editorTheme } from "./theme.ts";
 
-/** A web, mail or phone address, or a path on the same site: what a link may point at. */
-export function isSafeUrl(url: string): boolean {
-  const trimmed = url.trim();
-  if (trimmed === "") return false;
-  if (/^(?:\/(?!\/)|\.{1,2}\/|#|\?)/.test(trimmed)) return true;
-  try {
-    return ["http:", "https:", "mailto:", "tel:"].includes(new URL(trimmed).protocol);
-  } catch {
-    return false;
-  }
-}
-
-/** What every document holds beyond Lexical's own rich text: the built-in blocks. */
-export const BUILT_IN_BLOCKS: readonly AnyBlock[] = [ImageBlock, EmbedBlock];
-
-/** The blocks a document knows: the built-in ones and an app's, an app's winning by type. */
-export function documentBlocks(blocks: readonly AnyBlock[] = []): AnyBlock[] {
-  const byType = new Map<string, AnyBlock>();
-  for (const block of [...BUILT_IN_BLOCKS, ...blocks]) byType.set(block.type, block);
-  return [...byType.values()];
-}
-
-const MENTION: TextMatchTransformer = {
-  dependencies: [MentionNode],
-  export: (node) =>
-    $isMentionNode(node)
-      ? `[${node.getTextContent()}](mention:${encodeURIComponent(node.getMentionId())})`
-      : null,
-  importRegExp: /\[([@#])([^\]]+)\]\(mention:([^)\s]+)\)/,
-  regExp: /\[([@#])([^\]]+)\]\(mention:([^)\s]+)\)$/,
-  replace: (node, match) => {
-    node.replace(
-      $createMentionNode({
-        trigger: match[1] ?? "@",
-        name: match[2] ?? "",
-        id: decodeURIComponent(match[3] ?? ""),
-      }),
-    );
-  },
-  trigger: ")",
-  type: "text-match",
-};
-
-const HR: ElementTransformer = {
-  dependencies: [HorizontalRuleNode],
-  export: (node) => ($isHorizontalRuleNode(node) ? "***" : null),
-  regExp: /^(?:---|\*\*\*|___)\s?$/,
-  replace: (parent, _children, _match, isImport) => {
-    const line = $createHorizontalRuleNode();
-    if (isImport || parent.getNextSibling() !== null) parent.replace(line);
-    else parent.insertBefore(line);
-    line.selectNext();
-  },
-  type: "element",
-};
-
-const TABLE_ROW = /^\|(.+)\|\s?$/;
-
-function tableTransformer(cellTransformers: () => Transformer[]): ElementTransformer {
-  const cell = (text: string) => {
-    const node = $createTableCellNode(TableCellHeaderStates.NO_STATUS);
-    $convertFromMarkdownString(text.replace(/\\n/g, "\n").trim(), cellTransformers(), node);
-    return node;
-  };
-  const cells = (line: string) => {
-    const match = TABLE_ROW.exec(line);
-    return match?.[1] === undefined ? null : match[1].split("|").map(cell);
-  };
-  const columns = (table: TableNode): number => {
-    const row = table.getFirstChild();
-    return $isTableRowNode(row) ? row.getChildrenSize() : 0;
-  };
-  return {
-    dependencies: [TableNode, TableRowNode, TableCellNode],
-    export: (node) => {
-      if (!$isTableNode(node)) return null;
-      const out: string[] = [];
-      for (const row of node.getChildren()) {
-        if (!$isTableRowNode(row)) continue;
-        let header = false;
-        const texts: string[] = [];
-        for (const one of row.getChildren()) {
-          if (!$isTableCellNode(one)) continue;
-          texts.push(
-            $convertToMarkdownString(cellTransformers(), one).replace(/\n/g, "\\n").trim(),
-          );
-          if ((one.getHeaderStyles() & TableCellHeaderStates.ROW) !== 0) header = true;
-        }
-        out.push(`| ${texts.join(" | ")} |`);
-        if (header) out.push(`| ${texts.map(() => "---").join(" | ")} |`);
-      }
-      return out.join("\n");
-    },
-    regExp: TABLE_ROW,
-    replace: (parent, _children, match) => {
-      const line = match[0] ?? "";
-      if (isTableRowDivider(line)) {
-        const table = parent.getPreviousSibling();
-        const last = $isTableNode(table) ? table.getLastChild() : null;
-        if ($isTableRowNode(last)) {
-          for (const one of last.getChildren()) {
-            if ($isTableCellNode(one)) {
-              one.setHeaderStyles(TableCellHeaderStates.ROW, TableCellHeaderStates.ROW);
-            }
-          }
-          parent.remove();
-        }
-        return;
-      }
-      const first = cells(line);
-      if (first === null) return;
-      const rows = [first];
-      let width = first.length;
-      let sibling = parent.getPreviousSibling();
-      while ($isParagraphNode(sibling) && sibling.getChildrenSize() === 1) {
-        const text = sibling.getFirstChild();
-        const row = $isTextNode(text) ? cells(text.getTextContent()) : null;
-        if (row === null) break;
-        width = Math.max(width, row.length);
-        rows.unshift(row);
-        const previous = sibling.getPreviousSibling();
-        sibling.remove();
-        sibling = previous;
-      }
-      const table = $createTableNode();
-      for (const row of rows) {
-        const node = $createTableRowNode();
-        for (let index = 0; index < width; index++) node.append(row[index] ?? cell(""));
-        table.append(node);
-      }
-      const previous = parent.getPreviousSibling();
-      if ($isTableNode(previous) && columns(previous) === width) {
-        previous.append(...table.getChildren());
-        parent.remove();
-      } else {
-        parent.replace(table);
-      }
-      table.selectEnd();
-    },
-    type: "element",
-  };
-}
-
-function blockTransformer(block: AnyBlock): ElementTransformer {
-  const from = block.fromMarkdown;
-  return {
-    dependencies: [block.node],
-    export: (node) =>
-      block.$is(node) ? (node.getDefinition().toMarkdown?.(node.getData()) ?? null) : null,
-    regExp: from?.regExp ?? /(?!)/,
-    replace: (parent, _children, match) => {
-      const data = from?.data(match);
-      if (data === null || data === undefined) return false;
-      parent.replace(block.$create().setData(data));
-      return undefined;
-    },
-    type: "element",
-  };
-}
-
-/**
- * Every markdown rule a document reads and writes: Lexical's own, check
- * lists, tables, dividers, mentions as `[@Name](mention:id)`, and each
- * block's own line.
- */
-export function markdownTransformers(
-  options: Pick<DocumentOptions, "blocks" | "tables"> = {},
-): Transformer[] {
-  const all: Transformer[] = [];
-  if (options.tables !== false) all.push(tableTransformer(() => all));
-  const blocks = options.blocks;
-  all.push(
-    HR,
-    ...documentBlocks(blocks).map(blockTransformer),
-    CHECK_LIST,
-    ...ELEMENT_TRANSFORMERS,
-    ...MULTILINE_ELEMENT_TRANSFORMERS,
-    ...TEXT_FORMAT_TRANSFORMERS,
-    MENTION,
-    ...TEXT_MATCH_TRANSFORMERS,
-  );
-  return all;
-}
+export { isSafeUrl } from "./core.tsx";
 
 export interface DocumentOptions {
-  /** Blocks of an app's own, beside images and embeds. */
-  blocks?: readonly AnyBlock[];
-  /** Nodes of an app's own. */
-  nodes?: readonly Klass<LexicalNode>[];
-  /** Tables, with rows and columns added and removed. @default true */
-  tables?: boolean;
+  /** The extensions it starts from. @default `documentPreset` */
+  preset?: readonly EditorExtension[];
+  /** Extensions added to the preset; one named as a preset's own takes its place. */
+  extensions?: readonly EditorExtension[];
   /** Typed markdown becomes formatting: `# `, `- `, `**bold**`. @default true */
   markdownShortcuts?: boolean;
   /** Undo and redo. Off for a shared document, whose own history takes over. @default true */
   history?: boolean;
-  /** An address typed or pasted becomes a link. @default true */
-  autoLink?: boolean;
   theme?: EditorThemeClasses;
 }
 
+/** The extensions a document holds, resolved: the preset's and the ones added. */
+export function documentEditorExtensions(options: DocumentOptions = {}): EditorExtension[] {
+  return resolveExtensions([...(options.preset ?? documentPreset), ...(options.extensions ?? [])]);
+}
+
+/** The blocks a document knows, from every extension it holds. */
+export function documentBlocks(options: DocumentOptions = {}): AnyBlock[] {
+  return documentEditorExtensions(options).flatMap((extension) => extension.blocks ?? []);
+}
+
 /**
- * The extensions a document is built from, in the editor, the renderer and
- * on a server alike, so all three read the same JSON.
+ * Every markdown rule a document reads and writes, from each extension it
+ * holds, the most particular first.
+ */
+export function markdownTransformers(options: DocumentOptions = {}): Transformer[] {
+  const all: Transformer[] = [];
+  const ranked = documentEditorExtensions(options)
+    .map((extension, index) => ({ extension, index }))
+    .toSorted(
+      (a, b) =>
+        (b.extension.markdownPriority ?? 0) - (a.extension.markdownPriority ?? 0) ||
+        a.index - b.index,
+    );
+  for (const { extension } of ranked) {
+    const rules = extension.markdown;
+    all.push(...(typeof rules === "function" ? rules(() => all) : (rules ?? [])));
+  }
+  return all;
+}
+
+function mergeThemes(base: EditorThemeClasses, extensions: readonly EditorExtension[]) {
+  const theme: EditorThemeClasses = { ...base };
+  for (const extension of extensions) Object.assign(theme, extension.theme);
+  return theme;
+}
+
+/** Each extension's keys, the first that answers taking the key. */
+function registerKeys(editor: LexicalEditor, extensions: readonly EditorExtension[]): () => void {
+  const bindings = extensions.flatMap((extension) => extension.keys ?? []);
+  if (bindings.length === 0) return () => undefined;
+  return editor.registerCommand(
+    KEY_DOWN_COMMAND,
+    (event) => {
+      for (const binding of bindings) {
+        if (!keysMatch(event, binding.keys)) continue;
+        if (binding.run(editor, event) === false) continue;
+        event.preventDefault();
+        return true;
+      }
+      return false;
+    },
+    COMMAND_PRIORITY_LOW,
+  );
+}
+
+/** Each extension's paste rules, the highest first; what none takes is Lexical's own paste. */
+function registerPaste(editor: LexicalEditor, extensions: readonly EditorExtension[]): () => void {
+  const rules = extensions
+    .flatMap((extension) => extension.paste ?? [])
+    .toSorted((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+  if (rules.length === 0) return () => undefined;
+  return editor.registerCommand(
+    PASTE_COMMAND,
+    (event) => {
+      const data = "clipboardData" in event ? event.clipboardData : null;
+      const selection = $getSelection();
+      if (data === null || !$isRangeSelection(selection)) return false;
+      for (const rule of rules) {
+        if (!rule.$paste(data, selection, editor)) continue;
+        event.preventDefault();
+        return true;
+      }
+      return false;
+    },
+    COMMAND_PRIORITY_HIGH,
+  );
+}
+
+/**
+ * The Lexical extensions a document is built from, in the editor, the
+ * renderer and on a server alike, so all three read the same JSON.
  */
 export function documentExtensions(options: DocumentOptions = {}): AnyLexicalExtensionArgument[] {
-  const blocks = documentBlocks(options.blocks);
-  const extensions: AnyLexicalExtensionArgument[] = [
-    RichTextExtension,
-    ListExtension,
-    CheckListExtension,
-    configExtension(LinkExtension, { validateUrl: isSafeUrl }),
-    CodeHighlightExtension,
-    HorizontalRuleExtension,
+  const resolved = documentEditorExtensions(options);
+  const extensions: AnyLexicalExtensionArgument[] = resolved.flatMap(
+    (extension) => extension.lexical ?? [],
+  );
+  extensions.push(
     defineExtension({
       name: "@barqjs/arc/document",
-      nodes: () => [MentionNode, ...blocks.map((block) => block.node), ...(options.nodes ?? [])],
-      theme: options.theme ?? editorTheme(),
+      nodes: () => [
+        ...resolved.flatMap((extension) => extension.nodes ?? []),
+        ...resolved.flatMap((extension) => (extension.blocks ?? []).map((block) => block.node)),
+      ],
+      theme: mergeThemes(options.theme ?? editorTheme(), resolved),
+      register: (editor) =>
+        mergeRegister(
+          provideEditorExtensions(editor, resolved),
+          ...resolved.map((extension) => extension.register?.(editor) ?? (() => undefined)),
+          registerKeys(editor, resolved),
+          registerPaste(editor, resolved),
+        ),
     }),
-  ];
-  if (options.tables !== false) {
-    extensions.push(configExtension(TableExtension, { hasHorizontalScroll: true }));
-  }
-  if (options.autoLink !== false) {
-    extensions.push(
-      configExtension(AutoLinkExtension, { matchers: [autoLinkUrlMatcher, autoLinkEmailMatcher] }),
-    );
-  }
+  );
   if (options.history !== false) extensions.push(HistoryExtension);
   if (options.markdownShortcuts !== false) {
     const transformers = markdownTransformers(options);

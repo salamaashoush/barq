@@ -89,7 +89,7 @@ describe("RichTextRenderer", () => {
       component: (props) => <aside data-editable={String(props.editable)}>{props.data.text}</aside>,
       fromMarkdown: { regExp: /^> \[!note\] (.+)$/, data: (match) => ({ text: match[1] ?? "" }) },
     });
-    render(() => <RichTextRenderer markdown="> [!note] Bring water" blocks={[Note]} />);
+    render(() => <RichTextRenderer markdown="> [!note] Bring water" extensions={[Note]} />);
     const aside = document.querySelector("aside");
     expect(aside?.textContent).toBe("Bring water");
     expect(aside?.getAttribute("data-editable")).toBe("false");

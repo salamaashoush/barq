@@ -1,9 +1,9 @@
 import {
   type Child,
+  For,
   Show,
   createEffect,
   createMemo,
-  createSignal,
   createUniqueId,
   untrack,
 } from "@barqjs/core";
@@ -11,18 +11,11 @@ import { variants } from "@barqjs/css";
 import { tokens } from "@barqjs/ui/theme/tokens";
 import { announce } from "@barqjs/aria/live";
 import { ContentEditable, LexicalComposer, useLexicalEditor } from "@barqjs/lexical";
-import { Image as ImageIcon } from "@barqjs/lucide/icons/image";
-import { Minus } from "@barqjs/lucide/icons/minus";
-import { SquarePlay } from "@barqjs/lucide/icons/square-play";
-import { Table } from "@barqjs/lucide/icons/table";
 import type { JSX } from "@barqjs/web";
 import {
   type AnyLexicalExtensionArgument,
-  COMMAND_PRIORITY_LOW,
-  KEY_DOWN_COMMAND,
   type LexicalEditor,
   type SerializedEditorState,
-  mergeRegister,
 } from "lexical";
 import { $convertFromMarkdownString } from "@lexical/markdown";
 
@@ -46,40 +39,21 @@ import {
   truncate,
   type,
 } from "../style/index.ts";
-import { type AnyBlock, labelOf } from "./blocks.tsx";
-import {
-  $insertBlock,
-  type Mark,
-  type TextBlockType,
-  OPEN_EMBED_DIALOG_COMMAND,
-  OPEN_IMAGE_DIALOG_COMMAND,
-  OPEN_TABLE_DIALOG_COMMAND,
-  indent,
-  insertDivider,
-  insertTable,
-  setTextBlock,
-  toggleMark,
-} from "./commands.ts";
+import { labelOf } from "./blocks.tsx";
 import {
   type DocumentOptions,
   type DocumentValue,
+  documentEditorExtensions,
   documentExtensions,
   markdownTransformers,
 } from "./document.ts";
+import { commandsOf, editorExtensions } from "./extension.ts";
 import { useRegistration } from "./hooks.ts";
 import { EditorDocument } from "./renderer.tsx";
 import { editableText } from "./theme.ts";
 import { FloatingFormatToolbar, LinkEditor } from "./floating.tsx";
-import {
-  DEFAULT_EMBED_PROVIDERS,
-  type EmbedProvider,
-  provideEditorUploads,
-  settleUpload,
-} from "./media.tsx";
-import { EmbedDialog, ImageDialog, ImagePaste } from "./media-insert.tsx";
+import { provideEditorUploads, settleUpload } from "./media.tsx";
 import { type AutosaveOptions, useCharacterCount, useEditorAutosave } from "./state.ts";
-import { TableControls } from "./table-controls.tsx";
-import { TableDialog } from "./table-size.tsx";
 import { DEFAULT_TOOLS, type EditorTool, EditorToolbar, type InsertAction } from "./toolbar.tsx";
 
 export const richTextEditorStyles = variants({
@@ -129,7 +103,10 @@ export const richTextEditorStyles = variants({
 
 type Slots = ReturnType<typeof richTextEditorStyles>;
 
-export interface RichTextEditorProps extends Customisable<Slots>, Omit<DocumentOptions, "theme"> {
+export interface RichTextEditorProps
+  extends
+    Customisable<Slots>,
+    Pick<DocumentOptions, "preset" | "extensions" | "markdownShortcuts" | "history"> {
   /** Names the text box. */
   label?: string;
   "aria-labelledby"?: string;
@@ -156,12 +133,10 @@ export interface RichTextEditorProps extends Customisable<Slots>, Omit<DocumentO
   upload?: (file: File, context: UploadContext) => Promise<string>;
   /** The largest picture accepted, in bytes. */
   maxImageSize?: number;
-  /** Sites whose addresses become embeds, or `false` for none. @default YouTube and Vimeo */
-  embeds?: readonly EmbedProvider[] | false;
   /** Saves as typing pauses, with the status in the footer. */
   autosave?: AutosaveOptions;
-  /** Lexical extensions of an app's own. */
-  extensions?: readonly AnyLexicalExtensionArgument[];
+  /** Lexical extensions of an app's own, beside the editor extensions. */
+  lexical?: readonly AnyLexicalExtensionArgument[];
   /** A shared document: the editor opens empty for the shared state to fill and its history is the shared one. */
   collaborative?: boolean;
   /** `default` is a field's box; `plain` has none, for a page that is the editor. */
@@ -190,49 +165,11 @@ function heights(
   return out;
 }
 
-const SHORTCUTS: readonly { keys: string; run: (editor: LexicalEditor) => void }[] = [
-  { keys: "Mod+e", run: (editor) => toggleMark(editor, "code" satisfies Mark) },
-  { keys: "Mod+Shift+x", run: (editor) => toggleMark(editor, "strikethrough") },
-  { keys: "Mod+Shift+7", run: (editor) => setTextBlock(editor, "number" satisfies TextBlockType) },
-  { keys: "Mod+Shift+8", run: (editor) => setTextBlock(editor, "bullet") },
-  { keys: "Mod+Shift+9", run: (editor) => setTextBlock(editor, "check") },
-  { keys: "Mod+Alt+0", run: (editor) => setTextBlock(editor, "paragraph") },
-  { keys: "Mod+Alt+1", run: (editor) => setTextBlock(editor, "h1") },
-  { keys: "Mod+Alt+2", run: (editor) => setTextBlock(editor, "h2") },
-  { keys: "Mod+Alt+3", run: (editor) => setTextBlock(editor, "h3") },
-  { keys: "Mod+]", run: (editor) => indent(editor, "in") },
-  { keys: "Mod+[", run: (editor) => indent(editor, "out") },
-];
-
-function matches(event: KeyboardEvent, keys: string): boolean {
-  const steps = keys.split("+");
-  const key = steps.at(-1)!;
-  const code = /^\d$/.test(key) ? `Digit${key}` : undefined;
-  return (
-    (event.metaKey || event.ctrlKey) === steps.includes("Mod") &&
-    event.shiftKey === steps.includes("Shift") &&
-    event.altKey === steps.includes("Alt") &&
-    (event.key.toLowerCase() === key || event.code === code)
-  );
-}
-
-/** The shortcuts Lexical leaves to an app: inline code, lists, headings, indent. */
-export function EditorShortcuts() {
+/** What every extension the editor holds mounts: its panels, dialogs and listeners. */
+export function ExtensionPlugins() {
   const editor = useLexicalEditor();
-  useRegistration(() =>
-    editor.registerCommand(
-      KEY_DOWN_COMMAND,
-      (event) => {
-        const found = SHORTCUTS.find((one) => matches(event, one.keys));
-        if (found === undefined) return false;
-        event.preventDefault();
-        found.run(editor);
-        return true;
-      },
-      COMMAND_PRIORITY_LOW,
-    ),
-  );
-  return null;
+  const plugins = editorExtensions(editor).flatMap((extension) => extension.plugins ?? []);
+  return <For each={plugins}>{(Plugin: () => JSX.Element) => <Plugin />}</For>;
 }
 
 /** What the editor's props reach once it is built: read-only, changes, autosave, the counter. */
@@ -260,6 +197,10 @@ export function EditorBridge(props: {
 }
 
 function Footer(props: { cls: Slots; maxLength?: number; autosave?: AutosaveOptions }) {
+  const editor = useLexicalEditor();
+  const footers = editorExtensions(editor).flatMap((extension) =>
+    extension.footer === undefined ? [] : [extension.footer],
+  );
   const messages = useArcMessages();
   const counter = useCharacterCount(() => props.maxLength);
   const autosave = props.autosave === undefined ? undefined : useEditorAutosave(props.autosave);
@@ -283,6 +224,7 @@ function Footer(props: { cls: Slots; maxLength?: number; autosave?: AutosaveOpti
   };
   return (
     <div class={props.cls.footer} data-slot="rich-text-editor-footer">
+      <For each={footers}>{(Part: () => JSX.Element) => <Part />}</For>
       <span class={props.cls.status} data-slot="rich-text-editor-status" role="status">
         {status()}
       </span>
@@ -307,6 +249,7 @@ function Footer(props: { cls: Slots; maxLength?: number; autosave?: AutosaveOpti
 /** The images an editor uploads, through arc's queue. */
 function Uploads(props: {
   upload: (file: File, context: UploadContext) => Promise<string>;
+  maxSize?: number;
   children: Child;
 }) {
   const editor = useLexicalEditor();
@@ -314,125 +257,23 @@ function Uploads(props: {
     upload: (file, context) => props.upload(file, context),
     onUploaded: (item) => settleUpload(editor, item),
   });
-  provideEditorUploads(editor, { queue });
+  provideEditorUploads(editor, { queue, maxSize: untrack(() => props.maxSize) });
   return <>{props.children}</>;
 }
 
-/** The toolbar with what the editor can insert: tables, images, embeds, a divider, an app's blocks. */
-function EditorTools(props: {
-  tools: readonly EditorTool[];
-  tables: boolean;
-  images: boolean;
-  embeds: readonly EmbedProvider[] | false;
-  blocks: readonly AnyBlock[];
-  maxImageSize?: number;
-}) {
+/** The toolbar, with what the editor's extensions offer to insert. */
+function EditorTools(props: { tools: readonly EditorTool[] }) {
   const editor = useLexicalEditor();
   const messages = useArcMessages();
-  const [dialog, setDialog] = createSignal<"image" | "embed" | "table" | null>(null, {
-    ownedWrite: true,
-  });
-  useRegistration(() =>
-    mergeRegister(
-      editor.registerCommand(
-        OPEN_IMAGE_DIALOG_COMMAND,
-        () => {
-          if (!props.images) return false;
-          setDialog("image");
-          return true;
-        },
-        COMMAND_PRIORITY_LOW,
-      ),
-      editor.registerCommand(
-        OPEN_TABLE_DIALOG_COMMAND,
-        () => {
-          if (!props.tables) return false;
-          setDialog("table");
-          return true;
-        },
-        COMMAND_PRIORITY_LOW,
-      ),
-      editor.registerCommand(
-        OPEN_EMBED_DIALOG_COMMAND,
-        () => {
-          if (props.embeds === false) return false;
-          setDialog("embed");
-          return true;
-        },
-        COMMAND_PRIORITY_LOW,
-      ),
-    ),
+  const insert = createMemo((): InsertAction[] =>
+    commandsOf(editorExtensions(editor), editor, "insert").map((command) => ({
+      id: command.id,
+      label: labelOf(command.label, messages()),
+      icon: command.icon,
+      onInsert: () => command.run(editor),
+    })),
   );
-  const insert = createMemo((): InsertAction[] => {
-    const words = messages();
-    const actions: InsertAction[] = [];
-    if (props.tables) {
-      actions.push({
-        id: "table",
-        label: words.table,
-        icon: () => <Table />,
-        onInsert: () => setDialog("table"),
-      });
-    }
-    if (props.images) {
-      actions.push({
-        id: "image",
-        label: words.image,
-        icon: () => <ImageIcon />,
-        onInsert: () => setDialog("image"),
-      });
-    }
-    if (props.embeds !== false) {
-      actions.push({
-        id: "embed",
-        label: words.embed,
-        icon: () => <SquarePlay />,
-        onInsert: () => setDialog("embed"),
-      });
-    }
-    actions.push({
-      id: "divider",
-      label: words.divider,
-      icon: () => <Minus />,
-      onInsert: () => insertDivider(editor),
-    });
-    for (const block of props.blocks) {
-      if (block.insertable === false) continue;
-      actions.push({
-        id: block.type,
-        label: labelOf(block.label, words),
-        icon: block.icon,
-        onInsert: () => editor.update(() => void $insertBlock(block.$create())),
-      });
-    }
-    return actions;
-  });
-  return (
-    <>
-      <EditorToolbar tools={props.tools} insert={insert()} />
-      <Show when={props.tables}>
-        <TableDialog
-          open={dialog() === "table"}
-          onOpenChange={(open) => setDialog(open ? "table" : null)}
-          onPick={(rows, columns) => insertTable(editor, rows, columns)}
-        />
-      </Show>
-      <Show when={props.images}>
-        <ImageDialog
-          open={dialog() === "image"}
-          onOpenChange={(open) => setDialog(open ? "image" : null)}
-          maxSize={props.maxImageSize}
-        />
-      </Show>
-      <Show when={props.embeds !== false}>
-        <EmbedDialog
-          open={dialog() === "embed"}
-          onOpenChange={(open) => setDialog(open ? "embed" : null)}
-          providers={props.embeds === false ? [] : (props.embeds ?? DEFAULT_EMBED_PROVIDERS)}
-        />
-      </Show>
-    </>
-  );
+  return <EditorToolbar tools={props.tools} insert={insert()} />;
 }
 
 /**
@@ -468,15 +309,14 @@ export function RichTextEditor(props: RichTextEditorProps) {
         ? DEFAULT_TOOLS
         : props.toolbar;
 
-  const options = untrack(() => ({
-    blocks: props.blocks,
-    nodes: props.nodes,
-    tables: props.tables,
+  const options = untrack((): DocumentOptions => ({
+    preset: props.preset,
+    extensions: props.extensions,
     markdownShortcuts: props.markdownShortcuts,
-    autoLink: props.autoLink,
     history: props.collaborative === true ? false : props.history,
   }));
-  const extensions = untrack(() => [...documentExtensions(options), ...(props.extensions ?? [])]);
+  const resolved = documentEditorExtensions(options);
+  const extensions = untrack(() => [...documentExtensions(options), ...(props.lexical ?? [])]);
   const editorState = untrack(() => {
     if (props.collaborative === true) return null;
     if (props.defaultValue !== undefined) {
@@ -493,16 +333,7 @@ export function RichTextEditor(props: RichTextEditorProps) {
   const body = (): Child => (
     <>
       <Show when={tools()}>
-        {(list: () => readonly EditorTool[]) => (
-          <EditorTools
-            tools={list()}
-            tables={props.tables !== false}
-            images={props.upload !== undefined}
-            embeds={props.embeds ?? DEFAULT_EMBED_PROVIDERS}
-            blocks={props.blocks ?? []}
-            maxImageSize={props.maxImageSize}
-          />
-        )}
+        {(list: () => readonly EditorTool[]) => <EditorTools tools={list()} />}
       </Show>
       <div class={cls().body} data-slot="rich-text-editor-body">
         <ContentEditable
@@ -519,7 +350,8 @@ export function RichTextEditor(props: RichTextEditorProps) {
               <EditorDocument
                 value={untrack(() => props.defaultValue)}
                 markdown={untrack(() => props.defaultMarkdown)}
-                blocks={options.blocks}
+                preset={options.preset}
+                extensions={options.extensions}
               />
             )
           }
@@ -536,20 +368,20 @@ export function RichTextEditor(props: RichTextEditorProps) {
           }
         />
       </div>
-      <Show when={props.maxLength !== undefined || props.autosave !== undefined}>
+      <Show
+        when={
+          props.maxLength !== undefined ||
+          props.autosave !== undefined ||
+          resolved.some((extension) => extension.footer !== undefined)
+        }
+      >
         <Footer cls={cls()} maxLength={props.maxLength} autosave={props.autosave} />
       </Show>
       <Show when={props.floatingToolbar !== false}>
         <FloatingFormatToolbar />
       </Show>
       <LinkEditor />
-      <Show when={props.tables !== false}>
-        <TableControls />
-      </Show>
-      <Show when={props.upload !== undefined}>
-        <ImagePaste />
-      </Show>
-      <EditorShortcuts />
+      <ExtensionPlugins />
       <EditorBridge readOnly={props.readOnly} onChange={props.onChange} onEditor={props.onEditor} />
       {props.children}
     </>
@@ -576,7 +408,13 @@ export function RichTextEditor(props: RichTextEditorProps) {
         contentEditable={null}
       >
         <>
-          {props.upload === undefined ? body() : <Uploads upload={props.upload}>{body()}</Uploads>}
+          {props.upload === undefined ? (
+            body()
+          ) : (
+            <Uploads upload={props.upload} maxSize={props.maxImageSize}>
+              {body()}
+            </Uploads>
+          )}
         </>
       </LexicalComposer>
     </div>

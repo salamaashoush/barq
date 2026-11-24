@@ -8,6 +8,7 @@ import {
   useLexicalEditor,
   useLexicalNodeSelection,
 } from "@barqjs/lexical";
+import { type ElementTransformer } from "@lexical/markdown";
 import {
   $getNodeByKey,
   type ElementFormatType,
@@ -20,6 +21,8 @@ import {
 } from "lexical";
 
 import type { ArcMessages } from "../components/messages.ts";
+import { $insertBlock } from "./commands.ts";
+import type { EditorExtension } from "./extension.ts";
 
 /** What a block's component is handed, in the editor and in `RichTextRenderer` alike. */
 export interface BlockProps<Data> {
@@ -181,8 +184,12 @@ export interface AnyBlock {
   $is(node: LexicalNode | null | undefined): node is BlockNode;
 }
 
-/** A block type an editor knows: its definition, its node class, and how to make one. */
-export interface Block<Data = unknown> extends BlockDefinition<Data> {
+/**
+ * A block type an editor knows: its definition, its node class, and how to
+ * make one. It is an editor extension of its own, named by its type, which
+ * offers it in the pickers and reads and writes its line of markdown.
+ */
+export interface Block<Data = unknown> extends BlockDefinition<Data>, EditorExtension {
   readonly node: Klass<BlockNode>;
   readonly definition: BlockDefinition<unknown>;
   $create(data?: Data): TypedBlockNode<Data>;
@@ -207,7 +214,7 @@ export interface Block<Data = unknown> extends BlockDefinition<Data> {
  *   ),
  * });
  *
- * <BlockEditor blocks={[Callout]} />
+ * <BlockEditor extensions={[Callout]} />
  * ```
  */
 export function defineBlock<Data>(definition: BlockDefinition<Data>): Block<Data> {
@@ -230,13 +237,52 @@ export function defineBlock<Data>(definition: BlockDefinition<Data>): Block<Data
       return definition as unknown as BlockDefinition<unknown>;
     }
   }
-  return {
+  const blocks: AnyBlock[] = [];
+  const block: Block<Data> = {
     ...definition,
+    name: definition.type,
     node: DefinedBlockNode,
     definition: definition as unknown as BlockDefinition<unknown>,
     $create: (data) =>
       new DefinedBlockNode(data ?? definition.defaultData()) as TypedBlockNode<Data>,
     $is: (node): node is TypedBlockNode<Data> => node instanceof DefinedBlockNode,
+    blocks,
+    commands:
+      definition.insertable === false
+        ? []
+        : [
+            {
+              id: definition.type,
+              label: definition.label,
+              group: definition.group,
+              icon: definition.icon,
+              keywords: definition.keywords,
+              description: definition.description,
+              run: (editor) => editor.update(() => void $insertBlock(block.$create())),
+            },
+          ],
+    markdown: [],
+  };
+  blocks.push(block);
+  (block.markdown as ElementTransformer[]).push(blockTransformer(block));
+  return block;
+}
+
+/** The block's line of markdown, read as it is typed and on import, and written on export. */
+function blockTransformer(block: AnyBlock): ElementTransformer {
+  const from = block.fromMarkdown;
+  return {
+    dependencies: [block.node],
+    export: (node) =>
+      block.$is(node) ? (node.getDefinition().toMarkdown?.(node.getData()) ?? null) : null,
+    regExp: from?.regExp ?? /(?!)/,
+    replace: (parent, _children, match) => {
+      const data = from?.data(match);
+      if (data === null || data === undefined) return false;
+      parent.replace(block.$create().setData(data));
+      return undefined;
+    },
+    type: "element",
   };
 }
 
