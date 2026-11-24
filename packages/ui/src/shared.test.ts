@@ -127,19 +127,19 @@ function valueOf(classes: readonly string[], property: string): string {
 describe("the conditions", () => {
   test("every viewport and container step is the width its token names", () => {
     for (const step of Object.keys(breakpoints) as Breakpoint[]) {
-      expect(on[step]).toBe(`@media ${breakpointQuery(step)}`);
+      expect<string>(on[step]).toBe(`@media ${breakpointQuery(step)}`);
     }
     for (const step of Object.keys(containers) as ContainerStep[]) {
-      expect(on[`cq${step[0]?.toUpperCase()}${step.slice(1)}` as "cqSm"]).toBe(
+      expect<string>(on[`cq${step[0]?.toUpperCase()}${step.slice(1)}` as "cqSm"]).toBe(
         `@container (width >= ${containers[step]})`,
       );
     }
   });
 
   test("the steps that end do so where the next one starts", () => {
-    expect(on.smOnly).toBe(`@media (${breakpoints.sm} <= width < ${breakpoints.md})`);
-    expect(on.lgOnly).toBe(`@media (${breakpoints.lg} <= width < ${breakpoints.xl})`);
-    expect(on.cqMdOnly).toBe(`@container (${containers.md} <= width < ${containers.lg})`);
+    expect<string>(on.smOnly).toBe(`@media (${breakpoints.sm} <= width < ${breakpoints.md})`);
+    expect<string>(on.lgOnly).toBe(`@media (${breakpoints.lg} <= width < ${breakpoints.xl})`);
+    expect<string>(on.cqMdOnly).toBe(`@container (${containers.md} <= width < ${containers.lg})`);
   });
 
   test("the groups that spell a condition out spell it as the set does", () => {
@@ -206,7 +206,7 @@ describe("forced colours and more contrast", () => {
 describe("directional icons", () => {
   test("turn to face a right-to-left reading direction", () => {
     expect(sheet()).toMatch(
-      new RegExp(`\\.${icon.directional.split(" ")[0] ?? ""}:dir\\(rtl\\)\\{scale:-1 1\\}`),
+      new RegExp(`\\.${icon.directional.split(" ")[0] ?? ""}:dir\\(rtl\\)\\{rotate:180deg\\}`),
     );
   });
 });

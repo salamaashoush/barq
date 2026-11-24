@@ -116,12 +116,12 @@ embeds.
 - pending (3b): Mermaid and text-to-diagram dialog; their extra tools entries are disabled
 - pending (3b): welcome screen and its hints
 - pending (3b): colour and font top picks customised by dragging, and reset
-- pending (3b): font picker previews a font on hover
+- done: font picker previews the highlighted font on the selection and restores it on close; Shift+F opens it (`pickers.test.tsx`)
 - pending (3b): command palette's recently used commands and library items
 - pending (3b): stats panel's uncropped image size, group rows and scene version
 - pending (3b): pen mode button for a detected pen; compact and phone layouts of the panels
 - done: `toggleWrap` (W): a text into a container, texts into new containers and back, labels freed and rewrapped, shapes in and out of a frame (`wrap.test.ts`)
-- pending (3b): eye dropper's Alt to pick for the other colour
+- done: eye dropper: a held pointer previews, Alt picks the other colour, Alt held in a picker keeps it open, dark mode's filter taken off; I, Shift+S and Shift+G; S and G open the colour pickers (`pickers.test.tsx`)
 
 Not carried over: the main menu's links to Excalidraw's own social accounts.
 

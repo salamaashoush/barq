@@ -1789,6 +1789,7 @@
         "button",
         "layers",
         "props",
+        "shared-icon",
         "slot",
         "sr-only"
       ],

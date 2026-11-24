@@ -19,6 +19,7 @@ import {
 import { Toolbar } from "./toolbar.tsx";
 import { ChartDialog } from "./chart-dialog.tsx";
 import { CommandPalette } from "./command-palette.tsx";
+import { EditorKeys } from "./editor-keys.tsx";
 import { ImageExportDialog, JSONExportDialog } from "./export-dialogs.tsx";
 import { HelpDialog } from "./help-dialog.tsx";
 import { HintViewer } from "./hint-viewer.tsx";
@@ -176,6 +177,7 @@ function Layout(props: { mainMenu?: () => Child }) {
       <ChartDialog />
       <ImageExportDialog />
       <JSONExportDialog />
+      <EditorKeys />
       <EditorToasts />
     </div>
   );

@@ -29,7 +29,7 @@ export const icon = ui.create({
    * than a direction (a clock, a check) is the same either way.
    */
   directional: {
-    ":dir(rtl)": { scale: "-1 1" },
+    ":dir(rtl)": { rotate: "180deg" },
   },
 
   /** And the colour, on the same terms. */

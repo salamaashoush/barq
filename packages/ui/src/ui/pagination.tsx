@@ -10,6 +10,7 @@ import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { buttonVariants, type ButtonSize } from "./button.tsx";
 import { srOnly } from "./sr-only.ts";
+import { icon } from "../lib/shared-icon.ts";
 
 const ui = layer("barq.ui");
 
@@ -117,11 +118,7 @@ export interface PaginationEdgeProps extends Omit<PaginationLinkProps, "size"> {
 }
 
 /** A chevron means "towards the start" or "towards the end", which right to left is the other way. */
-const mirrored = ui({
-  ":dir(rtl)": {
-    rotate: "180deg",
-  },
-});
+const mirrored = ui(icon.directional);
 
 export function PaginationPrevious(props: PaginationEdgeProps) {
   return (

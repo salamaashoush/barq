@@ -371,15 +371,12 @@ const subTrigger = ui(
   },
 );
 
-const subChevron = ui({
+// The submenu opens towards the end of the line, and so the arrow points
+// there too.
+const subChevron = ui(icon.directional, {
   marginInlineStart: "auto",
   width: "calc(var(--spacing) * 4)",
   height: "calc(var(--spacing) * 4)",
-  // The submenu opens towards the end of the line, and so the arrow points
-  // there too.
-  ":dir(rtl)": {
-    rotate: "180deg",
-  },
 });
 
 const group = ui({
