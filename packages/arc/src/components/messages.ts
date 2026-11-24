@@ -305,6 +305,30 @@ export interface ArcMessages {
   passkeyDescription: string;
   usePasskey: string;
   useAnotherWay: string;
+  notifications: string;
+  notificationsUnread: (count: number) => string;
+  allNotifications: string;
+  unreadNotifications: string;
+  markAllRead: string;
+  markRead: string;
+  markUnread: string;
+  unread: string;
+  unreadItem: (title: string) => string;
+  noNotifications: string;
+  allCaughtUp: string;
+  yesterday: string;
+  other: string;
+  viewAll: string;
+  notificationSettings: string;
+  showMoreResults: string;
+  searchFailedPlain: string;
+  createOption: (text: string) => string;
+  showSuggestions: string;
+  chosenItems: (label: string) => string;
+  settings: string;
+  allSettings: string;
+  saved: string;
+  dangerZone: string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -610,6 +634,30 @@ export const ENGLISH: ArcMessages = {
   passkeyDescription: "Confirm it is you with your fingerprint, face or screen lock.",
   usePasskey: "Use passkey",
   useAnotherWay: "Use another way",
+  notifications: "Notifications",
+  notificationsUnread: (count) => `Notifications, ${String(count)} unread`,
+  allNotifications: "All",
+  unreadNotifications: "Unread",
+  markAllRead: "Mark all as read",
+  markRead: "Mark as read",
+  markUnread: "Mark as unread",
+  unread: "Unread",
+  unreadItem: (title) => `Unread: ${title}`,
+  noNotifications: "No notifications yet",
+  allCaughtUp: "You're all caught up",
+  yesterday: "Yesterday",
+  other: "Other",
+  viewAll: "View all",
+  notificationSettings: "Notification settings",
+  showMoreResults: "Show more results",
+  searchFailedPlain: "The search did not work. Try again.",
+  createOption: (text) => `Create “${text}”`,
+  showSuggestions: "Show suggestions",
+  chosenItems: (label) => `Chosen ${label.toLocaleLowerCase()}`,
+  settings: "Settings",
+  allSettings: "All settings",
+  saved: "Saved",
+  dangerZone: "Danger zone",
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");

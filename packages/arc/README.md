@@ -719,6 +719,40 @@ import { CommentThreadList } from "@barqjs/arc";
 - `PersonAvatar`: one person's photo, or their initials while it loads or when
   it fails, which `AvatarStack` and the comments draw.
 
+## Notifications
+
+```tsx
+import { NotificationCenter, useNotifications } from "@barqjs/arc";
+
+const feed = useNotifications({ initial: notices(), stream: { url: "/api/notifications" } });
+
+<NotificationCenter
+  items={feed.items()}
+  onMarkRead={(ids, read) => feed.markRead(ids, read)}
+  onMarkAllRead={feed.markAllRead}
+  allHref="/notifications"
+  preferencesHref="/settings/notifications"
+/>;
+```
+
+- `NotificationCenter`: the bell in an app's top bar, named with its unread
+  count, opening the feed in a popover beside it or a sheet from the bottom
+  under a finger, with View all and the reader's settings at its foot.
+- `NotificationFeed`: the notifications themselves, on a page or in the
+  bell's panel. They are grouped under today, yesterday and the dates before
+  (`groupBy` takes `"source"` or `"none"`, and an item's own `group` wins),
+  each with its actor's avatar or a toned icon, what happened as a link,
+  a line of it, where and when, and its own `actions`. An unread one is
+  marked in a dot and in words, opening one marks it read, each toggles read
+  and unread, Mark all as read reads them all, and All and Unread filter
+  them with their counts. It draws placeholders while `isLoading`, Load more
+  with `onLoadMore`, and an empty state, "You're all caught up" for unread.
+  `now` and `timeZone` let a server and a hydrating page agree on the day.
+- `useNotifications`: the list that new ones are added to as they arrive,
+  from an event stream (`eventSource`) or a socket (`websocket`) through
+  `@barqjs/primitives`, every message in order, with `markRead`,
+  `markAllRead`, `remove` and `replace` for the server's own list.
+
 ## Media
 
 - `Image`: a picture that holds its place, loads when it is near and fails

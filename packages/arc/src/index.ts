@@ -263,6 +263,20 @@ export {
   viewSwitcherStyles,
 } from "./components/view-switcher.tsx";
 export {
+  type NotificationAction,
+  NotificationCenter,
+  type NotificationCenterProps,
+  NotificationFeed,
+  type NotificationFeedProps,
+  type NotificationFilter,
+  type NotificationItem,
+  type NotificationStream,
+  type NotificationsFeed,
+  type UseNotificationsOptions,
+  notificationsStyles,
+  useNotifications,
+} from "./components/notifications.tsx";
+export {
   HighlightMatches,
   type HighlightMatchesProps,
   type MatchRange,
