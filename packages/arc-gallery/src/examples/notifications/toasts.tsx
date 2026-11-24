@@ -1,12 +1,13 @@
 import { Button, Inline, toast } from "@barqjs/arc";
 
-const publish = (): Promise<string> =>
-  new Promise((resolve, reject) => {
+function publish(): Promise<string> {
+  return new Promise((resolve, reject) => {
     setTimeout(
       () => (Math.random() < 0.75 ? resolve("v2.4.1") : reject(new Error("Build failed"))),
       1500,
     );
   });
+}
 
 export default function Toasts() {
   return (

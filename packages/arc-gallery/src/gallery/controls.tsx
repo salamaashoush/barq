@@ -45,9 +45,15 @@ const viewports = gallery({ display: { default: "none", [on.md]: "flex" } });
 
 const VIEWPORT_ICONS = { desktop: Monitor, tablet: Tablet, phone: Smartphone } as const;
 
+export interface ControlsProps {
+  api: SettingsApi;
+}
+
 /** The gallery's top bar: search, the viewport frame, the look, light and dark. */
-export function Controls(props: { api: SettingsApi }) {
-  const settings = () => props.api.settings();
+export function Controls(props: ControlsProps) {
+  function settings() {
+    return props.api.settings();
+  }
   return (
     <div class={bar} data-slot="gallery-controls">
       <Button variant="outline" size="sm" onPress={() => openCommandMenu()}>

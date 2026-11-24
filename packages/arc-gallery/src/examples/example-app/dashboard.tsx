@@ -76,11 +76,12 @@ const COLUMNS: DataTableColumn<Invoice>[] = [
   },
 ];
 
-const total = (status: Invoice["status"]) =>
-  INVOICES.filter((invoice) => invoice.status === status).reduce(
+function total(status: Invoice["status"]) {
+  return INVOICES.filter((invoice) => invoice.status === status).reduce(
     (sum, invoice) => sum + invoice.amount,
     0,
   );
+}
 
 export default function Dashboard() {
   const [query, setQuery] = createSignal("");
@@ -96,10 +97,10 @@ export default function Dashboard() {
     );
   });
 
-  const clear = () => {
+  function clear() {
     setQuery("");
     setStatuses([]);
-  };
+  }
 
   return (
     <Stack gap={8}>

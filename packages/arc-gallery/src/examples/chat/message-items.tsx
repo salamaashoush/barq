@@ -7,7 +7,12 @@ import { ME, TEAM } from "../../data/chat.ts";
 const LINA = TEAM[1] ?? ME;
 const AT = "2026-11-24T09:00:00.000Z";
 
-const STATES: { label: string; message: ChatMessage }[] = [
+interface MessageState {
+  label: string;
+  message: ChatMessage;
+}
+
+const STATES: MessageState[] = [
   {
     label: "Sent, with reactions",
     message: {

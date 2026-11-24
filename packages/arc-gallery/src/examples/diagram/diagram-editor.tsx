@@ -10,14 +10,14 @@ import {
 
 import { acmeArchitecture } from "../../data/architecture.ts";
 
-const download = (blob: Blob, name: string): void => {
+function download(blob: Blob, name: string): void {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
   link.download = name;
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-};
+}
 
 export default function DiagramEditorExample() {
   const [grid, setGrid] = createSignal(false);
@@ -25,11 +25,13 @@ export default function DiagramEditorExample() {
   const [count, setCount] = createSignal(0);
   let editor: DiagramEditorApi | undefined;
 
-  const scene = () => ({
-    elements: editor?.getSceneElements() ?? [],
-    appState: { ...editor?.getAppState(), exportBackground: true },
-    files: editor?.getFiles() ?? {},
-  });
+  function scene() {
+    return {
+      elements: editor?.getSceneElements() ?? [],
+      appState: { ...editor?.getAppState(), exportBackground: true },
+      files: editor?.getFiles() ?? {},
+    };
+  }
 
   return (
     <Stack gap={3}>

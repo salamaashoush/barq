@@ -17,13 +17,13 @@ import { Trash2 } from "@barqjs/lucide/icons/trash-2";
 export default function SplitButtons() {
   const [last, setLast] = createSignal("Nothing yet");
   const [publishing, setPublishing] = createSignal(false);
-  const publish = (): void => {
+  function publish(): void {
     setPublishing(true);
     setTimeout(() => {
       setPublishing(false);
       setLast("Published release 2.4");
     }, 1200);
-  };
+  }
   return (
     <Stack gap={5}>
       <Inline gap={3} wrap align="center">

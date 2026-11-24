@@ -20,10 +20,10 @@ export default function CodeEditorExample() {
   const [code, setCode] = createSignal(SNIPPETS["typescript"] ?? "");
   const [ready, setReady] = createSignal<readonly string[]>([]);
 
-  const choose = (next: string): void => {
+  function choose(next: string): void {
     setLanguage(next);
     setCode(SNIPPETS[next] ?? "");
-  };
+  }
 
   return (
     <Stack gap={3}>

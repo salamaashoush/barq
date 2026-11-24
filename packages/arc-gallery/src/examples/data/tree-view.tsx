@@ -4,19 +4,23 @@ import { dragAndDrop } from "@barqjs/aria/drag-and-drop";
 import { File } from "@barqjs/lucide/icons/file";
 import { Folder } from "@barqjs/lucide/icons/folder";
 
-const folder = (id: string, label: string, children?: TreeNode[]): TreeNode => ({
-  id,
-  label,
-  icon: <Folder />,
-  ...(children === undefined ? { hasChildren: true } : { children }),
-});
+function folder(id: string, label: string, children?: TreeNode[]): TreeNode {
+  return {
+    id,
+    label,
+    icon: <Folder />,
+    ...(children === undefined ? { hasChildren: true } : { children }),
+  };
+}
 
-const file = (id: string, label: string, description?: string): TreeNode => ({
-  id,
-  label,
-  icon: <File />,
-  description,
-});
+function file(id: string, label: string, description?: string): TreeNode {
+  return {
+    id,
+    label,
+    icon: <File />,
+    description,
+  };
+}
 
 const START: TreeNode[] = [
   folder("src", "src", [
@@ -64,8 +68,9 @@ function put(
   });
 }
 
-const contains = (nodes: readonly TreeNode[], id: string): boolean =>
-  nodes.some((node) => node.id === id || contains(node.children ?? [], id));
+function contains(nodes: readonly TreeNode[], id: string): boolean {
+  return nodes.some((node) => node.id === id || contains(node.children ?? [], id));
+}
 
 /** Fills in a folder whose children have just loaded. */
 function fill(nodes: readonly TreeNode[], id: string, children: TreeNode[]): TreeNode[] {
@@ -95,12 +100,12 @@ export default function TreeViewExample() {
     },
   });
 
-  const selectedFile = () => {
+  function selectedFile() {
     const keys = selected();
     return keys === "all" ? "everything" : [...keys].join(", ") || "nothing";
-  };
+  }
 
-  const load = (id: string) => {
+  function load(id: string) {
     setLoading((ids) => [...ids, id]);
     setTimeout(() => {
       setFiles((nodes) =>
@@ -111,7 +116,7 @@ export default function TreeViewExample() {
       );
       setLoading((ids) => ids.filter((each) => each !== id));
     }, 900);
-  };
+  }
 
   return (
     <Grid columns={{ base: 1, cqMd: 2 }} gap={6}>

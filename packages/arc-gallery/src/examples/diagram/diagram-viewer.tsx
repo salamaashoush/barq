@@ -7,9 +7,9 @@ import { acmeArchitecture } from "../../data/architecture.ts";
 export default function DiagramViewerExample() {
   const [zoom, setZoom] = createSignal<number | null>(null);
   let viewer: DiagramViewerApi | undefined;
-  const track = (): void => {
+  function track(): void {
     setZoom(Math.round((viewer?.getAppState().zoom.value ?? 1) * 100));
-  };
+  }
 
   return (
     <Stack gap={3}>

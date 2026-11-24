@@ -42,7 +42,7 @@ function stream(onUpdate: (message: AIMessage) => void, isStopped: () => boolean
       output: "errors: 41,208 of 66.4M requests (0.062%)",
     };
     let shown = 0;
-    const tick = (): void => {
+    function tick(): void {
       if (isStopped()) {
         onUpdate({
           id,
@@ -81,7 +81,7 @@ function stream(onUpdate: (message: AIMessage) => void, isStopped: () => boolean
         citations: finished ? SOURCES : undefined,
       });
       if (!finished) setTimeout(tick, 30);
-    };
+    }
     tick();
   }, 900);
 }
@@ -90,24 +90,20 @@ export default function AIChat() {
   const [messages, setMessages] = createSignal<readonly AIMessage[]>([]);
   let stopped = false;
 
-  const put = (message: AIMessage): void => {
+  function put(message: AIMessage): void {
     const others = messages().filter((one) => one.id !== message.id);
     setMessages(
       others.length === messages().length
         ? [...messages(), message]
         : messages().map((one) => (one.id === message.id ? message : one)),
     );
-  };
-  const ask = (text: string): void => {
+  }
+  function ask(text: string): void {
     stopped = false;
     put({ id: `user-${Date.now()}`, role: "user", parts: [{ type: "text", text }] });
     stream(put, () => stopped);
-  };
-  const settleTool = (
-    call: AIToolCall,
-    message: AIMessage,
-    state: "approved" | "rejected",
-  ): void => {
+  }
+  function settleTool(call: AIToolCall, message: AIMessage, state: "approved" | "rejected"): void {
     put({
       ...message,
       parts: message.parts.map((part) =>
@@ -116,7 +112,7 @@ export default function AIChat() {
           : part,
       ),
     });
-  };
+  }
 
   return (
     <div class={frame}>

@@ -29,10 +29,10 @@ type State = "loaded" | "loading" | "empty";
 export default function DataTableStates() {
   const [state, setState] = createSignal<State>("loading");
 
-  const data = (): readonly Invoice[] | undefined => {
+  function data(): readonly Invoice[] | undefined {
     if (state() === "loading") return undefined;
     return state() === "empty" ? [] : INVOICES.slice(0, 4);
-  };
+  }
 
   return (
     <Stack gap={3}>

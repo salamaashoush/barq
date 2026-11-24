@@ -1,7 +1,9 @@
 import { Button, Container, Link, SignInForm, Text, toast } from "@barqjs/arc";
 import { KeyRound } from "@barqjs/lucide/icons/key-round";
 
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export default function SignIn() {
   return (

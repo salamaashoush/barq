@@ -23,8 +23,8 @@ const footer = demo(layout.column, { padding: space.x2, gap: space.x1 });
 
 type Broadcast = { kind: "message"; message: ChatMessage } | { kind: "typing" };
 
-const attachmentsOf = (sent: ComposedMessage): ChatAttachment[] =>
-  sent.attachments.map((item) => ({
+function attachmentsOf(sent: ComposedMessage): ChatAttachment[] {
+  return sent.attachments.map((item) => ({
     id: item.id,
     kind: item.file.type.startsWith("image/") ? "image" : "file",
     name: item.file.name,
@@ -32,6 +32,7 @@ const attachmentsOf = (sent: ComposedMessage): ChatAttachment[] =>
     size: item.file.size,
     mimeType: item.file.type,
   }));
+}
 
 export default function Conversation() {
   const [messages, setMessages] = createSignal<readonly ChatMessage[]>(designHistory(Date.now()));
@@ -73,11 +74,11 @@ export default function Conversation() {
     },
   );
 
-  const update = (id: string, change: (message: ChatMessage) => ChatMessage | null): void => {
+  function update(id: string, change: (message: ChatMessage) => ChatMessage | null): void {
     setMessages(messages().flatMap((one) => (one.id === id ? (change(one) ?? []) : [one])));
-  };
+  }
 
-  const send = (sent: ComposedMessage): void => {
+  function send(sent: ComposedMessage): void {
     const message: ChatMessage = {
       id: `mine-${Date.now()}`,
       author: ME,
@@ -88,7 +89,7 @@ export default function Conversation() {
     setMessages([...messages(), message]);
     room?.send({ kind: "message", message });
     latest?.scrollToLatest();
-  };
+  }
 
   return (
     <Grid columns={{ base: 1, cqLg: thread() === null ? 1 : 2 }} gap={4}>

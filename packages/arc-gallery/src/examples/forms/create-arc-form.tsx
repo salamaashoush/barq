@@ -1,14 +1,19 @@
 import { Stack, Text, createArcForm, toast, useArcField } from "@barqjs/arc";
 
-const slug = (name: string) =>
-  name
+function slug(name: string) {
+  return name
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
+}
+
+interface AddressPreviewProps {
+  domain: string;
+}
 
 /** An app's own field: where the workspace will live, from the name typed. */
-function AddressPreview(props: { domain: string }) {
+function AddressPreview(props: AddressPreviewProps) {
   const field = useArcField<string>();
   return (
     <Text size="sm" color="muted">

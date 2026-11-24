@@ -19,18 +19,20 @@ interface Task {
   priority: "High" | "Normal";
 }
 
-const task = (
+function task(
   id: number,
   title: string,
   owner: string,
   priority: Task["priority"] = "Normal",
-): Task => ({
-  id: `task-${id}`,
-  title,
-  key: `ACM-${id}`,
-  owner,
-  priority,
-});
+): Task {
+  return {
+    id: `task-${id}`,
+    title,
+    key: `ACM-${id}`,
+    owner,
+    priority,
+  };
+}
 
 const START: KanbanColumn<Task>[] = [
   {
@@ -63,13 +65,13 @@ export default function KanbanBoardExample() {
   const [columns, setColumns] = createSignal(START);
   const [next, setNext] = createSignal(230);
 
-  const add = (column: string) => {
+  function add(column: string) {
     const created = task(next(), "Untitled task", "Salama");
     setNext((n) => n + 1);
     setColumns((all) =>
       all.map((each) => (each.id === column ? { ...each, items: [...each.items, created] } : each)),
     );
-  };
+  }
 
   return (
     <Stack gap={3}>

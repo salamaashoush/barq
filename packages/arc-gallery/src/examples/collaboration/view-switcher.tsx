@@ -41,10 +41,12 @@ const STATUS = [
 export default function ViewSwitcherExample() {
   const [query, setQuery] = createSignal("");
   const [range, setRange] = createSignal("week");
-  const projects = () =>
-    PROJECTS.map((project, index) => ({ ...project, status: STATUS[index] ?? "On track" })).filter(
-      (project) => project.name.toLowerCase().includes(query().toLowerCase()),
-    );
+  function projects() {
+    return PROJECTS.map((project, index) => ({
+      ...project,
+      status: STATUS[index] ?? "On track",
+    })).filter((project) => project.name.toLowerCase().includes(query().toLowerCase()));
+  }
 
   return (
     <Stack gap={6}>

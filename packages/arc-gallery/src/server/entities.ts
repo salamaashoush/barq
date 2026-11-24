@@ -15,9 +15,15 @@ export interface EntityPage {
 
 const PAGE = 8;
 
+interface EntityQuery {
+  query: string;
+  cursor?: number;
+  kind?: "people" | "projects";
+}
+
 /** People and projects in Acme's workspace whose name or email holds the query, a page at a time. */
 export const searchEntities = createServerFn()
-  .validator((input: { query: string; cursor?: number; kind?: "people" | "projects" }) => ({
+  .validator((input: EntityQuery) => ({
     query: input.query.trim().toLowerCase(),
     cursor: input.cursor ?? 0,
     kind: input.kind === "projects" ? ("projects" as const) : ("people" as const),

@@ -21,8 +21,8 @@ import { recentNotifications } from "../../data/notifications.ts";
 const demo = layer("demo");
 const panel = demo(surface.card, { padding: space.x3, maxWidth: "36rem" });
 
-const older = (now: number, page: number): NotificationItem[] =>
-  Array.from({ length: 3 }, (_, index) => ({
+function older(now: number, page: number): NotificationItem[] {
+  return Array.from({ length: 3 }, (_, index) => ({
     id: `older-${page}-${index}`,
     title:
       ["Weekly usage report is ready", "Nour joined the Support team", "Status page published"][
@@ -32,6 +32,7 @@ const older = (now: number, page: number): NotificationItem[] =>
     createdAt: new Date(now - (8 + page * 3 + index) * 86_400_000).toISOString(),
     read: true,
   }));
+}
 
 export default function NotificationFeedExample() {
   const feed = useNotifications({ initial: recentNotifications(Date.now()) });
@@ -40,7 +41,7 @@ export default function NotificationFeedExample() {
   const [pages, setPages] = createSignal(0);
   const [loadingMore, setLoadingMore] = createSignal(false);
 
-  const loadMore = (): void => {
+  function loadMore(): void {
     setLoadingMore(true);
     setTimeout(() => {
       const page = pages() + 1;
@@ -48,7 +49,7 @@ export default function NotificationFeedExample() {
       setPages(page);
       setLoadingMore(false);
     }, 600);
-  };
+  }
 
   return (
     <Stack gap={4}>

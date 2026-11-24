@@ -95,7 +95,9 @@ export const SECTIONS: readonly Section[] = [
 
 export const GROUPS: readonly Group[] = SECTIONS.flatMap((section) => section.groups);
 
-export const pathOf = (catalog: GroupCatalog): string => `/${catalog.slug}`;
+export function pathOf(catalog: GroupCatalog): string {
+  return `/${catalog.slug}`;
+}
 
 export const NAVIGATION: readonly NavGroup[] = [
   { items: [{ label: "Overview", to: "/", exact: true, icon: House }] },

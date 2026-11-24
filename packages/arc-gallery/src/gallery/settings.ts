@@ -10,13 +10,17 @@ export interface Preset {
   readonly theme: ArcThemeSelection;
 }
 
-const accent = (id: string, label: string): Preset => ({
-  id,
-  label,
-  theme: { base: "neutral", accent: id },
-});
+function accent(id: string, label: string): Preset {
+  return {
+    id,
+    label,
+    theme: { base: "neutral", accent: id },
+  };
+}
 
-const base = (id: string, label: string): Preset => ({ id, label, theme: { base: id } });
+function base(id: string, label: string): Preset {
+  return { id, label, theme: { base: id } };
+}
 
 /**
  * A brand on top of arc: the tokens an app sets for its own mark, light and
@@ -50,10 +54,12 @@ const ACME: Preset = {
   },
 };
 
-export const PRESET_GROUPS: readonly {
+export interface PresetGroup {
   readonly label: string;
   readonly presets: readonly Preset[];
-}[] = [
+}
+
+export const PRESET_GROUPS: readonly PresetGroup[] = [
   {
     label: "Base",
     presets: [
@@ -83,11 +89,13 @@ export const PRESET_GROUPS: readonly {
 const PRESETS = PRESET_GROUPS.flatMap((group) => group.presets);
 
 export const DENSITIES: readonly Density[] = ["compact", "comfortable", "spacious"];
-export const VIEWPORTS: readonly {
+
+export interface ViewportOption {
   readonly id: Viewport;
   readonly label: string;
   readonly width?: number;
-}[] = [
+}
+export const VIEWPORTS: readonly ViewportOption[] = [
   { id: "desktop", label: "Desktop" },
   { id: "tablet", label: "Tablet", width: 820 },
   { id: "phone", label: "Phone", width: 390 },
@@ -103,8 +111,9 @@ export interface Settings {
   readonly embedded: boolean;
 }
 
-const pick = <T extends string>(value: string | null, options: readonly T[], fallback: T): T =>
-  value !== null && (options as readonly string[]).includes(value) ? (value as T) : fallback;
+function pick<T extends string>(value: string | null, options: readonly T[], fallback: T): T {
+  return value !== null && (options as readonly string[]).includes(value) ? (value as T) : fallback;
+}
 
 export function readSettings(search: URLSearchParams): Settings {
   const preset = PRESETS.find((each) => each.id === search.get("theme")) ?? PRESETS[0]!;
@@ -122,7 +131,9 @@ export function readSettings(search: URLSearchParams): Settings {
   };
 }
 
-export const localeOf = (dir: Direction): string => (dir === "rtl" ? "ar-EG" : "en-US");
+export function localeOf(dir: Direction): string {
+  return dir === "rtl" ? "ar-EG" : "en-US";
+}
 
 export interface SettingsApi {
   readonly settings: () => Settings;

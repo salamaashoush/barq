@@ -31,13 +31,20 @@ function frame(header: object, body?: unknown): Uint8Array<ArrayBuffer> {
   return out;
 }
 
-function unframe(bytes: Uint8Array): {
-  header: { type: string; [key: string]: unknown };
+interface RoomFrame {
+  header: FrameHeader;
   body: string;
-} {
+}
+
+interface FrameHeader {
+  type: string;
+  [key: string]: unknown;
+}
+
+function unframe(bytes: Uint8Array): RoomFrame {
   const length = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(0);
   return {
-    header: JSON.parse(decoder.decode(bytes.subarray(4, 4 + length))) as { type: string },
+    header: JSON.parse(decoder.decode(bytes.subarray(4, 4 + length))) as FrameHeader,
     body: decoder.decode(bytes.subarray(4 + length)),
   };
 }

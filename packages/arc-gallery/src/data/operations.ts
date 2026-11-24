@@ -54,9 +54,12 @@ export const INVOICES: readonly Invoice[] = Array.from({ length: 32 }, (_, index
   };
 });
 
-export const INVOICE_STATUS: Readonly<
-  Record<InvoiceStatus, { label: string; tone: "success" | "info" | "danger" | "neutral" }>
-> = {
+export interface StatusDisplay {
+  label: string;
+  tone: "success" | "info" | "danger" | "neutral";
+}
+
+export const INVOICE_STATUS: Readonly<Record<InvoiceStatus, StatusDisplay>> = {
   paid: { label: "Paid", tone: "success" },
   open: { label: "Open", tone: "info" },
   overdue: { label: "Overdue", tone: "danger" },

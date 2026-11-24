@@ -56,7 +56,7 @@ export const Route = createFileRoute("/api/notifications")({
         let sent = 0;
         const stream = new ReadableStream<Uint8Array>({
           start(controller) {
-            const send = (): void => {
+            function send(): void {
               const event = EVENTS[sent % EVENTS.length]!;
               sent += 1;
               const item = {
@@ -72,7 +72,7 @@ export const Route = createFileRoute("/api/notifications")({
               controller.enqueue(
                 encoder.encode(`id: ${item.id}\ndata: ${JSON.stringify(item)}\n\n`),
               );
-            };
+            }
             controller.enqueue(encoder.encode("retry: 3000\n\n"));
             timer = setInterval(send, 6000);
             request.signal.addEventListener("abort", () => {

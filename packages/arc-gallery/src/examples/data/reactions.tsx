@@ -8,8 +8,8 @@ export default function Reactions() {
     { emoji: "🚀", count: 1, label: "Jonas" },
   ]);
 
-  const react = (emoji: string, add: boolean) =>
-    setReactions((all) => {
+  function react(emoji: string, add: boolean) {
+    return setReactions((all) => {
       const found = all.find((each) => each.emoji === emoji);
       if (found === undefined)
         return add ? [...all, { emoji, count: 1, reacted: true, label: "Salama" }] : all;
@@ -21,6 +21,7 @@ export default function Reactions() {
         )
         .filter((each) => each.count > 0);
     });
+  }
 
   return (
     <Stack gap={4}>

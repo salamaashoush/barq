@@ -21,20 +21,26 @@ const device = gallery(edge.all, rounded.xl, elevation.raised, {
   backgroundColor: "var(--background)",
 });
 
+export interface ViewportFrameProps {
+  viewport: Exclude<Viewport, "desktop">;
+}
+
 /**
  * The page at a device's width, in a frame of its own, so the viewport's
  * media queries answer for that width rather than the window's. The page
  * inside reads the same controls from its address and leaves the shell out.
  */
-export function ViewportFrame(props: { viewport: Exclude<Viewport, "desktop"> }) {
+export function ViewportFrame(props: ViewportFrameProps) {
   const location = useLocation();
-  const width = (): number => VIEWPORTS.find((each) => each.id === props.viewport)?.width ?? 390;
-  const src = (): string => {
+  function width(): number {
+    return VIEWPORTS.find((each) => each.id === props.viewport)?.width ?? 390;
+  }
+  function src(): string {
     const search = new URLSearchParams(location().search);
     search.delete("viewport");
     search.set("embed", "1");
     return `${location().pathname}?${search.toString()}${location().hash}`;
-  };
+  }
   return (
     <div class={stage} data-slot="gallery-frame">
       <Text size="xs" color="muted" mono>

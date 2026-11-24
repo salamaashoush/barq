@@ -6,6 +6,10 @@ export interface Uploaded {
   readonly size: number;
 }
 
+interface UploadAnswer extends Uploaded {
+  error?: string;
+}
+
 /**
  * Sends one file to the gallery's `/api/upload` as `multipart/form-data`,
  * reporting progress as it goes. XHR rather than fetch, since only XHR
@@ -20,7 +24,7 @@ export function uploadFile(file: File, { onProgress, signal }: UploadContext): P
       if (event.lengthComputable) onProgress(event.loaded / event.total);
     });
     request.addEventListener("load", () => {
-      const body = request.response as (Uploaded & { error?: string }) | null;
+      const body = request.response as UploadAnswer | null;
       if (request.status >= 200 && request.status < 300 && body !== null) resolve(body);
       else reject(new Error(body?.error ?? `Upload failed with ${request.status}`));
     });

@@ -1,5 +1,5 @@
 import { createSignal } from "@barqjs/core";
-import { InlineAlert, Stack, Wizard, useArcForm } from "@barqjs/arc";
+import { InlineAlert, Stack, Wizard, useArcForm, type FieldOption } from "@barqjs/arc";
 
 const PLANS = [
   { value: "starter", label: "Starter, free" },
@@ -7,8 +7,10 @@ const PLANS = [
   { value: "business", label: "Business, $29 a seat" },
 ];
 
-const label = (options: readonly { value: string; label: string }[]) => (value: unknown) =>
-  options.find((option) => option.value === value)?.label ?? "Not chosen";
+function label(options: readonly FieldOption[]) {
+  return (value: unknown) =>
+    options.find((option) => option.value === value)?.label ?? "Not chosen";
+}
 
 export default function WizardExample() {
   const [done, setDone] = createSignal(false);

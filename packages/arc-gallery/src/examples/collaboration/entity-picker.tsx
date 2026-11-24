@@ -1,10 +1,10 @@
 import { createSignal } from "@barqjs/core";
-import { type EntityOption, EntityPicker, Grid, Text } from "@barqjs/arc";
+import { type EntityOption, EntityPicker, Grid, Text, type RemoteSearchContext } from "@barqjs/arc";
 
 import { searchEntities } from "../../server/entities.ts";
 
-const people = (query: string, context: { signal: AbortSignal; cursor?: unknown }) =>
-  searchEntities({
+function people(query: string, context: RemoteSearchContext) {
+  return searchEntities({
     data: {
       query,
       cursor: typeof context.cursor === "number" ? context.cursor : 0,
@@ -12,9 +12,10 @@ const people = (query: string, context: { signal: AbortSignal; cursor?: unknown 
     },
     signal: context.signal,
   });
+}
 
-const projects = (query: string, context: { signal: AbortSignal; cursor?: unknown }) =>
-  searchEntities({
+function projects(query: string, context: RemoteSearchContext) {
+  return searchEntities({
     data: {
       query,
       cursor: typeof context.cursor === "number" ? context.cursor : 0,
@@ -22,6 +23,7 @@ const projects = (query: string, context: { signal: AbortSignal; cursor?: unknow
     },
     signal: context.signal,
   });
+}
 
 export default function EntityPickerExample() {
   const [owner, setOwner] = createSignal<EntityOption | null>(null);

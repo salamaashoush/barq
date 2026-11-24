@@ -10,7 +10,9 @@ const DAY = 24 * HOUR;
 
 /** Acme's recent notifications, timed back from `now` so today and yesterday stay today and yesterday. */
 export function recentNotifications(now: number): NotificationItem[] {
-  const at = (ago: number): string => new Date(now - ago).toISOString();
+  function at(ago: number): string {
+    return new Date(now - ago).toISOString();
+  }
   return [
     {
       id: "n-1",

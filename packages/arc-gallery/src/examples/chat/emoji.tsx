@@ -4,9 +4,9 @@ import { EmojiButton, EmojiPicker, arabicEmoji } from "@barqjs/arc/chat";
 
 export default function Emoji() {
   const [picked, setPicked] = createSignal<readonly string[]>([]);
-  const add = (emoji: string): void => {
+  function add(emoji: string): void {
     setPicked([...picked(), emoji].slice(-12));
-  };
+  }
   return (
     <Grid columns={{ base: 1, cqLg: 2 }} gap={6}>
       <Stack gap={2}>

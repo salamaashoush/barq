@@ -29,7 +29,12 @@ const PEOPLE = [
 ];
 const CYCLE: readonly Presence[] = ["online", "away", "dnd", "offline"];
 
-function Member(props: { id: string; name: string }) {
+interface MemberProps {
+  id: string;
+  name: string;
+}
+
+function Member(props: MemberProps) {
   const entry = usePresence(() => props.id);
   return (
     <div class={row}>
@@ -46,7 +51,9 @@ function Member(props: { id: string; name: string }) {
 
 function Typing() {
   const typing = useTyping(() => "design");
-  const names = () => typing().map((id) => PEOPLE.find((person) => person.id === id)?.name ?? id);
+  function names() {
+    return typing().map((id) => PEOPLE.find((person) => person.id === id)?.name ?? id);
+  }
   return (
     <div role="status">
       <Text size="sm" color="muted">

@@ -17,8 +17,13 @@ const demo = layer("demo");
 const stage = demo(surface.card, layout.column, layout.clip, { height: "26rem" });
 const tile = demo({ width: "16rem", aspectRatio: "16 / 9" });
 
+interface TestCard {
+  stream: MediaStream;
+  stop: () => void;
+}
+
 /** A moving test card standing in for a camera, so the tiles play video without asking for one. */
-function testCard(label: string, hue: number): { stream: MediaStream; stop: () => void } {
+function testCard(label: string, hue: number): TestCard {
   const canvas = document.createElement("canvas");
   canvas.width = 640;
   canvas.height = 360;
@@ -72,13 +77,21 @@ export default function Calls() {
     },
   );
 
-  const participants = (): CallParticipant[] => [
-    { id: "salama", person: { name: "Salama" }, local: true, muted: muted(), videoOff: videoOff() },
-    { id: "lina", person: { name: "Lina" }, stream: streams()["lina"] ?? null, speaking: true },
-    { id: "omar", person: { name: "Omar" }, videoOff: true, muted: true },
-    { id: "maya", person: { name: "Maya" }, screen: streams()["maya"] ?? null, videoOff: true },
-    { id: "jonas", person: { name: "Jonas" }, videoOff: true, connection: "poor" },
-  ];
+  function participants(): CallParticipant[] {
+    return [
+      {
+        id: "salama",
+        person: { name: "Salama" },
+        local: true,
+        muted: muted(),
+        videoOff: videoOff(),
+      },
+      { id: "lina", person: { name: "Lina" }, stream: streams()["lina"] ?? null, speaking: true },
+      { id: "omar", person: { name: "Omar" }, videoOff: true, muted: true },
+      { id: "maya", person: { name: "Maya" }, screen: streams()["maya"] ?? null, videoOff: true },
+      { id: "jonas", person: { name: "Jonas" }, videoOff: true, connection: "poor" },
+    ];
+  }
 
   return (
     <Stack gap={4}>

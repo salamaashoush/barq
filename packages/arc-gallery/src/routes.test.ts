@@ -6,13 +6,19 @@ import type { GroupCatalog } from "./gallery/types.ts";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
+interface CatalogModule {
+  catalog: GroupCatalog;
+}
+
 // The catalogs alone, which are data: the pages themselves are JSX for Vite to compile.
 const CATALOGS: readonly GroupCatalog[] = await Promise.all(
   [...new Bun.Glob("examples/*/catalog.ts").scanSync({ cwd: import.meta.dir })]
     .toSorted()
-    .map(async (file) => ((await import(`./${file}`)) as { catalog: GroupCatalog }).catalog),
+    .map(async (file) => ((await import(`./${file}`)) as CatalogModule).catalog),
 );
-const pathOf = (catalog: GroupCatalog): string => `/${catalog.slug}`;
+function pathOf(catalog: GroupCatalog): string {
+  return `/${catalog.slug}`;
+}
 
 /** Every page the gallery has, and the same pages as the viewport frame and an RTL reader ask for them. */
 const PATHS: readonly string[] = [
@@ -58,10 +64,10 @@ beforeAll(async () => {
     stderr: "pipe",
     env: { ...process.env, NO_COLOR: "1" },
   });
-  const collect = async (stream: ReadableStream<Uint8Array>): Promise<void> => {
+  async function collect(stream: ReadableStream<Uint8Array>): Promise<void> {
     const decoder = new TextDecoder();
     for await (const chunk of stream) printed += decoder.decode(chunk);
-  };
+  }
   void collect(server.stdout as ReadableStream<Uint8Array>);
   void collect(server.stderr as ReadableStream<Uint8Array>);
   base = `http://localhost:${port}`;

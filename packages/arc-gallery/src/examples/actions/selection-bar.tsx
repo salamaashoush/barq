@@ -18,17 +18,19 @@ const INVOICES: Invoice[] = [
 export default function SelectionBars() {
   const [invoices, setInvoices] = createSignal(INVOICES);
   const [chosen, setChosen] = createSignal<ReadonlySet<string>>(new Set(["1043"]));
-  const rows = (): Invoice[] => invoices().filter((one) => chosen().has(one.id));
-  const toggle = (id: string, on: boolean): void => {
+  function rows(): Invoice[] {
+    return invoices().filter((one) => chosen().has(one.id));
+  }
+  function toggle(id: string, on: boolean): void {
     const next = new Set(chosen());
     if (on) next.add(id);
     else next.delete(id);
     setChosen(next);
-  };
-  const remove = (gone: readonly Invoice[]): void => {
+  }
+  function remove(gone: readonly Invoice[]): void {
     const ids = new Set(gone.map((one) => one.id));
     setInvoices(invoices().filter((one) => !ids.has(one.id)));
-  };
+  }
   return (
     <Stack gap={4}>
       <Stack gap={2}>

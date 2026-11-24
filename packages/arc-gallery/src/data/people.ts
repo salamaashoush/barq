@@ -44,11 +44,13 @@ export const MEMBERS: readonly Member[] = Array.from({ length: 72 }, (_, index) 
   };
 });
 
-export const PROJECTS: readonly {
+export interface Project {
   readonly id: string;
   readonly name: string;
   readonly key: string;
-}[] = [
+}
+
+export const PROJECTS: readonly Project[] = [
   "Billing revamp",
   "Mobile onboarding",
   "Status page",

@@ -33,7 +33,7 @@ export default function Dialogs() {
   const [open, setOpen] = createSignal(false);
   const [result, setResult] = createSignal("Nothing decided yet");
 
-  const removeProject = async (): Promise<void> => {
+  async function removeProject(): Promise<void> {
     const sure = await confirm({
       title: `Delete ${name()}?`,
       description:
@@ -42,16 +42,16 @@ export default function Dialogs() {
       confirmLabel: "Delete project",
     });
     setResult(sure ? `${name()} deleted` : "Kept the project");
-  };
+  }
 
-  const leave = async (): Promise<void> => {
+  async function leave(): Promise<void> {
     const sure = await confirm({
       title: "Leave without saving?",
       confirmLabel: "Leave",
       cancelLabel: "Stay",
     });
     setResult(sure ? "Left the page" : "Stayed");
-  };
+  }
 
   return (
     <Stack gap={4}>

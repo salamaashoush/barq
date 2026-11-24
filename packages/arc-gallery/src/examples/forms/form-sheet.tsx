@@ -62,7 +62,7 @@ export default function FormSheetExample() {
     },
   }));
 
-  const edit = (customer: Customer) => {
+  function edit(customer: Customer) {
     form.reset({
       name: customer.name,
       email: customer.email,
@@ -70,7 +70,7 @@ export default function FormSheetExample() {
       notes: customer.notes,
     });
     setEditing(customer);
-  };
+  }
 
   return (
     <Stack gap={3}>

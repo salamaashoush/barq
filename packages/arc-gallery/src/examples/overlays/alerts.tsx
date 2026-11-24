@@ -1,7 +1,12 @@
 import { For, Show, createSignal } from "@barqjs/core";
 import { Banner, Button, InlineAlert, Stack, TONES, type Tone } from "@barqjs/arc";
 
-const MESSAGES: Record<Tone, { title: string; body: string }> = {
+interface AlertCopy {
+  title: string;
+  body: string;
+}
+
+const MESSAGES: Record<Tone, AlertCopy> = {
   success: { title: "Payment received", body: "Invoice #1042 is paid in full." },
   warning: { title: "Card expires soon", body: "Update the card ending 4242 before December." },
   danger: { title: "Deploy failed", body: "The build stopped at step 3 of 5. Logs are attached." },

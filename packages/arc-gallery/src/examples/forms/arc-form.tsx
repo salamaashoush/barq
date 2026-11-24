@@ -14,12 +14,18 @@ const OWNERS = ["Salama", "Lina", "Omar", "Maya", "Jonas"].map((name) => ({
   label: name,
 }));
 
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-const required =
-  (label: string) =>
-  ({ value }: { value: unknown }) =>
+interface ValidatedValue {
+  value: unknown;
+}
+
+function required(label: string) {
+  return ({ value }: ValidatedValue) =>
     value === "" || value === null || value === undefined ? `${label} is required` : undefined;
+}
 
 export default function ArcFormExample() {
   const [created, setCreated] = createSignal<string | null>(null);

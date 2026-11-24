@@ -11,13 +11,13 @@ const SIZES = ["xs", "sm", "default", "lg"] as const;
 export default function Buttons() {
   const [sending, setSending] = createSignal(false);
   const [sent, setSent] = createSignal(0);
-  const send = (): void => {
+  function send(): void {
     setSending(true);
     setTimeout(() => {
       setSending(false);
       setSent(sent() + 1);
     }, 1500);
-  };
+  }
   return (
     <Stack gap={6}>
       <Inline gap={2} wrap align="center">

@@ -24,7 +24,12 @@ const TEAM = [
   { id: "karim", name: "Karim", presence: "away" as const },
 ];
 
-const PRESENCES: readonly { value: Presence; label: string }[] = [
+interface PresenceOption {
+  value: Presence;
+  label: string;
+}
+
+const PRESENCES: readonly PresenceOption[] = [
   { value: "online", label: "Online" },
   { value: "away", label: "Away" },
   { value: "dnd", label: "Do not disturb" },

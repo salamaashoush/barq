@@ -6,12 +6,13 @@ interface PolicyVersion extends VersionEntry {
   policy: string;
 }
 
-const policy = (seats: number, trial: number, sso: boolean, regions: string[]): string =>
-  JSON.stringify(
+function policy(seats: number, trial: number, sso: boolean, regions: string[]): string {
+  return JSON.stringify(
     { plan: "Acme Business", seats, trialDays: trial, sso, regions, billing: "monthly" },
     null,
     2,
   );
+}
 
 const VERSIONS: PolicyVersion[] = [
   {
@@ -48,8 +49,9 @@ const VERSIONS: PolicyVersion[] = [
   },
 ];
 
-const policyOf = (version: VersionEntry): string =>
-  VERSIONS.find((one) => one.id === version.id)?.policy ?? "";
+function policyOf(version: VersionEntry): string {
+  return VERSIONS.find((one) => one.id === version.id)?.policy ?? "";
+}
 
 export default function VersionHistoryExample() {
   const [versions, setVersions] = createSignal<readonly VersionEntry[]>(VERSIONS);

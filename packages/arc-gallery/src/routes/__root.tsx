@@ -36,7 +36,11 @@ function addressed(): URLSearchParams {
   return new URL(url ?? "http://localhost/").searchParams;
 }
 
-function Shell(props: { children: Child }) {
+interface ShellProps {
+  children: Child;
+}
+
+function Shell(props: ShellProps) {
   const settings = readSettings(addressed());
   return (
     <html lang={localeOf(settings.dir)} dir={settings.dir}>
@@ -90,7 +94,9 @@ function Brand() {
 
 function Gallery() {
   const api = useSettings();
-  const settings = () => api.settings();
+  function settings() {
+    return api.settings();
+  }
 
   // The shell sets these on the first paint; a control changes them after.
   createEffect(

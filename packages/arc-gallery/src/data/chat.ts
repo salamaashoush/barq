@@ -35,8 +35,9 @@ const LINES = [
 const REACTIONS = ["👍", "🎉", "❤️", "👀", "🚀", "😄"];
 
 /** A number from a seed, the same on the server and in the browser. */
-const pick = (seed: number, length: number): number =>
-  (Math.abs(Math.sin(seed * 9301 + 49297) * 233280) % length) | 0;
+function pick(seed: number, length: number): number {
+  return (Math.abs(Math.sin(seed * 9301 + 49297) * 233280) % length) | 0;
+}
 
 const HOUR = 3_600_000;
 const MINUTE = 60_000;

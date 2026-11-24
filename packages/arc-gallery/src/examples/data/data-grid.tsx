@@ -36,10 +36,13 @@ const usd = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 0,
 });
 
-const money = (value: unknown) => (typeof value === "number" ? usd.format(value) : "");
+function money(value: unknown) {
+  return typeof value === "number" ? usd.format(value) : "";
+}
 
-const atMost = (value: unknown) =>
-  typeof value === "number" && value < 0 ? "A budget cannot be negative" : undefined;
+function atMost(value: unknown) {
+  return typeof value === "number" && value < 0 ? "A budget cannot be negative" : undefined;
+}
 
 const COLUMNS: (DataGridColumn<Line> | DataGridColumnGroup<Line>)[] = [
   { id: "item", header: "Line item", frozen: true, width: 200 },
@@ -131,7 +134,7 @@ export default function DataGridExample() {
   const [dirty, setDirty] = createSignal<ReadonlySet<string>>(new Set());
   const [grouped, setGrouped] = createSignal(false);
 
-  const apply = (changes: DataGridChange<Line>[]) => {
+  function apply(changes: DataGridChange<Line>[]) {
     setLines((rows) =>
       rows.map((row) => {
         const mine = changes.filter((change) => change.rowId === row.id);
@@ -145,10 +148,10 @@ export default function DataGridExample() {
       (marked) =>
         new Set([...marked, ...changes.map((change) => `${change.rowId}:${change.columnId}`)]),
     );
-  };
+  }
 
-  const addRow = () =>
-    setLines((rows) => [
+  function addRow() {
+    return setLines((rows) => [
       ...rows,
       {
         id: `l${rows.length + 1}`,
@@ -161,6 +164,7 @@ export default function DataGridExample() {
         approved: false,
       },
     ]);
+  }
 
   return (
     <Stack gap={3}>

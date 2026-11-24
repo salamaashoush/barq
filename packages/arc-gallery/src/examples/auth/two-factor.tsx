@@ -1,6 +1,8 @@
 import { Container, TwoFactorForm, toast } from "@barqjs/arc";
 
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export default function TwoFactor() {
   return (

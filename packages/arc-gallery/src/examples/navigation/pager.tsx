@@ -21,10 +21,10 @@ export default function Pagers() {
   const [page, setPage] = createSignal(4);
   const [size, setSize] = createSignal(25);
   const [simple, setSimple] = createSignal(0);
-  const go = (event: MouseEvent, to: number): void => {
+  function go(event: MouseEvent, to: number): void {
     event.preventDefault();
     setPage(Math.min(PAGES - 1, Math.max(0, to)));
-  };
+  }
   return (
     <Stack gap={6}>
       <Pager

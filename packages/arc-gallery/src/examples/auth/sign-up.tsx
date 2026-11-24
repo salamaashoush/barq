@@ -12,7 +12,9 @@ import {
   useArcMessages,
 } from "@barqjs/arc";
 
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 const notAcme = {
   label: "Not the word acme",
@@ -21,7 +23,9 @@ const notAcme = {
 
 export default function SignUp() {
   const messages = useArcMessages();
-  const rules = () => [...defaultPasswordRules(messages()), notAcme];
+  function rules() {
+    return [...defaultPasswordRules(messages()), notAcme];
+  }
   const [password, setPassword] = createSignal("");
 
   return (

@@ -15,7 +15,9 @@ import { Link } from "@barqjs/router";
 export default function UnsavedChanges() {
   const [saved, setSaved] = createSignal("Acme status page");
   const [title, setTitle] = createSignal(saved());
-  const dirty = (): boolean => title() !== saved();
+  function dirty(): boolean {
+    return title() !== saved();
+  }
   return (
     <Stack gap={4}>
       <UnsavedChangesGuard

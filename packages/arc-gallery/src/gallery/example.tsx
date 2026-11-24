@@ -39,7 +39,12 @@ const code = gallery(edge.top, bg.sunken, { padding: space.x3 });
 
 const covers = gallery(layout.row, layout.wrap, gap[1]);
 
-function ExampleCard(props: { info: ExampleInfo; demo: Demo | undefined }) {
+interface ExampleCardProps {
+  info: ExampleInfo;
+  demo: Demo | undefined;
+}
+
+function ExampleCard(props: ExampleCardProps) {
   const [open, setOpen] = createSignal(false);
   const info = untrack(() => props.info);
   const demo = untrack(() => props.demo);
@@ -108,8 +113,13 @@ function ExampleCard(props: { info: ExampleInfo; demo: Demo | undefined }) {
   );
 }
 
+export interface GroupPageProps {
+  catalog: GroupCatalog;
+  demos: Demos;
+}
+
 /** A group's page: its heading, then every example in the catalog's order. */
-export function GroupPage(props: { catalog: GroupCatalog; demos: Demos }) {
+export function GroupPage(props: GroupPageProps) {
   return (
     <Stack gap={8}>
       <PageHeader heading={props.catalog.title} description={props.catalog.description} />

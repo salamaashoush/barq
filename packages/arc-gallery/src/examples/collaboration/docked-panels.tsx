@@ -32,9 +32,11 @@ export default function DockedPanelsExample() {
     specThreads(Date.now()).slice(0, 2),
   );
   const [active, setActive] = createSignal<string | null>("comments");
-  const open = () => threads().filter((thread) => thread.resolved !== true).length;
-  const start = (body: string) =>
-    setThreads([
+  function open() {
+    return threads().filter((thread) => thread.resolved !== true).length;
+  }
+  function start(body: string) {
+    return setThreads([
       {
         id: `t-${threads().length + 1}`,
         comments: [
@@ -43,6 +45,7 @@ export default function DockedPanelsExample() {
       },
       ...threads(),
     ]);
+  }
 
   return (
     <div class={frame}>

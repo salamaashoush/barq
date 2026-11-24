@@ -17,7 +17,9 @@ const MINUTE = 60_000;
 
 /** The comments on Acme's onboarding spec, timed back from `now`. */
 export function specThreads(now: number): CommentThreadData[] {
-  const at = (minutes: number): string => new Date(now - minutes * MINUTE).toISOString();
+  function at(minutes: number): string {
+    return new Date(now - minutes * MINUTE).toISOString();
+  }
   return [
     {
       id: "thread-1",

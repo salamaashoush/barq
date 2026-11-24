@@ -9,9 +9,9 @@ export default function Chips() {
   const [regions, setRegions] = createSignal<readonly string[]>(["Europe"]);
   const [labels, setLabels] = createSignal<readonly string[]>(["billing", "urgent", "acme"]);
   const [pressed, setPressed] = createSignal(0);
-  const toggle = (region: string, on: boolean): void => {
+  function toggle(region: string, on: boolean): void {
     setRegions(on ? [...regions(), region] : regions().filter((one) => one !== region));
-  };
+  }
   return (
     <Stack gap={5}>
       <Stack gap={2}>

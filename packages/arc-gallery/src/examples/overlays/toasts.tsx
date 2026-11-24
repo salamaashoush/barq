@@ -1,6 +1,10 @@
 import { createSignal } from "@barqjs/core";
 import { Button, Inline, Stack, Text, toast } from "@barqjs/arc";
 
+interface ImportResult {
+  rows: number;
+}
+
 export default function Toasts() {
   const [undone, setUndone] = createSignal(0);
   return (
@@ -38,11 +42,11 @@ export default function Toasts() {
         <Button
           variant="outline"
           onPress={() => {
-            void toast.promise<{ rows: number }>(
+            void toast.promise<ImportResult>(
               () => new Promise((resolve) => setTimeout(() => resolve({ rows: 1284 }), 1500)),
               {
                 loading: "Importing customers…",
-                success: (data: { rows: number }) => `Imported ${String(data.rows)} customers`,
+                success: (data: ImportResult) => `Imported ${String(data.rows)} customers`,
                 error: "The import failed",
               },
             );

@@ -19,10 +19,10 @@ const demo = layer("demo");
 const result = demo(surface.bordered, rounded.md, { maxWidth: "100%", maxHeight: "12rem" });
 
 /** The server keeps nothing, so the picture is shown from the file that was sent. */
-const upload = async (file: File, context: Parameters<typeof uploadFile>[1]): Promise<string> => {
+async function upload(file: File, context: Parameters<typeof uploadFile>[1]): Promise<string> {
   await uploadFile(file, context);
   return URL.createObjectURL(file);
-};
+}
 
 export default function ImageFieldExample() {
   const [avatar, setAvatar] = createSignal<string | null>(null);

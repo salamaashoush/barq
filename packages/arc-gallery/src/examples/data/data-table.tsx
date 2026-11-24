@@ -74,11 +74,11 @@ export default function DataTableExample() {
     );
   });
 
-  const archive = (rows: readonly Invoice[]) => {
+  function archive(rows: readonly Invoice[]) {
     const gone = new Set(rows.map((row) => row.id));
     setInvoices((all) => all.filter((invoice) => !gone.has(invoice.id)));
     toast.success(`Archived ${rows.length} ${rows.length === 1 ? "invoice" : "invoices"}`);
-  };
+  }
 
   return (
     <Stack gap={3}>

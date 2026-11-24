@@ -68,10 +68,10 @@ const PEOPLE = [
 export default function ListExample() {
   const [chosen, setChosen] = createSignal<"all" | Set<string | number>>(new Set(["lina"]));
 
-  const count = () => {
+  function count() {
     const keys = chosen();
     return keys === "all" ? PEOPLE.length : keys.size;
-  };
+  }
 
   return (
     <Grid columns={{ base: 1, cqLg: 2 }} gap={6}>

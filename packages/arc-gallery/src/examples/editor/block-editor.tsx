@@ -7,7 +7,12 @@ import { ListChecks } from "@barqjs/lucide/icons/list-checks";
 const TONES = ["info", "success", "warning", "danger"] as const;
 type Tone = (typeof TONES)[number];
 
-export const Callout = defineBlock<{ tone: Tone; text: string }>({
+interface CalloutData {
+  tone: Tone;
+  text: string;
+}
+
+export const Callout = defineBlock<CalloutData>({
   type: "acme-callout",
   label: "Callout",
   group: "Acme",
@@ -55,7 +60,12 @@ export const Callout = defineBlock<{ tone: Tone; text: string }>({
   },
 });
 
-export const Metric = defineBlock<{ label: string; value: string }>({
+interface MetricData {
+  label: string;
+  value: string;
+}
+
+export const Metric = defineBlock<MetricData>({
   type: "acme-metric",
   label: "Metric",
   group: "Acme",

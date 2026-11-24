@@ -11,13 +11,15 @@ const STEPS: StepItem[] = [
 export default function Steppers() {
   const [step, setStep] = createSignal("account");
   const [done, setDone] = createSignal<string | null>(null);
-  const at = (): number => STEPS.findIndex((one) => one.id === step());
-  const go = (by: number): void => {
+  function at(): number {
+    return STEPS.findIndex((one) => one.id === step());
+  }
+  function go(by: number): void {
     const next = STEPS[at() + by];
     if (next === undefined) return;
     if (by > 0) setDone(step());
     setStep(next.id);
-  };
+  }
   return (
     <Grid columns={{ base: 1, cqLg: 2 }} gap={8}>
       <Stack gap={4}>

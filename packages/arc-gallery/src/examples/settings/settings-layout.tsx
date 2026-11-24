@@ -17,11 +17,13 @@ import { TriangleAlert } from "@barqjs/lucide/icons/triangle-alert";
 import { UserRound } from "@barqjs/lucide/icons/user-round";
 import { useSearchParams } from "@barqjs/router";
 
-const section = (id: string) => ({
-  to: "/settings",
-  search: { section: id },
-  hash: "settings-layout",
-});
+function section(id: string) {
+  return {
+    to: "/settings",
+    search: { section: id },
+    hash: "settings-layout",
+  };
+}
 
 const NAVIGATION: readonly NavGroup[] = [
   {
@@ -40,7 +42,9 @@ const NAVIGATION: readonly NavGroup[] = [
   },
 ];
 
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function Profile() {
   const form = useArcForm(() => ({
@@ -164,7 +168,9 @@ const DANGER: readonly DangerAction[] = [
 
 export default function SettingsLayoutExample() {
   const [search] = useSearchParams();
-  const open = () => search().get("section");
+  function open() {
+    return search().get("section");
+  }
 
   return (
     <SettingsLayout
