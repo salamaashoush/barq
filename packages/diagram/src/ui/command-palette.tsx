@@ -180,6 +180,26 @@ export function CommandPalette() {
         keywords: [],
         perform: () => editor.batch(() => editor.toggleLock()),
       });
+      const openTTD = (tab: "text-to-diagram" | "mermaid") => () =>
+        editor.batch(() => editor.setState({ openDialog: { name: "ttd", tab } }));
+      if (ui.host().aiEnabled && ui.host().textToDiagram) {
+        tools.push({
+          key: "tool:textToDiagram",
+          label: `${t("labels.textToDiagram")}...`,
+          category: "tools",
+          shortcut: "",
+          keywords: ["ai", "generate", "chat"],
+          perform: openTTD("text-to-diagram"),
+        });
+      }
+      tools.push({
+        key: "tool:mermaid",
+        label: `${t("toolBar.mermaidToExcalidraw")}...`,
+        category: "tools",
+        shortcut: "",
+        keywords: ["mermaid", "diagram"],
+        perform: openTTD("mermaid"),
+      });
     }
 
     const openPopup = (popup: "canvasBackground" | "elementStroke" | "elementBackground") => () =>

@@ -113,7 +113,7 @@ embeds.
 - done: save and load through the File System Access API with a download and file input fallback; `saveToActiveFile` (Ctrl+S, to the image a scene came from too), `saveFileToDisk` (Ctrl+Shift+S), `loadScene` (Ctrl+O) with the overwrite confirmation, `onExport` with its progress (`export.test.tsx`, `files.test.ts`)
 - pending (3b): library sidebar, its trigger, add to library (context menu and palette)
 - pending (3b): search menu (Ctrl+F); its menu entry is disabled
-- pending (3b): Mermaid and text-to-diagram dialog; their extra tools entries are disabled
+- done: Mermaid and text-to-diagram dialog: Mermaid typed, previewed, auto-fixed and inserted; the chat streams from the app's `textToDiagram` backend, repairs, retries, stops and keeps its chats (`ttd-dialog.test.tsx`, `mermaid-error.test.ts`, `mermaid-auto-fix.test.ts`)
 - pending (3b): welcome screen and its hints
 - pending (3b): colour and font top picks customised by dragging, and reset
 - done: font picker previews the highlighted font on the selection and restores it on close; Shift+F opens it (`pickers.test.tsx`)

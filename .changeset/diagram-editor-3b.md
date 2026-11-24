@@ -15,3 +15,4 @@
 - The autoshape tool (Shift+X) turns a sketch into a rectangle, diamond, ellipse, arrow or line; a sketched arrow binds to the shapes at its ends.
 - The bucket fill tool (B) fills the closed region under a click with a strokeless polygon, restyles a fill it made, and picks its colour with an eye dropper while Alt is held.
 - Cells pasted from a spreadsheet (tab, comma or semicolon separated) open the paste chart dialog, which inserts them as a bar, line or radar chart, or as plain text.
+- The text-to-diagram dialog: its Mermaid tab previews a definition as it is typed, offers Excalidraw's auto-fix and inserts it. With `aiEnabled` and a `textToDiagram` backend (`onTextSubmit`, and an optional `persistenceAdapter`), its chat streams diagrams from the app's backend, repairs and retries them and keeps the chats; without one nothing is offered and nothing is sent anywhere.

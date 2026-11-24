@@ -77,7 +77,7 @@ describe("toolbar", () => {
       "Laser pointerK",
       "Bucket fillB",
       "Lasso selection",
-      "Text to diagram",
+      // text to diagram needs the app's backend
       "Mermaid to Excalidraw",
       "Wireframe to code",
     ]);

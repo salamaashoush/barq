@@ -31,6 +31,7 @@ import { EditorUI } from "./ui/editor-ui.tsx";
 import { EditorStore } from "./ui/store.ts";
 
 import type { DiagramScene } from "./data/types.ts";
+import type { TextToDiagramOptions } from "./ttd/types.ts";
 import type {
   DiagramChangeListener,
   DiagramEditorApi,
@@ -91,6 +92,11 @@ export interface DiagramEditorProps {
   mainMenu?: () => Child;
   /** Excalidraw's `aiEnabled`: the text-to-diagram and wireframe entries. @default true */
   aiEnabled?: boolean;
+  /**
+   * The app's text-to-diagram backend, Excalidraw's `<TTDDialog>` props: the
+   * dialog's chat tab is offered with it, when `aiEnabled`, and not without.
+   */
+  textToDiagram?: TextToDiagramOptions;
   /** Excalidraw's `generateLinkForSelection`, for the link "copy link to element" copies. */
   generateLinkForSelection?: (id: string, type: "element" | "group") => string;
   /** `false` renders the canvas alone, without the toolbar, the panels or the menus. @default true */
@@ -213,6 +219,7 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
       renderTopRightUI: props.renderTopRightUI,
       renderCustomStats: props.renderCustomStats,
       aiEnabled: props.aiEnabled !== false,
+      textToDiagram: props.textToDiagram,
       theme: props.theme,
     }),
   });

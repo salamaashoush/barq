@@ -6,6 +6,7 @@ import { getShortcutFromShortcutName, type ShortcutName } from "./shortcuts.ts";
 
 import type { Theme } from "@excalidraw/element/types";
 import type { Translate } from "../i18n.ts";
+import type { TextToDiagramOptions } from "../ttd/types.ts";
 import type { Action, ActionLabel, ActionName } from "../editor/types.ts";
 import type { ResolvedUIOptions } from "../editor/ui-options.ts";
 import type { AppState } from "../types.ts";
@@ -22,6 +23,8 @@ export interface UIHost {
   renderCustomStats?: (elements: readonly unknown[], appState: AppState) => Child;
   /** Excalidraw's `aiEnabled`: the text-to-diagram and magic frame entries. */
   aiEnabled: boolean;
+  /** The app's text-to-diagram backend; the dialog's chat tab is offered only with it. */
+  textToDiagram?: TextToDiagramOptions;
   /** A theme the host passes: the main menu offers no toggle unless `onThemeChange` listens. */
   theme?: Theme;
 }

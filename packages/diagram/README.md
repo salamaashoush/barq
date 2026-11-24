@@ -240,6 +240,14 @@ UI out right to left. `UIOptions`, `onThemeChange`, `zenModeEnabled`,
 canvas alone. The UI reads the editor once per change, outside gestures, so
 a drag, a pan or a zoom re-renders nothing but the zoom level.
 
+The text-to-diagram dialog converts Mermaid as it is typed. Its chat talks
+to the app's own backend, which the editor never chooses: `textToDiagram`
+takes Excalidraw's `<TTDDialog>` props, `onTextSubmit` (given the messages,
+an `onChunk` to stream into and an abort `signal`, it resolves to the
+generated Mermaid or an error) and an optional `persistenceAdapter` that
+loads and saves the chats. Without it, or with `aiEnabled={false}`, the chat
+is not offered.
+
 ### Accessibility
 
 The editor is a focusable `application` region with a name (`label`) and a

@@ -32,5 +32,9 @@
   "stats": {
     "canvas": "Canvas",
     "gridStep": "Grid step"
+  },
+  "chat": {
+    "send": "Send",
+    "stop": "Stop"
   }
 }

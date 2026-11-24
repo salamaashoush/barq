@@ -317,13 +317,13 @@ function ExtraTools(props: { select: (type: ToolType) => void; label: (type: str
           )}
         </For>
         <DropdownMenuSeparator />
-        <Show when={ui.host().aiEnabled}>
-          <DropdownMenuItem id="textToDiagram" class={menuItem} isDisabled>
+        <Show when={ui.host().aiEnabled && ui.host().textToDiagram}>
+          <DropdownMenuItem id="textToDiagram" class={menuItem} data-testid="toolbar-textToDiagram">
             <ScanText aria-hidden="true" />
             <span>{t("labels.textToDiagram")}</span>
           </DropdownMenuItem>
         </Show>
-        <DropdownMenuItem id="mermaid" class={menuItem} isDisabled>
+        <DropdownMenuItem id="mermaid" class={menuItem} data-testid="toolbar-mermaid">
           <Waypoints aria-hidden="true" />
           <span>{t("toolBar.mermaidToExcalidraw")}</span>
         </DropdownMenuItem>
