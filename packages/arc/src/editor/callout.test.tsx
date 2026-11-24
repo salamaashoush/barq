@@ -2,7 +2,13 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { fileURLToPath } from "node:url";
 import { destroyAnnouncer } from "@barqjs/aria/live";
 import { ariaViolations, cleanup, render, screen, user } from "@barqjs/testing";
-import { $getRoot, DELETE_CHARACTER_COMMAND, INSERT_PARAGRAPH_COMMAND } from "lexical";
+import {
+  $getRoot,
+  $getSelection,
+  DELETE_CHARACTER_COMMAND,
+  INSERT_PARAGRAPH_COMMAND,
+  KEY_ARROW_DOWN_COMMAND,
+} from "lexical";
 
 import { hydrates } from "../test-arc.ts";
 import { BlockEditor } from "./block-editor.tsx";
@@ -89,6 +95,30 @@ describe("callouts in the editor", () => {
     );
     expect(kinds).toEqual(["callout", "paragraph"]);
     expect(editor.get().read(() => $getRoot().getFirstChild()?.getTextContent())).toBe("Inside");
+  });
+
+  test("the down arrow at its end leaves it for a new line after it", async () => {
+    const editor = capture();
+    render(() => (
+      <RichTextEditor label="Notes" defaultMarkdown={"> [!info]\n> Inside"} onEditor={editor.set} />
+    ));
+    await settle();
+    editor.get().update(() => $getRoot().getFirstChild()?.selectEnd());
+    await settle();
+    editor
+      .get()
+      .dispatchCommand(KEY_ARROW_DOWN_COMMAND, new KeyboardEvent("keydown", { key: "ArrowDown" }));
+    await settle();
+    expect(
+      editor.get().read(() =>
+        $getRoot()
+          .getChildren()
+          .map((one) => one.getType()),
+      ),
+    ).toEqual(["callout", "paragraph"]);
+    expect(
+      editor.get().read(() => $getSelection()?.getNodes()[0]?.getTopLevelElement()?.getType()),
+    ).toBe("paragraph");
   });
 
   test("the block menu changes its tone, which the editor and the markdown follow", async () => {

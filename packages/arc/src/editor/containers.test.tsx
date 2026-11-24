@@ -205,6 +205,20 @@ describe("toggles", () => {
     expect(toggle.dataset.open).toBe("true");
   });
 
+  test("a press on the arrow at the title's start closes it; a press on its words does not", async () => {
+    await mount("<details open>\n<summary>Title</summary>\n\nBody\n\n</details>");
+    const title = content().querySelector<HTMLElement>('[data-slot="toggle-title"]')!;
+    title.getBoundingClientRect = () =>
+      ({ top: 0, bottom: 24, left: 0, right: 300, width: 300, height: 24, x: 0, y: 0 }) as DOMRect;
+    title.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 150 }));
+    await settle();
+    const toggle = content().querySelector<HTMLElement>('[data-slot="toggle"]')!;
+    expect(toggle.dataset.open).toBe("true");
+    title.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 6 }));
+    await settle();
+    expect(toggle.dataset.open).toBe("false");
+  });
+
   test("Backspace at the start of the title unwraps it: title a line, content kept", async () => {
     const editor = await mount("<details open>\n<summary>Title</summary>\n\nBody\n\n</details>");
     editor.update(() => {

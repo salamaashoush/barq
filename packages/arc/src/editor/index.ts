@@ -42,6 +42,7 @@ export {
 } from "./extension.ts";
 export { chatPreset, commentPreset, documentPreset } from "./presets.ts";
 export {
+  $insertBlock,
   MARKS,
   type Mark,
   OPEN_EMBED_DIALOG_COMMAND,
@@ -68,6 +69,7 @@ export {
   documentExtensions,
   documentToMarkdown,
   documentToText,
+  htmlToDocument,
   isSafeUrl,
   markdownToDocument,
   markdownTransformers,
@@ -171,3 +173,113 @@ export {
   parseVtt,
   vttOf,
 } from "./vtt.ts";
+export {
+  $createCalloutNode,
+  $insertCallout,
+  $isCalloutNode,
+  CALLOUT_TONES,
+  type CalloutTone,
+  CalloutNode,
+  calloutExtension,
+  calloutStyles,
+} from "./callout.tsx";
+export {
+  $createColumnNode,
+  $createColumnsNode,
+  $insertColumns,
+  $isColumnNode,
+  $isColumnsNode,
+  $setColumnLayout,
+  COLUMN_LAYOUTS,
+  type ColumnLayout,
+  ColumnNode,
+  ColumnsNode,
+  columnsExtension,
+  columnsStyles,
+} from "./columns.tsx";
+export {
+  type BlockMenuChoice,
+  editorMessages,
+  provideEditorMessages,
+  transformersOf,
+} from "./extension.ts";
+export {
+  type Drawn,
+  DrawnElement,
+  $placeContainer,
+  buildDrawn,
+  registerContainerKeys,
+} from "./containers.tsx";
+export {
+  $createToggleContentNode,
+  $createToggleNode,
+  $createToggleTitleNode,
+  $insertToggle,
+  $isToggleContentNode,
+  $isToggleNode,
+  $isToggleTitleNode,
+  ToggleContentNode,
+  ToggleNode,
+  ToggleTitleNode,
+  toggleExtension,
+  toggleStyles,
+} from "./toggle.tsx";
+export { PageBreakBlock, pageBreakStyles } from "./page-break.tsx";
+export {
+  $createFootnoteNode,
+  $insertFootnote,
+  $isFootnoteNode,
+  FootnoteNode,
+  footnoteExtension,
+  footnoteStyles,
+} from "./footnote.tsx";
+export {
+  $findInDocument,
+  $replaceFound,
+  $selectFound,
+  type FindOptions,
+  type Found,
+  findIn,
+} from "./find.ts";
+export {
+  FindPanel,
+  type FindPanelProps,
+  OPEN_FIND_COMMAND,
+  findExtension,
+  findPanelStyles,
+} from "./find-panel.tsx";
+export {
+  $outline,
+  DocumentStatus,
+  type OutlineEntry,
+  READING_WORDS_PER_MINUTE,
+  TOGGLE_FOCUS_MODE_COMMAND,
+  documentStatusExtension,
+  documentStatusStyles,
+  readingStats,
+} from "./document-status.tsx";
+export {
+  $clipboardTarget,
+  $pasteGrid,
+  $tableFromGrid,
+  type ClipboardTarget,
+  clipboardGrid,
+  copyTarget,
+  cutTarget,
+  isMarkdown,
+  pasteAt,
+  pasteExtension,
+  sanitiseStyle,
+} from "./paste.ts";
+export { $blocksApart, $insertHtml, prepareHtml } from "./html-import.ts";
+export {
+  IMPORT_WORD_COMMAND,
+  type WordPicture,
+  type WordReading,
+  isWordFile,
+  notesInPlace,
+  wordImportExtension,
+  wordImportStyles,
+  wordToHtml,
+} from "./docx-import.tsx";
+export { ommlToLatex } from "./omml.ts";

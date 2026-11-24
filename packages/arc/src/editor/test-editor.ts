@@ -102,3 +102,23 @@ export async function hydratesFromServer(
     },
   };
 }
+
+/** Lays the top-level blocks out 40px apart, which happy-dom does not. */
+export function layOut(editor: LexicalEditor): void {
+  const keys = editor.read(() => $getRoot().getChildrenKeys());
+  keys.forEach((key, index) => {
+    const element = editor.getElementByKey(key);
+    if (element === null) return;
+    element.getBoundingClientRect = () =>
+      ({
+        top: index * 40,
+        bottom: index * 40 + 30,
+        height: 30,
+        left: 0,
+        right: 300,
+        width: 300,
+        x: 0,
+        y: index * 40,
+      }) as DOMRect;
+  });
+}

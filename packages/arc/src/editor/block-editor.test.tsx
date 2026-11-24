@@ -20,7 +20,7 @@ import { hydrates } from "../test-arc.ts";
 import { BlockEditor } from "./block-editor.tsx";
 import { defineBlock } from "./blocks.tsx";
 import { documentToMarkdown } from "./document.ts";
-import { capture, keydown, settle } from "./test-editor.ts";
+import { capture, keydown, layOut, settle } from "./test-editor.ts";
 
 const entry = JSON.stringify(fileURLToPath(new URL("./index.ts", import.meta.url)));
 
@@ -54,26 +54,6 @@ async function mount(extra: Partial<Parameters<typeof BlockEditor>[0]> = {}) {
   render(() => <BlockEditor label="Page" defaultMarkdown={DOC} onEditor={editor.set} {...extra} />);
   await settle();
   return editor.get();
-}
-
-/** Lays the blocks out 40px apart, which happy-dom does not. */
-function layOut(editor: LexicalEditor): void {
-  const keys = editor.read(() => $getRoot().getChildrenKeys());
-  keys.forEach((key, index) => {
-    const element = editor.getElementByKey(key);
-    if (element === null) return;
-    element.getBoundingClientRect = () =>
-      ({
-        top: index * 40,
-        bottom: index * 40 + 30,
-        height: 30,
-        left: 0,
-        right: 300,
-        width: 300,
-        x: 0,
-        y: index * 40,
-      }) as DOMRect;
-  });
 }
 
 describe("BlockEditor", () => {

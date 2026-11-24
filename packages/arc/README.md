@@ -1285,9 +1285,11 @@ the editor, the renderer and on a server.
   quote, list item and code block; `blockPlaceholders` changes the words
   or, `false`, turns them off.
 - `defineBlock`: a block of an app's own, built from arc's pieces, which
-  the pickers offer and the document stores as `{ type, data }`; its
+  the pickers offer and the document stores as `{ type, data }`, passed in
+  an editor's `extensions`; its
   component draws it in the editor and, read-only, in the renderer, and
-  `toMarkdown` and `fromMarkdown` give it a line of markdown.
+  `toMarkdown` and `fromMarkdown` give it a line of markdown, and `fromHtml`
+  and `toHtml` its HTML.
 - `ChatComposer`: a compact editor that sends on Enter (Shift+Enter breaks
   the line, and Enter in a list, a quote or a code block stays there), with
   mentions, commands, emoji and an `EmojiPicker` button, attachments
@@ -1300,9 +1302,156 @@ the editor, the renderer and on a server.
 - `EditorCollaboration`, from `@barqjs/arc/editor/collaboration`: a
   `collaborative` editor on a shared Yjs document, the others' cursors in
   arc's tones picked from their names. Yjs loads only with it.
-- `markdownToDocument`, `documentToMarkdown`, `documentToText` and
-  `createDocumentEditor` convert and read documents with no screen, with
-  mentions written `[@Name](mention:id)`.
+- `markdownToDocument`, `documentToMarkdown`, `documentToText`,
+  `htmlToDocument` and `createDocumentEditor` convert and read documents with
+  no screen, with mentions written `[@Name](mention:id)`.
+
+### Blocks a document holds
+
+The document preset, which `RichTextEditor` and `BlockEditor` open with,
+holds these beside rich text, tables, dividers, images, embeds and mentions.
+Each keeps the stored shape a document written elsewhere already has.
+
+- Callouts: a box of blocks in a tone (neutral, information, success,
+  warning, danger) chosen from the block menu, `role="note"`, written in
+  markdown as a `> [!tone]` alert and read back. Backspace at its start
+  unwraps it, and Enter on its empty last line or the arrows at its edges
+  leave it.
+- Columns: two to four, equal or a narrow and a wide, side by side while each
+  keeps a readable width and stacked on a phone. The block menu changes the
+  layout, moving a lost column's blocks into the last one kept.
+- Toggles: a title that opens and closes the blocks under it, open or closed
+  as saved. A press on its arrow or Mod+Enter in the title flips it, said to
+  a screen reader; Enter in the title goes into its content. The renderer
+  draws `<details>`, and `<details>` in HTML or markdown reads back as one.
+- Page breaks, where a printed copy turns the page.
+- Footnotes: Mod+Alt+F, or the button over selected words, puts a number in
+  the line and opens a popover to write the note. The numbers follow reading
+  order, the renderer lists the notes under the document with links both
+  ways in the reader's digits, and markdown writes Pandoc's `^[note]`.
+- Find and replace on Mod+F or the toolbar: Arabic found with or without its
+  vowel marks, case and whole words on request, the matches highlighted
+  without touching the text, replace one or all; a read-only document only
+  finds.
+- A status bar under the document: words, reading time, an outline of its
+  headings to jump to, and focus mode (Mod+Shift+\, Escape to leave).
+- Paste rules: cells from a spreadsheet fill the table in hand or become one,
+  an address pasted over words links them, an embeddable address on an empty
+  line embeds, markdown from a chat becomes blocks, and HTML is read through
+  every extension's rules. A block copied from the editor pastes whole, the
+  block menu cuts, copies and pastes, and pasted styles keep only colour,
+  highlight, size and font.
+- Word documents read in from Insert, `/word` or a drop: headings, lists,
+  tables, links, pictures through the upload queue, footnotes, and
+  equations turned to LaTeX. `wordToHtml` does the same with no editor, and
+  mammoth and fflate load only when a document is first read.
+
+`TextTracksEditor` writes what goes with a recording, beside it: caption
+lines timed from the player and saved as WebVTT, an audio description of
+timed lines, a transcript, and drafts from an app's speech service.
+
+### Editor extensions
+
+```tsx
+import {
+  $insertBlock,
+  BlockEditor,
+  type Block,
+  customizeExtensions,
+  defineBlock,
+  defineEditorExtension,
+  documentPreset,
+} from "@barqjs/arc/editor";
+import { Status } from "@barqjs/arc";
+import { Input } from "@barqjs/ui/input";
+
+const Decision: Block<{ text: string; status: "proposed" | "accepted" }> = defineBlock({
+  type: "acme-decision",
+  label: "Decision",
+  defaultData: () => ({ text: "", status: "proposed" }),
+  component: (props) => (
+    <div>
+      <Status tone={props.data.status === "accepted" ? "success" : "neutral"}>
+        {props.data.status}
+      </Status>
+      <Input
+        aria-label="Decision"
+        value={props.data.text}
+        readOnly={!props.editable}
+        onInput={(event) => props.setData({ text: event.currentTarget.value })}
+      />
+    </div>
+  ),
+  toMarkdown: (data) => `> [!decision ${data.status}] ${data.text}`,
+  fromMarkdown: {
+    regExp: /^> \[!decision (proposed|accepted)\] (.*)$/,
+    data: (match) => ({ status: match[1] === "accepted" ? "accepted" : "proposed", text: match[2] ?? "" }),
+  },
+});
+
+const decisions = defineEditorExtension({
+  name: "acme/decisions",
+  dependencies: [Decision],
+  keys: [{ keys: "Mod+Alt+D", run: () => void $insertBlock(Decision.$create()) }],
+  blockMenu: [
+    {
+      id: "status",
+      label: "Status",
+      $read: (block) =>
+        Decision.$is(block)
+          ? { value: block.getData().status, options: [{ value: "proposed", label: "Proposed" }, { value: "accepted", label: "Accepted" }] }
+          : null,
+      $choose: (block, value) => {
+        if (Decision.$is(block)) {
+          block.setData({ ...block.getData(), status: value === "accepted" ? "accepted" : "proposed" });
+        }
+      },
+    },
+  ],
+});
+
+<BlockEditor label="Notes" extensions={[decisions]} />;
+<BlockEditor label="Notes" preset={customizeExtensions(documentPreset, { remove: ["arc/table"] })} />;
+```
+
+An editor is built from editor extensions, and arc's own features are
+extensions on the same API: rich text, tables, dividers, images, embeds,
+mentions and every block above. `defineEditorExtension` takes, all
+optional beside its `name`:
+
+- `nodes`, `blocks` (made with `defineBlock`, which returns an extension of
+  its own), `lexical` (Lexical extensions) and `register`, for transforms
+  and commands that run in every editor holding it, a server's included;
+- `commands`, offered in the `/` menu, the toolbar's Insert menu and the
+  block picker (`places` narrows them, `available` asks the editor first);
+  `toolbar` and `floating` buttons; `blockMenu` choices for the block a
+  menu is open on; `keys`, by key or by the key's place, so an Arabic
+  keyboard reaches them;
+- `paste` rules, higher `priority` first; `markdown` rules (a function is
+  handed every rule, for a block that holds markdown of its own) tried by
+  `markdownPriority`; `html`, which rewrites a page before it is read; and
+  `docx`, which rewrites a Word document's XML or writes its equations;
+- `render` (how `RichTextRenderer`, and a server under an editor, draws a
+  stored node) and `renderEnd` (drawn after the document, as footnotes are);
+- `theme`, `plugins` (components mounted in an editor with a screen),
+  `footer`, `collaboration` (properties a shared document leaves out) and
+  `load`, a heavy module that `loadExtension` loads the first time it is
+  asked for, and asks again after a failure;
+- `dependencies`, put in the editor before it.
+
+Every word an extension prints is a `Label`, a string or a function of
+`ArcMessages`, so `<ArcProvider messages>` translates arc's own;
+`editorMessages(editor)` gives a listener with no component the reader's
+words.
+
+Presets are lists of extensions: `documentPreset` for a page,
+`chatPreset` for a message (the `ChatComposer` default) and `commentPreset`
+for a comment (`RichCommentComposer`'s). An editor takes `preset` and
+`extensions`, added to it; an extension named as one already there takes its
+place, and `customizeExtensions(preset, { remove, add })` leaves built-ins
+out by name. `RichTextEditor`, `BlockEditor`, `RichTextRenderer` and the
+headless converters all take the same two, so the editor, the renderer and a
+server read the same documents.
 
 ## Chat
 
