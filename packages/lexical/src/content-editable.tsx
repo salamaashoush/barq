@@ -87,9 +87,12 @@ export function ContentEditableElement(props: ContentEditableElementProps): JSX.
   const [held, setHeld] = createSignal(given && (isServer || claiming));
   let root: HTMLDivElement | null = null;
 
+  // A root element needs a window. One cloned from a template belongs to the
+  // template's document, which has none, until it is inserted into the page;
+  // a frame being torn down has none either.
   const attach = (element: HTMLDivElement): void => {
-    // A root element needs a window: a frame being torn down has none.
-    editor.setRootElement(element.ownerDocument.defaultView === null ? null : element);
+    if (element.ownerDocument.defaultView === null) return;
+    if (editor.getRootElement() !== element) editor.setRootElement(element);
   };
   const bind = (element: HTMLDivElement): (() => void) => {
     root = element;
@@ -99,14 +102,13 @@ export function ContentEditableElement(props: ContentEditableElementProps): JSX.
       editor.setRootElement(null);
     };
   };
-  if (claiming) {
-    onHydrationEnd(() => setHeld(false));
-    // After the static document has been taken out: Lexical empties the root
-    // it is given, and those nodes are barq's to remove.
-    createEffect(held, (holding) => {
-      if (!holding && root !== null) attach(root);
-    });
-  }
+  if (claiming) onHydrationEnd(() => setHeld(false));
+  // Once the element is in the page, and with `serverContent` once that has
+  // been taken out: Lexical empties the root it is given, and those nodes are
+  // barq's to remove.
+  createEffect(held, (holding) => {
+    if (!holding && root !== null) attach(root);
+  });
 
   return (
     <div

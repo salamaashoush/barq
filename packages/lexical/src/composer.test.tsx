@@ -52,3 +52,41 @@ test("a rich-text composer renders its root and reflects an update", async () =>
   await settle();
   expect(root?.textContent).toBe("hello salama");
 });
+
+test("a root born in a document with no window, as a template's clone is, binds once in the page", async () => {
+  let editor!: LexicalEditor;
+  function Grab() {
+    editor = useLexicalEditor();
+    return null;
+  }
+  const element = host();
+  // A browser clones a template's nodes into the template's own document,
+  // which has no window, and adopts them into the page as they are inserted.
+  const inert = { defaultView: null } as unknown as Document;
+  Object.defineProperty(HTMLDivElement.prototype, "ownerDocument", {
+    configurable: true,
+    get(this: HTMLDivElement) {
+      return this.isConnected ? document : inert;
+    },
+  });
+  try {
+    cleanups.push(
+      render(
+        () => (
+          <LexicalComposer
+            extensions={[RichTextExtension]}
+            contentEditable={<ContentEditable class="editable" aria-label="Notes" />}
+          >
+            <Grab />
+          </LexicalComposer>
+        ),
+        element,
+      ),
+    );
+    await settle();
+  } finally {
+    Reflect.deleteProperty(HTMLDivElement.prototype, "ownerDocument");
+  }
+  expect(editor.getRootElement()).toBe(element.querySelector<HTMLElement>(".editable"));
+  expect(element.querySelector(".editable")?.hasAttribute("data-lexical-editor")).toBe(true);
+});
