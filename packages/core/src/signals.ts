@@ -534,10 +534,15 @@ export function errorOwnerPath(error: unknown): string[] | undefined {
  * A development compile passes the tag's name and where the JSX is, and the
  * engine's development tier keeps them on the owner, so a finding, an error
  * and a hydration report inside it say `in <App> › <Row>`.
+ *
+ * Called from code the compiler does not see, `props` is the record of Cells
+ * the component reads, `{ title: () => title }`. A record of values would be
+ * read through the same Cells, and a callback in it would be called by the
+ * read.
  */
 export function createComponent<P, R>(
   component: (props: P) => R,
-  props: P | Incoming<P>,
+  props: Incoming<P>,
   name?: string,
   loc?: string,
 ): R {

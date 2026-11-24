@@ -48,6 +48,7 @@ const WITH_DEFAULT: &str = "_$withDefault";
 pub(crate) const READ: &str = "_$readProp";
 const READ_TAG: &str = "_$readTag";
 const CARRY: &str = "_$carry";
+const ELEMENT_PROPS: &str = "_$elementProps";
 
 /// The object under `_$carry(object)`, the record this pass makes of an
 /// object of values spread onto a component.
@@ -180,8 +181,9 @@ pub fn run<'a>(
         constructs: survey.constructs,
         actions: FxHashMap::default(),
         component_tag: false,
+        element_tag: false,
         minted: 0,
-        needs: [false; 6],
+        needs: [false; 7],
         refusals: Vec::new(),
         params: Vec::new(),
         tags: Vec::new(),
@@ -375,10 +377,12 @@ struct Rewrite<'a, 's> {
     actions: FxHashMap<SymbolId, Action<'a>>,
     /// Whether the attributes being walked are a component's.
     component_tag: bool,
+    /// Whether they are an element's.
+    element_tag: bool,
     minted: u32,
-    /// `values`, `omit`, `withDefault`, `readProp`, `carry`, `readTag`, in that
-    /// order.
-    needs: [bool; 6],
+    /// `values`, `omit`, `withDefault`, `readProp`, `carry`, `readTag`,
+    /// `elementProps`, in that order.
+    needs: [bool; 7],
     refusals: Vec<Refusal>,
     params: Vec<Span>,
     tags: Vec<(u32, Expression<'a>)>,
@@ -1122,14 +1126,15 @@ impl<'a> VisitMut<'a> for Rewrite<'a, '_> {
 
     fn visit_jsx_element(&mut self, element: &mut JSXElement<'a>) {
         self.tag_read(&element.opening_element.name);
-        let outer = self.component_tag;
+        let outer = (self.component_tag, self.element_tag);
         let construct = matches!(&element.opening_element.name,
             JSXElementName::IdentifierReference(name)
                 if self.symbol(name).is_some_and(|symbol| self.constructs.contains(&symbol)));
-        self.component_tag =
-            !construct && crate::analysis::is_component_tag(&element.opening_element.name);
+        let component = crate::analysis::is_component_tag(&element.opening_element.name);
+        self.component_tag = !construct && component;
+        self.element_tag = !component;
         self.visit_jsx_opening_element(&mut element.opening_element);
-        self.component_tag = outer;
+        (self.component_tag, self.element_tag) = outer;
         for child in element.children.iter_mut() {
             // `{props.title}` as a child is handed on as the Cell: the hole
             // follows it, and a forward stays the one function.
@@ -1150,7 +1155,20 @@ impl<'a> VisitMut<'a> for Rewrite<'a, '_> {
                 // A record is a source as it stands, read by whoever receives
                 // it. Anything else spread onto a component is an object of
                 // values, and each is carried as the Cell a prop is.
+                //
+                // An element is the exception among receivers: a DOM spread
+                // attaches a handler or a `ref` as the function it is handed,
+                // so a record's Cell there was the listener, and a click
+                // answered with the handler instead of running it. It takes the
+                // record with those read out of their Cells.
                 if self.as_record(&mut spread.argument) {
+                    if self.element_tag {
+                        let span = oxc::span::GetSpan::span(&spread.argument);
+                        let placeholder = Expression::new_null_literal(span, &self.ast);
+                        let record = std::mem::replace(&mut spread.argument, placeholder);
+                        self.needs[6] = true;
+                        spread.argument = self.call(ELEMENT_PROPS, vec![record], span);
+                    }
                     return;
                 }
                 self.visit_expression(&mut spread.argument);
@@ -1246,7 +1264,7 @@ fn import_helpers<'a>(
     allocator: &'a Allocator,
     program: &mut Program<'a>,
     core_source: &str,
-    needs: [bool; 6],
+    needs: [bool; 7],
 ) {
     let wanted: Vec<(&str, &str)> = [
         ("values", VALUES),
@@ -1255,6 +1273,7 @@ fn import_helpers<'a>(
         ("readProp", READ),
         ("carry", CARRY),
         ("readTag", READ_TAG),
+        ("elementProps", ELEMENT_PROPS),
     ]
     .into_iter()
     .zip(needs)
@@ -1459,7 +1478,7 @@ mod tests {
              return <p {...rest}>{a + 1}</p>; }\n",
         );
         assert!(code.contains("const rest = _$omit(props, \"a\");"), "{code}");
-        assert!(code.contains("_$spread(_el$1, () => rest);"), "{code}");
+        assert!(code.contains("_$spread(_el$1, () => _$elementProps(rest));"), "{code}");
         assert!(code.contains("_$insert(_el$1, () => _$readProp(props.a) + 1);"), "{code}");
         assert!(!code.contains("const {"), "{code}");
     }

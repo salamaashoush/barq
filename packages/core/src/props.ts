@@ -509,7 +509,8 @@ const carried = new WeakMap<object, Record<string, unknown>>();
  * A record is answered as it is: a view from `omit` or `merge`, and the record
  * under a values view. A function is a source that answers with the object,
  * such as a signal holding one, and is asked at every read. One object is carried once, so a Cell keeps its
- * identity across reads.
+ * identity across reads. A part branded by {@link asRecord} keeps its Cells
+ * and carries everything else, its handlers included.
  */
 export function carry(source: unknown): unknown {
   if (typeof source === "function") return (): unknown => carry((source as () => unknown)());
@@ -521,22 +522,59 @@ export function carry(source: unknown): unknown {
   let made = carried.get(source);
   if (made === undefined) {
     made = {};
+    const part = held[PART] === true;
     for (const key of Object.keys(source)) {
-      made[key] = key === "children" ? held[key] : (): unknown => held[key];
+      const value = held[key];
+      made[key] =
+        key === "children" || (part && typeof value === "function" && !passesAsIs(key))
+          ? value
+          : (): unknown => held[key];
     }
     carried.set(source, made);
   }
   return made;
 }
 
+/** What {@link asRecord} brands a bag with, for {@link carry}. */
+const PART = Symbol.for("barq.props.part");
+
+/** The keys a DOM spread hands a function under as it is: a handler and a `ref`. */
+function passesAsIs(key: string): boolean {
+  if (key === "ref") return true;
+  const third = key.charCodeAt(2);
+  return key.startsWith("on") && third >= 65 && third <= 90;
+}
+
 /**
- * Mark an object as a props record already: its function members are Cells
- * (or handlers a DOM spread attaches), so a spread onto a component hands it
- * over as it is instead of carrying each key. For a library that builds the
- * props of a part by hand and lets the caller place them on an element or on a
- * component.
+ * A props record as a DOM spread takes it. The spread attaches a handler or a
+ * `ref` as the function it is handed, so those are read out of their Cells;
+ * every other key keeps its Cell, which the spread calls as it calls any
+ * getter, and a record with neither is answered as it is. What
+ * `<button {...props} />` compiles to.
+ */
+export function elementProps(record: Record<string, unknown>): Record<string, unknown> {
+  let out: Record<string, unknown> | null = null;
+  for (const key in record) {
+    const held = record[key];
+    if (typeof held !== "function" || !passesAsIs(key)) continue;
+    if (out === null) {
+      out = {};
+      for (const each in record) out[each] = record[each];
+    }
+    out[key] = readProp(held);
+  }
+  return out ?? record;
+}
+
+/**
+ * Mark an object as the props of a part, written for a DOM spread: a handler
+ * or a `ref` is the function itself, and every other function member is a
+ * Cell. Spread onto a component it is taken key by key in the same terms, so a
+ * handler crosses as the value it is and is not called when the component
+ * reads it. For a library that builds the props of a part by hand and lets the
+ * caller place them on an element or on a component.
  */
 export function asRecord<T extends object>(bag: T): T {
-  Object.defineProperty(bag, VIEW, { value: true });
+  Object.defineProperty(bag, PART, { value: true });
   return bag;
 }

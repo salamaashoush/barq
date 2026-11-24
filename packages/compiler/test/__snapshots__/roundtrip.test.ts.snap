@@ -4912,7 +4912,7 @@ export const optimality = {
 
 exports[`emitted code snapshots props-rest-spread 1`] = `
 "import { template as _$template, insert as _$insert, spread as _$spread } from "@barqjs/web";
-import { createSignal, omit as _$omit, createComponent as _$createComponent } from "@barqjs/core";
+import { createSignal, omit as _$omit, elementProps as _$elementProps, createComponent as _$createComponent } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<span></span>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div class="chips"></div>\`);
 const _k$1 = () => "chip-1";
@@ -4933,7 +4933,7 @@ function Chip(props: {
   const _el$1 = _tmpl$1();
   _$spread(_el$1, () => ({
     "class": "chip",
-    ...rest
+    ..._$elementProps(rest)
   }));
   _$insert(_el$1, props.text);
   return _el$1;

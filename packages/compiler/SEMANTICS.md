@@ -426,6 +426,8 @@ performs it:
   answers `undefined` for a prop the caller left out;
 - a forward, `props.title` handed straight on as a component's attribute or as a child → the Cell
   itself, so forwarding stays identity (C5);
+- `{...props}` onto an ELEMENT → `elementProps(props)`, the record with each handler and `ref` read
+  out of its Cell, so a DOM spread attaches the handler rather than the Cell around it;
 - `{...props}`, `omit(props, …)` and `cells(props)` → the record;
 - any other use (`useThing(props)`, `props[key]`) → `values(props)`, a view that reads each Cell on
   access.

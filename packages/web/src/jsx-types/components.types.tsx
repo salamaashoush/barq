@@ -7,7 +7,7 @@
  * directory: every positive compiles and every `@ts-expect-error` fires.
  */
 
-import { cells, createContext, merge, omit, provide } from "@barqjs/core";
+import { cells, createComponent, createContext, merge, omit, provide } from "@barqjs/core";
 import type {
   Accessor,
   Child,
@@ -249,4 +249,15 @@ export function OmitIsExact(props: Incoming<{ a: string; b?: number; c: boolean 
   void rest.a;
   // @ts-expect-error `d` is not a prop
   omit(props, "d");
+}
+
+/** From code the compiler does not see, a component is handed the record of Cells it reads. */
+function Uploads(props: { upload: () => Promise<string>; label: string }) {
+  return <i>{props.label}</i>;
+}
+
+export function uploadsFromTs(): void {
+  createComponent(Uploads, { upload: () => () => Promise.resolve("x"), label: () => "files" });
+  // @ts-expect-error a record of values would have its callback called by the read
+  createComponent(Uploads, { upload: () => Promise.resolve("x"), label: () => "files" });
 }

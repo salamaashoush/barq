@@ -180,6 +180,7 @@ export {
   cells,
   block,
   carry,
+  elementProps,
   fromCells,
   isBlock,
   BLOCK,
