@@ -478,19 +478,17 @@ describe("a measured row after the width changes", () => {
 
 describe("the virtualizer's state", () => {
   test("a row measured after the layout was made moves the rows below it and the size", () => {
-    const items = ["a", "b", "c"].map(
-      (key): Node<unknown> => ({
-        type: "item",
-        key,
-        value: key,
-        textValue: key,
-        level: 0,
-        index: 0,
-        hasChildNodes: false,
-        childNodes: [],
-        props: {},
-      }),
-    );
+    const items = ["a", "b", "c"].map((key): Node<unknown> => ({
+      type: "item",
+      key,
+      value: key,
+      textValue: key,
+      level: 0,
+      index: 0,
+      hasChildNodes: false,
+      childNodes: [],
+      props: {},
+    }));
     const collection = new ListCollection<unknown>(items);
     const [state, dispose] = createRoot((done) => [
       virtualizer({
