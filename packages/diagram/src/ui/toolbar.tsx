@@ -99,11 +99,10 @@ interface ToolConfig {
 }
 
 /** The tools this editor does not draw with yet; their entries stay, disabled. */
-const UNAVAILABLE_TOOLS = new Set<string>(["embeddable", "autoshape", "bucketfill", "magicframe"]);
+const UNAVAILABLE_TOOLS = new Set<string>(["embeddable", "bucketfill", "magicframe"]);
 
 /** The extra tools' shortcuts, which `TOOLS` has not: they are Excalidraw's. */
 const EXTRA_SHORTCUTS: Record<string, ToolConfig> = {
-  autoshape: { letterKey: "x", shiftKey: true },
   bucketfill: { letterKey: "b" },
 };
 

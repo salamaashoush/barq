@@ -28,6 +28,7 @@ export const TOOLS = {
   eraser: { letterKey: KEYS.E, numericKey: KEYS["0"], toggle: true },
   frame: { letterKey: KEYS.F },
   laser: { letterKey: KEYS.K },
+  autoshape: { letterKey: KEYS.X, shiftKey: true },
   lasso: {},
 } satisfies Partial<Record<ToolType, ToolConfig>>;
 

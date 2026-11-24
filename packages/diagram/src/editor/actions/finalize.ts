@@ -54,6 +54,7 @@ export const actionFinalize: Action<FinalizeData> = {
     let newElements = elements;
     const { scene } = app;
     const elementsMap = scene.getNonDeletedElementsMap();
+    const isDrawShapeTool = appState.activeTool.type === "autoshape";
 
     if (data && appState.selectedLinearElement) {
       const { event, sceneCoords } = data;
@@ -175,10 +176,24 @@ export const actionFinalize: Action<FinalizeData> = {
 
     app.focusContainer();
 
+    // a pending sketch is committed even when the tool has changed since
+    const hadPendingSketch = app.drawShape.hasPendingGesture();
+    if (hadPendingSketch || isDrawShapeTool) {
+      app.drawShape.finalize();
+      if (hadPendingSketch) {
+        newElements = scene.getElementsIncludingDeleted();
+      }
+    }
+
     let element: NonDeleted<ExcalidrawElement> | null = null;
     if (appState.multiElement) {
       element = appState.multiElement;
-    } else if (appState.newElement?.type === "freedraw" || isBindingElement(appState.newElement)) {
+    } else if (
+      // the sketch's preview in `newElement` is not in the scene
+      !isDrawShapeTool &&
+      !hadPendingSketch &&
+      (appState.newElement?.type === "freedraw" || isBindingElement(appState.newElement))
+    ) {
       element = appState.newElement;
     } else {
       const selectedIds = Object.keys(appState.selectedElementIds);
@@ -274,7 +289,8 @@ export const actionFinalize: Action<FinalizeData> = {
     }
 
     const isToolLocked = app.isToolLocked();
-    const keepActiveTool = (isToolLocked || appState.activeTool.type === "freedraw") && !!element;
+    const keepActiveTool =
+      isDrawShapeTool || ((isToolLocked || appState.activeTool.type === "freedraw") && !!element);
 
     if (!keepActiveTool) {
       app.cursor.applyForTool(activeTool);
@@ -309,11 +325,12 @@ export const actionFinalize: Action<FinalizeData> = {
         editingTextElement: null,
         suggestedBinding: null,
         frameToHighlight: null,
-        selectedElementIds:
-          element && !isToolLocked && appState.activeTool.type !== "freedraw"
+        selectedElementIds: isDrawShapeTool
+          ? {}
+          : element && !isToolLocked && appState.activeTool.type !== "freedraw"
             ? { ...appState.selectedElementIds, [element.id]: true }
             : appState.selectedElementIds,
-        selectedLinearElement,
+        selectedLinearElement: isDrawShapeTool ? null : selectedLinearElement,
       },
       captureUpdate: shouldCommit ? CaptureUpdateAction.IMMEDIATELY : CaptureUpdateAction.NEVER,
     };

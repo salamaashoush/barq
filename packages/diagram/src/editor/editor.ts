@@ -222,6 +222,7 @@ import { commitDraggedDuplicates } from "./duplicate.ts";
 import { EditorFlowchart } from "./flowchart.ts";
 import { EditorImages } from "./images.ts";
 import { EditorText } from "./text.ts";
+import { DrawShape } from "./draw-shape.ts";
 import { EraserTrail, LaserTrails, LassoTrail } from "./trails.ts";
 import { TextTool } from "./text-tool.ts";
 import { TOGGLE_TOOLS, findToolByKey, isEditorTool } from "./tools.ts";
@@ -413,6 +414,7 @@ export class DiagramEditor {
   public readonly lassoTrail: LassoTrail;
   /** A tool dragged out of the toolbar onto the canvas. */
   public readonly toolDrag: ToolDrag;
+  public readonly drawShape: DrawShape;
   /** What the eraser has marked, erased on pointer up. */
   public elementsPendingErasure = new Set<ExcalidrawElement["id"]>();
   public readonly renderEnvironment: RenderEnvironment;
@@ -616,7 +618,9 @@ export class DiagramEditor {
     this.eraserTrail = new EraserTrail(this);
     this.lassoTrail = new LassoTrail(this);
     this.toolDrag = new ToolDrag(this);
+    this.drawShape = new DrawShape(this);
     if (options.svgLayer) {
+      this.drawShape.start(options.svgLayer);
       this.laserTrails.start(options.svgLayer);
       this.eraserTrail.start(options.svgLayer);
       this.lassoTrail.start(options.svgLayer);
@@ -1609,6 +1613,9 @@ export class DiagramEditor {
       console.warn(`DiagramEditor: the "${tool.type}" tool is not available`);
       return;
     }
+    if (this.drawShape.hasPendingGesture()) {
+      this.actionManager.executeAction(actionFinalize);
+    }
     const isToggleTool = TOGGLE_TOOLS.includes(tool.type);
     const toggle = opts.toggle === true && isToggleTool;
 
@@ -2520,6 +2527,10 @@ export class DiagramEditor {
       this.createFrameElementOnPointerDown(pointerDownState, toolType);
     } else if (toolType === "laser") {
       this.laserTrails.startPath(pointerDownState.lastCoords.x, pointerDownState.lastCoords.y);
+    } else if (toolType === "autoshape") {
+      this.drawShape.handlePointerDown(pointerDownState.lastCoords, () =>
+        this.actionManager.executeAction(actionFinalize),
+      );
     } else if (toolType === "text") {
       this.textTool.handlePointerDown(event, pointerDownState);
     } else if (toolType === "arrow" || toolType === "line") {
@@ -3220,6 +3231,10 @@ export class DiagramEditor {
       this.laserTrails.addPointToPath(pointerCoords.x, pointerCoords.y);
     }
 
+    if (this.drawShape.handlePointerMove(pointerCoords)) {
+      return;
+    }
+
     const [gridX, gridY] = getGridPoint(
       pointerCoords.x,
       pointerCoords.y,
@@ -3663,7 +3678,8 @@ export class DiagramEditor {
       return;
     }
 
-    if (isLinearElement(newElementAtUp)) {
+    // the autoshape tool's preview is not in the scene: `actionFinalize` commits the sketch
+    if (isLinearElement(newElementAtUp) && activeTool.type !== "autoshape") {
       const pointerCoords = viewportCoordsToSceneCoords(childEvent, this.state);
       const dragDistance =
         pointDistance(
@@ -3804,6 +3820,7 @@ export class DiagramEditor {
 
     if (
       activeTool.type !== "selection" &&
+      activeTool.type !== "autoshape" &&
       newElementAtUp &&
       isInvisiblySmallElement(newElementAtUp)
     ) {
@@ -4013,6 +4030,11 @@ export class DiagramEditor {
 
     if (activeTool.type === "laser") {
       this.laserTrails.endPath();
+      return;
+    }
+
+    if (activeTool.type === "autoshape") {
+      this.actionManager.executeAction(actionFinalize);
       return;
     }
 
@@ -4481,11 +4503,16 @@ export class DiagramEditor {
       this.state.editingTextElement ||
       !this.shouldHandleBrowserCanvasDoubleClick(event.type) ||
       // alt-clicks cycle the selection (in the crop editor, alt mirrors the
-      // sides a double-click uncrops)
-      (event.altKey && !this.state.croppingElementId) ||
+      // sides a double-click uncrops); the autoshape tool selects nothing,
+      // and alt is its way to write text where it clicks
+      (event.altKey &&
+        this.state.activeTool.type !== "autoshape" &&
+        !this.state.croppingElementId) ||
       // a double-click with the line tool would both create text and draw
       this.state.multiElement ||
-      this.state.activeTool.type !== this.state.preferredSelectionTool.type
+      // the autoshape tool writes text without leaving the tool
+      (this.state.activeTool.type !== this.state.preferredSelectionTool.type &&
+        this.state.activeTool.type !== "autoshape")
     ) {
       return;
     }
@@ -4577,7 +4604,9 @@ export class DiagramEditor {
         : null;
     if (
       container &&
-      (hasBoundTextElement(container) ||
+      // with the autoshape tool, anywhere in a shape writes in it
+      (this.state.activeTool.type === "autoshape" ||
+        hasBoundTextElement(container) ||
         !isTransparent(container.backgroundColor) ||
         hitElementItself({
           point: pointFrom(sceneX, sceneY),
@@ -5381,6 +5410,7 @@ export class DiagramEditor {
     this.clipboard.clearPlainPaste();
     this.flowchart.clear();
     this.laserTrails.stop();
+    this.drawShape.stop();
     this.eraserTrail.stop();
     this.lassoTrail.stop();
     this.destroyed = true;

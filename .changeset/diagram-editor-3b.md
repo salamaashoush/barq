@@ -10,3 +10,4 @@
 - The image export dialog (Ctrl+Shift+E) previews the export and sets only selected, background, dark mode, the embedded scene and the scale, then saves a PNG or SVG or copies a PNG; the export dialog saves to disk and shows `onExportToBackend` and `renderCustomUI`.
 - W is Excalidraw's `toggleWrap`: it wraps the selection in a container or a frame, or unwraps it, and the next W takes it back.
 - `exportCanvas`, `exportToClipboard`, `saveAsJSON`, `loadFromJSON`, `saveLibraryAsJSON`, `fileOpen`, `fileSave` and `muteFSAbortError` are exported under Excalidraw's names, with `isNativeFileSystemSupported`.
+- The autoshape tool (Shift+X) turns a sketch into a rectangle, diamond, ellipse, arrow or line; a sketched arrow binds to the shapes at its ends.

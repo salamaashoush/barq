@@ -25,7 +25,7 @@ embeds.
 - done: frame tool, membership on draw and drop (`frame.test.ts`)
 - done: image tool with a file picker (`clipboard.test.ts`)
 - done: sticky note tool, click and drag sizing (`flowchart.test.ts`)
-- pending (3b): autoshape tool (`App.drawshape.ts`, Shift+X); its toolbar entry is there, disabled
+- done: autoshape tool, Shift+X: a sketch recognised as a shape, arrows bound, lines between shapes made arrows (`draw-shape.test.ts`)
 - pending (3b): bucket fill tool (`App.bucketFill.ts`, B); its toolbar entry and panel are there
 - pending (4): embeddable and iframe tool, `actionLink` embeds; its toolbar entry is there, disabled
 - pending (3b): magic frame (AI); the element draws and hit-tests, its toolbar entry is disabled
