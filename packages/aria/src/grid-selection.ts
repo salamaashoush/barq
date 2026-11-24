@@ -419,7 +419,7 @@ export function gridSelectionAnnouncement(
     },
     ({ focused }) => {
       if (focused) {
-        announceChange();
+        untrack(announceChange);
         return undefined;
       }
       const frame = requestAnimationFrame(announceChange);

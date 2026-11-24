@@ -165,7 +165,7 @@ export function overflowItems(options: OverflowOptions): {
           const partly = next.size > 0 && next.size < untrack(options.keys).length;
           setPhase(partly ? "verify" : "idle");
         } else {
-          const own = access(options.menuRef) as HTMLElement | null | undefined;
+          const own = untrack(() => access(options.menuRef)) as HTMLElement | null | undefined;
           const menu = own ?? children.at(-1);
           const menuSize =
             menu === undefined || menu === null ? 0 : outerSize(menu, horizontal, false, true);
