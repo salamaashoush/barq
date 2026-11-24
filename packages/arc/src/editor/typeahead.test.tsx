@@ -62,6 +62,10 @@ async function mount(children: () => JSX.Element): Promise<LexicalEditor> {
   return editor.get();
 }
 
+interface ArabicProps {
+  children: Child;
+}
+
 describe("MentionTypeahead", () => {
   test("offers matching people with avatars, and Enter inserts a mention carrying the id", async () => {
     const editor = await mount(() => <MentionTypeahead source={PEOPLE} />);
@@ -88,11 +92,11 @@ describe("MentionTypeahead", () => {
 
   test("asks a server once typing pauses, says it is searching, and drops a stale answer", async () => {
     const asked: string[] = [];
-    const source = async (query: string): Promise<MentionCandidate[]> => {
+    async function source(query: string): Promise<MentionCandidate[]> {
       asked.push(query);
       await new Promise((resolve) => setTimeout(resolve, query === "a" ? 40 : 5));
       return PEOPLE.filter((one) => one.name.toLowerCase().includes(query.toLowerCase()));
-    };
+    }
     const editor = await mount(() => <MentionTypeahead source={source} debounce={10} />);
     await typeText(editor, "@a");
     expect(document.querySelector('[data-slot="typeahead-status"]')?.textContent).toBe(
@@ -119,7 +123,7 @@ describe("MentionTypeahead", () => {
 
   test("a name in Arabic is isolated in its row, and the menu has no ARIA faults", async () => {
     const editor = capture();
-    function Arabic(props: { children: Child }) {
+    function Arabic(props: ArabicProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }

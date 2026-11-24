@@ -84,11 +84,14 @@ export function editorUploads(editor: LexicalEditor): EditorUploads | null {
 function ImageView(props: BlockProps<ImageData>) {
   const messages = useArcMessages();
   const uploads = useEditorUploads();
-  const cls = () => mediaStyles();
-  const item = (): UploadItem | undefined =>
-    props.data.uploadId === undefined
+  function cls() {
+    return mediaStyles();
+  }
+  function item(): UploadItem | undefined {
+    return props.data.uploadId === undefined
       ? undefined
       : uploads?.queue.items().find((one) => one.id === props.data.uploadId);
+  }
   return (
     <figure class={cls().figure} data-slot="editor-image">
       <div class={cls().frame}>
@@ -150,8 +153,13 @@ function ImageView(props: BlockProps<ImageData>) {
   );
 }
 
+interface ImageDetailsProps {
+  data: ImageData;
+  setData: BlockProps<ImageData>["setData"];
+}
+
 /** A picture's alt text and caption, edited in a popover from a button over it. */
-function ImageDetails(props: { data: ImageData; setData: BlockProps<ImageData>["setData"] }) {
+function ImageDetails(props: ImageDetailsProps) {
   const messages = useArcMessages();
   const formId = createUniqueId();
   const altId = createUniqueId();
@@ -159,13 +167,13 @@ function ImageDetails(props: { data: ImageData; setData: BlockProps<ImageData>["
   const [open, setOpen] = createSignal(false, { ownedWrite: true });
   const [alt, setAlt] = createSignal("", { ownedWrite: true });
   const [caption, setCaption] = createSignal("", { ownedWrite: true });
-  const change = (next: boolean): void => {
+  function change(next: boolean): void {
     if (next) {
       setAlt(props.data.alt);
       setCaption(props.data.caption ?? "");
     }
     setOpen(next);
-  };
+  }
   return (
     <ResponsiveOverlay
       heading={messages().imageDetails}

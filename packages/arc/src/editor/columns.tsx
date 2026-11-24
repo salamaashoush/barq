@@ -95,7 +95,11 @@ export function drawColumn(share: number, editing: boolean, themeClass?: unknown
   };
 }
 
-export type SerializedColumnsNode = Spread<{ layout: ColumnLayout }, SerializedElementNode>;
+export type ColumnsFields = {
+  layout: ColumnLayout;
+};
+
+export type SerializedColumnsNode = Spread<ColumnsFields, SerializedElementNode>;
 
 /** Blocks laid out in columns side by side, which stack on a narrow screen. */
 export class ColumnsNode extends ElementNode {

@@ -24,8 +24,9 @@ afterEach(() => {
   document.body.style.overflow = "";
 });
 
-const words = (text: string, query: string, options?: FindOptions) =>
-  findIn(text, query, options).map(({ start, end }) => text.slice(start, end));
+function words(text: string, query: string, options?: FindOptions) {
+  return findIn(text, query, options).map(({ start, end }) => text.slice(start, end));
+}
 
 describe("finding in a text", () => {
   test("finds every match, whatever its case unless asked", () => {
@@ -58,7 +59,11 @@ describe("finding in a text", () => {
   });
 });
 
-function headless(build: () => void): LexicalEditor & { dispose: () => void } {
+interface Disposable {
+  dispose: () => void;
+}
+
+function headless(build: () => void): LexicalEditor & Disposable {
   const editor = createDocumentEditor();
   editor.update(build, { discrete: true });
   return editor;

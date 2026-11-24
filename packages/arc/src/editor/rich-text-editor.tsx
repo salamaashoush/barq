@@ -175,25 +175,32 @@ function heights(
   max: string | number | undefined,
 ): Record<string, string> {
   const out: Record<string, string> = {};
-  const length = (value: string | number): string =>
-    typeof value === "number" ? `${String(value)}px` : value;
+  function length(value: string | number): string {
+    return typeof value === "number" ? `${String(value)}px` : value;
+  }
   if (min !== undefined) out["--editor-min-height"] = length(min);
   if (max !== undefined) out["--editor-max-height"] = length(max);
   return out;
 }
 
+export interface ExtensionPluginsProps {
+  extensions: readonly EditorExtension[];
+}
+
 /** What every extension the editor holds mounts: its panels, dialogs and listeners. */
-export function ExtensionPlugins(props: { extensions: readonly EditorExtension[] }) {
+export function ExtensionPlugins(props: ExtensionPluginsProps) {
   const plugins = untrack(() => props.extensions.flatMap((extension) => extension.plugins ?? []));
   return <For each={plugins}>{(Plugin: () => JSX.Element) => <Plugin />}</For>;
 }
 
-/** What the editor's props reach once it is built: read-only, changes, autosave, the counter. */
-export function EditorBridge(props: {
+export interface EditorBridgeProps {
   readOnly?: boolean;
   onChange?: RichTextEditorProps["onChange"];
   onEditor?: (editor: LexicalEditor) => void;
-}) {
+}
+
+/** What the editor's props reach once it is built: read-only, changes, autosave, the counter. */
+export function EditorBridge(props: EditorBridgeProps) {
   const editor = useLexicalEditor();
   provideEditorMessages(editor, useArcMessages());
   untrack(() => props.onEditor?.(editor));
@@ -213,12 +220,14 @@ export function EditorBridge(props: {
   return null;
 }
 
-function Footer(props: {
+interface FooterProps {
   cls: Slots;
   maxLength?: number;
   autosave?: AutosaveOptions;
   extensions: readonly EditorExtension[];
-}) {
+}
+
+function Footer(props: FooterProps) {
   const footers = untrack(() =>
     props.extensions.flatMap((extension) =>
       extension.footer === undefined ? [] : [extension.footer],
@@ -235,7 +244,7 @@ function Footer(props: {
       wasOver = over !== null;
     },
   );
-  const status = (): string => {
+  function status(): string {
     switch (autosave?.status()) {
       case "pending":
       case "saving":
@@ -247,7 +256,7 @@ function Footer(props: {
       default:
         return "";
     }
-  };
+  }
   return (
     <div class={props.cls.footer} data-slot="rich-text-editor-footer">
       <For each={footers}>{(Part: () => JSX.Element) => <Part />}</For>
@@ -272,12 +281,14 @@ function Footer(props: {
   );
 }
 
-/** The images an editor uploads, through arc's queue. */
-function Uploads(props: {
+interface UploadsProps {
   upload: (file: File, context: UploadContext) => Promise<string>;
   maxSize?: number;
   children: Child;
-}) {
+}
+
+/** The images an editor uploads, through arc's queue. */
+function Uploads(props: UploadsProps) {
   const editor = useLexicalEditor();
   const queue = useUploadQueue({
     upload: (file, context) => props.upload(file, context),
@@ -287,8 +298,12 @@ function Uploads(props: {
   return <>{props.children}</>;
 }
 
+interface EditorToolsProps {
+  tools: readonly EditorTool[];
+}
+
 /** The toolbar, with what the editor's extensions offer to insert. */
-function EditorTools(props: { tools: readonly EditorTool[] }) {
+function EditorTools(props: EditorToolsProps) {
   const editor = useLexicalEditor();
   const messages = useArcMessages();
   const insert = createMemo((): InsertAction[] =>
@@ -326,14 +341,17 @@ function EditorTools(props: { tools: readonly EditorTool[] }) {
  * `@barqjs/arc/editor`, which an app that never edits rich text never loads.
  */
 export function RichTextEditor(props: RichTextEditorProps) {
-  const cls = (): Slots => parts(richTextEditorStyles({ variant: props.variant }), props.classes);
+  function cls(): Slots {
+    return parts(richTextEditorStyles({ variant: props.variant }), props.classes);
+  }
   const placeholderId = createUniqueId();
-  const tools = (): readonly EditorTool[] | null =>
-    props.toolbar === false
+  function tools(): readonly EditorTool[] | null {
+    return props.toolbar === false
       ? null
       : props.toolbar === true || props.toolbar === undefined
         ? DEFAULT_TOOLS
         : props.toolbar;
+  }
 
   const options = untrack((): DocumentOptions => ({
     preset: props.preset,
@@ -356,67 +374,73 @@ export function RichTextEditor(props: RichTextEditorProps) {
     return () => $convertFromMarkdownString(markdown, transformers);
   });
 
-  const body = (): Child => (
-    <>
-      <Show when={tools()}>
-        {(list: () => readonly EditorTool[]) => <EditorTools tools={list()} />}
-      </Show>
-      <div class={cls().body} data-slot="rich-text-editor-body">
-        <ContentEditable
-          class={arc(proseStyles({ size: props.size, width: "full" }).root, cls().content)}
-          data-slot="rich-text-editor-content"
-          aria-label={props.label}
-          aria-labelledby={props["aria-labelledby"]}
-          aria-describedby={props["aria-describedby"]}
-          aria-multiline={true}
-          aria-invalid={props.invalid === true ? true : undefined}
-          aria-placeholder={props.placeholder}
-          serverContent={
-            editorState === null || editorState === undefined ? undefined : (
-              <EditorDocument
-                value={untrack(() => props.defaultValue)}
-                markdown={untrack(() => props.defaultMarkdown)}
-                preset={options.preset}
-                extensions={options.extensions}
-              />
-            )
+  function body(): Child {
+    return (
+      <>
+        <Show when={tools()}>
+          {(list: () => readonly EditorTool[]) => <EditorTools tools={list()} />}
+        </Show>
+        <div class={cls().body} data-slot="rich-text-editor-body">
+          <ContentEditable
+            class={arc(proseStyles({ size: props.size, width: "full" }).root, cls().content)}
+            data-slot="rich-text-editor-content"
+            aria-label={props.label}
+            aria-labelledby={props["aria-labelledby"]}
+            aria-describedby={props["aria-describedby"]}
+            aria-multiline={true}
+            aria-invalid={props.invalid === true ? true : undefined}
+            aria-placeholder={props.placeholder}
+            serverContent={
+              editorState === null || editorState === undefined ? undefined : (
+                <EditorDocument
+                  value={untrack(() => props.defaultValue)}
+                  markdown={untrack(() => props.defaultMarkdown)}
+                  preset={options.preset}
+                  extensions={options.extensions}
+                />
+              )
+            }
+            placeholder={
+              props.placeholder === undefined ? null : (
+                <span
+                  id={placeholderId}
+                  class={cls().placeholder}
+                  data-slot="rich-text-editor-placeholder"
+                >
+                  {props.placeholder}
+                </span>
+              )
+            }
+          />
+        </div>
+        <Show
+          when={
+            props.maxLength !== undefined ||
+            props.autosave !== undefined ||
+            resolved.some((extension) => extension.footer !== undefined)
           }
-          placeholder={
-            props.placeholder === undefined ? null : (
-              <span
-                id={placeholderId}
-                class={cls().placeholder}
-                data-slot="rich-text-editor-placeholder"
-              >
-                {props.placeholder}
-              </span>
-            )
-          }
+        >
+          <Footer
+            cls={cls()}
+            maxLength={props.maxLength}
+            autosave={props.autosave}
+            extensions={resolved}
+          />
+        </Show>
+        <Show when={props.floatingToolbar !== false}>
+          <FloatingFormatToolbar />
+        </Show>
+        <LinkEditor />
+        <ExtensionPlugins extensions={resolved} />
+        <EditorBridge
+          readOnly={props.readOnly}
+          onChange={props.onChange}
+          onEditor={props.onEditor}
         />
-      </div>
-      <Show
-        when={
-          props.maxLength !== undefined ||
-          props.autosave !== undefined ||
-          resolved.some((extension) => extension.footer !== undefined)
-        }
-      >
-        <Footer
-          cls={cls()}
-          maxLength={props.maxLength}
-          autosave={props.autosave}
-          extensions={resolved}
-        />
-      </Show>
-      <Show when={props.floatingToolbar !== false}>
-        <FloatingFormatToolbar />
-      </Show>
-      <LinkEditor />
-      <ExtensionPlugins extensions={resolved} />
-      <EditorBridge readOnly={props.readOnly} onChange={props.onChange} onEditor={props.onEditor} />
-      {props.children}
-    </>
-  );
+        {props.children}
+      </>
+    );
+  }
 
   return (
     <div

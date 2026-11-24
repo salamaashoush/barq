@@ -18,7 +18,9 @@ afterEach(() => {
 });
 
 const MATH_NS = "http://schemas.openxmlformats.org/officeDocument/2006/math";
-const run = (text: string) => `<m:r><m:t>${text}</m:t></m:r>`;
+function run(text: string) {
+  return `<m:r><m:t>${text}</m:t></m:r>`;
+}
 
 function latex(inner: string): string {
   const xml = new DOMParser().parseFromString(
@@ -114,6 +116,10 @@ function wordDocument(): Uint8Array {
   });
 }
 
+interface TypedNode {
+  type: string;
+}
+
 describe("a Word document read", () => {
   test("headings, footnotes in their line, equations as their LaTeX and stored pictures", async () => {
     const stored: File[] = [];
@@ -127,7 +133,7 @@ describe("a Word document read", () => {
     expect(stored[0]?.type).toBe("image/png");
     const state = htmlToDocument(html);
     const json = JSON.stringify(state);
-    const kinds = (state.root.children as unknown as { type: string }[]).map((one) => one.type);
+    const kinds = (state.root.children as unknown as TypedNode[]).map((one) => one.type);
     expect(kinds).toEqual(["heading", "paragraph", "paragraph", "paragraph", "image"]);
     expect(json).toContain('"note":"Every year, after the rains."');
     expect(json).toContain("\\\\pi {r}^{2}");

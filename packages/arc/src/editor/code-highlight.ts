@@ -155,7 +155,7 @@ export const CodeHighlightExtension = defineExtension({
   dependencies: [CodeExtension],
   register(editor) {
     const loading = new Set<NodeKey>();
-    const onLoad = (key: NodeKey, language: string): void => {
+    function onLoad(key: NodeKey, language: string): void {
       if (loading.has(key)) return;
       loading.add(key);
       void loadLanguage(language).then(() => {
@@ -165,14 +165,14 @@ export const CodeHighlightExtension = defineExtension({
           if ($isCodeNode(node)) node.markDirty();
         });
       });
-    };
-    const $fromText = (node: TextNode): void => {
+    }
+    function $fromText(node: TextNode): void {
       const parent = node.getParent();
       if ($isCodeNode(parent)) $highlight(parent, onLoad);
       else if (node instanceof CodeHighlightNode) {
         node.replace($createTextNode(node.getTextContent()).setFormat(node.getFormat()));
       }
-    };
+    }
     return mergeRegister(
       editor.registerNodeTransform(CodeNode, (node) => $highlight(node, onLoad)),
       editor.registerNodeTransform(TextNode, $fromText),

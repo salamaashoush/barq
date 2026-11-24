@@ -54,39 +54,43 @@ export const typeaheadStyles = variants({
 
 type Slots = ReturnType<typeof typeaheadStyles>;
 
+export interface OptionExtra {
+  detail?: string;
+  group?: string;
+  icon?: () => Child;
+  hint?: string;
+}
+
 /** One thing a typeahead offers: what it is called, a line under it, an icon, a group. */
 export class TypeaheadOption<Value = unknown> extends MenuOption {
   constructor(
     key: string,
     readonly label: string,
     readonly value: Value,
-    readonly extra: {
-      detail?: string;
-      group?: string;
-      icon?: () => Child;
-      hint?: string;
-    } = {},
+    readonly extra: OptionExtra = {},
   ) {
     super(key);
     this.title = label;
   }
 }
 
-/** The menu a typeahead draws: its options with the highlight, under group headings, or what it is waiting for. */
-function TypeaheadList<Value>(props: {
+interface TypeaheadListProps<Value> {
   menu: MenuRenderProps<TypeaheadOption<Value>>;
   cls: Slots;
   status?: string;
   grouped?: boolean;
   option?: (option: TypeaheadOption<Value>) => Child;
-}) {
+}
+
+/** The menu a typeahead draws: its options with the highlight, under group headings, or what it is waiting for. */
+function TypeaheadList<Value>(props: TypeaheadListProps<Value>) {
   const menu = props.menu;
-  const heading = (index: number): string | undefined => {
+  function heading(index: number): string | undefined {
     if (props.grouped !== true) return undefined;
     const options = menu.options();
     const group = options[index]?.extra.group;
     return group !== undefined && group !== options[index - 1]?.extra.group ? group : undefined;
-  };
+  }
   return (
     <>
       <For each={menu.options()}>
@@ -161,9 +165,13 @@ export interface MentionCandidate {
   avatar?: string;
 }
 
+export interface MentionSearchContext {
+  signal: AbortSignal;
+}
+
 export type MentionSource =
   | readonly MentionCandidate[]
-  | ((query: string, context: { signal: AbortSignal }) => Promise<readonly MentionCandidate[]>);
+  | ((query: string, context: MentionSearchContext) => Promise<readonly MentionCandidate[]>);
 
 export interface MentionTypeaheadProps extends Customisable<Slots> {
   /** Who the trigger offers: a list, filtered as typed, or a search a server answers. */
@@ -192,8 +200,12 @@ export interface MentionTypeaheadProps extends Customisable<Slots> {
 export function MentionTypeahead(props: MentionTypeaheadProps) {
   const messages = useArcMessages();
   const locale = useLocale();
-  const cls = (): Slots => parts(typeaheadStyles(), props.classes);
-  const trigger = (): string => props.trigger ?? "@";
+  function cls(): Slots {
+    return parts(typeaheadStyles(), props.classes);
+  }
+  function trigger(): string {
+    return props.trigger ?? "@";
+  }
   const [query, setQuery] = editorSignal<string | null>(null);
   const [remote, setRemote] = editorSignal<RemoteState<MentionCandidate>>({
     status: "idle",
@@ -230,7 +242,7 @@ export function MentionTypeahead(props: MentionTypeaheadProps) {
           }),
       ),
   );
-  const status = (): string | undefined => {
+  function status(): string | undefined {
     if (typeof props.source !== "function")
       return query() === null ? undefined : messages().noResults;
     switch (remote().status) {
@@ -243,7 +255,7 @@ export function MentionTypeahead(props: MentionTypeaheadProps) {
       default:
         return undefined;
     }
-  };
+  }
 
   return (
     <LexicalTypeaheadMenuPlugin<TypeaheadOption<MentionCandidate>>
@@ -377,7 +389,9 @@ export interface SlashCommandMenuProps extends Customisable<Slots> {
 export function SlashCommandMenu(props: SlashCommandMenuProps) {
   const editor = useLexicalEditor();
   const messages = useArcMessages();
-  const cls = (): Slots => parts(typeaheadStyles(), props.classes);
+  function cls(): Slots {
+    return parts(typeaheadStyles(), props.classes);
+  }
   const [query, setQuery] = editorSignal<string | null>(null);
   const match = localeFilter({ sensitivity: "base" });
   const base = basicTypeaheadTriggerMatch("/", {
@@ -389,8 +403,8 @@ export function SlashCommandMenu(props: SlashCommandMenuProps) {
   const commands = createMemo(
     () => props.commands ?? editorCommands(messages(), editorExtensions(editor), editor, "slash"),
   );
-  const ranked = (typed: string): SlashCommand[] =>
-    commands()
+  function ranked(typed: string): SlashCommand[] {
+    return commands()
       .map((command, index) => ({
         command,
         index,
@@ -399,6 +413,7 @@ export function SlashCommandMenu(props: SlashCommandMenuProps) {
       .filter((one) => one.score > 0)
       .toSorted((a, b) => b.score - a.score || a.index - b.index)
       .map((one) => one.command);
+  }
   // A query that has grown a space and matches nothing is a sentence, not a command.
   const triggerFn: TriggerFn = (text, current) => {
     const found = base(text, current);
@@ -461,7 +476,9 @@ export interface EmojiShortcutsProps extends Customisable<Slots> {
 export function EmojiShortcuts(props: EmojiShortcutsProps) {
   const messages = useArcMessages();
   const locale = useLocale();
-  const cls = (): Slots => parts(typeaheadStyles(), props.classes);
+  function cls(): Slots {
+    return parts(typeaheadStyles(), props.classes);
+  }
   const [query, setQuery] = editorSignal<string | null>(null);
   const [dataset, setDataset] = editorSignal<EmojiDataset | null>(null);
   let asked = false;

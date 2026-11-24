@@ -116,14 +116,16 @@ export function FloatingFormatToolbar(props: FloatingFormatToolbarProps) {
   const locale = useLocale();
   const format = useSelectionFormat();
   const coarse = mediaQuery("(pointer: coarse)");
-  const cls = (): Slots => parts(floatingStyles(), props.classes);
+  function cls(): Slots {
+    return parts(floatingStyles(), props.classes);
+  }
   const [rect, setRect] = editorSignal<AnchorRect | null>(null);
   const [dismissed, setDismissed] = editorSignal(false);
   const barRef = makeRef<HTMLDivElement>();
   const target = usePortalTarget();
   const extra = editorExtensions(editor).flatMap((extension) => extension.floating ?? []);
 
-  const read = (): void => {
+  function read(): void {
     const active = editor.getRootElement()?.ownerDocument.activeElement ?? null;
     const inBar = active !== null && (barRef()?.contains(active) ?? false);
     if (inBar) return;
@@ -133,7 +135,7 @@ export function FloatingFormatToolbar(props: FloatingFormatToolbarProps) {
       return !selection.isCollapsed() && selection.getTextContent().trim() !== "";
     });
     setRect(show ? selectionRect(editor) : null);
-  };
+  }
 
   useRegistration(() =>
     mergeRegister(
@@ -159,18 +161,20 @@ export function FloatingFormatToolbar(props: FloatingFormatToolbarProps) {
         COMMAND_PRIORITY_LOW,
       ),
       editor.registerRootListener((root, previous) => {
-        const onKey = (event: KeyboardEvent): void => {
+        function onKey(event: KeyboardEvent): void {
           if (event.key !== "F10" || !event.altKey || rect() === null) return;
           event.preventDefault();
           barRef()?.querySelector<HTMLElement>("button:not([disabled])")?.focus();
-        };
+        }
         previous?.removeEventListener("keydown", onKey);
         root?.addEventListener("keydown", onKey);
       }),
     ),
   );
 
-  const open = (): boolean => rect() !== null && !dismissed();
+  function open(): boolean {
+    return rect() !== null && !dismissed();
+  }
   const position = overlayPosition({
     targetRef: () => editor.getRootElement(),
     targetRect: rect,
@@ -181,10 +185,10 @@ export function FloatingFormatToolbar(props: FloatingFormatToolbarProps) {
     direction: () => locale().direction,
   });
 
-  const back = (): void => {
+  function back(): void {
     setDismissed(true);
     editor.focus();
-  };
+  }
 
   return (
     <Show when={open()}>
@@ -234,8 +238,12 @@ export function FloatingFormatToolbar(props: FloatingFormatToolbarProps) {
   );
 }
 
+interface FloatingItemProps {
+  item: EditorToolbarItem;
+}
+
 /** An extension's button over selected text, offered where its `$shown` reads true. */
-function FloatingItem(props: { item: EditorToolbarItem }) {
+function FloatingItem(props: FloatingItemProps) {
   const editor = useLexicalEditor();
   const messages = useArcMessages();
   const shown = useLexicalEditorState(() => props.item.$shown?.() ?? true);
@@ -273,7 +281,9 @@ export function LinkEditor(props: LinkEditorProps) {
   const messages = useArcMessages();
   const locale = useLocale();
   const format = useSelectionFormat();
-  const cls = (): Slots => parts(floatingStyles(), props.classes);
+  function cls(): Slots {
+    return parts(floatingStyles(), props.classes);
+  }
   const inputId = createUniqueId();
   const errorId = createUniqueId();
   const [open, setOpen] = editorSignal(false);
@@ -283,9 +293,11 @@ export function LinkEditor(props: LinkEditorProps) {
   const [caretRect, setCaretRect] = editorSignal<AnchorRect | null>(null);
   const previewRef = makeRef<HTMLDivElement>();
   const target = usePortalTarget();
-  const valid = (url: string): boolean => (props.validateUrl ?? isSafeUrl)(url);
+  function valid(url: string): boolean {
+    return (props.validateUrl ?? isSafeUrl)(url);
+  }
 
-  const begin = (): boolean => {
+  function begin(): boolean {
     const current = editor.read(() => {
       const selection = $getSelection();
       return $isRangeSelection(selection) ? selection : null;
@@ -296,17 +308,17 @@ export function LinkEditor(props: LinkEditorProps) {
     setRect(selectionRect(editor));
     setOpen(true);
     return true;
-  };
+  }
 
   useRegistration(() =>
     mergeRegister(
       editor.registerCommand(OPEN_LINK_EDITOR_COMMAND, begin, COMMAND_PRIORITY_NORMAL),
       editor.registerRootListener((root, previous) => {
-        const onKey = (event: KeyboardEvent): void => {
+        function onKey(event: KeyboardEvent): void {
           if (event.key.toLowerCase() !== "k" || event.shiftKey || event.altKey) return;
           if (!(event.metaKey || event.ctrlKey)) return;
           if (begin()) event.preventDefault();
-        };
+        }
         previous?.removeEventListener("keydown", onKey);
         root?.addEventListener("keydown", onKey);
       }),
@@ -320,7 +332,7 @@ export function LinkEditor(props: LinkEditorProps) {
     ),
   );
 
-  const apply = (): void => {
+  function apply(): void {
     const url = formatUrl(draft().trim());
     if (!valid(url)) {
       setInvalid(true);
@@ -329,15 +341,17 @@ export function LinkEditor(props: LinkEditorProps) {
     setOpen(false);
     setLink(editor, url);
     editor.focus();
-  };
+  }
 
-  const remove = (): void => {
+  function remove(): void {
     setOpen(false);
     setLink(editor, null);
     editor.focus();
-  };
+  }
 
-  const previewOpen = (): boolean => !open() && format().link !== null && caretRect() !== null;
+  function previewOpen(): boolean {
+    return !open() && format().link !== null && caretRect() !== null;
+  }
   const preview = overlayPosition({
     targetRef: () => editor.getRootElement(),
     targetRect: caretRect,

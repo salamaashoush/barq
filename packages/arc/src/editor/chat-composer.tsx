@@ -194,13 +194,21 @@ function inBlock(editor: LexicalEditor): boolean {
   });
 }
 
+interface SendKeysProps {
+  send: () => void;
+  cancel?: () => void;
+  modEnter: boolean;
+}
+
 /**
  * Enter sends (or Mod+Enter, with plain Enter a new paragraph), Shift+Enter
  * breaks the line, Escape cancels; an open typeahead takes them first.
  */
-function SendKeys(props: { send: () => void; cancel?: () => void; modEnter: boolean }) {
+function SendKeys(props: SendKeysProps) {
   const editor = useLexicalEditor();
-  const menuOpen = (): boolean => editor.getRootElement()?.hasAttribute("aria-controls") === true;
+  function menuOpen(): boolean {
+    return editor.getRootElement()?.hasAttribute("aria-controls") === true;
+  }
   useRegistration(() =>
     mergeRegister(
       editor.registerCommand(
@@ -233,8 +241,12 @@ function SendKeys(props: { send: () => void; cancel?: () => void; modEnter: bool
   return null;
 }
 
+interface AttachPasteProps {
+  queue: UploadQueueApi;
+}
+
 /** Files pasted or dropped go to the attachment tray. */
-function AttachPaste(props: { queue: UploadQueueApi }) {
+function AttachPaste(props: AttachPasteProps) {
   const editor = useLexicalEditor();
   useRegistration(() =>
     editor.registerCommand(
@@ -249,7 +261,11 @@ function AttachPaste(props: { queue: UploadQueueApi }) {
   return null;
 }
 
-function InsertEmoji(props: { source?: EmojiSource }) {
+interface InsertEmojiProps {
+  source?: EmojiSource;
+}
+
+function InsertEmoji(props: InsertEmojiProps) {
   const editor = useLexicalEditor();
   return (
     <EmojiButton
@@ -269,7 +285,12 @@ function InsertEmoji(props: { source?: EmojiSource }) {
   );
 }
 
-function Composer(props: ChatComposerProps & { cls: Slots; queue?: UploadQueueApi }) {
+interface ComposerProps {
+  cls: Slots;
+  queue?: UploadQueueApi;
+}
+
+function Composer(props: ChatComposerProps & ComposerProps) {
   const editor = useLexicalEditor();
   const messages = useArcMessages();
   const counter = useCharacterCount(() => props.maxLength);
@@ -278,33 +299,43 @@ function Composer(props: ChatComposerProps & { cls: Slots; queue?: UploadQueueAp
   });
   const [pending, setPending] = createSignal(false, { ownedWrite: true });
   const [empty, setEmpty] = createSignal(true, { ownedWrite: true });
-  const editing = (): boolean => props.mode === "edit";
+  function editing(): boolean {
+    return props.mode === "edit";
+  }
 
   useRegistration(() => editor.registerTextContentListener((text) => setEmpty(text.trim() === "")));
   setEmpty(editor.read(() => $getRoot().getTextContent().trim() === ""));
 
-  const uploading = (): boolean =>
-    props.queue?.items().some((item) => item.status === "queued" || item.status === "uploading") ??
-    false;
-  const done = (): readonly UploadItem[] =>
-    props.queue?.items().filter((item) => item.status === "done") ?? [];
-  const canSend = (): boolean =>
-    props.isDisabled !== true &&
-    !pending() &&
-    !uploading() &&
-    !counter.over() &&
-    (!empty() || done().length > 0);
+  function uploading(): boolean {
+    return (
+      props.queue
+        ?.items()
+        .some((item) => item.status === "queued" || item.status === "uploading") ?? false
+    );
+  }
+  function done(): readonly UploadItem[] {
+    return props.queue?.items().filter((item) => item.status === "done") ?? [];
+  }
+  function canSend(): boolean {
+    return (
+      props.isDisabled !== true &&
+      !pending() &&
+      !uploading() &&
+      !counter.over() &&
+      (!empty() || done().length > 0)
+    );
+  }
 
-  const clear = (): void => {
+  function clear(): void {
     editor.update(() => {
       $getRoot().clear().append($createParagraphNode());
       $getRoot().selectStart();
     });
     editor.dispatchCommand(CLEAR_HISTORY_COMMAND, undefined);
     props.queue?.clearFinished();
-  };
+  }
 
-  const send = (): void => {
+  function send(): void {
     if (!untrack(canSend)) return;
     const transformers = markdownTransformers({ preset: props.preset ?? chatPreset });
     const message: ComposedMessage = editor.read(() => ({
@@ -326,7 +357,7 @@ function Composer(props: ChatComposerProps & { cls: Slots; queue?: UploadQueueAp
     } else if (!editing()) {
       clear();
     }
-  };
+  }
 
   createEffect(
     () => props.autoFocus ?? editing(),
@@ -335,7 +366,9 @@ function Composer(props: ChatComposerProps & { cls: Slots; queue?: UploadQueueAp
     },
   );
 
-  const sendLabel = (): string => (editing() ? messages().saveChanges : messages().sendMessage);
+  function sendLabel(): string {
+    return editing() ? messages().saveChanges : messages().sendMessage;
+  }
 
   return (
     <>
@@ -480,7 +513,11 @@ function Composer(props: ChatComposerProps & { cls: Slots; queue?: UploadQueueAp
   );
 }
 
-function WithUploads(props: ChatComposerProps & { cls: Slots }) {
+interface WithUploadsProps {
+  cls: Slots;
+}
+
+function WithUploads(props: ChatComposerProps & WithUploadsProps) {
   const queue = useUploadQueue({ upload: (file, context) => props.upload!(file, context) });
   return <Composer {...props} queue={queue} />;
 }
@@ -510,7 +547,9 @@ function WithUploads(props: ChatComposerProps & { cls: Slots }) {
  */
 export function ChatComposer(props: ChatComposerProps) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(chatComposerStyles(), props.classes);
+  function cls(): Slots {
+    return parts(chatComposerStyles(), props.classes);
+  }
   const extensions = untrack(() => documentExtensions({ preset: props.preset ?? chatPreset }));
   const editorState = untrack(() => {
     if (props.initialContent !== undefined) return props.initialContent;

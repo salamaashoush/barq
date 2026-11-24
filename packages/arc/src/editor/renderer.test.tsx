@@ -35,6 +35,10 @@ const NOTES = [
   "Thanks [@Sam Roe](mention:sam)",
 ].join("\n");
 
+interface NoteData {
+  text: string;
+}
+
 describe("RichTextRenderer", () => {
   test("draws markdown as plain elements in Prose's type", async () => {
     await loadLanguage("typescript");
@@ -82,7 +86,7 @@ describe("RichTextRenderer", () => {
   });
 
   test("an app's block draws with its own component, read-only", () => {
-    const Note = defineBlock<{ text: string }>({
+    const Note = defineBlock<NoteData>({
       type: "acme-note",
       label: "Note",
       defaultData: () => ({ text: "" }),

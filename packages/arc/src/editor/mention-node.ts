@@ -14,10 +14,13 @@ import {
   addClassNamesToElement,
 } from "lexical";
 
-export type SerializedMentionNode = Spread<
-  { mentionId: string; mentionName: string; trigger: string },
-  SerializedTextNode
->;
+export type MentionFields = {
+  mentionId: string;
+  mentionName: string;
+  trigger: string;
+};
+
+export type SerializedMentionNode = Spread<MentionFields, SerializedTextNode>;
 
 function convertMention(element: HTMLElement): DOMConversionOutput | null {
   const id = element.dataset.mentionId;

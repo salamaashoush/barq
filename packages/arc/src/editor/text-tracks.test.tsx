@@ -57,9 +57,14 @@ describe("WebVTT", () => {
   });
 });
 
+interface SavedTrack {
+  text: string;
+  language: string;
+}
+
 describe("TextTracksEditor", () => {
   test("a caption line starts where the player is; saving writes WebVTT and refuses an end before its start", async () => {
-    const saved: { text: string; language: string }[] = [];
+    const saved: SavedTrack[] = [];
     let done = 0;
     render(() => (
       <TextTracksEditor

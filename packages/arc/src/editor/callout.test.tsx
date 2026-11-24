@@ -32,14 +32,20 @@ function content(): HTMLElement {
   return document.querySelector<HTMLElement>('[data-slot="rich-text-editor-content"]')!;
 }
 
+interface CalloutJson {
+  type: string;
+  tone?: string;
+  children: TypedNode[];
+}
+
+interface TypedNode {
+  type: string;
+}
+
 describe("callouts in markdown", () => {
   test("a `> [!tone]` alert reads into a callout of its blocks and writes back the same", () => {
     const state = markdownToDocument(MARKDOWN);
-    const [callout, after] = state.root.children as unknown as {
-      type: string;
-      tone?: string;
-      children: { type: string }[];
-    }[];
+    const [callout, after] = state.root.children as unknown as CalloutJson[];
     expect(callout?.type).toBe("callout");
     expect(callout?.tone).toBe("warning");
     expect(callout?.children.map((one) => one.type)).toEqual(["paragraph", "list"]);

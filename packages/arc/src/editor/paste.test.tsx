@@ -190,6 +190,11 @@ describe("pasting into the editor", () => {
   });
 });
 
+interface ClipboardNode {
+  type: string;
+  data?: unknown;
+}
+
 describe("HTML as a document", () => {
   test("keeps words, lists and tables, and stands pictures and embeds apart as blocks", () => {
     const state = htmlToDocument(`
@@ -200,7 +205,7 @@ describe("HTML as a document", () => {
       <iframe src="https://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>
       <div data-page-break></div>
     `);
-    const children = state.root.children as unknown as { type: string; data?: unknown }[];
+    const children = state.root.children as unknown as ClipboardNode[];
     expect(children.map((node) => node.type)).toEqual([
       "heading",
       "paragraph",

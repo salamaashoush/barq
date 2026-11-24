@@ -22,12 +22,16 @@ export interface CharacterCount {
 /** The editor's length against `max`, followed through every update. */
 export function useCharacterCount(max: () => number | undefined): CharacterCount {
   const editor = useLexicalEditor();
-  const read = (): number => editor.read(() => countCharacters($getRoot().getTextContent()));
+  function read(): number {
+    return editor.read(() => countCharacters($getRoot().getTextContent()));
+  }
   const [count, setCount] = editorSignal(read());
   useRegistration(() =>
     editor.registerTextContentListener((text) => setCount(countCharacters(text))),
   );
-  const remaining = (): number => (max() ?? Number.POSITIVE_INFINITY) - count();
+  function remaining(): number {
+    return (max() ?? Number.POSITIVE_INFINITY) - count();
+  }
   return { count, remaining, over: () => remaining() < 0 };
 }
 
@@ -60,7 +64,7 @@ export function useEditorAutosave(options: AutosaveOptions): Autosave {
   let waiting = false;
   let turn = 0;
 
-  const flush = (): void => {
+  function flush(): void {
     if (timer !== undefined) clearTimeout(timer);
     timer = undefined;
     if (!waiting) return;
@@ -86,7 +90,7 @@ export function useEditorAutosave(options: AutosaveOptions): Autosave {
     } else {
       setStatus("saved");
     }
-  };
+  }
 
   useRegistration(() =>
     editor.registerUpdateListener(({ dirtyElements, dirtyLeaves, tags }) => {

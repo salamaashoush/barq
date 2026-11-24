@@ -120,7 +120,11 @@ export function drawToggleContent(open: boolean, themeClass?: unknown): Drawn {
   };
 }
 
-export type SerializedToggleNode = Spread<{ open: boolean }, SerializedElementNode>;
+export type ToggleFields = {
+  open: boolean;
+};
+
+export type SerializedToggleNode = Spread<ToggleFields, SerializedElementNode>;
 
 /** A title that opens and closes the blocks under it. */
 export class ToggleNode extends ElementNode {

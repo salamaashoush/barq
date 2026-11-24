@@ -56,6 +56,14 @@ async function mount(extra: Partial<Parameters<typeof BlockEditor>[0]> = {}) {
   return editor.get();
 }
 
+interface RatingData {
+  stars: number;
+}
+
+interface ArabicProps {
+  children: Child;
+}
+
 describe("BlockEditor", () => {
   test("puts an insert button and a grip beside the caret's block, each named", async () => {
     const editor = await mount();
@@ -84,10 +92,10 @@ describe("BlockEditor", () => {
   test("the grip's menu duplicates, moves, turns into and deletes", async () => {
     const editor = await mount();
     await caretIn(editor, 0);
-    const open = async (): Promise<void> => {
+    async function open(): Promise<void> {
       await user.click(screen.getByRole("button", { name: "Block actions" }));
       await settle();
-    };
+    }
     await open();
     await user.click(screen.getByRole("menuitem", { name: "Duplicate" }));
     await settle();
@@ -141,7 +149,7 @@ describe("BlockEditor", () => {
   });
 
   test("an app's block is offered, inserted, drawn by its component and edited through it", async () => {
-    const Rating = defineBlock<{ stars: number }>({
+    const Rating = defineBlock<RatingData>({
       type: "acme-rating",
       label: "Rating",
       group: "Feedback",
@@ -176,7 +184,7 @@ describe("BlockEditor", () => {
 
   test("the gutter sits at the start of the line, so it is on the right in Arabic", async () => {
     const editor = capture();
-    function Arabic(props: { children: Child }) {
+    function Arabic(props: ArabicProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }

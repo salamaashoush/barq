@@ -57,15 +57,22 @@ export interface EditorToolbarItem {
   priority?: number;
 }
 
+export interface BlockChoiceState {
+  value: string;
+  options: readonly BlockChoiceOption[];
+}
+
+export interface BlockChoiceOption {
+  value: string;
+  label: Label;
+}
+
 /** A choice a block's menu offers for the block it is open on: a callout's tone, a set of columns' layout. */
 export interface BlockMenuChoice {
   id: string;
   label: Label;
   /** Read for the block the menu is open on: its options and the one it has, or `null` where it does not apply. */
-  $read: (block: LexicalNode) => {
-    value: string;
-    options: readonly { value: string; label: Label }[];
-  } | null;
+  $read: (block: LexicalNode) => BlockChoiceState | null;
   /** Inside an update: gives the block the option. */
   $choose: (block: LexicalNode, value: string) => void;
 }
@@ -126,6 +133,10 @@ export interface DocxRules {
   formula?: (latex: string, block: boolean) => string;
 }
 
+export interface CollaborationOptions {
+  readonly exclude?: readonly (readonly [Klass<LexicalNode>, readonly string[]])[];
+}
+
 /**
  * Everything an editor feature brings, in one value an editor takes whole:
  * its nodes and blocks, what it offers in the menus and on the toolbar, its
@@ -168,9 +179,7 @@ export interface EditorExtension {
   /** Drawn after the document by the renderer, as a list of notes is. */
   readonly renderEnd?: (scope: RenderScope) => Child;
   /** What a shared document keeps to each reader: a node's properties left out of the Yjs document. */
-  readonly collaboration?: {
-    readonly exclude?: readonly (readonly [Klass<LexicalNode>, readonly string[]])[];
-  };
+  readonly collaboration?: CollaborationOptions;
   /** Mounted inside an editor with a screen: panels, dialogs, listeners that need one. */
   readonly plugins?: readonly (() => JSX.Element)[];
   /** Drawn in the editor's footer. */
@@ -192,7 +201,7 @@ export function resolveExtensions(list: readonly EditorExtension[]): EditorExten
   const order: string[] = [];
   const byName = new Map<string, EditorExtension>();
   const visiting = new Set<string>();
-  const visit = (extension: EditorExtension, replace: boolean): void => {
+  function visit(extension: EditorExtension, replace: boolean): void {
     if (visiting.has(extension.name)) return;
     visiting.add(extension.name);
     for (const dependency of extension.dependencies ?? []) {
@@ -201,15 +210,20 @@ export function resolveExtensions(list: readonly EditorExtension[]): EditorExten
     visiting.delete(extension.name);
     if (!byName.has(extension.name)) order.push(extension.name);
     if (replace || !byName.has(extension.name)) byName.set(extension.name, extension);
-  };
+  }
   for (const extension of list) visit(extension, true);
   return order.map((name) => byName.get(name)!);
+}
+
+export interface ExtensionChange {
+  remove?: readonly string[];
+  add?: readonly EditorExtension[];
 }
 
 /** A preset with some of its extensions left out, by name, and others added or put in their place. */
 export function customizeExtensions(
   base: readonly EditorExtension[],
-  change: { remove?: readonly string[]; add?: readonly EditorExtension[] },
+  change: ExtensionChange,
 ): EditorExtension[] {
   const removed = new Set(change.remove ?? []);
   return [...base.filter((one) => !removed.has(one.name)), ...(change.add ?? [])];

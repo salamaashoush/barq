@@ -70,8 +70,9 @@ export const findPanelStyles = variants({
 
 type Slots = ReturnType<typeof findPanelStyles>;
 
-const highlights = (): HighlightRegistry | null =>
-  typeof CSS !== "undefined" && "highlights" in CSS ? CSS.highlights : null;
+function highlights(): HighlightRegistry | null {
+  return typeof CSS !== "undefined" && "highlights" in CSS ? CSS.highlights : null;
+}
 
 /** A match as a range of the page's own text, for the browser to highlight. */
 function rangeOf(editor: LexicalEditor, match: Found): Range | null {
@@ -103,7 +104,9 @@ export function FindPanel(props: FindPanelProps) {
   const editor = useLexicalEditor();
   const editable = useLexicalEditable();
   const messages = useArcMessages();
-  const cls = (): Slots => parts(findPanelStyles(), props.classes);
+  function cls(): Slots {
+    return parts(findPanelStyles(), props.classes);
+  }
   const ids = { find: createUniqueId(), replace: createUniqueId(), heading: createUniqueId() };
   const [open, setOpen] = editorSignal(false);
   const [host, setHost] = editorSignal<HTMLElement | null>(null);
@@ -118,11 +121,11 @@ export function FindPanel(props: FindPanelProps) {
     matches().length > 0 ? Math.min(current(), matches().length - 1) : -1,
   );
 
-  const search = (): void => {
+  function search(): void {
     const text = untrack(query);
     const options = { matchCase: untrack(matchCase), wholeWords: untrack(wholeWords) };
     setMatches(editor.getEditorState().read(() => $findInDocument(text, options)));
-  };
+  }
 
   useRegistration(() =>
     editor.registerCommand(
@@ -180,11 +183,11 @@ export function FindPanel(props: FindPanelProps) {
     highlights()?.delete("arc-find-current");
   });
 
-  const step = (by: number): void => {
+  function step(by: number): void {
     const count = matches().length;
     if (count > 0) setCurrent((at() + by + count) % count);
-  };
-  const replaceOne = (): void => {
+  }
+  function replaceOne(): void {
     const match = matches()[at()];
     if (match === undefined) return;
     const words = replacement();
@@ -193,29 +196,30 @@ export function FindPanel(props: FindPanelProps) {
       $addUpdateTag(SKIP_DOM_SELECTION_TAG);
       $replaceFound([match], words);
     });
-  };
-  const replaceAll = (): void => {
+  }
+  function replaceAll(): void {
     const found = matches();
     const words = replacement();
     editor.update(() => {
       $addUpdateTag(SKIP_DOM_SELECTION_TAG);
       $replaceFound(found, words);
     });
-  };
-  const close = (): void => {
+  }
+  function close(): void {
     const match = matches()[at()];
     setOpen(false);
     highlights()?.delete("arc-find");
     highlights()?.delete("arc-find-current");
     editor.focus();
     if (match !== undefined) editor.update(() => void $selectFound(match));
-  };
-  const status = (): string =>
-    query() === ""
+  }
+  function status(): string {
+    return query() === ""
       ? ""
       : matches().length > 0
         ? messages().matchCount(at() + 1, matches().length)
         : messages().noMatches;
+  }
 
   return (
     <Show when={open() ? host() : null}>

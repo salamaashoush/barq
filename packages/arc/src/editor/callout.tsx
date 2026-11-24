@@ -82,7 +82,11 @@ export function drawCallout(tone: CalloutTone, themeClass?: unknown): Drawn {
   };
 }
 
-export type SerializedCalloutNode = Spread<{ tone: CalloutTone }, SerializedElementNode>;
+export type CalloutFields = {
+  tone: CalloutTone;
+};
+
+export type SerializedCalloutNode = Spread<CalloutFields, SerializedElementNode>;
 
 /** A set-apart box of blocks in a tone: a note, a tip, a warning. */
 export class CalloutNode extends ElementNode {
@@ -106,8 +110,8 @@ export class CalloutNode extends ElementNode {
   }
 
   static importDOM(): DOMConversionMap {
-    const convert = (element: HTMLElement) =>
-      element.hasAttribute("data-callout")
+    function convert(element: HTMLElement) {
+      return element.hasAttribute("data-callout")
         ? {
             conversion: () => ({
               node: new CalloutNode(toneOf(element.getAttribute("data-callout"))),
@@ -115,6 +119,7 @@ export class CalloutNode extends ElementNode {
             priority: 1 as const,
           }
         : null;
+    }
     return { aside: convert, div: convert };
   }
 

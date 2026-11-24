@@ -50,13 +50,13 @@ import { $insertHtml } from "./html-import.ts";
 export const MAX_TABLE_ROWS = 50;
 export const MAX_TABLE_COLUMNS = 20;
 
-const usable = (grid: string[][]): string[][] | null => {
+function usable(grid: string[][]): string[][] | null {
   const rows = grid.filter((row) => row.some((cell) => cell.trim() !== ""));
   const columns = Math.max(0, ...rows.map((row) => row.length));
   if (rows.length === 0 || (rows.length === 1 && columns < 2)) return null;
   if (rows.length > MAX_TABLE_ROWS || columns > MAX_TABLE_COLUMNS) return null;
   return rows;
-};
+}
 
 /**
  * The cells of what was copied from a spreadsheet or a web page's table, row
@@ -200,13 +200,17 @@ function $normalisedUrl(text: string): string | null {
 
 const LEXICAL_TYPE = "application/x-lexical-editor";
 
+interface ClipboardMemory {
+  copied: LexicalClipboardData | null;
+}
+
 /**
  * What this page last copied from an editor. A copy from a menu goes through
  * the browser's clipboard API, which carries only text and HTML, so a paste
  * would lose what HTML cannot hold; while the clipboard holds the same text,
  * the editor's own copy is pasted instead.
  */
-const memory: { copied: LexicalClipboardData | null } = { copied: null };
+const memory: ClipboardMemory = { copied: null };
 
 function $remember(): boolean {
   const selection = $getSelection();
@@ -328,10 +332,10 @@ export async function cutTarget(editor: LexicalEditor, target: ClipboardTarget):
 /** The clipboard as the browser lets a page read it. */
 async function readClipboard(plain: boolean): Promise<DataTransfer | null> {
   const transfer = new DataTransfer();
-  const plainText = async () => {
+  async function plainText() {
     transfer.setData("text/plain", await navigator.clipboard.readText());
     return transfer;
-  };
+  }
   try {
     if (plain) return await plainText();
     for (const item of await navigator.clipboard.read()) {
@@ -366,7 +370,7 @@ export async function pasteAt(
   target: ClipboardTarget,
   plain: boolean,
 ): Promise<void> {
-  const place = (): void => {
+  function place(): void {
     if (target.kind === "selection") $setSelection(target.selection.clone());
     else if (target.caret !== null) $setSelection(target.caret.clone());
     else {
@@ -374,7 +378,7 @@ export async function pasteAt(
       $getNodeByKey(target.key)?.insertAfter(line);
       line.select();
     }
-  };
+  }
   const transfer = await readClipboard(plain);
   if (transfer === null) {
     editor.update(place);

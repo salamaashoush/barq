@@ -64,12 +64,17 @@ function fold(text: string, matchCase: boolean): Folded {
   return { text: folded, starts, ends, words };
 }
 
+export interface TextRange {
+  start: number;
+  end: number;
+}
+
 /** Where a search is found in a text, as offsets into the text itself, none overlapping. */
 export function findIn(
   text: string,
   query: string,
   { matchCase = false, wholeWords = false }: FindOptions = {},
-): { start: number; end: number }[] {
+): TextRange[] {
   const search = fold(query, matchCase);
   const sought = search.text;
   if (sought === "") return [];
@@ -78,7 +83,7 @@ export function findIn(
   // the text, so a search ending in a space or a full stop still finds.
   const openStart = wholeWords && search.words[0] === true;
   const openEnd = wholeWords && search.words.at(-1) === true;
-  const found: { start: number; end: number }[] = [];
+  const found: TextRange[] = [];
   let from = folded.text.indexOf(sought);
   while (from >= 0) {
     const after = from + sought.length;
@@ -127,13 +132,13 @@ export function $findInDocument(query: string, options: FindOptions = {}): Found
       text += node.getTextContent();
     }
     // An end on the edge between two pieces belongs to the piece before it.
-    const pointAt = (at: number, end: boolean): Point => {
+    function pointAt(at: number, end: boolean): Point {
       const index = Math.max(
         0,
         starts.findLastIndex((start) => (end ? start < at : start <= at)),
       );
       return { key: run[index]?.getKey() ?? "", offset: at - (starts[index] ?? 0) };
-    };
+    }
     for (const { start, end } of findIn(text, query, options)) {
       found.push({ anchor: pointAt(start, false), focus: pointAt(end, true) });
     }

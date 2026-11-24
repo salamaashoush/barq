@@ -172,9 +172,13 @@ const FUNCTIONS = new Set([
   "arg",
 ]);
 
-const named = (element: Element) => element.localName || element.nodeName;
+function named(element: Element) {
+  return element.localName || element.nodeName;
+}
 
-const children = (element: Element) => [...element.children];
+function children(element: Element) {
+  return [...element.children];
+}
 
 /** The first child of an element with a name, Word's prefix left aside. */
 function child(element: Element, name: string): Element | undefined {
@@ -193,10 +197,13 @@ function property(element: Element, owner: string, name: string) {
   );
 }
 
-const on = (value: string | undefined) =>
-  value !== undefined && !["0", "off", "false"].includes(value);
+function on(value: string | undefined) {
+  return value !== undefined && !["0", "off", "false"].includes(value);
+}
 
-const group = (latex: string) => `{${latex}}`;
+function group(latex: string) {
+  return `{${latex}}`;
+}
 
 /** A run's words, each symbol written as LaTeX writes it. */
 function runText(run: Element): string {

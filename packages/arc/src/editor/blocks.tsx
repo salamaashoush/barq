@@ -44,6 +44,11 @@ export interface BlockProps<Data> {
 /** A word that depends on the reader's language, or one fixed. */
 export type BlockLabel = string | ((messages: ArcMessages) => string);
 
+export interface MarkdownImport<Data> {
+  regExp: RegExp;
+  data: (match: string[]) => Data | null;
+}
+
 export interface BlockDefinition<Data> {
   /** The node type the document stores: `"acme-quiz"`. Unique in an editor. */
   type: string;
@@ -66,7 +71,7 @@ export interface BlockDefinition<Data> {
   /** As markdown, for export; `null` leaves it out. */
   toMarkdown?(data: Data): string | null;
   /** A whole line of markdown that becomes this block on import and as it is typed. */
-  fromMarkdown?: { regExp: RegExp; data: (match: string[]) => Data | null };
+  fromMarkdown?: MarkdownImport<Data>;
   /**
    * Elements read into this block from pasted or imported HTML, by tag name:
    * the block's data, or `null` to leave the element to another reader.
@@ -76,7 +81,11 @@ export interface BlockDefinition<Data> {
   toHtml?: (data: Data) => HTMLElement;
 }
 
-export type SerializedBlockNode<Data> = Spread<{ data: Data }, SerializedDecoratorBlockNode>;
+export type BlockFields<Data> = {
+  data: Data;
+};
+
+export type SerializedBlockNode<Data> = Spread<BlockFields<Data>, SerializedDecoratorBlockNode>;
 
 /** A document block drawn by a barq component, holding its data as JSON. */
 export class BlockNode extends DecoratorBlockNode {
@@ -146,11 +155,13 @@ export function updateBlockData<Data>(
   });
 }
 
-function BlockFrame(props: {
+interface BlockFrameProps {
   definition: BlockDefinition<unknown>;
   nodeKey: NodeKey;
   data: unknown;
-}): JSX.Element {
+}
+
+function BlockFrame(props: BlockFrameProps): JSX.Element {
   const editor = useLexicalEditor();
   const editable = useLexicalEditable();
   const [selected] = useLexicalNodeSelection(props.nodeKey);
@@ -176,6 +187,11 @@ export interface TypedBlockNode<Data> extends BlockNode {
   getData(): Data;
 }
 
+export interface AnyMarkdownImport {
+  regExp: RegExp;
+  data: (match: string[]) => unknown;
+}
+
 /** Any block, whatever its data: what a picker lists and a document registers. */
 export interface AnyBlock {
   readonly type: string;
@@ -185,7 +201,7 @@ export interface AnyBlock {
   readonly keywords?: readonly string[];
   readonly description?: BlockLabel;
   readonly insertable?: boolean;
-  readonly fromMarkdown?: { regExp: RegExp; data: (match: string[]) => unknown };
+  readonly fromMarkdown?: AnyMarkdownImport;
   readonly node: Klass<BlockNode>;
   /** What the block was defined with, its data's type forgotten. */
   readonly definition: BlockDefinition<unknown>;

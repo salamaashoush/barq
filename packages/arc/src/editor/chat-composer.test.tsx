@@ -28,6 +28,10 @@ function sendButton(): HTMLElement {
   return screen.getByRole("button", { name: "Send message" });
 }
 
+interface ArabicProps {
+  children: Child;
+}
+
 describe("ChatComposer", () => {
   test("Enter sends the message as JSON, markdown and text, and empties the composer", async () => {
     const editor = capture();
@@ -207,7 +211,7 @@ describe("ChatComposer", () => {
   });
 
   test("the formatting toolbar opens on request, and the send arrow turns in RTL", async () => {
-    function Arabic(props: { children: Child }) {
+    function Arabic(props: ArabicProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }

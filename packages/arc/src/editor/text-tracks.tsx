@@ -54,12 +54,17 @@ export interface CaptionDraft {
   vtt?: string | null;
 }
 
+export interface DraftStatus {
+  available: boolean;
+  draft: CaptionDraft | null;
+}
+
 /** A service that drafts captions from a recording's speech, for a person to check. */
 export interface CaptionDrafts {
   /** The languages it drafts. */
   languages: readonly string[];
   /** Whether it drafts this recording, and the draft asked for, if any. */
-  status: () => Promise<{ available: boolean; draft: CaptionDraft | null }>;
+  status: () => Promise<DraftStatus>;
   /** Asks for a draft in a language. */
   request: (language: string) => Promise<void>;
 }
@@ -86,6 +91,11 @@ export const textTracksStyles = variants({
 
 type Slots = ReturnType<typeof textTracksStyles>;
 
+export interface CaptionSource {
+  src?: string;
+  language?: string;
+}
+
 export interface TextTracksEditorProps extends Customisable<Slots> {
   /** Names the recording. */
   title: string;
@@ -94,7 +104,7 @@ export interface TextTracksEditorProps extends Customisable<Slots> {
   kind?: "video" | "audio";
   poster?: string;
   /** The captions it has now: a WebVTT file's address and its language. */
-  captions?: { src?: string; language?: string };
+  captions?: CaptionSource;
   /** Stores the captions written, as a WebVTT file, in a language. */
   onSaveCaptions: (file: File, language: string) => Promise<void>;
   /** A video's audio description, as `m:ss words` lines. */
@@ -135,7 +145,9 @@ interface Line {
 export function TextTracksEditor(props: TextTracksEditorProps) {
   const messages = useArcMessages();
   const locale = useLocale();
-  const cls = (): Slots => parts(textTracksStyles(), props.classes);
+  function cls(): Slots {
+    return parts(textTracksStyles(), props.classes);
+  }
   const ids = {
     language: createUniqueId(),
     description: createUniqueId(),
@@ -169,24 +181,24 @@ export function TextTracksEditor(props: TextTracksEditorProps) {
       ownedWrite: true,
     },
   );
-  const [draft, setDraft] = createSignal<{ available: boolean; draft: CaptionDraft | null } | null>(
-    null,
-    { ownedWrite: true },
-  );
+  const [draft, setDraft] = createSignal<DraftStatus | null>(null, { ownedWrite: true });
   const [drafted, setDrafted] = createSignal(false, { ownedWrite: true });
   let asked = false;
 
-  const lineOf = (cue: Cue): Line => ({
-    key: (counter += 1),
-    start: formatCueTime(cue.start),
-    end: formatCueTime(cue.end),
-    text: cue.text,
-  });
-  const take = (cues: readonly Cue[]): void => {
+  function lineOf(cue: Cue): Line {
+    return {
+      key: (counter += 1),
+      start: formatCueTime(cue.start),
+      end: formatCueTime(cue.end),
+      text: cue.text,
+    };
+  }
+  function take(cues: readonly Cue[]): void {
     setLines(cues.map(lineOf));
-  };
-  const player = (): HTMLMediaElement | null =>
-    root?.querySelector<HTMLMediaElement>("video, audio") ?? null;
+  }
+  function player(): HTMLMediaElement | null {
+    return root?.querySelector<HTMLMediaElement>("video, audio") ?? null;
+  }
 
   const existing = untrack(() => props.captions?.src);
   if (existing !== undefined && typeof fetch === "function") {
@@ -198,12 +210,12 @@ export function TextTracksEditor(props: TextTracksEditorProps) {
   }
 
   const drafts = untrack(() => props.drafts);
-  const waiting = (): boolean => {
+  function waiting(): boolean {
     const state = draft()?.draft?.state;
     return state === "queued" || state === "working";
-  };
+  }
   if (drafts !== undefined) {
-    const ask = (): void => {
+    const ask: () => void = () => {
       void drafts
         .status()
         .then((found) => {
@@ -223,9 +235,10 @@ export function TextTracksEditor(props: TextTracksEditorProps) {
     }, DRAFT_POLL_MS);
     onCleanup(() => clearInterval(timer));
   }
-  const draftable = (): boolean =>
-    draft()?.available === true && (drafts?.languages.includes(language()) ?? false);
-  const requestDraft = (): void => {
+  function draftable(): boolean {
+    return draft()?.available === true && (drafts?.languages.includes(language()) ?? false);
+  }
+  function requestDraft(): void {
     if (drafts === undefined) return;
     setProblem(null);
     drafts.request(language()).then(
@@ -235,17 +248,20 @@ export function TextTracksEditor(props: TextTracksEditorProps) {
       },
       () => setProblem(messages().draftFailed),
     );
-  };
-  const readyDraft = (): string | null => {
+  }
+  function readyDraft(): string | null {
     const found = draft()?.draft;
     return found?.state === "ready" ? (found.vtt ?? null) : null;
-  };
+  }
 
   const names = createMemo(() => new Intl.DisplayNames([locale().locale], { type: "language" }));
-  const choices = (): readonly string[] =>
-    (LANGUAGES as readonly string[]).includes(language()) ? LANGUAGES : [language(), ...LANGUAGES];
+  function choices(): readonly string[] {
+    return (LANGUAGES as readonly string[]).includes(language())
+      ? LANGUAGES
+      : [language(), ...LANGUAGES];
+  }
 
-  const addLine = (): void => {
+  function addLine(): void {
     const at = player()?.currentTime ?? now();
     const next = lines()
       .map((line) => parseCueTime(line.start))
@@ -258,12 +274,12 @@ export function TextTracksEditor(props: TextTracksEditorProps) {
         (a, b) => (parseCueTime(a.start) ?? 0) - (parseCueTime(b.start) ?? 0),
       ),
     );
-  };
-  const change = (line: Line, patch: Partial<Line>): void => {
+  }
+  function change(line: Line, patch: Partial<Line>): void {
     Object.assign(line, patch);
-  };
+  }
 
-  const save = (): void => {
+  function save(): void {
     const cues: Cue[] = [];
     for (const line of lines()) {
       const start = parseCueTime(line.start);
@@ -284,14 +300,15 @@ export function TextTracksEditor(props: TextTracksEditorProps) {
         () => setProblem(messages().captionsSaveFailed),
       )
       .finally(() => setSaving(false));
-  };
+  }
 
-  const skipped = (): number =>
-    described()
+  function skipped(): number {
+    return described()
       .split("\n")
       .filter((line) => line.trim() !== "" && parseDescriptions(line).length === 0).length;
+  }
   let descriptionField: HTMLTextAreaElement | undefined;
-  const addDescription = (): void => {
+  function addDescription(): void {
     const at = Math.floor(player()?.currentTime ?? now());
     const text = described();
     const rows = text === "" ? [] : text.split("\n");
@@ -307,16 +324,20 @@ export function TextTracksEditor(props: TextTracksEditorProps) {
       descriptionField?.focus();
       descriptionField?.setSelectionRange(caret, caret);
     });
-  };
+  }
 
-  const video = (): boolean => (props.kind ?? "video") === "video";
-  const done = (): Child => (
-    <Show when={props.onDone !== undefined}>
-      <Button class={layout.pushEnd} onPress={() => props.onDone?.()}>
-        {messages().done}
-      </Button>
-    </Show>
-  );
+  function video(): boolean {
+    return (props.kind ?? "video") === "video";
+  }
+  function done(): Child {
+    return (
+      <Show when={props.onDone !== undefined}>
+        <Button class={layout.pushEnd} onPress={() => props.onDone?.()}>
+          {messages().done}
+        </Button>
+      </Show>
+    );
+  }
 
   return (
     <div

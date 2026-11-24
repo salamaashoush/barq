@@ -42,8 +42,13 @@ export function buildDrawn(drawn: Drawn): HTMLElement {
   return element;
 }
 
+export interface DrawnElementProps {
+  drawn: Drawn;
+  children?: Child;
+}
+
 /** A drawn element in JSX, holding what the renderer draws inside it. */
-export function DrawnElement(props: { drawn: Drawn; children?: Child }): JSX.Element {
+export function DrawnElement(props: DrawnElementProps): JSX.Element {
   const Tag = dynamic(() => props.drawn.tag as "div");
   return <Tag {...props.drawn.attributes}>{props.children}</Tag>;
 }
@@ -65,16 +70,18 @@ export function $rootBlockOf(node: LexicalNode): LexicalNode | null {
   return null;
 }
 
+interface PlacementOptions {
+  topLevel?: boolean;
+  notInside?: (node: LexicalNode) => boolean;
+}
+
 /**
  * Where a container chosen at the caret goes: the block the caret is in,
  * or, where the container may not stand there (in a table's cell, inside
  * one of its own kind, below the top level for one that keeps to it), the
  * top-level block it is in.
  */
-function $placementOf(
-  anchor: LexicalNode,
-  options: { topLevel?: boolean; notInside?: (node: LexicalNode) => boolean },
-): LexicalNode | null {
+function $placementOf(anchor: LexicalNode, options: PlacementOptions): LexicalNode | null {
   const near = anchor.getTopLevelElement();
   if (near === null) return null;
   const parents = anchor.getParents();
@@ -84,23 +91,22 @@ function $placementOf(
   return refused ? $rootBlockOf(anchor) : near;
 }
 
+export interface PlaceContainerOptions {
+  wrap?: (block: ElementNode) => boolean;
+  fill: () => LexicalNode[];
+  /** Stands only at the document's top level. */
+  topLevel?: boolean;
+  /** Containers it may not stand inside. */
+  notInside?: (node: LexicalNode) => boolean;
+}
+
 /**
  * Puts a container where the caret is: in place of the empty line it is on,
  * or around the block it is in when `wrap` takes that block, or after it.
  * A line follows a container that ends the document, so there is somewhere
  * to type after it.
  */
-export function $placeContainer(
-  container: ElementNode,
-  options: {
-    wrap?: (block: ElementNode) => boolean;
-    fill: () => LexicalNode[];
-    /** Stands only at the document's top level. */
-    topLevel?: boolean;
-    /** Containers it may not stand inside. */
-    notInside?: (node: LexicalNode) => boolean;
-  },
-): void {
+export function $placeContainer(container: ElementNode, options: PlaceContainerOptions): void {
   const selection = $getSelection();
   const top = $isRangeSelection(selection)
     ? $placementOf(selection.anchor.getNode(), options)
@@ -156,6 +162,14 @@ function $leaveFromEmptyLastLine(
   return true;
 }
 
+export interface ContainerKeyOptions {
+  isContainer: (node: LexicalNode | null | undefined) => node is ElementNode;
+  /** The containers Enter on an empty last line leaves. */
+  exitsOnEmptyLine?: (node: LexicalNode | null) => boolean;
+  /** For a container inside another, the outer one Enter leaves. */
+  outer?: (node: ElementNode) => ElementNode;
+}
+
 /**
  * The keys every container of blocks answers alike: the arrows leave it at
  * its edges, where nothing else would take the caret out, and Enter on its
@@ -163,16 +177,14 @@ function $leaveFromEmptyLastLine(
  */
 export function registerContainerKeys(
   editor: LexicalEditor,
-  options: {
-    isContainer: (node: LexicalNode | null | undefined) => node is ElementNode;
-    /** The containers Enter on an empty last line leaves. */
-    exitsOnEmptyLine?: (node: LexicalNode | null) => boolean;
-    /** For a container inside another, the outer one Enter leaves. */
-    outer?: (node: ElementNode) => ElementNode;
-  },
+  options: ContainerKeyOptions,
 ): () => void {
-  const down = (event: KeyboardEvent) => $onEscapeDown(options.isContainer, event);
-  const up = (event: KeyboardEvent) => $onEscapeUp(options.isContainer, event);
+  function down(event: KeyboardEvent) {
+    return $onEscapeDown(options.isContainer, event);
+  }
+  function up(event: KeyboardEvent) {
+    return $onEscapeUp(options.isContainer, event);
+  }
   const exits = options.exitsOnEmptyLine;
   return mergeRegister(
     editor.registerCommand(KEY_ARROW_DOWN_COMMAND, down, COMMAND_PRIORITY_LOW),

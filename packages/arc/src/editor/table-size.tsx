@@ -27,6 +27,11 @@ export const tableSizeStyles = variants({
 
 type Slots = ReturnType<typeof tableSizeStyles>;
 
+export interface TableSize {
+  rows: number;
+  columns: number;
+}
+
 export interface TableSizePickerProps extends Customisable<Slots> {
   /** A size was chosen. */
   onPick: (rows: number, columns: number) => void;
@@ -35,7 +40,12 @@ export interface TableSizePickerProps extends Customisable<Slots> {
   /** @default 8 */
   maxColumns?: number;
   /** The size it starts at. @default 3 by 3 */
-  defaultSize?: { rows: number; columns: number };
+  defaultSize?: TableSize;
+}
+
+interface GridCell {
+  row: number;
+  column: number;
 }
 
 /**
@@ -50,29 +60,37 @@ export interface TableSizePickerProps extends Customisable<Slots> {
 export function TableSizePicker(props: TableSizePickerProps) {
   const messages = useArcMessages();
   const locale = useLocale();
-  const cls = (): Slots => parts(tableSizeStyles(), props.classes);
-  const rows = (): number => props.maxRows ?? 8;
-  const columns = (): number => props.maxColumns ?? 8;
+  function cls(): Slots {
+    return parts(tableSizeStyles(), props.classes);
+  }
+  function rows(): number {
+    return props.maxRows ?? 8;
+  }
+  function columns(): number {
+    return props.maxColumns ?? 8;
+  }
   const start = untrack(() => props.defaultSize) ?? { rows: 3, columns: 3 };
   const [size, setSize] = createSignal(start, { ownedWrite: true });
-  const cells = (): { row: number; column: number }[] =>
-    Array.from({ length: rows() * columns() }, (_, at) => ({
+  function cells(): GridCell[] {
+    return Array.from({ length: rows() * columns() }, (_, at) => ({
       row: Math.floor(at / columns()) + 1,
       column: (at % columns()) + 1,
     }));
-  const cellId = (row: number, column: number): string =>
-    `table-size-${String(row)}-${String(column)}`;
+  }
+  function cellId(row: number, column: number): string {
+    return `table-size-${String(row)}-${String(column)}`;
+  }
 
-  const focusCell = (row: number, column: number, from: HTMLElement): void => {
+  function focusCell(row: number, column: number, from: HTMLElement): void {
     setSize({ rows: row, columns: column });
     const grid = from.closest('[data-slot="table-size-grid"]');
     grid?.querySelector<HTMLElement>(`[data-cell="${cellId(row, column)}"]`)?.focus();
-  };
+  }
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     const now = size();
     const forward = locale().direction === "rtl" ? -1 : 1;
-    let next: { rows: number; columns: number } | null = null;
+    let next: TableSize | null = null;
     switch (event.key) {
       case "ArrowRight":
         next = { rows: now.rows, columns: now.columns + forward };
@@ -95,7 +113,7 @@ export function TableSizePicker(props: TableSizePickerProps) {
       Math.max(1, Math.min(columns(), next.columns)),
       event.currentTarget as HTMLElement,
     );
-  };
+  }
 
   return (
     <div class={arc(cls().root, props.class, props.className)} data-slot="table-size">
@@ -107,7 +125,7 @@ export function TableSizePicker(props: TableSizePickerProps) {
         style={{ "--arc-table-columns": String(columns()) }}
       >
         <For each={cells}>
-          {(cell: { row: number; column: number }) => (
+          {(cell: GridCell) => (
             <button
               type="button"
               class={cls().cell}
@@ -133,12 +151,14 @@ export function TableSizePicker(props: TableSizePickerProps) {
   );
 }
 
-/** The table size picker in a popover, or a sheet under a finger, for the Insert menu and `/`. */
-export function TableDialog(props: {
+export interface TableDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onPick: (rows: number, columns: number) => void;
-}) {
+}
+
+/** The table size picker in a popover, or a sheet under a finger, for the Insert menu and `/`. */
+export function TableDialog(props: TableDialogProps) {
   const messages = useArcMessages();
   return (
     <ResponsiveOverlay

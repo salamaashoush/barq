@@ -45,10 +45,19 @@ const FORMULA = /(\d+)/g;
 type Mammoth = typeof import("mammoth");
 type Fflate = typeof import("fflate");
 
+interface DocxReader {
+  mammoth: Mammoth;
+  fflate: Fflate;
+}
+
+interface MammothModule {
+  default?: Mammoth;
+}
+
 /** What reading a Word document loads, the first time one is read. */
-async function loadReader(): Promise<{ mammoth: Mammoth; fflate: Fflate }> {
+async function loadReader(): Promise<DocxReader> {
   const [mammoth, fflate] = await Promise.all([import("mammoth"), import("fflate")]);
-  return { mammoth: (mammoth as { default?: Mammoth }).default ?? mammoth, fflate };
+  return { mammoth: (mammoth as MammothModule).default ?? mammoth, fflate };
 }
 
 export function isWordFile(file: File): boolean {
@@ -60,28 +69,29 @@ interface Formula {
   block: boolean;
 }
 
+interface PreparedDocx {
+  docx: Uint8Array;
+  formulas: Formula[];
+}
+
 /**
  * A Word document readied for its reader, which drops equations: each becomes
  * a numbered mark in the text, its LaTeX kept apart, and every extension's
  * own rules run over the document's XML.
  */
-function prepareDocx(
-  bytes: Uint8Array,
-  fflate: Fflate,
-  rules: readonly DocxRules[],
-): { docx: Uint8Array; formulas: Formula[] } {
+function prepareDocx(bytes: Uint8Array, fflate: Fflate, rules: readonly DocxRules[]): PreparedDocx {
   const files = fflate.unzipSync(bytes);
   const body = files["word/document.xml"];
   if (body === undefined) return { docx: bytes, formulas: [] };
   const xml = new DOMParser().parseFromString(fflate.strFromU8(body), "application/xml");
   const formulas: Formula[] = [];
-  const mark = (index: number): Element => {
+  function mark(index: number): Element {
     const run = xml.createElementNS(WORD_NS, "w:r");
     const words = xml.createElementNS(WORD_NS, "w:t");
     words.textContent = `${String(index)}`;
     run.append(words);
     return run;
-  };
+  }
   // A tag's collection is live and shrinks as its elements are replaced, so
   // each loop walks a copy taken first.
   // Word writes Office Math under its `m:` prefix, which is what is looked for.
@@ -101,12 +111,13 @@ function prepareDocx(
   return { docx: fflate.zipSync(files), formulas };
 }
 
-const attribute = (value: string): string =>
-  value
+function attribute(value: string): string {
+  return value
     .replaceAll("&", "&amp;")
     .replaceAll('"', "&quot;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;");
+}
 
 /** An equation where no extension reads formulas: its LaTeX, kept as code. */
 function formulaAsCode(latex: string): string {
@@ -157,6 +168,12 @@ export interface WordReading {
   skipped: number;
 }
 
+export interface WordToHtmlOptions {
+  extensions?: readonly EditorExtension[];
+  /** Stores a picture and answers how the document shows it: its address and any attributes, or `null` to leave it out. */
+  picture?: (file: File) => Promise<WordPicture | null>;
+}
+
 /**
  * A Word document read as HTML: headings, lists, tables, links, its
  * footnotes and endnotes as footnotes, its equations as each extension's
@@ -166,11 +183,7 @@ export interface WordReading {
  */
 export async function wordToHtml(
   bytes: Uint8Array,
-  options: {
-    extensions?: readonly EditorExtension[];
-    /** Stores a picture and answers how the document shows it: its address and any attributes, or `null` to leave it out. */
-    picture?: (file: File) => Promise<WordPicture | null>;
-  } = {},
+  options: WordToHtmlOptions = {},
 ): Promise<WordReading> {
   const { mammoth, fflate } = await loadReader();
   const rules = (options.extensions ?? []).flatMap((extension) =>
@@ -259,7 +272,7 @@ function WordImport() {
   let input: HTMLInputElement | undefined;
   let caret: BaseSelection | null = null;
 
-  const read = async (file: File): Promise<void> => {
+  async function read(file: File): Promise<void> {
     setReading({ name: file.name, state: "reading" });
     try {
       const { html, skipped } = await wordToHtml(new Uint8Array(await file.arrayBuffer()), {
@@ -279,7 +292,7 @@ function WordImport() {
     } catch {
       setReading({ name: file.name, state: "failed" });
     }
-  };
+  }
 
   useRegistration(() =>
     mergeRegister(

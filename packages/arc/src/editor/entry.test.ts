@@ -4,8 +4,9 @@ import { fileURLToPath } from "node:url";
 
 import { importGraph } from "../test-graph.ts";
 
-const LEXICAL = (name: string): boolean =>
-  name === "lexical" || name.startsWith("@lexical/") || name.startsWith("@barqjs/lexical");
+function LEXICAL(name: string): boolean {
+  return name === "lexical" || name.startsWith("@lexical/") || name.startsWith("@barqjs/lexical");
+}
 
 describe("what an app pays for the editor", () => {
   const src = dirname(dirname(fileURLToPath(import.meta.url)));

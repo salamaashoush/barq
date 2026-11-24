@@ -98,10 +98,17 @@ function codeText(node: StoredNode): string {
     .join("");
 }
 
-function Text(props: { node: StoredNode; slots: DocumentSlots }): JSX.Element {
+interface TextProps {
+  node: StoredNode;
+  slots: DocumentSlots;
+}
+
+function Text(props: TextProps): JSX.Element {
   const node = props.node;
   const format = typeof node.format === "number" ? node.format : 0;
-  const has = (flag: number): boolean => (format & flag) !== 0;
+  function has(flag: number): boolean {
+    return (format & flag) !== 0;
+  }
   let out: Child = node.text ?? "";
   const underline = has(IS_UNDERLINE);
   const strike = has(IS_STRIKETHROUGH);
@@ -123,7 +130,12 @@ function Text(props: { node: StoredNode; slots: DocumentSlots }): JSX.Element {
   return out;
 }
 
-function Children(props: { nodes: readonly StoredNode[] | undefined; context: RenderContext }) {
+interface ChildrenProps {
+  nodes: readonly StoredNode[] | undefined;
+  context: RenderContext;
+}
+
+function Children(props: ChildrenProps) {
   // An empty block holds a line in the editor, which draws a `<br>` in it.
   if (props.context.editing === true && (props.nodes ?? []).length === 0) return <br />;
   return (
@@ -133,7 +145,13 @@ function Children(props: { nodes: readonly StoredNode[] | undefined; context: Re
   );
 }
 
-function ListItem(props: { node: StoredNode; listType?: string; context: RenderContext }) {
+interface ListItemProps {
+  node: StoredNode;
+  listType?: string;
+  context: RenderContext;
+}
+
+function ListItem(props: ListItemProps) {
   const node = props.node;
   const nested =
     (node.children ?? []).length > 0 && (node.children ?? []).every((one) => one.type === "list");
@@ -164,7 +182,12 @@ function ListItem(props: { node: StoredNode; listType?: string; context: RenderC
   );
 }
 
-function Node(props: { node: StoredNode; context: RenderContext }): JSX.Element {
+interface NodeProps {
+  node: StoredNode;
+  context: RenderContext;
+}
+
+function Node(props: NodeProps): JSX.Element {
   const node = props.node;
   const context = props.context;
   switch (node.type) {
@@ -332,8 +355,12 @@ function Node(props: { node: StoredNode; context: RenderContext }): JSX.Element 
   }
 }
 
+export type RootSlot = {
+  root: string;
+};
+
 export interface RichTextRendererProps
-  extends Customisable<DocumentSlots & { root: string }>, ExtensionOptions {
+  extends Customisable<DocumentSlots & RootSlot>, ExtensionOptions {
   /** A stored document: what `RichTextEditor` reported. */
   value?: DocumentValue;
   /** Markdown, read with the same rules the editor writes it with. */
@@ -376,14 +403,14 @@ function storedNodes(
 function orderOf(nodes: readonly StoredNode[]): (type: string) => readonly StoredNode[] {
   const byType = new Map<string, StoredNode[]>();
   let walked = false;
-  const walk = (list: readonly StoredNode[]): void => {
+  function walk(list: readonly StoredNode[]): void {
     for (const node of list) {
       const same = byType.get(node.type) ?? [];
       same.push(node);
       byType.set(node.type, same);
       if (node.children !== undefined) walk(node.children);
     }
-  };
+  }
   return (type) => {
     if (!walked) {
       walk(nodes);
@@ -393,10 +420,16 @@ function orderOf(nodes: readonly StoredNode[]): (type: string) => readonly Store
   };
 }
 
+interface RenderReader {
+  messages: ArcMessages;
+  id: string;
+  locale: string;
+}
+
 function renderContext(
   nodes: readonly StoredNode[],
   extensions: readonly EditorExtension[],
-  reader: { messages: ArcMessages; id: string; locale: string },
+  reader: RenderReader,
   base: Omit<RenderContext, "blocks" | "renderers" | "scope">,
 ): RenderContext {
   const numbers = new Intl.NumberFormat(reader.locale);
@@ -423,20 +456,25 @@ function renderContext(
   return context;
 }
 
+export interface EditorDocumentProps {
+  value?: DocumentValue;
+  markdown?: string;
+}
+
 /**
  * A document's blocks as `RichTextEditor` draws them, with no editor: what a
  * server writes in the editable root for the editor to take over.
  */
-export function EditorDocument(
-  props: ExtensionOptions & { value?: DocumentValue; markdown?: string },
-) {
+export function EditorDocument(props: ExtensionOptions & EditorDocumentProps) {
   const messages = useArcMessages();
   const locale = useLocale();
   const id = createUniqueId();
-  const options = (): ExtensionOptions => ({ preset: props.preset, extensions: props.extensions });
+  function options(): ExtensionOptions {
+    return { preset: props.preset, extensions: props.extensions };
+  }
   const nodes = createMemo(() => storedNodes(props.value, props.markdown, options()));
-  const context = (): RenderContext =>
-    renderContext(
+  function context(): RenderContext {
+    return renderContext(
       nodes(),
       documentEditorExtensions(options()),
       { messages: messages(), id, locale: locale().locale },
@@ -446,6 +484,7 @@ export function EditorDocument(
         editing: true,
       },
     );
+  }
   return (
     <Show when={nodes().length > 0}>
       <Children nodes={nodes()} context={context()} />
@@ -472,12 +511,16 @@ export function RichTextRenderer(props: RichTextRendererProps) {
   const messages = useArcMessages();
   const locale = useLocale();
   const id = createUniqueId();
-  const options = (): ExtensionOptions => ({ preset: props.preset, extensions: props.extensions });
+  function options(): ExtensionOptions {
+    return { preset: props.preset, extensions: props.extensions };
+  }
   const extensions = createMemo(() => documentEditorExtensions(options()));
   const nodes = createMemo(() => storedNodes(props.value, props.markdown, options()));
-  const cls = () => parts({ ...documentStyles(), root: "" }, props.classes);
-  const context = (): RenderContext =>
-    renderContext(
+  function cls() {
+    return parts({ ...documentStyles(), root: "" }, props.classes);
+  }
+  function context(): RenderContext {
+    return renderContext(
       nodes(),
       extensions(),
       { messages: messages(), id, locale: locale().locale },
@@ -488,6 +531,7 @@ export function RichTextRenderer(props: RichTextRendererProps) {
         linkHref: props.linkHref,
       },
     );
+  }
   return (
     <div
       class={arc(

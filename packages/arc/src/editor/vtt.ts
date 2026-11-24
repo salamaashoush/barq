@@ -23,7 +23,9 @@ export function textDirection(text: string): "ltr" | "rtl" | null {
   return null;
 }
 
-const pad = (part: number, size = 2): string => String(part).padStart(size, "0");
+function pad(part: number, size = 2): string {
+  return String(part).padStart(size, "0");
+}
 
 function stamp(value: number): string {
   const total = Math.max(0, Math.round(value * 1000));

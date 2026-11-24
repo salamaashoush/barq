@@ -35,13 +35,14 @@ function PageBreakView(props: BlockProps<Record<string, never>>) {
   );
 }
 
-const breaksPage = (element: HTMLElement): Record<string, never> | null =>
-  element.hasAttribute("data-page-break") ||
-  /(?:page-)?break-(?:before|after)\s*:\s*(?:always|page)/i.test(
-    element.getAttribute("style") ?? "",
-  )
+function breaksPage(element: HTMLElement): Record<string, never> | null {
+  return element.hasAttribute("data-page-break") ||
+    /(?:page-)?break-(?:before|after)\s*:\s*(?:always|page)/i.test(
+      element.getAttribute("style") ?? "",
+    )
     ? {}
     : null;
+}
 
 /**
  * A page break: where a printed copy starts a new page, so a second part can

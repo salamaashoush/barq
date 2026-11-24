@@ -108,15 +108,24 @@ interface ActiveBlock {
   choices: readonly OfferedChoice[];
 }
 
+interface OfferedOption {
+  value: string;
+  label: Label;
+}
+
 interface OfferedChoice {
   choice: BlockMenuChoice;
   value: string;
-  options: readonly { value: string; label: Label }[];
+  options: readonly OfferedOption[];
+}
+
+interface NodeWithChildren {
+  children?: SerializedLexicalNode[];
 }
 
 /** A node and everything under it as JSON, children included, for a copy. */
 function $deepJSON(node: LexicalNode): SerializedLexicalNode {
-  const json = node.exportJSON() as SerializedLexicalNode & { children?: SerializedLexicalNode[] };
+  const json = node.exportJSON() as SerializedLexicalNode & NodeWithChildren;
   if ($isElementNode(node)) json.children = node.getChildren().map($deepJSON);
   return json;
 }
@@ -223,7 +232,9 @@ export interface BlockEditorProps extends Omit<RichTextEditorProps, "variant"> {
  * keyboard has everything a pointer has.
  */
 export function BlockEditor(props: BlockEditorProps) {
-  const cls = (): Slots => parts(blockEditorStyles(), props.blockClasses);
+  function cls(): Slots {
+    return parts(blockEditorStyles(), props.blockClasses);
+  }
   return (
     <RichTextEditor
       {...props}
@@ -243,15 +254,17 @@ export function BlockEditor(props: BlockEditorProps) {
   );
 }
 
-/** Marks each empty block with what it is for, as `data-placeholder`, which the content's style draws. */
-function BlockPlaceholders(props: {
+interface BlockPlaceholdersProps {
   words?: Partial<Record<TextBlockType, string>>;
   documentPlaceholder: boolean;
-}) {
+}
+
+/** Marks each empty block with what it is for, as `data-placeholder`, which the content's style draws. */
+function BlockPlaceholders(props: BlockPlaceholdersProps) {
   const editor = useLexicalEditor();
   const messages = useArcMessages();
   let marked = new Set<HTMLElement>();
-  const word = (block: TextBlockType): string => {
+  function word(block: TextBlockType): string {
     const all = messages();
     const own: Record<TextBlockType, string> = {
       paragraph: all.blockPlaceholder,
@@ -265,8 +278,8 @@ function BlockPlaceholders(props: {
       check: all.checkList,
     };
     return props.words?.[block] ?? own[block];
-  };
-  const mark = (): void => {
+  }
+  function mark(): void {
     const wanted = editor.getEditorState().read(() => {
       const out = new Map<NodeKey, string>();
       const root = $getRoot();
@@ -277,7 +290,7 @@ function BlockPlaceholders(props: {
           : null;
       // The editor's own placeholder speaks for a document with nothing in it.
       const lone = props.documentPlaceholder && root.getChildrenSize() === 1;
-      const consider = (node: LexicalNode): void => {
+      function consider(node: LexicalNode): void {
         if (!$isElementNode(node) || node.getTextContentSize() > 0) return;
         const block = $textBlockOf(node);
         if (block === null) return;
@@ -285,7 +298,7 @@ function BlockPlaceholders(props: {
           caret !== null && (caret.is(node) || caret.getParents().some((one) => one.is(node)));
         if (block === "paragraph" && (!holdsCaret || lone)) return;
         out.set(node.getKey(), word(block));
-      };
+      }
       for (const child of root.getChildren()) {
         if ($isListNode(child)) for (const item of child.getChildren()) consider(item);
         else consider(child);
@@ -301,14 +314,23 @@ function BlockPlaceholders(props: {
     }
     for (const element of marked) if (!next.has(element)) delete element.dataset.placeholder;
     marked = next;
-  };
+  }
   useRegistration(() =>
     mergeRegister(editor.registerUpdateListener(mark), editor.registerEditableListener(mark)),
   );
   return null;
 }
 
-function BlockHandles(props: { cls: Slots }) {
+interface BlockHandlesProps {
+  cls: Slots;
+}
+
+interface BlockPlace {
+  key: NodeKey;
+  index: number;
+}
+
+function BlockHandles(props: BlockHandlesProps) {
   const editor = useLexicalEditor();
   const messages = useArcMessages();
   const [active, setActive] = editorSignal<ActiveBlock | null>(null);
@@ -320,7 +342,7 @@ function BlockHandles(props: { cls: Slots }) {
   let pinned = false;
 
   const blockMenu = editorExtensions(editor).flatMap((extension) => extension.blockMenu ?? []);
-  const measure = (key: NodeKey): ActiveBlock | null => {
+  function measure(key: NodeKey): ActiveBlock | null {
     const element = editor.getElementByKey(key);
     const body = scroller();
     if (element === null || body === null) return null;
@@ -340,47 +362,48 @@ function BlockHandles(props: { cls: Slots }) {
         }),
       };
     });
-  };
+  }
 
-  const follow = (key: NodeKey | null): void => {
+  function follow(key: NodeKey | null): void {
     if (pinned) return;
     setActive(key === null ? null : measure(key));
-  };
+  }
 
-  const caretBlock = (): NodeKey | null =>
-    editor.read(() => {
+  function caretBlock(): NodeKey | null {
+    return editor.read(() => {
       const selection = $getSelection();
       return $isRangeSelection(selection)
         ? ($rootBlockOf(selection.anchor.getNode())?.getKey() ?? null)
         : null;
     });
+  }
 
-  const blockAt = (y: number): { key: NodeKey; index: number } | null => {
+  function blockAt(y: number): BlockPlace | null {
     const keys = editor.read(() => $getRoot().getChildrenKeys());
     for (const [index, key] of keys.entries()) {
       const box = editor.getElementByKey(key)?.getBoundingClientRect();
       if (box !== undefined && y >= box.top && y <= box.bottom) return { key, index };
     }
     return null;
-  };
+  }
 
-  const dropIndex = (y: number): number => {
+  function dropIndex(y: number): number {
     const keys = editor.read(() => $getRoot().getChildrenKeys());
     for (const [index, key] of keys.entries()) {
       const box = editor.getElementByKey(key)?.getBoundingClientRect();
       if (box !== undefined && y < box.top + box.height / 2) return index;
     }
     return keys.length;
-  };
+  }
 
-  const move = (step: -1 | 1): void => {
+  function move(step: -1 | 1): void {
     const current = active();
     if (current === null) return;
     moveBlock(editor, current.key, step, (position, count) =>
       announce(messages().blockMoved(position, count), "polite"),
     );
     follow(current.key);
-  };
+  }
 
   useRegistration(() =>
     mergeRegister(
@@ -389,11 +412,11 @@ function BlockHandles(props: { cls: Slots }) {
         follow(pinned && current !== null ? current.key : (caretBlock() ?? current?.key ?? null));
       }),
       editor.registerRootListener((root, previous) => {
-        const onPointer = (event: PointerEvent): void => {
+        function onPointer(event: PointerEvent): void {
           if (event.pointerType === "touch") return;
           const found = blockAt(event.clientY);
           if (found !== null) follow(found.key);
-        };
+        }
         previous?.removeEventListener("pointermove", onPointer);
         root?.addEventListener("pointermove", onPointer);
         setScroller(root?.parentElement ?? null);
@@ -437,19 +460,19 @@ function BlockHandles(props: { cls: Slots }) {
     return [...out.entries()];
   });
 
-  const onGripDown = (event: PointerEvent): void => {
+  function onGripDown(event: PointerEvent): void {
     const current = active();
     if (current === null || event.button !== 0) return;
     const grip = event.currentTarget as HTMLElement;
     const startY = event.clientY;
     dragged = false;
     pinned = true;
-    const onMove = (next: PointerEvent): void => {
+    function onMove(next: PointerEvent): void {
       if (!dragged && Math.abs(next.clientY - startY) < 6) return;
       dragged = true;
       setDrop(dropIndex(next.clientY));
-    };
-    const onUp = (): void => {
+    }
+    const onUp: () => void = () => {
       grip.removeEventListener("pointermove", onMove);
       grip.removeEventListener("pointerup", onUp);
       grip.removeEventListener("pointercancel", onUp);
@@ -466,25 +489,25 @@ function BlockHandles(props: { cls: Slots }) {
     grip.addEventListener("pointermove", onMove);
     grip.addEventListener("pointerup", onUp);
     grip.addEventListener("pointercancel", onUp);
-  };
+  }
 
   // Before the button's own press handling, which keeps the events to itself.
-  const gripKeys = (element: HTMLSpanElement): (() => void) => {
-    const onKey = (event: KeyboardEvent): void => {
+  function gripKeys(element: HTMLSpanElement): () => void {
+    function onKey(event: KeyboardEvent): void {
       if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
       event.preventDefault();
       event.stopPropagation();
       move(event.key === "ArrowUp" ? -1 : 1);
-    };
+    }
     element.addEventListener("pointerdown", onGripDown, true);
     element.addEventListener("keydown", onKey, true);
     return () => {
       element.removeEventListener("pointerdown", onGripDown, true);
       element.removeEventListener("keydown", onKey, true);
     };
-  };
+  }
 
-  const indicatorTop = (): number | null => {
+  function indicatorTop(): number | null {
     const index = drop();
     const body = scroller();
     if (index === null || body === null) return null;
@@ -494,7 +517,7 @@ function BlockHandles(props: { cls: Slots }) {
     if (box === null || box === undefined) return null;
     const bodyTop = body.getBoundingClientRect().top - body.scrollTop;
     return (index >= keys.length ? box.bottom : box.top) - bodyTop;
-  };
+  }
 
   return (
     <Show when={scroller()}>
@@ -618,7 +641,7 @@ function BlockHandles(props: { cls: Slots }) {
                               }}
                             >
                               <For each={offered.options}>
-                                {(option: { value: string; label: Label }) => (
+                                {(option: OfferedOption) => (
                                   <DropdownMenuRadioItem value={option.value}>
                                     {labelOf(option.label, messages())}
                                   </DropdownMenuRadioItem>

@@ -33,6 +33,10 @@ function content(): HTMLElement {
 
 const DOCUMENT = "## Plan\n\nFirst **bold** line\n\n- one\n- two\n\n```js\nlet a = 1;\n```\n\n";
 
+interface ArabicProps {
+  children: Child;
+}
+
 describe("RichTextEditor", () => {
   test("is a named, multi-line text box with a placeholder while empty", async () => {
     render(() => <RichTextEditor label="Description" placeholder="Write something" />);
@@ -206,7 +210,7 @@ describe("RichTextEditor", () => {
 
   test("leaves each block to take the direction of its own text", async () => {
     const editor = capture();
-    function Arabic(props: { children: Child }) {
+    function Arabic(props: ArabicProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }
@@ -315,8 +319,9 @@ describe("RichTextEditor", () => {
     const written = [...container.querySelectorAll("*")];
     const served = content();
     const staticNodes = [...served.querySelectorAll("*")];
-    const blocks = (root: Element) =>
-      [...root.children].map((one) => [one.localName, one.getAttribute("class") ?? ""]);
+    function blocks(root: Element) {
+      return [...root.children].map((one) => [one.localName, one.getAttribute("class") ?? ""]);
+    }
     const before = blocks(served);
     resetChildIds();
     const dispose = hydrate(client, container);

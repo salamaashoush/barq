@@ -145,8 +145,13 @@ export function useSelectionFormat(): () => SelectionFormat {
   return useLexicalEditorState($selectionFormat);
 }
 
+export interface HistoryState {
+  canUndo: () => boolean;
+  canRedo: () => boolean;
+}
+
 /** Whether there is something to undo and to redo, from whichever history the editor has. */
-export function useHistoryState(): { canUndo: () => boolean; canRedo: () => boolean } {
+export function useHistoryState(): HistoryState {
   const editor = useLexicalEditor();
   const [canUndo, setCanUndo] = editorSignal(false);
   const [canRedo, setCanRedo] = editorSignal(false);
@@ -217,11 +222,13 @@ const BLOCKS: readonly BlockButton[] = [
   { type: "code", icon: () => <SquareCode /> },
 ];
 
-const ALIGNMENTS: readonly {
+interface AlignmentOption {
   value: ElementFormatType;
   label: (messages: ArcMessages) => string;
   icon: () => Child;
-}[] = [
+}
+
+const ALIGNMENTS: readonly AlignmentOption[] = [
   { value: "start", label: (m) => m.alignStart, icon: () => <TextAlignStart /> },
   { value: "center", label: (m) => m.alignCenter, icon: () => <TextAlignCenter /> },
   { value: "end", label: (m) => m.alignEnd, icon: () => <TextAlignEnd /> },
@@ -251,7 +258,9 @@ export function EditorToolbar(props: EditorToolbarProps) {
   const messages = useArcMessages();
   const format = useSelectionFormat();
   const history = useHistoryState();
-  const cls = (): Slots => parts(editorToolbarStyles(), props.classes);
+  function cls(): Slots {
+    return parts(editorToolbarStyles(), props.classes);
+  }
   const extra = editorExtensions(editor).flatMap((extension) => extension.toolbar ?? []);
   const extraById = new Map(extra.map((item) => [`extension:${item.id}`, item]));
   const tools = createMemo((): string[] => [
@@ -272,178 +281,190 @@ export function EditorToolbar(props: EditorToolbarProps) {
     priority: (key: Key) =>
       PRIORITY[key as EditorTool] ?? extraById.get(String(key))?.priority ?? 2,
   });
-  const shown = (): string[] => tools().filter((tool) => !hidden().has(tool));
-  const folded = (): string[] => tools().filter((tool) => hidden().has(tool));
+  function shown(): string[] {
+    return tools().filter((tool) => !hidden().has(tool));
+  }
+  function folded(): string[] {
+    return tools().filter((tool) => hidden().has(tool));
+  }
 
-  const block = (): TextBlockType | null => format().block;
-  const align = (): ElementFormatType => alignmentOf(format().align, format().rtl);
-  const disabled = (): boolean => !editable();
-  const run = (action: () => void): void => {
+  function block(): TextBlockType | null {
+    return format().block;
+  }
+  function align(): ElementFormatType {
+    return alignmentOf(format().align, format().rtl);
+  }
+  function disabled(): boolean {
+    return !editable();
+  }
+  function run(action: () => void): void {
     action();
     editor.focus();
-  };
+  }
 
-  const textStyleLabel = (): string => {
+  function textStyleLabel(): string {
     const current = block();
     return current === null ? messages().textStyle : textBlockLabel(current, messages());
-  };
+  }
 
-  const group = (tool: string, index: () => number): Child => (
-    <div class={cls().group} data-slot="editor-toolbar-group" data-tool={tool}>
-      <Show when={index() > 0}>
-        <ToolbarSeparator />
-      </Show>
-      {extraById.has(tool) ? (
-        <ExtensionTool item={extraById.get(tool)!} disabled={disabled()} />
-      ) : tool === "history" ? (
-        <>
-          <IconButton
-            label={messages().undo}
-            shortcut={shortcutLabel("Mod+Z")}
-            size="sm"
-            isDisabled={disabled() || !history.canUndo()}
-            onPress={() => run(() => editor.dispatchCommand(UNDO_COMMAND, undefined))}
-          >
-            <Undo2 />
-          </IconButton>
-          <IconButton
-            label={messages().redo}
-            shortcut={shortcutLabel("Mod+Shift+Z")}
-            size="sm"
-            isDisabled={disabled() || !history.canRedo()}
-            onPress={() => run(() => editor.dispatchCommand(REDO_COMMAND, undefined))}
-          >
-            <Redo2 />
-          </IconButton>
-        </>
-      ) : tool === "textStyle" ? (
-        <DropdownMenu>
-          <DropdownMenuTrigger>
-            <Button
-              variant="ghost"
-              size="sm"
-              class={cls().textStyle}
-              data-slot="editor-text-style"
-              aria-label={`${messages().textStyle}: ${textStyleLabel()}`}
-              isDisabled={disabled()}
-            >
-              <span>{textStyleLabel()}</span>
-              <ChevronDown class={cls().chevron} aria-hidden="true" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent aria-label={messages().textStyle} align="start">
-            <TextStyleItems
-              current={block()}
-              onChoose={(type) => run(() => setTextBlock(editor, type))}
-            />
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ) : tool === "marks" ? (
-        <For each={["bold", "italic", "underline", "strikethrough", "code"] as Mark[]}>
-          {(mark: Mark) => (
+  function group(tool: string, index: () => number): Child {
+    return (
+      <div class={cls().group} data-slot="editor-toolbar-group" data-tool={tool}>
+        <Show when={index() > 0}>
+          <ToolbarSeparator />
+        </Show>
+        {extraById.has(tool) ? (
+          <ExtensionTool item={extraById.get(tool)!} disabled={disabled()} />
+        ) : tool === "history" ? (
+          <>
             <IconButton
-              label={markLabel(mark, messages())}
-              shortcut={markShortcut(mark)}
+              label={messages().undo}
+              shortcut={shortcutLabel("Mod+Z")}
               size="sm"
-              isPressed={format().marks[mark]}
-              isDisabled={disabled()}
-              onPress={() => run(() => toggleMark(editor, mark))}
+              isDisabled={disabled() || !history.canUndo()}
+              onPress={() => run(() => editor.dispatchCommand(UNDO_COMMAND, undefined))}
             >
-              {markIcon(mark)}
+              <Undo2 />
             </IconButton>
-          )}
-        </For>
-      ) : tool === "link" ? (
-        <IconButton
-          label={messages().link}
-          shortcut={shortcutLabel("Mod+K")}
-          size="sm"
-          isPressed={format().link !== null}
-          isDisabled={disabled()}
-          onPress={() => editor.dispatchCommand(OPEN_LINK_EDITOR_COMMAND, undefined)}
-        >
-          <Link />
-        </IconButton>
-      ) : tool === "lists" || tool === "blocks" ? (
-        <For each={tool === "lists" ? LISTS : BLOCKS}>
-          {(item: BlockButton) => (
             <IconButton
-              label={textBlockLabel(item.type, messages())}
+              label={messages().redo}
+              shortcut={shortcutLabel("Mod+Shift+Z")}
               size="sm"
-              isPressed={block() === item.type}
-              isDisabled={disabled()}
-              onPress={() => run(() => setTextBlock(editor, item.type, block()))}
+              isDisabled={disabled() || !history.canRedo()}
+              onPress={() => run(() => editor.dispatchCommand(REDO_COMMAND, undefined))}
             >
-              {item.icon()}
+              <Redo2 />
             </IconButton>
-          )}
-        </For>
-      ) : tool === "alignment" ? (
-        <DropdownMenu>
-          <DropdownMenuTrigger>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={messages().alignment}
-              data-slot="editor-alignment"
-              isDisabled={disabled()}
-            >
-              {(ALIGNMENTS.find((one) => one.value === align()) ?? ALIGNMENTS[0])?.icon()}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent aria-label={messages().alignment} align="start">
-            <AlignmentItems
-              current={align()}
-              onChoose={(value) => run(() => setAlignment(editor, value))}
-            />
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ) : tool === "indent" ? (
-        <>
+          </>
+        ) : tool === "textStyle" ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger>
+              <Button
+                variant="ghost"
+                size="sm"
+                class={cls().textStyle}
+                data-slot="editor-text-style"
+                aria-label={`${messages().textStyle}: ${textStyleLabel()}`}
+                isDisabled={disabled()}
+              >
+                <span>{textStyleLabel()}</span>
+                <ChevronDown class={cls().chevron} aria-hidden="true" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent aria-label={messages().textStyle} align="start">
+              <TextStyleItems
+                current={block()}
+                onChoose={(type) => run(() => setTextBlock(editor, type))}
+              />
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : tool === "marks" ? (
+          <For each={["bold", "italic", "underline", "strikethrough", "code"] as Mark[]}>
+            {(mark: Mark) => (
+              <IconButton
+                label={markLabel(mark, messages())}
+                shortcut={markShortcut(mark)}
+                size="sm"
+                isPressed={format().marks[mark]}
+                isDisabled={disabled()}
+                onPress={() => run(() => toggleMark(editor, mark))}
+              >
+                {markIcon(mark)}
+              </IconButton>
+            )}
+          </For>
+        ) : tool === "link" ? (
           <IconButton
-            label={messages().outdent}
+            label={messages().link}
+            shortcut={shortcutLabel("Mod+K")}
             size="sm"
+            isPressed={format().link !== null}
             isDisabled={disabled()}
-            onPress={() => run(() => indent(editor, "out"))}
+            onPress={() => editor.dispatchCommand(OPEN_LINK_EDITOR_COMMAND, undefined)}
           >
-            <IndentDecrease />
+            <Link />
           </IconButton>
-          <IconButton
-            label={messages().indent}
-            size="sm"
-            isDisabled={disabled()}
-            onPress={() => run(() => indent(editor, "in"))}
-          >
-            <IndentIncrease />
-          </IconButton>
-        </>
-      ) : (
-        <DropdownMenu>
-          <DropdownMenuTrigger>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={messages().insert}
-              data-slot="editor-insert"
+        ) : tool === "lists" || tool === "blocks" ? (
+          <For each={tool === "lists" ? LISTS : BLOCKS}>
+            {(item: BlockButton) => (
+              <IconButton
+                label={textBlockLabel(item.type, messages())}
+                size="sm"
+                isPressed={block() === item.type}
+                isDisabled={disabled()}
+                onPress={() => run(() => setTextBlock(editor, item.type, block()))}
+              >
+                {item.icon()}
+              </IconButton>
+            )}
+          </For>
+        ) : tool === "alignment" ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={messages().alignment}
+                data-slot="editor-alignment"
+                isDisabled={disabled()}
+              >
+                {(ALIGNMENTS.find((one) => one.value === align()) ?? ALIGNMENTS[0])?.icon()}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent aria-label={messages().alignment} align="start">
+              <AlignmentItems
+                current={align()}
+                onChoose={(value) => run(() => setAlignment(editor, value))}
+              />
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : tool === "indent" ? (
+          <>
+            <IconButton
+              label={messages().outdent}
+              size="sm"
               isDisabled={disabled()}
+              onPress={() => run(() => indent(editor, "out"))}
             >
-              <Plus aria-hidden="true" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent aria-label={messages().insert} align="start">
-            <For each={props.insert ?? []}>
-              {(action: InsertAction) => (
-                <DropdownMenuItem onSelect={() => action.onInsert()}>
-                  {action.icon?.()}
-                  {action.label}
-                </DropdownMenuItem>
-              )}
-            </For>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
-    </div>
-  );
+              <IndentDecrease />
+            </IconButton>
+            <IconButton
+              label={messages().indent}
+              size="sm"
+              isDisabled={disabled()}
+              onPress={() => run(() => indent(editor, "in"))}
+            >
+              <IndentIncrease />
+            </IconButton>
+          </>
+        ) : (
+          <DropdownMenu>
+            <DropdownMenuTrigger>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={messages().insert}
+                data-slot="editor-insert"
+                isDisabled={disabled()}
+              >
+                <Plus aria-hidden="true" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent aria-label={messages().insert} align="start">
+              <For each={props.insert ?? []}>
+                {(action: InsertAction) => (
+                  <DropdownMenuItem onSelect={() => action.onInsert()}>
+                    {action.icon?.()}
+                    {action.label}
+                  </DropdownMenuItem>
+                )}
+              </For>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
+    );
+  }
 
   return (
     <Toolbar
@@ -496,10 +517,12 @@ export function EditorToolbar(props: EditorToolbarProps) {
   );
 }
 
-function TextStyleItems(props: {
+interface TextStyleItemsProps {
   current: TextBlockType | null;
   onChoose: (type: TextBlockType) => void;
-}) {
+}
+
+function TextStyleItems(props: TextStyleItemsProps) {
   const messages = useArcMessages();
   return (
     <DropdownMenuRadioGroup
@@ -517,10 +540,12 @@ function TextStyleItems(props: {
   );
 }
 
-function AlignmentItems(props: {
+interface AlignmentItemsProps {
   current: ElementFormatType;
   onChoose: (value: ElementFormatType) => void;
-}) {
+}
+
+function AlignmentItems(props: AlignmentItemsProps) {
   const messages = useArcMessages();
   return (
     <DropdownMenuRadioGroup
@@ -536,8 +561,13 @@ function AlignmentItems(props: {
   );
 }
 
+interface ExtensionToolProps {
+  item: EditorToolbarItem;
+  disabled: boolean;
+}
+
 /** An extension's button, pressed as its `$pressed` reads the selection. */
-function ExtensionTool(props: { item: EditorToolbarItem; disabled: boolean }) {
+function ExtensionTool(props: ExtensionToolProps) {
   const editor = useLexicalEditor();
   const messages = useArcMessages();
   const pressed = useLexicalEditorState(() => props.item.$pressed?.() ?? false);
@@ -555,8 +585,7 @@ function ExtensionTool(props: { item: EditorToolbarItem; disabled: boolean }) {
   );
 }
 
-/** A group that no longer fits, as menu items. */
-function FoldedTool(props: {
+interface FoldedToolProps {
   tool: string;
   item?: EditorToolbarItem;
   format: SelectionFormat;
@@ -565,7 +594,10 @@ function FoldedTool(props: {
   canRedo: boolean;
   insert: readonly InsertAction[];
   run: (action: () => void) => void;
-}) {
+}
+
+/** A group that no longer fits, as menu items. */
+function FoldedTool(props: FoldedToolProps) {
   const editor = useLexicalEditor();
   const messages = useArcMessages();
   const tool = props.tool;

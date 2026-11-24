@@ -12,7 +12,11 @@ import {
   markdownToDocument,
 } from "./document.ts";
 
-const NOTE = defineBlock<{ text: string }>({
+interface NoteData {
+  text: string;
+}
+
+const NOTE = defineBlock<NoteData>({
   type: "acme-note",
   label: "Note",
   defaultData: () => ({ text: "" }),

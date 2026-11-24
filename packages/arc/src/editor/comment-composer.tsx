@@ -57,11 +57,15 @@ function fill(body: string, mentions: readonly CommentPerson[]): () => void {
   };
 }
 
+interface MentionMatch {
+  node: LexicalNode;
+}
+
 /** The people the document still mentions, once each, in order. */
 function mentioned(editor: LexicalEditor, known: readonly CommentPerson[]): CommentPerson[] {
   const people = new Map<string, CommentPerson>();
   editor.read(() => {
-    for (const { node } of $dfs() as { node: LexicalNode }[]) {
+    for (const { node } of $dfs() as MentionMatch[]) {
       if (!$isMentionNode(node) || people.has(node.getMentionId())) continue;
       const id = node.getMentionId();
       people.set(id, known.find((one) => one.id === id) ?? { id, name: node.getMentionName() });
@@ -89,10 +93,14 @@ function mentioned(editor: LexicalEditor, known: readonly CommentPerson[]): Comm
 export function RichCommentComposer(props: CommentComposerProps) {
   const messages = useArcMessages();
   let editor: LexicalEditor | undefined;
-  const known = (): readonly CommentPerson[] => [
-    ...(props.defaultMentions ?? []),
-    ...(Array.isArray(props.mentionables) ? (props.mentionables as readonly CommentPerson[]) : []),
-  ];
+  function known(): readonly CommentPerson[] {
+    return [
+      ...(props.defaultMentions ?? []),
+      ...(Array.isArray(props.mentionables)
+        ? (props.mentionables as readonly CommentPerson[])
+        : []),
+    ];
+  }
   return (
     <ChatComposer
       preset={commentPreset}

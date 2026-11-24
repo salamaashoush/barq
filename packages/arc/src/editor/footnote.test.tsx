@@ -45,6 +45,10 @@ describe("footnotes in markdown", () => {
   });
 });
 
+interface SelectableText {
+  select: (a: number, b: number) => void;
+}
+
 describe("footnotes in the editor", () => {
   test("Mod+Alt+F adds one after the words chosen and opens it to write in; its words are kept", async () => {
     const editor = capture();
@@ -54,8 +58,7 @@ describe("footnotes in the editor", () => {
     await settle();
     editor.get().update(() => {
       const text = $getRoot().getFirstDescendant();
-      if (text !== null && "select" in text)
-        (text as unknown as { select: (a: number, b: number) => void }).select(0, 6);
+      if (text !== null && "select" in text) (text as unknown as SelectableText).select(0, 6);
     });
     await settle();
     keydown(content(), "f", { metaKey: true, altKey: true, code: "KeyF" });

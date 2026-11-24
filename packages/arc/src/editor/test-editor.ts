@@ -45,8 +45,13 @@ export function keydown(target: Element, key: string, init: KeyboardEventInit = 
   return event;
 }
 
+export interface EditorCapture {
+  get: () => LexicalEditor;
+  set: (editor: LexicalEditor) => void;
+}
+
 /** A captured editor, for `onEditor`. */
-export function capture(): { get: () => LexicalEditor; set: (editor: LexicalEditor) => void } {
+export function capture(): EditorCapture {
   let current: LexicalEditor | undefined;
   return {
     get: () => {
@@ -59,15 +64,17 @@ export function capture(): { get: () => LexicalEditor; set: (editor: LexicalEdit
   };
 }
 
+export interface HydratedEditor {
+  container: HTMLElement;
+  dispose: () => void;
+}
+
 /**
  * A page rendered by a real server process and hydrated here: `jsx` is the
  * page's markup, written with what `imports` brings from the editor entry.
  * Hydration claims the server's markup with no mismatch and no rebuild.
  */
-export async function hydratesFromServer(
-  imports: string,
-  jsx: string,
-): Promise<{ container: HTMLElement; dispose: () => void }> {
+export async function hydratesFromServer(imports: string, jsx: string): Promise<HydratedEditor> {
   const { serverProcess, halves } = await import("../ssr-harness.ts");
   const { resetChildIds } = await import("@barqjs/core");
   const { hydrate } = await import("@barqjs/web");

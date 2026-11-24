@@ -131,6 +131,7 @@ export {
   EmojiShortcuts,
   type EmojiShortcutsProps,
   type MentionCandidate,
+  type MentionSearchContext,
   type MentionSource,
   MentionTypeahead,
   type MentionTypeaheadProps,

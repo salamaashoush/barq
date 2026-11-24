@@ -64,8 +64,12 @@ export interface MediaDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
+export interface ImageDialogProps {
+  maxSize?: number;
+}
+
 /** Images chosen or dropped through `FileDropZone`, a sheet on a phone. */
-export function ImageDialog(props: MediaDialogProps & { maxSize?: number }) {
+export function ImageDialog(props: MediaDialogProps & ImageDialogProps) {
   const messages = useArcMessages();
   const insert = useInsertImages();
   return (
@@ -87,15 +91,19 @@ export function ImageDialog(props: MediaDialogProps & { maxSize?: number }) {
   );
 }
 
+export interface EmbedDialogProps {
+  providers: readonly EmbedProvider[];
+}
+
 /** An address read into an embed from the providers the editor allows. */
-export function EmbedDialog(props: MediaDialogProps & { providers: readonly EmbedProvider[] }) {
+export function EmbedDialog(props: MediaDialogProps & EmbedDialogProps) {
   const editor = useLexicalEditor();
   const messages = useArcMessages();
   const inputId = createUniqueId();
   const errorId = createUniqueId();
   const [address, setAddress] = createSignal("", { ownedWrite: true });
   const [refused, setRefused] = createSignal(false, { ownedWrite: true });
-  const submit = (): void => {
+  function submit(): void {
     const embed = resolveEmbed(address(), props.providers);
     if (embed === null) {
       setRefused(true);
@@ -106,7 +114,7 @@ export function EmbedDialog(props: MediaDialogProps & { providers: readonly Embe
     editor.update(() => {
       $insertBlock(EmbedBlock.$create(embed));
     });
-  };
+  }
   return (
     <ResponsiveOverlay
       heading={messages().embed}

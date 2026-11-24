@@ -25,10 +25,12 @@ const ME: CommentPerson = { id: "me", name: "Salama Ashoush" };
 const SAM: CommentPerson = { id: "sam", name: "Sam Roe" };
 const NOW = new Date("2026-05-01T12:00:00Z");
 
+interface LexicalHost {
+  __lexicalEditor?: LexicalEditor;
+}
+
 function editorIn(element: Element | null): LexicalEditor {
-  const root = element?.querySelector<HTMLElement & { __lexicalEditor?: LexicalEditor }>(
-    "[data-lexical-editor]",
-  );
+  const root = element?.querySelector<HTMLElement & LexicalHost>("[data-lexical-editor]");
   if (root?.__lexicalEditor === undefined) throw new Error("no editor here");
   return root.__lexicalEditor;
 }

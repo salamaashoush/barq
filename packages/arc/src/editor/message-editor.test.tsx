@@ -15,15 +15,22 @@ afterEach(() => {
 
 const ME = { id: "me", name: "Salama Ashoush" };
 
-const sent = (over: Partial<ChatMessage> = {}): ChatMessage => ({
-  id: "m1",
-  author: ME,
-  createdAt: new Date("2026-05-10T09:00:00Z"),
-  body: "First line\nsecond line",
-  ...over,
-});
+function sent(over: Partial<ChatMessage> = {}): ChatMessage {
+  return {
+    id: "m1",
+    author: ME,
+    createdAt: new Date("2026-05-10T09:00:00Z"),
+    body: "First line\nsecond line",
+    ...over,
+  };
+}
 
-function Thread(props: { message: ChatMessage; saved: ComposedMessage[] }) {
+interface ThreadProps {
+  message: ChatMessage;
+  saved: ComposedMessage[];
+}
+
+function Thread(props: ThreadProps) {
   const [editing, setEditing] = createSignal<string | undefined>(undefined);
   return (
     <MessageItem

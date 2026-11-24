@@ -163,14 +163,16 @@ export function documentExtensions(options: DocumentOptions = {}): AnyLexicalExt
   return extensions;
 }
 
+export interface Disposable {
+  dispose: () => void;
+}
+
 /**
  * An editor with no screen, for a server or a conversion: the same nodes as
  * `RichTextEditor`, so it reads and writes the same documents. Dispose it
  * when done.
  */
-export function createDocumentEditor(
-  options: DocumentOptions = {},
-): LexicalEditor & { dispose: () => void } {
+export function createDocumentEditor(options: DocumentOptions = {}): LexicalEditor & Disposable {
   return buildEditorFromExtensions(
     ...documentExtensions({ ...options, history: false, markdownShortcuts: false }),
     defineExtension({

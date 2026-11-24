@@ -71,6 +71,12 @@ export const tableControlsStyles = variants({
 
 type Slots = ReturnType<typeof tableControlsStyles>;
 
+interface CellEdge {
+  x: number;
+  top: number;
+  height: number;
+}
+
 interface CellPlace {
   key: NodeKey;
   header: boolean;
@@ -78,7 +84,7 @@ interface CellPlace {
   table: NodeKey;
   column: number;
   /** The column's edge at the end of the line, and the table's top and height, in the viewport. */
-  edge: { x: number; top: number; height: number };
+  edge: CellEdge;
   width: number;
 }
 
@@ -96,7 +102,12 @@ type TableAction =
   | "deleteColumn"
   | "deleteTable";
 
-const ACTIONS: readonly { id: TableAction; label: (messages: ArcMessages) => string }[] = [
+interface TableActionItem {
+  id: TableAction;
+  label: (messages: ArcMessages) => string;
+}
+
+const ACTIONS: readonly TableActionItem[] = [
   { id: "rowBefore", label: (m) => m.insertRowBefore },
   { id: "rowAfter", label: (m) => m.insertRowAfter },
   { id: "columnBefore", label: (m) => m.insertColumnBefore },
@@ -161,12 +172,14 @@ export function TableControls(props: TableControlsProps) {
   const editor = useLexicalEditor();
   const messages = useArcMessages();
   const locale = useLocale();
-  const cls = (): Slots => parts(tableControlsStyles(), props.classes);
+  function cls(): Slots {
+    return parts(tableControlsStyles(), props.classes);
+  }
   const [cell, setCell] = editorSignal<CellPlace | null>(null);
   const ref = makeRef<HTMLDivElement>();
   const target = usePortalTarget();
 
-  const read = (): void => {
+  function read(): void {
     const found = editor.read(() => {
       const selection = $getSelection();
       if (!editor.isEditable() || !$isRangeSelection(selection)) return null;
@@ -207,7 +220,7 @@ export function TableControls(props: TableControlsProps) {
       edge: { x: rtl ? box.left : box.right, top: frame.top, height: frame.height },
       width: box.width,
     });
-  };
+  }
   useRegistration(() => editor.registerUpdateListener(read));
 
   const position = overlayPosition({

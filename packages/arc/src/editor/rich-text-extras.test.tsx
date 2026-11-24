@@ -22,13 +22,14 @@ function content(): HTMLElement {
   return document.querySelector<HTMLElement>('[data-slot="rich-text-editor-content"]')!;
 }
 
-const widthsOf = (editor: LexicalEditor) =>
-  editor.read(() => {
+function widthsOf(editor: LexicalEditor) {
+  return editor.read(() => {
     const table = $getRoot()
       .getChildren()
       .find((one) => $isTableNode(one));
     return $isTableNode(table) ? table.getColWidths() : undefined;
   });
+}
 
 describe("the table size picker", () => {
   test("the Insert menu's Table opens a grid that lights up to the size and inserts it", async () => {
@@ -98,12 +99,12 @@ describe("column widths", () => {
     await settle();
     expect(widthsOf(editor.get())).toEqual([56, 0, 0]);
     // happy-dom leaves `pageX` at 0, and a drag reads the page's coordinates.
-    const at = (type: string, x: number): PointerEvent => {
+    function at(type: string, x: number): PointerEvent {
       const event = new PointerEvent(type, { bubbles: true, button: 0, pointerId: 1 });
       Object.defineProperty(event, "pageX", { value: x });
       Object.defineProperty(event, "pageY", { value: 0 });
       return event;
-    };
+    }
     resizer.dispatchEvent(at("pointerdown", 100));
     resizer.dispatchEvent(at("pointermove", 120));
     resizer.dispatchEvent(at("pointerup", 120));

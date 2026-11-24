@@ -70,8 +70,13 @@ export function $outline(): OutlineEntry[] {
   return entries;
 }
 
+export interface ReadingStats {
+  words: number;
+  minutes: number;
+}
+
 /** How many words a text holds, and the minutes it takes to read. */
-export function readingStats(text: string): { words: number; minutes: number } {
+export function readingStats(text: string): ReadingStats {
   const words = text.match(/\S+/gu)?.length ?? 0;
   return { words, minutes: words === 0 ? 0 : Math.ceil(words / READING_WORDS_PER_MINUTE) };
 }
@@ -86,12 +91,15 @@ export function DocumentStatus() {
   const editor = useLexicalEditor();
   const messages = useArcMessages();
   const cls = documentStatusStyles();
-  const read = () => editor.getEditorState().read(() => readingStats($getRoot().getTextContent()));
+  function read() {
+    return editor.getEditorState().read(() => readingStats($getRoot().getTextContent()));
+  }
   const [stats, setStats] = editorSignal(read());
   const [entries, setEntries] = editorSignal<OutlineEntry[]>([]);
   const [focused, setFocused] = editorSignal(false);
-  const frame = (): HTMLElement | null =>
-    editor.getRootElement()?.closest<HTMLElement>('[data-slot="rich-text-editor"]') ?? null;
+  function frame(): HTMLElement | null {
+    return editor.getRootElement()?.closest<HTMLElement>('[data-slot="rich-text-editor"]') ?? null;
+  }
 
   useRegistration(() =>
     mergeRegister(
@@ -139,11 +147,11 @@ export function DocumentStatus() {
     if (element !== null) delete element.dataset.focusMode;
   });
 
-  const go = (key: NodeKey): void => {
+  function go(key: NodeKey): void {
     editor.getRootElement()?.focus({ preventScroll: true });
     editor.update(() => $getNodeByKey(key)?.selectEnd(), { discrete: true });
     editor.getElementByKey(key)?.scrollIntoView?.({ block: "center", behavior: "smooth" });
-  };
+  }
 
   return (
     <div class={cls.root} data-slot="document-status">

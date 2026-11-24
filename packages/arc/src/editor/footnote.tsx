@@ -62,10 +62,12 @@ export const footnoteStyles = variants({
   },
 });
 
-export type SerializedFootnoteNode = Spread<
-  { note: string; source?: unknown },
-  SerializedLexicalNode
->;
+export type FootnoteFields = {
+  note: string;
+  source?: unknown;
+};
+
+export type SerializedFootnoteNode = Spread<FootnoteFields, SerializedLexicalNode>;
 
 /**
  * A footnote: a number in the line and the words it stands for, listed under
@@ -217,7 +219,12 @@ function $settle(key: NodeKey): void {
   if (previous !== null) previous.selectEnd();
 }
 
-function FootnoteMark(props: { nodeKey: NodeKey; note: string }) {
+interface FootnoteMarkProps {
+  nodeKey: NodeKey;
+  note: string;
+}
+
+function FootnoteMark(props: FootnoteMarkProps) {
   const editor = useLexicalEditor();
   const editable = useLexicalEditable();
   const messages = useArcMessages();
@@ -226,8 +233,10 @@ function FootnoteMark(props: { nodeKey: NodeKey; note: string }) {
   const [selected, setSelected] = useLexicalNodeSelection(props.nodeKey);
   const [draft, setDraft] = createSignal("", { ownedWrite: true });
   const [dismissed, setDismissed] = createSignal(false, { ownedWrite: true });
-  const open = (): boolean => editable() && selected() && !dismissed();
-  const write = (note: string): void => {
+  function open(): boolean {
+    return editable() && selected() && !dismissed();
+  }
+  function write(note: string): void {
     setDraft(note);
     editor.update(
       () => {
@@ -236,13 +245,13 @@ function FootnoteMark(props: { nodeKey: NodeKey; note: string }) {
       },
       { tag: SKIP_DOM_SELECTION_TAG },
     );
-  };
-  const close = (): void => {
+  }
+  function close(): void {
     setDismissed(true);
     editor.update(() => $settle(props.nodeKey));
     editor.focus();
-  };
-  const remove = (): void => {
+  }
+  function remove(): void {
     editor.update(() => {
       const node = $getNodeByKey(props.nodeKey);
       const previous = node?.getPreviousSibling() ?? null;
@@ -250,7 +259,7 @@ function FootnoteMark(props: { nodeKey: NodeKey; note: string }) {
       previous?.selectEnd();
     });
     editor.focus();
-  };
+  }
   return (
     <ResponsiveOverlay
       heading={messages().footnote}
@@ -317,15 +326,25 @@ const FOOTNOTE_MARKDOWN: TextMatchTransformer = {
   trigger: "]",
 };
 
+interface LinkedProps {
+  text: string;
+}
+
+interface LinkedPart {
+  text: string;
+  link: boolean;
+}
+
 /** Words in a note, with each web address in it a link. */
-function Linked(props: { text: string }) {
-  const parts = (): { text: string; link: boolean }[] =>
-    props.text
+function Linked(props: LinkedProps) {
+  function parts(): LinkedPart[] {
+    return props.text
       .split(/(https?:\/\/[^\s<>()]+[^\s<>().,;:!?])/u)
       .map((text, index) => ({ text, link: index % 2 === 1 }));
+  }
   return (
     <For each={parts()}>
-      {(part: { text: string; link: boolean }) =>
+      {(part: LinkedPart) =>
         part.link ? (
           <a href={part.text} rel="noopener noreferrer" target="_blank">
             {part.text}

@@ -186,19 +186,19 @@ export const autoLinkExtension = defineEditorExtension({
 const TABLE_ROW = /^\|(.+)\|\s?$/;
 
 function tableTransformer(cellTransformers: () => readonly Transformer[]): ElementTransformer {
-  const cell = (text: string) => {
+  function cell(text: string) {
     const node = $createTableCellNode(TableCellHeaderStates.NO_STATUS);
     $convertFromMarkdownString(text.replace(/\\n/g, "\n").trim(), [...cellTransformers()], node);
     return node;
-  };
-  const cells = (line: string) => {
+  }
+  function cells(line: string) {
     const match = TABLE_ROW.exec(line);
     return match?.[1] === undefined ? null : match[1].split("|").map(cell);
-  };
-  const columns = (table: TableNode): number => {
+  }
+  function columns(table: TableNode): number {
     const row = table.getFirstChild();
     return $isTableRowNode(row) ? row.getChildrenSize() : 0;
-  };
+  }
   return {
     dependencies: [TableNode, TableRowNode, TableCellNode],
     export: (node) => {
@@ -387,10 +387,12 @@ export const imageExtension = defineEditorExtension({
   plugins: [ImageDialogHost],
 });
 
+export interface EmbedExtensionOptions {
+  providers?: readonly EmbedProvider[];
+}
+
 /** Video and other pages framed from the sites `providers` allows: YouTube and Vimeo by default. */
-export function embedExtension(
-  options: { providers?: readonly EmbedProvider[] } = {},
-): EditorExtension {
+export function embedExtension(options: EmbedExtensionOptions = {}): EditorExtension {
   const providers = options.providers ?? DEFAULT_EMBED_PROVIDERS;
   return defineEditorExtension({
     name: "arc/embed",
