@@ -11,7 +11,7 @@ import { decryptData, encryptData } from "./encryption.ts";
 // Note that in V8, spreading the uint8array (by chunks) into
 // `String.fromCharCode(...uint8array)` tends to be faster for large
 // strings/buffers, in case perf is needed in the future.
-export const toByteString = (data: string | Uint8Array | ArrayBuffer) => {
+export function toByteString(data: string | Uint8Array | ArrayBuffer) {
   const bytes =
     typeof data === "string"
       ? new TextEncoder().encode(data)
@@ -23,20 +23,20 @@ export const toByteString = (data: string | Uint8Array | ArrayBuffer) => {
     bstring += String.fromCharCode(byte);
   }
   return bstring;
-};
+}
 
-const byteStringToArrayBuffer = (byteString: string) => {
+function byteStringToArrayBuffer(byteString: string) {
   const buffer = new ArrayBuffer(byteString.length);
   const bufferView = new Uint8Array(buffer);
   for (let i = 0, len = byteString.length; i < len; i++) {
     bufferView[i] = byteString.charCodeAt(i);
   }
   return buffer;
-};
+}
 
-const byteStringToString = (byteString: string) => {
+function byteStringToString(byteString: string) {
   return new TextDecoder("utf-8").decode(byteStringToArrayBuffer(byteString));
-};
+}
 
 // -----------------------------------------------------------------------------
 // base64
@@ -46,23 +46,24 @@ const byteStringToString = (byteString: string) => {
  * @param isByteString set to true if already byte string to prevent bloat
  *  due to reencoding
  */
-export const stringToBase64 = (str: string, isByteString = false) => {
+export function stringToBase64(str: string, isByteString = false) {
   return isByteString ? btoa(str) : btoa(toByteString(str));
-};
+}
 
 // async to align with stringToBase64
-export const base64ToString = (base64: string, isByteString = false) => {
+export function base64ToString(base64: string, isByteString = false) {
   return isByteString ? atob(base64) : byteStringToString(atob(base64));
-};
+}
 
-export const base64ToArrayBuffer = (base64: string): ArrayBuffer =>
-  byteStringToArrayBuffer(atob(base64));
+export function base64ToArrayBuffer(base64: string): ArrayBuffer {
+  return byteStringToArrayBuffer(atob(base64));
+}
 
 // -----------------------------------------------------------------------------
 // base64url
 // -----------------------------------------------------------------------------
 
-export const base64urlToString = (str: string) => {
+export function base64urlToString(str: string) {
   return atob(
     // normalize base64URL to base64
     str
@@ -70,7 +71,7 @@ export const base64urlToString = (str: string) => {
       .replace(/_/g, "/")
       .padEnd(str.length + ((4 - (str.length % 4)) % 4), "="),
   );
-};
+}
 
 // -----------------------------------------------------------------------------
 // text encoding
@@ -85,17 +86,16 @@ export type EncodedData = {
   version?: string;
 };
 
-/**
- * Encodes (and potentially compresses via zlib) text to byte string
- */
-export const encode = ({
-  text,
-  compress,
-}: {
+export interface EncodeOptions {
   text: string;
   /** defaults to `true`. If compression fails, falls back to bstring alone. */
   compress?: boolean;
-}): EncodedData => {
+}
+
+/**
+ * Encodes (and potentially compresses via zlib) text to byte string
+ */
+export function encode({ text, compress }: EncodeOptions): EncodedData {
   let deflated!: string;
   if (compress !== false) {
     try {
@@ -110,9 +110,9 @@ export const encode = ({
     compressed: !!deflated,
     encoded: deflated || toByteString(text),
   };
-};
+}
 
-export const decode = (data: EncodedData): string => {
+export function decode(data: EncodedData): string {
   let decoded: string;
 
   switch (data.encoding) {
@@ -131,7 +131,7 @@ export const decode = (data: EncodedData): string => {
   }
 
   return decoded;
-};
+}
 
 // -----------------------------------------------------------------------------
 // binary encoding
@@ -208,7 +208,7 @@ function dataView(
  *
  * @param buffers each buffer (chunk) must be at most 2^32 bits large (~4GB)
  */
-const concatBuffers = (...buffers: Uint8Array[]): Uint8Array<ArrayBuffer> => {
+function concatBuffers(...buffers: Uint8Array[]): Uint8Array<ArrayBuffer> {
   const bufferView = new Uint8Array(
     VERSION_DATAVIEW_BYTES +
       NEXT_CHUNK_SIZE_DATAVIEW_BYTES * buffers.length +
@@ -230,10 +230,10 @@ const concatBuffers = (...buffers: Uint8Array[]): Uint8Array<ArrayBuffer> => {
   }
 
   return bufferView;
-};
+}
 
 /** can only be used on buffers created via `concatBuffers()` */
-const splitBuffers = (concatenatedBuffer: Uint8Array): Uint8Array<ArrayBuffer>[] => {
+function splitBuffers(concatenatedBuffer: Uint8Array): Uint8Array<ArrayBuffer>[] {
   const buffers: Uint8Array<ArrayBuffer>[] = [];
 
   let cursor = 0;
@@ -261,20 +261,32 @@ const splitBuffers = (concatenatedBuffer: Uint8Array): Uint8Array<ArrayBuffer>[]
   }
 
   return buffers;
-};
+}
 
 // helpers for (de)compressing data with JSON metadata including encryption
 // -----------------------------------------------------------------------------
 
 /** @private */
-const _encryptAndCompress = async (
+async function _encryptAndCompress(
   data: Uint8Array<ArrayBuffer> | string,
   encryptionKey: string | CryptoKey,
-) => {
+) {
   const { encryptedBuffer, iv } = await encryptData(encryptionKey, deflate(data));
 
   return { iv, buffer: new Uint8Array(encryptedBuffer) };
-};
+}
+
+export interface CompressionKey {
+  encryptionKey: string | CryptoKey;
+}
+
+export interface OptionalMetadata<T extends Record<string, unknown>> {
+  metadata?: T;
+}
+
+export interface RequiredMetadata<T extends Record<string, unknown>> {
+  metadata: T;
+}
 
 /**
  * The returned buffer has following format:
@@ -289,18 +301,10 @@ const _encryptAndCompress = async (
  *   ]
  * ]
  */
-export const compressData = async <T extends Record<string, unknown> = never>(
+export async function compressData<T extends Record<string, unknown> = never>(
   dataBuffer: Uint8Array,
-  options: {
-    encryptionKey: string | CryptoKey;
-  } & ([T] extends [never]
-    ? {
-        metadata?: T;
-      }
-    : {
-        metadata: T;
-      }),
-): Promise<Uint8Array<ArrayBuffer>> => {
+  options: CompressionKey & ([T] extends [never] ? OptionalMetadata<T> : RequiredMetadata<T>),
+): Promise<Uint8Array<ArrayBuffer>> {
   const fileInfo: FileEncodingInfo = {
     version: 2,
     compression: "pako@1",
@@ -317,15 +321,15 @@ export const compressData = async <T extends Record<string, unknown> = never>(
   );
 
   return concatBuffers(encodingMetadataBuffer, iv, buffer);
-};
+}
 
 /** @private */
-const _decryptAndDecompress = async (
+async function _decryptAndDecompress(
   iv: Uint8Array<ArrayBuffer>,
   decryptedBuffer: Uint8Array<ArrayBuffer>,
   decryptionKey: string | CryptoKey,
   isCompressed: boolean,
-): Promise<Uint8Array> => {
+): Promise<Uint8Array> {
   decryptedBuffer = new Uint8Array(await decryptData(iv, decryptedBuffer, decryptionKey));
 
   if (isCompressed) {
@@ -333,17 +337,23 @@ const _decryptAndDecompress = async (
   }
 
   return decryptedBuffer;
-};
+}
 
-export const decompressData = async (
-  bufferView: Uint8Array,
-  options: { decryptionKey: string | CryptoKey },
-): Promise<{
+export interface DecompressDataOptions {
+  decryptionKey: string | CryptoKey;
+}
+
+export interface DecompressedData {
   /** metadata source is always JSON so we can decode it here */
   metadata: unknown;
   /** data can be anything so the caller must decode it */
   data: Uint8Array<ArrayBuffer>;
-}> => {
+}
+
+export async function decompressData(
+  bufferView: Uint8Array,
+  options: DecompressDataOptions,
+): Promise<DecompressedData> {
   // first chunk is encoding metadata (ignored for now)
   const [encodingMetadataBuffer, iv, buffer] = splitBuffers(bufferView);
   if (!encodingMetadataBuffer || !iv || !buffer) {
@@ -377,4 +387,4 @@ export const decompressData = async (
     console.error(`Error during decompressing and decrypting the file.`, encodingMetadata);
     throw error;
   }
-};
+}

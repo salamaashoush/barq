@@ -28,7 +28,7 @@ afterEach(() => {
 });
 
 /** A handle that keeps what is written to it, and reads it back as a file. */
-const memoryHandle = (name: string) => {
+function memoryHandle(name: string) {
   const written: Blob[] = [];
   const handle = {
     kind: "file",
@@ -44,10 +44,15 @@ const memoryHandle = (name: string) => {
     }),
   };
   return handle as typeof handle & FileSystemFileHandle;
-};
+}
 
-const usePickers = (handle: ReturnType<typeof memoryHandle>) => {
-  const calls: { save: unknown[]; open: unknown[] } = { save: [], open: [] };
+interface PickerCalls {
+  save: unknown[];
+  open: unknown[];
+}
+
+function usePickers(handle: ReturnType<typeof memoryHandle>) {
+  const calls: PickerCalls = { save: [], open: [] };
   view.showSaveFilePicker = async (options: unknown) => {
     calls.save.push(options);
     return handle;
@@ -57,26 +62,34 @@ const usePickers = (handle: ReturnType<typeof memoryHandle>) => {
     return [handle];
   };
   return calls;
-};
+}
+
+interface Download {
+  name: string;
+  href: string;
+}
 
 /** Captures the downloads the fallback starts. */
-const captureDownloads = () => {
-  const downloads: { name: string; href: string }[] = [];
+function captureDownloads() {
+  const downloads: Download[] = [];
   const click = spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
     this: HTMLAnchorElement,
   ) {
     downloads.push({ name: this.download, href: this.href });
   });
   return { downloads, restore: () => click.mockRestore() };
-};
+}
 
-const scene = () =>
-  convertToExcalidrawElements([
+function scene() {
+  return convertToExcalidrawElements([
     { type: "rectangle", x: 10, y: 20, width: 100, height: 50, id: "box" },
     { type: "text", x: 200, y: 20, text: "Hello", id: "label" },
   ]);
+}
 
-const appState = (): AppState => ({ ...getDefaultAppState(), name: "Release plan" }) as AppState;
+function appState(): AppState {
+  return { ...getDefaultAppState(), name: "Release plan" } as AppState;
+}
 
 describe("filesystem", () => {
   test("without the API a save downloads the file and an open uses a file input", async () => {
@@ -151,6 +164,10 @@ describe("filesystem", () => {
   });
 });
 
+interface IdRef {
+  id: string;
+}
+
 describe("scene files", () => {
   test("saveAsJSON writes the scene that loadFromJSON opens again, with its handle", async () => {
     const handle = memoryHandle("Release plan.excalidraw");
@@ -164,7 +181,7 @@ describe("scene files", () => {
     expect(fileHandle).toBe(handle);
     const json = JSON.parse(await handle.written[0]!.text());
     expect(json.type).toBe("excalidraw");
-    expect(json.elements.map((element: { id: string }) => element.id)).toEqual(
+    expect(json.elements.map((element: IdRef) => element.id)).toEqual(
       elements.map((element) => element.id),
     );
 
@@ -197,6 +214,10 @@ describe("scene files", () => {
   });
 });
 
+interface SaveCall {
+  suggestedName: string;
+}
+
 describe("image export", () => {
   test("a PNG with the scene embedded opens as the scene", async () => {
     const handle = memoryHandle("Release plan.excalidraw.png");
@@ -212,9 +233,7 @@ describe("image export", () => {
       },
     );
     expect(saved).toBe(handle);
-    expect((calls.save[0] as { suggestedName: string }).suggestedName).toBe(
-      "Release plan.excalidraw.png",
-    );
+    expect((calls.save[0] as SaveCall).suggestedName).toBe("Release plan.excalidraw.png");
     const png = handle.written[0]!;
     expect(png.type).toBe("image/png");
     const restored = await loadFromBlob(png, null, null);

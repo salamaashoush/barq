@@ -118,7 +118,7 @@ const MAX_LINEAR_PX = 75_000;
 // would otherwise freeze the editor while rendering — e.g. a dotted or dashed
 // stroke spanning a huge distance generates an enormous dash array.
 // https://github.com/excalidraw/excalidraw/issues/11497
-const handleOversizedLinearElements = <T extends ExcalidrawLinearElement>(element: T): T => {
+function handleOversizedLinearElements<T extends ExcalidrawLinearElement>(element: T): T {
   if (element.width <= MAX_LINEAR_PX && element.height <= MAX_LINEAR_PX) {
     return element;
   }
@@ -139,13 +139,13 @@ const handleOversizedLinearElements = <T extends ExcalidrawLinearElement>(elemen
     points: [pointFrom<LocalPoint>(0, 0), pointFrom<LocalPoint>(100, 100)],
     isDeleted: true,
   };
-};
+}
 
-const restoreLinearElementPoints = (
+function restoreLinearElementPoints(
   points: unknown,
   width: unknown,
   height: unknown,
-): LocalPoint[] => {
+): LocalPoint[] {
   const restoredPoints = Array.isArray(points)
     ? points.reduce<LocalPoint[]>((acc, point) => {
         if (isValidPoint(point)) {
@@ -164,15 +164,14 @@ const restoreLinearElementPoints = (
         ),
       ]
     : restoredPoints;
-};
+}
 
-const restoreFreedrawPoints = (
-  points: unknown,
-  pressures: unknown,
-): {
+interface FreedrawPoints {
   points: LocalPoint[];
   pressures: number[];
-} => {
+}
+
+function restoreFreedrawPoints(points: unknown, pressures: unknown): FreedrawPoints {
   if (!Array.isArray(points)) {
     return {
       points: [],
@@ -198,7 +197,7 @@ const restoreFreedrawPoints = (
     points: restoredPoints,
     pressures: restoredPressures,
   };
-};
+}
 
 export const AllowedExcalidrawActiveTools: Record<AppState["activeTool"]["type"], boolean> = {
   selection: true,
@@ -231,28 +230,36 @@ export type RestoredDataState = {
 
 const ALLOWED_STROKE_VARIABILITIES = new Set<StrokeVariability>(["constant", "variable"]);
 
-const restoreStrokeVariability = (
+function restoreStrokeVariability(
   variability: unknown,
   defaultValue: StrokeVariability,
-): StrokeVariability => {
+): StrokeVariability {
   return typeof variability === "string" &&
     ALLOWED_STROKE_VARIABILITIES.has(variability as StrokeVariability)
     ? (variability as StrokeVariability)
     : defaultValue;
-};
+}
 
-const getStrokeWidthKey = (strokeWidth: unknown): StrokeWidthKey | null => {
+function getStrokeWidthKey(strokeWidth: unknown): StrokeWidthKey | null {
   return isFiniteNumber(strokeWidth)
     ? (STROKE_WIDTH_KEYS.find((key) => STROKE_WIDTH[key] === strokeWidth) ?? null)
     : null;
-};
+}
 
-const restoreFreedrawStrokeOptions = (
-  strokeOptions: unknown,
-): { variability: StrokeVariability; streamline: number } => {
+interface RestoredStrokeOptions {
+  variability: StrokeVariability;
+  streamline: number;
+}
+
+interface UncheckedStrokeOptions {
+  variability?: unknown;
+  streamline?: unknown;
+}
+
+function restoreFreedrawStrokeOptions(strokeOptions: unknown): RestoredStrokeOptions {
   const options =
     strokeOptions && typeof strokeOptions === "object"
-      ? (strokeOptions as { variability?: unknown; streamline?: unknown })
+      ? (strokeOptions as UncheckedStrokeOptions)
       : null;
 
   return {
@@ -261,14 +268,14 @@ const restoreFreedrawStrokeOptions = (
       ? options?.streamline
       : DEFAULT_STROKE_STREAMLINE,
   };
-};
+}
 
-const getFontFamilyByName = (fontFamilyName: string): FontFamilyValues => {
+function getFontFamilyByName(fontFamilyName: string): FontFamilyValues {
   if (Object.keys(FONT_FAMILY).includes(fontFamilyName)) {
     return FONT_FAMILY[fontFamilyName as keyof typeof FONT_FAMILY];
   }
   return DEFAULT_FONT_FAMILY;
-};
+}
 
 /**
  * Line-height might not be specified either when creating elements
@@ -280,20 +287,20 @@ const getFontFamilyByName = (fontFamilyName: string): FontFamilyValues => {
  * enough to carry the legacy `font` prop has neither `fontSize` nor
  * `fontFamily`, so detecting off the raw element divides by `undefined`.
  */
-const restoreLineHeight = (element: ExcalidrawTextElement): ExcalidrawTextElement["lineHeight"] => {
+function restoreLineHeight(element: ExcalidrawTextElement): ExcalidrawTextElement["lineHeight"] {
   const detected = element.height ? detectLineHeight(element) : null;
 
   return isFiniteNumber(detected) && detected > 0 ? detected : getLineHeight(element.fontFamily);
-};
+}
 
-const repairBinding = (
+function repairBinding(
   element: ExcalidrawArrowElement,
   binding: FixedPointBinding | null,
   targetElementsMap: Readonly<ElementsMap>,
   /** used for context (arrow bindings) */
   existingElementsMap: Readonly<ElementsMap> | null | undefined,
   startOrEnd: "start" | "end",
-): FixedPointBinding | null => {
+): FixedPointBinding | null {
   try {
     if (!binding) {
       return null;
@@ -410,18 +417,20 @@ const repairBinding = (
   }
 
   return null;
-};
+}
 
-const restoreElementWithProperties = <
-  T extends Required<Omit<ExcalidrawElement, "customData">> & {
-    customData?: ExcalidrawElement["customData"];
-    /** @deprecated */
-    boundElementIds?: readonly ExcalidrawElement["id"][];
-    /** @deprecated */
-    strokeSharpness?: StrokeRoundness;
-    /** @deprecated `movePoints()` option wrongly persisted on linear elements */
-    moveMidPointsWithElement?: boolean | null;
-  },
+interface RestorableElement {
+  customData?: ExcalidrawElement["customData"];
+  /** @deprecated */
+  boundElementIds?: readonly ExcalidrawElement["id"][];
+  /** @deprecated */
+  strokeSharpness?: StrokeRoundness;
+  /** @deprecated `movePoints()` option wrongly persisted on linear elements */
+  moveMidPointsWithElement?: boolean | null;
+}
+
+function restoreElementWithProperties<
+  T extends Required<Omit<ExcalidrawElement, "customData">> & RestorableElement,
   K extends Pick<T, keyof Omit<Required<T>, keyof ExcalidrawElement>>,
 >(
   element: T,
@@ -431,7 +440,7 @@ const restoreElementWithProperties = <
     keyof K & keyof T
   > &
     Partial<Pick<ExcalidrawElement, "type" | "x" | "y" | "customData">>,
-): T => {
+): T {
   const base: Pick<T, keyof ExcalidrawElement> = {
     type: extra.type || element.type,
     // all elements must have version > 0 so getSceneVersion() will pick up
@@ -497,19 +506,33 @@ const restoreElementWithProperties = <
   delete ret.moveMidPointsWithElement;
 
   return ret;
-};
+}
 
-export const restoreElement = (
+export interface RestoreElementOptions {
+  deleteInvisibleElements?: boolean;
+}
+
+interface RawTextField {
+  rawText?: unknown;
+}
+
+interface LegacyFont {
+  font: string;
+}
+
+interface MaxHeightField {
+  maxHeight?: number;
+}
+
+export function restoreElement(
   /** element to be restored */
   element: Exclude<ExcalidrawElement, ExcalidrawSelectionElement>,
   /** all elements to be restored */
   targetElementsMap: Readonly<ElementsMap>,
   /** used for additional context */
   existingElementsMap: Readonly<ElementsMap> | null | undefined,
-  opts?: {
-    deleteInvisibleElements?: boolean;
-  },
-): typeof element | null => {
+  opts?: RestoreElementOptions,
+): typeof element | null {
   element = { ...element };
   // "draw" is what the line element was called before it was renamed.
   if ((element.type as string) === "draw") {
@@ -520,14 +543,15 @@ export const restoreElement = (
     case "text":
       // temp fix: cleanup legacy obsidian-excalidraw attribute else it'll
       // conflict when porting between the apps
-      delete (element as typeof element & { rawText?: unknown }).rawText;
+      delete (element as typeof element & RawTextField).rawText;
 
       let fontSize = element.fontSize;
       let fontFamily = element.fontFamily;
       if ("font" in element) {
-        const [fontPx, _fontFamily] = (element as typeof element & { font: string }).font.split(
-          " ",
-        ) as [string, string];
+        const [fontPx, _fontFamily] = (element as typeof element & LegacyFont).font.split(" ") as [
+          string,
+          string,
+        ];
         fontSize = parseFloat(fontPx);
         fontFamily = getFontFamilyByName(_fontFamily);
       }
@@ -692,7 +716,7 @@ export const restoreElement = (
         restoreElementWithProperties(element, {
           baseHeight:
             element.baseHeight ??
-            (element as typeof element & { maxHeight?: number }).maxHeight ??
+            (element as typeof element & MaxHeightField).maxHeight ??
             element.height,
         }),
       );
@@ -707,7 +731,7 @@ export const restoreElement = (
     // out these unsupported elements from the restored array.
   }
   return null;
-};
+}
 
 /**
  * Repairs container element's boundElements array by removing duplicates and
@@ -716,10 +740,10 @@ export const restoreElement = (
  *
  * NOTE mutates elements.
  */
-const repairContainerElement = (
+function repairContainerElement(
   container: Mutable<ExcalidrawElement>,
   elementsMap: Map<string, Mutable<ExcalidrawElement>>,
-) => {
+) {
   if (container.boundElements) {
     // copy because we're not cloning on restore, and we don't want to mutate upstream
     const boundElements = container.boundElements.slice();
@@ -752,7 +776,7 @@ const repairContainerElement = (
       [],
     );
   }
-};
+}
 
 /**
  * Repairs target bound element's container's boundElements array,
@@ -760,10 +784,10 @@ const repairContainerElement = (
  *
  * NOTE mutates elements.
  */
-const repairBoundElement = (
+function repairBoundElement(
   boundElement: Mutable<ExcalidrawTextElement>,
   elementsMap: Map<string, Mutable<ExcalidrawElement>>,
-) => {
+) {
   const container = boundElement.containerId ? elementsMap.get(boundElement.containerId) : null;
 
   (boundElement as Mutable<typeof boundElement>).angle = (
@@ -788,7 +812,7 @@ const repairBoundElement = (
     boundElements.push({ type: "text", id: boundElement.id });
     container.boundElements = boundElements;
   }
-};
+}
 
 /**
  * Places bound text directly after its container while preserving the
@@ -796,7 +820,7 @@ const repairBoundElement = (
  *
  * NOTE mutates indices of reordered bound text elements.
  */
-const repairBoundTextElementOrder = (elements: readonly ExcalidrawElement[]) => {
+function repairBoundTextElementOrder(elements: readonly ExcalidrawElement[]) {
   const originalPositions = new Map(elements.map((element, index) => [element.id, index]));
   const normalizedElements = normalizeBoundElementsOrder(elements);
   const reorderedBoundTextElements = normalizedElements.filter(
@@ -807,17 +831,17 @@ const repairBoundTextElementOrder = (elements: readonly ExcalidrawElement[]) => 
   return reorderedBoundTextElements.length
     ? syncMovedIndices(normalizedElements, arrayToMap(reorderedBoundTextElements))
     : normalizedElements;
-};
+}
 
 /**
  * Remove an element's frameId if its containing frame is non-existent
  *
  * NOTE mutates elements.
  */
-const repairFrameMembership = (
+function repairFrameMembership(
   element: Mutable<ExcalidrawElement>,
   elementsMap: Map<string, Mutable<ExcalidrawElement>>,
-) => {
+) {
   if (element.frameId) {
     const containingFrame = elementsMap.get(element.frameId);
 
@@ -825,7 +849,11 @@ const repairFrameMembership = (
       element.frameId = null;
     }
   }
-};
+}
+
+interface RestoreStickyNotesOptions {
+  refreshDimensions: boolean;
+}
 
 /**
  * Sticky note invariants that need both halves of the pair present, so they
@@ -836,11 +864,11 @@ const repairFrameMembership = (
  * - a note's stroke — its ink, which the footer paints with — equals its label's
  * - with `refreshDimensions`, the note and its label are refitted together
  */
-const restoreStickyNotes = (
+function restoreStickyNotes(
   elements: readonly ExcalidrawElement[],
   elementsMap: ElementsMap,
-  opts: { refreshDimensions: boolean },
-) => {
+  opts: RestoreStickyNotesOptions,
+) {
   for (const element of elements) {
     if (!isTextElement(element) || element.isDeleted) {
       continue;
@@ -878,18 +906,20 @@ const restoreStickyNotes = (
       }
     }
   }
-};
+}
 
-export const restoreElements = <T extends ExcalidrawElement>(
+export interface RestoreElementsOptions {
+  refreshDimensions?: boolean;
+  repairBindings?: boolean;
+  deleteInvisibleElements?: boolean;
+}
+
+export function restoreElements<T extends ExcalidrawElement>(
   targetElements: readonly T[] | undefined | null,
   /** used for additional context (e.g. repairing arrow bindings) */
   existingElements: Readonly<ElementsMapOrArray> | null | undefined,
-  opts?: {
-    refreshDimensions?: boolean;
-    repairBindings?: boolean;
-    deleteInvisibleElements?: boolean;
-  },
-): CombineBrandsIfNeeded<T, OrderedExcalidrawElement> => {
+  opts?: RestoreElementsOptions,
+): CombineBrandsIfNeeded<T, OrderedExcalidrawElement> {
   // used to detect duplicate top-level element ids
   const existingIds = new Set<string>();
   const targetElementsMap = arrayToMap(targetElements || []);
@@ -1041,7 +1071,7 @@ export const restoreElements = <T extends ExcalidrawElement>(
 
     return element;
   }) as CombineBrandsIfNeeded<T, OrderedExcalidrawElement>;
-};
+}
 
 /**
  * When replacing elements that may exist locally, this bumps their versions
@@ -1053,10 +1083,10 @@ export const restoreElements = <T extends ExcalidrawElement>(
  * it does not apply universally (e.g. we don't want to do this for collab
  * updates).
  */
-export const bumpElementVersions = <T extends ExcalidrawElement>(
+export function bumpElementVersions<T extends ExcalidrawElement>(
   targetElements: readonly T[],
   localElements: Readonly<ElementsMapOrArray> | null | undefined,
-) => {
+) {
   const localElementsMap = localElements ? arrayToMap(localElements) : null;
 
   return targetElements.map((element) => {
@@ -1076,17 +1106,17 @@ export const bumpElementVersions = <T extends ExcalidrawElement>(
     }
     return element;
   });
-};
+}
 
-const coalesceAppStateValue = <T extends keyof ReturnType<typeof getDefaultAppState>>(
+function coalesceAppStateValue<T extends keyof ReturnType<typeof getDefaultAppState>>(
   key: T,
   appState: Exclude<ImportedDataState["appState"], null | undefined>,
   defaultAppState: ReturnType<typeof getDefaultAppState>,
-) => {
+) {
   const value = appState[key];
   // NOTE the value! assertion is needed in TS 4.5.5 (fixed in newer versions)
   return value !== undefined ? value! : defaultAppState[key];
-};
+}
 
 const LegacyAppStateMigrations: {
   [K in keyof LegacyAppState]: (
@@ -1103,7 +1133,7 @@ const LegacyAppStateMigrations: {
   },
 };
 
-const restoreColorTopPicksList = (value: unknown): readonly string[] | null => {
+function restoreColorTopPicksList(value: unknown): readonly string[] | null {
   if (!Array.isArray(value)) {
     return null;
   }
@@ -1127,9 +1157,9 @@ const restoreColorTopPicksList = (value: unknown): readonly string[] | null => {
     }
   }
   return colors.size ? [...colors.values()] : null;
-};
+}
 
-const restoreFontTopPicks = (value: unknown): readonly FontFamilyValues[] | null => {
+function restoreFontTopPicks(value: unknown): readonly FontFamilyValues[] | null {
   if (!Array.isArray(value)) {
     return null;
   }
@@ -1146,12 +1176,16 @@ const restoreFontTopPicks = (value: unknown): readonly FontFamilyValues[] | null
     }
   }
   return fontFamilies.size ? [...fontFamilies] : null;
-};
+}
 
-export const restoreAppState = (
+interface LegacyStrokeWidth {
+  currentItemStrokeWidth?: unknown;
+}
+
+export function restoreAppState(
   appState: ImportedDataState["appState"],
   localAppState: Partial<AppState> | null | undefined,
-): RestoredAppState => {
+): RestoredAppState {
   appState = appState || {};
   const defaultAppState = getDefaultAppState();
   const nextAppState = {} as typeof defaultAppState;
@@ -1203,8 +1237,7 @@ export const restoreAppState = (
   nextAppState.fontTopPicks = restoreFontTopPicks(nextAppState.fontTopPicks);
 
   // legacy
-  const legacyStrokeWidth = (appState as { currentItemStrokeWidth?: unknown })
-    .currentItemStrokeWidth;
+  const legacyStrokeWidth = (appState as LegacyStrokeWidth).currentItemStrokeWidth;
   if (legacyStrokeWidth !== undefined) {
     nextAppState.currentItemStrokeWidthKey =
       getStrokeWidthKey(legacyStrokeWidth) ?? defaultAppState.currentItemStrokeWidthKey;
@@ -1253,17 +1286,17 @@ export const restoreAppState = (
     ),
     editingFrame: null,
   };
-};
+}
 
-const restoreLibraryItem = (libraryItem: LibraryItem): LibraryItem | null => {
+function restoreLibraryItem(libraryItem: LibraryItem): LibraryItem | null {
   const elements = getNonDeletedElements(restoreElements(libraryItem.elements, null));
   return elements.length ? { ...libraryItem, elements } : null;
-};
+}
 
-export const restoreLibraryItems = (
+export function restoreLibraryItems(
   libraryItems: ImportedDataState["libraryItems"] = [],
   defaultStatus: LibraryItem["status"],
-) => {
+) {
   const restoredItems: LibraryItem[] = [];
   for (const item of libraryItems) {
     // migrate older libraries
@@ -1291,19 +1324,26 @@ export const restoreLibraryItems = (
     }
   }
   return restoredItems;
-};
+}
+
+export interface RestoreElementsConfig {
+  refreshDimensions?: boolean;
+  repairBindings?: boolean;
+}
 
 /**
  * A whole scene from imported data: its elements, its app state over the
  * local one, and its files. Excalidraw's `restore`, under the same name.
  */
-export const restore = (
+export function restore(
   data: Pick<ImportedDataState, "appState" | "elements" | "files"> | null,
   localAppState: Partial<AppState> | null | undefined,
   localElements: readonly ExcalidrawElement[] | null | undefined,
-  elementsConfig?: { refreshDimensions?: boolean; repairBindings?: boolean },
-): RestoredDataState => ({
-  elements: restoreElements(data?.elements, localElements, elementsConfig),
-  appState: restoreAppState(data?.appState, localAppState || null),
-  files: data?.files || {},
-});
+  elementsConfig?: RestoreElementsConfig,
+): RestoredDataState {
+  return {
+    elements: restoreElements(data?.elements, localElements, elementsConfig),
+    appState: restoreAppState(data?.appState, localAppState || null),
+    files: data?.files || {},
+  };
+}

@@ -2,14 +2,14 @@ import { ENCRYPTION_KEY_BITS } from "@excalidraw/common";
 
 export const IV_LENGTH_BYTES = 12;
 
-export const createIV = (): Uint8Array<ArrayBuffer> => {
+export function createIV(): Uint8Array<ArrayBuffer> {
   const arr = new Uint8Array(IV_LENGTH_BYTES);
   return globalThis.crypto.getRandomValues(arr);
-};
+}
 
-export const generateEncryptionKey = async <T extends "string" | "cryptoKey" = "string">(
+export async function generateEncryptionKey<T extends "string" | "cryptoKey" = "string">(
   returnAs?: T,
-): Promise<T extends "cryptoKey" ? CryptoKey : string> => {
+): Promise<T extends "cryptoKey" ? CryptoKey : string> {
   const key = await globalThis.crypto.subtle.generateKey(
     {
       name: "AES-GCM",
@@ -21,10 +21,10 @@ export const generateEncryptionKey = async <T extends "string" | "cryptoKey" = "
   return (
     returnAs === "cryptoKey" ? key : (await globalThis.crypto.subtle.exportKey("jwk", key)).k
   ) as T extends "cryptoKey" ? CryptoKey : string;
-};
+}
 
-export const getCryptoKey = (key: string, usage: KeyUsage): Promise<CryptoKey> =>
-  globalThis.crypto.subtle.importKey(
+export function getCryptoKey(key: string, usage: KeyUsage): Promise<CryptoKey> {
+  return globalThis.crypto.subtle.importKey(
     "jwk",
     {
       alg: "A128GCM",
@@ -40,11 +40,17 @@ export const getCryptoKey = (key: string, usage: KeyUsage): Promise<CryptoKey> =
     false, // extractable
     [usage],
   );
+}
 
-export const encryptData = async (
+export interface EncryptedData {
+  encryptedBuffer: ArrayBuffer;
+  iv: Uint8Array<ArrayBuffer>;
+}
+
+export async function encryptData(
   key: string | CryptoKey,
   data: Uint8Array<ArrayBuffer> | ArrayBuffer | Blob | File | string,
-): Promise<{ encryptedBuffer: ArrayBuffer; iv: Uint8Array<ArrayBuffer> }> => {
+): Promise<EncryptedData> {
   const importedKey = typeof key === "string" ? await getCryptoKey(key, "encrypt") : key;
   const iv = createIV();
   const buffer: ArrayBuffer | Uint8Array<ArrayBuffer> =
@@ -68,13 +74,13 @@ export const encryptData = async (
   );
 
   return { encryptedBuffer, iv };
-};
+}
 
-export const decryptData = async (
+export async function decryptData(
   iv: Uint8Array<ArrayBuffer>,
   encrypted: Uint8Array<ArrayBuffer> | ArrayBuffer,
   privateKey: string | CryptoKey,
-): Promise<ArrayBuffer> => {
+): Promise<ArrayBuffer> {
   const key =
     typeof privateKey === "string" ? await getCryptoKey(privateKey, "decrypt") : privateKey;
   return globalThis.crypto.subtle.decrypt(
@@ -85,4 +91,4 @@ export const decryptData = async (
     key,
     encrypted,
   );
-};
+}

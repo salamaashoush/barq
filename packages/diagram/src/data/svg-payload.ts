@@ -4,20 +4,22 @@ import { base64ToString, decode, encode, stringToBase64 } from "./encode.ts";
 
 import type { EncodedData } from "./encode.ts";
 
-export const createHTMLComment = (ownerDocument: Document, text: string) => {
+export function createHTMLComment(ownerDocument: Document, text: string) {
   // surrounding with spaces to maintain prettified consistency with previous
   // iterations
   // <!-- comment -->
   return ownerDocument.createComment(` ${text} `);
-};
+}
 
-export const encodeSvgBase64Payload = ({
-  payload,
-  metadataElement,
-}: {
+export interface EncodeSvgBase64PayloadOptions {
   payload: string;
   metadataElement: SVGMetadataElement;
-}) => {
+}
+
+export function encodeSvgBase64Payload({
+  payload,
+  metadataElement,
+}: EncodeSvgBase64PayloadOptions) {
   const base64 = stringToBase64(
     JSON.stringify(encode({ text: payload })),
     true /* is already byte string */,
@@ -32,9 +34,17 @@ export const encodeSvgBase64Payload = ({
   metadataElement.appendChild(createHTMLComment(ownerDocument, "payload-start"));
   metadataElement.appendChild(ownerDocument.createTextNode(base64));
   metadataElement.appendChild(createHTMLComment(ownerDocument, "payload-end"));
-};
+}
 
-export const decodeSvgBase64Payload = ({ svg }: { svg: string }) => {
+export interface DecodeSvgBase64PayloadOptions {
+  svg: string;
+}
+
+interface TypeTagged {
+  type?: unknown;
+}
+
+export function decodeSvgBase64Payload({ svg }: DecodeSvgBase64PayloadOptions) {
   if (svg.includes(`payload-type:${MIME_TYPES.excalidraw}`)) {
     const match = svg.match(/<!-- payload-start -->\s*(.+?)\s*<!-- payload-end -->/);
     if (!match) {
@@ -46,7 +56,7 @@ export const decodeSvgBase64Payload = ({ svg }: { svg: string }) => {
 
     try {
       const json = base64ToString(match[1]!, isByteString);
-      const encodedData = JSON.parse(json) as EncodedData | { type?: unknown };
+      const encodedData = JSON.parse(json) as EncodedData | TypeTagged;
       if (!("encoded" in encodedData)) {
         // legacy, un-encoded scene JSON
         if ("type" in encodedData && encodedData.type === EXPORT_DATA_TYPES.excalidraw) {
@@ -61,4 +71,4 @@ export const decodeSvgBase64Payload = ({ svg }: { svg: string }) => {
     }
   }
   throw new Error("INVALID");
-};
+}

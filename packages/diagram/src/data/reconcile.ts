@@ -22,11 +22,11 @@ export type RemoteExcalidrawElement = OrderedExcalidrawElement & {
   readonly [remoteBrand]: "RemoteExcalidrawElement";
 };
 
-export const shouldDiscardRemoteElement = (
+export function shouldDiscardRemoteElement(
   localAppState: Pick<AppState, "resizingElement" | "newElement">,
   local: OrderedExcalidrawElement | undefined,
   remote: RemoteExcalidrawElement,
-): boolean => {
+): boolean {
   if (
     local &&
     // local element is being edited. (Not a text in its editor: the editor
@@ -44,7 +44,11 @@ export const shouldDiscardRemoteElement = (
     return true;
   }
   return false;
-};
+}
+
+interface DebugGlobals {
+  DEBUG_FRACTIONAL_INDICES?: boolean;
+}
 
 const validateIndicesThrottled = throttle(
   (
@@ -52,11 +56,7 @@ const validateIndicesThrottled = throttle(
     localElements: readonly OrderedExcalidrawElement[],
     remoteElements: readonly RemoteExcalidrawElement[],
   ) => {
-    if (
-      isDevEnv() ||
-      isTestEnv() ||
-      (globalThis as { DEBUG_FRACTIONAL_INDICES?: boolean }).DEBUG_FRACTIONAL_INDICES
-    ) {
+    if (isDevEnv() || isTestEnv() || (globalThis as DebugGlobals).DEBUG_FRACTIONAL_INDICES) {
       // create new instances due to the mutation
       const elements = syncInvalidIndices(orderedElements.map((x) => ({ ...x })));
 
@@ -80,11 +80,11 @@ const validateIndicesThrottled = throttle(
  * version of each, the lower `versionNonce` on a tie, the local one while
  * it is being drawn or resized; ordered by their fractional indices.
  */
-export const reconcileElements = (
+export function reconcileElements(
   localElements: readonly OrderedExcalidrawElement[],
   remoteElements: readonly RemoteExcalidrawElement[],
   localAppState: Pick<AppState, "resizingElement" | "newElement">,
-): ReconciledExcalidrawElement[] => {
+): ReconciledExcalidrawElement[] {
   const localElementsMap = arrayToMap(localElements);
   const reconciledElements: OrderedExcalidrawElement[] = [];
   const added = new Set<string>();
@@ -125,4 +125,4 @@ export const reconcileElements = (
   syncInvalidIndices(orderedElements);
 
   return orderedElements as ReconciledExcalidrawElement[];
-};
+}

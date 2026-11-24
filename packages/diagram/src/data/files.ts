@@ -56,18 +56,20 @@ import type { AppState, BinaryFiles, LibraryItems } from "../types.ts";
 
 type MaybePromise<T> = T | Promise<T>;
 
+export interface ElementsForExport {
+  exportingFrame: NonDeleted<ExcalidrawFrameLikeElement> | null;
+  exportedElements: readonly NonDeletedExcalidrawElement[];
+}
+
 /**
  * What an export or a copy as an image takes: the selection (a single frame as what it
  * holds), or everything without one. Excalidraw's `prepareElementsForExport`.
  */
-export const prepareElementsForExport = (
+export function prepareElementsForExport(
   allElements: readonly ExcalidrawElement[],
   { selectedElementIds }: Pick<AppState, "selectedElementIds">,
   exportSelectionOnly: boolean,
-): {
-  exportingFrame: NonDeleted<ExcalidrawFrameLikeElement> | null;
-  exportedElements: readonly NonDeletedExcalidrawElement[];
-} => {
+): ElementsForExport {
   const elements = getNonDeletedElements(allElements);
   const elementsMap = arrayToMap(elements);
   const isExportingSelection =
@@ -90,7 +92,7 @@ export const prepareElementsForExport = (
     }
   }
   return { exportingFrame, exportedElements: cloneJSON(exportedElements) };
-};
+}
 
 export interface JSONExportData {
   elements: readonly ExcalidrawElement[];
@@ -98,16 +100,22 @@ export interface JSONExportData {
   files: BinaryFiles;
 }
 
-/** Saves the scene as an `.excalidraw` file: to `fileHandle` when it is one, to a new file otherwise. */
-export const saveAsJSON = async ({
-  data,
-  filename,
-  fileHandle,
-}: {
+export interface SaveAsJSONOptions {
   data: MaybePromise<JSONExportData>;
   filename: string;
   fileHandle: AppState["fileHandle"];
-}): Promise<{ fileHandle: FileSystemFileHandle | null }> => {
+}
+
+export interface SavedFileHandle {
+  fileHandle: FileSystemFileHandle | null;
+}
+
+/** Saves the scene as an `.excalidraw` file: to `fileHandle` when it is one, to a new file otherwise. */
+export async function saveAsJSON({
+  data,
+  filename,
+  fileHandle,
+}: SaveAsJSONOptions): Promise<SavedFileHandle> {
   const blob = Promise.resolve(data).then(
     ({ elements, appState, files }) =>
       new Blob([serializeAsJSON(elements, appState, files, "local")], {
@@ -121,34 +129,41 @@ export const saveAsJSON = async ({
     fileHandle: isImageFileHandle(fileHandle) ? null : fileHandle,
   });
   return { fileHandle: savedFileHandle };
-};
+}
 
 /** Asks for a scene file (`.excalidraw`, or a PNG or SVG with a scene) and restores it. */
-export const loadFromJSON = async (
+export async function loadFromJSON(
   localAppState: AppState,
   localElements: readonly ExcalidrawElement[] | null,
-) => {
+) {
   // any type: iOS offers no `.excalidraw` file to a picker that names its extension
   const file = await fileOpen({ description: "Excalidraw files" });
   return loadFromBlob(file, localAppState, localElements, file.handle);
-};
+}
 
 /** Saves the library as an `.excalidrawlib` file. */
-export const saveLibraryAsJSON = async (libraryItems: LibraryItems): Promise<void> => {
+export async function saveLibraryAsJSON(libraryItems: LibraryItems): Promise<void> {
   await fileSave(
     new Blob([serializeLibraryAsJSON(libraryItems)], { type: MIME_TYPES.excalidrawlib }),
     { name: "library", extension: "excalidrawlib", description: "Excalidraw library file" },
   );
-};
+}
 
 export type ExportCanvasType = "png" | "svg" | "clipboard";
+
+export interface ExportCanvasOptions {
+  exportPadding?: number;
+  name?: string;
+  fileHandle?: FileSystemFileHandle | null;
+  exportingFrame: NonDeleted<ExcalidrawFrameLikeElement> | null;
+}
 
 /**
  * Exports elements as a PNG or SVG file (the scene embedded with
  * `appState.exportEmbedScene`), or copies them as a PNG. Resolves with the
  * handle written to, if any.
  */
-export const exportCanvas = async (
+export async function exportCanvas(
   type: ExportCanvasType,
   elements: readonly NonDeletedExcalidrawElement[],
   appState: AppState,
@@ -158,13 +173,8 @@ export const exportCanvas = async (
     name = appState.name || DEFAULT_FILENAME,
     fileHandle = null,
     exportingFrame,
-  }: {
-    exportPadding?: number;
-    name?: string;
-    fileHandle?: FileSystemFileHandle | null;
-    exportingFrame: NonDeleted<ExcalidrawFrameLikeElement> | null;
-  },
-): Promise<FileSystemFileHandle | null> => {
+  }: ExportCanvasOptions,
+): Promise<FileSystemFileHandle | null> {
   if (elements.length === 0) {
     throw new LocalizedError({ key: "alerts.cannotExportEmptyCanvas" });
   }
@@ -223,14 +233,18 @@ export const exportCanvas = async (
     throw new LocalizedError({ key: "alerts.couldNotCopyToClipboard" }, { cause: error });
   }
   return null;
-};
+}
+
+export interface ImageFileHandle {
+  fileHandle: FileSystemFileHandle;
+}
 
 /** Writes the scene back into the PNG or SVG it was opened from, the scene embedded. */
-export const resaveAsImageWithScene = async (
+export async function resaveAsImageWithScene(
   data: MaybePromise<JSONExportData>,
   fileHandle: FileSystemFileHandle,
   filename: string,
-): Promise<{ fileHandle: FileSystemFileHandle }> => {
+): Promise<ImageFileHandle> {
   const type = getFileHandleType(fileHandle);
   if (!isImageFileHandleType(type)) {
     throw new Error("fileHandle should exist and should be of type svg or png when resaving");
@@ -248,16 +262,31 @@ export const resaveAsImageWithScene = async (
     exportingFrame,
   });
   return { fileHandle };
-};
+}
+
+export interface ClipboardExportData {
+  data: ExportSceneData;
+}
+
+export interface PngClipboardExport {
+  type: "png";
+  config?: ExportToPngConfig;
+}
+
+export interface SvgClipboardExport {
+  type: "svg";
+  config?: ExportToSvgConfig;
+}
+
+export interface JsonClipboardExport {
+  type: "json";
+  config?: never;
+}
 
 /** Copies a scene to the clipboard as a PNG, as SVG markup, or as elements Excalidraw pastes. */
-export const exportToClipboard = async (
-  opts: { data: ExportSceneData } & (
-    | { type: "png"; config?: ExportToPngConfig }
-    | { type: "svg"; config?: ExportToSvgConfig }
-    | { type: "json"; config?: never }
-  ),
-): Promise<void> => {
+export async function exportToClipboard(
+  opts: ClipboardExportData & (PngClipboardExport | SvgClipboardExport | JsonClipboardExport),
+): Promise<void> {
   if (opts.type === "svg") {
     const svg = await exportScene(opts);
     await copyTextToSystemClipboard(svg.outerHTML);
@@ -269,4 +298,4 @@ export const exportToClipboard = async (
       opts.data.files ?? null,
     );
   }
-};
+}

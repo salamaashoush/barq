@@ -93,7 +93,12 @@ export function encodeTextChunk(keyword: string, text: string): PngChunk {
   return { name: "tEXt", data };
 }
 
-export function decodeTextChunk(data: Uint8Array): { keyword: string; text: string } {
+export interface TextChunk {
+  keyword: string;
+  text: string;
+}
+
+export function decodeTextChunk(data: Uint8Array): TextChunk {
   const separator = data.indexOf(0);
   if (separator === -1) return { keyword: latin1(data, 0, data.length), text: "" };
   return {

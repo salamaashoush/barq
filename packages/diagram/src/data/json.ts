@@ -21,7 +21,7 @@ export type JSONExportData = {
 /**
  * Strips out files which are only referenced by deleted elements
  */
-const filterOutDeletedFiles = (elements: readonly ExcalidrawElement[], files: BinaryFiles) => {
+function filterOutDeletedFiles(elements: readonly ExcalidrawElement[], files: BinaryFiles) {
   const nextFiles: BinaryFiles = {};
   for (const element of elements) {
     if (!element.isDeleted && "fileId" in element && element.fileId) {
@@ -32,14 +32,14 @@ const filterOutDeletedFiles = (elements: readonly ExcalidrawElement[], files: Bi
     }
   }
   return nextFiles;
-};
+}
 
-export const serializeAsJSON = (
+export function serializeAsJSON(
   elements: readonly ExcalidrawElement[],
   appState: Partial<AppState>,
   files: BinaryFiles,
   type: "local" | "database",
-): string => {
+): string {
   const data: ExportedDataState = {
     type: EXPORT_DATA_TYPES.excalidraw,
     version: VERSIONS.excalidraw,
@@ -55,22 +55,25 @@ export const serializeAsJSON = (
   };
 
   return JSON.stringify(data, null, 2);
-};
+}
 
-export const isValidExcalidrawData = (data?: unknown): data is ImportedDataState => {
-  const candidate = data as
-    | { type?: unknown; elements?: unknown; appState?: unknown }
-    | null
-    | undefined;
+interface SceneCandidate {
+  type?: unknown;
+  elements?: unknown;
+  appState?: unknown;
+}
+
+export function isValidExcalidrawData(data?: unknown): data is ImportedDataState {
+  const candidate = data as SceneCandidate | null | undefined;
   return (
     candidate?.type === EXPORT_DATA_TYPES.excalidraw &&
     (!candidate.elements ||
       (Array.isArray(candidate.elements) &&
         (!candidate.appState || typeof candidate.appState === "object")))
   );
-};
+}
 
-export const isValidLibrary = (json: unknown): json is ImportedLibraryData => {
+export function isValidLibrary(json: unknown): json is ImportedLibraryData {
   return (
     typeof json === "object" &&
     json !== null &&
@@ -79,9 +82,9 @@ export const isValidLibrary = (json: unknown): json is ImportedLibraryData => {
     "version" in json &&
     (json.version === 1 || json.version === 2)
   );
-};
+}
 
-export const serializeLibraryAsJSON = (libraryItems: LibraryItems) => {
+export function serializeLibraryAsJSON(libraryItems: LibraryItems) {
   const data: ExportedLibraryData = {
     type: EXPORT_DATA_TYPES.excalidrawLibrary,
     version: VERSIONS.excalidrawLibrary,
@@ -89,4 +92,4 @@ export const serializeLibraryAsJSON = (libraryItems: LibraryItems) => {
     libraryItems,
   };
   return JSON.stringify(data, null, 2);
-};
+}

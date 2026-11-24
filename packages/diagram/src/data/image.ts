@@ -5,22 +5,30 @@ import { encode, decode } from "./encode.ts";
 import type { EncodedData } from "./encode.ts";
 import { decodeTextChunk, encodeChunks, encodeTextChunk, extractChunks } from "./png.ts";
 
+export interface TextChunk {
+  keyword: string;
+  text: string;
+}
+
 // -----------------------------------------------------------------------------
 // PNG
 // -----------------------------------------------------------------------------
 
-export const getTEXtChunk = async (
-  blob: Blob,
-): Promise<{ keyword: string; text: string } | null> => {
+export async function getTEXtChunk(blob: Blob): Promise<TextChunk | null> {
   const chunks = extractChunks(new Uint8Array(await blobToArrayBuffer(blob)));
   const metadataChunk = chunks.find((chunk) => chunk.name === "tEXt");
   if (metadataChunk) {
     return decodeTextChunk(metadataChunk.data);
   }
   return null;
-};
+}
 
-export const encodePngMetadata = async ({ blob, metadata }: { blob: Blob; metadata: string }) => {
+export interface PngMetadataInput {
+  blob: Blob;
+  metadata: string;
+}
+
+export async function encodePngMetadata({ blob, metadata }: PngMetadataInput) {
   const chunks = extractChunks(new Uint8Array(await blobToArrayBuffer(blob)));
 
   const metadataChunk = encodeTextChunk(
@@ -36,13 +44,17 @@ export const encodePngMetadata = async ({ blob, metadata }: { blob: Blob; metada
   chunks.splice(-1, 0, metadataChunk);
 
   return new Blob([encodeChunks(chunks)], { type: MIME_TYPES.png });
-};
+}
 
-export const decodePngMetadata = async (blob: Blob) => {
+interface TypeTagged {
+  type?: unknown;
+}
+
+export async function decodePngMetadata(blob: Blob) {
   const metadata = await getTEXtChunk(blob);
   if (metadata?.keyword === MIME_TYPES.excalidraw) {
     try {
-      const encodedData = JSON.parse(metadata.text) as EncodedData | { type?: unknown };
+      const encodedData = JSON.parse(metadata.text) as EncodedData | TypeTagged;
       if (!("encoded" in encodedData)) {
         // legacy, un-encoded scene JSON
         if ("type" in encodedData && encodedData.type === EXPORT_DATA_TYPES.excalidraw) {
@@ -57,4 +69,4 @@ export const decodePngMetadata = async (blob: Blob) => {
     }
   }
   throw new Error("INVALID");
-};
+}

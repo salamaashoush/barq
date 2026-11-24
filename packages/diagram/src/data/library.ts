@@ -20,7 +20,7 @@ const ALLOWED_LIBRARY_URLS = [
 /**
  * checks if library item does not exist already in current library
  */
-const isUniqueItem = (existingLibraryItems: LibraryItems, targetLibraryItem: LibraryItem) => {
+function isUniqueItem(existingLibraryItems: LibraryItems, targetLibraryItem: LibraryItem) {
   return !existingLibraryItems.find((libraryItem) => {
     if (libraryItem.elements.length !== targetLibraryItem.elements.length) {
       return false;
@@ -35,14 +35,14 @@ const isUniqueItem = (existingLibraryItems: LibraryItems, targetLibraryItem: Lib
       );
     });
   });
-};
+}
 
 /** Merges otherItems into localItems. Unique items in otherItems array are
     sorted first. */
-export const mergeLibraryItems = (
+export function mergeLibraryItems(
   localItems: LibraryItems,
   otherItems: LibraryItems,
-): LibraryItems => {
+): LibraryItems {
   const newItems = [];
   for (const item of otherItems) {
     if (isUniqueItem(localItems, item)) {
@@ -51,15 +51,15 @@ export const mergeLibraryItems = (
   }
 
   return [...newItems, ...localItems];
-};
+}
 
-export const distributeLibraryItemsOnSquareGrid = (libraryItems: LibraryItems) => {
+export function distributeLibraryItemsOnSquareGrid(libraryItems: LibraryItems) {
   const PADDING = 50;
   const ITEMS_PER_ROW = Math.ceil(Math.sqrt(libraryItems.length));
 
   const resElements: ExcalidrawElement[] = [];
 
-  const getMaxHeightPerRow = (row: number) => {
+  function getMaxHeightPerRow(row: number) {
     const maxHeight = libraryItems
       .slice(row * ITEMS_PER_ROW, row * ITEMS_PER_ROW + ITEMS_PER_ROW)
       .reduce((acc, item) => {
@@ -67,9 +67,9 @@ export const distributeLibraryItemsOnSquareGrid = (libraryItems: LibraryItems) =
         return Math.max(acc, height);
       }, 0);
     return maxHeight;
-  };
+  }
 
-  const getMaxWidthPerCol = (targetCol: number) => {
+  function getMaxWidthPerCol(targetCol: number) {
     let index = 0;
     let currCol = 0;
     let maxWidth = 0;
@@ -85,7 +85,7 @@ export const distributeLibraryItemsOnSquareGrid = (libraryItems: LibraryItems) =
       currCol++;
     }
     return maxWidth;
-  };
+  }
 
   let colOffsetX = 0;
   let rowOffsetY = 0;
@@ -140,15 +140,15 @@ export const distributeLibraryItemsOnSquareGrid = (libraryItems: LibraryItems) =
   }
 
   return resElements;
-};
+}
 
-export const validateLibraryUrl = (
+export function validateLibraryUrl(
   libraryUrl: string,
   /**
    * @returns `true` if the URL is valid, throws otherwise.
    */
   validator: ((libraryUrl: string) => boolean) | string[] = ALLOWED_LIBRARY_URLS,
-): true => {
+): true {
   if (
     typeof validator === "function"
       ? validator(libraryUrl)
@@ -167,17 +167,17 @@ export const validateLibraryUrl = (
   }
 
   throw new Error(`Invalid or disallowed library URL: "${libraryUrl}"`);
-};
+}
 
-const getLibraryItemHash = (item: LibraryItem) => {
+function getLibraryItemHash(item: LibraryItem) {
   return `${item.id}:${item.name || ""}:${hashElementsVersion(item.elements)}`;
-};
+}
 
-export const getLibraryItemsHash = (items: LibraryItems) => {
+export function getLibraryItemsHash(items: LibraryItems) {
   return hashString(
     items
       .map((item) => getLibraryItemHash(item))
       .toSorted()
       .join(),
   );
-};
+}

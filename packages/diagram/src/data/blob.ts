@@ -28,7 +28,7 @@ export type BlobWithHandle = Blob & {
   handle?: FileSystemFileHandle | null;
 };
 
-const parseFileContents = async (blob: Blob | File): Promise<string> => {
+async function parseFileContents(blob: Blob | File): Promise<string> {
   let contents: string;
 
   if (blob.type === MIME_TYPES.png) {
@@ -81,9 +81,9 @@ const parseFileContents = async (blob: Blob | File): Promise<string> => {
     }
   }
   return contents;
-};
+}
 
-export const getMimeType = (blob: BlobWithHandle | string): string => {
+export function getMimeType(blob: BlobWithHandle | string): string {
   let name: string;
   if (typeof blob === "string") {
     name = blob;
@@ -105,46 +105,50 @@ export const getMimeType = (blob: BlobWithHandle | string): string => {
     return MIME_TYPES.excalidrawlib;
   }
   return "";
-};
+}
 
-export const getFileHandleType = (handle: FileSystemFileHandle | null) => {
+export function getFileHandleType(handle: FileSystemFileHandle | null) {
   if (!handle) {
     return null;
   }
 
   return handle.name.match(/\.(json|excalidraw|png|svg)$/)?.[1] || null;
-};
+}
 
-export const isImageFileHandleType = (type: string | null): type is "png" | "svg" => {
+export function isImageFileHandleType(type: string | null): type is "png" | "svg" {
   return type === "png" || type === "svg";
-};
+}
 
-export const isImageFileHandle = (
+export function isImageFileHandle(
   handle: FileSystemFileHandle | null,
-): handle is FileSystemFileHandle => {
+): handle is FileSystemFileHandle {
   const type = getFileHandleType(handle);
   return type === "png" || type === "svg";
-};
+}
 
-export const isSupportedImageFileType = (type: string | null | undefined) => {
+export function isSupportedImageFileType(type: string | null | undefined) {
   return !!type && (Object.values(IMAGE_MIME_TYPES) as string[]).includes(type);
-};
+}
 
-export const isSupportedImageFile = (
+export interface SupportedImageType {
+  type: ValueOf<typeof IMAGE_MIME_TYPES>;
+}
+
+export function isSupportedImageFile(
   blob: Blob | null | undefined,
-): blob is Blob & { type: ValueOf<typeof IMAGE_MIME_TYPES> } => {
+): blob is Blob & SupportedImageType {
   const { type } = blob || {};
   return isSupportedImageFileType(type);
-};
+}
 
-export const loadSceneOrLibraryFromBlob = async (
+export async function loadSceneOrLibraryFromBlob(
   blob: BlobWithHandle,
   /** @see restore.localAppState */
   localAppState: AppState | null,
   localElements: readonly ExcalidrawElement[] | null,
   /** FileSystemFileHandle. Defaults to `blob.handle` if defined, otherwise null. */
   fileHandle?: FileSystemFileHandle | null,
-) => {
+) {
   const contents = await parseFileContents(blob);
   let data: unknown;
   try {
@@ -193,45 +197,45 @@ export const loadSceneOrLibraryFromBlob = async (
     }
     throw new Error("Error: invalid file", { cause: error });
   }
-};
+}
 
-export const loadFromBlob = async (
+export async function loadFromBlob(
   blob: Blob,
   /** @see restore.localAppState */
   localAppState: AppState | null,
   localElements: readonly ExcalidrawElement[] | null,
   /** FileSystemFileHandle. Defaults to `blob.handle` if defined, otherwise null. */
   fileHandle?: FileSystemFileHandle | null,
-) => {
+) {
   const ret = await loadSceneOrLibraryFromBlob(blob, localAppState, localElements, fileHandle);
   if (ret.type !== MIME_TYPES.excalidraw) {
     throw new Error("Error: invalid file");
   }
   return ret.data;
-};
+}
 
-export const parseLibraryJSON = (
+export function parseLibraryJSON(
   json: string,
   defaultStatus: LibraryItem["status"] = "unpublished",
-) => {
+) {
   const data: ImportedLibraryData | undefined = JSON.parse(json);
   if (!isValidLibrary(data)) {
     throw new Error("Invalid library");
   }
   const libraryItems = data.libraryItems || data.library;
   return restoreLibraryItems(libraryItems, defaultStatus);
-};
+}
 
-export const loadLibraryFromBlob = async (
+export async function loadLibraryFromBlob(
   blob: Blob,
   defaultStatus: LibraryItem["status"] = "unpublished",
-) => {
+) {
   return parseLibraryJSON(await parseFileContents(blob), defaultStatus);
-};
+}
 
-export const canvasToBlob = async (
+export async function canvasToBlob(
   canvas: HTMLCanvasElement | Promise<HTMLCanvasElement>,
-): Promise<Blob> => {
+): Promise<Blob> {
   const resolvedCanvas = isPromiseLike(canvas) ? await canvas : canvas;
   return new Promise((resolve, reject) => {
     resolvedCanvas.toBlob((blob) => {
@@ -241,11 +245,11 @@ export const canvasToBlob = async (
       resolve(blob);
     });
   });
-};
+}
 
 /** generates SHA-1 digest from supplied file (if not supported, falls back
     to a 40-char base64 random id) */
-export const generateIdFromFile = async (file: File): Promise<FileId> => {
+export async function generateIdFromFile(file: File): Promise<FileId> {
   try {
     const hashBuffer = await window.crypto.subtle.digest("SHA-1", await blobToArrayBuffer(file));
     return bytesToHexString(new Uint8Array(hashBuffer)) as FileId;
@@ -254,10 +258,10 @@ export const generateIdFromFile = async (file: File): Promise<FileId> => {
     // length 40 to align with the HEX length of SHA-1 (which is 160 bit)
     return nanoid<FileId>(40);
   }
-};
+}
 
 /** async. For sync variant, use getDataURL_sync */
-export const getDataURL = async (file: Blob | File): Promise<DataURL> => {
+export async function getDataURL(file: Blob | File): Promise<DataURL> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.addEventListener(
@@ -271,16 +275,16 @@ export const getDataURL = async (file: Blob | File): Promise<DataURL> => {
     reader.addEventListener("error", (error) => reject(error), { once: true });
     reader.readAsDataURL(file);
   });
-};
+}
 
-export const getDataURL_sync = (
+export function getDataURL_sync(
   data: string | Uint8Array | ArrayBuffer,
   mimeType: ValueOf<typeof MIME_TYPES>,
-): DataURL => {
+): DataURL {
   return `data:${mimeType};base64,${stringToBase64(toByteString(data), true)}` as DataURL;
-};
+}
 
-export const dataURLToFile = (dataURL: DataURL, filename = "") => {
+export function dataURLToFile(dataURL: DataURL, filename = "") {
   const dataIndexStart = dataURL.indexOf(",");
   const byteString = atob(dataURL.slice(dataIndexStart + 1));
   const mimeType = /^data:([^;,]*)/.exec(dataURL)?.[1] ?? "";
@@ -291,22 +295,26 @@ export const dataURLToFile = (dataURL: DataURL, filename = "") => {
     ia[i] = byteString.charCodeAt(i);
   }
   return new File([ab], filename, { type: mimeType });
-};
+}
 
-export const dataURLToString = (dataURL: DataURL) => {
+export function dataURLToString(dataURL: DataURL) {
   return base64ToString(dataURL.slice(dataURL.indexOf(",") + 1));
-};
+}
 
-export const SVGStringToFile = (SVGString: string, filename: string = "") => {
+interface SvgType {
+  type: typeof MIME_TYPES.svg;
+}
+
+export function SVGStringToFile(SVGString: string, filename: string = "") {
   return new File([new TextEncoder().encode(SVGString)], filename, {
     type: MIME_TYPES.svg,
-  }) as File & { type: typeof MIME_TYPES.svg };
-};
+  }) as File & SvgType;
+}
 
 /**
  * attempts to detect if a buffer is a valid image by checking its leading bytes
  */
-const getActualMimeTypeFromImage = async (file: Blob | File) => {
+async function getActualMimeTypeFromImage(file: Blob | File) {
   let mimeType: ValueOf<Pick<typeof MIME_TYPES, "png" | "jpg" | "gif" | "webp">> | null = null;
 
   const leadingBytes = [...new Uint8Array(await blobToArrayBuffer(file.slice(0, 15)))].join(" ");
@@ -333,26 +341,30 @@ const getActualMimeTypeFromImage = async (file: Blob | File) => {
   }
 
   return mimeType || file.type || null;
-};
+}
 
-export const createFile = (
+export function createFile(
   blob: File | Blob | ArrayBuffer,
   mimeType: string,
   name: string | undefined,
-) => {
+) {
   return new File([blob], name || "", {
     type: mimeType,
   });
-};
+}
 
 const normalizedFileSymbol = Symbol("fileNormalized");
+
+interface NormalizedFlag {
+  [normalizedFileSymbol]?: boolean;
+}
 
 /** attempts to detect correct mimeType if none is set, or if an image
  * has an incorrect extension.
  * Note: doesn't handle missing .excalidraw/.excalidrawlib extension  */
-export const normalizeFile = async (file: File) => {
+export async function normalizeFile(file: File) {
   // to prevent double normalization (perf optim)
-  if ((file as File & { [normalizedFileSymbol]?: boolean })[normalizedFileSymbol]) {
+  if ((file as File & NormalizedFlag)[normalizedFileSymbol]) {
     return file;
   }
 
@@ -370,12 +382,12 @@ export const normalizeFile = async (file: File) => {
     }
   }
 
-  (file as File & { [normalizedFileSymbol]?: boolean })[normalizedFileSymbol] = true;
+  (file as File & NormalizedFlag)[normalizedFileSymbol] = true;
 
   return file;
-};
+}
 
-export const blobToArrayBuffer = (blob: Blob): Promise<ArrayBuffer> => {
+export function blobToArrayBuffer(blob: Blob): Promise<ArrayBuffer> {
   if ("arrayBuffer" in blob) {
     return blob.arrayBuffer();
   }
@@ -394,4 +406,4 @@ export const blobToArrayBuffer = (blob: Blob): Promise<ArrayBuffer> => {
     );
     reader.readAsArrayBuffer(blob);
   });
-};
+}
