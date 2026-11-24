@@ -1,7 +1,7 @@
 {
   "name": "@barqjs/diagram",
   "version": "0.2.0-next.3",
-  "description": "Whiteboard diagrams for barq on Excalidraw's element model: scene data, canvas and SVG rendering, export, and a read-only viewer that renders on the server",
+  "description": "Whiteboard diagrams for barq on Excalidraw's element model: scene data, canvas and SVG rendering, export, a read-only viewer that renders on the server, and an editor",
   "keywords": [
     "barq",
     "canvas",
@@ -37,6 +37,11 @@
       "types": "./src/index.ts",
       "barq": "./src/index.ts",
       "bun": "./src/index.ts"
+    },
+    "./editor": {
+      "types": "./src/editor/index.ts",
+      "barq": "./src/editor/index.ts",
+      "bun": "./src/editor/index.ts"
     },
     "./mermaid": {
       "types": "./src/mermaid.ts",

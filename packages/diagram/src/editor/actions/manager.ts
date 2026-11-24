@@ -1,0 +1,70 @@
+import type { ExcalidrawElement, OrderedExcalidrawElement } from "@excalidraw/element/types";
+
+import type { AppState } from "../../types.ts";
+import type { DiagramEditor } from "../editor.ts";
+import type { Action, ActionName, ActionResult } from "../types.ts";
+
+/**
+ * Runs actions: by keyboard shortcut, when exactly one action's `keyTest`
+ * matches, or by name. What an action returns goes to `updater`, the
+ * editor's `syncActionResult`. Excalidraw's `ActionManager`, without panels.
+ */
+export class ActionManager {
+  public readonly actions = new Map<ActionName, Action>();
+
+  public constructor(
+    private readonly updater: (result: ActionResult, action: Action) => void,
+    private readonly getAppState: () => AppState,
+    private readonly getElementsIncludingDeleted: () => readonly OrderedExcalidrawElement[],
+    private readonly editor: DiagramEditor,
+  ) {}
+
+  public registerAll(actions: readonly Action[]): void {
+    for (const action of actions) this.actions.set(action.name, action);
+  }
+
+  /** Runs the action whose shortcut the key is; whether one ran. */
+  public handleKeyDown(event: KeyboardEvent): boolean {
+    const appState = this.getAppState();
+    const elements: readonly ExcalidrawElement[] = this.getElementsIncludingDeleted();
+    const matches = [...this.actions.values()]
+      .toSorted((a, b) => (b.keyPriority ?? 0) - (a.keyPriority ?? 0))
+      .filter((action) => action.keyTest?.(event, appState, elements, this.editor) === true);
+
+    if (matches.length !== 1) {
+      if (matches.length > 1) {
+        console.warn("DiagramEditor: more than one action matches this shortcut", matches);
+      }
+      return false;
+    }
+    const [action] = matches;
+    if (action === undefined) return false;
+    if (appState.viewModeEnabled && action.viewMode !== true) return false;
+
+    event.preventDefault();
+    event.stopPropagation();
+    this.run(action, null);
+    return true;
+  }
+
+  public executeAction<T>(action: Action<T>, value: T | null = null): void {
+    this.run(action, value);
+  }
+
+  public isActionEnabled(action: Action): boolean {
+    return (
+      action.predicate === undefined ||
+      action.predicate(this.getElementsIncludingDeleted(), this.getAppState(), this.editor)
+    );
+  }
+
+  private run<T>(action: Action<T>, value: T | null): void {
+    const result = action.perform(
+      this.getElementsIncludingDeleted(),
+      this.getAppState(),
+      value,
+      this.editor,
+    );
+    this.updater(result, action as Action);
+  }
+}

@@ -10,6 +10,7 @@ import type {
   FileId,
   NonDeletedExcalidrawElement,
 } from "@excalidraw/element/types";
+import type { RoughCanvas } from "roughjs/bin/canvas";
 import rough from "roughjs/bin/rough";
 
 import { Fonts } from "./fonts/fonts.ts";
@@ -17,31 +18,43 @@ import { renderStaticScene } from "./renderer/static-scene.ts";
 import { Renderer } from "./scene/renderer.ts";
 import type { AppState, BinaryFiles, ImageCache } from "./types.ts";
 
+/** What an editor draws beyond the scene: the selection, and the grid. */
+export interface SceneCanvasFrame {
+  selectedElements: readonly NonDeletedExcalidrawElement[];
+  renderGrid: boolean;
+}
+
+/** The elements a frame draws, which the editor's other layers draw from too. */
+export type RenderableElements = ReturnType<Renderer["getRenderableElements"]>;
+
 /**
  * A scene drawn on a canvas at a viewport: the static layer of Excalidraw's
- * editor, without the editor. It owns the image cache for the scene's files
- * and loads the fonts its text uses, redrawing as either arrives.
+ * editor. It owns the image cache for the scene's files and loads the fonts
+ * its text uses, redrawing as either arrives, or asking its owner to through
+ * `onInvalidate`, which an editor uses to draw once a frame.
  */
 export class SceneCanvas {
   public readonly scene: Scene;
   public readonly imageCache: ImageCache = new Map();
-  private readonly renderer: Renderer;
-  private readonly fonts: Fonts;
-  private readonly rc: ReturnType<typeof rough.canvas>;
+  public readonly renderer: Renderer;
+  public readonly fonts: Fonts;
+  public readonly rc: RoughCanvas;
   private files: BinaryFiles = {};
   private appState: AppState | null = null;
+  private frame: SceneCanvasFrame | undefined;
   private scale = 1;
   private readonly unsubscribe: () => void;
 
   public constructor(
     public readonly canvas: HTMLCanvasElement,
     elements: readonly ExcalidrawElement[] = [],
+    onInvalidate?: () => void,
   ) {
     this.scene = new Scene(elements);
     this.renderer = new Renderer(this.scene);
     this.fonts = new Fonts(this.scene, canvas.ownerDocument);
     this.rc = rough.canvas(canvas);
-    this.unsubscribe = this.scene.onUpdate(() => this.redraw());
+    this.unsubscribe = this.scene.onUpdate(onInvalidate ?? (() => this.redraw()));
   }
 
   public get elements(): readonly NonDeletedExcalidrawElement[] {
@@ -86,9 +99,14 @@ export class SceneCanvas {
     if (loaded.length > 0) this.fonts.onLoaded(loaded);
   }
 
-  /** Draws the scene at `appState`'s viewport, `scale` device pixels per CSS pixel. */
-  public render(appState: AppState, scale: number): void {
+  /**
+   * Draws the scene at `appState`'s viewport, `scale` device pixels per CSS
+   * pixel, and returns what it drew. An element being drawn out
+   * (`appState.newElement`) is left to the editor's new-element layer.
+   */
+  public render(appState: AppState, scale: number, frame?: SceneCanvasFrame): RenderableElements {
     this.appState = appState;
+    this.frame = frame;
     this.scale = scale;
     const width = Math.max(1, Math.round(appState.width * scale));
     const height = Math.max(1, Math.round(appState.height * scale));
@@ -97,7 +115,7 @@ export class SceneCanvas {
     this.canvas.style.width = `${appState.width}px`;
     this.canvas.style.height = `${appState.height}px`;
 
-    const { elementsMap, visibleElements } = this.renderer.getRenderableElements({
+    const renderable = this.renderer.getRenderableElements({
       zoom: appState.zoom,
       offsetLeft: appState.offsetLeft,
       offsetTop: appState.offsetTop,
@@ -105,12 +123,13 @@ export class SceneCanvas {
       scrollY: appState.scrollY,
       height: appState.height,
       width: appState.width,
-      editingTextElement: null,
-      newElement: null,
-      selectedElements: [],
-      selectedElementsAreBeingDragged: false,
-      frameToHighlight: null,
+      editingTextElement: appState.editingTextElement,
+      newElement: appState.newElement,
+      selectedElements: frame?.selectedElements ?? [],
+      selectedElementsAreBeingDragged: appState.selectedElementsAreBeingDragged,
+      frameToHighlight: appState.frameToHighlight,
     });
+    const { elementsMap, visibleElements } = renderable;
 
     renderStaticScene({
       canvas: this.canvas,
@@ -124,7 +143,7 @@ export class SceneCanvas {
         canvasBackgroundColor: appState.viewBackgroundColor,
         scale,
         imageCache: this.imageCache,
-        renderGrid: false,
+        renderGrid: frame?.renderGrid ?? false,
         renderLinks: false,
         isExporting: false,
         embedsValidationStatus: new Map(),
@@ -133,6 +152,7 @@ export class SceneCanvas {
         theme: appState.theme,
       },
     });
+    return renderable;
   }
 
   public destroy(): void {
@@ -142,6 +162,6 @@ export class SceneCanvas {
   }
 
   private redraw(): void {
-    if (this.appState !== null) this.render(this.appState, this.scale);
+    if (this.appState !== null) this.render(this.appState, this.scale, this.frame);
   }
 }

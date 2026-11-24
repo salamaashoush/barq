@@ -64,3 +64,6 @@ export interface ImportedLibraryData extends Partial<ExportedLibraryData> {
 export type ExcalidrawLibraryIds = {
   itemIds: LibraryItem["id"][];
 };
+
+/** A scene to show or edit: a parsed `.excalidraw` file, or what `loadFromBlob` or `restore` returns. */
+export type DiagramScene = Pick<ImportedDataState, "elements" | "appState" | "files">;
