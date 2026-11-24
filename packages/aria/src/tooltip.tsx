@@ -41,6 +41,7 @@ import { ownerDocument } from "./dom.ts";
 import { useLocale } from "./i18n.ts";
 import { focusable } from "./interactions/focusable.ts";
 import { hover } from "./interactions/hover.ts";
+import type { BaseEvent } from "./interactions/keyboard.ts";
 import { getInteractionModality, isFocusVisible, trackModality } from "./interactions/modality.ts";
 import type { ElementRef } from "./interactions/press.ts";
 import { OverlayArrowProvider } from "./overlay-arrow.tsx";
@@ -438,7 +439,13 @@ export function tooltipTrigger(
       "aria-describedby": () => (state.isOpen() ? tooltipId() : undefined),
       "data-state": () => tooltipStateName(state),
       onPointerDown: dismissOnPress,
-      onKeyDown: dismissOnPress,
+      // A key dismisses the tooltip and is still the trigger's to use: a
+      // trigger's keyboard handlers stop what they do not hand on, and Escape
+      // stopped here never reached the dialog the trigger sits in.
+      onKeyDown: (event: KeyboardEvent) => {
+        dismissOnPress();
+        (event as Partial<BaseEvent<KeyboardEvent>>).continuePropagation?.();
+      },
     }),
     tooltipProps: { id: tooltipId },
   };

@@ -195,6 +195,25 @@ describe("TooltipTrigger", () => {
     expect(screen.queryByRole("tooltip")).toBeNull();
   });
 
+  test("a key the trigger does not use reaches what is around it, Escape included", async () => {
+    const heard: string[] = [];
+    render(() => (
+      <div onKeyDown={(event: KeyboardEvent) => heard.push(event.key)}>
+        <Saver delay={5000} closeDelay={5000} />
+      </div>
+    ));
+
+    user.tab();
+    await tick();
+    flush();
+    user.keyDown("Escape");
+    flush();
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    user.keyDown("Escape");
+    user.keyDown("x");
+    expect(heard).toEqual(["Escape", "x"]);
+  });
+
   test("pressing the trigger closes it", async () => {
     render(() => <Saver delay={0} closeDelay={5000} />);
 
