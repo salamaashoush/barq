@@ -49,7 +49,7 @@ function inSidebar(children: () => Child) {
 }
 
 function item(name: RegExp): HTMLElement {
-  return screen.getByRole<HTMLElement>("link", { name });
+  return screen.getByRole("link", { name });
 }
 
 describe("ConversationList", () => {
