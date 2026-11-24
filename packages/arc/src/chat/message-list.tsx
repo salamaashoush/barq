@@ -83,11 +83,7 @@ export const messageListStyles = variants({
       insetBlockStart: space.x2,
     }),
     start: arc(type.meta, layout.centre, { paddingBlock: space.x4 }),
-    jump: arc(surface.elevated, edge.all, {
-      position: "absolute",
-      insetBlockEnd: space.x4,
-      insetInlineEnd: space.x4,
-    }),
+    jump: arc(surface.elevated, edge.all, place.endCorner, { position: "absolute" }),
   },
 });
 

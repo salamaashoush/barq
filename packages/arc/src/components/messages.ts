@@ -462,6 +462,15 @@ export interface ArcMessages {
   joinCall: string;
   returnToCall: string;
   poorConnection: string;
+  participantActions: (name: string) => string;
+  pinParticipant: string;
+  unpinParticipant: string;
+  muteForMe: string;
+  unmuteForMe: string;
+  enterFullScreen: string;
+  exitFullScreen: string;
+  callWindow: string;
+  moveCallWindow: string;
   assistant: string;
   messageAssistant: string;
   send: string;
@@ -1032,6 +1041,15 @@ export const ENGLISH: ArcMessages = {
   joinCall: "Join",
   returnToCall: "Return to call",
   poorConnection: "Poor connection",
+  participantActions: (name) => `${name}: more`,
+  pinParticipant: "Pin",
+  unpinParticipant: "Unpin",
+  muteForMe: "Mute for me",
+  unmuteForMe: "Unmute for me",
+  enterFullScreen: "Full screen",
+  exitFullScreen: "Exit full screen",
+  callWindow: "Call window",
+  moveCallWindow: "Move the call window: drag it, or use the arrow keys",
   assistant: "Assistant",
   messageAssistant: "Message the assistant",
   send: "Send",

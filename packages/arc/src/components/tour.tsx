@@ -22,6 +22,7 @@ import {
   gap,
   layout,
   motion,
+  place,
   radius,
   rounded,
   space,
@@ -86,10 +87,8 @@ function trackRect(element: Accessor<Element | null>): Accessor<DOMRect | null> 
 
 export const spotlightStyles = variants({
   slots: {
-    root: arc(motion.transform, {
-      position: "fixed",
+    root: arc(motion.transform, place.floating, {
       pointerEvents: "none",
-      zIndex: zIndex.overlay,
       borderRadius: radius.md,
       boxShadow: "0 0 0 100vmax var(--overlay)",
       transitionProperty: "top, left, width, height",

@@ -62,6 +62,14 @@ export {
   type ParticipantTileProps,
   callStyles,
 } from "./call.tsx";
+export { CallWindow, type CallWindowProps, callWindowStyles } from "./call-window.tsx";
+export {
+  type MediaDeviceKind,
+  type MediaDevicesOptions,
+  type MediaDevicesState,
+  type MediaPermission,
+  useMediaDevices,
+} from "./media-devices.ts";
 export {
   type AICitation,
   AIChatPanel,

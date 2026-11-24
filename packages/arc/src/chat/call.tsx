@@ -6,9 +6,19 @@ import {
   createSignal,
   createUniqueId,
   onSettled,
+  untrack,
 } from "@barqjs/core";
 import { variants } from "@barqjs/css";
+import { longPress } from "@barqjs/aria/interactions";
 import { announce } from "@barqjs/aria/live";
+import { controllable } from "@barqjs/aria/utils";
+import { Ellipsis } from "@barqjs/lucide/icons/ellipsis";
+import { Maximize } from "@barqjs/lucide/icons/maximize";
+import { Minimize } from "@barqjs/lucide/icons/minimize";
+import { Pin } from "@barqjs/lucide/icons/pin";
+import { PinOff } from "@barqjs/lucide/icons/pin-off";
+import { Volume2 } from "@barqjs/lucide/icons/volume-2";
+import { VolumeOff } from "@barqjs/lucide/icons/volume-off";
 import { Mic } from "@barqjs/lucide/icons/mic";
 import { MicOff } from "@barqjs/lucide/icons/mic-off";
 import { MonitorUp } from "@barqjs/lucide/icons/monitor-up";
@@ -24,6 +34,7 @@ import { on } from "@barqjs/ui/conditions";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
@@ -98,17 +109,26 @@ export const callStyles = variants({
     video: arc(place.fill, { objectFit: "cover", "&[data-mirrored]": { scale: "-1 1" } }),
     screen: arc(place.fill, { objectFit: "contain", backgroundColor: "black" }),
     avatar: arc({ inlineSize: "30%", blockSize: "auto", aspectRatio: "1", maxInlineSize: "6rem" }),
-    caption: arc(layout.row, gap[1], type.caption, rounded.sm, glyph.sm, {
+    caption: arc(layout.row, gap[1], type.caption, rounded.sm, glyph.sm, surface.onMedia, {
       position: "absolute",
       insetBlockEnd: space.x1_5,
       insetInlineStart: space.x1_5,
       maxInlineSize: `calc(100% - ${space.x3})`,
       paddingInline: space.x1_5,
       paddingBlock: space.x0_5,
-      backgroundColor: "color-mix(in oklab, black 55%, transparent)",
-      color: "white",
     }),
     name: arc(layout.clip, layout.nowrap, layout.minZero),
+    // Over the tile's top corner on hover or focus, always under a finger,
+    // which also opens it with a long press on the tile.
+    menu: arc(rounded.md, surface.onMedia, {
+      position: "absolute",
+      insetBlockStart: space.x1_5,
+      insetInlineEnd: space.x1_5,
+      opacity: { default: "0", [on.coarse]: "1" },
+      "[data-slot=participant-tile]:is(:hover, :focus-within) > &, &[data-open]": {
+        opacity: "1",
+      },
+    }),
     controls: arc(layout.row, layout.centre),
     leave: arc({}),
     incoming: arc(surface.elevated, rounded.lg, layout.row, layout.wrap, gap[3], {
@@ -133,6 +153,18 @@ export interface ParticipantTileProps extends Customisable<Slots> {
   participant: CallParticipant;
   /** Draw the camera even when there is a shared screen. */
   camera?: boolean;
+  /** On the stage whoever speaks: the menu offers Unpin. */
+  pinned?: boolean;
+  /** The menu's Pin and Unpin. Left out, the menu has neither. */
+  onPinChange?: (participant: CallParticipant, pinned: boolean) => void;
+  /** Their sound silenced here only, for the reader. */
+  mutedForMe?: boolean;
+  defaultMutedForMe?: boolean;
+  onMutedForMeChange?: (participant: CallParticipant, muted: boolean) => void;
+  /** The speaker to play them through, a `deviceId` from `useMediaDevices`. */
+  audioOutput?: string;
+  /** The tile's menu: pin, mute for me and full screen. @default true */
+  menu?: boolean;
   /** Another element for the media, handed the attributes and the stream. */
   renders?: { video?: RenderPart<MediaStream> };
 }
@@ -182,15 +214,52 @@ export function ParticipantTile(props: ParticipantTileProps) {
       <StreamVideo
         class={attributes.class}
         stream={given}
-        muted={participant().local === true}
+        muted={participant().local === true || mutedForMe()}
         mirrored={participant().local === true && !sharing()}
+        sinkId={props.audioOutput}
       />
     );
   };
+  const tile = makeRef<HTMLElement>();
+  const [menuOpen, setMenuOpen] = createSignal(false, { ownedWrite: true });
+  const [mutedForMe, setMutedForMe] = controllable<boolean>(
+    () => props.mutedForMe,
+    () => untrack(() => props.defaultMutedForMe) ?? false,
+    (next) => props.onMutedForMeChange?.(participant(), next),
+  );
+  const [full, setFull] = createSignal(false, { ownedWrite: true });
+  // Known once in the browser, so a server and a hydrating page agree.
+  const [canFullScreen, setCanFullScreen] = createSignal(false, { ownedWrite: true });
+  onSettled(() => {
+    setCanFullScreen(document.fullscreenEnabled);
+    const sync = (): void => {
+      setFull(document.fullscreenElement === tile());
+    };
+    document.addEventListener("fullscreenchange", sync);
+    return () => document.removeEventListener("fullscreenchange", sync);
+  });
+  const toggleFullScreen = (): void => {
+    const element = tile();
+    if (element === null) return;
+    if (document.fullscreenElement === element) void document.exitFullscreen();
+    else void element.requestFullscreen();
+  };
+  const hasMenu = (): boolean =>
+    props.menu !== false &&
+    (props.onPinChange !== undefined || participant().local !== true || canFullScreen());
+  const { longPressProps } = longPress({
+    pointerType: "touch",
+    isDisabled: () => !hasMenu(),
+    accessibilityDescription: () => messages().participantActions(participant().person.name),
+    onLongPress: () => setMenuOpen(true),
+  });
   return (
     <figure
+      ref={tile.set}
       class={arc(cls().tile, props.class, props.className)}
       data-slot="participant-tile"
+      data-pinned={props.pinned === true ? "" : undefined}
+      {...longPressProps}
       data-speaking={participant().speaking === true ? "" : undefined}
       data-muted={participant().muted === true ? "" : undefined}
       data-sharing={sharing() ? "" : undefined}
@@ -217,6 +286,54 @@ export function ParticipantTile(props: ParticipantTileProps) {
         </Show>
         <span class={cls().name}>{participant().person.name}</span>
       </figcaption>
+      <Show when={hasMenu()}>
+        <DropdownMenu isOpen={menuOpen()} onOpenChange={setMenuOpen}>
+          <DropdownMenuTrigger>
+            <IconButton
+              class={cls().menu}
+              slot="participant-tile-menu"
+              label={messages().participantActions(participant().person.name)}
+              size="sm"
+              tooltip={false}
+            >
+              <Ellipsis aria-hidden="true" />
+            </IconButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            aria-label={messages().participantActions(participant().person.name)}
+          >
+            <Show when={props.onPinChange !== undefined}>
+              <DropdownMenuItem
+                textValue={
+                  props.pinned === true ? messages().unpinParticipant : messages().pinParticipant
+                }
+                onAction={() => props.onPinChange?.(participant(), props.pinned !== true)}
+              >
+                {props.pinned === true ? <PinOff aria-hidden="true" /> : <Pin aria-hidden="true" />}
+                {props.pinned === true ? messages().unpinParticipant : messages().pinParticipant}
+              </DropdownMenuItem>
+            </Show>
+            <Show when={participant().local !== true}>
+              <DropdownMenuItem
+                textValue={mutedForMe() ? messages().unmuteForMe : messages().muteForMe}
+                onAction={() => setMutedForMe(!mutedForMe())}
+              >
+                {mutedForMe() ? <Volume2 aria-hidden="true" /> : <VolumeOff aria-hidden="true" />}
+                {mutedForMe() ? messages().unmuteForMe : messages().muteForMe}
+              </DropdownMenuItem>
+            </Show>
+            <Show when={canFullScreen()}>
+              <DropdownMenuItem
+                textValue={full() ? messages().exitFullScreen : messages().enterFullScreen}
+                onAction={toggleFullScreen}
+              >
+                {full() ? <Minimize aria-hidden="true" /> : <Maximize aria-hidden="true" />}
+                {full() ? messages().exitFullScreen : messages().enterFullScreen}
+              </DropdownMenuItem>
+            </Show>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </Show>
     </figure>
   );
 }
@@ -227,6 +344,7 @@ function StreamVideo(props: {
   stream: MediaStream;
   muted: boolean;
   mirrored: boolean;
+  sinkId?: string;
 }) {
   const element = makeRef<HTMLVideoElement>();
   createEffect(
@@ -234,6 +352,15 @@ function StreamVideo(props: {
     ([video, stream]) => {
       if (video === null) return;
       video.srcObject = stream;
+    },
+  );
+  // A browser that cannot choose a speaker, or a speaker unplugged since it
+  // was chosen, plays through the default one.
+  createEffect(
+    () => [element(), props.sinkId] as const,
+    ([video, sinkId]) => {
+      if (video === null || sinkId === undefined || typeof video.setSinkId !== "function") return;
+      video.setSinkId(sinkId).catch(() => undefined);
     },
   );
   return (
@@ -259,6 +386,12 @@ export interface CallStageProps extends Customisable<Slots> {
   layout?: "grid" | "speaker";
   /** Who has the stage in `speaker`. @default whoever presents, then whoever speaks */
   activeSpeakerId?: string;
+  /** Kept on the stage, whoever speaks: a tile's menu pins and unpins. */
+  pinnedId?: string;
+  /** A tile's Pin or Unpin; Unpin hands `undefined`. Left out, the menus offer neither. */
+  onPinnedChange?: (id: string | undefined) => void;
+  /** The speaker everyone plays through, a `deviceId` from `useMediaDevices`. */
+  audioOutput?: string;
   /** Above the tiles: the conversation's name. */
   title?: Child;
   /** Below the tiles: `CallControls`. */
@@ -294,11 +427,14 @@ export function CallStage(props: CallStageProps) {
   const cls = (): Slots => parts(callStyles(), props.classes);
   const presenter = (): CallParticipant | undefined =>
     props.participants.find((one) => (one.screen ?? null) !== null);
+  const pinned = (): CallParticipant | undefined =>
+    props.participants.find((one) => one.id === props.pinnedId);
   const arrangement = (): "grid" | "speaker" =>
-    props.compact === true
+    props.compact === true || pinned() !== undefined
       ? "speaker"
       : (props.layout ?? (presenter() === undefined ? "grid" : "speaker"));
   const staged = (): CallParticipant | undefined =>
+    pinned() ??
     presenter() ??
     props.participants.find((one) => one.id === props.activeSpeakerId) ??
     props.participants.find((one) => one.speaking === true && one.local !== true) ??
@@ -315,6 +451,13 @@ export function CallStage(props: CallStageProps) {
       classes={props.classes}
       class={className}
       renders={props.renders}
+      pinned={participant.id === props.pinnedId}
+      onPinChange={
+        props.onPinnedChange === undefined
+          ? undefined
+          : (one: CallParticipant, pin: boolean) => props.onPinnedChange?.(pin ? one.id : undefined)
+      }
+      audioOutput={props.audioOutput}
     />
   );
   return (

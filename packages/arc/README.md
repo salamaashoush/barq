@@ -142,7 +142,8 @@ declaration lands on the class arc's own components already use.
   `tone`, ...), `bg` (`page`, `card`, `popover`, `sunken`, `muted`, `tone`,
   ...), and `tone.success` to `tone.neutral`, which set the three custom
   properties `fg.tone`, `fg.toneBase` and `bg.tone` read below them.
-- Surfaces: `surface.card`, `sunken`, `bordered`, `elevated` and `overlay`,
+- Surfaces: `surface.card`, `sunken`, `bordered`, `elevated`, `overlay`
+  and `onMedia` (a dark scrim with white text over a picture or video),
   built from `edge` (`all`, `frame`, `input`, `top`, `bottom`, `start`),
   `rounded` (`xs` to `xl`, `full`) and `elevation.raised`.
 - State: `focus.visible` and `focus.slot` are ui's rings, `focus.inset` the
@@ -150,8 +151,10 @@ declaration lands on the class arc's own components already use.
   `focus.outline` for a scrolling region; `interaction` covers hover, focus
   within, selected, invalid, a pressable cursor and a part a finger drags.
 - `place`: a layer over its parent (`cover`, `passive` for one the pointer
-  passes through), `middle`, `fill`, `block`, `screen`, and the insets a
-  cell and a thin strip keep from their edges (`padded`, `paddedStrip`).
+  passes through), `middle`, `fill`, `block`, `screen`, the insets a
+  cell and a thin strip keep from their edges (`padded`, `paddedStrip`),
+  `endCorner` (a step in from the bottom corner at the line's end) and
+  `floating` (fixed on the overlay's layer).
 - `motion.colours`, `motion.transform` and `motion.enter`, whose duration goes
   to nothing under reduced motion so a state still lands.
 - `target.size`: 24px under a fine pointer and 44px under a coarse one, for a
@@ -1380,8 +1383,21 @@ first opens. Rich message content is drawn by `RichTextRenderer` from
   `MediaStream` the app hands it (WebRTC stays in the app), mirrors the
   reader's own camera, shows the avatar while the camera is off and says
   muted, presenting, speaking and a poor connection; `renders.video` draws
-  the stream in an element of the app's. `CallControls` is one toolbar for
+  the stream in an element of the app's. Each tile has a menu on hover or
+  focus, and on a long press under a finger: Pin (the stage's `pinnedId`
+  and `onPinnedChange`), Mute for me, which silences them here only, and
+  Full screen. `CallControls` is one toolbar for
   the microphone, the camera, the screen, a devices menu and Leave.
+  `useMediaDevices` lists the microphones, cameras and speakers as they
+  are plugged in and out, keeps the one chosen of each (back to the
+  default when it is unplugged), says whether the page may use them,
+  `request`s them, which names them, and hands `getUserMedia` its
+  constraints; its `devices`, `selected` and `select` are what
+  `CallControls` takes, and a stage's `audioOutput` plays through the
+  chosen speaker. `CallWindow` is a small window over the page for a call
+  the reader has left the page of: it opens in the bottom corner at the
+  end of the line, its grip drags it by pointer or finger and moves it with
+  the arrow keys, and it stays inside the viewport.
   `IncomingCall` says who is calling, aloud too, with Accept and Decline,
   and `CallBanner` shows a call going on in a conversation with its time,
   its people and Join.

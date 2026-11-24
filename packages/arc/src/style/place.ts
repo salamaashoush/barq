@@ -1,5 +1,5 @@
 import { arcLayer as arc } from "../layer.ts";
-import { space } from "./tokens.ts";
+import { space, zIndex } from "./tokens.ts";
 
 /**
  * Where a part sits and how big it is, for the arrangements several parts
@@ -27,6 +27,10 @@ export const place = {
   unpadded: arc({ padding: "0px" }),
   /** Over its positioned parent and out of the way: the pointer passes through it and it is never selected. */
   passive: arc({ position: "absolute", pointerEvents: "none", userSelect: "none" }),
+  /** Kept a step in from the bottom corner at the end of the line: a jump button, a floating window. */
+  endCorner: arc({ insetBlockEnd: space.x4, insetInlineEnd: space.x4 }),
+  /** Fixed over the whole page, on the overlay's layer: a spotlight, a floating window. */
+  floating: arc({ position: "fixed", zIndex: zIndex.overlay }),
   /** An `::after` drawn over its positioned parent, for a part that adds a mark or a hit area of its own. */
   afterLayer: arc({ "::after": { content: '""', position: "absolute" } }),
 };

@@ -59,6 +59,8 @@ export const surface = {
   bordered: arc(edge.all, rounded.lg),
   /** Over the page: a popover's fill, an edge and a shadow. */
   elevated: arc(edge.all, rounded.lg, bg.popover, fg.popover, elevation.raised),
+  /** Over a picture or a video: a dark scrim with white text, a caption or a control on a call's tile. */
+  onMedia: arc({ backgroundColor: "color-mix(in oklab, black 55%, transparent)", color: "white" }),
   /** The scrim behind a modal. */
   overlay: arc({ backgroundColor: "var(--overlay)" }),
 };
