@@ -39,4 +39,9 @@ describe("what an app pays for the editor", () => {
     );
     for (const [, kinds] of languages) expect([...kinds]).toEqual(["dynamic-import"]);
   });
+
+  test("the collaboration entry is where the Yjs binding comes in", () => {
+    const graph = importGraph(join(editor, "collaboration.tsx"));
+    expect(graph.packages.has("@barqjs/lexical/collaboration")).toBe(true);
+  });
 });

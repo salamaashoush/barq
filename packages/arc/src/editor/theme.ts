@@ -76,6 +76,21 @@ export const documentStyles = variants({
       unicodeBidi: "isolate",
     }),
     block: arc(layout.relative, blockGap),
+    remoteCaret: arc({
+      width: "2px",
+      backgroundColor: "var(--lexical-cursor-color)",
+      zIndex: "1",
+      pointerEvents: "none",
+    }),
+    remoteName: arc(type.caption, type.medium, rounded.xs, {
+      position: "absolute",
+      insetBlockEnd: "100%",
+      insetInlineStart: "-1px",
+      paddingInline: space.x1,
+      whiteSpace: "nowrap",
+      color: "white",
+      backgroundColor: "var(--lexical-cursor-color)",
+    }),
     blockSelected: arc(rounded.md, { outline: `2px solid ${tokens.ring}`, outlineOffset: "2px" }),
   },
 });
@@ -136,6 +151,7 @@ export function editorTheme(slots: DocumentSlots = documentStyles()): EditorThem
     hr: slots.hr,
     mention: slots.mention,
     blockSelected: slots.blockSelected,
+    collaboration: { cursor: slots.remoteCaret, cursorName: slots.remoteName },
     block: slots.block,
   };
 }

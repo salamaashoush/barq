@@ -66,6 +66,11 @@
       "barq": "./src/editor/index.ts",
       "bun": "./src/editor/index.ts"
     },
+    "./editor/collaboration": {
+      "types": "./src/editor/collaboration.tsx",
+      "barq": "./src/editor/collaboration.tsx",
+      "bun": "./src/editor/collaboration.tsx"
+    },
     "./package.json": "./package.json"
   },
   "publishConfig": {
