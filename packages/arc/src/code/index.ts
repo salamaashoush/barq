@@ -1,4 +1,6 @@
 export { CodeBlock, type CodeBlockProps, Highlight, type HighlightProps } from "./code-block.tsx";
+export { CodeEditor, type CodeEditorProps } from "./code-editor.tsx";
+export { codeTheme, diffChrome } from "./editor-theme.ts";
 export { codeHighlighter, highlightHtml } from "./highlight.ts";
 export {
   type CodeLanguage,
