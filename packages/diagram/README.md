@@ -105,7 +105,7 @@ What it does, and the keys Excalidraw gives each:
 
 - tools: selection `V` or `1`, rectangle `R` or `2`, diamond `D` or `3`,
   ellipse `O` or `4`, arrow `A` or `5` (again to change its kind), line `L`
-  or `6`, freedraw `P`, `X` or `7`, hand `H`; `Q` keeps the tool after
+  or `6`, freedraw `P`, `X` or `7`, text `T` or `8`, hand `H`; `Q` keeps the tool after
   drawing; shift draws equal sides and alt draws from the centre;
 - lines and arrows are drawn by dragging, or click by click and ended with
   Enter or Escape; a line closed on its first point becomes a polygon; Enter
@@ -123,6 +123,16 @@ What it does, and the keys Excalidraw gives each:
   macOS, to the back and front), Ctrl+G groups and Ctrl+Shift+G ungroups,
   Ctrl+Shift+L locks (and unlocks everything with nothing selected),
   Ctrl+Shift with an arrow aligns, Alt+H and Alt+V distribute;
+- text is written in a textarea laid over it, in its font, size, colour,
+  alignment and rotation: the text tool writes where it clicks, labels an
+  empty shape or arrow clicked near its middle and edits the text it clicks;
+  a double-click or Enter writes in a shape (its label, centred and wrapped
+  at its width, the shape growing to fit) or edits text; Escape or
+  Ctrl+Enter ends it with the text selected, and so does focus moving away;
+  Tab and Shift+Tab indent; free text grows to the view's width and wraps
+  from there, a drag with the text tool sets the width, and Alt+W toggles
+  between the two; Ctrl+Shift+`<` and `>` size it; right-to-left lines and
+  an IME's composition are the browser's own;
 - Ctrl+Z undoes, Ctrl+Shift+Z or Ctrl+Y redoes;
 - space-drag, the middle button and the hand tool pan; ctrl-wheel and a
   pinch zoom; Ctrl+`=`, `-` and `0` zoom, Shift+1 fits; Ctrl+`'` shows the
@@ -155,9 +165,17 @@ state changes at once; the store, history and `onChange` follow once per
 input event, and the canvases draw once a frame, so a drag mutates the
 dragged elements and redraws without anything reactive in between.
 
-Text editing is left to the host: a double-click, or Enter on text or a
-shape, calls `onTextEditRequest` with the scene point and the shape a text
-editor should open on.
+Text is edited in a textarea the host makes: `onTextEditRequest` hands it
+a request with the text element (new text is in the scene already), and
+the host puts a `<textarea>` in the container and gives it to
+`request.attach`; the editor places, styles and drives it, and
+`onTextEditEnd` says when to remove it. Without a subscriber, text is not
+edited. `<DiagramEditor>` answers both with a textarea of its own, so a
+keystroke goes from the textarea to the element without anything reactive
+in between. The text actions (`actionChangeFontSize`,
+`actionChangeFontFamily`, `actionChangeTextAlign`,
+`actionChangeVerticalAlign`, `actionTextAutoResize` and the size steps) run
+through `editor.actionManager.executeAction`.
 
 ## Server rendering
 

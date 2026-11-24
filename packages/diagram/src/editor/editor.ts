@@ -1,6 +1,7 @@
 import {
   ARROW_TYPE,
   CURSOR_TYPE,
+  getFontString,
   DEFAULT_COLLISION_THRESHOLD,
   DEFAULT_STROKE_STREAMLINE,
   DEFAULT_STROKE_STREAMLINE_PRECISE,
@@ -13,12 +14,14 @@ import {
   LINE_CONFIRM_THRESHOLD,
   MINIMUM_ARROW_SIZE,
   POINTER_BUTTON,
+  TAP_TWICE_TIMEOUT,
   ROUNDNESS,
   createUserAgentDescriptor,
   getGridPoint,
   getStrokeWidthByKey,
   invariant,
   isArrowKey,
+  isTransparent,
   isInputLike,
   isSelectionLikeTool,
   isShallowEqual,
@@ -32,12 +35,23 @@ import {
   viewportCoordsToSceneCoords,
 } from "@excalidraw/common";
 import {
+  bindBindingElementToFixedPoint,
   bindOrUnbindBindingElement,
   bindOrUnbindBindingElements,
   calculateFixedPointForNonElbowArrowBinding,
   CaptureUpdateAction,
   deepCopyElement,
   dragNewElement,
+  dragNewTextElement,
+  getEndpointBoundTextDragAnchor,
+  getTextBindingForArrowEndpoint,
+  getUnboundArrowEndpointAtPoint,
+  getContainerCenter,
+  getMinTextElementWidth,
+  hasBoundTextElement,
+  isEndpointBoundText,
+  isTextBindableContainer,
+  isValidTextContainer,
   getBindingStrategyForDraggingBindingElementEndpoints,
   getCommonBounds,
   getContainingFrame,
@@ -98,7 +112,7 @@ import { getRenderEnvironment } from "@excalidraw/element/renderEnvironment";
 import { pointDistance, pointFrom } from "@excalidraw/math";
 
 import type { EditorInterface } from "@excalidraw/common";
-import type { BindingStrategy } from "@excalidraw/element";
+import type { ArrowEndpoint, BindingStrategy } from "@excalidraw/element";
 import type { RenderEnvironment } from "@excalidraw/element/renderEnvironment";
 import type {
   ExcalidrawBindableElement,
@@ -108,6 +122,9 @@ import type {
   ExcalidrawGenericElement,
   ExcalidrawIframeLikeElement,
   ExcalidrawLinearElement,
+  ExcalidrawTextContainer,
+  ExcalidrawTextElement,
+  FixedPoint,
   NonDeleted,
   NonDeletedExcalidrawElement,
   Ordered,
@@ -148,6 +165,8 @@ import {
   SnapCache,
   snapNewElement,
 } from "./snapping.ts";
+import { EditorText } from "./text.ts";
+import { TextTool } from "./text-tool.ts";
 import { TOGGLE_TOOLS, findToolByKey, isEditorTool } from "./tools.ts";
 import { patchLinearEditor } from "./linear.ts";
 
@@ -161,6 +180,9 @@ import type {
   ToolType,
 } from "../types.ts";
 import type { FinalizeData } from "./actions/finalize.ts";
+import type { TextEditRequest } from "./text.ts";
+
+export type { TextEditRequest };
 import type {
   Action,
   ActionResult,
@@ -175,13 +197,6 @@ export type DiagramChangeListener = (
   appState: AppState,
   files: BinaryFiles,
 ) => void;
-
-/** Where a text editor should open: the text editor itself is not part of this editor. */
-export interface TextEditRequest {
-  sceneX: number;
-  sceneY: number;
-  container: NonDeletedExcalidrawElement | null;
-}
 
 /** The scene an `updateScene` replaces, and how the change is recorded for undo. */
 export interface SceneData {
@@ -284,25 +299,98 @@ export class DiagramEditor {
   public readonly selection: EditorSelection;
   public readonly selectionTool: SelectionTool;
   public readonly cursor: EditorCursor;
+  public readonly text: EditorText;
+  public readonly textTool: TextTool;
   public readonly renderEnvironment: RenderEnvironment;
   public readonly ownerWindow: Window & typeof globalThis;
   public readonly ownerDocument: Document;
   public editorInterface: EditorInterface = DEFAULT_EDITOR_INTERFACE;
   public readonly api: DiagramEditorApi;
 
-  /** The arrow-label helpers `@excalidraw/element`'s line editor asks for. */
+  /**
+   * Text and arrows, Excalidraw's `AppArrowText`: the free endpoint a new
+   * text binds to, the binding, drag-sizing such a text, and grabbing a label.
+   */
   public readonly arrowText = {
     isBoundTextGrabbable: (element: NonDeletedExcalidrawElement, x: number, y: number) =>
       this.isBoundTextGrabbable(element, x, y),
+    /**
+     * A free arrow endpoint a new text could bind to: an arrow binding, so
+     * Ctrl or Cmd turns it off. An element stacked above the arrow that the
+     * pointer hits owns the click instead.
+     */
+    getBindableEndpointAtPosition: (x: number, y: number): ArrowEndpoint | null => {
+      if (!isBindingEnabled(this.state)) {
+        return null;
+      }
+      const endpoint = getUnboundArrowEndpointAtPoint(
+        pointFrom(x, y),
+        this.scene.getNonDeletedElements(),
+        this.scene.getNonDeletedElementsMap(),
+        this.state.zoom,
+      );
+      if (!endpoint) {
+        return null;
+      }
+      const hitElement = this.getElementAtPosition(x, y, { includeLockedElements: true });
+      if (
+        hitElement &&
+        hitElement.id !== endpoint.arrow.id &&
+        this.scene.getElementIndex(hitElement.id) > this.scene.getElementIndex(endpoint.arrow.id)
+      ) {
+        return null;
+      }
+      return endpoint;
+    },
+    /** How a text reads as this endpoint's label: the side to bind, its alignment and place. */
+    getTextBinding: ({ arrow, startOrEnd }: ArrowEndpoint, targetStrokeWidth: number) =>
+      getTextBindingForArrowEndpoint(
+        arrow,
+        startOrEnd,
+        this.scene.getNonDeletedElementsMap(),
+        targetStrokeWidth,
+      ),
+    bindText: (
+      { arrow, startOrEnd }: ArrowEndpoint,
+      text: NonDeleted<ExcalidrawTextElement>,
+      fixedPoint: FixedPoint,
+    ): void => {
+      bindBindingElementToFixedPoint(arrow, text, startOrEnd, fixedPoint, this.scene);
+    },
+    /** A text bound to an endpoint is placed by the binding: only its width is dragged out. */
+    maybeDragNewText: (
+      newElementBeingDrawn: ExcalidrawElement,
+      pointerCoords: { x: number; y: number },
+    ): boolean => {
+      if (
+        !isTextElement(newElementBeingDrawn) ||
+        !isEndpointBoundText(newElementBeingDrawn, this.scene.getNonDeletedElementsMap())
+      ) {
+        return false;
+      }
+      dragNewTextElement({
+        newElement: newElementBeingDrawn,
+        ...getEndpointBoundTextDragAnchor(newElementBeingDrawn),
+        pointerX: pointerCoords.x,
+        zoom: this.state.zoom.value,
+        scene: this.scene,
+        renderEnvironment: this.renderEnvironment,
+      });
+      return true;
+    },
   };
 
   public lastPointerMoveEvent: PointerEvent | null = null;
   public lastPointerMoveCoords: { x: number; y: number } | null = null;
   public lastPointerDownEvent: PointerEvent | null = null;
   public lastPointerUpEvent: PointerEvent | null = null;
+  /** The last pointer up came within a double tap's time of the one before. */
+  public lastPointerUpIsDoubleClick = false;
   /** The pending switch into the inside-binding mode; the interactive renderer reads it. */
   public bindModeHandler: ReturnType<typeof setTimeout> | null = null;
   public activeResizeHandle: string | null = null;
+  /** The text whose editor handed its alt-press over to the canvas, while it is replayed. */
+  public handedOverTextId: ExcalidrawTextElement["id"] | null = null;
 
   private _state: AppState;
   private committedState: AppState;
@@ -311,6 +399,7 @@ export class DiagramEditor {
   private readonly changeEmitter = new Emitter<Parameters<DiagramChangeListener>>();
   private readonly announceEmitter = new Emitter<[message: string]>();
   private readonly textEditEmitter = new Emitter<[request: TextEditRequest]>();
+  private readonly textEditEndEmitter = new Emitter();
   private readonly listeners: (() => void)[] = [];
   private readonly resize: ResizeObserver | null = null;
   private readonly gesture: Gesture = {
@@ -383,6 +472,8 @@ export class DiagramEditor {
     this.selection = new EditorSelection(this);
     this.selectionTool = new SelectionTool(this);
     this.cursor = new EditorCursor(interactiveCanvas, () => this.state);
+    this.text = new EditorText(this);
+    this.textTool = new TextTool(this);
 
     this.api = {
       updateScene: (scene) => this.batch(() => this.updateScene(scene)),
@@ -470,9 +561,55 @@ export class DiagramEditor {
     return this.announceEmitter.on(listener);
   }
 
-  /** Subscribes to requests to edit text (a double-click, Enter on text), which a text editor answers. */
+  /**
+   * Subscribes to requests to edit text: a double-click, Enter on text or a
+   * shape, the text tool. The host answers with a textarea given to
+   * `request.attach`; without a subscriber, text is not edited.
+   */
   public onTextEditRequest(listener: (request: TextEditRequest) => void): () => void {
     return this.textEditEmitter.on(listener);
+  }
+
+  /** Subscribes to the end of a text edit, when the host removes its textarea. */
+  public onTextEditEnd(listener: () => void): () => void {
+    return this.textEditEndEmitter.on(listener);
+  }
+
+  public hasTextEditor(): boolean {
+    return this.textEditEmitter.subscribers.length > 0;
+  }
+
+  public emitTextEditRequest(request: TextEditRequest): void {
+    this.textEditEmitter.trigger(request);
+  }
+
+  public emitTextEditEnd(): void {
+    this.textEditEndEmitter.trigger();
+  }
+
+  public get isDestroyed(): boolean {
+    return this.destroyed;
+  }
+
+  /** The scene's fonts, which load the faces text needs and measure it again. */
+  public get fonts() {
+    return this.sceneCanvas.fonts;
+  }
+
+  /** Runs `callback` once what is under way has been committed. */
+  public afterNextCommit(callback: () => void): void {
+    this.afterCommit.push(callback);
+    this.requestCommit();
+  }
+
+  /** Whether the viewport is being navigated: space held, a drag-pan, a scrollbar, the hand tool. */
+  public isNavigating(): boolean {
+    return (
+      this.spaceHeld ||
+      this.panTeardown !== null ||
+      this.isDraggingScrollBar ||
+      isHandToolActive(this.state)
+    );
   }
 
   public getFiles(): BinaryFiles {
@@ -552,6 +689,24 @@ export class DiagramEditor {
         selectedElementIds: makeNextSelectedElementIds(nextSelectedElementIds, this._state),
       };
       this.committedState = this._state;
+    }
+
+    // neither the text tool's hover nor a pending centre click outlives the tool
+    if (prevState.activeTool.type === "text" && this.state.activeTool.type !== "text") {
+      this.textTool.clearHover();
+      this.textTool.cancel();
+    }
+    if (
+      prevState.zoom.value !== this.state.zoom.value ||
+      prevState.scrollX !== this.state.scrollX ||
+      prevState.scrollY !== this.state.scrollY
+    ) {
+      // the scene moved under a still pointer
+      this.textTool.refresh();
+    }
+    if (this.state.viewModeEnabled && !prevState.viewModeEnabled) {
+      // nothing is edited in view mode
+      queueMicrotask(() => this.text.textWysiwygSubmitHandler?.());
     }
 
     this.store.commit(this.scene.getElementsMapIncludingDeleted(), this.state);
@@ -800,7 +955,7 @@ export class DiagramEditor {
       : null;
   }
 
-  private getCurrentItemStrokeWidth(elementType: ExcalidrawElement["type"]): number {
+  public getCurrentItemStrokeWidth(elementType: ExcalidrawElement["type"]): number {
     return getStrokeWidthByKey(elementType, this.state.currentItemStrokeWidthKey);
   }
 
@@ -893,7 +1048,7 @@ export class DiagramEditor {
   }
 
   /** Whether the element's frame clips it away at the point. */
-  private isClippedByFrameAt(x: number, y: number, element: ExcalidrawElement): boolean {
+  public isClippedByFrameAt(x: number, y: number, element: ExcalidrawElement): boolean {
     const elementsMap = this.scene.getNonDeletedElementsMap();
     const containingFrame = getContainingFrame(element, elementsMap);
     return (
@@ -1211,7 +1366,7 @@ export class DiagramEditor {
    * secondary button, the main button with space held or the hand tool, or
    * any button in view mode.
    */
-  private startPan(event: PointerEvent): boolean {
+  public startPan(event: PointerEvent): boolean {
     if (
       !(
         this.gesture.pointers.size <= 1 &&
@@ -1351,6 +1506,15 @@ export class DiagramEditor {
 
     this.setState({ selectedElementsAreBeingDragged: false });
 
+    if (
+      this.text.handleTextAutoResizeHandlePointerDown(
+        this.scene.getSelectedElements(this.state),
+        pointerDownState.origin,
+      )
+    ) {
+      return;
+    }
+
     if (this.handleDraggingScrollBar(event, pointerDownState)) {
       return;
     }
@@ -1370,7 +1534,9 @@ export class DiagramEditor {
     }
 
     const toolType = this.state.activeTool.type;
-    if (toolType === "arrow" || toolType === "line") {
+    if (toolType === "text") {
+      this.textTool.handlePointerDown(event, pointerDownState);
+    } else if (toolType === "arrow" || toolType === "line") {
       this.handleLinearElementOnPointerDown(event, toolType, pointerDownState);
     } else if (toolType === "freedraw") {
       this.handleFreeDrawElementOnPointerDown(event, pointerDownState);
@@ -1425,6 +1591,9 @@ export class DiagramEditor {
 
   private handleCanvasPointerUp(event: PointerEvent): void {
     this.removePointer(event);
+    this.lastPointerUpIsDoubleClick =
+      this.lastPointerUpEvent !== null &&
+      event.timeStamp - this.lastPointerUpEvent.timeStamp <= TAP_TWICE_TIMEOUT;
     this.lastPointerUpEvent = event;
     if (!event.ctrlKey) {
       const preferenceEnabled = this.state.bindingPreference === "enabled";
@@ -1494,7 +1663,7 @@ export class DiagramEditor {
         cycleTarget: null,
         hasBeenDuplicated: false,
         advancedListMarkers: [],
-        editedTextId: null,
+        editedTextId: this.handedOverTextId,
         arrowLabel: false,
         hasHitCommonBoundingBoxOfSelectedElements:
           this.selection.isHittingCommonBoundingBoxOfSelectedElements(origin, selectedElements),
@@ -1864,7 +2033,7 @@ export class DiagramEditor {
   }
 
   /** Sizes the element being drawn out, or the selection box, to the pointer. */
-  private maybeDragNewGenericElement(
+  public maybeDragNewGenericElement(
     pointerDownState: PointerDownState,
     event: MouseEvent | KeyboardEvent,
     informMutation = true,
@@ -1893,6 +2062,10 @@ export class DiagramEditor {
 
     const newElementBeingDrawn = this.state.newElement;
     if (!newElementBeingDrawn) {
+      return;
+    }
+
+    if (this.arrowText.maybeDragNewText(newElementBeingDrawn, pointerCoords)) {
       return;
     }
 
@@ -2003,6 +2176,10 @@ export class DiagramEditor {
     }
 
     if (this.handlePointerMoveOverScrollbars(event, pointerDownState)) {
+      return;
+    }
+
+    if (this.textTool.handlePointerMove(event, pointerDownState)) {
       return;
     }
 
@@ -2228,6 +2405,8 @@ export class DiagramEditor {
     this.removePointer(childEvent);
     pointerDownState.drag.blockDragging = false;
 
+    this.textTool.handlePointerUp(childEvent, pointerDownState);
+
     const {
       newElement: newElementAtUp,
       resizingElement,
@@ -2270,7 +2449,9 @@ export class DiagramEditor {
       const hitLockedElement = this.getElementAtPosition(sceneCoords.x, sceneCoords.y, {
         includeLockedElements: true,
       });
-      this.store.scheduleCapture();
+      if (!this.text.isEditingTextContent()) {
+        this.store.scheduleCapture();
+      }
       this.setState({
         activeLockedId: hitLockedElement?.locked
           ? hitLockedElement.groupIds.length > 0
@@ -2464,6 +2645,20 @@ export class DiagramEditor {
       return;
     }
 
+    if (isTextElement(newElementAtUp)) {
+      const minWidth = getMinTextElementWidth(
+        getFontString({ fontSize: newElementAtUp.fontSize, fontFamily: newElementAtUp.fontFamily }),
+        newElementAtUp.lineHeight,
+        this.renderEnvironment,
+      );
+      // too narrow to have been sized: it grows with its content
+      if (newElementAtUp.width < minWidth) {
+        this.scene.mutateElement(newElementAtUp, { autoResize: true });
+      }
+      this.cursor.reset();
+      this.text.handleTextWysiwyg(newElementAtUp, { isExistingElement: true });
+    }
+
     if (
       activeTool.type !== "selection" &&
       newElementAtUp &&
@@ -2563,8 +2758,13 @@ export class DiagramEditor {
       return;
     }
 
+    const selectedTextEditingContainer = this.text.getSelectedTextEditingContainerAtPosition(
+      hitElement,
+      sceneCoords,
+    );
     if (
       activeTool.type === this.state.preferredSelectionTool.type &&
+      !this.state.editingTextElement &&
       !pointerDownState.drag.hasOccurred &&
       !pointerDownState.hit.wasAddedToSelection &&
       !childEvent.shiftKey &&
@@ -2572,11 +2772,19 @@ export class DiagramEditor {
       !childEvent.altKey &&
       childEvent.pointerType !== "touch" &&
       hitElement &&
-      isTextElement(hitElement) &&
-      this.state.selectedElementIds[hitElement.id] &&
-      this.scene.getSelectedElements(this.state).length === 1
+      ((isTextElement(hitElement) &&
+        this.state.selectedElementIds[hitElement.id] &&
+        this.scene.getSelectedElements(this.state).length === 1) ||
+        selectedTextEditingContainer)
     ) {
-      this.startTextEditing({ sceneX: sceneCoords.x, sceneY: sceneCoords.y, container: null });
+      // a click on the selected text, or on a selected shape's label, edits it
+      // with the caret where it was clicked
+      this.text.startTextEditing({
+        sceneX: sceneCoords.x,
+        sceneY: sceneCoords.y,
+        container: selectedTextEditingContainer,
+        initialCaretSceneCoords: this.lastPointerUpIsDoubleClick ? undefined : sceneCoords,
+      });
       return;
     }
 
@@ -2590,9 +2798,10 @@ export class DiagramEditor {
     }
 
     if (
-      activeTool.type !== "selection" ||
-      this.scene.getSelectedElements(this.state).length > 0 ||
-      !isShallowEqual(this.state.previousSelectedElementIds, this.state.selectedElementIds)
+      !this.text.isEditingTextContent() &&
+      (activeTool.type !== "selection" ||
+        this.scene.getSelectedElements(this.state).length > 0 ||
+        !isShallowEqual(this.state.previousSelectedElementIds, this.state.selectedElementIds))
     ) {
       this.store.scheduleCapture();
     }
@@ -2673,6 +2882,8 @@ export class DiagramEditor {
           : null,
       );
     }
+
+    const textToolTarget = this.textTool.updateHover(scenePointer, event, isOverScrollBar);
 
     if (!this.state.newElement && isActiveToolNonLinearSnappable(this.state.activeTool.type)) {
       // where a shape would start, snapped to the others
@@ -2779,11 +2990,28 @@ export class DiagramEditor {
       }
     }
 
-    if (Boolean(event.buttons) || this.state.activeTool.type !== "selection") {
+    if (
+      Boolean(event.buttons) ||
+      (this.state.activeTool.type !== "selection" &&
+        this.state.activeTool.type !== "lasso" &&
+        this.state.activeTool.type !== "text" &&
+        this.state.activeTool.type !== "eraser")
+    ) {
       return;
     }
 
     const selectedElements = this.scene.getSelectedElements(this.state);
+
+    if (this.text.isHittingTextAutoResizeHandle(selectedElements, scenePointer)) {
+      this.cursor.set(CURSOR_TYPE.POINTER);
+      return;
+    }
+
+    const editedTextResizeHandle = this.text.getEditedTextResizeHandleAt(scenePointer);
+    if (editedTextResizeHandle) {
+      this.cursor.set(getCursorForResizingElement(editedTextResizeHandle));
+      return;
+    }
 
     if (!isOverScrollBar) {
       // a line's points take precedence over the edge it can be resized by
@@ -2817,7 +3045,9 @@ export class DiagramEditor {
     });
     const hitElement = hitElementMightBeLocked?.locked ? null : hitElementMightBeLocked;
 
-    if (
+    if (this.state.activeTool.type === "text") {
+      this.cursor.set(this.textTool.cursorFor(textToolTarget));
+    } else if (
       !event[KEYS.CTRL_OR_CMD] &&
       this.selection.isHittingCommonBoundingBoxOfSelectedElements(scenePointer, selectedElements)
     ) {
@@ -3116,18 +3346,58 @@ export class DiagramEditor {
       }
     }
 
-    if (!this.state.viewModeEnabled && !this.state.selectedLinearElement?.isEditing) {
-      this.startTextEditing({
-        sceneX,
-        sceneY,
-        container: selectedElements.length === 1 && selected ? selected : null,
-      });
+    if (this.state.viewModeEnabled || this.state.selectedLinearElement?.isEditing) {
+      // the line editor's double-click is too often a false positive
+      return;
     }
+    let textX = sceneX;
+    let textY = sceneY;
+    const container: NonDeleted<ExcalidrawTextContainer> | null =
+      // Ctrl or Cmd skips binding to a container
+      !event[KEYS.CTRL_OR_CMD]
+        ? // a single selected element is what the double-click is about,
+          // wherever it lands
+          selectedElements.length === 1
+          ? selected && isTextBindableContainer(selected, false)
+            ? selected
+            : null
+          : this.text.getTextBindableContainerAtPosition(sceneX, sceneY)
+        : null;
+    if (
+      container &&
+      (hasBoundTextElement(container) ||
+        !isTransparent(container.backgroundColor) ||
+        hitElementItself({
+          point: pointFrom(sceneX, sceneY),
+          element: container,
+          elementsMap: this.scene.getNonDeletedElementsMap(),
+          threshold: this.getElementHitThreshold(container),
+          frameNameBound: null,
+        }))
+    ) {
+      const midPoint = getContainerCenter(container, this.scene.getNonDeletedElementsMap());
+      textX = midPoint.x;
+      textY = midPoint.y;
+    }
+    this.text.startTextEditing({
+      sceneX: textX,
+      sceneY: textY,
+      insertAtParentCenter: !event.altKey,
+      container,
+    });
   }
 
-  /** Asks for a text editor at a scene point, in `container` when there is one. */
-  private startTextEditing(request: TextEditRequest): void {
-    this.textEditEmitter.trigger(request);
+  /**
+   * An alt-press on the text being edited, once it ended the edit, is handed
+   * to the canvas, for the text to be alt-dragged (duplicated) as on it.
+   */
+  public handOverTextEditorPress(event: PointerEvent, textElementId: string): void {
+    this.handedOverTextId = textElementId;
+    try {
+      this.interactiveCanvas.dispatchEvent(new this.ownerWindow.PointerEvent(event.type, event));
+    } finally {
+      this.handedOverTextId = null;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -3216,6 +3486,8 @@ export class DiagramEditor {
 
     if (event[KEYS.CTRL_OR_CMD] && !event.repeat) {
       this.setState({ isBindingEnabled: this.state.bindingPreference !== "enabled" });
+      // what a text-tool click here would do changed, with no pointer move
+      this.textTool.refresh(event);
       maybeHandleArrowPointlikeDrag({ app: this.elementApp, event });
     }
 
@@ -3343,12 +3615,12 @@ export class DiagramEditor {
         }
       }
       event.preventDefault();
-    } else if (isTextElement(selected) || isBindableElement(selected)) {
-      const [x1, y1, x2, y2] = getCommonBounds([selected]);
-      this.startTextEditing({
-        sceneX: (x1 + x2) / 2,
-        sceneY: (y1 + y2) / 2,
-        container: isTextElement(selected) ? null : selected,
+    } else if (isTextElement(selected) || isValidTextContainer(selected)) {
+      const midPoint = getContainerCenter(selected, this.scene.getNonDeletedElementsMap());
+      this.text.startTextEditing({
+        sceneX: midPoint.x,
+        sceneY: midPoint.y,
+        container: isTextElement(selected) ? undefined : selected,
       });
       event.preventDefault();
     }
@@ -3512,6 +3784,7 @@ export class DiagramEditor {
       const preferenceEnabled = this.state.bindingPreference === "enabled";
       if (this.state.isBindingEnabled !== preferenceEnabled) {
         this.setState({ isBindingEnabled: preferenceEnabled });
+        this.textTool.refresh(event);
       }
       maybeHandleArrowPointlikeDrag({ app: this.elementApp, event });
     }
@@ -3688,6 +3961,7 @@ export class DiagramEditor {
   public destroy(): void {
     if (this.destroyed) return;
     this.maybeCleanupAfterMissingPointerUp(null);
+    this.text.destroy();
     this.destroyed = true;
     if (this.frame !== null) this.ownerWindow.cancelAnimationFrame(this.frame);
     this.resize?.disconnect();
@@ -3695,6 +3969,7 @@ export class DiagramEditor {
     this.changeEmitter.clear();
     this.announceEmitter.clear();
     this.textEditEmitter.clear();
+    this.textEditEndEmitter.clear();
     this.store.onDurableIncrementEmitter.clear();
     SnapCache.destroy();
     this.sceneCanvas.destroy();

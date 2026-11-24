@@ -155,12 +155,15 @@ describe("announcements", () => {
 });
 
 describe("text editing requests", () => {
-  test("a double-click on the canvas asks for a text editor there", () => {
+  test("a double-click on the canvas asks for a new text there", () => {
     renderEditor();
     const requests: TextEditRequest[] = [];
     h().onTextEditRequest((request) => requests.push(request));
     mouse.doubleClickAt(300, 200);
-    expect(requests).toEqual([{ sceneX: 300, sceneY: 200, container: null }]);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.element.type).toBe("text");
+    expect(requests[0]?.element.x).toBe(300);
+    expect([requests[0]?.sceneX, requests[0]?.sceneY]).toEqual([300, 200]);
   });
 
   test("Enter on a shape asks for its label", () => {
@@ -171,7 +174,14 @@ describe("text editing requests", () => {
     mouse.clickAt(50, 50);
     Keyboard.keyPress(KEYS.ENTER);
     expect(requests).toHaveLength(1);
-    expect(requests[0]?.container?.id).toBe("A");
+    expect(requests[0]?.element.containerId).toBe("A");
     expect([requests[0]?.sceneX, requests[0]?.sceneY]).toEqual([50, 50]);
+  });
+
+  test("without a text editor, nothing is created", () => {
+    renderEditor({ textEditor: false });
+    mouse.doubleClickAt(300, 200);
+    expect(h().scene.getElementsIncludingDeleted()).toHaveLength(0);
+    expect(h().state.editingTextElement).toBeNull();
   });
 });

@@ -107,6 +107,33 @@ describe("DiagramEditor", () => {
     expect(status.textContent?.trim()).toBe("Rectangle selected");
   });
 
+  test("writes text in a textarea it mounts over the canvas, and removes it after", async () => {
+    const { api, region } = await mount((grab) => <DiagramEditor api={grab} />);
+    key(region, { key: "t", code: "KeyT" });
+    const interactive = region.querySelectorAll("canvas")[2]!;
+    pointer(interactive, "pointerdown", 200, 100);
+    pointer(interactive, "pointerup", 200, 100);
+    await settle();
+    await settle();
+    const textarea = region.querySelector<HTMLTextAreaElement>("textarea");
+    expect(textarea?.getAttribute("aria-label")).toBe("Text");
+    expect(textarea?.dataset.type).toBe("wysiwyg");
+    expect(document.activeElement).toBe(textarea);
+
+    textarea!.value = "مرحبا world";
+    textarea!.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(api.getSceneElements()[0]?.type).toBe("text");
+    expect(api.getAppState().editingTextElement).not.toBeNull();
+
+    key(textarea!, { key: "Escape", code: "Escape" });
+    await settle();
+    expect(region.querySelector("textarea")).toBeNull();
+    const [text] = api.getSceneElements();
+    expect(text?.type === "text" && text.originalText).toBe("مرحبا world");
+    expect(api.getAppState().editingTextElement).toBeNull();
+    expect(document.activeElement).toBe(region);
+  });
+
   test("every change reaches onChange, and the keyboard edits and undoes", async () => {
     const changes: number[] = [];
     const { api, region, status } = await mount((grab) => (

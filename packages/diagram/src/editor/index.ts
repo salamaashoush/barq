@@ -13,4 +13,15 @@ export type {
   TextEditRequest,
 } from "./editor.ts";
 export { History, HistoryDelta } from "./history.ts";
+export {
+  actionChangeFontFamily,
+  actionChangeFontSize,
+  actionChangeTextAlign,
+  actionChangeVerticalAlign,
+  actionDecreaseFontSize,
+  actionIncreaseFontSize,
+  actionTextAutoResize,
+} from "./actions/text.ts";
+export { textWysiwyg } from "./wysiwyg.ts";
+export type { TextWysiwygOptions } from "./wysiwyg.ts";
 export type { Action, ActionName, ActionResult, PointerDownState } from "./types.ts";

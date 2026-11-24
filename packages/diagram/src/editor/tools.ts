@@ -20,6 +20,7 @@ export const TOOLS = {
   arrow: { letterKey: KEYS.A, numericKey: KEYS["5"] },
   line: { letterKey: KEYS.L, numericKey: KEYS["6"] },
   freedraw: { letterKey: [KEYS.P, KEYS.X], numericKey: KEYS["7"] },
+  text: { letterKey: KEYS.T, numericKey: KEYS["8"] },
 } satisfies Partial<Record<ToolType, ToolConfig>>;
 
 export type EditorToolType = keyof typeof TOOLS;

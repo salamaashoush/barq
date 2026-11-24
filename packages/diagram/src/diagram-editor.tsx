@@ -1,4 +1,11 @@
-import { createRenderEffect, createSignal, createUniqueId, onCleanup, untrack } from "@barqjs/core";
+import {
+  Show,
+  createRenderEffect,
+  createSignal,
+  createUniqueId,
+  onCleanup,
+  untrack,
+} from "@barqjs/core";
 import { useColorScheme } from "@barqjs/primitives/color-scheme";
 import { type JSX, isServer } from "@barqjs/web";
 import { THEME } from "@excalidraw/common";
@@ -8,7 +15,7 @@ import type { Theme } from "@excalidraw/element/types";
 import { DiagramEditor as Editor } from "./editor/editor.ts";
 
 import type { DiagramScene } from "./data/types.ts";
-import type { DiagramChangeListener, DiagramEditorApi } from "./editor/editor.ts";
+import type { DiagramChangeListener, DiagramEditorApi, TextEditRequest } from "./editor/editor.ts";
 
 export interface DiagramEditorProps {
   /** The scene the editor opens with; read once, as Excalidraw's `initialData`. */
@@ -36,12 +43,14 @@ const SR_ONLY =
 const CANVAS_STYLE = "position:absolute;inset:0;display:block";
 
 const KEYBOARD_HELP =
-  "Tools: V select, R rectangle, D diamond, O ellipse, A arrow, L line, P draw, H hand; " +
+  "Tools: V select, R rectangle, D diamond, O ellipse, A arrow, L line, P draw, T text, H hand; " +
   "Enter draws the tool's shape, Q keeps the tool. " +
   "Tab and Shift+Tab move through the elements, Ctrl+A selects all, Escape deselects. " +
   "Arrow keys move the selection, with Shift further. Delete removes, Ctrl+D duplicates, " +
   "Ctrl+G groups and Ctrl+Shift+G ungroups, Ctrl+Shift+L locks, Ctrl+[ and Ctrl+] restack. " +
   "Ctrl+Shift with an arrow key aligns, Alt+Shift+H and Alt+Shift+V centre, Alt+H and Alt+V distribute. " +
+  "Enter or a double-click writes in a shape or edits text; Escape or Ctrl+Enter ends it. " +
+  "Ctrl+Shift+< and > size text, Alt+W makes it grow or wrap. " +
   "Ctrl+Z undoes, Ctrl+Shift+Z redoes. Ctrl+= and Ctrl+- zoom, Shift+1 fits, Ctrl+' shows the grid, " +
   "Page Up and Page Down scroll.";
 
@@ -68,6 +77,8 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
   const theme = (): Theme => props.theme ?? fromScheme() ?? THEME.LIGHT;
   const helpId = createUniqueId();
   const [announcement, setAnnouncement] = createSignal("");
+  // the text being edited: a textarea over it while it is
+  const [textEdit, setTextEdit] = createSignal<TextEditRequest | null>(null);
 
   const size = (): string => {
     const height = props.height ?? 480;
@@ -105,10 +116,18 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
     const offChange = created.onChange((elements, appState, files) => {
       untrack(() => props.onChange)?.(elements, appState, files);
     });
+    // written outside whatever is running, as the announcements are; the
+    // keystrokes themselves never reach the graph
+    const offTextEdit = created.onTextEditRequest((request) =>
+      queueMicrotask(() => setTextEdit(request)),
+    );
+    const offTextEditEnd = created.onTextEditEnd(() => queueMicrotask(() => setTextEdit(null)));
     untrack(() => props.api)?.(created.api);
     return () => {
       offAnnounce();
       offChange();
+      offTextEdit();
+      offTextEditEnd();
       created.destroy();
       if (editor === created) editor = null;
     };
@@ -153,6 +172,17 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
       <canvas aria-hidden="true" style={CANVAS_STYLE} />
       <canvas aria-hidden="true" style={`${CANVAS_STYLE};pointer-events:none`} />
       <canvas aria-hidden="true" style={CANVAS_STYLE} />
+      <Show when={textEdit()} keyed>
+        {(request) => (
+          <textarea
+            aria-label="Text"
+            ref={(textarea: HTMLTextAreaElement) =>
+              // attached once in the region, which clips it with the canvases
+              queueMicrotask(() => request.attach(textarea))
+            }
+          />
+        )}
+      </Show>
       <div id={helpId} style={SR_ONLY}>
         {KEYBOARD_HELP}
       </div>

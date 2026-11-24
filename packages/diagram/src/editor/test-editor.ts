@@ -60,9 +60,13 @@ export const h = (): DiagramEditor => {
 };
 
 /** Mounts an editor in a 1024 by 768 container at the origin of the page. */
-export const renderEditor = (
-  options: Partial<Omit<DiagramEditorOptions, "container">> = {},
-): DiagramEditor => {
+export const renderEditor = ({
+  textEditor = true,
+  ...options
+}: Partial<Omit<DiagramEditorOptions, "container">> & {
+  /** Answers text edit requests with a textarea, as `<DiagramEditor>` does. */
+  textEditor?: boolean;
+} = {}): DiagramEditor => {
   const container = document.createElement("div");
   container.tabIndex = 0;
   container.getBoundingClientRect = () =>
@@ -88,11 +92,43 @@ export const renderEditor = (
     interactiveCanvas,
     ...options,
   });
+  if (textEditor) {
+    mountTextEditor(editor, container);
+  }
   mounted.push({ editor, container });
   current = editor;
   Keyboard.reset();
   Pointer.resetAll();
   return editor;
+};
+
+/**
+ * A host's text editor: a textarea in a box over the canvases for each
+ * request, removed when the edit ends.
+ */
+const mountTextEditor = (editor: DiagramEditor, host: HTMLElement): void => {
+  const box = document.createElement("div");
+  box.style.cssText = "position:absolute;inset:0;overflow:hidden;pointer-events:none";
+  host.append(box);
+  editor.onTextEditRequest((request) => {
+    const textarea = document.createElement("textarea");
+    textarea.style.pointerEvents = "auto";
+    box.append(textarea);
+    request.attach(textarea);
+  });
+  editor.onTextEditEnd(() => box.replaceChildren());
+};
+
+/** The open text editor's textarea, or `null`. */
+export const getTextEditor = (): HTMLTextAreaElement | null =>
+  h().container.querySelector<HTMLTextAreaElement>("textarea[data-type=wysiwyg]");
+
+/** The open text editor, once it has focus (a task after it opens). */
+export const textEditor = async (): Promise<HTMLTextAreaElement> => {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const textarea = getTextEditor();
+  if (!textarea) throw new Error("no text editor is open");
+  return textarea;
 };
 
 /** Destroys the editors `renderEditor` mounted. */
@@ -459,6 +495,17 @@ const proxy = <T extends ExcalidrawElement>(element: T): Proxied<T> =>
 type DrawingTool = "rectangle" | "diamond" | "ellipse" | "arrow" | "line" | "freedraw";
 
 export const UI = {
+  /** Types into the text editor: its value becomes `value`, as one input. */
+  updateTextEditor(textarea: HTMLTextAreaElement, value: string): void {
+    textarea.value = value;
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+  },
+
+  /** Escape in the text editor, which submits it. */
+  exitTextEditor(textarea: HTMLTextAreaElement): void {
+    Keyboard.keyPress(KEYS.ESCAPE, textarea);
+  },
+
   /** Activates a tool as its toolbar button would. */
   clickTool(tool: ToolType): void {
     h().api.setActiveTool({ type: tool });

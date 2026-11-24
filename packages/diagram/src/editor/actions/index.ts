@@ -26,6 +26,15 @@ import { actionToggleLinearEditor } from "./linear-editor.ts";
 import { actionToggleElementLock, actionUnlockAllElements } from "./lock.ts";
 import { actionDeselect, actionSelectAll } from "./select.ts";
 import {
+  actionChangeFontFamily,
+  actionChangeFontSize,
+  actionChangeTextAlign,
+  actionChangeVerticalAlign,
+  actionDecreaseFontSize,
+  actionIncreaseFontSize,
+  actionTextAutoResize,
+} from "./text.ts";
+import {
   actionBringForward,
   actionBringToFront,
   actionSendBackward,
@@ -68,4 +77,11 @@ export const editorActions: readonly Action[] = [
   actionBringForward,
   actionSendToBack,
   actionBringToFront,
+  actionChangeFontSize as Action,
+  actionDecreaseFontSize,
+  actionIncreaseFontSize,
+  actionChangeFontFamily as Action,
+  actionChangeTextAlign as Action,
+  actionChangeVerticalAlign as Action,
+  actionTextAutoResize as Action,
 ];
