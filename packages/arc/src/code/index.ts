@@ -1,4 +1,10 @@
 export { CodeBlock, type CodeBlockProps, Highlight, type HighlightProps } from "./code-block.tsx";
+export {
+  CodeDiff,
+  type CodeDiffLayout,
+  type CodeDiffProps,
+  type CollapseUnchanged,
+} from "./code-diff.tsx";
 export { CodeEditor, type CodeEditorProps } from "./code-editor.tsx";
 export { codeTheme, diffChrome } from "./editor-theme.ts";
 export { codeHighlighter, highlightHtml } from "./highlight.ts";
