@@ -29,6 +29,14 @@ import { actionToggleViewMode, actionToggleZenMode } from "../editor/actions/tog
 import { Pencil } from "@barqjs/lucide/icons/pencil";
 import { Button } from "@barqjs/ui/button";
 
+const scrollBack = d({
+  position: "absolute",
+  bottom: "60px",
+  insetInline: "0",
+  display: "flex",
+  justifyContent: "center",
+  "& > *": { pointerEvents: "auto" },
+});
 const toolbarAnchor = d({ position: "relative", pointerEvents: "none" });
 const bottomStack = d({
   position: "absolute",
@@ -140,6 +148,20 @@ function Layout(props: { mainMenu?: () => Child }) {
             </div>
           </Show>
           <FooterEnd />
+        </div>
+      </Show>
+      <Show when={value.store.state("scrolledOutside") && !zen()}>
+        <div class={scrollBack}>
+          <Button
+            variant="secondary"
+            onPress={() => {
+              const editor = value.store.editor;
+              editor?.batch(() => editor.scrollToContent());
+            }}
+            data-testid="scroll-back-to-content"
+          >
+            {value.t("buttons.scrollBackToContent")}
+          </Button>
         </div>
       </Show>
       <ContextMenu />

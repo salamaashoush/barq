@@ -333,6 +333,19 @@ describe("keyboard", () => {
   });
 });
 
+describe("scroll back to content", () => {
+  test("shows once the content is out of view and brings it back", async () => {
+    const { api } = await mountEditor({ initialData: { elements: [rectangle("A", 100, 100)] } });
+    expect(screen.queryByTestId("scroll-back-to-content")).toBeNull();
+    api.updateScene({ appState: { scrollX: -5000, scrollY: -5000 } });
+    await settle();
+    await user.click(screen.getByRole("button", { name: "Scroll back to content" }));
+    await settle();
+    expect(api.getAppState().scrollX).toBeGreaterThan(-5000);
+    expect(screen.queryByTestId("scroll-back-to-content")).toBeNull();
+  });
+});
+
 describe("performance", () => {
   test("a drag, a pan and a zoom change nothing in the UI but the zoom level", async () => {
     const { api, region } = await mountEditor({

@@ -1413,6 +1413,17 @@ export class DiagramEditor {
       this.committedState = this._state;
     }
 
+    // the button that scrolls back shows once nothing is in view; not while
+    // text is edited
+    const scrolledOutside =
+      !this.state.editingTextElement &&
+      this.scene.getNonDeletedElements().length > 0 &&
+      this.visibleElements.length === 0;
+    if (this.state.scrolledOutside !== scrolledOutside) {
+      this._state = { ...this._state, scrolledOutside };
+      this.committedState = this._state;
+    }
+
     this.updateFrameNames();
 
     this.store.commit(this.scene.getElementsMapIncludingDeleted(), this.state);
