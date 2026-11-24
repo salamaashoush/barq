@@ -23,7 +23,7 @@ import { srOnly } from "@barqjs/ui/sr-only";
 
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
-import { control, fg, focus, gap, glyph, layout, motion, type } from "../style/index.ts";
+import { control, fg, focus, gap, glyph, layout, motion, target, type } from "../style/index.ts";
 import type { NavIcon } from "../components/app-shell.tsx";
 import type { Person } from "../components/avatar-stack.tsx";
 import { Indicator } from "../components/indicator.tsx";
@@ -74,7 +74,8 @@ export const conversationListStyles = variants({
     }),
     chevron: arc(motion.transform),
     item: arc({}),
-    button: arc({ "&[data-unread]": { fontWeight: "var(--font-weight-semibold)" } }),
+    // A finger's 44px in a page or a sheet, where nothing else sizes the row.
+    button: arc(target.size, { "&[data-unread]": { fontWeight: "var(--font-weight-semibold)" } }),
     name: arc(layout.clip, layout.nowrap, layout.minZero, layout.grow),
     avatar: arc(layout.inlineCentre, layout.relative, layout.noShrink),
     marks: arc(layout.inlineRow, gap[1], fg.muted, glyph.sm, layout.noShrink),
@@ -106,7 +107,8 @@ export interface ConversationListProps extends Customisable<Slots> {
 
 /**
  * The reader's channels and direct messages, in groups that fold, for
- * `AppShell`'s `sidebar` slot.
+ * `AppShell`'s `sidebar` slot or anywhere else: a page, a sheet, a phone's
+ * whole screen.
  *
  * ```tsx
  * <AppShell navigation={NAV} sidebar={
@@ -121,8 +123,10 @@ export interface ConversationListProps extends Customisable<Slots> {
  * }>
  * ```
  *
- * Built from ui's sidebar menu, so it sits in the sidebar as its own
- * navigation does, collapses to icons with it and is its sheet on a phone.
+ * Built from ui's sidebar menu, so in a sidebar it sits as the sidebar's
+ * own navigation does, collapses to icons with it and is its sheet on a
+ * phone; outside one it is the same list standing alone, each row a
+ * finger's height under a coarse pointer.
  * A channel shows `#` or a lock, a direct message the person's avatar and
  * presence. One with unread messages is bold with its count, mentions in
  * the danger tone; a muted one is quiet and counts only its mentions; a

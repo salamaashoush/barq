@@ -1355,7 +1355,8 @@ first opens. Rich message content is drawn by `RichTextRenderer` from
 - `TypingIndicator`: "Alex and Sam are typing", the names joined as the
   locale joins a list, in a status that stays in the page.
 - `ConversationList`: channels and direct messages for `AppShell`'s
-  `sidebar`, in groups whose headings fold them. A channel shows `#` or a
+  `sidebar`, or on its own in a page, a sheet or a phone's whole screen,
+  in groups whose headings fold them. A channel shows `#` or a
   lock, a direct message the person's avatar and presence; unread ones are
   bold with their count, mentions in the danger tone, muted ones quiet and
   counting only mentions, and a draft marked, each read after the name.

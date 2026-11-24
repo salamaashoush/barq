@@ -4,7 +4,9 @@ import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user, within } from "@barqjs/testing";
 import { Sidebar, SidebarContent, SidebarProvider } from "@barqjs/ui/sidebar";
 
-import { hydrates, settle } from "../test-arc.ts";
+import { ResponsiveOverlay } from "../components/responsive-overlay.tsx";
+import { target } from "../style/index.ts";
+import { hydrates, settle, wears } from "../test-arc.ts";
 import { type ConversationGroup, ConversationList } from "./conversation-list.tsx";
 
 afterEach(() => localStorage.clear());
@@ -131,6 +133,62 @@ describe("ConversationList", () => {
     expect(slot("conversation-list-button")?.classList.contains("b")).toBe(true);
     expect(slot("conversation-list-name")?.classList.contains("n")).toBe(true);
     expect(slot("sidebar-menu-badge")?.classList.contains("g")).toBe(true);
+  });
+
+  test("stands alone in a page, with no sidebar around it", async () => {
+    const chosen: string[] = [];
+    render(() => (
+      <main>
+        <ConversationList
+          groups={GROUPS}
+          activeId="design"
+          onSelect={(conversation) => chosen.push(conversation.id)}
+        />
+      </main>
+    ));
+    expect(item(/^design/u).getAttribute("aria-current")).toBe("page");
+    const heading = screen.getByRole("button", { name: "Direct messages" });
+    await user.click(heading);
+    await settle();
+    expect(heading.getAttribute("aria-expanded")).toBe("false");
+    await user.click(heading);
+    await settle();
+    user.tap(screen.getByRole("button", { name: /^Alex, Sam/u }));
+    expect(chosen).toEqual(["group"]);
+    expect(
+      wears(document.querySelector('[data-slot="conversation-list-button"]'), target.size),
+    ).toBe(true);
+    expect(await ariaViolations(document.body)).toEqual([]);
+  });
+
+  test("stands alone in a sheet", async () => {
+    render(() => (
+      <ResponsiveOverlay heading="Conversations" defaultOpen>
+        <ConversationList groups={GROUPS} />
+      </ResponsiveOverlay>
+    ));
+    await settle();
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByRole("navigation", { name: "Conversations" })).toBeDefined();
+    expect(within(dialog).getAllByRole("link").length).toBe(3);
+  });
+
+  test("a server's markup is hydrated in place, alone as in a sidebar", async () => {
+    const result = await hydrates(`
+      import { ConversationList } from ${JSON.stringify(new URL("./index.ts", import.meta.url).pathname)};
+      export function Page() {
+        return (
+          <ConversationList
+            activeId="a"
+            groups={[{ id: "c", label: "Channels", conversations: [{ id: "a", name: "general", unread: 3, href: "/a" }] }]}
+          />
+        );
+      }
+    `);
+    expect(result.container.querySelector('[aria-current="page"]')?.textContent).toContain(
+      "general",
+    );
+    result.unmount();
   });
 
   test("a server's markup is hydrated in place", async () => {
