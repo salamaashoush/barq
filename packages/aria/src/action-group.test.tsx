@@ -39,7 +39,12 @@ const four: Action[] = [
   { id: "four", name: "Four" },
 ];
 
-function Locale(props: { tag: string; children?: Child }) {
+interface LocaleProps {
+  tag: string;
+  children?: Child;
+}
+
+function Locale(props: LocaleProps) {
   const localeProps = provideLocale(() => props.tag);
   return <div {...localeProps}>{props.children}</div>;
 }
@@ -156,9 +161,13 @@ describe("ActionGroup", () => {
         </Locale>
       ));
       const all = buttons();
-      const at = (index: number): string[] => all.map((_, i) => (i === index ? "0" : "-1"));
+      function at(index: number): string[] {
+        return all.map((_, i) => (i === index ? "0" : "-1"));
+      }
       let index = 0;
-      const step = (delta: number): number => (index = (index + delta + 3) % 3);
+      function step(delta: number): number {
+        return (index = (index + delta + 3) % 3);
+      }
 
       user.tab();
       expect(tabIndices(all)).toEqual(at(0));
@@ -210,8 +219,9 @@ describe("ActionGroup", () => {
         </Locale>
       ));
       const all = buttons();
-      const stops = (): HTMLElement[] =>
-        all.filter((element) => element.getAttribute("tabindex") === "0");
+      function stops(): HTMLElement[] {
+        return all.filter((element) => element.getAttribute("tabindex") === "0");
+      }
 
       user.tab();
       expect(document.activeElement).toBe(all[each.steps[0][0]] as HTMLElement);
@@ -664,7 +674,9 @@ describe("ActionGroup inside a Toolbar", () => {
       </>
     ));
     flush();
-    const named = (name: string): HTMLElement => screen.getByRole("button", { name });
+    function named(name: string): HTMLElement {
+      return screen.getByRole("button", { name });
+    }
     expect(screen.getAllByRole("group")).toHaveLength(2);
 
     user.focus(named("Before"));
@@ -733,6 +745,10 @@ describe("ActionGroup inside a Toolbar", () => {
   });
 });
 
+interface Identified {
+  id: string;
+}
+
 describe('ActionGroup overflowMode="collapse"', () => {
   let widths = { button: 100, other: 250 };
   let restoreRect: (() => void) | null = null;
@@ -797,7 +813,7 @@ describe('ActionGroup overflowMode="collapse"', () => {
   test("by priority, the lowest go into the menu and the rest keep their order", () => {
     widths = { button: 100, other: 350 };
     const priority: Record<string, number> = { one: 0, two: 0, three: 2, four: 1 };
-    render(() => <Collapsing getPriority={(action: { id: string }) => priority[action.id] ?? 0} />);
+    render(() => <Collapsing getPriority={(action: Identified) => priority[action.id] ?? 0} />);
     flush();
     const shown = within(screen.getByRole("toolbar")).getAllByRole("button");
     expect(shown.map((one) => one.textContent)).toEqual(["Three", "Four", "…"]);
@@ -1001,7 +1017,9 @@ describe('ActionGroup overflowMode="collapse"', () => {
     user.click(within(group).getByRole("button", { name: "More items" }));
     flush();
     const menu = screen.getByRole("menu");
-    const item = (name: string): HTMLElement => within(menu).getByRole("menuitem", { name });
+    function item(name: string): HTMLElement {
+      return within(menu).getByRole("menuitem", { name });
+    }
     expect(item("Two").getAttribute("aria-disabled")).toBe("true");
     expect(item("Three").hasAttribute("aria-disabled")).toBe(false);
     expect(item("Four").getAttribute("aria-disabled")).toBe("true");

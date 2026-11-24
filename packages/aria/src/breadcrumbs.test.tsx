@@ -16,7 +16,11 @@ const TRAIL: Crumb[] = [
   { id: "hats", name: "Hats", href: "/shop/hats" },
 ];
 
-function Trail(props: { onAction?: (key: Key) => void }) {
+interface TrailProps {
+  onAction?: (key: Key) => void;
+}
+
+function Trail(props: TrailProps) {
   return (
     <Breadcrumbs items={TRAIL} onAction={props.onAction}>
       {(crumb: Crumb) => <Breadcrumb href={crumb.href}>{crumb.name}</Breadcrumb>}

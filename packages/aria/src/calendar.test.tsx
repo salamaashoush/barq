@@ -43,7 +43,12 @@ import {
 } from "./date.ts";
 import { provideLocale } from "./i18n.ts";
 
-function InLocale(props: { tag: string; children?: Child }) {
+interface LocaleProps {
+  tag: string;
+  children?: Child;
+}
+
+function InLocale(props: LocaleProps) {
   const localeProps = provideLocale(() => props.tag);
   return <div {...localeProps}>{props.children}</div>;
 }
@@ -51,14 +56,16 @@ function InLocale(props: { tag: string; children?: Child }) {
 /** March 2024: begins on a Friday, has 31 days, so six week rows. */
 const MARCH = new CalendarDate(2024, 3, 7);
 
-function Departure(props: {
+interface DepartureProps {
   value?: CalendarDate | null;
   minValue?: CalendarDate;
   maxValue?: CalendarDate;
   isDateUnavailable?: (date: CalendarDate) => boolean;
   isDisabled?: boolean;
   onChange?: (value: CalendarDate | null) => void;
-}) {
+}
+
+function Departure(props: DepartureProps) {
   return (
     <Calendar
       aria-label="Departure"
@@ -365,8 +372,12 @@ describe("Calendar", () => {
   });
 });
 
+interface StayProps {
+  onChange?: (value: DateRange | null) => void;
+}
+
 describe("RangeCalendar", () => {
-  function Stay(props: { onChange?: (value: DateRange | null) => void }) {
+  function Stay(props: StayProps) {
     return (
       <RangeCalendar aria-label="Stay" defaultFocusedValue={MARCH} onChange={props.onChange} />
     );
@@ -502,10 +513,13 @@ function stay(options: RangeCalendarStateOptions): RangeCalendarState {
   return state as RangeCalendarState;
 }
 
-const span = (state: { visibleRange(): DateRange }): string[] => [
-  String(state.visibleRange().start),
-  String(state.visibleRange().end),
-];
+interface VisibleRangeState {
+  visibleRange(): DateRange;
+}
+
+function span(state: VisibleRangeState): string[] {
+  return [String(state.visibleRange().start), String(state.visibleRange().end)];
+}
 
 describe("dateMatches", () => {
   const date = new CalendarDate(2024, 3, 7);
@@ -661,7 +675,9 @@ describe("the months that can be reached", () => {
 });
 
 describe("days that are switched off", () => {
-  const weekends = (date: CalendarDate): boolean => dateMatches(date, { dayOfWeek: [0, 6] });
+  function weekends(date: CalendarDate): boolean {
+    return dateMatches(date, { dayOfWeek: [0, 6] });
+  }
 
   test("a disabled day cannot be chosen", () => {
     const chosen: string[] = [];
@@ -824,8 +840,13 @@ describe("a range with a length", () => {
   });
 });
 
+interface ShiftsProps {
+  onChange?: (value: CalendarDate[]) => void;
+  max?: number;
+}
+
 describe("MultipleCalendar", () => {
-  function Shifts(props: { onChange?: (value: CalendarDate[]) => void; max?: number }) {
+  function Shifts(props: ShiftsProps) {
     return (
       <MultipleCalendar
         aria-label="Shifts"
@@ -1031,12 +1052,14 @@ describe("an invalid calendar", () => {
   });
 });
 
+interface CommitStayProps {
+  onChange?: (value: DateRange | null) => void;
+  commitBehavior?: "clear" | "reset" | "select";
+  defaultValue?: DateRange;
+}
+
 describe("drawing a range with a pointer", () => {
-  function Stay(props: {
-    onChange?: (value: DateRange | null) => void;
-    commitBehavior?: "clear" | "reset" | "select";
-    defaultValue?: DateRange;
-  }) {
+  function Stay(props: CommitStayProps) {
     return (
       <>
         <RangeCalendar
@@ -1051,8 +1074,10 @@ describe("drawing a range with a pointer", () => {
     );
   }
 
-  const recorder = (into: string[][]) => (value: DateRange | null) =>
-    into.push(value === null ? [] : [String(value.start), String(value.end)]);
+  function recorder(into: string[][]) {
+    return (value: DateRange | null) =>
+      into.push(value === null ? [] : [String(value.start), String(value.end)]);
+  }
 
   test("a drag from one day to another is the range between them", () => {
     const ranges: string[][] = [];
@@ -1316,19 +1341,32 @@ describe("a value with a time", () => {
   });
 });
 
+interface OptionsProps {
+  picker: CalendarPickerResult;
+}
+
+interface AppointmentProps {
+  defaultFocusedValue?: CalendarDate;
+  focusedValue?: CalendarDate;
+  minValue?: CalendarDate;
+  maxValue?: CalendarDate;
+  visibleYears?: number;
+}
+
 describe("month and year pickers", () => {
   /**
    * The options of a picker, the way a page would list them in a select:
    * keyed by id, so an option stays the same element while the list is
    * rebuilt around it and the select keeps what it shows.
    */
-  function Options(props: { picker: CalendarPickerResult }) {
+  function Options(props: OptionsProps) {
     const picker = props.picker;
     return (
       <For each={() => picker.items().map((item) => item.id)}>
         {(key: number) => {
-          const item = (): CalendarPickerItem | undefined =>
-            picker.items().find((one) => one.id === key);
+          function item(): CalendarPickerItem | undefined {
+            return picker.items().find((one) => one.id === key);
+          }
           return (
             <option
               value={key}
@@ -1343,18 +1381,12 @@ describe("month and year pickers", () => {
     );
   }
 
-  const changed =
-    (picker: CalendarPickerResult) =>
-    (event: Event): void =>
+  function changed(picker: CalendarPickerResult) {
+    return (event: Event): void =>
       picker.onChange((event.currentTarget as HTMLSelectElement).value);
+  }
 
-  function Appointment(props: {
-    defaultFocusedValue?: CalendarDate;
-    focusedValue?: CalendarDate;
-    minValue?: CalendarDate;
-    maxValue?: CalendarDate;
-    visibleYears?: number;
-  }) {
+  function Appointment(props: AppointmentProps) {
     // The name comes through a labelling element: a select whose value and
     // name are both bound has its value written before its options exist.
     return (
@@ -1397,12 +1429,15 @@ describe("month and year pickers", () => {
     );
   }
 
-  const month = (): HTMLSelectElement =>
-    screen.getByRole<HTMLSelectElement>("combobox", { name: "month" });
-  const year = (): HTMLSelectElement =>
-    screen.getByRole<HTMLSelectElement>("combobox", { name: "year" });
-  const texts = (select: HTMLSelectElement): string[] =>
-    [...select.options].map((option) => option.textContent ?? "");
+  function month(): HTMLSelectElement {
+    return screen.getByRole<HTMLSelectElement>("combobox", { name: "month" });
+  }
+  function year(): HTMLSelectElement {
+    return screen.getByRole<HTMLSelectElement>("combobox", { name: "year" });
+  }
+  function texts(select: HTMLSelectElement): string[] {
+    return [...select.options].map((option) => option.textContent ?? "");
+  }
   function choose(select: HTMLSelectElement, value: string): void {
     select.value = value;
     select.dispatchEvent(new Event("change", { bubbles: true }));
@@ -1444,7 +1479,9 @@ describe("month and year pickers", () => {
   });
 
   test("the years stop at maxValue, at minValue, or at both", () => {
-    const listed = (): string[] => texts(year());
+    function listed(): string[] {
+      return texts(year());
+    }
 
     render(() => (
       <Appointment
@@ -1582,8 +1619,9 @@ describe("the edges of a calendar system", () => {
       .filter((one) => one.getAttribute("aria-hidden") === null);
     return [...(rows.at(index)?.children ?? [])].map((cell) => cell.textContent ?? "");
   }
-  const pageButton = (name: string): HTMLButtonElement =>
-    screen.getByRole<HTMLButtonElement>("button", { name });
+  function pageButton(name: string): HTMLButtonElement {
+    return screen.getByRole<HTMLButtonElement>("button", { name });
+  }
 
   test("the Japanese calendar begins partway through a week, and the days before it are empty", () => {
     render(() => (

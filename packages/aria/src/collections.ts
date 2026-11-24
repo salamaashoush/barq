@@ -214,12 +214,12 @@ export function getItemCount(collection: Collection<unknown>): number {
   if (known !== undefined) return known;
 
   let count = 0;
-  const visit = (nodes: Iterable<Node<unknown>>): void => {
+  function visit(nodes: Iterable<Node<unknown>>): void {
     for (const node of nodes) {
       if (node.type === "section") visit(collection.getChildren(node.key));
       else if (node.type === "item") count++;
     }
-  };
+  }
   visit(collection);
   itemCounts.set(collection, count);
   return count;
@@ -283,7 +283,7 @@ export function buildCollection<T>(
   // silently replaces the first and the linked order skips or loops.
   const seen = isDev ? new Set<Key>() : null;
 
-  const build = (source: Iterable<T>, level: number, parentKey: Key | undefined): Node<T>[] => {
+  function build(source: Iterable<T>, level: number, parentKey: Key | undefined): Node<T>[] {
     const nodes: Node<T>[] = [];
     let index = 0;
 
@@ -320,7 +320,7 @@ export function buildCollection<T>(
     }
 
     return nodes;
-  };
+  }
 
   return new ListCollection(build(items, 0, undefined));
 }
@@ -416,18 +416,18 @@ export function multipleSelectionState(
   const [trackChildFocusStrategy, publishChildFocusStrategy] = createSignal<FocusStrategy | null>(
     null,
   );
-  const isFocused = (): boolean => {
+  function isFocused(): boolean {
     trackFocused();
     return focusedNow;
-  };
-  const focusedKey = (): Key | null => {
+  }
+  function focusedKey(): Key | null {
     trackFocusedKey();
     return focusedKeyNow;
-  };
-  const childFocusStrategy = (): FocusStrategy | null => {
+  }
+  function childFocusStrategy(): FocusStrategy | null {
     trackChildFocusStrategy();
     return childFocusStrategyNow;
-  };
+  }
 
   const [selectedKeys, setSelectedKeys] = controllable<SelectionValue>(
     () => toSelection(access(options.selectedKeys)),
@@ -529,6 +529,10 @@ interface SelectionManagerOptions {
   layoutDelegate?: LayoutDelegate;
   /** The unfiltered collection, so "select all" covers hidden items too. */
   fullCollection?: Collection<unknown>;
+}
+
+export interface PointerTypeEvent {
+  pointerType?: string;
 }
 
 /**
@@ -880,7 +884,7 @@ export class SelectionManager {
    * Touch and a virtual cursor always toggle: neither has a modifier key, so
    * `replace` would make multiple selection impossible for them.
    */
-  select(key: Key, event?: { pointerType?: string }): void {
+  select(key: Key, event?: PointerTypeEvent): void {
     untrack(() => {
       if (this.selectionMode === "none") return;
 
@@ -966,6 +970,12 @@ export interface ListState<T> {
   disabledKeys: Accessor<Set<Key>>;
 }
 
+interface ListRepair<T> {
+  current: ListCollection<T>;
+  repair: boolean;
+  next: Key | null;
+}
+
 /**
  * A collection and its selection, kept in step.
  *
@@ -990,14 +1000,16 @@ export function listState<T>(options: ListStateOptions<T>): ListState<T> {
   const shared = new SelectionManager(collection, selection, {
     layoutDelegate: options.layoutDelegate,
   });
-  const selectionManager = (): SelectionManager => shared;
+  function selectionManager(): SelectionManager {
+    return shared;
+  }
 
   // The search reads, so it is the compute; moving focus writes, so it is the
   // apply. In the render phase, so the repaired key is in place before any
   // effect that moves DOM focus to it runs.
   let previous: ListCollection<T> | null = null;
   createRenderEffect(
-    (): { current: ListCollection<T>; repair: boolean; next: Key | null } => {
+    (): ListRepair<T> => {
       const current = collection();
       const focused = selection.focusedKey();
       if (focused === null || current.getItem(focused) !== null || previous === null) {

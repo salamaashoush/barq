@@ -19,9 +19,11 @@ import {
 
 const COLOURS = ["#f00", "#0f0", "#0ff", "#00f"];
 
-function Swatches(
-  props: Omit<ColorSwatchPickerComponentProps, "children"> & { disabled?: string },
-) {
+interface SwatchesProps {
+  disabled?: string;
+}
+
+function Swatches(props: Omit<ColorSwatchPickerComponentProps, "children"> & SwatchesProps) {
   return (
     <ColorSwatchPicker {...props}>
       {COLOURS.map((hex) => (

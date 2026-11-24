@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { createContext, flush, provide, createSignal, type Child } from "@barqjs/core";
+import {
+  createContext,
+  flush,
+  provide,
+  createSignal,
+  type Child,
+  type ParentProps,
+} from "@barqjs/core";
 import { expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
 import { button as buttonHook, Button, ToggleButton } from "./button.tsx";
 import { ProgressBar } from "./link.tsx";
@@ -322,10 +329,11 @@ describe("Button: isPending", () => {
     ));
     const button = screen.getByRole("button");
     const progress = screen.getByRole("progressbar");
-    const announced = (): string[] =>
-      Array.from(document.querySelectorAll('[aria-live="assertive"] [aria-labelledby]')).map(
+    function announced(): string[] {
+      return Array.from(document.querySelectorAll('[aria-live="assertive"] [aria-labelledby]')).map(
         (entry) => entry.getAttribute("aria-labelledby") ?? "",
       );
+    }
 
     button.focus();
     flush();
@@ -346,8 +354,9 @@ describe("Button: isPending", () => {
     const [pending, setPending] = createSignal(false);
     const { unmount } = render(() => <Button isPending={pending()}>Save</Button>);
     const button = screen.getByRole("button");
-    const naming = (): number =>
-      document.querySelectorAll(`[aria-live] [aria-labelledby~="${button.id}"]`).length;
+    function naming(): number {
+      return document.querySelectorAll(`[aria-live] [aria-labelledby~="${button.id}"]`).length;
+    }
 
     button.focus();
     setPending(true);
@@ -367,10 +376,11 @@ describe("Button: isPending", () => {
       </Button>
     ));
     const button = screen.getByRole("button");
-    const dangling = (): string[] =>
-      Array.from(document.querySelectorAll("[aria-live] [aria-labelledby]"))
+    function dangling(): string[] {
+      return Array.from(document.querySelectorAll("[aria-live] [aria-labelledby]"))
         .flatMap((entry) => (entry.getAttribute("aria-labelledby") ?? "").split(" "))
         .filter((id) => document.getElementById(id) === null);
+    }
 
     button.focus();
     setPending(true);
@@ -437,6 +447,11 @@ describe("ToggleButton", () => {
   });
 });
 
+interface WrapProps {
+  children?: Child;
+  onPress?: () => void;
+}
+
 /**
  * What a wrapper puts on the control it wraps.
  *
@@ -448,7 +463,7 @@ describe("ToggleButton", () => {
  * is still a value as far as `mergeProps` can tell.
  */
 describe("the trigger slot", () => {
-  function Wrap(props: { children?: Child; onPress?: () => void }) {
+  function Wrap(props: WrapProps) {
     return provide(
       probe,
       () => 1,
@@ -467,7 +482,7 @@ describe("the trigger slot", () => {
   }
 
   test("it stops at what clears it, as an overlay's own content does", () => {
-    function Content(props: { children?: Child }) {
+    function Content(props: ParentProps) {
       clearTriggerSlot();
       return <div>{props.children}</div>;
     }
@@ -537,8 +552,13 @@ describe("the trigger slot", () => {
   });
 });
 
+interface SlotFocusProps {
+  log: string[];
+  children?: Child;
+}
+
 describe("focus and blur handlers", () => {
-  function SlotFocus(props: { log: string[]; children?: Child }) {
+  function SlotFocus(props: SlotFocusProps) {
     return provide(
       createContext(0),
       () => 1,

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createSignal, flush, For, type Child } from "@barqjs/core";
+import { createSignal, flush, For, type Child, type ParentProps } from "@barqjs/core";
 import {
   accessibleName,
   expectNoAriaViolations,
@@ -46,13 +46,15 @@ const FRUITS: Fruit[] = [
   { id: "cherry", name: "Cherry" },
 ];
 
-function Picker(props: {
+interface PickerProps {
   defaultSelectedKey?: Key | null;
   allowsCustomValue?: boolean;
   menuTrigger?: "input" | "focus" | "manual";
   onSelectionChange?: (key: Key | null) => void;
   onInputChange?: (value: string) => void;
-}) {
+}
+
+function Picker(props: PickerProps) {
   return (
     <ComboBox
       label="Fruit"
@@ -444,10 +446,10 @@ describe("what a combobox tells a screen reader", () => {
   function onApple(run: () => Promise<void> | void): Promise<void> | void {
     const platform = Object.getOwnPropertyDescriptor(navigator, "platform");
     Object.defineProperty(navigator, "platform", { value: "MacIntel", configurable: true });
-    const restore = (): void => {
+    function restore(): void {
       if (platform === undefined) Reflect.deleteProperty(navigator, "platform");
       else Object.defineProperty(navigator, "platform", platform);
-    };
+    }
     const done = run();
     if (done instanceof Promise) return done.finally(restore);
     restore();
@@ -1128,7 +1130,11 @@ function Tick() {
   return <span data-testid="tick">{item.isSelected() ? "x" : ""}</span>;
 }
 
-function Popup(props: { onValueChange?: (value: Country | null) => void }) {
+interface PopupProps {
+  onValueChange?: (value: Country | null) => void;
+}
+
+function Popup(props: PopupProps) {
   return (
     <ComboboxRoot
       items={COUNTRIES}
@@ -1269,8 +1275,13 @@ function chipTexts(): string[] {
   return screen.getAllByTestId("chip").map((chip) => chip.firstChild?.textContent ?? "");
 }
 
+interface ShownProps {
+  multiple?: boolean;
+  children?: Child;
+}
+
 describe("what a combobox shows for its value", () => {
-  function Shown(props: { multiple?: boolean; children?: Child }) {
+  function Shown(props: ShownProps) {
     return (
       <ComboboxRoot
         multiple={props.multiple}
@@ -1474,7 +1485,7 @@ describe("a combobox holding several values", () => {
   });
 
   test("in a right-to-left page the arrows trade places", async () => {
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar");
       return <>{props.children}</>;
     }
@@ -1504,8 +1515,12 @@ describe("a combobox holding several values", () => {
   });
 });
 
+interface WrittenProps {
+  onValueChange?: (value: string | null) => void;
+}
+
 describe("a combobox whose items are written out", () => {
-  function Written(props: { onValueChange?: (value: string | null) => void }) {
+  function Written(props: WrittenProps) {
     return (
       <ComboboxRoot onValueChange={(value) => props.onValueChange?.(value as string | null)}>
         <ComboboxInput aria-label="Timezone" />

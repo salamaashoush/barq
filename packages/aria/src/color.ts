@@ -141,10 +141,12 @@ const OK_CHROMA: ChannelSpec = {
   format: { style: "decimal", maximumFractionDigits: 3 },
 };
 
-const SPACES: Record<
-  ColorSpace,
-  { channels: Channels; specs: Partial<Record<ColorChannel, ChannelSpec>> }
-> = {
+interface SpaceSpec {
+  channels: Channels;
+  specs: Partial<Record<ColorChannel, ChannelSpec>>;
+}
+
+const SPACES: Record<ColorSpace, SpaceSpec> = {
   rgb: { channels: ["red", "green", "blue"], specs: { red: BYTE, green: BYTE, blue: BYTE } },
   hsl: {
     channels: ["hue", "saturation", "lightness"],
@@ -871,7 +873,7 @@ function hslToSrgb(hue: number, saturation: number, lightness: number): Triple {
 
   const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
   const p = 2 * l - q;
-  const channel = (t: number): number => {
+  function channel(t: number): number {
     let at = t;
     if (at < 0) at += 1;
     if (at > 1) at -= 1;
@@ -879,7 +881,7 @@ function hslToSrgb(hue: number, saturation: number, lightness: number): Triple {
     if (at < 1 / 2) return q;
     if (at < 2 / 3) return p + (q - p) * (2 / 3 - at) * 6;
     return p;
-  };
+  }
   return [channel(h + 1 / 3), channel(h), channel(h - 1 / 3)];
 }
 
@@ -1054,10 +1056,10 @@ const LAB_EPSILON = 216 / 24389;
 const LAB_KAPPA = 24389 / 27;
 
 function xyzD50ToLab([x, y, z]: Triple): Triple {
-  const f = (value: number, white: number): number => {
+  function f(value: number, white: number): number {
     const scaled = value / white;
     return scaled > LAB_EPSILON ? Math.cbrt(scaled) : (LAB_KAPPA * scaled + 16) / 116;
-  };
+  }
   const fx = f(x, D50[0]);
   const fy = f(y, D50[1]);
   const fz = f(z, D50[2]);
@@ -1159,9 +1161,15 @@ function gamutMap([lightness, chroma, hue]: Triple): Triple {
   if (lightness >= 1) return [1, 1, 1];
   if (lightness <= 0) return [0, 0, 0];
 
-  const at = (c: number): Triple => polarToRectangular([lightness, c, hue]);
-  const srgbAt = (c: number): Triple => xyzToSrgb(oklabToXyz(at(c)));
-  const delta = (srgb: Triple, c: number): number => deltaEOK(xyzToOklab(srgbToXyz(srgb)), at(c));
+  function at(c: number): Triple {
+    return polarToRectangular([lightness, c, hue]);
+  }
+  function srgbAt(c: number): Triple {
+    return xyzToSrgb(oklabToXyz(at(c)));
+  }
+  function delta(srgb: Triple, c: number): number {
+    return deltaEOK(xyzToOklab(srgbToXyz(srgb)), at(c));
+  }
 
   const origin = srgbAt(chroma);
   if (inSrgbGamut(origin)) return origin;
@@ -1354,11 +1362,12 @@ export function parseColor(value: string): Color {
     if (digits.length !== 3 && digits.length !== 4 && digits.length !== 6 && digits.length !== 8) {
       throw notAColour(value);
     }
-    const expand = (at: number): number =>
-      Number.parseInt(
+    function expand(at: number): number {
+      return Number.parseInt(
         digits.length <= 4 ? (digits[at] as string).repeat(2) : digits.slice(at * 2, at * 2 + 2),
         16,
       );
+    }
     const hasAlpha = digits.length === 4 || digits.length === 8;
     return new RGBColor(expand(0), expand(1), expand(2), hasAlpha ? expand(3) / 255 : 1);
   }
@@ -1388,8 +1397,9 @@ export function parseColor(value: string): Color {
   }
   if (tokens.length !== 3) throw notAColour(value);
 
-  const read = (at: 0 | 1 | 2): number =>
-    argument(tokens[at] ?? "", syntax.args[at], modern, value);
+  const read: (at: 0 | 1 | 2) => number = (at) => {
+    return argument(tokens[at] ?? "", syntax.args[at], modern, value);
+  };
   const alpha = alphaToken === undefined ? 1 : alphaArgument(alphaToken, modern, value);
   return make(syntax.space, [read(0), read(1), read(2)], alpha, 0);
 }

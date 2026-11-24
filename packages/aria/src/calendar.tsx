@@ -107,6 +107,7 @@ import {
   mergeProps,
   type StyleProps,
   styleProps,
+  type ProviderProps,
 } from "./utils.ts";
 
 // ---------------------------------------------------------------------------
@@ -147,6 +148,11 @@ export type DateMatcher =
   | { dayOfWeek: number | readonly number[] }
   | readonly DateMatcher[];
 
+interface DateBounds {
+  before?: CalendarDate;
+  after?: CalendarDate;
+}
+
 export function dateMatches(date: CalendarDate, matcher: DateMatcher | undefined): boolean {
   if (matcher === undefined) return false;
   if (typeof matcher === "boolean") return matcher;
@@ -168,7 +174,7 @@ export function dateMatches(date: CalendarDate, matcher: DateMatcher | undefined
     return date.compare(from) >= 0 && date.compare(to) <= 0;
   }
 
-  const { before, after } = matcher as { before?: CalendarDate; after?: CalendarDate };
+  const { before, after } = matcher as DateBounds;
   if (before !== undefined && after !== undefined) {
     return after.compare(before) < 0
       ? date.compare(after) > 0 && date.compare(before) < 0
@@ -386,12 +392,19 @@ function monthsBetween(from: CalendarDate, to: CalendarDate): number {
   return count;
 }
 
+interface FirstMonth {
+  start: CalendarDate;
+  request: PageRequest | null;
+}
+
 export function calendarState<T extends DateValue = CalendarDate>(
   options: CalendarStateOptions<T>,
 ): CalendarState {
   const locale = useLocale();
   const system = displayCalendar(locale, options.createCalendar);
-  const shown = (date: DateValue): CalendarDate => inCalendar(date, system());
+  function shown(date: DateValue): CalendarDate {
+    return inCalendar(date, system());
+  }
 
   const [given, setGiven] = controllable<DateValue | null>(
     () => access(options.value),
@@ -399,42 +412,53 @@ export function calendarState<T extends DateValue = CalendarDate>(
     (next) => options.onChange?.(next as MappedDateValue<T> | null),
   );
 
-  const value = (): CalendarDate | null => {
+  function value(): CalendarDate | null {
     const current = given();
     return current === null ? null : shown(current);
-  };
+  }
 
-  const firstDayOfWeek = (): DayOfWeek | undefined => access(options.firstDayOfWeek);
+  function firstDayOfWeek(): DayOfWeek | undefined {
+    return access(options.firstDayOfWeek);
+  }
 
-  const timeZone = (): string => {
+  function timeZone(): string {
     const zone = access(options.timeZone);
     if (zone !== undefined) return zone;
     const current = given();
     return current !== null && "timeZone" in current ? current.timeZone : getLocalTimeZone();
-  };
+  }
 
-  const todayDate = (): CalendarDate => shown(access(options.today) ?? today(timeZone()));
-  const visibleMonths = (): number => Math.max(1, Math.floor(access(options.visibleMonths) ?? 1));
+  function todayDate(): CalendarDate {
+    return shown(access(options.today) ?? today(timeZone()));
+  }
+  function visibleMonths(): number {
+    return Math.max(1, Math.floor(access(options.visibleMonths) ?? 1));
+  }
 
-  const bound = (
+  function bound(
     date: MaybeAccessor<DateValue | null | undefined> | undefined,
-  ): CalendarDate | null => {
+  ): CalendarDate | null {
     const read = access(date);
     return read === null || read === undefined ? null : shown(read);
-  };
-  const minValue = (): CalendarDate | null => bound(options.minValue);
-  const maxValue = (): CalendarDate | null => bound(options.maxValue);
-  const startMonth = (): CalendarDate | null => {
+  }
+  function minValue(): CalendarDate | null {
+    return bound(options.minValue);
+  }
+  function maxValue(): CalendarDate | null {
+    return bound(options.maxValue);
+  }
+  function startMonth(): CalendarDate | null {
     const first = bound(options.startMonth);
     return first === null ? null : startOfMonth(first);
-  };
-  const endMonth = (): CalendarDate | null => {
+  }
+  function endMonth(): CalendarDate | null {
     const last = bound(options.endMonth);
     return last === null ? null : startOfMonth(last);
-  };
+  }
 
-  const constrained = (date: CalendarDate): CalendarDate =>
-    constrainValue(date, minValue(), maxValue());
+  function constrained(date: CalendarDate): CalendarDate {
+    return constrainValue(date, minValue(), maxValue());
+  }
 
   const [focusedAsSet, setFocusedDateRaw] = controllable<CalendarDate>(
     () => {
@@ -446,17 +470,23 @@ export function calendarState<T extends DateValue = CalendarDate>(
   );
   // An uncontrolled focus was stored in the calendar of its day; the locale
   // may have named another since.
-  const rawFocusedDate = (): CalendarDate => shown(focusedAsSet());
+  function rawFocusedDate(): CalendarDate {
+    return shown(focusedAsSet());
+  }
 
   const [isFocused, setIsFocused] = createSignal(access(options.autoFocus) === true);
 
-  const isDisabled = (): boolean => access(options.isDisabled) === true;
-  const isReadOnly = (): boolean => access(options.isReadOnly) === true;
+  function isDisabled(): boolean {
+    return access(options.isDisabled) === true;
+  }
+  function isReadOnly(): boolean {
+    return access(options.isReadOnly) === true;
+  }
 
   const [requested, setRequested] = createSignal<PageRequest | null>(null);
 
   /** A first month kept inside the months that can be reached. */
-  const bounded = (start: CalendarDate): CalendarDate => {
+  function bounded(start: CalendarDate): CalendarDate {
     const first = startMonth();
     const last = endMonth();
     let next = start;
@@ -466,22 +496,22 @@ export function calendarState<T extends DateValue = CalendarDate>(
     }
     if (first !== null && next.compare(first) < 0) next = first;
     return next;
-  };
+  }
 
   /** A first month moved just far enough for the window to hold a day. */
-  const holding = (start: CalendarDate, date: CalendarDate): CalendarDate => {
+  function holding(start: CalendarDate, date: CalendarDate): CalendarDate {
     const month = startOfMonth(date);
     if (month.compare(start) < 0) return month;
     const last = start.add({ months: visibleMonths() - 1 });
     return month.compare(last) > 0 ? month.subtract({ months: visibleMonths() - 1 }) : start;
-  };
+  }
 
   /**
    * The first month on show when the calendar is built, placed so the focused
    * day sits where `selectionAlignment` asks and no month beyond the bounds is
    * shown to make room for it.
    */
-  const aligned = (focused: CalendarDate): CalendarDate => {
+  function aligned(focused: CalendarDate): CalendarDate {
     const count = visibleMonths();
     const month = startOfMonth(focused);
     let before: number;
@@ -509,29 +539,27 @@ export function calendarState<T extends DateValue = CalendarDate>(
       if (start.compare(earliest) < 0) start = earliest;
     }
     return start;
-  };
+  }
 
   // Where the window begins. It stays where it was until the focused day leaves
   // it or a page is asked for, which is what lets focus cross from one visible
   // month into the next without the months changing places under it.
-  const firstMonth = createMemo<{ start: CalendarDate; request: PageRequest | null }>(
-    (previous) => {
-      const request = requested();
-      const kept = access(options.visibleMonth);
-      if (kept !== undefined && kept !== null) {
-        return { start: startOfMonth(shown(kept)), request };
-      }
+  const firstMonth = createMemo<FirstMonth>((previous) => {
+    const request = requested();
+    const kept = access(options.visibleMonth);
+    if (kept !== undefined && kept !== null) {
+      return { start: startOfMonth(shown(kept)), request };
+    }
 
-      const focused = rawFocusedDate();
-      let from = aligned(focused);
-      if (previous !== undefined) {
-        from = shown(
-          request !== null && request !== previous.request ? request.start : previous.start,
-        );
-      }
-      return { start: bounded(holding(from, focused)), request };
-    },
-  );
+    const focused = rawFocusedDate();
+    let from = aligned(focused);
+    if (previous !== undefined) {
+      from = shown(
+        request !== null && request !== previous.request ? request.start : previous.start,
+      );
+    }
+    return { start: bounded(holding(from, focused)), request };
+  });
 
   // The month on show, and it changes when the MONTH does.
   //
@@ -552,35 +580,37 @@ export function calendarState<T extends DateValue = CalendarDate>(
   // Held to the months on show. The two only part when the window is kept by
   // its owner or stopped at a bound, and a focused day nobody can see is a
   // grid with no Tab stop.
-  const focusedDate = (): CalendarDate => {
+  function focusedDate(): CalendarDate {
     const raw = rawFocusedDate();
     const range = visibleRange();
     if (raw.compare(range.start) < 0) return range.start;
     return raw.compare(range.end) > 0 ? range.end : raw;
-  };
+  }
 
-  const isCellDisabled = (date: CalendarDate): boolean => {
+  function isCellDisabled(date: CalendarDate): boolean {
     if (isDisabled()) return true;
     const min = minValue();
     const max = maxValue();
     if (min !== null && date.compare(min) < 0) return true;
     if (max !== null && date.compare(max) > 0) return true;
     return options.isDateDisabled?.(date) === true;
-  };
+  }
 
-  const isCellUnavailable = (date: CalendarDate): boolean => unavailable(options, date);
+  function isCellUnavailable(date: CalendarDate): boolean {
+    return unavailable(options, date);
+  }
 
   /** Focus, held inside the allowed range rather than refused at its edge. */
-  const setFocusedDate = (date: CalendarDate): void => {
+  function setFocusedDate(date: CalendarDate): void {
     const next = constrained(shown(date));
     const current = untrack(visibleRange).start;
     const start = bounded(holding(current, next));
     setFocusedDateRaw(next);
     if (!isSameDay(start, current)) options.onVisibleMonthChange?.(start);
-  };
+  }
 
   /** The window moved to begin at a month, and the focused day carried with it. */
-  const showFrom = (month: CalendarDate): void => {
+  function showFrom(month: CalendarDate): void {
     const current = untrack(visibleRange).start;
     const start = bounded(shown(month));
     if (isSameDay(start, current)) return;
@@ -588,12 +618,12 @@ export function calendarState<T extends DateValue = CalendarDate>(
     setRequested({ start });
     setFocusedDateRaw(constrained(untrack(focusedDate).add({ months })));
     options.onVisibleMonthChange?.(start);
-  };
+  }
 
-  const page = (direction: 1 | -1): void => {
+  function page(direction: 1 | -1): void {
     const months = access(options.pagedNavigation) === true ? visibleMonths() : 1;
     showFrom(untrack(visibleRange).start.add({ months: months * direction }));
-  };
+  }
 
   /**
    * `date`, or the nearest day further that way that is not switched off.
@@ -602,7 +632,7 @@ export function calendarState<T extends DateValue = CalendarDate>(
    * the focus then stays where it is rather than resting on a day that cannot
    * be chosen.
    */
-  const reachable = (date: CalendarDate, step: DateDuration): CalendarDate | null => {
+  function reachable(date: CalendarDate, step: DateDuration): CalendarDate | null {
     const off = options.isDateDisabled;
     let next = constrained(date);
     if (off === undefined) return next;
@@ -612,29 +642,31 @@ export function calendarState<T extends DateValue = CalendarDate>(
       next = further;
     }
     return next;
-  };
+  }
 
-  const land = (date: CalendarDate, step: DateDuration): void => {
+  function land(date: CalendarDate, step: DateDuration): void {
     const next = reachable(date, step);
     if (next !== null) setFocusedDate(next);
-  };
+  }
 
-  const move = (duration: DateDuration): void => land(focusedDate().add(duration), duration);
+  function move(duration: DateDuration): void {
+    return land(focusedDate().add(duration), duration);
+  }
 
   /** A day the calendar would not let anyone choose, for whatever reason. */
-  const isRefused = (date: CalendarDate): boolean => {
+  function isRefused(date: CalendarDate): boolean {
     const min = minValue();
     const max = maxValue();
     if (min !== null && date.compare(min) < 0) return true;
     if (max !== null && date.compare(max) > 0) return true;
     return isCellUnavailable(date) || options.isDateDisabled?.(date) === true;
-  };
+  }
 
-  const setValue = (next: CalendarDate | null): void => {
+  function setValue(next: CalendarDate | null): void {
     setGiven(next === null ? null : asValueOf(next, untrack(given)));
-  };
+  }
 
-  const selectDate = (date: CalendarDate): void => {
+  function selectDate(date: CalendarDate): void {
     if (isReadOnly() || isDisabled()) return;
     if (isCellDisabled(date) || isCellUnavailable(date)) return;
     const chosen = untrack(value);
@@ -643,7 +675,7 @@ export function calendarState<T extends DateValue = CalendarDate>(
       return;
     }
     setValue(date);
-  };
+  }
 
   return {
     selectionMode: "single",
@@ -781,20 +813,20 @@ export function rangeCalendarState<T extends DateValue = CalendarDate>(
     (next) => options.onChange?.(next as DateRange<MappedDateValue<T>> | null),
   );
 
-  const value = (): DateRange | null => {
+  function value(): DateRange | null {
     const range = given();
     if (range === null) return null;
     return { start: inCalendar(range.start, system()), end: inCalendar(range.end, system()) };
-  };
+  }
 
-  const setValueRaw = (next: DateRange | null): void => {
+  function setValueRaw(next: DateRange | null): void {
     const was = untrack(given);
     setGiven(
       next === null
         ? null
         : { start: asValueOf(next.start, was?.start), end: asValueOf(next.end, was?.end) },
     );
-  };
+  }
 
   const [anchorDate, writeAnchorSignal] = createSignal<CalendarDate | null>(null);
   const [drawn, setDrawn] = createSignal<DateRange | null>(null);
@@ -806,18 +838,20 @@ export function rangeCalendarState<T extends DateValue = CalendarDate>(
   let anchorNow: CalendarDate | null = null;
   let reached: CalendarDate | null = null;
 
-  const writeAnchorDate = (date: CalendarDate | null): void => {
+  function writeAnchorDate(date: CalendarDate | null): void {
     anchorNow = date;
     reached = date;
     writeAnchorSignal(date);
-  };
+  }
 
   const ask = options.isDateUnavailable;
-  const visibleMonths = (): number => Math.max(1, Math.floor(access(options.visibleMonths) ?? 1));
+  function visibleMonths(): number {
+    return Math.max(1, Math.floor(access(options.visibleMonths) ?? 1));
+  }
 
   // Centred on the range's start, unless its end would then be off the
   // window, in which case the start goes first.
-  const alignment = (): "start" | "center" | "end" => {
+  function alignment(): "start" | "center" | "end" {
     const asked = access(options.selectionAlignment);
     if (asked !== undefined) return asked;
     const range = untrack(value);
@@ -827,7 +861,7 @@ export function rangeCalendarState<T extends DateValue = CalendarDate>(
     const before = half > 0 && count % 2 === 0 ? half - 1 : half;
     const last = endOfMonth(startOfMonth(range.start).add({ months: count - 1 - before }));
     return range.end.compare(last) > 0 ? "start" : "center";
-  };
+  }
 
   const base = calendarState<DateValue>({
     ...(options as Omit<
@@ -847,14 +881,14 @@ export function rangeCalendarState<T extends DateValue = CalendarDate>(
     },
   });
 
-  const highlightedRange = (): DateRange | null => {
+  function highlightedRange(): DateRange | null {
     const anchor = anchorDate();
     if (anchor === null) return value();
     return drawn();
-  };
+  }
 
   /** Whether every day between two ends can be chosen. */
-  const contiguous = (range: DateRange): boolean => {
+  function contiguous(range: DateRange): boolean {
     const gaps = access(options.allowsNonContiguousRanges) === true;
     const holes = access(options.excludeDisabled) !== true;
     if (gaps && holes) return true;
@@ -863,24 +897,24 @@ export function rangeCalendarState<T extends DateValue = CalendarDate>(
       if (!holes && base.isCellDisabled(day)) return false;
     }
     return true;
-  };
+  }
 
-  const allowedLength = (range: DateRange): boolean => {
+  function allowedLength(range: DateRange): boolean {
     // Between two days, `compare` is the number of days apart.
     const days = range.end.compare(range.start) + 1;
     const min = access(options.minDays);
     const max = access(options.maxDays);
     return (min === undefined || days >= min) && (max === undefined || days <= max);
-  };
+  }
 
-  const highlightDate = (date: CalendarDate): void => {
+  function highlightDate(date: CalendarDate): void {
     const anchor = anchorNow;
     if (anchor === null) return;
     reached = date;
     setDrawn(ordered(anchor, date));
-  };
+  }
 
-  const selectDate = (date: CalendarDate): void => {
+  function selectDate(date: CalendarDate): void {
     if (base.isReadOnly() || base.isDisabled()) return;
     if (base.isCellDisabled(date) || base.isCellUnavailable(date)) return;
 
@@ -902,15 +936,15 @@ export function rangeCalendarState<T extends DateValue = CalendarDate>(
       return;
     }
     setValueRaw(range);
-  };
+  }
 
-  const isAvailable = (date: CalendarDate): boolean => {
+  function isAvailable(date: CalendarDate): boolean {
     const min = base.minValue();
     const max = base.maxValue();
     if (min !== null && date.compare(min) < 0) return false;
     if (max !== null && date.compare(max) > 0) return false;
     return !base.isCellUnavailable(date) && options.isDateDisabled?.(date) !== true;
-  };
+  }
 
   return {
     ...base,
@@ -1002,13 +1036,15 @@ export function multipleCalendarState<T extends DateValue = CalendarDate>(
     (next) => options.onChange?.([...next] as MappedDateValue<T>[]),
   );
 
-  const value = (): readonly CalendarDate[] => given().map((one) => inCalendar(one, system()));
+  function value(): readonly CalendarDate[] {
+    return given().map((one) => inCalendar(one, system()));
+  }
 
   /** The days, each as the kind of value the first one given was. */
-  const setValueRaw = (next: readonly CalendarDate[]): void => {
+  function setValueRaw(next: readonly CalendarDate[]): void {
     const was = untrack(given);
     setGiven(next.map((day) => asValueOf(day, was.find((one) => isSameDay(one, day)) ?? was[0])));
-  };
+  }
 
   const base = calendarState<DateValue>({
     ...(options as Omit<CalendarStateOptions<T>, "value" | "defaultValue" | "onChange">),
@@ -1017,10 +1053,11 @@ export function multipleCalendarState<T extends DateValue = CalendarDate>(
     onChange: undefined,
   });
 
-  const isSelected = (date: CalendarDate): boolean =>
-    value().some((chosen) => isSameDay(chosen, date));
+  function isSelected(date: CalendarDate): boolean {
+    return value().some((chosen) => isSameDay(chosen, date));
+  }
 
-  const selectDate = (date: CalendarDate): void => {
+  function selectDate(date: CalendarDate): void {
     if (base.isReadOnly() || base.isDisabled()) return;
     if (base.isCellDisabled(date) || base.isCellUnavailable(date)) return;
 
@@ -1035,15 +1072,15 @@ export function multipleCalendarState<T extends DateValue = CalendarDate>(
     const most = access(options.max);
     if (most !== undefined && chosen.length >= most) return;
     setValueRaw([...chosen, date]);
-  };
+  }
 
-  const isRefused = (date: CalendarDate): boolean => {
+  function isRefused(date: CalendarDate): boolean {
     const min = base.minValue();
     const max = base.maxValue();
     if (min !== null && date.compare(min) < 0) return true;
     if (max !== null && date.compare(max) > 0) return true;
     return base.isCellUnavailable(date) || options.isDateDisabled?.(date) === true;
-  };
+  }
 
   return {
     ...base,
@@ -1113,6 +1150,11 @@ function isVirtualPointer(event: PointerEvent): boolean {
   return event.pointerType === "" || (event.width === 0 && event.height === 0);
 }
 
+type FormattedRange = {
+  startDate: string;
+  endDate: string;
+};
+
 /**
  * Splits a formatted range into its two ends, at the last literal they share.
  *
@@ -1125,7 +1167,7 @@ function formatRange(
   start: CalendarDate,
   end: CalendarDate,
   timeZone: string,
-): { startDate: string; endDate: string } {
+): FormattedRange {
   const parts = format.formatRangeToParts(start.toDate(timeZone), end.toDate(timeZone));
   let separator = -1;
   for (const [at, part] of parts.entries()) {
@@ -1218,8 +1260,10 @@ export function calendar(options: CalendarOptions, state: AnyCalendarState): Cal
   calendarData.set(state, { errorMessageId });
 
   /** What has been chosen, in words, or nothing while a range is half drawn. */
-  const selection = (): string => {
-    const spoken = (date: CalendarDate): string => longDate().format(date.toDate(state.timeZone()));
+  function selection(): string {
+    function spoken(date: CalendarDate): string {
+      return longDate().format(date.toDate(state.timeZone()));
+    }
     if (state.selectionMode === "range") {
       const range = state.value();
       if (range === null || state.anchorDate() !== null) return "";
@@ -1243,23 +1287,23 @@ export function calendar(options: CalendarOptions, state: AnyCalendarState): Cal
     return chosen === null
       ? ""
       : messages().format("selectedDateDescription", { date: spoken(chosen) });
-  };
+  }
 
-  const commit = (): void => {
+  function commit(): void {
     if (state.selectionMode !== "range" || state.anchorDate() === null) return;
     const behavior = access(options.commitBehavior) ?? "select";
     if (behavior === "clear") state.clearSelection();
     else if (behavior === "reset") state.setAnchorDate(null);
     else state.commitSelection();
-  };
+  }
 
-  const title = (): string => {
+  function title(): string {
     const range = state.visibleRange();
     const zone = state.timeZone();
     const first = formattable(range.start).toDate(zone);
     if (state.visibleMonths() === 1) return titleFormat().format(first);
     return titleFormat().formatRange(first, formattable(startOfMonth(range.end)).toDate(zone));
-  };
+  }
 
   if (!isServer) {
     // The month changing under a pointer press has nothing on screen to say
@@ -1287,7 +1331,7 @@ export function calendar(options: CalendarOptions, state: AnyCalendarState): Cal
       onSettled(() => {
         const view = typeof window === "undefined" ? null : window;
         if (view === null) return undefined;
-        const release = (event: PointerEvent): void => {
+        const release: (event: PointerEvent) => void = (event) => {
           if (isVirtualPointer(event)) return;
           const drag = dragOf(state);
           clearTimeout(drag.timer);
@@ -1308,9 +1352,9 @@ export function calendar(options: CalendarOptions, state: AnyCalendarState): Cal
           }
           commit();
         };
-        const clicked = (): void => {
+        function clicked(): void {
           dragOf(state).clickPending = false;
-        };
+        }
         view.addEventListener("pointerup", release);
         view.addEventListener("click", clicked);
         return () => {
@@ -1400,8 +1444,9 @@ export function calendarGrid(
 ): CalendarGridResult {
   const locale = useLocale();
 
-  const month = (): CalendarDate =>
-    state.visibleRange().start.add({ months: access(options.monthOffset) ?? 0 });
+  function month(): CalendarDate {
+    return state.visibleRange().start.add({ months: access(options.monthOffset) ?? 0 });
+  }
   const titleFormat = calendarFormat(
     () => ({ month: "long", year: "numeric", era: eraFormat(month()) }),
     state,
@@ -1421,12 +1466,13 @@ export function calendarGrid(
     );
   });
 
-  const weeksInMonth = (): number =>
-    access(options.fixedWeeks) === true
+  function weeksInMonth(): number {
+    return access(options.fixedWeeks) === true
       ? 6
       : (state.weeksInMonth() ?? getWeeksInMonth(month(), locale().locale, state.firstDayOfWeek()));
+  }
 
-  const weekDates = (week: number): (CalendarDate | null)[] => {
+  function weekDates(week: number): (CalendarDate | null)[] {
     const tag = locale().locale;
     const first = state.firstDayOfWeek();
     let date = startOfWeek(month().add({ weeks: week }), tag, first);
@@ -1445,17 +1491,17 @@ export function calendarGrid(
     }
     while (dates.length < 7) dates.push(null);
     return dates;
-  };
+  }
 
-  const weekNumber = (week: number): number => {
+  function weekNumber(week: number): number {
     const first = startOfWeek(month(), locale().locale, state.firstDayOfWeek()).add({
       weeks: week,
     });
     if (access(options.isoWeek) === true) return getISOWeek(first);
     return getWeekOfYear(first, locale().locale, state.firstDayOfWeek());
-  };
+  }
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     const rtl = locale().direction === "rtl";
 
     switch (event.key) {
@@ -1504,9 +1550,11 @@ export function calendarGrid(
 
     event.preventDefault();
     event.stopPropagation();
-  };
+  }
 
-  const title = (): string => titleFormat().format(formattable(month()).toDate(state.timeZone()));
+  function title(): string {
+    return titleFormat().format(formattable(month()).toDate(state.timeZone()));
+  }
 
   return {
     month,
@@ -1601,7 +1649,9 @@ export function calendarCell(
   state: AnyCalendarState,
 ): CalendarCellResult {
   const locale = useLocale();
-  const date = (): CalendarDate => access(options.date);
+  function date(): CalendarDate {
+    return access(options.date);
+  }
   const labelFormat = calendarFormat(
     () => ({
       weekday: "long",
@@ -1617,16 +1667,25 @@ export function calendarCell(
   const messages = stringFormatter(CALENDAR_STRINGS);
   const drag = dragOf(state);
 
-  const isOutside = (): boolean =>
-    access(options.isOutsideMonth) === true ||
-    !isSameMonth(date(), access(options.month) ?? state.visibleRange().start);
+  function isOutside(): boolean {
+    return (
+      access(options.isOutsideMonth) === true ||
+      !isSameMonth(date(), access(options.month) ?? state.visibleRange().start)
+    );
+  }
 
-  const isDisabled = (): boolean => state.isCellDisabled(date()) || isOutside();
-  const isUnavailable = (): boolean => state.isCellUnavailable(date());
-  const isSelectable = (): boolean => !isDisabled() && !isUnavailable();
+  function isDisabled(): boolean {
+    return state.isCellDisabled(date()) || isOutside();
+  }
+  function isUnavailable(): boolean {
+    return state.isCellUnavailable(date());
+  }
+  function isSelectable(): boolean {
+    return !isDisabled() && !isUnavailable();
+  }
 
   /** This day is part of a value the calendar says is wrong. */
-  const isInvalid = (): boolean => {
+  function isInvalid(): boolean {
     if (!state.isValueInvalid()) return false;
     const day = date();
     if (state.selectionMode === "range") {
@@ -1641,26 +1700,32 @@ export function calendarCell(
     if (state.selectionMode === "multiple") return state.value().some((one) => isSameDay(one, day));
     const chosen = state.value();
     return chosen !== null && isSameDay(chosen, day);
-  };
+  }
 
   // A chosen day stays drawn as chosen while it is invalid, even when it is
   // one that could not be chosen now: the value is what it is, and hiding it
   // would leave the error pointing at nothing.
-  const isSelected = (): boolean =>
-    (state.isSelected(date()) && isSelectable()) || (isInvalid() && !isDisabled());
-  const isFocused = (): boolean => state.isCellFocused(date()) && !isOutside();
-  const isTodayCell = (): boolean => isSameDay(date(), state.today());
+  function isSelected(): boolean {
+    return (state.isSelected(date()) && isSelectable()) || (isInvalid() && !isDisabled());
+  }
+  function isFocused(): boolean {
+    return state.isCellFocused(date()) && !isOutside();
+  }
+  function isTodayCell(): boolean {
+    return isSameDay(date(), state.today());
+  }
 
-  const highlighted = (): DateRange | null =>
-    "highlightedRange" in state ? state.highlightedRange() : null;
-  const isSelectionStart = (): boolean => {
+  function highlighted(): DateRange | null {
+    return "highlightedRange" in state ? state.highlightedRange() : null;
+  }
+  function isSelectionStart(): boolean {
     const range = highlighted();
     return isSelected() && range !== null && isSameDay(date(), range.start);
-  };
-  const isSelectionEnd = (): boolean => {
+  }
+  function isSelectionEnd(): boolean {
     const range = highlighted();
     return isSelected() && range !== null && isSameDay(date(), range.end);
-  };
+  }
 
   if (!isServer) {
     // The state decides which day is focused; the DOM follows it, so the
@@ -1676,16 +1741,16 @@ export function calendarCell(
     );
   }
 
-  const label = (): string => {
+  function label(): string {
     const text = labelFormat().format(date().toDate(state.timeZone()));
     if (isTodayCell()) {
       return messages().format(isSelected() ? "todayDateSelected" : "todayDate", { date: text });
     }
     return isSelected() ? messages().format("dateSelected", { date: text }) : text;
-  };
+  }
 
   /** A range drawn by pressing one day and releasing on another. */
-  const onPointerDown = (event: PointerEvent): void => {
+  function onPointerDown(event: PointerEvent): void {
     if (state.selectionMode !== "range" || event.button !== 0 || isVirtualPointer(event)) return;
     drag.clickPending = true;
     // A touch keeps the pointer on the element it began on unless released,
@@ -1721,7 +1786,7 @@ export function calendarCell(
       }
     }
 
-    const start = (): void => {
+    const start: () => void = () => {
       drag.timer = undefined;
       state.setDragging(true);
       state.selectDate(day);
@@ -1731,9 +1796,9 @@ export function calendarCell(
     };
     if (event.pointerType === "touch") drag.timer = setTimeout(start, 200);
     else start();
-  };
+  }
 
-  const onPointerUp = (event: PointerEvent): void => {
+  function onPointerUp(event: PointerEvent): void {
     if (state.selectionMode !== "range" || event.button !== 0 || isVirtualPointer(event)) return;
     drag.clickPending = true;
     if (state.isReadOnly()) return;
@@ -1756,7 +1821,7 @@ export function calendarCell(
       state.selectDate(day);
       state.setFocusedDate(day);
     }
-  };
+  }
 
   return {
     isSelected,
@@ -1862,12 +1927,15 @@ export interface CalendarMonthPickerOptions extends PickerBase {
   format?: MaybeAccessor<"numeric" | "2-digit" | "long" | "short" | "narrow" | undefined>;
 }
 
+export interface YearFormat {
+  year?: "numeric" | "2-digit";
+  era?: "long" | "short" | "narrow";
+}
+
 export interface CalendarYearPickerOptions extends PickerBase {
   /** How many years are offered, around the one on show. @default 20 */
   visibleYears?: MaybeAccessor<number | undefined>;
-  format?: MaybeAccessor<
-    { year?: "numeric" | "2-digit"; era?: "long" | "short" | "narrow" } | undefined
-  >;
+  format?: MaybeAccessor<YearFormat | undefined>;
 }
 
 /** A date field's name, in the locale. */
@@ -1881,11 +1949,13 @@ function fieldName(locale: string, field: "month" | "year"): string {
   }
 }
 
+interface PickerBasis {
+  base: () => CalendarDate;
+  go: (date: CalendarDate) => void;
+}
+
 /** The day a picker counts from, and how choosing an item moves the calendar. */
-function pickerBasis(
-  options: PickerBase,
-  state: AnyCalendarState,
-): { base: () => CalendarDate; go: (date: CalendarDate) => void } {
+function pickerBasis(options: PickerBase, state: AnyCalendarState): PickerBasis {
   return {
     base: () => {
       const offset = access(options.monthOffset);
@@ -1901,14 +1971,16 @@ function pickerBasis(
   };
 }
 
+interface PickerBounds {
+  first: CalendarDate | null;
+  last: CalendarDate | null;
+}
+
 /**
  * The first and last day a picker may go to: the bounds on a value and the
  * months the calendar can be paged to, whichever is tighter.
  */
-function pickerBounds(state: AnyCalendarState): {
-  first: CalendarDate | null;
-  last: CalendarDate | null;
-} {
+function pickerBounds(state: AnyCalendarState): PickerBounds {
   const min = state.minValue();
   const max = state.maxValue();
   const start = state.startMonth();
@@ -2080,7 +2152,7 @@ export function useCalendar(): CalendarContextValue {
   return value;
 }
 
-function CalendarProvider(props: { value: CalendarContextValue; children?: Child }) {
+function CalendarProvider(props: ProviderProps<CalendarContextValue>) {
   return provide(
     CalendarContext,
     () => props.value,
@@ -2384,8 +2456,12 @@ function CalendarBody(incoming: CalendarBodyProps) {
   );
 }
 
+interface DaySlotProps {
+  date: CalendarDate | null;
+}
+
 /** A place in a week row: a day, or nothing where the calendar system has none. */
-function DaySlot(props: { date: CalendarDate | null }) {
+function DaySlot(props: DaySlotProps) {
   return (
     <Show when={props.date !== null} fallback={<div role="gridcell" />}>
       <CalendarCell date={props.date as CalendarDate} />
@@ -2488,7 +2564,7 @@ export function CalendarMonthPicker(props: CalendarMonthPickerComponentProps) {
 export interface CalendarYearPickerComponentProps {
   /** How many years are offered, around the one on show. @default 20 */
   visibleYears?: number;
-  format?: { year?: "numeric" | "2-digit"; era?: "long" | "short" | "narrow" };
+  format?: YearFormat;
   /** Which of the months on show it heads. Without one it follows the focused day. */
   monthOffset?: number;
   /** Draws the picker. Its items are keyed by place, not by year number. */

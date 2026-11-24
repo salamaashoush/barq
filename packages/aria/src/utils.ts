@@ -35,6 +35,11 @@ export { access };
 /** What a hook writes onto an element: static values, accessors, handlers. */
 export type DOMProps = Record<string, unknown>;
 
+export interface ProviderProps<T> {
+  value: T;
+  children?: Child;
+}
+
 /**
  * A callback option that may have arrived wrapped in a Cell.
  *

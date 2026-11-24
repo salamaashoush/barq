@@ -74,6 +74,7 @@ import {
   type StyleProps,
   styleProps,
   triggerSlot,
+  type ProviderProps,
 } from "./utils.ts";
 
 const actionGroupStrings = new StringDictionary<"more">({
@@ -181,22 +182,26 @@ export function actionGroup(
     );
   }
 
-  const orientation = (): Orientation => access(options.orientation) ?? "horizontal";
-  const selectionMode = (): SelectionMode => state.selectionManager().selectionMode;
-  const isDisabled = (): boolean => {
+  function orientation(): Orientation {
+    return access(options.orientation) ?? "horizontal";
+  }
+  function selectionMode(): SelectionMode {
+    return state.selectionManager().selectionMode;
+  }
+  function isDisabled(): boolean {
     if (access(options.isDisabled) === true) return true;
     const disabled = state.selectionManager();
     for (const key of state.collection().getKeys()) {
       if (!disabled.isDisabled(key)) return false;
     }
     return true;
-  };
-  const role = (): string => {
+  }
+  function role(): string {
     const own = GROUP_ROLES[selectionMode()];
     return own === "toolbar" && toolbarAxis() !== null ? "group" : own;
-  };
+  }
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     // A key from a menu the group opened is not the group's.
     if (!contains(event.currentTarget as Element, targetElement(event))) return;
     if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
@@ -219,7 +224,7 @@ export function actionGroup(
     // Held down, the key repeats and focus keeps moving, as upstream allows.
     event.preventDefault();
     event.stopPropagation();
-  };
+  }
 
   return {
     isDisabled,
@@ -259,8 +264,12 @@ export function actionGroupItem(
   state: ListState<unknown>,
 ): ActionGroupItemResult {
   const { key } = options;
-  const mode = (): SelectionMode => state.selectionManager().selectionMode;
-  const isSelected = (): boolean => state.selectionManager().isSelected(key);
+  function mode(): SelectionMode {
+    return state.selectionManager().selectionMode;
+  }
+  function isSelected(): boolean {
+    return state.selectionManager().isSelected(key);
+  }
 
   return {
     isSelected,
@@ -290,9 +299,13 @@ interface ActionGroupContextValue {
 
 const ActionGroupContext = createContext<ActionGroupContextValue | null>(null);
 const ActionGroupNodeContext = createContext<Node<unknown> | null>(null);
+interface OverflowMenuValue {
+  itemClass?: string;
+}
+
 /** Set inside the overflow menu, where an item is a menu item. */
 /** Inside the overflow menu, with the class its items take there. */
-const OverflowMenuContext = createContext<{ itemClass?: string } | null>(null);
+const OverflowMenuContext = createContext<OverflowMenuValue | null>(null);
 
 /** The enclosing {@link ActionGroup}'s state, for an item of the caller's own. */
 export function useActionGroup(): ListState<unknown> | null {
@@ -377,7 +390,9 @@ export function ActionGroup<T>(props: ActionGroupComponentProps<T>) {
     onSelectionChange: (keys) => props.onSelectionChange?.(keys),
   }) as unknown as ListState<unknown>;
 
-  const orientation = (): Orientation => props.orientation ?? "horizontal";
+  function orientation(): Orientation {
+    return props.orientation ?? "horizontal";
+  }
   const { actionGroupProps, isDisabled } = actionGroup(
     {
       ref: groupRef,
@@ -391,7 +406,9 @@ export function ActionGroup<T>(props: ActionGroupComponentProps<T>) {
     state,
   );
 
-  const mode = (): SelectionMode => state.selectionManager().selectionMode;
+  function mode(): SelectionMode {
+    return state.selectionManager().selectionMode;
+  }
   const { hidden: collapsed, isMeasuring } = overflowItems({
     wrapperRef,
     groupRef,
@@ -409,11 +426,19 @@ export function ActionGroup<T>(props: ActionGroupComponentProps<T>) {
     isAllOrNothing: () => mode() !== "none",
   });
 
-  const nodes = (): Node<unknown>[] => [...state.collection()];
-  const shown = (): Node<unknown>[] => nodes().filter((node) => !collapsed().has(node.key));
-  const hidden = (): Node<unknown>[] => nodes().filter((node) => collapsed().has(node.key));
+  function nodes(): Node<unknown>[] {
+    return [...state.collection()];
+  }
+  function shown(): Node<unknown>[] {
+    return nodes().filter((node) => !collapsed().has(node.key));
+  }
+  function hidden(): Node<unknown>[] {
+    return nodes().filter((node) => collapsed().has(node.key));
+  }
   // Everything in the menu: the group itself has nothing left to name.
-  const onlyMenu = (): boolean => hidden().length > 0 && shown().length === 0;
+  function onlyMenu(): boolean {
+    return hidden().length > 0 && shown().length === 0;
+  }
 
   const value: ActionGroupContextValue = {
     state,
@@ -483,7 +508,7 @@ export function ActionGroup<T>(props: ActionGroupComponentProps<T>) {
   );
 }
 
-function GroupProvider(props: { value: ActionGroupContextValue; children?: Child }) {
+function GroupProvider(props: ProviderProps<ActionGroupContextValue>) {
   return provide(
     ActionGroupContext,
     () => props.value,
@@ -510,12 +535,13 @@ interface OverflowMenuProps {
 
 function OverflowMenu(props: OverflowMenuProps) {
   const state = props.state;
-  const keyOf = (item: unknown): Key => {
+  function keyOf(item: unknown): Key {
     for (const node of props.hidden) if (node.value === item) return node.key;
     return String(item);
-  };
-  const nodeOf = (item: unknown): Node<unknown> | undefined =>
-    props.hidden.find((node) => node.value === item);
+  }
+  function nodeOf(item: unknown): Node<unknown> | undefined {
+    return props.hidden.find((node) => node.value === item);
+  }
 
   return (
     <MenuTrigger isDisabled={props.isDisabled}>
@@ -546,7 +572,12 @@ function OverflowMenu(props: OverflowMenuProps) {
   );
 }
 
-function InOverflowMenu(props: { itemClass?: string; children?: Child }) {
+interface InOverflowMenuProps {
+  itemClass?: string;
+  children?: Child;
+}
+
+function InOverflowMenu(props: InOverflowMenuProps) {
   return provide(
     OverflowMenuContext,
     () => ({ itemClass: props.itemClass }),
@@ -563,20 +594,22 @@ function OverflowButton(props: OverflowMenuProps) {
 
   // The key of the first item in the menu: the button stands in for it in the
   // group's roving focus, so the Tab stop survives the items collapsing.
-  const standIn = (): Key | undefined => props.hidden[0]?.key;
-  const isSelected = (): boolean => {
+  function standIn(): Key | undefined {
+    return props.hidden[0]?.key;
+  }
+  function isSelected(): boolean {
     const manager = state.selectionManager();
     return manager.selectionMode !== "none" && !manager.isEmpty;
-  };
+  }
   // Single selection that cannot be emptied reads like a picker: the button
   // shows the chosen item, and says so.
-  const picked = (): Node<unknown> | null => {
+  function picked(): Node<unknown> | null {
     const manager = state.selectionManager();
     if (props.summaryIcon !== undefined) return null;
     if (manager.selectionMode !== "single" || !manager.disallowEmptySelection) return null;
     const key = manager.firstSelectedKey;
     return key === null ? null : state.collection().getItem(key);
-  };
+  }
 
   const buttonId = trigger.menuTriggerProps.id as Accessor<string>;
   const { buttonProps, isPressed } = button(
@@ -681,7 +714,9 @@ function GroupButton(props: ActionGroupItemComponentProps) {
   const options = fromProps(cells(props));
   const slot = triggerSlot();
   const item = actionGroupItem({ key: node.key }, group.state);
-  const isDisabled = (): boolean => group.isDisabled() || item.isDisabled();
+  const isDisabled: () => boolean = () => {
+    return group.isDisabled() || item.isDisabled();
+  };
 
   const { buttonProps, isPressed } = button(
     mergeProps(slot.props, options, {

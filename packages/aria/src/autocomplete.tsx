@@ -54,7 +54,15 @@ import { getInteractionModality } from "./interactions/modality.ts";
 import type { ElementRef } from "./interactions/press.ts";
 import { isAndroid, isIOS } from "./platform.ts";
 import { isCtrlKeyPressed, ListKeyboardDelegate } from "./selection.ts";
-import { access, callback, controllable, type DOMProps, id, type MaybeAccessor } from "./utils.ts";
+import {
+  access,
+  callback,
+  controllable,
+  type DOMProps,
+  id,
+  type MaybeAccessor,
+  type ProviderProps,
+} from "./utils.ts";
 
 // ---------------------------------------------------------------------------
 // State
@@ -182,7 +190,9 @@ export function autocomplete(
   state: AutocompleteState,
 ): AutocompleteResult {
   const collectionId = id();
-  const input = (): HTMLElement | null => (access(options.inputRef) as HTMLElement | null) ?? null;
+  function input(): HTMLElement | null {
+    return (access(options.inputRef) as HTMLElement | null) ?? null;
+  }
 
   // A mobile screen reader cannot follow a virtual highlight, so it gets the
   // collection itself.
@@ -192,35 +202,38 @@ export function autocomplete(
   });
   const [autoFocusOnMount, setAutoFocusOnMount] = createSignal(false, { ownedWrite: true });
 
-  const shouldUseVirtualFocus = (): boolean => {
+  function shouldUseVirtualFocus(): boolean {
     if (isMobileScreenReader || access(options.disableVirtualFocus) === true) return false;
     // A collection that put itself in the Tab order anyway cannot be driven
     // virtually, and the field must not pretend otherwise.
     const element = connected()?.ref;
     const node = element === undefined ? null : (access(element) as Element | null);
     return node === null || !node.hasAttribute("tabindex");
-  };
-  const hasCollection = (): boolean => connected() !== null;
+  }
+  function hasCollection(): boolean {
+    return connected() !== null;
+  }
 
-  const manager = (): SelectionManager | null =>
-    untrack(() => connected()?.state.selectionManager() ?? null);
-  const itemElement = (key: Key): HTMLElement | null => {
+  function manager(): SelectionManager | null {
+    return untrack(() => connected()?.state.selectionManager() ?? null);
+  }
+  function itemElement(key: Key): HTMLElement | null {
     const collection = untrack(connected);
     const field = input();
     if (collection === null || field === null) return null;
     return ownerDocument(field).getElementById(collection.idFor(key));
-  };
+  }
 
   let focusFirstPending = false;
   let delayNext = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
-  const clearTimer = (): void => {
+  function clearTimer(): void {
     if (timer !== null) clearTimeout(timer);
     timer = null;
-  };
+  }
   onCleanup(clearTimer);
 
-  const focusFirstItem = (): void => {
+  function focusFirstItem(): void {
     if (untrack(connected) === null) {
       setAutoFocusOnMount(true);
       return;
@@ -228,9 +241,9 @@ export function autocomplete(
     delayNext = true;
     focusFirstPending = true;
     manager()?.setFocused(true);
-  };
+  }
 
-  const clearVirtualFocus = (clearFocusKey = false): void => {
+  function clearVirtualFocus(clearFocusKey = false): void {
     setAutoFocusOnMount(false);
     clearTimer();
     delayNext = false;
@@ -239,7 +252,7 @@ export function autocomplete(
     const active = manager();
     active?.setFocused(false);
     if (clearFocusKey) active?.setFocusedKey(null);
-  };
+  }
 
   if (!isServer) {
     // The first item, once the narrowed collection has one: an effect, because
@@ -297,11 +310,11 @@ export function autocomplete(
   }
 
   let lastInputType = "";
-  const onBeforeInput = (event: InputEvent): void => {
+  function onBeforeInput(event: InputEvent): void {
     lastInputType = event.inputType;
-  };
+  }
 
-  const onChange = (value: string): void => {
+  function onChange(value: string): void {
     const typed =
       lastInputType === "insertText" ||
       lastInputType === "insertCompositionText" ||
@@ -316,17 +329,17 @@ export function autocomplete(
       clearVirtualFocus(true);
     }
     state.setInputValue(value);
-  };
+  }
 
   let keyDownTarget: Element | null = null;
 
-  const focusedItem = (): HTMLElement | null => {
+  function focusedItem(): HTMLElement | null {
     const key = manager()?.focusedKey ?? null;
     if (key === null || untrack(state.focusedNodeId) === null) return null;
     return itemElement(key);
-  };
+  }
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     keyDownTarget = targetElement(event);
     if (event.isComposing) return;
     if (!untrack(hasCollection) || !untrack(shouldUseVirtualFocus)) return;
@@ -376,7 +389,7 @@ export function autocomplete(
     } else if (event.key === "Enter" && item !== null) {
       item.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     }
-  };
+  }
 
   if (!isServer) {
     // The release of a key passed on goes where the press went, ahead of
@@ -384,7 +397,7 @@ export function autocomplete(
     createEffect(input, (field) => {
       if (field === null) return undefined;
       const doc = ownerDocument(field);
-      const onKeyUp = (event: KeyboardEvent): void => {
+      function onKeyUp(event: KeyboardEvent): void {
         if (targetElement(event) !== keyDownTarget || keyDownTarget === null) return;
         if (!untrack(hasCollection) || !untrack(shouldUseVirtualFocus)) return;
         event.stopImmediatePropagation();
@@ -393,30 +406,32 @@ export function autocomplete(
           focusedItem() ??
           (collection === null ? null : ((access(collection.ref) as Element | null) ?? null));
         target?.dispatchEvent(copyKeyboardEvent(event));
-      };
+      }
       doc.addEventListener("keyup", onKeyUp, true);
       return () => doc.removeEventListener("keyup", onKeyUp, true);
     });
   }
 
-  const onBlur = (): void => {
+  function onBlur(): void {
     // The highlight is left where it was and its ring taken off; coming back
     // puts the ring back on it.
     manager()?.setFocused(false);
-  };
+  }
 
-  const onFocus = (): void => {
+  function onFocus(): void {
     const active = manager();
     if (active !== null && active.focusedKey !== null) active.setFocused(true);
-  };
+  }
 
-  const onPointerDown = (event: PointerEvent): void => {
+  function onPointerDown(event: PointerEvent): void {
     if (event.button !== 0 || event.pointerType === "touch") return;
     if (untrack(state.focusedNodeId) === null || input() === null) return;
     if (targetElement(event) === input()) clearVirtualFocus();
-  };
+  }
 
-  const virtual = (): boolean => hasCollection() && shouldUseVirtualFocus();
+  function virtual(): boolean {
+    return hasCollection() && shouldUseVirtualFocus();
+  }
 
   const filter =
     options.filter === undefined
@@ -572,7 +587,7 @@ export function Autocomplete(props: AutocompleteComponentProps) {
   return <AutocompleteProvider value={value}>{props.children}</AutocompleteProvider>;
 }
 
-function AutocompleteProvider(props: { value: AutocompleteValue; children?: Child }) {
+function AutocompleteProvider(props: ProviderProps<AutocompleteValue>) {
   return provide(
     AutocompleteContext,
     () => props.value,

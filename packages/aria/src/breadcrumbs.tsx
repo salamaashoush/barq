@@ -86,9 +86,15 @@ export function breadcrumbItem(
   options: BreadcrumbItemOptions,
   ref?: ElementRef,
 ): BreadcrumbItemResult {
-  const isCurrent = (): boolean => access(options.isCurrent) === true;
-  const elementType = (): string => access(options.elementType) ?? "a";
-  const isHeading = (): boolean => /^h[1-6]$/.test(elementType());
+  function isCurrent(): boolean {
+    return access(options.isCurrent) === true;
+  }
+  function elementType(): string {
+    return access(options.elementType) ?? "a";
+  }
+  function isHeading(): boolean {
+    return /^h[1-6]$/.test(elementType());
+  }
 
   const { linkProps, isPressed } = link({ ...options, elementType }, ref);
 
@@ -120,7 +126,12 @@ interface BreadcrumbsContextValue {
 }
 
 const BreadcrumbsContext = createContext<BreadcrumbsContextValue | null>(null);
-const CrumbNodeContext = createContext<{ node: Node<unknown>; isLast: boolean } | null>(null);
+export interface CrumbNode {
+  node: Node<unknown>;
+  isLast: boolean;
+}
+
+const CrumbNodeContext = createContext<CrumbNode | null>(null);
 
 export function useBreadcrumbs(): BreadcrumbsContextValue {
   const value = getContext(BreadcrumbsContext);
@@ -131,7 +142,7 @@ export function useBreadcrumbs(): BreadcrumbsContextValue {
 }
 
 /** The collection node the crumb being built is for, and whether it is last. */
-export function useCrumb(): { node: Node<unknown>; isLast: boolean } {
+export function useCrumb(): CrumbNode {
   const value = getContext(CrumbNodeContext);
   if (value === null || value === undefined) {
     throw new Error("A Breadcrumb must be rendered inside Breadcrumbs' item callback.");
@@ -162,8 +173,9 @@ export function Breadcrumbs<T>(props: BreadcrumbsComponentProps<T>) {
   const options = fromProps(cells(props) as unknown as Incoming<Record<string, unknown>>);
   const { navProps } = breadcrumbs(options);
 
-  const collection = (): ListCollection<T> =>
-    buildCollection(props.items, cells(props) as unknown as ItemAccessors<T>);
+  function collection(): ListCollection<T> {
+    return buildCollection(props.items, cells(props) as unknown as ItemAccessors<T>);
+  }
 
   const owner = getOwner();
   if (owner !== null) {
@@ -228,10 +240,16 @@ export function Breadcrumb(props: BreadcrumbComponentProps) {
   const trail = useBreadcrumbs();
   const { node, isLast } = useCrumb();
 
-  const isCurrent = (): boolean => props.isCurrent ?? isLast;
-  const href = (): string | undefined => props.href ?? (node.props?.href as string | undefined);
+  function isCurrent(): boolean {
+    return props.isCurrent ?? isLast;
+  }
+  function href(): string | undefined {
+    return props.href ?? (node.props?.href as string | undefined);
+  }
 
-  const isDisabled = (): boolean => props.isDisabled === true || trail.isDisabled();
+  function isDisabled(): boolean {
+    return props.isDisabled === true || trail.isDisabled();
+  }
 
   /**
    * Whether this crumb is a link at all.
@@ -240,7 +258,9 @@ export function Breadcrumb(props: BreadcrumbComponentProps) {
    * no `href` has no role — so it would be announced as text while still
    * looking like something to press.
    */
-  const isLink = (): boolean => href() !== undefined && !isDisabled();
+  function isLink(): boolean {
+    return href() !== undefined && !isDisabled();
+  }
 
   const { itemProps, isPressed } = breadcrumbItem(
     {

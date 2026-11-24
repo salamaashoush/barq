@@ -24,8 +24,12 @@ import {
 import { ref as makeRef } from "@barqjs/primitives/refs";
 import type { DOMProps } from "./utils.ts";
 
+interface HueProps {
+  onChange?: (value: Color) => void;
+}
+
 describe("ColorSlider", () => {
-  function Hue(props: { onChange?: (value: Color) => void }) {
+  function Hue(props: HueProps) {
     return (
       <ColorSlider channel="hue" defaultValue="hsb(180, 100%, 100%)" onChange={props.onChange} />
     );
@@ -162,11 +166,13 @@ describe("ColorArea", () => {
   });
 });
 
+interface AreaGradient {
+  area: Record<string, string>;
+  thumb: Record<string, string>;
+}
+
 describe("a colour area's gradient", () => {
-  function gradient(
-    options: ColorAreaStateOptions,
-    direction?: "ltr" | "rtl",
-  ): { area: Record<string, string>; thumb: Record<string, string> } {
+  function gradient(options: ColorAreaStateOptions, direction?: "ltr" | "rtl"): AreaGradient {
     let area: Record<string, string> = {};
     let thumb: Record<string, string> = {};
     render(() => {
@@ -715,8 +721,13 @@ describe("a colour area has two inputs and only one can hold focus", () => {
   });
 });
 
+interface HueEndProps {
+  onChange?: (value: Color) => void;
+  onChangeEnd?: (value: Color) => void;
+}
+
 describe("a colour slider's keys", () => {
-  function Hue(props: { onChange?: (value: Color) => void; onChangeEnd?: (value: Color) => void }) {
+  function Hue(props: HueEndProps) {
     return (
       <ColorSlider
         channel="hue"
@@ -855,12 +866,14 @@ describe("a colour slider in a form", () => {
   });
 });
 
+interface AreaProps {
+  onChange?: (value: Color) => void;
+  onChangeEnd?: (value: Color) => void;
+  defaultValue?: string;
+}
+
 describe("a colour area's keys", () => {
-  function Area(props: {
-    onChange?: (value: Color) => void;
-    onChangeEnd?: (value: Color) => void;
-    defaultValue?: string;
-  }) {
+  function Area(props: AreaProps) {
     return (
       <ColorArea
         defaultValue={props.defaultValue ?? "hsb(180, 50%, 60%)"}
@@ -1242,8 +1255,9 @@ describe("a colour swatch inside a swatch picker item", () => {
         </ColorSwatchPicker>
       </ColorPicker>
     ));
-    const background = (testId: string): string =>
-      screen.getByTestId(testId).style.getPropertyValue("background-color");
+    function background(testId: string): string {
+      return screen.getByTestId(testId).style.getPropertyValue("background-color");
+    }
     expect(background("red")).toBe(parseColor("#ff0000").toString("css"));
     expect(background("green")).toBe(parseColor("#00ff00").toString("css"));
   });
@@ -1498,11 +1512,16 @@ function styleOf(props: DOMProps): Record<string, string> {
 
 const CHECKERBOARD = "repeating-conic-gradient(#e1e1e1 0% 25%, white 0% 50%) 50% / 16px 16px";
 
+interface TrackGradient {
+  track: Record<string, string>;
+  thumb: Record<string, string>;
+}
+
 describe("a colour slider's track", () => {
   function track(
     options: ColorSliderStateOptions,
     direction: "ltr" | "rtl" = "ltr",
-  ): { track: Record<string, string>; thumb: Record<string, string> } {
+  ): TrackGradient {
     let result = { track: {}, thumb: {} };
     render(() => {
       provideDirection(direction);
@@ -1618,10 +1637,7 @@ describe("a colour slider's track", () => {
 });
 
 describe("a colour wheel draws its ring", () => {
-  function ring(options: ColorWheelStateOptions): {
-    track: Record<string, string>;
-    thumb: Record<string, string>;
-  } {
+  function ring(options: ColorWheelStateOptions): TrackGradient {
     let result = { track: {}, thumb: {} };
     render(() => {
       const state = colorWheelState(options);
@@ -1681,12 +1697,14 @@ describe("a colour wheel draws its ring", () => {
   });
 });
 
+interface FieldProps {
+  format?: ColorFormat;
+  defaultValue: string;
+  onChange: (value: Color | null) => void;
+}
+
 describe("a colour field steps only where its text is the 24-bit value", () => {
-  function Field(props: {
-    format?: ColorFormat;
-    defaultValue: string;
-    onChange: (value: Color | null) => void;
-  }) {
+  function Field(props: FieldProps) {
     return (
       <ColorField
         label="Colour"

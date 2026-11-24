@@ -24,9 +24,15 @@ import { renderAndHydrate } from "@barqjs/testing";
 import { render } from "@barqjs/web";
 
 const require_ = createRequire(import.meta.url);
-const native = require_("@barqjs/compiler") as {
-  transform(code: string, options?: Record<string, unknown>): { code: string };
-};
+interface Native {
+  transform(code: string, options?: Record<string, unknown>): Transformed;
+}
+
+interface Transformed {
+  code: string;
+}
+
+const native = require_("@barqjs/compiler") as Native;
 
 const SRC = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 const CORE = new URL("../node_modules/@barqjs/core/src/index.ts", import.meta.url).pathname;
@@ -64,12 +70,17 @@ function withHot(code: string, components: readonly string[]): string {
   );
 }
 
+interface CompiledPair {
+  client: Module;
+  server: Module;
+}
+
 /** `source` compiled for `mode`, client and server halves, loaded. */
 async function compile(
   source: string,
   mode: Mode,
   components: readonly string[],
-): Promise<{ client: Module; server: Module }> {
+): Promise<CompiledPair> {
   const at = sequence++;
   const dev = mode !== "production";
   const common = {
@@ -317,8 +328,9 @@ const SCOPE_COMPONENTS = [
   "Captured",
 ];
 
-const read = (container: Element): string[] =>
-  [...container.querySelectorAll("i")].map((node) => node.textContent ?? "");
+function read(container: Element): string[] {
+  return [...container.querySelectorAll("i")].map((node) => node.textContent ?? "");
+}
 
 /**
  * What each fixture renders. A component's binding reaches what it builds and

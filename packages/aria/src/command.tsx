@@ -77,6 +77,7 @@ import {
   mergeProps,
   type StyleProps,
   styleProps,
+  type ProviderProps,
 } from "./utils.ts";
 
 // ---------------------------------------------------------------------------
@@ -310,6 +311,18 @@ interface RowData {
   onSelect?: (value: string) => void;
 }
 
+interface RankedSection {
+  key: Key;
+  rows: CommandRow[];
+  best: number;
+  isRendered: boolean;
+}
+
+interface CommandHighlight {
+  key: Key | null;
+  value: string | undefined;
+}
+
 export function commandState(options: CommandStateOptions = {}): CommandState {
   const rows = staticCollection();
 
@@ -324,14 +337,14 @@ export function commandState(options: CommandStateOptions = {}): CommandState {
     const isFiltering = access(options.shouldFilter) !== false && term !== "";
     const score = callback(options.filter) ?? commandScore;
 
-    const rowOf = (entry: StaticEntry, group: Key | undefined): CommandRow => {
+    function rowOf(entry: StaticEntry, group: Key | undefined): CommandRow {
       const data = entry.props as RowData;
-      const value = entry.textValue.trim();
+      const text = entry.textValue.trim();
       const keywords = data.keywords ?? [];
-      const matched = isFiltering ? score(value, term, keywords) : 1;
+      const matched = isFiltering ? score(text, term, keywords) : 1;
       return {
         key: entry.key,
-        value,
+        value: text,
         keywords,
         isDisabled: data.isDisabled === true,
         group,
@@ -339,16 +352,18 @@ export function commandState(options: CommandStateOptions = {}): CommandState {
         isRendered: !isFiltering || matched > 0 || data.forceMount === true,
         onSelect: data.onSelect,
       };
-    };
+    }
 
-    const byScore = (a: CommandRow, b: CommandRow): number => b.score - a.score;
+    function byScore(a: CommandRow, b: CommandRow): number {
+      return b.score - a.score;
+    }
     const all = new Map<Key, CommandRow>();
     const groups = new Map<Key, boolean>();
     const order = new Map<Key, number>();
     const visible: Key[] = [];
     const visibleGroups: Key[] = [];
     const loose: CommandRow[] = [];
-    const sections: { key: Key; rows: CommandRow[]; best: number; isRendered: boolean }[] = [];
+    const sections: RankedSection[] = [];
 
     for (const entry of rows.entries()) {
       if (entry.type === "item") {
@@ -401,13 +416,14 @@ export function commandState(options: CommandStateOptions = {}): CommandState {
 
   // Uncontrolled, the highlight is the item the arrows reached; a value is the
   // way in from outside, for a `defaultValue` and for `setValue`.
-  const [picked, setPicked] = createSignal<{ key: Key | null; value: string | undefined }>(
+  const [picked, setPicked] = createSignal<CommandHighlight>(
     { key: null, value: untrack(() => access(options.defaultValue)) },
     { ownedWrite: true },
   );
 
-  const keyFor = (value: string, ranked: Ranking): Key | null =>
-    ranked.visible.find((key) => ranked.rows.get(key)?.value === value) ?? null;
+  function keyFor(wanted: string, ranked: Ranking): Key | null {
+    return ranked.visible.find((key) => ranked.rows.get(key)?.value === wanted) ?? null;
+  }
 
   const highlightedKey = createMemo((): Key | null => {
     const ranked = ranking();
@@ -418,21 +434,24 @@ export function commandState(options: CommandStateOptions = {}): CommandState {
     return current.value === undefined ? null : keyFor(current.value, ranked);
   });
 
-  const valueOf = (key: Key | null): string =>
-    key === null ? "" : (ranking().rows.get(key)?.value ?? "");
-  const value = (): string => valueOf(highlightedKey());
+  function valueOf(key: Key | null): string {
+    return key === null ? "" : (ranking().rows.get(key)?.value ?? "");
+  }
+  function value(): string {
+    return valueOf(highlightedKey());
+  }
 
-  const highlight = (key: Key | null): void => {
+  function highlight(key: Key | null): void {
     const previous = untrack(value);
     const next = untrack(() => valueOf(key));
     setPicked({ key, value: undefined });
     if (next !== previous) options.onValueChange?.(next);
-  };
+  }
 
-  const selectable = (): Key[] => {
+  function selectable(): Key[] {
     const ranked = ranking();
     return ranked.visible.filter((key) => ranked.rows.get(key)?.isDisabled !== true);
-  };
+  }
 
   // The first item is highlighted whenever there is nothing better to keep: on
   // arrival, after every change to the search, and when the highlighted item
@@ -449,18 +468,18 @@ export function commandState(options: CommandStateOptions = {}): CommandState {
     },
   );
 
-  const go = (key: Key | undefined): Key | null => {
+  function go(key: Key | undefined): Key | null {
     if (key === undefined) return null;
     highlight(key);
     return key;
-  };
+  }
 
   const [isSettled, setSettled] = createSignal(false, { ownedWrite: true });
   onSettled(() => {
     setSettled(true);
   });
 
-  const move = (by: 1 | -1): Key | null => {
+  function move(by: 1 | -1): Key | null {
     const keys = untrack(selectable);
     if (keys.length === 0) return null;
     const current = untrack(highlightedKey);
@@ -470,9 +489,9 @@ export function commandState(options: CommandStateOptions = {}): CommandState {
       next = next < 0 ? keys.length - 1 : next >= keys.length ? 0 : next;
     }
     return go(keys[next]);
-  };
+  }
 
-  const moveToGroup = (by: 1 | -1): Key | null => {
+  function moveToGroup(by: 1 | -1): Key | null {
     const ranked = untrack(ranking);
     const keys = untrack(selectable);
     const current = untrack(highlightedKey);
@@ -487,20 +506,20 @@ export function commandState(options: CommandStateOptions = {}): CommandState {
       if (first !== undefined) return go(first);
     }
     return move(by);
-  };
+  }
 
-  const moveToEdge = (edge: "first" | "last"): Key | null => {
+  function moveToEdge(edge: "first" | "last"): Key | null {
     const keys = untrack(selectable);
     return go(edge === "first" ? keys[0] : keys.at(-1));
-  };
+  }
 
-  const run = (key?: Key): void => {
+  function run(key?: Key): void {
     const target = key ?? untrack(highlightedKey);
     if (target === null) return;
     const row = untrack(ranking).rows.get(target);
     if (row === undefined || row.isDisabled) return;
     row.onSelect?.(row.value);
-  };
+  }
 
   return {
     rows,
@@ -570,19 +589,23 @@ export function command(options: CommandOptions, state: CommandState): CommandRe
   const listId = id();
   const labelId = id();
   const baseId = id();
-  const label = (): string | undefined => access(options.label) ?? access(options["aria-label"]);
-  const itemId = (key: Key): string => `${baseId()}-item-${String(key)}`;
+  function label(): string | undefined {
+    return access(options.label) ?? access(options["aria-label"]);
+  }
+  function itemId(key: Key): string {
+    return `${baseId()}-item-${String(key)}`;
+  }
   // While the caret is being moved, the screen reader has to read the text and
   // not the option: the highlight stays, and the input stops naming it until
   // the next move into the list.
   const [isListActive, setListActive] = createSignal(true, { ownedWrite: true });
-  const activeId = (): string | undefined => {
+  function activeId(): string | undefined {
     const key = state.highlightedKey();
     return key === null || !isListActive() ? undefined : itemId(key);
-  };
+  }
 
   /** Scroll to an item, and to its group's heading when it is the group's first. */
-  const reveal = (key: Key | null): void => {
+  function reveal(key: Key | null): void {
     const list = access(options.listRef) as HTMLElement | null;
     if (list === null || key === null) return;
     const element = state.rows.elementOf(key) as HTMLElement | null;
@@ -595,17 +618,17 @@ export function command(options: CommandOptions, state: CommandState): CommandRe
       if (heading instanceof HTMLElement) scrollIntoView(list, heading);
     }
     scrollIntoView(list, element);
-  };
+  }
 
-  const step = (event: KeyboardEvent, by: 1 | -1): void => {
+  function step(event: KeyboardEvent, by: 1 | -1): void {
     event.preventDefault();
     setListActive(true);
     if (event.metaKey) reveal(state.moveToEdge(by === 1 ? "last" : "first"));
     else if (event.altKey) reveal(state.moveToGroup(by));
     else reveal(state.move(by));
-  };
+  }
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     if (event.defaultPrevented || isComposing(event)) return;
 
     const nothingHighlighted = untrack(state.highlightedKey) === null;
@@ -643,7 +666,7 @@ export function command(options: CommandOptions, state: CommandState): CommandRe
       default:
         break;
     }
-  };
+  }
 
   // A new search starts again from the top, where its best match is.
   createEffect(state.search, (now, previous) => {
@@ -657,11 +680,11 @@ export function command(options: CommandOptions, state: CommandState): CommandRe
     if (previous !== undefined && previous !== now) setListActive(true);
   });
 
-  const onPointerDown = (event: PointerEvent): void => {
+  function onPointerDown(event: PointerEvent): void {
     // A touch opens the on-screen keyboard rather than placing a caret.
     if (event.button !== 0 || event.pointerType === "touch") return;
     setListActive(false);
-  };
+  }
 
   return {
     label,
@@ -700,17 +723,23 @@ export interface CommandInputOptions {
   onValueChange?: (search: string) => void;
 }
 
+export interface CommandInputResult {
+  inputProps: DOMProps;
+}
+
 /** The search box: a combobox whose popup is the list, which is always open. */
 export function commandInput(
   options: CommandInputOptions,
   state: CommandState,
   shared: DOMProps,
-): { inputProps: DOMProps } {
-  const isControlled = (): boolean => access(options.value) !== undefined;
+): CommandInputResult {
+  function isControlled(): boolean {
+    return access(options.value) !== undefined;
+  }
   state.controlSearch(() => access(options.value));
   onCleanup(() => state.controlSearch(null));
 
-  const onInput = (event: Event): void => {
+  function onInput(event: Event): void {
     const input = event.target as HTMLInputElement;
     if (!isControlled()) state.setSearch(input.value);
     options.onValueChange?.(input.value);
@@ -718,7 +747,7 @@ export function commandInput(
     // declined, nothing re-renders on a value that did not move, so the DOM
     // has to be put back by hand.
     if (isControlled() && input.value !== state.search()) input.value = state.search();
-  };
+  }
 
   return {
     inputProps: mergeProps(shared, {
@@ -769,7 +798,9 @@ export function commandItem(
   itemId: (key: Key) => string,
 ): CommandItemResult {
   const group = getContext(CommandGroupContext) ?? null;
-  const isDisabled = (): boolean => access(options.isDisabled) === true;
+  function isDisabled(): boolean {
+    return access(options.isDisabled) === true;
+  }
 
   const row = staticItem(state.rows, {
     textValue: () => access(options.value),
@@ -781,9 +812,15 @@ export function commandItem(
     }),
   });
 
-  const isHighlighted = (): boolean => state.highlightedKey() === row.key;
-  const isRendered = (): boolean => state.isRendered(row.key);
-  const position = (): number => state.visible().indexOf(row.key);
+  function isHighlighted(): boolean {
+    return state.highlightedKey() === row.key;
+  }
+  function isRendered(): boolean {
+    return state.isRendered(row.key);
+  }
+  function position(): number {
+    return state.visible().indexOf(row.key);
+  }
 
   return {
     key: row.key,
@@ -850,11 +887,13 @@ export function commandGroup(
   state: CommandState,
 ): CommandGroupResult {
   const headingId = id();
-  const forceMount = (): boolean => access(options.forceMount) === true;
-  const hasHeading = (): boolean => {
+  function forceMount(): boolean {
+    return access(options.forceMount) === true;
+  }
+  function hasHeading(): boolean {
     const heading = access(options.heading);
     return heading !== undefined && heading !== null && heading !== "";
-  };
+  }
 
   const section = staticItem(state.rows, {
     type: "section",
@@ -920,7 +959,7 @@ export function useCommand(): CommandContextValue {
   return value;
 }
 
-function CommandProvider(props: { value: CommandContextValue; children?: Child }) {
+function CommandProvider(props: ProviderProps<CommandContextValue>) {
   return provide(
     CommandContext,
     () => props.value,

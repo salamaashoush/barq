@@ -219,7 +219,9 @@ export function ColorSwatchPickerItem(props: ColorSwatchPickerItemComponentProps
 
   const locale = useLocale();
   const render = swatchRender(cells(props).children);
-  const name = (): string => color().getColorName(locale().locale);
+  function name(): string {
+    return color().getColorName(locale().locale);
+  }
 
   return (
     <Option

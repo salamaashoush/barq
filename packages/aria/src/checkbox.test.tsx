@@ -275,8 +275,14 @@ describe("Checkbox, as an attribute a stylesheet reads", () => {
   });
 });
 
+interface InALabelProps {
+  onChange?: (on: boolean) => void;
+}
+
 describe("Checkbox, with nothing of its own to say", () => {
-  const box = (): HTMLInputElement => screen.getByRole<HTMLInputElement>("checkbox");
+  function box(): HTMLInputElement {
+    return screen.getByRole<HTMLInputElement>("checkbox");
+  }
 
   test("with label content it is the label", () => {
     render(() => <Checkbox>I agree</Checkbox>);
@@ -331,7 +337,7 @@ describe("Checkbox, with nothing of its own to say", () => {
     expect(box().checked).toBe(false);
   });
 
-  function InALabel(props: { onChange?: (on: boolean) => void }) {
+  function InALabel(props: InALabelProps) {
     return (
       <label>
         <span data-testid="text">I agree</span>

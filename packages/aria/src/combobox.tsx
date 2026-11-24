@@ -45,6 +45,7 @@ import {
   provide,
   Show,
   untrack,
+  type ParentProps,
 } from "@barqjs/core";
 import { isServer, Portal } from "@barqjs/web";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
@@ -131,6 +132,7 @@ import {
   type DOMProps,
   type MaybeAccessor,
   type StyleProps,
+  type ProviderProps,
 } from "./utils.ts";
 
 // ---------------------------------------------------------------------------
@@ -217,7 +219,7 @@ function filterNodes<T>(nodes: Iterable<Node<T>>, keeps: (text: string) => boole
 export function comboBoxState<T>(options: ComboBoxStateOptions<T>): ComboBoxState<T> {
   const overlay = overlayTriggerState({
     ...(options as OverlayTriggerStateOptions),
-    onOpenChange: (open) => options.onOpenChange?.(open, open ? lastTrigger : undefined),
+    onOpenChange: (isOpen) => options.onOpenChange?.(isOpen, isOpen ? lastTrigger : undefined),
   });
   const [showAll, setShowAll] = createSignal(false);
   const [isFocused, setIsFocused] = createSignal(false);
@@ -225,7 +227,9 @@ export function comboBoxState<T>(options: ComboBoxStateOptions<T>): ComboBoxStat
   let lastTrigger: MenuTriggerAction | undefined = "focus";
 
   const match = makeFilter({ sensitivity: "base" });
-  const keeps = (): FilterFn => options.filterBy ?? match.contains;
+  function keeps(): FilterFn {
+    return options.filterBy ?? match.contains;
+  }
 
   const [selectedKey, setSelectedKey] = controllable<Key | null>(
     () => access(options.selectedKey),
@@ -236,12 +240,12 @@ export function comboBoxState<T>(options: ComboBoxStateOptions<T>): ComboBoxStat
   /** The whole list, before anything typed narrows it. */
   const full = createMemo(() => buildCollection(access(options.items) ?? [], options));
 
-  const initialInput = (): string => {
+  function initialInput(): string {
     const declared = access(options.defaultInputValue);
     if (declared !== undefined) return declared;
     const key = access(options.selectedKey) ?? access(options.defaultSelectedKey) ?? null;
     return key === null ? "" : (full().getItem(key)?.textValue ?? "");
-  };
+  }
 
   const [inputValue, setInputValueRaw] = controllable<string>(
     () => access(options.inputValue),
@@ -275,23 +279,26 @@ export function comboBoxState<T>(options: ComboBoxStateOptions<T>): ComboBoxStat
     },
   });
 
-  const selectedItem = (): Node<T> | null => {
+  function selectedItem(): Node<T> | null {
     const key = selectedKey();
     return key === null ? null : (full().getItem(key) ?? null);
-  };
+  }
 
-  const selectedText = (): string => selectedItem()?.textValue ?? "";
+  function selectedText(): string {
+    return selectedItem()?.textValue ?? "";
+  }
 
-  const canShow = (displayAll: boolean): boolean => {
+  function canShow(displayAll: boolean): boolean {
     if (access(options.allowsEmptyCollection) === true) return true;
     if (displayAll) return full().size > 0;
     return list.collection().size > 0;
-  };
+  }
 
-  const displaysAll = (trigger?: MenuTriggerAction): boolean =>
-    trigger === "manual" || (trigger === "focus" && access(options.menuTrigger) === "focus");
+  function displaysAll(trigger?: MenuTriggerAction): boolean {
+    return trigger === "manual" || (trigger === "focus" && access(options.menuTrigger) === "focus");
+  }
 
-  const open = (focusStrategy: FocusStrategy | null = null, trigger?: MenuTriggerAction): void => {
+  function open(focusStrategy: FocusStrategy | null = null, trigger?: MenuTriggerAction): void {
     const all = displaysAll(trigger);
     if (!canShow(all)) return;
     closedForEmpty = false;
@@ -299,18 +306,15 @@ export function comboBoxState<T>(options: ComboBoxStateOptions<T>): ComboBoxStat
     lastTrigger = trigger;
     setStrategy(focusStrategy);
     overlay.open();
-  };
+  }
 
-  const toggle = (
-    focusStrategy: FocusStrategy | null = null,
-    trigger?: MenuTriggerAction,
-  ): void => {
+  function toggle(focusStrategy: FocusStrategy | null = null, trigger?: MenuTriggerAction): void {
     if (overlay.isOpen()) {
       overlay.close();
       return;
     }
     open(focusStrategy, trigger);
-  };
+  }
 
   /**
    * The key the field's text was last written FOR.
@@ -324,12 +328,12 @@ export function comboBoxState<T>(options: ComboBoxStateOptions<T>): ComboBoxStat
   /** Closed by the effect below for having nothing to show, not by the user. */
   let closedForEmpty = false;
 
-  const resetInput = (): void => {
+  function resetInput(): void {
     syncedKey = selectedKey();
     setInputValueRaw(selectedText());
-  };
+  }
 
-  const commitValue = (): void => {
+  function commitValue(): void {
     // Leaving the query, or settling it, is the end of the search that came
     // back empty: an answer arriving after it must not open the list.
     closedForEmpty = false;
@@ -343,9 +347,9 @@ export function comboBoxState<T>(options: ComboBoxStateOptions<T>): ComboBoxStat
     }
     resetInput();
     overlay.close();
-  };
+  }
 
-  const commit = (): void => {
+  function commit(): void {
     const manager = list.selectionManager();
     if (overlay.isOpen() && manager.focusedKey !== null) {
       // Committing the option that is already selected changes nothing to
@@ -359,9 +363,9 @@ export function comboBoxState<T>(options: ComboBoxStateOptions<T>): ComboBoxStat
       return;
     }
     commitValue();
-  };
+  }
 
-  const revert = (): void => {
+  function revert(): void {
     closedForEmpty = false;
     if (access(options.allowsCustomValue) === true && selectedKey() === null) {
       overlay.close();
@@ -369,9 +373,9 @@ export function comboBoxState<T>(options: ComboBoxStateOptions<T>): ComboBoxStat
     }
     resetInput();
     overlay.close();
-  };
+  }
 
-  const setInputValue = (value: string): void => {
+  function setInputValue(value: string): void {
     const changed = value !== inputValue();
     setInputValueRaw(value);
     if (!changed) return;
@@ -390,9 +394,9 @@ export function comboBoxState<T>(options: ComboBoxStateOptions<T>): ComboBoxStat
     if (access(options.menuTrigger) !== "manual" && isFocused() && !overlay.isOpen()) {
       open(null, "input");
     }
-  };
+  }
 
-  const setFocused = (next: boolean): void => {
+  function setFocused(next: boolean): void {
     if (next) {
       if (access(options.menuTrigger) === "focus" && access(options.isReadOnly) !== true) {
         open(null, "focus");
@@ -401,7 +405,7 @@ export function comboBoxState<T>(options: ComboBoxStateOptions<T>): ComboBoxStat
       commitValue();
     }
     setIsFocused(next);
-  };
+  }
 
   if (!isServer) {
     // The list is only ever the FOCUSED collection while it is open, and the
@@ -865,6 +869,10 @@ export interface ComboBoxResult {
   isInvalid: Accessor<boolean>;
 }
 
+interface PressPointer {
+  pointerType: string;
+}
+
 export function comboBox(options: ComboBoxOptions, state: ComboBoxState<unknown>): ComboBoxResult {
   const baseId = id();
   const listBoxId = id();
@@ -911,13 +919,13 @@ export function comboBox(options: ComboBoxOptions, state: ComboBoxState<unknown>
     shouldFocusWrap: options.shouldFocusWrap,
   });
 
-  const focusedItem = (): Node<unknown> | null => {
+  function focusedItem(): Node<unknown> | null {
     if (!state.isOpen()) return null;
     const key = state.selectionManager().focusedKey;
     return key === null ? null : state.collection().getItem(key);
-  };
+  }
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     if (access(options.isReadOnly) === true) return;
 
     switch (event.key) {
@@ -960,7 +968,7 @@ export function comboBox(options: ComboBoxOptions, state: ComboBoxState<unknown>
       default:
         return;
     }
-  };
+  }
 
   const message = stringFormatter(comboBoxStrings);
 
@@ -1070,7 +1078,7 @@ export function comboBox(options: ComboBoxOptions, state: ComboBoxState<unknown>
   const initialKey = untrack(state.selectedKey);
   formReset(options.inputRef, initialKey, (key) => state.setSelectedKey(key));
 
-  const onInput = (event: Event): void => {
+  function onInput(event: Event): void {
     const input = event.target as HTMLInputElement;
     state.setInputValue(input.value);
     // The field has already changed itself; a controlled owner that declined
@@ -1079,7 +1087,7 @@ export function comboBox(options: ComboBoxOptions, state: ComboBoxState<unknown>
     // writing that back throws the caret to the start.
     flush();
     if (input.value !== state.inputValue()) input.value = state.inputValue();
-  };
+  }
 
   return {
     baseId,
@@ -1165,7 +1173,7 @@ export function comboBox(options: ComboBoxOptions, state: ComboBoxState<unknown>
           .filter(Boolean)
           .join(" "),
       "aria-label": () => message().format("buttonLabel"),
-      onPressStart: (event: { pointerType: string }) => {
+      onPressStart: (event: PressPointer) => {
         if (event.pointerType === "touch") return;
         (access(options.inputRef) as HTMLInputElement | null)?.focus();
         state.toggle(
@@ -1173,7 +1181,7 @@ export function comboBox(options: ComboBoxOptions, state: ComboBoxState<unknown>
           "manual",
         );
       },
-      onPress: (event: { pointerType: string }) => {
+      onPress: (event: PressPointer) => {
         if (event.pointerType !== "touch") return;
         (access(options.inputRef) as HTMLInputElement | null)?.focus();
         state.toggle(null, "manual");
@@ -1271,7 +1279,9 @@ export function ComboBox<T>(props: ComboBoxComponentProps<T>) {
   const buttonRef = makeRef<HTMLButtonElement>();
   const popoverRef = makeRef<HTMLDivElement>();
   const options = fromProps(cells(props) as unknown as Incoming<Record<string, unknown>>);
-  const submitsText = (): boolean => props.allowsCustomValue === true || props.formValue === "text";
+  function submitsText(): boolean {
+    return props.allowsCustomValue === true || props.formValue === "text";
+  }
 
   const state = comboBoxState<T>({
     ...(options as ComboBoxStateOptions<T>),
@@ -1437,8 +1447,8 @@ export function ComboBoxListBox(props: ComboBoxListBoxProps) {
   // no collection, counted by no `aria-setsize`, and only there to give the
   // load-more item the key it reports its loading under.
   const loaderId = id();
-  const loader = (): Node<unknown>[] =>
-    props.onLoadMore === undefined
+  function loader(): Node<unknown>[] {
+    return props.onLoadMore === undefined
       ? []
       : [
           {
@@ -1453,6 +1463,7 @@ export function ComboBoxListBox(props: ComboBoxListBoxProps) {
             props: {},
           },
         ];
+  }
 
   return (
     <ListBoxProvider value={value}>
@@ -1587,10 +1598,12 @@ function idSafe(text: string): string {
   );
 }
 
+interface MaybeGroup {
+  items?: unknown;
+}
+
 function isItemGroup(item: unknown): item is ComboboxItemGroup<unknown> {
-  return (
-    typeof item === "object" && item !== null && Array.isArray((item as { items?: unknown }).items)
-  );
+  return typeof item === "object" && item !== null && Array.isArray((item as MaybeGroup).items);
 }
 
 interface ChipsValue {
@@ -1598,6 +1611,18 @@ interface ChipsValue {
   registry: StaticCollection;
   count: () => number;
   focus: (index: number) => void;
+}
+
+export interface ListName {
+  label: string | undefined;
+  labelledBy: string | undefined;
+}
+
+export interface AttachedInput {
+  isInside: boolean;
+  isDisabled: Accessor<boolean>;
+  label: Accessor<string | undefined>;
+  labelledBy: Accessor<string | undefined>;
 }
 
 export interface ComboboxRootValue {
@@ -1646,13 +1671,8 @@ export interface ComboboxRootValue {
   chipsRef: ReturnType<typeof makeRef<HTMLElement>>;
   popupRef: ReturnType<typeof makeRef<HTMLDivElement>>;
   /** The list is named after the input, which is the only named part. */
-  listName: Accessor<{ label: string | undefined; labelledBy: string | undefined }>;
-  attachInput: (input: {
-    isInside: boolean;
-    isDisabled: Accessor<boolean>;
-    label: Accessor<string | undefined>;
-    labelledBy: Accessor<string | undefined>;
-  }) => void;
+  listName: Accessor<ListName>;
+  attachInput: (input: AttachedInput) => void;
   attachChips: () => void;
   attachItem: (key: Key, item: unknown) => void;
   rememberLabel: (key: Key, text: string) => void;
@@ -1677,6 +1697,11 @@ export function useOptionalComboboxRoot(): ComboboxRootValue | null {
   return getContext(ComboboxRootContext) ?? null;
 }
 
+interface ListLabelling {
+  label: Accessor<string | undefined>;
+  labelledBy: Accessor<string | undefined>;
+}
+
 function createComboboxRoot<V>(props: Incoming<ComboboxRootProps<V>>): ComboboxRootValue {
   const locale = useLocale();
   const match = makeFilter({ sensitivity: "base" });
@@ -1690,8 +1715,12 @@ function createComboboxRoot<V>(props: Incoming<ComboboxRootProps<V>>): ComboboxR
   const baseId = id();
   const listId = id();
 
-  const isMultiple = (): boolean => props.multiple?.() === true;
-  const isReadOnly = (): boolean => props.readOnly?.() === true;
+  function isMultiple(): boolean {
+    return props.multiple?.() === true;
+  }
+  function isReadOnly(): boolean {
+    return props.readOnly?.() === true;
+  }
 
   // Parts register from component bodies, which is an owned scope.
   const [outerInputs, setOuterInputs] = createSignal(0, { ownedWrite: true });
@@ -1699,12 +1728,13 @@ function createComboboxRoot<V>(props: Incoming<ComboboxRootProps<V>>): ComboboxR
   const [inputDisabled, setInputDisabled] = createSignal<Accessor<boolean> | null>(null, {
     ownedWrite: true,
   });
-  const [named, setNamed] = createSignal<{
-    label: Accessor<string | undefined>;
-    labelledBy: Accessor<string | undefined>;
-  } | null>(null, { ownedWrite: true });
-  const hasOuterInput = (): boolean => outerInputs() > 0;
-  const isDisabled = (): boolean => props.disabled?.() === true || inputDisabled()?.() === true;
+  const [named, setNamed] = createSignal<ListLabelling | null>(null, { ownedWrite: true });
+  function hasOuterInput(): boolean {
+    return outerInputs() > 0;
+  }
+  function isDisabled(): boolean {
+    return props.disabled?.() === true || inputDisabled()?.() === true;
+  }
 
   const [raw, setRaw] = controllable<V | readonly V[] | null>(
     () => props.value?.(),
@@ -1718,7 +1748,7 @@ function createComboboxRoot<V>(props: Incoming<ComboboxRootProps<V>>): ComboboxR
     return current === null || current === undefined ? [] : [current as V];
   });
 
-  const ownLabelOf = (item: unknown): string | undefined => {
+  function ownLabelOf(item: unknown): string | undefined {
     const given = props.itemToStringLabel?.()?.(item as V);
     if (given !== undefined) return given;
     if (typeof item === "object" && item !== null) {
@@ -1727,9 +1757,9 @@ function createComboboxRoot<V>(props: Incoming<ComboboxRootProps<V>>): ComboboxR
       if (typeof text === "string") return text;
     }
     return undefined;
-  };
+  }
 
-  const stringValueOf = (item: unknown): string => {
+  function stringValueOf(item: unknown): string {
     const given = props.itemToStringValue?.()?.(item as V);
     if (given !== undefined) return given;
     if (typeof item === "object" && item !== null) {
@@ -1739,26 +1769,29 @@ function createComboboxRoot<V>(props: Incoming<ComboboxRootProps<V>>): ComboboxR
       return ownLabelOf(item) ?? "";
     }
     return String(item);
-  };
+  }
 
   // An option's id is derived from its key, and an id cannot hold a space:
   // "New York" as a key would make `aria-activedescendant` name two things,
   // neither of which exists. The key is internal, so it is escaped rather than
   // asking every caller for values that happen to be valid identifiers.
-  const keyOf = (item: unknown): Key =>
-    typeof item === "number" ? item : idSafe(typeof item === "string" ? item : stringValueOf(item));
+  function keyOf(item: unknown): Key {
+    return typeof item === "number"
+      ? item
+      : idSafe(typeof item === "string" ? item : stringValueOf(item));
+  }
 
   // What an item rendered as, kept after it has gone: the field shows a chosen
   // item's text long after the list that held it has closed.
   const rendered = new Map<Key, string>();
   const [renderedVersion, setRenderedVersion] = createSignal(0, { ownedWrite: true });
 
-  const labelOf = (item: unknown): string => {
+  function labelOf(item: unknown): string {
     const own = ownLabelOf(item);
     if (own !== undefined) return own;
     renderedVersion();
     return rendered.get(keyOf(item)) ?? stringValueOf(item);
-  };
+  }
 
   const [isOpen, setOpenState] = controllable<boolean>(
     () => props.open?.(),
@@ -1772,30 +1805,34 @@ function createComboboxRoot<V>(props: Incoming<ComboboxRootProps<V>>): ComboboxR
     props.defaultInputValue?.() ?? null,
   );
   const [isQuery, setIsQuery] = createSignal(false);
-  const restingText = (): string => {
+  function restingText(): string {
     if (isMultiple() || !hasOuterInput()) return "";
     const [chosen] = values();
     return chosen === undefined ? "" : labelOf(chosen);
-  };
-  const inputValue = (): string => props.inputValue?.() ?? typedText() ?? restingText();
+  }
+  function inputValue(): string {
+    return props.inputValue?.() ?? typedText() ?? restingText();
+  }
 
-  const writeInput = (next: string | null): void => {
+  function writeInput(next: string | null): void {
     const before = untrack(inputValue);
     setTypedText(next);
     const after = next ?? untrack(restingText);
     if (after !== before) props.onInputValueChange?.()?.(after);
-  };
+  }
 
-  const query = (): string => (isQuery() || isMultiple() || !hasOuterInput() ? inputValue() : "");
+  function query(): string {
+    return isQuery() || isMultiple() || !hasOuterInput() ? inputValue() : "";
+  }
 
-  const matches = (item: unknown): boolean => {
+  function matches(item: unknown): boolean {
     const text = query();
     if (text === "") return true;
     const given = props.filter?.();
     if (given === null) return true;
     if (given !== undefined) return given(item as V, text, labelOf);
     return match.contains(labelOf(item), text);
-  };
+  }
 
   const filteredItems = createMemo((): unknown[] => {
     const kept: unknown[] = [];
@@ -1813,10 +1850,12 @@ function createComboboxRoot<V>(props: Incoming<ComboboxRootProps<V>>): ComboboxR
   const registry = staticCollection();
   const itemsByKey = new Map<Key, unknown>();
 
-  const choose = (keys: SelectionValue): void => {
+  function choose(keys: SelectionValue): void {
     if (keys === "all") return;
     const held = new Map<Key, V>(values().map((value) => [keyOf(value), value]));
-    const itemFor = (key: Key): V | undefined => held.get(key) ?? (itemsByKey.get(key) as V);
+    function itemFor(key: Key): V | undefined {
+      return held.get(key) ?? (itemsByKey.get(key) as V);
+    }
 
     if (isMultiple()) {
       const next: V[] = values().filter((value) => keys.has(keyOf(value)));
@@ -1835,7 +1874,7 @@ function createComboboxRoot<V>(props: Incoming<ComboboxRootProps<V>>): ComboboxR
     if (key === undefined || item === undefined) return;
     if (!held.has(key)) setRaw(item);
     setOpen(false);
-  };
+  }
 
   const list = listState<StaticEntry>({
     items: registry.entries,
@@ -1868,10 +1907,10 @@ function createComboboxRoot<V>(props: Incoming<ComboboxRootProps<V>>): ComboboxR
   });
 
   /** Back to rest: nothing typed, and the field showing what the value reads as. */
-  const settleInput = (): void => {
+  function settleInput(): void {
     setIsQuery(false);
     writeInput(null);
-  };
+  }
 
   function setOpen(next: boolean): void {
     if (next === untrack(isOpen)) return;
@@ -1879,14 +1918,14 @@ function createComboboxRoot<V>(props: Incoming<ComboboxRootProps<V>>): ComboboxR
     setOpenState(next);
   }
 
-  const openWith = (strategy: FocusStrategy | null): void => {
+  function openWith(strategy: FocusStrategy | null): void {
     setPending(strategy);
     setOpen(true);
-  };
+  }
 
-  const focusInput = (): void => {
+  function focusInput(): void {
     inputRef()?.focus();
-  };
+  }
 
   if (!isServer) {
     // The list is only the focused collection while it is open, and neither
@@ -1934,21 +1973,21 @@ function createComboboxRoot<V>(props: Incoming<ComboboxRootProps<V>>): ComboboxR
     );
   }
 
-  const removeAt = (index: number): void => {
+  function removeAt(index: number): void {
     if (isDisabled() || isReadOnly()) return;
     setRaw(values().filter((_, at) => at !== index));
-  };
+  }
 
-  const clear = (): void => {
+  function clear(): void {
     if (isDisabled() || isReadOnly()) return;
     if (values().length > 0) setRaw(isMultiple() ? [] : null);
     setIsQuery(false);
     writeInput(isMultiple() ? "" : null);
     setOpen(false);
     focusInput();
-  };
+  }
 
-  const onInput = (event: Event): void => {
+  function onInput(event: Event): void {
     const input = event.target as HTMLInputElement;
     const text = input.value;
     setIsQuery(true);
@@ -1966,9 +2005,9 @@ function createComboboxRoot<V>(props: Incoming<ComboboxRootProps<V>>): ComboboxR
     // writing that back throws the caret to the start.
     flush();
     if (input.value !== inputValue()) input.value = inputValue();
-  };
+  }
 
-  const onKeyDown = (event: KeyboardEvent, chips: ChipsValue | null): void => {
+  function onKeyDown(event: KeyboardEvent, chips: ChipsValue | null): void {
     if (isDisabled() || isReadOnly()) return;
     const input = event.currentTarget as HTMLInputElement;
     const manager = list.selectionManager();
@@ -2027,21 +2066,22 @@ function createComboboxRoot<V>(props: Incoming<ComboboxRootProps<V>>): ComboboxR
     }
 
     if (isOpen()) (collectionProps.onKeyDown as (event: KeyboardEvent) => void)(event);
-  };
+  }
 
-  const owns = (element: Element): boolean =>
-    [inputRef(), triggerRef(), clearRef(), chipsRef()].some(
+  function owns(element: Element): boolean {
+    return [inputRef(), triggerRef(), clearRef(), chipsRef()].some(
       (part) => part !== null && part.contains(element),
     );
+  }
 
-  const onBlur = (event: FocusEvent): void => {
+  function onBlur(event: FocusEvent): void {
     const related = event.relatedTarget as Element | null;
     // Focus moving to the toggle or into the popup is still focus on the
     // combobox.
     if (related !== null && (owns(related) || popupRef()?.contains(related) === true)) return;
     if (isOpen()) setOpen(false);
     else if (hasOuterInput()) settleInput();
-  };
+  }
 
   return {
     isOpen,
@@ -2134,7 +2174,7 @@ function createComboboxRoot<V>(props: Incoming<ComboboxRootProps<V>>): ComboboxR
   };
 }
 
-function ComboboxRootProvider(props: { value: ComboboxRootValue; children?: Child }) {
+function ComboboxRootProvider(props: ProviderProps<ComboboxRootValue>) {
   return provide(
     ComboboxRootContext,
     () => props.value,
@@ -2221,7 +2261,9 @@ export function ComboboxInput(props: ComboboxInputProps) {
   const root = useComboboxRoot();
   const chips = getContext(ComboboxChipsContext) ?? null;
   const isInside = getContext(ComboboxPopupContext);
-  const isDisabled = (): boolean => props.disabled === true;
+  function isDisabled(): boolean {
+    return props.disabled === true;
+  }
 
   root.attachInput({
     isInside,
@@ -2269,10 +2311,10 @@ const SlotScope = createContext<boolean>(false);
  * popup it IS the control, and takes the keyboard like any button that opens
  * something.
  */
-export function ComboboxTrigger(props: Incoming<{ children?: Child }>) {
+export function ComboboxTrigger(props: Incoming<ParentProps>) {
   const root = useComboboxRoot();
 
-  const toggle = (event: PressEvent): void => {
+  function toggle(event: PressEvent): void {
     if (root.isOpen()) {
       root.setOpen(false);
       return;
@@ -2281,7 +2323,7 @@ export function ComboboxTrigger(props: Incoming<{ children?: Child }>) {
     root.openWith(
       event.pointerType === "keyboard" || event.pointerType === "virtual" ? "first" : null,
     );
-  };
+  }
 
   return provide(
     SlotScope,
@@ -2316,7 +2358,7 @@ export function ComboboxTrigger(props: Incoming<{ children?: Child }>) {
   );
 }
 
-function ComboboxClearSlot(props: { children?: Child }) {
+function ComboboxClearSlot(props: ParentProps) {
   const root = useComboboxRoot();
   return provide(
     SlotScope,
@@ -2340,7 +2382,7 @@ function ComboboxClearSlot(props: { children?: Child }) {
  * Hands the clearing press to the button inside it, and renders that button
  * only while there is something to clear.
  */
-export function ComboboxClear(props: { children?: Child }) {
+export function ComboboxClear(props: ParentProps) {
   const root = useComboboxRoot();
   return (
     <Show when={root.values().length > 0 || root.inputValue() !== ""}>
@@ -2368,11 +2410,11 @@ export function ComboboxValue(props: ComboboxValueProps) {
   const render = renderCallback(props.children);
 
   if (render === null) {
-    const text = (): string => {
+    function text(): string {
       const chosen = root.values();
       if (chosen.length === 0) return props.placeholder ?? "";
       return chosen.map(root.labelOf).join(", ");
-    };
+    }
     return <>{props.children === undefined ? text() : (props.children as () => Child)()}</>;
   }
 
@@ -2385,7 +2427,9 @@ export function ComboboxValue(props: ComboboxValueProps) {
     return <>{render(chosen, 0)}</>;
   }
 
-  const one = (): Child => render(root.values()[0] ?? null, 0);
+  const one: () => Child = () => {
+    return render(root.values()[0] ?? null, 0);
+  };
   return <>{one()}</>;
 }
 
@@ -2432,9 +2476,13 @@ export function ComboboxPopup(props: ComboboxPopupProps) {
   const locale = useLocale();
   const positionerRef = makeRef<HTMLDivElement>();
   const popupRef = root.popupRef;
-  const close = (): void => root.setOpen(false);
+  function close(): void {
+    return root.setOpen(false);
+  }
 
-  const placement = (): Placement => placementFor(props.side ?? "bottom", props.align ?? "start");
+  function placement(): Placement {
+    return placementFor(props.side ?? "bottom", props.align ?? "start");
+  }
 
   const position = overlayPosition({
     targetRef: () => anchorElement(props.anchor) ?? root.anchor(),
@@ -2537,7 +2585,7 @@ function ComboboxPopupBody(props: ComboboxPopupBodyProps) {
   );
 }
 
-function ComboboxPopupScope(props: { children?: Child }) {
+function ComboboxPopupScope(props: ParentProps) {
   return provide(
     ComboboxPopupContext,
     () => true,
@@ -2635,7 +2683,7 @@ export function useComboboxItem(): ComboboxItemValue {
   return value;
 }
 
-function ComboboxItemProvider(props: { value: ComboboxItemValue; children?: Child }) {
+function ComboboxItemProvider(props: ProviderProps<ComboboxItemValue>) {
   return provide(
     ComboboxItemContext,
     () => props.value,
@@ -2662,8 +2710,12 @@ export function ComboboxItem(props: ComboboxItemProps) {
   const key = root.keyOf(item);
   root.attachItem(key, item);
 
-  const manager = () => root.list.selectionManager();
-  const isDisabled = (): boolean => props.disabled === true;
+  function manager() {
+    return root.list.selectionManager();
+  }
+  function isDisabled(): boolean {
+    return props.disabled === true;
+  }
   const state: ComboboxItemValue = {
     isSelected: () => manager().isSelected(key),
     isHighlighted: () => root.isOpen() && manager().focusedKey === key,
@@ -2715,7 +2767,13 @@ interface GroupValue {
 
 const ComboboxGroupContext = createContext<GroupValue | null>(null);
 
-function ComboboxGroupProvider(props: { value: GroupValue; section: Key; children?: Child }) {
+interface GroupProviderProps {
+  value: GroupValue;
+  section: Key;
+  children?: Child;
+}
+
+function ComboboxGroupProvider(props: GroupProviderProps) {
   return provideStaticSection(props.section, () =>
     provide(
       ComboboxGroupContext,
@@ -2861,7 +2919,7 @@ export function ComboboxEmpty(props: ComboboxEmptyProps) {
   );
 }
 
-function ComboboxChipsProvider(props: { value: ChipsValue; children?: Child }) {
+function ComboboxChipsProvider(props: ProviderProps<ChipsValue>) {
   return provide(
     ComboboxChipsContext,
     () => props.value,
@@ -2943,7 +3001,7 @@ export function useComboboxChip(): ComboboxChipValue {
   return value;
 }
 
-function ComboboxChipProvider(props: { value: ComboboxChipValue; children?: Child }) {
+function ComboboxChipProvider(props: ProviderProps<ComboboxChipValue>) {
   return provide(
     ComboboxChipContext,
     () => props.value,
@@ -2974,18 +3032,20 @@ export function ComboboxChip(props: ComboboxChipProps) {
 
   const chip = staticItem(chips.registry, { textValue: "" });
   const [isFocused, setFocused] = createSignal(false);
-  const index = (): number => chips.registry.keys().indexOf(chip.key);
+  const index: () => number = () => {
+    return chips.registry.keys().indexOf(chip.key);
+  };
 
-  const remove = (): void => {
+  function remove(): void {
     const at = index();
     if (at >= 0) root.removeAt(at);
-  };
-  const label = (): string => {
+  }
+  function label(): string {
     const value = root.values()[index()];
     return value === undefined ? "" : root.labelOf(value);
-  };
+  }
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  const onKeyDown: (event: KeyboardEvent) => void = (event) => {
     if (event.target !== event.currentTarget) return;
     const at = index();
     const isRtl = locale().direction === "rtl";
@@ -3044,7 +3104,7 @@ export function ComboboxChip(props: ComboboxChipProps) {
  * Out of the Tab order, like the chip it is in: Backspace on the chip does the
  * same thing from the keyboard.
  */
-export function ComboboxChipRemove(props: Incoming<{ children?: Child }>) {
+export function ComboboxChipRemove(props: Incoming<ParentProps>) {
   const root = useComboboxRoot();
   const chip = useComboboxChip();
 

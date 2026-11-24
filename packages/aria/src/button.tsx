@@ -103,8 +103,12 @@ export interface ButtonResult {
  * ```
  */
 export function button(options: ButtonOptions, ref?: ElementRef): ButtonResult {
-  const elementType = (): string => access(options.elementType) ?? "button";
-  const isDisabled = (): boolean => access(options.isDisabled) === true;
+  function elementType(): string {
+    return access(options.elementType) ?? "button";
+  }
+  function isDisabled(): boolean {
+    return access(options.isDisabled) === true;
+  }
 
   const { pressProps, isPressed } = press({ ...options, ref });
   const { focusableProps: focusableBase } = focusable(options, ref);
@@ -114,7 +118,9 @@ export function button(options: ButtonOptions, ref?: ElementRef): ButtonResult {
         ? -1
         : access(focusableBase.tabIndex as MaybeAccessor<number | undefined>),
   });
-  const isFormControl = (): boolean => elementType() === "button" || elementType() === "input";
+  function isFormControl(): boolean {
+    return elementType() === "button" || elementType() === "input";
+  }
 
   const nativeProps: DOMProps = {
     type: () =>
@@ -187,11 +193,11 @@ export function toggleState(options: ToggleStateOptions = {}): ToggleState {
     options.onChange,
   );
 
-  const set = (value: boolean): void => {
+  function set(value: boolean): void {
     // Read-only means the value is shown but not the user's to change.
     if (access(options.isReadOnly) === true) return;
     setSelected(value);
-  };
+  }
 
   return {
     isSelected,
@@ -338,7 +344,9 @@ export function Button(props: ButtonComponentProps) {
   const options = mergeProps(fromProps(cells(props)), triggerSlot().props) as ButtonOptions;
   const slot = triggerSlot();
 
-  const isPending = (): boolean => props.isPending === true;
+  function isPending(): boolean {
+    return props.isPending === true;
+  }
 
   const { buttonProps, isPressed } = button(options, domRef);
   const { hoverProps, isHovered } = hover({
@@ -353,7 +361,7 @@ export function Button(props: ButtonComponentProps) {
   const progressId = id();
   // `aria-labelledby` outranks `aria-label` in the name computation, so a
   // labelled button that wants its progress bar read has to name itself.
-  const labelledBy = (): string | undefined => {
+  function labelledBy(): string | undefined {
     const given = access(options["aria-labelledby"]);
     if (!isPending()) return given;
     if (given) return `${given} ${progressId()}`;
@@ -361,7 +369,7 @@ export function Button(props: ButtonComponentProps) {
       return `${buttonId()} ${progressId()}`;
     }
     return given;
-  };
+  }
 
   let wasPending = isPending();
   // Each announcement names this button by id, so none may outlive it.

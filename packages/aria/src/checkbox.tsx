@@ -158,20 +158,24 @@ export function checkboxGroupState(options: CheckboxGroupStateOptions): Checkbox
     options.onChange,
   );
 
-  const isReadOnly = (): boolean => access(options.isReadOnly) === true;
-  const isDisabled = (): boolean => access(options.isDisabled) === true;
+  function isReadOnly(): boolean {
+    return access(options.isReadOnly) === true;
+  }
+  function isDisabled(): boolean {
+    return access(options.isDisabled) === true;
+  }
 
-  const add = (next: string): void => {
+  function add(next: string): void {
     if (isReadOnly() || isDisabled()) return;
     if (value().includes(next)) return;
     commit([...value(), next]);
-  };
+  }
 
-  const remove = (next: string): void => {
+  function remove(next: string): void {
     if (isReadOnly() || isDisabled()) return;
     if (!value().includes(next)) return;
     commit(value().filter((entry) => entry !== next));
-  };
+  }
 
   const {
     state: validation,
@@ -188,10 +192,10 @@ export function checkboxGroupState(options: CheckboxGroupStateOptions): Checkbox
     name: options.name,
   });
 
-  const commit = (next: string[]): void => {
+  function commit(next: string[]): void {
     setValue(next);
     validation.commitValidation();
-  };
+  }
 
   const invalidMembers = new Map<string, ValidationResult>();
 
@@ -224,8 +228,9 @@ export function checkboxGroupState(options: CheckboxGroupStateOptions): Checkbox
 /** Every member's finding as one: invalid if any is, with each message once. */
 function mergeValidation(results: ValidationResult[]): ValidationResult {
   if (results.length === 0) return VALID_RESULT;
-  const any = (key: keyof ValidityState): boolean =>
-    results.some((result) => result.validationDetails[key]);
+  function any(key: keyof ValidityState): boolean {
+    return results.some((result) => result.validationDetails[key]);
+  }
   return {
     isInvalid: true,
     validationErrors: [...new Set(results.flatMap((result) => result.validationErrors))],
@@ -548,6 +553,11 @@ export interface GroupCheckboxProps extends Omit<
   value: string;
 }
 
+interface GroupMemberState {
+  value: string;
+  own: ValidationResult;
+}
+
 /**
  * A checkbox that belongs to the enclosing {@link CheckboxGroup}.
  *
@@ -571,8 +581,9 @@ export function GroupCheckbox(props: Incoming<GroupCheckboxProps>) {
     },
   });
 
-  const behavior = (): ValidationBehavior | undefined =>
-    props.validationBehavior?.() ?? group.state.validationBehavior();
+  function behavior(): ValidationBehavior | undefined {
+    return props.validationBehavior?.() ?? group.state.validationBehavior();
+  }
 
   // Its own `validate`, shown as it happens whatever the behaviour: it only
   // decides what the group is told, and the group decides when to show it.
@@ -585,11 +596,11 @@ export function GroupCheckbox(props: Incoming<GroupCheckboxProps>) {
   // What the browser made of this input, and what this member last told the
   // group under which of its values.
   let native: ValidationResult = VALID_RESULT;
-  let current: { value: string; own: ValidationResult } | null = null;
-  const report = (): void => {
+  let current: GroupMemberState | null = null;
+  function report(): void {
     if (current === null) return;
     group.state.setInvalid(current.value, current.own.isInvalid ? current.own : native);
-  };
+  }
 
   createEffect(
     () => [props.value(), own.realtimeValidation()] as const,
@@ -602,10 +613,10 @@ export function GroupCheckbox(props: Incoming<GroupCheckboxProps>) {
     },
   );
 
-  const realtimeValidation = (): ValidationResult => {
+  function realtimeValidation(): ValidationResult {
     const whole = groupValidation.realtimeValidation();
     return whole.isInvalid ? whole : own.realtimeValidation();
-  };
+  }
   const validation: FormValidationState = {
     realtimeValidation,
     displayValidation: () =>

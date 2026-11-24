@@ -98,7 +98,7 @@ describe("commandScore", () => {
   });
 });
 
-function Palette(props: {
+interface PaletteProps {
   onSelect?: (value: string) => void;
   onValueChange?: (value: string) => void;
   value?: string;
@@ -111,8 +111,12 @@ function Palette(props: {
   onSearchChange?: (search: string) => void;
   showArchive?: boolean;
   alwaysRender?: boolean;
-}) {
-  const run = (value: string): void => props.onSelect?.(value);
+}
+
+function Palette(props: PaletteProps) {
+  function run(value: string): void {
+    return props.onSelect?.(value);
+  }
   return (
     <Command
       label="Commands"
@@ -163,8 +167,12 @@ function drawn(): string[] {
   const shown = screen
     .getAllByRole("option", { hidden: true })
     .filter((node) => !node.hasAttribute("hidden") && node.closest("[hidden]") === null);
-  const orderOf = (node: Element): number => Number((node as HTMLElement).style.order || 0);
-  const groupOf = (node: Element): Element | null => node.closest("[cmdk-group]");
+  function orderOf(node: Element): number {
+    return Number((node as HTMLElement).style.order || 0);
+  }
+  function groupOf(node: Element): Element | null {
+    return node.closest("[cmdk-group]");
+  }
   return shown
     .map((node, index) => ({ node, index }))
     .toSorted((a, b) => {
@@ -662,8 +670,9 @@ describe("Command", () => {
 
   test("the highlighted item is scrolled into view, and a new search starts from the top", async () => {
     // happy-dom lays nothing out, so the two boxes are stated.
-    const box = (top: number, bottom: number): DOMRect =>
-      ({ top, bottom, left: 0, right: 100, width: 100, height: bottom - top }) as DOMRect;
+    function box(top: number, bottom: number): DOMRect {
+      return { top, bottom, left: 0, right: 100, width: 100, height: bottom - top } as DOMRect;
+    }
     render(() => <Palette />);
     await settle();
 

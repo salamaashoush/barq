@@ -23,7 +23,12 @@ const ACTIONS: Action[] = [
   { id: "save", name: "Save as" },
 ];
 
-function Region(props: { onAction?: (key: Key) => void; isDisabled?: boolean }) {
+interface RegionProps {
+  onAction?: (key: Key) => void;
+  isDisabled?: boolean;
+}
+
+function Region(props: RegionProps) {
   return (
     <ContextMenu isDisabled={props.isDisabled} longPressThreshold={10}>
       <ContextMenuTrigger>
@@ -57,7 +62,12 @@ function panel(): HTMLElement {
   return screen.getByRole("menu").parentElement as HTMLElement;
 }
 
-function at(element: HTMLElement): { left: string; top: string } {
+interface MenuPosition {
+  left: string;
+  top: string;
+}
+
+function at(element: HTMLElement): MenuPosition {
   return { left: element.style.left, top: element.style.top };
 }
 

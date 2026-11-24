@@ -83,6 +83,7 @@ import {
   type StyleProps,
   styleProps,
 } from "./utils.ts";
+import type { Point } from "./virtualizer.tsx";
 
 // ---------------------------------------------------------------------------
 // The value itself
@@ -134,8 +135,12 @@ function channelWords(): (color: Color, channel: ColorChannel) => string {
   };
 }
 
+interface PickerFormatter {
+  format(key: PickerStringKey): string;
+}
+
 function message(
-  format: Accessor<{ format(key: PickerStringKey): string }>,
+  format: Accessor<PickerFormatter>,
   key: PickerStringKey,
   variables: Record<string, string> = {},
 ): string {
@@ -188,7 +193,9 @@ export interface ColorSliderState {
 }
 
 export function colorSliderState(options: ColorSliderStateOptions): ColorSliderState {
-  const space = (): ColorSpace | undefined => access(options.colorSpace);
+  function space(): ColorSpace | undefined {
+    return access(options.colorSpace);
+  }
   const [value, setValueRaw] = controllable<Color>(
     () => inSpace(asColor(access(options.value)), space()),
     () => inSpace(asColor(access(options.defaultValue)) ?? defaultColor(), space()),
@@ -196,8 +203,12 @@ export function colorSliderState(options: ColorSliderStateOptions): ColorSliderS
   );
 
   const [dragging, writeDragging] = createSignal(false);
-  const channel = (): ColorChannel => access(options.channel);
-  const isDisabled = (): boolean => access(options.isDisabled) === true;
+  function channel(): ColorChannel {
+    return access(options.channel);
+  }
+  function isDisabled(): boolean {
+    return access(options.isDisabled) === true;
+  }
   const locale = useLocale();
   const words = channelWords();
 
@@ -208,17 +219,19 @@ export function colorSliderState(options: ColorSliderStateOptions): ColorSliderS
   let live = value();
   let isDragging = false;
 
-  const setValue = (next: Color): void => {
+  function setValue(next: Color): void {
     live = next;
     setValueRaw(next);
-  };
+  }
 
-  const range = (): ReturnType<Color["getChannelRange"]> => value().getChannelRange(channel());
+  function range(): ReturnType<Color["getChannelRange"]> {
+    return value().getChannelRange(channel());
+  }
 
-  const setChannelValue = (next: number): void => {
+  function setChannelValue(next: number): void {
     if (isDisabled()) return;
     setValue(live.withChannelValue(channel(), next));
-  };
+  }
 
   return {
     value,
@@ -315,7 +328,9 @@ export interface ColorAreaState {
 }
 
 export function colorAreaState(options: ColorAreaStateOptions): ColorAreaState {
-  const space = (): ColorSpace | undefined => access(options.colorSpace);
+  function space(): ColorSpace | undefined {
+    return access(options.colorSpace);
+  }
   const [value, setValueRaw] = controllable<Color>(
     () => inSpace(asColor(access(options.value)), space()),
     () => inSpace(asColor(access(options.defaultValue)) ?? defaultColor(), space()),
@@ -323,55 +338,58 @@ export function colorAreaState(options: ColorAreaStateOptions): ColorAreaState {
   );
 
   const [dragging, writeDragging] = createSignal(false);
-  const isDisabled = (): boolean => access(options.isDisabled) === true;
+  function isDisabled(): boolean {
+    return access(options.isDisabled) === true;
+  }
   const words = channelWords();
 
   let live = value();
   let isDragging = false;
-  const setValue = (next: Color): void => {
+  function setValue(next: Color): void {
     live = next;
     setValueRaw(next);
-  };
+  }
 
   // By default the two channels that are not the first: saturation and
   // brightness in HSB, green and blue in RGB. The first is the one a hue
   // slider or a red slider edits alongside the area. An axis that is given
   // pushes the other one along, so the two never land on the same channel.
-  const xChannel = (): ColorChannel => {
+  function xChannel(): ColorChannel {
     const given = access(options.xChannel);
     if (given !== undefined) return given;
     const [first, second, third] = value().getColorChannels();
     const y = access(options.yChannel);
     return [second, third, first].find((channel) => channel !== y) ?? second;
-  };
-  const yChannel = (): ColorChannel => {
+  }
+  function yChannel(): ColorChannel {
     const given = access(options.yChannel);
     if (given !== undefined) return given;
     const [first, second, third] = value().getColorChannels();
     const x = xChannel();
     return [third, second, first].find((channel) => channel !== x) ?? third;
-  };
-  const zChannel = (): ColorChannel => {
+  }
+  function zChannel(): ColorChannel {
     const x = xChannel();
     const y = yChannel();
     const channels = value().getColorChannels();
     return channels.find((channel) => channel !== x && channel !== y) ?? channels[0];
-  };
+  }
 
-  const percentOf = (channel: ColorChannel): number => {
+  function percentOf(channel: ColorChannel): number {
     const limits = value().getChannelRange(channel);
     return (
       (value().getChannelValue(channel) - limits.minValue) / (limits.maxValue - limits.minValue)
     );
-  };
+  }
 
-  const set = (channel: ColorChannel, next: number): void => {
+  function set(channel: ColorChannel, next: number): void {
     if (isDisabled()) return;
     setValue(live.withChannelValue(channel, next));
-  };
+  }
 
-  const step = (channel: ColorChannel, by: number): void =>
-    set(channel, live.getChannelValue(channel) + by);
+  function step(channel: ColorChannel, by: number): void {
+    return set(channel, live.getChannelValue(channel) + by);
+  }
 
   return {
     value,
@@ -508,30 +526,35 @@ export function colorSlider(
 
   const locale = useLocale();
   const listeners = globalListeners();
-  const isVertical = (): boolean => state.orientation() === "vertical";
+  function isVertical(): boolean {
+    return state.orientation() === "vertical";
+  }
   // Right to left, the minimum of a horizontal track is on the right.
-  const isMirrored = (): boolean => !isVertical() && locale().direction === "rtl";
+  function isMirrored(): boolean {
+    return !isVertical() && locale().direction === "rtl";
+  }
   let position: number | null = null;
 
-  const range = (): ReturnType<Color["getChannelRange"]> =>
-    state.value().getChannelRange(state.channel());
+  function range(): ReturnType<Color["getChannelRange"]> {
+    return state.value().getChannelRange(state.channel());
+  }
 
   // A press that never moves is still a change, and the release ends it.
-  const endOnRelease = (element: Element): void => {
+  function endOnRelease(element: Element): void {
     if (isServer) return;
     listeners.add(element.ownerDocument.defaultView ?? window, "pointerup", () => {
       state.setDragging(false);
       listeners.removeAll();
     });
-  };
+  }
 
   // A key press is a drag that starts and ends at once, so it ends the change.
-  const byKeyboard = (change: () => void): void => {
+  function byKeyboard(change: () => void): void {
     if (state.isDisabled()) return;
     state.setDragging(true);
     change();
     state.setDragging(false);
-  };
+  }
 
   const { moveProps } = move({
     onMoveStart: () => {
@@ -565,7 +588,7 @@ export function colorSlider(
     onMoveEnd: () => state.setDragging(false),
   });
 
-  const onTrackDown = (clientX: number, clientY: number): void => {
+  function onTrackDown(clientX: number, clientY: number): void {
     const track = access(options.trackRef) as Element | null;
     if (track === null || state.isDisabled()) return;
     const box = track.getBoundingClientRect();
@@ -576,7 +599,7 @@ export function colorSlider(
     state.setPercent(isVertical() || isMirrored() ? 1 - offset / size : offset / size);
     (access(options.inputRef) as HTMLInputElement | null)?.focus();
     endOnRelease(track);
-  };
+  }
 
   const initial = state.channelValue();
   formReset(options.inputRef, initial, (next: number) => state.setChannelValue(next));
@@ -668,13 +691,15 @@ export function colorSlider(
 
 type Style = Record<string, string>;
 
-const hueStops = (color: Color): string =>
-  [0, 60, 120, 180, 240, 300, 360]
+function hueStops(color: Color): string {
+  return [0, 60, 120, 180, 240, 300, 360]
     .map((hue) => color.withChannelValue("hue", hue).toString("css"))
     .join(", ");
+}
 
-const saturationStops = (color: Color): string =>
-  `${color.withChannelValue("saturation", 0).toString("css")}, transparent`;
+function saturationStops(color: Color): string {
+  return `${color.withChannelValue("saturation", 0).toString("css")}, transparent`;
+}
 
 // What each channel fades through, laid over the others. Lightness in HSL
 // is a mix towards black below the middle and white above it; brightness in
@@ -692,11 +717,17 @@ const HSB_STOPS: Partial<Record<ColorChannel, (color: Color) => string>> = {
   brightness: () => "black, transparent",
 };
 
+interface ChannelAxes {
+  x: ColorChannel;
+  y: ColorChannel;
+  z: ColorChannel;
+}
+
 /** One gradient per axis, the second axis's on top, over the hue when the hue is fixed. */
 function layered(
   base: Color,
   stops: Partial<Record<ColorChannel, (color: Color) => string>>,
-  channels: { x: ColorChannel; y: ColorChannel; z: ColorChannel },
+  channels: ChannelAxes,
   zValue: number,
   end: string,
   space: ColorChannel[],
@@ -717,11 +748,7 @@ function layered(
 }
 
 /** The area's own background for the channels it shows, at the third channel's value. */
-function areaBackground(
-  color: Color,
-  channels: { x: ColorChannel; y: ColorChannel; z: ColorChannel },
-  end: "left" | "right",
-): Style {
+function areaBackground(color: Color, channels: ChannelAxes, end: "left" | "right"): Style {
   const zValue = color.getChannelValue(channels.z);
   switch (color.getColorSpace()) {
     case "rgb": {
@@ -729,10 +756,11 @@ function areaBackground(
       // one layer per channel with the others at zero adds up channel by
       // channel into the colour at every point.
       const black = parseColor("rgb(0, 0, 0)");
-      const ramp = (channel: ColorChannel): string =>
-        `${black.withChannelValue(channel, 0).toString("css")}, ${black
+      function ramp(channel: ColorChannel): string {
+        return `${black.withChannelValue(channel, 0).toString("css")}, ${black
           .withChannelValue(channel, 255)
           .toString("css")}`;
+      }
       return {
         background: [
           `linear-gradient(to ${end}, ${ramp(channels.x)})`,
@@ -786,11 +814,7 @@ function percentage(value: number): string {
  * stops and shows banding first. Each strip is drawn twice its width and the
  * next one over it, so no seam opens between them at a fractional pixel.
  */
-function striped(
-  color: Color,
-  channels: { x: ColorChannel; y: ColorChannel; z: ColorChannel },
-  end: "left" | "right",
-): Style {
+function striped(color: Color, channels: ChannelAxes, end: "left" | "right"): Style {
   const space = color.getColorSpace();
   const base = color.withChannelValue("alpha", 1);
   const rows = channels.x === "hue";
@@ -802,7 +826,9 @@ function striped(
     along === "hue" ? [0, 60, 120, 180, 240, 300, 360] : [alongRange.minValue, alongRange.maxValue];
   const direction = rows ? `to ${end}` : "to top";
   const size = 200 / STRIPS;
-  const offset = (strip: number): number => (strip / (STRIPS - 2)) * 100;
+  function offset(strip: number): number {
+    return (strip / (STRIPS - 2)) * 100;
+  }
 
   const layers: string[] = [];
   // The last strip first, so it is on top and each one before runs on under it.
@@ -834,11 +860,15 @@ export interface ColorAreaGradientOptions {
   direction?: MaybeAccessor<"ltr" | "rtl" | undefined>;
 }
 
+export interface GradientStyle {
+  style: Accessor<Style>;
+}
+
 export interface ColorAreaGradientResult {
   /** The area's background, and what keeps a pointer drag from scrolling the page. */
-  colorAreaStyleProps: { style: Accessor<Style> };
+  colorAreaStyleProps: GradientStyle;
   /** Where the thumb sits, centred on the value. */
-  thumbStyleProps: { style: Accessor<Style> };
+  thumbStyleProps: GradientStyle;
 }
 
 /**
@@ -854,7 +884,9 @@ export interface ColorAreaGradientResult {
 export function colorAreaGradient(options: ColorAreaGradientOptions): ColorAreaGradientResult {
   const { state } = options;
   const locale = useLocale();
-  const direction = (): "ltr" | "rtl" => access(options.direction) ?? locale().direction;
+  function direction(): "ltr" | "rtl" {
+    return access(options.direction) ?? locale().direction;
+  }
 
   const background = createMemo((): Style => {
     if (state.isDisabled()) return {};
@@ -924,10 +956,12 @@ export function colorArea(options: ColorAreaOptions, state: ColorAreaState): Col
   const listeners = globalListeners();
   const locale = useLocale();
   const strings = stringFormatter(PICKER_STRINGS);
-  let position: { x: number; y: number } | null = null;
+  let position: Point | null = null;
 
   // Right to left, X grows leftwards, as the text does.
-  const isMirrored = (): boolean => locale().direction === "rtl";
+  function isMirrored(): boolean {
+    return locale().direction === "rtl";
+  }
 
   /**
    * Which axis the keyboard last moved, so a drag ends on the input that was
@@ -940,25 +974,25 @@ export function colorArea(options: ColorAreaOptions, state: ColorAreaState): Col
    */
   let axis: "x" | "y" = "x";
 
-  const focusAxis = (): void => {
+  function focusAxis(): void {
     const ref = axis === "y" ? options.yInputRef : options.xInputRef;
     (access(ref) as HTMLInputElement | null)?.focus();
-  };
+  }
 
-  const pageOf = (channel: ColorChannel): number => {
+  function pageOf(channel: ColorChannel): number {
     const range = state.value().getChannelRange(channel);
     return Math.max(range.pageSize, range.step);
-  };
+  }
 
   // A key press is a drag that starts and ends at once, so it ends the change.
-  const byKeyboard = (moved: "x" | "y", change: () => void): void => {
+  function byKeyboard(moved: "x" | "y", change: () => void): void {
     if (state.isDisabled()) return;
     state.setDragging(true);
     change();
     state.setDragging(false);
     axis = moved;
     focusAxis();
-  };
+  }
 
   const { moveProps } = move({
     onMoveStart: () => {
@@ -997,7 +1031,7 @@ export function colorArea(options: ColorAreaOptions, state: ColorAreaState): Col
     },
   });
 
-  const onDown = (clientX: number, clientY: number): void => {
+  function onDown(clientX: number, clientY: number): void {
     const container = access(options.containerRef) as Element | null;
     if (container === null || state.isDisabled()) return;
     const box = container.getBoundingClientRect();
@@ -1015,16 +1049,17 @@ export function colorArea(options: ColorAreaOptions, state: ColorAreaState): Col
       state.setDragging(false);
       listeners.removeAll();
     });
-  };
+  }
 
   formReset(options.xInputRef, state.value(), (next: Color) => state.setValue(next));
 
-  const inputFor = (axisName: "x" | "y"): DOMProps => {
+  function inputFor(axisName: "x" | "y"): DOMProps {
     const channel = axisName === "x" ? state.xChannel : state.yChannel;
     const read = axisName === "x" ? state.xValue : state.yValue;
     const write = axisName === "x" ? state.setXValue : state.setYValue;
-    const range = (): ReturnType<Color["getChannelRange"]> =>
-      state.value().getChannelRange(channel());
+    function range(): ReturnType<Color["getChannelRange"]> {
+      return state.value().getChannelRange(channel());
+    }
 
     return {
       type: "range",
@@ -1052,7 +1087,7 @@ export function colorArea(options: ColorAreaOptions, state: ColorAreaState): Col
         write(Number.parseFloat((event.target as HTMLInputElement).value));
       },
     };
-  };
+  }
 
   return {
     colorAreaProps: mergeProps(moveProps, {
@@ -1069,10 +1104,12 @@ export function colorArea(options: ColorAreaOptions, state: ColorAreaState): Col
       onKeyDown: (event: KeyboardEvent) => {
         // Page Up and Down page Y; Home and End page X, towards the start and
         // the end of the line as the text runs.
-        const toEnd = (by: number): void =>
-          isMirrored() ? state.decrementX(by) : state.incrementX(by);
-        const toStart = (by: number): void =>
-          isMirrored() ? state.incrementX(by) : state.decrementX(by);
+        function toEnd(by: number): void {
+          return isMirrored() ? state.decrementX(by) : state.incrementX(by);
+        }
+        function toStart(by: number): void {
+          return isMirrored() ? state.incrementX(by) : state.decrementX(by);
+        }
         switch (event.key) {
           case "PageUp":
             byKeyboard("y", () => state.incrementY(pageOf(state.yChannel())));
@@ -1109,7 +1146,7 @@ export function colorArea(options: ColorAreaOptions, state: ColorAreaState): Col
 // ---------------------------------------------------------------------------
 
 /** Zero degrees is three o'clock, and the angle grows clockwise. */
-function angleToCartesian(angle: number, radius: number): { x: number; y: number } {
+function angleToCartesian(angle: number, radius: number): Point {
   const radians = ((360 - angle + 90) * Math.PI) / 180;
   return { x: Math.sin(radians) * radius, y: Math.cos(radians) * radius };
 }
@@ -1152,7 +1189,7 @@ export interface ColorWheelState {
   /** From a point relative to the CENTRE of the wheel. */
   setHueFromPoint(x: number, y: number, radius: number): void;
   /** Where the thumb sits, relative to the centre. */
-  thumbPosition(radius: number): { x: number; y: number };
+  thumbPosition(radius: number): Point;
   increment(step?: number): void;
   decrement(step?: number): void;
   step: Accessor<number>;
@@ -1186,37 +1223,47 @@ export function colorWheelState(options: ColorWheelStateOptions = {}): ColorWhee
     options.onChange,
   );
 
-  const value = (): Color => {
+  function value(): Color {
     const current = raw();
     const space = access(options.colorSpace);
     if (space !== undefined) return current.toFormat(space);
     return hasHue(current.getColorSpace()) ? current : current.toFormat("hsl");
-  };
+  }
 
   // Read once: a form reset goes back to where the wheel STARTED, not to
   // wherever the caller's default happens to point by then.
   const initial = value();
 
   const [dragging, writeDragging] = createSignal(false);
-  const isDisabled = (): boolean => access(options.isDisabled) === true;
+  function isDisabled(): boolean {
+    return access(options.isDisabled) === true;
+  }
 
   // What the LAST write produced, so a drag reads its own change back rather
   // than the value a controlled owner has not caught up with yet.
   let live = value();
   let isDragging = false;
 
-  const setValue = (next: Color): void => {
+  function setValue(next: Color): void {
     live = next;
     setRaw(next);
-  };
+  }
 
-  const range = (): ReturnType<Color["getChannelRange"]> => value().getChannelRange("hue");
-  const step = (): number => range().step;
-  const pageStep = (): number => range().pageSize ?? Math.max(step(), 15);
+  function range(): ReturnType<Color["getChannelRange"]> {
+    return value().getChannelRange("hue");
+  }
+  function step(): number {
+    return range().step;
+  }
+  function pageStep(): number {
+    return range().pageSize ?? Math.max(step(), 15);
+  }
 
-  const hue = (): number => value().getChannelValue("hue");
+  function hue(): number {
+    return value().getChannelValue("hue");
+  }
 
-  const setHue = (next: number): void => {
+  function setHue(next: number): void {
     if (isDisabled()) return;
     // 360 is 0. Without this the wheel has a value the user can reach going up
     // and never going down.
@@ -1224,7 +1271,7 @@ export function colorWheelState(options: ColorWheelStateOptions = {}): ColorWhee
     const snapped = Math.round(mod(wrapped, 360) / step()) * step();
     if (hue() === snapped) return;
     setValue(live.withChannelValue("hue", snapped));
-  };
+  }
 
   return {
     value,
@@ -1330,26 +1377,28 @@ export function colorWheel(options: ColorWheelOptions, state: ColorWheelState): 
   const locale = useLocale();
   const words = channelWords();
   const listeners = globalListeners();
-  const thumbRadius = (): number => (access(options.innerRadius) + access(options.outerRadius)) / 2;
+  function thumbRadius(): number {
+    return (access(options.innerRadius) + access(options.outerRadius)) / 2;
+  }
 
-  const focusInput = (): void => {
+  function focusInput(): void {
     const input = access(options.inputRef) as HTMLInputElement | null;
     if (input !== null) focusWithoutScrolling(input);
-  };
+  }
 
   formReset(options.inputRef, state.defaultValue, (next: Color) => state.setValue(next));
 
   /** Where the drag is, in wheel coordinates, accumulated across the move. */
-  let at: { x: number; y: number } | null = null;
+  let at: Point | null = null;
   /** Whether the press that started this drag landed on the ring. */
   let onTrack = false;
 
-  const beginDrag = (): void => {
+  function beginDrag(): void {
     at = null;
     state.setDragging(true);
-  };
+  }
 
-  const drag = (event: MoveMoveEvent): void => {
+  function drag(event: MoveMoveEvent): void {
     at ??= state.thumbPosition(thumbRadius());
     at.x += event.deltaX;
     at.y += event.deltaY;
@@ -1365,13 +1414,13 @@ export function colorWheel(options: ColorWheelOptions, state: ColorWheelState): 
       return;
     }
     state.setHueFromPoint(at.x, at.y, thumbRadius());
-  };
+  }
 
-  const endDrag = (): void => {
+  function endDrag(): void {
     onTrack = false;
     state.setDragging(false);
     focusInput();
-  };
+  }
 
   const { moveProps: thumbMoveProps } = move({
     onMoveStart: beginDrag,
@@ -1393,7 +1442,7 @@ export function colorWheel(options: ColorWheelOptions, state: ColorWheelState): 
     },
   });
 
-  const onTrackDown = (clientX: number, clientY: number): void => {
+  function onTrackDown(clientX: number, clientY: number): void {
     const track = access(options.trackRef) as Element | null;
     if (track === null || state.isDisabled()) return;
 
@@ -1417,7 +1466,7 @@ export function colorWheel(options: ColorWheelOptions, state: ColorWheelState): 
       state.setDragging(false);
       listeners.removeAll();
     });
-  };
+  }
 
   return {
     trackProps: mergeProps(trackMoveProps, {
@@ -1548,6 +1597,12 @@ function readColor(text: string): Color | null {
   return null;
 }
 
+export interface ColorFieldState {
+  value: Accessor<Color | null>;
+  setValue(value: Color | null): void;
+  isDisabled: Accessor<boolean>;
+}
+
 /**
  * A colour as text.
  *
@@ -1566,15 +1621,15 @@ function readColor(text: string): Color | null {
  */
 export function colorField(
   options: ColorFieldOptions,
-  state: {
-    value: Accessor<Color | null>;
-    setValue(value: Color | null): void;
-    isDisabled: Accessor<boolean>;
-  },
+  state: ColorFieldState,
   ref: ElementRef<HTMLInputElement>,
 ): ColorFieldResult {
-  const format = (): ColorFormat => access(options.format) ?? "hex";
-  const show = (color: Color | null): string => color?.toString(format()) ?? "";
+  function format(): ColorFormat {
+    return access(options.format) ?? "hex";
+  }
+  function show(color: Color | null): string {
+    return color?.toString(format()) ?? "";
+  }
   // Bumped on every commit, so the text is re-seeded from the colour even when
   // the colour did not move: a controlled field refusing the edit, or text
   // that was not a colour, both go back to what the field holds.
@@ -1589,32 +1644,36 @@ export function colorField(
   // until the flush, so `text()` would hand the parser the value the typing
   // replaced.
   let typed: string | null = null;
-  const setText = (next: string): void => {
+  function setText(next: string): void {
     typed = next;
     writeText(next);
-  };
-  const current = (): string => typed ?? text();
+  }
+  function current(): string {
+    return typed ?? text();
+  }
 
-  const put = (next: Color | null): void => {
+  function put(next: Color | null): void {
     typed = null;
     setCommits((count) => count + 1);
     const held = state.value();
     const same = next === null ? held === null : held !== null && next.isEqual(held);
     if (!same) state.setValue(next);
-  };
+  }
 
-  const commit = (): void => {
+  function commit(): void {
     const entered = current();
     if (entered.trim() === "") {
       put(null);
       return;
     }
     put(readColor(entered) ?? state.value());
-  };
+  }
 
-  const steps = (): boolean => format() === "hex" || format() === "hexa";
+  function steps(): boolean {
+    return format() === "hex" || format() === "hexa";
+  }
 
-  const stepTo = (target: (from: number) => number): void => {
+  function stepTo(target: (from: number) => number): void {
     const held = state.value();
     const from = readColor(current()) ?? held ?? fromHexInt(BLACK);
     const value = clamp(target(from.toHexInt()), BLACK, WHITE);
@@ -1629,9 +1688,11 @@ export function colorField(
       .toFormat(held?.getColorSpace() ?? "rgb");
     put(next);
     validation.commitValidation();
-  };
+  }
 
-  const isReadOnly = (): boolean => access(options.isReadOnly) === true;
+  function isReadOnly(): boolean {
+    return access(options.isReadOnly) === true;
+  }
 
   const {
     labelProps,
@@ -1769,17 +1830,29 @@ export function colorChannelFieldState(
 
   // Read once: a form reset goes back to where the field STARTED.
   const initial = colorValue();
-  const channel = (): ColorChannel => access(options.channel);
-  const inFieldSpace = (value: Color | null): Color =>
-    inSpace(value ?? BLACK_COLOR, access(options.colorSpace));
-  const color = (): Color => inFieldSpace(colorValue());
-  const defaultColorValue = (): Color | null => asColor(access(options.defaultValue)) ?? initial;
+  function channel(): ColorChannel {
+    return access(options.channel);
+  }
+  function inFieldSpace(value: Color | null): Color {
+    return inSpace(value ?? BLACK_COLOR, access(options.colorSpace));
+  }
+  function color(): Color {
+    return inFieldSpace(colorValue());
+  }
+  function defaultColorValue(): Color | null {
+    return asColor(access(options.defaultValue)) ?? initial;
+  }
 
-  const range = (): ReturnType<Color["getChannelRange"]> => color().getChannelRange(channel());
+  function range(): ReturnType<Color["getChannelRange"]> {
+    return color().getChannelRange(channel());
+  }
   const formatOptions = color().getChannelFormatOptions(channel());
-  const scale = (): number =>
-    formatOptions.style === "percent" && range().maxValue === 100 ? 100 : 1;
-  const step = (): number => range().step / scale();
+  function scale(): number {
+    return formatOptions.style === "percent" && range().maxValue === 100 ? 100 : 1;
+  }
+  function step(): number {
+    return range().step / scale();
+  }
 
   const numberState = numberFieldState({
     value: () =>
@@ -1885,19 +1958,20 @@ export function colorSwatch(options: ColorSwatchOptions): ColorSwatchResult {
   const degrees = numberFormatter({ style: "unit", unit: "degree", unitDisplay: "long" });
   const percent = numberFormatter({ style: "percent" });
 
-  const description = (): string => {
+  function description(): string {
     const current = color();
     if (current.alpha === 0) return message(strings, "transparent");
     const hsl = current.toFormat("hsl");
-    const share = (channel: ColorChannel): string =>
-      percent().format(Math.round(hsl.getChannelValue(channel)) / 100);
+    function share(channel: ColorChannel): string {
+      return percent().format(Math.round(hsl.getChannelValue(channel)) / 100);
+    }
     return message(strings, "colorSwatchDescription", {
       hue: degrees().format(Math.round(hsl.getChannelValue("hue"))),
       saturation: share("saturation"),
       lightness: share("lightness"),
       name: current.getColorName(locale().locale),
     });
-  };
+  }
 
   return {
     color,
@@ -2225,8 +2299,12 @@ export function ColorWheel(props: ColorWheelComponentProps) {
     onChangeEnd: (value) => props.onChangeEnd?.(value),
   });
 
-  const outerRadius = (): number => props.outerRadius ?? 80;
-  const innerRadius = (): number => props.innerRadius ?? 64;
+  function outerRadius(): number {
+    return props.outerRadius ?? 80;
+  }
+  function innerRadius(): number {
+    return props.innerRadius ?? 64;
+  }
 
   const { trackProps, thumbProps, inputProps } = colorWheel(
     {
@@ -2362,7 +2440,9 @@ function ChannelColorField(props: ChannelColorFieldProps) {
     },
   });
 
-  const isDisabled = (): boolean => props.isDisabled ?? picker?.isDisabled() ?? false;
+  function isDisabled(): boolean {
+    return props.isDisabled ?? picker?.isDisabled() ?? false;
+  }
 
   const { labelProps, inputProps, descriptionProps, errorMessageProps, errors, isInvalid } =
     colorChannelField(

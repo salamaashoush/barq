@@ -54,13 +54,15 @@ function Search() {
   );
 }
 
-/** A listbox, wired the way `<ListBox>` would be inside an autocomplete. */
-function Fruits(props: {
+interface FruitsProps {
   items?: Fruit[];
   selectionMode?: "none" | "single";
   onAction?: (key: Key) => void;
   onSelectionChange?: (keys: "all" | Set<Key>) => void;
-}) {
+}
+
+/** A listbox, wired the way `<ListBox>` would be inside an autocomplete. */
+function Fruits(props: FruitsProps) {
   const auto = useAutocompleteCollection();
   const domRef = makeRef<HTMLUListElement>();
   const state = listState<Fruit>({
@@ -101,13 +103,13 @@ function Fruits(props: {
   );
 }
 
-function Example(
-  props: Omit<AutocompleteComponentProps, "children"> & {
-    onAction?: (key: Key) => void;
-    selectionMode?: "none" | "single";
-    onSelectionChange?: (keys: "all" | Set<Key>) => void;
-  },
-) {
+interface ExampleProps {
+  onAction?: (key: Key) => void;
+  selectionMode?: "none" | "single";
+  onSelectionChange?: (keys: "all" | Set<Key>) => void;
+}
+
+function Example(props: Omit<AutocompleteComponentProps, "children"> & ExampleProps) {
   return (
     <Autocomplete {...props}>
       <Search />
@@ -155,6 +157,10 @@ function backspace(input: HTMLInputElement): void {
     new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" }),
   );
   flush();
+}
+
+interface ItemProps {
+  node: Node<Fruit>;
 }
 
 describe("Autocomplete", () => {
@@ -479,7 +485,7 @@ describe("Autocomplete", () => {
           auto.connect({ ref: domRef, state, idFor: (key) => menuItemIdFor(baseId(), key) }),
         );
       }
-      function Item(props: { node: Node<Fruit> }) {
+      function Item(props: ItemProps) {
         const itemRef = makeRef<HTMLLIElement>();
         const { menuItemProps } = menuItem(
           {
