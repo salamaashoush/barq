@@ -182,13 +182,10 @@ export function RelativeTime(props: RelativeTimeProps) {
 
   if (!isServer) {
     createEffect(
-      () => [local(), clock(), props.live !== false] as const,
-      ([ready, , live]) => {
+      () => [local(), clock(), props.live !== false, moment().getTime()] as const,
+      ([ready, , live, at]) => {
         if (!ready || !live) return undefined;
-        const timer = setTimeout(
-          () => setClock((tick) => tick + 1),
-          refreshAfter(moment().getTime() - Date.now()),
-        );
+        const timer = setTimeout(() => setClock((tick) => tick + 1), refreshAfter(at - Date.now()));
         return () => clearTimeout(timer);
       },
     );
@@ -366,9 +363,15 @@ export function durationText(
       seconds: seconds % 60,
     });
   }
-  return new Intl.DurationFormat(locale, { style: options.length ?? "short" }).format(
-    durationParts(milliseconds, options.units ?? 2),
-  );
+  const units = durationParts(milliseconds, options.units ?? 2);
+  // Intl.DurationFormat leaves out a unit that is zero, so nothing at all
+  // would be written for no time: the smallest unit is shown regardless.
+  const [smallest] = Object.keys(units);
+  const none = Object.values(units).every((amount) => amount === 0);
+  return new Intl.DurationFormat(locale, {
+    style: options.length ?? "short",
+    ...(none && smallest !== undefined ? { [`${smallest}Display`]: "always" } : {}),
+  }).format(units);
 }
 
 /**

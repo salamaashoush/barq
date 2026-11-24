@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { type Child, createSignal } from "@barqjs/core";
+import { type Child, DEV, createSignal } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user, within } from "@barqjs/testing";
 
@@ -215,6 +215,27 @@ describe("ResponsiveTabs", () => {
         expect(one.getAttribute("aria-hidden")).toBe("true");
       }
     });
+  });
+
+  test("a scrolling row measures and follows the selection reading only what its effects track", async () => {
+    const capture = DEV.diagnostics.capture();
+    const [tab, setTab] = createSignal("overview");
+    render(() => (
+      <ResponsiveTabs
+        aria-label="Project"
+        items={ITEMS}
+        overflow="scroll"
+        selectedKey={tab()}
+        onSelectionChange={setTab}
+      >
+        {(item) => <p>{item.label}</p>}
+      </ResponsiveTabs>
+    ));
+    await settle();
+    setTab(ITEMS[2]?.id ?? "overview");
+    await settle();
+    const strict = capture.stop().filter((event) => event.code === "STRICT_READ_UNTRACKED");
+    expect(strict).toEqual([]);
   });
 
   test("its words come from arc's dictionary, and each part takes a class", () => {

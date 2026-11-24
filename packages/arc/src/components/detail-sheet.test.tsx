@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { type Child, createSignal, flush } from "@barqjs/core";
+import { collectCss } from "@barqjs/css";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { Link } from "@barqjs/router";
 import { ariaViolations, render, screen, tick, user, waitFor } from "@barqjs/testing";
@@ -87,6 +88,26 @@ describe("DetailSheet", () => {
     expect(narrow?.getAttribute("data-size")).toBe("sm");
     expect(wide?.getAttribute("data-size")).toBe("xl");
     expect(narrow?.className).not.toBe(wide?.className);
+  });
+
+  test("its header keeps room at the start as well as beside the close button", async () => {
+    render(() => <DetailSheet open heading="Invoice" />);
+    await settle();
+    const header = document.querySelector('[data-slot="sheet-header"]') as HTMLElement;
+    const css = collectCss();
+    const sides = [...header.classList]
+      .map((one) => {
+        const at = css.indexOf(`.${one}{`);
+        return at === -1 ? "" : css.slice(at, css.indexOf("}", at));
+      })
+      .filter((rule) => rule.includes("padding"))
+      .map((rule) => rule.slice(rule.indexOf("{") + 1, rule.indexOf(":")));
+    expect(sides.toSorted()).toEqual([
+      "padding-bottom",
+      "padding-inline-end",
+      "padding-inline-start",
+      "padding-top",
+    ]);
   });
 
   test("comes in from the reading direction's end, and its start when asked", async () => {

@@ -4,8 +4,9 @@ import { dragSession } from "@barqjs/aria/dnd";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { clearAnnouncer } from "@barqjs/aria/live";
 import { ariaViolations, render, screen, user, waitFor, within } from "@barqjs/testing";
+import { srOnly } from "@barqjs/ui/sr-only";
 
-import { target } from "../style/index.ts";
+import { layout, target } from "../style/index.ts";
 import { hydrates, settle, wears } from "../test-arc.ts";
 import { ListItem } from "./item-list.tsx";
 import {
@@ -200,6 +201,16 @@ describe("KanbanBoard", () => {
     expect(wears(handle, target.size)).toBe(true);
     const card = handle.closest('[data-slot="kanban-card"]') as HTMLElement;
     expect(card.getAttribute("draggable")).toBe("true");
+  });
+
+  test("the board holds its hidden words, so a board that overflows does not widen the page", () => {
+    render(() => <Board />);
+    const board = document.querySelector('[data-slot="kanban-board"]');
+    const hidden = [...(board?.querySelectorAll("span") ?? [])].filter((span) =>
+      wears(span, srOnly),
+    );
+    expect(hidden.length).toBeGreaterThan(0);
+    expect(wears(board, layout.relative)).toBe(true);
   });
 
   test("virtual: a long column draws only the cards on screen", () => {

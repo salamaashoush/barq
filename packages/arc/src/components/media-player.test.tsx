@@ -4,7 +4,8 @@ import { collectCss } from "@barqjs/css";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user, within } from "@barqjs/testing";
 
-import { hydrates, settle } from "../test-arc.ts";
+import { layout } from "../style/index.ts";
+import { hydrates, settle, wears } from "../test-arc.ts";
 import { type MediaCue, MediaPlayer, mediaPlayerStyles } from "./media-player.tsx";
 
 const CUES: MediaCue[] = [
@@ -61,6 +62,15 @@ function player(extra: Partial<Parameters<typeof MediaPlayer>[0]> = {}) {
 }
 
 describe("MediaPlayer", () => {
+  test("the seek bar at the start says no time in words, and the controls wrap in a narrow player", async () => {
+    render(() => player());
+    await load(200);
+    const seek = screen.getByRole("slider", { name: "Seek" });
+    expect(seek.getAttribute("aria-valuetext")).toBe("0 seconds of 3 minutes, 20 seconds");
+    const end = document.querySelector('[data-slot="media-player-controls"]')?.lastElementChild;
+    expect(wears(end, layout.wrap)).toBe(true);
+  });
+
   test("a named region holding the video and a group of controls, the seek bar said in words", async () => {
     render(() => player());
     const region = screen.getByRole("region", { name: "Getting started" });

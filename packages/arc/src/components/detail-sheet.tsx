@@ -22,7 +22,9 @@ export type DetailSheetSize = "sm" | "md" | "lg" | "xl";
 export const detailSheetVariants = variants({
   slots: {
     root: arc(layout.fill, gap[0]),
-    header: arc(edge.bottom, { paddingInlineEnd: space.x12 }),
+    // Both sides, logical: a logical end replaces the sheet header's physical
+    // left and right together, so the start would otherwise lose its padding.
+    header: arc(edge.bottom, { paddingInlineStart: space.x4, paddingInlineEnd: space.x12 }),
     title: arc({}),
     description: arc({}),
     body: arc(panel.body, { padding: space.x4 }),

@@ -169,9 +169,9 @@ export function TagGroup<T>(props: TagGroupProps<T>) {
         )}
       </AriaTagGroup>
       <Show when={props.items.length === 0 && props.empty !== undefined}>
-        <p class={cls().empty} data-slot="tag-group-empty">
+        <div class={cls().empty} data-slot="tag-group-empty">
           {props.empty}
-        </p>
+        </div>
       </Show>
       <Show when={hidden() > 0 || (props.onClearAll !== undefined && props.items.length > 0)}>
         <div class={cls().footer} data-slot="tag-group-footer">

@@ -191,4 +191,25 @@ describe("TagGroup", () => {
     expect(result.container.querySelectorAll('[role="row"]')).toHaveLength(2);
     result.unmount();
   });
+
+  test("hydrates an empty group whose words are a block of their own", async () => {
+    const result = await hydrates(`
+      import { TagGroup, Text } from "<arc>";
+      export function Page() {
+        return (
+          <TagGroup
+            label="Labels"
+            items={[]}
+            isInvalid
+            errorMessage="Add at least one label."
+            empty={<Text color="muted">None yet</Text>}
+          />
+        );
+      }
+    `);
+    expect(result.container.querySelector('[data-slot="tag-group-empty"]')?.textContent).toBe(
+      "None yet",
+    );
+    result.unmount();
+  });
 });

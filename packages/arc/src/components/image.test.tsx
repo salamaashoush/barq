@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { type Child } from "@barqjs/core";
+import { type Child, DEV } from "@barqjs/core";
 import { collectCss } from "@barqjs/css";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen } from "@barqjs/testing";
@@ -42,6 +42,17 @@ describe("Image", () => {
     await settle();
     expect(slot("image").getAttribute("data-status")).toBe("loaded");
     expect(slot("image-placeholder")).toBeNull();
+  });
+
+  test("settles a cached image from its effect without an untracked read", async () => {
+    restore();
+    restore = fetched(true, 640);
+    const capture = DEV.diagnostics.capture();
+    render(() => <Image src="/cached.jpg" alt="Cached" />);
+    await settle();
+    expect(slot("image").getAttribute("data-status")).toBe("loaded");
+    const strict = capture.stop().filter((event) => event.code === "STRICT_READ_UNTRACKED");
+    expect(strict).toEqual([]);
   });
 
   test("holds its shape, loads lazily and fades in once loaded", async () => {

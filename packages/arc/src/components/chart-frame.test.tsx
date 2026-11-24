@@ -35,7 +35,8 @@ describe("ChartDataTable", () => {
       </ChartContainer>
     ));
     const table = screen.getByRole("table", { name: "Visitors" });
-    expect(table.classList.contains(srOnly)).toBe(true);
+    expect(table.classList.contains(srOnly)).toBe(false);
+    expect(table.parentElement?.classList.contains(srOnly)).toBe(true);
     const chart = document.querySelector('[data-slot="chart"]') as HTMLElement;
     expect(chart.style.getPropertyValue("--color-desktop")).toBe("var(--info)");
   });

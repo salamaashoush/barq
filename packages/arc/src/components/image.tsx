@@ -1,4 +1,4 @@
-import { type Child, Show, createEffect, createSignal } from "@barqjs/core";
+import { type Child, Show, createEffect, createSignal, untrack } from "@barqjs/core";
 import { variants } from "@barqjs/css";
 import { ImageOff } from "@barqjs/lucide/icons/image-off";
 import { ref as makeRef } from "@barqjs/primitives/refs";
@@ -100,7 +100,7 @@ export function Image(props: ImageProps) {
   const node = makeRef<HTMLImageElement>();
   const [status, setStatus] = createSignal<ImageStatus>("loading", { ownedWrite: true });
   const settle = (next: ImageStatus): void => {
-    if (status() === next) return;
+    if (untrack(status) === next) return;
     setStatus(next);
     props.onStatusChange?.(next);
   };

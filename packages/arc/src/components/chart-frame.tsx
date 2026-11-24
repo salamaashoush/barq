@@ -153,9 +153,9 @@ export interface ChartDataTableProps extends Customisable<ChartTableSlots> {
  */
 export function ChartDataTable(props: ChartDataTableProps) {
   const cls = (): ChartTableSlots => parts(chartDataTableStyles(), props.classes);
-  return (
+  const table = () => (
     <table
-      class={arc(cls().table, props.class, props.className, props.hidden === true ? srOnly : "")}
+      class={arc(cls().table, props.class, props.className)}
       id={props.id}
       data-slot="chart-table"
     >
@@ -197,6 +197,16 @@ export function ChartDataTable(props: ChartDataTableProps) {
         </For>
       </tbody>
     </table>
+  );
+  // Hidden inside a box rather than on the table itself: a table is never
+  // narrower than its content, so `srOnly`'s one pixel cannot hold it, and an
+  // absolute table as wide as its columns widens a narrow page.
+  return (
+    <Show when={props.hidden === true} fallback={table()}>
+      <div class={srOnly} data-slot="chart-table-hidden">
+        {table()}
+      </div>
+    </Show>
   );
 }
 

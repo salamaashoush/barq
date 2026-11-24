@@ -23,6 +23,7 @@ import {
   focus,
   gap,
   glyph,
+  interaction,
   layout,
   plainList,
   rounded,
@@ -54,7 +55,9 @@ export interface KanbanMoveEvent {
 
 export const kanbanBoardStyles = variants({
   slots: {
-    root: arc(layout.row, gap[3], focus.outline, {
+    // Relative, so the words hidden for a screen reader in a column scroll
+    // with it rather than widening the page beside a board that overflows.
+    root: arc(layout.row, layout.relative, gap[3], focus.outline, {
       alignItems: "flex-start",
       overflowX: "auto",
       scrollSnapType: "x mandatory",
@@ -74,11 +77,10 @@ export const kanbanBoardStyles = variants({
       overflowY: "auto",
       "[data-drop-target]": { outline: `2px dashed ${tokens.ring}` },
     }),
-    card: arc(surface.card, layout.row, gap[1], focus.inset, {
+    card: arc(surface.card, layout.row, gap[1], focus.inset, interaction.dragging, {
       alignItems: "flex-start",
       padding: space.x1,
       outlineStyle: "none",
-      "[data-dragging]": { opacity: "0.5" },
     }),
     content: arc(layout.grow, layout.minZero),
     drag: arc(control.bare, layout.inlineCentre, layout.noShrink, fg.muted, glyph.sm, target.size, {

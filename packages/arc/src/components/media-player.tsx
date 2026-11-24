@@ -108,7 +108,7 @@ export const mediaPlayerStyles = variants({
     chapter: arc(type.caption, fg.muted, layout.minZero, layout.clip, layout.nowrap, {
       maxWidth: "12rem",
     }),
-    end: arc(layout.pushEnd, layout.row, gap[1]),
+    end: arc(layout.pushEnd, layout.row, layout.wrap, layout.end, gap[1]),
     transcript: arc(plainList, layout.column, gap[0.5], focus.outline, {
       maxHeight: "16rem",
       overflowY: "auto",

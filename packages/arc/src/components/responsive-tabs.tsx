@@ -142,9 +142,7 @@ export function ResponsiveTabs(props: ResponsiveTabsProps) {
     props.items.filter((one) => hidden().has(one.id) && one.id !== selected());
 
   const [ends, setEnds] = createSignal({ back: false, forward: false }, { ownedWrite: true });
-  const edges = (): void => {
-    const element = viewport();
-    if (element === null) return;
+  const edges = (element: HTMLDivElement): void => {
     const along = Math.abs(element.scrollLeft);
     const room = element.scrollWidth - element.clientWidth;
     setEnds({ back: along > 1, forward: room - along > 1 });
@@ -160,22 +158,23 @@ export function ResponsiveTabs(props: ResponsiveTabsProps) {
       () => [viewport(), scrolls()] as const,
       ([element, on]) => {
         if (element === null || !on) return undefined;
-        edges();
+        const measure = (): void => edges(element);
+        measure();
         const observer =
-          typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(edges);
+          typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(measure);
         observer?.observe(element);
-        element.addEventListener("scroll", edges, { passive: true });
+        element.addEventListener("scroll", measure, { passive: true });
         return () => {
           observer?.disconnect();
-          element.removeEventListener("scroll", edges);
+          element.removeEventListener("scroll", measure);
         };
       },
     );
     createEffect(
-      () => [selected(), scrolls()] as const,
-      ([key, on]) => {
+      () => [selected(), scrolls(), list()] as const,
+      ([key, on, row]) => {
         if (!on || key === undefined) return;
-        const tab = list()?.querySelector(`[data-key="${CSS.escape(key)}"]`);
+        const tab = row?.querySelector(`[data-key="${CSS.escape(key)}"]`);
         tab?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
       },
     );

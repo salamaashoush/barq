@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { type Child, createSignal } from "@barqjs/core";
+import { type Child, DEV, createSignal } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render } from "@barqjs/testing";
 
@@ -12,6 +12,7 @@ import {
   FormattedNumber,
   RelativeTime,
   durationParts,
+  durationText,
   formattedStyles,
 } from "./format.tsx";
 
@@ -70,6 +71,25 @@ describe("RelativeTime", () => {
     await new Promise((resolve) => setTimeout(resolve, 1100));
     await settle();
     expect(slot("relative-time").textContent).toBe("7 seconds ago");
+  });
+
+  test("a value that changes reschedules the refresh, read where the effect tracks it", async () => {
+    let now = new Date(MOMENT).getTime() + 5000;
+    Date.now = () => now;
+    const [value, setValue] = createSignal<number>(new Date(MOMENT).getTime());
+    const capture = DEV.diagnostics.capture();
+    render(() => <RelativeTime value={value()} />);
+    await settle();
+    expect(slot("relative-time").textContent).toBe("5 seconds ago");
+    setValue(now - 50 * 60_000);
+    await settle();
+    expect(slot("relative-time").textContent).toBe("50 minutes ago");
+    now += 1000;
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    await settle();
+    expect(slot("relative-time").textContent).toBe("50 minutes ago");
+    const strict = capture.stop().filter((event) => event.code === "STRICT_READ_UNTRACKED");
+    expect(strict).toEqual([]);
   });
 
   test("speaks the locale, and its words run right to left in Arabic", async () => {
@@ -202,6 +222,12 @@ describe("numbers", () => {
     expect(durationParts(90_061_000, 1)).toEqual({ days: 1 });
     expect(durationParts(800)).toEqual({ milliseconds: 800 });
     expect(durationParts(0)).toEqual({ seconds: 0 });
+  });
+
+  test("no time at all is still written, as zero of the smallest unit", () => {
+    expect(durationText(0, "en-US", { length: "long", units: 3 })).toBe("0 seconds");
+    expect(durationText(0, "en-US")).toBe("0 sec");
+    expect(durationText(400, "en-US", { length: "long" })).toBe("400 milliseconds");
   });
 
   test("updates with the value and takes a class", async () => {
