@@ -2,6 +2,10 @@ import { isServer } from "@barqjs/web";
 
 const BUS = "__TANSTACK_EVENT_TARGET__";
 
+interface BusScope {
+  [BUS]?: EventTarget;
+}
+
 /**
  * A devtools bus for the server, where no devtools panel ever answers.
  *
@@ -17,7 +21,7 @@ export function installServerDevtoolsBus(): void {
   if (!isServer || typeof EventTarget === "undefined" || typeof CustomEvent === "undefined") {
     return;
   }
-  const scope = globalThis as { [BUS]?: EventTarget };
+  const scope = globalThis as BusScope;
   if (scope[BUS] !== undefined) return;
   const bus = new EventTarget();
   bus.addEventListener("tanstack-connect", () => {

@@ -345,6 +345,46 @@ export type FieldComponentProps<
   ) => Child;
 };
 
+export interface LensFieldOptions<
+  TLensData,
+  TName extends DeepKeys<TLensData>,
+  TData extends DeepValue<TLensData, TName>,
+  TOnMount extends MaybeFieldValidator<unknown, string, TData>,
+  TOnChange extends MaybeFieldValidator<unknown, string, TData>,
+  TOnChangeAsync extends MaybeFieldAsyncValidator<unknown, string, TData>,
+  TOnBlur extends MaybeFieldValidator<unknown, string, TData>,
+  TOnBlurAsync extends MaybeFieldAsyncValidator<unknown, string, TData>,
+  TOnSubmit extends MaybeFieldValidator<unknown, string, TData>,
+  TOnSubmitAsync extends MaybeFieldAsyncValidator<unknown, string, TData>,
+  TOnDynamic extends MaybeFieldValidator<unknown, string, TData>,
+  TOnDynamicAsync extends MaybeFieldAsyncValidator<unknown, string, TData>,
+> {
+  name: TName;
+  validators?: Omit<
+    FieldValidators<
+      unknown,
+      string,
+      TData,
+      TOnMount,
+      TOnChange,
+      TOnChangeAsync,
+      TOnBlur,
+      TOnBlurAsync,
+      TOnSubmit,
+      TOnSubmitAsync,
+      TOnDynamic,
+      TOnDynamicAsync
+    >,
+    "onChangeListenTo" | "onBlurListenTo"
+  > &
+    LensListenTo<TLensData>;
+}
+
+export interface LensListenTo<TLensData> {
+  onChangeListenTo?: DeepKeys<TLensData>[];
+  onBlurListenTo?: DeepKeys<TLensData>[];
+}
+
 /**
  * A field component for a field group, where names are relative to the group's
  * data and resolve to the form's own paths at run time.
@@ -395,29 +435,22 @@ export type LensFieldComponent<
     >,
     "name" | "validators"
   > &
-    Incoming<{
-      name: TName;
-      validators?: Omit<
-        FieldValidators<
-          unknown,
-          string,
-          TData,
-          TOnMount,
-          TOnChange,
-          TOnChangeAsync,
-          TOnBlur,
-          TOnBlurAsync,
-          TOnSubmit,
-          TOnSubmitAsync,
-          TOnDynamic,
-          TOnDynamicAsync
-        >,
-        "onChangeListenTo" | "onBlurListenTo"
-      > & {
-        onChangeListenTo?: DeepKeys<TLensData>[];
-        onBlurListenTo?: DeepKeys<TLensData>[];
-      };
-    }>,
+    Incoming<
+      LensFieldOptions<
+        TLensData,
+        TName,
+        TData,
+        TOnMount,
+        TOnChange,
+        TOnChangeAsync,
+        TOnBlur,
+        TOnBlurAsync,
+        TOnSubmit,
+        TOnSubmitAsync,
+        TOnDynamic,
+        TOnDynamicAsync
+      >
+    >,
 ) => JSXElement;
 
 export function Field<

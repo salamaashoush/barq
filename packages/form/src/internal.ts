@@ -17,12 +17,16 @@ export function renderSlot(slot: unknown, ...args: unknown[]): JSXElement {
   ) as JSXElement;
 }
 
+export interface Mountable {
+  mount: () => () => void;
+}
+
 /**
  * Mounts in an effect rather than in the component body: the core runs user
  * validators and listeners from `mount`, and those may write signals, which a
  * body under construction is not allowed to do.
  */
-export function mountWith(api: { mount: () => () => void }): void {
+export function mountWith(api: Mountable): void {
   createRenderEffect(
     () => api,
     (target) => target.mount(),

@@ -97,7 +97,9 @@ describe("useSelector mirrors a slice of a store", () => {
   });
 
   test("a selected function is returned as it is", () => {
-    const greet = (): string => "hello salama";
+    function greet(): string {
+      return "hello salama";
+    }
     const store = new Store({ greet });
     createRoot((dispose) => {
       const selected = useSelector(store, (state) => state.greet);
@@ -129,10 +131,10 @@ describe("useSelector mirrors a slice of a store", () => {
 describe("a form re-renders only what read the slice that changed", () => {
   test("typing in one field leaves the other field's bindings alone", () => {
     const reads = { name: 0, email: 0, canSubmit: 0, names: 0 };
-    const count = <T,>(key: keyof typeof reads, value: T): T => {
+    function count<T>(key: keyof typeof reads, value: T): T {
       reads[key] += 1;
       return value;
-    };
+    }
 
     const view = mount(() => {
       const form = createForm(() => ({

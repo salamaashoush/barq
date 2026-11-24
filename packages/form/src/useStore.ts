@@ -5,9 +5,13 @@ export interface UseSelectorOptions<TSelected> {
   compare?: (a: TSelected, b: TSelected) => boolean;
 }
 
+export interface Subscription {
+  unsubscribe: () => void;
+}
+
 export interface SelectionSource<TSource> {
   get: () => TSource;
-  subscribe: (listener: (value: TSource) => void) => { unsubscribe: () => void };
+  subscribe: (listener: (value: TSource) => void) => Subscription;
 }
 
 /**
@@ -50,8 +54,10 @@ export function useSelector<TSource, TSelected = NoInfer<TSource>>(
   };
 }
 
-export const useStore = <TSource, TSelected = NoInfer<TSource>>(
+export function useStore<TSource, TSelected = NoInfer<TSource>>(
   source: SelectionSource<TSource>,
   selector?: (snapshot: TSource) => TSelected,
   compare?: (a: TSelected, b: TSelected) => boolean,
-): Accessor<TSelected> => useSelector(source, selector, { compare });
+): Accessor<TSelected> {
+  return useSelector(source, selector, { compare });
+}

@@ -20,6 +20,43 @@ import { type Slots, mountWith, renderSlot, updateWith } from "./internal.ts";
 import type { MaybeFormAsyncValidator, MaybeFormValidator } from "./types.ts";
 import { useSelector } from "./useStore.ts";
 
+export interface FormSubscribeOptions<
+  TParentData,
+  TFormOnMount extends MaybeFormValidator<TParentData>,
+  TFormOnChange extends MaybeFormValidator<TParentData>,
+  TFormOnChangeAsync extends MaybeFormAsyncValidator<TParentData>,
+  TFormOnBlur extends MaybeFormValidator<TParentData>,
+  TFormOnBlurAsync extends MaybeFormAsyncValidator<TParentData>,
+  TFormOnSubmit extends MaybeFormValidator<TParentData>,
+  TFormOnSubmitAsync extends MaybeFormAsyncValidator<TParentData>,
+  TFormOnDynamic extends MaybeFormValidator<TParentData>,
+  TFormOnDynamicAsync extends MaybeFormAsyncValidator<TParentData>,
+  TFormOnServer extends MaybeFormAsyncValidator<TParentData>,
+  TSelected,
+> {
+  selector?: (
+    state: NoInfer<
+      FormState<
+        TParentData,
+        TFormOnMount,
+        TFormOnChange,
+        TFormOnChangeAsync,
+        TFormOnBlur,
+        TFormOnBlurAsync,
+        TFormOnSubmit,
+        TFormOnSubmitAsync,
+        TFormOnDynamic,
+        TFormOnDynamicAsync,
+        TFormOnServer
+      >
+    >,
+  ) => TSelected;
+}
+
+export type SubscribeChildren<TSelected> = {
+  children: (state: Accessor<NoInfer<TSelected>>) => Child;
+};
+
 export interface BarqFormApi<
   TParentData,
   TFormOnMount extends MaybeFormValidator<TParentData>,
@@ -152,27 +189,23 @@ export interface BarqFormApi<
       >
     >,
   >(
-    props: Incoming<{
-      selector?: (
-        state: NoInfer<
-          FormState<
-            TParentData,
-            TFormOnMount,
-            TFormOnChange,
-            TFormOnChangeAsync,
-            TFormOnBlur,
-            TFormOnBlurAsync,
-            TFormOnSubmit,
-            TFormOnSubmitAsync,
-            TFormOnDynamic,
-            TFormOnDynamicAsync,
-            TFormOnServer
-          >
-        >,
-      ) => TSelected;
-    }> & {
-      children: (state: Accessor<NoInfer<TSelected>>) => Child;
-    },
+    props: Incoming<
+      FormSubscribeOptions<
+        TParentData,
+        TFormOnMount,
+        TFormOnChange,
+        TFormOnChangeAsync,
+        TFormOnBlur,
+        TFormOnBlurAsync,
+        TFormOnSubmit,
+        TFormOnSubmitAsync,
+        TFormOnDynamic,
+        TFormOnDynamicAsync,
+        TFormOnServer,
+        TSelected
+      >
+    > &
+      SubscribeChildren<TSelected>,
   ) => JSXElement;
 }
 

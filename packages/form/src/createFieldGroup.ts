@@ -1,12 +1,4 @@
-import {
-  type Accessor,
-  type Child,
-  type Incoming,
-  type JSXElement,
-  merge,
-  readSlot,
-  untrack,
-} from "@barqjs/core";
+import { type Incoming, type JSXElement, merge, readSlot, untrack } from "@barqjs/core";
 import {
   type AnyFieldGroupApi,
   type DeepKeysOfType,
@@ -16,10 +8,15 @@ import {
 } from "@tanstack/form-core";
 
 import type { LensFieldComponent } from "./createField.ts";
-import type { AppFieldExtendedBarqFormApi, Components } from "./createFormHook.ts";
+import type { SubscribeChildren } from "./createForm.ts";
+import type { AppFieldExtendedBarqFormApi, AppFormProps, Components } from "./createFormHook.ts";
 import { type Slots, mountWith, renderSlot } from "./internal.ts";
 import type { Loose, MaybeFormAsyncValidator, MaybeFormValidator } from "./types.ts";
 import { useSelector } from "./useStore.ts";
+
+export interface FieldGroupSubscribeOptions<TFieldGroupData, TSelected> {
+  selector?: (state: NoInfer<FieldGroupState<TFieldGroupData>>) => TSelected;
+}
 
 /**
  * @private
@@ -61,14 +58,11 @@ export type AppFieldExtendedBarqFieldGroupApi<
 > &
   NoInfer<TFormComponents> & {
     AppField: LensFieldComponent<TFieldGroupData, TSubmitMeta, NoInfer<TFieldComponents>>;
-    AppForm: (props: Incoming<{ children?: Child }>) => JSXElement;
+    AppForm: (props: Incoming<AppFormProps>) => JSXElement;
     Field: LensFieldComponent<TFieldGroupData, TSubmitMeta>;
     Subscribe: <TSelected = NoInfer<FieldGroupState<TFieldGroupData>>>(
-      props: Incoming<{
-        selector?: (state: NoInfer<FieldGroupState<TFieldGroupData>>) => TSelected;
-      }> & {
-        children: (state: Accessor<NoInfer<TSelected>>) => Child;
-      },
+      props: Incoming<FieldGroupSubscribeOptions<TFieldGroupData, TSelected>> &
+        SubscribeChildren<TSelected>,
     ) => JSXElement;
   };
 
@@ -76,6 +70,67 @@ interface AppFormLike {
   AppForm: (props: Slots) => JSXElement;
   AppField: (props: Slots) => JSXElement;
   Field: (props: Slots) => JSXElement;
+}
+
+export interface CreateFieldGroupOptions<
+  TFormData,
+  TFieldGroupData,
+  TFields extends
+    | DeepKeysOfType<TFormData, TFieldGroupData | null | undefined>
+    | FieldsMap<TFormData, TFieldGroupData>,
+  TOnMount extends MaybeFormValidator<TFormData>,
+  TOnChange extends MaybeFormValidator<TFormData>,
+  TOnChangeAsync extends MaybeFormAsyncValidator<TFormData>,
+  TOnBlur extends MaybeFormValidator<TFormData>,
+  TOnBlurAsync extends MaybeFormAsyncValidator<TFormData>,
+  TOnSubmit extends MaybeFormValidator<TFormData>,
+  TOnSubmitAsync extends MaybeFormAsyncValidator<TFormData>,
+  TOnDynamic extends MaybeFormValidator<TFormData>,
+  TOnDynamicAsync extends MaybeFormAsyncValidator<TFormData>,
+  TOnServer extends MaybeFormAsyncValidator<TFormData>,
+  TFieldComponents extends Components,
+  TFormComponents extends Components,
+  TSubmitMeta,
+> {
+  form:
+    | AppFieldExtendedBarqFormApi<
+        TFormData,
+        TOnMount,
+        TOnChange,
+        TOnChangeAsync,
+        TOnBlur,
+        TOnBlurAsync,
+        TOnSubmit,
+        TOnSubmitAsync,
+        TOnDynamic,
+        TOnDynamicAsync,
+        TOnServer,
+        TSubmitMeta,
+        TFieldComponents,
+        TFormComponents
+      >
+    | AppFieldExtendedBarqFieldGroupApi<
+        unknown,
+        TFormData,
+        string | FieldsMap<unknown, TFormData>,
+        Loose,
+        Loose,
+        Loose,
+        Loose,
+        Loose,
+        Loose,
+        Loose,
+        Loose,
+        Loose,
+        Loose,
+        TSubmitMeta,
+        TFieldComponents,
+        TFormComponents
+      >;
+  fields: TFields;
+  defaultValues?: TFieldGroupData;
+  onSubmitMeta?: TSubmitMeta;
+  formComponents: TFormComponents;
 }
 
 /**
@@ -102,47 +157,24 @@ export function createFieldGroup<
   TFormComponents extends Components,
   TSubmitMeta = never,
 >(
-  opts: () => {
-    form:
-      | AppFieldExtendedBarqFormApi<
-          TFormData,
-          TOnMount,
-          TOnChange,
-          TOnChangeAsync,
-          TOnBlur,
-          TOnBlurAsync,
-          TOnSubmit,
-          TOnSubmitAsync,
-          TOnDynamic,
-          TOnDynamicAsync,
-          TOnServer,
-          TSubmitMeta,
-          TFieldComponents,
-          TFormComponents
-        >
-      | AppFieldExtendedBarqFieldGroupApi<
-          unknown,
-          TFormData,
-          string | FieldsMap<unknown, TFormData>,
-          Loose,
-          Loose,
-          Loose,
-          Loose,
-          Loose,
-          Loose,
-          Loose,
-          Loose,
-          Loose,
-          Loose,
-          TSubmitMeta,
-          TFieldComponents,
-          TFormComponents
-        >;
-    fields: TFields;
-    defaultValues?: TFieldGroupData;
-    onSubmitMeta?: TSubmitMeta;
-    formComponents: TFormComponents;
-  },
+  opts: () => CreateFieldGroupOptions<
+    TFormData,
+    TFieldGroupData,
+    TFields,
+    TOnMount,
+    TOnChange,
+    TOnChangeAsync,
+    TOnBlur,
+    TOnBlurAsync,
+    TOnSubmit,
+    TOnSubmitAsync,
+    TOnDynamic,
+    TOnDynamicAsync,
+    TOnServer,
+    TFieldComponents,
+    TFormComponents,
+    TSubmitMeta
+  >,
 ): AppFieldExtendedBarqFieldGroupApi<
   TFormData,
   TFieldGroupData,
@@ -166,14 +198,15 @@ export function createFieldGroup<
   const parent: unknown = options.form;
   const form = (parent instanceof FieldGroupApi ? parent.form : parent) as AppFormLike;
 
-  const lens = (props: Slots): Slots => {
-    const mapped = () =>
-      api.getFormFieldOptions({
+  function lens(props: Slots): Slots {
+    function mapped() {
+      return api.getFormFieldOptions({
         name: readSlot(props.name, "Field.name") as string,
         validators: readSlot(props.validators, "Field.validators") as never,
       });
+    }
     return merge(props, { name: () => mapped().name, validators: () => mapped().validators });
-  };
+  }
 
   mountWith(api);
 

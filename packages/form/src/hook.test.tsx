@@ -17,7 +17,11 @@ afterEach(() => {
 
 const { fieldContext, formContext, useFieldContext, useFormContext } = createFormHookContexts();
 
-function TextField(props: { label: string }) {
+interface LabelProps {
+  label: string;
+}
+
+function TextField(props: LabelProps) {
   const field = useFieldContext<string>();
   return (
     <label>
@@ -31,7 +35,7 @@ function TextField(props: { label: string }) {
   );
 }
 
-function NumberField(props: { label: string }) {
+function NumberField(props: LabelProps) {
   const field = useFieldContext<number>();
   return (
     <label>
@@ -45,7 +49,7 @@ function NumberField(props: { label: string }) {
   );
 }
 
-function SubmitButton(props: { label: string }) {
+function SubmitButton(props: LabelProps) {
   const form = useFormContext();
   return (
     <form.Subscribe selector={(state) => state.isSubmitting}>
@@ -74,15 +78,19 @@ const { useAppForm, withForm, withFieldGroup, extendForm, useTypedAppFormContext
   },
 );
 
-const fieldInput = (host: HTMLElement, name: string): HTMLInputElement => {
+function fieldInput(host: HTMLElement, name: string): HTMLInputElement {
   const found = host.querySelector<HTMLInputElement>(`[data-field="${name}"]`);
   if (found === null) throw new Error(`no input for ${name}`);
   return found;
-};
+}
+
+interface NameValues {
+  name: string;
+}
 
 describe("createFormHook", () => {
   test("AppField hands the field its registered components, AppForm provides the form", async () => {
-    const saved = mock((_value: { name: string }) => {});
+    const saved = mock((_value: NameValues) => {});
     const view = mount(() => {
       const form = useAppForm(() => ({
         defaultValues: { name: "salama" },
@@ -141,7 +149,9 @@ describe("createFormHook", () => {
     });
 
     let form!: ReturnType<typeof build>;
-    const build = () => useAppForm(() => ({ ...options }));
+    function build() {
+      return useAppForm(() => ({ ...options }));
+    }
     const view = mount(() => {
       form = build();
       return (
@@ -203,10 +213,11 @@ describe("createFormHook", () => {
     });
 
     let form!: ReturnType<typeof build>;
-    const build = () =>
-      useAppForm(() => ({
+    function build() {
+      return useAppForm(() => ({
         defaultValues: { name: "salama", account: { password: "", confirm: "" } },
       }));
+    }
     const view = mount(() => {
       form = build();
       return <PasswordFields form={form} fields="account" />;
@@ -226,8 +237,9 @@ describe("createFormHook", () => {
 
   test("a field group maps its own keys onto scattered form paths", () => {
     let form!: ReturnType<typeof build>;
-    const build = () =>
-      useAppForm(() => ({ defaultValues: { login: "salama", secret: "", other: 1 } }));
+    function build() {
+      return useAppForm(() => ({ defaultValues: { login: "salama", secret: "", other: 1 } }));
+    }
     const view = mount(() => {
       form = build();
       const group = createFieldGroup(() => ({

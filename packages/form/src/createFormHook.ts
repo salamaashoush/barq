@@ -145,6 +145,10 @@ export interface CreateFormHookProps<
   formContext: Context<AnyFormApi>;
 }
 
+export interface AppFormProps {
+  children?: Child;
+}
+
 /**
  * @private
  */
@@ -193,8 +197,43 @@ export type AppFieldExtendedBarqFormApi<
       TSubmitMeta,
       NoInfer<TFieldComponents>
     >;
-    AppForm: (props: Incoming<{ children?: Child }>) => JSXElement;
+    AppForm: (props: Incoming<AppFormProps>) => JSXElement;
   };
+
+export interface WithFormRenderProps<
+  TFormData,
+  TOnMount extends MaybeFormValidator<TFormData>,
+  TOnChange extends MaybeFormValidator<TFormData>,
+  TOnChangeAsync extends MaybeFormAsyncValidator<TFormData>,
+  TOnBlur extends MaybeFormValidator<TFormData>,
+  TOnBlurAsync extends MaybeFormAsyncValidator<TFormData>,
+  TOnSubmit extends MaybeFormValidator<TFormData>,
+  TOnSubmitAsync extends MaybeFormAsyncValidator<TFormData>,
+  TOnDynamic extends MaybeFormValidator<TFormData>,
+  TOnDynamicAsync extends MaybeFormAsyncValidator<TFormData>,
+  TOnServer extends MaybeFormAsyncValidator<TFormData>,
+  TSubmitMeta,
+  TFieldComponents extends Components,
+  TFormComponents extends Components,
+> {
+  form: AppFieldExtendedBarqFormApi<
+    TFormData,
+    TOnMount,
+    TOnChange,
+    TOnChangeAsync,
+    TOnBlur,
+    TOnBlurAsync,
+    TOnSubmit,
+    TOnSubmitAsync,
+    TOnDynamic,
+    TOnDynamicAsync,
+    TOnServer,
+    TSubmitMeta,
+    TFieldComponents,
+    TFormComponents
+  >;
+  children?: Child;
+}
 
 export interface WithFormProps<
   TFormData,
@@ -229,8 +268,8 @@ export interface WithFormProps<
   props?: TRenderProps;
   render: (
     props: Incoming<
-      NoInfer<TRenderProps> & {
-        form: AppFieldExtendedBarqFormApi<
+      NoInfer<TRenderProps> &
+        WithFormRenderProps<
           TFormData,
           TOnMount,
           TOnChange,
@@ -245,11 +284,38 @@ export interface WithFormProps<
           TSubmitMeta,
           TFieldComponents,
           TFormComponents
-        >;
-        children?: Child;
-      }
+        >
     >,
   ) => JSXElement;
+}
+
+export interface WithFieldGroupRenderProps<
+  TFieldGroupData,
+  TFieldComponents extends Components,
+  TFormComponents extends Components,
+  TSubmitMeta,
+> {
+  group: AppFieldExtendedBarqFieldGroupApi<
+    unknown,
+    TFieldGroupData,
+    string | FieldsMap<unknown, TFieldGroupData>,
+    MaybeFormValidator<unknown>,
+    MaybeFormValidator<unknown>,
+    MaybeFormAsyncValidator<unknown>,
+    MaybeFormValidator<unknown>,
+    MaybeFormAsyncValidator<unknown>,
+    MaybeFormValidator<unknown>,
+    MaybeFormAsyncValidator<unknown>,
+    MaybeFormValidator<unknown>,
+    MaybeFormAsyncValidator<unknown>,
+    MaybeFormAsyncValidator<unknown>,
+    // `never` in the render prop, so an untyped meta cannot be handed to
+    // `handleSubmit` by accident.
+    unknown extends TSubmitMeta ? never : TSubmitMeta,
+    TFieldComponents,
+    TFormComponents
+  >;
+  children?: Child;
 }
 
 export interface WithFieldGroupProps<
@@ -262,31 +328,109 @@ export interface WithFieldGroupProps<
   props?: TRenderProps;
   render: (
     props: Incoming<
-      NoInfer<TRenderProps> & {
-        group: AppFieldExtendedBarqFieldGroupApi<
-          unknown,
-          TFieldGroupData,
-          string | FieldsMap<unknown, TFieldGroupData>,
-          MaybeFormValidator<unknown>,
-          MaybeFormValidator<unknown>,
-          MaybeFormAsyncValidator<unknown>,
-          MaybeFormValidator<unknown>,
-          MaybeFormAsyncValidator<unknown>,
-          MaybeFormValidator<unknown>,
-          MaybeFormAsyncValidator<unknown>,
-          MaybeFormValidator<unknown>,
-          MaybeFormAsyncValidator<unknown>,
-          MaybeFormAsyncValidator<unknown>,
-          // `never` in the render prop, so an untyped meta cannot be handed to
-          // `handleSubmit` by accident.
-          unknown extends TSubmitMeta ? never : TSubmitMeta,
-          TFieldComponents,
-          TFormComponents
-        >;
-        children?: Child;
-      }
+      NoInfer<TRenderProps> &
+        WithFieldGroupRenderProps<TFieldGroupData, TFieldComponents, TFormComponents, TSubmitMeta>
     >,
   ) => JSXElement;
+}
+
+export interface WithFormBoundProps<
+  TComponents extends Components,
+  TFormComponents extends Components,
+  TFormData,
+  TOnMount extends MaybeFormValidator<TFormData>,
+  TOnChange extends MaybeFormValidator<TFormData>,
+  TOnChangeAsync extends MaybeFormAsyncValidator<TFormData>,
+  TOnBlur extends MaybeFormValidator<TFormData>,
+  TOnBlurAsync extends MaybeFormAsyncValidator<TFormData>,
+  TOnSubmit extends MaybeFormValidator<TFormData>,
+  TOnSubmitAsync extends MaybeFormAsyncValidator<TFormData>,
+  TOnDynamic extends MaybeFormValidator<TFormData>,
+  TOnDynamicAsync extends MaybeFormAsyncValidator<TFormData>,
+  TOnServer extends MaybeFormAsyncValidator<TFormData>,
+  TSubmitMeta,
+> {
+  form: AppFieldExtendedBarqFormApi<
+    UnwrapOrLoose<TFormData>,
+    UnwrapDefaultOrLoose<MaybeFormValidator<TFormData>, TOnMount>,
+    UnwrapDefaultOrLoose<MaybeFormValidator<TFormData>, TOnChange>,
+    UnwrapDefaultOrLoose<MaybeFormAsyncValidator<TFormData>, TOnChangeAsync>,
+    UnwrapDefaultOrLoose<MaybeFormValidator<TFormData>, TOnBlur>,
+    UnwrapDefaultOrLoose<MaybeFormAsyncValidator<TFormData>, TOnBlurAsync>,
+    UnwrapDefaultOrLoose<MaybeFormValidator<TFormData>, TOnSubmit>,
+    UnwrapDefaultOrLoose<MaybeFormAsyncValidator<TFormData>, TOnSubmitAsync>,
+    UnwrapDefaultOrLoose<MaybeFormValidator<TFormData>, TOnDynamic>,
+    UnwrapDefaultOrLoose<MaybeFormAsyncValidator<TFormData>, TOnDynamicAsync>,
+    UnwrapDefaultOrLoose<MaybeFormAsyncValidator<TFormData>, TOnServer>,
+    UnwrapOrLoose<TSubmitMeta>,
+    UnwrapOrLoose<TComponents>,
+    UnwrapOrLoose<TFormComponents>
+  >;
+  children?: Child;
+}
+
+export interface WithFieldGroupParams<
+  TComponents extends Components,
+  TFormComponents extends Components,
+  TFieldGroupData,
+  TSubmitMeta,
+  TFormData,
+  TOnMount extends MaybeFormValidator<TFormData>,
+  TOnChange extends MaybeFormValidator<TFormData>,
+  TOnChangeAsync extends MaybeFormAsyncValidator<TFormData>,
+  TOnBlur extends MaybeFormValidator<TFormData>,
+  TOnBlurAsync extends MaybeFormAsyncValidator<TFormData>,
+  TOnSubmit extends MaybeFormValidator<TFormData>,
+  TOnSubmitAsync extends MaybeFormAsyncValidator<TFormData>,
+  TOnDynamic extends MaybeFormValidator<TFormData>,
+  TOnDynamicAsync extends MaybeFormAsyncValidator<TFormData>,
+  TOnServer extends MaybeFormAsyncValidator<TFormData>,
+  TFormSubmitMeta,
+> {
+  form:
+    | AppFieldExtendedBarqFormApi<
+        TFormData,
+        TOnMount,
+        TOnChange,
+        TOnChangeAsync,
+        TOnBlur,
+        TOnBlurAsync,
+        TOnSubmit,
+        TOnSubmitAsync,
+        TOnDynamic,
+        TOnDynamicAsync,
+        TOnServer,
+        unknown extends TSubmitMeta ? TFormSubmitMeta : TSubmitMeta,
+        TComponents,
+        TFormComponents
+      >
+    | AppFieldExtendedBarqFieldGroupApi<
+        unknown,
+        TFormData,
+        string | FieldsMap<unknown, TFormData>,
+        Loose,
+        Loose,
+        Loose,
+        Loose,
+        Loose,
+        Loose,
+        Loose,
+        Loose,
+        Loose,
+        Loose,
+        unknown extends TSubmitMeta ? TFormSubmitMeta : TSubmitMeta,
+        TComponents,
+        TFormComponents
+      >;
+  fields:
+    | DeepKeysOfType<TFormData, TFieldGroupData | null | undefined>
+    | FieldsMap<TFormData, TFieldGroupData>;
+  children?: Child;
+}
+
+export interface FormExtension<TNewField, TNewForm> {
+  fieldComponents?: TNewField;
+  formComponents?: TNewForm;
 }
 
 export interface FormHook<TComponents extends Components, TFormComponents extends Components> {
@@ -370,25 +514,23 @@ export interface FormHook<TComponents extends Components, TFormComponents extend
     >,
   ) => (
     props: Incoming<
-      Partial<TRenderProps> & {
-        form: AppFieldExtendedBarqFormApi<
-          UnwrapOrLoose<TFormData>,
-          UnwrapDefaultOrLoose<MaybeFormValidator<TFormData>, TOnMount>,
-          UnwrapDefaultOrLoose<MaybeFormValidator<TFormData>, TOnChange>,
-          UnwrapDefaultOrLoose<MaybeFormAsyncValidator<TFormData>, TOnChangeAsync>,
-          UnwrapDefaultOrLoose<MaybeFormValidator<TFormData>, TOnBlur>,
-          UnwrapDefaultOrLoose<MaybeFormAsyncValidator<TFormData>, TOnBlurAsync>,
-          UnwrapDefaultOrLoose<MaybeFormValidator<TFormData>, TOnSubmit>,
-          UnwrapDefaultOrLoose<MaybeFormAsyncValidator<TFormData>, TOnSubmitAsync>,
-          UnwrapDefaultOrLoose<MaybeFormValidator<TFormData>, TOnDynamic>,
-          UnwrapDefaultOrLoose<MaybeFormAsyncValidator<TFormData>, TOnDynamicAsync>,
-          UnwrapDefaultOrLoose<MaybeFormAsyncValidator<TFormData>, TOnServer>,
-          UnwrapOrLoose<TSubmitMeta>,
-          UnwrapOrLoose<TComponents>,
-          UnwrapOrLoose<TFormComponents>
-        >;
-        children?: Child;
-      }
+      Partial<TRenderProps> &
+        WithFormBoundProps<
+          TComponents,
+          TFormComponents,
+          TFormData,
+          TOnMount,
+          TOnChange,
+          TOnChangeAsync,
+          TOnBlur,
+          TOnBlurAsync,
+          TOnSubmit,
+          TOnSubmitAsync,
+          TOnDynamic,
+          TOnDynamicAsync,
+          TOnServer,
+          TSubmitMeta
+        >
     >,
   ) => JSXElement;
   withFieldGroup: <TFieldGroupData, TSubmitMeta, TRenderProps extends object = NoProps>(
@@ -414,47 +556,25 @@ export interface FormHook<TComponents extends Components, TFormComponents extend
     TFormSubmitMeta,
   >(
     params: Incoming<
-      Partial<NoInfer<TRenderProps>> & {
-        form:
-          | AppFieldExtendedBarqFormApi<
-              TFormData,
-              TOnMount,
-              TOnChange,
-              TOnChangeAsync,
-              TOnBlur,
-              TOnBlurAsync,
-              TOnSubmit,
-              TOnSubmitAsync,
-              TOnDynamic,
-              TOnDynamicAsync,
-              TOnServer,
-              unknown extends TSubmitMeta ? TFormSubmitMeta : TSubmitMeta,
-              TComponents,
-              TFormComponents
-            >
-          | AppFieldExtendedBarqFieldGroupApi<
-              unknown,
-              TFormData,
-              string | FieldsMap<unknown, TFormData>,
-              Loose,
-              Loose,
-              Loose,
-              Loose,
-              Loose,
-              Loose,
-              Loose,
-              Loose,
-              Loose,
-              Loose,
-              unknown extends TSubmitMeta ? TFormSubmitMeta : TSubmitMeta,
-              TComponents,
-              TFormComponents
-            >;
-        fields:
-          | DeepKeysOfType<TFormData, TFieldGroupData | null | undefined>
-          | FieldsMap<TFormData, TFieldGroupData>;
-        children?: Child;
-      }
+      Partial<NoInfer<TRenderProps>> &
+        WithFieldGroupParams<
+          TComponents,
+          TFormComponents,
+          TFieldGroupData,
+          TSubmitMeta,
+          TFormData,
+          TOnMount,
+          TOnChange,
+          TOnChangeAsync,
+          TOnBlur,
+          TOnBlurAsync,
+          TOnSubmit,
+          TOnSubmitAsync,
+          TOnDynamic,
+          TOnDynamicAsync,
+          TOnServer,
+          TFormSubmitMeta
+        >
     >,
   ) => JSXElement;
   /**
@@ -517,10 +637,9 @@ export interface FormHook<TComponents extends Components, TFormComponents extend
         K in keyof TFormComponents
       ]?: "Error: form component names must be unique, this key already exists in the base form";
     },
-  >(extension: {
-    fieldComponents?: TNewField;
-    formComponents?: TNewForm;
-  }) => FormHook<TComponents & TNewField, TFormComponents & TNewForm>;
+  >(
+    extension: FormExtension<TNewField, TNewForm>,
+  ) => FormHook<TComponents & TNewField, TFormComponents & TNewForm>;
 }
 
 /**
@@ -537,13 +656,14 @@ export function createFormHook<
     const form = createForm(props);
     const field = form.Field as unknown as (fieldProps: Slots) => JSXElement;
 
-    const AppForm = (formProps: Slots): JSXElement =>
-      provide(opts.formContext, cell(form as unknown as AnyFormApi), () =>
+    function AppForm(formProps: Slots): JSXElement {
+      return provide(opts.formContext, cell(form as unknown as AnyFormApi), () =>
         renderSlot(formProps.children),
       );
+    }
 
-    const AppField = (fieldProps: Slots): JSXElement =>
-      field(
+    function AppField(fieldProps: Slots): JSXElement {
+      return field(
         merge(fieldProps, {
           children: (api: Accessor<AnyFieldApi>) =>
             provide(opts.fieldContext, api, () =>
@@ -551,6 +671,7 @@ export function createFormHook<
             ),
         }),
       );
+    }
 
     return Object.assign(form, { AppField, AppForm }, opts.formComponents) as never;
   };
@@ -596,10 +717,9 @@ export function createFormHook<
         K in keyof TFormComponents
       ]?: "Error: form component names must be unique, this key already exists in the base form";
     },
-  >(extension: {
-    fieldComponents?: TNewField;
-    formComponents?: TNewForm;
-  }): FormHook<TComponents & TNewField, TFormComponents & TNewForm> {
+  >(
+    extension: FormExtension<TNewField, TNewForm>,
+  ): FormHook<TComponents & TNewField, TFormComponents & TNewForm> {
     return createFormHook({
       fieldContext: opts.fieldContext,
       formContext: opts.formContext,

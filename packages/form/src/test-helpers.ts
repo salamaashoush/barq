@@ -2,7 +2,9 @@ import { type JSXElement, flush } from "@barqjs/core";
 import { render } from "@barqjs/web";
 export { fakeClock, realClock } from "../../testing/src/test-clock.ts";
 
-export const tick = (ms = 0): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+export function tick(ms = 0): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export interface Mounted {
   host: HTMLElement;
@@ -16,11 +18,11 @@ export function mount(view: () => JSXElement): Mounted {
   document.body.append(host);
   const dispose = render(view, host);
   flush();
-  const find = (selector: string): Element => {
+  function find(selector: string): Element {
     const found = host.querySelector(selector);
     if (found === null) throw new Error(`nothing matches ${selector}`);
     return found;
-  };
+  }
   return {
     host,
     dispose,

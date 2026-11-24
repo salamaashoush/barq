@@ -21,11 +21,16 @@ function errorsOf(field: AnyFieldApi): string {
   return field.state.meta.errors.join("|");
 }
 
+interface Nickname {
+  nickname?: string;
+}
+
 describe("a field renders from the form's own state", () => {
   test("value and meta follow input, blur and programmatic writes", () => {
     let form!: ReturnType<typeof build>;
-    const build = () =>
-      createForm(() => ({ defaultValues: { name: "salama", email: "salama@example.com" } }));
+    function build() {
+      return createForm(() => ({ defaultValues: { name: "salama", email: "salama@example.com" } }));
+    }
 
     const view = mount(() => {
       form = build();
@@ -82,7 +87,9 @@ describe("a field renders from the form's own state", () => {
 
   test("a field-level default value seeds the form when the field mounts", () => {
     let form!: ReturnType<typeof build>;
-    const build = () => createForm(() => ({ defaultValues: {} as { nickname?: string } }));
+    function build() {
+      return createForm(() => ({ defaultValues: {} as Nickname }));
+    }
     let seededBeforeRender: string | undefined;
     const view = mount(() => {
       form = build();
@@ -103,7 +110,9 @@ describe("a field renders from the form's own state", () => {
 
   test("disposing the tree unmounts the field and stops following the store", () => {
     let form!: ReturnType<typeof build>;
-    const build = () => createForm(() => ({ defaultValues: { name: "salama" } }));
+    function build() {
+      return createForm(() => ({ defaultValues: { name: "salama" } }));
+    }
     let reads = 0;
     const unmounted = mock(() => {});
     const view = mount(() => {
@@ -127,10 +136,17 @@ describe("a field renders from the form's own state", () => {
   });
 });
 
+interface Account {
+  email: string;
+  age: number;
+}
+
 describe("validators", () => {
   test("onChange, onBlur and onSubmit each run at their own moment", async () => {
     let form!: ReturnType<typeof build>;
-    const build = () => createForm(() => ({ defaultValues: { name: "" } }));
+    function build() {
+      return createForm(() => ({ defaultValues: { name: "" } }));
+    }
     const view = mount(() => {
       form = build();
       return (
@@ -448,12 +464,12 @@ describe("validators", () => {
             : { issues: [{ message: "must be an email" }] },
       },
     };
-    const accountSchema: StandardSchemaV1<{ email: string; age: number }> = {
+    const accountSchema: StandardSchemaV1<Account> = {
       "~standard": {
         version: 1,
         vendor: "test",
         validate: (value) => {
-          const account = value as { email: string; age: number };
+          const account = value as Account;
           return account.age >= 18
             ? { value: account }
             : { issues: [{ message: "must be an adult", path: ["age"] }] };
@@ -517,12 +533,17 @@ describe("validators", () => {
   });
 });
 
+interface NameInputProps {
+  value: string;
+  onChange: (value: string) => void;
+}
+
 describe("array fields", () => {
   interface Person {
     name: string;
   }
 
-  function NameInput(props: { value: string; onChange: (value: string) => void }) {
+  function NameInput(props: NameInputProps) {
     return (
       <input value={props.value} onInput={(event) => props.onChange(event.currentTarget.value)} />
     );
@@ -530,8 +551,9 @@ describe("array fields", () => {
 
   test("push, insert, swap, move and remove re-render the rows", () => {
     let form!: ReturnType<typeof build>;
-    const build = () =>
-      createForm(() => ({ defaultValues: { people: [{ name: "salama" }] as Person[] } }));
+    function build() {
+      return createForm(() => ({ defaultValues: { people: [{ name: "salama" }] as Person[] } }));
+    }
 
     const view = mount(() => {
       form = build();
@@ -559,8 +581,9 @@ describe("array fields", () => {
       );
     });
 
-    const names = (): string[] =>
-      [...view.host.querySelectorAll("input")].map((input) => input.value);
+    function names(): string[] {
+      return [...view.host.querySelectorAll("input")].map((input) => input.value);
+    }
 
     expect(names()).toEqual(["salama"]);
 
@@ -640,7 +663,9 @@ describe("listeners", () => {
   test("field listeners fire on mount, change and blur, and can write other fields", () => {
     const events: string[] = [];
     let form!: ReturnType<typeof build>;
-    const build = () => createForm(() => ({ defaultValues: { country: "", province: "ON" } }));
+    function build() {
+      return createForm(() => ({ defaultValues: { country: "", province: "ON" } }));
+    }
     const view = mount(() => {
       form = build();
       return (
@@ -722,12 +747,28 @@ describe("listeners", () => {
   });
 });
 
+interface User {
+  name: string;
+}
+
+interface SaveResult {
+  ok: true;
+}
+
+interface Registration {
+  email: string;
+}
+
+interface RegistrationSubmit {
+  value: Registration;
+}
+
 describe("submitting", () => {
   test("canSubmit gates the handler, and isSubmitting brackets it", async () => {
     let release!: () => void;
     const saveUser = mock(
-      (_user: { name: string }) =>
-        new Promise<{ ok: true }>((resolve) => {
+      (_user: User) =>
+        new Promise<SaveResult>((resolve) => {
           release = () => resolve({ ok: true });
         }),
     );
@@ -777,13 +818,15 @@ describe("submitting", () => {
       );
     });
 
-    const submit = (): void => {
+    function submit(): void {
       view.host
         .querySelector("form")
         ?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
       flush();
-    };
-    const button = (): HTMLButtonElement => view.host.querySelector("#submit") as HTMLButtonElement;
+    }
+    function button(): HTMLButtonElement {
+      return view.host.querySelector("#submit") as HTMLButtonElement;
+    }
 
     expect(button().disabled).toBe(false);
 
@@ -815,7 +858,7 @@ describe("submitting", () => {
     const initialFormState: ServerState = { errorMap: { onServer: undefined } };
     const noServerErrors: ServerState = { errorMap: { onServer: { fields: {} } } };
 
-    const registerUser = mock(async (user: { email: string }): Promise<ServerState> =>
+    const registerUser = mock(async (user: Registration): Promise<ServerState> =>
       user.email === "taken@example.com"
         ? {
             errorMap: {
@@ -834,7 +877,7 @@ describe("submitting", () => {
         return {
           ...options,
           transform: (base: unknown) => mergeForm(base as AnyFormApi, fromServer),
-          onSubmit: async ({ value }: { value: { email: string } }) => {
+          onSubmit: async ({ value }: RegistrationSubmit) => {
             setServerState(await registerUser(value));
           },
         };
@@ -865,13 +908,13 @@ describe("submitting", () => {
       );
     });
 
-    const submit = async (): Promise<void> => {
+    async function submit(): Promise<void> {
       view.host
         .querySelector("form")
         ?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
       await settle();
       await settle();
-    };
+    }
 
     type(view.input("#email"), "taken@example.com");
     await submit();
@@ -894,7 +937,9 @@ describe("submitting", () => {
 describe("reset and default values", () => {
   test("reset restores the defaults, or the values it is given", () => {
     let form!: ReturnType<typeof build>;
-    const build = () => createForm(() => ({ defaultValues: { name: "salama" } }));
+    function build() {
+      return createForm(() => ({ defaultValues: { name: "salama" } }));
+    }
     const view = mount(() => {
       form = build();
       return (
