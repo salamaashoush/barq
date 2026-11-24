@@ -510,6 +510,14 @@ import { ResponsiveTabs } from "@barqjs/arc";
   a check; an `invalid` one an alert in the danger tone and "Has errors"; an
   `optional` one says so. Horizontal or vertical; across a narrow container
   a horizontal one keeps the markers and the current step's label.
+- `Pager`: the way through a list too long for one page, as a navigation
+  landmark. `pages` (the default) lists the first, the last and the
+  neighbours of the current page with gaps between, folding to "Page 2 of 9"
+  across a narrow container; `compact` is that line between the arrows, and
+  `simple` the arrows alone. `total` and `pageSize` add "21–40 of 312",
+  `pageSizes` a Rows per page select, `showEdges` first and last, and
+  `getHref` makes every page a link. `DataTable` pages with it.
+  `pageWindow` is the list it draws.
 
 ## Data display
 

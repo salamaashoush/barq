@@ -450,3 +450,11 @@ export {
   bottomNavigationStyles,
 } from "./components/bottom-navigation.tsx";
 export { type StepItem, Stepper, type StepperProps, stepperStyles } from "./components/stepper.tsx";
+export {
+  type PageSlot,
+  Pager,
+  type PagerLabels,
+  type PagerProps,
+  pageWindow,
+  pagerStyles,
+} from "./components/pager.tsx";

@@ -15,6 +15,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@barqjs/ui/dropdown-menu";
+import { icon } from "@barqjs/ui/shared-icon";
 import { Tabs, TabsContent, TabsList, type TabsListVariant, TabsTrigger } from "@barqjs/ui/tabs";
 import { isServer } from "@barqjs/web";
 
@@ -53,7 +54,6 @@ export const responsiveTabsStyles = variants({
     icon: arc(layout.inlineCentre),
     count: arc({}),
     scroll: arc(layout.noShrink, motion.colours, {
-      ":where(:dir(rtl), [dir=rtl], [dir=rtl] *) > svg": { rotate: "180deg" },
       "[data-hidden]": { visibility: "hidden" },
     }),
     more: arc(layout.noShrink, gap[1]),
@@ -192,7 +192,11 @@ export function ResponsiveTabs(props: ResponsiveTabsProps) {
       data-hidden={(forward ? ends().forward : ends().back) ? undefined : ""}
       onClick={() => scrollBy(forward)}
     >
-      {forward ? <ChevronRight /> : <ChevronLeft />}
+      {forward ? (
+        <ChevronRight class={icon.directional} />
+      ) : (
+        <ChevronLeft class={icon.directional} />
+      )}
     </button>
   );
 

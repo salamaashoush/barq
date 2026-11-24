@@ -41,7 +41,6 @@ import {
   sortFns,
   tableFeatures,
 } from "@barqjs/table";
-import { Button } from "@barqjs/ui/button";
 import { Checkbox } from "@barqjs/ui/checkbox";
 import { Skeleton } from "@barqjs/ui/skeleton";
 import { Spinner } from "@barqjs/ui/spinner";
@@ -68,6 +67,7 @@ import {
 import { useArcMessages } from "./messages.ts";
 import { EmptyState } from "./empty-state.tsx";
 import { maybeRouter } from "./link.ts";
+import { Pager } from "./pager.tsx";
 import { SelectionBar, type SelectionAction } from "./selection-bar.tsx";
 
 const features = tableFeatures({
@@ -327,7 +327,7 @@ export const dataTableStyles = variants({
     loader: arc(layout.centre, gap[2], fg.muted, { padding: space.x3 }),
     empty: arc({ padding: space.x6 }),
     pagination: arc(layout.row, layout.end, gap[2], edge.top, fg.muted, type.sm, cellPad),
-    page: arc(layout.pushEnd, type.numeric),
+    page: arc(type.numeric),
   },
 });
 
@@ -682,29 +682,20 @@ export function DataTable<T extends RowData>(props: DataTableProps<T>) {
       >
         {content()}
         <Show when={props.pagination !== undefined && !isLoading() && pageCount() > 1}>
-          <nav
+          <Pager
             class={cls().pagination}
-            aria-label={labels().pagination}
-            data-slot="data-table-pagination"
-          >
-            <span class={cls().page}>{labels().page(pageIndex() + 1, pageCount())}</span>
-            <Button
-              variant="outline"
-              size="sm"
-              isDisabled={pageIndex() <= 0}
-              onPress={() => setPageIndex(pageIndex() - 1)}
-            >
-              {labels().previous}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              isDisabled={pageIndex() >= pageCount() - 1}
-              onPress={() => setPageIndex(pageIndex() + 1)}
-            >
-              {labels().next}
-            </Button>
-          </nav>
+            classes={{ current: cls().page }}
+            variant="compact"
+            pageIndex={pageIndex()}
+            onPageIndexChange={setPageIndex}
+            pageCount={pageCount()}
+            labels={{
+              pagination: labels().pagination,
+              previous: labels().previous,
+              next: labels().next,
+              page: labels().page,
+            }}
+          />
         </Show>
       </div>
       <Show when={props.selectionActions !== undefined && selected().size > 0}>
