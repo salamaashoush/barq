@@ -759,7 +759,8 @@ describe("the host's options", () => {
     // A host's ref hands its container over before the container is inserted,
     // while it still belongs to the inert document it was cloned from.
     const inert = document.implementation.createHTMLDocument("");
-    inert.body.innerHTML = "<div><canvas></canvas><canvas></canvas><canvas></canvas><svg></svg></div>";
+    inert.body.innerHTML =
+      "<div><canvas></canvas><canvas></canvas><canvas></canvas><svg></svg></div>";
     const container = inert.body.firstElementChild as HTMLDivElement;
     expect(container.ownerDocument).not.toBe(document);
     let top = 0;
