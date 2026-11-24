@@ -129,13 +129,18 @@ test("the canvas's children and a file of three's tags compile for the scene wit
   expect(code).toContain("<main><h1>");
 });
 
+interface Frame {
+  dom: string;
+  scene: string[];
+}
+
 test("the page and its scene render, and follow the same signal", () => {
   const run = Bun.spawnSync(
     ["bun", join(import.meta.dir, "test-vite-run.ts"), join(root, "dist", "main.js")],
     { cwd: root },
   );
   expect(run.stderr.toString()).toBe("");
-  const frames = JSON.parse(run.stdout.toString()) as { dom: string; scene: string[] }[];
+  const frames = JSON.parse(run.stdout.toString()) as Frame[];
   expect(frames).toEqual([
     { dom: "<h1>1</h1>", scene: ["inline:1", "boxes", "box-0"] },
     { dom: "<h1>3</h1>", scene: ["inline:3", "boxes", "box-0", "box-1", "box-2"] },

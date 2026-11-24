@@ -5,10 +5,17 @@ import { useFrame } from "@barqjs/three";
 
 export const [names, setNames] = createSignal<string[]>([]);
 export const [head, setHead] = createSignal(false);
-export const seen: { frame: string[][]; effect: string[][] } = { frame: [], effect: [] };
+export interface OrderLog {
+  frame: string[][];
+  effect: string[][];
+}
+
+export const seen: OrderLog = { frame: [], effect: [] };
 
 let group: THREE.Group | null = null;
-const order = (): string[] => (group === null ? [] : group.children.map((child) => child.name));
+function order(): string[] {
+  return group === null ? [] : group.children.map((child) => child.name);
+}
 
 /** A list between a node that comes and goes before it and a fixed node after it. */
 export function Ordered() {

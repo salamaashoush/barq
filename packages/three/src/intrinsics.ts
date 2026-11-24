@@ -5,6 +5,7 @@
  * document also uses, and `primitive`.
  */
 
+import type { WithPrototype } from "./catalogue.ts";
 import type { DocumentTagClashes } from "./web-jsx.ts";
 
 const CLASHES: readonly DocumentTagClashes[] = ["audio", "source", "line", "path"];
@@ -13,7 +14,7 @@ export function isCatalogueClass(name: string, value: unknown): boolean {
   return (
     /^[A-Z]/.test(name) &&
     typeof value === "function" &&
-    (value as { prototype?: unknown }).prototype !== undefined
+    (value as WithPrototype).prototype !== undefined
   );
 }
 

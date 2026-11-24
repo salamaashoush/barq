@@ -51,16 +51,21 @@ export function useFrame(callback: RenderCallback, priority = 0): void {
 }
 
 export interface ObjectMap {
-  nodes: { [name: string]: THREE.Object3D };
-  materials: { [name: string]: THREE.Material };
-  meshes: { [name: string]: THREE.Mesh };
+  nodes: Record<string, THREE.Object3D>;
+  materials: Record<string, THREE.Material>;
+  meshes: Record<string, THREE.Mesh>;
+}
+
+interface MeshLike {
+  material?: THREE.Material;
+  isMesh?: boolean;
 }
 
 /** The named objects, materials and meshes under `object`. */
 export function buildGraph(object: THREE.Object3D): ObjectMap {
   const data: ObjectMap = { nodes: {}, materials: {}, meshes: {} };
   object.traverse((child) => {
-    const any = child as THREE.Object3D & { material?: THREE.Material; isMesh?: boolean };
+    const any = child as THREE.Object3D & MeshLike;
     if (child.name !== "") data.nodes[child.name] = child;
     if (
       any.material !== undefined &&
@@ -95,11 +100,15 @@ type InputLike = string | readonly string[];
 export type LoaderLike = THREE.Loader<unknown, string | string[] | string[][]>;
 type LoaderInstance<L> = L extends ConstructorRepresentation<infer I> ? I : L;
 
+export interface HasScene {
+  scene: THREE.Object3D;
+}
+
 export type LoaderResult<L> =
   Awaited<
     ReturnType<LoaderInstance<L> extends LoaderLike ? LoaderInstance<L>["loadAsync"] : never>
   > extends infer R
-    ? R extends { scene: THREE.Object3D }
+    ? R extends HasScene
       ? R & ObjectMap
       : R
     : never;
@@ -136,6 +145,14 @@ function cacheFor(proto: object): Map<string, Entry> {
   return cache;
 }
 
+interface MaybeScene {
+  scene?: THREE.Object3D;
+}
+
+interface ErrorLike {
+  message?: string;
+}
+
 function load<L>(
   proto: L,
   url: string,
@@ -152,7 +169,7 @@ function load<L>(
     loader.load(
       url,
       (data: unknown) => {
-        const scene = (data as { scene?: THREE.Object3D } | null)?.scene;
+        const scene = (data as MaybeScene | null)?.scene;
         if (scene !== undefined && scene !== null && scene.isObject3D) {
           Object.assign(data as object, buildGraph(scene));
         }
@@ -164,7 +181,7 @@ function load<L>(
       (error: unknown) => {
         entry.settled = true;
         entry.error = new Error(
-          `Could not load ${url}: ${(error as { message?: string } | null)?.message ?? String(error)}`,
+          `Could not load ${url}: ${(error as ErrorLike | null)?.message ?? String(error)}`,
         );
         // A failed load is not kept, so asking again tries again.
         cache.delete(url);
@@ -201,7 +218,9 @@ function loadAccessor<
       if (entry.error !== undefined) throw entry.error;
       if (!entry.settled) ready = false;
     }
-    const pick = (values: unknown[]): unknown => (Array.isArray(value) ? values : values[0]);
+    function pick(values: unknown[]): unknown {
+      return Array.isArray(value) ? values : values[0];
+    }
     if (ready) return pick(entries.map((entry) => entry.value));
     return Promise.all(entries.map((entry) => entry.promise)).then(pick);
   });

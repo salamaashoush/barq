@@ -4,7 +4,13 @@ import { useFrame, useThree } from "@barqjs/three";
 import type { RootState } from "@barqjs/three";
 
 export const [spin, setSpin] = createSignal(0);
-export const seen: { state: RootState | null; deltas: number[]; order: string[] } = {
+export interface LoopLog {
+  state: RootState | null;
+  deltas: number[];
+  order: string[];
+}
+
+export const seen: LoopLog = {
   state: null,
   deltas: [],
   order: [],

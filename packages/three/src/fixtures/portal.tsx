@@ -18,7 +18,11 @@ function Inner() {
   );
 }
 
-export function WithPortal(props: { shown: boolean }) {
+export interface WithPortalProps {
+  shown: boolean;
+}
+
+export function WithPortal(props: WithPortalProps) {
   return (
     <group name="main">
       <Show when={props.shown}>

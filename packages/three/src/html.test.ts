@@ -34,11 +34,11 @@ function mountInPage(code: () => JSXElement): THREE.Scene {
   return root.store.scene;
 }
 
-const settle = async (): Promise<void> => {
+async function settle(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
   flush();
   frames.step();
-};
+}
 
 function label(): HTMLElement | null {
   return page.querySelector(".label");

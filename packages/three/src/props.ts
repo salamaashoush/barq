@@ -82,14 +82,20 @@ export function resolve(
  */
 const COLOR_MAPS = new Set(["map", "emissiveMap", "sheenColorMap", "specularColorMap", "envMap"]);
 
+interface ColorLike {
+  isColor?: boolean;
+}
+
 function isColorRepresentation(value: unknown): boolean {
   return (
     typeof value === "string" ||
     typeof value === "number" ||
-    (value !== null &&
-      typeof value === "object" &&
-      (value as { isColor?: boolean }).isColor === true)
+    (value !== null && typeof value === "object" && (value as ColorLike).isColor === true)
   );
+}
+
+interface TextureLike {
+  isTexture?: boolean;
 }
 
 /**
@@ -112,7 +118,7 @@ export function applyProp(
       target.mask = value.mask;
       return;
     }
-    if ((target as { isColor?: boolean }).isColor === true && isColorRepresentation(value)) {
+    if ((target as ColorLike).isColor === true && isColorRepresentation(value)) {
       (target as THREE.Color).set(value as THREE.ColorRepresentation);
       return;
     }
@@ -164,7 +170,7 @@ export function applyProp(
     COLOR_MAPS.has(key) &&
     value !== null &&
     typeof value === "object" &&
-    (value as { isTexture?: boolean }).isTexture === true &&
+    (value as TextureLike).isTexture === true &&
     (value as THREE.Texture).format === THREE.RGBAFormat &&
     (value as THREE.Texture).type === THREE.UnsignedByteType
   ) {
@@ -174,13 +180,18 @@ export function applyProp(
 
 const DEFAULTS = new Map<Function, object | null>();
 
+export interface DefaultLookup {
+  found: boolean;
+  value: unknown;
+}
+
 /**
  * What `name` holds on a freshly built object of the same class, for a
  * property that was set and is now unset: three has no notion of removing a
  * property, so it goes back to the class's default. A class that cannot be
  * built without arguments has no such object, and the property is left as it is.
  */
-export function defaultOf(object: object, name: string): { found: boolean; value: unknown } {
+export function defaultOf(object: object, name: string): DefaultLookup {
   const { owner, key } = resolve(object, name);
   const ctor = owner.constructor as (new () => object) | undefined;
   if (ctor === undefined) return { found: false, value: undefined };

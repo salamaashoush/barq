@@ -281,6 +281,18 @@ function shallowEqual(a: unknown, b: unknown): boolean {
   return true;
 }
 
+interface RaycasterOptions {
+  params?: Partial<THREE.RaycasterParameters>;
+}
+
+interface DisposableRenderer {
+  renderLists?: RenderLists;
+}
+
+interface RenderLists {
+  dispose(): void;
+}
+
 /**
  * A root over a canvas: a renderer, a scene, a camera and the frame loop.
  * The same canvas always answers with the same root.
@@ -334,8 +346,9 @@ export function createRoot(canvas: HTMLCanvasElement | OffscreenCanvas): Root {
   let createdCalled = false;
   let latest: RootConfig = {};
 
-  const changed = (key: keyof RootConfig, next: RootConfig): boolean =>
-    previous === undefined || !shallowEqual(next[key], previous[key]);
+  function changed(key: keyof RootConfig, next: RootConfig): boolean {
+    return previous === undefined || !shallowEqual(next[key], previous[key]);
+  }
 
   function makeRenderer(config: RootConfig): ThreeRenderer | Promise<ThreeRenderer> {
     const defaults: DefaultGLProps = {
@@ -357,15 +370,15 @@ export function createRoot(canvas: HTMLCanvasElement | OffscreenCanvas): Root {
   function connectXr(gl: ThreeRenderer): void {
     const xr = (gl as THREE.WebGLRenderer).xr;
     if (xr === undefined || typeof xr.addEventListener !== "function") return;
-    const onFrame = (timestamp: number, frame?: XRFrame): void => {
+    function onFrame(timestamp: number, frame?: XRFrame): void {
       if (peek("frameloop") === "never") return;
       advance(timestamp, true, store, frame);
-    };
-    const onSession = (): void => {
+    }
+    function onSession(): void {
       xr.enabled = xr.isPresenting;
       xr.setAnimationLoop(xr.isPresenting ? onFrame : null);
       if (!xr.isPresenting) invalidate(store);
-    };
+    }
     xr.addEventListener("sessionstart", onSession);
     xr.addEventListener("sessionend", onSession);
     disconnectXr = () => {
@@ -451,9 +464,8 @@ export function createRoot(canvas: HTMLCanvasElement | OffscreenCanvas): Root {
       let raycaster = peek("raycaster");
       if (raycaster === null) store.set({ raycaster: (raycaster = new THREE.Raycaster()) });
       if (config.raycaster !== undefined && changed("raycaster", config)) {
-        const { params, ...options } = config.raycaster as Record<string, unknown> & {
-          params?: Partial<THREE.RaycasterParameters>;
-        };
+        const { params, ...options } = config.raycaster as Record<string, unknown> &
+          RaycasterOptions;
         applyProps(raycaster, options);
         if (params !== undefined) raycaster.params = { ...raycaster.params, ...params };
       }
@@ -549,7 +561,7 @@ export function createRoot(canvas: HTMLCanvasElement | OffscreenCanvas): Root {
       disconnectXr?.();
       store.internal.active = false;
       removeRoot(store);
-      const gl = peek("gl") as (THREE.WebGLRenderer & { renderLists?: { dispose(): void } }) | null;
+      const gl = peek("gl") as (THREE.WebGLRenderer & DisposableRenderer) | null;
       if (gl !== null) {
         gl.renderLists?.dispose();
         if (ownsRenderer) {
@@ -568,6 +580,13 @@ export function createRoot(canvas: HTMLCanvasElement | OffscreenCanvas): Root {
 
 export { calculateDpr };
 
+export interface InjectEvents {
+  enabled?: boolean;
+  priority?: number;
+  compute?: ComputeFunction;
+  connected?: unknown;
+}
+
 // ---------------------------------------------------------------------------
 // Portals
 // ---------------------------------------------------------------------------
@@ -577,7 +596,7 @@ export interface InjectState {
   camera?: Camera;
   scene?: THREE.Scene;
   size?: Size;
-  events?: { enabled?: boolean; priority?: number; compute?: ComputeFunction; connected?: unknown };
+  events?: InjectEvents;
   [key: string]: unknown;
 }
 

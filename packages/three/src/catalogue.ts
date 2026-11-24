@@ -33,8 +33,12 @@ function pascal(tag: string): string {
   return tag.charAt(0).toUpperCase() + tag.slice(1);
 }
 
+export interface WithPrototype {
+  prototype?: unknown;
+}
+
 function isConstructor(value: unknown): value is ConstructorRepresentation {
-  return typeof value === "function" && (value as { prototype?: unknown }).prototype !== undefined;
+  return typeof value === "function" && (value as WithPrototype).prototype !== undefined;
 }
 
 const THREE_EXPORTS = THREE as unknown as Record<string, unknown>;

@@ -34,7 +34,11 @@ export class FakeLoader extends THREE.Loader {
   }
 }
 
-export function Textured(props: { url: string }) {
+export interface UrlProps {
+  url: string;
+}
+
+export function Textured(props: UrlProps) {
   const texture = useLoader(FakeLoader, cells(props).url) as Accessor<THREE.Texture>;
   return (
     <mesh name={`textured-${props.url}`}>
@@ -43,7 +47,7 @@ export function Textured(props: { url: string }) {
   );
 }
 
-export function Suspended(props: { url: string }) {
+export function Suspended(props: UrlProps) {
   return (
     <Loading fallback={<group name="fallback" />}>
       <Errored fallback={(error) => <group name={`failed: ${error().message}`} />}>
@@ -53,11 +57,13 @@ export function Suspended(props: { url: string }) {
   );
 }
 
+interface LoadedModel {
+  scene: THREE.Object3D;
+  nodes: Record<string, THREE.Object3D>;
+}
+
 export function Model() {
-  const gltf = useLoader(FakeLoader, "model.glb") as Accessor<{
-    scene: THREE.Object3D;
-    nodes: Record<string, THREE.Object3D>;
-  }>;
+  const gltf = useLoader(FakeLoader, "model.glb") as Accessor<LoadedModel>;
   return (
     <Loading fallback={<group name="fallback" />}>
       <primitive object={gltf().scene} />
@@ -66,7 +72,11 @@ export function Model() {
   );
 }
 
-export function Graphed(props: { object: THREE.Object3D }) {
+export interface GraphedProps {
+  object: THREE.Object3D;
+}
+
+export function Graphed(props: GraphedProps) {
   const graph = useGraph(cells(props).object);
   return <group name={Object.keys(graph().meshes).join(",")} />;
 }

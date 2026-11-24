@@ -247,9 +247,11 @@ function byDistance(a: THREE.Intersection, b: THREE.Intersection): number {
   return a.distance - b.distance;
 }
 
-export function createEvents(store: RootState): {
+export interface PointerHandlers {
   handlePointer: (name: string) => (event: DomEvent) => void;
-} {
+}
+
+export function createEvents(store: RootState): PointerHandlers {
   const hits: THREE.Intersection[] = [];
   let stamp = 0;
   const computed = new WeakMap<RootState, number>();

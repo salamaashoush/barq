@@ -8,7 +8,7 @@
  * frame loop and the event system read the same values untracked.
  */
 
-import { createContext, createSignal, untrack, type Context } from "@barqjs/core";
+import { createContext, createSignal, untrack, type Context, type RefObject } from "@barqjs/core";
 import * as THREE from "three";
 
 import type { EventManager, PointerCaptureTarget, ThreeEvent } from "./events.ts";
@@ -48,8 +48,12 @@ export interface Renderer {
 /** What `useFrame` subscribes. `frame` is the XR frame, when there is one. */
 export type RenderCallback = (state: RootState, delta: number, frame?: XRFrame) => void;
 
+export interface RenderCallbackRef {
+  current: RenderCallback;
+}
+
 export interface Subscription {
-  callback: { current: RenderCallback };
+  callback: RenderCallbackRef;
   priority: number;
   store: RootState;
 }
@@ -74,7 +78,7 @@ export interface InternalState {
   capturedMap: Map<number, Map<THREE.Object3D, PointerCaptureTarget>>;
   initialClick: [x: number, y: number];
   initialHits: THREE.Object3D[];
-  lastEvent: { current: PointerEvent | MouseEvent | WheelEvent | null };
+  lastEvent: RefObject<PointerEvent | MouseEvent | WheelEvent>;
   subscribers: Subscription[];
   /** How many subscribers render the frame themselves (a priority above zero). */
   priority: number;
@@ -90,11 +94,15 @@ export interface InternalState {
   drawing: boolean;
   /** A member's value without subscribing to it, for the loop and the root's own bookkeeping. */
   peek: <K extends keyof SettableState>(key: K) => RootState[K];
-  subscribe: (
-    callback: { current: RenderCallback },
-    priority: number,
-    store: RootState,
-  ) => () => void;
+  subscribe: (callback: RenderCallbackRef, priority: number, store: RootState) => () => void;
+}
+
+export interface ViewportReader {
+  getCurrentViewport: (
+    camera?: Camera,
+    target?: THREE.Vector3 | [x: number, y: number, z: number],
+    size?: Size,
+  ) => Omit<Viewport, "dpr" | "initialDpr">;
 }
 
 export interface RootState {
@@ -121,13 +129,7 @@ export interface RootState {
   frameloop: Frameloop;
   performance: Performance;
   size: Size;
-  viewport: Viewport & {
-    getCurrentViewport: (
-      camera?: Camera,
-      target?: THREE.Vector3 | [x: number, y: number, z: number],
-      size?: Size,
-    ) => Omit<Viewport, "dpr" | "initialDpr">;
-  };
+  viewport: Viewport & ViewportReader;
   /** Ask for a frame. Under `demand` this is what renders; every prop write already does it. */
   invalidate: (frames?: number) => void;
   /** Run one frame now, for `frameloop: "never"`. */

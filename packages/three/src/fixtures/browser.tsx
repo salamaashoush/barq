@@ -33,7 +33,11 @@ const probe: Probe = {
     return [...out];
   },
 };
-(window as unknown as { __three: Probe }).__three = probe;
+interface ProbeWindow {
+  __three: Probe;
+}
+
+(window as unknown as ProbeWindow).__three = probe;
 addAfterEffect(() => {
   probe.frames++;
 });

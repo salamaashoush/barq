@@ -49,10 +49,11 @@ async function until(page: Page, expression: string, what: string): Promise<void
   throw new Error(`timed out waiting for ${what}${error ? `:\n${error}` : ""}`);
 }
 
-const frame = (page: Page): Promise<unknown> =>
-  page.evaluate(
+function frame(page: Page): Promise<unknown> {
+  return page.evaluate(
     "new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))",
   );
+}
 
 test("a mesh draws, a signal write redraws it once, and an idle scene is not redrawn", async () => {
   const path = await buildPage("browser.tsx");
@@ -97,14 +98,15 @@ test("a label takes pointer events over its own box only, and none when told not
         "the labels",
       );
       await frame(chrome);
-      const hit = (name: string): Promise<string> =>
-        chrome.evaluate<string>(
+      function hit(name: string): Promise<string> {
+        return chrome.evaluate<string>(
           `(() => {
             const rect = document.querySelector("span.${name}").getBoundingClientRect();
             const at = document.elementFromPoint(rect.left + 10, rect.top + 10);
             return at.localName + (at.className ? "." + at.className : "");
           })()`,
         );
+      }
       expect(await hit("open")).toBe("span.open");
       expect(await hit("styled")).toBe("canvas");
       expect(await hit("prop")).toBe("canvas");

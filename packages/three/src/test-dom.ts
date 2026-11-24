@@ -5,9 +5,13 @@
  */
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
+interface NativeSocketHolder {
+  __barqNativeWebSocket?: typeof WebSocket;
+}
+
 // The runtime's own WebSocket, which the compiler's Chrome driver reaches CDP
 // with: happy-dom's replacement rejects a URL with a path, as every CDP
 // endpoint has.
-(globalThis as { __barqNativeWebSocket?: typeof WebSocket }).__barqNativeWebSocket = WebSocket;
+(globalThis as NativeSocketHolder).__barqNativeWebSocket = WebSocket;
 
 GlobalRegistrator.register();

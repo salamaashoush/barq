@@ -73,16 +73,32 @@ export type Args<T> = T extends ConstructorRepresentation
     : ConstructorParameters<T>
   : unknown[];
 
+interface OptionalArgs<P> {
+  args?: Args<P>;
+}
+
+interface RequiredArgs<P> {
+  args: Args<P>;
+}
+
+interface UntypedArgs {
+  args: unknown[];
+}
+
 type ArgsProp<P> = P extends ConstructorRepresentation
   ? IsAllOptional<ConstructorParameters<P>> extends true
-    ? { args?: Args<P> }
-    : { args: Args<P> }
-  : { args: unknown[] };
+    ? OptionalArgs<P>
+    : RequiredArgs<P>
+  : UntypedArgs;
 
 export interface RaycastableRepresentation {
   raycast(raycaster: THREE.Raycaster, intersects: THREE.Intersection[]): void;
 }
-export type EventProps<P> = P extends RaycastableRepresentation ? Partial<EventHandlers> : {};
+export interface NoEventHandlers {}
+
+export type EventProps<P> = P extends RaycastableRepresentation
+  ? Partial<EventHandlers>
+  : NoEventHandlers;
 
 /** What a ref on a tag is handed: the three object, once it is built. */
 export type ThreeRef<T> = ((object: T) => void | (() => void)) | { current: T | null } | T;
@@ -117,12 +133,14 @@ export type ThreeToJSXElements<T extends object> = {
 
 type ThreeElementsImpl = ThreeToJSXElements<typeof THREE>;
 
+export interface PrimitiveObject {
+  object: object;
+  [property: string]: unknown;
+}
+
 export interface ThreeElements extends ThreeElementsImpl {
   /** An object made elsewhere, placed in the scene as it is and never disposed. */
-  primitive: Omit<ThreeElement<ConstructorRepresentation<object>>, "args"> & {
-    object: object;
-    [property: string]: unknown;
-  };
+  primitive: Omit<ThreeElement<ConstructorRepresentation<object>>, "args"> & PrimitiveObject;
   /** `THREE.Line`, under React Three Fiber's name for it. */
   threeLine: ThreeElementsImpl["line"];
   threeAudio: ThreeElementsImpl["audio"];

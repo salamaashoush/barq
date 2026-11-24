@@ -21,9 +21,15 @@ import type { RootState } from "./store.ts";
 import { fakeRenderer, manualFrames } from "./test-utils.ts";
 
 const require_ = createRequire(import.meta.url);
-const native = require_("@barqjs/compiler") as {
-  transform(code: string, options?: Record<string, unknown>): { code: string };
-};
+interface Native {
+  transform(code: string, options?: Record<string, unknown>): Transformed;
+}
+
+interface Transformed {
+  code: string;
+}
+
+const native = require_("@barqjs/compiler") as Native;
 
 const SRC = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 const OUT = join(SRC, "..", "node_modules", `.barq-ssr-${process.pid}`);
@@ -51,6 +57,10 @@ async function compileCanvas(ssr: boolean): Promise<CanvasModule> {
   return (await import(file)) as CanvasModule;
 }
 
+interface GlDefaults {
+  canvas: HTMLCanvasElement;
+}
+
 test("the server writes the canvas's markup, and the client claims it and mounts the scene", async () => {
   const server = await compileCanvas(true);
   const client = await compileCanvas(false);
@@ -63,7 +73,7 @@ test("the server writes the canvas's markup, and the client claims it and mounts
     client: () =>
       client.Canvas({
         ...common,
-        gl: () => (defaults: { canvas: HTMLCanvasElement }) => fakeRenderer(defaults.canvas),
+        gl: () => (defaults: GlDefaults) => fakeRenderer(defaults.canvas),
         onCreated: () => (created: RootState) => {
           state = created;
         },

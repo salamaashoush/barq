@@ -40,12 +40,17 @@ function castAlongZ(event: DomEvent, state: RootState): void {
   );
 }
 
+interface CaptureTarget {
+  setPointerCapture(id: number): void;
+  releasePointerCapture(id: number): void;
+}
+
 interface Pointer {
   offsetX: number;
   offsetY: number;
   pointerId: number;
   clientX: number;
-  target: { setPointerCapture(id: number): void; releasePointerCapture(id: number): void };
+  target: CaptureTarget;
 }
 
 function pointer(x: number, y = 0): Pointer {
@@ -63,13 +68,14 @@ function setup(build: () => Instance, onPointerMissed?: (event: MouseEvent) => v
   mounted.state.setEvents({ compute: castAlongZ });
   mounted.scene.updateMatrixWorld(true);
   const handlers = mounted.state.events.handlers!;
-  const fire = (name: keyof typeof handlers, event: Pointer): void =>
-    handlers[name](event as unknown as Event);
-  const click = (x: number): void => {
+  function fire(name: keyof typeof handlers, event: Pointer): void {
+    return handlers[name](event as unknown as Event);
+  }
+  function click(x: number): void {
     fire("onPointerDown", pointer(x));
     fire("onPointerUp", pointer(x));
     fire("onClick", pointer(x));
-  };
+  }
   return { ...mounted, fire, click };
 }
 
@@ -123,12 +129,12 @@ describe("raycasting", () => {
 
   test("an event bubbles to every ancestor with a handler, and stops where it is stopped", () => {
     const calls: string[] = [];
-    const record =
-      (name: string, stop = false) =>
-      (event: ThreeEvent<MouseEvent>) => {
+    function record(name: string, stop = false) {
+      return (event: ThreeEvent<MouseEvent>) => {
         calls.push(`${name}:${event.object.name}`);
         if (stop) event.stopPropagation();
       };
+    }
     let stopper!: Instance;
     const { click } = setup(() => {
       stopper = box("front", 0, 0, { onClick: record("front") });
@@ -179,7 +185,9 @@ describe("raycasting", () => {
 
   test("moving the pointer hovers and unhovers in R3F's order", () => {
     const calls: string[] = [];
-    const record = (name: string) => () => calls.push(name);
+    function record(name: string) {
+      return () => calls.push(name);
+    }
     const { fire } = setup(() =>
       box("a", 0, 0, {
         onPointerOver: record("over"),

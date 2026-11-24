@@ -19,7 +19,9 @@ afterEach(() => {
   flush();
 });
 
-const order = (group: THREE.Object3D): string[] => group.children.map((child) => child.name);
+function order(group: THREE.Object3D): string[] {
+  return group.children.map((child) => child.name);
+}
 
 test("children are in order as soon as flush returns: growth, prepend, middle insert, reorder", () => {
   const { scene } = mount(() => Ordered());

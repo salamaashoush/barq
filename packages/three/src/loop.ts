@@ -28,15 +28,19 @@ function subscribe(set: Set<GlobalRenderCallback>, callback: GlobalRenderCallbac
 }
 
 /** Run `callback` at the start of every frame the loop runs. */
-export const addEffect = (callback: GlobalRenderCallback): (() => void) =>
-  subscribe(before, callback);
+export function addEffect(callback: GlobalRenderCallback): () => void {
+  return subscribe(before, callback);
+}
 
 /** Run `callback` after every frame the loop runs. */
-export const addAfterEffect = (callback: GlobalRenderCallback): (() => void) =>
-  subscribe(after, callback);
+export function addAfterEffect(callback: GlobalRenderCallback): () => void {
+  return subscribe(after, callback);
+}
 
 /** Run `callback` when the loop stops because nothing asked for another frame. */
-export const addTail = (callback: GlobalRenderCallback): (() => void) => subscribe(tail, callback);
+export function addTail(callback: GlobalRenderCallback): () => void {
+  return subscribe(tail, callback);
+}
 
 function run(effects: Set<GlobalRenderCallback>, timestamp: number): void {
   for (const callback of effects) callback(timestamp);
@@ -96,9 +100,17 @@ export function sortChildren(state: RootState): void {
   unordered.length = 0;
 }
 
+interface XrRenderer {
+  xr?: XrState;
+}
+
+interface XrState {
+  isPresenting?: boolean;
+}
+
 function wants(state: RootState): boolean {
   const internal = state.internal;
-  const gl = internal.peek("gl") as { xr?: { isPresenting?: boolean } } | null;
+  const gl = internal.peek("gl") as XrRenderer | null;
   if (!internal.active || gl === null) return false;
   const mode = internal.peek("frameloop");
   if (mode === "never") return false;

@@ -8,12 +8,17 @@ import { Overlay } from "./overlay.tsx";
 export const renderers: FakeRenderer[] = [];
 export const [inline, setInline] = createSignal(["a", "b"]);
 
+export interface AppProps {
+  onCreated: (state: RootState) => void;
+  dpr?: number;
+}
+
 /**
  * A page holding a canvas. The scene is written two ways, both with no
  * configuration: inline as the canvas's children, and as a component from a
  * file of its own.
  */
-export function App(props: { onCreated: (state: RootState) => void; dpr?: number }) {
+export function App(props: AppProps) {
   return (
     <main>
       <h1>scene</h1>

@@ -82,7 +82,12 @@ export const flow = (
   </group>
 );
 
-function Box(props: { color: string; size?: number }) {
+interface BoxProps {
+  color: string;
+  size?: number;
+}
+
+function Box(props: BoxProps) {
   return (
     <mesh scale={props.size ?? 1}>
       <meshBasicMaterial color={props.color} />

@@ -5,7 +5,11 @@ import { Html, useLoader } from "@barqjs/three";
 
 import { FakeLoader } from "./loader.tsx";
 
-function Labelled(props: { url: string }) {
+interface LabelledProps {
+  url: string;
+}
+
+function Labelled(props: LabelledProps) {
   const texture = useLoader(FakeLoader, cells(props).url) as () => THREE.Texture;
   return (
     <group name="labelled">

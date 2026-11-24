@@ -57,10 +57,11 @@ describe("<Canvas>", () => {
 
   test("children written inline in the page compile for the scene and follow their signals", () => {
     const { dispose, state } = mountApp();
-    const names = (): string[] =>
-      state()
+    function names(): string[] {
+      return state()
         .scene.children.filter((child) => child.name.startsWith("inline-"))
         .map((child) => child.name);
+    }
     expect(state().scene.children[0]).toBeInstanceOf(THREE.AmbientLight);
     expect(names()).toEqual(["inline-a", "inline-b"]);
     setInline(["b", "c"]);

@@ -17,6 +17,7 @@ import {
   onCleanup,
   untrack,
   type JSXElement,
+  type RefObject,
 } from "@barqjs/core";
 import type { JSX } from "@barqjs/web/jsx-runtime";
 
@@ -38,7 +39,7 @@ export interface CanvasProps extends Omit<
   /** A custom event manager, in place of pointer events on `eventSource`. */
   events?: (store: RootState) => EventManager<HTMLElement>;
   /** The element pointer events are read from. Defaults to the Canvas's own `<div>`. */
-  eventSource?: HTMLElement | { current: HTMLElement | null };
+  eventSource?: HTMLElement | RefObject<HTMLElement>;
   /** Which coordinates of a pointer event are read: `offset` by default. */
   eventPrefix?: EventPrefix;
   /** Called once the renderer exists and the first frame is asked for. */
@@ -75,26 +76,26 @@ function sourceOf(source: CanvasProps["eventSource"]): HTMLElement | null {
 export function Canvas(props: CanvasProps): JSXElement {
   const owner = getOwner();
 
-  const read = (): RootConfig => {
+  function read(): RootConfig {
     const config: Record<string, unknown> = {};
     for (const key of CONFIG_KEYS) {
       const cell = cells(props)[key] as (() => unknown) | undefined;
       if (cell !== undefined) config[key] = cell();
     }
     return config;
-  };
+  }
 
-  const mount = (canvas: HTMLCanvasElement): void => {
+  function mount(canvas: HTMLCanvasElement): void {
     const wrapper = canvas.parentElement!.parentElement!;
     const root = createRoot(canvas);
-    const created = (state: RootState): void => {
+    function created(state: RootState): void {
       const source = sourceOf(untrack(() => props.eventSource)) ?? wrapper;
       state.events.connect?.(source);
       untrack(() => props.onCreated)?.(state);
-    };
-    const configure = (config: RootConfig): void => {
+    }
+    function configure(config: RootConfig): void {
       root.configure({ ...config, onCreated: created });
-    };
+    }
     configure(untrack(read));
     let first = true;
     createRenderEffect(read, (config) => {
@@ -105,7 +106,7 @@ export function Canvas(props: CanvasProps): JSXElement {
       configure(config);
     });
 
-    const measure = (): void => {
+    function measure(): void {
       const rect = wrapper.getBoundingClientRect();
       const size = root.store.size;
       if (
@@ -117,7 +118,7 @@ export function Canvas(props: CanvasProps): JSXElement {
         return;
       }
       root.store.setSize(rect.width, rect.height, rect.top, rect.left);
-    };
+    }
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
     observer?.observe(wrapper);
     measure();
@@ -132,9 +133,9 @@ export function Canvas(props: CanvasProps): JSXElement {
       window.removeEventListener("resize", measure);
       root.unmount();
     });
-  };
+  }
 
-  const style = (): CanvasStyle => {
+  function style(): CanvasStyle {
     const events = props.eventSource === undefined ? "auto" : "none";
     const own = props.style;
     if (typeof own === "string") {
@@ -148,7 +149,7 @@ export function Canvas(props: CanvasProps): JSXElement {
       "pointer-events": events,
       ...own,
     };
-  };
+  }
 
   return (
     <div id={props.id} class={props.class} style={style()}>

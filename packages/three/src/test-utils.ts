@@ -9,6 +9,12 @@ import * as THREE from "three";
 import { createRoot, type Root, type RootConfig } from "./renderer.ts";
 import type { RootState } from "./store.ts";
 
+export interface FakeShadowMap {
+  enabled: boolean;
+  type: THREE.ShadowMapType;
+  needsUpdate: boolean;
+}
+
 export interface FakeRenderer {
   render(scene: THREE.Scene, camera: THREE.Camera): void;
   setSize(width: number, height: number, style?: boolean): void;
@@ -17,7 +23,7 @@ export interface FakeRenderer {
   sizes: [number, number][];
   ratio: number;
   domElement: HTMLCanvasElement;
-  shadowMap: { enabled: boolean; type: THREE.ShadowMapType; needsUpdate: boolean };
+  shadowMap: FakeShadowMap;
   outputColorSpace: string;
   toneMapping: THREE.ToneMapping;
   disposed: boolean;

@@ -12,12 +12,26 @@ import * as THREE from "three";
 
 import { catalogueTags } from "./intrinsics.ts";
 
+interface BarqManifest {
+  boundaries: BoundaryEntry[];
+  intrinsics: IntrinsicEntry[];
+}
+
+interface BoundaryEntry {
+  name: string;
+  target: string;
+  moduleSource: string;
+}
+
+interface IntrinsicEntry {
+  claimUnknown?: boolean;
+  target: string;
+  moduleSource: string;
+}
+
 interface Manifest {
   name: string;
-  barq: {
-    boundaries: { name: string; target: string; moduleSource: string }[];
-    intrinsics: { claimUnknown?: boolean; target: string; moduleSource: string }[];
-  };
+  barq: BarqManifest;
 }
 
 const manifest = JSON.parse(

@@ -1,5 +1,5 @@
 /** @jsxImportSource @barqjs/three */
-import { For, Show, createSignal } from "@barqjs/core";
+import { For, Show, createSignal, type RefObject } from "@barqjs/core";
 import type * as THREE from "three";
 
 export const [x, setX] = createSignal(0);
@@ -8,7 +8,7 @@ export const [shown, setShown] = createSignal(true);
 export const [ids, setIds] = createSignal([1, 2, 3]);
 export const [width, setWidth] = createSignal(1);
 
-export const mesh: { current: THREE.Mesh | null } = { current: null };
+export const mesh: RefObject<THREE.Mesh> = { current: null };
 export const geometries: THREE.BufferGeometry[] = [];
 
 export function Box() {

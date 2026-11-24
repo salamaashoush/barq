@@ -16,17 +16,27 @@ afterEach(() => {
 });
 
 function el(tag: string, props: Record<string, unknown> = {}, ...children: Instance[]): Instance {
-  const node = createElement(tag);
-  for (const child of children) insertNode(node, child);
-  for (const name in props) setProp(node, name, props[name]);
-  return node;
+  const built = createElement(tag);
+  for (const child of children) insertNode(built, child);
+  for (const name in props) setProp(built, name, props[name]);
+  return built;
 }
 
-const node = (value: Instance): JSXElement => value;
+function node(value: Instance): JSXElement {
+  return value;
+}
 
-function counting(target: unknown): { count: number } {
+interface Counter {
+  count: number;
+}
+
+interface DisposeEventMap {
+  dispose: object;
+}
+
+function counting(target: unknown): Counter {
   const seen = { count: 0 };
-  (target as THREE.EventDispatcher<{ dispose: {} }>).addEventListener(
+  (target as THREE.EventDispatcher<DisposeEventMap>).addEventListener(
     "dispose",
     () => seen.count++,
   );
@@ -63,6 +73,10 @@ describe("the catalogue", () => {
   });
 });
 
+interface SizeValue {
+  value: number;
+}
+
 describe("building objects", () => {
   test("nothing is built until the node joins a scene, then with the args it has", () => {
     let geometry!: Instance;
@@ -81,7 +95,7 @@ describe("building objects", () => {
 
   test("a class that cannot be built without args waits for them", () => {
     class Needy extends THREE.Object3D {
-      constructor(readonly size: { value: number }) {
+      constructor(readonly size: SizeValue) {
         super();
         if (size === undefined) throw new Error("Needy needs a size");
       }
@@ -212,14 +226,14 @@ describe("attach", () => {
 
   test("an attach function puts the object on its parent and its return takes it off", () => {
     const calls: string[] = [];
-    const attach = (parent: THREE.Object3D, self: THREE.Object3D) => {
+    function attach(parent: THREE.Object3D, self: THREE.Object3D) {
       calls.push(`on ${parent.name} ${self.name}`);
       parent.userData.helper = self;
       return () => {
         calls.push("off");
         delete parent.userData.helper;
       };
-    };
+    }
     const parent = new THREE.Group();
     parent.name = "parent";
     const dispose = render(

@@ -526,7 +526,12 @@ function attachObject(parent: Instance, node: Instance): void {
 }
 
 const removedEvent = { type: "removed" } as const;
-const childRemovedEvent: { type: "childremoved"; child: THREE.Object3D } = {
+interface ChildRemovedEvent {
+  type: "childremoved";
+  child: THREE.Object3D;
+}
+
+const childRemovedEvent: ChildRemovedEvent = {
   type: "childremoved",
   child: null as never,
 };
@@ -690,6 +695,10 @@ export function setProperty(node: Instance, name: string, value: unknown, prev: 
   }
 }
 
+interface HasConstructor {
+  constructor: unknown;
+}
+
 /**
  * A number into a number field one level down (`position-x`, `scale-y`,
  * `material-opacity`), the write a signal driving an animation makes every
@@ -699,7 +708,7 @@ export function setProperty(node: Instance, name: string, value: unknown, prev: 
 function writeScalar(object: Built, name: string, value: number, known: Name): boolean {
   const path = known.path!;
   if (path.length !== 2) return false;
-  const kind = (object as { constructor: unknown }).constructor;
+  const kind = (object as HasConstructor).constructor;
   if (known.pierces !== kind) {
     if (name in object) return false;
     known.pierces = kind;
@@ -787,6 +796,10 @@ function setHandler(node: Instance, name: string, value: unknown): void {
   if (events.count > 0) addInteraction(node);
 }
 
+interface MaybeRaycastable {
+  raycast?: unknown;
+}
+
 // ---------------------------------------------------------------------------
 // What a pointer is cast against
 // ---------------------------------------------------------------------------
@@ -795,7 +808,7 @@ function addInteraction(node: Instance): void {
   const object = node.object as THREE.Object3D | null;
   const root = node.root;
   if (root === null || object === null || !object.isObject3D) return;
-  if ((object as { raycast?: unknown }).raycast === null) return;
+  if ((object as MaybeRaycastable).raycast === null) return;
   const internal = root.internal;
   const events = node.events!;
   if (events.interaction === -1) {

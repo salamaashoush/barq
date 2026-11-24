@@ -13,6 +13,7 @@ import {
   untrack,
   type Incoming,
   type JSXElement,
+  type RefObject,
 } from "@barqjs/core";
 import { render as renderDocument } from "@barqjs/web";
 import * as THREE from "three";
@@ -44,7 +45,7 @@ export interface HtmlProps {
   /** The z-index range the content is spread over by distance, nearest highest. */
   zIndexRange?: [max: number, min: number];
   /** The element the content's `<div>` is added to. Defaults to the canvas's parent. */
-  portal?: HTMLElement | { current: HTMLElement | null };
+  portal?: HTMLElement | RefObject<HTMLElement>;
   /** Put the `<div>` before the canvas rather than after it. */
   prepend?: boolean;
   /** Where on screen the point is, in pixels from the canvas's top-left corner. */
@@ -102,6 +103,10 @@ function elementOf(portal: HtmlProps["portal"]): HTMLElement | null {
   if (portal === undefined) return null;
   if ("current" in portal && !(portal instanceof HTMLElement)) return portal.current;
   return portal;
+}
+
+interface RendererLike {
+  domElement?: HTMLElement;
 }
 
 export function Html(props: Incoming<HtmlProps>): JSXElement {
@@ -168,9 +173,9 @@ export function Html(props: Incoming<HtmlProps>): JSXElement {
 
   let placedIn: Node | null = null;
   let last = "";
-  const place = (): void => {
+  function place(): void {
     const object = group.object as THREE.Object3D | null;
-    const gl = state.gl as { domElement?: HTMLElement } | null;
+    const gl = state.gl as RendererLike | null;
     if (object === null || gl === null) return;
     if (placedIn === null) {
       const target =
@@ -195,7 +200,7 @@ export function Html(props: Incoming<HtmlProps>): JSXElement {
     element.style.display = visible ? "block" : "none";
     element.style.transform = `translate3d(${x}px,${y}px,0) scale(${scale})`;
     element.style.zIndex = String(zIndexFor(object, camera, range));
-  };
+  }
   const stop = addAfterEffect(place);
   queueMicrotask(place);
 

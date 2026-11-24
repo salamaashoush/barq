@@ -29,8 +29,9 @@ afterEach(() => {
   flush();
 });
 
-const geometryOf = (scene: THREE.Scene, at = 0): THREE.BoxGeometry =>
-  (scene.children[at] as THREE.Mesh).geometry as THREE.BoxGeometry;
+function geometryOf(scene: THREE.Scene, at = 0): THREE.BoxGeometry {
+  return (scene.children[at] as THREE.Mesh).geometry as THREE.BoxGeometry;
+}
 
 test("an object whose args read a signal is built once on mount, with them", () => {
   const { scene } = mount(() => Reactive());
