@@ -982,6 +982,20 @@ import { Chip } from "@barqjs/arc";
     remove named after the file.
   - `FileUpload`: the zone and the queue together.
 
+- `ImageField`: a picture chosen, cropped and uploaded, an avatar (`shape`
+  `"avatar"`, round) or a logo or cover (`"image"`). Empty, it is the
+  `FileDropZone`, its button the way in on a touch screen, and the type and
+  `maxSize` (5 MB) are checked before anything is sent. A picture opens in a
+  crop dialog, a sheet on a phone: it is dragged, moved by the arrow keys and
+  zoomed by `+`, `-`, the wheel or a slider under a frame of one of
+  `aspects`, round for an avatar, and the frame stays covered. The crop goes
+  through arc's upload queue to the caller's `upload`, its progress shown,
+  cancelled or retried, and the URL it resolves with is the value. Once set,
+  Change and Remove sit beside it, and `onChooseFromLibrary` adds a picture
+  already uploaded. `crop={false}` sends the file as it is. `ImageCropper` is
+  the crop on its own, and `cropArea` and `cropImage` the arithmetic and the
+  canvas behind it.
+
 ## Actions
 
 ```tsx

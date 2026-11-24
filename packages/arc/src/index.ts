@@ -293,6 +293,18 @@ export {
   remoteSearch,
 } from "./components/remote-search.ts";
 export {
+  type AspectPreset,
+  type CropArea,
+  type CropView,
+  ImageCropper,
+  type ImageCropperProps,
+  ImageField,
+  type ImageFieldProps,
+  cropArea,
+  cropImage,
+  imageFieldStyles,
+} from "./components/image-field.tsx";
+export {
   PersonAvatar,
   type PersonAvatarProps,
   personAvatarStyles,
