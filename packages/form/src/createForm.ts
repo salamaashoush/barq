@@ -12,6 +12,8 @@ import {
 } from "@barqjs/core";
 import { FormApi, type FormOptions, type FormState, mergeAndUpdate } from "@tanstack/form-core";
 
+import { installServerDevtoolsBus } from "./devtools-bus.ts";
+
 import { Field, type FieldComponent } from "./createField.ts";
 import { FormGroup, type FormGroupComponent } from "./createFormGroup.ts";
 import { type Slots, mountWith, renderSlot, updateWith } from "./internal.ts";
@@ -266,6 +268,7 @@ export function createForm<
   // The core's own fallback is a random id, which a server render and the
   // client that hydrates it would not agree on.
   const fallbackFormId = createUniqueId();
+  installServerDevtoolsBus();
   const api = new FormApi<
     TParentData,
     TFormOnMount,
