@@ -397,18 +397,22 @@ type Slots = ReturnType<typeof dataTableStyles>;
  */
 export function DataTable<T extends RowData>(props: DataTableProps<T>) {
   const messages = useArcMessages();
-  const labels = (): Required<DataTableLabels> => ({
-    selectAll: messages().selectAll,
-    selectRow: messages().selectRow,
-    loadingMore: messages().loadingMore,
-    previous: messages().previousPage,
-    next: messages().nextPage,
-    page: messages().page,
-    pagination: messages().pagination,
-    resize: messages().resizeColumn,
-    ...props.labels,
-  });
-  const cls = (): Slots => parts(dataTableStyles(), props.classes);
+  function labels(): Required<DataTableLabels> {
+    return {
+      selectAll: messages().selectAll,
+      selectRow: messages().selectRow,
+      loadingMore: messages().loadingMore,
+      previous: messages().previousPage,
+      next: messages().nextPage,
+      page: messages().page,
+      pagination: messages().pagination,
+      resize: messages().resizeColumn,
+      ...props.labels,
+    };
+  }
+  function cls(): Slots {
+    return parts(dataTableStyles(), props.classes);
+  }
 
   const [sorting, setSorting] = controllable<SortingState>(
     () => props.sorting,
@@ -471,7 +475,9 @@ export function DataTable<T extends RowData>(props: DataTableProps<T>) {
     "2xl": mediaQuery(breakpointQuery("2xl")),
   };
 
-  const selectable = (): boolean => props.selectionMode === "multiple";
+  function selectable(): boolean {
+    return props.selectionMode === "multiple";
+  }
 
   const columns = createMemo((): ColumnItem[] => {
     const headers = table.getLeafHeaders() as unknown as Header<DataTableFeatures, RowData>[];
@@ -512,17 +518,22 @@ export function DataTable<T extends RowData>(props: DataTableProps<T>) {
     ];
   });
 
-  const template = (): string =>
-    props.resizable === true
+  function template(): string {
+    return props.resizable === true
       ? columns()
           .map(() => "max-content")
           .join(" ")
       : columns()
           .map((column) => column.options.width ?? "minmax(8rem, 1fr)")
           .join(" ");
+  }
 
-  const isLoading = (): boolean => props.isLoading ?? props.data === undefined;
-  const hasMore = (): boolean => props.hasMore ?? props.onLoadMore !== undefined;
+  function isLoading(): boolean {
+    return props.isLoading ?? props.data === undefined;
+  }
+  function hasMore(): boolean {
+    return props.hasMore ?? props.onLoadMore !== undefined;
+  }
 
   const items = createMemo((): RowItem[] => {
     if (isLoading()) {
@@ -531,15 +542,17 @@ export function DataTable<T extends RowData>(props: DataTableProps<T>) {
         kind: "skeleton" as const,
       }));
     }
-    const rowItem = (tableRow: TableRow<DataTableFeatures, RowData>): RowItem => ({
-      id: tableRow.id,
-      kind: "row" as const,
-      row: tableRow,
-      children:
-        props.getSubRows === undefined || tableRow.subRows.length === 0
-          ? undefined
-          : tableRow.subRows.map((sub) => rowItem(sub)),
-    });
+    function rowItem(tableRow: TableRow<DataTableFeatures, RowData>): RowItem {
+      return {
+        id: tableRow.id,
+        kind: "row" as const,
+        row: tableRow,
+        children:
+          props.getSubRows === undefined || tableRow.subRows.length === 0
+            ? undefined
+            : tableRow.subRows.map((sub) => rowItem(sub)),
+      };
+    }
     const rows: RowItem[] = table
       .getRowModel()
       .rows.map((tableRow) => rowItem(tableRow as unknown as TableRow<DataTableFeatures, RowData>));
@@ -549,145 +562,152 @@ export function DataTable<T extends RowData>(props: DataTableProps<T>) {
 
   const rowsById = createMemo(() => {
     const found = new Map<string, T>();
-    const add = (item: RowItem): void => {
+    function add(item: RowItem): void {
       if (item.kind !== "row") return;
       found.set(item.id, item.row.original as T);
       for (const child of item.children ?? []) add(child);
-    };
+    }
     for (const item of items()) add(item);
     return found;
   });
 
-  const disabled = (): string[] =>
-    items()
+  function disabled(): string[] {
+    return items()
       .filter((item) => item.kind !== "row")
       .map((item) => item.id);
+  }
 
-  const sortDescriptor = (): SortDescriptor | undefined => {
+  function sortDescriptor(): SortDescriptor | undefined {
     const first = sorting()[0];
     return first === undefined
       ? undefined
       : { column: first.id, direction: first.desc ? "descending" : "ascending" };
-  };
+  }
 
-  const onSortChange = (descriptor: SortDescriptor): void => {
+  function onSortChange(descriptor: SortDescriptor): void {
     setSorting([{ id: String(descriptor.column), desc: descriptor.direction === "descending" }]);
-  };
+  }
 
-  const onSelectionChange = (keys: "all" | Set<Key>): void => {
+  function onSelectionChange(keys: "all" | Set<Key>): void {
     const all = keys === "all" ? [...rowsById().keys()] : [...keys].map(String);
     setSelected(new Set(all.filter((key) => rowsById().has(key))));
-  };
+  }
 
-  const selectedRows = (): T[] => {
+  function selectedRows(): T[] {
     const found: T[] = [];
     for (const key of selected()) {
       const record = rowsById().get(key);
       if (record !== undefined) found.push(record);
     }
     return found;
-  };
+  }
 
-  const pageCount = (): number => table.getPageCount();
-  const treeColumn = (): string | undefined =>
-    props.getSubRows === undefined
+  function pageCount(): number {
+    return table.getPageCount();
+  }
+  function treeColumn(): string | undefined {
+    return props.getSubRows === undefined
       ? undefined
       : (props.treeColumn ?? columns().find((column) => column.id !== SELECT)?.id);
+  }
   const router = linkRouter(maybeRouter());
 
-  const gridElement = () => (
-    <Table
-      aria-label={props.label}
-      columns={columns()}
-      items={items()}
-      rowAccessors={{
-        getKey: (item: RowItem) => item.id,
-        getTextValue: (item: RowItem) => (item.kind === "row" ? rowText(item.row, columns()) : ""),
-        getType: (item: RowItem) => (item.kind === "loader" ? "loader" : "item"),
-        getChildren: (item: RowItem) => (item.kind === "row" ? item.children : undefined),
-        getProps: (item: RowItem) =>
-          item.kind === "row" && props.rowHref !== undefined
-            ? { href: props.rowHref(item.row.original as T) }
-            : {},
-      }}
-      selectionMode={props.selectionMode ?? "none"}
-      selectedKeys={selected()}
-      disabledKeys={disabled()}
-      onSelectionChange={onSelectionChange}
-      sortDescriptor={sortDescriptor()}
-      onSortChange={onSortChange}
-      onAction={
-        props.onRowAction === undefined
-          ? undefined
-          : (key: Key) => {
-              const record = rowsById().get(String(key));
-              if (record !== undefined) props.onRowAction?.(record);
-            }
-      }
-      treeColumn={treeColumn()}
-      expandedKeys={props.expandedKeys}
-      defaultExpandedKeys={props.defaultExpandedKeys}
-      onExpandedChange={(keys: Set<Key>) =>
-        props.onExpandedChange?.(new Set([...keys].map(String)))
-      }
-      class={cls().grid}
-      data-slot="data-table-grid"
-    >
-      <TableHeader class={cls().header} data-slot="data-table-header">
-        {(column: ColumnItem) => (
-          <HeaderCell
-            column={column}
-            labels={labels()}
-            resizable={props.resizable === true}
-            classes={cls()}
-          />
-        )}
-      </TableHeader>
-      <TableBody
-        class={cls().body}
-        data-slot="data-table-body"
-        renderEmpty={
-          <div class={cls().empty} data-slot="data-table-empty">
-            {props.empty ?? <EmptyState heading={messages().nothingHere} />}
-          </div>
+  function gridElement() {
+    return (
+      <Table
+        aria-label={props.label}
+        columns={columns()}
+        items={items()}
+        rowAccessors={{
+          getKey: (item: RowItem) => item.id,
+          getTextValue: (item: RowItem) =>
+            item.kind === "row" ? rowText(item.row, columns()) : "",
+          getType: (item: RowItem) => (item.kind === "loader" ? "loader" : "item"),
+          getChildren: (item: RowItem) => (item.kind === "row" ? item.children : undefined),
+          getProps: (item: RowItem) =>
+            item.kind === "row" && props.rowHref !== undefined
+              ? { href: props.rowHref(item.row.original as T) }
+              : {},
+        }}
+        selectionMode={props.selectionMode ?? "none"}
+        selectedKeys={selected()}
+        disabledKeys={disabled()}
+        onSelectionChange={onSelectionChange}
+        sortDescriptor={sortDescriptor()}
+        onSortChange={onSortChange}
+        onAction={
+          props.onRowAction === undefined
+            ? undefined
+            : (key: Key) => {
+                const record = rowsById().get(String(key));
+                if (record !== undefined) props.onRowAction?.(record);
+              }
         }
+        treeColumn={treeColumn()}
+        expandedKeys={props.expandedKeys}
+        defaultExpandedKeys={props.defaultExpandedKeys}
+        onExpandedChange={(keys: Set<Key>) =>
+          props.onExpandedChange?.(new Set([...keys].map(String)))
+        }
+        class={cls().grid}
+        data-slot="data-table-grid"
       >
-        {(item: RowItem) =>
-          item.kind === "loader" ? (
-            <TableLoadMoreItem
-              isLoading={props.isLoadingMore === true}
-              onLoadMore={() => props.onLoadMore?.()}
-              data-slot="data-table-loader"
-            >
-              <div class={cls().loader}>
-                <Spinner />
-                {labels().loadingMore}
-              </div>
-            </TableLoadMoreItem>
-          ) : (
-            <Row
-              class={cls().row}
-              data-slot="data-table-row"
-              data-skeleton={item.kind === "skeleton" ? "" : undefined}
-            >
-              {(column: ColumnItem) => (
-                <BodyCell
-                  item={item}
-                  column={column}
-                  labels={labels()}
-                  classes={cls()}
-                  isTreeColumn={column.id === treeColumn()}
-                />
-              )}
-            </Row>
-          )
-        }
-      </TableBody>
-    </Table>
-  );
+        <TableHeader class={cls().header} data-slot="data-table-header">
+          {(column: ColumnItem) => (
+            <HeaderCell
+              column={column}
+              labels={labels()}
+              resizable={props.resizable === true}
+              classes={cls()}
+            />
+          )}
+        </TableHeader>
+        <TableBody
+          class={cls().body}
+          data-slot="data-table-body"
+          renderEmpty={
+            <div class={cls().empty} data-slot="data-table-empty">
+              {props.empty ?? <EmptyState heading={messages().nothingHere} />}
+            </div>
+          }
+        >
+          {(item: RowItem) =>
+            item.kind === "loader" ? (
+              <TableLoadMoreItem
+                isLoading={props.isLoadingMore === true}
+                onLoadMore={() => props.onLoadMore?.()}
+                data-slot="data-table-loader"
+              >
+                <div class={cls().loader}>
+                  <Spinner />
+                  {labels().loadingMore}
+                </div>
+              </TableLoadMoreItem>
+            ) : (
+              <Row
+                class={cls().row}
+                data-slot="data-table-row"
+                data-skeleton={item.kind === "skeleton" ? "" : undefined}
+              >
+                {(column: ColumnItem) => (
+                  <BodyCell
+                    item={item}
+                    column={column}
+                    labels={labels()}
+                    classes={cls()}
+                    isTreeColumn={column.id === treeColumn()}
+                  />
+                )}
+              </Row>
+            )
+          }
+        </TableBody>
+      </Table>
+    );
+  }
 
-  const sized = () =>
-    props.resizable === true ? (
+  function sized() {
+    return props.resizable === true ? (
       <ResizableTableContainer
         onResizeEnd={(widths: Map<Key, ColumnSize>) => {
           const kept = new Map<string, ColumnSize>();
@@ -700,24 +720,27 @@ export function DataTable<T extends RowData>(props: DataTableProps<T>) {
     ) : (
       gridElement()
     );
+  }
 
-  const virtual = () =>
-    props.virtualRowHeight === undefined ? (
+  function virtual() {
+    return props.virtualRowHeight === undefined ? (
       sized()
     ) : (
       <Virtualizer layout={listLayout({ rowHeight: props.virtualRowHeight })}>
         {sized()}
       </Virtualizer>
     );
+  }
 
-  const content = () =>
-    router === undefined
+  function content() {
+    return router === undefined
       ? virtual()
       : provide(
           RouterContext,
           () => router,
           () => virtual(),
         );
+  }
 
   return (
     <div class={arc(cls().root, props.class, props.className)} data-slot="data-table">
@@ -788,7 +811,9 @@ function HeaderCell(props: HeaderCellProps) {
     );
   }
   const header = column.header as Header<DataTableFeatures, RowData>;
-  const sorted = (): false | "asc" | "desc" => header.column.getIsSorted();
+  function sorted(): false | "asc" | "desc" {
+    return header.column.getIsSorted();
+  }
   return (
     <Column
       class={props.classes.head}
@@ -812,11 +837,21 @@ function HeaderCell(props: HeaderCellProps) {
   );
 }
 
-function SelectAll(props: { label: string }) {
+interface SelectAllProps {
+  label: string;
+}
+
+function SelectAll(props: SelectAllProps) {
   const grid = useTable();
-  const manager = () => grid.state.selectionManager();
-  const all = (): boolean => !manager().isEmpty && manager().isSelectAll;
-  const some = (): boolean => !manager().isEmpty && !manager().isSelectAll;
+  function manager() {
+    return grid.state.selectionManager();
+  }
+  function all(): boolean {
+    return !manager().isEmpty && manager().isSelectAll;
+  }
+  function some(): boolean {
+    return !manager().isEmpty && !manager().isSelectAll;
+  }
   return (
     <Checkbox
       aria-label={props.label}
@@ -828,10 +863,16 @@ function SelectAll(props: { label: string }) {
   );
 }
 
-function RowCheckbox(props: { label: string }) {
+interface RowCheckboxProps {
+  label: string;
+}
+
+function RowCheckbox(props: RowCheckboxProps) {
   const grid = useTable();
   const node = useRow();
-  const manager = () => grid.state.selectionManager();
+  function manager() {
+    return grid.state.selectionManager();
+  }
   return (
     <Checkbox
       aria-label={`${props.label} ${node.textValue}`.trim()}
@@ -876,7 +917,9 @@ function BodyCell(props: BodyCellProps) {
   const found = item.row.getAllCellsByColumnId()[column.id];
   // Built inside the cell rather than before it: a hydrating component claims
   // the server's next node as it is built, which before the cell is the cell.
-  const content = () => (found === undefined ? null : <FlexRender cell={found} />);
+  function content() {
+    return found === undefined ? null : <FlexRender cell={found} />;
+  }
   return (
     <Cell
       class={props.classes.cell}

@@ -65,11 +65,12 @@ interface BodyProps extends FormattedFieldProps {
 /** aria's number field, formatted, in the field frame: what the three fields here are. */
 function FormattedField(props: BodyProps) {
   const of = bindField<number | null>(props, null);
-  const cls = () =>
-    parts(
+  function cls() {
+    return parts(
       { ...fieldStyles(), ...numberFieldStyles({ steppers: props.hideSteppers !== true }) },
       props.classes,
     );
+  }
   return (
     <Frame
       of={of}

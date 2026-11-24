@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child, createSignal } from "@barqjs/core";
+import { createSignal, type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { Kanban } from "@barqjs/lucide/icons/kanban";
 import { List } from "@barqjs/lucide/icons/list";
@@ -12,7 +12,9 @@ import { type DataView, DataViews, ViewSwitcher } from "./view-switcher.tsx";
 
 const [query, setQuery] = createSignal("");
 const TASKS = ["Write the brief", "Review the draft", "Ship it"];
-const matching = (): string[] => TASKS.filter((task) => task.toLowerCase().includes(query()));
+function matching(): string[] {
+  return TASKS.filter((task) => task.toLowerCase().includes(query()));
+}
 
 const VIEWS: DataView[] = [
   {
@@ -129,7 +131,7 @@ describe("DataViews and ViewSwitcher", () => {
   });
 
   test("runs right to left, the arrows following the reading direction", async () => {
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }

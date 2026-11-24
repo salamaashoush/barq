@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child } from "@barqjs/core";
+import { type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user } from "@barqjs/testing";
 
@@ -7,7 +7,7 @@ import { hydrates } from "../test-arc.ts";
 import { IconButton } from "./icon-button.tsx";
 import { Toolbar, ToolbarSeparator, toolbarStyles } from "./toolbar.tsx";
 
-function Rtl(props: { children?: Child }) {
+function Rtl(props: ParentProps) {
   provideLocale("ar-EG");
   return <div dir="rtl">{props.children}</div>;
 }

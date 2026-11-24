@@ -113,6 +113,11 @@ export interface PagerProps extends Customisable<Slots> {
   id?: string;
 }
 
+interface PlacedSlot {
+  slot: PageSlot;
+  at: number;
+}
+
 /**
  * The way through a list too long for one page.
  *
@@ -136,67 +141,82 @@ export function Pager(props: PagerProps) {
     () => props.defaultPageIndex ?? 0,
     (next) => props.onPageIndexChange?.(next),
   );
-  const pageCount = (): number =>
-    props.pageCount ??
-    (props.total !== undefined && props.pageSize !== undefined && props.pageSize > 0
-      ? Math.max(1, Math.ceil(props.total / props.pageSize))
-      : 1);
-  const labels = () => ({
-    pagination: props.labels?.pagination ?? messages().pagination,
-    previous: props.labels?.previous ?? messages().previousPage,
-    next: props.labels?.next ?? messages().nextPage,
-    first: props.labels?.first ?? messages().firstPage,
-    last: props.labels?.last ?? messages().lastPage,
-    page: props.labels?.page ?? messages().page,
-    goToPage: props.labels?.goToPage ?? messages().goToPage,
-    range: props.labels?.range ?? messages().pageRange,
-    pageSize: props.labels?.pageSize ?? messages().pageSize,
-  });
-  const go = (next: number): void => {
+  function pageCount(): number {
+    return (
+      props.pageCount ??
+      (props.total !== undefined && props.pageSize !== undefined && props.pageSize > 0
+        ? Math.max(1, Math.ceil(props.total / props.pageSize))
+        : 1)
+    );
+  }
+  function labels() {
+    return {
+      pagination: props.labels?.pagination ?? messages().pagination,
+      previous: props.labels?.previous ?? messages().previousPage,
+      next: props.labels?.next ?? messages().nextPage,
+      first: props.labels?.first ?? messages().firstPage,
+      last: props.labels?.last ?? messages().lastPage,
+      page: props.labels?.page ?? messages().page,
+      goToPage: props.labels?.goToPage ?? messages().goToPage,
+      range: props.labels?.range ?? messages().pageRange,
+      pageSize: props.labels?.pageSize ?? messages().pageSize,
+    };
+  }
+  function go(next: number): void {
     const bounded = Math.min(Math.max(0, next), pageCount() - 1);
     if (bounded !== pageIndex()) setPageIndex(bounded);
-  };
-  const range = (): string | undefined => {
+  }
+  function range(): string | undefined {
     if (props.total === undefined || props.pageSize === undefined) return undefined;
     if (props.total === 0)
       return labels().range(format().format(0), format().format(0), format().format(0));
     const from = pageIndex() * props.pageSize + 1;
     const to = Math.min(props.total, from + props.pageSize - 1);
     return labels().range(format().format(from), format().format(to), format().format(props.total));
-  };
-  const variant = (): "pages" | "compact" | "simple" => props.variant ?? "pages";
-  const cls = (): Slots => parts(pagerStyles({ variant: variant() }), props.classes);
-  const atStart = (): boolean => props.isDisabled === true || pageIndex() <= 0;
-  const atEnd = (): boolean => props.isDisabled === true || pageIndex() >= pageCount() - 1;
+  }
+  function variant(): "pages" | "compact" | "simple" {
+    return props.variant ?? "pages";
+  }
+  function cls(): Slots {
+    return parts(pagerStyles({ variant: variant() }), props.classes);
+  }
+  function atStart(): boolean {
+    return props.isDisabled === true || pageIndex() <= 0;
+  }
+  function atEnd(): boolean {
+    return props.isDisabled === true || pageIndex() >= pageCount() - 1;
+  }
 
-  const arrow = (
+  function arrow(
     to: () => number,
     label: () => string,
     isDisabled: () => boolean,
     glyph: "first" | "previous" | "next" | "last",
-  ) => (
-    <Button
-      class={cls().edge}
-      data-slot="pager-edge"
-      data-edge={glyph}
-      variant="ghost"
-      size="icon-sm"
-      aria-label={label()}
-      href={props.getHref === undefined || isDisabled() ? undefined : props.getHref(to())}
-      isDisabled={isDisabled()}
-      onPress={() => go(to())}
-    >
-      {glyph === "first" ? (
-        <ChevronsLeft class={icon.directional} />
-      ) : glyph === "previous" ? (
-        <ChevronLeft class={icon.directional} />
-      ) : glyph === "next" ? (
-        <ChevronRight class={icon.directional} />
-      ) : (
-        <ChevronsRight class={icon.directional} />
-      )}
-    </Button>
-  );
+  ) {
+    return (
+      <Button
+        class={cls().edge}
+        data-slot="pager-edge"
+        data-edge={glyph}
+        variant="ghost"
+        size="icon-sm"
+        aria-label={label()}
+        href={props.getHref === undefined || isDisabled() ? undefined : props.getHref(to())}
+        isDisabled={isDisabled()}
+        onPress={() => go(to())}
+      >
+        {glyph === "first" ? (
+          <ChevronsLeft class={icon.directional} />
+        ) : glyph === "previous" ? (
+          <ChevronLeft class={icon.directional} />
+        ) : glyph === "next" ? (
+          <ChevronRight class={icon.directional} />
+        ) : (
+          <ChevronsRight class={icon.directional} />
+        )}
+      </Button>
+    );
+  }
 
   return (
     <nav
@@ -260,7 +280,7 @@ export function Pager(props: PagerProps) {
                 }))
               }
             >
-              {(entry: { slot: PageSlot; at: number }) => (
+              {(entry: PlacedSlot) => (
                 <li>
                   {entry.slot === "gap" ? (
                     <PaginationEllipsis />

@@ -174,10 +174,10 @@ function steps<T>(
   value: Responsive<T> | undefined,
   token: (value: T) => string,
 ): void {
-  const set = (step: Step, css: string): void => {
+  function set(step: Step, css: string): void {
     into.classes.push(group[step]);
     into.style[`--arc-${name}-${SUFFIX[step]}`] = css;
-  };
+  }
   if (value === undefined) return;
   if (typeof value !== "object" || value === null) {
     set("base", token(value));
@@ -223,11 +223,15 @@ const JUSTIFY: Record<Justify, string> = {
   between: "space-between",
 };
 
-const alignOf = (value: Align): string =>
-  (Object.hasOwn(ALIGN, value) ? ALIGN[value] : undefined) ?? refuse("an alignment", value);
+function alignOf(value: Align): string {
+  return (Object.hasOwn(ALIGN, value) ? ALIGN[value] : undefined) ?? refuse("an alignment", value);
+}
 
-const justifyOf = (value: Justify): string =>
-  (Object.hasOwn(JUSTIFY, value) ? JUSTIFY[value] : undefined) ?? refuse("a justification", value);
+function justifyOf(value: Justify): string {
+  return (
+    (Object.hasOwn(JUSTIFY, value) ? JUSTIFY[value] : undefined) ?? refuse("a justification", value)
+  );
+}
 
 function countOf(count: number): string {
   return Number.isInteger(count) && count >= 1 ? String(count) : refuse("a column count", count);
@@ -260,13 +264,13 @@ interface LayoutProps extends UiProps {
 function drawn(slot: string, styles: () => Drawn, props: LayoutProps): JSXElement {
   const given = cells(props);
   const own = uiProps(slot, () => styles().classes.join(" "), given);
-  const style = (): Record<string, string | number> => {
+  function style(): Record<string, string | number> {
     const out: Record<string, string | number> = { ...styles().style };
     for (const [name, value] of Object.entries(given.style?.() ?? {})) {
       if (value !== undefined) out[name] = value;
     }
     return out;
-  };
+  }
   const render = given.render?.();
   if (render !== undefined) {
     return render(partRender({ ...own, style: style() }), given.children?.()) as JSXElement;

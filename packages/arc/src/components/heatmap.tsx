@@ -87,8 +87,9 @@ interface Drawn {
   readonly step: string;
 }
 
-const isDrawn = (datum: unknown): datum is Drawn =>
-  typeof datum === "object" && datum !== null && "step" in datum && "column" in datum;
+function isDrawn(datum: unknown): datum is Drawn {
+  return typeof datum === "object" && datum !== null && "step" in datum && "column" in datum;
+}
 
 /**
  * A number over two categories as a grid of shaded cells: a weekday by an
@@ -106,20 +107,29 @@ const isDrawn = (datum: unknown): datum is Drawn =>
 export function Heatmap(props: HeatmapProps) {
   const messages = useArcMessages();
   const number = chartNumbers(props.formatOptions);
-  const cls = (): HeatmapSlots => parts(heatmapStyles(), props.classes);
-  const steps = (): number => Math.max(1, Math.round(props.steps ?? 5));
-  const base = (): string => toneColour(props.tone);
-  const valueOf = (row: Row): number => Number(row[props.value] ?? 0);
-  const range = (): readonly [number, number] => {
+  function cls(): HeatmapSlots {
+    return parts(heatmapStyles(), props.classes);
+  }
+  function steps(): number {
+    return Math.max(1, Math.round(props.steps ?? 5));
+  }
+  function base(): string {
+    return toneColour(props.tone);
+  }
+  function valueOf(row: Row): number {
+    return Number(row[props.value] ?? 0);
+  }
+  function range(): readonly [number, number] {
     if (props.domain !== undefined) return props.domain;
     const values = props.data.map(valueOf);
     return values.length === 0 ? [0, 0] : [Math.min(...values), Math.max(...values)];
-  };
-  const distinct = (field: string): string[] => [
-    ...new Set(props.data.map((row) => String(row[field] ?? ""))),
-  ];
-  const shades = (): string[] =>
-    Array.from({ length: steps() }, (_, step) => heatShade(base(), step, steps()));
+  }
+  function distinct(field: string): string[] {
+    return [...new Set(props.data.map((row) => String(row[field] ?? "")))];
+  }
+  function shades(): string[] {
+    return Array.from({ length: steps() }, (_, step) => heatShade(base(), step, steps()));
+  }
 
   return (
     <ChartFrame
@@ -182,7 +192,7 @@ export function Heatmap(props: HeatmapProps) {
   );
 }
 
-function HeatmapPlot(props: {
+interface HeatmapPlotProps {
   class: string;
   label: string;
   height?: number;
@@ -190,7 +200,9 @@ function HeatmapPlot(props: {
   cells: readonly Drawn[];
   name: string;
   write: (value: number) => string;
-}) {
+}
+
+function HeatmapPlot(props: HeatmapPlotProps) {
   const scope = useChart();
   const definition = createMemo((): ChartDefinition =>
     defineChart({

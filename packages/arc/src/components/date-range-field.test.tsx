@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child, flush } from "@barqjs/core";
+import { flush, type ParentProps } from "@barqjs/core";
 import type { DateRange } from "@barqjs/aria/calendar";
 import { CalendarDate, getLocalTimeZone, today } from "@barqjs/aria/date";
 import { provideLocale } from "@barqjs/aria/i18n";
@@ -87,7 +87,7 @@ describe("DateRangeField", () => {
   });
 
   test("in Arabic the trigger reads the locale's dates", async () => {
-    function Rtl(props: { children?: Child }) {
+    function Rtl(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }
@@ -153,7 +153,9 @@ describe("DateRangeField", () => {
       />
     ));
     await settle();
-    const by = (slot: string): Element | null => document.querySelector(`[data-slot="${slot}"]`);
+    function by(slot: string): Element | null {
+      return document.querySelector(`[data-slot="${slot}"]`);
+    }
     expect(by("date-range-field")?.classList.contains("mine")).toBe(true);
     expect(by("date-range-field-control")?.classList.contains("c")).toBe(true);
     expect(by("field-label")?.classList.contains("l")).toBe(true);

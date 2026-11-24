@@ -225,10 +225,13 @@ const DOCS: Doc[] = Array.from({ length: 5 }, (_, index) => ({
   body: `The quarterly report, part ${String(index + 1)}`,
 }));
 
-function docsSource(
-  calls: { query: string; cursor: unknown; signal: AbortSignal }[],
-  overrides: Partial<CommandSource> = {},
-): CommandSource {
+interface SearchCall {
+  query: string;
+  cursor: unknown;
+  signal: AbortSignal;
+}
+
+function docsSource(calls: SearchCall[], overrides: Partial<CommandSource> = {}): CommandSource {
   return {
     id: "docs",
     heading: "Documents",
@@ -267,7 +270,7 @@ function sourceGroup(name: string): HTMLElement {
 
 describe("CommandMenu sources", () => {
   test("typing searches a source once the typing pauses, aborting the search it replaced", async () => {
-    const calls: { query: string; cursor: unknown; signal: AbortSignal }[] = [];
+    const calls: SearchCall[] = [];
     const view = await renderRoute({ routeTree: tree({ sources: [docsSource(calls)] }) });
     openCommandMenu();
     await settle();
@@ -324,7 +327,7 @@ describe("CommandMenu sources", () => {
   });
 
   test("Show more asks for the next page and adds it to the group", async () => {
-    const calls: { query: string; cursor: unknown; signal: AbortSignal }[] = [];
+    const calls: SearchCall[] = [];
     const view = await renderRoute({ routeTree: tree({ sources: [docsSource(calls)] }) });
     openCommandMenu();
     await settle();

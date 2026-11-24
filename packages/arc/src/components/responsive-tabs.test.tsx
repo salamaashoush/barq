@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { type Child, DEV, createSignal } from "@barqjs/core";
+import { DEV, createSignal, type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user, within } from "@barqjs/testing";
 
@@ -16,7 +16,7 @@ function all(name: string): HTMLElement[] {
   return [...document.querySelectorAll(`[data-slot="${name}"]`)] as HTMLElement[];
 }
 
-function Rtl(props: { children?: Child }) {
+function Rtl(props: ParentProps) {
   provideLocale("ar-EG");
   return <div dir="rtl">{props.children}</div>;
 }
@@ -69,7 +69,7 @@ describe("Indicator", () => {
   });
 
   test("its words and digits follow the locale, and its parts take classes", () => {
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar-EG");
       provideArcMessages(() => ({ newCount: (count) => `${count} جديد` }));
       return <div dir="rtl">{props.children}</div>;

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child, createSignal } from "@barqjs/core";
+import { createSignal, type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, fireEvent, render, screen, user } from "@barqjs/testing";
 
@@ -103,7 +103,7 @@ describe("PhoneField", () => {
   });
 
   test("regions are named and sorted in the locale, and the region button has room for a finger", async () => {
-    function Rtl(props: { children?: Child }) {
+    function Rtl(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }
@@ -149,7 +149,9 @@ describe("PhoneField", () => {
       />
     ));
     await settle();
-    const by = (slot: string): Element | null => document.querySelector(`[data-slot="${slot}"]`);
+    function by(slot: string): Element | null {
+      return document.querySelector(`[data-slot="${slot}"]`);
+    }
     expect(by("phone-field")?.classList.contains("mine")).toBe(true);
     expect(by("phone-field-control")?.classList.contains("c")).toBe(true);
     expect(by("phone-field-country")?.classList.contains("k")).toBe(true);

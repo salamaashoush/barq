@@ -195,7 +195,9 @@ export interface StepperProps extends Customisable<Slots> {
  * step's label, and drops the descriptions.
  */
 export function Stepper(props: StepperProps) {
-  const cls = (): Slots => parts(stepperStyles({ orientation: props.orientation }), props.classes);
+  function cls(): Slots {
+    return parts(stepperStyles({ orientation: props.orientation }), props.classes);
+  }
   return (
     <div
       class={arc(cls().root, props.class, props.className)}
@@ -238,12 +240,14 @@ export function Stepper(props: StepperProps) {
 
 type StepState = "upcoming" | "current" | "completed" | "invalid";
 
-function Step(props: {
+interface StepProps {
   item: StepItem;
   index: number;
   orientation: "horizontal" | "vertical";
   classes: StepperProps["classes"];
-}) {
+}
+
+function Step(props: StepProps) {
   const state = useStepList();
   if (state === null) throw new Error("A step must be rendered inside its Stepper.");
   const messages = useArcMessages();
@@ -256,20 +260,25 @@ function Step(props: {
   const labelId = createUniqueId();
   const hintId = createUniqueId();
   const item = props.item;
-  const stateOf = (): StepState => {
+  function stateOf(): StepState {
     if (item.invalid === true) return "invalid";
     if (step.isSelected()) return "current";
     return step.isCompleted() ? "completed" : "upcoming";
-  };
-  const cls = (): Slots =>
-    parts(stepperStyles({ orientation: props.orientation, state: stateOf() }), props.classes);
-  const notes = (): string =>
-    [
+  }
+  function cls(): Slots {
+    return parts(
+      stepperStyles({ orientation: props.orientation, state: stateOf() }),
+      props.classes,
+    );
+  }
+  function notes(): string {
+    return [
       item.invalid === true ? messages().hasErrors : "",
       item.optional === true ? messages().optional : "",
     ]
       .filter((one) => one !== "")
       .join(", ");
+  }
   const linkProps = mergeProps(step.stepProps, focusProps, {
     "aria-labelledby": `${markerId} ${stateId} ${labelId}`,
     "aria-describedby": () => (notes() === "" ? undefined : hintId),

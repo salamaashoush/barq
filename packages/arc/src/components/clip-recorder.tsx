@@ -92,6 +92,10 @@ export interface ClipRecorderProps extends Customisable<Slots> {
 
 type Recorder = InstanceType<typeof MediaRecorder>;
 
+interface MaybeNamed {
+  name?: string;
+}
+
 /**
  * An audio or video clip recorded in the page: permission asked when the
  * reader starts, a device to choose, a live picture or a level meter, a
@@ -110,9 +114,15 @@ type Recorder = InstanceType<typeof MediaRecorder>;
 export function ClipRecorder(props: ClipRecorderProps) {
   const messages = useArcMessages();
   const locale = useLocale();
-  const cls = (): Slots => parts(clipRecorderStyles(), props.classes);
-  const kind = (): "audio" | "video" => props.kind ?? "audio";
-  const max = (): number => props.maxDuration ?? 300;
+  function cls(): Slots {
+    return parts(clipRecorderStyles(), props.classes);
+  }
+  function kind(): "audio" | "video" {
+    return props.kind ?? "audio";
+  }
+  function max(): number {
+    return props.maxDuration ?? 300;
+  }
 
   const [status, setStatusRaw] = createSignal<RecorderStatus>("idle", { ownedWrite: true });
   const [elapsed, setElapsed] = createSignal(0);
@@ -135,10 +145,10 @@ export function ClipRecorder(props: ClipRecorderProps) {
   let analyser: AnalyserNode | null = null;
   let samples: Uint8Array<ArrayBuffer> | null = null;
 
-  const setStatus = (next: RecorderStatus): void => {
+  function setStatus(next: RecorderStatus): void {
     setStatusRaw(next);
     props.onStatusChange?.(next);
-  };
+  }
 
   const meter = raf(() => {
     const node = level();
@@ -150,12 +160,15 @@ export function ClipRecorder(props: ClipRecorderProps) {
     node.style.setProperty("--arc-level", String(Math.min(1, rms * 3)));
   });
 
-  const supported = (): boolean =>
-    !isServer &&
-    typeof navigator.mediaDevices?.getUserMedia === "function" &&
-    typeof globalThis.MediaRecorder === "function";
+  function supported(): boolean {
+    return (
+      !isServer &&
+      typeof navigator.mediaDevices?.getUserMedia === "function" &&
+      typeof globalThis.MediaRecorder === "function"
+    );
+  }
 
-  const release = (): void => {
+  function release(): void {
     meter.stop();
     for (const track of stream?.getTracks() ?? []) track.stop();
     stream = null;
@@ -164,20 +177,20 @@ export function ClipRecorder(props: ClipRecorderProps) {
     analyser = null;
     const node = preview();
     if (node !== null) node.srcObject = null;
-  };
+  }
 
-  const letGo = (): void => {
+  function letGo(): void {
     const held = clip();
     if (held !== null) URL.revokeObjectURL(held.url);
     setClip(null);
-  };
+  }
 
-  const clearTimers = (): void => {
+  function clearTimers(): void {
     if (ticker !== undefined) clearInterval(ticker);
     if (counter !== undefined) clearInterval(counter);
     ticker = undefined;
     counter = undefined;
-  };
+  }
 
   onCleanup(() => {
     clearTimers();
@@ -186,7 +199,7 @@ export function ClipRecorder(props: ClipRecorderProps) {
     letGo();
   });
 
-  const listen = (): void => {
+  function listen(): void {
     const Context = globalThis.AudioContext as typeof AudioContext | undefined;
     if (stream === null || Context === undefined) return;
     if (stream.getAudioTracks().length === 0) return;
@@ -196,9 +209,9 @@ export function ClipRecorder(props: ClipRecorderProps) {
     samples = new Uint8Array(analyser.fftSize);
     audio.createMediaStreamSource(stream).connect(analyser);
     meter.start();
-  };
+  }
 
-  const open = async (): Promise<void> => {
+  async function open(): Promise<void> {
     if (!supported()) {
       setStatus("unsupported");
       return;
@@ -213,7 +226,7 @@ export function ClipRecorder(props: ClipRecorderProps) {
         kind() === "video" ? { audio: true, video: wanted } : { audio: wanted },
       );
     } catch (error) {
-      const name = (error as { name?: string }).name;
+      const name = (error as MaybeNamed).name;
       setStatus(name === "NotFoundError" || name === "OverconstrainedError" ? "missing" : "denied");
       return;
     }
@@ -228,9 +241,9 @@ export function ClipRecorder(props: ClipRecorderProps) {
     }
     listen();
     setStatus("ready");
-  };
+  }
 
-  const begin = (): void => {
+  function begin(): void {
     if (stream === null) return;
     chunks = [];
     const options =
@@ -271,9 +284,9 @@ export function ClipRecorder(props: ClipRecorderProps) {
       setElapsed(seconds);
       if (seconds >= max()) stop();
     }, 250);
-  };
+  }
 
-  const record = (): void => {
+  function record(): void {
     const from = props.countdown ?? 0;
     if (from <= 0) {
       begin();
@@ -292,24 +305,24 @@ export function ClipRecorder(props: ClipRecorderProps) {
       setLeft(next);
       setSaid(String(next));
     }, 1000);
-  };
+  }
 
-  const stop = (): void => {
+  function stop(): void {
     if (status() === "countdown") {
       clearTimers();
       setStatus("ready");
       return;
     }
     if (recorder !== null && recorder.state !== "inactive") recorder.stop();
-  };
+  }
 
-  const again = (): void => {
+  function again(): void {
     letGo();
     setFailed(false);
     void open();
-  };
+  }
 
-  const attach = (): void => {
+  function attach(): void {
     const held = clip();
     if (held === null || props.onAttach === undefined) return;
     setFailed(false);
@@ -330,7 +343,7 @@ export function ClipRecorder(props: ClipRecorderProps) {
         setStatus("recorded");
       },
     );
-  };
+  }
 
   if (!isServer) {
     createEffect(
@@ -341,10 +354,15 @@ export function ClipRecorder(props: ClipRecorderProps) {
     );
   }
 
-  const clock = (seconds: number): string =>
-    durationText(seconds * 1000, locale().locale, { length: "digital", hours: "auto" });
-  const live = (): boolean => ["ready", "countdown", "recording"].includes(status());
-  const word = (): string => (kind() === "video" ? messages().camera : messages().microphone);
+  function clock(seconds: number): string {
+    return durationText(seconds * 1000, locale().locale, { length: "digital", hours: "auto" });
+  }
+  function live(): boolean {
+    return ["ready", "countdown", "recording"].includes(status());
+  }
+  function word(): string {
+    return kind() === "video" ? messages().camera : messages().microphone;
+  }
 
   return (
     <section

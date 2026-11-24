@@ -35,7 +35,9 @@ export type TextColor =
   | "info";
 export type TextWeight = "normal" | "medium" | "strong";
 
-const toned = (name: "success" | "warning" | "info") => arc(tones[name], fg.tone);
+function toned(name: "success" | "warning" | "info") {
+  return arc(tones[name], fg.tone);
+}
 
 const colours = {
   default: { root: fg.default },
@@ -146,10 +148,12 @@ export interface HeadingProps extends TextElementProps, Customisable<HeadingSlot
  * on a phone.
  */
 export function Heading(props: HeadingProps) {
-  const level = (): HeadingLevel => props.level ?? 2;
+  function level(): HeadingLevel {
+    return props.level ?? 2;
+  }
   const Element = dynamic(() => `h${String(level())}` as "h2");
-  const cls = (): HeadingSlots =>
-    parts(
+  function cls(): HeadingSlots {
+    return parts(
       headingStyles({
         size: props.size ?? LEVEL_SIZE[level()],
         color: props.color,
@@ -157,6 +161,7 @@ export function Heading(props: HeadingProps) {
       }),
       props.classes,
     );
+  }
   return (
     <Element
       class={arc(cls().root, props.class, props.className)}
@@ -239,8 +244,8 @@ export interface TextProps extends TextElementProps, Customisable<TextSlots> {
  */
 export function Text(props: TextProps) {
   const Element = dynamic(() => props.as ?? "p");
-  const cls = (): TextSlots =>
-    parts(
+  function cls(): TextSlots {
+    return parts(
       textStyles({
         size: props.size,
         weight: props.weight,
@@ -251,6 +256,7 @@ export function Text(props: TextProps) {
       }),
       props.classes,
     );
+  }
   return (
     <Element
       class={arc(cls().root, props.class, props.className)}
@@ -288,7 +294,9 @@ export interface CodeProps extends Omit<UiProps, "class" | "className">, Customi
  * A block of code to read and copy is `CodeBlock`, from `@barqjs/arc/code`.
  */
 export function Code(props: CodeProps) {
-  const cls = (): CodeSlots => parts(codeStyles(), props.classes);
+  function cls(): CodeSlots {
+    return parts(codeStyles(), props.classes);
+  }
   return <code {...uiProps("code", () => cls().root, cells(props))}>{props.children}</code>;
 }
 
@@ -428,8 +436,9 @@ export interface ProseProps extends Omit<UiProps, "class" | "className">, Custom
  * whatever the page does, and a wide table scrolls inside its own box.
  */
 export function Prose(props: ProseProps) {
-  const cls = (): ProseSlots =>
-    parts(proseStyles({ size: props.size, width: props.width }), props.classes);
+  function cls(): ProseSlots {
+    return parts(proseStyles({ size: props.size, width: props.width }), props.classes);
+  }
   return (
     <Show
       when={props.html !== undefined}

@@ -76,8 +76,12 @@ export interface ToolbarProps extends Customisable<Slots> {
  * of the home indicator.
  */
 export function Toolbar(props: ToolbarProps) {
-  const cls = () =>
-    parts(toolbarStyles({ variant: props.variant, orientation: props.orientation }), props.classes);
+  function cls() {
+    return parts(
+      toolbarStyles({ variant: props.variant, orientation: props.orientation }),
+      props.classes,
+    );
+  }
   return (
     <AriaToolbar
       class={arc(cls().root, props.class, props.className)}

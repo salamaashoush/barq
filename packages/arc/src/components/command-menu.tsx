@@ -53,6 +53,11 @@ export interface CommandMenuGroup {
   actions: readonly CommandMenuAction[];
 }
 
+export interface ResultHighlights {
+  label?: readonly MatchRange[];
+  snippet?: readonly MatchRange[];
+}
+
 /** One thing a search source found: a place to go, a record to open. */
 export interface CommandResult extends Partial<LinkTarget> {
   /** Unique within its source. */
@@ -64,7 +69,7 @@ export interface CommandResult extends Partial<LinkTarget> {
   meta?: string;
   icon?: NavIcon;
   /** Where the service found the search in `label` and `snippet`, marked instead of matching it here. */
-  highlights?: { label?: readonly MatchRange[]; snippet?: readonly MatchRange[] };
+  highlights?: ResultHighlights;
 }
 
 /** A page of a source's results, with what asks for the next one. */
@@ -198,6 +203,11 @@ export const commandMenuStyles = variants({
 
 type Slots = ReturnType<typeof commandMenuStyles>;
 
+export interface RecentOptions {
+  key: string;
+  max?: number;
+}
+
 export interface CommandMenuProps extends Customisable<Slots> {
   /** The palette's own groups. Registered ones join them, under their headings. */
   groups?: readonly CommandMenuGroup[];
@@ -223,7 +233,7 @@ export interface CommandMenuProps extends Customisable<Slots> {
    * Remember the results chosen from `sources` in `localStorage` under this
    * key, and offer the last `max` of them before anything is typed.
    */
-  recent?: { key: string; max?: number };
+  recent?: RecentOptions;
 }
 
 /**
@@ -245,8 +255,12 @@ export interface CommandMenuProps extends Customisable<Slots> {
 export function CommandMenu(props: CommandMenuProps) {
   const router = useRouter();
   const messages = useArcMessages();
-  const cls = (): Slots => parts(commandMenuStyles(), props.classes);
-  const isOpen = (): boolean => props.open ?? opened();
+  function cls(): Slots {
+    return parts(commandMenuStyles(), props.classes);
+  }
+  function isOpen(): boolean {
+    return props.open ?? opened();
+  }
 
   const [query, setQuery] = createSignal("");
   const [found, setFound] = createSignal<Readonly<Record<string, Found>>>({});
@@ -258,14 +272,14 @@ export function CommandMenu(props: CommandMenuProps) {
 
   const searches = new Map<string, RemoteSearch>();
 
-  const update = (id: string, next: RemoteState<CommandResult>): void => {
+  function update(id: string, next: RemoteState<CommandResult>): void {
     const all = { ...found() };
     if (next.status === "idle") delete all[id];
     else all[id] = next;
     setFound(all);
-  };
+  }
 
-  const searchOf = (source: CommandSource): RemoteSearch => {
+  function searchOf(source: CommandSource): RemoteSearch {
     let held = searches.get(source.id);
     if (held === undefined) {
       held = remoteSearch<CommandResult>({
@@ -277,21 +291,23 @@ export function CommandMenu(props: CommandMenuProps) {
       searches.set(source.id, held);
     }
     return held;
-  };
+  }
 
-  const stop = (): void => {
+  function stop(): void {
     for (const held of searches.values()) held.stop();
-  };
+  }
   onCleanup(stop);
 
-  const search = (text: string): void => {
+  function search(text: string): void {
     setQuery(text);
     for (const source of props.sources ?? []) searchOf(source).query(text);
-  };
+  }
 
-  const more = (source: CommandSource): void => searchOf(source).more();
+  function more(source: CommandSource): void {
+    searchOf(source).more();
+  }
 
-  const setOpen = (next: boolean): void => {
+  function setOpen(next: boolean): void {
     if (!next) {
       stop();
       setQuery("");
@@ -299,14 +315,16 @@ export function CommandMenu(props: CommandMenuProps) {
     }
     if (props.open === undefined) setOpened(next);
     props.onOpenChange?.(next);
-  };
+  }
 
   const combo = untrack(() => props.shortcut);
   if (combo !== false) shortcut(combo ?? "mod+k", () => setOpen(!isOpen()));
 
-  const groups = (): CommandMenuGroup[] => merged(props.groups ?? [], registered());
+  function groups(): CommandMenuGroup[] {
+    return merged(props.groups ?? [], registered());
+  }
 
-  const go = (target: Partial<LinkTarget>): void => {
+  function go(target: Partial<LinkTarget>): void {
     if (target.to === undefined) return;
     void router.navigate({
       to: target.to,
@@ -314,15 +332,15 @@ export function CommandMenu(props: CommandMenuProps) {
       search: target.search,
       hash: target.hash,
     } as never);
-  };
+  }
 
-  const run = (action: CommandMenuAction): void => {
+  function run(action: CommandMenuAction): void {
     setOpen(false);
     go(action);
     action.onSelect?.();
-  };
+  }
 
-  const choose = (sourceId: string, result: CommandResult): void => {
+  function choose(sourceId: string, result: CommandResult): void {
     setOpen(false);
     if (recentKey !== undefined) {
       const { icon: _icon, ...kept } = result;
@@ -336,17 +354,21 @@ export function CommandMenu(props: CommandMenuProps) {
     }
     go(result);
     props.sources?.find((each) => each.id === sourceId)?.onSelect?.(result);
-  };
+  }
 
-  const sourceOf = (id: string): CommandSource | undefined =>
-    props.sources?.find((each) => each.id === id);
+  function sourceOf(id: string): CommandSource | undefined {
+    return props.sources?.find((each) => each.id === id);
+  }
 
-  const searching = (): boolean =>
-    Object.values(found()).some((state) => state.status === "loading" || state.loadingMore);
-  const foundCount = (): number =>
-    Object.values(found()).reduce((sum, state) => sum + state.results.length, 0);
-  const active = (): CommandSource[] =>
-    (props.sources ?? []).filter((source) => found()[source.id] !== undefined);
+  function searching(): boolean {
+    return Object.values(found()).some((state) => state.status === "loading" || state.loadingMore);
+  }
+  function foundCount(): number {
+    return Object.values(found()).reduce((sum, state) => sum + state.results.length, 0);
+  }
+  function active(): CommandSource[] {
+    return (props.sources ?? []).filter((source) => found()[source.id] !== undefined);
+  }
 
   return (
     <CommandDialog
@@ -416,17 +438,23 @@ export function CommandMenu(props: CommandMenuProps) {
   );
 }
 
-function SourceGroup(props: {
+interface SourceGroupProps {
   source: CommandSource;
   state: Found | undefined;
   query: string;
   classes: Slots;
   onChoose: (result: CommandResult) => void;
   onMore: () => void;
-}) {
+}
+
+function SourceGroup(props: SourceGroupProps) {
   const messages = useArcMessages();
-  const status = (): Found["status"] => props.state?.status ?? "loading";
-  const results = (): readonly CommandResult[] => props.state?.results ?? [];
+  function status(): Found["status"] {
+    return props.state?.status ?? "loading";
+  }
+  function results(): readonly CommandResult[] {
+    return props.state?.results ?? [];
+  }
   return (
     <CommandGroup
       class={props.classes.group}
@@ -481,13 +509,19 @@ function SourceGroup(props: {
   );
 }
 
-function ResultItem(props: {
-  result: Omit<CommandResult, "icon"> & { icon?: NavIcon };
+interface ResultItemProps {
+  result: Omit<CommandResult, "icon"> & IconedResult;
   source: CommandSource | undefined;
   query: string;
   classes: Slots;
   onChoose: () => void;
-}) {
+}
+
+interface IconedResult {
+  icon?: NavIcon;
+}
+
+function ResultItem(props: ResultItemProps) {
   const result = props.result;
   const Icon = result.icon ?? props.source?.icon;
   return (
@@ -522,11 +556,13 @@ function ResultItem(props: {
   );
 }
 
-function ActionItem(props: {
+interface ActionItemProps {
   action: CommandMenuAction;
   run: (action: CommandMenuAction) => void;
   classes: Slots;
-}) {
+}
+
+function ActionItem(props: ActionItemProps) {
   const action = props.action;
   const run = props.run;
   const Icon = action.icon;

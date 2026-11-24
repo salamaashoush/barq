@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child, createSignal, flush } from "@barqjs/core";
+import { createSignal, flush, type ParentProps } from "@barqjs/core";
 import { collectCss } from "@barqjs/css";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { accessibleName, ariaViolations, render, screen, user } from "@barqjs/testing";
@@ -21,7 +21,7 @@ import { useArcForm } from "./form.tsx";
 
 const PALETTE = ["#E11D48", "#2563EB", { color: "#16A34A", label: "Go" }];
 
-function Rtl(props: { children?: Child }) {
+function Rtl(props: ParentProps) {
   provideLocale("ar-EG");
   return <div dir="rtl">{props.children}</div>;
 }
@@ -222,7 +222,9 @@ describe("ColorPicker", () => {
       />
     ));
     await settle();
-    const by = (slot: string): Element | null => document.querySelector(`[data-slot="${slot}"]`);
+    function by(slot: string): Element | null {
+      return document.querySelector(`[data-slot="${slot}"]`);
+    }
     expect(by("color-picker")?.classList.contains("mine")).toBe(true);
     expect(by("color-picker-trigger")?.classList.contains("t")).toBe(true);
     expect(by("color-picker-value")?.classList.contains("v")).toBe(true);

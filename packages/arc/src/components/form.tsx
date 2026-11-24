@@ -164,31 +164,33 @@ export interface NumberFieldProps extends ArcFieldProps {
 /** A number, held as `undefined` while the field is empty. */
 export function NumberField(props: NumberFieldProps) {
   const of = control<number | undefined>();
-  const read = (event: Event): number | undefined => {
+  function read(event: Event): number | undefined {
     const raw = (event.currentTarget as HTMLInputElement).value;
     if (raw.trim() === "") return undefined;
     const value = Number(raw);
     return Number.isNaN(value) ? undefined : value;
-  };
-  const input = () => (
-    <InputGroupInput
-      id={of.ids.control}
-      name={of.field().name}
-      type="number"
-      inputMode="decimal"
-      value={of.field().state.value ?? ""}
-      min={props.min}
-      max={props.max}
-      step={props.step}
-      placeholder={props.placeholder}
-      disabled={props.isDisabled}
-      required={props.isRequired}
-      aria-invalid={of.isInvalid() ? true : undefined}
-      aria-describedby={of.describedBy(props.description !== undefined)}
-      onInput={(event: Event) => of.change(read(event))}
-      onBlur={of.blur}
-    />
-  );
+  }
+  function input() {
+    return (
+      <InputGroupInput
+        id={of.ids.control}
+        name={of.field().name}
+        type="number"
+        inputMode="decimal"
+        value={of.field().state.value ?? ""}
+        min={props.min}
+        max={props.max}
+        step={props.step}
+        placeholder={props.placeholder}
+        disabled={props.isDisabled}
+        required={props.isRequired}
+        aria-invalid={of.isInvalid() ? true : undefined}
+        aria-describedby={of.describedBy(props.description !== undefined)}
+        onInput={(event: Event) => of.change(read(event))}
+        onBlur={of.blur}
+      />
+    );
+  }
   return (
     <Frame
       of={of}
@@ -305,7 +307,9 @@ export interface SelectFieldProps extends ArcFieldProps {
 export function SelectField(props: SelectFieldProps) {
   const messages = useArcMessages();
   const of = control<string | null>();
-  const items = () => props.options.map((option) => ({ id: option.value, ...option }));
+  function items() {
+    return props.options.map((option) => ({ id: option.value, ...option }));
+  }
   return (
     <Frame of={of} label={props.label} description={props.description} field={props}>
       <Select
@@ -344,8 +348,9 @@ export interface ComboboxFieldProps extends ArcFieldProps {
 /** One of many values, found by typing. Held as the option's `value`, or `null`. */
 export function ComboboxField(props: ComboboxFieldProps) {
   const of = control<string | null>();
-  const chosen = (): FieldOption | null =>
-    props.options.find((option) => option.value === of.field().state.value) ?? null;
+  function chosen(): FieldOption | null {
+    return props.options.find((option) => option.value === of.field().state.value) ?? null;
+  }
   return (
     <Frame of={of} label={props.label} description={props.description} field={props}>
       <ComboboxOver
@@ -413,9 +418,13 @@ function ComboboxOver(props: ComboboxOverProps) {
   );
 }
 
+interface IntlWithValues {
+  supportedValuesOf?: (key: string) => string[];
+}
+
 /** Every zone this runtime knows, by its IANA name. */
 function timeZones(): string[] {
-  const supported = (Intl as { supportedValuesOf?: (key: string) => string[] }).supportedValuesOf;
+  const supported = (Intl as IntlWithValues).supportedValuesOf;
   return supported === undefined ? ["UTC"] : supported("timeZone");
 }
 
@@ -438,8 +447,9 @@ export function TimeZoneField(props: TimeZoneFieldProps) {
       held !== null && held !== undefined && !zones.includes(held) ? [held, ...zones] : zones;
     return all.map((zone) => ({ value: zone, label: zone.replaceAll("_", " ") }));
   });
-  const chosen = (): FieldOption | null =>
-    options().find((option) => option.value === of.field().state.value) ?? null;
+  function chosen(): FieldOption | null {
+    return options().find((option) => option.value === of.field().state.value) ?? null;
+  }
   return (
     <Frame of={of} label={props.label} description={props.description} field={props}>
       <ComboboxOver
@@ -497,15 +507,16 @@ export interface DateTimeFieldProps extends ArcFieldProps {
  */
 export function DateTimeField(props: DateTimeFieldProps) {
   const of = control<ZonedDateTime | null>();
-  const shown = (): ZonedDateTime | null => {
+  function shown(): ZonedDateTime | null {
     const value = of.field().state.value ?? null;
     if (value === null || props.timeZone === undefined) return value;
     return toTimeZone(value, props.timeZone);
-  };
-  const placeholder = (): ZonedDateTime | undefined =>
-    props.timeZone === undefined
+  }
+  function placeholder(): ZonedDateTime | undefined {
+    return props.timeZone === undefined
       ? undefined
       : now(props.timeZone).set({ minute: 0, second: 0, millisecond: 0 });
+  }
   return (
     <Frame of={of} label={props.label} description={props.description} field={props} labelledById>
       <AriaDateField<ZonedDateTime>
@@ -696,17 +707,18 @@ export const useArcForm = arcForm.useAppForm;
 export const withArcForm = arcForm.withForm;
 export const withArcFieldGroup = arcForm.withFieldGroup;
 
+export interface ArcFormExtension<TField extends Components, TForm extends Components> {
+  fieldComponents?: TField;
+  formComponents?: TForm;
+}
+
 /**
  * arc's form hook with an app's own field and form components added, under
  * names that must not collide with arc's.
  */
-export function createArcForm<
-  const TField extends Components,
-  const TForm extends Components,
->(extension: {
-  fieldComponents?: TField;
-  formComponents?: TForm;
-}): FormHook<typeof arcFieldComponents & TField, typeof arcFormComponents & TForm> {
+export function createArcForm<const TField extends Components, const TForm extends Components>(
+  extension: ArcFormExtension<TField, TForm>,
+): FormHook<typeof arcFieldComponents & TField, typeof arcFormComponents & TForm> {
   for (const name of Object.keys(extension.fieldComponents ?? {})) {
     if (name in arcFieldComponents) throw new Error(`arc already has a field named ${name}`);
   }

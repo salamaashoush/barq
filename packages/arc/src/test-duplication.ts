@@ -16,19 +16,25 @@ import { createRequire } from "node:module";
 import { dirname } from "node:path";
 import { SHORTHANDS } from "@barqjs/css/internal";
 
+interface Transformed {
+  code: string;
+  css?: string;
+  map?: string;
+  warnings?: string[];
+  cssWanted?: string[][];
+  cssExports?: string[][];
+  diagnostics?: Diagnostic[];
+}
+
+interface Diagnostic {
+  code: string;
+  severity: string;
+  message: string;
+  pos: number;
+}
+
 interface Native {
-  transform(
-    code: string,
-    options: Record<string, unknown>,
-  ): {
-    code: string;
-    css?: string;
-    map?: string;
-    warnings?: string[];
-    cssWanted?: string[][];
-    cssExports?: string[][];
-    diagnostics?: { code: string; severity: string; message: string; pos: number }[];
-  };
+  transform(code: string, options: Record<string, unknown>): Transformed;
 }
 
 const native = createRequire(import.meta.url)("@barqjs/compiler") as Native;
@@ -194,10 +200,14 @@ const ATOMS = /(?<![\w-])(a-[\w-]+_[a-z0-9]+(?: a-[\w-]+_[a-z0-9]+)*)(?![\w-])/g
 
 const VLQ = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
+interface SourceMap {
+  mappings: string;
+}
+
 /** The source line each generated line's first mapping points at, from a source map. */
 function sourceLines(map: string | undefined): number[] {
   if (map === undefined) return [];
-  const mappings = (JSON.parse(map) as { mappings: string }).mappings;
+  const mappings = (JSON.parse(map) as SourceMap).mappings;
   const out: number[] = [];
   let sourceLine = 0;
   for (const line of mappings.split(";")) {
@@ -228,14 +238,27 @@ function sourceLines(map: string | undefined): number[] {
   return out;
 }
 
+interface Binding {
+  name: string;
+  start: number;
+  end: number;
+}
+
 /** Top-level `const` bindings of compiled code, with where each one's initialiser runs. */
-function bindings(code: string): { name: string; start: number; end: number }[] {
+function bindings(code: string): Binding[] {
   const found = [...code.matchAll(/^(?:export )?const (\w+) = /gm)];
   return found.map((match, index) => ({
     name: match[1] ?? "",
     start: (match.index ?? 0) + match[0].length,
     end: found[index + 1]?.index ?? code.length,
   }));
+}
+
+interface RawPlace {
+  line: number;
+  label: string;
+  name: string | undefined;
+  classes: string[];
 }
 
 /** Every rule group a module writes, less what it composed from groups declared elsewhere. */
@@ -246,7 +269,7 @@ export function placesIn(file: string, bareFrom: string, shown = file): Place[] 
   const source = readFileSync(file, "utf8");
   const lines = sourceLines(compiled.map);
   const consts = bindings(code);
-  const raw: { line: number; label: string; name: string | undefined; classes: string[] }[] = [];
+  const raw: RawPlace[] = [];
   for (const match of code.matchAll(ATOMS)) {
     const at = match.index ?? 0;
     const classes = (match[1] ?? "").split(" ").filter((one) => own.has(one));

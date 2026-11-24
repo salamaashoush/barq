@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child, createSignal, flush } from "@barqjs/core";
+import { createSignal, flush, type ParentProps } from "@barqjs/core";
 import type { Key } from "@barqjs/aria/collections";
 import { dragAndDrop } from "@barqjs/aria/drag-and-drop";
 import { provideLocale } from "@barqjs/aria/i18n";
@@ -61,7 +61,7 @@ describe("TreeView", () => {
   });
 
   test("right to left, Left opens", async () => {
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }

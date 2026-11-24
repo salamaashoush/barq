@@ -125,7 +125,9 @@ export function ResponsiveTabs(props: ResponsiveTabsProps) {
       if (next !== undefined) props.onSelectionChange?.(next);
     },
   );
-  const scrolls = (): boolean => props.overflow === "scroll";
+  function scrolls(): boolean {
+    return props.overflow === "scroll";
+  }
 
   const { hidden } = overflowItems({
     wrapperRef: bar,
@@ -136,29 +138,33 @@ export function ResponsiveTabs(props: ResponsiveTabsProps) {
     keys: () => props.items.map((one) => one.id),
     keep: selected,
   });
-  const shown = (): readonly TabItem[] =>
-    props.items.filter((one) => !hidden().has(one.id) || one.id === selected());
-  const folded = (): readonly TabItem[] =>
-    props.items.filter((one) => hidden().has(one.id) && one.id !== selected());
+  function shown(): readonly TabItem[] {
+    return props.items.filter((one) => !hidden().has(one.id) || one.id === selected());
+  }
+  function folded(): readonly TabItem[] {
+    return props.items.filter((one) => hidden().has(one.id) && one.id !== selected());
+  }
 
   const [ends, setEnds] = createSignal({ back: false, forward: false }, { ownedWrite: true });
-  const edges = (element: HTMLDivElement): void => {
+  function edges(element: HTMLDivElement): void {
     const along = Math.abs(element.scrollLeft);
     const room = element.scrollWidth - element.clientWidth;
     setEnds({ back: along > 1, forward: room - along > 1 });
-  };
-  const scrollBy = (forward: boolean): void => {
+  }
+  function scrollBy(forward: boolean): void {
     const element = viewport();
     if (element === null) return;
     const step = element.clientWidth * 0.8 * (forward ? 1 : -1);
     element.scrollBy({ left: direction() === "rtl" ? -step : step, behavior: "smooth" });
-  };
+  }
   if (!isServer) {
     createEffect(
       () => [viewport(), scrolls()] as const,
       ([element, on]) => {
         if (element === null || !on) return undefined;
-        const measure = (): void => edges(element);
+        const measure: () => void = () => {
+          edges(element);
+        };
         measure();
         const observer =
           typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(measure);
@@ -179,25 +185,29 @@ export function ResponsiveTabs(props: ResponsiveTabsProps) {
       },
     );
   }
-  const cls = (): Slots => parts(responsiveTabsStyles(), props.classes);
-  const scrollButton = (forward: boolean) => (
-    <button
-      type="button"
-      tabIndex={-1}
-      aria-hidden="true"
-      class={arc(buttonVariants({ variant: "ghost", size: "icon-sm" }), cls().scroll)}
-      data-slot="responsive-tabs-scroll"
-      data-direction={forward ? "forward" : "back"}
-      data-hidden={(forward ? ends().forward : ends().back) ? undefined : ""}
-      onClick={() => scrollBy(forward)}
-    >
-      {forward ? (
-        <ChevronRight class={icon.directional} />
-      ) : (
-        <ChevronLeft class={icon.directional} />
-      )}
-    </button>
-  );
+  function cls(): Slots {
+    return parts(responsiveTabsStyles(), props.classes);
+  }
+  function scrollButton(forward: boolean) {
+    return (
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-hidden="true"
+        class={arc(buttonVariants({ variant: "ghost", size: "icon-sm" }), cls().scroll)}
+        data-slot="responsive-tabs-scroll"
+        data-direction={forward ? "forward" : "back"}
+        data-hidden={(forward ? ends().forward : ends().back) ? undefined : ""}
+        onClick={() => scrollBy(forward)}
+      >
+        {forward ? (
+          <ChevronRight class={icon.directional} />
+        ) : (
+          <ChevronLeft class={icon.directional} />
+        )}
+      </button>
+    );
+  }
 
   return (
     <Tabs<TabItem>

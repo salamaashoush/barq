@@ -89,7 +89,9 @@ export interface SettingsLayoutProps extends Customisable<Slots> {
  */
 export function SettingsLayout(props: SettingsLayoutProps) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(settingsStyles(), props.classes);
+  function cls(): Slots {
+    return parts(settingsStyles(), props.classes);
+  }
   return (
     <div
       class={arc(cls().root, props.class, props.className)}
@@ -113,7 +115,12 @@ export function SettingsLayout(props: SettingsLayoutProps) {
   );
 }
 
-function BackLink(props: { target: LinkTarget; classes: Slots }) {
+interface BackLinkProps {
+  target: LinkTarget;
+  classes: Slots;
+}
+
+function BackLink(props: BackLinkProps) {
   const messages = useArcMessages();
   const link = routerLink(untrack(() => props.target));
   return (
@@ -154,7 +161,9 @@ export interface SettingsSectionProps extends Customisable<Slots> {
 /** One block of settings: a heading, a line about it, its fields and the bar that saves them. */
 export function SettingsSection(props: SettingsSectionProps) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(settingsStyles(), props.classes);
+  function cls(): Slots {
+    return parts(settingsStyles(), props.classes);
+  }
   const headingId = `${props.id ?? "settings"}-heading`;
   const form = untrack(() => props.form);
   const hasRouter = maybeRouter() !== undefined;
@@ -168,7 +177,7 @@ export function SettingsSection(props: SettingsSectionProps) {
           canSubmit: current.canSubmit,
         }));
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const submit = async (event: Event): Promise<void> => {
+  async function submit(event: Event): Promise<void> {
     event.preventDefault();
     if (form === undefined) return;
     await form.handleSubmit();
@@ -180,48 +189,52 @@ export function SettingsSection(props: SettingsSectionProps) {
       clearTimeout(timer);
       timer = setTimeout(() => setSaved(false), 3000);
     }
-  };
+  }
 
-  const bar = () => (
-    <div class={cls().footer} data-slot="settings-section-footer">
-      <span class={cls().hint}>{props.hint}</span>
-      <Show when={saved() && state?.().isDirty !== true}>
-        <span class={cls().saved} role="status" data-slot="settings-section-saved">
-          <Check aria-hidden="true" />
-          {messages().saved}
-        </span>
-      </Show>
-      <Show when={form !== undefined} fallback={props.footer}>
-        <Button
-          type="submit"
-          isPending={state?.().isSubmitting === true}
-          isDisabled={state?.().isDirty !== true || !state().canSubmit}
-          data-slot="settings-section-submit"
-        >
-          {props.submitLabel ?? messages().save}
-        </Button>
-      </Show>
-    </div>
-  );
-
-  const content = () => (
-    <>
-      <header class={cls().header} data-slot="settings-section-header">
-        <h2 id={headingId} class={cls().heading} data-slot="settings-section-heading">
-          {props.heading}
-        </h2>
-        <Show when={props.description !== undefined}>
-          <p class={cls().description} data-slot="settings-section-description">
-            {props.description}
-          </p>
+  function bar() {
+    return (
+      <div class={cls().footer} data-slot="settings-section-footer">
+        <span class={cls().hint}>{props.hint}</span>
+        <Show when={saved() && state?.().isDirty !== true}>
+          <span class={cls().saved} role="status" data-slot="settings-section-saved">
+            <Check aria-hidden="true" />
+            {messages().saved}
+          </span>
         </Show>
-      </header>
-      <div class={cls().body} data-slot="settings-section-body">
-        {props.children}
+        <Show when={form !== undefined} fallback={props.footer}>
+          <Button
+            type="submit"
+            isPending={state?.().isSubmitting === true}
+            isDisabled={state?.().isDirty !== true || !state().canSubmit}
+            data-slot="settings-section-submit"
+          >
+            {props.submitLabel ?? messages().save}
+          </Button>
+        </Show>
       </div>
-      <Show when={form !== undefined || props.footer !== undefined}>{bar()}</Show>
-    </>
-  );
+    );
+  }
+
+  function content() {
+    return (
+      <>
+        <header class={cls().header} data-slot="settings-section-header">
+          <h2 id={headingId} class={cls().heading} data-slot="settings-section-heading">
+            {props.heading}
+          </h2>
+          <Show when={props.description !== undefined}>
+            <p class={cls().description} data-slot="settings-section-description">
+              {props.description}
+            </p>
+          </Show>
+        </header>
+        <div class={cls().body} data-slot="settings-section-body">
+          {props.children}
+        </div>
+        <Show when={form !== undefined || props.footer !== undefined}>{bar()}</Show>
+      </>
+    );
+  }
 
   return (
     <section
@@ -269,10 +282,12 @@ export interface DangerZoneProps extends Customisable<Slots> {
 /** The actions that cannot be undone, each with a line about it and a button that asks first. */
 export function DangerZone(props: DangerZoneProps) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(settingsStyles(), props.classes);
+  function cls(): Slots {
+    return parts(settingsStyles(), props.classes);
+  }
   const [running, setRunning] = createSignal<string | null>(null);
   const [failed, setFailed] = createSignal<string | null>(null);
-  const run = async (action: DangerAction): Promise<void> => {
+  async function run(action: DangerAction): Promise<void> {
     const sure = await confirm({ ...action.confirm, tone: "danger" });
     if (!sure) return;
     setFailed(null);
@@ -284,7 +299,7 @@ export function DangerZone(props: DangerZoneProps) {
     } finally {
       setRunning(null);
     }
-  };
+  }
   return (
     <section
       class={arc(cls().section, cls().danger, props.class, props.className)}

@@ -96,9 +96,12 @@ export interface LinkProps extends Customisable<Slots> {
  */
 export function Link(props: LinkProps) {
   const messages = useArcMessages();
-  const external = (): boolean => props.external ?? isExternalHref(props.href);
-  const cls = (): Slots =>
-    parts(linkStyles({ color: props.color, underline: props.underline }), props.classes);
+  function external(): boolean {
+    return props.external ?? isExternalHref(props.href);
+  }
+  function cls(): Slots {
+    return parts(linkStyles({ color: props.color, underline: props.underline }), props.classes);
+  }
   return (
     <AriaLink
       id={props.id}

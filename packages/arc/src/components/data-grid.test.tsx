@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child, createSignal } from "@barqjs/core";
+import { createSignal, type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user, waitFor, within } from "@barqjs/testing";
 
@@ -55,10 +55,16 @@ const COLUMNS: (DataGridColumn<Line> | DataGridColumnGroup<Line>)[] = [
   { id: "approved", header: "Approved", type: "checkbox" },
 ];
 
-function Budget(props: { groupBy?: string; onAdd?: () => void; virtual?: boolean }) {
+interface BudgetProps {
+  groupBy?: string;
+  onAdd?: () => void;
+  virtual?: boolean;
+}
+
+function Budget(props: BudgetProps) {
   const [lines, setLines] = createSignal<Line[]>(LINES.map((line) => ({ ...line })));
   const [dirty, setDirty] = createSignal<ReadonlySet<string>>(new Set());
-  const apply = (changes: DataGridChange<Line>[]) => {
+  function apply(changes: DataGridChange<Line>[]) {
     changed.push(...changes);
     const next = lines().map((line) => ({ ...line }));
     for (const one of changes) {
@@ -67,7 +73,7 @@ function Budget(props: { groupBy?: string; onAdd?: () => void; virtual?: boolean
     }
     setLines(next);
     setDirty(new Set([...dirty(), ...changes.map((one) => `${one.rowId}:${one.columnId}`)]));
-  };
+  }
   return (
     <DataGrid
       label="Budget"
@@ -90,7 +96,12 @@ function cell(row: number, column: number): HTMLElement {
   return within(rows[row] as HTMLElement).getAllByRole("gridcell")[column] as HTMLElement;
 }
 
-async function key(text: string, options: { shiftKey?: boolean; ctrlKey?: boolean } = {}) {
+interface KeyModifiers {
+  shiftKey?: boolean;
+  ctrlKey?: boolean;
+}
+
+async function key(text: string, options: KeyModifiers = {}) {
   await user.keyboard(text, options);
   await settle();
 }
@@ -272,7 +283,7 @@ describe("DataGrid", () => {
   });
 
   test("right to left, the arrows follow the reading direction", async () => {
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }

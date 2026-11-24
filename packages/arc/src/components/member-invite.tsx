@@ -24,9 +24,14 @@ export interface InviteDraft {
   role: string;
 }
 
+export interface RejectedInvite {
+  email: string;
+  reason: string;
+}
+
 /** The addresses a server refused, each with why; the rest were invited. */
 export interface InviteResult {
-  rejected?: readonly { email: string; reason: string }[];
+  rejected?: readonly RejectedInvite[];
 }
 
 export interface PendingInvite {
@@ -101,7 +106,9 @@ export interface MemberInviteProps extends Customisable<Slots> {
  */
 export function MemberInvite(props: MemberInviteProps) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(memberInviteStyles(), props.classes);
+  function cls(): Slots {
+    return parts(memberInviteStyles(), props.classes);
+  }
   const form = useArcForm(() => ({
     defaultValues: {
       emails: [] as string[],
@@ -128,10 +135,10 @@ export function MemberInvite(props: MemberInviteProps) {
     },
   }));
 
-  const validate = (email: string): string | undefined => {
+  function validate(email: string): string | undefined {
     if (!EMAIL.test(email)) return messages().invalidEmail(email);
     return props.validateEmail?.(email);
-  };
+  }
 
   return (
     <form.AppForm>
@@ -184,11 +191,16 @@ function roleLabel(roles: readonly FieldOption[], role: string): string {
   return roles.find((one) => one.value === role)?.label ?? role;
 }
 
+interface BusyKeys {
+  get: () => ReadonlySet<string>;
+  set: (next: ReadonlySet<string>) => void;
+}
+
 /** Run `outcome` with `key` marked busy, and mark `key` failed if it rejects. */
 function tracked(
   outcome: Outcome,
   key: string,
-  busy: { get: () => ReadonlySet<string>; set: (next: ReadonlySet<string>) => void },
+  busy: BusyKeys,
   failed: (key: string | null) => void,
 ): void {
   if (!(outcome instanceof Promise)) return;
@@ -226,12 +238,14 @@ export interface PendingInvitesProps extends Customisable<Slots> {
  */
 export function PendingInvites(props: PendingInvitesProps) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(memberInviteStyles(), props.classes);
+  function cls(): Slots {
+    return parts(memberInviteStyles(), props.classes);
+  }
   const [busy, setBusy] = createSignal<ReadonlySet<string>>(new Set());
   const [failed, setFailed] = createSignal<string | null>(null);
   const keep = { get: busy, set: setBusy };
 
-  const revoke = async (invite: PendingInvite): Promise<void> => {
+  async function revoke(invite: PendingInvite): Promise<void> {
     const sure = await confirm({
       title: messages().revokeInviteHeading(invite.email),
       description: messages().revokeInviteDescription,
@@ -239,7 +253,7 @@ export function PendingInvites(props: PendingInvitesProps) {
       tone: "danger",
     });
     if (sure) tracked(props.onRevoke?.(invite), invite.id, keep, setFailed);
-  };
+  }
 
   return (
     <div class={arc(cls().root, props.class, props.className)} data-slot="pending-invites">
@@ -327,7 +341,9 @@ const EXPIRY_DAYS = ["1", "7", "30", ""] as const;
  */
 export function InviteLinks(props: InviteLinksProps) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(memberInviteStyles(), props.classes);
+  function cls(): Slots {
+    return parts(memberInviteStyles(), props.classes);
+  }
   const [busy, setBusy] = createSignal<ReadonlySet<string>>(new Set());
   const [failed, setFailed] = createSignal<string | null>(null);
   const keep = { get: busy, set: setBusy };
@@ -347,7 +363,7 @@ export function InviteLinks(props: InviteLinksProps) {
     },
   }));
 
-  const deactivate = async (link: InviteLink): Promise<void> => {
+  async function deactivate(link: InviteLink): Promise<void> {
     const sure = await confirm({
       title: messages().deactivateLinkHeading,
       description: messages().deactivateLinkDescription,
@@ -355,10 +371,11 @@ export function InviteLinks(props: InviteLinksProps) {
       tone: "danger",
     });
     if (sure) tracked(props.onDeactivate?.(link), link.id, keep, setFailed);
-  };
+  }
 
-  const expiry = (days: string): string =>
-    days === "" ? messages().never : messages().inDays(Number(days));
+  function expiry(days: string): string {
+    return days === "" ? messages().never : messages().inDays(Number(days));
+  }
 
   return (
     <div class={arc(cls().root, props.class, props.className)} data-slot="invite-links">

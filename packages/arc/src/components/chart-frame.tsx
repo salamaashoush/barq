@@ -35,9 +35,14 @@ export interface TonedSeries {
  */
 export type ChartTableMode = "hidden" | "toggle" | "visible";
 
+export interface ChartTableColumn {
+  label: string;
+  numeric?: boolean;
+}
+
 /** A chart's numbers as a table: a header per column, and each row's cells as written. */
 export interface ChartTableData {
-  columns: readonly { label: string; numeric?: boolean }[];
+  columns: readonly ChartTableColumn[];
   /** The first cell of each row is its header. */
   rows: readonly (readonly string[])[];
 }
@@ -67,6 +72,11 @@ export function chartNumbers(options?: Intl.NumberFormatOptions): (value: number
   return (value) => formatter().format(value);
 }
 
+export interface FocusRead {
+  label: string;
+  item: ChartPayloadItem;
+}
+
 /**
  * What ui's tooltip is told about the points a plot reports focused: the
  * topmost of them is where it goes, `read` names each datum.
@@ -74,7 +84,7 @@ export function chartNumbers(options?: Intl.NumberFormatOptions): (value: number
 export function focusOf(
   points: readonly ChartPoint[],
   origin: ChartOrigin,
-  read: (datum: unknown) => { label: string; item: ChartPayloadItem } | undefined,
+  read: (datum: unknown) => FocusRead | undefined,
 ): ChartFocus | null {
   const named = points.flatMap((point) => {
     const one = read(point.datum);
@@ -152,52 +162,56 @@ export interface ChartDataTableProps extends Customisable<ChartTableSlots> {
  * fallback for that drawing.
  */
 export function ChartDataTable(props: ChartDataTableProps) {
-  const cls = (): ChartTableSlots => parts(chartDataTableStyles(), props.classes);
-  const table = () => (
-    <table
-      class={arc(cls().table, props.class, props.className)}
-      id={props.id}
-      data-slot="chart-table"
-    >
-      <caption class={cls().caption} data-slot="chart-table-caption">
-        {props.label}
-      </caption>
-      <thead>
-        <tr>
-          <For each={props.data.columns}>
-            {(column) => (
-              <th
-                class={cls().header}
-                data-slot="chart-table-header"
-                data-numeric={column.numeric === true ? "" : undefined}
-                scope="col"
-              >
-                {column.label}
-              </th>
+  function cls(): ChartTableSlots {
+    return parts(chartDataTableStyles(), props.classes);
+  }
+  function table() {
+    return (
+      <table
+        class={arc(cls().table, props.class, props.className)}
+        id={props.id}
+        data-slot="chart-table"
+      >
+        <caption class={cls().caption} data-slot="chart-table-caption">
+          {props.label}
+        </caption>
+        <thead>
+          <tr>
+            <For each={props.data.columns}>
+              {(column) => (
+                <th
+                  class={cls().header}
+                  data-slot="chart-table-header"
+                  data-numeric={column.numeric === true ? "" : undefined}
+                  scope="col"
+                >
+                  {column.label}
+                </th>
+              )}
+            </For>
+          </tr>
+        </thead>
+        <tbody>
+          <For each={props.data.rows}>
+            {(row) => (
+              <tr>
+                <th class={cls().header} data-slot="chart-table-header" scope="row">
+                  {row[0]}
+                </th>
+                <For each={row.slice(1)}>
+                  {(value) => (
+                    <td class={cls().cell} data-slot="chart-table-cell">
+                      {value}
+                    </td>
+                  )}
+                </For>
+              </tr>
             )}
           </For>
-        </tr>
-      </thead>
-      <tbody>
-        <For each={props.data.rows}>
-          {(row) => (
-            <tr>
-              <th class={cls().header} data-slot="chart-table-header" scope="row">
-                {row[0]}
-              </th>
-              <For each={row.slice(1)}>
-                {(value) => (
-                  <td class={cls().cell} data-slot="chart-table-cell">
-                    {value}
-                  </td>
-                )}
-              </For>
-            </tr>
-          )}
-        </For>
-      </tbody>
-    </table>
-  );
+        </tbody>
+      </table>
+    );
+  }
   // Hidden inside a box rather than on the table itself: a table is never
   // narrower than its content, so `srOnly`'s one pixel cannot hold it, and an
   // absolute table as wide as its columns widens a narrow page.
@@ -255,8 +269,12 @@ export function ChartFrame(props: ChartFrameProps) {
   const messages = useArcMessages();
   const tableId = createUniqueId();
   const [open, setOpen] = createSignal(false);
-  const mode = (): ChartTableMode => props.table ?? "hidden";
-  const shown = (): boolean => mode() === "visible" || (mode() === "toggle" && open());
+  function mode(): ChartTableMode {
+    return props.table ?? "hidden";
+  }
+  function shown(): boolean {
+    return mode() === "visible" || (mode() === "toggle" && open());
+  }
   return (
     <div class={props.class} id={props.id} data-slot={props.slot} {...props.attributes}>
       <ChartContainer class={props.cls.chart} config={props.config}>

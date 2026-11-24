@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child, DEV, createSignal, flush } from "@barqjs/core";
+import { DEV, createSignal, flush, type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import type { ColumnVisibilityState, SortingState } from "@barqjs/table";
 import { ariaViolations, render, screen, tick, user, waitFor, within } from "@barqjs/testing";
@@ -34,11 +34,15 @@ const COLUMNS: DataTableColumn<Invoice>[] = [
   { accessorKey: "total", header: "Total", align: "end" },
 ];
 
-const bodyRows = (): HTMLElement[] =>
-  screen.getAllByRole("row").filter((row) => row.getAttribute("data-slot") === "data-table-row");
+function bodyRows(): HTMLElement[] {
+  return screen
+    .getAllByRole("row")
+    .filter((row) => row.getAttribute("data-slot") === "data-table-row");
+}
 
-const texts = (): string[] =>
-  bodyRows().map((row) => row.querySelector('[role="rowheader"]')?.textContent ?? "");
+function texts(): string[] {
+  return bodyRows().map((row) => row.querySelector('[role="rowheader"]')?.textContent ?? "");
+}
 
 describe("DataTable", () => {
   test("is a grid named by its label, with a header row and a row per record", async () => {
@@ -59,10 +63,20 @@ describe("DataTable", () => {
   });
 });
 
+interface HappyWindow {
+  happyDOM: HappyPage;
+}
+
+interface HappyPage {
+  setViewport(size: ViewportSize): void;
+}
+
+interface ViewportSize {
+  width: number;
+}
+
 function viewport(width: number): void {
-  (
-    window as unknown as { happyDOM: { setViewport(size: { width: number }): void } }
-  ).happyDOM.setViewport({
+  (window as unknown as HappyWindow).happyDOM.setViewport({
     width,
   });
 }
@@ -179,8 +193,12 @@ describe("DataTable sorting", () => {
   });
 });
 
+interface SelectingProps {
+  onArchive?: (rows: readonly Invoice[]) => void;
+}
+
 describe("DataTable selection", () => {
-  function Selecting(props: { onArchive?: (rows: readonly Invoice[]) => void }) {
+  function Selecting(props: SelectingProps) {
     return (
       <>
         <DataTable
@@ -571,14 +589,19 @@ describe("DataTable rows", () => {
   });
 });
 
+interface LongProps {
+  data: Invoice[];
+}
+
 describe("DataTable over a long list", () => {
-  const invoices = (from: number, count: number): Invoice[] =>
-    Array.from({ length: count }, (_, at) => ({
+  function invoices(from: number, count: number): Invoice[] {
+    return Array.from({ length: count }, (_, at) => ({
       id: `r${String(from + at)}`,
       number: `INV-${String(from + at).padStart(3, "0")}`,
       customer: "Acme",
       total: from + at,
     }));
+  }
 
   /** happy-dom lays nothing out, so the grid is told what a browser would report. */
   function scrollGrid(top: number): HTMLElement {
@@ -591,10 +614,11 @@ describe("DataTable over a long list", () => {
     return grid;
   }
 
-  const rowOf = (element: Element | null): HTMLElement | null =>
-    element?.closest('[role="row"]') ?? null;
+  function rowOf(element: Element | null): HTMLElement | null {
+    return element?.closest('[role="row"]') ?? null;
+  }
 
-  function Long(props: { data: Invoice[] }) {
+  function Long(props: LongProps) {
     return (
       <DataTable
         label="Invoices"
@@ -685,10 +709,11 @@ describe("DataTable as a tree", () => {
     { accessorKey: "name", header: "Team" },
     { accessorKey: "size", header: "People", align: "end" },
   ];
-  const names = (): string[] =>
-    [...document.querySelectorAll('[data-slot="data-table-row"]')].map(
+  function names(): string[] {
+    return [...document.querySelectorAll('[data-slot="data-table-row"]')].map(
       (row) => row.querySelector('[data-slot="data-table-cell"]')?.textContent ?? "",
     );
+  }
 
   test("a tree grid whose parents open on their button, a level per depth", async () => {
     const opened: string[][] = [];
@@ -720,7 +745,7 @@ describe("DataTable as a tree", () => {
   });
 
   test("the arrows open and close a parent from its tree cell, in the reading direction", async () => {
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }

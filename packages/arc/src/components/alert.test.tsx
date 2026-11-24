@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child } from "@barqjs/core";
+import { type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user } from "@barqjs/testing";
 
@@ -46,7 +46,7 @@ describe("InlineAlert", () => {
   });
 
   test("its dismiss button takes a tap and arc's words", async () => {
-    function German(props: { children?: Child }) {
+    function German(props: ParentProps) {
       provideArcMessages(() => ({ dismiss: "Schließen" }));
       return <>{props.children}</>;
     }
@@ -62,7 +62,7 @@ describe("InlineAlert", () => {
   });
 
   test("in a right-to-left page the icon leads and dismiss ends the line", () => {
-    function Rtl(props: { children?: Child }) {
+    function Rtl(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }
@@ -97,7 +97,9 @@ describe("InlineAlert", () => {
         Body
       </InlineAlert>
     ));
-    const by = (slot: string): Element | null => document.querySelector(`[data-slot="${slot}"]`);
+    function by(slot: string): Element | null {
+      return document.querySelector(`[data-slot="${slot}"]`);
+    }
     expect(by("inline-alert")?.classList.contains("mine")).toBe(true);
     for (const [slot, name] of [
       ["inline-alert-icon", "i"],

@@ -48,6 +48,11 @@ export const donutChartStyles = variants({
 
 export type DonutChartSlots = ReturnType<typeof donutChartStyles>;
 
+export interface DonutChartRenders {
+  centreValue?: RenderPart<Child>;
+  centreLabel?: RenderPart<Child>;
+}
+
 export interface DonutChartProps extends ChartBaseProps<DonutChartSlots> {
   data: readonly DonutSlice[];
   /** In the hole. @default the slices' total, written in the locale */
@@ -63,7 +68,7 @@ export interface DonutChartProps extends ChartBaseProps<DonutChartSlots> {
   /** The table's first column's header. @default the provider's `chartCategory`, "Category" */
   categoryLabel?: string;
   /** Another element for the centre's value or label: a link, a heading. */
-  renders?: { centreValue?: RenderPart<Child>; centreLabel?: RenderPart<Child> };
+  renders?: DonutChartRenders;
 }
 
 /**
@@ -88,18 +93,27 @@ export function DonutChart(props: DonutChartProps) {
   const messages = useArcMessages();
   const number = chartNumbers(props.formatOptions);
   const percent = chartNumbers({ style: "percent", maximumFractionDigits: 1 });
-  const cls = (): DonutChartSlots => parts(donutChartStyles(), props.classes);
-  const series = (): TonedSeries[] =>
-    props.data.map((slice) => ({
+  function cls(): DonutChartSlots {
+    return parts(donutChartStyles(), props.classes);
+  }
+  function series(): TonedSeries[] {
+    return props.data.map((slice) => ({
       key: slice.key,
       label: slice.label,
       tone: slice.tone,
       color: slice.color,
     }));
-  const total = (): number => props.data.reduce((sum, slice) => sum + Math.max(0, slice.value), 0);
-  const share = (value: number): string => percent(total() === 0 ? 0 : value / total());
+  }
+  function total(): number {
+    return props.data.reduce((sum, slice) => sum + Math.max(0, slice.value), 0);
+  }
+  function share(value: number): string {
+    return percent(total() === 0 ? 0 : value / total());
+  }
 
-  const centreValue = (): Child => props.centreValue ?? number(total());
+  function centreValue(): Child {
+    return props.centreValue ?? number(total());
+  }
   return (
     <ChartFrame
       slot="donut-chart"
@@ -163,16 +177,19 @@ export function DonutChart(props: DonutChartProps) {
   );
 }
 
-const isSlice = (datum: unknown): datum is DonutSlice =>
-  typeof datum === "object" && datum !== null && "key" in datum && "value" in datum;
+function isSlice(datum: unknown): datum is DonutSlice {
+  return typeof datum === "object" && datum !== null && "key" in datum && "value" in datum;
+}
 
-function DonutPlot(props: {
+interface DonutPlotProps {
   data: readonly DonutSlice[];
   label: string;
   height?: number;
   hole?: number;
   write: (value: number) => string;
-}) {
+}
+
+function DonutPlot(props: DonutPlotProps) {
   const scope = useChart();
   const definition = createMemo((): ChartDefinition =>
     defineChart({

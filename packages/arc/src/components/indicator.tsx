@@ -105,22 +105,27 @@ export interface IndicatorProps extends Customisable<Slots> {
 export function Indicator(props: IndicatorProps) {
   const messages = useArcMessages();
   const format = numberFormatter();
-  const anchored = (): boolean => props.children !== undefined;
-  const dot = (): boolean => props.dot === true;
-  const shown = (): boolean =>
-    dot() || (props.count !== undefined && (props.count > 0 || props.showZero === true));
-  const written = (): string => {
+  function anchored(): boolean {
+    return props.children !== undefined;
+  }
+  function dot(): boolean {
+    return props.dot === true;
+  }
+  function shown(): boolean {
+    return dot() || (props.count !== undefined && (props.count > 0 || props.showZero === true));
+  }
+  function written(): string {
     const count = props.count ?? 0;
     const max = props.max ?? 99;
     return count > max ? `${format().format(max)}+` : format().format(count);
-  };
-  const words = (): string | undefined => {
+  }
+  function words(): string | undefined {
     if (props.label !== undefined) return props.label;
     if (!anchored()) return undefined;
     return dot() ? messages().newItem : messages().newCount(written());
-  };
-  const cls = (): Slots =>
-    parts(
+  }
+  function cls(): Slots {
+    return parts(
       indicatorStyles({
         tone: props.tone,
         variant: props.variant,
@@ -130,6 +135,7 @@ export function Indicator(props: IndicatorProps) {
       }),
       props.classes,
     );
+  }
   return (
     <span
       class={arc(cls().root, props.class, props.className)}

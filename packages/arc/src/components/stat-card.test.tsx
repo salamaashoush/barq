@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child } from "@barqjs/core";
+import { type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen } from "@barqjs/testing";
 
@@ -47,7 +47,7 @@ describe("StatCard", () => {
   });
 
   test("takes a description of its own, and formats the numbers in the locale", () => {
-    function Locale(props: { children?: Child }) {
+    function Locale(props: ParentProps) {
       provideLocale("de-DE");
       return <>{props.children}</>;
     }

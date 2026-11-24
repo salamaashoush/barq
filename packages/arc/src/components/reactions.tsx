@@ -67,11 +67,13 @@ export interface ReactionBarProps extends Customisable<Slots> {
  */
 export function ReactionBar(props: ReactionBarProps) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(reactionBarStyles(), props.classes);
-  const pick = (emoji: string): void => {
+  function cls(): Slots {
+    return parts(reactionBarStyles(), props.classes);
+  }
+  function pick(emoji: string): void {
     const held = props.reactions.find((one) => one.emoji === emoji);
     if (held?.reacted !== true) props.onReact?.(emoji, true);
-  };
+  }
   return (
     <div
       class={arc(cls().root, props.class, props.className)}

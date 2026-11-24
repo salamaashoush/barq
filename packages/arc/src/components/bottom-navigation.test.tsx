@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child, createSignal, flush } from "@barqjs/core";
+import { createSignal, flush, type ParentProps } from "@barqjs/core";
 import { collectCss } from "@barqjs/css";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { House } from "@barqjs/lucide/icons/house";
@@ -108,7 +108,7 @@ describe("BottomNavigation", () => {
   });
 
   test("reads right to left and takes the locale's words", () => {
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }

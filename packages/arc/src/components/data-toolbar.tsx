@@ -118,8 +118,9 @@ export const dataToolbarStyles = variants({
 
 type Slots = ReturnType<typeof dataToolbarStyles>;
 
-const splitValues = (raw: string | null): string[] =>
-  raw === null || raw === "" ? [] : raw.split(",");
+function splitValues(raw: string | null): string[] {
+  return raw === null || raw === "" ? [] : raw.split(",");
+}
 
 /**
  * The row above a list: a search, a chip per filter, the view options, and
@@ -143,16 +144,20 @@ const splitValues = (raw: string | null): string[] =>
  */
 export function DataToolbar(props: DataToolbarProps) {
   const messages = useArcMessages();
-  const labels = (): Required<DataToolbarLabels> => ({
-    toolbar: messages().filters,
-    clear: messages().clearFilters,
-    view: messages().view,
-    columns: messages().columns,
-    selected: messages().selected,
-    clearSelection: messages().clearSelection,
-    ...props.labels,
-  });
-  const cls = (): Slots => parts(dataToolbarStyles(), props.classes);
+  function labels(): Required<DataToolbarLabels> {
+    return {
+      toolbar: messages().filters,
+      clear: messages().clearFilters,
+      view: messages().view,
+      columns: messages().columns,
+      selected: messages().selected,
+      clearSelection: messages().clearSelection,
+      ...props.labels,
+    };
+  }
+  function cls(): Slots {
+    return parts(dataToolbarStyles(), props.classes);
+  }
   const wantsUrl = untrack(
     () =>
       props.search?.param !== undefined ||
@@ -186,19 +191,24 @@ export function DataToolbar(props: DataToolbarProps) {
     );
   }
 
-  const valueOf = (filter: DataToolbarFilter): string[] => filters.get(filter.id)?.read() ?? [];
+  function valueOf(filter: DataToolbarFilter): string[] {
+    return filters.get(filter.id)?.read() ?? [];
+  }
 
-  const isFiltered = (): boolean =>
-    search.read() !== "" || (props.filters ?? []).some((filter) => valueOf(filter).length > 0);
+  function isFiltered(): boolean {
+    return (
+      search.read() !== "" || (props.filters ?? []).some((filter) => valueOf(filter).length > 0)
+    );
+  }
 
   // One navigation for every parameter: two in a row would each start from
   // the URL as it was, and the second would put back what the first removed.
-  const clear = (): void => {
+  function clear(): void {
     const removed = new Set<string>();
-    const empty = (held: Bound<string> | Bound<string[]>, notify: () => void): void => {
+    function empty(held: Bound<string> | Bound<string[]>, notify: () => void): void {
       if (held.param === undefined) notify();
       else removed.add(held.param);
-    };
+    }
     if (search.read() !== "") empty(search, () => search.write(""));
     for (const filter of props.filters ?? []) {
       const held = filters.get(filter.id);
@@ -211,17 +221,20 @@ export function DataToolbar(props: DataToolbarProps) {
         if (filter.param !== undefined && removed.has(filter.param)) filter.onChange?.([]);
       }
     }
-  };
+  }
 
   const [visibility, setVisibility] = controllable<ColumnVisibilityState>(
     () => props.columnVisibility,
     {},
     (next) => props.onColumnVisibilityChange?.(next),
   );
-  const setVisible = (id: string, visible: boolean): void =>
+  function setVisible(id: string, visible: boolean): void {
     setVisibility((current) => ({ ...current, [id]: visible }));
+  }
 
-  const selecting = (): boolean => (props.selection?.count ?? 0) > 0;
+  function selecting(): boolean {
+    return (props.selection?.count ?? 0) > 0;
+  }
 
   return (
     <div
@@ -335,17 +348,19 @@ interface FilterChipProps {
 function FilterChip(props: FilterChipProps) {
   const filter = props.filter;
   const multiple = filter.multiple !== false;
-  const active = (): boolean => props.value.length > 0;
-  const summary = (): string => {
+  function active(): boolean {
+    return props.value.length > 0;
+  }
+  function summary(): string {
     const names = filter.options
       .filter((option) => props.value.includes(option.value))
       .map((option) => option.label);
     return names.length > 2 ? props.summarise(names.length) : names.join(", ");
-  };
-  const toggle = (value: string, checked: boolean): void => {
+  }
+  function toggle(value: string, checked: boolean): void {
     const rest = props.value.filter((each) => each !== value);
     props.onChange(checked ? [...rest, value] : rest);
-  };
+  }
 
   return (
     <DropdownMenu>
@@ -402,7 +417,12 @@ function FilterChip(props: FilterChipProps) {
   );
 }
 
-function OptionCount(props: { count?: number; class: string }) {
+interface OptionCountProps {
+  count?: number;
+  class: string;
+}
+
+function OptionCount(props: OptionCountProps) {
   return (
     <Show when={props.count !== undefined}>
       <span class={props.class} data-slot="data-toolbar-option-count">

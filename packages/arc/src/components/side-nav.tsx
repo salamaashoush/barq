@@ -108,7 +108,9 @@ export interface SideNavProps extends Customisable<Slots> {
  * under a finger, their labels and sub-links left out.
  */
 export function SideNav(props: SideNavProps) {
-  const cls = (): Slots => parts(sideNavStyles({ collapse: props.collapse }), props.classes);
+  function cls(): Slots {
+    return parts(sideNavStyles({ collapse: props.collapse }), props.classes);
+  }
   return (
     <nav
       class={arc(cls().root, props.class, props.className)}
@@ -123,7 +125,12 @@ export function SideNav(props: SideNavProps) {
   );
 }
 
-function Group(props: { group: NavGroup; classes: Slots }) {
+interface GroupProps {
+  group: NavGroup;
+  classes: Slots;
+}
+
+function Group(props: GroupProps) {
   const labelId = createUniqueId();
   return (
     <div class={props.classes.group} data-slot="side-nav-group">
@@ -145,7 +152,12 @@ function Group(props: { group: NavGroup; classes: Slots }) {
   );
 }
 
-function Entry(props: { item: NavItem | NavSubItem; classes: Slots }) {
+interface EntryProps {
+  item: NavItem | NavSubItem;
+  classes: Slots;
+}
+
+function Entry(props: EntryProps) {
   const item = props.item;
   const link = item.to === undefined ? undefined : routerLink({ ...item, to: item.to });
   const badgeId = createUniqueId();

@@ -206,7 +206,9 @@ export function AppShell(props: AppShellProps) {
   const mainId = createUniqueId();
   const initiallyOpen = untrack(() => props.defaultOpen) ?? rememberedOpen();
   const messages = useArcMessages();
-  const cls = (): Slots => parts(appShellStyles(), props.classes);
+  function cls(): Slots {
+    return parts(appShellStyles(), props.classes);
+  }
 
   return (
     <SidebarProvider
@@ -266,7 +268,12 @@ export function AppShell(props: AppShellProps) {
   );
 }
 
-function NavGroupView(props: { group: NavGroup; classes: Slots }) {
+interface NavGroupViewProps {
+  group: NavGroup;
+  classes: Slots;
+}
+
+function NavGroupView(props: NavGroupViewProps) {
   const labelId = createUniqueId();
   const group = props.group;
   return (
@@ -291,7 +298,12 @@ function closeSheet(sidebar: ReturnType<typeof useSidebar>): void {
   if (sidebar.isMobile()) sidebar.setOpenMobile(false);
 }
 
-function NavEntry(props: { item: NavItem; classes: Slots }) {
+interface NavEntryProps {
+  item: NavItem;
+  classes: Slots;
+}
+
+function NavEntry(props: NavEntryProps) {
   const sidebar = useSidebar();
   const item = props.item;
   const badgeId = createUniqueId();
@@ -360,11 +372,13 @@ function NavEntry(props: { item: NavItem; classes: Slots }) {
   );
 }
 
-function NavSubEntry(props: {
+interface NavSubEntryProps {
   item: NavSubItem;
   sidebar: ReturnType<typeof useSidebar>;
   classes: Slots;
-}) {
+}
+
+function NavSubEntry(props: NavSubEntryProps) {
   const item = props.item;
   const sidebar = props.sidebar;
   const link = routerLink(item);

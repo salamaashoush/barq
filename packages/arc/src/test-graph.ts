@@ -16,7 +16,7 @@ export function importGraph(entry: string): ImportGraph {
   const transpiler = new Bun.Transpiler({ loader: "tsx" });
   const packages = new Map<string, Set<string>>();
   const files = new Set<string>();
-  const visit = (file: string): void => {
+  function visit(file: string): void {
     if (files.has(file)) return;
     files.add(file);
     const source = readFileSync(file, "utf8");
@@ -29,7 +29,7 @@ export function importGraph(entry: string): ImportGraph {
       set.add(one.kind);
       packages.set(one.path, set);
     }
-  };
+  }
   visit(entry);
   return { packages, files };
 }

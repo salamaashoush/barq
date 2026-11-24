@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { type Child, flush } from "@barqjs/core";
+import { flush, type ParentProps } from "@barqjs/core";
 import { type ColorScheme, colorScheme } from "@barqjs/primitives/color-scheme";
 import { ariaViolations, render, renderAndHydrate, screen, tick, user } from "@barqjs/testing";
 
@@ -12,9 +12,17 @@ async function settle(): Promise<void> {
   flush();
 }
 
+interface HappyWindow {
+  happyDOM: HappyPage;
+}
+
+interface HappyPage {
+  setURL(url: string): void;
+}
+
 // The choice is kept in a cookie, which happy-dom stores only for a document
 // with an origin.
-const page = (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM;
+const page = (window as unknown as HappyWindow).happyDOM;
 beforeAll(() => page.setURL("http://localhost/"));
 afterAll(() => page.setURL("about:blank"));
 beforeEach(() => {
@@ -24,7 +32,7 @@ beforeEach(() => {
 
 let scheme: ColorScheme | undefined;
 
-function Scheme(props: { children?: Child }) {
+function Scheme(props: ParentProps) {
   scheme = colorScheme();
   return <>{props.children}</>;
 }

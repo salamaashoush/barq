@@ -20,7 +20,12 @@ function slot(name: string): HTMLElement {
   return document.querySelector(`[data-slot="${name}"]`) as HTMLElement;
 }
 
-function Locale(props: { tag: string; children?: Child }) {
+interface LocaleProps {
+  tag: string;
+  children?: Child;
+}
+
+function Locale(props: LocaleProps) {
   provideLocale(props.tag);
   return <>{props.children}</>;
 }

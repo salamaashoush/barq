@@ -118,7 +118,9 @@ export interface BottomNavigationProps extends Customisable<Slots> {
   position?: "fixed" | "sticky" | "static";
 }
 
-const keyOf = (item: BottomNavItem): string => item.id ?? item.to ?? item.href ?? item.label;
+function keyOf(item: BottomNavItem): string {
+  return item.id ?? item.to ?? item.href ?? item.label;
+}
 
 /**
  * A phone's tab bar: the app's top destinations along the bottom of the
@@ -143,11 +145,12 @@ const keyOf = (item: BottomNavItem): string => item.id ?? item.to ?? item.href ?
  */
 export function BottomNavigation(props: BottomNavigationProps) {
   const messages = useArcMessages();
-  const cls = (): Slots =>
-    parts(
+  function cls(): Slots {
+    return parts(
       bottomNavigationStyles({ position: props.position, hideFrom: props.hideFrom }),
       props.classes,
     );
+  }
   return (
     <nav
       class={arc(cls().root, props.class, props.className)}
@@ -163,35 +166,45 @@ export function BottomNavigation(props: BottomNavigationProps) {
   );
 }
 
-function Entry(props: { item: BottomNavItem; classes: Slots; parent: BottomNavigationProps }) {
+interface EntryProps {
+  item: BottomNavItem;
+  classes: Slots;
+  parent: BottomNavigationProps;
+}
+
+function Entry(props: EntryProps) {
   const item = props.item;
   const link = item.to === undefined ? undefined : routerLink({ ...item, to: item.to });
-  const current = (): boolean => link?.isActive() ?? props.parent.selectedKey === keyOf(item);
+  function current(): boolean {
+    return link?.isActive() ?? props.parent.selectedKey === keyOf(item);
+  }
   const Icon = item.icon;
   const messages = useArcMessages();
   const format = numberFormatter();
-  const words = (): string | undefined => {
+  function words(): string | undefined {
     if (item.dot === true) return messages().newItem;
     if ((item.count ?? 0) <= 0) return undefined;
     return messages().newCount(format().format(item.count ?? 0));
-  };
-  const content = () => (
-    <>
-      <span class={props.classes.icon} data-slot="bottom-navigation-icon" aria-hidden="true">
-        <Indicator count={item.count} dot={item.dot} size="sm" tone="danger">
-          {Icon === undefined ? null : <Icon />}
-        </Indicator>
-      </span>
-      <span class={props.classes.label} data-slot="bottom-navigation-label">
-        {item.label}
-      </span>
-      <Show when={words() !== undefined}>
-        <span class={props.classes.hint} data-slot="bottom-navigation-hint">
-          {`, ${words() ?? ""}`}
+  }
+  function content() {
+    return (
+      <>
+        <span class={props.classes.icon} data-slot="bottom-navigation-icon" aria-hidden="true">
+          <Indicator count={item.count} dot={item.dot} size="sm" tone="danger">
+            {Icon === undefined ? null : <Icon />}
+          </Indicator>
         </span>
-      </Show>
-    </>
-  );
+        <span class={props.classes.label} data-slot="bottom-navigation-label">
+          {item.label}
+        </span>
+        <Show when={words() !== undefined}>
+          <span class={props.classes.hint} data-slot="bottom-navigation-hint">
+            {`, ${words() ?? ""}`}
+          </span>
+        </Show>
+      </>
+    );
+  }
   return (
     <li class={props.classes.item} data-slot="bottom-navigation-item">
       {link !== undefined ? (

@@ -128,9 +128,13 @@ export function Breadcrumbs(props: BreadcrumbsProps) {
   const matches = useMatches();
   const [expanded, setExpanded] = createSignal(false);
   const messages = useArcMessages();
-  const cls = (): Slots => parts(breadcrumbsStyles(), props.classes);
-  const crumbs = (): readonly Crumb[] => props.items ?? routeCrumbs(matches());
-  const placed = (): Placed[] => {
+  function cls(): Slots {
+    return parts(breadcrumbsStyles(), props.classes);
+  }
+  function crumbs(): readonly Crumb[] {
+    return props.items ?? routeCrumbs(matches());
+  }
+  function placed(): Placed[] {
     const all = crumbs();
     return all.map((crumb, index) => ({
       crumb,
@@ -139,7 +143,7 @@ export function Breadcrumbs(props: BreadcrumbsProps) {
       middle: index > 0 && index < all.length - 1,
       hidesMiddle: index === 0 && all.length > 2,
     }));
-  };
+  }
 
   return (
     <Breadcrumb
@@ -185,7 +189,13 @@ export function Breadcrumbs(props: BreadcrumbsProps) {
   );
 }
 
-function CrumbStep(props: { crumb: Crumb; last: boolean; text: string }) {
+interface CrumbStepProps {
+  crumb: Crumb;
+  last: boolean;
+  text: string;
+}
+
+function CrumbStep(props: CrumbStepProps) {
   const crumb = props.crumb;
   if (props.last) {
     return (

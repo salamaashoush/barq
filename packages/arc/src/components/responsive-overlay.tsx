@@ -117,15 +117,22 @@ export function ResponsiveOverlay(props: ResponsiveOverlayProps) {
     () => untrack(() => props.defaultOpen) ?? false,
     (next) => props.onOpenChange?.(next),
   );
-  const presentation = (): OverlayPresentation =>
-    compact() ? "sheet" : (props.desktop ?? "dialog");
-  const cls = () => parts(responsiveOverlayStyles({ presentation: presentation() }), props.classes);
-  const root = (): string => arc(cls().root, props.class, props.className);
-  const body = () => (
-    <div class={cls().body} data-slot="responsive-overlay-body">
-      {props.children}
-    </div>
-  );
+  function presentation(): OverlayPresentation {
+    return compact() ? "sheet" : (props.desktop ?? "dialog");
+  }
+  function cls() {
+    return parts(responsiveOverlayStyles({ presentation: presentation() }), props.classes);
+  }
+  function root(): string {
+    return arc(cls().root, props.class, props.className);
+  }
+  function body() {
+    return (
+      <div class={cls().body} data-slot="responsive-overlay-body">
+        {props.children}
+      </div>
+    );
+  }
 
   return (
     <Switch>

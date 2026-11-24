@@ -71,9 +71,16 @@ export interface FieldValueProps<T> {
   isInvalid?: boolean;
 }
 
+export interface WiringIds {
+  control: string;
+  label: string;
+  description: string;
+  error: string;
+}
+
 /** What the frame reads of a field, whatever its value. */
 export interface Wiring {
-  ids: { control: string; label: string; description: string; error: string };
+  ids: WiringIds;
   errors: () => string[];
   isInvalid: () => boolean;
   describedBy: (hasDescription: boolean) => string | undefined;
@@ -102,11 +109,11 @@ export function fieldWiring(errors: () => string[], isInvalid: () => boolean): W
     description: `${id}-description`,
     error: `${id}-error`,
   };
-  const describedBy = (hasDescription: boolean): string | undefined => {
+  function describedBy(hasDescription: boolean): string | undefined {
     const pieces = [hasDescription ? ids.description : "", isInvalid() ? ids.error : ""];
     const joined = pieces.filter((part) => part !== "").join(" ");
     return joined === "" ? undefined : joined;
-  };
+  }
   return { ids, errors, isInvalid, describedBy };
 }
 
@@ -115,8 +122,12 @@ export function fieldWiring(errors: () => string[], isInvalid: () => boolean): W
  * the caller's: a tag it refused, a number too short to dial.
  */
 export function withOwnErrors(of: Wiring, own: () => string[]): Wiring {
-  const errors = (): string[] => [...own(), ...of.errors()];
-  const isInvalid = (): boolean => own().length > 0 || of.isInvalid();
+  function errors(): string[] {
+    return [...own(), ...of.errors()];
+  }
+  function isInvalid(): boolean {
+    return own().length > 0 || of.isInvalid();
+  }
   return {
     ids: of.ids,
     errors,
@@ -142,14 +153,20 @@ function retireServerError(api: AnyFieldApi): void {
     form.setErrorMap({ onServer: undefined } as never);
 }
 
+export interface FieldBinding<T> {
+  field: ReturnType<typeof useArcField<T>>;
+}
+
 /**
  * The wiring one form field needs: its ids, whether it is showing an error,
  * and the change and blur that also retire an error the server sent for it.
  */
-export function formControl<T>(): Binding<T> & { field: ReturnType<typeof useArcField<T>> } {
+export function formControl<T>(): Binding<T> & FieldBinding<T> {
   const field = useArcField<T>();
   const errors = createMemo((): string[] => messagesOf(field().state.meta.errors));
-  const isInvalid = (): boolean => field().state.meta.isTouched && errors().length > 0;
+  function isInvalid(): boolean {
+    return field().state.meta.isTouched && errors().length > 0;
+  }
   return {
     ...fieldWiring(errors, isInvalid),
     field,
@@ -178,8 +195,12 @@ export function bindField<T>(props: FieldValueProps<T>, empty: T): Binding<T> {
     () => props.defaultValue ?? empty,
     (next) => props.onChange?.(next),
   );
-  const errors = (): string[] => errorsOf(props.errorMessage);
-  const isInvalid = (): boolean => props.isInvalid === true || errors().length > 0;
+  function errors(): string[] {
+    return errorsOf(props.errorMessage);
+  }
+  function isInvalid(): boolean {
+    return props.isInvalid === true || errors().length > 0;
+  }
   return {
     ...fieldWiring(errors, isInvalid),
     value,
@@ -207,21 +228,27 @@ export interface FrameProps {
 /** `<Field>` with the label, the description and the error wired to the control's ids. */
 export function Frame(props: FrameProps) {
   const of = props.of;
-  const cls = (): FieldSlots => parts(fieldStyles(), props.field.classes);
-  const error = () => (
-    <FieldError
-      class={cls().error}
-      id={of.ids.error}
-      errors={of.isInvalid() ? of.errors().map((message) => ({ message })) : []}
-    />
-  );
-  const description = () => (
-    <Show when={props.description !== undefined}>
-      <FieldDescription class={cls().description} id={of.ids.description}>
-        {props.description}
-      </FieldDescription>
-    </Show>
-  );
+  function cls(): FieldSlots {
+    return parts(fieldStyles(), props.field.classes);
+  }
+  function error() {
+    return (
+      <FieldError
+        class={cls().error}
+        id={of.ids.error}
+        errors={of.isInvalid() ? of.errors().map((message) => ({ message })) : []}
+      />
+    );
+  }
+  function description() {
+    return (
+      <Show when={props.description !== undefined}>
+        <FieldDescription class={cls().description} id={of.ids.description}>
+          {props.description}
+        </FieldDescription>
+      </Show>
+    );
+  }
   return (
     <Field
       class={arc(cls().root, props.field.class, props.field.className)}

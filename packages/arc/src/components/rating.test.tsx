@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child, createSignal } from "@barqjs/core";
+import { createSignal, type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { accessibleName, ariaViolations, render, screen, user } from "@barqjs/testing";
 
@@ -66,7 +66,7 @@ describe("Rating", () => {
   });
 
   test("the arrows move and choose, in the reading direction", async () => {
-    function Rtl(props: { children?: Child }) {
+    function Rtl(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }
@@ -130,7 +130,9 @@ describe("Rating", () => {
       />
     ));
     await settle();
-    const by = (slot: string): Element | null => document.querySelector(`[data-slot="${slot}"]`);
+    function by(slot: string): Element | null {
+      return document.querySelector(`[data-slot="${slot}"]`);
+    }
     expect(by("rating-field")?.classList.contains("mine")).toBe(true);
     expect(by("rating")?.classList.contains("g")).toBe(true);
     expect(by("rating-star")?.classList.contains("s")).toBe(true);

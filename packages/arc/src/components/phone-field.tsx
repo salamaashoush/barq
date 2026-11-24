@@ -101,6 +101,11 @@ export interface PhoneFieldProps
   placeholder?: string;
 }
 
+interface RegionEntry {
+  region: string;
+  name: string;
+}
+
 /**
  * A telephone number: a region, chosen from a list named in the locale with
  * its calling code, and the number as it is dialled there. Held in E.164,
@@ -122,22 +127,25 @@ export function PhoneField(props: PhoneFieldProps) {
   const [typed, setTyped] = createSignal<string | null>(null);
   const [problem, setProblem] = createSignal<string | null>(null);
 
-  const regionOfLocale = (): string | undefined => {
+  function regionOfLocale(): string | undefined {
     try {
       return new Intl.Locale(locale().locale).maximize().region;
     } catch {
       return undefined;
     }
-  };
+  }
   const parsed = createMemo((): PhoneNumber | null => {
     const value = of.value();
     return value === null || value === undefined
       ? null
       : parsePhone(value, untrack(picked) ?? undefined);
   });
-  const country = (): string =>
-    picked() ?? parsed()?.country ?? props.defaultCountry ?? regionOfLocale() ?? "US";
-  const shown = (): string => typed() ?? parsed()?.national ?? "";
+  function country(): string {
+    return picked() ?? parsed()?.country ?? props.defaultCountry ?? regionOfLocale() ?? "US";
+  }
+  function shown(): string {
+    return typed() ?? parsed()?.national ?? "";
+  }
 
   const names = createMemo(() => {
     const display = new Intl.DisplayNames([locale().locale], { type: "region" });
@@ -149,7 +157,7 @@ export function PhoneField(props: PhoneFieldProps) {
       .toSorted((one, other) => collate.compare(one.name, other.name));
   });
 
-  const commit = (region: string, text: string): void => {
+  function commit(region: string, text: string): void {
     if (text.trim().startsWith("+")) {
       const read = parsePhone(text, region);
       if (read !== null) {
@@ -160,22 +168,24 @@ export function PhoneField(props: PhoneFieldProps) {
       }
     }
     of.change(formatPhone(region, text));
-  };
+  }
 
-  const check = (): void => {
+  function check(): void {
     const digits = `${CALLING_CODES.get(untrack(country)) ?? ""}${untrack(shown).replace(/\D/g, "").replace(/^0+/, "")}`;
     const national = untrack(shown).replace(/\D/g, "");
     setProblem(
       national !== "" && (digits.length < 7 || digits.length > 15) ? messages().invalidPhone : null,
     );
-  };
+  }
 
   const wiring = withOwnErrors(of, () => {
     const found = problem();
     return found === null ? [] : [found];
   });
   const isInvalid = wiring.isInvalid;
-  const cls = () => parts({ ...fieldStyles(), ...phoneFieldStyles() }, props.classes);
+  function cls() {
+    return parts({ ...fieldStyles(), ...phoneFieldStyles() }, props.classes);
+  }
 
   return (
     <Frame
@@ -208,7 +218,7 @@ export function PhoneField(props: PhoneFieldProps) {
           </SelectTrigger>
           <SelectContent position="popper" placement="bottom start">
             <For each={names()}>
-              {(entry: { region: string; name: string }) => (
+              {(entry: RegionEntry) => (
                 <SelectItem class={cls().option} value={entry.region} textValue={entry.name}>
                   {`${entry.name} +${CALLING_CODES.get(entry.region) ?? ""}`}
                 </SelectItem>

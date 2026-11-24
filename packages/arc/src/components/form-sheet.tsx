@@ -82,7 +82,9 @@ export function FormSheet(props: FormSheetProps) {
     defaultOpen: untrack(() => props.defaultOpen),
     onOpenChange: (next) => props.onOpenChange?.(next),
   });
-  const cls = (): Slots => parts(formSheetStyles(), props.classes);
+  function cls(): Slots {
+    return parts(formSheetStyles(), props.classes);
+  }
 
   const state = useSelector(form.store, (current) => ({
     isDirty: current.isDirty,
@@ -90,23 +92,23 @@ export function FormSheet(props: FormSheetProps) {
     canSubmit: current.canSubmit,
   }));
 
-  const requestClose = async (): Promise<void> => {
+  async function requestClose(): Promise<void> {
     if (state().isSubmitting) return;
     if (state().isDirty) {
       if (!(await confirmDiscard(props.discard, messages()))) return;
       form.reset();
     }
     setOpen(false);
-  };
+  }
 
-  const submit = async (): Promise<void> => {
+  async function submit(): Promise<void> {
     await form.handleSubmit();
     // A submission the server refused still completes; the errors it set on
     // the form are what say it failed, and they have to stay in view.
     if (form.state.isSubmitSuccessful && form.state.isValid && props.closeOnSubmit !== false) {
       setOpen(false);
     }
-  };
+  }
 
   return (
     <>

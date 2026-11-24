@@ -72,6 +72,11 @@ export const descriptionListStyles = variants({
 
 type Slots = ReturnType<typeof descriptionListStyles>;
 
+export interface DescriptionListRenders {
+  term?: RenderPart<Child>;
+  details?: RenderPart<Child>;
+}
+
 export interface DescriptionListProps extends Customisable<Slots> {
   items: readonly DescriptionItem[];
   /**
@@ -87,7 +92,7 @@ export interface DescriptionListProps extends Customisable<Slots> {
   /** The values at the start or the end of their column. @default "start" */
   align?: "start" | "end";
   /** Another element for a term or a value: a heading, a link. */
-  renders?: { term?: RenderPart<Child>; details?: RenderPart<Child> };
+  renders?: DescriptionListRenders;
   "aria-label"?: string;
   id?: string;
 }
@@ -110,8 +115,8 @@ export interface DescriptionListProps extends Customisable<Slots> {
  * wide container.
  */
 export function DescriptionList(props: DescriptionListProps) {
-  const cls = (): Slots =>
-    parts(
+  function cls(): Slots {
+    return parts(
       descriptionListStyles({
         layout: props.layout,
         columns: props.columns ?? 1,
@@ -120,6 +125,7 @@ export function DescriptionList(props: DescriptionListProps) {
       }),
       props.classes,
     );
+  }
   return (
     <dl
       class={arc(cls().root, props.class, props.className)}

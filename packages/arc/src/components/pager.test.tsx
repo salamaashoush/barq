@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child, createSignal } from "@barqjs/core";
+import { createSignal, type ParentProps } from "@barqjs/core";
 import { collectCss } from "@barqjs/css";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user, within } from "@barqjs/testing";
@@ -100,7 +100,7 @@ describe("Pager", () => {
   });
 
   test("the locale's digits and words, arrows turned right to left", () => {
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }

@@ -95,6 +95,17 @@ export interface LightboxProps extends Customisable<LightboxSlots> {
   label?: string;
 }
 
+interface PanStart {
+  x: number;
+  y: number;
+  pan: Point;
+}
+
+interface Point {
+  x: number;
+  y: number;
+}
+
 /**
  * One image at a time over the whole screen, to look at closely.
  *
@@ -126,24 +137,32 @@ export function Lightbox(props: LightboxProps) {
   );
   const [zoom, setZoom] = createSignal(0);
   const [pan, setPan] = createSignal({ x: 0, y: 0 });
-  const count = (): number => props.images.length;
-  const current = (): GalleryImage | undefined => props.images[index()];
-  const go = (next: number): void => {
+  function count(): number {
+    return props.images.length;
+  }
+  function current(): GalleryImage | undefined {
+    return props.images[index()];
+  }
+  function go(next: number): void {
     if (count() === 0) return;
     const bounded = Math.min(Math.max(0, next), count() - 1);
     if (bounded === index()) return;
     setZoom(0);
     setPan({ x: 0, y: 0 });
     setIndex(bounded);
-  };
-  const zoomTo = (step: number): void => {
+  }
+  function zoomTo(step: number): void {
     const next = Math.min(Math.max(0, step), ZOOMS.length - 1);
     setZoom(next);
     if (next === 0) setPan({ x: 0, y: 0 });
-  };
-  const forwardKey = (): string => (direction() === "rtl" ? "ArrowLeft" : "ArrowRight");
-  const backKey = (): string => (direction() === "rtl" ? "ArrowRight" : "ArrowLeft");
-  const onKeyDown = (event: KeyboardEvent): void => {
+  }
+  function forwardKey(): string {
+    return direction() === "rtl" ? "ArrowLeft" : "ArrowRight";
+  }
+  function backKey(): string {
+    return direction() === "rtl" ? "ArrowRight" : "ArrowLeft";
+  }
+  function onKeyDown(event: KeyboardEvent): void {
     const handled = new Map<string, () => void>([
       [forwardKey(), () => go(index() + 1)],
       [backKey(), () => go(index() - 1)],
@@ -157,26 +176,28 @@ export function Lightbox(props: LightboxProps) {
     if (handled === undefined) return;
     event.preventDefault();
     handled();
-  };
+  }
 
-  let start: { x: number; y: number; pan: { x: number; y: number } } | null = null;
-  const onPointerDown = (event: PointerEvent): void => {
+  let start: PanStart | null = null;
+  function onPointerDown(event: PointerEvent): void {
     start = { x: event.clientX, y: event.clientY, pan: pan() };
-  };
-  const onPointerMove = (event: PointerEvent): void => {
+  }
+  function onPointerMove(event: PointerEvent): void {
     if (start === null || zoom() === 0) return;
     setPan({ x: start.pan.x + event.clientX - start.x, y: start.pan.y + event.clientY - start.y });
-  };
-  const onPointerUp = (event: PointerEvent): void => {
+  }
+  function onPointerUp(event: PointerEvent): void {
     if (start === null) return;
     const dx = event.clientX - start.x;
     start = null;
     if (zoom() !== 0 || Math.abs(dx) < SWIPE) return;
     const towardsStart = direction() === "rtl" ? dx < 0 : dx > 0;
     go(index() + (towardsStart ? -1 : 1));
-  };
+  }
 
-  const cls = (): LightboxSlots => parts(lightboxStyles(), props.classes);
+  function cls(): LightboxSlots {
+    return parts(lightboxStyles(), props.classes);
+  }
   return (
     <Dialog isOpen={isOpen()} onOpenChange={setOpen}>
       <DialogContent
@@ -294,6 +315,11 @@ export interface GalleryProps extends Customisable<GallerySlots> {
   lightboxClasses?: LightboxProps["classes"];
 }
 
+interface IndexedImage {
+  image: GalleryImage;
+  index: number;
+}
+
 /**
  * Pictures in a grid, each opening the `Lightbox` at itself.
  *
@@ -307,7 +333,9 @@ export interface GalleryProps extends Customisable<GallerySlots> {
 export function Gallery(props: GalleryProps) {
   const [open, setOpen] = createSignal(false);
   const [at, setAt] = createSignal(0);
-  const cls = (): GallerySlots => parts(galleryStyles(), props.classes);
+  function cls(): GallerySlots {
+    return parts(galleryStyles(), props.classes);
+  }
   return (
     <>
       <ul
@@ -317,7 +345,7 @@ export function Gallery(props: GalleryProps) {
         style={{ "--arc-gallery-min": props.minItemWidth ?? "10rem" }}
       >
         <For each={() => props.images.map((image, index) => ({ image, index }))}>
-          {(entry: { image: GalleryImage; index: number }) => (
+          {(entry: IndexedImage) => (
             <li class={cls().item} data-slot="gallery-item">
               <AriaButton
                 class={cls().thumb}

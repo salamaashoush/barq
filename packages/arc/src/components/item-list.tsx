@@ -57,6 +57,11 @@ type Slots = ReturnType<typeof listStyles>;
 
 const LOADER = Symbol("loader");
 
+export interface ListVirtual {
+  rowHeight: number;
+  height: string;
+}
+
 export interface ListProps<T> extends Customisable<Slots> {
   items: readonly T[];
   /** @default `item.id` */
@@ -78,13 +83,23 @@ export interface ListProps<T> extends Customisable<Slots> {
   /** A rule under each row. @default true */
   divided?: boolean;
   /** Draw only the rows on screen, each this many pixels tall, in a box `height` tall. */
-  virtual?: { rowHeight: number; height: string };
+  virtual?: ListVirtual;
   /** Asked for as the end comes into view. */
   onLoadMore?: () => void;
   isLoadingMore?: boolean;
   /** Shown when there are no items. */
   empty?: Child;
   id?: string;
+}
+
+interface MaybeKeyed {
+  id?: Key;
+}
+
+interface TextFields {
+  label?: unknown;
+  name?: unknown;
+  title?: unknown;
 }
 
 /**
@@ -112,64 +127,73 @@ export interface ListProps<T> extends Customisable<Slots> {
  */
 export function List<T>(props: ListProps<T>) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(listStyles({ divided: props.divided !== false }), props.classes);
-  const keyOf = (item: T): Key => props.getKey?.(item) ?? ((item as { id?: Key }).id as Key);
-  const rows = (): readonly (T | typeof LOADER)[] =>
-    props.onLoadMore === undefined ? props.items : [...props.items, LOADER];
+  function cls(): Slots {
+    return parts(listStyles({ divided: props.divided !== false }), props.classes);
+  }
+  function keyOf(item: T): Key {
+    return props.getKey?.(item) ?? ((item as MaybeKeyed).id as Key);
+  }
+  function rows(): readonly (T | typeof LOADER)[] {
+    return props.onLoadMore === undefined ? props.items : [...props.items, LOADER];
+  }
 
-  const list = () => (
-    <GridList<T | typeof LOADER>
-      class={arc(cls().root, props.class, props.className)}
-      id={props.id}
-      data-slot="list"
-      aria-label={props["aria-label"]}
-      items={rows()}
-      getKey={(item: T | typeof LOADER) => (item === LOADER ? "__loader" : keyOf(item))}
-      getTextValue={(item: T | typeof LOADER) => {
-        if (item === LOADER) return "";
-        const own = props.getTextValue?.(item);
-        if (own !== undefined) return own;
-        const record = item as { label?: unknown; name?: unknown; title?: unknown };
-        const text = record.label ?? record.name ?? record.title;
-        return typeof text === "string" ? text : "";
-      }}
-      getType={(item: T | typeof LOADER): Node<unknown>["type"] =>
-        item === LOADER ? "loader" : "item"
-      }
-      selectionMode={props.selectionMode}
-      selectedKeys={props.selectedKeys}
-      defaultSelectedKeys={props.defaultSelectedKeys}
-      onSelectionChange={(keys: "all" | Set<Key>) => props.onSelectionChange?.(keys)}
-      disabledKeys={props.disabledKeys}
-      onAction={props.onAction === undefined ? undefined : (key: Key) => props.onAction?.(key)}
-      style={
-        props.virtual === undefined ? undefined : { height: props.virtual.height, overflow: "auto" }
-      }
-      renderEmptyState={() => props.empty}
-    >
-      {(item: T | typeof LOADER) =>
-        item === LOADER ? (
-          <GridListLoadMoreItem
-            class={cls().loader}
-            data-slot="list-loader"
-            isLoading={props.isLoadingMore}
-            onLoadMore={() => props.onLoadMore?.()}
-          >
-            <Spinner />
-            {messages().loadingMore}
-          </GridListLoadMoreItem>
-        ) : (
-          <GridListItem
-            class={cls().row}
-            data-slot="list-row"
-            data-selection-mode={props.selectionMode ?? "none"}
-          >
-            {props.children(item)}
-          </GridListItem>
-        )
-      }
-    </GridList>
-  );
+  function list() {
+    return (
+      <GridList<T | typeof LOADER>
+        class={arc(cls().root, props.class, props.className)}
+        id={props.id}
+        data-slot="list"
+        aria-label={props["aria-label"]}
+        items={rows()}
+        getKey={(item: T | typeof LOADER) => (item === LOADER ? "__loader" : keyOf(item))}
+        getTextValue={(item: T | typeof LOADER) => {
+          if (item === LOADER) return "";
+          const own = props.getTextValue?.(item);
+          if (own !== undefined) return own;
+          const record = item as TextFields;
+          const text = record.label ?? record.name ?? record.title;
+          return typeof text === "string" ? text : "";
+        }}
+        getType={(item: T | typeof LOADER): Node<unknown>["type"] =>
+          item === LOADER ? "loader" : "item"
+        }
+        selectionMode={props.selectionMode}
+        selectedKeys={props.selectedKeys}
+        defaultSelectedKeys={props.defaultSelectedKeys}
+        onSelectionChange={(keys: "all" | Set<Key>) => props.onSelectionChange?.(keys)}
+        disabledKeys={props.disabledKeys}
+        onAction={props.onAction === undefined ? undefined : (key: Key) => props.onAction?.(key)}
+        style={
+          props.virtual === undefined
+            ? undefined
+            : { height: props.virtual.height, overflow: "auto" }
+        }
+        renderEmptyState={() => props.empty}
+      >
+        {(item: T | typeof LOADER) =>
+          item === LOADER ? (
+            <GridListLoadMoreItem
+              class={cls().loader}
+              data-slot="list-loader"
+              isLoading={props.isLoadingMore}
+              onLoadMore={() => props.onLoadMore?.()}
+            >
+              <Spinner />
+              {messages().loadingMore}
+            </GridListLoadMoreItem>
+          ) : (
+            <GridListItem
+              class={cls().row}
+              data-slot="list-row"
+              data-selection-mode={props.selectionMode ?? "none"}
+            >
+              {props.children(item)}
+            </GridListItem>
+          )
+        }
+      </GridList>
+    );
+  }
 
   return (
     <Show when={props.virtual !== undefined} fallback={list()}>
@@ -199,7 +223,9 @@ export interface ListItemProps extends Customisable<Slots> {
 
 /** One row of a `List`: ui's `Item` with its media, title, description, meta and actions. */
 export function ListItem(props: ListItemProps) {
-  const cls = (): Slots => parts(listStyles(), props.classes);
+  function cls(): Slots {
+    return parts(listStyles(), props.classes);
+  }
   return (
     <Item
       class={arc(cls().item, props.class, props.className)}

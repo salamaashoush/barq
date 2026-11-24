@@ -46,7 +46,9 @@ function Editor(props: Edit) {
   );
 }
 
-const sheet = (): HTMLElement | null => screen.queryByRole("dialog", { name: "Edit customer" });
+function sheet(): HTMLElement | null {
+  return screen.queryByRole("dialog", { name: "Edit customer" });
+}
 
 describe("FormSheet", () => {
   test("is a dialog holding the form, with Save and Cancel at its foot", async () => {

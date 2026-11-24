@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { type Child, DEV } from "@barqjs/core";
+import { DEV, type ParentProps } from "@barqjs/core";
 import { collectCss } from "@barqjs/css";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user } from "@barqjs/testing";
@@ -25,7 +25,7 @@ function slot(name: string): HTMLElement {
   return document.querySelector(`[data-slot="${name}"]`) as HTMLElement;
 }
 
-function Rtl(props: { children?: Child }) {
+function Rtl(props: ParentProps) {
   provideLocale("ar-EG");
   return <div dir="rtl">{props.children}</div>;
 }
@@ -186,7 +186,7 @@ describe("Link", () => {
   });
 
   test("its words come from arc's dictionary, and its parts take classes", () => {
-    function German(props: { children?: Child }) {
+    function German(props: ParentProps) {
       provideArcMessages(() => ({ opensInNewTab: "öffnet einen neuen Tab" }));
       return <>{props.children}</>;
     }

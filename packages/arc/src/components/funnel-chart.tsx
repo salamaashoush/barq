@@ -62,8 +62,9 @@ interface Drawn extends FunnelStage {
   readonly words: string;
 }
 
-const isDrawn = (datum: unknown): datum is Drawn =>
-  typeof datum === "object" && datum !== null && "start" in datum && "words" in datum;
+function isDrawn(datum: unknown): datum is Drawn {
+  return typeof datum === "object" && datum !== null && "start" in datum && "words" in datum;
+}
 
 /**
  * How much of a total reaches each stage, as bars centred on one line and
@@ -87,11 +88,18 @@ export function FunnelChart(props: FunnelChartProps) {
   const messages = useArcMessages();
   const number = chartNumbers(props.formatOptions);
   const percent = chartNumbers({ style: "percent", maximumFractionDigits: 1 });
-  const cls = (): FunnelChartSlots => parts(funnelChartStyles(), props.classes);
-  const first = (): number => props.data[0]?.value ?? 0;
-  const share = (value: number): string => percent(first() === 0 ? 0 : value / first());
-  const colour = (stage: FunnelStage): string =>
-    stage.color ?? toneColour(stage.tone ?? props.tone);
+  function cls(): FunnelChartSlots {
+    return parts(funnelChartStyles(), props.classes);
+  }
+  function first(): number {
+    return props.data[0]?.value ?? 0;
+  }
+  function share(value: number): string {
+    return percent(first() === 0 ? 0 : value / first());
+  }
+  function colour(stage: FunnelStage): string {
+    return stage.color ?? toneColour(stage.tone ?? props.tone);
+  }
 
   return (
     <ChartFrame
@@ -128,7 +136,7 @@ export function FunnelChart(props: FunnelChartProps) {
   );
 }
 
-function FunnelPlot(props: {
+interface FunnelPlotProps {
   class: string;
   label: string;
   height?: number;
@@ -137,7 +145,9 @@ function FunnelPlot(props: {
   words: (stage: FunnelStage) => string;
   share: (stage: FunnelStage) => string;
   write: (value: number) => string;
-}) {
+}
+
+function FunnelPlot(props: FunnelPlotProps) {
   const scope = useChart();
   const definition = createMemo((): ChartDefinition => {
     const widest = Math.max(0, ...props.data.map((stage) => stage.value));

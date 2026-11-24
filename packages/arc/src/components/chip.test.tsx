@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child, createSignal } from "@barqjs/core";
+import { createSignal, type ParentProps } from "@barqjs/core";
 import { collectCss } from "@barqjs/css";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user } from "@barqjs/testing";
@@ -108,7 +108,7 @@ describe("Chip", () => {
   });
 
   test("lays out by reading direction: the remove button at the inline end", () => {
-    function Rtl(props: { children?: Child }) {
+    function Rtl(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }
@@ -127,7 +127,7 @@ describe("Chip", () => {
   });
 
   test("the remove label comes from arc's words", () => {
-    function German(props: { children?: Child }) {
+    function German(props: ParentProps) {
       provideArcMessages(() => ({ remove: "Entfernen" }));
       return <>{props.children}</>;
     }

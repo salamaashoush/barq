@@ -135,9 +135,13 @@ function valueAt(values: unknown, path: string): unknown {
  */
 export function Wizard(props: WizardProps) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(wizardStyles(), props.classes);
+  function cls(): Slots {
+    return parts(wizardStyles(), props.classes);
+  }
   const form = untrack(() => props.form);
-  const first = (): string => props.steps[0]?.id ?? "";
+  function first(): string {
+    return props.steps[0]?.id ?? "";
+  }
   const param = untrack(() => props.param);
   const url = param === undefined || maybeRouter() === undefined ? undefined : useSearchParams();
   const resumeKey = untrack(() => props.resume);
@@ -170,44 +174,48 @@ export function Wizard(props: WizardProps) {
   const heading = makeRef<HTMLHeadingElement>();
   let moved = false;
 
-  const index = (): number => {
+  function index(): number {
     const found = props.steps.findIndex((one) => one.id === step.read());
     return found < 0 ? 0 : found;
-  };
-  const current = (): WizardStep | undefined => props.steps[index()];
-  const isLast = (): boolean => index() === props.steps.length - 1;
+  }
+  function current(): WizardStep | undefined {
+    return props.steps[index()];
+  }
+  function isLast(): boolean {
+    return index() === props.steps.length - 1;
+  }
 
-  const go = (next: string): void => {
+  function go(stepId: string): void {
     moved = true;
-    step.write(next);
-    const at = props.steps.findIndex((one) => one.id === next);
+    step.write(stepId);
+    const at = props.steps.findIndex((one) => one.id === stepId);
     const target = props.steps[at];
     if (target !== undefined) {
       setSaid(messages().stepAnnounce(String(at + 1), String(props.steps.length), target.label));
     }
-  };
+  }
 
-  const check = async (target: WizardStep): Promise<boolean> => {
+  async function check(target: WizardStep): Promise<boolean> {
     const names = (target.fields ?? []).map((field) => fieldOf(field).name);
     let ok = true;
     for (const name of names) {
       const errors = await form.validateField(name as never, "submit");
       if (errors.length > 0) ok = false;
     }
-    const next = new Set(invalid());
-    if (ok) next.delete(target.id);
-    else next.add(target.id);
-    setInvalid(next);
+    const failing = new Set(invalid());
+    if (ok) failing.delete(target.id);
+    else failing.add(target.id);
+    setInvalid(failing);
     return ok;
-  };
+  }
 
-  const markDone = (id: string): void => {
+  function markDone(id: string): void {
     const done = props.steps.findIndex((one) => one.id === completed());
     const at = props.steps.findIndex((one) => one.id === id);
     if (at > done) setCompleted(id);
-  };
+  }
 
-  const next = async (skip = false): Promise<void> => {
+  async function next(skip = false): Promise<void> {
     const here = current();
     if (here === undefined) return;
     if (!skip && here.optional !== true && !(await check(here))) return;
@@ -215,14 +223,14 @@ export function Wizard(props: WizardProps) {
     props.onStepLeave?.(here.id, form.state.values);
     const after = props.steps[index() + 1];
     if (after !== undefined) go(after.id);
-  };
+  }
 
-  const back = (): void => {
+  function back(): void {
     const before = props.steps[index() - 1];
     if (before !== undefined) go(before.id);
-  };
+  }
 
-  const finish = async (): Promise<void> => {
+  async function finish(): Promise<void> {
     for (const each of props.steps) {
       if (each.optional === true || each.summary === true) continue;
       if (!(await check(each))) {
@@ -239,7 +247,7 @@ export function Wizard(props: WizardProps) {
     ) {
       localStorage.removeItem(resumeKey);
     }
-  };
+  }
 
   if (!isServer && resumeKey !== undefined) {
     const values = useSelector(form.store, (state) => state.values);
@@ -261,17 +269,18 @@ export function Wizard(props: WizardProps) {
     );
   }
 
-  const items = () =>
-    props.steps.map((one) => ({
+  function items() {
+    return props.steps.map((one) => ({
       id: one.id,
       label: one.label,
       description: one.description,
       optional: one.optional,
       invalid: invalid().has(one.id),
     }));
+  }
 
-  const summaryItems = (target: WizardStep): DescriptionItem[] =>
-    (target.fields ?? [])
+  function summaryItems(target: WizardStep): DescriptionItem[] {
+    return (target.fields ?? [])
       .map(fieldOf)
       .filter((field) => field.label !== undefined)
       .map((field) => {
@@ -284,6 +293,7 @@ export function Wizard(props: WizardProps) {
               : (field.format?.(value) ?? written(value)),
         };
       });
+  }
 
   return (
     <div class={arc(cls().root, props.class, props.className)} data-slot="wizard">

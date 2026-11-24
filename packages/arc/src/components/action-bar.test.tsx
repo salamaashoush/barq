@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { type Child, flush } from "@barqjs/core";
+import { flush, type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user, within } from "@barqjs/testing";
 
@@ -7,7 +7,7 @@ import { hydrates, settle, wears } from "../test-arc.ts";
 import { ActionBar, type BarAction, actionBarStyles } from "./action-bar.tsx";
 import { layout } from "../style/index.ts";
 
-function Rtl(props: { children?: Child }) {
+function Rtl(props: ParentProps) {
   provideLocale("ar-EG");
   return <div dir="rtl">{props.children}</div>;
 }
@@ -109,7 +109,9 @@ describe("ActionBar", () => {
     ));
     flush();
     await settle();
-    const by = (slot: string): Element | null => document.querySelector(`[data-slot="${slot}"]`);
+    function by(slot: string): Element | null {
+      return document.querySelector(`[data-slot="${slot}"]`);
+    }
     expect(by("action-bar")?.classList.contains("mine")).toBe(true);
     expect(by("action-bar-group")?.classList.contains("g")).toBe(true);
     expect(by("action-bar-action")?.classList.contains("a")).toBe(true);

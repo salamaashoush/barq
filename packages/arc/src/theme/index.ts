@@ -25,6 +25,11 @@ export {
   type Tone,
 } from "./tokens.ts";
 
+export interface ArcThemeTokens {
+  readonly light?: ThemeTokens;
+  readonly dark?: ThemeTokens;
+}
+
 export interface ArcThemeSelection extends ThemeSelection {
   /**
    * Tokens over everything else, light and dark: arc's own (`success`,
@@ -33,7 +38,7 @@ export interface ArcThemeSelection extends ThemeSelection {
    * back to the light one for a token it does not name, which is what a
    * radius or a duration wants.
    */
-  readonly tokens?: { readonly light?: ThemeTokens; readonly dark?: ThemeTokens };
+  readonly tokens?: ArcThemeTokens;
   /**
    * The room the whole scope takes. A region of its own takes another with
    * `data-density="compact"` (or `comfortable`, `spacious`) on any element.
@@ -47,11 +52,13 @@ export interface ArcThemeSelection extends ThemeSelection {
   readonly contrast?: "high" | "system";
 }
 
-/** Every token a selection comes to, light and dark: ui's, then arc's, then the app's. */
-export function arcThemeValues(selection: ArcThemeSelection): {
+export interface ArcThemeValues {
   light: ThemeTokens;
   dark: ThemeTokens;
-} {
+}
+
+/** Every token a selection comes to, light and dark: ui's, then arc's, then the app's. */
+export function arcThemeValues(selection: ArcThemeSelection): ArcThemeValues {
   const base = themeValues(selection);
   const high = selection.contrast === "high";
   const light = {
@@ -106,10 +113,11 @@ export function arcThemeCss(selection: ArcThemeSelection): string {
       : scope === ":root"
         ? darkAsked
         : `${darkAsked} ${scope}, ${scope}${darkAsked}`;
-  const inDark = (tokens: ThemeTokens): string =>
-    darkSelector === undefined
+  function inDark(tokens: ThemeTokens): string {
+    return darkSelector === undefined
       ? `@media (prefers-color-scheme: dark) {\n  ${scope} {\n${block(tokens)}\n  }\n}`
       : `${darkSelector} {\n${block(tokens)}\n}`;
+  }
   const contrast =
     selection.contrast === "system"
       ? `\n@media (prefers-contrast: more) {\n${scope} {\n${block(ARC_CONTRAST_LIGHT)}\n}\n${inDark(ARC_CONTRAST_DARK)}\n}`

@@ -33,7 +33,9 @@ export interface PersonAvatarProps extends Customisable<Slots> {
  * the words beside it, or from `children`.
  */
 export function PersonAvatar(props: PersonAvatarProps) {
-  const cls = (): Slots => parts(personAvatarStyles(), props.classes);
+  function cls(): Slots {
+    return parts(personAvatarStyles(), props.classes);
+  }
   return (
     <Avatar
       class={arc(cls().root, props.class, props.className)}

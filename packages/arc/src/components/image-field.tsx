@@ -62,8 +62,9 @@ export interface CropView {
 const MAX_ZOOM = 4;
 const STEP = 0.1;
 
-const clamp = (value: number, low: number, high: number): number =>
-  Math.min(high, Math.max(low, value));
+function clamp(value: number, low: number, high: number): number {
+  return Math.min(high, Math.max(low, value));
+}
 
 /**
  * The part of a `width` by `height` image a frame of `ratio` keeps at `view`:
@@ -80,11 +81,17 @@ export function cropArea(width: number, height: number, ratio: number, view: Cro
   return { x: centreX - w / 2, y: centreY - h / 2, width: w, height: h };
 }
 
+export interface CropOptions {
+  maxSize?: number;
+  type?: string;
+  quality?: number;
+}
+
 /** Draw `area` of `image` at no more than `maxSize` pixels on its long side, as a blob. */
 export function cropImage(
   image: CanvasImageSource,
   area: CropArea,
-  options: { maxSize?: number; type?: string; quality?: number } = {},
+  options: CropOptions = {},
 ): Promise<Blob> {
   const max = options.maxSize ?? 2048;
   const scale = Math.min(1, max / Math.max(area.width, area.height));
@@ -166,6 +173,17 @@ export interface ImageCropperProps extends Customisable<Slots> {
   onImage?: (image: HTMLImageElement) => void;
 }
 
+interface Reach {
+  x: number;
+  y: number;
+}
+
+interface DragStart {
+  x: number;
+  y: number;
+  view: CropView;
+}
+
 /**
  * A picture moved and zoomed under a frame of a chosen aspect ratio. A
  * finger or a mouse drags it, the arrow keys move it, `+` and `-` or the
@@ -173,7 +191,9 @@ export interface ImageCropperProps extends Customisable<Slots> {
  */
 export function ImageCropper(props: ImageCropperProps) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(imageFieldStyles({ round: props.round === true }), props.classes);
+  function cls(): Slots {
+    return parts(imageFieldStyles({ round: props.round === true }), props.classes);
+  }
   const help = createUniqueId();
   const stage = makeRef<HTMLDivElement>();
   const [own, setOwn] = createSignal<CropView>({ zoom: 1, panX: 0, panY: 0 }, { ownedWrite: true });
@@ -181,10 +201,14 @@ export function ImageCropper(props: ImageCropperProps) {
     ownedWrite: true,
   });
   const [size, setSize] = createSignal({ width: 0, height: 0 }, { ownedWrite: true });
-  const view = (): CropView => props.view ?? own();
-  const aspect = (): number => ownAspect() ?? props.aspect ?? props.aspects?.[0]?.ratio ?? 1;
+  function view(): CropView {
+    return props.view ?? own();
+  }
+  function aspect(): number {
+    return ownAspect() ?? props.aspect ?? props.aspects?.[0]?.ratio ?? 1;
+  }
 
-  const set = (next: CropView, dims = size(), ratio = aspect()): void => {
+  function set(next: CropView, dims = size(), ratio = aspect()): void {
     const clamped = {
       zoom: clamp(next.zoom, 1, MAX_ZOOM),
       panX: clamp(next.panX, -1, 1),
@@ -192,10 +216,10 @@ export function ImageCropper(props: ImageCropperProps) {
     };
     setOwn(clamped);
     props.onViewChange?.(clamped, cropArea(dims.width, dims.height, ratio, clamped));
-  };
+  }
 
   /** Where the image sits in the stage, in percent of the stage, from the crop it shows. */
-  const placement = (): Record<string, string> => {
+  function placement(): Record<string, string> {
     const { width, height } = size();
     if (width === 0) return {};
     const area = cropArea(width, height, aspect(), view());
@@ -205,21 +229,21 @@ export function ImageCropper(props: ImageCropperProps) {
       left: `${String((-area.x / area.width) * 100)}%`,
       top: `${String((-area.y / area.height) * 100)}%`,
     };
-  };
+  }
 
   /** How far a pan of 1 is, in stage pixels, so a drag follows the pointer. */
-  const reach = (): { x: number; y: number } => {
+  function reach(): Reach {
     const { width, height } = size();
     const box = stage()?.getBoundingClientRect();
     if (width === 0 || box === undefined || box.width === 0) return { x: 0, y: 0 };
     const area = cropArea(width, height, aspect(), view());
     const scale = box.width / area.width;
     return { x: ((width - area.width) / 2) * scale, y: ((height - area.height) / 2) * scale };
-  };
+  }
 
-  let dragFrom: { x: number; y: number; view: CropView } | null = null;
+  let dragFrom: DragStart | null = null;
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     const now = view();
     const moves: Record<string, Partial<CropView>> = {
       ArrowLeft: { panX: now.panX + STEP },
@@ -234,7 +258,7 @@ export function ImageCropper(props: ImageCropperProps) {
     if (move === undefined) return;
     event.preventDefault();
     set({ ...now, ...move });
-  };
+  }
 
   return (
     <div class={arc(cls().cropper, props.class, props.className)} data-slot="image-cropper">
@@ -372,6 +396,11 @@ const IMAGE_ASPECTS: readonly AspectPreset[] = [
 ];
 const AVATAR_ASPECTS: readonly AspectPreset[] = [{ label: "1:1", ratio: 1 }];
 
+interface PickedImage {
+  file: File;
+  url: string;
+}
+
 /**
  * A picture chosen, cropped and uploaded: an avatar, a logo, a cover.
  *
@@ -394,31 +423,39 @@ const AVATAR_ASPECTS: readonly AspectPreset[] = [{ label: "1:1", ratio: 1 }];
 export function ImageField(props: ImageFieldProps) {
   const messages = useArcMessages();
   const locale = useLocale();
-  const shape = (): "avatar" | "image" => props.shape ?? "avatar";
-  const cls = (): Slots =>
-    parts(imageFieldStyles({ shape: shape(), round: shape() === "avatar" }), props.classes);
+  function shape(): "avatar" | "image" {
+    return props.shape ?? "avatar";
+  }
+  function cls(): Slots {
+    return parts(imageFieldStyles({ shape: shape(), round: shape() === "avatar" }), props.classes);
+  }
   const inputId = createUniqueId();
   const [own, setOwn] = createSignal<string | null>(props.defaultValue ?? null, {
     ownedWrite: true,
   });
-  const [picked, setPicked] = createSignal<{ file: File; url: string } | null>(null);
+  const [picked, setPicked] = createSignal<PickedImage | null>(null);
   const [area, setArea] = createSignal<CropArea | null>(null);
   const [rejected, setRejected] = createSignal<string | null>(null);
   const [cropping, setCropping] = createSignal(false);
   let image: HTMLImageElement | null = null;
 
-  const value = (): string | null => (props.value === undefined ? own() : props.value);
-  const commit = (next: string | null): void => {
+  function value(): string | null {
+    return props.value === undefined ? own() : props.value;
+  }
+  function commit(next: string | null): void {
     if (props.value === undefined) setOwn(next);
     props.onChange?.(next);
-  };
-  const aspects = (): readonly AspectPreset[] =>
-    props.aspects ?? (shape() === "avatar" ? AVATAR_ASPECTS : IMAGE_ASPECTS);
-  const limits = () => ({
-    accept: props.accept ?? ["image/*"],
-    maxSize: props.maxSize ?? 5_000_000,
-    maxFiles: 1,
-  });
+  }
+  function aspects(): readonly AspectPreset[] {
+    return props.aspects ?? (shape() === "avatar" ? AVATAR_ASPECTS : IMAGE_ASPECTS);
+  }
+  function limits() {
+    return {
+      accept: props.accept ?? ["image/*"],
+      maxSize: props.maxSize ?? 5_000_000,
+      maxFiles: 1,
+    };
+  }
 
   const queue = useUploadQueue({
     upload: (file, context) => props.upload(file, context),
@@ -429,24 +466,29 @@ export function ImageField(props: ImageFieldProps) {
       queue.remove(item.id);
     },
   });
-  const current = (): UploadItem | undefined => queue.items()[0];
-  const busy = (): boolean =>
-    current() !== undefined &&
-    (current()?.status === "uploading" || current()?.status === "queued");
+  function current(): UploadItem | undefined {
+    return queue.items()[0];
+  }
+  function busy(): boolean {
+    return (
+      current() !== undefined &&
+      (current()?.status === "uploading" || current()?.status === "queued")
+    );
+  }
 
-  const letGo = (): void => {
+  function letGo(): void {
     const held = picked();
     if (held !== null) URL.revokeObjectURL(held.url);
     setPicked(null);
     setCropping(false);
-  };
+  }
 
-  const send = (file: File): void => {
+  function send(file: File): void {
     for (const item of queue.items()) queue.remove(item.id);
     queue.add([file]);
-  };
+  }
 
-  const take = (files: readonly File[]): void => {
+  function take(files: readonly File[]): void {
     const { accepted, rejected: refused } = checkFiles(
       files,
       limits(),
@@ -463,9 +505,9 @@ export function ImageField(props: ImageFieldProps) {
     setPicked({ file, url: URL.createObjectURL(file) });
     setArea(null);
     setCropping(true);
-  };
+  }
 
-  const save = async (): Promise<void> => {
+  async function save(): Promise<void> {
     const held = picked();
     const kept = area();
     if (held === null) return;
@@ -482,29 +524,31 @@ export function ImageField(props: ImageFieldProps) {
     });
     send(new File([blob], held.file.name, { type: format }));
     letGo();
-  };
+  }
 
-  const library = async (): Promise<void> => {
+  async function library(): Promise<void> {
     const chosen = await props.onChooseFromLibrary?.();
     if (chosen !== null && chosen !== undefined) commit(chosen);
-  };
+  }
 
-  const pickButton = (label: string) => (
-    <FileTrigger
-      acceptedFileTypes={limits().accept}
-      allowsMultiple={false}
-      onSelect={(list: FileList | null) => take(list === null ? [] : [...list])}
-    >
-      <Button
-        variant="outline"
-        size="sm"
-        isDisabled={props.isDisabled === true || busy()}
-        data-slot="image-field-pick"
+  function pickButton(label: string) {
+    return (
+      <FileTrigger
+        acceptedFileTypes={limits().accept}
+        allowsMultiple={false}
+        onSelect={(list: FileList | null) => take(list === null ? [] : [...list])}
       >
-        {label}
-      </Button>
-    </FileTrigger>
-  );
+        <Button
+          variant="outline"
+          size="sm"
+          isDisabled={props.isDisabled === true || busy()}
+          data-slot="image-field-pick"
+        >
+          {label}
+        </Button>
+      </FileTrigger>
+    );
+  }
 
   return (
     <Field

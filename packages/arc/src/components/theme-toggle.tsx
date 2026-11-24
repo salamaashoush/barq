@@ -61,11 +61,16 @@ export interface ThemeToggleProps extends Customisable<Slots> {
  */
 export function ThemeToggle(props: ThemeToggleProps) {
   const scheme = useColorScheme();
-  const choice = (): Choice => scheme.choice();
+  function choice(): Choice {
+    return scheme.choice();
+  }
   const messages = useArcMessages();
-  const cls = (): Slots => parts(themeToggleStyles(), props.classes);
-  const text = (name: keyof ThemeToggleLabels & keyof ArcMessages): string =>
-    props.labels?.[name] ?? messages()[name];
+  function cls(): Slots {
+    return parts(themeToggleStyles(), props.classes);
+  }
+  function text(name: keyof ThemeToggleLabels & keyof ArcMessages): string {
+    return props.labels?.[name] ?? messages()[name];
+  }
 
   return (
     <DropdownMenu>

@@ -15,7 +15,9 @@ import { plugin } from "bun";
  * class name only once the compiler has folded it, and a suite running the
  * runtime fallback would measure a path no built application takes.
  */
-const escape = (path: string): string => path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function escape(path: string): string {
+  return path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 const ui = dirname(Bun.resolveSync("@barqjs/ui/package.json", import.meta.dir));
 const ownTs = new RegExp(`^(${escape(import.meta.dir)}|${escape(ui)}/src)/.*\\.ts$`);
 

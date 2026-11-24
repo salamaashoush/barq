@@ -97,105 +97,121 @@ export function Rating(props: RatingProps) {
   const of = bindField<number | null>(props, null);
   const [hovered, setHovered] = createSignal<number | null>(null);
   let cleared: number | null = null;
-  const max = (): number => props.max ?? 5;
-  const stars = (): number[] => Array.from({ length: max() }, (_, at) => at + 1);
-  const cls = () =>
-    parts({ ...fieldStyles(), ...ratingStyles({ size: props.size }) }, props.classes);
-  const filled = (star: number): boolean => star <= (hovered() ?? of.value() ?? 0);
-  const number = (value: number): string =>
-    new Intl.NumberFormat(locale().locale, { maximumFractionDigits: 1 }).format(value);
+  function max(): number {
+    return props.max ?? 5;
+  }
+  function stars(): number[] {
+    return Array.from({ length: max() }, (_, at) => at + 1);
+  }
+  function cls() {
+    return parts({ ...fieldStyles(), ...ratingStyles({ size: props.size }) }, props.classes);
+  }
+  function filled(star: number): boolean {
+    return star <= (hovered() ?? of.value() ?? 0);
+  }
+  function number(value: number): string {
+    return new Intl.NumberFormat(locale().locale, { maximumFractionDigits: 1 }).format(value);
+  }
 
-  const shown = () => (
-    <span
-      class={arc(
-        cls().display,
-        props.label === undefined ? arc(props.class, props.className) : undefined,
-      )}
-      data-slot="rating"
-      role="img"
-      aria-label={
-        props.label === undefined
-          ? `${props["aria-label"] ?? ""} ${messages().rated(number(of.value() ?? 0), number(max()))}`.trim()
-          : messages().rated(number(of.value() ?? 0), number(max()))
-      }
-    >
-      <For each={stars()}>
-        {(star: number) => {
-          const part = (): number => Math.min(1, Math.max(0, (of.value() ?? 0) - (star - 1)));
-          return (
-            <span class={cls().track} data-slot="rating-track" aria-hidden="true">
-              <Star class={cls().icon} />
-              <span
-                class={cls().fill}
-                data-slot="rating-fill"
-                style={{ width: `${String(Math.round(part() * 100))}%` }}
-              >
-                <Star class={cls().icon} />
-              </span>
-            </span>
-          );
-        }}
-      </For>
-    </span>
-  );
-
-  const given = () => (
-    <RadioGroup
-      class={arc(
-        cls().group,
-        props.label === undefined ? arc(props.class, props.className) : undefined,
-      )}
-      data-slot="rating"
-      orientation="horizontal"
-      value={of.value() === null || of.value() === undefined ? null : String(of.value())}
-      aria-label={props.label === undefined ? props["aria-label"] : undefined}
-      aria-labelledby={props.label === undefined ? undefined : of.ids.label}
-      name={of.name()}
-      isDisabled={props.isDisabled}
-      isRequired={props.isRequired}
-      isInvalid={of.isInvalid()}
-      onChange={(next: string) => {
-        if (Number(next) === cleared) return;
-        of.change(Number(next));
-        of.blur();
-      }}
-      onPointerLeave={() => setHovered(null)}
-    >
-      <For each={stars()}>
-        {(star: number) => (
-          <Radio
-            value={String(star)}
-            class={arc(cls().star, filled(star) ? cls().filled : undefined)}
-            data-slot="rating-star"
-            data-filled={filled(star) ? "" : undefined}
-            aria-label={messages().stars(star)}
-            onPointerEnter={() => setHovered(star)}
-            onPress={() => {
-              if (props.allowClear === true && of.value() === star) {
-                // A press on the star's label goes on to click its radio, which
-                // the browser checks again once the rating is gone; that click
-                // is this same press, not a new choice.
-                cleared = star;
-                setTimeout(() => {
-                  cleared = null;
-                });
-                of.change(null);
-                setHovered(null);
-              }
-            }}
-          >
-            <Star class={cls().icon} aria-hidden="true" />
-          </Radio>
+  function shown() {
+    return (
+      <span
+        class={arc(
+          cls().display,
+          props.label === undefined ? arc(props.class, props.className) : undefined,
         )}
-      </For>
-    </RadioGroup>
-  );
+        data-slot="rating"
+        role="img"
+        aria-label={
+          props.label === undefined
+            ? `${props["aria-label"] ?? ""} ${messages().rated(number(of.value() ?? 0), number(max()))}`.trim()
+            : messages().rated(number(of.value() ?? 0), number(max()))
+        }
+      >
+        <For each={stars()}>
+          {(star: number) => {
+            function part(): number {
+              return Math.min(1, Math.max(0, (of.value() ?? 0) - (star - 1)));
+            }
+            return (
+              <span class={cls().track} data-slot="rating-track" aria-hidden="true">
+                <Star class={cls().icon} />
+                <span
+                  class={cls().fill}
+                  data-slot="rating-fill"
+                  style={{ width: `${String(Math.round(part() * 100))}%` }}
+                >
+                  <Star class={cls().icon} />
+                </span>
+              </span>
+            );
+          }}
+        </For>
+      </span>
+    );
+  }
 
-  const body = () => (
-    <Show when={props.isReadOnly === true} fallback={given()}>
-      {shown()}
-    </Show>
-  );
+  function given() {
+    return (
+      <RadioGroup
+        class={arc(
+          cls().group,
+          props.label === undefined ? arc(props.class, props.className) : undefined,
+        )}
+        data-slot="rating"
+        orientation="horizontal"
+        value={of.value() === null || of.value() === undefined ? null : String(of.value())}
+        aria-label={props.label === undefined ? props["aria-label"] : undefined}
+        aria-labelledby={props.label === undefined ? undefined : of.ids.label}
+        name={of.name()}
+        isDisabled={props.isDisabled}
+        isRequired={props.isRequired}
+        isInvalid={of.isInvalid()}
+        onChange={(next: string) => {
+          if (Number(next) === cleared) return;
+          of.change(Number(next));
+          of.blur();
+        }}
+        onPointerLeave={() => setHovered(null)}
+      >
+        <For each={stars()}>
+          {(star: number) => (
+            <Radio
+              value={String(star)}
+              class={arc(cls().star, filled(star) ? cls().filled : undefined)}
+              data-slot="rating-star"
+              data-filled={filled(star) ? "" : undefined}
+              aria-label={messages().stars(star)}
+              onPointerEnter={() => setHovered(star)}
+              onPress={() => {
+                if (props.allowClear === true && of.value() === star) {
+                  // A press on the star's label goes on to click its radio, which
+                  // the browser checks again once the rating is gone; that click
+                  // is this same press, not a new choice.
+                  cleared = star;
+                  setTimeout(() => {
+                    cleared = null;
+                  });
+                  of.change(null);
+                  setHovered(null);
+                }
+              }}
+            >
+              <Star class={cls().icon} aria-hidden="true" />
+            </Radio>
+          )}
+        </For>
+      </RadioGroup>
+    );
+  }
+
+  function body() {
+    return (
+      <Show when={props.isReadOnly === true} fallback={given()}>
+        {shown()}
+      </Show>
+    );
+  }
 
   return (
     <Show when={props.label !== undefined} fallback={body()}>

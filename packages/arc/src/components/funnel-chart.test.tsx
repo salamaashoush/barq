@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child, flush } from "@barqjs/core";
+import { flush, type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, tick, user } from "@barqjs/testing";
 
@@ -18,7 +18,13 @@ async function drawn(): Promise<SVGSVGElement> {
   return document.querySelector('[data-slot="funnel-chart"] svg') as SVGSVGElement;
 }
 
-function bars(svg: SVGSVGElement): { x: number; width: number; fill: string | null }[] {
+interface Bar {
+  x: number;
+  width: number;
+  fill: string | null;
+}
+
+function bars(svg: SVGSVGElement): Bar[] {
   return [...svg.querySelectorAll("rect, path")]
     .filter((shape) => (shape.getAttribute("fill") ?? "").startsWith("var(--color-"))
     .map((shape) => {
@@ -30,6 +36,11 @@ function bars(svg: SVGSVGElement): { x: number; width: number; fill: string | nu
     });
 }
 
+interface BarSpan {
+  x: number;
+  width: number;
+}
+
 describe("FunnelChart", () => {
   test("narrows stage by stage around one centre line", async () => {
     render(() => <FunnelChart label="Sign-ups" data={DATA} />);
@@ -37,8 +48,9 @@ describe("FunnelChart", () => {
     const [visit, start, done] = bars(svg);
     expect(visit?.width).toBeGreaterThan(start?.width ?? 0);
     expect(start?.width).toBeGreaterThan(done?.width ?? 0);
-    const centre = (bar: { x: number; width: number } | undefined): number =>
-      (bar?.x ?? 0) + (bar?.width ?? 0) / 2;
+    function centre(bar: BarSpan | undefined): number {
+      return (bar?.x ?? 0) + (bar?.width ?? 0) / 2;
+    }
     expect(centre(start)).toBeCloseTo(centre(visit), 0);
     const chart = document.querySelector('[data-slot="chart"]') as HTMLElement;
     expect(chart.style.getPropertyValue("--color-visit")).toBe("var(--chart-1)");
@@ -73,7 +85,9 @@ describe("FunnelChart", () => {
     const svg = await drawn();
     svg.focus();
     flush();
-    const label = () => document.querySelector('[data-slot="chart-tooltip-label"]')?.textContent;
+    function label() {
+      return document.querySelector('[data-slot="chart-tooltip-label"]')?.textContent;
+    }
     const seen = [label()];
     user.keyDown("ArrowDown", { target: svg });
     flush();
@@ -86,7 +100,7 @@ describe("FunnelChart", () => {
   });
 
   test("writes its numbers in the reader's locale, right to left", async () => {
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }

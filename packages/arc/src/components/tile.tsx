@@ -99,6 +99,10 @@ export const tileStyles = variants({
 
 type Slots = ReturnType<typeof tileStyles>;
 
+export interface TileRenders {
+  title?: RenderPart<Child>;
+}
+
 export interface TileProps extends Customisable<Slots> {
   title: Child;
   description?: Child;
@@ -122,7 +126,7 @@ export interface TileProps extends Customisable<Slots> {
   onSelectedChange?: (selected: boolean) => void;
   isDisabled?: boolean;
   /** Another element for the title: an `<h3>` in a list under a heading. */
-  renders?: { title?: RenderPart<Child> };
+  renders?: TileRenders;
   id?: string;
 }
 
@@ -142,19 +146,23 @@ export interface TileProps extends Customisable<Slots> {
  */
 export function Tile(props: TileProps) {
   const titleId = createUniqueId();
-  const selectable = (): boolean =>
-    props.selected !== undefined ||
-    props.defaultSelected !== undefined ||
-    props.onSelectedChange !== undefined;
+  function selectable(): boolean {
+    return (
+      props.selected !== undefined ||
+      props.defaultSelected !== undefined ||
+      props.onSelectedChange !== undefined
+    );
+  }
   const [selected, setSelected] = controllable<boolean>(
     () => props.selected,
     () => props.defaultSelected ?? false,
     (next) => props.onSelectedChange?.(next),
   );
-  const interactive = (): boolean =>
-    props.href !== undefined || props.onPress !== undefined || selectable();
-  const cls = (): Slots =>
-    parts(
+  function interactive(): boolean {
+    return props.href !== undefined || props.onPress !== undefined || selectable();
+  }
+  function cls(): Slots {
+    return parts(
       tileStyles({
         mediaPosition: props.mediaPosition,
         interactive: interactive() && props.isDisabled !== true,
@@ -162,8 +170,9 @@ export function Tile(props: TileProps) {
       }),
       props.classes,
     );
+  }
 
-  const titleContent = (): Child => {
+  function titleContent(): Child {
     if (props.href !== undefined) {
       return (
         <AriaLink
@@ -189,7 +198,7 @@ export function Tile(props: TileProps) {
       );
     }
     return props.title;
-  };
+  }
 
   return (
     <article

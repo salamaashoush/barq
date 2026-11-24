@@ -82,8 +82,12 @@ export interface ComboChartProps extends ChartBaseProps<ComboChartSlots> {
  */
 export function ComboChart(props: ComboChartProps) {
   const number = chartNumbers(props.formatOptions);
-  const cls = (): ComboChartSlots => parts(comboChartStyles(), props.classes);
-  const all = (): readonly TonedSeries[] => [...(props.bars ?? []), ...(props.lines ?? [])];
+  function cls(): ComboChartSlots {
+    return parts(comboChartStyles(), props.classes);
+  }
+  function all(): readonly TonedSeries[] {
+    return [...(props.bars ?? []), ...(props.lines ?? [])];
+  }
   return (
     <ChartFrame
       slot="combo-chart"
@@ -121,8 +125,9 @@ interface Point {
   readonly value: number;
 }
 
-const isPoint = (datum: unknown): datum is Point =>
-  typeof datum === "object" && datum !== null && "series" in datum && "value" in datum;
+function isPoint(datum: unknown): datum is Point {
+  return typeof datum === "object" && datum !== null && "series" in datum && "value" in datum;
+}
 
 function fold(data: readonly Row[], series: readonly TonedSeries[], x: string): Point[] {
   return data.flatMap((row) =>
@@ -134,7 +139,12 @@ function fold(data: readonly Row[], series: readonly TonedSeries[], x: string): 
   );
 }
 
-function ComboPlot(props: ComboChartProps & { class: string; write: (value: number) => string }) {
+interface ComboPlotProps {
+  class: string;
+  write: (value: number) => string;
+}
+
+function ComboPlot(props: ComboChartProps & ComboPlotProps) {
   const scope = useChart();
   const definition = createMemo((): ChartDefinition => {
     const bars = props.bars ?? [];

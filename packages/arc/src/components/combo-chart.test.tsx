@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child, flush } from "@barqjs/core";
+import { flush, type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, tick, user } from "@barqjs/testing";
 
@@ -52,8 +52,9 @@ describe("ComboChart", () => {
     ));
     const svg = await drawn();
     const texts = [...svg.querySelectorAll("text")];
-    const at = (words: string): number =>
-      Number(texts.find((text) => text.textContent === words)?.getAttribute("x"));
+    function at(words: string): number {
+      return Number(texts.find((text) => text.textContent === words)?.getAttribute("x"));
+    }
     expect(texts.map((text) => text.textContent)).toContain("Rate");
     expect(at("0.050")).toBeGreaterThan(at("Tue"));
     expect(at("180")).toBeLessThan(at("Mon"));
@@ -80,10 +81,11 @@ describe("ComboChart", () => {
     svg.focus();
     flush();
     expect(document.querySelector('[data-slot="chart-tooltip-label"]')?.textContent).toBe("Mon");
-    const rows = () =>
-      [...document.querySelectorAll('[data-slot="chart-tooltip-row"]')].map(
+    function rows() {
+      return [...document.querySelectorAll('[data-slot="chart-tooltip-row"]')].map(
         (row) => row.textContent,
       );
+    }
     expect(rows()).toEqual(["Runs120", "Failure rate0.02"]);
     user.keyDown("ArrowRight", { target: svg });
     flush();
@@ -105,15 +107,16 @@ describe("ComboChart", () => {
       />
     ));
     const svg = await drawn();
-    const first = (fill: string): Element | undefined =>
-      [...svg.querySelectorAll("rect")].find((rect) => rect.getAttribute("fill") === fill);
+    function first(fill: string): Element | undefined {
+      return [...svg.querySelectorAll("rect")].find((rect) => rect.getAttribute("fill") === fill);
+    }
     expect(first("var(--color-runs)")?.getAttribute("x")).toBe(
       first("var(--color-rate)")?.getAttribute("x") ?? "",
     );
   });
 
   test("writes its numbers in the reader's locale, right to left", async () => {
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }

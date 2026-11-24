@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child } from "@barqjs/core";
+import { type ParentProps } from "@barqjs/core";
 import { collectCss } from "@barqjs/css";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user, waitFor, within } from "@barqjs/testing";
@@ -284,7 +284,7 @@ describe("PasskeyPrompt", () => {
 
 describe("the auth templates", () => {
   test("run right to left", () => {
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }

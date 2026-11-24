@@ -197,8 +197,12 @@ export function MediaPlayer(props: MediaPlayerProps) {
   const media = makeRef<HTMLMediaElement>();
   const screen = fullscreen(() => root());
   const transcriptId = createUniqueId();
-  const kind = (): "video" | "audio" => props.kind ?? "video";
-  const cls = (): Slots => parts(mediaPlayerStyles({ kind: kind() }), props.classes);
+  function kind(): "video" | "audio" {
+    return props.kind ?? "video";
+  }
+  function cls(): Slots {
+    return parts(mediaPlayerStyles({ kind: kind() }), props.classes);
+  }
 
   const [paused, setPaused] = createSignal(props.autoPlay !== true, { ownedWrite: true });
   const [time, setTime] = createSignal(props.startTime ?? 0, { ownedWrite: true });
@@ -218,13 +222,15 @@ export function MediaPlayer(props: MediaPlayerProps) {
   let scrolledAt = 0;
   let followedAt = 0;
 
-  const clock = (seconds: number): string =>
-    durationText(Math.max(0, seconds) * 1000, locale().locale, {
+  function clock(seconds: number): string {
+    return durationText(Math.max(0, seconds) * 1000, locale().locale, {
       length: "digital",
       hours: "auto",
     });
-  const spoken = (seconds: number): string =>
-    durationText(Math.max(0, seconds) * 1000, locale().locale, { length: "long", units: 3 });
+  }
+  function spoken(seconds: number): string {
+    return durationText(Math.max(0, seconds) * 1000, locale().locale, { length: "long", units: 3 });
+  }
 
   if (!isServer) {
     createEffect(
@@ -250,25 +256,27 @@ export function MediaPlayer(props: MediaPlayerProps) {
     );
   }
 
-  const element = (): HTMLMediaElement | null => media();
+  function element(): HTMLMediaElement | null {
+    return media();
+  }
 
-  const toggle = (): void => {
+  function toggle(): void {
     const node = element();
     if (node === null) return;
     if (node.paused) void node.play().catch(() => setPaused(true));
     else node.pause();
-  };
+  }
 
-  const seekTo = (seconds: number): void => {
+  function seekTo(seconds: number): void {
     const node = element();
     if (node === null) return;
     const end = Number.isFinite(node.duration) ? node.duration : duration();
     const next = Math.min(Math.max(0, seconds), end > 0 ? end : seconds);
     node.currentTime = next;
     setTime(next);
-  };
+  }
 
-  const setLevel = (level: number): void => {
+  function setLevel(level: number): void {
     const node = element();
     const next = Math.min(1, Math.max(0, level));
     if (node !== null) {
@@ -277,50 +285,56 @@ export function MediaPlayer(props: MediaPlayerProps) {
     }
     setVolume(next);
     setMuted(next === 0);
-  };
+  }
 
-  const toggleMute = (): void => {
+  function toggleMute(): void {
     const node = element();
     const next = !muted();
     if (node !== null) node.muted = next;
     setMuted(next);
-  };
+  }
 
-  const chooseRate = (next: number): void => {
+  function chooseRate(next: number): void {
     const node = element();
     if (node !== null) node.playbackRate = next;
     setRate(next);
-  };
+  }
 
-  const captionTracks = (): readonly MediaTrack[] =>
-    (props.tracks ?? []).filter((track) => track.kind !== "descriptions");
-  const toggleCaptions = (): void => {
+  function captionTracks(): readonly MediaTrack[] {
+    return (props.tracks ?? []).filter((track) => track.kind !== "descriptions");
+  }
+  function toggleCaptions(): void {
     const first = captionTracks()[0];
     if (first === undefined) return;
     setCaption(caption() === "" ? first.srclang : "");
-  };
+  }
 
-  const pipSupported = (): boolean =>
-    mounted() &&
-    kind() === "video" &&
-    !isServer &&
-    "pictureInPictureEnabled" in document &&
-    document.pictureInPictureEnabled;
-  const togglePip = (): void => {
+  function pipSupported(): boolean {
+    return (
+      mounted() &&
+      kind() === "video" &&
+      !isServer &&
+      "pictureInPictureEnabled" in document &&
+      document.pictureInPictureEnabled
+    );
+  }
+  function togglePip(): void {
     const node = element() as HTMLVideoElement | null;
     if (node === null) return;
     if (document.pictureInPictureElement === node) void document.exitPictureInPicture();
     else void node.requestPictureInPicture();
-  };
+  }
 
-  const currentChapter = (): MediaChapter | undefined =>
-    (props.chapters ?? []).findLast((chapter) => chapter.start <= time());
-  const currentCue = (): MediaCue | undefined =>
-    (props.transcript ?? []).findLast(
+  function currentChapter(): MediaChapter | undefined {
+    return (props.chapters ?? []).findLast((chapter) => chapter.start <= time());
+  }
+  function currentCue(): MediaCue | undefined {
+    return (props.transcript ?? []).findLast(
       (cue) => cue.start <= time() && (cue.end === undefined || time() < cue.end),
     );
+  }
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     if (event.altKey || event.ctrlKey || event.metaKey) return;
     const from = event.target as HTMLElement;
     const inField = from.closest('input:not([type="range"]), textarea, select, [role="menu"]');
@@ -375,11 +389,11 @@ export function MediaPlayer(props: MediaPlayerProps) {
         else handled = false;
     }
     if (handled) event.preventDefault();
-  };
+  }
 
   let lastTap = 0;
   let pausedBeforeTap = false;
-  const onStagePointerUp = (event: PointerEvent): void => {
+  function onStagePointerUp(event: PointerEvent): void {
     if (event.pointerType !== "touch") return;
     const node = element();
     if (node === null) return;
@@ -397,71 +411,77 @@ export function MediaPlayer(props: MediaPlayerProps) {
     }
     lastTap = now;
     pausedBeforeTap = node.paused;
-  };
+  }
 
-  const sources = (): readonly MediaSource[] =>
-    typeof props.src === "string" ? [{ src: props.src }] : props.src;
+  function sources(): readonly MediaSource[] {
+    return typeof props.src === "string" ? [{ src: props.src }] : props.src;
+  }
 
-  const mediaProps = () => ({
-    class: cls().media,
-    "data-slot": "media-player-media",
-    ref: media.set,
-    poster: kind() === "video" ? props.poster : undefined,
-    preload: props.preload ?? "metadata",
-    autoplay: props.autoPlay,
-    muted: props.muted,
-    loop: props.loop,
-    playsinline: true,
-    "aria-label": props.title,
-    onPlay: () => setPaused(false),
-    onPause: () => setPaused(true),
-    onEnded: () => {
-      setPaused(true);
-      props.onEnded?.();
-    },
-    onTimeUpdate: (event: Event) => {
-      const seconds = (event.currentTarget as HTMLMediaElement).currentTime;
-      setTime(seconds);
-      props.onTimeUpdate?.(seconds);
-    },
-    onLoadedMetadata: (event: Event) => {
-      const seconds = (event.currentTarget as HTMLMediaElement).duration;
-      if (Number.isFinite(seconds)) setDuration(seconds);
-    },
-    onDurationChange: (event: Event) => {
-      const seconds = (event.currentTarget as HTMLMediaElement).duration;
-      if (Number.isFinite(seconds)) setDuration(seconds);
-    },
-    onVolumeChange: (event: Event) => {
-      const node = event.currentTarget as HTMLMediaElement;
-      setVolume(node.volume);
-      setMuted(node.muted);
-    },
-    onRateChange: (event: Event) => setRate((event.currentTarget as HTMLMediaElement).playbackRate),
-    onEnterPictureInPicture: () => setPip(true),
-    onLeavePictureInPicture: () => setPip(false),
-    onClick: () => toggle(),
-    onPointerUp: onStagePointerUp,
-  });
+  function mediaProps() {
+    return {
+      class: cls().media,
+      "data-slot": "media-player-media",
+      ref: media.set,
+      poster: kind() === "video" ? props.poster : undefined,
+      preload: props.preload ?? "metadata",
+      autoplay: props.autoPlay,
+      muted: props.muted,
+      loop: props.loop,
+      playsinline: true,
+      "aria-label": props.title,
+      onPlay: () => setPaused(false),
+      onPause: () => setPaused(true),
+      onEnded: () => {
+        setPaused(true);
+        props.onEnded?.();
+      },
+      onTimeUpdate: (event: Event) => {
+        const seconds = (event.currentTarget as HTMLMediaElement).currentTime;
+        setTime(seconds);
+        props.onTimeUpdate?.(seconds);
+      },
+      onLoadedMetadata: (event: Event) => {
+        const seconds = (event.currentTarget as HTMLMediaElement).duration;
+        if (Number.isFinite(seconds)) setDuration(seconds);
+      },
+      onDurationChange: (event: Event) => {
+        const seconds = (event.currentTarget as HTMLMediaElement).duration;
+        if (Number.isFinite(seconds)) setDuration(seconds);
+      },
+      onVolumeChange: (event: Event) => {
+        const node = event.currentTarget as HTMLMediaElement;
+        setVolume(node.volume);
+        setMuted(node.muted);
+      },
+      onRateChange: (event: Event) =>
+        setRate((event.currentTarget as HTMLMediaElement).playbackRate),
+      onEnterPictureInPicture: () => setPip(true),
+      onLeavePictureInPicture: () => setPip(false),
+      onClick: () => toggle(),
+      onPointerUp: onStagePointerUp,
+    };
+  }
 
-  const content = () => (
-    <>
-      <For each={sources()}>
-        {(source: MediaSource) => <source src={source.src} type={source.type} />}
-      </For>
-      <For each={props.tracks ?? []}>
-        {(track: MediaTrack) => (
-          <track
-            src={track.src}
-            kind={track.kind ?? "captions"}
-            srclang={track.srclang}
-            label={track.label}
-            default={track.default}
-          />
-        )}
-      </For>
-    </>
-  );
+  function content() {
+    return (
+      <>
+        <For each={sources()}>
+          {(source: MediaSource) => <source src={source.src} type={source.type} />}
+        </For>
+        <For each={props.tracks ?? []}>
+          {(track: MediaTrack) => (
+            <track
+              src={track.src}
+              kind={track.kind ?? "captions"}
+              srclang={track.srclang}
+              label={track.label}
+              default={track.default}
+            />
+          )}
+        </For>
+      </>
+    );
+  }
 
   return (
     <div
@@ -711,14 +731,16 @@ export function MediaPlayer(props: MediaPlayerProps) {
   );
 }
 
-function TranscriptLine(props: {
+interface TranscriptLineProps {
   cue: MediaCue;
   current: boolean;
   time: string;
   classes: Slots;
   onSeek: () => void;
   onCurrent: (line: HTMLElement) => void;
-}) {
+}
+
+function TranscriptLine(props: TranscriptLineProps) {
   const line = makeRef<HTMLButtonElement>();
   if (!isServer) {
     createEffect(

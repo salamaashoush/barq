@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { type Child, createSignal } from "@barqjs/core";
+import { createSignal, type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { destroyAnnouncer } from "@barqjs/aria/live";
 import { ariaViolations, fireEvent, render, screen, user, waitFor, within } from "@barqjs/testing";
@@ -30,7 +30,12 @@ async function loaded(width = 800, height = 400): Promise<HTMLImageElement> {
   return image;
 }
 
-const drawn: { area: number[]; size: [number, number] }[] = [];
+interface Drawn {
+  area: number[];
+  size: [number, number];
+}
+
+const drawn: Drawn[] = [];
 const original = {
   getContext: HTMLCanvasElement.prototype.getContext,
   toBlob: HTMLCanvasElement.prototype.toBlob,
@@ -208,7 +213,7 @@ describe("ImageCropper", () => {
   });
 
   test("its controls stay a finger's size and it runs right to left", async () => {
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }

@@ -85,7 +85,7 @@ export interface ActionBarProps extends Customisable<Slots> {
  */
 export function ActionBar(props: ActionBarProps) {
   const messages = useArcMessages();
-  const cls = () => {
+  function cls() {
     const own = parts(actionBarStyles({ overflow: props.overflow ?? "collapse" }), props.classes);
     const size = props.size ?? "sm";
     const menu = dropdownMenuVariants();
@@ -102,8 +102,10 @@ export function ActionBar(props: ActionBarProps) {
       menu: arc(menu.content, own.menu),
       menuItem: arc(menu.item, own.menuItem),
     };
-  };
-  const byId = (id: Key): BarAction | undefined => props.actions.find((one) => one.id === id);
+  }
+  function byId(id: Key): BarAction | undefined {
+    return props.actions.find((one) => one.id === id);
+  }
   return (
     <div class={arc(cls().root, props.class, props.className)} data-slot="action-bar">
       <ActionGroup<BarAction>

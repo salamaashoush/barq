@@ -92,10 +92,11 @@ type Slots = ReturnType<typeof selectionBarStyles>;
 export function SelectionBar<T>(props: SelectionBarProps<T>) {
   const [pending, setPending] = createSignal<SelectionAction<T> | null>(null);
   const messages = useArcMessages();
-  const cls = (): Slots =>
-    parts(selectionBarStyles({ floating: props.floating === true }), props.classes);
+  function cls(): Slots {
+    return parts(selectionBarStyles({ floating: props.floating === true }), props.classes);
+  }
 
-  const run = async (action: SelectionAction<T>): Promise<void> => {
+  async function run(action: SelectionAction<T>): Promise<void> {
     const rows = props.rows;
     if (action.confirm !== undefined && !(await confirm(action.confirm(rows)))) return;
     setPending(action);
@@ -105,48 +106,50 @@ export function SelectionBar<T>(props: SelectionBarProps<T>) {
     } finally {
       setPending(null);
     }
-  };
+  }
 
-  const content = () => (
-    <div
-      class={props.floating === true ? cls().root : arc(cls().root, props.class, props.className)}
-      role="group"
-      aria-label={props.label ?? messages().selection}
-      data-slot="selection-bar"
-      data-floating={props.floating === true ? "true" : "false"}
-    >
-      <span class={cls().count} role="status" data-slot="selection-bar-count">
-        {(props.selectedLabel ?? messages().selected)(props.count)}
-      </span>
-      <For each={() => props.actions}>
-        {(action: SelectionAction<T>) => (
-          <Button
-            variant="ghost"
-            size="sm"
-            class={action.tone === "danger" ? arc(cls().action, fg.danger) : cls().action}
-            isPending={pending() === action}
-            isDisabled={pending() !== null && pending() !== action}
-            data-slot="selection-bar-action"
-            onPress={() => void run(action)}
-          >
-            {action.icon}
-            {action.label}
-          </Button>
-        )}
-      </For>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        aria-label={props.clearLabel ?? messages().clearSelection}
-        class={cls().clear}
-        isDisabled={pending() !== null}
-        data-slot="selection-bar-clear"
-        onPress={() => props.onClear()}
+  function content() {
+    return (
+      <div
+        class={props.floating === true ? cls().root : arc(cls().root, props.class, props.className)}
+        role="group"
+        aria-label={props.label ?? messages().selection}
+        data-slot="selection-bar"
+        data-floating={props.floating === true ? "true" : "false"}
       >
-        <X aria-hidden="true" />
-      </Button>
-    </div>
-  );
+        <span class={cls().count} role="status" data-slot="selection-bar-count">
+          {(props.selectedLabel ?? messages().selected)(props.count)}
+        </span>
+        <For each={() => props.actions}>
+          {(action: SelectionAction<T>) => (
+            <Button
+              variant="ghost"
+              size="sm"
+              class={action.tone === "danger" ? arc(cls().action, fg.danger) : cls().action}
+              isPending={pending() === action}
+              isDisabled={pending() !== null && pending() !== action}
+              data-slot="selection-bar-action"
+              onPress={() => void run(action)}
+            >
+              {action.icon}
+              {action.label}
+            </Button>
+          )}
+        </For>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={props.clearLabel ?? messages().clearSelection}
+          class={cls().clear}
+          isDisabled={pending() !== null}
+          data-slot="selection-bar-clear"
+          onPress={() => props.onClear()}
+        >
+          <X aria-hidden="true" />
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <Show when={props.floating === true} fallback={content()}>

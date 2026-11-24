@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child, type Incoming, type JSXElement, flush } from "@barqjs/core";
+import { type Child, type Incoming, type JSXElement, flush, type ParentProps } from "@barqjs/core";
 import { type ZonedDateTime, parseDate, parseZonedDateTime } from "@barqjs/aria/date";
 import { ariaViolations, render, screen, tick, user, waitFor } from "@barqjs/testing";
 
@@ -11,18 +11,28 @@ async function settle(): Promise<void> {
   flush();
 }
 
+interface HeldState {
+  readonly values: Record<string, unknown>;
+  readonly canSubmit: boolean;
+}
+
 /** What a test reads back of the form it rendered. */
 interface Held {
-  readonly state: { readonly values: Record<string, unknown>; readonly canSubmit: boolean };
+  readonly state: HeldState;
 }
 
 interface Submits {
-  AppForm: (props: Incoming<{ children?: Child }>) => JSXElement;
+  AppForm: (props: Incoming<ParentProps>) => JSXElement;
   handleSubmit: () => Promise<unknown>;
 }
 
+interface ShellProps {
+  form: Submits;
+  children?: Child;
+}
+
 /** A `<form>` around the fields, submitting through the form API. */
-function Shell(props: { form: Submits; children?: Child }) {
+function Shell(props: ShellProps) {
   const form = props.form;
   return (
     <form.AppForm>
@@ -414,9 +424,13 @@ describe("submitting", () => {
   });
 });
 
+interface ShoutProps {
+  label: string;
+}
+
 describe("createArcForm", () => {
   test("adds an app's own field beside arc's", async () => {
-    function Shout(props: { label: string }) {
+    function Shout(props: ShoutProps) {
       const field = useArcField<string>();
       return <output aria-label={props.label}>{field().state.value.toUpperCase()}</output>;
     }

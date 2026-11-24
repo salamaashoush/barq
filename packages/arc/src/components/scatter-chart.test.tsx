@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child, flush } from "@barqjs/core";
+import { flush, type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, tick, user } from "@barqjs/testing";
 
@@ -23,7 +23,9 @@ async function drawn(): Promise<SVGSVGElement> {
   return document.querySelector('[data-slot="scatter-chart"] svg') as SVGSVGElement;
 }
 
-const circles = (svg: SVGSVGElement): SVGCircleElement[] => [...svg.querySelectorAll("circle")];
+function circles(svg: SVGSVGElement): SVGCircleElement[] {
+  return [...svg.querySelectorAll("circle")];
+}
 
 describe("ScatterChart", () => {
   test("draws a point per record in its series' colour", async () => {
@@ -87,11 +89,14 @@ describe("ScatterChart", () => {
     const svg = await drawn();
     svg.focus();
     flush();
-    const label = () => document.querySelector('[data-slot="chart-tooltip-label"]')?.textContent;
-    const rows = () =>
-      [...document.querySelectorAll('[data-slot="chart-tooltip-row"]')].map(
+    function label() {
+      return document.querySelector('[data-slot="chart-tooltip-label"]')?.textContent;
+    }
+    function rows() {
+      return [...document.querySelectorAll('[data-slot="chart-tooltip-row"]')].map(
         (row) => row.textContent,
       );
+    }
     expect(label()).toBe("/a");
     expect(rows()).toEqual(["duration12", "bytes300"]);
     user.keyDown("ArrowRight", { target: svg });
@@ -100,7 +105,7 @@ describe("ScatterChart", () => {
   });
 
   test("writes its numbers in the reader's locale, right to left", async () => {
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }

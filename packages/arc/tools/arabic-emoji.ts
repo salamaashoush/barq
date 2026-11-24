@@ -22,8 +22,13 @@ const NOTICE =
   `version ${CLDR}. Copyright © 2015-2024 Unicode, Inc. Distributed under the Unicode ` +
   "License v3: https://www.unicode.org/license.txt";
 
+interface AnnotationLists {
+  default?: string[];
+  tts?: string[];
+}
+
 interface Annotations {
-  [emoji: string]: { default?: string[]; tts?: string[] };
+  [emoji: string]: AnnotationLists;
 }
 
 interface Compact {
@@ -32,9 +37,13 @@ interface Compact {
   group?: number;
 }
 
+interface AnnotationsFile {
+  annotations: Annotations;
+}
+
 async function read(path: string | undefined, url: string): Promise<Annotations> {
   const text = path === undefined ? await (await fetch(url)).text() : readFileSync(path, "utf8");
-  const json = JSON.parse(text) as Record<string, { annotations: Annotations }>;
+  const json = JSON.parse(text) as Record<string, AnnotationsFile>;
   const top = json.annotations ?? json.annotationsDerived;
   if (top === undefined) throw new Error(`no annotations in ${path ?? url}`);
   return top.annotations;
@@ -51,7 +60,9 @@ const english = JSON.parse(
 ) as Compact[];
 
 // CLDR's keys leave out the variation selector emojibase writes.
-const bare = (text: string): string => text.replaceAll("️", "");
+function bare(text: string): string {
+  return text.replaceAll("️", "");
+}
 const byBare = new Map(Object.entries(annotations).map(([key, value]) => [bare(key), value]));
 
 const emoji: Record<string, string[]> = {};

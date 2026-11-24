@@ -90,18 +90,20 @@ export function Truncate(props: TruncateProps) {
   const node = makeRef<HTMLElement>();
   const [cut, setCut] = createSignal(false, { ownedWrite: true });
   const [own, setOwn] = createSignal(props.defaultOpen ?? false);
-  const open = (): boolean => props.open ?? own();
-  const setOpen = (next: boolean): void => {
+  function open(): boolean {
+    return props.open ?? own();
+  }
+  function setOpen(next: boolean): void {
     setOwn(next);
     props.onOpenChange?.(next);
-  };
-  const measure = (element: HTMLElement | null, shown: boolean): void => {
+  }
+  function measure(element: HTMLElement | null, shown: boolean): void {
     if (element === null || shown) return;
     setCut(
       element.scrollHeight > element.clientHeight + 1 ||
         element.scrollWidth > element.clientWidth + 1,
     );
-  };
+  }
   resizeObserver(
     () => node(),
     () => measure(node(), open()),
@@ -112,9 +114,12 @@ export function Truncate(props: TruncateProps) {
       ([element, shown]) => measure(element, shown),
     );
   }
-  const cls = (): Slots =>
-    parts(truncateStyles({ lines: props.lines ?? 1, open: open() }), props.classes);
-  const shows = (): boolean => props.expandable !== false && (cut() || open());
+  function cls(): Slots {
+    return parts(truncateStyles({ lines: props.lines ?? 1, open: open() }), props.classes);
+  }
+  function shows(): boolean {
+    return props.expandable !== false && (cut() || open());
+  }
 
   return (
     <span

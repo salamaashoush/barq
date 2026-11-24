@@ -52,7 +52,9 @@ export function UnsavedChangesGuard(props: UnsavedChangesGuardProps) {
   // leaves its props as the Cells they arrive as.
   const incoming = cells(props);
   const messages = useArcMessages();
-  const when = (): boolean => incoming.when();
+  function when(): boolean {
+    return incoming.when();
+  }
   useBlocker({
     shouldBlockFn: async () => {
       if (!when()) return false;

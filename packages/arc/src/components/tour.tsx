@@ -66,7 +66,7 @@ function trackRect(element: Accessor<Element | null>): Accessor<DOMRect | null> 
     setRect(target === null ? null : target.getBoundingClientRect());
     if (target === null) return () => {};
     let frame = 0;
-    const measure = (): void => {
+    const measure: () => void = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => setRect(target.getBoundingClientRect()));
     };
@@ -118,8 +118,10 @@ export interface SpotlightProps extends Customisable<ReturnType<typeof spotlight
 export function Spotlight(props: SpotlightProps) {
   const element = located(() => props.target);
   const rect = trackRect(element);
-  const cls = () => parts(spotlightStyles(), props.classes);
-  const box = (): Record<string, string> => {
+  function cls() {
+    return parts(spotlightStyles(), props.classes);
+  }
+  function box(): Record<string, string> {
     const at = rect();
     const pad = props.padding ?? 6;
     if (at === null) return { display: "none" };
@@ -129,7 +131,7 @@ export function Spotlight(props: SpotlightProps) {
       width: `${String(at.width + pad * 2)}px`,
       height: `${String(at.height + pad * 2)}px`,
     };
-  };
+  }
   return (
     <div
       class={arc(cls().root, props.class, props.className)}
@@ -197,10 +199,15 @@ export function Coachmark(props: CoachmarkProps) {
   const messages = useArcMessages();
   const locale = useLocale();
   const element = located(() => props.target);
-  const cls = () => parts(coachmarkStyles(), props.classes);
-  const last = (): boolean =>
-    props.step !== undefined && props.total !== undefined && props.step >= props.total;
-  const count = (value: number): string => new Intl.NumberFormat(locale().locale).format(value);
+  function cls() {
+    return parts(coachmarkStyles(), props.classes);
+  }
+  function last(): boolean {
+    return props.step !== undefined && props.total !== undefined && props.step >= props.total;
+  }
+  function count(value: number): string {
+    return new Intl.NumberFormat(locale().locale).format(value);
+  }
   return (
     <Popover
       class={arc(cls().root, props.class, props.className)}
@@ -329,9 +336,11 @@ export function Tour(props: TourProps) {
     () => untrack(() => props.defaultStep) ?? 0,
     (next) => props.onStepChange?.(next),
   );
-  const current = (): TourStep | undefined => props.steps[step()];
+  function current(): TourStep | undefined {
+    return props.steps[step()];
+  }
 
-  const go = (next: number): void => {
+  function go(next: number): void {
     const direction = next >= untrack(step) ? 1 : -1;
     let at = next;
     while (
@@ -351,16 +360,16 @@ export function Tour(props: TourProps) {
     const target = find((props.steps[at] as TourStep).target);
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     target?.scrollIntoView?.({ block: "center", behavior: reduced ? "auto" : "smooth" });
-  };
+  }
 
-  const finish = (): void => {
+  function finish(): void {
     setOpen(false);
     props.onFinish?.();
-  };
-  const skip = (): void => {
+  }
+  function skip(): void {
     setOpen(false);
     props.onSkip?.(untrack(step));
-  };
+  }
 
   return (
     <Show when={isOpen() && current() !== undefined}>
@@ -408,10 +417,11 @@ interface Stored {
  * reload resumes it. On a server it reads as new.
  */
 export function useTourProgress(key: string, storage?: Storage): TourProgress {
-  const store = (): Storage | undefined =>
-    storage ?? (isServer || typeof localStorage === "undefined" ? undefined : localStorage);
+  function store(): Storage | undefined {
+    return storage ?? (isServer || typeof localStorage === "undefined" ? undefined : localStorage);
+  }
   const name = `arc-tour:${key}`;
-  const read = (): Stored => {
+  function read(): Stored {
     try {
       const raw = store()?.getItem(name);
       if (raw !== null && raw !== undefined) return JSON.parse(raw) as Stored;
@@ -419,19 +429,19 @@ export function useTourProgress(key: string, storage?: Storage): TourProgress {
       // A value written by something else, or storage refused: start again.
     }
     return { status: "new", step: 0 };
-  };
+  }
   const [state, setState] = createSignal<Stored>(read());
-  const write = (next: Stored): void => {
+  function write(next: Stored): void {
     setState(next);
     try {
       store()?.setItem(name, JSON.stringify(next));
     } catch {
       // Private mode or a full store: the tour is still right for this visit.
     }
-  };
-  const onStorage = (event: StorageEvent): void => {
+  }
+  function onStorage(event: StorageEvent): void {
     if (event.key === name) setState(read());
-  };
+  }
   if (!isServer && typeof window !== "undefined") {
     window.addEventListener("storage", onStorage);
     onCleanup(() => window.removeEventListener("storage", onStorage));

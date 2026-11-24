@@ -210,6 +210,38 @@ function totalOf(total: DataGridTotal, values: readonly unknown[]): number {
   return Math.max(...numbers);
 }
 
+interface GroupedRow {
+  getIsGrouped: () => boolean;
+}
+
+interface ShownRow<T extends RowData> {
+  row: Row<Features, T>;
+  index: number;
+}
+
+interface SelectedBlock<T extends RowData> {
+  row: Row<Features, T>;
+  columns: DataGridColumn<T>[];
+}
+
+interface RowWithLeaves<T extends RowData> {
+  getLeafRows: () => Row<Features, T>[];
+}
+
+interface CellEditorProps<T extends RowData> {
+  column: DataGridColumn<T>;
+  held: Editing;
+}
+
+interface HeaderGroupRow<T extends RowData> {
+  id: string;
+  headers: readonly Header<Features, T>[];
+}
+
+interface GroupingRow {
+  groupingValue?: unknown;
+}
+
 /**
  * A grid to edit like a spreadsheet: typed cells, a range selected with the
  * pointer or Shift and the arrows, ranges copied and pasted as text, rows
@@ -247,45 +279,53 @@ export function DataGrid<T extends RowData>(props: DataGridProps<T>) {
   const messages = useArcMessages();
   const direction = useDirection();
   const digits = numberFormatter({ maximumFractionDigits: 2 });
-  const cls = (): Slots => parts(dataGridStyles(), props.classes);
+  function cls(): Slots {
+    return parts(dataGridStyles(), props.classes);
+  }
   const scroller = makeRef<HTMLDivElement>();
   const [selection, setSelection] = createSignal<CellSelectionState>([]);
   const [expanded, setExpanded] = createSignal<ExpandedState>(true);
   const [editing, setEditing] = createSignal<Editing | null>(null);
   const [said, setSaid] = createSignal("");
 
-  const leaves = (): DataGridColumn<T>[] => {
+  function leaves(): DataGridColumn<T>[] {
     const all = props.columns.flatMap((column) => (isGroup(column) ? column.columns : [column]));
     return [
       ...all.filter((one) => one.frozen === true),
       ...all.filter((one) => one.frozen !== true),
     ];
-  };
-  const columnOf = (id: string): DataGridColumn<T> | undefined =>
-    leaves().find((one) => one.id === id);
-  const fieldOf = (column: DataGridColumn<T>): string => column.field ?? column.id;
-  const valueOf = (row: T, column: DataGridColumn<T>): unknown =>
-    (row as Record<string, unknown>)[fieldOf(column)];
-  const canEdit = (column: DataGridColumn<T> | undefined): boolean =>
-    column !== undefined && props.onCellsChange !== undefined && column.editable !== false;
-  const show = (column: DataGridColumn<T>, value: unknown): string => {
+  }
+  function columnOf(id: string): DataGridColumn<T> | undefined {
+    return leaves().find((one) => one.id === id);
+  }
+  function fieldOf(column: DataGridColumn<T>): string {
+    return column.field ?? column.id;
+  }
+  function valueOf(row: T, column: DataGridColumn<T>): unknown {
+    return (row as Record<string, unknown>)[fieldOf(column)];
+  }
+  function canEdit(column: DataGridColumn<T> | undefined): boolean {
+    return column !== undefined && props.onCellsChange !== undefined && column.editable !== false;
+  }
+  function show(column: DataGridColumn<T>, value: unknown): string {
     if (column.format !== undefined) return column.format(value);
     if (column.type === "select") {
       return column.options?.find((option) => option.value === value)?.label ?? toText(value);
     }
     if (typeof value === "number") return digits().format(value);
     return toText(value);
-  };
+  }
 
-  const definition = (column: DataGridColumn<T>): ColumnDef<Features, T> =>
-    ({
+  function definition(column: DataGridColumn<T>): ColumnDef<Features, T> {
+    return {
       id: column.id,
       header: column.header,
       accessorFn: (row: T) => valueOf(row, column),
       size: column.width ?? 160,
-    }) as ColumnDef<Features, T>;
+    } as ColumnDef<Features, T>;
+  }
 
-  const columns = (): ColumnDef<Features, T>[] => {
+  function columns(): ColumnDef<Features, T>[] {
     const frozenFirst = [
       ...props.columns.filter((one) => !isGroup(one) && one.frozen === true),
       ...props.columns.filter((one) => isGroup(one) || one.frozen !== true),
@@ -299,7 +339,7 @@ export function DataGrid<T extends RowData>(props: DataGridProps<T>) {
           }
         : definition(column),
     );
-  };
+  }
 
   const table = createTable(() => ({
     features,
@@ -333,18 +373,23 @@ export function DataGrid<T extends RowData>(props: DataGridProps<T>) {
     },
   }));
 
-  const rows = (): readonly Row<Features, T>[] => table.getRowModel().rows;
-  const dataRows = (): Row<Features, T>[] =>
-    rows().filter((row) => !(row as unknown as { getIsGrouped: () => boolean }).getIsGrouped());
+  function rows(): readonly Row<Features, T>[] {
+    return table.getRowModel().rows;
+  }
+  function dataRows(): Row<Features, T>[] {
+    return rows().filter((row) => !(row as unknown as GroupedRow).getIsGrouped());
+  }
 
-  const isVirtual = (): boolean => props.virtualRowHeight !== undefined;
+  function isVirtual(): boolean {
+    return props.virtualRowHeight !== undefined;
+  }
   const span = isServer
     ? undefined
     : virtual(() => (isVirtual() ? scroller() : null), {
         count: () => rows().length,
         size: () => props.virtualRowHeight ?? 36,
       });
-  const shown = (): { row: Row<Features, T>; index: number }[] => {
+  function shown(): ShownRow<T>[] {
     if (!isVirtual() || span === undefined) {
       return rows().map((row, index) => ({ row, index }));
     }
@@ -352,30 +397,43 @@ export function DataGrid<T extends RowData>(props: DataGridProps<T>) {
       const row = rows()[item.index];
       return row === undefined ? [] : [{ row, index: item.index }];
     });
-  };
-  const rowById = (): Map<string, Row<Features, T>> => new Map(rows().map((row) => [row.id, row]));
-  const rowIndex = (): Map<string, number> => new Map(rows().map((row, at) => [row.id, at]));
-  const shownIds = (): string[] => shown().map((entry) => entry.row.id);
-  const leafIds = (): string[] => leaves().map((column) => column.id);
-  const before = (): number => (isVirtual() ? (span?.items()[0]?.start ?? 0) : 0);
-  const after = (): number => {
+  }
+  function rowById(): Map<string, Row<Features, T>> {
+    return new Map(rows().map((row) => [row.id, row]));
+  }
+  function rowIndex(): Map<string, number> {
+    return new Map(rows().map((row, at) => [row.id, at]));
+  }
+  function shownIds(): string[] {
+    return shown().map((entry) => entry.row.id);
+  }
+  function leafIds(): string[] {
+    return leaves().map((column) => column.id);
+  }
+  function before(): number {
+    return isVirtual() ? (span?.items()[0]?.start ?? 0) : 0;
+  }
+  function after(): number {
     if (!isVirtual() || span === undefined) return 0;
     const last = span.items().at(-1);
     return last === undefined ? 0 : Math.max(0, span.total() - last.start - last.size);
-  };
+  }
 
-  const cellId = (rowId: string, columnId: string): string => `${rowId}:${columnId}`;
+  function cellId(rowId: string, columnId: string): string {
+    return `${rowId}:${columnId}`;
+  }
 
-  const focusCell = (): void => {
+  function focusCell(): void {
     queueMicrotask(() => {
       const focused = table.getFocusedCell();
       if (focused === undefined) return;
       const root = scroller();
       const wanted = cellId(focused.row.id, focused.column.id);
-      const find = () =>
-        [...(root?.querySelectorAll<HTMLElement>("[data-cell]") ?? [])].find(
+      function find() {
+        return [...(root?.querySelectorAll<HTMLElement>("[data-cell]") ?? [])].find(
           (element) => element.dataset.cell === wanted,
         );
+      }
       const element = find();
       if (element !== undefined) {
         element.focus();
@@ -385,21 +443,23 @@ export function DataGrid<T extends RowData>(props: DataGridProps<T>) {
       if (index >= 0) span?.scrollTo(index);
       requestAnimationFrame(() => find()?.focus());
     });
-  };
+  }
 
-  const change = (changes: DataGridChange<T>[]): void => {
+  function change(changes: DataGridChange<T>[]): void {
     if (changes.length > 0) props.onCellsChange?.(changes);
-  };
+  }
 
-  const changeOf = (row: Row<Features, T>, column: DataGridColumn<T>, value: unknown) => ({
-    rowId: row.id,
-    columnId: column.id,
-    field: fieldOf(column),
-    value,
-    row: row.original,
-  });
+  function changeOf(row: Row<Features, T>, column: DataGridColumn<T>, value: unknown) {
+    return {
+      rowId: row.id,
+      columnId: column.id,
+      field: fieldOf(column),
+      value,
+      row: row.original,
+    };
+  }
 
-  const begin = (cell: Cell<Features, T>, draft?: string): void => {
+  function begin(cell: Cell<Features, T>, draft?: string): void {
     const column = columnOf(cell.column.id);
     if (!canEdit(column) || column === undefined || column.type === "checkbox") return;
     setEditing({
@@ -407,9 +467,9 @@ export function DataGrid<T extends RowData>(props: DataGridProps<T>) {
       columnId: cell.column.id,
       draft: draft ?? toText(cell.getValue()),
     });
-  };
+  }
 
-  const commit = (then?: CellSelectionDirection): boolean => {
+  function commit(then?: CellSelectionDirection): boolean {
     const held = editing();
     if (held === null) return true;
     const column = columnOf(held.columnId);
@@ -432,21 +492,21 @@ export function DataGrid<T extends RowData>(props: DataGridProps<T>) {
     if (then !== undefined) table.moveCellSelection(then);
     focusCell();
     return true;
-  };
+  }
 
-  const cancel = (): void => {
+  function cancel(): void {
     setEditing(null);
     focusCell();
-  };
+  }
 
-  const toggle = (cell: Cell<Features, T>): void => {
+  function toggle(cell: Cell<Features, T>): void {
     const column = columnOf(cell.column.id);
     if (!canEdit(column) || column === undefined || column.type !== "checkbox") return;
     change([changeOf(cell.row, column, cell.getValue() !== true)]);
-  };
+  }
 
   /** The selected cells as rows of leaf cells, the first range only, skipping group rows. */
-  const selectedBlock = (): { row: Row<Features, T>; columns: DataGridColumn<T>[] }[] => {
+  function selectedBlock(): SelectedBlock<T>[] {
     const range = selection().at(-1);
     if (range === undefined) return [];
     const order = leaves().map((one) => one.id);
@@ -462,11 +522,11 @@ export function DataGrid<T extends RowData>(props: DataGridProps<T>) {
     const picked = leaves().slice(c0, (c1 ?? 0) + 1);
     return rows()
       .slice(r0, (r1 ?? 0) + 1)
-      .filter((row) => !(row as unknown as { getIsGrouped: () => boolean }).getIsGrouped())
+      .filter((row) => !(row as unknown as GroupedRow).getIsGrouped())
       .map((row) => ({ row, columns: picked }));
-  };
+  }
 
-  const copy = (): void => {
+  function copy(): void {
     const text = selectedBlock()
       .map(({ row, columns: picked }) =>
         picked.map((column) => toText(valueOf(row.original, column))).join("\t"),
@@ -475,9 +535,9 @@ export function DataGrid<T extends RowData>(props: DataGridProps<T>) {
     void navigator.clipboard?.writeText(text);
     const count = selectedBlock().reduce((sum, line) => sum + line.columns.length, 0);
     setSaid(messages().cellsCopied(count));
-  };
+  }
 
-  const paste = (text: string): void => {
+  function paste(text: string): void {
     const focused = table.getFocusedCell();
     if (focused === undefined) return;
     const lines = text.replace(/\r\n?/g, "\n").replace(/\n$/, "").split("\n");
@@ -501,9 +561,9 @@ export function DataGrid<T extends RowData>(props: DataGridProps<T>) {
     });
     change(changes);
     setSaid(messages().cellsPasted(changes.length));
-  };
+  }
 
-  const clear = (): void => {
+  function clear(): void {
     const changes = selectedBlock().flatMap(({ row, columns: picked }) =>
       picked
         .filter((column) => canEdit(column))
@@ -516,9 +576,9 @@ export function DataGrid<T extends RowData>(props: DataGridProps<T>) {
         ),
     );
     change(changes);
-  };
+  }
 
-  const toEdge = (columnEdge: "start" | "end", wholeGrid: boolean): void => {
+  function toEdge(columnEdge: "start" | "end", wholeGrid: boolean): void {
     const focused = table.getFocusedCell();
     const order = leaves();
     const column = columnEdge === "start" ? order[0] : order.at(-1);
@@ -526,9 +586,9 @@ export function DataGrid<T extends RowData>(props: DataGridProps<T>) {
     if (column === undefined || row === undefined) return;
     table.setFocusedCell(row.id, column.id);
     focusCell();
-  };
+  }
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     if (editing() !== null) return;
     const focused = table.getFocusedCell();
     const mod = event.metaKey || event.ctrlKey;
@@ -593,37 +653,42 @@ export function DataGrid<T extends RowData>(props: DataGridProps<T>) {
       event.preventDefault();
       begin(focused, event.key);
     }
-  };
+  }
 
-  const headerGroups = () => table.getHeaderGroups();
-  const totals = (): boolean => leaves().some((one) => one.total !== undefined);
-  const frozenStart = (columnId: string): string | undefined => {
+  function headerGroups() {
+    return table.getHeaderGroups();
+  }
+  function totals(): boolean {
+    return leaves().some((one) => one.total !== undefined);
+  }
+  function frozenStart(columnId: string): string | undefined {
     const order = leaves();
     const at = order.findIndex((one) => one.id === columnId);
     const column = order[at];
     if (column?.frozen !== true) return undefined;
     const start = order.slice(0, at).reduce((sum, one) => sum + (one.width ?? 160), 0);
     return `${String(start)}px`;
-  };
-  const cellClass = (column: DataGridColumn<T> | undefined): string =>
-    arc(
+  }
+  function cellClass(column: DataGridColumn<T> | undefined): string {
+    return arc(
       cls().cell,
       column?.type === "number" ? cls().numeric : undefined,
       column?.frozen === true ? cls().frozen : undefined,
     );
+  }
 
-  const groupTotal = (row: Row<Features, T>, column: DataGridColumn<T>): string => {
+  function groupTotal(row: Row<Features, T>, column: DataGridColumn<T>): string {
     if (column.total === undefined) return "";
-    const leafRows = (row as unknown as { getLeafRows: () => Row<Features, T>[] }).getLeafRows();
+    const leafRows = (row as unknown as RowWithLeaves<T>).getLeafRows();
     return digits().format(
       totalOf(
         column.total,
         leafRows.map((one) => valueOf(one.original, column)),
       ),
     );
-  };
-  const grandTotal = (column: DataGridColumn<T>): string =>
-    column.total === undefined
+  }
+  function grandTotal(column: DataGridColumn<T>): string {
+    return column.total === undefined
       ? ""
       : digits().format(
           totalOf(
@@ -631,10 +696,11 @@ export function DataGrid<T extends RowData>(props: DataGridProps<T>) {
             props.data.map((one) => valueOf(one, column)),
           ),
         );
+  }
 
-  const Editor = (editorProps: { column: DataGridColumn<T>; held: Editing }) => {
+  function Editor(editorProps: CellEditorProps<T>) {
     const column = editorProps.column;
-    const keys = (event: KeyboardEvent): void => {
+    function keys(event: KeyboardEvent): void {
       event.stopPropagation();
       if (event.key === "Escape") {
         event.preventDefault();
@@ -646,8 +712,8 @@ export function DataGrid<T extends RowData>(props: DataGridProps<T>) {
         event.preventDefault();
         commit(event.shiftKey ? "left" : "right");
       }
-    };
-    const set = (event: Event): void => {
+    }
+    function set(event: Event): void {
       const held = editing();
       if (held === null) return;
       setEditing({
@@ -655,12 +721,13 @@ export function DataGrid<T extends RowData>(props: DataGridProps<T>) {
         draft: (event.currentTarget as HTMLInputElement).value,
         error: undefined,
       });
-    };
-    const grab = (element: HTMLElement): void => {
+    }
+    function grab(element: HTMLElement): void {
       queueMicrotask(() => element.focus());
-    };
-    const invalid = (): "true" | undefined =>
-      editorProps.held.error === undefined ? undefined : "true";
+    }
+    function invalid(): "true" | undefined {
+      return editorProps.held.error === undefined ? undefined : "true";
+    }
     return (
       <Show
         when={column.type === "select"}
@@ -701,7 +768,7 @@ export function DataGrid<T extends RowData>(props: DataGridProps<T>) {
         </select>
       </Show>
     );
-  };
+  }
 
   return (
     <div class={arc(cls().root, props.class, props.className)} data-slot="data-grid">
@@ -734,7 +801,7 @@ export function DataGrid<T extends RowData>(props: DataGridProps<T>) {
         >
           <TableHeader class={cls().head} data-slot="data-grid-head">
             <For each={headerGroups()}>
-              {(group: { id: string; headers: readonly Header<Features, T>[] }) => (
+              {(group: HeaderGroupRow<T>) => (
                 <TableRow role="row">
                   <For each={group.headers}>
                     {(header: Header<Features, T>) => (
@@ -772,16 +839,23 @@ export function DataGrid<T extends RowData>(props: DataGridProps<T>) {
             </Show>
             <For each={shownIds()}>
               {(rowId: string) => {
-                const row = (): Row<Features, T> => rowById().get(rowId) as Row<Features, T>;
-                const index = (): number => rowIndex().get(rowId) ?? 0;
-                const grouped = (): boolean =>
-                  (row() as unknown as { getIsGrouped: () => boolean }).getIsGrouped();
-                const groupValue = (): string =>
-                  toText((row() as unknown as { groupingValue?: unknown }).groupingValue);
-                const cellOf = (columnId: string): Cell<Features, T> =>
-                  row()
+                function row(): Row<Features, T> {
+                  return rowById().get(rowId) as Row<Features, T>;
+                }
+                function index(): number {
+                  return rowIndex().get(rowId) ?? 0;
+                }
+                function grouped(): boolean {
+                  return (row() as unknown as GroupedRow).getIsGrouped();
+                }
+                function groupValue(): string {
+                  return toText((row() as unknown as GroupingRow).groupingValue);
+                }
+                function cellOf(columnId: string): Cell<Features, T> {
+                  return row()
                     .getAllCells()
                     .find((one) => one.column.id === columnId) as Cell<Features, T>;
+                }
                 return (
                   <Show
                     when={grouped()}
@@ -799,16 +873,18 @@ export function DataGrid<T extends RowData>(props: DataGridProps<T>) {
                         <For each={leafIds()}>
                           {(columnId: string) => {
                             const column = columnOf(columnId);
-                            const cell = (): Cell<Features, T> => cellOf(columnId);
+                            function cell(): Cell<Features, T> {
+                              return cellOf(columnId);
+                            }
                             const key = `${rowId}:${columnId}`;
-                            const held = (): Editing | null => {
+                            function held(): Editing | null {
                               const now = editing();
                               return now !== null &&
                                 now.rowId === rowId &&
                                 now.columnId === columnId
                                 ? now
                                 : null;
-                            };
+                            }
                             return (
                               <TableCell
                                 role="gridcell"
@@ -880,7 +956,9 @@ export function DataGrid<T extends RowData>(props: DataGridProps<T>) {
                       <For each={leafIds()}>
                         {(columnId: string, at: () => number) => {
                           const column = columnOf(columnId);
-                          const cell = (): Cell<Features, T> => cellOf(columnId);
+                          function cell(): Cell<Features, T> {
+                            return cellOf(columnId);
+                          }
                           return (
                             <TableCell
                               role="gridcell"

@@ -22,10 +22,11 @@ const STATUS: DataToolbarFilter = {
   ],
 };
 
-const chip = (name: string): HTMLElement =>
-  [...document.querySelectorAll<HTMLElement>('[data-slot="data-toolbar-filter"]')].find((one) =>
-    one.textContent?.startsWith(name),
+function chip(name: string): HTMLElement {
+  return [...document.querySelectorAll<HTMLElement>('[data-slot="data-toolbar-filter"]')].find(
+    (one) => one.textContent?.startsWith(name),
   ) as HTMLElement;
+}
 
 describe("DataToolbar", () => {
   test("is a search landmark holding a named search field, the filters and the actions", async () => {

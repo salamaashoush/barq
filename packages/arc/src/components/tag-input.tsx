@@ -118,16 +118,21 @@ export function TagInput(props: TagInputProps) {
   let input: HTMLInputElement | undefined;
   let group: HTMLElement | undefined;
 
-  const tags = (): readonly string[] => of.value() ?? [];
+  function tags(): readonly string[] {
+    return of.value() ?? [];
+  }
   const items = createMemo(() => tags().map((tag) => ({ id: tag, label: tag })));
-  const same = (one: string, other: string): boolean =>
-    props.caseInsensitive === false ? one === other : one.toLowerCase() === other.toLowerCase();
+  function same(one: string, other: string): boolean {
+    return props.caseInsensitive === false
+      ? one === other
+      : one.toLowerCase() === other.toLowerCase();
+  }
 
   const wiring = withOwnErrors(of, rejected);
   const isInvalid = wiring.isInvalid;
 
   /** Adds what it can, returns what it could not with why. */
-  const add = (entries: readonly string[]): string[] => {
+  function add(entries: readonly string[]): string[] {
     const held = [...untrack(tags)];
     const left: string[] = [];
     const reasons: string[] = [];
@@ -153,17 +158,19 @@ export function TagInput(props: TagInputProps) {
     if (held.length !== untrack(tags).length) of.change(held);
     setRejected(reasons);
     return left;
-  };
+  }
 
-  const commit = (): void => {
+  function commit(): void {
     const pending = untrack(text);
     if (pending.trim() === "") return;
     setText(add([pending]).join(", "));
-  };
+  }
 
-  const separators = (): readonly string[] => props.separators ?? [","];
+  function separators(): readonly string[] {
+    return props.separators ?? [","];
+  }
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     if (event.isComposing) return;
     if (event.key === "Enter" || separators().includes(event.key)) {
       if (untrack(text).trim() === "") return;
@@ -176,9 +183,9 @@ export function TagInput(props: TagInputProps) {
       const rows = group?.querySelectorAll<HTMLElement>('[role="row"]');
       rows?.[rows.length - 1]?.focus();
     }
-  };
+  }
 
-  const onInput = (event: Event): void => {
+  function onInput(event: Event): void {
     const value = (event.currentTarget as HTMLInputElement).value;
     const marks = separators();
     if (marks.some((mark) => value.includes(mark))) {
@@ -190,25 +197,25 @@ export function TagInput(props: TagInputProps) {
     }
     setText(value);
     if (untrack(rejected).length > 0) setRejected([]);
-  };
+  }
 
-  const onPaste = (event: ClipboardEvent): void => {
+  function onPaste(event: ClipboardEvent): void {
     const pasted = event.clipboardData?.getData("text") ?? "";
     const pieces = splitList(pasted, separators());
     if (pieces.length < 2) return;
     event.preventDefault();
     setText(add(pieces).join(", "));
-  };
+  }
 
-  const remove = (keys: Set<unknown>): void => {
+  function remove(keys: Set<unknown>): void {
     const next = untrack(tags).filter((tag) => !keys.has(tag));
     of.change(next);
     setRejected([]);
     if (next.length === 0) input?.focus();
-  };
+  }
 
-  const cls = (): TagInputSlots =>
-    parts(
+  function cls(): TagInputSlots {
+    return parts(
       {
         ...tagInputStyles(),
         root: "",
@@ -222,6 +229,7 @@ export function TagInput(props: TagInputProps) {
       },
       props.classes,
     );
+  }
 
   return (
     <Frame

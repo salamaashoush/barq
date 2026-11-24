@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { type Child } from "@barqjs/core";
+import { type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user, within } from "@barqjs/testing";
 
@@ -37,7 +37,7 @@ afterEach(() => {
   globalThis.IntersectionObserver = original;
 });
 
-function Page(props: { children?: Child }) {
+function Page(props: ParentProps) {
   return (
     <div>
       {props.children}
@@ -123,7 +123,7 @@ describe("TableOfContents", () => {
   });
 
   test("Tab moves through the links, which keep their place right to left", () => {
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }

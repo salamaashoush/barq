@@ -152,18 +152,23 @@ export function Chip(props: ChipProps) {
   const messages = useArcMessages();
   const labelId = createUniqueId();
   const removeId = createUniqueId();
-  const selectable = (): boolean =>
-    props.selected !== undefined ||
-    props.defaultSelected !== undefined ||
-    props.onSelectedChange !== undefined;
+  function selectable(): boolean {
+    return (
+      props.selected !== undefined ||
+      props.defaultSelected !== undefined ||
+      props.onSelectedChange !== undefined
+    );
+  }
   const [selected, setSelected] = controllable<boolean>(
     () => props.selected,
     () => props.defaultSelected ?? false,
     (next) => props.onSelectedChange?.(next),
   );
-  const interactive = (): boolean => selectable() || props.onPress !== undefined;
-  const cls = (): ChipSlots =>
-    parts(
+  function interactive(): boolean {
+    return selectable() || props.onPress !== undefined;
+  }
+  function cls(): ChipSlots {
+    return parts(
       chipVariants({
         tone: props.tone,
         variant: props.variant,
@@ -172,24 +177,27 @@ export function Chip(props: ChipProps) {
       }),
       props.classes,
     );
+  }
 
-  const content = () => (
-    <>
-      <Show when={selectable() && selected()}>
-        <span class={cls().check} data-slot="chip-check" aria-hidden="true">
-          <Check />
+  function content() {
+    return (
+      <>
+        <Show when={selectable() && selected()}>
+          <span class={cls().check} data-slot="chip-check" aria-hidden="true">
+            <Check />
+          </span>
+        </Show>
+        <Show when={props.icon !== undefined}>
+          <span class={cls().icon} data-slot="chip-icon" aria-hidden="true">
+            {props.icon}
+          </span>
+        </Show>
+        <span class={cls().label} id={labelId} data-slot="chip-label">
+          {props.children}
         </span>
-      </Show>
-      <Show when={props.icon !== undefined}>
-        <span class={cls().icon} data-slot="chip-icon" aria-hidden="true">
-          {props.icon}
-        </span>
-      </Show>
-      <span class={cls().label} id={labelId} data-slot="chip-label">
-        {props.children}
-      </span>
-    </>
-  );
+      </>
+    );
+  }
 
   return (
     <span

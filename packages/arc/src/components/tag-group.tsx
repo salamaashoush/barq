@@ -105,10 +105,16 @@ function textOf(item: unknown): string {
 export function TagGroup<T>(props: TagGroupProps<T>) {
   const messages = useArcMessages();
   const [expanded, setExpanded] = createSignal(false);
-  const errors = (): string[] => errorsOf(props.errorMessage);
+  function errors(): string[] {
+    return errorsOf(props.errorMessage);
+  }
   const of = fieldWiring(errors, () => props.isInvalid === true || errors().length > 0);
-  const text = (item: T): string => props.getTextValue?.(item) ?? textOf(item);
-  const chip = () => chipVariants({ tone: props.tone, variant: props.variant, size: props.size });
+  function text(item: T): string {
+    return props.getTextValue?.(item) ?? textOf(item);
+  }
+  function chip() {
+    return chipVariants({ tone: props.tone, variant: props.variant, size: props.size });
+  }
   const cls = createMemo((): TagGroupSlots => {
     const own = tagGroupStyles();
     const shape = chip();
@@ -124,84 +130,88 @@ export function TagGroup<T>(props: TagGroupProps<T>) {
       props.classes,
     );
   });
-  const hidden = (): number =>
-    props.maxVisible === undefined ? 0 : Math.max(0, props.items.length - props.maxVisible);
-  const shown = (): readonly T[] =>
-    hidden() > 0 && !expanded() ? props.items.slice(0, props.maxVisible) : props.items;
+  function hidden(): number {
+    return props.maxVisible === undefined ? 0 : Math.max(0, props.items.length - props.maxVisible);
+  }
+  function shown(): readonly T[] {
+    return hidden() > 0 && !expanded() ? props.items.slice(0, props.maxVisible) : props.items;
+  }
 
-  const group = () => (
-    <div
-      class={arc(
-        cls().root,
-        props.label === undefined ? arc(props.class, props.className) : undefined,
-      )}
-      data-slot="tag-group-root"
-    >
-      <AriaTagGroup<T>
-        class={cls().list}
-        data-slot="tag-group"
-        items={shown()}
-        getKey={props.getKey}
-        getTextValue={text}
-        aria-label={props["aria-label"]}
-        aria-labelledby={props.label === undefined ? props["aria-labelledby"] : of.ids.label}
-        aria-describedby={of.describedBy(props.description !== undefined)}
-        selectionMode={props.selectionMode}
-        selectedKeys={props.selectedKeys}
-        defaultSelectedKeys={props.defaultSelectedKeys}
-        disabledKeys={props.disabledKeys}
-        onSelectionChange={(keys) =>
-          props.onSelectionChange?.(keys === "all" ? new Set(props.items.map(keyOf)) : keys)
-        }
-        onRemove={props.onRemove === undefined ? undefined : (keys) => props.onRemove?.(keys)}
-        onAction={props.onAction === undefined ? undefined : (key) => props.onAction?.(key)}
-      >
-        {(item: T) => (
-          <Tag
-            class={cls().tag}
-            cellClass={cls().cell}
-            removeClass={cls().remove}
-            removeIcon={<X aria-hidden="true" />}
-            data-slot="tag"
-          >
-            {props.children === undefined ? text(item) : props.children(item)}
-          </Tag>
+  function group() {
+    return (
+      <div
+        class={arc(
+          cls().root,
+          props.label === undefined ? arc(props.class, props.className) : undefined,
         )}
-      </AriaTagGroup>
-      <Show when={props.items.length === 0 && props.empty !== undefined}>
-        <div class={cls().empty} data-slot="tag-group-empty">
-          {props.empty}
-        </div>
-      </Show>
-      <Show when={hidden() > 0 || (props.onClearAll !== undefined && props.items.length > 0)}>
-        <div class={cls().footer} data-slot="tag-group-footer">
-          <Show when={hidden() > 0}>
-            <Button
-              variant="ghost"
-              size="xs"
-              data-slot="tag-group-toggle"
-              aria-expanded={expanded()}
-              onPress={() => setExpanded((open) => !open)}
+        data-slot="tag-group-root"
+      >
+        <AriaTagGroup<T>
+          class={cls().list}
+          data-slot="tag-group"
+          items={shown()}
+          getKey={props.getKey}
+          getTextValue={text}
+          aria-label={props["aria-label"]}
+          aria-labelledby={props.label === undefined ? props["aria-labelledby"] : of.ids.label}
+          aria-describedby={of.describedBy(props.description !== undefined)}
+          selectionMode={props.selectionMode}
+          selectedKeys={props.selectedKeys}
+          defaultSelectedKeys={props.defaultSelectedKeys}
+          disabledKeys={props.disabledKeys}
+          onSelectionChange={(keys) =>
+            props.onSelectionChange?.(keys === "all" ? new Set(props.items.map(keyOf)) : keys)
+          }
+          onRemove={props.onRemove === undefined ? undefined : (keys) => props.onRemove?.(keys)}
+          onAction={props.onAction === undefined ? undefined : (key) => props.onAction?.(key)}
+        >
+          {(item: T) => (
+            <Tag
+              class={cls().tag}
+              cellClass={cls().cell}
+              removeClass={cls().remove}
+              removeIcon={<X aria-hidden="true" />}
+              data-slot="tag"
             >
-              {expanded()
-                ? (props.showLessLabel ?? messages().showLess)
-                : (props.showAllLabel ?? messages().showAll)(props.items.length)}
-            </Button>
-          </Show>
-          <Show when={props.onClearAll !== undefined && props.items.length > 0}>
-            <Button
-              variant="ghost"
-              size="xs"
-              data-slot="tag-group-clear"
-              onPress={() => props.onClearAll?.()}
-            >
-              {props.clearAllLabel ?? messages().clearAll}
-            </Button>
-          </Show>
-        </div>
-      </Show>
-    </div>
-  );
+              {props.children === undefined ? text(item) : props.children(item)}
+            </Tag>
+          )}
+        </AriaTagGroup>
+        <Show when={props.items.length === 0 && props.empty !== undefined}>
+          <div class={cls().empty} data-slot="tag-group-empty">
+            {props.empty}
+          </div>
+        </Show>
+        <Show when={hidden() > 0 || (props.onClearAll !== undefined && props.items.length > 0)}>
+          <div class={cls().footer} data-slot="tag-group-footer">
+            <Show when={hidden() > 0}>
+              <Button
+                variant="ghost"
+                size="xs"
+                data-slot="tag-group-toggle"
+                aria-expanded={expanded()}
+                onPress={() => setExpanded((open) => !open)}
+              >
+                {expanded()
+                  ? (props.showLessLabel ?? messages().showLess)
+                  : (props.showAllLabel ?? messages().showAll)(props.items.length)}
+              </Button>
+            </Show>
+            <Show when={props.onClearAll !== undefined && props.items.length > 0}>
+              <Button
+                variant="ghost"
+                size="xs"
+                data-slot="tag-group-clear"
+                onPress={() => props.onClearAll?.()}
+              >
+                {props.clearAllLabel ?? messages().clearAll}
+              </Button>
+            </Show>
+          </div>
+        </Show>
+      </div>
+    );
+  }
 
   function keyOf(item: T, index: number): Key {
     if (props.getKey !== undefined) return props.getKey(item);

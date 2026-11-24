@@ -81,8 +81,13 @@ export interface TableOfContentsProps extends Customisable<Slots> {
   id?: string;
 }
 
+interface FlatTocItem {
+  item: TocItem;
+  depth: number;
+}
+
 /** Every item, depth first, with how deep it is. */
-function flatten(items: readonly TocItem[], depth = 1): { item: TocItem; depth: number }[] {
+function flatten(items: readonly TocItem[], depth = 1): FlatTocItem[] {
   return items.flatMap((item) => [{ item, depth }, ...flatten(item.items ?? [], depth + 1)]);
 }
 
@@ -116,7 +121,9 @@ export function TableOfContents(props: TableOfContentsProps) {
       if (next !== undefined) props.onActiveChange?.(next);
     },
   );
-  const ids = (): string[] => flatten(props.items).map((one) => one.item.id);
+  function ids(): string[] {
+    return flatten(props.items).map((one) => one.item.id);
+  }
 
   if (!isServer) {
     createEffect(
@@ -148,32 +155,37 @@ export function TableOfContents(props: TableOfContentsProps) {
     );
   }
 
-  const cls = (): Slots =>
-    parts(tableOfContentsStyles({ sticky: props.sticky === true }), props.classes);
-  const title = (): string => props.title ?? messages().onThisPage;
-  const list = (items: readonly TocItem[], depth: number) => (
-    <For each={() => items}>
-      {(item: TocItem) => (
-        <li class={cls().item} data-slot="table-of-contents-item">
-          <a
-            class={cls().link}
-            data-slot="table-of-contents-link"
-            href={`#${item.id}`}
-            style={{ "--arc-toc-depth": String(depth) }}
-            aria-current={active() === item.id ? "location" : undefined}
-            onClick={() => setActive(item.id)}
-          >
-            {item.label}
-          </a>
-          <Show when={item.items !== undefined && item.items.length > 0}>
-            <ul class={cls().nested} data-slot="table-of-contents-nested">
-              {list(item.items ?? [], depth + 1)}
-            </ul>
-          </Show>
-        </li>
-      )}
-    </For>
-  );
+  function cls(): Slots {
+    return parts(tableOfContentsStyles({ sticky: props.sticky === true }), props.classes);
+  }
+  function title(): string {
+    return props.title ?? messages().onThisPage;
+  }
+  function list(items: readonly TocItem[], depth: number) {
+    return (
+      <For each={() => items}>
+        {(item: TocItem) => (
+          <li class={cls().item} data-slot="table-of-contents-item">
+            <a
+              class={cls().link}
+              data-slot="table-of-contents-link"
+              href={`#${item.id}`}
+              style={{ "--arc-toc-depth": String(depth) }}
+              aria-current={active() === item.id ? "location" : undefined}
+              onClick={() => setActive(item.id)}
+            >
+              {item.label}
+            </a>
+            <Show when={item.items !== undefined && item.items.length > 0}>
+              <ul class={cls().nested} data-slot="table-of-contents-nested">
+                {list(item.items ?? [], depth + 1)}
+              </ul>
+            </Show>
+          </li>
+        )}
+      </For>
+    );
+  }
 
   return (
     <nav

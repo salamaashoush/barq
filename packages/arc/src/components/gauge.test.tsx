@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child, createSignal, flush } from "@barqjs/core";
+import { createSignal, flush, type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, tick } from "@barqjs/testing";
 
@@ -60,7 +60,7 @@ describe("Gauge", () => {
   });
 
   test("writes its reading in the locale and its unit, or in the caller's words", async () => {
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }

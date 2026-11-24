@@ -208,7 +208,9 @@ export interface CommentComposerProps extends Customisable<Slots> {
  */
 export function CommentComposer(props: CommentComposerProps) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(commentsStyles(), props.classes);
+  function cls(): Slots {
+    return parts(commentsStyles(), props.classes);
+  }
   const listId = createUniqueId();
   const match = localeFilter({ sensitivity: "base" });
   const [text, setText] = createSignal(props.defaultValue ?? "", { ownedWrite: true });
@@ -222,9 +224,11 @@ export function CommentComposer(props: CommentComposerProps) {
   let input: HTMLTextAreaElement | undefined;
   let asked = 0;
 
-  const open = (): boolean => query() !== null && candidates().length > 0;
+  function open(): boolean {
+    return query() !== null && candidates().length > 0;
+  }
 
-  const look = (): void => {
+  function look(): void {
     if (input === undefined || props.mentionables === undefined) return;
     const before = input.value.slice(0, input.selectionStart);
     const found = TRIGGER.exec(before);
@@ -237,10 +241,10 @@ export function CommentComposer(props: CommentComposerProps) {
     setActive(0);
     const source = props.mentionables;
     const turn = ++asked;
-    const take = (people: readonly CommentPerson[]): void => {
+    function take(people: readonly CommentPerson[]): void {
       if (turn !== asked) return;
       setCandidates(people.slice(0, 6));
-    };
+    }
     if (typeof source === "function") {
       const answer = source(typed);
       if ("then" in answer) void answer.then(take, () => take([]));
@@ -248,9 +252,9 @@ export function CommentComposer(props: CommentComposerProps) {
     } else {
       take(source.filter((person) => match.contains(person.name, typed)));
     }
-  };
+  }
 
-  const insert = (person: CommentPerson): void => {
+  function insert(person: CommentPerson): void {
     if (input === undefined) return;
     const caret = input.selectionStart;
     const before = input.value.slice(0, caret);
@@ -264,9 +268,9 @@ export function CommentComposer(props: CommentComposerProps) {
     input.setSelectionRange(start + written.length, start + written.length);
     if (!mentioned().some((one) => one.id === person.id)) setMentioned([...mentioned(), person]);
     setQuery(null);
-  };
+  }
 
-  const submit = (): void => {
+  function submit(): void {
     const body = text().trim();
     if (body === "" || props.isDisabled === true) return;
     const mentions = mentioned().filter((person) => body.includes(`@${person.name}`));
@@ -274,9 +278,9 @@ export function CommentComposer(props: CommentComposerProps) {
     setText("");
     setMentioned([]);
     if (input !== undefined) input.value = "";
-  };
+  }
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     if (open()) {
       const count = candidates().length;
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -307,9 +311,11 @@ export function CommentComposer(props: CommentComposerProps) {
       event.stopPropagation();
       props.onCancel();
     }
-  };
+  }
 
-  const optionId = (index: number): string => `${listId}-${String(index)}`;
+  function optionId(index: number): string {
+    return `${listId}-${String(index)}`;
+  }
 
   return (
     <div class={arc(cls().composer, props.class, props.className)} data-slot="comment-composer">
@@ -433,18 +439,31 @@ function CommentItem(props: CommentItemProps) {
   const messages = useArcMessages();
   const nameId = createUniqueId();
   const [editing, setEditing] = createSignal(false);
-  const comment = (): CommentData => props.comment;
-  const own = (): boolean =>
-    props.handlers.canModify?.(comment()) ??
-    (props.handlers.currentUser !== undefined &&
-      props.handlers.currentUser.id === comment().author.id);
-  const canEdit = (): boolean =>
-    own() && props.handlers.onEdit !== undefined && props.onRetry === undefined;
-  const canDelete = (): boolean =>
-    own() && props.handlers.onDelete !== undefined && props.onRetry === undefined;
-  const reactions = (): readonly string[] => props.handlers.reactions ?? QUICK_REACTIONS;
-  const cls = (): Slots => props.classes;
-  const pendingCls = (): string => commentsStyles({ pending: props.pending === true }).comment;
+  function comment(): CommentData {
+    return props.comment;
+  }
+  function own(): boolean {
+    return (
+      props.handlers.canModify?.(comment()) ??
+      (props.handlers.currentUser !== undefined &&
+        props.handlers.currentUser.id === comment().author.id)
+    );
+  }
+  function canEdit(): boolean {
+    return own() && props.handlers.onEdit !== undefined && props.onRetry === undefined;
+  }
+  function canDelete(): boolean {
+    return own() && props.handlers.onDelete !== undefined && props.onRetry === undefined;
+  }
+  function reactions(): readonly string[] {
+    return props.handlers.reactions ?? QUICK_REACTIONS;
+  }
+  function cls(): Slots {
+    return props.classes;
+  }
+  function pendingCls(): string {
+    return commentsStyles({ pending: props.pending === true }).comment;
+  }
 
   return (
     <li
@@ -622,7 +641,9 @@ function optimistic(outcome: Outcome, settle: (failed: boolean) => void): void {
 export function CommentThread(props: CommentThreadProps) {
   const Composer = props.composer ?? CommentComposer;
   const messages = useArcMessages();
-  const cls = (): Slots => parts(commentsStyles({ resolved: resolved() }), props.classes);
+  function cls(): Slots {
+    return parts(commentsStyles({ resolved: resolved() }), props.classes);
+  }
   const headingId = createUniqueId();
   const [replies, setReplies] = createSignal<readonly PendingReply[]>([]);
   const [replying, setReplying] = createSignal(false);
@@ -633,21 +654,25 @@ export function CommentThread(props: CommentThreadProps) {
   const [errors, setErrors] = createSignal<Readonly<Record<string, string>>>({});
   let made = 0;
 
-  const resolved = (): boolean => resolvedNow() ?? props.thread.resolved === true;
-  const id = (): string => props.thread.id;
+  function resolved(): boolean {
+    return resolvedNow() ?? props.thread.resolved === true;
+  }
+  function id(): string {
+    return props.thread.id;
+  }
 
-  const withEntry = <V,>(record: Readonly<Record<string, V>>, key: string, value?: V) => {
+  function withEntry<V>(record: Readonly<Record<string, V>>, key: string, value?: V) {
     const next = { ...record };
     if (value === undefined) delete next[key];
     else next[key] = value;
     return next;
-  };
+  }
 
-  const shown = (): CommentData[] =>
-    props.thread.comments
+  function shown(): CommentData[] {
+    return props.thread.comments
       .filter((comment) => !deleting().has(comment.id))
       .map((comment) => {
-        const edit = edits()[comment.id];
+        const edited = edits()[comment.id];
         let reactions = comment.reactions;
         for (const [key, add] of Object.entries(reacting())) {
           const [commentId, emoji] = key.split("\u0000") as [string, string];
@@ -664,30 +689,31 @@ export function CommentThread(props: CommentThreadProps) {
           }
           reactions = list;
         }
-        return edit === undefined
+        return edited === undefined
           ? { ...comment, reactions }
-          : { ...comment, reactions, body: edit.body, mentions: edit.mentions };
+          : { ...comment, reactions, body: edited.body, mentions: edited.mentions };
       });
+  }
 
-  const fail = (key: string, message: string): void => {
+  function fail(key: string, message: string): void {
     setErrors(withEntry(errors(), key, message));
-  };
-  const clear = (key: string): void => {
+  }
+  function clear(key: string): void {
     setErrors(withEntry(errors(), key));
-  };
+  }
 
-  const send = (reply: PendingReply): void => {
-    const outcome = props.onReply?.(id(), reply.draft);
+  function send(pending: PendingReply): void {
+    const outcome = props.onReply?.(id(), pending.draft);
     optimistic(outcome, (failed) => {
       setReplies(
         failed
-          ? replies().map((one) => (one.key === reply.key ? { ...one, failed: true } : one))
-          : replies().filter((one) => one.key !== reply.key),
+          ? replies().map((one) => (one.key === pending.key ? { ...one, failed: true } : one))
+          : replies().filter((one) => one.key !== pending.key),
       );
     });
-  };
+  }
 
-  const reply = (draft: CommentDraft): void => {
+  function reply(draft: CommentDraft): void {
     const pending: PendingReply = {
       key: `pending-${String(++made)}`,
       draft,
@@ -696,18 +722,18 @@ export function CommentThread(props: CommentThreadProps) {
     };
     setReplies([...replies(), pending]);
     send(pending);
-  };
+  }
 
-  const edit = (comment: CommentData, draft: CommentDraft): void => {
+  function edit(comment: CommentData, draft: CommentDraft): void {
     clear(comment.id);
     setEdits(withEntry(edits(), comment.id, draft));
     optimistic(props.onEdit?.(comment, draft, id()), (failed) => {
       setEdits(withEntry(edits(), comment.id));
       if (failed) fail(comment.id, messages().editFailed);
     });
-  };
+  }
 
-  const remove = async (comment: CommentData): Promise<void> => {
+  async function remove(comment: CommentData): Promise<void> {
     const sure = await confirm({
       title: messages().deleteCommentHeading,
       description: messages().deleteCommentDescription,
@@ -723,26 +749,34 @@ export function CommentThread(props: CommentThreadProps) {
       setDeleting(next);
       if (failed) fail(comment.id, messages().deleteFailed);
     });
-  };
+  }
 
-  const react = (comment: CommentData, emoji: string, add: boolean): void => {
+  function react(comment: CommentData, emoji: string, add: boolean): void {
     const key = `${comment.id}\u0000${emoji}`;
     setReacting(withEntry(reacting(), key, add));
     optimistic(props.onReact?.(comment, emoji, add, id()), () => {
       setReacting(withEntry(reacting(), key));
     });
-  };
+  }
 
-  const toggleResolved = (): void => {
+  function toggleResolved(): void {
     const next = !resolved();
     setResolvedNow(next);
     optimistic(props.onResolve?.(id(), next), () => setResolvedNow(undefined));
-  };
+  }
 
-  const unread = (): number => props.thread.comments.filter((one) => one.unread === true).length;
-  const anchor = (): CommentAnchor | undefined => props.thread.anchor;
-  const anchorText = (): string => anchor()?.quote ?? anchor()?.label ?? "";
-  const pendingAuthor = (): CommentPerson => props.currentUser ?? { id: "", name: messages().you };
+  function unread(): number {
+    return props.thread.comments.filter((one) => one.unread === true).length;
+  }
+  function anchor(): CommentAnchor | undefined {
+    return props.thread.anchor;
+  }
+  function anchorText(): string {
+    return anchor()?.quote ?? anchor()?.label ?? "";
+  }
+  function pendingAuthor(): CommentPerson {
+    return props.currentUser ?? { id: "", name: messages().you };
+  }
 
   return (
     <article
@@ -939,38 +973,49 @@ export interface CommentThreadListProps extends CommentHandlers, Customisable<Sl
 export function CommentThreadList(props: CommentThreadListProps) {
   const Composer = props.composer ?? CommentComposer;
   const messages = useArcMessages();
-  const cls = (): Slots => parts(commentsStyles(), props.classes);
+  function cls(): Slots {
+    return parts(commentsStyles(), props.classes);
+  }
   const [ownFilter, setOwnFilter] = createSignal<CommentFilter>(props.defaultFilter ?? "open", {
     ownedWrite: true,
   });
   const [ownAnchor, setOwnAnchor] = createSignal<string | undefined>(undefined);
   const [starting, setStarting] = createSignal<readonly CommentDraft[]>([]);
-  const filter = (): CommentFilter => props.filter ?? ownFilter();
-  const anchor = (): string | undefined => props.anchor ?? ownAnchor();
-  const onAnchor = (): CommentThreadData[] =>
-    props.threads.filter((thread) => anchor() === undefined || thread.anchor?.id === anchor());
-  const count = (which: CommentFilter): number =>
-    onAnchor().filter((thread) =>
+  function filter(): CommentFilter {
+    return props.filter ?? ownFilter();
+  }
+  function anchor(): string | undefined {
+    return props.anchor ?? ownAnchor();
+  }
+  function onAnchor(): CommentThreadData[] {
+    return props.threads.filter(
+      (thread) => anchor() === undefined || thread.anchor?.id === anchor(),
+    );
+  }
+  function count(which: CommentFilter): number {
+    return onAnchor().filter((thread) =>
       which === "all" ? true : (thread.resolved === true) === (which === "resolved"),
     ).length;
-  const visible = (): CommentThreadData[] =>
-    onAnchor().filter((thread) =>
+  }
+  function visible(): CommentThreadData[] {
+    return onAnchor().filter((thread) =>
       filter() === "all" ? true : (thread.resolved === true) === (filter() === "resolved"),
     );
-  const anchorLabel = (): string => {
+  }
+  function anchorLabel(): string {
     const found = props.threads.find((thread) => thread.anchor?.id === anchor())?.anchor;
     return found?.label ?? found?.quote ?? anchor() ?? "";
-  };
-  const choose = (next: CommentFilter): void => {
+  }
+  function choose(next: CommentFilter): void {
     if (props.filter === undefined) setOwnFilter(next);
     props.onFilterChange?.(next);
-  };
-  const create = (draft: CommentDraft): void => {
+  }
+  function create(draft: CommentDraft): void {
     setStarting([...starting(), draft]);
     optimistic(props.onCreate?.(draft), () =>
       setStarting(starting().filter((one) => one !== draft)),
     );
-  };
+  }
   const words: Record<CommentFilter, () => string> = {
     open: () => messages().openThreads,
     resolved: () => messages().resolvedThreads,

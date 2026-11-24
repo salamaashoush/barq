@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child, createSignal } from "@barqjs/core";
+import { createSignal, type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { accessibleName, ariaViolations, render, screen, user } from "@barqjs/testing";
 
@@ -49,7 +49,7 @@ describe("RangeSlider", () => {
   });
 
   test("runs from the reading direction's start", async () => {
-    function Rtl(props: { children?: Child }) {
+    function Rtl(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }
@@ -102,7 +102,9 @@ describe("RangeSlider", () => {
       />
     ));
     await settle();
-    const by = (slot: string): Element | null => document.querySelector(`[data-slot="${slot}"]`);
+    function by(slot: string): Element | null {
+      return document.querySelector(`[data-slot="${slot}"]`);
+    }
     expect(by("range-slider")?.classList.contains("mine")).toBe(true);
     expect(by("range-slider-control")?.classList.contains("s")).toBe(true);
     expect(by("slider-track")?.classList.contains("t")).toBe(true);

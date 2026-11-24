@@ -106,7 +106,9 @@ export interface DockedPanelsProps extends Customisable<Slots> {
  */
 export function DockedPanels(props: DockedPanelsProps) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(dockedPanelsStyles(), props.classes);
+  function cls(): Slots {
+    return parts(dockedPanelsStyles(), props.classes);
+  }
   const compact = useCompactOverlay(() => props.breakpoint ?? "lg");
   const base = createUniqueId();
   const headingId = createUniqueId();
@@ -118,21 +120,25 @@ export function DockedPanels(props: DockedPanelsProps) {
       ? createSignal(fallback, { ownedWrite: true })
       : persisted<number>(`arc-docked:${key}`, fallback);
 
-  const active = (): string | null => {
+  function active(): string | null {
     const id = props.active === undefined ? own() : props.active;
     return id !== null && props.panels.some((one) => one.id === id) ? id : null;
-  };
-  const shown = (): DockedPanel | undefined => props.panels.find((one) => one.id === active());
-  const toggleId = (id: string): string => `${base}-toggle-${id}`;
+  }
+  function shown(): DockedPanel | undefined {
+    return props.panels.find((one) => one.id === active());
+  }
+  function toggleId(id: string): string {
+    return `${base}-toggle-${id}`;
+  }
 
-  const choose = (next: string | null): void => {
+  function choose(next: string | null): void {
     const was = active();
     if (props.active === undefined) setOwn(next);
     props.onActiveChange?.(next);
     if (next === null && was !== null) {
       queueMicrotask(() => document.getElementById(toggleId(was))?.focus());
     }
-  };
+  }
 
   const owner = getOwner();
   if (owner !== null) {
@@ -144,42 +150,44 @@ export function DockedPanels(props: DockedPanelsProps) {
     }));
   }
 
-  const docked = () => (
-    <aside
-      class={cls().panel}
-      data-slot="docked-panel"
-      data-panel={active() ?? undefined}
-      aria-labelledby={headingId}
-      onKeyDown={(event: KeyboardEvent) => {
-        if (event.key !== "Escape" || event.defaultPrevented) return;
-        event.preventDefault();
-        choose(null);
-      }}
-    >
-      <div class={cls().header} data-slot="docked-panel-header">
-        <h2 id={headingId} class={cls().title} data-slot="docked-panel-title">
-          {shown()?.label}
-        </h2>
-        <IconButton
-          label={messages().closePanel(shown()?.label ?? "")}
-          variant="ghost"
-          size="sm"
-          tooltip={false}
-          onPress={() => choose(null)}
-        >
-          <X aria-hidden="true" />
-        </IconButton>
-      </div>
-      <div class={cls().body} data-slot="docked-panel-body">
-        {shown()?.content()}
-      </div>
-      <Show when={shown()?.footer !== undefined}>
-        <div class={cls().footer} data-slot="docked-panel-footer">
-          {shown()?.footer?.()}
+  function docked() {
+    return (
+      <aside
+        class={cls().panel}
+        data-slot="docked-panel"
+        data-panel={active() ?? undefined}
+        aria-labelledby={headingId}
+        onKeyDown={(event: KeyboardEvent) => {
+          if (event.key !== "Escape" || event.defaultPrevented) return;
+          event.preventDefault();
+          choose(null);
+        }}
+      >
+        <div class={cls().header} data-slot="docked-panel-header">
+          <h2 id={headingId} class={cls().title} data-slot="docked-panel-title">
+            {shown()?.label}
+          </h2>
+          <IconButton
+            label={messages().closePanel(shown()?.label ?? "")}
+            variant="ghost"
+            size="sm"
+            tooltip={false}
+            onPress={() => choose(null)}
+          >
+            <X aria-hidden="true" />
+          </IconButton>
         </div>
-      </Show>
-    </aside>
-  );
+        <div class={cls().body} data-slot="docked-panel-body">
+          {shown()?.content()}
+        </div>
+        <Show when={shown()?.footer !== undefined}>
+          <div class={cls().footer} data-slot="docked-panel-footer">
+            {shown()?.footer?.()}
+          </div>
+        </Show>
+      </aside>
+    );
+  }
 
   return (
     <div
@@ -251,17 +259,22 @@ export interface DockedPanelToggleProps extends Customisable<Slots> {
 export function DockedPanelToggle(props: DockedPanelToggleProps) {
   const messages = useArcMessages();
   const held = useContext(Context);
-  const cls = (): Slots => parts(dockedPanelsStyles(), props.classes);
-  const docked = (): DockedContext => {
+  function cls(): Slots {
+    return parts(dockedPanelsStyles(), props.classes);
+  }
+  function docked(): DockedContext {
     const value = held();
     if (value === null) throw new Error("A DockedPanelToggle has to be inside DockedPanels.");
     return value;
-  };
-  const shown = (): DockedPanel | undefined =>
-    docked()
+  }
+  function shown(): DockedPanel | undefined {
+    return docked()
       .panels()
       .find((one) => one.id === props.panel);
-  const count = (): number => shown()?.count ?? 0;
+  }
+  function count(): number {
+    return shown()?.count ?? 0;
+  }
   const Icon = untrack(() => shown()?.icon);
   return (
     <IconButton

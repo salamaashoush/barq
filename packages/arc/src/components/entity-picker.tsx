@@ -106,7 +106,9 @@ export interface MultipleEntityPickerProps extends Common {
 
 export type EntityPickerProps = SingleEntityPickerProps | MultipleEntityPickerProps;
 
-const isMarker = (option: EntityOption): option is Marker => "marker" in option;
+function isMarker(option: EntityOption): option is Marker {
+  return "marker" in option;
+}
 
 /**
  * A choice of one or several things a server finds as the reader types:
@@ -132,17 +134,21 @@ const isMarker = (option: EntityOption): option is Marker => "marker" in option;
  */
 export function EntityPicker(props: EntityPickerProps) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(entityPickerStyles(), props.classes);
+  function cls(): Slots {
+    return parts(entityPickerStyles(), props.classes);
+  }
   const anchor = useComboboxAnchor();
   const inputId = props.id ?? createUniqueId();
   const describedBy = createUniqueId();
-  const multiple = (): boolean => props.multiple === true;
+  function multiple(): boolean {
+    return props.multiple === true;
+  }
 
-  const initial = (): EntityOption[] => {
+  function initial(): EntityOption[] {
     const given = props.defaultValue;
     if (given === undefined || given === null) return [];
     return Array.isArray(given) ? [...(given as readonly EntityOption[])] : [given as EntityOption];
-  };
+  }
   const [own, setOwn] = createSignal<readonly EntityOption[]>(initial(), { ownedWrite: true });
   const [text, setText] = createSignal("");
   const [found, setFound] = createSignal<RemoteState<EntityOption>>({
@@ -152,15 +158,20 @@ export function EntityPicker(props: EntityPickerProps) {
   });
   const [creating, setCreating] = createSignal(false);
 
-  const chosen = (): readonly EntityOption[] => {
+  function chosen(): readonly EntityOption[] {
     const given = props.value;
     if (given === undefined) return own();
     if (given === null) return [];
     return Array.isArray(given) ? (given as readonly EntityOption[]) : [given as EntityOption];
-  };
-  const max = (): number =>
-    props.multiple === true ? (props.max ?? Number.POSITIVE_INFINITY) : Number.POSITIVE_INFINITY;
-  const full = (): boolean => multiple() && chosen().length >= max();
+  }
+  function max(): number {
+    return props.multiple === true
+      ? (props.max ?? Number.POSITIVE_INFINITY)
+      : Number.POSITIVE_INFINITY;
+  }
+  function full(): boolean {
+    return multiple() && chosen().length >= max();
+  }
 
   const remote = remoteSearch<EntityOption>({
     search: () => props.search,
@@ -170,13 +181,13 @@ export function EntityPicker(props: EntityPickerProps) {
   });
   onCleanup(remote.stop);
 
-  const commit = (next: readonly EntityOption[]): void => {
+  function commit(next: readonly EntityOption[]): void {
     if (props.value === undefined) setOwn(next);
     if (props.multiple === true) props.onChange?.(next);
     else props.onChange?.(next[0] ?? null);
-  };
+  }
 
-  const options = (): EntityOption[] => {
+  function options(): EntityOption[] {
     const results = found().results;
     const typed = text().trim();
     const picked = chosen();
@@ -184,39 +195,46 @@ export function EntityPicker(props: EntityPickerProps) {
       typed === "" || !multiple()
         ? picked.filter((one) => !results.some((result) => result.id === one.id))
         : [];
-    const list: EntityOption[] = [...kept, ...results];
+    const entries: EntityOption[] = [...kept, ...results];
     if (found().next !== undefined && !found().loadingMore) {
-      list.push({ id: "\u0000more", label: messages().showMoreResults, marker: "more" } as Marker);
+      entries.push({
+        id: "\u0000more",
+        label: messages().showMoreResults,
+        marker: "more",
+      } as Marker);
     }
-    const exact = list.some((one) => one.label.toLocaleLowerCase() === typed.toLocaleLowerCase());
+    const exact = entries.some(
+      (one) => one.label.toLocaleLowerCase() === typed.toLocaleLowerCase(),
+    );
     if (props.onCreate !== undefined && typed !== "" && !exact && found().status !== "loading") {
-      list.push({ id: "\u0000create", label: typed, marker: "create" } as Marker);
+      entries.push({ id: "\u0000create", label: typed, marker: "create" } as Marker);
     }
-    return list;
-  };
+    return entries;
+  }
 
-  const create = (typed: string): void => {
+  function create(typed: string): void {
     const made = props.onCreate?.(typed);
     if (made === undefined) return;
-    const add = (option: EntityOption): void => {
+    function add(option: EntityOption): void {
       setCreating(false);
       commit(multiple() ? [...chosen(), option] : [option]);
-    };
+    }
     if (made instanceof Promise) {
       setCreating(true);
       made.then(add, () => setCreating(false));
     } else {
       add(made);
     }
-  };
+  }
 
   // Choosing an option empties a multiple picker's text, which is right for a
   // value and wrong for Show more: the next page is for the same search.
   let keepText = false;
 
-  const onValueChange = (value: EntityOption | readonly EntityOption[] | null): void => {
-    const list = value === null ? [] : Array.isArray(value) ? [...value] : [value as EntityOption];
-    const marker = list.find(isMarker);
+  function onValueChange(value: EntityOption | readonly EntityOption[] | null): void {
+    const values =
+      value === null ? [] : Array.isArray(value) ? [...value] : [value as EntityOption];
+    const marker = values.find(isMarker);
     if (marker?.marker === "more") {
       keepText = true;
       remote.more();
@@ -226,82 +244,93 @@ export function EntityPicker(props: EntityPickerProps) {
       create(marker.label);
       return;
     }
-    if (multiple() && list.length > max()) return;
-    commit(list);
-  };
+    if (multiple() && values.length > max()) return;
+    commit(values);
+  }
 
-  const label = (option: EntityOption): Child =>
-    isMarker(option) ? option.label : <HighlightMatches text={option.label} query={text()} />;
+  function label(option: EntityOption): Child {
+    return isMarker(option) ? (
+      option.label
+    ) : (
+      <HighlightMatches text={option.label} query={text()} />
+    );
+  }
 
-  const avatar = (option: EntityOption) => (
-    <Show when={props.avatars !== false}>
-      <PersonAvatar person={{ name: option.label, src: option.src }} size="sm" />
-    </Show>
-  );
+  function avatar(option: EntityOption) {
+    return (
+      <Show when={props.avatars !== false}>
+        <PersonAvatar person={{ name: option.label, src: option.src }} size="sm" />
+      </Show>
+    );
+  }
 
-  const list = () => (
-    <ComboboxContent class={cls().content} data-slot="entity-picker-content" anchor={anchor}>
-      <Show when={found().status === "loading" || found().loadingMore || creating()}>
-        <div class={cls().status} role="status" data-slot="entity-picker-loading">
-          <Spinner />
-          {messages().searching}
-        </div>
-      </Show>
-      <Show when={found().status === "error"}>
-        <div class={cls().status} role="alert" data-slot="entity-picker-error">
-          {messages().searchFailedPlain}
-        </div>
-      </Show>
-      <Show when={found().status === "done" && options().length === 0}>
-        <div class={cls().status} data-slot="entity-picker-empty">
-          {messages().noMatches}
-        </div>
-      </Show>
-      <Show when={full()}>
-        <div class={cls().limit} data-slot="entity-picker-limit">
-          {messages().tooManyTags(max())}
-        </div>
-      </Show>
-      <ComboboxList class={cls().list} data-slot="entity-picker-list">
-        {(option: EntityOption) => (
-          <ComboboxItem
-            value={option}
-            textValue={option.label}
-            disabled={
-              option.isDisabled === true ||
-              (full() && !isMarker(option) && !chosen().some((one) => one.id === option.id))
-            }
-            class={
-              isMarker(option)
-                ? option.marker === "create"
-                  ? cls().create
-                  : cls().more
-                : cls().option
-            }
-            data-slot={isMarker(option) ? `entity-picker-${option.marker}` : "entity-picker-option"}
-          >
-            <Show
-              when={!isMarker(option)}
-              fallback={
-                <Show when={(option as Marker).marker === "create"} fallback={option.label}>
-                  <Plus aria-hidden="true" />
-                  {messages().createOption(option.label)}
-                </Show>
+  function list() {
+    return (
+      <ComboboxContent class={cls().content} data-slot="entity-picker-content" anchor={anchor}>
+        <Show when={found().status === "loading" || found().loadingMore || creating()}>
+          <div class={cls().status} role="status" data-slot="entity-picker-loading">
+            <Spinner />
+            {messages().searching}
+          </div>
+        </Show>
+        <Show when={found().status === "error"}>
+          <div class={cls().status} role="alert" data-slot="entity-picker-error">
+            {messages().searchFailedPlain}
+          </div>
+        </Show>
+        <Show when={found().status === "done" && options().length === 0}>
+          <div class={cls().status} data-slot="entity-picker-empty">
+            {messages().noMatches}
+          </div>
+        </Show>
+        <Show when={full()}>
+          <div class={cls().limit} data-slot="entity-picker-limit">
+            {messages().tooManyTags(max())}
+          </div>
+        </Show>
+        <ComboboxList class={cls().list} data-slot="entity-picker-list">
+          {(option: EntityOption) => (
+            <ComboboxItem
+              value={option}
+              textValue={option.label}
+              disabled={
+                option.isDisabled === true ||
+                (full() && !isMarker(option) && !chosen().some((one) => one.id === option.id))
+              }
+              class={
+                isMarker(option)
+                  ? option.marker === "create"
+                    ? cls().create
+                    : cls().more
+                  : cls().option
+              }
+              data-slot={
+                isMarker(option) ? `entity-picker-${option.marker}` : "entity-picker-option"
               }
             >
-              {avatar(option)}
-              <span class={cls().text}>
-                <span>{label(option)}</span>
-                <Show when={option.description !== undefined}>
-                  <span class={cls().optionDescription}>{option.description}</span>
-                </Show>
-              </span>
-            </Show>
-          </ComboboxItem>
-        )}
-      </ComboboxList>
-    </ComboboxContent>
-  );
+              <Show
+                when={!isMarker(option)}
+                fallback={
+                  <Show when={(option as Marker).marker === "create"} fallback={option.label}>
+                    <Plus aria-hidden="true" />
+                    {messages().createOption(option.label)}
+                  </Show>
+                }
+              >
+                {avatar(option)}
+                <span class={cls().text}>
+                  <span>{label(option)}</span>
+                  <Show when={option.description !== undefined}>
+                    <span class={cls().optionDescription}>{option.description}</span>
+                  </Show>
+                </span>
+              </Show>
+            </ComboboxItem>
+          )}
+        </ComboboxList>
+      </ComboboxContent>
+    );
+  }
 
   return (
     <Field

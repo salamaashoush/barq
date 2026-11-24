@@ -63,15 +63,21 @@ export interface RangeSliderProps
 export function RangeSlider(props: RangeSliderProps) {
   const messages = useArcMessages();
   const locale = useLocale();
-  const min = (): number => props.minValue ?? 0;
-  const max = (): number => props.maxValue ?? 100;
+  function min(): number {
+    return props.minValue ?? 0;
+  }
+  function max(): number {
+    return props.maxValue ?? 100;
+  }
   const of = bindField<Range>(props, [props.minValue ?? 0, props.maxValue ?? 100]);
   const format = createMemo(() => new Intl.NumberFormat(locale().locale, props.formatOptions));
-  const written = (): string => {
+  function written(): string {
     const [low, high] = of.value();
     return format().formatRange(low, high);
-  };
-  const cls = () => parts({ ...fieldStyles(), ...rangeSliderStyles() }, props.classes);
+  }
+  function cls() {
+    return parts({ ...fieldStyles(), ...rangeSliderStyles() }, props.classes);
+  }
   return (
     <Frame
       of={of}

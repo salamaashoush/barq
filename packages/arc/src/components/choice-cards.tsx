@@ -113,7 +113,9 @@ export interface RadioCardsProps extends CardsProps, FieldValueProps<string | nu
  */
 export function RadioCards(props: RadioCardsProps) {
   const of = bindField<string | null>(props, null);
-  const cls = () => parts({ ...fieldStyles(), ...choiceCardsStyles() }, props.classes);
+  function cls() {
+    return parts({ ...fieldStyles(), ...choiceCardsStyles() }, props.classes);
+  }
   return (
     <Frame
       of={of}
@@ -173,15 +175,19 @@ export interface CheckboxCardsProps extends CardsProps, FieldValueProps<readonly
  */
 export function CheckboxCards(props: CheckboxCardsProps) {
   const of = bindField<readonly string[]>(props, []);
-  const cls = () => parts({ ...fieldStyles(), ...choiceCardsStyles() }, props.classes);
-  const chosen = (): readonly string[] => of.value() ?? [];
-  const toggle = (value: string, on: boolean): void => {
+  function cls() {
+    return parts({ ...fieldStyles(), ...choiceCardsStyles() }, props.classes);
+  }
+  function chosen(): readonly string[] {
+    return of.value() ?? [];
+  }
+  function toggle(value: string, on: boolean): void {
     const next = props.options
       .map((option) => option.value)
       .filter((one) => (one === value ? on : chosen().includes(one)));
     of.change(next);
     of.blur();
-  };
+  }
   return (
     <Frame
       of={of}

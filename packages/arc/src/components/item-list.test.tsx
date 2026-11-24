@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child, flush } from "@barqjs/core";
+import { flush, type ParentProps } from "@barqjs/core";
 import type { Key } from "@barqjs/aria/collections";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user, within } from "@barqjs/testing";
@@ -115,7 +115,7 @@ describe("List", () => {
   });
 
   test("an empty list says so; right to left, and a class per part", () => {
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }

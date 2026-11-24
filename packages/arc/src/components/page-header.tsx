@@ -22,6 +22,11 @@ export const pageHeaderStyles = variants({
 
 type Slots = ReturnType<typeof pageHeaderStyles>;
 
+export interface PageHeaderRenders {
+  title?: RenderPart<Child>;
+  description?: RenderPart<Child>;
+}
+
 export interface PageHeaderProps extends Omit<UiProps, "class" | "className">, Customisable<Slots> {
   /** The page's `<h1>`. Not `title`, which is the attribute every element takes. */
   heading: Child;
@@ -31,7 +36,7 @@ export interface PageHeaderProps extends Omit<UiProps, "class" | "className">, C
   /** At the end of the row, wrapping below the title on a narrow screen. */
   actions?: Child;
   /** Another element for the title or the line under it: an `<h2>` on a page inside a page. */
-  renders?: { title?: RenderPart<Child>; description?: RenderPart<Child> };
+  renders?: PageHeaderRenders;
 }
 
 /**
@@ -46,7 +51,9 @@ export interface PageHeaderProps extends Omit<UiProps, "class" | "className">, C
  * ```
  */
 export function PageHeader(props: PageHeaderProps) {
-  const cls = (): Slots => parts(pageHeaderStyles(), props.classes);
+  function cls(): Slots {
+    return parts(pageHeaderStyles(), props.classes);
+  }
   const title = props.renders?.title;
   const description = props.renders?.description;
   return (

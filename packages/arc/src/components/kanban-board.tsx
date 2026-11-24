@@ -44,13 +44,18 @@ export interface KanbanColumn<T> {
   limit?: number;
 }
 
+export interface KanbanMoveTarget {
+  key: Key;
+  position: "before" | "after";
+}
+
 /** Where cards went: the column they left, the one they joined, and beside which card. */
 export interface KanbanMoveEvent {
   keys: Key[];
   from: string;
   to: string;
   /** The card they were put beside, or `null` for the end of the column. */
-  target: { key: Key; position: "before" | "after" } | null;
+  target: KanbanMoveTarget | null;
 }
 
 export const kanbanBoardStyles = variants({
@@ -109,6 +114,11 @@ export const kanbanBoardStyles = variants({
 
 type Slots = ReturnType<typeof kanbanBoardStyles>;
 
+export interface KanbanVirtual {
+  cardHeight: number;
+  height: string;
+}
+
 export interface KanbanBoardProps<T> extends Customisable<Slots> {
   columns: readonly KanbanColumn<T>[];
   /** Names the board. */
@@ -131,7 +141,7 @@ export interface KanbanBoardProps<T> extends Customisable<Slots> {
   defaultCollapsed?: readonly string[];
   onCollapsedChange?: (collapsed: string[]) => void;
   /** Draw only the cards on screen, each about this many pixels tall, in columns `height` tall. */
-  virtual?: { cardHeight: number; height: string };
+  virtual?: KanbanVirtual;
 }
 
 /**
@@ -156,19 +166,23 @@ export interface KanbanBoardProps<T> extends Customisable<Slots> {
  * cards. The columns scroll sideways, snapping one at a time on a phone.
  */
 export function KanbanBoard<T>(props: KanbanBoardProps<T>) {
-  const cls = (): Slots => parts(kanbanBoardStyles(), props.classes);
+  function cls(): Slots {
+    return parts(kanbanBoardStyles(), props.classes);
+  }
   const kind = `application/x-arc-kanban-${createUniqueId()}`;
   const [ownCollapsed, setOwnCollapsed] = createSignal<readonly string[]>(
     untrack(() => props.defaultCollapsed) ?? [],
   );
-  const collapsed = (): readonly string[] => props.collapsed ?? ownCollapsed();
-  const fold = (id: string): void => {
+  function collapsed(): readonly string[] {
+    return props.collapsed ?? ownCollapsed();
+  }
+  function fold(id: string): void {
     const next = collapsed().includes(id)
       ? collapsed().filter((one) => one !== id)
       : [...collapsed(), id];
     if (props.collapsed === undefined) setOwnCollapsed(next);
     props.onCollapsedChange?.(next);
-  };
+  }
   return (
     <div
       class={arc(cls().root, props.class, props.className)}
@@ -191,49 +205,96 @@ export function KanbanBoard<T>(props: KanbanBoardProps<T>) {
   );
 }
 
-function Column<T>(props: {
+interface ColumnProps<T> {
   board: KanbanBoardProps<T>;
   column: KanbanColumn<T>;
   kind: string;
   collapsed: boolean;
   onFold: () => void;
-}) {
+}
+
+interface MaybeKeyed {
+  id?: Key;
+}
+
+interface TextFields {
+  title?: unknown;
+  name?: unknown;
+  label?: unknown;
+}
+
+interface DropBeside {
+  key: Key;
+  dropPosition: string;
+}
+
+interface DraggedCards {
+  keys: Key[];
+  from: string;
+}
+
+interface TextDragItem {
+  getText: (type: string) => Promise<string>;
+}
+
+interface DraggedCard {
+  key: Key;
+  from: string;
+}
+
+function Column<T>(props: ColumnProps<T>) {
   const messages = useArcMessages();
   const format = numberFormatter();
   const headingId = createUniqueId();
-  const count = (): number => props.column.items.length;
-  const over = (): boolean => props.column.limit !== undefined && count() > props.column.limit;
-  const full = (): boolean => props.column.limit !== undefined && count() >= props.column.limit;
-  const cls = (): Slots =>
-    parts(kanbanBoardStyles({ over: over(), collapsed: props.collapsed }), props.board.classes);
-  const keyOf = (item: T): Key => props.board.getKey?.(item) ?? ((item as { id?: Key }).id as Key);
-  const textOf = (item: T): string => {
+  function count(): number {
+    return props.column.items.length;
+  }
+  function over(): boolean {
+    return props.column.limit !== undefined && count() > props.column.limit;
+  }
+  function full(): boolean {
+    return props.column.limit !== undefined && count() >= props.column.limit;
+  }
+  function cls(): Slots {
+    return parts(
+      kanbanBoardStyles({ over: over(), collapsed: props.collapsed }),
+      props.board.classes,
+    );
+  }
+  function keyOf(item: T): Key {
+    return props.board.getKey?.(item) ?? ((item as MaybeKeyed).id as Key);
+  }
+  function textOf(item: T): string {
     const own = props.board.getTextValue?.(item);
     if (own !== undefined) return own;
-    const record = item as { title?: unknown; name?: unknown; label?: unknown };
+    const record = item as TextFields;
     const text = record.title ?? record.name ?? record.label;
     return typeof text === "string" ? text : String(keyOf(item));
-  };
-  const id = (): string => props.column.id;
-  const move = (event: KanbanMoveEvent): void => props.board.onMove?.(event);
-  const placed = (beside: { key: Key; dropPosition: string }): KanbanMoveEvent["target"] => ({
-    key: beside.key,
-    position: beside.dropPosition === "after" ? "after" : "before",
-  });
-  const read = async (items: readonly unknown[]): Promise<{ keys: Key[]; from: string }> => {
+  }
+  function id(): string {
+    return props.column.id;
+  }
+  function move(event: KanbanMoveEvent): void {
+    props.board.onMove?.(event);
+  }
+  function placed(beside: DropBeside): KanbanMoveEvent["target"] {
+    return {
+      key: beside.key,
+      position: beside.dropPosition === "after" ? "after" : "before",
+    };
+  }
+  async function read(items: readonly unknown[]): Promise<DraggedCards> {
     const keys: Key[] = [];
     let from = "";
     for (const item of items) {
       if (!isTextDropItem(item as never)) continue;
-      const raw = await (item as { getText: (type: string) => Promise<string> }).getText(
-        props.kind,
-      );
-      const parsed = JSON.parse(raw) as { key: Key; from: string };
+      const raw = await (item as TextDragItem).getText(props.kind);
+      const parsed = JSON.parse(raw) as DraggedCard;
       keys.push(parsed.key);
       from = parsed.from;
     }
     return { keys, from };
-  };
+  }
 
   const { dragAndDropHooks } = dragAndDrop<T>({
     getItems: (keys) =>
@@ -265,46 +326,49 @@ function Column<T>(props: {
     },
   });
 
-  const counted = (): string =>
-    props.column.limit === undefined
+  function counted(): string {
+    return props.column.limit === undefined
       ? format().format(count())
       : `${format().format(count())} / ${format().format(props.column.limit)}`;
+  }
 
-  const list = () => (
-    <GridList<T>
-      class={cls().list}
-      data-slot="kanban-list"
-      aria-labelledby={headingId}
-      items={props.column.items}
-      getKey={keyOf}
-      getTextValue={textOf}
-      dragAndDropHooks={dragAndDropHooks}
-      onAction={
-        props.board.onAction === undefined ? undefined : (key: Key) => props.board.onAction?.(key)
-      }
-      style={
-        props.board.virtual === undefined
-          ? undefined
-          : { height: props.board.virtual.height, overflow: "auto" }
-      }
-      renderEmptyState={(_state: unknown) => (
-        <div class={cls().empty} data-slot="kanban-empty">
-          {messages().noCards}
-        </div>
-      )}
-    >
-      {(item: T) => (
-        <GridListItem class={cls().card} data-slot="kanban-card">
-          <DragButton class={cls().drag} data-slot="kanban-drag">
-            <GripVertical aria-hidden="true" />
-          </DragButton>
-          <div class={cls().content} data-slot="kanban-card-content">
-            {props.board.children(item)}
+  function list() {
+    return (
+      <GridList<T>
+        class={cls().list}
+        data-slot="kanban-list"
+        aria-labelledby={headingId}
+        items={props.column.items}
+        getKey={keyOf}
+        getTextValue={textOf}
+        dragAndDropHooks={dragAndDropHooks}
+        onAction={
+          props.board.onAction === undefined ? undefined : (key: Key) => props.board.onAction?.(key)
+        }
+        style={
+          props.board.virtual === undefined
+            ? undefined
+            : { height: props.board.virtual.height, overflow: "auto" }
+        }
+        renderEmptyState={(_state: unknown) => (
+          <div class={cls().empty} data-slot="kanban-empty">
+            {messages().noCards}
           </div>
-        </GridListItem>
-      )}
-    </GridList>
-  );
+        )}
+      >
+        {(item: T) => (
+          <GridListItem class={cls().card} data-slot="kanban-card">
+            <DragButton class={cls().drag} data-slot="kanban-drag">
+              <GripVertical aria-hidden="true" />
+            </DragButton>
+            <div class={cls().content} data-slot="kanban-card-content">
+              {props.board.children(item)}
+            </div>
+          </GridListItem>
+        )}
+      </GridList>
+    );
+  }
 
   return (
     <section
@@ -371,6 +435,10 @@ function Column<T>(props: {
   );
 }
 
+interface Keyed {
+  id: Key;
+}
+
 /**
  * The columns after a `KanbanMoveEvent`: the cards taken out of the column
  * they left and put into the one they joined, beside the target or at its end.
@@ -378,7 +446,7 @@ function Column<T>(props: {
 export function applyKanbanMove<T>(
   columns: readonly KanbanColumn<T>[],
   event: KanbanMoveEvent,
-  getKey: (item: T) => Key = (item) => (item as { id: Key }).id,
+  getKey: (item: T) => Key = (item) => (item as Keyed).id,
 ): KanbanColumn<T>[] {
   const moving = new Set(event.keys);
   const taken: T[] = [];

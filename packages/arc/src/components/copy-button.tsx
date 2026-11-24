@@ -51,21 +51,24 @@ export interface CopyButtonProps extends Customisable<Slots> {
 export function CopyButton(props: CopyButtonProps) {
   const copier = clipboard({ resetAfter: props.resetAfter ?? 2000 });
   const messages = useArcMessages();
-  const cls = (): Slots => parts(copyButtonStyles(), props.classes);
-  const message = (): string =>
-    copier.copied()
+  function cls(): Slots {
+    return parts(copyButtonStyles(), props.classes);
+  }
+  function message(): string {
+    return copier.copied()
       ? (props.copiedLabel ?? messages().copied)
       : copier.error() === undefined
         ? ""
         : (props.failedLabel ?? messages().copyFailed);
+  }
 
-  const copy = (): void => {
+  function copy(): void {
     const value = props.value;
     copier.copy(value).then(
       () => props.onCopy?.(value),
       () => {},
     );
-  };
+  }
 
   return (
     <span class={arc(cls().root, props.class, props.className)} data-slot="copy-button-root">

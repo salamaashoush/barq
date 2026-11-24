@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child, createSignal } from "@barqjs/core";
+import { type Child, createSignal, type ParentProps } from "@barqjs/core";
 import type { Key } from "@barqjs/aria/collections";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { accessibleName, ariaViolations, render, screen, user } from "@barqjs/testing";
@@ -21,7 +21,13 @@ const CITIES: City[] = [
   { id: "lima", label: "Lima" },
 ];
 
-function Cities(props: { initial?: City[]; maxVisible?: number; children?: Child }) {
+interface CitiesProps {
+  initial?: City[];
+  maxVisible?: number;
+  children?: Child;
+}
+
+function Cities(props: CitiesProps) {
   const [cities, setCities] = createSignal(props.initial ?? CITIES);
   return (
     <TagGroup
@@ -72,7 +78,7 @@ describe("TagGroup", () => {
   });
 
   test("the arrows follow the reading direction", async () => {
-    function Rtl(props: { children?: Child }) {
+    function Rtl(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }
@@ -158,7 +164,9 @@ describe("TagGroup", () => {
       />
     ));
     await settle();
-    const by = (slot: string): Element | null => document.querySelector(`[data-slot="${slot}"]`);
+    function by(slot: string): Element | null {
+      return document.querySelector(`[data-slot="${slot}"]`);
+    }
     expect(by("tag-group-field")?.classList.contains("mine")).toBe(true);
     expect(by("tag-group-root")?.classList.contains("r")).toBe(true);
     expect(by("tag-group")?.classList.contains("l")).toBe(true);

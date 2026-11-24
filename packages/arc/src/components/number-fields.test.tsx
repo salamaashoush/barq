@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child, createSignal } from "@barqjs/core";
+import { createSignal, type ParentProps } from "@barqjs/core";
 import { collectCss } from "@barqjs/css";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { accessibleName, ariaViolations, render, user } from "@barqjs/testing";
@@ -45,7 +45,7 @@ describe("CurrencyField", () => {
   });
 
   test("in Arabic it is written in the locale's digits and currency", async () => {
-    function Rtl(props: { children?: Child }) {
+    function Rtl(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }
@@ -79,8 +79,9 @@ describe("PercentField and UnitField", () => {
     const hidden = numberFieldStyles({ steppers: false }).stepper;
     expect(wears(up, hidden)).toBe(true);
     const sheet = collectCss();
-    const none = (group: string): boolean =>
-      group.split(" ").some((one) => sheet.includes(`.${one}{display:none}`));
+    function none(group: string): boolean {
+      return group.split(" ").some((one) => sheet.includes(`.${one}{display:none}`));
+    }
     expect(none(hidden)).toBe(true);
     expect(none(numberFieldStyles({}).stepper)).toBe(false);
   });
@@ -126,7 +127,9 @@ describe("PercentField and UnitField", () => {
       />
     ));
     await settle();
-    const by = (slot: string): Element | null => document.querySelector(`[data-slot="${slot}"]`);
+    function by(slot: string): Element | null {
+      return document.querySelector(`[data-slot="${slot}"]`);
+    }
     expect(by("percent-field")?.classList.contains("mine")).toBe(true);
     expect(by("percent-field-control")?.classList.contains("g")).toBe(true);
     expect(by("number-field-input")?.classList.contains("i")).toBe(true);

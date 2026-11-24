@@ -118,7 +118,9 @@ export interface TimelineProps extends Customisable<Slots> {
  * drawn with logical edges and follows the reading direction.
  */
 export function Timeline(props: TimelineProps) {
-  const cls = (): Slots => parts(timelineStyles({ density: props.density }), props.classes);
+  function cls(): Slots {
+    return parts(timelineStyles({ density: props.density }), props.classes);
+  }
   return (
     <ol
       class={arc(cls().root, props.class, props.className)}

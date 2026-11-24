@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { type Child, createSignal, flush } from "@barqjs/core";
+import { createSignal, flush, type ParentProps } from "@barqjs/core";
 import { dragSession } from "@barqjs/aria/dnd";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { clearAnnouncer } from "@barqjs/aria/live";
@@ -50,7 +50,12 @@ afterEach(async () => {
   clearAnnouncer();
 });
 
-function Board(props: { onMove?: (event: KanbanMoveEvent) => void; strict?: boolean }) {
+interface BoardProps {
+  onMove?: (event: KanbanMoveEvent) => void;
+  strict?: boolean;
+}
+
+function Board(props: BoardProps) {
   const [columns, setColumns] = createSignal(COLUMNS);
   return (
     <KanbanBoard<Task>
@@ -234,7 +239,7 @@ describe("KanbanBoard", () => {
   });
 
   test("runs right to left, the counts in the locale's digits", () => {
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }

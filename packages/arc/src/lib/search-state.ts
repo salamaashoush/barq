@@ -22,6 +22,10 @@ export interface Bound<T> {
   param: string | undefined;
 }
 
+interface Boxed<T> {
+  value: T;
+}
+
 /**
  * State held in one of three places: a search parameter when the component was
  * given one (so it has a link and survives a reload), else the caller's value
@@ -36,7 +40,7 @@ export function bound<T>(
   format: (value: T) => string,
   notify: (value: T) => void,
 ): Bound<T> {
-  const [own, setOwn] = createSignal<{ value: T }>({ value: initial });
+  const [own, setOwn] = createSignal<Boxed<T>>({ value: initial });
   return {
     param: url === undefined ? undefined : param,
     read: () => {
@@ -62,15 +66,17 @@ export interface OpenOptions {
   onOpenChange: (open: boolean) => void;
 }
 
+export interface OpenState {
+  isOpen: () => boolean;
+  setOpen: (next: boolean) => void;
+}
+
 /**
  * Whether a sheet is open: the URL's, the caller's or its own. Under a search
  * parameter, closing takes the parameter out with a replace, so the back
  * button is not handed a step that only closed something.
  */
-export function openState(options: OpenOptions): {
-  isOpen: () => boolean;
-  setOpen: (next: boolean) => void;
-} {
+export function openState(options: OpenOptions): OpenState {
   const param = options.param;
   const url = param === undefined ? undefined : useSearchParams();
   if (url !== undefined && param !== undefined) {

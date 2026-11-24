@@ -110,8 +110,14 @@ export const arc = {
   zToast: "var(--z-toast)",
 } as const;
 
+export interface ToneTokens {
+  base: string;
+  foreground: string;
+  subtle: string;
+}
+
 /** A tone's three tokens, as `var()` references. */
-export function tone(name: Tone): { base: string; foreground: string; subtle: string } {
+export function tone(name: Tone): ToneTokens {
   return {
     base: `var(--${name})`,
     foreground: `var(--${name}-foreground)`,

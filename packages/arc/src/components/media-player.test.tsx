@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child } from "@barqjs/core";
+import { type ParentProps } from "@barqjs/core";
 import { collectCss } from "@barqjs/css";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user, within } from "@barqjs/testing";
@@ -59,6 +59,10 @@ function player(extra: Partial<Parameters<typeof MediaPlayer>[0]> = {}) {
       {...extra}
     />
   );
+}
+
+interface HeldMode {
+  mode: string;
 }
 
 describe("MediaPlayer", () => {
@@ -165,7 +169,7 @@ describe("MediaPlayer", () => {
 
     // happy-dom hands out a new TextTrack on every read of `track`, so a mode
     // set on one is lost; a browser keeps one per element.
-    const held = new WeakMap<HTMLTrackElement, { mode: string }>();
+    const held = new WeakMap<HTMLTrackElement, HeldMode>();
     const original = Object.getOwnPropertyDescriptor(HTMLTrackElement.prototype, "track");
     Object.defineProperty(HTMLTrackElement.prototype, "track", {
       configurable: true,
@@ -218,11 +222,11 @@ describe("MediaPlayer", () => {
     await at(50);
     const video = media();
     video.getBoundingClientRect = () => ({ left: 0, width: 300, top: 0, height: 100 }) as DOMRect;
-    const tap = (x: number): void => {
+    function tap(x: number): void {
       video.dispatchEvent(
         new PointerEvent("pointerup", { pointerType: "touch", clientX: x, bubbles: true }),
       );
-    };
+    }
     tap(280);
     tap(280);
     await settle();
@@ -242,7 +246,7 @@ describe("MediaPlayer", () => {
   });
 
   test("on a right-to-left page the controls and the seek bar stay left to right", () => {
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }

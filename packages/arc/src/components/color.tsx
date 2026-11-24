@@ -115,7 +115,9 @@ export interface ColorAreaProps extends Customisable<Pick<ColorSlots, "area" | "
  */
 export function ColorArea(props: ColorAreaProps) {
   const messages = useArcMessages();
-  const cls = () => parts(colorStyles(), props.classes);
+  function cls() {
+    return parts(colorStyles(), props.classes);
+  }
   return (
     <AriaColorArea
       class={arc(cls().area, props.class, props.className)}
@@ -149,7 +151,9 @@ export interface ColorSliderProps extends Customisable<
 
 /** One channel of a colour on a track: the hue, the alpha, the lightness. */
 export function ColorSlider(props: ColorSliderProps) {
-  const cls = () => parts(colorStyles(), props.classes);
+  function cls() {
+    return parts(colorStyles(), props.classes);
+  }
   return (
     <AriaColorSlider
       class={arc(cls().slider, props.class, props.className)}
@@ -210,7 +214,12 @@ type SwatchSlots = ReturnType<typeof colorSwatchesStyles>;
 /** A colour in a set of swatches, with what to call it when its own name is not enough. */
 export type SwatchColor = string | { color: string; label?: string };
 
-function swatchOf(entry: SwatchColor): { color: string; label?: string } {
+interface Swatch {
+  color: string;
+  label?: string;
+}
+
+function swatchOf(entry: SwatchColor): Swatch {
   return typeof entry === "string" ? { color: entry } : entry;
 }
 
@@ -234,14 +243,17 @@ interface SwatchListProps extends Customisable<SwatchSlots> {
 
 /** The swatches as a listbox, a colour per option: what `ColorSwatches` and `ColorEditor` draw. */
 function SwatchList(props: SwatchListProps) {
-  const cls = () =>
-    parts(colorSwatchesStyles({ size: props.size, shape: props.shape }), props.classes);
-  const entries = () => props.colors.map(swatchOf);
+  function cls() {
+    return parts(colorSwatchesStyles({ size: props.size, shape: props.shape }), props.classes);
+  }
+  function entries() {
+    return props.colors.map(swatchOf);
+  }
   /** The chosen colour as one of the swatches' own spellings, so the swatch is the one selected. */
-  const chosen = (): string | undefined => {
+  function chosen(): string | undefined {
     const value = props.value;
     return entries().find((entry) => sameColor(value, entry.color))?.color ?? value ?? undefined;
-  };
+  }
   return (
     <ColorSwatchPicker
       class={arc(cls().list, props.class, props.className)}
@@ -253,7 +265,7 @@ function SwatchList(props: SwatchListProps) {
       onChange={(color: Color) => props.onChange(colorValue(color))}
     >
       <For each={entries()}>
-        {(entry: { color: string; label?: string }) => (
+        {(entry: Swatch) => (
           <ColorSwatchPickerItem
             class={cls().item}
             data-slot="color-swatches-item"
@@ -302,26 +314,30 @@ export interface ColorSwatchesProps
 export function ColorSwatches(props: ColorSwatchesProps) {
   const messages = useArcMessages();
   const of = bindField<string | null>(props, null);
-  const cls = () => parts({ ...fieldStyles(), ...colorSwatchesStyles() }, props.classes);
-  const list = () => (
-    <SwatchList
-      colors={props.colors}
-      value={of.value()}
-      size={props.size}
-      shape={props.shape}
-      class={props.label === undefined ? arc(props.class, props.className) : undefined}
-      classes={{ list: cls().list, item: cls().item, swatch: cls().swatch }}
-      aria-label={
-        props.label === undefined ? (props["aria-label"] ?? messages().colourSwatches) : undefined
-      }
-      aria-labelledby={props.label === undefined ? undefined : of.ids.label}
-      aria-describedby={of.describedBy(props.description !== undefined)}
-      onChange={(value) => {
-        of.change(value);
-        of.blur();
-      }}
-    />
-  );
+  function cls() {
+    return parts({ ...fieldStyles(), ...colorSwatchesStyles() }, props.classes);
+  }
+  function list() {
+    return (
+      <SwatchList
+        colors={props.colors}
+        value={of.value()}
+        size={props.size}
+        shape={props.shape}
+        class={props.label === undefined ? arc(props.class, props.className) : undefined}
+        classes={{ list: cls().list, item: cls().item, swatch: cls().swatch }}
+        aria-label={
+          props.label === undefined ? (props["aria-label"] ?? messages().colourSwatches) : undefined
+        }
+        aria-labelledby={props.label === undefined ? undefined : of.ids.label}
+        aria-describedby={of.describedBy(props.description !== undefined)}
+        onChange={(value) => {
+          of.change(value);
+          of.blur();
+        }}
+      />
+    );
+  }
   return (
     <Show when={props.label !== undefined} fallback={list()}>
       <Frame
@@ -341,15 +357,23 @@ export function ColorSwatches(props: ColorSwatchesProps) {
   );
 }
 
+interface EyeDropperResult {
+  sRGBHex: string;
+}
+
 /** The browser's eye dropper, where there is one: Chromium on a desktop. */
 interface EyeDropperApi {
-  open(): Promise<{ sRGBHex: string }>;
+  open(): Promise<EyeDropperResult>;
+}
+
+interface EyeDropperWindow {
+  EyeDropper?: new () => EyeDropperApi;
 }
 
 function eyeDropper(): (new () => EyeDropperApi) | undefined {
   return typeof window === "undefined"
     ? undefined
-    : (window as unknown as { EyeDropper?: new () => EyeDropperApi }).EyeDropper;
+    : (window as unknown as EyeDropperWindow).EyeDropper;
 }
 
 export const colorEditorStyles = variants({
@@ -392,20 +416,24 @@ export interface ColorEditorProps extends Customisable<EditorSlots> {
 export function ColorEditor(props: ColorEditorProps) {
   const messages = useArcMessages();
   const [own, setOwn] = createSignal(props.defaultValue ?? BLACK);
-  const current = (): string => props.value ?? own();
-  const change = (next: string): void => {
+  function current(): string {
+    return props.value ?? own();
+  }
+  function change(next: string): void {
     if (props.value === undefined) setOwn(next);
     props.onChange?.(next);
-  };
-  const cls = () => parts(colorEditorStyles(), props.classes);
+  }
+  function cls() {
+    return parts(colorEditorStyles(), props.classes);
+  }
   const dropper = eyeDropper();
-  const pick = (): void => {
+  function pick(): void {
     if (dropper === undefined) return;
     new dropper().open().then(
       (result) => change(result.sRGBHex),
       () => {},
     );
-  };
+  }
   return (
     <AriaColorPicker
       class={arc(cls().editor, props.class, props.className)}
@@ -455,12 +483,17 @@ export function ColorEditor(props: ColorEditorProps) {
   );
 }
 
+interface ChipProps {
+  class: string;
+  color: string | null;
+}
+
 /** The colour held, drawn beside it and hidden from assistive tech, which reads the value. */
-function Chip(props: { class: string; color: string | null }) {
-  const css = (): string => {
+function Chip(props: ChipProps) {
+  function css(): string {
     const color = readColor(props.color);
     return color === null ? "transparent" : color.toString("css");
-  };
+  }
   return (
     <span
       class={props.class}
@@ -502,7 +535,9 @@ export interface ColorFieldProps
  */
 export function ColorField(props: ColorFieldProps) {
   const of = bindField<string | null>(props, null);
-  const cls = () => parts({ ...fieldStyles(), ...colorFieldStyles() }, props.classes);
+  function cls() {
+    return parts({ ...fieldStyles(), ...colorFieldStyles() }, props.classes);
+  }
   return (
     <Frame
       of={of}
@@ -556,8 +591,12 @@ export function ColorPicker(props: ColorPickerProps) {
   const messages = useArcMessages();
   const of = bindField<string | null>(props, null);
   const [open, setOpen] = createSignal(false);
-  const cls = () =>
-    parts({ ...fieldStyles(), ...colorFieldStyles(), ...colorEditorStyles() }, props.classes);
+  function cls() {
+    return parts(
+      { ...fieldStyles(), ...colorFieldStyles(), ...colorEditorStyles() },
+      props.classes,
+    );
+  }
   const shown = createMemo((): string | null => {
     const color = readColor(of.value());
     return color === null ? null : colorValue(color).toUpperCase();

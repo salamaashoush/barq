@@ -101,15 +101,24 @@ export interface AlertProps extends Customisable<Slots> {
   live?: "alert" | "status" | "none";
 }
 
-function AlertBody(props: AlertProps & { kind: "inline" | "banner"; slot: string }) {
+interface AlertBodyProps {
+  kind: "inline" | "banner";
+  slot: string;
+}
+
+function AlertBody(props: AlertProps & AlertBodyProps) {
   const messages = useArcMessages();
   const [shown, setShown] = createSignal(true);
-  const tone = (): Tone => props.tone ?? "info";
-  const cls = () => parts(alertStyles({ tone: tone(), kind: props.kind }), props.classes);
-  const role = (): string | undefined => {
+  function tone(): Tone {
+    return props.tone ?? "info";
+  }
+  function cls() {
+    return parts(alertStyles({ tone: tone(), kind: props.kind }), props.classes);
+  }
+  function role(): string | undefined {
     const live = props.live ?? (tone() === "danger" ? "alert" : "status");
     return live === "none" ? undefined : live;
-  };
+  }
   return (
     <Show when={shown()}>
       <div

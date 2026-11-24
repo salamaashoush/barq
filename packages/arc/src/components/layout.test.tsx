@@ -17,8 +17,9 @@ import {
   Stack,
 } from "./layout.tsx";
 
-const slot = (name: string): HTMLElement =>
-  document.querySelector(`[data-slot="${name}"]`) as HTMLElement;
+function slot(name: string): HTMLElement {
+  return document.querySelector(`[data-slot="${name}"]`) as HTMLElement;
+}
 
 /** The custom properties an element sets, by the condition each was written under. */
 function variables(element: HTMLElement): string[] {
@@ -117,14 +118,14 @@ describe("layout components", () => {
       else expect(tokens.has(value), one).toBe(true);
     }
 
-    const refused = (child: () => Child): string => {
+    function refused(child: () => Child): string {
       const { container } = render(() => (
         <Errored fallback={(error: () => Error) => <p>{() => error().message}</p>}>
           {child()}
         </Errored>
       ));
       return container.textContent ?? "";
-    };
+    }
     expect(refused(() => <Stack gap={7 as SpaceStep} />)).toBe(
       "7 is not a step of arc's spacing scale",
     );

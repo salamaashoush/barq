@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { type Child, createSignal } from "@barqjs/core";
+import { createSignal, type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { Info } from "@barqjs/lucide/icons/info";
 import { MessageSquare } from "@barqjs/lucide/icons/message-square";
@@ -28,8 +28,8 @@ afterEach(() => {
 });
 
 function screenIs(compact: boolean): void {
-  const stub = (query: string): MediaQueryList =>
-    ({
+  function stub(query: string): MediaQueryList {
+    return {
       matches: query.includes("pointer: coarse") ? compact : original(query).matches,
       media: query,
       onchange: null,
@@ -38,7 +38,8 @@ function screenIs(compact: boolean): void {
       addListener: () => {},
       removeListener: () => {},
       dispatchEvent: () => false,
-    }) as MediaQueryList;
+    } as MediaQueryList;
+  }
   Object.defineProperty(window, "matchMedia", { configurable: true, value: stub });
 }
 
@@ -139,7 +140,7 @@ describe("DockedPanels", () => {
 
   test("runs right to left, the panel at the reading end", async () => {
     screenIs(false);
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }

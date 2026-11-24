@@ -119,7 +119,9 @@ export interface AuthLayoutProps extends Customisable<Slots> {
  * the form, and an `aside` beside it on a wide screen.
  */
 export function AuthLayout(props: AuthLayoutProps) {
-  const cls = (): Slots => parts(authStyles({ width: props.width }), props.classes);
+  function cls(): Slots {
+    return parts(authStyles({ width: props.width }), props.classes);
+  }
   return (
     <div class={arc(cls().root, props.class, props.className)} data-slot="auth-layout">
       <main class={cls().main} data-slot="auth-layout-main">
@@ -146,9 +148,15 @@ export function AuthLayout(props: AuthLayoutProps) {
   );
 }
 
+interface HeaderProps {
+  heading: Child;
+  description?: Child;
+  classes: Slots;
+}
+
 // --- shared parts ----------------------------------------------------------------
 
-function Header(props: { heading: Child; description?: Child; classes: Slots }) {
+function Header(props: HeaderProps) {
   return (
     <header class={props.classes.header} data-slot="auth-header">
       <h1 class={props.classes.heading} data-slot="auth-heading">
@@ -163,7 +171,12 @@ function Header(props: { heading: Child; description?: Child; classes: Slots }) 
   );
 }
 
-function Providers(props: { children?: Child; classes: Slots }) {
+interface ProvidersProps {
+  children?: Child;
+  classes: Slots;
+}
+
+function Providers(props: ProvidersProps) {
   const messages = useArcMessages();
   return (
     <Show when={props.children !== undefined}>
@@ -179,7 +192,14 @@ function Providers(props: { children?: Child; classes: Slots }) {
   );
 }
 
-function Sent(props: { heading: Child; description: Child; classes: Slots; children?: Child }) {
+interface SentProps {
+  heading: Child;
+  description: Child;
+  classes: Slots;
+  children?: Child;
+}
+
+function Sent(props: SentProps) {
   return (
     <div class={props.classes.sent} data-slot="auth-sent" role="status">
       <span class={props.classes.sentIcon} aria-hidden="true">
@@ -197,12 +217,14 @@ export interface PasswordRule {
   test: (password: string) => boolean;
 }
 
-/** What a new password must have; at least eight characters, a letter and a digit. */
-export function defaultPasswordRules(messages: {
+export interface PasswordRuleMessages {
   passwordLength: (count: number) => string;
   passwordLetter: string;
   passwordDigit: string;
-}): PasswordRule[] {
+}
+
+/** What a new password must have; at least eight characters, a letter and a digit. */
+export function defaultPasswordRules(messages: PasswordRuleMessages): PasswordRule[] {
   return [
     { label: messages.passwordLength(8), test: (value) => value.length >= 8 },
     { label: messages.passwordLetter, test: (value) => /\p{L}/u.test(value) },
@@ -228,16 +250,24 @@ export interface PasswordStrengthProps extends Customisable<Slots> {
 /** A new password's rules, each ticked as it is met, and a meter of how strong it is. */
 export function PasswordStrength(props: PasswordStrengthProps) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(authStyles(), props.classes);
-  const rules = (): readonly PasswordRule[] => props.rules ?? defaultPasswordRules(messages());
-  const score = (): number => passwordStrength(props.password);
-  const words = (): string[] => [
-    messages().strengthNone,
-    messages().strengthWeak,
-    messages().strengthFair,
-    messages().strengthGood,
-    messages().strengthStrong,
-  ];
+  function cls(): Slots {
+    return parts(authStyles(), props.classes);
+  }
+  function rules(): readonly PasswordRule[] {
+    return props.rules ?? defaultPasswordRules(messages());
+  }
+  function score(): number {
+    return passwordStrength(props.password);
+  }
+  function words(): string[] {
+    return [
+      messages().strengthNone,
+      messages().strengthWeak,
+      messages().strengthFair,
+      messages().strengthGood,
+      messages().strengthStrong,
+    ];
+  }
   return (
     <div class={arc(cls().strength, props.class, props.className)} data-slot="password-strength">
       <Progress
@@ -296,6 +326,10 @@ export interface SignInFormProps extends Customisable<Slots> {
   defaultEmail?: string;
 }
 
+interface TextValue {
+  value: string;
+}
+
 /**
  * Sign in with an email and a password, and whatever else the product
  * offers: provider buttons, a magic link, a passkey, "Remember me" and a
@@ -303,7 +337,9 @@ export interface SignInFormProps extends Customisable<Slots> {
  */
 export function SignInForm(props: SignInFormProps) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(authStyles(), props.classes);
+  function cls(): Slots {
+    return parts(authStyles(), props.classes);
+  }
   const [mode, setMode] = createSignal<"password" | "link" | "sent">("password");
   const [failure, setFailure] = createSignal<string | null>(null);
   const [busy, setBusy] = createSignal(false);
@@ -328,7 +364,7 @@ export function SignInForm(props: SignInFormProps) {
       await settleAnswer(formApi, props.onSubmit(value));
     },
   }));
-  const passkey = async (): Promise<void> => {
+  async function passkey(): Promise<void> {
     setFailure(null);
     setBusy(true);
     try {
@@ -338,7 +374,7 @@ export function SignInForm(props: SignInFormProps) {
     } finally {
       setBusy(false);
     }
-  };
+  }
 
   return (
     <section class={arc(cls().form, props.class, props.className)} data-slot="sign-in-form">
@@ -379,7 +415,7 @@ export function SignInForm(props: SignInFormProps) {
             <form.AppField
               name="email"
               validators={{
-                onSubmit: ({ value }: { value: string }) =>
+                onSubmit: ({ value }: TextValue) =>
                   value.includes("@") ? undefined : messages().emailInvalid,
               }}
             >
@@ -396,7 +432,7 @@ export function SignInForm(props: SignInFormProps) {
               <form.AppField
                 name="password"
                 validators={{
-                  onSubmit: ({ value }: { value: string }) =>
+                  onSubmit: ({ value }: TextValue) =>
                     value === "" ? messages().passwordRequired : undefined,
                 }}
               >
@@ -482,12 +518,29 @@ export interface SignUpFormProps extends Customisable<Slots> {
   footer?: Child;
 }
 
+interface ConfirmedValue {
+  value: string;
+  fieldApi: FieldWithForm;
+}
+
+interface FieldWithForm {
+  form: AnyFormApi;
+}
+
+interface CheckedValue {
+  value: boolean;
+}
+
 /** A new account: a name, an email, a password held to its rules with a confirmation, and terms. */
 export function SignUpForm(props: SignUpFormProps) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(authStyles(), props.classes);
+  function cls(): Slots {
+    return parts(authStyles(), props.classes);
+  }
   const [sent, setSent] = createSignal<string | null>(null);
-  const rules = (): readonly PasswordRule[] => props.rules ?? defaultPasswordRules(messages());
+  function rules(): readonly PasswordRule[] {
+    return props.rules ?? defaultPasswordRules(messages());
+  }
   const form = useArcForm(() => ({
     defaultValues: { name: "", email: "", password: "", confirm: "", terms: false },
     onSubmit: async ({ value, formApi }) => {
@@ -531,7 +584,7 @@ export function SignUpForm(props: SignUpFormProps) {
               <form.AppField
                 name="name"
                 validators={{
-                  onSubmit: ({ value }: { value: string }) =>
+                  onSubmit: ({ value }: TextValue) =>
                     value.trim() === "" ? messages().nameRequired : undefined,
                 }}
               >
@@ -541,7 +594,7 @@ export function SignUpForm(props: SignUpFormProps) {
             <form.AppField
               name="email"
               validators={{
-                onSubmit: ({ value }: { value: string }) =>
+                onSubmit: ({ value }: TextValue) =>
                   value.includes("@") ? undefined : messages().emailInvalid,
               }}
             >
@@ -552,7 +605,7 @@ export function SignUpForm(props: SignUpFormProps) {
             <form.AppField
               name="password"
               validators={{
-                onSubmit: ({ value }: { value: string }) =>
+                onSubmit: ({ value }: TextValue) =>
                   rules().every((rule) => rule.test(value)) ? undefined : messages().passwordWeak,
               }}
             >
@@ -571,13 +624,7 @@ export function SignUpForm(props: SignUpFormProps) {
               name="confirm"
               validators={{
                 onChangeListenTo: ["password"],
-                onSubmit: ({
-                  value,
-                  fieldApi,
-                }: {
-                  value: string;
-                  fieldApi: { form: AnyFormApi };
-                }) =>
+                onSubmit: ({ value, fieldApi }: ConfirmedValue) =>
                   value === fieldApi.form.state.values.password
                     ? undefined
                     : messages().passwordsDiffer,
@@ -594,7 +641,7 @@ export function SignUpForm(props: SignUpFormProps) {
               <form.AppField
                 name="terms"
                 validators={{
-                  onSubmit: ({ value }: { value: boolean }) =>
+                  onSubmit: ({ value }: CheckedValue) =>
                     value ? undefined : messages().termsRequired,
                 }}
               >
@@ -625,7 +672,9 @@ export interface ForgotPasswordFormProps extends Customisable<Slots> {
 /** Ask for a reset link by email, answered the same whether or not the account exists. */
 export function ForgotPasswordForm(props: ForgotPasswordFormProps) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(authStyles(), props.classes);
+  function cls(): Slots {
+    return parts(authStyles(), props.classes);
+  }
   const [sent, setSent] = createSignal<string | null>(null);
   const form = useArcForm(() => ({
     defaultValues: { email: "" },
@@ -666,7 +715,7 @@ export function ForgotPasswordForm(props: ForgotPasswordFormProps) {
             <form.AppField
               name="email"
               validators={{
-                onSubmit: ({ value }: { value: string }) =>
+                onSubmit: ({ value }: TextValue) =>
                   value.includes("@") ? undefined : messages().emailInvalid,
               }}
             >
@@ -696,9 +745,13 @@ export interface ResetPasswordFormProps extends Customisable<Slots> {
 /** Choose a new password from an emailed link, held to its rules and confirmed. */
 export function ResetPasswordForm(props: ResetPasswordFormProps) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(authStyles(), props.classes);
+  function cls(): Slots {
+    return parts(authStyles(), props.classes);
+  }
   const [done, setDone] = createSignal(false);
-  const rules = (): readonly PasswordRule[] => props.rules ?? defaultPasswordRules(messages());
+  function rules(): readonly PasswordRule[] {
+    return props.rules ?? defaultPasswordRules(messages());
+  }
   const form = useArcForm(() => ({
     defaultValues: { password: "", confirm: "" },
     onSubmit: async ({ value, formApi }) => {
@@ -735,7 +788,7 @@ export function ResetPasswordForm(props: ResetPasswordFormProps) {
             <form.AppField
               name="password"
               validators={{
-                onSubmit: ({ value }: { value: string }) =>
+                onSubmit: ({ value }: TextValue) =>
                   rules().every((rule) => rule.test(value)) ? undefined : messages().passwordWeak,
               }}
             >
@@ -753,13 +806,7 @@ export function ResetPasswordForm(props: ResetPasswordFormProps) {
             <form.AppField
               name="confirm"
               validators={{
-                onSubmit: ({
-                  value,
-                  fieldApi,
-                }: {
-                  value: string;
-                  fieldApi: { form: AnyFormApi };
-                }) =>
+                onSubmit: ({ value, fieldApi }: ConfirmedValue) =>
                   value === fieldApi.form.state.values.password
                     ? undefined
                     : messages().passwordsDiffer,
@@ -780,11 +827,15 @@ export function ResetPasswordForm(props: ResetPasswordFormProps) {
   );
 }
 
+export interface TwoFactorSubmitOptions {
+  recovery: boolean;
+}
+
 // --- second factor -------------------------------------------------------------------
 
 export interface TwoFactorFormProps extends Customisable<Slots> {
   /** The code typed, or a recovery code with `recovery`. Answers with what was wrong, if anything. */
-  onSubmit: (code: string, options: { recovery: boolean }) => Answer | Promise<Answer>;
+  onSubmit: (code: string, options: TwoFactorSubmitOptions) => Answer | Promise<Answer>;
   /** @default 6 */
   length?: number;
   heading?: Child;
@@ -803,18 +854,22 @@ export interface TwoFactorFormProps extends Customisable<Slots> {
  */
 export function TwoFactorForm(props: TwoFactorFormProps) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(authStyles(), props.classes);
+  function cls(): Slots {
+    return parts(authStyles(), props.classes);
+  }
   const [recovery, setRecovery] = createSignal(false);
   const [busy, setBusy] = createSignal(false);
   const [note, setNote] = createSignal<string | null>(null);
-  const length = (): number => props.length ?? 6;
+  function length(): number {
+    return props.length ?? 6;
+  }
   const form = useArcForm(() => ({
     defaultValues: { code: "" },
     onSubmit: async ({ value, formApi }) => {
       await settleAnswer(formApi, props.onSubmit(value.code.trim(), { recovery: recovery() }));
     },
   }));
-  const run = async (action: (() => void | Promise<unknown>) | undefined, said: string) => {
+  async function run(action: (() => void | Promise<unknown>) | undefined, said: string) {
     setBusy(true);
     setNote(null);
     try {
@@ -825,7 +880,7 @@ export function TwoFactorForm(props: TwoFactorFormProps) {
     } finally {
       setBusy(false);
     }
-  };
+  }
   return (
     <section class={arc(cls().form, props.class, props.className)} data-slot="two-factor-form">
       <Header
@@ -933,17 +988,21 @@ export interface RecoveryCodesProps extends Customisable<Slots> {
 /** One-time recovery codes to keep: copied together, downloaded as a file, acknowledged. */
 export function RecoveryCodes(props: RecoveryCodesProps) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(authStyles(), props.classes);
+  function cls(): Slots {
+    return parts(authStyles(), props.classes);
+  }
   const [saved, setSaved] = createSignal(false);
-  const text = (): string => props.codes.join("\n");
-  const download = (): void => {
+  function text(): string {
+    return props.codes.join("\n");
+  }
+  function download(): void {
     const url = URL.createObjectURL(new Blob([`${text()}\n`], { type: "text/plain" }));
     const link = document.createElement("a");
     link.href = url;
     link.download = props.filename ?? "recovery-codes.txt";
     link.click();
     URL.revokeObjectURL(url);
-  };
+  }
   return (
     <section class={arc(cls().form, props.class, props.className)} data-slot="recovery-codes">
       <Header
@@ -990,10 +1049,12 @@ export interface PasskeyPromptProps extends Customisable<Slots> {
 /** Sign in or confirm with a passkey: what it is, one button, and another way. */
 export function PasskeyPrompt(props: PasskeyPromptProps) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(authStyles(), props.classes);
+  function cls(): Slots {
+    return parts(authStyles(), props.classes);
+  }
   const [busy, setBusy] = createSignal(false);
   const [failed, setFailed] = createSignal(false);
-  const go = async (): Promise<void> => {
+  async function go(): Promise<void> {
     setBusy(true);
     setFailed(false);
     try {
@@ -1003,7 +1064,7 @@ export function PasskeyPrompt(props: PasskeyPromptProps) {
     } finally {
       setBusy(false);
     }
-  };
+  }
   return (
     <section class={arc(cls().form, props.class, props.className)} data-slot="passkey-prompt">
       <div class={cls().sent}>

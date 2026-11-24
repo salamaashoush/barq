@@ -38,6 +38,11 @@ export interface StatDelta {
   label?: Child;
 }
 
+export interface StatCardRenders {
+  label?: RenderPart<Child>;
+  value?: RenderPart<Child>;
+}
+
 export interface StatCardProps extends Omit<UiProps, "class" | "className">, Customisable<Slots> {
   label: Child;
   /** Already formatted for the reader: a count, an amount, a duration. */
@@ -52,7 +57,7 @@ export interface StatCardProps extends Omit<UiProps, "class" | "className">, Cus
   /** @default the delta's tone, else "info" */
   trendTone?: Tone;
   /** Another element for what it counts or for the number: a heading, a link. */
-  renders?: { label?: RenderPart<Child>; value?: RenderPart<Child> };
+  renders?: StatCardRenders;
 }
 
 /**
@@ -72,8 +77,12 @@ export interface StatCardProps extends Omit<UiProps, "class" | "className">, Cus
  */
 export function StatCard(props: StatCardProps) {
   const labelId = createUniqueId();
-  const cls = (): Slots => parts(statCardStyles(), props.classes);
-  const points = (): readonly number[] => props.trend ?? [];
+  function cls(): Slots {
+    return parts(statCardStyles(), props.classes);
+  }
+  function points(): readonly number[] {
+    return props.trend ?? [];
+  }
   return (
     <div
       {...uiProps("stat-card", () => cls().root, cells(props))}

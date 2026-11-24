@@ -92,12 +92,14 @@ export function DetailSheet(props: DetailSheetProps) {
     defaultOpen: untrack(() => props.defaultOpen),
     onOpenChange: (next) => props.onOpenChange?.(next),
   });
-  const cls = (): Slots => parts(detailSheetVariants({ size: props.size }), props.classes);
+  function cls(): Slots {
+    return parts(detailSheetVariants({ size: props.size }), props.classes);
+  }
 
-  const side = (): "left" | "right" => {
+  function side(): "left" | "right" {
     const end = (props.side ?? "end") === "end";
     return end === (direction() === "rtl") ? "left" : "right";
-  };
+  }
 
   return (
     <Sheet isOpen={isOpen()} onOpenChange={setOpen}>

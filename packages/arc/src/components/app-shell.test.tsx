@@ -65,9 +65,17 @@ function shell(): HTMLElement {
   return document.querySelector('[data-slot="sidebar"]') as HTMLElement;
 }
 
+interface HappyWindow {
+  happyDOM: HappyPage;
+}
+
+interface HappyPage {
+  setURL(url: string): void;
+}
+
 // The sidebar keeps its state in a cookie, which happy-dom stores only for a
 // document with an origin.
-const page = (window as unknown as { happyDOM: { setURL(url: string): void } }).happyDOM;
+const page = (window as unknown as HappyWindow).happyDOM;
 
 beforeAll(() => page.setURL("http://localhost/"));
 afterAll(() => page.setURL("about:blank"));

@@ -64,16 +64,24 @@ export function AvatarStack(props: AvatarStackProps) {
   const messages = useArcMessages();
   const list = listFormatter({ type: "conjunction" });
   const format = numberFormatter();
-  const max = (): number => Math.max(0, props.max ?? 4);
-  const shown = (): readonly Person[] => props.people.slice(0, max());
-  const rest = (): number => Math.max(0, props.people.length - max());
-  const label = (): string => {
+  function max(): number {
+    return Math.max(0, props.max ?? 4);
+  }
+  function shown(): readonly Person[] {
+    return props.people.slice(0, max());
+  }
+  function rest(): number {
+    return Math.max(0, props.people.length - max());
+  }
+  function label(): string {
     if (props["aria-label"] !== undefined) return props["aria-label"];
     const names = shown().map((one) => one.name);
     if (rest() > 0) names.push(messages().moreCount(rest()));
     return list().format(names);
-  };
-  const cls = (): Slots => parts(avatarStackStyles(), props.classes);
+  }
+  function cls(): Slots {
+    return parts(avatarStackStyles(), props.classes);
+  }
   return (
     <AvatarGroup
       class={arc(cls().root, props.class, props.className)}

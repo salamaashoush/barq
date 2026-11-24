@@ -56,12 +56,21 @@ export interface ViewSwitcherProps extends ViewBinding, Customisable<Slots> {
   size?: "sm" | "default";
 }
 
-function useView(props: ViewBinding & { views: readonly ViewOption[] }) {
+interface UseViewProps {
+  views: readonly ViewOption[];
+}
+
+function useView(props: ViewBinding & UseViewProps) {
   const param = untrack(() => props.param);
   const url = param === undefined ? undefined : useSearchParams();
-  const first = (): string => props.views[0]?.id ?? "";
-  const known = (id: string | null | undefined): string | undefined =>
-    id !== null && id !== undefined && props.views.some((view) => view.id === id) ? id : undefined;
+  function first(): string {
+    return props.views[0]?.id ?? "";
+  }
+  function known(id: string | null | undefined): string | undefined {
+    return id !== null && id !== undefined && props.views.some((view) => view.id === id)
+      ? id
+      : undefined;
+  }
   return bound<string>(
     url,
     param,
@@ -84,14 +93,16 @@ export function ViewSwitcher(props: ViewSwitcherProps) {
   );
 }
 
-function Switcher(
-  props: Omit<ViewSwitcherProps, keyof ViewBinding> & {
-    current: string;
-    onPick: (view: string) => void;
-  },
-) {
+interface SwitcherProps {
+  current: string;
+  onPick: (view: string) => void;
+}
+
+function Switcher(props: Omit<ViewSwitcherProps, keyof ViewBinding> & SwitcherProps) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(viewSwitcherStyles(), props.classes);
+  function cls(): Slots {
+    return parts(viewSwitcherStyles(), props.classes);
+  }
   return (
     <ToggleGroup
       type="single"
@@ -157,10 +168,16 @@ export interface DataViewsProps extends ViewBinding, Customisable<Slots> {
  * ```
  */
 export function DataViews(props: DataViewsProps) {
-  const cls = (): Slots => parts(viewSwitcherStyles(), props.classes);
+  function cls(): Slots {
+    return parts(viewSwitcherStyles(), props.classes);
+  }
   const view = useView(props);
-  const current = (): string => (view.read() || props.views[0]?.id) ?? "";
-  const shown = (): DataView | undefined => props.views.find((one) => one.id === current());
+  function current(): string {
+    return (view.read() || props.views[0]?.id) ?? "";
+  }
+  function shown(): DataView | undefined {
+    return props.views.find((one) => one.id === current());
+  }
   return (
     <section
       class={arc(cls().root, props.class, props.className)}

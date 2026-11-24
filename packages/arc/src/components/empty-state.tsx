@@ -61,7 +61,9 @@ export interface EmptyStateProps extends Omit<UiProps, "class" | "className">, C
  * ```
  */
 export function EmptyState(props: EmptyStateProps) {
-  const cls = (): Slots => parts(emptyStateVariants({ variant: props.variant }), props.classes);
+  function cls(): Slots {
+    return parts(emptyStateVariants({ variant: props.variant }), props.classes);
+  }
   return (
     <Empty
       {...props}

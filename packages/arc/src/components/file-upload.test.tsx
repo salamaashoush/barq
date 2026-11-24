@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { type Child } from "@barqjs/core";
+import { type ParentProps } from "@barqjs/core";
 import { collectCss } from "@barqjs/css";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { destroyAnnouncer } from "@barqjs/aria/live";
@@ -34,14 +34,18 @@ function pick(files: File[]): void {
   fireEvent.change(picker());
 }
 
+interface PendingUpload {
+  resolve: (value: unknown) => void;
+  reject: (error: Error) => void;
+  context: UploadContext;
+}
+
 /** An upload the test finishes, fails or watches being aborted. */
 function controllable() {
-  const pending = new Map<
-    string,
-    { resolve: (value: unknown) => void; reject: (error: Error) => void; context: UploadContext }
-  >();
-  const upload = (one: File, context: UploadContext): Promise<unknown> =>
-    new Promise((resolve, reject) => pending.set(one.name, { resolve, reject, context }));
+  const pending = new Map<string, PendingUpload>();
+  function upload(one: File, context: UploadContext): Promise<unknown> {
+    return new Promise((resolve, reject) => pending.set(one.name, { resolve, reject, context }));
+  }
   return { pending, upload };
 }
 
@@ -179,7 +183,7 @@ describe("useUploadQueue and UploadQueue", () => {
   });
 
   test("sizes are written in the locale's digits", async () => {
-    function Rtl(props: { children?: Child }) {
+    function Rtl(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }
@@ -236,7 +240,9 @@ describe("FileUpload", () => {
     });
     queue.add([file("a.txt", 1, "text/plain")]);
     await settle();
-    const by = (slot: string): Element | null => document.querySelector(`[data-slot="${slot}"]`);
+    function by(slot: string): Element | null {
+      return document.querySelector(`[data-slot="${slot}"]`);
+    }
     expect(by("file-drop-zone")?.classList.contains("mine")).toBe(true);
     expect(by("file-drop-zone-area")?.classList.contains("z")).toBe(true);
     expect(by("file-drop-zone-icon")?.classList.contains("i")).toBe(true);

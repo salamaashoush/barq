@@ -70,14 +70,18 @@ export interface HighlightMatchesProps extends Customisable<Slots> {
  * "Résumé"; `ranges` takes a search service's own.
  */
 export function HighlightMatches(props: HighlightMatchesProps) {
-  const cls = (): Slots => parts(highlightMatchesStyles(), props.classes);
+  function cls(): Slots {
+    return parts(highlightMatchesStyles(), props.classes);
+  }
   const match = filter({ sensitivity: "base" });
-  const text = (): string => props.text.normalize("NFC");
-  const found = (): MatchRange[] => {
+  function text(): string {
+    return props.text.normalize("NFC");
+  }
+  function found(): MatchRange[] {
     if (props.ranges !== undefined) return [...props.ranges];
     const words = (props.query ?? "").trim().split(/\s+/u);
     return words.flatMap((word) => match.matches(text(), word));
-  };
+  }
   return (
     <span class={arc(cls().root, props.class, props.className)} data-slot="highlight-matches">
       <For each={pieces(text(), found())}>

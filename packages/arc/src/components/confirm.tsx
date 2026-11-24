@@ -66,11 +66,11 @@ const [pending, setPending] = createSignal<Pending | null>(null);
 export function confirm(options: ConfirmOptions): Promise<boolean> {
   return new Promise((resolve) => {
     let settled = false;
-    const settle = (answer: boolean): void => {
+    function settle(answer: boolean): void {
       if (settled) return;
       settled = true;
       resolve(answer);
-    };
+    }
     setPending((previous) => {
       previous?.settle(false);
       return { ...options, settle };
@@ -81,13 +81,15 @@ export function confirm(options: ConfirmOptions): Promise<boolean> {
 /** Where `confirm()` draws its dialog. One per page. */
 export function ConfirmHost(props: ConfirmHostProps) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(confirmStyles(), props.classes);
-  const answer = (value: boolean): void => {
+  function cls(): Slots {
+    return parts(confirmStyles(), props.classes);
+  }
+  function answer(value: boolean): void {
     const asked = pending();
     if (asked === null) return;
     asked.settle(value);
     setPending(null);
-  };
+  }
   return (
     <AlertDialog
       isOpen={pending() !== null}

@@ -97,8 +97,9 @@ export interface StatusProps extends Omit<UiProps, "class" | "className">, Custo
  * ```
  */
 export function Status(props: StatusProps) {
-  const cls = (): Slots =>
-    parts(statusVariants({ tone: props.tone, variant: props.variant }), props.classes);
+  function cls(): Slots {
+    return parts(statusVariants({ tone: props.tone, variant: props.variant }), props.classes);
+  }
   return (
     <span
       {...uiProps("status", () => cls().root, cells(props))}

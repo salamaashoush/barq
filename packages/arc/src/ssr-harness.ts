@@ -18,9 +18,16 @@ import { fileURLToPath } from "node:url";
 import { cssRegistration } from "@barqjs/vite/internal";
 
 const require_ = createRequire(import.meta.url);
-const native = require_("@barqjs/compiler") as {
-  transform(code: string, options?: Record<string, unknown>): { code: string; css?: string };
-};
+
+interface NativeCompiler {
+  transform(code: string, options?: Record<string, unknown>): Transformed;
+}
+
+interface Transformed {
+  code: string;
+  css?: string;
+}
+const native = require_("@barqjs/compiler") as NativeCompiler;
 
 const EXTERNAL = [
   "@barqjs/core",
@@ -31,15 +38,27 @@ const EXTERNAL = [
   "@barqjs/router/server",
 ];
 
+interface LoadHook {
+  onLoad(filter: LoadFilter, load: (args: LoadArgs) => Loaded): void;
+}
+
+interface LoadFilter {
+  filter: RegExp;
+}
+
+interface LoadArgs {
+  path: string;
+}
+
+interface Loaded {
+  contents: string;
+  loader: "ts" | "tsx";
+}
+
 function plugin(ssr: boolean) {
   return {
     name: ssr ? "arc-ssr" : "arc-dom",
-    setup(build: {
-      onLoad(
-        filter: { filter: RegExp },
-        load: (args: { path: string }) => { contents: string; loader: "ts" | "tsx" },
-      ): void;
-    }) {
+    setup(build: LoadHook) {
       build.onLoad({ filter: /\.tsx?$/ }, (args) => {
         const result = native.transform(readFileSync(args.path, "utf8"), {
           filename: args.path,
@@ -77,6 +96,10 @@ afterAll(() => {
 
 let probes = 0;
 
+interface BuildOutput {
+  text(): Promise<string>;
+}
+
 async function bundle(source: string, ssr: boolean): Promise<string> {
   const id = probes++;
   const entry = join(workspace(), `probe${String(id)}.tsx`);
@@ -90,17 +113,30 @@ async function bundle(source: string, ssr: boolean): Promise<string> {
   });
   if (!result.success) throw new AggregateError(result.logs, "the fixture did not build");
   const file = join(workspace(), `built${String(id)}-${ssr ? "ssr" : "dom"}.mjs`);
-  writeFileSync(file, await (result.outputs[0] as { text(): Promise<string> }).text());
+  writeFileSync(file, await (result.outputs[0] as BuildOutput).text());
   return file;
 }
 
+export interface Halves {
+  server: () => never;
+  client: () => never;
+}
+
+interface PageModule {
+  Page: () => never;
+}
+
 /** A module exporting `Page`, compiled for each backend: the two halves of a hydration. */
-export async function halves(
-  source: string,
-): Promise<{ server: () => never; client: () => never }> {
-  const server = (await import(await bundle(source, true))) as { Page: () => never };
-  const client = (await import(await bundle(source, false))) as { Page: () => never };
+export async function halves(source: string): Promise<Halves> {
+  const server = (await import(await bundle(source, true))) as PageModule;
+  const client = (await import(await bundle(source, false))) as PageModule;
   return { server: server.Page, client: client.Page };
+}
+
+export interface ServerRun {
+  code: number;
+  html: string;
+  errors: string;
 }
 
 /**
@@ -108,9 +144,7 @@ export async function halves(
  * DOM, which is what a server is: in this one happy-dom gives every module a
  * `document` and `isServer` is false.
  */
-export async function serverProcess(
-  source: string,
-): Promise<{ code: number; html: string; errors: string }> {
+export async function serverProcess(source: string): Promise<ServerRun> {
   const built = await bundle(source, true);
   const runner = join(workspace(), `run${String(probes++)}.mjs`);
   // The page is done when `page()` resolves, so the process exits there rather

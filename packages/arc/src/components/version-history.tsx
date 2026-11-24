@@ -116,7 +116,9 @@ export interface VersionHistoryProps extends Customisable<Slots> {
  */
 export function VersionHistory(props: VersionHistoryProps) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(versionHistoryStyles(), props.classes);
+  function cls(): Slots {
+    return parts(versionHistoryStyles(), props.classes);
+  }
   const [ownSelected, setOwnSelected] = createSignal<string | undefined>(props.defaultSelectedId, {
     ownedWrite: true,
   });
@@ -129,17 +131,24 @@ export function VersionHistory(props: VersionHistoryProps) {
   const [restoring, setRestoring] = createSignal(false);
   const [failed, setFailed] = createSignal(false);
 
-  const selectedId = (): string | undefined =>
-    props.selectedId ?? ownSelected() ?? props.versions[0]?.id;
-  const selected = (): VersionEntry | undefined =>
-    props.versions.find((version) => version.id === selectedId());
-  const view = (): VersionView => props.view ?? ownView();
-  const current = (): VersionEntry | undefined =>
-    props.versions.find((version) => version.current === true) ?? props.versions[0];
-  const nameOf = (version: VersionEntry): string => version.label ?? version.author.name;
+  function selectedId(): string | undefined {
+    return props.selectedId ?? ownSelected() ?? props.versions[0]?.id;
+  }
+  function selected(): VersionEntry | undefined {
+    return props.versions.find((version) => version.id === selectedId());
+  }
+  function view(): VersionView {
+    return props.view ?? ownView();
+  }
+  function current(): VersionEntry | undefined {
+    return props.versions.find((version) => version.current === true) ?? props.versions[0];
+  }
+  function nameOf(version: VersionEntry): string {
+    return version.label ?? version.author.name;
+  }
 
   /** The two sides of the compare, older first, or nothing to set the choice against. */
-  const pair = (): [VersionEntry, VersionEntry] | undefined => {
+  function pair(): [VersionEntry, VersionEntry] | undefined {
     const chosen = selected();
     if (chosen === undefined) return undefined;
     if (base() === "current") {
@@ -150,19 +159,19 @@ export function VersionHistory(props: VersionHistoryProps) {
     const at = props.versions.indexOf(chosen);
     const before = props.versions[at + 1];
     return before === undefined ? undefined : [before, chosen];
-  };
+  }
 
-  const choose = (id: string): void => {
+  function choose(id: string): void {
     setFailed(false);
     if (props.selectedId === undefined) setOwnSelected(id);
     props.onSelectionChange?.(id);
-  };
-  const setView = (next: VersionView): void => {
+  }
+  function setView(next: VersionView): void {
     if (props.view === undefined) setOwnView(next);
     props.onViewChange?.(next);
-  };
+  }
 
-  const restore = async (): Promise<void> => {
+  async function restore(): Promise<void> {
     const version = selected();
     if (version === undefined || props.onRestore === undefined) return;
     const sure = await confirm({
@@ -182,10 +191,11 @@ export function VersionHistory(props: VersionHistoryProps) {
         setFailed(true);
       },
     );
-  };
+  }
 
-  const preview = (version: VersionEntry) =>
-    props.renderPreview?.(version) ?? version.summary ?? nameOf(version);
+  function preview(version: VersionEntry) {
+    return props.renderPreview?.(version) ?? version.summary ?? nameOf(version);
+  }
 
   return (
     <section

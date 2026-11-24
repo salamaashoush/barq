@@ -31,7 +31,9 @@ interface FormattedProps extends Customisable<Slots> {
 /** A moment as a `Date`, from a `Date`, epoch milliseconds or an ISO string. */
 export type Moment = Date | number | string;
 
-const toDate = (moment: Moment): Date => (moment instanceof Date ? moment : new Date(moment));
+function toDate(moment: Moment): Date {
+  return moment instanceof Date ? moment : new Date(moment);
+}
 
 /** The calendar day a moment falls on in a zone, as `YYYY-MM-DD`, for grouping by day. */
 export function dayKey(moment: Moment, timeZone: string | undefined): string {
@@ -86,13 +88,16 @@ export interface FormattedDateProps extends FormattedProps {
 export function FormattedDate(props: FormattedDateProps) {
   const locale = useLocale();
   const local = hydrated();
-  const zone = (): string | undefined => props.timeZone ?? (local() ? undefined : "UTC");
-  const format = (): string => {
+  function zone(): string | undefined {
+    return props.timeZone ?? (local() ? undefined : "UTC");
+  }
+  function format(): string {
     const options = { ...(props.options ?? { dateStyle: "medium" as const }), timeZone: zone() };
     return dateFormatter(options, locale)().format(toDate(props.value));
-  };
-  const cls = (): Slots =>
-    parts(formattedStyles({ numeric: props.numeric !== false }), props.classes);
+  }
+  function cls(): Slots {
+    return parts(formattedStyles({ numeric: props.numeric !== false }), props.classes);
+  }
   return (
     <time
       class={arc(cls().root, props.class, props.className)}
@@ -153,24 +158,29 @@ export function RelativeTime(props: RelativeTimeProps) {
   const locale = useLocale();
   const local = hydrated();
   const [clock, setClock] = createSignal(0, { ownedWrite: true });
-  const moment = (): Date => toDate(props.value);
-  const reference = (): number | undefined => {
+  function moment(): Date {
+    return toDate(props.value);
+  }
+  function reference(): number | undefined {
     if (local()) {
       clock();
       return Date.now();
     }
     return props.now === undefined ? undefined : toDate(props.now).getTime();
-  };
-  const zone = (): string | undefined => props.timeZone ?? (local() ? undefined : "UTC");
-  const absolute = (): string =>
-    dateFormatter(
+  }
+  function zone(): string | undefined {
+    return props.timeZone ?? (local() ? undefined : "UTC");
+  }
+  function absolute(): string {
+    return dateFormatter(
       {
         ...(props.titleOptions ?? { dateStyle: "long" as const, timeStyle: "short" as const }),
         timeZone: zone(),
       },
       locale,
     )().format(moment());
-  const relative = (): string => {
+  }
+  function relative(): string {
     const now = reference();
     if (now === undefined) return absolute();
     const { value, unit } = relativeUnit(moment().getTime() - now);
@@ -178,7 +188,7 @@ export function RelativeTime(props: RelativeTimeProps) {
       { numeric: props.wording ?? "auto", style: props.length ?? "long" },
       locale,
     )().format(value, unit);
-  };
+  }
 
   if (!isServer) {
     createEffect(
@@ -190,8 +200,9 @@ export function RelativeTime(props: RelativeTimeProps) {
       },
     );
   }
-  const cls = (): Slots =>
-    parts(formattedStyles({ numeric: props.numeric === true }), props.classes);
+  function cls(): Slots {
+    return parts(formattedStyles({ numeric: props.numeric === true }), props.classes);
+  }
   return (
     <time
       class={arc(cls().root, props.class, props.className)}
@@ -221,8 +232,9 @@ export interface FormattedNumberProps extends FormattedProps {
  */
 export function FormattedNumber(props: FormattedNumberProps) {
   const format = numberFormatter(props.options);
-  const cls = (): Slots =>
-    parts(formattedStyles({ numeric: props.numeric !== false }), props.classes);
+  function cls(): Slots {
+    return parts(formattedStyles({ numeric: props.numeric !== false }), props.classes);
+  }
   return (
     <span
       class={arc(cls().root, props.class, props.className)}
@@ -258,8 +270,8 @@ export interface CurrencyProps extends FormattedProps {
  */
 export function Currency(props: CurrencyProps) {
   const locale = useLocale();
-  const text = (): string =>
-    new Intl.NumberFormat(locale().locale, {
+  function text(): string {
+    return new Intl.NumberFormat(locale().locale, {
       style: "currency",
       currency: props.currency,
       currencyDisplay: props.display ?? "symbol",
@@ -267,8 +279,10 @@ export function Currency(props: CurrencyProps) {
       signDisplay: props.sign ?? "auto",
       currencySign: props.accounting === true ? "accounting" : "standard",
     }).format(props.value);
-  const cls = (): Slots =>
-    parts(formattedStyles({ numeric: props.numeric !== false }), props.classes);
+  }
+  function cls(): Slots {
+    return parts(formattedStyles({ numeric: props.numeric !== false }), props.classes);
+  }
   return (
     <span class={arc(cls().root, props.class, props.className)} id={props.id} data-slot="currency">
       {text()}
@@ -287,8 +301,9 @@ export interface BytesProps extends FormattedProps {
  */
 export function Bytes(props: BytesProps) {
   const locale = useLocale();
-  const cls = (): Slots =>
-    parts(formattedStyles({ numeric: props.numeric !== false }), props.classes);
+  function cls(): Slots {
+    return parts(formattedStyles({ numeric: props.numeric !== false }), props.classes);
+  }
   return (
     <span class={arc(cls().root, props.class, props.className)} id={props.id} data-slot="bytes">
       {formatBytes(props.value, locale().locale)}
@@ -384,10 +399,12 @@ export function durationText(
  */
 export function Duration(props: DurationProps) {
   const locale = useLocale();
-  const text = (): string =>
-    durationText(props.value, locale().locale, { length: props.length, units: props.units });
-  const cls = (): Slots =>
-    parts(formattedStyles({ numeric: props.numeric !== false }), props.classes);
+  function text(): string {
+    return durationText(props.value, locale().locale, { length: props.length, units: props.units });
+  }
+  function cls(): Slots {
+    return parts(formattedStyles({ numeric: props.numeric !== false }), props.classes);
+  }
   return (
     <span class={arc(cls().root, props.class, props.className)} id={props.id} data-slot="duration">
       {text()}

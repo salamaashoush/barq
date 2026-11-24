@@ -67,8 +67,12 @@ export interface StatGroupProps extends Customisable<Slots> {
  * bordered strip with a rule between each, on both axes as they wrap.
  */
 export function StatGroup(props: StatGroupProps) {
-  const cls = (): Slots => parts(statGroupStyles({ variant: props.variant }), props.classes);
-  const columns = (): number => props.columns ?? Math.min(5, Math.max(1, props.stats.length));
+  function cls(): Slots {
+    return parts(statGroupStyles({ variant: props.variant }), props.classes);
+  }
+  function columns(): number {
+    return props.columns ?? Math.min(5, Math.max(1, props.stats.length));
+  }
   return (
     <section
       class={arc(cls().root, props.class, props.className)}

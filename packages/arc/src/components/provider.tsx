@@ -66,11 +66,13 @@ export interface ArcProviderProps {
  * ```
  */
 export function ArcProvider(props: ArcProviderProps) {
-  const look = (): Look => ({
-    theme: props.theme,
-    density: props.density,
-    contrast: props.contrast,
-  });
+  function look(): Look {
+    return {
+      theme: props.theme,
+      density: props.density,
+      contrast: props.contrast,
+    };
+  }
   // During render, so a server's inlined sheet carries it, and again whenever
   // a prop changes, so a theme picker reaches the page without a remount.
   install(untrack(look));
@@ -81,23 +83,24 @@ export function ArcProvider(props: ArcProviderProps) {
   const locale = untrack(() => props.locale);
   if (locale !== undefined) provideLocale(() => props.locale ?? locale);
 
-  const toastTheme = (): "light" | "dark" | "system" => {
+  function toastTheme(): "light" | "dark" | "system" {
     if (scheme === undefined) return "system";
     if (scheme.choice() === "system") return "system";
     return scheme.resolved() === "dark" ? "dark" : "light";
-  };
+  }
 
   // An `href` on any of ui's or arc's links goes through the app's router,
   // when there is one, instead of loading the page again.
   const router = linkRouter(maybeRouter());
-  const children = (): Child =>
-    router === undefined
+  function children(): Child {
+    return router === undefined
       ? props.children
       : provide(
           RouterContext,
           () => router,
           () => props.children,
         );
+  }
 
   return (
     <>

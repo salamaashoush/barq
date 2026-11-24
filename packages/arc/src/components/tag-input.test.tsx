@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { type Child, createSignal } from "@barqjs/core";
+import { createSignal, type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { destroyAnnouncer } from "@barqjs/aria/live";
 import { ariaViolations, fireEvent, render, screen, user } from "@barqjs/testing";
@@ -19,7 +19,13 @@ function tags(): string[] {
   return screen.queryAllByRole("row").map((row) => row.textContent ?? "");
 }
 
-function Hosts(props: { initial?: string[]; maxTags?: number; onChange?: (v: string[]) => void }) {
+interface HostsProps {
+  initial?: string[];
+  maxTags?: number;
+  onChange?: (v: string[]) => void;
+}
+
+function Hosts(props: HostsProps) {
   const [hosts, setHosts] = createSignal<readonly string[]>(props.initial ?? []);
   return (
     <TagInput
@@ -105,7 +111,7 @@ describe("TagInput", () => {
   });
 
   test("in a right-to-left page the arrows still walk the tags in reading order", async () => {
-    function Rtl(props: { children?: Child }) {
+    function Rtl(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }
@@ -154,7 +160,9 @@ describe("TagInput", () => {
       />
     ));
     await settle();
-    const by = (slot: string): Element | null => document.querySelector(`[data-slot="${slot}"]`);
+    function by(slot: string): Element | null {
+      return document.querySelector(`[data-slot="${slot}"]`);
+    }
     expect(by("tag-input")?.classList.contains("mine")).toBe(true);
     expect(by("tag-input-control")?.classList.contains("c")).toBe(true);
     expect(by("tag-input-field")?.classList.contains("i")).toBe(true);

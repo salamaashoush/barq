@@ -51,14 +51,15 @@ export function commonRangePresets(messages: ArcMessages): DateRangePreset[] {
 export function DateRangeField(props: DateRangeFieldProps) {
   const messages = useArcMessages();
   const of = bindField<DateRange | null>(props, null);
-  const presets = (): readonly DateRangePreset[] | undefined =>
-    props.presets === "common" ? commonRangePresets(messages()) : props.presets;
-  const interval = (): string => {
+  function presets(): readonly DateRangePreset[] | undefined {
+    return props.presets === "common" ? commonRangePresets(messages()) : props.presets;
+  }
+  function interval(): string {
     const range = of.value();
     return range === null || range === undefined
       ? ""
       : `${range.start.toString()}/${range.end.toString()}`;
-  };
+  }
   return (
     <Frame
       of={of}

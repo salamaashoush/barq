@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { type Child, DEV } from "@barqjs/core";
+import { DEV, type ParentProps } from "@barqjs/core";
 import { collectCss } from "@barqjs/css";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen } from "@barqjs/testing";
@@ -99,7 +99,7 @@ describe("Image", () => {
   });
 
   test("the fallback is the caller's or in the locale's words, right to left", async () => {
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar-EG");
       provideArcMessages(() => ({ imageUnavailable: "الصورة غير متاحة" }));
       return <div dir="rtl">{props.children}</div>;

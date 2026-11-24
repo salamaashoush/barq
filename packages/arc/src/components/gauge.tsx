@@ -35,6 +35,11 @@ export const gaugeStyles = variants({
 
 export type GaugeSlots = ReturnType<typeof gaugeStyles>;
 
+export interface GaugeRenders {
+  value?: RenderPart<Child>;
+  label?: RenderPart<Child>;
+}
+
 export interface GaugeProps extends Customisable<GaugeSlots> {
   value: number;
   /** @default 0 */
@@ -54,7 +59,7 @@ export interface GaugeProps extends Customisable<GaugeSlots> {
   /** The drawing's height in px. @default its own square */
   height?: number;
   /** Another element for the reading or the label. */
-  renders?: { value?: RenderPart<Child>; label?: RenderPart<Child> };
+  renders?: GaugeRenders;
   id?: string;
 }
 
@@ -89,17 +94,28 @@ export function gaugeTone(
  */
 export function Gauge(props: GaugeProps) {
   const number = chartNumbers(props.formatOptions);
-  const cls = (): GaugeSlots => parts(gaugeStyles(), props.classes);
-  const min = (): number => props.minValue ?? 0;
-  const max = (): number => props.maxValue ?? 100;
-  const clamped = (): number => Math.min(max(), Math.max(min(), props.value));
-  const written = (): string => number(props.value);
-  const tone = (): Tone =>
-    gaugeTone(
+  function cls(): GaugeSlots {
+    return parts(gaugeStyles(), props.classes);
+  }
+  function min(): number {
+    return props.minValue ?? 0;
+  }
+  function max(): number {
+    return props.maxValue ?? 100;
+  }
+  function clamped(): number {
+    return Math.min(max(), Math.max(min(), props.value));
+  }
+  function written(): string {
+    return number(props.value);
+  }
+  function tone(): Tone {
+    return gaugeTone(
       props.value,
       props.thresholds,
       props.thresholds === undefined ? (props.tone ?? "info") : "info",
     );
+  }
   const labelId = createUniqueId();
   const { progressBarProps } = meter({
     value: () => props.value,

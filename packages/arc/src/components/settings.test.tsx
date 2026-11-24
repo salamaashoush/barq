@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child } from "@barqjs/core";
+import { type ParentProps } from "@barqjs/core";
 import { collectCss } from "@barqjs/css";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { type AnyRouteDefinition, Outlet } from "@barqjs/router";
@@ -23,7 +23,11 @@ const NAVIGATION = [
   },
 ];
 
-function Profile(props: { saved: string[] }) {
+interface ProfileProps {
+  saved: string[];
+}
+
+function Profile(props: ProfileProps) {
   const form = useArcForm(() => ({
     defaultValues: { name: "Salama Ashoush" },
     onSubmit: ({ value, formApi }) => {
@@ -213,7 +217,7 @@ describe("DangerZone", () => {
 
 describe("the settings parts", () => {
   test("run right to left", () => {
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child, createSignal } from "@barqjs/core";
+import { createSignal, type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user, waitFor } from "@barqjs/testing";
 
@@ -64,7 +64,7 @@ describe("Tearsheet", () => {
   });
 
   test("in a right-to-left page its parts lay out by logical sides", async () => {
-    function Rtl(props: { children?: Child }) {
+    function Rtl(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }
@@ -99,7 +99,9 @@ describe("Tearsheet", () => {
     await settle();
     expect(sheet().classList.contains("mine")).toBe(true);
     expect(sheet().getAttribute("data-size")).toBe("narrow");
-    const by = (slot: string): Element | null => sheet().querySelector(`[data-slot="${slot}"]`);
+    function by(slot: string): Element | null {
+      return sheet().querySelector(`[data-slot="${slot}"]`);
+    }
     expect(by("dialog-header")?.classList.contains("h")).toBe(true);
     expect(by("dialog-title")?.classList.contains("t")).toBe(true);
     expect(by("tearsheet-body")?.classList.contains("b")).toBe(true);

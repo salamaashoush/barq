@@ -161,16 +161,23 @@ export function NotificationFeed(props: NotificationFeedProps) {
   const messages = useArcMessages();
   const locale = useLocale();
   const day = dateFormatter({ dateStyle: "medium", timeZone: untrack(() => props.timeZone) });
-  const cls = (): Slots => parts(notificationsStyles(), props.classes);
+  function cls(): Slots {
+    return parts(notificationsStyles(), props.classes);
+  }
   const [ownFilter, setOwnFilter] = createSignal<NotificationFilter>(
     untrack(() => props.defaultFilter) ?? "all",
   );
-  const filter = (): NotificationFilter => props.filter ?? ownFilter();
-  const unread = (): number => props.items.filter((item) => item.read !== true).length;
-  const shown = (): NotificationItem[] =>
-    props.items.filter((item) => filter() === "all" || item.read !== true);
+  function filter(): NotificationFilter {
+    return props.filter ?? ownFilter();
+  }
+  function unread(): number {
+    return props.items.filter((item) => item.read !== true).length;
+  }
+  function shown(): NotificationItem[] {
+    return props.items.filter((item) => filter() === "all" || item.read !== true);
+  }
 
-  const groups = (): Group[] => {
+  function groups(): Group[] {
     const by = props.groupBy ?? "day";
     const now = props.now === undefined ? new Date() : new Date(props.now);
     const today = dayKey(now, props.timeZone);
@@ -199,17 +206,17 @@ export function NotificationFeed(props: NotificationFeedProps) {
       out.set(key, held);
     }
     return [...out.values()];
-  };
+  }
 
-  const choose = (next: NotificationFilter): void => {
+  function choose(next: NotificationFilter): void {
     if (props.filter === undefined) setOwnFilter(next);
     props.onFilterChange?.(next);
-  };
+  }
 
-  const open = (item: NotificationItem): void => {
+  function open(item: NotificationItem): void {
     if (item.read !== true) props.onMarkRead?.([item.id], true);
     props.onOpen?.(item);
-  };
+  }
 
   return (
     <section
@@ -320,18 +327,26 @@ export function NotificationFeed(props: NotificationFeedProps) {
   );
 }
 
-function Notification(props: {
+interface NotificationProps {
   item: NotificationItem;
   classes: Partial<Slots> | undefined;
   now: Moment | undefined;
   canMark: boolean;
   onOpen: () => void;
   onMark: (read: boolean) => void;
-}) {
+}
+
+function Notification(props: NotificationProps) {
   const messages = useArcMessages();
-  const item = (): NotificationItem => props.item;
-  const read = (): boolean => item().read === true;
-  const cls = (): Slots => parts(notificationsStyles({ read: read() }), props.classes);
+  function item(): NotificationItem {
+    return props.item;
+  }
+  function read(): boolean {
+    return item().read === true;
+  }
+  function cls(): Slots {
+    return parts(notificationsStyles({ read: read() }), props.classes);
+  }
   const Icon = item().icon ?? Bell;
   return (
     <li
@@ -442,8 +457,12 @@ export interface NotificationCenterProps extends Omit<NotificationFeedProps, "ar
  */
 export function NotificationCenter(props: NotificationCenterProps) {
   const messages = useArcMessages();
-  const unread = (): number => props.items.filter((item) => item.read !== true).length;
-  const heading = (): string => props.heading ?? messages().notifications;
+  function unread(): number {
+    return props.items.filter((item) => item.read !== true).length;
+  }
+  function heading(): string {
+    return props.heading ?? messages().notifications;
+  }
   return (
     <ResponsiveOverlay
       heading={heading()}
@@ -524,13 +543,13 @@ export function useNotifications(options: UseNotificationsOptions = {}): Notific
   // Appends read the list as it stands, not as of the last flush, so two
   // messages in one tick both land.
   let held: readonly NotificationItem[] = options.initial ?? [];
-  const write = (next: readonly NotificationItem[]): void => {
+  function write(next: readonly NotificationItem[]): void {
     held = next.slice(0, max);
     setItems(held);
-  };
-  const append = (item: NotificationItem): void => {
+  }
+  function append(item: NotificationItem): void {
     write([item, ...held.filter((one) => one.id !== item.id)]);
-  };
+  }
   const parse =
     options.parse ??
     ((data: string): NotificationItem | undefined => {
@@ -540,10 +559,10 @@ export function useNotifications(options: UseNotificationsOptions = {}): Notific
         return undefined;
       }
     });
-  const take = (data: string): void => {
+  function take(data: string): void {
     const item = parse(data);
     if (item !== undefined) append(item);
-  };
+  }
 
   let connection: () => string = () => "closed";
   const stream = options.stream;

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child, flush } from "@barqjs/core";
+import { flush, type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, tick, user } from "@barqjs/testing";
 
@@ -70,7 +70,9 @@ describe("Heatmap", () => {
     const svg = await drawn();
     svg.focus();
     flush();
-    const label = () => document.querySelector('[data-slot="chart-tooltip-label"]')?.textContent;
+    function label() {
+      return document.querySelector('[data-slot="chart-tooltip-label"]')?.textContent;
+    }
     const first = label();
     expect(first).toMatch(/^(Mon|Tue) · (09|10)$/);
     expect(document.querySelector('[data-slot="chart-tooltip-row"]')?.textContent).toMatch(
@@ -82,7 +84,7 @@ describe("Heatmap", () => {
   });
 
   test("writes its numbers in the reader's locale, right to left", async () => {
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }

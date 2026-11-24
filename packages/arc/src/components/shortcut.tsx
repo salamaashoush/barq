@@ -89,6 +89,11 @@ export interface ShortcutProps extends Customisable<Slots> {
   id?: string;
 }
 
+interface PlacedKey {
+  key: string;
+  at: number;
+}
+
 /**
  * A keyboard shortcut as the reader's own keyboard writes it.
  *
@@ -112,11 +117,17 @@ export function Shortcut(props: ShortcutProps) {
       },
     );
   }
-  const keys = (): readonly string[] =>
-    typeof props.keys === "string" ? props.keys.split("+").filter((one) => one !== "") : props.keys;
-  const separator = (): string => props.separator ?? (apple() ? "" : "+");
-  const cls = (): Slots =>
-    parts(shortcutStyles({ variant: props.variant, size: props.size }), props.classes);
+  function keys(): readonly string[] {
+    return typeof props.keys === "string"
+      ? props.keys.split("+").filter((one) => one !== "")
+      : props.keys;
+  }
+  function separator(): string {
+    return props.separator ?? (apple() ? "" : "+");
+  }
+  function cls(): Slots {
+    return parts(shortcutStyles({ variant: props.variant, size: props.size }), props.classes);
+  }
   return (
     <KbdGroup
       class={arc(cls().root, props.class, props.className)}
@@ -125,7 +136,7 @@ export function Shortcut(props: ShortcutProps) {
       data-platform={apple() ? "apple" : "other"}
     >
       <For each={() => keys().map((key, at) => ({ key, at }))}>
-        {(entry: { key: string; at: number }) => (
+        {(entry: PlacedKey) => (
           <>
             <Show when={entry.at > 0 && separator() !== ""}>
               <span class={cls().separator} data-slot="shortcut-separator" aria-hidden="true">

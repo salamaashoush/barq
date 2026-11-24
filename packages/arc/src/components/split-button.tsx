@@ -77,7 +77,9 @@ const ICON_SIZES = { sm: "icon-sm", default: "icon", lg: "icon-lg" } as const;
  */
 export function SplitButton(props: SplitButtonProps) {
   const messages = useArcMessages();
-  const cls = () => parts(splitButtonStyles(), props.classes);
+  function cls() {
+    return parts(splitButtonStyles(), props.classes);
+  }
   return (
     <ButtonGroup class={arc(cls().root, props.class, props.className)} data-slot="split-button">
       <Button

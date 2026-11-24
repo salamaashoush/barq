@@ -99,11 +99,11 @@ export function Image(props: ImageProps) {
   const messages = useArcMessages();
   const node = makeRef<HTMLImageElement>();
   const [status, setStatus] = createSignal<ImageStatus>("loading", { ownedWrite: true });
-  const settle = (next: ImageStatus): void => {
+  function settle(next: ImageStatus): void {
     if (untrack(status) === next) return;
     setStatus(next);
     props.onStatusChange?.(next);
-  };
+  }
   if (!isServer) {
     createEffect(
       () => [node(), props.src] as const,
@@ -115,16 +115,18 @@ export function Image(props: ImageProps) {
       },
     );
   }
-  const cls = (): Slots =>
-    parts(imageStyles({ fit: props.fit, rounded: props.rounded }), props.classes);
-  const ratio = (): string | undefined =>
-    props.aspectRatio === undefined ? undefined : String(props.aspectRatio);
-  const blur = (): Record<string, string> => {
+  function cls(): Slots {
+    return parts(imageStyles({ fit: props.fit, rounded: props.rounded }), props.classes);
+  }
+  function ratio(): string | undefined {
+    return props.aspectRatio === undefined ? undefined : String(props.aspectRatio);
+  }
+  function blur(): Record<string, string> {
     const given = props.placeholder ?? "";
     return given.startsWith("data:") || given.startsWith("url(")
       ? { "background-image": given.startsWith("url(") ? given : `url("${given}")` }
       : { "background-color": given };
-  };
+  }
   return (
     <span
       class={arc(cls().root, props.class, props.className)}

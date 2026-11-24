@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child, createRoot, flush } from "@barqjs/core";
+import { createRoot, flush, type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen } from "@barqjs/testing";
 
@@ -99,7 +99,7 @@ describe("PresenceStatus", () => {
   });
 
   test("runs right to left in the locale's digits, and takes a class per part", () => {
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }
@@ -149,6 +149,10 @@ describe("PresenceStatus", () => {
   });
 });
 
+interface DataEvent {
+  data: unknown;
+}
+
 describe("createPresenceStore", () => {
   test("keeps each person's presence and who is typing, from a socket", async () => {
     const sockets: EventTarget[] = [];
@@ -172,11 +176,11 @@ describe("createPresenceStore", () => {
             createPresenceStore({ url: "wss://example.test/presence", typingTimeout: 30 }),
           ] as const,
       );
-      const send = (data: unknown): void => {
-        const event = new Event("message") as Event & { data: unknown };
+      function send(data: unknown): void {
+        const event = new Event("message") as Event & DataEvent;
         event.data = JSON.stringify(data);
         sockets[0]?.dispatchEvent(event);
-      };
+      }
       send({ type: "presence", userId: "u1", presence: "away", status: { text: "Out" } });
       send({ type: "typing", userId: "u1", conversationId: "c1", typing: true });
       send({ type: "typing", userId: "u2", conversationId: "c1", typing: true });

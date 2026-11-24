@@ -44,7 +44,9 @@ describe("SplitButton", () => {
         Go
       </SplitButton>
     ));
-    const by = (slot: string): Element | null => document.querySelector(`[data-slot="${slot}"]`);
+    function by(slot: string): Element | null {
+      return document.querySelector(`[data-slot="${slot}"]`);
+    }
     expect(by("split-button")?.classList.contains("mine")).toBe(true);
     expect(by("split-button-action")?.classList.contains("x")).toBe(true);
     user.tap(by("split-button-trigger") as HTMLElement);

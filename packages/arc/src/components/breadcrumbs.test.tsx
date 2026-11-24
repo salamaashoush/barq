@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child, flush } from "@barqjs/core";
+import { flush, type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { type AnyRouteDefinition, Outlet, type RouteMatch } from "@barqjs/router";
 import { ariaViolations, screen, user, waitFor } from "@barqjs/testing";
@@ -140,7 +140,7 @@ describe("Breadcrumbs", () => {
   });
 
   test("keeps the document order under a right-to-left locale", async () => {
-    function Rtl(props: { children?: Child }) {
+    function Rtl(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }

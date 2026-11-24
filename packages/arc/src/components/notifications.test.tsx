@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { type Child, createRoot, createSignal, flush } from "@barqjs/core";
+import { createRoot, createSignal, flush, type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user, waitFor, within } from "@barqjs/testing";
 import { touch } from "@barqjs/ui/shared-touch";
@@ -49,8 +49,8 @@ afterEach(() => {
 });
 
 function screenIs(compact: boolean): void {
-  const stub = (query: string): MediaQueryList =>
-    ({
+  function stub(query: string): MediaQueryList {
+    return {
       matches: query.includes("pointer: coarse") ? compact : original(query).matches,
       media: query,
       onchange: null,
@@ -59,7 +59,8 @@ function screenIs(compact: boolean): void {
       addListener: () => {},
       removeListener: () => {},
       dispatchEvent: () => false,
-    }) as MediaQueryList;
+    } as MediaQueryList;
+  }
   Object.defineProperty(window, "matchMedia", { configurable: true, value: stub });
 }
 
@@ -147,7 +148,7 @@ describe("NotificationFeed", () => {
   });
 
   test("runs right to left in the locale's words and digits", () => {
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }
@@ -245,9 +246,17 @@ describe("NotificationCenter", () => {
   });
 });
 
+interface SocketState {
+  readyState: number;
+}
+
+interface DataEvent {
+  data: unknown;
+}
+
 describe("useNotifications", () => {
   test("appends each message from a websocket, two in one tick included, newest first", () => {
-    const sockets: (EventTarget & { readyState: number })[] = [];
+    const sockets: (EventTarget & SocketState)[] = [];
     const real = globalThis.WebSocket;
     class FakeSocket extends EventTarget {
       static OPEN = 1;
@@ -273,7 +282,7 @@ describe("useNotifications", () => {
       );
       const socket = sockets[0] as EventTarget;
       for (const item of [ITEMS[0], ITEMS[1]]) {
-        const event = new Event("message") as Event & { data: unknown };
+        const event = new Event("message") as Event & DataEvent;
         event.data = JSON.stringify(item);
         socket.dispatchEvent(event);
       }

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { type Child } from "@barqjs/core";
+import { type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { type AnyRouteDefinition } from "@barqjs/router";
 import { ariaViolations, render, screen, user, waitFor, within } from "@barqjs/testing";
@@ -21,14 +21,20 @@ interface Values {
   lead: string;
 }
 
-function Project(props: {
+interface ProjectProps {
   submitted?: Values[];
   resume?: string;
   param?: string;
   left?: string[];
   class?: string;
   classes?: Record<string, string>;
-}) {
+}
+
+interface TextValue {
+  value: string;
+}
+
+function Project(props: ProjectProps) {
   const form = useArcForm(() => ({
     defaultValues: { name: "", lead: "" },
     onSubmit: ({ value, formApi }) => {
@@ -54,8 +60,7 @@ function Project(props: {
           <form.AppField
             name="name"
             validators={{
-              onSubmit: ({ value }: { value: string }) =>
-                value === "" ? "Name the project" : undefined,
+              onSubmit: ({ value }: TextValue) => (value === "" ? "Name the project" : undefined),
             }}
           >
             {(field) => <field.TextField label="Project name" />}
@@ -181,7 +186,7 @@ describe("Wizard", () => {
   });
 
   test("its buttons are a finger's size and it runs right to left", () => {
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }

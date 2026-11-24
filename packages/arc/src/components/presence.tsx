@@ -50,8 +50,9 @@ export function presenceLabel(messages: ArcMessages, presence: Presence): string
   return messages.offline;
 }
 
-const time = (moment: Moment): number =>
-  moment instanceof Date ? moment.getTime() : new Date(moment).getTime();
+function time(moment: Moment): number {
+  return moment instanceof Date ? moment.getTime() : new Date(moment).getTime();
+}
 
 /** Whether a status still holds at `now`. */
 export function statusHolds(status: CustomStatus | undefined, now: Moment = Date.now()): boolean {
@@ -113,17 +114,24 @@ export interface PresenceDotProps extends Customisable<Slots> {
  */
 export function PresenceDot(props: PresenceDotProps) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(presenceStyles({ presence: props.presence }), props.classes);
-  const label = (): string | undefined =>
-    props.label === false ? undefined : (props.label ?? presenceLabel(messages(), props.presence));
-  const attributes = () => ({
-    class: arc(cls().dot, props.class, props.className),
-    "data-slot": "presence-dot",
-    "data-presence": props.presence,
-    role: label() === undefined ? undefined : "img",
-    "aria-label": label(),
-    "aria-hidden": label() === undefined ? (true as const) : undefined,
-  });
+  function cls(): Slots {
+    return parts(presenceStyles({ presence: props.presence }), props.classes);
+  }
+  function label(): string | undefined {
+    return props.label === false
+      ? undefined
+      : (props.label ?? presenceLabel(messages(), props.presence));
+  }
+  function attributes() {
+    return {
+      class: arc(cls().dot, props.class, props.className),
+      "data-slot": "presence-dot",
+      "data-presence": props.presence,
+      role: label() === undefined ? undefined : "img",
+      "aria-label": label(),
+      "aria-hidden": label() === undefined ? (true as const) : undefined,
+    };
+  }
   return (
     <Show when={props.anchored === true} fallback={<span {...attributes()} />}>
       <AvatarBadge {...attributes()} />
@@ -157,11 +165,11 @@ export function PresenceStatus(props: PresenceStatusProps) {
   const [tick, setTick] = createSignal(0, { ownedWrite: true });
   // The status goes away by itself at its expiry, with no prop changing.
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const now = (): number => {
+  function now(): number {
     tick();
     return props.now === undefined ? Date.now() : time(props.now);
-  };
-  const holds = (): boolean => {
+  }
+  function holds(): boolean {
     const status = props.status;
     const live = statusHolds(status, now());
     if (timer !== undefined) clearTimeout(timer);
@@ -171,12 +179,16 @@ export function PresenceStatus(props: PresenceStatusProps) {
       if (wait > 0 && wait < 2_147_483_647) timer = setTimeout(() => setTick((n) => n + 1), wait);
     }
     return live;
-  };
+  }
   onCleanup(() => {
     if (timer !== undefined) clearTimeout(timer);
   });
-  const cls = (): Slots => parts(presenceStyles({ presence: props.presence }), props.classes);
-  const word = (): string => presenceLabel(messages(), props.presence);
+  function cls(): Slots {
+    return parts(presenceStyles({ presence: props.presence }), props.classes);
+  }
+  function word(): string {
+    return presenceLabel(messages(), props.presence);
+  }
   return (
     <span
       class={arc(cls().root, props.class, props.className)}
@@ -274,7 +286,7 @@ export function createPresenceStore(options: PresenceStoreOptions = {}): Presenc
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
   const timeout = options.typingTimeout ?? 6000;
 
-  const setTyping = (conversationId: string, userId: string, on: boolean): void => {
+  function setTyping(conversationId: string, userId: string, on: boolean): void {
     const key = `${conversationId}\u0000${userId}`;
     const pending = timers.get(key);
     if (pending !== undefined) clearTimeout(pending);
@@ -294,9 +306,9 @@ export function createPresenceStore(options: PresenceStoreOptions = {}): Presenc
     if (next === now) return;
     typing = { ...typing, [conversationId]: next };
     setTypists(typing);
-  };
+  }
 
-  const apply = (event: PresenceEvent): void => {
+  function apply(event: PresenceEvent): void {
     if (event.type === "typing") {
       setTyping(event.conversationId, event.userId, event.typing);
       return;
@@ -313,7 +325,7 @@ export function createPresenceStore(options: PresenceStoreOptions = {}): Presenc
         setTyping(conversationId, event.userId, false);
       }
     }
-  };
+  }
 
   const parse =
     options.parse ??

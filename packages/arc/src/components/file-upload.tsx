@@ -116,22 +116,23 @@ export function useUploadQueue(options: UploadQueueOptions): UploadQueueApi {
   const running = new Map<string, AbortController>();
   let current: readonly UploadItem[] = [];
 
-  const write = (next: readonly UploadItem[]): void => {
+  function write(next: readonly UploadItem[]): void {
     current = next;
     setItems(next);
-  };
-  const update = (id: string, change: Partial<UploadItem>): void =>
+  }
+  function update(id: string, change: Partial<UploadItem>): void {
     write(current.map((item) => (item.id === id ? { ...item, ...change } : item)));
+  }
 
-  const pump = (): void => {
+  function pump(): void {
     const limit = Math.max(1, options.concurrency ?? 2);
     for (const item of current) {
       if (running.size >= limit) return;
       if (item.status === "queued" && !running.has(item.id)) start(item);
     }
-  };
+  }
 
-  const start = (item: UploadItem): void => {
+  function start(item: UploadItem): void {
     const controller = new AbortController();
     running.set(item.id, controller);
     update(item.id, { status: "uploading", progress: 0, error: undefined });
@@ -166,12 +167,12 @@ export function useUploadQueue(options: UploadQueueOptions): UploadQueueApi {
         if (running.get(item.id) === controller) running.delete(item.id);
         pump();
       });
-  };
+  }
 
-  const stop = (id: string): void => {
+  function stop(id: string): void {
     running.get(id)?.abort();
     running.delete(id);
-  };
+  }
 
   onCleanup(() => {
     for (const controller of running.values()) controller.abort();
@@ -266,13 +267,18 @@ export function formatBytes(bytes: number, locale: string): string {
   }).format(value);
 }
 
+export interface CheckedFiles {
+  accepted: File[];
+  rejected: FileRejection[];
+}
+
 /** The files a drop or a pick may keep, and why each of the rest may not. */
 export function checkFiles(
   files: readonly File[],
   limits: FileLimits,
   messages: ArcMessages,
   locale: string,
-): { accepted: File[]; rejected: FileRejection[] } {
+): CheckedFiles {
   const accepted: File[] = [];
   const rejected: FileRejection[] = [];
   for (const file of files) {
@@ -360,9 +366,11 @@ export function FileDropZone(props: FileDropZoneProps) {
   const locale = useLocale();
   const [rejections, setRejections] = createSignal<FileRejection[]>([]);
   const [over, setOver] = createSignal(false);
-  const cls = () => parts(fileDropZoneStyles(), props.classes);
+  function cls() {
+    return parts(fileDropZoneStyles(), props.classes);
+  }
 
-  const take = (files: File[]): void => {
+  function take(files: File[]): void {
     const limits: FileLimits = {
       accept: props.accept,
       maxSize: props.maxSize,
@@ -380,14 +388,14 @@ export function FileDropZone(props: FileDropZoneProps) {
       announce(rejected.map((one) => one.reason).join(" "), "polite");
     }
     if (accepted.length > 0) props.onFiles(accepted);
-  };
+  }
 
-  const dropped = (event: DropEvent): void => {
+  function dropped(event: DropEvent): void {
     const files = event.items.filter(isFileDropItem).map((item) => item.getFile());
     void Promise.all(files).then(take);
-  };
+  }
 
-  const hint = (): Child => {
+  function hint(): Child {
     if (props.hint !== undefined) return props.hint;
     const pieces: string[] = [];
     if (props.accept !== undefined && props.accept.length > 0) {
@@ -397,7 +405,7 @@ export function FileDropZone(props: FileDropZoneProps) {
       pieces.push(messages().maxFileSize(formatBytes(props.maxSize, locale().locale)));
     }
     return pieces.join(" · ");
-  };
+  }
 
   return (
     <div class={arc(cls().root, props.class, props.className)} data-slot="file-drop-zone">
@@ -484,8 +492,10 @@ const STATE: Record<UploadStatus, AttachmentState> = {
 export function UploadQueue(props: UploadQueueProps) {
   const messages = useArcMessages();
   const locale = useLocale();
-  const cls = () => parts(uploadQueueStyles(), props.classes);
-  const status = (item: UploadItem): string => {
+  function cls() {
+    return parts(uploadQueueStyles(), props.classes);
+  }
+  function status(item: UploadItem): string {
     const words = messages();
     switch (item.status) {
       case "queued":
@@ -499,7 +509,7 @@ export function UploadQueue(props: UploadQueueProps) {
       default:
         return item.error ?? words.uploadFailed(item.file.name);
     }
-  };
+  }
   return (
     <ul
       class={arc(cls().root, props.class, props.className)}

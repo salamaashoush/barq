@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child, createSignal } from "@barqjs/core";
+import { createSignal, type ParentProps } from "@barqjs/core";
 import { Time } from "@barqjs/aria/date";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user } from "@barqjs/testing";
@@ -10,7 +10,7 @@ import { hydrates, settle, wears } from "../test-arc.ts";
 import { useArcForm } from "./form.tsx";
 import { TimeField, TimePicker, timesBetween } from "./time-field.tsx";
 
-function Rtl(props: { children?: Child }) {
+function Rtl(props: ParentProps) {
   provideLocale("ar-EG");
   return <div dir="rtl">{props.children}</div>;
 }
@@ -149,7 +149,9 @@ describe("TimePicker", () => {
       />
     ));
     await settle();
-    const by = (slot: string): Element | null => document.querySelector(`[data-slot="${slot}"]`);
+    function by(slot: string): Element | null {
+      return document.querySelector(`[data-slot="${slot}"]`);
+    }
     expect(by("time-picker")?.classList.contains("mine")).toBe(true);
     expect(by("time-picker-control")?.classList.contains("c")).toBe(true);
     expect(by("time-picker-segments")?.classList.contains("s")).toBe(true);

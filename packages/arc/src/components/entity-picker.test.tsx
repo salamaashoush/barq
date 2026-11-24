@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { type Child } from "@barqjs/core";
+import { type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user, waitFor } from "@barqjs/testing";
 import { touch } from "@barqjs/ui/shared-touch";
 
 import { hydrates, settle, wears } from "../test-arc.ts";
 import { type EntityOption, EntityPicker } from "./entity-picker.tsx";
+import type { RemoteSearchContext } from "./remote-search.ts";
 
 const HERE = import.meta.dir;
 
@@ -17,8 +18,14 @@ const PEOPLE: EntityOption[] = [
   { id: "5", label: "Rowan Loe" },
 ];
 
-function people(calls: { query: string; cursor: unknown; signal: AbortSignal }[] = [], size = 10) {
-  return async (query: string, context: { signal: AbortSignal; cursor?: unknown }) => {
+interface SearchCall {
+  query: string;
+  cursor: unknown;
+  signal: AbortSignal;
+}
+
+function people(calls: SearchCall[] = [], size = 10) {
+  return async (query: string, context: RemoteSearchContext) => {
     calls.push({ query, cursor: context.cursor, signal: context.signal });
     await Promise.resolve();
     const start = typeof context.cursor === "number" ? context.cursor : 0;
@@ -48,7 +55,7 @@ async function type(text: string): Promise<void> {
 
 describe("EntityPicker", () => {
   test("searches the server once typing pauses, its options with avatars and marked matches", async () => {
-    const calls: { query: string; cursor: unknown; signal: AbortSignal }[] = [];
+    const calls: SearchCall[] = [];
     render(() => <EntityPicker label="Owner" search={people(calls)} debounce={5} />);
     expect(screen.getByLabelText("Owner")).toBe(input());
     await type("sa");
@@ -134,7 +141,7 @@ describe("EntityPicker", () => {
   });
 
   test("Show more asks for the next page; Create makes what no option has", async () => {
-    const calls: { query: string; cursor: unknown; signal: AbortSignal }[] = [];
+    const calls: SearchCall[] = [];
     const made: string[] = [];
     render(() => (
       <EntityPicker
@@ -188,7 +195,7 @@ describe("EntityPicker", () => {
   });
 
   test("its options are a finger's size, and it runs right to left", async () => {
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }

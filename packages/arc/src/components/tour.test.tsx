@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { type Child, createSignal } from "@barqjs/core";
+import { createSignal, type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user } from "@barqjs/testing";
 
 import { hydrates, settle } from "../test-arc.ts";
 import { Coachmark, Spotlight, Tour, type TourStep, useTourProgress } from "./tour.tsx";
 
-function Page(props: { children?: Child }) {
+function Page(props: ParentProps) {
   return (
     <main>
       <button type="button" id="new">
@@ -127,7 +127,7 @@ describe("Tour", () => {
   });
 
   test("a tap on Skip ends it, and its words are the locale's digits in Arabic", async () => {
-    function Rtl(props: { children?: Child }) {
+    function Rtl(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }
@@ -167,7 +167,9 @@ describe("Tour", () => {
     ));
     await settle();
     await settle();
-    const by = (slot: string): Element | null => document.querySelector(`[data-slot="${slot}"]`);
+    function by(slot: string): Element | null {
+      return document.querySelector(`[data-slot="${slot}"]`);
+    }
     for (const [slot, name] of [
       ["coachmark", "r"],
       ["coachmark-title", "t"],

@@ -60,12 +60,12 @@ export function remoteSearch<T>(options: RemoteSearchOptions<T>): RemoteSearch {
   let typed = "";
   let controller: AbortController | undefined;
 
-  const set = (next: RemoteState<T>): void => {
+  function set(next: RemoteState<T>): void {
     state = next;
     options.onChange(next);
-  };
+  }
 
-  const fetchPage = (text: string, cursor?: unknown): void => {
+  function fetchPage(text: string, cursor?: unknown): void {
     controller?.abort();
     const own = new AbortController();
     controller = own;
@@ -84,18 +84,18 @@ export function remoteSearch<T>(options: RemoteSearchOptions<T>): RemoteSearch {
           set({ status: "error", results: before, loadingMore: false });
         },
       );
-  };
+  }
 
   const waiting: Scheduled<[string]> = debounce(
     (text: string) => fetchPage(text),
     options.debounce ?? 250,
   );
 
-  const stop = (): void => {
+  function stop(): void {
     controller?.abort();
     controller = undefined;
     waiting.clear();
-  };
+  }
 
   return {
     query(text) {

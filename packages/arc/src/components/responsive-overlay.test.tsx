@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { type Child } from "@barqjs/core";
+import { type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user } from "@barqjs/testing";
 
@@ -15,8 +15,8 @@ afterEach(() => {
 
 /** A screen with a finger or a mouse, as the overlay's query reads it. */
 function screenIs(compact: boolean): void {
-  const stub = (query: string): MediaQueryList =>
-    ({
+  function stub(query: string): MediaQueryList {
+    return {
       matches: query.includes("pointer: coarse") ? compact : original(query).matches,
       media: query,
       onchange: null,
@@ -25,7 +25,8 @@ function screenIs(compact: boolean): void {
       addListener: () => {},
       removeListener: () => {},
       dispatchEvent: () => false,
-    }) as MediaQueryList;
+    } as MediaQueryList;
+  }
   Object.defineProperty(window, "matchMedia", { configurable: true, value: stub });
 }
 
@@ -93,7 +94,7 @@ describe("ResponsiveOverlay", () => {
 
   test("follows the caller's open state, and lays out by the reading direction", async () => {
     screenIs(false);
-    function Rtl(props: { children?: Child }) {
+    function Rtl(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }
@@ -127,7 +128,9 @@ describe("ResponsiveOverlay", () => {
     await settle();
     const root = overlay() as HTMLElement;
     expect(root.classList.contains("mine")).toBe(true);
-    const by = (slot: string): Element | null => root.querySelector(`[data-slot="${slot}"]`);
+    function by(slot: string): Element | null {
+      return root.querySelector(`[data-slot="${slot}"]`);
+    }
     expect(by("dialog-header")?.classList.contains("h")).toBe(true);
     expect(by("dialog-title")?.classList.contains("t")).toBe(true);
     expect(by("dialog-description")?.classList.contains("d")).toBe(true);

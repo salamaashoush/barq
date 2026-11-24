@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { type Child } from "@barqjs/core";
+import { type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user, waitFor } from "@barqjs/testing";
 
@@ -19,11 +19,15 @@ let refuse: string | null = null;
 let recorders: FakeRecorder[] = [];
 const asked: MediaStreamConstraints[] = [];
 
+interface RecordedData {
+  data: Blob;
+}
+
 class FakeRecorder {
   static isTypeSupported = (): boolean => true;
   state: "inactive" | "recording" = "inactive";
   mimeType = "audio/webm";
-  ondataavailable: ((event: { data: Blob }) => void) | null = null;
+  ondataavailable: ((event: RecordedData) => void) | null = null;
   onstop: (() => void) | null = null;
   constructor(readonly stream: unknown) {
     recorders.push(this);
@@ -49,10 +53,18 @@ function track(kind: "audio" | "video"): FakeTrack {
   return made;
 }
 
+interface RecorderGlobal {
+  MediaRecorder?: unknown;
+}
+
+interface AudioGlobal {
+  AudioContext?: unknown;
+}
+
 const saved = {
   devices: navigator.mediaDevices,
-  recorder: (globalThis as { MediaRecorder?: unknown }).MediaRecorder,
-  audio: (globalThis as { AudioContext?: unknown }).AudioContext,
+  recorder: (globalThis as RecorderGlobal).MediaRecorder,
+  audio: (globalThis as AudioGlobal).AudioContext,
 };
 
 beforeEach(() => {
@@ -78,8 +90,8 @@ beforeEach(() => {
       ],
     },
   });
-  (globalThis as { MediaRecorder?: unknown }).MediaRecorder = FakeRecorder;
-  (globalThis as { AudioContext?: unknown }).AudioContext = class {
+  (globalThis as RecorderGlobal).MediaRecorder = FakeRecorder;
+  (globalThis as AudioGlobal).AudioContext = class {
     createAnalyser() {
       return {
         fftSize: 0,
@@ -101,8 +113,8 @@ beforeEach(() => {
 
 afterEach(() => {
   Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: saved.devices });
-  (globalThis as { MediaRecorder?: unknown }).MediaRecorder = saved.recorder;
-  (globalThis as { AudioContext?: unknown }).AudioContext = saved.audio;
+  (globalThis as RecorderGlobal).MediaRecorder = saved.recorder;
+  (globalThis as AudioGlobal).AudioContext = saved.audio;
 });
 
 function slot(name: string): HTMLElement | null {
@@ -227,7 +239,7 @@ describe("ClipRecorder", () => {
   });
 
   test("runs right to left, its timer in the locale's digits", async () => {
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }

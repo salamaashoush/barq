@@ -114,7 +114,9 @@ export function Tearsheet(props: TearsheetProps) {
     defaultOpen: untrack(() => props.defaultOpen),
     onOpenChange: (next) => props.onOpenChange?.(next),
   });
-  const cls = () => parts(tearsheetStyles({ size: props.size }), props.classes);
+  function cls() {
+    return parts(tearsheetStyles({ size: props.size }), props.classes);
+  }
   return (
     <Dialog isOpen={isOpen()} onOpenChange={setOpen}>
       <DialogContent

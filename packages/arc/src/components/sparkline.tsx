@@ -78,11 +78,13 @@ function heightOf(value: number, [low, high]: [number, number]): number {
   return INSET + (1 - (value - low) / span) * (VIEW_HEIGHT - INSET * 2);
 }
 
+interface SparkPaths {
+  line: string;
+  area: string;
+}
+
 /** The two paths of a line over `points`, and of the area under it, in the view box. */
-function sparkPaths(
-  points: readonly number[],
-  range: [number, number],
-): { line: string; area: string } {
+function sparkPaths(points: readonly number[], range: [number, number]): SparkPaths {
   const step = VIEW_WIDTH / (points.length - 1);
   const coordinates = points.map(
     (point, index) => `${(index * step).toFixed(2)},${heightOf(point, range).toFixed(2)}`,
@@ -129,11 +131,19 @@ function sparkBars(points: readonly number[], range: [number, number]): Bar[] {
 export function Sparkline(props: SparklineProps) {
   const messages = useArcMessages();
   const number = chartNumbers(props.formatOptions);
-  const cls = (): SparklineSlots => parts(sparklineStyles({ tone: props.tone }), props.classes);
-  const variant = (): SparklineVariant => props.variant ?? "line";
-  const range = (): [number, number] => rangeOf(props.data, variant(), props.domain);
-  const paths = (): { line: string; area: string } => sparkPaths(props.data, range());
-  const described = (): string => {
+  function cls(): SparklineSlots {
+    return parts(sparklineStyles({ tone: props.tone }), props.classes);
+  }
+  function variant(): SparklineVariant {
+    return props.variant ?? "line";
+  }
+  function range(): [number, number] {
+    return rangeOf(props.data, variant(), props.domain);
+  }
+  function paths(): SparkPaths {
+    return sparkPaths(props.data, range());
+  }
+  function described(): string {
     if (props.label !== undefined) return props.label;
     const all = props.data;
     if (all.length === 0) return messages().nothingHere;
@@ -144,7 +154,7 @@ export function Sparkline(props: SparklineProps) {
       number(Math.min(...all)),
       number(Math.max(...all)),
     );
-  };
+  }
 
   return (
     <svg

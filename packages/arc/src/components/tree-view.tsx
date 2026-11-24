@@ -61,7 +61,9 @@ interface Loader {
 
 type Row = TreeNode | Loader;
 
-const isLoader = (row: Row): row is Loader => "loader" in row;
+function isLoader(row: Row): row is Loader {
+  return "loader" in row;
+}
 
 export const treeViewStyles = variants({
   slots: {
@@ -172,29 +174,33 @@ export interface TreeViewProps<T extends TreeNode> extends Customisable<Slots> {
  */
 export function TreeView<T extends TreeNode>(props: TreeViewProps<T>) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(treeViewStyles(), props.classes);
-  const loading = (): Set<string> => new Set(props.loadingKeys ?? []);
-  const children = (node: TreeNode): Row[] | undefined => {
+  function cls(): Slots {
+    return parts(treeViewStyles(), props.classes);
+  }
+  function loading(): Set<string> {
+    return new Set(props.loadingKeys ?? []);
+  }
+  function children(node: TreeNode): Row[] | undefined {
     const own: Row[] = [...(node.children ?? [])];
     if (node.hasMore === true || (loading().has(node.id) && node.children === undefined)) {
       own.push({ loader: node.id });
     }
     return own.length === 0 ? undefined : own;
-  };
-  const roots = (): Row[] => {
+  }
+  function roots(): Row[] {
     const own: Row[] = [...props.items];
     if (props.hasMore === true || loading().has("")) own.push({ loader: null });
     return own;
-  };
+  }
   let expanded = new Set<Key>(props.expandedKeys ?? props.defaultExpandedKeys ?? []);
-  const byId = (rows: readonly TreeNode[], id: Key): TreeNode | undefined => {
+  function byId(rows: readonly TreeNode[], id: Key): TreeNode | undefined {
     for (const row of rows) {
       if (row.id === id) return row;
       const found = byId(row.children ?? [], id);
       if (found !== undefined) return found;
     }
     return undefined;
-  };
+  }
 
   return (
     <Tree<Row>
@@ -274,12 +280,14 @@ function collectDisabled(rows: readonly TreeNode[]): string[] {
   ]);
 }
 
-function Content(props: {
+interface ContentProps {
   node: TreeNode;
   state: TreeItemRenderState;
   classes: Slots;
   dragging: boolean;
-}) {
+}
+
+function Content(props: ContentProps) {
   const row = useTreeItem();
   const box = row.item.checkboxProps;
   return (

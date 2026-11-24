@@ -70,25 +70,29 @@ export interface IconButtonProps extends Customisable<Slots> {
  * pointer.
  */
 export function IconButton(props: IconButtonProps) {
-  const cls = () => parts(iconButtonStyles(), props.classes);
-  const button = () => (
-    <Button
-      id={props.id}
-      class={arc(cls().root, props.class, props.className)}
-      data-slot={props.slot ?? "icon-button"}
-      variant={props.variant ?? "ghost"}
-      size={SIZES[props.size ?? "md"]}
-      href={props.href}
-      isDisabled={props.isDisabled}
-      aria-label={props.label}
-      aria-pressed={props.isPressed}
-      aria-expanded={props["aria-expanded"]}
-      aria-controls={props["aria-controls"]}
-      onPress={(event: PressEvent) => props.onPress?.(event)}
-    >
-      {props.children}
-    </Button>
-  );
+  function cls() {
+    return parts(iconButtonStyles(), props.classes);
+  }
+  function button() {
+    return (
+      <Button
+        id={props.id}
+        class={arc(cls().root, props.class, props.className)}
+        data-slot={props.slot ?? "icon-button"}
+        variant={props.variant ?? "ghost"}
+        size={SIZES[props.size ?? "md"]}
+        href={props.href}
+        isDisabled={props.isDisabled}
+        aria-label={props.label}
+        aria-pressed={props.isPressed}
+        aria-expanded={props["aria-expanded"]}
+        aria-controls={props["aria-controls"]}
+        onPress={(event: PressEvent) => props.onPress?.(event)}
+      >
+        {props.children}
+      </Button>
+    );
+  }
   return (
     <Show when={props.tooltip !== false} fallback={button()}>
       <Tooltip>

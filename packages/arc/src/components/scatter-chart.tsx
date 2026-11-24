@@ -67,6 +67,11 @@ export interface ScatterChartProps extends ChartBaseProps<ScatterChartSlots> {
 /** The series key a point is drawn in when the chart has one series. */
 const ONE = "points";
 
+interface Measure {
+  key: string;
+  label: string;
+}
+
 /**
  * Two measures, or three as bubbles, one point per record.
  *
@@ -90,22 +95,30 @@ const ONE = "points";
 export function ScatterChart(props: ScatterChartProps) {
   const messages = useArcMessages();
   const number = chartNumbers(props.formatOptions);
-  const cls = (): ScatterChartSlots => parts(scatterChartStyles(), props.classes);
-  const series = (): readonly TonedSeries[] =>
-    props.series ?? [{ key: ONE, label: props.yLabel ?? props.y }];
-  const keyOf = (row: Row): string =>
-    props.group === undefined ? ONE : String(row[props.group] ?? "");
-  const labelOf = (row: Row, at: number): string =>
-    props.name === undefined ? String(at + 1) : String(row[props.name] ?? "");
-  const measures = (): { key: string; label: string }[] => [
-    { key: props.x, label: props.xLabel ?? props.x },
-    { key: props.y, label: props.yLabel ?? props.y },
-    ...(props.size === undefined
-      ? []
-      : [{ key: props.size, label: props.sizeLabel ?? props.size }]),
-  ];
-  const seriesLabel = (key: string): string =>
-    series().find((one) => one.key === key)?.label ?? key;
+  function cls(): ScatterChartSlots {
+    return parts(scatterChartStyles(), props.classes);
+  }
+  function series(): readonly TonedSeries[] {
+    return props.series ?? [{ key: ONE, label: props.yLabel ?? props.y }];
+  }
+  function keyOf(row: Row): string {
+    return props.group === undefined ? ONE : String(row[props.group] ?? "");
+  }
+  function labelOf(row: Row, at: number): string {
+    return props.name === undefined ? String(at + 1) : String(row[props.name] ?? "");
+  }
+  function measures(): Measure[] {
+    return [
+      { key: props.x, label: props.xLabel ?? props.x },
+      { key: props.y, label: props.yLabel ?? props.y },
+      ...(props.size === undefined
+        ? []
+        : [{ key: props.size, label: props.sizeLabel ?? props.size }]),
+    ];
+  }
+  function seriesLabel(key: string): string {
+    return series().find((one) => one.key === key)?.label ?? key;
+  }
 
   return (
     <ChartFrame
@@ -157,16 +170,23 @@ export function ScatterChart(props: ScatterChartProps) {
   );
 }
 
-const isRow = (datum: unknown): datum is Row => typeof datum === "object" && datum !== null;
+function isRow(datum: unknown): datum is Row {
+  return typeof datum === "object" && datum !== null;
+}
 
-function ScatterPlot(
-  props: ScatterChartProps & {
-    class: string;
-    keys: readonly string[];
-    keyOf: (row: Row) => string;
-    read: (row: Row) => { label: string; items: ChartPayloadItem[] };
-  },
-) {
+interface ScatterPlotProps {
+  class: string;
+  keys: readonly string[];
+  keyOf: (row: Row) => string;
+  read: (row: Row) => ScatterRead;
+}
+
+interface ScatterRead {
+  label: string;
+  items: ChartPayloadItem[];
+}
+
+function ScatterPlot(props: ScatterChartProps & ScatterPlotProps) {
   const scope = useChart();
   const definition = createMemo((): ChartDefinition => {
     const size = props.size;

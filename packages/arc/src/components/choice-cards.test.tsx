@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child, createSignal } from "@barqjs/core";
+import { createSignal, type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { accessibleDescription, ariaViolations, render, screen, user } from "@barqjs/testing";
 
@@ -32,7 +32,7 @@ describe("RadioCards", () => {
 
   test("pressing anywhere on a card chooses it, and the arrows move in the reading direction", async () => {
     const [plan, setPlan] = createSignal<string | null>("free");
-    function Rtl(props: { children?: Child }) {
+    function Rtl(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }
@@ -109,7 +109,9 @@ describe("CheckboxCards", () => {
       />
     ));
     await settle();
-    const by = (slot: string): Element | null => document.querySelector(`[data-slot="${slot}"]`);
+    function by(slot: string): Element | null {
+      return document.querySelector(`[data-slot="${slot}"]`);
+    }
     expect(by("checkbox-cards")?.classList.contains("mine")).toBe(true);
     expect(by("checkbox-cards-group")?.classList.contains("g")).toBe(true);
     expect(by("choice-card")?.classList.contains("c")).toBe(true);

@@ -148,13 +148,16 @@ export function TimePicker(props: TimePickerProps) {
     (): readonly Time[] =>
       props.times ?? timesBetween(props.step ?? 30, props.minValue, props.maxValue),
   );
-  const label = (time: Time): string =>
-    cycled().format(new Date(2000, 0, 1, time.hour, time.minute));
-  const chosen = (): string | undefined => {
+  function label(time: Time): string {
+    return cycled().format(new Date(2000, 0, 1, time.hour, time.minute));
+  }
+  function chosen(): string | undefined {
     const value = of.value();
     return value === null || value === undefined ? undefined : keyOf(value);
-  };
-  const cls = (): PickerSlots => parts({ ...fieldStyles(), ...timePickerStyles() }, props.classes);
+  }
+  function cls(): PickerSlots {
+    return parts({ ...fieldStyles(), ...timePickerStyles() }, props.classes);
+  }
 
   return (
     <Frame
