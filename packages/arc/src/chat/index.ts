@@ -16,7 +16,12 @@ export {
   type TypingIndicatorProps,
   typingIndicatorStyles,
 } from "./typing-indicator.tsx";
-export { MessageItem, type MessageItemProps, messageItemStyles } from "./message-item.tsx";
+export {
+  MessageAttachments,
+  MessageItem,
+  type MessageItemProps,
+  messageItemStyles,
+} from "./message-item.tsx";
 export type {
   ChatAttachment,
   ChatMessage,
@@ -56,3 +61,13 @@ export {
   type ParticipantTileProps,
   callStyles,
 } from "./call.tsx";
+export {
+  type AICitation,
+  AIChatPanel,
+  type AIChatPanelProps,
+  type AIMessage,
+  type AIPart,
+  type AIToolCall,
+  type AIToolState,
+  aiChatStyles,
+} from "./ai-chat.tsx";

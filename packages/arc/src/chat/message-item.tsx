@@ -312,7 +312,7 @@ export function MessageItem(props: MessageItemProps) {
           </MessageHeader>
           {body()}
           <Show when={(message().attachments?.length ?? 0) > 0}>
-            <Attachments
+            <MessageAttachments
               attachments={message().attachments ?? []}
               classes={cls()}
               label={messages().attachments}
@@ -579,11 +579,17 @@ function ReactionPicker(props: {
   );
 }
 
-function Attachments(props: {
+/**
+ * The files sent with a message: pictures in a `Gallery` that opens the
+ * `Lightbox`, audio and video in `MediaPlayer`, the rest as cards that
+ * download.
+ */
+export function MessageAttachments(props: {
   attachments: readonly ChatAttachment[];
-  classes: Slots;
-  label: string;
+  classes?: Slots;
+  label?: string;
 }) {
+  const own = (): Slots => props.classes ?? messageItemStyles();
   const messages = useArcMessages();
   const images = () => props.attachments.filter((one) => one.kind === "image");
   const players = () =>
@@ -591,14 +597,14 @@ function Attachments(props: {
   const files = () => props.attachments.filter((one) => one.kind === "file");
   return (
     <div
-      class={props.classes.attachments}
+      class={own().attachments}
       data-slot="message-item-attachments"
       role="group"
-      aria-label={props.label}
+      aria-label={props.label ?? messages().attachments}
     >
       <Show when={images().length > 0}>
         <Gallery
-          aria-label={props.label}
+          aria-label={props.label ?? messages().attachments}
           minItemWidth="7rem"
           images={images().map((one) => ({
             src: one.url,
@@ -619,7 +625,7 @@ function Attachments(props: {
       </For>
       <For each={files}>
         {(one: ChatAttachment) => (
-          <Attachment class={props.classes.file} data-slot="message-item-file">
+          <Attachment class={own().file} data-slot="message-item-file">
             <AttachmentMedia>
               <FileText aria-hidden="true" />
             </AttachmentMedia>
