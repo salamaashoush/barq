@@ -66,12 +66,18 @@ export function buildComposerEditor(
   extensions: readonly AnyLexicalExtensionArgument[] = [],
   initialConfig?: InitialConfig,
 ): LexicalEditor & { dispose: () => void } {
-  return LexicalBuilder.fromExtensions([
+  const editor = LexicalBuilder.fromExtensions([
     BarqProviderExtension,
     BarqExtension,
     ...extensions,
     ...(initialConfig === undefined ? [] : [rootExtension(initialConfig)]),
   ]).buildEditor();
+  // A document filled by a function is an update Lexical commits a microtask
+  // later, and until then the editor reads as empty: a server would write
+  // the placeholder over it and a browser would flash it. Committed here, the
+  // editor is its document from the first read.
+  editor.update(() => undefined, { discrete: true });
+  return editor;
 }
 
 /**

@@ -228,3 +228,30 @@ test("a browser rendering from scratch never draws serverContent", async () => {
   expect(module.handle.editor?.getRootElement()).toBe(container.querySelector(".notes"));
   expect(container.querySelector(".notes")?.textContent).toBe("Served text");
 });
+
+const FROM_FUNCTION = `
+import { RichTextExtension } from "@lexical/rich-text"
+import { $createParagraphNode, $createTextNode, $getRoot } from "lexical"
+import { LexicalComposer, ContentEditable } from ${JSON.stringify(ENTRY)}
+
+export const page = () => () => (
+  <LexicalComposer
+    extensions={[RichTextExtension]}
+    initialConfig={{
+      namespace: "notes",
+      editorState: () => {
+        $getRoot().append($createParagraphNode().append($createTextNode("Filled")))
+      },
+    }}
+    contentEditable={<ContentEditable class="notes" placeholder={<em>Empty</em>} />}
+  />
+)
+`;
+
+test("a document filled by a function is the editor's on the server: no placeholder over it", () => {
+  const served = serve(compile(FROM_FUNCTION, "function").ssr);
+  const container = host();
+  container.innerHTML = served.html;
+  expect(container.querySelector(".notes")).not.toBeNull();
+  expect(container.querySelector("em")).toBeNull();
+});
