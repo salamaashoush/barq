@@ -83,33 +83,38 @@ function block(tokens: ThemeTokens): string {
  * A token the dark set does not name keeps its light value through the
  * cascade, so only the colours are written twice.
  */
+/**
+ * Density as CSS: the scope's own when one is chosen, and a rule per density
+ * for a region marked `data-density`, in `@layer barq.theme`.
+ */
+export function arcDensityCss(density?: Density, scope = ":root"): string {
+  const own = density === undefined ? "" : `${scope} {\n${block(DENSITY[density])}\n}\n`;
+  const regions = DENSITIES.map(
+    (name) =>
+      `${scope === ":root" ? "" : `${scope} `}[data-density="${name}"] {\n${block(DENSITY[name])}\n}`,
+  ).join("\n");
+  return `${own}${regions}`;
+}
+
 export function arcThemeCss(selection: ArcThemeSelection): string {
   const scope = selection.scope ?? ":root";
   const darkAsked = selection.dark ?? ".dark";
   const { light, dark } = arcThemeValues(selection);
-  const darkRule =
-    darkAsked === "media"
-      ? `@media (prefers-color-scheme: dark) {\n  ${scope} {\n${block(dark)}\n  }\n}`
-      : `${scope === ":root" ? darkAsked : `${darkAsked} ${scope}, ${scope}${darkAsked}`} {\n${block(dark)}\n}`;
   const darkSelector =
     darkAsked === "media"
       ? undefined
       : scope === ":root"
         ? darkAsked
         : `${darkAsked} ${scope}, ${scope}${darkAsked}`;
-  const densities = DENSITIES.map(
-    (name) =>
-      `${scope === ":root" ? "" : `${scope} `}[data-density="${name}"] {\n${block(DENSITY[name])}\n}`,
-  ).join("\n");
+  const inDark = (tokens: ThemeTokens): string =>
+    darkSelector === undefined
+      ? `@media (prefers-color-scheme: dark) {\n  ${scope} {\n${block(tokens)}\n  }\n}`
+      : `${darkSelector} {\n${block(tokens)}\n}`;
   const contrast =
     selection.contrast === "system"
-      ? `\n@media (prefers-contrast: more) {\n  ${scope} {\n${block(ARC_CONTRAST_LIGHT)}\n  }\n${
-          darkSelector === undefined
-            ? `  @media (prefers-color-scheme: dark) {\n  ${scope} {\n${block(ARC_CONTRAST_DARK)}\n  }\n  }`
-            : `  ${darkSelector} {\n${block(ARC_CONTRAST_DARK)}\n  }`
-        }\n}`
+      ? `\n@media (prefers-contrast: more) {\n${scope} {\n${block(ARC_CONTRAST_LIGHT)}\n}\n${inDark(ARC_CONTRAST_DARK)}\n}`
       : "";
-  return `@layer barq.theme {\n${scope} {\n${block(light)}\n}\n${darkRule}\n${densities}${contrast}\n}`;
+  return `@layer barq.theme {\n${scope} {\n${block(light)}\n}\n${inDark(dark)}\n${arcDensityCss(undefined, scope)}${contrast}\n}`;
 }
 
 /** Put the theme on the page, replacing one installed before for the same scope. */
@@ -119,4 +124,9 @@ export function installArcTheme(selection: ArcThemeSelection): void {
     scope === ":root" ? "barq-arc:theme" : `barq-arc:theme:${scope}`,
     arcThemeCss(selection),
   );
+}
+
+/** Density alone, for a page whose theme is installed some other way. */
+export function installArcDensity(density: Density): void {
+  registerCss("barq-arc:density", `@layer barq.theme {\n${arcDensityCss(density)}\n}`);
 }

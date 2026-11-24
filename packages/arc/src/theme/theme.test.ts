@@ -95,7 +95,7 @@ describe("contrast", () => {
 
   test("system applies the same set while the reader asks for more contrast", () => {
     const css = arcThemeCss({ base: "neutral", contrast: "system" });
-    expect(css).toContain("@media (prefers-contrast: more) {\n  :root {");
+    expect(css).toContain("@media (prefers-contrast: more) {\n:root {");
     expect(css).toContain(`--border: ${ARC_CONTRAST_LIGHT.border ?? ""};`);
     expect(arcThemeValues({ base: "neutral", contrast: "system" }).light.border).not.toBe(
       ARC_CONTRAST_LIGHT.border,

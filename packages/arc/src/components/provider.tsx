@@ -3,8 +3,14 @@ import { provideLocale } from "@barqjs/aria/i18n";
 import { type ColorSchemeOptions, colorScheme } from "@barqjs/primitives/color-scheme";
 import { Toaster, type ToasterProps } from "@barqjs/ui/sonner";
 
-import { type ArcThemeSelection, installArcTheme } from "../theme/index.ts";
-import { ConfirmHost } from "./confirm.tsx";
+import {
+  type ArcThemeSelection,
+  type Density,
+  installArcDensity,
+  installArcTheme,
+} from "../theme/index.ts";
+import { ConfirmHost, type ConfirmHostProps } from "./confirm.tsx";
+import { type ArcMessages, provideArcMessages } from "./messages.ts";
 
 export interface ArcProviderProps {
   /** Installed when the provider renders, replacing any theme installed before. */
@@ -15,6 +21,17 @@ export interface ArcProviderProps {
   locale?: string;
   /** The toast stack's options, or `false` for none. */
   toaster?: Omit<ToasterProps, "theme"> | false;
+  /**
+   * The room the page takes, over the theme's: `compact`, `comfortable` or
+   * `spacious`. A region takes another with `data-density` on any element.
+   */
+  density?: Density;
+  /** The high-contrast tokens, always or while the system asks for more contrast. */
+  contrast?: "high" | "system";
+  /** arc's own words, over English: what a copy button says, a table's page labels. */
+  messages?: Partial<ArcMessages>;
+  /** `classes` for the dialog `confirm()` draws. */
+  confirm?: ConfirmHostProps;
   children?: Child;
 }
 
@@ -30,7 +47,18 @@ export interface ArcProviderProps {
  */
 export function ArcProvider(props: ArcProviderProps) {
   const theme = untrack(() => props.theme);
-  if (theme !== undefined) installArcTheme(theme);
+  const density = untrack(() => props.density);
+  const contrast = untrack(() => props.contrast);
+  if (theme !== undefined) {
+    installArcTheme({
+      ...theme,
+      ...(density === undefined ? {} : { density }),
+      ...(contrast === undefined ? {} : { contrast }),
+    });
+  } else if (density !== undefined) {
+    installArcDensity(density);
+  }
+  provideArcMessages(() => props.messages);
   const schemeOptions = untrack(() => props.colorScheme);
   const scheme = schemeOptions === false ? undefined : colorScheme(schemeOptions ?? {});
   const locale = untrack(() => props.locale);
@@ -48,7 +76,7 @@ export function ArcProvider(props: ArcProviderProps) {
       <Show when={props.toaster !== false}>
         <Toaster {...(props.toaster === false ? {} : props.toaster)} theme={toastTheme()} />
       </Show>
-      <ConfirmHost />
+      <ConfirmHost {...props.confirm} />
     </>
   );
 }

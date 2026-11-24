@@ -57,7 +57,7 @@ function ranges<T>(value: Responsive<T> | undefined, css: (value: T) => string):
   const out: (string | undefined)[] = Array.from({ length: 10 });
   if (value === undefined) return out as unknown as Ranges;
   if (typeof value !== "object" || value === null) {
-    out[0] = css(value as T);
+    out[0] = css(value);
     return out as unknown as Ranges;
   }
   const steps = value as Partial<Record<"base" | ViewportStep | ContainerQueryStep, T>>;
@@ -391,10 +391,8 @@ export interface InlineProps extends LayoutProps {
  * ```
  */
 export function Inline(props: InlineProps) {
-  const direction = (): Responsive<"row" | "column"> | undefined =>
-    props.stackBelow === undefined
-      ? undefined
-      : ({ base: "column", [props.stackBelow]: "row" } as Responsive<Direction>);
+  const direction = (): Responsive<Direction> | undefined =>
+    props.stackBelow === undefined ? undefined : { base: "column", [props.stackBelow]: "row" };
   return (
     <>
       {drawn(
