@@ -4,8 +4,8 @@ Excalidraw's editor (`@excalidraw/excalidraw` on `@excalidraw/element`
 0.18.0-2c3dcc0), feature by feature: **done** names the test that drives it,
 **pending** names the phase that owns it. Phase 3a is the UI on
 `@barqjs/arc` and `@barqjs/ui` (toolbar, panels, menus, pickers); 3b is the
-dialogs, the library and the remaining tools; phase 4 is collaboration and
-embeds.
+dialogs, the library and the remaining tools, and is done; phase 4 is
+collaboration and embeds, the only lines still pending.
 
 ## Data, rendering, export
 

@@ -98,11 +98,14 @@ const median = (values: number[]): number => {
   return sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 };
 
-async function taskTime(chrome: Page): Promise<number> {
+/** Main-thread task time and the script part of it, in milliseconds. */
+async function mainThread(chrome: Page): Promise<{ task: number; script: number }> {
   const result = (await chrome.send("Performance.getMetrics", {})) as {
     metrics: { name: string; value: number }[];
   };
-  return (result.metrics.find((metric) => metric.name === "TaskDuration")?.value ?? 0) * 1000;
+  const read = (name: string) =>
+    (result.metrics.find((metric) => metric.name === name)?.value ?? 0) * 1000;
+  return { task: read("TaskDuration"), script: read("ScriptDuration") };
 }
 
 async function heap(chrome: Page): Promise<number> {
@@ -124,22 +127,37 @@ const mouse = (
 ) =>
   chrome.send("Input.dispatchMouseEvent", { type, x, y, button: "left", clickCount: 1, ...extra });
 
-/** Main-thread milliseconds per step, each step an input and the frame after it. */
-async function perStep(chrome: Page, steps: number, step: (index: number) => Promise<unknown>) {
+/**
+ * Main-thread milliseconds per step, each step an input and the frame after
+ * it: all of it, and the script, which is the editor's own work (the rest is
+ * mostly the browser drawing the canvases).
+ */
+async function perStep(
+  chrome: Page,
+  steps: number,
+  step: (index: number) => Promise<unknown>,
+): Promise<{ task: number; script: number }> {
   await afterFrame(chrome);
-  const before = await taskTime(chrome);
+  const before = await mainThread(chrome);
   for (let index = 0; index < steps; index++) {
     await step(index);
     await afterFrame(chrome);
   }
-  return ((await taskTime(chrome)) - before) / steps;
+  const after = await mainThread(chrome);
+  return {
+    task: (after.task - before.task) / steps,
+    script: (after.script - before.script) / steps,
+  };
 }
 
 interface Row {
   mount: number;
   drag: number;
+  dragScript: number;
   pan: number;
+  panScript: number;
   zoom: number;
+  zoomScript: number;
   heap: number;
 }
 
@@ -227,7 +245,16 @@ async function measure(url: string, count: number): Promise<Row> {
         }),
       ),
     );
-    return { mount, drag, pan, zoom, heap: heapUsed };
+    return {
+      mount,
+      drag: drag.task,
+      dragScript: drag.script,
+      pan: pan.task,
+      panScript: pan.script,
+      zoom: zoom.task,
+      zoomScript: zoom.script,
+      heap: heapUsed,
+    };
   });
 }
 
@@ -267,8 +294,11 @@ try {
       results[name][count] = {
         mount: median(rows.map((row) => row.mount)),
         drag: median(rows.map((row) => row.drag)),
+        dragScript: median(rows.map((row) => row.dragScript)),
         pan: median(rows.map((row) => row.pan)),
+        panScript: median(rows.map((row) => row.panScript)),
         zoom: median(rows.map((row) => row.zoom)),
+        zoomScript: median(rows.map((row) => row.zoomScript)),
         heap: median(rows.map((row) => row.heap)),
       };
       console.log(name, count, JSON.stringify(results[name][count]));
@@ -284,12 +314,13 @@ const fixed = (value: number, digits = 1) => value.toFixed(digits);
 const lines = [
   "| scene | editor | first render (ms) | drag 100 (ms/frame) | pan (ms/frame) | zoom (ms/frame) | JS heap (MB) |",
   "| --- | --- | --- | --- | --- | --- | --- |",
+  // each frame's main-thread time, with the script part of it in parentheses
 ];
 for (const count of SIZES) {
   for (const name of EDITORS) {
     const row = results[name][count];
     lines.push(
-      `| ${count} | ${name} | ${fixed(row.mount, 0)} | ${fixed(row.drag)} | ${fixed(row.pan)} | ${fixed(row.zoom)} | ${fixed(row.heap / 1024 / 1024)} |`,
+      `| ${count} | ${name} | ${fixed(row.mount, 0)} | ${fixed(row.drag)} (${fixed(row.dragScript)}) | ${fixed(row.pan)} (${fixed(row.panScript)}) | ${fixed(row.zoom)} (${fixed(row.zoomScript)}) | ${fixed(row.heap / 1024 / 1024)} |`,
     );
   }
 }
