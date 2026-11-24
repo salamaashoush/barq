@@ -674,6 +674,17 @@ import { DangerZone, SettingsLayout, SettingsSection } from "@barqjs/arc";
   level that asks `onLoadMore` for the rest. With `dragAndDropHooks` from
   aria's `dragAndDrop()`, rows drag to reorder or into another, by pointer,
   touch or a drag button the keyboard reaches.
+- `KanbanBoard`: columns of cards that move between them, tasks by status
+  or leads by stage, each column `@barqjs/aria`'s grid list with its drag
+  and drop. A card drags by pointer or touch, or from its drag button by
+  keyboard: Enter picks it up, Tab and the arrows choose where, in its
+  column or another, and Enter drops it, announced as it goes. `onMove`
+  says which cards went where and `applyKanbanMove` applies it to the
+  columns. A column counts its cards against its `limit` and turns to a
+  warning past it (`strictLimits` refuses a drop into a full one), folds to
+  a strip, takes new cards with `onAddCard`, and with `virtual` draws only
+  the cards on screen. A card is any content, a `ListItem` usually; the
+  columns scroll sideways, snapping one at a time on a phone.
 
 ## Signing in
 

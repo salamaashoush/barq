@@ -43,6 +43,10 @@ export interface IconButtonProps extends Customisable<Slots> {
   tooltipSide?: "top" | "bottom" | "left" | "right";
   /** Held on: a toggle. Sets `aria-pressed`. */
   isPressed?: boolean;
+  /** Whether what it opens or folds is open. */
+  "aria-expanded"?: boolean;
+  /** The element it opens, folds or acts on. */
+  "aria-controls"?: string;
   isDisabled?: boolean;
   /** A link drawn as the button. */
   href?: string;
@@ -76,6 +80,8 @@ export function IconButton(props: IconButtonProps) {
       isDisabled={props.isDisabled}
       aria-label={props.label}
       aria-pressed={props.isPressed}
+      aria-expanded={props["aria-expanded"]}
+      aria-controls={props["aria-controls"]}
       onPress={(event: PressEvent) => props.onPress?.(event)}
     >
       {props.children}

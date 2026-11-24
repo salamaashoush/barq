@@ -347,6 +347,55 @@ export interface ArcMessages {
   cropHelp: string;
   zoom: string;
   aspectRatio: string;
+  noCards: string;
+  cardCount: (count: number) => string;
+  cardCountOfLimit: (count: number, limit: number) => string;
+  overLimit: string;
+  collapseColumn: (column: string) => string;
+  expandColumn: (column: string) => string;
+  addCard: string;
+  toColumn: (column: string) => string;
+  addAnEmail: string;
+  invalidEmail: (email: string) => string;
+  inviteMembers: string;
+  emailAddresses: string;
+  emailsHint: string;
+  role: string;
+  sendInvites: string;
+  pendingInvites: string;
+  noPendingInvites: string;
+  invitedBy: (name: string) => string;
+  inviteExpired: string;
+  sent: string;
+  resend: string;
+  resendTo: (email: string) => string;
+  revoke: string;
+  revokeFor: (email: string) => string;
+  revokeInviteHeading: (email: string) => string;
+  revokeInviteDescription: string;
+  actionFailed: string;
+  inviteLinks: string;
+  noInviteLinks: string;
+  createInviteLink: string;
+  maxUses: string;
+  expires: string;
+  expiresLabel: string;
+  never: string;
+  neverExpires: string;
+  inDays: (days: number) => string;
+  usesCount: (uses: number) => string;
+  usesOf: (uses: number, max: number) => string;
+  copyLink: string;
+  deactivate: string;
+  deactivateLink: (url: string) => string;
+  deactivateLinkHeading: string;
+  deactivateLinkDescription: string;
+  notANumber: string;
+  cellsCopied: (count: number) => string;
+  cellsPasted: (count: number) => string;
+  groupOf: (value: string, count: number) => string;
+  total: string;
+  addRow: string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -694,6 +743,55 @@ export const ENGLISH: ArcMessages = {
   cropHelp: "Drag the image or use the arrow keys to move it, and + and − to zoom.",
   zoom: "Zoom",
   aspectRatio: "Aspect ratio",
+  noCards: "No cards",
+  cardCount: (count) => (count === 1 ? "1 card" : `${String(count)} cards`),
+  cardCountOfLimit: (count, limit) => `${String(count)} of ${String(limit)} cards`,
+  overLimit: "over its limit",
+  collapseColumn: (column) => `Collapse ${column}`,
+  expandColumn: (column) => `Expand ${column}`,
+  addCard: "Add card",
+  toColumn: (column) => ` to ${column}`,
+  addAnEmail: "Add at least one email address",
+  invalidEmail: (email) => `${email} is not an email address`,
+  inviteMembers: "Invite members",
+  emailAddresses: "Email addresses",
+  emailsHint: "Separate addresses with commas or spaces, or paste a list.",
+  role: "Role",
+  sendInvites: "Send invites",
+  pendingInvites: "Pending invitations",
+  noPendingInvites: "No pending invitations",
+  invitedBy: (name) => `invited by ${name}`,
+  inviteExpired: "Expired",
+  sent: "Sent",
+  resend: "Resend",
+  resendTo: (email) => `Resend the invitation to ${email}`,
+  revoke: "Revoke",
+  revokeFor: (email) => `Revoke the invitation to ${email}`,
+  revokeInviteHeading: (email) => `Revoke the invitation to ${email}?`,
+  revokeInviteDescription: "The link in it stops working.",
+  actionFailed: "That did not work. Try again.",
+  inviteLinks: "Invite links",
+  noInviteLinks: "No invite links",
+  createInviteLink: "Create link",
+  maxUses: "Uses",
+  expires: "Expires",
+  expiresLabel: "Expires",
+  never: "Never",
+  neverExpires: "Never expires",
+  inDays: (days) => (days === 1 ? "In 1 day" : `In ${String(days)} days`),
+  usesCount: (uses) => (uses === 1 ? "1 use" : `${String(uses)} uses`),
+  usesOf: (uses, max) => `${String(uses)} of ${String(max)} uses`,
+  copyLink: "Copy link",
+  deactivate: "Deactivate",
+  deactivateLink: (url) => `Deactivate ${url}`,
+  deactivateLinkHeading: "Deactivate the link?",
+  deactivateLinkDescription: "Anyone who has it can no longer join with it.",
+  notANumber: "Enter a number",
+  cellsCopied: (count) => (count === 1 ? "Copied 1 cell" : `Copied ${String(count)} cells`),
+  cellsPasted: (count) => (count === 1 ? "Pasted 1 cell" : `Pasted ${String(count)} cells`),
+  groupOf: (value, count) => `${value}, ${String(count)} rows`,
+  total: "Total",
+  addRow: "Add row",
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");

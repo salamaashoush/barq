@@ -644,7 +644,7 @@ export function MediaPlayer(props: MediaPlayerProps) {
               variant="ghost"
               size="sm"
               isPressed={showTranscript()}
-              aria-controls={transcriptId}
+              aria-controls={showTranscript() ? transcriptId : undefined}
               onPress={() => setShowTranscript(!showTranscript())}
             >
               <ScrollText aria-hidden="true" />

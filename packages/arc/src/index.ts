@@ -319,6 +319,14 @@ export {
   dockedPanelsStyles,
 } from "./components/docked-panels.tsx";
 export {
+  type KanbanBoardProps,
+  KanbanBoard,
+  type KanbanColumn,
+  type KanbanMoveEvent,
+  applyKanbanMove,
+  kanbanBoardStyles,
+} from "./components/kanban-board.tsx";
+export {
   HighlightMatches,
   type HighlightMatchesProps,
   type MatchRange,
