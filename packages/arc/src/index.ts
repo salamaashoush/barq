@@ -443,3 +443,9 @@ export {
   type TabItem,
   responsiveTabsStyles,
 } from "./components/responsive-tabs.tsx";
+export {
+  BottomNavigation,
+  type BottomNavItem,
+  type BottomNavigationProps,
+  bottomNavigationStyles,
+} from "./components/bottom-navigation.tsx";

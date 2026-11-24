@@ -497,6 +497,12 @@ import { ResponsiveTabs } from "@barqjs/arc";
   a button at each end while there is more that way. An item takes an `icon`,
   a `count`, `isDisabled` and an `href`; `children` draws the selected tab's
   panel. The server writes every tab; the browser folds after hydrating.
+- `BottomNavigation`: a phone's tab bar of three to five destinations, a
+  navigation landmark along the bottom clear of the home indicator. Each item
+  is a router link (`to`, current while the location is under it), a plain
+  `href`, or a button held by `selectedKey`; its `count` or `dot` is an
+  `Indicator` on the icon and part of its name ("Inbox, 3 new"). It hides from
+  `hideFrom` up (`md`), where `AppShell`'s sidebar takes over.
 
 ## Data display
 
