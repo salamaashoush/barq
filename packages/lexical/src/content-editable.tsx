@@ -92,7 +92,9 @@ export function ContentEditableElement(props: ContentEditableElementProps): JSX.
   // a frame being torn down has none either.
   const attach = (element: HTMLDivElement): void => {
     if (element.ownerDocument.defaultView === null) return;
-    if (editor.getRootElement() !== element) editor.setRootElement(element);
+    // Lexical runs its root and update listeners as the root is set, from
+    // inside whatever set it; what they read is theirs, not this effect's.
+    if (editor.getRootElement() !== element) untrack(() => editor.setRootElement(element));
   };
   const bind = (element: HTMLDivElement): (() => void) => {
     root = element;
