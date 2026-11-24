@@ -68,7 +68,9 @@ describe("RadioCards", () => {
       read = () => form.state.values.plan;
       return (
         <form.AppForm>
-          <form.AppField name="plan">{(f) => <f.RadioCards label="Plan" options={PLANS} />}</form.AppField>
+          <form.AppField name="plan">
+            {(f) => <f.RadioCards label="Plan" options={PLANS} />}
+          </form.AppField>
         </form.AppForm>
       );
     });

@@ -86,7 +86,10 @@ export function ActionBar(props: ActionBarProps) {
       ...own,
       action: arc(buttonVariants({ variant: props.variant ?? "outline", size }), own.action),
       more: arc(
-        buttonVariants({ variant: props.variant ?? "outline", size: size === "sm" ? "icon-sm" : "icon" }),
+        buttonVariants({
+          variant: props.variant ?? "outline",
+          size: size === "sm" ? "icon-sm" : "icon",
+        }),
         own.more,
       ),
       menu: arc(menu.content, own.menu),

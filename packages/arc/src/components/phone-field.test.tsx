@@ -29,7 +29,9 @@ describe("phone numbers", () => {
 
 describe("PhoneField", () => {
   test("a dial pad input named by its label, beside a region named with its code", async () => {
-    render(() => <PhoneField label="Mobile" defaultCountry="EG" description="For sign-in codes." />);
+    render(() => (
+      <PhoneField label="Mobile" defaultCountry="EG" description="For sign-in codes." />
+    ));
     await settle();
     expect(input().type).toBe("tel");
     expect(input().getAttribute("autocomplete")).toBe("tel-national");
@@ -41,7 +43,9 @@ describe("PhoneField", () => {
 
   test("what is typed is held in E.164, and a + number picks its own region", async () => {
     const [phone, setPhone] = createSignal<string | null>(null);
-    render(() => <PhoneField label="Mobile" defaultCountry="EG" value={phone()} onChange={setPhone} />);
+    render(() => (
+      <PhoneField label="Mobile" defaultCountry="EG" value={phone()} onChange={setPhone} />
+    ));
     await settle();
     await user.type(input(), "0100 123 4567");
     await settle();

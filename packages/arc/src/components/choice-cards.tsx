@@ -29,7 +29,8 @@ export const choiceCardsStyles = variants({
   slots: {
     group: arc(layout.fill, gap[3], {
       display: "grid",
-      gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, var(--choice-card-min, 14rem)), 1fr))",
+      gridTemplateColumns:
+        "repeat(auto-fill, minmax(min(100%, var(--choice-card-min, 14rem)), 1fr))",
     }),
     card: arc(target.size, { cursor: "pointer" }),
     body: arc({ alignItems: "flex-start" }),
@@ -114,11 +115,20 @@ export function RadioCards(props: RadioCardsProps) {
   const of = bindField<string | null>(props, null);
   const cls = () => parts({ ...fieldStyles(), ...choiceCardsStyles() }, props.classes);
   return (
-    <Frame of={of} label={props.label} description={props.description} field={props} labelledById slot="radio-cards">
+    <Frame
+      of={of}
+      label={props.label}
+      description={props.description}
+      field={props}
+      labelledById
+      slot="radio-cards"
+    >
       <RadioGroup
         class={cls().group}
         data-slot="radio-cards-group"
-        style={props.minCardWidth === undefined ? undefined : { "--choice-card-min": props.minCardWidth }}
+        style={
+          props.minCardWidth === undefined ? undefined : { "--choice-card-min": props.minCardWidth }
+        }
         aria-labelledby={of.ids.label}
         aria-describedby={of.describedBy(props.description !== undefined)}
         value={of.value()}
@@ -173,12 +183,21 @@ export function CheckboxCards(props: CheckboxCardsProps) {
     of.blur();
   };
   return (
-    <Frame of={of} label={props.label} description={props.description} field={props} labelledById slot="checkbox-cards">
+    <Frame
+      of={of}
+      label={props.label}
+      description={props.description}
+      field={props}
+      labelledById
+      slot="checkbox-cards"
+    >
       <div
         class={cls().group}
         data-slot="checkbox-cards-group"
         role="group"
-        style={props.minCardWidth === undefined ? undefined : { "--choice-card-min": props.minCardWidth }}
+        style={
+          props.minCardWidth === undefined ? undefined : { "--choice-card-min": props.minCardWidth }
+        }
         aria-labelledby={of.ids.label}
         aria-describedby={of.describedBy(props.description !== undefined)}
       >

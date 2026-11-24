@@ -41,7 +41,9 @@ describe("DateRangeField", () => {
     await settle();
     await user.click(trigger());
     await opened();
-    await user.click(document.querySelector('[data-slot="date-range-picker-presets"]') as HTMLElement);
+    await user.click(
+      document.querySelector('[data-slot="date-range-picker-presets"]') as HTMLElement,
+    );
     await opened();
     expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
       "Today",
@@ -58,7 +60,11 @@ describe("DateRangeField", () => {
   test("from the keyboard: Enter opens the calendar, two days pick the range", async () => {
     const chosen: (DateRange | null)[] = [];
     render(() => (
-      <DateRangeField label="Period" defaultValue={MARCH} onChange={(range) => chosen.push(range)} />
+      <DateRangeField
+        label="Period"
+        defaultValue={MARCH}
+        onChange={(range) => chosen.push(range)}
+      />
     ));
     await settle();
     trigger().focus();
@@ -111,7 +117,9 @@ describe("DateRangeField", () => {
     expect(trigger().textContent).toContain("Mar 07, 2030");
     await user.click(trigger());
     await opened();
-    await user.click(document.querySelector('[data-slot="date-range-picker-presets"]') as HTMLElement);
+    await user.click(
+      document.querySelector('[data-slot="date-range-picker-presets"]') as HTMLElement,
+    );
     await opened();
     await user.click(screen.getByRole("option", { name: "Today" }));
     await settle();

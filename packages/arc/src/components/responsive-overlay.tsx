@@ -119,8 +119,7 @@ export function ResponsiveOverlay(props: ResponsiveOverlayProps) {
   );
   const presentation = (): OverlayPresentation =>
     compact() ? "sheet" : (props.desktop ?? "dialog");
-  const cls = () =>
-    parts(responsiveOverlayStyles({ presentation: presentation() }), props.classes);
+  const cls = () => parts(responsiveOverlayStyles({ presentation: presentation() }), props.classes);
   const root = (): string => arc(cls().root, props.class, props.className);
   const body = () => (
     <div class={cls().body} data-slot="responsive-overlay-body">
@@ -163,7 +162,9 @@ export function ResponsiveOverlay(props: ResponsiveOverlayProps) {
             <PopoverHeader class={cls().header}>
               <PopoverTitle class={cls().title}>{props.heading}</PopoverTitle>
               <Show when={props.description !== undefined}>
-                <PopoverDescription class={cls().description}>{props.description}</PopoverDescription>
+                <PopoverDescription class={cls().description}>
+                  {props.description}
+                </PopoverDescription>
               </Show>
             </PopoverHeader>
             {body()}

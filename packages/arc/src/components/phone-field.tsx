@@ -96,10 +96,7 @@ export const phoneFieldStyles = variants({
 type Slots = ReturnType<typeof phoneFieldStyles> & FieldSlots;
 
 export interface PhoneFieldProps
-  extends
-    Omit<ArcFieldProps, "classes">,
-    FieldValueProps<string | null>,
-    Customisable<Slots> {
+  extends Omit<ArcFieldProps, "classes">, FieldValueProps<string | null>, Customisable<Slots> {
   /** The region shown before a number says otherwise. @default the locale's region */
   defaultCountry?: string;
   /** The regions offered, in place of every one. */
@@ -137,7 +134,9 @@ export function PhoneField(props: PhoneFieldProps) {
   };
   const parsed = createMemo((): PhoneNumber | null => {
     const value = of.value();
-    return value === null || value === undefined ? null : parsePhone(value, untrack(picked) ?? undefined);
+    return value === null || value === undefined
+      ? null
+      : parsePhone(value, untrack(picked) ?? undefined);
   });
   const country = (): string =>
     picked() ?? parsed()?.country ?? props.defaultCountry ?? regionOfLocale() ?? "US";
@@ -169,7 +168,9 @@ export function PhoneField(props: PhoneFieldProps) {
   const check = (): void => {
     const digits = `${CALLING_CODES.get(untrack(country)) ?? ""}${untrack(shown).replace(/\D/g, "").replace(/^0+/, "")}`;
     const national = untrack(shown).replace(/\D/g, "");
-    setProblem(national !== "" && (digits.length < 7 || digits.length > 15) ? messages().invalidPhone : null);
+    setProblem(
+      national !== "" && (digits.length < 7 || digits.length > 15) ? messages().invalidPhone : null,
+    );
   };
 
   const wiring = withOwnErrors(of, () => {
@@ -180,7 +181,13 @@ export function PhoneField(props: PhoneFieldProps) {
   const cls = () => parts({ ...fieldStyles(), ...phoneFieldStyles() }, props.classes);
 
   return (
-    <Frame of={wiring} label={props.label} description={props.description} field={props} slot="phone-field">
+    <Frame
+      of={wiring}
+      label={props.label}
+      description={props.description}
+      field={props}
+      slot="phone-field"
+    >
       <div
         class={cls().control}
         data-slot="phone-field-control"

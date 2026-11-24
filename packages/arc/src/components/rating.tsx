@@ -16,16 +16,7 @@ import {
 } from "../lib/field.tsx";
 import { type Customisable, parts } from "../lib/parts.ts";
 import { square } from "../lib/size.ts";
-import {
-  fg,
-  focus,
-  layout,
-  motion,
-  rounded,
-  space,
-  target,
-  tone,
-} from "../style/index.ts";
+import { fg, focus, layout, motion, rounded, space, target, tone } from "../style/index.ts";
 import { useArcMessages } from "./messages.ts";
 
 /** A star in the tone, filled. */
@@ -108,14 +99,18 @@ export function Rating(props: RatingProps) {
   const [hovered, setHovered] = createSignal<number | null>(null);
   const max = (): number => props.max ?? 5;
   const stars = (): number[] => Array.from({ length: max() }, (_, at) => at + 1);
-  const cls = () => parts({ ...fieldStyles(), ...ratingStyles({ size: props.size }) }, props.classes);
+  const cls = () =>
+    parts({ ...fieldStyles(), ...ratingStyles({ size: props.size }) }, props.classes);
   const filled = (star: number): boolean => star <= (hovered() ?? of.value() ?? 0);
   const number = (value: number): string =>
     new Intl.NumberFormat(locale().locale, { maximumFractionDigits: 1 }).format(value);
 
   const shown = () => (
     <span
-      class={arc(cls().display, props.label === undefined ? arc(props.class, props.className) : undefined)}
+      class={arc(
+        cls().display,
+        props.label === undefined ? arc(props.class, props.className) : undefined,
+      )}
       data-slot="rating"
       role="img"
       aria-label={
@@ -146,7 +141,10 @@ export function Rating(props: RatingProps) {
 
   const given = () => (
     <RadioGroup
-      class={arc(cls().group, props.label === undefined ? arc(props.class, props.className) : undefined)}
+      class={arc(
+        cls().group,
+        props.label === undefined ? arc(props.class, props.className) : undefined,
+      )}
       data-slot="rating"
       orientation="horizontal"
       value={of.value() === null || of.value() === undefined ? null : String(of.value())}

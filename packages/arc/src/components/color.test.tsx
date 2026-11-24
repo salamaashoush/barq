@@ -89,7 +89,11 @@ describe("ColorSwatches", () => {
   test("a swatch has room for a finger and a tap picks it", async () => {
     const chosen: (string | null)[] = [];
     render(() => (
-      <ColorSwatches aria-label="Colour" colors={PALETTE} onChange={(value) => chosen.push(value)} />
+      <ColorSwatches
+        aria-label="Colour"
+        colors={PALETTE}
+        onChange={(value) => chosen.push(value)}
+      />
     ));
     await settle();
     const option = screen.getAllByRole("option")[1] as HTMLElement;

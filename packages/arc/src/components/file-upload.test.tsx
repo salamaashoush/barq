@@ -127,7 +127,11 @@ describe("useUploadQueue and UploadQueue", () => {
       queue = useUploadQueue({ upload });
       return <UploadQueue queue={queue} />;
     });
-    queue.add([file("a.txt", 1, "text/plain"), file("b.txt", 1, "text/plain"), file("c.txt", 1, "text/plain")]);
+    queue.add([
+      file("a.txt", 1, "text/plain"),
+      file("b.txt", 1, "text/plain"),
+      file("c.txt", 1, "text/plain"),
+    ]);
     await settle();
     expect(queue.items().map((item) => item.status)).toEqual(["uploading", "uploading", "queued"]);
     pending.get("a.txt")?.context.onProgress(0.5);
@@ -209,9 +213,9 @@ describe("FileUpload", () => {
     pick([file("a.txt", 1, "text/plain")]);
     await waitFor(() => expect(sent).toEqual(["a.txt"]));
     await settle();
-    expect(document.querySelector('[data-slot="upload-queue-item"]')?.getAttribute("data-status")).toBe(
-      "done",
-    );
+    expect(
+      document.querySelector('[data-slot="upload-queue-item"]')?.getAttribute("data-status"),
+    ).toBe("done");
   });
 
   test("takes a class per part and a slot on every part", async () => {
