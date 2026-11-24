@@ -1,4 +1,5 @@
 import {
+  For,
   Show,
   createRenderEffect,
   createSignal,
@@ -15,7 +16,12 @@ import type { Theme } from "@excalidraw/element/types";
 import { DiagramEditor as Editor } from "./editor/editor.ts";
 
 import type { DiagramScene } from "./data/types.ts";
-import type { DiagramChangeListener, DiagramEditorApi, TextEditRequest } from "./editor/editor.ts";
+import type {
+  DiagramChangeListener,
+  DiagramEditorApi,
+  FrameName,
+  TextEditRequest,
+} from "./editor/editor.ts";
 
 export interface DiagramEditorProps {
   /** The scene the editor opens with; read once, as Excalidraw's `initialData`. */
@@ -41,6 +47,16 @@ const SR_ONLY =
   "position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0";
 
 const CANVAS_STYLE = "position:absolute;inset:0;display:block";
+
+const FRAME_NAME_STYLE =
+  "position:absolute;z-index:2;width:max-content;white-space:nowrap;text-overflow:ellipsis;cursor:move";
+
+const FRAME_NAME_EDIT_PADDING = 6;
+
+const FRAME_NAME_INPUT_STYLE =
+  `display:block;border:none;padding:${FRAME_NAME_EDIT_PADDING}px;border-radius:4px;` +
+  `font:inherit;color:inherit;background:Canvas;box-shadow:inset 0 0 0 1px Highlight;` +
+  `transform:translate(-${FRAME_NAME_EDIT_PADDING}px, ${FRAME_NAME_EDIT_PADDING}px)`;
 
 const SVG_LAYER_STYLE =
   "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible";
@@ -83,6 +99,9 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
   const [announcement, setAnnouncement] = createSignal("");
   // the text being edited: a textarea over it while it is
   const [textEdit, setTextEdit] = createSignal<TextEditRequest | null>(null);
+  // the frames' names: the list changes as frames come, go or are renamed;
+  // the editor places each element as the viewport moves
+  const [frameNames, setFrameNames] = createSignal<readonly FrameName[]>([]);
 
   const size = (): string => {
     const height = props.height ?? 480;
@@ -127,12 +146,16 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
       queueMicrotask(() => setTextEdit(request)),
     );
     const offTextEditEnd = created.onTextEditEnd(() => queueMicrotask(() => setTextEdit(null)));
+    const offFrameNames = created.onFrameNamesChange((frames) =>
+      queueMicrotask(() => setFrameNames(frames)),
+    );
     untrack(() => props.api)?.(created.api);
     return () => {
       offAnnounce();
       offChange();
       offTextEdit();
       offTextEditEnd();
+      offFrameNames();
       created.destroy();
       if (editor === created) editor = null;
     };
@@ -178,6 +201,44 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
       <canvas aria-hidden="true" style={`${CANVAS_STYLE};pointer-events:none`} />
       <canvas aria-hidden="true" style={CANVAS_STYLE} />
       <svg aria-hidden="true" style={SVG_LAYER_STYLE} />
+      <For each={frameNames()} keyed={(frame) => frame.id}>
+        {(frame) => {
+          let detach: (() => void) | undefined;
+          onCleanup(() => detach?.());
+          return (
+            <div
+              style={FRAME_NAME_STYLE}
+              ref={(element: HTMLDivElement) => {
+                detach = editor?.attachFrameName(frame().id, element);
+              }}
+            >
+              <Show when={frame().editing} fallback={frame().title}>
+                <input
+                  aria-label="Frame name"
+                  value={frame().title}
+                  size={frame().title.length + 1}
+                  dir="auto"
+                  autocomplete="off"
+                  style={FRAME_NAME_INPUT_STYLE}
+                  ref={(input: HTMLInputElement) =>
+                    queueMicrotask(() => {
+                      input.focus();
+                      input.select();
+                    })
+                  }
+                  onInput={(event) => editor?.renameFrame(frame().id, event.currentTarget.value)}
+                  onBlur={() => editor?.endFrameNameEdit()}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape" || event.key === "Enter") {
+                      editor?.endFrameNameEdit();
+                    }
+                  }}
+                />
+              </Show>
+            </div>
+          );
+        }}
+      </For>
       <Show when={textEdit()} keyed>
         {(request) => (
           <textarea

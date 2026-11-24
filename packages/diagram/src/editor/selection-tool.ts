@@ -66,6 +66,7 @@ import { duplicateDraggedSelection } from "./duplicate.ts";
 import { selectGroupsForSelectedElements } from "./selection.ts";
 import { patchLinearEditor } from "./linear.ts";
 
+import type { AppState } from "../types.ts";
 import type { DiagramEditor } from "./editor.ts";
 import type { PointerDownState, ReactPointerEvent } from "./types.ts";
 
@@ -810,20 +811,24 @@ export class SelectionTool {
    * After dragging the selection: the dragged elements join the frame they're
    * dropped in, or leave theirs (and the edited group, if they leave it).
    */
-  handleSelectionDragOnPointerUp = (childEvent: PointerEvent) => {
-    const sceneCoords = viewportCoordsToSceneCoords(childEvent, this.app.state);
+  /**
+   * `stateAtUp` is the state as the pointer went up, before the pointer up
+   * reset the drag: frame membership reads the frame the drag highlighted.
+   */
+  handleSelectionDragOnPointerUp = (childEvent: PointerEvent, stateAtUp: AppState) => {
+    const sceneCoords = viewportCoordsToSceneCoords(childEvent, stateAtUp);
     // update the relationships between selected elements and frames
-    const selectedElements = this.app.scene.getSelectedElements(this.app.state);
+    const selectedElements = this.app.scene.getSelectedElements(stateAtUp);
     const topLayerFrame = this.app.getTopLayerFrameAtSceneCoords(sceneCoords, {
       currentFrameId: getCommonFrameId(selectedElements),
-      excludeElementIds: this.app.state.selectedElementIds,
+      excludeElementIds: stateAtUp.selectedElementIds,
     });
     let nextElements = this.app.scene.getElementsMapIncludingDeleted();
 
     const updateGroupIdsAfterEditingGroup = (elements: ExcalidrawElement[]) => {
       if (elements.length > 0) {
         for (const element of elements) {
-          const index = element.groupIds.indexOf(this.app.state.editingGroupId!);
+          const index = element.groupIds.indexOf(stateAtUp.editingGroupId!);
 
           this.app.scene.mutateElement(
             element,
@@ -856,20 +861,20 @@ export class SelectionTool {
       }
     };
 
-    if (topLayerFrame && !this.app.state.selectedElementIds[topLayerFrame.id]) {
+    if (topLayerFrame && !stateAtUp.selectedElementIds[topLayerFrame.id]) {
       const elementsToAdd = selectedElements.filter((element) =>
-        isElementInFrame(element, nextElements, this.app.state),
+        isElementInFrame(element, nextElements, stateAtUp),
       );
 
-      if (this.app.state.editingGroupId) {
+      if (stateAtUp.editingGroupId) {
         updateGroupIdsAfterEditingGroup(elementsToAdd);
       }
 
       nextElements = addElementsToFrame(nextElements, elementsToAdd, topLayerFrame);
     } else if (!topLayerFrame) {
-      if (this.app.state.editingGroupId) {
+      if (stateAtUp.editingGroupId) {
         const elementsToRemove = selectedElements.filter(
-          (element) => element.frameId && !isElementInFrame(element, nextElements, this.app.state),
+          (element) => element.frameId && !isElementInFrame(element, nextElements, stateAtUp),
         );
 
         updateGroupIdsAfterEditingGroup(elementsToRemove);
@@ -878,7 +883,7 @@ export class SelectionTool {
 
     nextElements = updateFrameMembershipOfSelectedElements(
       nextElements,
-      this.app.state,
+      stateAtUp,
       this.app.elementApp,
     );
     // the dragged arrows, and those bound to the dragged elements
@@ -1071,7 +1076,7 @@ export class SelectionTool {
             element: hitElement,
             elementsMap,
             threshold: this.app.getElementHitThreshold(hitElement),
-            frameNameBound: null,
+            frameNameBound: this.app.getFrameNameBound(hitElement),
           },
           elementsMap,
         )) ||

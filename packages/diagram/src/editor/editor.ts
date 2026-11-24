@@ -1,7 +1,10 @@
 import {
   ARROW_TYPE,
   CURSOR_TYPE,
+  FRAME_STYLE,
+  THEME,
   getFontString,
+  sceneCoordsToViewportCoords,
   DEFAULT_COLLISION_THRESHOLD,
   DEFAULT_STROKE_STREAMLINE,
   DEFAULT_STROKE_STREAMLINE_PRECISE,
@@ -60,6 +63,11 @@ import {
   getElementsInResizingFrame,
   getFrameArrowIdsToReattach,
   getFrameChildrenInsertionIndex,
+  getFrameLikeTitle,
+  getElementsInNewFrame,
+  addElementsToFrame,
+  isElementInViewport,
+  newFrameElement,
   getHoveredElementForBinding,
   getNormalizedDimensions,
   getSelectedGroupIdForElement,
@@ -102,6 +110,7 @@ import {
   newArrowElement,
   newElement,
   newFreeDrawElement,
+  newMagicFrameElement,
   newLinearElement,
   removeArrowsWithoutEndInFrame,
   removeElementsFromFrame,
@@ -179,6 +188,7 @@ import type { InteractiveSceneRenderAnimationState, ScrollBars } from "../scene/
 import type {
   AppState,
   BinaryFiles,
+  FrameNameBounds,
   KeyboardModifiersObject,
   NullableGridSize,
   ToolType,
@@ -201,6 +211,14 @@ export type DiagramChangeListener = (
   appState: AppState,
   files: BinaryFiles,
 ) => void;
+
+/** A frame's name, which the host shows over the canvas, as text or, while it is edited, an input. */
+export interface FrameName {
+  id: ExcalidrawFrameLikeElement["id"];
+  /** The name, or the frame's default title. */
+  title: string;
+  editing: boolean;
+}
 
 /** The scene an `updateScene` replaces, and how the change is recorded for undo. */
 export interface SceneData {
@@ -411,6 +429,14 @@ export class DiagramEditor {
   private readonly announceEmitter = new Emitter<[message: string]>();
   private readonly textEditEmitter = new Emitter<[request: TextEditRequest]>();
   private readonly textEditEndEmitter = new Emitter();
+  private readonly frameNamesEmitter = new Emitter<[frames: readonly FrameName[]]>();
+  private readonly frameNameElements = new Map<string, HTMLElement>();
+  private frameNamesKey = "";
+  private frameNames: readonly FrameName[] = [];
+  private readonly frameNameBounds = new Map<
+    string,
+    { x: number; y: number; width: number; height: number; zoom: number; versionNonce: number }
+  >();
   private readonly listeners: (() => void)[] = [];
   private readonly resize: ResizeObserver | null = null;
   private readonly gesture: Gesture = {
@@ -589,6 +615,167 @@ export class DiagramEditor {
     return this.textEditEmitter.on(listener);
   }
 
+  /**
+   * Subscribes to the frames' names, the list the host renders: called when
+   * a frame comes or goes, is renamed, or its name is edited, and not as the
+   * viewport moves, which the editor follows by placing the attached
+   * elements itself.
+   */
+  public onFrameNamesChange(listener: (frames: readonly FrameName[]) => void): () => void {
+    listener(this.frameNames);
+    return this.frameNamesEmitter.on(listener);
+  }
+
+  /**
+   * Gives the editor a frame name's element to place over its frame each
+   * frame. A press on it is the canvas', a double-click edits the name.
+   */
+  public attachFrameName(frameId: string, element: HTMLElement): () => void {
+    this.frameNameElements.set(frameId, element);
+    const onPointerDown = (event: PointerEvent) => {
+      if (this.state.editingFrame === frameId) return;
+      this.batch(() => this.handleCanvasPointerDown(event));
+    };
+    const onDoubleClick = () => this.batch(() => this.setState({ editingFrame: frameId }));
+    const onContextMenu = (event: Event) => event.preventDefault();
+    element.addEventListener("pointerdown", onPointerDown);
+    element.addEventListener("dblclick", onDoubleClick);
+    element.addEventListener("contextmenu", onContextMenu);
+    this.scheduleRender();
+    return () => {
+      element.removeEventListener("pointerdown", onPointerDown);
+      element.removeEventListener("dblclick", onDoubleClick);
+      element.removeEventListener("contextmenu", onContextMenu);
+      if (this.frameNameElements.get(frameId) === element) {
+        this.frameNameElements.delete(frameId);
+        this.frameNameBounds.delete(frameId);
+      }
+    };
+  }
+
+  /** Renames a frame as its name is typed; the edit ends with `endFrameNameEdit`. */
+  public renameFrame(frameId: string, name: string): void {
+    this.batch(() => {
+      const frame = this.scene.getNonDeletedElement(frameId);
+      if (frame && isFrameLikeElement(frame)) {
+        this.scene.mutateElement(frame, { name });
+      }
+    });
+  }
+
+  /** Ends editing a frame's name, trimmed, or the default title when empty. */
+  public endFrameNameEdit(): void {
+    this.batch(() => {
+      const frameId = this.state.editingFrame;
+      const frame = frameId ? this.scene.getNonDeletedElement(frameId) : null;
+      this.resetEditingFrame(frame && isFrameLikeElement(frame) ? frame : null);
+    });
+  }
+
+  private resetEditingFrame(frame: ExcalidrawFrameLikeElement | null): void {
+    if (frame) {
+      this.scene.mutateElement(frame, { name: frame.name?.trim() || null });
+    }
+    this.setState({ editingFrame: null });
+  }
+
+  /**
+   * Where a frame's name is, in scene coordinates, from its element's size:
+   * a press there is on the frame.
+   */
+  public getFrameNameBound(element: ExcalidrawElement): FrameNameBounds | null {
+    if (!isFrameLikeElement(element)) {
+      return null;
+    }
+    let bounds = this.frameNameBounds.get(element.id);
+    if (
+      !bounds ||
+      bounds.zoom !== this.state.zoom.value ||
+      bounds.versionNonce !== element.versionNonce
+    ) {
+      const nameElement = this.frameNameElements.get(element.id);
+      if (!nameElement || nameElement.style.display === "none") {
+        return null;
+      }
+      const box = nameElement.getBoundingClientRect();
+      const zoom = this.state.zoom.value;
+      bounds = {
+        x: element.x,
+        y: element.y - (box.height + FRAME_STYLE.nameOffsetY) / zoom,
+        width: box.width / zoom,
+        height: box.height / zoom,
+        zoom,
+        versionNonce: element.versionNonce,
+      };
+      this.frameNameBounds.set(element.id, bounds);
+    }
+    return bounds;
+  }
+
+  private updateFrameNames(): void {
+    const { frameRendering, editingFrame } = this.state;
+    if (!frameRendering.enabled || !frameRendering.name) {
+      if (editingFrame) {
+        this._state = { ...this._state, editingFrame: null };
+        this.committedState = this._state;
+      }
+    }
+    const frames =
+      frameRendering.enabled && frameRendering.name
+        ? this.scene.getNonDeletedFramesLikes().map((frame) => ({
+            id: frame.id,
+            title: getFrameLikeTitle(frame),
+            editing: frame.id === this.state.editingFrame,
+          }))
+        : [];
+    const key = frames
+      .map((frame) => `${frame.id}\u0000${frame.title}\u0000${frame.editing}`)
+      .join("\u0001");
+    if (key !== this.frameNamesKey) {
+      this.frameNamesKey = key;
+      this.frameNames = frames;
+      this.frameNamesEmitter.trigger(frames);
+    }
+  }
+
+  /** Places each attached frame name above its frame, hidden when its frame is out of view. */
+  private placeFrameNames(): void {
+    if (this.frameNameElements.size === 0) return;
+    const { state } = this;
+    const isDarkTheme = state.theme === THEME.DARK;
+    const elementsMap = this.scene.getNonDeletedElementsMap();
+    for (const [frameId, nameElement] of this.frameNameElements) {
+      const frame = elementsMap.get(frameId);
+      if (
+        !frame ||
+        !isFrameLikeElement(frame) ||
+        !isElementInViewport(frame, state.width, state.height, state, elementsMap)
+      ) {
+        if (frame && isFrameLikeElement(frame) && state.editingFrame === frameId) {
+          this.batch(() => this.resetEditingFrame(frame));
+        }
+        nameElement.style.display = "none";
+        continue;
+      }
+      const { x: x1, y: y1 } = sceneCoordsToViewportCoords(
+        { sceneX: frame.x, sceneY: frame.y },
+        state,
+      );
+      const style = nameElement.style;
+      style.display = "";
+      style.position = "absolute";
+      // from the bottom, so that the name's height need not be measured
+      style.bottom = `${state.height + FRAME_STYLE.nameOffsetY - y1 + state.offsetTop}px`;
+      style.left = `${x1 - state.offsetLeft}px`;
+      style.fontSize = `${FRAME_STYLE.nameFontSize}px`;
+      style.lineHeight = String(FRAME_STYLE.nameLineHeight);
+      style.color = isDarkTheme ? FRAME_STYLE.nameColorDarkTheme : FRAME_STYLE.nameColorLightTheme;
+      style.maxWidth = `${frame.width * state.zoom.value}px`;
+      style.overflow = state.editingFrame === frameId ? "visible" : "hidden";
+      style.pointerEvents = state.viewModeEnabled ? "none" : "auto";
+    }
+  }
+
   /** Subscribes to the end of a text edit, when the host removes its textarea. */
   public onTextEditEnd(listener: () => void): () => void {
     return this.textEditEndEmitter.on(listener);
@@ -762,6 +949,8 @@ export class DiagramEditor {
       // nothing is edited in view mode
       queueMicrotask(() => this.text.textWysiwygSubmitHandler?.());
     }
+
+    this.updateFrameNames();
 
     this.store.commit(this.scene.getElementsMapIncludingDeleted(), this.state);
     this.changeEmitter.trigger(this.scene.getElementsIncludingDeleted(), this.state, this.files);
@@ -952,6 +1141,10 @@ export class DiagramEditor {
     if (!isBindingElementType(nextActiveTool.type)) {
       this.setState({ suggestedBinding: null });
     }
+    if (this.state.editingFrame) {
+      const frame = this.scene.getNonDeletedElement(this.state.editingFrame);
+      this.resetEditingFrame(frame && isFrameLikeElement(frame) ? frame : null);
+    }
 
     this.setState((prevState) => {
       const commonResets = {
@@ -1111,7 +1304,7 @@ export class DiagramEditor {
       element,
       threshold: this.getElementHitThreshold(element),
       elementsMap: this.scene.getNonDeletedElementsMap(),
-      frameNameBound: null,
+      frameNameBound: this.getFrameNameBound(element),
     });
   }
 
@@ -1194,7 +1387,7 @@ export class DiagramEditor {
         element: topmost,
         threshold: this.getElementHitThreshold(topmost) / 2,
         elementsMap: this.scene.getNonDeletedElementsMap(),
-        frameNameBound: null,
+        frameNameBound: this.getFrameNameBound(topmost),
       })
         ? topmost
         : (allHitElements[allHitElements.length - 2] ?? null);
@@ -1657,6 +1850,8 @@ export class DiagramEditor {
         this.selection.add(pointerDownState.hit.element);
         pointerDownState.hit.wasAddedToSelection = true;
       }
+    } else if (toolType === "frame" || toolType === "magicframe") {
+      this.createFrameElementOnPointerDown(pointerDownState, toolType);
     } else if (toolType === "laser") {
       this.laserTrails.startPath(pointerDownState.lastCoords.x, pointerDownState.lastCoords.y);
     } else if (toolType === "text") {
@@ -2161,6 +2356,30 @@ export class DiagramEditor {
     }
   }
 
+  private createFrameElementOnPointerDown(
+    pointerDownState: PointerDownState,
+    type: "frame" | "magicframe",
+  ): void {
+    const [gridX, gridY] = getGridPoint(
+      pointerDownState.origin.x,
+      pointerDownState.origin.y,
+      this.lastPointerDownEvent?.[KEYS.CTRL_OR_CMD] ? null : this.getEffectiveGridSize(),
+    );
+    const constructorOpts = {
+      x: gridX,
+      y: gridY,
+      opacity: this.state.currentItemOpacity,
+      locked: false,
+      ...FRAME_STYLE,
+    } as const;
+    const frame =
+      type === "magicframe"
+        ? newMagicFrameElement(constructorOpts)
+        : newFrameElement(constructorOpts);
+    this.insertNewElement(frame);
+    this.setState({ multiElement: null, newElement: frame });
+  }
+
   /** Sizes the element being drawn out, or the selection box, to the pointer. */
   public maybeDragNewGenericElement(
     pointerDownState: PointerDownState,
@@ -2580,6 +2799,9 @@ export class DiagramEditor {
       isRotating,
     } = this.state;
 
+    // the state as the pointer went up: Excalidraw reads it through the
+    // pointer up, which resets it only once its handler is done
+    const stateAtUp = this.state;
     this.activeResizeHandle = null;
     this.setState((prevState) => ({
       isResizing: false,
@@ -2842,6 +3064,22 @@ export class DiagramEditor {
       return;
     }
 
+    if (isFrameLikeElement(newElementAtUp)) {
+      // a new frame takes in what it was drawn around
+      const elementsInsideFrame = getElementsInNewFrame(
+        this.scene.getElementsIncludingDeleted(),
+        newElementAtUp,
+        this.scene.getNonDeletedElementsMap(),
+      );
+      this.scene.replaceAllElements(
+        addElementsToFrame(
+          this.scene.getElementsMapIncludingDeleted(),
+          elementsInsideFrame,
+          newElementAtUp,
+        ),
+      );
+    }
+
     if (newElementAtUp) {
       this.scene.mutateElement(newElementAtUp, getNormalizedDimensions(newElementAtUp), {
         informMutation: false,
@@ -2867,7 +3105,7 @@ export class DiagramEditor {
           }
         }
       } else {
-        this.selectionTool.handleSelectionDragOnPointerUp(childEvent);
+        this.selectionTool.handleSelectionDragOnPointerUp(childEvent, stateAtUp);
       }
     }
 
@@ -3885,6 +4123,9 @@ export class DiagramEditor {
         }
       }
       event.preventDefault();
+    } else if (isFrameLikeElement(selected)) {
+      this.setState({ editingFrame: selected.id });
+      event.preventDefault();
     } else if (isTextElement(selected) || isValidTextContainer(selected)) {
       const midPoint = getContainerCenter(selected, this.scene.getNonDeletedElementsMap());
       this.text.startTextEditing({
@@ -4216,6 +4457,7 @@ export class DiagramEditor {
       animationState: this.animationState ?? { bindingHighlight: undefined },
       deltaTime,
     });
+    this.placeFrameNames();
     const next = result.animationState;
     this.animationState = next;
     if (next && Object.values(next).some((value) => value !== undefined)) {

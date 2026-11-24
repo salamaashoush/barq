@@ -24,6 +24,7 @@ export const TOOLS = {
   freedraw: { letterKey: [KEYS.P, KEYS.X], numericKey: KEYS["7"] },
   text: { letterKey: KEYS.T, numericKey: KEYS["8"] },
   eraser: { letterKey: KEYS.E, numericKey: KEYS["0"], toggle: true },
+  frame: { letterKey: KEYS.F },
   laser: { letterKey: KEYS.K },
   lasso: {},
 } satisfies Partial<Record<ToolType, ToolConfig>>;

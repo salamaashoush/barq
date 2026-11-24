@@ -134,6 +134,38 @@ describe("DiagramEditor", () => {
     expect(document.activeElement).toBe(region);
   });
 
+  test("shows each frame's name over the canvas, and edits it in an input", async () => {
+    const { newFrameElement } = await import("@excalidraw/element");
+    const scene = {
+      elements: [{ ...newFrameElement({ x: 40, y: 80, width: 300, height: 200 }), id: "f" }],
+      appState: {},
+      files: {},
+    };
+    const { api, region } = await mount((grab) => (
+      <DiagramEditor api={grab} initialData={scene} />
+    ));
+    await settle();
+    api.refresh();
+    await settle();
+    const name = [...region.querySelectorAll("div")].find((div) => div.textContent === "Frame");
+    expect(name).toBeDefined();
+    name!.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    await settle();
+    await settle();
+    const input = region.querySelector<HTMLInputElement>("input[aria-label='Frame name']");
+    expect(input?.value).toBe("Frame");
+    input!.value = "Launch";
+    input!.dispatchEvent(new Event("input", { bubbles: true }));
+    input!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await settle();
+    expect(region.querySelector("input[aria-label='Frame name']")).toBeNull();
+    const frame = api.getSceneElements()[0] as { name?: string | null };
+    expect(frame.name).toBe("Launch");
+    expect([...region.querySelectorAll("div")].some((div) => div.textContent === "Launch")).toBe(
+      true,
+    );
+  });
+
   test("every change reaches onChange, and the keyboard edits and undoes", async () => {
     const changes: number[] = [];
     const { api, region, status } = await mount((grab) => (

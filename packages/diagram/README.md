@@ -106,7 +106,7 @@ What it does, and the keys Excalidraw gives each:
 - tools: selection `V` or `1`, rectangle `R` or `2`, diamond `D` or `3`,
   ellipse `O` or `4`, arrow `A` or `5` (again to change its kind), line `L`
   or `6`, freedraw `P`, `X` or `7`, text `T` or `8`, eraser `E` or `0`,
-  laser pointer `K`, hand `H`; `Q` keeps the tool after
+  laser pointer `K`, frame `F`, hand `H`; `Q` keeps the tool after
   drawing; shift draws equal sides and alt draws from the centre;
 - lines and arrows are drawn by dragging, or click by click and ended with
   Enter or Escape; a line closed on its first point becomes a polygon; Enter
@@ -141,6 +141,12 @@ What it does, and the keys Excalidraw gives each:
   (or crosses, in overlap mode), alt turns a box selection into one and
   Ctrl+Alt on an element starts one; the trails are drawn in an SVG over
   the canvases;
+- a frame takes in what it is drawn around or dragged into (and lets go of
+  what is dragged out), moves its children with it and clips them; its name
+  shows above it, and a double-click on the name or Enter on the frame
+  edits it; `actionWrapSelectionInFrame` frames the selection (or unwraps
+  the frame it is all of), and the frame actions select or release its
+  children;
 - Ctrl+Z undoes, Ctrl+Shift+Z or Ctrl+Y redoes;
 - space-drag, the middle button and the hand tool pan; ctrl-wheel and a
   pinch zoom; Ctrl+`=`, `-` and `0` zoom, Shift+1 fits; Ctrl+`'` shows the
@@ -178,7 +184,11 @@ Text is edited in a textarea the host makes: `onTextEditRequest` hands it
 a request with the text element (new text is in the scene already), and
 the host puts a `<textarea>` in the container and gives it to
 `request.attach`; the editor places, styles and drives it, and
-`onTextEditEnd` says when to remove it. Without a subscriber, text is not
+`onTextEditEnd` says when to remove it. Frame names are the host's too:
+`onFrameNamesChange` lists them as frames come, go or are renamed, the host
+renders an element for each (an input while `editing`) and gives it to
+`attachFrameName`, and the editor places it above its frame as the viewport
+moves; `renameFrame` and `endFrameNameEdit` edit the name. Without a subscriber, text is not
 edited. `<DiagramEditor>` answers both with a textarea of its own, so a
 keystroke goes from the textarea to the element without anything reactive
 in between. The text actions (`actionChangeFontSize`,

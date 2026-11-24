@@ -97,6 +97,7 @@ export const renderEditor = ({
   if (textEditor) {
     mountTextEditor(editor, container);
   }
+  mountFrameNames(editor, container);
   mounted.push({ editor, container });
   current = editor;
   Keyboard.reset();
@@ -120,6 +121,37 @@ const mountTextEditor = (editor: DiagramEditor, host: HTMLElement): void => {
   });
   editor.onTextEditEnd(() => box.replaceChildren());
 };
+
+/** A host's frame names: an element per frame, placed by the editor. */
+const mountFrameNames = (editor: DiagramEditor, host: HTMLElement): void => {
+  const shown = new Map<string, { element: HTMLElement; detach: () => void }>();
+  editor.onFrameNamesChange((frames) => {
+    const ids = new Set(frames.map((frame) => frame.id));
+    for (const [id, { element, detach }] of shown) {
+      if (!ids.has(id)) {
+        detach();
+        element.remove();
+        shown.delete(id);
+      }
+    }
+    for (const frame of frames) {
+      let entry = shown.get(frame.id);
+      if (!entry) {
+        const element = document.createElement("div");
+        element.dataset.frameName = frame.id;
+        host.append(element);
+        entry = { element, detach: editor.attachFrameName(frame.id, element) };
+        shown.set(frame.id, entry);
+      }
+      entry.element.textContent = frame.editing ? "" : frame.title;
+      entry.element.dataset.editing = String(frame.editing);
+    }
+  });
+};
+
+/** The element showing a frame's name. */
+export const getFrameName = (frameId: string): HTMLElement | null =>
+  h().container.querySelector<HTMLElement>(`[data-frame-name="${frameId}"]`);
 
 /** The open text editor's textarea, or `null`. */
 export const getTextEditor = (): HTMLTextAreaElement | null =>

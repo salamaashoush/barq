@@ -21,6 +21,12 @@ import {
 import { actionDeleteSelected } from "./delete.ts";
 import { actionDuplicateSelection } from "./duplicate.ts";
 import { actionFinalize } from "./finalize.ts";
+import {
+  actionRemoveAllElementsFromFrame,
+  actionSelectAllElementsInFrame,
+  actionUpdateFrameRendering,
+  actionWrapSelectionInFrame,
+} from "./frame.ts";
 import { actionGroup, actionUngroup } from "./group.ts";
 import { actionToggleLinearEditor } from "./linear-editor.ts";
 import { actionToggleElementLock, actionUnlockAllElements } from "./lock.ts";
@@ -84,4 +90,8 @@ export const editorActions: readonly Action[] = [
   actionChangeTextAlign as Action,
   actionChangeVerticalAlign as Action,
   actionTextAutoResize as Action,
+  actionSelectAllElementsInFrame,
+  actionRemoveAllElementsFromFrame,
+  actionUpdateFrameRendering,
+  actionWrapSelectionInFrame,
 ];
