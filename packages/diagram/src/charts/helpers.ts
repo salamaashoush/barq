@@ -64,16 +64,18 @@ import type { ChartElements, Spreadsheet, SpreadsheetSeries } from "./types.ts";
 const bgColors: readonly string[] = getAllColorsSpecificShade(DEFAULT_CHART_COLOR_INDEX);
 
 /** The first series' values: every series has as many. */
-export const firstValues = (series: readonly SpreadsheetSeries[]): readonly number[] =>
-  series[0]?.values ?? [];
+export function firstValues(series: readonly SpreadsheetSeries[]): readonly number[] {
+  return series[0]?.values ?? [];
+}
 
-const getSpreadsheetDimensionCount = (spreadsheet: Spreadsheet) =>
-  spreadsheet.labels?.length ?? spreadsheet.series[0]?.values.length ?? 0;
+function getSpreadsheetDimensionCount(spreadsheet: Spreadsheet) {
+  return spreadsheet.labels?.length ?? spreadsheet.series[0]?.values.length ?? 0;
+}
 
-export const isSpreadsheetValidForChartType = (
+export function isSpreadsheetValidForChartType(
   spreadsheet: Spreadsheet | null,
   chartType: ChartType,
-) => {
+) {
   if (!spreadsheet) {
     return false;
   }
@@ -88,9 +90,9 @@ export const isSpreadsheetValidForChartType = (
   }
 
   return true;
-};
+}
 
-const getSeriesAwareSlotWidth = (baseSlotWidth: number, seriesCount: number) => {
+function getSeriesAwareSlotWidth(baseSlotWidth: number, seriesCount: number) {
   const extraSlotWidth =
     seriesCount <= 1
       ? 0
@@ -99,12 +101,12 @@ const getSeriesAwareSlotWidth = (baseSlotWidth: number, seriesCount: number) => 
           (seriesCount - 1) * CARTESIAN_BAR_SLOT_EXTRA_PER_SERIES,
         );
   return baseSlotWidth + extraSlotWidth;
-};
+}
 
-export const getCartesianChartLayout = (
+export function getCartesianChartLayout(
   chartType: CartesianChartType,
   seriesCount: number,
-): CartesianChartLayout => {
+): CartesianChartLayout {
   if (chartType === "line") {
     const slotWidth = getSeriesAwareSlotWidth(CARTESIAN_LINE_SLOT_WIDTH, seriesCount);
     return {
@@ -122,27 +124,27 @@ export const getCartesianChartLayout = (
     chartHeight: CARTESIAN_BAR_HEIGHT,
     xLabelMaxWidth: slotWidth + CARTESIAN_GAP * 3 + CARTESIAN_LABEL_MAX_WIDTH_BUFFER,
   };
-};
+}
 
-export const getChartDimensions = (spreadsheet: Spreadsheet, layout: CartesianChartLayout) => {
+export function getChartDimensions(spreadsheet: Spreadsheet, layout: CartesianChartLayout) {
   const chartWidth =
     (layout.slotWidth + layout.gap) * firstValues(spreadsheet.series).length + layout.gap;
   const chartHeight = layout.chartHeight + layout.gap * 2;
   return { chartWidth, chartHeight };
-};
+}
 
-export const getRadarDimensions = () => {
+export function getRadarDimensions() {
   const chartWidth = BAR_HEIGHT + RADAR_PADDING * 2;
   const chartHeight = BAR_HEIGHT + RADAR_PADDING * 2;
   return { chartWidth, chartHeight };
-};
+}
 
-const getCircularDistance = (firstIndex: number, secondIndex: number, paletteSize: number) => {
+function getCircularDistance(firstIndex: number, secondIndex: number, paletteSize: number) {
   const absoluteDistance = Math.abs(firstIndex - secondIndex);
   return Math.min(absoluteDistance, paletteSize - absoluteDistance);
-};
+}
 
-export const getSeriesColors = (seriesCount: number, colorOffset: number): readonly string[] => {
+export function getSeriesColors(seriesCount: number, colorOffset: number): readonly string[] {
   if (seriesCount <= 0 || bgColors.length === 0) {
     return [];
   }
@@ -188,9 +190,9 @@ export const getSeriesColors = (seriesCount: number, colorOffset: number): reado
     { length: seriesCount },
     (_, index) => bgColors[selectedIndices[index % selectedIndices.length] ?? 0] ?? "",
   );
-};
+}
 
-export const getColorOffset = (colorSeed?: number) => {
+export function getColorOffset(colorSeed?: number) {
   if (bgColors.length === 0) {
     return 0;
   }
@@ -205,11 +207,13 @@ export const getColorOffset = (colorSeed?: number) => {
     hash = (hash * 31 + seedText.charCodeAt(index)) | 0;
   }
   return Math.abs(hash) % bgColors.length;
-};
+}
 
-export const getBackgroundColor = (colorOffset: number): string => bgColors[colorOffset] ?? "";
+export function getBackgroundColor(colorOffset: number): string {
+  return bgColors[colorOffset] ?? "";
+}
 
-export const getRadarValueScale = (series: SpreadsheetSeries[], _labelsLength: number) => {
+export function getRadarValueScale(series: SpreadsheetSeries[], _labelsLength: number) {
   const allValues = series.flatMap((s) => s.values.map((value) => Math.max(0, value)));
   const positiveValues = allValues.filter((value) => value > 0);
   const max = Math.max(1, ...allValues);
@@ -226,20 +230,28 @@ export const getRadarValueScale = (series: SpreadsheetSeries[], _labelsLength: n
       return useLogScale ? Math.log10(safeValue + 1) / Math.log10(max + 1) : safeValue / max;
     },
   };
-};
+}
 
-const shouldWrapRadarText = (text: string) => /\s/.test(text.trim());
+function shouldWrapRadarText(text: string) {
+  return /\s/.test(text.trim());
+}
 
-export const getRadarDisplayText = (
+export function getRadarDisplayText(
   text: string,
   fontString: ReturnType<typeof getFontString>,
   maxWidth: number,
   renderEnvironment?: RenderEnvironment,
-) => {
+) {
   return shouldWrapRadarText(text) ? wrapText(text, fontString, maxWidth, renderEnvironment) : text;
-};
+}
 
-export const createRadarAxisLabels = (
+export interface RadarAxisLabels {
+  axisLabels: ChartElements;
+  axisLabelTopY: number;
+  axisLabelBottomY: number;
+}
+
+export function createRadarAxisLabels(
   labels: readonly string[],
   angles: readonly number[],
   centerX: number,
@@ -247,11 +259,7 @@ export const createRadarAxisLabels = (
   radius: number,
   backgroundColor: string,
   renderEnvironment?: RenderEnvironment,
-): {
-  axisLabels: ChartElements;
-  axisLabelTopY: number;
-  axisLabelBottomY: number;
-} => {
+): RadarAxisLabels {
   const fontFamily = FONT_FAMILY.Excalifont;
   const fontSize = FONT_SIZES.sm;
   const lineHeight = getLineHeight(fontFamily);
@@ -322,9 +330,9 @@ export const createRadarAxisLabels = (
     ...axisLabels.map((axisLabel) => axisLabel.y + axisLabel.height),
   );
   return { axisLabels, axisLabelTopY, axisLabelBottomY };
-};
+}
 
-export const createSeriesLegend = (
+export function createSeriesLegend(
   series: SpreadsheetSeries[],
   seriesColors: readonly string[],
   centerX: number,
@@ -332,7 +340,7 @@ export const createSeriesLegend = (
   fallbackLegendY: number,
   backgroundColor: string,
   renderEnvironment?: RenderEnvironment,
-): ChartElements => {
+): ChartElements {
   if (series.length <= 1) {
     return [];
   }
@@ -432,15 +440,15 @@ export const createSeriesLegend = (
   });
 
   return legendElements;
-};
+}
 
-const ellipsifyTextToWidth = (
+function ellipsifyTextToWidth(
   text: string,
   maxWidth: number,
   fontString: ReturnType<typeof getFontString>,
   lineHeight: ExcalidrawTextElement["lineHeight"],
   renderEnvironment?: RenderEnvironment,
-) => {
+) {
   if (measureText(text, fontString, lineHeight, renderEnvironment).width <= maxWidth) {
     return text;
   }
@@ -455,15 +463,15 @@ const ellipsifyTextToWidth = (
   }
 
   return text[0] ? `${text[0]}...` : text;
-};
+}
 
-const wrapOrEllipsifyTextToWidth = (
+function wrapOrEllipsifyTextToWidth(
   text: string,
   maxWidth: number,
   fontString: ReturnType<typeof getFontString>,
   lineHeight: ExcalidrawTextElement["lineHeight"],
   renderEnvironment?: RenderEnvironment,
-) => {
+) {
   if (measureText(text, fontString, lineHeight, renderEnvironment).width <= maxWidth) {
     return { wrapped: false, text };
   }
@@ -488,16 +496,16 @@ const wrapOrEllipsifyTextToWidth = (
     wrapped: false,
     text: ellipsifyTextToWidth(text, maxWidth, fontString, lineHeight, renderEnvironment),
   };
-};
+}
 
-const getRotatedBoundingBox = (width: number, height: number, angle: number) => {
+function getRotatedBoundingBox(width: number, height: number, angle: number) {
   const cos = Math.abs(Math.cos(angle));
   const sin = Math.abs(Math.sin(angle));
   return {
     width: width * cos + height * sin,
     height: width * sin + height * cos,
   };
-};
+}
 
 type CartesianAxisLabelSpec = {
   originalText: string;
@@ -508,16 +516,23 @@ type CartesianAxisLabelSpec = {
   rotatedHeight: number;
 };
 
-const isEllipsifiedLabel = (text: string) => text.includes("...");
+function isEllipsifiedLabel(text: string) {
+  return text.includes("...");
+}
 
-const getCartesianAxisLabelSpec = (
+interface LabelOverflow {
+  overflow: number;
+  spec: CartesianAxisLabelSpec;
+}
+
+function getCartesianAxisLabelSpec(
   label: string,
   maxLabelWidth: number,
   maxRotatedWidth: number,
   fontString: ReturnType<typeof getFontString>,
   lineHeight: ExcalidrawTextElement["lineHeight"],
   renderEnvironment?: RenderEnvironment,
-): CartesianAxisLabelSpec => {
+): CartesianAxisLabelSpec {
   const minWidth = Math.max(
     CARTESIAN_LABEL_MIN_WIDTH,
     Math.ceil(getApproxMinLineWidth(fontString, lineHeight, renderEnvironment)),
@@ -531,7 +546,7 @@ const getCartesianAxisLabelSpec = (
     candidateWidths.push(minWidth);
   }
 
-  const getRank = (spec: CartesianAxisLabelSpec) => {
+  function getRank(spec: CartesianAxisLabelSpec) {
     const ellipsified = isEllipsifiedLabel(spec.text);
     const visibleChars = spec.text.replace(/\.\.\./g, "").replace(/\n/g, "").length;
     const lineCount = spec.text.split("\n").length;
@@ -540,9 +555,9 @@ const getCartesianAxisLabelSpec = (
       visibleChars,
       lineCount,
     };
-  };
+  }
 
-  const shouldPrefer = (candidate: CartesianAxisLabelSpec, current: CartesianAxisLabelSpec) => {
+  function shouldPrefer(candidate: CartesianAxisLabelSpec, current: CartesianAxisLabelSpec) {
     const candidateRank = getRank(candidate);
     const currentRank = getRank(current);
     if (candidateRank.ellipsified !== currentRank.ellipsified) {
@@ -555,17 +570,11 @@ const getCartesianAxisLabelSpec = (
       return candidateRank.lineCount < currentRank.lineCount;
     }
     return candidate.rotatedHeight < current.rotatedHeight;
-  };
+  }
 
   let bestFit: CartesianAxisLabelSpec | null = null;
-  let bestOverflowAny: {
-    overflow: number;
-    spec: CartesianAxisLabelSpec;
-  } | null = null;
-  let bestOverflowNonEllipsified: {
-    overflow: number;
-    spec: CartesianAxisLabelSpec;
-  } | null = null;
+  let bestOverflowAny: LabelOverflow | null = null;
+  let bestOverflowNonEllipsified: LabelOverflow | null = null;
 
   for (const width of candidateWidths) {
     const { wrapped, text } = wrapOrEllipsifyTextToWidth(
@@ -624,24 +633,24 @@ const getCartesianAxisLabelSpec = (
   }
 
   return bestOverflowAny!.spec;
-};
+}
 
-export const getRotatedTextElementBottom = (element: NonDeletedExcalidrawElement) => {
+export function getRotatedTextElementBottom(element: NonDeletedExcalidrawElement) {
   if (element.type !== "text") {
     return element.y + element.height;
   }
   const rotated = getRotatedBoundingBox(element.width, element.height, element.angle);
   return element.y + element.height / 2 + rotated.height / 2;
-};
+}
 
-export const chartXLabels = (
+export function chartXLabels(
   spreadsheet: Spreadsheet,
   x: number,
   y: number,
   backgroundColor: string,
   layout: CartesianChartLayout,
   renderEnvironment?: RenderEnvironment,
-): ChartElements => {
+): ChartElements {
   const fontFamily = commonProps.fontFamily;
   const fontSize = FONT_SIZES.sm;
   const lineHeight = getLineHeight(fontFamily);
@@ -689,9 +698,9 @@ export const chartXLabels = (
       });
     }) || []
   );
-};
+}
 
-const chartYLabels = (
+function chartYLabels(
   spreadsheet: Spreadsheet,
   x: number,
   y: number,
@@ -699,7 +708,7 @@ const chartYLabels = (
   layout: CartesianChartLayout,
   maxValue = Math.max(...firstValues(spreadsheet.series)),
   renderEnvironment?: RenderEnvironment,
-): ChartElements => {
+): ChartElements {
   const minYLabel = newTextElement({
     backgroundColor,
     ...commonProps,
@@ -721,15 +730,15 @@ const chartYLabels = (
   });
 
   return [minYLabel, maxYLabel];
-};
+}
 
-const chartLines = (
+function chartLines(
   spreadsheet: Spreadsheet,
   x: number,
   y: number,
   backgroundColor: string,
   layout: CartesianChartLayout,
-): ChartElements => {
+): ChartElements {
   const { chartWidth, chartHeight } = getChartDimensions(spreadsheet, layout);
   const xLine = newLinearElement({
     backgroundColor,
@@ -764,10 +773,10 @@ const chartLines = (
   });
 
   return [xLine, yLine, maxLine];
-};
+}
 
 // For the maths behind it https://excalidraw.com/#json=6320864370884608,O_5xfD-Agh32tytHpRJx1g
-export const chartBaseElements = (
+export function chartBaseElements(
   spreadsheet: Spreadsheet,
   x: number,
   y: number,
@@ -776,7 +785,7 @@ export const chartBaseElements = (
   maxValue = Math.max(...firstValues(spreadsheet.series)),
   debug?: boolean,
   renderEnvironment?: RenderEnvironment,
-): ChartElements => {
+): ChartElements {
   const { chartWidth, chartHeight } = getChartDimensions(spreadsheet, layout);
 
   const title = spreadsheet.title
@@ -816,4 +825,4 @@ export const chartBaseElements = (
     ...chartYLabels(spreadsheet, x, y, backgroundColor, layout, maxValue, renderEnvironment),
     ...chartLines(spreadsheet, x, y, backgroundColor, layout),
   ];
-};
+}

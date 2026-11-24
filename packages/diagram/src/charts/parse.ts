@@ -1,24 +1,29 @@
 import type { ParseSpreadsheetResult, SpreadsheetSeries } from "./types.ts";
 
 /** A cell as a number: `1,200`, `$5`, `-3%`; `null` when it is not one. */
-export const tryParseNumber = (text: string | undefined): number | null => {
+export function tryParseNumber(text: string | undefined): number | null {
   if (text === undefined) return null;
   const match = /^([-+]?)[$€£¥₩]?([-+]?)([\d.,]+)[%]?$/.exec(text);
   if (!match) {
     return null;
   }
   return parseFloat(((match[1] || match[2] || "") + (match[3] ?? "")).replace(/,/g, ""));
-};
+}
 
-const cell = (row: readonly string[] | undefined, index: number): string => row?.[index] ?? "";
+function cell(row: readonly string[] | undefined, index: number): string {
+  return row?.[index] ?? "";
+}
 
-const numberAt = (row: readonly string[], index: number): number => tryParseNumber(row[index]) ?? 0;
+function numberAt(row: readonly string[], index: number): number {
+  return tryParseNumber(row[index]) ?? 0;
+}
 
-const isNumericColumn = (lines: readonly string[][], columnIndex: number) =>
-  lines.slice(1).every((line) => tryParseNumber(line[columnIndex]) !== null);
+function isNumericColumn(lines: readonly string[][], columnIndex: number) {
+  return lines.slice(1).every((line) => tryParseNumber(line[columnIndex]) !== null);
+}
 
 /** Rows of cells as a chart's series: a column per series, or a row per series when wide. */
-export const tryParseCells = (cells: readonly string[][]): ParseSpreadsheetResult => {
+export function tryParseCells(cells: readonly string[][]): ParseSpreadsheetResult {
   const [header] = cells;
   if (!header) {
     return { ok: false, reason: "No values" };
@@ -123,16 +128,17 @@ export const tryParseCells = (cells: readonly string[][]): ParseSpreadsheetResul
       series: [{ title, values: rows.map((row) => numberAt(row, 1)) }],
     },
   };
-};
+}
 
 /** Text copied from a spreadsheet (tab, comma or semicolon separated) as a chart's data. */
-export const tryParseSpreadsheet = (text: string): ParseSpreadsheetResult => {
-  const parseDelimitedLines = (delimiter: "\t" | "," | ";") =>
-    text
+export function tryParseSpreadsheet(text: string): ParseSpreadsheetResult {
+  function parseDelimitedLines(delimiter: "\t" | "," | ";") {
+    return text
       .replace(/\r\n?/g, "\n")
       .split("\n")
       .filter((line) => line.trim().length > 0)
       .map((line) => line.split(delimiter).map((value) => value.trim()));
+  }
 
   // the delimiter giving the same, most columns on every line; among ties,
   // tab, then comma, then semicolon
@@ -160,4 +166,4 @@ export const tryParseSpreadsheet = (text: string): ParseSpreadsheetResult => {
   }
 
   return tryParseCells(lines);
-};
+}

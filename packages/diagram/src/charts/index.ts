@@ -19,14 +19,14 @@ export {
 export { isSpreadsheetValidForChartType } from "./helpers.ts";
 export { tryParseCells, tryParseNumber, tryParseSpreadsheet };
 
-export const renderSpreadsheet = (
+export function renderSpreadsheet(
   chartType: ChartType,
   spreadsheet: Spreadsheet,
   x: number,
   y: number,
   colorSeed?: number,
   renderEnvironment?: RenderEnvironment,
-): ChartElements | null => {
+): ChartElements | null {
   if (chartType === "line") {
     return renderLineChart(spreadsheet, x, y, colorSeed, renderEnvironment);
   }
@@ -34,4 +34,4 @@ export const renderSpreadsheet = (
     return renderRadarChart(spreadsheet, x, y, colorSeed, renderEnvironment);
   }
   return renderBarChart(spreadsheet, x, y, colorSeed, renderEnvironment);
-};
+}

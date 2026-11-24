@@ -37,13 +37,13 @@ import {
 
 import type { ChartElements, Spreadsheet } from "./types.ts";
 
-export const renderRadarChart = (
+export function renderRadarChart(
   spreadsheet: Spreadsheet,
   x: number,
   y: number,
   colorSeed?: number,
   renderEnvironment?: RenderEnvironment,
-): ChartElements | null => {
+): ChartElements | null {
   if (!isSpreadsheetValidForChartType(spreadsheet, "radar")) {
     return null;
   }
@@ -193,4 +193,4 @@ export const renderRadarChart = (
     ...seriesPolygons,
     ...seriesLegend,
   ];
-};
+}

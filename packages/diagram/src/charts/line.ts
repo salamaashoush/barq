@@ -24,13 +24,13 @@ import {
 
 import type { ChartElements, Spreadsheet } from "./types.ts";
 
-export const renderLineChart = (
+export function renderLineChart(
   spreadsheet: Spreadsheet,
   x: number,
   y: number,
   colorSeed?: number,
   renderEnvironment?: RenderEnvironment,
-): ChartElements => {
+): ChartElements {
   const series = spreadsheet.series;
   const layout = getCartesianChartLayout("line", series.length);
   const max = Math.max(1, ...series.flatMap((seriesData) => seriesData.values));
@@ -130,4 +130,4 @@ export const renderLineChart = (
   );
 
   return [...baseElements, ...lines, ...guides, ...dots, ...seriesLegend];
-};
+}

@@ -17,8 +17,13 @@ import {
 
 import type { Spreadsheet } from "./index.ts";
 
+interface ParsedSpreadsheet {
+  ok: true;
+  data: Spreadsheet;
+}
+
 describe("charts", () => {
-  const getRotatedBounds = (element: ExcalidrawTextElement) => {
+  function getRotatedBounds(element: ExcalidrawTextElement) {
     const cos = Math.abs(Math.cos(element.angle));
     const sin = Math.abs(Math.sin(element.angle));
     const rotatedWidth = element.width * cos + element.height * sin;
@@ -32,7 +37,7 @@ describe("charts", () => {
       bottom: centerY + rotatedHeight / 2,
       centerX,
     };
-  };
+  }
 
   describe("tryParseNumber", () => {
     it.each<[string, number]>([
@@ -75,7 +80,7 @@ describe("charts", () => {
 
       expect(result.ok).toBe(true);
 
-      const { title, labels, series } = (result as { ok: true; data: Spreadsheet }).data;
+      const { title, labels, series } = (result as ParsedSpreadsheet).data;
 
       expect(title).toEqual("value");
       expect(labels).toEqual(["01:00", "02:00", "03:00", "04:00", "05:00", "06:00"]);
@@ -97,7 +102,7 @@ describe("charts", () => {
 
       expect(result.ok).toBe(true);
 
-      const { title, labels, series } = (result as { ok: true; data: Spreadsheet }).data;
+      const { title, labels, series } = (result as ParsedSpreadsheet).data;
 
       expect(title).toEqual("value");
       expect(labels).toEqual(["01:00", "02:00", "03:00", "04:00", "05:00", "06:00"]);
@@ -119,7 +124,7 @@ describe("charts", () => {
 
       expect(result.ok).toBe(true);
 
-      const { title, labels, series } = (result as { ok: true; data: Spreadsheet }).data;
+      const { title, labels, series } = (result as ParsedSpreadsheet).data;
 
       expect(title).toEqual("value");
       expect(labels).toEqual(["01", "02", "03", "04", "05", "06"]);
@@ -140,7 +145,7 @@ describe("charts", () => {
 
       expect(result.ok).toBe(true);
 
-      const parsed = (result as { ok: true; data: Spreadsheet }).data;
+      const parsed = (result as ParsedSpreadsheet).data;
 
       expect(parsed.title).toEqual("Metric");
       expect(parsed.labels).toEqual(["Speed", "Strength", "Agility", "Intelligence", "Stamina"]);
@@ -162,7 +167,7 @@ describe("charts", () => {
       const result = tryParseCells(spreadsheet);
       expect(result.ok).toBe(true);
 
-      const parsed = (result as { ok: true; data: Spreadsheet }).data;
+      const parsed = (result as ParsedSpreadsheet).data;
 
       expect(parsed.title).toBeNull();
       expect(parsed.labels?.[0]).toEqual("Trait");
@@ -181,7 +186,7 @@ describe("charts", () => {
       const result = tryParseCells(spreadsheet);
       expect(result.ok).toBe(true);
 
-      const parsed = (result as { ok: true; data: Spreadsheet }).data;
+      const parsed = (result as ParsedSpreadsheet).data;
 
       expect(parsed.title).toBeNull();
       expect(parsed.labels).toEqual(["Physical Strength", "Swordsmanship", "Political Instinct"]);
@@ -201,7 +206,7 @@ describe("charts", () => {
       const result = tryParseCells(spreadsheet);
       expect(result.ok).toBe(true);
 
-      const parsed = (result as { ok: true; data: Spreadsheet }).data;
+      const parsed = (result as ParsedSpreadsheet).data;
 
       expect(parsed.title).toEqual("trait");
       expect(parsed.labels).toEqual(["Physical Strength", "Swordsmanship skill"]);
@@ -220,7 +225,7 @@ describe("charts", () => {
       const result = tryParseCells(spreadsheet);
       expect(result.ok).toBe(true);
 
-      const parsed = (result as { ok: true; data: Spreadsheet }).data;
+      const parsed = (result as ParsedSpreadsheet).data;
 
       expect(parsed.title).toBeNull();
       expect(parsed.labels).toEqual(["Physical Strength", "Swordsmanship skill"]);
@@ -345,10 +350,10 @@ describe("charts", () => {
       expect(uniqueColors).toHaveLength(spreadsheet.series.length);
       expect(colorIndices.every((index) => index >= 0)).toBe(true);
 
-      const circularDistance = (first: number, second: number) => {
+      function circularDistance(first: number, second: number) {
         const absoluteDistance = Math.abs(first - second);
         return Math.min(absoluteDistance, palette.length - absoluteDistance);
-      };
+      }
       const minDistance = Math.min(
         ...colorIndices.flatMap((index, i) =>
           colorIndices.slice(i + 1).map((other) => circularDistance(index, other)),
@@ -366,12 +371,7 @@ describe("charts", () => {
       ];
       const parsedResult = tryParseCells(cells);
       expect(parsedResult.ok).toBe(true);
-      const parsedSpreadsheet = (
-        parsedResult as {
-          ok: true;
-          data: Spreadsheet;
-        }
-      ).data;
+      const parsedSpreadsheet = (parsedResult as ParsedSpreadsheet).data;
 
       const elements = renderSpreadsheet("bar", parsedSpreadsheet, 0, 0);
       const bars = elements!.filter(
@@ -412,15 +412,18 @@ describe("charts", () => {
 
       const singleElements = renderSpreadsheet("bar", singleSeries, 0, 0);
       const multiElements = renderSpreadsheet("bar", multiSeries, 0, 0);
-      const getXAxisWidth = (elements: ReturnType<typeof renderSpreadsheet>) =>
-        elements!.find(
-          (element): element is NonDeleted<ExcalidrawLineElement> =>
-            element.type === "line" &&
-            element.strokeStyle === "solid" &&
-            element.points[0]![1] === 0 &&
-            element.points[1]![1] === 0 &&
-            element.points[1]![0] > 0,
-        )?.width || 0;
+      function getXAxisWidth(elements: ReturnType<typeof renderSpreadsheet>) {
+        return (
+          elements!.find(
+            (element): element is NonDeleted<ExcalidrawLineElement> =>
+              element.type === "line" &&
+              element.strokeStyle === "solid" &&
+              element.points[0]![1] === 0 &&
+              element.points[1]![1] === 0 &&
+              element.points[1]![0] > 0,
+          )?.width || 0
+        );
+      }
 
       expect(getXAxisWidth(multiElements)).toBeGreaterThan(getXAxisWidth(singleElements));
     });
@@ -443,15 +446,18 @@ describe("charts", () => {
 
       const singleElements = renderSpreadsheet("line", singleSeries, 0, 0);
       const multiElements = renderSpreadsheet("line", multiSeries, 0, 0);
-      const getXAxisWidth = (elements: ReturnType<typeof renderSpreadsheet>) =>
-        elements!.find(
-          (element): element is NonDeleted<ExcalidrawLineElement> =>
-            element.type === "line" &&
-            element.strokeStyle === "solid" &&
-            element.points[0]![1] === 0 &&
-            element.points[1]![1] === 0 &&
-            element.points[1]![0] > 0,
-        )?.width || 0;
+      function getXAxisWidth(elements: ReturnType<typeof renderSpreadsheet>) {
+        return (
+          elements!.find(
+            (element): element is NonDeleted<ExcalidrawLineElement> =>
+              element.type === "line" &&
+              element.strokeStyle === "solid" &&
+              element.points[0]![1] === 0 &&
+              element.points[1]![1] === 0 &&
+              element.points[1]![0] > 0,
+          )?.width || 0
+        );
+      }
 
       expect(getXAxisWidth(multiElements)).toBeGreaterThan(getXAxisWidth(singleElements));
     });
@@ -580,10 +586,10 @@ describe("charts", () => {
 
       expect(colorIndices.every((index) => index >= 0)).toBe(true);
 
-      const circularDistance = (first: number, second: number) => {
+      function circularDistance(first: number, second: number) {
         const absoluteDistance = Math.abs(first - second);
         return Math.min(absoluteDistance, palette.length - absoluteDistance);
-      };
+      }
       const minDistance = Math.min(
         ...colorIndices.flatMap((index, i) =>
           colorIndices.slice(i + 1).map((other) => circularDistance(index, other)),
@@ -604,7 +610,7 @@ describe("charts", () => {
         ],
       };
 
-      const getSeriesLineColors = (seed: number) => {
+      function getSeriesLineColors(seed: number) {
         const elements = renderSpreadsheet("line", spreadsheet, 0, 0, seed);
         return elements!
           .filter(
@@ -612,7 +618,7 @@ describe("charts", () => {
               element.type === "line" && element.strokeWidth === 2,
           )
           .map((line) => line.strokeColor);
-      };
+      }
 
       expect(getSeriesLineColors(0.125)).toEqual(getSeriesLineColors(0.125));
       expect(getSeriesLineColors(0.125)).not.toEqual(getSeriesLineColors(0.875));
@@ -734,7 +740,9 @@ describe("charts", () => {
 
       const series1 = seriesPolygons[0];
       const series2 = seriesPolygons[1];
-      const getRadius = (point: readonly [number, number]) => Math.hypot(point[0], point[1]);
+      function getRadius(point: readonly [number, number]) {
+        return Math.hypot(point[0], point[1]);
+      }
 
       // On alpha axis, second series is about ~1.9x first series.
       const alphaRatio = getRadius(series2!.points[0]!) / getRadius(series1!.points[0]!);
@@ -789,7 +797,9 @@ describe("charts", () => {
           element.strokeWidth === 2,
       )!;
 
-      const getRadius = (point: readonly [number, number]) => Math.hypot(point[0], point[1]);
+      function getRadius(point: readonly [number, number]) {
+        return Math.hypot(point[0], point[1]);
+      }
 
       const alphaRadius = getRadius(polygon.points[0]!);
       const epsilonRadius = getRadius(polygon.points[4]!);
@@ -986,10 +996,10 @@ describe("charts", () => {
 
       expect(colorIndices.every((index) => index >= 0)).toBe(true);
 
-      const circularDistance = (first: number, second: number) => {
+      function circularDistance(first: number, second: number) {
         const absoluteDistance = Math.abs(first - second);
         return Math.min(absoluteDistance, palette.length - absoluteDistance);
-      };
+      }
       const minDistance = Math.min(
         ...colorIndices.flatMap((index, i) =>
           colorIndices.slice(i + 1).map((other) => circularDistance(index, other)),

@@ -20,13 +20,13 @@ import {
 
 import type { ChartElements, Spreadsheet } from "./types.ts";
 
-export const renderBarChart = (
+export function renderBarChart(
   spreadsheet: Spreadsheet,
   x: number,
   y: number,
   colorSeed?: number,
   renderEnvironment?: RenderEnvironment,
-): ChartElements => {
+): ChartElements {
   const series = spreadsheet.series;
   const layout = getCartesianChartLayout("bar", series.length);
   const max = Math.max(
@@ -97,4 +97,4 @@ export const renderBarChart = (
   );
 
   return [...baseElements, ...bars, ...seriesLegend];
-};
+}
