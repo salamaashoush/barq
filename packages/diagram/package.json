@@ -71,10 +71,16 @@
     "roughjs": "4.6.4"
   },
   "devDependencies": {
+    "@barqjs/arc": "workspace:*",
+    "@barqjs/aria": "workspace:*",
     "@barqjs/compiler": "workspace:*",
     "@barqjs/core": "workspace:*",
+    "@barqjs/css": "workspace:*",
+    "@barqjs/lucide": "workspace:*",
     "@barqjs/primitives": "workspace:*",
     "@barqjs/server": "workspace:*",
+    "@barqjs/testing": "workspace:*",
+    "@barqjs/ui": "workspace:*",
     "@barqjs/vite": "workspace:*",
     "@barqjs/web": "workspace:*",
     "@excalidraw/mermaid-to-excalidraw": "3.6.0",
@@ -86,9 +92,13 @@
     "typescript": "^7.0.2"
   },
   "peerDependencies": {
+    "@barqjs/aria": ">=0.2.0-next.3",
     "@barqjs/core": ">=0.2.0-next.3",
+    "@barqjs/css": ">=0.2.0-next.3",
+    "@barqjs/lucide": ">=0.2.0-next.3",
     "@barqjs/primitives": ">=0.2.0-next.3",
     "@barqjs/server": ">=0.2.0-next.3",
+    "@barqjs/ui": ">=0.2.0-next.3",
     "@barqjs/web": ">=0.2.0-next.3",
     "@excalidraw/mermaid-to-excalidraw": ">=3.6.0"
   },

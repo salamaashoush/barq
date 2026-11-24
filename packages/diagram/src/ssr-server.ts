@@ -7,13 +7,18 @@
  * server build compiles a source package.
  */
 
+import { dirname } from "node:path";
 import { plugin } from "bun";
 import { renderPage } from "@barqjs/server";
 import { compilerLoader } from "@barqjs/vite/internal";
 
 import { RESULT } from "./ssr-harness.ts";
 
-plugin(compilerLoader({ transform: { ssr: true, hydratable: true } }));
+const escape = (path: string): string => path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const ui = dirname(Bun.resolveSync("@barqjs/ui/package.json", import.meta.dir));
+const styled = new RegExp(`^(${escape(`${import.meta.dir}/ui`)}|${escape(ui)}/src)/.*\\.ts$`);
+
+plugin(compilerLoader({ transform: { ssr: true, hydratable: true, strictCss: true }, ts: styled }));
 
 const [modulePath = ""] = process.argv.slice(2);
 const fixture = (await import(modulePath)) as { page: () => () => unknown };

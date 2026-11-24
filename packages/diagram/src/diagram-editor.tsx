@@ -1,4 +1,5 @@
 import {
+  type Child,
   For,
   Show,
   createRenderEffect,
@@ -13,7 +14,20 @@ import { THEME } from "@excalidraw/common";
 
 import type { Theme } from "@excalidraw/element/types";
 
+import { getDefaultAppState } from "./app-state.ts";
+import { restoreAppState } from "./data/restore.ts";
 import { DiagramEditor as Editor } from "./editor/editor.ts";
+import { resolveUIOptions, type UIOptions } from "./editor/ui-options.ts";
+import {
+  type LocaleData,
+  getLoadedLanguage,
+  isRTLLanguage,
+  loadLanguage,
+  translate,
+} from "./i18n.ts";
+import { createDiagramUI, type RenderSlot } from "./ui/context.tsx";
+import { EditorUI } from "./ui/editor-ui.tsx";
+import { EditorStore } from "./ui/store.ts";
 
 import type { DiagramScene } from "./data/types.ts";
 import type {
@@ -22,26 +36,82 @@ import type {
   FrameName,
   TextEditRequest,
 } from "./editor/editor.ts";
+import type { AppState } from "./types.ts";
+
+type MaybePromise<T> = T | Promise<T>;
 
 export interface DiagramEditorProps {
-  /** The scene the editor opens with; read once, as Excalidraw's `initialData`. */
-  initialData?: DiagramScene | null;
+  /**
+   * The scene the editor opens with, read once: a scene, a promise of one or
+   * a function returning either, as Excalidraw's `initialData`.
+   */
+  initialData?:
+    | MaybePromise<DiagramScene | null>
+    | (() => MaybePromise<DiagramScene | null>)
+    | null;
   /** Light or dark. Follows the `colorScheme()` above, arc's included, when omitted; light without one. */
   theme?: Theme;
+  /** Called instead of changing the theme when the menu toggles it, for a theme the host owns. */
+  onThemeChange?: (theme: Theme) => void;
   /** The accessible name. @default "Diagram editor" */
   label?: string;
-  /** Read only: the scene can be panned and zoomed, not edited. */
+  /** Read only: the scene can be panned and zoomed, not edited. The menus then offer no toggle. */
   viewModeEnabled?: boolean;
+  /** Hides the panels, leaving the canvas and the toolbar. The menus then offer no toggle. */
+  zenModeEnabled?: boolean;
   /** Shows the grid, which elements snap to. */
   gridModeEnabled?: boolean;
   /** The editor's height. @default 480 */
   height?: number | string;
   class?: string;
-  /** Called once the editor is mounted, with its API: Excalidraw's `excalidrawAPI`. */
+  /** Called once the editor is mounted, with its API. */
   api?: (api: DiagramEditorApi) => void;
+  /** Excalidraw's name for `api`. */
+  excalidrawAPI?: (api: DiagramEditorApi) => void;
   /** Called on every change, with the elements, the app state and the files. */
   onChange?: DiagramChangeListener;
+  /**
+   * The UI's language, one of Excalidraw's locale codes (`"ar-SA"`,
+   * `"de-DE"`); loaded when first asked for. @default "en"
+   */
+  langCode?: string;
+  /** Excalidraw's `UIOptions`: the canvas actions the menus offer and the image tool. */
+  UIOptions?: UIOptions;
+  /** Rendered at the top start, before the main menu. */
+  renderTopLeftUI?: RenderSlot;
+  /** Rendered at the top end. */
+  renderTopRightUI?: RenderSlot;
+  /** Rendered in the stats panel, below the general stats. */
+  renderCustomStats?: (elements: readonly unknown[], appState: AppState) => Child;
+  /** The main menu's entries in place of the defaults, built from `MainMenu`. */
+  mainMenu?: Child;
+  /** Excalidraw's `aiEnabled`: the text-to-diagram and wireframe entries. @default true */
+  aiEnabled?: boolean;
+  /** Excalidraw's `generateLinkForSelection`, for the link "copy link to element" copies. */
+  generateLinkForSelection?: (id: string, type: "element" | "group") => string;
+  /** `false` renders the canvas alone, without the toolbar, the panels or the menus. @default true */
+  ui?: boolean;
 }
+
+/** The state the UI shows before the editor exists, on the server and while the page hydrates. */
+const initialUIState = (
+  props: Pick<
+    DiagramEditorProps,
+    "initialData" | "viewModeEnabled" | "zenModeEnabled" | "gridModeEnabled"
+  >,
+  theme: Theme,
+): AppState => {
+  const data = props.initialData;
+  const scene = data && typeof data === "object" && !(data instanceof Promise) ? data : null;
+  const restored = scene?.appState ? restoreAppState(scene.appState, null) : getDefaultAppState();
+  return {
+    ...(restored as AppState),
+    theme,
+    viewModeEnabled: props.viewModeEnabled ?? false,
+    zenModeEnabled: props.zenModeEnabled ?? restored.zenModeEnabled ?? false,
+    gridModeEnabled: props.gridModeEnabled ?? restored.gridModeEnabled ?? false,
+  };
+};
 
 const SR_ONLY =
   "position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0";
@@ -112,23 +182,79 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
 
   let editor: Editor | null = null;
 
+  const store = new EditorStore(untrack(() => initialUIState(props, theme())));
+  const langCode = (): string => props.langCode ?? "en";
+  // the strings of the language shown: the previous one stays until the next has loaded
+  const [langData, setLangData] = createSignal<LocaleData | undefined>(
+    getLoadedLanguage(untrack(langCode)),
+  );
+  const [shownLang, setShownLang] = createSignal(
+    getLoadedLanguage(untrack(langCode)) ? untrack(langCode) : "en",
+  );
+  const uiOptions = () =>
+    resolveUIOptions(props.UIOptions, { theme: props.theme, onThemeChange: props.onThemeChange });
+  const ui = createDiagramUI({
+    store,
+    t: (path, replacement, fallback) => translate(langData(), path, replacement, fallback),
+    langCode: shownLang,
+    rtl: () => isRTLLanguage(shownLang()),
+    host: () => ({
+      UIOptions: uiOptions(),
+      renderTopLeftUI: props.renderTopLeftUI,
+      renderTopRightUI: props.renderTopRightUI,
+      renderCustomStats: props.renderCustomStats,
+      aiEnabled: props.aiEnabled !== false,
+      theme: props.theme,
+    }),
+  });
+
+  const editorHost = () => ({
+    UIOptions: uiOptions(),
+    viewModeControlled: props.viewModeEnabled !== undefined,
+    zenModeControlled: props.zenModeEnabled !== undefined,
+    onThemeChange: props.onThemeChange,
+    aiEnabled: props.aiEnabled !== false,
+    generateLinkForSelection: props.generateLinkForSelection,
+  });
+
   const attach = (host: HTMLDivElement): (() => void) => {
     const [canvas, newElementCanvas, interactiveCanvas] = host.querySelectorAll("canvas");
     if (!canvas || !newElementCanvas || !interactiveCanvas) {
       throw new Error("DiagramEditor: the editor's canvases are missing");
     }
+    const given = untrack(() => props.initialData);
+    const data = typeof given === "function" ? given() : given;
     const created = new Editor({
       container: host,
       canvas,
       newElementCanvas,
       interactiveCanvas,
       svgLayer: host.querySelector("svg"),
-      initialData: untrack(() => props.initialData),
+      initialData: data instanceof Promise ? null : data,
       theme: untrack(theme),
       viewModeEnabled: untrack(() => props.viewModeEnabled),
       gridModeEnabled: untrack(() => props.gridModeEnabled),
+      host: untrack(editorHost),
     });
     editor = created;
+    if (untrack(() => props.zenModeEnabled) !== undefined) {
+      created.batch(() =>
+        created.setState({ zenModeEnabled: untrack(() => props.zenModeEnabled) }),
+      );
+    }
+    if (data instanceof Promise) {
+      created.batch(() => created.setState({ isLoading: true }));
+      data.then(
+        (scene) => {
+          if (!created.isDestroyed) created.loadInitialData(scene);
+        },
+        (error: unknown) => {
+          console.error("DiagramEditor: the initial data did not load", error);
+          if (!created.isDestroyed) created.batch(() => created.setState({ isLoading: false }));
+        },
+      );
+    }
+    const detachStore = store.attach(created);
     let repeat = false;
     const offAnnounce = created.onAnnounce((message) => {
       // written outside whatever is running: an announcement may come from
@@ -152,7 +278,9 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
       queueMicrotask(() => setFrameNames(frames)),
     );
     untrack(() => props.api)?.(created.api);
+    untrack(() => props.excalidrawAPI)?.(created.api);
     return () => {
+      detachStore();
       offAnnounce();
       offChange();
       offTextEdit();
@@ -181,7 +309,24 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
         editor?.batch(() => editor?.setState({ gridModeEnabled: next ?? false }));
       },
     );
+    createRenderEffect(
+      () => props.zenModeEnabled,
+      (next, previous) => {
+        if (previous === undefined && next === undefined) return;
+        editor?.batch(() => editor?.setState({ zenModeEnabled: next ?? false }));
+      },
+    );
+    createRenderEffect(editorHost, (next) => editor?.setHost(next));
+    createRenderEffect(langCode, (code) => {
+      // written outside the effect, as the store's are
+      void loadLanguage(code).then((data) => {
+        if (langCode() !== code) return;
+        setLangData(() => data);
+        setShownLang(code);
+      });
+    });
     onCleanup(() => {
+      store.dispose();
       editor = null;
     });
   }
@@ -261,6 +406,9 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
       <div role="status" aria-live="polite" aria-atomic="true" style={SR_ONLY}>
         {announcement()}
       </div>
+      <Show when={props.ui !== false}>
+        <EditorUI ui={ui} mainMenu={props.mainMenu} />
+      </Show>
     </div>
   );
 }

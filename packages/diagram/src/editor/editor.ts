@@ -226,6 +226,7 @@ import { TextTool } from "./text-tool.ts";
 import { TOGGLE_TOOLS, findToolByKey, isEditorTool } from "./tools.ts";
 import { patchLinearEditor } from "./linear.ts";
 import { getContextMenuItems } from "./context-menu.ts";
+import { TOOL_DRAG_PREVIEW_OPACITY, ToolDrag } from "./tool-drag.ts";
 import { defaultEditorHost, type EditorHost } from "./ui-options.ts";
 
 import type { DiagramScene } from "../data/types.ts";
@@ -409,6 +410,8 @@ export class DiagramEditor {
   public readonly laserTrails: LaserTrails;
   public readonly eraserTrail: EraserTrail;
   public readonly lassoTrail: LassoTrail;
+  /** A tool dragged out of the toolbar onto the canvas. */
+  public readonly toolDrag: ToolDrag;
   /** What the eraser has marked, erased on pointer up. */
   public elementsPendingErasure = new Set<ExcalidrawElement["id"]>();
   public readonly renderEnvironment: RenderEnvironment;
@@ -611,6 +614,7 @@ export class DiagramEditor {
     this.laserTrails = new LaserTrails(this);
     this.eraserTrail = new EraserTrail(this);
     this.lassoTrail = new LassoTrail(this);
+    this.toolDrag = new ToolDrag(this);
     if (options.svgLayer) {
       this.laserTrails.start(options.svgLayer);
       this.eraserTrail.start(options.svgLayer);
@@ -1428,6 +1432,23 @@ export class DiagramEditor {
   // ---------------------------------------------------------------------------
   // scene
 
+  /**
+   * Opens a scene as the initial data does, its history starting there: for
+   * `initialData` that arrives after the editor mounts.
+   */
+  public loadInitialData(data: DiagramScene | null): void {
+    this.batch(() => {
+      this.loadScene(data);
+      this.setState({ isLoading: false });
+    });
+  }
+
+  /** Changes what the host decides, as its props change. */
+  public setHost(host: Partial<EditorHost>): void {
+    this.host = { ...this.host, ...host };
+    this.batch(() => this.scene.triggerUpdate());
+  }
+
   private loadScene(data: DiagramScene | null): void {
     const restored = restore(data, null, null, { repairBindings: true });
     const { width, height, offsetLeft, offsetTop, theme, viewModeEnabled, gridModeEnabled } =
@@ -1653,7 +1674,7 @@ export class DiagramEditor {
     }));
   }
 
-  private getCurrentItemRoundness(
+  public getCurrentItemRoundness(
     elementType: "selection" | "rectangle" | "stickynote" | "diamond" | "ellipse",
   ): ExcalidrawElement["roundness"] {
     return this.state.currentItemRoundness === "round"
@@ -5213,12 +5234,21 @@ export class DiagramEditor {
     // drawn only while something is drawn out, and cleared once after, as
     // Excalidraw mounts this canvas only then
     // and out of the page otherwise, a layer fewer to composite each frame
-    const previewElement = renderable.newElementCanvasElement;
+    const dragged = this.toolDrag.preview;
+    const previewElement = dragged ?? renderable.newElementCanvasElement;
     if (previewElement || this.newElementCanvasDrawn) {
       this.newElementCanvasDrawn = !!previewElement;
       newElementCanvas.style.display = previewElement ? "" : "none";
+      // a tool dragged out of the toolbar shows where it will land, translucent
+      newElementCanvas.style.opacity = dragged ? String(TOOL_DRAG_PREVIEW_OPACITY) : "";
       this.sizeCanvas(newElementCanvas, scale);
-      this.drawNewElementCanvas(newElementCanvas, renderable, allElementsMap, scale);
+      this.drawNewElementCanvas(
+        newElementCanvas,
+        previewElement,
+        renderable,
+        allElementsMap,
+        scale,
+      );
     } else if (newElementCanvas.style.display !== "none") {
       newElementCanvas.style.display = "none";
     }
@@ -5264,6 +5294,7 @@ export class DiagramEditor {
 
   private drawNewElementCanvas(
     newElementCanvas: HTMLCanvasElement,
+    previewElement: RenderableElements["newElementCanvasElement"],
     renderable: RenderableElements,
     allElementsMap: ReturnType<DiagramEditor["scene"]["getNonDeletedElementsMap"]>,
     scale: number,
@@ -5272,7 +5303,7 @@ export class DiagramEditor {
     renderNewElementScene({
       canvas: newElementCanvas,
       rc: this.sceneCanvas.rc,
-      newElement: renderable.newElementCanvasElement,
+      newElement: previewElement,
       elementsMap: renderable.elementsMap,
       allElementsMap,
       scale,
@@ -5309,6 +5340,7 @@ export class DiagramEditor {
   public destroy(): void {
     if (this.destroyed) return;
     this.maybeCleanupAfterMissingPointerUp(null);
+    this.toolDrag.cancel();
     this.text.destroy();
     this.clipboard.clearPlainPaste();
     this.flowchart.clear();
