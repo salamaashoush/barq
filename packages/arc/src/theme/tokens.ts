@@ -47,6 +47,7 @@ export const ARC_LIGHT: ThemeTokens = {
   "duration-base": "200ms",
   "duration-slow": "300ms",
   "ease-standard": "cubic-bezier(0.2, 0, 0, 1)",
+  "ease-emphasized": "cubic-bezier(0.05, 0.7, 0.1, 1)",
   "z-sticky": "10",
   "z-header": "20",
   "z-popover": "40",
@@ -101,6 +102,7 @@ export const arc = {
   durationBase: "var(--duration-base)",
   durationSlow: "var(--duration-slow)",
   easeStandard: "var(--ease-standard)",
+  easeEmphasized: "var(--ease-emphasized)",
   zSticky: "var(--z-sticky)",
   zHeader: "var(--z-header)",
   zPopover: "var(--z-popover)",
@@ -116,3 +118,42 @@ export function tone(name: Tone): { base: string; foreground: string; subtle: st
     subtle: `var(--${name}-subtle)`,
   };
 }
+
+export const DENSITIES = ["compact", "comfortable", "spacious"] as const;
+export type Density = (typeof DENSITIES)[number];
+
+/**
+ * How much room a region takes, as the one token every height, padding and
+ * gap in ui and arc is a multiple of: `--spacing`. A control `9` steps tall,
+ * a cell padded `3` and a toolbar spaced `2` all tighten together, and none of
+ * them branches on the density in JavaScript. A touch target is the
+ * exception by design: it is 44px under a coarse pointer at every density.
+ */
+export const DENSITY: Readonly<Record<Density, ThemeTokens>> = {
+  compact: { spacing: "0.2rem" },
+  comfortable: { spacing: "0.25rem" },
+  spacious: { spacing: "0.3rem" },
+};
+
+/**
+ * The tokens a high-contrast theme replaces: every edge and every quiet text
+ * colour pulled toward the foreground, light and dark, so a border and a hint
+ * clear 4.5:1 rather than the 3:1 a decorative edge is allowed.
+ */
+export const ARC_CONTRAST_LIGHT: ThemeTokens = {
+  border: "oklch(0.45 0 0)",
+  input: "oklch(0.45 0 0)",
+  "border-strong": "oklch(0.3 0 0)",
+  "muted-foreground": "oklch(0.35 0 0)",
+  "faint-foreground": "oklch(0.4 0 0)",
+  ring: "oklch(0.2 0 0)",
+};
+
+export const ARC_CONTRAST_DARK: ThemeTokens = {
+  border: "oklch(0.75 0 0)",
+  input: "oklch(0.75 0 0)",
+  "border-strong": "oklch(0.88 0 0)",
+  "muted-foreground": "oklch(0.86 0 0)",
+  "faint-foreground": "oklch(0.8 0 0)",
+  ring: "oklch(0.96 0 0)",
+};

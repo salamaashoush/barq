@@ -46,6 +46,11 @@
       "barq": "./src/theme/index.ts",
       "bun": "./src/theme/index.ts"
     },
+    "./style": {
+      "types": "./src/style/index.ts",
+      "barq": "./src/style/index.ts",
+      "bun": "./src/style/index.ts"
+    },
     "./code": {
       "types": "./src/code/index.ts",
       "barq": "./src/code/index.ts",
