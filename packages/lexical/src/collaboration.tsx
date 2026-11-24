@@ -417,13 +417,23 @@ function yjsHistory(editor: LexicalEditor, undoManager: UndoManager): void {
 function Cursors(props: { binding: BaseBinding; container?: HTMLElement | null }): JSX.Element {
   const binding = props.binding;
   const mount = props.container ?? (typeof document === "undefined" ? null : document.body);
+  // Lexical places each caret at its distance from the container's offset
+  // parent, and the caret is positioned against its nearest positioned
+  // ancestor. A zero-size box at the top left of `mount`'s content is both,
+  // so a caret lands on its text whatever `mount`'s margins, borders or
+  // scroll, and scrolls with it.
   return (
     <Portal mount={mount}>
       <div
-        ref={(element: HTMLDivElement) => {
-          binding.cursorsContainer = element;
-        }}
-      />
+        data-lexical-cursors=""
+        style={{ position: "absolute", top: "0", left: "0", width: "0", height: "0" }}
+      >
+        <div
+          ref={(element: HTMLDivElement) => {
+            binding.cursorsContainer = element;
+          }}
+        />
+      </div>
     </Portal>
   );
 }

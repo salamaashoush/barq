@@ -112,7 +112,17 @@ describe("EditorCollaboration", () => {
     expect(collaboratorTone("Salama")).toBe(tone);
     expect(one.peer()?.local).toMatchObject({ name: "Salama", color: `var(--${tone})` });
     const root = one.editor().getRootElement();
-    expect(root?.parentElement?.lastElementChild?.tagName).toBe("DIV");
+    // A zero-size box at the scroller's top left, the carets' offset parent
+    // and positioned ancestor at once, so a caret lands on its text however
+    // far the editor has scrolled; checked against a browser's layout.
+    const origin = root?.parentElement?.querySelector<HTMLElement>("[data-lexical-cursors]");
+    expect(origin?.style.position).toBe("absolute");
+    expect([origin?.style.top, origin?.style.left, origin?.style.width]).toEqual([
+      "0px",
+      "0px",
+      "0px",
+    ]);
+    expect(origin?.firstElementChild?.tagName).toBe("DIV");
     expect(root?.parentElement?.contains(root)).toBe(true);
     expect(one.editor()._config.theme.collaboration).toMatchObject({
       cursor: expect.any(String),

@@ -1,10 +1,11 @@
-import { untrack } from "@barqjs/core";
+import { Show, untrack } from "@barqjs/core";
 import { useLexicalEditor } from "@barqjs/lexical";
 import { CollaborationPlugin, LexicalCollaboration } from "@barqjs/lexical/collaboration";
 import type { Provider } from "@lexical/yjs";
 import type { Doc } from "yjs";
 
 import { TONES, type Tone, tone as toneTokens } from "../theme/tokens.ts";
+import { editorSignal, useRegistration } from "./hooks.ts";
 
 /** The tone a collaborator's cursor is drawn in: the same for the same name on every screen. */
 export function collaboratorTone(name: string): Tone {
@@ -50,21 +51,31 @@ export interface EditorCollaborationProps {
  */
 export function EditorCollaboration(props: EditorCollaborationProps) {
   const editor = useLexicalEditor();
-  // The editor's own scroller, so the others' cursors scroll with the text.
-  const container = editor.getRootElement()?.parentElement ?? undefined;
+  // The editor's own scroller, so the others' cursors scroll with the text:
+  // known once the editor has its root, which it takes as the page mounts.
+  const [scroller, setScroller] = editorSignal<HTMLElement | null>(
+    editor.getRootElement()?.parentElement ?? null,
+  );
+  useRegistration(() =>
+    editor.registerRootListener((root) => setScroller(root?.parentElement ?? null)),
+  );
   const color = untrack(() => toneTokens(props.tone ?? collaboratorTone(props.username)).base);
   return (
-    <LexicalCollaboration>
-      <CollaborationPlugin
-        id={props.id}
-        providerFactory={props.providerFactory}
-        shouldBootstrap={props.shouldBootstrap ?? false}
-        username={props.username}
-        cursorColor={color}
-        cursorsContainer={container}
-        selectionHighlight={props.selectionHighlight ?? true}
-        awarenessData={props.awarenessData}
-      />
-    </LexicalCollaboration>
+    <Show when={scroller()}>
+      {(container: () => HTMLElement) => (
+        <LexicalCollaboration>
+          <CollaborationPlugin
+            id={props.id}
+            providerFactory={props.providerFactory}
+            shouldBootstrap={props.shouldBootstrap ?? false}
+            username={props.username}
+            cursorColor={color}
+            cursorsContainer={container()}
+            selectionHighlight={props.selectionHighlight ?? true}
+            awarenessData={props.awarenessData}
+          />
+        </LexicalCollaboration>
+      )}
+    </Show>
   );
 }
