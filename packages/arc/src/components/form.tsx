@@ -1,23 +1,8 @@
-import {
-  type Child,
-  For,
-  Show,
-  createMemo,
-  createSignal,
-  createUniqueId,
-  untrack,
-} from "@barqjs/core";
+import { type Child, For, Show, createMemo, createSignal } from "@barqjs/core";
 import { variants } from "@barqjs/css";
 import { type CalendarDate, type ZonedDateTime, now, toTimeZone } from "@barqjs/aria/date";
 import { DateField as AriaDateField } from "@barqjs/aria/datefield";
-import {
-  type AnyFieldApi,
-  type AnyFormApi,
-  type Components,
-  type FormHook,
-  createFormHook,
-  createFormHookContexts,
-} from "@barqjs/form";
+import { type AnyFormApi, type Components, type FormHook, createFormHook } from "@barqjs/form";
 import { CircleAlert } from "@barqjs/lucide/icons/circle-alert";
 import { Eye } from "@barqjs/lucide/icons/eye";
 import { EyeOff } from "@barqjs/lucide/icons/eye-off";
@@ -32,7 +17,6 @@ import {
   ComboboxItem,
   ComboboxList,
 } from "@barqjs/ui/combobox";
-import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "@barqjs/ui/field";
 import { Input } from "@barqjs/ui/input";
 import {
   InputGroup,
@@ -49,176 +33,30 @@ import { srOnly } from "@barqjs/ui/sr-only";
 import { when } from "@barqjs/ui/shared-when";
 
 import { arcLayer as arc } from "../layer.ts";
-import { type Customisable, parts } from "../lib/parts.ts";
+import type { Customisable } from "../lib/parts.ts";
 import { bg, edge, focus, interaction, layout, rounded, space, type } from "../style/index.ts";
 import { useArcMessages } from "./messages.ts";
 
-export const {
-  fieldContext: arcFieldContext,
-  formContext: arcFormContext,
-  useFieldContext: useArcField,
-  useFormContext: useArcFormContext,
-} = createFormHookContexts();
+import {
+  type ArcFieldProps,
+  Frame,
+  arcFieldContext,
+  arcFormContext,
+  formControl as control,
+  messagesOf,
+  useArcFormContext,
+} from "../lib/field.tsx";
 
-/** One message, from a validator's string or a schema's issue. */
-function messageOf(error: unknown): string | undefined {
-  if (typeof error === "string") return error === "" ? undefined : error;
-  if (error !== null && typeof error === "object" && "message" in error) {
-    const message = error.message;
-    return typeof message === "string" && message !== "" ? message : undefined;
-  }
-  return undefined;
-}
-
-function messagesOf(errors: readonly unknown[]): string[] {
-  const found: string[] = [];
-  for (const error of errors) {
-    const message = messageOf(error);
-    if (message !== undefined && !found.includes(message)) found.push(message);
-  }
-  return found;
-}
-
-export const fieldStyles = variants({
-  slots: {
-    root: arc({}),
-    label: arc({}),
-    content: arc({}),
-    description: arc({}),
-    error: arc({}),
-    control: arc({}),
-  },
-});
-
-type FieldSlots = ReturnType<typeof fieldStyles>;
-
-/** The labels and messages every field takes. */
-export interface ArcFieldProps extends Customisable<FieldSlots> {
-  label: Child;
-  description?: Child;
-  isDisabled?: boolean;
-  isRequired?: boolean;
-}
-
-/**
- * The wiring one field needs: its ids, whether it is showing an error, and
- * the change and blur that also retire an error the server sent for it.
- */
-function control<T>() {
-  const field = useArcField<T>();
-  const id = createUniqueId();
-  const ids = {
-    control: `${id}-control`,
-    label: `${id}-label`,
-    description: `${id}-description`,
-    error: `${id}-error`,
-  };
-  const errors = createMemo((): string[] => messagesOf(field().state.meta.errors));
-  const isInvalid = (): boolean => field().state.meta.isTouched && errors().length > 0;
-  const describedBy = (hasDescription: boolean): string | undefined => {
-    const pieces = [hasDescription ? ids.description : "", isInvalid() ? ids.error : ""];
-    const joined = pieces.filter((part) => part !== "").join(" ");
-    return joined === "" ? undefined : joined;
-  };
-  const change = (value: T): void => {
-    const api = untrack(field);
-    api.handleChange(value);
-    retireServerError(api);
-  };
-  const blur = (): void => untrack(field).handleBlur();
-  return { field, ids, errors, isInvalid, describedBy, change, blur };
-}
-
-/** A server's word on a value goes once the value changes. */
-function retireServerError(api: AnyFieldApi): void {
-  if (api.state.meta.errorMap.onServer !== undefined) {
-    api.setMeta((meta) => ({
-      ...meta,
-      errorMap: { ...meta.errorMap, onServer: undefined },
-    }));
-  }
-  const form = api.form as AnyFormApi;
-  if (form.state.errorMap.onServer !== undefined)
-    form.setErrorMap({ onServer: undefined } as never);
-}
+export {
+  type ArcFieldProps,
+  arcFieldContext,
+  arcFormContext,
+  fieldStyles,
+  useArcField,
+  useArcFormContext,
+} from "../lib/field.tsx";
 
 type Control<T> = ReturnType<typeof control<T>>;
-
-/** What the frame reads of a field, whatever its value. */
-interface Wiring {
-  ids: Control<unknown>["ids"];
-  errors: () => string[];
-  isInvalid: () => boolean;
-  describedBy: (hasDescription: boolean) => string | undefined;
-}
-
-interface FrameProps {
-  of: Wiring;
-  /** The field's own props, for its class and its parts' classes. */
-  field: ArcFieldProps;
-  label: Child;
-  description?: Child;
-  /** Beside the control rather than over it: a switch, a checkbox. */
-  inline?: boolean;
-  /** The control is named from the label's id: a group of segments has nothing for `<label for>`. */
-  labelledById?: boolean;
-  children?: Child;
-}
-
-/** `<Field>` with the label, the description and the error wired to the control's ids. */
-function Frame(props: FrameProps) {
-  const of = props.of;
-  const cls = (): FieldSlots => parts(fieldStyles(), props.field.classes);
-  const error = () => (
-    <FieldError
-      class={cls().error}
-      id={of.ids.error}
-      errors={of.isInvalid() ? of.errors().map((message) => ({ message })) : []}
-    />
-  );
-  const description = () => (
-    <Show when={props.description !== undefined}>
-      <FieldDescription class={cls().description} id={of.ids.description}>
-        {props.description}
-      </FieldDescription>
-    </Show>
-  );
-  return (
-    <Field
-      class={arc(cls().root, props.field.class, props.field.className)}
-      orientation={props.inline === true ? "horizontal" : "vertical"}
-      isInvalid={of.isInvalid()}
-      data-slot="arc-field"
-    >
-      <Show
-        when={props.inline === true}
-        fallback={
-          <>
-            <FieldLabel
-              class={cls().label}
-              id={of.ids.label}
-              for={props.labelledById === true ? undefined : of.ids.control}
-            >
-              {props.label}
-            </FieldLabel>
-            {props.children}
-            {description()}
-            {error()}
-          </>
-        }
-      >
-        {props.children}
-        <FieldContent class={cls().content}>
-          <FieldLabel class={cls().label} id={of.ids.label} for={of.ids.control}>
-            {props.label}
-          </FieldLabel>
-          {description()}
-          {error()}
-        </FieldContent>
-      </Show>
-    </Field>
-  );
-}
 
 export interface TextFieldProps extends ArcFieldProps {
   /** @default "text" */
