@@ -221,6 +221,9 @@ export class SelectionTool {
 
       const elementsMap = this.app.scene.getNonDeletedElementsMap();
       const selectedElements = this.app.scene.getSelectedElements(this.app.state);
+      // Excalidraw reads its state as React last rendered it, so its
+      // previousSelectedElementIds is the selection the press started with
+      const selectedElementIdsAtDown = this.app.state.selectedElementIds;
 
       const transformHandle = this.getTransformHandleAt(
         selectedElements,
@@ -372,9 +375,7 @@ export class SelectionTool {
         // the selection cycles on pointerup — or, on an alt-drag, is what's
         // duplicated
         if (pointerDownState.hit.cycleTarget) {
-          this.app.setState({
-            previousSelectedElementIds: this.app.state.selectedElementIds,
-          });
+          this.app.setState({ previousSelectedElementIds: selectedElementIdsAtDown });
           return false;
         }
 
@@ -395,7 +396,7 @@ export class SelectionTool {
           (!this.app.state.selectedLinearElement?.isEditing ||
             (hitElement && hitElement?.id !== this.app.state.selectedLinearElement?.elementId))
         ) {
-          this.clearSelection(hitElement);
+          this.clearSelection(hitElement, selectedElementIdsAtDown);
         }
 
         if (this.app.state.selectedLinearElement?.isEditing) {
@@ -434,9 +435,7 @@ export class SelectionTool {
             if (!this.app.state.selectedElementIds[hitElement.id]) {
               pointerDownState.hit.wasAddedToSelection = true;
             }
-            this.app.setState({
-              previousSelectedElementIds: this.app.state.selectedElementIds,
-            });
+            this.app.setState({ previousSelectedElementIds: selectedElementIdsAtDown });
             this.app.selection.select(hitElement, { deep: true });
             // mark as not completely handled so as to allow dragging etc.
             return false;
@@ -470,9 +469,7 @@ export class SelectionTool {
           }
         }
 
-        this.app.setState({
-          previousSelectedElementIds: this.app.state.selectedElementIds,
-        });
+        this.app.setState({ previousSelectedElementIds: selectedElementIdsAtDown });
       }
     }
     return false;
@@ -1334,7 +1331,10 @@ export class SelectionTool {
     return false;
   };
 
-  clearSelection(hitElement: ExcalidrawElement | null): void {
+  clearSelection(
+    hitElement: ExcalidrawElement | null,
+    previousSelectedElementIds: AppState["selectedElementIds"],
+  ): void {
     this.app.setState((prevState) => ({
       selectedElementIds: makeNextSelectedElementIds({}, prevState),
       activeEmbeddable: null,
@@ -1351,7 +1351,7 @@ export class SelectionTool {
     this.app.setState({
       selectedElementIds: makeNextSelectedElementIds({}, this.app.state),
       activeEmbeddable: null,
-      previousSelectedElementIds: this.app.state.selectedElementIds,
+      previousSelectedElementIds,
       selectedLinearElement: null,
     });
   }

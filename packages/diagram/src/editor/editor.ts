@@ -25,6 +25,7 @@ import {
   MINIMUM_ARROW_SIZE,
   POINTER_BUTTON,
   TAP_TWICE_TIMEOUT,
+  TOUCH_CTX_MENU_TIMEOUT,
   ROUNDNESS,
   createUserAgentDescriptor,
   getFormFactor,
@@ -32,6 +33,7 @@ import {
   getStrokeWidthByKey,
   invariant,
   isArrowKey,
+  isIOS,
   isTransparent,
   isInputLike,
   isSelectionLikeTool,
@@ -121,6 +123,7 @@ import {
   isImageElement,
   isInitializedImageElement,
   normalizeSVG,
+  ShapeCache,
   isUsingAdaptiveRadius,
   LinearElementEditor,
   makeNextSelectedElementIds,
@@ -316,6 +319,8 @@ export interface DiagramEditorApi {
   getSceneElementsIncludingDeleted(): readonly OrderedExcalidrawElement[];
   getAppState(): Readonly<AppState>;
   getFiles(): BinaryFiles;
+  /** Adds the files the scene does not have yet, and draws the images that show them. */
+  addFiles(files: readonly BinaryFileData[]): void;
   setActiveTool(tool: { type: ToolType; locked?: boolean }): void;
   scrollToContent(target?: readonly ExcalidrawElement[], opts?: { fit?: ViewportFit }): void;
   resetScene(): void;
@@ -609,6 +614,11 @@ export class DiagramEditor {
   private secondaryPress: { x: number; y: number; moved: boolean; menuAsked: boolean } | null =
     null;
   private consumeNextContextMenu = false;
+  private didTapTwice = false;
+  private tappedTwiceTimer = 0;
+  private firstTapPosition: { x: number; y: number } | null = null;
+  private touchTimeout = 0;
+  private invalidateContextMenu = false;
 
   public constructor(private readonly options: DiagramEditorOptions) {
     const { container, interactiveCanvas } = options;
@@ -687,6 +697,7 @@ export class DiagramEditor {
       getSceneElementsIncludingDeleted: () => this.scene.getElementsIncludingDeleted(),
       getAppState: () => this.state,
       getFiles: () => this.files,
+      addFiles: (files) => this.batch(() => this.addFiles(files)),
       setActiveTool: (tool) => this.batch(() => this.setActiveTool(tool)),
       scrollToContent: (target, opts) => this.batch(() => this.scrollToContent(target, opts)),
       resetScene: () => this.batch(() => this.resetScene()),
@@ -1373,6 +1384,19 @@ export class DiagramEditor {
   /** The decoded images of the scene's files, by file id. */
   public get imageCache() {
     return this.sceneCanvas.imageCache;
+  }
+
+  /** Excalidraw's `addFiles`: the files the scene lacks, their images decoded and redrawn. */
+  public addFiles(files: readonly BinaryFileData[]): void {
+    const { addedFiles } = this.addMissingFiles(files);
+    for (const element of this.scene.getNonDeletedElements()) {
+      if (isInitializedImageElement(element) && addedFiles[element.fileId]) {
+        this.imageCache.delete(element.fileId);
+        ShapeCache.delete(element);
+      }
+    }
+    this.scene.triggerUpdate();
+    void this.addNewImagesToImageCache();
   }
 
   /**
@@ -2406,6 +2430,11 @@ export class DiagramEditor {
     on(interactiveCanvas, "pointercancel", (event) => this.handleCanvasPointerCancel(event));
     on(interactiveCanvas, "dblclick", (event) => this.handleCanvasDoubleClick(event));
     on(interactiveCanvas, "click", (event) => this.handleCanvasClick(event));
+    on(interactiveCanvas, "touchstart", (event) => this.onTouchStart(event), { passive: false });
+    on(interactiveCanvas, "touchend", (event) => this.onTouchEnd(event));
+    on(interactiveCanvas, "touchmove", () => {
+      this.invalidateContextMenu = true;
+    });
     on(container, "contextmenu", (event) => this.handleContextMenuEvent(event));
     on(container, "keydown", (event) => this.onKeyDown(event));
     // a dropped file never makes the page navigate to it
@@ -2549,7 +2578,101 @@ export class DiagramEditor {
   }
 
   private removePointer(event: PointerEvent): void {
+    if (this.touchTimeout) {
+      this.resetContextMenuTimer();
+    }
     this.gesture.pointers.delete(event.pointerId);
+  }
+
+  private resetTapTwice = (): void => {
+    this.didTapTwice = false;
+    this.firstTapPosition = null;
+  };
+
+  private onTouchStart(event: TouchEvent): void {
+    // Apple Pencil Scribble turns a held pencil into handwriting otherwise
+    if (isIOS) {
+      event.preventDefault();
+    }
+    if (!this.didTapTwice) {
+      this.didTapTwice = true;
+      const [touch] = event.touches;
+      if (event.touches.length === 1 && touch) {
+        this.firstTapPosition = { x: touch.clientX, y: touch.clientY };
+      }
+      this.ownerWindow.clearTimeout(this.tappedTwiceTimer);
+      this.tappedTwiceTimer = this.ownerWindow.setTimeout(this.resetTapTwice, TAP_TWICE_TIMEOUT);
+      return;
+    }
+    // a second tap with one finger near the first writes text there; a second
+    // finger (a pinch) or a tap elsewhere (a drag) does not
+    const [touch] = event.touches;
+    if (event.touches.length === 1 && touch && this.firstTapPosition) {
+      const distance = pointDistance(
+        pointFrom(touch.clientX, touch.clientY),
+        pointFrom(this.firstTapPosition.x, this.firstTapPosition.y),
+      );
+      if (distance <= DOUBLE_TAP_POSITION_THRESHOLD) {
+        this.lassoTrail.endPath();
+        this.selection.clear();
+        this.handleCanvasDoubleClick({
+          clientX: touch.clientX,
+          clientY: touch.clientY,
+          type: "touch",
+          altKey: false,
+          ctrlKey: false,
+          metaKey: false,
+          shiftKey: false,
+        });
+      }
+      this.didTapTwice = false;
+      this.ownerWindow.clearTimeout(this.tappedTwiceTimer);
+    }
+    if (event.touches.length === 2) {
+      this.setState({
+        selectedElementIds: makeNextSelectedElementIds({}, this.state),
+        activeEmbeddable: null,
+      });
+    }
+  }
+
+  private onTouchEnd(event: TouchEvent): void {
+    this.resetContextMenuTimer();
+    if (event.touches.length > 0) {
+      this.setState({
+        previousSelectedElementIds: {},
+        selectedElementIds: makeNextSelectedElementIds(
+          this.state.previousSelectedElementIds,
+          this.state,
+        ),
+      });
+    } else {
+      this.gesture.pointers.clear();
+    }
+  }
+
+  /** A touch held still opens the context menu, as a right click does. */
+  private maybeOpenContextMenuAfterPointerDownOnTouchDevices(event: PointerEvent): void {
+    if (event.pointerType !== "touch") {
+      return;
+    }
+    this.invalidateContextMenu = false;
+    if (this.touchTimeout) {
+      this.invalidateContextMenu = true;
+      return;
+    }
+    this.touchTimeout = this.ownerWindow.setTimeout(() => {
+      this.touchTimeout = 0;
+      if (!this.invalidateContextMenu) {
+        this.batch(() => this.handleContextMenuEvent(event));
+      }
+    }, TOUCH_CTX_MENU_TIMEOUT);
+  }
+
+  private resetContextMenuTimer(): void {
+    this.ownerWindow.clearTimeout(this.touchTimeout);
+    this.touchTimeout = 0;
+    this.invalidateContextMenu = false;
   }
 
   /**
@@ -2684,6 +2807,8 @@ export class DiagramEditor {
       });
       return;
     }
+
+    this.maybeOpenContextMenuAfterPointerDownOnTouchDevices(event);
 
     if (!this.state.penDetected && event.pointerType === "pen") {
       this.setState({
@@ -4827,7 +4952,12 @@ export class DiagramEditor {
    * A double-click: into the line editor on a line, into the group under the
    * pointer on a selected group, and otherwise a request to edit text there.
    */
-  private handleCanvasDoubleClick(event: MouseEvent): void {
+  private handleCanvasDoubleClick(
+    event: Pick<
+      MouseEvent,
+      "clientX" | "clientY" | "type" | "altKey" | "ctrlKey" | "metaKey" | "shiftKey"
+    >,
+  ): void {
     if (
       this.state.editingTextElement ||
       !this.shouldHandleBrowserCanvasDoubleClick(event.type) ||
@@ -5773,6 +5903,8 @@ export class DiagramEditor {
     this.bucketFill.closeTemporaryEyeDropper();
     this.eraserTrail.stop();
     this.lassoTrail.stop();
+    this.resetContextMenuTimer();
+    this.ownerWindow.clearTimeout(this.tappedTwiceTimer);
     this.destroyed = true;
     if (this.frame !== null) this.ownerWindow.cancelAnimationFrame(this.frame);
     if (this.resetCacheIgnoreZoom !== null)
