@@ -560,6 +560,15 @@ ui's `ToggleGroup` is the toggle button group: single or multiple, on
   it on a narrow one. A danger interrupts a screen reader and the other
   tones wait their turn, which `live` overrides. (ui's `Alert` has the
   default and destructive looks alone.)
+- `Tour`, `Coachmark` and `Spotlight`: a guided sequence of notes, each
+  pointing at a part of the page (`target`, a selector or a function) with
+  the page dimmed around it. A coachmark is a dialog beside its target named
+  by its title: focus moves in and goes back after, Next, Back and Skip are
+  buttons, Escape skips the rest, and a press elsewhere does not end it. Each
+  target is scrolled into view, at once under reduced motion, and a step
+  whose target is not on the page is passed by. `useTourProgress(key)`
+  remembers in `localStorage` whether a tour was seen and where it was left,
+  so it shows once and a reload resumes it.
 
 ## Code
 

@@ -102,6 +102,11 @@ export interface ArcMessages {
   moreOptions: string;
   moreActions: string;
   dismiss: string;
+  stepOf: (step: string, total: string) => string;
+  skipTour: string;
+  back: string;
+  next: string;
+  done: string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -200,6 +205,11 @@ export const ENGLISH: ArcMessages = {
   moreOptions: "More options",
   moreActions: "More actions",
   dismiss: "Dismiss",
+  stepOf: (step, total) => `${step} of ${total}`,
+  skipTour: "Skip tour",
+  back: "Back",
+  next: "Next",
+  done: "Done",
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");

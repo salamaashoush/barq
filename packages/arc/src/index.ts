@@ -152,6 +152,20 @@ export {
 export { Tearsheet, type TearsheetProps, tearsheetStyles } from "./components/tearsheet.tsx";
 export { type AlertProps, Banner, InlineAlert, alertStyles } from "./components/alert.tsx";
 export {
+  Coachmark,
+  type CoachmarkProps,
+  Spotlight,
+  type SpotlightProps,
+  Tour,
+  type TourProgress,
+  type TourProps,
+  type TourStep,
+  type TourTarget,
+  coachmarkStyles,
+  spotlightStyles,
+  useTourProgress,
+} from "./components/tour.tsx";
+export {
   CommandMenu,
   commandMenuStyles,
   type CommandMenuAction,
