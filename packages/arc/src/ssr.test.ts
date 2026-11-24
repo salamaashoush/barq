@@ -310,3 +310,119 @@ describe("the charts on the server", () => {
     expect(html).toContain("var(--success)");
   });
 });
+
+describe("the type, navigation, data and media on the server", () => {
+  test("typography, formatting and navigation render with no DOM", async () => {
+    const jsx = `
+      <main>
+        <Heading level={1}>Billing</Heading>
+        <Text size="xs" color="muted">Updated</Text>
+        <Prose html="<p>Terms</p>" />
+        <Link href="https://example.com">Docs</Link>
+        <Truncate lines={2}>A long comment</Truncate>
+        <Shortcut keys="Mod+K" />
+        <RelativeTime value="2026-03-01T10:00:00.000Z" now="2026-03-01T12:00:00.000Z" />
+        <FormattedDate value="2026-03-01T10:00:00.000Z" />
+        <Currency value={12.5} currency="USD" />
+        <Duration value={3909000} />
+        <ResponsiveTabs aria-label="Project" items={[{ id: "a", label: "Alpha", count: 2 }]}>
+          {(tab) => <p>{tab.label} panel</p>}
+        </ResponsiveTabs>
+        <BottomNavigation items={[{ label: "Projects", to: "/projects" }]} />
+        <SideNav aria-label="Settings" navigation={[{ items: [{ label: "Overview", to: "/" }] }]} />
+        <Stepper items={[{ id: "a", label: "Cart" }, { id: "b", label: "Pay" }]} defaultSelectedKey="a" />
+        <Pager total={312} pageSize={20} defaultPageIndex={1} />
+        <TableOfContents items={[{ id: "intro", label: "Intro" }]} />
+      </main>
+    `;
+    const names = [
+      "Heading",
+      "Text",
+      "Prose",
+      "Link",
+      "Truncate",
+      "Shortcut",
+      "RelativeTime",
+      "FormattedDate",
+      "Currency",
+      "Duration",
+      "ResponsiveTabs",
+      "BottomNavigation",
+      "SideNav",
+      "Stepper",
+      "Pager",
+      "TableOfContents",
+    ];
+    const { code, html, errors } = await serverProcess(routed(names, jsx, "/projects"));
+    expect(errors).toBe("");
+    expect(code).toBe(0);
+    expect(html).toContain("<h1");
+    expect(html).toContain('target="_blank"');
+    expect(html).toContain(">Ctrl<");
+    expect(html).toContain("2 hours ago");
+    expect(html).toContain("Mar 1, 2026");
+    expect(html).toContain("$12.50");
+    expect(html).toContain('role="tablist"');
+    expect(html).toMatch(/Alpha(<!--[^>]*-->)* panel/);
+    expect(html).toMatch(
+      /<a [^>]*href="\/projects"[^>]*aria-current="page"|<a [^>]*aria-current="page"[^>]*href="\/projects"/,
+    );
+    expect(html).toContain('aria-current="step"');
+    expect(html).toContain("21–40 of 312");
+    expect(html).toContain('href="#intro"');
+  });
+
+  test("data display and media render with no DOM", async () => {
+    const jsx = `
+      <main>
+        <Indicator count={3} />
+        <AvatarStack people={[{ name: "Ana Lima", presence: "online" }, { name: "Ben" }]} max={1} />
+        <Timeline now="2026-03-01T12:00:00.000Z" events={[{ id: "1", title: "Opened", time: "2026-03-01T11:00:00.000Z" }]} />
+        <DescriptionList items={[{ term: "Plan", details: "Team" }]} />
+        <StatGroup stats={[{ label: "Runs", value: "12" }]} />
+        <Tile title="Northwind" href="/projects/northwind" />
+        <List aria-label="Files" items={[{ id: "a", name: "report.pdf" }]}>
+          {(file) => <ListItem title={file.name} />}
+        </List>
+        <TreeView aria-label="Folders" items={[{ id: "src", label: "src", children: [{ id: "app", label: "app.tsx" }] }]} defaultExpandedKeys={["src"]} />
+        <DataTable
+          label="Teams"
+          columns={[{ accessorKey: "name", header: "Team" }]}
+          data={[{ id: "a", name: "Alpha", teams: [{ id: "b", name: "Beta" }] }]}
+          getRowId={(team) => team.id}
+          getSubRows={(team) => team.teams}
+          defaultExpandedKeys={["a"]}
+        />
+        <Image src="/a.jpg" alt="Harbour" aspectRatio={1.5} />
+        <Gallery aria-label="Photos" images={[{ src: "/b.jpg", alt: "Market" }]} />
+      </main>
+    `;
+    const names = [
+      "Indicator",
+      "AvatarStack",
+      "Timeline",
+      "DescriptionList",
+      "StatGroup",
+      "Tile",
+      "List",
+      "ListItem",
+      "TreeView",
+      "DataTable",
+      "Image",
+      "Gallery",
+    ];
+    const { code, html, errors } = await serverProcess(routed(names, jsx, "/"));
+    expect(errors).toBe("");
+    expect(code).toBe(0);
+    expect(html).toContain("+1");
+    expect(html).toContain("1 hour ago");
+    expect(html).toContain("<dt");
+    expect(html).toContain('href="/projects/northwind"');
+    expect(html).toContain("report.pdf");
+    expect(html).toContain('role="treegrid"');
+    expect(html).toContain("app.tsx");
+    expect(html).toContain("Beta");
+    expect(html).toContain('loading="lazy"');
+    expect(html).not.toContain('role="dialog"');
+  });
+});

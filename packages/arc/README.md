@@ -598,6 +598,10 @@ import { ResponsiveTabs } from "@barqjs/arc";
   finger, `+` and `-`, the zoom buttons or a double press zoom, a zoomed
   image drags to pan, and "Image 2 of 5" is announced as it changes.
 
+ui's `Carousel` swipes under a finger, steps with the arrows in the reading
+direction and has `CarouselPrevious` and `CarouselNext`; `CarouselDots` adds
+the slide picker, a button per slide with the current one marked.
+
 ## Inputs and pickers
 
 ```tsx
