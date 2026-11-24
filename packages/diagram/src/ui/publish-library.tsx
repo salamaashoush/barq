@@ -14,12 +14,13 @@ import { Textarea } from "@barqjs/ui/textarea";
 import {
   EDITOR_LS_KEYS,
   EXPORT_DATA_TYPES,
+  MIME_TYPES,
   VERSIONS,
   chunk,
   getExportSource,
 } from "@excalidraw/common";
 
-import { canvasToBlob } from "../data/blob.ts";
+import { CanvasError } from "../errors.ts";
 import { exportToCanvas, exportToSvg } from "../export.ts";
 import { useDiagramUI } from "./context.tsx";
 import { diagramLayer as d } from "./layer.ts";
@@ -138,6 +139,9 @@ const storeData = (data: PublishLibraryData | null): void => {
 };
 
 /** The items side by side on white, Excalidraw's preview of a library it publishes. */
+const PREVIEW_MAX_SIDE = 5000;
+const PREVIEW_JPEG_QUALITY = 0.8;
+
 const generatePreviewImage = async (
   libraryItems: LibraryItems,
   document: Document,
@@ -177,7 +181,24 @@ const generatePreviewImage = async (
       BOX_SIZE + BOX_PADDING,
     );
   }
-  return canvasToBlob(canvas);
+  const scale = Math.min(1, PREVIEW_MAX_SIDE / Math.max(canvas.width, canvas.height));
+  let output = canvas;
+  if (scale < 1) {
+    output = document.createElement("canvas");
+    output.width = Math.round(canvas.width * scale);
+    output.height = Math.round(canvas.height * scale);
+    output.getContext("2d")?.drawImage(canvas, 0, 0, output.width, output.height);
+  }
+  return new Promise((resolve, reject) => {
+    output.toBlob(
+      (blob) =>
+        blob
+          ? resolve(blob)
+          : reject(new CanvasError("Error: Canvas too big", "CANVAS_POSSIBLY_TOO_BIG")),
+      MIME_TYPES.jpg,
+      PREVIEW_JPEG_QUALITY,
+    );
+  });
 };
 
 /**
