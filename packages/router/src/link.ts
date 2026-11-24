@@ -347,7 +347,10 @@ const HANDLED = {
 
 /** A prop a link did not interpret, as the attribute value it becomes. */
 export function attributeValue(slot: unknown, name: string): string | null {
-  const resolved = readSlot(slot, `Link.${name}`);
+  const read = readSlot(slot, `Link.${name}`);
+  // `aria-current={() => …}` is the accessor the caller handed over, and an
+  // attribute never holds a function, so it is read through.
+  const resolved = typeof read === "function" ? readSlot(read, `Link.${name}`) : read;
   // `false` and `null` REMOVE, so `download={false}` is not the string "false",
   // which is truthy as an attribute and would enable it.
   return resolved === false || resolved === null || resolved === undefined

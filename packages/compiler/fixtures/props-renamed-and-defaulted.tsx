@@ -8,7 +8,7 @@ export const [label, setLabel] = createSignal("first")
  * names are reads of the prop, so the default applies whenever the prop is
  * `undefined` and not only when the component first runs.
  */
-function Chip(props: { text: () => string; tone?: string }) {
+function Chip(props: { text: string; tone?: string }) {
   const { text: body, tone = "warm" } = props
   return (
     <span class="chip" data-tone={tone}>
@@ -20,8 +20,8 @@ function Chip(props: { text: () => string; tone?: string }) {
 export default function PropsRenamedAndDefaulted() {
   return (
     <div class="chips">
-      <Chip text={() => label()} />
-      <Chip text={() => "static"} tone="cool" />
+      <Chip text={label()} />
+      <Chip text="static" tone="cool" />
     </div>
   )
 }

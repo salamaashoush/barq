@@ -1,10 +1,10 @@
 use oxc::allocator::{Allocator, Box as ArenaBox, CloneIn, TakeIn, Vec as ArenaVec};
 use oxc::ast::ast::{
-    Argument, ArrayExpressionElement, ArrowFunctionBody, BindingPattern, Expression,
-    FormalParameter, FormalParameterKind, FormalParameters, IdentifierName, JSXAttributeItem,
-    JSXAttributeValue, JSXChild, JSXElement, JSXElementName, JSXExpression, JSXFragment,
-    JSXMemberExpression, JSXMemberExpressionObject, NumberBase, ObjectPropertyKind, SpreadElement,
-    Statement,
+    Argument, ArrayExpressionElement, ArrowFunctionBody, BindingPattern, CallExpression,
+    Expression, FormalParameter, FormalParameterKind, FormalParameters, IdentifierName,
+    JSXAttributeItem, JSXAttributeValue, JSXChild, JSXElement, JSXElementName, JSXExpression,
+    JSXFragment, JSXMemberExpression, JSXMemberExpressionObject, NumberBase, ObjectPropertyKind,
+    SpreadElement, Statement,
 };
 use oxc::ast::builder::AstBuilder;
 use oxc::ast_visit::VisitMut;
@@ -328,7 +328,8 @@ impl<'a> Shaper<'a, '_> {
         // nothing uses. A development compile keeps it for the name it carries.
         let provider =
             symbol.is_some_and(|symbol| self.lift.env().contexts.contains(&symbol)) && !self.dev;
-        let framed = flow.is_none() && !provider && !self.namespaced_flow(&callee);
+        let construct = flow.is_some() || self.namespaced_flow(&callee);
+        let framed = !construct && !provider;
         let label = (self.dev && framed)
             .then(|| self.allocator.alloc_str(opening.name.span().source_text(self.source)));
 
@@ -375,7 +376,11 @@ impl<'a> Shaper<'a, '_> {
                     if self.builds_dom(&value) || self.is_block(&value) {
                         self.block_into_cell_slot(symbol, name, at);
                     }
-                    let cell = self.cell_at(value, at, Some(name));
+                    let cell = if construct {
+                        self.cell_at(value, at, Some(name))
+                    } else {
+                        self.prop_cell(value, at, name)
+                    };
                     let property = object_property(name, cell, at, &self.ast, self.allocator);
                     let Source::Record(record) = &mut sources[last] else { unreachable!() };
                     record.push(property);
@@ -677,8 +682,10 @@ impl<'a> Shaper<'a, '_> {
         self.eta(&read).unwrap_or(read)
     }
 
-    /// The Cell a prop crosses the boundary as — the whole of C3 and C5 in one
-    /// place, in the order the cases are tried:
+    /// The Cell a construct's slot crosses the boundary as — the whole of C3
+    /// and C5 in one place, in the order the cases are tried. A user
+    /// component's named prop goes through `prop_cell` instead, which keeps 1
+    /// and 4 to 6 and forwards only a prop:
     ///
     /// 1. **JSX lowers to a Block** (C6), never to a built node.
     /// 2. **A value already carrying either calling convention is FORWARDED BY
@@ -740,6 +747,45 @@ impl<'a> Shaper<'a, '_> {
         if self.is_cell(&value, channel.is_some_and(is_handler_channel)) {
             return value;
         }
+        self.fresh_cell(value, span)
+    }
+
+    /// The Cell a named prop of a USER component crosses as.
+    ///
+    /// The author writes a prop as its value, so a function written there is
+    /// the value: `upload={() => send()}` is a callback the component calls
+    /// when it wants to, and a bare `count` is the accessor, handed over as
+    /// one. Neither is a Cell, and taken for one the component's first read
+    /// called it. Only a prop forwarded off a props parameter is already its
+    /// Cell (C5). A construct reads its slots by its own rules, which
+    /// `cell_at` keeps, and so do the body channels.
+    pub(super) fn prop_cell(
+        &mut self,
+        value: Expression<'a>,
+        span: Span,
+        name: &str,
+    ) -> Expression<'a> {
+        if is_construction_channel(name) {
+            return self.cell_at(value, span, Some(name));
+        }
+        if self.builds_dom(&value) {
+            return self.block(value, span);
+        }
+        if self.forwards_prop(&value) {
+            return value;
+        }
+        // `x={s()}` crosses as `s`: the value written is what `s` answers, so
+        // the accessor is its Cell already and no closure is made for it.
+        if let Expression::CallExpression(call) = &value
+            && let Some(reduced) = self.eta_call(call)
+        {
+            return reduced;
+        }
+        self.fresh_cell(value, span)
+    }
+
+    /// A Cell made for `value` here, when nothing it is already carries one.
+    fn fresh_cell(&mut self, value: Expression<'a>, span: Span) -> Expression<'a> {
         if let Some(hoisted) = self.konst(&value, span) {
             return hoisted;
         }
@@ -1065,6 +1111,16 @@ impl<'a> Shaper<'a, '_> {
         }
     }
 
+    /// A member read off a props parameter, under any casts: the Cell the
+    /// caller made, handed on by identity.
+    fn forwards_prop(&self, value: &Expression<'a>) -> bool {
+        match strip_wrappers(value) {
+            Expression::StaticMemberExpression(member) => self.reads_props(&member.object),
+            Expression::ComputedMemberExpression(member) => self.reads_props(&member.object),
+            _ => false,
+        }
+    }
+
     fn reads_props(&self, object: &Expression<'a>) -> bool {
         symbol_of(self.lift.scoping(), object)
             .is_some_and(|s| matches!(self.lift.env().kind_of(s), SourceKind::PropsParam))
@@ -1375,6 +1431,12 @@ impl<'a> Shaper<'a, '_> {
             return None;
         }
         let Expression::CallExpression(call) = arrow.body.as_expression()? else { return None };
+        self.eta_call(call)
+    }
+
+    /// `s()` → `s`, for a call that reads an accessor or a derived function
+    /// and nothing else.
+    fn eta_call(&self, call: &CallExpression<'a>) -> Option<Expression<'a>> {
         if !call.arguments.is_empty() || call.optional {
             return None;
         }
@@ -1947,15 +2009,15 @@ mod tests {
         )
         .code;
         assert!(code.contains("_$createComponent(Badge, {"), "{code}");
-        assert!(code.contains("total: () => n()"), "{code}");
+        // C5.2: the value written is what `n` answers, so `n` is its Cell.
+        assert!(code.contains("total: n,"), "{code}");
         assert!(!code.contains("get total()"), "{code}");
-        // A literal hoists (C3.1 + the constant-thunk graft); an author-written
-        // zero-arity arrow already IS a Cell and is forwarded untouched.
+        // A literal hoists (C3.1 + the constant-thunk graft).
         assert!(code.contains("label: _k$1"), "{code}");
         assert!(code.contains("const _k$1 = () => \"x\""), "{code}");
-        // η-reduction is UNIVERSAL, so an author-written `() => n()`
-        // collapses to the accessor itself: the same Cell, one closure fewer.
-        assert!(code.contains("fn: n"), "{code}");
+        // An author-written arrow is the prop's VALUE, a callback, so it
+        // crosses inside a Cell of its own and the child's read yields it.
+        assert!(code.contains("fn: _$cell(() => n())"), "{code}");
     }
 
     /// Case 5's limit. A container literal is frozen for its IDENTITY, which is
@@ -2363,8 +2425,9 @@ mod tests {
         assert!(code.contains("x: props.x"), "{code}");
         assert!(code.contains("y: props.y"), "{code}");
         assert!(!code.contains("() => props.x"), "{code}");
-        // A signal getter IS a Cell (R6), so it forwards by name too.
-        assert!(code.contains("_$createComponent(A, { x: n })"), "{code}");
+        // A signal getter written as a prop is its value, the accessor, and
+        // the child's read yields it rather than calling it.
+        assert!(code.contains("_$createComponent(A, { x: () => n })"), "{code}");
     }
 
     /// C3.1 reaches `onClick` like everything else, and C5's identity claim has
@@ -2574,10 +2637,10 @@ mod tests {
     ///
     /// Arity could not settle it, and neither could the body: the form that
     /// broke the app is `onClick={() => setStep(10)}`, an expression body that
-    /// does yield a value. The SLOT settles it, so every row here is a value
-    /// that is a Cell at `value=` and a handler at `onClick=`.
+    /// does yield a value. A user component's prop is written as its value, so
+    /// every row here is the function itself at `value=` as at `onClick=`.
     #[test]
-    fn a_function_never_crosses_a_handler_channel_as_the_cell() {
+    fn a_function_never_crosses_a_component_prop_as_the_cell() {
         let prelude = "import { Button } from \"./b\";\n\
                        const block = () => { save() };\n\
                        const expr = () => save();\n";
@@ -2585,9 +2648,9 @@ mod tests {
         let cases = [
             // the form that broke the app: an expression body DOES yield a
             // value, so nothing about the function distinguishes it
-            ("{() => save()}", "onClick: _$cell(() => save())", "value: () => save()"),
+            ("{() => save()}", "onClick: _$cell(() => save())", "value: _$cell(() => save())"),
             ("{() => { save() }}", "onClick: _$cell(() => {", "value: _$cell(() => {"),
-            ("{expr}", "onClick: () => expr", "value: expr"),
+            ("{expr}", "onClick: () => expr", "value: () => expr"),
             ("{block}", "onClick: () => block", "value: () => block"),
         ];
         for (value, handler, cell) in cases {
@@ -2610,11 +2673,11 @@ mod tests {
         .code;
         assert!(forwarded.contains("onClick: () => _$readProp(props.onClick)"), "{forwarded}");
 
-        // The channel is `on` + an UPPERCASE letter. `once` is an ordinary prop
-        // and a nullary binding still crosses it by identity (C5).
+        // The channel is `on` + an UPPERCASE letter. `once` is an ordinary prop,
+        // and a nullary binding crosses it as the value it is there too.
         let once =
             emit(&format!("{prelude}export const V = () => <Button once={{expr}}/>;\n")).code;
-        assert!(once.contains("once: expr"), "{once}");
+        assert!(once.contains("once: () => expr"), "{once}");
         assert!(is_handler_channel("onClick") && is_handler_channel("onPointerDown"));
         assert!(!is_handler_channel("once") && !is_handler_channel("only"));
         assert!(!is_handler_channel("on") && !is_handler_channel("onclick"));
@@ -2837,7 +2900,7 @@ mod tests {
              const V = () => <Chosen total={n()} />;\n");
         assert!(dynamic.warnings.is_empty(), "{:?}", dynamic.warnings);
         assert!(!dynamic.code.contains("get total()"), "{}", dynamic.code);
-        assert!(dynamic.code.contains("total: () => n()"), "{}", dynamic.code);
+        assert!(dynamic.code.contains("total: n"), "{}", dynamic.code);
     }
 
     /// O3's callback half. A store keeps a row whose field it writes in place,

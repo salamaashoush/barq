@@ -69,7 +69,7 @@ import {
   toString,
   WHOLE,
 } from "@barqjs/core";
-import type { Cell, Child, JSXElement } from "@barqjs/core";
+import type { Cell, Child, Incoming, JSXElement } from "@barqjs/core";
 import { coerceLive, writeLive } from "./forms.ts";
 import {
   beginHydration,
@@ -662,7 +662,10 @@ export function resolveDynamic(
   if (resolved === null || resolved === undefined || resolved === false) return null;
   // A component chosen at run time is called as a compiled tag calls one.
   if (typeof resolved !== "string") {
-    return createComponent(resolved as (props: Record<string, unknown>) => unknown, props);
+    return createComponent(
+      resolved as (props: Record<string, unknown>) => unknown,
+      props as Incoming<Record<string, unknown>>,
+    );
   }
   return element(resolved, props);
 }
@@ -2575,7 +2578,14 @@ export function spread(
       // calling one no longer throws for want of a scope; `style` would take
       // the Node it built and read the DOM constants off it as css declarations.
       refuseBlock(value, `The \`${key}\` prop in a spread`);
-      const held = isSignalGetter(value) ? value() : value;
+      let held = isSignalGetter(value) ? value() : value;
+      // A Cell can answer with an accessor, `data-active={() => …}` handed
+      // through a component. An attribute never holds a function, so it is
+      // read through, here where the effect follows it.
+      if (isSignalGetter(held)) {
+        refuseBlock(held, `The \`${key}\` prop in a spread`, true);
+        held = held();
+      }
       resolved[key] = key === "style" ? readKeys(held) : held;
     }
     return resolved;

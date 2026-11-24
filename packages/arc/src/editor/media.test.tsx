@@ -105,6 +105,34 @@ describe("images", () => {
     );
   });
 
+  test("an upload that takes nothing is called when a picture goes up, and not before", async () => {
+    const editor = capture();
+    let calls = 0;
+    render(() => (
+      <RichTextEditor
+        label="Notes"
+        onEditor={editor.set}
+        upload={() => {
+          calls++;
+          return new Promise<string>(() => {});
+        }}
+      />
+    ));
+    await settle();
+    await typeText(editor.get(), "Before");
+    await user.click(screen.getByRole("button", { name: "Insert" }));
+    await settle();
+    expect(screen.getByRole("menuitem", { name: "Image" })).toBeDefined();
+    await user.keyboard("{Escape}");
+    await settle();
+    expect(calls).toBe(0);
+    editor
+      .get()
+      .dispatchCommand(DRAG_DROP_PASTE, [new File(["x"], "chart.png", { type: "image/png" })]);
+    await settle();
+    expect(calls).toBe(1);
+  });
+
   test("an editor with no upload offers no image, and leaves pasted files alone", async () => {
     render(() => <RichTextEditor label="Notes" />);
     await settle();

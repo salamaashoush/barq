@@ -16,9 +16,8 @@ function pick(label: unknown, _event: MouseEvent): void {
  *  evaluates it ONCE into a cell. The runtime installs that array as
  *  the `__bq_click` expando, so a carrier that rebuilt it per read would install
  *  a different listener on every frame.
- *  - `render={() => …}` — an author-written zero-arity arrow, which the arity rule
- *  says already IS a Cell, so it forwards untouched and reads the same object
- *  twice.
+ *  - `render={() => …}` — a function the author wrote as the prop's value, so
+ *  it crosses inside a cell of its own and reads the same object twice.
  *
  * `data-same` and `data-render-same` are that identity, rendered: each reads its
  * prop twice and says whether the two reads agreed. Both must say `true` on the
@@ -82,9 +81,9 @@ export const events = [
 export const optimality = {
   target: 1,
   templates: 2,
-  // Three carriers, three rules, in one call. `cb` is an array, so C3's
-  // identity rule evaluates it ONCE into a cell; `render` is a zero-arity arrow
-  // the author wrote, so the arity rule forwards it untouched; `tone` is a Cell
+  // Three carriers in one call. `cb` is an array, so C3's identity rule
+  // evaluates it ONCE into a cell; `render` is a function the author wrote as
+  // the value, evaluated once into a cell the same way; `tone` is a Cell
   // already, so C5 forwards it by NAME and no closure is allocated at all.
   emits: [
     "createComponent(Chip, ",

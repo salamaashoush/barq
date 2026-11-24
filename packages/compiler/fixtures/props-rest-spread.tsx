@@ -8,7 +8,7 @@ export const [label, setLabel] = createSignal("first")
  * props record without the names the pattern took, so making it reads
  * nothing.
  */
-function Chip(props: { text: () => string; id: string; "data-tone": string }) {
+function Chip(props: { text: string; id: string; "data-tone": string }) {
   const { text, ...rest } = props
   return (
     <span class="chip" {...rest}>
@@ -20,7 +20,7 @@ function Chip(props: { text: () => string; id: string; "data-tone": string }) {
 export default function PropsRestSpread() {
   return (
     <div class="chips">
-      <Chip text={() => label()} id="chip-1" data-tone="warm" />
+      <Chip text={label()} id="chip-1" data-tone="warm" />
     </div>
   )
 }

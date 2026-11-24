@@ -658,10 +658,11 @@ import { createSignal, readProp as _$readProp, createComponent as _$createCompon
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<p class="greeting">Hello, <!----></p>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<section><!----></section>\`);
 const _k$1 = () => "!";
-const _k$2 = () => "?";
+const _k$2 = () => "static";
+const _k$3 = () => "?";
 export const [name, setName] = createSignal("world");
 function Greeting(props: {
-  name: () => string;
+  name: string;
   punctuation: string;
 }) {
   const _el$1 = _tmpl$1();
@@ -678,8 +679,8 @@ export default function ComponentBoundaryProps() {
     punctuation: _k$1
   }), _el$4);
   _$insert(_el$3, _$createComponent(Greeting, {
-    name: () => "static",
-    punctuation: _k$2
+    name: _k$2,
+    punctuation: _k$3
   }));
   return _el$3;
 }
@@ -820,7 +821,7 @@ export const optimality = {
 
 exports[`emitted code snapshots component-forwarded-handler-tuple 1`] = `
 "import { template as _$template, insert as _$insert, delegateEvents as _$delegateEvents, setAttr as _$setAttr, bindEvent as _$bindEvent } from "@barqjs/web";
-import { cells, createSignal, readProp as _$readProp, bindEffect as _$bindEffect, createComponent as _$createComponent } from "@barqjs/core";
+import { cells, createSignal, readProp as _$readProp, readAttr as _$readAttr, bindEffect as _$bindEffect, cell as _$cell, createComponent as _$createComponent } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<button type="button" class="chip"></button>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div class="wrap"><b class="picked"></b></div>\`);
 const _k$1 = () => true;
@@ -840,9 +841,8 @@ function pick(label: unknown, _event: MouseEvent): void {
 *  evaluates it ONCE into a cell. The runtime installs that array as
 *  the \`__bq_click\` expando, so a carrier that rebuilt it per read would install
 *  a different listener on every frame.
-*  - \`render={() => …}\` — an author-written zero-arity arrow, which the arity rule
-*  says already IS a Cell, so it forwards untouched and reads the same object
-*  twice.
+*  - \`render={() => …}\` — a function the author wrote as the prop's value, so
+*  it crosses inside a cell of its own and reads the same object twice.
 *
 * \`data-same\` and \`data-render-same\` are that identity, rendered: each reads its
 * prop twice and says whether the two reads agreed. Both must say \`true\` on the
@@ -859,7 +859,7 @@ function Chip(props: {
   tone: string;
 }) {
   const _el$1 = _tmpl$1();
-  _$bindEffect(() => _$readProp(props.tone), (_v$, _p$) => {
+  _$bindEffect(() => _$readAttr(props.tone), (_v$, _p$) => {
     _$setAttr(_el$1, "data-tone", _v$, _p$);
   });
   _$setAttr(_el$1, "data-same", String(props.cb === props.cb));
@@ -877,7 +877,7 @@ function Row(props: {
 }) {
   return _$createComponent(Chip, {
     cb: () => [_$readProp(props.handler), _$readProp(props.label)],
-    render: () => _$readProp(props.on) ? _$readProp(props.long) : _$readProp(props.short),
+    render: _$cell(() => _$readProp(props.on) ? _$readProp(props.long) : _$readProp(props.short)),
     tone: props.label
   });
 }
@@ -888,8 +888,8 @@ export default function ComponentForwardedHandlerTuple() {
     on: _k$1,
     handler: () => pick,
     label: _k$2,
-    long: () => "long",
-    short: () => "short"
+    long: _$cell(() => "long"),
+    short: _$cell(() => "short")
   }));
   _$insert(_el$3, () => picked());
   return _el$2;
@@ -900,9 +900,9 @@ export const events = [(root: HTMLElement): void => {
 export const optimality = {
   target: 1,
   templates: 2,
-  // Three carriers, three rules, in one call. \`cb\` is an array, so C3's
-  // identity rule evaluates it ONCE into a cell; \`render\` is a zero-arity arrow
-  // the author wrote, so the arity rule forwards it untouched; \`tone\` is a Cell
+  // Three carriers in one call. \`cb\` is an array, so C3's identity rule
+  // evaluates it ONCE into a cell; \`render\` is a function the author wrote as
+  // the value, evaluated once into a cell the same way; \`tone\` is a Cell
   // already, so C5 forwards it by NAME and no closure is allocated at all.
   emits: [
     "createComponent(Chip, ",
@@ -1013,7 +1013,7 @@ function Badge(props: {
 }
 export default function ComponentGetterProps() {
   const _el$2 = _tmpl$2();
-  _$insert(_el$2, _$createComponent(Badge, { count: () => total() }));
+  _$insert(_el$2, _$createComponent(Badge, { count: total }));
   return _el$2;
 }
 export const steps = [() => setTotal(7)];
@@ -1024,8 +1024,10 @@ export const optimality = {
   // getter is what keeps the read live, and the compiled call, which hands the
   // props object over as it is, is what stops \`createElement\` copying it back
   // into a value.
+  // The read crosses as the accessor it calls, \`count: total\`, and no closure
+  // is made for it.
   emits: [
-    "count: () => total()",
+    "count: total",
     "props.count",
     "createComponent(Badge, "
   ],
@@ -1039,25 +1041,26 @@ export const optimality = {
 
 exports[`emitted code snapshots component-spread 1`] = `
 "import { template as _$template, insert as _$insert, setAttr as _$setAttr } from "@barqjs/web";
-import { createSignal, readProp as _$readProp, carry as _$carry, bindEffect as _$bindEffect, props as _$props, createComponent as _$createComponent } from "@barqjs/core";
+import { createSignal, readProp as _$readProp, carry as _$carry, readAttr as _$readAttr, bindEffect as _$bindEffect, props as _$props, createComponent as _$createComponent } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<span class="chip"></span>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div><!----></div>\`);
 const _k$1 = () => "chip-2";
+const _k$2 = () => "static";
 export const [label, setLabel] = createSignal("first");
 function Chip(props: {
-  label: () => string;
+  label: string;
   tone: string;
   id: string;
 }) {
   const _el$1 = _tmpl$1();
   _$bindEffect(() => ({
-    a: _$readProp(props.tone),
-    b: _$readProp(props.id)
+    a: _$readAttr(props.tone),
+    b: _$readAttr(props.id)
   }), (_v$, _p$ = {}) => {
     if (_v$.a !== _p$.a) _$setAttr(_el$1, "data-tone", _v$.a);
     if (_v$.b !== _p$.b) _$setAttr(_el$1, "id", _v$.b);
   });
-  _$insert(_el$1, () => _$readProp(props.label));
+  _$insert(_el$1, props.label);
   return _el$1;
 }
 export default function ComponentSpread() {
@@ -1073,7 +1076,7 @@ export default function ComponentSpread() {
   _$insert(_el$2, _$createComponent(Chip, _$props([{ label }, _$carry(shared)])), _el$3);
   _$insert(_el$2, _$createComponent(Chip, _$props([_$carry(shared), {
     id: _k$1,
-    label: () => "static"
+    label: _k$2
   }])));
   return _el$2;
 }
@@ -1151,7 +1154,7 @@ exports[`emitted code snapshots context-provider 1`] = `
 import { createContext, createSignal, useContext, block as _$block, createComponent as _$createComponent } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<span class="badge"></span>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div><!----></div>\`);
-const Theme = createContext<() => string>(() => "light");
+const Theme = createContext("light");
 export const [theme, setTheme] = createSignal("dark");
 function Badge() {
   const value = useContext(Theme);
@@ -4699,7 +4702,7 @@ export const steps = [() => setChecked(true), () => setText("edited")];
 
 exports[`emitted code snapshots props-destructured-body 1`] = `
 "import { template as _$template, insert as _$insert, setAttr as _$setAttr } from "@barqjs/web";
-import { createSignal, readProp as _$readProp, bindEffect as _$bindEffect, createComponent as _$createComponent } from "@barqjs/core";
+import { createSignal, readProp as _$readProp, readAttr as _$readAttr, bindEffect as _$bindEffect, createComponent as _$createComponent } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<span class="chip"></span>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div class="chips"></div>\`);
 const _k$1 = () => "warm";
@@ -4710,12 +4713,12 @@ export const [label, setLabel] = createSignal("first");
 * \`tone\` follow the props exactly as \`props.text\` and \`props.tone\` do.
 */
 function Chip(props: {
-  text: () => string;
+  text: string;
   tone: string;
 }) {
   const _unused$1 = void 0;
   const _el$1 = _tmpl$1();
-  _$bindEffect(() => _$readProp(props.tone), (_v$, _p$) => {
+  _$bindEffect(() => _$readAttr(props.tone), (_v$, _p$) => {
     _$setAttr(_el$1, "data-tone", _v$, _p$);
   });
   _$insert(_el$1, props.text);
@@ -4752,11 +4755,12 @@ export const optimality = {
 
 exports[`emitted code snapshots props-destructured-param 1`] = `
 "import { template as _$template, insert as _$insert, setAttr as _$setAttr } from "@barqjs/web";
-import { createSignal, readProp as _$readProp, bindEffect as _$bindEffect, createComponent as _$createComponent } from "@barqjs/core";
+import { createSignal, readProp as _$readProp, readAttr as _$readAttr, bindEffect as _$bindEffect, createComponent as _$createComponent } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<span class="chip"></span>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div class="chips"><!----></div>\`);
 const _k$1 = () => "warm";
-const _k$2 = () => "cool";
+const _k$2 = () => "static";
+const _k$3 = () => "cool";
 export const [label, setLabel] = createSignal("first");
 /**
 * Props destructured in the PARAMETER LIST. The pattern becomes one props
@@ -4765,11 +4769,11 @@ export const [label, setLabel] = createSignal("first");
 * That is the contract this shape pins.
 */
 function Chip(_props$1: {
-  text: () => string;
+  text: string;
   tone: string;
 }) {
   const _el$1 = _tmpl$1();
-  _$bindEffect(() => _$readProp(_props$1.tone), (_v$, _p$) => {
+  _$bindEffect(() => _$readAttr(_props$1.tone), (_v$, _p$) => {
     _$setAttr(_el$1, "data-tone", _v$, _p$);
   });
   _$insert(_el$1, _props$1.text);
@@ -4783,8 +4787,8 @@ export default function PropsDestructuredParam() {
     tone: _k$1
   }), _el$3);
   _$insert(_el$2, _$createComponent(Chip, {
-    text: () => "static",
-    tone: _k$2
+    text: _k$2,
+    tone: _k$3
   }));
   return _el$2;
 }
@@ -4794,7 +4798,7 @@ export const optimality = {
   templates: 2,
   // A destructured PARAMETER is not a snapshot: the two names are reads of the
   // one props record. The call site is what it is for a \`props\` parameter: a
-  // real props object, with the author-written accessor passed through as one.
+  // real props object, with the accessor the value was read from passed as its Cell.
   emits: [
     "createComponent(Chip, ",
     "() => \\"warm\\"",
@@ -4811,7 +4815,7 @@ export const optimality = {
 
 exports[`emitted code snapshots props-raw-forward 1`] = `
 "import { template as _$template, insert as _$insert, setAttr as _$setAttr } from "@barqjs/web";
-import { createSignal, readProp as _$readProp, bindEffect as _$bindEffect, createComponent as _$createComponent } from "@barqjs/core";
+import { createSignal, readProp as _$readProp, readAttr as _$readAttr, bindEffect as _$bindEffect, createComponent as _$createComponent } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<span class="chip"></span>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div class="wrap"></div>\`);
 export const [tone, setTone] = createSignal("warm");
@@ -4834,7 +4838,7 @@ function Chip(props: {
   tone: string;
 }) {
   const _el$1 = _tmpl$1();
-  _$bindEffect(() => _$readProp(props.tone), (_v$, _p$) => {
+  _$bindEffect(() => _$readAttr(props.tone), (_v$, _p$) => {
     _$setAttr(_el$1, "data-tone", _v$, _p$);
   });
   _$insert(_el$1, props.tone);
@@ -4847,7 +4851,7 @@ function Outer(props: {
 }
 export default function PropsRawForward() {
   const _el$2 = _tmpl$2();
-  _$insert(_el$2, _$createComponent(Outer, { tone: () => tone() }));
+  _$insert(_el$2, _$createComponent(Outer, { tone }));
   return _el$2;
 }
 export const steps = [() => setTone("cool")];
@@ -4867,7 +4871,8 @@ exports[`emitted code snapshots props-renamed-and-defaulted 1`] = `
 import { createSignal, withDefault as _$withDefault, createComponent as _$createComponent } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<span class="chip"></span>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div class="chips"><!----></div>\`);
-const _k$1 = () => "cool";
+const _k$1 = () => "static";
+const _k$2 = () => "cool";
 export const [label, setLabel] = createSignal("first");
 /**
 * Renamed and defaulted at once: \`text: body\` binds a different local name to
@@ -4876,7 +4881,7 @@ export const [label, setLabel] = createSignal("first");
 * \`undefined\` and not only when the component first runs.
 */
 function Chip(props: {
-  text: () => string;
+  text: string;
   tone?: string;
 }) {
   const _prop$1 = _$withDefault(props, "tone", () => {
@@ -4892,8 +4897,8 @@ export default function PropsRenamedAndDefaulted() {
   const _el$3 = _el$2.firstChild;
   _$insert(_el$2, _$createComponent(Chip, { text: label }), _el$3);
   _$insert(_el$2, _$createComponent(Chip, {
-    text: () => "static",
-    tone: _k$1
+    text: _k$1,
+    tone: _k$2
   }));
   return _el$2;
 }
@@ -4925,7 +4930,7 @@ export const [label, setLabel] = createSignal("first");
 * nothing.
 */
 function Chip(props: {
-  text: () => string;
+  text: string;
   id: string;
   "data-tone": string;
 }) {

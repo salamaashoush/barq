@@ -19,7 +19,7 @@ function Gate(props) {
   return <b>{first ? "salama" : "example.com"}</b>;
 }
 export function Chosen() {
-  return <div>{vis() ? <Gate on={() => on()} /> : null}</div>;
+  return <div>{vis() ? <Gate on={on()} /> : null}</div>;
 }
 export function Listed() {
   return <div>{items().map(() => <Gate />)}</div>;

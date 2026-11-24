@@ -7,7 +7,7 @@ export const [label, setLabel] = createSignal("first")
  * not a copy: each name it binds is the read it stands for, so `text` and
  * `tone` follow the props exactly as `props.text` and `props.tone` do.
  */
-function Chip(props: { text: () => string; tone: string }) {
+function Chip(props: { text: string; tone: string }) {
   const { text, tone } = props
   return (
     <span class="chip" data-tone={tone}>
@@ -19,7 +19,7 @@ function Chip(props: { text: () => string; tone: string }) {
 export default function PropsDestructuredBody() {
   return (
     <div class="chips">
-      <Chip text={() => label()} tone="warm" />
+      <Chip text={label()} tone="warm" />
     </div>
   )
 }

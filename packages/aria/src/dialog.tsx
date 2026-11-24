@@ -991,10 +991,7 @@ export function PortalProvider(props: Incoming<PortalProviderComponentProps>) {
   // beside it: installed on the ambient owner it was every later sibling's too.
   return withPortalTarget(
     () => {
-      // A zero-argument arrow written inline IS the prop's Cell, so reading it
-      // has already called it; one passed by name arrives wrapped and has not.
-      const given: unknown = props.getContainer?.();
-      const container: unknown = typeof given === "function" ? (given as () => unknown)() : given;
+      const container = props.getContainer?.()?.();
       return container instanceof Element ? container : null;
     },
     () => props.children,

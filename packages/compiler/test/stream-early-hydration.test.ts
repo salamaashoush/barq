@@ -39,7 +39,7 @@ export default function LateRows() {
     <div>
       <p class="shell">shell</p>
       <Loading fallback={<i class="skel">skel</i>}>
-        <Rows rows={rows} />
+        <Rows rows={rows()} />
       </Loading>
     </div>
   )

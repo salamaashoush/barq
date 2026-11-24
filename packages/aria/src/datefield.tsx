@@ -1788,7 +1788,7 @@ function FieldBody(incoming: FieldBodyProps) {
           {(at: number) => <DateSegmentPart index={at} />}
         </For>
       </div>
-      <input {...inputProps} value={incoming.inputValue} ref={inputRef.set} />
+      <input {...inputProps} value={incoming.inputValue()} ref={inputRef.set} />
       <span {...descriptionProps}>{() => props.description?.()}</span>
       <span {...errorMessageProps}>
         {() => {

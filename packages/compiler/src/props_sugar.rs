@@ -46,6 +46,7 @@ const VALUES: &str = "_$values";
 const OMIT: &str = "_$omit";
 const WITH_DEFAULT: &str = "_$withDefault";
 pub(crate) const READ: &str = "_$readProp";
+pub(crate) const READ_ATTR: &str = "_$readAttr";
 const READ_TAG: &str = "_$readTag";
 const CARRY: &str = "_$carry";
 const ELEMENT_PROPS: &str = "_$elementProps";
@@ -183,7 +184,7 @@ pub fn run<'a>(
         component_tag: false,
         element_tag: false,
         minted: 0,
-        needs: [false; 7],
+        needs: [false; 8],
         refusals: Vec::new(),
         params: Vec::new(),
         tags: Vec::new(),
@@ -381,8 +382,8 @@ struct Rewrite<'a, 's> {
     element_tag: bool,
     minted: u32,
     /// `values`, `omit`, `withDefault`, `readProp`, `carry`, `readTag`,
-    /// `elementProps`, in that order.
-    needs: [bool; 7],
+    /// `elementProps`, `readAttr`, in that order.
+    needs: [bool; 8],
     refusals: Vec<Refusal>,
     params: Vec<Span>,
     tags: Vec<(u32, Expression<'a>)>,
@@ -1192,6 +1193,27 @@ impl<'a> VisitMut<'a> for Rewrite<'a, '_> {
                     return;
                 }
                 walk_mut::walk_jsx_attribute(self, attribute);
+                // An element's attribute reads a prop through the accessor it
+                // may hold: an attribute never holds a function, and a caller
+                // handing `aria-current={() => …}` through a component means
+                // the accessor. A handler and a `ref` are the functions they
+                // hold.
+                let attribute_name = match &attribute.name {
+                    JSXAttributeName::Identifier(name) => Some(name.name.as_str()),
+                    JSXAttributeName::NamespacedName(_) => None,
+                };
+                if self.element_tag
+                    && attribute_name.is_some_and(|name| !name.starts_with("on") && name != "ref")
+                    && let Some(JSXAttributeValue::ExpressionContainer(container)) =
+                        attribute.value.as_mut()
+                    && let Some(Expression::CallExpression(call)) =
+                        container.expression.as_expression_mut()
+                    && let Expression::Identifier(callee) = &mut call.callee
+                    && callee.name == READ
+                {
+                    callee.name = READ_ATTR.into();
+                    self.needs[7] = true;
+                }
             }
         }
     }
@@ -1264,7 +1286,7 @@ fn import_helpers<'a>(
     allocator: &'a Allocator,
     program: &mut Program<'a>,
     core_source: &str,
-    needs: [bool; 7],
+    needs: [bool; 8],
 ) {
     let wanted: Vec<(&str, &str)> = [
         ("values", VALUES),
@@ -1274,6 +1296,7 @@ fn import_helpers<'a>(
         ("carry", CARRY),
         ("readTag", READ_TAG),
         ("elementProps", ELEMENT_PROPS),
+        ("readAttr", READ_ATTR),
     ]
     .into_iter()
     .zip(needs)
@@ -1398,6 +1421,17 @@ mod tests {
     }
 
     #[test]
+    fn an_element_attribute_reads_through_an_accessor_and_a_handler_does_not() {
+        let code = emit(
+            "export function Card(props) { \
+             return <a aria-current={props.current} onClick={props.onPick} />; }\n",
+        );
+        assert!(code.contains("_$readAttr(props.current)"), "{code}");
+        assert!(code.contains("_$readProp(props.onPick)"), "{code}");
+        assert!(!code.contains("_$readAttr(props.onPick)"), "{code}");
+    }
+
+    #[test]
     fn a_read_becomes_read_prop() {
         let code = emit(
             "export function Card(props) { const n = props.count + 1; \
@@ -1406,7 +1440,7 @@ mod tests {
         assert!(code.contains("const n = _$readProp(props.count) + 1;"), "{code}");
         assert!(
             code.contains(
-                "_$bindEffect(() => _$readProp(props.title), (_v$, _p$) => {\n    _$setAttr(_el$1, \"title\", _v$, _p$);\n  });"
+                "_$bindEffect(() => _$readAttr(props.title), (_v$, _p$) => {\n    _$setAttr(_el$1, \"title\", _v$, _p$);\n  });"
             ),
             "{code}"
         );
@@ -1492,7 +1526,7 @@ mod tests {
         );
         assert!(code.contains("const rest = omit(props, \"a\");"), "{code}");
         assert!(
-            code.contains("_$bindProp(_el$1, _$setAttr, \"title\", () => _$readProp(rest.title));"),
+            code.contains("_$bindProp(_el$1, _$setAttr, \"title\", () => _$readAttr(rest.title));"),
             "{code}"
         );
         assert!(!code.contains("_$values"), "{code}");
@@ -1532,7 +1566,7 @@ mod tests {
         let exported = emit("export default (props) => <p title={props.title} />;\n");
         assert!(
             exported.contains(
-                "_$bindEffect(() => _$readProp(props.title), (_v$, _p$) => {\n    _$setAttr(_el$1, \"title\", _v$, _p$);\n  });"
+                "_$bindEffect(() => _$readAttr(props.title), (_v$, _p$) => {\n    _$setAttr(_el$1, \"title\", _v$, _p$);\n  });"
             ),
             "{exported}"
         );
@@ -1544,7 +1578,7 @@ mod tests {
         assert!(option.contains("notFoundComponent: (props) => {"), "{option}");
         assert!(
             option.contains(
-                "_$bindEffect(() => _$readProp(props.title), (_v$, _p$) => {\n    _$setAttr(_el$1, \"title\", _v$, _p$);\n  });"
+                "_$bindEffect(() => _$readAttr(props.title), (_v$, _p$) => {\n    _$setAttr(_el$1, \"title\", _v$, _p$);\n  });"
             ),
             "{option}"
         );
@@ -1654,7 +1688,7 @@ mod tests {
         );
         assert!(code.contains("const all = merge(_$carry(defaults), props);"), "{code}");
         assert!(
-            code.contains("_$bindProp(_el$1, _$setAttr, \"title\", () => _$readProp(all.title));"),
+            code.contains("_$bindProp(_el$1, _$setAttr, \"title\", () => _$readAttr(all.title));"),
             "{code}"
         );
         assert!(code.contains("_$createComponent(Chip, _$props([all]))"), "{code}");

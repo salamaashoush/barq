@@ -1,4 +1,4 @@
-import { For, cell, createComponent, onCleanup } from "@barqjs/core";
+import { For, cell, createComponent, onCleanup, type Incoming } from "@barqjs/core";
 import { type JSX, Portal, render } from "@barqjs/web";
 import { getExtensionDependencyFromEditor, effect, signal, untracked } from "@lexical/extension";
 import {
@@ -179,7 +179,7 @@ export function mountBarqPluginComponent<P extends object>(
               Component,
               Object.fromEntries(
                 Object.entries(props).map(([name, value]) => [name, cell(value)]),
-              ) as P,
+              ) as Incoming<P>,
             ),
   });
 }

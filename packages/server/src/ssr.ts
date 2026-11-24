@@ -33,6 +33,7 @@ import {
   createContext,
   getContext,
   getOwner,
+  type Incoming,
   type Owner,
   isArray,
   isBlock,
@@ -579,7 +580,11 @@ export function attrIntercepts(name: string): boolean {
 }
 
 function unwrap(value: unknown): unknown {
-  return typeof value === "function" ? (value as () => unknown)() : value;
+  if (typeof value !== "function") return value;
+  const read = (value as () => unknown)();
+  // A Cell can answer with an accessor, `data-active={() => …}` handed through
+  // a component, and an attribute never holds a function.
+  return typeof read === "function" && !isBlock(read) ? (read as () => unknown)() : read;
 }
 
 /**
@@ -1816,7 +1821,10 @@ export function resolveDynamic(component: unknown, props: Record<string, unknown
   if (resolved === null || resolved === undefined || resolved === false) return null;
   // A component chosen at run time is called as a compiled tag calls one.
   if (typeof resolved === "function") {
-    return createComponent(resolved as (props: Record<string, unknown>) => unknown, props);
+    return createComponent(
+      resolved as (props: Record<string, unknown>) => unknown,
+      props as Incoming<Record<string, unknown>>,
+    );
   }
   if (typeof resolved !== "string") return resolved;
   return element(resolved, props);

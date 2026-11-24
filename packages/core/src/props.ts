@@ -410,6 +410,22 @@ export function readProp(held: unknown): unknown {
 }
 
 /**
+ * What an element's attribute reads from a prop: the value, or an accessor's
+ * value where the prop holds one. An attribute never holds a function, so
+ * `aria-current={() => …}` handed through a component is the accessor, and
+ * reading it here is what makes the attribute's effect follow it.
+ */
+export function readAttr(held: unknown): unknown {
+  if (typeof held !== "function") return held;
+  if ((held as unknown as Record<symbol, unknown>)[BLOCK] === true) return held;
+  const value = (held as () => unknown)();
+  return typeof value === "function" &&
+    (value as unknown as Record<symbol, unknown>)[BLOCK] !== true
+    ? (value as () => unknown)()
+    : value;
+}
+
+/**
  * What a tag that names a prop calls: `<props.as />`. The value, read as
  * `readProp` reads it, except that a function taking something is called by
  * the tag itself rather than read: a server component's slot is one, and

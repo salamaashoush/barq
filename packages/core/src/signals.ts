@@ -1114,6 +1114,23 @@ function carry<R>(value: R, home: Scope, bindings: Map<string | symbol, unknown>
 /** Value can be static or a reactive accessor */
 type MaybeAccessor<T> = T | (() => T);
 
+/**
+ * What a provider stores for its `value` prop. The prop is a value or an
+ * accessor of one, written as a value like every prop, so its Cell answers
+ * with either: an accessor is read through, which keeps the context following
+ * it. A function that takes something is the value itself, a callback.
+ */
+function providedValue(carrier: unknown): () => unknown {
+  if (typeof carrier !== "function") return (): unknown => carrier;
+  const cell = carrier as () => unknown;
+  return (): unknown => {
+    const value = cell();
+    return typeof value === "function" && (value as { length: number }).length === 0
+      ? (value as () => unknown)()
+      : value;
+  };
+}
+
 // Type-only: keeps a context usable as a JSX component (no runtime cycle)
 import type { JSXElement } from "./types.ts";
 
@@ -1156,7 +1173,7 @@ export function createContext<T>(
    */
   const provider = (props: ContextProviderProps<T>): JSXElement => {
     const instance = childScope(getOwner(), "provide");
-    provideOn(instance, id, cellOf(props.value));
+    provideOn(instance, id, providedValue(props.value));
     let built = false;
     try {
       if (typeof props.children !== "function") return props.children as JSXElement;

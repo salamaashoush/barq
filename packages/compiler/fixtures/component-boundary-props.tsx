@@ -2,7 +2,7 @@ import { createSignal } from "@barqjs/core"
 
 export const [name, setName] = createSignal("world")
 
-function Greeting(props: { name: () => string; punctuation: string }) {
+function Greeting(props: { name: string; punctuation: string }) {
   return (
     <p class="greeting">
       Hello, {() => props.name}
@@ -14,8 +14,8 @@ function Greeting(props: { name: () => string; punctuation: string }) {
 export default function ComponentBoundaryProps() {
   return (
     <section>
-      <Greeting name={() => name()} punctuation="!" />
-      <Greeting name={() => "static"} punctuation="?" />
+      <Greeting name={name()} punctuation="!" />
+      <Greeting name="static" punctuation="?" />
     </section>
   )
 }

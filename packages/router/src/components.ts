@@ -34,9 +34,9 @@ import {
   getOwner,
   provide,
   read,
+  readProp,
   readSlot,
   createSignal,
-  toString,
   untrack,
   WHOLE,
   type Accessor,
@@ -1499,9 +1499,8 @@ export function linkExtraAttrs(props: Incoming<LinkProps>): Record<string, strin
     if (LINK_OWN_PROPS.has(name)) continue;
     // A handler has no markup counterpart; the DOM half attaches it.
     if (eventNameOf(name) !== null) continue;
-    const resolved = readSlot((props as Record<string, unknown>)[name], `Link.${name}`);
-    if (resolved === false || resolved === null || resolved === undefined) continue;
-    out[name] = toString(resolved);
+    const resolved = attributeValue((props as Record<string, unknown>)[name], name);
+    if (resolved !== null) out[name] = resolved;
   }
   // The one interpreted prop that still has to reach the markup: the DOM path
   // binds `aria-disabled`, and without it here the server's anchor and the
@@ -1550,7 +1549,7 @@ function anchorElement(props: Incoming<NavLinkProps>, activeClass: string | null
     const event = eventNameOf(name);
     if (event !== null) {
       listen(element, event, (payload: Event) => {
-        (value as (e: Event) => void)(payload);
+        (readProp(value) as ((e: Event) => void) | undefined)?.(payload);
       });
       continue;
     }

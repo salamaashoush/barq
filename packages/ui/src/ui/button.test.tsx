@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createSignal, flush } from "@barqjs/core";
 import { render, screen, user } from "@barqjs/testing";
 
 import { rulesFor } from "../test-rules.ts";
@@ -167,6 +168,24 @@ describe("Button, as upstream writes it", () => {
     const link = document.querySelector('[data-slot="button"]') as HTMLElement;
     expect(link.getAttribute("aria-disabled")).toBe("true");
     expect(link.hasAttribute("data-disabled")).toBe(true);
+  });
+});
+
+describe("Button handed an accessor for an attribute", () => {
+  test("writes what it answers, and follows it", () => {
+    const [on, setOn] = createSignal(false);
+    render(() => (
+      <Button data-active={() => (on() ? "true" : "false")} aria-pressed={() => on()}>
+        Bold
+      </Button>
+    ));
+    const button = screen.getByRole("button", { name: "Bold" });
+    expect(button.getAttribute("data-active")).toBe("false");
+    expect(button.getAttribute("aria-pressed")).toBe("false");
+    setOn(true);
+    flush();
+    expect(button.getAttribute("data-active")).toBe("true");
+    expect(button.getAttribute("aria-pressed")).toBe("true");
   });
 });
 

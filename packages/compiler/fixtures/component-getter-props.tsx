@@ -41,7 +41,9 @@ export const optimality = {
   // getter is what keeps the read live, and the compiled call, which hands the
   // props object over as it is, is what stops `createElement` copying it back
   // into a value.
-  emits: ["count: () => total()", "props.count", "createComponent(Badge, "],
+  // The read crosses as the accessor it calls, `count: total`, and no closure
+  // is made for it.
+  emits: ["count: total", "props.count", "createComponent(Badge, "],
   // The argument shape a `createElement` call would have, which only
   // `createComponent` may take. Naming the helper itself would be satisfied by
   // the prose above, which explains what it does.

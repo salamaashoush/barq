@@ -962,16 +962,20 @@ compute — a hole's condition, a `map` — so it is wrapped in `_$untrack(() =>
 reads do not become the compute's.
 
 **Props are Cells.** Every own property of the props object is a Cell or a Block
-(`SEMANTICS.md` C3). `Shaper::cell_at` decides each prop, in order:
+(`SEMANTICS.md` C3). `Shaper::cell_at` decides each slot of a construct, in order:
 
 1. JSX, or a value that builds DOM, becomes a Block, `_$block(() => …)`.
-2. `x={s()}` η-reduces to `x: s`, because a signal getter is a Cell.
+2. `x={() => s()}` η-reduces to `x: s`, because a signal getter is a Cell.
 3. A value already carrying the calling convention — an accessor, a props member, a zero-arity
    function — is forwarded by name, so forwarding depth never becomes closure depth (C5).
 4. A literal crosses as a module-hoisted, deduped `const _k$N = () => …` (`Hoisted::Cell`).
 5. A value whose identity is observable — a parameterised function, an array, an object — is
    evaluated once into `_$cell(v)`, unless its contents move.
 6. Everything else is `() => expr`: not memoised, and the CONSUMER's effect subscribes.
+
+A user component's named prop goes through `Shaper::prop_cell`, which keeps 1 and 4 to 6 and
+forwards only a props member. A function written there is the prop's value, a callback, and taken
+for its Cell the component's first read called it.
 
 JSX children are a Block (C6). A spread is not a JavaScript spread: the props are an ordered
 source list, `_$props([a, { b: () => x() }, c])`, read last-wins, and a single plain record is

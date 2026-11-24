@@ -426,6 +426,13 @@ performs it:
   answers `undefined` for a prop the caller left out;
 - a forward, `props.title` handed straight on as a component's attribute or as a child → the Cell
   itself, so forwarding stays identity (C5);
+- a function written as a prop's value on a component tag, `upload={() => send()}`, a named
+  callback, a signal's accessor → that function, inside a Cell of its own, so the read yields it and
+  never calls it. Only a forward is already its Cell. A construct's slots (`each`, `when`,
+  `fallback`) and `children` keep their own rules, and a consumer whose prop takes a value or an
+  accessor of one reads through the accessor: an element's attribute, which reads a prop as
+  `_$readAttr(props.title)`, a spread onto an element, a server-rendered attribute, a context's
+  `value`;
 - `{...props}` onto an ELEMENT → `elementProps(props)`, the record with each handler and `ref` read
   out of its Cell, so a DOM spread attaches the handler rather than the Cell around it;
 - `{...props}`, `omit(props, …)` and `cells(props)` → the record;
@@ -463,7 +470,10 @@ read the value, live, and `{ x }` destructured from the parameter MUST stay live
 `jsx-types/attribute-types.test.ts`, which asserts the positives compile and every
 `@ts-expect-error` still fires. The rewrite is pinned by `props_sugar.rs`'s own tests and by
 `component-boundary-props.tsx`, `props-destructured-param.tsx`, `props-destructured-body.tsx` and
-`props-renamed-and-defaulted.tsx`.
+`props-renamed-and-defaulted.tsx`. A function written as a prop's value reaching the component
+uncalled, on every path a prop takes and in render, server render and hydration, and an accessor
+written for an attribute reaching the element as its value, are pinned by
+`test/function-props.test.ts`.
 
 ### C5 — forwarding is free, depth-independent, and kind-preserving
 
@@ -502,7 +512,9 @@ value's kind (C3.9). Therefore this situation arises only two ways, and each has
 **C5.2 — η-reduction is sound and is restricted to Cells.** `x={s()}` → `x: s` is sound because a
 signal getter *is* a Cell (R6) and Cells are arity-tolerant. It MUST NOT be applied when the reduced
 expression is JSX, which lowers to a Block, nor when the callee's slot is a Block slot the compiler
-cannot see.
+cannot see. On a user component's named prop it reduces the call the author wrote, `x={s()}`; an
+arrow written there, `x={() => s()}`, is a function the author wrote as the value (C4) and is not
+reduced.
 
 **Falsified by.** Assert `childProps.x === parentProps.x` by reference after three hops. A getter
 cannot satisfy this rule at all, because `get x() { return props.x }` allocates a new descriptor at

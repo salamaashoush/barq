@@ -186,6 +186,7 @@ export {
   BLOCK,
   merge,
   omit,
+  readAttr,
   readProp,
   readTag,
   SOURCES,

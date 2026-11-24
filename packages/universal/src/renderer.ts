@@ -26,7 +26,7 @@ import {
   runWithOwner,
   untrack,
 } from "@barqjs/core";
-import type { Block, Cell } from "@barqjs/core";
+import type { Block, Cell, Incoming } from "@barqjs/core";
 import {
   CONTEXT_MISS,
   LIVE_EDGES,
@@ -864,7 +864,14 @@ export function createRenderer<N extends object>(ops: HostOps<N>): Renderer<N> {
           continue;
         }
         refuseBlock(value, `The \`${key}\` prop in a spread`);
-        resolved[key] = typeof value === "function" ? (value as () => unknown)() : value;
+        let held = typeof value === "function" ? (value as () => unknown)() : value;
+        // A Cell can answer with an accessor handed through a component, and
+        // a prop never holds a function here, so it is read through.
+        if (typeof held === "function") {
+          refuseBlock(held, `The \`${key}\` prop in a spread`, true);
+          held = (held as () => unknown)();
+        }
+        resolved[key] = held;
       }
       return resolved;
     };
@@ -978,7 +985,10 @@ export function createRenderer<N extends object>(ops: HostOps<N>): Renderer<N> {
         if (resolved === null || resolved === undefined || resolved === false) return null;
         if (typeof resolved === "string") return element(resolved, props);
         // A component chosen at run time is called as a compiled tag calls one.
-        return createComponent(resolved as (props: Record<string, unknown>) => unknown, props);
+        return createComponent(
+          resolved as (props: Record<string, unknown>) => unknown,
+          props as Incoming<Record<string, unknown>>,
+        );
       });
     };
   }

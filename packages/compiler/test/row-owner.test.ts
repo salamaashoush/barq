@@ -91,7 +91,7 @@ export default function Page() {
         {(name) => (
           <li>
             <Errored fallback={(error) => <em>{error().message}</em>}>
-              <Cell name={() => name} />
+              <Cell name={name} />
             </Errored>
           </li>
         )}

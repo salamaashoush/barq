@@ -111,7 +111,7 @@ describe("a component's frame", () => {
       const MARK = Symbol("salama");
       const row = block((item: string) => document.createTextNode(`${item}:${useContext(Ctx)()}`));
       (row as unknown as Record<symbol, boolean>)[MARK] = true;
-      function Provides(props: { children: unknown }): unknown {
+      function Provides(props: { children: typeof row }): unknown {
         install(getOwner()!, Ctx, () => "carried");
         return props.children;
       }

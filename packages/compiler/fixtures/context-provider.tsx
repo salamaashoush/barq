@@ -1,6 +1,6 @@
 import { createContext, createSignal, useContext } from "@barqjs/core"
 
-const Theme = createContext<() => string>(() => "light")
+const Theme = createContext("light")
 
 export const [theme, setTheme] = createSignal("dark")
 
@@ -12,7 +12,7 @@ function Badge() {
 export default function ContextProvider() {
   return (
     <div>
-      <Theme value={() => theme()}>{() => <Badge />}</Theme>
+      <Theme value={theme()}>{() => <Badge />}</Theme>
       <Badge />
     </div>
   )

@@ -52,12 +52,13 @@ pub fn symbol_of(scoping: &Scoping, expression: &Expression<'_>) -> Option<Symbo
 }
 
 /// The Cell under `_$readProp(cell)`, the read the props pass writes for a
-/// prop written as a value.
+/// prop written as a value, or under `_$readAttr(cell)`, the same read for an
+/// element's attribute.
 pub(crate) fn prop_read<'e, 'a>(
     call: &'e oxc::ast::ast::CallExpression<'a>,
 ) -> Option<&'e Expression<'a>> {
     let Expression::Identifier(callee) = &call.callee else { return None };
-    if callee.name != crate::props_sugar::READ {
+    if callee.name != crate::props_sugar::READ && callee.name != crate::props_sugar::READ_ATTR {
         return None;
     }
     match call.arguments.as_slice() {

@@ -4,14 +4,13 @@ import { compileSource, loadModule, writeSibling } from "./harness.ts";
 import { host, wire } from "./hydration.ts";
 
 /**
- * A function handed to a component as a prop's value: a callback, not a
+ * A function handed to a component as a prop's VALUE: a callback, not a
  * reactive read. Props cross as Cells and a read calls the Cell, so a path that
- * hands the callback over without its Cell has the read call the callback, and
- * a DOM spread handed the Cell attaches it as the listener.
+ * hands the callback over without its Cell has the read call the callback.
  *
- * Every path a prop can take to a component is here, with a callback that
- * takes an argument and a handler that takes nothing. The child records what
- * it was handed; nothing may have been called by the time it has.
+ * Every path a prop can take to a component is here, each with a callback that
+ * takes nothing and one that takes an argument. The child records what it was
+ * handed; nothing in the module may have been called by the time it has.
  */
 
 writeSibling(
@@ -19,43 +18,48 @@ writeSibling(
   `
 import { createComponent, values } from "@barqjs/core";
 
-export function fromTs(component, one, pick, label) {
+export function fromTs(component, zero, one, label) {
   return createComponent(component, {
     name: () => "ts",
+    zero: () => zero,
     one: () => one,
-    onPick: () => pick,
     label,
   });
 }
 
-export function valuesOf(one, pick) {
-  const record = values({ one: () => one, onPick: () => pick });
-  return { one: record.one, pick: record.onPick, again: record.onPick };
+export function valuesOf(zero, one) {
+  const record = values({ zero: () => zero, one: () => one });
+  return { zero: record.zero, one: record.one, again: record.zero };
 }
 `,
 );
 
 const SOURCE = `
-import { asRecord, cells, createSignal, fromCells, merge, omit, type Incoming } from "@barqjs/core";
+import {
+  asRecord, cells, createSignal, fromCells, merge, omit, type Incoming,
+} from "@barqjs/core";
 import { fromTs, valuesOf } from "./function-props-from-ts.ts";
 
-export const calls = { one: 0, pick: 0 };
+export const calls = { zero: 0, one: 0, pick: 0 };
 export function reset() {
+  calls.zero = 0;
   calls.one = 0;
   calls.pick = 0;
 }
 export const [tick, setTick] = createSignal(0);
+export const zero = () => (calls.zero++, "zero");
 export function one(x: string) {
   calls.one++;
   return "one:" + x;
 }
 export const pick = () => (calls.pick++, "pick");
 
-type Seen = { one?: unknown; pick?: unknown; again?: unknown };
+type Seen = { zero?: unknown; one?: unknown; again?: unknown; pick?: unknown };
 export const seen: Record<string, Seen> = {};
 
 type Taken = {
   name: string;
+  zero?: () => unknown;
   one?: (x: string) => unknown;
   onPick?: () => unknown;
   label?: string;
@@ -63,12 +67,21 @@ type Taken = {
 };
 
 function Probe(props: Taken) {
-  seen[props.name] = { one: props.one, pick: props.onPick, again: props.onPick };
+  seen[props.name] = { zero: props.zero, one: props.one, again: props.zero, pick: props.onPick };
   return <i data-row={props.name}>{props.label}</i>;
 }
 
 function Forward(props: Taken) {
   return <Probe {...props} />;
+}
+function Anchor(props: { current?: () => string | undefined }) {
+  return <a data-row="anchor" aria-current={props.current} />;
+}
+function Spreads(props: { "aria-current"?: () => string | undefined }) {
+  return <a data-row="spreads" {...props} />;
+}
+function Button(props: { onClick?: () => unknown; title?: string }) {
+  return <button type="button" data-row="button" {...props} />;
 }
 function Omitted(props: Taken) {
   return <Probe {...omit(props, "drop")} />;
@@ -77,33 +90,33 @@ function MergedAfter(props: Taken) {
   return <Probe {...merge(props, { one })} />;
 }
 function MergedBefore(props: Taken) {
-  return <Probe {...merge({ one, onPick: pick }, props)} />;
+  return <Probe {...merge({ zero, one }, props)} />;
 }
 
 function useHeld(record: Incoming<Taken>): Seen {
-  return { one: record.one?.(), pick: record.onPick?.(), again: record.onPick?.() };
+  return { zero: record.zero?.(), one: record.one?.(), again: record.zero?.(), pick: record.onPick?.() };
 }
 function Hooked(props: Taken) {
   seen.hook = useHeld(cells(props));
   return <i data-row="hook">{props.label}</i>;
 }
 
-function Destructured({ name, one, onPick, label }: Taken) {
-  seen[name] = { one, pick: onPick, again: onPick };
+function Destructured({ name, zero, one, onPick, label }: Taken) {
+  seen[name] = { zero, one, again: zero, pick: onPick };
   return <i data-row={name}>{label}</i>;
 }
 function Defaulted({
   name,
+  zero = () => (calls.zero++, "fallback"),
   one = (x: string) => (calls.one++, x),
-  onPick = () => (calls.pick++, "fallback"),
   label,
 }: Taken) {
-  seen[name] = { one, pick: onPick, again: onPick };
+  seen[name] = { zero, one, again: zero };
   return <i data-row={name}>{label}</i>;
 }
 
 function read(record: Taken): Seen {
-  return { one: record.one, pick: record.onPick, again: record.onPick };
+  return { zero: record.zero, one: record.one, again: record.zero, pick: record.onPick };
 }
 function Escaped(props: Taken) {
   seen.escape = read(props);
@@ -111,79 +124,85 @@ function Escaped(props: Taken) {
 }
 
 const Handwritten = fromCells((props: Incoming<Taken>) => {
-  seen.handwritten = { one: props.one?.(), pick: props.onPick?.(), again: props.onPick?.() };
+  seen.handwritten = { zero: props.zero?.(), one: props.one?.(), again: props.zero?.() };
   return null;
 });
 
-function Button(props: { onClick?: () => unknown; title?: string }) {
-  return <button type="button" data-row="button" {...props} />;
-}
-
-const spread = { one, onPick: pick };
+const spread = { zero, one, onPick: pick };
 // A part's props as aria builds them for an element: a handler is the
 // function itself, anything else that moves is the accessor that reads it.
-const part = asRecord({ name: "part", one: () => one, onPick: pick, label: "part" });
+const part = asRecord({ name: "part", zero: () => zero, one: () => one, onPick: pick, label: "part" });
 
 export default function Page() {
-  seen.values = valuesOf(one, pick);
+  seen.values = valuesOf(zero, one);
   return (
     <div>
-      <Probe name="inline" one={(x) => (calls.one++, x)} onPick={() => (calls.pick++, "pick")} label="inline" />
-      <Probe name="named" one={one} onPick={pick} label="named" />
-      <Probe name="reactive" one={(x) => (calls.one++, x + tick())} onPick={() => (calls.pick++, tick())} label={String(tick())} />
+      <Probe name="inline" zero={() => (calls.zero++, "zero")} one={(x) => (calls.one++, x)} onPick={() => (calls.pick++, "pick")} label="inline" />
+      <Probe name="named" zero={zero} one={one} onPick={pick} label="named" />
+      <Probe name="reactive" zero={() => (calls.zero++, tick())} one={(x) => (calls.one++, x + tick())} label={String(tick())} />
+      <Probe name="eta" zero={() => tick()} label={String(tick())} />
+      <Probe name="accessor" zero={tick} label={String(tick())} />
       <Probe name="spread" {...spread} label="spread" />
-      <Forward name="forward" one={one} onPick={pick} label={String(tick())} />
-      <Omitted name="omit" one={one} onPick={pick} drop="x" label={String(tick())} />
-      <MergedAfter name="merge-after" onPick={pick} label={String(tick())} />
-      <MergedBefore name="merge-before" label={String(tick())} />
-      <Hooked name="hook" one={one} onPick={pick} label={String(tick())} />
-      <Destructured name="destructured" one={one} onPick={pick} label={String(tick())} />
-      <Defaulted name="defaulted-given" one={one} onPick={pick} label={String(tick())} />
+      <Forward name="forward" zero={() => (calls.zero++, "zero")} one={one} onPick={pick} label={String(tick())} />
+      <Omitted name="omit" zero={() => (calls.zero++, "zero")} one={one} onPick={pick} drop="x" label={String(tick())} />
+      <MergedAfter name="merge-after" zero={() => (calls.zero++, "zero")} onPick={pick} label={String(tick())} />
+      <MergedBefore name="merge-before" onPick={pick} label={String(tick())} />
+      <Hooked name="hook" zero={() => (calls.zero++, "zero")} one={one} onPick={pick} label={String(tick())} />
+      <Destructured name="destructured" zero={() => (calls.zero++, "zero")} one={one} onPick={pick} label={String(tick())} />
+      <Defaulted name="defaulted-given" zero={() => (calls.zero++, "zero")} one={one} label={String(tick())} />
       <Defaulted name="defaulted-left-out" label={String(tick())} />
-      <Escaped name="escape" one={one} onPick={pick} label={String(tick())} />
-      <Handwritten name="handwritten" one={one} onPick={pick} />
-      {fromTs(Probe, one, pick, () => String(tick()))}
+      <Escaped name="escape" zero={() => (calls.zero++, "zero")} one={one} onPick={pick} label={String(tick())} />
+      <Handwritten name="handwritten" zero={() => (calls.zero++, "zero")} one={one} />
+      {fromTs(Probe, zero, one, () => String(tick()))}
       <Probe {...part} />
       <Button onClick={() => calls.pick++} title={String(tick())} />
+      <Anchor current={() => (tick() > 0 ? "page" : undefined)} />
+      <Spreads aria-current={() => (tick() > 0 ? "page" : undefined)} />
     </div>
   );
 }
 `;
 
 interface Matrix {
-  calls: { one: number; pick: number };
+  calls: { zero: number; one: number; pick: number };
   reset: () => void;
-  seen: Record<string, { one?: unknown; pick?: unknown; again?: unknown }>;
+  seen: Record<string, { zero?: unknown; one?: unknown; again?: unknown; pick?: unknown }>;
+  zero: () => string;
   one: (x: string) => string;
   pick: () => string;
+  tick: () => number;
   setTick: (value: number) => void;
   default: () => unknown;
 }
 
-/** Each row, and what calling its callbacks answers. */
-const ROWS: Record<string, { one: unknown; pick: unknown; same?: boolean }> = {
-  inline: { one: "a", pick: "pick" },
-  named: { one: "one:a", pick: "pick", same: true },
-  reactive: { one: "a0", pick: 0 },
-  spread: { one: "one:a", pick: "pick", same: true },
-  forward: { one: "one:a", pick: "pick" },
-  omit: { one: "one:a", pick: "pick" },
-  "merge-after": { one: "one:a", pick: "pick" },
-  "merge-before": { one: "one:a", pick: "pick", same: true },
-  hook: { one: "one:a", pick: "pick" },
-  destructured: { one: "one:a", pick: "pick" },
-  "defaulted-given": { one: "one:a", pick: "pick" },
-  "defaulted-left-out": { one: "a", pick: "fallback" },
-  escape: { one: "one:a", pick: "pick" },
-  handwritten: { one: "one:a", pick: "pick" },
-  ts: { one: "one:a", pick: "pick", same: true },
-  values: { one: "one:a", pick: "pick", same: true },
-  part: { one: "one:a", pick: "pick", same: true },
+/** Each row, and what calling its callbacks answers. `null` where the row passes none. */
+const ROWS: Record<string, { zero: unknown; one: unknown; pick: unknown; same?: boolean }> = {
+  inline: { zero: "zero", one: "a", pick: "pick" },
+  named: { zero: "zero", one: "one:a", pick: "pick", same: true },
+  reactive: { zero: 0, one: "a0", pick: null },
+  eta: { zero: 0, one: null, pick: null },
+  accessor: { zero: 0, one: null, pick: null, same: true },
+  spread: { zero: "zero", one: "one:a", pick: "pick", same: true },
+  forward: { zero: "zero", one: "one:a", pick: "pick" },
+  omit: { zero: "zero", one: "one:a", pick: "pick" },
+  "merge-after": { zero: "zero", one: "one:a", pick: "pick" },
+  "merge-before": { zero: "zero", one: "one:a", pick: "pick", same: true },
+  hook: { zero: "zero", one: "one:a", pick: "pick" },
+  destructured: { zero: "zero", one: "one:a", pick: "pick" },
+  "defaulted-given": { zero: "zero", one: "one:a", pick: null },
+  "defaulted-left-out": { zero: "fallback", one: "a", pick: null },
+  escape: { zero: "zero", one: "one:a", pick: "pick" },
+  handwritten: { zero: "zero", one: "one:a", pick: null },
+  ts: { zero: "zero", one: "one:a", pick: null, same: true },
+  values: { zero: "zero", one: "one:a", pick: null, same: true },
+  part: { zero: "zero", one: "one:a", pick: "pick", same: true },
 };
 
 /** The rows whose label follows `tick`. */
 const LIVE = [
   "reactive",
+  "eta",
+  "accessor",
   "forward",
   "omit",
   "merge-after",
@@ -197,26 +216,32 @@ const LIVE = [
 ];
 
 const handedOver = (matrix: Matrix): void => {
-  expect(matrix.calls).toEqual({ one: 0, pick: 0 });
+  expect(matrix.calls).toEqual({ zero: 0, one: 0, pick: 0 });
   for (const [row, expected] of Object.entries(ROWS)) {
     const seen = matrix.seen[row];
     expect(seen, row).toBeDefined();
-    expect(typeof seen.one, `${row}: one`).toBe("function");
-    expect(typeof seen.pick, `${row}: onPick`).toBe("function");
-    expect(seen.again, `${row}: onPick read twice`).toBe(seen.pick);
+    expect(typeof seen.zero, `${row}: zero`).toBe("function");
+    expect(seen.again, `${row}: zero read twice`).toBe(seen.zero);
+    if (expected.one !== null) expect(typeof seen.one, `${row}: one`).toBe("function");
+    if (expected.pick !== null) expect(typeof seen.pick, `${row}: onPick`).toBe("function");
     if (expected.same === true) {
-      expect(seen.one, `${row}: the same callback`).toBe(matrix.one);
-      expect(seen.pick, `${row}: the same handler`).toBe(matrix.pick);
+      expect(
+        seen.zero === matrix.zero || seen.zero === matrix.tick,
+        `${row}: zero is the same function`,
+      ).toBe(true);
     }
   }
-  expect(matrix.calls).toEqual({ one: 0, pick: 0 });
+  expect(matrix.calls).toEqual({ zero: 0, one: 0, pick: 0 });
   for (const [row, expected] of Object.entries(ROWS)) {
     const seen = matrix.seen[row];
     const before = { ...matrix.calls };
-    expect((seen.one as (x: string) => unknown)("a"), `${row}: one("a")`).toBe(expected.one);
-    expect((seen.pick as () => unknown)(), `${row}: onPick()`).toBe(expected.pick);
-    expect(matrix.calls.one - before.one, `${row}: one ran once`).toBe(1);
-    expect(matrix.calls.pick - before.pick, `${row}: onPick ran once`).toBe(1);
+    expect((seen.zero as () => unknown)(), `${row}: zero()`).toBe(expected.zero);
+    if (expected.one !== null)
+      expect((seen.one as (x: string) => unknown)("a"), `${row}: one("a")`).toBe(expected.one);
+    if (expected.pick !== null)
+      expect((seen.pick as () => unknown)(), `${row}: onPick()`).toBe(expected.pick);
+    const counted = row === "eta" || row === "accessor" ? 0 : 1;
+    expect(matrix.calls.zero - before.zero, `${row}: zero ran once`).toBe(counted);
   }
 };
 
@@ -241,20 +266,28 @@ describe("a function handed to a component as a prop's value", () => {
     cleanups.push(web.render(matrix.default as never, page), () => page.remove());
     core.flush();
     handedOver(matrix);
+    expect(page.querySelector('[data-row="anchor"]')?.hasAttribute("aria-current")).toBe(false);
+    expect(page.querySelector('[data-row="spreads"]')?.hasAttribute("aria-current")).toBe(false);
 
     matrix.reset();
     matrix.setTick(4);
     core.flush();
-    expect(matrix.calls).toEqual({ one: 0, pick: 0 });
+    expect(matrix.calls).toEqual({ zero: 0, one: 0, pick: 0 });
     for (const row of LIVE) {
       expect(page.querySelector(`[data-row="${row}"]`)?.textContent, row).toBe("4");
     }
-    expect((matrix.seen.reactive.one as (x: string) => unknown)("a")).toBe("a4");
+    expect((matrix.seen.reactive.zero as () => unknown)()).toBe(4);
+    expect((matrix.seen.eta.zero as () => unknown)()).toBe(4);
+    for (const row of ["anchor", "spreads"]) {
+      expect(page.querySelector(`[data-row="${row}"]`)?.getAttribute("aria-current"), row).toBe(
+        "page",
+      );
+    }
     const button = page.querySelector<HTMLButtonElement>('[data-row="button"]');
     expect(button?.title).toBe("4");
     matrix.reset();
     button?.click();
-    expect(matrix.calls).toEqual({ one: 0, pick: 1 });
+    expect(matrix.calls).toEqual({ zero: 0, one: 0, pick: 1 });
     matrix.setTick(0);
     core.flush();
   });
@@ -263,6 +296,8 @@ describe("a function handed to a component as a prop's value", () => {
     const matrix = await load("function-props-ssr", { ssr: true, hydratable: true });
     const markup = wire(matrix);
     expect(markup).toContain('data-row="inline"');
+    expect(markup).toContain('<a data-row="anchor"></a>');
+    expect(markup).not.toContain("=>");
     handedOver(matrix);
   });
 
@@ -278,8 +313,5 @@ describe("a function handed to a component as a prop's value", () => {
     expect(web.hydrate.report.mismatches).toEqual([]);
     expect(page.querySelector('[data-row="inline"]')).toBe(before);
     handedOver(client);
-    client.reset();
-    page.querySelector<HTMLButtonElement>('[data-row="button"]')?.click();
-    expect(client.calls).toEqual({ one: 0, pick: 1 });
   });
 });
