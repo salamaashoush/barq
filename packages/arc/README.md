@@ -562,6 +562,16 @@ import { ResponsiveTabs } from "@barqjs/arc";
   a check; an `invalid` one an alert in the danger tone and "Has errors"; an
   `optional` one says so. Horizontal or vertical; across a narrow container
   a horizontal one keeps the markers and the current step's label.
+- `Wizard`: a task in several steps over one arc form, `Stepper` above,
+  the step's fields from `children(step)`, and Back, Skip for an
+  `optional` step and Next below. Next checks the step's `fields` first and
+  marks the step "Has errors" if they fail; the last step submits the form.
+  A `summary` step lists what the steps before it hold, each with Edit. With
+  `param` the step is a search parameter, so it has a link and the
+  browser's Back goes back a step; with `resume` the values and the step are
+  kept as the reader goes and restored on return, until the form is
+  submitted; `onStepLeave` hears each step left, for a draft of the app's
+  own. Moving to a step focuses its heading and announces "Step 2 of 3".
 - `Pager`: the way through a list too long for one page, as a navigation
   landmark. `pages` (the default) lists the first, the last and the
   neighbours of the current page with gaps between, folding to "Page 2 of 9"

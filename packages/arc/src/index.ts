@@ -234,6 +234,13 @@ export {
   settingsStyles,
 } from "./components/settings.tsx";
 export {
+  Wizard,
+  type WizardField,
+  type WizardProps,
+  type WizardStep,
+  wizardStyles,
+} from "./components/wizard.tsx";
+export {
   ClipRecorder,
   type ClipRecorderProps,
   type RecordedClip,

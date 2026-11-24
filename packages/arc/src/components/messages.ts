@@ -332,6 +332,21 @@ export interface ArcMessages {
   closePanel: (panel: string) => string;
   resizePanel: string;
   panelWithCount: (panel: string, count: number) => string;
+  steps: string;
+  stepAnnounce: (step: string, total: string, label: string) => string;
+  notGiven: string;
+  editStep: (label: string) => string;
+  skip: string;
+  finish: string;
+  chooseImage: string;
+  changeImage: string;
+  removeImage: string;
+  chooseFromLibrary: string;
+  cropImage: string;
+  cropArea: string;
+  cropHelp: string;
+  zoom: string;
+  aspectRatio: string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -664,6 +679,21 @@ export const ENGLISH: ArcMessages = {
   closePanel: (panel) => `Close ${panel}`,
   resizePanel: "Resize the panel",
   panelWithCount: (panel, count) => `${panel}, ${String(count)}`,
+  steps: "Steps",
+  stepAnnounce: (step, total, label) => `Step ${step} of ${total}: ${label}`,
+  notGiven: "Not given",
+  editStep: (label) => `Edit ${label}`,
+  skip: "Skip",
+  finish: "Finish",
+  chooseImage: "Choose an image",
+  changeImage: "Change",
+  removeImage: "Remove",
+  chooseFromLibrary: "Choose from library",
+  cropImage: "Crop the image",
+  cropArea: "Crop area",
+  cropHelp: "Drag the image or use the arrow keys to move it, and + and − to zoom.",
+  zoom: "Zoom",
+  aspectRatio: "Aspect ratio",
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");
