@@ -71,6 +71,7 @@ const ENTRIES = [
   "navigation-tree",
   "numberfield",
   "overlay-arrow",
+  "overflow",
   "overlays",
   "platform",
   "presence",

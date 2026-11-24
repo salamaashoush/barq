@@ -42,10 +42,8 @@ import {
   install,
   provide,
   Show,
-  untrack,
 } from "@barqjs/core";
 import { isServer } from "@barqjs/web";
-import { resizeObserver } from "@barqjs/primitives/observers";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { button } from "./button.tsx";
 import {
@@ -63,6 +61,7 @@ import { StringDictionary, stringFormatter, useLocale } from "./i18n.ts";
 import { hover } from "./interactions/hover.ts";
 import type { ElementRef, PressEvent } from "./interactions/press.ts";
 import { Menu, MenuItem, MenuTrigger, useMenuTrigger } from "./menu.tsx";
+import { overflowItems } from "./overflow.ts";
 import type { Orientation } from "./selection.ts";
 import {
   access,
@@ -280,143 +279,6 @@ export function actionGroupItem(
 }
 
 // ---------------------------------------------------------------------------
-// Overflow
-// ---------------------------------------------------------------------------
-
-function outerSize(element: HTMLElement, horizontal: boolean, first: boolean, last: boolean) {
-  const style = window.getComputedStyle(element);
-  const box = element.getBoundingClientRect();
-  const margin = (value: string): number => {
-    const parsed = Number.parseInt(value, 10);
-    return Number.isNaN(parsed) ? 0 : parsed;
-  };
-  if (horizontal) {
-    return (
-      box.width + (first ? 0 : margin(style.marginLeft)) + (last ? 0 : margin(style.marginRight))
-    );
-  }
-  return (
-    box.height + (first ? 0 : margin(style.marginTop)) + (last ? 0 : margin(style.marginBottom))
-  );
-}
-
-interface OverflowOptions {
-  wrapperRef: ElementRef;
-  groupRef: ElementRef;
-  isCollapsing: Accessor<boolean>;
-  orientation: Accessor<Orientation>;
-  state: ListState<unknown>;
-  /** How long an item stays out of the menu: the highest go last. */
-  priority: (node: Node<unknown>) => number;
-}
-
-/**
- * Which items go into the menu, measured the way React Spectrum measures
- * them: show everything and measure each item, keep what fits in the
- * wrapper, and if that leaves a menu, decide again with the menu button's
- * own size, since it takes room too.
- *
- * What fits is chosen by priority, the highest first and then in order, so
- * with no priorities the trailing items go, as Spectrum's do; the ones kept
- * stay where they were written.
- */
-function overflow(options: OverflowOptions): {
-  hidden: Accessor<ReadonlySet<Key>>;
-  isMeasuring: Accessor<boolean>;
-} {
-  const NONE: ReadonlySet<Key> = new Set();
-  const [hidden, setHidden] = createSignal<ReadonlySet<Key>>(NONE);
-  const [phase, setPhase] = createSignal<"idle" | "measure" | "verify">("idle");
-  const mode = (): SelectionMode => options.state.selectionManager().selectionMode;
-  /** Each item's size along the axis, from the pass that showed them all. */
-  let sizes: number[] = [];
-
-  const elements = (): { group: HTMLElement; wrapper: HTMLElement } | null => {
-    const group = access(options.groupRef) as HTMLElement | null | undefined;
-    const wrapper = access(options.wrapperRef) as HTMLElement | null | undefined;
-    if (group === null || group === undefined || wrapper === null || wrapper === undefined) {
-      return null;
-    }
-    return { group, wrapper };
-  };
-
-  const choose = (room: number, menu: number): ReadonlySet<Key> => {
-    const nodes = [...options.state.collection()];
-    const total = sizes.reduce((sum, one) => sum + one, 0);
-    if (Math.round(total) <= Math.round(room)) return NONE;
-    const order = nodes
-      .map((node, index) => ({ node, index, priority: options.priority(node) }))
-      .toSorted((one, other) => other.priority - one.priority || one.index - other.index);
-    const kept = new Set<Key>();
-    let used = menu;
-    for (const { node, index } of order) {
-      used += sizes[index] ?? 0;
-      if (Math.round(used) > Math.round(room)) break;
-      kept.add(node.key);
-    }
-    // A choice split between buttons and a menu is two controls for one value.
-    if (mode() !== "none") kept.clear();
-    return new Set(nodes.filter((node) => !kept.has(node.key)).map((node) => node.key));
-  };
-
-  const measure = (): void => {
-    // Spectrum does not collapse a vertical group with selection, and neither
-    // does this: a column of choices collapsing to one button loses its shape.
-    if (!options.isCollapsing() || (options.orientation() === "vertical" && mode() !== "none")) {
-      setPhase("idle");
-      setHidden(NONE);
-      return;
-    }
-    setHidden(NONE);
-    setPhase("measure");
-  };
-
-  if (!isServer) {
-    createEffect(
-      () => [options.state.collection(), options.isCollapsing(), options.orientation(), mode()],
-      () => untrack(measure),
-    );
-
-    // The parent, not the group: a group squeezed by its siblings does not
-    // shrink by itself when the space around it does.
-    resizeObserver(
-      () => (access(options.wrapperRef) as HTMLElement | null | undefined)?.parentElement,
-      () => measure(),
-    );
-
-    // After the render each phase asked for, so the DOM measured is the one
-    // that phase described.
-    createEffect(
-      () => [phase(), hidden()] as const,
-      ([current]) => {
-        const found = untrack(elements);
-        if (current === "idle" || found === null) return;
-        const horizontal = untrack(options.orientation) === "horizontal";
-        const rect = found.wrapper.getBoundingClientRect();
-        const room = horizontal ? rect.width : rect.height;
-        const children = [...found.group.children] as HTMLElement[];
-        if (current === "measure") {
-          sizes = children.map((child, index) =>
-            outerSize(child, horizontal, index === 0, index === children.length - 1),
-          );
-          const next = untrack(() => choose(room, 0));
-          setHidden(next);
-          const partly = next.size > 0 && next.size < untrack(options.state.collection).size;
-          setPhase(partly ? "verify" : "idle");
-        } else {
-          const menu = children.at(-1);
-          const menuSize = menu === undefined ? 0 : outerSize(menu, horizontal, false, true);
-          setHidden(untrack(() => choose(room, menuSize)));
-          setPhase("idle");
-        }
-      },
-    );
-  }
-
-  return { hidden, isMeasuring: () => phase() !== "idle" };
-}
-
-// ---------------------------------------------------------------------------
 // Components
 // ---------------------------------------------------------------------------
 
@@ -529,13 +391,22 @@ export function ActionGroup<T>(props: ActionGroupComponentProps<T>) {
     state,
   );
 
-  const { hidden: collapsed, isMeasuring } = overflow({
+  const mode = (): SelectionMode => state.selectionManager().selectionMode;
+  const { hidden: collapsed, isMeasuring } = overflowItems({
     wrapperRef,
     groupRef,
-    isCollapsing: () => props.overflowMode === "collapse",
+    // Spectrum does not collapse a vertical group with selection, and neither
+    // does this: a column of choices collapsing to one button loses its shape.
+    isCollapsing: () =>
+      props.overflowMode === "collapse" && !(orientation() === "vertical" && mode() !== "none"),
     orientation,
-    state,
-    priority: (node) => props.getPriority?.(node.value as T) ?? 0,
+    keys: () => [...state.collection()].map((node) => node.key),
+    priority: (key) => {
+      const node = state.collection().getItem(key);
+      return node === null || node === undefined ? 0 : (props.getPriority?.(node.value as T) ?? 0);
+    },
+    // A choice split between buttons and a menu is two controls for one value.
+    isAllOrNothing: () => mode() !== "none",
   });
 
   const nodes = (): Node<unknown>[] => [...state.collection()];

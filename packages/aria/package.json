@@ -258,6 +258,11 @@
       "barq": "./src/overlay-arrow.tsx",
       "bun": "./src/overlay-arrow.tsx"
     },
+    "./overflow": {
+      "types": "./src/overflow.ts",
+      "barq": "./src/overflow.ts",
+      "bun": "./src/overflow.ts"
+    },
     "./overlays": {
       "types": "./src/overlays.ts",
       "barq": "./src/overlays.ts",

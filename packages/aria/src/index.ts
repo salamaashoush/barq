@@ -113,6 +113,8 @@ export {
   numberParser,
   provideDirection,
   provideLocale,
+  relativeTimeFormatter,
+  relativeUnit,
   StringDictionary,
   StringFormatter,
   stringFormatter,
@@ -1838,3 +1840,9 @@ export {
   type ParsedKeyboardShortcut,
 } from "./interactions/keyboard.ts";
 export { type RouterConfig, type RouterOptions } from "./interactions/open-link.ts";
+export {
+  type OverflowChoice,
+  type OverflowOptions,
+  overflowItems,
+  overflowingKeys,
+} from "./overflow.ts";
