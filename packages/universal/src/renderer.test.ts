@@ -19,7 +19,10 @@ import { TEXT, createTestHost, inner, serialize, type TestNode } from "./test-ho
 const host = createTestHost();
 const r = createRenderer(host.ops);
 
-interface Mounted { root: TestNode; dispose: () => void }
+interface Mounted {
+  root: TestNode;
+  dispose: () => void;
+}
 
 function mount(code: () => unknown): Mounted {
   const root = host.root();

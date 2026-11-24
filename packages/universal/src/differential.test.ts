@@ -28,7 +28,10 @@ function random(seed: number): () => number {
   };
 }
 
-interface RenderedChildren { labels: string[]; nodes: object[] }
+interface RenderedChildren {
+  labels: string[];
+  nodes: object[];
+}
 
 /** What one side builds with: an element holding text, and the row's own pieces. */
 interface Side<N extends object> {

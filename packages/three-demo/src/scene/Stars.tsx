@@ -6,7 +6,10 @@ import { random, useOrrery } from "./orrery.ts";
 
 const STARS = 4000;
 
-interface StarField { positions: Float32Array; colors: Float32Array }
+interface StarField {
+  positions: Float32Array;
+  colors: Float32Array;
+}
 
 function sky(seed: number): StarField {
   const next = random(seed ^ 0x5f3759df);

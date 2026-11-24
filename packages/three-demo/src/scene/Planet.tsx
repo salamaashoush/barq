@@ -34,7 +34,9 @@ const label = css`
   }
 `;
 
-export interface PlanetProps { planet: Body }
+export interface PlanetProps {
+  planet: Body;
+}
 
 export function Planet(props: PlanetProps) {
   const orrery = useOrrery();

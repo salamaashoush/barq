@@ -20,7 +20,11 @@ export interface Planet {
   readonly fact: string;
 }
 
-export interface Star { readonly name: string; readonly color: string; readonly radius: number }
+export interface Star {
+  readonly name: string;
+  readonly color: string;
+  readonly radius: number;
+}
 
 export interface StarSystem {
   readonly star: Star;

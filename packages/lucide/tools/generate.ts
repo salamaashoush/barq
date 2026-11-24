@@ -113,7 +113,9 @@ function nodesOf(svg: string): string {
   return JSON.stringify(nodes);
 }
 
-interface LucidePackage { version: string }
+interface LucidePackage {
+  version: string;
+}
 
 function main(): void {
   const nodes = JSON.parse(readFileSync(join(lucide, "icon-nodes.json"), "utf8")) as Record<
@@ -154,9 +156,8 @@ function main(): void {
     );
   }
 
-  const version = (
-    JSON.parse(readFileSync(join(lucide, "package.json"), "utf8")) as LucidePackage
-  ).version;
+  const version = (JSON.parse(readFileSync(join(lucide, "package.json"), "utf8")) as LucidePackage)
+    .version;
 
   const barrel = resolve(import.meta.dir, "../src/index.ts");
   const manifest = resolve(import.meta.dir, "../src/manifest.ts");

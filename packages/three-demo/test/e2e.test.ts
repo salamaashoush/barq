@@ -159,7 +159,10 @@ async function click(page: Page, x: number, y: number): Promise<void> {
   });
 }
 
-interface ScreenPoint { x: number; y: number }
+interface ScreenPoint {
+  x: number;
+  y: number;
+}
 
 async function clickElement(page: Page, selector: string): Promise<void> {
   const at = await page.evaluate<ScreenPoint>(
@@ -203,7 +206,10 @@ function expectScene(lit: Lit): void {
   expect(lit.lit / lit.sampled).toBeGreaterThan(0.02);
 }
 
-interface GlContexts { created: number; lost: number }
+interface GlContexts {
+  created: number;
+  lost: number;
+}
 
 test("hydrates without a mismatch, draws, selects on click, and remounts after navigation", async () => {
   await withChrome(

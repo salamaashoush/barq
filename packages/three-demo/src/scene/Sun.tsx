@@ -3,7 +3,10 @@ import { AdditiveBlending, TextureLoader } from "three";
 
 import { useOrrery } from "./orrery.ts";
 
-export interface SunProps { color: string; radius: number }
+export interface SunProps {
+  color: string;
+  radius: number;
+}
 
 export function Sun(props: SunProps) {
   const orrery = useOrrery();

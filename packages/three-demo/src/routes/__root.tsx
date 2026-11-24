@@ -47,7 +47,9 @@ const bar = css`
   }
 `;
 
-interface ShellProps { children: Child }
+interface ShellProps {
+  children: Child;
+}
 
 function shellComponent(props: ShellProps) {
   return (

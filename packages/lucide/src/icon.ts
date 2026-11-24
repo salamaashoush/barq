@@ -52,11 +52,11 @@ export const ICON_VIEW_BOX = "0 0 24 24";
 /** The `<svg>` attributes, as accessors, so a changed `size` writes one attribute. */
 export function iconProps(props: Incoming<IconProps>): Record<string, unknown> {
   function size(): string | number {
-  return props.size?.() ?? 24;
-}
+    return props.size?.() ?? 24;
+  }
   function stroke(): string | number {
-  return props.strokeWidth?.() ?? 2;
-}
+    return props.strokeWidth?.() ?? 2;
+  }
 
   // Every `data-*` the caller passed, as the accessor it arrived as. Read
   // through rather than copied, so one that changes still writes its attribute.
