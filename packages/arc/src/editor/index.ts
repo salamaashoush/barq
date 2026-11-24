@@ -40,6 +40,7 @@ export {
   markdownToDocument,
   markdownTransformers,
 } from "./document.ts";
+export { MessageEditor, type MessageEditorProps } from "./message-editor.tsx";
 export {
   FloatingFormatToolbar,
   type FloatingFormatToolbarProps,

@@ -1281,7 +1281,9 @@ the editor, the renderer and on a server.
   the line, and Enter in a list, a quote or a code block stays there), with
   mentions, commands, emoji and an `EmojiPicker` button, attachments
   uploaded into a tray above the actions, the formatting toolbar on
-  request, `mode="edit"` for a message already sent, and `sendActions`
+  request, `mode="edit"` for a message already sent (`MessageEditor` is
+  that mode opened on a `ChatMessage`, for a list's `renderEditor`: Enter
+  saves, Escape cancels and focus goes back to the message), and `sendActions`
   such as Schedule send beside Send. On a phone it keeps to a third of what
   the keyboard leaves.
 - `EditorCollaboration`, from `@barqjs/arc/editor/collaboration`: a
@@ -1332,7 +1334,10 @@ first opens. Rich message content is drawn by `RichTextRenderer` from
   arrows and Page Up and Page Down move between them, Home and End go to
   the ends, Escape comes back out of a message's controls, and a new
   message from someone else is announced. `controller` hands over
-  `scrollToLatest` and `scrollToMessage`.
+  `scrollToLatest` and `scrollToMessage`, which brings a message to the
+  middle, focuses it and marks it for a moment in a tint that fades through
+  arc's colour motion (at once under reduced motion). `editingId` and
+  `renderEditor` edit a message in place, in its body's stead.
 - `MessageItem`: one message on ui's `Message`: the author, the time,
   edited and pinned; the body as text, rich `content`, or `renderBody`'s;
   pictures in a `Gallery` that opens the `Lightbox`, audio and video in

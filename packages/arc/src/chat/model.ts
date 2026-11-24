@@ -68,6 +68,10 @@ export interface MessageHandlers {
   onReact?: (message: ChatMessage, emoji: string, add: boolean) => void;
   onReply?: (message: ChatMessage) => void;
   onEdit?: (message: ChatMessage) => void;
+  /** The message being edited, whose body `renderEditor` replaces. */
+  editingId?: string;
+  /** The editor drawn in place of the body of the message being edited: `MessageEditor`, from `@barqjs/arc/editor`. */
+  renderEditor?: (message: ChatMessage) => Child;
   onDelete?: (message: ChatMessage) => void;
   onPin?: (message: ChatMessage, pinned: boolean) => void;
   /** The address of a message, which Copy link puts on the clipboard. */

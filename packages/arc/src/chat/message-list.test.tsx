@@ -4,7 +4,8 @@ import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user } from "@barqjs/testing";
 
 import { serverProcess } from "../ssr-harness.ts";
-import { hydrates, settle } from "../test-arc.ts";
+import { motion } from "../style/index.ts";
+import { hydrates, settle, wears } from "../test-arc.ts";
 import { type MessageListApi, MessageList } from "./message-list.tsx";
 import type { ChatMessage } from "./model.ts";
 import { scrollViewport, sizeViewport } from "./test-chat.ts";
@@ -286,6 +287,34 @@ describe("MessageList", () => {
     await settle();
     expect(document.activeElement?.getAttribute("data-message-id")).toBe("m10");
     expect(api?.scrollToMessage("nope")).toBe(false);
+  });
+
+  test("a jump brings a message to the middle, focuses it and marks it for a moment", async () => {
+    let api: MessageListApi | undefined;
+    render(() => (
+      <MessageList
+        messages={conversation(0, 80)}
+        timeZone="UTC"
+        controller={(given) => (api = given)}
+      />
+    ));
+    const viewport = await laidOut();
+    expect(api?.scrollToMessage("m20")).toBe(true);
+    await settle();
+    await settle();
+    const row = document.querySelector(
+      '[data-slot="message-list-row"][data-key="m20"]',
+    ) as HTMLElement;
+    expect(document.activeElement?.getAttribute("data-message-id")).toBe("m20");
+    // Its middle near the viewport's middle, give or take rows measured on the way.
+    const middle = rowTop("m20") + 20 - (viewport.scrollTop + 200);
+    expect(Math.abs(middle)).toBeLessThan(40);
+    expect(row.hasAttribute("data-highlighted")).toBe(true);
+    // The mark comes and goes through the colour transition, which reduced motion cuts to nothing.
+    expect(wears(row, motion.colours)).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 1700));
+    await settle();
+    expect(row.hasAttribute("data-highlighted")).toBe(false);
   });
 
   test("a new message from someone else is announced, the reader's own and older ones are not", async () => {

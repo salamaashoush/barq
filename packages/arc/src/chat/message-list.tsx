@@ -31,6 +31,7 @@ import {
   focus,
   gap,
   layout,
+  motion,
   panel,
   place,
   space,
@@ -54,7 +55,11 @@ export const messageListStyles = variants({
     // A short conversation sits at the bottom, where the next message arrives.
     stack: arc(layout.column, layout.end, { minBlockSize: "100%" }),
     rows: arc(layout.relative, layout.noShrink, { inlineSize: "100%" }),
-    row: arc(place.across),
+    row: arc(place.across, motion.colours, {
+      "&[data-highlighted]": {
+        backgroundColor: `color-mix(in oklab, ${tokens.primary} 14%, transparent)`,
+      },
+    }),
     separator: arc(layout.row, gap[3], type.meta, type.medium, {
       paddingBlock: space.x2,
       paddingInline: space.x3,
@@ -92,7 +97,11 @@ type Slots = ReturnType<typeof messageListStyles>;
 export interface MessageListApi {
   /** Go to the newest message and follow new ones again. */
   scrollToLatest: () => void;
-  /** Bring a message into view and move focus to it. `false` when it is not in the list. */
+  /**
+   * Bring a message to the middle of the view, move focus to it and mark it
+   * for a moment. `false` when it is not in the list: load the page it is
+   * on, then ask again.
+   */
   scrollToMessage: (id: string) => boolean;
 }
 
@@ -163,6 +172,8 @@ const HANDLER_KEYS = [
   "onReact",
   "onReply",
   "onEdit",
+  "editingId",
+  "renderEditor",
   "onDelete",
   "onPin",
   "linkTo",
@@ -175,6 +186,8 @@ const HANDLER_KEYS = [
 ] as const satisfies readonly (keyof MessageHandlers)[];
 
 const FIVE_MINUTES = 5 * 60 * 1000;
+/** How long a message jumped to stays marked, in ms. */
+const HIGHLIGHT = 1600;
 /** What a server's rows fill by estimate: a tall window's height and some. */
 const SERVER_HEIGHT = 1600;
 /** How near the end still counts as at it, in px. */
@@ -453,13 +466,18 @@ export function MessageList(props: MessageListProps) {
     },
   );
 
-  const reveal = (key: Key): void => {
+  const reveal = (key: Key, centre = false): void => {
     const element = viewport();
     const info = layoutFor.getLayoutInfo(key);
     if (element === null || info === null) return;
     const top = info.rect.y;
     const bottom = top + info.rect.height;
-    if (top < element.scrollTop) element.scrollTop = top;
+    if (centre) {
+      element.scrollTop = Math.max(
+        0,
+        Math.min(bottomOf(element), top - (element.clientHeight - info.rect.height) / 2),
+      );
+    } else if (top < element.scrollTop) element.scrollTop = top;
     else if (bottom > element.scrollTop + element.clientHeight) {
       element.scrollTop = bottom - element.clientHeight;
     }
@@ -468,10 +486,10 @@ export function MessageList(props: MessageListProps) {
     publish(pinned);
   };
 
-  const focusMessage = (key: Key): void => {
+  const focusMessage = (key: Key, centre = false): void => {
     pendingFocus = key;
     setFocused(key);
-    reveal(key);
+    reveal(key, centre);
     const element = document.getElementById(rowId(key));
     if (element !== null) {
       pendingFocus = null;
@@ -487,11 +505,20 @@ export function MessageList(props: MessageListProps) {
     publish(true);
   };
 
+  // The message jumped to, marked until the timer takes the mark off; the
+  // row's colour transition is the motion, which reduced motion cuts short.
+  const [highlighted, setHighlighted] = createSignal<Key | null>(null, { ownedWrite: true });
+  let unmark: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => clearTimeout(unmark));
+
   props.controller?.({
     scrollToLatest,
     scrollToMessage: (id) => {
       if (layoutFor.getLayoutInfo(id) === null) return false;
-      focusMessage(id);
+      focusMessage(id, true);
+      setHighlighted(id);
+      clearTimeout(unmark);
+      unmark = setTimeout(() => setHighlighted(null), HIGHLIGHT);
       return true;
     },
   });
@@ -622,6 +649,7 @@ export function MessageList(props: MessageListProps) {
                       data-slot="message-list-row"
                       data-key={String(key)}
                       data-kind={row()?.kind}
+                      data-highlighted={highlighted() === key ? "" : undefined}
                       style={
                         seeded()
                           ? { position: "relative" }

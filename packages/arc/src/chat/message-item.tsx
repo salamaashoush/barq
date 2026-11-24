@@ -1,4 +1,12 @@
-import { type Child, For, Show, createSignal, createUniqueId, type JSXElement } from "@barqjs/core";
+import {
+  type Child,
+  For,
+  Show,
+  createEffect,
+  createSignal,
+  createUniqueId,
+  type JSXElement,
+} from "@barqjs/core";
 import { variants } from "@barqjs/css";
 import { announce } from "@barqjs/aria/live";
 import { longPress } from "@barqjs/aria/interactions";
@@ -9,6 +17,7 @@ import { Pencil } from "@barqjs/lucide/icons/pencil";
 import { Pin } from "@barqjs/lucide/icons/pin";
 import { SmilePlus } from "@barqjs/lucide/icons/smile-plus";
 import { writeClipboard } from "@barqjs/primitives/clipboard";
+import { ref as makeRef } from "@barqjs/primitives/refs";
 import {
   Attachment,
   AttachmentContent,
@@ -134,7 +143,10 @@ export interface MessageItemProps extends MessageHandlers, Customisable<Slots> {
   grouped?: boolean;
   /** `bubble` draws the reader's own on the reading end, in a bubble. @default "plain" */
   appearance?: "plain" | "bubble";
-  /** In place of the body while the message is edited: batch D's composer, a textarea. */
+  /**
+   * In place of the body while the message is edited: `MessageEditor`, from
+   * `@barqjs/arc/editor`. @default `renderEditor`'s, while `editingId` is this message
+   */
   editor?: Child;
   /** The emoji offered at the top of the long-press sheet. @default 👍 ❤️ 🎉 😄 👀 */
   quickReactions?: readonly string[];
@@ -221,8 +233,24 @@ export function MessageItem(props: MessageItemProps) {
     onLongPress: () => setSheet(true),
   });
 
+  const editing = (): boolean =>
+    props.editor !== undefined ||
+    (props.renderEditor !== undefined && props.editingId === message().id);
+  const article = makeRef<HTMLElement>();
+  // Leaving the editor, by saving or by Escape, hands focus back to the
+  // message rather than dropping it to the page.
+  createEffect(editing, (now, was) => {
+    const element = article();
+    if (was !== true || now || element === null) return;
+    const active = element.ownerDocument.activeElement;
+    if (active === null || active === element.ownerDocument.body || element.contains(active)) {
+      element.focus();
+    }
+  });
+
   const body = (): Child => {
     if (props.editor !== undefined) return props.editor;
+    if (editing()) return props.renderEditor?.(message());
     const stored = message().content;
     const content =
       props.renderBody?.(message()) ??
@@ -251,12 +279,14 @@ export function MessageItem(props: MessageItemProps) {
 
   return (
     <article
+      ref={article.set}
       class={arc(cls().root, props.class, props.className)}
       id={props.id}
       data-slot="message-item"
       data-message-id={message().id}
       data-grouped={props.grouped === true ? "" : undefined}
       data-state={state()}
+      data-editing={editing() ? "" : undefined}
       data-own={own() ? "" : undefined}
       aria-labelledby={`${nameId} ${timeId}`}
       aria-busy={state() === "pending" ? "true" : undefined}
@@ -382,7 +412,7 @@ export function MessageItem(props: MessageItemProps) {
           </Show>
         </MessageContent>
       </Message>
-      <Show when={hasActions()}>
+      <Show when={hasActions() && !editing()}>
         <div
           class={cls().actions}
           data-slot="message-item-actions"

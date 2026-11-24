@@ -343,7 +343,9 @@ function Composer(props: ChatComposerProps & { cls: Slots; queue?: UploadQueueAp
           aria-placeholder={props.placeholder}
           enterKeyHint={editing() ? "done" : "send"}
           serverContent={
-            props.defaultValue === undefined && props.defaultMarkdown === undefined ? undefined : (
+            props.initialContent !== undefined ||
+            (props.defaultValue === undefined &&
+              props.defaultMarkdown === undefined) ? undefined : (
               <EditorDocument
                 value={untrack(() => props.defaultValue)}
                 markdown={untrack(() => props.defaultMarkdown)}
