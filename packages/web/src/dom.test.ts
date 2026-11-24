@@ -1107,6 +1107,70 @@ describe("eager multi-node bodies survive a hide/show cycle", () => {
  * leak oracle has no subject on this path. These are the pins.
  */
 describe("spread — B4 and E2.2 on the one channel the corpus cannot reach", () => {
+  test("a sibling prop changing leaves what the user did to a checkbox for its change event", () => {
+    const [focused, setFocused] = createSignal(false);
+    const [checked, setChecked] = createSignal(false);
+    const host = document.createElement("div");
+    container.appendChild(host);
+    const isFocused = (): string | undefined => (focused() ? "" : undefined);
+    render(() => {
+      const el = document.createElement("input");
+      el.type = "checkbox";
+      spread(el, { checked, "data-focused": isFocused });
+      return el;
+    }, host);
+    const box = host.querySelector("input") as HTMLInputElement;
+    expect(box.checked).toBe(false);
+
+    // The click has checked the box; the focus it moved re-runs the spread
+    // before the `change` event fires.
+    box.checked = true;
+    setFocused(true);
+    flush();
+    expect(box.hasAttribute("data-focused")).toBe(true);
+    expect(box.checked, "the spread unchecked the box the user just checked").toBe(true);
+
+    // Its own value still writes.
+    setChecked(true);
+    flush();
+    setChecked(false);
+    flush();
+    expect(box.checked).toBe(false);
+  });
+
+  test("a re-run keeps the element's listener and hands it the new handler", () => {
+    // A browser skips a listener removed while its event is being dispatched,
+    // and one added then waits for the next event. A click's handler re-runs
+    // this spread on its way to the `change` the browser dispatches next, so a
+    // listener swapped on every run loses that change.
+    const [tick, setTick] = createSignal(0);
+    const seen: string[] = [];
+    const host = document.createElement("div");
+    container.appendChild(host);
+    const el = document.createElement("input");
+    const added = spyOn(el, "addEventListener");
+    const removed = spyOn(el, "removeEventListener");
+    render(() => {
+      // A new handler each run, as a merged set of props hands one over.
+      spread(el, () => ({
+        "data-tick": String(tick()),
+        onChange: () => seen.push(`change ${String(tick())}`),
+      }));
+      return el;
+    }, host);
+    setTick(1);
+    flush();
+    setTick(2);
+    flush();
+    const changes = (spy: typeof added) => spy.mock.calls.filter((call) => call[0] === "change");
+    expect(changes(added)).toHaveLength(1);
+    expect(changes(removed)).toHaveLength(0);
+    el.dispatchEvent(new Event("change"));
+    expect(seen).toEqual(["change 2"]);
+    added.mockRestore();
+    removed.mockRestore();
+  });
+
   test("B4: a listener registered by spread is removed when its scope is disposed", () => {
     let fired = 0;
     const host = document.createElement("div");

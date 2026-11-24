@@ -2492,6 +2492,7 @@ export function spread(
   const isSvg = element.namespaceURI === SVG_NS;
   const applied: Record<string, unknown> = {};
   const directListeners: Record<string, EventListener> = {};
+  const directHandlers: Record<string, DelegatedHandler> = {};
   // B4: one cleanup per (element, event name), installed the first time that
   // name binds. `listen` registers one per call, which would accumulate here
   // because a spread re-applies its props on every run of the effect below.
@@ -2517,13 +2518,24 @@ export function spread(
         // Keyed by the PROP, not the event type: `onKeyDown` and
         // `onKeyDownCapture` are two listeners for one type, and one would
         // otherwise remove the other.
-        const prevListener = directListeners[key];
-        if (prevListener) {
-          element.removeEventListener(eventName, prevListener, captured !== null);
-          delete directListeners[key];
-        }
-        if (isEventHandlerValue(value)) {
-          const listener = routedListener(given, element, toListener(value as DelegatedHandler));
+        //
+        // One listener per prop for as long as it holds a handler, calling
+        // whichever handler is current. Swapping the listener on every run
+        // drops an event: a click's own handler re-runs this spread, and the
+        // `change` the browser dispatches next on the same element finds its
+        // listener removed, while the one added in its place is too late for
+        // that dispatch.
+        if (!isEventHandlerValue(value)) {
+          const prevListener = directListeners[key];
+          if (prevListener) {
+            element.removeEventListener(eventName, prevListener, captured !== null);
+            delete directListeners[key];
+          }
+        } else if (directListeners[key] === undefined) {
+          const listener = routedListener(given, element, function (this: unknown, e: Event) {
+            const current = directHandlers[key];
+            return current === undefined ? undefined : toListener(current).call(this, e);
+          });
           directListeners[key] = listener;
           element.addEventListener(eventName, listener, captured !== null);
           if (given !== null && !owned.has(key)) {
@@ -2538,6 +2550,8 @@ export function spread(
             });
           }
         }
+        if (isEventHandlerValue(value)) directHandlers[key] = value as DelegatedHandler;
+        else delete directHandlers[key];
       }
       applied[key] = value;
       return;
@@ -2554,14 +2568,21 @@ export function spread(
   const isEventKey = (key: string): boolean =>
     captureTypeOf(key) !== null || (key[0] === "o" && key[1] === "n");
 
+  // The getter each user-mutable prop was last read through, beside the value
+  // `applied` holds, so a run caused by a sibling can be told from one that
+  // hands this prop its value again.
+  const sources: Record<string, unknown> = {};
+
   /**
    * The READ half: every getter a prop holds is called here, so the write half
    * below sees values only. An event handler and a `ref` are functions that are
    * NOT getters, and they pass through as they are.
    */
+  let liveSources: Record<string, unknown> = {};
   const read = (): Record<string, unknown> => {
     const next = typeof props === "function" ? props() : props;
     const resolved: Record<string, unknown> = {};
+    liveSources = {};
     for (const key in next) {
       if (key === "children") continue;
       if (later !== undefined && later !== null && later.includes(spreadKey(key, isSvg))) continue;
@@ -2578,6 +2599,7 @@ export function spread(
       // calling one no longer throws for want of a scope; `style` would take
       // the Node it built and read the DOM constants off it as css declarations.
       refuseBlock(value, `The \`${key}\` prop in a spread`);
+      if (!isSvg && isUserMutable(element.tagName, key)) liveSources[key] = value;
       let held = isSignalGetter(value) ? value() : value;
       // A Cell can answer with an accessor, `data-active={() => …}` handed
       // through a component. An attribute never holds a function, so it is
@@ -2622,6 +2644,23 @@ export function spread(
         pending[key] = next[key];
         continue;
       }
+      // A user-mutable property read through the same getter as last time,
+      // to the same value, is not being handed to the element again: a
+      // sibling changed. Writing it anyway undoes what the user just did (a
+      // click checks a box, the focus it moves re-runs this spread, and the
+      // box is unchecked before its `change` event reports the click). A
+      // value given anew, plain or through another getter, is still asserted.
+      const source = liveSources[key];
+      if (
+        !first &&
+        key in applied &&
+        typeof source === "function" &&
+        sources[key] === source &&
+        Object.is(applied[key], next[key])
+      ) {
+        continue;
+      }
+      if (source !== undefined) sources[key] = source;
       applyOne(key, next[key]);
     }
     first = false;

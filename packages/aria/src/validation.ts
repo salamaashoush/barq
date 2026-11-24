@@ -475,14 +475,17 @@ export function formValidation(
       };
 
       element.addEventListener("invalid", onInvalid);
-      element.addEventListener("input", onInput);
-      element.addEventListener("change", onChange);
+      // In the capture phase, so they read the edit before the control's own
+      // listeners run: a toggle puts its state back on the element until that
+      // state catches up, and a read after it would see the old value.
+      element.addEventListener("input", onInput, true);
+      element.addEventListener("change", onChange, true);
       element.form?.addEventListener("reset", onReset);
 
       return () => {
         element.removeEventListener("invalid", onInvalid);
-        element.removeEventListener("input", onInput);
-        element.removeEventListener("change", onChange);
+        element.removeEventListener("input", onInput, true);
+        element.removeEventListener("change", onChange, true);
         element.form?.removeEventListener("reset", onReset);
       };
     },
