@@ -21,8 +21,15 @@ import { cleanup } from "./pure.ts";
 declare const afterEach: ((fn: () => void) => void) | undefined;
 declare const teardown: ((fn: () => void) => void) | undefined;
 
-const skip = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env
-  ?.BARQ_SKIP_AUTO_CLEANUP;
+interface ProcessGlobal {
+  process?: ProcessLike;
+}
+
+interface ProcessLike {
+  env?: Record<string, string | undefined>;
+}
+
+const skip = (globalThis as ProcessGlobal).process?.env?.BARQ_SKIP_AUTO_CLEANUP;
 
 if (skip === undefined || skip === "") {
   if (typeof afterEach === "function") {

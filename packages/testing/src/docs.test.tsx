@@ -67,6 +67,23 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
+interface NamedRow {
+  name: string;
+}
+
+interface Todo {
+  id: number;
+  done: boolean;
+}
+
+interface KeyedRow {
+  id: number;
+}
+
+interface TextRow {
+  text: string;
+}
+
 describe("packages/core/README.md", () => {
   test("signal, memo and effect", () => {
     const [count, setCount] = createSignal(0);
@@ -134,7 +151,7 @@ describe("packages/core/README.md", () => {
             <p>open</p>
           </Show>
           <ul>
-            <For each={rows}>{(row: { name: string }) => <li>{row.name}</li>}</For>
+            <For each={rows}>{(row: NamedRow) => <li>{row.name}</li>}</For>
           </ul>
           <Switch>
             <Match when={which() === "a"}>
@@ -187,7 +204,7 @@ describe("packages/core/README.md", () => {
   test("a store, written through the draft its setter hands over", () => {
     const [state, setState] = createStore({
       user: { name: "Ada" },
-      todos: [] as { id: number; done: boolean }[],
+      todos: [] as Todo[],
     });
 
     setState((draft) => {
@@ -282,8 +299,8 @@ describe("packages/core/README.md", () => {
     const dispose = render(
       () => (
         <ul>
-          <For each={rows} keyed={(row: { id: number }) => row.id}>
-            {(row: () => { text: string }) => <li>{() => row().text}</li>}
+          <For each={rows} keyed={(row: KeyedRow) => row.id}>
+            {(row: () => TextRow) => <li>{() => row().text}</li>}
           </For>
         </ul>
       ),
@@ -657,7 +674,7 @@ describe("every documented import resolves", () => {
     .filter((file) => !file.includes("node_modules") && !file.includes("/dist/"))
     .toSorted();
 
-  const surfaceOf = async (specifier: string): Promise<Set<string>> => {
+  async function surfaceOf(specifier: string): Promise<Set<string>> {
     const parts = /^@barqjs\/([\w-]+)(?:\/([\w-]+))?$/.exec(specifier);
     if (parts === null) return new Set();
     const [, name, subpath] = parts;
@@ -669,7 +686,7 @@ describe("every documented import resolves", () => {
     if (file === undefined) return new Set();
     const namespace = (await import(join(directory, file))) as Record<string, unknown>;
     return new Set(Object.keys(namespace));
-  };
+  }
 
   test("the doc set is not empty, so a broken glob cannot pass this", () => {
     expect(docs.length).toBeGreaterThan(4);

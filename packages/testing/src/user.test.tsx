@@ -1,14 +1,16 @@
 import { afterEach, describe, expect, test } from "bun:test";
 
-import { tabbableElements, user } from "./index.ts";
+import { tabbableElements, type TabOptions, user } from "./index.ts";
 
 function page(html: string): void {
   document.body.innerHTML = html;
 }
 
-const ids = (elements: readonly HTMLElement[]): string[] => elements.map((each) => each.id);
+function ids(elements: readonly HTMLElement[]): string[] {
+  return elements.map((each) => each.id);
+}
 
-function tabThrough(count: number, options: { shift?: boolean } = {}): string[] {
+function tabThrough(count: number, options: TabOptions = {}): string[] {
   const visited: string[] = [];
   for (let step = 0; step < count; step += 1) {
     user.tab(options);

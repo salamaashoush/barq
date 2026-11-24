@@ -126,12 +126,15 @@ describe("a keyed list that the server wrote", () => {
     readonly id: string;
   }
 
-  const order = (container: HTMLElement): string =>
-    [...container.querySelectorAll("[data-k]")]
+  function order(container: HTMLElement): string {
+    return [...container.querySelectorAll("[data-k]")]
       .map((node) => node.getAttribute("data-k"))
       .join(",");
+  }
 
-  const rows = (...ids: string[]): Row[] => ids.map((id) => ({ id }));
+  function rows(...ids: string[]): Row[] {
+    return ids.map((id) => ({ id }));
+  }
 
   test("takes a new row where the array puts it, not at the end", () => {
     const [list, setList] = createSignal<Row[]>(rows("a", "b", "c"));
@@ -197,9 +200,9 @@ describe("unmounting a hydrated tree", () => {
       client: () => {
         const portalled = document.body.appendChild(document.createElement("aside"));
         portalled.setAttribute("data-portalled", "");
-        const onPress = (): void => {
+        function onPress(): void {
           log.push("press");
-        };
+        }
         document.addEventListener("pointerdown", onPress, true);
         onCleanup(() => {
           log.push("cleanup");

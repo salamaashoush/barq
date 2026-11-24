@@ -35,6 +35,14 @@ function Pending(): unknown {
   return <h1>loading</h1>;
 }
 
+interface PostProps {
+  data: PostData | undefined;
+}
+
+interface PostData {
+  title: string;
+}
+
 /**
  * `(props)`, the AUTHORED form. The compiler threads the scope in front of it,
  * so a component written `(scope, props)` gets a THIRD parameter and `props`
@@ -43,12 +51,20 @@ function Pending(): unknown {
  * `(scope, props)` because those components are hand-built DOM that the
  * compiler never lowers; a JSX one is not the same thing.
  */
-function Post(props: { data: { title: string } | undefined }): unknown {
+function Post(props: PostProps): unknown {
   return <h1>{props.data?.title ?? "loading"}</h1>;
 }
 
-const tree = (log?: string[]): AnyRouteDefinition[] =>
-  [
+interface PostLoaderContext {
+  params: PostParams;
+}
+
+interface PostParams {
+  id: string;
+}
+
+function tree(log?: string[]): AnyRouteDefinition[] {
+  return [
     {
       path: "/",
       component: Outlet,
@@ -58,7 +74,7 @@ const tree = (log?: string[]): AnyRouteDefinition[] =>
         {
           path: "posts/$id",
           pendingComponent: Pending as never,
-          loader: async ({ params }: { params: { id: string } }) => {
+          loader: async ({ params }: PostLoaderContext) => {
             log?.push(params.id);
             return { title: `post ${params.id}` };
           },
@@ -67,6 +83,7 @@ const tree = (log?: string[]): AnyRouteDefinition[] =>
       ],
     },
   ] as never;
+}
 
 describe("renderRoute", () => {
   test("renders the matched route, and binds queries to its container", async () => {
@@ -126,6 +143,10 @@ describe("renderRoute", () => {
   });
 });
 
+interface DisposableState {
+  dispose: () => void;
+}
+
 describe("the render registry keys by reference, not by shape", () => {
   /**
    * `mountedContainers.delete({ container, dispose })` deleted a fresh literal,
@@ -137,7 +158,7 @@ describe("the render registry keys by reference, not by shape", () => {
     let disposals = 0;
     const view = await renderRoute({ routeTree: tree() });
     const realDispose = view.state.dispose.bind(view.state);
-    (view.state as { dispose: () => void }).dispose = () => {
+    (view.state as DisposableState).dispose = () => {
       disposals++;
       realDispose();
     };

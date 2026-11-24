@@ -21,9 +21,15 @@ import { render } from "@barqjs/web";
 import { renderAndHydrate } from "./hydrate.ts";
 
 const require_ = createRequire(import.meta.url);
-const native = require_("@barqjs/compiler") as {
-  transform(code: string, options?: Record<string, unknown>): { code: string };
-};
+interface NativeCompiler {
+  transform(code: string, options?: Record<string, unknown>): TransformOutput;
+}
+
+interface TransformOutput {
+  code: string;
+}
+
+const native = require_("@barqjs/compiler") as NativeCompiler;
 
 const SRC = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 // Inside the package, so the fixtures resolve `@barqjs/*` as this suite does.
@@ -49,10 +55,13 @@ function withHot(code: string, components: readonly string[]): string {
   );
 }
 
-async function compile(
-  source: string,
-  components: readonly string[],
-): Promise<{ client: Module; plain: Module; server: Module }> {
+interface CompiledModules {
+  client: Module;
+  plain: Module;
+  server: Module;
+}
+
+async function compile(source: string, components: readonly string[]): Promise<CompiledModules> {
   const at = sequence++;
   const common = {
     filename: join(OUT, `fixture-${at}.tsx`),
@@ -307,8 +316,11 @@ function nodes(container: Node): Node[] {
   return out;
 }
 
-const shown = (container: Element): string =>
-  [...container.querySelectorAll("section, article")].map((node) => node.textContent).join("|");
+function shown(container: Element): string {
+  return [...container.querySelectorAll("section, article")]
+    .map((node) => node.textContent)
+    .join("|");
+}
 
 /**
  * Edit `Leaf` to `Edited` while `name` is on screen, the way a module that is

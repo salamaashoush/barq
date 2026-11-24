@@ -62,7 +62,12 @@ function modifiers(options: PointerOptions | KeyOptions = {}): Modifiers {
   };
 }
 
-function centreOf(element: Element): { clientX: number; clientY: number } {
+interface ClientPoint {
+  clientX: number;
+  clientY: number;
+}
+
+function centreOf(element: Element): ClientPoint {
   const rect = element.getBoundingClientRect();
   // happy-dom reports a zero rect for everything, so the centre of nothing is
   // the origin. A test asserting on coordinates must pass them explicitly.
@@ -252,6 +257,11 @@ function isRadio(element: Element): element is HTMLInputElement {
   return element instanceof HTMLInputElement && element.type === "radio";
 }
 
+interface TabStop {
+  element: HTMLElement;
+  index: number;
+}
+
 /**
  * Everything the browser would stop at when tabbing, in the order it would.
  *
@@ -269,7 +279,7 @@ function isRadio(element: Element): element is HTMLInputElement {
  */
 export function tabbableElements(root: ParentNode = document): HTMLElement[] {
   const known = new Map<Element, boolean>();
-  const stops: { element: HTMLElement; index: number }[] = [];
+  const stops: TabStop[] = [];
   for (const element of root.querySelectorAll<HTMLElement>(TAB_CANDIDATES)) {
     const index = tabOrderIndex(element, known);
     if (index !== null) stops.push({ element, index });
@@ -591,7 +601,12 @@ function activate(element: Element): void {
   (element as HTMLElement).click();
 }
 
-function editableValue(element: Element): { get(): string; set(value: string): void } | null {
+interface EditableValue {
+  get(): string;
+  set(value: string): void;
+}
+
+function editableValue(element: Element): EditableValue | null {
   if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
     if (element.readOnly || element.disabled) return null;
     return {
@@ -674,6 +689,10 @@ export function clear(element: Element): void {
   dispatch(element, new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" }));
 }
 
+export interface TabOptions {
+  shift?: boolean;
+}
+
 /**
  * Move focus as Tab would.
  *
@@ -681,7 +700,7 @@ export function clear(element: Element): void {
  * tabbable element is computed here — which also means a `keydown` handler
  * that calls `preventDefault`, as focus containment does, is honoured.
  */
-export function tab(options: { shift?: boolean } = {}): void {
+export function tab(options: TabOptions = {}): void {
   const proceed = keyDown("Tab", { shiftKey: options.shift ?? false });
   if (!proceed) {
     keyUp("Tab", { shiftKey: options.shift ?? false });
@@ -766,18 +785,7 @@ export function paste(element: Element, text: string): void {
   );
 }
 
-/**
- * Every interaction, on one object.
- *
- * ```ts
- * import { user } from "@barqjs/testing";
- *
- * user.click(screen.getByRole("button"));
- * user.keyboard("{ArrowDown}{Enter}");
- * user.tab({ shift: true });
- * ```
- */
-export const user: {
+export interface UserInteractions {
   blur: typeof blur;
   clear: typeof clear;
   click: typeof click;
@@ -800,7 +808,20 @@ export const user: {
   type: typeof type;
   unhover: typeof unhover;
   virtualClick: typeof virtualClick;
-} = {
+}
+
+/**
+ * Every interaction, on one object.
+ *
+ * ```ts
+ * import { user } from "@barqjs/testing";
+ *
+ * user.click(screen.getByRole("button"));
+ * user.keyboard("{ArrowDown}{Enter}");
+ * user.tab({ shift: true });
+ * ```
+ */
+export const user: UserInteractions = {
   blur,
   clear,
   click,

@@ -3,11 +3,15 @@ import { flush, createSignal } from "@barqjs/core";
 import type { Ui } from "./types.ts";
 import { cleanup, fireEvent, render, renderHook, screen, waitFor } from "./index.ts";
 
+interface CounterProps {
+  initial?: number;
+}
+
 // C1: scope first, and these components go through the COMPILER — `preload.ts`
 // registers the native transform for every `.tsx` here, so a prop really is a
 // Cell and a child really is a Block. Run on bun's own JSX transform this file
 // gets plain values instead, and measures a path no consumer takes.
-function Counter(props: { initial?: number }) {
+function Counter(props: CounterProps) {
   const [count, setCount] = createSignal(props.initial ?? 0);
   return (
     <div>
@@ -22,8 +26,12 @@ function Counter(props: { initial?: number }) {
   );
 }
 
+interface ThemeWrapperProps {
+  children: Ui;
+}
+
 // Wrapper component for testing
-function ThemeWrapper(props: { children: Ui }) {
+function ThemeWrapper(props: ThemeWrapperProps) {
   return <div data-testid="theme-wrapper">{props.children}</div>;
 }
 
@@ -31,9 +39,9 @@ function ThemeWrapper(props: { children: Ui }) {
 function AsyncComponent() {
   const [data, setData] = createSignal<string | null>(null);
 
-  const loadData = () => {
+  function loadData() {
     setTimeout(() => setData("loaded"), 50);
-  };
+  }
 
   return (
     <div>
@@ -120,6 +128,10 @@ describe("reactive updates", () => {
   });
 });
 
+interface InitialProps {
+  initial: number;
+}
+
 describe("renderHook", () => {
   test("renders a hook", () => {
     const { result } = renderHook(() => {
@@ -147,7 +159,7 @@ describe("renderHook", () => {
 
   test("renderHook with initial props", () => {
     const { result } = renderHook(
-      (props: { initial: number }) => {
+      (props: InitialProps) => {
         const [count] = createSignal(props.initial);
         return count;
       },

@@ -4,7 +4,13 @@ import { cells, createSignal, flush, type Incoming, type JSXElement } from "@bar
 
 import { render, screen } from "./index.ts";
 
-function Label({ text, tone = "warm", ...rest }: { text: string; tone?: string; id?: string }) {
+interface LabelProps {
+  text: string;
+  tone?: string;
+  id?: string;
+}
+
+function Label({ text, tone = "warm", ...rest }: LabelProps) {
   return (
     <span data-tone={tone} {...rest}>
       {text.toUpperCase()}
@@ -12,11 +18,20 @@ function Label({ text, tone = "warm", ...rest }: { text: string; tone?: string; 
   );
 }
 
-function Wrapper(props: { text: string; tone?: string; id?: string }) {
+function Wrapper(props: LabelProps) {
   return <Label text={props.text} tone={props.tone} id={props.id} />;
 }
 
-function Nested({ user: { name }, items: [first] }: { user: { name: string }; items: string[] }) {
+interface NestedProps {
+  user: NestedUser;
+  items: string[];
+}
+
+interface NestedUser {
+  name: string;
+}
+
+function Nested({ user: { name }, items: [first] }: NestedProps) {
   return (
     <p>
       {name}:{first}
@@ -24,25 +39,34 @@ function Nested({ user: { name }, items: [first] }: { user: { name: string }; it
   );
 }
 
-function useLength(props: { text: string }): () => number {
+interface TextProps {
+  text: string;
+}
+
+function useLength(props: TextProps): () => number {
   return () => props.text.length;
 }
 
-function Counted(props: { text: string }) {
+function Counted(props: TextProps) {
   const length = useLength(props);
   return <b>{length()}</b>;
 }
 
-function useCells(props: Incoming<{ text: string }>): () => string {
+function useCells(props: Incoming<TextProps>): () => string {
   return () => props.text();
 }
 
-function Raw(props: { text: string }) {
+function Raw(props: TextProps) {
   const text = useCells(cells(props));
   return <u>{text()}</u>;
 }
 
-function Slot(props: { icon?: JSXElement; children?: JSXElement }) {
+interface SlotProps {
+  icon?: JSXElement;
+  children?: JSXElement;
+}
+
+function Slot(props: SlotProps) {
   return (
     <div>
       {props.icon ? <i>{props.icon}</i> : null}
@@ -51,7 +75,12 @@ function Slot(props: { icon?: JSXElement; children?: JSXElement }) {
   );
 }
 
-function Press(props: { onPress?: (value: string) => void; label: string }) {
+interface PressProps {
+  onPress?: (value: string) => void;
+  label: string;
+}
+
+function Press(props: PressProps) {
   return (
     <button type="button" onClick={() => props.onPress?.(props.label)}>
       {props.label}
@@ -143,10 +172,10 @@ describe("props written as values", () => {
 
   test("JSX passed as a prop is tested without being built and placed once", () => {
     let built = 0;
-    const Icon = () => {
+    function Icon() {
       built++;
       return <em>icon</em>;
-    };
+    }
     render(() => (
       <Slot icon={<Icon />}>
         <span>body</span>

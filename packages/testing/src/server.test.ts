@@ -122,13 +122,17 @@ describe("runInRequest makes the ambient context real", () => {
   });
 });
 
+type SessionData = {
+  user: string;
+};
+
 describe("a session round-trips, which is the whole point of the cookie trap", () => {
   test("what one request seals, the next request reads", async () => {
     const config = { password: PASSWORD, name: "sess" } as const;
 
     // Request one: log in.
     const login = await runInRequest("/login", async () => {
-      const session = await useSession<{ user: string }>(config);
+      const session = await useSession<SessionData>(config);
       // The RETURNED manager. `data` is `readonly` and `update` answers with a
       // new one, so the handle you already have is deliberately unchanged.
       const updated = await session.update({ user: "sashoush" });
@@ -141,7 +145,7 @@ describe("a session round-trips, which is the whole point of the cookie trap", (
     // Request two: the browser sends it back. This is the step that silently
     // read an empty session before `testRequest` existed.
     const next = await runInRequest(testRequest("/me", { cookies: { sess: sealed } }), async () => {
-      const session = await useSession<{ user: string }>(config);
+      const session = await useSession<SessionData>(config);
       return session.data;
     });
     expect(next.value).toEqual({ user: "sashoush" });
@@ -153,7 +157,7 @@ describe("a session round-trips, which is the whole point of the cookie trap", (
     // Sealed by logging in, rather than by calling `sealSession` directly —
     // which takes `(config, session)` and is easy to write the other way round.
     const login = await runInRequest("/login", async () => {
-      const session = await useSession<{ user: string }>(config);
+      const session = await useSession<SessionData>(config);
       await session.update({ user: "sashoush" });
     });
     const sealed = cookiesOf(login).sess;
@@ -161,7 +165,7 @@ describe("a session round-trips, which is the whole point of the cookie trap", (
     const cleared = await runInRequest(
       testRequest("/out", { cookies: { sess: sealed } }),
       async () => {
-        const session = await useSession<{ user: string }>(config);
+        const session = await useSession<SessionData>(config);
         expect(session.data).toEqual({ user: "sashoush" });
         const gone = await session.clear();
         return gone.data;
@@ -176,6 +180,18 @@ describe("a session round-trips, which is the whole point of the cookie trap", (
   });
 });
 
+interface ShellProps {
+  children: () => unknown;
+}
+
+interface DataProps {
+  data: () => unknown;
+}
+
+interface DocumentParts {
+  body: string;
+}
+
 /**
  * The two paths nothing drove: a whole document out of `createPageHandler`, and
  * a server function over its own HTTP endpoint.
@@ -186,7 +202,7 @@ describe("ssrPage renders a whole document", () => {
       path: "/",
       // `children` is a BLOCK rather than a value, so the shell CALLS it and the
       // chain is constructed inside the document rather than before it.
-      shellComponent: (props: { children: () => unknown }) =>
+      shellComponent: (props: ShellProps) =>
         ssrHtml(`<html><head><title>t</title></head><body>${esc(props.children())}</body></html>`),
       component: () => ssrHtml("<main>home</main>"),
     },
@@ -196,8 +212,7 @@ describe("ssrPage renders a whole document", () => {
         await Promise.resolve();
         return "Ada";
       },
-      component: (props: { data: () => unknown }) =>
-        ssrHtml(`<main>hello ${esc(String(props.data()))}</main>`),
+      component: (props: DataProps) => ssrHtml(`<main>hello ${esc(String(props.data()))}</main>`),
     },
   ] as never;
 
@@ -224,7 +239,7 @@ describe("ssrPage renders a whole document", () => {
     // that proves the default is the framework's own renderer and not a stub.
     const page = await ssrPage("/bare", {
       routeTree: [{ path: "/bare", component: () => ssrHtml("<main>bare</main>") }] as never,
-      document: ({ body }: { body: string }) => `<html><body>${body}</body></html>`,
+      document: ({ body }: DocumentParts) => `<html><body>${body}</body></html>`,
     });
     expect(page.container.querySelector("main")?.textContent).toBe("bare");
   });
@@ -236,6 +251,15 @@ describe("ssrPage renders a whole document", () => {
     expect(page.container.querySelector("main")?.textContent).toBe("hello Ada");
   });
 });
+
+interface HandlerContext {
+  data: unknown;
+}
+
+interface Greeting {
+  hello: unknown;
+  at: Date;
+}
 
 describe("callServerFn goes over the wire", () => {
   const id = "src/data.ts#greet";
@@ -251,9 +275,9 @@ describe("callServerFn goes over the wire", () => {
       id,
       createServerFn({ method: "POST" })
         .validator("unchecked")
-        .handler(({ data }: { data: unknown }) => ({ hello: data, at: new Date(0) })),
+        .handler(({ data }: HandlerContext) => ({ hello: data, at: new Date(0) })),
     );
-    const call = await callServerFn<{ hello: unknown; at: Date }>({ id, input: "Ada" });
+    const call = await callServerFn<Greeting>({ id, input: "Ada" });
 
     expect(call.status).toBe(200);
     expect(call.value?.hello).toBe("Ada");
@@ -322,7 +346,7 @@ describe("callServerFn goes over the wire", () => {
       id,
       createServerFn({ method: "POST" })
         .validator("unchecked")
-        .handler(({ data }: { data: unknown }) => {
+        .handler(({ data }: HandlerContext) => {
           seen = data;
           return "ok";
         }),
@@ -347,7 +371,7 @@ describe("callServerFn goes over the wire", () => {
       id,
       createServerFn()
         .validator("unchecked")
-        .handler(({ data }: { data: unknown }) => `hello ${String(data)}`),
+        .handler(({ data }: HandlerContext) => `hello ${String(data)}`),
     );
     const call = await callServerFn<string>({ id, input: "salama" });
     expect(call.status).toBe(200);

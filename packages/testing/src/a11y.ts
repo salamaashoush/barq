@@ -597,7 +597,7 @@ function checkAttributeValue(
     return;
   }
 
-  const bad = (expected: string): void => {
+  function bad(expected: string): void {
     found.push(
       violation(
         "aria-valid-attr-value",
@@ -605,7 +605,7 @@ function checkAttributeValue(
         element,
       ),
     );
-  };
+  }
 
   if (Array.isArray(kind)) {
     if (!kind.includes(value)) bad(`one of ${kind.join(", ")}`);
@@ -635,9 +635,12 @@ function checkAttributeValue(
       // character, and escaping one for a selector is a round trip through a
       // parser that some engines refuse — an id a page can legally have would
       // then throw here rather than being reported.
-      const exists = (id: string): boolean =>
-        (root as Document).getElementById?.(id) !== null ||
-        [...root.querySelectorAll("[id]")].some((element) => element.id === id);
+      function exists(id: string): boolean {
+        return (
+          (root as Document).getElementById?.(id) !== null ||
+          [...root.querySelectorAll("[id]")].some((element) => element.id === id)
+        );
+      }
       for (const id of ids) {
         if (!exists(id)) {
           found.push(

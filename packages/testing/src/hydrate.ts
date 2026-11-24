@@ -30,6 +30,11 @@ import { type SsrHtml, renderToString } from "@barqjs/server";
 import { mountedContainers } from "./mounted.ts";
 import type { MountedRef, Ui } from "./types.ts";
 
+export interface HydrationMismatch {
+  kind: string;
+  detail: string;
+}
+
 /** What `hydrate` recorded, plus what survived it. */
 export interface HydrationResult {
   /** The markup the server half produced, before the walk touched it. */
@@ -38,7 +43,7 @@ export interface HydrationResult {
   /** Ranges the walk claimed. Zero means it rebuilt the page. */
   readonly claimed: number;
   /** Every divergence the walk recorded, with its kind. */
-  readonly mismatches: readonly { kind: string; detail: string }[];
+  readonly mismatches: readonly HydrationMismatch[];
   /** Whether the walk gave up and re-rendered from scratch. */
   readonly recovered: boolean;
   /** Server nodes still in the tree, by REFERENCE. */

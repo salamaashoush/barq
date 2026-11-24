@@ -31,6 +31,7 @@ import type { BoundFunctions, queries as dtlQueries } from "@testing-library/dom
 
 import { mountedContainers } from "./mounted.ts";
 import type {
+  HookResultRef,
   MountedRef,
   RenderHookOptions,
   RenderHookResult,
@@ -157,7 +158,7 @@ export function renderHook<TResult, TProps = unknown>(
 ): RenderHookResult<TResult, TProps> {
   const { initialProps, wrapper } = options;
 
-  const result: { current: TResult } = { current: undefined as TResult };
+  const result: HookResultRef<TResult> = { current: undefined as TResult };
   let currentProps = initialProps;
   let dispose: () => void;
   const container = document.createElement("div");
@@ -219,6 +220,11 @@ export function cleanup(): void {
   mountedContainers.clear();
 }
 
+export interface WaitForOptions {
+  timeout?: number;
+  interval?: number;
+}
+
 /**
  * Wait for a condition to be true
  *
@@ -230,7 +236,7 @@ export function cleanup(): void {
  */
 export async function waitFor<T>(
   callback: () => T | Promise<T>,
-  options: { timeout?: number; interval?: number } = {},
+  options: WaitForOptions = {},
 ): Promise<T> {
   const { timeout = 1000, interval = 50 } = options;
   const startTime = Date.now();
@@ -465,7 +471,7 @@ export {
   user,
   virtualClick,
 } from "./user.ts";
-export type { KeyOptions, PointerOptions } from "./user.ts";
+export type { KeyOptions, PointerOptions, TabOptions } from "./user.ts";
 
 /**
  * Hydration: what a browser does with a page the server rendered.
@@ -474,7 +480,7 @@ export type { KeyOptions, PointerOptions } from "./user.ts";
  * `0`, so every suite that needed it hand-rolled one.
  */
 export { installSeed, renderAndHydrate } from "./hydrate.ts";
-export type { HydrateOptions, HydrationResult } from "./hydrate.ts";
+export type { HydrateOptions, HydrationMismatch, HydrationResult } from "./hydrate.ts";
 
 // Export types
 export type {
@@ -483,5 +489,7 @@ export type {
   RenderResult,
   RenderHookOptions,
   RenderHookResult,
+  HookResultRef,
   WrapperComponent,
+  WrapperProps,
 } from "./types.ts";

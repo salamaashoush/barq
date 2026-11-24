@@ -8,8 +8,12 @@ import type { BoundFunctions, prettyFormat, queries } from "@testing-library/dom
  */
 export type Ui = Block<JSXElement>;
 
+export interface WrapperProps {
+  children: Ui;
+}
+
 /** C1: a wrapper is an ordinary component — a function of its props, `children` a Block. */
-export type WrapperComponent = (props: { children: Ui }) => JSXElement;
+export type WrapperComponent = (props: WrapperProps) => JSXElement;
 
 export interface RenderOptions {
   /** Container element to render into */
@@ -64,9 +68,13 @@ export interface RenderHookOptions<TProps> {
   onUnmount?: () => void;
 }
 
+export interface HookResultRef<TResult> {
+  current: TResult;
+}
+
 export interface RenderHookResult<TResult, TProps> {
   /** The return value of the hook */
-  result: { current: TResult };
+  result: HookResultRef<TResult>;
   /** Re-run the hook with new props */
   rerender: (props?: TProps) => void;
   /** Cleanup function */
