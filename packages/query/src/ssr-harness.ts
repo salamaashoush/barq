@@ -13,8 +13,12 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { runInThisContext } from "node:vm";
 
+interface TransformOutput {
+  code: string;
+}
+
 interface Native {
-  transform(code: string, options?: Record<string, unknown>): { code: string };
+  transform(code: string, options?: Record<string, unknown>): TransformOutput;
 }
 
 const native = createRequire(import.meta.url)("@barqjs/compiler") as Native;
@@ -25,8 +29,13 @@ const PACKAGE = join(import.meta.dir, "..");
 const GENERATED = join(PACKAGE, "node_modules", ".cache", "barq-query-ssr");
 const SERVER = join(import.meta.dir, "ssr-server.ts");
 
+export interface FixtureEntries {
+  index: string;
+  router: string;
+}
+
 /** The adapter's entries, for a fixture to import by path. */
-export const ENTRY: { index: string; router: string } = {
+export const ENTRY: FixtureEntries = {
   index: join(import.meta.dir, "index.ts"),
   router: join(import.meta.dir, "router.ts"),
 };
@@ -43,14 +52,14 @@ export interface Compiled {
 export function compile(source: string, tag: string): Compiled {
   mkdirSync(GENERATED, { recursive: true });
   const id = `${tag}-${process.pid}-${Date.now().toString(36)}-${serial++}`;
-  const emit = (kind: "dom" | "ssr", options: Record<string, unknown>): string => {
+  function emit(kind: "dom" | "ssr", options: Record<string, unknown>): string {
     const file = join(GENERATED, `${id}.${kind}.ts`);
     const { code } = native.transform(source, { filename: `${tag}.tsx`, ...options });
     // The stamp keeps two generated modules from hashing alike in bun's
     // transpile cache, which is keyed by content.
     writeFileSync(file, `export const __module = ${JSON.stringify(`${id}.${kind}`)};\n${code}`);
     return file;
-  };
+  }
   return {
     dom: emit("dom", { hydratable: true }),
     ssr: emit("ssr", { ssr: true, hydratable: true }),
@@ -124,11 +133,13 @@ export function mount(): HTMLElement {
 }
 
 export function unseeded(): void {
-  (globalThis as { __BARQ_DATA__?: unknown }).__BARQ_DATA__ = undefined;
+  (globalThis as SeededGlobal).__BARQ_DATA__ = undefined;
+}
+
+interface SeededGlobal {
+  __BARQ_DATA__?: Record<string, unknown>;
 }
 
 export function seeds(): string[] {
-  return Object.keys(
-    (globalThis as { __BARQ_DATA__?: Record<string, unknown> }).__BARQ_DATA__ ?? {},
-  );
+  return Object.keys((globalThis as SeededGlobal).__BARQ_DATA__ ?? {});
 }

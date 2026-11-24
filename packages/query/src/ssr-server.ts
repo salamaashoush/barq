@@ -10,8 +10,12 @@ import { renderPage, renderToStream } from "@barqjs/server";
 import { QueryClient, dehydrate } from "./index.ts";
 import { RESULT } from "./ssr-harness.ts";
 
+interface FetchCounts {
+  fetches: number;
+}
+
 interface Fixture {
-  counts: { fetches: number };
+  counts: FetchCounts;
   page: (client: QueryClient, who?: string) => () => unknown;
   /** Run against the client before the render, as a loader would. */
   before?: (client: QueryClient) => Promise<unknown>;
@@ -26,12 +30,13 @@ interface Fixture {
 const [modulePath = "", mode = "", argument = ""] = process.argv.slice(2);
 const fixture = (await import(modulePath)) as Fixture;
 
-const hashes = (client: QueryClient): string[] =>
-  client
+function hashes(client: QueryClient): string[] {
+  return client
     .getQueryCache()
     .getAll()
     .map((query) => query.queryHash)
     .toSorted();
+}
 
 async function buffered(who?: string) {
   const client = new QueryClient();

@@ -10,16 +10,25 @@ import {
 import { built, useQueryClient } from "./client.ts";
 import { carried } from "./seed.ts";
 
+export interface HydrateQueryDefaults {
+  defaultOptions?: OmitKeyof<Exclude<HydrateOptions["defaultOptions"], undefined>, "mutations">;
+}
+
 export interface HydrationBoundaryProps {
   state: DehydratedState | null | undefined;
-  options?: OmitKeyof<HydrateOptions, "defaultOptions"> & {
-    defaultOptions?: OmitKeyof<Exclude<HydrateOptions["defaultOptions"], undefined>, "mutations">;
-  };
+  options?: OmitKeyof<HydrateOptions, "defaultOptions"> & HydrateQueryDefaults;
   children?: unknown;
   queryClient?: QueryClient;
 }
 
 type Dehydrated = DehydratedState["queries"];
+
+interface HydrationBoundaryCells {
+  state: Cell<DehydratedState | null | undefined>;
+  options?: Cell<HydrationBoundaryProps["options"]>;
+  children?: unknown;
+  queryClient?: Cell<QueryClient | undefined>;
+}
 
 /**
  * Put dehydrated state into the client in scope, before what is below reads it.
@@ -30,19 +39,15 @@ type Dehydrated = DehydratedState["queries"];
  * observers that are already on screen, from inside the build of a different
  * part of the tree.
  */
-export const HydrationBoundary = ((props: {
-  state: Cell<DehydratedState | null | undefined>;
-  options?: Cell<HydrationBoundaryProps["options"]>;
-  children?: unknown;
-  queryClient?: Cell<QueryClient | undefined>;
-}): unknown => {
+export const HydrationBoundary = ((props: HydrationBoundaryCells): unknown => {
   const client = useQueryClient(
     readSlot(props.queryClient, "HydrationBoundary.queryClient") as QueryClient | undefined,
   );
-  const options = (): HydrateOptions | undefined =>
-    readSlot(props.options, "HydrationBoundary.options") as HydrateOptions | undefined;
+  function options(): HydrateOptions | undefined {
+    return readSlot(props.options, "HydrationBoundary.options") as HydrateOptions | undefined;
+  }
 
-  const sorted = (): Dehydrated => {
+  function sorted(): Dehydrated {
     const state = readSlot(props.state, "HydrationBoundary.state") as
       | DehydratedState
       | null
@@ -70,7 +75,7 @@ export const HydrationBoundary = ((props: {
     }
     if (unseen.length > 0) hydrate(client, { queries: unseen }, untrack(options));
     return newer;
-  };
+  }
 
   createRenderEffect(sorted, (newer) => {
     if (newer.length > 0) hydrate(client, { queries: newer }, untrack(options));

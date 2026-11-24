@@ -47,25 +47,28 @@ export const BarqQueryDevtools = ((props: Slots): unknown => {
   );
   if (isServer) return null;
 
-  const slot = <K extends keyof BarqQueryDevtoolsProps>(name: K): BarqQueryDevtoolsProps[K] =>
-    readSlot(props[name], `BarqQueryDevtools.${name}`) as BarqQueryDevtoolsProps[K];
-  const live = () => ({
-    buttonPosition: slot("buttonPosition"),
-    position: slot("position"),
-    initialIsOpen: slot("initialIsOpen"),
-    errorTypes: slot("errorTypes"),
-    theme: slot("theme"),
-  });
+  function slot<K extends keyof BarqQueryDevtoolsProps>(name: K): BarqQueryDevtoolsProps[K] {
+    return readSlot(props[name], `BarqQueryDevtools.${name}`) as BarqQueryDevtoolsProps[K];
+  }
+  function live() {
+    return {
+      buttonPosition: slot("buttonPosition"),
+      position: slot("position"),
+      initialIsOpen: slot("initialIsOpen"),
+      errorTypes: slot("errorTypes"),
+      theme: slot("theme"),
+    };
+  }
 
   let devtools: TanstackQueryDevtools | undefined;
   let latest = live();
-  const apply = (target: TanstackQueryDevtools): void => {
+  function apply(target: TanstackQueryDevtools): void {
     if (latest.buttonPosition !== undefined) target.setButtonPosition(latest.buttonPosition);
     if (latest.position !== undefined) target.setPosition(latest.position);
     target.setInitialIsOpen(latest.initialIsOpen ?? false);
     target.setErrorTypes(latest.errorTypes ?? []);
     target.setTheme(latest.theme ?? "system");
-  };
+  }
   createRenderEffect(live, (next) => {
     latest = next;
     if (devtools !== undefined) apply(devtools);

@@ -64,16 +64,18 @@ export function mirrored<TResult extends object>(
 
   // Field by field: an assignment of the value a field already holds is
   // dropped before it reaches a subscriber.
-  const publish = (result: TResult): void => {
+  function publish(result: TResult): void {
     setState((draft) => {
       Object.assign(draft, result);
     });
-  };
+  }
 
   return [state, publish];
 }
 
-const ALWAYS = (): boolean => true;
+function ALWAYS(): boolean {
+  return true;
+}
 
 /**
  * The subscription half of `observed`.
@@ -151,9 +153,9 @@ export function baseQuery<TQueryFnData, TError, TData, TQueryData, TQueryKey ext
    * over one must not fetch it again, which `staleTime: 0` would otherwise do
    * on every hydration.
    */
-  const defaultedFor = (
+  function defaultedFor(
     answered: boolean,
-  ): DefaultedQueryObserverOptions<TQueryFnData, TError, TData, TQueryData, TQueryKey> => {
+  ): DefaultedQueryObserverOptions<TQueryFnData, TError, TData, TQueryData, TQueryKey> {
     const resolved = client.defaultQueryOptions(options());
     // `optimistic` is what lets the first read report `isPending` for a query
     // that has never run, instead of the observer's pre-fetch blank.
@@ -171,17 +173,17 @@ export function baseQuery<TQueryFnData, TError, TData, TQueryData, TQueryKey ext
       resolved.retryOnMount = false;
     }
     return resolved;
-  };
+  }
 
-  const failing = (
+  function failing(
     resolved: DefaultedQueryObserverOptions<TQueryFnData, TError, TData, TQueryData, TQueryKey>,
-  ): boolean => {
+  ): boolean {
     const query = client
       .getQueryCache()
       .get<TQueryFnData, TError, TQueryData, TQueryKey>(resolved.queryHash);
     if (query === undefined || query.state.error === null) return false;
     return shouldThrowError(resolved.throwOnError, [query.state.error, query]);
-  };
+  }
 
   const initial = untrack(() => defaultedFor(false));
   const observer = new Observer(client, initial);
@@ -206,13 +208,15 @@ export function baseQuery<TQueryFnData, TError, TData, TQueryData, TQueryKey ext
   // effects below, and nothing renders from it.
   let held = answer.seeded || answer.arriving;
   const [arrived, setArrived] = createSignal(!answer.arriving);
-  const defaulted = (): DefaultedQueryObserverOptions<
+  function defaulted(): DefaultedQueryObserverOptions<
     TQueryFnData,
     TError,
     TData,
     TQueryData,
     TQueryKey
-  > => defaultedFor(false);
+  > {
+    return defaultedFor(false);
+  }
 
   if (held) observer.setOptions(untrack(() => defaultedFor(true)));
 

@@ -129,6 +129,10 @@ export type UseMutateAsyncFunction<
   TContext = unknown,
 > = MutateFunction<TData, TError, TVariables, TContext>;
 
+interface MutateOverride<TData, TError, TVariables, TContext> {
+  mutate: UseMutateFunction<TData, TError, TVariables, TContext>;
+}
+
 /**
  * `Override` is distributive: `MutationObserverResult` is a discriminated union
  * over `status`, and an interface that extended it would flatten the union and
@@ -141,10 +145,14 @@ export type UseMutationResult<
   TContext = unknown,
 > = Override<
   MutationObserverResult<TData, TError, TVariables, TContext>,
-  { mutate: UseMutateFunction<TData, TError, TVariables, TContext> }
+  MutateOverride<TData, TError, TVariables, TContext>
 > & {
   mutateAsync: UseMutateAsyncFunction<TData, TError, TVariables, TContext>;
 };
+
+export interface WithoutInitialData {
+  initialData?: undefined;
+}
 
 /**
  * A query, as a reactive result object.
@@ -166,9 +174,7 @@ export function useQuery<
   // First, and with `initialData` absent rather than optional: an accessor's
   // return type is settled against the first overload tried, and this is the
   // one whose `queryFn` admits `skipToken` as itself instead of as `symbol`.
-  options: () => UseQueryOptions<TQueryFnData, TError, TData, TQueryKey> & {
-    initialData?: undefined;
-  },
+  options: () => UseQueryOptions<TQueryFnData, TError, TData, TQueryKey> & WithoutInitialData,
   queryClient?: QueryClient,
 ): UseQueryResult<TData, TError>;
 export function useQuery<
@@ -238,9 +244,8 @@ export function useInfiniteQuery<
   TQueryKey extends QueryKey = QueryKey,
   TPageParam = unknown,
 >(
-  options: () => UseInfiniteQueryOptions<TQueryFnData, TError, TData, TQueryKey, TPageParam> & {
-    initialData?: undefined;
-  },
+  options: () => UseInfiniteQueryOptions<TQueryFnData, TError, TData, TQueryKey, TPageParam> &
+    WithoutInitialData,
   queryClient?: QueryClient,
 ): UseInfiniteQueryResult<TData, TError>;
 export function useInfiniteQuery<
@@ -387,11 +392,11 @@ function counted(
 ): () => number {
   const [state, setState] = createStore({ count: untrack(count) });
 
-  const publish = (next: number): void => {
+  function publish(next: number): void {
     setState((draft) => {
       draft.count = next;
     });
-  };
+  }
   createRenderEffect(count, (current) => {
     const deliver = notifyManager.batchCalls(publish);
     const unsubscribe = subscribe(() => deliver(untrack(count)));
@@ -431,6 +436,10 @@ export interface MutationStateOptions<TResult = MutationState> {
   select?: (mutation: Mutation) => TResult;
 }
 
+interface ResultsStore<TResult> {
+  results: TResult[];
+}
+
 /**
  * The state of mutations matching `filters`, whoever started them.
  *
@@ -444,27 +453,27 @@ export function useMutationState<TResult = MutationState>(
   const client = useQueryClient(queryClient);
   const cache = client.getMutationCache();
 
-  const read = (): TResult[] => {
+  function read(): TResult[] {
     const { filters, select } = given(options) ?? {};
     return cache
       .findAll(filters)
       .map((mutation) => (select ? select(mutation) : (mutation.state as TResult)));
-  };
+  }
 
-  const [state, setState] = createStore<{ results: TResult[] }>({ results: untrack(read) });
+  const [state, setState] = createStore<ResultsStore<TResult>>({ results: untrack(read) });
 
   // Structurally shared against what is already published: every cache event
   // rebuilds the array, and a reader should hear only about the ones that
   // changed what it holds.
   let published = state.results;
-  const publish = (results: TResult[]): void => {
+  function publish(results: TResult[]): void {
     const next = replaceEqualDeep(published, results);
     if (next === published) return;
     published = next;
     setState((draft) => {
       draft.results = next;
     });
-  };
+  }
   // `read` is tracked, so a change of filters delivers its own result and
   // subscribes again.
   createRenderEffect(read, (current) => {

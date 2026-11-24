@@ -25,8 +25,9 @@ import {
 } from "./ssr-harness.ts";
 import { elapse, fakeClock, realClock } from "./test-helpers.ts";
 
-const cachedAt = (client: QueryClient, key: readonly unknown[]): unknown =>
-  client.getQueryData(key);
+function cachedAt(client: QueryClient, key: readonly unknown[]): unknown {
+  return client.getQueryData(key);
+}
 
 const PAGE = `
 import { Loading } from "@barqjs/core"
@@ -88,13 +89,19 @@ export const page = (client, who = "salama") => () => (
 const SHOWN = ["salama:ready", "slow-value", "from-a-loader", "set-a+set-b", "page-0"].join("");
 const FETCHES = 6;
 
+interface FetchCounts {
+  fetches: number;
+}
+
 interface ClientFixture {
-  counts: { fetches: number };
+  counts: FetchCounts;
   page: (client: QueryClient, who?: string) => () => unknown;
 }
 
 let compiled: Compiled | undefined;
-const fixture = (): Compiled => (compiled ??= compile(PAGE, "round-trip"));
+function fixture(): Compiled {
+  return (compiled ??= compile(PAGE, "round-trip"));
+}
 
 let cleanup: (() => void) | undefined;
 beforeEach(fakeClock);
@@ -128,9 +135,14 @@ interface Buffered {
   data: unknown[];
 }
 
+interface BufferedServe {
+  result: Buffered;
+  fetches: number;
+}
+
 test("a buffered page: the server waits, and hydration fetches nothing", async () => {
   unseeded();
-  const served = serve(fixture().ssr, "buffered") as { result: Buffered; fetches: number };
+  const served = serve(fixture().ssr, "buffered") as BufferedServe;
   expect(served.fetches).toBe(FETCHES);
 
   const container = mount();
@@ -161,12 +173,18 @@ test("a buffered page: the server waits, and hydration fetches nothing", async (
   expect(module.counts.fetches).toBe(1);
 });
 
+interface StreamedServe {
+  result: StreamedChunks;
+  fetches: number;
+}
+
+interface StreamedChunks {
+  chunks: string[];
+}
+
 test("a streamed page: what settles after the shell is delivered later, and not refetched", async () => {
   unseeded();
-  const served = serve(fixture().ssr, "streamed") as {
-    result: { chunks: string[] };
-    fetches: number;
-  };
+  const served = serve(fixture().ssr, "streamed") as StreamedServe;
   expect(served.fetches).toBe(FETCHES);
   expect(served.result.chunks.length).toBeGreaterThan(1);
   expect(served.result.chunks[0]).toContain("wait-parked");
@@ -190,10 +208,7 @@ test("a streamed page: what settles after the shell is delivered later, and not 
 
 test("hydrating before the stream has finished waits for it instead of fetching", async () => {
   unseeded();
-  const served = serve(fixture().ssr, "streamed") as {
-    result: { chunks: string[] };
-    fetches: number;
-  };
+  const served = serve(fixture().ssr, "streamed") as StreamedServe;
   // Everything up to the first settled boundary: the shell, and the script
   // that puts each pending answer on the page as a promise.
   const { chunks } = served.result;
@@ -226,17 +241,19 @@ test("hydrating before the stream has finished waits for it instead of fetching"
   expect(hydrate.report.recovered).toBe(false);
 });
 
+interface ConcurrentServe {
+  result: Buffered[];
+  fetches: number;
+}
+
 test("two renders at once keep to their own client", () => {
-  const served = serve(fixture().ssr, "concurrent", "salama,guest") as {
-    result: Buffered[];
-    fetches: number;
-  };
+  const served = serve(fixture().ssr, "concurrent", "salama,guest") as ConcurrentServe;
   const [first, second] = served.result;
-  const text = (html = ""): string => {
+  function text(html = ""): string {
     const holder = document.createElement("div");
     holder.innerHTML = html;
     return holder.textContent;
-  };
+  }
   expect(text(first?.html)).toContain("salama:ready");
   expect(text(first?.html)).not.toContain("guest");
   expect(text(second?.html)).toContain("guest:ready");

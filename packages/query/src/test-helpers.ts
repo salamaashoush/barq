@@ -4,12 +4,15 @@ import { jest } from "bun:test";
 export { fakeClock, realClock } from "../../testing/src/test-clock.ts";
 
 /** A wait inside a query or mutation function, driven by whichever clock is installed. */
-export const delay = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
+export function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 // `setImmediate` is the one timer fake timers leave real, and it fires once the
 // microtask queue is empty.
-const immediate = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+function immediate(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
 
 /** Every queued microtask, then the DOM. */
 export async function drain(): Promise<void> {

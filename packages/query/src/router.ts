@@ -68,7 +68,7 @@ export interface RouterQueryClientProviderProps {
  * `Wrap` instead, so an application that calls it needs this only with
  * `wrapQueryClient: false`.
  */
-export const RouterQueryClientProvider = ((props: { children?: unknown }): unknown =>
+export const RouterQueryClientProvider = ((props: RouterQueryClientProviderProps): unknown =>
   provideClient(useRouterQueryClient(), () => built(props.children))) as unknown as (
   props: RouterQueryClientProviderProps,
 ) => JSXElement;
@@ -94,26 +94,34 @@ export interface RouterSsrQueryOptions {
 
 type Dehydrated = DehydratedState["queries"];
 
+interface DehydratedQueryPayload {
+  /** What the cache held when the loaders had settled. */
+  readonly initial: Dehydrated;
+  /** What settled between then and the end of the render, in batches. Absent when nothing can. */
+  readonly stream?: AsyncIterable<Dehydrated>;
+}
+
 /** What the integration adds to the router's dehydrated payload. */
 interface DehydratedQueries {
-  readonly query: {
-    /** What the cache held when the loaders had settled. */
-    readonly initial: Dehydrated;
-    /** What settled between then and the end of the render, in batches. Absent when nothing can. */
-    readonly stream?: AsyncIterable<Dehydrated>;
-  };
+  readonly query: DehydratedQueryPayload;
+}
+
+interface BatchChannel<T> {
+  push(value: T): void;
+  close(): void;
+  values: AsyncIterable<T>;
 }
 
 /** Batches handed over as they are pushed, to one reader, until closed. */
-function channel<T>(): { push(value: T): void; close(): void; values: AsyncIterable<T> } {
+function channel<T>(): BatchChannel<T> {
   const buffered: T[] = [];
   let closed = false;
   let wake: (() => void) | null = null;
-  const woken = (): void => {
+  function woken(): void {
     const waiter = wake;
     wake = null;
     waiter?.();
-  };
+  }
   return {
     push(value) {
       buffered.push(value);
@@ -156,7 +164,7 @@ function carryQueries(options: RouterSsrQueryOptions): void {
       defaults?.shouldDehydrateQuery ??
       defaultShouldDehydrateQuery;
     const sent = new Set<string>();
-    const take = (): Dehydrated => {
+    function take(): Dehydrated {
       const read = seededByRead(queryClient);
       const batch = dehydrate(queryClient, {
         ...options.dehydrateOptions,
@@ -166,16 +174,16 @@ function carryQueries(options: RouterSsrQueryOptions): void {
       }).queries;
       for (const query of batch) sent.add(query.queryHash);
       return batch;
-    };
+    }
 
     const initial = take();
     const later = channel<Dehydrated>();
     let scheduled = false;
-    const flush = (): void => {
+    function flush(): void {
       scheduled = false;
       const batch = take();
       if (batch.length > 0) later.push(batch);
-    };
+    }
     const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
       if (scheduled || sent.has(event.query.queryHash)) return;
       scheduled = true;
@@ -183,12 +191,12 @@ function carryQueries(options: RouterSsrQueryOptions): void {
       queueMicrotask(flush);
     });
     let finished = false;
-    const finish = (): void => {
+    function finish(): void {
       finished = true;
       unsubscribe();
       flush();
       later.close();
-    };
+    }
     if (router.serverSsr === undefined) finish();
     else router.serverSsr.onRenderFinished(finish);
 
@@ -209,8 +217,9 @@ function absorbQueries(options: RouterSsrQueryOptions): void {
     // The application's own payload, with what `carryQueries` laid over it.
     const carried = (dehydrated as Partial<DehydratedQueries> | null | undefined)?.query;
     if (carried === undefined) return;
-    const put = (queries: Dehydrated): void =>
-      hydrate(queryClient, { mutations: [], queries }, options.hydrateOptions);
+    function put(queries: Dehydrated): void {
+      return hydrate(queryClient, { mutations: [], queries }, options.hydrateOptions);
+    }
     put(carried.initial);
     const stream = carried.stream;
     if (stream === undefined) return;
@@ -263,7 +272,7 @@ export function setupRouterSsrQueryIntegration(options: RouterSsrQueryOptions): 
 }
 
 function followRedirects(router: RouterState, queryClient: QueryClient): () => void {
-  const follow = (thrown: unknown): boolean => {
+  function follow(thrown: unknown): boolean {
     if (!isRedirect(thrown)) return false;
     // An options-form redirect carries its search and params; a string one
     // has only where it goes.
@@ -274,7 +283,7 @@ function followRedirects(router: RouterState, queryClient: QueryClient): () => v
         : router.navigate(described as never);
     going.catch(() => {});
     return true;
-  };
+  }
 
   const queries = queryClient.getQueryCache();
   const mutations = queryClient.getMutationCache();

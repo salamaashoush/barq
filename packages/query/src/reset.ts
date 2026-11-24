@@ -64,6 +64,10 @@ export interface QueryErrorResetBoundaryProps {
   children?: ((value: QueryErrorResetBoundaryValue) => JSXElement) | JSXElement;
 }
 
+interface QueryErrorResetBoundaryCells {
+  children?: unknown;
+}
+
 /**
  * The retry half of an `Errored` boundary.
  *
@@ -73,7 +77,7 @@ export interface QueryErrorResetBoundaryProps {
  * so a fallback's retry button calls it before it calls the boundary's own
  * reset.
  */
-export const QueryErrorResetBoundary = ((props: { children?: unknown }): unknown => {
+export const QueryErrorResetBoundary = ((props: QueryErrorResetBoundaryCells): unknown => {
   const value = createValue();
   return provide(BOUNDARY, cell(value), () => {
     const children = props.children;

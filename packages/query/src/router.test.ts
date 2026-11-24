@@ -86,18 +86,29 @@ export const routes = [
 ]
 `;
 
+interface FetchCounts {
+  fetches: number;
+}
+
 interface Routes {
-  counts: { fetches: number };
+  counts: FetchCounts;
   clients: QueryClient[];
   routes: readonly unknown[];
 }
 
+interface HandledPage {
+  status: number;
+  html: string;
+}
+
 interface Handled {
-  pages: { status: number; html: string }[];
+  pages: HandledPage[];
   clients: string[][];
 }
 
-const body = (html: string): string => html.slice(html.indexOf("[APP[") + 5, html.indexOf("]APP]"));
+function body(html: string): string {
+  return html.slice(html.indexOf("[APP[") + 5, html.indexOf("]APP]"));
+}
 
 let cleanup: (() => void) | undefined;
 beforeEach(fakeClock);
@@ -111,13 +122,15 @@ afterEach(async () => {
   await realClock();
 });
 
+interface HandledServe {
+  result: Handled;
+  fetches: number;
+}
+
 test("a loader's ensureQueryData crosses to the page, and each request has its own client", async () => {
   unseeded();
   const compiled = compile(ROUTES, "router");
-  const served = serve(compiled.ssr, "handler", "/users/7,/users/8") as {
-    result: Handled;
-    fetches: number;
-  };
+  const served = serve(compiled.ssr, "handler", "/users/7,/users/8") as HandledServe;
 
   const [seven, eight] = served.result.pages;
   expect(seven?.status).toBe(200);
@@ -196,16 +209,16 @@ test("a redirect a query fails with is followed", async () => {
   });
   queryClient.getQueryCache().config.onError = (error) => failures.push(error);
 
-  const redirected = (to: string): Error => {
+  function redirected(to: string): Error {
     try {
       return redirect(to);
     } catch (thrown) {
       return thrown as Error;
     }
-  };
+  }
 
   const stop = setupRouterSsrQueryIntegration({ router, queryClient });
-  const observe = (key: string, error: Error) => {
+  function observe(key: string, error: Error) {
     const observer = new QueryObserver(queryClient, {
       queryKey: [key],
       queryFn: async () => {
@@ -213,7 +226,7 @@ test("a redirect a query fails with is followed", async () => {
       },
     });
     return observer.subscribe(() => {});
-  };
+  }
 
   const offRedirect = observe("guarded", redirected("/login"));
   const offFailure = observe("broken", new Error("plain"));
@@ -231,7 +244,8 @@ test("a redirect a query fails with is followed", async () => {
   queryClient.clear();
 });
 
-const integrated = (streamed: boolean): string => `
+function integrated(streamed: boolean): string {
+  return `
 import { Loading } from "@barqjs/core"
 import { createRouter } from "@barqjs/router"
 import { QueryClient, queryOptions, useSuspenseQuery } from ${JSON.stringify(ENTRY.index)}
@@ -316,24 +330,33 @@ export function getRouter() {
   return router
 }
 `;
+}
 
 interface Integrated extends Routes {
   getRouter: () => RouterState;
 }
 
+interface StreamedPage {
+  status: number;
+  html: string;
+  chunks: string[];
+}
+
 interface Streamed {
-  pages: { status: number; html: string; chunks: string[] }[];
+  pages: StreamedPage[];
   clients: string[][];
+}
+
+interface StreamedServe {
+  result: Streamed;
+  fetches: number;
 }
 
 for (const mode of ["handler", "handler-streamed"] as const) {
   test(`the integration carries a request's queries to the page, read or not (${mode})`, async () => {
     unseeded();
     const compiled = compile(integrated(mode === "handler-streamed"), "integrated");
-    const served = serve(compiled.ssr, mode, "/users/7,/users/8") as {
-      result: Streamed;
-      fetches: number;
-    };
+    const served = serve(compiled.ssr, mode, "/users/7,/users/8") as StreamedServe;
 
     const [seven, eight] = served.result.pages;
     expect(seven?.status).toBe(200);
@@ -369,7 +392,9 @@ for (const mode of ["handler", "handler-streamed"] as const) {
       module.getRouter,
     );
     await hydrateRouter(state);
-    const cached = (key: readonly unknown[]): unknown => module.clients[0]?.getQueryData(key);
+    function cached(key: readonly unknown[]): unknown {
+      return module.clients[0]?.getQueryData(key);
+    }
     // In the cache before anything has rendered, and no component reads it.
     expect(cached(["unread", "7"])).toBe("unread-7");
 

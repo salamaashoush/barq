@@ -33,7 +33,9 @@ import {
 } from "./index.ts";
 import { delay, drain, elapse, fakeClock, realClock } from "./test-helpers.ts";
 
-const settled = (ms = 10): Promise<void> => elapse(ms);
+function settled(ms = 10): Promise<void> {
+  return elapse(ms);
+}
 
 function client(): QueryClient {
   return new QueryClient({
@@ -137,6 +139,10 @@ describe("useInfiniteQuery", () => {
   });
 });
 
+interface RollbackContext {
+  previous: string[];
+}
+
 describe("mutations", () => {
   test("mutate passes its per-call callbacks through", async () => {
     const queryClient = client();
@@ -191,7 +197,7 @@ describe("mutations", () => {
   test("an optimistic update is rolled back when the mutation fails", async () => {
     const queryClient = client();
     queryClient.setQueryData(["todos"], ["first"]);
-    let add!: ReturnType<typeof useMutation<string, Error, string, { previous: string[] }>>;
+    let add!: ReturnType<typeof useMutation<string, Error, string, RollbackContext>>;
     let release!: (fail: boolean) => void;
 
     function Todos() {
@@ -200,7 +206,7 @@ describe("mutations", () => {
         queryFn: async () => ["first"],
         staleTime: Infinity,
       }));
-      add = useMutation<string, Error, string, { previous: string[] }>(() => ({
+      add = useMutation<string, Error, string, RollbackContext>(() => ({
         mutationFn: (text) =>
           new Promise<string>((resolve, reject) => {
             release = (fail) => (fail ? reject(new Error("offline")) : resolve(text));
@@ -995,11 +1001,12 @@ describe("useQueries over queryOptions", () => {
   interface Member {
     readonly name: string;
   }
-  const member = (id: string) =>
-    queryOptions({
+  function member(id: string) {
+    return queryOptions({
       queryKey: ["member", id],
       queryFn: async (): Promise<Member> => ({ name: id }),
     });
+  }
 
   test("a tuple and a mapped array of queryOptions keep data typed", async () => {
     const queryClient = client();
@@ -1063,12 +1070,14 @@ describe("useSuspenseQueries", () => {
     const queryClient = client();
     const started: string[] = [];
     const releases: Record<string, () => void> = {};
-    const waiting = (name: string) => () => {
-      started.push(name);
-      return new Promise<string>((resolve) => {
-        releases[name] = () => resolve(name.toUpperCase());
-      });
-    };
+    function waiting(name: string) {
+      return () => {
+        started.push(name);
+        return new Promise<string>((resolve) => {
+          releases[name] = () => resolve(name.toUpperCase());
+        });
+      };
+    }
 
     function Pair() {
       const [first, second] = useSuspenseQueries(() => ({
@@ -1142,6 +1151,10 @@ describe("useSuspenseQueries", () => {
   });
 });
 
+interface ThemeSettings {
+  theme: string;
+}
+
 describe("typed options", () => {
   test("defined initialData makes data defined", async () => {
     const queryClient = client();
@@ -1170,7 +1183,7 @@ describe("typed options", () => {
     );
     await settled();
     expect(element.textContent).toBe("light");
-    const cached: { theme: string } | undefined = queryClient.getQueryData(settings.queryKey);
+    const cached: ThemeSettings | undefined = queryClient.getQueryData(settings.queryKey);
     expect(cached).toEqual({ theme: "light" });
     dispose();
   });

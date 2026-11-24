@@ -51,13 +51,40 @@ type ErrorOf<TThrow> = TThrow extends (error: infer TError, query: never) => boo
     : TError
   : DefaultError;
 
+interface ExplicitQueryTypes<TQueryFnData, TError, TData> {
+  queryFnData: TQueryFnData;
+  error?: TError;
+  data: TData;
+}
+
+interface ExplicitQueryFnData<TQueryFnData, TError> {
+  queryFnData: TQueryFnData;
+  error?: TError;
+}
+
+interface ExplicitQueryData<TData, TError> {
+  data: TData;
+  error?: TError;
+}
+
+interface InferableQueryOptions<TQueryFnData, TQueryKey extends QueryKey, TData, TThrow> {
+  queryFn?: QueryFunction<TQueryFnData, TQueryKey> | SkipTokenForUseQueries;
+  select?: (data: never) => TData;
+  throwOnError?: TThrow;
+}
+
+interface InferableSuspenseQueryOptions<TQueryFnData, TQueryKey extends QueryKey, TData> {
+  queryFn?: QueryFunction<TQueryFnData, TQueryKey>;
+  select?: (data: never) => TData;
+}
+
 type GetUseQueryOptionsForUseQueries<T> =
   // An explicit object: { queryFnData, error, data }.
-  T extends { queryFnData: infer TQueryFnData; error?: infer TError; data: infer TData }
+  T extends ExplicitQueryTypes<infer TQueryFnData, infer TError, infer TData>
     ? UseQueryOptionsForUseQueries<TQueryFnData, TError, TData>
-    : T extends { queryFnData: infer TQueryFnData; error?: infer TError }
+    : T extends ExplicitQueryFnData<infer TQueryFnData, infer TError>
       ? UseQueryOptionsForUseQueries<TQueryFnData, TError>
-      : T extends { data: infer TData; error?: infer TError }
+      : T extends ExplicitQueryData<infer TData, infer TError>
         ? UseQueryOptionsForUseQueries<unknown, TError, TData>
         : // An explicit tuple: [TQueryFnData, TError, TData].
           T extends [infer TQueryFnData, infer TError, infer TData]
@@ -67,13 +94,12 @@ type GetUseQueryOptionsForUseQueries<T> =
             : T extends [infer TQueryFnData]
               ? UseQueryOptionsForUseQueries<TQueryFnData>
               : // Nothing explicit: inferred from the options themselves.
-                T extends {
-                    queryFn?:
-                      | QueryFunction<infer TQueryFnData, infer TQueryKey>
-                      | SkipTokenForUseQueries;
-                    select?: (data: never) => infer TData;
-                    throwOnError?: infer TThrow;
-                  }
+                T extends InferableQueryOptions<
+                    infer TQueryFnData,
+                    infer TQueryKey,
+                    infer TData,
+                    infer TThrow
+                  >
                 ? UseQueryOptionsForUseQueries<
                     TQueryFnData,
                     ErrorOf<TThrow>,
@@ -84,29 +110,27 @@ type GetUseQueryOptionsForUseQueries<T> =
 
 // The key is `never` in the results: a `queryFn` taking a specific key, which is
 // what `queryOptions` hands back, is not a `QueryFunction` of every `QueryKey`.
-type GetUseQueryResult<T> = T extends {
-  queryFnData: unknown;
-  error?: infer TError;
-  data: infer TData;
-}
-  ? UseQueryResult<TData, TError>
-  : T extends { queryFnData: infer TQueryFnData; error?: infer TError }
-    ? UseQueryResult<TQueryFnData, TError>
-    : T extends { data: infer TData; error?: infer TError }
-      ? UseQueryResult<TData, TError>
-      : T extends [unknown, infer TError, infer TData]
+type GetUseQueryResult<T> =
+  T extends ExplicitQueryTypes<unknown, infer TError, infer TData>
+    ? UseQueryResult<TData, TError>
+    : T extends ExplicitQueryFnData<infer TQueryFnData, infer TError>
+      ? UseQueryResult<TQueryFnData, TError>
+      : T extends ExplicitQueryData<infer TData, infer TError>
         ? UseQueryResult<TData, TError>
-        : T extends [infer TQueryFnData, infer TError]
-          ? UseQueryResult<TQueryFnData, TError>
-          : T extends [infer TQueryFnData]
-            ? UseQueryResult<TQueryFnData>
-            : T extends {
-                  queryFn?: QueryFunction<infer TQueryFnData, never> | SkipTokenForUseQueries;
-                  select?: (data: never) => infer TData;
-                  throwOnError?: infer TThrow;
-                }
-              ? UseQueryResult<unknown extends TData ? TQueryFnData : TData, ErrorOf<TThrow>>
-              : UseQueryResult;
+        : T extends [unknown, infer TError, infer TData]
+          ? UseQueryResult<TData, TError>
+          : T extends [infer TQueryFnData, infer TError]
+            ? UseQueryResult<TQueryFnData, TError>
+            : T extends [infer TQueryFnData]
+              ? UseQueryResult<TQueryFnData>
+              : T extends InferableQueryOptions<
+                    infer TQueryFnData,
+                    never,
+                    infer TData,
+                    infer TThrow
+                  >
+                ? UseQueryResult<unknown extends TData ? TQueryFnData : TData, ErrorOf<TThrow>>
+                : UseQueryResult;
 
 /** The options tuple, element by element, so each query keeps its own types. */
 export type QueriesOptions<
@@ -152,57 +176,49 @@ export type QueriesResults<
         ? QueriesResults<[...Tails], [...TResults, GetUseQueryResult<Head>], [...TDepth, 1]>
         : { [K in keyof T]: GetUseQueryResult<T[K]> };
 
-type GetUseSuspenseQueryOptions<T> = T extends {
-  queryFnData: infer TQueryFnData;
-  error?: infer TError;
-  data: infer TData;
-}
-  ? UseSuspenseQueryOptions<TQueryFnData, TError, TData>
-  : T extends { queryFnData: infer TQueryFnData; error?: infer TError }
-    ? UseSuspenseQueryOptions<TQueryFnData, TError>
-    : T extends { data: infer TData; error?: infer TError }
-      ? UseSuspenseQueryOptions<unknown, TError, TData>
-      : T extends [infer TQueryFnData, infer TError, infer TData]
-        ? UseSuspenseQueryOptions<TQueryFnData, TError, TData>
-        : T extends [infer TQueryFnData, infer TError]
-          ? UseSuspenseQueryOptions<TQueryFnData, TError>
-          : T extends [infer TQueryFnData]
-            ? UseSuspenseQueryOptions<TQueryFnData>
-            : T extends {
-                  queryFn?: QueryFunction<infer TQueryFnData, infer TQueryKey>;
-                  select?: (data: never) => infer TData;
-                }
-              ? UseSuspenseQueryOptions<
-                  TQueryFnData,
-                  DefaultError,
-                  unknown extends TData ? TQueryFnData : TData,
-                  TQueryKey
-                >
-              : UseSuspenseQueryOptions;
+type GetUseSuspenseQueryOptions<T> =
+  T extends ExplicitQueryTypes<infer TQueryFnData, infer TError, infer TData>
+    ? UseSuspenseQueryOptions<TQueryFnData, TError, TData>
+    : T extends ExplicitQueryFnData<infer TQueryFnData, infer TError>
+      ? UseSuspenseQueryOptions<TQueryFnData, TError>
+      : T extends ExplicitQueryData<infer TData, infer TError>
+        ? UseSuspenseQueryOptions<unknown, TError, TData>
+        : T extends [infer TQueryFnData, infer TError, infer TData]
+          ? UseSuspenseQueryOptions<TQueryFnData, TError, TData>
+          : T extends [infer TQueryFnData, infer TError]
+            ? UseSuspenseQueryOptions<TQueryFnData, TError>
+            : T extends [infer TQueryFnData]
+              ? UseSuspenseQueryOptions<TQueryFnData>
+              : T extends InferableSuspenseQueryOptions<
+                    infer TQueryFnData,
+                    infer TQueryKey,
+                    infer TData
+                  >
+                ? UseSuspenseQueryOptions<
+                    TQueryFnData,
+                    DefaultError,
+                    unknown extends TData ? TQueryFnData : TData,
+                    TQueryKey
+                  >
+                : UseSuspenseQueryOptions;
 
 // `never` for the key, as in `GetUseQueryResult`.
-type GetUseSuspenseQueryResult<T> = T extends {
-  queryFnData: unknown;
-  error?: infer TError;
-  data: infer TData;
-}
-  ? UseSuspenseQueryResult<TData, TError>
-  : T extends { queryFnData: infer TQueryFnData; error?: infer TError }
-    ? UseSuspenseQueryResult<TQueryFnData, TError>
-    : T extends { data: infer TData; error?: infer TError }
-      ? UseSuspenseQueryResult<TData, TError>
-      : T extends [unknown, infer TError, infer TData]
+type GetUseSuspenseQueryResult<T> =
+  T extends ExplicitQueryTypes<unknown, infer TError, infer TData>
+    ? UseSuspenseQueryResult<TData, TError>
+    : T extends ExplicitQueryFnData<infer TQueryFnData, infer TError>
+      ? UseSuspenseQueryResult<TQueryFnData, TError>
+      : T extends ExplicitQueryData<infer TData, infer TError>
         ? UseSuspenseQueryResult<TData, TError>
-        : T extends [infer TQueryFnData, infer TError]
-          ? UseSuspenseQueryResult<TQueryFnData, TError>
-          : T extends [infer TQueryFnData]
-            ? UseSuspenseQueryResult<TQueryFnData>
-            : T extends {
-                  queryFn?: QueryFunction<infer TQueryFnData, never>;
-                  select?: (data: never) => infer TData;
-                }
-              ? UseSuspenseQueryResult<unknown extends TData ? TQueryFnData : TData>
-              : UseSuspenseQueryResult;
+        : T extends [unknown, infer TError, infer TData]
+          ? UseSuspenseQueryResult<TData, TError>
+          : T extends [infer TQueryFnData, infer TError]
+            ? UseSuspenseQueryResult<TQueryFnData, TError>
+            : T extends [infer TQueryFnData]
+              ? UseSuspenseQueryResult<TQueryFnData>
+              : T extends InferableSuspenseQueryOptions<infer TQueryFnData, never, infer TData>
+                ? UseSuspenseQueryResult<unknown extends TData ? TQueryFnData : TData>
+                : UseSuspenseQueryResult;
 
 export type SuspenseQueriesOptions<
   T extends unknown[],
@@ -286,6 +302,11 @@ function combinable(value: unknown): object {
   );
 }
 
+interface CombinedResultsStore {
+  results: AnyResult[];
+  combined: object | undefined;
+}
+
 function queriesBase(
   options: () => AnyQueriesOptions,
   queryClient: QueryClient | undefined,
@@ -294,8 +315,8 @@ function queriesBase(
   const client = useQueryClient(queryClient);
   const isRestoring = useIsRestoring();
 
-  const defaultedFor = (answered: boolean) =>
-    options().queries.map((each) => {
+  function defaultedFor(answered: boolean) {
+    return options().queries.map((each) => {
       const resolved = client.defaultQueryOptions(each);
       resolved._optimisticResults = isRestoring() ? "isRestoring" : "optimistic";
       if (suspense) {
@@ -307,12 +328,15 @@ function queriesBase(
       if (answered) resolved.refetchOnMount = false;
       return resolved;
     });
-  const combine = (): AnyCombine | undefined => options().combine;
+  }
+  function combine(): AnyCombine | undefined {
+    return options().combine;
+  }
   const combining = untrack(combine) !== undefined;
-  const observerOptions = () => {
+  function observerOptions() {
     const given = combine();
     return given === undefined ? undefined : { combine: given };
-  };
+  }
 
   const initial = untrack(() => defaultedFor(false));
   const observer = new QueriesObserver<unknown>(client, initial, untrack(observerOptions));
@@ -343,7 +367,9 @@ function queriesBase(
 
   let held = answer.seeded || answer.arriving;
   const [arrived, setArrived] = createSignal(!answer.arriving);
-  const defaulted = () => defaultedFor(false);
+  function defaulted() {
+    return defaultedFor(false);
+  }
 
   if (held)
     observer.setQueries(
@@ -352,7 +378,7 @@ function queriesBase(
     );
 
   /** A suspense set is combined only once every member has data to combine. */
-  const combined = (results: readonly AnyResult[], answered: boolean): object | undefined => {
+  function combined(results: readonly AnyResult[], answered: boolean): object | undefined {
     if (!combining) return undefined;
     if (suspense && results.some((each) => each.data === undefined)) return undefined;
     const [, combineWith] = observer.getOptimisticResult(
@@ -360,13 +386,13 @@ function queriesBase(
       untrack(combine),
     );
     return combinable(combineWith([...results]));
-  };
+  }
 
   const [first] = observer.getOptimisticResult(
     untrack(() => defaultedFor(held)),
     undefined,
   );
-  const [state, setState] = createStore<{ results: AnyResult[]; combined: object | undefined }>({
+  const [state, setState] = createStore<CombinedResultsStore>({
     results: [...first],
     combined: combined(first, held),
   });
@@ -380,23 +406,23 @@ function queriesBase(
    * own — which is the whole reason to run a set through one observer rather
    * than a loop of `useQuery`.
    */
-  const write = (results: readonly AnyResult[]): void => {
+  function write(results: readonly AnyResult[]): void {
     const next = combined(results, false);
     setState((draft) => {
       for (const [index, result] of results.entries()) {
-        const current = draft.results[index] as AnyResult | undefined;
-        if (current === undefined) {
+        const existing = draft.results[index] as AnyResult | undefined;
+        if (existing === undefined) {
           draft.results[index] = result;
           continue;
         }
-        Object.assign(current, result);
+        Object.assign(existing, result);
       }
       if (results.length < draft.results.length) draft.results.length = results.length;
       if (next === undefined) return;
       if (draft.combined === undefined) draft.combined = next;
       else level(draft.combined, next);
     });
-  };
+  }
 
   createRenderEffect(
     () => [defaulted(), observerOptions()] as const,
@@ -429,11 +455,11 @@ function queriesBase(
   });
 
   /** The observer's own results, once the first answer is in the cache. */
-  const current = (): AnyResult[] => {
+  function current(): AnyResult[] {
     const seed = answer.read();
     const resolved = untrack(() => defaultedFor(seed !== undefined));
     return observer.getOptimisticResult(resolved, undefined)[0];
-  };
+  }
 
   const plain = !behind && !suspense;
 
@@ -471,7 +497,7 @@ function queriesBase(
   if (plain) return state.results;
 
   const wrappers = new WeakMap<object, AnyResult>();
-  const wrapped = (member: AnyResult, index: number): AnyResult => {
+  function wrapped(member: AnyResult, index: number): AnyResult {
     let wrapper = wrappers.get(member);
     if (wrapper === undefined) {
       const live = through(
@@ -483,7 +509,7 @@ function queriesBase(
       wrappers.set(member, wrapper);
     }
     return wrapper;
-  };
+  }
 
   return new Proxy(state.results, {
     get(target, property, receiver) {
@@ -498,6 +524,13 @@ function queriesBase(
   });
 }
 
+export interface QueriesInput<T extends unknown[], TCombinedResult> {
+  queries:
+    | readonly [...QueriesOptions<T>]
+    | readonly [...{ [K in keyof T]: GetUseQueryOptionsForUseQueries<T[K]> }];
+  combine?: (result: QueriesResults<T>) => TCombinedResult;
+}
+
 /**
  * Several queries at once, through ONE observer.
  *
@@ -510,15 +543,17 @@ function queriesBase(
  * result here.
  */
 export function useQueries<T extends unknown[], TCombinedResult = QueriesResults<T>>(
-  options: () => {
-    queries:
-      | readonly [...QueriesOptions<T>]
-      | readonly [...{ [K in keyof T]: GetUseQueryOptionsForUseQueries<T[K]> }];
-    combine?: (result: QueriesResults<T>) => TCombinedResult;
-  },
+  options: () => QueriesInput<T, TCombinedResult>,
   queryClient?: QueryClient,
 ): TCombinedResult {
   return queriesBase(options as unknown as () => AnyQueriesOptions, queryClient, false) as never;
+}
+
+export interface SuspenseQueriesInput<T extends unknown[], TCombinedResult> {
+  queries:
+    | readonly [...SuspenseQueriesOptions<T>]
+    | readonly [...{ [K in keyof T]: GetUseSuspenseQueryOptions<T[K]> }];
+  combine?: (result: SuspenseQueriesResults<T>) => TCombinedResult;
 }
 
 /**
@@ -530,12 +565,7 @@ export function useSuspenseQueries<
   T extends unknown[],
   TCombinedResult = SuspenseQueriesResults<T>,
 >(
-  options: () => {
-    queries:
-      | readonly [...SuspenseQueriesOptions<T>]
-      | readonly [...{ [K in keyof T]: GetUseSuspenseQueryOptions<T[K]> }];
-    combine?: (result: SuspenseQueriesResults<T>) => TCombinedResult;
-  },
+  options: () => SuspenseQueriesInput<T, TCombinedResult>,
   queryClient?: QueryClient,
 ): TCombinedResult {
   return queriesBase(options as unknown as () => AnyQueriesOptions, queryClient, true) as never;

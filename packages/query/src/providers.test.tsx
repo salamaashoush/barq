@@ -21,7 +21,9 @@ import {
 import { PersistQueryClientProvider } from "./persist.ts";
 import { delay, elapse, fakeClock, realClock } from "./test-helpers.ts";
 
-const settled = (ms = 10): Promise<void> => elapse(ms);
+function settled(ms = 10): Promise<void> {
+  return elapse(ms);
+}
 
 function host(): HTMLElement {
   const element = document.createElement("div");
@@ -118,9 +120,14 @@ describe("HydrationBoundary", () => {
   });
 });
 
+interface StoredClient {
+  client?: PersistedClient;
+  writes: number;
+}
+
 describe("PersistQueryClientProvider", () => {
   test("restores before anything fetches, then writes changes back", async () => {
-    const stored: { client?: PersistedClient; writes: number } = { writes: 0 };
+    const stored: StoredClient = { writes: 0 };
     stored.client = {
       timestamp: Date.now(),
       buster: "",

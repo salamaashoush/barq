@@ -20,14 +20,16 @@ export interface QueryClientProviderProps {
   children?: unknown;
 }
 
+interface QueryClientProviderCells {
+  client: Cell<QueryClient>;
+  children?: unknown;
+}
+
 /**
  * Forks the context on its own instance scope and builds `children` INSIDE it,
  * so a consumer constructed below sees this client rather than an outer one.
  */
-export const QueryClientProvider = ((props: {
-  client: Cell<QueryClient>;
-  children?: unknown;
-}): unknown => {
+export const QueryClientProvider = ((props: QueryClientProviderCells): unknown => {
   const client = readSlot(props.client, "QueryClientProvider.client") as QueryClient;
   return provideClient(client, () => built(props.children));
 }) as unknown as (props: QueryClientProviderProps) => JSXElement;
@@ -85,6 +87,11 @@ export interface IsRestoringProviderProps {
   children?: unknown;
 }
 
+interface IsRestoringProviderCells {
+  value: Cell<() => boolean>;
+  children?: unknown;
+}
+
 /**
  * Whether a persister is restoring the cache from storage.
  *
@@ -93,10 +100,7 @@ export interface IsRestoringProviderProps {
  * drives this, and every hook below reads it — which is why it exists here
  * rather than in whatever package eventually wraps the persister.
  */
-export const IsRestoringProvider = ((props: {
-  value: Cell<() => boolean>;
-  children?: unknown;
-}): unknown => {
+export const IsRestoringProvider = ((props: IsRestoringProviderCells): unknown => {
   const value = readSlot(props.value, "IsRestoringProvider.value") as () => boolean;
   return provide(RESTORING, cell(value), () => built(props.children));
 }) as unknown as (props: IsRestoringProviderProps) => JSXElement;

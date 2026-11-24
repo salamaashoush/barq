@@ -116,11 +116,11 @@ export function firstAnswer(
   }
 
   let absorbed = false;
-  const absorb = (value: Seed | undefined): void => {
+  function absorb(value: Seed | undefined): void {
     if (absorbed) return;
     absorbed = true;
     if (value !== undefined) hydrate(client, { mutations: [], queries: value });
-  };
+  }
   if (!asked && !arriving) absorb(seed);
 
   return {
