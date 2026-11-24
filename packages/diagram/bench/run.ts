@@ -334,7 +334,14 @@ lines.push(
   `| excalidraw | ${fixed(excalidrawSize.kb, 0)} | ${fixed(excalidrawSize.gzipKb, 0)} |`,
 );
 console.log(lines.join("\n"));
-await Bun.write(
-  join(HERE, "results.json"),
-  JSON.stringify({ results, barqSize, excalidrawSize }, null, 2),
-);
+const resultsFile = join(HERE, "results.json");
+await Bun.write(resultsFile, JSON.stringify({ results, barqSize, excalidrawSize }, null, 2));
+// the repository's format check covers this file, so it is written as oxfmt writes it
+const formatted = Bun.spawnSync(["bunx", "oxfmt", resultsFile], {
+  cwd: join(HERE, "../../.."),
+  stdout: "ignore",
+  stderr: "pipe",
+});
+if (formatted.exitCode !== 0) {
+  throw new Error(`oxfmt failed on ${resultsFile}: ${formatted.stderr.toString()}`);
+}
