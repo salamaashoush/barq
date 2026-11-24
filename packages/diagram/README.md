@@ -702,8 +702,10 @@ imports nothing of barq: give it a focusable container and three canvases
 over them for the laser, eraser and lasso trails (`svgLayer`), and it is the
 same editor, with `api`, `state`, `onAnnounce` and `onTextEditRequest`. Its
 state changes at once; the store, history and `onChange` follow once per
-input event, and the canvases draw once a frame, so a drag mutates the
-dragged elements and redraws without anything reactive in between.
+input event, and the canvases draw once after it (in a task of its own,
+outside the frame's commit) or, for a change from outside an event, once a
+frame, so a drag mutates the dragged elements and redraws without anything
+reactive in between.
 
 Text is edited in a textarea the host makes: `onTextEditRequest` hands it
 a request with the text element (new text is in the scene already), and
