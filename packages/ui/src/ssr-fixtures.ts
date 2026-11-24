@@ -209,6 +209,7 @@ export const FIXTURES: Readonly<Record<string, ServerFixture>> = {
         </CarouselContent>
         <CarouselPrevious />
         <CarouselNext />
+        <CarouselDots />
       </Carousel>
     `,
   },
