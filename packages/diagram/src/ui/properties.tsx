@@ -586,6 +586,7 @@ export function PropertiesPanel() {
                     label={t("labels.background")}
                     color={getBucketFillBackgroundColor(store.state("currentItemBackgroundColor"))}
                     topPicks={BUCKET_FILL_BACKGROUND_PICKS}
+                    customizableTopPicks="bucketFill"
                     palette={DEFAULT_ELEMENT_BACKGROUND_COLOR_PALETTE}
                     excludedColors={[COLOR_PALETTE.transparent]}
                     onChange={(color) =>
@@ -609,6 +610,7 @@ export function PropertiesPanel() {
                   label={isSticky() ? t("labels.textColor") : t("labels.stroke")}
                   color={strokeColor()}
                   topPicks={strokeTarget()!.topPicks}
+                  customizableTopPicks={strokeTarget()!.customizableTopPicks}
                   palette={strokeTarget()!.palette}
                   excludedColors={strokeTarget()!.excludedColors}
                   elements={store.editor?.scene.getElementsIncludingDeleted()}
@@ -627,6 +629,7 @@ export function PropertiesPanel() {
                   label={t("labels.background")}
                   color={backgroundColor()}
                   topPicks={backgroundTarget()!.topPicks}
+                  customizableTopPicks={backgroundTarget()!.customizableTopPicks}
                   palette={backgroundTarget()!.palette}
                   excludedColors={backgroundTarget()!.excludedColors}
                   elements={store.editor?.scene.getElementsIncludingDeleted()}

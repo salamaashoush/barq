@@ -192,7 +192,10 @@ export const radioChoice = d({
     backgroundColor: "var(--brand, var(--primary, Highlight))",
     color: "var(--brand-ink, var(--primary-foreground, HighlightText))",
   },
-  "&[data-focus-visible]": { boxShadow: "0 0 0 2px var(--ring, Highlight)" },
+  "&[data-focus-visible], &:has([data-drop-target])": {
+    boxShadow: "0 0 0 2px var(--ring, Highlight)",
+  },
+  "&:has([data-duplicate])": { boxShadow: "0 0 0 2px var(--destructive, #e03131)" },
   "&[data-disabled]": { opacity: "0.4", cursor: "default" },
   "& input": {
     position: "absolute",
@@ -233,6 +236,13 @@ export const swatch = d({
   },
   "&:focus-visible, &[data-focus-visible]": {
     boxShadow: "0 0 0 2px var(--popover, Canvas), 0 0 0 4px var(--ring, Highlight)",
+  },
+  // where a dragged colour or font lands, and the pick it would duplicate
+  "&[data-drop-target]": {
+    boxShadow: "0 0 0 2px var(--popover, Canvas), 0 0 0 4px var(--ring, Highlight)",
+  },
+  "&[data-duplicate]": {
+    boxShadow: "0 0 0 2px var(--popover, Canvas), 0 0 0 4px var(--destructive, #e03131)",
   },
 });
 

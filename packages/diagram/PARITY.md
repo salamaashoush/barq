@@ -117,7 +117,7 @@ embeds.
 - done: search (Ctrl+F, the main menu), texts and frame names highlighted through `searchMatches`, stepping and bringing a match into view (`search.test.tsx`)
 - done: Mermaid and text-to-diagram dialog: Mermaid typed, previewed, auto-fixed and inserted; the chat streams from the app's `textToDiagram` backend, repairs, retries, stops and keeps its chats (`ttd-dialog.test.tsx`, `mermaid-error.test.ts`, `mermaid-auto-fix.test.ts`)
 - pending (3b): welcome screen and its hints
-- pending (3b): colour and font top picks customised by dragging, and reset
+- done: colour and font quick picks pinned by dragging a palette colour or a font onto a slot, reordered by dragging a pick, reset from the strip's context menu or the picker's tip (`top-picks.test.tsx`)
 - done: font picker previews the highlighted font on the selection and restores it on close; Shift+F opens it (`pickers.test.tsx`)
 - done: command palette's recently used command, library items, library and search entries (`library.test.tsx`)
 - done: stats panel: the element's type, an image's uncropped size while cropping, a group's heading, several units edited each, the grid's step, folding sections, dragging a label to scrub a value (`stats.test.tsx`); a scene version is the host's to show through `renderCustomStats`, as excalidraw.com does

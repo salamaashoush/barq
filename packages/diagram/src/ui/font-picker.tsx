@@ -22,6 +22,7 @@ import { Fonts } from "../fonts/fonts.ts";
 import { useDiagramUI } from "./context.tsx";
 import { diagramLayer as d } from "./layer.ts";
 import { iconButton, radioChoice, radioGroupRow } from "./styles.ts";
+import { TopPicksMenu, TopPicksTip, createTopPicksDnD } from "./top-picks.tsx";
 
 import type { ExcalidrawElement, FontFamilyValues } from "@excalidraw/element/types";
 import type { TranslationKey } from "../i18n.ts";
@@ -160,36 +161,73 @@ export function FontPicker() {
     });
   };
 
-  const isDefault = () => DEFAULT_FONTS.some((font) => font.value === selected());
+  const customPicks = (): readonly FontFamilyValues[] | null => {
+    const picks = store.state("fontTopPicks");
+    return picks?.length ? picks : null;
+  };
+  const topPicks = (): readonly FontFamilyValues[] =>
+    customPicks() ?? DEFAULT_FONTS.map((font) => font.value);
+  const setTopPicks = (picks: readonly FontFamilyValues[] | null): void => {
+    const editor = store.editor;
+    editor?.batch(() => editor.setState({ fontTopPicks: picks }));
+  };
+  const dnd = createTopPicksDnD<FontFamilyValues>({
+    enabled: () => true,
+    picks: topPicks,
+    onChange: setTopPicks,
+  });
+  const pickLabel = (value: FontFamilyValues): string => {
+    const known = DEFAULT_FONTS.find((font) => font.value === value);
+    return known ? t(known.label) : getFontFamilyLabel(value);
+  };
+  const pickTestId = (value: FontFamilyValues): string =>
+    DEFAULT_FONTS.find((font) => font.value === value)?.testId ?? `font-family-pick-${value}`;
+
+  const isDefault = () => topPicks().some((value) => value === selected());
 
   return (
     <div class={radioGroupRow}>
-      <RadioGroup
-        aria-label={t("labels.fontFamily")}
-        value={isDefault() ? String(selected()) : null}
-        orientation="horizontal"
-        onChange={(value: string) => ui.run(actionChangeFontFamily, Number(value))}
-        class={radioGroupRow}
+      <TopPicksMenu
+        customizable
+        customized={customPicks() !== null}
+        resetLabel={t("fontList.resetTopPicks")}
+        onReset={() => setTopPicks(null)}
       >
-        <For each={DEFAULT_FONTS}>
-          {(font: (typeof DEFAULT_FONTS)[number]) => {
-            const Icon = fontIcon(font.value);
-            return (
-              <Radio
-                value={String(font.value)}
-                aria-label={t(font.label)}
-                elementType="span"
-                class={radioChoice}
-                data-testid={font.testId}
-              >
-                <span title={t(font.label)}>
-                  <Icon aria-hidden="true" />
-                </span>
-              </Radio>
-            );
-          }}
-        </For>
-      </RadioGroup>
+        <div class={radioGroupRow} ref={(element: HTMLDivElement) => dnd.setStrip(element)}>
+          <RadioGroup
+            aria-label={t("labels.fontFamily")}
+            value={isDefault() ? String(selected()) : null}
+            orientation="horizontal"
+            onChange={(value: string) => ui.run(actionChangeFontFamily, Number(value))}
+            class={radioGroupRow}
+          >
+            <For each={topPicks()}>
+              {(value: FontFamilyValues, index: () => number) => {
+                const Icon = fontIcon(value);
+                return (
+                  <Radio
+                    value={String(value)}
+                    aria-label={pickLabel(value)}
+                    elementType="span"
+                    class={radioChoice}
+                    data-testid={pickTestId(value)}
+                  >
+                    <span
+                      title={pickLabel(value)}
+                      onPointerDown={dnd.onPointerDown(value, index())}
+                      data-top-pick-index={index()}
+                      data-drop-target={dnd.dragging()?.overIndex === index() ? "" : undefined}
+                      data-duplicate={dnd.dragging()?.duplicateIndex === index() ? "" : undefined}
+                    >
+                      <Icon aria-hidden="true" />
+                    </span>
+                  </Radio>
+                );
+              }}
+            </For>
+          </RadioGroup>
+        </div>
+      </TopPicksMenu>
       <Popover isOpen={open()} onOpenChange={setOpen}>
         <PopoverTrigger>
           <Button
@@ -213,7 +251,12 @@ export function FontPicker() {
                 <CommandGroup heading={t("fontList.sceneFonts")}>
                   <For each={fonts().scene}>
                     {(font: FontEntry) => (
-                      <FontItem font={font} selected={selected()} onSelect={choose} />
+                      <FontItem
+                        font={font}
+                        selected={selected()}
+                        onSelect={choose}
+                        onDragStart={dnd.onPointerDown(font.value)}
+                      />
                     )}
                   </For>
                 </CommandGroup>
@@ -221,12 +264,22 @@ export function FontPicker() {
               <CommandGroup heading={t("fontList.availableFonts")}>
                 <For each={fonts().available}>
                   {(font: FontEntry) => (
-                    <FontItem font={font} selected={selected()} onSelect={choose} />
+                    <FontItem
+                      font={font}
+                      selected={selected()}
+                      onSelect={choose}
+                      onDragStart={dnd.onPointerDown(font.value)}
+                    />
                   )}
                 </For>
               </CommandGroup>
             </CommandList>
           </Command>
+          <TopPicksTip
+            tip={t("fontList.topPicksTip")}
+            resetLabel={t("buttons.reset")}
+            onReset={customPicks() ? () => setTopPicks(null) : undefined}
+          />
         </PopoverContent>
       </Popover>
     </div>
@@ -237,6 +290,7 @@ function FontItem(props: {
   font: FontEntry;
   selected: FontFamilyValues | null;
   onSelect: (font: FontFamilyValues) => void;
+  onDragStart: (event: PointerEvent) => void;
 }) {
   const ui = useDiagramUI();
   const Icon = fontIcon(props.font.value);
@@ -249,7 +303,10 @@ function FontItem(props: {
       data-testid={`font-family-${props.font.value}`}
     >
       <Icon aria-hidden="true" />
-      <span style={{ fontFamily: getFontFamilyString({ fontFamily: props.font.value }) }}>
+      <span
+        style={{ fontFamily: getFontFamilyString({ fontFamily: props.font.value }) }}
+        onPointerDown={(event: PointerEvent) => props.onDragStart(event)}
+      >
         {props.font.label}
       </span>
       <Show when={props.font.deprecated}>

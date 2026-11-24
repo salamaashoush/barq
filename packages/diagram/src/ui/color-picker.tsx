@@ -14,12 +14,14 @@ import {
 import { useDiagramUI } from "./context.tsx";
 import { previewColorOnSelection } from "./editor-keys.tsx";
 import { startEyeDropper } from "./eye-dropper.ts";
+import { TopPicksMenu, TopPicksTip, createTopPicksDnD } from "./top-picks.tsx";
 import { diagramLayer as d } from "./layer.ts";
 import { iconButton, swatch, swatchFill, textInput } from "./styles.ts";
 
 import type { ColorPaletteCustom, ColorTuple } from "@excalidraw/common";
 import type { ExcalidrawElement } from "@excalidraw/element/types";
 import type { TranslationKey } from "../i18n.ts";
+import type { AppState } from "../types.ts";
 
 export type ColorPickerType = "canvasBackground" | "elementBackground" | "elementStroke";
 
@@ -143,6 +145,11 @@ export interface ColorPickerProps {
   label: string;
   /** The five quick picks shown beside the trigger. */
   topPicks: ColorTuple;
+  /**
+   * The `colorTopPicks` slot the quick picks are customised in: a colour
+   * dragged onto one pins it there, and the strip's context menu resets them.
+   */
+  customizableTopPicks?: keyof AppState["colorTopPicks"];
   /** `null` offers only the quick picks and a hex code, as the canvas background does. */
   palette: ColorPaletteCustom | null;
   /** Colours left out of the palette without moving the others' keys. */
@@ -173,6 +180,27 @@ export function ColorPicker(props: ColorPickerProps) {
     }
   };
   const [section, setSection] = createSignal<Section | null>(null);
+
+  const customPicks = (): readonly string[] | null => {
+    const slot = props.customizableTopPicks;
+    if (slot === undefined) return null;
+    const picks = ui.store.state("colorTopPicks")[slot];
+    return picks?.length ? picks : null;
+  };
+  const topPicks = (): readonly string[] => customPicks() ?? props.topPicks;
+  const setTopPicks = (picks: readonly string[] | null): void => {
+    const slot = props.customizableTopPicks;
+    const editor = ui.store.editor;
+    if (slot === undefined || !editor) return;
+    editor.batch(() =>
+      editor.setState({ colorTopPicks: { ...editor.state.colorTopPicks, [slot]: picks } }),
+    );
+  };
+  const dnd = createTopPicksDnD<string>({
+    enabled: () => props.customizableTopPicks !== undefined,
+    picks: topPicks,
+    onChange: setTopPicks,
+  });
   let contentElement: HTMLDivElement | undefined;
 
   const colorName = (color: string): string => {
@@ -343,23 +371,39 @@ export function ColorPicker(props: ColorPickerProps) {
 
   return (
     <div class={pickerRow} data-testid={props["data-testid"]}>
-      <div class={row} role="group" aria-label={props.label}>
-        <For each={props.topPicks.filter((color) => !isExcluded(color))}>
-          {(color: string) => (
-            <button
-              type="button"
-              class={swatch}
-              aria-label={colorName(color)}
-              aria-pressed={props.color === color}
-              title={colorName(color)}
-              onClick={() => props.onChange(color)}
-              data-testid={`color-top-pick-${color}`}
-            >
-              <span class={swatchFill} style={{ background: color }} />
-            </button>
-          )}
-        </For>
-      </div>
+      <TopPicksMenu
+        customizable={props.customizableTopPicks !== undefined}
+        customized={customPicks() !== null}
+        resetLabel={t("colorPicker.resetTopPicks")}
+        onReset={() => setTopPicks(null)}
+      >
+        <div
+          class={row}
+          role="group"
+          aria-label={props.label}
+          ref={(element: HTMLDivElement) => dnd.setStrip(element)}
+        >
+          <For each={topPicks().filter((color) => !isExcluded(color))}>
+            {(color: string, index: () => number) => (
+              <button
+                type="button"
+                class={swatch}
+                aria-label={colorName(color)}
+                aria-pressed={props.color === color}
+                title={colorName(color)}
+                onClick={() => props.onChange(color)}
+                onPointerDown={dnd.onPointerDown(color, index())}
+                data-top-pick-index={index()}
+                data-drop-target={dnd.dragging()?.overIndex === index() ? "" : undefined}
+                data-duplicate={dnd.dragging()?.duplicateIndex === index() ? "" : undefined}
+                data-testid={`color-top-pick-${color}`}
+              >
+                <span class={swatchFill} style={{ background: color }} />
+              </button>
+            )}
+          </For>
+        </div>
+      </TopPicksMenu>
       <div class={swatchDivider} aria-hidden="true" />
       <Popover isOpen={open()} onOpenChange={setOpen}>
         <PopoverTrigger>
@@ -403,6 +447,7 @@ export function ColorPicker(props: ColorPickerProps) {
                       active={props.color === color}
                       hint={String(index() + 1)}
                       onPick={() => pick(color, "custom")}
+                      onDragStart={dnd.onPointerDown(color)}
                     />
                   )}
                 </For>
@@ -425,6 +470,7 @@ export function ColorPicker(props: ColorPickerProps) {
                         active={current()?.colorName === entry.name}
                         hint={COLOR_HOTKEYS[entry.index] ?? ""}
                         onPick={() => pick(entry.color, "baseColors")}
+                        onDragStart={dnd.onPointerDown(entry.color)}
                       />
                     </Show>
                   )}
@@ -449,6 +495,7 @@ export function ColorPicker(props: ColorPickerProps) {
                         active={props.color === color}
                         hint={String(index() + 1)}
                         onPick={() => pick(color, "shades")}
+                        onDragStart={dnd.onPointerDown(color)}
                       />
                     )}
                   </For>
@@ -461,6 +508,13 @@ export function ColorPicker(props: ColorPickerProps) {
               onChange={(color) => props.onChange(color)}
               onEyeDropper={eyeDropper}
             />
+            <Show when={props.customizableTopPicks !== undefined}>
+              <TopPicksTip
+                tip={t("colorPicker.topPicksTip")}
+                resetLabel={t("buttons.reset")}
+                onReset={customPicks() ? () => setTopPicks(null) : undefined}
+              />
+            </Show>
           </div>
         </PopoverContent>
       </Popover>
@@ -474,6 +528,7 @@ function SwatchButton(props: {
   active: boolean;
   hint: string;
   onPick: () => void;
+  onDragStart?: (event: PointerEvent) => void;
 }) {
   return (
     <button
@@ -485,6 +540,7 @@ function SwatchButton(props: {
       tabIndex={props.active ? 0 : -1}
       data-active={props.active ? "" : undefined}
       onClick={() => props.onPick()}
+      onPointerDown={(event: PointerEvent) => props.onDragStart?.(event)}
       data-testid={`color-${props.color}`}
     >
       <span class={swatchFill} style={{ background: props.color }} />
