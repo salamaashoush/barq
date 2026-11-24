@@ -1,6 +1,5 @@
 import { type Child, For, Show, createSignal, onCleanup, untrack } from "@barqjs/core";
 import { shortcut } from "@barqjs/primitives/keyboard";
-import { type Scheduled, debounce } from "@barqjs/primitives/scheduled";
 import { persisted } from "@barqjs/primitives/storage";
 import { useRouter } from "@barqjs/router";
 import {
@@ -23,6 +22,13 @@ import { type Customisable, parts } from "../lib/parts.ts";
 import { fg, gap, glyph, layout, space, type } from "../style/index.ts";
 import { HighlightMatches, type MatchRange } from "./highlight-matches.tsx";
 import { useArcMessages } from "./messages.ts";
+import {
+  type RemotePage,
+  type RemoteSearch,
+  type RemoteSearchContext,
+  type RemoteState,
+  remoteSearch,
+} from "./remote-search.ts";
 
 import type { NavIcon } from "./app-shell.tsx";
 import type { LinkTarget } from "./link.ts";
@@ -61,18 +67,9 @@ export interface CommandResult extends Partial<LinkTarget> {
 }
 
 /** A page of a source's results, with what asks for the next one. */
-export interface CommandResultPage {
-  results: readonly CommandResult[];
-  /** Handed back to `search` for the page after; none on the last page. */
-  next?: unknown;
-}
+export type CommandResultPage = RemotePage<CommandResult>;
 
-export interface CommandSearchContext {
-  /** Aborted when the search changes or the palette closes. */
-  signal: AbortSignal;
-  /** The `next` of the page before, for every page but the first. */
-  cursor?: unknown;
-}
+export type CommandSearchContext = RemoteSearchContext;
 
 /**
  * Somewhere the palette searches as the reader types: a server, an index, an
@@ -103,12 +100,7 @@ interface Recent {
   result: Omit<CommandResult, "icon">;
 }
 
-interface Found {
-  status: "loading" | "done" | "error";
-  results: readonly CommandResult[];
-  next?: unknown;
-  loadingMore: boolean;
-}
+type Found = RemoteState<CommandResult>;
 
 type Registered = () => readonly CommandMenuGroup[];
 
@@ -259,77 +251,40 @@ export function CommandMenu(props: CommandMenuProps) {
       ? createSignal<readonly Recent[]>([])
       : persisted<readonly Recent[]>(recentKey, []);
 
-  const controllers = new Map<string, AbortController>();
-  const pending = new Map<string, Scheduled<[string]>>();
+  const searches = new Map<string, RemoteSearch>();
 
-  const update = (id: string, next: Found | undefined): void => {
+  const update = (id: string, next: RemoteState<CommandResult>): void => {
     const all = { ...found() };
-    if (next === undefined) delete all[id];
+    if (next.status === "idle") delete all[id];
     else all[id] = next;
     setFound(all);
   };
 
+  const searchOf = (source: CommandSource): RemoteSearch => {
+    let held = searches.get(source.id);
+    if (held === undefined) {
+      held = remoteSearch<CommandResult>({
+        search: () => props.sources?.find((each) => each.id === source.id)?.search ?? source.search,
+        debounce: source.debounce,
+        minLength: source.minLength ?? 2,
+        onChange: (state) => update(source.id, state),
+      });
+      searches.set(source.id, held);
+    }
+    return held;
+  };
+
   const stop = (): void => {
-    for (const controller of controllers.values()) controller.abort();
-    controllers.clear();
-    for (const call of pending.values()) call.clear();
+    for (const held of searches.values()) held.stop();
   };
   onCleanup(stop);
 
-  const fetchPage = (source: CommandSource, text: string, cursor?: unknown): void => {
-    controllers.get(source.id)?.abort();
-    const controller = new AbortController();
-    controllers.set(source.id, controller);
-    const before = cursor === undefined ? [] : (found()[source.id]?.results ?? []);
-    source.search(text, { signal: controller.signal, cursor }).then(
-      (page) => {
-        if (controller.signal.aborted) return;
-        const results = "results" in page ? page.results : page;
-        const next = "results" in page ? page.next : undefined;
-        update(source.id, {
-          status: "done",
-          results: [...before, ...results],
-          next,
-          loadingMore: false,
-        });
-      },
-      () => {
-        if (controller.signal.aborted) return;
-        update(source.id, { status: "error", results: before, loadingMore: false });
-      },
-    );
-  };
-
-  const searchSource = (source: CommandSource, text: string): void => {
-    controllers.get(source.id)?.abort();
-    pending.get(source.id)?.clear();
-    if (text.trim().length < (source.minLength ?? 2)) {
-      update(source.id, undefined);
-      return;
-    }
-    update(source.id, { status: "loading", results: [], loadingMore: false });
-    let call = pending.get(source.id);
-    if (call === undefined) {
-      call = debounce((typed: string) => {
-        const current = props.sources?.find((each) => each.id === source.id);
-        if (current !== undefined) fetchPage(current, typed);
-      }, source.debounce ?? 250);
-      pending.set(source.id, call);
-    }
-    call(text);
-  };
-
   const search = (text: string): void => {
     setQuery(text);
-    for (const source of props.sources ?? []) searchSource(source, text);
+    for (const source of props.sources ?? []) searchOf(source).query(text);
   };
 
-  const more = (source: CommandSource): void => {
-    const state = found()[source.id];
-    if (state === undefined || state.next === undefined || state.loadingMore) return;
-    update(source.id, { ...state, loadingMore: true });
-    fetchPage(source, query(), state.next);
-  };
+  const more = (source: CommandSource): void => searchOf(source).more();
 
   const setOpen = (next: boolean): void => {
     if (!next) {

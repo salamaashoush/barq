@@ -258,6 +258,23 @@ export {
   versionHistoryStyles,
 } from "./components/version-history.tsx";
 export {
+  type EntityOption,
+  EntityPicker,
+  type EntityPickerProps,
+  type MultipleEntityPickerProps,
+  type SingleEntityPickerProps,
+  entityPickerStyles,
+} from "./components/entity-picker.tsx";
+export {
+  type RemotePage,
+  type RemoteSearch,
+  type RemoteSearchContext,
+  type RemoteSearchFn,
+  type RemoteSearchOptions,
+  type RemoteState,
+  remoteSearch,
+} from "./components/remote-search.ts";
+export {
   PersonAvatar,
   type PersonAvatarProps,
   personAvatarStyles,

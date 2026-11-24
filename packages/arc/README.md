@@ -852,6 +852,18 @@ import { Chip } from "@barqjs/arc";
   rests on colour; the remove button is its own stop, named "Remove" and the
   chip's words. `tone`, `variant` (`outline` or `subtle`) and `size`
   (`sm` or `md`), and `chipVariants` is the shape every tag in arc wears.
+- `EntityPicker`: one or several things a server finds as the reader types,
+  people, projects, records, on ui's combobox with its list kept as the
+  server answers. Each option has its avatar, a `description` and the words
+  that matched marked; the chosen ones stay at the top of the list until a
+  search is typed, and with `multiple` they are chips the remove button or
+  Backspace takes off. The search waits for the typing to pause and aborts
+  the request it replaces; a page with a `next` cursor adds Show more,
+  `onCreate` adds Create "…" for text no option has, and past `max` the rest
+  are held back with the reason. Searching, nothing found and a failed
+  search each say so, and `name` submits the chosen ids. `remoteSearch` is
+  the same debounced, aborting, paging search for a control of an app's own,
+  and what `CommandMenu`'s sources run on.
 - `TagGroup`: tags in a row that wraps, on `@barqjs/aria`'s tag group: one
   Tab stop, the arrows moving in the reading direction, Delete removing the
   focused or selected tags, and focus kept on the group when the last one
