@@ -92,6 +92,12 @@ export interface SliderStateOptions {
   minStepsBetweenThumbs?: MaybeAccessor<number | undefined>;
   /** How the value is spoken and shown. */
   formatOptions?: MaybeAccessor<Intl.NumberFormatOptions | undefined>;
+  /**
+   * How one value is spoken and shown when a number format cannot say it: a
+   * playback position as "1:05 of 3:20", a size as "Large". Wins over
+   * `formatOptions`.
+   */
+  getValueLabel?: (value: number) => string;
   onChange?: (value: number[]) => void;
   /** Called once, when the gesture that changed the value ends. */
   onChangeEnd?: (value: number[]) => void;
@@ -237,10 +243,14 @@ export function sliderState(options: SliderStateOptions): SliderState {
   const getFormattedValue = (value: number | number[] = values()): string => {
     const list = Array.isArray(value) ? value : [value];
     if (list.length === 0) return "";
-    if (list.length === 1) return format().format(list[0] as number);
-    if (list.length === 2) return format().formatRange(list[0] as number, list[1] as number);
+    const label = options.getValueLabel;
+    if (label === undefined) {
+      if (list.length === 1) return format().format(list[0] as number);
+      if (list.length === 2) return format().formatRange(list[0] as number, list[1] as number);
+    }
+    if (list.length === 1) return (label as (value: number) => string)(list[0] as number);
     if (listFormat === null) listFormat = new Intl.ListFormat(locale().locale, { type: "unit" });
-    return listFormat.format(list.map((entry) => format().format(entry)));
+    return listFormat.format(list.map((entry) => label?.(entry) ?? format().format(entry)));
   };
 
   const getValuePercent = (value: number): number => (value - min()) / (max() - min());
@@ -812,6 +822,8 @@ export interface SliderComponentProps extends StyleProps {
   /** How many steps two neighbouring thumbs must stay apart. @default 0 */
   minStepsBetweenThumbs?: number;
   formatOptions?: Intl.NumberFormatOptions;
+  /** How one value is spoken and shown when a number format cannot say it. */
+  getValueLabel?: (value: number) => string;
   name?: string;
   form?: string;
   "aria-label"?: string;
@@ -837,6 +849,10 @@ export function Slider(props: SliderComponentProps) {
 
   const state = sliderState({
     ...(options as SliderStateOptions),
+    getValueLabel:
+      props.getValueLabel === undefined
+        ? undefined
+        : (value) => props.getValueLabel?.(value) ?? String(value),
     onChange: (value) => props.onChange?.(value),
     onChangeEnd: (value) => props.onChangeEnd?.(value),
   });

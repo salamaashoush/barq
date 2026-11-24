@@ -77,6 +77,26 @@ describe("Slider", () => {
     expect(thumb().getAttribute("aria-valuetext")).toBe("30%");
   });
 
+  test("a value label says what a number format cannot, and follows the value", () => {
+    render(() => (
+      <Slider
+        label="Seek"
+        defaultValue={65}
+        maxValue={200}
+        getValueLabel={(seconds) =>
+          `${String(Math.floor(seconds / 60))}:${String(seconds % 60).padStart(2, "0")} of 3:20`
+        }
+      />
+    ));
+    expect(thumb().getAttribute("aria-valuetext")).toBe("1:05 of 3:20");
+    expect(screen.getByRole("status").textContent).toBe("1:05 of 3:20");
+    const input = thumb();
+    input.value = "70";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    flush();
+    expect(input.getAttribute("aria-valuetext")).toBe("1:10 of 3:20");
+  });
+
   test("typing into the input moves the thumb", () => {
     const changes: number[][] = [];
     render(() => <Volume onChange={(value) => changes.push(value)} />);
