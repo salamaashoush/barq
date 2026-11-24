@@ -10,6 +10,8 @@ import { diagramLayer as d } from "./layer.ts";
 export const layerUI = d({
   position: "absolute",
   inset: "0",
+  // what changes in the UI (the zoom level as it zooms) lays out only itself
+  contain: "layout style",
   pointerEvents: "none",
   zIndex: "3",
   fontFamily: "var(--font-sans, system-ui, sans-serif)",
@@ -73,6 +75,7 @@ export const bottomEnd = d({
 /** A floating surface: the toolbar, a panel, the footer's groups. */
 export const island = d({
   pointerEvents: "auto",
+  contain: "layout style",
   display: "flex",
   alignItems: "center",
   gap: "2px",

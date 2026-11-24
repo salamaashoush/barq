@@ -173,7 +173,6 @@ function ChoiceGroup(props: {
   value: string | null;
   choices: readonly Choice[];
   onChange: (value: string) => void;
-  onPressChoice?: (value: string, event: { altKey: boolean }) => boolean;
   testId?: string;
 }) {
   return (
@@ -626,34 +625,55 @@ export function PropertiesPanel() {
             </Show>
           </Show>
           <Show when={shown().fill}>
-            <ChoiceGroup
-              label={t("labels.fill")}
-              value={allZigZag() ? "hachure" : fillStyle()}
-              testId="fill-style"
-              choices={[
-                {
-                  value: "hachure",
-                  label: allZigZag() ? t("labels.zigzag") : t("labels.hachure"),
-                  icon: () => (allZigZag() ? <Icons.FillZigZag /> : <Icons.FillHachure />),
-                  testId: "fill-hachure",
-                },
-                {
-                  value: "cross-hatch",
-                  label: t("labels.crossHatch"),
-                  icon: () => <Icons.FillCrossHatch />,
-                  testId: "fill-cross-hatch",
-                },
-                {
-                  value: "solid",
-                  label: t("labels.solid"),
-                  icon: () => <Icons.FillSolid />,
-                  testId: "fill-solid",
-                },
-              ]}
-              onChange={(value) =>
-                ui.run(actionChangeFillStyle, value as ExcalidrawElement["fillStyle"])
+            <div
+              // Alt with a press on hachure turns it to zigzag, and a press undoes it,
+              // as in Excalidraw; the radio itself reports no press on its own value
+              ref={(wrapper: HTMLDivElement) =>
+                // captured: the radio's own press handling keeps the click from bubbling
+                wrapper.addEventListener(
+                  "click",
+                  (event: MouseEvent) => {
+                    const target = event.target as Element | null;
+                    if (!target?.closest("[data-testid=fill-hachure]")) return;
+                    if (allZigZag()) {
+                      ui.run(actionChangeFillStyle, "hachure");
+                    } else if (event.altKey && fillStyle() === "hachure") {
+                      ui.run(actionChangeFillStyle, "zigzag");
+                    }
+                  },
+                  true,
+                )
               }
-            />
+            >
+              <ChoiceGroup
+                label={t("labels.fill")}
+                value={allZigZag() ? "hachure" : fillStyle()}
+                testId="fill-style"
+                choices={[
+                  {
+                    value: "hachure",
+                    label: allZigZag() ? t("labels.zigzag") : t("labels.hachure"),
+                    icon: () => (allZigZag() ? <Icons.FillZigZag /> : <Icons.FillHachure />),
+                    testId: "fill-hachure",
+                  },
+                  {
+                    value: "cross-hatch",
+                    label: t("labels.crossHatch"),
+                    icon: () => <Icons.FillCrossHatch />,
+                    testId: "fill-cross-hatch",
+                  },
+                  {
+                    value: "solid",
+                    label: t("labels.solid"),
+                    icon: () => <Icons.FillSolid />,
+                    testId: "fill-solid",
+                  },
+                ]}
+                onChange={(value) =>
+                  ui.run(actionChangeFillStyle, value as ExcalidrawElement["fillStyle"])
+                }
+              />
+            </div>
           </Show>
           <Show when={shown().strokeWidth && !bucketFill()}>
             <ChoiceGroup

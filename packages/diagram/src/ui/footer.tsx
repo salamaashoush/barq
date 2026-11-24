@@ -1,4 +1,4 @@
-import { Show } from "@barqjs/core";
+import { Show, createMemo } from "@barqjs/core";
 import { CircleHelp } from "@barqjs/lucide/icons/circle-help";
 import { Map as MapIcon } from "@barqjs/lucide/icons/map";
 import { Redo2 } from "@barqjs/lucide/icons/redo-2";
@@ -15,8 +15,8 @@ import { iconButton, island } from "./styles.ts";
 import { diagramLayer as d } from "./layer.ts";
 
 const zoomLevel = d({
-  minWidth: "52px",
-  width: "auto",
+  // a fixed width: the level changing at every wheel step moves nothing else
+  width: "56px",
   paddingInline: "6px",
   fontVariantNumeric: "tabular-nums",
   fontSize: "var(--text-xs, 0.75rem)",
@@ -26,7 +26,12 @@ const zoomLevel = d({
 export function FooterStart() {
   const ui = useDiagramUI();
   const t = ui.t;
-  const zoom = () => ui.store.state("zoom").value;
+  // while a wheel or a pinch zooms, the level waits for the gesture's pause:
+  // the canvas draws from bitmaps then, and the UI touches nothing per step
+  const zoom = createMemo((previous: number | undefined): number => {
+    const value = ui.store.state("zoom").value;
+    return previous !== undefined && ui.store.state("shouldCacheIgnoreZoom") ? previous : value;
+  });
   const history = () => ui.store.history();
   const level = () => `${(zoom() * 100).toFixed(0)}%`;
   const minimapOffered = () => ui.isEnabled(actionToggleMinimap);

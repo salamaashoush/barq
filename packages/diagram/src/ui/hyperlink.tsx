@@ -104,10 +104,11 @@ export function HyperlinkPopup() {
   const position = createMemo(() => {
     const target = element();
     const editor = store.editor;
+    if (!target || !editor) return null;
+    // the viewport only while there is a popup to place
     store.state("scrollX");
     store.state("scrollY");
     store.state("zoom");
-    if (!target || !editor) return null;
     const [x1, y1, x2] = getElementAbsoluteCoords(target, editor.scene.getNonDeletedElementsMap());
     const { x, y } = sceneCoordsToViewportCoords(
       { sceneX: (x1 + x2) / 2, sceneY: y1 },

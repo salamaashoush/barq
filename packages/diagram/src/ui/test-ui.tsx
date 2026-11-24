@@ -74,7 +74,6 @@ export const canvas = (region: HTMLElement): HTMLCanvasElement =>
 
 export const rectangle = (id: string, x: number, y: number, extra: Record<string, unknown> = {}) =>
   ({
-    ...extra,
     type: "rectangle",
     id,
     x,
@@ -83,6 +82,7 @@ export const rectangle = (id: string, x: number, y: number, extra: Record<string
     height: 100,
     backgroundColor: "#ffc9c9",
     fillStyle: "solid",
+    ...extra,
   }) as never;
 
 export const select = async (api: DiagramEditorApi, ...ids: string[]) => {

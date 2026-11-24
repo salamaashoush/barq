@@ -377,9 +377,27 @@ describe("performance", () => {
       );
       await settle();
     }
+    // a zoom with the wheel: the level follows once the gesture pauses
+    const zoomBefore = api.getAppState().zoom.value;
+    for (let step = 0; step < 10; step++) {
+      // happy-dom leaves the modifier keys of a WheelEvent's init out
+      const zoomStep = new WheelEvent("wheel", {
+        deltaY: -50,
+        clientX: 500,
+        clientY: 300,
+        bubbles: true,
+        cancelable: true,
+      });
+      Object.defineProperty(zoomStep, "ctrlKey", { value: true });
+      region.dispatchEvent(zoomStep);
+      await settle();
+    }
+    expect(api.getAppState().zoom.value).not.toBe(zoomBefore);
     observer.disconnect();
-    // the pointer up commits the move: the hint and the history may follow once
-    expect(changed.length).toBeLessThanOrEqual(4);
+    // the pointer up commits the move: the hint and the history follow once,
+    // and the scroll back button may appear once; nothing changes per step
+    expect(changed.length).toBeLessThanOrEqual(5);
+    expect(changed).not.toContain("zoom-level");
     expect(changed).not.toContain("properties-panel");
   });
 });
@@ -411,5 +429,24 @@ describe("colour picker", () => {
     await settle();
     expect(screen.queryByTestId("eye-dropper-overlay")).toBeNull();
     expect(element(api, "A").strokeColor).toMatch(/^#[0-9a-f]{6}$/);
+  });
+});
+
+describe("fill", () => {
+  test("Alt and a press on hachure turns it to zigzag, and a press turns it back", async () => {
+    const { api } = await mountEditor({
+      initialData: { elements: [rectangle("A", 100, 100, { fillStyle: "hachure" })] },
+    });
+    await select(api, "A");
+    const hachure = screen.getAllByTestId("fill-hachure")[0]!;
+    hachure.dispatchEvent(new MouseEvent("click", { bubbles: true, altKey: true }));
+    await settle();
+    expect(element(api, "A").fillStyle).toBe("zigzag");
+    expect(screen.getByRole("radio", { name: "Zigzag" })).toBeDefined();
+    screen
+      .getAllByTestId("fill-hachure")[0]!
+      .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await settle();
+    expect(element(api, "A").fillStyle).toBe("hachure");
   });
 });
