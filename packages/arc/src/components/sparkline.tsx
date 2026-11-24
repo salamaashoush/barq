@@ -4,9 +4,8 @@ import type { UiProps } from "@barqjs/ui/props";
 import { uiProps } from "@barqjs/ui/slot";
 
 import { arcLayer as arc } from "../layer.ts";
-import { place } from "../lib/place.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
-import { fg, space, tone as tones } from "../style/index.ts";
+import { fg, place, space, tone as tones } from "../style/index.ts";
 import type { Tone } from "../theme/tokens.ts";
 import { chartNumbers } from "./chart-frame.tsx";
 import { useArcMessages } from "./messages.ts";

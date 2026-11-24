@@ -4,20 +4,7 @@ import { controllable } from "@barqjs/aria/utils";
 import { type AnyFieldApi, type AnyFormApi, createFormHookContexts } from "@barqjs/form";
 import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "@barqjs/ui/field";
 
-import { when } from "@barqjs/ui/shared-when";
-
 import { arcLayer as arc } from "../layer.ts";
-import {
-  bg,
-  edge,
-  focus,
-  interaction,
-  layout,
-  rounded,
-  space,
-  target,
-  type,
-} from "../style/index.ts";
 import { type Customisable, parts } from "./parts.ts";
 
 export const {
@@ -201,59 +188,6 @@ export function bindField<T>(props: FieldValueProps<T>, empty: T): Binding<T> {
     name: () => props.name,
   };
 }
-
-/**
- * A box of typed segments, a date's or a time's: an input's edge, the
- * focused segment filled, the empty ones muted, and a finger's height under
- * a coarse pointer.
- */
-export const segmented = arc(
-  layout.row,
-  layout.fill,
-  edge.input,
-  rounded.md,
-  bg.transparent,
-  type.sm,
-  type.numeric,
-  focus.within,
-  interaction.invalid,
-  when.disabledCursor,
-  target.size,
-  {
-    minHeight: space.x8,
-    gap: "1px",
-    paddingInline: space.x2_5,
-    '& [role="spinbutton"]': {
-      borderRadius: "calc(var(--radius) * 0.5)",
-      paddingInline: "1px",
-      outline: "none",
-    },
-    '& [role="spinbutton"]:focus': {
-      backgroundColor: "var(--accent)",
-      color: "var(--accent-foreground)",
-    },
-    "& [data-placeholder]": { color: "var(--muted-foreground)" },
-  },
-);
-
-/**
- * An input inside a box that draws the edge and the ring: no edge, fill or
- * outline of its own, the box's text, and the rest of the row.
- */
-export const bareInput = arc(layout.grow, layout.minZero, edge.none, bg.transparent, focus.none, {
-  color: "inherit",
-  font: "inherit",
-  paddingInline: space.x1_5,
-});
-
-/** A button inside a box of segments or an input: the box's height, no edge of its own, a finger's room. */
-export const boxedButton = arc(rounded.sm, edge.none, bg.transparent, target.size, {
-  alignSelf: "stretch",
-  marginBlock: space.x0_5,
-});
-
-/** ui's select trigger as a boxed button: its own height and shadow given up to the box's. */
-export const boxedTrigger = arc(boxedButton, { height: "auto", boxShadow: "none" });
 
 export interface FrameProps {
   of: Wiring;

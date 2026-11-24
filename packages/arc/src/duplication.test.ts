@@ -169,7 +169,9 @@ describe("duplication", () => {
         join(dir, "four.ts"),
         `import { arcLayer as arc } from "${layer}";\n\n` +
           `export const swatch = arc({ width: "calc(var(--spacing) * 6)", height: "calc(var(--spacing) * 6)" });\n` +
-          `export const items = arc({ margin: "0", padding: "0px", listStyle: "none" });\n`,
+          `export const items = arc({ margin: "0", padding: "0px", listStyle: "none" });\n` +
+          `export const layer = arc({ position: "absolute", inset: "0" });\n` +
+          `export const link = arc({ textDecorationLine: "none", "[aria-current]": { color: "var(--foreground)" } });\n`,
       );
       const found = report(
         duplicates(
@@ -178,7 +180,7 @@ describe("duplication", () => {
           treatments,
         ),
       );
-      for (const treatment of ["square.x6", "plainList"]) {
+      for (const treatment of ["square.x6", "plainList", "place.cover", "type.navLink"]) {
         expect(
           found.some((one) => one.endsWith(`compose ${treatment} from @barqjs/arc/style`)),
         ).toBe(true);

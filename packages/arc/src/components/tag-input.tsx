@@ -8,13 +8,13 @@ import {
   type ArcFieldProps,
   type FieldValueProps,
   Frame,
-  bareInput,
   bindField,
   withOwnErrors,
 } from "../lib/field.tsx";
 import { type Customisable, parts } from "../lib/parts.ts";
 import {
   bg,
+  control,
   edge,
   focus,
   gap,
@@ -45,7 +45,7 @@ export const tagInputStyles = variants({
       target.size,
       { minHeight: space.x9, padding: space.x1 },
     ),
-    input: arc(bareInput, type.sm, { minWidth: "8ch", minHeight: space.x6 }),
+    input: arc(control.bareInput, type.sm, { minWidth: "8ch", minHeight: space.x6 }),
   },
 });
 

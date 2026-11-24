@@ -4,8 +4,7 @@ import { Time } from "@barqjs/aria/date";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user } from "@barqjs/testing";
 
-import { segmented } from "../lib/field.tsx";
-import { target } from "../style/index.ts";
+import { control, target } from "../style/index.ts";
 import { hydrates, settle, wears } from "../test-arc.ts";
 import { useArcForm } from "./form.tsx";
 import { TimeField, TimePicker, timesBetween } from "./time-field.tsx";
@@ -42,7 +41,7 @@ describe("TimeField", () => {
     expect(screen.getByText("Pick a time.")).toBeDefined();
     const box = document.querySelector('[data-slot="time-field-control"]');
     expect(box?.getAttribute("data-invalid")).not.toBeNull();
-    expect(wears(box, segmented)).toBe(true);
+    expect(wears(box, control.segmented)).toBe(true);
     expect(wears(box, target.size)).toBe(true);
   });
 

@@ -13,12 +13,10 @@ import {
   type FieldValueProps,
   Frame,
   bindField,
-  boxedTrigger,
   fieldStyles,
-  segmented,
 } from "../lib/field.tsx";
 import { type Customisable, parts } from "../lib/parts.ts";
-import { layout, space } from "../style/index.ts";
+import { control, layout, space } from "../style/index.ts";
 import { useArcMessages } from "./messages.ts";
 
 /** Focus left the element for somewhere outside it: the field was blurred, not a segment. */
@@ -59,7 +57,7 @@ export function TimeField(props: TimeFieldProps) {
       slot="time-field"
     >
       <AriaTimeField
-        class={arc(segmented, props.classes?.control)}
+        class={arc(control.segmented, props.classes?.control)}
         data-slot="time-field-control"
         aria-labelledby={of.ids.label}
         aria-describedby={of.describedBy(props.description !== undefined)}
@@ -82,9 +80,9 @@ export function TimeField(props: TimeFieldProps) {
 
 export const timePickerStyles = variants({
   slots: {
-    control: arc(segmented, { paddingInlineEnd: space.x0_5 }),
+    control: arc(control.segmented, { paddingInlineEnd: space.x0_5 }),
     segments: arc(layout.row, layout.grow, { gap: "1px" }),
-    trigger: arc(boxedTrigger, { paddingInline: space.x1_5 }),
+    trigger: arc(control.boxedTrigger, { paddingInline: space.x1_5 }),
     list: arc({ maxHeight: "min(18rem, var(--available-height, 18rem))" }),
     option: arc({}),
   },

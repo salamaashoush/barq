@@ -11,10 +11,9 @@ import {
 } from "@barqjs/ui/dialog";
 
 import { arcLayer as arc } from "../layer.ts";
-import { place } from "../lib/place.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
 import { openState } from "../lib/search-state.ts";
-import { edge, gap, layout, panel, space, surface } from "../style/index.ts";
+import { edge, gap, layout, panel, place, space, surface } from "../style/index.ts";
 import { useArcMessages } from "./messages.ts";
 
 export const tearsheetStyles = variants({

@@ -1,4 +1,5 @@
 import { text } from "@barqjs/ui/shared-text";
+import { tokens } from "@barqjs/ui/theme/tokens";
 
 import { arcLayer as arc } from "../layer.ts";
 import { fg } from "./colour.ts";
@@ -55,4 +56,9 @@ export const type = {
   medium: arc(text.medium),
   strong: arc(strong),
   normal: arc({ fontWeight: "var(--font-weight-normal)" }),
+  /** A link in a list of places: no underline, and the current one in the full text colour. */
+  navLink: arc({
+    textDecorationLine: "none",
+    "[aria-current]": { color: tokens.foreground },
+  }),
 };

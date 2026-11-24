@@ -13,15 +13,15 @@ import { icon } from "@barqjs/ui/shared-icon";
 import { srOnly } from "@barqjs/ui/sr-only";
 
 import { arcLayer as arc } from "../layer.ts";
-import { place } from "../lib/place.ts";
-import { bareButton } from "../lib/bare.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
 import {
+  control,
   edge,
   focus,
   gap,
   layout,
   motion,
+  place,
   plainList,
   rounded,
   space,
@@ -274,7 +274,7 @@ export const galleryStyles = variants({
       gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, var(--arc-gallery-min)), 1fr))",
     }),
     item: arc({}),
-    thumb: arc(bareButton, focus.visible, rounded.md, layout.clip, motion.colours, place.block, {
+    thumb: arc(control.bare, focus.visible, rounded.md, layout.clip, motion.colours, place.block, {
       cursor: "zoom-in",
     }),
   },

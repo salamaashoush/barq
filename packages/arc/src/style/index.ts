@@ -12,12 +12,14 @@
  */
 
 export { bg, fg, tone } from "./colour.ts";
+export { control } from "./control.ts";
 export { focus } from "./focus.ts";
 export { gap } from "./gap.ts";
 export { interaction } from "./interaction.ts";
 export { glyph, layout, plainList, square, truncate } from "./layout.ts";
 export { motion } from "./motion.ts";
 export { panel } from "./panel.ts";
+export { place } from "./place.ts";
 export { edge, elevation, rounded, surface } from "./surface.ts";
 export { target } from "./target.ts";
 export { motionTokens, radius, space, zIndex } from "./tokens.ts";

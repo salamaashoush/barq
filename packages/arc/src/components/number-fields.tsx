@@ -11,21 +11,18 @@ import {
   type FieldSlots,
   type FieldValueProps,
   Frame,
-  bareInput,
   bindField,
-  boxedButton,
   fieldStyles,
-  segmented,
 } from "../lib/field.tsx";
 import { type Customisable, parts } from "../lib/parts.ts";
-import { fg, focus, glyph, interaction, layout, space, type } from "../style/index.ts";
+import { control, fg, focus, glyph, interaction, layout, space, type } from "../style/index.ts";
 
 export const numberFieldStyles = variants({
   slots: {
-    group: arc(segmented, { paddingInline: space.x0_5, gap: space.x0_5 }),
-    input: arc(bareInput, type.numeric, { textAlign: "start" }),
+    group: arc(control.segmented, { paddingInline: space.x0_5, gap: space.x0_5 }),
+    input: arc(control.bareInput, type.numeric, { textAlign: "start" }),
     stepper: arc(
-      boxedButton,
+      control.boxedButton,
       layout.inlineCentre,
       layout.noShrink,
       fg.muted,

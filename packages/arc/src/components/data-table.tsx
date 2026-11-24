@@ -54,16 +54,18 @@ import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
 import {
   bg,
+  control,
   edge,
   fg,
   focus,
   gap,
   glyph,
+  interaction,
   layout,
   motion,
+  place,
   rounded,
   space,
-  interaction,
   square,
   surface,
   type,
@@ -71,8 +73,6 @@ import {
 import { useArcMessages } from "./messages.ts";
 import { EmptyState } from "./empty-state.tsx";
 import { maybeRouter } from "./link.ts";
-import { bareButton } from "../lib/bare.ts";
-import { afterLayer } from "../lib/pseudo.ts";
 import { Pager } from "./pager.tsx";
 import { SelectionBar, type SelectionAction } from "./selection-bar.tsx";
 
@@ -328,7 +328,7 @@ export const dataTableStyles = variants({
       },
     ),
     checkbox: arc({ paddingInlineEnd: "0px" }),
-    resizer: arc(afterLayer, {
+    resizer: arc(place.afterLayer, {
       position: "absolute",
       insetBlock: "0px",
       insetInlineEnd: "0px",
@@ -351,7 +351,7 @@ export const dataTableStyles = variants({
       paddingInlineStart: "calc(var(--spacing) * 5 * var(--arc-row-depth, 0))",
     }),
     expand: arc(
-      bareButton,
+      control.bare,
       layout.inlineCentre,
       layout.noShrink,
       rounded.sm,

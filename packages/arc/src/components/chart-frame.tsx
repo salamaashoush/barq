@@ -13,9 +13,8 @@ import { srOnly } from "@barqjs/ui/sr-only";
 import type { ChartPoint } from "@tanstack/charts/types";
 
 import { arcLayer as arc } from "../layer.ts";
-import { place } from "../lib/place.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
-import { edge, fg, gap, layout, space, type } from "../style/index.ts";
+import { edge, fg, gap, layout, place, space, type } from "../style/index.ts";
 import type { Tone } from "../theme/tokens.ts";
 import { useArcMessages } from "./messages.ts";
 

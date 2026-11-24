@@ -20,9 +20,9 @@ import { Spinner } from "@barqjs/ui/spinner";
 import { tokens } from "@barqjs/ui/theme/tokens";
 
 import { arcLayer as arc } from "../layer.ts";
-import { bareButton } from "../lib/bare.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
 import {
+  control,
   fg,
   focus,
   gap,
@@ -77,7 +77,7 @@ export const treeViewStyles = variants({
       paddingInlineEnd: space.x2,
     }),
     expand: arc(
-      bareButton,
+      control.bare,
       layout.inlineCentre,
       layout.noShrink,
       rounded.sm,
@@ -88,7 +88,7 @@ export const treeViewStyles = variants({
       { "[data-expanded] > svg": { rotate: "90deg" } },
     ),
     spacer: arc(layout.noShrink, { width: space.x6 }),
-    drag: arc(bareButton, layout.inlineCentre, layout.noShrink, fg.muted, glyph.sm, {
+    drag: arc(control.bare, layout.inlineCentre, layout.noShrink, fg.muted, glyph.sm, {
       cursor: "grab",
     }),
     checkbox: arc(layout.noShrink),

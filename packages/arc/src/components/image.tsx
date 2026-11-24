@@ -5,9 +5,8 @@ import { ref as makeRef } from "@barqjs/primitives/refs";
 import { isServer } from "@barqjs/web";
 
 import { arcLayer as arc } from "../layer.ts";
-import { place } from "../lib/place.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
-import { bg, fg, gap, glyph, layout, motion, rounded, type } from "../style/index.ts";
+import { bg, fg, gap, glyph, layout, motion, place, rounded, type } from "../style/index.ts";
 import { useArcMessages } from "./messages.ts";
 
 export type ImageStatus = "loading" | "loaded" | "error";

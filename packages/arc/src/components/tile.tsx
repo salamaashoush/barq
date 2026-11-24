@@ -11,9 +11,19 @@ import { tokens } from "@barqjs/ui/theme/tokens";
 
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts, rendered } from "../lib/parts.ts";
-import { bareButton } from "../lib/bare.ts";
-import { afterLayer } from "../lib/pseudo.ts";
-import { bg, fg, focus, gap, layout, motion, space, surface, type } from "../style/index.ts";
+import {
+  bg,
+  control,
+  fg,
+  focus,
+  gap,
+  layout,
+  motion,
+  place,
+  space,
+  surface,
+  type,
+} from "../style/index.ts";
 
 export const tileStyles = variants({
   slots: {
@@ -40,7 +50,7 @@ export const tileStyles = variants({
     heading: arc(layout.column, layout.minZero, layout.grow, gap[1]),
     eyebrow: arc(type.meta),
     title: arc(type.label, layout.flush, fg.default),
-    target: arc(bareButton, focus.none, afterLayer, {
+    target: arc(control.bare, focus.none, place.afterLayer, {
       textDecorationLine: "none",
       textAlign: "start",
       "::after": { inset: "0", borderRadius: "inherit" },

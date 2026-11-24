@@ -9,15 +9,12 @@ import {
   type FieldSlots,
   type FieldValueProps,
   Frame,
-  bareInput,
   bindField,
-  boxedTrigger,
   fieldStyles,
-  segmented,
   withOwnErrors,
 } from "../lib/field.tsx";
 import { type Customisable, parts } from "../lib/parts.ts";
-import { gap, space, type } from "../style/index.ts";
+import { control, gap, space, type } from "../style/index.ts";
 import { useArcMessages } from "./messages.ts";
 
 /**
@@ -86,9 +83,9 @@ export function formatPhone(country: string, typed: string): string | null {
 
 export const phoneFieldStyles = variants({
   slots: {
-    control: arc(segmented, { paddingInlineStart: space.x0_5, gap: space.x1 }),
-    country: arc(boxedTrigger, gap[1], type.numeric, { paddingInline: space.x2 }),
-    input: arc(bareInput, type.numeric),
+    control: arc(control.segmented, { paddingInlineStart: space.x0_5, gap: space.x1 }),
+    country: arc(control.boxedTrigger, gap[1], type.numeric, { paddingInline: space.x2 }),
+    input: arc(control.bareInput, type.numeric),
     option: arc({}),
   },
 });

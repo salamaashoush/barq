@@ -33,7 +33,6 @@ import { on } from "@barqjs/ui/conditions";
 import { when } from "@barqjs/ui/shared-when";
 
 import { arcLayer as arc } from "../layer.ts";
-import { place } from "../lib/place.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
 import {
   bg,
@@ -44,6 +43,7 @@ import {
   glyph,
   layout,
   motion,
+  place,
   plainList,
   rounded,
   space,

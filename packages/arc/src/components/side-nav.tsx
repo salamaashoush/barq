@@ -5,7 +5,6 @@ import { tokens } from "@barqjs/ui/theme/tokens";
 
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
-import { navLink } from "../lib/nav.ts";
 import {
   fg,
   focus,
@@ -44,7 +43,7 @@ export const sideNavStyles = variants({
       motion.colours,
       target.size,
       interaction.hoverText,
-      navLink,
+      type.navLink,
       {
         paddingInline: space.x2,
         minHeight: space.x9,

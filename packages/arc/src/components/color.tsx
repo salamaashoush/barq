@@ -18,7 +18,6 @@ import { srOnly } from "@barqjs/ui/sr-only";
 import { on } from "@barqjs/ui/conditions";
 
 import { arcLayer as arc } from "../layer.ts";
-import { place } from "../lib/place.ts";
 import {
   type ArcFieldProps,
   type FieldSlots,
@@ -33,6 +32,7 @@ import {
   focus,
   gap,
   layout,
+  place,
   plainList,
   rounded,
   space,

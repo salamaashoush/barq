@@ -8,7 +8,6 @@ import { tokens } from "@barqjs/ui/theme/tokens";
 
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
-import { navLink } from "../lib/nav.ts";
 import {
   bg,
   edge,
@@ -72,7 +71,7 @@ export const bottomNavigationStyles = variants({
       contrast.selected,
       bg.transparent,
       edge.none,
-      navLink,
+      type.navLink,
       {
         paddingBlock: space.x2,
         WebkitTapHighlightColor: "transparent",

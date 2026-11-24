@@ -33,7 +33,7 @@ import { srOnly } from "@barqjs/ui/sr-only";
 
 import { arcLayer as arc } from "../layer.ts";
 import type { Customisable } from "../lib/parts.ts";
-import { layout } from "../style/index.ts";
+import { control as chrome, layout } from "../style/index.ts";
 import { useArcMessages } from "./messages.ts";
 import { CheckboxCards, RadioCards } from "./choice-cards.tsx";
 import { ColorField, ColorPicker, ColorSwatches } from "./color.tsx";
@@ -52,7 +52,6 @@ import {
   arcFormContext,
   formControl as control,
   messagesOf,
-  segmented,
   useArcFormContext,
 } from "../lib/field.tsx";
 
@@ -463,7 +462,7 @@ export function DateField(props: ArcFieldProps) {
   return (
     <Frame of={of} label={props.label} description={props.description} field={props} labelledById>
       <AriaDateField<CalendarDate>
-        class={arc(segmented, props.classes?.control)}
+        class={arc(chrome.segmented, props.classes?.control)}
         aria-labelledby={of.ids.label}
         aria-describedby={of.describedBy(props.description !== undefined)}
         value={of.field().state.value ?? null}
@@ -510,7 +509,7 @@ export function DateTimeField(props: DateTimeFieldProps) {
   return (
     <Frame of={of} label={props.label} description={props.description} field={props} labelledById>
       <AriaDateField<ZonedDateTime>
-        class={arc(segmented, props.classes?.control)}
+        class={arc(chrome.segmented, props.classes?.control)}
         aria-labelledby={of.ids.label}
         aria-describedby={of.describedBy(props.description !== undefined)}
         value={shown()}

@@ -6,7 +6,6 @@ import { isServer } from "@barqjs/web";
 
 import { arcLayer as arc } from "../layer.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
-import { navLink } from "../lib/nav.ts";
 import {
   edge,
   fg,
@@ -44,7 +43,7 @@ export const tableOfContentsStyles = variants({
       focus.visible,
       motion.colours,
       interaction.hoverText,
-      navLink,
+      type.navLink,
       {
         marginInlineStart: "-1px",
         paddingBlock: space.x1,
