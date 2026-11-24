@@ -18,18 +18,27 @@ export const DIAGNOSTICS_RESPONSE_EVENT = "barq:diagnostics:response" as const;
 
 export const DIAGNOSTICS_ENDPOINT = "/__barq/diagnostics" as const;
 
+export interface WhyDidRunParams {
+  name: string;
+}
+
+export interface DiagnosticsCall<Params, Result> {
+  params: Params;
+  result: Result;
+}
+
 export interface DiagnosticsMethods {
   /** Open a capture session. */
-  begin: { params: BridgeBeginOptions | undefined; result: true };
+  begin: DiagnosticsCall<BridgeBeginOptions | undefined, true>;
   /** Close the session and return what it captured. */
-  end: { params: undefined; result: BridgePayload };
-  active: { params: undefined; result: boolean };
+  end: DiagnosticsCall<undefined, BridgePayload>;
+  active: DiagnosticsCall<undefined, boolean>;
   /** Re-runs of one scope, by name, in the open session. */
-  whyDidRun: { params: { name: string }; result: RerunEvent[] };
+  whyDidRun: DiagnosticsCall<WhyDidRunParams, RerunEvent[]>;
   /** The open session's tables so far, without closing it. */
-  costs: { params: undefined; result: AttributionCostTables };
-  holds: { params: undefined; result: HoldEvent[] };
-  feedback: { params: undefined; result: AttributionFeedbackTables };
+  costs: DiagnosticsCall<undefined, AttributionCostTables>;
+  holds: DiagnosticsCall<undefined, HoldEvent[]>;
+  feedback: DiagnosticsCall<undefined, AttributionFeedbackTables>;
 }
 
 export type DiagnosticsMethod = keyof DiagnosticsMethods;

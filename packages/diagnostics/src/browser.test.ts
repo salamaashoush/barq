@@ -33,8 +33,9 @@ import type { DiagnosticsEndpoint, PageChannel } from "./vite.ts";
 const development = OBSERVE !== undefined;
 const attribution = { hotTime: false } as const;
 
-const overWire = <V>(value: V): V =>
-  value === undefined ? value : (JSON.parse(JSON.stringify(value)) as V);
+function overWire<V>(value: V): V {
+  return value === undefined ? value : (JSON.parse(JSON.stringify(value)) as V);
+}
 
 /**
  * A page in this process: `evaluate` runs in the realm the bridge was
@@ -119,8 +120,12 @@ function counterApp() {
   };
 }
 
+interface RestorableSpy {
+  mockRestore(): void;
+}
+
 describe.if(development)("the browser bridge", () => {
-  let consoles: { mockRestore(): void }[] = [];
+  let consoles: RestorableSpy[] = [];
   beforeAll(() => {
     consoles = (["log", "info", "warn", "error"] as const).map((method) =>
       spyOn(console, method).mockImplementation(() => {}),
@@ -257,6 +262,22 @@ describe.if(development)("the browser bridge", () => {
   });
 });
 
+interface WhyDidRunReply {
+  result: RerunName[];
+}
+
+interface RerunName {
+  nodeName: string;
+}
+
+interface EndReply {
+  result: DiagnosticsArtifact;
+}
+
+interface StoredArtifacts {
+  artifacts: DiagnosticsArtifact[];
+}
+
 describe.if(development)("the bridge behind the dev-server endpoint", () => {
   test("an agent drives a capture with begin and end, then reads it back", async () => {
     const bridge = installDiagnosticsBridge({});
@@ -274,18 +295,16 @@ describe.if(development)("the bridge behind the dev-server endpoint", () => {
     app.click();
 
     const why = await curl(endpoint, "POST", { method: "whyDidRun", params: { name: "paint" } });
-    expect(
-      (why.json() as { result: { nodeName: string }[] }).result.map((rerun) => rerun.nodeName),
-    ).toEqual(["paint"]);
+    expect((why.json() as WhyDidRunReply).result.map((rerun) => rerun.nodeName)).toEqual(["paint"]);
 
     const ended = await curl(endpoint, "POST", { method: "end" });
     app.dispose();
-    const { result } = ended.json() as { result: DiagnosticsArtifact };
+    const { result } = ended.json() as EndReply;
     expect(result.formatVersion).toBe(1);
     expect(result.scenario).toBe("agent click");
     assertBudget(result, { maxReruns: 2, scopes: { double: 1, paint: 1 } });
 
-    const stored = (await curl(endpoint, "GET")).json() as { artifacts: DiagnosticsArtifact[] };
+    const stored = (await curl(endpoint, "GET")).json() as StoredArtifacts;
     expect(stored.artifacts).toEqual([result]);
     expect((await curl(endpoint, "GET", undefined, "?format=jsonl")).body).toBe(
       artifactToJSONL(result),
@@ -319,7 +338,7 @@ describe.if(development)("the bridge behind the dev-server endpoint", () => {
 
     expect(posted).toEqual(["POST /__barq/diagnostics application/json"]);
     expect(published.scenario).toBe("page click");
-    const stored = (await curl(endpoint, "GET")).json() as { artifacts: DiagnosticsArtifact[] };
+    const stored = (await curl(endpoint, "GET")).json() as StoredArtifacts;
     expect(stored.artifacts).toEqual([overWire(published)]);
     assertBudget(stored.artifacts[0], { maxReruns: 2 });
   });

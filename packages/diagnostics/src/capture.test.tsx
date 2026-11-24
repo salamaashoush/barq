@@ -67,12 +67,20 @@ function Counter() {
   );
 }
 
-function Shell(props: { children?: JSXElement }) {
+interface ShellProps {
+  children?: JSXElement;
+}
+
+function Shell(props: ShellProps) {
   return <section>{props.children}</section>;
 }
 
+interface RestorableSpy {
+  mockRestore(): void;
+}
+
 describe.if(development)("captureArtifact", () => {
-  let consoles: { mockRestore(): void }[] = [];
+  let consoles: RestorableSpy[] = [];
   beforeAll(() => {
     consoles = (["log", "info", "warn", "error"] as const).map((method) =>
       spyOn(console, method).mockImplementation(() => {}),
@@ -272,7 +280,9 @@ describe.if(development)("captureArtifact", () => {
   });
 });
 
-const wait = (ms: number) => new Promise((done) => setTimeout(done, ms));
+function wait(ms: number) {
+  return new Promise((done) => setTimeout(done, ms));
+}
 
 async function until(condition: () => boolean, what: string): Promise<void> {
   const start = Date.now();

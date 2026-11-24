@@ -48,11 +48,15 @@ export interface DiagnosticsPluginOptions extends DiagnosticsEndpointOptions {
   inject?: boolean;
 }
 
+export interface ConnectedClients {
+  readonly size: number;
+}
+
 /** The dev server's side of the custom-event round trip. */
 export interface PageChannel {
   send(event: string, request: DiagnosticsRequest): void;
   on(event: string, listener: (response: DiagnosticsResponse) => void): void;
-  readonly clients: { readonly size: number };
+  readonly clients: ConnectedClients;
 }
 
 export interface EndpointRequest {
@@ -120,6 +124,11 @@ function isArtifact(body: object): body is DiagnosticsArtifact {
 const USAGE =
   `POST either an artifact ({ "formatVersion": ${ARTIFACT_FORMAT_VERSION}, ... }) or a method call ` +
   `({ "method": ${DIAGNOSTICS_METHODS.map((method) => `"${method}"`).join(" | ")}, "params"?: ... }).`;
+
+interface UncheckedRequestBody {
+  method?: unknown;
+  params?: unknown;
+}
 
 /**
  * The endpoint as a connect-style handler. `channel` reaches the page; with
@@ -192,7 +201,7 @@ export function createDiagnosticsEndpoint(
       return;
     }
 
-    const method = (body as { method?: unknown }).method;
+    const method = (body as UncheckedRequestBody).method;
     if (typeof method !== "string" || !DIAGNOSTICS_METHODS.includes(method as DiagnosticsMethod)) {
       throw new HttpError(400, USAGE);
     }
@@ -205,7 +214,7 @@ export function createDiagnosticsEndpoint(
     const response = await call(
       channel,
       method as DiagnosticsMethod,
-      (body as { params?: unknown }).params,
+      (body as UncheckedRequestBody).params,
     );
     if (response.error !== undefined) throw new HttpError(400, response.error);
     if (method === "end") {

@@ -29,11 +29,15 @@ async function send(
   return res;
 }
 
+interface RecordedRequests {
+  requests: DiagnosticsRequest[];
+}
+
 /** A page that answers every request with `answer`, or never when it returns `undefined`. */
 function page(
   answer: (request: DiagnosticsRequest) => DiagnosticsResponse | undefined,
   clients = 1,
-): PageChannel & { requests: DiagnosticsRequest[] } {
+): PageChannel & RecordedRequests {
   const listeners: ((response: DiagnosticsResponse) => void)[] = [];
   const requests: DiagnosticsRequest[] = [];
   return {
@@ -46,6 +50,26 @@ function page(
       if (response !== undefined) for (const listener of listeners) listener(response);
     },
   };
+}
+
+interface StoredArtifactsJson {
+  artifacts: unknown[];
+}
+
+interface JsonlRecord {
+  type: string;
+}
+
+interface StoredScenarios {
+  artifacts: StoredScenario[];
+}
+
+interface StoredScenario {
+  scenario: string;
+}
+
+interface ErrorReply {
+  error: string;
 }
 
 describe("the artifact store", () => {
@@ -64,7 +88,7 @@ describe("the artifact store", () => {
     expect((await send(endpoint, "POST", second)).json()).toEqual({ stored: 2 });
 
     const res = await send(endpoint, "GET");
-    expect((res.json() as { artifacts: unknown[] }).artifacts).toEqual(
+    expect((res.json() as StoredArtifactsJson).artifacts).toEqual(
       JSON.parse(JSON.stringify([first, second])) as unknown[],
     );
   });
@@ -81,7 +105,7 @@ describe("the artifact store", () => {
     const types = res.body
       .trimEnd()
       .split("\n")
-      .map((line) => (JSON.parse(line) as { type: string }).type);
+      .map((line) => (JSON.parse(line) as JsonlRecord).type);
     expect(types).toEqual([
       "meta",
       "diagnostic",
@@ -109,9 +133,7 @@ describe("the artifact store", () => {
   test("keeps the newest `keep` artifacts", async () => {
     const endpoint = createDiagnosticsEndpoint(null, { keep: 2 });
     for (const scenario of ["a", "b", "c"]) await send(endpoint, "POST", artifact({ scenario }));
-    const { artifacts } = (await send(endpoint, "GET")).json() as {
-      artifacts: { scenario: string }[];
-    };
+    const { artifacts } = (await send(endpoint, "GET")).json() as StoredScenarios;
     expect(artifacts.map((stored) => stored.scenario)).toEqual(["b", "c"]);
   });
 
@@ -139,7 +161,7 @@ describe("the artifact store", () => {
     for (const [body, status, message] of cases) {
       const res = await send(endpoint, "POST", body);
       expect(res.statusCode).toBe(status);
-      expect((res.json() as { error: string }).error).toStartWith(message);
+      expect((res.json() as ErrorReply).error).toStartWith(message);
     }
     expect((await send(endpoint, "GET")).json()).toMatchObject({ artifacts: [] });
   });
@@ -178,9 +200,7 @@ describe("method calls", () => {
     );
     const res = await send(endpoint, "POST", { method: "end" });
     expect(res.json()).toEqual({ result: JSON.parse(JSON.stringify(first)) as unknown });
-    expect(
-      ((await send(endpoint, "GET")).json() as { artifacts: unknown[] }).artifacts,
-    ).toHaveLength(1);
+    expect(((await send(endpoint, "GET")).json() as StoredArtifactsJson).artifacts).toHaveLength(1);
   });
 
   test("answer 400 with the page's own error", async () => {
@@ -201,7 +221,7 @@ describe("method calls", () => {
     for (const channel of [null, page(() => undefined, 0)]) {
       const res = await send(createDiagnosticsEndpoint(channel), "POST", { method: "begin" });
       expect(res.statusCode).toBe(503);
-      expect((res.json() as { error: string }).error).toStartWith("No connected page.");
+      expect((res.json() as ErrorReply).error).toStartWith("No connected page.");
     }
   });
 
@@ -218,7 +238,7 @@ describe("method calls", () => {
     );
     const res = await send(endpoint, "POST", { method: "active" });
     expect(res.statusCode).toBe(504);
-    expect((res.json() as { error: string }).error).toStartWith("No page answered within 10ms.");
+    expect((res.json() as ErrorReply).error).toStartWith("No page answered within 10ms.");
     for (const listener of listeners) listener({ id: late!.id, result: true });
   });
 });

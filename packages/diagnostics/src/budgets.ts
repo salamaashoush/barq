@@ -76,6 +76,11 @@ export function assertBudgetFile(artifact: DiagnosticsArtifact, file: BudgetFile
   assertBudget(artifact, budget);
 }
 
+interface UncheckedBudgetFile {
+  formatVersion?: unknown;
+  scenarios?: unknown;
+}
+
 /** Parse and validate the text of a budget file. Reading the file is the caller's. */
 export function parseBudgetFile(json: string): BudgetFile {
   let parsed: unknown;
@@ -87,9 +92,9 @@ export function parseBudgetFile(json: string): BudgetFile {
   if (
     typeof parsed !== "object" ||
     parsed === null ||
-    (parsed as { formatVersion?: unknown }).formatVersion !== 1 ||
-    typeof (parsed as { scenarios?: unknown }).scenarios !== "object" ||
-    (parsed as { scenarios?: unknown }).scenarios === null
+    (parsed as UncheckedBudgetFile).formatVersion !== 1 ||
+    typeof (parsed as UncheckedBudgetFile).scenarios !== "object" ||
+    (parsed as UncheckedBudgetFile).scenarios === null
   ) {
     throw new Error(
       'Budget file must be an object of shape { "formatVersion": 1, "scenarios": { ... } }.',

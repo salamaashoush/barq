@@ -172,6 +172,10 @@ export function answerDiagnosticsRequest(
   }
 }
 
+interface UncheckedWhyDidRunParams {
+  name?: unknown;
+}
+
 function dispatch(
   bridge: DiagnosticsBridge,
   request: DiagnosticsRequest,
@@ -185,7 +189,7 @@ function dispatch(
     case "active":
       return bridge.active();
     case "whyDidRun": {
-      const name = (request.params as { name?: unknown } | undefined)?.name;
+      const name = (request.params as UncheckedWhyDidRunParams | undefined)?.name;
       if (typeof name !== "string") throw new Error('whyDidRun needs params { "name": string }.');
       return bridge.whyDidRun(name);
     }
@@ -217,14 +221,22 @@ export function connectDiagnosticsBridge(bridge: DiagnosticsBridge, hot: HotChan
   });
 }
 
+export interface PublishRequestInit {
+  method: "POST";
+  headers: Record<string, string>;
+  body: string;
+}
+
+export interface PublishResponse {
+  ok: boolean;
+  status: number;
+}
+
 export interface PublishOptions {
   scenario?: string;
   /** Where to post. Defaults to the dev server's endpoint on the page's origin. */
   endpoint?: string;
-  fetch?: (
-    url: string,
-    init: { method: "POST"; headers: Record<string, string>; body: string },
-  ) => Promise<{ ok: boolean; status: number }>;
+  fetch?: (url: string, init: PublishRequestInit) => Promise<PublishResponse>;
 }
 
 /**
