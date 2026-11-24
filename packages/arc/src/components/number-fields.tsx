@@ -45,7 +45,7 @@ export const numberFieldStyles = variants({
 
 type Slots = ReturnType<typeof numberFieldStyles> & FieldSlots;
 
-export interface FormattedNumberProps
+export interface FormattedFieldProps
   extends Omit<ArcFieldProps, "classes">, FieldValueProps<number | null>, Customisable<Slots> {
   minValue?: number;
   maxValue?: number;
@@ -60,13 +60,13 @@ export interface FormattedNumberProps
   commitBehavior?: "snap" | "validate";
 }
 
-interface BodyProps extends FormattedNumberProps {
+interface BodyProps extends FormattedFieldProps {
   formatOptions: Intl.NumberFormatOptions;
   slot: string;
 }
 
 /** aria's number field, formatted, in the field frame: what the three fields here are. */
-function FormattedNumber(props: BodyProps) {
+function FormattedField(props: BodyProps) {
   const of = bindField<number | null>(props, null);
   const cls = () =>
     parts(
@@ -112,7 +112,7 @@ function FormattedNumber(props: BodyProps) {
   );
 }
 
-export interface CurrencyFieldProps extends FormattedNumberProps {
+export interface CurrencyFieldProps extends FormattedFieldProps {
   /** The ISO 4217 code: `"USD"`, `"EUR"`, `"SAR"`. */
   currency: string;
   /** @default "symbol" */
@@ -135,7 +135,7 @@ export interface CurrencyFieldProps extends FormattedNumberProps {
  */
 export function CurrencyField(props: CurrencyFieldProps) {
   return (
-    <FormattedNumber
+    <FormattedField
       {...props}
       slot="currency-field"
       formatOptions={{
@@ -148,7 +148,7 @@ export function CurrencyField(props: CurrencyFieldProps) {
   );
 }
 
-export interface PercentFieldProps extends FormattedNumberProps {
+export interface PercentFieldProps extends FormattedFieldProps {
   /** Digits after the point. @default 0 */
   fractionDigits?: number;
 }
@@ -163,7 +163,7 @@ export interface PercentFieldProps extends FormattedNumberProps {
  */
 export function PercentField(props: PercentFieldProps) {
   return (
-    <FormattedNumber
+    <FormattedField
       {...props}
       step={props.step ?? 0.01}
       slot="percent-field"
@@ -176,7 +176,7 @@ export function PercentField(props: PercentFieldProps) {
   );
 }
 
-export interface UnitFieldProps extends FormattedNumberProps {
+export interface UnitFieldProps extends FormattedFieldProps {
   /**
    * The unit, as `Intl.NumberFormat` names it: `"kilogram"`, `"megabyte"`,
    * `"kilometer-per-hour"`, `"millisecond"`.
@@ -198,7 +198,7 @@ export interface UnitFieldProps extends FormattedNumberProps {
  */
 export function UnitField(props: UnitFieldProps) {
   return (
-    <FormattedNumber
+    <FormattedField
       {...props}
       slot="unit-field"
       formatOptions={{

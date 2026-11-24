@@ -447,6 +447,40 @@ import { Heading, Link, Prose, Text, Truncate } from "@barqjs/arc";
   each a ui `Kbd`: `Mod+K` is ⌘K on an Apple device and Ctrl+K elsewhere. The
   server writes the PC names, which an Apple device swaps after hydrating.
 
+## Dates, times and numbers
+
+```tsx
+import { Currency, Duration, FormattedDate, RelativeTime } from "@barqjs/arc";
+
+<RelativeTime value={comment.createdAt} />;
+<FormattedDate value={invoice.dueAt} options={{ dateStyle: "long" }} />;
+<Currency value={1234.5} currency="USD" />;
+<Duration value={run.elapsed} />;
+```
+
+Each is written by `Intl` in the locale in scope, with its figures lined up,
+and agrees between the server and the hydrating page.
+
+- `RelativeTime`: "3 minutes ago" or "in 2 days" in a `<time>` with the ISO
+  moment in `datetime` and the absolute date in its title, kept current (each
+  second under a minute, less often after) until it unmounts. `now` is the
+  moment both halves measure from, the request's time; without it they write
+  the absolute date and the browser turns it relative after hydrating.
+  `wording="always"` writes "1 day ago" for "yesterday".
+- `FormattedDate`: a date, a time or both, from `options`, in `timeZone`.
+  Without one, the server and the hydrating page write UTC and the reader's
+  own zone follows.
+- `FormattedNumber`: anything `Intl.NumberFormat` takes, a percent, a unit or
+  compact notation.
+- `Currency`: an amount in its `currency`, `compact`, with a `sign`, or in
+  brackets with `accounting`.
+- `Bytes`: `2.4 MB`, the same reading an upload list uses.
+- `Duration`: milliseconds as `1 hr, 5 min` in its two largest `units`, or
+  `1:05:09` with `length="digital"`, by `Intl.DurationFormat`.
+
+`relativeTimeFormatter` and `relativeUnit` in `@barqjs/aria/i18n` are the same
+reading for an app's own text.
+
 ## Inputs and pickers
 
 ```tsx
