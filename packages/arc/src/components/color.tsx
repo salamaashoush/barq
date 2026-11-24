@@ -26,6 +26,7 @@ import {
   bindField,
   fieldStyles,
 } from "../lib/field.tsx";
+import { plainList } from "../lib/list.ts";
 import { type Customisable, parts } from "../lib/parts.ts";
 import { square } from "../lib/size.ts";
 import { fg, focus, gap, layout, rounded, space, target, truncate, type } from "../style/index.ts";
@@ -157,7 +158,7 @@ export function ColorSlider(props: ColorSliderProps) {
 
 export const colorSwatchesStyles = variants({
   slots: {
-    list: arc(layout.row, layout.wrap, gap[1.5], { listStyle: "none", margin: "0", padding: "0" }),
+    list: arc(plainList, layout.row, layout.wrap, gap[1.5]),
     item: arc(
       fg.default,
       rounded.md,

@@ -90,6 +90,34 @@ export {
 } from "./components/range-slider.tsx";
 export { Rating, type RatingProps, ratingStyles } from "./components/rating.tsx";
 export {
+  CheckboxCards,
+  type CheckboxCardsProps,
+  type ChoiceOption,
+  RadioCards,
+  type RadioCardsProps,
+  choiceCardsStyles,
+} from "./components/choice-cards.tsx";
+export {
+  FileDropZone,
+  type FileDropZoneProps,
+  type FileLimits,
+  type FileRejection,
+  FileUpload,
+  type FileUploadProps,
+  type UploadContext,
+  type UploadItem,
+  UploadQueue,
+  type UploadQueueApi,
+  type UploadQueueOptions,
+  type UploadQueueProps,
+  type UploadStatus,
+  checkFiles,
+  fileDropZoneStyles,
+  formatBytes,
+  uploadQueueStyles,
+  useUploadQueue,
+} from "./components/file-upload.tsx";
+export {
   CommandMenu,
   commandMenuStyles,
   type CommandMenuAction,

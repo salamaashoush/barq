@@ -80,6 +80,25 @@ export interface ArcMessages {
   maximum: string;
   stars: (count: number) => string;
   rated: (value: string, max: string) => string;
+  dropZone: string;
+  dropFiles: string;
+  chooseFiles: string;
+  acceptedTypes: (types: string) => string;
+  maxFileSize: (size: string) => string;
+  fileTypeNotAllowed: (name: string) => string;
+  fileTooLarge: (name: string, size: string) => string;
+  tooManyFiles: (max: number) => string;
+  uploads: string;
+  queued: string;
+  uploading: string;
+  uploadDone: string;
+  cancelled: string;
+  uploaded: (name: string) => string;
+  uploadFailed: (name: string) => string;
+  uploadingFile: (name: string) => string;
+  retryUpload: (name: string) => string;
+  cancelUpload: (name: string) => string;
+  removeFile: (name: string) => string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -156,6 +175,25 @@ export const ENGLISH: ArcMessages = {
   maximum: "Maximum",
   stars: (count) => (count === 1 ? "1 star" : `${String(count)} stars`),
   rated: (value, max) => `Rated ${value} out of ${max}`,
+  dropZone: "Upload files",
+  dropFiles: "Drop files here",
+  chooseFiles: "Choose files",
+  acceptedTypes: (types) => `Accepts ${types}`,
+  maxFileSize: (size) => `Up to ${size} each`,
+  fileTypeNotAllowed: (name) => `${name} is not a type this accepts`,
+  fileTooLarge: (name, size) => `${name} is larger than ${size}`,
+  tooManyFiles: (max) => `No more than ${String(max)} files at once`,
+  uploads: "Uploads",
+  queued: "Waiting",
+  uploading: "Uploading",
+  uploadDone: "Uploaded",
+  cancelled: "Cancelled",
+  uploaded: (name) => `${name} uploaded`,
+  uploadFailed: (name) => `${name} could not be uploaded`,
+  uploadingFile: (name) => `Uploading ${name}`,
+  retryUpload: (name) => `Retry ${name}`,
+  cancelUpload: (name) => `Cancel ${name}`,
+  removeFile: (name) => `Remove ${name}`,
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");

@@ -489,6 +489,23 @@ import { Chip } from "@barqjs/arc";
 - `RangeSlider`: a low and a high value on one track, the two thumbs named
   "Minimum" and "Maximum" before the label, the range written beside it in
   the locale with `formatOptions`, and the ends kept from crossing.
+- `RadioCards` and `CheckboxCards`: a few options, each a card with a title,
+  a line about it and an icon, the whole card the press target. One Tab stop
+  for the radios with the arrows choosing, a checkbox per card for the
+  other; the cards drop to fewer columns as the room narrows, to one on a
+  phone (`minCardWidth`).
+- Files:
+  - `FileDropZone`: files dropped, pasted or picked, with a button that opens
+    the picker, which is the way in on a touch screen. Each is held to
+    `accept`, `maxSize` and `maxFiles`, and the rest are listed under the
+    zone with why and announced.
+  - `useUploadQueue`: files sent `concurrency` at a time through the caller's
+    `upload(file, { onProgress, signal })`, cancelled (the request aborted),
+    retried or removed one by one.
+  - `UploadQueue`: that queue as ui attachments, a thumbnail for an image, a
+    bar while it uploads, the size in the locale, and cancel, retry and
+    remove named after the file.
+  - `FileUpload`: the zone and the queue together.
 
 ## Code
 
