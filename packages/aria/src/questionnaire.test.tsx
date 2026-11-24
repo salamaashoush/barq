@@ -26,7 +26,13 @@ import {
 } from "./questionnaire.tsx";
 import type { RenderPart } from "./utils.ts";
 
-function Option(props: { value: string; label: string; disabled?: boolean }) {
+interface OptionProps {
+  value: string;
+  label: string;
+  disabled?: boolean;
+}
+
+function Option(props: OptionProps) {
   return (
     <QuestionnaireChoice value={props.value} disabled={props.disabled}>
       <QuestionnaireChoiceInput />
@@ -109,19 +115,32 @@ function Survey(props: SurveyProps) {
   );
 }
 
-const form = (): HTMLFormElement => document.querySelector("form") as HTMLFormElement;
-const groups = (): HTMLFieldSetElement[] => [...document.querySelectorAll("fieldset")];
-const active = (): HTMLFieldSetElement =>
-  document.querySelector("fieldset[data-active]") as HTMLFieldSetElement;
-const activeTitle = (): string | null => active().querySelector("legend")?.textContent ?? null;
-const choice = (value: string): HTMLInputElement =>
-  document.querySelector(`input[value="${value}"]`) as HTMLInputElement;
-const freeform = (): HTMLInputElement => screen.getByLabelText("Another answer");
-const button = (name: string): HTMLButtonElement =>
-  [...document.querySelectorAll("button")].find(
+function form(): HTMLFormElement {
+  return document.querySelector("form") as HTMLFormElement;
+}
+function groups(): HTMLFieldSetElement[] {
+  return [...document.querySelectorAll("fieldset")];
+}
+function active(): HTMLFieldSetElement {
+  return document.querySelector("fieldset[data-active]") as HTMLFieldSetElement;
+}
+function activeTitle(): string | null {
+  return active().querySelector("legend")?.textContent ?? null;
+}
+function choice(value: string): HTMLInputElement {
+  return document.querySelector(`input[value="${value}"]`) as HTMLInputElement;
+}
+function freeform(): HTMLInputElement {
+  return screen.getByLabelText("Another answer");
+}
+function button(name: string): HTMLButtonElement {
+  return [...document.querySelectorAll("button")].find(
     (each) => each.textContent === name,
   ) as HTMLButtonElement;
-const progress = (): HTMLElement => screen.getByRole("progressbar");
+}
+function progress(): HTMLElement {
+  return screen.getByRole("progressbar");
+}
 
 describe("Questionnaire", () => {
   test("it is a form showing one question at a time, the first to begin with", () => {
@@ -1041,15 +1060,15 @@ describe("Questionnaire render", () => {
 
   test("a navigation button hands its state to the element drawn in its place", () => {
     let submitted = 0;
-    const nav =
-      (label: string): RenderPart<QuestionnaireNavigationState> =>
-      (part, state) => (
+    function nav(label: string): RenderPart<QuestionnaireNavigationState> {
+      return (part, state) => (
         <button {...part.props} ref={part.ref} data-testid={label}>
           {() =>
             `${label} ${state.status() ?? "none"} ${state.shortcut() ?? "none"} ${String(state.visible())} ${String(state.disabled())}`
           }
         </button>
       );
+    }
     render(() => (
       <Questionnaire
         aria-label="Steps"
@@ -1077,7 +1096,9 @@ describe("Questionnaire render", () => {
       </Questionnaire>
     ));
 
-    const text = (label: string): string | null => screen.getByTestId(label).textContent;
+    function text(label: string): string | null {
+      return screen.getByTestId(label).textContent;
+    }
     expect(text("previous")).toBe("previous unanswered none false false");
     expect(text("skip")).toBe("skip unanswered none false false");
     expect(text("next")).toBe("next unanswered Enter true false");

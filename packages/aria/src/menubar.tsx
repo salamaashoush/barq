@@ -166,8 +166,9 @@ export function Menubar(props: MenubarComponentProps) {
     (next) => props.onValueChange?.(next),
   );
 
-  const ordered = (): MenubarEntry[] =>
-    [...entries.values()].toSorted(byDocument).filter((entry) => !entry.isDisabled());
+  function ordered(): MenubarEntry[] {
+    return [...entries.values()].toSorted(byDocument).filter((entry) => !entry.isDisabled());
+  }
 
   let typed = "";
   let forget: ReturnType<typeof setTimeout> | undefined;
@@ -317,8 +318,12 @@ export function MenubarMenu(props: Incoming<MenubarMenuComponentProps>) {
   const triggerRef = makeRef<HTMLElement>();
   const [isDisabled, setDisabled] = createSignal(false, { ownedWrite: true });
 
-  const held = (): boolean | undefined => props.isOpen?.();
-  const isCurrent = (): boolean => bar.value() === value;
+  function held(): boolean | undefined {
+    return props.isOpen?.();
+  }
+  function isCurrent(): boolean {
+    return bar.value() === value;
+  }
 
   const state = menuTriggerState({
     isOpen: () => held() ?? isCurrent(),
@@ -373,7 +378,9 @@ export function MenubarMenu(props: Incoming<MenubarMenuComponentProps>) {
 
   const { menuTriggerProps, menuProps } = menuTrigger({ isDisabled }, state);
 
-  const nextKey = (): string => (bar.direction() === "rtl" ? "ArrowLeft" : "ArrowRight");
+  function nextKey(): string {
+    return bar.direction() === "rtl" ? "ArrowLeft" : "ArrowRight";
+  }
 
   const trigger: MenuTriggerValue = {
     state,
@@ -446,30 +453,32 @@ export function menubarTrigger(options: MenubarTriggerOptions = {}): MenubarTrig
     throw new Error("A MenubarTrigger must be rendered inside a MenubarMenu.");
   }
   const { value, trigger } = menu;
-  const isDisabled = (): boolean => access(options.isDisabled) === true;
+  function isDisabled(): boolean {
+    return access(options.isDisabled) === true;
+  }
 
   createEffect(isDisabled, (disabled) => {
     menu.setDisabled(disabled);
   });
 
   /** With a menu open the arrows carry it along; with none they only move focus. */
-  const focusOrSwitch = (to: MenubarEntry): void => {
+  function focusOrSwitch(to: MenubarEntry): void {
     if (bar.value() !== "") {
       bar.switchTo(to.value, null);
       return;
     }
     const element = to.trigger();
     if (element !== null) focusWithoutScrolling(element);
-  };
+  }
 
-  const moveTo = (step: Step): boolean => {
+  function moveTo(step: Step): boolean {
     const to = bar.towards(value, step);
     if (to === null) return false;
     focusOrSwitch(to);
     return true;
-  };
+  }
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     // Enter, Space and the vertical arrows are the menu trigger's, and it has
     // already taken them.
     if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
@@ -510,7 +519,7 @@ export function menubarTrigger(options: MenubarTriggerOptions = {}): MenubarTrig
       event.preventDefault();
       event.stopPropagation();
     }
-  };
+  }
 
   const buttonOptions: ButtonOptions = mergeProps({ ...options }, trigger.menuTriggerProps, {
     onKeyDown,

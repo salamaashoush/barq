@@ -66,7 +66,9 @@ describe("Radio", () => {
 });
 
 describe("Radio, with nothing of its own to say", () => {
-  const radios = (): HTMLInputElement[] => screen.getAllByRole<HTMLInputElement>("radio");
+  function radios(): HTMLInputElement[] {
+    return screen.getAllByRole<HTMLInputElement>("radio");
+  }
 
   test("with label content it is the label, and without any it renders none", () => {
     render(() => (
@@ -359,8 +361,9 @@ describe("Radio, with a selection indicator", () => {
     );
   }
 
-  const shown = (): string[] =>
-    screen.queryAllByTestId(/^indicator-/).map((each) => each.dataset.testid ?? "");
+  function shown(): string[] {
+    return screen.queryAllByTestId(/^indicator-/).map((each) => each.dataset.testid ?? "");
+  }
 
   test("only the chosen radio's indicator is rendered, and it follows the choice", async () => {
     render(() => <Sizes />);

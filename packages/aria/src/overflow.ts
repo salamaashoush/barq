@@ -23,10 +23,10 @@ import { access } from "./utils.ts";
 function outerSize(element: HTMLElement, horizontal: boolean, first: boolean, last: boolean) {
   const style = window.getComputedStyle(element);
   const box = element.getBoundingClientRect();
-  const margin = (value: string): number => {
+  function margin(value: string): number {
     const parsed = Number.parseInt(value, 10);
     return Number.isNaN(parsed) ? 0 : parsed;
-  };
+  }
   if (horizontal) {
     return (
       box.width + (first ? 0 : margin(style.marginLeft)) + (last ? 0 : margin(style.marginRight))
@@ -57,8 +57,9 @@ export interface OverflowChoice {
 const NONE: ReadonlySet<Key> = new Set();
 
 /** Two choices that send the same items: a new set that says nothing new changes nothing. */
-const sameKeys = (one: ReadonlySet<Key>, other: ReadonlySet<Key>): boolean =>
-  one.size === other.size && [...one].every((key) => other.has(key));
+function sameKeys(one: ReadonlySet<Key>, other: ReadonlySet<Key>): boolean {
+  return one.size === other.size && [...one].every((key) => other.has(key));
+}
 
 /** The items that go into the menu, from their measured sizes. */
 export function overflowingKeys(choice: OverflowChoice): ReadonlySet<Key> {
@@ -97,27 +98,34 @@ export interface OverflowOptions {
   isAllOrNothing?: Accessor<boolean>;
 }
 
-/** The items in the menu, kept up to date as the row's room and items change. */
-export function overflowItems(options: OverflowOptions): {
+export interface OverflowItems {
   hidden: Accessor<ReadonlySet<Key>>;
   isMeasuring: Accessor<boolean>;
-} {
+}
+
+interface OverflowElements {
+  group: HTMLElement;
+  wrapper: HTMLElement;
+}
+
+/** The items in the menu, kept up to date as the row's room and items change. */
+export function overflowItems(options: OverflowOptions): OverflowItems {
   const [hidden, setHidden] = createSignal<ReadonlySet<Key>>(NONE, { equals: sameKeys });
   const [phase, setPhase] = createSignal<"idle" | "measure" | "verify">("idle");
   /** Each item's size along the axis, from the pass that showed them all. */
   let sizes: number[] = [];
 
-  const elements = (): { group: HTMLElement; wrapper: HTMLElement } | null => {
+  function elements(): OverflowElements | null {
     const group = access(options.groupRef) as HTMLElement | null | undefined;
     const wrapper = access(options.wrapperRef) as HTMLElement | null | undefined;
     if (group === null || group === undefined || wrapper === null || wrapper === undefined) {
       return null;
     }
     return { group, wrapper };
-  };
+  }
 
-  const choose = (room: number, menu: number): ReadonlySet<Key> =>
-    overflowingKeys({
+  function choose(room: number, menu: number): ReadonlySet<Key> {
+    return overflowingKeys({
       keys: options.keys(),
       sizes,
       room,
@@ -126,11 +134,12 @@ export function overflowItems(options: OverflowOptions): {
       keep: options.keep?.(),
       isAllOrNothing: options.isAllOrNothing?.() ?? false,
     });
+  }
 
-  const measure = (): void => {
+  function measure(): void {
     setHidden(NONE);
     setPhase(options.isCollapsing() ? "measure" : "idle");
-  };
+  }
 
   if (!isServer) {
     createEffect(

@@ -23,6 +23,7 @@ import {
   getContext,
   getOwner,
   install,
+  type ParentProps,
 } from "@barqjs/core";
 import { ref as makeRef, type RefTarget } from "@barqjs/primitives/refs";
 import { ownerWindow, targetElement } from "./dom.ts";
@@ -114,8 +115,12 @@ export function radioGroupState(options: RadioGroupStateOptions): RadioGroupStat
   );
 
   const [lastFocused, setLastFocused] = createSignal<string | null>(null);
-  const isReadOnly = (): boolean => access(options.isReadOnly) === true;
-  const isDisabled = (): boolean => access(options.isDisabled) === true;
+  function isReadOnly(): boolean {
+    return access(options.isReadOnly) === true;
+  }
+  function isDisabled(): boolean {
+    return access(options.isDisabled) === true;
+  }
 
   const {
     state: validation,
@@ -196,9 +201,11 @@ export function radioGroup(options: RadioGroupOptions, state: RadioGroupState): 
   });
   radioGroupData.set(state, { form: () => access(options.form), descriptionIds });
 
-  const orientation = (): "horizontal" | "vertical" => access(options.orientation) ?? "vertical";
+  function orientation(): "horizontal" | "vertical" {
+    return access(options.orientation) ?? "vertical";
+  }
 
-  const move = (direction: "next" | "previous", event: KeyboardEvent): boolean => {
+  function move(direction: "next" | "previous", event: KeyboardEvent): boolean {
     const container = event.currentTarget as Element | null;
     if (container === null) return false;
 
@@ -219,9 +226,9 @@ export function radioGroup(options: RadioGroupOptions, state: RadioGroupState): 
     (next as HTMLInputElement).focus();
     state.setSelectedValue((next as HTMLInputElement).value);
     return true;
-  };
+  }
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     const rtl = locale().direction === "rtl";
     const horizontal = orientation() !== "vertical";
     let handled = false;
@@ -247,7 +254,7 @@ export function radioGroup(options: RadioGroupOptions, state: RadioGroupState): 
       event.preventDefault();
       event.stopPropagation();
     }
-  };
+  }
 
   return {
     name: groupName,
@@ -306,9 +313,15 @@ export function radio(
   ref: ElementRef<HTMLInputElement>,
   name: Accessor<string>,
 ): RadioResult {
-  const value = (): string => access(options.value);
-  const isDisabled = (): boolean => access(options.isDisabled) === true || state.isDisabled();
-  const isSelected = (): boolean => state.selectedValue() === value();
+  function value(): string {
+    return access(options.value);
+  }
+  function isDisabled(): boolean {
+    return access(options.isDisabled) === true || state.isDisabled();
+  }
+  function isSelected(): boolean {
+    return state.selectedValue() === value();
+  }
 
   const { pressProps, isPressed } = press({ isDisabled, onPress: options.onPress });
 
@@ -353,14 +366,19 @@ export function radio(
   formReset(ref, state.defaultValue(), (next) => state.setSelectedValue(next));
 
   const group = radioGroupData.get(state);
-  const isNative = (): boolean => state.validationBehavior() === "native";
+  function isNative(): boolean {
+    return state.validationBehavior() === "native";
+  }
   formValidation({ validationBehavior: state.validationBehavior }, state.validation, ref);
 
   const descriptionId = id();
-  const describedBy = (): string | undefined =>
-    [present(access(options.description)) ? descriptionId() : undefined, group?.descriptionIds()]
-      .filter((part): part is string => part !== undefined)
-      .join(" ") || undefined;
+  function describedBy(): string | undefined {
+    return (
+      [present(access(options.description)) ? descriptionId() : undefined, group?.descriptionIds()]
+        .filter((part): part is string => part !== undefined)
+        .join(" ") || undefined
+    );
+  }
 
   /**
    * The roving tab index: exactly one radio in the group is tabbable.
@@ -369,13 +387,13 @@ export function radio(
    * left, or the first. Every other radio is reachable only with the arrows,
    * which is what makes the group a single Tab stop.
    */
-  const tabIndex = (): number | undefined => {
+  function tabIndex(): number | undefined {
     if (isDisabled()) return undefined;
     const selected = state.selectedValue();
     if (selected !== null) return selected === value() ? 0 : -1;
     const lastFocused = state.lastFocusedValue();
     return lastFocused === value() || lastFocused === null ? 0 : -1;
-  };
+  }
 
   return {
     labelProps: mergeProps(labelPressProps, {
@@ -424,8 +442,8 @@ export function radio(
  */
 function offeringSelection(
   isSelected: Accessor<boolean>,
-  children: Incoming<{ children?: Child }>["children"],
-): Incoming<{ children?: Child }>["children"] {
+  children: Incoming<ParentProps>["children"],
+): Incoming<ParentProps>["children"] {
   return () => (
     <SelectionIndicatorProvider isSelected={isSelected()}>{children}</SelectionIndicatorProvider>
   );

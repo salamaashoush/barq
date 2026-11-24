@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush, type Child, provide, Show, createSignal } from "@barqjs/core";
+import { flush, provide, Show, createSignal, type ParentProps } from "@barqjs/core";
 import {
   accessibleName,
   expectNoAriaViolations,
@@ -40,13 +40,15 @@ const ACTIONS: Action[] = [
   { id: "delete", name: "Delete" },
 ];
 
-function Actions(props: {
+interface ActionsProps {
   selectionMode?: "none" | "single" | "multiple";
   onAction?: (key: Key) => void;
   onSelectionChange?: (keys: "all" | Set<Key>) => void;
   onClose?: () => void;
   autoFocus?: boolean | "first" | "last";
-}) {
+}
+
+function Actions(props: ActionsProps) {
   return (
     <Menu
       aria-label="Actions"
@@ -363,9 +365,13 @@ describe("MenuSection", () => {
   });
 });
 
+interface TriggerProps {
+  onAction?: (key: Key) => void;
+}
+
 // ---------------------------------------------------------------------------
 
-function Trigger(props: { onAction?: (key: Key) => void }) {
+function Trigger(props: TriggerProps) {
   return (
     <MenuTrigger>
       <MenuButton>Actions</MenuButton>
@@ -487,18 +493,45 @@ describe("MenuTrigger", () => {
   });
 });
 
+interface WrittenProps {
+  onAction?: (key: Key) => void;
+  onRename?: () => void;
+  onSelect?: (event: MenuSelectEvent) => void;
+  onClose?: () => void;
+  showCopy?: boolean;
+}
+
+interface ViewProps {
+  onToolbar?: (isSelected: boolean) => void;
+  onDensity?: (value: string) => void;
+  onClose?: () => void;
+}
+
+interface LinkWatch {
+  followed: FollowedLink[];
+  stop: () => void;
+}
+
+interface FollowedLink {
+  href: string;
+  ctrlKey: boolean;
+}
+
+interface LinksProps {
+  onClose?: () => void;
+  onAction?: (key: Key) => void;
+}
+
+interface Named {
+  name: string;
+}
+
 /**
  * The same menu with its items WRITTEN rather than rendered from data. Each
  * one says what it is, and the collection is whatever rendered.
  */
 describe("a menu whose items are its children", () => {
-  function Written(props: {
-    onAction?: (key: Key) => void;
-    onRename?: () => void;
-    onSelect?: (event: MenuSelectEvent) => void;
-    onClose?: () => void;
-    showCopy?: boolean;
-  }) {
+  function Written(props: WrittenProps) {
     return (
       <Menu aria-label="Actions" onAction={props.onAction} onClose={props.onClose}>
         <MenuItem id="rename" onAction={props.onRename} onSelect={props.onSelect}>
@@ -631,11 +664,7 @@ describe("a menu whose items are its children", () => {
     expect(rename.id.endsWith("-item-rename")).toBe(true);
   });
 
-  function View(props: {
-    onToolbar?: (isSelected: boolean) => void;
-    onDensity?: (value: string) => void;
-    onClose?: () => void;
-  }) {
+  function View(props: ViewProps) {
     const [density, setDensity] = createSignal("compact");
     return (
       <Menu aria-label="View" onClose={props.onClose}>
@@ -746,7 +775,7 @@ describe("a menu whose items are its children", () => {
     expect(document.activeElement?.textContent).toBe("Print");
   });
 
-  function Heading(props: { children?: Child }) {
+  function Heading(props: ParentProps) {
     const headingId = useMenuGroupHeading();
     return (
       <li role="presentation" id={headingId?.()}>
@@ -778,21 +807,21 @@ describe("a menu whose items are its children", () => {
   });
 
   /** Every click on an anchor that nothing cancelled: what the browser would follow. */
-  function watchLinks(): { followed: { href: string; ctrlKey: boolean }[]; stop: () => void } {
-    const followed: { href: string; ctrlKey: boolean }[] = [];
-    const record = (event: MouseEvent): void => {
+  function watchLinks(): LinkWatch {
+    const followed: FollowedLink[] = [];
+    function record(event: MouseEvent): void {
       const anchor = (event.target as Element).closest("a");
       if (anchor === null) return;
       queueMicrotask(() => {
         if (event.defaultPrevented) return;
         followed.push({ href: anchor.getAttribute("href") ?? "", ctrlKey: event.ctrlKey });
       });
-    };
+    }
     document.addEventListener("click", record, true);
     return { followed, stop: () => document.removeEventListener("click", record, true) };
   }
 
-  function Links(props: { onClose?: () => void; onAction?: (key: Key) => void }) {
+  function Links(props: LinksProps) {
     return (
       <Menu aria-label="Go" onClose={props.onClose} onAction={props.onAction}>
         <MenuItem id="docs" href="#docs">
@@ -947,7 +976,7 @@ describe("a menu whose items are its children", () => {
         ]}
         onClose={() => closed++}
       >
-        {(entry: { name: string }) => <MenuItem>{entry.name}</MenuItem>}
+        {(entry: Named) => <MenuItem>{entry.name}</MenuItem>}
       </Menu>
     ));
     flush();
@@ -991,6 +1020,10 @@ describe("a menu whose items are its children", () => {
     expect(menu.getAttribute("data-align")).toBe("start");
   });
 });
+
+interface ItemProps {
+  state: ListState<unknown>;
+}
 
 describe("what the menu as a whole says", () => {
   test("onAction receives the value the item was built from", () => {
@@ -1050,7 +1083,7 @@ describe("what the menu as a whole says", () => {
     const grouped = [{ id: "edit", name: "Edit", children: ACTIONS.slice(0, 2) }];
     render(() => (
       <Menu aria-label="Actions" items={grouped} onClose={() => closed++}>
-        {(entry: { name: string }) => (
+        {(entry: Named) => (
           <MenuSection heading={entry.name} shouldCloseOnSelect={false}>
             {(action: Action) => <MenuItem>{action.name}</MenuItem>}
           </MenuSection>
@@ -1078,7 +1111,7 @@ describe("what the menu as a whole says", () => {
       { id: "edit", name: "Edit", children: ACTIONS.slice(0, 2) },
       { id: "more", name: "More", children: ACTIONS.slice(3) },
     ];
-    function Item(props: { state: ListState<unknown> }) {
+    function Item(props: ItemProps) {
       const ref = makeRef<HTMLLIElement>();
       const { menuItemProps } = menuItem(
         { key: "cut", ref, baseId: "menu", isVirtualized: true },
@@ -1123,7 +1156,7 @@ describe("typeahead", () => {
   test("the same letter again steps to the next item starting with it", () => {
     render(() => (
       <Menu aria-label="Fruit" items={FRUIT}>
-        {(fruit: { name: string }) => <MenuItem>{fruit.name}</MenuItem>}
+        {(fruit: Named) => <MenuItem>{fruit.name}</MenuItem>}
       </Menu>
     ));
     user.focus(screen.getByRole("menu"));
@@ -1135,6 +1168,10 @@ describe("typeahead", () => {
     expect(document.activeElement?.textContent).toBe("Blueberry");
   });
 });
+
+interface CommandsProps {
+  onAction?: (key: Key) => void;
+}
 
 describe("inside an autocomplete", () => {
   function Search() {
@@ -1158,7 +1195,7 @@ describe("inside an autocomplete", () => {
   const includes: AutocompleteFilter = (text, query) =>
     text.toLowerCase().includes(query.toLowerCase());
 
-  function Commands(props: { onAction?: (key: Key) => void }) {
+  function Commands(props: CommandsProps) {
     return (
       <Autocomplete filter={includes}>
         <Search />
@@ -1226,13 +1263,14 @@ describe("a selection indicator", () => {
         )}
       </Menu>
     ));
-    const shown = (role: string): (string | null)[] =>
-      screen
+    function shown(role: string): (string | null)[] {
+      return screen
         .queryAllByTestId("indicator")
         .map(
           (element: Element) =>
             element.closest(`[role="${role}"]`)?.getAttribute("data-key") ?? null,
         );
+    }
     expect(shown("menuitemradio")).toEqual(["copy"]);
   });
 });

@@ -50,7 +50,7 @@ function declared(element: Element): number {
 }
 
 interface Animatable {
-  getAnimations?: (options?: { subtree?: boolean }) => Animation[];
+  getAnimations?: (options?: GetAnimationsOptions) => Animation[];
 }
 
 /** What is actually running, anywhere under this element. */
@@ -113,7 +113,9 @@ export interface PresenceResult {
  * Reading a computed style flushes the pending change, so one tick is enough.
  */
 export function presence(options: PresenceOptions): PresenceResult {
-  const open = (): boolean => access(options.isOpen) === true;
+  function open(): boolean {
+    return access(options.isOpen) === true;
+  }
   const [isPresent, setIsPresent] = createSignal(open());
   const [isExiting, setIsExiting] = createSignal(false);
 
@@ -135,11 +137,11 @@ export function presence(options: PresenceOptions): PresenceResult {
     }
     if (!mounted) return undefined;
 
-    const leave = (): void => {
+    function leave(): void {
       mounted = false;
       setIsExiting(false);
       setIsPresent(false);
-    };
+    }
 
     const element = untrack(() => access(options.ref)) as Element | null;
     if (element === null || element === undefined) {

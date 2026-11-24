@@ -112,11 +112,11 @@ export interface NumberFieldState {
 
 /** Add or subtract without the binary floating point drift. */
 function step(operation: "+" | "-", value: number, amount: number): number {
-  const decimals = (entry: number): number => {
+  function decimals(entry: number): number {
     const text = String(entry);
     const point = text.indexOf(".");
     return point === -1 ? 0 : text.length - point - 1;
-  };
+  }
   const places = Math.max(decimals(value), decimals(amount));
   const scale = 10 ** places;
   const scaled =
@@ -128,23 +128,29 @@ export function numberFieldState(options: NumberFieldStateOptions): NumberFieldS
   const format = numberFormatter(access(options.formatOptions));
   const parser = numberParser(access(options.formatOptions));
 
-  const min = (): number | undefined => access(options.minValue);
-  const max = (): number | undefined => access(options.maxValue);
-  const snaps = (): boolean => (access(options.commitBehavior) ?? "snap") === "snap";
+  function min(): number | undefined {
+    return access(options.minValue);
+  }
+  function max(): number | undefined {
+    return access(options.maxValue);
+  }
+  function snaps(): boolean {
+    return (access(options.commitBehavior) ?? "snap") === "snap";
+  }
 
-  const stepSize = (): number => {
+  function stepSize(): number {
     const given = access(options.step);
     if (given !== undefined && !Number.isNaN(given)) return given;
     // A percent field's natural step is one percentage point, which is 0.01 of
     // the value it holds.
     return format().resolvedOptions().style === "percent" ? 0.01 : 1;
-  };
+  }
 
-  const snap = (value: number): number => {
+  function snap(value: number): number {
     const given = access(options.step);
     if (given === undefined || Number.isNaN(given)) return clamp(value, min(), max());
     return snapValueToStep(value, min(), max(), given);
-  };
+  }
 
   const [numberValue, setNumberValueRaw] = controllable<number>(
     () => {
@@ -162,7 +168,9 @@ export function numberFieldState(options: NumberFieldStateOptions): NumberFieldS
   );
 
   const initial = numberValue();
-  const asText = (value: number): string => (Number.isNaN(value) ? "" : format().format(value));
+  function asText(value: number): string {
+    return Number.isNaN(value) ? "" : format().format(value);
+  }
 
   const [inputValue, writeInputValue] = createSignal(asText(numberValue()));
 
@@ -185,13 +193,13 @@ export function numberFieldState(options: NumberFieldStateOptions): NumberFieldS
 
   const parsed = createMemo(() => parser().parse(inputValue()));
 
-  const setNumberValue = (value: number): void => {
+  function setNumberValue(value: number): void {
     live = value;
     setNumberValueRaw(value);
     writeInputValue(asText(value));
-  };
+  }
 
-  const commit = (override?: string): void => {
+  function commit(override?: string): void {
     const text = override ?? inputValue();
     // A controlled owner has not taken the new value yet, so the field shows
     // what it holds now and `live` stays on it: when the owner does take the
@@ -220,7 +228,7 @@ export function numberFieldState(options: NumberFieldStateOptions): NumberFieldS
     if (!isControlled) live = clamped;
     setNumberValueRaw(clamped);
     writeInputValue(asText(isControlled ? numberValue() : clamped));
-  };
+  }
 
   /**
    * The next step boundary in a direction.
@@ -228,7 +236,7 @@ export function numberFieldState(options: NumberFieldStateOptions): NumberFieldS
    * From a value already off the boundary, the first move is ONTO it — the
    * user asked for the next valid value, not for the next one plus a step.
    */
-  const nextStep = (operation: "+" | "-", empty: number | undefined): number => {
+  function nextStep(operation: "+" | "-", empty: number | undefined): number {
     const current = parsed();
     const size = stepSize();
 
@@ -246,9 +254,9 @@ export function numberFieldState(options: NumberFieldStateOptions): NumberFieldS
       return snapped;
     }
     return snapValueToStep(step(operation, current, size), min(), max(), size);
-  };
+  }
 
-  const canStep = (operation: "+" | "-"): boolean => {
+  function canStep(operation: "+" | "-"): boolean {
     if (access(options.isDisabled) === true || access(options.isReadOnly) === true) return false;
     const current = parsed();
     const limit = operation === "+" ? max() : min();
@@ -262,7 +270,7 @@ export function numberFieldState(options: NumberFieldStateOptions): NumberFieldS
     return (
       snapValueToStep(current, min(), max(), size) < current || step("-", current, size) >= limit
     );
-  };
+  }
 
   return {
     inputValue,
@@ -324,6 +332,18 @@ export interface SpinButtonResult {
 const REPEAT_DELAY = 400;
 const REPEAT_INTERVAL = 60;
 
+type StepperHandlers = {
+  onPressStart: (event: PressPointer) => void;
+  onPressUp: (event: PressPointer) => void;
+  onPressEnd: (event: PressPointer) => void;
+  onFocus: () => void;
+  onBlur: () => void;
+};
+
+interface PressPointer {
+  pointerType: string;
+}
+
 /**
  * The keys and the press-and-hold that step a value.
  *
@@ -335,36 +355,37 @@ export function spinButton(options: SpinButtonOptions): SpinButtonResult {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let focused = false;
 
-  const stop = (): void => {
+  function stop(): void {
     if (timer !== undefined) clearTimeout(timer);
     timer = undefined;
-  };
+  }
 
-  const repeat = (act: () => void, guard: () => boolean, delay: number): void => {
+  function repeat(act: () => void, guard: () => boolean, delay: number): void {
     stop();
     timer = setTimeout(() => {
       if (!guard()) return;
       act();
       repeat(act, guard, REPEAT_INTERVAL);
     }, delay);
-  };
+  }
 
-  const belowMax = (): boolean => {
+  function belowMax(): boolean {
     const limit = access(options.maxValue);
     const value = access(options.value);
     return limit === undefined || value === undefined || Number.isNaN(value) || value < limit;
-  };
+  }
 
-  const aboveMin = (): boolean => {
+  function aboveMin(): boolean {
     const limit = access(options.minValue);
     const value = access(options.value);
     return limit === undefined || value === undefined || Number.isNaN(value) || value > limit;
-  };
+  }
 
-  const enabled = (): boolean =>
-    access(options.isDisabled) !== true && access(options.isReadOnly) !== true;
+  function enabled(): boolean {
+    return access(options.isDisabled) !== true && access(options.isReadOnly) !== true;
+  }
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     if (!enabled()) return;
     switch (event.key) {
       case "PageUp":
@@ -396,7 +417,7 @@ export function spinButton(options: SpinButtonOptions): SpinButtonResult {
       default:
         return;
     }
-  };
+  }
 
   if (!isServer) {
     // Announced assertively, because the input carries no spin button role to
@@ -418,12 +439,12 @@ export function spinButton(options: SpinButtonOptions): SpinButtonResult {
     );
   }
 
-  const onFocus = (): void => {
+  function onFocus(): void {
     focused = true;
-  };
-  const onBlur = (): void => {
+  }
+  function onBlur(): void {
     focused = false;
-  };
+  }
 
   /**
    * One step now, then a repeat while it is held.
@@ -432,16 +453,7 @@ export function spinButton(options: SpinButtonOptions): SpinButtonResult {
    * touch that turns into a scroll must not have changed the value on the way
    * past.
    */
-  const stepper = (
-    act: () => void,
-    guard: () => boolean,
-  ): {
-    onPressStart: (event: { pointerType: string }) => void;
-    onPressUp: (event: { pointerType: string }) => void;
-    onPressEnd: (event: { pointerType: string }) => void;
-    onFocus: () => void;
-    onBlur: () => void;
-  } => {
+  function stepper(act: () => void, guard: () => boolean): StepperHandlers {
     let held = false;
     let spun = false;
     // A touch that ends without lifting the finger over the button (it moved
@@ -476,7 +488,7 @@ export function spinButton(options: SpinButtonOptions): SpinButtonResult {
       onFocus,
       onBlur,
     };
-  };
+  }
 
   return {
     spinButtonProps: { onKeyDown, onFocus, onBlur },
@@ -547,14 +559,19 @@ export function numberField(
   const inputId = id();
   const format = numberFormatter(access(options.formatOptions));
 
-  const isDisabled = (): boolean => access(options.isDisabled) === true;
-  const isReadOnly = (): boolean => access(options.isReadOnly) === true;
+  function isDisabled(): boolean {
+    return access(options.isDisabled) === true;
+  }
+  function isReadOnly(): boolean {
+    return access(options.isReadOnly) === true;
+  }
 
   // Never `currencySign: "accounting"`: the value would be spoken as
   // parentheses rather than as a negative number.
   const spoken = numberFormatter({ ...access(options.formatOptions), currencySign: undefined });
-  const textValue = (): string =>
-    Number.isNaN(state.numberValue()) ? "" : spoken().format(state.numberValue());
+  function textValue(): string {
+    return Number.isNaN(state.numberValue()) ? "" : spoken().format(state.numberValue());
+  }
 
   const { spinButtonProps, incrementButtonProps, decrementButtonProps } = spinButton({
     isDisabled: options.isDisabled,
@@ -591,14 +608,14 @@ export function numberField(
    * hold either has to ask for something wider — and the answers differ
    * between iOS and Android.
    */
-  const inputMode = (): string => {
+  function inputMode(): string {
     const resolved = format().resolvedOptions();
     const hasDecimals = (resolved.maximumFractionDigits ?? 0) > 0;
     const hasNegative = state.minValue() === undefined || (state.minValue() as number) < 0;
     if (hasNegative) return "text";
     if (hasDecimals) return "decimal";
     return "numeric";
-  };
+  }
 
   /**
    * What the browser would say about this number, when the state kept it off
@@ -609,7 +626,7 @@ export function numberField(
    * value is on it: a field with decimals and no step holds 1.5 when snapping,
    * and must not call it invalid when validating.
    */
-  const outOfRange = (value: number): string[] => {
+  function outOfRange(value: number): string[] {
     if (isServer || access(options.commitBehavior) !== "validate" || Number.isNaN(value)) {
       return [];
     }
@@ -622,7 +639,7 @@ export function numberField(
     probe.step = size === undefined || Number.isNaN(size) ? "any" : String(size);
     probe.value = String(value);
     return probe.validity.valid ? [] : [probe.validationMessage];
-  };
+  }
 
   const {
     labelProps,
@@ -666,9 +683,11 @@ export function numberField(
 
   // What the validation is told is left to the text field, which commits it
   // only for an edit: tabbing through must not clear a server's error.
-  const onBlur = (): void => state.commit();
+  function onBlur(): void {
+    return state.commit();
+  }
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     if (event.key !== "Enter" || isDisabled() || isReadOnly()) return;
     // Not prevented: a number field inside a form still submits it, with the
     // committed value rather than the typed one. The submit reads the form
@@ -677,9 +696,9 @@ export function numberField(
     state.commit();
     flush();
     validation.commitValidation();
-  };
+  }
 
-  const onPaste = (event: ClipboardEvent): void => {
+  function onPaste(event: ClipboardEvent): void {
     const input = event.target as HTMLInputElement;
     // Only a paste over the WHOLE field: anything else would need the new
     // string worked out from where the selection was, and a partial paste is
@@ -687,22 +706,22 @@ export function numberField(
     if ((input.selectionEnd ?? -1) - (input.selectionStart ?? 0) !== input.value.length) return;
     event.preventDefault();
     state.commit(event.clipboardData?.getData("text/plain")?.trim() ?? "");
-  };
+  }
 
   /** Focus the INPUT, not the button: a stepper is not a place to stand. */
-  const onButtonPressStart = (event: PressEvent): void => {
+  function onButtonPressStart(event: PressEvent): void {
     const input = access(options.inputRef) as HTMLInputElement | null;
     if (input === null) return;
     if (input.ownerDocument.activeElement === input) return;
     // Touch and screen readers keep focus on the button, so the software
     // keyboard does not appear and the reader's cursor does not jump.
     if (event.pointerType === "mouse") input.focus();
-  };
+  }
 
-  const fieldLabel = (): string => {
+  function fieldLabel(): string {
     const given = access(options.label);
     return (typeof given === "string" ? given : undefined) ?? access(options["aria-label"]) ?? "";
-  };
+  }
 
   return {
     labelProps,

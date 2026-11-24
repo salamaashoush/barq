@@ -100,6 +100,7 @@ import {
   type StyleProps,
   styleProps,
 } from "./utils.ts";
+import type { Point } from "./virtualizer.tsx";
 
 // ---------------------------------------------------------------------------
 // The menu
@@ -282,12 +283,22 @@ export function menuItem(options: MenuItemOptions, state: ListState<unknown>): M
   const descriptionId = id();
   const keyboardId = id();
 
-  const manager = () => state.selectionManager();
+  function manager() {
+    return state.selectionManager();
+  }
   const navigate = router();
-  const isTrigger = (): boolean => access(options["aria-haspopup"]) !== undefined;
-  const node = (): Node<unknown> | null => state.collection().getItem(options.key);
-  const kind = (): MenuItemType | undefined => access(options.type);
-  const checks = (): boolean => kind() === "checkbox" || kind() === "radio";
+  function isTrigger(): boolean {
+    return access(options["aria-haspopup"]) !== undefined;
+  }
+  function node(): Node<unknown> | null {
+    return state.collection().getItem(options.key);
+  }
+  function kind(): MenuItemType | undefined {
+    return access(options.type);
+  }
+  function checks(): boolean {
+    return kind() === "checkbox" || kind() === "radio";
+  }
 
   /**
    * Whether choosing this item takes the menu away.
@@ -297,7 +308,7 @@ export function menuItem(options: MenuItemOptions, state: ListState<unknown>): M
    * multi-select menu stays open, because there is no second gesture that
    * means "and I am done".
    */
-  const shouldClose = (event: PressEvent): boolean => {
+  function shouldClose(event: PressEvent): boolean {
     const declared = access(options.shouldCloseOnSelect);
     if (declared !== undefined) return declared;
     if (manager().isLink(options.key)) return true;
@@ -311,7 +322,7 @@ export function menuItem(options: MenuItemOptions, state: ListState<unknown>): M
       return event.key === "Enter" || manager().selectionMode === "none";
     }
     return manager().selectionMode !== "multiple";
-  };
+  }
 
   /**
    * `shouldSelectOnPressUp` with `allowsDifferentPressOrigin` is what makes
@@ -375,10 +386,13 @@ export function menuItem(options: MenuItemOptions, state: ListState<unknown>): M
     onHoverChange: options.onHoverChange,
   });
 
-  const isSelected = (): boolean =>
-    kind() === undefined ? item.isSelected() : checks() && access(options.isSelected) === true;
+  function isSelected(): boolean {
+    return kind() === undefined
+      ? item.isSelected()
+      : checks() && access(options.isSelected) === true;
+  }
 
-  const role = (): string => {
+  function role(): string {
     if (isTrigger()) return "menuitem";
     const own = kind();
     if (own === "checkbox") return "menuitemcheckbox";
@@ -388,7 +402,7 @@ export function menuItem(options: MenuItemOptions, state: ListState<unknown>): M
     if (mode === "single") return "menuitemradio";
     if (mode === "multiple") return "menuitemcheckbox";
     return "menuitem";
-  };
+  }
 
   return {
     isSelected,
@@ -444,10 +458,10 @@ export interface MenuSectionResult {
  */
 export function menuSection(options: MenuSectionOptions): MenuSectionResult {
   const headingId = id();
-  const hasHeading = (): boolean => {
+  function hasHeading(): boolean {
     const heading = access(options.heading);
     return heading !== undefined && heading !== null && heading !== "";
-  };
+  }
 
   return {
     itemProps: { role: "presentation" },
@@ -505,10 +519,10 @@ export function menuTriggerState(options: MenuTriggerStateOptions = {}): RootMen
   const [strategy, setStrategy] = createSignal<FocusStrategy | null>(null);
   const [expanded, setExpanded] = createSignal<Key[]>([]);
 
-  const close = (): void => {
+  function close(): void {
     setExpanded([]);
     overlay.close();
-  };
+  }
 
   return {
     ...overlay,
@@ -570,17 +584,19 @@ export function submenuTriggerState(
 ): SubmenuTriggerState {
   const level = root.expandedKeys().length;
   const [strategy, setStrategy] = createSignal<FocusStrategy | null>(null);
-  const isOpen = (): boolean => root.expandedKeys()[level] === options.triggerKey;
+  function isOpen(): boolean {
+    return root.expandedKeys()[level] === options.triggerKey;
+  }
 
-  const open = (focusStrategy: FocusStrategy | null = null): void => {
+  function open(focusStrategy: FocusStrategy | null = null): void {
     setStrategy(focusStrategy);
     root.openSubmenu(options.triggerKey, level);
-  };
+  }
 
-  const close = (): void => {
+  function close(): void {
     setStrategy(null);
     root.closeSubmenu(options.triggerKey, level);
-  };
+  }
 
   return {
     isOpen,
@@ -625,8 +641,12 @@ export function menuTrigger(
   state: MenuTriggerState,
 ): MenuTriggerResult {
   const triggerId = id();
-  const trigger = (): MenuTriggerType => access(options.trigger) ?? "press";
-  const isDisabled = (): boolean => access(options.isDisabled) === true;
+  function trigger(): MenuTriggerType {
+    return access(options.trigger) ?? "press";
+  }
+  function isDisabled(): boolean {
+    return access(options.isDisabled) === true;
+  }
 
   const { triggerProps, overlayProps } = overlayTrigger(
     { type: access(options.type) ?? "menu" },
@@ -635,17 +655,17 @@ export function menuTrigger(
   // The press handling below replaces it: a menu opens on down, not on press.
   delete triggerProps.onPress;
 
-  const openWithKey = (
+  function openWithKey(
     event: KeyboardEvent,
     strategy: FocusStrategy,
     forLongPress: boolean,
-  ): boolean => {
+  ): boolean {
     if (isDisabled()) return false;
     if (forLongPress !== (trigger() === "longPress")) return false;
     if (event.defaultPrevented) return false;
     state.toggle(strategy);
     return true;
-  };
+  }
 
   const { keyboardProps } = keyboard({
     isDisabled: options.isDisabled,
@@ -787,32 +807,34 @@ export function contextMenuTrigger(
   const menuId = id();
   const [anchor, setAnchor] = createSignal<AnchorRect | null>(null);
   const listeners = globalListeners();
-  const isDisabled = (): boolean => access(options.isDisabled) === true;
+  function isDisabled(): boolean {
+    return access(options.isDisabled) === true;
+  }
 
   let held: ReturnType<typeof setTimeout> | undefined;
-  let from: { x: number; y: number } | null = null;
+  let from: Point | null = null;
 
-  const cancelHold = (): void => {
+  function cancelHold(): void {
     if (held !== undefined) clearTimeout(held);
     held = undefined;
     from = null;
-  };
+  }
 
-  const openAt = (x: number, y: number, strategy: FocusStrategy | null): void => {
+  function openAt(x: number, y: number, strategy: FocusStrategy | null): void {
     setAnchor({ top: y, left: x, width: 0, height: 0 });
     state.open(strategy);
-  };
+  }
 
-  const onContextMenu = (event: MouseEvent): void => {
+  function onContextMenu(event: MouseEvent): void {
     // Disabled hands the page back the browser's own menu, which is what it
     // had before this was wrapped around it.
     if (isDisabled()) return;
     cancelHold();
     event.preventDefault();
     openAt(event.clientX, event.clientY, isKeyboardContextMenu(event) ? "first" : null);
-  };
+  }
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     if (isDisabled()) return;
     if (event.key !== "ContextMenu" && !(event.key === "F10" && event.shiftKey)) return;
     // Under the element that HAS focus, not at the region's own corner: the
@@ -823,9 +845,9 @@ export function contextMenuTrigger(
     event.preventDefault();
     const box = target.getBoundingClientRect();
     openAt(box.left, box.bottom, "first");
-  };
+  }
 
-  const onPointerDown = (event: PointerEvent): void => {
+  function onPointerDown(event: PointerEvent): void {
     if (isDisabled()) return;
     if (event.pointerType !== "touch" && event.pointerType !== "pen") return;
     cancelHold();
@@ -840,15 +862,15 @@ export function contextMenuTrigger(
       },
       access(options.longPressThreshold) ?? TOUCH_HOLD,
     );
-  };
+  }
 
-  const onPointerMove = (event: PointerEvent): void => {
+  function onPointerMove(event: PointerEvent): void {
     if (held === undefined || from === null) return;
     const moved =
       Math.abs(event.clientX - from.x) > TOUCH_SLOP ||
       Math.abs(event.clientY - from.y) > TOUCH_SLOP;
     if (moved) cancelHold();
-  };
+  }
 
   return {
     contextMenuTriggerProps: {
@@ -883,10 +905,10 @@ export function contextMenuTrigger(
  */
 function swallowNextClick(listeners: GlobalListeners, region: Element): void {
   const doc = ownerDocument(region);
-  const swallow = (click: Event): void => {
+  function swallow(click: Event): void {
     click.preventDefault();
     click.stopPropagation();
-  };
+  }
   listeners.add(doc, "click", swallow, { once: true, capture: true });
   setTimeout(() => listeners.remove(doc, "click", swallow, true), SWALLOW_WINDOW);
 }
@@ -927,7 +949,7 @@ const ANGLE_PADDING = Math.PI / 12;
 export function safelyMouseToSubmenu(options: SafelyMouseToSubmenuOptions): void {
   if (isServer) return;
 
-  let previous: { x: number; y: number } | null = null;
+  let previous: Point | null = null;
   let rect: DOMRect | null = null;
   let lastProcessed = 0;
   let side: "left" | "right" | null = null;
@@ -935,12 +957,12 @@ export function safelyMouseToSubmenu(options: SafelyMouseToSubmenuOptions): void
   let giveUp: ReturnType<typeof setTimeout> | undefined;
   const [blocked, setBlocked] = createSignal(false);
 
-  const reset = (): void => {
+  function reset(): void {
     setBlocked(false);
     towards = ALLOWED_INVALID_MOVEMENTS;
     previous = null;
     side = null;
-  };
+  }
 
   // The parent menu stops answering the pointer while the user is on their way
   // across it. Restored on the way out, and on close, by the same effect.
@@ -979,7 +1001,7 @@ export function safelyMouseToSubmenu(options: SafelyMouseToSubmenuOptions): void
 
       rect = submenu.getBoundingClientRect();
 
-      const onPointerMove = (event: PointerEvent): void => {
+      function onPointerMove(event: PointerEvent): void {
         if (event.pointerType === "touch" || event.pointerType === "pen") return;
 
         const now = Date.now();
@@ -1030,7 +1052,7 @@ export function safelyMouseToSubmenu(options: SafelyMouseToSubmenuOptions): void
             }, 100);
           }, GIVE_UP_TIME);
         }
-      };
+      }
 
       const view = ownerWindow(parent);
       view.addEventListener("pointermove", onPointerMove as EventListener);
@@ -1095,24 +1117,28 @@ export function submenuTrigger(
 ): SubmenuTriggerResult {
   const overlayId = id();
   const locale = useLocale();
-  const type = (): "menu" | "dialog" => access(options.type) ?? "menu";
-  const isDisabled = (): boolean => access(options.isDisabled) === true;
+  function type(): "menu" | "dialog" {
+    return access(options.type) ?? "menu";
+  }
+  function isDisabled(): boolean {
+    return access(options.isDisabled) === true;
+  }
 
   let opening: ReturnType<typeof setTimeout> | undefined;
-  const cancelOpen = (): void => {
+  function cancelOpen(): void {
     clearTimeout(opening);
     opening = undefined;
-  };
+  }
 
-  const openNow = (focusStrategy: FocusStrategy | null = null): void => {
+  function openNow(focusStrategy: FocusStrategy | null = null): void {
     cancelOpen();
     state.open(focusStrategy);
-  };
+  }
 
-  const closeNow = (): void => {
+  function closeNow(): void {
     cancelOpen();
     state.close();
-  };
+  }
 
   /**
    * Put focus back on the trigger, AFTER the submenu has gone.
@@ -1122,23 +1148,27 @@ export function submenuTrigger(
    * the user was standing on. A frame later the scope is disposed and the
    * trigger is the right place for focus to be.
    */
-  const restoreFocus = (): void => {
+  function restoreFocus(): void {
     if (access(options.shouldUseVirtualFocus) === true) return;
     const element = access(ref) as HTMLElement | null;
     if (element === null) return;
     requestAnimationFrame(() => {
       if (element.isConnected) focusWithoutScrolling(element);
     });
-  };
+  }
 
   tryCleanup(cancelOpen);
 
   /** The key that opens the submenu, which is the one pointing at it. */
-  const openKey = (): string => (locale().direction === "rtl" ? "ArrowLeft" : "ArrowRight");
-  const closeKey = (): string => (locale().direction === "rtl" ? "ArrowRight" : "ArrowLeft");
+  function openKey(): string {
+    return locale().direction === "rtl" ? "ArrowLeft" : "ArrowRight";
+  }
+  function closeKey(): string {
+    return locale().direction === "rtl" ? "ArrowRight" : "ArrowLeft";
+  }
 
   // On the SUBMENU, for getting back out of it.
-  const onSubmenuKeyDown = (event: BaseEvent<KeyboardEvent>): void => {
+  function onSubmenuKeyDown(event: BaseEvent<KeyboardEvent>): void {
     if (event.key !== closeKey() && event.key !== "Escape") {
       event.continuePropagation();
       return;
@@ -1156,10 +1186,10 @@ export function submenuTrigger(
     }
     closeNow();
     restoreFocus();
-  };
+  }
 
   // On the TRIGGER, for getting into it.
-  const onTriggerKeyDown = (event: BaseEvent<KeyboardEvent>): void => {
+  function onTriggerKeyDown(event: BaseEvent<KeyboardEvent>): void {
     if (isDisabled()) {
       event.continuePropagation();
       return;
@@ -1174,7 +1204,7 @@ export function submenuTrigger(
       return;
     }
     event.continuePropagation();
-  };
+  }
 
   const { keyboardProps: triggerKeyboardProps } = keyboard({ onKeyDown: onTriggerKeyDown });
   const { keyboardProps: submenuKeyboardProps } = keyboard({ onKeyDown: onSubmenuKeyDown });
@@ -1197,14 +1227,14 @@ export function submenuTrigger(
     (parent) => {
       if (parent === null) return undefined;
 
-      const onFocusIn = (event: FocusEvent): void => {
+      function onFocusIn(event: FocusEvent): void {
         if (!state.isOpen()) return;
         const target = targetElement(event);
         if (target === null || target === access(ref)) return;
         const submenu = access(options.submenuRef) as Element | null;
         if (submenu !== null && contains(submenu, target)) return;
         if (contains(parent, target)) closeNow();
-      };
+      }
 
       parent.addEventListener("focusin", onFocusIn as EventListener);
       return () => parent.removeEventListener("focusin", onFocusIn as EventListener);
@@ -1784,6 +1814,10 @@ interface MenuListProps<T> {
   trigger: MenuTriggerValue | null;
 }
 
+interface IdOption {
+  id?: MaybeAccessor<string | undefined>;
+}
+
 function MenuList<T>(listProps: MenuListProps<T>) {
   const domRef = makeRef<HTMLUListElement>();
   const props = listProps.of;
@@ -1817,11 +1851,11 @@ function MenuList<T>(listProps: MenuListProps<T>) {
     onSelectionChange: (keys) => props.onSelectionChange?.()?.(keys),
   });
 
-  const close = (): void => {
+  function close(): void {
     props.onClose?.()?.();
     if (submenu !== null) submenu.state.closeAll();
     trigger?.state.close();
-  };
+  }
 
   const { menuProps, baseId } = menu(
     {
@@ -1906,7 +1940,7 @@ function MenuList<T>(listProps: MenuListProps<T>) {
         access(
           (submenu?.submenuProps.id ?? trigger?.menuProps.id) as MaybeAccessor<string | undefined>,
         ) ??
-        access((options as unknown as { id?: MaybeAccessor<string | undefined> }).id) ??
+        access((options as unknown as IdOption).id) ??
         auto?.collectionProps.id(),
       "data-testid": () => props["data-testid"]?.(),
       "data-empty": () => state.collection().size === 0,
@@ -2019,7 +2053,7 @@ export function MenuItem(props: MenuItemComponentProps) {
       : null;
   const group = registry === undefined ? null : (getContext(MenuRadioGroupContext) ?? null);
   const sectionCloses = getContext(MenuSectionCloseContext) ?? null;
-  const ownType = (): MenuItemType | undefined => {
+  function ownType(): MenuItemType | undefined {
     if (registry === undefined) return undefined;
     const declared = props.type;
     if (declared !== undefined) return declared;
@@ -2029,7 +2063,7 @@ export function MenuItem(props: MenuItemComponentProps) {
       props.onChange !== undefined
       ? "checkbox"
       : "item";
-  };
+  }
   const ticked =
     registry === undefined
       ? null
@@ -2100,17 +2134,18 @@ export function MenuItem(props: MenuItemComponentProps) {
   const { focusProps, isFocusVisible: showsRing } = focusRing();
 
   const toHref = router().href;
-  const linked = (name: "href" | "target" | "rel" | "download"): unknown =>
-    cells(props)[name]?.() ?? node.props?.[name];
-  const href = (): string | undefined => {
+  function linked(name: "href" | "target" | "rel" | "download"): unknown {
+    return cells(props)[name]?.() ?? node.props?.[name];
+  }
+  function href(): string | undefined {
     const to = linked("href");
     return typeof to === "string" ? to : undefined;
-  };
+  }
   const isLink = href() !== undefined;
-  const checks = (): boolean => {
+  function checks(): boolean {
     const role = access(menuItemProps.role as MaybeAccessor<string>);
     return submenu === null && (role === "menuitemcheckbox" || role === "menuitemradio");
-  };
+  }
 
   const elementProps = mergeProps(
     menuItemProps,
@@ -2163,10 +2198,10 @@ export function MenuItem(props: MenuItemComponentProps) {
         if (!isOpeningLink()) event.preventDefault();
       },
     });
-    const anchorRef = (element: HTMLAnchorElement | null): void => {
+    function anchorRef(element: HTMLAnchorElement | null): void {
       domRef.set(element);
       written?.ref(element);
-    };
+    }
 
     return (
       <li role="none">
@@ -2230,17 +2265,23 @@ interface WrittenGroupProps extends StyleProps {
   children?: Child;
 }
 
+interface WrittenGroupSlot {
+  of: Incoming<WrittenGroupProps>;
+}
+
 /**
  * A `role="group"` around items written as children.
  *
  * It registers nothing: the items inside are the menu's own, in document
  * order, so the arrows cross the boundary without the group taking part.
  */
-function WrittenGroup(groupProps: { of: Incoming<WrittenGroupProps> }) {
+function WrittenGroup(groupProps: WrittenGroupSlot) {
   const props = groupProps.of;
   const headingId = id();
   const [isNamed, setNamed] = createSignal(false, { ownedWrite: true });
-  const hasHeading = (): boolean => props.heading?.() !== undefined;
+  function hasHeading(): boolean {
+    return props.heading?.() !== undefined;
+  }
   const heading: MenuGroupHeading = { id: headingId, name: setNamed };
 
   return (
@@ -2343,7 +2384,9 @@ export interface MenuSectionComponentProps<T> extends StyleProps {
  */
 export function MenuSection<T>(props: MenuSectionComponentProps<T>) {
   const enclosing = getContext(MenuSectionCloseContext) ?? null;
-  const closes = (): boolean | undefined => props.shouldCloseOnSelect ?? enclosing?.();
+  function closes(): boolean | undefined {
+    return props.shouldCloseOnSelect ?? enclosing?.();
+  }
   if (useMenu().staticItems !== undefined) {
     return provide(
       MenuSectionCloseContext,

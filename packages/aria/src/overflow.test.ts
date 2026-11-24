@@ -53,11 +53,11 @@ describe("overflowingKeys", () => {
 
 describe("overflowItems", () => {
   test("a row too narrow for its items checks the menu button reading only what it tracks", () => {
-    const sized = (width: number): HTMLElement => {
+    function sized(width: number): HTMLElement {
       const element = document.createElement("div");
       element.getBoundingClientRect = () => ({ width, height: 20 }) as DOMRect;
       return element;
-    };
+    }
     const parent = document.createElement("div");
     const wrapper = sized(150);
     const group = document.createElement("div");

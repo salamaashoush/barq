@@ -60,6 +60,7 @@ import {
   type DOMProps,
   type MaybeAccessor,
 } from "./utils.ts";
+import type { Size } from "./collections.ts";
 
 // ---------------------------------------------------------------------------
 // Open state
@@ -288,16 +289,18 @@ export function overlay(options: OverlayOptions, ref: ElementRef): OverlayResult
     );
   }
 
-  const isTopMost = (): boolean => openOverlays[openOverlays.length - 1] === ref;
+  function isTopMost(): boolean {
+    return openOverlays[openOverlays.length - 1] === ref;
+  }
 
-  const hide = (): void => {
+  function hide(): void {
     if (isTopMost()) options.onClose?.();
-  };
+  }
 
-  const shouldClose = (element: Element | null): boolean => {
+  function shouldClose(element: Element | null): boolean {
     if (options.shouldCloseOnInteractOutside === undefined) return true;
     return element !== null && options.shouldCloseOnInteractOutside(element);
-  };
+  }
 
   interactOutside({
     ref: inside,
@@ -337,13 +340,13 @@ export function overlay(options: OverlayOptions, ref: ElementRef): OverlayResult
     },
   });
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     if (event.key !== "Escape") return;
     if (access(options.isKeyboardDismissDisabled) === true) return;
     event.stopPropagation();
     event.preventDefault();
     hide();
-  };
+  }
 
   if (!isServer) {
     followOpen(
@@ -351,12 +354,12 @@ export function overlay(options: OverlayOptions, ref: ElementRef): OverlayResult
       (listens) => {
         if (!listens) return undefined;
         const doc = ownerDocument(access(ref));
-        const onDocumentKeyDown = (event: KeyboardEvent): void => {
+        function onDocumentKeyDown(event: KeyboardEvent): void {
           // Inside the overlay its own handler has already answered, and an
           // overlay further up the stack is the one Escape belongs to.
           if (event.defaultPrevented || !isTopMost()) return;
           onKeyDown(event);
-        };
+        }
         doc.addEventListener("keydown", onDocumentKeyDown);
         return () => doc.removeEventListener("keydown", onDocumentKeyDown);
       },
@@ -369,6 +372,12 @@ export function overlay(options: OverlayOptions, ref: ElementRef): OverlayResult
   };
 }
 
+export interface CloseOnScrollOptions {
+  triggerRef: ElementRef;
+  isOpen?: MaybeAccessor<boolean | undefined>;
+  onClose?: (() => void) | null;
+}
+
 /**
  * Close when the trigger scrolls out from under the overlay.
  *
@@ -376,11 +385,7 @@ export function overlay(options: OverlayOptions, ref: ElementRef): OverlayResult
  * nothing. Scrolling inside a field is ignored: a combobox input scrolls its
  * own text when the caret moves, which is not the page moving.
  */
-export function closeOnScroll(options: {
-  triggerRef: ElementRef;
-  isOpen?: MaybeAccessor<boolean | undefined>;
-  onClose?: (() => void) | null;
-}): void {
+export function closeOnScroll(options: CloseOnScrollOptions): void {
   if (isServer) return;
 
   followOpen(
@@ -391,13 +396,13 @@ export function closeOnScroll(options: {
     (trigger) => {
       if (trigger === null) return undefined;
 
-      const onScroll = (event: Event): void => {
+      function onScroll(event: Event): void {
         const target = targetElement(event);
         // A scroller elsewhere in the page does not move the trigger.
         if (target !== null && !contains(target, trigger)) return;
         if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
         options.onClose?.();
-      };
+      }
 
       return addEvent(propagationTargets(trigger), "scroll", onScroll, true);
     },
@@ -427,6 +432,11 @@ function isAlwaysVisible(node: Element): boolean {
   return data?.barqLiveAnnouncer === "true" || node.hasAttribute(TOP_LAYER_ATTRIBUTE);
 }
 
+export interface AriaHideOutsideOptions {
+  root?: Element;
+  shouldUseInert?: boolean;
+}
+
 /**
  * Hide everything except `targets` from assistive technology.
  *
@@ -438,7 +448,7 @@ function isAlwaysVisible(node: Element): boolean {
  */
 export function ariaHideOutside(
   targets: Element[],
-  options: { root?: Element; shouldUseInert?: boolean } = {},
+  options: AriaHideOutsideOptions = {},
 ): () => void {
   if (isServer || typeof MutationObserver === "undefined") return () => {};
 
@@ -449,12 +459,13 @@ export function ariaHideOutside(
   const visible = new Set<Element>(targets);
   const hidden = new Set<Element>();
 
-  const isHidden = (element: Element): boolean =>
-    useInert && element instanceof view.HTMLElement
+  function isHidden(element: Element): boolean {
+    return useInert && element instanceof view.HTMLElement
       ? element.inert
       : element.getAttribute("aria-hidden") === "true";
+  }
 
-  const setHidden = (element: Element, value: boolean): void => {
+  function setHidden(element: Element, value: boolean): void {
     if (useInert && element instanceof view.HTMLElement) {
       element.inert = value;
       return;
@@ -465,9 +476,9 @@ export function ariaHideOutside(
     }
     element.removeAttribute("aria-hidden");
     if (element instanceof view.HTMLElement) element.inert = false;
-  };
+  }
 
-  const hide = (node: Element): void => {
+  function hide(node: Element): void {
     const count = hiddenCounts.get(node) ?? 0;
     // Already hidden by the page itself: leave it alone entirely, so the undo
     // does not reveal something that was never ours.
@@ -475,16 +486,16 @@ export function ariaHideOutside(
     if (count === 0) setHidden(node, true);
     hidden.add(node);
     hiddenCounts.set(node, count + 1);
-  };
+  }
 
-  const walk = (from: Element): void => {
+  function walk(from: Element): void {
     for (const element of from.querySelectorAll(
       `[data-barq-live-announcer], [${TOP_LAYER_ATTRIBUTE}]`,
     )) {
       visible.add(element);
     }
 
-    const accept = (node: Element): number => {
+    function accept(node: Element): number {
       // `aria-hidden` is inherited, so a child of a hidden node needs nothing.
       // `role="row"` is the exception: iOS VoiceOver ignores `aria-hidden` on
       // a row, so its cells have to be hidden individually.
@@ -504,7 +515,7 @@ export function ariaHideOutside(
       }
 
       return NodeFilter.FILTER_ACCEPT;
-    };
+    }
 
     const verdict = accept(from);
     if (verdict === NodeFilter.FILTER_ACCEPT) hide(from);
@@ -518,7 +529,7 @@ export function ariaHideOutside(
       hide(node as Element);
       node = walker.nextNode();
     }
-  };
+  }
 
   // A previous call's observer stops watching while this one is on top.
   hideStack[hideStack.length - 1]?.disconnect();
@@ -587,6 +598,10 @@ export function keepVisible(element: Element): (() => void) | undefined {
 let scrollLocks = 0;
 let releaseScroll: (() => void) | null = null;
 
+export interface PreventScrollOptions {
+  isDisabled?: MaybeAccessor<boolean | undefined>;
+}
+
 /**
  * Stop the page scrolling behind a modal.
  *
@@ -595,9 +610,7 @@ let releaseScroll: (() => void) | null = null;
  * up, when an input is focused, and when the keyboard's next/previous buttons
  * move between fields. Each needs its own answer.
  */
-export function preventScroll(
-  options: { isDisabled?: MaybeAccessor<boolean | undefined> } = {},
-): void {
+export function preventScroll(options: PreventScrollOptions = {}): void {
   if (isServer) return;
 
   followOpen(
@@ -644,7 +657,7 @@ function preventScrollWebKitIOS(): () => void {
   let scroller: Element | null = null;
   let allowTouchMove = false;
 
-  const onTouchStart = (event: Event): void => {
+  function onTouchStart(event: Event): void {
     const touch = event as TouchEvent;
     const target = targetElement(touch);
     if (target === null) return;
@@ -670,9 +683,9 @@ function preventScrollWebKitIOS(): () => void {
     ) {
       allowTouchMove = true;
     }
-  };
+  }
 
-  const onTouchMove = (event: Event): void => {
+  function onTouchMove(event: Event): void {
     const touch = event as TouchEvent;
     if (touch.touches.length === 2 || allowTouchMove) return;
 
@@ -689,7 +702,7 @@ function preventScrollWebKitIOS(): () => void {
     ) {
       touch.preventDefault();
     }
-  };
+  }
 
   // Injected as a stylesheet because iOS 26 requires it to be in effect before
   // the touchstart, which a property set in the handler is not.
@@ -714,6 +727,10 @@ function preventScrollWebKitIOS(): () => void {
   };
 }
 
+interface WebpackGlobals {
+  __webpack_nonce__?: string;
+}
+
 /**
  * The nonce a Content Security Policy wants on an injected `<style>`, as the
  * page publishes it: a `csp-nonce` meta tag, or the bundler's global.
@@ -726,8 +743,8 @@ function cspNonce(doc: Document): string | undefined {
     if (declared) return declared;
   }
   const bundled =
-    (view as { __webpack_nonce__?: string } | null)?.__webpack_nonce__ ??
-    (globalThis as { __webpack_nonce__?: string }).__webpack_nonce__;
+    (view as WebpackGlobals | null)?.__webpack_nonce__ ??
+    (globalThis as WebpackGlobals).__webpack_nonce__;
   return bundled === undefined || bundled === "" ? undefined : bundled;
 }
 
@@ -749,7 +766,7 @@ function afterKeyboard(run: () => void): void {
         return;
       }
       let done = false;
-      const finish = (): void => {
+      const finish: () => void = () => {
         if (done) return;
         done = true;
         visual.removeEventListener("resize", finish);
@@ -958,24 +975,26 @@ function boxOf(element: Element): Box {
  * `getBoundingClientRect` reports what is PAINTED, which for anything mid-
  * animation is the wrong number to place it by.
  */
-function layoutSize(element: Element): { width: number; height: number } {
+function layoutSize(element: Element): Size {
   const html = element as HTMLElement;
   return html.offsetWidth > 0 || html.offsetHeight > 0
     ? { width: html.offsetWidth, height: html.offsetHeight }
     : boxOf(element);
 }
 
+interface PanelPosition {
+  top: number;
+  left: number;
+}
+
 function place(
   target: Box,
-  panel: { width: number; height: number },
+  panel: Size,
   axis: Axis,
   align: string,
   offset: number,
   cross: number,
-): {
-  top: number;
-  left: number;
-} {
+): PanelPosition {
   let top = 0;
   let left = 0;
 
@@ -1047,9 +1066,12 @@ function isSet(value: string | undefined): boolean {
   return value !== undefined && value !== "" && value !== "none";
 }
 
+interface WebkitBackdrop {
+  webkitBackdropFilter?: string;
+}
+
 function establishesContainingBlock(style: CSSStyleDeclaration): boolean {
-  const backdrop = (style as CSSStyleDeclaration & { webkitBackdropFilter?: string })
-    .webkitBackdropFilter;
+  const backdrop = (style as CSSStyleDeclaration & WebkitBackdrop).webkitBackdropFilter;
   return (
     (style.position !== "" && style.position !== "static") ||
     isSet(style.transform) ||
@@ -1119,7 +1141,7 @@ export function overlayPosition(options: PositionOptions): PositionResult {
   const [arrowOffset, setArrowOffset] = createSignal<number | undefined>(undefined);
   const [resolvedAxis, setResolvedAxis] = createSignal<Axis>("bottom");
 
-  const update = (): void => {
+  function update(): void {
     const target = access(options.targetRef) ?? null;
     const rect = access(options.targetRect) ?? null;
     const element = access(options.overlayRef) as Element | null;
@@ -1177,7 +1199,7 @@ export function overlayPosition(options: PositionOptions): PositionResult {
     // axis would detach the overlay from its trigger. An overlay with an arrow
     // first keeps enough of itself over the trigger for the arrow to point at
     // it, however far a cross offset asked it to go.
-    const shift = (at: { top: number; left: number }, height: number): void => {
+    const shift: (at: PanelPosition, height: number) => void = (at, height) => {
       if (vertical) {
         if (arrowSize > 0) {
           at.left = clamp(
@@ -1300,12 +1322,15 @@ export function overlayPosition(options: PositionOptions): PositionResult {
       );
       setArrowOffset(centre - arrowSize / 2);
     }
-  };
+  }
 
   if (!isServer) {
-    const onChange = (): void => update();
-    const whileOpen = (ref: ElementRef): Element | null =>
-      access(options.isOpen) === false ? null : (access(ref) as Element | null);
+    function onChange(): void {
+      return update();
+    }
+    function whileOpen(ref: ElementRef): Element | null {
+      return access(options.isOpen) === false ? null : (access(ref) as Element | null);
+    }
 
     // The FIRST measurement is taken the moment the ref resolves, which is
     // before the browser has laid the overlay out: a popover measured 275px

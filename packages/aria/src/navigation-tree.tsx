@@ -62,10 +62,14 @@ import {
 } from "./tree.tsx";
 import { filterDOMProps, fromProps, mergeProps, type StyleProps, styleProps } from "./utils.ts";
 
+interface SyncedRoute {
+  route: string | null | undefined;
+}
+
 interface NavigationTreeContextValue {
   selectedRoute: Accessor<string | null | undefined>;
   /** The route focus was last moved to, so the rows move it once per change between them. */
-  synced: { route: string | null | undefined };
+  synced: SyncedRoute;
   element: Accessor<HTMLDivElement | null>;
 }
 
@@ -132,10 +136,12 @@ function keyForRoute(collection: TreeCollection<unknown>, route: string): Key | 
   return null;
 }
 
-const ancestorsCache = new WeakMap<
-  TreeCollection<unknown>,
-  { route: string; ancestors: Set<Key> }
->();
+interface CachedAncestors {
+  route: string;
+  ancestors: Set<Key>;
+}
+
+const ancestorsCache = new WeakMap<TreeCollection<unknown>, CachedAncestors>();
 
 /** Every row above the route's item, cached so each row does not walk the tree. */
 function ancestorsOfRoute(collection: TreeCollection<unknown>, route: string): Set<Key> {
@@ -186,16 +192,18 @@ export function NavigationTreeItem(props: NavigationTreeItemProps) {
   const node = useTreeNode();
   const rowRef = makeRef<HTMLDivElement>();
 
-  const href = (): string | undefined => {
+  function href(): string | undefined {
     const given = node.props?.href;
     return typeof given === "string" && given.length > 0 ? given : undefined;
-  };
-  const isCurrent = (): boolean => href() !== undefined && href() === navigation.selectedRoute();
-  const isCurrentAncestor = (): boolean => {
+  }
+  function isCurrent(): boolean {
+    return href() !== undefined && href() === navigation.selectedRoute();
+  }
+  function isCurrentAncestor(): boolean {
     const route = navigation.selectedRoute();
     if (route === null || route === undefined) return false;
     return ancestorsOfRoute(root.state.collection(), route).has(node.key);
-  };
+  }
 
   createEffect(
     () => ({

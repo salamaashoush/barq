@@ -52,7 +52,7 @@ import { isServer } from "@barqjs/web";
 import { resizeObserver } from "@barqjs/primitives/observers";
 import { ref as makeRef } from "@barqjs/primitives/refs";
 
-import type { Key } from "./collections.ts";
+import type { Key, Size } from "./collections.ts";
 import { activeElement, contains, ownerDocument, targetElement } from "./dom.ts";
 import { focusableWalker } from "./focus.ts";
 import { useLocale } from "./i18n.ts";
@@ -118,14 +118,16 @@ export function navigationMenuState(options: NavigationMenuStateOptions = {}): N
   let warmTimer: ReturnType<typeof setTimeout> | null = null;
   let warm = false;
 
-  const clear = (timer: ReturnType<typeof setTimeout> | null): null => {
+  function clear(timer: ReturnType<typeof setTimeout> | null): null {
     if (timer !== null) clearTimeout(timer);
     return null;
-  };
+  }
 
-  const value = (): Key | null => access(options.value) ?? inner();
+  function value(): Key | null {
+    return access(options.value) ?? inner();
+  }
 
-  const set = (next: Key | null): void => {
+  function set(next: Key | null): void {
     const now = value();
     if (now === next) return;
     warmTimer = clear(warmTimer);
@@ -143,13 +145,13 @@ export function navigationMenuState(options: NavigationMenuStateOptions = {}): N
     setPrevious(now);
     if (access(options.value) === undefined) setInner(next);
     options.onValueChange?.(next);
-  };
+  }
 
-  const open = (next: Key): void => {
+  function open(next: Key): void {
     openTimer = clear(openTimer);
     closeTimer = clear(closeTimer);
     set(next);
-  };
+  }
 
   return {
     value,
@@ -299,6 +301,11 @@ function mouseOnly(handler: () => void): (event: PointerEvent) => void {
   };
 }
 
+interface IndicatorExtent {
+  offset: number;
+  size: number;
+}
+
 /**
  * The behaviour of a navigation menu, as props for the elements that make it.
  *
@@ -324,9 +331,15 @@ export function navigationMenu(
   state: NavigationMenuState,
 ): NavigationMenuResult {
   const locale = useLocale();
-  const orientation = (): Orientation => access(options.orientation) ?? "horizontal";
-  const direction = (): Direction => access(options.direction) ?? locale().direction;
-  const root = (): Element | null => (access(options.ref) as Element | null) ?? null;
+  function orientation(): Orientation {
+    return access(options.orientation) ?? "horizontal";
+  }
+  function direction(): Direction {
+    return access(options.direction) ?? locale().direction;
+  }
+  function root(): Element | null {
+    return (access(options.ref) as Element | null) ?? null;
+  }
 
   const items = new Map<Key, ItemRecord>();
   // `ownedWrite`: an item registers from a component body. The array beside it
@@ -336,10 +349,8 @@ export function navigationMenu(
   const [order, setOrder] = createSignal<Key[]>([], { ownedWrite: true });
 
   const viewport = makeRef<HTMLElement>();
-  const [viewportSize, setViewportSize] = createSignal<{ width: number; height: number } | null>(
-    null,
-  );
-  const [indicator, setIndicator] = createSignal<{ offset: number; size: number } | null>(null);
+  const [viewportSize, setViewportSize] = createSignal<Size | null>(null);
+  const [indicator, setIndicator] = createSignal<IndicatorExtent | null>(null);
   // The viewport is a surface of its own, with a size it keeps from the last
   // panel. Left in view while nothing is open, it is an empty box under the bar.
   const viewportGate = presence({ isOpen: () => state.value() !== null, ref: viewport });
@@ -349,30 +360,30 @@ export function navigationMenu(
   /** The item whose panel takes focus as soon as it exists. */
   let entering: Key | null = null;
 
-  const openRecord = (): ItemRecord | null => {
+  function openRecord(): ItemRecord | null {
     const key = state.value();
     return key === null ? null : (items.get(key) ?? null);
-  };
+  }
 
-  const focusInto = (content: HTMLElement, end: "first" | "last"): boolean => {
+  function focusInto(content: HTMLElement, end: "first" | "last"): boolean {
     const inside = tabbablesIn(content);
     const target = end === "first" ? inside[0] : inside[inside.length - 1];
     if (target === undefined) return false;
     target.focus();
     return true;
-  };
+  }
 
   /** Close, handing focus back to the trigger when it was inside the panel. */
-  const dismiss = (): void => {
+  function dismiss(): void {
     const record = openRecord();
     const content = record?.content() ?? null;
     const held = content !== null && contains(content, activeElement(ownerDocument(content)));
     state.close();
     if (held) record?.trigger()?.focus();
-  };
+  }
 
   /** Move along `group` for an arrow, Home or End. */
-  const move = (event: KeyboardEvent, group: HTMLElement[]): void => {
+  function move(event: KeyboardEvent, group: HTMLElement[]): void {
     if (event.defaultPrevented || isModified(event) || event.shiftKey) return;
     if (!MOVES.has(event.key)) return;
     const current = targetElement(event)?.closest<HTMLElement>(`[${ITEM}]`) ?? null;
@@ -385,14 +396,15 @@ export function navigationMenu(
 
     candidates[0]?.focus();
     event.preventDefault();
-  };
+  }
 
-  const itemsOf = (container: Element, content: Element | null): HTMLElement[] =>
-    [...container.querySelectorAll<HTMLElement>(`[${ITEM}]`)].filter(
+  function itemsOf(container: Element, content: Element | null): HTMLElement[] {
+    return [...container.querySelectorAll<HTMLElement>(`[${ITEM}]`)].filter(
       (element) =>
         element.closest(`[${CONTENT}]`) === content &&
         !(element instanceof HTMLButtonElement && element.disabled),
     );
+  }
 
   /**
    * Tab through the open panel as if it came straight after its trigger.
@@ -400,7 +412,7 @@ export function navigationMenu(
    * Nothing is done when the document's own order already says that, which is
    * every menu with no shared viewport.
    */
-  const onTab = (event: KeyboardEvent): void => {
+  function onTab(event: KeyboardEvent): void {
     const record = openRecord();
     const trigger = record?.trigger() ?? null;
     const content = record?.content() ?? null;
@@ -424,9 +436,9 @@ export function navigationMenu(
 
     event.preventDefault();
     next.focus();
-  };
+  }
 
-  const onRootKeyDown = (event: KeyboardEvent): void => {
+  function onRootKeyDown(event: KeyboardEvent): void {
     if (event.defaultPrevented || isModified(event)) return;
     if (event.key === "Tab") {
       onTab(event);
@@ -438,14 +450,14 @@ export function navigationMenu(
       event.stopPropagation();
       dismiss();
     }
-  };
+  }
 
-  const onListKeyDown = (event: KeyboardEvent): void => {
+  function onListKeyDown(event: KeyboardEvent): void {
     const list = event.currentTarget as Element;
     const inPanel = targetElement(event)?.closest(`[${CONTENT}]`) ?? null;
     if (inPanel !== null) return;
     move(event, itemsOf(list, null));
-  };
+  }
 
   if (!isServer) {
     // While something is open, the rest of the page can close it: a press
@@ -457,7 +469,7 @@ export function navigationMenu(
         if (nav === null) return undefined;
         const doc = ownerDocument(nav);
 
-        const onPointerDown = (event: Event): void => {
+        function onPointerDown(event: Event): void {
           const target = targetElement(event);
           if (target === null) return;
           if (contains(nav, target)) {
@@ -472,18 +484,18 @@ export function navigationMenu(
             }
           }
           state.close();
-        };
+        }
 
-        const onFocusIn = (event: Event): void => {
+        function onFocusIn(event: Event): void {
           const target = targetElement(event);
           if (target !== null && !contains(nav, target)) state.close();
-        };
+        }
 
-        const onKeyDown = (event: KeyboardEvent): void => {
+        function onKeyDown(event: KeyboardEvent): void {
           if (event.key !== "Escape" || event.defaultPrevented) return;
           if (contains(nav, targetElement(event))) return;
           state.close();
-        };
+        }
 
         doc.addEventListener("pointerdown", onPointerDown, true);
         doc.addEventListener("focusin", onFocusIn, true);
@@ -498,8 +510,10 @@ export function navigationMenu(
 
     // Where the open trigger is along the bar. Kept when the menu closes, so
     // the indicator fades out where it was rather than jumping to the corner.
-    const placement = () => [root(), openRecord()?.trigger() ?? null, orientation()] as const;
-    const place = ([nav, trigger, along]: ReturnType<typeof placement>): void => {
+    function placement() {
+      return [root(), openRecord()?.trigger() ?? null, orientation()] as const;
+    }
+    function place([nav, trigger, along]: ReturnType<typeof placement>): void {
       if (nav === null || trigger === null) return;
       const bar = nav.getBoundingClientRect();
       const box = trigger.getBoundingClientRect();
@@ -508,34 +522,36 @@ export function navigationMenu(
           ? { offset: box.left - bar.left, size: box.width }
           : { offset: box.top - bar.top, size: box.height },
       );
-    };
+    }
     createEffect(placement, place);
     resizeObserver(root, () => place(placement()));
   }
 
-  const register = (key: Key): void => {
+  function register(key: Key): void {
     // Declaration order, and it has to be stable: the motion direction is an
     // index comparison, so a list that reorders itself would animate the wrong
     // way. An item registers once and stays where it was.
     if (declared.includes(key)) return;
     declared.push(key);
     setOrder([...declared]);
-  };
+  }
 
-  const item = (itemOptions: NavigationMenuItemOptions = {}): NavigationMenuItemResult => {
+  function item(itemOptions: NavigationMenuItemOptions = {}): NavigationMenuItemResult {
     const key = itemOptions.key ?? createUniqueId();
     const trigger = makeRef<HTMLElement>();
     const content = makeRef<HTMLElement>();
     const triggerId = id();
     const contentId = id();
-    const isOpen = (): boolean => state.value() === key;
+    function isOpen(): boolean {
+      return state.value() === key;
+    }
     /** One pointer visit opens once, however many moves it is made of. */
     let visited = false;
 
     register(key);
     items.set(key, { trigger, content });
 
-    const enter = (): void => {
+    function enter(): void {
       if (!isOpen()) {
         viaHover = false;
         state.open(key);
@@ -543,7 +559,7 @@ export function navigationMenu(
       const element = content();
       if (element !== null && element.isConnected && focusInto(element, "first")) return;
       entering = key;
-    };
+    }
 
     if (!isServer) {
       // The panel is built after the key that asked for it, and a portalled one
@@ -551,7 +567,7 @@ export function navigationMenu(
       createEffect(content, (element) => {
         if (element === null || entering !== key) return undefined;
         let attempts = 4;
-        const attempt = (): void => {
+        const attempt: () => void = () => {
           if (entering !== key) return;
           if (element.isConnected) {
             entering = null;
@@ -567,21 +583,23 @@ export function navigationMenu(
       // The viewport grows to whatever is open, so the panel says how big it
       // is. `offsetWidth`, not `getBoundingClientRect`: every panel enters with
       // a scale animation, and a transformed box reports what it is PAINTED at.
-      const shown = (): HTMLElement | null => (isOpen() ? content() : null);
-      const report = (element: HTMLElement | null): void => {
+      function shown(): HTMLElement | null {
+        return isOpen() ? content() : null;
+      }
+      function report(element: HTMLElement | null): void {
         if (element === null) return;
         setViewportSize({ width: element.offsetWidth, height: element.offsetHeight });
-      };
+      }
       createEffect(shown, report);
       resizeObserver(shown, () => report(shown()));
     }
 
-    const onContentKeyDown = (event: KeyboardEvent): void => {
+    function onContentKeyDown(event: KeyboardEvent): void {
       const element = event.currentTarget as Element;
       // A panel inside this one answers for its own links.
       if (targetElement(event)?.closest(`[${CONTENT}]`) !== element) return;
       move(event, itemsOf(element, element));
-    };
+    }
 
     return {
       key,
@@ -591,7 +609,9 @@ export function navigationMenu(
       triggerRef: trigger.set,
       contentRef: content.set,
       triggerProps: (triggerOptions = {}) => {
-        const isDisabled = (): boolean => access(triggerOptions.isDisabled) === true;
+        function isDisabled(): boolean {
+          return access(triggerOptions.isDisabled) === true;
+        }
         return {
           id: triggerId,
           [ITEM]: "",
@@ -647,10 +667,12 @@ export function navigationMenu(
         onKeyDown: onContentKeyDown,
       },
     };
-  };
+  }
 
-  const linkProps = (linkOptions: NavigationMenuLinkOptions = {}): DOMProps => {
-    const isActive = (): boolean => access(linkOptions.isActive) === true;
+  function linkProps(linkOptions: NavigationMenuLinkOptions = {}): DOMProps {
+    function isActive(): boolean {
+      return access(linkOptions.isActive) === true;
+    }
     return {
       [ITEM]: "",
       "data-active": () => (isActive() ? "true" : undefined),
@@ -672,7 +694,7 @@ export function navigationMenu(
         if (content !== null && contains(content, link)) dismiss();
       },
     };
-  };
+  }
 
   return {
     order,

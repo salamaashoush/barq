@@ -1,3 +1,17 @@
+interface NavigatorWithData {
+  userAgentData?: UserAgentData;
+}
+
+interface UserAgentData {
+  brands?: UserAgentBrand[];
+  platform?: string;
+}
+
+interface UserAgentBrand {
+  brand: string;
+  version: string;
+}
+
 /**
  * Browser and platform detection.
  *
@@ -12,19 +26,14 @@
 
 function testUserAgent(re: RegExp): boolean {
   if (typeof window === "undefined" || window.navigator === undefined) return false;
-  const brands = (
-    window.navigator as Navigator & {
-      userAgentData?: { brands?: { brand: string; version: string }[]; platform?: string };
-    }
-  ).userAgentData?.brands;
+  const brands = (window.navigator as Navigator & NavigatorWithData).userAgentData?.brands;
   if (Array.isArray(brands) && brands.some((b) => re.test(b.brand))) return true;
   return re.test(window.navigator.userAgent);
 }
 
 function testPlatform(re: RegExp): boolean {
   if (typeof window === "undefined" || window.navigator === undefined) return false;
-  const data = (window.navigator as Navigator & { userAgentData?: { platform?: string } })
-    .userAgentData;
+  const data = (window.navigator as Navigator & NavigatorWithData).userAgentData;
   // Chromium can report an empty platform here; the legacy one still answers.
   return re.test(data?.platform || window.navigator.platform);
 }

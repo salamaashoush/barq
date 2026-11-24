@@ -196,7 +196,7 @@ export function safeArea(options: SafeAreaOptions): void {
         : ((access(options.triggerRef) as Element | null) ?? null),
     (trigger) => {
       if (trigger === null) return undefined;
-      const onPointerMove = (event: PointerEvent): void => {
+      const onPointerMove: (event: PointerEvent) => void = (event) => {
         if (event.pointerType === "touch") return;
         const overlay = untrack(() => access(options.overlayRef)) as Element | null;
         options.onSafeAreaChange(
@@ -207,7 +207,9 @@ export function safeArea(options: SafeAreaOptions): void {
           ),
         );
       };
-      const onPointerLeave = (): void => options.onSafeAreaChange(false);
+      function onPointerLeave(): void {
+        return options.onSafeAreaChange(false);
+      }
 
       const view = ownerWindow(trigger);
       const root = ownerDocument(trigger).documentElement;
@@ -248,11 +250,15 @@ export function previewTrigger(
   state: TooltipTriggerState,
 ): PreviewTriggerResult {
   const popoverId = id();
-  const isDisabled = (): boolean => access(options.isDisabled) === true;
-  const trigger = (): HTMLElement | null =>
-    (access(options.triggerRef) as HTMLElement | null) ?? null;
-  const popover = (): HTMLElement | null =>
-    (access(options.popoverRef) as HTMLElement | null) ?? null;
+  function isDisabled(): boolean {
+    return access(options.isDisabled) === true;
+  }
+  function trigger(): HTMLElement | null {
+    return (access(options.triggerRef) as HTMLElement | null) ?? null;
+  }
+  function popover(): HTMLElement | null {
+    return (access(options.popoverRef) as HTMLElement | null) ?? null;
+  }
 
   // The focus a focus scope gives back on close must not reopen the preview.
   let ignoreFocus = false;
@@ -260,15 +266,17 @@ export function previewTrigger(
   let shouldFocusOnOpen = false;
   let pointerInSafeArea = false;
 
-  const keepOpen = (): void => state.open(true);
+  function keepOpen(): void {
+    return state.open(true);
+  }
 
-  const checkClose = (): void => {
+  function checkClose(): void {
     if (pointerInSafeArea) return;
     const element = trigger();
     const active = element === null ? null : activeElement(ownerDocument(element));
     if (isFocusVisible() && (contains(element, active) || contains(popover(), active))) return;
     state.close();
-  };
+  }
 
   if (!isServer) {
     createEffect(
@@ -282,7 +290,7 @@ export function previewTrigger(
 
     createEffect(trigger, (element) => {
       if (element === null) return undefined;
-      const onRestore = (event: Event): void => {
+      const onRestore: (event: Event) => void = (event) => {
         event.preventDefault();
         // Only for the length of the call: focus events are dispatched inside
         // it, and a flag left for the next event would swallow a real one
@@ -318,7 +326,7 @@ export function previewTrigger(
     },
   });
 
-  const onFocus = (event: FocusEvent): void => {
+  function onFocus(event: FocusEvent): void {
     if (isDisabled()) return;
     if (ignoreFocus) return;
     // A long press focuses the link on release, after focus already went into
@@ -331,9 +339,9 @@ export function previewTrigger(
     // After the delay, not at once: tabbing quickly through a list of links
     // must not open, and add the Tab stops of, a preview per link.
     if (isFocusVisible()) state.open();
-  };
+  }
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     const element = popover();
     if (event.key === "Tab" && !event.shiftKey && state.isOpen() && element !== null) {
       const first = focusableWalker(element, { tabbable: true }).nextNode() as HTMLElement | null;
@@ -353,13 +361,13 @@ export function previewTrigger(
       }
     }
     (event as Partial<BaseEvent<KeyboardEvent>>).continuePropagation?.();
-  };
+  }
 
   const how = modality();
-  const shouldLongPress = (): boolean => {
+  function shouldLongPress(): boolean {
     const current = how();
     return (current === "pointer" || current === "virtual" || current === null) && isTouchCapable();
-  };
+  }
 
   const { longPressProps } = longPress({
     isDisabled,
@@ -484,7 +492,9 @@ export function PreviewTrigger(props: PreviewTriggerComponentProps) {
     popoverProps,
   };
 
-  const setOpen = (open: boolean): void => (open ? state.open(true) : state.close(true));
+  function setOpen(open: boolean): void {
+    return open ? state.open(true) : state.close(true);
+  }
 
   return (
     <>

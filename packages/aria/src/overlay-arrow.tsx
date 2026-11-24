@@ -83,11 +83,13 @@ export interface OverlayArrowResult {
 }
 
 export function overlayArrow(options: OverlayArrowOptions): OverlayArrowResult {
-  const placement = (): Axis | null => access(options.placement);
-  const measured = (): CrossOffset => {
+  function placement(): Axis | null {
+    return access(options.placement);
+  }
+  function measured(): CrossOffset {
     const style = access(options.arrowProps?.style as MaybeAccessor<CrossOffset | undefined>);
     return style ?? {};
-  };
+  }
 
   return {
     placement,

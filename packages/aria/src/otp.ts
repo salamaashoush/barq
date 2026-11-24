@@ -128,6 +128,18 @@ export interface OtpFieldOptions {
   pushPasswordManagerStrategy?: MaybeAccessor<OtpPasswordManagerStrategy | undefined>;
 }
 
+export interface OtpInputProps {
+  onInput(event: Event): void;
+  onPaste(event: ClipboardEvent): void;
+  onFocus(): void;
+  onBlur(): void;
+  onSelect(): void;
+  onKeyUp(): void;
+  onClick(): void;
+  onMouseEnter(): void;
+  onMouseLeave(): void;
+}
+
 export interface OtpField {
   readonly value: Accessor<string>;
   readonly isFocused: Accessor<boolean>;
@@ -140,17 +152,7 @@ export interface OtpField {
    */
   readonly willPushPasswordManagerBadge: Accessor<boolean>;
   /** The handlers for the real input. */
-  readonly inputProps: {
-    onInput(event: Event): void;
-    onPaste(event: ClipboardEvent): void;
-    onFocus(): void;
-    onBlur(): void;
-    onSelect(): void;
-    onKeyUp(): void;
-    onClick(): void;
-    onMouseEnter(): void;
-    onMouseLeave(): void;
-  };
+  readonly inputProps: OtpInputProps;
 }
 
 /** How far the input is widened to carry a password manager's badge out of the boxes. */
@@ -197,7 +199,7 @@ function passwordManagerBadge(
   const [hasSpace, setHasSpace] = createSignal(false);
   let done = false;
 
-  const look = (): void => {
+  function look(): void {
     const box = container();
     const field = input();
     if (done || box === null || box === undefined || field === null || field === undefined) return;
@@ -214,7 +216,7 @@ function passwordManagerBadge(
     }
     done = true;
     setHasBadge(true);
-  };
+  }
 
   createEffect(
     () => (strategy() === "none" || !isFocused() ? null : strategy()),
@@ -251,15 +253,19 @@ export function otpField(
   const [isHovering, setHovering] = createSignal(false);
   const [mirror, setMirror] = createSignal<OtpSelection>({ start: null, end: null });
 
-  const maxLength = (): number => access(options.maxLength);
-  const value = (): string => access(options.value) ?? inner();
+  function maxLength(): number {
+    return access(options.maxLength);
+  }
+  function value(): string {
+    return access(options.value) ?? inner();
+  }
 
   // The gesture's own copies: an `input` event is handled in the tick it
   // arrives, and a signal write is not published until the flush.
   let held = value();
   let previous: OtpSelection = { start: null, end: null };
 
-  const sync = (): void => {
+  function sync(): void {
     const element = input();
     if (element === null || element === undefined) return;
     // The root's, not the document's: inside a shadow tree the document only
@@ -292,19 +298,19 @@ export function otpField(
     if (next.start === previous.start && next.end === previous.end) return;
     previous = next;
     setMirror(next);
-  };
+  }
 
-  const commit = (next: string): void => {
+  function commit(next: string): void {
     held = next;
     if (access(options.value) === undefined) setInner(next);
     options.onChange?.(next);
-  };
+  }
 
-  const accepts = (candidate: string): boolean => {
+  function accepts(candidate: string): boolean {
     if (candidate.length === 0) return true;
     const pattern = toRegExp(access(options.pattern));
     return pattern === null || pattern.test(candidate);
-  };
+  }
 
   if (typeof document !== "undefined") {
     // The one event that hears an arrow key, a drag and a programmatic change
@@ -333,7 +339,7 @@ export function otpField(
     () => access(options.pushPasswordManagerStrategy) ?? "increase-width",
   );
 
-  const slots = (): readonly OtpSlot[] => {
+  function slots(): readonly OtpSlot[] {
     const current = value();
     const { start, end } = mirror();
     const focused = isFocused();
@@ -358,7 +364,7 @@ export function otpField(
       });
     }
     return out;
-  };
+  }
 
   return {
     value,

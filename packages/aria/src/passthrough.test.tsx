@@ -23,6 +23,11 @@ function attributesOf(node: Element): Record<string, string> {
   return Object.fromEntries([...node.attributes].map((a) => [a.name, a.value]));
 }
 
+interface TitledItem {
+  id: string;
+  title: string;
+}
+
 describe("a component forwards what it has no opinion about", () => {
   test("data-* reaches the element", () => {
     const { container } = render(() => (
@@ -67,7 +72,7 @@ describe("a component forwards what it has no opinion about", () => {
         {() => (
           <>
             <TabList data-slot="tab-list">
-              {(item: { id: string; title: string }) => <span>{item.title}</span>}
+              {(item: TitledItem) => <span>{item.title}</span>}
             </TabList>
             <TabPanel data-slot="tab-panel">One</TabPanel>
           </>

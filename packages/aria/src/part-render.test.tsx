@@ -5,10 +5,15 @@ import { partRender } from "./utils.ts";
 
 afterEach(cleanup);
 
+interface TargetProps {
+  onClick?: () => void;
+  "data-slot"?: string;
+}
+
 test("a part's props spread onto a component hand it the handler uncalled", () => {
   let pressed = 0;
   let seen: unknown;
-  function Target(props: { onClick?: () => void; "data-slot"?: string }) {
+  function Target(props: TargetProps) {
     seen = props.onClick;
     return (
       <button type="button" data-slot={props["data-slot"]} onClick={props.onClick}>

@@ -29,8 +29,12 @@ function after(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms + 15));
 }
 
+interface BoxedProps {
+  children?: unknown;
+}
+
 /** A clipping box, which is what a card, a toolbar or a table cell is. */
-function Boxed(props: { children?: unknown }) {
+function Boxed(props: BoxedProps) {
   return (
     <div data-testid="box" style={{ overflow: "hidden", position: "relative" }}>
       {props.children as never}

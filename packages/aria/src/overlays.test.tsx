@@ -12,6 +12,7 @@ import {
   type Placement,
   type PositionResult,
 } from "./overlays.ts";
+import type { Size } from "./collections.ts";
 
 interface Rect {
   top: number;
@@ -36,9 +37,11 @@ function box(element: HTMLElement, rect: Rect): void {
   element.getBoundingClientRect = () => value;
 }
 
-function styleOf(
-  props: { style?: unknown } | undefined,
-): Record<string, string | number | undefined> {
+interface Styled {
+  style?: unknown;
+}
+
+function styleOf(props: Styled | undefined): Record<string, string | number | undefined> {
   if (props === undefined) throw new Error("overlayPosition returned nothing");
   return (props.style as () => Record<string, string | number | undefined>)();
 }
@@ -53,9 +56,13 @@ type Observer = { target: Element; fire: () => void };
 const observers: Observer[] = [];
 const realResizeObserver = globalThis.ResizeObserver;
 
+interface Targeted {
+  target: Element;
+}
+
 function stubResizeObserver(): void {
   globalThis.ResizeObserver = class {
-    constructor(private readonly callback: (entries: { target: Element }[]) => void) {}
+    constructor(private readonly callback: (entries: Targeted[]) => void) {}
     observe(target: Element): void {
       observers.push({ target, fire: () => this.callback([{ target }]) });
     }
@@ -530,6 +537,10 @@ describe("overlayPosition", () => {
   });
 });
 
+interface LockedProps {
+  isLocked: boolean;
+}
+
 describe("preventing scroll on iOS", () => {
   function onIOS(run: () => void): void {
     const platform = Object.getOwnPropertyDescriptor(navigator, "platform");
@@ -552,7 +563,7 @@ describe("preventing scroll on iOS", () => {
     }
   }
 
-  function Locked(props: { isLocked: boolean }) {
+  function Locked(props: LockedProps) {
     preventScroll({ isDisabled: () => !props.isLocked });
     return null;
   }
@@ -609,6 +620,20 @@ describe("preventing scroll on iOS", () => {
   });
 });
 
+interface PlaceOptions {
+  placement: Placement;
+  shouldFlip?: boolean;
+  container?: HTMLElement;
+  arrow?: number;
+  crossOffset?: number;
+  arrowBoundaryOffset?: number;
+}
+
+interface Placed {
+  position: PositionResult;
+  style: Record<string, string | number | undefined>;
+}
+
 describe("flipping and capping", () => {
   const placed: Element[] = [];
   afterEach(() => {
@@ -616,18 +641,7 @@ describe("flipping and capping", () => {
   });
 
   /** happy-dom's window is 1024 by 768. */
-  function placeAt(
-    target: Rect,
-    overlay: { width: number; height: number },
-    options: {
-      placement: Placement;
-      shouldFlip?: boolean;
-      container?: HTMLElement;
-      arrow?: number;
-      crossOffset?: number;
-      arrowBoundaryOffset?: number;
-    },
-  ): { position: PositionResult; style: Record<string, string | number | undefined> } {
+  function placeAt(target: Rect, overlay: Size, options: PlaceOptions): Placed {
     const trigger = document.createElement("button");
     const panel = document.createElement("div");
     box(trigger, target);
@@ -666,7 +680,9 @@ describe("flipping and capping", () => {
     return { position, style: styleOf(position.overlayProps) };
   }
 
-  const px = (value: string | number | undefined): number => Number.parseFloat(String(value));
+  function px(value: string | number | undefined): number {
+    return Number.parseFloat(String(value));
+  }
 
   test("goes to the side with more room when it fits on neither", () => {
     // 216px below the trigger, 488px above, and 600px of list.

@@ -56,26 +56,33 @@ const THREE_LEVELS: Page[] = [
   },
 ];
 
+interface LinkWatch {
+  followed: string[];
+  stop: () => void;
+}
+
 /** Every click on an anchor that nothing cancelled: what the browser would follow. */
-function watchLinks(): { followed: string[]; stop: () => void } {
+function watchLinks(): LinkWatch {
   const followed: string[] = [];
-  const record = (event: MouseEvent): void => {
+  function record(event: MouseEvent): void {
     const anchor = (event.target as Element).closest("a");
     if (anchor === null) return;
     queueMicrotask(() => {
       if (!event.defaultPrevented) followed.push(anchor.getAttribute("href") ?? "");
     });
-  };
+  }
   document.addEventListener("click", record, true);
   return { followed, stop: () => document.removeEventListener("click", record, true) };
 }
 
-function Pages(props: {
+interface PagesProps {
   items?: Page[];
   selectedRoute?: string | null;
   defaultExpandedKeys?: Iterable<Key>;
   withAction?: boolean;
-}) {
+}
+
+function Pages(props: PagesProps) {
   return (
     <NavigationTree
       aria-label="Pages"
@@ -115,6 +122,11 @@ function link(name: string): HTMLElement {
 function press(key: string): void {
   user.keyboard(`{${key}}`);
   flush();
+}
+
+interface AncestorsProps {
+  route: string;
+  open?: Key[];
 }
 
 describe("NavigationTree", () => {
@@ -199,7 +211,7 @@ describe("NavigationTree", () => {
   });
 
   test("every row above the current one is marked, open or closed, and the current one is not", () => {
-    function Ancestors(props: { route: string; open?: Key[] }) {
+    function Ancestors(props: AncestorsProps) {
       return (
         <NavigationTree
           aria-label="Pages"

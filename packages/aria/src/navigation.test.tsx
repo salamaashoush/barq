@@ -39,11 +39,13 @@ interface BarProps {
 
 let state: NavigationMenuState;
 
-function Panel(props: {
+interface PanelProps {
   menu: NavigationMenuResult;
   item: NavigationMenuItemResult;
   names: string[];
-}) {
+}
+
+function Panel(props: PanelProps) {
   const item = props.item;
   return (
     <Show when={item.isOpen()}>
@@ -120,9 +122,15 @@ function Bar(props: BarProps) {
   );
 }
 
-const trigger = (name: string): HTMLElement => screen.getByRole("button", { name });
-const link = (name: string): HTMLElement => screen.getByRole("link", { name });
-const focused = (): string | null | undefined => document.activeElement?.textContent?.trim();
+function trigger(name: string): HTMLElement {
+  return screen.getByRole("button", { name });
+}
+function link(name: string): HTMLElement {
+  return screen.getByRole("link", { name });
+}
+function focused(): string | null | undefined {
+  return document.activeElement?.textContent?.trim();
+}
 
 describe("navigationMenu: what it says", () => {
   test("a named nav, buttons that say whether they are open, and a panel named by its button", async () => {
@@ -167,8 +175,9 @@ describe("navigationMenu: what it says", () => {
 
   test("the indicator sits under the open trigger", () => {
     render(() => <Bar />);
-    const rect = (left: number, width: number): DOMRect =>
-      ({ left, width, top: 0, height: 36, right: left + width, bottom: 36 }) as DOMRect;
+    function rect(left: number, width: number): DOMRect {
+      return { left, width, top: 0, height: 36, right: left + width, bottom: 36 } as DOMRect;
+    }
     screen.getByRole("navigation").getBoundingClientRect = () => rect(100, 400);
     trigger("Solutions").getBoundingClientRect = () => rect(190, 96);
 

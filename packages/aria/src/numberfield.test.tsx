@@ -12,7 +12,7 @@ import { Form } from "./form.tsx";
 import { destroyAnnouncer } from "./live.ts";
 import { NumberField } from "./numberfield.tsx";
 
-function Quantity(props: {
+interface QuantityProps {
   defaultValue?: number | null;
   minValue?: number;
   maxValue?: number;
@@ -20,7 +20,9 @@ function Quantity(props: {
   formatOptions?: Intl.NumberFormatOptions;
   isDisabled?: boolean;
   onChange?: (value: number) => void;
-}) {
+}
+
+function Quantity(props: QuantityProps) {
   return (
     <NumberField
       label="Quantity"

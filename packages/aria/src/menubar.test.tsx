@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { createSignal, flush, type Child } from "@barqjs/core";
+import { createSignal, flush, type ParentProps } from "@barqjs/core";
 import {
   accessibleName,
   expectNoAriaViolations,
@@ -21,12 +21,14 @@ import { provideDirection } from "./i18n.ts";
 import { Menu, MenuItem, SubmenuTrigger } from "./menu.tsx";
 import { Menubar, MenubarMenu, MenubarTrigger } from "./menubar.tsx";
 
-function Bar(props: {
+interface BarProps {
   loop?: boolean;
   value?: string;
   onValueChange?: (value: string) => void;
   viewDisabled?: boolean;
-}) {
+}
+
+function Bar(props: BarProps) {
   return (
     <Menubar
       aria-label="Application"
@@ -113,11 +115,12 @@ describe("a menubar", () => {
 
   test("is ONE Tab stop, and the stop follows focus", () => {
     render(() => <Bar />);
-    const stops = (): string[] =>
-      screen
+    function stops(): string[] {
+      return screen
         .getAllByRole("menuitem")
         .filter((item) => item.getAttribute("tabindex") === "0")
         .map((item) => item.textContent ?? "");
+    }
 
     expect(stops()).toEqual(["File"]);
 
@@ -448,7 +451,7 @@ describe("a menubar", () => {
   });
 
   test("in a right-to-left page the horizontal arrows are the other way round", async () => {
-    function Mirrored(props: { children?: Child }) {
+    function Mirrored(props: ParentProps) {
       const directionProps = provideDirection("rtl");
       return <div {...directionProps}>{props.children}</div>;
     }
