@@ -136,10 +136,8 @@ describe("PendingInvites", () => {
     expect(resend.getAttribute("aria-disabled")).toBe("true");
     finish();
     await waitFor(() => expect(resend.getAttribute("aria-disabled")).toBeNull());
-    // The live region's entries name the button's pending label by id, as
-    // aria's pending announcement does; they are the announcer's, not the list's.
-    const list = document.querySelector('[data-slot="pending-invites"]') as HTMLElement;
-    expect(await ariaViolations(list)).toEqual([]);
+    await settle();
+    expect(await ariaViolations(document.body)).toEqual([]);
   });
 
   test("Revoke asks first, and a failure says so", async () => {
