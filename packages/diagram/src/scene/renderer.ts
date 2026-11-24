@@ -37,7 +37,9 @@ const INDEX_MAX_CELLS_PER_ELEMENT = 64;
 /** Below this many elements a walk is as quick as the grid. */
 const INDEX_MIN_ELEMENTS = 2000;
 /** Cells by their coordinates, packed into one number. */
-const cellKey = (cx: number, cy: number): number => cx * 1_048_576 + cy;
+function cellKey(cx: number, cy: number): number {
+  return cx * 1_048_576 + cy;
+}
 
 type GetRenderableElementsOpts = {
   zoom: AppState["zoom"];
@@ -53,6 +55,50 @@ type GetRenderableElementsOpts = {
   selectedElementsAreBeingDragged: AppState["selectedElementsAreBeingDragged"];
   frameToHighlight: AppState["frameToHighlight"];
 };
+
+interface VisibleCanvasInput {
+  visibleElements: readonly NonDeletedExcalidrawElement[];
+  elementsMap: RenderableElementsMap;
+  offsets: ElementRenderOffsets;
+}
+
+interface RendererVisibilityIndex {
+  nonce: string;
+  elementsMap: NonDeletedElementsMap;
+  order: Map<string, number>;
+  cells: Map<number, NonDeletedExcalidrawElement[]>;
+  /** Elements too large for cells, tested every time. */
+  large: NonDeletedExcalidrawElement[];
+  bounds: Map<string, readonly [number, number, number, number]>;
+}
+
+interface GetVisibleCanvasElementsOptions {
+  nonce: string;
+  elementsMap: NonDeletedElementsMap;
+  zoom: AppState["zoom"];
+  offsetLeft: AppState["offsetLeft"];
+  offsetTop: AppState["offsetTop"];
+  scrollX: AppState["scrollX"];
+  scrollY: AppState["scrollY"];
+  height: AppState["height"];
+  width: AppState["width"];
+}
+
+interface RenderableElementsInput {
+  elements: readonly NonDeletedExcalidrawElement[];
+  editingTextElement: AppState["editingTextElement"];
+  newElement: AppState["newElement"];
+}
+
+interface SortSelectedElementsIntoHighlightedFrameOptions<T extends ExcalidrawElement> {
+  selectedElements: readonly NonDeletedExcalidrawElement[];
+  visibleElements: readonly T[];
+  frameToHighlight: NonDeleted<ExcalidrawFrameLikeElement>;
+}
+
+interface CanvasNonce {
+  canvasNonce: string;
+}
 
 export class Renderer {
   private scene: Scene;
@@ -110,18 +156,15 @@ export class Renderer {
       | "height"
       | "selectedElements"
       | "frameToHighlight"
-    > & {
-      visibleElements: readonly NonDeletedExcalidrawElement[];
-      elementsMap: RenderableElementsMap;
-      offsets: ElementRenderOffsets;
-    }) => {
+    > &
+      VisibleCanvasInput) => {
       // Shifting the viewport instead of the element also works for arrow
       // labels, whose coordinates derive from their container.
-      const isVisible = (
+      function isVisible(
         element: NonDeletedExcalidrawElement,
         offset: ElementRenderOffsets extends ReadonlyMap<string, infer T> ? T : never,
-      ) =>
-        isElementInViewport(
+      ) {
+        return isElementInViewport(
           element,
           viewport.width,
           viewport.height,
@@ -132,15 +175,16 @@ export class Renderer {
           },
           elementsMap,
         );
+      }
 
       const documentVisible = this.getVisibleSet(visibleElements);
       const added = new Set<NonDeletedExcalidrawElement>();
       const removed = new Set<NonDeletedExcalidrawElement>();
-      const update = (element: NonDeletedExcalidrawElement, visible: boolean) => {
+      function update(element: NonDeletedExcalidrawElement, visible: boolean) {
         if (documentVisible.has(element) !== visible) {
           (visible ? added : removed).add(element);
         }
-      };
+      }
       for (const [id, offset] of offsets) {
         const element = elementsMap.get(id);
         // A bound label's own offset is ignored, and it needs no entry of
@@ -202,15 +246,7 @@ export class Renderer {
    * for a second time, so a pan or a zoom over an unchanged scene reads a few
    * cells, and a drag, which changes the scene every frame, keeps the walk.
    */
-  private visibilityIndex: {
-    nonce: string;
-    elementsMap: NonDeletedElementsMap;
-    order: Map<string, number>;
-    cells: Map<number, NonDeletedExcalidrawElement[]>;
-    /** Elements too large for cells, tested every time. */
-    large: NonDeletedExcalidrawElement[];
-    bounds: Map<string, readonly [number, number, number, number]>;
-  } | null = null;
+  private visibilityIndex: RendererVisibilityIndex | null = null;
 
   /** The scene state the last walk was for: asked for again, it gets its grid. */
   private walkedNonce: string | null = null;
@@ -267,17 +303,7 @@ export class Renderer {
     scrollY,
     height,
     width,
-  }: {
-    nonce: string;
-    elementsMap: NonDeletedElementsMap;
-    zoom: AppState["zoom"];
-    offsetLeft: AppState["offsetLeft"];
-    offsetTop: AppState["offsetTop"];
-    scrollX: AppState["scrollX"];
-    scrollY: AppState["scrollY"];
-    height: AppState["height"];
-    width: AppState["width"];
-  }): readonly NonDeletedExcalidrawElement[] {
+  }: GetVisibleCanvasElementsOptions): readonly NonDeletedExcalidrawElement[] {
     // `isElementInViewport`'s test, with the viewport's corners in scene
     // coordinates worked out once rather than twice for every element
     const view = { zoom, offsetLeft, offsetTop, scrollX, scrollY };
@@ -286,8 +312,9 @@ export class Renderer {
       { clientX: offsetLeft + width, clientY: offsetTop + height },
       view,
     );
-    const inView = (x1: number, y1: number, x2: number, y2: number): boolean =>
-      topLeft.x <= x2 && topLeft.y <= y2 && bottomRight.x >= x1 && bottomRight.y >= y1;
+    function inView(x1: number, y1: number, x2: number, y2: number): boolean {
+      return topLeft.x <= x2 && topLeft.y <= y2 && bottomRight.x >= x1 && bottomRight.y >= y1;
+    }
 
     const cx1 = Math.floor(topLeft.x / INDEX_CELL);
     const cy1 = Math.floor(topLeft.y / INDEX_CELL);
@@ -310,11 +337,11 @@ export class Renderer {
 
     const index = this.indexFor(nonce, elementsMap);
     const found = new Set<NonDeletedExcalidrawElement>();
-    const consider = (element: NonDeletedExcalidrawElement): void => {
+    function consider(element: NonDeletedExcalidrawElement): void {
       if (found.has(element)) return;
       const box = index.bounds.get(element.id);
       if (box && inView(box[0], box[1], box[2], box[3])) found.add(element);
-    };
+    }
     for (let cx = cx1; cx <= cx2; cx++) {
       for (let cy = cy1; cy <= cy2; cy++) {
         const cell = index.cells.get(cellKey(cx, cy));
@@ -332,11 +359,7 @@ export class Renderer {
     elements,
     editingTextElement,
     newElement,
-  }: {
-    elements: readonly NonDeletedExcalidrawElement[];
-    editingTextElement: AppState["editingTextElement"];
-    newElement: AppState["newElement"];
-  }) {
+  }: RenderableElementsInput) {
     const elementsMap = toBrandedType<RenderableElementsMap>(new Map());
     const newElementCanvasElement = newElement?.frameId ? null : newElement;
 
@@ -362,11 +385,7 @@ export class Renderer {
     visibleElements,
     selectedElements,
     frameToHighlight,
-  }: {
-    selectedElements: readonly NonDeletedExcalidrawElement[];
-    visibleElements: readonly T[];
-    frameToHighlight: NonDeleted<ExcalidrawFrameLikeElement>;
-  }): readonly T[] {
+  }: SortSelectedElementsIntoHighlightedFrameOptions<T>): readonly T[] {
     if (!selectedElements.length) {
       return visibleElements;
     }
@@ -398,12 +417,8 @@ export class Renderer {
    * moves elements in place) rebuilds no map; adding, removing or reordering
    * elements gives the scene a new list, and the map follows.
    */
-  private _getRenderableElementsMap = memoize(
-    (opts: {
-      elements: readonly NonDeletedExcalidrawElement[];
-      editingTextElement: AppState["editingTextElement"];
-      newElement: AppState["newElement"];
-    }) => this.getRenderableElementsMap(opts),
+  private _getRenderableElementsMap = memoize((opts: RenderableElementsInput) =>
+    this.getRenderableElementsMap(opts),
   );
 
   private _getRenderableElements = memoize(
@@ -421,9 +436,8 @@ export class Renderer {
     }: Omit<
       GetRenderableElementsOpts,
       "selectedElements" | "selectedElementsAreBeingDragged" | "frameToHighlight"
-    > & {
-      canvasNonce: string;
-    }) => {
+    > &
+      CanvasNonce) => {
       const { elementsMap, newElementCanvasElement } = this._getRenderableElementsMap({
         elements: this.scene.getNonDeletedElements(),
         editingTextElement,

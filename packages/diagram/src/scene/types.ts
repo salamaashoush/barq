@@ -23,6 +23,7 @@ import type {
 } from "../types.ts";
 import type { RoughCanvas } from "roughjs/bin/canvas";
 import type { Drawable } from "roughjs/bin/core";
+import type { Coords } from "../types.ts";
 
 export type RenderableElementsMap = NonDeletedElementsMap & MakeBrand<"RenderableElementsMap">;
 
@@ -89,12 +90,12 @@ export type InteractiveCanvasRenderConfig = {
   // collab-related state
   // ---------------------------------------------------------------------------
   remoteSelectedElementIds: Map<ExcalidrawElement["id"], SocketId[]>;
-  remotePointerViewportCoords: Map<SocketId, { x: number; y: number }>;
+  remotePointerViewportCoords: Map<SocketId, Coords>;
   remotePointerUserStates: Map<SocketId, UserIdleState>;
   remotePointerUsernames: Map<SocketId, string>;
   remotePointerButton: Map<SocketId, string | undefined>;
   selectionColor: string;
-  lastViewportPosition: { x: number; y: number };
+  lastViewportPosition: Coords;
   // extra options passed to the renderer
   // ---------------------------------------------------------------------------
   renderScrollbars?: boolean;
@@ -117,8 +118,12 @@ export type StaticSceneRenderConfig = {
   renderConfig: StaticCanvasRenderConfig;
 };
 
+export interface BindingHighlightAnimation {
+  runtime: number;
+}
+
 export type InteractiveSceneRenderAnimationState = {
-  bindingHighlight: { runtime: number } | undefined;
+  bindingHighlight: BindingHighlightAnimation | undefined;
 };
 
 /** What the interactive renderer reads from the editor driving it, beyond its app state. */
@@ -127,7 +132,7 @@ export type InteractiveSceneApp = {
   /** The pending switch into the inside-binding mode while a pointer dwells on an element. */
   bindModeHandler: ReturnType<typeof setTimeout> | null;
   lastPointerMoveEvent: PointerEvent | null;
-  lastPointerMoveCoords: { x: number; y: number } | null;
+  lastPointerMoveCoords: Coords | null;
 };
 
 export type InteractiveSceneRenderConfig = {
@@ -164,21 +169,17 @@ export type SceneScroll = {
 
 export type ExportType = "png" | "clipboard" | "clipboard-svg" | "backend" | "svg";
 
+export interface ScrollBar {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  deltaMultiplier: number;
+}
+
 export type ScrollBars = {
-  horizontal: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    deltaMultiplier: number;
-  } | null;
-  vertical: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    deltaMultiplier: number;
-  } | null;
+  horizontal: ScrollBar | null;
+  vertical: ScrollBar | null;
 };
 
 export type SVGPathString = string & { __brand: "SVGPathString" };

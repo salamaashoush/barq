@@ -10,14 +10,14 @@ export const SCROLLBAR_WIDTH = 6;
 export const SCROLLBAR_COLOR = "rgba(0,0,0,0.3)";
 
 // The scrollbar represents where the viewport is in relationship to the scene
-export const getScrollBars = (
+export function getScrollBars(
   elements: RenderableElementsMap,
   viewportWidth: number,
   viewportHeight: number,
   appState: InteractiveCanvasAppState,
   /** The vertical bar sits on the left in a right-to-left layout. */
   isRTL = false,
-): ScrollBars => {
+): ScrollBars {
   if (!elements.size) {
     return {
       horizontal: null,
@@ -112,26 +112,27 @@ export const getScrollBars = (
             deltaMultiplier: verticalDeltaMultiplier,
           },
   };
-};
+}
 
-export const isOverScrollBars = (
-  scrollBars: ScrollBars,
-  x: number,
-  y: number,
-): {
+export interface ScrollBarHit {
   isOverEither: boolean;
   isOverHorizontal: boolean;
   isOverVertical: boolean;
-} => {
-  const isOver = (scrollBar: ScrollBars["horizontal" | "vertical"]): boolean =>
-    scrollBar !== null &&
-    scrollBar !== undefined &&
-    scrollBar.x <= x &&
-    x <= scrollBar.x + scrollBar.width &&
-    scrollBar.y <= y &&
-    y <= scrollBar.y + scrollBar.height;
+}
+
+export function isOverScrollBars(scrollBars: ScrollBars, x: number, y: number): ScrollBarHit {
+  function isOver(scrollBar: ScrollBars["horizontal" | "vertical"]): boolean {
+    return (
+      scrollBar !== null &&
+      scrollBar !== undefined &&
+      scrollBar.x <= x &&
+      x <= scrollBar.x + scrollBar.width &&
+      scrollBar.y <= y &&
+      y <= scrollBar.y + scrollBar.height
+    );
+  }
   const isOverHorizontal = isOver(scrollBars.horizontal);
   const isOverVertical = isOver(scrollBars.vertical);
   const isOverEither = isOverHorizontal || isOverVertical;
   return { isOverEither, isOverHorizontal, isOverVertical };
-};
+}

@@ -11,8 +11,8 @@ import { Renderer } from "./renderer.ts";
 import type { NonDeletedExcalidrawElement } from "@excalidraw/element/types";
 import type { NormalizedZoomValue } from "../types.ts";
 
-const grid = (count: number) =>
-  Array.from({ length: count }, (_, index) =>
+function grid(count: number) {
+  return Array.from({ length: count }, (_, index) =>
     newElement({
       type: index % 3 === 0 ? "ellipse" : "rectangle",
       x: (index % 60) * 160,
@@ -21,29 +21,32 @@ const grid = (count: number) =>
       height: 80,
     }),
   );
+}
 
-const view = (scrollX: number, scrollY: number, zoom = 1) => ({
-  zoom: { value: zoom as NormalizedZoomValue },
-  offsetLeft: 0,
-  offsetTop: 0,
-  scrollX,
-  scrollY,
-  width: 1280,
-  height: 800,
-  editingTextElement: null,
-  newElement: null,
-  selectedElements: [],
-  selectedElementsAreBeingDragged: false,
-  frameToHighlight: null,
-});
+function view(scrollX: number, scrollY: number, zoom = 1) {
+  return {
+    zoom: { value: zoom as NormalizedZoomValue },
+    offsetLeft: 0,
+    offsetTop: 0,
+    scrollX,
+    scrollY,
+    width: 1280,
+    height: 800,
+    editingTextElement: null,
+    newElement: null,
+    selectedElements: [],
+    selectedElementsAreBeingDragged: false,
+    frameToHighlight: null,
+  };
+}
 
 /** Every element whose bounds meet the viewport, tested one by one. */
-const bruteForce = (
+function bruteForce(
   elements: readonly NonDeletedExcalidrawElement[],
   scrollX: number,
   scrollY: number,
   zoom = 1,
-) => {
+) {
   const map = new Map(elements.map((element) => [element.id, element]));
   const left = -scrollX;
   const top = -scrollY;
@@ -55,7 +58,7 @@ const bruteForce = (
       return left <= x2 && top <= y2 && right >= x1 && bottom >= y1;
     })
     .map((element) => element.id);
-};
+}
 
 describe("Renderer", () => {
   test("a large scene's visible set comes from the grid as from a walk, in drawing order", () => {

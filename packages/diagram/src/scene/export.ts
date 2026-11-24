@@ -77,18 +77,19 @@ const DEFAULT_SMALLEST_EXPORT_SIZE = 20;
  * Padding is taken from the target size when fitting into one: keep at least
  * `DEFAULT_SMALLEST_EXPORT_SIZE` of each target dimension for the content.
  */
-const clampPadding = (padding: number, targets: readonly number[]) =>
-  Math.max(
+function clampPadding(padding: number, targets: readonly number[]) {
+  return Math.max(
     0,
     Math.min(padding, ...targets.map((target) => (target - DEFAULT_SMALLEST_EXPORT_SIZE) / 2)),
   );
+}
 const DEFAULT_ZOOM_VALUE = 1 as NormalizedZoomValue;
 
-const truncateText = (
+function truncateText(
   element: NonDeleted<ExcalidrawTextElement>,
   maxWidth: number,
   renderEnvironment: RenderEnvironment,
-) => {
+) {
   if (element.width <= maxWidth) {
     return element;
   }
@@ -116,7 +117,12 @@ const truncateText = (
     text = truncated;
   }
   return newElementWith(element, { text, width: maxWidth });
-};
+}
+
+interface FrameLabelOptions {
+  theme: Theme;
+  renderEnvironment: RenderEnvironment;
+}
 
 /**
  * When exporting frames, we need to render frame labels which are currently
@@ -124,10 +130,10 @@ const truncateText = (
  * elements seems like a simple hack. In the future we'll want to move to
  * proper canvas rendering, even within editor (instead of DOM).
  */
-const addFrameLabelsAsTextElements = (
+function addFrameLabelsAsTextElements(
   elements: readonly NonDeletedExcalidrawElement[],
-  opts: { theme: Theme; renderEnvironment: RenderEnvironment },
-) => {
+  opts: FrameLabelOptions,
+) {
   const nextElements: NonDeletedExcalidrawElement[] = [];
   for (const element of elements) {
     if (isFrameLikeElement(element)) {
@@ -157,31 +163,35 @@ const addFrameLabelsAsTextElements = (
   }
 
   return nextElements;
-};
+}
 
-const getFrameRenderingConfig = (
+function getFrameRenderingConfig(
   exportingFrame: ExcalidrawFrameLikeElement | null,
   frames: ExportSceneBaseConfig["frames"],
-): AppState["frameRendering"] => ({
-  enabled: true,
-  outline: exportingFrame ? false : (frames?.outline ?? true),
-  name: exportingFrame ? false : (frames?.name ?? true),
-  clip: exportingFrame ? true : (frames?.clip ?? true),
-});
+): AppState["frameRendering"] {
+  return {
+    enabled: true,
+    outline: exportingFrame ? false : (frames?.outline ?? true),
+    name: exportingFrame ? false : (frames?.name ?? true),
+    clip: exportingFrame ? true : (frames?.clip ?? true),
+  };
+}
 
-const prepareElementsForRender = ({
-  elements,
-  exportingFrame,
-  frameRendering,
-  theme,
-  renderEnvironment,
-}: {
+interface PrepareElementsForRenderOptions {
   elements: readonly NonDeletedExcalidrawElement[];
   exportingFrame: ExcalidrawFrameLikeElement | null | undefined;
   frameRendering: AppState["frameRendering"];
   theme: Theme;
   renderEnvironment: RenderEnvironment;
-}) => {
+}
+
+function prepareElementsForRender({
+  elements,
+  exportingFrame,
+  frameRendering,
+  theme,
+  renderEnvironment,
+}: PrepareElementsForRenderOptions) {
   let nextElements: readonly NonDeletedExcalidrawElement[];
 
   if (exportingFrame) {
@@ -196,7 +206,7 @@ const prepareElementsForRender = ({
   }
 
   return nextElements;
-};
+}
 
 // ---------------------------------------------------------------------------
 // Types for the new API
@@ -271,6 +281,12 @@ type ExportEnvironment = {
   loadFonts?: () => Promise<void>;
 };
 
+interface FrameExportOptions {
+  name?: boolean;
+  outline?: boolean;
+  clip?: boolean;
+}
+
 type ExportSceneBaseConfig = {
   /**
    * @default "light"
@@ -336,7 +352,7 @@ type ExportSceneBaseConfig = {
    *
    * @default { name: true, outline: true, clip: true }
    */
-  frames?: { name?: boolean; outline?: boolean; clip?: boolean };
+  frames?: FrameExportOptions;
 };
 
 /**
@@ -476,9 +492,7 @@ export type ExportSceneConfig = ExportSceneBaseConfig & ExportSizeConfig;
  * The render environment of an export: `config.environment` over the browser
  * defaults.
  */
-const getExportRenderEnvironment = (
-  environment: ExportEnvironment | undefined,
-): RenderEnvironment => {
+function getExportRenderEnvironment(environment: ExportEnvironment | undefined): RenderEnvironment {
   // a complete one (e.g. the editor's) is used as-is, keeping the caches
   // keyed by its identity
   if (environment?.createCanvas && environment.createImage) {
@@ -492,13 +506,13 @@ const getExportRenderEnvironment = (
     document: environment?.document ?? defaults.document,
     textMetrics: environment?.textMetrics ?? defaults.textMetrics,
   };
-};
+}
 
 /**
  * The export config the editor's export settings translate to. Internal: hosts
  * pass their own config.
  */
-export const getExportConfigFromAppState = (
+export function getExportConfigFromAppState(
   appState: Pick<
     AppState,
     | "exportWithDarkMode"
@@ -507,31 +521,35 @@ export const getExportConfigFromAppState = (
     | "exportScale"
     | "frameRendering"
   >,
-) => ({
-  theme: appState.exportWithDarkMode ? THEME.DARK : THEME.LIGHT,
-  canvasBackgroundColor: appState.exportBackground
-    ? appState.viewBackgroundColor
-    : (false as const),
-  scale: appState.exportScale,
-  frames: appState.frameRendering.enabled
-    ? appState.frameRendering
-    : { name: false, outline: false, clip: false },
-});
+) {
+  return {
+    theme: appState.exportWithDarkMode ? THEME.DARK : THEME.LIGHT,
+    canvasBackgroundColor: appState.exportBackground
+      ? appState.viewBackgroundColor
+      : (false as const),
+    scale: appState.exportScale,
+    frames: appState.frameRendering.enabled
+      ? appState.frameRendering
+      : { name: false, outline: false, clip: false },
+  };
+}
+
+interface ConfigExportDimensionOptions {
+  data: ExportSceneData;
+  config?: ExportSceneConfig;
+  /** measures what the export adds (frame labels) */
+  renderEnvironment: RenderEnvironment;
+}
 
 // ---------------------------------------------------------------------------
 // Internal helper to configure export dimensions
 // ---------------------------------------------------------------------------
 
-const configExportDimension = async ({
+async function configExportDimension({
   data,
   config,
   renderEnvironment,
-}: {
-  data: ExportSceneData;
-  config?: ExportSceneConfig;
-  /** measures what the export adds (frame labels) */
-  renderEnvironment: RenderEnvironment;
-}) => {
+}: ConfigExportDimensionOptions) {
   // clone (widened, as the size options get normalized below)
   const cfg: ExportSceneBaseConfig & ExportSizeOptions = Object.assign({}, config);
 
@@ -816,19 +834,18 @@ const configExportDimension = async ({
     paintedBackgroundColor,
     theme,
   };
-};
+}
+
+interface ExportToCanvasOptions {
+  data: ExportSceneData;
+  config?: ExportSceneConfig;
+}
 
 // ---------------------------------------------------------------------------
 // exportToCanvas
 // ---------------------------------------------------------------------------
 
-const exportToCanvas = async ({
-  data,
-  config,
-}: {
-  data: ExportSceneData;
-  config?: ExportSceneConfig;
-}) => {
+async function exportToCanvas({ data, config }: ExportToCanvasOptions) {
   const renderEnvironment = getExportRenderEnvironment(config?.environment);
 
   const {
@@ -912,7 +929,7 @@ const exportToCanvas = async ({
   });
 
   return canvas;
-};
+}
 
 // ---------------------------------------------------------------------------
 // exportToSvg
@@ -942,13 +959,12 @@ export type ExportToSvgConfig = Pick<
     embedScene?: boolean;
   };
 
-const exportToSvg = async ({
-  data,
-  config,
-}: {
+interface ExportToSvgOptions {
   data: ExportSceneData;
   config?: ExportToSvgConfig;
-}) => {
+}
+
+async function exportToSvg({ data, config }: ExportToSvgOptions) {
   const renderEnvironment = getExportRenderEnvironment(config?.environment);
 
   const ownerDocument =
@@ -1143,22 +1159,22 @@ const exportToSvg = async ({
   // ---------------------------------------------------------------------------
 
   return svgRoot;
-};
+}
 
 // ---------------------------------------------------------------------------
 // getCanvasSize
 // ---------------------------------------------------------------------------
 
 // calculate smallest area to fit the contents in
-const getCanvasSize = (
+function getCanvasSize(
   elements: readonly NonDeletedExcalidrawElement[],
-): [x: number, y: number, width: number, height: number] => {
+): [x: number, y: number, width: number, height: number] {
   const [minX, minY, maxX, maxY] = getCommonBounds(elements);
   const width = distance(minX, maxX);
   const height = distance(minY, maxY);
 
   return [minX, minY, width, height];
-};
+}
 
 // ---------------------------------------------------------------------------
 // exportToBlob
@@ -1183,12 +1199,23 @@ type ExportToJpegConfig = ExportSceneConfig & {
   quality?: number;
 };
 
-const exportToBlob = async (
-  opts: { data: ExportSceneData } & (
-    | { type: "png"; config?: ExportToPngConfig }
-    | { type: "jpeg"; config?: ExportToJpegConfig }
-  ),
-): Promise<Blob> => {
+interface BlobExportData {
+  data: ExportSceneData;
+}
+
+interface PngBlobExport {
+  type: "png";
+  config?: ExportToPngConfig;
+}
+
+interface JpegBlobExport {
+  type: "jpeg";
+  config?: ExportToJpegConfig;
+}
+
+async function exportToBlob(
+  opts: BlobExportData & (PngBlobExport | JpegBlobExport),
+): Promise<Blob> {
   const { data } = opts;
   let config: ExportSceneConfig | undefined = opts.config;
 
@@ -1230,7 +1257,7 @@ const exportToBlob = async (
     });
   }
   return blob;
-};
+}
 
 // ---------------------------------------------------------------------------
 // exportScene
@@ -1243,17 +1270,27 @@ export type ExportSceneOptions = { data: ExportSceneData } & (
   | { type: "svg"; config?: ExportToSvgConfig }
 );
 
+export interface CanvasExportKind {
+  type: "canvas";
+}
+
+export interface RasterExportKind {
+  type: "png" | "jpeg";
+}
+
+export interface SvgExportKind {
+  type: "svg";
+}
+
 /**
  * Exports the scene to a canvas, a PNG or JPEG blob, or an SVG element.
  */
 export function exportScene(
-  opts: Extract<ExportSceneOptions, { type: "canvas" }>,
+  opts: Extract<ExportSceneOptions, CanvasExportKind>,
 ): Promise<HTMLCanvasElement>;
+export function exportScene(opts: Extract<ExportSceneOptions, RasterExportKind>): Promise<Blob>;
 export function exportScene(
-  opts: Extract<ExportSceneOptions, { type: "png" | "jpeg" }>,
-): Promise<Blob>;
-export function exportScene(
-  opts: Extract<ExportSceneOptions, { type: "svg" }>,
+  opts: Extract<ExportSceneOptions, SvgExportKind>,
 ): Promise<SVGSVGElement>;
 export function exportScene(
   opts: ExportSceneOptions,
