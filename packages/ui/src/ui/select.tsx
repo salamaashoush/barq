@@ -35,6 +35,8 @@ import { icon } from "../lib/shared-icon.ts";
 import { ringSlot } from "../lib/shared-ring-slot.ts";
 import { when } from "../lib/shared-when.ts";
 import { text } from "../lib/shared-text.ts";
+import { contrast } from "../lib/shared-contrast.ts";
+import { touch } from "../lib/shared-touch.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps, type Content } from "../lib/slot.ts";
 
@@ -48,6 +50,10 @@ const trigger = ui(
   box.noSelect,
   when.darkInput,
   ringSlot.focus,
+  touch.target,
+  contrast.focus,
+  contrast.edge,
+  contrast.disabled,
   when.disabledCursor,
   ringSlot.invalid,
   ringSlot.invalidRing,
@@ -175,6 +181,9 @@ const item = ui(
   box.noSelect,
   when.focused,
   when.disabled,
+  touch.target,
+  contrast.selected,
+  contrast.disabled,
   icon.plain,
   icon.sized,
   {

@@ -14,6 +14,8 @@ import { box } from "../lib/shared-box.ts";
 import { ringSlot } from "../lib/shared-ring-slot.ts";
 import { useFieldInvalid } from "./field.tsx";
 import { when } from "../lib/shared-when.ts";
+import { contrast } from "../lib/shared-contrast.ts";
+import { touch } from "../lib/shared-touch.ts";
 
 const ui = layer("barq.ui");
 
@@ -28,6 +30,10 @@ const circle = ui(
   box.outline,
   when.darkInput,
   ringSlot.focus,
+  touch.hitArea,
+  contrast.focus,
+  contrast.selected,
+  contrast.disabled,
   when.disabledCursor,
   ringSlot.invalid,
   ringSlot.invalidRing,

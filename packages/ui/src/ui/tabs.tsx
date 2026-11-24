@@ -24,6 +24,8 @@ import { box } from "../lib/shared-box.ts";
 import { icon } from "../lib/shared-icon.ts";
 import { when } from "../lib/shared-when.ts";
 import { text } from "../lib/shared-text.ts";
+import { contrast } from "../lib/shared-contrast.ts";
+import { touch } from "../lib/shared-touch.ts";
 
 const ui = layer("barq.ui");
 
@@ -43,6 +45,10 @@ const trigger = ui(
   text.medium,
   box.transition,
   when.disabled,
+  touch.target,
+  contrast.focus,
+  contrast.selected,
+  contrast.disabled,
   icon.plain,
   icon.sized,
   {

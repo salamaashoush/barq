@@ -42,10 +42,11 @@ afterEach(() => {
   window.matchMedia = realMatchMedia;
 });
 
-const QUERY = "(max-width: 767px)";
+// 48rem is 768px at the default root size: the same width, read from the one scale.
+const QUERY = "(width < 48rem)";
 
 describe("useIsMobile", () => {
-  test("it asks the one question shadcn asks: narrower than 768px", () => {
+  test("it asks the one question shadcn asks: narrower than the md step, 768px", () => {
     const dispose = createRoot((done) => {
       useIsMobile();
       return done;

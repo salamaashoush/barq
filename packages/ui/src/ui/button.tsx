@@ -8,6 +8,8 @@ import { box } from "../lib/shared-box.ts";
 import { icon } from "../lib/shared-icon.ts";
 import { ring } from "../lib/shared-ring.ts";
 import { text } from "../lib/shared-text.ts";
+import { contrast } from "../lib/shared-contrast.ts";
+import { touch } from "../lib/shared-touch.ts";
 
 const ui = layer("barq.ui");
 
@@ -41,6 +43,10 @@ export const buttonVariants = variants({
     box.transition,
     box.outline,
     ring.focus,
+    touch.target,
+    contrast.focus,
+    contrast.edge,
+    contrast.disabled,
     ring.invalid,
     ring.invalidRing,
     ring.invalidDark,

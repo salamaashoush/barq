@@ -6,6 +6,8 @@ import "../theme/layers.ts";
 import { box } from "../lib/shared-box.ts";
 import { ring } from "../lib/shared-ring.ts";
 import { when } from "../lib/shared-when.ts";
+import { contrast } from "../lib/shared-contrast.ts";
+import { touch } from "../lib/shared-touch.ts";
 import { controlProps } from "../lib/slot.ts";
 import type { InputProps } from "./input.tsx";
 
@@ -16,6 +18,10 @@ const textarea = ui(
   box.transition,
   box.outline,
   ring.focus,
+  touch.target,
+  contrast.focus,
+  contrast.edge,
+  contrast.disabled,
   ring.invalid,
   ring.invalidRing,
   when.darkInput,

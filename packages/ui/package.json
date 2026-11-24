@@ -66,6 +66,11 @@
       "barq": "./src/lib/atoms.ts",
       "bun": "./src/lib/atoms.ts"
     },
+    "./conditions": {
+      "types": "./src/lib/conditions.ts",
+      "barq": "./src/lib/conditions.ts",
+      "bun": "./src/lib/conditions.ts"
+    },
     "./overlay": {
       "types": "./src/lib/overlay.tsx",
       "barq": "./src/lib/overlay.tsx",
@@ -80,6 +85,11 @@
       "types": "./src/lib/shared-box.ts",
       "barq": "./src/lib/shared-box.ts",
       "bun": "./src/lib/shared-box.ts"
+    },
+    "./shared-contrast": {
+      "types": "./src/lib/shared-contrast.ts",
+      "barq": "./src/lib/shared-contrast.ts",
+      "bun": "./src/lib/shared-contrast.ts"
     },
     "./shared-icon": {
       "types": "./src/lib/shared-icon.ts",
@@ -100,6 +110,11 @@
       "types": "./src/lib/shared-text.ts",
       "barq": "./src/lib/shared-text.ts",
       "bun": "./src/lib/shared-text.ts"
+    },
+    "./shared-touch": {
+      "types": "./src/lib/shared-touch.ts",
+      "barq": "./src/lib/shared-touch.ts",
+      "bun": "./src/lib/shared-touch.ts"
     },
     "./shared-when": {
       "types": "./src/lib/shared-when.ts",

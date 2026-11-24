@@ -16,6 +16,8 @@ import "../theme/layers.ts";
 import { box } from "../lib/shared-box.ts";
 import { when } from "../lib/shared-when.ts";
 import { text } from "../lib/shared-text.ts";
+import { contrast } from "../lib/shared-contrast.ts";
+import { touch } from "../lib/shared-touch.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import type { TriggerRender } from "../lib/trigger.tsx";
@@ -65,6 +67,8 @@ const trigger = ui(
   box.noSelect,
   box.forcedColors,
   when.focused,
+  touch.target,
+  contrast.selected,
   {
     display: "flex",
     height: "auto",

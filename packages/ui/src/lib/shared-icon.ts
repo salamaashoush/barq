@@ -23,6 +23,15 @@ export const icon = ui.create({
     },
   },
 
+  /**
+   * An icon that points (a chevron, an arrow, a "next"), turned to face the
+   * reading direction. Worn by the icon itself; one that shows a thing rather
+   * than a direction (a clock, a check) is the same either way.
+   */
+  directional: {
+    ":dir(rtl)": { scale: "-1 1" },
+  },
+
   /** And the colour, on the same terms. */
   muted: {
     '& svg:not([class*="text-"])': { color: "var(--muted-foreground)" },

@@ -12,6 +12,8 @@ import { icon } from "../lib/shared-icon.ts";
 import { ring } from "../lib/shared-ring.ts";
 import { ringSlot } from "../lib/shared-ring-slot.ts";
 import { text } from "../lib/shared-text.ts";
+import { contrast } from "../lib/shared-contrast.ts";
+import { touch } from "../lib/shared-touch.ts";
 
 const ui = layer("barq.ui");
 
@@ -27,6 +29,11 @@ export const toggleVariants = variants({
     ring.invalid,
     ring.invalidDark,
     ringSlot.focus,
+    touch.target,
+    contrast.focus,
+    contrast.edge,
+    contrast.selected,
+    contrast.disabled,
     icon.plain,
     icon.sized,
     // A marker: the group welds its items by reading `.group\/toggle`.

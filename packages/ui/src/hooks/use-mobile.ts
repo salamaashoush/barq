@@ -1,10 +1,11 @@
 import type { Accessor } from "@barqjs/core";
 import { mediaQuery } from "@barqjs/primitives/media";
 
-const MOBILE_BREAKPOINT = 768;
+import { breakpointQuery } from "../lib/conditions.ts";
 
 /**
- * Whether the viewport is narrower than shadcn's mobile breakpoint.
+ * Whether the viewport is narrower than the `md` step, shadcn's mobile
+ * breakpoint, read from the one scale every style here is written on.
  *
  * ```tsx
  * const isMobile = useIsMobile();
@@ -17,5 +18,5 @@ const MOBILE_BREAKPOINT = 768;
  * first.
  */
 export function useIsMobile(): Accessor<boolean> {
-  return mediaQuery(`(max-width: ${String(MOBILE_BREAKPOINT - 1)}px)`);
+  return mediaQuery(breakpointQuery("md", "down"));
 }

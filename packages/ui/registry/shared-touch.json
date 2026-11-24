@@ -1,0 +1,18 @@
+{
+  "$schema": "https://github.com/salamaashoush/barq/schema/registry-item.json",
+  "name": "shared-touch",
+  "type": "registry:lib",
+  "title": "Shared Touch",
+  "description": "Room for a finger.",
+  "dependencies": [
+    "@barqjs/css"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "lib/shared-touch.ts",
+      "type": "registry:lib",
+      "content": "/**\n * Room for a finger.\n *\n * Under a coarse pointer an interactive control reaches 44px, which is the\n * smallest target WCAG 2.5.5 and both phone platforms ask for. A mouse is\n * precise, so under a fine pointer nothing here applies and desktop sizing is\n * what the component wrote.\n *\n * Two shapes, because a control either has a pseudo-element to spare or it\n * does not. `target` grows the box itself: a button, a field, a menu item, a\n * tab. `hitArea` grows the press area a control already draws past its paint\n * (the checkbox, the radio and the switch each carry an absolutely placed\n * `::after` for exactly this), so the 16px box keeps its size and the area a\n * finger can press reaches 44px around it. Growing a pseudo-element rather\n * than the box everywhere was weighed and rejected: placing one needs\n * `position: relative`, and a control the component positions itself (a\n * sheet's close button) would move.\n *\n * The condition is `on.coarse` from `conditions.ts`, spelled out\n * because this package folds every style object in its own module.\n */\n\nimport { layer } from \"@barqjs/css\";\n\nconst ui = layer(\"barq.ui\");\n\nexport const touch = ui.create({\n  target: {\n    \"@media (pointer: coarse)\": {\n      minBlockSize: \"2.75rem\",\n      minInlineSize: \"2.75rem\",\n    },\n  },\n\n  hitArea: {\n    \"@media (pointer: coarse)\": {\n      \"::after\": {\n        insetInline: \"min(calc(var(--spacing) * -3), calc((100% - 2.75rem) / 2))\",\n        insetBlock: \"min(calc(var(--spacing) * -2), calc((100% - 2.75rem) / 2))\",\n      },\n    },\n  },\n});\n"
+    }
+  ]
+}

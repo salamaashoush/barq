@@ -74,6 +74,27 @@
       ]
     },
     {
+      "name": "conditions",
+      "type": "registry:lib",
+      "title": "Conditions",
+      "description": "The conditions every style in barq's design system is written under, named once.",
+      "dependencies": [
+        "@barqjs/css"
+      ],
+      "registryDependencies": [],
+      "files": [
+        "lib/conditions.ts"
+      ],
+      "exports": [
+        "Breakpoint",
+        "ContainerStep",
+        "breakpointQuery",
+        "breakpoints",
+        "containers",
+        "on"
+      ]
+    },
+    {
       "name": "overlay",
       "type": "registry:lib",
       "title": "Overlay",
@@ -131,6 +152,22 @@
       ],
       "exports": [
         "box"
+      ]
+    },
+    {
+      "name": "shared-contrast",
+      "type": "registry:lib",
+      "title": "Shared Contrast",
+      "description": "A control under forced colours and under a request for more contrast.",
+      "dependencies": [
+        "@barqjs/css"
+      ],
+      "registryDependencies": [],
+      "files": [
+        "lib/shared-contrast.ts"
+      ],
+      "exports": [
+        "contrast"
       ]
     },
     {
@@ -193,6 +230,22 @@
       ],
       "exports": [
         "text"
+      ]
+    },
+    {
+      "name": "shared-touch",
+      "type": "registry:lib",
+      "title": "Shared Touch",
+      "description": "Room for a finger.",
+      "dependencies": [
+        "@barqjs/css"
+      ],
+      "registryDependencies": [],
+      "files": [
+        "lib/shared-touch.ts"
+      ],
+      "exports": [
+        "touch"
       ]
     },
     {
@@ -285,7 +338,9 @@
         "@barqjs/core",
         "@barqjs/primitives"
       ],
-      "registryDependencies": [],
+      "registryDependencies": [
+        "conditions"
+      ],
       "files": [
         "hooks/use-mobile.ts"
       ],
@@ -623,9 +678,11 @@
       "registryDependencies": [
         "layers",
         "shared-box",
+        "shared-contrast",
         "shared-icon",
         "shared-ring",
-        "shared-text"
+        "shared-text",
+        "shared-touch"
       ],
       "files": [
         "ui/button.tsx"
@@ -808,7 +865,9 @@
       "registryDependencies": [
         "layers",
         "shared-box",
+        "shared-contrast",
         "shared-ring-slot",
+        "shared-touch",
         "shared-when"
       ],
       "files": [
@@ -868,8 +927,10 @@
         "popover",
         "props",
         "shared-box",
+        "shared-contrast",
         "shared-icon",
         "shared-text",
+        "shared-touch",
         "shared-when",
         "slot",
         "sr-only"
@@ -925,8 +986,10 @@
         "layers",
         "props",
         "shared-box",
+        "shared-contrast",
         "shared-icon",
         "shared-text",
+        "shared-touch",
         "shared-when",
         "slot",
         "sr-only"
@@ -1151,8 +1214,10 @@
         "layers",
         "props",
         "shared-box",
+        "shared-contrast",
         "shared-icon",
         "shared-text",
+        "shared-touch",
         "shared-when",
         "slot",
         "trigger"
@@ -1382,7 +1447,9 @@
         "layers",
         "props",
         "shared-box",
+        "shared-contrast",
         "shared-ring",
+        "shared-touch",
         "shared-when",
         "slot",
         "textarea"
@@ -1528,7 +1595,9 @@
         "layers",
         "props",
         "shared-box",
+        "shared-contrast",
         "shared-text",
+        "shared-touch",
         "shared-when",
         "slot",
         "trigger"
@@ -1652,7 +1721,9 @@
         "layers",
         "props",
         "shared-box",
+        "shared-contrast",
         "shared-ring",
+        "shared-touch",
         "shared-when",
         "slot"
       ],
@@ -1865,7 +1936,9 @@
         "field",
         "layers",
         "shared-box",
+        "shared-contrast",
         "shared-ring-slot",
+        "shared-touch",
         "shared-when"
       ],
       "files": [
@@ -1981,9 +2054,11 @@
         "layers",
         "props",
         "shared-box",
+        "shared-contrast",
         "shared-icon",
         "shared-ring-slot",
         "shared-text",
+        "shared-touch",
         "shared-when",
         "slot"
       ],
@@ -2294,7 +2369,9 @@
       "registryDependencies": [
         "layers",
         "shared-box",
+        "shared-contrast",
         "shared-ring-slot",
+        "shared-touch",
         "shared-when"
       ],
       "files": [
@@ -2350,8 +2427,10 @@
       "registryDependencies": [
         "layers",
         "shared-box",
+        "shared-contrast",
         "shared-icon",
         "shared-text",
+        "shared-touch",
         "shared-when",
         "slot"
       ],
@@ -2384,7 +2463,9 @@
         "input",
         "layers",
         "shared-box",
+        "shared-contrast",
         "shared-ring",
+        "shared-touch",
         "shared-when",
         "slot"
       ],
@@ -2477,10 +2558,12 @@
       "registryDependencies": [
         "layers",
         "shared-box",
+        "shared-contrast",
         "shared-icon",
         "shared-ring",
         "shared-ring-slot",
-        "shared-text"
+        "shared-text",
+        "shared-touch"
       ],
       "files": [
         "ui/toggle.tsx"

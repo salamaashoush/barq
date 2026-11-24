@@ -1,0 +1,18 @@
+{
+  "$schema": "https://github.com/salamaashoush/barq/schema/registry-item.json",
+  "name": "shared-contrast",
+  "type": "registry:lib",
+  "title": "Shared Contrast",
+  "description": "A control under forced colours and under a request for more contrast.",
+  "dependencies": [
+    "@barqjs/css"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "lib/shared-contrast.ts",
+      "type": "registry:lib",
+      "content": "/**\n * A control under forced colours and under a request for more contrast.\n *\n * A forced-colours mode (Windows High Contrast) replaces every colour on the\n * page with a short system palette, and three things a component draws in\n * colour alone vanish with it: a focus ring that is a box shadow (shadows are\n * dropped), a filled control whose edge was only its fill, and a selected or\n * checked state that was only a background. Each is redrawn here in the\n * system's own colours, `Highlight` for what is focused or chosen and\n * `GrayText` for what is disabled, which is what the platform's own controls\n * use and what the reader has tuned.\n *\n * `moreContrast` is the gentler request (`prefers-contrast: more`): the theme\n * keeps its colours, and a control's edge is drawn in the foreground instead of\n * the faint `--input` or `--border`.\n *\n * The conditions are `on.forcedColors` and `on.moreContrast` from\n * `conditions.ts`, spelled out because this package folds every style\n * object in its own module.\n */\n\nimport { layer } from \"@barqjs/css\";\n\nconst ui = layer(\"barq.ui\");\n\nexport const contrast = ui.create({\n  /** Focus as an outline, which a forced-colours mode keeps, where the ring was a shadow. */\n  focus: {\n    \"@media (forced-colors: active)\": {\n      \":focus-visible\": {\n        outlineStyle: \"solid\",\n        outlineWidth: \"2px\",\n        outlineColor: \"Highlight\",\n        outlineOffset: \"2px\",\n      },\n      \"[data-focus-visible]\": {\n        outlineStyle: \"solid\",\n        outlineWidth: \"2px\",\n        outlineColor: \"Highlight\",\n        outlineOffset: \"2px\",\n      },\n    },\n  },\n\n  /** An edge for a control whose edge was its fill. */\n  edge: {\n    \"@media (forced-colors: active)\": {\n      borderStyle: \"solid\",\n      borderWidth: \"1px\",\n      borderColor: \"ButtonText\",\n    },\n    \"@media (prefers-contrast: more)\": {\n      borderColor: \"var(--foreground)\",\n    },\n  },\n\n  /** Selected, checked, pressed or highlighted, in the system's highlight. */\n  selected: {\n    \"@media (forced-colors: active)\": {\n      ':is([data-selected], [data-focused], [aria-selected=\"true\"], [aria-checked=\"true\"], [aria-pressed=\"true\"], [data-state=\"checked\"], [data-state=\"on\"])':\n        {\n          forcedColorAdjust: \"none\",\n          backgroundColor: \"Highlight\",\n          borderColor: \"Highlight\",\n          color: \"HighlightText\",\n        },\n    },\n  },\n\n  /** Disabled, in the system's disabled text, at full opacity so it still reads. */\n  disabled: {\n    \"@media (forced-colors: active)\": {\n      ':is(:disabled, [data-disabled], [aria-disabled=\"true\"])': {\n        opacity: \"1\",\n        borderColor: \"GrayText\",\n        color: \"GrayText\",\n      },\n    },\n  },\n});\n"
+    }
+  ]
+}

@@ -18,6 +18,14 @@ import "./theme/base.ts";
 
 export { ui } from "./lib/atoms.ts";
 export {
+  type Breakpoint,
+  breakpointQuery,
+  breakpoints,
+  containers,
+  type ContainerStep,
+  on,
+} from "./lib/conditions.ts";
+export {
   overlayFamily,
   type OverlayFamily,
   type OverlayKind,
@@ -29,10 +37,12 @@ export {
 } from "./lib/overlay.tsx";
 export { type UiProps, type UiRef } from "./lib/props.ts";
 export { box } from "./lib/shared-box.ts";
+export { contrast } from "./lib/shared-contrast.ts";
 export { icon } from "./lib/shared-icon.ts";
 export { ringSlot } from "./lib/shared-ring-slot.ts";
 export { ring } from "./lib/shared-ring.ts";
 export { text } from "./lib/shared-text.ts";
+export { touch } from "./lib/shared-touch.ts";
 export { when } from "./lib/shared-when.ts";
 export {
   type Content,

@@ -29,6 +29,8 @@ import { box } from "../lib/shared-box.ts";
 import { icon } from "../lib/shared-icon.ts";
 import { when } from "../lib/shared-when.ts";
 import { text } from "../lib/shared-text.ts";
+import { contrast } from "../lib/shared-contrast.ts";
+import { touch } from "../lib/shared-touch.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { TriggerPart, type TriggerPartProps } from "../lib/trigger.tsx";
@@ -169,6 +171,9 @@ const item = ui(
   box.noSelect,
   when.focused,
   when.disabled,
+  touch.target,
+  contrast.selected,
+  contrast.disabled,
   icon.plain,
   icon.sized,
   // A marker: the shortcut reads the item's focus through
@@ -226,6 +231,9 @@ const checkItem = ui(
   box.noSelect,
   when.focused,
   when.disabled,
+  touch.target,
+  contrast.selected,
+  contrast.disabled,
   icon.plain,
   icon.sized,
   {

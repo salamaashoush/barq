@@ -6,6 +6,8 @@ import "../theme/layers.ts";
 import { box } from "../lib/shared-box.ts";
 import { ringSlot } from "../lib/shared-ring-slot.ts";
 import { when } from "../lib/shared-when.ts";
+import { contrast } from "../lib/shared-contrast.ts";
+import { touch } from "../lib/shared-touch.ts";
 
 const ui = layer("barq.ui");
 
@@ -14,6 +16,10 @@ const track = ui(
   box.transition,
   box.outline,
   ringSlot.focus,
+  touch.hitArea,
+  contrast.focus,
+  contrast.selected,
+  contrast.disabled,
   ringSlot.invalid,
   ringSlot.invalidRing,
   ringSlot.invalidDark,

@@ -8,6 +8,8 @@ import "../theme/layers.ts";
 import { box } from "../lib/shared-box.ts";
 import { ring } from "../lib/shared-ring.ts";
 import { when } from "../lib/shared-when.ts";
+import { contrast } from "../lib/shared-contrast.ts";
+import { touch } from "../lib/shared-touch.ts";
 import type { UiProps } from "../lib/props.ts";
 import { controlProps, omit, uiProps } from "../lib/slot.ts";
 
@@ -27,6 +29,10 @@ const control = ui(
   box.outline,
   box.noSelect,
   ring.focus,
+  touch.target,
+  contrast.focus,
+  contrast.edge,
+  contrast.disabled,
   ring.invalid,
   ring.invalidRing,
   when.darkInput,
