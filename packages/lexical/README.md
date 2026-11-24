@@ -213,7 +213,8 @@ out of the editor's scroll container. Focus stays in the editor, which points
 `aria-controls` at the listbox and `aria-activedescendant` at the highlighted
 option. Arrow keys move the highlight, Enter and Tab choose, Shift+Enter is
 left to the editor, Escape closes. Without `menuRenderFn` the menu draws a
-`<ul>` of each option's `icon` and `title`.
+`<ul>` of each option's `icon` and `title`. `menuLabel` names the listbox in the
+reader's words; it says "Typeahead menu" otherwise.
 
 `menuRenderFn` returns the menu's contents, which are placed inside the
 listbox; it needs no portal of its own. What it is handed is accessors and

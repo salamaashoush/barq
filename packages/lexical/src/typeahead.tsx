@@ -123,6 +123,8 @@ export interface TypeaheadMenuPluginProps<TOption extends MenuOption> {
   onOpen?: (resolution: MenuResolution) => void;
   onClose?: () => void | PromiseLike<void>;
   anchorClassName?: string;
+  /** Names the listbox, in the reader's words. @default "Typeahead menu" */
+  menuLabel?: string;
   commandPriority?: CommandListenerPriority;
   /** Where the menu is appended. The body, or the editor's shadow root, by default. */
   parent?: HTMLElement;
@@ -227,6 +229,7 @@ export function LexicalTypeaheadMenuPlugin<TOption extends MenuOption>(
           commandPriority={props.commandPriority}
           preselectFirstItem={props.preselectFirstItem}
           anchorClassName={props.anchorClassName}
+          menuLabel={props.menuLabel}
           parent={props.parent}
         />
       )}

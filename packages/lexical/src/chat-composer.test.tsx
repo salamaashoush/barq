@@ -151,6 +151,7 @@ function MentionPlugin(props: { users: Member[] }) {
       }}
       triggerFn={triggerFn}
       options={options()}
+      menuLabel="People and channels"
       menuRenderFn={(menu) => <MentionMenu menu={menu} />}
     />
   );
@@ -337,6 +338,7 @@ describe("a chat composer", () => {
 
     const listbox = document.querySelector<HTMLElement>('[role="listbox"]');
     expect(listbox).not.toBeNull();
+    expect(listbox?.getAttribute("aria-label")).toBe("People and channels");
     expect(listbox?.style.position).toBe("absolute");
     const options = [...(listbox?.querySelectorAll<HTMLElement>('[role="option"]') ?? [])];
     expect(options.map((option) => option.textContent)).toEqual(["Salama", "Sales Team"]);
@@ -404,6 +406,9 @@ describe("a chat composer", () => {
   test("a / command from the default menu turns the block into a quote", async () => {
     const { editor, root } = await mountComposer();
     await type(editor, "/quo");
+    expect(document.querySelector('[role="listbox"]')?.getAttribute("aria-label")).toBe(
+      "Typeahead menu",
+    );
     const items = [...document.querySelectorAll<HTMLElement>('li[role="option"]')];
     expect(items.map((item) => item.textContent)).toEqual(["Quote"]);
     expect(items[0]?.className).toBe("item selected");

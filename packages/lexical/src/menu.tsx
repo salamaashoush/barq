@@ -94,6 +94,8 @@ export interface MenuProps<TOption extends MenuOption> {
   commandPriority?: CommandListenerPriority;
   preselectFirstItem?: boolean;
   anchorClassName?: string;
+  /** Names the listbox. @default "Typeahead menu" */
+  menuLabel?: string;
   parent?: HTMLElement;
 }
 
@@ -347,7 +349,7 @@ export function LexicalMenu<TOption extends MenuOption>(props: MenuProps<TOption
         id={listboxId}
         class={className}
         role="listbox"
-        aria-label="Typeahead menu"
+        aria-label={props.menuLabel ?? "Typeahead menu"}
         data-lexical-menu=""
         style={{ display: "block", position: "absolute", top: "0px", left: "0px" }}
       >

@@ -21,6 +21,8 @@ export interface NodeMenuPluginProps<TOption extends MenuOption> {
   onClose?: () => void;
   onOpen?: (resolution: MenuResolution) => void;
   anchorClassName?: string;
+  /** Names the listbox, in the reader's words. @default "Typeahead menu" */
+  menuLabel?: string;
   commandPriority?: CommandListenerPriority;
   parent?: HTMLElement;
 }
@@ -80,6 +82,7 @@ export function LexicalNodeMenuPlugin<TOption extends MenuOption>(
           menuRenderFn={props.menuRenderFn}
           commandPriority={props.commandPriority}
           anchorClassName={props.anchorClassName}
+          menuLabel={props.menuLabel}
           parent={props.parent}
         />
       )}
