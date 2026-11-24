@@ -176,7 +176,10 @@ export function ChartDialog() {
                   }}
                   data-testid={`chart-${type}`}
                 >
-                  <div class={preview} ref={setBox} />
+                  <div
+                    class={preview}
+                    ref={(element: HTMLDivElement) => queueMicrotask(() => setBox(element))}
+                  />
                   <span>{t(CHART_LABELS[type])}</span>
                 </button>
               );
@@ -201,7 +204,10 @@ export function ChartDialog() {
                   onClick={() => insert([text()])}
                   data-testid="chart-plaintext"
                 >
-                  <div class={preview} ref={setBox} />
+                  <div
+                    class={preview}
+                    ref={(element: HTMLDivElement) => queueMicrotask(() => setBox(element))}
+                  />
                   <span>{t("labels.chartType_plaintext")}</span>
                 </button>
               );
