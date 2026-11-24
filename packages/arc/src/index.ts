@@ -312,6 +312,23 @@ export {
   type UnsavedChangesGuardProps,
 } from "./components/unsaved-changes-guard.tsx";
 export {
+  ChartDataTable,
+  type ChartBaseProps,
+  type ChartDataTableProps,
+  type ChartTableData,
+  type ChartTableMode,
+  type ChartTableSlots,
+  type TonedSeries,
+  chartDataTableStyles,
+} from "./components/chart-frame.tsx";
+export {
+  DonutChart,
+  type DonutChartProps,
+  type DonutChartSlots,
+  type DonutSlice,
+  donutChartStyles,
+} from "./components/donut-chart.tsx";
+export {
   ARC_CONTRAST_DARK,
   ARC_CONTRAST_LIGHT,
   ARC_DARK,
@@ -337,3 +354,26 @@ export {
   useArcMessages,
 } from "./components/messages.ts";
 export { type Classes, type Customisable } from "./lib/parts.ts";
+export {
+  Code,
+  type CodeProps,
+  Heading,
+  type HeadingLevel,
+  type HeadingProps,
+  type HeadingSize,
+  Prose,
+  type ProseProps,
+  Text,
+  type TextColor,
+  type TextElement,
+  type TextProps,
+  type TextSize,
+  type TextWeight,
+  codeStyles,
+  headingStyles,
+  proseStyles,
+  textStyles,
+} from "./components/typography.tsx";
+export { Link, type LinkProps, isExternalHref, linkStyles } from "./components/text-link.tsx";
+export { Truncate, type TruncateProps, truncateStyles } from "./components/truncate.tsx";
+export { Shortcut, type ShortcutProps, keyLabel, shortcutStyles } from "./components/shortcut.tsx";

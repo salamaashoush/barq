@@ -107,6 +107,48 @@ export interface ArcMessages {
   back: string;
   next: string;
   done: string;
+  opensInNewTab: string;
+  showMore: string;
+  moreTabs: string;
+  scrollBackward: string;
+  scrollForward: string;
+  completed: string;
+  hasErrors: string;
+  optional: string;
+  firstPage: string;
+  lastPage: string;
+  goToPage: (page: number) => string;
+  pageRange: (from: string, to: string, total: string) => string;
+  pageSize: string;
+  onThisPage: string;
+  loadMore: string;
+  moreCount: (count: number) => string;
+  newItem: string;
+  newCount: (count: string) => string;
+  online: string;
+  away: string;
+  busy: string;
+  offline: string;
+  imageUnavailable: string;
+  imageViewer: string;
+  previousImage: string;
+  nextImage: string;
+  imageOf: (index: string, total: string) => string;
+  zoomIn: string;
+  zoomOut: string;
+  slideOf: (index: string, total: string) => string;
+  chooseSlide: string;
+  pause: string;
+  play: string;
+  showDataTable: string;
+  hideDataTable: string;
+  chartValue: string;
+  chartCategory: string;
+  chartStage: string;
+  chartShare: string;
+  chartLess: string;
+  chartMore: string;
+  shareOfFirst: (share: string) => string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -210,6 +252,48 @@ export const ENGLISH: ArcMessages = {
   back: "Back",
   next: "Next",
   done: "Done",
+  opensInNewTab: "opens in a new tab",
+  showMore: "Show more",
+  moreTabs: "More",
+  scrollBackward: "Scroll back",
+  scrollForward: "Scroll forward",
+  completed: "Completed",
+  hasErrors: "Has errors",
+  optional: "Optional",
+  firstPage: "First page",
+  lastPage: "Last page",
+  goToPage: (page) => `Page ${String(page)}`,
+  pageRange: (from, to, total) => `${from}–${to} of ${total}`,
+  pageSize: "Rows per page",
+  onThisPage: "On this page",
+  loadMore: "Load more",
+  moreCount: (count) => `${String(count)} more`,
+  newItem: "New",
+  newCount: (count) => `${count} new`,
+  online: "Online",
+  away: "Away",
+  busy: "Busy",
+  offline: "Offline",
+  imageUnavailable: "Image unavailable",
+  imageViewer: "Image viewer",
+  previousImage: "Previous image",
+  nextImage: "Next image",
+  imageOf: (index, total) => `Image ${index} of ${total}`,
+  zoomIn: "Zoom in",
+  zoomOut: "Zoom out",
+  slideOf: (index, total) => `Slide ${index} of ${total}`,
+  chooseSlide: "Choose a slide",
+  pause: "Pause",
+  play: "Play",
+  showDataTable: "Show data table",
+  hideDataTable: "Hide data table",
+  chartValue: "Value",
+  chartCategory: "Category",
+  chartStage: "Stage",
+  chartShare: "Share",
+  chartLess: "Less",
+  chartMore: "More",
+  shareOfFirst: (share) => `${share} of the first stage`,
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");
