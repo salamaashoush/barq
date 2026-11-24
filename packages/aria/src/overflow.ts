@@ -54,10 +54,16 @@ export interface OverflowChoice {
   isAllOrNothing?: boolean;
 }
 
+const NONE: ReadonlySet<Key> = new Set();
+
+/** Two choices that send the same items: a new set that says nothing new changes nothing. */
+const sameKeys = (one: ReadonlySet<Key>, other: ReadonlySet<Key>): boolean =>
+  one.size === other.size && [...one].every((key) => other.has(key));
+
 /** The items that go into the menu, from their measured sizes. */
 export function overflowingKeys(choice: OverflowChoice): ReadonlySet<Key> {
   const total = choice.sizes.reduce((sum, one) => sum + one, 0);
-  if (Math.round(total) <= Math.round(choice.room)) return new Set();
+  if (Math.round(total) <= Math.round(choice.room)) return NONE;
   const order = choice.keys
     .map((key, index) => ({
       key,
@@ -96,8 +102,7 @@ export function overflowItems(options: OverflowOptions): {
   hidden: Accessor<ReadonlySet<Key>>;
   isMeasuring: Accessor<boolean>;
 } {
-  const NONE: ReadonlySet<Key> = new Set();
-  const [hidden, setHidden] = createSignal<ReadonlySet<Key>>(NONE);
+  const [hidden, setHidden] = createSignal<ReadonlySet<Key>>(NONE, { equals: sameKeys });
   const [phase, setPhase] = createSignal<"idle" | "measure" | "verify">("idle");
   /** Each item's size along the axis, from the pass that showed them all. */
   let sizes: number[] = [];
