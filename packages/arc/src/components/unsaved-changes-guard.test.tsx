@@ -52,7 +52,7 @@ describe("UnsavedChangesGuard", () => {
     await settle();
     const dialog = await waitFor(() => screen.getByRole("alertdialog"));
     expect(dialog.textContent).toContain("Discard unsaved changes?");
-    expect(await ariaViolations(dialog)).toEqual([]);
+    expect(await ariaViolations(document.body)).toEqual([]);
 
     await user.click(screen.getByRole("button", { name: "Keep editing" }));
     await settle();

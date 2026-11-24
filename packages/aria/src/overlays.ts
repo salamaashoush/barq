@@ -1464,7 +1464,12 @@ export function modalOverlay(
     (open) => {
       if (open === null || open[0] === null) return undefined;
       const [element, isEntering] = open;
-      return isEntering ? keepVisible(element) : ariaHideOutside([element]);
+      // `inert`, not `aria-hidden`: hidden from a screen reader but still in
+      // the Tab order is the worst of both, a control that takes focus and
+      // cannot say what it is.
+      return isEntering
+        ? keepVisible(element)
+        : ariaHideOutside([element], { shouldUseInert: true });
     },
   );
 

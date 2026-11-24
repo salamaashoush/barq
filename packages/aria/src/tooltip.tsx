@@ -47,6 +47,7 @@ import { OverlayArrowProvider } from "./overlay-arrow.tsx";
 import {
   alignOf,
   followOpen,
+  keepVisible,
   overlayPosition,
   overlayTriggerState,
   portalContainer,
@@ -267,6 +268,8 @@ export interface TooltipOptions {
   "aria-describedby"?: MaybeAccessor<string | undefined>;
   /** Whether resting the pointer on the tooltip holds it open. @default true */
   isHoverable?: MaybeAccessor<boolean | undefined>;
+  /** The tooltip element, kept out of whatever an open modal is hiding. */
+  ref?: ElementRef;
 }
 
 /** `closed`, `delayed-open` or `instant-open`: the three states Radix names. */
@@ -295,6 +298,18 @@ export function tooltip(options: TooltipOptions = {}, state?: TooltipTriggerStat
     onHoverStart: () => state?.open(true),
     onHoverEnd: () => state?.close(),
   });
+
+  // A tooltip on a control inside a modal is portalled out of it, and the
+  // modal makes everything outside itself inert: a tooltip that cannot be
+  // hovered closes as the pointer travels onto it.
+  const ref = options.ref;
+  if (ref !== undefined) {
+    followOpen(
+      () =>
+        state === undefined || state.isOpen() ? ((access(ref) as Element | null) ?? null) : null,
+      (element) => (element === null ? undefined : keepVisible(element)),
+    );
+  }
 
   return {
     tooltipProps: mergeProps(filterDOMProps(options, { labelable: true }), hoverProps, {
@@ -637,7 +652,10 @@ export function Tooltip(props: TooltipComponentProps) {
     direction: () => locale().direction,
   });
 
-  const { tooltipProps } = tooltip({ isHoverable: trigger.isContentHoverable }, trigger.state);
+  const { tooltipProps } = tooltip(
+    { isHoverable: trigger.isContentHoverable, ref: domRef },
+    trigger.state,
+  );
 
   const elementProps = mergeProps(
     tooltipProps,

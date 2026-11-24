@@ -45,7 +45,7 @@ describe("ResponsiveOverlay", () => {
     await user.click(screen.getByRole("button", { name: "Open" }));
     await settle();
     expect(overlay()?.getAttribute("data-presentation")).toBe("dialog");
-    expect(await ariaViolations(screen.getByRole("dialog", { name: "Filters" }))).toEqual([]);
+    expect(await ariaViolations(document.body)).toEqual([]);
     await user.keyboard("{Escape}");
     await settle();
     expect(screen.queryByRole("dialog")).toBeNull();

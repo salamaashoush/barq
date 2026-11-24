@@ -67,7 +67,7 @@ describe("Coachmark and Spotlight", () => {
     expect(dialog.contains(document.activeElement)).toBe(true);
     const spotlight = document.querySelector('[data-slot="spotlight"]') as HTMLElement;
     expect(spotlight.getAttribute("aria-hidden")).toBe("true");
-    expect(await ariaViolations(dialog)).toEqual([]);
+    expect(await ariaViolations(document.body)).toEqual([]);
   });
 });
 

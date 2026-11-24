@@ -793,11 +793,11 @@ describe("a modal that is still entering", () => {
     flush();
     const behind = container.querySelector("p") as HTMLElement;
     const sheet = container.querySelector("div") as HTMLElement;
-    expect(behind.closest("[aria-hidden=true]")).toBeNull();
+    expect(behind.closest("[inert]")).toBeNull();
 
     setEntering(false);
     flush();
-    expect(behind.closest("[aria-hidden=true]")).not.toBeNull();
-    expect(sheet.closest("[aria-hidden=true]")).toBeNull();
+    expect(behind.closest("[inert]")).not.toBeNull();
+    expect(sheet.closest("[inert]")).toBeNull();
   });
 });

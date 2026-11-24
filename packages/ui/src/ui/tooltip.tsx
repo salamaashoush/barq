@@ -265,7 +265,10 @@ export function TooltipContent(props: TooltipContentProps) {
     direction: () => locale().direction,
   });
 
-  const { tooltipProps } = tooltipHook({ isHoverable: trigger.isContentHoverable }, trigger.state);
+  const { tooltipProps } = tooltipHook(
+    { isHoverable: trigger.isContentHoverable, ref: domRef },
+    trigger.state,
+  );
   const gate = presence({ isOpen: trigger.state.isOpen, ref: domRef });
 
   const contentDirection = declaredDirection();

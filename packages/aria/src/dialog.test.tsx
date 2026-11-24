@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { renderToString } from "@barqjs/server";
 import { type Child, Show, createSignal, isDev, onSettled, flush } from "@barqjs/core";
-import { accessibleName, render, screen, tick, user } from "@barqjs/testing";
+import { accessibleName, ariaViolations, render, screen, tick, user } from "@barqjs/testing";
 import { Button } from "./button.tsx";
 import { ref } from "@barqjs/primitives/refs";
 import {
@@ -77,13 +77,15 @@ describe("Modal", () => {
     expect(document.activeElement?.textContent).toBe("Cancel");
   });
 
-  test("the rest of the page is hidden from assistive technology", async () => {
+  test("the rest of the page is inert: hidden from assistive technology and out of the Tab order", async () => {
     render(() => <Confirm isOpen={true} />);
     await tick();
 
     const before = screen.getByText("before");
-    expect(before.closest("[aria-hidden=true]")).not.toBeNull();
-    expect(screen.getByRole("dialog").closest("[aria-hidden=true]")).toBeNull();
+    expect(before.closest("[inert]")).not.toBeNull();
+    expect(screen.getByRole("dialog").closest("[inert]")).toBeNull();
+    expect(document.querySelector("[aria-hidden=true]")).toBeNull();
+    expect(ariaViolations(document.body)).toEqual([]);
   });
 
   test("Escape closes it", async () => {
@@ -139,12 +141,12 @@ describe("Modal", () => {
     render(() => <Confirm isOpen={open()} />);
     await tick();
 
-    expect(screen.getByText("before").closest("[aria-hidden=true]")).not.toBeNull();
+    expect(screen.getByText("before").closest("[inert]")).not.toBeNull();
 
     setOpen(false);
     await tick();
 
-    expect(screen.getByText("before").closest("[aria-hidden=true]")).toBeNull();
+    expect(screen.getByText("before").closest("[inert]")).toBeNull();
   });
 });
 

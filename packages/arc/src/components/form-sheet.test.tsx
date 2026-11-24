@@ -55,7 +55,7 @@ describe("FormSheet", () => {
     expect(save.getAttribute("type")).toBe("submit");
     expect(save.getAttribute("form")).toBe(form.id);
     expect(screen.getByRole("button", { name: "Cancel" })).toBeDefined();
-    expect(await ariaViolations(dialog)).toEqual([]);
+    expect(await ariaViolations(document.body)).toEqual([]);
   });
 
   test("closes once it saves", async () => {

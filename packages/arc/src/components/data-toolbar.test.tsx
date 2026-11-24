@@ -80,7 +80,7 @@ describe("DataToolbar", () => {
     await settle();
     expect(seen.at(-1)).toEqual(["sent"]);
     expect(menu.isConnected).toBe(true);
-    expect(await ariaViolations(menu)).toEqual([]);
+    expect(await ariaViolations(document.body)).toEqual([]);
 
     await user.keyboard("{Escape}");
     await settle();

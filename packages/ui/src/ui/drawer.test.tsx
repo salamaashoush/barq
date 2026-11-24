@@ -111,11 +111,11 @@ describe("Drawer", () => {
     expect(dialog?.getAttribute("aria-describedby")).not.toBeNull();
     // The modality is the page behind being hidden rather than `aria-modal`,
     // which VoiceOver has been known to read as hiding the dialog too.
-    expect(dialog?.closest("[aria-hidden=true]")).toBeNull();
+    expect(dialog?.closest("[inert]")).toBeNull();
     const behind = [...document.querySelectorAll("p")].find(
       (each) => each.textContent === "behind",
     );
-    expect(behind?.closest("[aria-hidden=true]")).not.toBeNull();
+    expect(behind?.closest("[inert]")).not.toBeNull();
   });
 
   test("the direction is an attribute, because the rules select on it", async () => {
@@ -862,7 +862,7 @@ describe("Drawer, vaul's remaining options", () => {
     render(() => <Options modal={false} />);
     await open();
     const outside = screen.getByRole("button", { name: "Outside" });
-    expect(outside.closest("[aria-hidden=true]")).toBeNull();
+    expect(outside.closest("[aria-hidden=true], [inert]")).toBeNull();
     expect(overlay()).toBeNull();
 
     await user.click(outside);
