@@ -19,6 +19,7 @@ import { gzipSync } from "node:zlib";
 import type { BunPlugin } from "bun";
 
 import { load, serve, withBenchChrome, type Page } from "../../benchmark/src/tier2/driver.ts";
+import { traced } from "../../benchmark/src/tier2/trace.ts";
 import { COLUMNS } from "./scene.ts";
 
 const HERE = import.meta.dir;
@@ -171,7 +172,37 @@ interface ProfileNode {
   callFrame: { functionName: string; url: string; lineNumber: number };
 }
 
+/** `BENCH_TRACE=1`: the renderer main thread's trace events per scenario, by name, for the time outside script. */
+const TRACE = process.env.BENCH_TRACE;
+
+interface TraceEvent {
+  name?: string;
+  ph?: string;
+  dur?: number;
+  pid?: number;
+  tid?: number;
+  args?: { name?: string };
+}
+
+async function tracedByName<T>(chrome: Page, label: string, body: () => Promise<T>): Promise<T> {
+  const { value, events } = await traced(chrome, body);
+  const all = events as TraceEvent[];
+  const main = all.find((event) => event.ph === "M" && event.args?.name === "CrRendererMain");
+  const total = new Map<string, number>();
+  for (const event of all) {
+    if (event.ph !== "X" || event.pid !== main?.pid || event.tid !== main?.tid) continue;
+    const name = event.name ?? "?";
+    total.set(name, (total.get(name) ?? 0) + (event.dur ?? 0) / 1000);
+  }
+  console.log(`-- ${label} (renderer main thread, inclusive ms)`);
+  for (const [name, ms] of [...total].toSorted((a, b) => b[1] - a[1]).slice(0, 24)) {
+    console.log(`${ms.toFixed(1).padStart(8)} ms  ${name}`);
+  }
+  return value;
+}
+
 async function profiled<T>(chrome: Page, label: string, body: () => Promise<T>): Promise<T> {
+  if (TRACE) return tracedByName(chrome, label, body);
   if (!PROFILE) return body();
   await chrome.send("Profiler.enable", {});
   await chrome.send("Profiler.setSamplingInterval", { interval: 100 });
@@ -200,14 +231,17 @@ async function measure(url: string, count: number): Promise<Row> {
     await load(chrome, url);
     log("loaded");
     await chrome.send("Performance.enable", {});
-    const mount = await chrome.call<number>(`window.__mount(${count})`);
+    const mount = await profiled(chrome, "mount", () =>
+      chrome.call<number>(`window.__mount(${count})`),
+    );
     log(`mounted in ${mount}`);
     const heapUsed = await heap(chrome);
 
-    // a drag of 100 selected shapes, from the first one's middle
+    // a drag of 100 selected shapes, from the middle of the rectangle in the
+    // fifth column of the third row, clear of either editor's panels
     await chrome.call("window.__select()");
-    const startX = 70;
-    const startY = 50;
+    const startX = 710;
+    const startY = 290;
     await mouse(chrome, "mouseMoved", startX, startY, { buttons: 0 });
     await mouse(chrome, "mousePressed", startX, startY, { buttons: 1 });
     const drag = await profiled(chrome, "drag", () =>
