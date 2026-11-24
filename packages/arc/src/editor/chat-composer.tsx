@@ -57,6 +57,7 @@ import {
 } from "../style/index.ts";
 import { $selectionFormat } from "./commands.ts";
 import { type DocumentValue, documentExtensions, markdownTransformers } from "./document.ts";
+import { EditorDocument } from "./renderer.tsx";
 import { FloatingFormatToolbar, LinkEditor } from "./floating.tsx";
 import { useRegistration } from "./hooks.ts";
 import { EditorBridge, EditorShortcuts } from "./rich-text-editor.tsx";
@@ -341,6 +342,14 @@ function Composer(props: ChatComposerProps & { cls: Slots; queue?: UploadQueueAp
           aria-invalid={counter.over() ? true : undefined}
           aria-placeholder={props.placeholder}
           enterKeyHint={editing() ? "done" : "send"}
+          serverContent={
+            props.defaultValue === undefined && props.defaultMarkdown === undefined ? undefined : (
+              <EditorDocument
+                value={untrack(() => props.defaultValue)}
+                markdown={untrack(() => props.defaultMarkdown)}
+              />
+            )
+          }
           placeholder={
             props.placeholder === undefined ? null : (
               <span class={props.cls.placeholder} data-slot="chat-composer-placeholder">

@@ -63,6 +63,8 @@ interface RenderContext {
   headingOffset: number;
   renderMention?: (mention: RenderedMention) => Child;
   linkHref?: (url: string) => string;
+  /** Drawn as the editor draws it, for the page an editor will take over. */
+  editing?: boolean;
 }
 
 const ALIGNMENTS = new Set(["left", "start", "center", "right", "end", "justify"]);
@@ -112,6 +114,8 @@ function Text(props: { node: StoredNode; slots: DocumentSlots }): JSX.Element {
 }
 
 function Children(props: { nodes: readonly StoredNode[] | undefined; context: RenderContext }) {
+  // An empty block holds a line in the editor, which draws a `<br>` in it.
+  if (props.context.editing === true && (props.nodes ?? []).length === 0) return <br />;
   return (
     <For each={props.nodes ?? []}>
       {(child: StoredNode) => <Node node={child} context={props.context} />}
@@ -194,7 +198,17 @@ function Node(props: { node: StoredNode; context: RenderContext }): JSX.Element 
     case "listitem":
       return <ListItem node={node} context={context} />;
     case "code":
-      return <CodeBlock code={codeText(node)} language={node.language ?? undefined} />;
+      return context.editing === true ? (
+        <code
+          class={context.slots.codeBlock}
+          spellcheck={false}
+          data-language={node.language ?? undefined}
+        >
+          {codeText(node)}
+        </code>
+      ) : (
+        <CodeBlock code={codeText(node)} language={node.language ?? undefined} />
+      );
     case "table":
       return (
         <div class={context.slots.tableScroller}>
@@ -216,7 +230,13 @@ function Node(props: { node: StoredNode; context: RenderContext }): JSX.Element 
       const Cell = dynamic(() => (header ? "th" : "td") as "td");
       return (
         <Cell
-          class={header ? context.slots.tableCellHeader : undefined}
+          class={
+            context.editing === true
+              ? arc(context.slots.tableCell, header ? context.slots.tableCellHeader : undefined)
+              : header
+                ? context.slots.tableCellHeader
+                : undefined
+          }
           colSpan={node.colSpan !== undefined && node.colSpan > 1 ? node.colSpan : undefined}
           rowSpan={node.rowSpan !== undefined && node.rowSpan > 1 ? node.rowSpan : undefined}
           scope={header ? "col" : undefined}
@@ -234,7 +254,11 @@ function Node(props: { node: StoredNode; context: RenderContext }): JSX.Element 
     case "link":
     case "autolink": {
       const url = node.url ?? "";
-      return (
+      return context.editing === true ? (
+        <a class={context.slots.link} href={url}>
+          <Children nodes={node.children} context={context} />
+        </a>
+      ) : (
         <Link href={context.linkHref?.(url) ?? url}>
           <Children nodes={node.children} context={context} />
         </Link>
@@ -321,6 +345,27 @@ function storedNodes(
   } finally {
     editor.dispose();
   }
+}
+
+/**
+ * A document's blocks as `RichTextEditor` draws them, with no editor: what a
+ * server writes in the editable root for the editor to take over.
+ */
+export function EditorDocument(
+  props: Pick<DocumentOptions, "blocks"> & { value?: DocumentValue; markdown?: string },
+) {
+  const nodes = createMemo(() => storedNodes(props.value, props.markdown, props.blocks));
+  const context = (): RenderContext => ({
+    slots: documentStyles(),
+    blocks: new Map(documentBlocks(props.blocks).map((block) => [block.type, block.definition])),
+    headingOffset: 0,
+    editing: true,
+  });
+  return (
+    <Show when={nodes().length > 0}>
+      <Children nodes={nodes()} context={context()} />
+    </Show>
+  );
 }
 
 /**

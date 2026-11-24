@@ -7,6 +7,7 @@ import { icon } from "@barqjs/ui/shared-icon";
 import { ariaViolations, cleanup, fireEvent, render, screen, user, waitFor } from "@barqjs/testing";
 import { $getRoot, $getSelection, $isRangeSelection } from "lexical";
 
+import { serverProcess } from "../ssr-harness.ts";
 import { hydrates, wears } from "../test-arc.ts";
 import { type ComposedMessage, ChatComposer } from "./chat-composer.tsx";
 import { capture, keydown, settle, textOf, typeText } from "./test-editor.ts";
@@ -250,6 +251,25 @@ describe("ChatComposer", () => {
     expect(
       document.querySelector('[data-slot="chat-composer-tools"]')?.classList.contains("t"),
     ).toBe(true);
+  });
+
+  test("editing a message, a server writes its text in the box", async () => {
+    const { code, html, errors } = await serverProcess(`
+      import { renderToStringAsync } from "@barqjs/server";
+      import { ChatComposer } from ${entry};
+      export async function page() {
+        return await renderToStringAsync(() => (
+          <ChatComposer mode="edit" defaultMarkdown="Sent **earlier**" placeholder="Write" onSend={() => {}} />
+        ));
+      }
+    `);
+    expect(errors).toBe("");
+    expect(code).toBe(0);
+    const written = html
+      .slice(html.indexOf('data-slot="chat-composer-content"'))
+      .replaceAll(/<!--[^>]*-->/gu, "");
+    expect(written).toContain("Sent <strong>earlier</strong>");
+    expect(html).not.toContain(">Write</span>");
   });
 
   test("hydrates what the server wrote", async () => {

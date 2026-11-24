@@ -1250,7 +1250,11 @@ the editor, the renderer and on a server.
   from the sites `embeds` allows (YouTube and Vimeo by default); a counter
   against `maxLength`, said once it is past it; a placeholder; `readOnly`;
   `autosave`, which saves as typing pauses and on blur and says so; and
-  `collaborative`. Each block takes the direction of its own text, so
+  `collaborative`. A server writes the opening document inside the
+  editable box, drawn by the renderer as the editor draws it, and the
+  editor takes the box over once the page has hydrated, so the text is
+  there from the first paint and nothing moves as it turns editable.
+  `ChatComposer` does the same for a message being edited. Each block takes the direction of its own text, so
   Arabic and English sit in one document each the right way round.
 - `MentionTypeahead`, `SlashCommandMenu` and `EmojiShortcuts`: what `@`, `/`
   and `:` offer, on Lexical's typeahead with arc's menu: people from a list

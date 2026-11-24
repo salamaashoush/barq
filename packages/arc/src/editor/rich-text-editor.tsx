@@ -66,6 +66,7 @@ import {
   markdownTransformers,
 } from "./document.ts";
 import { useRegistration } from "./hooks.ts";
+import { EditorDocument } from "./renderer.tsx";
 import { editableText } from "./theme.ts";
 import { FloatingFormatToolbar, LinkEditor } from "./floating.tsx";
 import {
@@ -493,6 +494,15 @@ export function RichTextEditor(props: RichTextEditorProps) {
           aria-multiline={true}
           aria-invalid={props.invalid === true ? true : undefined}
           aria-placeholder={props.placeholder}
+          serverContent={
+            editorState === null || editorState === undefined ? undefined : (
+              <EditorDocument
+                value={untrack(() => props.defaultValue)}
+                markdown={untrack(() => props.defaultMarkdown)}
+                blocks={options.blocks}
+              />
+            )
+          }
           placeholder={
             props.placeholder === undefined ? null : (
               <span

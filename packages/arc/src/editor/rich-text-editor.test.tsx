@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { fileURLToPath } from "node:url";
-import { type Child, createSignal } from "@barqjs/core";
+import { type Child, createSignal, resetChildIds } from "@barqjs/core";
+import { hydrate } from "@barqjs/web";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, cleanup, render, screen, user, waitFor, within } from "@barqjs/testing";
 import { $getRoot, type SerializedEditorState } from "lexical";
 
+import { halves, serverProcess } from "../ssr-harness.ts";
 import { hydrates } from "../test-arc.ts";
 import { documentToMarkdown } from "./document.ts";
 import { RichTextEditor } from "./rich-text-editor.tsx";
@@ -28,6 +30,8 @@ function content(): HTMLElement {
   if (element === null) throw new Error("no editable content");
   return element;
 }
+
+const DOCUMENT = "## Plan\n\nFirst **bold** line\n\n- one\n- two\n\n```js\nlet a = 1;\n```\n\n";
 
 describe("RichTextEditor", () => {
   test("is a named, multi-line text box with a placeholder while empty", async () => {
@@ -249,6 +253,72 @@ describe("RichTextEditor", () => {
     expect(
       document.querySelector('[data-slot="rich-text-editor-counter"]')?.classList.contains("n"),
     ).toBe(true);
+  });
+
+  test("a server writes the document in the editable box, as the editor will draw it", async () => {
+    const { code, html, errors } = await serverProcess(`
+      import { renderToStringAsync } from "@barqjs/server";
+      import { RichTextEditor } from ${entry};
+      export async function page() {
+        return await renderToStringAsync(() => (
+          <RichTextEditor label="Notes" defaultMarkdown={${JSON.stringify(DOCUMENT)}} />
+        ));
+      }
+    `);
+    expect(errors).toBe("");
+    expect(code).toBe(0);
+    const box = html.slice(html.indexOf('data-slot="rich-text-editor-content"'));
+    expect(box).toMatch(/^[^>]*white-space: pre-wrap/u);
+    const text = box.replaceAll(/<!--[^>]*-->/gu, "");
+    expect(text).toContain(">Plan</h2>");
+    expect(text).toContain("<strong>bold</strong>");
+    expect(text).toContain("<li");
+    expect(box).toContain('data-language="js"');
+    expect(box).toContain("let a = 1;");
+  });
+
+  test("hydrated, Lexical takes the box over with the blocks the server drew", async () => {
+    const { code, html } = await serverProcess(`
+      import { renderToStringAsync } from "@barqjs/server";
+      import { RichTextEditor } from ${entry};
+      export async function page() {
+        return await renderToStringAsync(() => (
+          <RichTextEditor label="Notes" defaultMarkdown={${JSON.stringify(DOCUMENT)}} />
+        ));
+      }
+    `);
+    expect(code).toBe(0);
+    const { client } = await halves(`
+      import { RichTextEditor } from ${entry};
+      export function Page() {
+        return <RichTextEditor label="Notes" defaultMarkdown={${JSON.stringify(DOCUMENT)}} />;
+      }
+    `);
+    const container = document.body.appendChild(document.createElement("div"));
+    container.innerHTML = html;
+    const written = [...container.querySelectorAll("*")];
+    const served = content();
+    const staticNodes = [...served.querySelectorAll("*")];
+    const blocks = (root: Element) =>
+      [...root.children].map((one) => [one.localName, one.getAttribute("class") ?? ""]);
+    const before = blocks(served);
+    resetChildIds();
+    const dispose = hydrate(client, container);
+    expect(hydrate.report.mismatches).toEqual([]);
+    expect(hydrate.report.recovered).toBe(false);
+    await settle();
+    const box = content();
+    expect(box).toBe(served);
+    expect(box.hasAttribute("data-lexical-editor")).toBe(true);
+    // Only what the server drew inside the box was replaced; the rest was kept.
+    const lost = written.filter((node) => !container.contains(node));
+    expect(lost.length).toBe(staticNodes.length);
+    expect(lost.every((node) => staticNodes.includes(node))).toBe(true);
+    // The editor's blocks are the server's, element for element and class for class.
+    expect(JSON.stringify(blocks(box))).toBe(JSON.stringify(before));
+    expect(box.textContent).toContain("let a = 1;");
+    dispose();
+    container.remove();
   });
 
   test("hydrates what the server wrote", async () => {
