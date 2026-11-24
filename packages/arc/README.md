@@ -427,6 +427,13 @@ import { Chip } from "@barqjs/arc";
   nothing typed is lost. Backspace in the empty input moves to the last tag,
   where a second removes it. It is `field.TagInput` in a form, holds its own
   value with `defaultValue`, and with `name` submits a hidden input per tag.
+- `TimeField`: a time of day typed segment by segment in the locale's order
+  and digits, held as a `Time`. `TimePicker` adds a button that lists a time
+  every `step` minutes between `minValue` and `maxValue` (or the `times`
+  given), written in the locale's own clock, so a phone picks one with a tap.
+  Both are `field.TimeField` and `field.TimePicker` in a form, and stand
+  alone with `value` or `defaultValue`. Segments grow to a finger's height
+  under a coarse pointer, `DateField`'s as well.
 
 ## Code
 

@@ -28,6 +28,14 @@ export {
   tagInputStyles,
 } from "./components/tag-input.tsx";
 export {
+  TimeField,
+  type TimeFieldProps,
+  TimePicker,
+  type TimePickerProps,
+  timePickerStyles,
+  timesBetween,
+} from "./components/time-field.tsx";
+export {
   CommandMenu,
   commandMenuStyles,
   type CommandMenuAction,

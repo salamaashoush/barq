@@ -63,6 +63,7 @@ export interface ArcMessages {
   added: (value: string) => string;
   duplicateTag: (tag: string) => string;
   tooManyTags: (max: number) => string;
+  chooseTime: string;
 }
 
 export const ENGLISH: ArcMessages = {
@@ -122,6 +123,7 @@ export const ENGLISH: ArcMessages = {
   added: (value) => `Added ${value}`,
   duplicateTag: (tag) => `${tag} is already added`,
   tooManyTags: (max) => `No more than ${String(max)}`,
+  chooseTime: "Choose a time",
 };
 
 const MessagesContext = createContext<ArcMessages>(ENGLISH, "ArcMessages");

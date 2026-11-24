@@ -30,13 +30,13 @@ import { Switch } from "@barqjs/ui/switch";
 import { Textarea } from "@barqjs/ui/textarea";
 
 import { srOnly } from "@barqjs/ui/sr-only";
-import { when } from "@barqjs/ui/shared-when";
 
 import { arcLayer as arc } from "../layer.ts";
 import type { Customisable } from "../lib/parts.ts";
-import { bg, edge, focus, interaction, layout, rounded, space, type } from "../style/index.ts";
+import { layout } from "../style/index.ts";
 import { useArcMessages } from "./messages.ts";
 import { TagInput } from "./tag-input.tsx";
+import { TimeField, TimePicker } from "./time-field.tsx";
 
 import {
   type ArcFieldProps,
@@ -45,6 +45,7 @@ import {
   arcFormContext,
   formControl as control,
   messagesOf,
+  segmented,
   useArcFormContext,
 } from "../lib/field.tsx";
 
@@ -449,41 +450,13 @@ export function TimeZoneField(props: TimeZoneFieldProps) {
   );
 }
 
-const segments = arc(
-  layout.row,
-  layout.fill,
-  edge.input,
-  rounded.md,
-  bg.transparent,
-  type.sm,
-  type.numeric,
-  focus.within,
-  interaction.invalid,
-  when.disabledCursor,
-  {
-    minHeight: space.x8,
-    gap: "1px",
-    paddingInline: space.x2_5,
-    '& [role="spinbutton"]': {
-      borderRadius: "calc(var(--radius) * 0.5)",
-      paddingInline: "1px",
-      outline: "none",
-    },
-    '& [role="spinbutton"]:focus': {
-      backgroundColor: "var(--accent)",
-      color: "var(--accent-foreground)",
-    },
-    "& [data-placeholder]": { color: "var(--muted-foreground)" },
-  },
-);
-
 /** A day, typed segment by segment. Held as a `CalendarDate`, or `null`. */
 export function DateField(props: ArcFieldProps) {
   const of = control<CalendarDate | null>();
   return (
     <Frame of={of} label={props.label} description={props.description} field={props} labelledById>
       <AriaDateField<CalendarDate>
-        class={arc(segments, props.classes?.control)}
+        class={arc(segmented, props.classes?.control)}
         aria-labelledby={of.ids.label}
         aria-describedby={of.describedBy(props.description !== undefined)}
         value={of.field().state.value ?? null}
@@ -530,7 +503,7 @@ export function DateTimeField(props: DateTimeFieldProps) {
   return (
     <Frame of={of} label={props.label} description={props.description} field={props} labelledById>
       <AriaDateField<ZonedDateTime>
-        class={arc(segments, props.classes?.control)}
+        class={arc(segmented, props.classes?.control)}
         aria-labelledby={of.ids.label}
         aria-describedby={of.describedBy(props.description !== undefined)}
         value={shown()}
@@ -670,6 +643,8 @@ const arcFieldComponents = {
   DateTimeField,
   TimeZoneField,
   TagInput,
+  TimeField,
+  TimePicker,
 };
 
 const arcFormComponents = { SubmitButton, FormError };
