@@ -130,6 +130,10 @@ export const messageItemStyles = variants({
 
 type Slots = ReturnType<typeof messageItemStyles>;
 
+export interface MessageItemRenders {
+  body?: RenderPart<Child>;
+}
+
 export interface MessageItemProps extends MessageHandlers, Customisable<Slots> {
   message: ChatMessage;
   /** A run's later message: no avatar or name, its time beside it on hover. */
@@ -144,7 +148,7 @@ export interface MessageItemProps extends MessageHandlers, Customisable<Slots> {
   /** The emoji offered at the top of the long-press sheet. @default 👍 ❤️ 🎉 😄 👀 */
   quickReactions?: readonly string[];
   /** Another element for the body, handed its attributes and the content. */
-  renders?: { body?: RenderPart<Child> };
+  renders?: MessageItemRenders;
   /** Set by a list that moves focus between messages. */
   tabIndex?: number;
   id?: string;
@@ -181,23 +185,44 @@ export function MessageItem(props: MessageItemProps) {
   const messages = useArcMessages();
   const nameId = createUniqueId();
   const timeId = createUniqueId();
-  const message = (): ChatMessage => props.message;
-  const state = (): "sent" | "pending" | "failed" => message().state ?? "sent";
-  const cls = (): Slots => parts(messageItemStyles({ state: state() }), props.classes);
-  const own = (): boolean =>
-    props.canModify?.(message()) ??
-    (props.currentUserId !== undefined && props.currentUserId === message().author.id);
-  const settled = (): boolean => state() === "sent";
-  const canEdit = (): boolean => own() && settled() && props.onEdit !== undefined;
-  const canDelete = (): boolean => own() && settled() && props.onDelete !== undefined;
-  const bubble = (): boolean => props.appearance === "bubble";
-  const align = (): "start" | "end" => (bubble() && own() ? "end" : "start");
+  function message(): ChatMessage {
+    return props.message;
+  }
+  function state(): "sent" | "pending" | "failed" {
+    return message().state ?? "sent";
+  }
+  function cls(): Slots {
+    return parts(messageItemStyles({ state: state() }), props.classes);
+  }
+  function own(): boolean {
+    return (
+      props.canModify?.(message()) ??
+      (props.currentUserId !== undefined && props.currentUserId === message().author.id)
+    );
+  }
+  function settled(): boolean {
+    return state() === "sent";
+  }
+  function canEdit(): boolean {
+    return own() && settled() && props.onEdit !== undefined;
+  }
+  function canDelete(): boolean {
+    return own() && settled() && props.onDelete !== undefined;
+  }
+  function bubble(): boolean {
+    return props.appearance === "bubble";
+  }
+  function align(): "start" | "end" {
+    return bubble() && own() ? "end" : "start";
+  }
   const [picking, setPicking] = createSignal(false);
   const [menu, setMenu] = createSignal(false);
   const [sheet, setSheet] = createSignal(false);
 
-  const react = (emoji: string, add: boolean): void => props.onReact?.(message(), emoji, add);
-  const remove = async (): Promise<void> => {
+  function react(emoji: string, add: boolean): void {
+    props.onReact?.(message(), emoji, add);
+  }
+  async function remove(): Promise<void> {
     const sure = await confirm({
       title: messages().deleteMessageHeading,
       description: messages().deleteMessageDescription,
@@ -205,19 +230,25 @@ export function MessageItem(props: MessageItemProps) {
       confirmLabel: messages().delete,
     });
     if (sure) props.onDelete?.(message());
-  };
-  const copyLink = async (): Promise<void> => {
+  }
+  async function copyLink(): Promise<void> {
     const link = props.linkTo?.(message());
     if (link === undefined) return;
     await writeClipboard(link);
     announce(messages().copied, "polite");
-  };
-  const openThread = (): void => (props.onOpenThread ?? props.onReply)?.(message());
-  const hasMenu = (): boolean =>
-    settled() && (props.linkTo !== undefined || props.onPin !== undefined || canDelete());
-  const hasActions = (): boolean =>
-    settled() &&
-    (props.onReact !== undefined || props.onReply !== undefined || canEdit() || hasMenu());
+  }
+  function openThread(): void {
+    (props.onOpenThread ?? props.onReply)?.(message());
+  }
+  function hasMenu(): boolean {
+    return settled() && (props.linkTo !== undefined || props.onPin !== undefined || canDelete());
+  }
+  function hasActions(): boolean {
+    return (
+      settled() &&
+      (props.onReact !== undefined || props.onReply !== undefined || canEdit() || hasMenu())
+    );
+  }
 
   const { longPressProps } = longPress({
     pointerType: "touch",
@@ -226,9 +257,12 @@ export function MessageItem(props: MessageItemProps) {
     onLongPress: () => setSheet(true),
   });
 
-  const editing = (): boolean =>
-    props.editor !== undefined ||
-    (props.renderEditor !== undefined && props.editingId === message().id);
+  function editing(): boolean {
+    return (
+      props.editor !== undefined ||
+      (props.renderEditor !== undefined && props.editingId === message().id)
+    );
+  }
   const article = makeRef<HTMLElement>();
   // Leaving the editor, by saving or by Escape, hands focus back to the
   // message rather than dropping it to the page.
@@ -241,7 +275,7 @@ export function MessageItem(props: MessageItemProps) {
     }
   });
 
-  const body = (): Child => {
+  function body(): Child {
     if (props.editor !== undefined) return props.editor;
     if (editing()) return props.renderEditor?.(message());
     const stored = message().content;
@@ -262,7 +296,7 @@ export function MessageItem(props: MessageItemProps) {
         {content}
       </div>
     );
-  };
+  }
 
   return (
     <article
@@ -573,22 +607,31 @@ export function MessageItem(props: MessageItemProps) {
   );
 }
 
+export interface MessageAttachmentsProps {
+  attachments: readonly ChatAttachment[];
+  classes?: Slots;
+  label?: string;
+}
+
 /**
  * The files sent with a message: pictures in a `Gallery` that opens the
  * `Lightbox`, audio and video in `MediaPlayer`, the rest as cards that
  * download.
  */
-export function MessageAttachments(props: {
-  attachments: readonly ChatAttachment[];
-  classes?: Slots;
-  label?: string;
-}) {
-  const own = (): Slots => props.classes ?? messageItemStyles();
+export function MessageAttachments(props: MessageAttachmentsProps) {
+  function own(): Slots {
+    return props.classes ?? messageItemStyles();
+  }
   const messages = useArcMessages();
-  const images = () => props.attachments.filter((one) => one.kind === "image");
-  const players = () =>
-    props.attachments.filter((one) => one.kind === "video" || one.kind === "audio");
-  const files = () => props.attachments.filter((one) => one.kind === "file");
+  function images() {
+    return props.attachments.filter((one) => one.kind === "image");
+  }
+  function players() {
+    return props.attachments.filter((one) => one.kind === "video" || one.kind === "audio");
+  }
+  function files() {
+    return props.attachments.filter((one) => one.kind === "file");
+  }
   return (
     <div
       class={own().attachments}

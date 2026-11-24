@@ -9,7 +9,9 @@ function slot(name: string): HTMLElement {
   return document.querySelector(`[data-slot="${name}"]`) as HTMLElement;
 }
 
-const count = (name: string): number => document.querySelectorAll(`[data-slot="${name}"]`).length;
+function count(name: string): number {
+  return document.querySelectorAll(`[data-slot="${name}"]`).length;
+}
 
 describe("EmojiButton", () => {
   test("opens the picker, hands over the emoji chosen and closes", async () => {

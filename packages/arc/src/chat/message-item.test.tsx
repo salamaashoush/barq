@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { type Child } from "@barqjs/core";
+import { type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user, waitFor, within } from "@barqjs/testing";
 
@@ -34,8 +34,8 @@ afterEach(() => {
 });
 
 function coarse(): void {
-  const stub = (query: string): MediaQueryList =>
-    ({
+  function stub(query: string): MediaQueryList {
+    return {
       matches: query.includes("pointer: coarse") ? true : original(query).matches,
       media: query,
       onchange: null,
@@ -44,7 +44,8 @@ function coarse(): void {
       addListener: () => {},
       removeListener: () => {},
       dispatchEvent: () => false,
-    }) as MediaQueryList;
+    } as MediaQueryList;
+  }
   Object.defineProperty(window, "matchMedia", { configurable: true, value: stub });
 }
 
@@ -266,7 +267,7 @@ describe("MessageItem", () => {
   });
 
   test("right to left in the locale's digits, and a class per part", () => {
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }

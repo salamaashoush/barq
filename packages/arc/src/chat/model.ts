@@ -88,5 +88,6 @@ export interface MessageHandlers {
   timeZone?: string;
 }
 
-export const time = (moment: Moment): number =>
-  moment instanceof Date ? moment.getTime() : new Date(moment).getTime();
+export function time(moment: Moment): number {
+  return moment instanceof Date ? moment.getTime() : new Date(moment).getTime();
+}

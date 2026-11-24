@@ -157,6 +157,10 @@ export const callStyles = variants({
 
 type Slots = ReturnType<typeof callStyles>;
 
+export interface ParticipantTileRenders {
+  video?: RenderPart<MediaStream>;
+}
+
 export interface ParticipantTileProps extends Customisable<Slots> {
   participant: CallParticipant;
   /** Draw the camera even when there is a shared screen. */
@@ -174,7 +178,7 @@ export interface ParticipantTileProps extends Customisable<Slots> {
   /** The tile's menu: pin, mute for me and full screen. @default true */
   menu?: boolean;
   /** Another element for the media, handed the attributes and the stream. */
-  renders?: { video?: RenderPart<MediaStream> };
+  renders?: ParticipantTileRenders;
 }
 
 /**
@@ -191,24 +195,31 @@ export interface ParticipantTileProps extends Customisable<Slots> {
  */
 export function ParticipantTile(props: ParticipantTileProps) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(callStyles(), props.classes);
-  const participant = (): CallParticipant => props.participant;
-  const sharing = (): boolean => props.camera !== true && (participant().screen ?? null) !== null;
-  const stream = (): MediaStream | null | undefined =>
-    sharing()
+  function cls(): Slots {
+    return parts(callStyles(), props.classes);
+  }
+  function participant(): CallParticipant {
+    return props.participant;
+  }
+  function sharing(): boolean {
+    return props.camera !== true && (participant().screen ?? null) !== null;
+  }
+  function stream(): MediaStream | null | undefined {
+    return sharing()
       ? participant().screen
       : participant().videoOff === true
         ? null
         : participant().stream;
-  const states = (): string => {
+  }
+  function states(): string {
     const out: string[] = [];
     if (participant().muted === true) out.push(messages().microphoneOff);
     if (participant().videoOff === true) out.push(messages().cameraOff);
     if (sharing()) out.push(messages().presenting(participant().person.name));
     if (participant().connection === "poor") out.push(messages().poorConnection);
     return out.length === 0 ? "" : `, ${out.join(", ")}`;
-  };
-  const media = (): Child => {
+  }
+  function media(): Child {
     const given = stream();
     if (given === null || given === undefined) return null;
     const attributes = {
@@ -227,7 +238,7 @@ export function ParticipantTile(props: ParticipantTileProps) {
         sinkId={props.audioOutput}
       />
     );
-  };
+  }
   const tile = makeRef<HTMLElement>();
   const [menuOpen, setMenuOpen] = createSignal(false, { ownedWrite: true });
   const [mutedForMe, setMutedForMe] = controllable<boolean>(
@@ -240,21 +251,24 @@ export function ParticipantTile(props: ParticipantTileProps) {
   const [canFullScreen, setCanFullScreen] = createSignal(false, { ownedWrite: true });
   onSettled(() => {
     setCanFullScreen(document.fullscreenEnabled);
-    const sync = (): void => {
+    function sync(): void {
       setFull(document.fullscreenElement === tile());
-    };
+    }
     document.addEventListener("fullscreenchange", sync);
     return () => document.removeEventListener("fullscreenchange", sync);
   });
-  const toggleFullScreen = (): void => {
+  function toggleFullScreen(): void {
     const element = tile();
     if (element === null) return;
     if (document.fullscreenElement === element) void document.exitFullscreen();
     else void element.requestFullscreen();
-  };
-  const hasMenu = (): boolean =>
-    props.menu !== false &&
-    (props.onPinChange !== undefined || participant().local !== true || canFullScreen());
+  }
+  function hasMenu(): boolean {
+    return (
+      props.menu !== false &&
+      (props.onPinChange !== undefined || participant().local !== true || canFullScreen())
+    );
+  }
   const { longPressProps } = longPress({
     pointerType: "touch",
     isDisabled: () => !hasMenu(),
@@ -346,14 +360,16 @@ export function ParticipantTile(props: ParticipantTileProps) {
   );
 }
 
-/** A `<video>` playing a `MediaStream`, which has no attribute and is set as `srcObject`. */
-function StreamVideo(props: {
+interface StreamVideoProps {
   class: string;
   stream: MediaStream;
   muted: boolean;
   mirrored: boolean;
   sinkId?: string;
-}) {
+}
+
+/** A `<video>` playing a `MediaStream`, which has no attribute and is set as `srcObject`. */
+function StreamVideo(props: StreamVideoProps) {
   const element = makeRef<HTMLVideoElement>();
   createEffect(
     () => [element(), props.stream] as const,
@@ -432,42 +448,57 @@ export interface CallStageProps extends Customisable<Slots> {
  */
 export function CallStage(props: CallStageProps) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(callStyles(), props.classes);
-  const presenter = (): CallParticipant | undefined =>
-    props.participants.find((one) => (one.screen ?? null) !== null);
-  const pinned = (): CallParticipant | undefined =>
-    props.participants.find((one) => one.id === props.pinnedId);
-  const arrangement = (): "grid" | "speaker" =>
-    props.compact === true || pinned() !== undefined
+  function cls(): Slots {
+    return parts(callStyles(), props.classes);
+  }
+  function presenter(): CallParticipant | undefined {
+    return props.participants.find((one) => (one.screen ?? null) !== null);
+  }
+  function pinned(): CallParticipant | undefined {
+    return props.participants.find((one) => one.id === props.pinnedId);
+  }
+  function arrangement(): "grid" | "speaker" {
+    return props.compact === true || pinned() !== undefined
       ? "speaker"
       : (props.layout ?? (presenter() === undefined ? "grid" : "speaker"));
-  const staged = (): CallParticipant | undefined =>
-    pinned() ??
-    presenter() ??
-    props.participants.find((one) => one.id === props.activeSpeakerId) ??
-    props.participants.find((one) => one.speaking === true && one.local !== true) ??
-    props.participants.find((one) => one.local !== true) ??
-    props.participants[0];
-  const others = (): CallParticipant[] =>
-    props.participants.filter((one) => one.id !== staged()?.id);
-  const self = (): CallParticipant | undefined =>
-    props.participants.find((one) => one.local === true && one.id !== staged()?.id);
-  const columns = (): number => Math.max(1, Math.ceil(Math.sqrt(props.participants.length)));
-  const tile = (participant: CallParticipant, className?: string) => (
-    <ParticipantTile
-      participant={participant}
-      classes={props.classes}
-      class={className}
-      renders={props.renders}
-      pinned={participant.id === props.pinnedId}
-      onPinChange={
-        props.onPinnedChange === undefined
-          ? undefined
-          : (one: CallParticipant, pin: boolean) => props.onPinnedChange?.(pin ? one.id : undefined)
-      }
-      audioOutput={props.audioOutput}
-    />
-  );
+  }
+  function staged(): CallParticipant | undefined {
+    return (
+      pinned() ??
+      presenter() ??
+      props.participants.find((one) => one.id === props.activeSpeakerId) ??
+      props.participants.find((one) => one.speaking === true && one.local !== true) ??
+      props.participants.find((one) => one.local !== true) ??
+      props.participants[0]
+    );
+  }
+  function others(): CallParticipant[] {
+    return props.participants.filter((one) => one.id !== staged()?.id);
+  }
+  function self(): CallParticipant | undefined {
+    return props.participants.find((one) => one.local === true && one.id !== staged()?.id);
+  }
+  function columns(): number {
+    return Math.max(1, Math.ceil(Math.sqrt(props.participants.length)));
+  }
+  function tile(participant: CallParticipant, className?: string) {
+    return (
+      <ParticipantTile
+        participant={participant}
+        classes={props.classes}
+        class={className}
+        renders={props.renders}
+        pinned={participant.id === props.pinnedId}
+        onPinChange={
+          props.onPinnedChange === undefined
+            ? undefined
+            : (one: CallParticipant, pin: boolean) =>
+                props.onPinnedChange?.(pin ? one.id : undefined)
+        }
+        audioOutput={props.audioOutput}
+      />
+    );
+  }
   return (
     <section
       class={arc(cls().stage, props.class, props.className)}
@@ -531,6 +562,12 @@ export interface CallDevices {
   audiooutput?: readonly CallDevice[];
 }
 
+export interface SelectedDevices {
+  audioinput?: string;
+  videoinput?: string;
+  audiooutput?: string;
+}
+
 export interface CallControlsProps extends Customisable<Slots> {
   muted?: boolean;
   videoOff?: boolean;
@@ -542,7 +579,7 @@ export interface CallControlsProps extends Customisable<Slots> {
   onLeave: () => void;
   devices?: CallDevices;
   /** The device in use for each kind. */
-  selected?: { audioinput?: string; videoinput?: string; audiooutput?: string };
+  selected?: SelectedDevices;
   onDeviceChange?: (kind: keyof CallDevices, deviceId: string) => void;
 }
 
@@ -563,17 +600,21 @@ export interface CallControlsProps extends Customisable<Slots> {
  */
 export function CallControls(props: CallControlsProps) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(callStyles(), props.classes);
-  const kinds = (): (keyof CallDevices)[] =>
-    (["audioinput", "videoinput", "audiooutput"] as const).filter(
+  function cls(): Slots {
+    return parts(callStyles(), props.classes);
+  }
+  function kinds(): (keyof CallDevices)[] {
+    return (["audioinput", "videoinput", "audiooutput"] as const).filter(
       (kind) => (props.devices?.[kind]?.length ?? 0) > 0,
     );
-  const kindLabel = (kind: keyof CallDevices): string =>
-    kind === "audioinput"
+  }
+  function kindLabel(kind: keyof CallDevices): string {
+    return kind === "audioinput"
       ? messages().microphone
       : kind === "videoinput"
         ? messages().camera
         : messages().speaker;
+  }
   return (
     <Toolbar
       class={arc(cls().controls, props.class, props.className)}
@@ -678,9 +719,12 @@ export interface IncomingCallProps extends Customisable<Slots> {
 export function IncomingCall(props: IncomingCallProps) {
   const messages = useArcMessages();
   const titleId = createUniqueId();
-  const cls = (): Slots => parts(callStyles(), props.classes);
-  const kind = (): string =>
-    props.video === true ? messages().incomingVideoCall : messages().incomingVoiceCall;
+  function cls(): Slots {
+    return parts(callStyles(), props.classes);
+  }
+  function kind(): string {
+    return props.video === true ? messages().incomingVideoCall : messages().incomingVoiceCall;
+  }
   onSettled(() => {
     const withdraw = announce(`${messages().incomingCall(props.caller.name)}. ${kind()}`);
     return withdraw;
@@ -731,7 +775,9 @@ export interface CallBannerProps extends Customisable<Slots> {
  */
 export function CallBanner(props: CallBannerProps) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(callStyles(), props.classes);
+  function cls(): Slots {
+    return parts(callStyles(), props.classes);
+  }
   const [now, setNow] = createSignal(props.now === undefined ? Date.now() : time(props.now), {
     ownedWrite: true,
   });

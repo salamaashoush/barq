@@ -1,17 +1,22 @@
 import { describe, expect, test } from "bun:test";
-import { type Child, createSignal, flush } from "@barqjs/core";
+import { createSignal, flush, type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen } from "@barqjs/testing";
 
 import { hydrates } from "../test-arc.ts";
 import { TypingIndicator } from "./typing-indicator.tsx";
 
-const text = (): string =>
-  document.querySelector('[data-slot="typing-indicator"]')?.textContent ?? "";
+function text(): string {
+  return document.querySelector('[data-slot="typing-indicator"]')?.textContent ?? "";
+}
+
+interface Typist {
+  name: string;
+}
 
 describe("TypingIndicator", () => {
   test("names who is typing, then counts the rest, in a status that stays in the page", async () => {
-    const [people, setPeople] = createSignal<{ name: string }[]>([]);
+    const [people, setPeople] = createSignal<Typist[]>([]);
     render(() => <TypingIndicator people={people()} />);
     const status = screen.getByRole("status");
     expect(status.textContent).toBe("");
@@ -29,7 +34,7 @@ describe("TypingIndicator", () => {
   });
 
   test("joins the names as the locale does, right to left, and takes a class per part", () => {
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }

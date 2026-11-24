@@ -19,19 +19,29 @@ export interface MediaDevicesOptions {
   onSelect?: (kind: MediaDeviceKind, deviceId: string) => void;
 }
 
+export interface MediaPermissions {
+  microphone: MediaPermission;
+  camera: MediaPermission;
+}
+
+export interface MediaKinds {
+  audio?: boolean;
+  video?: boolean;
+}
+
 export interface MediaDevicesState {
   /** Every microphone, camera and speaker the browser lists, for `CallControls`. */
   devices: Accessor<CallDevices>;
   /** The device chosen of each kind; the browser's default until one is. */
   selected: Accessor<Partial<Record<MediaDeviceKind, string>>>;
   select: (kind: MediaDeviceKind, deviceId: string) => void;
-  permissions: Accessor<{ microphone: MediaPermission; camera: MediaPermission }>;
+  permissions: Accessor<MediaPermissions>;
   /**
    * Asks for the microphone, the camera or both, which is what names the
    * devices: a browser lists them unnamed until the page may use them.
    * Resolves with whether every one asked for was allowed.
    */
-  request: (kinds?: { audio?: boolean; video?: boolean }) => Promise<boolean>;
+  request: (kinds?: MediaKinds) => Promise<boolean>;
   /** Whether a speaker can be chosen: `HTMLMediaElement.setSinkId` exists. */
   canSelectSpeaker: Accessor<boolean>;
   /** `getUserMedia` constraints for the chosen microphone and camera. */
@@ -91,17 +101,18 @@ export function useMediaDevices(options: MediaDevicesOptions = {}): MediaDevices
   const [selected, setSelected] = createSignal<Partial<Record<MediaDeviceKind, string>>>(
     untrack(() => ({ ...options.defaultSelected })),
   );
-  const [permissions, setPermissions] = createSignal<{
-    microphone: MediaPermission;
-    camera: MediaPermission;
-  }>({ microphone: "unknown", camera: "unknown" });
+  const [permissions, setPermissions] = createSignal<MediaPermissions>({
+    microphone: "unknown",
+    camera: "unknown",
+  });
 
-  const read = async (): Promise<void> => {
+  async function read(): Promise<void> {
     const source = media();
     if (source === undefined) return;
     const listed = await source.enumerateDevices();
-    const of = (kind: MediaDeviceKind): CallDevice[] =>
-      listed.filter((one) => one.kind === kind && one.deviceId !== "").map(named);
+    function of(kind: MediaDeviceKind): CallDevice[] {
+      return listed.filter((one) => one.kind === kind && one.deviceId !== "").map(named);
+    }
     const next: CallDevices = {
       audioinput: of("audioinput"),
       videoinput: of("videoinput"),
@@ -118,11 +129,13 @@ export function useMediaDevices(options: MediaDevicesOptions = {}): MediaDevices
       }
       return kept;
     });
-  };
+  }
 
   if (!isServer && media() !== undefined) {
     const source = media() as MediaDevices;
-    const changed = (): void => void read();
+    function changed(): void {
+      void read();
+    }
     source.addEventListener("devicechange", changed);
     onCleanup(() => source.removeEventListener("devicechange", changed));
     void read();
@@ -136,28 +149,28 @@ export function useMediaDevices(options: MediaDevicesOptions = {}): MediaDevices
     for (const name of ["microphone", "camera"] as const) {
       void query(name).then((status) => {
         if (status === null || !live) return;
-        const write = (): void => {
+        const write: () => void = () => {
           setPermissions((now) => ({ ...now, [name]: status.state }));
         };
         write();
         // A permission given or taken away in the browser's own settings names
         // the devices, or stops them being named, without a reload.
-        const onChange = (): void => {
+        function onChange(): void {
           write();
           void read();
-        };
+        }
         status.addEventListener("change", onChange);
         stops.push(() => status.removeEventListener("change", onChange));
       });
     }
   }
 
-  const select = (kind: MediaDeviceKind, deviceId: string): void => {
+  function select(kind: MediaDeviceKind, deviceId: string): void {
     setSelected((now) => ({ ...now, [kind]: deviceId }));
     options.onSelect?.(kind, deviceId);
-  };
+  }
 
-  const request = async (kinds: { audio?: boolean; video?: boolean } = {}): Promise<boolean> => {
+  async function request(kinds: MediaKinds = {}): Promise<boolean> {
     const source = media();
     if (source === undefined) return false;
     const audio = kinds.audio ?? true;
@@ -181,15 +194,15 @@ export function useMediaDevices(options: MediaDevicesOptions = {}): MediaDevices
       }
       throw error;
     }
-  };
+  }
 
-  const constraints = (): MediaStreamConstraints => {
+  function constraints(): MediaStreamConstraints {
     const chosen = selected();
     return {
       audio: chosen.audioinput === undefined ? true : { deviceId: { exact: chosen.audioinput } },
       video: chosen.videoinput === undefined ? true : { deviceId: { exact: chosen.videoinput } },
     };
-  };
+  }
 
   return {
     devices,

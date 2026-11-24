@@ -70,8 +70,12 @@ export interface ThreadPanelProps extends MessageHandlers, Customisable<Slots> {
  */
 export function ThreadPanel(props: ThreadPanelProps) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(threadPanelStyles(), props.classes);
-  const parent = (): ChatMessage => ({ ...props.parent, thread: undefined });
+  function cls(): Slots {
+    return parts(threadPanelStyles(), props.classes);
+  }
+  function parent(): ChatMessage {
+    return { ...props.parent, thread: undefined };
+  }
   return (
     <div class={arc(cls().root, props.class, props.className)} data-slot="thread-panel">
       <Show when={props.context !== undefined}>

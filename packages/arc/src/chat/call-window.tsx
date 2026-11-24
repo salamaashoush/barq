@@ -78,6 +78,11 @@ const LEAP = 64;
 /** The room kept between the window and the viewport's edges, in px. */
 const MARGIN = 8;
 
+interface Position {
+  x: number;
+  y: number;
+}
+
 /**
  * A small window over the page for a call going on while the reader is
  * elsewhere in the app, which they drag where it is out of the way.
@@ -97,12 +102,14 @@ const MARGIN = 8;
  */
 export function CallWindow(props: CallWindowProps) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(callWindowStyles(), props.classes);
+  function cls(): Slots {
+    return parts(callWindowStyles(), props.classes);
+  }
   const root = makeRef<HTMLElement>();
   // Unset until it is first moved: the stylesheet's corner holds until then.
-  const [at, setAt] = createSignal<{ x: number; y: number } | null>(null, { ownedWrite: true });
+  const [at, setAt] = createSignal<Position | null>(null, { ownedWrite: true });
 
-  const clamp = (x: number, y: number): { x: number; y: number } => {
+  function clamp(x: number, y: number): Position {
     const element = root();
     const view = element?.ownerDocument.defaultView;
     if (element === null || view === null || view === undefined) return { x, y };
@@ -114,14 +121,14 @@ export function CallWindow(props: CallWindowProps) {
       x: Math.min(most.x, Math.max(MARGIN, x)),
       y: Math.min(most.y, Math.max(MARGIN, y)),
     };
-  };
+  }
 
-  const current = (): { x: number; y: number } => {
+  function current(): Position {
     const held = at();
     if (held !== null) return held;
     const box = root()?.getBoundingClientRect();
     return { x: box?.left ?? 0, y: box?.top ?? 0 };
-  };
+  }
 
   const { moveProps } = move({
     onMove: (event: MoveMoveEvent) => {
@@ -134,15 +141,15 @@ export function CallWindow(props: CallWindowProps) {
   onSettled(() => {
     const view = root()?.ownerDocument.defaultView;
     if (view === null || view === undefined) return undefined;
-    const keep = (): void => {
+    function keep(): void {
       const held = at();
       if (held !== null) setAt(clamp(held.x, held.y));
-    };
+    }
     view.addEventListener("resize", keep);
     return () => view.removeEventListener("resize", keep);
   });
 
-  const placed = (): Record<string, string> | undefined => {
+  function placed(): Record<string, string> | undefined {
     const held = at();
     if (held === null) return undefined;
     // Physical, as the pointer moves: the logical corner no longer applies.
@@ -152,7 +159,7 @@ export function CallWindow(props: CallWindowProps) {
       right: "auto",
       bottom: "auto",
     };
-  };
+  }
 
   return (
     <section

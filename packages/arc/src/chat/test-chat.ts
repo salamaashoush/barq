@@ -5,11 +5,14 @@
 
 import type { CompactEmoji, EmojiSource } from "./emoji-data.ts";
 
+export interface ViewportSize {
+  height: number;
+  width?: number;
+  scrollHeight?: () => number;
+}
+
 /** A scroller with a height, a width and a position a browser would report. */
-export function sizeViewport(
-  element: HTMLElement,
-  size: { height: number; width?: number; scrollHeight?: () => number },
-): void {
+export function sizeViewport(element: HTMLElement, size: ViewportSize): void {
   let top = 0;
   Object.defineProperty(element, "clientHeight", { value: size.height, configurable: true });
   Object.defineProperty(element, "clientWidth", { value: size.width ?? 320, configurable: true });
@@ -36,19 +39,16 @@ export function scrollViewport(element: HTMLElement, top: number): void {
   element.dispatchEvent(new Event("scroll"));
 }
 
-const face = (
-  unicode: string,
-  label: string,
-  order: number,
-  tags: string[] = [],
-): CompactEmoji => ({
-  unicode,
-  label,
-  hexcode: unicode.codePointAt(0)?.toString(16).toUpperCase() ?? "",
-  group: 0,
-  order,
-  tags,
-});
+function face(unicode: string, label: string, order: number, tags: string[] = []): CompactEmoji {
+  return {
+    unicode,
+    label,
+    hexcode: unicode.codePointAt(0)?.toString(16).toUpperCase() ?? "",
+    group: 0,
+    order,
+    tags,
+  };
+}
 
 export const SAMPLE_EMOJI: CompactEmoji[] = [
   face("😀", "grinning face", 1, ["smile", "happy"]),

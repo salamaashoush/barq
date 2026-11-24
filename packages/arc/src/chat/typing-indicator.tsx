@@ -65,8 +65,10 @@ export interface TypingIndicatorProps extends Customisable<Slots> {
 export function TypingIndicator(props: TypingIndicatorProps) {
   const messages = useArcMessages();
   const list = listFormatter({ type: "conjunction" });
-  const cls = (): Slots => parts(typingIndicatorStyles(), props.classes);
-  const sentence = (): string => {
+  function cls(): Slots {
+    return parts(typingIndicatorStyles(), props.classes);
+  }
+  function sentence(): string {
     const people = props.people;
     if (people.length === 0) return "";
     const max = Math.max(1, props.max ?? 2);
@@ -74,7 +76,7 @@ export function TypingIndicator(props: TypingIndicatorProps) {
     const rest = people.length - named.length;
     if (rest > 0) named.push(messages().othersCount(rest));
     return messages().isTyping(list().format(named), people.length);
-  };
+  }
   return (
     <div
       class={arc(cls().root, props.class, props.className)}

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { type Child } from "@barqjs/core";
+import { type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user, within } from "@barqjs/testing";
 
@@ -29,8 +29,8 @@ afterEach(() => {
 });
 
 function screenIs(compact: boolean): void {
-  const stub = (query: string): MediaQueryList =>
-    ({
+  function stub(query: string): MediaQueryList {
+    return {
       matches: query.includes("pointer: coarse") ? compact : original(query).matches,
       media: query,
       onchange: null,
@@ -39,7 +39,8 @@ function screenIs(compact: boolean): void {
       addListener: () => {},
       removeListener: () => {},
       dispatchEvent: () => false,
-    }) as MediaQueryList;
+    } as MediaQueryList;
+  }
   Object.defineProperty(window, "matchMedia", { configurable: true, value: stub });
 }
 
@@ -116,7 +117,7 @@ describe("ThreadPanel", () => {
   });
 
   test("right to left, in the locale's words, with a class per part", () => {
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }

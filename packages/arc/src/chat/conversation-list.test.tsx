@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { type Child } from "@barqjs/core";
+import { type Child, type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user, within } from "@barqjs/testing";
 import { Sidebar, SidebarContent, SidebarProvider } from "@barqjs/ui/sidebar";
@@ -111,7 +111,7 @@ describe("ConversationList", () => {
   });
 
   test("right to left, and a class per part", () => {
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }
@@ -126,7 +126,9 @@ describe("ConversationList", () => {
         ))}
       </Arabic>
     ));
-    const slot = (name: string) => document.querySelector(`[data-slot="${name}"]`);
+    function slot(name: string) {
+      return document.querySelector(`[data-slot="${name}"]`);
+    }
     expect(slot("conversation-list")?.classList.contains("r")).toBe(true);
     expect(slot("conversation-list")?.classList.contains("mine")).toBe(true);
     expect(slot("conversation-list-heading")?.classList.contains("h")).toBe(true);

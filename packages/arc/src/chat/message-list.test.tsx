@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { type Child, DEV, createSignal, flush } from "@barqjs/core";
+import { DEV, createSignal, flush, type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user } from "@barqjs/testing";
 
@@ -80,7 +80,13 @@ function slot(name: string): HTMLElement {
   return document.querySelector(`[data-slot="${name}"]`) as HTMLElement;
 }
 
-const rowsHeight = (): number => Number.parseFloat(slot("message-list-rows").style.height);
+function rowsHeight(): number {
+  return Number.parseFloat(slot("message-list-rows").style.height);
+}
+
+interface Resizable {
+  resize: (next: number) => void;
+}
 
 /** The list given a 400px viewport, laid out and measured. */
 async function laidOut(height = 400): Promise<HTMLElement> {
@@ -88,7 +94,7 @@ async function laidOut(height = 400): Promise<HTMLElement> {
   let box = height;
   sizeViewport(viewport, { height: box, scrollHeight: () => Math.max(box, rowsHeight()) });
   Object.defineProperty(viewport, "clientHeight", { configurable: true, get: () => box });
-  (viewport as unknown as { resize: (next: number) => void }).resize = (next) => {
+  (viewport as unknown as Resizable).resize = (next) => {
     box = next;
   };
   // A resize rather than a scroll: the virtualizer reads the box again, and
@@ -100,16 +106,20 @@ async function laidOut(height = 400): Promise<HTMLElement> {
   return viewport;
 }
 
-const rowTop = (id: string): number =>
-  Number.parseFloat(
+function rowTop(id: string): number {
+  return Number.parseFloat(
     (document.querySelector(`[data-slot="message-list-row"][data-key="${id}"]`) as HTMLElement)
       .style.top,
   );
+}
 
-const articles = (): HTMLElement[] => screen.queryAllByRole("article");
+function articles(): HTMLElement[] {
+  return screen.queryAllByRole("article");
+}
 
-const atBottom = (viewport: HTMLElement): boolean =>
-  Math.abs(viewport.scrollTop - (rowsHeight() - viewport.clientHeight)) < 1;
+function atBottom(viewport: HTMLElement): boolean {
+  return Math.abs(viewport.scrollTop - (rowsHeight() - viewport.clientHeight)) < 1;
+}
 
 describe("MessageList", () => {
   test("opens at the newest message, and draws only the rows on screen", async () => {
@@ -243,7 +253,7 @@ describe("MessageList", () => {
     // At the end, a shorter window stays at the end.
     scrollViewport(viewport, rowsHeight() - 400);
     await settle();
-    (viewport as unknown as { resize: (next: number) => void }).resize(250);
+    (viewport as unknown as Resizable).resize(250);
     resized();
     await laidOut(250);
     expect(atBottom(viewport)).toBe(true);
@@ -334,8 +344,9 @@ describe("MessageList", () => {
     const [messages, setMessages] = createSignal(conversation(0, 10));
     render(() => <MessageList messages={messages()} currentUserId="me" timeZone="UTC" />);
     await laidOut();
-    const said = (): string =>
-      document.querySelector("[data-barq-live-announcer]")?.textContent ?? "";
+    function said(): string {
+      return document.querySelector("[data-barq-live-announcer]")?.textContent ?? "";
+    }
     const before = said();
     setMessages([
       ...conversation(0, 10),
@@ -360,7 +371,7 @@ describe("MessageList", () => {
   });
 
   test("right to left in the locale's words, and a class per part", async () => {
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }

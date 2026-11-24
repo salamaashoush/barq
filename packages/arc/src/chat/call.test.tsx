@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Child, createSignal, flush } from "@barqjs/core";
+import { createSignal, flush, type ParentProps } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user, within } from "@barqjs/testing";
 
@@ -14,7 +14,9 @@ import {
 } from "./call.tsx";
 
 /** What the app hands arc: a stream it got from WebRTC. arc never opens one. */
-const stream = (): MediaStream => new MediaStream();
+function stream(): MediaStream {
+  return new MediaStream();
+}
 
 const ALEX: CallParticipant = { id: "a", person: { name: "Alex Doe" }, stream: stream() };
 const SAM: CallParticipant = { id: "s", person: { name: "Sam Lee" }, muted: true, videoOff: true };
@@ -227,7 +229,7 @@ describe("IncomingCall and CallBanner", () => {
 
 describe("the call UI", () => {
   test("right to left in the locale's words, with a class per part", () => {
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }

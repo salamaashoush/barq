@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { type Child } from "@barqjs/core";
+import { type ParentProps } from "@barqjs/core";
 import { collectCss } from "@barqjs/css";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user, waitFor } from "@barqjs/testing";
@@ -30,11 +30,13 @@ async function opened(height = 360): Promise<HTMLElement> {
   return viewport;
 }
 
-const search = (): HTMLInputElement => screen.getByRole<HTMLInputElement>("combobox");
-const activeLabel = (): string | null => {
+function search(): HTMLInputElement {
+  return screen.getByRole<HTMLInputElement>("combobox");
+}
+function activeLabel(): string | null {
   const id = search().getAttribute("aria-activedescendant");
   return id === null ? null : (document.getElementById(id)?.getAttribute("aria-label") ?? null);
-};
+}
 
 describe("EmojiPicker", () => {
   test("loads its emoji on mount, then lists them under their groups", async () => {
@@ -105,7 +107,7 @@ describe("EmojiPicker", () => {
   });
 
   test("right to left, the arrows follow the reading direction", async () => {
-    function Arabic(props: { children?: Child }) {
+    function Arabic(props: ParentProps) {
       provideLocale("ar-EG");
       return <div dir="rtl">{props.children}</div>;
     }

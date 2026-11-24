@@ -55,8 +55,12 @@ export interface EmojiButtonProps extends Customisable<Slots> {
  */
 export function EmojiButton(props: EmojiButtonProps) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(emojiButtonStyles(), props.classes);
-  const label = (): string => props.label ?? messages().emojiPicker;
+  function cls(): Slots {
+    return parts(emojiButtonStyles(), props.classes);
+  }
+  function label(): string {
+    return props.label ?? messages().emojiPicker;
+  }
   const [open, setOpen] = controllable<boolean>(
     () => props.open,
     () => untrack(() => props.defaultOpen) ?? false,

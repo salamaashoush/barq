@@ -68,7 +68,9 @@ interface Refused<Row> {
   error: string;
 }
 
-const time = (message: ChatMessage): number => new Date(message.createdAt).getTime();
+function time(message: ChatMessage): number {
+  return new Date(message.createdAt).getTime();
+}
 
 /**
  * A conversation's message history over a TanStack DB collection, through
@@ -107,12 +109,14 @@ const time = (message: ChatMessage): number => new Date(message.createdAt).getTi
 export function useMessageHistory<Row extends object>(
   options: MessageHistoryOptions<Row>,
 ): MessageHistory<Row> {
-  const keyOf = (row: Row): Key => options.getKey?.(row) ?? options.collection.config.getKey(row);
+  function keyOf(row: Row): Key {
+    return options.getKey?.(row) ?? options.collection.config.getKey(row);
+  }
   const feed = useLiveInfiniteQuery(options.query, () => ({ pageSize: options.pageSize ?? 50 }));
   const [pending, setPending] = createSignal<ReadonlySet<Key>>(new Set());
   const [refused, setRefused] = createSignal<ReadonlyMap<Key, Refused<Row>>>(new Map());
 
-  const persist = async (row: Row): Promise<void> => {
+  async function persist(row: Row): Promise<void> {
     const key = keyOf(row);
     setPending((now) => new Set(now).add(key));
     try {
@@ -128,9 +132,9 @@ export function useMessageHistory<Row extends object>(
         return next;
       });
     }
-  };
+  }
 
-  const forget = (id: string): Refused<Row> | undefined => {
+  function forget(id: string): Refused<Row> | undefined {
     const held = [...refused().entries()].find(([key]) => String(key) === id);
     if (held === undefined) return undefined;
     setRefused((now) => {
@@ -139,7 +143,7 @@ export function useMessageHistory<Row extends object>(
       return next;
     });
     return held[1];
-  };
+  }
 
   const messages = createMemo((): ChatMessage[] => {
     const waiting = pending();
@@ -159,7 +163,7 @@ export function useMessageHistory<Row extends object>(
     return out.toSorted((a, b) => time(a) - time(b));
   });
 
-  const receive = (row: Row): void => {
+  function receive(row: Row): void {
     if (options.write !== undefined) {
       options.write(row);
       return;
@@ -171,18 +175,18 @@ export function useMessageHistory<Row extends object>(
       );
     }
     void write(row);
-  };
+  }
 
-  const loadOlder = (): void => {
+  function loadOlder(): void {
     if (feed.hasNextPage && !feed.isFetchingNextPage) void feed.fetchNextPage();
-  };
-  const retry = async (id: string): Promise<void> => {
+  }
+  async function retry(id: string): Promise<void> {
     const held = forget(id);
     if (held !== undefined) await persist(held.row);
-  };
-  const discard = (id: string): void => {
+  }
+  function discard(id: string): void {
     forget(id);
-  };
+  }
 
   return {
     messages,

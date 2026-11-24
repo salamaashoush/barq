@@ -149,6 +149,11 @@ function node(key: Key, value: Row): Node<Row> {
   };
 }
 
+interface GridCell {
+  row: number;
+  column: number;
+}
+
 /**
  * A searchable grid of every emoji, in Unicode's groups and order, with the
  * reader's recently used first, a skin tone they choose once, and a row of
@@ -171,9 +176,15 @@ export function EmojiPicker(props: EmojiPickerProps) {
   const messages = useArcMessages();
   const locale = useLocale();
   const listId = createUniqueId();
-  const cls = (): Slots => parts(emojiPickerStyles(), props.classes);
-  const columns = (): number => Math.max(1, props.columns ?? 8);
-  const rowHeight = (): number => props.rowHeight ?? 36;
+  function cls(): Slots {
+    return parts(emojiPickerStyles(), props.classes);
+  }
+  function columns(): number {
+    return Math.max(1, props.columns ?? 8);
+  }
+  function rowHeight(): number {
+    return props.rowHeight ?? 36;
+  }
   const storage = untrack(() => props.storageKey) ?? "arc-emoji";
   const [recent, setRecent] = persisted<string[]>(`${storage}:recent`, []);
   const [tone, setTone] = persisted<number>(`${storage}:tone`, 0);
@@ -181,7 +192,7 @@ export function EmojiPicker(props: EmojiPickerProps) {
   const [dataset, setDataset] = createSignal<EmojiDataset | null>(null, { ownedWrite: true });
   const [failed, setFailed] = createSignal(false, { ownedWrite: true });
   const [query, setQuery] = createSignal("");
-  const [active, setActive] = createSignal<{ row: number; column: number } | null>(null);
+  const [active, setActive] = createSignal<GridCell | null>(null);
 
   onSettled(() => {
     let live = true;
@@ -198,14 +209,16 @@ export function EmojiPicker(props: EmojiPickerProps) {
     };
   });
 
-  const searching = (): boolean => query().trim() !== "";
+  function searching(): boolean {
+    return query().trim() !== "";
+  }
 
   const rows = createMemo((): Row[] => {
     const data = dataset();
     if (data === null) return [];
     const out: Row[] = [];
     let index = 0;
-    const chunk = (group: string, emojis: readonly EmojiEntry[]): void => {
+    function chunk(group: string, emojis: readonly EmojiEntry[]): void {
       for (let at = 0; at < emojis.length; at += columns()) {
         out.push({
           kind: "emoji",
@@ -214,7 +227,7 @@ export function EmojiPicker(props: EmojiPickerProps) {
           emojis: emojis.slice(at, at + columns()),
         });
       }
-    };
+    }
     if (searching()) {
       chunk("search", searchEmoji(data, query()));
       return out;
@@ -236,21 +249,22 @@ export function EmojiPicker(props: EmojiPickerProps) {
   const emojiRows = createMemo((): EmojiRow[] =>
     rows().filter((row): row is EmojiRow => row.kind === "emoji"),
   );
-  const keyOf = (row: Row, at: number): string =>
-    row.kind === "heading" ? `h:${row.group}` : `r:${row.group}:${String(at)}`;
+  function keyOf(row: Row, at: number): string {
+    return row.kind === "heading" ? `h:${row.group}` : `r:${row.group}:${String(at)}`;
+  }
 
   const viewport = makeRef<HTMLDivElement>();
   const layoutFor = listLayout({ rowHeight: untrack(rowHeight) });
   const collection = createMemo(
     () => new ListCollection<unknown>(rows().map((row, at) => node(keyOf(row, at), row))),
   );
-  const activeKey = (): Key | null => {
+  function activeKey(): Key | null {
     const held = active();
     if (held === null) return null;
     const all = rows();
     const at = all.findIndex((row) => row.kind === "emoji" && row.index === held.row);
     return at === -1 ? null : keyOf(all[at] as Row, at);
-  };
+  }
   const virtual = virtualizer({
     layout: layoutFor,
     collection,
@@ -262,23 +276,24 @@ export function EmojiPicker(props: EmojiPickerProps) {
     },
   });
 
-  const optionId = (row: number, column: number): string =>
-    `${listId}-${String(row)}-${String(column)}`;
-  const activeEntry = (): EmojiEntry | undefined => {
+  function optionId(row: number, column: number): string {
+    return `${listId}-${String(row)}-${String(column)}`;
+  }
+  function activeEntry(): EmojiEntry | undefined {
     const held = active();
     if (held === null) return undefined;
     return emojiRows()[held.row]?.emojis[held.column];
-  };
+  }
 
   /** The group whose rows are at the top of the grid now. */
-  const current = (): string | undefined => {
+  function current(): string | undefined {
     const top = virtual.visibleRect().y;
     const all = rows();
     const at = Math.min(all.length - 1, Math.floor((top + 1) / rowHeight()));
     return all[Math.max(0, at)]?.group;
-  };
+  }
 
-  const reveal = (key: Key, align: "start" | "nearest"): void => {
+  function reveal(key: Key, align: "start" | "nearest"): void {
     const element = viewport();
     const info = virtual.layout.getLayoutInfo(key);
     if (element === null || info === null) return;
@@ -288,9 +303,9 @@ export function EmojiPicker(props: EmojiPickerProps) {
     else if (bottom > element.scrollTop + element.clientHeight) {
       element.scrollTop = bottom - element.clientHeight;
     }
-  };
+  }
 
-  const move = (next: { row: number; column: number }): void => {
+  function move(next: GridCell): void {
     const list = emojiRows();
     if (list.length === 0) return;
     const row = Math.max(0, Math.min(list.length - 1, next.row));
@@ -298,9 +313,9 @@ export function EmojiPicker(props: EmojiPickerProps) {
     setActive({ row, column: Math.max(0, Math.min(width - 1, next.column)) });
     const key = activeKey();
     if (key !== null) reveal(key, "nearest");
-  };
+  }
 
-  const step = (by: number): void => {
+  function step(by: number): void {
     const list = emojiRows();
     const held = active();
     if (held === null) {
@@ -318,26 +333,26 @@ export function EmojiPicker(props: EmojiPickerProps) {
       row += 1;
     }
     move({ row, column });
-  };
+  }
 
-  const pick = (entry: EmojiEntry): void => {
+  function pick(entry: EmojiEntry): void {
     const emoji = withTone(entry, tone());
     setRecent((list) =>
       [entry.emoji, ...list.filter((one) => one !== entry.emoji)].slice(0, RECENT_MAX),
     );
     props.onSelect(emoji, entry);
-  };
+  }
 
-  const jump = (group: string): void => {
+  function jump(group: string): void {
     const all = rows();
     const at = all.findIndex((row) => row.kind === "heading" && row.group === group);
     if (at === -1) return;
     reveal(keyOf(all[at] as Row, at), "start");
     const first = all[at + 1];
     if (first?.kind === "emoji") setActive({ row: first.index, column: 0 });
-  };
+  }
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     const rtl = locale().direction === "rtl";
     const page = Math.max(1, Math.floor((viewport()?.clientHeight ?? 0) / rowHeight()));
     const held = active() ?? { row: -1, column: 0 };
@@ -370,20 +385,21 @@ export function EmojiPicker(props: EmojiPickerProps) {
         return;
     }
     event.preventDefault();
-  };
+  }
 
-  const groupsShown = (): readonly string[] => {
+  function groupsShown(): readonly string[] {
     const data = dataset();
     if (data === null) return [];
     const keys = data.groups.map((group) => group.key);
     return recent().length > 0 ? [RECENT, ...keys] : keys;
-  };
-  const glyphOf = (group: string): string => {
+  }
+  function glyphOf(group: string): string {
     if (group === RECENT) return "🕘";
     return dataset()?.groups.find((one) => one.key === group)?.emojis[0]?.emoji ?? "";
-  };
-  const groupLabel = (group: string): string =>
-    group === RECENT ? messages().recentlyUsed : messages().emojiGroup(group);
+  }
+  function groupLabel(group: string): string {
+    return group === RECENT ? messages().recentlyUsed : messages().emojiGroup(group);
+  }
 
   return (
     <div
@@ -507,14 +523,17 @@ export function EmojiPicker(props: EmojiPickerProps) {
             >
               <For each={() => virtual.visible()}>
                 {(info: LayoutInfo) => {
-                  const row = (): Row | undefined =>
-                    collection().getItem(info.key)?.value as Row | undefined;
-                  const style = (): Record<string, string> => ({
-                    position: "absolute",
-                    top: `${String(info.rect.y)}px`,
-                    "inset-inline": "0",
-                    height: `${String(info.rect.height)}px`,
-                  });
+                  function row(): Row | undefined {
+                    return collection().getItem(info.key)?.value as Row | undefined;
+                  }
+                  function style(): Record<string, string> {
+                    return {
+                      position: "absolute",
+                      top: `${String(info.rect.y)}px`,
+                      "inset-inline": "0",
+                      height: `${String(info.rect.height)}px`,
+                    };
+                  }
                   return (
                     <Show when={row()}>
                       {(held: () => Row) => (
@@ -539,9 +558,12 @@ export function EmojiPicker(props: EmojiPickerProps) {
                           >
                             <For each={(held() as EmojiRow).emojis}>
                               {(entry: EmojiEntry, column: () => number) => {
-                                const index = (): number => (held() as EmojiRow).index;
-                                const selected = (): boolean =>
-                                  active()?.row === index() && active()?.column === column();
+                                function index(): number {
+                                  return (held() as EmojiRow).index;
+                                }
+                                function selected(): boolean {
+                                  return active()?.row === index() && active()?.column === column();
+                                }
                                 return (
                                   <div
                                     id={optionId(index(), column())}

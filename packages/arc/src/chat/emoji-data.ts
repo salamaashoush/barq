@@ -68,18 +68,26 @@ const GROUPS = [
 /** The five Fitzpatrick modifiers, light to dark. */
 const TONES = ["1F3FB", "1F3FC", "1F3FD", "1F3FE", "1F3FF"] as const;
 
+interface EmojiModule {
+  default: readonly CompactEmoji[];
+}
+
 /**
  * English, emojibase's own. Another language is
  * `(locale) => import(\`emojibase-data/${locale}/compact.json\`)`, which a
  * bundler splits per file, and Arabic is {@link arabicEmoji}.
  */
-export const englishEmoji = async (): Promise<readonly CompactEmoji[]> =>
-  ((await import("emojibase-data/en/compact.json")) as { default: readonly CompactEmoji[] })
-    .default;
+export async function englishEmoji(): Promise<readonly CompactEmoji[]> {
+  return ((await import("emojibase-data/en/compact.json")) as EmojiModule).default;
+}
 
 /** CLDR's Arabic names and keywords by hexcode, the name first. */
 interface ArabicNames {
   emoji: Readonly<Record<string, readonly string[]>>;
+}
+
+interface ArabicNamesModule {
+  default: ArabicNames;
 }
 
 /**
@@ -89,10 +97,10 @@ interface ArabicNames {
  * Both load on first use. An emoji CLDR has not named yet keeps its English
  * name.
  */
-export const arabicEmoji = async (): Promise<readonly CompactEmoji[]> => {
+export async function arabicEmoji(): Promise<readonly CompactEmoji[]> {
   const [english, arabic] = await Promise.all([
     englishEmoji(),
-    import("./emoji-ar.json") as Promise<{ default: ArabicNames }>,
+    import("./emoji-ar.json") as Promise<ArabicNamesModule>,
   ]);
   const names = arabic.default.emoji;
   return english.map((one) => {
@@ -100,7 +108,7 @@ export const arabicEmoji = async (): Promise<readonly CompactEmoji[]> => {
     if (found === undefined || found[0] === undefined) return one;
     return { ...one, label: found[0], tags: found.slice(1) };
   });
-};
+}
 
 /** The variation with exactly one tone, the `tone`th, if the emoji has one. */
 function toned(skins: readonly CompactEmoji[], tone: string): string | undefined {
@@ -117,19 +125,21 @@ function toned(skins: readonly CompactEmoji[], tone: string): string | undefined
  * vowel marks and with the spellings people type interchangeably made one
  * (the hamza's seats on alef, a final alef maqsura, ta marbuta).
  */
-const fold = (word: string): string =>
-  word
+function fold(word: string): string {
+  return word
     .replaceAll(/[\u064B-\u065F\u0670\u0640]/gu, "")
     .replaceAll(/[\u0622\u0623\u0625\u0671]/gu, "\u0627")
     .replaceAll("\u0649", "\u064A")
     .replaceAll("\u0629", "\u0647");
+}
 
-const words = (text: string): string[] =>
-  text
+function words(text: string): string[] {
+  return text
     .toLocaleLowerCase()
     .split(/[^\p{L}\p{N}\p{M}]+/u)
     .map(fold)
     .filter((one) => one !== "");
+}
 
 /** A compact file as the picker's groups, in Unicode's order. */
 export function emojiDataset(compact: readonly CompactEmoji[]): EmojiDataset {

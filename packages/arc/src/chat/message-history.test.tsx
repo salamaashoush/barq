@@ -34,14 +34,16 @@ interface Row {
 }
 
 const START = Date.UTC(2026, 4, 10, 8, 0);
-const row = (n: number, over: Partial<Row> = {}): Row => ({
-  id: `m${String(n)}`,
-  channel: "design",
-  author: n % 2 === 0 ? "alex" : "sam",
-  text: `Message ${String(n)}`,
-  at: START + n * 60_000,
-  ...over,
-});
+function row(n: number, over: Partial<Row> = {}): Row {
+  return {
+    id: `m${String(n)}`,
+    channel: "design",
+    author: n % 2 === 0 ? "alex" : "sam",
+    text: `Message ${String(n)}`,
+    at: START + n * 60_000,
+    ...over,
+  };
+}
 
 async function settle(ms = 15): Promise<void> {
   flush();
@@ -79,14 +81,20 @@ function messages(initial: Row[], persist: (row: Row) => Promise<void>) {
   return { collection, push: (one: Row) => push?.(one) };
 }
 
-const toMessage = (one: Row): ChatMessage => ({
-  id: one.id,
-  author: { id: one.author, name: one.author },
-  createdAt: new Date(one.at),
-  body: one.text,
-});
+function toMessage(one: Row): ChatMessage {
+  return {
+    id: one.id,
+    author: { id: one.author, name: one.author },
+    createdAt: new Date(one.at),
+    body: one.text,
+  };
+}
 
-function mount(collection: Collection<Row, string>, extra: { write?: (one: Row) => void } = {}) {
+interface MountExtra {
+  write?: (one: Row) => void;
+}
+
+function mount(collection: Collection<Row, string>, extra: MountExtra = {}) {
   let history: MessageHistory<Row> | undefined;
   render(() => {
     history = useMessageHistory<Row>({
@@ -106,7 +114,9 @@ function mount(collection: Collection<Row, string>, extra: { write?: (one: Row) 
   return history;
 }
 
-const ids = (history: MessageHistory<Row>): string[] => history.messages().map((one) => one.id);
+function ids(history: MessageHistory<Row>): string[] {
+  return history.messages().map((one) => one.id);
+}
 
 describe("useMessageHistory", () => {
   test("the newest page first, oldest first in order, and older pages on request", async () => {

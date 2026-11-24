@@ -55,12 +55,17 @@ export interface Conversation {
   href?: string;
 }
 
+export interface GroupAction {
+  label: string;
+  onPress: () => void;
+}
+
 export interface ConversationGroup {
   id: string;
   label: string;
   conversations: readonly Conversation[];
   /** A button beside the heading: New channel, New message. */
-  action?: { label: string; onPress: () => void };
+  action?: GroupAction;
 }
 
 export const conversationListStyles = variants({
@@ -135,7 +140,9 @@ export interface ConversationListProps extends Customisable<Slots> {
  */
 export function ConversationList(props: ConversationListProps) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(conversationListStyles(), props.classes);
+  function cls(): Slots {
+    return parts(conversationListStyles(), props.classes);
+  }
   const key = untrack(() => props.storageKey);
   const remembered =
     key === undefined ? undefined : persisted<string[]>(`arc-conversations:${key}`, []);
@@ -147,10 +154,10 @@ export function ConversationList(props: ConversationListProps) {
       props.onCollapsedChange?.([...next]);
     },
   );
-  const toggle = (id: string): void => {
+  function toggle(id: string): void {
     const now = folded();
     setFolded(now.includes(id) ? now.filter((one) => one !== id) : [...now, id]);
-  };
+  }
   return (
     <nav
       class={arc(cls().root, props.class, props.className)}
@@ -160,7 +167,9 @@ export function ConversationList(props: ConversationListProps) {
       <For each={props.groups}>
         {(group: ConversationGroup) => {
           const contentId = createUniqueId();
-          const open = (): boolean => !folded().includes(group.id);
+          function open(): boolean {
+            return !folded().includes(group.id);
+          }
           return (
             <SidebarGroup class={cls().group} data-slot="conversation-list-group">
               <SidebarGroupLabel>
@@ -207,21 +216,37 @@ export function ConversationList(props: ConversationListProps) {
   );
 }
 
-function Entry(props: {
+interface EntryProps {
   conversation: Conversation;
   active: boolean;
   classes: ConversationListProps["classes"];
   onSelect: ((conversation: Conversation) => void) | undefined;
-}) {
+}
+
+function Entry(props: EntryProps) {
   const messages = useArcMessages();
-  const conversation = (): Conversation => props.conversation;
-  const muted = (): boolean => conversation().muted === true;
-  const cls = (): Slots => parts(conversationListStyles({ muted: muted() }), props.classes);
-  const unread = (): number => conversation().unread ?? 0;
-  const mentions = (): number => conversation().mentions ?? 0;
-  const bold = (): boolean => unread() > 0 && !muted();
-  const count = (): number => (mentions() > 0 ? mentions() : muted() ? 0 : unread());
-  const details = (): string => {
+  function conversation(): Conversation {
+    return props.conversation;
+  }
+  function muted(): boolean {
+    return conversation().muted === true;
+  }
+  function cls(): Slots {
+    return parts(conversationListStyles({ muted: muted() }), props.classes);
+  }
+  function unread(): number {
+    return conversation().unread ?? 0;
+  }
+  function mentions(): number {
+    return conversation().mentions ?? 0;
+  }
+  function bold(): boolean {
+    return unread() > 0 && !muted();
+  }
+  function count(): number {
+    return mentions() > 0 ? mentions() : muted() ? 0 : unread();
+  }
+  function details(): string {
     const out: string[] = [];
     if (conversation().private === true) out.push(messages().privateConversation);
     if (mentions() > 0) out.push(messages().mentionCount(mentions()));
@@ -229,8 +254,8 @@ function Entry(props: {
     if (muted()) out.push(messages().muted);
     if (conversation().draft === true) out.push(messages().draft);
     return out.length === 0 ? "" : `, ${out.join(", ")}`;
-  };
-  const mark = (): Child => {
+  }
+  function mark(): Child {
     const own = conversation().icon;
     if (own !== undefined) {
       const Icon = own;
@@ -258,7 +283,7 @@ function Entry(props: {
     ) : (
       <Hash aria-hidden="true" />
     );
-  };
+  }
   return (
     <SidebarMenuItem class={cls().item} data-slot="conversation-list-item">
       <SidebarMenuButton

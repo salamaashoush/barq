@@ -201,6 +201,11 @@ function node(row: Row): Node<Row> {
   };
 }
 
+interface ScrollAnchor {
+  key: Key;
+  offset: number;
+}
+
 /**
  * A conversation that opens at its newest message and stays there while new
  * ones arrive, draws only the rows on screen, and loads older ones above
@@ -239,12 +244,16 @@ export function MessageList(props: MessageListProps) {
   const locale = useLocale();
   const base = createUniqueId();
   const day = dateFormatter({ dateStyle: "full", timeZone: untrack(() => props.timeZone) });
-  const cls = (): Slots => parts(messageListStyles(), props.classes);
+  function cls(): Slots {
+    return parts(messageListStyles(), props.classes);
+  }
   const viewport = makeRef<HTMLDivElement>();
   const layoutFor = listLayout({
     estimatedRowHeight: untrack(() => props.estimatedRowHeight) ?? 64,
   });
-  const rowId = (key: Key): string => `${base}-${String(key)}`;
+  function rowId(key: Key): string {
+    return `${base}-${String(key)}`;
+  }
 
   const rows = createMemo((): Row[] => {
     const out: Row[] = [];
@@ -264,13 +273,13 @@ export function MessageList(props: MessageListProps) {
       const key = dayKey(message.createdAt, props.timeZone);
       let broken = false;
       if (key !== previousDay) {
-        const label =
+        const dayLabel =
           key === today
             ? messages().today
             : key === yesterday
               ? messages().yesterday
               : day().format(new Date(time(message.createdAt)));
-        out.push({ kind: "day", key: `day:${key}`, label });
+        out.push({ kind: "day", key: `day:${key}`, label: dayLabel });
         previousDay = key;
         broken = true;
       }
@@ -301,11 +310,11 @@ export function MessageList(props: MessageListProps) {
   // its way to while its row is still being drawn.
   const [focused, setFocused] = createSignal<Key | null>(null, { ownedWrite: true });
   let pendingFocus: Key | null = null;
-  const tabKey = (): Key | null => {
+  function tabKey(): Key | null {
     const held = focused();
     if (held !== null && collection().getItem(held) !== null) return held;
     return messageKeys().at(-1) ?? null;
-  };
+  }
 
   // A server, and a page hydrating its markup, know no heights: they draw the
   // newest rows in flow at the foot of the estimated space above them, and the
@@ -330,29 +339,33 @@ export function MessageList(props: MessageListProps) {
     },
   });
   const measuring = { shouldMeasure: () => true, measure: virtual.measure };
-  const height = (): number => virtual.contentSize().height;
+  function height(): number {
+    return virtual.contentSize().height;
+  }
   const viewportHeight = createMemo(() => virtual.visibleRect().height);
 
   // Where the reader is, kept here rather than in signals: a scroll measures
   // and decides in the same tick, before a write would be published.
   let pinned = true;
-  let anchor: { key: Key; offset: number } | null = null;
+  let anchor: ScrollAnchor | null = null;
   let opened = false;
   let requested = false;
   const [atLatest, setAtLatest] = createSignal(true, { ownedWrite: true });
   const [unseen, setUnseen] = createSignal(0, { ownedWrite: true });
 
-  const bottomOf = (element: HTMLElement): number => Math.max(0, height() - element.clientHeight);
+  function bottomOf(element: HTMLElement): number {
+    return Math.max(0, height() - element.clientHeight);
+  }
 
-  const publish = (next: boolean): void => {
+  function publish(next: boolean): void {
     if (untrack(atLatest) === next) return;
     setAtLatest(next);
     if (next) setUnseen(0);
     props.onAtLatestChange?.(next);
-  };
+  }
 
   /** The first row on screen and how far below the top it sits. */
-  const capture = (element: HTMLElement): void => {
+  function capture(element: HTMLElement): void {
     const top = element.scrollTop;
     let found: LayoutInfo | null = null;
     for (const info of virtual.visible()) {
@@ -360,17 +373,17 @@ export function MessageList(props: MessageListProps) {
       if (found === null || info.rect.y < found.rect.y) found = info;
     }
     anchor = found === null ? null : { key: found.key, offset: found.rect.y - top };
-  };
+  }
 
-  const maybeLoadOlder = (element: HTMLElement): void => {
+  function maybeLoadOlder(element: HTMLElement): void {
     if (props.hasOlder !== true || props.isLoadingOlder === true || requested) return;
     if (element.scrollTop > element.clientHeight) return;
     requested = true;
     props.onLoadOlder?.();
-  };
+  }
 
   /** Measure the server's rows where they stand and give the list to the virtualizer. */
-  const handOver = (element: HTMLElement): void => {
+  function handOver(element: HTMLElement): void {
     if (viewportHeight() <= 0) return;
     height();
     for (const row of element.querySelectorAll<HTMLElement>('[data-slot="message-list-row"]')) {
@@ -379,10 +392,10 @@ export function MessageList(props: MessageListProps) {
         virtual.measure(key, { width: row.offsetWidth, height: row.offsetHeight });
     }
     setSeeded(false);
-  };
+  }
 
   /** Put the list back where the reader was, after the layout moved under them. */
-  const restore = (): void => {
+  function restore(): void {
     const element = viewport();
     if (element === null) return;
     if (seeded()) {
@@ -406,16 +419,16 @@ export function MessageList(props: MessageListProps) {
     if (element.scrollTop >= bottomOf(element) - TOLERANCE) pinned = true;
     publish(pinned);
     maybeLoadOlder(element);
-  };
+  }
 
-  const onScroll = (): void => {
+  function onScroll(): void {
     const element = viewport();
     if (element === null || untrack(seeded)) return;
     pinned = element.scrollTop >= bottomOf(element) - TOLERANCE;
     capture(element);
     publish(pinned);
     maybeLoadOlder(element);
-  };
+  }
 
   if (!isServer) {
     createEffect(
@@ -465,7 +478,7 @@ export function MessageList(props: MessageListProps) {
     },
   );
 
-  const reveal = (key: Key, centre = false): void => {
+  function reveal(key: Key, centre = false): void {
     const element = viewport();
     const info = layoutFor.getLayoutInfo(key);
     if (element === null || info === null) return;
@@ -483,9 +496,9 @@ export function MessageList(props: MessageListProps) {
     pinned = element.scrollTop >= bottomOf(element) - TOLERANCE;
     anchor = { key, offset: top - element.scrollTop };
     publish(pinned);
-  };
+  }
 
-  const focusMessage = (key: Key, centre = false): void => {
+  function focusMessage(key: Key, centre = false): void {
     pendingFocus = key;
     setFocused(key);
     reveal(key, centre);
@@ -494,15 +507,15 @@ export function MessageList(props: MessageListProps) {
       pendingFocus = null;
       element.focus();
     }
-  };
+  }
 
-  const scrollToLatest = (): void => {
+  function scrollToLatest(): void {
     const element = viewport();
     pinned = true;
     anchor = null;
     if (element !== null) element.scrollTop = bottomOf(element);
     publish(true);
-  };
+  }
 
   // The message jumped to, marked until the timer takes the mark off; the
   // row's colour transition is the motion, which reduced motion cuts short.
@@ -522,7 +535,7 @@ export function MessageList(props: MessageListProps) {
     },
   });
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     const target = event.target as HTMLElement;
     const article = target.closest<HTMLElement>('[data-slot="message-list-row"]');
     const key = article?.dataset.key;
@@ -569,23 +582,25 @@ export function MessageList(props: MessageListProps) {
     if (chosen === undefined) return;
     if (event.key === "End") scrollToLatest();
     focusMessage(chosen);
-  };
+  }
 
   onCleanup(() => {
     pendingFocus = null;
   });
 
-  const label = (): string => props["aria-label"] ?? messages().messageList;
+  function label(): string {
+    return props["aria-label"] ?? messages().messageList;
+  }
   const handlers: MessageHandlers = {};
   for (const name of HANDLER_KEYS) {
     Object.defineProperty(handlers, name, { enumerable: true, get: () => props[name] });
   }
   /** Where the first of the server's rows sits, by the estimates of the rows above it. */
-  const seedTop = (): number => {
+  function seedTop(): number {
     height();
     const top = seedKeys()[0];
     return top === undefined ? 0 : (layoutFor.getLayoutInfo(top)?.rect.y ?? 0);
-  };
+  }
   const placed = createMemo(
     () => new Map<Key, LayoutInfo>(virtual.visible().map((info) => [info.key, info])),
   );
@@ -632,8 +647,9 @@ export function MessageList(props: MessageListProps) {
             >
               <For each={() => (seeded() ? seedKeys() : virtual.visible().map((info) => info.key))}>
                 {(key: Key) => {
-                  const row = (): Row | undefined =>
-                    collection().getItem(key)?.value as Row | undefined;
+                  function row(): Row | undefined {
+                    return collection().getItem(key)?.value as Row | undefined;
+                  }
                   const element = makeRef<HTMLDivElement>();
                   measureRow(measuring, key, element);
                   return (
@@ -716,7 +732,7 @@ export function MessageList(props: MessageListProps) {
   );
 }
 
-function MessageRow(props: {
+interface MessageRowProps {
   row: MessageRow;
   handlers: MessageHandlers;
   appearance: "plain" | "bubble" | undefined;
@@ -724,14 +740,18 @@ function MessageRow(props: {
   id: string;
   tabbable: boolean;
   setSize: number;
-}) {
-  const item = (): RenderedMessage => ({
-    grouped: props.row.grouped,
-    tabIndex: props.tabbable ? 0 : -1,
-    id: props.id,
-    "aria-posinset": props.row.position,
-    "aria-setsize": props.setSize,
-  });
+}
+
+function MessageRow(props: MessageRowProps) {
+  function item(): RenderedMessage {
+    return {
+      grouped: props.row.grouped,
+      tabIndex: props.tabbable ? 0 : -1,
+      id: props.id,
+      "aria-posinset": props.row.position,
+      "aria-setsize": props.setSize,
+    };
+  }
   return (
     <Show
       when={props.renderMessage === undefined}

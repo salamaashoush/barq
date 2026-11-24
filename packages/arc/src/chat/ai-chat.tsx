@@ -74,7 +74,17 @@ export interface AICitation {
   snippet?: string;
 }
 
-export type AIPart = { type: "text"; text: string } | { type: "tool"; call: AIToolCall };
+interface AITextPart {
+  type: "text";
+  text: string;
+}
+
+interface AIToolPart {
+  type: "tool";
+  call: AIToolCall;
+}
+
+export type AIPart = AITextPart | AIToolPart;
 
 export interface AIMessage {
   id: string;
@@ -169,10 +179,15 @@ export interface AIChatPanelProps extends Customisable<Slots> {
  */
 export function AIChatPanel(props: AIChatPanelProps) {
   const messages = useArcMessages();
-  const cls = (): Slots => parts(aiChatStyles(), props.classes);
-  const streaming = (): boolean => props.messages.some((one) => one.status === "streaming");
-  const lastAssistant = (): AIMessage | undefined =>
-    props.messages.findLast((one) => one.role === "assistant");
+  function cls(): Slots {
+    return parts(aiChatStyles(), props.classes);
+  }
+  function streaming(): boolean {
+    return props.messages.some((one) => one.status === "streaming");
+  }
+  function lastAssistant(): AIMessage | undefined {
+    return props.messages.findLast((one) => one.role === "assistant");
+  }
   return (
     <section
       class={arc(cls().root, props.class, props.className)}
@@ -243,21 +258,29 @@ export function AIChatPanel(props: AIChatPanelProps) {
 
 function textOf(message: AIMessage): string {
   return message.parts
-    .filter((part): part is { type: "text"; text: string } => part.type === "text")
+    .filter((part): part is AITextPart => part.type === "text")
     .map((part) => part.text)
     .join("\n\n");
 }
 
-function Turn(props: {
+interface TurnProps {
   message: AIMessage;
   classes: Slots;
   last: boolean;
   handlers: AIChatPanelProps;
-}) {
+}
+
+function Turn(props: TurnProps) {
   const messages = useArcMessages();
-  const message = (): AIMessage => props.message;
-  const mine = (): boolean => message().role === "user";
-  const streaming = (): boolean => message().status === "streaming";
+  function message(): AIMessage {
+    return props.message;
+  }
+  function mine(): boolean {
+    return message().role === "user";
+  }
+  function streaming(): boolean {
+    return message().status === "streaming";
+  }
   return (
     <article
       class={props.classes.message}
@@ -280,18 +303,18 @@ function Turn(props: {
                       class={arc(props.classes.text, type.written)}
                       data-slot="ai-chat-text"
                     >
-                      {(part as { text: string }).text}
+                      {(part as AITextPart).text}
                     </BubbleContent>
                   </Bubble>
                 </Match>
                 <Match when={part.type === "text"}>
                   <div class={props.classes.text} data-slot="ai-chat-text">
-                    <RichTextRenderer markdown={(part as { text: string }).text} size="sm" />
+                    <RichTextRenderer markdown={(part as AITextPart).text} size="sm" />
                   </div>
                 </Match>
                 <Match when={part.type === "tool"}>
                   <ToolCall
-                    call={(part as { call: AIToolCall }).call}
+                    call={(part as AIToolPart).call}
                     message={message()}
                     classes={props.classes}
                     handlers={props.handlers}
@@ -371,22 +394,28 @@ const TOOL_TONE: Record<AIToolState, "info" | "success" | "danger" | "warning" |
   rejected: "neutral",
 };
 
-function ToolCall(props: {
+interface ToolCallProps {
   call: AIToolCall;
   message: AIMessage;
   classes: Slots;
   handlers: AIChatPanelProps;
-}) {
+}
+
+function ToolCall(props: ToolCallProps) {
   const messages = useArcMessages();
   const detailsId = createUniqueId();
   const [open, setOpen] = createSignal(false);
-  const call = (): AIToolCall => props.call;
-  const input = (): string | undefined => {
+  function call(): AIToolCall {
+    return props.call;
+  }
+  function input(): string | undefined {
     const given = call().input;
     if (given === undefined) return undefined;
     return typeof given === "string" ? given : JSON.stringify(given, null, 2);
-  };
-  const hasDetails = (): boolean => input() !== undefined || call().output !== undefined;
+  }
+  function hasDetails(): boolean {
+    return input() !== undefined || call().output !== undefined;
+  }
   return (
     <div
       class={arc(tones[TOOL_TONE[call().state]], props.classes.tool)}
@@ -466,21 +495,23 @@ function ToolCall(props: {
   );
 }
 
-function Composer(props: {
+interface ComposerProps {
   classes: Slots;
   streaming: boolean;
   placeholder: string | undefined;
   onSend: (text: string) => void;
   onStop: (() => void) | undefined;
-}) {
+}
+
+function Composer(props: ComposerProps) {
   const messages = useArcMessages();
   const [text, setText] = createSignal("");
-  const send = (): void => {
+  function send(): void {
     const value = text().trim();
     if (value === "" || props.streaming) return;
     props.onSend(value);
     setText("");
-  };
+  }
   return (
     <form
       class={props.classes.composer}

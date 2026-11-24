@@ -14,10 +14,11 @@ const ALEX: CallParticipant = { id: "a", person: { name: "Alex Doe" }, stream: n
 const SAM: CallParticipant = { id: "s", person: { name: "Sam Lee" }, stream: new MediaStream() };
 const ME: CallParticipant = { id: "me", person: { name: "Salama Ashoush" }, local: true };
 
-const video = (name: string): HTMLVideoElement =>
-  document.querySelector(
+function video(name: string): HTMLVideoElement {
+  return document.querySelector(
     `[data-slot="participant-tile"][aria-label^="${name}"] video`,
   ) as HTMLVideoElement;
+}
 
 describe("a tile's menu", () => {
   test("pins someone to the stage and unpins them", async () => {
@@ -120,11 +121,15 @@ interface FakeDevice {
 }
 type MediaDeviceKind = "audioinput" | "videoinput" | "audiooutput";
 
+interface PermissionHolder {
+  state: PermissionState;
+}
+
 function fakeMedia(initial: FakeDevice[], allow: boolean) {
   let listed = initial;
   let named = false;
   const target = new EventTarget();
-  const state: { state: PermissionState } = { state: "prompt" };
+  const state: PermissionHolder = { state: "prompt" };
   const permission = Object.assign(new EventTarget(), state);
   const mediaDevices = Object.assign(target, {
     enumerateDevices: () =>
@@ -229,12 +234,12 @@ describe("useMediaDevices", () => {
 });
 
 describe("CallWindow", () => {
-  const box = (element: HTMLElement): void => {
+  function box(element: HTMLElement): void {
     Object.defineProperty(element, "offsetWidth", { configurable: true, value: 320 });
     Object.defineProperty(element, "offsetHeight", { configurable: true, value: 200 });
     element.getBoundingClientRect = () =>
       ({ left: 600, top: 500, width: 320, height: 200 }) as DOMRect;
-  };
+  }
 
   test("moves with the arrow keys, further with Shift, and stays inside the viewport", async () => {
     const expanded: string[] = [];
@@ -276,12 +281,12 @@ describe("CallWindow", () => {
     box(root);
     const handle = document.querySelector('[data-slot="call-window-handle"]') as HTMLElement;
     // happy-dom leaves `pageX` at 0, and the drag reads the page's coordinates.
-    const at = (type: string, x: number, y: number): PointerEvent => {
+    function at(type: string, x: number, y: number): PointerEvent {
       const event = new PointerEvent(type, { bubbles: true, button: 0, pointerId: 1 });
       Object.defineProperty(event, "pageX", { value: x });
       Object.defineProperty(event, "pageY", { value: y });
       return event;
-    };
+    }
     handle.dispatchEvent(at("pointerdown", 10, 10));
     handle.dispatchEvent(at("pointermove", 40, -20));
     handle.dispatchEvent(at("pointerup", 40, -20));
