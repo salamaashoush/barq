@@ -4,7 +4,6 @@ import { FileTrigger } from "@barqjs/aria/file-trigger";
 import { ContentEditable, LexicalComposer, useLexicalEditor } from "@barqjs/lexical";
 import { Paperclip } from "@barqjs/lucide/icons/paperclip";
 import { SendHorizontal } from "@barqjs/lucide/icons/send-horizontal";
-import { Smile } from "@barqjs/lucide/icons/smile";
 import { Type } from "@barqjs/lucide/icons/type";
 import { Button } from "@barqjs/ui/button";
 import { icon } from "@barqjs/ui/shared-icon";
@@ -26,7 +25,8 @@ import {
   mergeRegister,
 } from "lexical";
 
-import { EmojiPicker } from "../chat/emoji-picker.tsx";
+import { EmojiButton } from "../chat/emoji-button.tsx";
+import type { EmojiSource } from "../chat/emoji-data.ts";
 import {
   type UploadContext,
   type UploadItem,
@@ -36,7 +36,6 @@ import {
 } from "../components/file-upload.tsx";
 import { IconButton } from "../components/icon-button.tsx";
 import { useArcMessages } from "../components/messages.ts";
-import { ResponsiveOverlay } from "../components/responsive-overlay.tsx";
 import { type SplitAction, SplitButton } from "../components/split-button.tsx";
 import { proseStyles } from "../components/typography.tsx";
 import { arcLayer as arc } from "../layer.ts";
@@ -156,6 +155,8 @@ export interface ChatComposerProps extends Customisable<Slots> {
   emojiShortcuts?: boolean;
   /** The emoji button. @default true */
   emojiButton?: boolean;
+  /** Where the emoji button's and `:`'s emoji come from. @default English, from emojibase */
+  emojiSource?: EmojiSource;
   /** Sends a file and resolves with what the message keeps of it: attachments are offered only with it. */
   upload?: (file: File, context: UploadContext) => Promise<unknown>;
   /** Files the attach button offers: `["image/*", ".pdf"]`. */
@@ -238,38 +239,23 @@ function AttachPaste(props: { queue: UploadQueueApi }) {
   return null;
 }
 
-function EmojiButton() {
+function InsertEmoji(props: { source?: EmojiSource }) {
   const editor = useLexicalEditor();
-  const messages = useArcMessages();
-  const [open, setOpen] = createSignal(false, { ownedWrite: true });
   return (
-    <ResponsiveOverlay
-      heading={messages().emojiPicker}
-      desktop="popover"
-      open={open()}
-      onOpenChange={setOpen}
-      trigger={
-        <IconButton label={messages().emojiPicker} size="sm" tooltip={false}>
-          <Smile />
-        </IconButton>
-      }
-    >
-      <EmojiPicker
-        autoFocus
-        onSelect={(emoji: string) => {
-          setOpen(false);
-          editor.update(() => {
-            let selection = $getSelection();
-            if (!$isRangeSelection(selection)) {
-              $getRoot().selectEnd();
-              selection = $getSelection();
-            }
-            if ($isRangeSelection(selection)) selection.insertText(emoji);
-          });
-          editor.focus();
-        }}
-      />
-    </ResponsiveOverlay>
+    <EmojiButton
+      source={props.source}
+      onSelect={(emoji: string) => {
+        editor.update(() => {
+          let selection = $getSelection();
+          if (!$isRangeSelection(selection)) {
+            $getRoot().selectEnd();
+            selection = $getSelection();
+          }
+          if ($isRangeSelection(selection)) selection.insertText(emoji);
+        });
+        editor.focus();
+      }}
+    />
   );
 }
 
@@ -393,7 +379,7 @@ function Composer(props: ChatComposerProps & { cls: Slots; queue?: UploadQueueAp
             </FileTrigger>
           </Show>
           <Show when={props.emojiButton !== false}>
-            <EmojiButton />
+            <InsertEmoji source={props.emojiSource} />
           </Show>
         </div>
         <Show when={props.maxLength !== undefined && counter.remaining() <= 50}>
@@ -461,7 +447,7 @@ function Composer(props: ChatComposerProps & { cls: Slots; queue?: UploadQueueAp
         <SlashCommandMenu commands={props.commands} />
       </Show>
       <Show when={props.emojiShortcuts !== false}>
-        <EmojiShortcuts />
+        <EmojiShortcuts source={props.emojiSource} />
       </Show>
       <Show when={props.queue !== undefined}>
         <AttachPaste queue={props.queue!} />

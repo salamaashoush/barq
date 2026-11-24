@@ -11,6 +11,7 @@ export {
   withTone,
 } from "./emoji-data.ts";
 export { EmojiPicker, type EmojiPickerProps, emojiPickerStyles } from "./emoji-picker.tsx";
+export { EmojiButton, type EmojiButtonProps, emojiButtonStyles } from "./emoji-button.tsx";
 export {
   TypingIndicator,
   type TypingIndicatorProps,

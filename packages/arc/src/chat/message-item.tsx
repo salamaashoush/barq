@@ -57,8 +57,7 @@ import { QUICK_REACTIONS, ReactionBar } from "../components/reactions.tsx";
 import { ResponsiveOverlay } from "../components/responsive-overlay.tsx";
 import { Toolbar } from "../components/toolbar.tsx";
 import { RichTextRenderer } from "../editor/renderer.tsx";
-import { EmojiPicker } from "./emoji-picker.tsx";
-import type { EmojiSource } from "./emoji-data.ts";
+import { EmojiButton } from "./emoji-button.tsx";
 import type { ChatAttachment, ChatMessage, MessageHandlers } from "./model.ts";
 
 export const messageItemStyles = variants({
@@ -329,12 +328,14 @@ export function MessageItem(props: MessageItemProps) {
               reactions={message().reactions ?? []}
               onReact={props.onReact === undefined ? undefined : react}
               picker={(pick) => (
-                <ReactionPicker
+                <EmojiButton
                   label={messages().addReaction}
                   source={props.emojiSource}
-                  onPick={pick}
+                  onSelect={pick}
                   size="xs"
-                />
+                >
+                  <SmilePlus aria-hidden="true" />
+                </EmojiButton>
               )}
             />
           </Show>
@@ -389,16 +390,18 @@ export function MessageItem(props: MessageItemProps) {
         >
           <Toolbar aria-label={messages().messageActions(message().author.name)}>
             <Show when={props.onReact !== undefined}>
-              <ReactionPicker
+              <EmojiButton
                 label={messages().addReaction}
                 source={props.emojiSource}
                 open={picking()}
                 onOpenChange={setPicking}
-                onPick={(emoji) => {
+                onSelect={(emoji) => {
                   const held = message().reactions?.find((one) => one.emoji === emoji);
                   if (held?.reacted !== true) react(emoji, true);
                 }}
-              />
+              >
+                <SmilePlus aria-hidden="true" />
+              </EmojiButton>
             </Show>
             <Show when={props.onReply !== undefined}>
               {action(messages().replyInThread, <MessageSquare aria-hidden="true" />, () =>
@@ -538,44 +541,6 @@ export function MessageItem(props: MessageItemProps) {
         </div>
       </ResponsiveOverlay>
     </article>
-  );
-}
-
-function ReactionPicker(props: {
-  label: string;
-  source?: EmojiSource;
-  open?: boolean;
-  onOpenChange?: (open: boolean) => void;
-  onPick: (emoji: string) => void;
-  size?: "xs" | "sm";
-}) {
-  const [own, setOwn] = createSignal(false);
-  const open = (): boolean => props.open ?? own();
-  const change = (next: boolean): void => {
-    setOwn(next);
-    props.onOpenChange?.(next);
-  };
-  return (
-    <ResponsiveOverlay
-      heading={props.label}
-      desktop="popover"
-      open={open()}
-      onOpenChange={change}
-      trigger={
-        <IconButton label={props.label} variant="ghost" size={props.size ?? "sm"} tooltip={false}>
-          <SmilePlus aria-hidden="true" />
-        </IconButton>
-      }
-    >
-      <EmojiPicker
-        autoFocus
-        source={props.source}
-        onSelect={(emoji: string) => {
-          change(false);
-          props.onPick(emoji);
-        }}
-      />
-    </ResponsiveOverlay>
   );
 }
 

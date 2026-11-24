@@ -52,6 +52,8 @@ export interface IconButtonProps extends Customisable<Slots> {
   href?: string;
   onPress?: (event: PressEvent) => void;
   id?: string;
+  /** The button's `data-slot`, for a component that draws one as its own part. @default "icon-button" */
+  slot?: string;
 }
 
 /**
@@ -73,7 +75,7 @@ export function IconButton(props: IconButtonProps) {
     <Button
       id={props.id}
       class={arc(cls().root, props.class, props.className)}
-      data-slot="icon-button"
+      data-slot={props.slot ?? "icon-button"}
       variant={props.variant ?? "ghost"}
       size={SIZES[props.size ?? "md"]}
       href={props.href}

@@ -1348,6 +1348,10 @@ first opens. Rich message content is drawn by `RichTextRenderer` from
   list and CLDR's names release by release as plain JSON in two dozen
   languages; English is loaded by default, and `source` takes another
   language's file or the app's own.
+- `EmojiButton`: an icon button that opens the `EmojiPicker` (a popover on
+  a wide screen, a sheet under a finger) and closes once one is chosen. A
+  message's add-reaction button and `ChatComposer`'s emoji button are both
+  this, so an app's own toolbar gets the same one.
 - `TypingIndicator`: "Alex and Sam are typing", the names joined as the
   locale joins a list, in a status that stays in the page.
 - `ConversationList`: channels and direct messages for `AppShell`'s
