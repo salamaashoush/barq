@@ -20,10 +20,24 @@ import { frameAround, type OverlayLocation, type OverlayServerEntry } from "./ov
 export const SERVER_DIAGNOSTICS_EVENT = "barq:server-diagnostics";
 export const SERVER_DIAGNOSTICS_CLEAR = "barq:server-diagnostics:clear";
 
+export interface CustomHotPayload {
+  type: "custom";
+  event: string;
+  data: unknown;
+}
+
+export interface HotChannel {
+  send(payload: CustomHotPayload): void;
+}
+
+export interface RootConfig {
+  root: string;
+}
+
 /** The slice of a Vite dev server this needs. */
 export interface ServerDiagnosticsHost {
-  hot: { send(payload: { type: "custom"; event: string; data: unknown }): void };
-  config: { root: string };
+  hot: HotChannel;
+  config: RootConfig;
 }
 
 /** A finding as the server's runtime raised it, or an error the server caught. */

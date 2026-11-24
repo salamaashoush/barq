@@ -23,9 +23,11 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, isAbsolute, join, relative } from "node:path";
 
+import type { RouteEntry, RouteIdMismatch } from "@barqjs/compiler";
 import type { Plugin } from "vite";
 
 import { atomsAsset } from "./compiler.ts";
+import type { EnvironmentContext, PluginEnvironment } from "./environment.ts";
 import { type Reachability, idsInStub, reachabilityFrom } from "./reachability.ts";
 
 /** Where the generated tree is written when nothing says otherwise. */
@@ -101,7 +103,7 @@ export interface ChunkAssets {
  * `skip` is the build's atoms, which every entry links after everything else.
  */
 export function routeStylesheets(
-  entries: readonly { readonly id: string; readonly file: string }[],
+  entries: readonly RouteEntry[],
   chunks: readonly ChunkAssets[],
   base: string,
   skip?: string,
@@ -111,14 +113,14 @@ export function routeStylesheets(
   for (const entry of entries) {
     const linked = new Set<string>();
     const walked = new Set<string>();
-    const visit = (file: string): void => {
+    function visit(file: string): void {
       if (walked.has(file)) return;
       walked.add(file);
       const chunk = byName.get(file);
       if (chunk === undefined) return;
       for (const imported of chunk.imports) visit(imported);
       for (const css of chunk.css) if (css !== skip) linked.add(`${base}${css}`);
-    };
+    }
     for (const chunk of chunks) {
       const holds = chunk.modules.some((moduleId) => {
         const file = moduleId.endsWith(`?${SPLIT_QUERY}`)
@@ -143,11 +145,15 @@ export function routeStylesheets(
 const LAZY_IMPORT =
   /\b(lazy|clientOnly)\(\s*\(\)\s*=>\s*import\(\s*(["'])([^"'\n]+)\2\s*\)\s*(,\s*\{[^{}()]*\}\s*)?\)/g;
 
+interface ResolvedId {
+  id: string;
+}
+
 export async function withModuleUrls(
   code: string,
   id: string,
   root: string,
-  resolve: (spec: string) => Promise<{ id: string } | null>,
+  resolve: (spec: string) => Promise<ResolvedId | null>,
 ): Promise<string> {
   if (id.includes("/node_modules/") || !(code.includes("lazy(") || code.includes("clientOnly("))) {
     return code;
@@ -177,16 +183,27 @@ function moduleUrlOf(id: string, root: string): string {
   return path.startsWith("..") ? file : `/${path}`;
 }
 
+export interface LazyEntryChunk {
+  module: string;
+  fileName: string;
+  imports: readonly string[];
+}
+
+export interface ModuleAssetLinks {
+  js: string[];
+  css: string[];
+}
+
 /** Module URL -> the chunks a `lazy()` of it loads and the stylesheets they import. */
 export function lazyModuleAssets(
-  entries: readonly { module: string; fileName: string; imports: readonly string[] }[],
-  chunks: readonly { fileName: string; css: readonly string[] }[],
+  entries: readonly LazyEntryChunk[],
+  chunks: readonly Pick<ChunkAssets, "fileName" | "css">[],
   root: string,
   base: string,
   skip?: string,
-): Record<string, { js: string[]; css: string[] }> {
+): Record<string, ModuleAssetLinks> {
   const cssOf = new Map(chunks.map((chunk) => [chunk.fileName, chunk.css]));
-  const out: Record<string, { js: string[]; css: string[] }> = {};
+  const out: Record<string, ModuleAssetLinks> = {};
   for (const entry of entries) {
     const files = [entry.fileName, ...entry.imports];
     const css = new Set<string>();
@@ -210,8 +227,8 @@ export function lazyModuleAssets(
  * started, one round trip into hydration.
  */
 export function routeChunks(
-  entries: readonly { readonly id: string; readonly file: string }[],
-  chunks: readonly { fileName: string; modules: readonly string[]; imports: readonly string[] }[],
+  entries: readonly RouteEntry[],
+  chunks: readonly Pick<ChunkAssets, "fileName" | "modules" | "imports">[],
   base: string,
 ): Record<string, string[]> {
   const out: Record<string, string[]> = {};
@@ -244,7 +261,7 @@ export interface RouteTree {
   /** Every leaf pattern, which is what `BARQ013` checks a `<Link to>` against. */
   readonly patterns: string[];
   /** Route id to source file, layouts included — the build-time checks' input. */
-  readonly entries: { id: string; file: string }[];
+  readonly entries: RouteEntry[];
   /**
    * Declarations a route made that are not literals, for this plugin to report.
    *
@@ -261,7 +278,7 @@ export interface RouteTree {
    * in place; a build refuses, because CI must not pass on a file the build
    * silently edited.
    */
-  readonly mismatches: { file: string; declared: string; expected: string }[];
+  readonly mismatches: RouteIdMismatch[];
   /** Route files whose id literal was rewritten on disk. */
   readonly rewritten: string[];
 }
@@ -411,6 +428,26 @@ export interface BarqRouterOptions {
   readonly hmr?: boolean;
 }
 
+interface ModuleInfoSlice {
+  importedIds: readonly string[];
+  dynamicallyImportedIds?: readonly string[];
+  code?: string | null;
+}
+
+interface BuildEndContext {
+  getModuleIds: () => Iterable<string>;
+  getModuleInfo: (id: string) => ModuleInfoSlice | null;
+  environment?: PluginEnvironment;
+  error: (message: string) => never;
+  warn: (message: string) => void;
+}
+
+interface RouteTransformContext {
+  warn(message: string): void;
+  resolve(source: string, importer: string): Promise<ResolvedId | null>;
+  environment?: PluginEnvironment;
+}
+
 /**
  * The environment a hook runs in, by consumer.
  *
@@ -418,7 +455,7 @@ export interface BarqRouterOptions {
  * a provider's client) is compiled as a browser one. The name is the fallback
  * for a context that carries no config, which is how the tests drive a hook.
  */
-function forClient(environment: { name?: string; config?: { consumer?: string } } | undefined) {
+function forClient(environment: PluginEnvironment | undefined) {
   const consumer = environment?.config?.consumer;
   if (consumer !== undefined) return consumer === "client";
   return (environment?.name ?? "client") === "client";
@@ -487,6 +524,11 @@ function withSplitHot(code: string, coreSource: string): string {
   return code.slice(0, at) + hot + code.slice(at) + accept;
 }
 
+export interface RouterApi {
+  entries(): readonly RouteEntry[];
+  lazyOf(id: string): readonly string[];
+}
+
 export function barqRouter(options: BarqRouterOptions = {}): Plugin {
   const routesDir = options.routesDir ?? "src/routes";
   const codeSplitting = options.codeSplitting ?? true;
@@ -498,16 +540,18 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
   const references = new Map<string, string>();
   let routeAssets: Record<string, string[]> = {};
   let routeCss: Record<string, string[]> = {};
-  let moduleAssets: Record<string, { js: string[]; css: string[] }> = {};
-  const empty = (): RouteTree => ({
-    source: "",
-    files: [],
-    patterns: [],
-    entries: [],
-    warnings: [],
-    mismatches: [],
-    rewritten: [],
-  });
+  let moduleAssets: Record<string, ModuleAssetLinks> = {};
+  function empty(): RouteTree {
+    return {
+      source: "",
+      files: [],
+      patterns: [],
+      entries: [],
+      warnings: [],
+      mismatches: [],
+      rewritten: [],
+    };
+  }
   let tree = empty();
   const lazyByModule = new Map<string, string[]>();
 
@@ -522,8 +566,8 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
    */
   let writeIds = false;
 
-  const split = (code: string, file: string, client: boolean): RouteSplit =>
-    native.routeSplit(
+  function split(code: string, file: string, client: boolean): RouteSplit {
+    return native.routeSplit(
       code,
       relative(root, file).replaceAll("\\", "/"),
       `${file}?${SPLIT_QUERY}`,
@@ -531,10 +575,15 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
       codeSplitting,
       coreSource,
     );
+  }
 
   /** `<file>?barq-split` — the half the reference module `import()`s. */
-  const isSplitId = (id: string): boolean => id.endsWith(`?${SPLIT_QUERY}`);
-  const fileOfSplitId = (id: string): string => id.slice(0, -(SPLIT_QUERY.length + 1));
+  function isSplitId(id: string): boolean {
+    return id.endsWith(`?${SPLIT_QUERY}`);
+  }
+  function fileOfSplitId(id: string): string {
+    return id.slice(0, -(SPLIT_QUERY.length + 1));
+  }
 
   /**
    * Whether a module is one of THIS project's route files.
@@ -543,13 +592,13 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
    * happens to call `createFileRoute` is not in the table, so splitting it would
    * produce a chunk nothing imports.
    */
-  const isRouteFile = (file: string): boolean => {
+  function isRouteFile(file: string): boolean {
     if (!ROUTE_EXTENSIONS.some((extension) => file.endsWith(extension))) return false;
     const inside = relative(join(root, routesDir), file);
     return inside !== "" && !inside.startsWith("..") && !isAbsolute(inside);
-  };
+  }
 
-  const rescan = (warn?: (message: string) => void): void => {
+  function rescan(warn?: (message: string) => void): void {
     // A project with no routes directory has no table, and writing an empty
     // one would put a generated file in a project that does not route.
     if (!existsSync(join(root, routesDir))) {
@@ -602,16 +651,16 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
     } catch {
       // A read-only checkout still builds off whatever is committed.
     }
-  };
+  }
 
   return {
     name: "barq-router",
     api: {
       /** Route id to source file, as the table generated from the routes says. */
-      entries: (): readonly { readonly id: string; readonly file: string }[] => tree.entries,
+      entries: (): readonly RouteEntry[] => tree.entries,
       /** The modules a module's literal `lazy()` and `clientOnly()` calls load. */
       lazyOf: (id: string): readonly string[] => lazyByModule.get(id) ?? [],
-    },
+    } satisfies RouterApi,
     /**
      * SHARED, like every plugin `barqStart()` returns, and for a reason that was
      * measured rather than assumed.
@@ -647,17 +696,7 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
     async buildEnd(this: unknown) {
       const verify = options.verify;
       if (verify === undefined && options.onReachability === undefined) return;
-      const context = this as {
-        getModuleIds: () => Iterable<string>;
-        getModuleInfo: (id: string) => {
-          importedIds: readonly string[];
-          dynamicallyImportedIds?: readonly string[];
-          code?: string | null;
-        } | null;
-        environment?: { name?: string; config?: { consumer?: string } };
-        error: (message: string) => never;
-        warn: (message: string) => void;
-      };
+      const context = this as BuildEndContext;
       // The CLIENT graph only. The ssr environment holds the server halves,
       // where every function is present by construction and reachability means
       // nothing.
@@ -724,7 +763,7 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
      * compiler's `src`, which is the whole reason that field exists.
      */
     generateBundle(_output, bundle) {
-      if (!forClient((this as { environment?: { config?: { consumer?: string } } }).environment)) {
+      if (!forClient((this as EnvironmentContext).environment)) {
         return;
       }
       // `viteMetadata.importedCss` is per CHUNK, so a route's stylesheets are
@@ -826,15 +865,7 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
      * still works — both halves come back as the original source — so the build
      * carries on and the message names the one binding to move.
      */
-    async transform(
-      this: {
-        warn(message: string): void;
-        resolve(source: string, importer: string): Promise<{ id: string } | null>;
-        environment?: { name?: string; config?: { consumer?: string } };
-      },
-      source,
-      id,
-    ) {
+    async transform(this: RouteTransformContext, source, id) {
       const lazies: string[] = [];
       const code = await withModuleUrls(source, id, root, async (spec) => {
         const resolved = await this.resolve(spec, id);
@@ -911,10 +942,10 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
       // takes it through HMR like any other module. `rescan` writes only on
       // change, which is what keeps this from being a loop: the file this
       // writes is inside the directory this watches.
-      const changed = (path: string): void => {
+      function changed(path: string): void {
         if (relative(join(root, routesDir), path).startsWith("..")) return;
         rescan((message) => server.config.logger.warn(message));
-      };
+      }
       server.watcher.on("add", changed);
       server.watcher.on("unlink", changed);
       // CHANGE too, since `e441950`'s generator started reading a route file's

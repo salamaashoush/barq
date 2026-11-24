@@ -16,6 +16,7 @@ import {
   START_ENTRY_ID,
   barqStart,
 } from "../src/start.ts";
+import type { SsrFlag } from "../src/environment.ts";
 
 /**
  * The three plugins `barqStart()` returns, as the loose shapes these tests
@@ -25,9 +26,36 @@ import {
 interface Loose {
   configResolved?: (config: unknown) => void;
   config?: (user: unknown, env: unknown) => unknown;
-  transform?: (code: string, id: string, options?: { ssr?: boolean }) => { code: string } | null;
+  transform?: (code: string, id: string, options?: SsrFlag) => TransformedCode | null;
   resolveId?: (id: string) => string | null;
   load?: (id: string) => string | null;
+}
+
+interface TransformedCode {
+  code: string;
+}
+
+interface NamedLoose extends Loose {
+  name: string;
+}
+
+interface EntriesPlugin {
+  resolveId: (id: string) => string | null;
+  load: (id: string) => string | null;
+}
+
+interface Driven {
+  manifest: string;
+  stubs: string;
+}
+
+interface ServerFnExport {
+  name: string;
+  serverFn: boolean;
+}
+
+interface ServerFnArtifact {
+  exports: Array<ServerFnExport>;
 }
 
 function byName(
@@ -37,8 +65,9 @@ function byName(
   Required<Pick<Loose, "resolveId" | "load">> & Loose,
   Loose,
 ] {
-  const at = (name: string): Loose =>
-    plugins.find((plugin) => plugin.name === name) as unknown as Loose;
+  function at(name: string): Loose {
+    return plugins.find((plugin) => plugin.name === name) as unknown as Loose;
+  }
   return [
     at("barq-compiler") as Required<Pick<Loose, "transform">> & Loose,
     at("barq-start:manifest") as Required<Pick<Loose, "resolveId" | "load">> & Loose,
@@ -57,7 +86,7 @@ const ROOT = "/home/me/app";
 const FILE = `${ROOT}/server/users.ts`;
 
 /** The plugin pair, driven the way Vite drives it. */
-async function drive(): Promise<{ manifest: string; stubs: string }> {
+async function drive(): Promise<Driven> {
   const [compiler, manifest, dev] = byName(barqStart());
 
   const config = { root: ROOT, mode: "development" };
@@ -169,9 +198,7 @@ describe("the artifact the manifest is built from", () => {
     const out = transform(SOURCE, { filename: FILE, root: ROOT, env: "client", serverFns: true });
     expect(out.code).toContain('clientRpc("server/users.ts#getUser", [], { method: "GET" })');
 
-    const artifact = JSON.parse(out.serverFns as string) as {
-      exports: Array<{ name: string; serverFn: boolean }>;
-    };
+    const artifact = JSON.parse(out.serverFns as string) as ServerFnArtifact;
     expect(artifact.exports.filter((e) => e.serverFn).map((e) => e.name)).toEqual([
       "getUser",
       "listUsers",
@@ -193,34 +220,25 @@ describe("the artifact the manifest is built from", () => {
  * The override path has its own coverage in `test/dev-server.test.ts`, against a
  * fixture that writes both entries.
  */
-const serveEntryWith = (options: Parameters<typeof barqStart>[0]): string => {
-  const plugins = barqStart(options) as unknown as (Loose & { name: string })[];
+function serveEntryWith(options: Parameters<typeof barqStart>[0]): string {
+  const plugins = barqStart(options) as unknown as NamedLoose[];
   for (const plugin of plugins) plugin.configResolved?.({ root: ROOT, mode: "development" });
-  const found = plugins.find((one) => one.name === "barq-start:entries") as unknown as {
-    resolveId: (id: string) => string | null;
-    load: (id: string) => string | null;
-  };
+  const found = plugins.find(
+    (one) => one.name === "barq-start:entries",
+  ) as unknown as EntriesPlugin;
   return found.load(found.resolveId(SERVE_ENTRY_ID) as string) ?? "";
-};
+}
 
 describe("the entries an application does not write", () => {
-  const entries = (
-    options?: Parameters<typeof barqStart>[0],
-  ): {
-    resolveId: (id: string) => string | null;
-    load: (id: string) => string | null;
-  } => {
-    const plugins = barqStart(options) as unknown as (Loose & { name: string })[];
+  function entries(options?: Parameters<typeof barqStart>[0]): EntriesPlugin {
+    const plugins = barqStart(options) as unknown as NamedLoose[];
     // EVERY plugin, because `root` is one closure the whole `barqStart()` call
     // shares and whichever plugin declares `configResolved` is the one that
     // fills it in. Driving only the entries plugin left `root` at
     // `process.cwd()`, which is this package rather than the application.
     for (const plugin of plugins) plugin.configResolved?.({ root: ROOT, mode: "development" });
-    return plugins.find((one) => one.name === "barq-start:entries") as unknown as {
-      resolveId: (id: string) => string | null;
-      load: (id: string) => string | null;
-    };
-  };
+    return plugins.find((one) => one.name === "barq-start:entries") as unknown as EntriesPlugin;
+  }
 
   test("the client half boots through `startClient` and names nothing else", async () => {
     const plugin = entries();
@@ -394,14 +412,15 @@ describe("the entries an application does not write", () => {
 });
 
 describe("the router entry a project DOES write", () => {
-  const routerEntry = (root: string): string | null => {
-    const plugins = barqStart() as unknown as (Loose & { name: string })[];
+  function routerEntry(root: string): string | null {
+    const plugins = barqStart() as unknown as NamedLoose[];
     for (const plugin of plugins) plugin.configResolved?.({ root, mode: "development" });
-    const entries = plugins.find((one) => one.name === "barq-start:entries") as unknown as {
-      resolveId: (id: string) => string | null;
-    };
+    const entries = plugins.find((one) => one.name === "barq-start:entries") as unknown as Pick<
+      EntriesPlugin,
+      "resolveId"
+    >;
     return entries.resolveId(ROUTER_ENTRY_ID);
-  };
+  }
 
   test("a project's own `src/router.ts` wins over the generated default", async () => {
     const resolved = routerEntry(join(import.meta.dir, "fixtures/router"));
@@ -452,13 +471,11 @@ describe("the router entry a project DOES write", () => {
 });
 
 describe("the project's start entry", () => {
-  const entriesAt = (
-    root: string,
-  ): { resolveId: (id: string) => string | null; load: (id: string) => string | null } => {
-    const plugins = barqStart() as unknown as (Loose & { name: string })[];
+  function entriesAt(root: string): EntriesPlugin {
+    const plugins = barqStart() as unknown as NamedLoose[];
     for (const plugin of plugins) plugin.configResolved?.({ root, mode: "development" });
     return plugins.find((one) => one.name === "barq-start:entries") as never;
-  };
+  }
 
   test("a project's own `src/start.ts` is what the framework imports", () => {
     const root = mkdtempSync(join(tmpdir(), "barq-start-entry-"));
@@ -478,15 +495,14 @@ describe("the project's start entry", () => {
 });
 
 describe("SPA mode", () => {
-  const generated = (id: string, options: Parameters<typeof barqStart>[0]): string => {
-    const plugins = barqStart(options) as unknown as (Loose & { name: string })[];
+  function generated(id: string, options: Parameters<typeof barqStart>[0]): string {
+    const plugins = barqStart(options) as unknown as NamedLoose[];
     for (const plugin of plugins) plugin.configResolved?.({ root: ROOT, mode: "development" });
-    const found = plugins.find((one) => one.name === "barq-start:entries") as unknown as {
-      resolveId: (id: string) => string | null;
-      load: (id: string) => string | null;
-    };
+    const found = plugins.find(
+      (one) => one.name === "barq-start:entries",
+    ) as unknown as EntriesPlugin;
     return found.load(found.resolveId(id) as string) ?? "";
-  };
+  }
 
   test("the deployed handler renders no pages and falls back to the shell the build wrote", () => {
     const options = { spa: { enabled: true } };

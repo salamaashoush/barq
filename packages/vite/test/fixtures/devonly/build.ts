@@ -27,7 +27,7 @@ const out = (await build({
   plugins: [await barq({ ssr: true })],
   // The development build unminified, so its markers read as written.
   build: { write: false, minify: mode === "production", ssr },
-})) as { output: { type: string; code?: string }[] };
+})) as BuildOutput;
 
 process.stdout.write(
   out.output
@@ -35,3 +35,12 @@ process.stdout.write(
     .map((item) => item.code ?? "")
     .join("\n"),
 );
+
+interface OutputChunk {
+  type: string;
+  code?: string;
+}
+
+interface BuildOutput {
+  output: OutputChunk[];
+}

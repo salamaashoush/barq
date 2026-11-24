@@ -9,8 +9,13 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 GlobalRegistrator.register();
 
+interface MountedScene {
+  scene(): string;
+  dispose(): void;
+}
+
 interface Built {
-  mount(element: HTMLElement): { scene(): string; dispose(): void };
+  mount(element: HTMLElement): MountedScene;
   setCount(value: number): void;
   setItems(value: string[]): void;
   flush(): void;

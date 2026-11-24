@@ -19,11 +19,20 @@ export function where(): string {
 }
 `;
 
+interface OutputChunk {
+  type: string;
+  code?: string;
+}
+
+interface BuildOutput {
+  output: readonly OutputChunk[];
+}
+
 async function bundled(config: (root: string) => InlineConfig): Promise<string> {
   const root = project(null, { "src/entry.ts": ENTRY });
   const result = await build({ root, logLevel: "silent", configFile: false, ...config(root) });
   const outputs = Array.isArray(result) ? result : [result];
-  const first = outputs[0] as { output: readonly { type: string; code?: string }[] };
+  const first = outputs[0] as BuildOutput;
   return first.output.map((chunk) => (chunk.type === "chunk" ? (chunk.code ?? "") : "")).join("\n");
 }
 

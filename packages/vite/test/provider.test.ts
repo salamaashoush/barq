@@ -29,6 +29,14 @@ import { ASSET_MANIFEST_FILE } from "@barqjs/start/serve";
 import barq from "../src/index.ts";
 import { PORTS, cleanUp, project } from "./project.ts";
 
+interface FetchHandler {
+  fetch(request: Request): Promise<Response>;
+}
+
+interface ServiceModule {
+  default: FetchHandler;
+}
+
 afterAll(cleanUp);
 
 function stubHost(answered: string[]): Plugin {
@@ -57,9 +65,7 @@ function stubHost(answered: string[]): Plugin {
         server.middlewares.use((req, res, next) => {
           void (async () => {
             try {
-              const service = await runner.import<{
-                default: { fetch(request: Request): Promise<Response> };
-              }>(input.index);
+              const service = await runner.import<ServiceModule>(input.index);
               answered.push(req.url ?? "");
               await sendNodeResponse(
                 res,

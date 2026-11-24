@@ -1,7 +1,7 @@
 import { createSignal } from "@barqjs/core";
 import { hydrate } from "@barqjs/web";
 
-function Row(props: { label: string }) {
+function Row(props: RowProps) {
   return <li>{props.label}</li>;
 }
 
@@ -15,3 +15,7 @@ function Greeting() {
 }
 
 hydrate(() => <Greeting />, document.getElementById("app")!);
+
+interface RowProps {
+  label: string;
+}

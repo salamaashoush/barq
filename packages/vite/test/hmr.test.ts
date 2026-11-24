@@ -35,7 +35,7 @@ afterEach(async () => {
 async function dev(): Promise<Dev> {
   const root = project("full-stack");
   const sent: HotPayload[] = [];
-  let propagated = (): void => {};
+  let propagated: () => void = () => {};
   const server = await createServer({
     root,
     configLoader: "runner",
@@ -74,11 +74,11 @@ async function dev(): Promise<Dev> {
   // The interval paces the writes and is not what the wait ends on.
   const probe = join(server.config.root, "watch-probe.txt");
   const listening = new Promise<void>((resolve) => {
-    const heard = (file: string): void => {
+    function heard(file: string): void {
       if (file !== probe) return;
       server.watcher.off("change", heard);
       resolve();
-    };
+    }
     server.watcher.on("change", heard);
   });
   let writes = 0;
@@ -86,7 +86,7 @@ async function dev(): Promise<Dev> {
   await listening;
   clearInterval(writing);
 
-  const edit = async (file: string, from: string, to: string): Promise<HotPayload[]> => {
+  async function edit(file: string, from: string, to: string): Promise<HotPayload[]> {
     sent.length = 0;
     const path = join(root, file);
     const source = readFileSync(path, "utf8");
@@ -101,7 +101,7 @@ async function dev(): Promise<Dev> {
     writeFileSync(path, source.replace(from, to));
     await answered;
     return [...sent];
-  };
+  }
   return { server, edit };
 }
 

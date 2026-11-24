@@ -5,8 +5,13 @@ import { describe, expect, test } from "bun:test";
 import { withModuleUrls } from "../src/router.ts";
 
 const root = "/home/salama/app";
-const resolveIn = (spec: string): Promise<{ id: string }> =>
-  Promise.resolve({ id: join(root, "src", `${spec.replace("./", "")}.tsx`) });
+interface ResolvedId {
+  id: string;
+}
+
+function resolveIn(spec: string): Promise<ResolvedId> {
+  return Promise.resolve({ id: join(root, "src", `${spec.replace("./", "")}.tsx`) });
+}
 
 describe("clientOnly() module URLs", () => {
   test("a literal clientOnly import is given the URL of the module it loads", async () => {

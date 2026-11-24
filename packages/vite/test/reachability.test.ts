@@ -2,6 +2,14 @@ import { describe as group, expect, test } from "bun:test";
 
 import { idsInStub, reachabilityFrom } from "../src/reachability.ts";
 
+interface NativeOutput {
+  code: string;
+}
+
+interface NativeCompiler {
+  transform(code: string, options?: Record<string, unknown>): NativeOutput;
+}
+
 group("reachabilityFrom", () => {
   test("walks transitively and stops at a cycle", async () => {
     const imports: Record<string, string[]> = {
@@ -63,9 +71,7 @@ group("the premise the walk rests on", () => {
     // that ever changed, every reachability answer would silently become empty
     // — so it is asserted against the real compiler rather than assumed.
     const { createRequire } = await import("node:module");
-    const native = createRequire(import.meta.url)("@barqjs/compiler") as {
-      transform(code: string, options?: Record<string, unknown>): { code: string };
-    };
+    const native = createRequire(import.meta.url)("@barqjs/compiler") as NativeCompiler;
 
     const route = native.transform(
       `import { banUser } from "./actions.ts";\nexport default function Page() { return <div>{banUser}</div>; }\n`,

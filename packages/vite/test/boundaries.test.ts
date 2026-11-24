@@ -16,6 +16,11 @@ import { build } from "vite";
 import barq from "../src/index.ts";
 import { cleanUp, project } from "./project.ts";
 
+interface RenderedFrame {
+  dom: string;
+  scene: string;
+}
+
 afterAll(cleanUp);
 
 const RENDERER = `import { createRenderer } from "@barqjs/universal";
@@ -164,6 +169,7 @@ import { scenes } from "@acme/scene";
 import { print } from "@acme/scene/renderer";
 import { App } from "./App.tsx";
 
+
 export { flush } from "@barqjs/core";
 export { setCount, setItems } from "./state.ts";
 
@@ -204,9 +210,10 @@ describe("a renderer a dependency declares in its package.json", () => {
       { cwd: root },
     );
     expect(run.stderr.toString()).toBe("");
-    const frames = JSON.parse(run.stdout.toString()) as { dom: string; scene: string }[];
-    const page = (count: number) =>
-      `<main><h1>${count}</h1><button type="button">add</button><canvas></canvas></main>`;
+    const frames = JSON.parse(run.stdout.toString()) as RenderedFrame[];
+    function page(count: number) {
+      return `<main><h1>${count}</h1><button type="button">add</button><canvas></canvas></main>`;
+    }
     expect(frames).toEqual([
       {
         dom: page(1),

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
 import { type ViteDevServer, createServer } from "vite";
 
@@ -12,12 +13,13 @@ const ROOT = fileURLToPath(new URL("./fixtures/start", import.meta.url));
 let server: ViteDevServer;
 let origin = "";
 
-const add = (title: string, id = "todos.ts#addTodo"): Promise<Response> =>
-  fetch(`${origin}${RPC_PREFIX}${encodeURIComponent(id)}${DATA_SUFFIX}`, {
+function add(title: string, id = "todos.ts#addTodo"): Promise<Response> {
+  return fetch(`${origin}${RPC_PREFIX}${encodeURIComponent(id)}${DATA_SUFFIX}`, {
     method: "POST",
     headers: { "content-type": "application/json", origin },
     body: JSON.stringify({ input: encodeWire(title) }),
   });
+}
 
 beforeAll(async () => {
   server = await createServer({
@@ -41,7 +43,7 @@ beforeAll(async () => {
   // Discovery rides the client transform, as it does in `dev-server.test.ts`.
   await server.environments.client.transformRequest("/todos.ts");
   await server.listen();
-  const address = server.httpServer?.address() as { port: number };
+  const address = server.httpServer?.address() as AddressInfo;
   origin = `http://127.0.0.1:${address.port}`;
   // The first server-function request is what loads @barqjs/start's server
   // graph through the module runner, from source. Answering one here keeps that

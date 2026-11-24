@@ -90,6 +90,11 @@ export interface OverlayConfig {
   root: string;
 }
 
+export interface MountedOverlay {
+  element: HTMLElement;
+  dispose(): void;
+}
+
 /**
  * Mount the overlay. Serialised with `toString()` into the page, so it names
  * nothing outside itself.
@@ -98,7 +103,7 @@ export function mountOverlay(
   hot: OverlayHot | undefined,
   runtime: RuntimeChannel | undefined,
   config: OverlayConfig,
-): { element: HTMLElement; dispose(): void } {
+): MountedOverlay {
   type Severity = "note" | "warning" | "error";
   interface Location {
     file: string;
@@ -106,6 +111,15 @@ export function mountOverlay(
     column: number;
     name?: string;
     library: boolean;
+  }
+  interface Located {
+    at: Location;
+    content: string | null;
+  }
+  interface RawSourceMap {
+    sources?: string[];
+    sourcesContent?: (string | null)[];
+    mappings?: string;
   }
   interface Entry {
     key: string;
@@ -118,7 +132,7 @@ export function mountOverlay(
     at?: Location;
     endLine?: number;
     endColumn?: number;
-    frame?: { first: number; lines: string[] };
+    frame?: OverlayFrame;
     stack?: Location[];
     count: number;
   }
@@ -149,16 +163,16 @@ export function mountOverlay(
   host.id = "barq-diagnostics";
   const root = host.attachShadow({ mode: "open" });
 
-  const make = <K extends keyof HTMLElementTagNameMap>(
+  function make<K extends keyof HTMLElementTagNameMap>(
     tag: K,
     className: string,
     text?: string,
-  ): HTMLElementTagNameMap[K] => {
+  ): HTMLElementTagNameMap[K] {
     const node = document.createElement(tag);
     if (className !== "") node.className = className;
     if (text !== undefined) node.textContent = text;
     return node;
-  };
+  }
 
   const style = make("style", "");
   style.textContent = `
@@ -229,50 +243,55 @@ a.code:hover { color: var(--fg); text-decoration: underline; }
   live.setAttribute("aria-live", "polite");
   root.append(style, pill, panel, live);
 
-  const all = (): Entry[] =>
-    [...thrown, ...compiled].toSorted((a, b) => RANK[b.severity] - RANK[a.severity]);
+  function all(): Entry[] {
+    return [...thrown, ...compiled].toSorted((a, b) => RANK[b.severity] - RANK[a.severity]);
+  }
 
-  const count = (entries: Entry[], severity: Severity): number =>
-    entries.filter((entry) => entry.severity === severity).length;
+  function count(entries: Entry[], severity: Severity): number {
+    return entries.filter((entry) => entry.severity === severity).length;
+  }
 
-  const plural = (total: number, noun: string): string =>
-    `${total} ${noun}${total === 1 ? "" : "s"}`;
+  function plural(total: number, noun: string): string {
+    return `${total} ${noun}${total === 1 ? "" : "s"}`;
+  }
 
-  const summary = (entries: Entry[]): string =>
-    (["error", "warning", "note"] as const)
+  function summary(entries: Entry[]): string {
+    return (["error", "warning", "note"] as const)
       .map((severity) => [count(entries, severity), NOUN[severity]] as const)
       .filter(([total]) => total > 0)
       .map(([total, noun]) => plural(total, noun))
       .join(" · ");
+  }
 
   /** Text with its backticked spans set as code, which every message uses. */
-  const prose = (text: string): HTMLElement => {
+  function prose(text: string): HTMLElement {
     const node = make("div", "message");
     text.split("`").forEach((part, index) => {
       if (part === "") return;
       node.append(index % 2 === 1 ? make("code", "", part) : document.createTextNode(part));
     });
     return node;
-  };
+  }
 
-  const short = (file: string): string =>
-    file.startsWith(config.root) ? file.slice(config.root.length).replace(/^\//, "") : file;
+  function short(file: string): string {
+    return file.startsWith(config.root) ? file.slice(config.root.length).replace(/^\//, "") : file;
+  }
 
-  const edit = (at: Location): void => {
+  function edit(at: Location): void {
     const target = `${at.file}:${at.line}:${at.column}`;
     void fetch(`/__open-in-editor?file=${encodeURIComponent(target)}`).catch(() => undefined);
-  };
+  }
 
-  const whereButton = (at: Location): HTMLElement => {
+  function whereButton(at: Location): HTMLElement {
     const label = `${short(at.file)}:${at.line}:${at.column}`;
     const button = make("button", "where", at.name ? `${at.name}  ${label}` : label);
     button.type = "button";
     button.title = "Open in editor";
     button.addEventListener("click", () => edit(at));
     return button;
-  };
+  }
 
-  const frameOf = (entry: Entry): HTMLElement | null => {
+  function frameOf(entry: Entry): HTMLElement | null {
     const frame = entry.frame;
     const at = entry.at;
     if (frame === undefined || at === undefined) return null;
@@ -301,17 +320,17 @@ a.code:hover { color: var(--fg); text-decoration: underline; }
       box.append(under);
     });
     return box;
-  };
+  }
 
-  const describe = (entry: Entry): string => {
+  function describe(entry: Entry): string {
     const head = [entry.code, entry.severity].filter(Boolean).join(" ");
     const owners = entry.ownerPath ? `\nin ${entry.ownerPath.join(" › ")}` : "";
     const where = entry.at ? `\n${entry.at.file}:${entry.at.line}:${entry.at.column}` : "";
     const docs = entry.docs ? `\n${entry.docs}` : "";
     return `${head}: ${entry.message}${owners}${where}${docs}`;
-  };
+  }
 
-  const entryNode = (entry: Entry): HTMLElement => {
+  function entryNode(entry: Entry): HTMLElement {
     const node = make("article", "entry");
     node.style.setProperty("--tone", `var(--${entry.severity})`);
     const meta = make("div", "meta");
@@ -357,9 +376,9 @@ a.code:hover { color: var(--fg); text-decoration: underline; }
       node.append(list);
     }
     return node;
-  };
+  }
 
-  const chip = (label: string, value: Severity | "all"): HTMLElement => {
+  function chip(label: string, value: Severity | "all"): HTMLElement {
     const button = make("button", "chip", label);
     button.type = "button";
     button.setAttribute("aria-pressed", String(filter === value));
@@ -373,13 +392,13 @@ a.code:hover { color: var(--fg); text-decoration: underline; }
       render();
     });
     return button;
-  };
+  }
 
-  const close = (): void => {
+  function close(): void {
     open = false;
     render();
     pill.focus();
-  };
+  }
 
   function render(): void {
     const entries = all();
@@ -434,7 +453,7 @@ a.code:hover { color: var(--fg); text-decoration: underline; }
   }
 
   /** Open by itself only for something at or above the threshold that was not there before. */
-  const settle = (): void => {
+  function settle(): void {
     const entries = all();
     let fresh = false;
     for (const entry of entries) {
@@ -447,7 +466,7 @@ a.code:hover { color: var(--fg); text-decoration: underline; }
       live.textContent = `barq: ${summary(entries)}`;
     }
     render();
-  };
+  }
 
   // ── runtime: the source map turns a position in served code into a line ──
 
@@ -460,7 +479,7 @@ a.code:hover { color: var(--fg); text-decoration: underline; }
   const maps = new Map<string, Promise<Mapped | null>>();
   const DIGITS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-  const decode = (mappings: string): number[][][] => {
+  function decode(mappings: string): number[][][] {
     const lines: number[][][] = [];
     let source = 0;
     let line = 0;
@@ -494,9 +513,9 @@ a.code:hover { color: var(--fg); text-decoration: underline; }
       lines.push(segments);
     }
     return lines;
-  };
+  }
 
-  const mapOf = (url: string): Promise<Mapped | null> => {
+  function mapOf(url: string): Promise<Mapped | null> {
     let known = maps.get(url);
     if (known === undefined) {
       known = fetch(url)
@@ -508,7 +527,7 @@ a.code:hover { color: var(--fg); text-decoration: underline; }
           const encoded = text.slice(at + marker.length).split("\n", 1)[0] ?? "";
           const json = JSON.parse(
             new TextDecoder().decode(Uint8Array.from(atob(encoded), (char) => char.charCodeAt(0))),
-          ) as { sources?: string[]; sourcesContent?: (string | null)[]; mappings?: string };
+          ) as RawSourceMap;
           return {
             sources: json.sources ?? [],
             contents: json.sourcesContent ?? [],
@@ -519,20 +538,20 @@ a.code:hover { color: var(--fg); text-decoration: underline; }
       maps.set(url, known);
     }
     return known;
-  };
+  }
 
-  const fileOf = (url: string): string => {
+  function fileOf(url: string): string {
     const path = decodeURIComponent(new URL(url).pathname);
     if (path.startsWith("/@fs/")) return path.slice(4);
     return `${config.root}${path}`;
-  };
+  }
 
-  const locate = async (
+  async function locate(
     url: string,
     line: number,
     column: number,
     name: string | undefined,
-  ): Promise<{ at: Location; content: string | null }> => {
+  ): Promise<Located> {
     const file = fileOf(url);
     const library = file.includes("/node_modules/") || !file.startsWith(config.root);
     const plain = { at: { file, line, column, name, library }, content: null };
@@ -550,12 +569,12 @@ a.code:hover { color: var(--fg); text-decoration: underline; }
       at: { file, line: (found[2] ?? 0) + 1, column: (found[3] ?? 0) + 1, name, library },
       content: map.contents[found[1] ?? 0] ?? null,
     };
-  };
+  }
 
   const FRAME = /^\s*(?:at\s+)?(?:(.*?)\s*[(@])?((?:https?|file):\/\/.+?):(\d+):(\d+)\)?\s*$/;
 
   /** `file:line:column`, the form a development compile writes beside a template. */
-  const place = (text: unknown): Location | undefined => {
+  function place(text: unknown): Location | undefined {
     if (typeof text !== "string") return undefined;
     const match = /^(.*):(\d+):(\d+)$/.exec(text);
     if (match === null) return undefined;
@@ -566,16 +585,16 @@ a.code:hover { color: var(--fg); text-decoration: underline; }
       column: Number(match[3]),
       library: file.includes("/node_modules/") || !file.startsWith(config.root),
     };
-  };
+  }
 
-  const report = (
+  function report(
     severity: Severity,
     code: string | undefined,
     error: unknown,
     docs?: string,
     ownerPath?: string[],
     at?: Location,
-  ): void => {
+  ): void {
     const failure = error instanceof Error ? error : undefined;
     const message = failure ? `${failure.name}: ${failure.message}` : String(error);
     const key = `runtime:${code ?? ""}:${message}:${ownerPath?.join(">") ?? ""}`;
@@ -621,15 +640,17 @@ a.code:hover { color: var(--fg); text-decoration: underline; }
       }
       render();
     });
-  };
+  }
 
-  const onError = (event: ErrorEvent): void =>
-    report("error", undefined, event.error ?? event.message);
-  const onRejection = (event: PromiseRejectionEvent): void =>
-    report("error", undefined, event.reason);
-  const onKey = (event: KeyboardEvent): void => {
+  function onError(event: ErrorEvent): void {
+    return report("error", undefined, event.error ?? event.message);
+  }
+  function onRejection(event: PromiseRejectionEvent): void {
+    return report("error", undefined, event.reason);
+  }
+  function onKey(event: KeyboardEvent): void {
     if (event.key === "Escape" && open) close();
-  };
+  }
   window.addEventListener("error", onError);
   window.addEventListener("unhandledrejection", onRejection);
   root.addEventListener("keydown", onKey as EventListener);

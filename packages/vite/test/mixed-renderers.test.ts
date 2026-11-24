@@ -13,6 +13,11 @@ import { build } from "vite";
 import barq from "../src/index.ts";
 import { cleanUp, project } from "./project.ts";
 
+interface RenderedFrame {
+  dom: string;
+  scene: string;
+}
+
 afterAll(cleanUp);
 
 const RENDERER = `import { createRenderer } from "@barqjs/universal";
@@ -121,6 +126,7 @@ import { App } from "./page/App.tsx";
 import { Scene } from "./scene/Scene.tsx";
 import { createScene, print, render as renderScene } from "./scene/renderer.ts";
 
+
 export { flush } from "@barqjs/core";
 export { setCount, setItems } from "./state.ts";
 
@@ -182,7 +188,7 @@ describe("a build with document files and a custom renderer's files", () => {
       { cwd: root },
     );
     expect(run.stderr.toString()).toBe("");
-    const frames = JSON.parse(run.stdout.toString()) as { dom: string; scene: string }[];
+    const frames = JSON.parse(run.stdout.toString()) as RenderedFrame[];
     expect(frames).toEqual([
       {
         dom: '<main><h1>1</h1><button type="button">add</button></main>',

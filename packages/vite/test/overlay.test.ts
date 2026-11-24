@@ -21,6 +21,10 @@ import {
 } from "../src/overlay.ts";
 import { serverEntry, stackFrames } from "../src/server-diagnostics.ts";
 
+interface RejectionEvent extends Event {
+  reason?: unknown;
+}
+
 const CONFIG = {
   event: "barq:diagnostics",
   ready: "barq:diagnostics:ready",
@@ -79,7 +83,9 @@ function mount(): Mounted {
     CONFIG,
   );
   const root = overlay.element.shadowRoot!;
-  const panel = (): HTMLElement => root.querySelector(".panel")!;
+  function panel(): HTMLElement {
+    return root.querySelector(".panel")!;
+  }
   mounted = {
     send: (payload) =>
       (listeners.get(CONFIG.event) as ((data: OverlayPayload) => void) | undefined)?.({
@@ -101,19 +107,21 @@ function mount(): Mounted {
   return mounted;
 }
 
-const diagnostic = (over: Partial<OverlayDiagnostic> = {}): OverlayDiagnostic => ({
-  code: "BARQ001",
-  severity: "warning",
-  message: "`count` is an accessor. Call it — `count()`.",
-  file: "/app/src/Card.tsx",
-  line: 3,
-  column: 12,
-  endLine: 3,
-  endColumn: 17,
-  docs: "https://example.com/docs/BARQ001.md",
-  frame: { first: 1, lines: ["import x", "", "const v = `${count}`;", "", "export {}"] },
-  ...over,
-});
+function diagnostic(over: Partial<OverlayDiagnostic> = {}): OverlayDiagnostic {
+  return {
+    code: "BARQ001",
+    severity: "warning",
+    message: "`count` is an accessor. Call it — `count()`.",
+    file: "/app/src/Card.tsx",
+    line: 3,
+    column: 12,
+    endLine: 3,
+    endColumn: 17,
+    docs: "https://example.com/docs/BARQ001.md",
+    frame: { first: 1, lines: ["import x", "", "const v = `${count}`;", "", "export {}"] },
+    ...over,
+  };
+}
 
 describe("what is on the page when nothing is wrong", () => {
   test("nothing: the overlay is not in the document, and it asked the server for what it missed", () => {
@@ -210,7 +218,9 @@ describe("the filter", () => {
         diagnostic({ severity: "note", line: 12 }),
       ],
     });
-    const chips = (): HTMLElement[] => [...overlay.root.querySelectorAll<HTMLElement>(".chip")];
+    function chips(): HTMLElement[] {
+      return [...overlay.root.querySelectorAll<HTMLElement>(".chip")];
+    }
     expect(chips().map((chip) => chip.textContent)).toEqual([
       "All 3",
       "1 error",
@@ -277,7 +287,7 @@ describe("what the page reports while it runs", () => {
 
   test("a rejection nothing handled is one too, and runtime entries can be cleared", () => {
     const overlay = mount();
-    const event = new Event("unhandledrejection") as Event & { reason?: unknown };
+    const event = new Event("unhandledrejection") as RejectionEvent;
     event.reason = new Error("no such order");
     window.dispatchEvent(event);
     expect(overlay.entries()[0]?.querySelector(".message")?.textContent).toBe(
@@ -323,19 +333,21 @@ describe("where a runtime finding happened", () => {
 });
 
 describe("what the server reports", () => {
-  const entry = (over: Partial<OverlayServerEntry> = {}): OverlayServerEntry => ({
-    code: "SERVER_FUNCTION_FAILED",
-    severity: "error",
-    message: "TypeError: Cannot read properties of undefined (reading 'id')",
-    docs: "https://example.com/SERVER_FUNCTION_FAILED.md",
-    at: { file: "/app/src/todos.ts", line: 7, column: 21, library: false },
-    frame: { first: 6, lines: ["export const add = () => {", "  return input.id;", "};"] },
-    stack: [
-      { file: "/app/src/todos.ts", line: 7, column: 21, name: "add", library: false },
-      { file: "/app/node_modules/x/index.js", line: 1, column: 1, library: true },
-    ],
-    ...over,
-  });
+  function entry(over: Partial<OverlayServerEntry> = {}): OverlayServerEntry {
+    return {
+      code: "SERVER_FUNCTION_FAILED",
+      severity: "error",
+      message: "TypeError: Cannot read properties of undefined (reading 'id')",
+      docs: "https://example.com/SERVER_FUNCTION_FAILED.md",
+      at: { file: "/app/src/todos.ts", line: 7, column: 21, library: false },
+      frame: { first: 6, lines: ["export const add = () => {", "  return input.id;", "};"] },
+      stack: [
+        { file: "/app/src/todos.ts", line: 7, column: 21, name: "add", library: false },
+        { file: "/app/node_modules/x/index.js", line: 1, column: 1, library: true },
+      ],
+      ...over,
+    };
+  }
 
   test("opens the overlay as a server entry, with its frame and its stack", () => {
     const overlay = mount();

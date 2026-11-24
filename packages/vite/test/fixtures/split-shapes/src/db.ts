@@ -1,3 +1,7 @@
+interface PoolRegistry {
+  acmePools?: Pool[];
+}
+
 interface Pool {
   readonly url: string;
   query(sql: string): string[];
@@ -5,7 +9,7 @@ interface Pool {
 
 // One pool per process, kept on the global so a reload does not open a second.
 // The write is a side effect, which is what every real driver module has.
-const pools = ((globalThis as { acmePools?: Pool[] }).acmePools ??= []);
+const pools = ((globalThis as PoolRegistry).acmePools ??= []);
 
 export const db: Pool = {
   url: "postgres://app@db.internal.example.com/db-module-must-not-ship",

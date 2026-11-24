@@ -27,8 +27,16 @@ interface ChannelEvent {
   data?: Record<string, unknown>;
 }
 
+interface DiagnosticsChannel {
+  subscribe(listener: (event: ChannelEvent) => void): () => void;
+}
+
+interface RunnerDev {
+  diagnostics: DiagnosticsChannel;
+}
+
 interface RunnerCore {
-  DEV: { diagnostics: { subscribe(listener: (event: ChannelEvent) => void): () => void } };
+  DEV: RunnerDev;
 }
 
 export interface ServerDiagnostics {
@@ -42,14 +50,14 @@ export function serverDiagnostics(
   server: ViteDevServer,
   load: (specifier: string) => Promise<unknown>,
 ): ServerDiagnostics {
-  const fix = (error: unknown): void => {
+  function fix(error: unknown): void {
     if (!(error instanceof Error)) return;
     try {
       server.ssrFixStacktrace(error);
     } catch {
       // A stack this cannot map is still worth showing as it is.
     }
-  };
+  }
   let subscribed: Promise<void> | undefined;
   return {
     ready: () => {

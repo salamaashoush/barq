@@ -79,7 +79,7 @@ export const PORTS = {
 export function serverCode(out: string, entry = "server.js"): string {
   const seen = new Set<string>();
   const parts: string[] = [];
-  const visit = (file: string): void => {
+  function visit(file: string): void {
     if (seen.has(file) || !existsSync(file)) return;
     seen.add(file);
     const code = readFileSync(file, "utf8");
@@ -87,7 +87,7 @@ export function serverCode(out: string, entry = "server.js"): string {
     for (const match of code.matchAll(/(?:from\s*|import\s*\(?\s*)["'](\.{1,2}\/[^"']+)["']/g)) {
       visit(join(dirname(file), match[1]));
     }
-  };
+  }
   visit(join(out, "server", entry));
   return parts.join("\n");
 }

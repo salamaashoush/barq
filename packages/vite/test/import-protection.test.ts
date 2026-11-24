@@ -23,11 +23,11 @@ afterAll(() => {
 });
 
 /** Build one fixture, answering the error the build failed with or `null`. */
-const build = async (
+async function build(
   fixture: string,
   outputDirectory: string,
   options: BarqStartOptions = {},
-): Promise<Error | null> => {
+): Promise<Error | null> {
   const root = join(FIXTURES, fixture);
   built.push(join(root, outputDirectory));
   const builder = await createBuilder({
@@ -52,14 +52,14 @@ const build = async (
     () => null,
     (error: unknown) => error as Error,
   );
-};
+}
 
-const browserCode = (fixture: string, outputDirectory: string): string => {
+function browserCode(fixture: string, outputDirectory: string): string {
   const assets = join(FIXTURES, fixture, outputDirectory, "client", "assets");
   return readdirSync(assets)
     .map((name) => readFileSync(join(assets, name), "utf8"))
     .join("\n");
-};
+}
 
 describe("a `.server.` module", () => {
   test("whose code reaches a browser chunk fails the build, naming it and its importer", async () => {

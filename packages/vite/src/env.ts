@@ -3,7 +3,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from "node:pat
 
 import { type Plugin, type ResolvedConfig, loadEnv, runnerImport } from "vite";
 
-import { consumerOf } from "./environment.ts";
+import { type ScanFlag, consumerOf } from "./environment.ts";
 
 export const CLIENT_ENV_ID = "virtual:env/client";
 export const SERVER_ENV_ID = "virtual:env/server";
@@ -13,17 +13,33 @@ const RESOLVED_SERVER_ENV_ID = `\0${SERVER_ENV_ID}`;
 const SCHEMA_FILES = ["env.ts", "env.js"];
 export const ENV_TYPES_FILE = "barq-env.d.ts";
 
+interface StandardPathSegment {
+  readonly key: PropertyKey;
+}
+
 interface StandardIssue {
   readonly message: string;
-  readonly path?: readonly (PropertyKey | { readonly key: PropertyKey })[];
+  readonly path?: readonly (PropertyKey | StandardPathSegment)[];
 }
 
 type StandardResult = { readonly value?: unknown; readonly issues?: readonly StandardIssue[] };
 
+interface StandardProps {
+  readonly validate: (value: unknown) => StandardResult | Promise<StandardResult>;
+}
+
 interface StandardSchema {
-  readonly "~standard": {
-    readonly validate: (value: unknown) => StandardResult | Promise<StandardResult>;
-  };
+  readonly "~standard": StandardProps;
+}
+
+interface DefaultExport {
+  default?: unknown;
+}
+
+interface EnvIssue {
+  key: string;
+  message: string;
+  side: "server" | "client";
 }
 
 interface EnvSchema {
@@ -57,8 +73,12 @@ function isStandardSchema(value: unknown): value is StandardSchema {
  */
 const FOLDED = Symbol.for("@barqjs/vite:env-folded");
 
+interface FoldedHolder {
+  [FOLDED]?: Set<string>;
+}
+
 function folded(): Set<string> {
-  const holder = globalThis as { [FOLDED]?: Set<string> };
+  const holder = globalThis as FoldedHolder;
   return (holder[FOLDED] ??= new Set());
 }
 
@@ -139,10 +159,11 @@ function checkShape(exported: unknown, file: string, prefixes: readonly string[]
 function writeTypes(schema: EnvSchema, schemaFile: string): void {
   const target = join(dirname(schemaFile), ENV_TYPES_FILE);
   const specifier = `./${basename(schemaFile).replace(/\.[cm]?[jt]s$/, "")}`;
-  const field = (side: "server" | "client", key: string): string =>
-    `    readonly ${JSON.stringify(key)}: Output<Schema[${JSON.stringify(side)}][${JSON.stringify(key)}]>;`;
-  const block = (id: string, fields: string[]): string =>
-    [
+  function field(side: "server" | "client", key: string): string {
+    return `    readonly ${JSON.stringify(key)}: Output<Schema[${JSON.stringify(side)}][${JSON.stringify(key)}]>;`;
+  }
+  function block(id: string, fields: string[]): string {
+    return [
       `declare module "${id}" {`,
       `  type Schema = (typeof import(${JSON.stringify(specifier)}))["default"];`,
       `  type Output<T> = T extends { "~standard": { types?: { output: infer O } } } ? O : string;`,
@@ -153,6 +174,7 @@ function writeTypes(schema: EnvSchema, schemaFile: string): void {
       `  export default env;`,
       `}`,
     ].join("\n");
+  }
   const client = Object.keys(schema.client ?? {}).map((key) => field("client", key));
   const server = [
     ...Object.keys(schema.server ?? {}).map((key) => field("server", key)),
@@ -190,7 +212,7 @@ export function startEnv(option: boolean | string | undefined): Plugin[] {
   let pending: Promise<Loaded> | null = null;
   let reported = false;
 
-  const locate = (): void => {
+  function locate(): void {
     if (typeof option === "string") {
       const file = isAbsolute(option) ? option : resolve(root, option);
       if (!existsSync(file))
@@ -213,20 +235,20 @@ export function startEnv(option: boolean | string | undefined): Plugin[] {
           "Add one that default-exports `{ server, client }`, or point `start.env` at the file.",
       );
     }
-  };
+  }
 
-  const prefixes = (): string[] => {
+  function prefixes(): string[] {
     const prefix = config?.envPrefix ?? "VITE_";
     return Array.isArray(prefix) ? prefix : [prefix];
-  };
+  }
 
-  const validate = async (): Promise<Loaded> => {
+  async function validate(): Promise<Loaded> {
     const resolved = config as ResolvedConfig;
     const file = schemaFile as string;
     let exported: unknown;
     let dependencies: string[];
     try {
-      const imported = await runnerImport<{ default?: unknown }>(file, {
+      const imported = await runnerImport<DefaultExport>(file, {
         root,
         mode: resolved.mode,
         configFile: false,
@@ -246,7 +268,7 @@ export function startEnv(option: boolean | string | undefined): Plugin[] {
 
     const envDir = resolved.envDir === false ? false : (resolved.envDir ?? root);
     const raw = foldIntoProcess(resolved.mode, envDir);
-    const issues: { key: string; message: string; side: "server" | "client" }[] = [];
+    const issues: EnvIssue[] = [];
     const all: Record<string, unknown> = {};
     for (const side of ["server", "client"] as const) {
       for (const [key, validator] of Object.entries(schema[side] ?? {})) {
@@ -281,9 +303,12 @@ export function startEnv(option: boolean | string | undefined): Plugin[] {
       }
     }
     if (issues.length > 0) {
-      const report = (list: typeof issues): string =>
-        `[barq] The environment does not match \`${shown}\` (mode ${resolved.mode}):\n` +
-        list.map(({ key, message }) => `  ${key}: ${message}`).join("\n");
+      function report(list: typeof issues): string {
+        return (
+          `[barq] The environment does not match \`${shown}\` (mode ${resolved.mode}):\n` +
+          list.map(({ key, message }) => `  ${key}: ${message}`).join("\n")
+        );
+      }
       const clientIssues = issues.filter((issue) => issue.side === "client");
       // A build may run without the production secrets, which the server
       // checks again when it starts. Client values are written in now.
@@ -295,15 +320,20 @@ export function startEnv(option: boolean | string | undefined): Plugin[] {
     const client: Record<string, unknown> = {};
     for (const key of Object.keys(schema.client ?? {})) client[key] = all[key];
     return { schema, all, client, dependencies };
-  };
+  }
 
-  const loaded = (): Promise<Loaded> => (pending ??= validate());
+  function loaded(): Promise<Loaded> {
+    return (pending ??= validate());
+  }
 
-  const serverOnly = (importer?: string): string =>
-    `[barq] \`${SERVER_ENV_ID}\` is imported by the browser bundle${importer === undefined ? "" : ` (from \`${importer}\`)`}. ` +
-    `Server values never reach the browser: import \`${CLIENT_ENV_ID}\` for the public ones, or move this import to server code.`;
+  function serverOnly(importer?: string): string {
+    return (
+      `[barq] \`${SERVER_ENV_ID}\` is imported by the browser bundle${importer === undefined ? "" : ` (from \`${importer}\`)`}. ` +
+      `Server values never reach the browser: import \`${CLIENT_ENV_ID}\` for the public ones, or move this import to server code.`
+    );
+  }
 
-  const serverModule = (values: Loaded): string => {
+  function serverModule(values: Loaded): string {
     const keys = Object.keys(values.schema.server ?? {});
     const lines = [`const values = ${JSON.stringify(values.client)};`];
     if (keys.length > 0) {
@@ -321,7 +351,7 @@ export function startEnv(option: boolean | string | undefined): Plugin[] {
     }
     lines.push(`export const env = Object.freeze(values);`, `export default env;`, ``);
     return lines.join("\n");
-  };
+  }
 
   return [
     {
@@ -355,7 +385,7 @@ export function startEnv(option: boolean | string | undefined): Plugin[] {
         if (schemaFile === null) return null;
         if (id === CLIENT_ENV_ID) return RESOLVED_CLIENT_ENV_ID;
         if (id !== SERVER_ENV_ID) return null;
-        const scan = (options as { scan?: boolean } | undefined)?.scan === true;
+        const scan = (options as ScanFlag | undefined)?.scan === true;
         if (!scan && consumerOf(this.environment, options) === "client") {
           this.error(serverOnly(importer));
         }
@@ -393,7 +423,7 @@ export function startEnv(option: boolean | string | undefined): Plugin[] {
           })
           .catch(() => undefined);
         let timer: ReturnType<typeof setTimeout> | undefined;
-        const changed = (file: string): void => {
+        function changed(file: string): void {
           if (!watched.has(file)) return;
           clearTimeout(timer);
           timer = setTimeout(() => {
@@ -411,7 +441,7 @@ export function startEnv(option: boolean | string | undefined): Plugin[] {
                 server.environments.client?.hot.send({ type: "full-reload" });
               });
           }, 100);
-        };
+        }
         server.watcher.on("change", changed);
         server.watcher.on("add", changed);
         server.watcher.on("unlink", changed);

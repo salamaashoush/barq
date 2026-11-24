@@ -12,24 +12,51 @@ import type { Plugin } from "vite";
 import { SERVER_ENTRY_ID, isProviderOwned } from "../src/start.ts";
 
 import { boundaryModules } from "../src/boundary.ts";
-import { consumerOf } from "../src/environment.ts";
+import { type ScanFlag, consumerOf } from "../src/environment.ts";
 import barq, { type BarqOptions } from "../src/index.ts";
 import { cleanUp, project } from "./project.ts";
 
 afterAll(cleanUp);
 
-const named = (plugins: readonly Plugin[], name: string): Plugin => {
+function named(plugins: readonly Plugin[], name: string): Plugin {
   const found = plugins.find((plugin) => plugin.name === name);
   if (found === undefined) throw new Error(`no plugin named ${name}`);
   return found;
-};
+}
 
 type Hook = (...args: unknown[]) => unknown;
-const hook = (plugin: Plugin, name: keyof Plugin): Hook => {
-  const value = plugin[name] as Hook | { handler: Hook } | undefined;
+
+interface HandlerHook {
+  handler: Hook;
+}
+
+interface ResolvedConditions {
+  conditions?: string[];
+  externalConditions?: string[];
+}
+
+interface ConditionsProbe {
+  conditions?: string[];
+}
+
+interface EnvironmentProbe {
+  consumer: string;
+  resolve?: ConditionsProbe;
+}
+
+interface DedupeProbe {
+  dedupe: string[];
+}
+
+interface ConfigOutput {
+  resolve: DedupeProbe;
+}
+
+function hook(plugin: Plugin, name: keyof Plugin): Hook {
+  const value = plugin[name] as Hook | HandlerHook | undefined;
   if (value === undefined) throw new Error(`${plugin.name} has no ${name}`);
   return typeof value === "function" ? value : value.handler;
-};
+}
 
 const logger = { warn: () => undefined, info: () => undefined };
 
@@ -48,11 +75,11 @@ async function conditionsFor(
   name: "client" | "ssr",
   command: "serve" | "build",
   own?: readonly string[],
-): Promise<{ conditions?: string[]; externalConditions?: string[] }> {
+): Promise<ResolvedConditions> {
   const plugins = await barq(options);
   const config = named(plugins, "barq:config");
   hook(config, "config").call(config, {}, { command, mode: "development" });
-  const environment: { consumer: string; resolve?: { conditions?: string[] } } = {
+  const environment: EnvironmentProbe = {
     consumer: name === "client" ? "client" : "server",
     ...(own === undefined ? {} : { resolve: { conditions: [...own] } }),
   };
@@ -102,11 +129,11 @@ describe("what each shape composes", () => {
 });
 
 describe("`ssr` has one meaning", () => {
-  const serverEntry = async (options: BarqOptions): Promise<string> => {
+  async function serverEntry(options: BarqOptions): Promise<string> {
     const entries = named(await barq(options), "barq-start:entries");
     const resolved = hook(entries, "resolveId").call(entries, SERVER_ENTRY_ID) as string;
     return hook(entries, "load").call(entries, resolved) as string;
-  };
+  }
 
   test("with it, the server renders pages", async () => {
     expect(await serverEntry({ ssr: true, start: true })).not.toContain("pages: false");
@@ -190,9 +217,7 @@ describe("resolution", () => {
       config,
       { root },
       { command: "build", mode: "production" },
-    ) as {
-      resolve: { dedupe: string[] };
-    };
+    ) as ConfigOutput;
     expect(out.resolve.dedupe).toContain("@barqjs/core");
   });
 });
@@ -239,11 +264,11 @@ describe("environments, by consumer", () => {
 });
 
 describe("`server-only` and `client-only`", () => {
-  const resolveMarker = (
+  function resolveMarker(
     id: string,
     consumer: "client" | "server",
-    options: { scan?: boolean } = {},
-  ): unknown => {
+    options: ScanFlag = {},
+  ): unknown {
     const plugin = boundaryModules();
     const context = {
       environment: { config: { consumer } },
@@ -252,7 +277,7 @@ describe("`server-only` and `client-only`", () => {
       },
     };
     return hook(plugin, "resolveId").call(context, id, "/app/src/db.ts", options);
-  };
+  }
 
   test("`server-only` in the browser bundle fails, naming the importer", () => {
     expect(() => resolveMarker("server-only", "client")).toThrow("/app/src/db.ts");

@@ -23,7 +23,8 @@ import { cleanUp, project } from "./project.ts";
 
 afterAll(cleanUp);
 
-const config = (split: boolean): string => `import barq from "@barqjs/vite";
+function config(split: boolean): string {
+  return `import barq from "@barqjs/vite";
 import { defineConfig } from "vite";
 
 export default defineConfig({
@@ -31,6 +32,7 @@ export default defineConfig({
   build: { cssCodeSplit: ${split} },
 });
 `;
+}
 
 const INDEX = `import { atoms } from "@barqjs/css";
 import { createFileRoute } from "@barqjs/router";

@@ -2,4 +2,8 @@ import { createServerFn } from "@barqjs/start";
 
 export const loadUser = createServerFn()
   .validator("unchecked")
-  .handler(async ({ data: id }: { data: unknown }) => ({ id }));
+  .handler(async ({ data: id }: UserLookup) => ({ id }));
+
+interface UserLookup {
+  data: unknown;
+}

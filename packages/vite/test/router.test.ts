@@ -32,17 +32,60 @@ afterEach(() => {
   for (const dir of made.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
+interface WarnLogger {
+  warn(message: string): void;
+}
+
+interface RouterConfigProbe {
+  root: string;
+  command?: string;
+  logger?: WarnLogger;
+}
+
+interface Resolved {
+  warnings: string[];
+}
+
+interface StubPlugin {
+  name: string;
+  resolveId(id: string): string | null;
+  load(id: string): string | null;
+}
+
+interface TransformedCode {
+  code: string;
+}
+
+interface TransformHook {
+  transform(this: unknown, code: string, id: string): Promise<TransformedCode | null>;
+}
+
+interface MaybeBuildEnd {
+  buildEnd?: unknown;
+}
+
+interface BuildEndHook {
+  buildEnd: (this: unknown) => Promise<void>;
+}
+
+interface CapturedChunk {
+  type: string;
+  code?: string;
+}
+
+interface ResolvedId {
+  id: string;
+}
+
 type Hooks = {
-  configResolved(config: {
-    root: string;
-    command?: string;
-    logger?: { warn(message: string): void };
-  }): void;
+  configResolved(config: RouterConfigProbe): void;
   resolveId(id: string): string | null;
   load(id: string): string | null;
 };
 
-const hooks = (plugin: ReturnType<typeof barqRouter>): Hooks => plugin as unknown as Hooks;
+function hooks(plugin: ReturnType<typeof barqRouter>): Hooks {
+  return plugin as unknown as Hooks;
+}
 
 /**
  * `configResolved`, with what the plugin actually reads off it.
@@ -50,11 +93,11 @@ const hooks = (plugin: ReturnType<typeof barqRouter>): Hooks => plugin as unknow
  * `command` decides whether the generator may rewrite a route's id literal in
  * the source file, so a test that omits it is testing the BUILD path.
  */
-const resolve = (plugin: Hooks, root: string, command = "build"): { warnings: string[] } => {
+function resolve(plugin: Hooks, root: string, command = "build"): Resolved {
   const warnings: string[] = [];
   plugin.configResolved({ root, command, logger: { warn: (m) => warnings.push(m) } });
   return { warnings };
-};
+}
 
 /**
  * `@barqjs/core` and `@barqjs/router`, stubbed.
@@ -73,15 +116,13 @@ const STUBS: Record<string, string> = {
     "export const Outlet = () => null;\nexport const createFileRoute = (id) => (options) => ({ id, options });",
 };
 
-const stubCore = (): {
-  name: string;
-  resolveId(id: string): string | null;
-  load(id: string): string | null;
-} => ({
-  name: "stub-core",
-  resolveId: (id) => (id in STUBS ? `\0stub${id}` : null),
-  load: (id) => (id.startsWith("\0stub") ? (STUBS[id.slice("\0stub".length)] ?? null) : null),
-});
+function stubCore(): StubPlugin {
+  return {
+    name: "stub-core",
+    resolveId: (id) => (id in STUBS ? `\0stub${id}` : null),
+    load: (id) => (id.startsWith("\0stub") ? (STUBS[id.slice("\0stub".length)] ?? null) : null),
+  };
+}
 
 /**
  * The scan and both emits are `compiler`'s, and `routes.rs` holds their unit
@@ -118,8 +159,9 @@ describe("routeTree, across the napi boundary", () => {
   });
 
   test("the generated file is already formatted, so regenerating it is not a diff", async () => {
-    const route = (id: string, options = "component: () => null"): string =>
-      `export const Route = createFileRoute(${JSON.stringify(id)})({ ${options} });`;
+    function route(id: string, options = "component: () => null"): string {
+      return `export const Route = createFileRoute(${JSON.stringify(id)})({ ${options} });`;
+    }
     const root = project({
       "src/routes/__root.tsx": route("__root__"),
       "src/routes/index.tsx": route("/", "component: () => null, prerender: true"),
@@ -266,12 +308,8 @@ describe("a route edit while serving", () => {
 function Posts() { return "posts"; }
 export const Route = createFileRoute("/posts")({ loader: () => 1, component: Posts });
 `;
-  const transform = (plugin: ReturnType<typeof barqRouter>, file: string, consumer: string) =>
-    (
-      plugin as unknown as {
-        transform(this: unknown, code: string, id: string): Promise<{ code: string } | null>;
-      }
-    ).transform.call(
+  function transform(plugin: ReturnType<typeof barqRouter>, file: string, consumer: string) {
+    return (plugin as unknown as TransformHook).transform.call(
       {
         environment: { config: { consumer } },
         warn: () => undefined,
@@ -280,6 +318,7 @@ export const Route = createFileRoute("/posts")({ loader: () => 1, component: Pos
       ROUTE,
       `${file}?${SPLIT_QUERY}`,
     );
+  }
 
   /**
    * The split half exports each option as a `const` read off `$$barqOptions`,
@@ -379,8 +418,8 @@ console.log(routeTree.length);
     });
 
     const { build } = await import("vite");
-    const run = (onViolation: "error" | "warn"): Promise<unknown> =>
-      build({
+    function run(onViolation: "error" | "warn"): Promise<unknown> {
+      return build({
         root,
         logLevel: "silent",
         build: { write: false },
@@ -391,6 +430,7 @@ console.log(routeTree.length);
           }),
         ],
       });
+    }
 
     expect(run("error")).rejects.toThrow(/does not carry/);
     // A warning leaves the build standing, which is what a project adopting the
@@ -403,8 +443,8 @@ console.log(routeTree.length);
     // not running, so this is opt-in and its absence is a no-op rather than an
     // empty pass.
     const plugin = barqRouter({ routeTree: false });
-    expect((plugin as unknown as { buildEnd?: unknown }).buildEnd).toBeDefined();
-    await (plugin as unknown as { buildEnd: (this: unknown) => Promise<void> }).buildEnd.call({
+    expect((plugin as unknown as MaybeBuildEnd).buildEnd).toBeDefined();
+    await (plugin as unknown as BuildEndHook).buildEnd.call({
       getModuleIds: () => {
         throw new Error("must not be consulted when `verify` is absent");
       },
@@ -571,10 +611,7 @@ export const Route = createFileRoute("/posts")({
         barqRouter({}),
         {
           name: "capture",
-          generateBundle(
-            _options: unknown,
-            bundle: Record<string, { type: string; code?: string }>,
-          ) {
+          generateBundle(_options: unknown, bundle: Record<string, CapturedChunk>) {
             for (const [name, chunk] of Object.entries(bundle)) {
               if (chunk.type === "chunk" && chunk.code !== undefined) chunks[name] = chunk.code;
             }
@@ -620,10 +657,7 @@ export const Route = createFileRoute("/posts")({ component: Posts });
         barqRouter({ codeSplitting: false }),
         {
           name: "capture",
-          generateBundle(
-            _options: unknown,
-            bundle: Record<string, { type: string; code?: string }>,
-          ) {
+          generateBundle(_options: unknown, bundle: Record<string, CapturedChunk>) {
             for (const chunk of Object.values(bundle)) {
               if (chunk.type === "chunk" && chunk.code !== undefined) chunks.push(chunk.code);
             }
@@ -690,8 +724,8 @@ export const Route = createFileRoute("/admin")({ component: Admin });
  * client graph by construction. Theirs deletes the same node.
  */
 describe("the server half of a route", () => {
-  const project_ = () =>
-    project({
+  function project_() {
+    return project({
       "index.html": `<!doctype html><html><body><script type="module" src="/src/entry.ts"></script></body></html>`,
       "src/db.ts": `export const db = { all: () => "DB_MARKER_7a3" };\n`,
       "src/routes/api.users.ts": `import { createFileRoute } from "@barqjs/router";
@@ -710,11 +744,12 @@ export const Route = createFileRoute("/")({ component: () => "home" });
 `,
       "src/entry.ts": `import { routeTree } from "./routeTree.gen.ts";\nconsole.log(routeTree.length);\n`,
     });
+  }
 
-  const bundleFor = async (
+  async function bundleFor(
     environmentName: "client" | "ssr",
     options: Parameters<typeof barqRouter>[0] = {},
-  ): Promise<string> => {
+  ): Promise<string> {
     const root = project_();
     const chunks: string[] = [];
     const { build } = await import("vite");
@@ -728,7 +763,7 @@ export const Route = createFileRoute("/")({ component: () => "home" });
         barqRouter(options),
         {
           name: "capture",
-          generateBundle(_o: unknown, bundle: Record<string, { type: string; code?: string }>) {
+          generateBundle(_o: unknown, bundle: Record<string, CapturedChunk>) {
             for (const chunk of Object.values(bundle)) {
               if (chunk.type === "chunk" && chunk.code !== undefined) chunks.push(chunk.code);
             }
@@ -737,7 +772,7 @@ export const Route = createFileRoute("/")({ component: () => "home" });
       ],
     });
     return chunks.join("\n");
-  };
+  }
 
   test("the handler, its imports and its secrets are absent from the CLIENT bundle", async () => {
     const client = await bundleFor("client");
@@ -918,10 +953,10 @@ describe("routeStylesheets", () => {
 });
 
 describe("lazy() module URLs", () => {
-  const resolveIn =
-    (root: string) =>
-    (spec: string): Promise<{ id: string }> =>
+  function resolveIn(root: string) {
+    return (spec: string): Promise<ResolvedId> =>
       Promise.resolve({ id: join(root, "src", `${spec.replace("./", "")}.tsx`) });
+  }
 
   test("a literal lazy import is given the URL of the module it loads", async () => {
     const root = "/home/salama/app";

@@ -46,19 +46,27 @@ export interface RouterOptions {
   readonly codeSplitting?: boolean;
 }
 
+export interface ViolationPolicy {
+  readonly onViolation?: "error" | "warn";
+}
+
 export type StartOptions = Omit<BarqStartOptions, "compiler" | "pages" | "routeTree" | "verify"> & {
   /**
    * Fail the build when a route reaches a server function that does not carry
    * that route's declared middleware. Needs file routes, since the routes are
    * what declare the middleware.
    */
-  readonly verify?: boolean | { readonly onViolation?: "error" | "warn" };
+  readonly verify?: boolean | ViolationPolicy;
   /**
    * Typed environment variables from `env.ts` at the project root, or from
    * the file named here. Probed when omitted; `false` turns it off.
    */
   readonly env?: boolean | string;
 };
+
+export interface RefreshOptions {
+  readonly disabled?: boolean;
+}
 
 export interface BarqOptions {
   /**
@@ -88,7 +96,7 @@ export interface BarqOptions {
    */
   readonly dev?: boolean;
   /** Replacing an edited component in place under `vite dev`. */
-  readonly refresh?: { readonly disabled?: boolean };
+  readonly refresh?: RefreshOptions;
   /**
    * Export conditions every environment resolves first, client and server
    * alike. Vite applies a top-level `resolve.conditions` to the client
@@ -113,6 +121,10 @@ interface Shared {
   reachability: Reachability | undefined;
 }
 
+interface CodedError {
+  code?: string;
+}
+
 const RUNTIME_PACKAGES = ["@barqjs/core", "@barqjs/web", "@solidjs/signals"];
 
 function installed(name: string): boolean {
@@ -132,7 +144,7 @@ async function optionalPackage<T>(
   try {
     return await load();
   } catch (error) {
-    const code = (error as { code?: string }).code;
+    const code = (error as CodedError).code;
     const missing =
       (code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND") &&
       (error as Error).message.includes(name);
@@ -275,13 +287,16 @@ export default async function barq(options: BarqOptions = {}): Promise<Plugin[]>
       : await optionalPackage(() => import("./start.ts"), "@barqjs/start", "`start`");
 
   let root = process.cwd();
-  const routerOn = (): boolean => routerInstalled && existsSync(join(root, routesDir));
+  function routerOn(): boolean {
+    return routerInstalled && existsSync(join(root, routesDir));
+  }
 
   const { routes: extraRoutes, ...compilerOptions } = options.compiler ?? {};
-  const routes = (): readonly string[] | undefined =>
-    shared.routes === undefined && extraRoutes === undefined
+  function routes(): readonly string[] | undefined {
+    return shared.routes === undefined && extraRoutes === undefined
       ? undefined
       : [...(shared.routes ?? []), ...(extraRoutes ?? [])];
+  }
   const compiler = {
     ...compilerOptions,
     hydratable: options.ssr === true,

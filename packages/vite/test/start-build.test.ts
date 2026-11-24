@@ -24,6 +24,7 @@ import { fileURLToPath } from "node:url";
 import { createBuilder } from "vite";
 
 import { decodeWire, encodeWire } from "@barqjs/server/codec";
+import type { PrerenderedPage } from "@barqjs/start/prerender";
 
 import {
   ServerFnError,
@@ -39,7 +40,25 @@ const OUT = join(ROOT, "dist");
 
 let client = "";
 let server = "";
-let pages: readonly { path: string; file: string; headers: Record<string, string> }[] = [];
+interface Greeting {
+  greeting: string;
+  at: Date;
+}
+
+interface GreetingAnswer {
+  result: Greeting;
+}
+
+interface GreetingInput {
+  name: string;
+}
+
+interface AuditedGreeting {
+  greeting: string;
+  audited: string;
+}
+
+let pages: readonly PrerenderedPage[] = [];
 
 beforeAll(async () => {
   rmSync(OUT, { recursive: true, force: true });
@@ -207,16 +226,16 @@ describe("prerendering", () => {
  */
 describe("static server functions", () => {
   const ID = "src/statics.ts#greetStatic";
-  const fileOf = (name: string): string => join(OUT, "client", staticUrl(ID, { name }).slice(1));
+  function fileOf(name: string): string {
+    return join(OUT, "client", staticUrl(ID, { name }).slice(1));
+  }
 
   test("the prerender wrote one file per input a page called with", () => {
     for (const [name, greeting] of [
       ["salama", "static hello salama"],
       ["ada", "static hello ada"],
     ] as const) {
-      const answer = decodeWire<{ result: { greeting: string; at: Date } }>(
-        JSON.parse(readFileSync(fileOf(name), "utf8")),
-      );
+      const answer = decodeWire<GreetingAnswer>(JSON.parse(readFileSync(fileOf(name), "utf8")));
       expect(answer.result.greeting).toBe(greeting);
       expect(answer.result.at).toBeInstanceOf(Date);
     }
@@ -256,11 +275,9 @@ describe("static server functions", () => {
     globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) =>
       realFetch(new URL(String(input), host.url), init)) as typeof fetch;
     try {
-      const greet = clientRpc<{ name: string }, { greeting: string; at: Date }, "GET">(
-        ID,
-        [staticFunctionMiddleware],
-        { method: "GET" },
-      );
+      const greet = clientRpc<GreetingInput, Greeting, "GET">(ID, [staticFunctionMiddleware], {
+        method: "GET",
+      });
       const answer = await greet({ data: { name: "salama" } });
       expect(answer.greeting).toBe("static hello salama");
       expect(answer.at).toBeInstanceOf(Date);
@@ -294,7 +311,7 @@ describe("static server functions", () => {
  * second, empty one.
  */
 describe("verify, the route-action chain check", () => {
-  const build = async (verify: BarqStartOptions["verify"]): Promise<string> => {
+  async function build(verify: BarqStartOptions["verify"]): Promise<string> {
     const out = join(ROOT, "dist-verify");
     rmSync(out, { recursive: true, force: true });
     const builder = await createBuilder({
@@ -328,7 +345,7 @@ describe("verify, the route-action chain check", () => {
     } finally {
       rmSync(out, { recursive: true, force: true });
     }
-  };
+  }
 
   const reaching = new Map([["/admin", new Set(["src/data.ts#loadUser"])]]);
 
@@ -447,7 +464,7 @@ describe("`serve.js`, the half a person runs", () => {
         fetch(endpoint, { headers: { "sec-fetch-site": "same-origin" } }),
       ]);
       expect(called.status).toBe(200);
-      expect(decodeWire<{ greeting: string; audited: string }>(await called.json())).toMatchObject({
+      expect(decodeWire<AuditedGreeting>(await called.json())).toMatchObject({
         greeting: "hello salama",
         audited: "audit-server-half-must-not-ship",
       });

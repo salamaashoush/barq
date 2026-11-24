@@ -14,6 +14,14 @@ import { createBuilder } from "vite";
 import { ENV_TYPES_FILE } from "../src/index.ts";
 import { cleanUp, project } from "./project.ts";
 
+interface FetchHandler {
+  fetch(request: Request): Promise<Response>;
+}
+
+interface ServiceModule {
+  default: FetchHandler;
+}
+
 afterAll(cleanUp);
 
 const SCHEMA = `
@@ -39,6 +47,7 @@ const SECRET = "postgres://salama@db.example.com/app";
 const ROUTE = `
 import { createFileRoute } from "@barqjs/router";
 import { env } from "virtual:env/server";
+
 
 export const Route = createFileRoute("/api/config")({
   server: {
@@ -66,11 +75,12 @@ async function build(root: string): Promise<void> {
   await builder.buildApp();
 }
 
-const read = (directory: string): string =>
-  readdirSync(directory, { recursive: true, withFileTypes: true })
+function read(directory: string): string {
+  return readdirSync(directory, { recursive: true, withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith(".js"))
     .map((entry) => readFileSync(join(entry.parentPath, entry.name), "utf8"))
     .join("\n");
+}
 
 describe("`start.env`", () => {
   test("client values are written in, server values are read when the server starts", async () => {
@@ -87,9 +97,7 @@ describe("`start.env`", () => {
 
     const service = (await import(
       pathToFileURL(join(root, "dist", "server", "index.js")).href
-    )) as {
-      default: { fetch(request: Request): Promise<Response> };
-    };
+    )) as ServiceModule;
     const response = await service.default.fetch(new Request("http://localhost/api/config"));
     expect(await response.json()).toEqual({ name: "salama-demo", database: SECRET.length });
   }, 60_000);

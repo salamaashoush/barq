@@ -1,1 +1,7 @@
-export const width = (): number => (globalThis as { innerWidth?: number }).innerWidth ?? 0;
+export function width(): number {
+  return (globalThis as Viewport).innerWidth ?? 0;
+}
+
+interface Viewport {
+  innerWidth?: number;
+}

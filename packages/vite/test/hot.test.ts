@@ -12,16 +12,17 @@ function rewrite(code: string, components: string[]): string {
   return withHotComponents(code, new Set(components), parseAst(code, { lang: "ts" }) as never);
 }
 
-const REBOUND = (name: string): string =>
-  ` if (import.meta.hot) ${name} = __barq_hot(import.meta.hot, "${name}", ${name}, `;
+function REBOUND(name: string): string {
+  return ` if (import.meta.hot) ${name} = __barq_hot(import.meta.hot, "${name}", ${name}, `;
+}
 
-const signature = (out: string, name: string): string | null => {
+function signature(out: string, name: string): string | null {
   const found = new RegExp(
     `__barq_hot\\(import\\.meta\\.hot, "${name}", ${name}, (null|"[^"]*")\\)`,
   ).exec(out);
   if (found === null) throw new Error(`${name} is not rebound`);
   return JSON.parse(found[1] ?? "null") as string | null;
-};
+}
 
 describe("a module's components are handed out through hot", () => {
   test("each declaration is rebound on the line it ends on, and a const becomes a let", () => {
@@ -84,13 +85,14 @@ describe("a module's components are handed out through hot", () => {
   });
 
   test("an edit to one component moves that component's signature and no other", () => {
-    const module = (title: string): string =>
-      [
+    function module(title: string): string {
+      return [
         `const _tmpl$1 = template("<h1>${title}</h1>");`,
         `const _tmpl$2 = template("<p></p>");`,
         `export function Title() { return _tmpl$1(); }`,
         `export function Body() { return _tmpl$2(); }`,
       ].join("\n");
+    }
     const before = rewrite(module("orders"), ["Title", "Body"]);
     const after = rewrite(module("invoices"), ["Title", "Body"]);
     expect(signature(after, "Title")).not.toBe(signature(before, "Title"));

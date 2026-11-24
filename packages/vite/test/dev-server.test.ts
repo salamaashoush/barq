@@ -10,18 +10,36 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { type Server, createServer as createHttpServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
 import { type ViteDevServer, createServer } from "vite";
 
+import type { OverlayServerEntry } from "../src/overlay.ts";
 import { barqStart } from "../src/start.ts";
 import { encodeWire } from "@barqjs/server/codec";
 
-import { DATA_SUFFIX, PAYLOAD_PARAM, RPC_CALLER, RPC_PREFIX } from "@barqjs/start";
+import {
+  DATA_SUFFIX,
+  PAYLOAD_PARAM,
+  RPC_CALLER,
+  RPC_PREFIX,
+  type ServerFnThrown,
+} from "@barqjs/start";
 
 const ROOT = fileURLToPath(new URL("./fixtures/start", import.meta.url));
 
 let server: ViteDevServer;
-const hotSent: { event?: string; data?: unknown }[] = [];
+interface HotPayloadProbe {
+  event?: string;
+  data?: unknown;
+}
+
+interface FailedCall {
+  error: string;
+  thrown: ServerFnThrown;
+}
+
+const hotSent: HotPayloadProbe[] = [];
 let http: Server;
 let origin: string;
 
@@ -54,7 +72,7 @@ beforeAll(async () => {
   await server.environments.client.transformRequest("/todos.ts");
   await server.environments.client.transformRequest("/failing.ts");
   const send = server.hot.send.bind(server.hot);
-  server.hot.send = ((payload: { event?: string; data?: unknown }) => {
+  server.hot.send = ((payload: HotPayloadProbe) => {
     hotSent.push(payload);
     send(payload as Parameters<typeof send>[0]);
   }) as typeof server.hot.send;
@@ -64,7 +82,7 @@ beforeAll(async () => {
   // proves the test's fake works rather than that the server does.
   http = createHttpServer(server.middlewares);
   await new Promise<void>((resolve) => http.listen(0, "127.0.0.1", resolve));
-  const address = http.address() as { port: number };
+  const address = http.address() as AddressInfo;
   origin = `http://127.0.0.1:${address.port}`;
 });
 
@@ -78,8 +96,8 @@ afterAll(async () => {
   await Promise.race([server?.close(), new Promise<void>((resolve) => setTimeout(resolve, 2_000))]);
 });
 
-const call = (id: string, input: unknown, headers: Record<string, string> = {}) =>
-  fetch(`${origin}${RPC_PREFIX}${encodeURIComponent(id)}${DATA_SUFFIX}`, {
+function call(id: string, input: unknown, headers: Record<string, string> = {}) {
+  return fetch(`${origin}${RPC_PREFIX}${encodeURIComponent(id)}${DATA_SUFFIX}`, {
     method: "POST",
     headers: { "content-type": "application/json", origin, ...headers },
     // The real encoder, not a hand-written approximation of its output: this
@@ -87,15 +105,17 @@ const call = (id: string, input: unknown, headers: Record<string, string> = {}) 
     // shape here would be a third half to get wrong.
     body: JSON.stringify({ input: encodeWire(input) }),
   });
+}
 
 /** A GET call, the way the stub sends one: the payload in the query, and the caller header. */
-const read = (id: string, input: unknown) =>
-  fetch(
+function read(id: string, input: unknown) {
+  return fetch(
     `${origin}${RPC_PREFIX}${encodeURIComponent(id)}${DATA_SUFFIX}?${PAYLOAD_PARAM}=${encodeURIComponent(
       JSON.stringify({ input: encodeWire(input) }),
     )}`,
     { headers: { origin, [RPC_CALLER]: "1" } },
   );
+}
 
 describe("a server function, end to end through Vite", () => {
   test("the client transform synthesizes stubs and drops the server module", async () => {
@@ -223,10 +243,7 @@ describe("a failing server function in dev", () => {
     try {
       const response = await call("failing.ts#placeOrder", {});
       expect(response.status).toBe(500);
-      const body = (await response.json()) as {
-        error: string;
-        thrown: { name: string; message: string; stack?: string };
-      };
+      const body = (await response.json()) as FailedCall;
       expect(body.error).toBe("internal server error");
       expect(body.thrown.name).toBe("TypeError");
       expect(body.thrown.message).toContain("length");
@@ -247,7 +264,7 @@ describe("a failing server function in dev", () => {
     }
     const entries = hotSent
       .filter((payload) => payload.event === "barq:server-diagnostics")
-      .map((payload) => payload.data as { code?: string; at?: { file: string; line: number } });
+      .map((payload) => payload.data as OverlayServerEntry);
     const failure = entries.find((entry) => entry.code === "SERVER_FUNCTION_FAILED");
     expect(failure?.at?.file).toBe(`${ROOT}/failing.ts`);
     expect(failure?.at?.line).toBe(6);

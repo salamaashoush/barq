@@ -20,14 +20,27 @@ interface Entries {
   load?: (id: string) => string | null;
 }
 
+interface ServedStatic {
+  dir?: string | URL;
+}
+
+interface ServedGlobal {
+  barqServed?: Served;
+}
+
+interface ProxyOptions {
+  trustProxy?: unknown;
+  allowedOrigins?: unknown;
+}
+
 interface Served {
-  static?: { dir?: string | URL };
+  static?: ServedStatic;
   maxBodySize?: number;
   maxFormSize?: number;
 }
 
 /** The generated `serve.js`, with its two imports swapped for a recorder. */
-const serveEntryIn = async (project: string, options?: BarqStartOptions): Promise<Served> => {
+async function serveEntryIn(project: string, options?: BarqStartOptions): Promise<Served> {
   const plugins = barqStart(options) as unknown as Entries[];
   for (const plugin of plugins) plugin.configResolved?.({ root: project, mode: "production" });
   const entries = plugins.find((one) => one.name === "barq-start:entries");
@@ -49,8 +62,8 @@ const serveEntryIn = async (project: string, options?: BarqStartOptions): Promis
   );
 
   await import(pathToFileURL(join(server, "serve.js")).href);
-  return (globalThis as { barqServed?: Served }).barqServed ?? {};
-};
+  return (globalThis as ServedGlobal).barqServed ?? {};
+}
 
 test("the static directory resolves for a plain project path", async () => {
   const options = await serveEntryIn(join(sandbox, "acme-site"));
@@ -90,7 +103,7 @@ test("a project that configured none leaves the handler's defaults in charge", a
 test("what the proxy in front is trusted for reaches the server it runs", async () => {
   const options = (await serveEntryIn(join(sandbox, "acme-proxied"), {
     server: { trustProxy: "loopback", allowedOrigins: ["https://admin.example.com"] },
-  })) as { trustProxy?: unknown; allowedOrigins?: unknown };
+  })) as ProxyOptions;
 
   expect(options.trustProxy).toBe("loopback");
   expect(options.allowedOrigins).toEqual(["https://admin.example.com"]);
@@ -99,7 +112,7 @@ test("what the proxy in front is trusted for reaches the server it runs", async 
 test("a list of proxy addresses is carried as written", async () => {
   const options = (await serveEntryIn(join(sandbox, "acme-proxy-list"), {
     server: { trustProxy: ["10.0.0.1", "10.0.0.2"] },
-  })) as { trustProxy?: unknown };
+  })) as ProxyOptions;
 
   expect(options.trustProxy).toEqual(["10.0.0.1", "10.0.0.2"]);
 });
@@ -107,7 +120,7 @@ test("a list of proxy addresses is carried as written", async () => {
 test("the origins the dev server allows are not the deployed server's", async () => {
   const options = (await serveEntryIn(join(sandbox, "acme-dev-origins"), {
     allowedOrigins: ["http://localhost:5173"],
-  })) as { trustProxy?: unknown; allowedOrigins?: unknown };
+  })) as ProxyOptions;
 
   expect(options.allowedOrigins).toBeUndefined();
   expect(options.trustProxy).toBeUndefined();

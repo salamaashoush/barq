@@ -25,6 +25,7 @@ import {
   type BarqDiagnostic,
   type BarqOptimisation,
 } from "../src/compiler.ts";
+import type { SsrFlag } from "../src/environment.ts";
 import { reportServerDiagnostic } from "../src/server-diagnostics.ts";
 
 const SOURCE = `export const V = () => <div class="c">{n}</div>;\n`;
@@ -44,16 +45,119 @@ interface ConfigEnv {
   mode: string;
 }
 
+interface TransformRun {
+  result: TransformResult | null;
+  warnings: string[];
+  positions: (number | undefined)[];
+}
+
+interface ModuleInternals {
+  _resolveFilename?: (...args: unknown[]) => string;
+}
+
+interface ConfigProbe {
+  root: string;
+  optimizeDeps?: Record<string, unknown>;
+}
+
+interface JsxProbe {
+  jsx?: unknown;
+}
+
+interface RolldownProbe {
+  transform?: JsxProbe;
+}
+
+interface OptimizeDepsProbe {
+  include?: string[];
+  rolldownOptions?: RolldownProbe;
+}
+
+interface HotPayloadProbe {
+  event?: string;
+  data?: unknown;
+}
+
+interface DiagnosticsData {
+  diagnostics: BarqDiagnostic[];
+  labels: Record<string, unknown[]>;
+}
+
+interface DiagnosticsPayload {
+  event: string;
+  data: DiagnosticsData;
+}
+
+interface ClearedData {
+  diagnostics: unknown[];
+}
+
+interface ClearedPayload {
+  data: ClearedData;
+}
+
+interface NativeDiagnostics {
+  diagnostics: BarqDiagnostic[];
+  labels: unknown[];
+}
+
+interface ResolvedImport {
+  id: string;
+  external: boolean;
+}
+
+interface ResolverContext extends PluginContext {
+  resolve(source: string): Promise<ResolvedImport | null>;
+  addWatchFile(file: string): void;
+  watched: string[];
+}
+
+interface TransformedCard {
+  code: string;
+  watched: string[];
+}
+
+interface CodeResult {
+  code?: string;
+}
+
+interface ChunkCssMetadata {
+  importedCss: Set<string>;
+}
+
+interface BundlePlugin {
+  generateBundle?: unknown;
+}
+
+interface EmittedFile {
+  name: string;
+  source: string;
+}
+
+interface BundleHook {
+  handler: (options: unknown, bundle: unknown) => void;
+}
+
+interface ResolveProbe {
+  noExternal?: unknown;
+}
+
+interface ExcludeProbe {
+  exclude?: string[];
+}
+
+interface BoundaryConfigProbe {
+  root: string;
+  resolve?: ResolveProbe;
+  optimizeDeps?: ExcludeProbe;
+}
+
 async function run(
   plugin: ReturnType<typeof barqVitePlugin>,
   code: string,
   id: string,
-  options?: { ssr?: boolean },
-): Promise<{
-  result: TransformResult | null;
-  warnings: string[];
-  positions: (number | undefined)[];
-}> {
+  options?: SsrFlag,
+): Promise<TransformRun> {
   const warnings: string[] = [];
   const positions: (number | undefined)[] = [];
   const context: PluginContext = {
@@ -69,7 +173,7 @@ async function run(
     this: PluginContext,
     code: string,
     id: string,
-    options?: { ssr?: boolean },
+    options?: SsrFlag,
   ) => Promise<TransformResult | null> | TransformResult | null;
   return { result: await transform.call(context, code, id, options), warnings, positions };
 }
@@ -83,9 +187,7 @@ function configure(plugin: ReturnType<typeof barqVitePlugin>, env: ConfigEnv): v
 /** Break the module resolution the loader uses, without touching node_modules. */
 function withoutTheNativePackage<T>(fn: () => T): T {
   resetNativeCompilerCache();
-  const Module = require("node:module") as {
-    _resolveFilename?: (...args: unknown[]) => string;
-  };
+  const Module = require("node:module") as ModuleInternals;
   const resolve = Module._resolveFilename;
   if (resolve) {
     Module._resolveFilename = (...args: unknown[]) => {
@@ -128,16 +230,13 @@ describe("barqVitePlugin", () => {
       return root;
     }
 
-    const optimizeDeps = (root: string, command: "serve" | "build") => {
+    function optimizeDeps(root: string, command: "serve" | "build") {
       const plugin = barqVitePlugin();
-      const config: { root: string; optimizeDeps?: Record<string, unknown> } = { root };
+      const config: ConfigProbe = { root };
       const hook = plugin.config as unknown as (config: unknown, env: ConfigEnv) => void;
       hook.call(plugin, config, { command, mode: "development" });
-      return config.optimizeDeps as {
-        include?: string[];
-        rolldownOptions?: { transform?: { jsx?: unknown } };
-      };
-    };
+      return config.optimizeDeps as OptimizeDepsProbe;
+    }
 
     /**
      * Every component module the plugin wraps imports `@barqjs/core/hot`, after
@@ -388,22 +487,19 @@ describe("barqVitePlugin", () => {
      * logger nothing.
      */
     test("the panel is fed over a custom HMR event, independent of the logger", async () => {
-      const sent: { event?: string; data?: unknown }[] = [];
+      const sent: HotPayloadProbe[] = [];
       const plugin = dev();
       const configureServer = plugin.configureServer as unknown as (server: unknown) => void;
       configureServer.call(plugin, {
         hot: {
-          send: (payload: { event?: string; data?: unknown }) => sent.push(payload),
+          send: (payload: HotPayloadProbe) => sent.push(payload),
           on: () => {},
         },
         watcher: { on: () => {} },
       });
 
       await run(plugin, COERCED, "/a/app.tsx");
-      const last = sent.at(-1) as {
-        event: string;
-        data: { diagnostics: BarqDiagnostic[]; labels: Record<string, unknown[]> };
-      };
+      const last = sent.at(-1) as DiagnosticsPayload;
       expect(last.event).toBe(DIAGNOSTICS_EVENT);
       expect(last.data.diagnostics).toHaveLength(1);
       expect(last.data.diagnostics[0].code).toBe("BARQ001");
@@ -413,17 +509,17 @@ describe("barqVitePlugin", () => {
 
       // A file that stops reporting clears its own rows rather than accreting.
       await run(plugin, `export const V = () => <p>ok</p>;\n`, "/a/app.tsx");
-      const cleared = sent.at(-1) as { data: { diagnostics: unknown[] } };
+      const cleared = sent.at(-1) as ClearedPayload;
       expect(cleared.data.diagnostics).toEqual([]);
     });
 
     test("what the server reported reaches the next page to connect, until a file changes", () => {
-      const sent: { event?: string; data?: unknown }[] = [];
+      const sent: HotPayloadProbe[] = [];
       const hot = new Map<string, () => void>();
       const watcher = new Map<string, () => void>();
       const server = {
         hot: {
-          send: (payload: { event?: string; data?: unknown }) => sent.push(payload),
+          send: (payload: HotPayloadProbe) => sent.push(payload),
           on: (event: string, listener: () => void) => hot.set(event, listener),
         },
         watcher: { on: (event: string, listener: () => void) => watcher.set(event, listener) },
@@ -438,8 +534,11 @@ describe("barqVitePlugin", () => {
         severity: "error",
         message: "salama's profile failed to load",
       });
-      const served = (): unknown[] =>
-        sent.filter((payload) => payload.event === "barq:server-diagnostics").map((p) => p.data);
+      function served(): unknown[] {
+        return sent
+          .filter((payload) => payload.event === "barq:server-diagnostics")
+          .map((p) => p.data);
+      }
       expect(served()).toHaveLength(1);
 
       hot.get("barq:diagnostics:ready")?.();
@@ -456,7 +555,7 @@ describe("barqVitePlugin", () => {
       const result = compiler.transform(COERCED, {
         filename: "/a/app.tsx",
         dev: true,
-      }) as unknown as { diagnostics: BarqDiagnostic[]; labels: unknown[] };
+      }) as unknown as NativeDiagnostics;
       expect(result.diagnostics).toHaveLength(1);
       const diagnostic = result.diagnostics[0];
       expect(diagnostic.code).toBe("BARQ001");
@@ -549,7 +648,7 @@ describe("barqVitePlugin", () => {
 
     async function build(
       options: Parameters<typeof barqVitePlugin>[0],
-      transformOptions?: { ssr?: boolean },
+      transformOptions?: SsrFlag,
     ) {
       const plugin = barqVitePlugin(options);
       configure(plugin, { command: "build", mode: "production" });
@@ -603,11 +702,7 @@ export const shared = ui.create({ ring: { outlineWidth: "3px" } });
   afterAll(() => rmSync(DIR, { recursive: true, force: true }));
 
   /** The plugin context the resolver needs, over a real directory. */
-  function withResolver(): PluginContext & {
-    resolve(source: string): Promise<{ id: string; external: boolean } | null>;
-    addWatchFile(file: string): void;
-    watched: string[];
-  } {
+  function withResolver(): ResolverContext {
     const watched: string[] = [];
     return {
       warn() {},
@@ -630,14 +725,14 @@ export const shared = ui.create({ ring: { outlineWidth: "3px" } });
     code: string,
     context = withResolver(),
     file = "card.tsx",
-  ): Promise<{ code: string; watched: string[] }> {
+  ): Promise<TransformedCard> {
     const hook = plugin.transform as unknown as (
       this: unknown,
       code: string,
       id: string,
     ) => Promise<TransformResult | null>;
     const result = await hook.call(context, code, join(DIR, file));
-    return { code: (result as { code?: string } | null)?.code ?? "", watched: context.watched };
+    return { code: (result as CodeResult | null)?.code ?? "", watched: context.watched };
   }
 
   const CARD = `import { layer } from "@barqjs/css";
@@ -833,7 +928,7 @@ export const a = app({ color: ink.fg });
       },
     };
     const result = await hook.call(bare, CARD, join(DIR, "card.tsx"));
-    expect((result as { code?: string } | null)?.code ?? "").toContain("app({");
+    expect((result as CodeResult | null)?.code ?? "").toContain("app({");
   });
 });
 
@@ -972,20 +1067,24 @@ export const box = atoms({ display: "none" });
     source?: string;
     isEntry?: boolean;
     isDynamicEntry?: boolean;
-    viteMetadata?: { importedCss: Set<string> };
+    viteMetadata?: ChunkCssMetadata;
   };
+
+  interface HtmlContext {
+    bundle?: Record<string, Output>;
+  }
+
+  interface HtmlHook {
+    handler: (html: string, context: HtmlContext) => string;
+  }
 
   const warnings: string[] = [];
 
   /** The hook as Vite calls it, with an `emitFile` that lands where Rollup's does. */
-  function finish(
-    plugin: { generateBundle?: unknown },
-    output: Record<string, Output>,
-    cssCodeSplit = true,
-  ): void {
+  function finish(plugin: BundlePlugin, output: Record<string, Output>, cssCodeSplit = true): void {
     const context = {
       environment: { config: { build: { cssCodeSplit } } },
-      emitFile(file: { name: string; source: string }) {
+      emitFile(file: EmittedFile) {
         output[EMITTED] = {
           type: "asset",
           fileName: EMITTED,
@@ -1002,8 +1101,7 @@ export const box = atoms({ display: "none" });
         warnings.push(message);
       },
     };
-    const hook = (plugin.generateBundle as { handler: (options: unknown, bundle: unknown) => void })
-      .handler;
+    const hook = (plugin.generateBundle as BundleHook).handler;
     hook.call(context, {}, output);
   }
 
@@ -1162,9 +1260,7 @@ export const box = atoms({ display: "none" });
       },
       getFileName: () => "",
     };
-    (
-      plugin.generateBundle as { handler: (options: unknown, bundle: unknown) => void }
-    ).handler.call(context, {}, output);
+    (plugin.generateBundle as BundleHook).handler.call(context, {}, output);
     expect(output["mylib.css"]?.source).toBe(`.b{color:red}${BASE}${WIDE}`);
   });
 
@@ -1177,11 +1273,7 @@ export const box = atoms({ display: "none" });
   });
 
   test("the document a build writes marks the atoms' link", () => {
-    const hook = (
-      barqStylesheets().transformIndexHtml as {
-        handler: (html: string, context: { bundle?: Record<string, Output> }) => string;
-      }
-    ).handler;
+    const hook = (barqStylesheets().transformIndexHtml as HtmlHook).handler;
     const html =
       '<head><link rel="stylesheet" crossorigin href="/assets/index-a.css">' +
       '<link rel="stylesheet" crossorigin href="/assets/barq-atoms-x.css"></head>';
@@ -1217,20 +1309,22 @@ export const box = atoms({ display: "none" });
    * that brings a stylesheet.
    */
   test("a build whose helper was never rewritten fails once it has atoms and a lazy stylesheet", () => {
-    const lazy = (): Record<string, Output> => ({
-      "shared.css": {
-        type: "asset",
-        fileName: "shared.css",
-        source: `.plain{gap:0}${MARKER}${BASE}`,
-      },
-      "lazy.css": { type: "asset", fileName: "lazy.css", source: ".b2{color:blue}" },
-      "lazy.js": {
-        type: "chunk",
-        fileName: "lazy.js",
-        isDynamicEntry: true,
-        viteMetadata: { importedCss: new Set(["lazy.css"]) },
-      },
-    });
+    function lazy(): Record<string, Output> {
+      return {
+        "shared.css": {
+          type: "asset",
+          fileName: "shared.css",
+          source: `.plain{gap:0}${MARKER}${BASE}`,
+        },
+        "lazy.css": { type: "asset", fileName: "lazy.css", source: ".b2{color:blue}" },
+        "lazy.js": {
+          type: "chunk",
+          fileName: "lazy.js",
+          isDynamicEntry: true,
+          viteMetadata: { importedCss: new Set(["lazy.css"]) },
+        },
+      };
+    }
     expect(() => finish(barqVitePlugin({ dev: false }), lazy())).toThrow("preload helper");
     warnings.length = 0;
     finish(barqVitePlugin({ dev: false, preloadHelper: "warn" }), lazy());
@@ -1273,11 +1367,7 @@ export const card = css\`color: red\`;
         { type: "asset" as const, fileName, source },
       ]),
     );
-    const hook = (
-      plugin.generateBundle as unknown as {
-        handler: (options: unknown, bundle: unknown) => void;
-      }
-    ).handler;
+    const hook = (plugin.generateBundle as unknown as BundleHook).handler;
     hook.call(plugin, {}, chunks);
     return Object.fromEntries(Object.entries(chunks).map(([name, asset]) => [name, asset.source]));
   }
@@ -1462,12 +1552,14 @@ describe("boundaries", () => {
   const PAGE = `import { Canvas } from "@acme/scene";
 export const App = (p) => <main><h1>{p.title()}</h1><Canvas><mesh name={p.title()} /></Canvas></main>;
 `;
-  const canvas = (moduleSource: string): BarqBoundary => ({
-    source: "@acme/scene",
-    name: "Canvas",
-    target: "universal",
-    moduleSource,
-  });
+  function canvas(moduleSource: string): BarqBoundary {
+    return {
+      source: "@acme/scene",
+      name: "Canvas",
+      target: "universal",
+      moduleSource,
+    };
+  }
 
   const made: string[] = [];
   afterAll(() => {
@@ -1479,10 +1571,10 @@ export const App = (p) => <main><h1>{p.title()}</h1><Canvas><mesh name={p.title(
     const root = join(tmpdir(), `barq-boundaries-${process.pid}`);
     made.push(root);
     rmSync(root, { recursive: true, force: true });
-    const write = (path: string, manifest: unknown) => {
+    function write(path: string, manifest: unknown) {
       mkdirSync(join(root, path), { recursive: true });
       writeFileSync(join(root, path, "package.json"), JSON.stringify(manifest));
-    };
+    }
     write(".", {
       name: "salama-app",
       dependencies: { "@acme/scene": "1.0.0", "@acme/plain": "1.0.0" },
@@ -1555,12 +1647,14 @@ describe("intrinsics", () => {
 }
 export const App = () => <main><h1>salama</h1></main>;
 `;
-  const scene = (tags: string[], extra: Partial<BarqIntrinsic> = {}): BarqIntrinsic => ({
-    tags,
-    target: "universal",
-    moduleSource: "@acme/scene/renderer",
-    ...extra,
-  });
+  function scene(tags: string[], extra: Partial<BarqIntrinsic> = {}): BarqIntrinsic {
+    return {
+      tags,
+      target: "universal",
+      moduleSource: "@acme/scene/renderer",
+      ...extra,
+    };
+  }
 
   const made: string[] = [];
   afterAll(() => {
@@ -1669,7 +1763,7 @@ describe("packages that ship source", () => {
     made.push(root);
     rmSync(root, { recursive: true, force: true });
     const store = join(root, "node_modules", ".store");
-    const install = (name: string, manifest: Record<string, unknown>, deps: string[]): string => {
+    function install(name: string, manifest: Record<string, unknown>, deps: string[]): string {
       const dir = join(store, name.replace("/", "+"), "node_modules", name);
       mkdirSync(dir, { recursive: true });
       writeFileSync(join(dir, "package.json"), JSON.stringify({ name, ...manifest }));
@@ -1679,7 +1773,7 @@ describe("packages that ship source", () => {
         symlinkSync(join(store, dep.replace("/", "+"), "node_modules", dep), link);
       }
       return dir;
-    };
+    }
     install("@acme/core", { exports: SOURCE_EXPORTS }, []);
     install("@acme/primitives", { exports: SOURCE_EXPORTS, dependencies: { "@acme/core": "1" } }, [
       "@acme/core",
@@ -1712,11 +1806,7 @@ describe("packages that ship source", () => {
   test("are bundled for the server and kept from the optimizer, at every depth and through peers", () => {
     const root = isolated();
     const plugin = barqVitePlugin({ dev: false });
-    const config: {
-      root: string;
-      resolve?: { noExternal?: unknown };
-      optimizeDeps?: { exclude?: string[] };
-    } = { root };
+    const config: BoundaryConfigProbe = { root };
     const hook = plugin.config as unknown as (config: unknown, env: ConfigEnv) => void;
     hook.call(plugin, config, { command: "build", mode: "production" });
     const expected = ["@acme/aria", "@acme/blocks", "@acme/core", "@acme/ds", "@acme/primitives"];

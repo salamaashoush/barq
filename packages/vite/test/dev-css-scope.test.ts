@@ -12,6 +12,7 @@
 
 import { afterAll, describe, expect, test } from "bun:test";
 import { createServer as createHttpServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { createServer } from "vite";
 
 import { cleanUp, project } from "./project.ts";
@@ -104,7 +105,7 @@ async function render(paths: readonly string[]): Promise<Record<string, string>>
   });
   const http = createHttpServer(server.middlewares);
   await new Promise<void>((resolve) => http.listen(0, "127.0.0.1", resolve));
-  const { port } = http.address() as { port: number };
+  const { port } = http.address() as AddressInfo;
   try {
     const out: Record<string, string> = {};
     for (const [index, path] of paths.entries()) {

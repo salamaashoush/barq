@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 
 import { DEFAULT_CSS_SOURCE, cssRegistrations } from "./css-registration.ts";
+import type { PluginEnvironment, SsrFlag } from "./environment.ts";
 import { frameAround, overlayModule, type OverlayFrame } from "./overlay.ts";
 import {
   SERVER_DIAGNOSTICS_CLEAR,
@@ -11,6 +12,7 @@ import {
   clearServerDiagnostics,
   replayServerDiagnostics,
 } from "./server-diagnostics.ts";
+import type { BoundaryEntry, GatheredAtoms, IntrinsicEntry, RendererEntry } from "@barqjs/compiler";
 import type { Plugin, TransformResult, ViteDevServer } from "vite";
 
 const NATIVE_PACKAGE = "@barqjs/compiler";
@@ -441,9 +443,9 @@ interface NativeTransformOptions {
   routes?: readonly string[];
   moduleSource?: string;
   target?: string;
-  renderers?: { include: string[]; target?: string; moduleSource?: string }[];
-  boundaries?: { source: string; name: string; target: string; moduleSource: string }[];
-  intrinsics?: { tags: string[]; claimUnknown?: boolean; target: string; moduleSource: string }[];
+  renderers?: RendererEntry[];
+  boundaries?: BoundaryEntry[];
+  intrinsics?: IntrinsicEntry[];
   coreSource?: string;
   serverSource?: string;
   startSource?: string;
@@ -522,12 +524,27 @@ interface FoldedModule {
   stamps: ReadonlyMap<string, number>;
 }
 
+interface OptimizedDep {
+  readonly file: string;
+  readonly src?: string;
+}
+
+interface OptimizerMetadata {
+  readonly optimized: Readonly<Record<string, OptimizedDep>>;
+  readonly discovered: Readonly<Record<string, OptimizedDep>>;
+}
+
 /** What a fold reads of Vite's dependency optimizer: where each pre-bundled package came from. */
 interface DepsOptimizer {
-  readonly metadata: {
-    readonly optimized: Readonly<Record<string, { readonly file: string; readonly src?: string }>>;
-    readonly discovered: Readonly<Record<string, { readonly file: string; readonly src?: string }>>;
-  };
+  readonly metadata: OptimizerMetadata;
+}
+
+interface OptimizerEnvironment {
+  depsOptimizer?: DepsOptimizer;
+}
+
+interface OptimizerContext {
+  environment?: OptimizerEnvironment;
 }
 
 const NOTHING_FOLDED: FoldedModule = { rows: [], css: "", carried: new Map(), stamps: new Map() };
@@ -551,15 +568,35 @@ export const ATOMS_ATTRIBUTE = "data-barq-atoms";
  */
 const UNSPLIT_SOURCE = "style.css";
 
+interface BundleBuildConfig {
+  cssCodeSplit?: boolean;
+  lib?: unknown;
+}
+
+interface NamedPlugin {
+  name: string;
+  api?: unknown;
+}
+
+interface BundleEnvironmentConfig {
+  build?: BundleBuildConfig;
+  plugins?: readonly NamedPlugin[];
+}
+
+interface BundleEnvironment {
+  config?: BundleEnvironmentConfig;
+}
+
+interface EmittedAsset {
+  type: "asset";
+  name: string;
+  source: string;
+}
+
 /** The slice of a Rollup plugin context `generateBundle` uses here. */
 interface BundleContext {
-  environment?: {
-    config?: {
-      build?: { cssCodeSplit?: boolean; lib?: unknown };
-      plugins?: readonly { name: string; api?: unknown }[];
-    };
-  };
-  emitFile(file: { type: "asset"; name: string; source: string }): string;
+  environment?: BundleEnvironment;
+  emitFile(file: EmittedAsset): string;
   error(message: string): never;
   warn(message: string): void;
   getFileName(reference: string): string;
@@ -570,7 +607,11 @@ function cssCodeSplit(context: Pick<BundleContext, "environment"> | undefined): 
   return context?.environment?.config?.build?.cssCodeSplit !== false;
 }
 
-function sourceText(asset: { source: string | Uint8Array }): string {
+interface AssetSource {
+  source: string | Uint8Array;
+}
+
+function sourceText(asset: AssetSource): string {
   return typeof asset.source === "string" ? asset.source : Buffer.from(asset.source).toString();
 }
 
@@ -612,6 +653,10 @@ const PRELOAD_HELPER_UNKNOWN =
   "of the atoms, so a stylesheet a dynamic import brings would land after them and could beat " +
   'them. Update @barqjs/vite, or set `compiler: { preloadHelper: "warn" }` to build anyway.';
 
+interface ChunkCssMetadata {
+  importedCss: Set<string>;
+}
+
 /**
  * Whether a dynamic import in this bundle brings a stylesheet: a dynamically
  * imported chunk, or a chunk it imports, lists one.
@@ -621,16 +666,16 @@ function lazilyLinked(bundle: Record<string, unknown>): boolean {
     type: string;
     isDynamicEntry?: boolean;
     imports?: readonly string[];
-    viteMetadata?: { importedCss: Set<string> };
+    viteMetadata?: ChunkCssMetadata;
   };
   const chunks = bundle as Record<string, Chunked>;
-  const linked = (name: string, seen: Set<string>): boolean => {
+  function linked(name: string, seen: Set<string>): boolean {
     const chunk = chunks[name];
     if (chunk?.type !== "chunk" || seen.has(name)) return false;
     seen.add(name);
     if ((chunk.viteMetadata?.importedCss.size ?? 0) > 0) return true;
     return (chunk.imports ?? []).some((each) => linked(each, seen));
-  };
+  }
   return Object.entries(chunks).some(
     ([name, chunk]) =>
       chunk.type === "chunk" && chunk.isDynamicEntry === true && linked(name, new Set()),
@@ -649,7 +694,7 @@ interface NativeCompiler {
    * would be its third copy.
    */
   orderCss(css: string, layers?: string[]): string;
-  gatherAtoms(sheets: string[]): { atoms: string; sheets: string[] };
+  gatherAtoms(sheets: string[]): GatheredAtoms;
   /** The cascade layer order the given module stylesheets declare between them. */
   layerOrder(sheets: string[]): string[];
 }
@@ -864,6 +909,11 @@ export function packageDir(root: string, name: string): string | null {
   }
 }
 
+interface BarqManifestField {
+  boundaries?: unknown;
+  intrinsics?: unknown;
+}
+
 interface BoundaryManifest {
   name?: unknown;
   exports?: unknown;
@@ -872,7 +922,7 @@ interface BoundaryManifest {
   peerDependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
   workspaces?: unknown;
-  barq?: { boundaries?: unknown; intrinsics?: unknown };
+  barq?: BarqManifestField;
 }
 
 function readManifest(file: string): BoundaryManifest | null {
@@ -883,6 +933,10 @@ function readManifest(file: string): BoundaryManifest | null {
   }
 }
 
+interface WorkspacesField {
+  packages?: unknown;
+}
+
 /**
  * The directories a `workspaces` field names: a plain path, or a path ending
  * in `/*` for every directory under it.
@@ -891,7 +945,7 @@ function workspaceDirs(root: string, workspaces: unknown): string[] {
   const patterns = Array.isArray(workspaces)
     ? workspaces
     : workspaces !== null && typeof workspaces === "object"
-      ? (workspaces as { packages?: unknown }).packages
+      ? (workspaces as WorkspacesField).packages
       : undefined;
   if (!Array.isArray(patterns)) return [];
   const dirs: string[] = [];
@@ -972,6 +1026,15 @@ function takesPart(manifest: BoundaryManifest): boolean {
   return publishesSource(manifest.exports) || manifest.barq !== undefined;
 }
 
+interface InstalledPackage {
+  dir: string;
+  manifest: BoundaryManifest;
+}
+
+interface ExportsManifest {
+  exports?: unknown;
+}
+
 /**
  * Every package the project installs that the build has to know about: the
  * direct dependencies and workspace packages, and then, through each one that
@@ -983,12 +1046,12 @@ function takesPart(manifest: BoundaryManifest): boolean {
  * Packages that take no part are not walked into, which keeps this to the
  * barq corner of `node_modules` rather than all of it.
  */
-function installedPackages(root: string): { dir: string; manifest: BoundaryManifest }[] {
+function installedPackages(root: string): InstalledPackage[] {
   const manifest = readManifest(join(root, "package.json"));
   if (manifest === null) return [];
-  const found = new Map<string, { dir: string; manifest: BoundaryManifest }>();
-  const pending: { dir: string; manifest: BoundaryManifest }[] = [];
-  const add = (dir: string): void => {
+  const found = new Map<string, InstalledPackage>();
+  const pending: InstalledPackage[] = [];
+  function add(dir: string): void {
     let real: string;
     try {
       real = realpathSync(dir);
@@ -1001,7 +1064,7 @@ function installedPackages(root: string): { dir: string; manifest: BoundaryManif
     const entry = { dir: real, manifest: theirs };
     found.set(real, entry);
     if (takesPart(theirs)) pending.push(entry);
-  };
+  }
   for (const name of [
     ...Object.keys(manifest.dependencies ?? {}),
     ...Object.keys(manifest.devDependencies ?? {}),
@@ -1075,7 +1138,9 @@ export function mergeBoundaries(
   configured: readonly BarqBoundary[],
   discovered: readonly BarqBoundary[],
 ): BarqBoundary[] {
-  const key = (entry: BarqBoundary): string => `${entry.source}\0${entry.name}`;
+  function key(entry: BarqBoundary): string {
+    return `${entry.source}\0${entry.name}`;
+  }
   const taken = new Set<string>();
   const merged: BarqBoundary[] = [];
   for (const entry of [...configured, ...discovered]) {
@@ -1107,7 +1172,7 @@ function inBarqPackage(file: string, cache: Map<string, boolean>): boolean {
       let answer = false;
       try {
         answer = publishesSource(
-          (JSON.parse(readFileSync(manifest, "utf8")) as { exports?: unknown }).exports,
+          (JSON.parse(readFileSync(manifest, "utf8")) as ExportsManifest).exports,
         );
       } catch {
         answer = false;
@@ -1121,6 +1186,65 @@ function inBarqPackage(file: string, cache: Map<string, boolean>): boolean {
   }
   for (const dir of walked) cache.set(dir, false);
   return false;
+}
+
+interface JsxTransformSlice {
+  jsx?: unknown;
+}
+
+interface RolldownOptionsSlice {
+  transform?: JsxTransformSlice;
+}
+
+interface OptimizeDepsSlice {
+  include?: string[];
+  exclude?: string[];
+  rolldownOptions?: RolldownOptionsSlice;
+}
+
+interface ResolveSlice {
+  noExternal?: unknown;
+}
+
+interface UserConfigSlice {
+  root?: string;
+  resolve?: ResolveSlice;
+  optimizeDeps?: OptimizeDepsSlice;
+}
+
+interface EnvironmentConfigSlice {
+  optimizeDeps?: OptimizeDepsSlice;
+}
+
+interface ServerConfigSlice {
+  hmr?: unknown;
+}
+
+interface ResolvedConfigSlice {
+  root?: string;
+  server?: ServerConfigSlice;
+}
+
+interface ResolvedImport {
+  id: string;
+  external?: boolean | string;
+}
+
+interface ParseOptions {
+  lang?: "ts";
+}
+
+interface CompilerTransformContext {
+  environment?: PluginEnvironment;
+  error(message: string, position?: number): never;
+  warn(message: string, position?: number): void;
+  resolve?(source: string, importer?: string): Promise<ResolvedImport | null>;
+  addWatchFile?(file: string): void;
+  parse?(code: string, options?: ParseOptions): unknown;
+}
+
+interface CompileExtras {
+  cssExports?: boolean;
 }
 
 export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
@@ -1205,18 +1329,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
       stylesheets: (): ReadonlySet<string> => new Set([...sheetsByModule.values()].flat()),
     } satisfies CompilerApi,
 
-    config(
-      config: {
-        root?: string;
-        resolve?: { noExternal?: unknown };
-        optimizeDeps?: {
-          include?: string[];
-          exclude?: string[];
-          rolldownOptions?: { transform?: { jsx?: unknown } };
-        };
-      },
-      env,
-    ) {
+    config(config: UserConfigSlice, env) {
       if (dev === undefined) dev = env.command === "serve" || env.mode !== "production";
       serving = env.command === "serve";
       root = resolve(config.root ?? process.cwd());
@@ -1263,10 +1376,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
       }
     },
 
-    configEnvironment(
-      name: string,
-      config: { optimizeDeps?: { rolldownOptions?: { transform?: { jsx?: unknown } } } },
-    ) {
+    configEnvironment(name: string, config: EnvironmentConfigSlice) {
       // Vite seeds only the client environment's optimizer from the top level,
       // and a server environment that turns discovery on scans TSX too.
       if (name === "client") return;
@@ -1279,7 +1389,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
     // A server-function id is derived relative to the project root, so an id
     // carries no absolute path into a client bundle. Vite knows the root; a
     // caller that passes one explicitly means something else by it and wins.
-    configResolved(config: { root?: string; server?: { hmr?: unknown } }) {
+    configResolved(config: ResolvedConfigSlice) {
       if (compilerOptions.root === undefined) compilerOptions.root = config.root;
       // A server with HMR off has no update to refresh a component with, and
       // the `import.meta.hot` such a server's module runner hands a module has
@@ -1378,7 +1488,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
         const layers = compiler.layerOrder([...cssByModule.values()]);
         const assets = Object.values(bundle).filter(
           (asset) => asset.type === "asset" && asset.fileName.endsWith(".css"),
-        ) as { source: string | Uint8Array }[];
+        ) as AssetSource[];
         let sources = assets.map(sourceText);
         // One sheet for every atom: a chunk loaded later then cannot write a
         // base rule after another chunk's `@media` rule for the same property.
@@ -1464,20 +1574,10 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
     // is not Vite at all — the tests drive this hook directly — rather than as a
     // second opinion when both are present.
     async transform(
-      this: {
-        environment?: { name?: string; config?: { consumer?: string } };
-        error(message: string, position?: number): never;
-        warn(message: string, position?: number): void;
-        resolve?(
-          source: string,
-          importer?: string,
-        ): Promise<{ id: string; external?: boolean | string } | null>;
-        addWatchFile?(file: string): void;
-        parse?(code: string, options?: { lang?: "ts" }): unknown;
-      },
+      this: CompilerTransformContext,
       code: string,
       id: string,
-      transformOptions?: { ssr?: boolean },
+      transformOptions?: SsrFlag,
     ): Promise<TransformResult | null> {
       const environment = this?.environment;
       // The environment's consumer says which half a module is compiled for,
@@ -1587,9 +1687,8 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
        * in code a fold cannot read and may not be written yet while the
        * optimizer is still discovering; its own source is the same values.
        */
-      const optimizer = (this as { environment?: { depsOptimizer?: DepsOptimizer } }).environment
-        ?.depsOptimizer;
-      const sourceOf = (resolvedId: string): string => {
+      const optimizer = (this as OptimizerContext).environment?.depsOptimizer;
+      function sourceOf(resolvedId: string): string {
         const file = resolvedId.split("?", 1)[0] ?? resolvedId;
         if (optimizer === undefined) return file;
         const { optimized, discovered } = optimizer.metadata;
@@ -1597,9 +1696,9 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
           if (info.file === file && info.src !== undefined) return info.src;
         }
         return file;
-      };
+      }
 
-      const unchanged = async (stamps: ReadonlyMap<string, number>): Promise<boolean> => {
+      async function unchanged(stamps: ReadonlyMap<string, number>): Promise<boolean> {
         for (const [file, at] of stamps) {
           try {
             if ((await stat(file)).mtimeMs !== at) return false;
@@ -1608,13 +1707,13 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
           }
         }
         return true;
-      };
+      }
 
-      const exportsOf = async (
+      async function exportsOf(
         dependency: string,
         depth: number,
         seen: Set<string>,
-      ): Promise<FoldedModule> => {
+      ): Promise<FoldedModule> {
         if (depth <= 0 || seen.has(dependency)) return NOTHING_FOLDED;
         seen.add(dependency);
         let modified: number;
@@ -1651,7 +1750,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
         }
         exportsByFile.set(dependency, folded);
         return folded;
-      };
+      }
 
       /**
        * The stylesheets a fold of `name` out of `dependency` needs.
@@ -1727,7 +1826,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
         depth: number,
         seen: Set<string>,
         carried: Map<string, string>,
-        extra: { cssExports?: boolean } = {},
+        extra: CompileExtras = {},
         stamps?: Map<string, number>,
       ): Promise<NativeResult> => {
         const base = {
@@ -2068,18 +2167,38 @@ function linkedAfter(html: string, sheet: string, atoms: string): string {
   );
 }
 
+interface HotIdentifier {
+  type: string;
+  name: string;
+  start: number;
+  end: number;
+}
+
+interface HotTyped {
+  type: string;
+}
+
+interface HotLocal {
+  name: string;
+}
+
+interface HotSpecifier {
+  local: HotLocal;
+  exportKind?: string;
+}
+
 interface HotNode {
   type: string;
   exportKind?: string;
   start: number;
   end: number;
   kind?: string;
-  id?: { type: string; name: string; start: number; end: number } | null;
+  id?: HotIdentifier | null;
   declaration?: HotNode | null;
   declarations?: HotNode[];
-  init?: { type: string } | null;
+  init?: HotTyped | null;
   source?: unknown;
-  specifiers?: { local: { name: string }; exportKind?: string }[];
+  specifiers?: HotSpecifier[];
   name?: string;
 }
 
@@ -2111,7 +2230,7 @@ export function withHotComponents(
   let exported = 0;
   let onlyComponents = true;
   const signatureOf = hotSignatures(code, components, program);
-  const rebind = (name: string, at: number): void => {
+  function rebind(name: string, at: number): void {
     wrapped++;
     const signature = JSON.stringify(signatureOf(name));
     edits.push([
@@ -2119,7 +2238,7 @@ export function withHotComponents(
       at,
       ` if (import.meta.hot) ${name} = __barq_hot(import.meta.hot, ${JSON.stringify(name)}, ${name}, ${signature});`,
     ]);
-  };
+  }
 
   for (const statement of program.body) {
     let declaration: HotNode | null | undefined = statement;
@@ -2212,9 +2331,9 @@ const FUNCTIONS = new Set(["ArrowFunctionExpression", "FunctionExpression"]);
  */
 function componentsIn(program: HotProgram, labelled: ReadonlySet<string>): Set<string> {
   const found = new Set(labelled);
-  const named = (name: string | undefined): void => {
+  function named(name: string | undefined): void {
     if (name !== undefined && /^[A-Z]/.test(name)) found.add(name);
-  };
+  }
   for (const statement of program.body) {
     const declaration =
       statement.type === "ExportNamedDeclaration" || statement.type === "ExportDefaultDeclaration"

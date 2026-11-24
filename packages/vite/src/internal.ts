@@ -5,11 +5,14 @@ import { cssRegistration } from "./css-registration.ts";
 
 export { cssRegistration, cssRegistrations, DEFAULT_CSS_SOURCE } from "./css-registration.ts";
 
+interface NativeOutput {
+  code: string;
+  warnings?: string[];
+  css?: string;
+}
+
 interface Native {
-  transform(
-    code: string,
-    options?: Record<string, unknown>,
-  ): { code: string; warnings?: string[]; css?: string };
+  transform(code: string, options?: Record<string, unknown>): NativeOutput;
 }
 
 export interface CompilerLoaderOptions {
@@ -21,11 +24,21 @@ export interface CompilerLoaderOptions {
 
 type Loaded = { contents: string; loader: "ts" | "tsx" };
 
+export interface LoadFilter {
+  filter: RegExp;
+}
+
+export interface LoadArgs {
+  path: string;
+}
+
+export interface LoaderBuild {
+  onLoad(filter: LoadFilter, load: (args: LoadArgs) => Loaded): void;
+}
+
 export interface CompilerLoader {
   name: string;
-  setup(build: {
-    onLoad(filter: { filter: RegExp }, load: (args: { path: string }) => Loaded): void;
-  }): void;
+  setup(build: LoaderBuild): void;
 }
 
 /**
@@ -43,7 +56,7 @@ export function compilerLoader(options: CompilerLoaderOptions = {}): CompilerLoa
   return {
     name: "barq",
     setup(build) {
-      const load = (args: { path: string }): Loaded => {
+      function load(args: LoadArgs): Loaded {
         const result = native.transform(readFileSync(args.path, "utf8"), {
           filename: args.path,
           ...options.transform,
@@ -56,7 +69,7 @@ export function compilerLoader(options: CompilerLoaderOptions = {}): CompilerLoa
             ? ""
             : cssRegistration(args.path, result.css);
         return { contents: result.code + css, loader: args.path.endsWith(".tsx") ? "tsx" : "ts" };
-      };
+      }
       build.onLoad({ filter: /\.tsx$/ }, load);
       if (options.ts !== undefined) build.onLoad({ filter: options.ts }, load);
     },

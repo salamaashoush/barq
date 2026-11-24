@@ -20,10 +20,16 @@ import { PORTS, cleanUp, project } from "./project.ts";
 
 afterAll(cleanUp);
 
+interface Previewed {
+  root: string;
+  server: PreviewServer;
+  origin: string;
+}
+
 async function buildAndPreview(
   template: "full-stack" | "spa" | "minimal",
   port: number,
-): Promise<{ root: string; server: PreviewServer; origin: string }> {
+): Promise<Previewed> {
   const root = project(template);
   const builder = await createBuilder({ root, configLoader: "runner", logLevel: "silent" });
   await builder.buildApp();
@@ -36,8 +42,9 @@ async function buildAndPreview(
   return { root, server, origin: `http://127.0.0.1:${port}` };
 }
 
-const page = (origin: string, path: string): Promise<Response> =>
-  fetch(`${origin}${path}`, { headers: { accept: "text/html" } });
+function page(origin: string, path: string): Promise<Response> {
+  return fetch(`${origin}${path}`, { headers: { accept: "text/html" } });
+}
 
 describe("the full-stack template: `barq({ ssr: true, start })`", () => {
   let built: Awaited<ReturnType<typeof buildAndPreview>>;

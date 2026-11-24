@@ -35,6 +35,7 @@ import { PRERENDER_HEADER } from "@barqjs/start/protocol";
 import {
   ASSET_MANIFEST_FILE,
   type AssetManifest,
+  type PrerenderedAsset,
   headersFor,
   nativeRequest,
   runSetups,
@@ -54,6 +55,8 @@ import {
   unsplitAsset,
 } from "./compiler.ts";
 import { serverDiagnostics } from "./dev-diagnostics.ts";
+import type { EnvironmentContext } from "./environment.ts";
+import type { RouterApi } from "./router.ts";
 
 /**
  * Vite's own environment names. `ssr` for the server one rather than something
@@ -159,6 +162,20 @@ const RESOLVED_ROUTER_ENTRY_ID = "\0barq-router-entry";
 
 const DEV_STYLESHEETS = Symbol.for("barq.dev.stylesheets");
 
+interface DevStylesheetsHolder {
+  [DEV_STYLESHEETS]?: unknown;
+}
+
+interface PageStylesheets {
+  readonly keys: readonly string[];
+  readonly modules: ReadonlySet<string>;
+  readonly lazy: readonly string[];
+}
+
+interface TransformDeps {
+  deps?: readonly string[];
+}
+
 /**
  * The registry keys of the compiled stylesheets a page of `routes` reaches, in
  * the order a build links them: the router entry's static imports, then each
@@ -182,17 +199,10 @@ function pageStylesheets(
   server: ViteDevServer,
   routes: readonly string[],
   routerEntry: string | null,
-): {
-  readonly keys: readonly string[];
-  readonly modules: ReadonlySet<string>;
-  readonly lazy: readonly string[];
-} {
+): PageStylesheets {
   const plugins = server.config.plugins;
   const router = plugins.find((plugin) => plugin.name === "barq-router")?.api as
-    | {
-        entries(): readonly { readonly id: string; readonly file: string }[];
-        lazyOf(id: string): readonly string[];
-      }
+    | RouterApi
     | undefined;
   const compiler = plugins.find((plugin) => plugin.name === "barq-compiler")?.api as
     | CompilerApi
@@ -205,10 +215,10 @@ function pageStylesheets(
   const lazies: string[] = [];
   const walked = new Set<unknown>();
   type Node = NonNullable<ReturnType<typeof graph.getModuleById>>;
-  const visit = (module: Node, lazy: boolean): void => {
+  const visit: (module: Node, lazy: boolean) => void = (module, lazy) => {
     if (walked.has(module)) return;
     walked.add(module);
-    const deps = (module.transformResult as { deps?: readonly string[] } | null)?.deps;
+    const deps = (module.transformResult as TransformDeps | null)?.deps;
     const imported = [...module.importedModules];
     if (deps === undefined) {
       for (const each of imported) visit(each, lazy);
@@ -227,12 +237,12 @@ function pageStylesheets(
     }
     if (module.id !== null) order.push(...compiler.stylesheetsOf(module.id));
   };
-  const file = (path: string, lazy: boolean): void => {
+  function file(path: string, lazy: boolean): void {
     const modules = [...(graph.getModulesByFile(path) ?? [])];
     // The route's own half first and its split component after, as they run.
     modules.sort((a, b) => Number(isSplit(a.id)) - Number(isSplit(b.id)));
     for (const module of modules) visit(module, lazy);
-  };
+  }
   if (routerEntry !== null) file(routerEntry, false);
   const entries = router?.entries() ?? [];
   for (const route of routes) {
@@ -300,13 +310,14 @@ async function writeAssetManifest(
   // RELATIVE to the output directory, in the manifest too. `file` arrives
   // absolute, which is the build machine's path — persisting that ships a
   // deployable artefact that only resolves on the machine that produced it.
-  const fileOf = (page: PrerenderedPage): string =>
-    relative(clientOut, page.file).replaceAll("\\", "/");
+  function fileOf(page: PrerenderedPage): string {
+    return relative(clientOut, page.file).replaceAll("\\", "/");
+  }
   const written = new Set(pages.map(fileOf));
 
   const files: string[] = [];
   const hashed: string[] = [];
-  const walk = async (dir: string, at: string): Promise<void> => {
+  async function walk(dir: string, at: string): Promise<void> {
     for (const item of await readdir(dir, { withFileTypes: true })) {
       const child = join(dir, item.name);
       const url = `${at}/${item.name}`;
@@ -322,13 +333,10 @@ async function writeAssetManifest(
       files.push(url);
       if (emitted.has(name)) hashed.push(url);
     }
-  };
+  }
   await walk(clientOut, "");
 
-  const entries: Record<
-    string,
-    { file: string; status: number; headers?: Record<string, string> }
-  > = {};
+  const entries: Record<string, PrerenderedAsset> = {};
   for (const page of pages) {
     const path = `${prefix}${page.path}`;
     // `x-barq-prerender` is how the handler told the PRERENDERER whether to keep
@@ -823,7 +831,7 @@ export interface BarqServerOptions {
    * for a year, since Vite hashes those names. `maxAge` and `immutable` change
    * that for a build whose output names carry no hash.
    */
-  readonly static?: boolean | { readonly maxAge?: number; readonly immutable?: boolean };
+  readonly static?: boolean | StaticCaching;
   /**
    * Response headers by path, set on every answer, static files included:
    * `{ "/pyodide/**": { "access-control-allow-origin": "*" } }`. `**` spans
@@ -838,6 +846,37 @@ export interface BarqServerOptions {
    * the dev server run them; prerendering does not.
    */
   readonly setup?: readonly string[];
+}
+
+export interface StaticCaching {
+  readonly maxAge?: number;
+  readonly immutable?: boolean;
+}
+
+export interface SpaPrerender {
+  readonly outputPath?: string;
+}
+
+export interface SpaOptions {
+  readonly enabled?: boolean;
+  /** The path the shell is rendered at. `/` when omitted. */
+  readonly maskPath?: string;
+  readonly prerender?: SpaPrerender;
+}
+
+export interface VerifyOptions {
+  /**
+   * Route -> the server-fn ids reachable from it, from `barqRouter`.
+   *
+   * A getter rather than a value, because the answer is produced by the
+   * CLIENT build's `buildEnd` and read after the SSR build — two different
+   * moments, in two plugins that cannot share a closure across environments.
+   * `barqRouter({ onReachability })` is the other half, the same way
+   * `onRoutes` feeds the compiler's route table.
+   */
+  reachability: () => ReadonlyMap<string, ReadonlySet<string>> | undefined;
+  /** `"error"` fails the build. Default `"error"`. */
+  onViolation?: "error" | "warn";
 }
 
 export interface BarqStartOptions {
@@ -873,12 +912,7 @@ export interface BarqStartOptions {
    * and server functions and route handlers answer as they always do. TanStack's
    * option and its names.
    */
-  spa?: {
-    readonly enabled?: boolean;
-    /** The path the shell is rendered at. `/` when omitted. */
-    readonly maskPath?: string;
-    readonly prerender?: { readonly outputPath?: string };
-  };
+  spa?: SpaOptions;
   /**
    * Fail the build when code from a `.server.` file is in a browser chunk, or
    * code from a `.client.` file is in the server bundle. On by default.
@@ -935,20 +969,12 @@ export interface BarqStartOptions {
    * it needs the route definitions' middleware CLOSURES and the mounted
    * registry, and both exist only inside that bundle.
    */
-  verify?: {
-    /**
-     * Route -> the server-fn ids reachable from it, from `barqRouter`.
-     *
-     * A getter rather than a value, because the answer is produced by the
-     * CLIENT build's `buildEnd` and read after the SSR build — two different
-     * moments, in two plugins that cannot share a closure across environments.
-     * `barqRouter({ onReachability })` is the other half, the same way
-     * `onRoutes` feeds the compiler's route table.
-     */
-    reachability: () => ReadonlyMap<string, ReadonlySet<string>> | undefined;
-    /** `"error"` fails the build. Default `"error"`. */
-    onViolation?: "error" | "warn";
-  };
+  verify?: VerifyOptions;
+}
+
+interface ServerFnExport {
+  name: string;
+  serverFn: boolean;
 }
 
 /**
@@ -961,7 +987,7 @@ export interface BarqStartOptions {
 interface ServerFnArtifact {
   version: number;
   module: string;
-  exports: Array<{ name: string; serverFn: boolean }>;
+  exports: Array<ServerFnExport>;
 }
 
 function namesOf(json: string): string[] | null {
@@ -974,6 +1000,57 @@ function namesOf(json: string): string[] | null {
   if (parsed.version !== 1 || !Array.isArray(parsed.exports)) return null;
   const names = parsed.exports.filter((e) => e.serverFn).map((e) => e.name);
   return names.length > 0 ? names : null;
+}
+
+interface AssetsBuildConfig {
+  assetsDir?: string;
+}
+
+interface AssetsEnvironmentConfig {
+  build?: AssetsBuildConfig;
+}
+
+interface AssetsEnvironment {
+  config?: AssetsEnvironmentConfig;
+}
+
+interface AssetsContext {
+  environment?: AssetsEnvironment;
+}
+
+interface ErrorContext extends EnvironmentContext {
+  error: (message: string) => never;
+}
+
+interface BuildOutput {
+  outDir: string;
+}
+
+interface BuiltConfig {
+  root: string;
+  build: BuildOutput;
+}
+
+interface FetchHandler {
+  fetch(request: Request): Promise<Response>;
+}
+
+interface ServiceModule {
+  default: FetchHandler;
+}
+
+interface DefaultExport {
+  default?: unknown;
+}
+
+interface RequestUrls {
+  url?: string;
+  originalUrl?: string;
+}
+
+interface BuiltPageFetch {
+  from: object;
+  fetch: (request: Request) => Promise<Response>;
 }
 
 /**
@@ -1018,10 +1095,10 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
    * in the client stub — pinned by a test that compiles a module and compares
    * the two strings rather than the two rules.
    */
-  const idOf = (file: string, name: string): string => {
+  function idOf(file: string, name: string): string {
     const rel = file.startsWith(root) ? file.slice(root.length) : file;
     return `${rel.replace(/^[/\\]+/, "").replaceAll("\\", "/")}#${name}`;
-  };
+  }
 
   /**
    * The FILE a module id names, without whatever the bundler appended to it.
@@ -1039,9 +1116,11 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
    * suffixed ids that reach here are a bundler's own, and they all name the same
    * module.
    */
-  const fileOf = (id: string): string => id.split("?")[0] ?? id;
+  function fileOf(id: string): string {
+    return id.split("?")[0] ?? id;
+  }
 
-  const record = (id: string, artifact: string): void => {
+  function record(id: string, artifact: string): void {
     const file = fileOf(id);
     const names = namesOf(artifact);
     if (names === null) {
@@ -1054,7 +1133,7 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
     const graph = server?.environments[ENVIRONMENTS.server]?.moduleGraph;
     const module = graph?.getModuleById(RESOLVED_MANIFEST_ID);
     if (module !== undefined && module !== null) graph?.invalidateModule(module);
-  };
+  }
 
   /**
    * The entry a specifier resolves to, and whether it is the project's own.
@@ -1071,11 +1150,11 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
    * no file, so it goes through `/@id/`, which is what Vite serves a virtual
    * module at.
    */
-  const clientEntryUrl = (): string => {
+  function clientEntryUrl(): string {
     const own = findEntry(root, srcDirectory, "client");
     if (own === null) return `${base}@id/${CLIENT_ENTRY_ID}`;
     return base + relative(root, own).replaceAll("\\", "/");
-  };
+  }
 
   const entries: Plugin = {
     name: "barq-start:entries",
@@ -1146,7 +1225,7 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
       // After Vite's own: unsplit, the one stylesheet is written there.
       order: "post",
       handler(_output, bundle) {
-        const environment = (this as { environment?: { name?: string } }).environment?.name;
+        const environment = (this as EnvironmentContext).environment?.name;
         if (environment === ENVIRONMENTS.server) {
           // RECORDED, not reconstructed: rebuilding this name from the input path
           // dies on any `entryFileNames`, and the build already knows what it
@@ -1159,9 +1238,7 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
           return;
         }
         if (environment !== ENVIRONMENTS.client) return;
-        const assetsDir =
-          (this as { environment?: { config?: { build?: { assetsDir?: string } } } }).environment
-            ?.config?.build?.assetsDir ?? "assets";
+        const assetsDir = (this as AssetsContext).environment?.config?.build?.assetsDir ?? "assets";
         for (const file of Object.keys(bundle)) {
           if (file.startsWith(`${assetsDir}/`)) hashedAssets.add(file);
         }
@@ -1239,10 +1316,7 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
      * analyse around it.
      */
     buildEnd(this: unknown) {
-      const context = this as {
-        environment?: { name?: string };
-        error: (message: string) => never;
-      };
+      const context = this as ErrorContext;
       if ((context.environment?.name ?? "") === ENVIRONMENTS.client) return;
       if (mounted === null) return;
       const late = [...found.keys()].filter((file) => !(mounted as Set<string>).has(file));
@@ -1302,23 +1376,27 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
    * server environment that is already built was built by a config-level
    * orchestrator, which Vite runs before the first `post` hook.
    */
-  const orchestrated = (builder: ViteBuilder): boolean =>
-    builder.config.plugins.some((plugin) => {
-      if (plugin.buildApp === undefined || plugin.name.startsWith("barq-start:")) return false;
-      return typeof plugin.buildApp !== "object" || plugin.buildApp.order !== "pre";
-    }) ||
-    Object.values(builder.environments).some(
-      (environment) => environment.isBuilt && environment.name !== ENVIRONMENTS.client,
+  function orchestrated(builder: ViteBuilder): boolean {
+    return (
+      builder.config.plugins.some((plugin) => {
+        if (plugin.buildApp === undefined || plugin.name.startsWith("barq-start:")) return false;
+        return typeof plugin.buildApp !== "object" || plugin.buildApp.order !== "pre";
+      }) ||
+      Object.values(builder.environments).some(
+        (environment) => environment.isBuilt && environment.name !== ENVIRONMENTS.client,
+      )
     );
+  }
 
-  type Built = { config: { root: string; build: { outDir: string } } };
+  type Built = { config: BuiltConfig };
 
   // RESOLVED against the root: `build.outDir` may be relative, and joining a
   // relative one lands next to the process's cwd rather than the project's.
-  const outDirOf = (environment: Built): string =>
-    resolve(environment.config.root, environment.config.build.outDir);
+  function outDirOf(environment: Built): string {
+    return resolve(environment.config.root, environment.config.build.outDir);
+  }
 
-  const afterServer = async (builder: ViteBuilder, ssr: Built): Promise<void> => {
+  async function afterServer(builder: ViteBuilder, ssr: Built): Promise<void> {
     const client = builder.environments[ENVIRONMENTS.client] as Built;
     const wanted = options.prerender;
     const verify = options.verify;
@@ -1405,7 +1483,7 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
     // a project with no prerender still has chunks and `public/` files to
     // serve. Skipped only when there is no client output at all.
     if (existsSync(clientOut)) await writeAssetManifest(clientOut, pages, base, hashedAssets);
-  };
+  }
 
   const dev: Plugin = {
     name: "barq-start:dev",
@@ -1553,8 +1631,7 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
       const shell = spaMode ? join(resolve(config.root, clientBuild.outDir), shellFile) : null;
       const prefix = (config.base ?? "/").replace(/\/$/, "");
       return () => {
-        let service: Promise<{ default: { fetch(request: Request): Promise<Response> } }> | null =
-          null;
+        let service: Promise<ServiceModule> | null = null;
         const sockets = upgradeListener(async (request) => {
           service ??= import(pathToFileURL(entryFile).href);
           return (await service).default.fetch(request);
@@ -1654,9 +1731,7 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
         const closing = (async () => {
           const loaded: ServerSetup[] = [];
           for (const path of setups) {
-            const module = await environment.runner.import<{ default?: unknown }>(
-              resolve(root, path),
-            );
+            const module = await environment.runner.import<DefaultExport>(resolve(root, path));
             if (typeof module.default !== "function") {
               throw new Error(
                 `[barq-start] \`server.setup\` names ${path}, which has no default-exported setup function.`,
@@ -1671,9 +1746,7 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
           void closing.then((close) => close()).catch(() => undefined);
         });
       }
-      (globalThis as { [DEV_STYLESHEETS]?: unknown })[DEV_STYLESHEETS] = async (
-        routes: readonly string[],
-      ) => {
+      (globalThis as DevStylesheetsHolder)[DEV_STYLESHEETS] = async (routes: readonly string[]) => {
         const entry = findRouterEntry(root, srcDirectory);
         // A lazy module is imported once per process, and only when it
         // renders, which is after the head is written. Imported here first, it
@@ -1685,13 +1758,13 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
         return pageStylesheets(viteServer, routes, entry);
       };
 
-      const report = (error: unknown): void => {
+      function report(error: unknown): void {
         try {
           viteServer.ssrFixStacktrace(error as Error);
         } catch {
           // A stack this cannot map is still an error worth reporting.
         }
-      };
+      }
 
       /**
        * The URL this request is really for, base stripped.
@@ -1703,12 +1776,12 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
        * put back. Without the strip, `RPC_PREFIX` never matched under any
        * `base` other than `/` and every server function 404'd.
        */
-      const pathOf = (req: { url?: string; originalUrl?: string }): string => {
+      function pathOf(req: RequestUrls): string {
         const raw = req.originalUrl ?? req.url ?? "/";
         if (base === "/" || !raw.startsWith(base)) return raw;
         const rest = raw.slice(base.length - 1);
         return rest.startsWith("/") ? rest : `/${rest}`;
-      };
+      }
 
       // Before Vite's own middleware: a server-function URL is not a file and
       // not a page, and letting the SPA fallback answer it turns a 404 into an
@@ -1738,13 +1811,14 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
             await environment.runner.import(START_ENTRY_ID);
             await diagnostics.ready();
 
-            const call = (request: Request): Promise<Response | null> =>
-              start.handleServerFn(request, {
+            function call(request: Request): Promise<Response | null> {
+              return start.handleServerFn(request, {
                 allowedOrigins: options.allowedOrigins,
                 maxBodySize: options.server?.maxBodySize,
                 maxFormSize: options.server?.maxFormSize,
                 revealError: diagnostics.revealError,
               });
+            }
             // The entry's `around` wraps a call as it wraps a page, as the
             // built server does.
             const entry = await environment.runner.import<ServerEntryModule>(SERVER_ENTRY_ID);
@@ -1795,13 +1869,13 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
        * hands back a new module object when the entry or anything under it
        * changes, so keying on the object is the invalidation.
        */
-      let built: { from: object; fetch: (request: Request) => Promise<Response> } | null = null;
+      let built: BuiltPageFetch | null = null;
 
       // `ServerEntryModule`, not a local restatement of it. There WAS a local
       // one here, declaring `createFetch` as a named module export, and it was
       // the second copy `protocol.ts`'s own header warns about — it went stale
       // the moment the contract moved onto `default` and `tsc` caught it.
-      const pageFetch = async (): Promise<(request: Request) => Promise<Response>> => {
+      const pageFetch: () => Promise<(request: Request) => Promise<Response>> = async () => {
         const entry = await environment.runner.import<ServerEntryModule>(SERVER_ENTRY_ID);
         if (built !== null && built.from === entry) return built.fetch;
         // `createFetch` is how the dev server gets `/@vite/client` and every
@@ -1903,6 +1977,14 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
 /** `db.server.ts`, `db.server.tsx`, `db.server.mjs`: the side is the last word before the extension. */
 const SIDE_MARKED = { server: /\.server\.[cm]?[jt]sx?$/, client: /\.client\.[cm]?[jt]sx?$/ };
 
+interface ImporterInfo {
+  importers: readonly string[];
+}
+
+interface ProtectionContext extends ErrorContext {
+  getModuleInfo: (id: string) => ImporterInfo | null;
+}
+
 /**
  * Refuse a bundle that holds code from the other side's files.
  *
@@ -1923,18 +2005,15 @@ function importProtection(
     name: "barq-start:import-protection",
     sharedDuringBuild: true,
     generateBundle(_output, bundle) {
-      const context = this as unknown as {
-        environment?: { name?: string };
-        getModuleInfo: (id: string) => { importers: readonly string[] } | null;
-        error: (message: string) => never;
-      };
+      const context = this as unknown as ProtectionContext;
       const environment = context.environment?.name;
       const inBrowser = environment === ENVIRONMENTS.client;
       if (!inBrowser && environment !== ENVIRONMENTS.server) return;
       const foreign = inBrowser ? SIDE_MARKED.server : SIDE_MARKED.client;
       const root = rootOf();
-      const shown = (id: string): string =>
-        relative(root, id.split("?")[0] ?? id).replaceAll("\\", "/");
+      function shown(id: string): string {
+        return relative(root, id.split("?")[0] ?? id).replaceAll("\\", "/");
+      }
 
       const leaked = new Map<string, readonly string[]>();
       for (const chunk of Object.values(bundle)) {

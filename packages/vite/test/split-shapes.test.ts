@@ -58,7 +58,9 @@ afterAll(() => rmSync(OUT, { recursive: true, force: true }));
  * synthesized, or the build refuses the module and says so. Shipping it with no
  * diagnostic is the third outcome, and the one these gate.
  */
-const shipped = (marker: string): boolean => failure === "" && client.includes(marker);
+function shipped(marker: string): boolean {
+  return failure === "" && client.includes(marker);
+}
 
 describe("the client half of a server module", () => {
   test("the plain chain is synthesized", () => {

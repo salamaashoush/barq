@@ -1,6 +1,6 @@
 import type { Plugin } from "vite";
 
-import { consumerOf } from "./environment.ts";
+import { type ScanFlag, consumerOf } from "./environment.ts";
 
 const MARKER = "\0barq:boundary-marker";
 
@@ -23,7 +23,7 @@ export function boundaryModules(): Plugin {
     sharedDuringBuild: true,
     resolveId(id, importer, options) {
       if (id !== "server-only" && id !== "client-only") return null;
-      const scan = (options as { scan?: boolean } | undefined)?.scan === true;
+      const scan = (options as ScanFlag | undefined)?.scan === true;
       const server = consumerOf(this.environment, options) === "server";
       if (!scan && id === "server-only" && !server) {
         this.error(

@@ -22,5 +22,8 @@ runtime.id = "runtime";
 runtime.className = `${evaluated} ${red}`;
 app?.append(runtime);
 
-(window as { loadSecond?: () => Promise<void> }).loadSecond = () =>
-  import("./second.ts").then((module) => module.show());
+(window as SecondLoader).loadSecond = () => import("./second.ts").then((module) => module.show());
+
+interface SecondLoader {
+  loadSecond?: () => Promise<void>;
+}

@@ -1,1 +1,3 @@
-export const rows = (): string[] => ["SERVER_ONLY_MARKER_salama"];
+export function rows(): string[] {
+  return ["SERVER_ONLY_MARKER_salama"];
+}

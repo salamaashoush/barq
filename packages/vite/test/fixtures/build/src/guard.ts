@@ -24,6 +24,10 @@ import { type Middleware, useSession } from "@barqjs/start";
 const MARKER = "guard-module-reached-the-client";
 
 export const requireSession: Middleware = async (next) => {
-  const session = await useSession<{ user: string }>({ password: "fixture-key-not-a-secret" });
+  const session = await useSession<SessionData>({ password: "fixture-key-not-a-secret" });
   return next({ context: { user: session.data.user ?? MARKER } });
 };
+
+interface SessionData {
+  user: string;
+}

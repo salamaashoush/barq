@@ -4,7 +4,7 @@ import { SECRET, store } from "./db.ts";
 
 export const addTodo = createServerFn({ method: "POST" })
   .validator("unchecked")
-  .handler(async ({ data: title }: { data: string }) => {
+  .handler(async ({ data: title }: TodoCall) => {
     store.push(`${title}:${SECRET}`);
     return store.length;
   });
@@ -15,3 +15,7 @@ const internal = createServerFn().handler(async () => SECRET);
 // A no-argument call is written `internal()`, which is theirs — the bare form
 // forced `internal(undefined)` on every one of them.
 export const usesInternal = createServerFn().handler(async () => (await internal()).length);
+
+interface TodoCall {
+  data: string;
+}

@@ -1,1 +1,3 @@
-export const secret = (): string => "SERVER_ONLY_MARKER_salama";
+export function secret(): string {
+  return "SERVER_ONLY_MARKER_salama";
+}
