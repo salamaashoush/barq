@@ -2528,10 +2528,14 @@ export function ColorSwatch(props: ColorSwatchComponentProps) {
     "aria-label": () => props["aria-label"],
   });
 
-  const elementProps = mergeProps(swatchProps, {
-    class: () => props.class ?? props.className,
-    "data-testid": () => props["data-testid"],
-  });
+  const elementProps = mergeProps(
+    filterDOMProps(fromProps(cells(props)), { global: true }),
+    swatchProps,
+    {
+      class: () => props.class ?? props.className,
+      "data-testid": () => props["data-testid"],
+    },
+  );
 
   return <div {...elementProps} ref={mergeRefs(props.ref)} />;
 }

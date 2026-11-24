@@ -1791,3 +1791,12 @@ describe("the thumbs and the output take a class", () => {
     expect(output?.tagName).toBe("OUTPUT");
   });
 });
+
+describe("a swatch's own attributes", () => {
+  test("a data attribute and an id reach the swatch's element", () => {
+    render(() => <ColorSwatch color="#ff0000" id="red" data-slot="color-swatch" />);
+    const swatch = document.getElementById("red");
+    expect(swatch?.getAttribute("data-slot")).toBe("color-swatch");
+    expect(swatch?.getAttribute("role")).toBe("img");
+  });
+});
