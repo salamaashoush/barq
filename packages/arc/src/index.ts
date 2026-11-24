@@ -143,6 +143,14 @@ export {
   toolbarStyles,
 } from "./components/toolbar.tsx";
 export {
+  type OverlayPresentation,
+  ResponsiveOverlay,
+  type ResponsiveOverlayProps,
+  responsiveOverlayStyles,
+  useCompactOverlay,
+} from "./components/responsive-overlay.tsx";
+export { Tearsheet, type TearsheetProps, tearsheetStyles } from "./components/tearsheet.tsx";
+export {
   CommandMenu,
   commandMenuStyles,
   type CommandMenuAction,

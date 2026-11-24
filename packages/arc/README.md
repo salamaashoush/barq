@@ -538,6 +538,22 @@ import { ActionBar, IconButton, SplitButton, Toolbar } from "@barqjs/arc";
 ui's `ToggleGroup` is the toggle button group: single or multiple, on
 `@barqjs/aria`'s toggle group, with the arrows in the reading direction.
 
+## Overlays
+
+- `Tearsheet`: a large task in a layer over the page, the whole screen on a
+  phone and nearly all of it on a wide one, rising from the bottom so the
+  page it came from shows above it. A heading, a body that scrolls, an
+  `influencer` panel at the start for steps or filters (hidden on a compact
+  window), and actions at the foot clear of the home indicator. A press
+  outside does not close it unless `isDismissable`, and like `DetailSheet`
+  its open state can be a search parameter's.
+- `ResponsiveOverlay`: one overlay that is what the screen suits: a dialog,
+  or with `desktop="popover"` a popover beside its trigger, on a wide screen
+  with a mouse, and a sheet from the bottom, dragged down to close, below
+  `breakpoint` or under a finger at any width. The same heading, body,
+  footer and open state in each; a server and a hydrating page draw the wide
+  one. `useCompactOverlay` is the same question for an app's own overlay.
+
 ## Code
 
 ```tsx

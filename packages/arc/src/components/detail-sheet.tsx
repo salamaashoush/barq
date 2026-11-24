@@ -13,6 +13,7 @@ import {
 
 import { arcLayer as arc } from "../layer.ts";
 import { type Classes, type Customisable, parts } from "../lib/parts.ts";
+import { panelBody, panelFooter } from "../lib/panel.ts";
 import { openState } from "../lib/search-state.ts";
 import { edge, gap, layout, space } from "../style/index.ts";
 import { useArcMessages } from "./messages.ts";
@@ -25,15 +26,8 @@ export const detailSheetVariants = variants({
     header: arc(edge.bottom, { paddingInlineEnd: space.x12 }),
     title: arc({}),
     description: arc({}),
-    body: arc(layout.column, layout.minZeroBlock, layout.grow, gap[4], {
-      overflowY: "auto",
-      overscrollBehavior: "contain",
-      padding: space.x4,
-    }),
-    footer: arc(layout.wrap, layout.end, edge.top, {
-      flexDirection: "row",
-      paddingBlockEnd: "max(calc(var(--spacing) * 4), env(safe-area-inset-bottom))",
-    }),
+    body: arc(panelBody, { padding: space.x4 }),
+    footer: panelFooter,
   },
   variants: {
     size: {
