@@ -571,6 +571,15 @@ import { ResponsiveTabs } from "@barqjs/arc";
   `meta` at the end and `actions`. `virtual` draws only the rows on screen;
   `onLoadMore` asks for more as the end comes into view, with a loading row
   while `isLoadingMore`, and `empty` is what an empty list shows.
+- `TreeView`: a hierarchy to browse and choose from, on `@barqjs/aria`'s
+  tree: one Tab stop, Up and Down between rows, Right to open or go in and
+  Left to close or go out in the reading direction, type-ahead, and a
+  checkbox per row when several can be chosen. A node with `hasChildren` and
+  no `children` calls `onLoadChildren` as it opens and shows a loading line
+  while its id is in `loadingKeys`; `hasMore` puts a row at the end of a
+  level that asks `onLoadMore` for the rest. With `dragAndDropHooks` from
+  aria's `dragAndDrop()`, rows drag to reorder or into another, by pointer,
+  touch or a drag button the keyboard reaches.
 
 ## Media
 
