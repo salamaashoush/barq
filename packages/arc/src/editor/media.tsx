@@ -1,4 +1,5 @@
-import { Show, createContext, getOwner, install, useContext } from "@barqjs/core";
+import { Show, onCleanup } from "@barqjs/core";
+import { useLexicalEditor } from "@barqjs/lexical";
 import { variants } from "@barqjs/css";
 import { Image as ImageIcon } from "@barqjs/lucide/icons/image";
 import { RotateCcw } from "@barqjs/lucide/icons/rotate-ccw";
@@ -48,16 +49,21 @@ export interface EditorUploads {
   queue: UploadQueueApi;
 }
 
-const UploadsContext = createContext<EditorUploads | null>(null, "EditorUploads");
+/**
+ * Each editor's upload queue, by the editor: an image block is drawn by the
+ * composer's decorators, outside the component that made the queue, and the
+ * editor is what both can see.
+ */
+const uploadsByEditor = new WeakMap<LexicalEditor, EditorUploads>();
 
-/** The queue the images below the calling component upload through. */
-export function provideEditorUploads(uploads: EditorUploads): void {
-  const owner = getOwner();
-  if (owner !== null) install(owner, UploadsContext, () => uploads);
+/** The queue `editor`'s images upload through, for as long as the calling component lives. */
+export function provideEditorUploads(editor: LexicalEditor, uploads: EditorUploads): void {
+  uploadsByEditor.set(editor, uploads);
+  onCleanup(() => uploadsByEditor.delete(editor));
 }
 
 export function useEditorUploads(): EditorUploads | null {
-  return useContext(UploadsContext)();
+  return uploadsByEditor.get(useLexicalEditor()) ?? null;
 }
 
 function ImageView(props: BlockProps<ImageData>) {

@@ -311,7 +311,7 @@ function Uploads(props: {
     upload: (file, context) => props.upload(file, context),
     onUploaded: (item) => settleUpload(editor, item),
   });
-  provideEditorUploads({ queue });
+  provideEditorUploads(editor, { queue });
   return <>{props.children}</>;
 }
 

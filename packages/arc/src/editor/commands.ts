@@ -25,6 +25,7 @@ import {
 } from "@lexical/utils";
 import {
   $createParagraphNode,
+  $getRoot,
   $getSelection,
   $isElementNode,
   $isNodeSelection,
@@ -211,6 +212,10 @@ export function setLink(editor: LexicalEditor, url: string | null): void {
 }
 
 export function insertTable(editor: LexicalEditor, rows = 3, columns = 3): void {
+  // From a menu the editor may never have had a caret: the table goes at the end then.
+  editor.update(() => {
+    if ($getSelection() === null) $getRoot().selectEnd();
+  });
   editor.dispatchCommand(INSERT_TABLE_COMMAND, {
     rows: String(rows),
     columns: String(columns),
