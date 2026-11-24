@@ -465,3 +465,24 @@ export {
   tableOfContentsStyles,
 } from "./components/table-of-contents.tsx";
 export { SideNav, type SideNavProps, sideNavStyles } from "./components/side-nav.tsx";
+export {
+  AvatarStack,
+  type AvatarStackProps,
+  type Person,
+  type Presence,
+  avatarStackStyles,
+  initials,
+} from "./components/avatar-stack.tsx";
+export {
+  Timeline,
+  type TimelineEvent,
+  type TimelineProps,
+  timelineStyles,
+} from "./components/timeline.tsx";
+export {
+  type DescriptionItem,
+  DescriptionList,
+  type DescriptionListProps,
+  descriptionListStyles,
+} from "./components/description-list.tsx";
+export { StatGroup, type StatGroupProps, statGroupStyles } from "./components/stat-group.tsx";

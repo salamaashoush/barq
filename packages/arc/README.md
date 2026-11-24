@@ -538,6 +538,22 @@ import { ResponsiveTabs } from "@barqjs/arc";
   corner at the reading direction's end of what it wraps. The count is in the
   locale's digits and capped at `max` (`99+`); pinned, it carries words for a
   screen reader, `label` or arc's "3 new".
+- `AvatarStack`: the people on something, overlapped, on ui's avatar group:
+  a photo or initials each, in a list named by the names as the locale joins
+  them. A `presence` (`online`, `away`, `busy`, `offline`) is a dot in a tone
+  and in words, and the people past `max` are one "+3" read as "3 more".
+- `Timeline`: what happened to something, in order, as an ordered list down a
+  rail: each event's `title`, `description`, `actor`, and a marker that is its
+  `icon` or a dot in its `tone`. Its `time` is a `RelativeTime` measured from
+  `now` (or a `FormattedDate` with `timeFormat="absolute"`).
+- `DescriptionList`: a record's facts as terms and values in a `<dl>`, each
+  pair in a `<div>`, with an `action` beside a value. The term sits beside its
+  value from the container's `sm` step and above it below that (`layout`
+  fixes either), `columns` puts pairs side by side across a wide container,
+  and `renders` gives a term or a value another element.
+- `StatGroup`: `StatCard`s read together, two across a narrow container,
+  three across a middling one and `columns` across a wide one; `joined` draws
+  them as one strip with a rule between each, `separate` as cards apart.
 
 ## Inputs and pickers
 
