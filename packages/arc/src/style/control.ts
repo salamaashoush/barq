@@ -45,7 +45,9 @@ export const control = {
     when.disabledCursor,
     target.size,
     {
-      minHeight: space.x8,
+      // Logical, as target.size's is, so this one replaces it rather than
+      // racing it in the stylesheet as min-height would.
+      minBlockSize: space.x8,
       gap: "1px",
       paddingInline: space.x2_5,
       '& [role="spinbutton"]': {

@@ -30,13 +30,20 @@ export interface BarAction {
 export const actionBarStyles = variants({
   slots: {
     root: arc(layout.minZero, { flex: "1 1 auto" }),
-    group: arc(layout.row, gap[1.5], { flexWrap: "nowrap" }),
+    group: arc(layout.row, gap[1.5]),
     action: arc({}),
     icon: arc(layout.inlineCentre, glyph.md),
     more: arc({}),
     menu: arc({}),
     menuItem: arc(gap[2]),
   },
+  variants: {
+    overflow: {
+      collapse: { group: arc({ flexWrap: "nowrap" }) },
+      wrap: { group: layout.wrap },
+    },
+  },
+  defaults: { overflow: "collapse" },
 });
 
 type Slots = ReturnType<typeof actionBarStyles>;
@@ -79,7 +86,7 @@ export interface ActionBarProps extends Customisable<Slots> {
 export function ActionBar(props: ActionBarProps) {
   const messages = useArcMessages();
   const cls = () => {
-    const own = parts(actionBarStyles(), props.classes);
+    const own = parts(actionBarStyles({ overflow: props.overflow ?? "collapse" }), props.classes);
     const size = props.size ?? "sm";
     const menu = dropdownMenuVariants();
     return {

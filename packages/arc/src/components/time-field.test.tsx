@@ -3,6 +3,7 @@ import { type Child, createSignal } from "@barqjs/core";
 import { Time } from "@barqjs/aria/date";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user } from "@barqjs/testing";
+import { touch } from "@barqjs/ui/shared-touch";
 
 import { control, target } from "../style/index.ts";
 import { hydrates, settle, wears } from "../test-arc.ts";
@@ -42,7 +43,7 @@ describe("TimeField", () => {
     const box = document.querySelector('[data-slot="time-field-control"]');
     expect(box?.getAttribute("data-invalid")).not.toBeNull();
     expect(wears(box, control.segmented)).toBe(true);
-    expect(wears(box, target.size)).toBe(true);
+    expect(wears(box, touch.target)).toBe(true);
   });
 
   test("holds the form's value inside form.AppField", async () => {

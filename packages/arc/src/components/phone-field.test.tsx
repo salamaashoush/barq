@@ -57,6 +57,20 @@ describe("PhoneField", () => {
     expect(country().textContent).toBe("GB +44");
   });
 
+  test("clearing a number keeps the region it was typed in", async () => {
+    const [phone, setPhone] = createSignal<string | null>("+201001234567");
+    render(() => <PhoneField label="Mobile" value={phone()} onChange={setPhone} />);
+    await settle();
+    expect(country().textContent).toBe("EG +20");
+    await user.clear(input());
+    await settle();
+    expect(phone()).toBeNull();
+    expect(country().textContent).toBe("EG +20");
+    await user.type(input(), "1001234567");
+    await settle();
+    expect(phone()).toBe("+201001234567");
+  });
+
   test("choosing a region from the list keeps the number and changes its code", async () => {
     const [phone, setPhone] = createSignal<string | null>("+201001234567");
     render(() => (

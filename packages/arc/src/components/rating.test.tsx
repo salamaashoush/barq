@@ -49,6 +49,22 @@ describe("Rating", () => {
     expect(score()).toBeNull();
   });
 
+  test("pressing the chosen star itself, its label rather than its input, takes the rating away", async () => {
+    const [score, setScore] = createSignal<number | null>(3);
+    render(() => <Rating label="Score" value={score()} onChange={setScore} allowClear />);
+    await settle();
+    const third = document.querySelectorAll('label[data-slot="rating-star"]')[2] as HTMLElement;
+    const radio = stars()[2] as HTMLInputElement;
+    // A browser's click on a label goes on to click its control, in the same task.
+    third.addEventListener("click", (event) => {
+      if (event.target === third) queueMicrotask(() => radio.click());
+    });
+    await user.click(third);
+    await settle();
+    expect(score()).toBeNull();
+    expect(stars()[2]?.checked).toBe(false);
+  });
+
   test("the arrows move and choose, in the reading direction", async () => {
     function Rtl(props: { children?: Child }) {
       provideLocale("ar-EG");

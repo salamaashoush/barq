@@ -231,6 +231,9 @@ export function PhoneField(props: PhoneFieldProps) {
           aria-describedby={wiring.describedBy(props.description !== undefined)}
           onInput={(event: Event) => {
             const text = (event.currentTarget as HTMLInputElement).value;
+            // The country shown is the one being typed in, even once the
+            // number is cleared and no longer says which it was.
+            if (untrack(picked) === null) setPicked(untrack(country));
             setTyped(text);
             if (untrack(problem) !== null) setProblem(null);
             commit(untrack(country), text);

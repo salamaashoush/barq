@@ -4,7 +4,19 @@ import { box } from "@barqjs/ui/shared-box";
 import { ring } from "@barqjs/ui/shared-ring";
 import { text } from "@barqjs/ui/shared-text";
 
-import { edge, focus, gap, layout, motion, space, surface, target, tone, type } from "./index.ts";
+import {
+  control,
+  edge,
+  focus,
+  gap,
+  layout,
+  motion,
+  space,
+  surface,
+  target,
+  tone,
+  type,
+} from "./index.ts";
 
 const classesOf = (group: string): string[] => group.split(" ");
 
@@ -40,6 +52,19 @@ describe("arc's style", () => {
     expect(sheet).toMatch(/@media \(pointer: coarse\)\{\.[\w-]+\{min-block-size:2\.75rem\}/);
     expect(classesOf(motion.colours).length).toBeGreaterThan(2);
     expect(classesOf(target.size).length).toBe(4);
+  });
+
+  test("a box of segments is an input's height, its own height replacing a target's", () => {
+    const sheet = collectCss();
+    const rules = classesOf(control.segmented).map((one) => {
+      const at = sheet.indexOf(`.${one}{`);
+      return sheet.slice(at, sheet.indexOf("}", at) + 1);
+    });
+    expect(rules.filter((rule) => rule.includes("min-height"))).toEqual([]);
+    const heights = rules
+      .filter((rule) => rule.includes("min-block-size"))
+      .map((rule) => rule.slice(rule.indexOf("min-block-size:"), -1));
+    expect(heights).toEqual([`min-block-size:${space.x8}`, "min-block-size:2.75rem"]);
   });
 
   test("a tone sets the three properties its children draw in", () => {

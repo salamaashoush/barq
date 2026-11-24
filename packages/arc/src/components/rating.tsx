@@ -96,6 +96,7 @@ export function Rating(props: RatingProps) {
   const locale = useLocale();
   const of = bindField<number | null>(props, null);
   const [hovered, setHovered] = createSignal<number | null>(null);
+  let cleared: number | null = null;
   const max = (): number => props.max ?? 5;
   const stars = (): number[] => Array.from({ length: max() }, (_, at) => at + 1);
   const cls = () =>
@@ -154,6 +155,7 @@ export function Rating(props: RatingProps) {
       isRequired={props.isRequired}
       isInvalid={of.isInvalid()}
       onChange={(next: string) => {
+        if (Number(next) === cleared) return;
         of.change(Number(next));
         of.blur();
       }}
@@ -170,6 +172,13 @@ export function Rating(props: RatingProps) {
             onPointerEnter={() => setHovered(star)}
             onPress={() => {
               if (props.allowClear === true && of.value() === star) {
+                // A press on the star's label goes on to click its radio, which
+                // the browser checks again once the rating is gone; that click
+                // is this same press, not a new choice.
+                cleared = star;
+                setTimeout(() => {
+                  cleared = null;
+                });
                 of.change(null);
                 setHovered(null);
               }

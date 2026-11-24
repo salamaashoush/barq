@@ -3,8 +3,9 @@ import { type Child, flush } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user, within } from "@barqjs/testing";
 
-import { hydrates, settle } from "../test-arc.ts";
-import { ActionBar, type BarAction } from "./action-bar.tsx";
+import { hydrates, settle, wears } from "../test-arc.ts";
+import { ActionBar, type BarAction, actionBarStyles } from "./action-bar.tsx";
+import { layout } from "../style/index.ts";
 
 function Rtl(props: { children?: Child }) {
   provideLocale("ar-EG");
@@ -80,6 +81,20 @@ describe("ActionBar", () => {
     (buttons[0] as HTMLElement).focus();
     await user.keyboard("{ArrowLeft}");
     expect(document.activeElement).toBe(buttons[1] as HTMLElement);
+  });
+
+  test("overflow=wrap lets the row wrap, and collapse keeps it on one line", async () => {
+    render(() => (
+      <>
+        <ActionBar aria-label="Wrapping" actions={ACTIONS} onAction={() => {}} overflow="wrap" />
+        <ActionBar aria-label="Collapsing" actions={ACTIONS} onAction={() => {}} />
+      </>
+    ));
+    await settle();
+    const [wrapping, collapsing] = [...document.querySelectorAll('[data-slot="action-bar-group"]')];
+    expect(wears(wrapping, layout.wrap)).toBe(true);
+    expect(wears(collapsing, layout.wrap)).toBe(false);
+    expect(wears(collapsing, actionBarStyles({ overflow: "collapse" }).group)).toBe(true);
   });
 
   test("its parts take classes and slots", async () => {
