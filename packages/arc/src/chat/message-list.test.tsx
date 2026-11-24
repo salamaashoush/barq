@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { type Child, createSignal, flush } from "@barqjs/core";
+import { type Child, DEV, createSignal, flush } from "@barqjs/core";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user } from "@barqjs/testing";
 
@@ -446,6 +446,27 @@ describe("MessageList", () => {
     expect(rowTop("m59")).toBe(rowsHeight() - 90);
     expect(rowTop("m58")).toBe(rowsHeight() - 90 - 40);
     expect(atBottom(viewport)).toBe(true);
+    result.unmount();
+  });
+
+  test("hydrated and laid out, no effect reads a signal it did not track", async () => {
+    const capture = DEV.diagnostics.capture();
+    const result = await hydrates(`
+      import { MessageList } from ${JSON.stringify(new URL("./index.ts", import.meta.url).pathname)};
+      const messages = Array.from({ length: 30 }, (_, n) => ({
+        id: "m" + n,
+        author: { id: n % 2 === 0 ? "a" : "b", name: n % 2 === 0 ? "Alex" : "Sam" },
+        createdAt: new Date(Date.UTC(2026, 4, 10, 8, 0) + n * 60000),
+        body: "Message " + n,
+      }));
+      export function Page() {
+        return <MessageList messages={messages} timeZone="UTC" now={new Date("2026-05-10T12:00:00Z")} />;
+      }
+    `);
+    await laidOut();
+    await settle();
+    const strict = capture.stop().filter((event) => event.code === "STRICT_READ_UNTRACKED");
+    expect(strict).toEqual([]);
     result.unmount();
   });
 

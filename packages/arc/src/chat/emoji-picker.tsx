@@ -65,7 +65,10 @@ export const emojiPickerStyles = variants({
       opacity: "0.6",
       "[aria-current]": { opacity: "1", boxShadow: `inset 0 -2px 0 ${tokens.primary}` },
     }),
+    // The body grows from nothing, which in the picker's column would size it
+    // by its content and draw every row; from its own height it scrolls them.
     viewport: arc(panel.body, layout.relative, focus.outline, {
+      flexBasis: "auto",
       blockSize: "var(--arc-emoji-height, 16rem)",
     }),
     grid: arc(layout.relative, { inlineSize: "100%" }),

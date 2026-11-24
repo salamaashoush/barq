@@ -5,7 +5,7 @@ import {
   createEffect,
   createSignal,
   createUniqueId,
-  type JSXElement,
+  untrack,
 } from "@barqjs/core";
 import { variants } from "@barqjs/css";
 import { announce } from "@barqjs/aria/live";
@@ -47,6 +47,7 @@ import {
   gap,
   interaction,
   layout,
+  place,
   rounded,
   space,
   surface,
@@ -71,10 +72,8 @@ import type { ChatAttachment, ChatMessage, MessageHandlers } from "./model.ts";
 
 export const messageItemStyles = variants({
   slots: {
-    root: arc(layout.relative, rounded.md, interaction.hover, focus.inset, {
+    root: arc(layout.relative, rounded.md, interaction.hover, focus.inset, place.paddedLine, {
       outlineStyle: "none",
-      paddingInline: space.x3,
-      paddingBlock: space.x1,
       "&:focus-within": { backgroundColor: "color-mix(in oklab, var(--muted) 50%, transparent)" },
     }),
     message: arc({}),
@@ -110,17 +109,11 @@ export const messageItemStyles = variants({
     threadCount: arc(fg.link, type.medium),
     state: arc(layout.row, layout.wrap, gap[2], type.caption, fg.muted),
     error: arc(fg.danger),
-    actions: arc(surface.elevated, rounded.md, {
-      position: "absolute",
+    actions: arc(surface.elevated, rounded.md, place.passive, interaction.reveal, {
       insetBlockStart: `calc(${space.x4} * -1)`,
       insetInlineEnd: space.x3,
       zIndex: "1",
-      opacity: "0",
-      pointerEvents: "none",
-      "[data-slot=message-item]:is(:hover, :focus-within) > &, &[data-open]": {
-        opacity: "1",
-        pointerEvents: "auto",
-      },
+      ":is(:hover, :focus-within) > &, &[data-open]": { pointerEvents: "auto" },
     }),
     sheet: arc(layout.column, gap[1]),
     quick: arc(layout.row, layout.between, { paddingBlockEnd: space.x2 }),
@@ -240,7 +233,7 @@ export function MessageItem(props: MessageItemProps) {
   // Leaving the editor, by saving or by Escape, hands focus back to the
   // message rather than dropping it to the page.
   createEffect(editing, (now, was) => {
-    const element = article();
+    const element = untrack(article);
     if (was !== true || now || element === null) return;
     const active = element.ownerDocument.activeElement;
     if (active === null || active === element.ownerDocument.body || element.contains(active)) {
@@ -270,12 +263,6 @@ export function MessageItem(props: MessageItemProps) {
       </div>
     );
   };
-
-  const action = (label: string, icon: JSXElement, run: () => void) => (
-    <IconButton label={label} variant="ghost" size="sm" tooltip={false} onPress={run}>
-      {icon}
-    </IconButton>
-  );
 
   return (
     <article
@@ -434,14 +421,26 @@ export function MessageItem(props: MessageItemProps) {
               </EmojiButton>
             </Show>
             <Show when={props.onReply !== undefined}>
-              {action(messages().replyInThread, <MessageSquare aria-hidden="true" />, () =>
-                props.onReply?.(message()),
-              )}
+              <IconButton
+                label={messages().replyInThread}
+                variant="ghost"
+                size="sm"
+                tooltip={false}
+                onPress={() => props.onReply?.(message())}
+              >
+                <MessageSquare aria-hidden="true" />
+              </IconButton>
             </Show>
             <Show when={canEdit()}>
-              {action(messages().editMessage, <Pencil aria-hidden="true" />, () =>
-                props.onEdit?.(message()),
-              )}
+              <IconButton
+                label={messages().editMessage}
+                variant="ghost"
+                size="sm"
+                tooltip={false}
+                onPress={() => props.onEdit?.(message())}
+              >
+                <Pencil aria-hidden="true" />
+              </IconButton>
             </Show>
             <Show when={hasMenu()}>
               <DropdownMenu isOpen={menu()} onOpenChange={setMenu}>

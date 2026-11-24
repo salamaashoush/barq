@@ -90,7 +90,7 @@ function mount(collection: Collection<Row, string>, extra: { write?: (one: Row) 
   let history: MessageHistory<Row> | undefined;
   render(() => {
     history = useMessageHistory<Row>({
-      collection: collection as never,
+      collection,
       query: (q) =>
         q
           .from({ message: collection })

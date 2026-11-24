@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { fileURLToPath } from "node:url";
-import { type Child, createSignal, resetChildIds } from "@barqjs/core";
+import { type Child, DEV, createSignal, resetChildIds } from "@barqjs/core";
 import { hydrate } from "@barqjs/web";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, cleanup, render, screen, user, waitFor, within } from "@barqjs/testing";
@@ -162,6 +162,22 @@ describe("RichTextEditor", () => {
     expect(counter?.textContent).toBe("6/5");
     expect(counter?.hasAttribute("data-over")).toBe(true);
     expect(counter?.getAttribute("aria-label")).toBe("1 character too many");
+  });
+
+  test("going past the limit is announced from what the effect tracked", async () => {
+    const codes: string[] = [];
+    const unsubscribe = DEV.diagnostics.subscribe((event) => {
+      codes.push(event.code);
+    });
+    const editor = capture();
+    render(() => <RichTextEditor label="Bio" maxLength={2} onEditor={editor.set} />);
+    await settle();
+    await typeText(editor.get(), "abc");
+    unsubscribe();
+    expect(document.querySelector('[data-slot="rich-text-editor-counter"]')?.textContent).toBe(
+      "3/2",
+    );
+    expect(codes).not.toContain("STRICT_READ_UNTRACKED");
   });
 
   test("saves once typing pauses, and says so", async () => {

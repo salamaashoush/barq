@@ -305,6 +305,28 @@ describe("MessageItem", () => {
     expect(slot("message-item").classList.contains("mine")).toBe(true);
   });
 
+  test("its reply and edit buttons are hydrated in place", async () => {
+    const result = await hydrates(`
+      import { MessageItem } from ${JSON.stringify(new URL("./index.ts", import.meta.url).pathname)};
+      export function Page() {
+        return (
+          <MessageItem
+            timeZone="UTC"
+            now={new Date("2026-05-10T12:00:00Z")}
+            currentUserId="a"
+            onReply={() => undefined}
+            onEdit={() => undefined}
+            message={{ id: "m1", author: { id: "a", name: "Salama" }, createdAt: new Date("2026-05-10T09:30:00Z"), body: "Hello" }}
+          />
+        );
+      }
+    `);
+    expect(result.container.querySelectorAll('[data-slot="message-item-actions"] svg').length).toBe(
+      2,
+    );
+    result.unmount();
+  });
+
   test("a server's markup is hydrated in place", async () => {
     const result = await hydrates(`
       import { MessageItem } from ${JSON.stringify(new URL("./index.ts", import.meta.url).pathname)};

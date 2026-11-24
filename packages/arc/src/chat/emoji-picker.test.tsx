@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { type Child } from "@barqjs/core";
+import { collectCss } from "@barqjs/css";
 import { provideLocale } from "@barqjs/aria/i18n";
 import { ariaViolations, render, screen, user, waitFor } from "@barqjs/testing";
 
@@ -50,6 +51,19 @@ describe("EmojiPicker", () => {
     expect(screen.getByRole("listbox", { name: "Choose an emoji" })).toBeDefined();
     expect(screen.getAllByRole("button", { name: /Smileys|People|Animals|Food/u }).length).toBe(4);
     expect(await ariaViolations(document.body)).toEqual([]);
+  });
+
+  test("its viewport keeps its own height in the picker's column rather than its content's", async () => {
+    render(() => <EmojiPicker source={sampleSource()} onSelect={() => {}} />);
+    await opened();
+    const sheet = collectCss().replaceAll(" ", "");
+    const rules = slot("emoji-picker-viewport")
+      .className.split(" ")
+      .flatMap((one) => sheet.match(new RegExp(`\\.${one}\\{[^}]*\\}`, "gu")) ?? []);
+    expect(rules.some((rule) => rule.includes("flex-basis:auto"))).toBe(true);
+    expect(rules.some((rule) => rule.includes("block-size:var(--arc-emoji-height,16rem)"))).toBe(
+      true,
+    );
   });
 
   test("a search narrows to what matches, and Enter chooses the first", async () => {

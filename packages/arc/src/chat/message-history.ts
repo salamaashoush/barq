@@ -21,7 +21,7 @@ export interface MessageHistoryOptions<Row extends object> {
    * Where the messages are kept. A send is an optimistic `insert`, so the
    * collection persists it in its `onInsert`.
    */
-  collection: Collection<Row, Key, Writable<Row>>;
+  collection: Collection<Row, string, Writable<Row>> | Collection<Row, number, Writable<Row>>;
   /**
    * The conversation's messages, the newest first: `q.from({ message:
    * messages }).where(...).orderBy(({ message }) => message.createdAt,

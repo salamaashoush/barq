@@ -62,18 +62,14 @@ export const messageListStyles = variants({
         backgroundColor: `color-mix(in oklab, ${tokens.primary} 14%, transparent)`,
       },
     }),
-    separator: arc(layout.row, gap[3], type.meta, type.medium, {
-      paddingBlock: space.x2,
-      paddingInline: space.x3,
+    separator: arc(layout.row, gap[3], type.meta, type.medium, place.padded, {
       "::before, ::after": {
         content: '""',
         flex: "1",
         borderBlockStart: `1px solid ${tokens.border}`,
       },
     }),
-    unread: arc(layout.row, gap[2], type.caption, type.strong, fg.danger, {
-      paddingInline: space.x3,
-      paddingBlock: space.x1,
+    unread: arc(layout.row, gap[2], type.caption, type.strong, fg.danger, place.paddedLine, {
       "::after": {
         content: '""',
         flex: "1",
@@ -424,7 +420,7 @@ export function MessageList(props: MessageListProps) {
   if (!isServer) {
     createEffect(
       () => [height(), viewportHeight(), collection(), seeded()] as const,
-      () => restore(),
+      () => untrack(restore),
     );
   }
 
