@@ -69,7 +69,7 @@ function compile(file: string, bareFrom: string, depth: number, exportsAsked = f
         exportsCache.set(dependency, rows);
       }
       for (const row of rows) {
-        if (row[0] !== name) continue;
+        if (row[1] === "from" || (name !== "*" && row[0] !== name)) continue;
         cssImports.push([specifier, ...row]);
         learned = true;
       }

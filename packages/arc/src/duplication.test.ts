@@ -140,7 +140,7 @@ describe("duplication", () => {
     const places = modules().flatMap((path) => placesIn(join(root, path), root, path));
     expect(places.length).toBeGreaterThan(50);
     const treatments = places.filter(
-      (place) => place.file === "style/index.ts" && place.name !== undefined,
+      (place) => place.file.startsWith("style/") && place.name !== undefined,
     );
     expect(report(duplicates(places, uiGroups(ui, root, UI_GROUPS), treatments))).toEqual([]);
   });
@@ -172,16 +172,17 @@ describe("duplication", () => {
       const places = ["one.ts", "two.ts", "three.ts"].flatMap((name) =>
         placesIn(join(dir, name), root, name),
       );
-      const treatments = placesIn(join(root, "style/index.ts"), root, "style/index.ts").filter(
-        (place) => place.name !== undefined,
-      );
+      const treatments = modules()
+        .filter((path) => path.startsWith("style/"))
+        .flatMap((path) => placesIn(join(root, path), root, path))
+        .filter((place) => place.name !== undefined);
       const found = report(duplicates(places, uiGroups(ui, root, UI_GROUPS), treatments));
       const pair = found.find((one) => one.startsWith("one.ts:3 (card) and two.ts:3 (card)"));
       expect(pair).toContain("{ display:flex }");
       expect(pair).toContain("{ padding:1px }");
       expect(pair).toContain("move the group into @barqjs/arc/style");
       expect(found).toContain(
-        "one.ts:3 (card) and style/index.ts:" +
+        "one.ts:3 (card) and style/layout.ts:" +
           String(treatments.find((one) => one.name === "layout.row")?.line) +
           " (layout.row) both write & { display:flex }; & { align-items:center }: compose layout.row from @barqjs/arc/style",
       );
