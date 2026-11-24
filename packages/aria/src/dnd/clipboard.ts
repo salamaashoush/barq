@@ -7,9 +7,13 @@ import { access, type DOMProps, type MaybeAccessor } from "../utils.ts";
 import { readFromDataTransfer, writeToDataTransfer } from "./data.ts";
 import type { DragItem, DropItem } from "./types.ts";
 
+export interface ClipboardDetails {
+  action: "cut" | "copy";
+}
+
 export interface ClipboardOptions {
   /** What a copy or a cut writes. Without it, nothing can be copied. */
-  getItems?: (details: { action: "cut" | "copy" }) => DragItem[];
+  getItems?: (details: ClipboardDetails) => DragItem[];
   onCopy?: () => void;
   /** Without it, nothing can be cut. */
   onCut?: () => void;
@@ -24,19 +28,21 @@ export interface ClipboardResult {
 
 type ClipboardListener = (event: ClipboardEvent) => void;
 
-const clipboardHandlers = new Map<
-  string,
-  { listener: (event: Event) => void; handlers: Set<ClipboardListener> }
->();
+interface ClipboardRegistration {
+  listener: (event: Event) => void;
+  handlers: Set<ClipboardListener>;
+}
+
+const clipboardHandlers = new Map<string, ClipboardRegistration>();
 
 /** One document listener per event, shared by every element that wants it. */
 function addClipboardListener(type: string, handler: ClipboardListener): () => void {
   let entry = clipboardHandlers.get(type);
   if (entry === undefined) {
     const handlers = new Set<ClipboardListener>();
-    const listener = (event: Event): void => {
+    function listener(event: Event): void {
       for (const each of handlers) each(event as ClipboardEvent);
-    };
+    }
     entry = { listener, handlers };
     clipboardHandlers.set(type, entry);
     document.addEventListener(type, listener);
@@ -67,39 +73,39 @@ export function clipboard(options: ClipboardOptions): ClipboardResult {
   });
 
   // Each `before*` event enables the menu item in Safari.
-  const onBeforeCopy = (event: ClipboardEvent): void => {
+  function onBeforeCopy(event: ClipboardEvent): void {
     if (isFocused && options.getItems !== undefined) event.preventDefault();
-  };
-  const onCopy = (event: ClipboardEvent): void => {
+  }
+  function onCopy(event: ClipboardEvent): void {
     if (!isFocused || options.getItems === undefined) return;
     event.preventDefault();
     if (event.clipboardData === null) return;
     writeToDataTransfer(event.clipboardData, options.getItems({ action: "copy" }));
     options.onCopy?.();
-  };
-  const onBeforeCut = (event: ClipboardEvent): void => {
+  }
+  function onBeforeCut(event: ClipboardEvent): void {
     if (isFocused && options.onCut !== undefined && options.getItems !== undefined) {
       event.preventDefault();
     }
-  };
-  const onCut = (event: ClipboardEvent): void => {
+  }
+  function onCut(event: ClipboardEvent): void {
     if (!isFocused || options.onCut === undefined || options.getItems === undefined) return;
     event.preventDefault();
     if (event.clipboardData === null) return;
     writeToDataTransfer(event.clipboardData, options.getItems({ action: "cut" }));
     options.onCut();
-  };
+  }
   // The types are not readable here, so Paste is enabled whatever is on the
   // clipboard.
-  const onBeforePaste = (event: ClipboardEvent): void => {
+  function onBeforePaste(event: ClipboardEvent): void {
     if (isFocused && options.onPaste !== undefined) event.preventDefault();
-  };
-  const onPaste = (event: ClipboardEvent): void => {
+  }
+  function onPaste(event: ClipboardEvent): void {
     if (!isFocused || options.onPaste === undefined) return;
     event.preventDefault();
     if (event.clipboardData === null) return;
     options.onPaste(readFromDataTransfer(event.clipboardData));
-  };
+  }
 
   if (!isServer) {
     createEffect(

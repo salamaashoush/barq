@@ -88,7 +88,12 @@ export interface DragResult {
   isDragging: Accessor<boolean>;
 }
 
-const DRAG_MESSAGES: Record<DragModality, { start: DndMessage; end: DndMessage }> = {
+interface DragMessages {
+  start: DndMessage;
+  end: DndMessage;
+}
+
+const DRAG_MESSAGES: Record<DragModality, DragMessages> = {
   keyboard: { start: "dragDescriptionKeyboard", end: "endDragKeyboard" },
   touch: { start: "dragDescriptionTouch", end: "endDragTouch" },
   virtual: { start: "dragDescriptionVirtual", end: "endDragVirtual" },
@@ -109,22 +114,25 @@ export interface DragInteraction {
 export function dragInteraction(options: DragOptions): DragInteraction {
   const strings = stringFormatter(dndStrings);
   const currentModality = dragModality();
-  const isDisabled = (): boolean => access(options.isDisabled) === true;
+  function isDisabled(): boolean {
+    return access(options.isDisabled) === true;
+  }
   const listeners = globalListeners();
 
   const state = { x: 0, y: 0 };
   let draggingElement: Element | null = null;
   const [isDragging, setDraggingState] = createSignal(false, { ownedWrite: true });
-  const setDragging = (element: Element | null): void => {
+  function setDragging(element: Element | null): void {
     draggingElement = element;
     setDraggingState(element !== null);
-  };
+  }
   let modalityOnPointerDown: string | null = null;
 
-  const allowedOperations = (): DropOperation[] =>
-    options.getAllowedDropOperations?.() ?? ["move", "copy", "link"];
+  function allowedOperations(): DropOperation[] {
+    return options.getAllowedDropOperations?.() ?? ["move", "copy", "link"];
+  }
 
-  const startDragging = (target: HTMLElement): void => {
+  function startDragging(target: HTMLElement): void {
     if (options.onDragStart !== undefined) {
       const { x, y } = centre(target);
       options.onDragStart({ type: "dragstart", x, y });
@@ -144,9 +152,9 @@ export function dragInteraction(options: DragOptions): DragInteraction {
     );
 
     setDragging(target);
-  };
+  }
 
-  const onDragStart = (event: DragEvent): void => {
+  function onDragStart(event: DragEvent): void {
     if (event.defaultPrevented || isDisabled()) return;
     // A draggable inside a draggable: only the innermost drags.
     event.stopPropagation();
@@ -229,22 +237,22 @@ export function dragInteraction(options: DragOptions): DragInteraction {
     // dragging style lands.
     const target = event.target as Element;
     requestAnimationFrame(() => setDragging(target));
-  };
+  }
 
-  const onDrag = (event: DragEvent): void => {
+  function onDrag(event: DragEvent): void {
     event.stopPropagation();
     if (event.clientX === state.x && event.clientY === state.y) return;
     options.onDragMove?.({ type: "dragmove", x: event.clientX, y: event.clientY });
     state.x = event.clientX;
     state.y = event.clientY;
-  };
+  }
 
-  const resetGlobals = (): void => {
+  function resetGlobals(): void {
     setGlobalAllowedDropOperations(NONE);
     setGlobalDropEffect(undefined);
-  };
+  }
 
-  const onDragEnd = (event: DragEvent): void => {
+  function onDragEnd(event: DragEvent): void {
     event.stopPropagation();
     if (options.onDragEnd !== undefined) {
       // Chrome on Android always reports `none`, so the effect the drop target
@@ -261,7 +269,7 @@ export function dragInteraction(options: DragOptions): DragInteraction {
     setDragging(null);
     listeners.removeAll();
     resetGlobals();
-  };
+  }
 
   // A dragged element removed by its own drop never receives `dragend`
   // (https://bugzilla.mozilla.org/show_bug.cgi?id=460801), so the drag is
@@ -282,11 +290,11 @@ export function dragInteraction(options: DragOptions): DragInteraction {
     });
   });
 
-  const onPress = (event: PressEvent): void => {
+  function onPress(event: PressEvent): void {
     if (isDisabled()) return;
     if (event.pointerType !== "keyboard" && event.pointerType !== "virtual") return;
     startDragging(event.target as HTMLElement);
-  };
+  }
 
   const accessibleProps: DOMProps = {
     onPointerDown(event: PointerEvent) {
@@ -370,7 +378,9 @@ export function dragInteraction(options: DragOptions): DragInteraction {
  */
 export function drag(options: DragOptions): DragResult {
   const interaction = dragInteraction(options);
-  const isDisabled = (): boolean => access(options.isDisabled) === true;
+  function isDisabled(): boolean {
+    return access(options.isDisabled) === true;
+  }
   const describedBy = description(() => (isDisabled() ? undefined : interaction.message()));
 
   const dragProps = mergeProps(
@@ -484,7 +494,9 @@ function allowedOperationsOf(event: DragEvent): number {
 }
 
 export function dropBehaviour(options: DropOptions, describe: boolean): DropResult {
-  const isDisabled = (): boolean => access(options.isDisabled) === true;
+  function isDisabled(): boolean {
+    return access(options.isDisabled) === true;
+  }
   const [isDropTarget, setDropTarget] = createSignal(false, { ownedWrite: true });
   const state = {
     x: 0,
@@ -497,22 +509,22 @@ export function dropBehaviour(options: DropOptions, describe: boolean): DropResu
 
   tryCleanup(() => clearTimeout(state.dropActivateTimer));
 
-  const relative = (event: DragEvent, x = event.clientX, y = event.clientY) => {
+  function relative(event: DragEvent, x = event.clientX, y = event.clientY) {
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
     return { x: x - rect.x, y: y - rect.y };
-  };
+  }
 
-  const fireDropEnter = (event: DragEvent): void => {
+  function fireDropEnter(event: DragEvent): void {
     setDropTarget(true);
     options.onDropEnter?.({ type: "dropenter", ...relative(event) });
-  };
+  }
 
-  const fireDropExit = (event: DragEvent): void => {
+  function fireDropExit(event: DragEvent): void {
     setDropTarget(false);
     options.onDropExit?.({ type: "dropexit", ...relative(event) });
-  };
+  }
 
-  const operationForPoint = (event: DragEvent, allowedBits: number, x: number, y: number) => {
+  function operationForPoint(event: DragEvent, allowedBits: number, x: number, y: number) {
     const forPoint = options.getDropOperationForPoint;
     if (forPoint === undefined || event.dataTransfer === null) return null;
     const point = relative(event, x, y);
@@ -525,9 +537,9 @@ export function dropBehaviour(options: DropOptions, describe: boolean): DropResu
         point.y,
       ),
     );
-  };
+  }
 
-  const onDragOver = (event: DragEvent): void => {
+  function onDragOver(event: DragEvent): void {
     event.preventDefault();
     event.stopPropagation();
     if (isDisabled() || event.dataTransfer === null) return;
@@ -580,9 +592,9 @@ export function dropBehaviour(options: DropOptions, describe: boolean): DropResu
         onDropActivate({ type: "dropactivate", ...point });
       }, DROP_ACTIVATE_TIMEOUT);
     }
-  };
+  }
 
-  const onDragEnter = (event: DragEvent): void => {
+  function onDragEnter(event: DragEvent): void {
     event.preventDefault();
     event.stopPropagation();
     if (isDisabled() || event.dataTransfer === null) return;
@@ -609,9 +621,9 @@ export function dropBehaviour(options: DropOptions, describe: boolean): DropResu
     event.dataTransfer.dropEffect = state.dropEffect;
 
     if (operation !== "cancel") fireDropEnter(event);
-  };
+  }
 
-  const onDragLeave = (event: DragEvent): void => {
+  function onDragLeave(event: DragEvent): void {
     event.preventDefault();
     event.stopPropagation();
     if (isDisabled()) return;
@@ -634,9 +646,9 @@ export function dropBehaviour(options: DropOptions, describe: boolean): DropResu
     if (state.dragOverElements.size > 0) return;
     if (state.dropEffect !== "none") fireDropExit(event);
     clearTimeout(state.dropActivateTimer);
-  };
+  }
 
-  const onDrop = (event: DragEvent): void => {
+  function onDrop(event: DragEvent): void {
     event.preventDefault();
     event.stopPropagation();
     if (isDisabled()) return;
@@ -662,7 +674,7 @@ export function dropBehaviour(options: DropOptions, describe: boolean): DropResu
     // internal, and the exit above cleared the drop collection.
     if (snapshot.draggingCollectionRef === undefined) setGlobalDropEffect(undefined);
     else setGlobalDndState(snapshot);
-  };
+  }
 
   createEffect(
     () => ({ element: refElement(options.ref) as HTMLElement | null, disabled: isDisabled() }),
@@ -742,7 +754,7 @@ export function autoScroll(ref: ElementRef): AutoScroll {
     y: true,
   };
 
-  const resolve = (): Element | null => {
+  function resolve(): Element | null {
     const element = refElement(ref);
     if (element === null) return null;
     if (state.scrollable === null) {
@@ -756,24 +768,24 @@ export function autoScroll(ref: ElementRef): AutoScroll {
       state.y = /(auto|scroll)/.test(style.overflowY);
     }
     return state.scrollable;
-  };
+  }
 
-  const stop = (): void => {
+  function stop(): void {
     if (state.timer === undefined) return;
     cancelAnimationFrame(state.timer);
     state.timer = undefined;
-  };
+  }
 
   tryCleanup(stop);
 
-  const scroll = (): void => {
+  function scroll(): void {
     const scrollable = state.scrollable;
     if (scrollable !== null) {
       if (state.x) scrollable.scrollLeft += state.dx;
       if (state.y) scrollable.scrollTop += state.dy;
     }
     if (state.timer !== undefined) state.timer = requestAnimationFrame(scroll);
-  };
+  }
 
   return {
     move(x, y) {

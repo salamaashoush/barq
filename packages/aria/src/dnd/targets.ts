@@ -88,9 +88,12 @@ export function afterDropIndicatorTargets(
   const nextInFlattened = keyAfter === null ? null : collection.getItem(keyAfter);
   if (nextSiblingItem(collection, node) !== null) return [];
 
-  const isLeftBehind = (current: Node<unknown>): boolean =>
-    nextInFlattened === null ||
-    (current.parentKey !== nextInFlattened.parentKey && nextInFlattened.level < current.level);
+  function isLeftBehind(current: Node<unknown>): boolean {
+    return (
+      nextInFlattened === null ||
+      (current.parentKey !== nextInFlattened.parentKey && nextInFlattened.level < current.level)
+    );
+  }
 
   const targets: ItemDropTarget[] = [];
   let current: Node<unknown> | null = node;
@@ -374,10 +377,11 @@ export class ListDropTargetDelegate implements DropTargetDelegate {
    */
   #items(): Node<unknown>[] {
     const collection = access(this.#collection);
-    const sectionRows = (section: Node<unknown>): Iterable<Node<unknown>> =>
-      typeof (collection as Partial<Collection<unknown>>).getChildren === "function"
+    function sectionRows(section: Node<unknown>): Iterable<Node<unknown>> {
+      return typeof (collection as Partial<Collection<unknown>>).getChildren === "function"
         ? (collection as Collection<unknown>).getChildren(section.key)
         : section.childNodes;
+    }
     const items: Node<unknown>[] = [];
     for (const node of collection) {
       if (node.type === "item") items.push(node);
@@ -495,17 +499,19 @@ export interface TreeDropTargetState {
   expandedKeys: Accessor<Set<Key>>;
 }
 
+interface BoundaryContext {
+  parentKey: Key;
+  lastSwitchY: number;
+  lastSwitchX: number;
+  preferredTargetIndex: number;
+}
+
 interface PointerTracking {
   lastY: number;
   lastX: number;
   yDirection: "up" | "down" | null;
   xDirection: "left" | "right" | null;
-  boundaryContext: {
-    parentKey: Key;
-    lastSwitchY: number;
-    lastSwitchX: number;
-    preferredTargetIndex: number;
-  } | null;
+  boundaryContext: BoundaryContext | null;
 }
 
 const X_SWITCH_THRESHOLD = 10;

@@ -101,7 +101,7 @@ export function draggableCollectionState<T = unknown>(
   let draggedKeyNow: Key | null = null;
   const [version, publish] = createSignal(0, { equals: false, ownedWrite: true });
 
-  const getKeysForDrag = (key: Key): Set<Key> => {
+  function getKeysForDrag(key: Key): Set<Key> {
     const manager = options.selectionManager();
     const collection = options.collection();
     const keys = new Set<Key>();
@@ -125,7 +125,7 @@ export function draggableCollectionState<T = unknown>(
       if (!isChild) keys.add(current);
     }
     return keys;
-  };
+  }
 
   return {
     collection: options.collection,
@@ -215,10 +215,22 @@ export interface DraggableItemResult {
   dragButtonProps: DOMProps;
 }
 
-const ITEM_MESSAGES: Record<DragModality, { selected: DndMessage; notSelected: DndMessage }> = {
+interface ItemMessages {
+  selected: DndMessage;
+  notSelected: DndMessage;
+}
+
+const ITEM_MESSAGES: Record<DragModality, ItemMessages> = {
   keyboard: { selected: "dragSelectedKeyboard", notSelected: "dragDescriptionKeyboard" },
   touch: { selected: "dragSelectedLongPress", notSelected: "dragDescriptionLongPress" },
   virtual: { selected: "dragDescriptionVirtual", notSelected: "dragDescriptionVirtual" },
+};
+
+type AccessibleHandlers = {
+  onPointerDown: (event: PointerEvent) => void;
+  onKeyDownCapture: (event: KeyboardEvent) => void;
+  onKeyUpCapture: (event: KeyboardEvent) => void;
+  onClick: (event: MouseEvent) => void;
 };
 
 /** One item of a draggable collection. */
@@ -226,9 +238,12 @@ export function draggableItem(
   options: DraggableItemOptions,
   state: DraggableCollectionState,
 ): DraggableItemResult {
-  const isDisabled = (): boolean =>
-    state.isDisabled() || state.selectionManager().isDisabled(options.key);
-  const hasAction = (): boolean => access(options.hasAction) === true;
+  function isDisabled(): boolean {
+    return state.isDisabled() || state.selectionManager().isDisabled(options.key);
+  }
+  function hasAction(): boolean {
+    return access(options.hasAction) === true;
+  }
   const hasDragButton = options.hasDragButton === true;
 
   const interaction = dragInteraction({
@@ -251,13 +266,17 @@ export function draggableItem(
   });
 
   const strings = interaction.strings;
-  const count = (): number => state.getKeysForDrag(options.key).size;
-  const isSelectedForDrag = (): boolean =>
-    count() > 1 && state.selectionManager().isSelected(options.key);
-  const describesItem = (): boolean =>
-    !hasDragButton && state.selectionManager().selectionMode !== "none";
+  function count(): number {
+    return state.getKeysForDrag(options.key).size;
+  }
+  function isSelectedForDrag(): boolean {
+    return count() > 1 && state.selectionManager().isSelected(options.key);
+  }
+  function describesItem(): boolean {
+    return !hasDragButton && state.selectionManager().selectionMode !== "none";
+  }
 
-  const itemDescription = (): string | undefined => {
+  function itemDescription(): string | undefined {
     if (isDisabled() || hasDragButton) return undefined;
     const currentModality = interaction.modality();
     // A long press selects an item that has an action, so it is not offered
@@ -268,32 +287,29 @@ export function draggableItem(
     let message = ITEM_MESSAGES[currentModality][selected ? "selected" : "notSelected"];
     if (hasAction() && currentModality === "keyboard") message = `${message}Alt` as DndMessage;
     return selected ? strings().format(message, { count: count() }) : strings().format(message);
-  };
+  }
 
-  const buttonLabel = (): string | undefined => {
+  function buttonLabel(): string | undefined {
     if (describesItem()) return undefined;
     if (isSelectedForDrag()) return strings().format("dragSelectedItems", { count: count() });
     const node = state.collection().getItem(options.key);
     return strings().format("dragItem", { itemText: node?.textValue ?? "" });
-  };
+  }
 
-  const accessible = interaction.accessibleProps as {
-    onPointerDown: (event: PointerEvent) => void;
-    onKeyDownCapture: (event: KeyboardEvent) => void;
-    onKeyUpCapture: (event: KeyboardEvent) => void;
-    onClick: (event: MouseEvent) => void;
-  };
+  const accessible = interaction.accessibleProps as AccessibleHandlers;
 
-  const gated = <E extends Event>(handler: (event: E) => void) => {
+  function gated<E extends Event>(handler: (event: E) => void) {
     return (event: E): void => {
       if (!isDisabled()) handler(event);
     };
-  };
+  }
 
   // An action of its own on Enter means a drag starts on Alt + Enter.
-  const withAlt = (handler: (event: KeyboardEvent) => void) => (event: KeyboardEvent) => {
-    if (!hasAction() || event.altKey) handler(event);
-  };
+  function withAlt(handler: (event: KeyboardEvent) => void) {
+    return (event: KeyboardEvent) => {
+      if (!hasAction() || event.altKey) handler(event);
+    };
+  }
 
   const dragProps = mergeProps(
     hasDragButton
@@ -397,9 +413,11 @@ export function droppableCollectionState(
 ): DroppableCollectionState {
   let targetNow: DropTarget | null = null;
   const [version, publish] = createSignal(0, { equals: false, ownedWrite: true });
-  const isDisabled = (): boolean => access(options.isDisabled) === true;
+  function isDisabled(): boolean {
+    return access(options.isDisabled) === true;
+  }
 
-  const oppositeTarget = (target: ItemDropTarget): ItemDropTarget | null => {
+  function oppositeTarget(target: ItemDropTarget): ItemDropTarget | null {
     const collection = options.collection();
     const node = collection.getItem(target.key);
     if (node === null) return null;
@@ -412,9 +430,9 @@ export function droppableCollectionState(
       return next === null ? null : { type: "item", key: next.key, dropPosition: "before" };
     }
     return null;
-  };
+  }
 
-  const defaultGetDropOperation = (event: DropOperationEvent): DropOperation => {
+  function defaultGetDropOperation(event: DropOperationEvent): DropOperation {
     const { target, types, allowedOperations, isInternal, draggingKeys } = event;
     if (isDisabled()) return "cancel";
 
@@ -460,7 +478,7 @@ export function droppableCollectionState(
         : (allowedOperations[0] ?? "cancel");
     }
     return "cancel";
-  };
+  }
 
   const state: DroppableCollectionState = {
     collection: options.collection,
@@ -523,19 +541,18 @@ export function droppableCollectionState(
   return state;
 }
 
+interface DroppableRegistration {
+  id: Accessor<string>;
+  ref: ElementRef;
+}
+
 // ---------------------------------------------------------------------------
 // Droppable collection
 // ---------------------------------------------------------------------------
 
-const droppableCollections = new WeakMap<
-  DroppableCollectionState,
-  { id: Accessor<string>; ref: ElementRef }
->();
+const droppableCollections = new WeakMap<DroppableCollectionState, DroppableRegistration>();
 
-function droppableCollectionOf(state: DroppableCollectionState): {
-  id: Accessor<string>;
-  ref: ElementRef;
-} {
+function droppableCollectionOf(state: DroppableCollectionState): DroppableRegistration {
   const entry = droppableCollections.get(state);
   if (entry === undefined)
     throw new Error("A droppable item must be inside a droppable collection.");
@@ -571,6 +588,10 @@ interface DroppingState {
   timeout: ReturnType<typeof setTimeout> | undefined;
 }
 
+interface ExpandableState {
+  expandedKeys?: Set<Key>;
+}
+
 /**
  * The element of a droppable collection.
  *
@@ -589,7 +610,7 @@ export function droppableCollection(
   let nextTarget: DropTarget | null = null;
   let dropOperation: DropOperation | null = null;
 
-  const defaultOnDrop = async (event: DroppableCollectionDropEvent): Promise<void> => {
+  async function defaultOnDrop(event: DroppableCollectionDropEvent): Promise<void> {
     const accepted = options.acceptedDragTypes ?? "all";
     const { draggingKeys } = dndState();
     const isInternal = isInternalDropOperation(ref);
@@ -640,12 +661,14 @@ export function droppableCollection(
         }
       }
     }
-  };
+  }
 
   let dropping: DroppingState | null = null;
-  const focusKey = (key: Key): Key => options.focusKeyFor?.(key) ?? key;
+  function focusKey(key: Key): Key {
+    return options.focusKeyFor?.(key) ?? key;
+  }
 
-  const updateFocusAfterDrop = (): void => {
+  function updateFocusAfterDrop(): void {
     if (dropping === null) return;
     const manager = state.selectionManager();
     const collection = state.collection();
@@ -678,7 +701,7 @@ export function droppableCollection(
         let first: Key | null | undefined = newKeys.values().next().value;
         if (first !== undefined && first !== null) {
           const item = collection.getItem(first);
-          const expanded = (collection as { expandedKeys?: Set<Key> }).expandedKeys;
+          const expanded = (collection as ExpandableState).expandedKeys;
           const isParentRowExpanded =
             expanded !== undefined && item?.parentKey !== undefined
               ? expanded.has(item.parentKey)
@@ -720,9 +743,9 @@ export function droppableCollection(
     }
 
     manager.setFocused(true);
-  };
+  }
 
-  const onDrop = (event: DropEvent, target: DropTarget): void => {
+  function onDrop(event: DropEvent, target: DropTarget): void {
     const manager = state.selectionManager();
     dropping = {
       timeout: undefined,
@@ -752,7 +775,7 @@ export function droppableCollection(
       updateFocusAfterDrop();
       dropping = null;
     }, 50);
-  };
+  }
 
   tryCleanup(() => {
     if (dropping !== null) clearTimeout(dropping.timeout);
@@ -784,9 +807,17 @@ export function droppableCollection(
       getDropOperationForPoint(types, allowedOperations, x, y) {
         const { draggingKeys, dropCollectionRef } = dndState();
         const isInternal = isInternalDropOperation(ref);
-        const isValid = (target: DropTarget): boolean =>
-          state.getDropOperation({ target, types, allowedOperations, isInternal, draggingKeys }) !==
-          "cancel";
+        function isValid(target: DropTarget): boolean {
+          return (
+            state.getDropOperation({
+              target,
+              types,
+              allowedOperations,
+              isInternal,
+              draggingKeys,
+            }) !== "cancel"
+          );
+        }
         let target = options.dropTargetDelegate.getDropTargetFromPoint(x, y, isValid);
         if (target === null) {
           dropOperation = "cancel";
@@ -848,25 +879,36 @@ export function droppableCollection(
     false,
   );
 
-  const isRTL = (): boolean => locale().direction === "rtl";
+  function isRTL(): boolean {
+    return locale().direction === "rtl";
+  }
 
-  const getNextTarget = (
+  function getNextTarget(
     target: DropTarget | null | undefined,
     wrap = true,
     key: DropNavigationDirection = "down",
-  ): DropTarget | null =>
-    navigateDropTarget(options.keyboardDelegate, state.collection(), target, key, isRTL(), wrap);
+  ): DropTarget | null {
+    return navigateDropTarget(
+      options.keyboardDelegate,
+      state.collection(),
+      target,
+      key,
+      isRTL(),
+      wrap,
+    );
+  }
 
-  const getPreviousTarget = (target: DropTarget | null | undefined, wrap = true) =>
-    getNextTarget(target, wrap, "up");
+  function getPreviousTarget(target: DropTarget | null | undefined, wrap = true) {
+    return getNextTarget(target, wrap, "up");
+  }
 
-  const nextValidTarget = (
+  function nextValidTarget(
     start: DropTarget | null | undefined,
     types: DragTypes,
     allowedDropOperations: DropOperation[],
     step: (target: DropTarget | null | undefined, wrap: boolean) => DropTarget | null,
     wrap = true,
-  ): DropTarget | null => {
+  ): DropTarget | null {
     let seenRoot = 0;
     let operation: DropOperation;
     let target = start;
@@ -887,25 +929,26 @@ export function droppableCollection(
     } while (operation === "cancel" && !state.isDropTarget(target) && seenRoot < 2);
 
     return operation === "cancel" ? null : target;
-  };
+  }
 
-  const operationFor = (target: DropTarget, types: DragTypes, allowed: DropOperation[]) =>
-    state.getDropOperation({
+  function operationFor(target: DropTarget, types: DragTypes, allowed: DropOperation[]) {
+    return state.getDropOperation({
       target,
       types,
       allowedOperations: allowed,
       isInternal: isInternalDropOperation(ref),
       draggingKeys: dndState().draggingKeys,
     });
+  }
 
-  const onKeyDown = (event: KeyboardEvent, dragTarget: DragTarget): void => {
+  function onKeyDown(event: KeyboardEvent, dragTarget: DragTarget): void {
     const delegate = options.keyboardDelegate;
     const types = getTypes(dragTarget.items);
     const allowed = dragTarget.allowedDropOperations;
-    const along =
-      (key: DropNavigationDirection) =>
-      (target: DropTarget | null | undefined, wrap: boolean): DropTarget | null =>
+    function along(key: DropNavigationDirection) {
+      return (target: DropTarget | null | undefined, wrap: boolean): DropTarget | null =>
         getNextTarget(target, wrap, key);
+    }
 
     switch (event.key) {
       case "ArrowDown":
@@ -1004,7 +1047,7 @@ export function droppableCollection(
       }
     }
     options.onKeyDown?.(event);
-  };
+  }
 
   createEffect(
     () => refElement(ref) as HTMLElement | null,
@@ -1149,7 +1192,7 @@ export function droppableItem(
     },
   );
 
-  const isValidForSession = (): boolean => {
+  function isValidForSession(): boolean {
     const session = dragSession();
     if (session === null) return false;
     return (
@@ -1161,9 +1204,11 @@ export function droppableItem(
         draggingKeys: dndState().draggingKeys,
       }) !== "cancel"
     );
-  };
+  }
 
-  const isDropTarget = (): boolean => state.isDropTarget(options.target);
+  function isDropTarget(): boolean {
+    return state.isDropTarget(options.target);
+  }
 
   createEffect(
     () => (dragSession() !== null && isDropTarget() ? refElement(ref) : null),
@@ -1209,10 +1254,13 @@ export function dropIndicator(
   const indicatorId = id();
   const collection = droppableCollectionOf(state);
 
-  const textOf = (key: Key | null | undefined): string =>
-    key === null || key === undefined ? "" : (state.collection().getItem(key)?.textValue ?? "");
+  function textOf(key: Key | null | undefined): string {
+    return key === null || key === undefined
+      ? ""
+      : (state.collection().getItem(key)?.textValue ?? "");
+  }
 
-  const label = (): string => {
+  function label(): string {
     const format = strings();
     if (target.type === "root") return format.format("dropOnRoot");
     if (target.dropPosition === "on") {
@@ -1242,11 +1290,15 @@ export function dropIndicator(
     if (before !== null) return format.format("insertAfter", { itemText: textOf(before) });
     if (after !== null) return format.format("insertBefore", { itemText: textOf(after) });
     return "";
-  };
+  }
 
   const itemHidden = dropProps["aria-hidden"] as Accessor<string | undefined>;
-  const ariaHidden = (): string | undefined => (dragSession() === null ? "true" : itemHidden());
-  const isDropTarget = (): boolean => state.isDropTarget(target);
+  function ariaHidden(): string | undefined {
+    return dragSession() === null ? "true" : itemHidden();
+  }
+  function isDropTarget(): boolean {
+    return state.isDropTarget(target);
+  }
 
   return {
     dropIndicatorProps: {

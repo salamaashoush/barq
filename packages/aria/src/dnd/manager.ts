@@ -18,6 +18,7 @@ import {
 import type { ElementRef } from "../interactions/press.ts";
 import { announce } from "../live.ts";
 import { ariaHideOutside } from "../overlays.ts";
+import type { Point } from "../virtualizer.tsx";
 import { getTypes, refElement } from "./data.ts";
 import type { DndMessage } from "./strings.ts";
 import type {
@@ -192,7 +193,7 @@ const STARTED_MESSAGES: Record<DragModality, DndMessage> = {
 
 const HIDDEN_SELECTOR = '[aria-hidden="true"], [inert]';
 
-export function centre(element: Element): { x: number; y: number } {
+export function centre(element: Element): Point {
   const rect = element.getBoundingClientRect();
   return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
 }
@@ -421,10 +422,10 @@ export class DragSession {
       (target) => !validDropItems.some((item) => contains(target.element, item.element)),
     );
 
-    const withButton = (element: HTMLElement, button: ElementRef | undefined): Element[] => {
+    function withButton(element: HTMLElement, button: ElementRef | undefined): Element[] {
       const activate = refElement(button);
       return activate === null ? [element] : [element, activate];
-    };
+    }
 
     this.#restoreAriaHidden = ariaHideOutside(
       [
