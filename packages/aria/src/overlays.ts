@@ -1081,6 +1081,19 @@ function containingBlock(element: Element): Element | null {
   return null;
 }
 
+interface MeasuredPlacement {
+  /** The element these numbers were measured for, or null before the first. */
+  element: Element | null;
+  top: number;
+  left: number;
+  maxHeight: number;
+  maxWidth: number;
+  targetWidth: number;
+  targetHeight: number;
+  originX: number;
+  originY: number;
+}
+
 /**
  * Place an overlay next to its trigger.
  *
@@ -1092,16 +1105,8 @@ function containingBlock(element: Element): Element | null {
  * trigger rather than sliding across the screen.
  */
 export function overlayPosition(options: PositionOptions): PositionResult {
-  const [position, setPosition] = createSignal<{
-    top: number;
-    left: number;
-    maxHeight: number;
-    maxWidth: number;
-    targetWidth: number;
-    targetHeight: number;
-    originX: number;
-    originY: number;
-  }>({
+  const [position, setPosition] = createSignal<MeasuredPlacement>({
+    element: null,
     top: 0,
     left: 0,
     maxHeight: Number.POSITIVE_INFINITY,
@@ -1269,6 +1274,7 @@ export function overlayPosition(options: PositionOptions): PositionResult {
     }
 
     setPosition({
+      element,
       top: placed.top - originTop,
       left: placed.left - originLeft,
       maxHeight: Math.max(0, maxHeight),
@@ -1357,10 +1363,17 @@ export function overlayPosition(options: PositionOptions): PositionResult {
     overlayProps: {
       style: () => {
         const current = position();
+        // No coordinates until this element has been measured. A stand-in
+        // `top: 0; left: 0` is a real position, so a stylesheet with a
+        // transition on the overlay (shadcn's `duration-100` gives every popup
+        // `transition: all 100ms`) slid it in from the page's corner, and a
+        // reopened one slid from wherever the last one stood. `auto` to a
+        // length does not interpolate, so the first placement is a jump.
+        const placed = current.element !== null && current.element === access(options.overlayRef);
         return {
           position: "absolute",
-          top: `${current.top}px`,
-          left: `${current.left}px`,
+          top: placed ? `${current.top}px` : undefined,
+          left: placed ? `${current.left}px` : undefined,
           // On the POSITIONER, which is the positioned element. A popup's own
           // `z-index` does nothing, because the popup is static — so an overlay
           // portalled to the body painted in document order and lost to any

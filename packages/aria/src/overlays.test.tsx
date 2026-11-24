@@ -341,6 +341,62 @@ describe("overlayPosition", () => {
     expect(leftOf(position)).toBeCloseTo(60, 1);
   });
 
+  test("gives an overlay no coordinates until that element is measured", () => {
+    // A stand-in `top: 0; left: 0` is a position, and a popup with a
+    // transition on it (every shadcn style has `duration-100`) slid in from
+    // the page's corner. Measuring is what makes the browser resolve the
+    // popup's style, so whatever it holds then is where a transition starts.
+    // A reopened popup is a new element and must not start from where the
+    // last one stood either.
+    let position: PositionResult | undefined;
+    const overlayRef = ref<HTMLElement>();
+    const seen: (string | number | undefined)[][] = [];
+
+    function overlay(): HTMLElement {
+      const element = document.createElement("div");
+      box(element, { top: 0, left: 0, width: 200, height: 40 });
+      const measured = element.getBoundingClientRect;
+      element.getBoundingClientRect = () => {
+        const style = styleOf(position?.overlayProps);
+        seen.push([style.top, style.left]);
+        return measured();
+      };
+      return element;
+    }
+
+    function Fixture() {
+      const targetRef = ref<HTMLElement>();
+      position = overlayPosition({ targetRef, overlayRef, placement: "bottom", isOpen: true });
+      return (
+        <button
+          type="button"
+          ref={(node: HTMLElement) => {
+            box(node, { top: 100, left: 400, width: 80, height: 30 });
+            targetRef.set(node);
+          }}
+        >
+          Open
+        </button>
+      );
+    }
+
+    render(() => <Fixture />);
+    flush();
+    expect(styleOf(position?.overlayProps).top).toBeUndefined();
+    expect(styleOf(position?.overlayProps).left).toBeUndefined();
+
+    overlayRef.set(overlay());
+    flush();
+    expect(seen[0]).toEqual([undefined, undefined]);
+    expect(styleOf(position?.overlayProps).top).toBe("130px");
+
+    seen.length = 0;
+    overlayRef.set(overlay());
+    flush();
+    expect(seen[0]).toEqual([undefined, undefined]);
+    expect(styleOf(position?.overlayProps).top).toBe("130px");
+  });
+
   test("observes both the trigger and the overlay", () => {
     stubResizeObserver();
 
