@@ -119,6 +119,13 @@ is editable onto `contenteditable` and the ARIA attributes, and takes a
 while the document is empty. `ContentEditableElement` is the same without the
 placeholder, for an editor that is not in context.
 
+A server writes the root empty, with the white space Lexical gives it, and
+the browser binds the editor as it hydrates. `serverContent` is what to write
+in it instead: the document drawn without an editor, which the hydrating page
+keeps until hydration ends and then hands to the editor, so the page shows
+the text from its first paint and holds still as it turns editable. A browser
+rendering from scratch never draws it.
+
 ## Decorator nodes
 
 Barq JSX builds where it is written, so a decorator node's `decorate()` cannot

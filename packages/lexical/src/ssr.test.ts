@@ -147,3 +147,84 @@ test("a stored document with a block decorator hydrates, then the block's compon
   expect(container.querySelector(".lesson p")?.textContent).toBe("Intro");
   expect(container.querySelector(".lesson .card-title")?.textContent).toBe("Served block");
 });
+
+const WITH_STATIC = `
+import { RichTextExtension } from "@lexical/rich-text"
+import { LexicalComposer, ContentEditable, useLexicalEditor } from ${JSON.stringify(ENTRY)}
+
+export const handle = { editor: null }
+
+function Grab() {
+  handle.editor = useLexicalEditor()
+  return null
+}
+
+const stored = JSON.stringify({
+  root: {
+    type: "root", version: 1, direction: null, format: "", indent: 0,
+    children: [
+      { type: "paragraph", version: 1, direction: null, format: "", indent: 0, textFormat: 0, textStyle: "",
+        children: [{ type: "text", version: 1, text: "Served text", format: 0, style: "", mode: "normal", detail: 0 }] },
+    ],
+  },
+})
+
+export const page = () => () => (
+  <LexicalComposer
+    extensions={[RichTextExtension]}
+    initialConfig={{ namespace: "notes", editorState: stored }}
+    contentEditable={<ContentEditable class="notes" serverContent={<p class="static">Served text</p>} />}
+  >
+    <Grab />
+  </LexicalComposer>
+)
+`;
+
+test("serverContent is written in the root, kept through hydration, then the editor takes the root", async () => {
+  const compiledStatic = compile(WITH_STATIC, "static");
+  const served = serve(compiledStatic.ssr);
+  const container = host();
+  container.innerHTML = served.html;
+  const shell = container.querySelector<HTMLElement>(".notes");
+  const written = container.querySelector(".notes > p.static");
+  expect(written?.textContent).toBe("Served text");
+  // The white space Lexical gives a root, from the first paint.
+  expect(shell?.style.whiteSpace).toBe("pre-wrap");
+  expect(shell?.style.wordBreak).toBe("break-word");
+
+  const module = (await import(`${compiledStatic.dom}?${Math.random()}`)) as {
+    page: () => () => unknown;
+    handle: { editor: LexicalEditor | null };
+  };
+  resetChildIds();
+  cleanup = hydrate(module.page() as never, container);
+  expect(hydrate.report.recovered).toBe(false);
+  expect(hydrate.report.mismatches).toEqual([]);
+  // Claimed, not rebuilt.
+  expect(container.querySelector(".notes > p.static")).toBe(written);
+  expect(shell?.hasAttribute("data-lexical-editor")).toBe(false);
+
+  await settle();
+  const editor = module.handle.editor;
+  if (editor === null) throw new Error("the editor was not built in the browser");
+  expect(editor.getRootElement()).toBe(shell);
+  expect(container.querySelector(".notes > p.static")).toBeNull();
+  expect(shell?.querySelectorAll("p")).toHaveLength(1);
+  expect(shell?.textContent).toBe("Served text");
+  expect(shell?.style.whiteSpace).toBe("pre-wrap");
+});
+
+test("a browser rendering from scratch never draws serverContent", async () => {
+  const compiledStatic = compile(WITH_STATIC, "static-fresh");
+  const module = (await import(`${compiledStatic.dom}?${Math.random()}`)) as {
+    page: () => () => unknown;
+    handle: { editor: LexicalEditor | null };
+  };
+  const container = host();
+  const { render } = await import("@barqjs/web");
+  cleanup = render(module.page() as never, container);
+  expect(container.querySelector("p.static")).toBeNull();
+  await settle();
+  expect(module.handle.editor?.getRootElement()).toBe(container.querySelector(".notes"));
+  expect(container.querySelector(".notes")?.textContent).toBe("Served text");
+});

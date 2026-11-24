@@ -1,5 +1,5 @@
-import { Show, isBlock, omit } from "@barqjs/core";
-import type { JSX } from "@barqjs/web";
+import { Show, createEffect, createSignal, isBlock, omit, untrack } from "@barqjs/core";
+import { type JSX, isHydrating, isServer, onHydrationEnd } from "@barqjs/web";
 import type { LexicalEditor } from "lexical";
 
 import { useLexicalEditor } from "./context.ts";
@@ -15,6 +15,13 @@ type DivAttributes = Omit<
 
 export interface ContentEditableElementProps extends DivAttributes {
   editor: LexicalEditor;
+  /**
+   * The document drawn without an editor, which a server writes inside the
+   * root and a hydrating page shows until the editor takes the root over, so
+   * the page holds still as it turns editable. A browser rendering from
+   * scratch never draws it. Read once.
+   */
+  serverContent?: JSX.Element;
 }
 
 /** Shown over an empty editor: JSX, or a function of whether the editor is editable. */
@@ -23,10 +30,14 @@ export type PlaceholderContent = JSX.Element | ((isEditable: boolean) => JSX.Ele
 export interface ContentEditableProps extends DivAttributes {
   placeholder?: PlaceholderContent | null;
   "aria-placeholder"?: string;
+  /** See {@link ContentEditableElementProps.serverContent}. */
+  serverContent?: JSX.Element;
 }
 
 const OWNED = [
   "editor",
+  "serverContent",
+  "style",
   "ref",
   "role",
   "spellcheck",
@@ -51,8 +62,10 @@ function hasName(values: readonly unknown[]): boolean {
  * mirrors whether the editor is editable onto `contenteditable` and the ARIA
  * attributes, and is a `textbox` while it is editable or has a name.
  *
- * On the server it is the same `<div>`, empty: the editor fills it once it is
- * hydrated and bound.
+ * On the server it is the same `<div>`, empty or holding `serverContent`, and
+ * with the white space Lexical gives a root, so text wraps there as it will
+ * once bound. The editor fills it once it is hydrated and bound; with
+ * `serverContent`, once hydration has ended and that content has gone.
  */
 export function ContentEditableElement(props: ContentEditableElementProps): JSX.Element {
   const editor = props.editor;
@@ -68,16 +81,38 @@ export function ContentEditableElement(props: ContentEditableElementProps): JSX.
   // Widget attributes mean nothing on an element with no role.
   const widget = (): boolean => role() !== undefined;
 
-  const bind = (element: HTMLDivElement): (() => void) => {
+  // Only a server and a page claiming its markup draw the static document.
+  const given = untrack(() => props.serverContent !== undefined);
+  const claiming = given && !isServer && isHydrating();
+  const [held, setHeld] = createSignal(given && (isServer || claiming));
+  let root: HTMLDivElement | null = null;
+
+  const attach = (element: HTMLDivElement): void => {
     // A root element needs a window: a frame being torn down has none.
     editor.setRootElement(element.ownerDocument.defaultView === null ? null : element);
-    return () => editor.setRootElement(null);
   };
+  const bind = (element: HTMLDivElement): (() => void) => {
+    root = element;
+    if (!untrack(held)) attach(element);
+    return () => {
+      root = null;
+      editor.setRootElement(null);
+    };
+  };
+  if (claiming) {
+    onHydrationEnd(() => setHeld(false));
+    // After the static document has been taken out: Lexical empties the root
+    // it is given, and those nodes are barq's to remove.
+    createEffect(held, (holding) => {
+      if (!holding && root !== null) attach(root);
+    });
+  }
 
   return (
     <div
       {...omit(props, ...OWNED)}
       ref={props.ref === undefined ? bind : [props.ref, bind]}
+      style={rootStyle(props.style)}
       contentEditable={isEditable()}
       role={role()}
       spellcheck={props.spellcheck ?? true}
@@ -95,8 +130,29 @@ export function ContentEditableElement(props: ContentEditableElementProps): JSX.
       aria-placeholder={widget() ? (props as ContentEditableProps)["aria-placeholder"] : undefined}
       aria-readonly={widget() && !isEditable() ? true : undefined}
       aria-required={widget() ? props["aria-required"] : undefined}
-    />
+    >
+      {held() ? props.serverContent : undefined}
+    </div>
   );
+}
+
+type Style = Exclude<DivAttributes["style"], undefined | ((...args: never[]) => unknown)>;
+type StyleObject = Exclude<Style, string>;
+
+/** What Lexical sets on a root as it binds, written from the start so nothing reflows then. */
+const ROOT_STYLE: StyleObject = {
+  userSelect: "text",
+  whiteSpace: "pre-wrap",
+  wordBreak: "break-word",
+};
+
+function rootStyle(given: DivAttributes["style"]): Style {
+  const value = typeof given === "function" ? given() : given;
+  if (value === undefined) return ROOT_STYLE;
+  if (typeof value === "string") {
+    return `user-select: text; white-space: pre-wrap; word-break: break-word; ${value}`;
+  }
+  return { ...ROOT_STYLE, ...value };
 }
 
 function Placeholder(props: { editor: LexicalEditor; content: PlaceholderContent }): JSX.Element {
