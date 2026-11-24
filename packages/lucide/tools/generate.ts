@@ -113,6 +113,8 @@ function nodesOf(svg: string): string {
   return JSON.stringify(nodes);
 }
 
+interface LucidePackage { version: string }
+
 function main(): void {
   const nodes = JSON.parse(readFileSync(join(lucide, "icon-nodes.json"), "utf8")) as Record<
     string,
@@ -153,7 +155,7 @@ function main(): void {
   }
 
   const version = (
-    JSON.parse(readFileSync(join(lucide, "package.json"), "utf8")) as { version: string }
+    JSON.parse(readFileSync(join(lucide, "package.json"), "utf8")) as LucidePackage
   ).version;
 
   const barrel = resolve(import.meta.dir, "../src/index.ts");
