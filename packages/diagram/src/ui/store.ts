@@ -1,5 +1,7 @@
 import { type Accessor, createSignal } from "@barqjs/core";
 
+import type { EditorInterface } from "@excalidraw/common";
+
 import type { NonDeletedExcalidrawElement } from "@excalidraw/element/types";
 
 import type { DiagramEditor } from "../editor/editor.ts";
@@ -13,6 +15,16 @@ export interface SelectionSnapshot {
 }
 
 const EMPTY_SELECTION: SelectionSnapshot = { elements: [], key: "" };
+
+/** What the UI lays out for before the editor has measured itself, and on the server. */
+const DESKTOP_INTERFACE: EditorInterface = {
+  formFactor: "desktop",
+  desktopUIMode: "full",
+  userAgent: { isMobileDevice: false, platform: "unknown" },
+  isTouchScreen: false,
+  canFitSidebar: false,
+  isLandscape: true,
+};
 
 /**
  * The editor's state for its UI, as signals. The editor changes its state
@@ -29,6 +41,7 @@ export class EditorStore {
   private readonly setGeometry: (value: number) => void;
   private readonly setHistory: (value: { canUndo: boolean; canRedo: boolean }) => void;
   private readonly setSceneEmpty: (value: boolean) => void;
+  private readonly setEditorInterface: (value: EditorInterface) => void;
   private scheduled = false;
   private disposed = false;
   private off: (() => void) | null = null;
@@ -40,6 +53,8 @@ export class EditorStore {
   public readonly history: Accessor<{ canUndo: boolean; canRedo: boolean }>;
   /** Whether the scene has never had an element, deleted ones included: the welcome screen's cue. */
   public readonly sceneEmpty: Accessor<boolean>;
+  /** The layout the editor's size asks for: a phone's, a tablet's or a desktop's, and whether it is touched. */
+  public readonly editorInterface: Accessor<EditorInterface>;
   /**
    * Whether the UI reads the editor yet: from its first commit on, never
    * during the render a hydration has to match with the server's.
@@ -66,6 +81,16 @@ export class EditorStore {
     );
     this.history = history;
     this.setHistory = setHistory;
+    const [editorInterface, setEditorInterface] = createSignal<EditorInterface>(DESKTOP_INTERFACE, {
+      equals: (a, b) =>
+        a.formFactor === b.formFactor &&
+        a.desktopUIMode === b.desktopUIMode &&
+        a.isTouchScreen === b.isTouchScreen &&
+        a.canFitSidebar === b.canFitSidebar &&
+        a.isLandscape === b.isLandscape,
+    });
+    this.editorInterface = editorInterface;
+    this.setEditorInterface = setEditorInterface;
     const [sceneEmpty, setSceneEmpty] = createSignal(true);
     this.sceneEmpty = sceneEmpty;
     this.setSceneEmpty = setSceneEmpty;
@@ -138,6 +163,7 @@ export class EditorStore {
       canRedo: !editor.history.isRedoStackEmpty,
     });
     this.setSceneEmpty(editor.scene.getElementsIncludingDeleted().length === 0);
+    this.setEditorInterface(editor.editorInterface);
     this.setReady(true);
   }
 

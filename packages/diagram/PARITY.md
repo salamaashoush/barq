@@ -121,7 +121,7 @@ embeds.
 - done: font picker previews the highlighted font on the selection and restores it on close; Shift+F opens it (`pickers.test.tsx`)
 - done: command palette's recently used command, library items, library and search entries (`library.test.tsx`)
 - done: stats panel: the element's type, an image's uncropped size while cropping, a group's heading, several units edited each, the grid's step, folding sections, dragging a label to scrub a value (`stats.test.tsx`); a scene version is the host's to show through `renderCustomStats`, as excalidraw.com does
-- pending (3b): pen mode button for a detected pen; compact and phone layouts of the panels
+- done: layouts by the editor's size, Excalidraw's form factors and `UIOptions.getFormFactor`: a phone's top bar, bottom toolbar, properties in a bottom sheet and undo beside them; a tablet's properties behind a button; touch-sized targets under a coarse pointer or once touched; the pen mode toggle once a pen draws (`layouts.test.tsx`)
 - done: `toggleWrap` (W): a text into a container, texts into new containers and back, labels freed and rewrapped, shapes in and out of a frame (`wrap.test.ts`)
 - done: eye dropper: a held pointer previews, Alt picks the other colour, Alt held in a picker keeps it open, dark mode's filter taken off; I, Shift+S and Shift+G; S and G open the colour pickers (`pickers.test.tsx`)
 

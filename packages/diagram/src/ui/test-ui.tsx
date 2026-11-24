@@ -1,4 +1,4 @@
-/** Mounting `<DiagramEditor>` with its UI in a 1000 by 640 region, and driving it. */
+/** Mounting `<DiagramEditor>` with its UI in a 1280 by 800 region, a desktop's, and driving it. */
 
 import { afterEach, beforeEach } from "bun:test";
 import { flush } from "@barqjs/core";
@@ -6,7 +6,7 @@ import { cleanup, render, tick } from "@barqjs/testing";
 
 import { DiagramEditor, type DiagramEditorApi, type DiagramEditorProps } from "../index.ts";
 
-const SIZE = { width: 1000, height: 640 };
+const SIZE = { width: 1280, height: 800 };
 const originalRect = Object.getOwnPropertyDescriptor(
   HTMLElement.prototype,
   "getBoundingClientRect",

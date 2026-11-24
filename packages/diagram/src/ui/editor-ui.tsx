@@ -40,6 +40,7 @@ import { diagramLayer as d } from "./layer.ts";
 import { actionToggleViewMode, actionToggleZenMode } from "../editor/actions/toggles.ts";
 import { Pencil } from "@barqjs/lucide/icons/pencil";
 import { WelcomeScreenLayer } from "./welcome-screen.tsx";
+import { CompactProperties, PenModeButton, PhoneChrome } from "./layouts.tsx";
 import { Button } from "@barqjs/ui/button";
 
 const scrollBack = d({
@@ -111,6 +112,23 @@ function Layout(props: { mainMenu?: () => Child; welcomeScreen?: true | (() => C
       )
     );
   };
+  const editorInterface = () => value.store.editorInterface();
+  const phone = () => editorInterface().formFactor === "phone";
+  const compact = () => editorInterface().formFactor === "tablet";
+  const scrollBackButton = () => (
+    <Show when={value.store.state("scrolledOutside") && !zen()}>
+      <Button
+        variant="secondary"
+        onPress={() => {
+          const editor = value.store.editor;
+          editor?.batch(() => editor.scrollToContent());
+        }}
+        data-testid="scroll-back-to-content"
+      >
+        {value.t("buttons.scrollBackToContent")}
+      </Button>
+    </Show>
+  );
   return (
     <>
       <div
@@ -119,85 +137,84 @@ function Layout(props: { mainMenu?: () => Child; welcomeScreen?: true | (() => C
         dir={locale.dir()}
         style={docked() ? { insetInlineEnd: `${DOCKED_SIDEBAR_INSET}px` } : undefined}
         data-diagram-ui=""
+        data-form-factor={editorInterface().formFactor}
+        data-touch={editorInterface().isTouchScreen ? "" : undefined}
         data-testid="editor-ui"
       >
         <Show when={props.welcomeScreen !== undefined}>
           <WelcomeScreenLayer content={props.welcomeScreen ?? true} />
         </Show>
-        <div class={topStart}>
-          {value.host().renderTopLeftUI?.(false, value.store.snapshot)}
-          <Show when={!zen()}>
-            <MainMenuButton items={props.mainMenu} />
-            <PropertiesPanel />
-          </Show>
-        </div>
-        <Show when={!viewMode()}>
-          <div class={topCenter}>
-            <div class={toolbarAnchor}>
-              <Toolbar />
-              <HintViewer />
-            </div>
-          </div>
-        </Show>
-        <div class={topEnd}>
-          {value.host().renderTopRightUI?.(false, value.store.snapshot)}
-          <Show when={!viewMode() && !docked()}>
-            <SidebarTrigger />
-          </Show>
-          <StatsPanel />
-        </div>
         <Show
-          when={!zen()}
-          fallback={
-            <div class={bottomCenter}>
-              <Button
-                variant="secondary"
-                onPress={() => value.run(actionToggleZenMode)}
-                data-testid="exit-zen-mode"
-              >
-                {value.t("buttons.exitZenMode")}
-              </Button>
-            </div>
-          }
+          when={!phone()}
+          fallback={<PhoneChrome mainMenu={props.mainMenu} scrollBack={scrollBackButton()} />}
         >
-          <div class={bottomStack}>
-            <Minimap />
-            <div class={bottomStart}>
-              <FooterStart />
-            </div>
-          </div>
-          <div class={bottomEnd}>
-            <Show when={viewMode() && value.isEnabled(actionToggleViewMode)}>
-              <div class={island}>
-                <button
-                  type="button"
-                  class={iconButton}
-                  aria-label={value.t("labels.viewMode")}
-                  aria-pressed="true"
-                  title={`${value.t("labels.viewMode")} — ${value.shortcut("viewMode")}`}
-                  onClick={() => value.run(actionToggleViewMode)}
-                  data-testid="exit-view-mode"
-                >
-                  <Pencil aria-hidden="true" />
-                </button>
-              </div>
+          <div class={topStart}>
+            {value.host().renderTopLeftUI?.(false, value.store.snapshot)}
+            <Show when={!zen()}>
+              <MainMenuButton items={props.mainMenu} />
+              <Show when={compact()} fallback={<PropertiesPanel />}>
+                <CompactProperties />
+              </Show>
             </Show>
-            <FooterEnd />
           </div>
-        </Show>
-        <Show when={value.store.state("scrolledOutside") && !zen()}>
-          <div class={scrollBack}>
-            <Button
-              variant="secondary"
-              onPress={() => {
-                const editor = value.store.editor;
-                editor?.batch(() => editor.scrollToContent());
-              }}
-              data-testid="scroll-back-to-content"
-            >
-              {value.t("buttons.scrollBackToContent")}
-            </Button>
+          <Show when={!viewMode()}>
+            <div class={topCenter}>
+              <PenModeButton />
+              <div class={toolbarAnchor}>
+                <Toolbar />
+                <HintViewer />
+              </div>
+            </div>
+          </Show>
+          <div class={topEnd}>
+            {value.host().renderTopRightUI?.(false, value.store.snapshot)}
+            <Show when={!viewMode() && !docked()}>
+              <SidebarTrigger />
+            </Show>
+            <StatsPanel />
           </div>
+          <Show
+            when={!zen()}
+            fallback={
+              <div class={bottomCenter}>
+                <Button
+                  variant="secondary"
+                  onPress={() => value.run(actionToggleZenMode)}
+                  data-testid="exit-zen-mode"
+                >
+                  {value.t("buttons.exitZenMode")}
+                </Button>
+              </div>
+            }
+          >
+            <div class={bottomStack}>
+              <Minimap />
+              <div class={bottomStart}>
+                <FooterStart />
+              </div>
+            </div>
+            <div class={bottomEnd}>
+              <Show when={viewMode() && value.isEnabled(actionToggleViewMode)}>
+                <div class={island}>
+                  <button
+                    type="button"
+                    class={iconButton}
+                    aria-label={value.t("labels.viewMode")}
+                    aria-pressed="true"
+                    title={`${value.t("labels.viewMode")} — ${value.shortcut("viewMode")}`}
+                    onClick={() => value.run(actionToggleViewMode)}
+                    data-testid="exit-view-mode"
+                  >
+                    <Pencil aria-hidden="true" />
+                  </button>
+                </div>
+              </Show>
+              <FooterEnd />
+            </div>
+          </Show>
+          <Show when={value.store.state("scrolledOutside") && !zen()}>
+            <div class={scrollBack}>{scrollBackButton()}</div>
+          </Show>
         </Show>
         <ContextMenu />
         <ShapeSwitchPanel />

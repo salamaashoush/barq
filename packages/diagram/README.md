@@ -276,6 +276,15 @@ Publishing sends selected items, named, with a preview to
 the library's named items, and the command run last first while nothing is
 typed.
 
+The UI follows the editor's size as Excalidraw's does: a phone's (narrower
+than 600px, or a landscape phone's) has the main menu and the library along
+the top and the toolbar along the bottom, with the selection's properties in a
+bottom sheet and undo and redo beside them; a tablet's opens the properties
+from a button; a desktop's is the one above. `UIOptions.getFormFactor` decides
+for the host. Under a coarse pointer, or once the editor is touched, its
+controls are a finger's size. A pen's first stroke turns pen mode on (the pen
+draws, a finger pans) and shows its toggle beside the toolbar.
+
 `welcomeScreen` puts Excalidraw's welcome screen over a scene that has never
 had an element while the selection tool is active: `true` for a heading, a
 menu (open a file, help) and hints pointing at the main menu, the toolbar and

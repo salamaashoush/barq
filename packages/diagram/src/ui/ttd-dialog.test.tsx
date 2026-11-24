@@ -58,7 +58,8 @@ describe("Mermaid", () => {
     const texts = api
       .getSceneElements()
       .flatMap((element) => (element.type === "text" ? [element.text] : []));
-    expect(texts).toEqual(expect.arrayContaining(["Start", "Ship"]));
+    expect(texts).toContain("Start");
+    expect(texts).toContain("Ship");
     expect(api.getSceneElements().some((element) => element.type === "arrow")).toBe(true);
     expect(JSON.parse(localStorage.getItem("mermaid-to-excalidraw")!)).toBe(FLOW);
   });

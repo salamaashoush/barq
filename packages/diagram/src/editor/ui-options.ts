@@ -1,3 +1,4 @@
+import type { EditorInterface } from "@excalidraw/common";
 import type { NonDeletedExcalidrawElement, Theme } from "@excalidraw/element/types";
 
 import type { AppState, BinaryFiles } from "../types.ts";
@@ -40,6 +41,8 @@ export interface UIOptions {
   canvasActions?: CanvasActions;
   tools?: { image?: boolean };
   dockedSidebarBreakpoint?: number;
+  /** Decides the layout from the editor's size: a phone's, a tablet's (compact) or a desktop's. */
+  getFormFactor?: (editorWidth: number, editorHeight: number) => EditorInterface["formFactor"];
 }
 
 /** `UIOptions` with every default filled in. */
@@ -55,6 +58,7 @@ export interface ResolvedUIOptions {
   };
   tools: { image: boolean };
   dockedSidebarBreakpoint?: number;
+  getFormFactor?: (editorWidth: number, editorHeight: number) => EditorInterface["formFactor"];
 }
 
 /** Fills in Excalidraw's defaults, as its `<Excalidraw>` does before rendering. */
@@ -67,6 +71,7 @@ export const resolveUIOptions = (
   const toggleTheme = given?.toggleTheme ?? null;
   return {
     dockedSidebarBreakpoint: options?.dockedSidebarBreakpoint,
+    getFormFactor: options?.getFormFactor,
     canvasActions: {
       changeViewBackgroundColor: given?.changeViewBackgroundColor ?? true,
       clearCanvas: given?.clearCanvas ?? true,

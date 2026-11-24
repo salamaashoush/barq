@@ -40,9 +40,8 @@ describe("pasted spreadsheets", () => {
     );
     expect(bars).toHaveLength(3);
     const texts = elements.filter((element) => element.type === "text");
-    expect(texts.map((text) => (text as { text: string }).text)).toEqual(
-      expect.arrayContaining(["Sales", "Jan", "Feb", "Mar"]),
-    );
+    const labels: string[] = texts.map((text) => (text as { text: string }).text);
+    for (const label of ["Sales", "Jan", "Feb", "Mar"]) expect(labels).toContain(label);
     expect(new Set(elements.map((element) => element.groupIds.join())).size).toBe(1);
   });
 

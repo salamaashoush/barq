@@ -41,6 +41,7 @@ import type {
 } from "@excalidraw/element/types";
 import type { GlobalPoint, LocalPoint, Radians } from "@excalidraw/math";
 
+import { resolveUIOptions } from "./ui-options.ts";
 import { DiagramEditor, type DiagramEditorOptions } from "./editor.ts";
 import { selectGroupsForSelectedElements } from "./selection.ts";
 
@@ -86,6 +87,7 @@ export const renderEditor = ({
   const svgLayer = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   container.append(canvas, newElementCanvas, interactiveCanvas, svgLayer);
   document.body.append(container);
+  const UIOptions = options.host?.UIOptions ?? resolveUIOptions(undefined);
   const editor = new DiagramEditor({
     container,
     canvas,
@@ -93,6 +95,11 @@ export const renderEditor = ({
     interactiveCanvas,
     svgLayer,
     ...options,
+    // laid out as a desktop's, which 1024 by 768 would not be by its size alone
+    host: {
+      ...options.host,
+      UIOptions: { ...UIOptions, getFormFactor: UIOptions.getFormFactor ?? (() => "desktop") },
+    },
   });
   if (textEditor) {
     mountTextEditor(editor, container);

@@ -138,6 +138,9 @@ export const iconButton = d({
     cursor: "default",
   },
   "& svg": { width: "18px", height: "18px" },
+  // a finger's size, under a coarse pointer and once the editor has been touched
+  "@media (pointer: coarse)": { width: "44px", height: "44px" },
+  "[data-touch] &": { width: "44px", height: "44px" },
 });
 
 /** The key that picks a tool, in the button's corner. */
@@ -197,6 +200,8 @@ export const radioChoice = d({
   },
   "&:has([data-duplicate])": { boxShadow: "0 0 0 2px var(--destructive, #e03131)" },
   "&[data-disabled]": { opacity: "0.4", cursor: "default" },
+  "@media (pointer: coarse)": { width: "44px", height: "44px" },
+  "[data-touch] &": { width: "44px", height: "44px" },
   "& input": {
     position: "absolute",
     opacity: "0",
@@ -225,6 +230,8 @@ export const swatch = d({
   border: "1px solid var(--border, rgb(0 0 0 / 0.15))",
   cursor: "pointer",
   outline: "none",
+  "@media (pointer: coarse)": { width: "36px", height: "36px" },
+  "[data-touch] &": { width: "36px", height: "36px" },
   // transparent shows as a chequerboard
   backgroundImage:
     "linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)",
@@ -282,6 +289,7 @@ export const menuItem = d({
   userSelect: "none",
   "&[data-focused], &:hover": { backgroundColor: "var(--accent, rgb(0 0 0 / 0.06))" },
   "&[data-disabled]": { opacity: "0.45" },
+  "@media (pointer: coarse)": { minHeight: "44px" },
   "&[data-variant=destructive]": { color: "var(--destructive, #e03131)" },
   "& svg": { width: "16px", height: "16px", flexShrink: "0" },
 });

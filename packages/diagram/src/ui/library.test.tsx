@@ -158,7 +158,7 @@ describe("the library sidebar", () => {
     const inserted = elements[1]!;
     expect(inserted.id).not.toBe("A");
     // in the middle of the view, the sidebar closing as Excalidraw's does
-    expect(inserted.x + inserted.width / 2).toBeCloseTo(500, -1);
+    expect(inserted.x + inserted.width / 2).toBeCloseTo(640, -1);
     expect(api.getAppState().openSidebar).toBeNull();
     expect(ariaViolations(document.body)).toEqual([]);
   });

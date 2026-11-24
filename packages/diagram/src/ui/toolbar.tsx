@@ -1,4 +1,4 @@
-import { For, Show, createMemo } from "@barqjs/core";
+import { For, Show, createMemo, createSignal } from "@barqjs/core";
 import { Toolbar as AriaToolbar } from "@barqjs/aria/toolbar";
 import { ArrowRight } from "@barqjs/lucide/icons/arrow-right";
 import { Circle } from "@barqjs/lucide/icons/circle";
@@ -247,14 +247,19 @@ const EXTRA_TOOLS = [
   "lasso",
 ] as const;
 
-function ExtraTools(props: { select: (type: ToolType) => void; label: (type: string) => string }) {
+function ExtraTools(props: {
+  select: (type: ToolType) => void;
+  label: (type: string) => string;
+  /** Tools the bar has no room for, listed first. */
+  more?: readonly string[];
+}) {
   const ui = useDiagramUI();
   const t = ui.t;
   const activeTool = () => ui.store.state("activeTool").type;
   const preferredSelection = () => ui.store.state("preferredSelectionTool").type;
 
   const tools = (): readonly string[] =>
-    EXTRA_TOOLS.filter(
+    [...(props.more ?? []), ...EXTRA_TOOLS].filter(
       (type) =>
         (type !== "image" || ui.host().UIOptions.tools.image) &&
         (type !== "lasso" || preferredSelection() !== "lasso"),
@@ -263,7 +268,7 @@ function ExtraTools(props: { select: (type: ToolType) => void; label: (type: str
   const selected = (): string | null => {
     const type = activeTool();
     if (type === "lasso" && preferredSelection() === "lasso") return null;
-    return (EXTRA_TOOLS as readonly string[]).includes(type) ? type : null;
+    return [...(props.more ?? []), ...EXTRA_TOOLS].includes(type) ? type : null;
   };
 
   return (
@@ -338,5 +343,91 @@ function ExtraTools(props: { select: (type: ToolType) => void; label: (type: str
         </Show>
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+const PHONE_SHAPES = ["rectangle", "diamond", "ellipse"] as const;
+const PHONE_LINEAR = ["arrow", "line"] as const;
+
+/**
+ * The toolbar along the bottom of a phone, Excalidraw's `MobileToolbar`: the
+ * hand, the selection, drawing, the eraser, the last shape and the last line
+ * used, text, and the rest in the extra tools' menu, each a finger's size.
+ */
+export function PhoneToolbar() {
+  const ui = useDiagramUI();
+  const t = ui.t;
+  const activeTool = () => ui.store.state("activeTool");
+  const preferredSelection = () => ui.store.state("preferredSelectionTool").type;
+  const [lastShape, setLastShape] = createSignal<ToolType>("rectangle");
+  const [lastLinear, setLastLinear] = createSignal<ToolType>("arrow");
+
+  const shapeSlot = createMemo((): ToolType => {
+    const type = activeTool().type;
+    return (PHONE_SHAPES as readonly string[]).includes(type) ? (type as ToolType) : lastShape();
+  });
+  const linearSlot = createMemo((): ToolType => {
+    const type = activeTool().type;
+    return (PHONE_LINEAR as readonly string[]).includes(type) ? (type as ToolType) : lastLinear();
+  });
+  const shownTools = createMemo((): readonly ToolType[] => [
+    "hand",
+    preferredSelection() === "lasso" ? "lasso" : "selection",
+    "freedraw",
+    "eraser",
+    shapeSlot(),
+    linearSlot(),
+    "text",
+  ]);
+  const more = createMemo((): string[] => [
+    ...PHONE_SHAPES.filter((type) => type !== shapeSlot()),
+    ...PHONE_LINEAR.filter((type) => type !== linearSlot()),
+    "stickynote",
+  ]);
+  const pressed = (): string => {
+    const type = activeTool().type;
+    return (shownTools() as readonly string[]).includes(type) ? type : "";
+  };
+
+  const select = (type: ToolType): void => {
+    const editor = ui.store.editor;
+    if (!editor) return;
+    if ((PHONE_SHAPES as readonly string[]).includes(type)) setLastShape(type);
+    if ((PHONE_LINEAR as readonly string[]).includes(type)) setLastLinear(type);
+    if (editor.state.activeTool.type !== type) {
+      editor.batch(() => editor.setActiveTool({ type }));
+    }
+  };
+
+  const label = (type: string): string => capitalizeString(t(`toolBar.${type}` as TranslationKey));
+
+  return (
+    <AriaToolbar aria-label={t("headings.shapes")} class={island} data-testid="phone-toolbar">
+      <ToggleGroup
+        type="single"
+        spacing={1}
+        value={pressed()}
+        onValueChange={(value) => {
+          if (typeof value === "string" && value !== "") select(value as ToolType);
+        }}
+        aria-label={t("headings.shapes")}
+      >
+        <For each={shownTools()}>
+          {(type: ToolType) => (
+            <ToggleGroupItem
+              value={type}
+              class={iconButton}
+              aria-label={label(type)}
+              title={label(type)}
+              data-testid={`toolbar-${type}`}
+            >
+              <ToolGlyph type={type} />
+            </ToggleGroupItem>
+          )}
+        </For>
+      </ToggleGroup>
+      <div class={divider} role="separator" aria-orientation="vertical" />
+      <ExtraTools select={select} label={label} more={more()} />
+    </AriaToolbar>
   );
 }

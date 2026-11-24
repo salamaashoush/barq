@@ -27,6 +27,7 @@ import {
   TAP_TWICE_TIMEOUT,
   ROUNDNESS,
   createUserAgentDescriptor,
+  getFormFactor,
   getGridPoint,
   getStrokeWidthByKey,
   invariant,
@@ -1857,6 +1858,39 @@ export class DiagramEditor {
       state.offsetTop !== rect.top
     ) {
       this.setState({ width, height, offsetLeft: rect.left, offsetTop: rect.top });
+    }
+    this.refreshEditorInterface(width, height);
+  }
+
+  /**
+   * The layout the size asks for, Excalidraw's `refreshEditorInterface`: a
+   * phone's, a tablet's or a desktop's, whether a sidebar fits beside the
+   * canvas, and whether the pointer is a finger.
+   */
+  private refreshEditorInterface(width: number, height: number): void {
+    const formFactor =
+      this.host.UIOptions.getFormFactor?.(width, height) ?? getFormFactor(width, height);
+    const coarse =
+      this.editorInterface.isTouchScreen ||
+      (typeof this.ownerWindow.matchMedia === "function" &&
+        this.ownerWindow.matchMedia("(pointer: coarse)").matches);
+    const next: EditorInterface = {
+      ...this.editorInterface,
+      formFactor,
+      canFitSidebar: this.canFitSidebar(),
+      isLandscape: width > height,
+      isTouchScreen: coarse,
+    };
+    const current = this.editorInterface;
+    if (
+      next.formFactor !== current.formFactor ||
+      next.canFitSidebar !== current.canFitSidebar ||
+      next.isLandscape !== current.isLandscape ||
+      next.isTouchScreen !== current.isTouchScreen
+    ) {
+      this.editorInterface = next;
+      this.stateDirty = true;
+      this.requestCommit();
     }
   }
 

@@ -118,7 +118,7 @@ import {
 } from "../editor/bucket-fill.ts";
 import { ColorPicker } from "./color-picker.tsx";
 import { isShortcutName } from "./shortcuts.ts";
-import { useDiagramUI } from "./context.tsx";
+import { type DiagramUI, useDiagramUI } from "./context.tsx";
 import { FontPicker } from "./font-picker.tsx";
 import * as Icons from "./icons.tsx";
 import { ArrowheadPicker } from "./arrowhead-picker.tsx";
@@ -318,29 +318,36 @@ type Predicates = ReturnType<typeof getShapeActionPredicates>;
  * draw: each property the selected elements or the tool take, set on all of
  * them at once, showing their common value or none when they differ.
  */
-export function PropertiesPanel() {
+/** The editor, read so that what follows it follows the selection, the tool and the editing. */
+const trackedEditor = (store: DiagramUI["store"]): DiagramEditor | null => {
+  store.selection();
+  store.state("activeTool");
+  store.state("editingTextElement");
+  store.state("newElement");
+  store.state("viewModeEnabled");
+  store.state("openDialog");
+  store.state("currentItemBackgroundColor");
+  store.state("selectedLinearElement");
+  store.state("croppingElementId");
+  return store.editor;
+};
+
+/** Whether the properties panel has anything to show: a selection, or a tool about to draw. */
+export const createPropertiesVisible = (ui: DiagramUI): (() => boolean) =>
+  createMemo((): boolean => {
+    const editor = trackedEditor(ui.store);
+    return editor !== null && showSelectedShapeActions(editor.state, nonDeleted(editor));
+  });
+
+export function PropertiesPanel(props: { class?: string } = {}) {
   const ui = useDiagramUI();
   const t = ui.t;
   const store = ui.store;
 
   // read so that the panel follows them; the editor is read for the values
-  const tracked = (): DiagramEditor | null => {
-    store.selection();
-    store.state("activeTool");
-    store.state("editingTextElement");
-    store.state("newElement");
-    store.state("viewModeEnabled");
-    store.state("openDialog");
-    store.state("currentItemBackgroundColor");
-    store.state("selectedLinearElement");
-    store.state("croppingElementId");
-    return store.editor;
-  };
+  const tracked = (): DiagramEditor | null => trackedEditor(store);
 
-  const visible = createMemo((): boolean => {
-    const editor = tracked();
-    return editor !== null && showSelectedShapeActions(editor.state, nonDeleted(editor));
-  });
+  const visible = createPropertiesVisible(ui);
   const predicates = createMemo((): Predicates | null => {
     const editor = tracked();
     return editor === null || !visible() ? null : getShapeActionPredicates(editor);
@@ -569,7 +576,7 @@ export function PropertiesPanel() {
     <Show when={predicates()}>
       {(shown: () => Predicates) => (
         <section
-          class={panel}
+          class={props.class ? `${panel} ${props.class}` : panel}
           aria-label={t("headings.selectedShapeActions")}
           data-testid="properties-panel"
         >

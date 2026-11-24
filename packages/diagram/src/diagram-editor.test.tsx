@@ -12,7 +12,7 @@ import { hydrate, render } from "@barqjs/web";
 import { type DiagramEditorApi, DiagramEditor } from "./index.ts";
 import { ENTRY, compile, serve } from "./ssr-harness.ts";
 
-const SIZE = { width: 800, height: 480 };
+const SIZE = { width: 1280, height: 800 };
 const originalRect = HTMLElement.prototype.getBoundingClientRect;
 beforeEach(() => {
   HTMLElement.prototype.getBoundingClientRect = () =>
