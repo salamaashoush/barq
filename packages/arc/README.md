@@ -569,6 +569,16 @@ import { ResponsiveTabs } from "@barqjs/arc";
   `onLoadMore` asks for more as the end comes into view, with a loading row
   while `isLoadingMore`, and `empty` is what an empty list shows.
 
+## Media
+
+- `Image`: a picture that holds its place, loads when it is near and fails
+  visibly. The box takes `aspectRatio` from the start, so nothing moves when
+  the image arrives; it loads lazily unless `priority`, fades in over a
+  blurred `placeholder` (a tiny data URL or a colour), and if it cannot load
+  shows `fallback`, an icon and "Image unavailable" in arc's words, keeping
+  the image's name. One the browser already had when the page hydrated shows
+  at once.
+
 ## Inputs and pickers
 
 ```tsx

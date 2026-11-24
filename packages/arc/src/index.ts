@@ -494,3 +494,4 @@ export {
   type ListProps,
   listStyles,
 } from "./components/item-list.tsx";
+export { Image, type ImageProps, type ImageStatus, imageStyles } from "./components/image.tsx";
