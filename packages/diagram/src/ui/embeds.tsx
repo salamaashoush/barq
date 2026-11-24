@@ -25,8 +25,8 @@ const host = d({
   transformOrigin: "0 0",
   overflow: "hidden",
   pointerEvents: "none",
-  backgroundColor: "var(--background, Canvas)",
-  boxShadow: "0 0 0 1px var(--border, rgb(0 0 0 / 0.12))",
+  backgroundColor: "var(--background)",
+  boxShadow: "0 0 0 1px var(--border)",
   "& iframe": { display: "block", width: "100%", height: "100%", border: "0" },
 });
 
@@ -38,10 +38,10 @@ const notice = d({
   height: "100%",
   padding: "16px",
   textAlign: "center",
-  fontSize: "var(--text-sm, 0.875rem)",
+  fontSize: "var(--text-sm)",
 });
 
-const failure = d({ color: "var(--destructive, #e03131)" });
+const failure = d({ color: "var(--destructive)" });
 
 const canvasButtons = d({ position: "absolute", top: "0", left: "0" });
 

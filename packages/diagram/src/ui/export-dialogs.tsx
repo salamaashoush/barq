@@ -29,6 +29,8 @@ import {
 } from "../editor/actions/export.ts";
 import { exportScene, getExportConfigFromAppState } from "../scene/export.ts";
 import { useDiagramUI } from "./context.tsx";
+import { layout, surface } from "@barqjs/arc/style";
+
 import { diagramLayer as d } from "./layer.ts";
 import { textInput } from "./styles.ts";
 
@@ -56,7 +58,7 @@ const preview = d({
   minHeight: "240px",
   height: "min(50vh, 400px)",
   padding: "12px",
-  borderRadius: "var(--radius, 0.5rem)",
+  borderRadius: "var(--radius)",
   // transparent shows as a chequerboard, as an image editor shows it
   backgroundImage:
     "linear-gradient(45deg, rgb(0 0 0 / 0.05) 25%, transparent 25%), linear-gradient(-45deg, rgb(0 0 0 / 0.05) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgb(0 0 0 / 0.05) 75%), linear-gradient(-45deg, transparent 75%, rgb(0 0 0 / 0.05) 75%)",
@@ -82,17 +84,13 @@ const cards = d({
   gap: "16px",
 });
 
-const card = d({
-  display: "flex",
-  flexDirection: "column",
+const card = d(surface.bordered, layout.column, {
   alignItems: "center",
   textAlign: "center",
   gap: "8px",
   padding: "16px",
-  borderRadius: "var(--radius, 0.5rem)",
-  border: "1px solid var(--border, rgb(0 0 0 / 0.12))",
-  "& h3": { margin: "0", fontSize: "var(--text-base, 1rem)" },
-  "& p": { margin: "0", color: "var(--muted-foreground, GrayText)" },
+  "& h3": { margin: "0", fontSize: "var(--text-base)" },
+  "& p": { margin: "0", color: "var(--muted-foreground)" },
   "& > svg": { width: "32px", height: "32px" },
 });
 

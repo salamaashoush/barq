@@ -38,12 +38,12 @@ const linkText = d({
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
-  color: "var(--link, var(--primary, LinkText))",
+  color: "var(--link, var(--primary))",
 });
 const emptyText = d({
   flex: "1",
   paddingInline: "6px",
-  color: "var(--muted-foreground, GrayText)",
+  color: "var(--muted-foreground)",
 });
 const dialog = d({
   position: "absolute",

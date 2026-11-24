@@ -4,6 +4,8 @@ import { isDarwin, isFirefox, isWindows } from "@excalidraw/common";
 
 import { actionShortcuts, actionToggleTheme } from "../editor/actions/toggles.ts";
 import { useDiagramUI } from "./context.tsx";
+import { layout, surface } from "@barqjs/arc/style";
+
 import { diagramLayer as d } from "./layer.ts";
 import { getShortcutKey } from "./shortcuts.ts";
 
@@ -23,16 +25,12 @@ const sections = d({
   alignItems: "start",
 });
 
-const island = d({
-  display: "flex",
-  flexDirection: "column",
+const island = d(surface.bordered, layout.column, {
   gap: "2px",
   padding: "12px",
-  borderRadius: "var(--radius, 0.5rem)",
-  border: "1px solid var(--border, rgb(0 0 0 / 0.12))",
   "& h3": {
     margin: "0 0 6px",
-    fontSize: "var(--text-sm, 0.875rem)",
+    fontSize: "var(--text-sm)",
     fontWeight: "600",
   },
 });
@@ -43,8 +41,8 @@ const row = d({
   justifyContent: "space-between",
   gap: "12px",
   paddingBlock: "4px",
-  fontSize: "var(--text-sm, 0.875rem)",
-  "& + &": { borderTop: "1px solid var(--border, rgb(0 0 0 / 0.08))" },
+  fontSize: "var(--text-sm)",
+  "& + &": { borderTop: "1px solid var(--border)" },
 });
 
 const keys = d({
@@ -54,8 +52,8 @@ const keys = d({
   alignItems: "center",
   gap: "4px",
   flexShrink: "0",
-  color: "var(--muted-foreground, GrayText)",
-  fontSize: "var(--text-xs, 0.75rem)",
+  color: "var(--muted-foreground)",
+  fontSize: "var(--text-xs)",
 });
 
 const key = d({
@@ -67,10 +65,10 @@ const key = d({
   paddingBlock: "2px",
   borderRadius: "4px",
   fontFamily: "inherit",
-  fontSize: "var(--text-xs, 0.75rem)",
-  color: "var(--foreground, CanvasText)",
-  backgroundColor: "var(--muted, rgb(0 0 0 / 0.06))",
-  boxShadow: "inset 0 -1px 0 var(--border, rgb(0 0 0 / 0.15))",
+  fontSize: "var(--text-xs)",
+  color: "var(--foreground)",
+  backgroundColor: "var(--muted)",
+  boxShadow: "inset 0 -1px 0 var(--border)",
 });
 
 const upperCaseSingleChars = (text: string): string =>
@@ -139,7 +137,7 @@ export function HelpDialog() {
         <DialogHeader>
           <DialogTitle>{t("helpDialog.title")}</DialogTitle>
         </DialogHeader>
-        <h2 style="margin:0;font-size:var(--text-base, 1rem)">{t("helpDialog.shortcuts")}</h2>
+        <h2 style="margin:0;font-size:var(--text-base)">{t("helpDialog.shortcuts")}</h2>
         <div class={sections}>
           <Island title={t("helpDialog.tools")} data-testid="help-tools">
             <Shortcut label={label("toolBar.hand")} shortcuts={["H"]} />

@@ -43,18 +43,18 @@ import type { Degrees } from "@excalidraw/math";
 import type { DiagramEditor } from "../editor/editor.ts";
 
 const header = d({ display: "flex", alignItems: "center", justifyContent: "space-between" });
-const title = d({ margin: "0", fontSize: "var(--text-sm, 0.875rem)", fontWeight: "600" });
+const title = d({ margin: "0", fontSize: "var(--text-sm)", fontWeight: "600" });
 const subtitle = d({
   margin: "0",
-  fontSize: "var(--text-xs, 0.75rem)",
-  color: "var(--muted-foreground, GrayText)",
+  fontSize: "var(--text-xs)",
+  color: "var(--muted-foreground)",
 });
 const grid = d({
   display: "grid",
   gridTemplateColumns: "1fr 1fr",
   gap: "6px 8px",
   alignItems: "center",
-  "& dt": { color: "var(--muted-foreground, GrayText)" },
+  "& dt": { color: "var(--muted-foreground)" },
   "& dd": { margin: "0", textAlign: "end", fontVariantNumeric: "tabular-nums" },
 });
 const fields = d({ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" });
@@ -62,7 +62,7 @@ const field = d({
   display: "flex",
   alignItems: "center",
   gap: "6px",
-  "& span": { minWidth: "14px", color: "var(--muted-foreground, GrayText)" },
+  "& span": { minWidth: "14px", color: "var(--muted-foreground)" },
 });
 
 const sectionToggle = d({
@@ -82,7 +82,7 @@ const sectionToggle = d({
 const heading = d({
   gridColumn: "1 / -1",
   margin: "0",
-  fontSize: "var(--text-xs, 0.75rem)",
+  fontSize: "var(--text-xs)",
   fontWeight: "600",
 });
 const scrub = d({ cursor: "ew-resize", touchAction: "none", userSelect: "none" });

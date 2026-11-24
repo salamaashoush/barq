@@ -19,7 +19,7 @@ const zoomLevel = d({
   width: "56px",
   paddingInline: "6px",
   fontVariantNumeric: "tabular-nums",
-  fontSize: "var(--text-xs, 0.75rem)",
+  fontSize: "var(--text-xs)",
 });
 
 /** Bottom start: the zoom out, the level (which resets it) and zoom in; undo and redo; the minimap toggle. */

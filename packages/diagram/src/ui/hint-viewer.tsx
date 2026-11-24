@@ -24,13 +24,13 @@ const hint = d({
   alignItems: "center",
   gap: "2px",
   textAlign: "center",
-  fontSize: "var(--text-xs, 0.75rem)",
-  color: "var(--muted-foreground, GrayText)",
+  fontSize: "var(--text-xs)",
+  color: "var(--muted-foreground)",
   pointerEvents: "none",
   "& span": {
     paddingInline: "6px",
     borderRadius: "4px",
-    backgroundColor: "color-mix(in oklab, var(--background, Canvas) 80%, transparent)",
+    backgroundColor: "color-mix(in oklab, var(--background) 80%, transparent)",
   },
 });
 

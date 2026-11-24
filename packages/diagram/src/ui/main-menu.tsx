@@ -67,7 +67,7 @@ const swatchDot = d({
   height: "16px",
   flexShrink: "0",
   borderRadius: "4px",
-  border: "1px solid var(--border, rgb(0 0 0 / 0.15))",
+  border: "1px solid var(--border)",
 });
 
 const pickerBox = d({ padding: "12px", display: "flex", flexDirection: "column", gap: "8px" });

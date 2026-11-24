@@ -38,12 +38,18 @@ const barqCompiler: BunPlugin = {
       path: args.path,
       external: true,
     }));
-    // the UI's styles, and `@barqjs/ui`'s, fold to classes as an app build folds them
-    build.onLoad({ filter: /\/(packages\/ui\/src|diagram\/src\/ui)\/.*\.ts$/ }, async (args) => {
-      const source = await Bun.file(args.path).text();
-      const result = native.transform(source, { filename: args.path });
-      return { contents: result.code, loader: "ts" };
-    });
+    // the UI's styles, `@barqjs/ui`'s and arc's, fold to classes as an app build folds them
+    build.onLoad(
+      {
+        filter:
+          /\/(packages\/ui\/src\/.*|diagram\/src\/ui\/.*|packages\/arc\/src\/(style\/.*|layer))\.ts$/,
+      },
+      async (args) => {
+        const source = await Bun.file(args.path).text();
+        const result = native.transform(source, { filename: args.path });
+        return { contents: result.code, loader: "ts" };
+      },
+    );
     build.onLoad({ filter: /\.tsx$/ }, async (args) => {
       const source = await Bun.file(args.path).text();
       if (source.includes("@jsxImportSource react")) return { contents: source, loader: "tsx" };

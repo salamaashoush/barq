@@ -13,6 +13,8 @@ import {
 } from "@excalidraw/common";
 
 import { useDiagramUI } from "./context.tsx";
+import { layout, surface, type } from "@barqjs/arc/style";
+
 import { diagramLayer as d } from "./layer.ts";
 import { LibraryMenu } from "./library-menu.tsx";
 import { SearchMenu } from "./search-menu.tsx";
@@ -27,25 +29,18 @@ const SIDEBAR_MARGIN = 12;
 /** What the rest of the UI gives up while the sidebar is docked beside it. */
 export const DOCKED_SIDEBAR_INSET = SIDEBAR_WIDTH + SIDEBAR_MARGIN;
 
-const panel = d({
+const panel = d(surface.elevated, layout.column, type.sm, {
   position: "absolute",
   top: `${SIDEBAR_MARGIN}px`,
   bottom: `${SIDEBAR_MARGIN}px`,
   insetInlineEnd: `${SIDEBAR_MARGIN}px`,
   zIndex: "4",
-  display: "flex",
-  flexDirection: "column",
   gap: "8px",
   width: `${SIDEBAR_WIDTH}px`,
   maxWidth: `calc(100% - ${SIDEBAR_MARGIN * 2}px)`,
   padding: "8px",
   pointerEvents: "auto",
-  borderRadius: "calc(var(--radius, 0.5rem) + 2px)",
-  backgroundColor: "var(--popover, Canvas)",
-  color: "var(--popover-foreground, CanvasText)",
-  boxShadow: "0 4px 16px rgb(0 0 0 / 0.16), 0 0 0 1px var(--border, rgb(0 0 0 / 0.08))",
-  fontFamily: "var(--font-sans, system-ui, sans-serif)",
-  fontSize: "var(--text-sm, 0.875rem)",
+  fontFamily: "var(--font-sans)",
 });
 
 const tabs = d({ display: "flex", flexDirection: "column", gap: "8px", flex: "1", minHeight: "0" });

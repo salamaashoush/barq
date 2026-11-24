@@ -20,8 +20,8 @@ bun add -d @barqjs/vite
 ```
 
 `@barqjs/core`, `@barqjs/web`, `@barqjs/server`, `@barqjs/primitives`, and for
-the editor's UI `@barqjs/ui`, `@barqjs/aria`, `@barqjs/css` and
-`@barqjs/lucide`, are peer dependencies. The package ships its TypeScript source under the `barq`
+the editor's UI `@barqjs/ui`, `@barqjs/arc` (its `style` entry), `@barqjs/aria`,
+`@barqjs/css` and `@barqjs/lucide`, are peer dependencies. The package ships its TypeScript source under the `barq`
 export condition, and `@barqjs/vite` compiles it for the DOM or the server
 with the rest of the application. `@excalidraw/mermaid-to-excalidraw` is an
 optional peer dependency, needed only by `@barqjs/diagram/mermaid`.

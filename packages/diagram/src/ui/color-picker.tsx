@@ -108,8 +108,8 @@ const grid = d({
   gap: "6px",
 });
 const heading = d({
-  fontSize: "var(--text-xs, 0.75rem)",
-  color: "var(--muted-foreground, GrayText)",
+  fontSize: "var(--text-xs)",
+  color: "var(--muted-foreground)",
   marginBlock: "6px 4px",
 });
 const content = d({
@@ -129,12 +129,12 @@ const hotkey = d({
   pointerEvents: "none",
 });
 const hexRow = d({ display: "flex", alignItems: "center", gap: "4px", marginTop: "4px" });
-const hexPrefix = d({ color: "var(--muted-foreground, GrayText)" });
+const hexPrefix = d({ color: "var(--muted-foreground)" });
 const pickerRow = d({ display: "flex", alignItems: "center", gap: "6px" });
 const swatchDivider = d({
   width: "1px",
   height: "20px",
-  backgroundColor: "var(--border, rgb(0 0 0 / 0.12))",
+  backgroundColor: "var(--border)",
 });
 
 export interface ColorPickerProps {

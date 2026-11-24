@@ -61,8 +61,8 @@ const badge = d({
   paddingInline: "6px",
   borderRadius: "9999px",
   fontSize: "10px",
-  backgroundColor: "var(--danger-subtle, #ffe3e3)",
-  color: "var(--danger-foreground, #c92a2a)",
+  backgroundColor: "var(--danger-subtle)",
+  color: "var(--danger-foreground)",
 });
 
 /**

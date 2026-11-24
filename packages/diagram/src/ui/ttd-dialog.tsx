@@ -62,8 +62,8 @@ const panel = d({ display: "flex", flexDirection: "column", gap: "8px", minWidth
 const editorArea = d({
   flex: "1",
   minHeight: "300px",
-  fontFamily: "var(--font-mono, ui-monospace, monospace)",
-  fontSize: "var(--text-sm, 0.875rem)",
+  fontFamily: "var(--font-mono)",
+  fontSize: "var(--text-sm)",
   resize: "none",
 });
 
@@ -75,21 +75,21 @@ const previewBox = d({
   alignItems: "center",
   justifyContent: "center",
   overflow: "hidden",
-  borderRadius: "var(--radius, 0.5rem)",
-  border: "1px solid var(--border, rgb(0 0 0 / 0.12))",
+  borderRadius: "var(--radius)",
+  border: "1px solid var(--border)",
   "& canvas": { maxWidth: "100%", maxHeight: "100%" },
 });
 
 const errorText = d({
-  color: "var(--destructive, #e03131)",
-  fontSize: "var(--text-sm, 0.875rem)",
+  color: "var(--destructive)",
+  fontSize: "var(--text-sm)",
   whiteSpace: "pre-wrap",
   margin: "0",
 });
 
 const muted = d({
-  color: "var(--muted-foreground, GrayText)",
-  fontSize: "var(--text-sm, 0.875rem)",
+  color: "var(--muted-foreground)",
+  fontSize: "var(--text-sm)",
   margin: "0",
 });
 
@@ -110,17 +110,17 @@ const message = d({
   flexDirection: "column",
   gap: "4px",
   padding: "8px",
-  borderRadius: "var(--radius, 0.5rem)",
-  backgroundColor: "var(--muted, rgb(0 0 0 / 0.04))",
+  borderRadius: "var(--radius)",
+  backgroundColor: "var(--muted)",
   "& pre": {
     margin: "0",
     whiteSpace: "pre-wrap",
-    fontFamily: "var(--font-mono, ui-monospace, monospace)",
-    fontSize: "var(--text-xs, 0.75rem)",
+    fontFamily: "var(--font-mono)",
+    fontSize: "var(--text-xs)",
   },
 });
 
-const role = d({ fontWeight: "600", fontSize: "var(--text-xs, 0.75rem)" });
+const role = d({ fontWeight: "600", fontSize: "var(--text-xs)" });
 
 const headerRow = d({ display: "flex", alignItems: "center", justifyContent: "space-between" });
 

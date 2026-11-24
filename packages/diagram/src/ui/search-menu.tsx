@@ -34,8 +34,8 @@ const count = d({
   alignItems: "center",
   justifyContent: "space-between",
   minHeight: "32px",
-  fontSize: "var(--text-xs, 0.75rem)",
-  color: "var(--muted-foreground, GrayText)",
+  fontSize: "var(--text-xs)",
+  color: "var(--muted-foreground)",
 });
 
 const results = d({
@@ -51,7 +51,7 @@ const groupTitle = d({
   alignItems: "center",
   gap: "6px",
   margin: "0",
-  fontSize: "var(--text-xs, 0.75rem)",
+  fontSize: "var(--text-xs)",
   fontWeight: "600",
   "& svg": { width: "14px", height: "14px" },
 });
@@ -63,19 +63,19 @@ const resultItem = d({
   width: "100%",
   padding: "6px 8px",
   border: "none",
-  borderRadius: "var(--radius, 0.375rem)",
+  borderRadius: "var(--radius)",
   background: "transparent",
   color: "inherit",
   font: "inherit",
-  fontSize: "var(--text-sm, 0.875rem)",
+  fontSize: "var(--text-sm)",
   textAlign: "start",
   cursor: "pointer",
   whiteSpace: "nowrap",
   overflow: "hidden",
   textOverflow: "ellipsis",
-  "&:hover": { backgroundColor: "var(--accent, rgb(0 0 0 / 0.06))" },
-  "&[aria-current=true]": { backgroundColor: "var(--accent, rgb(0 0 0 / 0.1))" },
-  "&:focus-visible": { outline: "2px solid var(--ring, Highlight)" },
+  "&:hover": { backgroundColor: "var(--accent)" },
+  "&[aria-current=true]": { backgroundColor: "var(--accent)" },
+  "&:focus-visible": { outline: "2px solid var(--ring)" },
 });
 
 /**

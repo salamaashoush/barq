@@ -1,22 +1,33 @@
+import {
+  edge,
+  focus,
+  interaction,
+  layout,
+  rounded,
+  surface,
+  target,
+  type,
+} from "@barqjs/arc/style";
+
 import { diagramLayer as d } from "./layer.ts";
 
 /**
- * The UI's surfaces and controls, on arc's tokens: light, dark and an app's
- * brand all reach them. Each value falls back to something legible when the
- * page installs no theme.
+ * The UI's surfaces and controls, composed from `@barqjs/arc/style`'s
+ * treatments: light, dark, density, high contrast and an app's brand all
+ * reach them. What is the editor's own (a canvas UI's fixed sizes, the
+ * pressed state of a tool) is written here.
  */
 
 /** The layer over the canvases: it takes no pointer itself, its islands do. */
-export const layerUI = d({
+export const layerUI = d(type.sm, {
   position: "absolute",
   inset: "0",
   // what changes in the UI (the zoom level as it zooms) lays out only itself
   contain: "layout style",
   pointerEvents: "none",
   zIndex: "3",
-  fontFamily: "var(--font-sans, system-ui, sans-serif)",
-  fontSize: "var(--text-sm, 0.875rem)",
-  color: "var(--foreground, CanvasText)",
+  fontFamily: "var(--font-sans)",
+  color: "var(--foreground)",
 });
 
 export const topStart = d({
@@ -73,31 +84,19 @@ export const bottomEnd = d({
 });
 
 /** A floating surface: the toolbar, a panel, the footer's groups. */
-export const island = d({
+export const island = d(surface.elevated, layout.row, {
   pointerEvents: "auto",
   contain: "layout style",
-  display: "flex",
-  alignItems: "center",
   gap: "2px",
   padding: "4px",
-  borderRadius: "calc(var(--radius, 0.5rem) + 2px)",
-  backgroundColor: "var(--popover, Canvas)",
-  color: "var(--popover-foreground, CanvasText)",
-  boxShadow: "0 1px 3px rgb(0 0 0 / 0.12), 0 0 0 1px var(--border, rgb(0 0 0 / 0.08))",
 });
 
-export const panel = d({
+export const panel = d(surface.elevated, layout.column, {
   pointerEvents: "auto",
-  display: "flex",
-  flexDirection: "column",
   gap: "12px",
   width: "212px",
   padding: "12px",
   overflowY: "auto",
-  borderRadius: "calc(var(--radius, 0.5rem) + 2px)",
-  backgroundColor: "var(--popover, Canvas)",
-  color: "var(--popover-foreground, CanvasText)",
-  boxShadow: "0 1px 3px rgb(0 0 0 / 0.12), 0 0 0 1px var(--border, rgb(0 0 0 / 0.08))",
 });
 
 export const divider = d({
@@ -105,33 +104,27 @@ export const divider = d({
   alignSelf: "stretch",
   marginBlock: "4px",
   marginInline: "4px",
-  backgroundColor: "var(--border, rgb(0 0 0 / 0.12))",
+  backgroundColor: "var(--border)",
 });
 
 /** A square icon control: a tool, an action, a choice. */
-export const iconButton = d({
+export const iconButton = d(layout.inlineCentre, layout.noShrink, rounded.md, focus.none, {
   position: "relative",
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
   width: "32px",
   height: "32px",
-  flexShrink: "0",
   padding: "0",
   border: "none",
-  borderRadius: "var(--radius, 0.5rem)",
   background: "transparent",
   color: "inherit",
   cursor: "pointer",
   font: "inherit",
-  outline: "none",
-  "&:hover": { backgroundColor: "var(--accent, rgb(0 0 0 / 0.06))" },
+  "&:hover": { backgroundColor: "var(--accent)" },
   "&[data-focus-visible], &:focus-visible": {
-    boxShadow: "0 0 0 2px var(--ring, Highlight)",
+    boxShadow: "0 0 0 2px var(--ring)",
   },
   "&[aria-pressed=true], &[aria-checked=true], &[data-selected], &[data-active]": {
-    backgroundColor: "var(--brand, var(--primary, Highlight))",
-    color: "var(--brand-ink, var(--primary-foreground, HighlightText))",
+    backgroundColor: "var(--brand, var(--primary))",
+    color: "var(--brand-ink, var(--primary-foreground))",
   },
   "&[aria-disabled=true], &:disabled, &[data-disabled]": {
     opacity: "0.4",
@@ -165,12 +158,7 @@ export const fieldset = d({
   minWidth: "0",
 });
 
-export const legend = d({
-  padding: "0",
-  marginBottom: "4px",
-  fontSize: "var(--text-xs, 0.75rem)",
-  color: "var(--muted-foreground, GrayText)",
-});
+export const legend = d(type.meta, { padding: "0", marginBottom: "4px" });
 
 export const buttonRow = d({
   display: "flex",
@@ -180,25 +168,20 @@ export const buttonRow = d({
 });
 
 /** An icon radio: the input hidden, its label drawn as the choice. */
-export const radioChoice = d({
+export const radioChoice = d(layout.inlineCentre, rounded.md, interaction.pressable, {
   position: "relative",
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
   width: "32px",
   height: "32px",
-  borderRadius: "var(--radius, 0.5rem)",
-  backgroundColor: "var(--muted, rgb(0 0 0 / 0.04))",
-  cursor: "pointer",
-  "&:hover": { backgroundColor: "var(--accent, rgb(0 0 0 / 0.08))" },
+  backgroundColor: "var(--muted)",
+  "&:hover": { backgroundColor: "var(--accent)" },
   "&[data-selected]": {
-    backgroundColor: "var(--brand, var(--primary, Highlight))",
-    color: "var(--brand-ink, var(--primary-foreground, HighlightText))",
+    backgroundColor: "var(--brand, var(--primary))",
+    color: "var(--brand-ink, var(--primary-foreground))",
   },
   "&[data-focus-visible], &:has([data-drop-target])": {
-    boxShadow: "0 0 0 2px var(--ring, Highlight)",
+    boxShadow: "0 0 0 2px var(--ring)",
   },
-  "&:has([data-duplicate])": { boxShadow: "0 0 0 2px var(--destructive, #e03131)" },
+  "&:has([data-duplicate])": { boxShadow: "0 0 0 2px var(--destructive)" },
   "&[data-disabled]": { opacity: "0.4", cursor: "default" },
   "@media (pointer: coarse)": { width: "44px", height: "44px" },
   "[data-touch] &": { width: "44px", height: "44px" },
@@ -227,7 +210,7 @@ export const swatch = d({
   padding: "0",
   flexShrink: "0",
   borderRadius: "6px",
-  border: "1px solid var(--border, rgb(0 0 0 / 0.15))",
+  border: "1px solid var(--border)",
   cursor: "pointer",
   outline: "none",
   "@media (pointer: coarse)": { width: "36px", height: "36px" },
@@ -238,18 +221,17 @@ export const swatch = d({
   backgroundSize: "8px 8px",
   backgroundPosition: "0 0, 0 4px, 4px -4px, -4px 0",
   "&[data-active], &[aria-checked=true], &[aria-pressed=true]": {
-    boxShadow:
-      "0 0 0 2px var(--popover, Canvas), 0 0 0 4px var(--brand, var(--primary, Highlight))",
+    boxShadow: "0 0 0 2px var(--popover), 0 0 0 4px var(--brand, var(--primary))",
   },
   "&:focus-visible, &[data-focus-visible]": {
-    boxShadow: "0 0 0 2px var(--popover, Canvas), 0 0 0 4px var(--ring, Highlight)",
+    boxShadow: "0 0 0 2px var(--popover), 0 0 0 4px var(--ring)",
   },
   // where a dragged colour or font lands, and the pick it would duplicate
   "&[data-drop-target]": {
-    boxShadow: "0 0 0 2px var(--popover, Canvas), 0 0 0 4px var(--ring, Highlight)",
+    boxShadow: "0 0 0 2px var(--popover), 0 0 0 4px var(--ring)",
   },
   "&[data-duplicate]": {
-    boxShadow: "0 0 0 2px var(--popover, Canvas), 0 0 0 4px var(--destructive, #e03131)",
+    boxShadow: "0 0 0 2px var(--popover), 0 0 0 4px var(--destructive)",
   },
 });
 
@@ -259,46 +241,34 @@ export const swatchFill = d({
   borderRadius: "5px",
 });
 
-export const menuSurface = d({
+export const menuSurface = d(surface.elevated, {
   pointerEvents: "auto",
   minWidth: "220px",
   maxHeight: "min(70vh, 560px)",
   overflowY: "auto",
   padding: "4px",
-  borderRadius: "calc(var(--radius, 0.5rem) + 2px)",
-  backgroundColor: "var(--popover, Canvas)",
-  color: "var(--popover-foreground, CanvasText)",
-  boxShadow: "0 4px 16px rgb(0 0 0 / 0.16), 0 0 0 1px var(--border, rgb(0 0 0 / 0.08))",
   "& [role=menu]": { outline: "none", listStyle: "none", margin: "0", padding: "0" },
   "& [role=separator]": {
     height: "1px",
     marginBlock: "4px",
-    backgroundColor: "var(--border, rgb(0 0 0 / 0.12))",
+    backgroundColor: "var(--border)",
   },
 });
 
-export const menuItem = d({
-  display: "flex",
-  alignItems: "center",
+export const menuItem = d(layout.row, rounded.sm, focus.none, target.size, {
   gap: "8px",
   paddingInline: "8px",
   paddingBlock: "6px",
-  borderRadius: "var(--radius, 0.375rem)",
   cursor: "default",
-  outline: "none",
   userSelect: "none",
-  "&[data-focused], &:hover": { backgroundColor: "var(--accent, rgb(0 0 0 / 0.06))" },
+  "&[data-focused], &:hover": { backgroundColor: "var(--accent)" },
   "&[data-disabled]": { opacity: "0.45" },
-  "@media (pointer: coarse)": { minHeight: "44px" },
-  "&[data-variant=destructive]": { color: "var(--destructive, #e03131)" },
+  "&[data-variant=destructive]": { color: "var(--destructive)" },
   "& svg": { width: "16px", height: "16px", flexShrink: "0" },
 });
 
-export const menuShortcut = d({
-  marginInlineStart: "auto",
+export const menuShortcut = d(type.meta, layout.pushEnd, {
   paddingInlineStart: "16px",
-  fontSize: "var(--text-xs, 0.75rem)",
-  color: "var(--muted-foreground, GrayText)",
   fontFamily: "inherit",
 });
 
@@ -320,16 +290,10 @@ export const visuallyHidden = d({
   border: "0",
 });
 
-export const textInput = d({
-  width: "100%",
-  minWidth: "0",
+export const textInput = d(edge.input, rounded.md, focus.visible, layout.fill, layout.minZero, {
   height: "30px",
   paddingInline: "8px",
-  borderRadius: "var(--radius, 0.375rem)",
-  border: "1px solid var(--input, var(--border, rgb(0 0 0 / 0.2)))",
   backgroundColor: "transparent",
   color: "inherit",
   font: "inherit",
-  outline: "none",
-  "&:focus-visible": { boxShadow: "0 0 0 2px var(--ring, Highlight)" },
 });

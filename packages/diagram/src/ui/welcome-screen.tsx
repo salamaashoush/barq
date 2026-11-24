@@ -7,11 +7,11 @@ import { actionShortcuts } from "../editor/actions/toggles.ts";
 import { useDiagramUI } from "./context.tsx";
 import { diagramLayer as d } from "./layer.ts";
 
-const HAND_FONT = "Excalifont, Xiaolai, var(--font-sans, system-ui, sans-serif)";
+const HAND_FONT = "Excalifont, Xiaolai, var(--font-sans)";
 
 const decor = d({
   pointerEvents: "none",
-  color: "var(--muted-foreground, GrayText)",
+  color: "var(--muted-foreground)",
   fontFamily: HAND_FONT,
 });
 
@@ -28,7 +28,7 @@ const center = d({
   textAlign: "center",
 });
 
-const logo = d({ fontSize: "2.25rem", color: "var(--foreground, CanvasText)" });
+const logo = d({ fontSize: "2.25rem", color: "var(--foreground)" });
 
 const centerHeading = d({ fontSize: "1.25rem", maxWidth: "28rem", lineHeight: "1.4" });
 
@@ -46,26 +46,26 @@ const menuItem = d({
   gap: "12px",
   padding: "10px 12px",
   border: "none",
-  borderRadius: "var(--radius, 0.5rem)",
+  borderRadius: "var(--radius)",
   background: "transparent",
-  color: "var(--muted-foreground, GrayText)",
+  color: "var(--muted-foreground)",
   font: "inherit",
-  fontFamily: "var(--font-sans, system-ui, sans-serif)",
-  fontSize: "var(--text-sm, 0.875rem)",
+  fontFamily: "var(--font-sans)",
+  fontSize: "var(--text-sm)",
   textDecoration: "none",
   cursor: "pointer",
   "& svg": { width: "18px", height: "18px", flexShrink: "0" },
   "&:hover, &:focus-visible": {
-    backgroundColor: "var(--accent, rgb(0 0 0 / 0.06))",
-    color: "var(--foreground, CanvasText)",
+    backgroundColor: "var(--accent)",
+    color: "var(--foreground)",
     outline: "none",
   },
-  "&:focus-visible": { boxShadow: "0 0 0 2px var(--ring, Highlight)" },
+  "&:focus-visible": { boxShadow: "0 0 0 2px var(--ring)" },
   "@media (pointer: coarse)": { minHeight: "44px" },
 });
 
 const menuText = d({ flexGrow: "1", textAlign: "start" });
-const menuShortcut = d({ fontSize: "var(--text-xs, 0.75rem)" });
+const menuShortcut = d({ fontSize: "var(--text-xs)" });
 
 const hint = d({
   position: "absolute",

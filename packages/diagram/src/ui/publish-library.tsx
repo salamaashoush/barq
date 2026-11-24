@@ -65,7 +65,7 @@ const scroll = d({
   overflowY: "auto",
 });
 
-const note = d({ margin: "0", fontSize: "var(--text-sm, 0.875rem)" });
+const note = d({ margin: "0", fontSize: "var(--text-sm)" });
 
 const itemsGrid = d({
   display: "grid",
@@ -79,8 +79,8 @@ const card = d({
   flexDirection: "column",
   gap: "6px",
   padding: "8px",
-  borderRadius: "var(--radius, 0.5rem)",
-  border: "1px solid var(--border, rgb(0 0 0 / 0.12))",
+  borderRadius: "var(--radius)",
+  border: "1px solid var(--border)",
   "& [data-remove]": { position: "absolute", top: "2px", insetInlineEnd: "2px" },
 });
 
@@ -96,10 +96,10 @@ const field = d({
   display: "flex",
   flexDirection: "column",
   gap: "4px",
-  fontSize: "var(--text-sm, 0.875rem)",
+  fontSize: "var(--text-sm)",
 });
 
-const error = d({ color: "var(--destructive, #e03131)", fontSize: "var(--text-xs, 0.75rem)" });
+const error = d({ color: "var(--destructive)", fontSize: "var(--text-xs)" });
 
 /** A note with its `<link>…</link>` part as a link. */
 function Note(props: { text: string; href?: string }) {

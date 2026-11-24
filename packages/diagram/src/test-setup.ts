@@ -15,6 +15,9 @@ installCanvas();
 // only once the compiler has folded it.
 const escape = (path: string): string => path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const ui = dirname(Bun.resolveSync("@barqjs/ui/package.json", import.meta.dir));
-const styled = new RegExp(`^(${escape(`${import.meta.dir}/ui`)}|${escape(ui)}/src)/.*\\.ts$`);
+const arc = dirname(Bun.resolveSync("@barqjs/arc/package.json", import.meta.dir));
+const styled = new RegExp(
+  `^(${escape(`${import.meta.dir}/ui`)}|${escape(ui)}/src|${escape(arc)}/src/style)/.*\\.ts$|^${escape(arc)}/src/layer\\.ts$`,
+);
 
 plugin(compilerLoader({ transform: { dev: true, hydratable: true, strictCss: true }, ts: styled }));

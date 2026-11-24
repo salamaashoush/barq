@@ -30,14 +30,14 @@ const choice = d({
   alignItems: "stretch",
   gap: "8px",
   padding: "8px",
-  border: "1px solid var(--border, rgb(0 0 0 / 0.12))",
-  borderRadius: "var(--radius, 0.5rem)",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius)",
   background: "transparent",
   color: "inherit",
   font: "inherit",
   cursor: "pointer",
-  "&:hover": { backgroundColor: "var(--accent, rgb(0 0 0 / 0.06))" },
-  "&:focus-visible": { outline: "2px solid var(--ring, Highlight)", outlineOffset: "2px" },
+  "&:hover": { backgroundColor: "var(--accent)" },
+  "&:focus-visible": { outline: "2px solid var(--ring)", outlineOffset: "2px" },
 });
 
 const preview = d({

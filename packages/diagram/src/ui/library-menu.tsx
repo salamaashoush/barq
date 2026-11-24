@@ -58,9 +58,9 @@ const counter = d({
   paddingInline: "4px",
   borderRadius: "9px",
   textAlign: "center",
-  fontSize: "var(--text-xs, 0.75rem)",
-  backgroundColor: "var(--brand, var(--primary, Highlight))",
-  color: "var(--brand-ink, var(--primary-foreground, HighlightText))",
+  fontSize: "var(--text-xs)",
+  backgroundColor: "var(--brand, var(--primary))",
+  color: "var(--brand-ink, var(--primary-foreground))",
 });
 
 const items = d({
@@ -74,9 +74,9 @@ const items = d({
 
 const sectionHeading = d({
   margin: "0",
-  fontSize: "var(--text-xs, 0.75rem)",
+  fontSize: "var(--text-xs)",
   fontWeight: "600",
-  color: "var(--muted-foreground, GrayText)",
+  color: "var(--muted-foreground)",
 });
 
 const grid = d({
@@ -111,15 +111,15 @@ const preview = d({
   aspectRatio: "1",
   width: "100%",
   padding: "6px",
-  border: "1px solid var(--border, rgb(0 0 0 / 0.12))",
-  borderRadius: "var(--radius, 0.5rem)",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius)",
   background: "transparent",
   color: "inherit",
   cursor: "pointer",
   "& svg": { maxWidth: "100%", maxHeight: "100%", width: "auto", height: "auto" },
-  "&:hover": { backgroundColor: "var(--accent, rgb(0 0 0 / 0.06))" },
-  "&:focus-visible": { outline: "2px solid var(--ring, Highlight)", outlineOffset: "1px" },
-  "[data-selected] > &": { borderColor: "var(--brand, var(--primary, Highlight))" },
+  "&:hover": { backgroundColor: "var(--accent)" },
+  "&:focus-visible": { outline: "2px solid var(--ring)", outlineOffset: "1px" },
+  "[data-selected] > &": { borderColor: "var(--brand, var(--primary))" },
   "&[data-pending]": { borderStyle: "dashed" },
 });
 
@@ -127,25 +127,25 @@ const itemName = d({
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
-  fontSize: "var(--text-xs, 0.75rem)",
+  fontSize: "var(--text-xs)",
   textAlign: "center",
 });
 
 const hint = d({
   margin: "0",
-  fontSize: "var(--text-xs, 0.75rem)",
-  color: "var(--muted-foreground, GrayText)",
+  fontSize: "var(--text-xs)",
+  color: "var(--muted-foreground)",
 });
 
 const browse = d({
   display: "block",
   padding: "8px",
-  borderRadius: "var(--radius, 0.5rem)",
+  borderRadius: "var(--radius)",
   textAlign: "center",
   color: "inherit",
-  backgroundColor: "var(--muted, rgb(0 0 0 / 0.05))",
+  backgroundColor: "var(--muted)",
   textDecoration: "none",
-  "&:hover": { backgroundColor: "var(--accent, rgb(0 0 0 / 0.08))" },
+  "&:hover": { backgroundColor: "var(--accent)" },
 });
 
 const deburr = (text: string): string => text.normalize("NFD").replace(/[̀-ͯ]/g, "");

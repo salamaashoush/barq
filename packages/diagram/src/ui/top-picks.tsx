@@ -184,13 +184,13 @@ export function createTopPicksDnD<T>(options: {
 }
 
 const tip = d({
-  fontSize: "var(--text-xs, 0.75rem)",
-  color: "var(--muted-foreground, GrayText)",
+  fontSize: "var(--text-xs)",
+  color: "var(--muted-foreground)",
   "& button": {
     padding: "0",
     border: "none",
     background: "none",
-    color: "var(--primary, LinkText)",
+    color: "var(--primary)",
     font: "inherit",
     textDecoration: "underline",
     cursor: "pointer",

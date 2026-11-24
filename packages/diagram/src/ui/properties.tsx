@@ -148,8 +148,8 @@ const groupLabel = d({
   display: "block",
   width: "100%",
   marginBottom: "4px",
-  fontSize: "var(--text-xs, 0.75rem)",
-  color: "var(--muted-foreground, GrayText)",
+  fontSize: "var(--text-xs)",
+  color: "var(--muted-foreground)",
 });
 
 const sliderRow = d({
