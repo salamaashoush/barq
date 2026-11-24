@@ -185,7 +185,9 @@ const IDLE: Meter = { frames: 0, fps: 0, geometries: 0, textures: 0, programs: 0
 
 function Orrery() {
   const system = Route.useLoaderData();
-  const planets = (): readonly Planet[] => system()?.planets ?? [];
+  function planets(): readonly Planet[] {
+    return system()?.planets ?? [];
+  }
   const orrery = createOrrery(planets, () => system()?.seed ?? 0);
   const [stats, setStats] = createSignal<Meter>(IDLE);
   const [reseeding, setReseeding] = createSignal(false);
@@ -212,7 +214,7 @@ function Orrery() {
     return () => clearInterval(timer);
   });
 
-  const chosen = (): Selection | null => {
+  function chosen(): Selection | null {
     const id = orrery.selected();
     if (id === null) return null;
     if (id === "sun") {
@@ -240,9 +242,9 @@ function Orrery() {
         ["Axial tilt", `${planet.tilt}°`],
       ],
     };
-  };
+  }
 
-  const randomise = async (): Promise<void> => {
+  async function randomise(): Promise<void> {
     setReseeding(true);
     try {
       const next = await reseed();
@@ -250,7 +252,7 @@ function Orrery() {
     } finally {
       setReseeding(false);
     }
-  };
+  }
 
   return (
     <OrreryContext value={orrery}>

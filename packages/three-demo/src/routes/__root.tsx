@@ -47,19 +47,23 @@ const bar = css`
   }
 `;
 
-const shellComponent = (props: { children: Child }) => (
-  <html lang="en">
-    <head>
-      <meta charset="utf-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <HeadContent />
-    </head>
-    <body>
-      <div id="app">{props.children}</div>
-      <Scripts />
-    </body>
-  </html>
-);
+interface ShellProps { children: Child }
+
+function shellComponent(props: ShellProps) {
+  return (
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <HeadContent />
+      </head>
+      <body>
+        <div id="app">{props.children}</div>
+        <Scripts />
+      </body>
+    </html>
+  );
+}
 
 const head = {
   meta: [

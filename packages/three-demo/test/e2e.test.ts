@@ -120,10 +120,13 @@ async function until(page: Page, expression: string, what: string): Promise<void
   throw new Error(`timed out waiting for ${what}\n${logs.join("\n")}`);
 }
 
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-const frames = (page: Page): Promise<number> =>
-  page.evaluate<number>("Number(document.querySelector('#frames').textContent)");
+function frames(page: Page): Promise<number> {
+  return page.evaluate<number>("Number(document.querySelector('#frames').textContent)");
+}
 
 /** The frame count once it stops moving, read a poll interval apart. */
 async function settledFrames(page: Page): Promise<number> {
@@ -156,8 +159,10 @@ async function click(page: Page, x: number, y: number): Promise<void> {
   });
 }
 
+interface ScreenPoint { x: number; y: number }
+
 async function clickElement(page: Page, selector: string): Promise<void> {
-  const at = await page.evaluate<{ x: number; y: number }>(
+  const at = await page.evaluate<ScreenPoint>(
     `(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`,
   );
   await click(page, at.x, at.y);
@@ -198,6 +203,8 @@ function expectScene(lit: Lit): void {
   expect(lit.lit / lit.sampled).toBeGreaterThan(0.02);
 }
 
+interface GlContexts { created: number; lost: number }
+
 test("hydrates without a mismatch, draws, selects on click, and remounts after navigation", async () => {
   await withChrome(
     async (page) => {
@@ -229,7 +236,7 @@ test("hydrates without a mismatch, draws, selects on click, and remounts after n
       expectScene(await page.evaluate<Lit>(LIT));
 
       // A click on Jupiter's centre, where its label is anchored, selects it.
-      const jupiter = await page.evaluate<{ x: number; y: number }>(`(() => {
+      const jupiter = await page.evaluate<ScreenPoint>(`(() => {
         const anchor = document.querySelector('span[data-planet="jupiter"]').parentElement.parentElement;
         const [, x, y] = /translate3d\\(([-\\d.]+)px, ([-\\d.]+)px/.exec(anchor.style.transform);
         const host = anchor.parentElement.getBoundingClientRect();
@@ -283,7 +290,7 @@ test("hydrates without a mismatch, draws, selects on click, and remounts after n
           "document.querySelectorAll('canvas, span[data-planet]').length",
         ),
       ).toBe(0);
-      expect(await page.evaluate<{ created: number; lost: number }>("window.__gl")).toEqual({
+      expect(await page.evaluate<GlContexts>("window.__gl")).toEqual({
         created: 1,
         lost: 1,
       });
@@ -301,7 +308,7 @@ test("hydrates without a mismatch, draws, selects on click, and remounts after n
         "labels again",
       );
       expect(await page.evaluate<string>("window.__marker")).toBe("same document");
-      expect(await page.evaluate<{ created: number; lost: number }>("window.__gl")).toEqual({
+      expect(await page.evaluate<GlContexts>("window.__gl")).toEqual({
         created: 2,
         lost: 1,
       });

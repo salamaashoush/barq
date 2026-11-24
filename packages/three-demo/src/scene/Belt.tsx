@@ -6,7 +6,9 @@ import { MAX_ASTEROIDS, random, useOrrery } from "./orrery.ts";
 const INNER = 8.4;
 const OUTER = 10.2;
 
-function scatter(seed: number): { matrices: Float32Array; shades: Float32Array } {
+interface ScatteredRocks { matrices: Float32Array; shades: Float32Array }
+
+function scatter(seed: number): ScatteredRocks {
   const next = random(seed);
   const matrices = new Float32Array(MAX_ASTEROIDS * 16);
   const shades = new Float32Array(MAX_ASTEROIDS * 3);

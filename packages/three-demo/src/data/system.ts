@@ -20,8 +20,10 @@ export interface Planet {
   readonly fact: string;
 }
 
+export interface Star { readonly name: string; readonly color: string; readonly radius: number }
+
 export interface StarSystem {
-  readonly star: { readonly name: string; readonly color: string; readonly radius: number };
+  readonly star: Star;
   readonly planets: readonly Planet[];
   /** Seeds the asteroid belt and the star field, so both come out the same on every client. */
   readonly seed: number;

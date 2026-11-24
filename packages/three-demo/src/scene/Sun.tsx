@@ -3,10 +3,14 @@ import { AdditiveBlending, TextureLoader } from "three";
 
 import { useOrrery } from "./orrery.ts";
 
-export function Sun(props: { color: string; radius: number }) {
+export interface SunProps { color: string; radius: number }
+
+export function Sun(props: SunProps) {
   const orrery = useOrrery();
   const glow = useLoader(TextureLoader, "/textures/glow.svg");
-  const lit = () => orrery.hovered() === "sun" || orrery.selected() === "sun";
+  function lit() {
+    return orrery.hovered() === "sun" || orrery.selected() === "sun";
+  }
   return (
     <group>
       <mesh
