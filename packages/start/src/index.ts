@@ -148,6 +148,11 @@ export {
   defineWebSocket,
   upgradeWebSocket,
 } from "./websocket.ts";
+export {
+  type WebSocketRooms,
+  type WebSocketRoomsOptions,
+  createWebSocketRooms,
+} from "./websocket-rooms.ts";
 export { type BindingSlot, FRAME_APPLIED_EVENT, type Slot, isFrame } from "./frames.ts";
 export { type LiveIterable, type LiveStatus, live } from "./live-client.ts";
 

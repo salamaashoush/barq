@@ -687,6 +687,58 @@ Nitro and h3 run on, so a `defineWebSocketHandler` body moves over unchanged.
 built server takes them on Bun, Node and Deno. A plain `GET` to the address
 gets 426.
 
+### Rooms
+
+`createWebSocketRooms()` is a room server for clients that encrypt end to
+end, the protocol of Excalidraw's collaboration server on plain WebSockets:
+`@barqjs/diagram/collab`'s `createWebSocketTransport` speaks it, and so can
+any client that wants rooms, presence and a shared store without the server
+reading them. Its `hooks` go to `upgradeWebSocket`; the route's own checks
+decide who gets in.
+
+```ts
+import { createFileRoute } from "@barqjs/router";
+import { createWebSocketRooms, upgradeWebSocket } from "@barqjs/start";
+
+const rooms = createWebSocketRooms({ maxRoomFileBytes: 32 * 1024 * 1024 });
+
+export const Route = createFileRoute("/rooms")({
+  server: {
+    handlers: {
+      GET: ({ request }) => upgradeWebSocket(request, rooms.hooks),
+    },
+  },
+});
+```
+
+Every frame is binary: a 4-byte big-endian length, that many bytes of a
+UTF-8 JSON header, and a body, the rest, which the server passes on or
+keeps as it came.
+
+- A peer hears `hello` with its id and answers `join` with a room id. The
+  first in a room hears `first-in-room`; otherwise the others hear
+  `new-user`. Everyone hears `room-user-change` with the room's peers, and
+  again when one leaves.
+- `broadcast` goes to the rest of the room as `broadcast` with `from`; a
+  `volatile` one (a cursor) skips a peer whose connection is behind. With
+  `to: "followers"` it goes to the peers following the sender only.
+- `follow` with a `peer` and `FOLLOW` or `UNFOLLOW` changes who follows
+  whom; the followed peer hears `followers` with their ids, and again when
+  one leaves.
+- `file-put` with an `id` keeps the body as the room's file (`file-saved`,
+  or `file-error` over `maxFileBytes`, 4 MiB, or the room's
+  `maxRoomFileBytes`, 64 MiB); `file-get` answers `file` with it or
+  `file-missing`. Requests carry a `request` number their answers repeat.
+- `snapshot-get` answers `snapshot` with the room's stored state and its
+  `revision` (0 and an empty body for none); `snapshot-put` with the
+  revision it was read at saves a new one (`snapshot-saved`), or answers
+  `snapshot-conflict` with the newer state, or `snapshot-error` over
+  `maxSnapshotBytes` (8 MiB).
+
+Rooms live in the process's memory: a room nobody is in keeps its files and
+state for `emptyRoomTtlMs` (a day), then goes. `rooms()` lists each room's
+peers and `fileBytes(room)` what its files take.
+
 ## Proxying to another server
 
 When the API lives elsewhere, a route can relay to it, so the browser talks
