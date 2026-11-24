@@ -44,6 +44,37 @@ top:
 its own. The rules sit in `@layer barq.theme`, and arc's components in
 `barq.arc`, after `@barqjs/ui`'s, so an app's own unlayered CSS beats both.
 
+The motion tokens carry two curves: `ease-standard` for something that moves
+within the page, and `ease-emphasized`, which decelerates into place, for
+something that arrives.
+
+### Density
+
+```ts
+installArcTheme({ base: "neutral", density: "compact" });
+```
+
+```html
+<section data-density="compact">…</section>
+```
+
+A density is `compact`, `comfortable` (the default) or `spacious`, and it is
+one token: `--spacing`. Every control height, padding and gap in ui and arc is
+a multiple of it (a button is `9` steps tall, a cell is padded `3`), so all of
+them tighten together and no component branches on the density in JavaScript.
+`density` sets the scope's own; `data-density` on any element sets a region's,
+so one table can be compact on a comfortable page. A touch target is the
+exception by design: it stays 44px under a coarse pointer at every density.
+
+### High contrast
+
+`contrast: "high"` swaps in a token set that pulls every edge and every quiet
+text colour toward the foreground, light and dark; `contrast: "system"` does
+it only while the reader's system asks for more contrast. Under a
+forced-colours mode ui's controls draw their focus, edges, chosen and disabled
+states in the system's colours whatever the theme, through `@barqjs/ui`'s
+`contrast` group.
+
 ## The provider
 
 ```tsx
@@ -58,6 +89,153 @@ It installs the theme, sets up `colorScheme` (light, dark and system, right on
 the first paint), provides the locale the components lay out by, and renders
 the toast stack and the host `confirm()` draws in. Every base component of
 `@barqjs/ui` is exported from here too, so an app imports from one place.
+
+`density` and `contrast` go into the theme it installs (density alone is
+installed even with no `theme`), and `confirm` takes the `classes` of the
+dialog `confirm()` draws.
+
+### arc's words
+
+```tsx
+<ArcProvider locale="de" messages={{ copy: "Kopieren", copied: "Kopiert" }}>
+```
+
+Every word an arc component prints when the caller gave it none (a copy
+button's "Copied", a trail's "Show the full path", a table's "Page 2 of 5")
+comes from one dictionary, `ArcMessages`. `ENGLISH` is the default, and
+`messages` lays an app's translation over it for everything below the
+provider, read again when it changes. A component's own prop, such as
+`<CopyButton copiedLabel>`, still wins for that one instance.
+
+## Composing a look: `@barqjs/arc/style`
+
+```tsx
+import { bg, edge, gap, layout, rounded, space, surface, type } from "@barqjs/arc/style";
+import { on } from "@barqjs/ui/conditions";
+import { layer } from "@barqjs/css";
+
+const app = layer("app");
+
+const banner = app(layout.row, layout.wrap, gap[3], surface.card, {
+  padding: { default: space.x3, [on.md]: space.x6 },
+});
+```
+
+The treatments every arc component is built from, and what an app builds a
+one-off pattern from, so the pattern a single product needs still looks like
+arc. Each is a class string the compiler folds, through the import, at build
+time: composing one costs what writing its declarations would, and the
+declaration lands on the class arc's own components already use.
+
+- `layout`: `row`, `inlineRow`, `column`, `centre`, `between`, `end`, `wrap`,
+  `grow`, `growAuto`, `noShrink`, `pushEnd`, `minZero`, `minZeroBlock`,
+  `fill`, `clip`, `nowrap`, `clamp2`, `clamp3`, `flush` (no margin),
+  `container` (a query container), `relative`, `sticky`, `centred`; and
+  `truncate`, one line with an ellipsis.
+- `gap[0]` to `gap[12]`, and `space.x0` to `space.x16` for any other length
+  on the same scale.
+- `type`: `title`, `heading`, `subheading`, `body`, `label`, `meta`,
+  `caption`, `stat`, `numeric`, `mono`, `sans`, and the sizes and weights on
+  their own. They start from ui's `text.sm`, `text.medium` and
+  `text.heading`, so a label is one class in ui and in arc.
+- Colour by role: `fg` (`default`, `muted`, `faint`, `link`, `danger`,
+  `tone`, ...), `bg` (`page`, `card`, `popover`, `sunken`, `muted`, `tone`,
+  ...), and `tone.success` to `tone.neutral`, which set the three custom
+  properties `fg.tone`, `fg.toneBase` and `bg.tone` read below them.
+- Surfaces: `surface.card`, `sunken`, `bordered`, `elevated` and `overlay`,
+  built from `edge` (`all`, `frame`, `input`, `top`, `bottom`, `start`),
+  `rounded` (`xs` to `xl`, `full`) and `elevation.raised`.
+- State: `focus.visible` and `focus.slot` are ui's rings, `focus.inset` the
+  same ring inside a cell, `focus.within` for a box made of parts, and
+  `focus.outline` for a scrolling region; `interaction` covers hover, focus
+  within, selected, invalid and a pressable cursor.
+- `motion.colours`, `motion.transform` and `motion.enter`, whose duration goes
+  to nothing under reduced motion so a state still lands.
+- `target.size`: 24px under a fine pointer and 44px under a coarse one, for a
+  part that is not one of ui's controls (those grow by themselves).
+- Tokens: `space`, `radius`, `motionTokens` and `zIndex`, as values.
+
+It is one module on purpose. The compiler folds a group through an import by
+reading the module that declares it, and a re-export is not a declaration, so
+`@barqjs/arc/style` re-exports nothing: ui's groups (`text`, `box`, `ring`,
+`ringSlot`, `icon`, `when`, `touch`, `contrast`) and the conditions are
+imported from ui's own modules, `@barqjs/ui/shared-text` and the rest.
+
+### One set of conditions
+
+Every breakpoint and container step in ui and arc is a key of `on`, from
+`@barqjs/ui/conditions`: `on.sm` to `on["2xl"]` from a width up, `on.cqSm` to
+`on.cqXl` for the nearest query container, ranges such as `on.mdOnly` for a
+value per step, and `coarse`, `fine`, `hover`, `reducedMotion`,
+`moreContrast`, `forcedColors`, `print`, `dark` and `rtl`. The widths are the
+`breakpoints` and `containers` tokens, and `breakpointQuery("md")` is the same
+width as a media query for `mediaQuery` in JavaScript, which is what
+`DataTable`'s `hideBelow` and ui's `useIsMobile` read.
+
+## Layout
+
+```tsx
+import { Container, Grid, Inline, Stack } from "@barqjs/arc";
+
+<Container size="lg">
+  <Stack gap={{ base: 4, md: 6 }}>
+    <PageHeader heading="Invoices" />
+    <Inline justify="between" stackBelow="md">
+      <DataToolbar … />
+    </Inline>
+    <Grid columns={{ base: 1, cqMd: 2, cqLg: 4 }}>{stats}</Grid>
+  </Stack>
+</Container>;
+```
+
+Five components built from those treatments alone, so a page is laid out
+once rather than in each app's own flex rules.
+
+- `Stack`: children one under the other, `gap` apart, with `align` and
+  `justify`.
+- `Inline`: children side by side, wrapping; `stackBelow` stacks them under a
+  step.
+- `Grid`: equal `columns` per step, or as many as fit with `minItemWidth`.
+- `Container`: the page's column, no wider than a viewport step's width, with
+  room at its sides, and a query container for what is inside.
+- `Center`: centred both ways.
+
+A responsive prop is a value or a value per step, mobile first:
+`{ base: 2, md: 4 }` from the viewport, or `{ base: 1, cqMd: 3 }` from the
+nearest query container, one scale per prop. It is written as ranges that
+never overlap, through a dynamic group, so the stylesheet is the same whatever
+the values and two steps never tie on the cascade's hash order. `render` puts
+another element in the component's place: `render={(part, children) => <ul
+{...part.props} ref={part.ref}>{children}</ul>}`.
+
+## Customising a component
+
+Every arc component takes the same five things.
+
+- `class` (and `className`) on its root, merged after the component's own
+  classes, so an atom of the caller's replaces arc's for that property.
+- `classes`, a class per part, typed by the component's slots:
+  `<PageHeader classes={{ title: atoms({ fontSize: "var(--text-xl)" }) }} />`.
+- A `data-slot` on every part (`page-header-title`, `data-table-row`), which
+  is what a stylesheet of the app's own selects.
+- The styles, exported as a `variants({ slots })` function
+  (`pageHeaderStyles`, `dataTableStyles`, `statusVariants`, ...), for an app
+  that draws the look itself: `const { root, dot } = statusVariants({ tone:
+  "danger" })`.
+- `renders`, where a part is an element arc draws around content the caller
+  gave it: `<PageHeader renders={{ title: (part, heading) => <h2
+  {...part.props}>{heading}</h2> }} />` for a page inside a page.
+
+## Nothing written twice
+
+`src/duplication.test.ts` fails the suite when a declaration group is written
+in two places. It compiles every arc module as a build does, takes out what
+each call composed from a treatment, and fails on two places that write two
+or more of the same declarations, on a place that writes out a ui group or an
+arc treatment it could compose, and on a colour, spacing step or radius
+spelled out twice outside the treatment and token modules. The message names
+both places and what to compose instead. An allow-list takes a repetition
+that truly belongs to one component, with the reason.
 
 ## Components
 
@@ -187,10 +365,19 @@ if (await confirm({ title: "Delete the check?", tone: "danger", confirmLabel: "D
   }));
 
   <form.AppForm>
-    <form onSubmit={(event) => { event.preventDefault(); void form.handleSubmit(); }}>
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        void form.handleSubmit();
+      }}
+    >
       <form.FormError />
-      <form.AppField name="email">{(field) => <field.TextField label="Email" type="email" />}</form.AppField>
-      <form.AppField name="zone">{(field) => <field.TimeZoneField label="Time zone" />}</form.AppField>
+      <form.AppField name="email">
+        {(field) => <field.TextField label="Email" type="email" />}
+      </form.AppField>
+      <form.AppField name="zone">
+        {(field) => <field.TimeZoneField label="Time zone" />}
+      </form.AppField>
       <form.SubmitButton>Save</form.SubmitButton>
     </form>
   </form.AppForm>;

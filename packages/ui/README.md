@@ -123,6 +123,41 @@ components, because that is what an unlayered rule does. Put your reset in a
 layer, or keep the one `barq-ui init` installs, which is Tailwind's preflight
 and is what shadcn's components are written against.
 
+## One set of conditions
+
+```ts
+import { breakpointQuery, on } from "@barqjs/ui/conditions";
+
+const panel = atoms({ padding: { default: 4, [on.md]: 8 }, [on.dark]: { color: "white" } });
+const wide = mediaQuery(breakpointQuery("md"));
+```
+
+Every breakpoint and container step is a key of `on`, named once, because the
+same width written twice is two conditions with two places in the cascade.
+`on.sm` to `on["2xl"]` start at Tailwind's widths and hold from there up;
+`on.smOnly` and the other ranges end where the next step starts, for a value
+per step; `on.cqSm` to `on.cqXl` read the nearest query container. Beside them
+are `coarse`, `fine`, `hover`, `reducedMotion`, `moreContrast`,
+`forcedColors`, `print`, `dark` and `rtl`. The widths are the `breakpoints`
+and `containers` tokens, which `breakpointQuery` turns into a media query for
+code that asks in JavaScript, `useIsMobile` among it.
+
+## Touch, contrast and direction
+
+- **Touch.** Under a coarse pointer every control reaches 44px: buttons,
+  fields, selects, toggles, tabs and menu items grow their box (`touch.target`),
+  and the checkbox, the radio and the switch grow the press area they already
+  draw past their paint (`touch.hitArea`), so the 16px box stays 16px. A fine
+  pointer sees the sizes it always did.
+- **Forced colours.** A forced-colours mode drops box shadows and replaces
+  every colour, so the `contrast` group redraws what would vanish in the
+  system's own colours: focus as a `Highlight` outline, an edge on a filled
+  control, chosen and checked states in `Highlight`, disabled ones in
+  `GrayText`. Under `prefers-contrast: more` a control's edge is drawn in the
+  foreground.
+- **Direction.** `icon.directional` on an icon that points, a chevron or an
+  arrow, mirrors it under a right-to-left reading direction.
+
 ## Styles
 
 shadcn's eight (`vega`, `nova`, `maia`, `lyra`, `mira`, `luma`, `rhea`,
