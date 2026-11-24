@@ -7,10 +7,7 @@ import { afterEach, describe, expect, spyOn, test } from "bun:test";
 
 import { TTDStreamFetch, parseSSEStream, type StreamChunk } from "./stream-fetch.ts";
 
-const sse = (
-  events: readonly (StreamChunk | "[DONE]")[],
-  split = 7,
-): ReadableStream<Uint8Array> => {
+function sse(events: readonly (StreamChunk | "[DONE]")[], split = 7): ReadableStream<Uint8Array> {
   const text = events
     .map((event) => `data: ${event === "[DONE]" ? event : JSON.stringify(event)}\n\n`)
     .join("");
@@ -24,19 +21,28 @@ const sse = (
       controller.close();
     },
   });
-};
+}
 
-let fetchSpy: { mockRestore(): void; mock: { calls: unknown[][] } } | null = null;
+interface FetchSpy {
+  mockRestore(): void;
+  mock: FetchSpyMock;
+}
+
+interface FetchSpyMock {
+  calls: unknown[][];
+}
+
+let fetchSpy: FetchSpy | null = null;
 afterEach(() => {
   fetchSpy?.mockRestore();
   fetchSpy = null;
 });
 
-const respond = (response: Response) => {
+function respond(response: Response) {
   fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
     (async () => response) as unknown as typeof fetch,
   );
-};
+}
 
 describe("parseSSEStream", () => {
   test("yields each data payload, across chunk boundaries", async () => {

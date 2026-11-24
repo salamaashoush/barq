@@ -12,15 +12,15 @@ import {
 
 import type { MermaidDiagramType } from "./mermaid-error.ts";
 
-const getErrorLineIndex = (message: string, sourceText: string) => {
+function getErrorLineIndex(message: string, sourceText: string) {
   const lineNumber = getMermaidErrorLineNumber(message, sourceText);
   if (lineNumber === null || lineNumber === undefined) {
     return null;
   }
   return lineNumber - 1;
-};
+}
 
-const replaceLineAt = (lines: string[], index: number, transform: (line: string) => string) => {
+function replaceLineAt(lines: string[], index: number, transform: (line: string) => string) {
   if (index < 0 || index >= lines.length) {
     return null;
   }
@@ -31,9 +31,9 @@ const replaceLineAt = (lines: string[], index: number, transform: (line: string)
   const nextLines = [...lines];
   nextLines[index] = nextLine;
   return nextLines.join("\n");
-};
+}
 
-const stripTrailingTokenAfterShape = (line: string) => {
+function stripTrailingTokenAfterShape(line: string) {
   const alphaTailMatch = line.match(
     /^(.*(?:\[[^\]]*]|\([^)]*\)|\{[^}]*}|"(?:[^"]*)"|'(?:[^']*)'))([A-Za-z]+)\s*$/,
   );
@@ -49,17 +49,19 @@ const stripTrailingTokenAfterShape = (line: string) => {
   }
 
   return line;
-};
+}
 
-const removeExtraArrowheadAfterEdgeLabel = (line: string) => {
+function removeExtraArrowheadAfterEdgeLabel(line: string) {
   // Common typo in generated Mermaid: `-->|label|> Target` (extra `>`).
   // Convert it to `-->|label| Target`.
   return line.replace(/(\|[^|\n]+\|)\s*>\s*(?=[A-Za-z0-9_("[{'`])/g, "$1 ");
-};
+}
 
-const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
-const removeLastDeactivateForParticipant = (sourceText: string, participant: string) => {
+function removeLastDeactivateForParticipant(sourceText: string, participant: string) {
   const pattern = new RegExp(`^\\s*deactivate\\s+${escapeRegExp(participant)}(?:\\s+%%.*)?\\s*$`);
   const lines = sourceText.split(/\r?\n/);
 
@@ -70,9 +72,9 @@ const removeLastDeactivateForParticipant = (sourceText: string, participant: str
   }
 
   return null;
-};
+}
 
-const removeAllDeactivateForParticipant = (sourceText: string, participant: string) => {
+function removeAllDeactivateForParticipant(sourceText: string, participant: string) {
   const pattern = new RegExp(`^\\s*deactivate\\s+${escapeRegExp(participant)}(?:\\s+%%.*)?\\s*$`);
   const lines = sourceText.split(/\r?\n/);
   let removedAny = false;
@@ -85,22 +87,24 @@ const removeAllDeactivateForParticipant = (sourceText: string, participant: stri
   });
 
   return removedAny ? remainingLines.join("\n") : null;
-};
+}
 
-const getIndentation = (line: string) => line.match(/^\s*/)![0].length;
+function getIndentation(line: string) {
+  return line.match(/^\s*/)![0].length;
+}
 
 /**
  * Closes the blocks (e.g. `subgraph`, `loop`, `class X {`) that aren't, as
  * their indentation tells: before the first line after their (indented) body
  * that isn't indented deeper than them, or with `atEnd`, all at the end.
  */
-const closeUnclosedBlocks = (
+function closeUnclosedBlocks(
   sourceText: string,
   opener: RegExp,
   isCloser: RegExp,
   closer: string,
   { atEnd = false } = {},
-) => {
+) {
   const lines = sourceText.trimEnd().split(/\r?\n/);
   const unclosed: number[] = [];
   lines.forEach((line, index) => {
@@ -146,13 +150,13 @@ const closeUnclosedBlocks = (
   });
   result.push(...(insertions.get(lines.length) ?? []));
   return result.join("\n");
-};
+}
 
 const BRACE_BLOCK_OPENER = /\{\s*$/;
 const BRACE_BLOCK_CLOSER = /^\s*\}\s*$/;
 
 /** `end`s and `}`s the diagram's unclosed blocks are missing */
-const getUnclosedBlockCandidates = (sourceText: string, type: MermaidDiagramType | null) => {
+function getUnclosedBlockCandidates(sourceText: string, type: MermaidDiagramType | null) {
   if (type === "class" || type === "state" || type === "er") {
     return [false, true].map((atEnd) =>
       closeUnclosedBlocks(sourceText, BRACE_BLOCK_OPENER, BRACE_BLOCK_CLOSER, "}", { atEnd }),
@@ -164,13 +168,13 @@ const getUnclosedBlockCandidates = (sourceText: string, type: MermaidDiagramType
       atEnd,
     }),
   );
-};
+}
 
 /**
  * Applies `transform` to the parts of a flowchart line outside its labels
  * (`[...]`, `(...)`, `{...}`, `|...|`, `"..."`).
  */
-const mapOutsideLabels = (line: string, transform: (segment: string) => string) => {
+function mapOutsideLabels(line: string, transform: (segment: string) => string) {
   let result = "";
   let segment = "";
   let depth = 0;
@@ -195,7 +199,7 @@ const mapOutsideLabels = (line: string, transform: (segment: string) => string) 
     }
   }
   return result + transform(segment);
-};
+}
 
 // `A[Process (main)]` -> `A["Process (main)"]`: labels with brackets or
 // parentheses in them are only allowed quoted (skipping shapes that start
@@ -207,11 +211,12 @@ const UNQUOTED_LABELS_WITH_BRACKETS: Array<[RegExp, string]> = [
   [/([\w-]+)\((?![([])([^()"]*\([^()"]*\)[^()"]*)\)(?!\))/g, '$1("$2")'],
 ];
 
-const quoteLabelsWithBrackets = (text: string) =>
-  UNQUOTED_LABELS_WITH_BRACKETS.reduce(
+function quoteLabelsWithBrackets(text: string) {
+  return UNQUOTED_LABELS_WITH_BRACKETS.reduce(
     (result, [pattern, replacement]) => result.replace(pattern, replacement),
     text,
   );
+}
 
 const FLOWCHART_ARROW = /\s*(?:<?-->|<?---|<?-\.->|-\.-|<?==>|===|--[ox])/;
 const SHAPE_CLOSERS: Record<string, string> = { "[": "]", "(": ")", "{": "}" };
@@ -220,7 +225,7 @@ const SHAPE_CLOSERS: Record<string, string> = { "[": "]", "(": ")", "{": "}" };
  * Closes a flowchart node's label left open on the line: before the edge
  * after it (`A[Start --> B` -> `A[Start] --> B`), or at the end of the line.
  */
-const closeUnclosedShape = (line: string) => {
+function closeUnclosedShape(line: string) {
   const openers: number[] = [];
   let inQuotes = false;
   for (let index = 0; index < line.length; index++) {
@@ -245,10 +250,10 @@ const closeUnclosedShape = (line: string) => {
       : []),
     `${line.trimEnd()}${closer}`,
   ];
-};
+}
 
 /** Drops the closing brackets on a flowchart line that close nothing */
-const removeUnmatchedClosers = (line: string) => {
+function removeUnmatchedClosers(line: string) {
   const openers: string[] = [];
   let inQuotes = false;
   let result = "";
@@ -266,54 +271,66 @@ const removeUnmatchedClosers = (line: string) => {
     result += char;
   }
   return result;
-};
+}
 
-const replaceSingleDashArrows = (text: string) => text.replace(/(^|[^-<=.])->(?!>)/g, "$1-->");
+function replaceSingleDashArrows(text: string) {
+  return text.replace(/(^|[^-<=.])->(?!>)/g, "$1-->");
+}
 
 // `A -> B` -> `A --> B` (flowcharts and state diagrams have no `->`)
-const fixSingleDashArrows = (line: string) => mapOutsideLabels(line, replaceSingleDashArrows);
+function fixSingleDashArrows(line: string) {
+  return mapOutsideLabels(line, replaceSingleDashArrows);
+}
 
 // ... in state diagrams, before their transitions' label (`A -> B : x`)
-const fixStateSingleDashArrows = (line: string) => {
+function fixStateSingleDashArrows(line: string) {
   const labelStart = line.indexOf(":");
   return labelStart === -1
     ? replaceSingleDashArrows(line)
     : `${replaceSingleDashArrows(line.slice(0, labelStart))}${line.slice(labelStart)}`;
-};
+}
 
 // `A --> end` -> `A --> End`: `end` closes subgraphs, it can't be a node
-const capitalizeEndNodes = (line: string) =>
-  MERMAID_END_LINE.test(line)
+function capitalizeEndNodes(line: string) {
+  return MERMAID_END_LINE.test(line)
     ? line
     : mapOutsideLabels(line, (segment) =>
         segment.replace(/(^|[\s&;>])end(?=$|[\s&;[({]|--|==|-\.)/g, "$1End"),
       );
+}
 
 // `Alice->>Bob hi` -> `Alice->>Bob: hi`
-const addSequenceMessageColon = (line: string) =>
-  line.replace(
+function addSequenceMessageColon(line: string) {
+  return line.replace(
     /^(\s*[^\s:]+?\s*(?:<<-->>|<<->>|-->>|->>|-->|->|--x|-x|--\)|-\))\s*[+-]?[^\s:]+)\s+([^\s:].*)$/,
     "$1: $2",
   );
+}
 
 // `A ||--o{ B places` -> `A ||--o{ B : places`
-const addRelationshipColon = (line: string) =>
-  line.replace(
+function addRelationshipColon(line: string) {
+  return line.replace(
     /^(\s*[\w-]+\s+[|o{}]{1,2}(?:--|\.\.)[|o{}]{1,2}\s+[\w-]+)\s+([^\s:].*)$/,
     "$1 : $2",
   );
+}
 
 const FLOWCHART_DIRECTIONS = new Set(["TB", "TD", "BT", "RL", "LR"]);
 
 // `flowchart XY` -> `flowchart TD`
-const fixFlowchartDirection = (line: string) =>
-  line.replace(/^(\s*(?:flowchart|graph)\s+)(\S+)/, (_match, keyword: string, direction: string) =>
-    FLOWCHART_DIRECTIONS.has(direction.toUpperCase())
-      ? `${keyword}${direction.toUpperCase()}`
-      : `${keyword}TD`,
+function fixFlowchartDirection(line: string) {
+  return line.replace(
+    /^(\s*(?:flowchart|graph)\s+)(\S+)/,
+    (_match, keyword: string, direction: string) =>
+      FLOWCHART_DIRECTIONS.has(direction.toUpperCase())
+        ? `${keyword}${direction.toUpperCase()}`
+        : `${keyword}TD`,
   );
+}
 
-const countMatches = (text: string, pattern: RegExp) => (text.match(pattern) || []).length;
+function countMatches(text: string, pattern: RegExp) {
+  return (text.match(pattern) || []).length;
+}
 
 const DIRECTION_STATEMENT = /^(\s*direction\s+)(\S+)\s*$/;
 // `TD` is only one in a flowchart's header
@@ -324,7 +341,7 @@ const DIRECTION_STATEMENT_DIRECTIONS = new Set(["TB", "BT", "RL", "LR"]);
  * statements that aren't any direction (for the subgraph to keep the
  * flowchart's), or with `remove`, without any (sequence diagrams have none).
  */
-const fixDirectionStatements = (lines: string[], { remove = false } = {}) => {
+function fixDirectionStatements(lines: string[], { remove = false } = {}) {
   const result = lines.flatMap((line) => {
     const match = line.match(DIRECTION_STATEMENT);
     if (!match) {
@@ -337,7 +354,7 @@ const fixDirectionStatements = (lines: string[], { remove = false } = {}) => {
       : [];
   });
   return result.join("\n");
-};
+}
 
 /**
  * A direction on the first line of a class (`classDiagram LR`), state or ER
@@ -345,7 +362,7 @@ const fixDirectionStatements = (lines: string[], { remove = false } = {}) => {
  * statement: `classDiagram` + `direction LR` on the next line (unless they
  * have one already). Sequence diagrams have none.
  */
-const fixHeaderDirection = (sourceText: string, type: MermaidDiagramType | null) => {
+function fixHeaderDirection(sourceText: string, type: MermaidDiagramType | null) {
   const headerIndex = getMermaidHeaderLineIndex(sourceText);
   if (
     headerIndex === null ||
@@ -386,7 +403,7 @@ const fixHeaderDirection = (sourceText: string, type: MermaidDiagramType | null)
     ...statement,
     ...lines.slice(headerIndex + 1),
   ].join("\n");
-};
+}
 
 const DIAGRAM_KEYWORDS = [
   "flowchart",
@@ -398,7 +415,7 @@ const DIAGRAM_KEYWORDS = [
   "erDiagram",
 ];
 
-const getEditDistance = (a: string, b: string) => {
+function getEditDistance(a: string, b: string) {
   const distances = Array.from({ length: b.length + 1 }, (_, index) => index);
   for (let i = 1; i <= a.length; i++) {
     let previous = distances[0] ?? 0;
@@ -414,14 +431,14 @@ const getEditDistance = (a: string, b: string) => {
     }
   }
   return distances[b.length] ?? 0;
-};
+}
 
 /**
  * Fixes the misspelled diagram type of a definition (`flowchar TD`,
  * `sequencediagram`), or declares it if it's missing, as its first line
  * suggests.
  */
-const getDiagramTypeCandidates = (sourceText: string) => {
+function getDiagramTypeCandidates(sourceText: string) {
   const lines = sourceText.split(/\r?\n/);
   const headerIndex = getMermaidHeaderLineIndex(sourceText);
   if (headerIndex === null) {
@@ -429,10 +446,12 @@ const getDiagramTypeCandidates = (sourceText: string) => {
   }
   const header = lines[headerIndex] ?? "";
   const [, indentation = "", keyword = "", rest = ""] = header.match(/^(\s*)(\S+)(.*)$/) ?? [];
-  const withHeader = (nextHeader: string) =>
-    [...lines.slice(0, headerIndex), nextHeader, ...lines.slice(headerIndex + 1)].join("\n");
-  const withHeaderBefore = (newHeader: string) =>
-    [...lines.slice(0, headerIndex), newHeader, ...lines.slice(headerIndex)].join("\n");
+  const withHeader: (nextHeader: string) => string = (nextHeader) => {
+    return [...lines.slice(0, headerIndex), nextHeader, ...lines.slice(headerIndex + 1)].join("\n");
+  };
+  const withHeaderBefore: (newHeader: string) => string = (newHeader) => {
+    return [...lines.slice(0, headerIndex), newHeader, ...lines.slice(headerIndex)].join("\n");
+  };
 
   const [closest] = DIAGRAM_KEYWORDS.map((candidate) => ({
     candidate,
@@ -449,25 +468,26 @@ const getDiagramTypeCandidates = (sourceText: string) => {
     candidates.push(withHeaderBefore("flowchart TD"));
   }
   return candidates;
-};
+}
 
-const normalizeSmartQuotes = (sourceText: string) =>
-  sourceText.replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
+function normalizeSmartQuotes(sourceText: string) {
+  return sourceText.replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
+}
 
-export const getMermaidAutoFixCandidates = (sourceText: string, errorMessage: string) => {
+export function getMermaidAutoFixCandidates(sourceText: string, errorMessage: string) {
   if (!isMermaidAutoFixableError(errorMessage) || !sourceText.trim()) {
     return [];
   }
 
   const candidates: string[] = [];
   const seen = new Set<string>();
-  const addCandidate = (candidate: string | null) => {
+  function addCandidate(candidate: string | null) {
     if (!candidate || candidate === sourceText || seen.has(candidate)) {
       return;
     }
     seen.add(candidate);
     candidates.push(candidate);
-  };
+  }
 
   if (isMermaidUnknownDiagramError(errorMessage)) {
     getDiagramTypeCandidates(sourceText).forEach(addCandidate);
@@ -545,4 +565,4 @@ export const getMermaidAutoFixCandidates = (sourceText: string, errorMessage: st
   }
 
   return candidates;
-};
+}

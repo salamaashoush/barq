@@ -18,6 +18,11 @@ export interface StreamingOptions {
   onStreamCreated?: () => void;
 }
 
+export interface StreamError {
+  message: string;
+  status?: number;
+}
+
 /** One server-sent event of a text-to-diagram stream. */
 export type StreamChunk =
   | { type: "content"; delta: string }
@@ -25,16 +30,16 @@ export type StreamChunk =
       type: "done";
       finishReason: "stop" | "length" | "content_filter" | "tool_calls" | null;
     }
-  | { type: "error"; error: { message: string; status?: number } };
+  | { type: "error"; error: StreamError };
 
-const extractRateLimitHeaders = (headers: Headers): RateLimitInfo => {
+function extractRateLimitHeaders(headers: Headers): RateLimitInfo {
   const rateLimit = headers.get("X-Ratelimit-Limit");
   const rateLimitRemaining = headers.get("X-Ratelimit-Remaining");
   return {
     rateLimit: rateLimit ? Number.parseInt(rateLimit, 10) : undefined,
     rateLimitRemaining: rateLimitRemaining ? Number.parseInt(rateLimitRemaining, 10) : undefined,
   };
-};
+}
 
 /** The `data:` payloads of a server-sent event stream, as they arrive. */
 export async function* parseSSEStream(
@@ -63,11 +68,13 @@ export async function* parseSSEStream(
   }
 }
 
-const errorName = (error: unknown): string | undefined =>
-  error instanceof Error ? error.name : undefined;
+function errorName(error: unknown): string | undefined {
+  return error instanceof Error ? error.name : undefined;
+}
 
-const errorMessage = (error: unknown, fallback: string): string =>
-  error instanceof Error && error.message ? error.message : fallback;
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
 
 /**
  * Excalidraw's `TTDStreamFetch`: posts the conversation to a backend that

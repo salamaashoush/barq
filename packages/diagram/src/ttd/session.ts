@@ -23,50 +23,56 @@ type Strings = {
   mermaidParseError: string;
 };
 
-const lastIndexOf = <T>(items: readonly T[], test: (item: T) => boolean): number => {
+function lastIndexOf<T>(items: readonly T[], test: (item: T) => boolean): number {
   for (let index = items.length - 1; index >= 0; index--) {
     const item = items[index];
     if (item !== undefined && test(item)) return index;
   }
   return -1;
-};
+}
 
-const updateAssistant = (history: ChatHistory, patch: Partial<ChatMessage>): ChatHistory => {
+function updateAssistant(history: ChatHistory, patch: Partial<ChatMessage>): ChatHistory {
   const index = lastIndexOf(history.messages, (message) => message.type === "assistant");
   const last = history.messages[index];
   if (!last) return history;
   const messages = history.messages.slice();
   messages[index] = { ...last, ...patch };
   return { ...history, messages };
-};
+}
 
-const addMessages = (
+function addMessages(
   history: ChatHistory,
   added: readonly Omit<ChatMessage, "id" | "timestamp">[],
-): ChatHistory => ({
-  ...history,
-  messages: [
-    ...history.messages,
-    ...added.map((message) => ({ ...message, id: randomId(), timestamp: new Date() })),
-  ],
-});
+): ChatHistory {
+  return {
+    ...history,
+    messages: [
+      ...history.messages,
+      ...added.map((message) => ({ ...message, id: randomId(), timestamp: new Date() })),
+    ],
+  };
+}
 
-export const getLastAssistantMessage = (history: ChatHistory): ChatMessage | undefined =>
-  history.messages[lastIndexOf(history.messages, (message) => message.type === "assistant")];
+export function getLastAssistantMessage(history: ChatHistory): ChatMessage | undefined {
+  return history.messages[lastIndexOf(history.messages, (message) => message.type === "assistant")];
+}
 
-const messagesForLLM = (history: ChatHistory): LLMMessage[] =>
-  history.messages.flatMap((message) =>
+function messagesForLLM(history: ChatHistory): LLMMessage[] {
+  return history.messages.flatMap((message) =>
     message.content && (message.type === "user" || message.type === "assistant")
       ? [{ role: message.type, content: message.content }]
       : [],
   );
+}
 
-const chatTitle = (text: string): string => {
+function chatTitle(text: string): string {
   const trimmed = text.trim();
   return trimmed.length <= 50 ? trimmed : `${trimmed.slice(0, 47)}...`;
-};
+}
 
-const emptyChat = (): ChatHistory => ({ id: randomId(), messages: [], currentPrompt: "" });
+function emptyChat(): ChatHistory {
+  return { id: randomId(), messages: [], currentPrompt: "" };
+}
 
 /**
  * Excalidraw's text-to-diagram chat, without its UI: a prompt goes to the

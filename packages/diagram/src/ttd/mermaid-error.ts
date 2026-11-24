@@ -9,20 +9,26 @@ const MODULE_LOAD_ERROR =
   /Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed/i;
 
 /** a lazy-loaded chunk (e.g. one of Pele's diagram chunks) failed to load */
-export const isModuleLoadError = (error: unknown) =>
-  error instanceof Error && MODULE_LOAD_ERROR.test(error.message);
+export function isModuleLoadError(error: unknown) {
+  return error instanceof Error && MODULE_LOAD_ERROR.test(error.message);
+}
 
-export const isMermaidParseSyntaxError = (message: string) =>
-  MERMAID_SYNTAX_ERROR_LINE.test(message);
+export function isMermaidParseSyntaxError(message: string) {
+  return MERMAID_SYNTAX_ERROR_LINE.test(message);
+}
 
 /** the definition doesn't start with a (known) diagram type */
-export const isMermaidUnknownDiagramError = (message: string) =>
-  MERMAID_UNKNOWN_DIAGRAM_ERROR.test(message);
+export function isMermaidUnknownDiagramError(message: string) {
+  return MERMAID_UNKNOWN_DIAGRAM_ERROR.test(message);
+}
 
-export const isMermaidAutoFixableError = (message: string) =>
-  isMermaidParseSyntaxError(message) ||
-  MERMAID_INACTIVE_PARTICIPANT_ERROR.test(message) ||
-  isMermaidUnknownDiagramError(message);
+export function isMermaidAutoFixableError(message: string) {
+  return (
+    isMermaidParseSyntaxError(message) ||
+    MERMAID_INACTIVE_PARTICIPANT_ERROR.test(message) ||
+    isMermaidUnknownDiagramError(message)
+  );
+}
 
 export type MermaidDiagramType = "flowchart" | "sequence" | "class" | "state" | "er";
 
@@ -41,10 +47,12 @@ const MERMAID_DIAGRAM_TYPES: Record<string, MermaidDiagramType> = {
  * Index of the line that declares the diagram type: the first one that isn't
  * empty, a comment, a directive (`%%{...}%%`) or front matter (`---` block).
  */
-export const getMermaidHeaderLineIndex = (sourceText: string) => {
+export function getMermaidHeaderLineIndex(sourceText: string) {
   const lines = sourceText.split(/\r?\n/);
   let index = 0;
-  const isSkipped = (line: string) => !line.trim() || /^\s*%%/.test(line);
+  function isSkipped(line: string) {
+    return !line.trim() || /^\s*%%/.test(line);
+  }
   while (index < lines.length && isSkipped(lines[index] ?? "")) {
     index++;
   }
@@ -58,10 +66,10 @@ export const getMermaidHeaderLineIndex = (sourceText: string) => {
     }
   }
   return index < lines.length ? index : null;
-};
+}
 
 /** The diagram type the definition declares (of those Excalidraw converts). */
-export const getMermaidDiagramType = (sourceText: string): MermaidDiagramType | null => {
+export function getMermaidDiagramType(sourceText: string): MermaidDiagramType | null {
   const headerIndex = getMermaidHeaderLineIndex(sourceText);
   if (headerIndex === null) {
     return null;
@@ -70,21 +78,25 @@ export const getMermaidDiagramType = (sourceText: string): MermaidDiagramType | 
     sourceText.split(/\r?\n/)[headerIndex]?.trim().split(/\s/)[0] ?? ""
   ).toLowerCase();
   return MERMAID_DIAGRAM_TYPES[keyword] ?? null;
-};
+}
 
-export const isMermaidCaretLine = (line: string) => MERMAID_CARET_LINE.test(line);
+export function isMermaidCaretLine(line: string) {
+  return MERMAID_CARET_LINE.test(line);
+}
 
-export const getMermaidInactiveParticipant = (message: string): string | null => {
+export function getMermaidInactiveParticipant(message: string): string | null {
   const match = message.match(MERMAID_INACTIVE_PARTICIPANT_ERROR);
   if (!match?.[1]) {
     return null;
   }
   return match[1].trim();
-};
+}
 
-const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
-const getInactiveParticipantLineNumber = (message: string, sourceText: string): number | null => {
+function getInactiveParticipantLineNumber(message: string, sourceText: string): number | null {
   const participant = getMermaidInactiveParticipant(message);
   if (!participant) {
     return null;
@@ -100,9 +112,9 @@ const getInactiveParticipantLineNumber = (message: string, sourceText: string): 
     }
   }
   return null;
-};
+}
 
-export const getMermaidErrorLineNumber = (message: string, sourceText?: string): number | null => {
+export function getMermaidErrorLineNumber(message: string, sourceText?: string): number | null {
   const match = message.match(MERMAID_SYNTAX_ERROR_LINE);
   if (!match) {
     if (!sourceText) {
@@ -117,9 +129,11 @@ export const getMermaidErrorLineNumber = (message: string, sourceText?: string):
   // Pele reports errors on the source line (counting front matter, comments
   // and blank lines), and errors past the end on the last line
   return Number.parseInt(match[1] ?? "", 10);
-};
+}
 
-const countMatches = (text: string, re: RegExp) => (text.match(re) || []).length;
+function countMatches(text: string, re: RegExp) {
+  return (text.match(re) || []).length;
+}
 
 // Blocks closed by `end`
 const MERMAID_END_BLOCK_OPENERS: Partial<Record<MermaidDiagramType, RegExp>> = {
@@ -137,17 +151,23 @@ const MERMAID_UNCLOSED_BRACE_BLOCKS: Partial<Record<MermaidDiagramType, string>>
   er: "An entity's attributes are missing their closing `}`.",
 };
 
-export const getMermaidEndBlockOpener = (type: MermaidDiagramType | null) =>
-  type ? (MERMAID_END_BLOCK_OPENERS[type] ?? null) : null;
+export function getMermaidEndBlockOpener(type: MermaidDiagramType | null) {
+  return type ? (MERMAID_END_BLOCK_OPENERS[type] ?? null) : null;
+}
 
 // How the definitions of the diagram types Excalidraw converts start
 const KNOWN_DIAGRAM_TYPES =
   "`flowchart TD`, `sequenceDiagram`, `classDiagram`, `stateDiagram-v2` or `erDiagram`";
 
-export const getMermaidSyntaxErrorGuidance = (
+export interface SyntaxErrorGuidance {
+  summary: string;
+  likelyCauses: string[];
+}
+
+export function getMermaidSyntaxErrorGuidance(
   message: string,
   sourceText?: string,
-): { summary: string; likelyCauses: string[] } | null => {
+): SyntaxErrorGuidance | null {
   if (isMermaidUnknownDiagramError(message)) {
     return {
       summary: "Unknown diagram type.",
@@ -267,13 +287,13 @@ export const getMermaidSyntaxErrorGuidance = (
     summary,
     likelyCauses: [...new Set(likelyCauses)],
   };
-};
+}
 
 /** The parse error, without the tokens it expected */
-export const formatMermaidParseErrorMessage = (message: string) => {
+export function formatMermaidParseErrorMessage(message: string) {
   if (!isMermaidParseSyntaxError(message)) {
     return message;
   }
 
   return message.replace(/\n\s*Expecting[\s\S]*$/, "").trimEnd();
-};
+}

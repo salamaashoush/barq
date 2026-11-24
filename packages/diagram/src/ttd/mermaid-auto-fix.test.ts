@@ -301,11 +301,12 @@ Expecting 'end', got '$end'`;
   });
 
   it("moves a direction off the first line of class, state and ER diagrams", () => {
-    const fix = (sourceText: string) =>
-      getMermaidAutoFixCandidates(
+    function fix(sourceText: string) {
+      return getMermaidAutoFixCandidates(
         sourceText,
         "Parse error on line 1:\nclassDiagram TD\n-------------^",
       );
+    }
 
     expect(fix("classDiagram TD\n    A <|-- B")).toContain(
       "classDiagram\n    direction TB\n    A <|-- B",

@@ -66,6 +66,10 @@ export interface TTDPersistenceAdapter {
   saveChats(chats: SavedChats): Promise<void>;
 }
 
+export interface WelcomeScreenProps {
+  rateLimits: RateLimits | null;
+}
+
 /**
  * The app's text-to-diagram backend: Excalidraw's `<TTDDialog>` props. The
  * editor sends nothing anywhere itself; without this, the text-to-diagram
@@ -76,7 +80,7 @@ export interface TextToDiagramOptions {
   /** Keeps the chats between sessions; they last as long as the editor without one. */
   persistenceAdapter?: TTDPersistenceAdapter;
   /** What an empty chat shows instead of the default greeting; `undefined` keeps it. */
-  renderWelcomeScreen?: (props: { rateLimits: RateLimits | null }) => Child | undefined;
+  renderWelcomeScreen?: (props: WelcomeScreenProps) => Child | undefined;
   /** What a warning in the chat says instead of the default; `undefined` keeps it. */
   renderWarning?: (chatMessage: ChatMessage) => Child | undefined;
 }
