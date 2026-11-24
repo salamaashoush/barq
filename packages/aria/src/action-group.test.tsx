@@ -794,6 +794,19 @@ describe('ActionGroup overflowMode="collapse"', () => {
     expect(calls).toEqual(["three"]);
   });
 
+  test("by priority, the lowest go into the menu and the rest keep their order", () => {
+    widths = { button: 100, other: 350 };
+    const priority: Record<string, number> = { one: 0, two: 0, three: 2, four: 1 };
+    render(() => <Collapsing getPriority={(action: { id: string }) => priority[action.id] ?? 0} />);
+    flush();
+    const shown = within(screen.getByRole("toolbar")).getAllByRole("button");
+    expect(shown.map((one) => one.textContent)).toEqual(["Three", "Four", "…"]);
+    user.click(shown[2] as HTMLElement);
+    flush();
+    const items = within(screen.getByRole("menu")).getAllByRole("menuitem");
+    expect(items.map((item) => item.textContent)).toEqual(["One", "Two"]);
+  });
+
   test("an item's data attributes follow it into the menu", () => {
     render(() => (
       <ActionGroup items={four} overflowMode="collapse">

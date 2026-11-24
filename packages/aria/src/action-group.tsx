@@ -306,47 +306,57 @@ interface OverflowOptions {
   isCollapsing: Accessor<boolean>;
   orientation: Accessor<Orientation>;
   state: ListState<unknown>;
+  /** How long an item stays out of the menu: the highest go last. */
+  priority: (node: Node<unknown>) => number;
 }
 
 /**
- * How many items fit, measured the way React Spectrum measures them: show
- * everything, count what fits in the wrapper, and if that leaves a menu, count
- * again with the menu button in place, since it takes room of its own.
+ * Which items go into the menu, measured the way React Spectrum measures
+ * them: show everything and measure each item, keep what fits in the
+ * wrapper, and if that leaves a menu, decide again with the menu button's
+ * own size, since it takes room too.
+ *
+ * What fits is chosen by priority, the highest first and then in order, so
+ * with no priorities the trailing items go, as Spectrum's do; the ones kept
+ * stay where they were written.
  */
 function overflow(options: OverflowOptions): {
-  visible: Accessor<number>;
+  hidden: Accessor<ReadonlySet<Key>>;
   isMeasuring: Accessor<boolean>;
 } {
-  const [visible, setVisible] = createSignal(Number.POSITIVE_INFINITY);
+  const NONE: ReadonlySet<Key> = new Set();
+  const [hidden, setHidden] = createSignal<ReadonlySet<Key>>(NONE);
   const [phase, setPhase] = createSignal<"idle" | "measure" | "verify">("idle");
-  const size = (): number => options.state.collection().size;
   const mode = (): SelectionMode => options.state.selectionManager().selectionMode;
+  /** Each item's size along the axis, from the pass that showed them all. */
+  let sizes: number[] = [];
 
-  const fits = (showing: number): number => {
+  const elements = (): { group: HTMLElement; wrapper: HTMLElement } | null => {
     const group = access(options.groupRef) as HTMLElement | null | undefined;
     const wrapper = access(options.wrapperRef) as HTMLElement | null | undefined;
     if (group === null || group === undefined || wrapper === null || wrapper === undefined) {
-      return showing;
+      return null;
     }
-    const horizontal = options.orientation() === "horizontal";
-    const room = horizontal
-      ? wrapper.getBoundingClientRect().width
-      : wrapper.getBoundingClientRect().height;
-    const children = [...group.children] as HTMLElement[];
-    let used = 0;
-    let count = 0;
-    if (showing < size()) {
-      const menu = children.pop();
-      if (menu !== undefined) used += outerSize(menu, horizontal, false, true);
-    }
-    for (const [index, child] of children.entries()) {
-      used += outerSize(child, horizontal, index === 0, index === children.length - 1);
+    return { group, wrapper };
+  };
+
+  const choose = (room: number, menu: number): ReadonlySet<Key> => {
+    const nodes = [...options.state.collection()];
+    const total = sizes.reduce((sum, one) => sum + one, 0);
+    if (Math.round(total) <= Math.round(room)) return NONE;
+    const order = nodes
+      .map((node, index) => ({ node, index, priority: options.priority(node) }))
+      .toSorted((one, other) => other.priority - one.priority || one.index - other.index);
+    const kept = new Set<Key>();
+    let used = menu;
+    for (const { node, index } of order) {
+      used += sizes[index] ?? 0;
       if (Math.round(used) > Math.round(room)) break;
-      count++;
+      kept.add(node.key);
     }
     // A choice split between buttons and a menu is two controls for one value.
-    if (mode() !== "none" && count < size()) return 0;
-    return count;
+    if (mode() !== "none") kept.clear();
+    return new Set(nodes.filter((node) => !kept.has(node.key)).map((node) => node.key));
   };
 
   const measure = (): void => {
@@ -354,10 +364,10 @@ function overflow(options: OverflowOptions): {
     // does this: a column of choices collapsing to one button loses its shape.
     if (!options.isCollapsing() || (options.orientation() === "vertical" && mode() !== "none")) {
       setPhase("idle");
-      setVisible(Number.POSITIVE_INFINITY);
+      setHidden(NONE);
       return;
     }
-    setVisible(Number.POSITIVE_INFINITY);
+    setHidden(NONE);
     setPhase("measure");
   };
 
@@ -377,22 +387,33 @@ function overflow(options: OverflowOptions): {
     // After the render each phase asked for, so the DOM measured is the one
     // that phase described.
     createEffect(
-      () => [phase(), visible()] as const,
-      ([current, showing]) => {
+      () => [phase(), hidden()] as const,
+      ([current]) => {
+        const found = untrack(elements);
+        if (current === "idle" || found === null) return;
+        const horizontal = untrack(options.orientation) === "horizontal";
+        const rect = found.wrapper.getBoundingClientRect();
+        const room = horizontal ? rect.width : rect.height;
+        const children = [...found.group.children] as HTMLElement[];
         if (current === "measure") {
-          const count = untrack(() => fits(size()));
-          const again = count < untrack(size) && count > 0;
-          setVisible(count);
-          setPhase(again ? "verify" : "idle");
-        } else if (current === "verify") {
-          setVisible(untrack(() => fits(showing)));
+          sizes = children.map((child, index) =>
+            outerSize(child, horizontal, index === 0, index === children.length - 1),
+          );
+          const next = untrack(() => choose(room, 0));
+          setHidden(next);
+          const partly = next.size > 0 && next.size < untrack(options.state.collection).size;
+          setPhase(partly ? "verify" : "idle");
+        } else {
+          const menu = children.at(-1);
+          const menuSize = menu === undefined ? 0 : outerSize(menu, horizontal, false, true);
+          setHidden(untrack(() => choose(room, menuSize)));
           setPhase("idle");
         }
       },
     );
   }
 
-  return { visible, isMeasuring: () => phase() !== "idle" };
+  return { hidden, isMeasuring: () => phase() !== "idle" };
 }
 
 // ---------------------------------------------------------------------------
@@ -434,6 +455,11 @@ export interface ActionGroupComponentProps<T> extends StyleProps, ItemAccessors<
    * them out, or they move into a menu. @default "wrap"
    */
   overflowMode?: "wrap" | "collapse";
+  /**
+   * How long an item stays out of the overflow menu when the group
+   * collapses: the lowest go first, and equal ones from the end. @default 0
+   */
+  getPriority?: (item: T) => number;
   /** Shown in the menu button of a collapsed group with selection. */
   summaryIcon?: Child;
   /** The menu button's own content. @default an ellipsis */
@@ -491,17 +517,18 @@ export function ActionGroup<T>(props: ActionGroupComponentProps<T>) {
     state,
   );
 
-  const { visible, isMeasuring } = overflow({
+  const { hidden: collapsed, isMeasuring } = overflow({
     wrapperRef,
     groupRef,
     isCollapsing: () => props.overflowMode === "collapse",
     orientation,
     state,
+    priority: (node) => props.getPriority?.(node.value as T) ?? 0,
   });
 
   const nodes = (): Node<unknown>[] => [...state.collection()];
-  const shown = (): Node<unknown>[] => nodes().slice(0, visible());
-  const hidden = (): Node<unknown>[] => nodes().slice(visible());
+  const shown = (): Node<unknown>[] => nodes().filter((node) => !collapsed().has(node.key));
+  const hidden = (): Node<unknown>[] => nodes().filter((node) => collapsed().has(node.key));
   // Everything in the menu: the group itself has nothing left to name.
   const onlyMenu = (): boolean => hidden().length > 0 && shown().length === 0;
 
