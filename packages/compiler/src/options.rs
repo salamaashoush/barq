@@ -177,8 +177,9 @@ pub enum ImportedValue {
     Text(String),
     /// A number, as its text: it takes a unit where the same text would not.
     Number(String),
-    /// A `create` group or a `defineVars` token set, as `(member, value)`.
-    Group(Vec<(String, String)>),
+    /// A `create` group, a `defineVars` token set or a token object, as
+    /// `(member, value, numeric)`.
+    Group(Vec<(String, String, bool)>),
     /// A `layer("…")` binding, as the layer it names.
     Layer(String),
 }
@@ -208,16 +209,17 @@ impl ImportedValue {
                 "layer" => {
                     out.push((specifier.clone(), name.clone(), ImportedValue::Layer(value.clone())))
                 }
-                "group" => match out.iter_mut().find(|entry| key(entry)) {
-                    Some((.., ImportedValue::Group(members))) => {
-                        members.push((member.clone(), value.clone()));
+                "group" | "group-number" => {
+                    let entry = (member.clone(), value.clone(), kind == "group-number");
+                    match out.iter_mut().find(|entry| key(entry)) {
+                        Some((.., ImportedValue::Group(members))) => members.push(entry),
+                        _ => out.push((
+                            specifier.clone(),
+                            name.clone(),
+                            ImportedValue::Group(vec![entry]),
+                        )),
                     }
-                    _ => out.push((
-                        specifier.clone(),
-                        name.clone(),
-                        ImportedValue::Group(vec![(member.clone(), value.clone())]),
-                    )),
-                },
+                }
                 _ => {}
             }
         }
@@ -426,8 +428,12 @@ pub struct TransformOptions {
     /// and this compiler did not.
     ///
     /// `[specifier, exported name, kind, member, value]`, where `kind` is
-    /// `text`, `group` or `layer` and `member` is the group key or empty. napi
-    /// has no map type, so this is tuples.
+    /// `text`, `number`, `group`, `group-number` or `layer` and `member` is the
+    /// group key or empty. napi has no map type, so this is tuples.
+    ///
+    /// An exported name of `*` is never asked for by name: the module asks for
+    /// `[specifier, "*"]` for a namespace import or an `export *`, and the
+    /// integration answers with every row the other module exports.
     ///
     /// The pass stays a pure function of its inputs: it reads no file, it only
     /// reports which one it would have to (`cssImportsWanted`) and folds what

@@ -644,7 +644,16 @@ Two things follow from it and are worth knowing.
 A token set that crosses as a plain object of `var()` strings needs none of
 this, and is what `@barqjs/ui` does: `tokens.ts` there is hand-written
 `"var(--primary)"` rather than `defineVars`, so an application can bring its own
-`:root` and the package is not a closed system.
+`:root` and the package is not a closed system. Such an object folds wherever it
+is read, `as const` or not and in a module with no `@barqjs/css` in it, as long
+as it is a `const` literal its module never writes into: a member that is not a
+literal is left out, and a read of it says so (`BARQ017`) rather than folding.
+
+A barrel folds too. `export { shared } from "./shared.ts"`, `export * from
+"./shared.ts"` and `export const ring = shared` each hand on the value the other
+module resolved to, and say which module that was, so the stylesheet carried
+with a fold is the one the rules are in rather than every module the barrel
+re-exports. `import * as style` reads every export by path, `style.shared.ring`.
 
 ## How the CSS reaches the page
 
@@ -805,7 +814,8 @@ binding, `firstThatWorks`,
 A module-level `const` is a fact about the module rather than about the line it
 is on, so all of these fold wherever in the file the binding is written: a string,
 a number, a template with no substitutions, a binding naming another binding, a
-computed key, a layer name, a group and a token set. An array argument is the
+computed key, a layer name, a group, a token set and an object literal of any of
+those, nested or `as const`. An array argument is the
 argument list it always meant (`atoms([base, active() && loud])`), and so is a
 spread of an array literal.
 

@@ -109,6 +109,9 @@ pub struct CompileOutput {
     /// What this module exports that another can fold against, under
     /// `options.cssExports` or whenever it writes CSS.
     pub css_exports: Vec<(String, crate::css::Resolved)>,
+    /// `(exported name, specifier, imported name)` for each of those whose
+    /// value another module declares.
+    pub css_origins: Vec<crate::css::Origin>,
 }
 
 #[derive(Debug, Clone)]
@@ -441,6 +444,7 @@ fn compile_on_this_stack(
             css: None,
             css_wanted: Vec::new(),
             css_exports: Vec::new(),
+            css_origins: Vec::new(),
         });
     }
 
@@ -690,9 +694,14 @@ fn compile_on_this_stack(
 
     let warnings = resolve_diagnostics(warnings, &mut suppressions, filename, &mut lines, options);
     let server_fns = options.server_fns.then(|| server_fn_json(server_fns.as_ref(), filename));
-    let (css, css_wanted, css_exports) = match stylesheet {
-        Some(sheet) => ((!sheet.css.is_empty()).then_some(sheet.css), sheet.wanted, sheet.exports),
-        None => (None, Vec::new(), Vec::new()),
+    let (css, css_wanted, css_exports, css_origins) = match stylesheet {
+        Some(sheet) => (
+            (!sheet.css.is_empty()).then_some(sheet.css),
+            sheet.wanted,
+            sheet.exports,
+            sheet.origins,
+        ),
+        None => (None, Vec::new(), Vec::new(), Vec::new()),
     };
     Ok(CompileOutput {
         code,
@@ -705,6 +714,7 @@ fn compile_on_this_stack(
         css,
         css_wanted,
         css_exports,
+        css_origins,
     })
 }
 

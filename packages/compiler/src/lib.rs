@@ -115,13 +115,23 @@ pub struct TransformResult {
     pub css_wanted: Vec<Vec<String>>,
     /// `[exported name, kind, member, value]` for what this module exports that
     /// another can fold against, under `cssExports: true` or whenever the
-    /// module writes CSS. `kind` is `text`, `number`, `group` or `layer`.
+    /// module writes CSS. `kind` is `text`, `number`, `group`, `group-number`
+    /// (a member whose value is a number) or `layer`.
+    ///
+    /// And `[exported name, "from", imported name, specifier]` for an export
+    /// whose value another module declares, a re-export or a `const` naming an
+    /// import, so an integration can carry the stylesheet of the module the
+    /// rules are in. An integration hands every other row back as `cssImports`;
+    /// a `from` row is not a value and is never one of them.
     pub css_exports: Vec<Vec<String>>,
 }
 
 /// A module's resolved exports as flat rows, because napi has no map type and a
 /// JSON string would put a parser on both sides of the boundary.
-fn css_export_rows(exports: Vec<(String, crate::css::Resolved)>) -> Vec<Vec<String>> {
+fn css_export_rows(
+    exports: Vec<(String, crate::css::Resolved)>,
+    origins: Vec<crate::css::Origin>,
+) -> Vec<Vec<String>> {
     let mut out = Vec::new();
     for (name, value) in exports {
         match value {
@@ -135,11 +145,15 @@ fn css_export_rows(exports: Vec<(String, crate::css::Resolved)>) -> Vec<Vec<Stri
                 out.push(vec![name, "layer".to_string(), String::new(), layer]);
             }
             crate::css::Resolved::Group(members) => {
-                for (member, class) in members {
-                    out.push(vec![name.clone(), "group".to_string(), member, class]);
+                for (member, class, numeric) in members {
+                    let kind = if numeric { "group-number" } else { "group" };
+                    out.push(vec![name.clone(), kind.to_string(), member, class]);
                 }
             }
         }
+    }
+    for (name, specifier, imported) in origins {
+        out.push(vec![name, "from".to_string(), imported, specifier]);
     }
     out
 }
@@ -255,7 +269,7 @@ pub fn transform(code: String, options: Option<Object>) -> napi::Result<Transfor
                 .into_iter()
                 .map(|(specifier, name)| vec![specifier, name])
                 .collect(),
-            css_exports: css_export_rows(output.css_exports),
+            css_exports: css_export_rows(output.css_exports, output.css_origins),
         }),
         Err(diagnostics) => Err(napi::Error::from_reason(format!(
             "[barq-compiler] {}\n{}",
