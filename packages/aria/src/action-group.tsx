@@ -429,7 +429,8 @@ interface ActionGroupContextValue {
 const ActionGroupContext = createContext<ActionGroupContextValue | null>(null);
 const ActionGroupNodeContext = createContext<Node<unknown> | null>(null);
 /** Set inside the overflow menu, where an item is a menu item. */
-const OverflowMenuContext = createContext<boolean>(false);
+/** Inside the overflow menu, with the class its items take there. */
+const OverflowMenuContext = createContext<{ itemClass?: string } | null>(null);
 
 /** The enclosing {@link ActionGroup}'s state, for an item of the caller's own. */
 export function useActionGroup(): ListState<unknown> | null {
@@ -464,6 +465,15 @@ export interface ActionGroupComponentProps<T> extends StyleProps, ItemAccessors<
   summaryIcon?: Child;
   /** The menu button's own content. @default an ellipsis */
   moreIcon?: Child;
+  /** On the menu button, which carries `data-slot="action-group-more"`. */
+  moreClass?: string;
+  /** On the overflow menu, which carries `data-slot="action-group-menu"`. */
+  menuClass?: string;
+  /**
+   * On each item once it is in the menu, in place of its own class, which
+   * dressed it as a button. It carries `data-slot="action-group-menu-item"`.
+   */
+  menuItemClass?: string;
   "aria-label"?: string;
   "aria-labelledby"?: string;
   "aria-describedby"?: string;
@@ -585,6 +595,9 @@ export function ActionGroup<T>(props: ActionGroupComponentProps<T>) {
               isOnlyItem={onlyMenu()}
               summaryIcon={props.summaryIcon}
               moreIcon={props.moreIcon}
+              moreClass={props.moreClass}
+              menuClass={props.menuClass}
+              menuItemClass={props.menuItemClass}
               aria-label={props["aria-label"]}
               aria-labelledby={props["aria-labelledby"]}
               onAction={(key: Key, item: unknown) => value.onAction(key, item)}
@@ -612,6 +625,9 @@ interface OverflowMenuProps {
   isOnlyItem: boolean;
   summaryIcon?: Child;
   moreIcon?: Child;
+  moreClass?: string;
+  menuClass?: string;
+  menuItemClass?: string;
   "aria-label"?: string;
   "aria-labelledby"?: string;
   onAction: (key: Key, item: unknown) => void;
@@ -630,6 +646,8 @@ function OverflowMenu(props: OverflowMenuProps) {
     <MenuTrigger isDisabled={props.isDisabled}>
       <OverflowButton {...props} />
       <Menu
+        class={props.menuClass}
+        data-slot="action-group-menu"
         items={props.hidden.map((node) => node.value)}
         getKey={(item: unknown) => keyOf(item)}
         getTextValue={(item: unknown) => nodeOf(item)?.textValue ?? ""}
@@ -645,16 +663,18 @@ function OverflowMenu(props: OverflowMenuProps) {
         }}
         onAction={(key: Key, item: unknown) => props.onAction(key, item)}
       >
-        {(item: unknown) => <InOverflowMenu>{props.render(item)}</InOverflowMenu>}
+        {(item: unknown) => (
+          <InOverflowMenu itemClass={props.menuItemClass}>{props.render(item)}</InOverflowMenu>
+        )}
       </Menu>
     </MenuTrigger>
   );
 }
 
-function InOverflowMenu(props: { children?: Child }) {
+function InOverflowMenu(props: { itemClass?: string; children?: Child }) {
   return provide(
     OverflowMenuContext,
-    () => true,
+    () => ({ itemClass: props.itemClass }),
     () => props.children as unknown,
   );
 }
@@ -696,6 +716,8 @@ function OverflowButton(props: OverflowMenuProps) {
 
   const elementProps = mergeProps(buttonProps, hoverProps, focusProps, {
     id: buttonId,
+    class: () => props.moreClass,
+    "data-slot": "action-group-more",
     "aria-label": () =>
       props["aria-label"] ??
       (props["aria-labelledby"] === undefined ? message().format("more") : undefined),
@@ -757,8 +779,17 @@ export interface ActionGroupItemComponentProps extends StyleProps {
  * button, as it would a `<Button>`.
  */
 export function ActionGroupItem(props: ActionGroupItemComponentProps) {
-  if (getContext(OverflowMenuContext)) {
-    return <MenuItem {...(props as Record<string, never>)}>{props.children}</MenuItem>;
+  const menu = getContext(OverflowMenuContext);
+  if (menu !== null && menu !== undefined) {
+    return (
+      <MenuItem
+        {...(props as Record<string, never>)}
+        class={menu.itemClass ?? props.class}
+        data-slot="action-group-menu-item"
+      >
+        {props.children}
+      </MenuItem>
+    );
   }
   return <GroupButton {...props} />;
 }

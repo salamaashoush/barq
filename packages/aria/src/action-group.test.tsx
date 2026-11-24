@@ -807,6 +807,33 @@ describe('ActionGroup overflowMode="collapse"', () => {
     expect(items.map((item) => item.textContent)).toEqual(["One", "Two"]);
   });
 
+  test("the menu button, the menu and an item in it take their own classes", () => {
+    render(() => (
+      <ActionGroup
+        items={four}
+        overflowMode="collapse"
+        moreClass="more"
+        menuClass="menu"
+        menuItemClass="menu-item"
+      >
+        {(action) => <ActionGroupItem class="as-button">{action.name}</ActionGroupItem>}
+      </ActionGroup>
+    ));
+    flush();
+    const shown = within(screen.getByRole("toolbar")).getAllByRole("button");
+    expect(shown[0]?.className).toBe("as-button");
+    const more = shown[1] as HTMLElement;
+    expect(more.className).toBe("more");
+    expect(more.getAttribute("data-slot")).toBe("action-group-more");
+    user.click(more);
+    flush();
+    const menu = screen.getByRole("menu");
+    expect(menu.closest(".menu") ?? (menu.classList.contains("menu") ? menu : null)).not.toBeNull();
+    const item = within(menu).getAllByRole("menuitem")[0] as HTMLElement;
+    expect(item.className).toBe("menu-item");
+    expect(item.getAttribute("data-slot")).toBe("action-group-menu-item");
+  });
+
   test("an item's data attributes follow it into the menu", () => {
     render(() => (
       <ActionGroup items={four} overflowMode="collapse">
