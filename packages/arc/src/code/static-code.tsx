@@ -44,17 +44,19 @@ export function StaticCode(props: StaticCodeProps) {
     { deferStream: true },
   );
 
-  const pre = (markup: () => string) => (
-    <pre
-      class={[staticCode, props.class]}
-      data-slot="code-static"
-      data-numbered={props.lineNumbers === true ? "" : undefined}
-      data-wrap={props.wrap === true ? "" : undefined}
-      style={{ "--code-digits": String(String(lineCount(props.code)).length) }}
-      tabIndex={props.tabIndex}
-      innerHTML={markup()}
-    />
-  );
+  function pre(markup: () => string) {
+    return (
+      <pre
+        class={[staticCode, props.class]}
+        data-slot="code-static"
+        data-numbered={props.lineNumbers === true ? "" : undefined}
+        data-wrap={props.wrap === true ? "" : undefined}
+        style={{ "--code-digits": String(String(lineCount(props.code)).length) }}
+        tabIndex={props.tabIndex}
+        innerHTML={markup()}
+      />
+    );
+  }
 
   return <Loading fallback={pre(() => highlightHtml(props.code))}>{pre(html)}</Loading>;
 }

@@ -17,8 +17,13 @@ import {
 
 queueSelectionChanges();
 
+interface ViewHolder {
+  view: () => EditorView;
+  onView: (view: EditorView) => void;
+}
+
 /** The live view, through the extension point an app would use. */
-function viewHolder(): { view: () => EditorView; onView: (view: EditorView) => void } {
+function viewHolder(): ViewHolder {
   let held: EditorView | undefined;
   return {
     view: () => {
@@ -31,11 +36,13 @@ function viewHolder(): { view: () => EditorView; onView: (view: EditorView) => v
   };
 }
 
-/** Counts the transactions that changed the document, whatever made them. */
-function docChanges(): {
+interface DocChanges {
   count: () => number;
   extension: ReturnType<typeof EditorView.updateListener.of>;
-} {
+}
+
+/** Counts the transactions that changed the document, whatever made them. */
+function docChanges(): DocChanges {
   let count = 0;
   return {
     count: () => count,

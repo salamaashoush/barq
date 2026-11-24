@@ -58,11 +58,16 @@ export async function reported(): Promise<void> {
 
 let gates = 0;
 
+export interface GatedLanguage {
+  name: string;
+  release: () => Promise<void>;
+}
+
 /**
  * A language that loads only when `release` is called, as TypeScript: what
  * a slow network does to the first page that asks for one.
  */
-export function gatedLanguage(): { name: string; release: () => Promise<void> } {
+export function gatedLanguage(): GatedLanguage {
   const name = `acme-gated-${String(gates++)}`;
   let open: () => void = () => {};
   const gate = new Promise<void>((resolve) => {

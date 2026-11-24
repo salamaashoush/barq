@@ -105,13 +105,20 @@ export interface CodeBlockProps extends HighlightProps, Customisable<Slots> {
  */
 export function CodeBlock(props: CodeBlockProps) {
   const captionId = createUniqueId();
-  const title = (): string | undefined =>
-    props.filename ??
-    props.label ??
-    (typeof props.language === "string" ? props.language : undefined);
-  const copyable = (): boolean => props.copyable !== false;
+  function title(): string | undefined {
+    return (
+      props.filename ??
+      props.label ??
+      (typeof props.language === "string" ? props.language : undefined)
+    );
+  }
+  function copyable(): boolean {
+    return props.copyable !== false;
+  }
   const messages = useArcMessages();
-  const cls = (): Slots => parts(codeBlockStyles(), props.classes);
+  function cls(): Slots {
+    return parts(codeBlockStyles(), props.classes);
+  }
 
   return (
     <figure

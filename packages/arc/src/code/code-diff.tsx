@@ -75,9 +75,12 @@ export interface CodeDiffProps extends Customisable<Slots> {
   modifiedLabel?: string;
 }
 
-function collapseOf(
-  value: boolean | CollapseUnchanged | undefined,
-): { margin: number; minSize: number } | undefined {
+interface CollapseOptions {
+  margin: number;
+  minSize: number;
+}
+
+function collapseOf(value: boolean | CollapseUnchanged | undefined): CollapseOptions | undefined {
   if (value === false) return undefined;
   const given = value === true || value === undefined ? {} : value;
   return { margin: given.margin ?? 3, minSize: given.minSize ?? 4 };
@@ -109,7 +112,9 @@ interface Built {
  * again.
  */
 export function CodeDiff(props: CodeDiffProps) {
-  const cls = (): Slots => parts(codeDiffStyles(), props.classes);
+  function cls(): Slots {
+    return parts(codeDiffStyles(), props.classes);
+  }
   const messages = useArcMessages();
   let element: HTMLDivElement | undefined;
   let built: Built | undefined;
@@ -129,36 +134,39 @@ export function CodeDiff(props: CodeDiffProps) {
   let language: CodeLanguage | undefined;
   let support: Extension = [];
 
-  const readOnly = (): boolean => props.readOnly !== false;
+  function readOnly(): boolean {
+    return props.readOnly !== false;
+  }
   // What a diff is built for and cannot be reconfigured to: a unified diff's
   // accept and reject buttons come with its configuration.
-  const shape = (): string => {
+  function shape(): string {
     const layout = props.layout ?? "split";
     const fold = JSON.stringify(collapseOf(props.collapseUnchanged) ?? null);
     return layout === "unified" ? `${layout} ${fold} ${String(readOnly())}` : `${layout} ${fold}`;
-  };
-  const tabExtension = (size: number): Extension => [
-    EditorState.tabSize.of(size),
-    indentUnit.of(" ".repeat(size)),
-  ];
+  }
+  function tabExtension(size: number): Extension {
+    return [EditorState.tabSize.of(size), indentUnit.of(" ".repeat(size))];
+  }
 
-  const side = (label: string, editable: boolean): Extension => [
-    codeTheme,
-    diffChrome,
-    history(),
-    keymap.of([...defaultKeymap, ...historyKeymap]),
-    languages.of(support),
-    editing.of(EditorState.readOnly.of(!editable)),
-    gutter.of(untrack(() => props.lineNumbers !== false) ? lineNumberGutter() : []),
-    wrapping.of(untrack(() => props.wrap === true) ? EditorView.lineWrapping : []),
-    tabs.of(tabExtension(untrack(() => props.tabSize ?? 2))),
-    extra.of(untrack(() => extensionOf(props.extensions))),
-    EditorView.contentAttributes.of({ "aria-label": label }),
-  ];
+  function side(label: string, editable: boolean): Extension {
+    return [
+      codeTheme,
+      diffChrome,
+      history(),
+      keymap.of([...defaultKeymap, ...historyKeymap]),
+      languages.of(support),
+      editing.of(EditorState.readOnly.of(!editable)),
+      gutter.of(untrack(() => props.lineNumbers !== false) ? lineNumberGutter() : []),
+      wrapping.of(untrack(() => props.wrap === true) ? EditorView.lineWrapping : []),
+      tabs.of(tabExtension(untrack(() => props.tabSize ?? 2))),
+      extra.of(untrack(() => extensionOf(props.extensions))),
+      EditorView.contentAttributes.of({ "aria-label": label }),
+    ];
+  }
 
   const listener = reporter.listener;
 
-  const build = (parent: HTMLDivElement): Built => {
+  function build(parent: HTMLDivElement): Built {
     const original = untrack(() => props.original);
     reporter.known = untrack(() => props.modified);
     const layout = untrack(() => props.layout ?? "split");
@@ -204,28 +212,29 @@ export function CodeDiff(props: CodeDiffProps) {
       original: merge.a,
       destroy: () => merge.destroy(),
     };
-  };
+  }
 
-  const views = (): EditorView[] =>
-    built === undefined
+  function views(): EditorView[] {
+    return built === undefined
       ? []
       : built.original === undefined
         ? [built.modified]
         : [built.modified, built.original];
+  }
 
-  const reconfigure = (compartment: Compartment, extension: Extension, sides = views()): void => {
+  function reconfigure(compartment: Compartment, extension: Extension, sides = views()): void {
     for (const view of sides) view.dispatch({ effects: compartment.reconfigure(extension) });
-  };
+  }
 
-  const mount = (): void => {
+  function mount(): void {
     const parent = element;
     if (parent === undefined || disposed) return;
     reporter.flush();
     built?.destroy();
     built = build(parent);
-  };
+  }
 
-  const applyLanguage = (next: CodeLanguage | undefined): void => {
+  function applyLanguage(next: CodeLanguage | undefined): void {
     if (next === language) return;
     language = next;
     const ready = next === undefined ? [] : loadedLanguage(next);
@@ -239,7 +248,7 @@ export function CodeDiff(props: CodeDiffProps) {
       support = loaded ?? [];
       reconfigure(languages, support);
     });
-  };
+  }
 
   onSettled(() => {
     const wanted = untrack(() => props.language);

@@ -106,6 +106,10 @@ export interface CodeEditorProps extends Customisable<Slots> {
   onView?: (view: EditorView) => void | (() => void);
 }
 
+interface Applied<T> {
+  value: T;
+}
+
 /**
  * A CodeMirror editor owned by a component.
  *
@@ -123,7 +127,9 @@ export interface CodeEditorProps extends Customisable<Slots> {
  * properties, so a theme switch needs no reconfigure at all.
  */
 export function CodeEditor(props: CodeEditorProps) {
-  const cls = (): Slots => parts(codeEditorStyles(), props.classes);
+  function cls(): Slots {
+    return parts(codeEditorStyles(), props.classes);
+  }
   const owner = getOwner();
   const descriptionId = createUniqueId();
   const [mounted, setMounted] = createSignal(false, { ownedWrite: true });
@@ -138,7 +144,7 @@ export function CodeEditor(props: CodeEditorProps) {
     (doc) => props.onChange?.(doc),
   );
 
-  const attributes = (): Record<string, string> => {
+  function attributes(): Record<string, string> {
     const values: Record<string, string> = {};
     if (props.id !== undefined) values.id = props.id;
     if (props.label !== undefined) values["aria-label"] = props.label;
@@ -150,7 +156,7 @@ export function CodeEditor(props: CodeEditorProps) {
     if (described.length > 0) values["aria-describedby"] = described.join(" ");
     if (props.invalid === true) values["aria-invalid"] = "true";
     return values;
-  };
+  }
 
   const initials: (() => Extension)[] = [];
 
@@ -159,9 +165,9 @@ export function CodeEditor(props: CodeEditorProps) {
    * by identity, so an effect that runs with what the editor was built from
    * dispatches nothing.
    */
-  const option = <T,>(read: () => T, build: (value: T) => Extension): void => {
+  function option<T>(read: () => T, build: (value: T) => Extension): void {
     const compartment = new Compartment();
-    let applied: { value: T } | undefined;
+    let applied: Applied<T> | undefined;
     initials.push(() => {
       const value = untrack(read);
       applied = { value };
@@ -172,7 +178,7 @@ export function CodeEditor(props: CodeEditorProps) {
       applied = { value };
       view.dispatch({ effects: compartment.reconfigure(build(value)) });
     });
-  };
+  }
 
   option(
     () => props.lineNumbers ?? true,
@@ -208,7 +214,7 @@ export function CodeEditor(props: CodeEditorProps) {
   // the prop moved on is dropped.
   let language: CodeLanguage | undefined;
 
-  const applyLanguage = (next: CodeLanguage | undefined): void => {
+  function applyLanguage(next: CodeLanguage | undefined): void {
     if (view === undefined || next === language) return;
     language = next;
     if (next === undefined) {
@@ -225,7 +231,7 @@ export function CodeEditor(props: CodeEditorProps) {
         view.dispatch({ effects: languages.reconfigure(support ?? []) });
       }
     });
-  };
+  }
 
   createEffect(
     () => props.language,
@@ -245,7 +251,7 @@ export function CodeEditor(props: CodeEditorProps) {
     },
   );
 
-  const create = (parent: HTMLDivElement, loaded: CodeLanguage | undefined, support: Extension) => {
+  function create(parent: HTMLDivElement, loaded: CodeLanguage | undefined, support: Extension) {
     changes.known = untrack(() => props.value) ?? changes.known;
     language = loaded;
     view = new EditorView({
@@ -296,7 +302,7 @@ export function CodeEditor(props: CodeEditorProps) {
     const created = view;
     const cleanup = runWithOwner(owner, () => props.onView?.(created));
     if (typeof cleanup === "function") release = cleanup;
-  };
+  }
 
   onSettled(() => {
     const parent = element;

@@ -72,13 +72,13 @@ function escape(text: string): string {
 export function highlightHtml(code: string, language?: LanguageSupport): string {
   const lines: string[] = [];
   let line = "";
-  const putText = (text: string, classes: string): void => {
+  function putText(text: string, classes: string): void {
     line += classes === "" ? escape(text) : `<span class="${classes}">${escape(text)}</span>`;
-  };
-  const putBreak = (): void => {
+  }
+  function putBreak(): void {
     lines.push(line);
     line = "";
-  };
+  }
   if (language === undefined || code.length > LIMIT) {
     for (const text of code.split("\n")) {
       putText(text, "");

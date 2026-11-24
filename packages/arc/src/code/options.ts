@@ -13,12 +13,14 @@ function cssLength(value: string | number): string {
   return typeof value === "number" ? `${String(value)}px` : value;
 }
 
-/** The custom properties a code surface sizes itself by, for its `style`. */
-export function codeVars(sizes: {
+export interface CodeSizes {
   minHeight?: string | number | undefined;
   maxHeight?: string | number | undefined;
   tabSize?: number | undefined;
-}): Record<string, string> {
+}
+
+/** The custom properties a code surface sizes itself by, for its `style`. */
+export function codeVars(sizes: CodeSizes): Record<string, string> {
   const vars: Record<string, string> = {};
   if (sizes.minHeight !== undefined) vars["--code-min-height"] = cssLength(sizes.minHeight);
   if (sizes.maxHeight !== undefined) vars["--code-max-height"] = cssLength(sizes.maxHeight);
@@ -49,13 +51,13 @@ export function changeReport(
   notify: (doc: string) => void,
 ): ChangeReport {
   let reporting = false;
-  const report = (): void => {
+  function report(): void {
     reporting = false;
     const doc = current();
     if (doc === undefined || doc === out.known) return;
     out.known = doc;
     notify(doc);
-  };
+  }
   const out: ChangeReport = {
     known: initial,
     listener: EditorView.updateListener.of((update) => {
