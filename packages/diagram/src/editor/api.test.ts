@@ -803,6 +803,34 @@ describe("the host's options", () => {
     container.remove();
   });
 
+  test("a container handed over before it is inserted has its scene at once, and is measured once inserted", async () => {
+    const container = document.createElement("div");
+    container.innerHTML = "<canvas></canvas><canvas></canvas><canvas></canvas><svg></svg>";
+    expect(container.isConnected).toBe(false);
+    container.getBoundingClientRect = () =>
+      (container.isConnected
+        ? { x: 0, y: 0, left: 0, top: 0, right: 1024, bottom: 768, width: 1024, height: 768 }
+        : { x: 0, y: 0, left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 }) as DOMRect;
+    const [canvas, newElementCanvas, interactiveCanvas] = container.querySelectorAll("canvas");
+    const editor = new DiagramEditor({
+      container,
+      canvas: canvas as HTMLCanvasElement,
+      newElementCanvas: newElementCanvas as HTMLCanvasElement,
+      interactiveCanvas: interactiveCanvas as HTMLCanvasElement,
+      svgLayer: container.querySelector("svg"),
+      initialData: { elements: [rect("A", 3000)], appState: {}, files: {} },
+    });
+    const sizes: number[] = [];
+    editor.api.onEvent("editor:initialize", (api) => sizes.push(api.getAppState().width));
+    expect(editor.api.getSceneElements().map((element) => element.id)).toEqual(["A"]);
+    document.body.append(container);
+    await Promise.resolve();
+    expect(sizes).toEqual([1024]);
+    expect(editor.state.width).toBe(1024);
+    editor.destroy();
+    container.remove();
+  });
+
   test("initialState.viewport opens the scene at its target", () => {
     const { api } = renderEditor({
       initialData: { elements: [rect("A", 3000)], appState: {}, files: {} },

@@ -851,8 +851,8 @@ export class DiagramEditor {
     editorLifecycleEventBehavior,
   );
   private initialized = false;
-  /** Loads the initial scene, once the container is in the page. */
-  private pendingStart: (() => void) | null = null;
+  /** Whether the container has been in the page, which the viewport and `editor:initialize` wait for. */
+  private started = false;
   private elementRenderOverrides: ElementRenderOverrides = new Map();
   /** The offsets of `elementRenderOverrides`, the same map while they do not change. */
   private elementRenderOffsets: ElementRenderOffsets = new Map();
@@ -1039,15 +1039,12 @@ export class DiagramEditor {
     };
 
     // A host's ref can hand over its container before the container is in the
-    // page, where it measures as nothing: the initial scene, its viewport and
+    // page, where it measures as nothing: the initial scene's viewport and
     // `editor:initialize` wait until it is there, as Excalidraw's wait for
-    // `componentDidMount`.
-    const start = (): void => {
-      this.measure();
-      this.batch(() => this.loadScene(options.initialData ?? null));
-    };
-    if (container.isConnected) start();
-    else this.pendingStart = start;
+    // `componentDidMount`. The scene itself loads now, so the API handed over
+    // with the ref reads it and the first frame draws it.
+    this.batch(() => this.loadScene(options.initialData ?? null));
+    if (container.isConnected) this.start();
     this.cursor.reset();
     this.renderTask.port1.addEventListener("message", this.onRenderTask);
     this.renderTask.port1.start();
@@ -1058,7 +1055,7 @@ export class DiagramEditor {
         ? new this.ownerWindow.ResizeObserver(() => this.batch(() => this.refresh()))
         : null;
     this.resize?.observe(container);
-    if (this.pendingStart !== null) queueMicrotask(() => this.refresh());
+    if (!this.started) queueMicrotask(() => this.refresh());
     this.lifecycleEvents.emit("editor:mount", { excalidrawAPI: this.api, container });
   }
 
@@ -2093,7 +2090,7 @@ export class DiagramEditor {
 
   private didUpdate(prevState: AppState): void {
     // before the state listeners below hear of it
-    if (!this.initialized && !this.state.isLoading && this.pendingStart === null) {
+    if (!this.initialized && !this.state.isLoading && this.started) {
       this.initialized = true;
       this.lifecycleEvents.emit("editor:initialize", this.api);
     }
@@ -2403,14 +2400,8 @@ export class DiagramEditor {
       },
       captureUpdate: CaptureUpdateAction.NEVER,
     });
-    // the initial scene, and only it, opens at the host's viewport
-    const initialViewport = this.options.initialState?.viewport;
-    if (initialViewport && !this.initialized) {
-      const viewport = this.viewport.resolveInitialViewport(
-        initialViewport,
-        this.scene.getNonDeletedElementsMap(),
-        this.state,
-      );
+    if (this.started) {
+      const viewport = this.initialViewport();
       if (viewport) {
         this.setState(viewport);
       }
@@ -2739,14 +2730,33 @@ export class DiagramEditor {
     this.setState(constrainScrollState({ ...this.state, ...fitted }));
   }
 
+  /** The initial scene, and only it, opens at the host's viewport. */
+  private initialViewport(): Partial<AppState> | null {
+    const initialViewport = this.options.initialState?.viewport;
+    if (!initialViewport || this.initialized) return null;
+    return this.viewport.resolveInitialViewport(
+      initialViewport,
+      this.scene.getNonDeletedElementsMap(),
+      this.state,
+    );
+  }
+
+  /** Measures the container, now in the page, and opens the scene at the host's viewport. */
+  private start(): void {
+    this.started = true;
+    this.batch(() => {
+      this.measure();
+      // committed even when neither moved, which is what fires `editor:initialize`
+      this.setState(this.initialViewport() ?? {});
+    });
+  }
+
   /** Measures the container again, after it moved or resized. */
   public refresh(): void {
     if (this.destroyed) return;
-    const start = this.pendingStart;
-    if (start !== null) {
+    if (!this.started) {
       if (!this.options.container.isConnected) return;
-      this.pendingStart = null;
-      start();
+      this.start();
     }
     this.measure();
     this.scheduleRender();
