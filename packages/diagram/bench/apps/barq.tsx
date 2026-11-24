@@ -1,0 +1,43 @@
+import { DiagramEditor, type DiagramEditorApi } from "../../src/index.ts";
+import { render } from "@barqjs/web";
+
+import { dragSelection, makeScene } from "../scene.ts";
+
+declare global {
+  interface Window {
+    __mount(count: number): Promise<number>;
+    __select(): void;
+    __ready: boolean;
+  }
+}
+
+let api: DiagramEditorApi | undefined;
+
+const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+window.__mount = async (count) => {
+  const scene = { elements: makeScene(count), appState: {}, files: {} };
+  const start = performance.now();
+  render(
+    () => (
+      <DiagramEditor initialData={scene as never} height="1024px" api={(given) => (api = given)} />
+    ),
+    document.getElementById("app")!,
+  );
+  // the scene is in once the editor has it, which Excalidraw restores asynchronously
+  const loaded = () => api !== undefined && api.getSceneElements().length > 0;
+  while (!loaded()) await frame();
+  // the frame that draws the scene, and the one after it
+  await frame();
+  await frame();
+  return performance.now() - start;
+};
+
+window.__select = () => {
+  const ids = dragSelection(makeScene(100));
+  api!.updateScene({
+    appState: { selectedElementIds: Object.fromEntries(ids.map((id) => [id, true])) },
+  });
+};
+
+window.__ready = true;

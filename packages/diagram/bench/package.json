@@ -1,0 +1,14 @@
+{
+  "name": "diagram-bench",
+  "private": true,
+  "description": "@barqjs/diagram's editor against @excalidraw/excalidraw in Chrome",
+  "type": "module",
+  "scripts": {
+    "bench": "bun run run.ts"
+  },
+  "devDependencies": {
+    "@excalidraw/excalidraw": "0.18.0-2c3dcc0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  }
+}
