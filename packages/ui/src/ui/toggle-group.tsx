@@ -272,7 +272,7 @@ export function ToggleGroupItem(props: ToggleGroupItemProps) {
       excludeFromTabOrder={item.excludeFromTabOrder()}
       variant={held.variant() ?? props.variant}
       size={held.size() ?? props.size}
-      data-slot="toggle-group-item"
+      data-slot={props["data-slot"] ?? "toggle-group-item"}
       data-spacing={String(held.spacing())}
       data-orientation={held.orientation()}
       class={ui(item_, props.class, props.className)}

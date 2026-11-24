@@ -412,4 +412,18 @@ describe("ToggleGroup attributes", () => {
     expect(item("Left").id).toBe("align-left");
     expect(seen.toSorted()).toEqual(["change:true", "press"]);
   });
+
+  test("an item keeps a slot it is given, for a component built on it", () => {
+    render(() => (
+      <ToggleGroup aria-label="View">
+        <ToggleGroupItem value="list" data-slot="view-item">
+          List
+        </ToggleGroupItem>
+        <ToggleGroupItem value="board">Board</ToggleGroupItem>
+      </ToggleGroup>
+    ));
+    const [list, board] = screen.getAllByRole("button");
+    expect(list?.getAttribute("data-slot")).toBe("view-item");
+    expect(board?.getAttribute("data-slot")).toBe("toggle-group-item");
+  });
 });
