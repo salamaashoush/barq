@@ -841,6 +841,13 @@ describe('ActionGroup overflowMode="collapse"', () => {
     expect(shown[1]?.getAttribute("aria-label")).toBe("More items");
   });
 
+  test("the menu button takes a name of the caller's", () => {
+    render(() => <Collapsing aria-label="Text" moreLabel="More actions" />);
+    flush();
+    const shown = within(screen.getByRole("toolbar", { name: "Text" })).getAllByRole("button");
+    expect(shown[1]?.getAttribute("aria-label")).toBe("More actions");
+  });
+
   test("an item's data attributes follow it into the menu", () => {
     render(() => (
       <ActionGroup items={four} overflowMode="collapse">

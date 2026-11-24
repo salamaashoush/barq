@@ -467,6 +467,8 @@ export interface ActionGroupComponentProps<T> extends StyleProps, ItemAccessors<
   moreIcon?: Child;
   /** On the menu button, which carries `data-slot="action-group-more"`. */
   moreClass?: string;
+  /** Names the menu button while some items are still outside it. @default "More items" */
+  moreLabel?: string;
   /** On the overflow menu, which carries `data-slot="action-group-menu"`. */
   menuClass?: string;
   /**
@@ -596,6 +598,7 @@ export function ActionGroup<T>(props: ActionGroupComponentProps<T>) {
               summaryIcon={props.summaryIcon}
               moreIcon={props.moreIcon}
               moreClass={props.moreClass}
+              moreLabel={props.moreLabel}
               menuClass={props.menuClass}
               menuItemClass={props.menuItemClass}
               aria-label={onlyMenu() ? props["aria-label"] : undefined}
@@ -626,6 +629,7 @@ interface OverflowMenuProps {
   summaryIcon?: Child;
   moreIcon?: Child;
   moreClass?: string;
+  moreLabel?: string;
   menuClass?: string;
   menuItemClass?: string;
   "aria-label"?: string;
@@ -720,7 +724,9 @@ function OverflowButton(props: OverflowMenuProps) {
     "data-slot": "action-group-more",
     "aria-label": () =>
       props["aria-label"] ??
-      (props["aria-labelledby"] === undefined ? message().format("more") : undefined),
+      (props["aria-labelledby"] === undefined
+        ? (props.moreLabel ?? message().format("more"))
+        : undefined),
     "aria-labelledby": () => {
       const by = props["aria-labelledby"];
       if (picked() === null) return by;
