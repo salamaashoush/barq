@@ -31,11 +31,11 @@ import {
   focus,
   gap,
   layout,
+  panel,
   place,
   space,
   surface,
   type,
-  zIndex,
 } from "../style/index.ts";
 import { EmptyState } from "../components/empty-state.tsx";
 import { dayKey } from "../components/format.tsx";
@@ -46,9 +46,7 @@ import { type ChatMessage, type MessageHandlers, time } from "./model.ts";
 export const messageListStyles = variants({
   slots: {
     root: arc(layout.relative, layout.column, layout.minZeroBlock, place.fill),
-    viewport: arc(layout.grow, layout.minZeroBlock, focus.outline, {
-      overflowY: "auto",
-      overscrollBehavior: "contain",
+    viewport: arc(panel.body, focus.outline, {
       // The list keeps the row being read in place itself, from its layout;
       // the browser's own anchoring would move it a second time.
       overflowAnchor: "none",
@@ -56,7 +54,7 @@ export const messageListStyles = variants({
     // A short conversation sits at the bottom, where the next message arrives.
     stack: arc(layout.column, layout.end, { minBlockSize: "100%" }),
     rows: arc(layout.relative, layout.noShrink, { inlineSize: "100%" }),
-    row: arc({ position: "absolute", insetInline: "0" }),
+    row: arc(place.across),
     separator: arc(layout.row, gap[3], type.meta, type.medium, {
       paddingBlock: space.x2,
       paddingInline: space.x3,
@@ -75,19 +73,15 @@ export const messageListStyles = variants({
         borderBlockStart: `1px solid ${tokens.destructive}`,
       },
     }),
-    loading: arc(layout.row, layout.centre, gap[2], type.meta, {
-      position: "absolute",
+    // After the viewport, so they paint over its rows with no z-index of their own.
+    loading: arc(place.across, place.passive, layout.row, layout.centre, gap[2], type.meta, {
       insetBlockStart: space.x2,
-      insetInline: "0",
-      zIndex: zIndex.sticky,
-      pointerEvents: "none",
     }),
     start: arc(type.meta, layout.centre, { paddingBlock: space.x4 }),
     jump: arc(surface.elevated, edge.all, {
       position: "absolute",
       insetBlockEnd: space.x4,
       insetInlineEnd: space.x4,
-      zIndex: zIndex.sticky,
     }),
   },
 });
@@ -536,12 +530,6 @@ export function MessageList(props: MessageListProps) {
       aria-label={label()}
       lang={locale().locale}
     >
-      <Show when={props.isLoadingOlder === true}>
-        <div class={cls().loading} data-slot="message-list-loading" role="status">
-          <Spinner />
-          {messages().loadingOlder}
-        </div>
-      </Show>
       <div
         ref={viewport.set}
         class={cls().viewport}
@@ -627,6 +615,12 @@ export function MessageList(props: MessageListProps) {
           </div>
         </Show>
       </div>
+      <Show when={props.isLoadingOlder === true}>
+        <div class={cls().loading} data-slot="message-list-loading" role="status">
+          <Spinner />
+          {messages().loadingOlder}
+        </div>
+      </Show>
       <Show when={!atLatest()}>
         <Button
           class={cls().jump}
