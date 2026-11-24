@@ -334,6 +334,22 @@ if (await confirm({ title: "Delete the check?", tone: "danger", confirmLabel: "D
   />
   ```
 
+- `DataGrid`: records to edit like a spreadsheet, on `@barqjs/table`'s cell
+  selection, as a `grid`. Each column has a `type` (`text`, `number`,
+  `select` with `options`, `date`, `checkbox`) that picks its editor and how
+  a pasted value is read, and may `validate`, `freeze` at the reading start,
+  sit under a group's shared header, and `total` in the footer and in each
+  group's row (`groupBy`), which folds. The arrows move a cell in the reading
+  direction, Shift with them or a drag grows the range, Home and End go to a
+  row's ends and Mod with them to the grid's; Enter or F2 edits (a typed
+  character replaces), Enter saves and goes down, Tab saves and goes on,
+  Escape lets the edit go, a refused value keeps the editor open with the
+  reason; Space ticks a checkbox, Delete clears the range, Mod+C copies it
+  as tab-separated text and a paste fills from the focused cell. Every
+  change reaches `onCellsChange` as one batch, `dirtyCells` are marked in a
+  corner, `onAddRow` adds a row at the end, and `virtualRowHeight` draws
+  only the rows on screen.
+
 - `DataToolbar`: the row above a list, a search landmark holding the search
   field, a chip per filter, a Clear once any is set, the view options that
   show and hide columns, and the caller's actions. The search and each filter

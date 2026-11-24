@@ -241,6 +241,17 @@ export {
   wizardStyles,
 } from "./components/wizard.tsx";
 export {
+  DataGrid,
+  type DataGridCellType,
+  type DataGridChange,
+  type DataGridColumn,
+  type DataGridColumnGroup,
+  type DataGridOption,
+  type DataGridProps,
+  type DataGridTotal,
+  dataGridStyles,
+} from "./components/data-grid.tsx";
+export {
   ClipRecorder,
   type ClipRecorderProps,
   type RecordedClip,
