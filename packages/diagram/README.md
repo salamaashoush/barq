@@ -220,6 +220,17 @@ the theme and the toast stack the editor's toasts go to.
   editor and the shape switch's panel;
 - zoom, undo and redo at the bottom start, help at the bottom end.
 
+The main menu opens a scene file (Ctrl+O, asking first when it would replace
+a drawing), saves to the file the scene came from (Ctrl+S, an image file
+with its scene embedded included) or to a new one (Ctrl+Shift+S), and exports
+an image (Ctrl+Shift+E): a PNG or SVG, with or without the background, dark,
+at 1, 2 or 3 times, with the scene embedded so it opens again, or copied as a
+PNG. Where the browser has the File System Access API a saved file is
+written in place; elsewhere it downloads and a file input opens one. `name`
+is the file's name when the scene has none, and `onExport` (Excalidraw's) lets
+a save wait for the host, with a progress toast. `UIOptions.canvasActions`
+turns each of these off, entries and shortcuts both.
+
 `langCode` is one of Excalidraw's locale codes; each language loads when
 first asked for (`loadLanguage` loads one ahead, which a server render that
 should arrive in it does on both sides). Arabic, Persian and Hebrew lay the

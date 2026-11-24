@@ -192,7 +192,13 @@ export type ActionName =
   | "addToLibrary"
   | "saveToActiveFile"
   | "saveFileToDisk"
-  | "loadScene";
+  | "loadScene"
+  | "imageExport"
+  | "jsonExport"
+  | "changeExportScale"
+  | "changeExportBackground"
+  | "changeExportEmbedScene"
+  | "exportWithDarkMode";
 
 /** What an action is called in a menu: a translation key, or one chosen from the state. */
 export type ActionLabel =

@@ -18,6 +18,7 @@ import {
 } from "./styles.ts";
 import { Toolbar } from "./toolbar.tsx";
 import { CommandPalette } from "./command-palette.tsx";
+import { ImageExportDialog, JSONExportDialog } from "./export-dialogs.tsx";
 import { HelpDialog } from "./help-dialog.tsx";
 import { HintViewer } from "./hint-viewer.tsx";
 import { ElementLinkDialog, HyperlinkPopup } from "./hyperlink.tsx";
@@ -171,6 +172,8 @@ function Layout(props: { mainMenu?: () => Child }) {
       <ElementLinkDialog />
       <CommandPalette />
       <HelpDialog />
+      <ImageExportDialog />
+      <JSONExportDialog />
       <EditorToasts />
     </div>
   );

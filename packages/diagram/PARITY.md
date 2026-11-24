@@ -108,7 +108,9 @@ embeds.
 - done: server render of the UI in its language, hydrated without a mismatch (`diagram-editor.test.tsx`)
 - done: help dialog with every shortcut, from `?`, the help button and the main menu (`dialogs.test.tsx`)
 - done: barq's own strings (the palette's categories, the keyboard help) in `locales/barq/`, laid over Excalidraw's locale as it loads (`dialogs.test.tsx`)
-- pending (3b): image export and JSON export dialogs, save and load (`saveToActiveFile`, `saveFileToDisk`, `loadScene`); their menu entries are disabled
+- done: image export dialog: preview, only selected, background, dark mode, embedded scene, scale, PNG, SVG and copy as PNG; Ctrl+Shift+E (`export.test.tsx`, `files.test.ts`)
+- done: export dialog: save to disk, `onExportToBackend`, `renderCustomUI` (`export.test.tsx`)
+- done: save and load through the File System Access API with a download and file input fallback; `saveToActiveFile` (Ctrl+S, to the image a scene came from too), `saveFileToDisk` (Ctrl+Shift+S), `loadScene` (Ctrl+O) with the overwrite confirmation, `onExport` with its progress (`export.test.tsx`, `files.test.ts`)
 - pending (3b): library sidebar, its trigger, add to library (context menu and palette)
 - pending (3b): search menu (Ctrl+F); its menu entry is disabled
 - pending (3b): Mermaid and text-to-diagram dialog; their extra tools entries are disabled

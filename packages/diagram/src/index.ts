@@ -33,6 +33,19 @@ export {
 export type { ViewportState } from "./navigation.ts";
 
 export { exportToBlob, exportToCanvas, exportToSvg } from "./export.ts";
+export {
+  exportCanvas,
+  exportToClipboard,
+  loadFromJSON,
+  saveAsJSON,
+  saveLibraryAsJSON,
+} from "./data/files.ts";
+export {
+  fileOpen,
+  fileSave,
+  isNativeFileSystemSupported,
+  muteFSAbortError,
+} from "./data/filesystem.ts";
 export type { ExportOpts } from "./export.ts";
 export { exportScene, getExportConfigFromAppState } from "./scene/export.ts";
 export { decodeSvgBase64Payload, encodeSvgBase64Payload } from "./data/svg-payload.ts";

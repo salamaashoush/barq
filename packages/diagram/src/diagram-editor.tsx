@@ -18,6 +18,7 @@ import { getDefaultAppState } from "./app-state.ts";
 import { restoreAppState } from "./data/restore.ts";
 import { DiagramEditor as Editor } from "./editor/editor.ts";
 import { resolveUIOptions, type UIOptions } from "./editor/ui-options.ts";
+import type { OnExport } from "./editor/actions/export.ts";
 import {
   type LocaleData,
   getLoadedLanguage,
@@ -94,6 +95,13 @@ export interface DiagramEditorProps {
   generateLinkForSelection?: (id: string, type: "element" | "group") => string;
   /** `false` renders the canvas alone, without the toolbar, the panels or the menus. @default true */
   ui?: boolean;
+  /** Excalidraw's `name`: what a saved file is called when the scene has no name. */
+  name?: string;
+  /**
+   * Excalidraw's `onExport`: a save to a file waits for it, with a progress
+   * toast, so the host can finish what it is doing first (images loading).
+   */
+  onExport?: OnExport;
 }
 
 /** The state the UI shows before the editor exists, on the server and while the page hydrates. */
@@ -216,6 +224,9 @@ export function DiagramEditor(props: DiagramEditorProps): JSX.Element {
     onThemeChange: props.onThemeChange,
     aiEnabled: props.aiEnabled !== false,
     generateLinkForSelection: props.generateLinkForSelection,
+    onExport: props.onExport,
+    name: props.name,
+    untitledName: ui.t("labels.untitled"),
   });
 
   const attach = (host: HTMLDivElement): (() => void) => {

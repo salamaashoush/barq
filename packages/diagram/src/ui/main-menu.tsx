@@ -46,6 +46,13 @@ import { Popover, PopoverAnchor, PopoverContent } from "@barqjs/ui/popover";
 import { DEFAULT_CANVAS_BACKGROUND_PICKS, THEME } from "@excalidraw/common";
 
 import { actionChangeViewBackgroundColor, actionClearCanvas } from "../editor/actions/canvas.ts";
+import {
+  actionLoadScene,
+  actionSaveFileToDisk,
+  actionSaveToActiveFile,
+  actionToggleImageExport,
+  actionToggleJSONExport,
+} from "../editor/actions/export.ts";
 import { actionShortcuts, actionToggleTheme } from "../editor/actions/toggles.ts";
 import { ColorPicker } from "./color-picker.tsx";
 import { useDiagramUI } from "./context.tsx";
@@ -63,6 +70,26 @@ const swatchDot = d({
 });
 
 const pickerBox = d({ padding: "12px", display: "flex", flexDirection: "column", gap: "8px" });
+
+const backupChoices = d({ display: "flex", flexWrap: "wrap", gap: "8px" });
+
+/** Excalidraw's `<bold>` and `<br></br>` markup in a translated string, as elements. */
+function RichText(props: { text: string }) {
+  const parts = () => props.text.split(/(<bold>.*?<\/bold>|<br><\/br>)/g).filter(Boolean);
+  return (
+    <For each={parts()}>
+      {(part: string) =>
+        part === "<br></br>" ? (
+          <br />
+        ) : part.startsWith("<bold>") ? (
+          <strong>{part.slice(6, -7)}</strong>
+        ) : (
+          part
+        )
+      }
+    </For>
+  );
+}
 
 /** One entry of the main menu, which an app adds as Excalidraw's `MainMenu.Item`. */
 function Item(props: {
@@ -122,17 +149,20 @@ function shortcutOf(name: ShortcutName): string {
   return useDiagramUI().shortcut(name);
 }
 
-/**
- * Scene files are the next phase's: the entries are drawn where Excalidraw
- * draws them, unavailable until then.
- */
 function LoadScene() {
   const ui = useDiagramUI();
+  const menu = useMainMenu();
   return (
-    <Show when={ui.host().UIOptions.canvasActions.loadScene && !ui.store.state("viewModeEnabled")}>
+    <Show when={ui.isEnabled(actionLoadScene)}>
       <Item
-        onSelect={() => {}}
-        disabled
+        onSelect={() => {
+          // a scene on the canvas is replaced: the reader may keep it first
+          if (ui.store.editor?.scene.getNonDeletedElements().length) {
+            menu.confirmLoad();
+          } else {
+            ui.run(actionLoadScene);
+          }
+        }}
         icon={<FolderOpen aria-hidden="true" />}
         shortcut={shortcutOf("loadScene")}
         data-testid="load-button"
@@ -146,16 +176,11 @@ function LoadScene() {
 function SaveToActiveFile() {
   const ui = useDiagramUI();
   return (
-    <Show
-      when={
-        ui.host().UIOptions.canvasActions.saveToActiveFile && !ui.store.state("viewModeEnabled")
-      }
-    >
+    <Show when={ui.isEnabled(actionSaveToActiveFile) && ui.store.state("fileHandle") !== null}>
       <Item
-        onSelect={() => {}}
-        disabled
+        onSelect={() => ui.run(actionSaveToActiveFile)}
         icon={<Save aria-hidden="true" />}
-        shortcut={shortcutOf("saveToActiveFile")}
+        shortcut={shortcutOf("saveScene")}
         data-testid="save-button"
       >
         {ui.t("buttons.save")}
@@ -167,10 +192,9 @@ function SaveToActiveFile() {
 function Export() {
   const ui = useDiagramUI();
   return (
-    <Show when={ui.host().UIOptions.canvasActions.export !== false}>
+    <Show when={ui.isEnabled(actionToggleJSONExport)}>
       <Item
-        onSelect={() => {}}
-        disabled
+        onSelect={() => ui.run(actionToggleJSONExport)}
         icon={<Download aria-hidden="true" />}
         data-testid="json-export-button"
       >
@@ -185,8 +209,8 @@ function SaveAsImage() {
   return (
     <Show when={ui.host().UIOptions.canvasActions.saveAsImage}>
       <Item
-        onSelect={() => {}}
-        disabled
+        onSelect={() => ui.run(actionToggleImageExport)}
+        disabled={!ui.isEnabled(actionToggleImageExport)}
         icon={<ImageDown aria-hidden="true" />}
         shortcut={shortcutOf("imageExport")}
         data-testid="image-export-button"
@@ -361,6 +385,7 @@ function DefaultMainMenuItems() {
 
 interface MainMenuState {
   confirmClear: () => void;
+  confirmLoad: () => void;
   openBackgroundPicker: () => void;
 }
 
@@ -379,6 +404,7 @@ export function MainMenuButton(props: { items?: Child }) {
   const ui = useDiagramUI();
   const t = ui.t;
   const [confirming, setConfirming] = createSignal(false);
+  const [confirmingLoad, setConfirmingLoad] = createSignal(false);
   const [ownPicking, setOwnPicking] = createSignal(false);
   // the command palette opens the picker through the editor's `openPopup`
   const picking = (): boolean => ownPicking() || ui.store.state("openPopup") === "canvasBackground";
@@ -391,6 +417,7 @@ export function MainMenuButton(props: { items?: Child }) {
   };
   const menu: MainMenuState = {
     confirmClear: () => setConfirming(true),
+    confirmLoad: () => setConfirmingLoad(true),
     openBackgroundPicker: () => setPicking(true),
   };
 
@@ -442,6 +469,51 @@ export function MainMenuButton(props: { items?: Child }) {
             </div>
           </PopoverContent>
         </Popover>
+        <AlertDialog isOpen={confirmingLoad()} onOpenChange={setConfirmingLoad}>
+          <AlertDialogContent data-testid="overwrite-confirm">
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t("overwriteConfirm.modal.loadFromFile.title")}</AlertDialogTitle>
+              <AlertDialogDescription>
+                <RichText text={t("overwriteConfirm.modal.loadFromFile.description")} />
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div class={backupChoices}>
+              <Show when={ui.isEnabled(actionToggleImageExport)}>
+                <Button
+                  variant="outline"
+                  onPress={() => {
+                    setConfirmingLoad(false);
+                    ui.run(actionToggleImageExport);
+                  }}
+                  data-testid="overwrite-export-image"
+                >
+                  {t("overwriteConfirm.action.exportToImage.button")}
+                </Button>
+              </Show>
+              <Button
+                variant="outline"
+                onPress={() => ui.run(actionSaveFileToDisk)}
+                data-testid="overwrite-save-to-disk"
+              >
+                {t("overwriteConfirm.action.saveToDisk.button")}
+              </Button>
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel onPress={() => setConfirmingLoad(false)}>
+                {t("buttons.cancel")}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onPress={() => {
+                  setConfirmingLoad(false);
+                  ui.run(actionLoadScene);
+                }}
+                data-testid="confirm-load"
+              >
+                {t("overwriteConfirm.modal.loadFromFile.button")}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
         <AlertDialog isOpen={confirming()} onOpenChange={setConfirming}>
           <AlertDialogContent>
             <AlertDialogHeader>

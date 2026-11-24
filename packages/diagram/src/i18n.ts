@@ -250,7 +250,9 @@ export const translate = (
   }
   if (replacement) {
     for (const key in replacement) {
-      translation = translation.replace(`{{${key}}}`, String(replacement[key]));
+      const value = String(replacement[key]);
+      // Excalidraw writes `toast.fileSavedToFilename`'s placeholder with single braces
+      translation = translation.replace(`{{${key}}}`, value).replace(`{${key}}`, value);
     }
   }
   return translation;

@@ -918,7 +918,7 @@ const exportToCanvas = async ({
 // exportToSvg
 // ---------------------------------------------------------------------------
 
-type ExportToSvgConfig = Pick<
+export type ExportToSvgConfig = Pick<
   ExportSceneBaseConfig,
   | "canvasBackgroundColor"
   | "padding"
@@ -1166,7 +1166,7 @@ const getCanvasSize = (
 
 export { MIME_TYPES };
 
-type ExportToPngConfig = ExportSceneConfig & {
+export type ExportToPngConfig = ExportSceneConfig & {
   /**
    * Embeds the scene into the PNG metadata, so that it can be imported back
    * into Excalidraw.

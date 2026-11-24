@@ -363,6 +363,8 @@ export interface AppState {
     message: unknown;
     closable?: boolean;
     duration?: number;
+    /** A save's progress, from 0 to 1, while the host's `onExport` holds it. */
+    progress?: number | null;
   } | null;
   zenModeEnabled: boolean;
   minimapEnabled: boolean;

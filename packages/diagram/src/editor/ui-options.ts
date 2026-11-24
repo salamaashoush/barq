@@ -1,6 +1,7 @@
 import type { NonDeletedExcalidrawElement, Theme } from "@excalidraw/element/types";
 
 import type { AppState, BinaryFiles } from "../types.ts";
+import type { OnExport } from "./actions/export.ts";
 
 /** What the export dialog offers, Excalidraw's `ExportOpts`. */
 export interface ExportOpts {
@@ -10,6 +11,12 @@ export interface ExportOpts {
     appState: AppState,
     files: BinaryFiles,
   ) => void;
+  /** More cards in the export dialog, beside saving to disk: what the UI renders there. */
+  renderCustomUI?: (
+    exportedElements: readonly NonDeletedExcalidrawElement[],
+    appState: AppState,
+    files: BinaryFiles,
+  ) => unknown;
 }
 
 /** The canvas actions the menus offer, each on unless turned off. Excalidraw's `CanvasActions`. */
@@ -94,6 +101,12 @@ export interface EditorHost {
   aiEnabled: boolean;
   /** Excalidraw's `generateLinkForSelection`, for "copy link to element". */
   generateLinkForSelection?: (id: string, type: "element" | "group") => string;
+  /** Excalidraw's `onExport`: a save waits for it, showing its progress. */
+  onExport?: OnExport;
+  /** Excalidraw's `name` prop: the file name when the scene has none. */
+  name?: string;
+  /** What an unnamed scene's file is called before its date, translated. @default "Untitled" */
+  untitledName?: string;
 }
 
 export const defaultEditorHost = (): EditorHost => ({

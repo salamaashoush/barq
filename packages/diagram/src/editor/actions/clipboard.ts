@@ -1,22 +1,12 @@
-import { arrayToMap, cloneJSON, CODES, DEFAULT_EXPORT_PADDING, KEYS } from "@excalidraw/common";
+import { CODES, DEFAULT_EXPORT_PADDING, KEYS } from "@excalidraw/common";
 import {
   CaptureUpdateAction,
-  getElementsOverlappingFrame,
-  getNonDeletedElements,
-  getSelectedElements,
   getTextFromElements,
-  isFrameLikeElement,
   isImageElement,
-  isSomeElementSelected,
   isTextElement,
 } from "@excalidraw/element";
 
-import type {
-  ExcalidrawElement,
-  ExcalidrawFrameLikeElement,
-  NonDeleted,
-  NonDeletedExcalidrawElement,
-} from "@excalidraw/element/types";
+import type { ExcalidrawElement } from "@excalidraw/element/types";
 
 import {
   copyBlobToClipboardAsPng,
@@ -28,6 +18,7 @@ import {
   readSystemClipboard,
 } from "../../clipboard.ts";
 import { canvasToBlob } from "../../data/blob.ts";
+import { prepareElementsForExport } from "../../data/files.ts";
 import { errorMessageOf } from "../../i18n.ts";
 import { exportScene, getExportConfigFromAppState } from "../../scene/export.ts";
 import { actionDeleteSelected } from "./delete.ts";
@@ -110,42 +101,6 @@ export const actionCut: Action<ClipboardEvent> = {
   keyTest: (event) => event[KEYS.CTRL_OR_CMD] && event.key === KEYS.X,
 };
 
-/**
- * What a copy as an image exports: the selection (a single frame as what it
- * holds), or everything without one. Excalidraw's `prepareElementsForExport`.
- */
-export const prepareElementsForExport = (
-  allElements: readonly ExcalidrawElement[],
-  { selectedElementIds }: Pick<AppState, "selectedElementIds">,
-  exportSelectionOnly: boolean,
-): {
-  exportingFrame: NonDeleted<ExcalidrawFrameLikeElement> | null;
-  exportedElements: readonly NonDeletedExcalidrawElement[];
-} => {
-  const elements = getNonDeletedElements(allElements);
-  const elementsMap = arrayToMap(elements);
-  const isExportingSelection =
-    exportSelectionOnly && isSomeElementSelected(elements, { selectedElementIds });
-  let exportingFrame: NonDeleted<ExcalidrawFrameLikeElement> | null = null;
-  let exportedElements: readonly NonDeletedExcalidrawElement[] = isExportingSelection
-    ? getSelectedElements(elements, { selectedElementIds }, { includeBoundTextElement: true })
-    : elements;
-  if (isExportingSelection) {
-    const [firstElement] = exportedElements;
-    if (exportedElements.length === 1 && firstElement && isFrameLikeElement(firstElement)) {
-      exportingFrame = firstElement;
-      exportedElements = getElementsOverlappingFrame(elements, firstElement, elementsMap);
-    } else if (exportedElements.length > 1) {
-      exportedElements = getSelectedElements(
-        elements,
-        { selectedElementIds },
-        { includeBoundTextElement: true, includeElementsInFrames: true },
-      );
-    }
-  }
-  return { exportingFrame, exportedElements: cloneJSON(exportedElements) };
-};
-
 const copyAsImage = async (
   type: "png" | "svg",
   elements: readonly ExcalidrawElement[],
@@ -155,7 +110,7 @@ const copyAsImage = async (
   const { exportedElements, exportingFrame } = prepareElementsForExport(elements, appState, true);
   if (exportedElements.length === 0) {
     return {
-      appState: { ...appState, errorMessage: "Cannot export an empty canvas." },
+      appState: { ...appState, errorMessage: { key: "alerts.cannotExportEmptyCanvas" } },
       captureUpdate: CaptureUpdateAction.EVENTUALLY,
     };
   }

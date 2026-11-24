@@ -33,6 +33,17 @@ import {
 } from "./clipboard.ts";
 import { actionDeleteSelected } from "./delete.ts";
 import { actionDuplicateSelection } from "./duplicate.ts";
+import {
+  actionChangeExportBackground,
+  actionChangeExportEmbedScene,
+  actionChangeExportScale,
+  actionExportWithDarkMode,
+  actionLoadScene,
+  actionSaveFileToDisk,
+  actionSaveToActiveFile,
+  actionToggleImageExport,
+  actionToggleJSONExport,
+} from "./export.ts";
 import { actionFinalize } from "./finalize.ts";
 import { actionFlipHorizontal, actionFlipVertical } from "./flip.ts";
 import {
@@ -157,4 +168,13 @@ export const editorActions: readonly Action[] = [
   actionLink,
   actionCopyElementLink,
   actionLinkToElement,
+  actionToggleImageExport,
+  actionToggleJSONExport,
+  actionChangeExportScale as Action,
+  actionChangeExportBackground as Action,
+  actionChangeExportEmbedScene as Action,
+  actionExportWithDarkMode as Action,
+  actionSaveToActiveFile,
+  actionSaveFileToDisk,
+  actionLoadScene,
 ];

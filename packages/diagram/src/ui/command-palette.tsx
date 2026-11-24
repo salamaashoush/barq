@@ -85,7 +85,15 @@ const EDITOR_ACTIONS: readonly ActionName[] = [
   "stats",
 ];
 
-const EXPORT_ACTIONS: readonly ActionName[] = ["copyAsPng", "copyAsSvg"];
+const EXPORT_ACTIONS: readonly ActionName[] = [
+  "imageExport",
+  "jsonExport",
+  "saveToActiveFile",
+  "saveFileToDisk",
+  "loadScene",
+  "copyAsPng",
+  "copyAsSvg",
+];
 
 const PALETTE_TOOLS: readonly ToolType[] = [
   "selection",

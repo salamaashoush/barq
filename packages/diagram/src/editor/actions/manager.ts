@@ -27,9 +27,15 @@ export class ActionManager {
   public handleKeyDown(event: KeyboardEvent): boolean {
     const appState = this.getAppState();
     const elements: readonly ExcalidrawElement[] = this.getElementsIncludingDeleted();
+    // a canvas action the host turned off has no shortcut either
+    const canvasActions: Record<string, unknown> = this.editor.host.UIOptions.canvasActions;
     const matches = [...this.actions.values()]
       .toSorted((a, b) => (b.keyPriority ?? 0) - (a.keyPriority ?? 0))
-      .filter((action) => action.keyTest?.(event, appState, elements, this.editor) === true);
+      .filter(
+        (action) =>
+          (!(action.name in canvasActions) || canvasActions[action.name] !== false) &&
+          action.keyTest?.(event, appState, elements, this.editor) === true,
+      );
 
     if (matches.length !== 1) {
       if (matches.length > 1) {
