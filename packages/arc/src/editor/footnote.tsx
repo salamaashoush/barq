@@ -319,12 +319,10 @@ const FOOTNOTE_MARKDOWN: TextMatchTransformer = {
 
 /** Words in a note, with each web address in it a link. */
 function Linked(props: { text: string }) {
-  // Empty pieces are dropped: a row holding no text has nothing a server writes for it.
   const parts = (): { text: string; link: boolean }[] =>
     props.text
       .split(/(https?:\/\/[^\s<>()]+[^\s<>().,;:!?])/u)
-      .map((text, index) => ({ text, link: index % 2 === 1 }))
-      .filter((part) => part.text !== "");
+      .map((text, index) => ({ text, link: index % 2 === 1 }));
   return (
     <For each={parts()}>
       {(part: { text: string; link: boolean }) =>

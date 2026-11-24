@@ -274,15 +274,22 @@ function emptyArm(claim: Range): void {
  * and the hydration is the ordinary case, and the rows that DID match still keep
  * their nodes. It is still reported, because "nothing was reported" has to mean
  * the list was the list.
+ *
+ * Unless the row renders nothing. A row that is `null` or `""` has no extent on
+ * the wire, so the cursor is spent after the last row that had one, and the
+ * rows after it are the server's rows all the same.
  */
 function inRow(cursor: Cursor, make: () => object[]): object[] {
   if (cursorAtEnd(cursor)) {
-    report(
-      "structure",
-      "The browser's list has a row the server did not send, so the list is longer in the " +
-        `browser. ${usualCauses("structure")} The row was built in the browser ${REST_REUSED}`,
-    );
-    return withoutClaim(make);
+    const made = withoutClaim(make);
+    if (made.some((node) => !claimWalk().isBlank(node))) {
+      report(
+        "structure",
+        "The browser's list has a row the server did not send, so the list is longer in the " +
+          `browser. ${usualCauses("structure")} The row was built in the browser ${REST_REUSED}`,
+      );
+    }
+    return made;
   }
 
   const from = cursor.next;

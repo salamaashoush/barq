@@ -209,6 +209,7 @@ export interface ClaimWalk {
   probeRange(parent: object | null, anchor: object | null): Range | null;
   claimLate<T>(container: object, work: () => T): { value: T; abandoned: HydrationMismatch | null };
   isScaffolding(node: object | null): boolean;
+  isBlank(node: object): boolean;
   rangeKey(range: Range): string | null;
   releaseRange(range: Range): void;
   openCursor(range: Range): Cursor;

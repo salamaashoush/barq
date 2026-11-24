@@ -499,7 +499,7 @@ export function RichTextRenderer(props: RichTextRendererProps) {
       data-slot="rich-text"
     >
       <Children nodes={nodes()} context={context()} />
-      <For each={extensions().filter((extension) => extension.renderEnd !== undefined)}>
+      <For each={extensions()}>
         {(extension: EditorExtension) => extension.renderEnd?.(context().scope)}
       </For>
     </div>

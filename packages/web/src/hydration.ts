@@ -276,6 +276,15 @@ export function isScaffolding(node: Node | null): boolean {
   return data.charAt(0) === OPEN || data === CLOSE;
 }
 
+/**
+ * A node the server never sends: an empty text node, which no HTML parser makes.
+ * The client makes one for an empty string and as a hole's or row's place, so a
+ * row built of nothing else has nothing on the wire to claim.
+ */
+function isBlank(node: Node): boolean {
+  return node.nodeType === TEXT && (node as Text).data === "";
+}
+
 function hasRanges(root: Node): boolean {
   for (let node = root.firstChild; node !== null; node = node.nextSibling) {
     if (node.nodeType === COMMENT && (node as Comment).data.charAt(0) === OPEN) return true;
@@ -1095,6 +1104,7 @@ const CLAIM_WALK: ClaimWalk = {
   probeRange: probeRangeWalk,
   claimLate,
   isScaffolding,
+  isBlank,
   rangeKey,
   releaseRange,
   openCursor,
