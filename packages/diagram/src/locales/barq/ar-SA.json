@@ -25,5 +25,8 @@
       "view": "يتراجع Ctrl+Z، ويعيد Ctrl+Shift+Z. يكبّر Ctrl+= ويصغّر Ctrl+-، ويلائم Shift+1، ويُظهر Ctrl+' الشبكة، ويمرر Page Up وPage Down.",
       "help": "يسرد ? كل الاختصارات، ويفتح Ctrl+/ لوحة الأوامر."
     }
+  },
+  "charts": {
+    "shuffleColors": "تبديل الألوان عشوائيًا"
   }
 }

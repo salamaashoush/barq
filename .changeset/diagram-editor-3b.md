@@ -12,3 +12,4 @@
 - `exportCanvas`, `exportToClipboard`, `saveAsJSON`, `loadFromJSON`, `saveLibraryAsJSON`, `fileOpen`, `fileSave` and `muteFSAbortError` are exported under Excalidraw's names, with `isNativeFileSystemSupported`.
 - The autoshape tool (Shift+X) turns a sketch into a rectangle, diamond, ellipse, arrow or line; a sketched arrow binds to the shapes at its ends.
 - The bucket fill tool (B) fills the closed region under a click with a strokeless polygon, restyles a fill it made, and picks its colour with an eye dropper while Alt is held.
+- Cells pasted from a spreadsheet (tab, comma or semicolon separated) open the paste chart dialog, which inserts them as a bar, line or radar chart, or as plain text.

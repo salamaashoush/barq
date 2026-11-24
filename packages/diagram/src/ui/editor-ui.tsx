@@ -17,6 +17,7 @@ import {
   topStart,
 } from "./styles.ts";
 import { Toolbar } from "./toolbar.tsx";
+import { ChartDialog } from "./chart-dialog.tsx";
 import { CommandPalette } from "./command-palette.tsx";
 import { ImageExportDialog, JSONExportDialog } from "./export-dialogs.tsx";
 import { HelpDialog } from "./help-dialog.tsx";
@@ -172,6 +173,7 @@ function Layout(props: { mainMenu?: () => Child }) {
       <ElementLinkDialog />
       <CommandPalette />
       <HelpDialog />
+      <ChartDialog />
       <ImageExportDialog />
       <JSONExportDialog />
       <EditorToasts />

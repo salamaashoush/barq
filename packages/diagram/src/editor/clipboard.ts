@@ -23,6 +23,7 @@ import type { ExcalidrawElementSkeleton } from "@excalidraw/element";
 import type { ExcalidrawElement, ExcalidrawTextElement } from "@excalidraw/element/types";
 
 import { parseClipboard, parseDataTransferEvent } from "../clipboard.ts";
+import { tryParseSpreadsheet } from "../charts/index.ts";
 import { SVGStringToFile } from "../data/blob.ts";
 import { isMaybeMermaidDefinition, MERMAID_TO_EXCALIDRAW_CONFIG } from "../mermaid-detect.ts";
 import { scrollBoundsIntoView } from "../viewport.ts";
@@ -140,6 +141,19 @@ export class EditorClipboard {
         sceneY,
       });
       return;
+    }
+
+    // a spreadsheet's cells, offered as a chart
+    if (!isPlainPaste && data.text) {
+      const result = tryParseSpreadsheet(data.text);
+      if (result.ok) {
+        app.batch(() =>
+          app.setState({
+            openDialog: { name: "charts", data: result.data, rawText: data.text ?? "" },
+          }),
+        );
+        return;
+      }
     }
 
     // images, or SVG code

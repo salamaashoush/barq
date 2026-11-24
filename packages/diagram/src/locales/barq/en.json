@@ -25,5 +25,8 @@
       "view": "Ctrl+Z undoes, Ctrl+Shift+Z redoes. Ctrl+= and Ctrl+- zoom, Shift+1 fits, Ctrl+' shows the grid, Page Up and Page Down scroll.",
       "help": "? lists every shortcut, Ctrl+/ opens the command palette."
     }
+  },
+  "charts": {
+    "shuffleColors": "Shuffle colors"
   }
 }

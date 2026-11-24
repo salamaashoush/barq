@@ -76,7 +76,7 @@ embeds.
 - done: plain text, Ctrl+Shift+V, HTML text and images, SVG markup, image files, Mermaid (`clipboard.test.ts`)
 - done: copy as PNG (Shift+Alt+C), as SVG, as text (`clipboard.test.ts`)
 - done: drop of scenes (replace, or add with Shift), images, library data (`clipboard.test.ts`)
-- pending (3b): pasted spreadsheets as charts (needs the charts dialog)
+- done: pasted spreadsheets as bar, line and radar charts, or the plain text, in the paste chart dialog (`generators.test.tsx`, `charts.test.ts`)
 - pending (4): pasted URLs as embeddables
 - done: toasts for `toast` and `errorMessage`, translated (`panels.test.tsx`)
 
