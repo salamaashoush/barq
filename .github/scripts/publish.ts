@@ -30,6 +30,7 @@ import {
   pack,
   root,
   workspaces,
+  type CommandResult,
   type Workspace,
 } from "./package-quality.ts";
 
@@ -38,7 +39,7 @@ const dryRun = args.has("--dry-run");
 const listOnly = args.has("--list");
 const requireBinaries = !dryRun || args.has("--require-binaries");
 
-function npm(argv: string[]): { code: number; out: string } {
+function npm(argv: string[]): CommandResult {
   const result = Bun.spawnSync({
     cmd: ["npm", ...argv],
     cwd: root,
@@ -63,7 +64,7 @@ function inOrder(packages: Workspace[]): Workspace[] {
   const byName = new Map(packages.map((one) => [one.manifest.name, one]));
   const done = new Set<string>();
   const ordered: Workspace[] = [];
-  const visit = (one: Workspace): void => {
+  function visit(one: Workspace): void {
     if (done.has(one.manifest.name)) return;
     done.add(one.manifest.name);
     const { dependencies, peerDependencies, optionalDependencies } = one.manifest;
@@ -76,15 +77,20 @@ function inOrder(packages: Workspace[]): Workspace[] {
       if (dependency) visit(dependency);
     }
     ordered.push(one);
-  };
+  }
   for (const one of packages) visit(one);
   return ordered;
+}
+
+interface PreState {
+  mode: string;
+  tag: string;
 }
 
 function preTag(): string {
   const path = join(root, ".changeset/pre.json");
   if (!existsSync(path)) return "next";
-  const state = JSON.parse(readFileSync(path, "utf8")) as { mode: string; tag: string };
+  const state = JSON.parse(readFileSync(path, "utf8")) as PreState;
   return state.mode === "pre" ? state.tag : "next";
 }
 

@@ -18,10 +18,14 @@ type Manifest = Record<string, unknown> & {
   devDependencies?: Record<string, string>;
 };
 
+interface VersionedManifest {
+  version: string;
+}
+
 function versionOf(name: string): string {
   const manifest = JSON.parse(
     readFileSync(join(root, "packages", name.slice("@barqjs/".length), "package.json"), "utf8"),
-  ) as { version: string };
+  ) as VersionedManifest;
   return manifest.version;
 }
 

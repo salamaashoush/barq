@@ -29,6 +29,21 @@ const REPOSITORY = "git+https://github.com/salamaashoush/barq.git";
 
 type Conditions = string | null | { [key: string]: Conditions };
 
+interface ManifestBugs {
+  url?: string;
+}
+
+interface ManifestRepository {
+  type?: string;
+  url?: string;
+  directory?: string;
+}
+
+interface PublishConfig {
+  access?: string;
+  provenance?: boolean;
+}
+
 export interface Manifest {
   name: string;
   version: string;
@@ -36,9 +51,9 @@ export interface Manifest {
   description?: string;
   keywords?: string[];
   homepage?: string;
-  bugs?: { url?: string };
+  bugs?: ManifestBugs;
   license?: string;
-  repository?: { type?: string; url?: string; directory?: string };
+  repository?: ManifestRepository;
   files?: string[];
   type?: string;
   sideEffects?: boolean | string[];
@@ -54,7 +69,7 @@ export interface Manifest {
   os?: string[];
   cpu?: string[];
   libc?: string[];
-  publishConfig?: { access?: string; provenance?: boolean };
+  publishConfig?: PublishConfig;
   napi?: unknown;
 }
 
@@ -64,12 +79,21 @@ export interface Workspace {
   manifest: Manifest;
 }
 
+interface RootManifest {
+  workspaces: string[];
+}
+
+export interface CommandResult {
+  code: number;
+  out: string;
+}
+
 function readJson(path: string): unknown {
   return JSON.parse(readFileSync(path, "utf8"));
 }
 
 export function workspaces(): Workspace[] {
-  const { workspaces: globs } = readJson(join(root, "package.json")) as { workspaces: string[] };
+  const { workspaces: globs } = readJson(join(root, "package.json")) as RootManifest;
   const found: Workspace[] = [];
   for (const pattern of globs) {
     for (const match of new Bun.Glob(`${pattern}/package.json`).scanSync({ cwd: root })) {
@@ -80,7 +104,9 @@ export function workspaces(): Workspace[] {
   return found.toSorted((a, b) => a.manifest.name.localeCompare(b.manifest.name));
 }
 
-export const isPlatformBinding = (manifest: Manifest): boolean => Array.isArray(manifest.os);
+export function isPlatformBinding(manifest: Manifest): boolean {
+  return Array.isArray(manifest.os);
+}
 
 function leaves(value: Conditions | undefined, out: string[] = []): string[] {
   if (typeof value === "string") out.push(value);
@@ -106,9 +132,9 @@ function hasTypes(value: Conditions | undefined): boolean {
 export function checkManifest(workspace: Workspace, all: Workspace[]): string[] {
   const { manifest, dir } = workspace;
   const problems: string[] = [];
-  const need = (ok: unknown, what: string): void => {
+  function need(ok: unknown, what: string): void {
     if (!ok) problems.push(what);
-  };
+  }
 
   need(
     typeof manifest.description === "string" && manifest.description.length > 0,
@@ -167,7 +193,7 @@ export function checkManifest(workspace: Workspace, all: Workspace[]): string[] 
   return problems;
 }
 
-function run(cmd: string[], cwd = root): { code: number; out: string } {
+function run(cmd: string[], cwd = root): CommandResult {
   const result = Bun.spawnSync({ cmd, cwd, stdout: "pipe", stderr: "pipe" });
   return { code: result.exitCode, out: `${result.stdout.toString()}${result.stderr.toString()}` };
 }
@@ -260,6 +286,14 @@ function matchesTarget(files: Set<string>, target: string): boolean {
   return [...files].some((file) => file.startsWith(head) && file.endsWith(tail));
 }
 
+interface AttwAnalysis {
+  problems: AttwProblem[];
+}
+
+interface AttwReport {
+  analysis: AttwAnalysis;
+}
+
 interface AttwProblem {
   kind: string;
   entrypoint?: string;
@@ -303,7 +337,7 @@ function typesProblems(tarball: string, packed: Manifest): string[] {
   try {
     ({
       analysis: { problems },
-    } = JSON.parse(report) as { analysis: { problems: AttwProblem[] } });
+    } = JSON.parse(report) as AttwReport);
   } catch {
     return [`attw did not report: ${stderr || report.slice(0, 2000)}`];
   }
@@ -333,13 +367,13 @@ export async function checkTarball(workspace: Workspace, tarball: string): Promi
     if (extracted.code !== 0) return [`could not unpack ${tarball}: ${extracted.out}`];
     const base = join(unpacked, "package");
     const files = new Set<string>();
-    const walk = (dir: string): void => {
+    function walk(dir: string): void {
       for (const entry of readdirSync(dir)) {
         const full = join(dir, entry);
         if (statSync(full).isDirectory()) walk(full);
         else files.add(relative(base, full).split("\\").join("/"));
       }
-    };
+    }
     walk(base);
 
     const packed = readJson(join(base, "package.json")) as Manifest;
