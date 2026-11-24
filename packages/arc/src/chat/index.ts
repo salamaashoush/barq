@@ -25,3 +25,10 @@ export type {
   MessageHandlers,
   ThreadSummary,
 } from "./model.ts";
+export {
+  MessageList,
+  type MessageListApi,
+  type MessageListProps,
+  type RenderedMessage,
+  messageListStyles,
+} from "./message-list.tsx";
