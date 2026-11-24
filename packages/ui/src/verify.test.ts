@@ -16,13 +16,17 @@ import { resolve } from "node:path";
 
 const root = resolve(import.meta.dir, "..");
 
+interface PackageManifest {
+  scripts: Record<string, string>;
+}
+
 // The timeout is the spawned bun's, which translates every spec and scans every
 // component: measured at 0.8 s idle and 2.1 s with every core contended, and
 // past 5 s on a CI runner whose cores the other packages' suites share.
 test("the verify script runs outside the runner and finds nothing missing", () => {
-  const manifest = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")) as {
-    scripts: Record<string, string>;
-  };
+  const manifest = JSON.parse(
+    readFileSync(resolve(root, "package.json"), "utf8"),
+  ) as PackageManifest;
   const [command, ...args] = (manifest.scripts["verify"] ?? "").split(" ");
   expect(command).toBe("bun");
 

@@ -318,8 +318,13 @@ function edgesOf(scroller: MessageScrollerEngine): string | undefined {
   return edges.end ? "end" : undefined;
 }
 
+interface ScrollerProviderProps {
+  value: MessageScrollerEngine;
+  children?: Child;
+}
+
 /** See `drawer.tsx`: the scope a `provide` needs exists only in a component. */
-function ScrollerProvider(props: { value: MessageScrollerEngine; children?: Child }) {
+function ScrollerProvider(props: ScrollerProviderProps) {
   return provide(
     ScrollerContext,
     () => props.value,
@@ -425,13 +430,13 @@ export interface MessageScrollerItemProps extends UiProps {
 export function MessageScrollerItem(props: MessageScrollerItemProps) {
   const scroller = useScroller();
   let mounted: HTMLDivElement | null = null;
-  const register = (element: HTMLDivElement | null): void => {
+  function register(element: HTMLDivElement | null): void {
     const messageId = props.messageId;
     if (messageId !== undefined && messageId !== "") {
       scroller.register(messageId, element, mounted);
     }
     mounted = element;
-  };
+  }
   onCleanup(() => register(null));
 
   return (
@@ -464,8 +469,12 @@ export interface MessageScrollerButtonProps extends ButtonProps {
  */
 export function MessageScrollerButton(props: MessageScrollerButtonProps) {
   const scroller = useScroller();
-  const direction = (): "start" | "end" => props.direction ?? "end";
-  const active = (): boolean => scroller.scrollable()[direction()];
+  function direction(): "start" | "end" {
+    return props.direction ?? "end";
+  }
+  function active(): boolean {
+    return scroller.scrollable()[direction()];
+  }
 
   return (
     <Button

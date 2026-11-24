@@ -10,6 +10,10 @@
 
 import type { Child } from "@barqjs/core";
 
+export interface BivariantRefCallback {
+  on(element: HTMLElement | null): void | (() => void);
+}
+
 /**
  * A `ref` for whichever element a component renders, as a callback.
  *
@@ -19,10 +23,7 @@ import type { Child } from "@barqjs/core";
  * right one to hand it. A component that renders one known element declares
  * `RefTarget` of that element instead, and takes a `{ current }` box as well.
  */
-export type UiRef =
-  | { on(element: HTMLElement | null): void | (() => void) }["on"]
-  | null
-  | undefined;
+export type UiRef = BivariantRefCallback["on"] | null | undefined;
 
 export interface UiProps {
   /** Composed with the component's own classes; yours wins, because this package's rules are layered. */

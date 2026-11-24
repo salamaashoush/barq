@@ -19,13 +19,15 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+interface UpstreamCssVars {
+  readonly light: Record<string, string>;
+  readonly dark: Record<string, string>;
+}
+
 interface UpstreamTheme {
   readonly name: string;
   readonly title: string;
-  readonly cssVars: {
-    readonly light: Record<string, string>;
-    readonly dark: Record<string, string>;
-  };
+  readonly cssVars: UpstreamCssVars;
 }
 
 /** A base theme declares every token; an accent overlays a handful onto one. */
@@ -54,11 +56,15 @@ function theme(item: UpstreamTheme, kind: "base" | "accent"): string {
   ].join("\n");
 }
 
+interface ThemesModule {
+  THEMES: UpstreamTheme[];
+}
+
 async function read(checkout: string): Promise<UpstreamTheme[]> {
   const source = readFileSync(resolve(checkout, "apps/v4/registry/themes.ts"), "utf8");
   const scratch = join(mkdtempSync(join(tmpdir(), "barq-ui-themes-")), "themes.ts");
   writeFileSync(scratch, source.replace(/^import .*$/m, "export type RegistryItem = unknown;"));
-  const module_ = (await import(scratch)) as { THEMES: UpstreamTheme[] };
+  const module_ = (await import(scratch)) as ThemesModule;
   return module_.THEMES;
 }
 

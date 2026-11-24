@@ -56,8 +56,9 @@ describe("Card", () => {
         </CardHeader>
       </>
     ));
-    const classes = (testid: string): string[] =>
-      (container.querySelector(`[data-testid="${testid}"]`)?.className ?? "").split(" ");
+    function classes(testid: string): string[] {
+      return (container.querySelector(`[data-testid="${testid}"]`)?.className ?? "").split(" ");
+    }
     const plain = classes("plain");
     const ruled = classes("ruled");
     // Atoms, so "a class" is one declaration: bordered adds the four the

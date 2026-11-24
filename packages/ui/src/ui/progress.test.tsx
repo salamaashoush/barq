@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { provideDirection } from "@barqjs/aria/i18n";
-import { createSignal, flush, type Child } from "@barqjs/core";
+import { createSignal, flush, type ParentProps } from "@barqjs/core";
 import { cleanup, expectNoAriaViolations, render, screen } from "@barqjs/testing";
 
 import { rulesFor } from "../test-rules.ts";
@@ -9,10 +9,11 @@ import { Progress, ProgressLabel, ProgressValue } from "./progress.tsx";
 
 afterEach(cleanup);
 
-const slot = (name: string): HTMLElement =>
-  document.querySelector(`[data-slot="${name}"]`) as HTMLElement;
+function slot(name: string): HTMLElement {
+  return document.querySelector(`[data-slot="${name}"]`) as HTMLElement;
+}
 
-function Mirrored(props: { children?: Child }) {
+function Mirrored(props: ParentProps) {
   provideDirection("rtl");
   return <div dir="rtl">{props.children}</div>;
 }
@@ -67,8 +68,13 @@ describe("Progress", () => {
   });
 });
 
+interface UploadProps {
+  value?: number;
+  isIndeterminate?: boolean;
+}
+
 describe("Progress, with its parts written out", () => {
-  function Upload(props: { value?: number; isIndeterminate?: boolean }) {
+  function Upload(props: UploadProps) {
     return (
       <Progress value={props.value ?? 40} isIndeterminate={props.isIndeterminate}>
         <ProgressLabel>Upload</ProgressLabel>

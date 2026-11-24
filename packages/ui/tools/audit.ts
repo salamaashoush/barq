@@ -58,7 +58,7 @@ async function main(): Promise<void> {
       const wanted = declarations(parse(result.css)).map(canonical);
       for (const one of wanted) asked.add(one);
 
-      const pick = (from: Map<string, Set<string>>): [string, Set<string>] => {
+      function pick(from: Map<string, Set<string>>): [string, Set<string>] {
         let held = new Set<string>();
         let key = "";
         let score = 0;
@@ -72,7 +72,7 @@ async function main(): Promise<void> {
           }
         }
         return [key, held];
-      };
+      }
 
       // A component that COMPOSES another owns slots whose class lives in the
       // other's file — the menubar's items are the dropdown menu's. Nothing in

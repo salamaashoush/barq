@@ -8,12 +8,15 @@ interface Row {
   id: string;
 }
 
-const order = (container: HTMLElement): string =>
-  [...container.querySelectorAll("[data-node]")]
+function order(container: HTMLElement): string {
+  return [...container.querySelectorAll("[data-node]")]
     .map((node) => node.getAttribute("data-node"))
     .join(",");
+}
 
-const rows = (...ids: string[]): Row[] => ids.map((id) => ({ id }));
+function rows(...ids: string[]): Row[] {
+  return ids.map((id) => ({ id }));
+}
 
 describe("a keyed list that loses two rows and gains one", () => {
   test("plain elements", () => {

@@ -246,8 +246,9 @@ export function TooltipContent(props: TooltipContentProps) {
   const arrowRef = makeRef<HTMLSpanElement>();
   const trigger = useTooltipTrigger();
   const locale = useLocale();
-  const placement = (): Placement =>
-    props.placement ?? placementFor(props.side ?? "top", props.align ?? "center");
+  function placement(): Placement {
+    return props.placement ?? placementFor(props.side ?? "top", props.align ?? "center");
+  }
 
   const position = overlayPosition({
     targetRef: trigger.triggerRef,

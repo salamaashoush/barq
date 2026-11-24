@@ -157,18 +157,20 @@ interface Given {
 
 let handed: (Element | null)[] = [];
 
-const record = (element: Element | null): void => {
+function record(element: Element | null): void {
   handed.push(element);
-};
+}
 
-const given = (): Given => ({
-  class: "caller-class",
-  style: { "--caller": "1" },
-  id: "caller-id",
-  "data-caller": "yes",
-  "aria-describedby": "caller-note",
-  ref: record,
-});
+function given(): Given {
+  return {
+    class: "caller-class",
+    style: { "--caller": "1" },
+    id: "caller-id",
+    "data-caller": "yes",
+    "aria-describedby": "caller-note",
+    ref: record,
+  };
+}
 
 afterEach(() => {
   handed = [];
@@ -215,19 +217,20 @@ interface Row {
 }
 
 /** Which of a menu family's parts take `id` for themselves. */
-const ownership = (part: string): Row["ownsId"] => {
+function ownership(part: string): Row["ownsId"] {
   if (/^(ContextMenu|DropdownMenu|Menubar)\w*(Item|SubTrigger)$/.test(part))
     return "the item's key";
   if (/^(DropdownMenu|Menubar)Content$|^NavigationMenuTrigger$/.test(part)) {
     return "what its trigger or panel addresses";
   }
   return undefined;
-};
+}
 
-const dialogRole = (element: HTMLElement): HTMLElement =>
-  element.querySelector('[role="dialog"], [role="alertdialog"]') as HTMLElement;
+function dialogRole(element: HTMLElement): HTMLElement {
+  return element.querySelector('[role="dialog"], [role="alertdialog"]') as HTMLElement;
+}
 
-const press = async (name: string): Promise<void> => {
+async function press(name: string): Promise<void> {
   const found = [...document.querySelectorAll<HTMLElement>("button, [role='menuitem']")].find(
     (each) => each.textContent?.trim() === name,
   );
@@ -235,7 +238,7 @@ const press = async (name: string): Promise<void> => {
   await user.click(found);
   flush();
   await tick();
-};
+}
 
 const SERIES = [{ key: "sales", label: "Sales", color: "var(--chart-1)" }];
 

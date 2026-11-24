@@ -63,6 +63,11 @@ function everySlot(): Map<string, string> {
   return out;
 }
 
+interface SelectorClasses {
+  selector: string;
+  classes: string;
+}
+
 async function main(): Promise<void> {
   const slots = everySlot();
   const build = await createBuilder();
@@ -89,7 +94,7 @@ async function main(): Promise<void> {
   // comparing against the wrapper reports a difference the alias exists to
   // resolve.
   const ours = slotsWeEmit(resolve(import.meta.dir, ".."));
-  const pairs: Record<string, { selector: string; classes: string }> = {};
+  const pairs: Record<string, SelectorClasses> = {};
   for (const [name, classes] of slots) {
     const slot = name.split("/")[1] ?? "";
     const selector = selectorFor(`cn-${slot}`, ours);

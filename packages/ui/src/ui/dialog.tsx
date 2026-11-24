@@ -336,8 +336,12 @@ export function DialogDescription(props: UiProps) {
   );
 }
 
+interface CornerCloseProps {
+  label: string;
+}
+
 /** The ✕ in the corner. Not `<DialogClose>`, which is a real button with padding and a border. */
-function CornerClose(props: { label: string }) {
+function CornerClose(props: CornerCloseProps) {
   const { state } = family.use();
   return (
     <button type="button" data-slot="dialog-close" class={close} onClick={() => state.close()}>

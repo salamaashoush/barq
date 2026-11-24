@@ -359,9 +359,16 @@ export interface ButtonProps extends ButtonComponentProps {
  * when the pointer leaves, and does not wait for a click on touch.
  */
 export function Button(props: ButtonProps) {
-  const className = (): string =>
-    ui(buttonVariants({ variant: props.variant, size: props.size }), props.class, props.className);
-  const isDisabled = (): boolean | undefined => props.isDisabled ?? props.disabled;
+  function className(): string {
+    return ui(
+      buttonVariants({ variant: props.variant, size: props.size }),
+      props.class,
+      props.className,
+    );
+  }
+  function isDisabled(): boolean | undefined {
+    return props.isDisabled ?? props.disabled;
+  }
   const { ref: _, ...link } = props;
 
   return (

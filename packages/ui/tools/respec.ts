@@ -31,6 +31,11 @@ import { basename, join } from "node:path";
 /** Which of the 24 sets to read. `radix-nova` is what the docs render. */
 const SET = "radix-nova";
 
+interface CvaRead {
+  base: string;
+  axes: Map<string, Map<string, string>>;
+}
+
 /**
  * A `cva` call, as its base and its variants.
  *
@@ -38,10 +43,7 @@ const SET = "radix-nova";
  * split across lines by the formatter, so they are joined rather than matched
  * whole.
  */
-function readCva(
-  source: string,
-  at: number,
-): { base: string; axes: Map<string, Map<string, string>> } | null {
+function readCva(source: string, at: number): CvaRead | null {
   const open = source.indexOf("(", at);
   if (open === -1) return null;
   const end = matching(source, open);
@@ -69,9 +71,14 @@ function readCva(
   return { base: base.value, axes };
 }
 
+interface NamedEntry {
+  name: string;
+  body: string;
+}
+
 /** `name: { … }` or `name: "…"` pairs at the top level of an object body. */
-function entries(body: string): { name: string; body: string }[] {
-  const out: { name: string; body: string }[] = [];
+function entries(body: string): NamedEntry[] {
+  const out: NamedEntry[] = [];
   const pattern = /(?:^|[,{\s])["']?([A-Za-z][\w-]*)["']?\s*:\s*/g;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(body)) !== null) {
@@ -128,6 +135,11 @@ function matching(text: string, from: number): number {
   return -1;
 }
 
+interface ReadString {
+  value: string;
+  end: number;
+}
+
 /**
  * The first string literal at or after `from`, with an adjacent one joined on.
  *
@@ -135,7 +147,7 @@ function matching(text: string, from: number): number {
  * one list: `"a b" + "c"` never appears, the strings simply sit next to each
  * other inside a template the formatter wrapped.
  */
-function readString(text: string, from: number): { value: string; end: number } | null {
+function readString(text: string, from: number): ReadString | null {
   const start = text.indexOf('"', from);
   if (start === -1) return null;
   let at = start + 1;

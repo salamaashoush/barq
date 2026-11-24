@@ -612,8 +612,12 @@ export interface QuestionnaireNavigationProps extends QuestionnaireButtonProps {
 }
 
 export function QuestionnairePrevious(props: QuestionnaireNavigationProps) {
-  const size = (): ButtonSize => props.size ?? "default";
-  const variant = (): ButtonVariant => props.variant ?? "outline";
+  function size(): ButtonSize {
+    return props.size ?? "default";
+  }
+  function variant(): ButtonVariant {
+    return props.variant ?? "outline";
+  }
   return (
     <AriaQuestionnairePrevious
       {...props}
@@ -631,8 +635,12 @@ export function QuestionnairePrevious(props: QuestionnaireNavigationProps) {
 }
 
 export function QuestionnaireSkip(props: QuestionnaireNavigationProps) {
-  const size = (): ButtonSize => props.size ?? "default";
-  const variant = (): ButtonVariant => props.variant ?? "outline";
+  function size(): ButtonSize {
+    return props.size ?? "default";
+  }
+  function variant(): ButtonVariant {
+    return props.variant ?? "outline";
+  }
   return (
     <AriaQuestionnaireSkip
       {...props}
@@ -650,8 +658,12 @@ export function QuestionnaireSkip(props: QuestionnaireNavigationProps) {
 }
 
 export function QuestionnaireNext(props: QuestionnaireNavigationProps) {
-  const size = (): ButtonSize => props.size ?? "default";
-  const variant = (): ButtonVariant => props.variant ?? "default";
+  function size(): ButtonSize {
+    return props.size ?? "default";
+  }
+  function variant(): ButtonVariant {
+    return props.variant ?? "default";
+  }
   return (
     <AriaQuestionnaireNext
       {...props}
@@ -669,8 +681,12 @@ export function QuestionnaireNext(props: QuestionnaireNavigationProps) {
 }
 
 export function QuestionnaireSubmit(props: QuestionnaireNavigationProps) {
-  const size = (): ButtonSize => props.size ?? "default";
-  const variant = (): ButtonVariant => props.variant ?? "default";
+  function size(): ButtonSize {
+    return props.size ?? "default";
+  }
+  function variant(): ButtonVariant {
+    return props.variant ?? "default";
+  }
   return (
     <AriaQuestionnaireSubmit
       {...props}

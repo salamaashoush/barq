@@ -5,7 +5,11 @@ import { rulesFor } from "../test-rules.ts";
 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./table.tsx";
 
-function Invoices(props: { selected?: boolean }) {
+interface InvoicesProps {
+  selected?: boolean;
+}
+
+function Invoices(props: InvoicesProps) {
   return (
     <Table aria-label="Invoices">
       <TableHeader>
@@ -22,7 +26,9 @@ function Invoices(props: { selected?: boolean }) {
   );
 }
 
-const bodyRow = (): HTMLElement => screen.getAllByRole("row")[1] as HTMLElement;
+function bodyRow(): HTMLElement {
+  return screen.getAllByRole("row")[1] as HTMLElement;
+}
 
 describe("Table", () => {
   test("a selected row says so the way upstream's data tables do", () => {

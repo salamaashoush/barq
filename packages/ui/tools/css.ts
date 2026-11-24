@@ -290,17 +290,23 @@ function rename(nodes: readonly CssNode[]): CssNode[] {
  */
 export type Builder = (candidates: readonly string[]) => Promise<Compiled>;
 
+interface LoadedSheet {
+  path: string;
+  base: string;
+  content: string;
+}
+
 export async function createBuilder(): Promise<Builder> {
   const root = resolve(import.meta.dir, "../node_modules/tailwindcss");
   const animate = resolve(import.meta.dir, "../node_modules/tw-animate-css/dist/tw-animate.css");
-  const load = (id: string, base: string): { path: string; base: string; content: string } => {
+  function load(id: string, base: string): LoadedSheet {
     const path = id.startsWith(".")
       ? resolve(base, id)
       : id === "tw-animate-css"
         ? animate
         : resolve(root, id === "tailwindcss" ? "index.css" : id.replace(/^tailwindcss\//, ""));
     return { path, base: dirname(path), content: readFileSync(path, "utf8") };
-  };
+  }
 
   // `tw-animate-css` is where shadcn's `animate-in`, `fade-in-0` and
   // `slide-in-from-top-2` come from. Without it those classes resolve to

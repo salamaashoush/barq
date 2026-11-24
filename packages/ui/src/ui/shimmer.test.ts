@@ -5,7 +5,9 @@ import { rulesFor } from "../test-rules.ts";
 
 import { shimmer, shimmerNone, shimmerOnce, shimmerReverse, shimmerStyle } from "./shimmer.ts";
 
-const flat = (text: string): string => text.replaceAll(/\s+/g, "");
+function flat(text: string): string {
+  return text.replaceAll(/\s+/g, "");
+}
 
 describe("shimmer", () => {
   test("the highlight is a gradient clipped to the text", () => {

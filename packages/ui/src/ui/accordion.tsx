@@ -193,12 +193,14 @@ function keysOf(value: string | string[] | undefined): Key[] | undefined {
  * ```
  */
 export function Accordion<T>(props: AccordionProps<T>) {
-  const multiple = (): boolean => props.allowsMultiple ?? props.type === "multiple";
-  const report = (keys: Set<Key>): void => {
+  function multiple(): boolean {
+    return props.allowsMultiple ?? props.type === "multiple";
+  }
+  function report(keys: Set<Key>): void {
     props.onExpandedChange?.(keys);
     const values = [...keys].map(String);
     props.onValueChange?.(multiple() ? values : (values[0] ?? ""));
-  };
+  }
 
   return (
     <DisclosureGroup

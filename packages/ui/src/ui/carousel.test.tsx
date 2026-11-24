@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { provideDirection } from "@barqjs/aria/i18n";
-import { Show, createSignal, flush, type Child } from "@barqjs/core";
+import { Show, createSignal, flush, type ParentProps } from "@barqjs/core";
 import { cleanup, render, tick, user } from "@barqjs/testing";
 
 import { rulesFor } from "../test-rules.ts";
@@ -17,10 +17,12 @@ import {
 
 afterEach(cleanup);
 
-function Three(props: {
+interface ThreeProps {
   orientation?: "horizontal" | "vertical";
   setApi?: (api: CarouselApi) => void;
-}) {
+}
+
+function Three(props: ThreeProps) {
   return (
     <Carousel orientation={props.orientation} setApi={props.setApi}>
       <CarouselContent>
@@ -34,7 +36,9 @@ function Three(props: {
   );
 }
 
-const at = (slot: string): HTMLElement | null => document.querySelector(`[data-slot="${slot}"]`);
+function at(slot: string): HTMLElement | null {
+  return document.querySelector(`[data-slot="${slot}"]`);
+}
 
 describe("Carousel", () => {
   test("it announces itself as a carousel, not as a region of unknown purpose", () => {
@@ -277,13 +281,18 @@ describe("useCarousel", () => {
   });
 });
 
+interface ScrollSpy {
+  prev: number;
+  next: number;
+}
+
 describe("Carousel, right to left", () => {
-  function Rtl(props: { children?: Child }) {
+  function Rtl(props: ParentProps) {
     provideDirection("rtl");
     return <div dir="rtl">{props.children}</div>;
   }
 
-  function spied(api: CarouselApi): { prev: number; next: number } {
+  function spied(api: CarouselApi): ScrollSpy {
     const calls = { prev: 0, next: 0 };
     Object.defineProperty(api, "scrollPrev", { value: () => calls.prev++ });
     Object.defineProperty(api, "scrollNext", { value: () => calls.next++ });
@@ -370,7 +379,9 @@ describe("Carousel, right to left", () => {
 
   test("the gutter and the arrows are placed by the start and the end", () => {
     render(() => <Three />);
-    const rules = (slot: string): string => rulesFor(at(slot)?.className ?? "");
+    function rules(slot: string): string {
+      return rulesFor(at(slot)?.className ?? "");
+    }
     expect(rules("carousel-content")).toContain("margin-inline-start:");
     expect(rules("carousel-item")).toContain("padding-inline-start:");
     expect(rules("carousel-previous")).toContain("inset-inline-start:");
@@ -387,11 +398,17 @@ describe("Carousel, right to left", () => {
   });
 });
 
+interface DottedProps {
+  setApi?: (api: CarouselApi) => void;
+  label?: (index: number, count: number) => string;
+}
+
+interface SnapState {
+  selected: number;
+}
+
 describe("CarouselDots", () => {
-  function Dotted(props: {
-    setApi?: (api: CarouselApi) => void;
-    label?: (index: number, count: number) => string;
-  }) {
+  function Dotted(props: DottedProps) {
     return (
       <Carousel setApi={props.setApi}>
         <CarouselContent>
@@ -405,7 +422,7 @@ describe("CarouselDots", () => {
   }
 
   /** happy-dom measures nothing, so the engine is told the three snap points it would find. */
-  function threeSnaps(api: CarouselApi): { selected: number } {
+  function threeSnaps(api: CarouselApi): SnapState {
     const shown = { selected: 0 };
     Object.defineProperty(api, "scrollSnapList", { value: () => [0, -0.5, -1] });
     Object.defineProperty(api, "selectedScrollSnap", { value: () => shown.selected });

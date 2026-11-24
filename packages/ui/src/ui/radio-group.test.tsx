@@ -16,20 +16,26 @@ import { RadioGroup, RadioGroupItem } from "./radio-group.tsx";
 
 afterEach(cleanup);
 
-const slots = (name: string): HTMLElement[] => [
-  ...document.querySelectorAll<HTMLElement>(
-    `label[data-slot="${name}"], span[data-slot="${name}"]`,
-  ),
-];
-const radios = (): HTMLInputElement[] => screen.getAllByRole<HTMLInputElement>("radio");
+function slots(name: string): HTMLElement[] {
+  return [
+    ...document.querySelectorAll<HTMLElement>(
+      `label[data-slot="${name}"], span[data-slot="${name}"]`,
+    ),
+  ];
+}
+function radios(): HTMLInputElement[] {
+  return screen.getAllByRole<HTMLInputElement>("radio");
+}
 
-function Sizes(props: {
+interface SizesProps {
   onValueChange?: (value: string) => void;
   disabled?: boolean;
   required?: boolean;
   orientation?: "horizontal" | "vertical";
   dir?: "ltr" | "rtl";
-}) {
+}
+
+function Sizes(props: SizesProps) {
   return (
     <RadioGroup
       aria-label="Size"
@@ -182,8 +188,13 @@ describe("RadioGroupItem, as the bare control upstream renders", () => {
   });
 });
 
+interface PlansProps {
+  isInvalid?: boolean;
+  "aria-invalid"?: boolean;
+}
+
 describe("RadioGroup, invalid", () => {
-  function Plans(props: { isInvalid?: boolean; "aria-invalid"?: boolean }) {
+  function Plans(props: PlansProps) {
     return (
       <RadioGroup
         aria-label="Plan"

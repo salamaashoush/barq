@@ -23,10 +23,12 @@ import {
   type QuestionnaireShortcutMode,
 } from "./questionnaire.tsx";
 
-function Plans(props: {
+interface PlansProps {
   shortcuts?: QuestionnaireShortcutMode;
   onAnswers?: (answers: [string, string][]) => void;
-}) {
+}
+
+function Plans(props: PlansProps) {
   return (
     <Questionnaire
       aria-label="Plan"
@@ -78,15 +80,18 @@ function Plans(props: {
   );
 }
 
-const at = (slot: string): HTMLElement =>
-  document.querySelector(`[data-slot="${slot}"]`) as HTMLElement;
-const all = (slot: string): HTMLElement[] => [
-  ...document.querySelectorAll<HTMLElement>(`[data-slot="${slot}"]`),
-];
-const choice = (value: string): HTMLInputElement =>
-  document.querySelector(`input[value="${value}"]`) as HTMLInputElement;
-const rules = (element: Element | null | undefined): string =>
-  rulesFor([...(element?.classList ?? [])].join(" "));
+function at(slot: string): HTMLElement {
+  return document.querySelector(`[data-slot="${slot}"]`) as HTMLElement;
+}
+function all(slot: string): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>(`[data-slot="${slot}"]`)];
+}
+function choice(value: string): HTMLInputElement {
+  return document.querySelector(`input[value="${value}"]`) as HTMLInputElement;
+}
+function rules(element: Element | null | undefined): string {
+  return rulesFor([...(element?.classList ?? [])].join(" "));
+}
 
 describe("Questionnaire", () => {
   test("every part carries upstream's slot", () => {

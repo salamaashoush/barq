@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { DateRange } from "@barqjs/aria/calendar";
 import { CalendarDate } from "@barqjs/aria/date";
 import { provideDirection, provideLocale } from "@barqjs/aria/i18n";
-import { cells, createSignal, flush, type Child } from "@barqjs/core";
+import { cells, createSignal, flush, type Child, type ParentProps } from "@barqjs/core";
 import { accessibleName, expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
 
 import { rulesFor } from "../test-rules.ts";
@@ -23,8 +23,12 @@ function cellOf(button: HTMLElement): HTMLElement {
   return button.parentElement as HTMLElement;
 }
 
+interface DepartureProps {
+  onChange?: (value: CalendarDate | null) => void;
+}
+
 describe("Calendar", () => {
-  function Departure(props: { onChange?: (value: CalendarDate | null) => void }) {
+  function Departure(props: DepartureProps) {
     return (
       <Calendar aria-label="Departure" defaultFocusedValue={MARCH} onChange={props.onChange} />
     );
@@ -61,9 +65,9 @@ describe("Calendar", () => {
     user.click(day("Monday", 11));
     flush();
 
-    const rules = day("Monday", 11).className.split(" ").map(rulesFor).join("\n");
-    expect(rules).toContain("[data-selected-single]");
-    expect(rules).toContain("background-color: var(--primary)");
+    const painted = day("Monday", 11).className.split(" ").map(rulesFor).join("\n");
+    expect(painted).toContain("[data-selected-single]");
+    expect(painted).toContain("background-color: var(--primary)");
   });
 
   test("the arrows page the month, and the heading names the grid", () => {
@@ -145,17 +149,21 @@ describe("RangeCalendar", () => {
   });
 });
 
-const at = (slot: string): HTMLElement =>
-  document.querySelector(`[data-slot="${slot}"]`) as HTMLElement;
-const all = (slot: string): HTMLElement[] => [
-  ...document.querySelectorAll<HTMLElement>(`[data-slot="${slot}"]`),
-];
+function at(slot: string): HTMLElement {
+  return document.querySelector(`[data-slot="${slot}"]`) as HTMLElement;
+}
+function all(slot: string): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>(`[data-slot="${slot}"]`)];
+}
 /** A day by its ISO date, which does not depend on the language it is read in. */
-const iso = (date: string): HTMLElement =>
-  document.querySelector(
+function iso(date: string): HTMLElement {
+  return document.querySelector(
     `[data-slot="calendar-day-button"][data-day="${date}"]:not([aria-hidden])`,
   ) as HTMLElement;
-const rules = (element: Element): string => rulesFor([...element.classList].join(" "));
+}
+function rules(element: Element): string {
+  return rulesFor([...element.classList].join(" "));
+}
 /** A native select has no pointer path a test can drive: set it, and say it changed. */
 function choose(select: HTMLSelectElement, value: string): void {
   select.value = value;
@@ -295,8 +303,12 @@ describe("Calendar, a range by mode", () => {
   });
 });
 
+interface TwoProps {
+  pagedNavigation?: boolean;
+}
+
 describe("Calendar, several months", () => {
-  function Two(props: { pagedNavigation?: boolean }) {
+  function Two(props: TwoProps) {
     return (
       <Calendar
         aria-label="Departure"
@@ -390,13 +402,22 @@ describe("Calendar, several months", () => {
   });
 });
 
-function InLocale(props: { locale: string; children?: Child }) {
+interface InLocaleProps {
+  locale: string;
+  children?: Child;
+}
+
+function InLocale(props: InLocaleProps) {
   const localeProps = provideLocale(cells(props).locale);
   return <div {...localeProps}>{props.children}</div>;
 }
 
+interface BirthProps {
+  layout?: "dropdown" | "dropdown-months" | "dropdown-years";
+}
+
 describe("Calendar, caption dropdowns", () => {
-  function Birth(props: { layout?: "dropdown" | "dropdown-months" | "dropdown-years" }) {
+  function Birth(props: BirthProps) {
     return (
       <Calendar
         aria-label="Date of birth"
@@ -408,18 +429,21 @@ describe("Calendar, caption dropdowns", () => {
     );
   }
 
-  const month = (): HTMLSelectElement =>
-    screen.getByRole<HTMLSelectElement>("combobox", { name: "Choose the Month" });
-  const year = (): HTMLSelectElement =>
-    screen.getByRole<HTMLSelectElement>("combobox", { name: "Choose the Year" });
+  function month(): HTMLSelectElement {
+    return screen.getByRole<HTMLSelectElement>("combobox", { name: "Choose the Month" });
+  }
+  function year(): HTMLSelectElement {
+    return screen.getByRole<HTMLSelectElement>("combobox", { name: "Choose the Year" });
+  }
   // A year's option is keyed by its place in the list, since a Japanese year
   // number repeats in every era; these read and choose one by what it says.
-  const yearShown = (): string | null | undefined =>
-    [...year().options].find((option) => option.value === year().value)?.textContent;
-  const chooseYear = (text: string): void => {
+  function yearShown(): string | null | undefined {
+    return [...year().options].find((option) => option.value === year().value)?.textContent;
+  }
+  function chooseYear(text: string): void {
     const option = [...year().options].find((one) => one.textContent === text);
     choose(year(), option?.value ?? "");
-  };
+  }
 
   test("the month and the year are two named selects showing what is on show", () => {
     render(() => <Birth />);
@@ -632,11 +656,12 @@ describe("Calendar, the days it draws", () => {
   });
 
   test("today is reckoned in the zone asked for", () => {
-    const todayIn = (label: string): string | null | undefined =>
-      screen
+    function todayIn(label: string): string | null | undefined {
+      return screen
         .getByRole("group", { name: label })
         .querySelector("[data-today]:not([data-outside]) [data-day]")
         ?.getAttribute("data-day");
+    }
     render(() => (
       <>
         <Calendar aria-label="Ahead" timeZone="Pacific/Kiritimati" />
@@ -649,8 +674,12 @@ describe("Calendar, the days it draws", () => {
   });
 });
 
+interface WeekdaysProps {
+  onChange?: (value: CalendarDate | null) => void;
+}
+
 describe("Calendar, switched-off days", () => {
-  function Weekdays(props: { onChange?: (value: CalendarDate | null) => void }) {
+  function Weekdays(props: WeekdaysProps) {
     return (
       <Calendar
         aria-label="Appointment"
@@ -922,7 +951,7 @@ describe("Calendar, upstream's names for its props", () => {
 });
 
 describe("Calendar, language and direction", () => {
-  function Mirrored(props: { children?: Child }) {
+  function Mirrored(props: ParentProps) {
     const directionProps = provideDirection("rtl");
     return <div {...directionProps}>{props.children}</div>;
   }
@@ -993,10 +1022,11 @@ describe("Calendar, language and direction", () => {
 });
 
 describe("Calendar, react-day-picker's remaining props", () => {
-  const captions = (): string[] =>
-    [...document.querySelectorAll('[data-slot="calendar-caption-label"]')].map(
+  function captions(): string[] {
+    return [...document.querySelectorAll('[data-slot="calendar-caption-label"]')].map(
       (each) => each.textContent ?? "",
     );
+  }
 
   test("hidden days are drawn as nothing, and the keyboard steps over them", async () => {
     render(() => (

@@ -196,13 +196,17 @@ export interface CarouselProps extends UiProps {
  * ```
  */
 export function Carousel(props: CarouselProps) {
-  const orientation = (): CarouselOrientation => props.orientation ?? "horizontal";
+  function orientation(): CarouselOrientation {
+    return props.orientation ?? "horizontal";
+  }
   const direction = useDirection();
-  const options = (): EmblaOptionsType => ({
-    direction: direction(),
-    ...props.opts,
-    axis: orientation() === "horizontal" ? "x" : "y",
-  });
+  function options(): EmblaOptionsType {
+    return {
+      direction: direction(),
+      ...props.opts,
+      axis: orientation() === "horizontal" ? "x" : "y",
+    };
+  }
   // `ownedWrite`: a track that arrives after the first build rebuilds from its
   // own `ref`, which is called while that component is still being built.
   const attached = { ownedWrite: true } as const;
@@ -218,7 +222,7 @@ export function Carousel(props: CarouselProps) {
   let pending: number | undefined;
   let retried = false;
 
-  const build = (): void => {
+  function build(): void {
     instance?.destroy();
     instance = null;
     writeApi(null);
@@ -256,12 +260,12 @@ export function Carousel(props: CarouselProps) {
     retried = false;
 
     const made = EmblaCarousel(node, options(), props.plugins);
-    const update = (): void => {
+    function update(): void {
       setCanScrollPrev(made.canScrollPrev());
       setCanScrollNext(made.canScrollNext());
       setSelectedIndex(made.selectedScrollSnap());
       setSnapCount(made.scrollSnapList().length);
-    };
+    }
     // `reInit` too: a slide added or a container resized changes both answers,
     // and a `next` button that stays disabled after the second slide arrives
     // is a carousel nobody can leave the first slide of.
@@ -271,7 +275,7 @@ export function Carousel(props: CarouselProps) {
     instance = made;
     writeApi(made);
     props.setApi?.(made);
-  };
+  }
 
   /**
    * The element, and then the instance once the slides are in it.
@@ -282,11 +286,11 @@ export function Carousel(props: CarouselProps) {
    * could not leave the first slide. `onSettled` runs once the tree has settled;
    * a `<CarouselContent>` that arrives later builds straight away.
    */
-  const attach = (element: HTMLElement | null): void => {
+  function attach(element: HTMLElement | null): void {
     node = element;
     retried = false;
     if (mounted) build();
-  };
+  }
 
   onSettled(() => {
     mounted = true;
@@ -350,11 +354,16 @@ export function Carousel(props: CarouselProps) {
   );
 }
 
+interface CarouselProviderProps {
+  value: CarouselValue;
+  children?: Child;
+}
+
 /**
  * Its own component, because a `provide` callback that BUILDS the children is
  * the only place the scope exists.
  */
-function CarouselProvider(props: { value: CarouselValue; children?: Child }) {
+function CarouselProvider(props: CarouselProviderProps) {
   return provide(
     CarouselContext,
     () => props.value,
@@ -514,8 +523,9 @@ export interface CarouselDotsProps extends UiProps {
  */
 export function CarouselDots(props: CarouselDotsProps) {
   const carousel = useCarousel();
-  const name = (index: number, count: number): string =>
-    props.label?.(index, count) ?? `Slide ${String(index + 1)} of ${String(count)}`;
+  function name(index: number, count: number): string {
+    return props.label?.(index, count) ?? `Slide ${String(index + 1)} of ${String(count)}`;
+  }
 
   return (
     <Show when={carousel.snapCount() > 1}>

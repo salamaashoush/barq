@@ -178,8 +178,9 @@ export function CardHeader(props: CardEdgeProps) {
   // padding to go with it. A ternary rather than two conditional arguments,
   // because the compiler folds a call whose arguments are all constants and
   // two independent conditions would leave the merge on the runtime.
-  const className = (): string =>
-    props.bordered === true ? ui(header, headerBordered, "border-b") : ui(header);
+  function className(): string {
+    return props.bordered === true ? ui(header, headerBordered, "border-b") : ui(header);
+  }
   return <div {...uiProps("card-header", className, cells(props))}>{props.children}</div>;
 }
 

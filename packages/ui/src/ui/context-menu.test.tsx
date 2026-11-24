@@ -41,7 +41,11 @@ const ACTIONS = [
   { id: "save", name: "Save as" },
 ];
 
-function Fixture(props: { onAction?: (key: string) => void }) {
+interface FixtureProps {
+  onAction?: (key: string) => void;
+}
+
+function Fixture(props: FixtureProps) {
   return (
     <ContextMenu>
       <ContextMenuTrigger>Right-click here</ContextMenuTrigger>
@@ -132,13 +136,15 @@ describe("ContextMenu", () => {
   });
 });
 
+interface PageProps {
+  onReload?: () => void;
+  onBookmarks?: (checked: boolean) => void;
+  onPerson?: (value: string) => void;
+}
+
 /** The menu as shadcn's own demo writes it. */
 describe("a ContextMenu written as children", () => {
-  function Page(props: {
-    onReload?: () => void;
-    onBookmarks?: (checked: boolean) => void;
-    onPerson?: (value: string) => void;
-  }) {
+  function Page(props: PageProps) {
     const [person, setPerson] = createSignal("salama");
     return (
       <ContextMenu>

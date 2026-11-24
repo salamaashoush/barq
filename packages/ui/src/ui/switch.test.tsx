@@ -17,8 +17,9 @@ import { Switch } from "./switch.tsx";
 
 afterEach(cleanup);
 
-const slot = (name: string): HTMLElement =>
-  document.querySelector(`:not(input)[data-slot="${name}"]`) as HTMLElement;
+function slot(name: string): HTMLElement {
+  return document.querySelector(`:not(input)[data-slot="${name}"]`) as HTMLElement;
+}
 
 describe("Switch", () => {
   test("the track and the thumb say checked or unchecked", async () => {
@@ -82,7 +83,9 @@ describe("Switch", () => {
 });
 
 describe("Switch, inside a label that is not its own", () => {
-  const control = (): HTMLInputElement => screen.getByRole<HTMLInputElement>("switch");
+  function control(): HTMLInputElement {
+    return screen.getByRole<HTMLInputElement>("switch");
+  }
 
   test("it renders no label, so the caller's is the only one", () => {
     render(() => (

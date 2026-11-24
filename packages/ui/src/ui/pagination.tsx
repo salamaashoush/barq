@@ -92,11 +92,12 @@ export interface PaginationLinkProps extends UiProps {
 }
 
 export function PaginationLink(props: PaginationLinkProps) {
-  const className = (): string =>
-    buttonVariants({
+  function className(): string {
+    return buttonVariants({
       variant: props.isActive === true ? "outline" : "ghost",
       size: props.size ?? "icon",
     });
+  }
 
   return (
     <a

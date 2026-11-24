@@ -38,7 +38,9 @@ import {
 } from "./lib/conditions.ts";
 import { touch } from "./lib/shared-touch.ts";
 
-const sheet = (): string => collectCss();
+function sheet(): string {
+  return collectCss();
+}
 
 const GROUPS: Record<string, Record<string, string>> = {
   text,

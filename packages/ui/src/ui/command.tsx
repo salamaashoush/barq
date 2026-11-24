@@ -267,7 +267,12 @@ function use(): CommandValue<unknown> {
  */
 const WrittenContext = createContext<boolean>(false);
 
-function Mode(props: { isWritten: boolean; children?: Child }) {
+interface ModeProps {
+  isWritten: boolean;
+  children?: Child;
+}
+
+function Mode(props: ModeProps) {
   return provide(
     WrittenContext,
     () => props.isWritten,
@@ -420,7 +425,9 @@ export function Command<T>(props: CommandProps<T>) {
   // So a `<Section>` in that callback builds its own options with it, rather
   // than the caller passing the callback down by hand at every use.
   provideItemRender(render as unknown as (item: unknown) => Child);
-  const isEmpty = (): boolean => [...state.collection()].length === 0;
+  function isEmpty(): boolean {
+    return [...state.collection()].length === 0;
+  }
 
   return (
     <div {...uiProps("command", root, cells(props))}>
@@ -653,7 +660,9 @@ export interface CommandItemProps extends UiProps {
 }
 
 export function CommandItem(props: CommandItemProps) {
-  const isDisabled = (): boolean | undefined => props.isDisabled ?? props.disabled;
+  function isDisabled(): boolean | undefined {
+    return props.isDisabled ?? props.disabled;
+  }
 
   if (isWritten()) {
     return (

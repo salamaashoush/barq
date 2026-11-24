@@ -31,6 +31,8 @@ import {
   untrack,
   values,
   type Child,
+  type ParentProps,
+  type RefObject,
 } from "@barqjs/core";
 import { Portal } from "@barqjs/web";
 import { firstThatWorks, layer } from "@barqjs/css";
@@ -479,7 +481,7 @@ function DrawerProvider(props: DrawerProps) {
   );
 }
 
-export function DrawerTrigger(props: { children?: Child }) {
+export function DrawerTrigger(props: ParentProps) {
   return (
     <family.Trigger>
       <DrawerTriggerSlot>{props.children}</DrawerTriggerSlot>
@@ -493,7 +495,7 @@ export function DrawerTrigger(props: { children?: Child }) {
  * A component of its own, so the name is installed on this component's owner:
  * it reaches the control below it and nothing beside it.
  */
-function DrawerTriggerSlot(props: { children?: Child }) {
+function DrawerTriggerSlot(props: ParentProps) {
   provideTriggerSlot({ props: { "data-slot": "drawer-trigger" } });
   return <>{props.children}</>;
 }
@@ -505,7 +507,7 @@ function DrawerTriggerSlot(props: { children?: Child }) {
  * not `<DrawerContent>`: something drawn over the page that the drawer's state
  * opens, with `<DrawerOverlay>` behind it.
  */
-export function DrawerPortal(props: { children?: Child }) {
+export function DrawerPortal(props: ParentProps) {
   const { state } = family.use();
   const target = usePortalTarget();
 
@@ -597,13 +599,19 @@ function isHandle(target: EventTarget | null): boolean {
 export function DrawerContent(props: DrawerContentProps) {
   const { state, overlayId } = family.use();
   const drawer = useDrawer();
-  const direction = (): DrawerDirection => props.direction ?? drawer.direction();
-  const vertical = (): boolean => direction() === "top" || direction() === "bottom";
-  const snaps = (): boolean => (drawer.snapPoints()?.length ?? 0) > 0;
+  function direction(): DrawerDirection {
+    return props.direction ?? drawer.direction();
+  }
+  function vertical(): boolean {
+    return direction() === "top" || direction() === "bottom";
+  }
+  function snaps(): boolean {
+    return (drawer.snapPoints()?.length ?? 0) > 0;
+  }
 
   let element: HTMLElement | null = null;
   let underlay: HTMLElement | null = null;
-  const section: { current: HTMLElement | null } = { current: null };
+  const section: RefObject<HTMLElement> = { current: null };
   let extent = 0;
   let pointer: PointerEvent | null = null;
   let draggedTo = 0;
@@ -636,9 +644,11 @@ export function DrawerContent(props: DrawerContentProps) {
   });
 
   /** How much of the drawer the pointer has taken away, which is what the page and a parent follow. */
-  const pulled = (): number => (extent > 0 ? Math.min(1, Math.max(0, drag.offset()) / extent) : 0);
+  function pulled(): number {
+    return extent > 0 ? Math.min(1, Math.max(0, drag.offset()) / extent) : 0;
+  }
 
-  const fade = (): void => {
+  function fade(): void {
     if (underlay === null) return;
     if (snaps() || drag.offset() !== 0) {
       underlay.setAttribute("data-fading", "");
@@ -647,9 +657,9 @@ export function DrawerContent(props: DrawerContentProps) {
       underlay.removeAttribute("data-fading");
       underlay.style.removeProperty("--drawer-overlay-opacity");
     }
-  };
+  }
 
-  const place = (): void => {
+  function place(): void {
     if (element === null) return;
     if (nestedIsOpen) return;
     const moved = drag.position();
@@ -657,63 +667,63 @@ export function DrawerContent(props: DrawerContentProps) {
     const sign = direction() === "bottom" || direction() === "right" ? 1 : -1;
     element.style.transform = moved === 0 ? "" : `translate${axis}(${String(moved * sign)}px)`;
     fade();
-  };
+  }
 
-  const measure = (): void => {
+  function measure(): void {
     if (element === null) return;
     const rect = element.getBoundingClientRect();
     extent = vertical() ? rect.height : rect.width;
     drag.measure(extent);
-  };
+  }
 
-  const release = (): void => {
+  function release(): void {
     if (element === null) return;
     // The duration goes so the rule's own transition carries it to where it
     // rests, and the exit keyframes override it anyway when the drag closed it.
     element.style.transitionDuration = "";
     element.removeAttribute("data-dragging");
     place();
-  };
+  }
 
-  const unlisten = (): void => {
+  function unlisten(): void {
     window.removeEventListener("pointermove", onMove);
     window.removeEventListener("pointerup", onUp);
     window.removeEventListener("pointercancel", onCancel);
-  };
+  }
 
-  const onMove = (event: PointerEvent): void => {
+  function onMove(event: PointerEvent): void {
     pointer = event;
     drag.move({ x: event.clientX, y: event.clientY });
     draggedTo = Math.max(draggedTo, Math.abs(drag.offset()));
     place();
     if (drawer.shouldScaleBackground()) background.drag(pulled());
     drawer.parent?.nestedDrag(pulled());
-  };
+  }
 
-  const onUp = (event: PointerEvent): void => {
+  function onUp(event: PointerEvent): void {
     unlisten();
     pointer = event;
     const closed = drag.end();
     release();
     if (!closed) settle();
     pointer = null;
-  };
+  }
 
-  const onCancel = (): void => {
+  function onCancel(): void {
     unlisten();
     pointer = null;
     drag.cancel();
     release();
     settle();
-  };
+  }
 
   /** The page and a parent drawer go back to how an open drawer leaves them. */
-  const settle = (): void => {
+  function settle(): void {
     if (drawer.shouldScaleBackground()) background.settle();
     drawer.parent?.nestedDrag(0);
-  };
+  }
 
-  const onPointerDown = (event: PointerEvent): void => {
+  function onPointerDown(event: PointerEvent): void {
     props.onPointerDown?.(event);
     draggedTo = 0;
     if (event.button !== 0 || isControl(event.target)) return;
@@ -741,9 +751,9 @@ export function DrawerContent(props: DrawerContentProps) {
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onCancel);
-  };
+  }
 
-  const announce = (open: boolean): void => {
+  function announce(open: boolean): void {
     if (announced === open) return;
     announced = open;
     if (drawer.shouldScaleBackground()) {
@@ -752,9 +762,9 @@ export function DrawerContent(props: DrawerContentProps) {
     }
     drawer.parent?.nestedOpen(open);
     if (!open) drawer.onClose();
-  };
+  }
 
-  const mounted = (): void => {
+  function mounted(): void {
     const found = section.current?.parentElement ?? null;
     if (found === null) return;
     element = found;
@@ -773,9 +783,9 @@ export function DrawerContent(props: DrawerContentProps) {
       entered = undefined;
       if (element === settled) drawer.onAnimationEnd(true);
     }, exitDuration(found));
-  };
+  }
 
-  const unmounted = (): void => {
+  function unmounted(): void {
     unlisten();
     window.removeEventListener("resize", onResize);
     stopKeyboard();
@@ -788,12 +798,12 @@ export function DrawerContent(props: DrawerContentProps) {
     element = null;
     underlay = null;
     nestedIsOpen = false;
-  };
+  }
 
-  const onResize = (): void => {
+  function onResize(): void {
     measure();
     place();
-  };
+  }
 
   // Where it rests is the caller's to move as well as the pointer's: a
   // controlled snap point, or a new list of them, lands here.
@@ -849,10 +859,10 @@ export function DrawerContent(props: DrawerContentProps) {
     },
   };
 
-  const request = (open: boolean): void => {
+  function request(open: boolean): void {
     if (!open && !drawer.dismissible()) return;
     state.setOpen(open);
-  };
+  }
 
   return (
     <Modal
@@ -887,6 +897,13 @@ export function DrawerContent(props: DrawerContentProps) {
   );
 }
 
+interface DrawerSurfaceProviderProps {
+  value: DrawerSurface;
+  onMount: () => void;
+  onUnmount: () => void;
+  children?: Child;
+}
+
 /**
  * The surface's context, and the two moments the drawer's element exists
  * between.
@@ -895,12 +912,7 @@ export function DrawerContent(props: DrawerContentProps) {
  * is in the document, and what the drawer needs is the element's PARENT, which
  * is the one that moves.
  */
-function DrawerSurfaceProvider(props: {
-  value: DrawerSurface;
-  onMount: () => void;
-  onUnmount: () => void;
-  children?: Child;
-}) {
+function DrawerSurfaceProvider(props: DrawerSurfaceProviderProps) {
   onSettled(() => {
     props.onMount();
   });
@@ -924,8 +936,9 @@ export function DrawerHeader(props: DrawerHeaderProps) {
   // The direction already decides this in CSS; the prop only exists to say
   // otherwise, so it writes a class either way rather than leaving the
   // direction's rule in place under a `centered={false}`.
-  const centered = (): boolean =>
-    props.centered ?? (drawer.direction() === "top" || drawer.direction() === "bottom");
+  function centered(): boolean {
+    return props.centered ?? (drawer.direction() === "top" || drawer.direction() === "bottom");
+  }
 
   return (
     <div

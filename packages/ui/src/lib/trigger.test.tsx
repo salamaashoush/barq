@@ -1,12 +1,17 @@
 import { describe, expect, test } from "bun:test";
-import { createSignal, flush, type Child } from "@barqjs/core";
+import { createSignal, flush, type Child, type ParentProps } from "@barqjs/core";
 import { render, screen, user } from "@barqjs/testing";
 
 import { Button } from "../ui/button.tsx";
 import { TriggerPart, useTrigger, type TriggerPartProps } from "./trigger.tsx";
 
+interface OpenerProps {
+  onOpen: () => void;
+  isOpen: boolean;
+}
+
 /** A trigger as every family writes one: the slot it offers, and the part. */
-function Opener(props: TriggerPartProps & { onOpen: () => void; isOpen: boolean }) {
+function Opener(props: TriggerPartProps & OpenerProps) {
   return (
     <TriggerPart
       slot={{
@@ -24,7 +29,7 @@ function Opener(props: TriggerPartProps & { onOpen: () => void; isOpen: boolean 
 }
 
 /** Someone else's control: its own element, with what the trigger wants spread onto it. */
-function Chip(props: { children?: Child }) {
+function Chip(props: ParentProps) {
   const trigger = useTrigger();
   return (
     <button data-testid="chip" {...trigger.props} ref={trigger.ref}>
@@ -33,11 +38,15 @@ function Chip(props: { children?: Child }) {
   );
 }
 
-function Fixture(props: { kind: "slot" | "element" | "component" }) {
+interface FixtureProps {
+  kind: "slot" | "element" | "component";
+}
+
+function Fixture(props: FixtureProps) {
   const [open, setOpen] = createSignal(false);
-  const onOpen = (): void => {
+  function onOpen(): void {
     setOpen(true);
-  };
+  }
   if (props.kind === "slot") {
     return (
       <Opener isOpen={open()} onOpen={onOpen}>
@@ -135,12 +144,14 @@ describe("TriggerPart", () => {
   });
 });
 
+interface FocusedProps {
+  log: string[];
+  children?: Child;
+  render?: TriggerPartProps["render"];
+}
+
 describe("focus handlers a slot offers", () => {
-  function Focused(props: {
-    log: string[];
-    children?: Child;
-    render?: TriggerPartProps["render"];
-  }) {
+  function Focused(props: FocusedProps) {
     return (
       <TriggerPart
         slot={{

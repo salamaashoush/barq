@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { provideDirection } from "@barqjs/aria/i18n";
-import { Show, createSignal, flush, type Child } from "@barqjs/core";
+import { Show, createSignal, flush, type ParentProps } from "@barqjs/core";
 import { cleanup, render, screen, tick, user } from "@barqjs/testing";
 
 import { rulesFor } from "../test-rules.ts";
@@ -8,13 +8,15 @@ import { ScrollArea, ScrollBar } from "./scroll-area.tsx";
 
 afterEach(cleanup);
 
-const slot = (name: string, root: ParentNode = document): HTMLElement =>
-  root.querySelector(`[data-slot="${name}"]`) as HTMLElement;
+function slot(name: string, root: ParentNode = document): HTMLElement {
+  return root.querySelector(`[data-slot="${name}"]`) as HTMLElement;
+}
 
-const bar = (orientation: "vertical" | "horizontal"): HTMLElement =>
-  document.querySelector(
+function bar(orientation: "vertical" | "horizontal"): HTMLElement {
+  return document.querySelector(
     `[data-slot="scroll-area-scrollbar"][data-orientation="${orientation}"]`,
   ) as HTMLElement;
+}
 
 /** happy-dom measures nothing, so the geometry is declared. */
 function sized(
@@ -149,12 +151,14 @@ describe("ScrollArea", () => {
   });
 });
 
+interface AreaProps {
+  type?: "auto" | "always" | "scroll" | "hover";
+  horizontal?: boolean;
+  scrollHideDelay?: number;
+}
+
 describe("ScrollBar", () => {
-  function Area(props: {
-    type?: "auto" | "always" | "scroll" | "hover";
-    horizontal?: boolean;
-    scrollHideDelay?: number;
-  }) {
+  function Area(props: AreaProps) {
     return (
       <ScrollArea aria-label="Log" type={props.type} scrollHideDelay={props.scrollHideDelay}>
         <p>lots of text</p>
@@ -297,7 +301,7 @@ describe("ScrollBar", () => {
   });
 
   test("right to left, a horizontal thumb starts at the far end", async () => {
-    function Rtl(props: { children?: Child }) {
+    function Rtl(props: ParentProps) {
       provideDirection("rtl");
       return <div dir="rtl">{props.children}</div>;
     }

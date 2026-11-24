@@ -262,9 +262,11 @@ interface FillProps {
 function Fill(props: FillProps) {
   const group = useSlider();
   const direction = useDirection();
-  const mirrored = (): boolean => isMirrored(group, direction);
+  function mirrored(): boolean {
+    return isMirrored(group, direction);
+  }
 
-  const bounds = (): Record<string, string> => {
+  function bounds(): Record<string, string> {
     const percents = group.state.values().map((_, index) => group.state.getThumbPercent(index));
     const start = percents.length > 1 ? Math.min(...percents) : 0;
     const end = percents.length > 1 ? Math.max(...percents) : (percents[0] ?? 0);
@@ -272,7 +274,7 @@ function Fill(props: FillProps) {
       "--barq-slider-start": percent(mirrored() ? 1 - end : start),
       "--barq-slider-end": percent(mirrored() ? 1 - start : end),
     };
-  };
+  }
 
   return (
     <SliderTrack

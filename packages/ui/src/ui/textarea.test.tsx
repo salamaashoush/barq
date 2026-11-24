@@ -5,6 +5,7 @@ import { rulesFor } from "../test-rules.ts";
 
 import { Textarea as FromInput } from "./input.tsx";
 import { Textarea } from "./textarea.tsx";
+import type { RefObject } from "@barqjs/core";
 
 describe("Textarea", () => {
   test("it is a textarea a reader can name, under its own slot", () => {
@@ -64,7 +65,7 @@ describe("Textarea", () => {
   });
 
   test("a caller's class and ref both arrive", () => {
-    const node: { current: HTMLTextAreaElement | null } = { current: null };
+    const node: RefObject<HTMLTextAreaElement> = { current: null };
     render(() => <Textarea aria-label="Notes" class="mine" ref={node} />);
     const field = screen.getByLabelText("Notes");
     expect(field.className.split(" ")).toContain("mine");

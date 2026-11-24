@@ -451,6 +451,10 @@ export interface ExternalToast
   readonly cancel?: ToastButtonOptions;
 }
 
+export interface IdentifiedToast<I extends ToastId = number> extends ExternalToast {
+  readonly id?: I;
+}
+
 /** A message for one outcome of a promise: the title alone, or the whole toast. */
 export type ToastPromiseMessage = ToastContent | ExternalToast;
 
@@ -471,8 +475,12 @@ const DEFAULT_MOBILE_OFFSET = "16px";
 const DEFAULT_WIDTH = "356px";
 const DEFAULT_HOTKEY: readonly string[] = ["altKey", "KeyT"];
 
+interface DefaultLifetime {
+  duration: (() => number | undefined) | null;
+}
+
 /** The mounted toaster's own default lifetime, which the queue asks for. */
-const fallback: { duration: (() => number | undefined) | null } = { duration: null };
+const fallback: DefaultLifetime = { duration: null };
 
 /**
  * The one queue a page has.
@@ -560,7 +568,7 @@ function messageOf(message: ToastPromiseMessage): ToastMessage<Presentation> {
 function raise<I extends ToastId = number>(
   kind: ToastKind | undefined,
   text: ToastContent | undefined,
-  options: (ExternalToast & { readonly id?: I }) | undefined,
+  options: IdentifiedToast<I> | undefined,
   render?: (id: ToastId) => Child,
 ): I {
   const base = split(options, options?.id);
@@ -581,10 +589,7 @@ function raise<I extends ToastId = number>(
   return id;
 }
 
-type Raise = <I extends ToastId = number>(
-  title: ToastContent,
-  options?: ExternalToast & { readonly id?: I },
-) => I;
+type Raise = <I extends ToastId = number>(title: ToastContent, options?: IdentifiedToast<I>) => I;
 
 export interface ToastApi extends Raise {
   message: Raise;
@@ -596,7 +601,7 @@ export interface ToastApi extends Raise {
   /** Draws whatever `render` builds, with none of the toast's own look. */
   custom<I extends ToastId = number>(
     render: (id: ToastId) => Child,
-    options?: ExternalToast & { readonly id?: I },
+    options?: IdentifiedToast<I>,
   ): I;
   /** Replaces one in place, keeping its position. */
   update(id: ToastId, options: ExternalToast): void;
@@ -620,10 +625,9 @@ export interface ToastApi extends Raise {
   getHistory(): readonly Toast[];
 }
 
-const of =
-  (kind: ToastKind | undefined): Raise =>
-  (text, options) =>
-    raise(kind, text, options);
+function of(kind: ToastKind | undefined): Raise {
+  return (text, options) => raise(kind, text, options);
+}
 
 export const toast: ToastApi = Object.assign(of(undefined), {
   message: of("default"),
@@ -634,7 +638,7 @@ export const toast: ToastApi = Object.assign(of(undefined), {
   loading: of("loading"),
   custom: <I extends ToastId = number>(
     render: (id: ToastId) => Child,
-    options?: ExternalToast & { readonly id?: I },
+    options?: IdentifiedToast<I>,
   ): I => raise(options?.kind, undefined, options, render),
   update: (id: ToastId, options: ExternalToast) => queue.update(id, split(options, id)),
   dismiss: (id?: ToastId) => queue.dismiss(id),
@@ -644,31 +648,32 @@ export const toast: ToastApi = Object.assign(of(undefined), {
     messages: ToastPromiseOptions<T>,
   ): ToastPromise<T> {
     const { success, error, description: under } = messages;
-    const described = (outcome: unknown): ToastOptions<Presentation> => {
+    function described(settled: unknown): ToastOptions<Presentation> {
       if (under === undefined) return {};
       return {
         description:
           typeof under === "function" && under.length > 0
-            ? (under as (outcome: unknown) => ToastContent)(outcome)
+            ? (under as (outcome: unknown) => ToastContent)(settled)
             : (under as ToastContent),
       };
-    };
-    const outcome = (
+    }
+    function outcome(
       message: ToastPromiseMessage,
       arrived: unknown,
       kind?: ToastKind,
-    ): ToastOptions<Presentation> => {
+    ): ToastOptions<Presentation> {
       const read = messageOf(message);
       return {
         ...described(arrived),
         ...(typeof read === "object" ? read : { title: read }),
         ...(kind === undefined ? {} : { kind }),
       };
-    };
-    const failed = (reason: unknown): ToastPromiseMessage =>
-      typeof error === "function" && error.length > 0
+    }
+    function failed(reason: unknown): ToastPromiseMessage {
+      return typeof error === "function" && error.length > 0
         ? (error as (reason: unknown) => ToastPromiseMessage)(reason)
         : (error as ToastPromiseMessage);
+    }
     return queue.promise(work, {
       loading: messageOf(messages.loading),
       // Work that RESOLVES with a failure is one all the same: a `fetch` does
@@ -701,9 +706,15 @@ function draw(content: ToastContent | undefined): Child {
 
 export type ToasterIcons = Partial<Record<Exclude<ToastKind, "default"> | "close", ToastContent>>;
 
+interface KindIconProps {
+  kind: ToastKind;
+}
+
 /** What each kind draws, which is shadcn's own mapping. */
-function KindIcon(props: { kind: ToastKind }) {
-  const kind = (): ToastKind => props.kind;
+function KindIcon(props: KindIconProps) {
+  function kind(): ToastKind {
+    return props.kind;
+  }
   return (
     <>
       {kind() === "success" ? (
@@ -829,33 +840,52 @@ interface Stack {
   readonly hold: (held: boolean) => void;
 }
 
-function ToastRow(props: { toast: Toast<Presentation>; stack: Stack }) {
+interface ToastRowProps {
+  toast: Toast<Presentation>;
+  stack: Stack;
+}
+
+function ToastRow(props: ToastRowProps) {
   const stack = props.stack;
-  const entry = (): Toast<Presentation> => props.toast;
+  function entry(): Toast<Presentation> {
+    return props.toast;
+  }
   const { id } = props.toast;
-  const data = (): Presentation => entry().data ?? {};
-  const position = (): ToasterPosition => stack.positionOf(entry());
-  const mine = (): readonly Toast<Presentation>[] => stack.shown(position());
+  function data(): Presentation {
+    return entry().data ?? {};
+  }
+  function position(): ToasterPosition {
+    return stack.positionOf(entry());
+  }
+  function mine(): readonly Toast<Presentation>[] {
+    return stack.shown(position());
+  }
   /** 0 is the front, which is the newest. */
-  const index = (): number => {
+  function index(): number {
     const all = mine();
     const at = all.findIndex((each) => each.id === id);
     return at < 0 ? 0 : all.length - 1 - at;
-  };
-  const offset = (): number => {
+  }
+  function offset(): number {
     const all = mine();
     const ahead = all.slice(all.length - index());
     let total = index() * stack.gap();
     for (const each of ahead) total += stack.heightOf(each.id);
     return total;
-  };
-  const isDismissible = (): boolean => entry().dismissible !== false;
-  const isStyled = (): boolean =>
-    data().render === undefined && (data().unstyled ?? stack.options().unstyled) !== true;
-  const hasClose = (): boolean =>
-    isDismissible() &&
-    entry().kind !== "loading" &&
-    (data().closeButton ?? stack.options().closeButton ?? stack.closeButton());
+  }
+  function isDismissible(): boolean {
+    return entry().dismissible !== false;
+  }
+  function isStyled(): boolean {
+    return data().render === undefined && (data().unstyled ?? stack.options().unstyled) !== true;
+  }
+  function hasClose(): boolean {
+    return (
+      isDismissible() &&
+      entry().kind !== "loading" &&
+      (data().closeButton ?? stack.options().closeButton ?? stack.closeButton())
+    );
+  }
 
   const [mounted, setMounted] = createSignal(false);
   let row: HTMLElement | null = null;
@@ -872,14 +902,14 @@ function ToastRow(props: { toast: Toast<Presentation>; stack: Stack }) {
    * A collapsed toast behind the front one is drawn at the front one's height,
    * so reading it as it stands would report that instead.
    */
-  const measure = (): void => {
+  function measure(): void {
     if (row === null) return;
     const forced = row.style.height;
     row.style.height = "auto";
     const { height } = row.getBoundingClientRect();
     row.style.height = forced;
     stack.measured(id, height);
-  };
+  }
 
   // Reading the height resolves the styles of the state it arrives in, so the
   // change to `data-mounted` is a transition from there rather than the first
@@ -907,10 +937,10 @@ function ToastRow(props: { toast: Toast<Presentation>; stack: Stack }) {
     },
   );
 
-  const onPointerDown = (event: PointerEvent): void => {
+  function onPointerDown(event: PointerEvent): void {
     if (row === null || !isDismissible() || entry().kind === "loading") return;
     swipe.track(event, row);
-  };
+  }
 
   onCleanup(() => {
     if (frame !== undefined) cancelAnimationFrame(frame);
@@ -918,13 +948,14 @@ function ToastRow(props: { toast: Toast<Presentation>; stack: Stack }) {
     stack.attach(id, null);
   });
 
-  const press = (which: "action" | "cancel", event: MouseEvent): void => {
+  function press(which: "action" | "cancel", event: MouseEvent): void {
     entry()[which]?.onAction(event);
     if (!event.defaultPrevented) stack.dismiss(id);
-  };
+  }
 
-  const buttonClass = (variant: "outline" | "ghost", lead: boolean): string =>
-    ui(buttonVariants({ variant, size: "sm" }), button, lead ? pushed : "");
+  function buttonClass(variant: "outline" | "ghost", lead: boolean): string {
+    return ui(buttonVariants({ variant, size: "sm" }), button, lead ? pushed : "");
+  }
 
   return (
     <li
@@ -1074,14 +1105,22 @@ function ToastRow(props: { toast: Toast<Presentation>; stack: Stack }) {
  */
 export function Toaster(props: ToasterProps) {
   const direction = useDirection();
-  const dir = (): "ltr" | "rtl" => {
+  function dir(): "ltr" | "rtl" {
     const asked = props.dir;
     return asked === "ltr" || asked === "rtl" ? asked : direction();
-  };
-  const position = (): ToasterPosition => props.position ?? DEFAULT_POSITION;
-  const visible = (): number => Math.max(1, props.visibleToasts ?? DEFAULT_VISIBLE);
-  const gap = (): number => props.gap ?? DEFAULT_GAP;
-  const hotkey = (): readonly string[] => props.hotkey ?? DEFAULT_HOTKEY;
+  }
+  function position(): ToasterPosition {
+    return props.position ?? DEFAULT_POSITION;
+  }
+  function visible(): number {
+    return Math.max(1, props.visibleToasts ?? DEFAULT_VISIBLE);
+  }
+  function gap(): number {
+    return props.gap ?? DEFAULT_GAP;
+  }
+  function hotkey(): readonly string[] {
+    return props.hotkey ?? DEFAULT_HOTKEY;
+  }
 
   const [hovered, setHovered] = createSignal(false);
   const [focused, setFocused] = createSignal(false);
@@ -1094,29 +1133,32 @@ export function Toaster(props: ToasterProps) {
   /** A pointer is down on a toast, so leaving the stack is part of a drag. */
   let held = false;
 
-  const positionOf = (entry: Toast<Presentation>): ToasterPosition =>
-    entry.data?.position ?? position();
-  const placed = (at: ToasterPosition): readonly Toast<Presentation>[] =>
-    queue.toasts().filter((each) => positionOf(each) === at);
-  const shown = (at: ToasterPosition): readonly Toast<Presentation>[] =>
-    placed(at).slice(-visible());
-  const positions = (): readonly ToasterPosition[] => {
+  function positionOf(entry: Toast<Presentation>): ToasterPosition {
+    return entry.data?.position ?? position();
+  }
+  function placed(at: ToasterPosition): readonly Toast<Presentation>[] {
+    return queue.toasts().filter((each) => positionOf(each) === at);
+  }
+  function shown(at: ToasterPosition): readonly Toast<Presentation>[] {
+    return placed(at).slice(-visible());
+  }
+  function positions(): readonly ToasterPosition[] {
     const seen = new Set<ToasterPosition>();
     for (const each of queue.toasts()) seen.add(positionOf(each));
     return [...seen];
-  };
+  }
 
-  const theme = (): "light" | "dark" | undefined => {
+  function theme(): "light" | "dark" | undefined {
     const asked = props.theme;
     if (asked === "system") return prefersDark() ? "dark" : "light";
     return asked;
-  };
+  }
 
   /**
    * Focus has to go somewhere when the toast holding it leaves: the next toast
    * in its list, or back to whatever had it before the toasts did.
    */
-  const dismiss = (id: ToastId): void => {
+  function dismiss(id: ToastId): void {
     const row = rows.get(id);
     if (row !== undefined && row.contains(document.activeElement)) {
       const one = queue.get(id);
@@ -1127,7 +1169,7 @@ export function Toaster(props: ToasterProps) {
       if (target !== null && target.isConnected) target.focus({ preventScroll: true });
     }
     queue.dismiss(id);
-  };
+  }
 
   const stack: Stack = {
     positionOf,
@@ -1178,7 +1220,7 @@ export function Toaster(props: ToasterProps) {
     },
   };
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     const keys = hotkey();
     const asked =
       keys.length > 0 &&
@@ -1197,7 +1239,7 @@ export function Toaster(props: ToasterProps) {
       if (returnTo !== null && returnTo.isConnected) returnTo.focus({ preventScroll: true });
       else if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     }
-  };
+  }
 
   let teardown: (() => void) | null = null;
 
@@ -1218,9 +1260,9 @@ export function Toaster(props: ToasterProps) {
       typeof window.matchMedia === "function"
         ? window.matchMedia("(prefers-color-scheme: dark)")
         : null;
-    const onScheme = (event: MediaQueryListEvent): void => {
+    function onScheme(event: MediaQueryListEvent): void {
       setPrefersDark(event.matches);
-    };
+    }
     if (media !== null) {
       setPrefersDark(media.matches);
       media.addEventListener("change", onScheme);

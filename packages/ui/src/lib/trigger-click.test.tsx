@@ -12,7 +12,7 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { flush, type Child, type JSXElement } from "@barqjs/core";
+import { flush, type JSXElement, type ParentProps } from "@barqjs/core";
 import { accessibleName, render, user } from "@barqjs/testing";
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../ui/collapsible.tsx";
@@ -37,16 +37,16 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip.tsx";
 import { TriggerPart, useTrigger, type TriggerRender } from "./trigger.tsx";
 
 let clicks = 0;
-const count = (): void => {
+function count(): void {
   clicks += 1;
-};
+}
 
 afterEach(() => {
   clicks = 0;
 });
 
 /** A control of the caller's own, taking whatever the triggers around it offer. */
-function Chip(props: { children?: Child }) {
+function Chip(props: ParentProps) {
   const trigger = useTrigger();
   return (
     <button {...trigger.props} ref={trigger.ref}>
@@ -56,15 +56,17 @@ function Chip(props: { children?: Child }) {
 }
 
 /** What a wrapper with a click handler of its own offers the control inside it. */
-function Counted(props: { children?: Child }) {
+function Counted(props: ParentProps) {
   return <TriggerPart slot={{ props: { onClick: count } }}>{props.children}</TriggerPart>;
 }
 
-const rendered = (trigger: TriggerRender): JSXElement => (
-  <button {...trigger.props} ref={trigger.ref}>
-    Open
-  </button>
-);
+function rendered(trigger: TriggerRender): JSXElement {
+  return (
+    <button {...trigger.props} ref={trigger.ref}>
+      Open
+    </button>
+  );
+}
 
 interface Row {
   readonly part: string;
@@ -78,15 +80,17 @@ interface Row {
   readonly opens?: () => boolean;
 }
 
-const control = (): HTMLElement => {
+function control(): HTMLElement {
   const found = [...document.querySelectorAll<HTMLElement>("button")].find(
     (each) => accessibleName(each) === "Open",
   );
   if (found === undefined) throw new Error("no control named Open");
   return found;
-};
+}
 
-const expanded = (): boolean => control().getAttribute("aria-expanded") === "true";
+function expanded(): boolean {
+  return control().getAttribute("aria-expanded") === "true";
+}
 
 const ROWS: readonly Row[] = [
   {

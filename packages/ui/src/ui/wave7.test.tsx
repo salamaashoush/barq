@@ -22,8 +22,13 @@ async function settle(): Promise<void> {
   flush();
 }
 
+interface FixtureProps {
+  type?: "single" | "multiple";
+  spacing?: number;
+}
+
 describe("ToggleGroup", () => {
-  function Fixture(props: { type?: "single" | "multiple"; spacing?: number }) {
+  function Fixture(props: FixtureProps) {
     return (
       <ToggleGroup type={props.type} spacing={props.spacing} variant="outline">
         <ToggleGroupItem value="bold" aria-label="Bold">

@@ -22,7 +22,11 @@ const COMMANDS = [
   { id: "search", name: "Search the project", keys: "⌘F" },
 ];
 
-function Fixture(props: { onAction?: (key: string) => void }) {
+interface FixtureProps {
+  onAction?: (key: string) => void;
+}
+
+function Fixture(props: FixtureProps) {
   return (
     <Command
       items={COMMANDS}
@@ -46,6 +50,11 @@ function names(): string[] {
   return screen.getAllByRole("option").map((node) => node.textContent ?? "");
 }
 
+interface Entry {
+  id: string;
+  name: string;
+}
+
 describe("Command", () => {
   test("the input is a combobox over the list", () => {
     render(() => <Fixture />);
@@ -65,7 +74,7 @@ describe("Command", () => {
   test("the match is locale-aware, so a plain letter finds an accented one", async () => {
     render(() => (
       <Command items={[{ id: "cv", name: "Résumé" }]} aria-label="Commands">
-        {(entry: { id: string; name: string }) => <CommandItem>{entry.name}</CommandItem>}
+        {(entry: Entry) => <CommandItem>{entry.name}</CommandItem>}
       </Command>
     ));
     await user.type(screen.getByRole("combobox"), "resume");
@@ -147,17 +156,21 @@ async function settle(): Promise<void> {
   flush();
 }
 
+interface WrittenProps {
+  onSelect?: (value: string) => void;
+  loop?: boolean;
+  alwaysRender?: boolean;
+}
+
 /**
  * The palette as shadcn writes it: parts as children, each item saying what it
  * does, and nothing rendered from data.
  */
 describe("a Command written as children", () => {
-  function Written(props: {
-    onSelect?: (value: string) => void;
-    loop?: boolean;
-    alwaysRender?: boolean;
-  }) {
-    const run = (value: string): void => props.onSelect?.(value);
+  function Written(props: WrittenProps) {
+    function run(value: string): void {
+      props.onSelect?.(value);
+    }
     return (
       <Command label="Commands" loop={props.loop}>
         <CommandInput placeholder="Type a command or search..." />
@@ -371,14 +384,16 @@ describe("a Command written as children", () => {
   });
 });
 
+interface PaletteProps {
+  isOpen?: boolean;
+  open?: boolean;
+  showCloseButton?: boolean;
+  onOpenChange?: (isOpen: boolean) => void;
+  onSelect?: (value: string) => void;
+}
+
 describe("CommandDialog", () => {
-  function Palette(props: {
-    isOpen?: boolean;
-    open?: boolean;
-    showCloseButton?: boolean;
-    onOpenChange?: (isOpen: boolean) => void;
-    onSelect?: (value: string) => void;
-  }) {
+  function Palette(props: PaletteProps) {
     return (
       <CommandDialog
         isOpen={props.isOpen}

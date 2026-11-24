@@ -52,11 +52,12 @@ function Bar() {
   );
 }
 
-const triggers = (): HTMLElement[] => [
-  ...document.querySelectorAll<HTMLElement>('[data-slot="navigation-menu-trigger"]'),
-];
-const panel = (): HTMLElement | null =>
-  document.querySelector('[data-slot="navigation-menu-content"]');
+function triggers(): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>('[data-slot="navigation-menu-trigger"]')];
+}
+function panel(): HTMLElement | null {
+  return document.querySelector('[data-slot="navigation-menu-content"]');
+}
 
 describe("NavigationMenu", () => {
   test("it is a nav, with a list of items", () => {
@@ -188,8 +189,7 @@ describe("NavigationMenu", () => {
   });
 });
 
-/** shadcn's own shape: no `value` on an item, no viewport written out. */
-function Site(props: {
+interface SiteProps {
   viewport?: boolean;
   orientation?: "horizontal" | "vertical";
   dir?: "ltr" | "rtl";
@@ -199,7 +199,10 @@ function Site(props: {
   onValueChange?: (value: string | null) => void;
   onSelect?: (event: Event) => void;
   disableDocs?: boolean;
-}) {
+}
+
+/** shadcn's own shape: no `value` on an item, no viewport written out. */
+function Site(props: SiteProps) {
   return (
     <>
       <button type="button">Before</button>
@@ -241,10 +244,18 @@ function Site(props: {
   );
 }
 
-const button = (name: string): HTMLElement => screen.getByRole("button", { name });
-const anchor = (name: string): HTMLElement => screen.getByRole("link", { name });
-const slot = (name: string): HTMLElement | null => document.querySelector(`[data-slot="${name}"]`);
-const focused = (): string | null | undefined => document.activeElement?.textContent?.trim();
+function button(name: string): HTMLElement {
+  return screen.getByRole("button", { name });
+}
+function anchor(name: string): HTMLElement {
+  return screen.getByRole("link", { name });
+}
+function slot(name: string): HTMLElement | null {
+  return document.querySelector(`[data-slot="${name}"]`);
+}
+function focused(): string | null | undefined {
+  return document.activeElement?.textContent?.trim();
+}
 
 describe("NavigationMenu, written the way shadcn's examples are", () => {
   test("an item needs no value, and the root brings its own viewport", () => {
@@ -532,11 +543,12 @@ describe("NavigationMenu: the pointer", () => {
 
 describe("NavigationMenu: right-to-left", () => {
   /** An atom is named for the property it sets, so the class list says which ones are in use. */
-  const properties = (element: Element | null | undefined): string[] =>
-    (element?.getAttribute("class") ?? "")
+  function properties(element: Element | null | undefined): string[] {
+    return (element?.getAttribute("class") ?? "")
       .split(" ")
       .filter((name) => name.startsWith("a-"))
       .map((name) => name.slice(2, name.lastIndexOf("_")));
+  }
 
   test("nothing in it is placed by a physical left or right", async () => {
     render(() => <Site />);
@@ -544,8 +556,8 @@ describe("NavigationMenu: right-to-left", () => {
     await settle();
     // `padding: 8px` is four sides and mirrors itself. One side without the
     // other is what a right-to-left page gets wrong.
-    const lopsided = (used: string[]): string[] =>
-      used.filter(
+    function lopsided(used: string[]): string[] {
+      return used.filter(
         (property) =>
           property === "left" ||
           property === "right" ||
@@ -554,6 +566,7 @@ describe("NavigationMenu: right-to-left", () => {
           (/^(margin|padding)-right$/.test(property) &&
             !used.includes(property.replace("right", "left"))),
       );
+    }
     for (const name of [
       "navigation-menu-trigger",
       "navigation-menu-content",

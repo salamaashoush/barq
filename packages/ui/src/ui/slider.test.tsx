@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { provideDirection } from "@barqjs/aria/i18n";
-import { flush, type Child } from "@barqjs/core";
+import { flush, type ParentProps } from "@barqjs/core";
 import { accessibleName, cleanup, render, screen, user } from "@barqjs/testing";
 
 import { Label } from "./label.tsx";
@@ -8,12 +8,17 @@ import { Slider } from "./slider.tsx";
 
 afterEach(cleanup);
 
-const slot = (name: string): HTMLElement =>
-  document.querySelector(`[data-slot="${name}"]`) as HTMLElement;
-const thumbs = (): HTMLInputElement[] => screen.getAllByRole<HTMLInputElement>("slider");
-const custom = (element: HTMLElement, name: string): string => element.style.getPropertyValue(name);
+function slot(name: string): HTMLElement {
+  return document.querySelector(`[data-slot="${name}"]`) as HTMLElement;
+}
+function thumbs(): HTMLInputElement[] {
+  return screen.getAllByRole<HTMLInputElement>("slider");
+}
+function custom(element: HTMLElement, name: string): string {
+  return element.style.getPropertyValue(name);
+}
 
-function Mirrored(props: { children?: Child }) {
+function Mirrored(props: ParentProps) {
   provideDirection("rtl");
   return <div>{props.children}</div>;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createSignal, flush, type Child } from "@barqjs/core";
+import { createSignal, flush, type ParentProps } from "@barqjs/core";
 import {
   accessibleName,
   expectNoAriaViolations,
@@ -45,8 +45,17 @@ const ACTIONS = [
   { id: "delete", name: "Delete" },
 ];
 
+interface ActionFixtureProps {
+  onAction?: (key: string) => void;
+}
+
+interface Entry {
+  id: string;
+  name: string;
+}
+
 describe("DropdownMenu", () => {
-  function Fixture(props: { onAction?: (key: string) => void }) {
+  function Fixture(props: ActionFixtureProps) {
     return (
       <DropdownMenu>
         <DropdownMenuTrigger>
@@ -134,9 +143,7 @@ describe("DropdownMenu", () => {
           selectionMode="multiple"
           defaultSelectedKeys={["status"]}
         >
-          {(entry: { id: string; name: string }) => (
-            <DropdownMenuCheckboxItem>{entry.name}</DropdownMenuCheckboxItem>
-          )}
+          {(entry: Entry) => <DropdownMenuCheckboxItem>{entry.name}</DropdownMenuCheckboxItem>}
         </DropdownMenuContent>
       </DropdownMenu>
     ));
@@ -167,7 +174,7 @@ describe("DropdownMenu", () => {
           aria-label="View"
           selectionMode="multiple"
         >
-          {(entry: { id: string; name: string }) => (
+          {(entry: Entry) => (
             <DropdownMenuCheckboxItem indicatorSlot="context-menu-item-indicator">
               {entry.name}
             </DropdownMenuCheckboxItem>
@@ -229,15 +236,26 @@ function slot(name: string): HTMLElement | null {
   return document.querySelector(`[data-slot="${name}"]`);
 }
 
+interface AccountProps {
+  onProfile?: (event: DropdownMenuSelectEvent) => void;
+  onAction?: (key: string) => void;
+}
+
+interface ViewProps {
+  onStatus?: (checked: boolean) => void;
+  onPosition?: (value: string) => void;
+}
+
+interface NamedEntry {
+  name: string;
+}
+
 /**
  * The menu as shadcn writes it: every part a child, in whatever order the
  * author put them.
  */
 describe("a DropdownMenu written as children", () => {
-  function Account(props: {
-    onProfile?: (event: DropdownMenuSelectEvent) => void;
-    onAction?: (key: string) => void;
-  }) {
+  function Account(props: AccountProps) {
     return (
       <DropdownMenu>
         <DropdownMenuTrigger>
@@ -481,10 +499,7 @@ describe("a DropdownMenu written as children", () => {
     expect(screen.queryByRole("menu")).toBeNull();
   });
 
-  function View(props: {
-    onStatus?: (checked: boolean) => void;
-    onPosition?: (value: string) => void;
-  }) {
+  function View(props: ViewProps) {
     const [status, setStatus] = createSignal(true);
     const [position, setPosition] = createSignal("bottom");
     return (
@@ -626,14 +641,14 @@ describe("a DropdownMenu written as children", () => {
     expect(billing.getAttribute("aria-disabled")).toBe("true");
 
     const followed: string[] = [];
-    const record = (event: MouseEvent): void => {
+    function record(event: MouseEvent): void {
       const anchor = (event.target as Element).closest("a");
       queueMicrotask(() => {
         if (anchor !== null && !event.defaultPrevented) {
           followed.push(anchor.getAttribute("href") ?? "");
         }
       });
-    };
+    }
     document.addEventListener("click", record, true);
     await user.click(billing);
     await settle();
@@ -653,7 +668,7 @@ describe("a DropdownMenu written as children", () => {
           <Button>Go</Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent items={[{ id: "docs", name: "Documentation", href: "#docs" }]}>
-          {(entry: { name: string }) => <DropdownMenuItem>{entry.name}</DropdownMenuItem>}
+          {(entry: NamedEntry) => <DropdownMenuItem>{entry.name}</DropdownMenuItem>}
         </DropdownMenuContent>
       </DropdownMenu>
     ));
@@ -666,14 +681,16 @@ describe("a DropdownMenu written as children", () => {
   });
 });
 
+interface PlacedProps {
+  side?: "top" | "right" | "bottom" | "left";
+  align?: "start" | "center" | "end";
+  sideOffset?: number;
+  alignOffset?: number;
+  placement?: "top end";
+}
+
 describe("where a DropdownMenu's content goes", () => {
-  function Placed(props: {
-    side?: "top" | "right" | "bottom" | "left";
-    align?: "start" | "center" | "end";
-    sideOffset?: number;
-    alignOffset?: number;
-    placement?: "top end";
-  }) {
+  function Placed(props: PlacedProps) {
     return (
       <DropdownMenu>
         <DropdownMenuTrigger>
@@ -781,13 +798,17 @@ describe("where a DropdownMenu's content goes", () => {
   });
 });
 
+interface TriggerKindFixtureProps {
+  kind: "button" | "element" | "component";
+}
+
 /**
  * The trigger is whatever control is written inside it, and there are three
  * ways for a control to be one.
  */
 describe("what a DropdownMenuTrigger can be", () => {
   /** Someone else's control: its own element, taking what the trigger offers. */
-  function Chip(props: { children?: Child }) {
+  function Chip(props: ParentProps) {
     const trigger = useTrigger();
     return (
       <button {...trigger.props} ref={trigger.ref}>
@@ -805,7 +826,7 @@ describe("what a DropdownMenuTrigger can be", () => {
     );
   }
 
-  function Fixture(props: { kind: "button" | "element" | "component" }) {
+  function Fixture(props: TriggerKindFixtureProps) {
     if (props.kind === "button") {
       return (
         <DropdownMenu>
@@ -919,8 +940,12 @@ describe("a DropdownMenu three submenus deep", () => {
     );
   }
 
-  const item = (name: string): HTMLElement => screen.getByRole("menuitem", { name });
-  const menus = (): string[] => screen.getAllByRole("menu").map((menu) => accessibleName(menu));
+  function item(name: string): HTMLElement {
+    return screen.getByRole("menuitem", { name });
+  }
+  function menus(): string[] {
+    return screen.getAllByRole("menu").map((menu) => accessibleName(menu));
+  }
 
   async function key(name: string): Promise<void> {
     await user.keyboard(`{${name}}`);

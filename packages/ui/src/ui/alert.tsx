@@ -130,7 +130,9 @@ export interface AlertProps extends UiProps {
  * a column for it, so there is no slot to remember and no prop to set.
  */
 export function Alert(props: AlertProps) {
-  const className = (): string => alertVariants({ variant: props.variant });
+  function className(): string {
+    return alertVariants({ variant: props.variant });
+  }
   return (
     <div
       {...uiProps("alert", className, cells(props))}

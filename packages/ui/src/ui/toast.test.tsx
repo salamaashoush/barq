@@ -26,11 +26,15 @@ function after(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms + 25));
 }
 
-const all = (slot: string): HTMLElement[] => [
-  ...document.querySelectorAll<HTMLElement>(`[data-slot="${slot}"]`),
-];
-const toasts = (): HTMLElement[] => all("toast");
-const viewport = (): HTMLElement => all("toast-viewport")[0] as HTMLElement;
+function all(slot: string): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>(`[data-slot="${slot}"]`)];
+}
+function toasts(): HTMLElement[] {
+  return all("toast");
+}
+function viewport(): HTMLElement {
+  return all("toast-viewport")[0] as HTMLElement;
+}
 
 afterEach(() => {
   // The default manager is module-level on purpose, so one test's toasts would

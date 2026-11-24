@@ -129,7 +129,9 @@ export interface ButtonGroupProps extends UiProps {
  * `<Button>`, a `<ButtonGroupText>`, a `<Select>`'s trigger, an `<Input>`.
  */
 export function ButtonGroup(props: ButtonGroupProps) {
-  const className = (): string => buttonGroupVariants({ orientation: props.orientation });
+  function className(): string {
+    return buttonGroupVariants({ orientation: props.orientation });
+  }
   return (
     <div
       {...uiProps("button-group", className, cells(props))}

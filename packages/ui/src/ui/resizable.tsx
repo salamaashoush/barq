@@ -203,11 +203,13 @@ export interface ResizablePanelGroupProps extends UiProps {
 export function ResizablePanelGroup(props: ResizablePanelGroupProps) {
   const containerRef = makeRef<HTMLDivElement>();
   const generated = createUniqueId();
-  const id = (): string => props.id ?? generated;
-  const direction = (): ReadingDirection | undefined => {
+  function id(): string {
+    return props.id ?? generated;
+  }
+  function direction(): ReadingDirection | undefined {
     const dir = props.dir;
     return dir === "auto" ? undefined : dir;
-  };
+  }
 
   const state = splitterState({
     ref: containerRef,
@@ -253,8 +255,13 @@ export function ResizablePanelGroup(props: ResizablePanelGroupProps) {
   );
 }
 
+interface GroupProviderProps {
+  value: SplitterState;
+  children?: Child;
+}
+
 /** The context, and nothing else; see the note in `input-otp.tsx`. */
-function GroupProvider(props: { value: SplitterState; children?: Child }) {
+function GroupProvider(props: GroupProviderProps) {
   return provide(
     GroupContext,
     () => props.value,

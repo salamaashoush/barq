@@ -8,6 +8,7 @@ import {
   createSignal,
   type Child,
   type Incoming,
+  type ParentProps,
 } from "@barqjs/core";
 import { Portal } from "@barqjs/web";
 import type { Key } from "@barqjs/aria/collections";
@@ -534,6 +535,11 @@ export function NavigationMenu(props: NavigationMenuProps) {
   );
 }
 
+interface MenuProviderProps {
+  value: MenuValue;
+  children?: Child;
+}
+
 /**
  * The context, and nothing else.
  *
@@ -541,7 +547,7 @@ export function NavigationMenu(props: NavigationMenuProps) {
  * at the CALL site, so the children go up beside the context rather than under
  * it and every `useMenu` throws.
  */
-function MenuProvider(props: { value: MenuValue; children?: Child }) {
+function MenuProvider(props: MenuProviderProps) {
   return provide(
     MenuContext,
     () => props.value,
@@ -550,7 +556,7 @@ function MenuProvider(props: { value: MenuValue; children?: Child }) {
 }
 
 /** The children, and the viewport shadcn's root adds after them. */
-function MenuBody(props: { children?: Child }) {
+function MenuBody(props: ParentProps) {
   const value = useMenu();
   return (
     <>
@@ -592,7 +598,12 @@ export function NavigationMenuItem(props: NavigationMenuItemProps) {
   );
 }
 
-function ItemProvider(props: { value: NavigationMenuItemResult; children?: Child }) {
+interface ItemProviderProps {
+  value: NavigationMenuItemResult;
+  children?: Child;
+}
+
+function ItemProvider(props: ItemProviderProps) {
   return provide(
     ItemContext,
     () => props.value,
@@ -676,11 +687,13 @@ export function NavigationMenuContent(props: UiProps) {
   );
 }
 
-function Panel(props: {
+interface PanelProps {
   of: Incoming<UiProps>;
   entry: NavigationMenuItemResult;
   isExiting: boolean;
-}) {
+}
+
+function Panel(props: PanelProps) {
   const own = props.of;
   const entry = props.entry;
 
@@ -754,7 +767,9 @@ export interface NavigationMenuLinkProps extends UiProps {
  */
 export function NavigationMenuLink(props: NavigationMenuLinkProps) {
   const value = getContext(MenuContext) ?? null;
-  const isActive = (): boolean => (props.active ?? props.isActive) === true;
+  function isActive(): boolean {
+    return (props.active ?? props.isActive) === true;
+  }
   const behaviour =
     value === null
       ? {

@@ -422,8 +422,9 @@ export interface ScrollFadeOptions {
   reveal?: number | string;
 }
 
-const length = (value: number | string): string =>
-  typeof value === "number" ? `calc(var(--spacing) * ${String(value)})` : value;
+function length(value: number | string): string {
+  return typeof value === "number" ? `calc(var(--spacing) * ${String(value)})` : value;
+}
 
 /** The custom properties the classes read, for an element's `style`. */
 export function scrollFadeStyle(options: ScrollFadeOptions): Record<string, string> {

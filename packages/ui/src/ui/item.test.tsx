@@ -159,11 +159,11 @@ describe("Item density", () => {
   });
 
   test("each one is tighter than the one before it", () => {
-    const spacing = (size: "default" | "sm" | "xs" | "2xs", side: string): number => {
+    function spacing(size: "default" | "sm" | "xs" | "2xs", side: string): number {
       const rules = rulesFor(itemVariants({ size }));
       const found = new RegExp(`${side}: calc\\(var\\(--spacing\\) \\* ([\\d.]+)\\)`).exec(rules);
       return Number(found?.[1] ?? Number.NaN);
-    };
+    }
 
     expect(spacing("default", "padding-block-start")).toBeGreaterThan(
       spacing("sm", "padding-block-start"),

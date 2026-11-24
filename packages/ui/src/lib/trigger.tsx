@@ -66,9 +66,12 @@ export interface TriggerPartProps {
 /** Nothing reads it. `provide` is what creates the scope the slot is installed in. */
 const Slotted = createContext<boolean>(false);
 
-export function TriggerPart(
-  props: Incoming<TriggerPartProps & { slot: TriggerSlot; name?: string }>,
-) {
+export interface TriggerSlotProps {
+  slot: TriggerSlot;
+  name?: string;
+}
+
+export function TriggerPart(props: Incoming<TriggerPartProps & TriggerSlotProps>) {
   const slot = props.slot();
   const render = props.render?.();
 

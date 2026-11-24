@@ -328,12 +328,16 @@ export interface ItemProps extends UiProps {
  * for.
  */
 export function Item(props: ItemProps) {
-  const className = (): string => itemVariants({ variant: props.variant, size: props.size });
-  const common = (): Record<string, unknown> => ({
-    ...uiProps("item", className, cells(props)),
-    "data-variant": props.variant ?? "default",
-    "data-size": props.size ?? "default",
-  });
+  function className(): string {
+    return itemVariants({ variant: props.variant, size: props.size });
+  }
+  function common(): Record<string, unknown> {
+    return {
+      ...uiProps("item", className, cells(props)),
+      "data-variant": props.variant ?? "default",
+      "data-size": props.size ?? "default",
+    };
+  }
 
   return (
     <Show when={props.href !== undefined} fallback={<div {...common()}>{props.children}</div>}>
@@ -350,7 +354,9 @@ export interface ItemMediaProps extends UiProps {
 }
 
 export function ItemMedia(props: ItemMediaProps) {
-  const className = (): string => itemMediaVariants({ variant: props.variant });
+  function className(): string {
+    return itemMediaVariants({ variant: props.variant });
+  }
   return (
     <div
       {...uiProps("item-media", className, cells(props))}

@@ -268,7 +268,9 @@ export type ChartConfigRecord = Readonly<Record<string, ChartConfigEntry>>;
 
 type AnyChartConfig = ChartConfig | ChartConfigRecord;
 
-const isList = (config: AnyChartConfig): config is ChartConfig => Array.isArray(config);
+function isList(config: AnyChartConfig): config is ChartConfig {
+  return Array.isArray(config);
+}
 
 function seriesOf(config: AnyChartConfig): readonly Series[] {
   if (isList(config)) return config;
@@ -388,8 +390,12 @@ export interface ChartContainerProps extends UiProps {
  */
 export function ChartContainer(props: ChartContainerProps) {
   const generated = createUniqueId();
-  const chartId = (): string => `chart-${props.id ?? generated.replace(/:/g, "")}`;
-  const series = (): readonly Series[] => seriesOf(props.config);
+  function chartId(): string {
+    return `chart-${props.id ?? generated.replace(/:/g, "")}`;
+  }
+  function series(): readonly Series[] {
+    return seriesOf(props.config);
+  }
 
   // `ownedWrite` on both: a tooltip announces itself from its own body, and
   // the host reports a cleared focus from inside the update that cleared it.
@@ -409,12 +415,13 @@ export function ChartContainer(props: ChartContainerProps) {
     },
   };
 
-  const themed = (): ChartConfigRecord =>
-    Object.fromEntries(
+  function themed(): ChartConfigRecord {
+    return Object.fromEntries(
       series()
         .filter((entry) => entry.theme !== undefined)
         .map((entry) => [entry.key, entry]),
     );
+  }
 
   return (
     <div
@@ -439,6 +446,11 @@ export function ChartContainer(props: ChartContainerProps) {
   );
 }
 
+interface ChartProviderProps {
+  value: ChartScope;
+  children?: Child;
+}
+
 /**
  * The context, and nothing else.
  *
@@ -447,7 +459,7 @@ export function ChartContainer(props: ChartContainerProps) {
  * context rather than under it: every plot then threw `props.config is not a
  * function`, because it was reading a `props` the provider never gave it.
  */
-function ChartProvider(props: { value: ChartScope; children?: Child }) {
+function ChartProvider(props: ChartProviderProps) {
   return provide(
     ChartContext,
     () => props.value,
@@ -469,7 +481,7 @@ export interface ChartStyleProps {
  * container is not this package's.
  */
 export function ChartStyle(props: ChartStyleProps) {
-  const rules = (): string => {
+  function rules(): string {
     const coloured = seriesOf(props.config).filter(
       (entry) => entry.theme !== undefined || entry.color !== undefined,
     );
@@ -484,7 +496,7 @@ export function ChartStyle(props: ChartStyleProps) {
         .join("\n");
       return `\n${THEMES[scheme]} [data-chart=${props.id}] {\n${declarations}\n}\n`;
     }).join("\n");
-  };
+  }
 
   return (
     <Show when={rules() !== ""}>
@@ -566,25 +578,28 @@ export function Chart(props: ChartProps) {
     },
   );
 
-  const heightOf = (): number | undefined =>
-    props.height ?? (measured() > 0 ? measured() : undefined);
+  function heightOf(): number | undefined {
+    return props.height ?? (measured() > 0 ? measured() : undefined);
+  }
 
-  const optionsOf = (): Parameters<typeof createChartAdapter>[0] => ({
-    definition: props.definition,
-    ariaLabel: props.ariaLabel,
-    ...(heightOf() === undefined ? {} : { height: heightOf() }),
-    ...(props.aspectRatio === undefined ? {} : { aspectRatio: props.aspectRatio }),
-    initialWidth: props.initialWidth ?? 640,
-    className: scene,
-    onFocusGroupChange: (points) => {
-      const element = node();
-      props.onFocusGroupChange?.(points, {
-        x: element?.offsetLeft ?? 0,
-        y: element?.offsetTop ?? 0,
-      });
-    },
-    onSelect: (point) => props.onSelect?.(point),
-  });
+  function optionsOf(): Parameters<typeof createChartAdapter>[0] {
+    return {
+      definition: props.definition,
+      ariaLabel: props.ariaLabel,
+      ...(heightOf() === undefined ? {} : { height: heightOf() }),
+      ...(props.aspectRatio === undefined ? {} : { aspectRatio: props.aspectRatio }),
+      initialWidth: props.initialWidth ?? 640,
+      className: scene,
+      onFocusGroupChange: (points) => {
+        const element = node();
+        props.onFocusGroupChange?.(points, {
+          x: element?.offsetLeft ?? 0,
+          y: element?.offsetTop ?? 0,
+        });
+      },
+      onSelect: (point) => props.onSelect?.(point),
+    };
+  }
 
   const built = optionsOf();
   const adapter = createChartAdapter(built);
@@ -652,8 +667,9 @@ interface Point {
   readonly row: Readonly<Record<string, string | number>>;
 }
 
-const isPoint = (datum: unknown): datum is Point =>
-  typeof datum === "object" && datum !== null && "series" in datum && "row" in datum;
+function isPoint(datum: unknown): datum is Point {
+  return typeof datum === "object" && datum !== null && "series" in datum && "row" in datum;
+}
 
 /**
  * The wide rows an application holds, as the long rows a mark reads.
@@ -708,21 +724,28 @@ function focusOf(points: readonly ChartPoint[], origin: ChartOrigin): ChartFocus
   };
 }
 
+interface FocusOptions {
+  focus?: "group-x";
+  focusRing?: boolean;
+}
+
 /**
  * What a plot adds to its definition while a tooltip is listening.
  *
  * Grouped by column, because a tooltip compares the series at one position.
  * Without a tooltip nothing changes: focus stays the nearest single point.
  */
-function focusOptions(scope: ChartScope): { focus?: "group-x"; focusRing?: boolean } {
+function focusOptions(scope: ChartScope): FocusOptions {
   return scope.isWatched() ? { focus: "group-x", focusRing: scope.hasCursor() } : {};
 }
 
-/** The colour scale, as the series names rather than the colours behind them. */
-function colorScale(config: readonly Series[]): {
+interface ColorScale {
   domain: readonly string[];
   range: readonly string[];
-} {
+}
+
+/** The colour scale, as the series names rather than the colours behind them. */
+function colorScale(config: readonly Series[]): ColorScale {
   return {
     domain: config.map((series) => series.key),
     range: config.map((series) => `var(--color-${series.key})`),
@@ -779,8 +802,12 @@ export function ChartBars(props: ChartPlotProps) {
   );
 }
 
+export interface ChartLinesProps {
+  area?: boolean;
+}
+
 /** A path per series, optionally filled to the axis. */
-export function ChartLines(props: ChartPlotProps & { area?: boolean }) {
+export function ChartLines(props: ChartPlotProps & ChartLinesProps) {
   const scope = useChart();
   const { config } = scope;
 
@@ -830,8 +857,8 @@ export interface ChartLegendContentProps extends UiProps {
 /** The key: a swatch or an icon and a label for each series. */
 export function ChartLegendContent(props: ChartLegendContentProps) {
   const { config } = useChart();
-  const entries = (): readonly ChartPayloadItem[] =>
-    (
+  function entries(): readonly ChartPayloadItem[] {
+    return (
       props.payload ??
       config().map((series): ChartPayloadItem => ({
         dataKey: series.key,
@@ -839,8 +866,10 @@ export function ChartLegendContent(props: ChartLegendContentProps) {
         color: `var(--color-${series.key})`,
       }))
     ).filter((item) => item.type !== "none");
-  const entryOf = (item: ChartPayloadItem): Series | undefined =>
-    entryFor(config(), item, props.nameKey ?? item.dataKey ?? "value");
+  }
+  function entryOf(item: ChartPayloadItem): Series | undefined {
+    return entryFor(config(), item, props.nameKey ?? item.dataKey ?? "value");
+  }
 
   return (
     <Show when={entries().length > 0}>
@@ -904,6 +933,12 @@ export function ChartLegend(props: ChartLegendProps) {
 
 export type ChartTooltipIndicator = "line" | "dot" | "dashed";
 
+export interface ChartTooltipItem {
+  key: string;
+  label: string;
+  value: string | number;
+}
+
 export interface ChartTooltipContentProps extends UiProps {
   /** Whether there is a point to describe. @default whether the chart has a focused point */
   active?: boolean;
@@ -912,7 +947,7 @@ export interface ChartTooltipContentProps extends UiProps {
   /** The heading. @default the focused column's own label */
   label?: string;
   /** Rows already named and formatted, for a panel that is not driven by a chart. */
-  items?: readonly { key: string; label: string; value: string | number }[];
+  items?: readonly ChartTooltipItem[];
   /** @default "dot" */
   indicator?: ChartTooltipIndicator;
   hideLabel?: boolean;
@@ -939,6 +974,11 @@ export interface ChartTooltipContentProps extends UiProps {
 /** The content's props under the name they had before `<ChartTooltip>` existed. */
 export type ChartTooltipProps = ChartTooltipContentProps;
 
+interface TooltipRow {
+  item: ChartPayloadItem;
+  index: number;
+}
+
 /**
  * What a tooltip says: a heading, and a row per series.
  *
@@ -948,10 +988,14 @@ export type ChartTooltipProps = ChartTooltipContentProps;
  */
 export function ChartTooltipContent(props: ChartTooltipContentProps) {
   const scope = getContext(ChartContext) ?? null;
-  const config = (): readonly Series[] => scope?.config() ?? [];
-  const indicator = (): ChartTooltipIndicator => props.indicator ?? "dot";
+  function config(): readonly Series[] {
+    return scope?.config() ?? [];
+  }
+  function indicator(): ChartTooltipIndicator {
+    return props.indicator ?? "dot";
+  }
 
-  const rows = (): readonly ChartPayloadItem[] => {
+  function rows(): readonly ChartPayloadItem[] {
     const given = props.payload;
     if (given !== undefined) return given;
     const items = props.items;
@@ -964,16 +1008,18 @@ export function ChartTooltipContent(props: ChartTooltipContentProps) {
       }));
     }
     return scope?.focus()?.payload ?? [];
-  };
-  const shown = (): readonly ChartPayloadItem[] => rows().filter((item) => item.type !== "none");
-  const active = (): boolean => {
+  }
+  function shown(): readonly ChartPayloadItem[] {
+    return rows().filter((item) => item.type !== "none");
+  }
+  function active(): boolean {
     const given = props.active;
     if (given !== undefined) return given;
     if (props.payload !== undefined || props.items !== undefined) return true;
     return scope !== null && scope.focus() !== null;
-  };
+  }
 
-  const heading = (): Child => {
+  function heading(): Child {
     const first = rows()[0];
     if (props.hideLabel === true || first === undefined) return undefined;
     const label = props.label ?? scope?.focus()?.label;
@@ -985,11 +1031,13 @@ export function ChartTooltipContent(props: ChartTooltipContentProps) {
     const format = props.labelFormatter;
     if (format !== undefined) return format(named, rows());
     return named === undefined || named === "" ? undefined : named;
-  };
+  }
   // One row with a rule beside it reads as a single sentence, so the heading
   // goes inside the row, above the name, rather than over the whole panel.
-  const nested = (): boolean => rows().length === 1 && indicator() !== "dot";
-  const headingElement = (): Child => {
+  function nested(): boolean {
+    return rows().length === 1 && indicator() !== "dot";
+  }
+  function headingElement(): Child {
     const text = heading();
     if (text === undefined || text === null) return undefined;
     return (
@@ -997,22 +1045,24 @@ export function ChartTooltipContent(props: ChartTooltipContentProps) {
         {text}
       </div>
     );
-  };
+  }
 
-  const entryOf = (item: ChartPayloadItem): Series | undefined =>
-    entryFor(config(), item, props.nameKey ?? item.name ?? item.dataKey ?? "value");
-  const paintOf = (item: ChartPayloadItem): string | undefined => {
+  function entryOf(item: ChartPayloadItem): Series | undefined {
+    return entryFor(config(), item, props.nameKey ?? item.name ?? item.dataKey ?? "value");
+  }
+  function paintOf(item: ChartPayloadItem): string | undefined {
     const fill = item.payload?.fill;
     return props.color ?? (typeof fill === "string" ? fill : item.color);
-  };
-  const formatted = (item: ChartPayloadItem, index: number): Child => {
+  }
+  function formatted(item: ChartPayloadItem, index: number): Child {
     const format = props.formatter;
     if (format === undefined || item.value === undefined) return undefined;
     if (item.name === undefined || item.name === "") return undefined;
     return format(item.value, item.name, item, index, item.payload);
-  };
-  const written = (value: string | number): string =>
-    typeof value === "number" ? value.toLocaleString() : value;
+  }
+  function written(value: string | number): string {
+    return typeof value === "number" ? value.toLocaleString() : value;
+  }
 
   return (
     <Show when={active() && shown().length > 0}>
@@ -1020,7 +1070,7 @@ export function ChartTooltipContent(props: ChartTooltipContentProps) {
         <Show when={!nested()}>{headingElement()}</Show>
         <div class={tooltipNames}>
           <For each={() => shown().map((item, index) => ({ item, index }))}>
-            {(row: { item: ChartPayloadItem; index: number }) => {
+            {(row: TooltipRow) => {
               const Icon = dynamic(() => entryOf(row.item)?.icon);
               return (
                 <div class={tooltipRow} data-slot="chart-tooltip-row" data-indicator={indicator()}>
@@ -1093,7 +1143,7 @@ export function ChartTooltip(props: ChartTooltipPopupProps) {
   const node = makeRef<HTMLDivElement>();
   onCleanup(scope.watch(() => props.cursor !== false));
 
-  const place = (): Record<string, string> => {
+  function place(): Record<string, string> {
     const focus = scope.focus();
     if (focus === null) return {};
     const gap = props.offset ?? 10;
@@ -1105,7 +1155,7 @@ export function ChartTooltip(props: ChartTooltipPopupProps) {
     const left = overflows ? Math.max(0, focus.x - gap - width) : focus.x + gap;
     const top = Math.max(0, focus.y + gap);
     return { transform: `translate(${String(left)}px, ${String(top)}px)` };
-  };
+  }
 
   return (
     <div
@@ -1120,11 +1170,13 @@ export function ChartTooltip(props: ChartTooltipPopupProps) {
   );
 }
 
-/** The state a chart with a live tooltip keeps, for an application that wants one. */
-export function chartHover(): {
+export interface ChartHover {
   at: () => number | null;
   set: (index: number | null) => void;
-} {
+}
+
+/** The state a chart with a live tooltip keeps, for an application that wants one. */
+export function chartHover(): ChartHover {
   const [at, setAt] = createSignal<number | null>(null);
   return { at, set: (index) => setAt(index) };
 }

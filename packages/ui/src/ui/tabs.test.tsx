@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { provideDirection } from "@barqjs/aria/i18n";
-import { createSignal, flush, type Child } from "@barqjs/core";
+import { createSignal, flush, type ParentProps } from "@barqjs/core";
 import { expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
 
 import { rulesFor } from "../test-rules.ts";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./tabs.tsx";
 
-function Settings(props: {
+interface SettingsProps {
   value?: string;
   defaultValue?: string;
   onValueChange?: (value: string) => void;
@@ -15,7 +15,9 @@ function Settings(props: {
   activationMode?: "automatic" | "manual";
   dir?: "ltr" | "rtl";
   variant?: "default" | "line";
-}) {
+}
+
+function Settings(props: SettingsProps) {
   return (
     <Tabs
       value={props.value}
@@ -44,7 +46,11 @@ const SECTIONS = [
   { id: "usage", name: "Usage", body: "How to use it" },
 ];
 
-function Sections(props: { orientation?: "horizontal" | "vertical" }) {
+interface SectionsProps {
+  orientation?: "horizontal" | "vertical";
+}
+
+function Sections(props: SectionsProps) {
   return (
     <Tabs items={SECTIONS} orientation={props.orientation}>
       <TabsList aria-label="Sections">
@@ -55,8 +61,9 @@ function Sections(props: { orientation?: "horizontal" | "vertical" }) {
   );
 }
 
-const slot = (name: string): HTMLElement =>
-  document.querySelector(`[data-slot="${name}"]`) as HTMLElement;
+function slot(name: string): HTMLElement {
+  return document.querySelector(`[data-slot="${name}"]`) as HTMLElement;
+}
 
 describe("Tabs written out with values", () => {
   test("each trigger and panel names its value, and the default one shows", () => {
@@ -214,7 +221,7 @@ describe("Tabs from data", () => {
   });
 
   test("a direction declared above mirrors the arrows", () => {
-    function Mirrored(props: { children?: Child }) {
+    function Mirrored(props: ParentProps) {
       const directionProps = provideDirection("rtl");
       return <div {...directionProps}>{props.children}</div>;
     }

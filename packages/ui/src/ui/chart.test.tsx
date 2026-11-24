@@ -36,11 +36,11 @@ const DATA = [
   { month: "Feb", desktop: 200, mobile: 150 },
 ];
 
-const svg = (root: ParentNode): SVGSVGElement => {
+function svg(root: ParentNode): SVGSVGElement {
   const found = root.querySelector<SVGSVGElement>("svg");
   if (found === null) throw new Error("no chart was drawn");
   return found;
-};
+}
 
 describe("Chart", () => {
   test("a series becomes a custom property, which is how a theme reaches it", () => {
@@ -258,8 +258,9 @@ const THEMED: ChartConfigRecord = {
   mobile: { label: "Mobile", color: "var(--chart-2)", icon: Globe },
 };
 
-const chartOf = (root: ParentNode): HTMLElement =>
-  root.querySelector('[data-slot="chart"]') as HTMLElement;
+function chartOf(root: ParentNode): HTMLElement {
+  return root.querySelector('[data-slot="chart"]') as HTMLElement;
+}
 
 describe("ChartConfig", () => {
   test("shadcn's keyed shape is taken as readily as the list", () => {
@@ -416,10 +417,12 @@ describe("ChartTooltipContent", () => {
     },
   ];
 
-  const tip = (): HTMLElement | null => document.querySelector('[data-slot="chart-tooltip"]');
-  const rows = (): HTMLElement[] => [
-    ...document.querySelectorAll<HTMLElement>('[data-slot="chart-tooltip-row"]'),
-  ];
+  function tip(): HTMLElement | null {
+    return document.querySelector('[data-slot="chart-tooltip"]');
+  }
+  function rows(): HTMLElement[] {
+    return [...document.querySelectorAll<HTMLElement>('[data-slot="chart-tooltip-row"]')];
+  }
 
   test("a payload is named from the config and its numbers are written for a reader", () => {
     render(() => (
@@ -599,8 +602,9 @@ describe("ChartTooltipContent", () => {
 });
 
 describe("ChartTooltip", () => {
-  const popup = (): HTMLElement | null =>
-    document.querySelector('[data-slot="chart-tooltip-popup"]');
+  function popup(): HTMLElement | null {
+    return document.querySelector('[data-slot="chart-tooltip-popup"]');
+  }
 
   async function mounted(): Promise<SVGSVGElement> {
     await tick();

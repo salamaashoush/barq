@@ -1,5 +1,4 @@
-import { cells } from "@barqjs/core";
-import type { Child } from "@barqjs/core";
+import { cells, type ParentProps } from "@barqjs/core";
 import { layer, variants } from "@barqjs/css";
 
 import "../theme/layers.ts";
@@ -132,6 +131,6 @@ export function MarkerIcon(props: UiProps) {
   );
 }
 
-export function MarkerContent(props: { children?: Child } & UiProps) {
+export function MarkerContent(props: ParentProps & UiProps) {
   return <span {...uiProps("marker-content", content, cells(props))}>{props.children}</span>;
 }

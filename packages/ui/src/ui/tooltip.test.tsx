@@ -33,12 +33,14 @@ async function settle(): Promise<void> {
   flush();
 }
 
-function Toolbar(props: {
+interface ToolbarProps {
   delayDuration?: number;
   skipDelayDuration?: number;
   disableHoverableContent?: boolean;
   content?: TooltipContentProps;
-}) {
+}
+
+function Toolbar(props: ToolbarProps) {
   return (
     <TooltipProvider
       delayDuration={props.delayDuration}
@@ -70,9 +72,15 @@ function Toolbar(props: {
   );
 }
 
-const save = (): HTMLElement => screen.getByRole("button", { name: "Save" });
-const undo = (): HTMLElement => screen.getByRole("button", { name: "Undo" });
-const tip = (): HTMLElement | null => document.querySelector('[data-slot="tooltip-content"]');
+function save(): HTMLElement {
+  return screen.getByRole("button", { name: "Save" });
+}
+function undo(): HTMLElement {
+  return screen.getByRole("button", { name: "Undo" });
+}
+function tip(): HTMLElement | null {
+  return document.querySelector('[data-slot="tooltip-content"]');
+}
 
 describe("Tooltip, written as upstream writes it", () => {
   beforeEach(() => {

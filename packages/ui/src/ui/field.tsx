@@ -327,10 +327,14 @@ function marked(value: unknown): boolean {
   return value !== undefined && value !== null && value !== false && value !== "false";
 }
 
+interface InvalidMark {
+  "data-invalid"?: () => unknown;
+}
+
 export function Field(props: FieldProps) {
-  const isInvalid = (): boolean =>
-    props.isInvalid === true ||
-    marked((cells(props) as { "data-invalid"?: () => unknown })["data-invalid"]?.());
+  function isInvalid(): boolean {
+    return props.isInvalid === true || marked((cells(props) as InvalidMark)["data-invalid"]?.());
+  }
   return (
     <FieldProvider state={{ isInvalid }}>
       <FieldElement {...props} isInvalid={isInvalid()} />
@@ -338,7 +342,16 @@ export function Field(props: FieldProps) {
   );
 }
 
-function FieldProvider(props: { state: { isInvalid: () => boolean }; children?: Child }) {
+interface FieldProviderProps {
+  state: FieldState;
+  children?: Child;
+}
+
+interface FieldState {
+  isInvalid: () => boolean;
+}
+
+function FieldProvider(props: FieldProviderProps) {
   const state = props.state;
   return provide(
     FieldInvalid,
@@ -348,7 +361,9 @@ function FieldProvider(props: { state: { isInvalid: () => boolean }; children?: 
 }
 
 function FieldElement(props: FieldProps) {
-  const className = (): string => fieldVariants({ orientation: props.orientation });
+  function className(): string {
+    return fieldVariants({ orientation: props.orientation });
+  }
   return (
     <div
       {...uiProps("field", className, cells(props))}
@@ -393,7 +408,9 @@ export interface FieldSeparatorProps extends UiProps {}
 
 /** A rule across a `<FieldGroup>`, with an optional word sitting on it. */
 export function FieldSeparator(props: FieldSeparatorProps) {
-  const hasContent = (): boolean => cells(props).children?.() !== undefined;
+  function hasContent(): boolean {
+    return cells(props).children?.() !== undefined;
+  }
   return (
     <div
       {...uiProps("field-separator", fieldSeparator, cells(props))}
@@ -409,9 +426,13 @@ export function FieldSeparator(props: FieldSeparatorProps) {
   );
 }
 
+export interface FieldErrorItem {
+  message?: string;
+}
+
 export interface FieldErrorProps extends UiProps {
   /** Rendered when there are no `children`: one message plainly, several as a list. */
-  errors?: readonly ({ message?: string } | undefined)[];
+  errors?: readonly (FieldErrorItem | undefined)[];
 }
 
 /**
@@ -422,16 +443,20 @@ export interface FieldErrorProps extends UiProps {
  * three fields at once is the ordinary case, not an edge one.
  */
 export function FieldError(props: FieldErrorProps) {
-  const messages = (): string[] => {
+  function messages(): string[] {
     const unique = new Set<string>();
     for (const error of props.errors ?? []) {
       const message = error?.message;
       if (message !== undefined && message !== "") unique.add(message);
     }
     return [...unique];
-  };
-  const hasChildren = (): boolean => cells(props).children?.() !== undefined;
-  const isEmpty = (): boolean => !hasChildren() && messages().length === 0;
+  }
+  function hasChildren(): boolean {
+    return cells(props).children?.() !== undefined;
+  }
+  function isEmpty(): boolean {
+    return !hasChildren() && messages().length === 0;
+  }
 
   return (
     <Show when={!isEmpty()}>

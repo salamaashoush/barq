@@ -25,7 +25,16 @@ import {
   type FilterFn,
 } from "@barqjs/aria/combobox";
 import type { Align, Side } from "@barqjs/aria/overlays";
-import { cells, For, isBlock, Show, createSignal, type Child, type JSXElement } from "@barqjs/core";
+import {
+  cells,
+  For,
+  isBlock,
+  Show,
+  createSignal,
+  type Child,
+  type JSXElement,
+  type RefObject,
+} from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
 import type { RefTarget } from "@barqjs/primitives/refs";
 
@@ -278,6 +287,10 @@ const chipsTrigger = ui({
   minWidth: "calc(var(--spacing) * 16)",
 });
 
+export interface ComboboxLabelProps {
+  title?: Child;
+}
+
 /**
  * A heading over a run of options.
  *
@@ -286,7 +299,7 @@ const chipsTrigger = ui({
  * are built by the same callback, so the two cannot disagree about what an
  * option looks like.
  */
-export function ComboboxLabel(props: Omit<UiProps, "title"> & { title?: Child }) {
+export function ComboboxLabel(props: Omit<UiProps, "title"> & ComboboxLabelProps) {
   // Written inside a `<ComboboxGroup>` it has no `title`: it IS the heading,
   // and the group around it is somebody else's element.
   if (props.title === undefined) {
@@ -362,6 +375,10 @@ export interface ComboboxProps<T> extends UiProps {
   onChange?: (key: Key | null) => void;
 }
 
+interface Keyed {
+  id: Key;
+}
+
 /**
  * ```tsx
  * <Combobox items={FRAMEWORKS} placeholder="Select a framework" onChange={pick}>
@@ -376,35 +393,49 @@ export interface ComboboxProps<T> extends UiProps {
  */
 function ComboboxPicker<T>(props: ComboboxProps<T>) {
   const [inner, setInner] = createSignal<Key | null>(props.defaultValue ?? null);
-  const chosen = (): Key | null => props.value ?? inner();
+  function chosen(): Key | null {
+    return props.value ?? inner();
+  }
   const [innerMany, setInnerMany] = createSignal<readonly Key[]>(props.defaultValues ?? []);
-  const many = (): readonly Key[] => props.values ?? innerMany();
-  const multiple = (): boolean => props.multiple === true;
+  function many(): readonly Key[] {
+    return props.values ?? innerMany();
+  }
+  function multiple(): boolean {
+    return props.multiple === true;
+  }
   const [open, setOpen] = createSignal(false);
 
-  const keyOf = (entry: T): Key => (entry as { id: Key }).id;
-  const textOf = (entry: T): string => props.label?.(entry) ?? String(keyOf(entry));
+  function keyOf(entry: T): Key {
+    return (entry as Keyed).id;
+  }
+  function textOf(entry: T): string {
+    return props.label?.(entry) ?? String(keyOf(entry));
+  }
 
-  const shown = (): string => {
+  function shown(): string {
     const key = chosen();
     if (key === null) return props.placeholder ?? "Select…";
     for (const entry of props.items) if (keyOf(entry) === key) return textOf(entry);
     return String(key);
-  };
+  }
 
-  const itemFor = (key: Key): T | undefined => {
+  function itemFor(key: Key): T | undefined {
     for (const entry of props.items) if (keyOf(entry) === key) return entry;
     return undefined;
-  };
+  }
 
-  const setMany = (next: readonly Key[]): void => {
+  function setMany(next: readonly Key[]): void {
     if (props.values === undefined) setInnerMany(next);
     props.onValuesChange?.(next);
-  };
+  }
 
-  const remove = (key: Key): void => setMany(many().filter((each) => each !== key));
+  function remove(key: Key): void {
+    setMany(many().filter((each) => each !== key));
+  }
 
-  const isPicked = (key: Key): boolean => (multiple() ? many().includes(key) : key === chosen());
+  function isPicked(key: Key): boolean {
+    return multiple() ? many().includes(key) : key === chosen();
+  }
 
   /**
    * Both shapes the compiler produces for a children callback.
@@ -422,7 +453,9 @@ function ComboboxPicker<T>(props: ComboboxProps<T>) {
     return (given as () => (item: T) => Child)();
   })();
 
-  const label = (entry: T): Child => (render === undefined ? textOf(entry) : render(entry));
+  function label(entry: T): Child {
+    return render === undefined ? textOf(entry) : render(entry);
+  }
 
   return (
     <Popover isOpen={open()} onOpenChange={(next: boolean) => setOpen(next)}>
@@ -876,10 +909,10 @@ export interface ComboboxContentProps extends UiProps {
 /** The panel the list is in: portalled, placed, and as wide as what it hangs off. */
 export function ComboboxContent(props: ComboboxContentProps) {
   const root = useComboboxRoot();
-  const hasChips = (): boolean => {
+  function hasChips(): boolean {
     const anchor = props.anchor;
     return (anchor !== undefined && anchor !== null) || root.hasChips();
-  };
+  }
 
   return (
     <AriaComboboxPopup
@@ -1011,7 +1044,11 @@ export function ComboboxChips(props: ComboboxChipsProps) {
   );
 }
 
-function ComboboxChipRemove(props: { label: string }) {
+interface ComboboxChipRemoveProps {
+  label: string;
+}
+
+function ComboboxChipRemove(props: ComboboxChipRemoveProps) {
   const held = useComboboxChip();
   return (
     <AriaComboboxChipRemove>
@@ -1079,6 +1116,6 @@ export function ComboboxChipsInput(props: ComboboxChipsInputProps) {
  * The content already hangs off the chips box when there is one, so this is
  * for anchoring to something else.
  */
-export function useComboboxAnchor(): { current: HTMLDivElement | null } {
+export function useComboboxAnchor(): RefObject<HTMLDivElement> {
   return { current: null };
 }

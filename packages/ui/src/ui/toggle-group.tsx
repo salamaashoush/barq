@@ -141,11 +141,11 @@ export interface ToggleGroupProps extends UiProps {
   onValueChange?: (value: string | string[]) => void;
 }
 
-const listOf = (value: string | readonly string[] | undefined): readonly string[] | undefined => {
+function listOf(value: string | readonly string[] | undefined): readonly string[] | undefined {
   if (value === undefined) return undefined;
   if (typeof value === "string") return value === "" ? [] : [value];
   return value;
-};
+}
 
 /**
  * ```tsx
@@ -162,7 +162,9 @@ const listOf = (value: string | readonly string[] | undefined): readonly string[
  * `@barqjs/aria/togglegroup` for which item Tab lands on.
  */
 export function ToggleGroup(props: ToggleGroupProps) {
-  const type = (): ToggleGroupType => props.type ?? "single";
+  function type(): ToggleGroupType {
+    return props.type ?? "single";
+  }
   const state = toggleGroupState({
     selectionMode: type,
     selectedKeys: () => listOf(props.value),
@@ -174,7 +176,9 @@ export function ToggleGroup(props: ToggleGroupProps) {
       props.onValueChange?.(type() === "multiple" ? keys : (keys[0] ?? ""));
     },
   });
-  const orientation = (): ToggleGroupOrientation => props.orientation ?? "horizontal";
+  function orientation(): ToggleGroupOrientation {
+    return props.orientation ?? "horizontal";
+  }
   const groupRef = makeRef<HTMLDivElement>();
   const { groupProps } = toggleGroup(
     {
@@ -197,7 +201,9 @@ export function ToggleGroup(props: ToggleGroupProps) {
     orientation,
   };
 
-  const className = (): string => ui(group, props.class, props.className);
+  function className(): string {
+    return ui(group, props.class, props.className);
+  }
   return (
     <div
       {...groupProps}
@@ -216,11 +222,16 @@ export function ToggleGroup(props: ToggleGroupProps) {
   );
 }
 
+interface GroupProviderProps {
+  value: GroupValue;
+  children?: Child;
+}
+
 /**
  * Its own component, because a `provide` callback that BUILDS the children is
  * the only place the scope exists.
  */
-function GroupProvider(props: { value: GroupValue; children?: Child }) {
+function GroupProvider(props: GroupProviderProps) {
   return provide(
     GroupContext,
     () => props.value,

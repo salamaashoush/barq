@@ -38,7 +38,11 @@ async function settle(): Promise<void> {
   flush();
 }
 
-function Fixture(props: { onChange?: (key: string | null) => void }) {
+interface FixtureProps {
+  onChange?: (key: string | null) => void;
+}
+
+function Fixture(props: FixtureProps) {
   return (
     <Combobox
       items={FRAMEWORKS}
@@ -139,8 +143,12 @@ describe("Combobox", () => {
   });
 });
 
+interface LabelledProps {
+  multiple?: boolean;
+}
+
 describe("a Combobox named and described from outside", () => {
-  function Labelled(props: { multiple?: boolean }) {
+  function Labelled(props: LabelledProps) {
     return (
       <>
         <span id="framework-label">Framework</span>
@@ -172,7 +180,11 @@ describe("a Combobox named and described from outside", () => {
   }
 });
 
-function Many(props: { onValuesChange?: (keys: readonly string[]) => void }) {
+interface ManyProps {
+  onValuesChange?: (keys: readonly string[]) => void;
+}
+
+function Many(props: ManyProps) {
   return (
     <Combobox
       multiple
@@ -185,7 +197,9 @@ function Many(props: { onValuesChange?: (keys: readonly string[]) => void }) {
   );
 }
 
-const slot = (name: string): HTMLElement | null => document.querySelector(`[data-slot="${name}"]`);
+function slot(name: string): HTMLElement | null {
+  return document.querySelector(`[data-slot="${name}"]`);
+}
 
 describe("a Combobox holding several values", () => {
   test("the box is a div, because the chips inside carry buttons", async () => {
@@ -326,6 +340,16 @@ describe("a children callback that builds an element", () => {
   });
 });
 
+interface ProduceGroup {
+  options?: unknown[];
+}
+
+interface ProduceNode {
+  id: string;
+  name: string;
+  options?: unknown[];
+}
+
 describe("a Combobox with grouped options", () => {
   const GROUPS = [
     { id: "js", name: "JavaScript", options: [{ id: "barq", name: "Barq" }] },
@@ -338,11 +362,9 @@ describe("a Combobox with grouped options", () => {
         items={GROUPS}
         aria-label="Framework"
         placeholder="Pick"
-        getChildren={(group: { options?: unknown[] }) =>
-          group.options as { id: string; name: string; options?: unknown[] }[] | undefined
-        }
+        getChildren={(group: ProduceGroup) => group.options as ProduceNode[] | undefined}
       >
-        {(value: { id: string; name: string; options?: unknown[] }) =>
+        {(value: ProduceNode) =>
           value.options === undefined ? (
             <span>{value.name}</span>
           ) : (
@@ -658,8 +680,12 @@ describe("a Combobox whose trigger is a button", () => {
   });
 });
 
+interface ChipsProps {
+  onValueChange?: (value: string[]) => void;
+}
+
 describe("a Combobox of chips", () => {
-  function Chips(props: { onValueChange?: (value: string[]) => void }) {
+  function Chips(props: ChipsProps) {
     const anchor = useComboboxAnchor();
     return (
       <Combobox

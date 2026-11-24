@@ -503,7 +503,9 @@ const POPPER_GAP = 4;
  * options are in.
  */
 export function SelectContent(props: SelectContentProps) {
-  const position = (): SelectPosition => props.position ?? "item-aligned";
+  function position(): SelectPosition {
+    return props.position ?? "item-aligned";
+  }
 
   return (
     <AriaSelectContent
@@ -538,11 +540,15 @@ export interface SelectItemProps extends OptionComponentProps {
 export function SelectItem(props: SelectItemProps) {
   const listbox = useListBox();
   const key = listbox.staticItems === undefined ? useItemNode().key : props.value;
-  const isChecked = (): boolean =>
-    key !== undefined && listbox.state.selectionManager().isSelected(key);
-  const isHighlighted = (): boolean =>
-    key !== undefined && listbox.state.selectionManager().focusedKey === key;
-  const isDisabled = (): boolean => (props.isDisabled ?? props.disabled) === true;
+  function isChecked(): boolean {
+    return key !== undefined && listbox.state.selectionManager().isSelected(key);
+  }
+  function isHighlighted(): boolean {
+    return key !== undefined && listbox.state.selectionManager().focusedKey === key;
+  }
+  function isDisabled(): boolean {
+    return (props.isDisabled ?? props.disabled) === true;
+  }
 
   return (
     <Option

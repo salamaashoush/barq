@@ -61,7 +61,7 @@ interface Row {
   readonly undeclared?: string;
 }
 
-const press = async (name: string): Promise<void> => {
+async function press(name: string): Promise<void> {
   const found = [...document.querySelectorAll<HTMLElement>("button")].find(
     (each) => each.textContent?.trim() === name,
   );
@@ -69,14 +69,14 @@ const press = async (name: string): Promise<void> => {
   await user.click(found);
   flush();
   await tick();
-};
+}
 
-const openContextMenu = async (): Promise<void> => {
+async function openContextMenu(): Promise<void> {
   const region = document.querySelector('[data-slot="context-menu-trigger"]') as HTMLElement;
   user.rightClick(region, { clientX: 40, clientY: 30 });
   flush();
   await tick();
-};
+}
 
 const ROWS: readonly Row[] = [
   {
@@ -267,11 +267,11 @@ const ROWS: readonly Row[] = [
 ];
 
 /** The nearest `dir` at or above the part, which is what its layout follows. */
-const directionOf = (slot: string): string | null => {
+function directionOf(slot: string): string | null {
   const element = document.querySelector(`[data-slot="${slot}"]`);
   if (element === null) throw new Error(`no [data-slot="${slot}"]`);
   return element.closest("[dir]")?.getAttribute("dir") ?? null;
-};
+}
 
 describe("a portalled part carries the direction declared where it was written", () => {
   for (const row of ROWS) {

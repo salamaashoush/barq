@@ -492,9 +492,13 @@ export interface MenuPositionProps {
   alignOffset?: number;
 }
 
+export interface MenuPlacementOptions {
+  placement?: Placement;
+}
+
 /** The `placement` a menu was asked for in either vocabulary, or nothing if it was not asked. */
 export function menuPlacement(
-  props: Incoming<MenuPositionProps & { placement?: Placement }>,
+  props: Incoming<MenuPositionProps & MenuPlacementOptions>,
   side: Side = "bottom",
 ): Placement | undefined {
   const given = props.placement?.();
@@ -557,10 +561,13 @@ export function DropdownMenuItem(props: DropdownMenuItemProps) {
   );
 }
 
+interface DisabledFlags {
+  isDisabled?: boolean;
+  disabled?: boolean;
+}
+
 /** `isDisabled` under either of its names, and absent when neither was written. */
-function disabled(
-  props: Incoming<{ isDisabled?: boolean; disabled?: boolean }>,
-): boolean | undefined {
+function disabled(props: Incoming<DisabledFlags>): boolean | undefined {
   return props.isDisabled?.() ?? props.disabled?.();
 }
 

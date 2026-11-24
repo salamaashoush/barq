@@ -7,7 +7,7 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { flush, type Child } from "@barqjs/core";
+import { flush, type ParentProps } from "@barqjs/core";
 import { cleanup, render, screen, tick, user } from "@barqjs/testing";
 
 import { Carousel, CarouselContent, CarouselItem, type CarouselApi } from "./ui/carousel.tsx";
@@ -35,7 +35,7 @@ import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group.tsx";
 
 afterEach(cleanup);
 
-function Rtl(props: { children?: Child }) {
+function Rtl(props: ParentProps) {
   return (
     <DirectionProvider dir="rtl">
       <div dir="rtl">{props.children}</div>
@@ -43,7 +43,9 @@ function Rtl(props: { children?: Child }) {
   );
 }
 
-const focusedText = (): string => (document.activeElement?.textContent ?? "").trim();
+function focusedText(): string {
+  return (document.activeElement?.textContent ?? "").trim();
+}
 
 describe("right to left, the left arrow is the next item", () => {
   test("tabs", async () => {

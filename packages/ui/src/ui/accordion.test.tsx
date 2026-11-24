@@ -8,7 +8,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./
 
 afterEach(cleanup);
 
-function Faq(props: {
+interface FaqProps {
   type?: "single" | "multiple";
   collapsible?: boolean;
   defaultValue?: string | string[];
@@ -16,7 +16,9 @@ function Faq(props: {
   disabled?: boolean;
   orientation?: "vertical" | "horizontal";
   dir?: "ltr" | "rtl";
-}) {
+}
+
+function Faq(props: FaqProps) {
   return (
     <Accordion
       type={props.type ?? "single"}
@@ -43,15 +45,18 @@ function Faq(props: {
   );
 }
 
-const trigger = (name: string): HTMLElement => screen.getByRole("button", { name });
-const open = (): string[] =>
-  screen
+function trigger(name: string): HTMLElement {
+  return screen.getByRole("button", { name });
+}
+function open(): string[] {
+  return screen
     .getAllByRole("button")
     .filter((button: Element) => button.getAttribute("aria-expanded") === "true")
     .map((button: Element) => button.textContent ?? "");
-const slots = (name: string): HTMLElement[] => [
-  ...document.querySelectorAll<HTMLElement>(`[data-slot="${name}"]`),
-];
+}
+function slots(name: string): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>(`[data-slot="${name}"]`)];
+}
 
 describe("Accordion, written out with a value per section", () => {
   test("each section is keyed by its value", async () => {

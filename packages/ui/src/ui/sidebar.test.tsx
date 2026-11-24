@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { resetTooltipWarmup } from "@barqjs/aria/tooltip";
-import { flush, type Child } from "@barqjs/core";
+import { flush, type ParentProps } from "@barqjs/core";
 import { cleanup, render, screen, tick, user } from "@barqjs/testing";
 
 import { rulesFor } from "../test-rules.ts";
@@ -41,7 +41,11 @@ import {
   useSidebar,
 } from "./sidebar.tsx";
 
-function Shell(props: { defaultOpen?: boolean }) {
+interface ShellProps {
+  defaultOpen?: boolean;
+}
+
+function Shell(props: ShellProps) {
   return (
     <SidebarProvider defaultOpen={props.defaultOpen}>
       <Sidebar>
@@ -70,7 +74,9 @@ function Shell(props: { defaultOpen?: boolean }) {
   );
 }
 
-const shell = (): HTMLElement => document.querySelector('[data-slot="sidebar"]') as HTMLElement;
+function shell(): HTMLElement {
+  return document.querySelector('[data-slot="sidebar"]') as HTMLElement;
+}
 
 describe("Sidebar", () => {
   test("the widths are custom properties, so one element retargets every part", () => {
@@ -204,6 +210,16 @@ describe("Sidebar", () => {
   });
 });
 
+interface RailProps {
+  defaultOpen?: boolean;
+  tooltip: string | RailTooltip;
+}
+
+interface RailTooltip {
+  children: string;
+  placement?: "left" | "right";
+}
+
 describe("SidebarMenuButton tooltip", () => {
   /**
    * Long enough for the tooltip's own timer to have run: until it is there, or
@@ -221,10 +237,7 @@ describe("SidebarMenuButton tooltip", () => {
   });
   afterEach(cleanup);
 
-  function Rail(props: {
-    defaultOpen?: boolean;
-    tooltip: string | { children: string; placement?: "left" | "right" };
-  }) {
+  function Rail(props: RailProps) {
     return (
       <SidebarProvider defaultOpen={props.defaultOpen}>
         <Sidebar collapsible="icon">
@@ -238,9 +251,12 @@ describe("SidebarMenuButton tooltip", () => {
     );
   }
 
-  const button = (): HTMLElement =>
-    document.querySelector('[data-slot="sidebar-menu-button"]') as HTMLElement;
-  const tip = (): HTMLElement | null => document.querySelector('[data-slot="tooltip-content"]');
+  function button(): HTMLElement {
+    return document.querySelector('[data-slot="sidebar-menu-button"]') as HTMLElement;
+  }
+  function tip(): HTMLElement | null {
+    return document.querySelector('[data-slot="tooltip-content"]');
+  }
 
   test("collapsed to icons, hovering a row names it", async () => {
     render(() => <Rail defaultOpen={false} tooltip="Inbox" />);
@@ -337,19 +353,23 @@ describe("SidebarMenuButton tooltip", () => {
   });
 });
 
+interface MatchChange {
+  matches: boolean;
+}
+
 describe("Sidebar on a narrow viewport", () => {
   interface FakeList {
     matches: boolean;
-    listeners: Set<(event: { matches: boolean }) => void>;
-    addEventListener: (type: string, handler: (event: { matches: boolean }) => void) => void;
-    removeEventListener: (type: string, handler: (event: { matches: boolean }) => void) => void;
+    listeners: Set<(event: MatchChange) => void>;
+    addEventListener: (type: string, handler: (event: MatchChange) => void) => void;
+    removeEventListener: (type: string, handler: (event: MatchChange) => void) => void;
   }
 
   const realMatchMedia = window.matchMedia;
   let list: FakeList;
 
   beforeEach(() => {
-    const listeners = new Set<(event: { matches: boolean }) => void>();
+    const listeners = new Set<(event: MatchChange) => void>();
     list = {
       matches: false,
       listeners,
@@ -364,11 +384,11 @@ describe("Sidebar on a narrow viewport", () => {
     window.matchMedia = realMatchMedia;
   });
 
-  const narrow = (matches: boolean): void => {
+  function narrow(matches: boolean): void {
     list.matches = matches;
     for (const handler of list.listeners) handler({ matches });
     flush();
-  };
+  }
 
   test("it becomes a sheet the trigger opens, and a column again when wide", async () => {
     render(() => <Shell />);
@@ -495,8 +515,9 @@ describe("Sidebar parts", () => {
         </Sidebar>
       </SidebarProvider>
     ));
-    const rules = (slot: string): string =>
-      rulesFor(document.querySelector(`[data-slot="${slot}"]`)?.className ?? "");
+    function rules(slot: string): string {
+      return rulesFor(document.querySelector(`[data-slot="${slot}"]`)?.className ?? "");
+    }
     for (const slot of ["sidebar-group-action", "sidebar-menu-action", "sidebar-menu-badge"]) {
       expect(rules(slot), slot).toContain("inset-inline-end:");
       // An atom is named for its property, so a base-level `right` would be one.
@@ -566,7 +587,7 @@ describe("Sidebar parts as triggers", () => {
     { id: "sign-out", name: "Sign out" },
   ];
 
-  function Account(props: { children?: Child }) {
+  function Account(props: ParentProps) {
     return (
       <DropdownMenu>
         <DropdownMenuTrigger>{props.children}</DropdownMenuTrigger>

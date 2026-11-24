@@ -262,6 +262,13 @@ const MARKERS: Readonly<Record<string, string>> = {
   "menu-button": "sidebar-menu-button",
 };
 
+interface StateRewrite {
+  readonly from: RegExp;
+  readonly to: string;
+  /** Where one upstream name means two different things here. */
+  readonly slots?: readonly string[];
+}
+
 /**
  * `.group\/card` as the selector that reaches OUR card.
  *
@@ -296,12 +303,7 @@ const MARKERS: Readonly<Record<string, string>> = {
  * The `to` is the selector `@barqjs/aria` actually writes. Order matters: the
  * longer `data-checked` form is rewritten before the bare attribute inside it.
  */
-const STATES: readonly {
-  readonly from: RegExp;
-  readonly to: string;
-  /** Where one upstream name means two different things here. */
-  readonly slots?: readonly string[];
-}[] = [
+const STATES: readonly StateRewrite[] = [
   // A PART whose state lives on its owner, and first because it matches the
   // same text the generic rules below do. Radix and Base UI write the state
   // onto the thumb as well as the track; `@barqjs/aria` writes it once, on the
@@ -407,10 +409,12 @@ function resolveStates(css: string, slot: string): string {
   );
 }
 
-function resolveMarkers(
-  css: string,
-  slots: ReadonlySet<string>,
-): { css: string; missed: string[] } {
+interface ResolvedMarkers {
+  css: string;
+  missed: string[];
+}
+
+function resolveMarkers(css: string, slots: ReadonlySet<string>): ResolvedMarkers {
   const missed = new Set<string>();
   const out = css.replace(/\.(?:group|peer)\\\/([a-z0-9-]+)/g, (whole, name: string) => {
     const slot = MARKERS[name] ?? ALIASES[name] ?? name;
@@ -478,7 +482,9 @@ async function main(): Promise<void> {
   // Split three ways, because one number answering three questions answers
   // none of them. Only the first is work.
   const bare = [...unreachable].map((slot) => slot.replace(/^cn-/, "")).toSorted();
-  const stripped = (slot: string): string => slot.replace(/-(aria|logical)$/, "");
+  function stripped(slot: string): string {
+    return slot.replace(/-(aria|logical)$/, "");
+  }
   const decided = bare.filter((slot) => DIVERGENT[slot] !== undefined);
   const absent = bare.filter(
     (slot) => DIVERGENT[slot] === undefined && !theirs.has(stripped(slot)),

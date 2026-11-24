@@ -41,8 +41,12 @@ async function settle(): Promise<void> {
   flush();
 }
 
+interface SheetFixtureProps {
+  side?: "top" | "right" | "bottom" | "left";
+}
+
 describe("Sheet", () => {
-  function Fixture(props: { side?: "top" | "right" | "bottom" | "left" }) {
+  function Fixture(props: SheetFixtureProps) {
     return (
       <Sheet>
         <SheetTrigger>
@@ -95,8 +99,12 @@ describe("Sheet", () => {
   });
 });
 
+interface AlertDialogFixtureProps {
+  onConfirm?: () => void;
+}
+
 describe("AlertDialog", () => {
-  function Fixture(props: { onConfirm?: () => void }) {
+  function Fixture(props: AlertDialogFixtureProps) {
     return (
       <AlertDialog>
         <AlertDialogTrigger>

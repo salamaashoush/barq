@@ -310,15 +310,21 @@ export function InputOTP(props: InputOTPProps) {
   const inputRef = makeRef<HTMLInputElement>();
   const rootRef = makeRef<HTMLDivElement>();
 
-  const length = (): number => props.maxLength ?? 6;
-  const inputMode = (): NonNullable<InputOTPProps["inputMode"]> => props.inputMode ?? "numeric";
-  const isDisabled = (): boolean => props.isDisabled === true || props.disabled === true;
-  const isInvalid = (): boolean => {
+  function length(): number {
+    return props.maxLength ?? 6;
+  }
+  function inputMode(): NonNullable<InputOTPProps["inputMode"]> {
+    return props.inputMode ?? "numeric";
+  }
+  function isDisabled(): boolean {
+    return props.isDisabled === true || props.disabled === true;
+  }
+  function isInvalid(): boolean {
     const attribute = props["aria-invalid"];
     return props.isInvalid === true || attribute === true || attribute === "true";
-  };
+  }
 
-  const strip = (raw: string): string => {
+  function strip(raw: string): string {
     const pattern = props.pattern;
     // `lastIndex` is state on a global regex, so a fresh one per call: reusing
     // the caller's would skip characters on every other keystroke.
@@ -326,12 +332,12 @@ export function InputOTP(props: InputOTPProps) {
       return raw.replace(new RegExp(pattern.source, pattern.flags), "");
     if (pattern === undefined && inputMode() === "numeric") return raw.replace(/[^0-9]/g, "");
     return raw;
-  };
+  }
 
-  const test = (): string | undefined => {
+  function test(): string | undefined {
     const pattern = props.pattern;
     return typeof pattern === "string" ? pattern : undefined;
-  };
+  }
 
   const otp = otpField(
     {
@@ -367,14 +373,14 @@ export function InputOTP(props: InputOTPProps) {
   });
   onCleanup(() => observer?.disconnect());
 
-  const controlStyle = (): Record<string, string> => {
+  function controlStyle(): Record<string, string> {
     const style: Record<string, string> = { "text-align": props.textAlign ?? "left" };
     if (otp.willPushPasswordManagerBadge()) {
       style.width = `calc(100% + ${OTP_BADGE_SPACE})`;
       style["clip-path"] = `inset(0 ${OTP_BADGE_SPACE} 0 0)`;
     }
     return style;
-  };
+  }
 
   const containerProps: DOMProps = {
     class: () =>
@@ -415,6 +421,11 @@ export function InputOTP(props: InputOTPProps) {
   );
 }
 
+interface OtpProviderProps {
+  value: OtpValue;
+  children?: Child;
+}
+
 /**
  * The context, and nothing else.
  *
@@ -423,7 +434,7 @@ export function InputOTP(props: InputOTPProps) {
  * rather than the one `provide` created, so the children go up beside the
  * context instead of under it and every slot fails to find it.
  */
-function Provider(props: { value: OtpValue; children?: Child }) {
+function Provider(props: OtpProviderProps) {
   return provide(
     OtpContext,
     () => props.value,
@@ -448,7 +459,9 @@ export interface InputOTPSlotProps extends UiProps {
  */
 export function InputOTPSlot(props: InputOTPSlotProps) {
   const otp = useOtp();
-  const slot = (): OtpSlot => otp.slot(props.index);
+  function slot(): OtpSlot {
+    return otp.slot(props.index);
+  }
 
   return (
     <div

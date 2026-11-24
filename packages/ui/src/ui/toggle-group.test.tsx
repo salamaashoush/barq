@@ -7,7 +7,7 @@ import { rulesFor } from "../test-rules.ts";
 import { DirectionProvider } from "./direction.tsx";
 import { ToggleGroup, ToggleGroupItem } from "./toggle-group.tsx";
 
-function Alignment(props: {
+interface AlignmentProps {
   type?: "single" | "multiple";
   orientation?: "horizontal" | "vertical";
   dir?: "ltr" | "rtl";
@@ -16,7 +16,9 @@ function Alignment(props: {
   rovingFocus?: boolean;
   defaultValue?: string | readonly string[];
   onValueChange?: (value: string | string[]) => void;
-}) {
+}
+
+function Alignment(props: AlignmentProps) {
   return (
     <ToggleGroup
       type={props.type}
@@ -42,13 +44,18 @@ function Alignment(props: {
   );
 }
 
-const item = (name: string): HTMLElement => screen.getByRole("button", { name });
-const group = (): HTMLElement => screen.getByRole("group");
-const tabStops = (): string[] =>
-  screen
+function item(name: string): HTMLElement {
+  return screen.getByRole("button", { name });
+}
+function group(): HTMLElement {
+  return screen.getByRole("group");
+}
+function tabStops(): string[] {
+  return screen
     .getAllByRole("button")
     .filter((each) => each.getAttribute("tabindex") === "0")
     .map((each) => each.getAttribute("aria-label") ?? "");
+}
 
 describe("ToggleGroup roving focus", () => {
   test("Tab enters the group once, at the first item when nothing is pressed", () => {

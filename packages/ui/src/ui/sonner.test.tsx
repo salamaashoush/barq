@@ -11,9 +11,9 @@ function after(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms + 25));
 }
 
-const toasts = (): HTMLElement[] => [
-  ...document.querySelectorAll<HTMLElement>('[data-slot="toast"]'),
-];
+function toasts(): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>('[data-slot="toast"]')];
+}
 
 afterEach(() => {
   // The queue is module-level on purpose, so one test's toasts would otherwise
@@ -26,11 +26,11 @@ describe("Toaster", () => {
     // Moving focus to something that appeared on its own takes the keyboard
     // away from whatever the person was doing.
     render(() => <Toaster />);
-    const region = document.querySelector('[data-slot="toaster"]');
-    expect(region?.getAttribute("aria-live")).toBe("polite");
-    expect(region?.getAttribute("aria-label")).toBe("Notifications");
+    const toaster = document.querySelector('[data-slot="toaster"]');
+    expect(toaster?.getAttribute("aria-live")).toBe("polite");
+    expect(toaster?.getAttribute("aria-label")).toBe("Notifications");
     // `polite` and not `assertive`: "Saved" must not interrupt a sentence.
-    expect(region?.getAttribute("aria-live")).not.toBe("assertive");
+    expect(toaster?.getAttribute("aria-live")).not.toBe("assertive");
   });
 
   test("nothing is shown until something is raised", () => {
@@ -152,14 +152,17 @@ describe("Toaster", () => {
   });
 });
 
-const lists = (): HTMLElement[] => [
-  ...document.querySelectorAll<HTMLElement>('[data-slot="toaster-list"]'),
-];
+function lists(): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>('[data-slot="toaster-list"]')];
+}
 
-const region = (): HTMLElement => document.querySelector('[data-slot="toaster"]') as HTMLElement;
+function region(): HTMLElement {
+  return document.querySelector('[data-slot="toaster"]') as HTMLElement;
+}
 
-const titles = (): (string | null | undefined)[] =>
-  toasts().map((each) => each.querySelector('[data-slot="toast-title"]')?.textContent);
+function titles(): (string | null | undefined)[] {
+  return toasts().map((each) => each.querySelector('[data-slot="toast-title"]')?.textContent);
+}
 
 describe("Toaster, where the toasts go", () => {
   test("bottom right unless told otherwise", () => {
@@ -429,8 +432,14 @@ describe("Toaster, the clock", () => {
   });
 });
 
+interface Named {
+  name: string;
+}
+
 describe("toast.promise, as sonner reads an outcome", () => {
-  const kinds = (): (string | null)[] => toasts().map((each) => each.getAttribute("data-kind"));
+  function kinds(): (string | null)[] {
+    return toasts().map((each) => each.getAttribute("data-kind"));
+  }
 
   test("a response that is not ok is the error, with its status", async () => {
     render(() => <Toaster />);
@@ -473,7 +482,7 @@ describe("toast.promise, as sonner reads an outcome", () => {
       loading: "Saving",
       success: "Saved",
       error: "Could not save",
-      description: (value: unknown) => `For ${(value as { name: string }).name}`,
+      description: (value: unknown) => `For ${(value as Named).name}`,
     });
     flush();
     expect(kinds()).toEqual(["success"]);
@@ -719,12 +728,13 @@ describe("toast, how it looks", () => {
     flush();
     // A marker class such as `group/toast` names no rule of its own, and
     // `rulesFor` would answer it with every component's `.group …` selector.
-    const rulesOf = (slot: string): string =>
-      rulesFor(
+    function rulesOf(slot: string): string {
+      return rulesFor(
         [...(document.querySelector(`[data-slot="${slot}"]`)?.classList ?? [])]
           .filter((name) => !/^(group|peer)(\/|$)/.test(name))
           .join(" "),
       );
+    }
     expect(rulesOf("toaster-list")).toContain("inset-inline-end: var(--offset-right)");
     expect(rulesOf("toaster-list")).toContain("inset-inline-start: var(--offset-left)");
     expect(rulesOf("toast-action")).toContain("margin-inline-start: auto");
@@ -736,13 +746,18 @@ describe("toast, how it looks", () => {
   });
 });
 
+interface DragOffset {
+  x?: number;
+  y?: number;
+}
+
 describe("toast, swiping it away", () => {
-  const drag = async (target: HTMLElement, to: { x?: number; y?: number }, pause = 0) => {
+  async function drag(target: HTMLElement, to: DragOffset, pause = 0) {
     await user.pointerDown(target, { clientX: 0, clientY: 0 });
     await user.pointerMove(target, { clientX: to.x ?? 0, clientY: to.y ?? 0 });
     flush();
     if (pause > 0) await after(pause);
-  };
+  }
 
   test("dragged far enough toward its edge, letting go dismisses it", async () => {
     const seen: string[] = [];

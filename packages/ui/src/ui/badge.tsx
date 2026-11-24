@@ -184,11 +184,15 @@ export interface BadgeProps extends UiProps {
  * ```
  */
 export function Badge(props: BadgeProps) {
-  const className = (): string => badgeVariants({ variant: props.variant });
-  const common = (): Record<string, unknown> => ({
-    ...uiProps("badge", className, cells(props)),
-    "data-variant": props.variant ?? "default",
-  });
+  function className(): string {
+    return badgeVariants({ variant: props.variant });
+  }
+  function common(): Record<string, unknown> {
+    return {
+      ...uiProps("badge", className, cells(props)),
+      "data-variant": props.variant ?? "default",
+    };
+  }
 
   return (
     <Show when={props.href !== undefined} fallback={<span {...common()}>{props.children}</span>}>

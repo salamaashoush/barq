@@ -143,23 +143,25 @@ export function DatePicker(props: DatePickerProps) {
   // Where the calendar is turned to. A preset can name a day in another month,
   // and a calendar that stayed put would have chosen a day nobody can see.
   const [focused, setFocused] = createSignal<CalendarDate | undefined>(undefined);
-  const presets = (): readonly DatePreset[] => props.presets ?? [];
+  function presets(): readonly DatePreset[] {
+    return props.presets ?? [];
+  }
 
   const format = dateFormatter(ONE);
 
-  const pick = (date: CalendarDate | null): void => {
+  function pick(date: CalendarDate | null): void {
     choose(date);
     if (date !== null && props.closeOnSelect === true) setOpen(false);
-  };
+  }
 
   // ONE call, not a read per branch. The compiler proves reactivity rather
   // than guessing it, and a value assembled piecewise at a prop is bound once.
-  const label = (): string => {
+  function label(): string {
     const date = chosen();
     return date === null || date === undefined
       ? (props.placeholder ?? "Pick a date")
       : readable(date, format());
-  };
+  }
 
   return (
     <Popover isOpen={isOpen()} onOpenChange={setOpen}>
@@ -280,22 +282,27 @@ export function DateRangePicker(props: DateRangePickerProps) {
   const [isOpen, setOpen] = createSignal(false);
   // Where the calendar is turned to, so a preset's start is a month in view.
   const [focused, setFocused] = createSignal<CalendarDate | undefined>(undefined);
-  const presets = (): readonly DateRangePreset[] => props.presets ?? [];
+  function presets(): readonly DateRangePreset[] {
+    return props.presets ?? [];
+  }
   const format = dateFormatter(BOTH);
   const triggerId = createUniqueId();
 
-  const label = (): string => {
+  function label(): string {
     const range = chosen();
     if (range === null || range === undefined) return props.placeholder ?? "Pick a date";
     const from = readable(range.start, format());
     return range.end === range.start ? from : `${from} - ${readable(range.end, format())}`;
-  };
+  }
 
   // The trigger is the control, so the label and the description a field
   // gives the picker name and describe the button and not the box around it:
   // read as the label and then the range it shows.
-  const labelledBy = (): string | undefined =>
-    props["aria-labelledby"] === undefined ? undefined : `${props["aria-labelledby"]} ${triggerId}`;
+  function labelledBy(): string | undefined {
+    return props["aria-labelledby"] === undefined
+      ? undefined
+      : `${props["aria-labelledby"]} ${triggerId}`;
+  }
 
   return (
     <div
@@ -441,13 +448,13 @@ export function DatePickerInput(props: DatePickerInputProps) {
   const write = callback<[CalendarDate], string>(cells(props).format);
   const read = callback<[string], CalendarDate | null>(cells(props).parse) ?? readDate;
 
-  const text = (): string => {
+  function text(): string {
     const own = typed();
     if (own !== null) return own;
     const date = chosen();
     if (date === null) return "";
     return write?.(date) ?? readable(date, long());
-  };
+  }
 
   return (
     <InputGroup

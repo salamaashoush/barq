@@ -15,8 +15,11 @@ import { Label } from "./label.tsx";
 
 afterEach(cleanup);
 
-const slot = (name: string): HTMLElement =>
-  document.querySelector(`label[data-slot="${name}"], span[data-slot="${name}"]`) as HTMLElement;
+function slot(name: string): HTMLElement {
+  return document.querySelector(
+    `label[data-slot="${name}"], span[data-slot="${name}"]`,
+  ) as HTMLElement;
+}
 
 describe("Checkbox", () => {
   test("the box and its indicator say checked or unchecked", async () => {
@@ -81,7 +84,9 @@ describe("Checkbox", () => {
 });
 
 describe("Checkbox, as the bare control upstream renders", () => {
-  const box = (): HTMLInputElement => screen.getByRole<HTMLInputElement>("checkbox");
+  function box(): HTMLInputElement {
+    return screen.getByRole<HTMLInputElement>("checkbox");
+  }
 
   test("it renders no label of its own", () => {
     render(() => <Checkbox aria-label="Accept" />);

@@ -123,10 +123,10 @@ export function HoverCard(props: Incoming<HoverCardProps>) {
   // card are two events a few milliseconds apart, and two timers race: the
   // close fires while the pointer is already over the card.
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const later = (open: boolean, delay: number): void => {
+  function later(open: boolean, delay: number): void {
     if (timer !== undefined) clearTimeout(timer);
     timer = setTimeout(() => state.setOpen(open), delay);
-  };
+  }
   onCleanup(() => {
     if (timer !== undefined) clearTimeout(timer);
   });

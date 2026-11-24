@@ -35,7 +35,12 @@ const DECLARATION =
 /** `export { A, type B } from "…"` — a module that re-exports what it wraps. */
 const REEXPORT = /^export \{([^}]*)\}/gm;
 
-function declarationsIn(source: string): { values: string[]; types: string[] } {
+interface Declarations {
+  values: string[];
+  types: string[];
+}
+
+function declarationsIn(source: string): Declarations {
   const values: string[] = [];
   const types: string[] = [];
 
@@ -101,12 +106,12 @@ function withoutCollisions(modules: readonly Module[]): Module[] {
   return modules.map((module_) => {
     const winner = YIELDS[module_.name];
     if (winner === undefined) return module_;
-    const free = (name: string): boolean => {
+    function free(name: string): boolean {
       const first = owner.get(name);
       if (first === undefined) return true;
       if (first === winner) return false;
       throw new Error(`"${name}" is exported by both ${first} and ${module_.name}`);
-    };
+    }
     return { ...module_, values: module_.values.filter(free), types: module_.types.filter(free) };
   });
 }
@@ -139,6 +144,11 @@ const HEADER = `/**
 import "./theme/base.ts";
 `;
 
+interface PackageManifest {
+  exports: Record<string, unknown>;
+  sideEffects: unknown;
+}
+
 function main(): void {
   const ui = modulesIn("ui", "ui/");
   const lib = modulesIn("lib", "lib/");
@@ -157,10 +167,7 @@ function main(): void {
   );
 
   const packagePath = join(root, "package.json");
-  const manifest = JSON.parse(readFileSync(packagePath, "utf8")) as {
-    exports: Record<string, unknown>;
-    sideEffects: unknown;
-  };
+  const manifest = JSON.parse(readFileSync(packagePath, "utf8")) as PackageManifest;
 
   // Only the theme has one. Every component module registers its CSS at import
   // time, which IS a side effect — but a bundler only drops a module when
@@ -175,11 +182,13 @@ function main(): void {
   // `html()`/`esc()` for a string render, and `hydratable` moves it again.
   // `@barqjs/vite` puts `barq` first in every environment and compiles
   // this package out of `node_modules`.
-  const entry = (file: string): Record<string, string> => ({
-    types: file,
-    barq: file,
-    bun: file,
-  });
+  function entry(file: string): Record<string, string> {
+    return {
+      types: file,
+      barq: file,
+      bun: file,
+    };
+  }
 
   manifest.exports = {
     ".": entry("./src/index.ts"),

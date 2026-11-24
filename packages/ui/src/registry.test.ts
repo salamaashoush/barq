@@ -16,11 +16,16 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
+interface ItemFile {
+  path: string;
+  content: string;
+}
+
 interface Item {
   name: string;
   dependencies: string[];
   registryDependencies: string[];
-  files: { path: string; content: string }[];
+  files: ItemFile[];
 }
 
 const REGISTRY = resolve(import.meta.dir, "../registry");

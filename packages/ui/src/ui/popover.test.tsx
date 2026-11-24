@@ -14,6 +14,7 @@ import {
   PopoverTrigger,
   type PopoverContentProps,
 } from "./popover.tsx";
+import type { AnchorRect } from "@barqjs/aria";
 
 /** The portal builds on a microtask after the marker connects. */
 async function settle(): Promise<void> {
@@ -27,7 +28,7 @@ function frame(): Promise<void> {
 }
 
 /** happy-dom lays nothing out, so the box an overlay is placed against is stated. */
-function box(element: Element, rect: { top: number; left: number; width: number; height: number }) {
+function box(element: Element, rect: AnchorRect) {
   element.getBoundingClientRect = () =>
     ({
       ...rect,
@@ -38,7 +39,11 @@ function box(element: Element, rect: { top: number; left: number; width: number;
     }) as DOMRect;
 }
 
-function Fixture(props: { content?: PopoverContentProps }) {
+interface FixtureProps {
+  content?: PopoverContentProps;
+}
+
+function Fixture(props: FixtureProps) {
   return (
     <Popover>
       <PopoverTrigger>
@@ -62,8 +67,12 @@ function Fixture(props: { content?: PopoverContentProps }) {
   );
 }
 
-const trigger = (): HTMLElement => screen.getByRole("button", { name: "Open" });
-const content = (): HTMLElement | null => document.querySelector('[data-slot="popover-content"]');
+function trigger(): HTMLElement {
+  return screen.getByRole("button", { name: "Open" });
+}
+function content(): HTMLElement | null {
+  return document.querySelector('[data-slot="popover-content"]');
+}
 
 describe("Popover", () => {
   test("every part carries upstream's slot name", async () => {

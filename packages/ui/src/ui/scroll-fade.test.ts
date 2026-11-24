@@ -17,7 +17,9 @@ import {
   scrollFadeY,
 } from "./scroll-fade.ts";
 
-const flat = (text: string): string => text.replaceAll(/\s+/g, "");
+function flat(text: string): string {
+  return text.replaceAll(/\s+/g, "");
+}
 
 describe("scrollFade", () => {
   test("the fade is a mask, so it works over any background", () => {

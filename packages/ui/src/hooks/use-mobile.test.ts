@@ -3,11 +3,15 @@ import { createRoot, flush } from "@barqjs/core";
 
 import { useIsMobile } from "./use-mobile.ts";
 
+interface MatchChange {
+  matches: boolean;
+}
+
 interface FakeList {
   matches: boolean;
-  listeners: Set<(event: { matches: boolean }) => void>;
-  addEventListener: (type: string, handler: (event: { matches: boolean }) => void) => void;
-  removeEventListener: (type: string, handler: (event: { matches: boolean }) => void) => void;
+  listeners: Set<(event: MatchChange) => void>;
+  addEventListener: (type: string, handler: (event: MatchChange) => void) => void;
+  removeEventListener: (type: string, handler: (event: MatchChange) => void) => void;
 }
 
 const lists = new Map<string, FakeList>();
@@ -25,7 +29,7 @@ beforeEach(() => {
   window.matchMedia = ((query: string) => {
     let list = lists.get(query);
     if (list === undefined) {
-      const listeners = new Set<(event: { matches: boolean }) => void>();
+      const listeners = new Set<(event: MatchChange) => void>();
       list = {
         matches: false,
         listeners,

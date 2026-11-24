@@ -120,7 +120,9 @@ export function Progress(props: ProgressProps) {
   // `ownedWrite`: a `<ProgressLabel>` announces itself while it is being built.
   const [labelled, setLabelled] = createSignal(false, { ownedWrite: true });
 
-  const max = (): number => props.maxValue ?? props.max ?? 100;
+  function max(): number {
+    return props.maxValue ?? props.max ?? 100;
+  }
   const { progressBarProps, labelProps, percentage, valueText } = progressBar({
     ...fromProps(cells(props)),
     formatOptions: props.formatOptions,
@@ -132,16 +134,21 @@ export function Progress(props: ProgressProps) {
         .join(" ") || undefined,
   });
 
-  const indeterminate = (): boolean => props.isIndeterminate === true;
-  const status = (): ProgressStatus =>
-    indeterminate() ? "indeterminate" : percentage() >= 1 ? "complete" : "loading";
-  const value = (): number | null => (indeterminate() ? null : (props.value ?? 0));
+  function indeterminate(): boolean {
+    return props.isIndeterminate === true;
+  }
+  function status(): ProgressStatus {
+    return indeterminate() ? "indeterminate" : percentage() >= 1 ? "complete" : "loading";
+  }
+  function value(): number | null {
+    return indeterminate() ? null : (props.value ?? 0);
+  }
 
   // The fill starts at the reading edge, which right to left is the right one.
-  const fill = (): Record<string, string> => {
+  function fill(): Record<string, string> {
     const hidden = indeterminate() ? 50 : 100 - percentage() * 100;
     return { transform: `translateX(${direction() === "rtl" ? "" : "-"}${String(hidden)}%)` };
-  };
+  }
 
   const context: ProgressValueOf = {
     status,
@@ -188,7 +195,12 @@ export function Progress(props: ProgressProps) {
   );
 }
 
-function ProgressProvider(props: { value: ProgressValueOf; children?: Child }) {
+interface ProgressProviderProps {
+  value: ProgressValueOf;
+  children?: Child;
+}
+
+function ProgressProvider(props: ProgressProviderProps) {
   return provide(
     ProgressContext,
     () => props.value,
@@ -248,7 +260,9 @@ export function ProgressValue(props: ProgressValueProps) {
         ? (given as Render)
         : (given as () => Render)();
 
-  const formatted = (): string | null => progress.text() ?? null;
+  function formatted(): string | null {
+    return progress.text() ?? null;
+  }
 
   return (
     <span {...uiProps("progress-value", amount, cells(props))} aria-hidden="true">

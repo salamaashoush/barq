@@ -6,7 +6,9 @@ import { rulesFor } from "../test-rules.ts";
 
 import { Toggle, toggleVariants } from "./toggle.tsx";
 
-const bold = (): HTMLElement => screen.getByRole("button", { name: "Bold" });
+function bold(): HTMLElement {
+  return screen.getByRole("button", { name: "Bold" });
+}
 
 describe("Toggle", () => {
   test("it carries its slot and says on or off as well as pressed", async () => {

@@ -15,13 +15,15 @@ import {
   type InputOTPProps,
 } from "./input-otp.tsx";
 
-function Six(props: {
+interface SixProps {
   value?: string;
   onChange?: (value: string) => void;
   onComplete?: (value: string) => void;
   isDisabled?: boolean;
   isInvalid?: boolean;
-}) {
+}
+
+function Six(props: SixProps) {
   return (
     <InputOTP
       maxLength={6}
@@ -46,11 +48,12 @@ function Six(props: {
   );
 }
 
-const field = (): HTMLInputElement =>
-  document.querySelector('[data-slot="input-otp"]') as HTMLInputElement;
-const slots = (): HTMLElement[] => [
-  ...document.querySelectorAll<HTMLElement>('[data-slot="input-otp-slot"]'),
-];
+function field(): HTMLInputElement {
+  return document.querySelector('[data-slot="input-otp"]') as HTMLInputElement;
+}
+function slots(): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>('[data-slot="input-otp-slot"]')];
+}
 
 /** What the row reads, slot by slot, ignoring the caret. */
 function shown(): string {
@@ -188,8 +191,9 @@ describe("InputOTP", () => {
     const input = field();
     input.focus();
     flush();
-    const drawn = (): number =>
-      slots().filter((each) => each.querySelector("div div") !== null).length;
+    function drawn(): number {
+      return slots().filter((each) => each.querySelector("div div") !== null).length;
+    }
     expect(drawn()).toBe(1);
 
     input.value = "123456";
@@ -274,8 +278,9 @@ function Four(props: InputOTPProps) {
   );
 }
 
-const box = (): HTMLElement =>
-  document.querySelector('[data-slot="input-otp-container"]') as HTMLElement;
+function box(): HTMLElement {
+  return document.querySelector('[data-slot="input-otp-container"]') as HTMLElement;
+}
 
 function enter(value: string): void {
   const input = field();

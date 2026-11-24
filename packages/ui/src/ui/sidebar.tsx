@@ -874,20 +874,22 @@ export function SidebarProvider(props: SidebarProviderProps) {
   const [openMobile, writeOpenMobile] = createSignal(false);
   const narrow = useIsMobile();
 
-  const open = (): boolean => props.open ?? uncontrolled();
-  const setOpen = (next: boolean): void => {
+  function open(): boolean {
+    return props.open ?? uncontrolled();
+  }
+  function setOpen(next: boolean): void {
     if (props.open === undefined) setUncontrolled(next);
     props.onOpenChange?.(next);
     // shadcn persists it, so a reload keeps the layout the person left.
     if (typeof document !== "undefined") {
       document.cookie = `${COOKIE}=${String(next)}; path=/; max-age=${String(COOKIE_MAX_AGE)}`;
     }
-  };
+  }
 
-  const toggle = (): void => {
+  function toggle(): void {
     if (narrow()) writeOpenMobile((prev) => !prev);
     else setOpen(!open());
-  };
+  }
 
   const value: SidebarValue = {
     state: () => (open() ? "expanded" : "collapsed"),
@@ -933,6 +935,11 @@ export function SidebarProvider(props: SidebarProviderProps) {
   );
 }
 
+interface SidebarProviderInnerProps {
+  value: SidebarValue;
+  children?: Child;
+}
+
 /**
  * The context, and nothing else.
  *
@@ -940,7 +947,7 @@ export function SidebarProvider(props: SidebarProviderProps) {
  * at the CALL site, so the children go up beside the context rather than under
  * it and every `useSidebar` throws.
  */
-function SidebarProviderInner(props: { value: SidebarValue; children?: Child }) {
+function SidebarProviderInner(props: SidebarProviderInnerProps) {
   return provide(
     SidebarContext,
     () => props.value,
@@ -967,10 +974,18 @@ export interface SidebarProps extends UiProps {
  */
 export function Sidebar(props: SidebarProps) {
   const sidebar = useSidebar();
-  const side = (): SidebarSide => props.side ?? "left";
-  const variant = (): SidebarVariant => props.variant ?? "sidebar";
-  const collapsible = (): SidebarCollapsible => props.collapsible ?? "offcanvas";
-  const floats = (): boolean => variant() === "floating" || variant() === "inset";
+  function side(): SidebarSide {
+    return props.side ?? "left";
+  }
+  function variant(): SidebarVariant {
+    return props.variant ?? "sidebar";
+  }
+  function collapsible(): SidebarCollapsible {
+    return props.collapsible ?? "offcanvas";
+  }
+  function floats(): boolean {
+    return variant() === "floating" || variant() === "inset";
+  }
 
   return (
     <>
@@ -1286,13 +1301,14 @@ export interface SidebarMenuButtonProps extends UiProps {
  */
 export function SidebarMenuButton(props: SidebarMenuButtonProps) {
   const sidebar = getContext(SidebarContext) ?? null;
-  const railed = (): boolean =>
-    sidebar !== null && sidebar.state() === "collapsed" && !sidebar.isMobile();
-  const tip = (): TooltipContentProps | undefined => {
+  function railed(): boolean {
+    return sidebar !== null && sidebar.state() === "collapsed" && !sidebar.isMobile();
+  }
+  function tip(): TooltipContentProps | undefined {
     const tooltip = props.tooltip;
     if (tooltip === undefined || tooltip === "") return undefined;
     return typeof tooltip === "string" ? { children: tooltip } : tooltip;
-  };
+  }
 
   return (
     <>
@@ -1333,8 +1349,8 @@ export function SidebarMenuButton(props: SidebarMenuButtonProps) {
  */
 function SidebarMenuControl(props: SidebarMenuButtonProps) {
   const taken = slotted(() => (props.href === undefined ? "button" : "a"));
-  const className = (): string =>
-    ui(
+  function className(): string {
+    return ui(
       sidebarMenuButtonVariants({
         variant: props.variant ?? "default",
         size: props.size ?? "default",
@@ -1342,6 +1358,7 @@ function SidebarMenuControl(props: SidebarMenuButtonProps) {
       props.class,
       props.className,
     );
+  }
 
   return (
     <>
@@ -1474,13 +1491,14 @@ export interface SidebarMenuSubButtonProps extends UiProps {
 
 export function SidebarMenuSubButton(props: SidebarMenuSubButtonProps) {
   const taken = slotted("a");
-  const className = (): string =>
-    ui(
+  function className(): string {
+    return ui(
       menuSubButton,
       (props.size ?? "md") === "sm" ? menuSubButtonSm : menuSubButtonMd,
       props.class,
       props.className,
     );
+  }
 
   return (
     <a

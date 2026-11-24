@@ -537,10 +537,15 @@ function ToggleGroupExample() {
   );
 }
 
+interface FaqEntry {
+  q: string;
+  a: string;
+}
+
 function AccordionExample() {
   return (
     <Accordion items={[{ id: "a", q: "Is it accessible?", a: "Yes." }]}>
-      {(faq: { q: string; a: string }) => (
+      {(faq: FaqEntry) => (
         <AccordionItem>
           <AccordionTrigger>{faq.q}</AccordionTrigger>
           <AccordionContent>{faq.a}</AccordionContent>
@@ -717,7 +722,12 @@ function SonnerExample() {
   return <Sonner />;
 }
 
-const EXAMPLES: readonly { name: string; component: Ui }[] = [
+interface Example {
+  name: string;
+  component: Ui;
+}
+
+const EXAMPLES: readonly Example[] = [
   { name: "Alert", component: AlertExample },
   { name: "AspectRatio", component: AspectRatioExample },
   { name: "Attachment", component: AttachmentExample },
@@ -785,8 +795,11 @@ describe("every component, as the docs render it", () => {
  * Checked from `document.body`, because one of the two draws through a portal.
  */
 describe("toasts, raised the way the docs raise them", () => {
-  const violations = (): string[] =>
-    ariaViolations(document.body).map((entry) => `[${entry.rule}] ${entry.message} ${entry.html}`);
+  function violations(): string[] {
+    return ariaViolations(document.body).map(
+      (entry) => `[${entry.rule}] ${entry.message} ${entry.html}`,
+    );
+  }
 
   afterEach(() => {
     sonner.clear();
@@ -864,7 +877,7 @@ describe("closing", () => {
   test("every exit animation declares the fill mode beside it", () => {
     const directory = new URL("./", import.meta.url).pathname;
     const offenders: string[] = [];
-    const walk = (at: string): void => {
+    function walk(at: string): void {
       for (const entry of readdirSync(at, { withFileTypes: true })) {
         const path = join(at, entry.name);
         if (entry.isDirectory()) {
@@ -881,7 +894,7 @@ describe("closing", () => {
           offenders.push(`${entry.name}:${String(index + 1)}`);
         }
       }
-    };
+    }
     walk(directory);
     expect(offenders).toEqual([]);
   });

@@ -16,8 +16,9 @@ import {
 
 afterEach(cleanup);
 
-const slot = (name: string): HTMLElement =>
-  document.querySelector(`[data-slot="${name}"]`) as HTMLElement;
+function slot(name: string): HTMLElement {
+  return document.querySelector(`[data-slot="${name}"]`) as HTMLElement;
+}
 
 describe("Collapsible", () => {
   test("every part says open or closed", async () => {

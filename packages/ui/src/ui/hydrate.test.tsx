@@ -24,9 +24,33 @@ import { renderAndHydrate } from "@barqjs/testing";
 import { cssRegistration } from "@barqjs/vite/internal";
 
 const require_ = createRequire(import.meta.url);
-const native = require_("@barqjs/compiler") as {
-  transform(code: string, options?: Record<string, unknown>): { code: string; css?: string };
-};
+
+interface NativeCompiler {
+  transform(code: string, options?: Record<string, unknown>): Transformed;
+}
+
+interface Transformed {
+  code: string;
+  css?: string;
+}
+const native = require_("@barqjs/compiler") as NativeCompiler;
+
+interface LoadHook {
+  onLoad(filter: LoadFilter, load: (args: LoadArgs) => Loaded): void;
+}
+
+interface LoadFilter {
+  filter: RegExp;
+}
+
+interface LoadArgs {
+  path: string;
+}
+
+interface Loaded {
+  contents: string;
+  loader: "ts" | "tsx";
+}
 
 /**
  * The same source through one backend or the other, both hydratable.
@@ -38,12 +62,7 @@ const native = require_("@barqjs/compiler") as {
 function halfPlugin(ssr: boolean) {
   return {
     name: ssr ? "barq-ssr" : "barq-dom",
-    setup(build: {
-      onLoad(
-        filter: { filter: RegExp },
-        load: (args: { path: string }) => { contents: string; loader: "ts" | "tsx" },
-      ): void;
-    }) {
+    setup(build: LoadHook) {
       build.onLoad({ filter: /\.tsx?$/ }, (args) => {
         const result = native.transform(readFileSync(args.path, "utf8"), {
           filename: args.path,
@@ -70,6 +89,14 @@ afterAll(() => rmSync(workspace, { recursive: true, force: true }));
 
 let probes = 0;
 
+interface BuildOutput {
+  text(): Promise<string>;
+}
+
+interface HalfModule {
+  Page: () => never;
+}
+
 async function half(source: string, ssr: boolean): Promise<() => never> {
   const at = probes++;
   const entry = join(workspace, `probe${String(at)}.tsx`);
@@ -86,13 +113,18 @@ async function half(source: string, ssr: boolean): Promise<() => never> {
     throw new AggregateError(result.logs, `the ${ssr ? "server" : "client"} half did not build`);
 
   const file = join(workspace, `built${String(at)}-${ssr ? "ssr" : "dom"}.mjs`);
-  writeFileSync(file, await (result.outputs[0] as { text(): Promise<string> }).text());
-  const mod = (await import(file)) as { Page: () => never };
+  writeFileSync(file, await (result.outputs[0] as BuildOutput).text());
+  const mod = (await import(file)) as HalfModule;
   return mod.Page;
 }
 
+interface Halves {
+  server: () => never;
+  client: () => never;
+}
+
 /** One fixture, both backends, which is what a real application ships. */
-async function halves(source: string): Promise<{ server: () => never; client: () => never }> {
+async function halves(source: string): Promise<Halves> {
   return { server: await half(source, true), client: await half(source, false) };
 }
 
@@ -281,10 +313,11 @@ describe("hydration", () => {
     flush();
 
     const input = result.container.querySelector<HTMLInputElement>('[data-slot="command-input"]');
-    const shown = (): string[] =>
-      [...result.container.querySelectorAll('[data-slot="command-item"]')]
+    function shown(): string[] {
+      return [...result.container.querySelectorAll('[data-slot="command-item"]')]
         .filter((node) => !node.hasAttribute("hidden"))
         .map((node) => node.textContent ?? "");
+    }
     expect(shown()).toEqual(["Profile", "Billing", "Sign out"]);
     expect(document.getElementById(input?.getAttribute("aria-activedescendant") ?? "")).not.toBe(
       null,

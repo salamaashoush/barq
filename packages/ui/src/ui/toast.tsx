@@ -404,8 +404,9 @@ export function createToastManager(): ToastManager {
   const { queue } = internals;
 
   /** A string describes; anything richer is the toast as written. */
-  const outcome = (message: ToastPromiseMessage): ToastOptions<Carried> =>
-    queued(typeof message === "string" ? { description: message } : message);
+  function outcome(message: ToastPromiseMessage): ToastOptions<Carried> {
+    return queued(typeof message === "string" ? { description: message } : message);
+  }
 
   const manager: ToastManager = {
     toasts: () => queue.toasts().map(view).toReversed(),
@@ -425,10 +426,11 @@ export function createToastManager(): ToastManager {
       const { success, error } = options;
       // The outcome's own type wins, so a success that is really a warning
       // can say so; left out, it is the outcome's.
-      const typed = (type: string, message: ToastPromiseMessage): ToastOptions<Carried> =>
-        outcome(
+      function typed(type: string, message: ToastPromiseMessage): ToastOptions<Carried> {
+        return outcome(
           typeof message === "string" ? { description: message, type } : { type, ...message },
         );
+      }
       return queue.promise(work, {
         loading: typed("loading", options.loading),
         success: (value: T) =>
@@ -517,7 +519,9 @@ export function ToastProvider(props: ToastProviderProps) {
     throw new Error("`toastManager` must come from createToastManager().");
   }
   const { queue } = internals;
-  const limit = (): number => Math.max(1, props.limit ?? DEFAULT_LIMIT);
+  function limit(): number {
+    return Math.max(1, props.limit ?? DEFAULT_LIMIT);
+  }
 
   const [hovered, setHovered] = createSignal(false);
   const [focused, setFocused] = createSignal(false);
@@ -526,7 +530,7 @@ export function ToastProvider(props: ToastProviderProps) {
   let returnTo: HTMLElement | null = null;
   let held = false;
 
-  const toasts = (): readonly ToastObject[] => {
+  function toasts(): readonly ToastObject[] {
     // One that is leaving has given up its place, so the one waiting behind
     // the limit shows as it goes rather than after.
     let staying = 0;
@@ -535,17 +539,21 @@ export function ToastProvider(props: ToastProviderProps) {
       staying++;
       return staying > limit() ? { ...each, limited: true } : each;
     });
-  };
+  }
 
-  const drawn = (): readonly ToastObject[] => toasts().filter((each) => each.limited !== true);
-  const heightOf = (id: string): number => heights().get(id) ?? 0;
+  function drawn(): readonly ToastObject[] {
+    return toasts().filter((each) => each.limited !== true);
+  }
+  function heightOf(id: string): number {
+    return heights().get(id) ?? 0;
+  }
 
-  const giveBack = (): void => {
+  function giveBack(): void {
     const target = returnTo;
     returnTo = null;
     if (target !== null && target.isConnected) target.focus({ preventScroll: true });
     else if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
-  };
+  }
 
   const value: ProviderValue = {
     manager,
@@ -641,11 +649,16 @@ export function ToastProvider(props: ToastProviderProps) {
   return <ToastProviderInner value={value}>{props.children}</ToastProviderInner>;
 }
 
+interface ToastProviderInnerProps {
+  value: ProviderValue;
+  children?: Child;
+}
+
 /**
  * Its own component, because a `provide` callback that BUILDS the children is
  * the only place the scope exists.
  */
-function ToastProviderInner(props: { value: ProviderValue; children?: Child }) {
+function ToastProviderInner(props: ToastProviderInnerProps) {
   return provide(
     ProviderContext,
     () => props.value,
@@ -683,7 +696,7 @@ export function ToastViewport(props: UiProps) {
   const provider = useProvider();
   let node: HTMLElement | null = null;
 
-  const onKeyDown = (event: KeyboardEvent): void => {
+  function onKeyDown(event: KeyboardEvent): void {
     if (event.key !== "F6" || node === null || provider.toasts().length === 0) return;
     event.preventDefault();
     if (!node.contains(document.activeElement)) {
@@ -692,7 +705,7 @@ export function ToastViewport(props: UiProps) {
       );
     }
     node.focus({ preventScroll: true });
-  };
+  }
 
   onSettled(() => {
     document.addEventListener("keydown", onKeyDown);
@@ -775,7 +788,12 @@ function useRoot(): RootValue {
   return value;
 }
 
-function ToastRootInner(props: { value: RootValue; children?: Child }) {
+interface ToastRootInnerProps {
+  value: RootValue;
+  children?: Child;
+}
+
+function ToastRootInner(props: ToastRootInnerProps) {
   return provide(
     RootContext,
     () => props.value,
@@ -800,7 +818,9 @@ export interface ToastProps extends UiProps {
 export function Toast(props: ToastProps) {
   const provider = useProvider();
   const direction = useDirection();
-  const entry = (): ToastObject => props.toast;
+  function entry(): ToastObject {
+    return props.toast;
+  }
   const { id } = props.toast;
   const titleId = createUniqueId();
   const descriptionId = createUniqueId();
@@ -816,11 +836,11 @@ export function Toast(props: ToastProps) {
   const [mounted, setMounted] = createSignal(false);
   let row: HTMLElement | null = null;
 
-  const ways = (): readonly ToastSwipeDirection[] => {
+  function ways(): readonly ToastSwipeDirection[] {
     const asked = props.swipeDirection;
     if (asked === undefined) return ["down", direction() === "rtl" ? "left" : "right"];
     return typeof asked === "string" ? [asked] : asked;
-  };
+  }
 
   const swipe = toastSwipe({
     directions: ways,
@@ -833,8 +853,12 @@ export function Toast(props: ToastProps) {
     onHold: provider.hold,
   });
 
-  const isLimited = (): boolean => entry().limited === true;
-  const isEnding = (): boolean => entry().transitionStatus === "ending";
+  function isLimited(): boolean {
+    return entry().limited === true;
+  }
+  function isEnding(): boolean {
+    return entry().transitionStatus === "ending";
+  }
 
   /**
    * The toast's own height, whatever the stack is making it draw at.
@@ -842,14 +866,14 @@ export function Toast(props: ToastProps) {
    * A collapsed toast is drawn at the front one's height, so reading it as it
    * stands would report that instead.
    */
-  const measure = (): void => {
+  function measure(): void {
     if (row === null) return;
     const forced = row.style.height;
     row.style.height = "auto";
     const { height } = row.getBoundingClientRect();
     row.style.height = forced;
     provider.measured(id, height);
-  };
+  }
 
   // Reading the height resolves the styles of the state it arrives in, so
   // dropping `data-starting-style` is a transition from there rather than the
@@ -968,7 +992,9 @@ function draw(source: ToastText | undefined): Child {
 /** The toast's name. Draws the toast's own `title` unless given children, and nothing without either. */
 export function ToastTitle(props: UiProps) {
   const toastRoot = useRoot();
-  const has = (): boolean => props.children !== undefined || toastRoot.toast().title !== undefined;
+  function has(): boolean {
+    return props.children !== undefined || toastRoot.toast().title !== undefined;
+  }
   toastRoot.labelledBy(has);
 
   return (
@@ -985,8 +1011,9 @@ export function ToastTitle(props: UiProps) {
 /** What the toast says. Draws the toast's own `description` unless given children. */
 export function ToastDescription(props: UiProps) {
   const toastRoot = useRoot();
-  const has = (): boolean =>
-    props.children !== undefined || toastRoot.toast().description !== undefined;
+  function has(): boolean {
+    return props.children !== undefined || toastRoot.toast().description !== undefined;
+  }
   toastRoot.describedBy(has);
 
   return (
@@ -1011,8 +1038,12 @@ export function ToastDescription(props: UiProps) {
  */
 export function ToastAction(props: UiProps) {
   const toastRoot = useRoot();
-  const asked = (): ToastActionProps | undefined => toastRoot.toast().actionProps;
-  const has = (): boolean => props.children !== undefined || asked()?.children !== undefined;
+  function asked(): ToastActionProps | undefined {
+    return toastRoot.toast().actionProps;
+  }
+  function has(): boolean {
+    return props.children !== undefined || asked()?.children !== undefined;
+  }
 
   return (
     <>
@@ -1064,9 +1095,15 @@ export function ToastClose(props: UiProps) {
   );
 }
 
+interface ToastIconProps {
+  type: string | undefined;
+}
+
 /** What each type draws. `aria-hidden`, because it repeats what the text says. */
-function ToastIcon(props: { type: string | undefined }) {
-  const type = (): string | undefined => props.type;
+function ToastIcon(props: ToastIconProps) {
+  function type(): string | undefined {
+    return props.type;
+  }
 
   return (
     <>

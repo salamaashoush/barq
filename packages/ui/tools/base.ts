@@ -57,19 +57,19 @@ const TOKEN = /[a-zA-Z0-9_@:/[\]().,%#*+~>&='"$!?|-]{2,}/g;
 function candidates(checkout: string): string[] {
   const found = new Set<string>();
 
-  const scan = (source: string): void => {
+  function scan(source: string): void {
     for (const literal of source.match(/(["'`])(?:\\.|(?!\1)[\s\S])*\1/g) ?? []) {
       for (const token of literal.slice(1, -1).match(TOKEN) ?? []) found.add(token);
     }
-  };
+  }
 
-  const scanTree = (root: string): void => {
+  function scanTree(root: string): void {
     for (const entry of readdirSync(root, { withFileTypes: true })) {
       const path = join(root, entry.name);
       if (entry.isDirectory()) scanTree(path);
       else if (entry.name.endsWith(".tsx")) scan(readFileSync(path, "utf8"));
     }
-  };
+  }
 
   scanTree(resolve(checkout, "apps/v4/registry/new-york-v4/ui"));
   scanTree(resolve(checkout, "apps/v4/app/(app)/(create)"));
@@ -135,9 +135,11 @@ async function main(): Promise<void> {
    * with `grid-template-rows` instead and needs no measurement, so shipping the
    * rule would be shipping a reference to a library that is not installed.
    */
-  const foreign = (node: CssNode): boolean => print([node]).includes("--radix-");
+  function foreign(node: CssNode): boolean {
+    return print([node]).includes("--radix-");
+  }
 
-  const dedupe = (nodes: readonly CssNode[]): CssNode[] => {
+  function dedupe(nodes: readonly CssNode[]): CssNode[] {
     const seen = new Set<string>();
     return nodes.filter((node) => {
       const key = print([node]);
@@ -145,7 +147,7 @@ async function main(): Promise<void> {
       seen.add(key);
       return true;
     });
-  };
+  }
 
   /**
    * A token the styles read but declare on ONE element.
@@ -172,8 +174,8 @@ async function main(): Promise<void> {
     keyframes: print(dedupe(compiled.keyframes).filter((node) => !foreign(node))),
   };
 
-  const module_ = (doc: string, blocks: readonly string[]): string =>
-    [
+  function module_(doc: string, blocks: readonly string[]): string {
+    return [
       doc,
       ``,
       `import { globalCss } from "@barqjs/css";`,
@@ -184,6 +186,7 @@ async function main(): Promise<void> {
         (body) => "globalCss`\n" + body.replace(/`/g, "\\`").replace(/\$\{/g, "\\${") + "\n`;\n",
       ),
     ].join("\n");
+  }
 
   writeFileSync(
     resolve(import.meta.dir, "../src/theme/reset.ts"),

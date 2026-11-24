@@ -27,9 +27,33 @@ import { collectCss } from "@barqjs/css";
 import { ENTRIES } from "./entries.ts";
 import { FIXTURES } from "./ssr-fixtures.ts";
 const require_ = createRequire(import.meta.url);
-const native = require_("@barqjs/compiler") as {
-  transform(code: string, options?: Record<string, unknown>): { code: string; css?: string };
-};
+
+interface NativeCompiler {
+  transform(code: string, options?: Record<string, unknown>): Transformed;
+}
+
+interface Transformed {
+  code: string;
+  css?: string;
+}
+const native = require_("@barqjs/compiler") as NativeCompiler;
+
+interface LoadHook {
+  onLoad(filter: LoadFilter, load: (args: LoadArgs) => Loaded): void;
+}
+
+interface LoadFilter {
+  filter: RegExp;
+}
+
+interface LoadArgs {
+  path: string;
+}
+
+interface Loaded {
+  contents: string;
+  loader: "ts" | "tsx";
+}
 
 /**
  * The same plugin as the suite's, with `ssr` on.
@@ -40,12 +64,7 @@ const native = require_("@barqjs/compiler") as {
  */
 const ssrPlugin = {
   name: "barq-ssr",
-  setup(build: {
-    onLoad(
-      filter: { filter: RegExp },
-      load: (args: { path: string }) => { contents: string; loader: "ts" | "tsx" },
-    ): void;
-  }) {
+  setup(build: LoadHook) {
     build.onLoad({ filter: /\.tsx?$/ }, (args) => {
       const result = native.transform(readFileSync(args.path, "utf8"), {
         filename: args.path,
@@ -77,7 +96,15 @@ afterAll(() => rmSync(workspace, { recursive: true, force: true }));
 
 let probes = 0;
 
-async function server(source: string): Promise<{ page: () => string }> {
+interface PageModule {
+  page: () => string;
+}
+
+interface BuildOutput {
+  text(): Promise<string>;
+}
+
+async function server(source: string): Promise<PageModule> {
   // Named once, before the build is awaited: a probe still building when its
   // test timed out read the counter after the next one bumped it, and the two
   // wrote and imported the same file.
@@ -95,8 +122,8 @@ async function server(source: string): Promise<{ page: () => string }> {
   if (!result.success) throw new AggregateError(result.logs, "the page did not build");
 
   const file = join(workspace, `built${id}.mjs`);
-  writeFileSync(file, await (result.outputs[0] as { text(): Promise<string> }).text());
-  return (await import(file)) as { page: () => string };
+  writeFileSync(file, await (result.outputs[0] as BuildOutput).text());
+  return (await import(file)) as PageModule;
 }
 
 /**
@@ -105,8 +132,14 @@ async function server(source: string): Promise<{ page: () => string }> {
  * calling the component from HERE with `null` leaves every `each` under it
  * parented to nothing.
  */
-function html(mod: { page: () => string }): string {
+function html(mod: PageModule): string {
   return mod.page();
+}
+
+interface ServerRun {
+  code: number;
+  html: string;
+  errors: string;
 }
 
 /**
@@ -118,9 +151,7 @@ function html(mod: { page: () => string }): string {
  * schedules run after the markup is returned, which is why the child waits
  * before it reports.
  */
-async function serverProcess(
-  source: string,
-): Promise<{ code: number; html: string; errors: string }> {
+async function serverProcess(source: string): Promise<ServerRun> {
   const id = probes++;
   const entry = join(workspace, `process${id}.tsx`);
   writeFileSync(entry, source.replaceAll("<root>", root).replaceAll("<toast>", toastEntry));
@@ -135,7 +166,7 @@ async function serverProcess(
   if (!result.success) throw new AggregateError(result.logs, "the page did not build");
 
   const built = join(workspace, `process-built${id}.mjs`);
-  writeFileSync(built, await (result.outputs[0] as { text(): Promise<string> }).text());
+  writeFileSync(built, await (result.outputs[0] as BuildOutput).text());
   const runner = join(workspace, `process-run${id}.mjs`);
   writeFileSync(
     runner,
@@ -861,10 +892,15 @@ const MODULES = await Promise.all(
 );
 const DRAWN = MODULES.filter(([, components]) => components.length > 0);
 
+interface PageResult {
+  html?: string;
+  error?: string;
+}
+
 interface Rendered {
   code: number;
   errors: string;
-  pages: Record<string, { html?: string; error?: string }>;
+  pages: Record<string, PageResult>;
 }
 
 /**
@@ -930,7 +966,9 @@ async function renderEveryPage(): Promise<Rendered> {
 
 describe("every exported component, in a process with no DOM", () => {
   let rendering: Promise<Rendered> | undefined;
-  const rendered = (): Promise<Rendered> => (rendering ??= renderEveryPage());
+  function rendered(): Promise<Rendered> {
+    return (rendering ??= renderEveryPage());
+  }
 
   test("every module that draws something has a page, and no page is left over", () => {
     expect(DRAWN.map(([entry]) => entry).filter((entry) => FIXTURES[entry] === undefined)).toEqual(

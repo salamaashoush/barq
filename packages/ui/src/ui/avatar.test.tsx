@@ -11,7 +11,9 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
-const slot = (name: string): HTMLElement | null => document.querySelector(`[data-slot="${name}"]`);
+function slot(name: string): HTMLElement | null {
+  return document.querySelector(`[data-slot="${name}"]`);
+}
 
 describe("Avatar", () => {
   test("the badge sits at the end corner, whichever side that is", () => {

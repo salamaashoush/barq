@@ -18,6 +18,12 @@ import { registerCss } from "@barqjs/css";
 import "./layers.ts";
 import { findTheme, type ThemeDefinition, type ThemeTokens } from "./themes.ts";
 
+export interface ThemeFonts {
+  readonly sans?: string;
+  readonly mono?: string;
+  readonly heading?: string;
+}
+
 export interface ThemeSelection {
   /** The whole token set. A name from `BASE_THEMES`, or one of your own. */
   readonly base: string | ThemeDefinition;
@@ -46,11 +52,7 @@ export interface ThemeSelection {
    * falls back to `sans` where it is not set, so a page that never asks for one
    * looks unchanged.
    */
-  readonly fonts?: {
-    readonly sans?: string;
-    readonly mono?: string;
-    readonly heading?: string;
-  };
+  readonly fonts?: ThemeFonts;
   /**
    * Where the light values land.
    *

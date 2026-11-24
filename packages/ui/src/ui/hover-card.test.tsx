@@ -9,6 +9,7 @@ import {
   HoverCardTrigger,
   type HoverCardContentProps,
 } from "./hover-card.tsx";
+import type { AnchorRect } from "@barqjs/aria";
 
 /** Long enough for a timer scheduled at `ms` to have run. */
 function after(ms: number): Promise<void> {
@@ -22,7 +23,7 @@ async function settle(): Promise<void> {
   flush();
 }
 
-function box(element: Element, rect: { top: number; left: number; width: number; height: number }) {
+function box(element: Element, rect: AnchorRect) {
   element.getBoundingClientRect = () =>
     ({
       ...rect,
@@ -33,11 +34,13 @@ function box(element: Element, rect: { top: number; left: number; width: number;
     }) as DOMRect;
 }
 
-function Fixture(props: {
+interface FixtureProps {
   openDelay?: number;
   closeDelay?: number;
   content?: HoverCardContentProps;
-}) {
+}
+
+function Fixture(props: FixtureProps) {
   return (
     <>
       <HoverCard openDelay={props.openDelay ?? 20} closeDelay={props.closeDelay ?? 20}>
@@ -59,8 +62,12 @@ function Fixture(props: {
   );
 }
 
-const trigger = (): HTMLElement => screen.getByRole("button", { name: "@salama" });
-const card = (): HTMLElement | null => document.querySelector('[data-slot="hover-card-content"]');
+function trigger(): HTMLElement {
+  return screen.getByRole("button", { name: "@salama" });
+}
+function card(): HTMLElement | null {
+  return document.querySelector('[data-slot="hover-card-content"]');
+}
 
 describe("HoverCard", () => {
   test("nothing until the pointer has rested for the open delay", async () => {

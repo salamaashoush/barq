@@ -5,11 +5,15 @@ import { rulesFor } from "../test-rules.ts";
 
 import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from "./native-select.tsx";
 
-const wrapperOf = (): HTMLElement =>
-  screen.getByTestId("host").querySelector<HTMLElement>('[data-slot="native-select-wrapper"]')!;
+function wrapperOf(): HTMLElement {
+  return screen
+    .getByTestId("host")
+    .querySelector<HTMLElement>('[data-slot="native-select-wrapper"]')!;
+}
 
-const selectOf = (): HTMLSelectElement =>
-  screen.getByTestId("host").querySelector<HTMLSelectElement>("select")!;
+function selectOf(): HTMLSelectElement {
+  return screen.getByTestId("host").querySelector<HTMLSelectElement>("select")!;
+}
 
 describe("NativeSelect", () => {
   test("`class` reaches the WRAPPER, which is the box that has a width", () => {

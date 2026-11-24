@@ -110,18 +110,22 @@ export interface OverlayFamily {
 
 export type OverlayKind = "dialog" | "menu" | "listbox" | "tree" | "grid";
 
+interface OverlayIdSource {
+  id: Accessor<string | undefined>;
+}
+
 export function overlayFamily(name: string, kind: OverlayKind = "dialog"): OverlayFamily {
   const Context = createContext<OverlayValue | null>(null);
   // `AlertDialog` is `alert-dialog`, which is what its parts' slots start with.
   const slotName = name.replace(/(?<=[a-z])(?=[A-Z])/g, "-").toLowerCase();
 
-  const use = (): OverlayValue => {
+  function use(): OverlayValue {
     const value = getContext(Context);
     if (value === null || value === undefined) {
       throw new Error(`This must be rendered inside a <${name}>.`);
     }
     return value;
-  };
+  }
 
   function Root(props: OverlayRootProps) {
     const state = overlayTriggerState(fromProps(cells(props)));
@@ -132,10 +136,12 @@ export function overlayFamily(name: string, kind: OverlayKind = "dialog"): Overl
     const generated = overlayProps.id as Accessor<string>;
     // An object around the accessor: a function given to a signal is read as
     // a computation, not held as a value.
-    const [claimed, setClaimed] = createSignal<{ id: Accessor<string | undefined> } | null>(null, {
+    const [claimed, setClaimed] = createSignal<OverlayIdSource | null>(null, {
       ownedWrite: true,
     });
-    const overlayId = (): string => claimed()?.id() ?? generated();
+    function overlayId(): string {
+      return claimed()?.id() ?? generated();
+    }
     const value: OverlayValue = {
       state,
       triggerProps: {

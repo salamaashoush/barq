@@ -19,8 +19,13 @@ import {
 
 afterEach(cleanup);
 
-const slot = (name: string): HTMLElement =>
-  document.querySelector(`[data-slot="${name}"]`) as HTMLElement;
+function slot(name: string): HTMLElement {
+  return document.querySelector(`[data-slot="${name}"]`) as HTMLElement;
+}
+
+interface ScrollTarget {
+  top: number;
+}
 
 /** happy-dom measures nothing, so the geometry is declared. */
 function sized(element: HTMLElement, height: number, content: number): void {
@@ -35,7 +40,7 @@ function sized(element: HTMLElement, height: number, content: number): void {
     configurable: true,
   });
   Object.defineProperty(element, "scrollTo", {
-    value: (to: { top: number }) => {
+    value: (to: ScrollTarget) => {
       top = to.top;
       element.dispatchEvent(new Event("scroll"));
     },
@@ -142,13 +147,21 @@ function laidOut(viewportHeight: number, heights: () => Record<string, number>):
   const content = slot("message-scroller-content");
   const spacer = content.querySelector<HTMLElement>("[data-message-scroller-spacer]");
   let top = 0;
-  const rows = (): HTMLElement[] =>
-    [...content.children].filter((child): child is HTMLElement => child !== spacer);
-  const tall = (row: HTMLElement): number => heights()[row.dataset.messageId ?? ""] ?? 0;
-  const room = (): number =>
-    spacer === null || spacer.hidden ? 0 : Number.parseFloat(spacer.style.height || "0");
-  const total = (): number => rows().reduce((sum, row) => sum + tall(row), 0) + room();
-  const most = (): number => Math.max(0, total() - viewportHeight);
+  function rows(): HTMLElement[] {
+    return [...content.children].filter((child): child is HTMLElement => child !== spacer);
+  }
+  function tall(row: HTMLElement): number {
+    return heights()[row.dataset.messageId ?? ""] ?? 0;
+  }
+  function room(): number {
+    return spacer === null || spacer.hidden ? 0 : Number.parseFloat(spacer.style.height || "0");
+  }
+  function total(): number {
+    return rows().reduce((sum, row) => sum + tall(row), 0) + room();
+  }
+  function most(): number {
+    return Math.max(0, total() - viewportHeight);
+  }
 
   Object.defineProperty(view, "clientHeight", { get: () => viewportHeight, configurable: true });
   Object.defineProperty(view, "scrollHeight", {
@@ -163,7 +176,7 @@ function laidOut(viewportHeight: number, heights: () => Record<string, number>):
     configurable: true,
   });
   Object.defineProperty(view, "scrollTo", {
-    value: (to: { top: number }) => {
+    value: (to: ScrollTarget) => {
       view.scrollTop = to.top;
       view.dispatchEvent(new Event("scroll"));
     },
@@ -198,14 +211,19 @@ afterEach(() => {
 });
 
 /** Long enough for the mutation observers, and for a frame after them. */
-const settled = async (): Promise<void> => {
+async function settled(): Promise<void> {
   await tick();
   await new Promise((resolve) => setTimeout(resolve, 5));
   await new Promise((resolve) => requestAnimationFrame(resolve));
   flush();
-};
+}
 
-function Transcript(props: { lines: readonly Line[]; autoScroll?: boolean }) {
+interface TranscriptProps {
+  lines: readonly Line[];
+  autoScroll?: boolean;
+}
+
+function Transcript(props: TranscriptProps) {
   return (
     <MessageScrollerProvider autoScroll={props.autoScroll}>
       <MessageScroller>
@@ -226,8 +244,9 @@ function Transcript(props: { lines: readonly Line[]; autoScroll?: boolean }) {
   );
 }
 
-const sizes = (lines: readonly Line[]): Record<string, number> =>
-  Object.fromEntries(lines.map((line) => [line.id, line.height]));
+function sizes(lines: readonly Line[]): Record<string, number> {
+  return Object.fromEntries(lines.map((line) => [line.id, line.height]));
+}
 
 describe("MessageScroller parts", () => {
   test("the viewport is a labelled region a keyboard can reach and scroll", () => {
@@ -441,12 +460,12 @@ describe("MessageScrollerProvider", () => {
     flush();
     await settled();
 
-    const grow = async (height: number): Promise<void> => {
+    async function grow(height: number): Promise<void> {
       setList(list().map((line) => (line.id === "a" ? { ...line, height } : line)));
       flush();
       slot("message-scroller-content").children[4]?.append("more");
       await settled();
-    };
+    }
 
     user.keyDown("a", { target: view });
     view.scrollTop = 100;

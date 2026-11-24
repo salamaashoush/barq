@@ -157,10 +157,10 @@ function portable(
   carried: ReadonlySet<string>,
 ): string {
   const here = dirname(path);
-  const toward = (target: string): string => {
+  function toward(target: string): string {
     const specifier = relative(here, target).replaceAll("\\", "/");
     return specifier.startsWith(".") ? specifier : `./${specifier}`;
-  };
+  }
 
   const unbarrelled = source.replaceAll(
     new RegExp(`import\\s*\\{([^}]*)\\}\\s*from\\s*["']${BARREL}["'];?`, "g"),
@@ -275,6 +275,10 @@ function siteSources(): SiteSource[] {
   return [...libs.values(), ...blocks, ...charts];
 }
 
+interface ExportsMeta {
+  exports?: string[];
+}
+
 function main(): void {
   const sources = [
     ...sourcesIn("theme", "registry:theme"),
@@ -364,10 +368,10 @@ function main(): void {
   // package's barrel as imports of the files a project holds.
   const exportedBy = new Map<string, string[]>();
   for (const [name, file] of exports) exportedBy.set(file, [...(exportedBy.get(file) ?? []), name]);
-  const exportsOf = (item: RegistryItem): { exports?: string[] } => {
+  function exportsOf(item: RegistryItem): ExportsMeta {
     const exported = item.files.flatMap((file) => exportedBy.get(file.path) ?? []);
     return exported.length === 0 ? {} : { exports: exported.toSorted() };
-  };
+  }
 
   const out = join(root, "registry");
   rmSync(out, { recursive: true, force: true });

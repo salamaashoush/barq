@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createSignal, flush, type Child } from "@barqjs/core";
+import { createSignal, flush, type ParentProps } from "@barqjs/core";
 import { provideDirection } from "@barqjs/aria/i18n";
 import {
   accessibleName,
@@ -46,14 +46,16 @@ async function frame(): Promise<void> {
   flush();
 }
 
-/** shadcn's own demo, with the triggers given the pattern's role. */
-function Application(props: {
+interface ApplicationProps {
   value?: string;
   onValueChange?: (value: string) => void;
   loop?: boolean;
   onNewTab?: () => void;
   onProfile?: (value: string) => void;
-}) {
+}
+
+/** shadcn's own demo, with the triggers given the pattern's role. */
+function Application(props: ApplicationProps) {
   const [profile, setProfile] = createSignal("salama");
   return (
     <Menubar
@@ -133,6 +135,12 @@ async function openWith(name: string, key = "{ArrowDown}"): Promise<void> {
   await settle();
 }
 
+interface PerMenuProps {
+  defaultOpen?: boolean;
+  isOpen?: boolean;
+  onOpenChange?: (isOpen: boolean) => void;
+}
+
 describe("Menubar", () => {
   test("is one named menubar, and each trigger says what it opens", () => {
     render(() => <Application />);
@@ -191,10 +199,11 @@ describe("Menubar", () => {
 
   test("the bar is one Tab stop, and the stop follows focus", async () => {
     render(() => <Application />);
-    const stops = (): string[] =>
-      [...document.querySelectorAll('[data-slot="menubar-trigger"]')]
+    function stops(): string[] {
+      return [...document.querySelectorAll('[data-slot="menubar-trigger"]')]
         .filter((each) => each.getAttribute("tabindex") === "0")
         .map((each) => each.textContent ?? "");
+    }
 
     expect(stops()).toEqual(["File"]);
     trigger("File").focus();
@@ -412,11 +421,7 @@ describe("Menubar", () => {
     expect(accessibleName(screen.getByRole("menu"))).toBe("Profiles");
   });
 
-  function PerMenu(props: {
-    defaultOpen?: boolean;
-    isOpen?: boolean;
-    onOpenChange?: (isOpen: boolean) => void;
-  }) {
+  function PerMenu(props: PerMenuProps) {
     return (
       <Menubar aria-label="Application">
         <MenubarMenu
@@ -480,7 +485,7 @@ describe("Menubar", () => {
   });
 
   test("in a right-to-left page the horizontal arrows are the other way round", async () => {
-    function Mirrored(props: { children?: Child }) {
+    function Mirrored(props: ParentProps) {
       const directionProps = provideDirection("rtl");
       return <div {...directionProps}>{props.children}</div>;
     }

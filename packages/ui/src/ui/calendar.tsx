@@ -530,31 +530,43 @@ function chosen<T>(
 // A select has to end somewhere. Upstream's answer is a century back to the
 // end of this year, which suits a date of birth and little else, so a caller
 // with another purpose passes `startMonth` and `endMonth`.
-const earliest = (now: CalendarDate): CalendarDate => new CalendarDate(now.year - 100, 1, 1);
-const latest = (now: CalendarDate): CalendarDate => new CalendarDate(now.year, 12, 1);
+function earliest(now: CalendarDate): CalendarDate {
+  return new CalendarDate(now.year - 100, 1, 1);
+}
+function latest(now: CalendarDate): CalendarDate {
+  return new CalendarDate(now.year, 12, 1);
+}
 
 /** react-day-picker numbers the days of the week from Sunday as 0. */
 const WEEK: readonly DayOfWeek[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+
+interface PinnedRange {
+  start: CalendarDate;
+  end: CalendarDate;
+}
 
 /** What all three states are built from. */
 function sharedOptions(
   props: Incoming<CalendarBaseProps>,
 ): Omit<CalendarStateOptions, "value" | "defaultValue" | "onChange"> {
   const own = callback<[CalendarDate], boolean>(props.isDateDisabled);
-  const hasSelect = (): boolean => (props.captionLayout?.() ?? "label") !== "label";
-  const now = (): CalendarDate =>
-    props.today?.() ?? today(props.timeZone?.() ?? getLocalTimeZone());
+  function hasSelect(): boolean {
+    return (props.captionLayout?.() ?? "label") !== "label";
+  }
+  function now(): CalendarDate {
+    return props.today?.() ?? today(props.timeZone?.() ?? getLocalTimeZone());
+  }
   // With navigation off, the months on show when the calendar was built are
   // the only ones there are: the arrows, the selects and the keyboard all stop
   // at their edges.
   const shown = toCalendarDate(
     props.month?.() ?? props.defaultFocusedValue?.() ?? props.defaultMonth?.() ?? now(),
   );
-  const pinned = (): { start: CalendarDate; end: CalendarDate } | undefined => {
+  function pinned(): PinnedRange | undefined {
     if (props.disableNavigation?.() !== true) return undefined;
     const start = shown.set({ day: 1 });
     return { start, end: start.add({ months: (props.numberOfMonths?.() ?? 1) - 1 }) };
-  };
+  }
 
   return {
     focusedValue: () => props.focusedValue?.(),
@@ -590,6 +602,14 @@ function sharedOptions(
   };
 }
 
+export interface MultipleMode {
+  mode: "multiple";
+}
+
+export interface RangeMode {
+  mode: "range";
+}
+
 /**
  * ```tsx
  * <Calendar aria-label="Departure" value={date()} onChange={date.set} />
@@ -606,8 +626,8 @@ function sharedOptions(
  * `{ start, end }`.
  */
 export function Calendar(props: CalendarProps): JSXElement;
-export function Calendar(props: MultipleCalendarProps & { mode: "multiple" }): JSXElement;
-export function Calendar(props: RangeCalendarProps & { mode: "range" }): JSXElement;
+export function Calendar(props: MultipleCalendarProps & MultipleMode): JSXElement;
+export function Calendar(props: RangeCalendarProps & RangeMode): JSXElement;
 export function Calendar(props: ModeProps): JSXElement {
   if (props.mode === "multiple") return <MultipleCalendar {...props} />;
   if (props.mode === "range") return <RangeCalendar {...props} />;
@@ -713,21 +733,23 @@ function CalendarShell(incoming: ShellProps) {
 
   // The month the press is going to: the graph has not settled when the press
   // handler returns, so the state cannot be asked yet.
-  const navigation = (
+  function navigation(
     own: DOMProps,
     direction: 1 | -1,
     heard: () => ((month: CalendarDate) => void) | undefined,
-  ): ButtonOptions => ({
-    ...(own as ButtonOptions),
-    isDisabled: () =>
-      props.disableNavigation?.() === true || access(own.isDisabled as MaybeAccessor<boolean>),
-    onPress: (event) => {
-      const step = props.pagedNavigation?.() === true ? state.visibleMonths() : 1;
-      const going = state.visibleRange().start.add({ months: step * direction });
-      (own.onPress as ((event: unknown) => void) | undefined)?.(event);
-      heard()?.(going);
-    },
-  });
+  ): ButtonOptions {
+    return {
+      ...(own as ButtonOptions),
+      isDisabled: () =>
+        props.disableNavigation?.() === true || access(own.isDisabled as MaybeAccessor<boolean>),
+      onPress: (event) => {
+        const step = props.pagedNavigation?.() === true ? state.visibleMonths() : 1;
+        const going = state.visibleRange().start.add({ months: step * direction });
+        (own.onPress as ((event: unknown) => void) | undefined)?.(event);
+        heard()?.(going);
+      },
+    };
+  }
   const previous = button(
     navigation(prevButtonProps, -1, () => props.onPrevClick?.()),
     prevRef,
@@ -736,8 +758,9 @@ function CalendarShell(incoming: ShellProps) {
     navigation(nextButtonProps, 1, () => props.onNextClick?.()),
     nextRef,
   );
-  const navClass = (): string =>
-    ui(buttonVariants({ variant: props.buttonVariant?.() ?? "ghost" }), navButton);
+  function navClass(): string {
+    return ui(buttonVariants({ variant: props.buttonVariant?.() ?? "ghost" }), navButton);
+  }
 
   const offsets = createMemo(() => {
     const all = Array.from({ length: state.visibleMonths() }, (_, at) => at);
@@ -811,7 +834,9 @@ function CalendarMonth(incoming: MonthProps) {
   const state = incoming.state;
   const props = incoming.of;
   const titleId = id();
-  const hasSelect = (): boolean => (props.captionLayout?.() ?? "label") !== "label";
+  function hasSelect(): boolean {
+    return (props.captionLayout?.() ?? "label") !== "label";
+  }
 
   const { gridProps, headerProps, month, title, weekDays, weeksInMonth, weekDates, weekNumber } =
     calendarGrid(
@@ -825,12 +850,16 @@ function CalendarMonth(incoming: MonthProps) {
       state,
     );
 
-  const caption = (): string => props.formatters?.()?.formatCaption?.(month()) ?? title();
-  const numbered = (): boolean => props.showWeekNumber?.() === true;
-  const weekLabel = (row: number): string => {
+  function caption(): string {
+    return props.formatters?.()?.formatCaption?.(month()) ?? title();
+  }
+  function numbered(): boolean {
+    return props.showWeekNumber?.() === true;
+  }
+  function weekLabel(row: number): string {
     const number = weekNumber(row);
     return props.formatters?.()?.formatWeekNumber?.(number) ?? String(number);
-  };
+  }
 
   return (
     <div data-slot="calendar-month" class={monthBox}>
@@ -946,7 +975,9 @@ function CalendarMonth(incoming: MonthProps) {
 function CalendarDropdowns(incoming: MonthProps) {
   const state = incoming.state;
   const props = incoming.of;
-  const layout = (): CalendarCaptionLayout => props.captionLayout?.() ?? "dropdown";
+  function layout(): CalendarCaptionLayout {
+    return props.captionLayout?.() ?? "dropdown";
+  }
 
   const monthPicker = calendarMonthPicker({ monthOffset: () => incoming.offset }, state);
   const yearPicker = calendarYearPicker(
@@ -966,19 +997,23 @@ function CalendarDropdowns(incoming: MonthProps) {
     state,
   );
 
-  const monthItem = (key: number): CalendarPickerItem | undefined =>
-    monthPicker.items().find((item) => item.id === key);
-  const yearItem = (key: number): CalendarPickerItem | undefined =>
-    yearPicker.items().find((item) => item.id === key);
+  function monthItem(key: number): CalendarPickerItem | undefined {
+    return monthPicker.items().find((item) => item.id === key);
+  }
+  function yearItem(key: number): CalendarPickerItem | undefined {
+    return yearPicker.items().find((item) => item.id === key);
+  }
 
-  const monthName = (item: CalendarPickerItem | undefined): string =>
-    item === undefined
+  function monthName(item: CalendarPickerItem | undefined): string {
+    return item === undefined
       ? ""
       : (props.formatters?.()?.formatMonthDropdown?.(item.date) ?? item.formatted);
-  const yearName = (item: CalendarPickerItem | undefined): string =>
-    item === undefined
+  }
+  function yearName(item: CalendarPickerItem | undefined): string {
+    return item === undefined
       ? ""
       : (props.formatters?.()?.formatYearDropdown?.(startOfYear(item.date)) ?? item.formatted);
+  }
 
   return (
     <div data-slot="calendar-dropdowns" class={dropdowns}>
@@ -1106,11 +1141,15 @@ export function CalendarDay(props: CalendarDayProps) {
   // A calendar that picks one day has no range, so `isSelectionStart` and
   // `isSelectionEnd` are both false there and a selected day is a lone one.
   const inRange = state.selectionMode === "range";
-  const isRangeMiddle = (): boolean =>
-    inRange && isSelected() && !isSelectionStart() && !isSelectionEnd();
-  const isHidden = (): boolean =>
-    (isOutsideVisibleRange() && props.showOutsideDays === false) ||
-    dateMatches(props.date, matcher(cells(props).hidden));
+  function isRangeMiddle(): boolean {
+    return inRange && isSelected() && !isSelectionStart() && !isSelectionEnd();
+  }
+  function isHidden(): boolean {
+    return (
+      (isOutsideVisibleRange() && props.showOutsideDays === false) ||
+      dateMatches(props.date, matcher(cells(props).hidden))
+    );
+  }
 
   const marks = {
     "data-selected": isSelected,
@@ -1136,8 +1175,9 @@ export function CalendarDay(props: CalendarDayProps) {
     range_middle: isRangeMiddle,
   };
 
-  const matches = (name: string): boolean =>
-    built[name]?.() ?? dateMatches(props.date, props.modifiers?.[name]);
+  function matches(name: string): boolean {
+    return built[name]?.() ?? dateMatches(props.date, props.modifiers?.[name]);
+  }
 
   // The NAMES are read once: an attribute that comes and goes with a prop
   // would need the element rebuilt, and which modifiers exist is a decision a
@@ -1146,7 +1186,7 @@ export function CalendarDay(props: CalendarDayProps) {
     Object.keys(props.modifiers ?? {}).map((name) => [`data-${name}`, () => matches(name)]),
   );
 
-  const cellClass = (): string => {
+  function cellClass(): string {
     const named = props.modifiersClassNames ?? {};
     // One argument, not a spread: the compiler counts a call's arguments to
     // fold the ones it can read, and the merge treats a list as its members.
@@ -1154,34 +1194,36 @@ export function CalendarDay(props: CalendarDayProps) {
       .filter(matches)
       .map((name) => named[name]);
     return ui(day, props.afterWeekNumber === true ? dayAfterNumber : dayFirst, matched);
-  };
+  }
 
   const render = callback<[CalendarDate, CalendarDayModifiers], Child>(cells(props).renderDay);
 
-  const modifiersNow = (): CalendarDayModifiers => ({
-    selected: isSelected(),
-    today: isToday(),
-    disabled: isDisabled(),
-    unavailable: isUnavailable(),
-    outside: isOutsideVisibleRange(),
-    focused: isFocused(),
-    rangeStart: isSelectionStart(),
-    rangeEnd: isSelectionEnd(),
-    rangeMiddle: isRangeMiddle(),
-  });
+  function modifiersNow(): CalendarDayModifiers {
+    return {
+      selected: isSelected(),
+      today: isToday(),
+      disabled: isDisabled(),
+      unavailable: isUnavailable(),
+      outside: isOutsideVisibleRange(),
+      focused: isFocused(),
+      rangeStart: isSelectionStart(),
+      rangeEnd: isSelectionEnd(),
+      rangeMiddle: isRangeMiddle(),
+    };
+  }
 
   // Upstream's day is a native button, which a click and Enter or Space alike
   // press. Read before the press is handled, so the modifiers are the ones the
   // day had when it was pressed.
-  const dayClicked = (): void => {
+  function dayClicked(): void {
     if (isHidden()) return;
     props.onDayClick?.(props.date, modifiersNow());
-  };
+  }
 
-  const content = (): Child => {
+  function content(): Child {
     if (render !== undefined) return render(props.date, modifiersNow());
     return props.formatDay?.(props.date) ?? cell.formattedDate();
-  };
+  }
 
   return (
     <div

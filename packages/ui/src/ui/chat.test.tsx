@@ -23,8 +23,9 @@ import {
   MessageHeader,
 } from "./message.tsx";
 
-const slot = (name: string): HTMLElement =>
-  document.querySelector(`[data-slot="${name}"]`) as HTMLElement;
+function slot(name: string): HTMLElement {
+  return document.querySelector(`[data-slot="${name}"]`) as HTMLElement;
+}
 
 describe("Marker", () => {
   test("the separator draws its rules with pseudo-elements, not with elements", () => {

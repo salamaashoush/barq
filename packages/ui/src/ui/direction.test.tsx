@@ -25,12 +25,18 @@ function Sections() {
   );
 }
 
-function Reads(props: { local?: "ltr" | "rtl" }) {
+interface ReadsProps {
+  local?: "ltr" | "rtl";
+}
+
+function Reads(props: ReadsProps) {
   const direction = useDirection(cells(props).local);
   return <output data-testid="direction">{direction()}</output>;
 }
 
-const read = (): string | null => screen.getByTestId("direction").textContent;
+function read(): string | null {
+  return screen.getByTestId("direction").textContent;
+}
 
 describe("DirectionProvider", () => {
   test("it renders nothing of its own, so it cannot break a layout it wraps", () => {

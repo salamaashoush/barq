@@ -29,7 +29,12 @@ const FRUITS = [
   { id: "cherry", name: "Cherry" },
 ];
 
-function Fixture(props: { onChange?: (key: string) => void; name?: string }) {
+interface FixtureProps {
+  onChange?: (key: string) => void;
+  name?: string;
+}
+
+function Fixture(props: FixtureProps) {
   return (
     <Select
       items={FRUITS}
@@ -41,6 +46,16 @@ function Fixture(props: { onChange?: (key: string) => void; name?: string }) {
       {(fruit: (typeof FRUITS)[number]) => <SelectItem>{fruit.name}</SelectItem>}
     </Select>
   );
+}
+
+interface ProduceGroup {
+  options?: unknown[];
+}
+
+interface ProduceNode {
+  id: string;
+  name: string;
+  options?: unknown[];
 }
 
 describe("Select", () => {
@@ -140,11 +155,9 @@ describe("Select", () => {
         items={GROUPS}
         aria-label="Produce"
         placeholder="Pick one"
-        getChildren={(group: { options?: unknown[] }) =>
-          group.options as { id: string; name: string; options?: unknown[] }[] | undefined
-        }
+        getChildren={(group: ProduceGroup) => group.options as ProduceNode[] | undefined}
       >
-        {(value: { id: string; name: string; options?: unknown[] }) =>
+        {(value: ProduceNode) =>
           value.options === undefined ? (
             <SelectItem>{value.name}</SelectItem>
           ) : (
@@ -225,6 +238,26 @@ describe("a Select built from data carries shadcn's state attributes too", () =>
   });
 });
 
+interface WrittenProps {
+  value?: string;
+  defaultValue?: string;
+  onValueChange?: (value: string) => void;
+  open?: boolean;
+  onOpenChange?: (isOpen: boolean) => void;
+  name?: string;
+  disabled?: boolean;
+  required?: boolean;
+  size?: "sm" | "default";
+  position?: "item-aligned" | "popper";
+  side?: "top" | "right" | "bottom" | "left";
+  align?: "start" | "center" | "end";
+  sideOffset?: number;
+  alignOffset?: number;
+  placement?: "top start";
+  offset?: number;
+  "aria-label"?: string;
+}
+
 /**
  * shadcn's own shape: a root, a trigger holding the value, and a content whose
  * items are written out.
@@ -237,25 +270,7 @@ describe("a Select written as parts", () => {
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
   }
 
-  function Written(props: {
-    value?: string;
-    defaultValue?: string;
-    onValueChange?: (value: string) => void;
-    open?: boolean;
-    onOpenChange?: (isOpen: boolean) => void;
-    name?: string;
-    disabled?: boolean;
-    required?: boolean;
-    size?: "sm" | "default";
-    position?: "item-aligned" | "popper";
-    side?: "top" | "right" | "bottom" | "left";
-    align?: "start" | "center" | "end";
-    sideOffset?: number;
-    alignOffset?: number;
-    placement?: "top start";
-    offset?: number;
-    "aria-label"?: string;
-  }) {
+  function Written(props: WrittenProps) {
     return (
       <>
         <label for="fruit">Fruit</label>
@@ -305,9 +320,12 @@ describe("a Select written as parts", () => {
     );
   }
 
-  const trigger = (): HTMLElement => screen.getByRole("combobox");
-  const slot = (name: string): HTMLElement | null =>
-    document.querySelector<HTMLElement>(`[data-slot="${name}"]`);
+  function trigger(): HTMLElement {
+    return screen.getByRole("combobox");
+  }
+  function slot(name: string): HTMLElement | null {
+    return document.querySelector<HTMLElement>(`[data-slot="${name}"]`);
+  }
 
   async function open(): Promise<void> {
     user.click(trigger());

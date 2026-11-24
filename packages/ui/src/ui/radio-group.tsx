@@ -156,10 +156,10 @@ export function RadioGroup(props: RadioGroupProps) {
   const inherited = useDirection();
   if (props.dir !== undefined) provideDirection(() => props.dir ?? inherited());
   const inField = useFieldInvalid();
-  const invalid = (): boolean => {
+  function invalid(): boolean {
     const given = props.isInvalid ?? props["aria-invalid"];
     return given === undefined ? inField() : given === true || given === "true";
-  };
+  }
 
   return (
     <AriaRadioGroup

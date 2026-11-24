@@ -69,10 +69,15 @@ async function settle(): Promise<void> {
   flush();
 }
 
-const violations = (): string[] =>
-  ariaViolations(document.body).map((entry) => `[${entry.rule}] ${entry.message} ${entry.html}`);
+function violations(): string[] {
+  return ariaViolations(document.body).map(
+    (entry) => `[${entry.rule}] ${entry.message} ${entry.html}`,
+  );
+}
 
-const isInert = (element: Element): boolean => element.closest("[inert]") !== null;
+function isInert(element: Element): boolean {
+  return element.closest("[inert]") !== null;
+}
 
 const OPTIONS = [
   { id: "small", name: "Small" },
@@ -83,8 +88,13 @@ afterEach(async () => {
   await settle();
 });
 
+interface ModalCase {
+  name: string;
+  render: () => Child;
+}
+
 describe("the page outside an open modal", () => {
-  const modals: { name: string; render: () => Child }[] = [
+  const modals: ModalCase[] = [
     {
       name: "Dialog",
       render: () => (
@@ -238,8 +248,12 @@ describe("a modal opened from inside a modal", () => {
   });
 });
 
+interface InModalProps {
+  children: Child;
+}
+
 describe("a popup opened from inside a modal", () => {
-  function InModal(props: { children: Child }) {
+  function InModal(props: InModalProps) {
     return (
       <>
         <button type="button">Outside</button>

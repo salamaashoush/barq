@@ -44,8 +44,9 @@ describe("DatePicker", () => {
     const [date, setDate] = createSignal<CalendarDate | null>(null);
     render(() => <DatePicker value={date()} />);
     const button = screen.getByRole("button");
-    const muted = (): boolean =>
-      rulesFor([...button.classList].join(" ")).includes("color: var(--muted-foreground)");
+    function muted(): boolean {
+      return rulesFor([...button.classList].join(" ")).includes("color: var(--muted-foreground)");
+    }
 
     expect(muted()).toBe(true);
     setDate(new CalendarDate(2022, 1, 20));
@@ -111,11 +112,14 @@ describe("DateRangePicker", () => {
   });
 });
 
-const at = (slot: string): HTMLElement | null => document.querySelector(`[data-slot="${slot}"]`);
-const dayOf = (date: CalendarDate): HTMLElement =>
-  document.querySelector(
+function at(slot: string): HTMLElement | null {
+  return document.querySelector(`[data-slot="${slot}"]`);
+}
+function dayOf(date: CalendarDate): HTMLElement {
+  return document.querySelector(
     `[data-slot="calendar-day-button"][data-day="${String(date)}"]:not([aria-hidden])`,
   ) as HTMLElement;
+}
 
 describe("DatePicker, holding its own date", () => {
   test("the trigger reads the day pressed, with no value passed in", async () => {
@@ -332,8 +336,12 @@ describe("DateRangePicker, with presets", () => {
   });
 });
 
+interface SubscriptionProps {
+  onChange?: (date: CalendarDate | null) => void;
+}
+
 describe("DatePickerInput", () => {
-  function Subscription(props: { onChange?: (date: CalendarDate | null) => void }) {
+  function Subscription(props: SubscriptionProps) {
     return (
       <DatePickerInput
         id="subscription"
@@ -345,8 +353,12 @@ describe("DatePickerInput", () => {
     );
   }
 
-  const field = (): HTMLInputElement => screen.getByRole<HTMLInputElement>("textbox");
-  const opener = (): HTMLElement => screen.getByRole("button", { name: "Select date" });
+  function field(): HTMLInputElement {
+    return screen.getByRole<HTMLInputElement>("textbox");
+  }
+  function opener(): HTMLElement {
+    return screen.getByRole("button", { name: "Select date" });
+  }
 
   test("a text field holding the date, and a named button that opens the calendar", () => {
     render(() => <Subscription />);

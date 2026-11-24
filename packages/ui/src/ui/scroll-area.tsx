@@ -221,9 +221,12 @@ export function ScrollArea(props: ScrollAreaProps) {
   // `ownedWrite`: a bar announces itself from its own body, which runs while
   // this component's children are still being built.
   const [bars, setBars] = createSignal<readonly Registered[]>([], { ownedWrite: true });
-  const has = (orientation: ScrollbarOrientation): boolean =>
-    bars().some((entry) => entry.orientation() === orientation);
-  const custom = (): boolean => bars().length > 0;
+  function has(orientation: ScrollbarOrientation): boolean {
+    return bars().some((entry) => entry.orientation() === orientation);
+  }
+  function custom(): boolean {
+    return bars().length > 0;
+  }
 
   const value: ScrollAreaValue = {
     viewport: node,
@@ -248,7 +251,9 @@ export function ScrollArea(props: ScrollAreaProps) {
   // with Tab is a WCAG failure, and the platform only makes one focusable on
   // its own in Firefox. The stop is on whichever element scrolls: Tab landing
   // on a box that only clips is a stop that does nothing.
-  const stop = (): number => props.tabIndex ?? 0;
+  function stop(): number {
+    return props.tabIndex ?? 0;
+  }
   const rootFocus: DOMProps = { tabIndex: () => (custom() ? undefined : stop()) };
   const viewportFocus: DOMProps = { tabIndex: () => (custom() ? stop() : undefined) };
 
@@ -281,8 +286,13 @@ export function ScrollArea(props: ScrollAreaProps) {
   );
 }
 
+interface ScrollAreaProviderProps {
+  value: ScrollAreaValue;
+  children?: Child;
+}
+
 /** The context, in a component of its own because `provide` needs the scope. */
-function ScrollAreaProvider(props: { value: ScrollAreaValue; children?: Child }) {
+function ScrollAreaProvider(props: ScrollAreaProviderProps) {
   return provide(
     ScrollAreaContext,
     () => props.value,
@@ -309,7 +319,9 @@ export function ScrollBar(props: ScrollBarProps) {
     throw new Error("This must be rendered inside a <ScrollArea>.");
   }
   const track = makeRef<HTMLDivElement>();
-  const orientation = (): ScrollbarOrientation => props.orientation ?? "vertical";
+  function orientation(): ScrollbarOrientation {
+    return props.orientation ?? "vertical";
+  }
   const engine = scrollbar({
     orientation,
     direction: area.direction,

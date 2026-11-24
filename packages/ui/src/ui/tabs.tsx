@@ -274,8 +274,9 @@ export interface TabsListProps<T> extends Omit<TabListComponentProps<T>, "childr
 }
 
 export function TabsList<T>(props: TabsListProps<T>) {
-  const className = (): string =>
-    ui(tabsListVariants({ variant: props.variant }), props.class, props.className);
+  function className(): string {
+    return ui(tabsListVariants({ variant: props.variant }), props.class, props.className);
+  }
 
   if (useValueTabs() !== null) {
     return (

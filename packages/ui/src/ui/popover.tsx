@@ -149,7 +149,9 @@ export interface PopoverContentProps
 export function PopoverContent(props: PopoverContentProps) {
   const { state, triggerRef, anchorRef, overlayId, claimId } = family.use();
   claimId(() => props.id);
-  const target = (): HTMLElement | null => anchorRef() ?? triggerRef();
+  function target(): HTMLElement | null {
+    return anchorRef() ?? triggerRef();
+  }
 
   return (
     <AriaPopover

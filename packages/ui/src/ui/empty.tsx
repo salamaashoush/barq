@@ -125,7 +125,9 @@ export interface EmptyMediaProps extends UiProps {
 }
 
 export function EmptyMedia(props: EmptyMediaProps) {
-  const className = (): string => emptyMediaVariants({ variant: props.variant });
+  function className(): string {
+    return emptyMediaVariants({ variant: props.variant });
+  }
   return (
     <div
       {...uiProps("empty-media", className, cells(props))}

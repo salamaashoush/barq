@@ -15,10 +15,12 @@ import {
   type ResizableStorage,
 } from "./resizable.tsx";
 
-function Two(props: {
+interface TwoProps {
   direction?: "horizontal" | "vertical";
   onLayout?: (sizes: number[]) => void;
-}) {
+}
+
+function Two(props: TwoProps) {
   return (
     <ResizablePanelGroup direction={props.direction} onLayout={props.onLayout}>
       <ResizablePanel defaultSize={30}>left</ResizablePanel>
@@ -28,11 +30,12 @@ function Two(props: {
   );
 }
 
-const panels = (): HTMLElement[] => [
-  ...document.querySelectorAll<HTMLElement>('[data-slot="resizable-panel"]'),
-];
-const handle = (): HTMLElement =>
-  document.querySelector('[data-slot="resizable-handle"]') as HTMLElement;
+function panels(): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>('[data-slot="resizable-panel"]')];
+}
+function handle(): HTMLElement {
+  return document.querySelector('[data-slot="resizable-handle"]') as HTMLElement;
+}
 
 /** The percentage out of `flex: 0 0 N%`. */
 function sizeOf(panel: HTMLElement): number {
@@ -172,13 +175,15 @@ describe("Resizable", () => {
   });
 });
 
-const handles = (): HTMLElement[] => [
-  ...document.querySelectorAll<HTMLElement>('[data-slot="resizable-handle"]'),
-];
-const groups = (): HTMLElement[] => [
-  ...document.querySelectorAll<HTMLElement>('[data-slot="resizable-panel-group"]'),
-];
-const layoutNow = (): number[] => panels().map((each) => sizeOf(each));
+function handles(): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>('[data-slot="resizable-handle"]')];
+}
+function groups(): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>('[data-slot="resizable-panel-group"]')];
+}
+function layoutNow(): number[] {
+  return panels().map((each) => sizeOf(each));
+}
 
 /** happy-dom measures nothing, so the group's extent is declared. */
 function measured(element: HTMLElement, width: number, height: number): void {
@@ -191,7 +196,11 @@ function press(key: string, target: HTMLElement = handle(), init: KeyboardEventI
   flush();
 }
 
-function memory(): ResizableStorage & { data: Map<string, string> } {
+interface MemoryStorage {
+  data: Map<string, string>;
+}
+
+function memory(): ResizableStorage & MemoryStorage {
   const data = new Map<string, string>();
   return {
     data,
@@ -445,7 +454,9 @@ describe("Resizable group", () => {
         </ResizablePanel>
       </ResizablePanelGroup>
     ));
-    const size = (id: string): number => sizeOf(document.getElementById(id) as HTMLElement);
+    function size(id: string): number {
+      return sizeOf(document.getElementById(id) as HTMLElement);
+    }
     expect(handles()[1]?.getAttribute("aria-controls")).toBe("two");
     expect(handles()[1]?.getAttribute("aria-orientation")).toBe("horizontal");
 
@@ -459,14 +470,16 @@ describe("Resizable group", () => {
   });
 });
 
+interface DraggedProps {
+  orientation?: "horizontal" | "vertical";
+  dir?: "rtl";
+  onLayout?: (sizes: number[]) => void;
+  onLayoutChanged?: (layout: Record<string, number>) => void;
+  onDragging?: (dragging: boolean) => void;
+}
+
 describe("Resizable drag", () => {
-  function Dragged(props: {
-    orientation?: "horizontal" | "vertical";
-    dir?: "rtl";
-    onLayout?: (sizes: number[]) => void;
-    onLayoutChanged?: (layout: Record<string, number>) => void;
-    onDragging?: (dragging: boolean) => void;
-  }) {
+  function Dragged(props: DraggedProps) {
     return (
       <ResizablePanelGroup
         orientation={props.orientation}
@@ -575,16 +588,18 @@ describe("Resizable drag", () => {
   });
 });
 
+interface CollapsingProps {
+  panelRef?: (handle: ResizablePanelHandle | null) => void;
+  groupRef?: (handle: ResizableGroupHandle | null) => void;
+  onCollapse?: () => void;
+  onExpand?: () => void;
+  onResize?: (size: ResizablePanelSize, id: string) => void;
+  autoSaveId?: string;
+  storage?: ResizableStorage;
+}
+
 describe("Resizable collapsing", () => {
-  function Collapsing(props: {
-    panelRef?: (handle: ResizablePanelHandle | null) => void;
-    groupRef?: (handle: ResizableGroupHandle | null) => void;
-    onCollapse?: () => void;
-    onExpand?: () => void;
-    onResize?: (size: ResizablePanelSize, id: string) => void;
-    autoSaveId?: string;
-    storage?: ResizableStorage;
-  }) {
+  function Collapsing(props: CollapsingProps) {
     return (
       <ResizablePanelGroup
         groupRef={props.groupRef}

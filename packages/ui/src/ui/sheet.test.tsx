@@ -26,7 +26,12 @@ async function settle(): Promise<void> {
   flush();
 }
 
-function Fixture(props: { side?: SheetSide; showCloseButton?: boolean }) {
+interface FixtureProps {
+  side?: SheetSide;
+  showCloseButton?: boolean;
+}
+
+function Fixture(props: FixtureProps) {
   return (
     <Sheet>
       <SheetTrigger>

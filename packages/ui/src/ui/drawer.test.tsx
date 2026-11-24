@@ -20,7 +20,11 @@ import {
   type DrawerProps,
 } from "./drawer.tsx";
 
-function Basic(props: { direction?: "top" | "bottom" | "left" | "right" }) {
+interface BasicProps {
+  direction?: "top" | "bottom" | "left" | "right";
+}
+
+function Basic(props: BasicProps) {
   return (
     <Drawer direction={props.direction}>
       <DrawerTrigger>
@@ -39,8 +43,12 @@ function Basic(props: { direction?: "top" | "bottom" | "left" | "right" }) {
   );
 }
 
-const content = (): HTMLElement | null => document.querySelector('[data-slot="drawer-content"]');
-const trigger = (): HTMLElement => document.querySelector("button") as HTMLElement;
+function content(): HTMLElement | null {
+  return document.querySelector('[data-slot="drawer-content"]');
+}
+function trigger(): HTMLElement {
+  return document.querySelector("button") as HTMLElement;
+}
 
 /** happy-dom measures nothing, and the threshold is a fraction of the size. */
 function sized(element: HTMLElement, extent: number): void {
@@ -317,10 +325,18 @@ function everySized(extent: number): () => void {
   };
 }
 
-const overlay = (): HTMLElement | null => document.querySelector('[data-slot="drawer-overlay"]');
-const dialogs = (): number => document.querySelectorAll('[role="dialog"]').length;
+function overlay(): HTMLElement | null {
+  return document.querySelector('[data-slot="drawer-overlay"]');
+}
+function dialogs(): number {
+  return document.querySelectorAll('[role="dialog"]').length;
+}
 
-function Configured(props: DrawerProps & { handle?: boolean }) {
+interface ConfiguredProps {
+  handle?: boolean;
+}
+
+function Configured(props: DrawerProps & ConfiguredProps) {
   return (
     <Drawer
       direction={props.direction}
@@ -459,7 +475,7 @@ describe("Drawer handle", () => {
   });
 
   test("a short drag closes when it was fast and stays when it was slow", async () => {
-    const pull = async (took: number): Promise<number> => {
+    async function pull(took: number): Promise<number> {
       render(() => <Basic />);
       await user.click(trigger());
       flush();
@@ -475,7 +491,7 @@ describe("Drawer handle", () => {
       const open = dialogs();
       cleanup();
       return open;
-    };
+    }
 
     // 40px of 400 is nowhere near the threshold, so only the speed can close it.
     expect(await pull(1000)).toBe(1);
@@ -734,7 +750,9 @@ describe("Nested drawers", () => {
     );
   }
 
-  const named = (id: string): HTMLElement | null => document.querySelector(`[data-testid="${id}"]`);
+  function named(id: string): HTMLElement | null {
+    return document.querySelector(`[data-testid="${id}"]`);
+  }
 
   test("the one underneath steps back while another is open over it", async () => {
     render(() => <Nested />);
@@ -821,8 +839,16 @@ describe("DrawerPortal and DrawerOverlay", () => {
   });
 });
 
+interface OptionsProps {
+  input?: boolean;
+}
+
+interface Viewport {
+  height: number;
+}
+
 describe("Drawer, vaul's remaining options", () => {
-  function Options(props: DrawerProps & { input?: boolean }) {
+  function Options(props: DrawerProps & OptionsProps) {
     return (
       <>
         <button type="button">Outside</button>
@@ -853,10 +879,10 @@ describe("Drawer, vaul's remaining options", () => {
     );
   }
 
-  const open = async (): Promise<void> => {
+  async function open(): Promise<void> {
     await user.click(screen.getByRole("button", { name: "Open" }));
     flush();
-  };
+  }
 
   test("modal={false} leaves the page behind usable and draws no overlay", async () => {
     render(() => <Options modal={false} />);
@@ -919,7 +945,7 @@ describe("Drawer, vaul's remaining options", () => {
   });
 
   describe("an on-screen keyboard", () => {
-    let viewport: EventTarget & { height: number };
+    let viewport: EventTarget & Viewport;
     const original = Object.getOwnPropertyDescriptor(window, "visualViewport");
 
     beforeEach(() => {
@@ -932,7 +958,7 @@ describe("Drawer, vaul's remaining options", () => {
       else Object.defineProperty(window, "visualViewport", original);
     });
 
-    const typeInto = async (): Promise<HTMLElement> => {
+    async function typeInto(): Promise<HTMLElement> {
       await open();
       const drawn = content() as HTMLElement;
       sized(drawn, 300);
@@ -942,7 +968,7 @@ describe("Drawer, vaul's remaining options", () => {
       viewport.dispatchEvent(new Event("resize"));
       flush();
       return drawn;
-    };
+    }
 
     test("lifts the drawer above it", async () => {
       render(() => <Options input />);

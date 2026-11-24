@@ -139,7 +139,9 @@ export interface NativeSelectProps extends Omit<UiProps, "ref"> {
  * ```
  */
 export function NativeSelect(props: NativeSelectProps) {
-  const size = (): NativeSelectSize => props.size ?? "default";
+  function size(): NativeSelectSize {
+    return props.size ?? "default";
+  }
   return (
     // `class` goes on the WRAPPER, because the wrapper is the box: it carries
     // `width: fit-content`, and a caller writing `class` to widen the control
