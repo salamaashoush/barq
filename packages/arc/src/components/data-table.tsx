@@ -454,10 +454,7 @@ export function DataTable<T extends RowData>(props: DataTableProps<T>) {
     columns: props.columns as ColumnDef<DataTableFeatures, T>[],
     data: (props.data ?? []) as T[],
     getRowId: (item: T) => props.getRowId(item),
-    getSubRows:
-      props.getSubRows === undefined
-        ? undefined
-        : (item: T) => props.getSubRows?.(item),
+    getSubRows: props.getSubRows === undefined ? undefined : (item: T) => props.getSubRows?.(item),
     manualSorting: props.manualSorting === true,
     manualPagination: props.pagination === undefined || props.pagination.pageCount !== undefined,
     pageCount: props.pagination?.pageCount,
